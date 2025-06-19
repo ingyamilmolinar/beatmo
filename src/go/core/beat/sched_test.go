@@ -7,7 +7,7 @@ import (
 	"github.com/ingyamilmolinar/tunkul/core/model"
 )
 
-func TestSchedulerFiresEveryBeat(t *testing.T) {
+func TestSchedulerStepsThroughRow(t *testing.T) {
 	m := model.NewGraph()
 	m.ToggleStep(0)
 
@@ -23,8 +23,8 @@ func TestSchedulerFiresEveryBeat(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		s.Tick()
 	}
-	if fired != 5 {
-		t.Fatalf("expected 5 beats, got %d", fired)
+	if fired != 2 {
+		t.Fatalf("expected 2 beats, got %d", fired)
 	}
 }
 

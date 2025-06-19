@@ -11,6 +11,7 @@ type Scheduler struct {
 	BPM    int
 	now    func() time.Time
 	last   time.Time
+	step   int
 	OnBeat func(step int)
 }
 
@@ -19,20 +20,28 @@ func NewScheduler(m *model.Graph) *Scheduler {
 		Model: m,
 		BPM:   120,
 		now:   time.Now,
+		step:  0,
 	}
+}
+
+// Reset clears the internal timer and restarts playback from step zero.
+func (s *Scheduler) Reset() {
+	s.last = time.Time{}
+	s.step = 0
 }
 
 func (s *Scheduler) Tick() {
 	if s.BPM <= 0 {
 		return
 	}
+	if len(s.Model.Row) == 0 {
+		return
+	}
 	spb := time.Minute / time.Duration(s.BPM)
 	if s.last.IsZero() {
 		s.last = s.now()
-		for i, on := range s.Model.Row {
-			if on && s.OnBeat != nil {
-				s.OnBeat(i)
-			}
+		if s.Model.Row[s.step] && s.OnBeat != nil {
+			s.OnBeat(s.step)
 		}
 		return
 	}
@@ -41,9 +50,8 @@ func (s *Scheduler) Tick() {
 	}
 	s.last = s.now()
 
-	for i, on := range s.Model.Row {
-		if on && s.OnBeat != nil {
-			s.OnBeat(i)
-		}
+	s.step = (s.step + 1) % len(s.Model.Row)
+	if s.Model.Row[s.step] && s.OnBeat != nil {
+		s.OnBeat(s.step)
 	}
 }
