@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/hajimehoshi/ebiten/v2"
+import (
+	"math"
+
+	"github.com/hajimehoshi/ebiten/v2"
+)
 
 // Camera owns zoom & pan parameters and exposes a GeoM matrix.
 type Camera struct {
@@ -11,6 +15,14 @@ type Camera struct {
 
 func NewCamera() *Camera { return &Camera{Scale: 2.0} }
 
+// ScreenPos converts world coordinates to screen-space using the current
+// camera transform.
+func (c *Camera) ScreenPos(x, y float64) (sx, sy float64) {
+	sx = x*c.Scale + c.OffsetX
+	sy = y*c.Scale + c.OffsetY
+	return
+}
+
 // GeoM returns the affine transform applied to all world-space drawings.
 func (c *Camera) GeoM() ebiten.GeoM {
 	var m ebiten.GeoM
@@ -19,9 +31,19 @@ func (c *Camera) GeoM() ebiten.GeoM {
 	return m
 }
 
+// GeoMRounded returns a matrix like GeoM but rounds the translation
+// to integer pixels. This keeps grid lines and nodes aligned when
+// the camera moves with fractional offsets.
+func (c *Camera) GeoMRounded() ebiten.GeoM {
+	var m ebiten.GeoM
+	m.Scale(c.Scale, c.Scale)
+	m.Translate(math.Round(c.OffsetX), math.Round(c.OffsetY))
+	return m
+}
+
 // HandleMouse mutates Scale / Offset by reading Ebiten’s mouse state.
-func (c *Camera) HandleMouse(allowPan bool) {
-	_, wheelY := ebiten.Wheel() // we don’t need wheelX yet
+func (c *Camera) HandleMouse(allowPan bool) bool {
+	_, wheelY := wheel() // we don’t need wheelX yet
 	if wheelY != 0 {
 		if wheelY > 0 {
 			c.Scale *= 1.1
@@ -29,17 +51,21 @@ func (c *Camera) HandleMouse(allowPan bool) {
 			c.Scale *= 0.9
 		}
 	}
-
-	if allowPan && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
+	dragging := false
+	if allowPan && isMouseButtonPressed(ebiten.MouseButtonLeft) {
+		x, y := cursorPosition()
 		if last, ok := prevMousePos(); ok {
-			c.OffsetX += float64(x - last.x)
-			c.OffsetY += float64(y - last.y)
+			if x != last.x || y != last.y {
+				c.OffsetX += float64(x - last.x)
+				c.OffsetY += float64(y - last.y)
+				dragging = true
+			}
 		}
 		markMousePos(x, y)
 	} else {
 		clearMousePos()
 	}
+	return dragging
 }
 
 /* ─── internal helpers ─── */
@@ -56,4 +82,3 @@ func prevMousePos() (mousePos, bool) {
 }
 func markMousePos(x, y int) { p := mousePos{x, y}; lastMouse = &p }
 func clearMousePos()        { lastMouse = nil }
-

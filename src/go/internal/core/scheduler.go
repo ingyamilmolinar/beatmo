@@ -37,7 +37,7 @@ func (s *Scheduler) Tick() {
 		node := s.grid.nodes[ev.id]
 		out := node.OnEvent(ev.port, ev.payload)
 
-		if _, ok := node.(*nodes.SoundSample); ok && s.OnPlayEvent != nil {
+		if s.OnPlayEvent != nil {
 			s.OnPlayEvent(ev.payload)
 		}
 
@@ -65,4 +65,3 @@ func (s *Scheduler) TickDur() time.Duration {
 	sec := beat / float64(s.res)
 	return time.Duration(sec * float64(time.Second))
 }
-

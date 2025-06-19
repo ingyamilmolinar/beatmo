@@ -1,0 +1,13 @@
+#!/bin/sh
+# Pre-commit hook: format, test with stubs, and build wasm
+set -e
+
+# Format Go files
+find src/go -name '*.go' | xargs gofmt -w
+
+# Run unit tests with stubbed Ebiten
+cd src/go && go test -tags test -modfile=go.test.mod ./...
+cd ../..
+
+# Build wasm target
+make wasm

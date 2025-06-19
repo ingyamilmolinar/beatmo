@@ -14,41 +14,41 @@ type Transport struct {
 	BPM     int
 	Playing bool
 
-	boxRect   image.Rectangle // bpm input box coords
-	playRect  image.Rectangle
-	stopRect  image.Rectangle
-	focusBox  bool
+	boxRect  image.Rectangle // bpm input box coords
+	playRect image.Rectangle
+	stopRect image.Rectangle
+	focusBox bool
 }
 
 func NewTransport(w int) *Transport {
 	return &Transport{
-		BPM:    120,
-		boxRect: image.Rect(50, 8, 120, 30),
+		BPM:      120,
+		boxRect:  image.Rect(50, 8, 120, 30),
 		playRect: image.Rect(140, 8, 170, 30),
 		stopRect: image.Rect(180, 8, 210, 30),
 	}
 }
 
 func (t *Transport) Update() {
-	x, y := ebiten.CursorPosition()
+	x, y := cursorPosition()
 
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
 		if t.boxRect.Min.X <= x && x <= t.boxRect.Max.X &&
 			t.boxRect.Min.Y <= y && y <= t.boxRect.Max.Y {
 			t.focusBox = true
 		} else {
 			t.focusBox = false
 		}
-		if ptIn(x, y, t.playRect) {
+		if pt(x, y, t.playRect) {
 			t.Playing = true
 		}
-		if ptIn(x, y, t.stopRect) {
+		if pt(x, y, t.stopRect) {
 			t.Playing = false
 		}
 	}
 
 	if t.focusBox {
-		if ch := ebiten.InputChars(); len(ch) > 0 {
+		if ch := inputChars(); len(ch) > 0 {
 			// simplistic numeric entry
 			if d, err := strconv.Atoi(string(ch)); err == nil {
 				newBpm := t.BPM*10 + d
@@ -57,7 +57,7 @@ func (t *Transport) Update() {
 				}
 			}
 		}
-		if ebiten.IsKeyPressed(ebiten.KeyBackspace) {
+		if isKeyPressed(ebiten.KeyBackspace) {
 			t.BPM /= 10
 		}
 	}
@@ -85,4 +85,3 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 	drawRect(dst, t.stopRect, color.White)
 	ebitenutil.DebugPrintAt(dst, "■", t.stopRect.Min.X+6, t.stopRect.Min.Y+3)
 }
-
