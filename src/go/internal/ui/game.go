@@ -353,7 +353,7 @@ func (g *Game) Update() error {
 
 	// drum view logic
 	g.drum.Update()
-	if g.drum.playing && !prevPlay {
+	if g.drum.playing != prevPlay {
 		g.sched.Reset()
 	}
 	if g.drum.playing {
