@@ -39,6 +39,14 @@ xvfb-run go run ./cmd/tunkul.go
 ```
 The virtual framebuffer lets Ebiten create a window while logs are printed to the console.
 
+### UI simulator
+Run the game with the headless UI simulator when debugging:
+
+```sh
+xvfb-run go run ./cmd/tunkul.go
+```
+This renders off-screen so logs can be inspected without a window.
+
 ## Project Overview
 
 Tunkul is a grid-based beat sequencer written in Go with Ebiten. The program

@@ -14,6 +14,9 @@ type Scheduler struct {
 	OnBeat func(step int)
 }
 
+// Reset clears internal timers so the next Tick starts a new cycle.
+func (s *Scheduler) Reset() { s.last = time.Time{} }
+
 func NewScheduler(m *model.Graph) *Scheduler {
 	return &Scheduler{
 		Model: m,
