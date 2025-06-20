@@ -34,6 +34,7 @@ type dragLink struct {
 type pulse struct {
 	x1, y1, x2, y2 float64
 	t, speed       float64
+	dest           *uiNode
 }
 
 type Game struct {
@@ -62,21 +63,21 @@ type Game struct {
 	clickI, clickJ int
 
 	/* misc */
-	winW, winH  int
-	start       *uiNode // explicit “root/start” node (⇧S to set)
+	winW, winH int
+	start      *uiNode // explicit “root/start” node (⇧S to set)
 }
 
 /* ───────────────── helper: node’s screen rect ───────────────── */
 
 // Rectangle in *screen* pixels (y already includes the transport offset).
 func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
-	stepPx   := StepPixels(g.cam.Scale)                  // grid step in screen px
-	camScale := float64(stepPx) / float64(GridStep)      // world→screen factor
-	offX     := math.Round(g.cam.OffsetX)                // camera panning
-	offY     := math.Round(g.cam.OffsetY)
+	stepPx := StepPixels(g.cam.Scale)               // grid step in screen px
+	camScale := float64(stepPx) / float64(GridStep) // world→screen factor
+	offX := math.Round(g.cam.OffsetX)               // camera panning
+	offY := math.Round(g.cam.OffsetY)
 
-	sx   := offX + float64(stepPx*n.I)                   // sprite centre X
-	sy   := offY + float64(stepPx*n.J) + topOffset       // sprite centre Y
+	sx := offX + float64(stepPx*n.I)             // sprite centre X
+	sy := offY + float64(stepPx*n.J) + topOffset // sprite centre Y
 	size := float64(NodeSpriteSize) * camScale
 	half := size / 2
 
@@ -132,15 +133,22 @@ func (g *Game) tryAddNode(i, j int) *uiNode {
 	if n := g.nodeAt(i, j); n != nil {
 		return n
 	}
+	prevLen := len(g.graph.Row)
 	id := g.graph.AddNode(i, j)
-	n  := &uiNode{ID: id, I: i, J: j, X: float64(i * GridStep), Y: float64(j * GridStep)}
+	n := &uiNode{ID: id, I: i, J: j, X: float64(i * GridStep), Y: float64(j * GridStep)}
 
 	if g.start == nil { // first ever node becomes the start
-		g.start  = n
-		n.Start  = true
+		g.start = n
+		n.Start = true
 	}
 	g.nodes = append(g.nodes, n)
 	g.drum.Rows[0].Steps = g.graph.Row
+	if len(g.graph.Row) != prevLen {
+		for i := 1; i < len(g.drum.Rows); i++ {
+			g.drum.Rows[i].Steps = make([]bool, len(g.graph.Row))
+		}
+		g.drum.bgDirty = true
+	}
 	return n
 }
 
@@ -244,27 +252,27 @@ func (g *Game) handleEditor() {
 		g.pendingClick = true
 		g.camDragged = false
 	}
-       if !left && g.leftPrev {
-               if g.pendingClick && !g.camDragged && !shift && !right && !g.linkDrag.active {
-                       n := g.tryAddNode(g.clickI, g.clickJ)
-                       log.Printf("[game] add/select node %d,%d", g.clickI, g.clickJ)
-                       if g.sel != nil {
-                               g.sel.Selected = false
-                       }
-                       g.sel = n
-                       n.Selected = true
-               }
-               g.pendingClick = false
-               g.camDragged = false
-       }
-       if isKeyPressed(ebiten.KeyS) && g.sel != nil {
-               if g.start != nil {
-                       g.start.Start = false
-               }
-               g.start = g.sel
-               g.start.Start = true
-       }
-       g.leftPrev = left
+	if !left && g.leftPrev {
+		if g.pendingClick && !g.camDragged && !shift && !right && !g.linkDrag.active {
+			n := g.tryAddNode(g.clickI, g.clickJ)
+			log.Printf("[game] add/select node %d,%d", g.clickI, g.clickJ)
+			if g.sel != nil {
+				g.sel.Selected = false
+			}
+			g.sel = n
+			n.Selected = true
+		}
+		g.pendingClick = false
+		g.camDragged = false
+	}
+	if isKeyPressed(ebiten.KeyS) && g.sel != nil {
+		if g.start != nil {
+			g.start.Start = false
+		}
+		g.start = g.sel
+		g.start.Start = true
+	}
+	g.leftPrev = left
 }
 
 func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
@@ -325,6 +333,9 @@ func (g *Game) Update() error {
 		p := g.pulses[i]
 		p.t += p.speed
 		if p.t >= 1 {
+			if p.dest != nil {
+				g.spawnPulseFrom(p.dest, 1)
+			}
 			g.pulses[i] = g.pulses[len(g.pulses)-1]
 			g.pulses = g.pulses[:len(g.pulses)-1]
 			continue
@@ -332,9 +343,23 @@ func (g *Game) Update() error {
 		i++
 	}
 
+	prevPlay := g.drum.playing
+	oldLen := len(g.drum.Rows[0].Steps)
 	g.drum.Rows[0].Steps = g.graph.Row
+	if len(g.graph.Row) != oldLen {
+		for i := 1; i < len(g.drum.Rows); i++ {
+			if len(g.drum.Rows[i].Steps) != len(g.graph.Row) {
+				g.drum.Rows[i].Steps = make([]bool, len(g.graph.Row))
+			}
+		}
+		g.drum.bgDirty = true
+	}
+
 	// drum view logic
 	g.drum.Update()
+	if g.drum.playing != prevPlay {
+		g.sched.Reset()
+	}
 	if g.drum.playing {
 		g.sched.BPM = g.drum.bpm
 		log.Printf("[game] tick bpm=%d", g.sched.BPM)
@@ -478,7 +503,11 @@ func (g *Game) spawnPulseFrom(n *uiNode, beats int) {
 			d := abs(e.A.I-e.B.I) + abs(e.A.J-e.B.J)
 			speed := 1 / (float64(d*beats) * 60) // 60 fps
 			g.pulses = append(g.pulses, &pulse{
-				x1: e.A.X, y1: e.A.Y, x2: e.B.X, y2: e.B.Y,
+				x1:    e.A.X,
+				y1:    e.A.Y,
+				x2:    e.B.X,
+				y2:    e.B.Y,
+				dest:  e.B,
 				speed: speed,
 			})
 			log.Printf("[game] spawn pulse %d,%d -> %d,%d", e.A.I, e.A.J, e.B.I, e.B.J)
@@ -487,6 +516,9 @@ func (g *Game) spawnPulseFrom(n *uiNode, beats int) {
 }
 
 func (g *Game) onBeat(step int) {
+	if len(g.pulses) > 0 {
+		return
+	}
 	if root := g.rootNode(); root != nil {
 		g.spawnPulseFrom(root, 1)
 	}

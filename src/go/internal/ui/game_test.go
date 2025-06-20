@@ -58,6 +58,21 @@ func TestOnBeatUsesRoot(t *testing.T) {
 	}
 }
 
+func TestOnBeatNoDuplicatePulse(t *testing.T) {
+	g := New()
+	a := g.tryAddNode(0, 0)
+	b := g.tryAddNode(1, 0)
+	g.addEdge(a, b)
+	g.onBeat(0)
+	if len(g.pulses) != 1 {
+		t.Fatalf("expected 1 pulse, got %d", len(g.pulses))
+	}
+	g.onBeat(0)
+	if len(g.pulses) != 1 {
+		t.Fatalf("duplicate pulse spawned")
+	}
+}
+
 func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	g := New()
 	g.Layout(640, 480)
@@ -199,6 +214,33 @@ func TestPulseAnimationProgress(t *testing.T) {
 	g.Update() // advance animation
 	if g.pulses[0].t <= first {
 		t.Fatalf("pulse did not advance: %f <= %f", g.pulses[0].t, first)
+	}
+}
+
+func TestPulsePropagatesAroundLoop(t *testing.T) {
+	g := New()
+	g.Layout(640, 480)
+	a := g.tryAddNode(0, 0)
+	b := g.tryAddNode(1, 0)
+	c := g.tryAddNode(1, 1)
+	d := g.tryAddNode(0, 1)
+	g.addEdge(a, b)
+	g.addEdge(b, c)
+	g.addEdge(c, d)
+	g.addEdge(d, a)
+
+	g.spawnPulseFrom(a, 1)
+
+	reachedC := false
+	for i := 0; i < 200; i++ {
+		g.Update()
+		if len(g.pulses) > 0 && g.pulses[0].dest == c {
+			reachedC = true
+			break
+		}
+	}
+	if !reachedC {
+		t.Fatalf("pulse did not reach next node")
 	}
 }
 
@@ -459,25 +501,25 @@ func TestSplitterDragDoesNotCreateNode(t *testing.T) {
 }
 
 func TestStartNodeSelection(t *testing.T) {
-       g := New()
-       g.Layout(640, 480)
-       n1 := g.tryAddNode(0, 0)
-       if g.start != n1 || !n1.Start {
-               t.Fatalf("first node should be start")
-       }
-       n2 := g.tryAddNode(1, 0)
-       g.sel = n2
-       restore := SetInputForTest(
-               func() (int, int) { return 0, topOffset + 10 },
-               func(ebiten.MouseButton) bool { return false },
-               func(k ebiten.Key) bool { return k == ebiten.KeyS },
-               func() []rune { return nil },
-               func() (float64, float64) { return 0, 0 },
-               func() (int, int) { return 640, 480 },
-       )
-       defer restore()
-       g.Update()
-       if g.start != n2 || !n2.Start || n1.Start {
-               t.Fatalf("start node not updated")
-       }
+	g := New()
+	g.Layout(640, 480)
+	n1 := g.tryAddNode(0, 0)
+	if g.start != n1 || !n1.Start {
+		t.Fatalf("first node should be start")
+	}
+	n2 := g.tryAddNode(1, 0)
+	g.sel = n2
+	restore := SetInputForTest(
+		func() (int, int) { return 0, topOffset + 10 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyS },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	defer restore()
+	g.Update()
+	if g.start != n2 || !n2.Start || n1.Start {
+		t.Fatalf("start node not updated")
+	}
 }

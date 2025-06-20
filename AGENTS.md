@@ -70,4 +70,6 @@ Code structure:
   swapped during tests with `SetInputForTest` so UI logic can run headlessly.
   UI functional tests live in this package and verify button behaviour and
   layout sizing.
+- When investigating UI issues, run the program via `xvfb-run go run ./cmd/tunkul.go`
+  to reproduce behaviour in the simulator.
 
