@@ -1,49 +1,69 @@
 package beat
 
 import (
+	"log"
 	"time"
-
-	"github.com/ingyamilmolinar/tunkul/core/model"
 )
 
 type Scheduler struct {
-	Model  *model.Graph
-	BPM    int
-	now    func() time.Time
-	last   time.Time
-	OnBeat func(step int)
+	BPM         int
+	now         func() time.Time
+	last        time.Time
+	OnTick      func(step int)
+	running     bool
+	currentStep int
+	BeatLength  int
 }
 
-func NewScheduler(m *model.Graph) *Scheduler {
+func NewScheduler() *Scheduler {
 	return &Scheduler{
-		Model: m,
-		BPM:   120,
-		now:   time.Now,
+		BPM:         120,
+		now:         time.Now,
+		currentStep: 0,
+		BeatLength:  16,
 	}
+}
+
+func (s *Scheduler) Start() {
+	s.running = true
+	s.last = time.Time{}
+	s.currentStep = 0
+	log.Printf("[SCHEDULER] Started")
+
+	// Fire the first beat immediately if BPM is set
+	if s.BPM > 0 && s.OnTick != nil {
+		s.OnTick(s.currentStep)
+		s.currentStep = (s.currentStep + 1) % s.BeatLength
+	}
+}
+
+func (s *Scheduler) Stop() {
+	s.running = false
+	s.currentStep = 0
+	log.Printf("[SCHEDULER] Stopped")
 }
 
 func (s *Scheduler) Tick() {
-	if s.BPM <= 0 {
+	if !s.running || s.BPM <= 0 {
 		return
 	}
-	spb := time.Minute / time.Duration(s.BPM)
-	if s.last.IsZero() {
-		s.last = s.now()
-		for i, on := range s.Model.Row {
-			if on && s.OnBeat != nil {
-				s.OnBeat(i)
-			}
-		}
-		return
-	}
-	if s.now().Sub(s.last) < spb {
-		return
-	}
-	s.last = s.now()
 
-	for i, on := range s.Model.Row {
-		if on && s.OnBeat != nil {
-			s.OnBeat(i)
-		}
+	spb := time.Minute / time.Duration(s.BPM)
+	now := s.now()
+
+	if s.last.IsZero() {
+		s.last = now
 	}
+
+	if now.Sub(s.last) < spb {
+		return
+	}
+
+	s.last = now
+
+	if s.OnTick != nil {
+		s.OnTick(s.currentStep)
+	}
+
+	s.currentStep = (s.currentStep + 1) % s.BeatLength
 }

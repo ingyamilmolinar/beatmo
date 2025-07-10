@@ -21,12 +21,12 @@
 
 ### Git sync
 After cloning the repository, make sure your local branch tracks the latest
-remote branch used for Codex development:
+remote branch used for development:
 
 ```sh
 git remote add origin https://github.com/ingyamilmolinar/tunkul.git  # if not set
 git fetch origin
-git pull --no-rebase origin codex/refactor-project-for-test-driven-development
+git pull --no-rebase origin <development-branch>
 ```
 Resolve any merge conflicts before proceeding.
 
