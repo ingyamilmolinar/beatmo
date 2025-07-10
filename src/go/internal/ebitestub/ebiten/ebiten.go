@@ -66,4 +66,5 @@ type Game interface {
 
 func SetWindowSize(w, h int)      {}
 func SetWindowTitle(title string) {}
+func SetMaxTPS(tps float64)       {}
 func RunGame(g Game) error        { return nil }
