@@ -19,8 +19,10 @@ func TestSchedulerFiresEveryBeat(t *testing.T) {
 		firedSteps = append(firedSteps, step)
 	}
 	s.Start()
+	s.Tick() // Explicitly call Tick to fire the first beat
 
-	for i := 0; i < s.BeatLength; i++ { // Loop BeatLength times to get all beats (0-15)
+	// Call Tick BeatLength-1 times to ensure all beats are fired within the cycle
+	for i := 0; i < s.BeatLength-1; i++ {
 		s.Tick()
 	}
 
@@ -48,6 +50,7 @@ func TestFirstTickPlaysImmediately(t *testing.T) {
 		fired++
 	}
 	s.Start()
+	s.Tick() // Explicitly call Tick to fire the first beat
 
 	if fired != 1 {
 		t.Fatalf("expected first tick to fire once, got %d", fired)

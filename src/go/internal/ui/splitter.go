@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/hajimehoshi/ebiten/v2"
+import (
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/tunkul/internal/utils"
+)
 
 // Splitter holds the Y-coordinate of the horizontal divider.
 type Splitter struct {
@@ -20,7 +23,7 @@ func (s *Splitter) Update() {
 
         if isMouseButtonPressed(ebiten.MouseButtonLeft) {
                 // start drag if cursor is near the divider
-                if !s.dragging && abs(y-s.Y) <= grab {
+                if !s.dragging && utils.Abs(y-s.Y) <= grab {
                         s.dragging = true
                 }
                 if s.dragging {

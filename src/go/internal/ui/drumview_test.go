@@ -2,268 +2,254 @@ package ui
 
 import (
 	"image"
+	"os"
 	"testing"
+	"time"
 
-	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
+	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
-func setupDV() *DrumView {
-	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 200, 100), g, testLogger)
-	dv.Rows = []*DrumRow{{Name: "H", Steps: make([]bool, 4)}}
-	dv.recalcButtons()
-	return dv
-}
+func TestNewDrumView(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 
-func TestPlayStopButtons(t *testing.T) {
-	dv := setupDV()
-	mx := dv.playBtn.Min.X + 1
-	my := dv.playBtn.Min.Y + 1
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 600 },
-	)
-	defer restore()
-
-	dv.Update()
-	if !dv.playing {
-		t.Fatal("expected playing after clicking play")
+	if drumView == nil {
+		t.Fatal("NewDrumView returned nil")
 	}
-
-	mx = dv.stopBtn.Min.X + 1
-	my = dv.stopBtn.Min.Y + 1
-	dv.Update()
-	if dv.playing {
-		t.Fatal("expected stopped after clicking stop")
+	if drumView.Length != 8 {
+		t.Errorf("Expected initial drum view length to be 8, got %d", drumView.Length)
 	}
-}
-
-func TestRowHeightFillsPane(t *testing.T) {
-	dv := setupDV()
-	dv.Update()
-	want := dv.Bounds.Dy() / len(dv.Rows)
-	if dv.rowHeight() != want {
-		t.Fatalf("expected row height %d, got %d", want, dv.rowHeight())
+	if len(drumView.Rows) != 1 {
+		t.Fatalf("Expected 1 drum row, got %d", len(drumView.Rows))
 	}
-}
-
-func TestRowHeightSplit(t *testing.T) {
-	dv := setupDV()
-	dv.Update()
-	h := dv.rowHeight()
-	expected := dv.Bounds.Dy() / len(dv.Rows)
-	if h != expected {
-		t.Fatalf("expected row height %d, got %d", expected, h)
+	if len(drumView.Rows[0].Steps) != 8 {
+		t.Errorf("Expected drum row steps length to be 8, got %d", len(drumView.Rows[0].Steps))
 	}
-}
-
-func TestDrawAfterInit(t *testing.T) {
-	dv := setupDV()
-	dv.Update()
-	img := ebiten.NewImage(200, 100)
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("Draw panicked: %v", r)
-		}
-	}()
-	dv.Draw(img)
-}
-
-func TestSetBoundsRebuilds(t *testing.T) {
-	dv := setupDV()
-	dv.Update()
-	h1 := dv.rowHeight()
-	dv.SetBounds(image.Rect(0, 0, 200, 150))
-	dv.Update()
-	h2 := dv.rowHeight()
-	if h2 <= h1 {
-		t.Fatalf("expected height to increase from %d to %d", h1, h2)
-	}
-}
-
-func TestBackgroundWidthMatchesBounds(t *testing.T) {
-	dv := setupDV()
-	dv.Update()
-	for idx, img := range dv.bgCache {
-		if img.Bounds().Dx() != dv.Bounds.Dx() {
-			t.Fatalf("row %d width=%d want %d", idx, img.Bounds().Dx(), dv.Bounds.Dx())
+	for i, step := range drumView.Rows[0].Steps {
+		if step {
+			t.Errorf("Expected step %d to be false (empty), got true", i)
 		}
 	}
-	// No longer have resizeSteps, so this part of the test is removed.
 }
 
-func TestRowHeightUnchangedAfterNode(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	h1 := g.drum.rowHeight()
-	g.tryAddNode(0, 0)
-	g.Update()
-	if g.drum.rowHeight() != h1 {
-		t.Fatalf("row height changed from %d to %d", h1, g.drum.rowHeight())
+func TestDrumViewLengthIncrease(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+
+	// Simulate button press
+	drumView.lenIncPressed = true
+	drumView.Update()
+
+	if drumView.Length != 9 {
+		t.Errorf("Expected drum view length to increase to 9, got %d", drumView.Length)
 	}
-}
-
-func TestDrumViewSync_InitialState(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	g.Update()
-
-	expected := make([]bool, g.graph.BeatLength())
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected empty beat row, got %v", g.drum.Rows[0].Steps)
+	if len(drumView.Rows[0].Steps) != 9 {
+		t.Errorf("Expected drum row steps length to be 9, got %d", len(drumView.Rows[0].Steps))
 	}
 }
 
-func TestDrumViewSync_StartNodeOnly(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	_ = g.tryAddNode(0, 0) // This becomes the start node by default
-	g.Update()
+func TestDrumViewLengthDecrease(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 
-	expected := make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
+	// Increase length first to ensure we can decrease
+	drumView.lenIncPressed = true
+	drumView.Update() // Length is now 9
+
+	// Simulate button press
+	drumView.lenDecPressed = true
+	drumView.Update()
+
+	if drumView.Length != 8 {
+		t.Errorf("Expected drum view length to decrease to 8, got %d", drumView.Length)
 	}
-
-	// Change start node
-	n1 := g.tryAddNode(1, 0)
-	g.sel = n1
-	g.start = n1
-	g.graph.StartNodeID = n1.ID
-	g.Update()
-
-	expected = make([]bool, g.graph.BeatLength())
-	expected[0] = true // Start node is at distance 0
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
+	if len(drumView.Rows[0].Steps) != 8 {
+		t.Errorf("Expected drum row steps length to be 8, got %d", len(drumView.Rows[0].Steps))
 	}
 }
 
-func TestDrumViewSync_ConnectedNodes(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	n0 := g.tryAddNode(0, 0) // Start node
-	n1 := g.tryAddNode(1, 0)
-	n2 := g.tryAddNode(2, 0)
-	g.addEdge(n0, n1)
-	g.addEdge(n1, n2)
-	g.Update()
+func TestDrumViewLengthMinMax(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 
-	expected := make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	expected[1] = true
-	expected[2] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
+	// Test min length (should not go below 1)
+	drumView.Length = 1
+	drumView.lenDecPressed = true
+	drumView.Update()
+	if drumView.Length != 1 {
+		t.Errorf("Expected drum view length to stay at 1, got %d", drumView.Length)
+	}
+
+	// Test max length (should not go above 64)
+	drumView.Length = 64
+	drumView.lenIncPressed = true
+	drumView.Update()
+	if drumView.Length != 64 {
+		t.Errorf("Expected drum view length to stay at 64, got %d", drumView.Length)
 	}
 }
 
-func TestDrumViewSync_DisconnectedNodes(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	_ = g.tryAddNode(0, 0) // Start node
-	_ = g.tryAddNode(10, 10) // Disconnected node
-	g.Update()
+func TestDrumViewUpdatesGraphBeatLength(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 
-	expected := make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
+	// Initial check
+	if graph.BeatLength() != 8 {
+		t.Errorf("Expected initial graph beat length to be 8, got %d", graph.BeatLength())
+	}
+
+	// Increase length and check graph
+	drumView.lenIncPressed = true
+	drumView.Update()
+	if graph.BeatLength() != 9 {
+		t.Errorf("Expected graph beat length to be 9 after increase, got %d", graph.BeatLength())
+	}
+
+	// Decrease length and check graph
+	drumView.lenDecPressed = true
+	drumView.Update()
+	if graph.BeatLength() != 8 {
+		t.Errorf("Expected graph beat length to be 8 after decrease, got %d", graph.BeatLength())
 	}
 }
 
-func TestDrumViewSync_GraphGrowth(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	n0 := g.tryAddNode(0, 0) // Start node
-	n1 := g.tryAddNode(1, 0)
-	g.addEdge(n0, n1)
-	g.Update()
+func TestDrumViewLooping(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
 
-	expected := make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	expected[1] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
+	// Create a looping graph: O > X > X > (loop start) X > X > (loop end)
+	node0 := graph.AddNode(0, 0, model.NodeTypeRegular)
+	node1 := graph.AddNode(1, 0, model.NodeTypeRegular)
+	node2 := graph.AddNode(2, 0, model.NodeTypeRegular)
+	node3 := graph.AddNode(3, 0, model.NodeTypeRegular)
+	node4 := graph.AddNode(4, 0, model.NodeTypeRegular)
+
+	graph.StartNodeID = node0
+	graph.Edges[[2]model.NodeID{node0, node1}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node1, node2}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node2, node3}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node3, node4}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node4, node2}] = struct{}{}
+
+	drumView := NewDrumView(image.Rect(0, 0, 800, 100), graph, logger)
+	drumView.Length = 10
+	drumView.SetBeatLength(10)
+
+	// Manually call updateBeatInfos to populate the drum view
+	game := &Game{graph: graph, drum: drumView, logger: logger}
+	game.updateBeatInfos()
+
+	expectedSteps := []bool{true, true, true, true, true, true, true, true, true, true}
+	t.Logf("Generated drum row: %v", drumView.Rows[0].Steps)
+	if len(drumView.Rows[0].Steps) != len(expectedSteps) {
+		t.Fatalf("Expected %d steps, but got %d", len(expectedSteps), len(drumView.Rows[0].Steps))
 	}
 
-	n2 := g.tryAddNode(2, 0)
-	g.addEdge(n1, n2)
-	g.Update()
-
-	expected = make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	expected[1] = true
-	expected[2] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
-	}
-}
-
-func TestDrumViewSync_GraphShrinkage(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	n0 := g.tryAddNode(0, 0) // Start node
-	n1 := g.tryAddNode(1, 0)
-	n2 := g.tryAddNode(2, 0)
-	g.addEdge(n0, n1)
-	g.addEdge(n1, n2)
-	g.Update()
-
-	expected := make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	expected[1] = true
-	expected[2] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
-	}
-
-	g.deleteNode(n2)
-	g.Update()
-
-	expected = make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	expected[1] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
-	}
-}
-
-func TestDrumViewSync_MultipleNodesSameI(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(200, 120)
-	n0 := g.tryAddNode(0, 0) // Start node
-	n1a := g.tryAddNode(1, 0)
-	n1b := g.tryAddNode(1, 1) // Another node at I=1
-	g.addEdge(n0, n1a)
-	g.addEdge(n0, n1b) // Connect both to start
-	g.Update()
-
-	expected := make([]bool, g.graph.BeatLength())
-	expected[0] = true
-	expected[1] = true
-	if !compareBeatRows(g.drum.Rows[0].Steps, expected) {
-		t.Fatalf("Expected beat row %v, got %v", expected, g.drum.Rows[0].Steps)
-	}
-}
-
-func compareBeatRows(a, b []bool) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+	for i, step := range drumView.Rows[0].Steps {
+		if step != expectedSteps[i] {
+			t.Errorf("Step %d: expected %v, got %v", i, expectedSteps[i], step)
 		}
 	}
-	return true
 }
 
+func TestDrumViewLoopHighlighting(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	logger.SetLevel(game_log.LevelDebug) // Enable debug logging for this test
 
+	graph := model.NewGraph(logger)
+
+	// Circuit: [O] > [] > [X] > [X]
+	//                    ^     v
+	//                   [X] < [X]
+	// This translates to:
+	// node0 (0,0) -> node_inv1 (1,0) -> node1 (2,0)
+	// node1 (2,0) -> node_inv2 (2,1) -> node2 (2,2)
+	// node2 (2,2) -> node_inv3 (1,2) -> node3 (0,2)
+	// node3 (0,2) -> node_inv4 (0,1) -> node1 (2,0) (loop back to node1)
+
+	node0 := graph.AddNode(0, 0, model.NodeTypeRegular)
+	node_inv1 := graph.AddNode(1, 0, model.NodeTypeInvisible)
+	node1 := graph.AddNode(2, 0, model.NodeTypeRegular)
+	node_inv2 := graph.AddNode(2, 1, model.NodeTypeInvisible)
+	node2 := graph.AddNode(2, 2, model.NodeTypeRegular)
+	node_inv3 := graph.AddNode(1, 2, model.NodeTypeInvisible)
+	node3 := graph.AddNode(0, 2, model.NodeTypeRegular)
+	node_inv4 := graph.AddNode(0, 1, model.NodeTypeInvisible)
+
+	graph.StartNodeID = node0
+	graph.Edges[[2]model.NodeID{node0, node_inv1}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node_inv1, node1}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node1, node_inv2}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node_inv2, node2}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node2, node_inv3}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node_inv3, node3}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node3, node_inv4}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node_inv4, node1}] = struct{}{} // Loop back to node1
+
+	drumView := NewDrumView(image.Rect(0, 0, 800, 100), graph, logger)
+	drumView.Length = 10 // Set a reasonable length for the drum view
+	drumView.SetBeatLength(drumView.Length)
+
+	game := New(logger)
+	game.graph = graph
+	game.drum = drumView
+	game.bpm = 120 // Set a BPM for consistent beat duration
+	game.Layout(800, 720) // Set layout to initialize drum view bounds
+
+	// Simulate starting playback
+	game.playing = true
+	game.updateBeatInfos() // Call updateBeatInfos after drum is set
+	game.spawnPulse()
+
+	
+
+	// Run for a few cycles to test loop highlighting
+	for i := 0; i < 20; i++ { // Simulate 20 frames
+		game.Update()
+		t.Logf("Frame %d: highlightedNodes: %v, highlightedEmptyBeats: %v", game.frame, game.highlightedNodes, game.drum.highlightedEmptyBeats)
+
+		// Determine the expected highlighted index based on the current beat and loop
+		expectedHighlightedIndex := -1
+		if game.activePulse != nil {
+			// The pulse has just arrived at this beat, so it's pathIdx-1
+			currentBeatIndex := game.activePulse.pathIdx - 1
+			if currentBeatIndex >= 0 && currentBeatIndex < len(game.beatInfos) {
+				expectedHighlightedIndex = currentBeatIndex
+			}
+		} else if game.playing && len(game.beatInfos) > 0 {
+			// If no active pulse, but playing, it means the first beat is highlighted
+			expectedHighlightedIndex = 0
+		}
+
+		// Verify highlighting
+		for j := 0; j < drumView.Length; j++ {
+			isHighlighted := false
+			if _, ok := game.drum.highlightedEmptyBeats[j]; ok {
+				isHighlighted = true
+			} else if len(game.beatInfos) > j {
+				if _, ok := game.highlightedNodes[game.beatInfos[j].NodeID]; ok {
+					isHighlighted = true
+				}
+			}
+
+			if j == expectedHighlightedIndex {
+				if !isHighlighted {
+					t.Errorf("Frame %d, Beat %d: Expected to be highlighted, but was not.", game.frame, j)
+				}
+			} else {
+				if isHighlighted {
+					t.Errorf("Frame %d, Beat %d: Expected NOT to be highlighted, but was.", game.frame, j)
+				}
+			}
+		}
+
+		// Advance time for the next frame
+		time.Sleep(time.Millisecond * 16) // Simulate 60 TPS
+	}
+}

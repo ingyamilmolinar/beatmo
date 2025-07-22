@@ -9,9 +9,14 @@ import (
 	"github.com/ingyamilmolinar/tunkul/core/beat"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	)
+
+const (
+	topOffset = 40 // transport-bar height in px
 )
 
-const topOffset = 40 // transport-bar height in px
+const ebitenTPS = 60 // Ticks per second for Ebiten (stubbed for tests)
+
 
 /* ───────────────────────── data types ───────────────────────── */
 
@@ -41,7 +46,8 @@ type pulse struct {
 	x1, y1, x2, y2 float64
 	t, speed       float64
 	from, to       *uiNode
-	path           []model.NodeID
+	fromBeatInfo, toBeatInfo model.BeatInfo
+	pathIdx        int
 }
 
 type Game struct {
@@ -58,9 +64,11 @@ type Game struct {
 	edges []uiEdge
 
 	/* visuals */
-	activePulse *pulse
-	frame       int
-	renderedPulsesCount int
+	activePulse           *pulse
+	frame                 int64
+	renderedPulsesCount   int
+	highlightedNodes      map[model.NodeID]int64 // Map of NodeID to frame number until which it's highlighted
+	highlightedEmptyBeats map[int]int64
 
 	/* editor state */
 	sel            *uiNode
@@ -71,9 +79,18 @@ type Game struct {
 	pendingClick   bool
 	clickI, clickJ int
 
+	/* game state */
+	playing       bool
+	bpm           int
+	currentStep   int // Current step in the sequence
+	lastBeatFrame int64
+	beatInfos     []model.BeatInfo
+	isLoop        bool // Indicates if the current graph forms a loop
+	loopStartIndex int // The index in beatInfos where the loop segment begins
+
 	/* misc */
-	winW, winH  int
-	start       *uiNode // explicit “root/start” node (⇧S to set)
+	winW, winH int
+	start      *uiNode // explicit “root/start” node (⇧S to set)
 }
 
 /* ───────────────── helper: node’s screen rect ───────────────── */
@@ -96,19 +113,22 @@ func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 /* ───────────────────── constructor & layout ─────────────────── */
 
 func New(logger *game_log.Logger) *Game {
-	g := &Game{cam: NewCamera(), logger: logger}
-
-	g.graph = model.NewGraph(logger)
-	g.sched = beat.NewScheduler()
-	g.split = NewSplitter(720) // real height set in Layout below
+	g := &Game{
+		cam:              NewCamera(),
+		logger:           logger,
+		graph:            model.NewGraph(logger),
+		sched:            beat.NewScheduler(),
+		split:            NewSplitter(720), // real height set in Layout below
+		highlightedNodes: make(map[model.NodeID]int64),
+		highlightedEmptyBeats: make(map[int]int64),
+		bpm:              120, // Default BPM
+		beatInfos:        []model.BeatInfo{}, // Initialize beatInfos
+	}
 
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
-	g.drum.Rows = []*DrumRow{{Name: "H"}}
-	g.drum.bpm = 120 // Adjusted BPM for faster debugging (3-4x original)
 
 	g.sched.OnTick = g.onTick
-	g.activePulse = nil
 	return g
 }
 
@@ -123,7 +143,7 @@ func (g *Game) Layout(w, h int) (int, int) {
 		g.split.ratio = float64(g.split.Y) / float64(h)
 	}
 	g.split.Y = int(float64(h) * g.split.ratio)
-	g.drum.SetBounds(image.Rect(0, g.split.Y, w, h))
+		g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 	g.logger.Infof("[GAME] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
 }
@@ -139,26 +159,29 @@ func (g *Game) nodeAt(i, j int) *uiNode {
 	return nil
 }
 
-func (g *Game) tryAddNode(i, j int) *uiNode {
+func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	if n := g.nodeAt(i, j); n != nil {
 		return n
 	}
-	id := g.graph.AddNode(i, j)
-	n  := &uiNode{ID: id, I: i, J: j, X: float64(i * GridStep), Y: float64(j * GridStep)}
+	id := g.graph.AddNode(i, j, nodeType)
+	n := &uiNode{ID: id, I: i, J: j, X: float64(i * GridStep), Y: float64(j * GridStep)}
 
-	if g.start == nil { // first ever node becomes the start
-		g.start  = n
-		n.Start  = true
-		g.graph.StartNodeID = n.ID
+	if nodeType == model.NodeTypeRegular {
+		if g.start == nil { // first ever node becomes the start
+			g.start = n
+			n.Start = true
+			g.graph.StartNodeID = n.ID
+		}
 	}
 	g.nodes = append(g.nodes, n)
+	g.updateBeatInfos()
 	return n
 }
 
 func (g *Game) deleteNode(n *uiNode) {
 	/* remove from slice */
 	for idx, v := range g.nodes {
-		if v == n {
+		if v.ID == n.ID {
 			g.nodes = append(g.nodes[:idx], g.nodes[idx+1:]...)
 			break
 		}
@@ -166,14 +189,13 @@ func (g *Game) deleteNode(n *uiNode) {
 	/* drop touching edges */
 	out := g.edges[:0]
 	for _, e := range g.edges {
-		if e.A != n && e.B != n {
+		if e.A.ID != n.ID && e.B.ID != n.ID {
 			out = append(out, e)
 		}
 	}
 	g.edges = out
 
 	g.graph.RemoveNode(n.ID)
-	g.drum.Rows[0].Steps, _ = g.graph.CalculateBeatRow()
 
 	if g.sel == n {
 		g.sel = nil
@@ -181,6 +203,32 @@ func (g *Game) deleteNode(n *uiNode) {
 	if g.start == n {
 		g.start = nil
 	}
+	g.updateBeatInfos()
+}
+
+func (g *Game) updateBeatInfos() {
+	g.graph.SetBeatLength(g.drum.Length)
+	graphBeatRow, isLoop, loopStartIndex := g.graph.CalculateBeatRow()
+
+	// The beatInfos are now directly what the graph calculated.
+	g.beatInfos = graphBeatRow
+	g.isLoop = isLoop
+	g.loopStartIndex = loopStartIndex
+
+	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, graphBeatRow length=%d, beatInfos=%v", g.drum.Length, len(graphBeatRow), g.beatInfos)
+
+	// Populate drumRow based on the final beatInfos
+	drumRow := make([]bool, g.drum.Length)
+	for i := 0; i < g.drum.Length; i++ {
+		if i < len(g.beatInfos) {
+			drumRow[i] = g.beatInfos[i].NodeType == model.NodeTypeRegular
+		} else {
+			drumRow[i] = false // Pad with empty steps if needed
+		}
+	}
+
+	g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
+	g.drum.Rows[0].Steps = drumRow
 }
 
 func (g *Game) addEdge(a, b *uiNode) {
@@ -192,14 +240,63 @@ func (g *Game) addEdge(a, b *uiNode) {
 			return
 		}
 	}
-	g.edges = append(g.edges, uiEdge{a, b})
-	g.graph.Edges[[2]model.NodeID{a.ID, b.ID}] = struct{}{}
-	g.logger.Debugf("[GAME] Added edge: %d,%d -> %d,%d", a.I, a.J, b.I, b.J)
-	g.drum.Rows[0].Steps, _ = g.graph.CalculateBeatRow()
-	g.drum.bgDirty = true // Invalidate background cache to redraw steps
+
+	// Store original a and b for graph edge creation
+	originalA, originalB := a, b
+
+	// Add intermediate nodes
+	if a.I == b.I { // Vertical edge
+		if a.J > b.J {
+			a, b = b, a // ensure a.J < b.J
+		}
+		for j := a.J + 1; j < b.J; j++ {
+			g.tryAddNode(a.I, j, model.NodeTypeInvisible)
+		}
+	} else { // Horizontal edge
+		if a.I > b.I {
+			a, b = b, a // ensure a.I < b.I
+		}
+		for i := a.I + 1; i < b.I; i++ {
+			g.tryAddNode(i, a.J, model.NodeTypeInvisible)
+		}
+	}
+
+	g.edges = append(g.edges, uiEdge{originalA, originalB})
+	g.graph.Edges[[2]model.NodeID{originalA.ID, originalB.ID}] = struct{}{}
+	g.logger.Debugf("[GAME] Added edge: %d,%d -> %d,%d", originalA.I, originalA.J, originalB.I, originalB.J)
+	if g.graph.StartNodeID != model.InvalidNodeID {
+		g.updateBeatInfos()
+	}
 }
 
 func (g *Game) deleteEdge(a, b *uiNode) {
+	// Collect intermediate nodes to delete
+	nodesToDelete := []*uiNode{}
+	if a.I == b.I { // Vertical edge
+		if a.J > b.J {
+			a, b = b, a // ensure a.J < b.J
+		}
+		for j := a.J + 1; j < b.J; j++ {
+			if n := g.nodeAt(a.I, j); n != nil && g.graph.Nodes[n.ID].Type == model.NodeTypeInvisible {
+				nodesToDelete = append(nodesToDelete, n)
+			}
+		}
+	} else { // Horizontal edge
+		if a.I > b.I {
+			a, b = b, a // ensure a.I < b.I
+		}
+		for i := a.I + 1; i < b.I; i++ {
+			if n := g.nodeAt(i, a.J); n != nil && g.graph.Nodes[n.ID].Type == model.NodeTypeInvisible {
+				nodesToDelete = append(nodesToDelete, n)
+			}
+		}
+	}
+
+	// Delete collected intermediate nodes
+	for _, n := range nodesToDelete {
+		g.deleteNode(n)
+	}
+
 	for i := 0; i < len(g.edges); {
 		e := g.edges[i]
 		if (e.A == a && e.B == b) || (e.A == b && e.B == a) {
@@ -210,10 +307,8 @@ func (g *Game) deleteEdge(a, b *uiNode) {
 		}
 	}
 	delete(g.graph.Edges, [2]model.NodeID{a.ID, b.ID})
-	delete(g.graph.Edges, [2]model.NodeID{b.ID, a.ID})
 	g.logger.Debugf("[GAME] Deleted edge: %d,%d -> %d,%d", a.I, a.J, b.I, b.J)
-	g.drum.Rows[0].Steps, _ = g.graph.CalculateBeatRow()
-	g.drum.bgDirty = true // Invalidate background cache to redraw steps
+	g.updateBeatInfos()
 }
 
 /* ─────────────── input handling ───────────────────────────────────────── */
@@ -260,13 +355,13 @@ func (g *Game) handleEditor() {
 		g.clickI, g.clickJ = i, j
 		g.pendingClick = true
 		g.camDragged = false
-		g.logger.Debugf("[GAME] Mouse down at screen=(%d, %d), grid=(%d, %d)", x, y, i, j)
+				g.logger.Debugf("[GAME] Mouse down at screen=(%d, %d), grid=(%d, %d)", x, y, i, j)
 	}
 	if !left && g.leftPrev {
 		if g.pendingClick && !g.camDragged {
 			g.logger.Debugf("[GAME] Mouse up at screen=(%d, %d), grid=(%d, %d)", x, y, i, j)
 			g.logger.Debugf("[GAME] Add/select node: %d,%d", g.clickI, g.clickJ)
-			n := g.tryAddNode(g.clickI, g.clickJ)
+			n := g.tryAddNode(g.clickI, g.clickJ, model.NodeTypeRegular)
 			if g.sel != n {
 				if g.sel != nil {
 					g.logger.Debugf("[GAME] Deselecting node: %d,%d", g.sel.I, g.sel.J)
@@ -281,7 +376,7 @@ func (g *Game) handleEditor() {
 		g.camDragged = false
 	}
 	if isKeyPressed(ebiten.KeyS) && g.sel != nil {
-		if g.start != nil {
+				if g.start != nil {
 			g.start.Start = false
 			g.logger.Debugf("[GAME] Unsetting start node: %d,%d", g.start.I, g.start.J)
 		}
@@ -289,8 +384,9 @@ func (g *Game) handleEditor() {
 		g.start.Start = true
 		g.graph.StartNodeID = g.sel.ID
 		g.logger.Infof("[GAME] Setting start node: %d,%d", g.start.I, g.start.J)
-	}
-	g.leftPrev = left
+			g.updateBeatInfos()
+		}
+		g.leftPrev = left
 }
 
 func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
@@ -312,51 +408,70 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	// release → commit or delete
 	if g.linkDrag.active && !left {
 		if n2 := g.nodeAt(i, j); n2 != nil && n2 != g.linkDrag.from {
-			if right {
-				g.logger.Debugf("[GAME] Deleting edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
-				g.deleteEdge(g.linkDrag.from, n2)
-			} else {
-				g.logger.Debugf("[GAME] Adding edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
-				g.addEdge(g.linkDrag.from, n2)
-			}
+							if right {
+					g.logger.Debugf("[GAME] Deleting edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
+					g.deleteEdge(g.linkDrag.from, n2)
+				} else {
+					g.logger.Debugf("[GAME] Adding edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
+					g.addEdge(g.linkDrag.from, n2)
+				}
 		}
+		g.logger.Debugf("[GAME] End link drag at grid=(%d,%d)", i, j)
 		g.logger.Debugf("[GAME] End link drag at grid=(%d,%d)", i, j)
 		g.linkDrag = dragLink{}
 	}
 }
 
-func (g *Game) spawnPulse(from *uiNode) {
-	g.logger.Debugf("[GAME] Spawn pulse: attempting to start initial pulse from node %d", from.ID)
-	// Find the first successor of the start node
-	var firstSuccessor *uiNode
-	for _, edge := range g.edges {
-		if edge.A.ID == from.ID {
-			firstSuccessor = edge.B
-			break
-		}
+func (g *Game) spawnPulse() {
+	g.logger.Debugf("[GAME] Spawn pulse: attempting to start initial pulse")
+
+	if len(g.beatInfos) == 0 {
+		g.logger.Infof("[GAME] Spawn pulse: No beat information available, no initial pulse spawned.")
+		return
 	}
 
-	if firstSuccessor != nil {
-		g.activePulse = &pulse{
-			x1: from.X, y1: from.Y, x2: firstSuccessor.X, y2: firstSuccessor.Y,
-			speed: 0.1,
-			from:  from,
-			to:    firstSuccessor,
-			path:  []model.NodeID{from.ID},
-		}
-		g.logger.Infof("[GAME] Spawn pulse: initial pulse spawned from %d to %d", from.ID, firstSuccessor.ID)
+	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
+
+	// The first beat in the sequence is where the pulse starts.
+	fromBeatInfo := g.beatInfos[0]
+
+	// Highlight the first beat immediately.
+	if fromBeatInfo.NodeType == model.NodeTypeRegular {
+		g.highlightedNodes[fromBeatInfo.NodeID] = g.frame + beatDuration
 	} else {
-		g.logger.Infof("[GAME] Spawn pulse: start node %d has no successors, no initial pulse spawned.", from.ID)
+		g.drum.highlightedEmptyBeats[0] = g.frame + beatDuration
+	}
+
+	// If there's a next beat, create a pulse moving towards it.
+	if len(g.beatInfos) > 1 {
+		toBeatInfo := g.beatInfos[1]
+		g.activePulse = &pulse{
+			x1:           float64(fromBeatInfo.I * GridStep),
+			y1:           float64(fromBeatInfo.J * GridStep),
+			x2:           float64(toBeatInfo.I * GridStep),
+			y2:           float64(toBeatInfo.J * GridStep),
+			speed:        1.0 / float64(beatDuration),
+			fromBeatInfo: fromBeatInfo,
+			toBeatInfo:   toBeatInfo,
+			pathIdx:      1, // Start at index 1, as we've already processed index 0.
+			from:         g.nodeByID(fromBeatInfo.NodeID),
+			to:           g.nodeByID(toBeatInfo.NodeID),
+		}
+		g.logger.Infof("[GAME] Spawn pulse: initial pulse spawned from grid (%d,%d) to (%d,%d) (beat types: %v -> %v)", fromBeatInfo.I, fromBeatInfo.J, toBeatInfo.I, toBeatInfo.J, fromBeatInfo.NodeType, toBeatInfo.NodeType)
+	} else {
+		// If there's only one beat, there's no pulse to animate.
+		g.logger.Infof("[GAME] Spawn pulse: Only one beat, no pulse to animate.")
 	}
 }
 
 /* ─────────────── Update & tick ────────────────────────────────────────── */
 
 func (g *Game) Update() error {
+	g.logger.Debugf("[GAME] Update start. Frame: %d, Playing: %t, BPM: %d, CurrentStep: %d", g.frame, g.playing, g.bpm, g.currentStep)
+	g.logger.Debugf("[GAME] Update start. Frame: %d, Playing: %t, BPM: %d, CurrentStep: %d", g.frame, g.playing, g.bpm, g.currentStep)
 	// splitter
 	g.split.Update()
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
-	g.drum.recalcButtons()
 
 	// camera pan only when not dragging link or splitter
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
@@ -373,44 +488,81 @@ func (g *Game) Update() error {
 	g.frame++
 
 	if g.activePulse != nil {
-		g.logger.Debugf("[GAME] Update: processing active pulse: t=%.2f, from=%d, to=%d, path=%v", g.activePulse.t, g.activePulse.from.ID, g.activePulse.to.ID, g.activePulse.path)
+		g.logger.Debugf("[GAME] Update: processing active pulse: t=%.2f, fromBeatInfo=%+v, toBeatInfo=%+v", g.activePulse.t, g.activePulse.fromBeatInfo, g.activePulse.toBeatInfo)
 		g.activePulse.t += g.activePulse.speed
 		if g.activePulse.t >= 1 {
+			// When pulse completes, clear the highlight of the node it just left
+			if g.activePulse.from != nil {
+				delete(g.highlightedNodes, g.activePulse.from.ID)
+				g.logger.Debugf("[GAME] Cleared highlight for node %d. highlightedNodes: %v", g.activePulse.from.ID, g.highlightedNodes)
+			}
+
 			if !g.advancePulse(g.activePulse) {
 				g.logger.Infof("[GAME] Update: active pulse removed.")
 				g.activePulse = nil
+				// Clear all highlights when the active pulse is removed
+				for id := range g.highlightedNodes {
+					delete(g.highlightedNodes, id)
+				}
 			}
 		}
 	}
+
+	// Clear expired highlights
+	for id, highlightUntil := range g.highlightedNodes {
+		if g.frame > highlightUntil {
+			delete(g.highlightedNodes, id)
+			g.logger.Debugf("[GAME] Cleared expired highlight for node %d. highlightedNodes: %v", id, g.highlightedNodes)
+		}
+	}
+
+	for idx, highlightUntil := range g.drum.highlightedEmptyBeats {
+		if g.frame > highlightUntil {
+			delete(g.drum.highlightedEmptyBeats, idx)
+			g.logger.Debugf("[GAME] Cleared expired highlight for empty beat %d. highlightedEmptyBeats: %v", idx, g.drum.highlightedEmptyBeats)
+		}
+	}
+
+	g.logger.Debugf("[GAME] Current highlightedNodes: %v", g.highlightedNodes)
 
 	// drum view logic
-	prevPlaying := g.drum.playing
+	prevPlaying := g.playing
 	g.drum.Update()
 
-	if g.drum.playing != prevPlaying {
-		g.logger.Infof("[GAME] Update: drum playing state changed: %t -> %t", prevPlaying, g.drum.playing)
-		if g.drum.playing {
-			// Start playback: create initial pulse if none exists
-			if g.activePulse == nil && g.start != nil {
-				g.spawnPulse(g.start)
-			}
+	if g.drum.PlayPressed() {
+		g.playing = true
+	}
+	if g.drum.StopPressed() {
+		g.playing = false
+	}
+	g.bpm = g.drum.BPM()
+
+	
+
+		if g.playing != prevPlaying {
+		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
+		if g.playing {
 			g.sched.Start()
+			g.logger.Infof("[GAME] Scheduler started.")
 		} else {
 			g.sched.Stop()
-			// Stop playback: remove all pulses
-			g.logger.Infof("[GAME] Update: stopping playback, removing active pulse.")
-			g.activePulse = nil
+			g.logger.Infof("[GAME] Scheduler stopped.")
 		}
 	}
 
-	if g.drum.playing {
-		g.sched.BPM = g.drum.bpm
+	if g.playing {
+		g.sched.BPM = g.bpm
 		g.sched.Tick()
+		g.logger.Debugf("[GAME] Scheduler ticked. BPM: %d", g.bpm)
+	} else {
+		// Stop playback: remove all pulses
+		g.logger.Infof("[GAME] Update: stopping playback, removing active pulse.")
+		g.activePulse = nil
 	}
 
 	// Update drum view length based on graph
-	g.drum.Rows[0].Steps, _ = g.graph.CalculateBeatRow()
-	g.drum.bgDirty = true // Invalidate background cache to redraw steps
+	g.updateBeatInfos()
+	g.logger.Debugf("[GAME] Update end. Frame: %d", g.frame)
 	return nil
 }
 
@@ -431,7 +583,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	cam.Scale(camScale, camScale)
 	cam.Translate(offX, offY+float64(topOffset))
 
-	frame := (g.frame / 6) % len(NodeFrames)
+	frame := (g.frame / int64(6)) % int64(len(NodeFrames))
 
 	// grid lattice computed in world coordinates then transformed
 	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.winW, g.split.Y)
@@ -465,6 +617,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 	// nodes
 	for _, n := range g.nodes {
+		nodeInfo, ok := g.graph.Nodes[n.ID]
+		if !ok || nodeInfo.Type != model.NodeTypeRegular {
+			continue
+		}
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(-float64(NodeSpriteSize)/2, -float64(NodeSpriteSize)/2)
 		op.GeoM.Translate(n.X, n.Y)
@@ -501,7 +657,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	g.drum.Draw(dst)
+	g.drum.Draw(dst, g.highlightedNodes, g.drum.highlightedEmptyBeats, g.frame, g.beatInfos)
 }
 
 func (g *Game) rootNode() *uiNode {
@@ -533,12 +689,13 @@ func (g *Game) rootNode() *uiNode {
 
 func (g *Game) onTick(step int) {
 	g.logger.Debugf("[GAME] On tick: step %d", step)
+	g.currentStep = step
 
 	// The scheduler ticks every beat. We only care about the first beat (step 0)
 	// to potentially start a pulse if one isn't already active.
 	if step == 0 && g.activePulse == nil {
 		if g.start != nil {
-			g.spawnPulse(g.start)
+			g.spawnPulse()
 		}
 	}
 }
@@ -549,40 +706,66 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 			return n
 		}
 	}
+	if node, ok := g.graph.Nodes[id]; ok {
+		return &uiNode{ID: id, I: node.I, J: node.J, X: float64(node.I * GridStep), Y: float64(node.J * GridStep)}
+	}
 	return nil
 }
 
 func (g *Game) advancePulse(p *pulse) bool {
-	// Find the next node in the path
-	var nextNode *uiNode
+	beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
 
-	// Check for successors from the current 'to' node
-	foundSuccessor := false
-	for _, edge := range g.edges {
-		if edge.A.ID == p.to.ID {
-			nextNode = edge.B
-			foundSuccessor = true
-			break // Only take the first successor for now
+	// The pulse has arrived at p.toBeatInfo. Highlight it.
+	arrivalBeatInfo := g.beatInfos[p.pathIdx-1]
+	arrivalPathIdx := p.pathIdx - 1
+
+	g.logger.Debugf("[GAME] advancePulse: Pulse arrived at beat index %d: %+v", arrivalPathIdx, arrivalBeatInfo)
+
+	g.logger.Debugf("[GAME] advancePulse: Highlighting beat index %d. Type: %v, ID: %v", arrivalPathIdx, arrivalBeatInfo.NodeType, arrivalBeatInfo.NodeID)
+	if arrivalBeatInfo.NodeType == model.NodeTypeRegular {
+		g.highlightedNodes[arrivalBeatInfo.NodeID] = g.frame + beatDuration
+	} else {
+		g.drum.highlightedEmptyBeats[arrivalPathIdx] = g.frame + beatDuration
+	}
+
+	// Advance pathIdx for the *next* pulse segment
+	p.pathIdx++
+
+	// If the end of the path is reached, check for a loop.
+	if p.pathIdx >= len(g.beatInfos) {
+		if g.isLoop {
+			// If it's a loop, reset pathIdx to the beginning of the loop segment.
+			p.pathIdx = g.loopStartIndex
+			g.logger.Debugf("[GAME] advancePulse: Loop detected, resetting pathIdx to %d for continuous playback.", p.pathIdx)
+		} else {
+			g.logger.Debugf("[GAME] advancePulse: End of path, no loop. Returning false.")
+			return false // End of path
 		}
 	}
 
-	if foundSuccessor {
-		// Update the existing pulse to the next segment
-		p.from = p.to
-		p.to = nextNode
-		p.x1 = p.from.X
-		p.y1 = p.from.Y
-		p.x2 = p.to.X
-		p.y2 = p.to.Y
-		p.t = 0 // Reset animation progress
-		// For continuous loop, the path should reflect the current segment, not grow indefinitely.
-		// This simplified logic assumes a single pulse in a closed circuit.
-		newPath := []model.NodeID{p.from.ID, p.to.ID}
-		p.path = newPath
-		return true
+	g.logger.Debugf("[GAME] advancePulse: Incremented pathIdx to %d. beatPath length: %d", p.pathIdx, len(g.beatInfos))
+
+	// Set up the next segment of the pulse's journey.
+	p.fromBeatInfo = g.beatInfos[p.pathIdx-1]
+	p.toBeatInfo = g.beatInfos[p.pathIdx]
+	p.from = g.nodeByID(p.fromBeatInfo.NodeID)
+	p.to = g.nodeByID(p.toBeatInfo.NodeID)
+
+	if p.from == nil || p.to == nil {
+		g.logger.Warnf("[GAME] advancePulse: Could not find nodes for pulse segment from %d to %d. Stopping pulse.", p.fromBeatInfo.NodeID, p.toBeatInfo.NodeID)
+		return false
 	}
 
-	return false // No successor, remove the pulse
+	// Set pulse start and end coordinates for animation
+	p.x1 = p.from.X
+	p.y1 = p.from.Y
+	p.x2 = p.to.X
+	p.y2 = p.to.Y
+	p.t = 0 // Reset animation progress
+
+	g.logger.Debugf("[GAME] advancePulse: Pulse updated. From (%d,%d) to (%d,%d). Current pathIdx: %d", p.fromBeatInfo.I, p.fromBeatInfo.J, p.toBeatInfo.I, p.toBeatInfo.J, p.pathIdx)
+
+	return true
 }
 
 func visibleWorldRect(cam *Camera, screenW, screenH int) (minX, maxX, minY, maxY float64) {
@@ -603,4 +786,3 @@ func abs(i int) int {
 	}
 	return i
 }
-
