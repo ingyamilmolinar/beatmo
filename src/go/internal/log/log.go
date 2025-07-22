@@ -75,6 +75,12 @@ func (l *Logger) Errorf(format string, v ...interface{}) {
 	}
 }
 
+func (l *Logger) Warnf(format string, v ...interface{}) {
+	if l.level <= LevelInfo { // Warnings are shown at Info level or higher
+		l.logger.Printf("WARN: "+format, v...)
+	}
+}
+
 func (l *Logger) SetLevel(level Level) {
 	l.level = level
 }

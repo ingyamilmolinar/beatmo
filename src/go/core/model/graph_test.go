@@ -2,6 +2,7 @@ package model
 
 import (
 	"os"
+	"reflect"
 	"testing"
 
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
@@ -13,142 +14,143 @@ func init() {
 	testLogger = game_log.New(os.Stdout, game_log.LevelDebug)
 }
 
-func TestAddNodeTogglesRow(t *testing.T) {
+func TestCalculateBeatRow_SimplePath(t *testing.T) {
 	g := NewGraph(testLogger)
-	nodeID := g.AddNode(2, 0)
-	g.StartNodeID = nodeID
-	row, _ := g.CalculateBeatRow()
-	if len(row) <= 0 || !row[0] {
-		t.Fatalf("expected step 0 on after adding node at (2,0) and setting as start node, got %v", row)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(0, 2, NodeTypeRegular)
+	g.StartNodeID = n0
+	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
+
+	beatInfos, _, _ := g.CalculateBeatRow()
+
+	initialPath := []BeatInfo{
+		{NodeID: n0, NodeType: NodeTypeRegular, I: 0, J: 0},
+		{NodeID: n1, NodeType: NodeTypeRegular, I: 0, J: 2},
+	}
+
+	expected := make([]BeatInfo, g.BeatLength())
+	copy(expected, initialPath)
+	for i := len(initialPath); i < g.BeatLength(); i++ {
+		expected[i] = BeatInfo{NodeID: InvalidNodeID, NodeType: NodeTypeInvisible, I: -1, J: -1}
+	}
+
+	if !reflect.DeepEqual(beatInfos, expected) {
+		t.Fatalf("Expected beatInfos %v, got %v", expected, beatInfos)
 	}
 }
 
-func TestDeleteNodeClearsRow(t *testing.T) {
+func TestCalculateBeatRow_Loop(t *testing.T) {
 	g := NewGraph(testLogger)
-	nodeID := g.AddNode(1, 0)
-	g.StartNodeID = nodeID
-	row, _ := g.CalculateBeatRow()
-	if len(row) <= 0 || !row[0] {
-		t.Fatalf("expected step 0 on before delete, got %v", row)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(0, 1, NodeTypeRegular)
+	n2 := g.AddNode(1, 1, NodeTypeRegular)
+	g.StartNodeID = n0
+	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
+	g.Edges[[2]NodeID{n1, n2}] = struct{}{}
+	g.Edges[[2]NodeID{n2, n0}] = struct{}{}
+
+	// Set a specific beat length for the test
+	g.SetBeatLength(6)
+
+	beatInfos, _, _ := g.CalculateBeatRow()
+
+	// Expected single cycle
+	singleCycle := []BeatInfo{
+		{NodeID: n0, NodeType: NodeTypeRegular, I: 0, J: 0},
+		{NodeID: n1, NodeType: NodeTypeRegular, I: 0, J: 1},
+		{NodeID: n2, NodeType: NodeTypeRegular, I: 1, J: 1},
 	}
-	g.RemoveNode(nodeID)
-	row, _ = g.CalculateBeatRow()
-	if len(row) > 0 && row[0] {
-		t.Fatalf("expected step 0 off after delete, got %v", row)
+
+	// Expected extended beatInfos (single cycle repeated twice)
+	expected := make([]BeatInfo, 0, g.BeatLength())
+	for i := 0; i < g.BeatLength()/len(singleCycle); i++ {
+		expected = append(expected, singleCycle...)
+	}
+
+	if !reflect.DeepEqual(beatInfos, expected) {
+		t.Fatalf("Expected beatInfos %v, got %v", expected, beatInfos)
 	}
 }
 
-func TestCalculateBeatRow(t *testing.T) {
-	var n0, n1, n2, n3 NodeID
+func TestCalculateBeatRow_Disconnected(t *testing.T) {
 	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	_ = g.AddNode(5, 5, NodeTypeRegular) // Disconnected node
+	g.StartNodeID = n0
 
-	// Test with no nodes
-	row, _ := g.CalculateBeatRow()
-	if len(row) != g.BeatLength() || row[0] || row[1] || row[2] || row[3] {
-		t.Fatalf("expected empty row of length %d, got %v", g.BeatLength(), row)
+	beatInfos, _, _ := g.CalculateBeatRow()
+
+	initialPath := []BeatInfo{
+		{NodeID: n0, NodeType: NodeTypeRegular, I: 0, J: 0},
 	}
 
-	// Test with a single node at (0,0) as start node
-	n1 = g.AddNode(0, 0)
-	g.StartNodeID = n1
-	row, _ = g.CalculateBeatRow()
-	if len(row) != g.BeatLength() || !row[0] || row[1] || row[2] || row[3] {
-		t.Fatalf("expected [T F F F], got %v", row)
+	expected := make([]BeatInfo, g.BeatLength())
+	copy(expected, initialPath)
+	for i := len(initialPath); i < g.BeatLength(); i++ {
+		expected[i] = BeatInfo{NodeID: InvalidNodeID, NodeType: NodeTypeInvisible, I: -1, J: -1}
 	}
 
-	// Test with a connected graph, start node at (1,0)
-	g = NewGraph(testLogger) // Reset graph for new test case
-	n0 = g.AddNode(1, 0)
-	n1 = g.AddNode(2, 0)
-	n2 = g.AddNode(3, 0)
+	if !reflect.DeepEqual(beatInfos, expected) {
+		t.Fatalf("Expected beatInfos %v, got %v", expected, beatInfos)
+	}
+}
+
+func TestIsLoop(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(0, 1, NodeTypeRegular)
+	n2 := g.AddNode(1, 1, NodeTypeRegular)
 	g.StartNodeID = n0
 	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
 	g.Edges[[2]NodeID{n1, n2}] = struct{}{}
-	row, _ = g.CalculateBeatRow()
-	if len(row) != g.BeatLength() || !row[0] || !row[1] || !row[2] || row[3] || row[4] || row[5] || row[6] || row[7] || row[8] || row[9] || row[10] || row[11] || row[12] || row[13] || row[14] || row[15] {
-		t.Fatalf("expected [T T T F F F F F F F F F F F F F] for start node at (1,0), got %v", row)
+
+	if g.IsLoop() {
+		t.Fatal("Expected IsLoop to be false for a non-looping graph")
 	}
 
-	// Test with a connected graph, start node at (0,0)
-	g = NewGraph(testLogger) // Reset graph for new test case
-	n0 = g.AddNode(0, 0)
-	n1 = g.AddNode(1, 0)
-	n2 = g.AddNode(2, 0)
+	g.Edges[[2]NodeID{n2, n0}] = struct{}{}
+
+	if !g.IsLoop() {
+		t.Fatal("Expected IsLoop to be true for a looping graph")
+	}
+}
+
+func TestCalculateBeatRow_ComplexLoopWithInvisibleNodes(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n_inv1 := g.AddNode(1, 0, NodeTypeInvisible)
+	n1 := g.AddNode(2, 0, NodeTypeRegular)
+	n_inv2 := g.AddNode(2, 1, NodeTypeInvisible)
+	n2 := g.AddNode(2, 2, NodeTypeRegular)
+
 	g.StartNodeID = n0
 	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
 	g.Edges[[2]NodeID{n1, n2}] = struct{}{}
-	row, _ = g.CalculateBeatRow()
-	if len(row) != g.BeatLength() || !row[0] || !row[1] || !row[2] || row[3] {
-		t.Fatalf("expected [T T T F], got %v", row)
+	g.Edges[[2]NodeID{n2, n0}] = struct{}{}
+
+	g.SetBeatLength(10) // Set a length that will cause multiple repetitions
+
+	beatInfos, isLoop, _ := g.CalculateBeatRow()
+
+	if !isLoop {
+		t.Fatalf("Expected a loop to be detected, but isLoop is false")
 	}
 
-	// Test with a connected graph, start node at (1,0)
-	g = NewGraph(testLogger) // Reset graph for new test case
-	n0 = g.AddNode(1, 0)
-	n1 = g.AddNode(2, 0)
-	n2 = g.AddNode(3, 0)
-	g.StartNodeID = n0
-	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
-	g.Edges[[2]NodeID{n1, n2}] = struct{}{}
-	row, _ = g.CalculateBeatRow()
-	if len(row) != g.BeatLength() || !row[0] || !row[1] || !row[2] || row[3] || row[4] || row[5] || row[6] || row[7] || row[8] || row[9] || row[10] || row[11] || row[12] || row[13] || row[14] || row[15] {
-		t.Fatalf("expected [T T T F F F F F F F F F F F F F] for start node at (1,0), got %v", row)
+	expectedCycle := []BeatInfo{
+		{NodeID: n0, NodeType: NodeTypeRegular, I: 0, J: 0},
+		{NodeID: n_inv1, NodeType: NodeTypeInvisible, I: 1, J: 0},
+		{NodeID: n1, NodeType: NodeTypeRegular, I: 2, J: 0},
+		{NodeID: n_inv2, NodeType: NodeTypeInvisible, I: 2, J: 1},
+		{NodeID: n2, NodeType: NodeTypeRegular, I: 2, J: 2},
 	}
 
-	// Test with a disconnected node
-	// Test with a disconnected node
-	g = NewGraph(testLogger) // Reset graph for new test case
-	n0 = g.AddNode(0, 0)
-	_ = g.AddNode(5, 0) // Disconnected node
-	g.StartNodeID = n0
-	row, _ = g.CalculateBeatRow()
-	if len(row) != g.BeatLength() || !row[0] || row[1] || row[2] || row[3] {
-		t.Fatalf("expected [T F F F] with disconnected node, got %v", row)
+	// The expected beatInfos should be the cycle repeated and then trimmed/padded
+	expected := make([]BeatInfo, g.BeatLength())
+	for i := 0; i < g.BeatLength(); i++ {
+		expected[i] = expectedCycle[i%len(expectedCycle)]
 	}
 
-	// Test with a longer beat length
-	g = NewGraph(testLogger) // Reset graph for new test case
-	g.beatLengthValue = 8
-	n0 = g.AddNode(0, 0)
-	n1 = g.AddNode(1, 0)
-	n2 = g.AddNode(2, 0)
-	g.StartNodeID = n0
-	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
-	g.Edges[[2]NodeID{n1, n2}] = struct{}{}
-	row, _ = g.CalculateBeatRow()
-	if len(row) != 8 || !row[0] || !row[1] || !row[2] || row[3] || row[4] || row[5] || row[6] || row[7] {
-		t.Fatalf("expected [T T T F F F F F] for longer beat length, got %v", row)
-	}
-
-	// Test with nodes at different grid distances
-	g = NewGraph(testLogger) // Reset graph for new test case
-	g.beatLengthValue = 8
-	n0 = g.AddNode(0, 0) // Start
-	n1 = g.AddNode(0, 2) // 2 beats away
-	n2 = g.AddNode(1, 2) // 1 beat away from n1 (total 3 from n0)
-	g.StartNodeID = n0
-	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
-	g.Edges[[2]NodeID{n1, n2}] = struct{}{}
-	row, _ = g.CalculateBeatRow()
-	// Expected: T (n0 at 0), F (1), T (n1 at 2), T (n2 at 3)
-	if len(row) != 8 || !row[0] || row[1] || !row[2] || !row[3] || row[4] || row[5] || row[6] || row[7] {
-		t.Fatalf("expected [T F T T F F F F] for varied distances, got %v", row)
-	}
-
-	// Test with a more complex path
-	g = NewGraph(testLogger) // Reset graph for new test case
-	g.beatLengthValue = 10
-	n0 = g.AddNode(0, 0) // Start
-	n1 = g.AddNode(2, 0) // 2 beats
-	n2 = g.AddNode(2, 2) // 2 beats from n1 (total 4)
-	n3 = g.AddNode(0, 2) // 2 beats from n2 (total 6)
-	g.StartNodeID = n0
-	g.Edges[[2]NodeID{n0, n1}] = struct{}{}
-	g.Edges[[2]NodeID{n1, n2}] = struct{}{}
-	g.Edges[[2]NodeID{n2, n3}] = struct{}{}
-	row, _ = g.CalculateBeatRow()
-	// Expected: T (n0 at 0), F, T (n1 at 2), F, T (n2 at 4), F, T (n3 at 6), F, F, F
-	if len(row) != 10 || !row[0] || row[1] || !row[2] || row[3] || !row[4] || row[5] || !row[6] || row[7] || row[8] || row[9] {
-		t.Fatalf("expected [T F T F T F T F F F] for complex path, got %v", row)
+	if !reflect.DeepEqual(beatInfos, expected) {
+		t.Fatalf("Expected beatInfos %v, got %v", expected, beatInfos)
 	}
 }

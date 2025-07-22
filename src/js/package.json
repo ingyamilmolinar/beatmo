@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "devDependencies": {
+    "playwright": "^1.45.3"
+  }
+}
