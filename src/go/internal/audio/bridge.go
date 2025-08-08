@@ -16,5 +16,13 @@ func init() {
 }
 
 func Play(id string, when float64) {
+	// Lazily grab the `play` function if it wasn't available at init time.
+	if !play.Truthy() {
+		play = js.Global().Get("play")
+	}
+	if !play.Truthy() {
+		js.Global().Get("console").Call("warn", "[audio] play function missing; dropping sample", id)
+		return
+	}
 	play.Invoke(id, when)
 }
