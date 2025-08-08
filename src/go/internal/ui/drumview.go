@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
@@ -89,7 +90,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		lenDecPressed: false,
 		Offset:        0,
 	}
-	dv.Rows = []*DrumRow{{Name: "H", Steps: make([]bool, dv.Length)}}
+	dv.Rows = []*DrumRow{{Name: "H", Steps: make([]bool, dv.Length), Color: colStep}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	return dv
 }
@@ -267,12 +268,16 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
 	dst.DrawImage(dv.bg(dv.Bounds.Dx(), dv.Bounds.Dy()), op)
 
-	// draw buttons
-	drawRect(dst, dv.playBtn, color.Gray{100}, false)
-	drawRect(dst, dv.stopBtn, color.Gray{100}, false)
-	drawRect(dst, dv.bpmBox, color.Gray{100}, false)
-	drawRect(dst, dv.lenDecBtn, color.Gray{100}, false)
-	drawRect(dst, dv.lenIncBtn, color.Gray{100}, false)
+	drawButton(dst, dv.playBtn, colPlayButton, colButtonBorder, dv.playPressed)
+	drawButton(dst, dv.stopBtn, colStopButton, colButtonBorder, dv.stopPressed)
+	drawButton(dst, dv.bpmBox, colBPMBox, colButtonBorder, dv.focusBPM)
+	drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
+	drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
+	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, strconv.Itoa(dv.bpm), dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
 
 	// draw steps
 	for i, r := range dv.Rows {
@@ -294,13 +299,15 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 				}
 			}
 
-			if highlighted {
-				drawRect(dst, rect, color.RGBA{255, 255, 0, 255}, true) // Yellow highlight
-			} else if step {
-				drawRect(dst, rect, color.White, true)
-			} else {
-				drawRect(dst, rect, color.Gray{50}, false)
+			var fill color.Color = colStepOff
+			if step {
+				fill = r.Color
 			}
+			if highlighted {
+				fill = colHighlight
+			}
+			drawRect(dst, rect, fill, true)
+			drawRect(dst, rect, colStepBorder, false)
 		}
 	}
 }
@@ -309,7 +316,7 @@ func (dv *DrumView) bg(w, h int) *ebiten.Image {
 	if dv.bgDirty || len(dv.bgCache) == 0 || !dv.bgCache[0].Bounds().Eq(image.Rect(0, 0, w, h)) {
 		dv.bgCache = make([]*ebiten.Image, 1)
 		img := ebiten.NewImage(w, h)
-		img.Fill(color.Black)
+		img.Fill(colBGBottom)
 		dv.bgCache[0] = img
 		dv.bgDirty = false
 	}

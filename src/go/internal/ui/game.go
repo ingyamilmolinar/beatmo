@@ -636,6 +636,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) drawGridPane(screen *ebiten.Image) {
+	top := screen.SubImage(image.Rect(0, 0, g.winW, g.split.Y)).(*ebiten.Image)
+	top.Fill(colBGTop)
+
 	// camera matrix for world drawings (shift down by bar height)
 	stepPx := StepPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
@@ -657,11 +660,11 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	var id ebiten.GeoM
 	for i := startI; i <= endI; i++ {
 		x := float64(i * GridStep)
-		DrawLineCam(screen, x, minY, x, maxY, &cam, color.RGBA{40, 40, 40, 255}, 1)
+		DrawLineCam(screen, x, minY, x, maxY, &cam, colGridLine, 1)
 	}
 	for j := startJ; j <= endJ; j++ {
 		y := float64(j * GridStep)
-		DrawLineCam(screen, minX, y, maxX, y, &cam, color.RGBA{40, 40, 40, 255}, 1)
+		DrawLineCam(screen, minX, y, maxX, y, &cam, colGridLine, 1)
 	}
 
 	// edges

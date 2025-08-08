@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -247,6 +248,24 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 
 		// Advance time for the next frame
 		time.Sleep(time.Millisecond * 16) // Simulate 60 TPS
+	}
+}
+
+func TestDrumViewButtonsDrawn(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelInfo)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 100), graph, logger)
+
+	count := 0
+	orig := drawButton
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed bool) {
+		count++
+	}
+	defer func() { drawButton = orig }()
+
+	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil)
+	if count != 5 {
+		t.Fatalf("expected 5 buttons drawn, got %d", count)
 	}
 }
 
