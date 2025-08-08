@@ -30,10 +30,14 @@ func Play(id string, when ...float64) {
 	if !play.Truthy() {
 		play = js.Global().Get("play")
 	}
-	if !play.Truthy() {
-		js.Global().Get("console").Call("warn", "[audio] play function missing; dropping sample", id)
-		return
-	}
+        if !play.Truthy() {
+                js.Global().Get("console").Call(
+                        "warn",
+                        "[audio] play function missing; dropping sample. Did you import audio.js before starting the WASM runtime?",
+                        id,
+                )
+                return
+        }
 	go func() {
 		if len(when) > 0 {
 			play.Invoke(id, when[0])

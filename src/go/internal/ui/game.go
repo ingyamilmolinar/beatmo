@@ -230,7 +230,8 @@ func (g *Game) deleteNode(n *uiNode) {
 func (g *Game) updateBeatInfos() {
 	// Traverse the graph once to capture the full path regardless of the
 	// current drum view length.
-	g.graph.SetBeatLength(int(g.graph.Next))
+        // NodeID has underlying type int; cast is safe for beat-length updates.
+        g.graph.SetBeatLength(int(g.graph.Next))
 	fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRow()
 
 	baseLen := 0
@@ -509,7 +510,7 @@ func (g *Game) spawnPulse() {
 /* ─────────────── Update & tick ────────────────────────────────────────── */
 
 func (g *Game) Update() error {
-	g.logger.Debugf("[GAME] Update start. Frame: %d, Playing: %t, BPM: %d, CurrentStep: %d", g.frame, g.playing, g.bpm, g.currentStep)
+        g.logger.Debugf("[GAME] Update start: frame=%d playing=%t bpm=%d currentStep=%d", g.frame, g.playing, g.bpm, g.currentStep)
 	// splitter
 	g.split.Update()
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
@@ -793,12 +794,17 @@ func (g *Game) advancePulse(p *pulse) bool {
 	g.logger.Debugf("[GAME] advancePulse: Incremented pathIdx to %d. beatPath length: %d", p.pathIdx, len(g.beatInfos))
 
 	// Set up the next segment of the pulse's journey.
-	prevIdx := p.pathIdx - 1
-	if prevIdx < 0 {
-		prevIdx = len(g.beatInfos) - 1
-	}
-	g.logger.Debugf("[GAME] advancePulse: Selecting next segment prevIdx=%d, pathIdx=%d", prevIdx, p.pathIdx)
-	p.fromBeatInfo = g.beatInfos[prevIdx]
+        prevIdx := p.pathIdx - 1
+        if prevIdx < 0 {
+                if g.isLoop {
+                        prevIdx = len(g.beatInfos) - 1
+                } else {
+                        g.logger.Warnf("[GAME] advancePulse: prevIdx < 0 in non-looping mode. Stopping pulse.")
+                        return false
+                }
+        }
+        g.logger.Debugf("[GAME] advancePulse: Selecting next segment prevIdx=%d, pathIdx=%d", prevIdx, p.pathIdx)
+        p.fromBeatInfo = g.beatInfos[prevIdx]
 	p.toBeatInfo = g.beatInfos[p.pathIdx]
 	p.from = g.nodeByID(p.fromBeatInfo.NodeID)
 	p.to = g.nodeByID(p.toBeatInfo.NodeID)

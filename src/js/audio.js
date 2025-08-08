@@ -67,7 +67,7 @@ export function register(id, fn) {
 export async function play(id, when) {
   const fn = plugins[id];
   if (!fn) {
-    console.warn("[audio] no plugin for", id);
+    console.warn("[audio] no plugin for", id, ". Available plugins:", Object.keys(plugins));
     return;
   }
 
