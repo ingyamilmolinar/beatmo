@@ -96,3 +96,6 @@ This debugging session highlighted several critical points:
 *   **Injectable rendering helpers:** Defining drawing primitives as variables allows tests to capture render calls without relying on pixel buffers, closing the gap between logic state and visual output.
 *   **Centralized highlight bookkeeping:** Small helper methods to add and expire beat highlights make the pulse traversal logic easier to reason about and avoid dangling highlights.
 *   **Conditional beat-row recomputation:** Rebuilding drum rows only when their length changes keeps the UI in sync with the graph while avoiding unnecessary work each frame.
+
+## Lessons from Invisible Node Handling
+*   **Upgrade placeholders on demand:** When a user tries to place a node where an invisible placeholder exists, automatically promote it to a regular node so intersections always accept new placements.

@@ -158,6 +158,21 @@ func (g *Game) nodeAt(i, j int) *uiNode {
 
 func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	if n := g.nodeAt(i, j); n != nil {
+		// If there's an invisible node here and we want a regular node,
+		// upgrade the existing node rather than blocking the placement.
+		if nodeType == model.NodeTypeRegular {
+			if node, ok := g.graph.GetNodeByID(n.ID); ok && node.Type == model.NodeTypeInvisible {
+				node.Type = model.NodeTypeRegular
+				g.graph.Nodes[n.ID] = node
+				g.logger.Debugf("[GAME] Upgraded invisible node to regular at grid=(%d,%d)", i, j)
+				if g.start == nil {
+					g.start = n
+					n.Start = true
+					g.graph.StartNodeID = n.ID
+				}
+				g.updateBeatInfos()
+			}
+		}
 		return n
 	}
 	id := g.graph.AddNode(i, j, nodeType)

@@ -52,6 +52,21 @@ func TestAddEdgeNoDuplicates(t *testing.T) {
 	}
 }
 
+func TestAddRegularNodeOverInvisible(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// Create an invisible node via an edge and then upgrade it
+	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	b := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(a, b) // introduces an invisible node at (1,0)
+
+	n := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	if node, ok := g.graph.GetNodeByID(n.ID); !ok || node.Type != model.NodeTypeRegular {
+		t.Fatalf("expected node at (1,0) to be regular after upgrade")
+	}
+}
+
 func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
