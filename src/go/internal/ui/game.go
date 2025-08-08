@@ -9,14 +9,13 @@ import (
 	"github.com/ingyamilmolinar/tunkul/core/beat"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
-	)
+)
 
 const (
 	topOffset = 40 // transport-bar height in px
 )
 
 const ebitenTPS = 60 // Ticks per second for Ebiten (stubbed for tests)
-
 
 /* ───────────────────────── data types ───────────────────────── */
 
@@ -43,11 +42,11 @@ type dragLink struct {
 }
 
 type pulse struct {
-	x1, y1, x2, y2 float64
-	t, speed       float64
-	from, to       *uiNode
+	x1, y1, x2, y2           float64
+	t, speed                 float64
+	from, to                 *uiNode
 	fromBeatInfo, toBeatInfo model.BeatInfo
-	pathIdx        int
+	pathIdx                  int
 }
 
 type Game struct {
@@ -64,11 +63,10 @@ type Game struct {
 	edges []uiEdge
 
 	/* visuals */
-	activePulse           *pulse
-	frame                 int64
-	renderedPulsesCount   int
-	highlightedNodes      map[model.NodeID]int64 // Map of NodeID to frame number until which it's highlighted
-	highlightedEmptyBeats map[int]int64
+	activePulse         *pulse
+	frame               int64
+	renderedPulsesCount int
+	highlightedBeats    map[int]int64 // Map of beat index to frame number until which it's highlighted
 
 	/* editor state */
 	sel            *uiNode
@@ -80,13 +78,13 @@ type Game struct {
 	clickI, clickJ int
 
 	/* game state */
-	playing       bool
-	bpm           int
-	currentStep   int // Current step in the sequence
-	lastBeatFrame int64
-	beatInfos     []model.BeatInfo
-	isLoop        bool // Indicates if the current graph forms a loop
-	loopStartIndex int // The index in beatInfos where the loop segment begins
+	playing        bool
+	bpm            int
+	currentStep    int // Current step in the sequence
+	lastBeatFrame  int64
+	beatInfos      []model.BeatInfo
+	isLoop         bool // Indicates if the current graph forms a loop
+	loopStartIndex int  // The index in beatInfos where the loop segment begins
 
 	/* misc */
 	winW, winH int
@@ -97,13 +95,13 @@ type Game struct {
 
 // Rectangle in *screen* pixels (y already includes the transport offset).
 func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
-	stepPx   := StepPixels(g.cam.Scale)                  // grid step in screen px
-	camScale := float64(stepPx) / float64(GridStep)      // world→screen factor
-	offX     := math.Round(g.cam.OffsetX)                // camera panning
-	offY     := math.Round(g.cam.OffsetY)
+	stepPx := StepPixels(g.cam.Scale)               // grid step in screen px
+	camScale := float64(stepPx) / float64(GridStep) // world→screen factor
+	offX := math.Round(g.cam.OffsetX)               // camera panning
+	offY := math.Round(g.cam.OffsetY)
 
-	sx   := offX + float64(stepPx*n.I)                   // sprite centre X
-	sy   := offY + float64(stepPx*n.J) + topOffset       // sprite centre Y
+	sx := offX + float64(stepPx*n.I)             // sprite centre X
+	sy := offY + float64(stepPx*n.J) + topOffset // sprite centre Y
 	size := float64(NodeSpriteSize) * camScale
 	half := size / 2
 
@@ -119,9 +117,8 @@ func New(logger *game_log.Logger) *Game {
 		graph:            model.NewGraph(logger),
 		sched:            beat.NewScheduler(),
 		split:            NewSplitter(720), // real height set in Layout below
-		highlightedNodes: make(map[model.NodeID]int64),
-		highlightedEmptyBeats: make(map[int]int64),
-		bpm:              120, // Default BPM
+		highlightedBeats: make(map[int]int64),
+		bpm:              120,                // Default BPM
 		beatInfos:        []model.BeatInfo{}, // Initialize beatInfos
 	}
 
@@ -143,7 +140,7 @@ func (g *Game) Layout(w, h int) (int, int) {
 		g.split.ratio = float64(g.split.Y) / float64(h)
 	}
 	g.split.Y = int(float64(h) * g.split.ratio)
-		g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
+	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 	g.logger.Infof("[GAME] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
 }
@@ -355,7 +352,7 @@ func (g *Game) handleEditor() {
 		g.clickI, g.clickJ = i, j
 		g.pendingClick = true
 		g.camDragged = false
-				g.logger.Debugf("[GAME] Mouse down at screen=(%d, %d), grid=(%d, %d)", x, y, i, j)
+		g.logger.Debugf("[GAME] Mouse down at screen=(%d, %d), grid=(%d, %d)", x, y, i, j)
 	}
 	if !left && g.leftPrev {
 		if g.pendingClick && !g.camDragged {
@@ -376,7 +373,7 @@ func (g *Game) handleEditor() {
 		g.camDragged = false
 	}
 	if isKeyPressed(ebiten.KeyS) && g.sel != nil {
-				if g.start != nil {
+		if g.start != nil {
 			g.start.Start = false
 			g.logger.Debugf("[GAME] Unsetting start node: %d,%d", g.start.I, g.start.J)
 		}
@@ -384,9 +381,9 @@ func (g *Game) handleEditor() {
 		g.start.Start = true
 		g.graph.StartNodeID = g.sel.ID
 		g.logger.Infof("[GAME] Setting start node: %d,%d", g.start.I, g.start.J)
-			g.updateBeatInfos()
-		}
-		g.leftPrev = left
+		g.updateBeatInfos()
+	}
+	g.leftPrev = left
 }
 
 func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
@@ -408,13 +405,13 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	// release → commit or delete
 	if g.linkDrag.active && !left {
 		if n2 := g.nodeAt(i, j); n2 != nil && n2 != g.linkDrag.from {
-							if right {
-					g.logger.Debugf("[GAME] Deleting edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
-					g.deleteEdge(g.linkDrag.from, n2)
-				} else {
-					g.logger.Debugf("[GAME] Adding edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
-					g.addEdge(g.linkDrag.from, n2)
-				}
+			if right {
+				g.logger.Debugf("[GAME] Deleting edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
+				g.deleteEdge(g.linkDrag.from, n2)
+			} else {
+				g.logger.Debugf("[GAME] Adding edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
+				g.addEdge(g.linkDrag.from, n2)
+			}
 		}
 		g.logger.Debugf("[GAME] End link drag at grid=(%d,%d)", i, j)
 		g.logger.Debugf("[GAME] End link drag at grid=(%d,%d)", i, j)
@@ -436,11 +433,7 @@ func (g *Game) spawnPulse() {
 	fromBeatInfo := g.beatInfos[0]
 
 	// Highlight the first beat immediately.
-	if fromBeatInfo.NodeType == model.NodeTypeRegular {
-		g.highlightedNodes[fromBeatInfo.NodeID] = g.frame + beatDuration
-	} else {
-		g.drum.highlightedEmptyBeats[0] = g.frame + beatDuration
-	}
+	g.highlightedBeats[0] = g.frame + beatDuration
 
 	// If there's a next beat, create a pulse moving towards it.
 	if len(g.beatInfos) > 1 {
@@ -491,39 +484,31 @@ func (g *Game) Update() error {
 		g.logger.Debugf("[GAME] Update: processing active pulse: t=%.2f, fromBeatInfo=%+v, toBeatInfo=%+v", g.activePulse.t, g.activePulse.fromBeatInfo, g.activePulse.toBeatInfo)
 		g.activePulse.t += g.activePulse.speed
 		if g.activePulse.t >= 1 {
-			// When pulse completes, clear the highlight of the node it just left
-			if g.activePulse.from != nil {
-				delete(g.highlightedNodes, g.activePulse.from.ID)
-				g.logger.Debugf("[GAME] Cleared highlight for node %d. highlightedNodes: %v", g.activePulse.from.ID, g.highlightedNodes)
-			}
+			// Clear highlight for the beat we just left
+			prevIdx := g.activePulse.pathIdx - 1
+			delete(g.highlightedBeats, prevIdx)
+			g.logger.Debugf("[GAME] Cleared highlight for beat index %d. highlightedBeats: %v", prevIdx, g.highlightedBeats)
 
 			if !g.advancePulse(g.activePulse) {
 				g.logger.Infof("[GAME] Update: active pulse removed.")
 				g.activePulse = nil
 				// Clear all highlights when the active pulse is removed
-				for id := range g.highlightedNodes {
-					delete(g.highlightedNodes, id)
+				for idx := range g.highlightedBeats {
+					delete(g.highlightedBeats, idx)
 				}
 			}
 		}
 	}
 
 	// Clear expired highlights
-	for id, highlightUntil := range g.highlightedNodes {
+	for idx, highlightUntil := range g.highlightedBeats {
 		if g.frame > highlightUntil {
-			delete(g.highlightedNodes, id)
-			g.logger.Debugf("[GAME] Cleared expired highlight for node %d. highlightedNodes: %v", id, g.highlightedNodes)
+			delete(g.highlightedBeats, idx)
+			g.logger.Debugf("[GAME] Cleared expired highlight for beat %d. highlightedBeats: %v", idx, g.highlightedBeats)
 		}
 	}
 
-	for idx, highlightUntil := range g.drum.highlightedEmptyBeats {
-		if g.frame > highlightUntil {
-			delete(g.drum.highlightedEmptyBeats, idx)
-			g.logger.Debugf("[GAME] Cleared expired highlight for empty beat %d. highlightedEmptyBeats: %v", idx, g.drum.highlightedEmptyBeats)
-		}
-	}
-
-	g.logger.Debugf("[GAME] Current highlightedNodes: %v", g.highlightedNodes)
+	g.logger.Debugf("[GAME] Current highlightedBeats: %v", g.highlightedBeats)
 
 	// drum view logic
 	prevPlaying := g.playing
@@ -537,9 +522,7 @@ func (g *Game) Update() error {
 	}
 	g.bpm = g.drum.BPM()
 
-	
-
-		if g.playing != prevPlaying {
+	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
 			g.sched.Start()
@@ -657,7 +640,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	g.drum.Draw(dst, g.highlightedNodes, g.drum.highlightedEmptyBeats, g.frame, g.beatInfos)
+	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.beatInfos)
 }
 
 func (g *Game) rootNode() *uiNode {
@@ -684,8 +667,6 @@ func (g *Game) rootNode() *uiNode {
 	}
 	return root
 }
-
-
 
 func (g *Game) onTick(step int) {
 	g.logger.Debugf("[GAME] On tick: step %d", step)
@@ -716,17 +697,13 @@ func (g *Game) advancePulse(p *pulse) bool {
 	beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
 
 	// The pulse has arrived at p.toBeatInfo. Highlight it.
-	arrivalBeatInfo := g.beatInfos[p.pathIdx-1]
-	arrivalPathIdx := p.pathIdx - 1
+	arrivalBeatInfo := p.toBeatInfo
+	arrivalPathIdx := p.pathIdx
 
 	g.logger.Debugf("[GAME] advancePulse: Pulse arrived at beat index %d: %+v", arrivalPathIdx, arrivalBeatInfo)
 
 	g.logger.Debugf("[GAME] advancePulse: Highlighting beat index %d. Type: %v, ID: %v", arrivalPathIdx, arrivalBeatInfo.NodeType, arrivalBeatInfo.NodeID)
-	if arrivalBeatInfo.NodeType == model.NodeTypeRegular {
-		g.highlightedNodes[arrivalBeatInfo.NodeID] = g.frame + beatDuration
-	} else {
-		g.drum.highlightedEmptyBeats[arrivalPathIdx] = g.frame + beatDuration
-	}
+	g.highlightedBeats[arrivalPathIdx] = g.frame + beatDuration
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++

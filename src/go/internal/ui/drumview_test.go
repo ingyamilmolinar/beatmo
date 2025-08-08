@@ -199,7 +199,7 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 	game := New(logger)
 	game.graph = graph
 	game.drum = drumView
-	game.bpm = 120 // Set a BPM for consistent beat duration
+	game.bpm = 120        // Set a BPM for consistent beat duration
 	game.Layout(800, 720) // Set layout to initialize drum view bounds
 
 	// Simulate starting playback
@@ -207,12 +207,10 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 	game.updateBeatInfos() // Call updateBeatInfos after drum is set
 	game.spawnPulse()
 
-	
-
 	// Run for a few cycles to test loop highlighting
 	for i := 0; i < 20; i++ { // Simulate 20 frames
 		game.Update()
-		t.Logf("Frame %d: highlightedNodes: %v, highlightedEmptyBeats: %v", game.frame, game.highlightedNodes, game.drum.highlightedEmptyBeats)
+		t.Logf("Frame %d: highlightedBeats: %v", game.frame, game.highlightedBeats)
 
 		// Determine the expected highlighted index based on the current beat and loop
 		expectedHighlightedIndex := -1
@@ -230,12 +228,8 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 		// Verify highlighting
 		for j := 0; j < drumView.Length; j++ {
 			isHighlighted := false
-			if _, ok := game.drum.highlightedEmptyBeats[j]; ok {
+			if _, ok := game.highlightedBeats[j]; ok {
 				isHighlighted = true
-			} else if len(game.beatInfos) > j {
-				if _, ok := game.highlightedNodes[game.beatInfos[j].NodeID]; ok {
-					isHighlighted = true
-				}
 			}
 
 			if j == expectedHighlightedIndex {
