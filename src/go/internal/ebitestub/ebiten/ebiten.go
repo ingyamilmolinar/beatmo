@@ -51,10 +51,10 @@ const (
 type Key int
 
 const (
-        KeyShiftLeft Key = iota
-        KeyShiftRight
-        KeyBackspace
-       KeyS
+	KeyShiftLeft Key = iota
+	KeyShiftRight
+	KeyBackspace
+	KeyS
 )
 
 // Window and run stubs
@@ -64,7 +64,9 @@ type Game interface {
 	Layout(int, int) (int, int)
 }
 
+const SyncWithFPS = -1
+
 func SetWindowSize(w, h int)      {}
 func SetWindowTitle(title string) {}
-func SetMaxTPS(tps float64)       {}
+func SetTPS(tps int)              {}
 func RunGame(g Game) error        { return nil }

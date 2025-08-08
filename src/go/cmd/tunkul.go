@@ -23,7 +23,7 @@ func main() {
 	ebiten.SetWindowSize(1280, 720)
 	ebiten.SetWindowTitle("Tunkul - Node Music Game")
 	// Run as fast as possible for smoother gameplay
-	ebiten.SetMaxTPS(0)
+	ebiten.SetTPS(ebiten.SyncWithFPS)
 
 	// Run the game. On WASM, this will create a <canvas> in index.html
 	if err := ebiten.RunGame(g); err != nil {
