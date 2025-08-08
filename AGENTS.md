@@ -108,3 +108,6 @@ This debugging session highlighted several critical points:
 *   **Uncapped TPS for smoother timing:** Running Ebiten with `SetMaxTPS(0)` removes the default tick limit, keeping visual pulses and audio in sync with the scheduler's BPM.
 *   **Resume Web Audio contexts:** Browsers start `AudioContext` in a suspended state; calling `resume()` on first playback ensures sounds are heard after a user gesture. Native builds use Oto to synthesize a noise-based snare.
 *   **Load audio modules before WASM:** Import ES modules like `audio.js` inside a module script that also boots the WASM game so the JS bridge functions (e.g., `play`) are defined before Go tries to call them.
+
+## Lessons from Audio Loop Consistency
+*   **Highlight-driven sound:** Invoke audio playback from the beat-highlighting routine so signal traversal, drum view highlighting, and audible cues remain in lockstep—even through graph loops.

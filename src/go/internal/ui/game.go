@@ -450,12 +450,8 @@ func (g *Game) spawnPulse() {
 	// The first beat in the sequence is where the pulse starts.
 	fromBeatInfo := g.beatInfos[0]
 
-	// Highlight the first beat immediately.
+	// Highlight the first beat immediately (and trigger audio if needed).
 	g.highlightBeat(0, beatDuration)
-	if fromBeatInfo.NodeType == model.NodeTypeRegular {
-                playSound("snare")
-		g.logger.Debugf("[GAME] Played sample for start node %d", fromBeatInfo.NodeID)
-	}
 
 	// If there's a next beat, create a pulse moving towards it.
 	if len(g.beatInfos) > 1 {
@@ -712,6 +708,13 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 
 func (g *Game) highlightBeat(idx int, duration int64) {
 	g.highlightedBeats[idx] = g.frame + duration
+	if idx >= 0 && idx < len(g.beatInfos) {
+		info := g.beatInfos[idx]
+		if info.NodeType == model.NodeTypeRegular {
+			playSound("snare")
+			g.logger.Debugf("[GAME] highlightBeat: Played sample for node %d at beat %d", info.NodeID, idx)
+		}
+	}
 }
 
 func (g *Game) clearExpiredHighlights() {
@@ -734,10 +737,6 @@ func (g *Game) advancePulse(p *pulse) bool {
 
 	g.logger.Debugf("[GAME] advancePulse: Highlighting beat index %d. Type: %v, ID: %v", arrivalPathIdx, arrivalBeatInfo.NodeType, arrivalBeatInfo.NodeID)
 	g.highlightBeat(arrivalPathIdx, beatDuration)
-	if arrivalBeatInfo.NodeType == model.NodeTypeRegular {
-            playSound("snare")
-		g.logger.Debugf("[GAME] advancePulse: Played sample for node %d", arrivalBeatInfo.NodeID)
-	}
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++

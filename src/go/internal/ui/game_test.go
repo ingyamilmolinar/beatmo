@@ -236,9 +236,9 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	g.addEdge(n0, n2) // introduces an invisible node at (1,0)
 
 	var plays []string
-    orig := playSound
-    playSound = func(id string) { plays = append(plays, id) }
-    defer func() { playSound = orig }()
+	orig := playSound
+	playSound = func(id string) { plays = append(plays, id) }
+	defer func() { playSound = orig }()
 
 	g.playing = true
 	g.spawnPulse() // highlights start node
@@ -259,6 +259,41 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	g.Update()
 	if len(plays) != 2 {
 		t.Fatalf("expected 2 samples after reaching second node, got %d", len(plays))
+	}
+}
+
+func TestAudioLoopConsistency(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	a := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	b := g.tryAddNode(3, 0, model.NodeTypeRegular)
+	c := g.tryAddNode(3, 1, model.NodeTypeRegular)
+	d := g.tryAddNode(2, 1, model.NodeTypeRegular)
+	g.graph.StartNodeID = start.ID
+
+	g.addEdge(start, a) // introduces invisible at (1,0)
+	g.addEdge(a, b)
+	g.addEdge(b, c)
+	g.addEdge(c, d)
+	g.addEdge(d, a) // loop back via A
+
+	var plays int
+	orig := playSound
+	playSound = func(id string) { plays++ }
+	defer func() { playSound = orig }()
+
+	g.playing = true
+	g.spawnPulse()
+
+	for i := 0; i < 8; i++ {
+		g.activePulse.t = 1
+		g.Update()
+	}
+
+	if plays != 8 {
+		t.Fatalf("expected 8 plays after looping, got %d", plays)
 	}
 }
 
