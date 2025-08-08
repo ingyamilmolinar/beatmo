@@ -213,7 +213,6 @@ func (dv *DrumView) Update() {
 		if dv.Length > 1 { // Prevent length from going below 1
 			dv.Length--
 			dv.logger.Infof("[DRUMVIEW] Length decreased to: %d", dv.Length)
-			dv.logger.Infof("[DRUMVIEW] Length decreased to: %d", dv.Length)
 			dv.Rows[0].Steps = make([]bool, dv.Length) // Update the steps slice
 			dv.SetBeatLength(dv.Length)                // Update graph's beat length
 			dv.bgDirty = true

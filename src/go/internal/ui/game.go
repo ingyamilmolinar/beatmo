@@ -414,7 +414,6 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 			}
 		}
 		g.logger.Debugf("[GAME] End link drag at grid=(%d,%d)", i, j)
-		g.logger.Debugf("[GAME] End link drag at grid=(%d,%d)", i, j)
 		g.linkDrag = dragLink{}
 	}
 }
@@ -433,7 +432,7 @@ func (g *Game) spawnPulse() {
 	fromBeatInfo := g.beatInfos[0]
 
 	// Highlight the first beat immediately.
-	g.highlightedBeats[0] = g.frame + beatDuration
+	g.highlightBeat(0, beatDuration)
 
 	// If there's a next beat, create a pulse moving towards it.
 	if len(g.beatInfos) > 1 {
@@ -460,7 +459,6 @@ func (g *Game) spawnPulse() {
 /* ─────────────── Update & tick ────────────────────────────────────────── */
 
 func (g *Game) Update() error {
-	g.logger.Debugf("[GAME] Update start. Frame: %d, Playing: %t, BPM: %d, CurrentStep: %d", g.frame, g.playing, g.bpm, g.currentStep)
 	g.logger.Debugf("[GAME] Update start. Frame: %d, Playing: %t, BPM: %d, CurrentStep: %d", g.frame, g.playing, g.bpm, g.currentStep)
 	// splitter
 	g.split.Update()
@@ -501,17 +499,12 @@ func (g *Game) Update() error {
 	}
 
 	// Clear expired highlights
-	for idx, highlightUntil := range g.highlightedBeats {
-		if g.frame > highlightUntil {
-			delete(g.highlightedBeats, idx)
-			g.logger.Debugf("[GAME] Cleared expired highlight for beat %d. highlightedBeats: %v", idx, g.highlightedBeats)
-		}
-	}
-
+	g.clearExpiredHighlights()
 	g.logger.Debugf("[GAME] Current highlightedBeats: %v", g.highlightedBeats)
 
 	// drum view logic
 	prevPlaying := g.playing
+	prevLen := g.drum.Length
 	g.drum.Update()
 
 	if g.drum.PlayPressed() {
@@ -543,8 +536,9 @@ func (g *Game) Update() error {
 		g.activePulse = nil
 	}
 
-	// Update drum view length based on graph
-	g.updateBeatInfos()
+	if prevLen != g.drum.Length {
+		g.updateBeatInfos()
+	}
 	g.logger.Debugf("[GAME] Update end. Frame: %d", g.frame)
 	return nil
 }
@@ -693,6 +687,19 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 	return nil
 }
 
+func (g *Game) highlightBeat(idx int, duration int64) {
+	g.highlightedBeats[idx] = g.frame + duration
+}
+
+func (g *Game) clearExpiredHighlights() {
+	for idx, until := range g.highlightedBeats {
+		if g.frame > until {
+			delete(g.highlightedBeats, idx)
+			g.logger.Debugf("[GAME] Cleared expired highlight for beat %d. highlightedBeats: %v", idx, g.highlightedBeats)
+		}
+	}
+}
+
 func (g *Game) advancePulse(p *pulse) bool {
 	beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
 
@@ -703,7 +710,7 @@ func (g *Game) advancePulse(p *pulse) bool {
 	g.logger.Debugf("[GAME] advancePulse: Pulse arrived at beat index %d: %+v", arrivalPathIdx, arrivalBeatInfo)
 
 	g.logger.Debugf("[GAME] advancePulse: Highlighting beat index %d. Type: %v, ID: %v", arrivalPathIdx, arrivalBeatInfo.NodeType, arrivalBeatInfo.NodeID)
-	g.highlightedBeats[arrivalPathIdx] = g.frame + beatDuration
+	g.highlightBeat(arrivalPathIdx, beatDuration)
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++

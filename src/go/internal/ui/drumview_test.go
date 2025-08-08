@@ -2,10 +2,12 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
@@ -245,5 +247,45 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 
 		// Advance time for the next frame
 		time.Sleep(time.Millisecond * 16) // Simulate 60 TPS
+	}
+}
+
+func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
+	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+
+	node0 := graph.AddNode(0, 0, model.NodeTypeRegular)
+	node1 := graph.AddNode(1, 0, model.NodeTypeInvisible)
+	node2 := graph.AddNode(2, 0, model.NodeTypeRegular)
+	graph.StartNodeID = node0
+	graph.Edges[[2]model.NodeID{node0, node1}] = struct{}{}
+	graph.Edges[[2]model.NodeID{node1, node2}] = struct{}{}
+
+	dv := NewDrumView(image.Rect(0, 0, 300, 50), graph, logger)
+	dv.Length = 3
+	dv.SetBeatLength(3)
+
+	game := &Game{graph: graph, drum: dv, logger: logger}
+	game.updateBeatInfos()
+
+	type call struct{ c color.Color }
+	calls := []call{}
+	orig := drawRect
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		calls = append(calls, call{c: c})
+	}
+	defer func() { drawRect = orig }()
+
+	highlighted := map[int]int64{1: 1}
+	dv.Draw(ebiten.NewImage(300, 50), highlighted, 0, game.beatInfos)
+
+	var highlightCount int
+	for _, call := range calls {
+		if clr, ok := call.c.(color.RGBA); ok && clr.R == 255 && clr.G == 255 && clr.B == 0 && clr.A == 255 {
+			highlightCount++
+		}
+	}
+	if highlightCount != 1 {
+		t.Fatalf("expected 1 highlight draw, got %d", highlightCount)
 	}
 }
