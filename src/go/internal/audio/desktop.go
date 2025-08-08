@@ -1,0 +1,52 @@
+//go:build !js && !wasm && !test
+
+package audio
+
+import (
+	"math"
+	"math/rand"
+	"sync"
+	"time"
+
+	"github.com/hajimehoshi/oto/v2"
+)
+
+var (
+	ctx  *oto.Context
+	once sync.Once
+)
+
+func initContext() {
+	const sampleRate = 44100
+	var err error
+	ctx, _, err = oto.NewContext(sampleRate, 1, 2)
+	if err != nil {
+		// leave ctx nil; Play will no-op
+		return
+	}
+}
+
+// Play renders a simple snare via white noise and an exponential decay envelope.
+func Play(id string, when float64) {
+	if id != "snare" {
+		return
+	}
+	once.Do(initContext)
+	if ctx == nil {
+		return
+	}
+	const sampleRate = 44100
+	const dur = 200 * time.Millisecond
+	samples := int(float64(sampleRate) * dur.Seconds())
+	buf := make([]byte, samples*2)
+	for i := 0; i < samples; i++ {
+		// exponential decay envelope
+		env := math.Exp(-4 * float64(i) / float64(samples))
+		v := int16((rand.Float64()*2 - 1) * env * 32767)
+		buf[2*i] = byte(v)
+		buf[2*i+1] = byte(v >> 8)
+	}
+	p := ctx.NewPlayer()
+	defer p.Close()
+	_, _ = p.Write(buf)
+}

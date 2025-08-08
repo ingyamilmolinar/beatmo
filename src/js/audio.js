@@ -32,6 +32,7 @@ class StubAudioContext {
     this.currentTime = 0;
     this.destination = new StubNode();
     this.sampleRate = 44100;
+    this.state = 'suspended';
   }
   createBuffer() {
     return { getChannelData: () => new Float32Array(0) };
@@ -44,6 +45,10 @@ class StubAudioContext {
   }
   createGain() {
     return new StubGain();
+  }
+  resume() {
+    console.log('[audio] stub context resume');
+    this.state = 'running';
   }
 }
 
@@ -63,6 +68,10 @@ export function play(id, when) {
   const fn = plugins[id];
   if (fn) {
     const t = when ?? audioCtx.currentTime;
+    if (audioCtx.state === 'suspended') {
+      console.log('[audio] resuming context');
+      audioCtx.resume();
+    }
     console.log("[audio] play", id, "at", t);
     fn(t);
   } else {

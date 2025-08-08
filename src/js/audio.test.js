@@ -1,6 +1,8 @@
-import { register, play } from './audio.js';
+import { register, play, audioCtx } from './audio.js';
 
 let called = false;
+let resumed = false;
+audioCtx.resume = () => { resumed = true; audioCtx.state = 'running'; };
 register('test', (when) => {
   console.log('[audio.test] callback invoked at', when);
   called = true;
@@ -8,8 +10,8 @@ register('test', (when) => {
 
 play('test', 0);
 
-if (!called) {
-  throw new Error('callback not invoked');
+if (!called || !resumed) {
+  throw new Error('callback or resume not invoked');
 }
 
 console.log('audio plugin test passed');

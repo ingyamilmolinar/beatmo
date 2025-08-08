@@ -1,6 +1,6 @@
-//go:build !js || !wasm
+//go:build test
 
 package audio
 
-// Play is a stub for non-wasm builds.
+// Play is a stub used during tests to avoid initializing audio devices.
 func Play(id string, when float64) {}
