@@ -250,6 +250,58 @@ func TestClickAddsNode(t *testing.T) {
 	}
 }
 
+func TestBPMButtonsAdjustSpeed(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+	g.graph.StartNodeID = n1.ID
+
+	g.playing = true
+	g.sched.Start()
+	g.spawnPulse()
+	if g.activePulse == nil {
+		t.Fatalf("no pulse spawned")
+	}
+	initialSpeed := g.activePulse.speed
+	initialBPM := g.bpm
+
+	g.Update()
+	tBefore := g.activePulse.t
+
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return g.drum.bpmIncBtn.Min.X + 1, g.drum.bpmIncBtn.Min.Y + 1 },
+		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	g.Update() // press
+	pressed = false
+	g.Update() // release
+	restore()
+
+	if g.bpm != initialBPM+1 {
+		t.Fatalf("expected bpm %d got %d", initialBPM+1, g.bpm)
+	}
+	if g.sched.BPM != g.bpm {
+		t.Fatalf("scheduler BPM not updated: %d", g.sched.BPM)
+	}
+	if g.activePulse == nil {
+		t.Fatalf("pulse reset")
+	}
+	if g.activePulse.speed == initialSpeed {
+		t.Fatalf("pulse speed unchanged")
+	}
+	if g.activePulse.t <= tBefore {
+		t.Fatalf("pulse did not continue")
+	}
+}
+
 func TestRowLengthMatchesConnectedNodes(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)

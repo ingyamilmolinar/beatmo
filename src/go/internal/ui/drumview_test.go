@@ -264,8 +264,8 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil)
-	if count != 5 {
-		t.Fatalf("expected 5 buttons drawn, got %d", count)
+	if count != 7 {
+		t.Fatalf("expected 7 buttons drawn, got %d", count)
 	}
 }
 

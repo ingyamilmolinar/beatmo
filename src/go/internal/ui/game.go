@@ -578,6 +578,7 @@ func (g *Game) Update() error {
 	// drum view logic
 	prevPlaying := g.playing
 	prevLen := g.drum.Length
+	prevBPM := g.bpm
 	g.drum.Update()
 	if g.drum.OffsetChanged() {
 		g.refreshDrumRow()
@@ -590,6 +591,12 @@ func (g *Game) Update() error {
 		g.playing = false
 	}
 	g.bpm = g.drum.BPM()
+
+	if g.bpm != prevBPM && g.activePulse != nil {
+		beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
+		g.activePulse.speed = 1.0 / float64(beatDuration)
+		g.logger.Debugf("[GAME] BPM changed to %d, updated active pulse speed to %f", g.bpm, g.activePulse.speed)
+	}
 
 	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)

@@ -36,9 +36,11 @@ type DrumView struct {
 	// ui widgets (re-computed every frame)
 	playBtn   image.Rectangle
 	stopBtn   image.Rectangle
+	bpmDecBtn image.Rectangle // Decrease BPM
 	bpmBox    image.Rectangle
-	lenIncBtn image.Rectangle // New button for increasing length
-	lenDecBtn image.Rectangle // New button for decreasing length
+	bpmIncBtn image.Rectangle // Increase BPM
+	lenDecBtn image.Rectangle // Decrease length
+	lenIncBtn image.Rectangle // Increase length
 
 	// internal ui state
 	bpm           int
@@ -46,8 +48,10 @@ type DrumView struct {
 	playPressed   bool
 	stopPressed   bool
 	Length        int  // Length of the drum view, independent of graph
-	lenIncPressed bool // New state for length increase button
-	lenDecPressed bool // New state for length decrease button
+	bpmIncPressed bool // State for BPM increase button
+	bpmDecPressed bool // State for BPM decrease button
+	lenIncPressed bool // State for length increase button
+	lenDecPressed bool // State for length decrease button
 
 	// window scrolling
 	Offset        int // index of first visible beat
@@ -86,6 +90,8 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		Graph:         g,
 		logger:        logger,
 		Length:        8, // Default length
+		bpmIncPressed: false,
+		bpmDecPressed: false,
 		lenIncPressed: false,
 		lenDecPressed: false,
 		Offset:        0,
@@ -108,17 +114,18 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 
 func (dv *DrumView) recalcButtons() {
 	// Implementation of recalcButtons
-	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)     // Increased size
-	dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50)   // Increased size
-	dv.bpmBox = image.Rect(190, dv.Bounds.Min.Y+10, 270, dv.Bounds.Min.Y+50)    // Increased size
-	dv.lenDecBtn = image.Rect(280, dv.Bounds.Min.Y+10, 320, dv.Bounds.Min.Y+50) // Increased size
-	dv.lenIncBtn = image.Rect(330, dv.Bounds.Min.Y+10, 370, dv.Bounds.Min.Y+50) // Increased size
+	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)
+	dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50)
+	dv.bpmDecBtn = image.Rect(190, dv.Bounds.Min.Y+10, 230, dv.Bounds.Min.Y+50)
+	dv.bpmBox = image.Rect(235, dv.Bounds.Min.Y+10, 275, dv.Bounds.Min.Y+50)
+	dv.bpmIncBtn = image.Rect(280, dv.Bounds.Min.Y+10, 320, dv.Bounds.Min.Y+50)
+	dv.lenDecBtn = image.Rect(325, dv.Bounds.Min.Y+10, 365, dv.Bounds.Min.Y+50)
+	dv.lenIncBtn = image.Rect(370, dv.Bounds.Min.Y+10, 410, dv.Bounds.Min.Y+50)
 }
 
 func (dv *DrumView) calcLayout() {
-	// Implementation of calcLayout
 	if len(dv.Rows) > 0 {
-		dv.cell = (dv.Bounds.Dx() - dv.labelW - 380) / len(dv.Rows[0].Steps) // Leave space for buttons
+		dv.cell = (dv.Bounds.Dx() - dv.labelW - 410) / len(dv.Rows[0].Steps) // Leave space for buttons
 	}
 }
 
@@ -171,6 +178,12 @@ func (dv *DrumView) Update() {
 		case pt(mx, my, dv.stopBtn):
 			dv.stopPressed = true
 			dv.logger.Infof("[DRUMVIEW] Stop button pressed.")
+		case pt(mx, my, dv.bpmDecBtn):
+			dv.bpmDecPressed = true
+			dv.logger.Infof("[DRUMVIEW] BPM decrease button pressed.")
+		case pt(mx, my, dv.bpmIncBtn):
+			dv.bpmIncPressed = true
+			dv.logger.Infof("[DRUMVIEW] BPM increase button pressed.")
 		case pt(mx, my, dv.bpmBox):
 			if !dv.focusBPM {
 				dv.focusBPM = true
@@ -238,6 +251,22 @@ func (dv *DrumView) Update() {
 		}
 	}
 
+	/* ——— BPM editing via buttons ——— */
+	if dv.bpmIncPressed {
+		if dv.bpm < 300 {
+			dv.bpm++
+			dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
+		}
+		dv.bpmIncPressed = false
+	}
+	if dv.bpmDecPressed {
+		if dv.bpm > 1 {
+			dv.bpm--
+			dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
+		}
+		dv.bpmDecPressed = false
+	}
+
 	/* ——— Length editing ——— */
 	if dv.lenIncPressed {
 		if dv.Length < 64 { // Set a reasonable max length
@@ -270,12 +299,16 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 
 	drawButton(dst, dv.playBtn, colPlayButton, colButtonBorder, dv.playPressed)
 	drawButton(dst, dv.stopBtn, colStopButton, colButtonBorder, dv.stopPressed)
+	drawButton(dst, dv.bpmDecBtn, colLenDec, colButtonBorder, dv.bpmDecPressed)
 	drawButton(dst, dv.bpmBox, colBPMBox, colButtonBorder, dv.focusBPM)
+	drawButton(dst, dv.bpmIncBtn, colLenInc, colButtonBorder, dv.bpmIncPressed)
 	drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
 	drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
 	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, strconv.Itoa(dv.bpm), dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "+", dv.bpmIncBtn.Min.X+15, dv.bpmIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
 
@@ -283,7 +316,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	for i, r := range dv.Rows {
 		y := dv.Bounds.Min.Y + i*dv.rowHeight()
 		for j, step := range r.Steps {
-			x := dv.Bounds.Min.X + dv.labelW + 380 + j*dv.cell // Adjusted for buttons
+			x := dv.Bounds.Min.X + dv.labelW + 410 + j*dv.cell // Adjusted for buttons
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
 
 			// Highlighting logic
