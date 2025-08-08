@@ -92,6 +92,7 @@ type Game struct {
 	isLoop         bool             // Indicates if the current graph forms a loop
 	loopStartIndex int              // The index in beatInfos where the loop segment begins
 	nextBeatIdx    int              // Absolute beat index for highlighting across loops
+	audioStart     float64          // audioCtx.currentTime at playback start
 
 	/* misc */
 	winW, winH int
@@ -567,6 +568,8 @@ func (g *Game) Update() error {
 	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
+			g.audioStart = audio.Now()
+			g.nextBeatIdx = 0
 			g.sched.Start()
 			g.logger.Infof("[GAME] Scheduler started.")
 		} else {
@@ -739,8 +742,13 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 func (g *Game) highlightBeat(idx int, info model.BeatInfo, duration int64) {
 	g.highlightedBeats[idx] = g.frame + duration
 	if info.NodeType == model.NodeTypeRegular {
-		playSound("snare")
-		g.logger.Debugf("[GAME] highlightBeat: Played sample for node %d at beat %d", info.NodeID, idx)
+		spb := 60.0 / float64(g.bpm)
+		if g.audioStart == 0 {
+			g.audioStart = audio.Now()
+		}
+		when := g.audioStart + float64(idx)*spb
+		playSound("snare", when)
+		g.logger.Debugf("[GAME] highlightBeat: Played sample for node %d at beat %d (when=%f)", info.NodeID, idx, when)
 	}
 }
 

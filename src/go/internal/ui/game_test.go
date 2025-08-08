@@ -397,6 +397,40 @@ func TestAudioLoopConsistency(t *testing.T) {
 	}
 }
 
+func TestAudioSchedulingSpacing(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.bpm = 120
+	g.audioStart = 0
+
+	plays := []float64{}
+	orig := playSound
+	playSound = func(id string, when ...float64) {
+		if len(when) > 0 {
+			plays = append(plays, when[0])
+		} else {
+			plays = append(plays, 0)
+		}
+	}
+	defer func() { playSound = orig }()
+
+	spb := 60.0 / float64(g.bpm)
+	info := model.BeatInfo{NodeType: model.NodeTypeRegular}
+	for i := 0; i < 4; i++ {
+		g.highlightBeat(i, info, 0)
+	}
+
+	if len(plays) != 4 {
+		t.Fatalf("expected 4 plays, got %d", len(plays))
+	}
+	for i := 1; i < 4; i++ {
+		diff := plays[i] - plays[i-1]
+		if diff < spb-0.01 || diff > spb+0.01 {
+			t.Fatalf("plays not spaced: %v", plays)
+		}
+	}
+}
+
 func TestNodeScreenAlignment(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)

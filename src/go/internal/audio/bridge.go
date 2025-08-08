@@ -6,11 +6,23 @@ package audio
 import "syscall/js"
 
 // exposed from web/audio.js
-var play js.Value
+var (
+	play js.Value
+	ctx  js.Value
+)
 
 func init() {
 	global := js.Global()
 	play = global.Get("play") // (id, when) exported by JS
+	ctx = global.Get("audioCtx")
+}
+
+// Now returns the AudioContext's currentTime.
+func Now() float64 {
+	if ctx.Truthy() {
+		return ctx.Get("currentTime").Float()
+	}
+	return 0
 }
 
 func Play(id string, when ...float64) {
