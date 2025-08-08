@@ -92,6 +92,53 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	}
 }
 
+func TestDrumWheelDoesNotZoomGrid(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.drum.Length = 8
+	g.drum.Rows[0].Steps = make([]bool, g.drum.Length)
+	g.drum.SetBeatLength(g.drum.Length)
+	g.Update() // set drum bounds
+
+	wheelVal := 1.0
+	restore := SetInputForTest(
+		func() (int, int) { // cursor inside drum steps area
+			return g.drum.Bounds.Min.X + g.drum.labelW + 390, g.drum.Bounds.Min.Y + 5
+		},
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { v := wheelVal; wheelVal = 0; return 0, v },
+		func() (int, int) { return g.winW, g.winH },
+	)
+	defer restore()
+
+	scale := g.cam.Scale
+	g.Update()
+	if g.cam.Scale != scale {
+		t.Fatalf("expected camera scale unchanged, got %f", g.cam.Scale)
+	}
+}
+
+func TestPlayWithoutStartNodeStaysResponsive(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.Update()
+
+	g.drum.playPressed = true
+	g.Update()
+	if g.playing {
+		t.Fatalf("game should not start without start node")
+	}
+
+	// pressing play again should still be handled immediately
+	g.drum.playPressed = true
+	g.Update()
+	if g.playing {
+		t.Fatalf("game should remain stopped without start node")
+	}
+}
+
 func TestAddEdgeNoDuplicates(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)

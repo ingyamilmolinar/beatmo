@@ -586,7 +586,12 @@ func (g *Game) Update() error {
 	}
 
 	if g.drum.PlayPressed() {
-		g.playing = true
+		if g.start != nil {
+			g.playing = true
+		} else {
+			g.logger.Warnf("[GAME] Play pressed but no start node; ignoring")
+			g.playing = false
+		}
 	}
 	if g.drum.StopPressed() {
 		g.playing = false
