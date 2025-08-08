@@ -1,20 +1,78 @@
 // web/audio.js with procedural synthesis and plugin registry
-export const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+class StubNode {
+  connect() {
+    return this;
+  }
+}
+
+class StubBufferSource extends StubNode {
+  start() {}
+}
+
+class StubFilter extends StubNode {
+  constructor() {
+    super();
+    this.frequency = { setValueAtTime() {} };
+  }
+}
+
+class StubGain extends StubNode {
+  constructor() {
+    super();
+    this.gain = {
+      setValueAtTime() {},
+      exponentialRampToValueAtTime() {},
+    };
+  }
+}
+
+class StubAudioContext {
+  constructor() {
+    this.currentTime = 0;
+    this.destination = new StubNode();
+    this.sampleRate = 44100;
+  }
+  createBuffer() {
+    return { getChannelData: () => new Float32Array(0) };
+  }
+  createBufferSource() {
+    return new StubBufferSource();
+  }
+  createBiquadFilter() {
+    return new StubFilter();
+  }
+  createGain() {
+    return new StubGain();
+  }
+}
+
+const AC = globalThis.AudioContext ||
+  globalThis.webkitAudioContext ||
+  StubAudioContext;
+
+export const audioCtx = new AC();
 const plugins = {};
 
 export function register(id, fn) {
+  console.log("[audio] register", id);
   plugins[id] = fn;
 }
 
 export function play(id, when) {
   const fn = plugins[id];
   if (fn) {
-    fn(when ?? audioCtx.currentTime);
+    const t = when ?? audioCtx.currentTime;
+    console.log("[audio] play", id, "at", t);
+    fn(t);
+  } else {
+    console.warn("[audio] no plugin for", id);
   }
 }
 
 // basic snare using noise burst and envelope
 register('snare', (when) => {
+  console.log("[audio] snare callback at", when);
   const duration = 0.2;
   const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
