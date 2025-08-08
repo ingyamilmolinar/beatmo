@@ -36,7 +36,7 @@ func initContext() {
 }
 
 // Play renders a simple snare via white noise and an exponential decay envelope.
-func Play(id string) {
+func Play(id string, when ...float64) {
 	if id != "snare" {
 		return
 	}

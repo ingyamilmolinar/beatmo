@@ -13,14 +13,20 @@ func init() {
 	play = global.Get("play") // (id, when) exported by JS
 }
 
-func Play(id string) {
-        // Lazily grab the `play` function if it wasn't available at init time.
-        if !play.Truthy() {
-                play = js.Global().Get("play")
-        }
-        if !play.Truthy() {
-                js.Global().Get("console").Call("warn", "[audio] play function missing; dropping sample", id)
-                return
-        }
-        play.Invoke(id)
+func Play(id string, when ...float64) {
+	// Lazily grab the `play` function if it wasn't available at init time.
+	if !play.Truthy() {
+		play = js.Global().Get("play")
+	}
+	if !play.Truthy() {
+		js.Global().Get("console").Call("warn", "[audio] play function missing; dropping sample", id)
+		return
+	}
+	go func() {
+		if len(when) > 0 {
+			play.Invoke(id, when[0])
+		} else {
+			play.Invoke(id)
+		}
+	}()
 }

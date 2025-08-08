@@ -337,7 +337,7 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 
 	var plays []string
 	orig := playSound
-	playSound = func(id string) { plays = append(plays, id) }
+	playSound = func(id string, when ...float64) { plays = append(plays, id) }
 	defer func() { playSound = orig }()
 
 	g.playing = true
@@ -381,7 +381,7 @@ func TestAudioLoopConsistency(t *testing.T) {
 
 	var plays int
 	orig := playSound
-	playSound = func(id string) { plays++ }
+	playSound = func(id string, when ...float64) { plays++ }
 	defer func() { playSound = orig }()
 
 	g.playing = true

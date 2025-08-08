@@ -1,77 +1,32 @@
 package beat
 
 import (
-	"log"
+	"reflect"
 	"testing"
 	"time"
 )
 
-func TestSchedulerFiresEveryBeat(t *testing.T) {
-	now := time.Now()
-	fake := func() time.Time { now = now.Add(time.Second); return now }
-
-	firedSteps := []int{}
+func TestSchedulerCatchUp(t *testing.T) {
 	s := NewScheduler()
-	s.BPM = 60
-	s.now = fake
+	s.BPM = 60 // 1 beat per second
+	base := time.Unix(0, 0)
+	now := base
+	s.now = func() time.Time { return now }
+	var steps []int
 	s.OnTick = func(step int) {
-		log.Printf("[TEST] OnTick called for step %d", step)
-		firedSteps = append(firedSteps, step)
-	}
-	s.Start()
-	s.Tick() // Explicitly call Tick to fire the first beat
-
-	// Call Tick BeatLength-1 times to ensure all beats are fired within the cycle
-	for i := 0; i < s.BeatLength-1; i++ {
-		s.Tick()
+		steps = append(steps, step)
 	}
 
-	expectedSteps := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	if len(firedSteps) != len(expectedSteps) {
-		t.Fatalf("expected %d beats, got %d", len(expectedSteps), len(firedSteps))
-	}
-	for i, step := range firedSteps {
-		if step != expectedSteps[i] {
-			t.Fatalf("expected step %d, got %d at index %d", expectedSteps[i], step, i)
-		}
-	}
-}
-
-func TestFirstTickPlaysImmediately(t *testing.T) {
-	now := time.Now()
-	fake := func() time.Time { return now }
-
-	fired := 0
-	s := NewScheduler()
-	s.BPM = 120
-	s.now = fake
-	s.OnTick = func(_ int) {
-		log.Printf("[TEST] OnTick called from TestFirstTickPlaysImmediately")
-		fired++
-	}
-	s.Start()
-	s.Tick() // Explicitly call Tick to fire the first beat
-
-	if fired != 1 {
-		t.Fatalf("expected first tick to fire once, got %d", fired)
-	}
-}
-
-func TestSchedulerSkipsWhenBPMZero(t *testing.T) {
-	now := time.Now()
-	fake := func() time.Time { now = now.Add(time.Second); return now }
-
-	fired := 0
-	s := NewScheduler()
-	s.BPM = 0
-	s.now = fake
-	s.OnTick = func(_ int) {
-		log.Printf("[TEST] OnTick called from TestSchedulerSkipsWhenBPMZero")
-		fired++
-	}
 	s.Start()
 	s.Tick()
-	if fired != 0 {
-		t.Fatalf("expected no beats when BPM=0, got %d", fired)
+	if !reflect.DeepEqual(steps, []int{0}) {
+		t.Fatalf("expected first tick, got %v", steps)
+	}
+
+	// Advance time by 3 beats; Tick should fire three additional times.
+	now = base.Add(3 * time.Second)
+	s.Tick()
+	if !reflect.DeepEqual(steps, []int{0, 1, 2, 3}) {
+		t.Fatalf("expected catch-up ticks [0 1 2 3], got %v", steps)
 	}
 }

@@ -50,19 +50,15 @@ func (s *Scheduler) Tick() {
 	now := s.now()
 
 	if s.last.IsZero() {
-		// For the first tick, ensure it fires immediately
-		s.last = now.Add(-spb) // Set last to be one beat duration in the past
+		// Fire immediately on the first call
+		s.last = now.Add(-spb)
 	}
 
-	if now.Sub(s.last) < spb {
-		return
+	for now.Sub(s.last) >= spb {
+		s.last = s.last.Add(spb)
+		if s.OnTick != nil {
+			s.OnTick(s.currentStep)
+		}
+		s.currentStep = (s.currentStep + 1) % s.BeatLength
 	}
-
-	s.last = now
-
-	if s.OnTick != nil {
-		s.OnTick(s.currentStep)
-	}
-
-	s.currentStep = (s.currentStep + 1) % s.BeatLength
 }
