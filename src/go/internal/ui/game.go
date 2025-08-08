@@ -252,7 +252,17 @@ func (g *Game) updateBeatInfos() {
 
 	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))
 
-	g.drum.Offset = 0
+	// Preserve current drum offset when the beat path changes. Clamp to the
+	// new valid range instead of resetting to zero so resizing the drum view
+	// doesn't jump back to the origin.
+	maxOffset := len(g.beatInfos) - g.drum.Length
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if g.drum.Offset > maxOffset {
+		g.drum.Offset = maxOffset
+	}
+
 	g.refreshDrumRow()
 }
 
@@ -605,7 +615,14 @@ func (g *Game) Update() error {
 	}
 
 	if prevLen != g.drum.Length {
-		g.updateBeatInfos()
+		maxOffset := len(g.beatInfos) - g.drum.Length
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if g.drum.Offset > maxOffset {
+			g.drum.Offset = maxOffset
+		}
+		g.refreshDrumRow()
 	}
 	g.logger.Debugf("[GAME] Update end. Frame: %d", g.frame)
 	return nil

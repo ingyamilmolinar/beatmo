@@ -750,6 +750,41 @@ func TestDrumViewDragShiftsWindow(t *testing.T) {
 	}
 }
 
+func TestDrumViewResizeKeepsOffset(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// Populate beat infos with a dummy path longer than the drum view.
+	g.beatInfos = make([]model.BeatInfo, 16)
+	g.drum.Length = 8
+	g.drum.Offset = 2
+	g.refreshDrumRow()
+
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	defer restore()
+
+	// Increase length and ensure offset is preserved.
+	g.drum.lenIncPressed = true
+	g.Update()
+	if g.drum.Offset != 2 {
+		t.Fatalf("offset changed after length increase: %d", g.drum.Offset)
+	}
+
+	// Decrease length and ensure offset is preserved.
+	g.drum.lenDecPressed = true
+	g.Update()
+	if g.drum.Offset != 2 {
+		t.Fatalf("offset changed after length decrease: %d", g.drum.Offset)
+	}
+}
+
 func TestStartNodeSelection(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
