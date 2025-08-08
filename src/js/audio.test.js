@@ -8,7 +8,7 @@ register('test', (when) => {
   called = true;
 });
 
-play('test');
+await play('test');
 
 if (!called || !resumed) {
   throw new Error('callback or resume not invoked');

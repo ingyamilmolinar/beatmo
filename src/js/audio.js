@@ -64,19 +64,27 @@ export function register(id, fn) {
   plugins[id] = fn;
 }
 
-export function play(id, when) {
+export async function play(id, when) {
   const fn = plugins[id];
-  if (fn) {
-    const t = when ?? audioCtx.currentTime;
-    if (audioCtx.state === 'suspended') {
-      console.log('[audio] resuming context');
-      audioCtx.resume();
-    }
-    console.log("[audio] play", id, "at", t);
-    fn(t);
-  } else {
+  if (!fn) {
     console.warn("[audio] no plugin for", id);
+    return;
   }
+
+  let t = when ?? audioCtx.currentTime;
+  if (audioCtx.state === 'suspended') {
+    console.log('[audio] resuming context');
+    try {
+      await audioCtx.resume();
+    } catch (e) {
+      console.warn('[audio] resume failed', e);
+    }
+    t = audioCtx.currentTime;
+  }
+  // schedule slightly in the future to avoid start-time truncation
+  t += 0.005;
+  console.log("[audio] play", id, "at", t);
+  fn(t);
 }
 
 // basic snare using noise burst and envelope
