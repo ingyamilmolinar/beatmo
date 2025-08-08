@@ -12,12 +12,16 @@ import (
 
 func main() {
 	logLevel := flag.String("log", "DEBUG", "Log level (DEBUG, INFO, ERROR, NONE)")
+	demo := flag.Bool("demo", false, "run a demo circuit and exit")
 	flag.Parse()
 
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
 
 	// Create an instance of our game
 	g := ui.New(logger)
+	if *demo {
+		g.RunDemo()
+	}
 
 	// Optional window settings (not used in WASM, but for desktop builds)
 	ebiten.SetWindowSize(1280, 720)

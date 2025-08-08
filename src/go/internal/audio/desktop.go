@@ -3,32 +3,36 @@
 package audio
 
 import (
-        "bytes"
-        "math"
-        "math/rand"
-        "sync"
-        "time"
+	"bytes"
+	"math"
+	"math/rand"
+	"sync"
+	"time"
 
-        "github.com/ebitengine/oto/v3"
+	"github.com/ebitengine/oto/v3"
 )
 
 var (
-        ctx  *oto.Context
-        once sync.Once
+	ctx  *oto.Context
+	once sync.Once
 )
 
 func initContext() {
-        const sampleRate = 44100
-        var err error
-        ctx, err = oto.NewContext(&oto.NewContextOptions{
-                SampleRate:   sampleRate,
-                ChannelCount: 1,
-                Format:       oto.FormatSignedInt16LE,
-        })
-        if err != nil {
-                // leave ctx nil; Play will no-op
-                return
-        }
+	const sampleRate = 44100
+	var (
+		ready chan struct{}
+		err   error
+	)
+	ctx, ready, err = oto.NewContext(&oto.NewContextOptions{
+		SampleRate:   sampleRate,
+		ChannelCount: 1,
+		Format:       oto.FormatSignedInt16LE,
+	})
+	if err != nil {
+		// leave ctx nil; Play will no-op
+		return
+	}
+	<-ready
 }
 
 // Play renders a simple snare via white noise and an exponential decay envelope.
@@ -51,6 +55,6 @@ func Play(id string) {
 		buf[2*i] = byte(v)
 		buf[2*i+1] = byte(v >> 8)
 	}
-        p := ctx.NewPlayer(bytes.NewReader(buf))
-        p.Play()
+	p := ctx.NewPlayer(bytes.NewReader(buf))
+	p.Play()
 }

@@ -8,7 +8,7 @@ serve:
 	cd src/js && python3 -m http.server 8080
 
 run:
-	cd src/go; go run ./cmd/tunkul.go
+	cd src/go; go run ./cmd/tunkul.go $(RUN_ARGS)
 
 test-mock:
 	cd src/go; go test -tags test -modfile=go.test.mod -timeout 1s ./...
