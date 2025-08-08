@@ -56,7 +56,7 @@ const AC = globalThis.AudioContext ||
   globalThis.webkitAudioContext ||
   StubAudioContext;
 
-export const audioCtx = new AC();
+export let audioCtx = new AC();
 const plugins = {};
 
 export function register(id, fn) {
@@ -87,6 +87,18 @@ export async function play(id, when) {
   fn(t);
 }
 
+export async function resetAudio() {
+  if (audioCtx && audioCtx.close) {
+    try {
+      await audioCtx.close();
+    } catch (e) {
+      console.warn('[audio] close failed', e);
+    }
+  }
+  audioCtx = new AC();
+  console.log('[audio] context reset');
+}
+
 // basic snare using noise burst and envelope
 register('snare', (when) => {
   console.log("[audio] snare callback at", when);
@@ -113,3 +125,4 @@ register('snare', (when) => {
 
 globalThis.play = play;
 globalThis.register = register;
+globalThis.resetAudio = resetAudio;

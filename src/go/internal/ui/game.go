@@ -20,6 +20,7 @@ const ebitenTPS = 60 // Ticks per second for Ebiten (stubbed for tests)
 
 // playSound plays a synthesized sound. Overridden in tests.
 var playSound = audio.Play
+var resetAudio = audio.Reset
 
 /* ───────────────────────── data types ───────────────────────── */
 
@@ -592,10 +593,14 @@ func (g *Game) Update() error {
 	}
 	g.bpm = g.drum.BPM()
 
-	if g.bpm != prevBPM && g.activePulse != nil {
-		beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
-		g.activePulse.speed = 1.0 / float64(beatDuration)
-		g.logger.Debugf("[GAME] BPM changed to %d, updated active pulse speed to %f", g.bpm, g.activePulse.speed)
+	if g.bpm != prevBPM {
+		g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
+		resetAudio()
+		if g.activePulse != nil {
+			beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
+			g.activePulse.speed = 1.0 / float64(beatDuration)
+			g.logger.Debugf("[GAME] BPM changed to %d, updated active pulse speed to %f", g.bpm, g.activePulse.speed)
+		}
 	}
 
 	if g.playing != prevPlaying {

@@ -7,3 +7,6 @@ func Play(id string, when ...float64) {}
 
 // Now returns 0 during tests.
 func Now() float64 { return 0 }
+
+// Reset is a stub used during tests.
+func Reset() {}

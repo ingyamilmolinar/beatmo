@@ -272,6 +272,9 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	tBefore := g.activePulse.t
 
 	pressed := true
+	resetCalled := 0
+	origReset := resetAudio
+	resetAudio = func() { resetCalled++ }
 	restore := SetInputForTest(
 		func() (int, int) { return g.drum.bpmIncBtn.Min.X + 1, g.drum.bpmIncBtn.Min.Y + 1 },
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
@@ -284,12 +287,16 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	pressed = false
 	g.Update() // release
 	restore()
+	resetAudio = origReset
 
 	if g.bpm != initialBPM+1 {
 		t.Fatalf("expected bpm %d got %d", initialBPM+1, g.bpm)
 	}
 	if g.sched.BPM != g.bpm {
 		t.Fatalf("scheduler BPM not updated: %d", g.sched.BPM)
+	}
+	if resetCalled == 0 {
+		t.Fatalf("audio reset not called on BPM change")
 	}
 	if g.activePulse == nil {
 		t.Fatalf("pulse reset")

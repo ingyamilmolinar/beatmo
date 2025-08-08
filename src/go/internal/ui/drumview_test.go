@@ -75,6 +75,27 @@ func TestDrumViewLengthDecrease(t *testing.T) {
 	}
 }
 
+func TestDrumViewWheelAdjustsLength(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 100), graph, logger)
+
+	wheelVal := 1.0
+	cursor := func() (int, int) { return dv.Bounds.Min.X + dv.labelW + 500, dv.Bounds.Min.Y + 5 }
+	restore := SetInputForTest(cursor,
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { v := wheelVal; wheelVal = 0; return 0, v },
+		func() (int, int) { return 800, 600 },
+	)
+	dv.Update() // wheel up -> length++
+	restore()
+	if dv.Length != 9 {
+		t.Fatalf("expected length 9 got %d", dv.Length)
+	}
+}
+
 func TestDrumViewLengthMinMax(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)

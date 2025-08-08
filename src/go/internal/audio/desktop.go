@@ -42,7 +42,8 @@ func Play(id string, when ...float64) {
 		return
 	}
 	once.Do(initContext)
-	if ctx == nil {
+	c := ctx
+	if c == nil {
 		return
 	}
 	go func() {
@@ -63,10 +64,16 @@ func Play(id string, when ...float64) {
 			buf[2*i] = byte(v)
 			buf[2*i+1] = byte(v >> 8)
 		}
-		p := ctx.NewPlayer(bytes.NewReader(buf))
+		p := c.NewPlayer(bytes.NewReader(buf))
 		p.Play()
 	}()
 }
 
 // Now returns seconds since program start.
 func Now() float64 { return time.Since(start).Seconds() }
+
+// Reset closes the current audio context so queued sounds are dropped.
+func Reset() {
+	ctx = nil
+	once = sync.Once{}
+}

@@ -169,6 +169,26 @@ func (dv *DrumView) Update() {
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+380, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Max.Y)
 
+	// wheel zoom for length adjustment
+	if _, whY := wheel(); whY != 0 {
+		if pt(mx, my, stepsRect) {
+			if whY > 0 && dv.Length < 64 {
+				dv.Length++
+				dv.Rows[0].Steps = make([]bool, dv.Length)
+				dv.SetBeatLength(dv.Length)
+				dv.bgDirty = true
+				dv.logger.Infof("[DRUMVIEW] Length increased to: %d via wheel", dv.Length)
+			}
+			if whY < 0 && dv.Length > 1 {
+				dv.Length--
+				dv.Rows[0].Steps = make([]bool, dv.Length)
+				dv.SetBeatLength(dv.Length)
+				dv.bgDirty = true
+				dv.logger.Infof("[DRUMVIEW] Length decreased to: %d via wheel", dv.Length)
+			}
+		}
+	}
+
 	/* ——— widget clicks & dragging ——— */
 	if left {
 		switch {
