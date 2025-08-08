@@ -3,8 +3,8 @@ module github.com/ingyamilmolinar/tunkul
 go 1.23
 
 require (
+	github.com/ebitengine/oto/v3 v3.3.3
 	github.com/hajimehoshi/ebiten/v2 v2.8.8
-	github.com/hajimehoshi/oto/v2 v2.4.2
 )
 
 require (

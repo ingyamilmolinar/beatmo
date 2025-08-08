@@ -236,9 +236,9 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	g.addEdge(n0, n2) // introduces an invisible node at (1,0)
 
 	var plays []string
-	orig := playSound
-	playSound = func(id string, when float64) { plays = append(plays, id) }
-	defer func() { playSound = orig }()
+    orig := playSound
+    playSound = func(id string) { plays = append(plays, id) }
+    defer func() { playSound = orig }()
 
 	g.playing = true
 	g.spawnPulse() // highlights start node

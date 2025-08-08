@@ -453,7 +453,7 @@ func (g *Game) spawnPulse() {
 	// Highlight the first beat immediately.
 	g.highlightBeat(0, beatDuration)
 	if fromBeatInfo.NodeType == model.NodeTypeRegular {
-		playSound("snare", 0)
+                playSound("snare")
 		g.logger.Debugf("[GAME] Played sample for start node %d", fromBeatInfo.NodeID)
 	}
 
@@ -735,7 +735,7 @@ func (g *Game) advancePulse(p *pulse) bool {
 	g.logger.Debugf("[GAME] advancePulse: Highlighting beat index %d. Type: %v, ID: %v", arrivalPathIdx, arrivalBeatInfo.NodeType, arrivalBeatInfo.NodeID)
 	g.highlightBeat(arrivalPathIdx, beatDuration)
 	if arrivalBeatInfo.NodeType == model.NodeTypeRegular {
-		playSound("snare", 0)
+            playSound("snare")
 		g.logger.Debugf("[GAME] advancePulse: Played sample for node %d", arrivalBeatInfo.NodeID)
 	}
 

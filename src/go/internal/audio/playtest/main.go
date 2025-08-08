@@ -6,5 +6,5 @@ import "github.com/ingyamilmolinar/tunkul/internal/audio"
 // When run in a JS/wasm environment without the audio bridge loaded,
 // the call should be a no-op rather than a panic.
 func main() {
-	audio.Play("snare", 0)
+        audio.Play("snare")
 }
