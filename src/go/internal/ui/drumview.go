@@ -33,19 +33,18 @@ type DrumView struct {
 	bgCache []*ebiten.Image
 
 	// ui widgets (re-computed every frame)
-	playBtn image.Rectangle
-	stopBtn image.Rectangle
-	bpmBox  image.Rectangle
+	playBtn   image.Rectangle
+	stopBtn   image.Rectangle
+	bpmBox    image.Rectangle
 	lenIncBtn image.Rectangle // New button for increasing length
 	lenDecBtn image.Rectangle // New button for decreasing length
 
 	// internal ui state
-	bpm         int
-	focusBPM    bool
-	playPressed bool
-	stopPressed bool
-	highlightedEmptyBeats map[int]int64
-	Length      int // Length of the drum view, independent of graph
+	bpm           int
+	focusBPM      bool
+	playPressed   bool
+	stopPressed   bool
+	Length        int  // Length of the drum view, independent of graph
 	lenIncPressed bool // New state for length increase button
 	lenDecPressed bool // New state for length decrease button
 }
@@ -70,17 +69,15 @@ func (dv *DrumView) SetBeatLength(length int) {
 
 /* ─── ctor ─────────────────────────────────────────────────── */
 
-
 func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *DrumView {
 	dv := &DrumView{
-		Bounds:  b,
-		labelW:  40,
-		bpm:     120,
-		bgDirty: true,
-		Graph:   g,
-		logger:  logger,
-		highlightedEmptyBeats: make(map[int]int64),
-		Length:  8, // Default length
+		Bounds:        b,
+		labelW:        40,
+		bpm:           120,
+		bgDirty:       true,
+		Graph:         g,
+		logger:        logger,
+		Length:        8, // Default length
 		lenIncPressed: false,
 		lenDecPressed: false,
 	}
@@ -88,7 +85,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	return dv
 }
-
 
 // SetBounds is called from Game whenever the splitter moves or the window
 // resizes; it invalidates the cached background so dimensions update next draw.
@@ -103,9 +99,9 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 
 func (dv *DrumView) recalcButtons() {
 	// Implementation of recalcButtons
-	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)   // Increased size
-	dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50) // Increased size
-	dv.bpmBox = image.Rect(190, dv.Bounds.Min.Y+10, 270, dv.Bounds.Min.Y+50)  // Increased size
+	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)     // Increased size
+	dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50)   // Increased size
+	dv.bpmBox = image.Rect(190, dv.Bounds.Min.Y+10, 270, dv.Bounds.Min.Y+50)    // Increased size
 	dv.lenDecBtn = image.Rect(280, dv.Bounds.Min.Y+10, 320, dv.Bounds.Min.Y+50) // Increased size
 	dv.lenIncBtn = image.Rect(330, dv.Bounds.Min.Y+10, 370, dv.Bounds.Min.Y+50) // Increased size
 }
@@ -181,7 +177,7 @@ func (dv *DrumView) Update() {
 			if r >= '0' && r <= '9' {
 				val, _ := strconv.Atoi(string(r))
 				newBPM := dv.bpm*10 + val
-								if newBPM > 300 {
+				if newBPM > 300 {
 					newBPM = 300
 				}
 				if newBPM != dv.bpm {
@@ -208,7 +204,7 @@ func (dv *DrumView) Update() {
 			dv.Length++
 			dv.logger.Infof("[DRUMVIEW] Length increased to: %d", dv.Length)
 			dv.Rows[0].Steps = make([]bool, dv.Length) // Update the steps slice
-			dv.SetBeatLength(dv.Length) // Update graph's beat length
+			dv.SetBeatLength(dv.Length)                // Update graph's beat length
 			dv.bgDirty = true
 		}
 		dv.lenIncPressed = false
@@ -217,17 +213,16 @@ func (dv *DrumView) Update() {
 		if dv.Length > 1 { // Prevent length from going below 1
 			dv.Length--
 			dv.logger.Infof("[DRUMVIEW] Length decreased to: %d", dv.Length)
-			dv.logger.Infof("[DRUMVIEW] Length decreased to: %d", dv.Length)
 			dv.Rows[0].Steps = make([]bool, dv.Length) // Update the steps slice
-			dv.SetBeatLength(dv.Length) // Update graph's beat length
+			dv.SetBeatLength(dv.Length)                // Update graph's beat length
 			dv.bgDirty = true
 		}
 		dv.lenDecPressed = false
 	}
 }
 
-func (dv *DrumView) Draw(dst *ebiten.Image, highlightedNodes map[model.NodeID]int64, highlightedEmptyBeats map[int]int64, frame int64, beatInfos []model.BeatInfo) {
-	dv.logger.Debugf("[DRUMVIEW] Draw called. beatInfos: %v, highlightedNodes: %v, highlightedEmptyBeats: %v", beatInfos, highlightedNodes, highlightedEmptyBeats)
+func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo) {
+	dv.logger.Debugf("[DRUMVIEW] Draw called. beatInfos: %v, highlightedBeats: %v", beatInfos, highlightedBeats)
 	// draw background
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
@@ -249,23 +244,13 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedNodes map[model.NodeID]in
 
 			// Highlighting logic
 			highlighted := false
-			isRegularNode := false
-			if len(beatInfos) > j {
-				if beatInfos[j].NodeType == model.NodeTypeRegular {
-					isRegularNode = true
-				}
-			}
+			isRegularNode := len(beatInfos) > j && beatInfos[j].NodeType == model.NodeTypeRegular
 
-			if isRegularNode {
-				if len(beatInfos) > j {
-					if _, ok := highlightedNodes[beatInfos[j].NodeID]; ok {
-						highlighted = true
-						dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting regular node at index %d, NodeID: %v", j, beatInfos[j].NodeID)
-					}
-				}
-			} else { // NodeTypeInvisible or NodeTypeEmpty
-				if _, ok := highlightedEmptyBeats[j]; ok {
-					highlighted = true
+			if _, ok := highlightedBeats[j]; ok {
+				highlighted = true
+				if isRegularNode {
+					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting regular node at index %d, NodeID: %v", j, beatInfos[j].NodeID)
+				} else {
 					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting empty beat at index %d", j)
 				}
 			}

@@ -1,3 +1,4 @@
+//go:build js && wasm
 // +build js,wasm
 
 package audio
@@ -12,7 +13,14 @@ func init() {
 	play = global.Get("play") // (id, when) exported by JS
 }
 
-func PlaySample(id string, when float64) {
-	play.Invoke(id, when)
+func Play(id string) {
+        // Lazily grab the `play` function if it wasn't available at init time.
+        if !play.Truthy() {
+                play = js.Global().Get("play")
+        }
+        if !play.Truthy() {
+                js.Global().Get("console").Call("warn", "[audio] play function missing; dropping sample", id)
+                return
+        }
+        play.Invoke(id)
 }
-
