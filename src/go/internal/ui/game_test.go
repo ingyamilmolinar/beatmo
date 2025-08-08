@@ -1,8 +1,8 @@
 package ui
 
 import (
+	"io"
 	"math"
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -13,7 +13,7 @@ import (
 var testLogger *game_log.Logger
 
 func init() {
-	testLogger = game_log.New(os.Stdout, game_log.LevelDebug)
+	testLogger = game_log.New(io.Discard, game_log.LevelError)
 }
 
 func TestTryAddNodeTogglesRow(t *testing.T) {
@@ -115,6 +115,54 @@ func TestAddRegularNodeOverInvisible(t *testing.T) {
 	n := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	if node, ok := g.graph.GetNodeByID(n.ID); !ok || node.Type != model.NodeTypeRegular {
 		t.Fatalf("expected node at (1,0) to be regular after upgrade")
+	}
+}
+
+func TestComplexCircuitTraversal(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = start
+	g.graph.StartNodeID = start.ID
+	b := g.tryAddNode(3, 0, model.NodeTypeRegular)
+	c := g.tryAddNode(3, 2, model.NodeTypeRegular)
+	d := g.tryAddNode(0, 2, model.NodeTypeRegular)
+
+	g.addEdge(start, b)
+	g.addEdge(b, c)
+	g.addEdge(c, d)
+	g.addEdge(d, start)
+
+	g.updateBeatInfos()
+
+	expectedLen := 10
+	if len(g.beatInfos) != expectedLen {
+		t.Fatalf("expected beatInfos length %d, got %d", expectedLen, len(g.beatInfos))
+	}
+	if g.drum.Length != expectedLen {
+		t.Fatalf("expected drum length %d, got %d", expectedLen, g.drum.Length)
+	}
+
+	for i := range g.beatInfos {
+		expected := g.beatInfos[i].NodeType == model.NodeTypeRegular
+		if g.drum.Rows[0].Steps[i] != expected {
+			t.Fatalf("drum row mismatch at %d", i)
+		}
+	}
+
+	p := &pulse{
+		fromBeatInfo: g.beatInfos[len(g.beatInfos)-1],
+		toBeatInfo:   g.beatInfos[0],
+		pathIdx:      0,
+		from:         g.nodeByID(g.beatInfos[len(g.beatInfos)-1].NodeID),
+		to:           g.nodeByID(g.beatInfos[0].NodeID),
+	}
+
+	for i := 0; i < expectedLen*2; i++ {
+		if !g.advancePulse(p) {
+			t.Fatalf("pulse stopped at step %d", i)
+		}
 	}
 }
 
@@ -642,7 +690,7 @@ func TestStartNodeSelection(t *testing.T) {
 
 func TestHighlightEmptyCells(t *testing.T) {
 	t.Skip()
-	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	logger := game_log.New(io.Discard, game_log.LevelError)
 	g := New(logger)
 	g.Layout(1280, 720)
 	g.bpm = 60
@@ -786,7 +834,7 @@ func TestDrumViewLoopingWithInvisibleNodes(t *testing.T) {
 }
 
 func TestDrumViewLoopingHighlighting(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	logger := game_log.New(io.Discard, game_log.LevelError)
 	g := New(logger) // Use the Game struct to leverage its graph manipulation and beat info update logic
 
 	// Set up the drum view length to accommodate the expected sequence
@@ -885,7 +933,7 @@ func TestDrumViewLoopingHighlighting(t *testing.T) {
 }
 
 func TestSignalTraversalInLoop(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	logger := game_log.New(io.Discard, game_log.LevelError)
 	g := New(logger)
 	g.Layout(640, 480)
 

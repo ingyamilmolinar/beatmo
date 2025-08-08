@@ -112,3 +112,4 @@ This debugging session highlighted several critical points:
 
 ## Lessons from Audio Loop Consistency
 *   **Highlight-driven sound:** Invoke audio playback from the beat-highlighting routine so signal traversal, drum view highlighting, and audible cues remain in lockstep—even through graph loops.
+*   **Dynamic drum length:** Size the drum view based on the number of traversed nodes so long circuits with many invisible intersections play and render correctly without truncation.

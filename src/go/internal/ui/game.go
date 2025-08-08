@@ -223,10 +223,27 @@ func (g *Game) deleteNode(n *uiNode) {
 }
 
 func (g *Game) updateBeatInfos() {
+	// Estimate the full path length by allowing traversal across all nodes
+	// without early trimming. Use the number of nodes as an upper bound.
+	g.graph.SetBeatLength(int(g.graph.Next))
+	fullBeatRow, _, _ := g.graph.CalculateBeatRow()
+
+	baseLen := 0
+	for _, b := range fullBeatRow {
+		if b.NodeID == model.InvalidNodeID {
+			break
+		}
+		baseLen++
+	}
+
+	if baseLen > g.drum.Length {
+		g.drum.Length = baseLen
+	}
+
+	// Recalculate using the final drum length so the graph pads or trims appropriately.
 	g.graph.SetBeatLength(g.drum.Length)
 	graphBeatRow, isLoop, loopStartIndex := g.graph.CalculateBeatRow()
 
-	// The beatInfos are now directly what the graph calculated.
 	g.beatInfos = graphBeatRow
 	g.isLoop = isLoop
 	g.loopStartIndex = loopStartIndex
