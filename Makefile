@@ -23,5 +23,5 @@ test-xvfb:
 	cd src/go; xvfb-run go test -tags test -timeout 1s ./...
 
 dependencies:
-	./scripts/setup-ebiten-env.sh
+	./scripts/setup-env.sh
 
