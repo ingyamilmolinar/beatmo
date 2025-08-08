@@ -87,9 +87,10 @@ type Game struct {
 	bpm            int
 	currentStep    int // Current step in the sequence
 	lastBeatFrame  int64
-	beatInfos      []model.BeatInfo
-	isLoop         bool // Indicates if the current graph forms a loop
-	loopStartIndex int  // The index in beatInfos where the loop segment begins
+    beatInfos      []model.BeatInfo // Full traversal path
+    drumBeatInfos  []model.BeatInfo // BeatInfos sized to drum view
+    isLoop         bool              // Indicates if the current graph forms a loop
+    loopStartIndex int               // The index in beatInfos where the loop segment begins
 
 	/* misc */
 	winW, winH int
@@ -116,16 +117,17 @@ func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 /* ───────────────────── constructor & layout ─────────────────── */
 
 func New(logger *game_log.Logger) *Game {
-	g := &Game{
-		cam:              NewCamera(),
-		logger:           logger,
-		graph:            model.NewGraph(logger),
-		sched:            beat.NewScheduler(),
-		split:            NewSplitter(720), // real height set in Layout below
-		highlightedBeats: make(map[int]int64),
-		bpm:              120,                // Default BPM
-		beatInfos:        []model.BeatInfo{}, // Initialize beatInfos
-	}
+        g := &Game{
+                cam:              NewCamera(),
+                logger:           logger,
+                graph:            model.NewGraph(logger),
+                sched:            beat.NewScheduler(),
+                split:            NewSplitter(720), // real height set in Layout below
+                highlightedBeats: make(map[int]int64),
+                bpm:              120,                // Default BPM
+                beatInfos:        []model.BeatInfo{},
+                drumBeatInfos:   []model.BeatInfo{},
+        }
 
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
@@ -224,42 +226,51 @@ func (g *Game) deleteNode(n *uiNode) {
 }
 
 func (g *Game) updateBeatInfos() {
-	// First, traverse enough of the graph to determine the base path length
-	// regardless of the current drum view length.
-	g.graph.SetBeatLength(int(g.graph.Next))
-	fullBeatRow, _, _ := g.graph.CalculateBeatRow()
+        // Traverse the graph once to capture the full path regardless of the
+        // current drum view length.
+        g.graph.SetBeatLength(int(g.graph.Next))
+        fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRow()
 
-	baseLen := 0
-	for _, b := range fullBeatRow {
-		if b.NodeID == model.InvalidNodeID {
-			break
-		}
-		baseLen++
-	}
+        baseLen := 0
+        for _, b := range fullBeatRow {
+                if b.NodeID == model.InvalidNodeID {
+                        break
+                }
+                baseLen++
+        }
 
-	// Ensure the drum view is at least as long as the base path.
-	if baseLen > g.drum.Length {
-		g.drum.Length = baseLen
-	}
+        g.beatInfos = fullBeatRow[:baseLen]
+        g.isLoop = isLoop
+        g.loopStartIndex = loopStart
 
-	// Now expand (or repeat) the beat row to match the drum view length so
-	// loops appear deterministically across the visible window.
-	g.graph.SetBeatLength(g.drum.Length)
-	g.beatInfos, g.isLoop, g.loopStartIndex = g.graph.CalculateBeatRow()
+        if baseLen > g.drum.Length {
+                g.drum.Length = baseLen
+        }
 
-	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatInfos length=%d", g.drum.Length, len(g.beatInfos))
+        // Prepare beat infos for the drum view by repeating the loop segment as
+        // needed, without affecting the underlying traversal path.
+        g.drumBeatInfos = make([]model.BeatInfo, g.drum.Length)
+        loopLen := len(g.beatInfos) - g.loopStartIndex
+        for i := 0; i < g.drum.Length; i++ {
+                if i < len(g.beatInfos) {
+                        g.drumBeatInfos[i] = g.beatInfos[i]
+                } else if g.isLoop && loopLen > 0 && i >= g.loopStartIndex {
+                        idx := g.loopStartIndex + (i-g.loopStartIndex)%loopLen
+                        g.drumBeatInfos[i] = g.beatInfos[idx]
+                } else {
+                        g.drumBeatInfos[i] = model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+                }
+        }
 
-	drumRow := make([]bool, g.drum.Length)
-	for i := 0; i < g.drum.Length; i++ {
-		if i < len(g.beatInfos) {
-			drumRow[i] = g.beatInfos[i].NodeType == model.NodeTypeRegular
-		} else {
-			drumRow[i] = false
-		}
-	}
+        g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))
 
-	g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
-	g.drum.Rows[0].Steps = drumRow
+        drumRow := make([]bool, g.drum.Length)
+        for i := range drumRow {
+                drumRow[i] = g.drumBeatInfos[i].NodeType == model.NodeTypeRegular
+        }
+
+        g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
+        g.drum.Rows[0].Steps = drumRow
 }
 
 func (g *Game) addEdge(a, b *uiNode) {
@@ -669,7 +680,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.beatInfos)
+        g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos)
 }
 
 func (g *Game) rootNode() *uiNode {

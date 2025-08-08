@@ -948,6 +948,60 @@ func TestDrumViewLoopingHighlighting(t *testing.T) {
 	}
 }
 
+func TestPulseTraversalBeyondDrumView(t *testing.T) {
+        logger := game_log.New(io.Discard, game_log.LevelError)
+        g := New(logger)
+        g.Layout(640, 480)
+
+        // Build looped circuit: [O] -> [] -> [X] -> [X]
+        //                                   ^      v
+        //                                   [X] <- [X]
+        n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+        g.start = n1
+        g.graph.StartNodeID = n1.ID
+
+        n2 := g.tryAddNode(1, 0, model.NodeTypeInvisible)
+        n3 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+        n4 := g.tryAddNode(3, 0, model.NodeTypeRegular)
+        n5 := g.tryAddNode(3, 1, model.NodeTypeRegular)
+        n6 := g.tryAddNode(2, 1, model.NodeTypeRegular)
+
+        g.addEdge(n1, n2)
+        g.addEdge(n2, n3)
+        g.addEdge(n3, n4)
+        g.addEdge(n4, n5)
+        g.addEdge(n5, n6)
+        g.addEdge(n6, n3) // loop
+
+        // Drum view shorter than path length
+        g.drum.Length = 4
+        g.drum.Rows[0].Steps = make([]bool, g.drum.Length)
+        g.drum.SetBeatLength(g.drum.Length)
+
+        g.updateBeatInfos()
+
+        g.playing = true
+        g.spawnPulse()
+        if g.activePulse == nil {
+                t.Fatalf("expected active pulse")
+        }
+
+        steps := 4
+        for i := 0; i < steps; i++ {
+                if !g.advancePulse(g.activePulse) {
+                        t.Fatalf("pulse stopped early at step %d", i)
+                }
+        }
+
+        if g.activePulse.pathIdx != steps+1 {
+                t.Fatalf("expected pathIdx %d, got %d", steps+1, g.activePulse.pathIdx)
+        }
+
+        if g.activePulse.lastIdx != steps {
+                t.Fatalf("expected lastIdx %d, got %d", steps, g.activePulse.lastIdx)
+        }
+}
+
 func TestSignalTraversalInLoop(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	g := New(logger)
@@ -1063,37 +1117,40 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 
 	g.updateBeatInfos()
 
-	// verify beat row expanded deterministically across drum length
-	wantIDs := []model.NodeID{start.ID, inv.ID, n1.ID, n2.ID, n3.ID, n4.ID, n1.ID, n2.ID, n3.ID, n4.ID}
-	if len(g.beatInfos) != len(wantIDs) {
-		t.Fatalf("expected %d beat infos, got %d", len(wantIDs), len(g.beatInfos))
-	}
-	for i, id := range wantIDs {
-		if g.beatInfos[i].NodeID != id {
-			t.Fatalf("at %d expected node %d got %d", i, id, g.beatInfos[i].NodeID)
-		}
-	}
+        // verify drum beat infos expand deterministically across drum length
+        wantIDs := []model.NodeID{start.ID, inv.ID, n1.ID, n2.ID, n3.ID, n4.ID, n1.ID, n2.ID, n3.ID, n4.ID}
+        if len(g.drumBeatInfos) != len(wantIDs) {
+                t.Fatalf("expected %d drum beat infos, got %d", len(wantIDs), len(g.drumBeatInfos))
+        }
+        for i, id := range wantIDs {
+                if g.drumBeatInfos[i].NodeID != id {
+                        t.Fatalf("at %d expected node %d got %d", i, id, g.drumBeatInfos[i].NodeID)
+                }
+        }
+
+        if len(g.beatInfos) != 6 {
+                t.Fatalf("expected base path length 6, got %d", len(g.beatInfos))
+        }
 
 	// now simulate pulse highlighting across two laps
 	g.spawnPulse()
-	// sequence of highlighted indices expected for first 12 advancements
-	expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 2, 3}
-	got := make([]int, len(expected))
-	// first highlight from spawnPulse already at 0
-	got[0] = 0
-	for i := 1; i < len(expected); i++ {
-		delete(g.highlightedBeats, g.activePulse.lastIdx)
-		if !g.advancePulse(g.activePulse) {
-			t.Fatalf("pulse ended early at step %d", i)
-		}
-		if len(g.highlightedBeats) != 1 {
-			t.Fatalf("expected single highlight, got %v", g.highlightedBeats)
-		}
-		for idx := range g.highlightedBeats {
-			got[i] = idx
-		}
-	}
-	if !reflect.DeepEqual(expected, got) {
-		t.Fatalf("highlight sequence mismatch. expected %v got %v", expected, got)
-	}
+        // sequence of highlighted path indices expected for first 12 advancements
+        expected := []int{0, 1, 2, 3, 4, 5, 2, 3, 4, 5, 2, 3}
+        got := make([]int, len(expected))
+        got[0] = 0
+        for i := 1; i < len(expected); i++ {
+                delete(g.highlightedBeats, g.activePulse.lastIdx)
+                if !g.advancePulse(g.activePulse) {
+                        t.Fatalf("pulse ended early at step %d", i)
+                }
+                if len(g.highlightedBeats) != 1 {
+                        t.Fatalf("expected single highlight, got %v", g.highlightedBeats)
+                }
+                for idx := range g.highlightedBeats {
+                        got[i] = idx
+                }
+        }
+        if !reflect.DeepEqual(expected, got) {
+                t.Fatalf("highlight sequence mismatch. expected %v got %v", expected, got)
+        }
 }
