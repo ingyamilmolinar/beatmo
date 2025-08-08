@@ -756,7 +756,12 @@ func (g *Game) advancePulse(p *pulse) bool {
 	g.logger.Debugf("[GAME] advancePulse: Incremented pathIdx to %d. beatPath length: %d", p.pathIdx, len(g.beatInfos))
 
 	// Set up the next segment of the pulse's journey.
-	p.fromBeatInfo = g.beatInfos[p.pathIdx-1]
+	prevIdx := p.pathIdx - 1
+	if prevIdx < 0 {
+		prevIdx = len(g.beatInfos) - 1
+	}
+	g.logger.Debugf("[GAME] advancePulse: Selecting next segment prevIdx=%d, pathIdx=%d", prevIdx, p.pathIdx)
+	p.fromBeatInfo = g.beatInfos[prevIdx]
 	p.toBeatInfo = g.beatInfos[p.pathIdx]
 	p.from = g.nodeByID(p.fromBeatInfo.NodeID)
 	p.to = g.nodeByID(p.toBeatInfo.NodeID)

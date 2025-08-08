@@ -40,6 +40,57 @@ func TestDeleteNodeClearsRow(t *testing.T) {
 	}
 }
 
+func TestAdvancePulseLoopWrap(t *testing.T) {
+	g := New(testLogger)
+	g.drum.Length = 6
+	g.drum.Rows[0].Steps = make([]bool, g.drum.Length)
+	g.drum.SetBeatLength(g.drum.Length)
+
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n1
+	g.graph.StartNodeID = n1.ID
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n3 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n3)
+	g.addEdge(n3, n1)
+
+	g.updateBeatInfos()
+
+	if !g.isLoop || g.loopStartIndex != 0 {
+		t.Fatalf("expected loop starting at 0, got loop=%t start=%d", g.isLoop, g.loopStartIndex)
+	}
+
+	last := len(g.beatInfos) - 1
+	p := &pulse{
+		fromBeatInfo: g.beatInfos[last-1],
+		toBeatInfo:   g.beatInfos[last],
+		pathIdx:      last,
+		from:         g.nodeByID(g.beatInfos[last-1].NodeID),
+		to:           g.nodeByID(g.beatInfos[last].NodeID),
+	}
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("advancePulse panicked: %v", r)
+			}
+		}()
+		g.advancePulse(p)
+	}()
+
+	if p.pathIdx != 0 {
+		t.Fatalf("expected pathIdx 0 after wrap, got %d", p.pathIdx)
+	}
+	if p.fromBeatInfo.NodeID != g.beatInfos[len(g.beatInfos)-1].NodeID {
+		t.Fatalf("expected from node %d, got %d", g.beatInfos[len(g.beatInfos)-1].NodeID, p.fromBeatInfo.NodeID)
+	}
+	if p.toBeatInfo.NodeID != g.beatInfos[0].NodeID {
+		t.Fatalf("expected to node %d, got %d", g.beatInfos[0].NodeID, p.toBeatInfo.NodeID)
+	}
+}
+
 func TestAddEdgeNoDuplicates(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
