@@ -3,6 +3,7 @@ package ui
 import (
 	"io"
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -740,72 +741,72 @@ func TestHighlightEmptyCells(t *testing.T) {
 }
 
 func TestBeatInfosNotTrimmedByDrumLength(t *testing.T) {
-        g := New(testLogger)
-        g.Layout(640, 480)
+	g := New(testLogger)
+	g.Layout(640, 480)
 
-        n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-        n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
-        n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
-        g.addEdge(n0, n1)
-        g.addEdge(n1, n2)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n2)
 
-        g.start = n0
-        g.graph.StartNodeID = n0.ID
+	g.start = n0
+	g.graph.StartNodeID = n0.ID
 
-        g.drum.Length = 1
-        g.updateBeatInfos()
-        // Shrink the drum view again without recomputing beatInfos
-        g.drum.Length = 1
-        g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
+	g.drum.Length = 1
+	g.updateBeatInfos()
+	// Shrink the drum view again without recomputing beatInfos
+	g.drum.Length = 1
+	g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
 
-        if len(g.beatInfos) <= g.drum.Length {
-                t.Fatalf("expected beatInfos length > drum length, got %d <= %d", len(g.beatInfos), g.drum.Length)
-        }
+	if len(g.beatInfos) <= g.drum.Length {
+		t.Fatalf("expected beatInfos length > drum length, got %d <= %d", len(g.beatInfos), g.drum.Length)
+	}
 
-        if g.beatInfos[0].NodeID != n0.ID || g.beatInfos[1].NodeID != n1.ID || g.beatInfos[2].NodeID != n2.ID {
-                t.Errorf("unexpected beatInfos sequence: %v", g.beatInfos)
-        }
+	if g.beatInfos[0].NodeID != n0.ID || g.beatInfos[1].NodeID != n1.ID || g.beatInfos[2].NodeID != n2.ID {
+		t.Errorf("unexpected beatInfos sequence: %v", g.beatInfos)
+	}
 }
 
 func TestPulseTraversalIgnoresDrumLength(t *testing.T) {
-        g := New(testLogger)
-        g.Layout(640, 480)
+	g := New(testLogger)
+	g.Layout(640, 480)
 
-        n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-        n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
-        n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
-        g.addEdge(n0, n1)
-        g.addEdge(n1, n2)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n2)
 
-        g.start = n0
-        g.graph.StartNodeID = n0.ID
+	g.start = n0
+	g.graph.StartNodeID = n0.ID
 
-        g.drum.Length = 1
-        g.updateBeatInfos()
-        // Shrink drum view again without affecting beatInfos
-        g.drum.Length = 1
-        g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
+	g.drum.Length = 1
+	g.updateBeatInfos()
+	// Shrink drum view again without affecting beatInfos
+	g.drum.Length = 1
+	g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
 
-        g.playing = true
-        g.spawnPulse()
+	g.playing = true
+	g.spawnPulse()
 
-        if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n1.ID {
-                t.Fatalf("expected pulse heading to second node")
-        }
+	if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n1.ID {
+		t.Fatalf("expected pulse heading to second node")
+	}
 
-        // Force pulse to reach second node; it should then move toward third.
-        g.activePulse.t = 1
-        g.Update()
-        if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n2.ID {
-                t.Fatalf("expected pulse to continue to third node, got %+v", g.activePulse)
-        }
+	// Force pulse to reach second node; it should then move toward third.
+	g.activePulse.t = 1
+	g.Update()
+	if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n2.ID {
+		t.Fatalf("expected pulse to continue to third node, got %+v", g.activePulse)
+	}
 
-        // Reach final node; pulse should stop without restarting at origin.
-        g.activePulse.t = 1
-        g.Update()
-        if g.activePulse != nil {
-                t.Fatalf("expected pulse to stop after last node, but it continued")
-        }
+	// Reach final node; pulse should stop without restarting at origin.
+	g.activePulse.t = 1
+	g.Update()
+	if g.activePulse != nil {
+		t.Fatalf("expected pulse to stop after last node, but it continued")
+	}
 }
 
 func TestDrumViewLoopingWithInvisibleNodes(t *testing.T) {
@@ -970,18 +971,18 @@ func TestSignalTraversalInLoop(t *testing.T) {
 	g.addEdge(n5, n6)
 	g.addEdge(n6, n3) // Loop back to n3
 
-        g.drum.Length = 11 // Drum view longer than path
+	g.drum.Length = 11 // Drum view longer than path
 	g.updateBeatInfos()
 
 	// Expected sequence of node IDs for the pulse traversal
-        expectedNodeIDs := []model.NodeID{
-                n1.ID,
-                n_inv1.ID,
-                n3.ID,
-                n4.ID,
-                n5.ID,
-                n6.ID,
-        }
+	expectedNodeIDs := []model.NodeID{
+		n1.ID,
+		n_inv1.ID,
+		n3.ID,
+		n4.ID,
+		n5.ID,
+		n6.ID,
+	}
 
 	t.Logf("Expected Node IDs: %v", expectedNodeIDs)
 	actualNodeIDs := []model.NodeID{}
@@ -990,9 +991,9 @@ func TestSignalTraversalInLoop(t *testing.T) {
 	}
 	t.Logf("Actual Beat Infos: %v", actualNodeIDs)
 
-	// Verify the initial beatInfos generated by CalculateBeatRow
-	if len(actualNodeIDs) != len(expectedNodeIDs) {
-		t.Fatalf("Initial beatInfos length mismatch. Expected %d, got %d", len(expectedNodeIDs), len(actualNodeIDs))
+	// Verify that the generated beatInfos begin with the expected sequence
+	if len(actualNodeIDs) < len(expectedNodeIDs) {
+		t.Fatalf("Initial beatInfos shorter than expected. want >=%d got %d", len(expectedNodeIDs), len(actualNodeIDs))
 	}
 	for i, expectedID := range expectedNodeIDs {
 		if actualNodeIDs[i] != expectedID {
@@ -1030,5 +1031,69 @@ func TestSignalTraversalInLoop(t *testing.T) {
 		if frameCounter >= maxIterations {
 			t.Fatalf("Inner loop exceeded max iterations (%d) at step %d, possible infinite loop. pathIdx=%d", maxIterations, step, g.activePulse.pathIdx)
 		}
+	}
+}
+
+func TestLoopExpansionAndHighlighting(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	g := New(logger)
+	g.Layout(640, 480)
+
+	// prepare drum view length to capture multiple loop laps
+	g.drum.Length = 10
+	g.drum.Rows[0].Steps = make([]bool, g.drum.Length)
+	g.drum.SetBeatLength(g.drum.Length)
+
+	// build circuit: start -> invisible -> n1 -> n2 -> n3 -> n4 -> back to n1
+	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = start
+	g.graph.StartNodeID = start.ID
+	inv := g.tryAddNode(1, 0, model.NodeTypeInvisible)
+	n1 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(3, 0, model.NodeTypeRegular)
+	n3 := g.tryAddNode(3, 1, model.NodeTypeRegular)
+	n4 := g.tryAddNode(2, 1, model.NodeTypeRegular)
+
+	g.addEdge(start, inv)
+	g.addEdge(inv, n1)
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n3)
+	g.addEdge(n3, n4)
+	g.addEdge(n4, n1) // close loop
+
+	g.updateBeatInfos()
+
+	// verify beat row expanded deterministically across drum length
+	wantIDs := []model.NodeID{start.ID, inv.ID, n1.ID, n2.ID, n3.ID, n4.ID, n1.ID, n2.ID, n3.ID, n4.ID}
+	if len(g.beatInfos) != len(wantIDs) {
+		t.Fatalf("expected %d beat infos, got %d", len(wantIDs), len(g.beatInfos))
+	}
+	for i, id := range wantIDs {
+		if g.beatInfos[i].NodeID != id {
+			t.Fatalf("at %d expected node %d got %d", i, id, g.beatInfos[i].NodeID)
+		}
+	}
+
+	// now simulate pulse highlighting across two laps
+	g.spawnPulse()
+	// sequence of highlighted indices expected for first 12 advancements
+	expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 2, 3}
+	got := make([]int, len(expected))
+	// first highlight from spawnPulse already at 0
+	got[0] = 0
+	for i := 1; i < len(expected); i++ {
+		delete(g.highlightedBeats, g.activePulse.lastIdx)
+		if !g.advancePulse(g.activePulse) {
+			t.Fatalf("pulse ended early at step %d", i)
+		}
+		if len(g.highlightedBeats) != 1 {
+			t.Fatalf("expected single highlight, got %v", g.highlightedBeats)
+		}
+		for idx := range g.highlightedBeats {
+			got[i] = idx
+		}
+	}
+	if !reflect.DeepEqual(expected, got) {
+		t.Fatalf("highlight sequence mismatch. expected %v got %v", expected, got)
 	}
 }

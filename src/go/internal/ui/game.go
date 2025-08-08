@@ -51,6 +51,7 @@ type pulse struct {
 	from, to                 *uiNode
 	fromBeatInfo, toBeatInfo model.BeatInfo
 	pathIdx                  int
+	lastIdx                  int
 }
 
 type Game struct {
@@ -223,10 +224,10 @@ func (g *Game) deleteNode(n *uiNode) {
 }
 
 func (g *Game) updateBeatInfos() {
-	// Estimate the full path length by allowing traversal across all nodes
-	// without early trimming. Use the number of nodes as an upper bound.
-    g.graph.SetBeatLength(int(g.graph.Next))
-    fullBeatRow, isLoop, loopStartIndex := g.graph.CalculateBeatRow()
+	// First, traverse enough of the graph to determine the base path length
+	// regardless of the current drum view length.
+	g.graph.SetBeatLength(int(g.graph.Next))
+	fullBeatRow, _, _ := g.graph.CalculateBeatRow()
 
 	baseLen := 0
 	for _, b := range fullBeatRow {
@@ -236,29 +237,29 @@ func (g *Game) updateBeatInfos() {
 		baseLen++
 	}
 
-    if baseLen > g.drum.Length {
-            g.drum.Length = baseLen
-    }
+	// Ensure the drum view is at least as long as the base path.
+	if baseLen > g.drum.Length {
+		g.drum.Length = baseLen
+	}
 
-    // Use the fullBeatRow for traversal regardless of drum length.
-    g.beatInfos = fullBeatRow
-    g.isLoop = isLoop
-    g.loopStartIndex = loopStartIndex
+	// Now expand (or repeat) the beat row to match the drum view length so
+	// loops appear deterministically across the visible window.
+	g.graph.SetBeatLength(g.drum.Length)
+	g.beatInfos, g.isLoop, g.loopStartIndex = g.graph.CalculateBeatRow()
 
-    g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatInfos length=%d", g.drum.Length, len(g.beatInfos))
+	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatInfos length=%d", g.drum.Length, len(g.beatInfos))
 
-    // Populate drumRow based on the beatInfos, clamping to drum length.
-    drumRow := make([]bool, g.drum.Length)
-    for i := 0; i < g.drum.Length; i++ {
-            if i < len(g.beatInfos) {
-                    drumRow[i] = g.beatInfos[i].NodeType == model.NodeTypeRegular
-            } else {
-                    drumRow[i] = false // Pad with empty steps if needed
-            }
-    }
+	drumRow := make([]bool, g.drum.Length)
+	for i := 0; i < g.drum.Length; i++ {
+		if i < len(g.beatInfos) {
+			drumRow[i] = g.beatInfos[i].NodeType == model.NodeTypeRegular
+		} else {
+			drumRow[i] = false
+		}
+	}
 
-    g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
-    g.drum.Rows[0].Steps = drumRow
+	g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
+	g.drum.Rows[0].Steps = drumRow
 }
 
 func (g *Game) addEdge(a, b *uiNode) {
@@ -479,6 +480,7 @@ func (g *Game) spawnPulse() {
 			fromBeatInfo: fromBeatInfo,
 			toBeatInfo:   toBeatInfo,
 			pathIdx:      1, // Start at index 1, as we've already processed index 0.
+			lastIdx:      0,
 			from:         g.nodeByID(fromBeatInfo.NodeID),
 			to:           g.nodeByID(toBeatInfo.NodeID),
 		}
@@ -516,7 +518,7 @@ func (g *Game) Update() error {
 		g.activePulse.t += g.activePulse.speed
 		if g.activePulse.t >= 1 {
 			// Clear highlight for the beat we just left
-			prevIdx := g.activePulse.pathIdx - 1
+			prevIdx := g.activePulse.lastIdx
 			delete(g.highlightedBeats, prevIdx)
 			g.logger.Debugf("[GAME] Cleared highlight for beat index %d. highlightedBeats: %v", prevIdx, g.highlightedBeats)
 
@@ -751,6 +753,7 @@ func (g *Game) advancePulse(p *pulse) bool {
 
 	g.logger.Debugf("[GAME] advancePulse: Highlighting beat index %d. Type: %v, ID: %v", arrivalPathIdx, arrivalBeatInfo.NodeType, arrivalBeatInfo.NodeID)
 	g.highlightBeat(arrivalPathIdx, beatDuration)
+	p.lastIdx = arrivalPathIdx
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++
