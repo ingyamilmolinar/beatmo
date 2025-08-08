@@ -22,7 +22,8 @@ func main() {
 	// Optional window settings (not used in WASM, but for desktop builds)
 	ebiten.SetWindowSize(1280, 720)
 	ebiten.SetWindowTitle("Tunkul - Node Music Game")
-	ebiten.SetMaxTPS(4) // Set to 4 ticks per second (3-4x original)
+	// Run as fast as possible for smoother gameplay
+	ebiten.SetMaxTPS(0)
 
 	// Run the game. On WASM, this will create a <canvas> in index.html
 	if err := ebiten.RunGame(g); err != nil {

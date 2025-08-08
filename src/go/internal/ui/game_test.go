@@ -4,7 +4,6 @@ import (
 	"math"
 	"os"
 	"testing"
-	
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -50,6 +49,21 @@ func TestAddEdgeNoDuplicates(t *testing.T) {
 	g.addEdge(a, b)
 	if len(g.edges) != 1 {
 		t.Fatalf("expected 1 edge, got %d", len(g.edges))
+	}
+}
+
+func TestAddRegularNodeOverInvisible(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// Create an invisible node via an edge and then upgrade it
+	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	b := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(a, b) // introduces an invisible node at (1,0)
+
+	n := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	if node, ok := g.graph.GetNodeByID(n.ID); !ok || node.Type != model.NodeTypeRegular {
+		t.Fatalf("expected node at (1,0) to be regular after upgrade")
 	}
 }
 
@@ -210,6 +224,41 @@ func TestPulseAnimationProgress(t *testing.T) {
 	// The animation time 't' should have progressed
 	if g.activePulse.t <= firstT {
 		t.Fatalf("active pulse did not advance: %f <= %f", g.activePulse.t, firstT)
+	}
+}
+
+func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n2) // introduces an invisible node at (1,0)
+
+	var plays []string
+	orig := playSound
+	playSound = func(id string, when float64) { plays = append(plays, id) }
+	defer func() { playSound = orig }()
+
+	g.playing = true
+	g.spawnPulse() // highlights start node
+
+	if len(plays) != 1 {
+		t.Fatalf("expected 1 sample for start node, got %d", len(plays))
+	}
+
+	// Force pulse to reach invisible node; no new sample expected
+	g.activePulse.t = 1
+	g.Update()
+	if len(plays) != 1 {
+		t.Fatalf("expected no sample for invisible node, got %d", len(plays))
+	}
+
+	// Advance to final regular node; another sample expected
+	g.activePulse.t = 1
+	g.Update()
+	if len(plays) != 2 {
+		t.Fatalf("expected 2 samples after reaching second node, got %d", len(plays))
 	}
 }
 
@@ -481,27 +530,27 @@ func TestSplitterDragDoesNotCreateNode(t *testing.T) {
 }
 
 func TestStartNodeSelection(t *testing.T) {
-       g := New(testLogger)
-       g.Layout(640, 480)
-       n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-       if g.start != n1 || !n1.Start {
-               t.Fatalf("first node should be start")
-       }
-       n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
-       g.sel = n2
-       restore := SetInputForTest(
-               func() (int, int) { return 0, topOffset + 10 },
-               func(ebiten.MouseButton) bool { return false },
-               func(k ebiten.Key) bool { return k == ebiten.KeyS },
-               func() []rune { return nil },
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	if g.start != n1 || !n1.Start {
+		t.Fatalf("first node should be start")
+	}
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.sel = n2
+	restore := SetInputForTest(
+		func() (int, int) { return 0, topOffset + 10 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyS },
+		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 640, 480 },
-       )
-       defer restore()
-       g.Update()
-       if g.start != n2 || !n2.Start || n1.Start {
-               t.Fatalf("start node not updated")
-       }
+	)
+	defer restore()
+	g.Update()
+	if g.start != n2 || !n2.Start || n1.Start {
+		t.Fatalf("start node not updated")
+	}
 	g.graph.StartNodeID = n2.ID
 }
 
@@ -528,41 +577,31 @@ func TestHighlightEmptyCells(t *testing.T) {
 
 	g.playing = true
 	g.sched.Start()
-
-	// Set playing to true and spawn the pulse
-	g.playing = true
 	g.spawnPulse()
 
-	// Tick 0: Should highlight n1 (index 0)
-	for g.activePulse == nil || g.activePulse.pathIdx == 0 || g.activePulse.t < 1 {
-		g.Update()
-	}
-	if _, ok := g.highlightedNodes[n1.ID]; !ok {
-		t.Errorf("Tick 0: Node n1 should be highlighted")
+	if _, ok := g.highlightedBeats[0]; !ok {
+		t.Errorf("Tick 0: Beat at index 0 should be highlighted")
 	}
 
-	// Tick 1: Should highlight the first empty cell (index 1)
-	for g.activePulse.pathIdx == 1 && g.activePulse.t < 1 {
+	for g.activePulse != nil && g.activePulse.pathIdx < 2 {
 		g.Update()
 	}
-	if _, ok := g.drum.highlightedEmptyBeats[1]; !ok {
-		t.Errorf("Tick 1: Empty cell at index 1 should be highlighted")
+	if _, ok := g.highlightedBeats[1]; !ok {
+		t.Errorf("Tick 1: Beat at index 1 should be highlighted")
 	}
 
-	// Tick 2: Should highlight the second empty cell (index 2)
-	for g.activePulse.pathIdx == 2 && g.activePulse.t < 1 {
+	for g.activePulse != nil && g.activePulse.pathIdx < 3 {
 		g.Update()
 	}
-	if _, ok := g.drum.highlightedEmptyBeats[2]; !ok {
-		t.Errorf("Tick 2: Empty cell at index 2 should be highlighted")
+	if _, ok := g.highlightedBeats[2]; !ok {
+		t.Errorf("Tick 2: Beat at index 2 should be highlighted")
 	}
 
-	// Tick 3: Should highlight n2 (index 3)
-	for g.activePulse.pathIdx == 3 && g.activePulse.t < 1 {
+	for g.activePulse != nil && g.activePulse.pathIdx < 4 {
 		g.Update()
 	}
-	if _, ok := g.highlightedNodes[n2.ID]; !ok {
-		t.Errorf("Tick 3: Node n2 should be highlighted")
+	if _, ok := g.highlightedBeats[3]; !ok {
+		t.Errorf("Tick 3: Beat at index 3 should be highlighted")
 	}
 }
 
@@ -826,36 +865,26 @@ func TestSignalTraversalInLoop(t *testing.T) {
 
 	// Advance the pulse and check its path
 	maxIterations := len(expectedNodeIDs) * 100 // Safety break for infinite loops
-	for i := 0; i < len(expectedNodeIDs); i++ {
-		t.Logf("Test Loop: Iteration %d. Expected Node ID: %d", i, expectedNodeIDs[i])
-		// Simulate enough frames for the pulse to advance to the next beat
+	for step := 0; step < len(expectedNodeIDs)-1; step++ {
+		if g.activePulse == nil {
+			t.Fatalf("Pulse ended prematurely at step %d", step)
+		}
+		if g.activePulse.fromBeatInfo.NodeID != expectedNodeIDs[step] {
+			t.Errorf("Step %d: Expected NodeID %d, got %d (fromBeatInfo)", step, expectedNodeIDs[step], g.activePulse.fromBeatInfo.NodeID)
+		}
+		if g.activePulse.toBeatInfo.NodeID != expectedNodeIDs[step+1] {
+			t.Errorf("Step %d: Expected next NodeID %d, got %d (toBeatInfo)", step, expectedNodeIDs[step+1], g.activePulse.toBeatInfo.NodeID)
+		}
+
+		startIdx := g.activePulse.pathIdx
 		frameCounter := 0
-		for g.activePulse != nil && g.activePulse.t < 1 && frameCounter < maxIterations {
+		for g.activePulse != nil && g.activePulse.pathIdx == startIdx && frameCounter < maxIterations {
 			g.Update()
 			frameCounter++
-			t.Logf("  Inside inner loop: activePulse.t=%.2f, activePulse.pathIdx=%d, frameCounter=%d", g.activePulse.t, g.activePulse.pathIdx, frameCounter)
+			t.Logf("  Inside inner loop: pathIdx=%d, t=%.2f, frameCounter=%d", g.activePulse.pathIdx, g.activePulse.t, frameCounter)
 		}
 		if frameCounter >= maxIterations {
-			t.Fatalf("Inner loop exceeded max iterations (%d) at step %d, possible infinite loop. activePulse.t=%.2f, activePulse.pathIdx=%d", maxIterations, i, g.activePulse.t, g.activePulse.pathIdx)
-		}
-
-		if g.activePulse == nil {
-			if i < len(expectedNodeIDs)-1 {
-				t.Fatalf("Pulse ended prematurely at step %d", i)
-			}
-			break // Pulse has naturally ended
-		}
-
-		// The fromBeatInfo of the pulse should correspond to the expected node ID at the current step
-		if g.activePulse.fromBeatInfo.NodeID != expectedNodeIDs[i] {
-			t.Errorf("Step %d: Expected NodeID %d, got %d (fromBeatInfo)", i, expectedNodeIDs[i], g.activePulse.fromBeatInfo.NodeID)
-		}
-
-		// For all but the last step, check the toBeatInfo as well
-		if i < len(expectedNodeIDs)-1 {
-			if g.activePulse.toBeatInfo.NodeID != expectedNodeIDs[i+1] {
-				t.Errorf("Step %d: Expected next NodeID %d, got %d (toBeatInfo)", i, expectedNodeIDs[i+1], g.activePulse.toBeatInfo.NodeID)
-			}
+			t.Fatalf("Inner loop exceeded max iterations (%d) at step %d, possible infinite loop. pathIdx=%d", maxIterations, step, g.activePulse.pathIdx)
 		}
 	}
 }
