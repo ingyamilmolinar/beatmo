@@ -147,7 +147,7 @@ func TestDrumViewLooping(t *testing.T) {
 	game := &Game{graph: graph, drum: drumView, logger: logger}
 	game.updateBeatInfos()
 
-	expectedSteps := []bool{true, true, true, true, true, true, true, true, true, true}
+        expectedSteps := []bool{true, true, true, true, true, false, false, false, false, false}
 	t.Logf("Generated drum row: %v", drumView.Rows[0].Steps)
 	if len(drumView.Rows[0].Steps) != len(expectedSteps) {
 		t.Fatalf("Expected %d steps, but got %d", len(expectedSteps), len(drumView.Rows[0].Steps))

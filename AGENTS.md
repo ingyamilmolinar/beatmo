@@ -1,4 +1,5 @@
 # Project Guidelines
+- **Before running any commands, execute `sudo make dependencies`** to install all required system and Node packages. This may take several minutes but prevents environment-related failures.
 - Use Go 1.23.x as specified in `go.mod`.
 - **Run the unit tests before opening a PR.** Use the stubbed Ebiten API via
   `go test -tags test -modfile=go.test.mod -timeout 1s ./...` for maximum portability.

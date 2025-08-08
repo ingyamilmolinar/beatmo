@@ -739,58 +739,73 @@ func TestHighlightEmptyCells(t *testing.T) {
 	}
 }
 
-func TestDrumViewLengthIndependence(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(640, 480)
+func TestBeatInfosNotTrimmedByDrumLength(t *testing.T) {
+        g := New(testLogger)
+        g.Layout(640, 480)
 
-	// Add some nodes and edges
-	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+        n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+        n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+        n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+        g.addEdge(n0, n1)
+        g.addEdge(n1, n2)
 
-	g.addEdge(n0, n1)
+        g.start = n0
+        g.graph.StartNodeID = n0.ID
 
-	// Set start node
-	g.start = n0
-	g.graph.StartNodeID = n0.ID
+        g.drum.Length = 1
+        g.updateBeatInfos()
+        // Shrink the drum view again without recomputing beatInfos
+        g.drum.Length = 1
+        g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
 
-	// Set drum view length to something different than the actual path length
-	g.drum.Length = 8
+        if len(g.beatInfos) <= g.drum.Length {
+                t.Fatalf("expected beatInfos length > drum length, got %d <= %d", len(g.beatInfos), g.drum.Length)
+        }
 
-	g.updateBeatInfos()
+        if g.beatInfos[0].NodeID != n0.ID || g.beatInfos[1].NodeID != n1.ID || g.beatInfos[2].NodeID != n2.ID {
+                t.Errorf("unexpected beatInfos sequence: %v", g.beatInfos)
+        }
+}
 
-	// The beatInfos should now be padded to the drum.Length
-	if len(g.beatInfos) != g.drum.Length {
-		t.Errorf("Expected beatInfos length to be %d, got %d", g.drum.Length, len(g.beatInfos))
-	}
+func TestPulseTraversalIgnoresDrumLength(t *testing.T) {
+        g := New(testLogger)
+        g.Layout(640, 480)
 
-	// Verify the first few steps based on the connected nodes
-	if g.beatInfos[0].NodeID != n0.ID || g.beatInfos[1].NodeID != n1.ID {
-		t.Errorf("Expected beatInfos to start with n0 and n1, got %v", g.beatInfos)
-	}
+        n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+        n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+        n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+        g.addEdge(n0, n1)
+        g.addEdge(n1, n2)
 
-	// Verify the remaining steps are InvalidNodeID (padded)
-	for i := 2; i < g.drum.Length; i++ {
-		if g.beatInfos[i].NodeID != model.InvalidNodeID {
-			t.Errorf("Expected beatInfos[%d] to be InvalidNodeID, got %v", i, g.beatInfos[i].NodeID)
-		}
-	}
+        g.start = n0
+        g.graph.StartNodeID = n0.ID
 
-	// The drum view steps should also reflect the padded length
-	if len(g.drum.Rows[0].Steps) != g.drum.Length {
-		t.Errorf("Expected drum view steps length to be %d, got %d", g.drum.Length, len(g.drum.Rows[0].Steps))
-	}
+        g.drum.Length = 1
+        g.updateBeatInfos()
+        // Shrink drum view again without affecting beatInfos
+        g.drum.Length = 1
+        g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
 
-	if !g.drum.Rows[0].Steps[0] {
-		t.Errorf("Expected drum view step 0 to be true, got false")
-	}
-	if !g.drum.Rows[0].Steps[1] {
-		t.Errorf("Expected drum view step 1 to be true, got false")
-	}
-	for i := 2; i < g.drum.Length; i++ {
-		if g.drum.Rows[0].Steps[i] {
-			t.Errorf("Expected drum view step %d to be false (padded), got true", i)
-		}
-	}
+        g.playing = true
+        g.spawnPulse()
+
+        if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n1.ID {
+                t.Fatalf("expected pulse heading to second node")
+        }
+
+        // Force pulse to reach second node; it should then move toward third.
+        g.activePulse.t = 1
+        g.Update()
+        if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n2.ID {
+                t.Fatalf("expected pulse to continue to third node, got %+v", g.activePulse)
+        }
+
+        // Reach final node; pulse should stop without restarting at origin.
+        g.activePulse.t = 1
+        g.Update()
+        if g.activePulse != nil {
+                t.Fatalf("expected pulse to stop after last node, but it continued")
+        }
 }
 
 func TestDrumViewLoopingWithInvisibleNodes(t *testing.T) {
@@ -955,23 +970,18 @@ func TestSignalTraversalInLoop(t *testing.T) {
 	g.addEdge(n5, n6)
 	g.addEdge(n6, n3) // Loop back to n3
 
-	g.drum.Length = 11 // Set drum length to match the expected path length
+        g.drum.Length = 11 // Drum view longer than path
 	g.updateBeatInfos()
 
 	// Expected sequence of node IDs for the pulse traversal
-	expectedNodeIDs := []model.NodeID{
-		n1.ID,     // 0
-		n_inv1.ID, // 1
-		n3.ID,     // 2
-		n4.ID,     // 3
-		n5.ID,     // 4
-		n6.ID,     // 5
-		n3.ID,     // 6 (loop starts here)
-		n4.ID,     // 7
-		n5.ID,     // 8
-		n6.ID,     // 9
-		n3.ID,     // 10
-	}
+        expectedNodeIDs := []model.NodeID{
+                n1.ID,
+                n_inv1.ID,
+                n3.ID,
+                n4.ID,
+                n5.ID,
+                n6.ID,
+        }
 
 	t.Logf("Expected Node IDs: %v", expectedNodeIDs)
 	actualNodeIDs := []model.NodeID{}

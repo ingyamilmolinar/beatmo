@@ -225,8 +225,8 @@ func (g *Game) deleteNode(n *uiNode) {
 func (g *Game) updateBeatInfos() {
 	// Estimate the full path length by allowing traversal across all nodes
 	// without early trimming. Use the number of nodes as an upper bound.
-	g.graph.SetBeatLength(int(g.graph.Next))
-	fullBeatRow, _, _ := g.graph.CalculateBeatRow()
+    g.graph.SetBeatLength(int(g.graph.Next))
+    fullBeatRow, isLoop, loopStartIndex := g.graph.CalculateBeatRow()
 
 	baseLen := 0
 	for _, b := range fullBeatRow {
@@ -236,32 +236,29 @@ func (g *Game) updateBeatInfos() {
 		baseLen++
 	}
 
-	if baseLen > g.drum.Length {
-		g.drum.Length = baseLen
-	}
+    if baseLen > g.drum.Length {
+            g.drum.Length = baseLen
+    }
 
-	// Recalculate using the final drum length so the graph pads or trims appropriately.
-	g.graph.SetBeatLength(g.drum.Length)
-	graphBeatRow, isLoop, loopStartIndex := g.graph.CalculateBeatRow()
+    // Use the fullBeatRow for traversal regardless of drum length.
+    g.beatInfos = fullBeatRow
+    g.isLoop = isLoop
+    g.loopStartIndex = loopStartIndex
 
-	g.beatInfos = graphBeatRow
-	g.isLoop = isLoop
-	g.loopStartIndex = loopStartIndex
+    g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatInfos length=%d", g.drum.Length, len(g.beatInfos))
 
-	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, graphBeatRow length=%d, beatInfos=%v", g.drum.Length, len(graphBeatRow), g.beatInfos)
+    // Populate drumRow based on the beatInfos, clamping to drum length.
+    drumRow := make([]bool, g.drum.Length)
+    for i := 0; i < g.drum.Length; i++ {
+            if i < len(g.beatInfos) {
+                    drumRow[i] = g.beatInfos[i].NodeType == model.NodeTypeRegular
+            } else {
+                    drumRow[i] = false // Pad with empty steps if needed
+            }
+    }
 
-	// Populate drumRow based on the final beatInfos
-	drumRow := make([]bool, g.drum.Length)
-	for i := 0; i < g.drum.Length; i++ {
-		if i < len(g.beatInfos) {
-			drumRow[i] = g.beatInfos[i].NodeType == model.NodeTypeRegular
-		} else {
-			drumRow[i] = false // Pad with empty steps if needed
-		}
-	}
-
-	g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
-	g.drum.Rows[0].Steps = drumRow
+    g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
+    g.drum.Rows[0].Steps = drumRow
 }
 
 func (g *Game) addEdge(a, b *uiNode) {
