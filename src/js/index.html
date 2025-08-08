@@ -8,9 +8,9 @@
   </style>
 </head>
 <body>
-  <script type="module" src="audio.js"></script>
   <script src="wasm_exec.js"></script>
-  <script>
+  <script type="module">
+    import "./audio.js";
     const go = new Go(); // from wasm_exec.js
     WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(result => {
       go.run(result.instance);
