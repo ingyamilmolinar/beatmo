@@ -230,8 +230,8 @@ func (g *Game) deleteNode(n *uiNode) {
 func (g *Game) updateBeatInfos() {
 	// Traverse the graph once to capture the full path regardless of the
 	// current drum view length.
-        // NodeID has underlying type int; cast is safe for beat-length updates.
-        g.graph.SetBeatLength(int(g.graph.Next))
+	// NodeID has underlying type int; cast is safe for beat-length updates.
+	g.graph.SetBeatLength(int(g.graph.Next))
 	fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRow()
 
 	baseLen := 0
@@ -250,30 +250,41 @@ func (g *Game) updateBeatInfos() {
 		g.drum.Length = baseLen
 	}
 
-	// Prepare beat infos for the drum view by repeating the loop segment as
-	// needed, without affecting the underlying traversal path.
-	g.drumBeatInfos = make([]model.BeatInfo, g.drum.Length)
-	loopLen := len(g.beatInfos) - g.loopStartIndex
-	for i := 0; i < g.drum.Length; i++ {
-		if i < len(g.beatInfos) {
-			g.drumBeatInfos[i] = g.beatInfos[i]
-		} else if g.isLoop && loopLen > 0 && i >= g.loopStartIndex {
-			idx := g.loopStartIndex + (i-g.loopStartIndex)%loopLen
-			g.drumBeatInfos[i] = g.beatInfos[idx]
-		} else {
-			g.drumBeatInfos[i] = model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
-		}
-	}
-
 	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))
 
+	g.drum.Offset = 0
+	g.refreshDrumRow()
+}
+
+func (g *Game) beatInfoAt(idx int) model.BeatInfo {
+	if len(g.beatInfos) == 0 {
+		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+	}
+	if idx < len(g.beatInfos) {
+		return g.beatInfos[idx]
+	}
+	if !g.isLoop {
+		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+	}
+	loopLen := len(g.beatInfos) - g.loopStartIndex
+	if loopLen <= 0 {
+		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+	}
+	idx = g.loopStartIndex + (idx-g.loopStartIndex)%loopLen
+	return g.beatInfos[idx]
+}
+
+func (g *Game) refreshDrumRow() {
+	g.drumBeatInfos = make([]model.BeatInfo, g.drum.Length)
+	for i := 0; i < g.drum.Length; i++ {
+		g.drumBeatInfos[i] = g.beatInfoAt(g.drum.Offset + i)
+	}
 	drumRow := make([]bool, g.drum.Length)
 	for i := range drumRow {
 		drumRow[i] = g.drumBeatInfos[i].NodeType == model.NodeTypeRegular
 	}
-
-	g.logger.Debugf("[GAME] updateBeatInfos: final drumRow=%v", drumRow)
 	g.drum.Rows[0].Steps = drumRow
+	g.logger.Debugf("[GAME] refreshDrumRow: offset=%d row=%v", g.drum.Offset, drumRow)
 }
 
 func (g *Game) addEdge(a, b *uiNode) {
@@ -510,14 +521,15 @@ func (g *Game) spawnPulse() {
 /* ─────────────── Update & tick ────────────────────────────────────────── */
 
 func (g *Game) Update() error {
-        g.logger.Debugf("[GAME] Update start: frame=%d playing=%t bpm=%d currentStep=%d", g.frame, g.playing, g.bpm, g.currentStep)
+	g.logger.Debugf("[GAME] Update start: frame=%d playing=%t bpm=%d currentStep=%d", g.frame, g.playing, g.bpm, g.currentStep)
 	// splitter
 	g.split.Update()
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 
 	// camera pan only when not dragging link or splitter
+	mx, my := cursorPosition()
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
-	panOK := !g.linkDrag.active && !g.split.dragging && !shift
+	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds)
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 	drag := g.cam.HandleMouse(panOK)
 	g.camDragging = drag
@@ -557,6 +569,9 @@ func (g *Game) Update() error {
 	prevPlaying := g.playing
 	prevLen := g.drum.Length
 	g.drum.Update()
+	if g.drum.OffsetChanged() {
+		g.refreshDrumRow()
+	}
 
 	if g.drum.PlayPressed() {
 		g.playing = true
@@ -687,7 +702,13 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos)
+	vis := map[int]int64{}
+	for idx, fr := range g.highlightedBeats {
+		if idx >= g.drum.Offset && idx < g.drum.Offset+g.drum.Length {
+			vis[idx-g.drum.Offset] = fr
+		}
+	}
+	g.drum.Draw(dst, vis, g.frame, g.drumBeatInfos)
 }
 
 func (g *Game) rootNode() *uiNode {
@@ -794,17 +815,17 @@ func (g *Game) advancePulse(p *pulse) bool {
 	g.logger.Debugf("[GAME] advancePulse: Incremented pathIdx to %d. beatPath length: %d", p.pathIdx, len(g.beatInfos))
 
 	// Set up the next segment of the pulse's journey.
-        prevIdx := p.pathIdx - 1
-        if prevIdx < 0 {
-                if g.isLoop {
-                        prevIdx = len(g.beatInfos) - 1
-                } else {
-                        g.logger.Warnf("[GAME] advancePulse: prevIdx < 0 in non-looping mode. Stopping pulse.")
-                        return false
-                }
-        }
-        g.logger.Debugf("[GAME] advancePulse: Selecting next segment prevIdx=%d, pathIdx=%d", prevIdx, p.pathIdx)
-        p.fromBeatInfo = g.beatInfos[prevIdx]
+	prevIdx := p.pathIdx - 1
+	if prevIdx < 0 {
+		if g.isLoop {
+			prevIdx = len(g.beatInfos) - 1
+		} else {
+			g.logger.Warnf("[GAME] advancePulse: prevIdx < 0 in non-looping mode. Stopping pulse.")
+			return false
+		}
+	}
+	g.logger.Debugf("[GAME] advancePulse: Selecting next segment prevIdx=%d, pathIdx=%d", prevIdx, p.pathIdx)
+	p.fromBeatInfo = g.beatInfos[prevIdx]
 	p.toBeatInfo = g.beatInfos[p.pathIdx]
 	p.from = g.nodeByID(p.fromBeatInfo.NodeID)
 	p.to = g.nodeByID(p.toBeatInfo.NodeID)

@@ -47,6 +47,13 @@ type DrumView struct {
 	Length        int  // Length of the drum view, independent of graph
 	lenIncPressed bool // New state for length increase button
 	lenDecPressed bool // New state for length decrease button
+
+	// window scrolling
+	Offset        int // index of first visible beat
+	dragging      bool
+	dragStartX    int
+	startOffset   int
+	offsetChanged bool
 }
 
 /* ─── geometry helpers ─────────────────────────────────────── */
@@ -80,6 +87,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		Length:        8, // Default length
 		lenIncPressed: false,
 		lenDecPressed: false,
+		Offset:        0,
 	}
 	dv.Rows = []*DrumRow{{Name: "H", Steps: make([]bool, dv.Length)}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
@@ -133,6 +141,14 @@ func (dv *DrumView) BPM() int {
 	return dv.bpm
 }
 
+func (dv *DrumView) OffsetChanged() bool {
+	if dv.offsetChanged {
+		dv.offsetChanged = false
+		return true
+	}
+	return false
+}
+
 func (dv *DrumView) Update() {
 	if len(dv.Rows) == 0 {
 		return
@@ -142,9 +158,11 @@ func (dv *DrumView) Update() {
 	dv.calcLayout()
 
 	mx, my := cursorPosition()
+	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
+	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+380, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Max.Y)
 
-	/* ——— widget clicks ——— */
-	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
+	/* ——— widget clicks & dragging ——— */
+	if left {
 		switch {
 		case pt(mx, my, dv.playBtn):
 			dv.playPressed = true
@@ -164,10 +182,31 @@ func (dv *DrumView) Update() {
 			dv.lenDecPressed = true
 			dv.logger.Infof("[DRUMVIEW] Length decrease button pressed.")
 		default:
-			if dv.focusBPM {
+			if pt(mx, my, stepsRect) {
+				if !dv.dragging {
+					dv.dragging = true
+					dv.dragStartX = mx
+					dv.startOffset = dv.Offset
+				}
+			} else if dv.focusBPM {
 				dv.focusBPM = false
 				dv.logger.Debugf("[DRUMVIEW] Clicked outside BPM box. focusingBPM: %t", dv.focusBPM)
 			}
+		}
+	} else {
+		dv.dragging = false
+	}
+
+	if dv.dragging {
+		delta := (dv.dragStartX - mx) / dv.cell
+		newOffset := dv.startOffset + delta
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		if newOffset != dv.Offset {
+			dv.Offset = newOffset
+			dv.offsetChanged = true
+			dv.logger.Debugf("[DRUMVIEW] Dragging: offset=%d", dv.Offset)
 		}
 	}
 
