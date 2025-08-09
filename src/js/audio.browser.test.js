@@ -104,8 +104,8 @@ if (first < 0 || second < 0) {
 }
 
 const delay = firstSampleTime - playTime;
-if (delay > 1000) {
-  throw new Error(`audio start delay ${delay}ms exceeds 1000ms`);
+if (delay > 100) {
+  throw new Error(`audio start delay ${delay}ms exceeds 100ms`);
 }
 
 console.log('captured audio samples:', samples.slice(0, 8).map(v => v.toFixed(5)));

@@ -10,14 +10,15 @@ serve:
 run:
 	cd src/go; go run ./cmd/tunkul.go $(RUN_ARGS)
 
-test-mock:
+test:
 	cd src/go; go test -tags test -modfile=go.test.mod -timeout 1s ./...
+	cd src/go; go test -timeout 1s ./internal/audio
+
 
 test-real:
 	cd src/go; go test -timeout 1s ./...
+	cd src/go; go test -timeout 1s ./internal/audio
 
-test:
-	$(MAKE) test-mock
 
 test-xvfb:
 	cd src/go; xvfb-run go test -tags test -timeout 1s ./...

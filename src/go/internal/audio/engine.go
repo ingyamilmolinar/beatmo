@@ -42,6 +42,7 @@ func Register(id string, inst Instrument) {
 
 func init() {
 	Register("snare", Snare{})
+	once.Do(initContext)
 }
 
 func initContext() {
@@ -65,6 +66,7 @@ func Play(id string, when ...float64) {
 	if ctx == nil {
 		return
 	}
+	_ = ctx.Resume()
 	delay := 0
 	if len(when) > 0 {
 		d := when[0] - Now()
@@ -85,6 +87,14 @@ func Reset() {
 	once = sync.Once{}
 }
 
+// Resume attempts to resume the underlying audio context.
+func Resume() {
+	once.Do(initContext)
+	if ctx != nil {
+		_ = ctx.Resume()
+	}
+}
+
 // SetBPM updates the global tempo used when constructing new voices.
 func SetBPM(b int) { bpm = b }
 
@@ -103,8 +113,10 @@ type voiceState struct {
 
 func newMixer(c *oto.Context) *mixer {
 	m := &mixer{}
-	m.player = c.NewPlayer(m)
-	m.player.Play()
+	p := c.NewPlayer(m)
+	p.SetBufferSize(sampleRate / 100 * 2)
+	p.Play()
+	m.player = p
 	return m
 }
 
