@@ -12,17 +12,22 @@ import (
 
 func main() {
 	logLevel := flag.String("log", "DEBUG", "Log level (DEBUG, INFO, ERROR, NONE)")
+	demo := flag.Bool("demo", false, "run a demo circuit and exit")
 	flag.Parse()
 
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
 
 	// Create an instance of our game
 	g := ui.New(logger)
+	if *demo {
+		g.RunDemo()
+	}
 
 	// Optional window settings (not used in WASM, but for desktop builds)
 	ebiten.SetWindowSize(1280, 720)
 	ebiten.SetWindowTitle("Tunkul - Node Music Game")
-	ebiten.SetMaxTPS(4) // Set to 4 ticks per second (3-4x original)
+	// Run as fast as possible for smoother gameplay
+	ebiten.SetTPS(ebiten.SyncWithFPS)
 
 	// Run the game. On WASM, this will create a <canvas> in index.html
 	if err := ebiten.RunGame(g); err != nil {

@@ -4,17 +4,16 @@ Tunkul is a grid based sequencer written in Go using Ebiten. Nodes placed on the
 form a graph that drives the drum machine in the bottom pane. The project can run
 as a desktop app or compile to WebAssembly.
 
-## Environment setup for native Ebiten
-If you want to build or run tests with the real Ebiten library, install the
-required system packages first. A helper script is provided:
+## Environment setup
+Install system packages and Node dependencies needed for the real Ebiten
+library and Chromium tests:
 
 ```sh
-and OpenGL libraries via `apt` (including `libxxf86vm-dev`). After running it you
-can build normally using `make wasm`.
+sudo make dependencies
+```
 
-The UI and game layers emit verbose logs describing user interactions and
-Enable the optional pre-commit hook so every commit formats the code, runs the
-tests with the stubbed Ebiten module and builds the wasm binary:
+The script installs X11, ALSA and OpenGL libraries as well as runs `npm ci` and
+`npx playwright install --with-deps chromium` so browser tests can run.
 
 ## Testing
 Unit tests can run in two modes. Using the stubbed Ebiten API requires the

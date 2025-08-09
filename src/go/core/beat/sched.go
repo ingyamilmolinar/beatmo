@@ -24,17 +24,15 @@ func NewScheduler() *Scheduler {
 	}
 }
 
+func (s *Scheduler) SetBPM(bpm int) {
+	s.BPM = bpm
+}
+
 func (s *Scheduler) Start() {
 	s.running = true
 	s.last = time.Time{}
 	s.currentStep = 0
 	log.Printf("[SCHEDULER] Started")
-
-	// Fire the first beat immediately if BPM is set
-	if s.BPM > 0 && s.OnTick != nil {
-		s.OnTick(s.currentStep)
-		s.currentStep = (s.currentStep + 1) % s.BeatLength
-	}
 }
 
 func (s *Scheduler) Stop() {
@@ -52,18 +50,15 @@ func (s *Scheduler) Tick() {
 	now := s.now()
 
 	if s.last.IsZero() {
-		s.last = now
+		// Fire immediately on the first call
+		s.last = now.Add(-spb)
 	}
 
-	if now.Sub(s.last) < spb {
-		return
+	for now.Sub(s.last) >= spb {
+		s.last = s.last.Add(spb)
+		if s.OnTick != nil {
+			s.OnTick(s.currentStep)
+		}
+		s.currentStep = (s.currentStep + 1) % s.BeatLength
 	}
-
-	s.last = now
-
-	if s.OnTick != nil {
-		s.OnTick(s.currentStep)
-	}
-
-	s.currentStep = (s.currentStep + 1) % s.BeatLength
 }

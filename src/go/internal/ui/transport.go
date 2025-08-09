@@ -73,15 +73,15 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 	ebitenutil.DebugPrintAt(dst, "BPM:", 10, 12)
 
 	// box outline
-	drawRect(dst, t.boxRect, color.White)
+	drawRect(dst, t.boxRect, color.White, false)
 	ebitenutil.DebugPrintAt(dst,
 		fmt.Sprintf("%d", t.BPM),
 		t.boxRect.Min.X+4, t.boxRect.Min.Y+4)
 
 	// play / stop squares
-	drawRect(dst, t.playRect, color.White)
+	drawRect(dst, t.playRect, color.White, t.Playing)
 	ebitenutil.DebugPrintAt(dst, "▶", t.playRect.Min.X+6, t.playRect.Min.Y+3)
 
-	drawRect(dst, t.stopRect, color.White)
+	drawRect(dst, t.stopRect, color.White, !t.Playing)
 	ebitenutil.DebugPrintAt(dst, "■", t.stopRect.Min.X+6, t.stopRect.Min.Y+3)
 }

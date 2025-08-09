@@ -42,26 +42,31 @@ func (c *Camera) GeoMRounded() ebiten.GeoM {
 }
 
 // HandleMouse mutates Scale / Offset by reading Ebiten’s mouse state.
+// When allowPan is false (e.g. cursor over drum view) the camera ignores
+// both wheel zoom and dragging so drum interactions don’t affect the grid.
 func (c *Camera) HandleMouse(allowPan bool) bool {
-	_, wheelY := wheel() // we don’t need wheelX yet
-	if wheelY != 0 {
-		if wheelY > 0 {
-			c.Scale *= 1.1
-		} else {
-			c.Scale *= 0.9
-		}
-	}
 	dragging := false
-	if allowPan && isMouseButtonPressed(ebiten.MouseButtonLeft) {
-		x, y := cursorPosition()
-		if last, ok := prevMousePos(); ok {
-			if x != last.x || y != last.y {
-				c.OffsetX += float64(x - last.x)
-				c.OffsetY += float64(y - last.y)
-				dragging = true
+	if allowPan {
+		if _, wheelY := wheel(); wheelY != 0 {
+			if wheelY > 0 {
+				c.Scale *= 1.1
+			} else {
+				c.Scale *= 0.9
 			}
 		}
-		markMousePos(x, y)
+		if isMouseButtonPressed(ebiten.MouseButtonLeft) {
+			x, y := cursorPosition()
+			if last, ok := prevMousePos(); ok {
+				if x != last.x || y != last.y {
+					c.OffsetX += float64(x - last.x)
+					c.OffsetY += float64(y - last.y)
+					dragging = true
+				}
+			}
+			markMousePos(x, y)
+		} else {
+			clearMousePos()
+		}
 	} else {
 		clearMousePos()
 	}
