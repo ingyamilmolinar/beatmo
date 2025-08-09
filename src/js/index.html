@@ -9,13 +9,14 @@
 </head>
 <body>
   <script src="wasm_exec.js"></script>
-  <script type="module">
-    import "./audio.js";
+  <script>
     const go = new Go(); // from wasm_exec.js
-    WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then(result => {
-      go.run(result.instance);
-      console.log("Tunkul WASM game started");
-    }).catch(err => console.error(err));
+    WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
+      .then(result => {
+        go.run(result.instance);
+        console.log("Tunkul WASM game started");
+      })
+      .catch(err => console.error(err));
   </script>
 </body>
 </html>
