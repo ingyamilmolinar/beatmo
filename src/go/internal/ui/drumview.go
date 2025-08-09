@@ -27,8 +27,9 @@ type DrumView struct {
 	Graph  *model.Graph
 	logger *game_log.Logger
 
-	cell   int // px per step
-	labelW int
+       cell        int // px per step
+       labelW      int
+       controlsW   int // width reserved for control buttons
 
 	bgDirty bool
 	bgCache []*ebiten.Image
@@ -114,19 +115,20 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 
 func (dv *DrumView) recalcButtons() {
 	// Implementation of recalcButtons
-	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)
-	dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50)
-	dv.bpmDecBtn = image.Rect(190, dv.Bounds.Min.Y+10, 230, dv.Bounds.Min.Y+50)
-	dv.bpmBox = image.Rect(235, dv.Bounds.Min.Y+10, 275, dv.Bounds.Min.Y+50)
-	dv.bpmIncBtn = image.Rect(280, dv.Bounds.Min.Y+10, 320, dv.Bounds.Min.Y+50)
-	dv.lenDecBtn = image.Rect(325, dv.Bounds.Min.Y+10, 365, dv.Bounds.Min.Y+50)
-	dv.lenIncBtn = image.Rect(370, dv.Bounds.Min.Y+10, 410, dv.Bounds.Min.Y+50)
+       dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)
+       dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50)
+       dv.bpmDecBtn = image.Rect(190, dv.Bounds.Min.Y+10, 230, dv.Bounds.Min.Y+50)
+       dv.bpmBox = image.Rect(235, dv.Bounds.Min.Y+10, 275, dv.Bounds.Min.Y+50)
+       dv.bpmIncBtn = image.Rect(280, dv.Bounds.Min.Y+10, 320, dv.Bounds.Min.Y+50)
+       dv.lenDecBtn = image.Rect(325, dv.Bounds.Min.Y+10, 365, dv.Bounds.Min.Y+50)
+       dv.lenIncBtn = image.Rect(370, dv.Bounds.Min.Y+10, 410, dv.Bounds.Min.Y+50)
+       dv.controlsW = dv.lenIncBtn.Max.X
 }
 
 func (dv *DrumView) calcLayout() {
-	if len(dv.Rows) > 0 {
-		dv.cell = (dv.Bounds.Dx() - dv.labelW - 410) / len(dv.Rows[0].Steps) // Leave space for buttons
-	}
+       if len(dv.Rows) > 0 {
+               dv.cell = (dv.Bounds.Dx() - dv.labelW - dv.controlsW) / len(dv.Rows[0].Steps) // Leave space for buttons
+       }
 }
 
 func (dv *DrumView) PlayPressed() bool {
@@ -167,7 +169,7 @@ func (dv *DrumView) Update() {
 
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
-	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+380, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Max.Y)
+       stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Max.Y)
 
 	// wheel zoom for length adjustment
 	if _, whY := wheel(); whY != 0 {
@@ -336,7 +338,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	for i, r := range dv.Rows {
 		y := dv.Bounds.Min.Y + i*dv.rowHeight()
 		for j, step := range r.Steps {
-			x := dv.Bounds.Min.X + dv.labelW + 410 + j*dv.cell // Adjusted for buttons
+                       x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell // Adjusted for buttons
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
 
 			// Highlighting logic

@@ -361,7 +361,12 @@ func TestBPMChangeUpdatesAudioStartAndBPM(t *testing.T) {
 	// stub audio functions
 	audioCalls := 0
 	lastWhen := []float64{}
-	playSound = func(id string, when ...float64) { audioCalls++; lastWhen = append(lastWhen, when[0]) }
+       playSound = func(id string, when ...float64) {
+               audioCalls++
+               if len(when) > 0 {
+                       lastWhen = append(lastWhen, when[0])
+               }
+       }
 	defer func() { playSound = audio.Play }()
 
 	g.playing = true

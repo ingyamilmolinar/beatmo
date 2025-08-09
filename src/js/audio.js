@@ -59,6 +59,7 @@ const AC = globalThis.AudioContext ||
 export let audioCtx = new AC();
 let bpm = 120;
 const plugins = {};
+const SCHEDULE_OFFSET = 0.005; // seconds to schedule ahead to avoid truncation
 
 export function register(id, fn) {
   console.log("[audio] register", id);
@@ -83,7 +84,7 @@ export async function play(id, when) {
     t = audioCtx.currentTime;
   }
   // schedule slightly in the future to avoid start-time truncation
-  t += 0.005;
+  t += SCHEDULE_OFFSET;
   console.log("[audio] play", id, "at", t);
   fn(t);
 }
