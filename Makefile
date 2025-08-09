@@ -13,11 +13,15 @@ run:
 test:
 	cd src/go; go test -tags test -modfile=go.test.mod -timeout 1s ./...
 	cd src/go; go test -timeout 1s ./internal/audio
+	$(MAKE) wasm
+	node src/js/audio.browser.test.js
 
 
 test-real:
 	cd src/go; go test -timeout 1s ./...
 	cd src/go; go test -timeout 1s ./internal/audio
+	$(MAKE) wasm
+	node src/js/audio.browser.test.js
 
 
 test-xvfb:

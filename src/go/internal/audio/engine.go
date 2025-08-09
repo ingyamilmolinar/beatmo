@@ -3,6 +3,7 @@
 package audio
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -42,6 +43,7 @@ func Register(id string, inst Instrument) {
 
 func init() {
 	Register("snare", Snare{})
+	Register("kick", Kick{})
 	once.Do(initContext)
 }
 
@@ -97,6 +99,18 @@ func Resume() {
 
 // SetBPM updates the global tempo used when constructing new voices.
 func SetBPM(b int) { bpm = b }
+
+// Instruments returns the list of registered instrument IDs.
+func Instruments() []string {
+	instMu.RLock()
+	ids := make([]string, 0, len(instruments))
+	for id := range instruments {
+		ids = append(ids, id)
+	}
+	instMu.RUnlock()
+	sort.Strings(ids)
+	return ids
+}
 
 // mixer mixes multiple voices into a single PCM stream.
 type mixer struct {

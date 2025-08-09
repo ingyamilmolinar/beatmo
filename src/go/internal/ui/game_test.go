@@ -481,6 +481,24 @@ func TestSoundPlaysWithin50msOfHighlight(t *testing.T) {
 	}
 }
 
+func TestHighlightBeatUsesSelectedInstrument(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.drum.Rows[0].Instrument = "kick"
+	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
+
+	var id string
+	orig := playSound
+	playSound = func(inst string, when ...float64) { id = inst }
+	defer func() { playSound = orig }()
+
+	g.highlightBeat(0, info, 0)
+	if id != "kick" {
+		t.Fatalf("expected instrument 'kick', got %s", id)
+	}
+}
+
 func TestAudioLoopConsistency(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -802,7 +820,7 @@ func TestDrumViewDragShiftsWindow(t *testing.T) {
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
 
-	stepX := g.drum.Bounds.Min.X + g.drum.labelW + 380 + g.drum.cell/2
+	stepX := g.drum.Bounds.Min.X + g.drum.labelW + g.drum.controlsW + g.drum.cell/2
 	stepY := g.drum.Bounds.Min.Y + g.drum.rowHeight()/2
 	pos := []struct{ x, y int }{{stepX, stepY}, {stepX - 2*g.drum.cell, stepY}, {stepX - 2*g.drum.cell, stepY}}
 	idx := 0

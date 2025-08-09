@@ -20,3 +20,6 @@ func Reset() {}
 var SetBPMFunc = func(int) {}
 
 func SetBPM(bpm int) { SetBPMFunc(bpm) }
+
+// Instruments returns placeholder instrument IDs during tests.
+func Instruments() []string { return []string{"snare", "kick"} }

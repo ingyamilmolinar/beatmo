@@ -802,8 +802,12 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 func (g *Game) highlightBeat(idx int, info model.BeatInfo, duration int64) {
 	g.highlightedBeats[idx] = g.frame + duration
 	if info.NodeType == model.NodeTypeRegular {
-		playSound("snare")
-		g.logger.Debugf("[GAME] highlightBeat: Played sample for node %d at beat %d", info.NodeID, idx)
+		inst := "snare"
+		if len(g.drum.Rows) > 0 {
+			inst = g.drum.Rows[0].Instrument
+		}
+		playSound(inst)
+		g.logger.Debugf("[GAME] highlightBeat: Played %s for node %d at beat %d", inst, info.NodeID, idx)
 	}
 }
 
