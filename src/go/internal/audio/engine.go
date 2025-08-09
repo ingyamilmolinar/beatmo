@@ -93,6 +93,7 @@ type mixer struct {
 	mu     sync.Mutex
 	voices []*voiceState
 	pos    int
+	player *oto.Player
 }
 
 type voiceState struct {
@@ -102,8 +103,8 @@ type voiceState struct {
 
 func newMixer(c *oto.Context) *mixer {
 	m := &mixer{}
-	p := c.NewPlayer(m)
-	p.Play()
+	m.player = c.NewPlayer(m)
+	m.player.Play()
 	return m
 }
 
