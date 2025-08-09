@@ -1406,3 +1406,69 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 		t.Fatalf("highlight sequence mismatch. expected %v got %v", expected, got)
 	}
 }
+
+func TestBPMChangeDuringLoopKeepsForwardProgress(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	g := New(logger)
+	g.Layout(640, 480)
+
+	// Build looped circuit: [O] -> [] -> [X] -> [X]
+	//                                   ^      v
+	//                                   [X] <- [X]
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n1
+	g.graph.StartNodeID = n1.ID
+	n2 := g.tryAddNode(1, 0, model.NodeTypeInvisible)
+	n3 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	n4 := g.tryAddNode(3, 0, model.NodeTypeRegular)
+	n5 := g.tryAddNode(3, 1, model.NodeTypeRegular)
+	n6 := g.tryAddNode(2, 1, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n3)
+	g.addEdge(n3, n4)
+	g.addEdge(n4, n5)
+	g.addEdge(n5, n6)
+	g.addEdge(n6, n3)
+
+	g.drum.Length = 8
+	g.drum.Rows[0].Steps = make([]bool, g.drum.Length)
+	g.drum.SetBeatLength(g.drum.Length)
+	g.updateBeatInfos()
+
+	g.playing = true
+	g.spawnPulse()
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse")
+	}
+
+	for i := 0; i < 10; i++ {
+		g.Update()
+	}
+	beforeIdx := g.activePulse.pathIdx
+	beforeT := g.activePulse.t
+
+	g.drum.bpm = 240
+	g.Update()
+
+	if g.activePulse.pathIdx < beforeIdx {
+		t.Fatalf("pathIdx went backwards: %d -> %d", beforeIdx, g.activePulse.pathIdx)
+	}
+
+	oldSpeed := 1.0 / (60.0 / 120.0 * float64(ebitenTPS))
+	expectedT := (beforeT + oldSpeed) * 2
+	if math.Abs(g.activePulse.t-expectedT) > 0.05 {
+		t.Fatalf("expected scaled t around %.2f got %.2f", expectedT, g.activePulse.t)
+	}
+
+	lastIdx := g.activePulse.pathIdx
+	for i := 0; i < 60; i++ {
+		g.Update()
+		if g.activePulse == nil {
+			t.Fatalf("pulse ended early at frame %d", i)
+		}
+		if g.activePulse.pathIdx < lastIdx {
+			t.Fatalf("pathIdx decreased from %d to %d", lastIdx, g.activePulse.pathIdx)
+		}
+		lastIdx = g.activePulse.pathIdx
+	}
+}

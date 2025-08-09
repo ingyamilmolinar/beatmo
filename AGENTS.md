@@ -117,3 +117,6 @@ This debugging session highlighted several critical points:
 
 ## Lessons from Drum View Dragging
 *   **Independent drum view input:** Handling drum-view dragging separately from the grid prevents camera panning and scrolls the beat window via an offset, letting users follow highlights that move beyond the initial view.
+
+## Lessons from Tempo Changes
+*   **Rescale in-flight pulses on tempo changes:** When BPM updates, scale the active pulse's progress and recompute audio scheduling so the signal keeps moving forward without jumping or reversing.
