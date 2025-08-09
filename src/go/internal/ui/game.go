@@ -585,6 +585,7 @@ func (g *Game) Update() error {
 
 	if g.drum.PlayPressed() {
 		if g.start != nil {
+			audio.Resume()
 			g.playing = true
 		} else {
 			g.logger.Warnf("[GAME] Play pressed but no start node; ignoring")
@@ -806,7 +807,7 @@ func (g *Game) highlightBeat(idx int, info model.BeatInfo, duration int64) {
 		if len(g.drum.Rows) > 0 {
 			inst = g.drum.Rows[0].Instrument
 		}
-		playSound(inst)
+		playSound(inst, audio.Now())
 		g.logger.Debugf("[GAME] highlightBeat: Played %s for node %d at beat %d", inst, info.NodeID, idx)
 	}
 }

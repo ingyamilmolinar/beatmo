@@ -10,7 +10,10 @@ import (
 	"github.com/ebitengine/oto/v3"
 )
 
-const sampleRate = 44100
+const (
+	sampleRate          = 44100
+	bufferSizeBytes10ms = sampleRate / 100 * 2 // 10ms of 16-bit mono audio
+)
 
 var (
 	ctx   *oto.Context
@@ -44,7 +47,6 @@ func Register(id string, inst Instrument) {
 func init() {
 	Register("snare", Snare{})
 	Register("kick", Kick{})
-	once.Do(initContext)
 }
 
 func initContext() {
@@ -128,7 +130,7 @@ type voiceState struct {
 func newMixer(c *oto.Context) *mixer {
 	m := &mixer{}
 	p := c.NewPlayer(m)
-	p.SetBufferSize(sampleRate / 100 * 2)
+	p.SetBufferSize(bufferSizeBytes10ms)
 	p.Play()
 	m.player = p
 	return m
