@@ -20,7 +20,7 @@ func main() {
 			audio.Play("snare")
 			go func() {
 				time.Sleep(250 * time.Millisecond)
-				audio.Play("snare")
+				audio.Play("kick")
 			}()
 			return nil
 		}), 0)

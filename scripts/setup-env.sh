@@ -10,7 +10,7 @@ case "$(uname)" in
       exit 1
     fi
     brew update
-    brew install go pkg-config node
+    brew install go pkg-config node emscripten
     (cd src/js && npm ci && npx playwright install --with-deps chromium)
     ;;
   *)
@@ -18,7 +18,7 @@ case "$(uname)" in
     apt-get update
     apt-get install -y build-essential libgl1-mesa-dev xorg-dev \
       libasound2-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev \
-      libxxf86vm-dev pkg-config nodejs npm xvfb
+      libxxf86vm-dev pkg-config nodejs npm xvfb emscripten
 
     if [ ! -d "/opt/emsdk" ]; then
       echo "Installing Emscripten SDK..."
