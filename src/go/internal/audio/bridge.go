@@ -42,13 +42,13 @@ func Play(id string, when ...float64) {
 		)
 		return
 	}
-	go func() {
-		if len(when) > 0 {
-			play.Invoke(id, when[0])
-		} else {
-			play.Invoke(id)
-		}
-	}()
+	// Invoke synchronously so callers like the WASM harness don't exit
+	// before the JS promise chain runs.
+	if len(when) > 0 {
+		play.Invoke(id, when[0])
+	} else {
+		play.Invoke(id)
+	}
 }
 
 func Reset() {
