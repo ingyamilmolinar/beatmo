@@ -92,7 +92,6 @@ type Game struct {
 	isLoop         bool             // Indicates if the current graph forms a loop
 	loopStartIndex int              // The index in beatInfos where the loop segment begins
 	nextBeatIdx    int              // Absolute beat index for highlighting across loops
-	audioStart     float64          // audioCtx.currentTime at playback start
 
 	/* misc */
 	winW, winH int
@@ -600,26 +599,20 @@ func (g *Game) Update() error {
 	if g.bpm != prevBPM {
 		g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
 		audio.SetBPM(g.bpm)
-		spb := 60.0 / float64(g.bpm)
-
-		progress := float64(g.nextBeatIdx)
 		if g.activePulse != nil {
 			g.activePulse.t *= float64(g.bpm) / float64(prevBPM)
 			if g.activePulse.t >= 1 {
 				g.activePulse.t = 0.999999
 			}
-			beatDuration := int64(spb * ebitenTPS)
+			beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
 			g.activePulse.speed = 1.0 / float64(beatDuration)
-			progress = float64(g.nextBeatIdx-1) + g.activePulse.t
 			g.logger.Debugf("[GAME] BPM changed to %d, updated active pulse speed to %f and t to %.2f", g.bpm, g.activePulse.speed, g.activePulse.t)
 		}
-		g.audioStart = audio.Now() - progress*spb
 	}
 
 	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
-			g.audioStart = audio.Now()
 			g.nextBeatIdx = 0
 			g.sched.Start()
 			g.logger.Infof("[GAME] Scheduler started.")
@@ -809,13 +802,8 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 func (g *Game) highlightBeat(idx int, info model.BeatInfo, duration int64) {
 	g.highlightedBeats[idx] = g.frame + duration
 	if info.NodeType == model.NodeTypeRegular {
-		spb := 60.0 / float64(g.bpm)
-		if g.audioStart == 0 {
-			g.audioStart = audio.Now()
-		}
-		when := g.audioStart + float64(idx)*spb
-		playSound("snare", when)
-		g.logger.Debugf("[GAME] highlightBeat: Played sample for node %d at beat %d (when=%f)", info.NodeID, idx, when)
+		playSound("snare")
+		g.logger.Debugf("[GAME] highlightBeat: Played sample for node %d at beat %d", info.NodeID, idx)
 	}
 }
 

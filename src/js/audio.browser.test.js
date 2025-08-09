@@ -58,10 +58,19 @@ await page.addInitScript(() => {
     constructor(opts) {
       super(opts);
       const dest = super.destination;
-      const sp = this.createScriptProcessor(4096, 1, 1);
+      const sp = this.createScriptProcessor(256, 1, 1);
       window.__samples = [];
+      window.__firstSampleTime = undefined;
       sp.addEventListener('audioprocess', e => {
         const data = e.inputBuffer.getChannelData(0);
+        if (window.__firstSampleTime === undefined) {
+          for (let i = 0; i < data.length; i++) {
+            if (data[i] !== 0) {
+              window.__firstSampleTime = performance.now();
+              break;
+            }
+          }
+        }
         window.__samples.push(...data);
         if (window.__samples.length >= SAMPLE_TARGET) {
           window.__done = true;
@@ -82,6 +91,8 @@ await page.evaluate(() => document.dispatchEvent(new Event('mousedown')));
 // Wait for audio to be processed.
 await page.waitForFunction(() => window.__done === true, {}, {timeout: 5000});
 const samples = await page.evaluate(() => window.__samples);
+const playTime = await page.evaluate(() => window.__playTime);
+const firstSampleTime = await page.evaluate(() => window.__firstSampleTime);
 await browser.close();
 server.close();
 
@@ -90,6 +101,11 @@ const first = samples.findIndex(v => v !== 0);
 const second = samples.findIndex((v, i) => i >= sr/4 && v !== 0);
 if (first < 0 || second < 0) {
   throw new Error('missing audio data for multiple beats');
+}
+
+const delay = firstSampleTime - playTime;
+if (delay > 1000) {
+  throw new Error(`audio start delay ${delay}ms exceeds 1000ms`);
 }
 
 console.log('captured audio samples:', samples.slice(0, 8).map(v => v.toFixed(5)));
