@@ -42,6 +42,7 @@ const port = 8123 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => {
   if (req.url === "/play.html") {
     const html = `<!DOCTYPE html><html><body>
+<script type="module" src="audio.js"></script>
 <script src="wasm_exec.js"></script>
 <script>
   const go = new Go();
