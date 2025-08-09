@@ -16,6 +16,7 @@ var (
 	ctx   *oto.Context
 	once  sync.Once
 	start = time.Now()
+	bpm   = 120
 )
 
 func initContext() {
@@ -54,7 +55,8 @@ func Play(id string, when ...float64) {
 			}
 		}
 		const sampleRate = 44100
-		const dur = 200 * time.Millisecond
+		spb := 60 / float64(bpm)
+		dur := time.Duration(spb * 0.5 * float64(time.Second))
 		samples := int(float64(sampleRate) * dur.Seconds())
 		buf := make([]byte, samples*2)
 		for i := 0; i < samples; i++ {
@@ -77,3 +79,5 @@ func Reset() {
 	ctx = nil
 	once = sync.Once{}
 }
+
+func SetBPM(b int) { bpm = b }

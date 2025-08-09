@@ -7,9 +7,10 @@ import "syscall/js"
 
 // exposed from web/audio.js
 var (
-	play  js.Value
-	ctx   js.Value
-	reset js.Value
+	play   js.Value
+	ctx    js.Value
+	reset  js.Value
+	setBPM js.Value
 )
 
 func init() {
@@ -17,6 +18,7 @@ func init() {
 	play = global.Get("play") // (id, when) exported by JS
 	ctx = global.Get("audioCtx")
 	reset = global.Get("resetAudio")
+	setBPM = global.Get("setBPM")
 }
 
 // Now returns the AudioContext's currentTime.
@@ -55,5 +57,14 @@ func Reset() {
 	}
 	if reset.Truthy() {
 		reset.Invoke()
+	}
+}
+
+func SetBPM(bpm int) {
+	if !setBPM.Truthy() {
+		setBPM = js.Global().Get("setBPM")
+	}
+	if setBPM.Truthy() {
+		setBPM.Invoke(bpm)
 	}
 }

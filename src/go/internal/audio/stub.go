@@ -10,3 +10,7 @@ func Now() float64 { return 0 }
 
 // Reset is a stub used during tests.
 func Reset() {}
+
+var SetBPMFunc = func(int) {}
+
+func SetBPM(bpm int) { SetBPMFunc(bpm) }

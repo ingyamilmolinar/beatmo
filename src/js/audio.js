@@ -57,6 +57,7 @@ const AC = globalThis.AudioContext ||
   StubAudioContext;
 
 export let audioCtx = new AC();
+let bpm = 120;
 const plugins = {};
 
 export function register(id, fn) {
@@ -87,6 +88,11 @@ export async function play(id, when) {
   fn(t);
 }
 
+export function setBPM(val) {
+  bpm = val;
+  console.log('[audio] BPM set to', bpm);
+}
+
 export async function resetAudio() {
   if (audioCtx && audioCtx.close) {
     try {
@@ -101,8 +107,9 @@ export async function resetAudio() {
 
 // basic snare using noise burst and envelope
 register('snare', (when) => {
-  console.log("[audio] snare callback at", when);
-  const duration = 0.2;
+  console.log("[audio] snare callback at", when, 'bpm', bpm);
+  const spb = 60 / bpm;
+  const duration = Math.min(0.5, spb * 0.5);
   const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
@@ -126,3 +133,4 @@ register('snare', (when) => {
 globalThis.play = play;
 globalThis.register = register;
 globalThis.resetAudio = resetAudio;
+globalThis.setBPM = setBPM;

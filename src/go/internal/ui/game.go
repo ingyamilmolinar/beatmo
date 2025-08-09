@@ -601,8 +601,11 @@ func (g *Game) Update() error {
 	if g.bpm != prevBPM {
 		g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
 		resetAudio()
+		audio.SetBPM(g.bpm)
+		spb := 60.0 / float64(g.bpm)
+		g.audioStart = audio.Now() - float64(g.nextBeatIdx)*spb
 		if g.activePulse != nil {
-			beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
+			beatDuration := int64(spb * ebitenTPS)
 			g.activePulse.speed = 1.0 / float64(beatDuration)
 			g.logger.Debugf("[GAME] BPM changed to %d, updated active pulse speed to %f", g.bpm, g.activePulse.speed)
 		}

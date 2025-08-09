@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/tunkul/internal/audio"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
@@ -353,6 +354,40 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	}
 	if g.activePulse.t <= tBefore {
 		t.Fatalf("pulse did not continue")
+	}
+}
+
+func TestBPMChangeUpdatesAudioStartAndBPM(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.graph.StartNodeID = n0.ID
+	g.Update()
+
+	// stub audio functions
+	audioCalls := 0
+	lastWhen := []float64{}
+	playSound = func(id string, when ...float64) { audioCalls++; lastWhen = append(lastWhen, when[0]) }
+	origReset := resetAudio
+	resetAudio = func() {}
+	defer func() { playSound = audio.Play; resetAudio = origReset }()
+
+	g.playing = true
+	g.bpm = 120
+	g.audioStart = 0
+	g.highlightBeat(0, g.beatInfos[0], 0)
+	g.nextBeatIdx = 1
+
+	g.drum.bpm = 240
+	g.Update()
+	g.highlightBeat(1, g.beatInfos[1], 0)
+	if audioCalls != 2 {
+		t.Fatalf("expected 2 playSound calls got %d", audioCalls)
+	}
+	if lastWhen[1] > 0.5 {
+		t.Fatalf("expected second call soon after BPM change, got %f", lastWhen[1])
 	}
 }
 
