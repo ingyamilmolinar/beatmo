@@ -56,16 +56,16 @@ await page.addInitScript(() => {
   class TestAC extends RealAC {
     constructor(opts) {
       super(opts);
-      // Force ScriptProcessor path for easier interception.
-      Object.defineProperty(this, 'audioWorklet', {value: undefined});
-    }
-    createScriptProcessor(bufSize, inCh, outCh) {
-      const sp = super.createScriptProcessor(bufSize, inCh, outCh);
+      const dest = super.destination;
+      const sp = this.createScriptProcessor(4096, 1, 1);
       sp.addEventListener('audioprocess', e => {
-        const data = e.outputBuffer.getChannelData(0);
-        window.__lastSamples = Array.from(data);
+        const data = e.inputBuffer.getChannelData(0);
+        if (!window.__lastSamples && Array.from(data).some(v => v !== 0)) {
+          window.__lastSamples = Array.from(data);
+        }
       });
-      return sp;
+      sp.connect(dest);
+      Object.defineProperty(this, 'destination', {value: sp});
     }
   }
   window.AudioContext = TestAC;
@@ -73,10 +73,11 @@ await page.addInitScript(() => {
 });
 
 await page.goto(`http://localhost:${port}/play.html`);
+await page.waitForFunction(() => window.__wasmReady === true);
 // Trigger the resume handler registered by oto's driver.
-await page.evaluate(() => document.dispatchEvent(new Event('mouseup')));
+await page.evaluate(() => document.dispatchEvent(new Event('mousedown')));
 // Wait for audio to be processed.
-await page.waitForFunction(() => window.__lastSamples && window.__lastSamples.some(v => v !== 0), {timeout: 5000});
+await page.waitForFunction(() => window.__lastSamples && window.__lastSamples.some(v => v !== 0), {}, {timeout: 5000});
 const samples = await page.evaluate(() => window.__lastSamples);
 await browser.close();
 server.close();
@@ -85,4 +86,4 @@ if (!samples || !samples.some(v => v !== 0)) {
   throw new Error('no audio samples captured');
 }
 
-console.log('captured audio samples:', samples.slice(0, 8));
+console.log('captured audio samples:', samples.slice(0, 8).map(v => v.toFixed(5)));

@@ -18,7 +18,7 @@ case "$(uname)" in
     apt-get update
     apt-get install -y build-essential libgl1-mesa-dev xorg-dev \
       libasound2-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev \
-      libxxf86vm-dev pkg-config nodejs npm xvfb
+      libxxf86vm-dev pkg-config nodejs xvfb
     (cd src/js && npm ci && npx playwright install --with-deps chromium)
     ;;
 esac

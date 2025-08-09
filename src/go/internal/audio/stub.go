@@ -2,6 +2,12 @@
 
 package audio
 
+type Voice interface{}
+
+type Instrument interface{ NewVoice(int, int) Voice }
+
+func Register(id string, inst Instrument) {}
+
 // Play is a stub used during tests to avoid initializing audio devices.
 func Play(id string, when ...float64) {}
 
