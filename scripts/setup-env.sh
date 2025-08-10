@@ -19,6 +19,14 @@ case "$(uname)" in
     apt-get install -y build-essential libgl1-mesa-dev xorg-dev \
       libasound2-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev \
       libxxf86vm-dev pkg-config nodejs npm xvfb
+
+    if [ ! -d "/opt/emsdk" ]; then
+      echo "Installing Emscripten SDK..."
+      git clone https://github.com/emscripten-core/emsdk.git /opt/emsdk
+      cd /opt/emsdk
+      ./emsdk install latest
+      ./emsdk activate latest
+    fi
     (cd src/js && npm ci && npx playwright install --with-deps chromium)
     ;;
 esac
