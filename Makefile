@@ -12,6 +12,10 @@ $(C_LIB): $(C_SRC)
 	$(CC) -O2 -c src/c/drums.c -o build/drums.o
 	ar rcs $@ build/miniaudio.o build/drums.o
 
+clean:
+	rm -f build/drums.o
+	rm -f $(C_LIB)
+
 wasm: $(MA_JS)
 	cd src/go && go mod download
 	cd src/go && GOOS=js GOARCH=wasm go build -o $(WASM_OUT) ./cmd/...
