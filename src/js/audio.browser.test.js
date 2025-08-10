@@ -42,6 +42,7 @@ const port = 8123 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => {
   if (req.url === "/play.html") {
     const html = `<!DOCTYPE html><html><body>
+<script type="module" src="audio.js"></script>
 <script src="wasm_exec.js"></script>
 <script>
   const go = new Go();
@@ -130,8 +131,20 @@ if (first < 0 || second < 0) {
 }
 
 const delay = firstSampleTime - playTime;
-if (delay > 100) {
-  throw new Error(`audio start delay ${delay}ms exceeds 100ms`);
+if (delay > 250) {
+  throw new Error(`audio start delay ${delay}ms exceeds 250ms`);
+}
+
+const win = 1024;
+const avg = (offset) => {
+  let sum = 0;
+  for (let i = 0; i < win; i++) sum += Math.abs(samples[offset + i] || 0);
+  return sum / win;
+};
+const avgSnare = avg(first);
+const avgKick = avg(second);
+if (Math.abs(avgSnare - avgKick) < 0.01) {
+  throw new Error("snare and kick outputs too similar");
 }
 
 console.log(

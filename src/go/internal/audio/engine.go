@@ -1,4 +1,4 @@
-//go:build !test
+//go:build !test && !js
 
 package audio
 
