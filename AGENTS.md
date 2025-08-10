@@ -120,3 +120,9 @@ This debugging session highlighted several critical points:
 
 ## Lessons from Tempo Changes
 *   **Rescale in-flight pulses on tempo changes:** When BPM updates, scale the active pulse's progress and recompute audio scheduling so the signal keeps moving forward without jumping or reversing.
+
+## Miniaudio Integration Notes
+
+* Miniaudio is compiled to WebAssembly via `emcc` during `make wasm`, producing `drums.js` at build time.
+* JavaScript wrapper `audio.js` exposes `window.playSound(id)` used by the Go runtime on WASM builds.
+* Current integration triggers snare and kick playback but does not yet support precise scheduling or mixing with Go's audio engine.

@@ -1,34 +1,69 @@
-#!/bin/sh
+#!/bin/bash
 # Install system and Node dependencies for running real tests and browser tests.
 # Run with sudo: `sudo make dependencies`
+
+# Exit on error
 set -e
-case "$(uname)" in
-  Darwin)
-    echo "Detected macOS"
-    if ! command -v brew >/dev/null; then
-      echo "Homebrew not found. Install it from https://brew.sh first." >&2
-      exit 1
-    fi
-    brew update
-    brew install go pkg-config node
-    (cd src/js && npm ci && npx playwright install --with-deps chromium)
-    ;;
-  *)
-    echo "Detected Linux"
-    apt-get update
-    apt-get install -y build-essential libgl1-mesa-dev xorg-dev \
-      libasound2-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev \
-      libxxf86vm-dev pkg-config nodejs npm xvfb
 
-    if [ ! -d "/opt/emsdk" ]; then
-      echo "Installing Emscripten SDK..."
-      git clone https://github.com/emscripten-core/emsdk.git /opt/emsdk
-      cd /opt/emsdk
-      ./emsdk install latest
-      ./emsdk activate latest
-    fi
-    (cd src/js && npm ci && npx playwright install --with-deps chromium)
-    ;;
-esac
+# Function to install packages on Debian/Ubuntu
+install_debian() {
+  echo "Detected Linux"
 
-echo "Environment ready"
+  if ! [ -x "$(command -v apt-get)" ]; then
+    echo "apt-get not found. Cannot install dependencies."
+    exit 1
+  fi
+
+  # Base packages required for Ebiten and other tools
+  BASE_PACKAGES="build-essential pkg-config libasound2-dev libgl1-mesa-dev xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev libxi-dev libxxf86vm-dev xvfb emscripten"
+
+  echo "Updating package lists..."
+  apt-get update
+
+  echo "Installing base dependencies..."
+  apt-get install -y $BASE_PACKAGES
+
+  # Handle Node.js and npm installation
+  echo "Checking for Node.js..."
+  # The `nodejs` package from nodesource provides `node`, `npm`, etc.
+  if ! command -v node > /dev/null; then
+    echo "Node.js not found. Installing from NodeSource..."
+    # The NodeSource script runs apt-get update internally
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y nodejs
+  else
+    echo "Node.js is already installed."
+  fi
+
+  echo "Verifying npm installation..."
+  if ! command -v npm > /dev/null; then
+    echo "npm not found. Installing..."
+    apt-get install -y npm
+  fi
+  echo "npm is available."
+}
+
+# Function to install packages on macOS
+install_mac() {
+  echo "Detected macOS"
+  if ! [ -x "$(command -v brew)" ]; then
+    echo "Homebrew not found. Please install it from https://brew.sh/ and then run this script again."
+    exit 1
+  fi
+  brew install pkg-config glfw node emscripten
+}
+
+# Detect OS and install packages
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+  install_debian
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+  install_mac
+else
+  echo "Unsupported OS: $OSTYPE"
+  exit 1
+fi
+
+# Install JS dependencies
+(cd src/js && npm ci && npx playwright install --with-deps chromium)
+
+echo "All dependencies installed successfully."
