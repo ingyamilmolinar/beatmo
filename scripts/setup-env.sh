@@ -1,4 +1,6 @@
 #!/bin/bash
+# Install system and Node dependencies for running real tests and browser tests.
+# Run with sudo: `sudo make dependencies`
 
 # Exit on error
 set -e
@@ -33,11 +35,10 @@ install_debian() {
     echo "Node.js is already installed."
   fi
 
-  echo "Verifying npm installation (which should come with Node.js)..."
+  echo "Verifying npm installation..."
   if ! command -v npm > /dev/null; then
-      echo "ERROR: npm not found after handling Node.js installation." >&2
-      echo "Your environment might be in an inconsistent state. Please check your PATH and node installation." >&2
-      exit 1
+    echo "npm not found. Installing..."
+    apt-get install -y npm
   fi
   echo "npm is available."
 }

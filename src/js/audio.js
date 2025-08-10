@@ -41,4 +41,10 @@ export async function playSound(id) {
 }
 
 // Expose for Go
-window.playSound = (id) => { playSound(id); };
+window.playSound = async (id) => {
+  try {
+    await playSound(id);
+  } catch (err) {
+    console.error('Error playing sound:', err);
+  }
+};

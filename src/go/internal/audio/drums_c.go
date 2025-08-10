@@ -14,12 +14,18 @@ func renderSnare(buf []float32, sampleRate, samples int) {
     if samples > len(buf) {
         panic("renderSnare: samples exceeds buffer length")
     }
+    if len(buf) == 0 || samples == 0 {
+        return
+    }
     C.render_snare((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
 }
 
 func renderKick(buf []float32, sampleRate, samples int) {
     if samples > len(buf) {
         panic("renderKick: samples exceeds buffer length")
+    }
+    if len(buf) == 0 || samples == 0 {
+        return
     }
     C.render_kick((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
 }
