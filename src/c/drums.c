@@ -145,7 +145,7 @@ EXPORT int load_wav(const char *path, float **buffer, int *sampleRate) {
     return res;
   }
   *buffer = data;
-  if (sampleRate)
+  if (sampleRate != NULL)
     *sampleRate = dec.outputSampleRate;
   ma_decoder_uninit(&dec);
   return (int)frames;

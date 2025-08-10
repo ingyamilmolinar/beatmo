@@ -78,6 +78,9 @@ func loadWav(path string) ([]float32, int, error) {
 	if frames == 0 {
 		return nil, 0, errors.New("load_wav: no frames")
 	}
+	if ptr == nil {
+		return nil, 0, errors.New("load_wav: C returned nil pointer")
+	}
 	tmp := unsafe.Slice((*float32)(unsafe.Pointer(ptr)), int(frames))
 	buf := make([]float32, int(frames))
 	copy(buf, tmp)
