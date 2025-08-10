@@ -16,7 +16,7 @@ func (s Sample) NewVoice(bpm, sampleRate int) Voice {
 func RegisterWAV(id, path string) error {
 	buf, sr, err := loadWav(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("load wav %s: %w", path, err)
 	}
 	if sr != sampleRate {
 		return fmt.Errorf("expected %dHz wav, got %d", sampleRate, sr)

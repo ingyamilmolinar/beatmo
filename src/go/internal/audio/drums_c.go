@@ -11,6 +11,7 @@ package audio
 import "C"
 import (
 	"errors"
+	"fmt"
 	"unsafe"
 )
 
@@ -70,8 +71,12 @@ func loadWav(path string) ([]float32, int, error) {
 	var ptr *C.float
 	var sr C.int
 	frames := C.load_wav(cpath, &ptr, &sr)
-	if frames <= 0 {
-		return nil, 0, errors.New("load_wav failed")
+	if frames < 0 {
+		msg := C.GoString(C.result_description(C.int(frames)))
+		return nil, 0, fmt.Errorf("load_wav: %s", msg)
+	}
+	if frames == 0 {
+		return nil, 0, errors.New("load_wav: no frames")
 	}
 	tmp := unsafe.Slice((*float32)(unsafe.Pointer(ptr)), int(frames))
 	buf := make([]float32, int(frames))

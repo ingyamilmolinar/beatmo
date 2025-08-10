@@ -4,7 +4,7 @@ C_LIB = build/libdrums.a
 C_SRC = src/c/drums.c src/c/miniaudio.c
 
 $(MA_JS): $(C_SRC) src/c/miniaudio.h
-	emcc $(C_SRC) -sWASM=1 -sEXPORTED_FUNCTIONS='[_render_snare,_render_kick,_render_hihat,_render_tom,_render_clap,_load_wav,_malloc,_free]' -sEXPORTED_RUNTIME_METHODS='["cwrap","ccall","HEAPF32"]' -sMODULARIZE=1 -sEXPORT_ES6=1 -o $(MA_JS)
+	emcc $(C_SRC) -sWASM=1 -sEXPORTED_FUNCTIONS='[_render_snare,_render_kick,_render_hihat,_render_tom,_render_clap,_load_wav,_result_description,_malloc,_free]' -sEXPORTED_RUNTIME_METHODS='["cwrap","ccall","HEAPF32"]' -sMODULARIZE=1 -sEXPORT_ES6=1 -o $(MA_JS)
 
 $(C_LIB): $(C_SRC)
 	mkdir -p build
