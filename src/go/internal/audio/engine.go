@@ -47,6 +47,9 @@ func Register(id string, inst Instrument) {
 func init() {
 	Register("snare", Snare{})
 	Register("kick", Kick{})
+	Register("hihat", HiHat{})
+	Register("tom", Tom{})
+	Register("clap", Clap{})
 }
 
 func initContext() {

@@ -8,7 +8,11 @@ type Voice interface{}
 
 type Instrument interface{}
 
-func Register(id string, inst Instrument) {}
+var instruments = []string{"snare", "kick", "hihat", "tom", "clap"}
+
+func Register(id string, inst Instrument) {
+	instruments = append(instruments, id)
+}
 
 func Play(id string, when ...float64) {
 	js.Global().Call("playSound", id)
@@ -22,4 +26,4 @@ func Resume() {}
 
 func SetBPM(b int) {}
 
-func Instruments() []string { return []string{"snare", "kick"} }
+func Instruments() []string { return instruments }
