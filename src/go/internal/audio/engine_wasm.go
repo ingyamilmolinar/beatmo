@@ -2,13 +2,25 @@
 
 package audio
 
-import "syscall/js"
+import (
+	"sync"
+	"syscall/js"
+)
 
 type Voice interface{}
 
 type Instrument interface{}
 
-func Register(id string, inst Instrument) {}
+var (
+	instruments   = []string{"snare", "kick", "hihat", "tom", "clap"}
+	instrumentsMu sync.RWMutex
+)
+
+func Register(id string, inst Instrument) {
+	instrumentsMu.Lock()
+	instruments = append(instruments, id)
+	instrumentsMu.Unlock()
+}
 
 func Play(id string, when ...float64) {
 	js.Global().Call("playSound", id)
@@ -22,4 +34,9 @@ func Resume() {}
 
 func SetBPM(b int) {}
 
-func Instruments() []string { return []string{"snare", "kick"} }
+func Instruments() []string {
+	instrumentsMu.RLock()
+	ids := append([]string(nil), instruments...)
+	instrumentsMu.RUnlock()
+	return ids
+}

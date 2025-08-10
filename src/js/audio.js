@@ -3,6 +3,7 @@ import init from './drums.js';
 let modulePromise = init();
 let mod;
 let ctx;
+const samples = {};
 
 function getCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -16,26 +17,46 @@ async function ensureModule() {
   return mod;
 }
 
+const RENDER = {
+  snare: 'render_snare',
+  kick: 'render_kick',
+  hihat: 'render_hihat',
+  tom: 'render_tom',
+  clap: 'render_clap',
+};
+
+export async function loadWav(id, url) {
+  const res = await fetch(url);
+  const arr = await res.arrayBuffer();
+  const buf = await getCtx().decodeAudioData(arr);
+  samples[id] = buf;
+}
+
 export async function playSound(id) {
-  const m = await ensureModule();
   const sr = 44100;
-  const sec = id === 'snare' ? 0.25 : 0.5;
-  const samples = Math.floor(sr * sec);
-  const ptr = m._malloc(samples * 4);
-  if (!ptr) {
-    throw new Error('Failed to allocate memory for audio buffer.');
+  if (RENDER[id]) {
+    const m = await ensureModule();
+    const sec = id === 'snare' ? 0.25 : id === 'hihat' ? 0.125 : 0.5;
+    const frames = Math.floor(sr * sec);
+    const ptr = m._malloc(frames * 4);
+    if (!ptr) {
+      throw new Error('Failed to allocate memory for audio buffer.');
+    }
+    m.ccall(RENDER[id], null, ['number','number','number'], [ptr, sr, frames]);
+    const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
+    m._free(ptr);
+    const buffer = getCtx().createBuffer(1, frames, sr);
+    buffer.copyToChannel(data, 0);
+    const src = getCtx().createBufferSource();
+    src.buffer = buffer;
+    src.connect(getCtx().destination);
+    src.start();
+    return;
   }
-  if (id === 'snare') {
-    m.ccall('render_snare', null, ['number','number','number'], [ptr, sr, samples]);
-  } else {
-    m.ccall('render_kick', null, ['number','number','number'], [ptr, sr, samples]);
-  }
-  const data = new Float32Array(m.HEAPF32.buffer, ptr, samples).slice();
-  m._free(ptr);
-  const buffer = getCtx().createBuffer(1, samples, sr);
-  buffer.copyToChannel(data, 0);
+  const buf = samples[id];
+  if (!buf) throw new Error('Unknown sound: ' + id);
   const src = getCtx().createBufferSource();
-  src.buffer = buffer;
+  src.buffer = buf;
   src.connect(getCtx().destination);
   src.start();
 }
@@ -46,5 +67,13 @@ window.playSound = async (id) => {
     await playSound(id);
   } catch (err) {
     console.error('Error playing sound:', err);
+  }
+};
+
+window.loadWav = async (id, url) => {
+  try {
+    await loadWav(id, url);
+  } catch (err) {
+    console.error('Error loading wav:', err);
   }
 };
