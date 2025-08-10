@@ -33,10 +33,6 @@ spawnSync("npx", ["playwright", "install", "chromium"], {
   cwd: jsDir,
   stdio: "inherit",
 });
-spawnSync("npx", ["playwright", "install-deps", "chromium"], {
-  cwd: jsDir,
-  stdio: "inherit",
-});
 
 const port = 8123 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => {

@@ -3,9 +3,10 @@
 package audio
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../c -DMA_NO_DEVICE_IO -DMA_NO_THREADING
-#include "../../c/miniaudio.c"
-#include "../../c/drums.c"
+#cgo CFLAGS: -I${SRCDIR}/../../../c -DMA_NO_DEVICE_IO -DMA_NO_THREADING
+#cgo LDFLAGS: -lm
+#include "../../../c/miniaudio.c"
+#include "../../../c/drums.c"
 */
 import "C"
 import "unsafe"
