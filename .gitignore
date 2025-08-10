@@ -1,3 +1,6 @@
 src/js/main.wasm
 src/js/node_modules/
 src/js/playtest.wasm
+src/js/drums.js
+src/js/drums.wasm
+build/
