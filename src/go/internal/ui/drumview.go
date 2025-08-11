@@ -125,6 +125,19 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 /* ─── public update ────────────────────────────────────────── */
 
 func (dv *DrumView) recalcButtons() {
+	if useFyneControls {
+		dv.playBtn = image.Rectangle{}
+		dv.stopBtn = image.Rectangle{}
+		dv.bpmDecBtn = image.Rectangle{}
+		dv.bpmBox = image.Rectangle{}
+		dv.bpmIncBtn = image.Rectangle{}
+		dv.lenDecBtn = image.Rectangle{}
+		dv.lenIncBtn = image.Rectangle{}
+		dv.instBtn = image.Rectangle{}
+		dv.uploadBtn = image.Rectangle{}
+		dv.controlsW = 0
+		return
+	}
 	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)
 	dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50)
 	dv.bpmDecBtn = image.Rect(190, dv.Bounds.Min.Y+10, 230, dv.Bounds.Min.Y+50)
@@ -163,12 +176,52 @@ func (dv *DrumView) BPM() int {
 	return dv.bpm
 }
 
+func (dv *DrumView) SetBPM(b int) {
+	dv.bpm = b
+}
+
 func (dv *DrumView) OffsetChanged() bool {
 	if dv.offsetChanged {
 		dv.offsetChanged = false
 		return true
 	}
 	return false
+}
+
+func (dv *DrumView) SetLength(length int) {
+	if length < 1 {
+		length = 1
+	}
+	dv.Length = length
+	dv.Rows[0].Steps = make([]bool, dv.Length)
+	dv.SetBeatLength(dv.Length)
+	dv.bgDirty = true
+}
+
+func (dv *DrumView) SetInstrument(id string) {
+	dv.Rows[0].Instrument = id
+	if id != "" {
+		dv.Rows[0].Name = strings.ToUpper(id[:1]) + id[1:]
+	}
+}
+
+func (dv *DrumView) AddInstrument(id string) {
+	dv.instOptions = audio.Instruments()
+	dv.SetInstrument(id)
+}
+
+func (dv *DrumView) CycleInstrument() {
+	if len(dv.instOptions) == 0 {
+		return
+	}
+	cur := dv.Rows[0].Instrument
+	for i, id := range dv.instOptions {
+		if id == cur {
+			next := dv.instOptions[(i+1)%len(dv.instOptions)]
+			dv.SetInstrument(next)
+			return
+		}
+	}
 }
 
 func (dv *DrumView) Update() {
@@ -205,61 +258,71 @@ func (dv *DrumView) Update() {
 
 	/* ——— widget clicks & dragging ——— */
 	if left {
-		switch {
-		case pt(mx, my, dv.playBtn):
-			dv.playPressed = true
-			dv.logger.Infof("[DRUMVIEW] Play button pressed.")
-		case pt(mx, my, dv.stopBtn):
-			dv.stopPressed = true
-			dv.logger.Infof("[DRUMVIEW] Stop button pressed.")
-		case pt(mx, my, dv.bpmDecBtn):
-			dv.bpmDecPressed = true
-			dv.logger.Infof("[DRUMVIEW] BPM decrease button pressed.")
-		case pt(mx, my, dv.bpmIncBtn):
-			dv.bpmIncPressed = true
-			dv.logger.Infof("[DRUMVIEW] BPM increase button pressed.")
-		case pt(mx, my, dv.bpmBox):
-			if !dv.focusBPM {
-				dv.focusBPM = true
-				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
-			}
-		case pt(mx, my, dv.lenIncBtn):
-			dv.lenIncPressed = true
-			dv.logger.Infof("[DRUMVIEW] Length increase button pressed.")
-		case pt(mx, my, dv.lenDecBtn):
-			dv.lenDecPressed = true
-			dv.logger.Infof("[DRUMVIEW] Length decrease button pressed.")
-		case pt(mx, my, dv.instBtn):
-			if len(dv.instOptions) > 0 {
-				cur := dv.Rows[0].Instrument
-				for i, id := range dv.instOptions {
-					if id == cur {
-						next := dv.instOptions[(i+1)%len(dv.instOptions)]
-						dv.Rows[0].Instrument = next
-						dv.Rows[0].Name = strings.ToUpper(next[:1]) + next[1:]
-						break
+		if !useFyneControls {
+			switch {
+			case pt(mx, my, dv.playBtn):
+				dv.playPressed = true
+				dv.logger.Infof("[DRUMVIEW] Play button pressed.")
+			case pt(mx, my, dv.stopBtn):
+				dv.stopPressed = true
+				dv.logger.Infof("[DRUMVIEW] Stop button pressed.")
+			case pt(mx, my, dv.bpmDecBtn):
+				dv.bpmDecPressed = true
+				dv.logger.Infof("[DRUMVIEW] BPM decrease button pressed.")
+			case pt(mx, my, dv.bpmIncBtn):
+				dv.bpmIncPressed = true
+				dv.logger.Infof("[DRUMVIEW] BPM increase button pressed.")
+			case pt(mx, my, dv.bpmBox):
+				if !dv.focusBPM {
+					dv.focusBPM = true
+					dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
+				}
+			case pt(mx, my, dv.lenIncBtn):
+				dv.lenIncPressed = true
+				dv.logger.Infof("[DRUMVIEW] Length increase button pressed.")
+			case pt(mx, my, dv.lenDecBtn):
+				dv.lenDecPressed = true
+				dv.logger.Infof("[DRUMVIEW] Length decrease button pressed.")
+			case pt(mx, my, dv.instBtn):
+				if len(dv.instOptions) > 0 {
+					cur := dv.Rows[0].Instrument
+					for i, id := range dv.instOptions {
+						if id == cur {
+							next := dv.instOptions[(i+1)%len(dv.instOptions)]
+							dv.Rows[0].Instrument = next
+							dv.Rows[0].Name = strings.ToUpper(next[:1]) + next[1:]
+							break
+						}
 					}
 				}
+			case pt(mx, my, dv.uploadBtn):
+				if id, err := audio.RegisterWAVDialog(); err == nil {
+					dv.instOptions = audio.Instruments()
+					dv.Rows[0].Instrument = id
+					dv.Rows[0].Name = strings.ToUpper(id[:1]) + id[1:]
+					dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
+				} else {
+					dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
+				}
+			default:
+				if pt(mx, my, stepsRect) {
+					if !dv.dragging {
+						dv.dragging = true
+						dv.dragStartX = mx
+						dv.startOffset = dv.Offset
+					}
+				} else if dv.focusBPM {
+					dv.focusBPM = false
+					dv.logger.Debugf("[DRUMVIEW] Clicked outside BPM box. focusingBPM: %t", dv.focusBPM)
+				}
 			}
-		case pt(mx, my, dv.uploadBtn):
-			if id, err := audio.RegisterWAVDialog(); err == nil {
-				dv.instOptions = audio.Instruments()
-				dv.Rows[0].Instrument = id
-				dv.Rows[0].Name = strings.ToUpper(id[:1]) + id[1:]
-				dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
-			} else {
-				dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
-			}
-		default:
+		} else {
 			if pt(mx, my, stepsRect) {
 				if !dv.dragging {
 					dv.dragging = true
 					dv.dragStartX = mx
 					dv.startOffset = dv.Offset
 				}
-			} else if dv.focusBPM {
-				dv.focusBPM = false
-				dv.logger.Debugf("[DRUMVIEW] Clicked outside BPM box. focusingBPM: %t", dv.focusBPM)
 			}
 		}
 	} else {
@@ -352,24 +415,26 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
 	dst.DrawImage(dv.bg(dv.Bounds.Dx(), dv.Bounds.Dy()), op)
 
-	drawButton(dst, dv.playBtn, colPlayButton, colButtonBorder, dv.playPressed)
-	drawButton(dst, dv.stopBtn, colStopButton, colButtonBorder, dv.stopPressed)
-	drawButton(dst, dv.bpmDecBtn, colLenDec, colButtonBorder, dv.bpmDecPressed)
-	drawButton(dst, dv.bpmBox, colBPMBox, colButtonBorder, dv.focusBPM)
-	drawButton(dst, dv.bpmIncBtn, colLenInc, colButtonBorder, dv.bpmIncPressed)
-	drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
-	drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
-	drawButton(dst, dv.instBtn, colBPMBox, colButtonBorder, false)
-	drawButton(dst, dv.uploadBtn, colBPMBox, colButtonBorder, false)
-	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, strconv.Itoa(dv.bpm), dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, "+", dv.bpmIncBtn.Min.X+15, dv.bpmIncBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
+	if !useFyneControls {
+		drawButton(dst, dv.playBtn, colPlayButton, colButtonBorder, dv.playPressed)
+		drawButton(dst, dv.stopBtn, colStopButton, colButtonBorder, dv.stopPressed)
+		drawButton(dst, dv.bpmDecBtn, colLenDec, colButtonBorder, dv.bpmDecPressed)
+		drawButton(dst, dv.bpmBox, colBPMBox, colButtonBorder, dv.focusBPM)
+		drawButton(dst, dv.bpmIncBtn, colLenInc, colButtonBorder, dv.bpmIncPressed)
+		drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
+		drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
+		drawButton(dst, dv.instBtn, colBPMBox, colButtonBorder, false)
+		drawButton(dst, dv.uploadBtn, colBPMBox, colButtonBorder, false)
+		ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, strconv.Itoa(dv.bpm), dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, "+", dv.bpmIncBtn.Min.X+15, dv.bpmIncBtn.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
+	}
 
 	// draw steps
 	for i, r := range dv.Rows {

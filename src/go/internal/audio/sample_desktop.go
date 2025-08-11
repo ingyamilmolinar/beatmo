@@ -4,10 +4,6 @@ package audio
 
 import (
 	"fmt"
-	"strings"
-
-	"github.com/ncruces/zenity"
-	"github.com/sqweek/dialog"
 )
 
 // Sample represents a preloaded PCM buffer.
@@ -31,25 +27,7 @@ func RegisterWAV(id, path string) error {
 	return nil
 }
 
-// RegisterWAVDialog opens a file selector, asks for a short name, and registers the chosen WAV.
+// RegisterWAVDialog is unsupported when the Fyne control panel is used.
 func RegisterWAVDialog() (string, error) {
-	path, err := dialog.File().Filter("WAV files", "wav").Load()
-	if err != nil {
-		return "", err
-	}
-	if !strings.HasSuffix(strings.ToLower(path), ".wav") {
-		return "", fmt.Errorf("selected file is not a .wav: %s", path)
-	}
-	name, err := zenity.Entry("Instrument name?", zenity.Title("Instrument name"))
-	if err != nil {
-		return "", err
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", fmt.Errorf("instrument name is required")
-	}
-	if err := RegisterWAV(name, path); err != nil {
-		return "", err
-	}
-	return name, nil
+	return "", fmt.Errorf("file dialog handled by Fyne panel")
 }
