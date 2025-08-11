@@ -6,9 +6,15 @@ type Voice interface{}
 
 type Instrument interface{ NewVoice(int, int) Voice }
 
-func Register(id string, inst Instrument) {}
+var insts = []string{"snare", "kick", "hihat", "tom", "clap"}
 
-func RegisterWAV(id, path string) error { return nil }
+func Register(id string, inst Instrument) { insts = append(insts, id) }
+
+func RegisterWAV(id, path string) error { insts = append(insts, id); return nil }
+
+var RegisterWAVDialogFunc = func(id string) error { insts = append(insts, id); return nil }
+
+func RegisterWAVDialog(id string) error { return RegisterWAVDialogFunc(id) }
 
 // Play is a stub used during tests to avoid initializing audio devices.
 func Play(id string, when ...float64) {}
@@ -27,4 +33,6 @@ var SetBPMFunc = func(int) {}
 func SetBPM(bpm int) { SetBPMFunc(bpm) }
 
 // Instruments returns placeholder instrument IDs during tests.
-func Instruments() []string { return []string{"snare", "kick", "hihat", "tom", "clap"} }
+func Instruments() []string { return insts }
+
+func ResetInstruments() { insts = []string{"snare", "kick", "hihat", "tom", "clap"} }

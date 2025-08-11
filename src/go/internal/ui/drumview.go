@@ -38,6 +38,7 @@ type DrumView struct {
 	bgCache []*ebiten.Image
 
 	instBtn     image.Rectangle
+	uploadBtn   image.Rectangle
 	instOptions []string
 
 	// ui widgets (re-computed every frame)
@@ -132,6 +133,7 @@ func (dv *DrumView) recalcButtons() {
 	dv.lenDecBtn = image.Rect(325, dv.Bounds.Min.Y+10, 365, dv.Bounds.Min.Y+50)
 	dv.lenIncBtn = image.Rect(370, dv.Bounds.Min.Y+10, 410, dv.Bounds.Min.Y+50)
 	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+60, 150, dv.Bounds.Min.Y+100)
+	dv.uploadBtn = image.Rect(160, dv.Bounds.Min.Y+60, 300, dv.Bounds.Min.Y+100)
 	dv.controlsW = dv.lenIncBtn.Max.X
 }
 
@@ -238,6 +240,15 @@ func (dv *DrumView) Update() {
 						break
 					}
 				}
+			}
+		case pt(mx, my, dv.uploadBtn):
+			if err := audio.RegisterWAVDialog("user_wav"); err == nil {
+				dv.instOptions = audio.Instruments()
+				dv.Rows[0].Instrument = "user_wav"
+				dv.Rows[0].Name = "User"
+				dv.logger.Infof("[DRUMVIEW] Loaded user WAV")
+			} else {
+				dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
 			}
 		default:
 			if pt(mx, my, stepsRect) {
@@ -349,6 +360,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
 	drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
 	drawButton(dst, dv.instBtn, colBPMBox, colButtonBorder, false)
+	drawButton(dst, dv.uploadBtn, colBPMBox, colButtonBorder, false)
 	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
@@ -357,6 +369,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
 
 	// draw steps
 	for i, r := range dv.Rows {

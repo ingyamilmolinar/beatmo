@@ -13,5 +13,14 @@ func RegisterWAV(id, path string) error {
 	return nil
 }
 
+// RegisterWAVDialog triggers a browser file picker and registers the selected WAV.
+func RegisterWAVDialog(id string) error {
+	js.Global().Call("selectWav", id)
+	instrumentsMu.Lock()
+	instruments = append(instruments, id)
+	instrumentsMu.Unlock()
+	return nil
+}
+
 // Sample type unused on wasm but kept for API parity.
 type Sample struct{}

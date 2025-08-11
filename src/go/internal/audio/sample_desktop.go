@@ -2,7 +2,12 @@
 
 package audio
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/sqweek/dialog"
+)
 
 // Sample represents a preloaded PCM buffer.
 type Sample struct{ data []float32 }
@@ -23,4 +28,16 @@ func RegisterWAV(id, path string) error {
 	}
 	Register(id, Sample{data: buf})
 	return nil
+}
+
+// RegisterWAVDialog opens a file selector and registers the chosen WAV.
+func RegisterWAVDialog(id string) error {
+	path, err := dialog.File().Filter("WAV files", "wav").Load()
+	if err != nil {
+		return err
+	}
+	if !strings.HasSuffix(strings.ToLower(path), ".wav") {
+		return fmt.Errorf("selected file is not a .wav: %s", path)
+	}
+	return RegisterWAV(id, path)
 }
