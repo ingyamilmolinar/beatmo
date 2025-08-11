@@ -9,30 +9,48 @@ import (
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
 
-func TestUploadWAVAddsInstrument(t *testing.T) {
+func TestUploadWAVMultipleAllowsInstrumentChange(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
-	audio.RegisterWAVDialogFunc = func(id string) error { return audio.RegisterWAV(id, "") }
+	ids := []string{"foo", "bar"}
+	idx := 0
+	audio.RegisterWAVDialogFunc = func() (string, error) {
+		id := ids[idx]
+		idx++
+		audio.Register(id, nil)
+		return id, nil
+	}
 
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return g.drum.uploadBtn.Min.X + 1, g.drum.uploadBtn.Min.Y + 1 },
-		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 640, 480 },
-	)
-	defer restore()
+	click := func(x, y int) {
+		pressed := true
+		restore := SetInputForTest(
+			func() (int, int) { return x, y },
+			func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+			func(ebiten.Key) bool { return false },
+			func() []rune { return nil },
+			func() (float64, float64) { return 0, 0 },
+			func() (int, int) { return 640, 480 },
+		)
+		g.Update()
+		pressed = false
+		g.Update()
+		restore()
+	}
 
-	g.Update()
-	pressed = false
-	g.Update()
+	// upload two custom instruments
+	click(g.drum.uploadBtn.Min.X+1, g.drum.uploadBtn.Min.Y+1)
+	click(g.drum.uploadBtn.Min.X+1, g.drum.uploadBtn.Min.Y+1)
 
-	if g.drum.Rows[0].Instrument != "user_wav" {
-		t.Fatalf("expected instrument to switch to user_wav, got %s", g.drum.Rows[0].Instrument)
+	if g.drum.Rows[0].Instrument != "bar" {
+		t.Fatalf("expected instrument to be bar, got %s", g.drum.Rows[0].Instrument)
+	}
+
+	before := g.drum.Rows[0].Instrument
+	click(g.drum.instBtn.Min.X+1, g.drum.instBtn.Min.Y+1)
+	if g.drum.Rows[0].Instrument == before {
+		t.Fatalf("instrument did not change after cycling")
 	}
 	audio.ResetInstruments()
 }

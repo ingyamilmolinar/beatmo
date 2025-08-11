@@ -12,9 +12,13 @@ func Register(id string, inst Instrument) { insts = append(insts, id) }
 
 func RegisterWAV(id, path string) error { insts = append(insts, id); return nil }
 
-var RegisterWAVDialogFunc = func(id string) error { insts = append(insts, id); return nil }
+var RegisterWAVDialogFunc = func() (string, error) {
+	id := "user"
+	insts = append(insts, id)
+	return id, nil
+}
 
-func RegisterWAVDialog(id string) error { return RegisterWAVDialogFunc(id) }
+func RegisterWAVDialog() (string, error) { return RegisterWAVDialogFunc() }
 
 // Play is a stub used during tests to avoid initializing audio devices.
 func Play(id string, when ...float64) {}

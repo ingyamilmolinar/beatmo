@@ -242,11 +242,11 @@ func (dv *DrumView) Update() {
 				}
 			}
 		case pt(mx, my, dv.uploadBtn):
-			if err := audio.RegisterWAVDialog("user_wav"); err == nil {
+			if id, err := audio.RegisterWAVDialog(); err == nil {
 				dv.instOptions = audio.Instruments()
-				dv.Rows[0].Instrument = "user_wav"
-				dv.Rows[0].Name = "User"
-				dv.logger.Infof("[DRUMVIEW] Loaded user WAV")
+				dv.Rows[0].Instrument = id
+				dv.Rows[0].Name = strings.ToUpper(id[:1]) + id[1:]
+				dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
 			} else {
 				dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
 			}

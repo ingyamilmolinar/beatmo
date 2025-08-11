@@ -3,7 +3,9 @@
 package audio
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/sqweek/dialog"
@@ -30,14 +32,24 @@ func RegisterWAV(id, path string) error {
 	return nil
 }
 
-// RegisterWAVDialog opens a file selector and registers the chosen WAV.
-func RegisterWAVDialog(id string) error {
+// RegisterWAVDialog opens a file selector, asks for a short name, and registers the chosen WAV.
+func RegisterWAVDialog() (string, error) {
 	path, err := dialog.File().Filter("WAV files", "wav").Load()
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !strings.HasSuffix(strings.ToLower(path), ".wav") {
-		return fmt.Errorf("selected file is not a .wav: %s", path)
+		return "", fmt.Errorf("selected file is not a .wav: %s", path)
 	}
-	return RegisterWAV(id, path)
+	fmt.Print("Instrument name: ")
+	reader := bufio.NewReader(os.Stdin)
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("instrument name is required")
+	}
+	if err := RegisterWAV(name, path); err != nil {
+		return "", err
+	}
+	return name, nil
 }
