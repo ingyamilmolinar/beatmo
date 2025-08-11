@@ -3,11 +3,10 @@
 package audio
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/ncruces/zenity"
 	"github.com/sqweek/dialog"
 )
 
@@ -41,9 +40,10 @@ func RegisterWAVDialog() (string, error) {
 	if !strings.HasSuffix(strings.ToLower(path), ".wav") {
 		return "", fmt.Errorf("selected file is not a .wav: %s", path)
 	}
-	fmt.Print("Instrument name: ")
-	reader := bufio.NewReader(os.Stdin)
-	name, _ := reader.ReadString('\n')
+	name, err := zenity.Entry("Instrument name?", zenity.Title("Instrument name"))
+	if err != nil {
+		return "", err
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", fmt.Errorf("instrument name is required")
