@@ -78,19 +78,3 @@ window.loadWav = async (id, url) => {
   }
 };
 
-window.selectWav = (id) => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.wav';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !file.name.toLowerCase().endsWith('.wav')) {
-      console.error('Invalid file selected');
-      return;
-    }
-    const arr = await file.arrayBuffer();
-    const buf = await getCtx().decodeAudioData(arr);
-    samples[id] = buf;
-  };
-  input.click();
-};
