@@ -17,15 +17,15 @@ func RegisterWAV(id, path string) error {
 	return nil
 }
 
-// RegisterWAVDialog triggers a browser file picker, asks for a name, and registers the selected WAV.
-func RegisterWAVDialog() (string, error) {
+// SelectWAV triggers a browser file picker and returns the chosen file as an object URL.
+func SelectWAV() (string, error) {
 	doc := js.Global().Get("document")
 	input := doc.Call("createElement", "input")
 	input.Set("type", "file")
 	input.Set("accept", ".wav")
 
 	done := make(chan struct{})
-	var result string
+	var path string
 	var retErr error
 
 	var change js.Func
@@ -45,26 +45,8 @@ func RegisterWAVDialog() (string, error) {
 			close(done)
 			return nil
 		}
-		prompt := js.Global().Call("prompt", "Instrument name?")
-		if !prompt.Truthy() {
-			retErr = fmt.Errorf("instrument name is required")
-			change.Release()
-			close(done)
-			return nil
-		}
-		id := strings.TrimSpace(prompt.String())
-		if id == "" {
-			retErr = fmt.Errorf("instrument name is required")
-			change.Release()
-			close(done)
-			return nil
-		}
 		url := js.Global().Get("URL").Call("createObjectURL", file)
-		js.Global().Call("loadWav", id, url)
-		instrumentsMu.Lock()
-		instruments = append(instruments, id)
-		instrumentsMu.Unlock()
-		result = id
+		path = url.String()
 		change.Release()
 		close(done)
 		return nil
@@ -73,7 +55,10 @@ func RegisterWAVDialog() (string, error) {
 	input.Call("addEventListener", "change", change)
 	input.Call("click")
 	<-done
-	return result, retErr
+	if retErr != nil {
+		return "", retErr
+	}
+	return path, nil
 }
 
 // Sample type unused on wasm but kept for API parity.

@@ -29,8 +29,8 @@ func RegisterWAV(id, path string) error {
 	return nil
 }
 
-// RegisterWAVDialog opens a file picker and prompts for an instrument name.
-func RegisterWAVDialog() (string, error) {
+// SelectWAV opens a file picker and returns the chosen path.
+func SelectWAV() (string, error) {
 	pathBytes, err := exec.Command("zenity", "--file-selection", "--file-filter=*.wav").Output()
 	if err != nil {
 		return "", fmt.Errorf("select wav: %w", err)
@@ -39,17 +39,5 @@ func RegisterWAVDialog() (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("no file selected")
 	}
-
-	nameBytes, err := exec.Command("zenity", "--entry", "--text=Instrument name?").Output()
-	if err != nil {
-		return "", fmt.Errorf("instrument name: %w", err)
-	}
-	id := strings.TrimSpace(string(nameBytes))
-	if id == "" {
-		return "", fmt.Errorf("instrument name is required")
-	}
-	if err := RegisterWAV(id, path); err != nil {
-		return "", err
-	}
-	return id, nil
+	return path, nil
 }
