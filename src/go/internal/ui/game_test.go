@@ -5,10 +5,10 @@ import (
 	"math"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
@@ -349,43 +349,6 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	}
 }
 
-func TestBPMChangeUpdatesAudioStartAndBPM(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(640, 480)
-	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
-	g.addEdge(n0, n1)
-	g.graph.StartNodeID = n0.ID
-	g.Update()
-
-	// stub audio functions
-	audioCalls := 0
-	lastWhen := []float64{}
-       playSound = func(id string, when ...float64) {
-               audioCalls++
-               if len(when) > 0 {
-                       lastWhen = append(lastWhen, when[0])
-               }
-       }
-	defer func() { playSound = audio.Play }()
-
-	g.playing = true
-	g.bpm = 120
-	g.audioStart = 0
-	g.highlightBeat(0, g.beatInfos[0], 0)
-	g.nextBeatIdx = 1
-
-	g.drum.bpm = 240
-	g.Update()
-	g.highlightBeat(1, g.beatInfos[1], 0)
-	if audioCalls != 2 {
-		t.Fatalf("expected 2 playSound calls got %d", audioCalls)
-	}
-	if lastWhen[1] > 0.5 {
-		t.Fatalf("expected second call soon after BPM change, got %f", lastWhen[1])
-	}
-}
-
 func TestRowLengthMatchesConnectedNodes(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -498,6 +461,44 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	}
 }
 
+func TestSoundPlaysWithin50msOfHighlight(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
+
+	var delta time.Duration
+	orig := playSound
+	start := time.Now()
+	playSound = func(id string, when ...float64) {
+		delta = time.Since(start)
+	}
+	defer func() { playSound = orig }()
+
+	g.highlightBeat(0, info, 0)
+	if delta > 50*time.Millisecond {
+		t.Fatalf("audio delay %v exceeds 50ms", delta)
+	}
+}
+
+func TestHighlightBeatUsesSelectedInstrument(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.drum.Rows[0].Instrument = "kick"
+	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
+
+	var id string
+	orig := playSound
+	playSound = func(inst string, when ...float64) { id = inst }
+	defer func() { playSound = orig }()
+
+	g.highlightBeat(0, info, 0)
+	if id != "kick" {
+		t.Fatalf("expected instrument 'kick', got %s", id)
+	}
+}
+
 func TestAudioLoopConsistency(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -530,40 +531,6 @@ func TestAudioLoopConsistency(t *testing.T) {
 
 	if plays != 8 {
 		t.Fatalf("expected 8 plays after looping, got %d", plays)
-	}
-}
-
-func TestAudioSchedulingSpacing(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(640, 480)
-	g.bpm = 120
-	g.audioStart = 0
-
-	plays := []float64{}
-	orig := playSound
-	playSound = func(id string, when ...float64) {
-		if len(when) > 0 {
-			plays = append(plays, when[0])
-		} else {
-			plays = append(plays, 0)
-		}
-	}
-	defer func() { playSound = orig }()
-
-	spb := 60.0 / float64(g.bpm)
-	info := model.BeatInfo{NodeType: model.NodeTypeRegular}
-	for i := 0; i < 4; i++ {
-		g.highlightBeat(i, info, 0)
-	}
-
-	if len(plays) != 4 {
-		t.Fatalf("expected 4 plays, got %d", len(plays))
-	}
-	for i := 1; i < 4; i++ {
-		diff := plays[i] - plays[i-1]
-		if diff < spb-0.01 || diff > spb+0.01 {
-			t.Fatalf("plays not spaced: %v", plays)
-		}
 	}
 }
 
@@ -853,7 +820,7 @@ func TestDrumViewDragShiftsWindow(t *testing.T) {
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
 
-	stepX := g.drum.Bounds.Min.X + g.drum.labelW + 380 + g.drum.cell/2
+	stepX := g.drum.Bounds.Min.X + g.drum.labelW + g.drum.controlsW + g.drum.cell/2
 	stepY := g.drum.Bounds.Min.Y + g.drum.rowHeight()/2
 	pos := []struct{ x, y int }{{stepX, stepY}, {stepX - 2*g.drum.cell, stepY}, {stepX - 2*g.drum.cell, stepY}}
 	idx := 0

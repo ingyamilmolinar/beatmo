@@ -1,137 +1,80 @@
-// web/audio.js with procedural synthesis and plugin registry
+import init from './drums.js';
 
-class StubNode {
-  connect() {
-    return this;
-  }
+let modulePromise = init();
+let mod;
+let ctx;
+const samples = {};
+
+function getCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  return ctx;
 }
 
-class StubBufferSource extends StubNode {
-  start() {}
+async function ensureModule() {
+  if (!mod) {
+    mod = await modulePromise;
+  }
+  return mod;
 }
 
-class StubFilter extends StubNode {
-  constructor() {
-    super();
-    this.frequency = { setValueAtTime() {} };
-  }
+const RENDER = {
+  snare: 'render_snare',
+  kick: 'render_kick',
+  hihat: 'render_hihat',
+  tom: 'render_tom',
+  clap: 'render_clap',
+};
+
+export async function loadWav(id, url) {
+  const res = await fetch(url);
+  const arr = await res.arrayBuffer();
+  const buf = await getCtx().decodeAudioData(arr);
+  samples[id] = buf;
 }
 
-class StubGain extends StubNode {
-  constructor() {
-    super();
-    this.gain = {
-      setValueAtTime() {},
-      exponentialRampToValueAtTime() {},
-    };
-  }
-}
-
-class StubAudioContext {
-  constructor() {
-    this.currentTime = 0;
-    this.destination = new StubNode();
-    this.sampleRate = 44100;
-    this.state = 'suspended';
-  }
-  createBuffer() {
-    return { getChannelData: () => new Float32Array(0) };
-  }
-  createBufferSource() {
-    return new StubBufferSource();
-  }
-  createBiquadFilter() {
-    return new StubFilter();
-  }
-  createGain() {
-    return new StubGain();
-  }
-  resume() {
-    console.log('[audio] stub context resume');
-    this.state = 'running';
-  }
-}
-
-const AC = globalThis.AudioContext ||
-  globalThis.webkitAudioContext ||
-  StubAudioContext;
-
-export let audioCtx = new AC();
-let bpm = 120;
-const plugins = {};
-const SCHEDULE_OFFSET = 0.005; // seconds to schedule ahead to avoid truncation
-
-export function register(id, fn) {
-  console.log("[audio] register", id);
-  plugins[id] = fn;
-}
-
-export async function play(id, when) {
-  const fn = plugins[id];
-  if (!fn) {
-    console.warn("[audio] no plugin for", id, ". Available plugins:", Object.keys(plugins));
+export async function playSound(id) {
+  const sr = 44100;
+  if (RENDER[id]) {
+    const m = await ensureModule();
+    const sec = id === 'snare' ? 0.25 : id === 'hihat' ? 0.125 : 0.5;
+    const frames = Math.floor(sr * sec);
+    const ptr = m._malloc(frames * 4);
+    if (!ptr) {
+      throw new Error('Failed to allocate memory for audio buffer.');
+    }
+    m.ccall(RENDER[id], null, ['number','number','number'], [ptr, sr, frames]);
+    const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
+    m._free(ptr);
+    const buffer = getCtx().createBuffer(1, frames, sr);
+    buffer.copyToChannel(data, 0);
+    const src = getCtx().createBufferSource();
+    src.buffer = buffer;
+    src.connect(getCtx().destination);
+    src.start();
     return;
   }
-
-  let t = when ?? audioCtx.currentTime;
-  if (audioCtx.state === 'suspended') {
-    console.log('[audio] resuming context');
-    try {
-      await audioCtx.resume();
-    } catch (e) {
-      console.warn('[audio] resume failed', e);
-    }
-    t = audioCtx.currentTime;
-  }
-  // schedule slightly in the future to avoid start-time truncation
-  t += SCHEDULE_OFFSET;
-  console.log("[audio] play", id, "at", t);
-  fn(t);
+  const buf = samples[id];
+  if (!buf) throw new Error('Unknown sound: ' + id);
+  const src = getCtx().createBufferSource();
+  src.buffer = buf;
+  src.connect(getCtx().destination);
+  src.start();
 }
 
-export function setBPM(val) {
-  bpm = val;
-  console.log('[audio] BPM set to', bpm);
-}
-
-export async function resetAudio() {
-  if (audioCtx && audioCtx.close) {
-    try {
-      await audioCtx.close();
-    } catch (e) {
-      console.warn('[audio] close failed', e);
-    }
+// Expose for Go
+window.playSound = async (id) => {
+  try {
+    await playSound(id);
+  } catch (err) {
+    console.error('Error playing sound:', err);
   }
-  audioCtx = new AC();
-  console.log('[audio] context reset');
-}
+};
 
-// basic snare using noise burst and envelope
-register('snare', (when) => {
-  console.log("[audio] snare callback at", when, 'bpm', bpm);
-  const spb = 60 / bpm;
-  const duration = Math.min(0.5, spb * 0.5);
-  const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < data.length; i++) {
-    data[i] = Math.random() * 2 - 1;
+window.loadWav = async (id, url) => {
+  try {
+    await loadWav(id, url);
+  } catch (err) {
+    console.error('Error loading wav:', err);
   }
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
+};
 
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'highpass';
-  filter.frequency.setValueAtTime(1000, when);
-
-  const envelope = audioCtx.createGain();
-  envelope.gain.setValueAtTime(1, when);
-  envelope.gain.exponentialRampToValueAtTime(0.01, when + duration);
-
-  noise.connect(filter).connect(envelope).connect(audioCtx.destination);
-  noise.start(when);
-});
-
-globalThis.play = play;
-globalThis.register = register;
-globalThis.resetAudio = resetAudio;
-globalThis.setBPM = setBPM;
