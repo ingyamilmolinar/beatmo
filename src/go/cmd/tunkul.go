@@ -29,9 +29,6 @@ func main() {
 	// Run as fast as possible for smoother gameplay
 	ebiten.SetTPS(ebiten.SyncWithFPS)
 
-	// Launch auxiliary control window
-	ui.RunFynePanel(g)
-
 	// Run the game. On WASM, this will create a <canvas> in index.html
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
