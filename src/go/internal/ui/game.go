@@ -675,8 +675,6 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	cam.Scale(camScale, camScale)
 	cam.Translate(offX, offY+float64(topOffset))
 
-	frame := (g.frame / int64(6)) % int64(len(NodeFrames))
-
 	// grid lattice computed in world coordinates then transformed
 	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.winW, g.split.Y)
 	startI := int(math.Floor(minX / GridStep))
@@ -696,15 +694,13 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 	// edges
 	for _, e := range g.edges {
-		DrawLineCam(screen, e.A.X, e.A.Y, e.B.X, e.B.Y,
-			&cam, color.White, 2)
+		EdgeUI.Draw(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam)
 	}
 
 	// link preview
 	if g.linkDrag.active {
-		DrawLineCam(screen, g.linkDrag.from.X, g.linkDrag.from.Y,
-			g.linkDrag.toX, g.linkDrag.toY,
-			&cam, color.RGBA{200, 200, 200, 255}, 2)
+		EdgeUI.Draw(screen, g.linkDrag.from.X, g.linkDrag.from.Y,
+			g.linkDrag.toX, g.linkDrag.toY, &cam)
 	}
 
 	// nodes
@@ -713,11 +709,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		if !ok || nodeInfo.Type != model.NodeTypeRegular {
 			continue
 		}
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(-float64(NodeSpriteSize)/2, -float64(NodeSpriteSize)/2)
-		op.GeoM.Translate(n.X, n.Y)
-		op.GeoM.Concat(cam)
-		screen.DrawImage(NodeFrames[frame], op)
+		NodeUI.Draw(screen, n.X, n.Y, &cam)
 		if n.Start {
 			x1, y1, x2, y2 := g.nodeScreenRect(n)
 			var id ebiten.GeoM
@@ -734,10 +726,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		p := g.activePulse
 		px := p.x1 + (p.x2-p.x1)*p.t
 		py := p.y1 + (p.y2-p.y1)*p.t
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(px-8, py-8)
-		op.GeoM.Concat(cam)
-		screen.DrawImage(SignalDot, op)
+		SignalUI.Draw(screen, px, py, &cam)
 		g.renderedPulsesCount = 1
 	}
 

@@ -321,7 +321,7 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 
 	var highlightCount int
 	for _, call := range calls {
-		if clr, ok := call.c.(color.RGBA); ok && clr.R == 255 && clr.G == 255 && clr.B == 0 && clr.A == 255 {
+		if clr, ok := call.c.(color.RGBA); ok && clr == colHighlight {
 			highlightCount++
 		}
 	}

@@ -459,15 +459,15 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
 	dst.DrawImage(dv.bg(dv.Bounds.Dx(), dv.Bounds.Dy()), op)
 
-	drawButton(dst, dv.playBtn, colPlayButton, colButtonBorder, dv.playPressed)
-	drawButton(dst, dv.stopBtn, colStopButton, colButtonBorder, dv.stopPressed)
-	drawButton(dst, dv.bpmDecBtn, colLenDec, colButtonBorder, dv.bpmDecPressed)
-	drawButton(dst, dv.bpmBox, colBPMBox, colButtonBorder, dv.focusBPM)
-	drawButton(dst, dv.bpmIncBtn, colLenInc, colButtonBorder, dv.bpmIncPressed)
-	drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
-	drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
-	drawButton(dst, dv.instBtn, colBPMBox, colButtonBorder, false)
-	drawButton(dst, dv.uploadBtn, colBPMBox, colButtonBorder, false)
+	PlayButtonStyle.Draw(dst, dv.playBtn, dv.playPressed)
+	StopButtonStyle.Draw(dst, dv.stopBtn, dv.stopPressed)
+	BPMDecStyle.Draw(dst, dv.bpmDecBtn, dv.bpmDecPressed)
+	BPMBoxStyle.Draw(dst, dv.bpmBox, dv.focusBPM)
+	BPMIncStyle.Draw(dst, dv.bpmIncBtn, dv.bpmIncPressed)
+	LenDecStyle.Draw(dst, dv.lenDecBtn, dv.lenDecPressed)
+	LenIncStyle.Draw(dst, dv.lenIncBtn, dv.lenIncPressed)
+	InstButtonStyle.Draw(dst, dv.instBtn, false)
+	UploadBtnStyle.Draw(dst, dv.uploadBtn, false)
 	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
@@ -498,15 +498,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 				}
 			}
 
-			var fill color.Color = colStepOff
-			if step {
-				fill = r.Color
-			}
-			if highlighted {
-				fill = colHighlight
-			}
-			drawRect(dst, rect, fill, true)
-			drawRect(dst, rect, colStepBorder, false)
+			DrumCellUI.Draw(dst, rect, step && isRegularNode, highlighted, r.Color)
 		}
 	}
 
