@@ -33,7 +33,7 @@ func RegisterWAV(id, path string) error {
 func SelectWAV() (string, error) {
 	pathBytes, err := exec.Command("zenity", "--file-selection", "--file-filter=*.wav").Output()
 	if err != nil {
-		return "", fmt.Errorf("select wav: %w", err)
+		return "", fmt.Errorf("failed to open file dialog: %w", err)
 	}
 	path := strings.TrimSpace(string(pathBytes))
 	if path == "" {

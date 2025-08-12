@@ -13,6 +13,11 @@ import (
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
+const (
+	asciiPrintableMin = 32
+	asciiPrintableMax = 126
+)
+
 /* ───────────────────────────────────────────────────────────── */
 
 type DrumRow struct {
@@ -223,6 +228,19 @@ func (dv *DrumView) CycleInstrument() {
 	}
 }
 
+func (dv *DrumView) registerInstrument(id string) {
+	if err := audio.RegisterWAV(id, dv.pendingWAV); err == nil {
+		dv.instOptions = audio.Instruments()
+		dv.SetInstrument(id)
+		dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
+	} else {
+		dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
+	}
+	dv.naming = false
+	dv.pendingWAV = ""
+	dv.nameInput = ""
+}
+
 func (dv *DrumView) Update() {
 	if len(dv.Rows) == 0 {
 		return
@@ -245,7 +263,7 @@ func (dv *DrumView) Update() {
 
 	if dv.naming {
 		for _, r := range inputChars() {
-			if r >= 32 && r <= 126 {
+			if r >= asciiPrintableMin && r <= asciiPrintableMax {
 				dv.nameInput += string(r)
 			}
 		}
@@ -255,17 +273,7 @@ func (dv *DrumView) Update() {
 		if isKeyPressed(ebiten.KeyEnter) {
 			id := strings.TrimSpace(dv.nameInput)
 			if id != "" {
-				if err := audio.RegisterWAV(id, dv.pendingWAV); err == nil {
-					dv.instOptions = audio.Instruments()
-					dv.Rows[0].Instrument = id
-					dv.Rows[0].Name = strings.ToUpper(id[:1]) + id[1:]
-					dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
-				} else {
-					dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
-				}
-				dv.naming = false
-				dv.pendingWAV = ""
-				dv.nameInput = ""
+				dv.registerInstrument(id)
 			}
 		}
 		if isKeyPressed(ebiten.KeyEscape) {
