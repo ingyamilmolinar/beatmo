@@ -13,7 +13,7 @@ func (g *Game) RunDemo() {
 	b := g.tryAddNode(5, 1, model.NodeTypeRegular)
 	g.addEdge(a, b)
 	g.playing = true
-	g.sched.Start()
+	g.engine.Start()
 	g.spawnPulse()
 	go func() {
 		time.Sleep(2 * time.Second)

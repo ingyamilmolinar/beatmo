@@ -222,8 +222,6 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	nodeID := g.tryAddNode(0, 0, model.NodeTypeRegular).ID
 	g.graph.StartNodeID = nodeID
 
-	var fired int
-	g.sched.OnTick = func(i int) { fired++ }
 	g.bpm = 60
 
 	// Simulate click on play button
@@ -242,8 +240,12 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	pressed = false
 	g.Update() // Simulate release
 
-	if fired == 0 {
-		t.Fatalf("scheduler did not run")
+	// allow engine to process
+	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-g.engine.Events:
+	default:
+		t.Fatalf("engine did not run")
 	}
 }
 
@@ -308,7 +310,7 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	g.graph.StartNodeID = n1.ID
 
 	g.playing = true
-	g.sched.Start()
+	g.engine.Start()
 	g.spawnPulse()
 	if g.activePulse == nil {
 		t.Fatalf("no pulse spawned")
@@ -335,8 +337,8 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	if g.bpm != initialBPM+1 {
 		t.Fatalf("expected bpm %d got %d", initialBPM+1, g.bpm)
 	}
-	if g.sched.BPM != g.bpm {
-		t.Fatalf("scheduler BPM not updated: %d", g.sched.BPM)
+	if g.engine.BPM() != g.bpm {
+		t.Fatalf("engine BPM not updated: %d", g.engine.BPM())
 	}
 	if g.activePulse == nil {
 		t.Fatalf("pulse reset")
@@ -935,7 +937,7 @@ func TestHighlightEmptyCells(t *testing.T) {
 	}
 
 	g.playing = true
-	g.sched.Start()
+	g.engine.Start()
 	g.spawnPulse()
 
 	if _, ok := g.highlightedBeats[0]; !ok {

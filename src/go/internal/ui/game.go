@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/beat"
+	"github.com/ingyamilmolinar/tunkul/core/engine"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
@@ -60,7 +60,7 @@ type Game struct {
 	split  *Splitter
 	drum   *DrumView
 	graph  *model.Graph
-	sched  *beat.Scheduler
+	engine *engine.Engine
 	logger *game_log.Logger
 
 	/* graph data */
@@ -118,11 +118,12 @@ func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 /* ───────────────────── constructor & layout ─────────────────── */
 
 func New(logger *game_log.Logger) *Game {
+	eng := engine.New(logger)
 	g := &Game{
 		cam:              NewCamera(),
 		logger:           logger,
-		graph:            model.NewGraph(logger),
-		sched:            beat.NewScheduler(),
+		graph:            eng.Graph,
+		engine:           eng,
 		split:            NewSplitter(720), // real height set in Layout below
 		highlightedBeats: make(map[int]int64),
 		bpm:              120, // Default BPM
@@ -133,7 +134,6 @@ func New(logger *game_log.Logger) *Game {
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
 
-	g.sched.OnTick = g.onTick
 	return g
 }
 
@@ -531,6 +531,16 @@ func (g *Game) spawnPulse() {
 
 func (g *Game) Update() error {
 	g.logger.Debugf("[GAME] Update start: frame=%d playing=%t bpm=%d currentStep=%d", g.frame, g.playing, g.bpm, g.currentStep)
+	// Process engine events without blocking
+	for {
+		select {
+		case evt := <-g.engine.Events:
+			g.onTick(evt.Step)
+		default:
+			goto eventsDone
+		}
+	}
+eventsDone:
 	// splitter
 	g.split.Update()
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
@@ -615,18 +625,16 @@ func (g *Game) Update() error {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
 			g.nextBeatIdx = 0
-			g.sched.Start()
-			g.logger.Infof("[GAME] Scheduler started.")
+			g.engine.Start()
+			g.logger.Infof("[GAME] Engine started.")
 		} else {
-			g.sched.Stop()
-			g.logger.Infof("[GAME] Scheduler stopped.")
+			g.engine.Stop()
+			g.logger.Infof("[GAME] Engine stopped.")
 		}
 	}
 
 	if g.playing {
-		g.sched.BPM = g.bpm
-		g.sched.Tick()
-		g.logger.Debugf("[GAME] Scheduler ticked. BPM: %d", g.bpm)
+		g.engine.SetBPM(g.bpm)
 	} else {
 		// Stop playback: remove all pulses
 		g.logger.Infof("[GAME] Update: stopping playback, removing active pulse.")
