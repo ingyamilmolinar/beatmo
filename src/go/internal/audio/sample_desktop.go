@@ -2,7 +2,11 @@
 
 package audio
 
-import "fmt"
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+)
 
 // Sample represents a preloaded PCM buffer.
 type Sample struct{ data []float32 }
@@ -23,4 +27,17 @@ func RegisterWAV(id, path string) error {
 	}
 	Register(id, Sample{data: buf})
 	return nil
+}
+
+// SelectWAV opens a file picker and returns the chosen path.
+func SelectWAV() (string, error) {
+	pathBytes, err := exec.Command("zenity", "--file-selection", "--file-filter=*.wav").Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to open file dialog: %w", err)
+	}
+	path := strings.TrimSpace(string(pathBytes))
+	if path == "" {
+		return "", fmt.Errorf("no file selected")
+	}
+	return path, nil
 }

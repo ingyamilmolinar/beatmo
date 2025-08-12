@@ -55,6 +55,8 @@ const (
 	KeyShiftRight
 	KeyBackspace
 	KeyS
+	KeyEnter
+	KeyEscape
 )
 
 // Window and run stubs

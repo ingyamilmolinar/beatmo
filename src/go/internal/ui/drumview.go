@@ -13,6 +13,11 @@ import (
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
+const (
+	asciiPrintableMin = 32
+	asciiPrintableMax = 126
+)
+
 /* ───────────────────────────────────────────────────────────── */
 
 type DrumRow struct {
@@ -23,6 +28,11 @@ type DrumRow struct {
 }
 
 /* ───────────────────────────────────────────────────────────── */
+
+type uploadResult struct {
+	path string
+	err  error
+}
 
 type DrumView struct {
 	Rows   []*DrumRow
@@ -38,7 +48,14 @@ type DrumView struct {
 	bgCache []*ebiten.Image
 
 	instBtn     image.Rectangle
+	uploadBtn   image.Rectangle
 	instOptions []string
+
+	uploading  bool
+	uploadCh   chan uploadResult
+	pendingWAV string
+	naming     bool
+	nameInput  string
 
 	// ui widgets (re-computed every frame)
 	playBtn   image.Rectangle
@@ -106,6 +123,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		Length:      8, // Default length
 		Offset:      0,
 		instOptions: opts,
+		uploadCh:    make(chan uploadResult, 1),
 	}
 	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
@@ -132,6 +150,7 @@ func (dv *DrumView) recalcButtons() {
 	dv.lenDecBtn = image.Rect(325, dv.Bounds.Min.Y+10, 365, dv.Bounds.Min.Y+50)
 	dv.lenIncBtn = image.Rect(370, dv.Bounds.Min.Y+10, 410, dv.Bounds.Min.Y+50)
 	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+60, 150, dv.Bounds.Min.Y+100)
+	dv.uploadBtn = image.Rect(160, dv.Bounds.Min.Y+60, 300, dv.Bounds.Min.Y+100)
 	dv.controlsW = dv.lenIncBtn.Max.X
 }
 
@@ -161,6 +180,10 @@ func (dv *DrumView) BPM() int {
 	return dv.bpm
 }
 
+func (dv *DrumView) SetBPM(b int) {
+	dv.bpm = b
+}
+
 func (dv *DrumView) OffsetChanged() bool {
 	if dv.offsetChanged {
 		dv.offsetChanged = false
@@ -169,8 +192,95 @@ func (dv *DrumView) OffsetChanged() bool {
 	return false
 }
 
+func (dv *DrumView) SetLength(length int) {
+	if length < 1 {
+		length = 1
+	}
+	dv.Length = length
+	dv.Rows[0].Steps = make([]bool, dv.Length)
+	dv.SetBeatLength(dv.Length)
+	dv.bgDirty = true
+}
+
+func (dv *DrumView) SetInstrument(id string) {
+	dv.Rows[0].Instrument = id
+	if id != "" {
+		dv.Rows[0].Name = strings.ToUpper(id[:1]) + id[1:]
+	}
+}
+
+func (dv *DrumView) AddInstrument(id string) {
+	dv.instOptions = audio.Instruments()
+	dv.SetInstrument(id)
+}
+
+func (dv *DrumView) CycleInstrument() {
+	if len(dv.instOptions) == 0 {
+		return
+	}
+	cur := dv.Rows[0].Instrument
+	for i, id := range dv.instOptions {
+		if id == cur {
+			next := dv.instOptions[(i+1)%len(dv.instOptions)]
+			dv.SetInstrument(next)
+			return
+		}
+	}
+}
+
+func (dv *DrumView) registerInstrument(id string) {
+	if err := audio.RegisterWAV(id, dv.pendingWAV); err == nil {
+		dv.instOptions = audio.Instruments()
+		dv.SetInstrument(id)
+		dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
+	} else {
+		dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
+	}
+	dv.naming = false
+	dv.pendingWAV = ""
+	dv.nameInput = ""
+}
+
 func (dv *DrumView) Update() {
 	if len(dv.Rows) == 0 {
+		return
+	}
+
+	if dv.uploading {
+		select {
+		case res := <-dv.uploadCh:
+			dv.uploading = false
+			if res.err != nil {
+				dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", res.err)
+			} else {
+				dv.pendingWAV = res.path
+				dv.naming = true
+				dv.nameInput = ""
+			}
+		default:
+		}
+	}
+
+	if dv.naming {
+		for _, r := range inputChars() {
+			if r >= asciiPrintableMin && r <= asciiPrintableMax {
+				dv.nameInput += string(r)
+			}
+		}
+		if isKeyPressed(ebiten.KeyBackspace) && len(dv.nameInput) > 0 {
+			dv.nameInput = dv.nameInput[:len(dv.nameInput)-1]
+		}
+		if isKeyPressed(ebiten.KeyEnter) {
+			id := strings.TrimSpace(dv.nameInput)
+			if id != "" {
+				dv.registerInstrument(id)
+			}
+		}
+		if isKeyPressed(ebiten.KeyEscape) {
+			dv.naming = false
+			dv.pendingWAV = ""
+			dv.nameInput = ""
+		}
 		return
 	}
 
@@ -238,6 +348,14 @@ func (dv *DrumView) Update() {
 						break
 					}
 				}
+			}
+		case pt(mx, my, dv.uploadBtn):
+			if !dv.uploading && !dv.naming {
+				dv.uploading = true
+				go func() {
+					path, err := audio.SelectWAV()
+					dv.uploadCh <- uploadResult{path: path, err: err}
+				}()
 			}
 		default:
 			if pt(mx, my, stepsRect) {
@@ -349,6 +467,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
 	drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
 	drawButton(dst, dv.instBtn, colBPMBox, colButtonBorder, false)
+	drawButton(dst, dv.uploadBtn, colBPMBox, colButtonBorder, false)
 	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
@@ -357,6 +476,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
 
 	// draw steps
 	for i, r := range dv.Rows {
@@ -388,6 +508,16 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 			drawRect(dst, rect, fill, true)
 			drawRect(dst, rect, colStepBorder, false)
 		}
+	}
+
+	if dv.uploading {
+		ebitenutil.DebugPrintAt(dst, "Loading...", dv.uploadBtn.Min.X, dv.uploadBtn.Max.Y+20)
+	}
+	if dv.naming {
+		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
+		drawRect(dst, box, colBPMBox, true)
+		drawRect(dst, box, colButtonBorder, false)
+		ebitenutil.DebugPrintAt(dst, "Name: "+dv.nameInput, box.Min.X+5, box.Min.Y+18)
 	}
 }
 

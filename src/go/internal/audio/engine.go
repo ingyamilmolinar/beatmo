@@ -3,7 +3,6 @@
 package audio
 
 import (
-	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -51,10 +50,6 @@ func init() {
 	Register("hihat", HiHat{})
 	Register("tom", Tom{})
 	Register("clap", Clap{})
-	err := RegisterWAV("snare_wav", "/home/ymolinar/Repos/tunkul/assets/wav/snare.wav")
-	if err != nil {
-		panic(fmt.Errorf("Failed to register WAV: %w", err))
-	}
 }
 
 func initContext() {

@@ -17,6 +17,7 @@ clean:
 	rm -f $(C_LIB)
 
 wasm: $(MA_JS)
+	emcc $(C_SRC) -sWASM=1 -sEXPORTED_FUNCTIONS='[_render_snare,_render_kick,_render_hihat,_render_tom,_render_clap,_load_wav,_result_description,_malloc,_free]' -sEXPORTED_RUNTIME_METHODS='["cwrap","ccall","HEAPF32"]' -sMODULARIZE=1 -sEXPORT_ES6=1 -o $(MA_JS)
 	cd src/go && go mod download
 	cd src/go && GOOS=js GOARCH=wasm go build -o $(WASM_OUT) ./cmd/...
 
