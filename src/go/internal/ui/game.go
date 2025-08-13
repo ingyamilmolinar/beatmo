@@ -37,7 +37,10 @@ func (n *uiNode) Bounds(scale float64) (x1, y1, x2, y2 float64) {
 	return n.X - halfSize, n.Y - halfSize, n.X + halfSize, n.Y + halfSize
 }
 
-type uiEdge struct{ A, B *uiNode }
+type uiEdge struct {
+	A, B *uiNode
+	t    float64 // animation progress 0..1
+}
 
 type dragLink struct {
 	from     *uiNode
@@ -326,7 +329,7 @@ func (g *Game) addEdge(a, b *uiNode) {
 		}
 	}
 
-	g.edges = append(g.edges, uiEdge{originalA, originalB})
+	g.edges = append(g.edges, uiEdge{A: originalA, B: originalB, t: 0})
 	g.graph.Edges[[2]model.NodeID{originalA.ID, originalB.ID}] = struct{}{}
 	g.logger.Debugf("[GAME] Added edge: %d,%d -> %d,%d", originalA.I, originalA.J, originalB.I, originalB.J)
 	if g.graph.StartNodeID != model.InvalidNodeID {
@@ -558,6 +561,13 @@ eventsDone:
 
 	// editor interactions
 	g.handleEditor()
+
+	// edge animation progress
+	for i := range g.edges {
+		if g.edges[i].t < 1 {
+			g.edges[i].t += 0.1
+		}
+	}
 	g.frame++
 
 	if g.activePulse != nil {
@@ -692,9 +702,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		DrawLineCam(screen, minX, y, maxX, y, &cam, colGridLine, 1)
 	}
 
-	// edges
-	for _, e := range g.edges {
-		EdgeUI.Draw(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam)
+	// edges with connection animation
+	for i := range g.edges {
+		EdgeUI.DrawProgress(screen, g.edges[i].A.X, g.edges[i].A.Y, g.edges[i].B.X, g.edges[i].B.Y, &cam, g.edges[i].t)
 	}
 
 	// link preview

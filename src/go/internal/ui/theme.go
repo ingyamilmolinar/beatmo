@@ -21,7 +21,7 @@ var (
 
 	NodeUI   = NodeStyle{Radius: 16, Fill: color.RGBA{80, 80, 80, 255}, Border: color.RGBA{220, 220, 220, 255}}
 	SignalUI = SignalStyle{Radius: 6, Color: color.RGBA{0, 160, 200, 255}}
-	EdgeUI   = EdgeStyle{Color: color.RGBA{220, 220, 220, 255}, Thickness: 2, ArrowSize: 8}
+	EdgeUI   = EdgeStyle{Color: color.RGBA{220, 220, 220, 255}, Thickness: 2, ArrowSize: 12}
 
 	PlayButtonStyle = ButtonStyle{Fill: colPlayButton, Border: colButtonBorder}
 	StopButtonStyle = ButtonStyle{Fill: colStopButton, Border: colButtonBorder}

@@ -77,6 +77,17 @@ type DrumView struct {
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
 
+	// button animations
+	playAnim     float64
+	stopAnim     float64
+	bpmDecAnim   float64
+	bpmIncAnim   float64
+	lenDecAnim   float64
+	lenIncAnim   float64
+	instAnim     float64
+	uploadAnim   float64
+	bpmFocusAnim float64
+
 	// window scrolling
 	Offset        int // index of first visible beat
 	dragging      bool
@@ -241,6 +252,24 @@ func (dv *DrumView) registerInstrument(id string) {
 	dv.nameInput = ""
 }
 
+func (dv *DrumView) decayAnims() {
+	decay := func(v *float64) {
+		*v *= 0.85
+		if *v < 0.01 {
+			*v = 0
+		}
+	}
+	decay(&dv.playAnim)
+	decay(&dv.stopAnim)
+	decay(&dv.bpmDecAnim)
+	decay(&dv.bpmIncAnim)
+	decay(&dv.lenDecAnim)
+	decay(&dv.lenIncAnim)
+	decay(&dv.instAnim)
+	decay(&dv.uploadAnim)
+	decay(&dv.bpmFocusAnim)
+}
+
 func (dv *DrumView) Update() {
 	if len(dv.Rows) == 0 {
 		return
@@ -316,26 +345,33 @@ func (dv *DrumView) Update() {
 		switch {
 		case pt(mx, my, dv.playBtn):
 			dv.playPressed = true
+			dv.playAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Play button pressed.")
 		case pt(mx, my, dv.stopBtn):
 			dv.stopPressed = true
+			dv.stopAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Stop button pressed.")
 		case pt(mx, my, dv.bpmDecBtn):
 			dv.bpmDecPressed = true
+			dv.bpmDecAnim = 1
 			dv.logger.Infof("[DRUMVIEW] BPM decrease button pressed.")
 		case pt(mx, my, dv.bpmIncBtn):
 			dv.bpmIncPressed = true
+			dv.bpmIncAnim = 1
 			dv.logger.Infof("[DRUMVIEW] BPM increase button pressed.")
 		case pt(mx, my, dv.bpmBox):
 			if !dv.focusBPM {
 				dv.focusBPM = true
+				dv.bpmFocusAnim = 1
 				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
 			}
 		case pt(mx, my, dv.lenIncBtn):
 			dv.lenIncPressed = true
+			dv.lenIncAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Length increase button pressed.")
 		case pt(mx, my, dv.lenDecBtn):
 			dv.lenDecPressed = true
+			dv.lenDecAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Length decrease button pressed.")
 		case pt(mx, my, dv.instBtn):
 			if len(dv.instOptions) > 0 {
@@ -348,9 +384,11 @@ func (dv *DrumView) Update() {
 						break
 					}
 				}
+				dv.instAnim = 1
 			}
 		case pt(mx, my, dv.uploadBtn):
 			if !dv.uploading && !dv.naming {
+				dv.uploadAnim = 1
 				dv.uploading = true
 				go func() {
 					path, err := audio.SelectWAV()
@@ -459,15 +497,17 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
 	dst.DrawImage(dv.bg(dv.Bounds.Dx(), dv.Bounds.Dy()), op)
 
-	PlayButtonStyle.Draw(dst, dv.playBtn, dv.playPressed)
-	StopButtonStyle.Draw(dst, dv.stopBtn, dv.stopPressed)
-	BPMDecStyle.Draw(dst, dv.bpmDecBtn, dv.bpmDecPressed)
-	BPMBoxStyle.Draw(dst, dv.bpmBox, dv.focusBPM)
-	BPMIncStyle.Draw(dst, dv.bpmIncBtn, dv.bpmIncPressed)
-	LenDecStyle.Draw(dst, dv.lenDecBtn, dv.lenDecPressed)
-	LenIncStyle.Draw(dst, dv.lenIncBtn, dv.lenIncPressed)
-	InstButtonStyle.Draw(dst, dv.instBtn, false)
-	UploadBtnStyle.Draw(dst, dv.uploadBtn, false)
+	dv.decayAnims()
+
+	PlayButtonStyle.DrawAnimated(dst, dv.playBtn, dv.playPressed, dv.playAnim)
+	StopButtonStyle.DrawAnimated(dst, dv.stopBtn, dv.stopPressed, dv.stopAnim)
+	BPMDecStyle.DrawAnimated(dst, dv.bpmDecBtn, dv.bpmDecPressed, dv.bpmDecAnim)
+	BPMBoxStyle.DrawAnimated(dst, dv.bpmBox, dv.focusBPM, dv.bpmFocusAnim)
+	BPMIncStyle.DrawAnimated(dst, dv.bpmIncBtn, dv.bpmIncPressed, dv.bpmIncAnim)
+	LenDecStyle.DrawAnimated(dst, dv.lenDecBtn, dv.lenDecPressed, dv.lenDecAnim)
+	LenIncStyle.DrawAnimated(dst, dv.lenIncBtn, dv.lenIncPressed, dv.lenIncAnim)
+	InstButtonStyle.DrawAnimated(dst, dv.instBtn, false, dv.instAnim)
+	UploadBtnStyle.DrawAnimated(dst, dv.uploadBtn, false, dv.uploadAnim)
 	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)

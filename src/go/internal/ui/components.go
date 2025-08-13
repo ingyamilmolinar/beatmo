@@ -8,6 +8,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// fadeColor returns c with its alpha scaled by t (0..1).
+func fadeColor(c color.Color, t float64) color.Color {
+	r, g, b, a := c.RGBA()
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	return color.NRGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(float64(a>>8) * t)}
+}
+
 // NodeStyle defines visual appearance for graph nodes.
 type NodeStyle struct {
 	Radius float32
@@ -54,14 +66,32 @@ type EdgeStyle struct {
 
 // Draw renders a directed edge from (x1,y1) to (x2,y2) using cam.
 func (s EdgeStyle) Draw(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *ebiten.GeoM) {
-	DrawLineCam(dst, x1, y1, x2, y2, cam, s.Color, s.Thickness)
+	s.DrawProgress(dst, x1, y1, x2, y2, cam, 1)
+}
+
+// DrawProgress renders a portion of the edge according to progress t
+// (0..1). When t reaches 1 the arrow head is drawn.
+func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *ebiten.GeoM, t float64) {
+	if t <= 0 {
+		return
+	}
+	if t > 1 {
+		t = 1
+	}
+	col := fadeColor(s.Color, t)
+	ex := x1 + (x2-x1)*t
+	ey := y1 + (y2-y1)*t
+	DrawLineCam(dst, x1, y1, ex, ey, cam, col, s.Thickness)
+	if t < 1 {
+		return
+	}
 	angle := math.Atan2(y2-y1, x2-x1)
 	leftX := x2 - s.ArrowSize*math.Cos(angle-math.Pi/6)
 	leftY := y2 - s.ArrowSize*math.Sin(angle-math.Pi/6)
 	rightX := x2 - s.ArrowSize*math.Cos(angle+math.Pi/6)
 	rightY := y2 - s.ArrowSize*math.Sin(angle+math.Pi/6)
-	DrawLineCam(dst, x2, y2, leftX, leftY, cam, s.Color, s.Thickness)
-	DrawLineCam(dst, x2, y2, rightX, rightY, cam, s.Color, s.Thickness)
+	DrawLineCam(dst, x2, y2, leftX, leftY, cam, col, s.Thickness)
+	DrawLineCam(dst, x2, y2, rightX, rightY, cam, col, s.Thickness)
 }
 
 // ButtonStyle describes rectangular button visuals.
@@ -75,6 +105,17 @@ func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed bool) {
 	drawButton(dst, r, s.Fill, s.Border, pressed)
 }
 
+// DrawAnimated draws the button with a shrink animation controlled by anim
+// (0..1). anim is typically set to 1 on click and decays toward 0.
+func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed bool, anim float64) {
+	if anim < 0 {
+		anim = 0
+	}
+	inset := int(anim * float64(r.Dx()) * 0.1)
+	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
+	drawButton(dst, animRect, s.Fill, s.Border, pressed)
+}
+
 // TextInputStyle styles a text input box.
 type TextInputStyle struct {
 	Fill   color.Color
@@ -84,6 +125,16 @@ type TextInputStyle struct {
 // Draw renders the text box using drawButton for consistency.
 func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, focused bool) {
 	drawButton(dst, r, s.Fill, s.Border, focused)
+}
+
+// DrawAnimated draws the text box with a subtle focus animation.
+func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focused bool, anim float64) {
+	if anim < 0 {
+		anim = 0
+	}
+	inset := int(anim * float64(r.Dx()) * 0.1)
+	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
+	drawButton(dst, animRect, s.Fill, s.Border, focused)
 }
 
 // DrumCellStyle styles individual drum machine cells.
