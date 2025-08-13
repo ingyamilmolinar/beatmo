@@ -374,8 +374,62 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil, 0)
-	if count != 9 {
-		t.Fatalf("expected 9 buttons drawn, got %d", count)
+	if count != 10 {
+		t.Fatalf("expected 10 buttons drawn, got %d", count)
+	}
+}
+
+func TestDrumViewAddAndDeleteRow(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.recalcButtons()
+
+	pressed := true
+	cx, cy := dv.addRowBtn.Min.X+1, dv.addRowBtn.Min.Y+1
+	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+	if len(dv.Rows) != 2 {
+		t.Fatalf("expected 2 rows got %d", len(dv.Rows))
+	}
+
+	// recalc layout to get delete button for new row
+	dv.Update()
+	pressed = true
+	cx, cy = dv.rowDeleteBtns[1].Min.X+1, dv.rowDeleteBtns[1].Min.Y+1
+	restore = SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+	if len(dv.Rows) != 1 {
+		t.Fatalf("expected 1 row after deletion got %d", len(dv.Rows))
+	}
+}
+
+func TestDrumViewChangeInstrumentPerRow(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.instOptions = []string{"snare", "kick"}
+	dv.AddRow()
+	dv.Update()
+	dv.selRow = 1
+	dv.recalcButtons()
+
+	pressed := true
+	cx, cy := dv.instBtn.Min.X+1, dv.instBtn.Min.Y+1
+	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+
+	if dv.Rows[1].Instrument != "kick" {
+		t.Fatalf("expected instrument 'kick', got %s", dv.Rows[1].Instrument)
 	}
 }
 
