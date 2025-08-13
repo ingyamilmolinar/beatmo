@@ -78,6 +78,39 @@ func TestGameCalculatesBeatInfosPerRow(t *testing.T) {
 	}
 }
 
+func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// first row start
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n0
+	g.graph.StartNodeID = n0.ID
+
+	// second row
+	g.drum.AddRow()
+	g.Update()
+	_ = g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.drum.Rows[1].Instrument = "kick"
+
+	g.updateBeatInfos()
+
+	var plays []string
+	orig := playSound
+	playSound = func(id string, when ...float64) { plays = append(plays, id) }
+	defer func() { playSound = orig }()
+
+	g.spawnPulseFromRow(0, 0)
+	g.spawnPulseFromRow(1, 0)
+
+	if len(plays) != 2 {
+		t.Fatalf("expected 2 plays got %d", len(plays))
+	}
+	if plays[0] != g.drum.Rows[0].Instrument || plays[1] != g.drum.Rows[1].Instrument {
+		t.Fatalf("got plays %v", plays)
+	}
+}
+
 func TestAdvancePulseLoopWrap(t *testing.T) {
 	g := New(testLogger)
 	g.drum.Length = 6
@@ -104,9 +137,11 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	p := &pulse{
 		fromBeatInfo: g.beatInfos[last-1],
 		toBeatInfo:   g.beatInfos[last],
+		path:         g.beatInfos,
 		pathIdx:      last,
 		from:         g.nodeByID(g.beatInfos[last-1].NodeID),
 		to:           g.nodeByID(g.beatInfos[last].NodeID),
+		row:          0,
 	}
 
 	func() {
@@ -272,9 +307,11 @@ func TestComplexCircuitTraversal(t *testing.T) {
 	p := &pulse{
 		fromBeatInfo: g.beatInfos[len(g.beatInfos)-1],
 		toBeatInfo:   g.beatInfos[0],
+		path:         g.beatInfos,
 		pathIdx:      0,
 		from:         g.nodeByID(g.beatInfos[len(g.beatInfos)-1].NodeID),
 		to:           g.nodeByID(g.beatInfos[0].NodeID),
+		row:          0,
 	}
 
 	for i := 0; i < expectedLen*2; i++ {
@@ -546,7 +583,7 @@ func TestSoundPlaysWithin50msOfHighlight(t *testing.T) {
 	}
 	defer func() { playSound = orig }()
 
-	g.highlightBeat(0, info, 0)
+	g.highlightBeat(0, 0, info, 0)
 	if delta > 50*time.Millisecond {
 		t.Fatalf("audio delay %v exceeds 50ms", delta)
 	}
@@ -564,7 +601,7 @@ func TestHighlightBeatUsesSelectedInstrument(t *testing.T) {
 	playSound = func(inst string, when ...float64) { id = inst }
 	defer func() { playSound = orig }()
 
-	g.highlightBeat(0, info, 0)
+	g.highlightBeat(0, 0, info, 0)
 	if id != "kick" {
 		t.Fatalf("expected instrument 'kick', got %s", id)
 	}
@@ -1009,28 +1046,28 @@ func TestHighlightEmptyCells(t *testing.T) {
 	g.engine.Start()
 	g.spawnPulseFrom(0)
 
-	if _, ok := g.highlightedBeats[0]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 0)]; !ok {
 		t.Errorf("Tick 0: Beat at index 0 should be highlighted")
 	}
 
 	for g.activePulse != nil && g.activePulse.pathIdx < 2 {
 		g.Update()
 	}
-	if _, ok := g.highlightedBeats[1]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 1)]; !ok {
 		t.Errorf("Tick 1: Beat at index 1 should be highlighted")
 	}
 
 	for g.activePulse != nil && g.activePulse.pathIdx < 3 {
 		g.Update()
 	}
-	if _, ok := g.highlightedBeats[2]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 2)]; !ok {
 		t.Errorf("Tick 2: Beat at index 2 should be highlighted")
 	}
 
 	for g.activePulse != nil && g.activePulse.pathIdx < 4 {
 		g.Update()
 	}
-	if _, ok := g.highlightedBeats[3]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 3)]; !ok {
 		t.Errorf("Tick 3: Beat at index 3 should be highlighted")
 	}
 }
@@ -1434,14 +1471,15 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 	got := make([]int, len(expected))
 	got[0] = 0
 	for i := 1; i < len(expected); i++ {
-		delete(g.highlightedBeats, g.activePulse.lastIdx)
+		delete(g.highlightedBeats, makeBeatKey(0, g.activePulse.lastIdx))
 		if !g.advancePulse(g.activePulse) {
 			t.Fatalf("pulse ended early at step %d", i)
 		}
 		if len(g.highlightedBeats) != 1 {
 			t.Fatalf("expected single highlight, got %v", g.highlightedBeats)
 		}
-		for idx := range g.highlightedBeats {
+		for key := range g.highlightedBeats {
+			_, idx := splitBeatKey(key)
 			got[i] = idx
 		}
 	}

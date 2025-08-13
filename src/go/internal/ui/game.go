@@ -21,6 +21,10 @@ const ebitenTPS = 60 // Ticks per second for Ebiten (stubbed for tests)
 // playSound plays a synthesized sound. Overridden in tests.
 var playSound = audio.Play
 
+func makeBeatKey(row, idx int) int { return (row << 16) | (idx & 0xFFFF) }
+
+func splitBeatKey(key int) (row, idx int) { return key >> 16, key & 0xFFFF }
+
 /* ───────────────────────── data types ───────────────────────── */
 
 type uiNode struct {
@@ -54,8 +58,10 @@ type pulse struct {
 	t, speed                 float64
 	from, to                 *uiNode
 	fromBeatInfo, toBeatInfo model.BeatInfo
+	path                     []model.BeatInfo
 	pathIdx                  int
 	lastIdx                  int
+	row                      int
 }
 
 type Game struct {
@@ -73,10 +79,11 @@ type Game struct {
 	pendingStartRow int
 
 	/* visuals */
-	activePulse         *pulse
+	activePulses        []*pulse
+	activePulse         *pulse // primary row pulse for legacy tests
 	frame               int64
 	renderedPulsesCount int
-	highlightedBeats    map[int]int64 // Map of beat index to frame number until which it's highlighted
+	highlightedBeats    map[int]int64 // Encoded row/index keys
 	selNeighbors        map[*uiNode]bool
 
 	/* editor state */
@@ -98,7 +105,9 @@ type Game struct {
 	beatInfosByRow [][]model.BeatInfo // Per-row traversal paths
 	isLoop         bool               // Indicates if the current graph forms a loop
 	loopStartIndex int                // The index in beatInfos where the loop segment begins
-	nextBeatIdx    int                // Absolute beat index for highlighting across loops
+	isLoopByRow    []bool
+	loopStartByRow []int
+	nextBeatIdxs   []int // Absolute beat index per row
 	elapsedBeats   int
 
 	/* misc */
@@ -153,6 +162,10 @@ func New(logger *game_log.Logger) *Game {
 		beatInfos:        []model.BeatInfo{},
 		drumBeatInfos:    []model.BeatInfo{},
 		beatInfosByRow:   [][]model.BeatInfo{},
+		isLoopByRow:      []bool{},
+		loopStartByRow:   []int{},
+		nextBeatIdxs:     []int{},
+		activePulses:     []*pulse{},
 		pendingStartRow:  -1,
 	}
 
@@ -292,9 +305,15 @@ func (g *Game) updateBeatInfos() {
 	g.loopStartIndex = loopStart
 
 	maxLen := baseLen
-	g.beatInfosByRow = make([][]model.BeatInfo, len(g.drum.Rows))
-	if len(g.drum.Rows) > 0 {
+	nRows := len(g.drum.Rows)
+	g.beatInfosByRow = make([][]model.BeatInfo, nRows)
+	g.isLoopByRow = make([]bool, nRows)
+	g.loopStartByRow = make([]int, nRows)
+	g.nextBeatIdxs = make([]int, nRows)
+	if nRows > 0 {
 		g.beatInfosByRow[0] = g.beatInfos
+		g.isLoopByRow[0] = isLoop
+		g.loopStartByRow[0] = loopStart
 	}
 
 	// Compute beat paths for additional drum rows using their origin nodes.
@@ -310,7 +329,7 @@ func (g *Game) updateBeatInfos() {
 		if r.Origin == model.InvalidNodeID {
 			continue
 		}
-		rowPath, _, _ := g.graph.CalculateBeatRowFrom(r.Origin)
+		rowPath, rowLoop, rowStart := g.graph.CalculateBeatRowFrom(r.Origin)
 		rowLen := 0
 		for _, b := range rowPath {
 			if b.NodeID == model.InvalidNodeID {
@@ -319,6 +338,8 @@ func (g *Game) updateBeatInfos() {
 			rowLen++
 		}
 		g.beatInfosByRow[i] = rowPath[:rowLen]
+		g.isLoopByRow[i] = rowLoop
+		g.loopStartByRow[i] = rowStart
 		if rowLen > maxLen {
 			maxLen = rowLen
 		}
@@ -362,6 +383,28 @@ func (g *Game) beatInfoAt(idx int) model.BeatInfo {
 	return g.beatInfos[idx]
 }
 
+func (g *Game) beatInfoAtRow(row, idx int) model.BeatInfo {
+	if row < 0 || row >= len(g.beatInfosByRow) {
+		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+	}
+	infos := g.beatInfosByRow[row]
+	if len(infos) == 0 {
+		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+	}
+	if idx < len(infos) {
+		return infos[idx]
+	}
+	if !g.isLoopByRow[row] {
+		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+	}
+	loopLen := len(infos) - g.loopStartByRow[row]
+	if loopLen <= 0 {
+		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
+	}
+	idx = g.loopStartByRow[row] + (idx-g.loopStartByRow[row])%loopLen
+	return infos[idx]
+}
+
 func (g *Game) wrapBeatIndex(idx int) int {
 	if len(g.beatInfos) == 0 {
 		return 0
@@ -377,6 +420,27 @@ func (g *Game) wrapBeatIndex(idx int) int {
 		return len(g.beatInfos) - 1
 	}
 	return g.loopStartIndex + (idx-g.loopStartIndex)%loopLen
+}
+
+func (g *Game) wrapBeatIndexRow(row, idx int) int {
+	if row < 0 || row >= len(g.beatInfosByRow) {
+		return 0
+	}
+	infos := g.beatInfosByRow[row]
+	if len(infos) == 0 {
+		return 0
+	}
+	if idx < len(infos) {
+		return idx
+	}
+	if !g.isLoopByRow[row] {
+		return len(infos) - 1
+	}
+	loopLen := len(infos) - g.loopStartByRow[row]
+	if loopLen <= 0 {
+		return len(infos) - 1
+	}
+	return g.loopStartByRow[row] + (idx-g.loopStartByRow[row])%loopLen
 }
 
 func (g *Game) refreshDrumRow() {
@@ -588,27 +652,29 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	}
 }
 
-func (g *Game) spawnPulseFrom(start int) {
-	g.logger.Debugf("[GAME] Spawn pulse from %d", start)
-
-	if len(g.beatInfos) == 0 {
-		g.logger.Infof("[GAME] Spawn pulse: No beat information available")
+func (g *Game) spawnPulseFromRow(row, start int) {
+	g.logger.Debugf("[GAME] Spawn pulse for row %d from %d", row, start)
+	if row < 0 || row >= len(g.beatInfosByRow) {
 		return
 	}
-
-	curIdx := g.wrapBeatIndex(start)
+	path := g.beatInfosByRow[row]
+	if len(path) == 0 {
+		g.logger.Infof("[GAME] Spawn pulse: No beat information available for row %d", row)
+		return
+	}
+	curIdx := g.wrapBeatIndexRow(row, start)
 	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
-
-	fromBeatInfo := g.beatInfos[curIdx]
-	g.nextBeatIdx = start
-	g.highlightBeat(g.nextBeatIdx, fromBeatInfo, beatDuration)
-	g.nextBeatIdx++
-	g.elapsedBeats = g.nextBeatIdx
-
-	nextInfo := g.beatInfoAt(start + 1)
+	fromBeatInfo := path[curIdx]
+	g.nextBeatIdxs[row] = start
+	g.highlightBeat(row, g.nextBeatIdxs[row], fromBeatInfo, beatDuration)
+	g.nextBeatIdxs[row]++
+	if row == 0 {
+		g.elapsedBeats = g.nextBeatIdxs[row]
+	}
+	nextInfo := g.beatInfoAtRow(row, start+1)
 	if nextInfo.NodeID != model.InvalidNodeID {
-		nextIdx := g.wrapBeatIndex(start + 1)
-		g.activePulse = &pulse{
+		nextIdx := g.wrapBeatIndexRow(row, start+1)
+		p := &pulse{
 			x1:           float64(fromBeatInfo.I * GridStep),
 			y1:           float64(fromBeatInfo.J * GridStep),
 			x2:           float64(nextInfo.I * GridStep),
@@ -620,11 +686,21 @@ func (g *Game) spawnPulseFrom(start int) {
 			lastIdx:      curIdx,
 			from:         g.nodeByID(fromBeatInfo.NodeID),
 			to:           g.nodeByID(nextInfo.NodeID),
+			path:         path,
+			row:          row,
 		}
-	} else {
+		g.activePulses = append(g.activePulses, p)
+		if row == 0 {
+			g.activePulse = p
+		}
+	} else if row == 0 {
 		g.activePulse = nil
 	}
 }
+
+// spawnPulseFrom is kept for compatibility with tests; it spawns a pulse for the
+// primary drum row.
+func (g *Game) spawnPulseFrom(start int) { g.spawnPulseFromRow(0, start) }
 
 /* ─────────────── Update & tick ────────────────────────────────────────── */
 
@@ -675,24 +751,28 @@ eventsDone:
 	}
 	g.frame++
 
-	if g.activePulse != nil {
-		g.logger.Debugf("[GAME] Update: processing active pulse: t=%.2f, fromBeatInfo=%+v, toBeatInfo=%+v", g.activePulse.t, g.activePulse.fromBeatInfo, g.activePulse.toBeatInfo)
-		g.activePulse.t += g.activePulse.speed
-		if g.activePulse.t >= 1 {
-			// Clear highlight for the beat we just left
-			prevIdx := g.activePulse.lastIdx
-			delete(g.highlightedBeats, prevIdx)
-			g.logger.Debugf("[GAME] Cleared highlight for beat index %d. highlightedBeats: %v", prevIdx, g.highlightedBeats)
-
-			if !g.advancePulse(g.activePulse) {
-				g.logger.Infof("[GAME] Update: active pulse removed.")
-				g.activePulse = nil
-				// Clear all highlights when the active pulse is removed
-				for idx := range g.highlightedBeats {
-					delete(g.highlightedBeats, idx)
+	for i := 0; i < len(g.activePulses); {
+		p := g.activePulses[i]
+		g.logger.Debugf("[GAME] Update: processing active pulse row=%d t=%.2f from=%+v to=%+v", p.row, p.t, p.fromBeatInfo, p.toBeatInfo)
+		p.t += p.speed
+		if p.t >= 1 {
+			prevIdx := p.lastIdx
+			delete(g.highlightedBeats, makeBeatKey(p.row, prevIdx))
+			if !g.advancePulse(p) {
+				g.logger.Infof("[GAME] Update: pulse for row %d removed", p.row)
+				if p.row == 0 {
+					g.activePulse = nil
 				}
+				g.activePulses = append(g.activePulses[:i], g.activePulses[i+1:]...)
+				for key := range g.highlightedBeats {
+					if r, _ := splitBeatKey(key); r == p.row {
+						delete(g.highlightedBeats, key)
+					}
+				}
+				continue
 			}
 		}
+		i++
 	}
 
 	// Clear expired highlights
@@ -737,22 +817,24 @@ eventsDone:
 	if g.bpm != prevBPM {
 		g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
 		audio.SetBPM(g.bpm)
-		if g.activePulse != nil {
-			g.activePulse.t *= float64(g.bpm) / float64(prevBPM)
-			if g.activePulse.t >= 1 {
-				g.activePulse.t = 0.999999
+		beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
+		for _, p := range g.activePulses {
+			p.t *= float64(g.bpm) / float64(prevBPM)
+			if p.t >= 1 {
+				p.t = 0.999999
 			}
-			beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
-			g.activePulse.speed = 1.0 / float64(beatDuration)
-			g.logger.Debugf("[GAME] BPM changed to %d, updated active pulse speed to %f and t to %.2f", g.bpm, g.activePulse.speed, g.activePulse.t)
+			p.speed = 1.0 / float64(beatDuration)
 		}
 	}
 
 	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
-			g.nextBeatIdx = 0
+			for i := range g.nextBeatIdxs {
+				g.nextBeatIdxs[i] = 0
+			}
 			g.elapsedBeats = 0
+			g.activePulses = nil
 			g.activePulse = nil
 			g.highlightedBeats = map[int]int64{}
 			g.engine.Start()
@@ -766,8 +848,8 @@ eventsDone:
 	if g.playing {
 		g.engine.SetBPM(g.bpm)
 	} else {
-		// Stop playback: remove all pulses
-		g.logger.Infof("[GAME] Update: stopping playback, removing active pulse.")
+		g.logger.Infof("[GAME] Update: stopping playback, removing active pulses.")
+		g.activePulses = nil
 		g.activePulse = nil
 	}
 
@@ -870,13 +952,12 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 	// pulses
 	g.renderedPulsesCount = 0
-	if g.activePulse != nil {
-		p := g.activePulse
+	for _, p := range g.activePulses {
 		px := p.x1 + (p.x2-p.x1)*p.t
 		py := p.y1 + (p.y2-p.y1)*p.t
 		DrawLineCam(screen, p.x1, p.y1, px, py, &cam, fadeColor(SignalUI.Color, 0.6), EdgeUI.Thickness)
 		SignalUI.Draw(screen, px, py, &cam)
-		g.renderedPulsesCount = 1
+		g.renderedPulsesCount++
 	}
 
 	// splitter line
@@ -888,8 +969,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
 	vis := map[int]int64{}
-	for idx, fr := range g.highlightedBeats {
-		if idx >= g.drum.Offset && idx < g.drum.Offset+g.drum.Length {
+	for key, fr := range g.highlightedBeats {
+		row, idx := splitBeatKey(key)
+		if row == 0 && idx >= g.drum.Offset && idx < g.drum.Offset+g.drum.Length {
 			vis[idx-g.drum.Offset] = fr
 		}
 	}
@@ -921,36 +1003,53 @@ func (g *Game) rootNode() *uiNode {
 	return root
 }
 
+func (g *Game) pulseForRow(row int) *pulse {
+	for _, p := range g.activePulses {
+		if p.row == row {
+			return p
+		}
+	}
+	return nil
+}
+
 func (g *Game) onTick(step int) {
 	g.logger.Debugf("[GAME] On tick: step %d", step)
 	g.currentStep = step
 
-	// The scheduler ticks every beat. We only care about the first beat (step 0)
-	// to potentially start a pulse if one isn't already active.
-	if step == 0 && g.activePulse == nil {
-		if g.start != nil {
-			g.spawnPulseFrom(g.nextBeatIdx)
+	if step == 0 {
+		for row := range g.drum.Rows {
+			if g.pulseForRow(row) == nil {
+				if row == 0 && g.start == nil {
+					continue
+				}
+				if row > 0 && g.drum.Rows[row].Origin == model.InvalidNodeID {
+					continue
+				}
+				g.spawnPulseFromRow(row, g.nextBeatIdxs[row])
+			}
 		}
 	}
 }
 
-func (g *Game) highlightBeat(idx int, info model.BeatInfo, duration int64) {
-	g.highlightedBeats[idx] = g.frame + duration
+func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) {
+	key := makeBeatKey(row, idx)
+	g.highlightedBeats[key] = g.frame + duration
 	if info.NodeType == model.NodeTypeRegular {
 		inst := "snare"
-		if len(g.drum.Rows) > 0 {
-			inst = g.drum.Rows[0].Instrument
+		if row < len(g.drum.Rows) {
+			inst = g.drum.Rows[row].Instrument
 		}
 		playSound(inst, audio.Now())
-		g.logger.Debugf("[GAME] highlightBeat: Played %s for node %d at beat %d", inst, info.NodeID, idx)
+		g.logger.Debugf("[GAME] highlightBeat: Played %s for node %d at beat %d row %d", inst, info.NodeID, idx, row)
 	}
 }
 
 func (g *Game) clearExpiredHighlights() {
-	for idx, until := range g.highlightedBeats {
+	for key, until := range g.highlightedBeats {
 		if g.frame > until {
-			delete(g.highlightedBeats, idx)
-			g.logger.Debugf("[GAME] Cleared expired highlight for beat %d. highlightedBeats: %v", idx, g.highlightedBeats)
+			delete(g.highlightedBeats, key)
+			row, idx := splitBeatKey(key)
+			g.logger.Debugf("[GAME] Cleared expired highlight for beat %d row %d. highlightedBeats: %v", idx, row, g.highlightedBeats)
 		}
 	}
 }
@@ -960,11 +1059,16 @@ func (g *Game) Seek(beats int) {
 		beats = 0
 	}
 	g.highlightedBeats = map[int]int64{}
+	g.activePulses = nil
 	g.activePulse = nil
 	if g.playing {
-		g.spawnPulseFrom(beats)
+		for row := range g.drum.Rows {
+			g.spawnPulseFromRow(row, beats)
+		}
 	} else {
-		g.nextBeatIdx = beats
+		for i := range g.nextBeatIdxs {
+			g.nextBeatIdxs[i] = beats
+		}
 		g.elapsedBeats = beats
 	}
 }
@@ -978,47 +1082,41 @@ func (g *Game) advancePulse(p *pulse) bool {
 
 	g.logger.Debugf("[GAME] advancePulse: Pulse arrived at beat index %d: %+v", arrivalPathIdx, arrivalBeatInfo)
 
-	g.logger.Debugf("[GAME] advancePulse: Highlighting beat index %d. Type: %v, ID: %v", g.nextBeatIdx, arrivalBeatInfo.NodeType, arrivalBeatInfo.NodeID)
-	g.highlightBeat(g.nextBeatIdx, arrivalBeatInfo, beatDuration)
-	p.lastIdx = g.nextBeatIdx
-	g.nextBeatIdx++
-	g.elapsedBeats = g.nextBeatIdx
+	g.highlightBeat(p.row, g.nextBeatIdxs[p.row], arrivalBeatInfo, beatDuration)
+	p.lastIdx = g.nextBeatIdxs[p.row]
+	g.nextBeatIdxs[p.row]++
+	if p.row == 0 {
+		g.elapsedBeats = g.nextBeatIdxs[p.row]
+	}
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++
 
 	// If the end of the path is reached, check for a loop.
-	if p.pathIdx >= len(g.beatInfos) {
-		if g.isLoop {
-			// If it's a loop, reset pathIdx to the beginning of the loop segment.
-			p.pathIdx = g.loopStartIndex
-			g.logger.Debugf("[GAME] advancePulse: Loop detected, resetting pathIdx to %d for continuous playback.", p.pathIdx)
+	path := p.path
+	if p.pathIdx >= len(path) {
+		if g.isLoopByRow[p.row] {
+			p.pathIdx = g.loopStartByRow[p.row]
 		} else {
-			g.logger.Debugf("[GAME] advancePulse: End of path, no loop. Returning false.")
-			return false // End of path
+			return false
 		}
 	}
-
-	g.logger.Debugf("[GAME] advancePulse: Incremented pathIdx to %d. beatPath length: %d", p.pathIdx, len(g.beatInfos))
 
 	// Set up the next segment of the pulse's journey.
 	prevIdx := p.pathIdx - 1
 	if prevIdx < 0 {
-		if g.isLoop {
-			prevIdx = len(g.beatInfos) - 1
+		if g.isLoopByRow[p.row] {
+			prevIdx = len(path) - 1
 		} else {
-			g.logger.Warnf("[GAME] advancePulse: prevIdx < 0 in non-looping mode. Stopping pulse.")
 			return false
 		}
 	}
-	g.logger.Debugf("[GAME] advancePulse: Selecting next segment prevIdx=%d, pathIdx=%d", prevIdx, p.pathIdx)
-	p.fromBeatInfo = g.beatInfos[prevIdx]
-	p.toBeatInfo = g.beatInfos[p.pathIdx]
+	p.fromBeatInfo = path[prevIdx]
+	p.toBeatInfo = path[p.pathIdx]
 	p.from = g.nodeByID(p.fromBeatInfo.NodeID)
 	p.to = g.nodeByID(p.toBeatInfo.NodeID)
 
 	if p.from == nil || p.to == nil {
-		g.logger.Warnf("[GAME] advancePulse: Could not find nodes for pulse segment from %d to %d. Stopping pulse.", p.fromBeatInfo.NodeID, p.toBeatInfo.NodeID)
 		return false
 	}
 
@@ -1028,8 +1126,6 @@ func (g *Game) advancePulse(p *pulse) bool {
 	p.x2 = p.to.X
 	p.y2 = p.to.Y
 	p.t = 0 // Reset animation progress
-
-	g.logger.Debugf("[GAME] advancePulse: Pulse updated. From (%d,%d) to (%d,%d). Current pathIdx: %d", p.fromBeatInfo.I, p.fromBeatInfo.J, p.toBeatInfo.I, p.toBeatInfo.J, p.pathIdx)
 
 	return true
 }
