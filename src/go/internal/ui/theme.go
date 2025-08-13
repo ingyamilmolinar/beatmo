@@ -20,8 +20,8 @@ var (
 	colStepBorder = color.RGBA{60, 60, 60, 255}
 	colHighlight  = color.RGBA{240, 240, 40, 255}
 
-	colTimelineTotal  = color.RGBA{60, 60, 60, 255}
-	colTimelineView   = color.RGBA{120, 120, 120, 255}
+       colTimelineTotal  = color.RGBA{40, 40, 40, 255}
+       colTimelineView   = color.RGBA{0, 160, 200, 255}
 	colTimelineCursor = color.RGBA{240, 240, 40, 255}
 
 	NodeUI   = NodeStyle{Radius: 16, Fill: color.RGBA{80, 80, 80, 255}, Border: color.RGBA{220, 220, 220, 255}}

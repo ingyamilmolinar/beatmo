@@ -92,17 +92,29 @@ func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *
 	col := fadeColor(s.Color, t)
 	ex := x1 + (x2-x1)*t
 	ey := y1 + (y2-y1)*t
-	DrawLineCam(dst, x1, y1, ex, ey, cam, col, s.Thickness)
-	if t < 1 {
-		return
-	}
-	angle := math.Atan2(y2-y1, x2-x1)
-	leftX := x2 - s.ArrowSize*math.Cos(angle-math.Pi/6)
-	leftY := y2 - s.ArrowSize*math.Sin(angle-math.Pi/6)
-	rightX := x2 - s.ArrowSize*math.Cos(angle+math.Pi/6)
-	rightY := y2 - s.ArrowSize*math.Sin(angle+math.Pi/6)
-	DrawLineCam(dst, x2, y2, leftX, leftY, cam, col, s.Thickness)
-	DrawLineCam(dst, x2, y2, rightX, rightY, cam, col, s.Thickness)
+        DrawLineCam(dst, x1, y1, ex, ey, cam, col, s.Thickness)
+        if t < 1 {
+                return
+        }
+        angle := math.Atan2(y2-y1, x2-x1)
+
+        // Arrowhead at the end of the edge
+        leftX := x2 - s.ArrowSize*math.Cos(angle-math.Pi/6)
+        leftY := y2 - s.ArrowSize*math.Sin(angle-math.Pi/6)
+        rightX := x2 - s.ArrowSize*math.Cos(angle+math.Pi/6)
+        rightY := y2 - s.ArrowSize*math.Sin(angle+math.Pi/6)
+        DrawLineCam(dst, x2, y2, leftX, leftY, cam, col, s.Thickness)
+        DrawLineCam(dst, x2, y2, rightX, rightY, cam, col, s.Thickness)
+
+        // Permanent direction marker at midpoint
+        mx := (x1 + x2) / 2
+        my := (y1 + y2) / 2
+        midLeftX := mx - s.ArrowSize*math.Cos(angle-math.Pi/6)
+        midLeftY := my - s.ArrowSize*math.Sin(angle-math.Pi/6)
+        midRightX := mx - s.ArrowSize*math.Cos(angle+math.Pi/6)
+        midRightY := my - s.ArrowSize*math.Sin(angle+math.Pi/6)
+        DrawLineCam(dst, mx, my, midLeftX, midLeftY, cam, col, s.Thickness)
+        DrawLineCam(dst, mx, my, midRightX, midRightY, cam, col, s.Thickness)
 }
 
 // ButtonStyle describes rectangular button visuals.
