@@ -93,11 +93,12 @@ type Game struct {
 	bpm            int
 	currentStep    int // Current step in the sequence
 	lastBeatFrame  int64
-	beatInfos      []model.BeatInfo // Full traversal path
-	drumBeatInfos  []model.BeatInfo // BeatInfos sized to drum view
-	isLoop         bool             // Indicates if the current graph forms a loop
-	loopStartIndex int              // The index in beatInfos where the loop segment begins
-	nextBeatIdx    int              // Absolute beat index for highlighting across loops
+	beatInfos      []model.BeatInfo   // Full traversal path for primary start
+	drumBeatInfos  []model.BeatInfo   // BeatInfos sized to drum view
+	beatInfosByRow [][]model.BeatInfo // Per-row traversal paths
+	isLoop         bool               // Indicates if the current graph forms a loop
+	loopStartIndex int                // The index in beatInfos where the loop segment begins
+	nextBeatIdx    int                // Absolute beat index for highlighting across loops
 	elapsedBeats   int
 
 	/* misc */
@@ -151,6 +152,7 @@ func New(logger *game_log.Logger) *Game {
 		bpm:              120, // Default BPM
 		beatInfos:        []model.BeatInfo{},
 		drumBeatInfos:    []model.BeatInfo{},
+		beatInfosByRow:   [][]model.BeatInfo{},
 		pendingStartRow:  -1,
 	}
 
@@ -272,11 +274,11 @@ func (g *Game) deleteNode(n *uiNode) {
 
 func (g *Game) updateBeatInfos() {
 	// Traverse the graph once to capture the full path regardless of the
-	// current drum view length.
-	// NodeID has underlying type int; cast is safe for beat-length updates.
+	// current drum view length. NodeID has underlying type int; cast is safe
+	// for beat-length updates.
 	g.graph.SetBeatLength(int(g.graph.Next))
-	fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRow()
 
+	fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRow()
 	baseLen := 0
 	for _, b := range fullBeatRow {
 		if b.NodeID == model.InvalidNodeID {
@@ -289,8 +291,41 @@ func (g *Game) updateBeatInfos() {
 	g.isLoop = isLoop
 	g.loopStartIndex = loopStart
 
-	if baseLen > g.drum.Length {
-		g.drum.Length = baseLen
+	maxLen := baseLen
+	g.beatInfosByRow = make([][]model.BeatInfo, len(g.drum.Rows))
+	if len(g.drum.Rows) > 0 {
+		g.beatInfosByRow[0] = g.beatInfos
+	}
+
+	// Compute beat paths for additional drum rows using their origin nodes.
+	for i, r := range g.drum.Rows {
+		if i == 0 {
+			// row 0 handled above; ensure its origin tracks the start node
+			if r.Origin == model.InvalidNodeID && g.start != nil {
+				g.drum.Rows[0].Origin = g.start.ID
+				g.drum.Rows[0].Node = g.start
+			}
+			continue
+		}
+		if r.Origin == model.InvalidNodeID {
+			continue
+		}
+		rowPath, _, _ := g.graph.CalculateBeatRowFrom(r.Origin)
+		rowLen := 0
+		for _, b := range rowPath {
+			if b.NodeID == model.InvalidNodeID {
+				break
+			}
+			rowLen++
+		}
+		g.beatInfosByRow[i] = rowPath[:rowLen]
+		if rowLen > maxLen {
+			maxLen = rowLen
+		}
+	}
+
+	if maxLen > g.drum.Length {
+		g.drum.Length = maxLen
 	}
 
 	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))

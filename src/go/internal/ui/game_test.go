@@ -53,6 +53,31 @@ func TestGameAssignsOriginToNewRow(t *testing.T) {
 	}
 }
 
+func TestGameCalculatesBeatInfosPerRow(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// first start node for row 0
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+
+	// add a second row and assign its origin on next node add
+	g.drum.AddRow()
+	g.Update()
+	n1 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+
+	g.updateBeatInfos()
+
+	if len(g.beatInfosByRow) < 2 {
+		t.Fatalf("expected beatInfos for 2 rows, got %d", len(g.beatInfosByRow))
+	}
+	if len(g.beatInfosByRow[0]) == 0 || g.beatInfosByRow[0][0].NodeID != n0.ID {
+		t.Fatalf("row0 beatInfos start at %v want %v", g.beatInfosByRow[0], n0.ID)
+	}
+	if len(g.beatInfosByRow[1]) == 0 || g.beatInfosByRow[1][0].NodeID != n1.ID {
+		t.Fatalf("row1 beatInfos start at %v want %v", g.beatInfosByRow[1], n1.ID)
+	}
+}
+
 func TestAdvancePulseLoopWrap(t *testing.T) {
 	g := New(testLogger)
 	g.drum.Length = 6
