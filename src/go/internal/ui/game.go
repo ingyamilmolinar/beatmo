@@ -721,7 +721,7 @@ func (g *Game) Update() error {
 	}
 eventsDone:
 	// splitter
-	g.split.Update()
+	g.split.Update(g.winH)
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 
 	// camera pan only when not dragging link or splitter

@@ -931,6 +931,43 @@ func TestSplitterDragPersists(t *testing.T) {
 	}
 	g.graph.StartNodeID = model.InvalidNodeID
 }
+
+// When the screen size can't be queried (e.g. it returns 0), dragging the
+// splitter should still preserve its final position once released.
+func TestSplitterDragPersistsWithoutScreenSize(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	startY := g.split.Y
+	pos := []struct{ x, y int }{
+		{10, startY},
+		{10, startY + 50},
+		{10, startY + 50},
+	}
+	idx := 0
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return pos[idx].x, pos[idx].y },
+		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+
+	g.Update() // press
+	idx = 1
+	g.Update() // drag
+	pressed = false
+	idx = 2
+	g.Update()         // release
+	g.Layout(640, 480) // layout called again as in game loop
+	g.Update()
+	if g.split.Y != startY+50 {
+		t.Fatalf("splitter Y=%d want %d", g.split.Y, startY+50)
+	}
+	g.graph.StartNodeID = model.InvalidNodeID
+}
 func TestSplitterDragDoesNotCreateNode(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
