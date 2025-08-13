@@ -18,6 +18,26 @@ type Transport struct {
 	playRect image.Rectangle
 	stopRect image.Rectangle
 	focusBox bool
+
+	boxAnim      float64
+	bpmErrorAnim float64
+
+	bpmInput string // typed digits while editing
+	bpmPrev  int    // previous BPM before editing
+}
+
+func (t *Transport) SetBPM(b int) {
+	if b < 1 {
+		t.BPM = 1
+		t.bpmErrorAnim = 1
+		return
+	}
+	if b > maxBPM {
+		t.BPM = maxBPM
+		t.bpmErrorAnim = 1
+		return
+	}
+	t.BPM = b
 }
 
 func NewTransport(w int) *Transport {
@@ -31,11 +51,15 @@ func NewTransport(w int) *Transport {
 
 func (t *Transport) Update() {
 	x, y := cursorPosition()
+	prevFocus := t.focusBox
 
 	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
 		if t.boxRect.Min.X <= x && x <= t.boxRect.Max.X &&
 			t.boxRect.Min.Y <= y && y <= t.boxRect.Max.Y {
 			t.focusBox = true
+			t.boxAnim = 1
+			t.bpmPrev = t.BPM
+			t.bpmInput = ""
 		} else {
 			t.focusBox = false
 		}
@@ -49,17 +73,43 @@ func (t *Transport) Update() {
 
 	if t.focusBox {
 		if ch := inputChars(); len(ch) > 0 {
-			// simplistic numeric entry
-			if d, err := strconv.Atoi(string(ch)); err == nil {
-				newBpm := t.BPM*10 + d
-				if newBpm <= 300 {
-					t.BPM = newBpm
-				}
+			if _, err := strconv.Atoi(string(ch)); err == nil {
+				t.bpmInput += string(ch)
 			}
 		}
 		if isKeyPressed(ebiten.KeyBackspace) {
-			t.BPM /= 10
+			if l := len(t.bpmInput); l > 0 {
+				t.bpmInput = t.bpmInput[:l-1]
+			}
 		}
+		if isKeyPressed(ebiten.KeyEnter) {
+			t.focusBox = false
+		}
+		if t.bpmInput != "" {
+			if v, err := strconv.Atoi(t.bpmInput); err == nil {
+				t.BPM = v
+			}
+		} else {
+			t.BPM = t.bpmPrev
+		}
+	}
+
+	if !t.focusBox && prevFocus {
+		if t.bpmInput == "" {
+			t.BPM = t.bpmPrev
+		}
+		t.SetBPM(t.BPM)
+		t.bpmInput = ""
+	}
+
+	// decay animations
+	t.boxAnim *= 0.85
+	if t.boxAnim < 0.01 {
+		t.boxAnim = 0
+	}
+	t.bpmErrorAnim *= 0.85
+	if t.bpmErrorAnim < 0.01 {
+		t.bpmErrorAnim = 0
 	}
 }
 
@@ -72,10 +122,16 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 	// BPM label
 	ebitenutil.DebugPrintAt(dst, "BPM:", 10, 12)
 
-	// box outline
-	drawRect(dst, t.boxRect, color.White, false)
+	BPMBoxStyle.DrawAnimated(dst, t.boxRect, t.focusBox, t.boxAnim)
+	if t.bpmErrorAnim > 0 {
+		drawRect(dst, t.boxRect, fadeColor(colError, t.bpmErrorAnim), false)
+	}
+	text := t.bpmInput
+	if !t.focusBox {
+		text = fmt.Sprintf("%d", t.BPM)
+	}
 	ebitenutil.DebugPrintAt(dst,
-		fmt.Sprintf("%d", t.BPM),
+		text,
 		t.boxRect.Min.X+4, t.boxRect.Min.Y+4)
 
 	// play / stop squares

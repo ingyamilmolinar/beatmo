@@ -17,7 +17,7 @@ func TestUploadWAVRegistersInstrument(t *testing.T) {
 	// simulate upload selection
 	g.drum.uploading = true
 	g.drum.uploadCh <- uploadResult{path: "dummy.wav", err: nil}
-	g.drum.Update() // process channel, prompt for name
+	g.drum.Update() // process channel
 
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },

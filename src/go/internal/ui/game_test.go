@@ -93,6 +93,39 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	}
 }
 
+func TestTimelineDragWhilePlayingKeepsPulse(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n1
+	g.graph.StartNodeID = n1.ID
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n3 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n3)
+	g.addEdge(n3, n1)
+
+	g.updateBeatInfos()
+
+	g.playing = true
+	g.spawnPulseFrom(0)
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse before drag")
+	}
+
+	g.drum.Offset = 10
+	g.drum.offsetChanged = true
+	g.Update()
+
+	if !g.playing {
+		t.Fatalf("playing stopped after drag")
+	}
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse after drag")
+	}
+}
+
 func TestDrumWheelDoesNotZoomGrid(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -222,8 +255,6 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	nodeID := g.tryAddNode(0, 0, model.NodeTypeRegular).ID
 	g.graph.StartNodeID = nodeID
 
-	var fired int
-	g.sched.OnTick = func(i int) { fired++ }
 	g.bpm = 60
 
 	// Simulate click on play button
@@ -242,8 +273,12 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	pressed = false
 	g.Update() // Simulate release
 
-	if fired == 0 {
-		t.Fatalf("scheduler did not run")
+	// allow engine to process
+	time.Sleep(20 * time.Millisecond)
+	select {
+	case <-g.engine.Events:
+	default:
+		t.Fatalf("engine did not run")
 	}
 }
 
@@ -308,8 +343,8 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	g.graph.StartNodeID = n1.ID
 
 	g.playing = true
-	g.sched.Start()
-	g.spawnPulse()
+	g.engine.Start()
+	g.spawnPulseFrom(0)
 	if g.activePulse == nil {
 		t.Fatalf("no pulse spawned")
 	}
@@ -335,8 +370,8 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	if g.bpm != initialBPM+1 {
 		t.Fatalf("expected bpm %d got %d", initialBPM+1, g.bpm)
 	}
-	if g.sched.BPM != g.bpm {
-		t.Fatalf("scheduler BPM not updated: %d", g.sched.BPM)
+	if g.engine.BPM() != g.bpm {
+		t.Fatalf("engine BPM not updated: %d", g.engine.BPM())
 	}
 	if g.activePulse == nil {
 		t.Fatalf("pulse reset")
@@ -402,7 +437,7 @@ func TestPulseAnimationProgress(t *testing.T) {
 
 	// Manually set playing to true and call spawnPulse to create the pulse
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	// The pulse should be active now
 	if g.activePulse == nil {
@@ -440,7 +475,7 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	defer func() { playSound = orig }()
 
 	g.playing = true
-	g.spawnPulse() // highlights start node
+	g.spawnPulseFrom(0) // highlights start node
 
 	if len(plays) != 1 {
 		t.Fatalf("expected 1 sample for start node, got %d", len(plays))
@@ -522,7 +557,7 @@ func TestAudioLoopConsistency(t *testing.T) {
 	defer func() { playSound = orig }()
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	for i := 0; i < 8; i++ {
 		g.activePulse.t = 1
@@ -935,8 +970,8 @@ func TestHighlightEmptyCells(t *testing.T) {
 	}
 
 	g.playing = true
-	g.sched.Start()
-	g.spawnPulse()
+	g.engine.Start()
+	g.spawnPulseFrom(0)
 
 	if _, ok := g.highlightedBeats[0]; !ok {
 		t.Errorf("Tick 0: Beat at index 0 should be highlighted")
@@ -1012,7 +1047,7 @@ func TestPulseTraversalIgnoresDrumLength(t *testing.T) {
 	g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n1.ID {
 		t.Fatalf("expected pulse heading to second node")
@@ -1205,7 +1240,7 @@ func TestPulseTraversalBeyondDrumView(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	if g.activePulse == nil {
 		t.Fatalf("expected active pulse")
 	}
@@ -1280,7 +1315,7 @@ func TestSignalTraversalInLoop(t *testing.T) {
 	}
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	if g.activePulse == nil {
 		t.Fatalf("Expected active pulse after spawning")
@@ -1357,7 +1392,7 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 	}
 
 	// now simulate pulse highlighting across two laps
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	// sequence of highlighted beat indices expected for first 12 advancements
 	expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 	got := make([]int, len(expected))
@@ -1408,7 +1443,7 @@ func TestBPMChangeDuringLoopKeepsForwardProgress(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	if g.activePulse == nil {
 		t.Fatalf("expected active pulse")
 	}

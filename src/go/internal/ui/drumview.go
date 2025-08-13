@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -16,6 +19,8 @@ import (
 const (
 	asciiPrintableMin = 32
 	asciiPrintableMax = 126
+	timelineHeight    = 40
+	timelineBarHeight = 10
 )
 
 /* ───────────────────────────────────────────────────────────── */
@@ -56,6 +61,10 @@ type DrumView struct {
 	pendingWAV string
 	naming     bool
 	nameInput  string
+	saveBtn    image.Rectangle
+
+	timelineRect  image.Rectangle // progress bar for fast seek
+	timelineBeats int             // total beats represented by timeline
 
 	// ui widgets (re-computed every frame)
 	playBtn   image.Rectangle
@@ -77,12 +86,32 @@ type DrumView struct {
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
 
+	bpmInput string // typed digits while editing
+	bpmPrev  int    // previous BPM before editing
+
+	// button animations
+	playAnim     float64
+	stopAnim     float64
+	bpmDecAnim   float64
+	bpmIncAnim   float64
+	lenDecAnim   float64
+	lenIncAnim   float64
+	instAnim     float64
+	uploadAnim   float64
+	bpmFocusAnim float64
+	bpmErrorAnim float64
+	saveAnim     float64
+	namePhase    float64
+	savePressed  bool
+
 	// window scrolling
 	Offset        int // index of first visible beat
 	dragging      bool
 	dragStartX    int
 	startOffset   int
 	offsetChanged bool
+
+	scrubbing bool
 }
 
 /* ─── geometry helpers ─────────────────────────────────────── */
@@ -92,7 +121,7 @@ func (dv *DrumView) rowHeight() int {
 	if rows == 0 {
 		return 0
 	}
-	return dv.Bounds.Dy() / rows
+	return (dv.Bounds.Dy() - timelineHeight) / rows
 }
 
 // SetBeatLength sets the beat length in the underlying graph.
@@ -100,6 +129,9 @@ func (dv *DrumView) SetBeatLength(length int) {
 	if dv.Graph != nil {
 		dv.Graph.SetBeatLength(length)
 		dv.logger.Debugf("[DRUMVIEW] Graph beat length set to: %d", length)
+	}
+	if length > dv.timelineBeats {
+		dv.timelineBeats = length
 	}
 }
 
@@ -114,16 +146,17 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
 	dv := &DrumView{
-		Bounds:      b,
-		labelW:      80,
-		bpm:         120,
-		bgDirty:     true,
-		Graph:       g,
-		logger:      logger,
-		Length:      8, // Default length
-		Offset:      0,
-		instOptions: opts,
-		uploadCh:    make(chan uploadResult, 1),
+		Bounds:        b,
+		labelW:        80,
+		bpm:           120,
+		bgDirty:       true,
+		Graph:         g,
+		logger:        logger,
+		Length:        8, // Default length
+		Offset:        0,
+		instOptions:   opts,
+		uploadCh:      make(chan uploadResult, 1),
+		timelineBeats: 8,
 	}
 	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
@@ -152,6 +185,13 @@ func (dv *DrumView) recalcButtons() {
 	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+60, 150, dv.Bounds.Min.Y+100)
 	dv.uploadBtn = image.Rect(160, dv.Bounds.Min.Y+60, 300, dv.Bounds.Min.Y+100)
 	dv.controlsW = dv.lenIncBtn.Max.X
+	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
+	dv.timelineRect = image.Rect(
+		dv.Bounds.Min.X+dv.labelW+dv.controlsW,
+		top,
+		dv.Bounds.Max.X-10,
+		top+timelineBarHeight,
+	)
 }
 
 func (dv *DrumView) calcLayout() {
@@ -181,6 +221,16 @@ func (dv *DrumView) BPM() int {
 }
 
 func (dv *DrumView) SetBPM(b int) {
+	if b < 1 {
+		dv.bpm = 1
+		dv.bpmErrorAnim = 1
+		return
+	}
+	if b > maxBPM {
+		dv.bpm = maxBPM
+		dv.bpmErrorAnim = 1
+		return
+	}
 	dv.bpm = b
 }
 
@@ -239,6 +289,27 @@ func (dv *DrumView) registerInstrument(id string) {
 	dv.naming = false
 	dv.pendingWAV = ""
 	dv.nameInput = ""
+	dv.savePressed = false
+}
+
+func (dv *DrumView) decayAnims() {
+	decay := func(v *float64) {
+		*v *= 0.85
+		if *v < 0.01 {
+			*v = 0
+		}
+	}
+	decay(&dv.playAnim)
+	decay(&dv.stopAnim)
+	decay(&dv.bpmDecAnim)
+	decay(&dv.bpmIncAnim)
+	decay(&dv.lenDecAnim)
+	decay(&dv.lenIncAnim)
+	decay(&dv.instAnim)
+	decay(&dv.uploadAnim)
+	decay(&dv.bpmFocusAnim)
+	decay(&dv.bpmErrorAnim)
+	decay(&dv.saveAnim)
 }
 
 func (dv *DrumView) Update() {
@@ -262,6 +333,8 @@ func (dv *DrumView) Update() {
 	}
 
 	if dv.naming {
+		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
+		dv.saveBtn = image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+50, box.Max.Y)
 		for _, r := range inputChars() {
 			if r >= asciiPrintableMin && r <= asciiPrintableMax {
 				dv.nameInput += string(r)
@@ -281,15 +354,33 @@ func (dv *DrumView) Update() {
 			dv.pendingWAV = ""
 			dv.nameInput = ""
 		}
+		mx, my := cursorPosition()
+		left := isMouseButtonPressed(ebiten.MouseButtonLeft)
+		if left && !dv.savePressed && pt(mx, my, dv.saveBtn) {
+			dv.savePressed = true
+			dv.saveAnim = 1
+		}
+		if !left && dv.savePressed {
+			dv.savePressed = false
+			if pt(mx, my, dv.saveBtn) {
+				id := strings.TrimSpace(dv.nameInput)
+				if id != "" {
+					dv.registerInstrument(id)
+				}
+			}
+		}
+		dv.namePhase += 0.1
 		return
 	}
 
 	dv.recalcButtons()
 	dv.calcLayout()
 
+	prevFocus := dv.focusBPM
+
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
-	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Max.Y)
+	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+timelineHeight, dv.Bounds.Max.X, dv.Bounds.Max.Y)
 
 	// wheel zoom for length adjustment
 	if _, whY := wheel(); whY != 0 {
@@ -316,26 +407,35 @@ func (dv *DrumView) Update() {
 		switch {
 		case pt(mx, my, dv.playBtn):
 			dv.playPressed = true
+			dv.playAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Play button pressed.")
 		case pt(mx, my, dv.stopBtn):
 			dv.stopPressed = true
+			dv.stopAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Stop button pressed.")
 		case pt(mx, my, dv.bpmDecBtn):
 			dv.bpmDecPressed = true
+			dv.bpmDecAnim = 1
 			dv.logger.Infof("[DRUMVIEW] BPM decrease button pressed.")
 		case pt(mx, my, dv.bpmIncBtn):
 			dv.bpmIncPressed = true
+			dv.bpmIncAnim = 1
 			dv.logger.Infof("[DRUMVIEW] BPM increase button pressed.")
 		case pt(mx, my, dv.bpmBox):
 			if !dv.focusBPM {
 				dv.focusBPM = true
+				dv.bpmFocusAnim = 1
+				dv.bpmPrev = dv.bpm
+				dv.bpmInput = ""
 				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
 			}
 		case pt(mx, my, dv.lenIncBtn):
 			dv.lenIncPressed = true
+			dv.lenIncAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Length increase button pressed.")
 		case pt(mx, my, dv.lenDecBtn):
 			dv.lenDecPressed = true
+			dv.lenDecAnim = 1
 			dv.logger.Infof("[DRUMVIEW] Length decrease button pressed.")
 		case pt(mx, my, dv.instBtn):
 			if len(dv.instOptions) > 0 {
@@ -348,9 +448,11 @@ func (dv *DrumView) Update() {
 						break
 					}
 				}
+				dv.instAnim = 1
 			}
 		case pt(mx, my, dv.uploadBtn):
 			if !dv.uploading && !dv.naming {
+				dv.uploadAnim = 1
 				dv.uploading = true
 				go func() {
 					path, err := audio.SelectWAV()
@@ -386,46 +488,80 @@ func (dv *DrumView) Update() {
 		}
 	}
 
+	// timeline scrubbing
+	if left && pt(mx, my, dv.timelineRect) {
+		dv.scrubbing = true
+	}
+	if dv.scrubbing {
+		pos := mx
+		if pos < dv.timelineRect.Min.X {
+			pos = dv.timelineRect.Min.X
+		}
+		if pos > dv.timelineRect.Max.X {
+			pos = dv.timelineRect.Max.X
+		}
+		totalBeats := dv.timelineBeats
+		frac := float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
+		beat := int(frac * float64(totalBeats))
+		if beat < 0 {
+			beat = 0
+		}
+		if beat+dv.Length > dv.timelineBeats {
+			dv.timelineBeats = beat + dv.Length
+			totalBeats = dv.timelineBeats
+			beat = int(frac * float64(totalBeats))
+		}
+		if beat != dv.Offset {
+			dv.Offset = beat
+			dv.offsetChanged = true
+		}
+		if !left {
+			dv.scrubbing = false
+		}
+	}
+
 	/* ——— BPM editing ——— */
 	if dv.focusBPM {
 		for _, r := range inputChars() {
 			if r >= '0' && r <= '9' {
-				val, _ := strconv.Atoi(string(r))
-				newBPM := dv.bpm*10 + val
-				if newBPM > 300 {
-					newBPM = 300
-				}
-				if newBPM != dv.bpm {
-					dv.bpm = newBPM
-					dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
-				}
+				dv.bpmInput += string(r)
 			}
 		}
 		if isKeyPressed(ebiten.KeyBackspace) {
-			newBPM := dv.bpm / 10
-			if newBPM == 0 {
-				newBPM = 1
-			}
-			if newBPM != dv.bpm {
-				dv.bpm = newBPM
-				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
+			if l := len(dv.bpmInput); l > 0 {
+				dv.bpmInput = dv.bpmInput[:l-1]
 			}
 		}
+		if isKeyPressed(ebiten.KeyEnter) {
+			dv.focusBPM = false
+		}
+		if dv.bpmInput != "" {
+			if v, err := strconv.Atoi(dv.bpmInput); err == nil {
+				dv.bpm = v
+				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
+			}
+		} else {
+			dv.bpm = dv.bpmPrev
+		}
+	}
+
+	if !dv.focusBPM && prevFocus {
+		if dv.bpmInput == "" {
+			dv.bpm = dv.bpmPrev
+		}
+		dv.SetBPM(dv.bpm)
+		dv.bpmInput = ""
 	}
 
 	/* ——— BPM editing via buttons ——— */
 	if dv.bpmIncPressed {
-		if dv.bpm < 300 {
-			dv.bpm++
-			dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
-		}
+		dv.SetBPM(dv.bpm + 1)
+		dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
 		dv.bpmIncPressed = false
 	}
 	if dv.bpmDecPressed {
-		if dv.bpm > 1 {
-			dv.bpm--
-			dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
-		}
+		dv.SetBPM(dv.bpm - 1)
+		dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
 		dv.bpmDecPressed = false
 	}
 
@@ -452,35 +588,77 @@ func (dv *DrumView) Update() {
 	}
 }
 
-func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo) {
+func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo, elapsedBeats int) {
 	dv.logger.Debugf("[DRUMVIEW] Draw called. beatInfos: %v, highlightedBeats: %v", beatInfos, highlightedBeats)
 	// draw background
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
 	dst.DrawImage(dv.bg(dv.Bounds.Dx(), dv.Bounds.Dy()), op)
 
-	drawButton(dst, dv.playBtn, colPlayButton, colButtonBorder, dv.playPressed)
-	drawButton(dst, dv.stopBtn, colStopButton, colButtonBorder, dv.stopPressed)
-	drawButton(dst, dv.bpmDecBtn, colLenDec, colButtonBorder, dv.bpmDecPressed)
-	drawButton(dst, dv.bpmBox, colBPMBox, colButtonBorder, dv.focusBPM)
-	drawButton(dst, dv.bpmIncBtn, colLenInc, colButtonBorder, dv.bpmIncPressed)
-	drawButton(dst, dv.lenDecBtn, colLenDec, colButtonBorder, dv.lenDecPressed)
-	drawButton(dst, dv.lenIncBtn, colLenInc, colButtonBorder, dv.lenIncPressed)
-	drawButton(dst, dv.instBtn, colBPMBox, colButtonBorder, false)
-	drawButton(dst, dv.uploadBtn, colBPMBox, colButtonBorder, false)
+	dv.decayAnims()
+
+	PlayButtonStyle.DrawAnimated(dst, dv.playBtn, dv.playPressed, dv.playAnim)
+	StopButtonStyle.DrawAnimated(dst, dv.stopBtn, dv.stopPressed, dv.stopAnim)
+	BPMDecStyle.DrawAnimated(dst, dv.bpmDecBtn, dv.bpmDecPressed, dv.bpmDecAnim)
+	BPMBoxStyle.DrawAnimated(dst, dv.bpmBox, dv.focusBPM, dv.bpmFocusAnim)
+	if dv.bpmErrorAnim > 0 {
+		drawRect(dst, dv.bpmBox, fadeColor(colError, dv.bpmErrorAnim), false)
+	}
+	BPMIncStyle.DrawAnimated(dst, dv.bpmIncBtn, dv.bpmIncPressed, dv.bpmIncAnim)
+	LenDecStyle.DrawAnimated(dst, dv.lenDecBtn, dv.lenDecPressed, dv.lenDecAnim)
+	LenIncStyle.DrawAnimated(dst, dv.lenIncBtn, dv.lenIncPressed, dv.lenIncAnim)
+	InstButtonStyle.DrawAnimated(dst, dv.instBtn, false, dv.instAnim)
+	UploadBtnStyle.DrawAnimated(dst, dv.uploadBtn, false, dv.uploadAnim)
 	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, strconv.Itoa(dv.bpm), dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
+	bpmText := dv.bpmInput
+	if !dv.focusBPM {
+		bpmText = strconv.Itoa(dv.bpm)
+	}
+	ebitenutil.DebugPrintAt(dst, bpmText, dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "+", dv.bpmIncBtn.Min.X+15, dv.bpmIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
+	// timeline and progress
+	if dv.timelineBeats < dv.Graph.BeatLength() {
+		dv.timelineBeats = dv.Graph.BeatLength()
+	}
+	if elapsedBeats+dv.Length > dv.timelineBeats {
+		dv.timelineBeats = elapsedBeats + dv.Length
+	}
+	if dv.Offset+dv.Length > dv.timelineBeats {
+		dv.timelineBeats = dv.Offset + dv.Length
+	}
+	totalBeats := dv.timelineBeats
+	info := dv.timelineInfo(elapsedBeats)
+	ebitenutil.DebugPrintAt(dst, info, dv.timelineRect.Min.X, dv.Bounds.Min.Y+5)
+	drawRect(dst, dv.timelineRect, colTimelineTotal, true)
+
+	// current view rectangle
+	viewStart := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
+	viewWidth := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
+	viewRect := image.Rect(viewStart, dv.timelineRect.Min.Y, viewStart+viewWidth, dv.timelineRect.Max.Y)
+	drawRect(dst, viewRect, colTimelineView, true)
+
+	// beat markers
+	for i := 0; i <= totalBeats; i++ {
+		x := dv.timelineRect.Min.X + int(float64(i)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
+		drawRect(dst, image.Rect(x, dv.timelineRect.Min.Y, x+1, dv.timelineRect.Max.Y), color.RGBA{100, 100, 100, 255}, true)
+	}
+
+	// current playback cursor
+	cursorX := dv.timelineRect.Min.X + int(float64(elapsedBeats)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
+	cursorRect := image.Rect(cursorX-1, dv.timelineRect.Min.Y, cursorX+1, dv.timelineRect.Max.Y)
+	drawRect(dst, cursorRect, colTimelineCursor, true)
+
+	drawRect(dst, dv.timelineRect, colButtonBorder, false)
 
 	// draw steps
 	for i, r := range dv.Rows {
-		y := dv.Bounds.Min.Y + i*dv.rowHeight()
+		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
 		for j, step := range r.Steps {
 			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell // Adjusted for buttons
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
@@ -498,15 +676,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 				}
 			}
 
-			var fill color.Color = colStepOff
-			if step {
-				fill = r.Color
-			}
-			if highlighted {
-				fill = colHighlight
-			}
-			drawRect(dst, rect, fill, true)
-			drawRect(dst, rect, colStepBorder, false)
+			DrumCellUI.Draw(dst, rect, step && isRegularNode, highlighted, r.Color)
 		}
 	}
 
@@ -515,10 +685,45 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	}
 	if dv.naming {
 		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
-		drawRect(dst, box, colBPMBox, true)
-		drawRect(dst, box, colButtonBorder, false)
+		anim := (math.Sin(dv.namePhase) + 1) * 0.1
+		BPMBoxStyle.DrawAnimated(dst, box, true, anim)
 		ebitenutil.DebugPrintAt(dst, "Name: "+dv.nameInput, box.Min.X+5, box.Min.Y+18)
+		InstButtonStyle.DrawAnimated(dst, dv.saveBtn, dv.savePressed, dv.saveAnim)
+		ebitenutil.DebugPrintAt(dst, "Save", dv.saveBtn.Min.X+5, dv.saveBtn.Min.Y+18)
 	}
+}
+
+func (dv *DrumView) timelineInfo(elapsedBeats int) string {
+	beatsToDuration := func(beats int) time.Duration {
+		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
+	}
+	totalBeats := dv.timelineBeats
+	totalDur := beatsToDuration(totalBeats)
+	curDur := beatsToDuration(elapsedBeats)
+	curMin := int(curDur / time.Minute)
+	curSec := int((curDur % time.Minute) / time.Second)
+	curMilli := int((curDur % time.Second) / time.Millisecond)
+	totMin := int(totalDur / time.Minute)
+	totSec := int((totalDur % time.Minute) / time.Second)
+	totMilli := int((totalDur % time.Second) / time.Millisecond)
+
+	viewStartBeat := dv.Offset
+	viewEndBeat := dv.Offset + dv.Length
+	viewStartDur := beatsToDuration(viewStartBeat)
+	viewEndDur := beatsToDuration(viewEndBeat)
+	vStartMin := int(viewStartDur / time.Minute)
+	vStartSec := int((viewStartDur % time.Minute) / time.Second)
+	vStartMilli := int((viewStartDur % time.Second) / time.Millisecond)
+	vEndMin := int(viewEndDur / time.Minute)
+	vEndSec := int((viewEndDur % time.Minute) / time.Second)
+	vEndMilli := int((viewEndDur % time.Second) / time.Millisecond)
+
+	return fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d | Beats %d-%d/%d",
+		curMin, curSec, curMilli,
+		totMin, totSec, totMilli,
+		vStartMin, vStartSec, vStartMilli,
+		vEndMin, vEndSec, vEndMilli,
+		viewStartBeat+1, viewEndBeat, totalBeats)
 }
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
