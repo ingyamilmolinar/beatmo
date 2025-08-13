@@ -761,15 +761,16 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
 
 			// Highlighting logic
+			key := makeBeatKey(i, j+dv.Offset)
 			highlighted := false
 			isRegularNode := len(beatInfos) > j && beatInfos[j].NodeType == model.NodeTypeRegular
 
-			if _, ok := highlightedBeats[j]; ok {
+			if _, ok := highlightedBeats[key]; ok {
 				highlighted = true
 				if isRegularNode {
-					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting regular node at index %d, NodeID: %v", j, beatInfos[j].NodeID)
+					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting regular node at row %d index %d, NodeID: %v", i, j, beatInfos[j].NodeID)
 				} else {
-					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting empty beat at index %d", j)
+					dv.logger.Debugf("[DRUMVIEW] Draw: Highlighting empty beat at row %d index %d", i, j)
 				}
 			}
 

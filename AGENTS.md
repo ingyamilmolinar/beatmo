@@ -135,4 +135,4 @@ This debugging session highlighted several critical points:
 * Row additions are now reported via `ConsumeAddedRows`, and each row stores a pointer to its origin UI node so `Game` no longer keeps a separate `startNodes` slice.
 * Beat paths are computed per drum row via `beatInfosByRow`, with the first row auto-syncing its origin to the game start node.
 * Signals now propagate concurrently from each row's origin and trigger per-row instrument playback.
-* Drum view highlighting still only reflects the primary row; extend UI to show highlights for all rows.
+* Drum view now highlights beats for every row based on encoded row/index keys.

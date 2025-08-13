@@ -968,14 +968,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	vis := map[int]int64{}
-	for key, fr := range g.highlightedBeats {
-		row, idx := splitBeatKey(key)
-		if row == 0 && idx >= g.drum.Offset && idx < g.drum.Offset+g.drum.Length {
-			vis[idx-g.drum.Offset] = fr
-		}
-	}
-	g.drum.Draw(dst, vis, g.frame, g.drumBeatInfos, g.elapsedBeats)
+	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, g.elapsedBeats)
 }
 
 func (g *Game) rootNode() *uiNode {

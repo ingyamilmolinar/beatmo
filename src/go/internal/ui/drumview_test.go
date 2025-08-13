@@ -341,7 +341,7 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 		// Verify highlighting
 		for j := 0; j < drumView.Length; j++ {
 			isHighlighted := false
-			if _, ok := game.highlightedBeats[j]; ok {
+			if _, ok := game.highlightedBeats[makeBeatKey(0, j)]; ok {
 				isHighlighted = true
 			}
 
@@ -376,6 +376,41 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil, 0)
 	if count != 10 {
 		t.Fatalf("expected 10 buttons drawn, got %d", count)
+	}
+}
+
+func TestDrumViewHighlightsMultipleRows(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv.Length = 4
+	dv.SetBeatLength(4)
+	dv.AddRow()
+
+	highlights := map[int]int64{
+		makeBeatKey(0, 1): 1,
+		makeBeatKey(1, 2): 1,
+	}
+
+	dst := ebiten.NewImage(800, 200)
+	orig := drawRect
+	var hits [][2]int
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
+			row := (r.Min.Y - (dv.Bounds.Min.Y + timelineHeight)) / dv.rowHeight()
+			col := (r.Min.X - (dv.Bounds.Min.X + dv.labelW + dv.controlsW)) / dv.cell
+			if color.RGBAModel.Convert(c).(color.RGBA) == colHighlight {
+				hits = append(hits, [2]int{row, col})
+			}
+		}
+		orig(dst, r, c, filled)
+	}
+	dv.Draw(dst, highlights, 0, make([]model.BeatInfo, dv.Length), 0)
+	drawRect = orig
+
+	want := map[[2]int]bool{{0, 1}: true, {1, 2}: true}
+	if len(hits) != 2 || !want[hits[0]] || !want[hits[1]] {
+		t.Fatalf("unexpected highlight cells %v", hits)
 	}
 }
 
