@@ -93,7 +93,7 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	}
 }
 
-func TestSeekWhilePlayingLoop(t *testing.T) {
+func TestTimelineDragWhilePlayingKeepsPulse(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
@@ -111,16 +111,18 @@ func TestSeekWhilePlayingLoop(t *testing.T) {
 	g.playing = true
 	g.spawnPulseFrom(0)
 	if g.activePulse == nil {
-		t.Fatalf("expected active pulse before seek")
+		t.Fatalf("expected active pulse before drag")
 	}
 
-	g.Seek(10)
+	g.drum.Offset = 10
+	g.drum.offsetChanged = true
+	g.Update()
 
 	if !g.playing {
-		t.Fatalf("playing stopped after seek")
+		t.Fatalf("playing stopped after drag")
 	}
 	if g.activePulse == nil {
-		t.Fatalf("expected active pulse after seek")
+		t.Fatalf("expected active pulse after drag")
 	}
 }
 

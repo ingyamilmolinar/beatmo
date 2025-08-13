@@ -111,9 +111,7 @@ type DrumView struct {
 	startOffset   int
 	offsetChanged bool
 
-	scrubbing     bool
-	seekBeat      int
-	seekRequested bool
+	scrubbing bool
 }
 
 /* ─── geometry helpers ─────────────────────────────────────── */
@@ -243,12 +241,6 @@ func (dv *DrumView) OffsetChanged() bool {
 	}
 	return false
 }
-
-func (dv *DrumView) SeekRequested() bool { return dv.seekRequested }
-
-func (dv *DrumView) SeekBeat() int { return dv.seekBeat }
-
-func (dv *DrumView) ClearSeek() { dv.seekRequested = false }
 
 func (dv *DrumView) SetLength(length int) {
 	if length < 1 {
@@ -523,10 +515,8 @@ func (dv *DrumView) Update() {
 			dv.Offset = beat
 			dv.offsetChanged = true
 		}
-		dv.seekBeat = beat
 		if !left {
 			dv.scrubbing = false
-			dv.seekRequested = true
 		}
 	}
 

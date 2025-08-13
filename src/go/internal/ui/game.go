@@ -643,10 +643,6 @@ eventsDone:
 	prevLen := g.drum.Length
 	prevBPM := g.bpm
 	g.drum.Update()
-	if g.drum.SeekRequested() {
-		g.Seek(g.drum.SeekBeat())
-		g.drum.ClearSeek()
-	}
 	if g.drum.OffsetChanged() {
 		g.refreshDrumRow()
 	}
