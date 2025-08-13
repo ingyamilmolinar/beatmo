@@ -419,6 +419,7 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
 	dv.recalcButtons()
+	dv.calcLayout()
 
 	pressed := true
 	cx, cy := dv.addRowBtn.Min.X+1, dv.addRowBtn.Min.Y+1
@@ -495,6 +496,22 @@ func TestDrumViewConsumeAddedRows(t *testing.T) {
 	}
 	if len(dv.ConsumeAddedRows()) != 0 {
 		t.Fatalf("expected added rows cleared after consume")
+	}
+}
+
+func TestDrumViewLayoutStacksRows(t *testing.T) {
+	graph := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
+	dv.AddRow()
+	dv.calcLayout()
+	if len(dv.rowLabelRects) != 2 {
+		t.Fatalf("expected 2 row labels, got %d", len(dv.rowLabelRects))
+	}
+	if dv.rowLabelRects[1].Min.Y <= dv.rowLabelRects[0].Min.Y {
+		t.Fatalf("row labels not stacked vertically: %v vs %v", dv.rowLabelRects[0], dv.rowLabelRects[1])
+	}
+	if dv.addRowBtn.Min.Y <= dv.rowLabelRects[1].Min.Y {
+		t.Fatalf("add button not below rows: %v vs %v", dv.addRowBtn, dv.rowLabelRects[1])
 	}
 }
 

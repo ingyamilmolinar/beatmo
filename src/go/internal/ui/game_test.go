@@ -111,6 +111,24 @@ func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
 	}
 }
 
+func TestAddRowDoesNotClearGraph(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	_ = g.tryAddNode(0, 0, model.NodeTypeRegular)
+	_ = g.tryAddNode(1, 0, model.NodeTypeRegular)
+	before := len(g.nodes)
+
+	g.drum.AddRow()
+	g.Update() // process row addition
+
+	if len(g.nodes) != before {
+		t.Fatalf("expected %d nodes after adding row, got %d", before, len(g.nodes))
+	}
+	if len(g.drum.Rows) < 2 || g.drum.Rows[1].Origin != model.InvalidNodeID {
+		t.Fatalf("expected new row without origin")
+	}
+}
+
 func TestAdvancePulseLoopWrap(t *testing.T) {
 	g := New(testLogger)
 	g.drum.Length = 6

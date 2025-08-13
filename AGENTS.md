@@ -136,3 +136,4 @@ This debugging session highlighted several critical points:
 * Beat paths are computed per drum row via `beatInfosByRow`, with the first row auto-syncing its origin to the game start node.
 * Signals now propagate concurrently from each row's origin and trigger per-row instrument playback.
 * Drum view now highlights beats for every row based on encoded row/index keys.
+* The drum view reserves an extra row for a trailing "+" button so existing grids remain intact; adding a row no longer clears the grid and awaits the user's next grid click for origin placement.
