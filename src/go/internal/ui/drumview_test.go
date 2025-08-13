@@ -81,7 +81,7 @@ func TestDrumViewWheelAdjustsLength(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 100), graph, logger)
 
 	wheelVal := 1.0
-	cursor := func() (int, int) { return dv.Bounds.Min.X + dv.labelW + 500, dv.Bounds.Min.Y + 5 }
+	cursor := func() (int, int) { return dv.Bounds.Min.X + dv.labelW + 500, dv.Bounds.Min.Y + timelineHeight + 5 }
 	restore := SetInputForTest(cursor,
 		func(ebiten.MouseButton) bool { return false },
 		func(ebiten.Key) bool { return false },

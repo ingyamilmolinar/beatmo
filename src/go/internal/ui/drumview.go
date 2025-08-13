@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -18,6 +19,7 @@ import (
 const (
 	asciiPrintableMin = 32
 	asciiPrintableMax = 126
+	timelineHeight    = 25
 )
 
 /* ───────────────────────────────────────────────────────────── */
@@ -115,7 +117,7 @@ func (dv *DrumView) rowHeight() int {
 	if rows == 0 {
 		return 0
 	}
-	return dv.Bounds.Dy() / rows
+	return (dv.Bounds.Dy() - timelineHeight) / rows
 }
 
 // SetBeatLength sets the beat length in the underlying graph.
@@ -175,7 +177,12 @@ func (dv *DrumView) recalcButtons() {
 	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+60, 150, dv.Bounds.Min.Y+100)
 	dv.uploadBtn = image.Rect(160, dv.Bounds.Min.Y+60, 300, dv.Bounds.Min.Y+100)
 	dv.controlsW = dv.lenIncBtn.Max.X
-	dv.timelineRect = image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Max.Y-20, dv.Bounds.Max.X-10, dv.Bounds.Max.Y-10)
+	dv.timelineRect = image.Rect(
+		dv.Bounds.Min.X+dv.labelW+dv.controlsW,
+		dv.Bounds.Min.Y+5,
+		dv.Bounds.Max.X-10,
+		dv.Bounds.Min.Y+15,
+	)
 }
 
 func (dv *DrumView) calcLayout() {
@@ -357,7 +364,7 @@ func (dv *DrumView) Update() {
 
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
-	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y, dv.Bounds.Max.X, dv.Bounds.Max.Y)
+	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+timelineHeight, dv.Bounds.Max.X, dv.Bounds.Max.Y)
 
 	// wheel zoom for length adjustment
 	if _, whY := wheel(); whY != 0 {
@@ -475,7 +482,8 @@ func (dv *DrumView) Update() {
 		if pos > dv.timelineRect.Max.X {
 			pos = dv.timelineRect.Max.X
 		}
-		beat := int(float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx()) * float64(dv.Length))
+		totalBeats := dv.Length
+		beat := int(float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx()) * float64(totalBeats))
 		if beat < 0 {
 			beat = 0
 		}
@@ -579,15 +587,25 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
 	// time/progress
-	totalSec := float64(dv.Length) * 60 / float64(dv.bpm)
-	curSec := float64(elapsedBeats) * 60 / float64(dv.bpm)
-	ebitenutil.DebugPrintAt(dst,
-		fmt.Sprintf("%.1fs/%.1fs (%d/%d)", curSec, totalSec, elapsedBeats, dv.Length),
-		dv.timelineRect.Min.X,
-		dv.timelineRect.Min.Y-15,
-	)
+	beatsToDuration := func(beats int) time.Duration {
+		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
+	}
+	totalBeats := dv.Length
+	totalDur := beatsToDuration(totalBeats)
+	curDur := beatsToDuration(elapsedBeats)
+	curMin := int(curDur / time.Minute)
+	curSec := int((curDur % time.Minute) / time.Second)
+	curMilli := int((curDur % time.Second) / time.Millisecond)
+	totMin := int(totalDur / time.Minute)
+	totSec := int((totalDur % time.Minute) / time.Second)
+	totMilli := int((totalDur % time.Second) / time.Millisecond)
+	startBeat := dv.Offset + 1
+	endBeat := dv.Offset + dv.Length
+	info := fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | Beats %d-%d/%d",
+		curMin, curSec, curMilli, totMin, totSec, totMilli, startBeat, endBeat, totalBeats)
+	ebitenutil.DebugPrintAt(dst, info, dv.timelineRect.Min.X, dv.timelineRect.Max.Y+5)
 	drawRect(dst, dv.timelineRect, color.RGBA{60, 60, 60, 255}, true)
-	prog := float64(elapsedBeats) / float64(dv.Length)
+	prog := float64(elapsedBeats) / float64(totalBeats)
 	if prog > 1 {
 		prog = 1
 	}
@@ -602,7 +620,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 
 	// draw steps
 	for i, r := range dv.Rows {
-		y := dv.Bounds.Min.Y + i*dv.rowHeight()
+		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
 		for j, step := range r.Steps {
 			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell // Adjusted for buttons
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
