@@ -444,19 +444,23 @@ func (g *Game) wrapBeatIndexRow(row, idx int) int {
 }
 
 func (g *Game) refreshDrumRow() {
+	if len(g.drum.Rows) == 0 {
+		g.drumBeatInfos = nil
+		return
+	}
+
 	g.drumBeatInfos = make([]model.BeatInfo, g.drum.Length)
-	for i := 0; i < g.drum.Length; i++ {
-		g.drumBeatInfos[i] = g.beatInfoAt(g.drum.Offset + i)
-	}
-	drumRow := make([]bool, g.drum.Length)
-	for i := range drumRow {
-		drumRow[i] = g.drumBeatInfos[i].NodeType == model.NodeTypeRegular
-	}
-	for _, r := range g.drum.Rows {
+	for rowIdx, r := range g.drum.Rows {
 		r.Steps = make([]bool, g.drum.Length)
-		copy(r.Steps, drumRow)
+		for i := 0; i < g.drum.Length; i++ {
+			info := g.beatInfoAtRow(rowIdx, g.drum.Offset+i)
+			if rowIdx == 0 {
+				g.drumBeatInfos[i] = info
+			}
+			r.Steps[i] = info.NodeType == model.NodeTypeRegular
+		}
 	}
-	g.logger.Debugf("[GAME] refreshDrumRow: offset=%d row=%v", g.drum.Offset, drumRow)
+	g.logger.Debugf("[GAME] refreshDrumRow: offset=%d", g.drum.Offset)
 }
 
 func (g *Game) addEdge(a, b *uiNode) {

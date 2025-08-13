@@ -78,6 +78,50 @@ func TestGameCalculatesBeatInfosPerRow(t *testing.T) {
 	}
 }
 
+func TestDrumRowsStayIsolated(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// Origin for first row
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+
+	// Second row with its own origin
+	g.drum.AddRow()
+	g.Update() // process row addition so next node sets origin
+	n1 := g.tryAddNode(0, 1, model.NodeTypeRegular)
+
+	// Connect an extra node to row 0 only
+	n0b := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n0b)
+	g.updateBeatInfos()
+	g.refreshDrumRow()
+
+	if !g.drum.Rows[0].Steps[1] {
+		t.Fatalf("expected row0 step1 on after edge")
+	}
+	if g.drum.Rows[1].Steps[1] {
+		t.Fatalf("row1 step1 unexpectedly on after row0 update")
+	}
+
+	// Now connect a node for row 1 and ensure row 0 stays the same
+	n1b := g.tryAddNode(1, 1, model.NodeTypeRegular)
+	g.addEdge(n1, n1b)
+	g.updateBeatInfos()
+	g.refreshDrumRow()
+
+	if !g.drum.Rows[1].Steps[1] {
+		t.Fatalf("expected row1 step1 on after its edge")
+	}
+	if !g.drum.Rows[0].Steps[1] || g.drum.Rows[0].Steps[2] {
+		t.Fatalf("row0 steps changed unexpectedly: %v", g.drum.Rows[0].Steps[:3])
+	}
+
+	// sanity: origins unaffected
+	if g.drum.Rows[0].Origin != n0.ID || g.drum.Rows[1].Origin != n1.ID {
+		t.Fatalf("origins changed: %v %v", g.drum.Rows[0].Origin, g.drum.Rows[1].Origin)
+	}
+}
+
 func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
