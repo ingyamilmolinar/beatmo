@@ -484,7 +484,7 @@ func (dv *DrumView) Update() {
 		if pos > dv.timelineRect.Max.X {
 			pos = dv.timelineRect.Max.X
 		}
-		totalBeats := dv.Length
+		totalBeats := dv.Graph.BeatLength()
 		beat := int(float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx()) * float64(totalBeats))
 		if beat < 0 {
 			beat = 0
@@ -588,27 +588,29 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
-	// time/progress
-	totalBeats := dv.Length
+	// timeline and progress
+	totalBeats := dv.Graph.BeatLength()
 	info := dv.timelineInfo(elapsedBeats)
 	ebitenutil.DebugPrintAt(dst, info, dv.timelineRect.Min.X, dv.Bounds.Min.Y+5)
-	drawRect(dst, dv.timelineRect, color.RGBA{60, 60, 60, 255}, true)
-	prog := float64(elapsedBeats) / float64(totalBeats)
-	if prog > 1 {
-		prog = 1
-	}
-	fill := image.Rect(
-		dv.timelineRect.Min.X,
-		dv.timelineRect.Min.Y,
-		dv.timelineRect.Min.X+int(float64(dv.timelineRect.Dx())*prog),
-		dv.timelineRect.Max.Y,
-	)
-	drawRect(dst, fill, color.RGBA{200, 200, 200, 255}, true)
+	drawRect(dst, dv.timelineRect, colTimelineTotal, true)
+
+	// current view rectangle
+	viewStart := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
+	viewWidth := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
+	viewRect := image.Rect(viewStart, dv.timelineRect.Min.Y, viewStart+viewWidth, dv.timelineRect.Max.Y)
+	drawRect(dst, viewRect, colTimelineView, true)
+
 	// beat markers
 	for i := 0; i <= totalBeats; i++ {
 		x := dv.timelineRect.Min.X + int(float64(i)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
 		drawRect(dst, image.Rect(x, dv.timelineRect.Min.Y, x+1, dv.timelineRect.Max.Y), color.RGBA{100, 100, 100, 255}, true)
 	}
+
+	// current playback cursor
+	cursorX := dv.timelineRect.Min.X + int(float64(elapsedBeats)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
+	cursorRect := image.Rect(cursorX-1, dv.timelineRect.Min.Y, cursorX+1, dv.timelineRect.Max.Y)
+	drawRect(dst, cursorRect, colTimelineCursor, true)
+
 	drawRect(dst, dv.timelineRect, colButtonBorder, false)
 
 	// draw steps
@@ -652,7 +654,7 @@ func (dv *DrumView) timelineInfo(elapsedBeats int) string {
 	beatsToDuration := func(beats int) time.Duration {
 		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
 	}
-	totalBeats := dv.Length
+	totalBeats := dv.Graph.BeatLength()
 	totalDur := beatsToDuration(totalBeats)
 	curDur := beatsToDuration(elapsedBeats)
 	curMin := int(curDur / time.Minute)
@@ -661,10 +663,24 @@ func (dv *DrumView) timelineInfo(elapsedBeats int) string {
 	totMin := int(totalDur / time.Minute)
 	totSec := int((totalDur % time.Minute) / time.Second)
 	totMilli := int((totalDur % time.Second) / time.Millisecond)
-	startBeat := dv.Offset + 1
-	endBeat := dv.Offset + dv.Length
-	return fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | Beats %d-%d/%d",
-		curMin, curSec, curMilli, totMin, totSec, totMilli, startBeat, endBeat, totalBeats)
+
+	viewStartBeat := dv.Offset
+	viewEndBeat := dv.Offset + dv.Length
+	viewStartDur := beatsToDuration(viewStartBeat)
+	viewEndDur := beatsToDuration(viewEndBeat)
+	vStartMin := int(viewStartDur / time.Minute)
+	vStartSec := int((viewStartDur % time.Minute) / time.Second)
+	vStartMilli := int((viewStartDur % time.Second) / time.Millisecond)
+	vEndMin := int(viewEndDur / time.Minute)
+	vEndSec := int((viewEndDur % time.Minute) / time.Second)
+	vEndMilli := int((viewEndDur % time.Second) / time.Millisecond)
+
+	return fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d | Beats %d-%d/%d",
+		curMin, curSec, curMilli,
+		totMin, totSec, totMilli,
+		vStartMin, vStartSec, vStartMilli,
+		vEndMin, vEndSec, vEndMilli,
+		viewStartBeat+1, viewEndBeat, totalBeats)
 }
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {

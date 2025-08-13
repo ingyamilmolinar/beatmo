@@ -124,9 +124,39 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.bpm = 120
 	info := dv.timelineInfo(4)
-	expected := "00:02.000/00:04.000 | Beats 1-8/8"
+	expected := "00:02.000/00:04.000 | View 00:00.000-00:04.000 | Beats 1-8/8"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
+	}
+}
+
+func TestTimelineViewRect(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv.SetBeatLength(16)
+	dv.Offset = 4
+	dv.recalcButtons()
+
+	var got image.Rectangle
+	orig := drawRect
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled {
+			if clr, ok := c.(color.RGBA); ok && clr == colTimelineView {
+				got = r
+			}
+		}
+	}
+	defer func() { drawRect = orig }()
+
+	dv.Draw(ebiten.NewImage(800, 200), nil, 0, nil, 0)
+
+	totalBeats := graph.BeatLength()
+	start := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
+	width := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
+	want := image.Rect(start, dv.timelineRect.Min.Y, start+width, dv.timelineRect.Max.Y)
+	if got != want {
+		t.Fatalf("view rect = %v want %v", got, want)
 	}
 }
 
@@ -335,11 +365,14 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	game := &Game{graph: graph, drum: dv, logger: logger}
 	game.updateBeatInfos()
 
-	type call struct{ c color.Color }
+	type call struct {
+		c color.Color
+		r image.Rectangle
+	}
 	calls := []call{}
 	orig := drawRect
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		calls = append(calls, call{c: c})
+		calls = append(calls, call{c: c, r: r})
 	}
 	defer func() { drawRect = orig }()
 
@@ -348,7 +381,7 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 
 	var highlightCount int
 	for _, call := range calls {
-		if clr, ok := call.c.(color.RGBA); ok && clr == colHighlight {
+		if clr, ok := call.c.(color.RGBA); ok && clr == colHighlight && call.r.Min.Y >= timelineHeight {
 			highlightCount++
 		}
 	}
