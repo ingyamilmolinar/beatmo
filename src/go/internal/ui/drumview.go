@@ -19,7 +19,8 @@ import (
 const (
 	asciiPrintableMin = 32
 	asciiPrintableMax = 126
-	timelineHeight    = 25
+	timelineHeight    = 40
+	timelineBarHeight = 10
 )
 
 /* ───────────────────────────────────────────────────────────── */
@@ -177,11 +178,12 @@ func (dv *DrumView) recalcButtons() {
 	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+60, 150, dv.Bounds.Min.Y+100)
 	dv.uploadBtn = image.Rect(160, dv.Bounds.Min.Y+60, 300, dv.Bounds.Min.Y+100)
 	dv.controlsW = dv.lenIncBtn.Max.X
+	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
 	dv.timelineRect = image.Rect(
 		dv.Bounds.Min.X+dv.labelW+dv.controlsW,
-		dv.Bounds.Min.Y+5,
+		top,
 		dv.Bounds.Max.X-10,
-		dv.Bounds.Min.Y+15,
+		top+timelineBarHeight,
 	)
 }
 
@@ -587,23 +589,9 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
 	// time/progress
-	beatsToDuration := func(beats int) time.Duration {
-		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
-	}
 	totalBeats := dv.Length
-	totalDur := beatsToDuration(totalBeats)
-	curDur := beatsToDuration(elapsedBeats)
-	curMin := int(curDur / time.Minute)
-	curSec := int((curDur % time.Minute) / time.Second)
-	curMilli := int((curDur % time.Second) / time.Millisecond)
-	totMin := int(totalDur / time.Minute)
-	totSec := int((totalDur % time.Minute) / time.Second)
-	totMilli := int((totalDur % time.Second) / time.Millisecond)
-	startBeat := dv.Offset + 1
-	endBeat := dv.Offset + dv.Length
-	info := fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | Beats %d-%d/%d",
-		curMin, curSec, curMilli, totMin, totSec, totMilli, startBeat, endBeat, totalBeats)
-	ebitenutil.DebugPrintAt(dst, info, dv.timelineRect.Min.X, dv.timelineRect.Max.Y+5)
+	info := dv.timelineInfo(elapsedBeats)
+	ebitenutil.DebugPrintAt(dst, info, dv.timelineRect.Min.X, dv.Bounds.Min.Y+5)
 	drawRect(dst, dv.timelineRect, color.RGBA{60, 60, 60, 255}, true)
 	prog := float64(elapsedBeats) / float64(totalBeats)
 	if prog > 1 {
@@ -616,6 +604,11 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 		dv.timelineRect.Max.Y,
 	)
 	drawRect(dst, fill, color.RGBA{200, 200, 200, 255}, true)
+	// beat markers
+	for i := 0; i <= totalBeats; i++ {
+		x := dv.timelineRect.Min.X + int(float64(i)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
+		drawRect(dst, image.Rect(x, dv.timelineRect.Min.Y, x+1, dv.timelineRect.Max.Y), color.RGBA{100, 100, 100, 255}, true)
+	}
 	drawRect(dst, dv.timelineRect, colButtonBorder, false)
 
 	// draw steps
@@ -653,6 +646,25 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 		InstButtonStyle.DrawAnimated(dst, dv.saveBtn, dv.savePressed, dv.saveAnim)
 		ebitenutil.DebugPrintAt(dst, "Save", dv.saveBtn.Min.X+5, dv.saveBtn.Min.Y+18)
 	}
+}
+
+func (dv *DrumView) timelineInfo(elapsedBeats int) string {
+	beatsToDuration := func(beats int) time.Duration {
+		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
+	}
+	totalBeats := dv.Length
+	totalDur := beatsToDuration(totalBeats)
+	curDur := beatsToDuration(elapsedBeats)
+	curMin := int(curDur / time.Minute)
+	curSec := int((curDur % time.Minute) / time.Second)
+	curMilli := int((curDur % time.Second) / time.Millisecond)
+	totMin := int(totalDur / time.Minute)
+	totSec := int((totalDur % time.Minute) / time.Second)
+	totMilli := int((totalDur % time.Second) / time.Millisecond)
+	startBeat := dv.Offset + 1
+	endBeat := dv.Offset + dv.Length
+	return fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | Beats %d-%d/%d",
+		curMin, curSec, curMilli, totMin, totSec, totMilli, startBeat, endBeat, totalBeats)
 }
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {

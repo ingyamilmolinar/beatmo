@@ -118,6 +118,33 @@ func TestDrumViewLengthMinMax(t *testing.T) {
 	}
 }
 
+func TestTimelineInfo(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.bpm = 120
+	info := dv.timelineInfo(4)
+	expected := "00:02.000/00:04.000 | Beats 1-8/8"
+	if info != expected {
+		t.Fatalf("expected %q got %q", expected, info)
+	}
+}
+
+func TestTimelineLayout(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv.recalcButtons()
+	textY := dv.Bounds.Min.Y + 5
+	if textY >= dv.timelineRect.Min.Y {
+		t.Fatalf("info text overlaps timeline bar")
+	}
+	rowStart := dv.Bounds.Min.Y + timelineHeight
+	if dv.timelineRect.Max.Y >= rowStart {
+		t.Fatalf("timeline bar overlaps drum rows")
+	}
+}
+
 func TestDrumViewUpdatesGraphBeatLength(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
