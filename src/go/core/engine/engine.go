@@ -14,6 +14,8 @@ type Event struct {
 	Step int
 }
 
+const tickInterval = 16 * time.Millisecond
+
 // Engine encapsulates the core game logic and runs it on its own goroutine.
 type Engine struct {
 	Graph  *model.Graph
@@ -49,7 +51,7 @@ func New(logger *game_log.Logger) *Engine {
 }
 
 func (e *Engine) run() {
-	ticker := time.NewTicker(time.Millisecond)
+	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 	for {
 		select {

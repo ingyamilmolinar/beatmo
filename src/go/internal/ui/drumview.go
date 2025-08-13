@@ -561,9 +561,7 @@ func (dv *DrumView) Update() {
 	}
 	if dv.bpmDecPressed {
 		dv.SetBPM(dv.bpm - 1)
-		if dv.bpm > 1 {
-			dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
-		}
+		dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
 		dv.bpmDecPressed = false
 	}
 
