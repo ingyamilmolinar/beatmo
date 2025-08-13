@@ -151,7 +151,7 @@ func TestTimelineViewRect(t *testing.T) {
 
 	dv.Draw(ebiten.NewImage(800, 200), nil, 0, nil, 0)
 
-	totalBeats := graph.BeatLength()
+	totalBeats := dv.timelineBeats
 	start := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
 	width := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
 	want := image.Rect(start, dv.timelineRect.Min.Y, start+width, dv.timelineRect.Max.Y)
@@ -172,6 +172,38 @@ func TestTimelineLayout(t *testing.T) {
 	rowStart := dv.Bounds.Min.Y + timelineHeight
 	if dv.timelineRect.Max.Y >= rowStart {
 		t.Fatalf("timeline bar overlaps drum rows")
+	}
+}
+
+func TestTimelineExpandsAndViewShrinks(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv.recalcButtons()
+	img := ebiten.NewImage(800, 200)
+
+	var rect image.Rectangle
+	orig := drawRect
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled {
+			if clr, ok := c.(color.RGBA); ok && clr == colTimelineView {
+				rect = r
+			}
+		}
+	}
+	defer func() { drawRect = orig }()
+
+	dv.Draw(img, nil, 0, nil, 0)
+	baseWidth := rect.Dx()
+
+	dv.Draw(img, nil, 0, nil, 20)
+	expandedWidth := rect.Dx()
+
+	if dv.timelineBeats != 28 {
+		t.Fatalf("timelineBeats = %d want 28", dv.timelineBeats)
+	}
+	if expandedWidth >= baseWidth {
+		t.Fatalf("view width did not shrink: base %d expanded %d", baseWidth, expandedWidth)
 	}
 }
 

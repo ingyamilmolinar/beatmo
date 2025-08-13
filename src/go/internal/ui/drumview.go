@@ -63,7 +63,8 @@ type DrumView struct {
 	nameInput  string
 	saveBtn    image.Rectangle
 
-	timelineRect image.Rectangle // progress bar for fast seek
+	timelineRect  image.Rectangle // progress bar for fast seek
+	timelineBeats int             // total beats represented by timeline
 
 	// ui widgets (re-computed every frame)
 	playBtn   image.Rectangle
@@ -127,6 +128,9 @@ func (dv *DrumView) SetBeatLength(length int) {
 		dv.Graph.SetBeatLength(length)
 		dv.logger.Debugf("[DRUMVIEW] Graph beat length set to: %d", length)
 	}
+	if length > dv.timelineBeats {
+		dv.timelineBeats = length
+	}
 }
 
 /* ─── ctor ─────────────────────────────────────────────────── */
@@ -140,16 +144,17 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
 	dv := &DrumView{
-		Bounds:      b,
-		labelW:      80,
-		bpm:         120,
-		bgDirty:     true,
-		Graph:       g,
-		logger:      logger,
-		Length:      8, // Default length
-		Offset:      0,
-		instOptions: opts,
-		uploadCh:    make(chan uploadResult, 1),
+		Bounds:        b,
+		labelW:        80,
+		bpm:           120,
+		bgDirty:       true,
+		Graph:         g,
+		logger:        logger,
+		Length:        8, // Default length
+		Offset:        0,
+		instOptions:   opts,
+		uploadCh:      make(chan uploadResult, 1),
+		timelineBeats: 8,
 	}
 	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
@@ -484,10 +489,16 @@ func (dv *DrumView) Update() {
 		if pos > dv.timelineRect.Max.X {
 			pos = dv.timelineRect.Max.X
 		}
-		totalBeats := dv.Graph.BeatLength()
-		beat := int(float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx()) * float64(totalBeats))
+		totalBeats := dv.timelineBeats
+		frac := float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
+		beat := int(frac * float64(totalBeats))
 		if beat < 0 {
 			beat = 0
+		}
+		if beat+dv.Length > dv.timelineBeats {
+			dv.timelineBeats = beat + dv.Length
+			totalBeats = dv.timelineBeats
+			beat = int(frac * float64(totalBeats))
 		}
 		if beat != dv.Offset {
 			dv.Offset = beat
@@ -589,7 +600,16 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
 	// timeline and progress
-	totalBeats := dv.Graph.BeatLength()
+	if dv.timelineBeats < dv.Graph.BeatLength() {
+		dv.timelineBeats = dv.Graph.BeatLength()
+	}
+	if elapsedBeats+dv.Length > dv.timelineBeats {
+		dv.timelineBeats = elapsedBeats + dv.Length
+	}
+	if dv.Offset+dv.Length > dv.timelineBeats {
+		dv.timelineBeats = dv.Offset + dv.Length
+	}
+	totalBeats := dv.timelineBeats
 	info := dv.timelineInfo(elapsedBeats)
 	ebitenutil.DebugPrintAt(dst, info, dv.timelineRect.Min.X, dv.Bounds.Min.Y+5)
 	drawRect(dst, dv.timelineRect, colTimelineTotal, true)
@@ -654,7 +674,7 @@ func (dv *DrumView) timelineInfo(elapsedBeats int) string {
 	beatsToDuration := func(beats int) time.Duration {
 		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
 	}
-	totalBeats := dv.Graph.BeatLength()
+	totalBeats := dv.timelineBeats
 	totalDur := beatsToDuration(totalBeats)
 	curDur := beatsToDuration(elapsedBeats)
 	curMin := int(curDur / time.Minute)
