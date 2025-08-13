@@ -17,6 +17,9 @@ func SelectWAV() (string, error) { return "dummy.wav", nil }
 // Play is a stub used during tests to avoid initializing audio devices.
 func Play(id string, when ...float64) {}
 
+// PlayVol is a stub used during tests for volume-controlled playback.
+func PlayVol(id string, vol float64, when ...float64) {}
+
 // Now returns 0 during tests.
 func Now() float64 { return 0 }
 

@@ -84,6 +84,40 @@ func Play(id string, when ...float64) {
 	mix.Schedule(inst.NewVoice(bpm, sampleRate), delay)
 }
 
+// PlayVol schedules an instrument by ID at the given volume (0..1) and
+// optional future time.
+func PlayVol(id string, vol float64, when ...float64) {
+	instMu.RLock()
+	inst, ok := instruments[id]
+	instMu.RUnlock()
+	if !ok {
+		return
+	}
+	once.Do(initContext)
+	if ctx == nil {
+		return
+	}
+	_ = ctx.Resume()
+	delay := 0
+	if len(when) > 0 {
+		d := when[0] - Now()
+		if d > 0 {
+			delay = int(d * sampleRate)
+		}
+	}
+	mix.Schedule(&scaledVoice{v: inst.NewVoice(bpm, sampleRate), gain: vol}, delay)
+}
+
+type scaledVoice struct {
+	v    Voice
+	gain float64
+}
+
+func (s *scaledVoice) Sample() (float64, bool) {
+	f, done := s.v.Sample()
+	return f * s.gain, done
+}
+
 // Now returns seconds since program start.
 func Now() float64 { return time.Since(start).Seconds() }
 

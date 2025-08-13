@@ -35,6 +35,7 @@ type DrumRow struct {
 	Color      color.Color
 	Origin     model.NodeID
 	Node       *uiNode
+	Volume     float64
 }
 
 /* ───────────────────────────────────────────────────────────── */
@@ -70,6 +71,7 @@ type DrumView struct {
 	addRowBtn     *Button
 	rowLabels     []*Button
 	rowDeleteBtns []*Button
+	rowVolSliders []*Slider
 	selRow        int
 
 	deleted []deletedRow
@@ -222,7 +224,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.selRow = len(dv.Rows) - 1
 	})
 
-	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID}}
+	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID, Volume: 1}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	dv.recalcButtons()
 	dv.calcLayout()
@@ -249,7 +251,7 @@ func (dv *DrumView) AddRow() {
 		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
 	idx := len(dv.Rows)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID, Node: nil})
+	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID, Node: nil, Volume: 1})
 	dv.added = append(dv.added, idx)
 	dv.bgDirty = true
 	dv.calcLayout()
@@ -325,10 +327,11 @@ func (dv *DrumView) calcLayout() {
 	}
 	dv.rowLabels = dv.rowLabels[:0]
 	dv.rowDeleteBtns = dv.rowDeleteBtns[:0]
+	dv.rowVolSliders = dv.rowVolSliders[:0]
 	for i := range dv.Rows {
 		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
 		rowRect := image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW, y+dv.rowHeight())
-		g := NewGridLayout(rowRect, []float64{4, 1}, []float64{1})
+		g := NewGridLayout(rowRect, []float64{3, 2, 1}, []float64{1})
 		lbl := NewButton(dv.Rows[i].Name, InstButtonStyle, nil)
 		lbl.SetRect(insetRect(g.Cell(0, 0), buttonPad))
 		idx := i
@@ -338,11 +341,14 @@ func (dv *DrumView) calcLayout() {
 			dv.instAnim = 1
 			dv.rowLabels[idx].Text = dv.Rows[idx].Name
 		}
+		slider := NewSlider(dv.Rows[i].Volume)
+		slider.SetRect(insetRect(g.Cell(1, 0), buttonPad))
 		del := NewButton("X", InstButtonStyle, nil)
-		del.SetRect(insetRect(g.Cell(1, 0), buttonPad))
+		del.SetRect(insetRect(g.Cell(2, 0), buttonPad))
 		delIdx := i
 		del.OnClick = func() { dv.DeleteRow(delIdx) }
 		dv.rowLabels = append(dv.rowLabels, lbl)
+		dv.rowVolSliders = append(dv.rowVolSliders, slider)
 		dv.rowDeleteBtns = append(dv.rowDeleteBtns, del)
 	}
 	y := dv.Bounds.Min.Y + timelineHeight + len(dv.Rows)*dv.rowHeight()
@@ -560,6 +566,13 @@ func (dv *DrumView) Update() {
 	}
 
 	/* ——— widget clicks & dragging ——— */
+	for i, s := range dv.rowVolSliders {
+		if s.Handle(mx, my, left) {
+			dv.Rows[i].Volume = s.Value
+			return
+		}
+	}
+
 	if left {
 		if !dv.dragging {
 			for _, btn := range dv.rowDeleteBtns {
@@ -785,6 +798,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	for i, r := range dv.Rows {
 		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
 		dv.rowLabels[i].Draw(dst)
+		dv.rowVolSliders[i].Draw(dst)
 		dv.rowDeleteBtns[i].Draw(dst)
 		for j, step := range r.Steps {
 			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell

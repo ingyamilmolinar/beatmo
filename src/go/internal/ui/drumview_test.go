@@ -687,3 +687,25 @@ func TestDrumViewBPMTextInput(t *testing.T) {
 		t.Fatalf("expected BPM 500 got %d", dv.BPM())
 	}
 }
+
+func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+	r := dv.rowVolSliders[0].Rect()
+	mx := r.Min.X + r.Dx()/2
+	my := r.Min.Y + r.Dy()/2
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+	dv.Update()
+	if dv.Rows[0].Volume < 0.49 || dv.Rows[0].Volume > 0.51 {
+		t.Fatalf("expected volume ~0.5 got %f", dv.Rows[0].Volume)
+	}
+}

@@ -18,8 +18,8 @@ const (
 
 const ebitenTPS = 60 // Ticks per second for Ebiten (stubbed for tests)
 
-// playSound plays a synthesized sound. Overridden in tests.
-var playSound = audio.Play
+// playSound plays a synthesized sound with volume. Overridden in tests.
+var playSound = audio.PlayVol
 
 func makeBeatKey(row, idx int) int { return (row << 16) | (idx & 0xFFFF) }
 
@@ -1033,11 +1033,13 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 	g.highlightedBeats[key] = g.frame + duration
 	if info.NodeType == model.NodeTypeRegular {
 		inst := "snare"
+		vol := 1.0
 		if row < len(g.drum.Rows) {
 			inst = g.drum.Rows[row].Instrument
+			vol = g.drum.Rows[row].Volume
 		}
-		playSound(inst, audio.Now())
-		g.logger.Debugf("[GAME] highlightBeat: Played %s for node %d at beat %d row %d", inst, info.NodeID, idx, row)
+		playSound(inst, vol, audio.Now())
+		g.logger.Debugf("[GAME] highlightBeat: Played %s at vol %.2f for node %d at beat %d row %d", inst, vol, info.NodeID, idx, row)
 	}
 }
 
@@ -1107,6 +1109,9 @@ func (g *Game) advancePulse(p *pulse) bool {
 		} else {
 			return false
 		}
+	}
+	if g.isLoopByRow[p.row] && p.pathIdx == g.loopStartByRow[p.row] {
+		prevIdx = len(path) - 1
 	}
 	p.fromBeatInfo = path[prevIdx]
 	p.toBeatInfo = path[p.pathIdx]

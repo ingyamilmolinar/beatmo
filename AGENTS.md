@@ -139,3 +139,5 @@ This debugging session highlighted several critical points:
 * The drum view reserves an extra row for a trailing "+" button so existing grids remain intact; adding a row no longer clears the grid and awaits the user's next grid click for origin placement.
 * Row labels are clickable to cycle instruments, and a fixed 24px row height with internal padding keeps per-row buttons aligned without overlapping the transport panel.
 * Control panel uses a grid-based component system (`uigrid.go`) with declarative buttons and centered text to prevent overlapping layouts.
+* Each drum row exposes a volume slider with percentage readout; `Game` passes the row’s volume to audio playback.
+* Fixed loop traversal so pulses transition from the last node back to the loop start without jumping to the origin.
