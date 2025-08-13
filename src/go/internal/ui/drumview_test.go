@@ -70,22 +70,29 @@ func TestDrumRowLayout(t *testing.T) {
 		t.Fatalf("row label overlaps controls: label %v controls bottom %d", label, dv.uploadBtn.Rect().Max.Y)
 	}
 	stepStart := dv.Bounds.Min.X + dv.labelW + dv.controlsW
-	total := dv.rowDeleteBtns[0].Rect().Max.X - label.Min.X
-	if total != dv.labelW {
-		t.Fatalf("label+delete width unexpected: %d want %d", total, dv.labelW)
+	del := dv.rowDeleteBtns[0].Rect()
+	if del.Min.X-label.Max.X < buttonPad {
+		t.Fatalf("delete button lacks padding: %v vs %v", del, label)
 	}
 	if label.Max.X > stepStart {
 		t.Fatalf("label encroaches into step area: %v >= %d", label, stepStart)
 	}
-	del := dv.rowDeleteBtns[0].Rect()
-	if del.Min.X != label.Max.X || del.Max.X != label.Min.X+dv.labelW {
-		t.Fatalf("delete button misaligned with label: %v vs %v", del, label)
-	}
 	if dv.addRowBtn.Rect().Min.Y != label.Min.Y+dv.rowHeight() {
 		t.Fatalf("add-row button not directly below row: %v", dv.addRowBtn.Rect())
 	}
-	if dv.addRowBtn.Rect().Dy() != dv.rowHeight() || dv.addRowBtn.Rect().Dx() != dv.labelW {
-		t.Fatalf("add-row button size unexpected: %v", dv.addRowBtn.Rect())
+	for _, btn := range []*Button{dv.rowLabels[0], dv.rowDeleteBtns[0], dv.addRowBtn} {
+		tr := btn.textRect()
+		r := btn.Rect()
+		if !tr.In(r) {
+			t.Fatalf("text outside row button: %v not in %v", tr, r)
+		}
+		cx := (r.Min.X + r.Max.X) / 2
+		ctx := (tr.Min.X + tr.Max.X) / 2
+		cy := (r.Min.Y + r.Max.Y) / 2
+		cty := (tr.Min.Y + tr.Max.Y) / 2
+		if intAbs(cx-ctx) > 1 || intAbs(cy-cty) > 1 {
+			t.Fatalf("text not centered in row button: %v", r)
+		}
 	}
 }
 

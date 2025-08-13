@@ -23,6 +23,7 @@ const (
 	// never overlap with the top control panel.
 	timelineHeight    = 110
 	timelineBarHeight = 10
+	buttonPad         = 2
 )
 
 /* ───────────────────────────────────────────────────────────── */
@@ -137,7 +138,7 @@ type deletedRow struct {
 // rowHeight returns the fixed pixel height for each drum row and for the
 // trailing "+" button row. Keeping this constant avoids oversized buttons when
 // only a few rows are present, yielding a minimal and consistent layout.
-func (dv *DrumView) rowHeight() int { return 20 }
+func (dv *DrumView) rowHeight() int { return 24 }
 
 // SetBeatLength sets the beat length in the underlying graph.
 func (dv *DrumView) SetBeatLength(length int) {
@@ -295,19 +296,19 @@ func (dv *DrumView) recalcButtons() {
 	}
 
 	topBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+dv.rowHeight())
-	topGrid := NewGridLayout(topBounds, []float64{1, 1, 1, 1, 1, 1, 1}, []float64{1})
-	dv.playBtn.SetRect(topGrid.Cell(0, 0))
-	dv.stopBtn.SetRect(topGrid.Cell(1, 0))
-	dv.bpmDecBtn.SetRect(topGrid.Cell(2, 0))
-	dv.bpmBox.SetRect(topGrid.Cell(3, 0))
-	dv.bpmIncBtn.SetRect(topGrid.Cell(4, 0))
-	dv.lenDecBtn.SetRect(topGrid.Cell(5, 0))
-	dv.lenIncBtn.SetRect(topGrid.Cell(6, 0))
+	topGrid := NewGridLayout(topBounds, []float64{1, 1, 1, 2, 1, 1, 1}, []float64{1})
+	dv.playBtn.SetRect(insetRect(topGrid.Cell(0, 0), buttonPad))
+	dv.stopBtn.SetRect(insetRect(topGrid.Cell(1, 0), buttonPad))
+	dv.bpmDecBtn.SetRect(insetRect(topGrid.Cell(2, 0), buttonPad))
+	dv.bpmBox.SetRect(insetRect(topGrid.Cell(3, 0), buttonPad))
+	dv.bpmIncBtn.SetRect(insetRect(topGrid.Cell(4, 0), buttonPad))
+	dv.lenDecBtn.SetRect(insetRect(topGrid.Cell(5, 0), buttonPad))
+	dv.lenIncBtn.SetRect(insetRect(topGrid.Cell(6, 0), buttonPad))
 
 	botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
 	botGrid := NewGridLayout(botBounds, []float64{1, 1}, []float64{1})
-	dv.instBtn.SetRect(botGrid.Cell(0, 0))
-	dv.uploadBtn.SetRect(botGrid.Cell(1, 0))
+	dv.instBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
+	dv.uploadBtn.SetRect(insetRect(botGrid.Cell(1, 0), buttonPad))
 
 	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
 	dv.timelineRect = image.Rect(
@@ -329,7 +330,7 @@ func (dv *DrumView) calcLayout() {
 		rowRect := image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW, y+dv.rowHeight())
 		g := NewGridLayout(rowRect, []float64{4, 1}, []float64{1})
 		lbl := NewButton(dv.Rows[i].Name, InstButtonStyle, nil)
-		lbl.SetRect(g.Cell(0, 0))
+		lbl.SetRect(insetRect(g.Cell(0, 0), buttonPad))
 		idx := i
 		lbl.OnClick = func() {
 			dv.selRow = idx
@@ -338,14 +339,14 @@ func (dv *DrumView) calcLayout() {
 			dv.rowLabels[idx].Text = dv.Rows[idx].Name
 		}
 		del := NewButton("X", InstButtonStyle, nil)
-		del.SetRect(g.Cell(1, 0))
+		del.SetRect(insetRect(g.Cell(1, 0), buttonPad))
 		delIdx := i
 		del.OnClick = func() { dv.DeleteRow(delIdx) }
 		dv.rowLabels = append(dv.rowLabels, lbl)
 		dv.rowDeleteBtns = append(dv.rowDeleteBtns, del)
 	}
 	y := dv.Bounds.Min.Y + timelineHeight + len(dv.Rows)*dv.rowHeight()
-	dv.addRowBtn.SetRect(image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW, y+dv.rowHeight()))
+	dv.addRowBtn.SetRect(insetRect(image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW, y+dv.rowHeight()), buttonPad))
 }
 
 func (dv *DrumView) PlayPressed() bool {

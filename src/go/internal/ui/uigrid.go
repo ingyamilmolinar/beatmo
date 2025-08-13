@@ -2,10 +2,21 @@ package ui
 
 import (
 	"image"
+	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
+
+const (
+	debugCharW = 7  // width of a character drawn by DebugPrintAt
+	debugCharH = 13 // height of a character drawn by DebugPrintAt
+)
+
+// insetRect returns r shrunk by pad pixels on all sides.
+func insetRect(r image.Rectangle, pad int) image.Rectangle {
+	return image.Rect(r.Min.X+pad, r.Min.Y+pad, r.Max.X-pad, r.Max.Y-pad)
+}
 
 // ButtonVisual is implemented by styles capable of drawing a button.
 type ButtonVisual interface {
@@ -37,7 +48,17 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	if b.Style != nil {
 		b.Style.Draw(dst, b.r, b.pressed)
 	}
-	ebitenutil.DebugPrintAt(dst, b.Text, b.r.Min.X+5, b.r.Min.Y+14)
+	tr := b.textRect()
+	ebitenutil.DebugPrintAt(dst, b.Text, tr.Min.X, tr.Min.Y)
+}
+
+// textRect returns the rectangle occupied by the button's text when drawn.
+func (b *Button) textRect() image.Rectangle {
+	w := debugCharW * utf8.RuneCountInString(b.Text)
+	h := debugCharH
+	x := b.r.Min.X + (b.r.Dx()-w)/2
+	y := b.r.Min.Y + (b.r.Dy()-h)/2
+	return image.Rect(x, y, x+w, y+h)
 }
 
 // Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
