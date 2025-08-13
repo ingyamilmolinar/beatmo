@@ -304,6 +304,23 @@ func (g *Game) beatInfoAt(idx int) model.BeatInfo {
 	return g.beatInfos[idx]
 }
 
+func (g *Game) wrapBeatIndex(idx int) int {
+	if len(g.beatInfos) == 0 {
+		return 0
+	}
+	if idx < len(g.beatInfos) {
+		return idx
+	}
+	if !g.isLoop {
+		return len(g.beatInfos) - 1
+	}
+	loopLen := len(g.beatInfos) - g.loopStartIndex
+	if loopLen <= 0 {
+		return len(g.beatInfos) - 1
+	}
+	return g.loopStartIndex + (idx-g.loopStartIndex)%loopLen
+}
+
 func (g *Game) refreshDrumRow() {
 	g.drumBeatInfos = make([]model.BeatInfo, g.drum.Length)
 	for i := 0; i < g.drum.Length; i++ {
@@ -513,33 +530,35 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 func (g *Game) spawnPulseFrom(start int) {
 	g.logger.Debugf("[GAME] Spawn pulse from %d", start)
 
-	if len(g.beatInfos) == 0 || start >= len(g.beatInfos) {
+	if len(g.beatInfos) == 0 {
 		g.logger.Infof("[GAME] Spawn pulse: No beat information available")
 		return
 	}
 
+	curIdx := g.wrapBeatIndex(start)
 	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
 
-	fromBeatInfo := g.beatInfos[start]
+	fromBeatInfo := g.beatInfos[curIdx]
 	g.nextBeatIdx = start
 	g.highlightBeat(g.nextBeatIdx, fromBeatInfo, beatDuration)
 	g.nextBeatIdx++
 	g.elapsedBeats = g.nextBeatIdx
 
-	if start+1 < len(g.beatInfos) {
-		toBeatInfo := g.beatInfos[start+1]
+	nextInfo := g.beatInfoAt(start + 1)
+	if nextInfo.NodeID != model.InvalidNodeID {
+		nextIdx := g.wrapBeatIndex(start + 1)
 		g.activePulse = &pulse{
 			x1:           float64(fromBeatInfo.I * GridStep),
 			y1:           float64(fromBeatInfo.J * GridStep),
-			x2:           float64(toBeatInfo.I * GridStep),
-			y2:           float64(toBeatInfo.J * GridStep),
+			x2:           float64(nextInfo.I * GridStep),
+			y2:           float64(nextInfo.J * GridStep),
 			speed:        1.0 / float64(beatDuration),
 			fromBeatInfo: fromBeatInfo,
-			toBeatInfo:   toBeatInfo,
-			pathIdx:      start + 1,
-			lastIdx:      start,
+			toBeatInfo:   nextInfo,
+			pathIdx:      nextIdx,
+			lastIdx:      curIdx,
 			from:         g.nodeByID(fromBeatInfo.NodeID),
-			to:           g.nodeByID(toBeatInfo.NodeID),
+			to:           g.nodeByID(nextInfo.NodeID),
 		}
 	} else {
 		g.activePulse = nil
@@ -885,10 +904,11 @@ func (g *Game) Seek(beats int) {
 	}
 	g.highlightedBeats = map[int]int64{}
 	g.activePulse = nil
-	g.nextBeatIdx = beats
-	g.elapsedBeats = beats
 	if g.playing {
 		g.spawnPulseFrom(beats)
+	} else {
+		g.nextBeatIdx = beats
+		g.elapsedBeats = beats
 	}
 }
 

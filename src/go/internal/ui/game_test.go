@@ -93,6 +93,37 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	}
 }
 
+func TestSeekWhilePlayingLoop(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n1
+	g.graph.StartNodeID = n1.ID
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n3 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n3)
+	g.addEdge(n3, n1)
+
+	g.updateBeatInfos()
+
+	g.playing = true
+	g.spawnPulseFrom(0)
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse before seek")
+	}
+
+	g.Seek(10)
+
+	if !g.playing {
+		t.Fatalf("playing stopped after seek")
+	}
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse after seek")
+	}
+}
+
 func TestDrumWheelDoesNotZoomGrid(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
