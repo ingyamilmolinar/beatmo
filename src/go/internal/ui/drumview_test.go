@@ -449,6 +449,20 @@ func TestDrumViewDeleteRowRecordsOrigin(t *testing.T) {
 	}
 }
 
+func TestDrumViewConsumeAddedRows(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.AddRow()
+	rows := dv.ConsumeAddedRows()
+	if len(rows) != 1 || rows[0] != 1 {
+		t.Fatalf("expected added row index 1, got %v", rows)
+	}
+	if len(dv.ConsumeAddedRows()) != 0 {
+		t.Fatalf("expected added rows cleared after consume")
+	}
+}
+
 func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)

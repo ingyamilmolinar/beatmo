@@ -31,6 +31,7 @@ type DrumRow struct {
 	Steps      []bool
 	Color      color.Color
 	Origin     model.NodeID
+	Node       *uiNode
 }
 
 /* ───────────────────────────────────────────────────────────── */
@@ -56,6 +57,7 @@ type DrumView struct {
 	selRow        int
 
 	deleted []deletedRow
+	added   []int
 
 	bgDirty bool
 	bgCache []*ebiten.Image
@@ -194,7 +196,9 @@ func (dv *DrumView) AddRow() {
 		inst = dv.instOptions[0]
 		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID})
+	idx := len(dv.Rows)
+	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID, Node: nil})
+	dv.added = append(dv.added, idx)
 }
 
 // DeleteRow removes the drum row at the given index.
@@ -214,6 +218,13 @@ func (dv *DrumView) DeleteRow(i int) {
 func (dv *DrumView) ConsumeDeletedRows() []deletedRow {
 	rows := dv.deleted
 	dv.deleted = nil
+	return rows
+}
+
+// ConsumeAddedRows returns and clears indexes of newly added rows.
+func (dv *DrumView) ConsumeAddedRows() []int {
+	rows := dv.added
+	dv.added = nil
 	return rows
 }
 

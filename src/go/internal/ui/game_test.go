@@ -46,8 +46,7 @@ func TestGameAssignsOriginToNewRow(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 	g.drum.AddRow()
-	g.startNodes = append(g.startNodes, nil)
-	g.pendingStartRow = 1
+	g.Update()
 	n := g.tryAddNode(3, 0, model.NodeTypeRegular)
 	if g.drum.Rows[1].Origin != n.ID {
 		t.Fatalf("expected row origin %d got %d", n.ID, g.drum.Rows[1].Origin)

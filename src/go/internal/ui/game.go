@@ -70,7 +70,6 @@ type Game struct {
 	/* graph data */
 	nodes           []*uiNode
 	edges           []uiEdge
-	startNodes      []*uiNode
 	pendingStartRow int
 
 	/* visuals */
@@ -157,7 +156,6 @@ func New(logger *game_log.Logger) *Game {
 
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
-	g.startNodes = make([]*uiNode, len(g.drum.Rows))
 
 	return g
 }
@@ -223,15 +221,14 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	if nodeType == model.NodeTypeRegular {
 		if g.pendingStartRow >= 0 {
 			row := g.pendingStartRow
-			if row >= len(g.startNodes) {
-				g.startNodes = append(g.startNodes, make([]*uiNode, row-len(g.startNodes)+1)...)
-			}
-			g.startNodes[row] = n
-			n.Start = true
-			g.drum.Rows[row].Origin = n.ID
-			if row == 0 {
-				g.start = n
-				g.graph.StartNodeID = n.ID
+			if row >= 0 && row < len(g.drum.Rows) {
+				g.drum.Rows[row].Origin = n.ID
+				g.drum.Rows[row].Node = n
+				n.Start = true
+				if row == 0 {
+					g.start = n
+					g.graph.StartNodeID = n.ID
+				}
 			}
 			g.pendingStartRow = -1
 		} else if g.start == nil {
@@ -671,11 +668,9 @@ eventsDone:
 	prevPlaying := g.playing
 	prevLen := g.drum.Length
 	prevBPM := g.bpm
-	prevRows := len(g.startNodes)
 	g.drum.Update()
-	if len(g.drum.Rows) > prevRows {
-		g.startNodes = append(g.startNodes, nil)
-		g.pendingStartRow = len(g.drum.Rows) - 1
+	for _, idx := range g.drum.ConsumeAddedRows() {
+		g.pendingStartRow = idx
 	}
 	for _, dr := range g.drum.ConsumeDeletedRows() {
 		if dr.origin != model.InvalidNodeID {
@@ -684,9 +679,6 @@ eventsDone:
 			} else {
 				g.graph.RemoveNode(dr.origin)
 			}
-		}
-		if dr.index >= 0 && dr.index < len(g.startNodes) {
-			g.startNodes = append(g.startNodes[:dr.index], g.startNodes[dr.index+1:]...)
 		}
 	}
 	if g.drum.OffsetChanged() {
