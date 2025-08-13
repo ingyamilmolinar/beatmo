@@ -442,3 +442,42 @@ func TestDrumViewSetBPMClamp(t *testing.T) {
 		t.Errorf("expected error animation on low bpm")
 	}
 }
+
+func TestDrumViewBPMTextInput(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.recalcButtons()
+
+	cx, cy := dv.bpmBox.Min.X+1, dv.bpmBox.Min.Y+1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 600 },
+	)
+	defer restore()
+
+	dv.Update() // click to focus
+	pressed = false
+
+	chars = []rune{'5'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+
+	// click outside to commit
+	pressed = true
+	cx, cy = 0, 0
+	dv.Update()
+
+	if dv.BPM() != 500 {
+		t.Fatalf("expected BPM 500 got %d", dv.BPM())
+	}
+}

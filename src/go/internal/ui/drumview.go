@@ -86,6 +86,9 @@ type DrumView struct {
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
 
+	bpmInput string // typed digits while editing
+	bpmPrev  int    // previous BPM before editing
+
 	// button animations
 	playAnim     float64
 	stopAnim     float64
@@ -381,6 +384,8 @@ func (dv *DrumView) Update() {
 	dv.recalcButtons()
 	dv.calcLayout()
 
+	prevFocus := dv.focusBPM
+
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+timelineHeight, dv.Bounds.Max.X, dv.Bounds.Max.Y)
@@ -428,6 +433,8 @@ func (dv *DrumView) Update() {
 			if !dv.focusBPM {
 				dv.focusBPM = true
 				dv.bpmFocusAnim = 1
+				dv.bpmPrev = dv.bpm
+				dv.bpmInput = ""
 				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
 			}
 		case pt(mx, my, dv.lenIncBtn):
@@ -527,15 +534,33 @@ func (dv *DrumView) Update() {
 	if dv.focusBPM {
 		for _, r := range inputChars() {
 			if r >= '0' && r <= '9' {
-				val, _ := strconv.Atoi(string(r))
-				dv.SetBPM(dv.bpm*10 + val)
-				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
+				dv.bpmInput += string(r)
 			}
 		}
 		if isKeyPressed(ebiten.KeyBackspace) {
-			dv.SetBPM(dv.bpm / 10)
-			dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
+			if l := len(dv.bpmInput); l > 0 {
+				dv.bpmInput = dv.bpmInput[:l-1]
+			}
 		}
+		if isKeyPressed(ebiten.KeyEnter) {
+			dv.focusBPM = false
+		}
+		if dv.bpmInput != "" {
+			if v, err := strconv.Atoi(dv.bpmInput); err == nil {
+				dv.bpm = v
+				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
+			}
+		} else {
+			dv.bpm = dv.bpmPrev
+		}
+	}
+
+	if !dv.focusBPM && prevFocus {
+		if dv.bpmInput == "" {
+			dv.bpm = dv.bpmPrev
+		}
+		dv.SetBPM(dv.bpm)
+		dv.bpmInput = ""
 	}
 
 	/* ——— BPM editing via buttons ——— */
@@ -599,7 +624,11 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, "▶", dv.playBtn.Min.X+30, dv.playBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "■", dv.stopBtn.Min.X+30, dv.stopBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.bpmDecBtn.Min.X+15, dv.bpmDecBtn.Min.Y+18)
-	ebitenutil.DebugPrintAt(dst, strconv.Itoa(dv.bpm), dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
+	bpmText := dv.bpmInput
+	if !dv.focusBPM {
+		bpmText = strconv.Itoa(dv.bpm)
+	}
+	ebitenutil.DebugPrintAt(dst, bpmText, dv.bpmBox.Min.X+8, dv.bpmBox.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "+", dv.bpmIncBtn.Min.X+15, dv.bpmIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "-", dv.lenDecBtn.Min.X+15, dv.lenDecBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
