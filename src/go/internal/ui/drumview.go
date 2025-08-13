@@ -19,7 +19,10 @@ import (
 const (
 	asciiPrintableMin = 32
 	asciiPrintableMax = 126
-	timelineHeight    = 40
+	// timelineHeight reserves vertical space for the transport controls and
+	// timeline bar above the drum rows. Increasing this ensures row labels
+	// never overlap with the top control panel.
+	timelineHeight    = 110
 	timelineBarHeight = 10
 )
 
@@ -131,15 +134,10 @@ type deletedRow struct {
 
 /* ─── geometry helpers ─────────────────────────────────────── */
 
-func (dv *DrumView) rowHeight() int {
-	rows := len(dv.Rows)
-	if rows == 0 {
-		return 0
-	}
-	// Reserve an extra slot for the trailing "+" button so rows stack
-	// vertically with a clear "add" area at the bottom.
-	return (dv.Bounds.Dy() - timelineHeight) / (rows + 1)
-}
+// rowHeight returns the fixed pixel height for each drum row and for the
+// trailing "+" button row. Keeping this constant avoids oversized buttons when
+// only a few rows are present, yielding a minimal and consistent layout.
+func (dv *DrumView) rowHeight() int { return 20 }
 
 // SetBeatLength sets the beat length in the underlying graph.
 func (dv *DrumView) SetBeatLength(length int) {
@@ -235,15 +233,17 @@ func (dv *DrumView) ConsumeAddedRows() []int {
 /* ─── public update ────────────────────────────────────────── */
 
 func (dv *DrumView) recalcButtons() {
-	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 90, dv.Bounds.Min.Y+50)
-	dv.stopBtn = image.Rect(100, dv.Bounds.Min.Y+10, 180, dv.Bounds.Min.Y+50)
-	dv.bpmDecBtn = image.Rect(190, dv.Bounds.Min.Y+10, 230, dv.Bounds.Min.Y+50)
-	dv.bpmBox = image.Rect(235, dv.Bounds.Min.Y+10, 275, dv.Bounds.Min.Y+50)
-	dv.bpmIncBtn = image.Rect(280, dv.Bounds.Min.Y+10, 320, dv.Bounds.Min.Y+50)
-	dv.lenDecBtn = image.Rect(325, dv.Bounds.Min.Y+10, 365, dv.Bounds.Min.Y+50)
-	dv.lenIncBtn = image.Rect(370, dv.Bounds.Min.Y+10, 410, dv.Bounds.Min.Y+50)
-	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+60, 150, dv.Bounds.Min.Y+100)
-	dv.uploadBtn = image.Rect(160, dv.Bounds.Min.Y+60, 300, dv.Bounds.Min.Y+100)
+	// Top transport controls (compact sizing)
+	dv.playBtn = image.Rect(10, dv.Bounds.Min.Y+10, 70, dv.Bounds.Min.Y+40)
+	dv.stopBtn = image.Rect(75, dv.Bounds.Min.Y+10, 135, dv.Bounds.Min.Y+40)
+	dv.bpmDecBtn = image.Rect(140, dv.Bounds.Min.Y+10, 170, dv.Bounds.Min.Y+40)
+	dv.bpmBox = image.Rect(175, dv.Bounds.Min.Y+10, 215, dv.Bounds.Min.Y+40)
+	dv.bpmIncBtn = image.Rect(220, dv.Bounds.Min.Y+10, 250, dv.Bounds.Min.Y+40)
+	dv.lenDecBtn = image.Rect(255, dv.Bounds.Min.Y+10, 285, dv.Bounds.Min.Y+40)
+	dv.lenIncBtn = image.Rect(290, dv.Bounds.Min.Y+10, 320, dv.Bounds.Min.Y+40)
+	// Instrument and upload buttons sit on a second row beneath transport
+	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+50, 90, dv.Bounds.Min.Y+80)
+	dv.uploadBtn = image.Rect(95, dv.Bounds.Min.Y+50, 175, dv.Bounds.Min.Y+80)
 	dv.controlsW = dv.lenIncBtn.Max.X
 	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
 	dv.timelineRect = image.Rect(
@@ -546,6 +546,9 @@ func (dv *DrumView) Update() {
 			for i, r := range dv.rowLabelRects {
 				if pt(mx, my, r) {
 					dv.selRow = i
+					// Clicking the label cycles the instrument for the row.
+					dv.CycleInstrument()
+					dv.instAnim = 1
 					return
 				}
 			}
@@ -756,10 +759,10 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	for i, r := range dv.Rows {
 		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
 		label := dv.rowLabelRects[i]
-		ebitenutil.DebugPrintAt(dst, r.Name, label.Min.X+5, label.Min.Y+18)
+		ebitenutil.DebugPrintAt(dst, r.Name, label.Min.X+5, label.Min.Y+14)
 		del := dv.rowDeleteBtns[i]
 		drawRect(dst, del, colButtonBorder, false)
-		ebitenutil.DebugPrintAt(dst, "x", del.Min.X+5, del.Min.Y+12)
+		ebitenutil.DebugPrintAt(dst, "x", del.Min.X+5, del.Min.Y+14)
 		for j, step := range r.Steps {
 			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell // Adjusted for buttons
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
@@ -784,7 +787,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 
 	// trailing "+" row
 	LenIncStyle.DrawAnimated(dst, dv.addRowBtn, false, 0)
-	ebitenutil.DebugPrintAt(dst, "+", dv.addRowBtn.Min.X+15, dv.addRowBtn.Min.Y+18)
+	ebitenutil.DebugPrintAt(dst, "+", dv.addRowBtn.Min.X+dv.labelW/2-5, dv.addRowBtn.Min.Y+14)
 
 	if dv.uploading {
 		ebitenutil.DebugPrintAt(dst, "Loading...", dv.uploadBtn.Min.X, dv.uploadBtn.Max.Y+20)

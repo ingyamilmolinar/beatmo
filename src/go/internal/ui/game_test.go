@@ -947,7 +947,7 @@ func TestDrumViewDragShiftsWindow(t *testing.T) {
 	g.drum.calcLayout()
 
 	stepX := g.drum.Bounds.Min.X + g.drum.labelW + g.drum.controlsW + g.drum.cell/2
-	stepY := g.drum.Bounds.Min.Y + g.drum.rowHeight()/2
+	stepY := g.drum.Bounds.Min.Y + timelineHeight + g.drum.rowHeight()/2
 	pos := []struct{ x, y int }{{stepX, stepY}, {stepX - 2*g.drum.cell, stepY}, {stepX - 2*g.drum.cell, stepY}}
 	idx := 0
 	pressed := true

@@ -54,6 +54,68 @@ func TestDrumViewLengthIncrease(t *testing.T) {
 	}
 }
 
+// Ensure row labels and delete buttons sit beneath the control panel and align
+// to the left of their corresponding step rows.
+func TestDrumRowLayout(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	dv.recalcButtons()
+	dv.calcLayout()
+
+	if len(dv.rowLabelRects) == 0 {
+		t.Fatalf("expected at least one row label")
+	}
+	label := dv.rowLabelRects[0]
+	if label.Min.Y < dv.uploadBtn.Max.Y {
+		t.Fatalf("row label overlaps controls: label %v controls bottom %d", label, dv.uploadBtn.Max.Y)
+	}
+	stepStart := dv.Bounds.Min.X + dv.labelW + dv.controlsW
+	if label.Max.X != dv.Bounds.Min.X+dv.labelW {
+		t.Fatalf("label width unexpected: got %d want %d", label.Dx(), dv.labelW)
+	}
+	if label.Max.X > stepStart {
+		t.Fatalf("label encroaches into step area: %v >= %d", label, stepStart)
+	}
+	del := dv.rowDeleteBtns[0]
+	if del.Min.X != label.Max.X-20 || del.Max.X != label.Max.X {
+		t.Fatalf("delete button misaligned with label: %v vs %v", del, label)
+	}
+	if dv.addRowBtn.Min.Y != label.Min.Y+dv.rowHeight() {
+		t.Fatalf("add-row button not directly below row: %v", dv.addRowBtn)
+	}
+	if dv.addRowBtn.Dy() != dv.rowHeight() || dv.addRowBtn.Dx() != dv.labelW {
+		t.Fatalf("add-row button size unexpected: %v", dv.addRowBtn)
+	}
+}
+
+// Clicking on a row label should cycle the instrument for that row.
+func TestLabelClickCyclesInstrument(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	dv.instOptions = []string{"snare", "kick"}
+	dv.Rows[0].Instrument = "snare"
+	dv.recalcButtons()
+	dv.calcLayout()
+
+	mx := dv.rowLabelRects[0].Min.X + 1
+	my := dv.rowLabelRects[0].Min.Y + 1
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft && pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 600 },
+	)
+	dv.Update()
+	restore()
+
+	if dv.Rows[0].Instrument != "kick" {
+		t.Fatalf("expected instrument to cycle to 'kick', got %s", dv.Rows[0].Instrument)
+	}
+}
+
 func TestDrumViewLengthDecrease(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
@@ -78,7 +140,7 @@ func TestDrumViewLengthDecrease(t *testing.T) {
 func TestDrumViewWheelAdjustsLength(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 800, 100), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
 
 	wheelVal := 1.0
 	cursor := func() (int, int) { return dv.Bounds.Min.X + dv.labelW + 500, dv.Bounds.Min.Y + timelineHeight + 5 }

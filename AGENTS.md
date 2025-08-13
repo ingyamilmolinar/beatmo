@@ -137,3 +137,4 @@ This debugging session highlighted several critical points:
 * Signals now propagate concurrently from each row's origin and trigger per-row instrument playback.
 * Drum view now highlights beats for every row based on encoded row/index keys.
 * The drum view reserves an extra row for a trailing "+" button so existing grids remain intact; adding a row no longer clears the grid and awaits the user's next grid click for origin placement.
+* Row labels are clickable to cycle instruments, and a fixed 20px row height with expanded top controls keeps per-row buttons aligned without overlapping the transport panel.
