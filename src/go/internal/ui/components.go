@@ -8,6 +8,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// pixel helper is defined in widgets.go and reused here.
+
 // fadeColor returns c with its alpha scaled by t (0..1).
 func fadeColor(c color.Color, t float64) color.Color {
 	r, g, b, a := c.RGBA()

@@ -18,6 +18,23 @@ type Transport struct {
 	playRect image.Rectangle
 	stopRect image.Rectangle
 	focusBox bool
+
+	boxAnim      float64
+	bpmErrorAnim float64
+}
+
+func (t *Transport) SetBPM(b int) {
+	if b < 1 {
+		t.BPM = 1
+		t.bpmErrorAnim = 1
+		return
+	}
+	if b > maxBPM {
+		t.BPM = maxBPM
+		t.bpmErrorAnim = 1
+		return
+	}
+	t.BPM = b
 }
 
 func NewTransport(w int) *Transport {
@@ -36,6 +53,7 @@ func (t *Transport) Update() {
 		if t.boxRect.Min.X <= x && x <= t.boxRect.Max.X &&
 			t.boxRect.Min.Y <= y && y <= t.boxRect.Max.Y {
 			t.focusBox = true
+			t.boxAnim = 1
 		} else {
 			t.focusBox = false
 		}
@@ -49,14 +67,23 @@ func (t *Transport) Update() {
 
 	if t.focusBox {
 		if ch := inputChars(); len(ch) > 0 {
-			// simplistic numeric entry
 			if d, err := strconv.Atoi(string(ch)); err == nil {
-				t.BPM = t.BPM*10 + d
+				t.SetBPM(t.BPM*10 + d)
 			}
 		}
 		if isKeyPressed(ebiten.KeyBackspace) {
-			t.BPM /= 10
+			t.SetBPM(t.BPM / 10)
 		}
+	}
+
+	// decay animations
+	t.boxAnim *= 0.85
+	if t.boxAnim < 0.01 {
+		t.boxAnim = 0
+	}
+	t.bpmErrorAnim *= 0.85
+	if t.bpmErrorAnim < 0.01 {
+		t.bpmErrorAnim = 0
 	}
 }
 
@@ -69,8 +96,10 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 	// BPM label
 	ebitenutil.DebugPrintAt(dst, "BPM:", 10, 12)
 
-	// box outline
-	drawRect(dst, t.boxRect, color.White, false)
+	BPMBoxStyle.DrawAnimated(dst, t.boxRect, t.focusBox, t.boxAnim)
+	if t.bpmErrorAnim > 0 {
+		drawRect(dst, t.boxRect, fadeColor(colError, t.bpmErrorAnim), false)
+	}
 	ebitenutil.DebugPrintAt(dst,
 		fmt.Sprintf("%d", t.BPM),
 		t.boxRect.Min.X+4, t.boxRect.Min.Y+4)

@@ -96,6 +96,7 @@ type DrumView struct {
 	instAnim     float64
 	uploadAnim   float64
 	bpmFocusAnim float64
+	bpmErrorAnim float64
 	saveAnim     float64
 	namePhase    float64
 	savePressed  bool
@@ -219,6 +220,16 @@ func (dv *DrumView) BPM() int {
 }
 
 func (dv *DrumView) SetBPM(b int) {
+	if b < 1 {
+		dv.bpm = 1
+		dv.bpmErrorAnim = 1
+		return
+	}
+	if b > maxBPM {
+		dv.bpm = maxBPM
+		dv.bpmErrorAnim = 1
+		return
+	}
 	dv.bpm = b
 }
 
@@ -302,6 +313,7 @@ func (dv *DrumView) decayAnims() {
 	decay(&dv.instAnim)
 	decay(&dv.uploadAnim)
 	decay(&dv.bpmFocusAnim)
+	decay(&dv.bpmErrorAnim)
 	decay(&dv.saveAnim)
 }
 
@@ -516,34 +528,25 @@ func (dv *DrumView) Update() {
 		for _, r := range inputChars() {
 			if r >= '0' && r <= '9' {
 				val, _ := strconv.Atoi(string(r))
-				newBPM := dv.bpm*10 + val
-				if newBPM != dv.bpm {
-					dv.bpm = newBPM
-					dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
-				}
+				dv.SetBPM(dv.bpm*10 + val)
+				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
 			}
 		}
 		if isKeyPressed(ebiten.KeyBackspace) {
-			newBPM := dv.bpm / 10
-			if newBPM == 0 {
-				newBPM = 1
-			}
-			if newBPM != dv.bpm {
-				dv.bpm = newBPM
-				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
-			}
+			dv.SetBPM(dv.bpm / 10)
+			dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
 		}
 	}
 
 	/* ——— BPM editing via buttons ——— */
 	if dv.bpmIncPressed {
-		dv.bpm++
+		dv.SetBPM(dv.bpm + 1)
 		dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
 		dv.bpmIncPressed = false
 	}
 	if dv.bpmDecPressed {
+		dv.SetBPM(dv.bpm - 1)
 		if dv.bpm > 1 {
-			dv.bpm--
 			dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
 		}
 		dv.bpmDecPressed = false
@@ -585,6 +588,9 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	StopButtonStyle.DrawAnimated(dst, dv.stopBtn, dv.stopPressed, dv.stopAnim)
 	BPMDecStyle.DrawAnimated(dst, dv.bpmDecBtn, dv.bpmDecPressed, dv.bpmDecAnim)
 	BPMBoxStyle.DrawAnimated(dst, dv.bpmBox, dv.focusBPM, dv.bpmFocusAnim)
+	if dv.bpmErrorAnim > 0 {
+		drawRect(dst, dv.bpmBox, fadeColor(colError, dv.bpmErrorAnim), false)
+	}
 	BPMIncStyle.DrawAnimated(dst, dv.bpmIncBtn, dv.bpmIncPressed, dv.bpmIncAnim)
 	LenDecStyle.DrawAnimated(dst, dv.lenDecBtn, dv.lenDecPressed, dv.lenDecAnim)
 	LenIncStyle.DrawAnimated(dst, dv.lenIncBtn, dv.lenIncPressed, dv.lenIncAnim)

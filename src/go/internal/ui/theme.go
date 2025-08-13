@@ -13,6 +13,7 @@ var (
 	colBPMBox       = color.RGBA{45, 45, 45, 255}
 	colLenDec       = color.RGBA{70, 130, 180, 255}
 	colLenInc       = color.RGBA{70, 70, 180, 255}
+	colError        = color.RGBA{200, 60, 60, 255}
 
 	colStep       = color.RGBA{0, 160, 200, 255}
 	colStepOff    = color.RGBA{25, 25, 25, 255}

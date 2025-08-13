@@ -421,3 +421,24 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 		t.Fatalf("expected 1 highlight draw, got %d", highlightCount)
 	}
 }
+
+func TestDrumViewSetBPMClamp(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.SetBPM(maxBPM + 10)
+	if dv.bpm != maxBPM {
+		t.Fatalf("expected BPM %d, got %d", maxBPM, dv.bpm)
+	}
+	if dv.bpmErrorAnim == 0 {
+		t.Errorf("expected error animation on high bpm")
+	}
+	dv.bpmErrorAnim = 0
+	dv.SetBPM(0)
+	if dv.bpm != 1 {
+		t.Fatalf("expected BPM 1, got %d", dv.bpm)
+	}
+	if dv.bpmErrorAnim == 0 {
+		t.Errorf("expected error animation on low bpm")
+	}
+}
