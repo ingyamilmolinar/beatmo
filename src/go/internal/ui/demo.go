@@ -13,8 +13,8 @@ func (g *Game) RunDemo() {
 	b := g.tryAddNode(5, 1, model.NodeTypeRegular)
 	g.addEdge(a, b)
 	g.playing = true
-	g.sched.Start()
-	g.spawnPulse()
+	g.engine.Start()
+	g.spawnPulseFrom(0)
 	go func() {
 		time.Sleep(2 * time.Second)
 		g.logger.Infof("[DEMO] Finished demo run")
