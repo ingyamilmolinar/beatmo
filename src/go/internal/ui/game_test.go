@@ -351,7 +351,7 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	// Simulate click on play button
 	pressed := true
 	restore := SetInputForTest(
-		func() (int, int) { return g.drum.playBtn.Min.X + 1, g.drum.playBtn.Min.Y + 1 }, // Click inside the button
+		func() (int, int) { return g.drum.playBtn.Rect().Min.X + 1, g.drum.playBtn.Rect().Min.Y + 1 }, // Click inside the button
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -447,7 +447,7 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 
 	pressed := true
 	restore := SetInputForTest(
-		func() (int, int) { return g.drum.bpmIncBtn.Min.X + 1, g.drum.bpmIncBtn.Min.Y + 1 },
+		func() (int, int) { return g.drum.bpmIncBtn.Rect().Min.X + 1, g.drum.bpmIncBtn.Rect().Min.Y + 1 },
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },

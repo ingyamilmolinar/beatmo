@@ -62,29 +62,30 @@ func TestDrumRowLayout(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if len(dv.rowLabelRects) == 0 {
+	if len(dv.rowLabels) == 0 {
 		t.Fatalf("expected at least one row label")
 	}
-	label := dv.rowLabelRects[0]
-	if label.Min.Y < dv.uploadBtn.Max.Y {
-		t.Fatalf("row label overlaps controls: label %v controls bottom %d", label, dv.uploadBtn.Max.Y)
+	label := dv.rowLabels[0].Rect()
+	if label.Min.Y < dv.uploadBtn.Rect().Max.Y {
+		t.Fatalf("row label overlaps controls: label %v controls bottom %d", label, dv.uploadBtn.Rect().Max.Y)
 	}
 	stepStart := dv.Bounds.Min.X + dv.labelW + dv.controlsW
-	if label.Max.X != dv.Bounds.Min.X+dv.labelW {
-		t.Fatalf("label width unexpected: got %d want %d", label.Dx(), dv.labelW)
+	total := dv.rowDeleteBtns[0].Rect().Max.X - label.Min.X
+	if total != dv.labelW {
+		t.Fatalf("label+delete width unexpected: %d want %d", total, dv.labelW)
 	}
 	if label.Max.X > stepStart {
 		t.Fatalf("label encroaches into step area: %v >= %d", label, stepStart)
 	}
-	del := dv.rowDeleteBtns[0]
-	if del.Min.X != label.Max.X-20 || del.Max.X != label.Max.X {
+	del := dv.rowDeleteBtns[0].Rect()
+	if del.Min.X != label.Max.X || del.Max.X != label.Min.X+dv.labelW {
 		t.Fatalf("delete button misaligned with label: %v vs %v", del, label)
 	}
-	if dv.addRowBtn.Min.Y != label.Min.Y+dv.rowHeight() {
-		t.Fatalf("add-row button not directly below row: %v", dv.addRowBtn)
+	if dv.addRowBtn.Rect().Min.Y != label.Min.Y+dv.rowHeight() {
+		t.Fatalf("add-row button not directly below row: %v", dv.addRowBtn.Rect())
 	}
-	if dv.addRowBtn.Dy() != dv.rowHeight() || dv.addRowBtn.Dx() != dv.labelW {
-		t.Fatalf("add-row button size unexpected: %v", dv.addRowBtn)
+	if dv.addRowBtn.Rect().Dy() != dv.rowHeight() || dv.addRowBtn.Rect().Dx() != dv.labelW {
+		t.Fatalf("add-row button size unexpected: %v", dv.addRowBtn.Rect())
 	}
 }
 
@@ -97,8 +98,8 @@ func TestLabelClickCyclesInstrument(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	mx := dv.rowLabelRects[0].Min.X + 1
-	my := dv.rowLabelRects[0].Min.Y + 1
+	mx := dv.rowLabels[0].Rect().Min.X + 1
+	my := dv.rowLabels[0].Rect().Min.Y + 1
 	pressed := true
 	restore := SetInputForTest(
 		func() (int, int) { return mx, my },
@@ -436,8 +437,8 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil, 0)
-	if count != 10 {
-		t.Fatalf("expected 10 buttons drawn, got %d", count)
+	if count != 12 {
+		t.Fatalf("expected 12 buttons drawn, got %d", count)
 	}
 }
 
@@ -484,7 +485,7 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	dv.calcLayout()
 
 	pressed := true
-	cx, cy := dv.addRowBtn.Min.X+1, dv.addRowBtn.Min.Y+1
+	cx, cy := dv.addRowBtn.Rect().Min.X+1, dv.addRowBtn.Rect().Min.Y+1
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
 	dv.Update()
 	pressed = false
@@ -497,7 +498,7 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	// recalc layout to get delete button for new row
 	dv.Update()
 	pressed = true
-	cx, cy = dv.rowDeleteBtns[1].Min.X+1, dv.rowDeleteBtns[1].Min.Y+1
+	cx, cy = dv.rowDeleteBtns[1].Rect().Min.X+1, dv.rowDeleteBtns[1].Rect().Min.Y+1
 	restore = SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
 	dv.Update()
 	pressed = false
@@ -519,7 +520,7 @@ func TestDrumViewChangeInstrumentPerRow(t *testing.T) {
 	dv.recalcButtons()
 
 	pressed := true
-	cx, cy := dv.instBtn.Min.X+1, dv.instBtn.Min.Y+1
+	cx, cy := dv.instBtn.Rect().Min.X+1, dv.instBtn.Rect().Min.Y+1
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
 	dv.Update()
 	pressed = false
@@ -566,14 +567,14 @@ func TestDrumViewLayoutStacksRows(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
 	dv.AddRow()
 	dv.calcLayout()
-	if len(dv.rowLabelRects) != 2 {
-		t.Fatalf("expected 2 row labels, got %d", len(dv.rowLabelRects))
+	if len(dv.rowLabels) != 2 {
+		t.Fatalf("expected 2 row labels, got %d", len(dv.rowLabels))
 	}
-	if dv.rowLabelRects[1].Min.Y <= dv.rowLabelRects[0].Min.Y {
-		t.Fatalf("row labels not stacked vertically: %v vs %v", dv.rowLabelRects[0], dv.rowLabelRects[1])
+	if dv.rowLabels[1].Rect().Min.Y <= dv.rowLabels[0].Rect().Min.Y {
+		t.Fatalf("row labels not stacked vertically: %v vs %v", dv.rowLabels[0].Rect(), dv.rowLabels[1].Rect())
 	}
-	if dv.addRowBtn.Min.Y <= dv.rowLabelRects[1].Min.Y {
-		t.Fatalf("add button not below rows: %v vs %v", dv.addRowBtn, dv.rowLabelRects[1])
+	if dv.addRowBtn.Rect().Min.Y <= dv.rowLabels[1].Rect().Min.Y {
+		t.Fatalf("add button not below rows: %v vs %v", dv.addRowBtn.Rect(), dv.rowLabels[1].Rect())
 	}
 }
 
@@ -647,7 +648,7 @@ func TestDrumViewBPMTextInput(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
 	dv.recalcButtons()
 
-	cx, cy := dv.bpmBox.Min.X+1, dv.bpmBox.Min.Y+1
+	cx, cy := dv.bpmBox.Rect().Min.X+1, dv.bpmBox.Rect().Min.Y+1
 	pressed := true
 	chars := []rune{}
 	restore := SetInputForTest(

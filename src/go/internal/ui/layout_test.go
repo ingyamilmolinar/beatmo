@@ -40,7 +40,7 @@ func TestDrumViewButtonLayout(t *testing.T) {
 	drumView := NewDrumView(image.Rect(0, 0, TestWinW, 120), nil, logger)
 	drumView.recalcButtons()
 
-	buttons := []image.Rectangle{
+	buttons := []*Button{
 		drumView.playBtn,
 		drumView.stopBtn,
 		drumView.bpmBox,
@@ -49,11 +49,12 @@ func TestDrumViewButtonLayout(t *testing.T) {
 	}
 
 	for i, btn := range buttons {
-		if btn.Empty() {
+		r := btn.Rect()
+		if r.Empty() {
 			t.Errorf("Button %d is empty", i)
 		}
 		if i > 0 {
-			if btn.Min.X < buttons[i-1].Max.X {
+			if r.Min.X < buttons[i-1].Rect().Max.X {
 				t.Errorf("Button %d overlaps with the previous button", i)
 			}
 		}
