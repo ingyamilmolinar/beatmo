@@ -14,7 +14,7 @@ func (g *Game) RunDemo() {
 	g.addEdge(a, b)
 	g.playing = true
 	g.engine.Start()
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	go func() {
 		time.Sleep(2 * time.Second)
 		g.logger.Infof("[DEMO] Finished demo run")

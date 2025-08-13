@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -59,6 +60,8 @@ type DrumView struct {
 	nameInput  string
 	saveBtn    image.Rectangle
 
+	timelineRect image.Rectangle // progress bar for fast seek
+
 	// ui widgets (re-computed every frame)
 	playBtn   image.Rectangle
 	stopBtn   image.Rectangle
@@ -99,6 +102,10 @@ type DrumView struct {
 	dragStartX    int
 	startOffset   int
 	offsetChanged bool
+
+	scrubbing     bool
+	seekBeat      int
+	seekRequested bool
 }
 
 /* ─── geometry helpers ─────────────────────────────────────── */
@@ -168,6 +175,7 @@ func (dv *DrumView) recalcButtons() {
 	dv.instBtn = image.Rect(10, dv.Bounds.Min.Y+60, 150, dv.Bounds.Min.Y+100)
 	dv.uploadBtn = image.Rect(160, dv.Bounds.Min.Y+60, 300, dv.Bounds.Min.Y+100)
 	dv.controlsW = dv.lenIncBtn.Max.X
+	dv.timelineRect = image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Max.Y-20, dv.Bounds.Max.X-10, dv.Bounds.Max.Y-10)
 }
 
 func (dv *DrumView) calcLayout() {
@@ -207,6 +215,12 @@ func (dv *DrumView) OffsetChanged() bool {
 	}
 	return false
 }
+
+func (dv *DrumView) SeekRequested() bool { return dv.seekRequested }
+
+func (dv *DrumView) SeekBeat() int { return dv.seekBeat }
+
+func (dv *DrumView) ClearSeek() { dv.seekRequested = false }
 
 func (dv *DrumView) SetLength(length int) {
 	if length < 1 {
@@ -449,15 +463,39 @@ func (dv *DrumView) Update() {
 		}
 	}
 
+	// timeline scrubbing
+	if left && pt(mx, my, dv.timelineRect) {
+		dv.scrubbing = true
+	}
+	if dv.scrubbing {
+		pos := mx
+		if pos < dv.timelineRect.Min.X {
+			pos = dv.timelineRect.Min.X
+		}
+		if pos > dv.timelineRect.Max.X {
+			pos = dv.timelineRect.Max.X
+		}
+		beat := int(float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx()) * float64(dv.Length))
+		if beat < 0 {
+			beat = 0
+		}
+		if beat != dv.Offset {
+			dv.Offset = beat
+			dv.offsetChanged = true
+		}
+		dv.seekBeat = beat
+		if !left {
+			dv.scrubbing = false
+			dv.seekRequested = true
+		}
+	}
+
 	/* ——— BPM editing ——— */
 	if dv.focusBPM {
 		for _, r := range inputChars() {
 			if r >= '0' && r <= '9' {
 				val, _ := strconv.Atoi(string(r))
 				newBPM := dv.bpm*10 + val
-				if newBPM > 300 {
-					newBPM = 300
-				}
 				if newBPM != dv.bpm {
 					dv.bpm = newBPM
 					dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
@@ -478,10 +516,8 @@ func (dv *DrumView) Update() {
 
 	/* ——— BPM editing via buttons ——— */
 	if dv.bpmIncPressed {
-		if dv.bpm < 300 {
-			dv.bpm++
-			dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
-		}
+		dv.bpm++
+		dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
 		dv.bpmIncPressed = false
 	}
 	if dv.bpmDecPressed {
@@ -515,7 +551,7 @@ func (dv *DrumView) Update() {
 	}
 }
 
-func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo) {
+func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo, elapsedBeats int) {
 	dv.logger.Debugf("[DRUMVIEW] Draw called. beatInfos: %v, highlightedBeats: %v", beatInfos, highlightedBeats)
 	// draw background
 	op := &ebiten.DrawImageOptions{}
@@ -542,6 +578,27 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	ebitenutil.DebugPrintAt(dst, "+", dv.lenIncBtn.Min.X+15, dv.lenIncBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, dv.Rows[0].Name+" ▼", dv.instBtn.Min.X+5, dv.instBtn.Min.Y+18)
 	ebitenutil.DebugPrintAt(dst, "Upload", dv.uploadBtn.Min.X+5, dv.uploadBtn.Min.Y+18)
+	// time/progress
+	totalSec := float64(dv.Length) * 60 / float64(dv.bpm)
+	curSec := float64(elapsedBeats) * 60 / float64(dv.bpm)
+	ebitenutil.DebugPrintAt(dst,
+		fmt.Sprintf("%.1fs/%.1fs (%d/%d)", curSec, totalSec, elapsedBeats, dv.Length),
+		dv.timelineRect.Min.X,
+		dv.timelineRect.Min.Y-15,
+	)
+	drawRect(dst, dv.timelineRect, color.RGBA{60, 60, 60, 255}, true)
+	prog := float64(elapsedBeats) / float64(dv.Length)
+	if prog > 1 {
+		prog = 1
+	}
+	fill := image.Rect(
+		dv.timelineRect.Min.X,
+		dv.timelineRect.Min.Y,
+		dv.timelineRect.Min.X+int(float64(dv.timelineRect.Dx())*prog),
+		dv.timelineRect.Max.Y,
+	)
+	drawRect(dst, fill, color.RGBA{200, 200, 200, 255}, true)
+	drawRect(dst, dv.timelineRect, colButtonBorder, false)
 
 	// draw steps
 	for i, r := range dv.Rows {

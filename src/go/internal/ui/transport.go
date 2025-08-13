@@ -51,10 +51,7 @@ func (t *Transport) Update() {
 		if ch := inputChars(); len(ch) > 0 {
 			// simplistic numeric entry
 			if d, err := strconv.Atoi(string(ch)); err == nil {
-				newBpm := t.BPM*10 + d
-				if newBpm <= 300 {
-					t.BPM = newBpm
-				}
+				t.BPM = t.BPM*10 + d
 			}
 		}
 		if isKeyPressed(ebiten.KeyBackspace) {

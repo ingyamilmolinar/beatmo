@@ -229,7 +229,7 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 	// Simulate starting playback
 	game.playing = true
 	game.updateBeatInfos() // Call updateBeatInfos after drum is set
-	game.spawnPulse()
+	game.spawnPulseFrom(0)
 
 	// Run for a few cycles to test loop highlighting
 	for i := 0; i < 20; i++ { // Simulate 20 frames
@@ -284,7 +284,7 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	}
 	defer func() { drawButton = orig }()
 
-	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil)
+	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil, 0)
 	if count != 9 {
 		t.Fatalf("expected 9 buttons drawn, got %d", count)
 	}
@@ -317,7 +317,7 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	defer func() { drawRect = orig }()
 
 	highlighted := map[int]int64{1: 1}
-	dv.Draw(ebiten.NewImage(300, 50), highlighted, 0, game.beatInfos)
+	dv.Draw(ebiten.NewImage(300, 50), highlighted, 0, game.beatInfos, 0)
 
 	var highlightCount int
 	for _, call := range calls {

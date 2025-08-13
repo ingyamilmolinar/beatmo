@@ -97,6 +97,7 @@ type Game struct {
 	isLoop         bool             // Indicates if the current graph forms a loop
 	loopStartIndex int              // The index in beatInfos where the loop segment begins
 	nextBeatIdx    int              // Absolute beat index for highlighting across loops
+	elapsedBeats   int
 
 	/* misc */
 	winW, winH int
@@ -509,27 +510,24 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	}
 }
 
-func (g *Game) spawnPulse() {
-	g.logger.Debugf("[GAME] Spawn pulse: attempting to start initial pulse")
+func (g *Game) spawnPulseFrom(start int) {
+	g.logger.Debugf("[GAME] Spawn pulse from %d", start)
 
-	if len(g.beatInfos) == 0 {
-		g.logger.Infof("[GAME] Spawn pulse: No beat information available, no initial pulse spawned.")
+	if len(g.beatInfos) == 0 || start >= len(g.beatInfos) {
+		g.logger.Infof("[GAME] Spawn pulse: No beat information available")
 		return
 	}
 
 	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
 
-	// The first beat in the sequence is where the pulse starts.
-	fromBeatInfo := g.beatInfos[0]
-
-	// Reset global beat index and highlight the first beat.
-	g.nextBeatIdx = 0
+	fromBeatInfo := g.beatInfos[start]
+	g.nextBeatIdx = start
 	g.highlightBeat(g.nextBeatIdx, fromBeatInfo, beatDuration)
 	g.nextBeatIdx++
+	g.elapsedBeats = g.nextBeatIdx
 
-	// If there's a next beat, create a pulse moving towards it.
-	if len(g.beatInfos) > 1 {
-		toBeatInfo := g.beatInfos[1]
+	if start+1 < len(g.beatInfos) {
+		toBeatInfo := g.beatInfos[start+1]
 		g.activePulse = &pulse{
 			x1:           float64(fromBeatInfo.I * GridStep),
 			y1:           float64(fromBeatInfo.J * GridStep),
@@ -538,15 +536,13 @@ func (g *Game) spawnPulse() {
 			speed:        1.0 / float64(beatDuration),
 			fromBeatInfo: fromBeatInfo,
 			toBeatInfo:   toBeatInfo,
-			pathIdx:      1, // Start at index 1, as we've already processed index 0.
-			lastIdx:      0,
+			pathIdx:      start + 1,
+			lastIdx:      start,
 			from:         g.nodeByID(fromBeatInfo.NodeID),
 			to:           g.nodeByID(toBeatInfo.NodeID),
 		}
-		g.logger.Infof("[GAME] Spawn pulse: initial pulse spawned from grid (%d,%d) to (%d,%d) (beat types: %v -> %v)", fromBeatInfo.I, fromBeatInfo.J, toBeatInfo.I, toBeatInfo.J, fromBeatInfo.NodeType, toBeatInfo.NodeType)
 	} else {
-		// If there's only one beat, there's no pulse to animate.
-		g.logger.Infof("[GAME] Spawn pulse: Only one beat, no pulse to animate.")
+		g.activePulse = nil
 	}
 }
 
@@ -628,6 +624,10 @@ eventsDone:
 	prevLen := g.drum.Length
 	prevBPM := g.bpm
 	g.drum.Update()
+	if g.drum.SeekRequested() {
+		g.Seek(g.drum.SeekBeat())
+		g.drum.ClearSeek()
+	}
 	if g.drum.OffsetChanged() {
 		g.refreshDrumRow()
 	}
@@ -664,6 +664,9 @@ eventsDone:
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
 			g.nextBeatIdx = 0
+			g.elapsedBeats = 0
+			g.activePulse = nil
+			g.highlightedBeats = map[int]int64{}
 			g.engine.Start()
 			g.logger.Infof("[GAME] Engine started.")
 		} else {
@@ -802,7 +805,7 @@ func (g *Game) drawDrumPane(dst *ebiten.Image) {
 			vis[idx-g.drum.Offset] = fr
 		}
 	}
-	g.drum.Draw(dst, vis, g.frame, g.drumBeatInfos)
+	g.drum.Draw(dst, vis, g.frame, g.drumBeatInfos, g.elapsedBeats)
 }
 
 func (g *Game) rootNode() *uiNode {
@@ -838,7 +841,7 @@ func (g *Game) onTick(step int) {
 	// to potentially start a pulse if one isn't already active.
 	if step == 0 && g.activePulse == nil {
 		if g.start != nil {
-			g.spawnPulse()
+			g.spawnPulseFrom(g.nextBeatIdx)
 		}
 	}
 }
@@ -876,6 +879,19 @@ func (g *Game) clearExpiredHighlights() {
 	}
 }
 
+func (g *Game) Seek(beats int) {
+	if beats < 0 {
+		beats = 0
+	}
+	g.highlightedBeats = map[int]int64{}
+	g.activePulse = nil
+	g.nextBeatIdx = beats
+	g.elapsedBeats = beats
+	if g.playing {
+		g.spawnPulseFrom(beats)
+	}
+}
+
 func (g *Game) advancePulse(p *pulse) bool {
 	beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
 
@@ -889,6 +905,7 @@ func (g *Game) advancePulse(p *pulse) bool {
 	g.highlightBeat(g.nextBeatIdx, arrivalBeatInfo, beatDuration)
 	p.lastIdx = g.nextBeatIdx
 	g.nextBeatIdx++
+	g.elapsedBeats = g.nextBeatIdx
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++

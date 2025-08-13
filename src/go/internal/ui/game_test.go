@@ -311,7 +311,7 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 
 	g.playing = true
 	g.engine.Start()
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	if g.activePulse == nil {
 		t.Fatalf("no pulse spawned")
 	}
@@ -404,7 +404,7 @@ func TestPulseAnimationProgress(t *testing.T) {
 
 	// Manually set playing to true and call spawnPulse to create the pulse
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	// The pulse should be active now
 	if g.activePulse == nil {
@@ -442,7 +442,7 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	defer func() { playSound = orig }()
 
 	g.playing = true
-	g.spawnPulse() // highlights start node
+	g.spawnPulseFrom(0) // highlights start node
 
 	if len(plays) != 1 {
 		t.Fatalf("expected 1 sample for start node, got %d", len(plays))
@@ -524,7 +524,7 @@ func TestAudioLoopConsistency(t *testing.T) {
 	defer func() { playSound = orig }()
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	for i := 0; i < 8; i++ {
 		g.activePulse.t = 1
@@ -938,7 +938,7 @@ func TestHighlightEmptyCells(t *testing.T) {
 
 	g.playing = true
 	g.engine.Start()
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	if _, ok := g.highlightedBeats[0]; !ok {
 		t.Errorf("Tick 0: Beat at index 0 should be highlighted")
@@ -1014,7 +1014,7 @@ func TestPulseTraversalIgnoresDrumLength(t *testing.T) {
 	g.drum.Rows[0].Steps = g.drum.Rows[0].Steps[:g.drum.Length]
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	if g.activePulse == nil || g.activePulse.toBeatInfo.NodeID != n1.ID {
 		t.Fatalf("expected pulse heading to second node")
@@ -1207,7 +1207,7 @@ func TestPulseTraversalBeyondDrumView(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	if g.activePulse == nil {
 		t.Fatalf("expected active pulse")
 	}
@@ -1282,7 +1282,7 @@ func TestSignalTraversalInLoop(t *testing.T) {
 	}
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 
 	if g.activePulse == nil {
 		t.Fatalf("Expected active pulse after spawning")
@@ -1359,7 +1359,7 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 	}
 
 	// now simulate pulse highlighting across two laps
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	// sequence of highlighted beat indices expected for first 12 advancements
 	expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 	got := make([]int, len(expected))
@@ -1410,7 +1410,7 @@ func TestBPMChangeDuringLoopKeepsForwardProgress(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.playing = true
-	g.spawnPulse()
+	g.spawnPulseFrom(0)
 	if g.activePulse == nil {
 		t.Fatalf("expected active pulse")
 	}
