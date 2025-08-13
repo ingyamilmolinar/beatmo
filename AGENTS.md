@@ -131,4 +131,5 @@ This debugging session highlighted several critical points:
 
 * Drum view UI now supports adding and deleting rows with `+` and per-row delete buttons.
 * Instruments are tracked per row and can be cycled for the selected row.
-* Further work: link each row to a distinct origin node, propagate concurrent signals, synchronize deletions with graph nodes and audio playback.
+* Each drum row tracks a distinct origin node. After adding a row, the next grid click assigns its origin, and deleting a row removes the associated node from the graph.
+* Further work: propagate concurrent signals for all origins, synchronize highlights and audio playback per row.

@@ -30,6 +30,7 @@ type DrumRow struct {
 	Instrument string
 	Steps      []bool
 	Color      color.Color
+	Origin     model.NodeID
 }
 
 /* ───────────────────────────────────────────────────────────── */
@@ -53,6 +54,8 @@ type DrumView struct {
 	rowLabelRects []image.Rectangle
 	rowDeleteBtns []image.Rectangle
 	selRow        int
+
+	deleted []deletedRow
 
 	bgDirty bool
 	bgCache []*ebiten.Image
@@ -119,6 +122,11 @@ type DrumView struct {
 	scrubbing bool
 }
 
+type deletedRow struct {
+	index  int
+	origin model.NodeID
+}
+
 /* ─── geometry helpers ─────────────────────────────────────── */
 
 func (dv *DrumView) rowHeight() int {
@@ -164,7 +172,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		timelineBeats: 8,
 		selRow:        0,
 	}
-	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep}}
+	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	return dv
 }
@@ -186,7 +194,7 @@ func (dv *DrumView) AddRow() {
 		inst = dv.instOptions[0]
 		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep})
+	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID})
 }
 
 // DeleteRow removes the drum row at the given index.
@@ -194,10 +202,19 @@ func (dv *DrumView) DeleteRow(i int) {
 	if i < 0 || i >= len(dv.Rows) {
 		return
 	}
+	origin := dv.Rows[i].Origin
 	dv.Rows = append(dv.Rows[:i], dv.Rows[i+1:]...)
+	dv.deleted = append(dv.deleted, deletedRow{index: i, origin: origin})
 	if dv.selRow >= len(dv.Rows) {
 		dv.selRow = len(dv.Rows) - 1
 	}
+}
+
+// ConsumeDeletedRows returns and clears the recently deleted rows info.
+func (dv *DrumView) ConsumeDeletedRows() []deletedRow {
+	rows := dv.deleted
+	dv.deleted = nil
+	return rows
 }
 
 /* ─── public update ────────────────────────────────────────── */

@@ -433,6 +433,22 @@ func TestDrumViewChangeInstrumentPerRow(t *testing.T) {
 	}
 }
 
+func TestDrumViewDeleteRowRecordsOrigin(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.AddRow()
+	dv.Rows[1].Origin = 42
+	dv.DeleteRow(1)
+	rows := dv.ConsumeDeletedRows()
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 deleted row, got %d", len(rows))
+	}
+	if rows[0].index != 1 || rows[0].origin != 42 {
+		t.Fatalf("unexpected deleted row info: %+v", rows[0])
+	}
+}
+
 func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)

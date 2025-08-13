@@ -68,8 +68,10 @@ type Game struct {
 	logger *game_log.Logger
 
 	/* graph data */
-	nodes []*uiNode
-	edges []uiEdge
+	nodes           []*uiNode
+	edges           []uiEdge
+	startNodes      []*uiNode
+	pendingStartRow int
 
 	/* visuals */
 	activePulse         *pulse
@@ -150,10 +152,12 @@ func New(logger *game_log.Logger) *Game {
 		bpm:              120, // Default BPM
 		beatInfos:        []model.BeatInfo{},
 		drumBeatInfos:    []model.BeatInfo{},
+		pendingStartRow:  -1,
 	}
 
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
+	g.startNodes = make([]*uiNode, len(g.drum.Rows))
 
 	return g
 }
@@ -185,6 +189,15 @@ func (g *Game) nodeAt(i, j int) *uiNode {
 	return nil
 }
 
+func (g *Game) nodeByID(id model.NodeID) *uiNode {
+	for _, n := range g.nodes {
+		if n.ID == id {
+			return n
+		}
+	}
+	return nil
+}
+
 func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	if n := g.nodeAt(i, j); n != nil {
 		// If there's an invisible node here and we want a regular node,
@@ -208,7 +221,20 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	n := &uiNode{ID: id, I: i, J: j, X: float64(i * GridStep), Y: float64(j * GridStep)}
 
 	if nodeType == model.NodeTypeRegular {
-		if g.start == nil { // first ever node becomes the start
+		if g.pendingStartRow >= 0 {
+			row := g.pendingStartRow
+			if row >= len(g.startNodes) {
+				g.startNodes = append(g.startNodes, make([]*uiNode, row-len(g.startNodes)+1)...)
+			}
+			g.startNodes[row] = n
+			n.Start = true
+			g.drum.Rows[row].Origin = n.ID
+			if row == 0 {
+				g.start = n
+				g.graph.StartNodeID = n.ID
+			}
+			g.pendingStartRow = -1
+		} else if g.start == nil {
 			g.start = n
 			n.Start = true
 			g.graph.StartNodeID = n.ID
@@ -330,7 +356,10 @@ func (g *Game) refreshDrumRow() {
 	for i := range drumRow {
 		drumRow[i] = g.drumBeatInfos[i].NodeType == model.NodeTypeRegular
 	}
-	g.drum.Rows[0].Steps = drumRow
+	for _, r := range g.drum.Rows {
+		r.Steps = make([]bool, g.drum.Length)
+		copy(r.Steps, drumRow)
+	}
 	g.logger.Debugf("[GAME] refreshDrumRow: offset=%d row=%v", g.drum.Offset, drumRow)
 }
 
@@ -642,7 +671,24 @@ eventsDone:
 	prevPlaying := g.playing
 	prevLen := g.drum.Length
 	prevBPM := g.bpm
+	prevRows := len(g.startNodes)
 	g.drum.Update()
+	if len(g.drum.Rows) > prevRows {
+		g.startNodes = append(g.startNodes, nil)
+		g.pendingStartRow = len(g.drum.Rows) - 1
+	}
+	for _, dr := range g.drum.ConsumeDeletedRows() {
+		if dr.origin != model.InvalidNodeID {
+			if n := g.nodeByID(dr.origin); n != nil {
+				g.deleteNode(n)
+			} else {
+				g.graph.RemoveNode(dr.origin)
+			}
+		}
+		if dr.index >= 0 && dr.index < len(g.startNodes) {
+			g.startNodes = append(g.startNodes[:dr.index], g.startNodes[dr.index+1:]...)
+		}
+	}
 	if g.drum.OffsetChanged() {
 		g.refreshDrumRow()
 	}
@@ -859,18 +905,6 @@ func (g *Game) onTick(step int) {
 			g.spawnPulseFrom(g.nextBeatIdx)
 		}
 	}
-}
-
-func (g *Game) nodeByID(id model.NodeID) *uiNode {
-	for _, n := range g.nodes {
-		if n.ID == id {
-			return n
-		}
-	}
-	if node, ok := g.graph.Nodes[id]; ok {
-		return &uiNode{ID: id, I: node.I, J: node.J, X: float64(node.I * GridStep), Y: float64(node.J * GridStep)}
-	}
-	return nil
 }
 
 func (g *Game) highlightBeat(idx int, info model.BeatInfo, duration int64) {
