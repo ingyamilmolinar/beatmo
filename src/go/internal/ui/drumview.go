@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 	"strconv"
 	"strings"
 
@@ -56,6 +57,7 @@ type DrumView struct {
 	pendingWAV string
 	naming     bool
 	nameInput  string
+	saveBtn    image.Rectangle
 
 	// ui widgets (re-computed every frame)
 	playBtn   image.Rectangle
@@ -87,6 +89,9 @@ type DrumView struct {
 	instAnim     float64
 	uploadAnim   float64
 	bpmFocusAnim float64
+	saveAnim     float64
+	namePhase    float64
+	savePressed  bool
 
 	// window scrolling
 	Offset        int // index of first visible beat
@@ -250,6 +255,7 @@ func (dv *DrumView) registerInstrument(id string) {
 	dv.naming = false
 	dv.pendingWAV = ""
 	dv.nameInput = ""
+	dv.savePressed = false
 }
 
 func (dv *DrumView) decayAnims() {
@@ -268,6 +274,7 @@ func (dv *DrumView) decayAnims() {
 	decay(&dv.instAnim)
 	decay(&dv.uploadAnim)
 	decay(&dv.bpmFocusAnim)
+	decay(&dv.saveAnim)
 }
 
 func (dv *DrumView) Update() {
@@ -291,6 +298,8 @@ func (dv *DrumView) Update() {
 	}
 
 	if dv.naming {
+		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
+		dv.saveBtn = image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+50, box.Max.Y)
 		for _, r := range inputChars() {
 			if r >= asciiPrintableMin && r <= asciiPrintableMax {
 				dv.nameInput += string(r)
@@ -310,6 +319,22 @@ func (dv *DrumView) Update() {
 			dv.pendingWAV = ""
 			dv.nameInput = ""
 		}
+		mx, my := cursorPosition()
+		left := isMouseButtonPressed(ebiten.MouseButtonLeft)
+		if left && !dv.savePressed && pt(mx, my, dv.saveBtn) {
+			dv.savePressed = true
+			dv.saveAnim = 1
+		}
+		if !left && dv.savePressed {
+			dv.savePressed = false
+			if pt(mx, my, dv.saveBtn) {
+				id := strings.TrimSpace(dv.nameInput)
+				if id != "" {
+					dv.registerInstrument(id)
+				}
+			}
+		}
+		dv.namePhase += 0.1
 		return
 	}
 
@@ -547,9 +572,11 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	}
 	if dv.naming {
 		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
-		drawRect(dst, box, colBPMBox, true)
-		drawRect(dst, box, colButtonBorder, false)
+		anim := (math.Sin(dv.namePhase) + 1) * 0.1
+		BPMBoxStyle.DrawAnimated(dst, box, true, anim)
 		ebitenutil.DebugPrintAt(dst, "Name: "+dv.nameInput, box.Min.X+5, box.Min.Y+18)
+		InstButtonStyle.DrawAnimated(dst, dv.saveBtn, dv.savePressed, dv.saveAnim)
+		ebitenutil.DebugPrintAt(dst, "Save", dv.saveBtn.Min.X+5, dv.saveBtn.Min.Y+18)
 	}
 }
 

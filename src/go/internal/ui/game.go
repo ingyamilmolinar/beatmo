@@ -38,8 +38,9 @@ func (n *uiNode) Bounds(scale float64) (x1, y1, x2, y2 float64) {
 }
 
 type uiEdge struct {
-	A, B *uiNode
-	t    float64 // animation progress 0..1
+	A, B  *uiNode
+	t     float64 // connection animation progress 0..1
+	pulse float64 // direction pulse progress (-1 inactive)
 }
 
 type dragLink struct {
@@ -75,6 +76,7 @@ type Game struct {
 	frame               int64
 	renderedPulsesCount int
 	highlightedBeats    map[int]int64 // Map of beat index to frame number until which it's highlighted
+	selNeighbors        map[*uiNode]bool
 
 	/* editor state */
 	sel            *uiNode
@@ -116,6 +118,21 @@ func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 	half := size / 2
 
 	return sx - half, sy - half, sx + half, sy + half
+}
+
+// computeSelNeighbors refreshes the neighbor set for the currently selected node.
+func (g *Game) computeSelNeighbors() {
+	g.selNeighbors = map[*uiNode]bool{}
+	if g.sel == nil {
+		return
+	}
+	for i := range g.edges {
+		if g.edges[i].A == g.sel {
+			g.selNeighbors[g.edges[i].B] = true
+		} else if g.edges[i].B == g.sel {
+			g.selNeighbors[g.edges[i].A] = true
+		}
+	}
 }
 
 /* ───────────────────── constructor & layout ─────────────────── */
@@ -329,12 +346,13 @@ func (g *Game) addEdge(a, b *uiNode) {
 		}
 	}
 
-	g.edges = append(g.edges, uiEdge{A: originalA, B: originalB, t: 0})
+	g.edges = append(g.edges, uiEdge{A: originalA, B: originalB, t: 0, pulse: -1})
 	g.graph.Edges[[2]model.NodeID{originalA.ID, originalB.ID}] = struct{}{}
 	g.logger.Debugf("[GAME] Added edge: %d,%d -> %d,%d", originalA.I, originalA.J, originalB.I, originalB.J)
 	if g.graph.StartNodeID != model.InvalidNodeID {
 		g.updateBeatInfos()
 	}
+	g.computeSelNeighbors()
 }
 
 func (g *Game) deleteEdge(a, b *uiNode) {
@@ -377,6 +395,7 @@ func (g *Game) deleteEdge(a, b *uiNode) {
 	delete(g.graph.Edges, [2]model.NodeID{a.ID, b.ID})
 	g.logger.Debugf("[GAME] Deleted edge: %d,%d -> %d,%d", a.I, a.J, b.I, b.J)
 	g.updateBeatInfos()
+	g.computeSelNeighbors()
 }
 
 /* ─────────────── input handling ───────────────────────────────────────── */
@@ -438,6 +457,7 @@ func (g *Game) handleEditor() {
 				g.logger.Debugf("[GAME] Selecting node: %d,%d", n.I, n.J)
 				g.sel = n
 				n.Selected = true
+				g.computeSelNeighbors()
 			}
 		}
 		g.pendingClick = false
@@ -565,7 +585,16 @@ eventsDone:
 	// edge animation progress
 	for i := range g.edges {
 		if g.edges[i].t < 1 {
-			g.edges[i].t += 0.1
+			g.edges[i].t += 0.05
+			if g.edges[i].t >= 1 {
+				g.edges[i].t = 1
+				g.edges[i].pulse = 0
+			}
+		} else if g.edges[i].pulse >= 0 {
+			g.edges[i].pulse += 0.05
+			if g.edges[i].pulse > 1 {
+				g.edges[i].pulse = -1
+			}
 		}
 	}
 	g.frame++
@@ -704,7 +733,13 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 	// edges with connection animation
 	for i := range g.edges {
-		EdgeUI.DrawProgress(screen, g.edges[i].A.X, g.edges[i].A.Y, g.edges[i].B.X, g.edges[i].B.Y, &cam, g.edges[i].t)
+		e := &g.edges[i]
+		EdgeUI.DrawProgress(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam, e.t)
+		if e.pulse >= 0 {
+			px := e.A.X + (e.B.X-e.A.X)*e.pulse
+			py := e.A.Y + (e.B.Y-e.A.Y)*e.pulse
+			SignalUI.Draw(screen, px, py, &cam)
+		}
 	}
 
 	// link preview
@@ -720,9 +755,21 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			continue
 		}
 		NodeUI.Draw(screen, n.X, n.Y, &cam)
+		x1, y1, x2, y2 := g.nodeScreenRect(n)
+		var id ebiten.GeoM
+		if g.sel == n {
+			DrawLineCam(screen, x1, y1, x2, y1, &id, colHighlight, 2)
+			DrawLineCam(screen, x2, y1, x2, y2, &id, colHighlight, 2)
+			DrawLineCam(screen, x2, y2, x1, y2, &id, colHighlight, 2)
+			DrawLineCam(screen, x1, y2, x1, y1, &id, colHighlight, 2)
+		} else if g.selNeighbors != nil && g.selNeighbors[n] {
+			hl := fadeColor(colHighlight, 0.5)
+			DrawLineCam(screen, x1, y1, x2, y1, &id, hl, 2)
+			DrawLineCam(screen, x2, y1, x2, y2, &id, hl, 2)
+			DrawLineCam(screen, x2, y2, x1, y2, &id, hl, 2)
+			DrawLineCam(screen, x1, y2, x1, y1, &id, hl, 2)
+		}
 		if n.Start {
-			x1, y1, x2, y2 := g.nodeScreenRect(n)
-			var id ebiten.GeoM
 			DrawLineCam(screen, x1, y1, x2, y1, &id, color.RGBA{0, 255, 0, 255}, 2)
 			DrawLineCam(screen, x2, y1, x2, y2, &id, color.RGBA{0, 255, 0, 255}, 2)
 			DrawLineCam(screen, x2, y2, x1, y2, &id, color.RGBA{0, 255, 0, 255}, 2)
@@ -736,6 +783,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		p := g.activePulse
 		px := p.x1 + (p.x2-p.x1)*p.t
 		py := p.y1 + (p.y2-p.y1)*p.t
+		DrawLineCam(screen, p.x1, p.y1, px, py, &cam, fadeColor(SignalUI.Color, 0.6), EdgeUI.Thickness)
 		SignalUI.Draw(screen, px, py, &cam)
 		g.renderedPulsesCount = 1
 	}

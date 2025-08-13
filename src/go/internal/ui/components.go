@@ -50,11 +50,20 @@ type SignalStyle struct {
 // Draw renders the signal at world coordinates with the given camera transform.
 func (s SignalStyle) Draw(dst *ebiten.Image, x, y float64, cam *ebiten.GeoM) {
 	size := float64(s.Radius) * 2
+	// Outer glow
 	var op ebiten.DrawImageOptions
-	op.GeoM.Scale(size, size)
-	op.GeoM.Translate(x-float64(s.Radius), y-float64(s.Radius))
+	glowSize := size * 1.5
+	op.GeoM.Scale(glowSize, glowSize)
+	op.GeoM.Translate(x-glowSize/2, y-glowSize/2)
 	op.GeoM.Concat(*cam)
-	dst.DrawImage(pixel(s.Color), &op)
+	dst.DrawImage(pixel(fadeColor(s.Color, 0.3)), &op)
+
+	// Inner core
+	var op2 ebiten.DrawImageOptions
+	op2.GeoM.Scale(size, size)
+	op2.GeoM.Translate(x-size/2, y-size/2)
+	op2.GeoM.Concat(*cam)
+	dst.DrawImage(pixel(s.Color), &op2)
 }
 
 // EdgeStyle draws directional edges between nodes.
