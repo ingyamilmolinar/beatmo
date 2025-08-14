@@ -141,3 +141,5 @@ This debugging session highlighted several critical points:
 * Control panel uses a grid-based component system (`uigrid.go`) with declarative buttons and centered text to prevent overlapping layouts.
 * Each drum row exposes a volume slider with percentage readout; `Game` passes the row’s volume to audio playback.
 * Fixed loop traversal so pulses transition from the last node back to the loop start without jumping to the origin.
+* Nodes and drum cells are color-coded per instrument; origin nodes use a brighter shade.
+* Each row has a "set origin" button that lets the next grid click reassign its start node.

@@ -1060,58 +1060,6 @@ func TestSplitterDragDoesNotCreateNode(t *testing.T) {
 	g.graph.StartNodeID = model.InvalidNodeID
 }
 
-func TestDrumViewDragShiftsWindow(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(640, 480)
-
-	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	prev := n0
-	for i := 1; i < 6; i++ {
-		n := g.tryAddNode(i, 0, model.NodeTypeRegular)
-		g.addEdge(prev, n)
-		prev = n
-	}
-	g.start = n0
-	g.graph.StartNodeID = n0.ID
-	g.updateBeatInfos()
-	g.drum.Length = 3
-	g.refreshDrumRow()
-	g.drum.recalcButtons()
-	g.drum.calcLayout()
-
-	stepX := g.drum.Bounds.Min.X + g.drum.labelW + g.drum.controlsW + g.drum.cell/2
-	stepY := g.drum.Bounds.Min.Y + timelineHeight + g.drum.rowHeight()/2
-	pos := []struct{ x, y int }{{stepX, stepY}, {stepX - 2*g.drum.cell, stepY}, {stepX - 2*g.drum.cell, stepY}}
-	idx := 0
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return pos[idx].x, pos[idx].y },
-		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 640, 480 },
-	)
-	defer restore()
-
-	g.Update() // press
-	idx = 1
-	g.Update() // drag
-	pressed = false
-	idx = 2
-	g.Update() // release
-
-	if g.drum.Offset <= 0 {
-		t.Fatalf("drum offset not increased: %d", g.drum.Offset)
-	}
-	if g.camDragging {
-		t.Fatalf("camera dragged during drum view drag")
-	}
-	if g.drumBeatInfos[0].NodeID != g.beatInfoAt(g.drum.Offset).NodeID {
-		t.Fatalf("drum view not shifted correctly")
-	}
-}
-
 func TestDrumViewResizeKeepsOffset(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)

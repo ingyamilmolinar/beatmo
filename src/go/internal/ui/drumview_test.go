@@ -10,6 +10,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/tunkul/internal/audio"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
@@ -58,7 +59,7 @@ func TestDrumViewLengthIncrease(t *testing.T) {
 // to the left of their corresponding step rows.
 func TestDrumRowLayout(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	dv := NewDrumView(image.Rect(0, 0, 500, 200), nil, logger)
 	dv.recalcButtons()
 	dv.calcLayout()
 
@@ -444,8 +445,8 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil, 0)
-	if count != 12 {
-		t.Fatalf("expected 12 buttons drawn, got %d", count)
+	if count != 13 {
+		t.Fatalf("expected 13 buttons drawn, got %d", count)
 	}
 }
 
@@ -566,6 +567,44 @@ func TestDrumViewConsumeAddedRows(t *testing.T) {
 	}
 	if len(dv.ConsumeAddedRows()) != 0 {
 		t.Fatalf("expected added rows cleared after consume")
+	}
+}
+
+func TestDrumViewOriginRequests(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	audio.ResetInstruments()
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
+	dv.AddRow()
+	dv.calcLayout()
+
+	if len(dv.rowOriginBtns) < 2 {
+		t.Fatalf("expected origin buttons for two rows, got %d", len(dv.rowOriginBtns))
+	}
+	dv.rowOriginBtns[0].OnClick()
+	dv.rowOriginBtns[1].OnClick()
+	rows := dv.ConsumeOriginRequests()
+	if len(rows) != 2 || rows[0] != 0 || rows[1] != 1 {
+		t.Fatalf("unexpected origin requests %v", rows)
+	}
+	if len(dv.ConsumeOriginRequests()) != 0 {
+		t.Fatalf("origin requests not cleared")
+	}
+}
+
+func TestDrumViewInstrumentColor(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	audio.ResetInstruments()
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
+	expected := instColor(dv.Rows[0].Instrument)
+	if dv.Rows[0].Color != expected {
+		t.Fatalf("expected initial color %v got %v", expected, dv.Rows[0].Color)
+	}
+	dv.CycleInstrument()
+	expected = instColor(dv.Rows[0].Instrument)
+	if dv.Rows[0].Color != expected {
+		t.Fatalf("expected cycled color %v got %v", expected, dv.Rows[0].Color)
 	}
 }
 

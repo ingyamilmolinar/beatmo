@@ -107,7 +107,8 @@ type Game struct {
 	loopStartIndex int                // The index in beatInfos where the loop segment begins
 	isLoopByRow    []bool
 	loopStartByRow []int
-	nextBeatIdxs   []int // Absolute beat index per row
+	nextBeatIdxs   []int                // Absolute beat index per row
+	nodeRows       map[model.NodeID]int // nodeID -> row index
 	elapsedBeats   int
 
 	/* misc */
@@ -165,6 +166,7 @@ func New(logger *game_log.Logger) *Game {
 		isLoopByRow:      []bool{},
 		loopStartByRow:   []int{},
 		nextBeatIdxs:     []int{},
+		nodeRows:         make(map[model.NodeID]int),
 		activePulses:     []*pulse{},
 		pendingStartRow:  -1,
 	}
@@ -216,7 +218,27 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		// If there's an invisible node here and we want a regular node,
 		// upgrade the existing node rather than blocking the placement.
 		if nodeType == model.NodeTypeRegular {
-			if node, ok := g.graph.GetNodeByID(n.ID); ok && node.Type == model.NodeTypeInvisible {
+			if g.pendingStartRow >= 0 {
+				row := g.pendingStartRow
+				if other, ok := g.nodeRows[n.ID]; ok && other != row {
+					g.pendingStartRow = -1
+					return n
+				}
+				if row >= 0 && row < len(g.drum.Rows) {
+					if old := g.drum.Rows[row].Node; old != nil {
+						old.Start = false
+					}
+					g.drum.Rows[row].Origin = n.ID
+					g.drum.Rows[row].Node = n
+					n.Start = true
+					if row == 0 {
+						g.start = n
+						g.graph.StartNodeID = n.ID
+					}
+					g.updateBeatInfos()
+				}
+				g.pendingStartRow = -1
+			} else if node, ok := g.graph.GetNodeByID(n.ID); ok && node.Type == model.NodeTypeInvisible {
 				node.Type = model.NodeTypeRegular
 				g.graph.Nodes[n.ID] = node
 				g.logger.Debugf("[GAME] Upgraded invisible node to regular at grid=(%d,%d)", i, j)
@@ -305,6 +327,7 @@ func (g *Game) updateBeatInfos() {
 	g.loopStartIndex = loopStart
 
 	maxLen := baseLen
+	g.nodeRows = map[model.NodeID]int{}
 	nRows := len(g.drum.Rows)
 	prevNext := g.nextBeatIdxs
 	g.beatInfosByRow = make([][]model.BeatInfo, nRows)
@@ -316,6 +339,11 @@ func (g *Game) updateBeatInfos() {
 		g.beatInfosByRow[0] = g.beatInfos
 		g.isLoopByRow[0] = isLoop
 		g.loopStartByRow[0] = loopStart
+		for _, b := range g.beatInfos {
+			if b.NodeID != model.InvalidNodeID {
+				g.nodeRows[b.NodeID] = 0
+			}
+		}
 	}
 
 	// Compute beat paths for additional drum rows using their origin nodes.
@@ -342,6 +370,13 @@ func (g *Game) updateBeatInfos() {
 		g.beatInfosByRow[i] = rowPath[:rowLen]
 		g.isLoopByRow[i] = rowLoop
 		g.loopStartByRow[i] = rowStart
+		for _, b := range rowPath[:rowLen] {
+			if b.NodeID != model.InvalidNodeID {
+				if _, exists := g.nodeRows[b.NodeID]; !exists {
+					g.nodeRows[b.NodeID] = i
+				}
+			}
+		}
 		if rowLen > maxLen {
 			maxLen = rowLen
 		}
@@ -820,6 +855,9 @@ eventsDone:
 	for _, idx := range g.drum.ConsumeAddedRows() {
 		g.pendingStartRow = idx
 	}
+	for _, idx := range g.drum.ConsumeOriginRequests() {
+		g.pendingStartRow = idx
+	}
 	for _, dr := range g.drum.ConsumeDeletedRows() {
 		if dr.origin != model.InvalidNodeID {
 			if n := g.nodeByID(dr.origin); n != nil {
@@ -960,7 +998,19 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		if !ok || nodeInfo.Type != model.NodeTypeRegular {
 			continue
 		}
-		NodeUI.Draw(screen, n.X, n.Y, &cam)
+		style := NodeUI
+		if row, ok := g.nodeRows[n.ID]; ok {
+			if row >= 0 && row < len(g.drum.Rows) {
+				base := g.drum.Rows[row].Color
+				if n.Start {
+					style.Fill = adjustColor(base, 40)
+				} else {
+					style.Fill = base
+				}
+				style.Border = adjustColor(base, 80)
+			}
+		}
+		style.Draw(screen, n.X, n.Y, &cam)
 		x1, y1, x2, y2 := g.nodeScreenRect(n)
 		var id ebiten.GeoM
 		if g.sel == n {
@@ -974,12 +1024,6 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			DrawLineCam(screen, x2, y1, x2, y2, &id, hl, 2)
 			DrawLineCam(screen, x2, y2, x1, y2, &id, hl, 2)
 			DrawLineCam(screen, x1, y2, x1, y1, &id, hl, 2)
-		}
-		if n.Start {
-			DrawLineCam(screen, x1, y1, x2, y1, &id, color.RGBA{0, 255, 0, 255}, 2)
-			DrawLineCam(screen, x2, y1, x2, y2, &id, color.RGBA{0, 255, 0, 255}, 2)
-			DrawLineCam(screen, x2, y2, x1, y2, &id, color.RGBA{0, 255, 0, 255}, 2)
-			DrawLineCam(screen, x1, y2, x1, y1, &id, color.RGBA{0, 255, 0, 255}, 2)
 		}
 	}
 

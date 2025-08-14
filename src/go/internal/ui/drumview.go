@@ -38,6 +38,13 @@ type DrumRow struct {
 	Volume     float64
 }
 
+func instColor(id string) color.Color {
+	if c, ok := instColors[id]; ok {
+		return c
+	}
+	return colStep
+}
+
 /* ───────────────────────────────────────────────────────────── */
 
 type uploadResult struct {
@@ -72,10 +79,12 @@ type DrumView struct {
 	rowLabels     []*Button
 	rowDeleteBtns []*Button
 	rowVolSliders []*Slider
+	rowOriginBtns []*Button
 	selRow        int
 
-	deleted []deletedRow
-	added   []int
+	deleted   []deletedRow
+	added     []int
+	originReq []int
 
 	bgDirty bool
 	bgCache []*ebiten.Image
@@ -165,7 +174,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	}
 	dv := &DrumView{
 		Bounds:        b,
-		labelW:        80,
+		labelW:        100,
 		bpm:           120,
 		bgDirty:       true,
 		Graph:         g,
@@ -224,7 +233,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.selRow = len(dv.Rows) - 1
 	})
 
-	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID, Volume: 1}}
+	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: instColor(inst), Origin: model.InvalidNodeID, Volume: 1}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	dv.recalcButtons()
 	dv.calcLayout()
@@ -251,7 +260,7 @@ func (dv *DrumView) AddRow() {
 		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
 	idx := len(dv.Rows)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: colStep, Origin: model.InvalidNodeID, Node: nil, Volume: 1})
+	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: instColor(inst), Origin: model.InvalidNodeID, Node: nil, Volume: 1})
 	dv.added = append(dv.added, idx)
 	dv.bgDirty = true
 	dv.calcLayout()
@@ -283,6 +292,13 @@ func (dv *DrumView) ConsumeDeletedRows() []deletedRow {
 func (dv *DrumView) ConsumeAddedRows() []int {
 	rows := dv.added
 	dv.added = nil
+	return rows
+}
+
+// ConsumeOriginRequests returns and clears indexes of rows requesting origin reassignment.
+func (dv *DrumView) ConsumeOriginRequests() []int {
+	rows := dv.originReq
+	dv.originReq = nil
 	return rows
 }
 
@@ -328,10 +344,11 @@ func (dv *DrumView) calcLayout() {
 	dv.rowLabels = dv.rowLabels[:0]
 	dv.rowDeleteBtns = dv.rowDeleteBtns[:0]
 	dv.rowVolSliders = dv.rowVolSliders[:0]
+	dv.rowOriginBtns = dv.rowOriginBtns[:0]
 	for i := range dv.Rows {
 		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
 		rowRect := image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW, y+dv.rowHeight())
-		g := NewGridLayout(rowRect, []float64{3, 2, 1}, []float64{1})
+		g := NewGridLayout(rowRect, []float64{4, 2, 2, 1}, []float64{1})
 		lbl := NewButton(dv.Rows[i].Name, InstButtonStyle, nil)
 		lbl.SetRect(insetRect(g.Cell(0, 0), buttonPad))
 		idx := i
@@ -343,12 +360,17 @@ func (dv *DrumView) calcLayout() {
 		}
 		slider := NewSlider(dv.Rows[i].Volume)
 		slider.SetRect(insetRect(g.Cell(1, 0), buttonPad))
+		origin := NewButton("O", InstButtonStyle, nil)
+		origin.SetRect(insetRect(g.Cell(2, 0), buttonPad))
 		del := NewButton("X", InstButtonStyle, nil)
-		del.SetRect(insetRect(g.Cell(2, 0), buttonPad))
+		del.SetRect(insetRect(g.Cell(3, 0), buttonPad))
 		delIdx := i
 		del.OnClick = func() { dv.DeleteRow(delIdx) }
+		originIdx := i
+		origin.OnClick = func() { dv.originReq = append(dv.originReq, originIdx) }
 		dv.rowLabels = append(dv.rowLabels, lbl)
 		dv.rowVolSliders = append(dv.rowVolSliders, slider)
+		dv.rowOriginBtns = append(dv.rowOriginBtns, origin)
 		dv.rowDeleteBtns = append(dv.rowDeleteBtns, del)
 	}
 	y := dv.Bounds.Min.Y + timelineHeight + len(dv.Rows)*dv.rowHeight()
@@ -417,6 +439,7 @@ func (dv *DrumView) SetInstrument(id string) {
 	if id != "" {
 		dv.Rows[dv.selRow].Name = strings.ToUpper(id[:1]) + id[1:]
 	}
+	dv.Rows[dv.selRow].Color = instColor(id)
 	if dv.selRow < len(dv.rowLabels) {
 		dv.rowLabels[dv.selRow].Text = dv.Rows[dv.selRow].Name
 	}
@@ -575,6 +598,11 @@ func (dv *DrumView) Update() {
 
 	if left {
 		if !dv.dragging {
+			for _, btn := range dv.rowOriginBtns {
+				if btn.Handle(mx, my, true) {
+					return
+				}
+			}
 			for _, btn := range dv.rowDeleteBtns {
 				if btn.Handle(mx, my, true) {
 					return
@@ -799,6 +827,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
 		dv.rowLabels[i].Draw(dst)
 		dv.rowVolSliders[i].Draw(dst)
+		dv.rowOriginBtns[i].Draw(dst)
 		dv.rowDeleteBtns[i].Draw(dst)
 		for j, step := range r.Steps {
 			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell

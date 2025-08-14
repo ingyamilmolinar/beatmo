@@ -44,4 +44,13 @@ var (
 		Highlight: colHighlight,
 		Border:    colStepBorder,
 	}
+
+	// instColors maps instrument IDs to their display colors.
+	instColors = map[string]color.Color{
+		"snare": color.RGBA{200, 80, 80, 255},
+		"kick":  color.RGBA{80, 200, 80, 255},
+		"hihat": color.RGBA{200, 200, 80, 255},
+		"tom":   color.RGBA{80, 80, 200, 255},
+		"clap":  color.RGBA{200, 80, 200, 255},
+	}
 )
