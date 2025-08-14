@@ -1794,3 +1794,35 @@ func TestBPMChangeDuringPlaybackMaintainsSequence(t *testing.T) {
 		t.Fatalf("beat index did not advance after BPM change: want %d got %d", prev+1, g.nextBeatIdxs[0])
 	}
 }
+
+func TestPlaybackRestartDoesNotPanicOnOrigin(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	prev := n0
+	for i := 1; i < 6; i++ {
+		n := g.tryAddNode(i, 0, model.NodeTypeRegular)
+		g.addEdge(prev, n)
+		prev = n
+	}
+	g.addEdge(prev, n0)
+	g.updateBeatInfos()
+	g.playing = true
+	g.spawnPulseFrom(0)
+	advanceBeats(g, 2)
+	g.playing = false
+	g.Update()
+	g.playing = true
+	g.Update()
+	if g.activePulse == nil {
+		g.spawnPulseFrom(0)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	for i := 0; i < 7; i++ {
+		advanceBeats(g, 1)
+	}
+}

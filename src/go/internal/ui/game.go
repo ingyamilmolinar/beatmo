@@ -374,11 +374,6 @@ func (g *Game) updateBeatInfos() {
 				g.originIdxsByRow[0] = append(g.originIdxsByRow[0], idx)
 			}
 		}
-		if len(g.originIdxsByRow[0]) > 1 {
-			g.nextOriginIdxByRow[0] = 1
-		} else {
-			g.nextOriginIdxByRow[0] = 0
-		}
 	}
 
 	// Compute beat paths for additional drum rows using their origin nodes.
@@ -419,15 +414,12 @@ func (g *Game) updateBeatInfos() {
 				g.originIdxsByRow[i] = append(g.originIdxsByRow[i], idx)
 			}
 		}
-		if len(g.originIdxsByRow[i]) > 1 {
-			g.nextOriginIdxByRow[i] = 1
-		} else {
-			g.nextOriginIdxByRow[i] = 0
-		}
 		if rowLen > maxLen {
 			maxLen = rowLen
 		}
 	}
+
+	g.resetOriginSequences()
 
 	if maxLen > g.drum.Length {
 		g.drum.Length = maxLen
@@ -552,6 +544,31 @@ func (g *Game) wrapBeatIndexRow(row, idx int) int {
 		return len(infos) - 1
 	}
 	return g.loopStartByRow[row] + (idx-g.loopStartByRow[row])%loopLen
+}
+
+func (g *Game) resetOriginSequences() {
+	for row := range g.originIdxsByRow {
+		positions := g.originIdxsByRow[row]
+		seq := 0
+		if len(positions) > 1 {
+			beat := 0
+			if row < len(g.nextBeatIdxs) {
+				beat = g.nextBeatIdxs[row]
+			}
+			for i, idx := range positions {
+				if beat < idx {
+					seq = i
+					break
+				}
+			}
+			if beat >= positions[len(positions)-1] {
+				seq = 0
+			}
+		}
+		if row < len(g.nextOriginIdxByRow) {
+			g.nextOriginIdxByRow[row] = seq
+		}
+	}
 }
 
 func (g *Game) refreshDrumRow() {
@@ -973,6 +990,7 @@ eventsDone:
 			for i := range g.nextBeatIdxs {
 				g.nextBeatIdxs[i] = 0
 			}
+			g.resetOriginSequences()
 			g.elapsedBeats = 0
 			g.activePulses = nil
 			g.activePulse = nil
@@ -1212,6 +1230,7 @@ func (g *Game) Seek(beats int) {
 		}
 		g.elapsedBeats = beats
 	}
+	g.resetOriginSequences()
 }
 
 func (g *Game) advancePulse(p *pulse) bool {

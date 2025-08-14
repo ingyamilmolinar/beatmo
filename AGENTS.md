@@ -146,3 +146,4 @@ This debugging session highlighted several critical points:
 * Each row has a "set origin" button that lets the next grid click reassign its start node.
 * Pulse advancement now panics if a signal revisits its origin out of sequence, helping catch loop-order bugs in tests.
 * Deleting a drum row now purges its active pulses and shifts remaining rows so orphaned signals can't panic.
+* Reset origin-sequence bookkeeping on seek or playback restarts to avoid false "pulse jumped to origin" panics; regression tests cover this.
