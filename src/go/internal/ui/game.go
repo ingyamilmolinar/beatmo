@@ -26,6 +26,19 @@ func makeBeatKey(row, idx int) int { return (row << 16) | (idx & 0xFFFF) }
 
 func splitBeatKey(key int) (row, idx int) { return key >> 16, key & 0xFFFF }
 
+func loopSegmentLen(path []model.BeatInfo, start int) int {
+	if start < 0 || start >= len(path) {
+		return 0
+	}
+	origin := path[start].NodeID
+	for i := start + 1; i < len(path); i++ {
+		if path[i].NodeID == origin {
+			return i - start
+		}
+	}
+	return len(path) - start
+}
+
 /* ───────────────────────── data types ───────────────────────── */
 
 type uiNode struct {
@@ -108,6 +121,7 @@ type Game struct {
 	loopStartIndex int                // The index in beatInfos where the loop segment begins
 	isLoopByRow    []bool
 	loopStartByRow []int
+	loopLenByRow   []int
 	nextBeatIdxs   []int                // Absolute beat index per row
 	nodeRows       map[model.NodeID]int // nodeID -> row index
 	elapsedBeats   int
@@ -334,12 +348,16 @@ func (g *Game) updateBeatInfos() {
 	g.beatInfosByRow = make([][]model.BeatInfo, nRows)
 	g.isLoopByRow = make([]bool, nRows)
 	g.loopStartByRow = make([]int, nRows)
+	g.loopLenByRow = make([]int, nRows)
 	g.nextBeatIdxs = make([]int, nRows)
 	copy(g.nextBeatIdxs, prevNext)
 	if nRows > 0 {
 		g.beatInfosByRow[0] = g.beatInfos
 		g.isLoopByRow[0] = isLoop
 		g.loopStartByRow[0] = loopStart
+		if isLoop {
+			g.loopLenByRow[0] = loopSegmentLen(g.beatInfos, loopStart)
+		}
 		for _, b := range g.beatInfos {
 			if b.NodeID != model.InvalidNodeID {
 				g.nodeRows[b.NodeID] = 0
@@ -371,6 +389,9 @@ func (g *Game) updateBeatInfos() {
 		g.beatInfosByRow[i] = rowPath[:rowLen]
 		g.isLoopByRow[i] = rowLoop
 		g.loopStartByRow[i] = rowStart
+		if rowLoop {
+			g.loopLenByRow[i] = loopSegmentLen(g.beatInfosByRow[i], rowStart)
+		}
 		for _, b := range rowPath[:rowLen] {
 			if b.NodeID != model.InvalidNodeID {
 				if _, exists := g.nodeRows[b.NodeID]; !exists {
@@ -1161,8 +1182,16 @@ func (g *Game) advancePulse(p *pulse) bool {
 			if p.row < len(g.loopStartByRow) {
 				loopStart = g.loopStartByRow[p.row]
 			}
+			loopLen := 0
+			if p.row < len(g.loopLenByRow) {
+				loopLen = g.loopLenByRow[p.row]
+			}
 			endIdx := len(p.path) - 1
-			if arrivalPathIdx != 0 && arrivalPathIdx != loopStart && arrivalPathIdx != endIdx {
+			allowed := arrivalPathIdx == 0 || arrivalPathIdx == loopStart || arrivalPathIdx == endIdx
+			if !allowed && loopLen > 0 && arrivalPathIdx >= loopStart {
+				allowed = (arrivalPathIdx-loopStart)%loopLen == 0
+			}
+			if !allowed {
 				panic(fmt.Sprintf("pulse jumped to origin out of order: row=%d idx=%d loopStart=%d", p.row, arrivalPathIdx, loopStart))
 			}
 		}
