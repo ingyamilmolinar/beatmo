@@ -28,6 +28,16 @@ func advanceBeats(g *Game, beats int) {
 	}
 }
 
+func assertNotPanics(t *testing.T, f func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	f()
+}
+
 func TestTryAddNodeTogglesRow(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -831,6 +841,31 @@ func TestLoopPulseDoesNotJumpToOrigin(t *testing.T) {
 	if g.activePulse.fromBeatInfo.NodeID != n3.ID || g.activePulse.toBeatInfo.NodeID != n1.ID {
 		t.Fatalf("expected pulse from %d to %d, got from %d to %d", n3.ID, n1.ID, g.activePulse.fromBeatInfo.NodeID, g.activePulse.toBeatInfo.NodeID)
 	}
+}
+
+func TestOriginSequenceResetsAtSameIndex(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n0
+	g.graph.StartNodeID = n0.ID
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n0)
+
+	g.updateBeatInfos()
+	g.playing = true
+	g.spawnPulseFrom(0)
+
+	g.advancePulse(g.activePulse)
+	g.advancePulse(g.activePulse)
+
+	g.resetOriginSequences()
+
+	assertNotPanics(t, func() { g.advancePulse(g.activePulse) })
 }
 
 func TestAudioLoopConsistency(t *testing.T) {

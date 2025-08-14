@@ -556,12 +556,12 @@ func (g *Game) resetOriginSequences() {
 				beat = g.nextBeatIdxs[row]
 			}
 			for i, idx := range positions {
-				if beat < idx {
+				if beat <= idx {
 					seq = i
 					break
 				}
 			}
-			if beat >= positions[len(positions)-1] {
+			if beat > positions[len(positions)-1] {
 				seq = 0
 			}
 		}
