@@ -911,6 +911,28 @@ eventsDone:
 				g.deleteNode(n)
 			} else {
 				g.graph.RemoveNode(dr.origin)
+				g.updateBeatInfos()
+			}
+		} else {
+			g.updateBeatInfos()
+		}
+		// purge pulses belonging to this row and shift remaining indices
+		out := g.activePulses[:0]
+		for _, p := range g.activePulses {
+			if p.row == dr.index {
+				continue
+			}
+			if p.row > dr.index {
+				p.row--
+			}
+			out = append(out, p)
+		}
+		g.activePulses = out
+		if g.activePulse != nil {
+			if g.activePulse.row == dr.index {
+				g.activePulse = nil
+			} else if g.activePulse.row > dr.index {
+				g.activePulse.row--
 			}
 		}
 	}

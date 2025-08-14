@@ -183,6 +183,36 @@ func TestAddRowDoesNotClearGraph(t *testing.T) {
 	}
 }
 
+func TestDeleteRowRemovesActivePulses(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+	g.start = n1
+	g.graph.StartNodeID = n1.ID
+	g.drum.Rows[0].Origin = n1.ID
+	g.drum.Rows[0].Node = n1
+
+	g.updateBeatInfos()
+	g.spawnPulseFromRow(0, 0)
+	if len(g.activePulses) != 1 {
+		t.Fatalf("expected active pulse")
+	}
+
+	g.drum.DeleteRow(0)
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+	if len(g.activePulses) != 0 {
+		t.Fatalf("expected pulses cleared, got %d", len(g.activePulses))
+	}
+}
+
 func TestAdvancePulseLoopWrap(t *testing.T) {
 	g := New(testLogger)
 	g.drum.Length = 6
