@@ -242,6 +242,8 @@ func TestAdvancePulsePanicsOnUnexpectedOrigin(t *testing.T) {
 	g.drum.Rows[0].Steps = make([]bool, 4)
 	g.isLoopByRow = []bool{true}
 	g.loopStartByRow = []int{0}
+	g.originIdxsByRow = [][]int{{0, 2}}
+	g.nextOriginIdxByRow = []int{0}
 	g.nodes = []*uiNode{{ID: 1}, {ID: 2}}
 	p := &pulse{
 		fromBeatInfo: model.BeatInfo{NodeID: 2},
@@ -266,7 +268,8 @@ func TestAdvancePulseAllowsRepeatedOrigin(t *testing.T) {
 	g.drum.Rows[0].Steps = make([]bool, 4)
 	g.isLoopByRow = []bool{true}
 	g.loopStartByRow = []int{0}
-	g.loopLenByRow = []int{2}
+	g.originIdxsByRow = [][]int{{0, 2, 4}}
+	g.nextOriginIdxByRow = []int{1}
 	g.nodes = []*uiNode{{ID: 1}, {ID: 2}}
 	g.nextBeatIdxs = []int{0}
 	p := &pulse{
@@ -275,6 +278,35 @@ func TestAdvancePulseAllowsRepeatedOrigin(t *testing.T) {
 		path:         []model.BeatInfo{{NodeID: 1}, {NodeID: 2}, {NodeID: 1}, {NodeID: 2}, {NodeID: 1}},
 		pathIdx:      2,
 		row:          0,
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("advancePulse panicked: %v", r)
+			}
+		}()
+		g.advancePulse(p)
+	}()
+}
+
+func TestAdvancePulseAllowsIrregularOriginSpacing(t *testing.T) {
+	g := New(testLogger)
+	g.drum.Rows[0].Origin = 1
+	g.drum.Rows[0].Steps = make([]bool, 4)
+	g.isLoopByRow = []bool{true}
+	g.loopStartByRow = []int{0}
+	g.originIdxsByRow = [][]int{{0, 5}}
+	g.nextOriginIdxByRow = []int{1}
+	g.nextBeatIdxs = []int{0}
+	g.nodes = []*uiNode{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5}}
+	p := &pulse{
+		fromBeatInfo: model.BeatInfo{NodeID: 5},
+		toBeatInfo:   model.BeatInfo{NodeID: 1},
+		path: []model.BeatInfo{
+			{NodeID: 1}, {NodeID: 2}, {NodeID: 3}, {NodeID: 4}, {NodeID: 5}, {NodeID: 1},
+		},
+		pathIdx: 5,
+		row:     0,
 	}
 	func() {
 		defer func() {

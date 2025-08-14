@@ -110,21 +110,23 @@ type Game struct {
 	clickI, clickJ int
 
 	/* game state */
-	playing        bool
-	bpm            int
-	currentStep    int // Current step in the sequence
-	lastBeatFrame  int64
-	beatInfos      []model.BeatInfo   // Full traversal path for primary start
-	drumBeatInfos  []model.BeatInfo   // BeatInfos sized to drum view
-	beatInfosByRow [][]model.BeatInfo // Per-row traversal paths
-	isLoop         bool               // Indicates if the current graph forms a loop
-	loopStartIndex int                // The index in beatInfos where the loop segment begins
-	isLoopByRow    []bool
-	loopStartByRow []int
-	loopLenByRow   []int
-	nextBeatIdxs   []int                // Absolute beat index per row
-	nodeRows       map[model.NodeID]int // nodeID -> row index
-	elapsedBeats   int
+	playing            bool
+	bpm                int
+	currentStep        int // Current step in the sequence
+	lastBeatFrame      int64
+	beatInfos          []model.BeatInfo   // Full traversal path for primary start
+	drumBeatInfos      []model.BeatInfo   // BeatInfos sized to drum view
+	beatInfosByRow     [][]model.BeatInfo // Per-row traversal paths
+	isLoop             bool               // Indicates if the current graph forms a loop
+	loopStartIndex     int                // The index in beatInfos where the loop segment begins
+	isLoopByRow        []bool
+	loopStartByRow     []int
+	loopLenByRow       []int
+	originIdxsByRow    [][]int
+	nextOriginIdxByRow []int
+	nextBeatIdxs       []int                // Absolute beat index per row
+	nodeRows           map[model.NodeID]int // nodeID -> row index
+	elapsedBeats       int
 
 	/* misc */
 	winW, winH int
@@ -168,22 +170,25 @@ func (g *Game) computeSelNeighbors() {
 func New(logger *game_log.Logger) *Game {
 	eng := engine.New(logger)
 	g := &Game{
-		cam:              NewCamera(),
-		logger:           logger,
-		graph:            eng.Graph,
-		engine:           eng,
-		split:            NewSplitter(720), // real height set in Layout below
-		highlightedBeats: make(map[int]int64),
-		bpm:              120, // Default BPM
-		beatInfos:        []model.BeatInfo{},
-		drumBeatInfos:    []model.BeatInfo{},
-		beatInfosByRow:   [][]model.BeatInfo{},
-		isLoopByRow:      []bool{},
-		loopStartByRow:   []int{},
-		nextBeatIdxs:     []int{},
-		nodeRows:         make(map[model.NodeID]int),
-		activePulses:     []*pulse{},
-		pendingStartRow:  -1,
+		cam:                NewCamera(),
+		logger:             logger,
+		graph:              eng.Graph,
+		engine:             eng,
+		split:              NewSplitter(720), // real height set in Layout below
+		highlightedBeats:   make(map[int]int64),
+		bpm:                120, // Default BPM
+		beatInfos:          []model.BeatInfo{},
+		drumBeatInfos:      []model.BeatInfo{},
+		beatInfosByRow:     [][]model.BeatInfo{},
+		isLoopByRow:        []bool{},
+		loopStartByRow:     []int{},
+		loopLenByRow:       []int{},
+		originIdxsByRow:    [][]int{},
+		nextOriginIdxByRow: []int{},
+		nextBeatIdxs:       []int{},
+		nodeRows:           make(map[model.NodeID]int),
+		activePulses:       []*pulse{},
+		pendingStartRow:    -1,
 	}
 
 	// bottom drum-machine view
@@ -349,6 +354,8 @@ func (g *Game) updateBeatInfos() {
 	g.isLoopByRow = make([]bool, nRows)
 	g.loopStartByRow = make([]int, nRows)
 	g.loopLenByRow = make([]int, nRows)
+	g.originIdxsByRow = make([][]int, nRows)
+	g.nextOriginIdxByRow = make([]int, nRows)
 	g.nextBeatIdxs = make([]int, nRows)
 	copy(g.nextBeatIdxs, prevNext)
 	if nRows > 0 {
@@ -358,10 +365,19 @@ func (g *Game) updateBeatInfos() {
 		if isLoop {
 			g.loopLenByRow[0] = loopSegmentLen(g.beatInfos, loopStart)
 		}
-		for _, b := range g.beatInfos {
+		origin := g.drum.Rows[0].Origin
+		for idx, b := range g.beatInfos {
 			if b.NodeID != model.InvalidNodeID {
 				g.nodeRows[b.NodeID] = 0
 			}
+			if b.NodeID == origin {
+				g.originIdxsByRow[0] = append(g.originIdxsByRow[0], idx)
+			}
+		}
+		if len(g.originIdxsByRow[0]) > 1 {
+			g.nextOriginIdxByRow[0] = 1
+		} else {
+			g.nextOriginIdxByRow[0] = 0
 		}
 	}
 
@@ -392,12 +408,21 @@ func (g *Game) updateBeatInfos() {
 		if rowLoop {
 			g.loopLenByRow[i] = loopSegmentLen(g.beatInfosByRow[i], rowStart)
 		}
-		for _, b := range rowPath[:rowLen] {
+		origin := r.Origin
+		for idx, b := range rowPath[:rowLen] {
 			if b.NodeID != model.InvalidNodeID {
 				if _, exists := g.nodeRows[b.NodeID]; !exists {
 					g.nodeRows[b.NodeID] = i
 				}
 			}
+			if b.NodeID == origin {
+				g.originIdxsByRow[i] = append(g.originIdxsByRow[i], idx)
+			}
+		}
+		if len(g.originIdxsByRow[i]) > 1 {
+			g.nextOriginIdxByRow[i] = 1
+		} else {
+			g.nextOriginIdxByRow[i] = 0
 		}
 		if rowLen > maxLen {
 			maxLen = rowLen
@@ -1178,21 +1203,21 @@ func (g *Game) advancePulse(p *pulse) bool {
 	if p.row < len(g.drum.Rows) {
 		origin := g.drum.Rows[p.row].Origin
 		if origin != model.InvalidNodeID && arrivalBeatInfo.NodeID == origin {
-			loopStart := 0
-			if p.row < len(g.loopStartByRow) {
-				loopStart = g.loopStartByRow[p.row]
-			}
-			loopLen := 0
-			if p.row < len(g.loopLenByRow) {
-				loopLen = g.loopLenByRow[p.row]
-			}
-			endIdx := len(p.path) - 1
-			allowed := arrivalPathIdx == 0 || arrivalPathIdx == loopStart || arrivalPathIdx == endIdx
-			if !allowed && loopLen > 0 && arrivalPathIdx >= loopStart {
-				allowed = (arrivalPathIdx-loopStart)%loopLen == 0
-			}
-			if !allowed {
-				panic(fmt.Sprintf("pulse jumped to origin out of order: row=%d idx=%d loopStart=%d", p.row, arrivalPathIdx, loopStart))
+			expectedIdx := 0
+			if p.row < len(g.nextOriginIdxByRow) && p.row < len(g.originIdxsByRow) {
+				seq := g.nextOriginIdxByRow[p.row]
+				positions := g.originIdxsByRow[p.row]
+				if seq < len(positions) {
+					expectedIdx = positions[seq]
+				}
+				if arrivalPathIdx != expectedIdx {
+					panic(fmt.Sprintf("pulse jumped to origin out of order: row=%d idx=%d expected=%d", p.row, arrivalPathIdx, expectedIdx))
+				}
+				seq++
+				if seq >= len(positions) {
+					seq = 0
+				}
+				g.nextOriginIdxByRow[p.row] = seq
 			}
 		}
 	}
