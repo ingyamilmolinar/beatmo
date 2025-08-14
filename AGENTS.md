@@ -127,7 +127,7 @@ This debugging session highlighted several critical points:
 * JavaScript wrapper `audio.js` exposes `window.playSound(id)` used by the Go runtime on WASM builds.
 * Current integration triggers snare and kick playback but does not yet support precise scheduling or mixing with Go's audio engine.
 
-## WIP - DrumView multi-row
+## DrumView multi-row
 
 * Drum view UI now supports adding and deleting rows with `+` and per-row delete buttons.
 * Instruments are tracked per row and can be cycled for the selected row.

@@ -224,9 +224,12 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.lenIncAnim = 1
 	})
 	dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
+		dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.naming, dv.instMenuOpen)
+		dv.instMenuOpen = false
 		if !dv.uploading && !dv.naming {
 			dv.uploadAnim = 1
 			dv.uploading = true
+			dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
 			go func() {
 				path, err := audio.SelectWAV()
 				dv.uploadCh <- uploadResult{path: path, err: err}
@@ -368,11 +371,13 @@ func (dv *DrumView) calcLayout() {
 		lbl.OnClick = func() {
 			dv.selRow = idx
 			if dv.instMenuOpen && dv.instMenuRow == idx {
+				dv.logger.Debugf("[DRUMVIEW] Closing instrument menu for row %d", idx)
 				dv.instMenuOpen = false
 			} else {
 				dv.instMenuRow = idx
 				dv.instMenuOpen = true
 				dv.buildInstMenu()
+				dv.logger.Debugf("[DRUMVIEW] Opening instrument menu for row %d", idx)
 			}
 		}
 		slider := NewSlider(dv.Rows[i].Volume)
@@ -481,6 +486,7 @@ func (dv *DrumView) SetInstrument(id string) {
 	if len(dv.Rows) == 0 {
 		return
 	}
+	dv.logger.Debugf("[DRUMVIEW] SetInstrument row=%d id=%s", dv.selRow, id)
 	dv.Rows[dv.selRow].Instrument = id
 	if id != "" {
 		dv.Rows[dv.selRow].Name = strings.ToUpper(id[:1]) + id[1:]
@@ -557,6 +563,7 @@ func (dv *DrumView) Update() {
 		select {
 		case res := <-dv.uploadCh:
 			dv.uploading = false
+			dv.logger.Debugf("[DRUMVIEW] Upload result path=%s err=%v", res.path, res.err)
 			if res.err != nil {
 				dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", res.err)
 			} else {
