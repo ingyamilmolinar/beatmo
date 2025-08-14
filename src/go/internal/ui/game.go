@@ -306,10 +306,12 @@ func (g *Game) updateBeatInfos() {
 
 	maxLen := baseLen
 	nRows := len(g.drum.Rows)
+	prevNext := g.nextBeatIdxs
 	g.beatInfosByRow = make([][]model.BeatInfo, nRows)
 	g.isLoopByRow = make([]bool, nRows)
 	g.loopStartByRow = make([]int, nRows)
 	g.nextBeatIdxs = make([]int, nRows)
+	copy(g.nextBeatIdxs, prevNext)
 	if nRows > 0 {
 		g.beatInfosByRow[0] = g.beatInfos
 		g.isLoopByRow[0] = isLoop
@@ -347,6 +349,33 @@ func (g *Game) updateBeatInfos() {
 
 	if maxLen > g.drum.Length {
 		g.drum.Length = maxLen
+	}
+
+	// Rebind active pulses to the updated beat paths while preserving
+	// their absolute progression indices.
+	for _, p := range g.activePulses {
+		if p.row >= len(g.beatInfosByRow) {
+			continue
+		}
+		path := g.beatInfosByRow[p.row]
+		if len(path) == 0 {
+			continue
+		}
+		p.path = path
+		lastIdx := g.wrapBeatIndexRow(p.row, g.nextBeatIdxs[p.row]-1)
+		nextIdx := g.wrapBeatIndexRow(p.row, g.nextBeatIdxs[p.row])
+		p.lastIdx = lastIdx
+		p.fromBeatInfo = path[lastIdx]
+		p.toBeatInfo = path[nextIdx]
+		p.pathIdx = nextIdx
+		p.from = g.nodeByID(p.fromBeatInfo.NodeID)
+		p.to = g.nodeByID(p.toBeatInfo.NodeID)
+		if p.from != nil {
+			p.x1, p.y1 = p.from.X, p.from.Y
+		}
+		if p.to != nil {
+			p.x2, p.y2 = p.to.X, p.to.Y
+		}
 	}
 
 	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))

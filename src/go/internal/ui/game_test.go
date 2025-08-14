@@ -18,6 +18,16 @@ func init() {
 	testLogger = game_log.New(io.Discard, game_log.LevelError)
 }
 
+func advanceBeats(g *Game, beats int) {
+	for i := 0; i < beats; i++ {
+		if g.activePulse == nil {
+			return
+		}
+		delete(g.highlightedBeats, makeBeatKey(g.activePulse.row, g.activePulse.lastIdx))
+		g.advancePulse(g.activePulse)
+	}
+}
+
 func TestTryAddNodeTogglesRow(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -478,8 +488,10 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	g.graph.StartNodeID = n1.ID
 
 	g.playing = true
-	g.engine.Start()
 	g.spawnPulseFrom(0)
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse")
+	}
 	if g.activePulse == nil {
 		t.Fatalf("no pulse spawned")
 	}
@@ -1182,7 +1194,6 @@ func TestHighlightEmptyCells(t *testing.T) {
 	}
 
 	g.playing = true
-	g.engine.Start()
 	g.spawnPulseFrom(0)
 
 	if _, ok := g.highlightedBeats[makeBeatKey(0, 0)]; !ok {
@@ -1672,5 +1683,54 @@ func TestBPMChangeDuringLoopKeepsForwardProgress(t *testing.T) {
 			t.Fatalf("pathIdx decreased from %d to %d", lastIdx, g.activePulse.pathIdx)
 		}
 		lastIdx = g.activePulse.pathIdx
+	}
+}
+
+func TestGraphUpdateDuringPlaybackPreservesProgress(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n0)
+	g.playing = true
+	g.spawnPulseFrom(0)
+	advanceBeats(g, 1)
+	prev := g.nextBeatIdxs[0]
+	if prev <= 1 {
+		t.Fatalf("expected progress beyond origin, got %d", prev)
+	}
+	g.updateBeatInfos()
+	if g.nextBeatIdxs[0] != prev {
+		t.Fatalf("beat index reset after update: %d -> %d", prev, g.nextBeatIdxs[0])
+	}
+	advanceBeats(g, 1)
+	if g.nextBeatIdxs[0] != prev+1 {
+		t.Fatalf("beat index did not advance: want %d got %d", prev+1, g.nextBeatIdxs[0])
+	}
+}
+
+func TestBPMChangeDuringPlaybackMaintainsSequence(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n0)
+	g.playing = true
+	g.spawnPulseFrom(0)
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse")
+	}
+	advanceBeats(g, 1)
+	prev := g.nextBeatIdxs[0]
+	g.drum.SetBPM(60)
+	g.Update()
+	if g.nextBeatIdxs[0] != prev {
+		t.Fatalf("beat index reset after BPM change: %d -> %d", prev, g.nextBeatIdxs[0])
+	}
+	advanceBeats(g, 1)
+	if g.nextBeatIdxs[0] != prev+1 {
+		t.Fatalf("beat index did not advance after BPM change: want %d got %d", prev+1, g.nextBeatIdxs[0])
 	}
 }
