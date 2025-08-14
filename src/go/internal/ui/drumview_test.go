@@ -748,3 +748,37 @@ func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
 		t.Fatalf("expected volume ~0.5 got %f", dv.Rows[0].Volume)
 	}
 }
+
+// Dragging a volume slider to its maximum and releasing over the delete button
+// should not remove the row.
+func TestVolumeDragReleaseDoesNotDeleteRow(t *testing.T) {
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+	sRect := dv.rowVolSliders[0].Rect()
+	delRect := dv.rowDeleteBtns[0].Rect()
+
+	mx, my := sRect.Min.X+1, sRect.Min.Y+sRect.Dy()/2
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+
+	dv.Update()           // press start
+	mx = sRect.Max.X + 20 // drag beyond slider to max
+	dv.Update()
+	mx, my = delRect.Min.X+delRect.Dx()/2, delRect.Min.Y+delRect.Dy()/2
+	dv.Update() // still dragging over delete button
+	pressed = false
+	dv.Update() // release over delete button
+
+	if len(dv.Rows) != 1 {
+		t.Fatalf("row deleted during slider drag")
+	}
+}

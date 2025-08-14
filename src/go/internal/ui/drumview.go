@@ -81,6 +81,7 @@ type DrumView struct {
 	rowVolSliders []*Slider
 	rowOriginBtns []*Button
 	selRow        int
+	activeSlider  int // index of slider capturing mouse events, -1 if none
 
 	deleted   []deletedRow
 	added     []int
@@ -185,6 +186,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		uploadCh:      make(chan uploadResult, 1),
 		timelineBeats: 8,
 		selRow:        0,
+		activeSlider:  -1,
 	}
 	dv.playBtn = NewButton("▶", PlayButtonStyle, func() {
 		dv.playPressed = true
@@ -236,7 +238,10 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: instColor(inst), Origin: model.InvalidNodeID, Volume: 1}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	dv.recalcButtons()
-	dv.calcLayout()
+	if dv.bgDirty {
+		dv.calcLayout()
+		dv.bgDirty = false
+	}
 	return dv
 }
 
@@ -247,7 +252,10 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 		dv.Bounds = b
 		dv.bgDirty = true
 		dv.recalcButtons()
-		dv.calcLayout()
+		if dv.bgDirty {
+			dv.calcLayout()
+			dv.bgDirty = false
+		}
 	}
 }
 
@@ -263,6 +271,7 @@ func (dv *DrumView) AddRow() {
 	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: instColor(inst), Origin: model.InvalidNodeID, Node: nil, Volume: 1})
 	dv.added = append(dv.added, idx)
 	dv.bgDirty = true
+	dv.activeSlider = -1
 	dv.calcLayout()
 }
 
@@ -275,6 +284,7 @@ func (dv *DrumView) DeleteRow(i int) {
 	dv.Rows = append(dv.Rows[:i], dv.Rows[i+1:]...)
 	dv.deleted = append(dv.deleted, deletedRow{index: i, origin: origin})
 	dv.bgDirty = true
+	dv.activeSlider = -1
 	if dv.selRow >= len(dv.Rows) {
 		dv.selRow = len(dv.Rows) - 1
 	}
@@ -556,7 +566,10 @@ func (dv *DrumView) Update() {
 	}
 
 	dv.recalcButtons()
-	dv.calcLayout()
+	if dv.bgDirty {
+		dv.calcLayout()
+		dv.bgDirty = false
+	}
 
 	prevFocus := dv.focusBPM
 
@@ -589,9 +602,23 @@ func (dv *DrumView) Update() {
 	}
 
 	/* ——— widget clicks & dragging ——— */
+	if dv.activeSlider >= 0 {
+		s := dv.rowVolSliders[dv.activeSlider]
+		if s.Handle(mx, my, left) {
+			dv.Rows[dv.activeSlider].Volume = s.Value
+		}
+		if !left {
+			dv.activeSlider = -1
+		}
+		return
+	}
 	for i, s := range dv.rowVolSliders {
 		if s.Handle(mx, my, left) {
 			dv.Rows[i].Volume = s.Value
+			dv.activeSlider = i
+			if !left {
+				dv.activeSlider = -1
+			}
 			return
 		}
 	}
