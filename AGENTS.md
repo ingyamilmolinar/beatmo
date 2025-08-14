@@ -143,3 +143,4 @@ This debugging session highlighted several critical points:
 * Fixed loop traversal so pulses transition from the last node back to the loop start without jumping to the origin.
 * Nodes and drum cells are color-coded per instrument; origin nodes use a brighter shade.
 * Each row has a "set origin" button that lets the next grid click reassign its start node.
+* Pulse advancement now panics if a signal revisits its origin out of sequence, helping catch loop-order bugs in tests.

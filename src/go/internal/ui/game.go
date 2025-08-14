@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -1153,6 +1154,19 @@ func (g *Game) advancePulse(p *pulse) bool {
 	arrivalPathIdx := p.pathIdx
 
 	g.logger.Debugf("[GAME] advancePulse: Pulse arrived at beat index %d: %+v", arrivalPathIdx, arrivalBeatInfo)
+	if p.row < len(g.drum.Rows) {
+		origin := g.drum.Rows[p.row].Origin
+		if origin != model.InvalidNodeID && arrivalBeatInfo.NodeID == origin {
+			loopStart := 0
+			if p.row < len(g.loopStartByRow) {
+				loopStart = g.loopStartByRow[p.row]
+			}
+			endIdx := len(p.path) - 1
+			if arrivalPathIdx != 0 && arrivalPathIdx != loopStart && arrivalPathIdx != endIdx {
+				panic(fmt.Sprintf("pulse jumped to origin out of order: row=%d idx=%d loopStart=%d", p.row, arrivalPathIdx, loopStart))
+			}
+		}
+	}
 
 	g.highlightBeat(p.row, g.nextBeatIdxs[p.row], arrivalBeatInfo, beatDuration)
 	p.lastIdx = g.nextBeatIdxs[p.row]

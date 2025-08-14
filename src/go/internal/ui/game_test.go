@@ -236,6 +236,30 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	}
 }
 
+func TestAdvancePulsePanicsOnUnexpectedOrigin(t *testing.T) {
+	g := New(testLogger)
+	g.drum.Rows[0].Origin = 1
+	g.drum.Rows[0].Steps = make([]bool, 4)
+	g.isLoopByRow = []bool{true}
+	g.loopStartByRow = []int{0}
+	g.nodes = []*uiNode{{ID: 1}, {ID: 2}}
+	p := &pulse{
+		fromBeatInfo: model.BeatInfo{NodeID: 2},
+		toBeatInfo:   model.BeatInfo{NodeID: 1},
+		path: []model.BeatInfo{
+			{NodeID: 1}, {NodeID: 2}, {NodeID: 1},
+		},
+		pathIdx: 2,
+		row:     0,
+	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic on unexpected origin jump")
+		}
+	}()
+	g.advancePulse(p)
+}
+
 func TestTimelineDragWhilePlayingKeepsPulse(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
