@@ -223,6 +223,33 @@ func TestDeleteRowRemovesActivePulses(t *testing.T) {
 	}
 }
 
+func TestDeleteFirstRowKeepsSecond(t *testing.T) {
+	g := New(testLogger)
+	g.drum.AddRow()
+	g.updateBeatInfos()
+	g.nextBeatIdxs = []int{1, 7}
+
+	g.drum.DeleteRow(0)
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+
+	if len(g.drum.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(g.drum.Rows))
+	}
+	if len(g.nextBeatIdxs) != 1 || g.nextBeatIdxs[0] != 7 {
+		t.Fatalf("unexpected nextBeatIdxs %v", g.nextBeatIdxs)
+	}
+
+	g.drum.AddRow()
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+	if len(g.drum.Rows) != 2 {
+		t.Fatalf("expected to add row after deletion, got %d", len(g.drum.Rows))
+	}
+}
+
 func TestAdvancePulseLoopWrap(t *testing.T) {
 	g := New(testLogger)
 	g.drum.Length = 6

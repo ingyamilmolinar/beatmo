@@ -940,16 +940,23 @@ eventsDone:
 	for _, idx := range g.drum.ConsumeOriginRequests() {
 		g.pendingStartRow = idx
 	}
-	for _, dr := range g.drum.ConsumeDeletedRows() {
+	deleted := g.drum.ConsumeDeletedRows()
+	for _, dr := range deleted {
 		if dr.origin != model.InvalidNodeID {
 			if n := g.nodeByID(dr.origin); n != nil {
 				g.deleteNode(n)
 			} else {
 				g.graph.RemoveNode(dr.origin)
-				g.updateBeatInfos()
 			}
-		} else {
-			g.updateBeatInfos()
+		}
+		// drop playback indices for deleted row and shift later ones
+		if dr.index < len(g.nextBeatIdxs) {
+			g.nextBeatIdxs = append(g.nextBeatIdxs[:dr.index], g.nextBeatIdxs[dr.index+1:]...)
+		}
+		if g.pendingStartRow == dr.index {
+			g.pendingStartRow = -1
+		} else if g.pendingStartRow > dr.index {
+			g.pendingStartRow--
 		}
 		// purge pulses belonging to this row and shift remaining indices
 		out := g.activePulses[:0]
@@ -970,6 +977,9 @@ eventsDone:
 				g.activePulse.row--
 			}
 		}
+	}
+	if len(deleted) > 0 {
+		g.updateBeatInfos()
 	}
 	if g.drum.OffsetChanged() {
 		g.refreshDrumRow()

@@ -528,6 +528,33 @@ func TestDrumViewDeleteRowRecordsOrigin(t *testing.T) {
 	}
 }
 
+func TestInstrumentMenuIncludesCustom(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	audio.ResetInstruments()
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
+	audio.RegisterWAV("custom", "")
+	dv.Update()
+
+	dv.rowLabels[0].OnClick() // open menu
+	var btn *Button
+	for _, b := range dv.instMenuBtns {
+		if b.Text == "Custom" {
+			btn = b
+		}
+	}
+	if btn == nil {
+		t.Fatalf("custom instrument not listed")
+	}
+	btn.OnClick()
+	if dv.Rows[0].Instrument != "custom" {
+		t.Fatalf("expected custom instrument selected, got %s", dv.Rows[0].Instrument)
+	}
+	if len(dv.Rows) != 1 {
+		t.Fatalf("unexpected row count %d", len(dv.Rows))
+	}
+}
+
 func TestDrumViewConsumeAddedRows(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)

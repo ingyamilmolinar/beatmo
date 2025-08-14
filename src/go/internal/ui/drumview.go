@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -421,6 +422,16 @@ func (dv *DrumView) buildInstMenu() {
 	}
 }
 
+func (dv *DrumView) refreshInstruments() {
+	opts := audio.Instruments()
+	if !slices.Equal(opts, dv.instOptions) {
+		dv.instOptions = opts
+		if dv.instMenuOpen {
+			dv.buildInstMenu()
+		}
+	}
+}
+
 func (dv *DrumView) PlayPressed() bool {
 	if dv.playPressed {
 		dv.playPressed = false
@@ -512,6 +523,9 @@ func (dv *DrumView) registerInstrument(id string) {
 	if err := audio.RegisterWAV(id, dv.pendingWAV); err == nil {
 		dv.instOptions = audio.Instruments()
 		dv.SetInstrument(id)
+		if dv.instMenuOpen {
+			dv.buildInstMenu()
+		}
 		dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s", id)
 	} else {
 		dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
@@ -546,6 +560,8 @@ func (dv *DrumView) Update() {
 	if len(dv.Rows) == 0 {
 		return
 	}
+
+	dv.refreshInstruments()
 
 	if dv.uploading {
 		select {
@@ -907,11 +923,6 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 		dv.rowVolSliders[i].Draw(dst)
 		dv.rowOriginBtns[i].Draw(dst)
 		dv.rowDeleteBtns[i].Draw(dst)
-		if dv.instMenuOpen && dv.instMenuRow == i {
-			for _, btn := range dv.instMenuBtns {
-				btn.Draw(dst)
-			}
-		}
 		for j, step := range r.Steps {
 			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
@@ -936,6 +947,12 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 
 	// trailing "+" row
 	dv.addRowBtn.Draw(dst)
+
+	if dv.instMenuOpen {
+		for _, btn := range dv.instMenuBtns {
+			btn.Draw(dst)
+		}
+	}
 
 	if dv.uploading {
 		ebitenutil.DebugPrintAt(dst, "Loading...", dv.uploadBtn.Rect().Min.X, dv.uploadBtn.Rect().Max.Y+20)
