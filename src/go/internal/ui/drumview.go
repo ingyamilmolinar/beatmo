@@ -77,8 +77,8 @@ type DrumView struct {
 	bpmIncBtn *Button // increase BPM
 	lenDecBtn *Button // decrease length
 	lenIncBtn *Button // increase length
-        uploadBtn *Button
-        saveBtn   *Button
+	uploadBtn *Button
+	saveBtn   *Button
 
 	// per-row components
 	addRowBtn     *Button
@@ -223,7 +223,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.lenIncPressed = true
 		dv.lenIncAnim = 1
 	})
-        dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
+	dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
 		if !dv.uploading && !dv.naming {
 			dv.uploadAnim = 1
 			dv.uploading = true
@@ -337,9 +337,9 @@ func (dv *DrumView) recalcButtons() {
 	dv.lenDecBtn.SetRect(insetRect(topGrid.Cell(5, 0), buttonPad))
 	dv.lenIncBtn.SetRect(insetRect(topGrid.Cell(6, 0), buttonPad))
 
-        botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
-        botGrid := NewGridLayout(botBounds, []float64{1}, []float64{1})
-        dv.uploadBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
+	botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
+	botGrid := NewGridLayout(botBounds, []float64{1}, []float64{1})
+	dv.uploadBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
 
 	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
 	dv.timelineRect = image.Rect(
@@ -627,6 +627,8 @@ func (dv *DrumView) Update() {
 			menu := image.Rect(lbl.Min.X, lbl.Max.Y, lbl.Max.X, lbl.Max.Y+len(dv.instMenuBtns)*dv.rowHeight())
 			if !pt(mx, my, lbl) && !pt(mx, my, menu) {
 				dv.instMenuOpen = false
+				// allow the click to reach underlying controls
+			} else {
 				return
 			}
 		}
@@ -692,7 +694,7 @@ func (dv *DrumView) Update() {
 					return
 				}
 			}
-        buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
+			buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
 			for _, btn := range buttons {
 				if btn.Handle(mx, my, true) {
 					return
