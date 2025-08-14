@@ -2,7 +2,10 @@
 
 package ui
 
-import "testing"
+import (
+	"image"
+	"testing"
+)
 
 // TestControlButtonsClickable ensures that top-panel buttons respond to clicks
 // when unobstructed.
@@ -37,6 +40,32 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 			if ri.Overlaps(buttons[j].Rect()) {
 				t.Fatalf("buttons %d and %d overlap", i, j)
 			}
+		}
+	}
+}
+
+// TestButtonHoldRepeat verifies that holding a repeat-enabled button triggers
+// multiple callbacks with accelerating intervals.
+func TestButtonHoldRepeat(t *testing.T) {
+	b := NewButton("+", ButtonStyle{}, nil)
+	b.Repeat = true
+	b.SetRect(image.Rect(0, 0, 10, 10))
+
+	var frame int
+	var calls []int
+	b.OnClick = func() { calls = append(calls, frame) }
+
+	for frame = 0; frame < 60; frame++ {
+		b.Handle(5, 5, true)
+	}
+	b.Handle(5, 5, false)
+
+	if len(calls) < 3 {
+		t.Fatalf("expected multiple callbacks, got %d", len(calls))
+	}
+	for i := 2; i < len(calls); i++ {
+		if calls[i]-calls[i-1] > calls[i-1]-calls[i-2] {
+			t.Fatalf("intervals not accelerating: %v", calls)
 		}
 	}
 }

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"log"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -31,6 +30,8 @@ type Button struct {
 	Style   ButtonVisual
 	OnClick func()
 	pressed bool
+	Repeat  bool
+	held    int
 }
 
 // NewButton constructs a button with the given label, style, and optional click handler.
@@ -64,22 +65,42 @@ func (b *Button) textRect() image.Rectangle {
 
 // Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
 func (b *Button) Handle(mx, my int, pressed bool) bool {
-	if !pressed {
-		b.pressed = false
-		return false
-	}
-	if image.Pt(mx, my).In(b.r) {
-		if !b.pressed {
+	inside := image.Pt(mx, my).In(b.r)
+	if pressed && inside {
+		b.held++
+		if b.held == 1 {
 			if b.OnClick != nil {
 				b.OnClick()
 			}
-		} else {
-			log.Printf("[BUTTON] suppressed click on %q: still pressed", b.Text)
+		} else if b.Repeat && b.repeatTick() {
+			if b.OnClick != nil {
+				b.OnClick()
+			}
 		}
 		b.pressed = true
 		return true
 	}
+	b.pressed = false
+	b.held = 0
 	return false
+}
+
+func (b *Button) repeatTick() bool {
+	d := b.held
+	if d <= 15 {
+		return false
+	}
+	delay := d - 15
+	switch {
+	case delay <= 15:
+		return delay%5 == 0
+	case delay <= 30:
+		return delay%3 == 0
+	case delay <= 45:
+		return delay%2 == 0
+	default:
+		return true
+	}
 }
 
 // GridLayout splits a rectangle into rows and columns using fractional weights.

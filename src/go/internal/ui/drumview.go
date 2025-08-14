@@ -210,19 +210,23 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.bpmDecPressed = true
 		dv.bpmDecAnim = 1
 	})
+	dv.bpmDecBtn.Repeat = true
 	dv.bpmBox = NewButton("120", BPMBoxStyle, nil)
 	dv.bpmIncBtn = NewButton("+", BPMIncStyle, func() {
 		dv.bpmIncPressed = true
 		dv.bpmIncAnim = 1
 	})
+	dv.bpmIncBtn.Repeat = true
 	dv.lenDecBtn = NewButton("-", LenDecStyle, func() {
 		dv.lenDecPressed = true
 		dv.lenDecAnim = 1
 	})
+	dv.lenDecBtn.Repeat = true
 	dv.lenIncBtn = NewButton("+", LenIncStyle, func() {
 		dv.lenIncPressed = true
 		dv.lenIncAnim = 1
 	})
+	dv.lenIncBtn.Repeat = true
 	dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
 		dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.naming, dv.instMenuOpen)
 		dv.instMenuOpen = false
@@ -241,6 +245,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.AddRow()
 		dv.selRow = len(dv.Rows) - 1
 	})
+	dv.addRowBtn.Repeat = true
 
 	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), Color: instColor(inst), Origin: model.InvalidNodeID, Volume: 1}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length

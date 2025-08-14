@@ -141,6 +141,31 @@ func TestTextInputBackspaceHold(t *testing.T) {
 	restore()
 }
 
+func TestTextInputCursorBlinks(t *testing.T) {
+	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
+	ti.focused = true
+
+	var drawn bool
+	oldLine := drawLine
+	drawLine = func(dst *ebiten.Image, x1, y1, x2, y2 int, c color.Color) {
+		drawn = true
+	}
+	defer func() { drawLine = oldLine }()
+
+	ti.blink = 10
+	ti.Draw(ebiten.NewImage(80, 20))
+	if !drawn {
+		t.Fatalf("expected cursor visible")
+	}
+
+	drawn = false
+	ti.blink = 40
+	ti.Draw(ebiten.NewImage(80, 20))
+	if drawn {
+		t.Fatalf("cursor should be hidden while blink >= 30")
+	}
+}
+
 func TestTextInputOverflow(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")

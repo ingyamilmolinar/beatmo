@@ -15,8 +15,8 @@ import (
 var testLogger *game_log.Logger
 
 func init() {
-        testLogger = game_log.New(io.Discard, game_log.LevelError)
-        SetDefaultStartForTest(false)
+	testLogger = game_log.New(io.Discard, game_log.LevelError)
+	SetDefaultStartForTest(false)
 }
 
 func advanceBeats(g *Game, beats int) {
@@ -40,16 +40,16 @@ func assertNotPanics(t *testing.T, f func()) {
 }
 
 func TestGameStartsWithDefaultOrigin(t *testing.T) {
-        SetDefaultStartForTest(true)
-        g := New(testLogger)
-        g.Layout(640, 480)
-        SetDefaultStartForTest(false)
-        if len(g.drum.Rows) != 1 {
-                t.Fatalf("expected 1 row, got %d", len(g.drum.Rows))
-        }
-        if g.drum.Rows[0].Origin == model.InvalidNodeID {
-                t.Fatalf("expected default origin node")
-        }
+	SetDefaultStartForTest(true)
+	g := New(testLogger)
+	g.Layout(640, 480)
+	SetDefaultStartForTest(false)
+	if len(g.drum.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(g.drum.Rows))
+	}
+	if g.drum.Rows[0].Origin == model.InvalidNodeID {
+		t.Fatalf("expected default origin node")
+	}
 }
 
 func TestTryAddNodeTogglesRow(t *testing.T) {
@@ -91,14 +91,14 @@ func TestGameCalculatesBeatInfosPerRow(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
-        g.pendingStartRow = 0
-        n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.pendingStartRow = 0
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 
 	// add a second row and assign its origin on next node add
 	g.drum.AddRow()
 	g.Update()
-        g.pendingStartRow = 1
-        n1 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.pendingStartRow = 1
+	n1 := g.tryAddNode(2, 0, model.NodeTypeRegular)
 
 	g.updateBeatInfos()
 
@@ -117,15 +117,15 @@ func TestDrumRowsStayIsolated(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
-        // Origin for first row
-        g.pendingStartRow = 0
-        n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	// Origin for first row
+	g.pendingStartRow = 0
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 
-        // Second row with its own origin
-        g.drum.AddRow()
-        g.Update() // process row addition so next node sets origin
-        g.pendingStartRow = 1
-        n1 := g.tryAddNode(0, 1, model.NodeTypeRegular)
+	// Second row with its own origin
+	g.drum.AddRow()
+	g.Update() // process row addition so next node sets origin
+	g.pendingStartRow = 1
+	n1 := g.tryAddNode(0, 1, model.NodeTypeRegular)
 
 	// Connect an extra node to row 0 only
 	n0b := g.tryAddNode(1, 0, model.NodeTypeRegular)
@@ -464,12 +464,12 @@ func TestDrumWheelDoesNotZoomGrid(t *testing.T) {
 }
 
 func TestPlayWithoutStartNodeStaysResponsive(t *testing.T) {
-        g := New(testLogger)
-        g.Layout(640, 480)
-        if len(g.nodes) > 0 {
-                g.deleteNode(g.nodes[0])
-        }
-        g.Update()
+	g := New(testLogger)
+	g.Layout(640, 480)
+	if len(g.nodes) > 0 {
+		g.deleteNode(g.nodes[0])
+	}
+	g.Update()
 
 	g.drum.playPressed = true
 	g.Update()
@@ -651,10 +651,10 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
-        g.pendingStartRow = 0
-        n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-        n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
-        g.addEdge(n1, n2)
+	g.pendingStartRow = 0
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
 
 	g.playing = true
 	g.spawnPulseFrom(0)
@@ -746,10 +746,10 @@ func TestRowLengthMatchesConnectedNodes(t *testing.T) {
 func TestPulseAnimationProgress(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
-        g.pendingStartRow = 0
-        node0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-        node1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
-        g.addEdge(node0, node1)
+	g.pendingStartRow = 0
+	node0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	node1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(node0, node1)
 
 	// Manually set playing to true and call spawnPulse to create the pulse
 	g.playing = true
@@ -781,9 +781,9 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
-        g.pendingStartRow = 0
-        n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-        n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.pendingStartRow = 0
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.addEdge(n0, n2) // introduces an invisible node at (1,0)
 
 	var plays []string
