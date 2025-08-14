@@ -57,6 +57,8 @@ const (
 	KeyS
 	KeyEnter
 	KeyEscape
+	KeyLeft
+	KeyRight
 )
 
 // Window and run stubs

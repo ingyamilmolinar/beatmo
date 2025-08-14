@@ -28,7 +28,7 @@ func TestTransportSetBPMClamp(t *testing.T) {
 func TestTransportBPMTextInput(t *testing.T) {
 	tr := NewTransport(200)
 
-	cx, cy := tr.boxRect.Min.X+1, tr.boxRect.Min.Y+1
+	cx, cy := tr.bpmBox.Rect.Min.X+1, tr.bpmBox.Rect.Min.Y+1
 	pressed := true
 	chars := []rune{}
 	restore := SetInputForTest(
