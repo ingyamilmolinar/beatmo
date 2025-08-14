@@ -689,49 +689,52 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	if left {
-		if !dv.dragging {
-			for _, btn := range dv.rowOriginBtns {
-				if btn.Handle(mx, my, true) {
-					return
-				}
-			}
-			for _, btn := range dv.rowDeleteBtns {
-				if btn.Handle(mx, my, true) {
-					return
-				}
-			}
-			buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
-			for _, btn := range buttons {
-				if btn.Handle(mx, my, true) {
-					return
-				}
-			}
-			if dv.bpmBox.Handle(mx, my, true) {
-				if !dv.focusBPM {
-					dv.focusBPM = true
-					dv.bpmFocusAnim = 1
-					dv.bpmPrev = dv.bpm
-					dv.bpmInput = ""
-					dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
-				}
+	if !dv.dragging {
+		for _, btn := range dv.rowOriginBtns {
+			if btn.Handle(mx, my, left) {
 				return
 			}
-			for _, lbl := range dv.rowLabels {
-				if lbl.Handle(mx, my, true) {
-					return
-				}
+		}
+		for _, btn := range dv.rowDeleteBtns {
+			if btn.Handle(mx, my, left) {
+				return
 			}
 		}
-		if pt(mx, my, stepsRect) {
-			if !dv.dragging {
+		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
+		for _, btn := range buttons {
+			if btn.Handle(mx, my, left) {
+				return
+			}
+		}
+		if dv.bpmBox.Handle(mx, my, left) {
+			if left && !dv.focusBPM {
+				dv.focusBPM = true
+				dv.bpmFocusAnim = 1
+				dv.bpmPrev = dv.bpm
+				dv.bpmInput = ""
+				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
+			}
+			if left {
+				return
+			}
+		}
+		for _, lbl := range dv.rowLabels {
+			if lbl.Handle(mx, my, left) {
+				return
+			}
+		}
+	}
+
+	if left {
+		if !dv.dragging {
+			if pt(mx, my, stepsRect) {
 				dv.dragging = true
 				dv.dragStartX = mx
 				dv.startOffset = dv.Offset
+			} else if dv.focusBPM {
+				dv.focusBPM = false
+				dv.logger.Debugf("[DRUMVIEW] Clicked outside BPM box. focusingBPM: %t", dv.focusBPM)
 			}
-		} else if dv.focusBPM {
-			dv.focusBPM = false
-			dv.logger.Debugf("[DRUMVIEW] Clicked outside BPM box. focusingBPM: %t", dv.focusBPM)
 		}
 	} else {
 		dv.dragging = false

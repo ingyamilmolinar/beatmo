@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"log"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -68,8 +69,12 @@ func (b *Button) Handle(mx, my int, pressed bool) bool {
 		return false
 	}
 	if image.Pt(mx, my).In(b.r) {
-		if !b.pressed && b.OnClick != nil {
-			b.OnClick()
+		if !b.pressed {
+			if b.OnClick != nil {
+				b.OnClick()
+			}
+		} else {
+			log.Printf("[BUTTON] suppressed click on %q: still pressed", b.Text)
 		}
 		b.pressed = true
 		return true

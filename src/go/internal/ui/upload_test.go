@@ -62,8 +62,9 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
-	// first upload
-	g.drum.uploading = true
+	// first upload via button click
+	r := g.drum.uploadBtn.Rect()
+	click(g, r.Min.X+1, r.Min.Y+1)
 	g.drum.uploadCh <- uploadResult{path: "first.wav", err: nil}
 	g.drum.Update()
 	restore := SetInputForTest(
@@ -82,7 +83,7 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 	}
 
 	// simulate clicking upload button again
-	g.drum.uploadBtn.OnClick()
+	click(g, r.Min.X+1, r.Min.Y+1)
 	if !g.drum.uploading {
 		t.Fatalf("upload button inactive")
 	}
@@ -101,19 +102,9 @@ func TestUploadButtonWhileMenuOpen(t *testing.T) {
 	g.drum.instMenuOpen = true
 	g.drum.instMenuRow = 0
 
-	// Position cursor over the Upload button and press
+	// Click Upload while menu is open
 	r := g.drum.uploadBtn.Rect()
-	mx, my := r.Min.X+1, r.Min.Y+1
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	g.drum.Update()
-	restore()
+	click(g, r.Min.X+1, r.Min.Y+1)
 
 	if !g.drum.uploading {
 		t.Fatalf("upload button inactive while menu open")
@@ -127,8 +118,9 @@ func TestUploadButtonAfterSelectingViaMenu(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
-	// First upload: simulate result and naming to register custom instrument "c".
-	g.drum.uploading = true
+	// First upload via button click and naming
+	r := g.drum.uploadBtn.Rect()
+	click(g, r.Min.X+1, r.Min.Y+1)
 	g.drum.uploadCh <- uploadResult{path: "first.wav", err: nil}
 	g.drum.Update()
 	restore := SetInputForTest(
@@ -144,17 +136,7 @@ func TestUploadButtonAfterSelectingViaMenu(t *testing.T) {
 
 	// Open instrument menu by clicking the row label.
 	lbl := g.drum.rowLabels[0].Rect()
-	mx, my := lbl.Min.X+1, lbl.Min.Y+1
-	restore = SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	g.drum.Update()
-	restore()
+	click(g, lbl.Min.X+1, lbl.Min.Y+1)
 
 	if !g.drum.instMenuOpen {
 		t.Fatalf("instrument menu did not open")
@@ -172,35 +154,15 @@ func TestUploadButtonAfterSelectingViaMenu(t *testing.T) {
 		t.Fatalf("custom instrument not found in options: %v", g.drum.instOptions)
 	}
 	opt := g.drum.instMenuBtns[idx].Rect()
-	mx, my = opt.Min.X+1, opt.Min.Y+1
-	restore = SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	g.drum.Update()
-	restore()
+	click(g, opt.Min.X+1, opt.Min.Y+1)
 
 	if g.drum.instMenuOpen {
 		t.Fatalf("instrument menu did not close after selection")
 	}
 
 	// Click Upload again.
-	r := g.drum.uploadBtn.Rect()
-	mx, my = r.Min.X+1, r.Min.Y+1
-	restore = SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	g.drum.Update()
-	restore()
+	r = g.drum.uploadBtn.Rect()
+	click(g, r.Min.X+1, r.Min.Y+1)
 
 	if !g.drum.uploading {
 		t.Fatalf("upload button inactive after selecting custom instrument")
@@ -210,4 +172,31 @@ func TestUploadButtonAfterSelectingViaMenu(t *testing.T) {
 	g.drum.uploadCh <- uploadResult{path: "second.wav", err: nil}
 	g.drum.Update()
 	audio.ResetInstruments()
+}
+
+func TestUploadButtonClickableTwice(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.drum.recalcButtons()
+
+	r := g.drum.uploadBtn.Rect()
+	click(g, r.Min.X+1, r.Min.Y+1)
+	g.drum.uploadCh <- uploadResult{path: "first.wav", err: nil}
+	g.drum.Update()
+	// dismiss naming dialog
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyEscape },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	g.drum.Update()
+	restore()
+
+	click(g, r.Min.X+1, r.Min.Y+1)
+	if !g.drum.uploading {
+		t.Fatalf("second click did not trigger upload")
+	}
 }
