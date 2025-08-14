@@ -134,6 +134,8 @@ This debugging session highlighted several critical points:
 * Each drum row tracks a distinct origin node. After adding a row, the next grid click assigns its origin, and deleting a row removes the associated node from the graph.
 * Row additions are now reported via `ConsumeAddedRows`, and each row stores a pointer to its origin UI node so `Game` no longer keeps a separate `startNodes` slice.
 * Beat paths are computed per drum row via `beatInfosByRow`, with the first row auto-syncing its origin to the game start node.
+* The global instrument selector next to the upload button has been removed. Upload is now the only top-level control, and instrument changes occur via per-row labels.
+* `Game` creates a centered origin node for row 0 by default; tests can disable this via `SetDefaultStartForTest(false)`.
 * Signals now propagate concurrently from each row's origin and trigger per-row instrument playback.
 * Drum view now highlights beats for every row based on encoded row/index keys.
 * The drum view reserves an extra row for a trailing "+" button so existing grids remain intact; adding a row no longer clears the grid and awaits the user's next grid click for origin placement.

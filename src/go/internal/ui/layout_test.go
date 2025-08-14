@@ -66,9 +66,9 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			prev = r
 		}
 
-		bottomButtons := []*Button{dv.instBtn, dv.uploadBtn}
-		prev = image.Rectangle{}
-		for i, btn := range bottomButtons {
+                bottomButtons := []*Button{dv.uploadBtn}
+                prev = image.Rectangle{}
+                for i, btn := range bottomButtons {
 			r := btn.Rect()
 			if r.Empty() {
 				t.Fatalf("w=%d: bottom button %d empty", w, i)

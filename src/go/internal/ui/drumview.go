@@ -77,9 +77,8 @@ type DrumView struct {
 	bpmIncBtn *Button // increase BPM
 	lenDecBtn *Button // decrease length
 	lenIncBtn *Button // increase length
-	instBtn   *Button
-	uploadBtn *Button
-	saveBtn   *Button
+        uploadBtn *Button
+        saveBtn   *Button
 
 	// per-row components
 	addRowBtn     *Button
@@ -134,7 +133,6 @@ type DrumView struct {
 	bpmIncAnim   float64
 	lenDecAnim   float64
 	lenIncAnim   float64
-	instAnim     float64
 	uploadAnim   float64
 	bpmFocusAnim float64
 	bpmErrorAnim float64
@@ -225,13 +223,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.lenIncPressed = true
 		dv.lenIncAnim = 1
 	})
-	dv.instBtn = NewButton("", InstButtonStyle, func() {
-		if len(dv.instOptions) > 0 {
-			dv.CycleInstrument()
-			dv.instAnim = 1
-		}
-	})
-	dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
+        dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
 		if !dv.uploading && !dv.naming {
 			dv.uploadAnim = 1
 			dv.uploading = true
@@ -345,10 +337,9 @@ func (dv *DrumView) recalcButtons() {
 	dv.lenDecBtn.SetRect(insetRect(topGrid.Cell(5, 0), buttonPad))
 	dv.lenIncBtn.SetRect(insetRect(topGrid.Cell(6, 0), buttonPad))
 
-	botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
-	botGrid := NewGridLayout(botBounds, []float64{1, 1}, []float64{1})
-	dv.instBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
-	dv.uploadBtn.SetRect(insetRect(botGrid.Cell(1, 0), buttonPad))
+        botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
+        botGrid := NewGridLayout(botBounds, []float64{1}, []float64{1})
+        dv.uploadBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
 
 	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
 	dv.timelineRect = image.Rect(
@@ -549,7 +540,6 @@ func (dv *DrumView) decayAnims() {
 	decay(&dv.bpmIncAnim)
 	decay(&dv.lenDecAnim)
 	decay(&dv.lenIncAnim)
-	decay(&dv.instAnim)
 	decay(&dv.uploadAnim)
 	decay(&dv.bpmFocusAnim)
 	decay(&dv.bpmErrorAnim)
@@ -702,7 +692,7 @@ func (dv *DrumView) Update() {
 					return
 				}
 			}
-			buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.instBtn, dv.uploadBtn}
+        buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
 			for _, btn := range buttons {
 				if btn.Handle(mx, my, true) {
 					return
@@ -871,7 +861,6 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	}
 	dv.bpmBox.Text = bpmText
 	if len(dv.Rows) > 0 {
-		dv.instBtn.Text = dv.Rows[dv.selRow].Name + " ▼"
 	}
 	dv.playBtn.Draw(dst)
 	dv.stopBtn.Draw(dst)
@@ -880,7 +869,6 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	dv.bpmIncBtn.Draw(dst)
 	dv.lenDecBtn.Draw(dst)
 	dv.lenIncBtn.Draw(dst)
-	dv.instBtn.Draw(dst)
 	dv.uploadBtn.Draw(dst)
 	// timeline and progress
 	if dv.timelineBeats < dv.Graph.BeatLength() {

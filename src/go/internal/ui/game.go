@@ -22,6 +22,10 @@ const ebitenTPS = 60 // Ticks per second for Ebiten (stubbed for tests)
 // playSound plays a synthesized sound with volume. Overridden in tests.
 var playSound = audio.PlayVol
 
+var enableDefaultStart = true
+
+func SetDefaultStartForTest(enable bool) { enableDefaultStart = enable }
+
 func makeBeatKey(row, idx int) int { return (row << 16) | (idx & 0xFFFF) }
 
 func splitBeatKey(key int) (row, idx int) { return key >> 16, key & 0xFFFF }
@@ -217,13 +221,12 @@ func New(logger *game_log.Logger) *Game {
 	}
 
 	// bottom drum-machine view
-	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
-
-	return g
+        g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
+        return g
 }
 
 func (g *Game) Layout(w, h int) (int, int) {
-	g.winW, g.winH = w, h
+        g.winW, g.winH = w, h
 
 	/* update splitter and drum bounds */
 	if g.split == nil {
@@ -232,8 +235,14 @@ func (g *Game) Layout(w, h int) (int, int) {
 	if g.split.ratio == 0 { // first time → store ratio
 		g.split.ratio = float64(g.split.Y) / float64(h)
 	}
-	g.split.Y = int(float64(h) * g.split.ratio)
-	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
+        g.split.Y = int(float64(h) * g.split.ratio)
+        g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
+        if enableDefaultStart && len(g.nodes) == 0 {
+                ci := w / (2 * GridStep)
+                cj := (g.split.Y - topOffset) / (2 * GridStep)
+                g.pendingStartRow = 0
+                g.tryAddNode(ci, cj, model.NodeTypeRegular)
+        }
 	g.logger.Infof("[GAME] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
 }

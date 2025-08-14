@@ -417,9 +417,9 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil, 0)
-	if count != 13 {
-		t.Fatalf("expected 13 buttons drawn, got %d", count)
-	}
+        if count != 12 {
+                t.Fatalf("expected 12 buttons drawn, got %d", count)
+        }
 }
 
 func TestDrumViewHighlightsMultipleRows(t *testing.T) {
@@ -499,17 +499,11 @@ func TestDrumViewChangeInstrumentPerRow(t *testing.T) {
 	dv.selRow = 1
 	dv.recalcButtons()
 
-	pressed := true
-	cx, cy := dv.instBtn.Rect().Min.X+1, dv.instBtn.Rect().Min.Y+1
-	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
-	dv.Update()
-	pressed = false
-	dv.Update()
-	restore()
-
-	if dv.Rows[1].Instrument != "kick" {
-		t.Fatalf("expected instrument 'kick', got %s", dv.Rows[1].Instrument)
-	}
+        before := dv.Rows[1].Instrument
+        dv.CycleInstrument()
+        if dv.Rows[1].Instrument == before {
+                t.Fatalf("expected instrument to change")
+        }
 }
 
 func TestDrumViewDeleteRowRecordsOrigin(t *testing.T) {
