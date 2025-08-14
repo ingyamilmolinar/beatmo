@@ -97,34 +97,6 @@ func TestDrumRowLayout(t *testing.T) {
 	}
 }
 
-// Clicking on a row label should cycle the instrument for that row.
-func TestLabelClickCyclesInstrument(t *testing.T) {
-	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
-	dv.instOptions = []string{"snare", "kick"}
-	dv.Rows[0].Instrument = "snare"
-	dv.recalcButtons()
-	dv.calcLayout()
-
-	mx := dv.rowLabels[0].Rect().Min.X + 1
-	my := dv.rowLabels[0].Rect().Min.Y + 1
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft && pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 600 },
-	)
-	dv.Update()
-	restore()
-
-	if dv.Rows[0].Instrument != "kick" {
-		t.Fatalf("expected instrument to cycle to 'kick', got %s", dv.Rows[0].Instrument)
-	}
-}
-
 func TestDrumViewLengthDecrease(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
@@ -605,6 +577,69 @@ func TestDrumViewInstrumentColor(t *testing.T) {
 	expected = instColor(dv.Rows[0].Instrument)
 	if dv.Rows[0].Color != expected {
 		t.Fatalf("expected cycled color %v got %v", expected, dv.Rows[0].Color)
+	}
+}
+
+func colorsEqual(a, b color.Color) bool {
+	ar, ag, ab, aa := a.RGBA()
+	br, bg, bb, ba := b.RGBA()
+	return ar == br && ag == bg && ab == bb && aa == ba
+}
+
+func TestCustomInstrumentColorsRotate(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	audio.ResetInstruments()
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
+
+	audio.RegisterWAV("c1", "")
+	dv.SetInstrument("c1")
+	col1 := dv.Rows[0].Color
+
+	dv.AddRow()
+	dv.selRow = 1
+	audio.RegisterWAV("c2", "")
+	dv.SetInstrument("c2")
+	col2 := dv.Rows[1].Color
+
+	if colorsEqual(col1, col2) {
+		t.Fatalf("expected different colors for custom instruments")
+	}
+	if colorsEqual(col1, colStep) || colorsEqual(col2, colStep) {
+		t.Fatalf("unexpected fallback color used")
+	}
+}
+
+func TestRowControlsSpanLeftPanel(t *testing.T) {
+	graph := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
+	dv.calcLayout()
+	got := dv.rowDeleteBtns[0].Rect().Max.X
+	want := dv.Bounds.Min.X + dv.labelW + dv.controlsW - buttonPad
+	if got < want-1 {
+		t.Fatalf("delete button too far left: %d < %d", got, want)
+	}
+}
+
+func TestInstrumentDropdownSelect(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	audio.ResetInstruments()
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
+	dv.calcLayout()
+	dv.rowLabels[0].OnClick() // open menu
+	if !dv.instMenuOpen {
+		t.Fatalf("instrument menu not open")
+	}
+	if len(dv.instMenuBtns) < 2 {
+		t.Fatalf("expected at least two instrument options")
+	}
+	dv.instMenuBtns[1].OnClick() // select second instrument
+	if dv.Rows[0].Instrument != audio.Instruments()[1] {
+		t.Fatalf("instrument not set via dropdown: %s vs %s", dv.Rows[0].Instrument, audio.Instruments()[1])
+	}
+	if dv.instMenuOpen {
+		t.Fatalf("menu did not close after selection")
 	}
 }
 

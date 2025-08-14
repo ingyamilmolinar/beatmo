@@ -53,4 +53,16 @@ var (
 		"tom":   color.RGBA{80, 80, 200, 255},
 		"clap":  color.RGBA{200, 80, 200, 255},
 	}
+
+	// palette used for user-loaded instruments or any ids not in instColors.
+	customPalette = []color.Color{
+		color.RGBA{80, 200, 200, 255}, // cyan
+		color.RGBA{200, 120, 80, 255}, // orange
+		color.RGBA{120, 80, 200, 255}, // purple
+		color.RGBA{200, 80, 120, 255}, // pink
+		color.RGBA{80, 200, 120, 255}, // spring green
+	}
+
+	customColors    = map[string]color.Color{}
+	nextCustomColor int
 )

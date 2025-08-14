@@ -68,10 +68,10 @@ func (b *Button) Handle(mx, my int, pressed bool) bool {
 		return false
 	}
 	if image.Pt(mx, my).In(b.r) {
-		b.pressed = true
-		if b.OnClick != nil {
+		if !b.pressed && b.OnClick != nil {
 			b.OnClick()
 		}
+		b.pressed = true
 		return true
 	}
 	return false

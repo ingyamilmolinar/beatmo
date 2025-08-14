@@ -42,7 +42,13 @@ func instColor(id string) color.Color {
 	if c, ok := instColors[id]; ok {
 		return c
 	}
-	return colStep
+	if c, ok := customColors[id]; ok {
+		return c
+	}
+	c := customPalette[nextCustomColor%len(customPalette)]
+	nextCustomColor++
+	customColors[id] = c
+	return c
 }
 
 /* ───────────────────────────────────────────────────────────── */
@@ -82,6 +88,11 @@ type DrumView struct {
 	rowOriginBtns []*Button
 	selRow        int
 	activeSlider  int // index of slider capturing mouse events, -1 if none
+
+	// instrument selection dropdown
+	instMenuOpen bool
+	instMenuRow  int
+	instMenuBtns []*Button
 
 	deleted   []deletedRow
 	added     []int
@@ -357,16 +368,20 @@ func (dv *DrumView) calcLayout() {
 	dv.rowOriginBtns = dv.rowOriginBtns[:0]
 	for i := range dv.Rows {
 		y := dv.Bounds.Min.Y + timelineHeight + i*dv.rowHeight()
-		rowRect := image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW, y+dv.rowHeight())
-		g := NewGridLayout(rowRect, []float64{4, 2, 2, 1}, []float64{1})
+		rowRect := image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, y+dv.rowHeight())
+		g := NewGridLayout(rowRect, []float64{6, 5, 2, 2}, []float64{1})
 		lbl := NewButton(dv.Rows[i].Name, InstButtonStyle, nil)
 		lbl.SetRect(insetRect(g.Cell(0, 0), buttonPad))
 		idx := i
 		lbl.OnClick = func() {
 			dv.selRow = idx
-			dv.CycleInstrument()
-			dv.instAnim = 1
-			dv.rowLabels[idx].Text = dv.Rows[idx].Name
+			if dv.instMenuOpen && dv.instMenuRow == idx {
+				dv.instMenuOpen = false
+			} else {
+				dv.instMenuRow = idx
+				dv.instMenuOpen = true
+				dv.buildInstMenu()
+			}
 		}
 		slider := NewSlider(dv.Rows[i].Volume)
 		slider.SetRect(insetRect(g.Cell(1, 0), buttonPad))
@@ -384,7 +399,26 @@ func (dv *DrumView) calcLayout() {
 		dv.rowDeleteBtns = append(dv.rowDeleteBtns, del)
 	}
 	y := dv.Bounds.Min.Y + timelineHeight + len(dv.Rows)*dv.rowHeight()
-	dv.addRowBtn.SetRect(insetRect(image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW, y+dv.rowHeight()), buttonPad))
+	dv.addRowBtn.SetRect(insetRect(image.Rect(dv.Bounds.Min.X, y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, y+dv.rowHeight()), buttonPad))
+}
+
+// buildInstMenu rebuilds the instrument dropdown buttons for the selected row.
+func (dv *DrumView) buildInstMenu() {
+	dv.instMenuBtns = dv.instMenuBtns[:0]
+	if dv.instMenuRow < 0 || dv.instMenuRow >= len(dv.rowLabels) {
+		return
+	}
+	base := dv.rowLabels[dv.instMenuRow].Rect()
+	for i, id := range dv.instOptions {
+		r := image.Rect(base.Min.X, base.Max.Y+i*dv.rowHeight(), base.Max.X, base.Max.Y+(i+1)*dv.rowHeight())
+		optID := id
+		btn := NewButton(strings.ToUpper(id[:1])+id[1:], InstButtonStyle, func() {
+			dv.SetInstrument(optID)
+			dv.instMenuOpen = false
+		})
+		btn.SetRect(insetRect(r, buttonPad))
+		dv.instMenuBtns = append(dv.instMenuBtns, btn)
+	}
 }
 
 func (dv *DrumView) PlayPressed() bool {
@@ -575,6 +609,23 @@ func (dv *DrumView) Update() {
 
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
+
+	if dv.instMenuOpen {
+		for _, btn := range dv.instMenuBtns {
+			if btn.Handle(mx, my, left) {
+				return
+			}
+		}
+		if left {
+			lbl := dv.rowLabels[dv.instMenuRow].Rect()
+			menu := image.Rect(lbl.Min.X, lbl.Max.Y, lbl.Max.X, lbl.Max.Y+len(dv.instMenuBtns)*dv.rowHeight())
+			if !pt(mx, my, lbl) && !pt(mx, my, menu) {
+				dv.instMenuOpen = false
+				return
+			}
+		}
+	}
+
 	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+timelineHeight, dv.Bounds.Max.X, dv.Bounds.Max.Y)
 
 	// wheel zoom for length adjustment
@@ -856,6 +907,11 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 		dv.rowVolSliders[i].Draw(dst)
 		dv.rowOriginBtns[i].Draw(dst)
 		dv.rowDeleteBtns[i].Draw(dst)
+		if dv.instMenuOpen && dv.instMenuRow == i {
+			for _, btn := range dv.instMenuBtns {
+				btn.Draw(dst)
+			}
+		}
 		for j, step := range r.Steps {
 			x := dv.Bounds.Min.X + dv.labelW + dv.controlsW + j*dv.cell
 			rect := image.Rect(x, y, x+dv.cell, y+dv.rowHeight())
