@@ -18,11 +18,12 @@ type TextInput struct {
 	focused bool
 	anim    float64
 	blink   int
+	repeat  map[ebiten.Key]int
 }
 
 // NewTextInput constructs a text input with the given rectangle and style.
 func NewTextInput(r image.Rectangle, style TextInputStyle) *TextInput {
-	return &TextInput{Rect: r, Style: style}
+	return &TextInput{Rect: r, Style: style, repeat: make(map[ebiten.Key]int)}
 }
 
 // Focused reports whether the input currently has focus.
@@ -77,7 +78,7 @@ func (t *TextInput) Update() bool {
 		}
 	}
 
-	if isKeyPressed(ebiten.KeyBackspace) {
+	if t.keyRepeat(ebiten.KeyBackspace) {
 		if t.cursor > 0 {
 			bi := byteIndex(t.Text, t.cursor)
 			prev := byteIndex(t.Text, t.cursor-1)
@@ -85,17 +86,30 @@ func (t *TextInput) Update() bool {
 			t.cursor--
 		}
 	}
-	if isKeyPressed(ebiten.KeyLeft) {
+	if t.keyRepeat(ebiten.KeyLeft) {
 		if t.cursor > 0 {
 			t.cursor--
 		}
 	}
-	if isKeyPressed(ebiten.KeyRight) {
+	if t.keyRepeat(ebiten.KeyRight) {
 		if t.cursor < utf8.RuneCountInString(t.Text) {
 			t.cursor++
 		}
 	}
 	return consumed
+}
+
+func (t *TextInput) keyRepeat(k ebiten.Key) bool {
+	if isKeyPressed(k) {
+		t.repeat[k]++
+		d := t.repeat[k]
+		if d == 1 || d > 15 && (d-15)%3 == 0 {
+			return true
+		}
+	} else {
+		t.repeat[k] = 0
+	}
+	return false
 }
 
 // byteIndex returns the byte index of rune i in s.
@@ -136,7 +150,7 @@ func (t *TextInput) Draw(dst *ebiten.Image) {
 	}
 }
 
-func drawLine(dst *ebiten.Image, x1, y1, x2, y2 int, col color.Color) {
+var drawLine = func(dst *ebiten.Image, x1, y1, x2, y2 int, col color.Color) {
 	rect := image.Rect(min(x1, x2), min(y1, y2), max(x1, x2)+1, max(y1, y2)+1)
 	drawRect(dst, rect, col, true)
 }

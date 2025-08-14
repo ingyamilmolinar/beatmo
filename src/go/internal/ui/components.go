@@ -157,7 +157,11 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 	}
 	inset := int(anim * float64(r.Dx()) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
-	drawButton(dst, animRect, s.Fill, s.Border, focused)
+	fill := s.Fill
+	if focused {
+		fill = adjustColor(fill, 30)
+	}
+	drawButton(dst, animRect, fill, s.Border, false)
 }
 
 // DrumCellStyle styles individual drum machine cells.
