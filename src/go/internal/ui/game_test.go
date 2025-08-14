@@ -1805,6 +1805,31 @@ func TestGraphUpdateDuringPlaybackPreservesProgress(t *testing.T) {
 	}
 }
 
+func TestAddDisconnectedNodeDuringPlaybackMaintainsSequence(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n0)
+	g.playing = true
+	g.spawnPulseFrom(0)
+	advanceBeats(g, 2)
+	prev := g.nextBeatIdxs[0]
+	before := append([]model.BeatInfo(nil), g.beatInfosByRow[0]...)
+	g.tryAddNode(5, 5, model.NodeTypeRegular) // disconnected node
+	if g.nextBeatIdxs[0] != prev {
+		t.Fatalf("beat index changed after add node: got %d want %d", g.nextBeatIdxs[0], prev)
+	}
+	if !reflect.DeepEqual(before, g.beatInfosByRow[0]) {
+		t.Fatalf("beat path changed after add node: %v -> %v", before, g.beatInfosByRow[0])
+	}
+	advanceBeats(g, 4)
+	if g.nextBeatIdxs[0] != prev+4 {
+		t.Fatalf("beat index did not advance correctly: got %d want %d", g.nextBeatIdxs[0], prev+4)
+	}
+}
+
 func TestBPMChangeDuringPlaybackMaintainsSequence(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)

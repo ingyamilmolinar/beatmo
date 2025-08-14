@@ -39,6 +39,31 @@ func loopSegmentLen(path []model.BeatInfo, start int) int {
 	return len(path) - start
 }
 
+// rawBeatLen returns the length of the non-expanded beat path. When the graph
+// requests a beat row with a large beat length, the loop segment is repeated to
+// fill that length. This helper strips the repeated portion so callers obtain
+// the actual traversal length regardless of the current beatLength setting.
+func rawBeatLen(path []model.BeatInfo, isLoop bool, loopStart int) int {
+	if !isLoop {
+		for i, b := range path {
+			if b.NodeID == model.InvalidNodeID {
+				return i
+			}
+		}
+		return len(path)
+	}
+	if loopStart < 0 || loopStart >= len(path) {
+		return len(path)
+	}
+	origin := path[loopStart].NodeID
+	for i := loopStart + 1; i < len(path); i++ {
+		if path[i].NodeID == origin {
+			return i
+		}
+	}
+	return len(path)
+}
+
 /* ───────────────────────── data types ───────────────────────── */
 
 type uiNode struct {
@@ -328,19 +353,14 @@ func (g *Game) deleteNode(n *uiNode) {
 }
 
 func (g *Game) updateBeatInfos() {
-	// Traverse the graph once to capture the full path regardless of the
-	// current drum view length. NodeID has underlying type int; cast is safe
-	// for beat-length updates.
+	// Use a generously large beat length so CalculateBeatRow returns the
+	// complete path even when disconnected nodes exist elsewhere in the
+	// graph. We'll shrink the beat length back to the actual traversal size
+	// after computing the raw path length.
 	g.graph.SetBeatLength(int(g.graph.Next))
 
 	fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRow()
-	baseLen := 0
-	for _, b := range fullBeatRow {
-		if b.NodeID == model.InvalidNodeID {
-			break
-		}
-		baseLen++
-	}
+	baseLen := rawBeatLen(fullBeatRow, isLoop, loopStart)
 
 	g.beatInfos = fullBeatRow[:baseLen]
 	g.isLoop = isLoop
@@ -390,13 +410,7 @@ func (g *Game) updateBeatInfos() {
 			continue
 		}
 		rowPath, rowLoop, rowStart := g.graph.CalculateBeatRowFrom(r.Origin)
-		rowLen := 0
-		for _, b := range rowPath {
-			if b.NodeID == model.InvalidNodeID {
-				break
-			}
-			rowLen++
-		}
+		rowLen := rawBeatLen(rowPath, rowLoop, rowStart)
 		g.beatInfosByRow[i] = rowPath[:rowLen]
 		g.isLoopByRow[i] = rowLoop
 		g.loopStartByRow[i] = rowStart
@@ -418,6 +432,10 @@ func (g *Game) updateBeatInfos() {
 			maxLen = rowLen
 		}
 	}
+
+	// Reduce the graph's beat length to the actual maximum traversal size so
+	// subsequent path calculations are not padded with extra loop cycles.
+	g.graph.SetBeatLength(maxLen)
 
 	g.resetOriginSequences()
 
