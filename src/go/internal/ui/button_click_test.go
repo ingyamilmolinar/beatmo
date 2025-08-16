@@ -3,10 +3,10 @@
 package ui
 
 import (
-        "image"
-        "testing"
+	"image"
+	"testing"
 
-        "github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // TestControlButtonsClickable ensures that top-panel buttons respond to clicks
@@ -47,7 +47,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 }
 
 // TestButtonHoldRepeat verifies that holding a repeat-enabled button triggers
-// repeats after a 1s delay and then every ~250ms.
+// repeats after a 1s delay and then every ~100ms with acceleration.
 func TestButtonHoldRepeat(t *testing.T) {
 	b := NewButton("+", ButtonStyle{}, nil)
 	b.Repeat = true
@@ -62,7 +62,7 @@ func TestButtonHoldRepeat(t *testing.T) {
 	}
 	b.Handle(5, 5, false)
 
-	want := []int{0, 74, 89}
+	want := []int{0, 65, 71, 77, 83, 89, 94, 99}
 	if len(calls) != len(want) {
 		t.Fatalf("expected %d callbacks, got %v", len(want), calls)
 	}
@@ -74,21 +74,21 @@ func TestButtonHoldRepeat(t *testing.T) {
 }
 
 func TestBPMHoldIncrements(t *testing.T) {
-        g := New(testLogger)
-        g.Layout(640, 480)
-        dv := g.drum
-        dv.recalcButtons()
-        btn := dv.bpmIncBtn
-        x, y := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
-        pressed := true
-        restore := SetInputForTest(func() (int, int) { return x, y }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
-        for i := 0; i < 100; i++ {
-                dv.Update()
-        }
-        pressed = false
-        dv.Update()
-        restore()
-        if dv.bpm != 123 {
-                t.Fatalf("expected BPM 123 got %d", dv.bpm)
-        }
+	g := New(testLogger)
+	g.Layout(640, 480)
+	dv := g.drum
+	dv.recalcButtons()
+	btn := dv.bpmIncBtn
+	x, y := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
+	pressed := true
+	restore := SetInputForTest(func() (int, int) { return x, y }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+	for i := 0; i < 100; i++ {
+		dv.Update()
+	}
+	pressed = false
+	dv.Update()
+	restore()
+	if dv.bpm != 128 {
+		t.Fatalf("expected BPM 128 got %d", dv.bpm)
+	}
 }

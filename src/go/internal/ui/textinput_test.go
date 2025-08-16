@@ -166,6 +166,24 @@ func TestTextInputCursorBlinks(t *testing.T) {
 	}
 }
 
+func TestTextInputClickMovesCursor(t *testing.T) {
+	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
+	ti.SetText("abcd")
+	restore := SetInputForTest(
+		func() (int, int) { return ti.Rect.Min.X + 4 + debugCharW*2 + 1, ti.Rect.Min.Y + 5 },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	ti.Update()
+	restore()
+	if ti.cursor != 2 {
+		t.Fatalf("cursor=%d", ti.cursor)
+	}
+}
+
 func TestTextInputOverflow(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")

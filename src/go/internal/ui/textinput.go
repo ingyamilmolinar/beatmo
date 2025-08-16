@@ -46,6 +46,17 @@ func (t *TextInput) Update() bool {
 		if image.Pt(mx, my).In(t.Rect) {
 			t.focused = true
 			t.anim = 1
+			txt, start := t.visibleText()
+			rel := mx - (t.Rect.Min.X + 4)
+			idx := rel/debugCharW + start
+			if idx < 0 {
+				idx = 0
+			}
+			if idx > utf8.RuneCountInString(t.Text) {
+				idx = utf8.RuneCountInString(t.Text)
+			}
+			t.cursor = idx
+			_ = txt
 			consumed = true
 		} else {
 			t.focused = false
@@ -132,7 +143,13 @@ func (t *TextInput) visibleText() (string, int) {
 	total := utf8.RuneCountInString(t.Text)
 	start := 0
 	if total > maxRunes {
-		start = total - maxRunes
+		if t.cursor < maxRunes {
+			start = 0
+		} else if t.cursor > total-maxRunes {
+			start = total - maxRunes
+		} else {
+			start = t.cursor - maxRunes + 1
+		}
 	}
 	bi := byteIndex(t.Text, start)
 	return t.Text[bi:], start

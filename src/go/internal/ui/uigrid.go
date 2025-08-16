@@ -22,19 +22,19 @@ func insetRect(r image.Rectangle, pad int) image.Rectangle {
 // pressed indicates the mouse button is currently down; hovered indicates the
 // cursor is over the control so styles can provide hover feedback.
 type ButtonVisual interface {
-    Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool)
+	Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool)
 }
 
 // Button is a basic clickable component with a rectangular bounds and text label.
 type Button struct {
-    r       image.Rectangle
-    Text    string
-    Style   ButtonVisual
-    OnClick func()
-    pressed bool
-    hovered bool
-    Repeat  bool
-    held    int
+	r       image.Rectangle
+	Text    string
+	Style   ButtonVisual
+	OnClick func()
+	pressed bool
+	hovered bool
+	Repeat  bool
+	held    int
 }
 
 // NewButton constructs a button with the given label, style, and optional click handler.
@@ -50,11 +50,11 @@ func (b *Button) SetRect(r image.Rectangle) { b.r = r }
 
 // Draw renders the button and its label.
 func (b *Button) Draw(dst *ebiten.Image) {
-    if b.Style != nil {
-        b.Style.Draw(dst, b.r, b.pressed, b.hovered)
-    }
-    tr := b.textRect()
-    ebitenutil.DebugPrintAt(dst, b.Text, tr.Min.X, tr.Min.Y)
+	if b.Style != nil {
+		b.Style.Draw(dst, b.r, b.pressed, b.hovered)
+	}
+	tr := b.textRect()
+	ebitenutil.DebugPrintAt(dst, b.Text, tr.Min.X, tr.Min.Y)
 }
 
 // textRect returns the rectangle occupied by the button's text when drawn.
@@ -68,25 +68,25 @@ func (b *Button) textRect() image.Rectangle {
 
 // Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
 func (b *Button) Handle(mx, my int, pressed bool) bool {
-    inside := image.Pt(mx, my).In(b.r)
-    b.hovered = inside
-    if pressed && inside {
-        b.held++
-        if b.held == 1 {
-            if b.OnClick != nil {
-                b.OnClick()
-            }
-        } else if b.Repeat && b.repeatTick() {
-            if b.OnClick != nil {
-                b.OnClick()
-            }
-        }
-        b.pressed = true
-        return true
-    }
-    b.pressed = false
-    b.held = 0
-    return false
+	inside := image.Pt(mx, my).In(b.r)
+	b.hovered = inside
+	if pressed && inside {
+		b.held++
+		if b.held == 1 {
+			if b.OnClick != nil {
+				b.OnClick()
+			}
+		} else if b.Repeat && b.repeatTick() {
+			if b.OnClick != nil {
+				b.OnClick()
+			}
+		}
+		b.pressed = true
+		return true
+	}
+	b.pressed = false
+	b.held = 0
+	return false
 }
 
 func (b *Button) repeatTick() bool {
@@ -94,7 +94,13 @@ func (b *Button) repeatTick() bool {
 	if d <= 60 {
 		return false
 	}
-	return (d-60)%15 == 0
+	step := d - 60
+	accel := step / 30
+	if accel > 5 {
+		accel = 5
+	}
+	interval := 6 - accel
+	return step%interval == 0
 }
 
 // GridLayout splits a rectangle into rows and columns using fractional weights.

@@ -118,6 +118,61 @@ func TestDrumViewLengthDecrease(t *testing.T) {
 	}
 }
 
+func TestDrumViewVerticalScroll(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 200, timelineHeight+2*24), nil, logger)
+	for i := 0; i < 4; i++ {
+		dv.AddRow()
+	}
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, -1 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	if dv.rowOffset != 1 {
+		t.Fatalf("rowOffset=%d", dv.rowOffset)
+	}
+	thumb := dv.scrollThumbRect()
+	restore = SetInputForTest(
+		func() (int, int) { return thumb.Min.X + 1, thumb.Min.Y + 1 },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	restore = SetInputForTest(
+		func() (int, int) { return thumb.Min.X + 1, dv.scrollBarRect().Max.Y - 1 },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	restore = SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	if dv.rowOffset <= 1 {
+		t.Fatalf("expected drag to scroll, rowOffset=%d", dv.rowOffset)
+	}
+}
+
 func TestDrumViewWheelAdjustsLength(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
@@ -407,7 +462,7 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 func TestDrumViewButtonsDrawn(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelInfo)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 400, 100), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
 
 	count := 0
 	orig := drawButton
@@ -416,7 +471,7 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	}
 	defer func() { drawButton = orig }()
 
-	dv.Draw(ebiten.NewImage(400, 100), map[int]int64{}, 0, nil, 0)
+	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
 	if count != 12 {
 		t.Fatalf("expected 12 buttons drawn, got %d", count)
 	}
@@ -460,9 +515,9 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
-        dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
-        dv.recalcButtons()
-        dv.calcLayout()
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.recalcButtons()
+	dv.calcLayout()
 	dv.calcLayout()
 
 	pressed := true
@@ -476,12 +531,12 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 		t.Fatalf("expected 2 rows got %d", len(dv.Rows))
 	}
 
-        // recalc layout and delete the second row directly
-        dv.Update()
-        dv.DeleteRow(1)
-        if len(dv.Rows) != 1 {
-                t.Fatalf("expected 1 row after deletion got %d", len(dv.Rows))
-        }
+	// recalc layout and delete the second row directly
+	dv.Update()
+	dv.DeleteRow(1)
+	if len(dv.Rows) != 1 {
+		t.Fatalf("expected 1 row after deletion got %d", len(dv.Rows))
+	}
 }
 
 func TestDrumViewChangeInstrumentPerRow(t *testing.T) {
@@ -684,39 +739,38 @@ func TestInstrumentDropdownFitsBounds(t *testing.T) {
 }
 
 func TestDropdownHoverHighlight(t *testing.T) {
-    graph := model.NewGraph(testLogger)
-    dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)
-    dv.calcLayout()
-    dv.rowLabels[0].OnClick()
-    if !dv.instMenuOpen {
-        t.Fatalf("menu not open")
-    }
-    btn := dv.instMenuBtns[0]
-    // capture normal draw colors
-    img := ebiten.NewImage(10, 10)
-    var normFill, normBorder color.Color
-    orig := drawButton
-    drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed bool) {
-        normFill, normBorder = fill, border
-    }
-    btn.Draw(img)
-    if !colorsEqual(normBorder, colDropdownEdge) {
-        t.Fatalf("unexpected border color: %#v", normBorder)
-    }
-    // simulate hover
-    mx, my := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
-    btn.Handle(mx, my, false)
-    var hovFill, hovBorder color.Color
-    drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed bool) {
-        hovFill, hovBorder = fill, border
-    }
-    btn.Draw(img)
-    drawButton = orig
-    if colorsEqual(normFill, hovFill) || colorsEqual(normBorder, hovBorder) {
-        t.Fatalf("expected hover to change colors")
-    }
+	graph := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)
+	dv.calcLayout()
+	dv.rowLabels[0].OnClick()
+	if !dv.instMenuOpen {
+		t.Fatalf("menu not open")
+	}
+	btn := dv.instMenuBtns[0]
+	// capture normal draw colors
+	img := ebiten.NewImage(10, 10)
+	var normFill, normBorder color.Color
+	orig := drawButton
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed bool) {
+		normFill, normBorder = fill, border
+	}
+	btn.Draw(img)
+	if !colorsEqual(normBorder, colDropdownEdge) {
+		t.Fatalf("unexpected border color: %#v", normBorder)
+	}
+	// simulate hover
+	mx, my := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
+	btn.Handle(mx, my, false)
+	var hovFill, hovBorder color.Color
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed bool) {
+		hovFill, hovBorder = fill, border
+	}
+	btn.Draw(img)
+	drawButton = orig
+	if colorsEqual(normFill, hovFill) || colorsEqual(normBorder, hovBorder) {
+		t.Fatalf("expected hover to change colors")
+	}
 }
-
 
 func TestDrumViewLayoutStacksRows(t *testing.T) {
 	graph := model.NewGraph(testLogger)
@@ -745,7 +799,7 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	graph.Edges[[2]model.NodeID{node0, node1}] = struct{}{}
 	graph.Edges[[2]model.NodeID{node1, node2}] = struct{}{}
 
-	dv := NewDrumView(image.Rect(0, 0, 300, 50), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, timelineHeight+24), graph, logger)
 	dv.Length = 3
 	dv.SetBeatLength(3)
 
@@ -799,7 +853,7 @@ func TestDrumViewSetBPMClamp(t *testing.T) {
 }
 
 func TestDrumViewBPMTextInput(t *testing.T) {
-        t.Skip("text input focus under refactor")
+	t.Skip("text input focus under refactor")
 }
 
 func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
