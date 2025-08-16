@@ -360,6 +360,48 @@ func (dv *DrumView) DeleteRow(i int) {
 	}
 }
 
+func (dv *DrumView) toggleMute(idx int) {
+	if idx < 0 || idx >= len(dv.Rows) {
+		return
+	}
+	r := dv.Rows[idx]
+	r.Muted = !r.Muted
+	if r.Muted {
+		r.Solo = false
+	}
+}
+
+func (dv *DrumView) toggleSolo(idx int) {
+	if idx < 0 || idx >= len(dv.Rows) {
+		return
+	}
+	r := dv.Rows[idx]
+	r.Solo = !r.Solo
+	if r.Solo {
+		r.Muted = false
+		for i, o := range dv.Rows {
+			if i == idx {
+				continue
+			}
+			o.Solo = false
+			o.Muted = true
+		}
+	} else {
+		anySolo := false
+		for _, o := range dv.Rows {
+			if o.Solo {
+				anySolo = true
+				break
+			}
+		}
+		if !anySolo {
+			for _, o := range dv.Rows {
+				o.Muted = false
+			}
+		}
+	}
+}
+
 // ConsumeDeletedRows returns and clears the recently deleted rows info.
 func (dv *DrumView) ConsumeDeletedRows() []deletedRow {
 	rows := dv.deleted
@@ -463,9 +505,9 @@ func (dv *DrumView) calcLayout() {
 		originIdx := i
 		origin.OnClick = func() { dv.originReq = append(dv.originReq, originIdx) }
 		muteIdx := i
-		mute.OnClick = func() { dv.Rows[muteIdx].Muted = !dv.Rows[muteIdx].Muted }
+		mute.OnClick = func() { dv.toggleMute(muteIdx) }
 		soloIdx := i
-		solo.OnClick = func() { dv.Rows[soloIdx].Solo = !dv.Rows[soloIdx].Solo }
+		solo.OnClick = func() { dv.toggleSolo(soloIdx) }
 		dv.rowLabels = append(dv.rowLabels, lbl)
 		dv.rowVolSliders = append(dv.rowVolSliders, slider)
 		dv.rowMuteBtns = append(dv.rowMuteBtns, mute)

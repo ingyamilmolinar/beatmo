@@ -1226,7 +1226,8 @@ func (g *Game) onTick(step int) {
 }
 
 func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) {
-	key := makeBeatKey(row, idx)
+	wrapped := g.wrapBeatIndexRow(row, idx)
+	key := makeBeatKey(row, wrapped)
 	g.highlightedBeats[key] = g.frame + duration
 	if info.NodeType == model.NodeTypeRegular {
 		inst := "snare"

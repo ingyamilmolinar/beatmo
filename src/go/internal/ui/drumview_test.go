@@ -957,3 +957,35 @@ func TestMuteSoloButtons(t *testing.T) {
 		t.Fatalf("expected row solo after clicking solo button")
 	}
 }
+
+func TestMuteSoloInteractions(t *testing.T) {
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 300, 100), g, testLogger)
+	dv.AddRow()
+	dv.calcLayout()
+
+	mRect := dv.rowMuteBtns[0].Rect()
+	mx, my := mRect.Min.X+1, mRect.Min.Y+1
+	dv.rowMuteBtns[0].Handle(mx, my, true)
+	dv.rowMuteBtns[0].Handle(mx, my, false)
+	if !dv.Rows[0].Muted {
+		t.Fatalf("expected row0 muted after single click")
+	}
+	if dv.Rows[0].Solo {
+		t.Fatalf("row0 should not be solo when muted")
+	}
+
+	sRect := dv.rowSoloBtns[1].Rect()
+	mx, my = sRect.Min.X+1, sRect.Min.Y+1
+	dv.rowSoloBtns[1].Handle(mx, my, true)
+	dv.rowSoloBtns[1].Handle(mx, my, false)
+	if !dv.Rows[1].Solo {
+		t.Fatalf("expected row1 solo after click")
+	}
+	if dv.Rows[1].Muted {
+		t.Fatalf("solo row should not be muted")
+	}
+	if !dv.Rows[0].Muted {
+		t.Fatalf("other rows should be muted when a solo is active")
+	}
+}
