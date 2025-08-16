@@ -421,10 +421,10 @@ func (dv *DrumView) buildInstMenu() {
 			r = image.Rect(base.Min.X, base.Max.Y+i*dv.rowHeight(), base.Max.X, base.Max.Y+(i+1)*dv.rowHeight())
 		}
 		optID := id
-		btn := NewButton(strings.ToUpper(id[:1])+id[1:], InstButtonStyle, func() {
-			dv.SetInstrument(optID)
-			dv.instMenuOpen = false
-		})
+                btn := NewButton(strings.ToUpper(id[:1])+id[1:], DropdownStyle, func() {
+                        dv.SetInstrument(optID)
+                        dv.instMenuOpen = false
+                })
 		btn.SetRect(insetRect(r, buttonPad))
 		dv.instMenuBtns = append(dv.instMenuBtns, btn)
 	}
@@ -701,41 +701,42 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	if !dv.dragging {
-		for _, btn := range dv.rowOriginBtns {
-			if btn.Handle(mx, my, left) {
-				return
-			}
-		}
-		for _, btn := range dv.rowDeleteBtns {
-			if btn.Handle(mx, my, left) {
-				return
-			}
-		}
-		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
-		for _, btn := range buttons {
-			if btn.Handle(mx, my, left) {
-				return
-			}
-		}
-		if dv.bpmBox.Handle(mx, my, left) {
-			if left && !dv.focusBPM {
-				dv.focusBPM = true
-				dv.bpmFocusAnim = 1
-				dv.bpmPrev = dv.bpm
-				dv.bpmInput = ""
-				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
-			}
-			if left {
-				return
-			}
-		}
-		for _, lbl := range dv.rowLabels {
-			if lbl.Handle(mx, my, left) {
-				return
-			}
-		}
-	}
+        handled := false
+        if !dv.dragging {
+                for _, btn := range dv.rowOriginBtns {
+                        if btn.Handle(mx, my, left) {
+                                handled = true
+                        }
+                }
+                for _, btn := range dv.rowDeleteBtns {
+                        if btn.Handle(mx, my, left) {
+                                handled = true
+                        }
+                }
+                buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
+                for _, btn := range buttons {
+                        if btn.Handle(mx, my, left) {
+                                handled = true
+                        }
+                }
+                if dv.bpmBox.Handle(mx, my, left) {
+                        if left && !dv.focusBPM {
+                                dv.focusBPM = true
+                                dv.bpmFocusAnim = 1
+                                dv.bpmPrev = dv.bpm
+                                dv.bpmInput = ""
+                                dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
+                        }
+                        if left {
+                                handled = true
+                        }
+                }
+                for _, lbl := range dv.rowLabels {
+                        if lbl.Handle(mx, my, left) {
+                                handled = true
+                        }
+                }
+        }
 
 	if left {
 		if !dv.dragging {
@@ -855,9 +856,9 @@ func (dv *DrumView) Update() {
 		}
 		dv.lenIncPressed = false
 	}
-	if dv.lenDecPressed {
-		if dv.Length > 1 { // Prevent length from going below 1
-			dv.Length--
+        if dv.lenDecPressed {
+                if dv.Length > 1 { // Prevent length from going below 1
+                        dv.Length--
 			dv.logger.Infof("[DRUMVIEW] Length decreased to: %d", dv.Length)
 			for _, r := range dv.Rows {
 				r.Steps = make([]bool, dv.Length)
@@ -865,8 +866,11 @@ func (dv *DrumView) Update() {
 			dv.SetBeatLength(dv.Length) // Update graph's beat length
 			dv.bgDirty = true
 		}
-		dv.lenDecPressed = false
-	}
+                dv.lenDecPressed = false
+        }
+        if handled && left {
+                return
+        }
 }
 
 func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo, elapsedBeats int) {
@@ -971,7 +975,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	}
 	if dv.naming {
 		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
-		BPMBoxStyle.Draw(dst, box, true)
+            BPMBoxStyle.Draw(dst, box, true, false)
 		ebitenutil.DebugPrintAt(dst, "Name: "+dv.nameInput, box.Min.X+5, box.Min.Y+18)
 		dv.saveBtn.Draw(dst)
 	}

@@ -12,7 +12,9 @@ var (
 	colStopButton   = color.RGBA{170, 60, 60, 255}
 	colBPMBox       = color.RGBA{45, 45, 45, 255}
 	colLenDec       = color.RGBA{70, 130, 180, 255}
-	colLenInc       = color.RGBA{70, 70, 180, 255}
+        colLenInc       = color.RGBA{70, 70, 180, 255}
+        colDropdown     = color.RGBA{80, 80, 80, 255}
+        colDropdownEdge = color.RGBA{240, 240, 120, 255}
 	colError        = color.RGBA{200, 60, 60, 255}
 
 	colStep       = color.RGBA{0, 160, 200, 255}
@@ -34,9 +36,10 @@ var (
 	BPMDecStyle     = ButtonStyle{Fill: colLenDec, Border: colButtonBorder}
 	BPMIncStyle     = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
 	LenDecStyle     = ButtonStyle{Fill: colLenDec, Border: colButtonBorder}
-	LenIncStyle     = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
-	InstButtonStyle = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
-	UploadBtnStyle  = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
+        LenIncStyle     = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
+        InstButtonStyle = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
+        UploadBtnStyle  = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
+        DropdownStyle   = ButtonStyle{Fill: colDropdown, Border: colDropdownEdge}
 
 	DrumCellUI = DrumCellStyle{
 		On:        colStep,

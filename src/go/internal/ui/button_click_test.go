@@ -3,8 +3,10 @@
 package ui
 
 import (
-	"image"
-	"testing"
+        "image"
+        "testing"
+
+        "github.com/hajimehoshi/ebiten/v2"
 )
 
 // TestControlButtonsClickable ensures that top-panel buttons respond to clicks
@@ -72,17 +74,21 @@ func TestButtonHoldRepeat(t *testing.T) {
 }
 
 func TestBPMHoldIncrements(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(640, 480)
-	g.drum.recalcButtons()
-	btn := g.drum.bpmIncBtn
-	btn.OnClick = func() { g.drum.bpm++ }
-	x, y := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
-	for i := 0; i < 100; i++ {
-		btn.Handle(x, y, true)
-	}
-	btn.Handle(x, y, false)
-	if g.drum.bpm != 123 {
-		t.Fatalf("expected BPM 123 got %d", g.drum.bpm)
-	}
+        g := New(testLogger)
+        g.Layout(640, 480)
+        dv := g.drum
+        dv.recalcButtons()
+        btn := dv.bpmIncBtn
+        x, y := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
+        pressed := true
+        restore := SetInputForTest(func() (int, int) { return x, y }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+        for i := 0; i < 100; i++ {
+                dv.Update()
+        }
+        pressed = false
+        dv.Update()
+        restore()
+        if dv.bpm != 123 {
+                t.Fatalf("expected BPM 123 got %d", dv.bpm)
+        }
 }
