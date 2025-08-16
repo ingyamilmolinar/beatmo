@@ -1234,6 +1234,17 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 		if row < len(g.drum.Rows) {
 			inst = g.drum.Rows[row].Instrument
 			vol = g.drum.Rows[row].Volume
+			anySolo := false
+			for _, r := range g.drum.Rows {
+				if r.Solo {
+					anySolo = true
+					break
+				}
+			}
+			if g.drum.Rows[row].Muted || (anySolo && !g.drum.Rows[row].Solo) {
+				g.logger.Debugf("[GAME] highlightBeat: muted row %d", row)
+				return
+			}
 		}
 		playSound(inst, vol, audio.Now())
 		g.logger.Debugf("[GAME] highlightBeat: Played %s at vol %.2f for node %d at beat %d row %d", inst, vol, info.NodeID, idx, row)

@@ -37,6 +37,8 @@ type DrumRow struct {
 	Origin     model.NodeID
 	Node       *uiNode
 	Volume     float64
+	Muted      bool
+	Solo       bool
 }
 
 func instColor(id string) color.Color {
@@ -86,6 +88,8 @@ type DrumView struct {
 	rowDeleteBtns []*Button
 	rowVolSliders []*Slider
 	rowOriginBtns []*Button
+	rowMuteBtns   []*Button
+	rowSoloBtns   []*Button
 	selRow        int
 	activeSlider  int // index of slider capturing mouse events, -1 if none
 
@@ -419,6 +423,8 @@ func (dv *DrumView) calcLayout() {
 	dv.rowDeleteBtns = dv.rowDeleteBtns[:0]
 	dv.rowVolSliders = dv.rowVolSliders[:0]
 	dv.rowOriginBtns = dv.rowOriginBtns[:0]
+	dv.rowMuteBtns = dv.rowMuteBtns[:0]
+	dv.rowSoloBtns = dv.rowSoloBtns[:0]
 	vis := dv.visibleRows()
 	for i := range dv.Rows {
 		y := dv.Bounds.Min.Y + timelineHeight + (i-dv.rowOffset)*dv.rowHeight()
@@ -426,7 +432,7 @@ func (dv *DrumView) calcLayout() {
 		if i < dv.rowOffset || i >= dv.rowOffset+vis {
 			rowRect = image.Rect(0, 0, 0, 0)
 		}
-		g := NewGridLayout(rowRect, []float64{6, 5, 2, 2}, []float64{1})
+		g := NewGridLayout(rowRect, []float64{6, 5, 2, 2, 2, 2}, []float64{1})
 		lbl := NewButton(dv.Rows[i].Name, InstButtonStyle, nil)
 		lbl.SetRect(insetRect(g.Cell(0, 0), buttonPad))
 		idx := i
@@ -444,16 +450,26 @@ func (dv *DrumView) calcLayout() {
 		}
 		slider := NewSlider(dv.Rows[i].Volume)
 		slider.SetRect(insetRect(g.Cell(1, 0), buttonPad))
+		mute := NewButton("M", InstButtonStyle, nil)
+		mute.SetRect(insetRect(g.Cell(2, 0), buttonPad))
+		solo := NewButton("S", InstButtonStyle, nil)
+		solo.SetRect(insetRect(g.Cell(3, 0), buttonPad))
 		origin := NewButton("O", InstButtonStyle, nil)
-		origin.SetRect(insetRect(g.Cell(2, 0), buttonPad))
+		origin.SetRect(insetRect(g.Cell(4, 0), buttonPad))
 		del := NewButton("X", InstButtonStyle, nil)
-		del.SetRect(insetRect(g.Cell(3, 0), buttonPad))
+		del.SetRect(insetRect(g.Cell(5, 0), buttonPad))
 		delIdx := i
 		del.OnClick = func() { dv.DeleteRow(delIdx) }
 		originIdx := i
 		origin.OnClick = func() { dv.originReq = append(dv.originReq, originIdx) }
+		muteIdx := i
+		mute.OnClick = func() { dv.Rows[muteIdx].Muted = !dv.Rows[muteIdx].Muted }
+		soloIdx := i
+		solo.OnClick = func() { dv.Rows[soloIdx].Solo = !dv.Rows[soloIdx].Solo }
 		dv.rowLabels = append(dv.rowLabels, lbl)
 		dv.rowVolSliders = append(dv.rowVolSliders, slider)
+		dv.rowMuteBtns = append(dv.rowMuteBtns, mute)
+		dv.rowSoloBtns = append(dv.rowSoloBtns, solo)
 		dv.rowOriginBtns = append(dv.rowOriginBtns, origin)
 		dv.rowDeleteBtns = append(dv.rowDeleteBtns, del)
 	}
@@ -808,6 +824,16 @@ func (dv *DrumView) Update() {
 				handled = true
 			}
 		}
+		for _, btn := range dv.rowMuteBtns {
+			if btn.Handle(mx, my, left) {
+				handled = true
+			}
+		}
+		for _, btn := range dv.rowSoloBtns {
+			if btn.Handle(mx, my, left) {
+				handled = true
+			}
+		}
 		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
 		for _, btn := range buttons {
 			if btn.Handle(mx, my, left) {
@@ -1036,6 +1062,10 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 		y := dv.Bounds.Min.Y + timelineHeight + (i-dv.rowOffset)*dv.rowHeight()
 		dv.rowLabels[i].Draw(dst)
 		dv.rowVolSliders[i].Draw(dst)
+		dv.rowMuteBtns[i].pressed = dv.Rows[i].Muted
+		dv.rowSoloBtns[i].pressed = dv.Rows[i].Solo
+		dv.rowMuteBtns[i].Draw(dst)
+		dv.rowSoloBtns[i].Draw(dst)
 		dv.rowOriginBtns[i].Draw(dst)
 		dv.rowDeleteBtns[i].Draw(dst)
 		for j, step := range r.Steps {

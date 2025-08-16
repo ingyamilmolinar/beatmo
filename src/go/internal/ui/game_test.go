@@ -1963,3 +1963,38 @@ func TestPlaybackRestartDoesNotPanicOnOrigin(t *testing.T) {
 		advanceBeats(g, 1)
 	}
 }
+
+func TestMuteAndSoloPlayback(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.drum.AddRow()
+
+	var plays []string
+	orig := playSound
+	playSound = func(id string, vol float64, when ...float64) { plays = append(plays, id) }
+	defer func() { playSound = orig }()
+
+	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
+
+	g.drum.Rows[0].Muted = true
+	g.highlightBeat(0, 0, info, 1)
+	if len(plays) != 0 {
+		t.Fatalf("expected no plays when muted, got %d", len(plays))
+	}
+
+	g.drum.Rows[0].Muted = false
+	g.drum.Rows[1].Solo = true
+	g.highlightBeat(0, 1, info, 1)
+	g.highlightBeat(1, 1, info, 1)
+	if len(plays) != 1 {
+		t.Fatalf("expected 1 play from solo row, got %d", len(plays))
+	}
+
+	plays = plays[:0]
+	g.drum.Rows[1].Solo = false
+	g.highlightBeat(0, 2, info, 1)
+	g.highlightBeat(1, 2, info, 1)
+	if len(plays) != 2 {
+		t.Fatalf("expected 2 plays after solo off, got %d", len(plays))
+	}
+}

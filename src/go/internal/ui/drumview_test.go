@@ -472,8 +472,8 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
-	if count != 12 {
-		t.Fatalf("expected 12 buttons drawn, got %d", count)
+	if count != 14 {
+		t.Fatalf("expected 14 buttons drawn, got %d", count)
 	}
 }
 
@@ -909,5 +909,51 @@ func TestVolumeDragReleaseDoesNotDeleteRow(t *testing.T) {
 
 	if len(dv.Rows) != 1 {
 		t.Fatalf("row deleted during slider drag")
+	}
+}
+
+func TestMuteSoloButtons(t *testing.T) {
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+
+	// Click mute button on first row
+	mRect := dv.rowMuteBtns[0].Rect()
+	mx, my := mRect.Min.X+1, mRect.Min.Y+1
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+	if !dv.Rows[0].Muted {
+		t.Fatalf("expected row muted after clicking mute button")
+	}
+
+	// Click solo button on first row
+	sRect := dv.rowSoloBtns[0].Rect()
+	mx, my = sRect.Min.X+1, sRect.Min.Y+1
+	pressed = true
+	restore = SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+	if !dv.Rows[0].Solo {
+		t.Fatalf("expected row solo after clicking solo button")
 	}
 }
