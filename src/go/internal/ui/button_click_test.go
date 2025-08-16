@@ -45,7 +45,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 }
 
 // TestButtonHoldRepeat verifies that holding a repeat-enabled button triggers
-// multiple callbacks with accelerating intervals.
+// repeats after a 1s delay and then every ~250ms.
 func TestButtonHoldRepeat(t *testing.T) {
 	b := NewButton("+", ButtonStyle{}, nil)
 	b.Repeat = true
@@ -55,17 +55,34 @@ func TestButtonHoldRepeat(t *testing.T) {
 	var calls []int
 	b.OnClick = func() { calls = append(calls, frame) }
 
-	for frame = 0; frame < 60; frame++ {
+	for frame = 0; frame < 100; frame++ {
 		b.Handle(5, 5, true)
 	}
 	b.Handle(5, 5, false)
 
-	if len(calls) < 3 {
-		t.Fatalf("expected multiple callbacks, got %d", len(calls))
+	want := []int{0, 74, 89}
+	if len(calls) != len(want) {
+		t.Fatalf("expected %d callbacks, got %v", len(want), calls)
 	}
-	for i := 2; i < len(calls); i++ {
-		if calls[i]-calls[i-1] > calls[i-1]-calls[i-2] {
-			t.Fatalf("intervals not accelerating: %v", calls)
+	for i, v := range want {
+		if calls[i] != v {
+			t.Fatalf("expected call at %d, got %v", v, calls)
 		}
+	}
+}
+
+func TestBPMHoldIncrements(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.drum.recalcButtons()
+	btn := g.drum.bpmIncBtn
+	btn.OnClick = func() { g.drum.bpm++ }
+	x, y := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
+	for i := 0; i < 100; i++ {
+		btn.Handle(x, y, true)
+	}
+	btn.Handle(x, y, false)
+	if g.drum.bpm != 123 {
+		t.Fatalf("expected BPM 123 got %d", g.drum.bpm)
 	}
 }

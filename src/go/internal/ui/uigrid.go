@@ -87,20 +87,10 @@ func (b *Button) Handle(mx, my int, pressed bool) bool {
 
 func (b *Button) repeatTick() bool {
 	d := b.held
-	if d <= 15 {
+	if d <= 60 {
 		return false
 	}
-	delay := d - 15
-	switch {
-	case delay <= 15:
-		return delay%5 == 0
-	case delay <= 30:
-		return delay%3 == 0
-	case delay <= 45:
-		return delay%2 == 0
-	default:
-		return true
-	}
+	return (d-60)%15 == 0
 }
 
 // GridLayout splits a rectangle into rows and columns using fractional weights.

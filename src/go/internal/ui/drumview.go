@@ -411,8 +411,15 @@ func (dv *DrumView) buildInstMenu() {
 		return
 	}
 	base := dv.rowLabels[dv.instMenuRow].Rect()
+	menuH := dv.rowHeight() * len(dv.instOptions)
+	openUp := base.Max.Y+menuH > dv.Bounds.Max.Y
 	for i, id := range dv.instOptions {
-		r := image.Rect(base.Min.X, base.Max.Y+i*dv.rowHeight(), base.Max.X, base.Max.Y+(i+1)*dv.rowHeight())
+		var r image.Rectangle
+		if openUp {
+			r = image.Rect(base.Min.X, base.Min.Y-(i+1)*dv.rowHeight(), base.Max.X, base.Min.Y-i*dv.rowHeight())
+		} else {
+			r = image.Rect(base.Min.X, base.Max.Y+i*dv.rowHeight(), base.Max.X, base.Max.Y+(i+1)*dv.rowHeight())
+		}
 		optID := id
 		btn := NewButton(strings.ToUpper(id[:1])+id[1:], InstButtonStyle, func() {
 			dv.SetInstrument(optID)

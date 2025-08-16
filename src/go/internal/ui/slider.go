@@ -38,7 +38,7 @@ func (s *Slider) Handle(mx, my int, pressed bool) bool {
 }
 
 func (s *Slider) setFromX(mx int) {
-	w := s.r.Dx()
+	w := s.r.Dx() - 1
 	if w <= 0 {
 		s.Value = 0
 		return
@@ -61,7 +61,7 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 	drawRect(dst, trackRect, color.RGBA{80, 80, 80, 255}, true)
 
 	// knob
-	knobX := s.r.Min.X + int(s.Value*float64(s.r.Dx()))
+	knobX := s.r.Min.X + int(s.Value*float64(s.r.Dx()-1))
 	knobRect := image.Rect(knobX-2, s.r.Min.Y, knobX+2, s.r.Max.Y)
 	drawRect(dst, knobRect, color.RGBA{200, 200, 200, 255}, true)
 

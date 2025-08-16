@@ -664,6 +664,30 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 	}
 }
 
+func TestInstrumentDropdownFitsBounds(t *testing.T) {
+	graph := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)
+	dv.AddRow()
+	dv.AddRow()
+	dv.calcLayout()
+	idx := len(dv.Rows) - 1
+	dv.rowLabels[idx].OnClick()
+	if !dv.instMenuOpen {
+		t.Fatalf("menu not opened")
+	}
+	for _, btn := range dv.instMenuBtns {
+		r := btn.Rect()
+		if r.Min.Y < dv.Bounds.Min.Y || r.Max.Y > dv.Bounds.Max.Y {
+			t.Fatalf("menu button out of bounds: %v vs %v", r, dv.Bounds)
+		}
+	}
+	first := dv.instMenuBtns[0].Rect()
+	base := dv.rowLabels[idx].Rect()
+	if first.Max.Y > base.Min.Y {
+		t.Fatalf("expected menu to open upward: %v vs %v", first, base)
+	}
+}
+
 func TestDrumViewLayoutStacksRows(t *testing.T) {
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
