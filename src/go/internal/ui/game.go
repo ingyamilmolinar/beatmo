@@ -221,12 +221,12 @@ func New(logger *game_log.Logger) *Game {
 	}
 
 	// bottom drum-machine view
-        g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
-        return g
+	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
+	return g
 }
 
 func (g *Game) Layout(w, h int) (int, int) {
-        g.winW, g.winH = w, h
+	g.winW, g.winH = w, h
 
 	/* update splitter and drum bounds */
 	if g.split == nil {
@@ -235,14 +235,14 @@ func (g *Game) Layout(w, h int) (int, int) {
 	if g.split.ratio == 0 { // first time → store ratio
 		g.split.ratio = float64(g.split.Y) / float64(h)
 	}
-        g.split.Y = int(float64(h) * g.split.ratio)
-        g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
-        if enableDefaultStart && len(g.nodes) == 0 {
-                ci := w / (2 * GridStep)
-                cj := (g.split.Y - topOffset) / (2 * GridStep)
-                g.pendingStartRow = 0
-                g.tryAddNode(ci, cj, model.NodeTypeRegular)
-        }
+	g.split.Y = int(float64(h) * g.split.ratio)
+	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
+	if enableDefaultStart && len(g.nodes) == 0 {
+		ci := w / (2 * GridStep)
+		cj := (g.split.Y - topOffset) / (2 * GridStep)
+		g.pendingStartRow = 0
+		g.tryAddNode(ci, cj, model.NodeTypeRegular)
+	}
 	g.logger.Infof("[GAME] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
 }
@@ -882,7 +882,7 @@ eventsDone:
 	// camera pan only when not dragging link or splitter
 	mx, my := cursorPosition()
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
-	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds)
+	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 	drag := g.cam.HandleMouse(panOK)
 	g.camDragging = drag

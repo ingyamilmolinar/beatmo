@@ -1114,6 +1114,35 @@ func TestBottomPaneClickIgnored(t *testing.T) {
 	g.graph.StartNodeID = model.InvalidNodeID
 }
 
+func TestScrollBarDragDoesNotPanGrid(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	for i := 0; i < 6; i++ {
+		g.drum.AddRow()
+	}
+	thumb := g.drum.scrollThumbRect()
+	mx, my := thumb.Min.X+1, thumb.Min.Y+1
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	g.Update()          // start drag on thumb
+	my = g.split.Y - 50 // move into top panel while holding
+	g.Update()          // continue drag outside drum view
+	pressed = false
+	g.Update() // release
+	restore()
+	if g.cam.OffsetX != 0 || g.cam.OffsetY != 0 {
+		t.Fatalf("camera moved: off=(%f,%f)", g.cam.OffsetX, g.cam.OffsetY)
+	}
+	g.graph.StartNodeID = model.InvalidNodeID
+}
+
 func TestHighlightMatchesNode(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)

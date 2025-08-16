@@ -155,6 +155,12 @@ type DrumView struct {
 	scrubbing bool
 }
 
+// Capturing reports whether the drum view is actively handling a mouse drag
+// (e.g. scrollbar or slider) and should therefore block camera panning.
+func (dv *DrumView) Capturing() bool {
+	return dv.scrollDrag || dv.activeSlider >= 0
+}
+
 type deletedRow struct {
 	index  int
 	origin model.NodeID

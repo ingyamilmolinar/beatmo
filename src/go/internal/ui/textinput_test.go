@@ -78,7 +78,7 @@ func TestTextInputEditing(t *testing.T) {
 }
 
 func TestTextInputHighlightAndCursor(t *testing.T) {
-	style := TextInputStyle{Fill: color.RGBA{10, 20, 30, 255}, Border: color.Black}
+	style := TextInputStyle{Fill: color.RGBA{10, 20, 30, 255}, Border: color.Black, Cursor: color.White}
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), style)
 	restore := SetInputForTest(
 		func() (int, int) { return 5, 5 },
@@ -93,6 +93,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 
 	var got color.RGBA
 	var cursor bool
+	var cursorCol color.RGBA
 	oldBtn := drawButton
 	oldLine := drawLine
 	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
@@ -100,6 +101,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 	}
 	drawLine = func(dst *ebiten.Image, x1, y1, x2, y2 int, c color.Color) {
 		cursor = true
+		cursorCol = color.RGBAModel.Convert(c).(color.RGBA)
 	}
 	defer func() { drawButton = oldBtn; drawLine = oldLine }()
 
@@ -111,6 +113,9 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 	orig := color.RGBAModel.Convert(style.Fill).(color.RGBA)
 	if got == orig {
 		t.Fatalf("fill color not adjusted on focus")
+	}
+	if cursorCol != color.RGBAModel.Convert(style.Cursor).(color.RGBA) {
+		t.Fatalf("cursor color=%v want %v", cursorCol, style.Cursor)
 	}
 }
 

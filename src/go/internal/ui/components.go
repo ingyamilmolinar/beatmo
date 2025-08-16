@@ -119,27 +119,27 @@ func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *
 
 // ButtonStyle describes rectangular button visuals.
 type ButtonStyle struct {
-        Fill   color.Color
-        Border color.Color
+	Fill   color.Color
+	Border color.Color
 }
 
 // Draw renders the button rectangle using the global drawButton primitive.
 func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-        fill := s.Fill
-        border := s.Border
-        if hovered && !pressed {
-                fill = adjustColor(fill, 20)
-                border = adjustColor(border, 40)
-        }
-        drawButton(dst, r, fill, border, pressed)
+	fill := s.Fill
+	border := s.Border
+	if hovered && !pressed {
+		fill = adjustColor(fill, 20)
+		border = adjustColor(border, 40)
+	}
+	drawButton(dst, r, fill, border, pressed)
 }
 
 // DrawAnimated draws the button with a shrink animation controlled by anim
 // (0..1). anim is typically set to 1 on click and decays toward 0.
 func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed bool, anim float64) {
-        if anim < 0 {
-                anim = 0
-        }
+	if anim < 0 {
+		anim = 0
+	}
 	inset := int(anim * float64(r.Dx()) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
 	drawButton(dst, animRect, s.Fill, s.Border, pressed)
@@ -147,14 +147,15 @@ func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed 
 
 // TextInputStyle styles a text input box.
 type TextInputStyle struct {
-        Fill   color.Color
-        Border color.Color
+	Fill   color.Color
+	Border color.Color
+	Cursor color.Color
 }
 
 // Draw renders the text box using drawButton for consistency. The pressed flag
 // represents focus; hovered is ignored.
 func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-        drawButton(dst, r, s.Fill, s.Border, pressed)
+	drawButton(dst, r, s.Fill, s.Border, pressed)
 }
 
 // DrawAnimated draws the text box with a subtle focus animation.

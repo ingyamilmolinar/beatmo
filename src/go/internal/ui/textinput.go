@@ -163,7 +163,15 @@ func (t *TextInput) Draw(dst *ebiten.Image) {
 	if t.focused && t.blink < 30 {
 		cx := t.Rect.Min.X + 4 + debugCharW*(t.cursor-start)
 		cy := t.Rect.Min.Y + 4
-		drawLine(dst, cx, cy, cx, cy+debugCharH-2, colorWhite)
+		col := t.Style.Cursor
+		if col == nil {
+			if t.Style.Border != nil {
+				col = t.Style.Border
+			} else {
+				col = colorWhite
+			}
+		}
+		drawLine(dst, cx, cy, cx, cy+debugCharH-2, col)
 	}
 }
 
