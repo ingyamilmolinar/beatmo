@@ -705,6 +705,41 @@ func TestDrumViewRenameInstrument(t *testing.T) {
 	}
 }
 
+func TestDrumViewRenameBoxBounds(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
+	dv.Update()
+	dv.rowEditBtns[0].OnClick()
+	if dv.renameBox == nil {
+		t.Fatalf("rename box not created")
+	}
+	expected := dv.renameBox.Rect
+	minDim := expected.Dx()
+	if expected.Dy() < minDim {
+		minDim = expected.Dy()
+	}
+	inset := int(float64(minDim) * 0.1)
+	want := image.Rect(expected.Min.X+inset, expected.Min.Y+inset, expected.Max.X-inset, expected.Max.Y-inset)
+	var rects []image.Rectangle
+	old := drawButton
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
+		rects = append(rects, r)
+	}
+	dv.Draw(ebiten.NewImage(300, 200), map[int]int64{}, 0, nil, 0)
+	drawButton = old
+	found := false
+	for _, r := range rects {
+		if r == want {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("rename box bounds %v not drawn", want)
+	}
+}
+
 func TestDrumViewOriginRequests(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	audio.ResetInstruments()

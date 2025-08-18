@@ -163,7 +163,11 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 	if anim < 0 {
 		anim = 0
 	}
-	inset := int(anim * float64(r.Dx()) * 0.1)
+	minDim := r.Dx()
+	if r.Dy() < minDim {
+		minDim = r.Dy()
+	}
+	inset := int(anim * float64(minDim) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
 	fill := s.Fill
 	border := s.Border

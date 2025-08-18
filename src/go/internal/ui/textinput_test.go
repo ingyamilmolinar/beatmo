@@ -198,3 +198,29 @@ func TestTextInputOverflow(t *testing.T) {
 		t.Fatalf("start=%d", start)
 	}
 }
+
+func TestTextInputVisibleTextStart(t *testing.T) {
+	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
+	ti.SetText("abcdefghij")
+	ti.cursor = 0
+	vis, start := ti.visibleText()
+	if vis != "abcd" || start != 0 {
+		t.Fatalf("vis=%q start=%d", vis, start)
+	}
+}
+
+func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
+	ti := NewTextInput(image.Rect(0, 0, 100, 24), BPMBoxStyle)
+	ti.focused = true
+	ti.anim = 1
+	var got image.Rectangle
+	old := drawButton
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
+		got = r
+	}
+	ti.Draw(ebiten.NewImage(100, 24))
+	drawButton = old
+	if got.Dy() != 20 || got.Dx() != 96 {
+		t.Fatalf("animRect=%v", got)
+	}
+}

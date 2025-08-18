@@ -163,7 +163,8 @@ func (t *TextInput) visibleText() (string, int) {
 		}
 	}
 	bi := byteIndex(t.Text, start)
-	return t.Text[bi:], start
+	end := byteIndex(t.Text, min(start+maxRunes, total))
+	return t.Text[bi:end], start
 }
 
 // Draw renders the input.
