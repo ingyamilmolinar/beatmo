@@ -95,15 +95,15 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 	var cursor bool
 	var cursorCol color.RGBA
 	oldBtn := drawButton
-	oldLine := drawLine
+	oldCur := drawCursor
 	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
 		got = color.RGBAModel.Convert(f).(color.RGBA)
 	}
-	drawLine = func(dst *ebiten.Image, x1, y1, x2, y2 int, c color.Color) {
+	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
 		cursor = true
 		cursorCol = color.RGBAModel.Convert(c).(color.RGBA)
 	}
-	defer func() { drawButton = oldBtn; drawLine = oldLine }()
+	defer func() { drawButton = oldBtn; drawCursor = oldCur }()
 
 	ti.Draw(ebiten.NewImage(80, 20))
 
@@ -131,13 +131,11 @@ func TestTextInputBackspaceHold(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
-	for i := 0; i < 5; i++ {
-		ti.Update()
-	}
+	ti.Update()
 	if ti.Text != "abc" {
 		t.Fatalf("expected single deletion, got %q", ti.Text)
 	}
-	for i := 0; i < 13; i++ {
+	for i := 0; i < 65; i++ {
 		ti.Update()
 	}
 	if ti.Text != "ab" {
@@ -151,11 +149,11 @@ func TestTextInputCursorBlinks(t *testing.T) {
 	ti.focused = true
 
 	var drawn bool
-	oldLine := drawLine
-	drawLine = func(dst *ebiten.Image, x1, y1, x2, y2 int, c color.Color) {
+	oldCur := drawCursor
+	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
 		drawn = true
 	}
-	defer func() { drawLine = oldLine }()
+	defer func() { drawCursor = oldCur }()
 
 	ti.blink = 10
 	ti.Draw(ebiten.NewImage(80, 20))

@@ -472,8 +472,8 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
-	if count != 14 {
-		t.Fatalf("expected 14 buttons drawn, got %d", count)
+	if count != 15 {
+		t.Fatalf("expected 15 buttons drawn, got %d", count)
 	}
 }
 
@@ -613,6 +613,41 @@ func TestDrumViewConsumeAddedRows(t *testing.T) {
 	}
 }
 
+func TestDrumViewRenameInstrument(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
+	dv.Update()
+
+	pressed := true
+	btn := dv.rowEditBtns[0]
+	cx, cy := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
+	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+	if dv.renameBox == nil {
+		t.Fatalf("rename box not opened")
+	}
+	if dv.renameBox.Value() != dv.Rows[0].Name {
+		t.Fatalf("rename box value %q", dv.renameBox.Value())
+	}
+
+	restore = SetInputForTest(func() (int, int) { return 0, 0 }, func(ebiten.MouseButton) bool { return false }, func(ebiten.Key) bool { return false }, func() []rune { return []rune("X") }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
+	dv.Update()
+	restore()
+	restore = SetInputForTest(func() (int, int) { return 0, 0 }, func(ebiten.MouseButton) bool { return false }, func(k ebiten.Key) bool { return k == ebiten.KeyEnter }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
+	dv.Update()
+	restore()
+	if dv.renameBox != nil {
+		t.Fatalf("rename box still active")
+	}
+	if dv.Rows[0].Name != dv.rowLabels[0].Text || dv.Rows[0].Name != "SnareX" {
+		t.Fatalf("unexpected name %q label %q", dv.Rows[0].Name, dv.rowLabels[0].Text)
+	}
+}
+
 func TestDrumViewOriginRequests(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	audio.ResetInstruments()
@@ -685,10 +720,10 @@ func TestRowControlsSpanLeftPanel(t *testing.T) {
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
 	dv.calcLayout()
-	got := dv.rowDeleteBtns[0].Rect().Max.X
-	want := dv.Bounds.Min.X + dv.labelW + dv.controlsW - buttonPad
-	if got < want-1 {
-		t.Fatalf("delete button too far left: %d < %d", got, want)
+	got := dv.rowDeleteBtns[0].Rect()
+	rightOf := dv.rowOriginBtns[0].Rect().Max.X
+	if got.Min.X <= rightOf {
+		t.Fatalf("delete button not rightmost: %v <= %d", got, rightOf)
 	}
 }
 

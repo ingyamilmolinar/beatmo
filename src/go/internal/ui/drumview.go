@@ -85,6 +85,7 @@ type DrumView struct {
 	// per-row components
 	addRowBtn     *Button
 	rowLabels     []*Button
+	rowEditBtns   []*Button
 	rowDeleteBtns []*Button
 	rowVolSliders []*Slider
 	rowOriginBtns []*Button
@@ -101,6 +102,8 @@ type DrumView struct {
 	deleted   []deletedRow
 	added     []int
 	originReq []int
+	renameRow int
+	renameBox *TextInput
 
 	bgDirty bool
 	bgCache []*ebiten.Image
@@ -240,6 +243,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		timelineBeats: 8,
 		selRow:        0,
 		activeSlider:  -1,
+		renameRow:     -1,
 	}
 	dv.playBtn = NewButton("▶", PlayButtonStyle, func() {
 		dv.playPressed = true
@@ -462,6 +466,7 @@ func (dv *DrumView) calcLayout() {
 		dv.cell = (dv.Bounds.Dx() - dv.labelW - dv.controlsW) / len(dv.Rows[0].Steps)
 	}
 	dv.rowLabels = dv.rowLabels[:0]
+	dv.rowEditBtns = dv.rowEditBtns[:0]
 	dv.rowDeleteBtns = dv.rowDeleteBtns[:0]
 	dv.rowVolSliders = dv.rowVolSliders[:0]
 	dv.rowOriginBtns = dv.rowOriginBtns[:0]
@@ -474,7 +479,7 @@ func (dv *DrumView) calcLayout() {
 		if i < dv.rowOffset || i >= dv.rowOffset+vis {
 			rowRect = image.Rect(0, 0, 0, 0)
 		}
-		g := NewGridLayout(rowRect, []float64{6, 5, 2, 2, 2, 2}, []float64{1})
+		g := NewGridLayout(rowRect, []float64{6, 2, 5, 2, 2, 2, 2}, []float64{1})
 		lbl := NewButton(dv.Rows[i].Name, InstButtonStyle, nil)
 		lbl.SetRect(insetRect(g.Cell(0, 0), buttonPad))
 		idx := i
@@ -490,16 +495,27 @@ func (dv *DrumView) calcLayout() {
 				dv.logger.Debugf("[DRUMVIEW] Opening instrument menu for row %d", idx)
 			}
 		}
+		edit := NewButton("✎", InstButtonStyle, nil)
+		edit.SetRect(insetRect(g.Cell(1, 0), buttonPad))
+		editIdx := i
+		edit.OnClick = func() {
+			dv.renameRow = editIdx
+			r := dv.rowLabels[editIdx].Rect()
+			dv.renameBox = NewTextInput(r, BPMBoxStyle)
+			dv.renameBox.SetText(dv.Rows[editIdx].Name)
+			dv.renameBox.focused = true
+			dv.instMenuOpen = false
+		}
 		slider := NewSlider(dv.Rows[i].Volume)
-		slider.SetRect(insetRect(g.Cell(1, 0), buttonPad))
+		slider.SetRect(insetRect(g.Cell(2, 0), buttonPad))
 		mute := NewButton("M", InstButtonStyle, nil)
-		mute.SetRect(insetRect(g.Cell(2, 0), buttonPad))
+		mute.SetRect(insetRect(g.Cell(3, 0), buttonPad))
 		solo := NewButton("S", InstButtonStyle, nil)
-		solo.SetRect(insetRect(g.Cell(3, 0), buttonPad))
+		solo.SetRect(insetRect(g.Cell(4, 0), buttonPad))
 		origin := NewButton("O", InstButtonStyle, nil)
-		origin.SetRect(insetRect(g.Cell(4, 0), buttonPad))
+		origin.SetRect(insetRect(g.Cell(5, 0), buttonPad))
 		del := NewButton("X", InstButtonStyle, nil)
-		del.SetRect(insetRect(g.Cell(5, 0), buttonPad))
+		del.SetRect(insetRect(g.Cell(6, 0), buttonPad))
 		delIdx := i
 		del.OnClick = func() { dv.DeleteRow(delIdx) }
 		originIdx := i
@@ -509,6 +525,7 @@ func (dv *DrumView) calcLayout() {
 		soloIdx := i
 		solo.OnClick = func() { dv.toggleSolo(soloIdx) }
 		dv.rowLabels = append(dv.rowLabels, lbl)
+		dv.rowEditBtns = append(dv.rowEditBtns, edit)
 		dv.rowVolSliders = append(dv.rowVolSliders, slider)
 		dv.rowMuteBtns = append(dv.rowMuteBtns, mute)
 		dv.rowSoloBtns = append(dv.rowSoloBtns, solo)
@@ -739,6 +756,24 @@ func (dv *DrumView) Update() {
 		return
 	}
 
+	if dv.renameBox != nil {
+		dv.renameBox.Update()
+		if isKeyPressed(ebiten.KeyEnter) {
+			name := strings.TrimSpace(dv.renameBox.Value())
+			if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
+				dv.Rows[dv.renameRow].Name = name
+				dv.rowLabels[dv.renameRow].Text = name
+			}
+			dv.renameBox = nil
+			dv.renameRow = -1
+		}
+		if isKeyPressed(ebiten.KeyEscape) {
+			dv.renameBox = nil
+			dv.renameRow = -1
+		}
+		return
+	}
+
 	dv.recalcButtons()
 	if dv.bgDirty {
 		dv.calcLayout()
@@ -872,6 +907,11 @@ func (dv *DrumView) Update() {
 			}
 		}
 		for _, btn := range dv.rowSoloBtns {
+			if btn.Handle(mx, my, left) {
+				handled = true
+			}
+		}
+		for _, btn := range dv.rowEditBtns {
 			if btn.Handle(mx, my, left) {
 				handled = true
 			}
@@ -1103,6 +1143,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 		}
 		y := dv.Bounds.Min.Y + timelineHeight + (i-dv.rowOffset)*dv.rowHeight()
 		dv.rowLabels[i].Draw(dst)
+		dv.rowEditBtns[i].Draw(dst)
 		dv.rowVolSliders[i].Draw(dst)
 		dv.rowMuteBtns[i].pressed = dv.Rows[i].Muted
 		dv.rowSoloBtns[i].pressed = dv.Rows[i].Solo
@@ -1130,6 +1171,10 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 
 			DrumCellUI.Draw(dst, rect, step, highlighted, r.Color)
 		}
+	}
+
+	if dv.renameBox != nil {
+		dv.renameBox.Draw(dst)
 	}
 
 	// trailing "+" row

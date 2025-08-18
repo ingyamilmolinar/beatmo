@@ -150,3 +150,4 @@ This debugging session highlighted several critical points:
 * Pulse advancement now panics if a signal revisits its origin out of sequence, helping catch loop-order bugs in tests.
 * Deleting a drum row now purges its active pulses and shifts remaining rows so orphaned signals can't panic.
 * Reset origin-sequence bookkeeping on seek or playback restarts to avoid false "pulse jumped to origin" panics; regression tests cover this.
+* Row labels now include a small edit button to rename instruments; the rename dialog uses a blinking block cursor and key-repeat timing consistent with button holds.

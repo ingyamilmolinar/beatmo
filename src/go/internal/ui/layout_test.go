@@ -66,9 +66,9 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			prev = r
 		}
 
-                bottomButtons := []*Button{dv.uploadBtn}
-                prev = image.Rectangle{}
-                for i, btn := range bottomButtons {
+		bottomButtons := []*Button{dv.uploadBtn}
+		prev = image.Rectangle{}
+		for i, btn := range bottomButtons {
 			r := btn.Rect()
 			if r.Empty() {
 				t.Fatalf("w=%d: bottom button %d empty", w, i)
@@ -89,6 +89,22 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			}
 			prev = r
 		}
+	}
+}
+
+func TestDrumRowEditButtonLayout(t *testing.T) {
+	logger := log.New(os.Stdout, log.LevelInfo)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	dv.recalcButtons()
+	dv.calcLayout()
+	lbl := dv.rowLabels[0].Rect()
+	edit := dv.rowEditBtns[0].Rect()
+	slider := dv.rowVolSliders[0].Rect()
+	if lbl.Max.X > edit.Min.X {
+		t.Fatalf("edit button overlaps label")
+	}
+	if edit.Max.X > slider.Min.X {
+		t.Fatalf("edit button overlaps slider")
 	}
 }
 

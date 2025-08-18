@@ -114,8 +114,19 @@ func (t *TextInput) keyRepeat(k ebiten.Key) bool {
 	if isKeyPressed(k) {
 		t.repeat[k]++
 		d := t.repeat[k]
-		if d == 1 || d > 15 && (d-15)%3 == 0 {
+		if d == 1 {
 			return true
+		}
+		if d > 60 {
+			step := d - 60
+			accel := step / 30
+			if accel > 5 {
+				accel = 5
+			}
+			interval := 6 - accel
+			if step%interval == 0 {
+				return true
+			}
 		}
 	} else {
 		t.repeat[k] = 0
@@ -171,21 +182,24 @@ func (t *TextInput) Draw(dst *ebiten.Image) {
 				col = colorWhite
 			}
 		}
-		drawLine(dst, cx, cy, cx, cy+debugCharH-2, col)
+		r := image.Rect(cx, cy, cx+debugCharW, cy+debugCharH)
+		drawCursor(dst, r, col)
 	}
 }
 
-var drawLine = func(dst *ebiten.Image, x1, y1, x2, y2 int, col color.Color) {
-	rect := image.Rect(min(x1, x2), min(y1, y2), max(x1, x2)+1, max(y1, y2)+1)
-	drawRect(dst, rect, col, true)
+var drawCursor = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	drawRect(dst, r, col, true)
 }
 
+// min and max remain for compatibility with other widgets that may override
+// drawCursor; keep them exported locally to avoid import cycles.
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
+
 func max(a, b int) int {
 	if a > b {
 		return a
