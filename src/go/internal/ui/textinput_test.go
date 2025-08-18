@@ -227,6 +227,28 @@ func TestTextInputVisibleTextStart(t *testing.T) {
 	}
 }
 
+func TestTextInputMidCursorWindow(t *testing.T) {
+	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
+	ti.SetText("abcdefghij")
+	ti.cursor = 5
+	_, start := ti.visibleText()
+	if start != 2 {
+		t.Fatalf("start=%d", start)
+	}
+	var cur image.Rectangle
+	old := drawCursor
+	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
+		cur = r
+	}
+	defer func() { drawCursor = old }()
+	ti.focused = true
+	ti.Draw(ebiten.NewImage(40, 20))
+	wantX := ti.Rect.Min.X + 4 + debugCharW*(ti.cursor-start)
+	if cur.Min.X != wantX {
+		t.Fatalf("cursor x=%d want %d", cur.Min.X, wantX)
+	}
+}
+
 func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 100, 24), BPMBoxStyle)
 	ti.focused = true

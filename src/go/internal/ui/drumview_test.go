@@ -869,6 +869,34 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 	}
 }
 
+func TestSelectingInstrumentDoesNotAddRow(t *testing.T) {
+	graph := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)
+	dv.calcLayout()
+	startRows := len(dv.Rows)
+
+	dv.rowLabels[0].OnClick()
+	if !dv.instMenuOpen {
+		t.Fatalf("menu not opened")
+	}
+	if len(dv.instMenuBtns) == 0 {
+		t.Fatalf("no instrument buttons")
+	}
+	dv.instMenuBtns[0].OnClick()
+	if len(dv.Rows) != startRows {
+		t.Fatalf("rows=%d want %d", len(dv.Rows), startRows)
+	}
+
+	dv.rowLabels[0].OnClick()
+	if !dv.instMenuOpen {
+		t.Fatalf("menu not reopened")
+	}
+	dv.instMenuBtns[len(dv.instMenuBtns)-1].OnClick()
+	if len(dv.Rows) != startRows {
+		t.Fatalf("rows grew after change: %d", len(dv.Rows))
+	}
+}
+
 func TestInstrumentDropdownFitsBounds(t *testing.T) {
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)

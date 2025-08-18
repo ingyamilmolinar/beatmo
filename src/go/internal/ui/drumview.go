@@ -935,8 +935,19 @@ func (dv *DrumView) Update() {
 				handled = true
 			}
 		}
+		for _, lbl := range dv.rowLabels {
+			if lbl.Handle(mx, my, left) {
+				handled = true
+			}
+		}
+		if handled && left {
+			return
+		}
 		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
 		for _, btn := range buttons {
+			if handled {
+				break
+			}
 			if btn.Handle(mx, my, left) {
 				handled = true
 			}
@@ -950,11 +961,6 @@ func (dv *DrumView) Update() {
 				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
 			}
 			if left {
-				handled = true
-			}
-		}
-		for _, lbl := range dv.rowLabels {
-			if lbl.Handle(mx, my, left) {
 				handled = true
 			}
 		}

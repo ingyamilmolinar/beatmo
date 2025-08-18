@@ -160,7 +160,10 @@ func (t *TextInput) visibleText() (string, int) {
 		case t.cursor >= total-maxRunes:
 			start = total - maxRunes
 		default:
-			start = t.cursor - maxRunes
+			start = t.cursor - maxRunes + 1
+			if start < 0 {
+				start = 0
+			}
 		}
 	}
 	bi := byteIndex(t.Text, start)
