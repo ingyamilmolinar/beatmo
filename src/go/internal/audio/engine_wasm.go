@@ -26,6 +26,20 @@ func Play(id string, when ...float64) {
 	js.Global().Call("playSound", id)
 }
 
+// PlayVol plays an instrument at the given volume. The current
+// WebAudio bridge does not support volume, so the parameter is
+// ignored for now.
+func PlayVol(id string, vol float64, when ...float64) {
+	js.Global().Call("playSound", id)
+}
+
+// ResetInstruments restores the default instrument ID list.
+func ResetInstruments() {
+	instrumentsMu.Lock()
+	instruments = []string{"snare", "kick", "hihat", "tom", "clap"}
+	instrumentsMu.Unlock()
+}
+
 func Now() float64 { return 0 }
 
 func Reset() {}

@@ -3,7 +3,6 @@
 package audio
 
 import (
-	"sort"
 	"sync"
 	"time"
 
@@ -23,6 +22,7 @@ var (
 	bpm   = 120
 
 	instruments = map[string]Instrument{}
+	instOrder   []string
 	instMu      sync.RWMutex
 )
 
@@ -40,16 +40,15 @@ type Instrument interface {
 // Register makes an instrument available for playback by ID.
 func Register(id string, inst Instrument) {
 	instMu.Lock()
+	if _, exists := instruments[id]; !exists {
+		instOrder = append(instOrder, id)
+	}
 	instruments[id] = inst
 	instMu.Unlock()
 }
 
 func init() {
-	Register("snare", Snare{})
-	Register("kick", Kick{})
-	Register("hihat", HiHat{})
-	Register("tom", Tom{})
-	Register("clap", Clap{})
+	ResetInstruments()
 }
 
 func initContext() {
@@ -108,6 +107,20 @@ func PlayVol(id string, vol float64, when ...float64) {
 	mix.Schedule(&scaledVoice{v: inst.NewVoice(bpm, sampleRate), gain: vol}, delay)
 }
 
+// ResetInstruments restores the built-in instrument set.
+func ResetInstruments() {
+	instMu.Lock()
+	instruments = map[string]Instrument{
+		"snare": Snare{},
+		"kick":  Kick{},
+		"hihat": HiHat{},
+		"tom":   Tom{},
+		"clap":  Clap{},
+	}
+	instOrder = []string{"snare", "kick", "hihat", "tom", "clap"}
+	instMu.Unlock()
+}
+
 type scaledVoice struct {
 	v    Voice
 	gain float64
@@ -142,12 +155,8 @@ func SetBPM(b int) { bpm = b }
 // Instruments returns the list of registered instrument IDs.
 func Instruments() []string {
 	instMu.RLock()
-	ids := make([]string, 0, len(instruments))
-	for id := range instruments {
-		ids = append(ids, id)
-	}
+	ids := append([]string(nil), instOrder...)
 	instMu.RUnlock()
-	sort.Strings(ids)
 	return ids
 }
 
