@@ -1,5 +1,6 @@
 # Project Guidelines
 - **Before running any commands, execute `sudo make dependencies`** to install all required system and Node packages. This may take several minutes but prevents environment-related failures.
+- **Before opening any PR, run `make wasm` and `make test-real`** (even if they are no-ops on systems without native dependencies) unless explicitly instructed to skip them.
 - Use Go 1.23.x as specified in `go.mod`.
 - **Run the unit tests before opening a PR.** Use the stubbed Ebiten API via
   `go test -tags test -modfile=go.test.mod -timeout 1s ./...` for maximum portability.
