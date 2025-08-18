@@ -539,6 +539,63 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	}
 }
 
+func TestRenameOpensWithCursor(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
+
+	cs := &countStyle{}
+	dv.rowLabels[0].Style = cs
+
+	calls := 0
+	origCursor := drawCursor
+	drawCursor = func(dst *ebiten.Image, r image.Rectangle, col color.Color) { calls++ }
+	defer func() { drawCursor = origCursor }()
+
+	dv.rowEditBtns[0].OnClick()
+	restore := SetInputForTest(func() (int, int) { return 0, 0 }, func(ebiten.MouseButton) bool { return false }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
+	dv.Update()
+	restore()
+
+	dv.Draw(ebiten.NewImage(200, 200), map[int]int64{}, 0, nil, 0)
+
+	if calls == 0 {
+		t.Fatalf("cursor not drawn")
+	}
+	if cs.n != 0 {
+		t.Fatalf("row label drawn while renaming")
+	}
+}
+
+type countStyle struct{ n int }
+
+func (c *countStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) { c.n++ }
+
+func TestDeleteButtonDisabledWhenSingleRow(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), nil, logger)
+
+	if dv.rowDeleteBtns[0].OnClick != nil {
+		t.Fatalf("delete button should be disabled with single row")
+	}
+	dv.DeleteRow(0)
+	if len(dv.Rows) != 1 {
+		t.Fatalf("single row should not be deletable")
+	}
+
+	dv.AddRow()
+	if dv.rowDeleteBtns[0].OnClick == nil || dv.rowDeleteBtns[1].OnClick == nil {
+		t.Fatalf("delete buttons not enabled after adding row")
+	}
+	dv.DeleteRow(1)
+	if len(dv.Rows) != 1 {
+		t.Fatalf("row not deleted")
+	}
+	if dv.rowDeleteBtns[0].OnClick != nil {
+		t.Fatalf("delete button should be disabled after deleting to one row")
+	}
+}
+
 func TestDrumViewChangeInstrumentPerRow(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	graph := model.NewGraph(logger)

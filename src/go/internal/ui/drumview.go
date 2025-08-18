@@ -99,11 +99,12 @@ type DrumView struct {
 	instMenuRow  int
 	instMenuBtns []*Button
 
-	deleted   []deletedRow
-	added     []int
-	originReq []int
-	renameRow int
-	renameBox *TextInput
+	deleted    []deletedRow
+	added      []int
+	originReq  []int
+	renameRow  int
+	renameBox  *TextInput
+	renameHold bool
 
 	bgDirty bool
 	bgCache []*ebiten.Image
@@ -343,7 +344,7 @@ func (dv *DrumView) AddRow() {
 
 // DeleteRow removes the drum row at the given index.
 func (dv *DrumView) DeleteRow(i int) {
-	if i < 0 || i >= len(dv.Rows) {
+	if i < 0 || i >= len(dv.Rows) || len(dv.Rows) <= 1 {
 		return
 	}
 	origin := dv.Rows[i].Origin
@@ -504,6 +505,8 @@ func (dv *DrumView) calcLayout() {
 			dv.renameBox = NewTextInput(r, BPMBoxStyle)
 			dv.renameBox.SetText(dv.Rows[editIdx].Name)
 			dv.renameBox.focused = true
+			dv.renameBox.anim = 1
+			dv.renameHold = true
 			dv.instMenuOpen = false
 		}
 		slider := NewSlider(dv.Rows[i].Volume)
@@ -517,7 +520,11 @@ func (dv *DrumView) calcLayout() {
 		del := NewButton("X", InstButtonStyle, nil)
 		del.SetRect(insetRect(g.Cell(6, 0), buttonPad))
 		delIdx := i
-		del.OnClick = func() { dv.DeleteRow(delIdx) }
+		if len(dv.Rows) > 1 {
+			del.OnClick = func() { dv.DeleteRow(delIdx) }
+		} else {
+			del.Style = DisabledButtonStyle
+		}
 		originIdx := i
 		origin.OnClick = func() { dv.originReq = append(dv.originReq, originIdx) }
 		muteIdx := i
@@ -757,8 +764,14 @@ func (dv *DrumView) Update() {
 	}
 
 	if dv.renameBox != nil {
-		dv.renameBox.Update()
-		if isKeyPressed(ebiten.KeyEnter) {
+		if dv.renameHold {
+			if !isMouseButtonPressed(ebiten.MouseButtonLeft) {
+				dv.renameHold = false
+			}
+		} else {
+			dv.renameBox.Update()
+		}
+		if !dv.renameHold && isKeyPressed(ebiten.KeyEnter) {
 			name := strings.TrimSpace(dv.renameBox.Value())
 			if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
 				dv.Rows[dv.renameRow].Name = name
@@ -767,7 +780,7 @@ func (dv *DrumView) Update() {
 			dv.renameBox = nil
 			dv.renameRow = -1
 		}
-		if isKeyPressed(ebiten.KeyEscape) {
+		if !dv.renameHold && isKeyPressed(ebiten.KeyEscape) {
 			dv.renameBox = nil
 			dv.renameRow = -1
 		}
@@ -1142,7 +1155,9 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 			continue
 		}
 		y := dv.Bounds.Min.Y + timelineHeight + (i-dv.rowOffset)*dv.rowHeight()
-		dv.rowLabels[i].Draw(dst)
+		if dv.renameBox == nil || dv.renameRow != i {
+			dv.rowLabels[i].Draw(dst)
+		}
 		dv.rowEditBtns[i].Draw(dst)
 		dv.rowVolSliders[i].Draw(dst)
 		dv.rowMuteBtns[i].pressed = dv.Rows[i].Muted

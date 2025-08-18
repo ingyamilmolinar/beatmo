@@ -30,16 +30,17 @@ var (
 	SignalUI = SignalStyle{Radius: 6, Color: color.RGBA{0, 160, 200, 255}}
 	EdgeUI   = EdgeStyle{Color: color.RGBA{220, 220, 220, 120}, Thickness: 2, ArrowSize: 8}
 
-	PlayButtonStyle = ButtonStyle{Fill: colPlayButton, Border: colButtonBorder}
-	StopButtonStyle = ButtonStyle{Fill: colStopButton, Border: colButtonBorder}
-	BPMBoxStyle     = TextInputStyle{Fill: colBPMBox, Border: colButtonBorder, Cursor: color.White}
-	BPMDecStyle     = ButtonStyle{Fill: colLenDec, Border: colButtonBorder}
-	BPMIncStyle     = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
-	LenDecStyle     = ButtonStyle{Fill: colLenDec, Border: colButtonBorder}
-	LenIncStyle     = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
-	InstButtonStyle = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
-	UploadBtnStyle  = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
-	DropdownStyle   = ButtonStyle{Fill: colDropdown, Border: colDropdownEdge}
+	PlayButtonStyle     = ButtonStyle{Fill: colPlayButton, Border: colButtonBorder}
+	StopButtonStyle     = ButtonStyle{Fill: colStopButton, Border: colButtonBorder}
+	BPMBoxStyle         = TextInputStyle{Fill: colBPMBox, Border: colButtonBorder, Cursor: color.White}
+	BPMDecStyle         = ButtonStyle{Fill: colLenDec, Border: colButtonBorder}
+	BPMIncStyle         = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
+	LenDecStyle         = ButtonStyle{Fill: colLenDec, Border: colButtonBorder}
+	LenIncStyle         = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
+	InstButtonStyle     = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
+	UploadBtnStyle      = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
+	DropdownStyle       = ButtonStyle{Fill: colDropdown, Border: colDropdownEdge}
+	DisabledButtonStyle = ButtonStyle{Fill: color.RGBA{70, 70, 70, 255}, Border: colButtonBorder}
 
 	DrumCellUI = DrumCellStyle{
 		On:        colStep,

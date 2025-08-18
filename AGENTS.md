@@ -144,6 +144,8 @@ This debugging session highlighted several critical points:
 * Row labels are clickable to cycle instruments, and a fixed 24px row height with internal padding keeps per-row buttons aligned without overlapping the transport panel.
 * Control panel uses a grid-based component system (`uigrid.go`) with declarative buttons and centered text to prevent overlapping layouts.
 * Each drum row exposes a volume slider with percentage readout; `Game` passes the row’s volume to audio playback.
+* Editing a row name shows a blinking cursor immediately and hides the underlying label to avoid visual artifacts.
+* The last remaining drum row cannot be deleted; its delete button is disabled.
 * Volume sliders now capture mouse drags, so releasing over other controls no longer triggers unintended actions; regression tests cover this.
 * Fixed loop traversal so pulses transition from the last node back to the loop start without jumping to the origin.
 * Nodes and drum cells are color-coded per instrument; origin nodes use a brighter shade.
