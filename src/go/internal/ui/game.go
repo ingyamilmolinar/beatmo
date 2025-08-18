@@ -462,15 +462,16 @@ func (g *Game) updateBeatInfos() {
 		if len(path) == 0 {
 			continue
 		}
-		p.path = path
-		lastIdx := g.wrapBeatIndexRow(p.row, g.nextBeatIdxs[p.row]-1)
-		nextIdx := g.wrapBeatIndexRow(p.row, g.nextBeatIdxs[p.row])
-		p.lastIdx = lastIdx
-		p.fromBeatInfo = path[lastIdx]
-		p.toBeatInfo = path[nextIdx]
-		p.pathIdx = nextIdx
-		p.from = g.nodeByID(p.fromBeatInfo.NodeID)
-		p.to = g.nodeByID(p.toBeatInfo.NodeID)
+                p.path = path
+                absLast := g.nextBeatIdxs[p.row] - 1
+                wrappedLast := g.wrapBeatIndexRow(p.row, absLast)
+                wrappedNext := g.wrapBeatIndexRow(p.row, g.nextBeatIdxs[p.row])
+                p.lastIdx = absLast
+                p.fromBeatInfo = path[wrappedLast]
+                p.toBeatInfo = path[wrappedNext]
+                p.pathIdx = wrappedNext
+                p.from = g.nodeByID(p.fromBeatInfo.NodeID)
+                p.to = g.nodeByID(p.toBeatInfo.NodeID)
 		if p.from != nil {
 			p.x1, p.y1 = p.from.X, p.from.Y
 		}
@@ -821,37 +822,37 @@ func (g *Game) spawnPulseFromRow(row, start int) {
 		g.logger.Infof("[GAME] Spawn pulse: No beat information available for row %d", row)
 		return
 	}
-	curIdx := g.wrapBeatIndexRow(row, start)
-	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
-	fromBeatInfo := path[curIdx]
-	g.nextBeatIdxs[row] = start
-	g.highlightBeat(row, g.nextBeatIdxs[row], fromBeatInfo, beatDuration)
-	g.nextBeatIdxs[row]++
-	if row == 0 {
-		g.elapsedBeats = g.nextBeatIdxs[row]
-	}
-	nextInfo := g.beatInfoAtRow(row, start+1)
-	if nextInfo.NodeID != model.InvalidNodeID {
-		nextIdx := g.wrapBeatIndexRow(row, start+1)
-		p := &pulse{
-			x1:           float64(fromBeatInfo.I * GridStep),
-			y1:           float64(fromBeatInfo.J * GridStep),
-			x2:           float64(nextInfo.I * GridStep),
-			y2:           float64(nextInfo.J * GridStep),
-			speed:        1.0 / float64(beatDuration),
-			fromBeatInfo: fromBeatInfo,
-			toBeatInfo:   nextInfo,
-			pathIdx:      nextIdx,
-			lastIdx:      curIdx,
-			from:         g.nodeByID(fromBeatInfo.NodeID),
-			to:           g.nodeByID(nextInfo.NodeID),
-			path:         path,
-			row:          row,
-		}
-		g.activePulses = append(g.activePulses, p)
-		if row == 0 {
-			g.activePulse = p
-		}
+        curIdxWrapped := g.wrapBeatIndexRow(row, start)
+        beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
+        fromBeatInfo := path[curIdxWrapped]
+        g.nextBeatIdxs[row] = start
+        g.highlightBeat(row, g.nextBeatIdxs[row], fromBeatInfo, beatDuration)
+        g.nextBeatIdxs[row]++
+        if row == 0 {
+                g.elapsedBeats = g.nextBeatIdxs[row]
+        }
+        nextInfo := g.beatInfoAtRow(row, start+1)
+        if nextInfo.NodeID != model.InvalidNodeID {
+                nextIdxWrapped := g.wrapBeatIndexRow(row, start+1)
+                p := &pulse{
+                        x1:           float64(fromBeatInfo.I * GridStep),
+                        y1:           float64(fromBeatInfo.J * GridStep),
+                        x2:           float64(nextInfo.I * GridStep),
+                        y2:           float64(nextInfo.J * GridStep),
+                        speed:        1.0 / float64(beatDuration),
+                        fromBeatInfo: fromBeatInfo,
+                        toBeatInfo:   nextInfo,
+                        pathIdx:      nextIdxWrapped,
+                        lastIdx:      start,
+                        from:         g.nodeByID(fromBeatInfo.NodeID),
+                        to:           g.nodeByID(nextInfo.NodeID),
+                        path:         path,
+                        row:          row,
+                }
+                g.activePulses = append(g.activePulses, p)
+                if row == 0 {
+                        g.activePulse = p
+                }
 	} else if row == 0 {
 		g.activePulse = nil
 	}
@@ -1226,10 +1227,9 @@ func (g *Game) onTick(step int) {
 }
 
 func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) {
-	wrapped := g.wrapBeatIndexRow(row, idx)
-	key := makeBeatKey(row, wrapped)
-	g.highlightedBeats[key] = g.frame + duration
-	if info.NodeType == model.NodeTypeRegular {
+        key := makeBeatKey(row, idx)
+        g.highlightedBeats[key] = g.frame + duration
+        if info.NodeType == model.NodeTypeRegular {
 		inst := "snare"
 		vol := 1.0
 		if row < len(g.drum.Rows) {

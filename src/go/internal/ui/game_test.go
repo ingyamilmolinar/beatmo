@@ -1753,7 +1753,6 @@ func TestSignalTraversalInLoop(t *testing.T) {
 }
 
 func TestLoopExpansionAndHighlighting(t *testing.T) {
-	t.Skip("highlight indexing wraps, pending rework")
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	g := New(logger)
 	g.Layout(640, 480)
@@ -1799,23 +1798,26 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 
 	// now simulate pulse highlighting across two laps
 	g.spawnPulseFrom(0)
-	// sequence of highlighted beat indices expected for first 12 advancements
-	expected := []int{0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5}
+        // sequence of highlighted beat indices expected for first 12 advancements
+        expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 	got := make([]int, len(expected))
 	got[0] = 0
-	for i := 1; i < len(expected); i++ {
-		delete(g.highlightedBeats, makeBeatKey(0, g.activePulse.lastIdx))
-		if !g.advancePulse(g.activePulse) {
-			t.Fatalf("pulse ended early at step %d", i)
-		}
-		if _, ok := g.highlightedBeats[makeBeatKey(0, expected[i])]; !ok {
-			t.Fatalf("expected highlight %d, got %v", expected[i], g.highlightedBeats)
-		}
-		for key := range g.highlightedBeats {
-			_, idx := splitBeatKey(key)
-			got[i] = idx
-		}
-	}
+        for i := 1; i < len(expected); i++ {
+                delete(g.highlightedBeats, makeBeatKey(0, g.activePulse.lastIdx))
+                if !g.advancePulse(g.activePulse) {
+                        t.Fatalf("pulse ended early at step %d", i)
+                }
+                if _, ok := g.highlightedBeats[makeBeatKey(0, expected[i])]; !ok {
+                        t.Fatalf("expected highlight %d, got %v", expected[i], g.highlightedBeats)
+                }
+                for key := range g.highlightedBeats {
+                        _, idx := splitBeatKey(key)
+                        got[i] = idx
+                        if idx != g.elapsedBeats-1 {
+                                t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
+                        }
+                }
+        }
 	if !reflect.DeepEqual(expected, got) {
 		t.Fatalf("highlight sequence mismatch. expected %v got %v", expected, got)
 	}

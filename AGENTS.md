@@ -138,6 +138,7 @@ This debugging session highlighted several critical points:
 * `Game` creates a centered origin node for row 0 by default; tests can disable this via `SetDefaultStartForTest(false)`.
 * Signals now propagate concurrently from each row's origin and trigger per-row instrument playback.
 * Drum view now highlights beats for every row based on encoded row/index keys.
+* Beat highlight keys are stored with absolute beat indices so the drum view markers remain in sync with the timeline cursor.
 * The drum view reserves an extra row for a trailing "+" button so existing grids remain intact; adding a row no longer clears the grid and awaits the user's next grid click for origin placement.
 * Row labels are clickable to cycle instruments, and a fixed 24px row height with internal padding keeps per-row buttons aligned without overlapping the transport panel.
 * Control panel uses a grid-based component system (`uigrid.go`) with declarative buttons and centered text to prevent overlapping layouts.
