@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"io"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -737,6 +738,33 @@ func TestDrumViewRenameBoxBounds(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("rename box bounds %v not drawn", want)
+	}
+}
+
+func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
+	audio.ResetInstruments()
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	g := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, logger)
+	dv.renameRow = 0
+	dv.renameBox = NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
+	dv.renameBox.SetText("snare2")
+	dv.renameBox.focused = true
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyEnter },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	if dv.Rows[0].Instrument != "snare2" {
+		t.Fatalf("instrument=%s", dv.Rows[0].Instrument)
+	}
+	if !slices.Contains(audio.Instruments(), "snare2") {
+		t.Fatalf("dropdown missing renamed instrument")
 	}
 }
 

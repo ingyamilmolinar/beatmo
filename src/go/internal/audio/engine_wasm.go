@@ -54,3 +54,15 @@ func Instruments() []string {
 	instrumentsMu.RUnlock()
 	return ids
 }
+
+// RenameInstrument updates an instrument ID in the list.
+func RenameInstrument(oldID, newID string) {
+	instrumentsMu.Lock()
+	for i, id := range instruments {
+		if id == oldID {
+			instruments[i] = newID
+			break
+		}
+	}
+	instrumentsMu.Unlock()
+}

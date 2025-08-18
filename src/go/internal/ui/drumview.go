@@ -774,8 +774,14 @@ func (dv *DrumView) Update() {
 		if !dv.renameHold && isKeyPressed(ebiten.KeyEnter) {
 			name := strings.TrimSpace(dv.renameBox.Value())
 			if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
+				oldID := dv.Rows[dv.renameRow].Instrument
+				newID := strings.ToLower(name)
+				audio.RenameInstrument(oldID, newID)
+				dv.Rows[dv.renameRow].Instrument = newID
 				dv.Rows[dv.renameRow].Name = name
 				dv.rowLabels[dv.renameRow].Text = name
+				customColors[newID] = dv.Rows[dv.renameRow].Color
+				dv.refreshInstruments()
 			}
 			dv.renameBox = nil
 			dv.renameRow = -1

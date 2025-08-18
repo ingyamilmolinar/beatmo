@@ -154,12 +154,13 @@ func (t *TextInput) visibleText() (string, int) {
 	total := utf8.RuneCountInString(t.Text)
 	start := 0
 	if total > maxRunes {
-		if t.cursor < maxRunes {
+		switch {
+		case t.cursor <= maxRunes:
 			start = 0
-		} else if t.cursor > total-maxRunes {
+		case t.cursor >= total-maxRunes:
 			start = total - maxRunes
-		} else {
-			start = t.cursor - maxRunes + 1
+		default:
+			start = t.cursor - maxRunes
 		}
 	}
 	bi := byteIndex(t.Text, start)

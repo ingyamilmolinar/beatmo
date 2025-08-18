@@ -187,6 +187,24 @@ func TestTextInputClickMovesCursor(t *testing.T) {
 	}
 }
 
+func TestTextInputCursorPosition(t *testing.T) {
+	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
+	ti.SetText("abcdef")
+	ti.cursor = 4
+	var cur image.Rectangle
+	old := drawCursor
+	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
+		cur = r
+	}
+	defer func() { drawCursor = old }()
+	ti.focused = true
+	ti.Draw(ebiten.NewImage(40, 20))
+	wantX := ti.Rect.Min.X + 4 + debugCharW*4
+	if cur.Min.X != wantX {
+		t.Fatalf("cursor x=%d want %d", cur.Min.X, wantX)
+	}
+}
+
 func TestTextInputOverflow(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")

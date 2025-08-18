@@ -160,6 +160,22 @@ func Instruments() []string {
 	return ids
 }
 
+// RenameInstrument updates the ID of an existing instrument.
+func RenameInstrument(oldID, newID string) {
+	instMu.Lock()
+	if inst, ok := instruments[oldID]; ok {
+		delete(instruments, oldID)
+		instruments[newID] = inst
+		for i, id := range instOrder {
+			if id == oldID {
+				instOrder[i] = newID
+				break
+			}
+		}
+	}
+	instMu.Unlock()
+}
+
 // mixer mixes multiple voices into a single PCM stream.
 type mixer struct {
 	mu     sync.Mutex

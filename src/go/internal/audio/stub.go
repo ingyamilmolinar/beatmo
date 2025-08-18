@@ -37,3 +37,12 @@ func SetBPM(bpm int) { SetBPMFunc(bpm) }
 func Instruments() []string { return insts }
 
 func ResetInstruments() { insts = []string{"snare", "kick", "hihat", "tom", "clap"} }
+
+func RenameInstrument(oldID, newID string) {
+	for i, id := range insts {
+		if id == oldID {
+			insts[i] = newID
+			break
+		}
+	}
+}
