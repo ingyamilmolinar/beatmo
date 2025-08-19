@@ -18,6 +18,10 @@ func (s Sample) NewVoice(bpm, sampleRate int) Voice {
 
 // RegisterWAV decodes a .wav file and registers it as an instrument.
 func RegisterWAV(id, path string) error {
+	if path == "" {
+		Register(id, Sample{data: make([]float32, sampleRate/10)})
+		return nil
+	}
 	buf, sr, err := loadWav(path)
 	if err != nil {
 		return fmt.Errorf("load wav %s: %w", path, err)

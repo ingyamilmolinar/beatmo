@@ -3,7 +3,6 @@
 package audio
 
 import (
-	"sort"
 	"sync"
 	"time"
 
@@ -23,6 +22,7 @@ var (
 	bpm   = 120
 
 	instruments = map[string]Instrument{}
+	instOrder   []string
 	instMu      sync.RWMutex
 )
 
@@ -40,16 +40,15 @@ type Instrument interface {
 // Register makes an instrument available for playback by ID.
 func Register(id string, inst Instrument) {
 	instMu.Lock()
+	if _, exists := instruments[id]; !exists {
+		instOrder = append(instOrder, id)
+	}
 	instruments[id] = inst
 	instMu.Unlock()
 }
 
 func init() {
-	Register("snare", Snare{})
-	Register("kick", Kick{})
-	Register("hihat", HiHat{})
-	Register("tom", Tom{})
-	Register("clap", Clap{})
+	ResetInstruments()
 }
 
 func initContext() {
@@ -84,6 +83,54 @@ func Play(id string, when ...float64) {
 	mix.Schedule(inst.NewVoice(bpm, sampleRate), delay)
 }
 
+// PlayVol schedules an instrument by ID at the given volume (0..1) and
+// optional future time.
+func PlayVol(id string, vol float64, when ...float64) {
+	instMu.RLock()
+	inst, ok := instruments[id]
+	instMu.RUnlock()
+	if !ok {
+		return
+	}
+	once.Do(initContext)
+	if ctx == nil {
+		return
+	}
+	_ = ctx.Resume()
+	delay := 0
+	if len(when) > 0 {
+		d := when[0] - Now()
+		if d > 0 {
+			delay = int(d * sampleRate)
+		}
+	}
+	mix.Schedule(&scaledVoice{v: inst.NewVoice(bpm, sampleRate), gain: vol}, delay)
+}
+
+// ResetInstruments restores the built-in instrument set.
+func ResetInstruments() {
+	instMu.Lock()
+	instruments = map[string]Instrument{
+		"snare": Snare{},
+		"kick":  Kick{},
+		"hihat": HiHat{},
+		"tom":   Tom{},
+		"clap":  Clap{},
+	}
+	instOrder = []string{"snare", "kick", "hihat", "tom", "clap"}
+	instMu.Unlock()
+}
+
+type scaledVoice struct {
+	v    Voice
+	gain float64
+}
+
+func (s *scaledVoice) Sample() (float64, bool) {
+	f, done := s.v.Sample()
+	return f * s.gain, done
+}
+
 // Now returns seconds since program start.
 func Now() float64 { return time.Since(start).Seconds() }
 
@@ -108,13 +155,25 @@ func SetBPM(b int) { bpm = b }
 // Instruments returns the list of registered instrument IDs.
 func Instruments() []string {
 	instMu.RLock()
-	ids := make([]string, 0, len(instruments))
-	for id := range instruments {
-		ids = append(ids, id)
-	}
+	ids := append([]string(nil), instOrder...)
 	instMu.RUnlock()
-	sort.Strings(ids)
 	return ids
+}
+
+// RenameInstrument updates the ID of an existing instrument.
+func RenameInstrument(oldID, newID string) {
+	instMu.Lock()
+	if inst, ok := instruments[oldID]; ok {
+		delete(instruments, oldID)
+		instruments[newID] = inst
+		for i, id := range instOrder {
+			if id == oldID {
+				instOrder[i] = newID
+				break
+			}
+		}
+	}
+	instMu.Unlock()
 }
 
 // mixer mixes multiple voices into a single PCM stream.

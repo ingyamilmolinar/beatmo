@@ -124,8 +124,14 @@ type ButtonStyle struct {
 }
 
 // Draw renders the button rectangle using the global drawButton primitive.
-func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed bool) {
-	drawButton(dst, r, s.Fill, s.Border, pressed)
+func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
+	fill := s.Fill
+	border := s.Border
+	if hovered && !pressed {
+		fill = adjustColor(fill, 20)
+		border = adjustColor(border, 40)
+	}
+	drawButton(dst, r, fill, border, pressed)
 }
 
 // DrawAnimated draws the button with a shrink animation controlled by anim
@@ -143,11 +149,13 @@ func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed 
 type TextInputStyle struct {
 	Fill   color.Color
 	Border color.Color
+	Cursor color.Color
 }
 
-// Draw renders the text box using drawButton for consistency.
-func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, focused bool) {
-	drawButton(dst, r, s.Fill, s.Border, focused)
+// Draw renders the text box using drawButton for consistency. The pressed flag
+// represents focus; hovered is ignored.
+func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
+	drawButton(dst, r, s.Fill, s.Border, pressed)
 }
 
 // DrawAnimated draws the text box with a subtle focus animation.
@@ -155,9 +163,19 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 	if anim < 0 {
 		anim = 0
 	}
-	inset := int(anim * float64(r.Dx()) * 0.1)
+	minDim := r.Dx()
+	if r.Dy() < minDim {
+		minDim = r.Dy()
+	}
+	inset := int(anim * float64(minDim) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
-	drawButton(dst, animRect, s.Fill, s.Border, focused)
+	fill := s.Fill
+	border := s.Border
+	if focused {
+		fill = adjustColor(fill, 30)
+		border = adjustColor(border, 80)
+	}
+	drawButton(dst, animRect, fill, border, false)
 }
 
 // DrumCellStyle styles individual drum machine cells.
