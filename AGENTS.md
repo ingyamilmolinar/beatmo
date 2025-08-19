@@ -165,4 +165,5 @@ This debugging session highlighted several critical points:
 * Node and signal sizes now scale with zoom so 32nd-note nodes never overlap.
 * Sub-beat nodes now populate drum-row steps, enabling sequencing at 32nd-note resolution.
 * Grid line generation now pads the visible area by one beat so panning reveals a seamless infinite lattice.
-* Next steps: refine camera snapping and performance for very large panning ranges.
+* Camera offsets now snap to integer pixels and clamp to a safe range so panning across vast distances stays performant and lines remain crisp.
+* Next steps: profile grid rendering at extreme pan/zoom combinations for further optimizations.
