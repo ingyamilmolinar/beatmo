@@ -41,30 +41,30 @@ func assertNotPanics(t *testing.T, f func()) {
 }
 
 func TestDropdownBlocksEditorClick(t *testing.T) {
-        g := New(testLogger)
-        g.Layout(200, 200)
+	g := New(testLogger)
+	g.Layout(200, 200)
 
-        before := len(g.graph.Nodes)
-        g.drum.rowLabels[0].OnClick()
-        if !g.drum.instMenuOpen {
-                t.Fatalf("menu not open")
-        }
-        r := g.drum.instMenuBtns[0].Rect()
-        restore := SetInputForTest(
-                func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
-                func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-                func(ebiten.Key) bool { return false },
-                func() []rune { return nil },
-                func() (float64, float64) { return 0, 0 },
-                func() (int, int) { return 200, 200 },
-        )
-        g.Update()
-        restore()
+	before := len(g.graph.Nodes)
+	g.drum.rowLabels[0].OnClick()
+	if !g.drum.instMenuOpen {
+		t.Fatalf("menu not open")
+	}
+	r := g.drum.instMenuBtns[0].Rect()
+	restore := SetInputForTest(
+		func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	g.Update()
+	restore()
 
-        after := len(g.graph.Nodes)
-        if after != before {
-                t.Fatalf("editor handled click under menu: nodes %d -> %d", before, after)
-        }
+	after := len(g.graph.Nodes)
+	if after != before {
+		t.Fatalf("editor handled click under menu: nodes %d -> %d", before, after)
+	}
 }
 
 func TestHighlightsAllRows(t *testing.T) {
@@ -682,7 +682,7 @@ func TestClickAddsNode(t *testing.T) {
 	pressed = true
 	// click another position
 	restore2 := SetInputForTest(
-		func() (int, int) { return StepPixels(g.cam.Scale) + 10, topOffset + 10 },
+		func() (int, int) { return g.grid.StepPixels(g.cam.Scale) + 10, topOffset + 10 },
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -1015,7 +1015,7 @@ func TestNodeScreenAlignment(t *testing.T) {
 
 	n := g.tryAddNode(3, 2, model.NodeTypeRegular)
 	g.graph.StartNodeID = n.ID
-	step := StepPixels(g.cam.Scale)
+	step := g.grid.StepPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
 	sx := offX + float64(step*n.I)
@@ -1055,13 +1055,13 @@ func TestDragMaintainsAlignment(t *testing.T) {
 	pressed = false
 	g.Update() // release
 
-	step := StepPixels(g.cam.Scale)
+	step := g.grid.StepPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
 	nodeX := offX + float64(step*n.I)
 	nodeY := offY + float64(step*n.J)
 
-	xs, ys := GridLines(g.cam, g.winW, g.split.Y)
+	xs, ys := g.grid.Lines(g.cam, g.winW, g.split.Y)
 	foundX, foundY := false, false
 	for _, x := range xs {
 		if math.Abs(x-nodeX) < 1e-3 {
@@ -1209,12 +1209,12 @@ func TestHighlightMatchesNode(t *testing.T) {
 	g.cam.OffsetX = 12
 	g.cam.OffsetY = 8
 
-	step := StepPixels(g.cam.Scale)
-	camScale := float64(step) / float64(GridStep)
+	step := g.grid.StepPixels(g.cam.Scale)
+	camScale := float64(step) / g.grid.Step
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	worldX := float64(n.I * GridStep)
-	worldY := float64(n.J * GridStep)
+	worldX := float64(n.I) * g.grid.Step
+	worldY := float64(n.J) * g.grid.Step
 	screenX := worldX*camScale + offX
 	screenY := worldY*camScale + offY + float64(topOffset)
 	half := float64(NodeSpriteSize) * camScale / 2
@@ -1825,26 +1825,26 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 
 	// now simulate pulse highlighting across two laps
 	g.spawnPulseFrom(0)
-        // sequence of highlighted beat indices expected for first 12 advancements
-        expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+	// sequence of highlighted beat indices expected for first 12 advancements
+	expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 	got := make([]int, len(expected))
 	got[0] = 0
-        for i := 1; i < len(expected); i++ {
-                delete(g.highlightedBeats, makeBeatKey(0, g.activePulse.lastIdx))
-                if !g.advancePulse(g.activePulse) {
-                        t.Fatalf("pulse ended early at step %d", i)
-                }
-                if _, ok := g.highlightedBeats[makeBeatKey(0, expected[i])]; !ok {
-                        t.Fatalf("expected highlight %d, got %v", expected[i], g.highlightedBeats)
-                }
-                for key := range g.highlightedBeats {
-                        _, idx := splitBeatKey(key)
-                        got[i] = idx
-                        if idx != g.elapsedBeats-1 {
-                                t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
-                        }
-                }
-        }
+	for i := 1; i < len(expected); i++ {
+		delete(g.highlightedBeats, makeBeatKey(0, g.activePulse.lastIdx))
+		if !g.advancePulse(g.activePulse) {
+			t.Fatalf("pulse ended early at step %d", i)
+		}
+		if _, ok := g.highlightedBeats[makeBeatKey(0, expected[i])]; !ok {
+			t.Fatalf("expected highlight %d, got %v", expected[i], g.highlightedBeats)
+		}
+		for key := range g.highlightedBeats {
+			_, idx := splitBeatKey(key)
+			got[i] = idx
+			if idx != g.elapsedBeats-1 {
+				t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
+			}
+		}
+	}
 	if !reflect.DeepEqual(expected, got) {
 		t.Fatalf("highlight sequence mismatch. expected %v got %v", expected, got)
 	}

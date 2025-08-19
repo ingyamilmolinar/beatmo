@@ -73,7 +73,7 @@ func rawBeatLen(path []model.BeatInfo, isLoop bool, loopStart int) int {
 type uiNode struct {
 	ID       model.NodeID
 	I, J     int     // grid indices
-	X, Y     float64 // cached world coords (GridStep*I, GridStep*J)
+	X, Y     float64 // cached world coords (grid.Step*I, grid.Step*J)
 	Selected bool
 	Start    bool
 	path     []model.NodeID // Path taken by the pulse to reach this node
@@ -115,6 +115,7 @@ type Game struct {
 	graph  *model.Graph
 	engine *engine.Engine
 	logger *game_log.Logger
+	grid   *Grid
 
 	/* graph data */
 	nodes           []*uiNode
@@ -166,9 +167,9 @@ type Game struct {
 
 // Rectangle in *screen* pixels (y already includes the transport offset).
 func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
-	stepPx := StepPixels(g.cam.Scale)               // grid step in screen px
-	camScale := float64(stepPx) / float64(GridStep) // world→screen factor
-	offX := math.Round(g.cam.OffsetX)               // camera panning
+	stepPx := g.grid.StepPixels(g.cam.Scale)  // grid step in screen px
+	camScale := float64(stepPx) / g.grid.Step // world→screen factor
+	offX := math.Round(g.cam.OffsetX)         // camera panning
 	offY := math.Round(g.cam.OffsetY)
 
 	sx := offX + float64(stepPx*n.I)             // sprite centre X
@@ -218,6 +219,7 @@ func New(logger *game_log.Logger) *Game {
 		nodeRows:           make(map[model.NodeID]int),
 		activePulses:       []*pulse{},
 		pendingStartRow:    -1,
+		grid:               NewGrid(DefaultGridStep),
 	}
 
 	// bottom drum-machine view
@@ -238,8 +240,8 @@ func (g *Game) Layout(w, h int) (int, int) {
 	g.split.Y = int(float64(h) * g.split.ratio)
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 	if enableDefaultStart && len(g.nodes) == 0 {
-		ci := w / (2 * GridStep)
-		cj := (g.split.Y - topOffset) / (2 * GridStep)
+		ci := int(float64(w) / (2 * g.grid.Step))
+		cj := int(float64(g.split.Y-topOffset) / (2 * g.grid.Step))
 		g.pendingStartRow = 0
 		g.tryAddNode(ci, cj, model.NodeTypeRegular)
 	}
@@ -307,7 +309,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		return n
 	}
 	id := g.graph.AddNode(i, j, nodeType)
-	n := &uiNode{ID: id, I: i, J: j, X: float64(i * GridStep), Y: float64(j * GridStep)}
+	n := &uiNode{ID: id, I: i, J: j, X: float64(i) * g.grid.Step, Y: float64(j) * g.grid.Step}
 
 	if nodeType == model.NodeTypeRegular {
 		if g.pendingStartRow >= 0 {
@@ -723,7 +725,7 @@ func (g *Game) handleEditor() {
 	}
 	wx := (float64(x) - g.cam.OffsetX) / g.cam.Scale
 	wy := (float64(y-topOffset) - g.cam.OffsetY) / g.cam.Scale
-	gx, gy, i, j := Snap(wx, wy)
+	gx, gy, i, j := g.grid.Snap(wx, wy)
 
 	// ---------------- delete node (right-click) ----------------
 	if right && !shift && !left {
@@ -843,10 +845,10 @@ func (g *Game) spawnPulseFromRow(row, start int) {
 	if nextInfo.NodeID != model.InvalidNodeID {
 		nextIdxWrapped := g.wrapBeatIndexRow(row, start+1)
 		p := &pulse{
-			x1:           float64(fromBeatInfo.I * GridStep),
-			y1:           float64(fromBeatInfo.J * GridStep),
-			x2:           float64(nextInfo.I * GridStep),
-			y2:           float64(nextInfo.J * GridStep),
+			x1:           float64(fromBeatInfo.I) * g.grid.Step,
+			y1:           float64(fromBeatInfo.J) * g.grid.Step,
+			x2:           float64(nextInfo.I) * g.grid.Step,
+			y2:           float64(nextInfo.J) * g.grid.Step,
 			speed:        1.0 / float64(beatDuration),
 			fromBeatInfo: fromBeatInfo,
 			toBeatInfo:   nextInfo,
@@ -1087,28 +1089,28 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	top.Fill(colBGTop)
 
 	// camera matrix for world drawings (shift down by bar height)
-	stepPx := StepPixels(g.cam.Scale)
+	stepPx := g.grid.StepPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	camScale := float64(stepPx) / float64(GridStep)
+	camScale := float64(stepPx) / g.grid.Step
 	var cam ebiten.GeoM
 	cam.Scale(camScale, camScale)
 	cam.Translate(offX, offY+float64(topOffset))
 
 	// grid lattice computed in world coordinates then transformed
 	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.winW, g.split.Y)
-	startI := int(math.Floor(minX / GridStep))
-	endI := int(math.Ceil(maxX / GridStep))
-	startJ := int(math.Floor(minY / GridStep))
-	endJ := int(math.Ceil(maxY / GridStep))
+	startI := int(math.Floor(minX / g.grid.Step))
+	endI := int(math.Ceil(maxX / g.grid.Step))
+	startJ := int(math.Floor(minY / g.grid.Step))
+	endJ := int(math.Ceil(maxY / g.grid.Step))
 
 	var id ebiten.GeoM
 	for i := startI; i <= endI; i++ {
-		x := float64(i * GridStep)
+		x := float64(i) * g.grid.Step
 		DrawLineCam(screen, x, minY, x, maxY, &cam, colGridLine, 1)
 	}
 	for j := startJ; j <= endJ; j++ {
-		y := float64(j * GridStep)
+		y := float64(j) * g.grid.Step
 		DrawLineCam(screen, minX, y, maxX, y, &cam, colGridLine, 1)
 	}
 

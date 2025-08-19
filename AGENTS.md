@@ -154,3 +154,9 @@ This debugging session highlighted several critical points:
 * Deleting a drum row now purges its active pulses and shifts remaining rows so orphaned signals can't panic.
 * Reset origin-sequence bookkeeping on seek or playback restarts to avoid false "pulse jumped to origin" panics; regression tests cover this.
 * Row labels now include a small edit button to rename instruments; the rename dialog uses a blinking block cursor and key-repeat timing consistent with button holds.
+
+## Grid resolution refactor (WIP)
+
+* Introduced a `Grid` struct with configurable step size to replace the fixed `GridStep` constant.
+* Game logic and tests now obtain spacing through this struct, easing future support for higher beat subdivisions.
+* Next steps: extend `Grid` to manage multiple subdivision levels and render sub-beat lines based on zoom.
