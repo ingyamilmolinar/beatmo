@@ -155,6 +155,7 @@ This debugging session highlighted several critical points:
 * Reset origin-sequence bookkeeping on seek or playback restarts to avoid false "pulse jumped to origin" panics; regression tests cover this.
 * Row labels now include a small edit button to rename instruments; the rename dialog uses a blinking block cursor and key-repeat timing consistent with button holds.
 * Added a global "Track" toggle that auto-scrolls the drum view with playback; disabling it lets users explore the timeline independently.
+* `Game.currentBeat` centralizes beat progress by combining sub-beat indices with scheduler fractions so the timeline cursor and drum highlights share a single source of truth.
 
 ## Grid resolution refactor (WIP)
 

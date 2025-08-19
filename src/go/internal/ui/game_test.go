@@ -195,6 +195,20 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	}
 }
 
+func TestCurrentBeatScalesEngineProgress(t *testing.T) {
+	g := New(testLogger)
+	g.playing = true
+	g.elapsedBeats = g.grid.MaxDiv() // one beat
+	g.engineProgress = func() float64 { return 0.5 }
+	if got := g.currentBeat(); math.Abs(got-1.5) > 1e-9 {
+		t.Fatalf("currentBeat=%v want 1.5", got)
+	}
+	g.playing = false
+	if got := g.currentBeat(); math.Abs(got-1.0) > 1e-9 {
+		t.Fatalf("currentBeat after stop=%v want 1", got)
+	}
+}
+
 func TestMouseCoordinateLabel(t *testing.T) {
 	SetDefaultStartForTest(true)
 	defer SetDefaultStartForTest(false)
@@ -2073,6 +2087,11 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 			got[i] = idx
 			if idx != g.elapsedBeats {
 				t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
+			}
+			beats := g.currentBeat()
+			wantBeat := float64(g.elapsedBeats) / float64(g.grid.MaxDiv())
+			if math.Abs(beats-wantBeat) > 1e-9 {
+				t.Fatalf("currentBeat=%v want %v", beats, wantBeat)
 			}
 		}
 	}

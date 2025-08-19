@@ -116,14 +116,15 @@ type soundReq struct {
 
 type Game struct {
 	/* subsystems */
-	cam     *Camera
-	split   *Splitter
-	drum    *DrumView
-	graph   *model.Graph
-	engine  *engine.Engine
-	logger  *game_log.Logger
-	grid    *Grid
-	audioCh chan soundReq
+	cam            *Camera
+	split          *Splitter
+	drum           *DrumView
+	graph          *model.Graph
+	engine         *engine.Engine
+	engineProgress func() float64
+	logger         *game_log.Logger
+	grid           *Grid
+	audioCh        chan soundReq
 
 	/* graph data */
 	nodes           []*uiNode
@@ -219,6 +220,7 @@ func New(logger *game_log.Logger) *Game {
 		logger:             logger,
 		graph:              eng.Graph,
 		engine:             eng,
+		engineProgress:     eng.Progress,
 		split:              NewSplitter(720), // real height set in Layout below
 		highlightedBeats:   make(map[int]int64),
 		bpm:                120, // Default BPM
@@ -1286,12 +1288,15 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
+	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, g.currentBeat())
+}
+
+func (g *Game) currentBeat() float64 {
 	frac := float64(g.elapsedBeats)
-	if g.playing {
-		frac += g.engine.Progress()
+	if g.playing && g.engineProgress != nil {
+		frac += g.engineProgress() * float64(g.grid.MaxDiv())
 	}
-	frac /= float64(g.grid.MaxDiv())
-	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, frac)
+	return frac / float64(g.grid.MaxDiv())
 }
 
 func (g *Game) rootNode() *uiNode {
