@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/ingyamilmolinar/tunkul/core/engine"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
@@ -129,6 +130,7 @@ type Game struct {
 	renderedPulsesCount int
 	highlightedBeats    map[int]int64 // Encoded row/index keys
 	selNeighbors        map[*uiNode]bool
+	cursorLabel         string
 
 	/* editor state */
 	sel            *uiNode
@@ -237,10 +239,11 @@ func (g *Game) Layout(w, h int) (int, int) {
 	g.split.Y = int(float64(h) * g.split.ratio)
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 	if enableDefaultStart && len(g.nodes) == 0 {
-		ci := int(float64(w) / (2 * g.grid.Unit()))
-		cj := int(float64(g.split.Y-topOffset) / (2 * g.grid.Unit()))
+		g.cam.OffsetX = float64(w) / 2
+		g.cam.OffsetY = float64(g.split.Y-topOffset) / 2
+		g.cam.Snap()
 		g.pendingStartRow = 0
-		g.tryAddNode(ci, cj, model.NodeTypeRegular)
+		g.tryAddNode(0, 0, model.NodeTypeRegular)
 	}
 	g.logger.Infof("[GAME] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
@@ -1209,6 +1212,29 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		sigStyle.Color = col
 		sigStyle.Draw(screen, px, py, &cam)
 		g.renderedPulsesCount++
+	}
+
+	// cursor coordinate label
+	mx, my := cursorPosition()
+	if my < g.split.Y {
+		camScale := unitPx / g.grid.Unit()
+		wx := (float64(mx) - offX) / camScale
+		wy := (float64(my) - offY - float64(topOffset)) / camScale
+		_, _, ix, iy := g.grid.Snap(wx, wy)
+		bx, nx, dx := g.grid.BeatSubdivision(ix)
+		by, ny, dy := g.grid.BeatSubdivision(iy)
+		xs := "0"
+		ys := "0"
+		if nx != 0 {
+			xs = fmt.Sprintf("%d/%d", nx, dx)
+		}
+		if ny != 0 {
+			ys = fmt.Sprintf("%d/%d", ny, dy)
+		}
+		g.cursorLabel = fmt.Sprintf("(%d:%s, %d:%s)", bx, xs, by, ys)
+		ebitenutil.DebugPrintAt(screen, g.cursorLabel, mx+8, my+16)
+	} else {
+		g.cursorLabel = ""
 	}
 
 	// splitter line

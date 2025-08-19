@@ -20,6 +20,29 @@ func init() {
 	SetDefaultStartForTest(false)
 }
 
+func TestDefaultOriginNodeCentered(t *testing.T) {
+	SetDefaultStartForTest(true)
+	defer SetDefaultStartForTest(false)
+	g := New(testLogger)
+	w, h := 640, 480
+	g.Layout(w, h)
+	if len(g.nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(g.nodes))
+	}
+	n := g.nodes[0]
+	if n.I != 0 || n.J != 0 {
+		t.Fatalf("node at (%d,%d), want (0,0)", n.I, n.J)
+	}
+	if !n.Start {
+		t.Fatalf("node not marked as start")
+	}
+	wantX := float64(w) / 2
+	wantY := float64(g.split.Y-topOffset) / 2
+	if g.cam.OffsetX != wantX || g.cam.OffsetY != wantY {
+		t.Fatalf("camera offsets = (%v,%v), want (%v,%v)", g.cam.OffsetX, g.cam.OffsetY, wantX, wantY)
+	}
+}
+
 func advanceBeats(g *Game, beats int) {
 	for i := 0; i < beats; i++ {
 		if g.activePulse == nil {
@@ -110,6 +133,54 @@ func TestPulseSpeedMatchesDistance(t *testing.T) {
 	want := float64(g.grid.MaxDiv()) / float64(beatDuration)
 	if math.Abs(g.activePulse.speed-want) > 1e-9 {
 		t.Fatalf("pulse speed = %v, want %v", g.activePulse.speed, want)
+	}
+}
+
+func TestMouseCoordinateLabel(t *testing.T) {
+	SetDefaultStartForTest(true)
+	defer SetDefaultStartForTest(false)
+	g := New(testLogger)
+	w, h := 640, 480
+	g.Layout(w, h)
+
+	unit := g.grid.Unit()
+	div := g.grid.MaxDiv()
+	ix := 4*div + 6   // 4 beats + 3/16
+	iy := -5*div + 24 // -5 beats + 3/4
+	wx := float64(ix) * unit
+	wy := float64(iy) * unit
+	mx := int(math.Round(wx*g.cam.Scale + g.cam.OffsetX))
+	my := int(math.Round(wy*g.cam.Scale + g.cam.OffsetY + float64(topOffset)))
+
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return w, h },
+	)
+	img := ebiten.NewImage(w, h)
+	g.drawGridPane(img)
+	restore()
+
+	want := "(4:3/16, -5:3/4)"
+	if g.cursorLabel != want {
+		t.Fatalf("label = %q, want %q", g.cursorLabel, want)
+	}
+
+	restore = SetInputForTest(
+		func() (int, int) { return mx, g.split.Y + 10 },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return w, h },
+	)
+	g.drawGridPane(img)
+	restore()
+	if g.cursorLabel != "" {
+		t.Fatalf("label visible outside grid: %q", g.cursorLabel)
 	}
 }
 

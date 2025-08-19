@@ -170,4 +170,5 @@ This debugging session highlighted several critical points:
 * Mouse wheel zoom now scales smoothly around the cursor so the pointed world position stays fixed while zooming.
 * Grid lines keep a consistent thin width at all zoom levels; color contrast differentiates beat subdivisions.
 * Connection arrows shrink to 32nd‑note units, inherit node colors, and use a constant 1px thickness so links stay unobtrusive.
+* Cursor shows a live (beat:sub-beat) coordinate label, and the default start node sits at (0:0) with the camera centered.
 * Next steps: profile grid rendering at extreme pan/zoom combinations for further optimizations.

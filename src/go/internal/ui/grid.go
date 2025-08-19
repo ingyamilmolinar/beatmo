@@ -115,6 +115,32 @@ func (g *Grid) Snap(x, y float64) (gx, gy float64, ix, iy int) {
 	return float64(ix) * unit, float64(iy) * unit, ix, iy
 }
 
+// BeatSubdivision splits a subdivision index into a beat count and a reduced
+// fraction (num/den) representing the remaining sub-beat portion.
+func (g *Grid) BeatSubdivision(idx int) (beat, num, den int) {
+	div := g.MaxDiv()
+	if div <= 0 {
+		return 0, 0, 1
+	}
+	beat = int(math.Floor(float64(idx) / float64(div)))
+	rem := idx - beat*div
+	if rem == 0 {
+		return beat, 0, 1
+	}
+	d := gcd(rem, div)
+	return beat, rem / d, div / d
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	if a < 0 {
+		return -a
+	}
+	return a
+}
+
 // StepPixels converts a camera scale to an integer pixel spacing between grid
 // lines. This helps keep vertical and horizontal gaps consistent across zoom
 // levels.
