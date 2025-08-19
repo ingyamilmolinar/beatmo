@@ -166,23 +166,35 @@ type DrumView struct {
 // Capturing reports whether the drum view is actively handling a mouse drag
 // (e.g. scrollbar or slider) and should therefore block camera panning.
 func (dv *DrumView) Capturing() bool {
-        return dv.scrollDrag || dv.activeSlider >= 0
+	return dv.scrollDrag || dv.activeSlider >= 0
 }
 
 // BlocksAt reports whether a point (x,y) lies over a temporary overlay such as
-// the instrument dropdown. When true, clicks at that position should not reach
-// underlying UI elements.
+// the instrument dropdown or rename dialog. When true, clicks at that position
+// should not reach underlying UI elements.
 func (dv *DrumView) BlocksAt(x, y int) bool {
-        if dv.instMenuOpen {
-                if dv.instMenuRow >= 0 && dv.instMenuRow < len(dv.rowLabels) {
-                        lbl := dv.rowLabels[dv.instMenuRow].Rect()
-                        menu := image.Rect(lbl.Min.X, lbl.Max.Y, lbl.Max.X, lbl.Max.Y+len(dv.instMenuBtns)*dv.rowHeight())
-                        if pt(x, y, lbl) || pt(x, y, menu) {
-                                return true
-                        }
-                }
-        }
-        return false
+	if dv.instMenuOpen {
+		if dv.instMenuRow >= 0 && dv.instMenuRow < len(dv.rowLabels) {
+			lbl := dv.rowLabels[dv.instMenuRow].Rect()
+			menu := image.Rect(lbl.Min.X, lbl.Max.Y, lbl.Max.X, lbl.Max.Y+len(dv.instMenuBtns)*dv.rowHeight())
+			if pt(x, y, lbl) || pt(x, y, menu) {
+				return true
+			}
+		}
+	}
+	if dv.renameBox != nil {
+		if pt(x, y, dv.renameBox.Rect) {
+			return true
+		}
+	}
+	if dv.naming {
+		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
+		save := image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+50, box.Max.Y)
+		if pt(x, y, box) || pt(x, y, save) {
+			return true
+		}
+	}
+	return false
 }
 
 type deletedRow struct {

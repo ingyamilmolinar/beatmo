@@ -671,6 +671,84 @@ func TestDrumViewConsumeAddedRows(t *testing.T) {
 	}
 }
 
+func TestDropdownBlocksUnderlyingControls(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, timelineHeight+3*24), graph, logger)
+	dv.Update()
+
+	// open menu for first row which appears above the add-row button
+	dv.rowLabels[0].OnClick()
+	dv.Update()
+
+	add := dv.addRowBtn.Rect()
+	mx, my := add.Min.X+1, add.Min.Y+1
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	dv.Update()
+
+	if len(dv.ConsumeAddedRows()) != 0 {
+		t.Fatalf("add row triggered via dropdown click")
+	}
+}
+
+func TestRenameBoxBlocksUnderlyingControls(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, timelineHeight+3*24), graph, logger)
+	dv.Update()
+
+	// open rename box for row 0
+	pressed := true
+	btn := dv.rowEditBtns[0]
+	cx, cy := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+
+	if dv.renameBox == nil {
+		t.Fatalf("rename box not active")
+	}
+
+	rx := dv.renameBox.Rect.Min.X + 1
+	ry := dv.renameBox.Rect.Min.Y + 1
+	restore = SetInputForTest(
+		func() (int, int) { return rx, ry },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	dv.Update()
+
+	if dv.instMenuOpen {
+		t.Fatalf("instrument menu opened via rename box click")
+	}
+	if len(dv.ConsumeAddedRows()) != 0 {
+		t.Fatalf("add row triggered via rename box click")
+	}
+}
+
 func TestDrumViewRenameInstrument(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
