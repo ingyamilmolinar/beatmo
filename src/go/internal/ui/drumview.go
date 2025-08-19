@@ -1316,13 +1316,12 @@ func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
 	vEndSec := int((viewEndDur % time.Minute) / time.Second)
 	vEndMilli := int((viewEndDur % time.Second) / time.Millisecond)
 
-	return fmt.Sprintf("Beat %.3f | %02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d | Beats %d-%d/%d",
-		elapsedBeats,
+	return fmt.Sprintf("Beat %.3f/%.1f | %02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d",
+		elapsedBeats, totalBeats,
 		curMin, curSec, curMilli,
 		totMin, totSec, totMilli,
 		vStartMin, vStartSec, vStartMilli,
-		vEndMin, vEndSec, vEndMilli,
-		viewStartBeat+1, viewEndBeat, int(totalBeats))
+		vEndMin, vEndSec, vEndMilli)
 }
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {

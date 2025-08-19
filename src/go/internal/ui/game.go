@@ -1281,7 +1281,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	frac := float64(g.elapsedBeats) + g.engine.Progress()
+	frac := float64(g.elapsedBeats)
+	if g.playing {
+		frac += g.engine.Progress()
+	}
 	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, frac)
 }
 

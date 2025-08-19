@@ -38,6 +38,7 @@ func (s *Scheduler) Start() {
 func (s *Scheduler) Stop() {
 	s.running = false
 	s.currentStep = 0
+	s.last = time.Time{}
 	log.Printf("[SCHEDULER] Stopped")
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -222,9 +223,24 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.bpm = 120
 	info := dv.timelineInfo(4)
-	expected := "Beat 4.000 | 00:02.000/00:04.000 | View 00:00.000-00:04.000 | Beats 1-8/8"
+	expected := "Beat 4.000/8.0 | 00:02.000/00:04.000 | View 00:00.000-00:04.000"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
+	}
+}
+
+func TestTimelineInfoFractionalBeat(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.bpm = 120
+	dv.timelineBeats = 32
+	info := dv.timelineInfo(1.25)
+	if !strings.HasPrefix(info, "Beat 1.250/32.0") {
+		t.Fatalf("unexpected beat info: %q", info)
+	}
+	if strings.Count(info, "Beat") != 1 {
+		t.Fatalf("duplicate beat counts in %q", info)
 	}
 }
 
