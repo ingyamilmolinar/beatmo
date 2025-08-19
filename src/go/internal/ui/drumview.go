@@ -609,6 +609,15 @@ func (dv *DrumView) PlayPressed() bool {
 	return false
 }
 
+// SetPlaying updates the play button label to reflect playback state.
+func (dv *DrumView) SetPlaying(p bool) {
+	if p {
+		dv.playBtn.Text = "⏸"
+	} else {
+		dv.playBtn.Text = "▶"
+	}
+}
+
 func (dv *DrumView) StopPressed() bool {
 	if dv.stopPressed {
 		dv.stopPressed = false

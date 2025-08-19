@@ -180,7 +180,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
-	before := g.drum.timelineInfo(float64(g.elapsedBeats) / float64(g.grid.MaxDiv()))
+	before := g.drum.timelineInfo(float64(g.elapsedBeats))
 
 	// Stop playback and drain any further ticks.
 	g.playing = false
@@ -189,7 +189,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
-	after := g.drum.timelineInfo(float64(g.elapsedBeats) / float64(g.grid.MaxDiv()))
+	after := g.drum.timelineInfo(float64(g.elapsedBeats))
 	if before != after {
 		t.Fatalf("timeline advanced after stop: %q -> %q", before, after)
 	}
@@ -198,7 +198,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 func TestCurrentBeatScalesEngineProgress(t *testing.T) {
 	g := New(testLogger)
 	g.playing = true
-	g.elapsedBeats = g.grid.MaxDiv() // one beat
+	g.elapsedBeats = 1 // one beat
 	g.engineProgress = func() float64 { return 0.5 }
 	if got := g.currentBeat(); math.Abs(got-1.5) > 1e-9 {
 		t.Fatalf("currentBeat=%v want 1.5", got)
@@ -206,6 +206,48 @@ func TestCurrentBeatScalesEngineProgress(t *testing.T) {
 	g.playing = false
 	if got := g.currentBeat(); math.Abs(got-1.0) > 1e-9 {
 		t.Fatalf("currentBeat after stop=%v want 1", got)
+	}
+}
+
+func TestPlayButtonTogglesPause(t *testing.T) {
+	g := New(testLogger)
+	g.tryAddNode(0, 0, model.NodeTypeRegular)
+
+	g.drum.playPressed = true
+	if err := g.Update(); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	if !g.playing {
+		t.Fatalf("expected playing")
+	}
+	if g.drum.playBtn.Text != "⏸" {
+		t.Fatalf("play button text = %q want ⏸", g.drum.playBtn.Text)
+	}
+
+	g.elapsedBeats = 5
+	g.drum.playPressed = true
+	if err := g.Update(); err != nil {
+		t.Fatalf("pause update failed: %v", err)
+	}
+	if g.playing {
+		t.Fatalf("expected paused")
+	}
+	if g.elapsedBeats != 5 {
+		t.Fatalf("elapsedBeats=%d want 5", g.elapsedBeats)
+	}
+	if g.drum.playBtn.Text != "▶" {
+		t.Fatalf("play button text = %q want ▶", g.drum.playBtn.Text)
+	}
+
+	g.drum.playPressed = true
+	if err := g.Update(); err != nil {
+		t.Fatalf("resume update failed: %v", err)
+	}
+	if !g.playing {
+		t.Fatalf("expected playing after resume")
+	}
+	if g.elapsedBeats != 5 {
+		t.Fatalf("elapsedBeats=%d want 5 after resume", g.elapsedBeats)
 	}
 }
 
@@ -2089,7 +2131,7 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 				t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
 			}
 			beats := g.currentBeat()
-			wantBeat := float64(g.elapsedBeats) / float64(g.grid.MaxDiv())
+			wantBeat := float64(g.elapsedBeats)
 			if math.Abs(beats-wantBeat) > 1e-9 {
 				t.Fatalf("currentBeat=%v want %v", beats, wantBeat)
 			}

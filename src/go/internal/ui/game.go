@@ -152,6 +152,7 @@ type Game struct {
 
 	/* game state */
 	playing            bool
+	paused             bool
 	bpm                int
 	currentStep        int // Current step in the sequence
 	lastBeatFrame      int64
@@ -1060,7 +1061,10 @@ eventsDone:
 	}
 
 	if g.drum.PlayPressed() {
-		if g.start != nil {
+		if g.playing {
+			g.playing = false
+			g.paused = true
+		} else if g.start != nil {
 			audio.Resume()
 			g.playing = true
 		} else {
@@ -1070,6 +1074,7 @@ eventsDone:
 	}
 	if g.drum.StopPressed() {
 		g.playing = false
+		g.paused = false
 	}
 	g.bpm = g.drum.BPM()
 
@@ -1089,20 +1094,30 @@ eventsDone:
 	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
-			for i := range g.nextBeatIdxs {
-				g.nextBeatIdxs[i] = 0
+			if !g.paused {
+				for i := range g.nextBeatIdxs {
+					g.nextBeatIdxs[i] = 0
+				}
+				g.resetOriginSequences()
+				g.elapsedBeats = 0
+				g.activePulses = nil
+				g.activePulse = nil
+				g.highlightedBeats = map[int]int64{}
 			}
-			g.resetOriginSequences()
-			g.elapsedBeats = 0
-			g.activePulses = nil
-			g.activePulse = nil
-			g.highlightedBeats = map[int]int64{}
 			g.engine.Start()
+			g.paused = false
 			g.logger.Infof("[GAME] Engine started.")
 		} else {
 			g.engine.Stop()
 			g.logger.Infof("[GAME] Engine stopped.")
+			if !g.paused {
+				g.elapsedBeats = 0
+				g.activePulses = nil
+				g.activePulse = nil
+				g.highlightedBeats = map[int]int64{}
+			}
 		}
+		g.drum.SetPlaying(g.playing)
 	}
 
 	if g.playing {
@@ -1294,9 +1309,9 @@ func (g *Game) drawDrumPane(dst *ebiten.Image) {
 func (g *Game) currentBeat() float64 {
 	frac := float64(g.elapsedBeats)
 	if g.playing && g.engineProgress != nil {
-		frac += g.engineProgress() * float64(g.grid.MaxDiv())
+		frac += g.engineProgress()
 	}
-	return frac / float64(g.grid.MaxDiv())
+	return frac
 }
 
 func (g *Game) rootNode() *uiNode {

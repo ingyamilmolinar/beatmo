@@ -1260,6 +1260,37 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	}
 }
 
+func TestTimelineCursorMatchesHighlight(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, timelineHeight+24), graph, logger)
+	dv.Rows = []*DrumRow{{Steps: make([]bool, dv.Length)}}
+	highlighted := map[int]int64{makeBeatKey(0, 3): 1}
+
+	var cursorCount, highlightCount int
+	orig := drawRect
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if clr, ok := c.(color.RGBA); ok {
+			if clr == colTimelineCursor {
+				cursorCount++
+			}
+			if clr == colHighlight && r.Min.Y >= timelineHeight {
+				highlightCount++
+			}
+		}
+	}
+	defer func() { drawRect = orig }()
+
+	dv.Draw(ebiten.NewImage(300, timelineHeight+24), highlighted, 0, nil, 3)
+
+	if cursorCount == 0 {
+		t.Fatalf("cursor not drawn")
+	}
+	if highlightCount == 0 {
+		t.Fatalf("highlight not drawn")
+	}
+}
+
 func TestDrumViewSetBPMClamp(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
