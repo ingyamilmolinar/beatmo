@@ -449,7 +449,9 @@ func (g *Game) updateBeatInfos() {
 	g.resetOriginSequences()
 
 	if maxLen > g.drum.Length {
-		g.drum.Length = maxLen
+		g.drum.SetLength(maxLen)
+	} else {
+		g.drum.SetBeatLength(maxLen)
 	}
 
 	// Rebind active pulses to the updated beat paths while preserving

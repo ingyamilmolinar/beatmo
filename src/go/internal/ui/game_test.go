@@ -799,6 +799,34 @@ func TestRowLengthMatchesConnectedNodes(t *testing.T) {
 	}
 }
 
+func TestDrumRowReflectsSubBeatNodes(t *testing.T) {
+	SetDefaultStartForTest(false)
+	defer SetDefaultStartForTest(false)
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	start.Start = true
+	g.start = start
+	g.graph.StartNodeID = start.ID
+
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(start, n1)
+	n2 := g.tryAddNode(32, 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+
+	steps := g.drum.Rows[0].Steps
+	if len(steps) != 33 {
+		t.Fatalf("steps len=%d want 33", len(steps))
+	}
+	if !steps[1] || !steps[32] {
+		t.Fatalf("expected steps[1] and steps[32] true, got %v %v", steps[1], steps[32])
+	}
+	if steps[2] {
+		t.Fatalf("expected step 2 to be false")
+	}
+}
+
 func TestPulseAnimationProgress(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
