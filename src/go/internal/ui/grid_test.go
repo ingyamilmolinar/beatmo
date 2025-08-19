@@ -104,6 +104,19 @@ func TestRadiusScaling(t *testing.T) {
 	}
 }
 
+func TestEdgeStyleScaling(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	t1 := g.EdgeThickness(1)
+	t2 := g.EdgeThickness(2)
+	if math.Abs(t1*1-t2*2) > 1e-9 {
+		t.Fatalf("edge thickness mismatch: t1=%f t2=%f", t1, t2)
+	}
+	want := 2 * g.Unit()
+	if g.EdgeArrowSize() != want {
+		t.Fatalf("arrow size=%f want=%f", g.EdgeArrowSize(), want)
+	}
+}
+
 func TestLinesExtendBeyondView(t *testing.T) {
 	g := NewGrid(DefaultGridStep)
 	// Pan the camera by a non-integer multiple of the step to simulate

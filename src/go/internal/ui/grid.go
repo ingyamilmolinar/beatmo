@@ -92,6 +92,21 @@ func (g *Grid) SignalRadius(scale float64) float64 {
 	return r
 }
 
+// EdgeThickness returns a world-space thickness for connection lines so they
+// remain one screen pixel wide regardless of zoom level.
+func (g *Grid) EdgeThickness(scale float64) float64 {
+	if scale <= 0 {
+		return 1
+	}
+	return 1 / scale
+}
+
+// EdgeArrowSize returns the world-space length of arrow heads. The size equals
+// two of the smallest subdivision units so direction markers stay subtle.
+func (g *Grid) EdgeArrowSize() float64 {
+	return 2 * g.Unit()
+}
+
 // Snap world coords to nearest subdivision vertex.
 func (g *Grid) Snap(x, y float64) (gx, gy float64, ix, iy int) {
 	unit := g.Unit()

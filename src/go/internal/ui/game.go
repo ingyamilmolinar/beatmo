@@ -1125,19 +1125,36 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	// edges with connection animation
 	sigStyle := SignalUI
 	sigStyle.Radius = float32(g.grid.SignalRadius(g.cam.Scale))
+	edgeThick := g.grid.EdgeThickness(g.cam.Scale)
+	arrow := g.grid.EdgeArrowSize()
 	for i := range g.edges {
 		e := &g.edges[i]
-		EdgeUI.DrawProgress(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam, e.t)
+		edgeStyle := EdgeUI
+		edgeStyle.Thickness = edgeThick
+		edgeStyle.ArrowSize = arrow
+		if row, ok := g.nodeRows[e.A.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
+			base := g.drum.Rows[row].Color
+			edgeStyle.Color = adjustColor(base, 80)
+		}
+		edgeStyle.DrawProgress(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam, e.t)
 		if e.pulse >= 0 {
 			px := e.A.X + (e.B.X-e.A.X)*e.pulse
 			py := e.A.Y + (e.B.Y-e.A.Y)*e.pulse
+			sigStyle.Color = edgeStyle.Color
 			sigStyle.Draw(screen, px, py, &cam)
 		}
 	}
 
 	// link preview
 	if g.linkDrag.active {
-		EdgeUI.Draw(screen, g.linkDrag.from.X, g.linkDrag.from.Y,
+		edgeStyle := EdgeUI
+		edgeStyle.Thickness = edgeThick
+		edgeStyle.ArrowSize = arrow
+		if row, ok := g.nodeRows[g.linkDrag.from.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
+			base := g.drum.Rows[row].Color
+			edgeStyle.Color = adjustColor(base, 80)
+		}
+		edgeStyle.Draw(screen, g.linkDrag.from.X, g.linkDrag.from.Y,
 			g.linkDrag.toX, g.linkDrag.toY, &cam)
 	}
 
@@ -1183,7 +1200,13 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	for _, p := range g.activePulses {
 		px := p.x1 + (p.x2-p.x1)*p.t
 		py := p.y1 + (p.y2-p.y1)*p.t
-		DrawLineCam(screen, p.x1, p.y1, px, py, &cam, fadeColor(SignalUI.Color, 0.6), EdgeUI.Thickness)
+		col := SignalUI.Color
+		if p.row >= 0 && p.row < len(g.drum.Rows) {
+			base := g.drum.Rows[p.row].Color
+			col = adjustColor(base, 80)
+		}
+		DrawLineCam(screen, p.x1, p.y1, px, py, &cam, fadeColor(col, 0.6), edgeThick)
+		sigStyle.Color = col
 		sigStyle.Draw(screen, px, py, &cam)
 		g.renderedPulsesCount++
 	}
