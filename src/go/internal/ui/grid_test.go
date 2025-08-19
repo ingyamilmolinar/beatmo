@@ -80,3 +80,26 @@ func TestSnapFinestSubdivision(t *testing.T) {
 		t.Fatalf("snap fine i=%d gx=%f", i, gx)
 	}
 }
+
+func TestRadiusScaling(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	r1 := g.NodeRadius(1)
+	r2 := g.NodeRadius(2)
+	if r1*2 >= g.Unit() {
+		t.Fatalf("node radius overlaps unit: r=%f unit=%f", r1, g.Unit())
+	}
+	if r2*2 >= g.Unit() {
+		t.Fatalf("node radius overlaps unit at scale2: r=%f unit=%f", r2, g.Unit())
+	}
+	if r1*1 >= r2*2 { // screen radius r*scale
+		t.Fatalf("screen radius did not grow: r1=%f r2=%f", r1, r2)
+	}
+	sr1 := g.SignalRadius(1)
+	sr2 := g.SignalRadius(2)
+	if sr1*1 >= sr2*2 {
+		t.Fatalf("signal screen radius did not grow: r1=%f r2=%f", sr1, sr2)
+	}
+	if g.NodeRadius(100)*100 > 16 || g.SignalRadius(100)*100 > 6 {
+		t.Fatalf("radius clamp failed at extreme zoom")
+	}
+}

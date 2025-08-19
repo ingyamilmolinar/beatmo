@@ -162,4 +162,5 @@ This debugging session highlighted several critical points:
 * Added subdivision definitions with per-level styles and zoom thresholds, and render them in `drawGridPane`.
 * Sorted subdivision levels and removed overlapping lines so beat-level markers remain distinct.
 * Grid clicks now snap to the finest subdivision, allowing node placement at 32nd-note intersections.
+* Node and signal sizes now scale with zoom so 32nd-note nodes never overlap.
 * Next steps: integrate sub-beat nodes with drum-row sequencing and polish infinite-grid behavior.

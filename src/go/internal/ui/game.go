@@ -168,16 +168,13 @@ type Game struct {
 // Rectangle in *screen* pixels (y already includes the transport offset).
 func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 	unitPx := g.grid.UnitPixels(g.cam.Scale) // px per smallest subdivision
-	camScale := unitPx / g.grid.Unit()       // world→screen factor
 	offX := math.Round(g.cam.OffsetX)        // camera panning
 	offY := math.Round(g.cam.OffsetY)
 
-	sx := offX + unitPx*float64(n.I)             // sprite centre X
-	sy := offY + unitPx*float64(n.J) + topOffset // sprite centre Y
-	size := float64(NodeSpriteSize) * camScale
-	half := size / 2
-
-	return sx - half, sy - half, sx + half, sy + half
+	sx := offX + unitPx*float64(n.I)
+	sy := offY + unitPx*float64(n.J) + topOffset
+	r := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
+	return sx - r, sy - r, sx + r, sy + r
 }
 
 // computeSelNeighbors refreshes the neighbor set for the currently selected node.
@@ -1113,13 +1110,15 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	var id ebiten.GeoM
 
 	// edges with connection animation
+	sigStyle := SignalUI
+	sigStyle.Radius = float32(g.grid.SignalRadius(g.cam.Scale))
 	for i := range g.edges {
 		e := &g.edges[i]
 		EdgeUI.DrawProgress(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam, e.t)
 		if e.pulse >= 0 {
 			px := e.A.X + (e.B.X-e.A.X)*e.pulse
 			py := e.A.Y + (e.B.Y-e.A.Y)*e.pulse
-			SignalUI.Draw(screen, px, py, &cam)
+			sigStyle.Draw(screen, px, py, &cam)
 		}
 	}
 
@@ -1130,12 +1129,14 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	}
 
 	// nodes
+	nodeStyle := NodeUI
+	nodeStyle.Radius = float32(g.grid.NodeRadius(g.cam.Scale))
 	for _, n := range g.nodes {
 		nodeInfo, ok := g.graph.Nodes[n.ID]
 		if !ok || nodeInfo.Type != model.NodeTypeRegular {
 			continue
 		}
-		style := NodeUI
+		style := nodeStyle
 		if row, ok := g.nodeRows[n.ID]; ok {
 			if row >= 0 && row < len(g.drum.Rows) {
 				base := g.drum.Rows[row].Color
@@ -1170,7 +1171,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		px := p.x1 + (p.x2-p.x1)*p.t
 		py := p.y1 + (p.y2-p.y1)*p.t
 		DrawLineCam(screen, p.x1, p.y1, px, py, &cam, fadeColor(SignalUI.Color, 0.6), EdgeUI.Thickness)
-		SignalUI.Draw(screen, px, py, &cam)
+		sigStyle.Draw(screen, px, py, &cam)
 		g.renderedPulsesCount++
 	}
 

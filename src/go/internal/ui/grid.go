@@ -68,6 +68,29 @@ func (g *Grid) UnitPixels(scale float64) float64 {
 	return float64(g.StepPixels(scale)) / float64(g.MaxDiv())
 }
 
+// NodeRadius returns a world-space radius for nodes based on the camera zoom.
+// The radius grows with the zoom level but remains a fraction of the smallest
+// subdivision so adjacent nodes never overlap. The visual size is capped to a
+// reasonable maximum to keep nodes readable when heavily zoomed in.
+func (g *Grid) NodeRadius(scale float64) float64 {
+	r := 0.4 * g.Unit() // world units, 40% of smallest subdivision
+	if screen := r * scale; screen > 16 {
+		r = 16 / scale
+	}
+	return r
+}
+
+// SignalRadius returns a world-space radius for travelling pulses. Like
+// NodeRadius it scales with zoom and caps the on-screen size to avoid oversized
+// pulses at extreme zoom factors.
+func (g *Grid) SignalRadius(scale float64) float64 {
+	r := 0.2 * g.Unit()
+	if screen := r * scale; screen > 6 {
+		r = 6 / scale
+	}
+	return r
+}
+
 // Snap world coords to nearest subdivision vertex.
 func (g *Grid) Snap(x, y float64) (gx, gy float64, ix, iy int) {
 	unit := g.Unit()

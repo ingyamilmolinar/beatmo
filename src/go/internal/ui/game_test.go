@@ -1197,22 +1197,20 @@ func TestHighlightMatchesNode(t *testing.T) {
 	g.cam.OffsetX = 12
 	g.cam.OffsetY = 8
 
-	unitPx := g.grid.UnitPixels(g.cam.Scale)
-	camScale := unitPx / g.grid.Unit()
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
 	worldX := float64(n.I) * g.grid.Unit()
 	worldY := float64(n.J) * g.grid.Unit()
-	screenX := worldX*camScale + offX
-	screenY := worldY*camScale + offY + float64(topOffset)
-	half := float64(NodeSpriteSize) * camScale / 2
+	screenX := worldX*g.cam.Scale + offX
+	screenY := worldY*g.cam.Scale + offY + float64(topOffset)
+	r := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
 
 	x1, y1, x2, y2 := g.nodeScreenRect(n)
-	if math.Abs(x1-(screenX-half)) > 1e-3 || math.Abs(x2-(screenX+half)) > 1e-3 ||
-		math.Abs(y1-(screenY-half)) > 1e-3 || math.Abs(y2-(screenY+half)) > 1e-3 {
+	if math.Abs(x1-(screenX-r)) > 1e-3 || math.Abs(x2-(screenX+r)) > 1e-3 ||
+		math.Abs(y1-(screenY-r)) > 1e-3 || math.Abs(y2-(screenY+r)) > 1e-3 {
 		t.Fatalf("highlight mismatch: (%f,%f,%f,%f) want (%f,%f,%f,%f)",
 			x1, y1, x2, y2,
-			screenX-half, screenY-half, screenX+half, screenY+half)
+			screenX-r, screenY-r, screenX+r, screenY+r)
 	}
 }
 
