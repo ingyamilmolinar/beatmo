@@ -1291,9 +1291,11 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 }
 
 func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
-	// Display a single beat counter with fractional progress.
-	totalBeats := float64(dv.timelineBeats)
-	return fmt.Sprintf("Beat %.3f/%.1f", elapsedBeats, totalBeats)
+	totalBeats := math.Max(float64(dv.timelineBeats), elapsedBeats)
+	secPerBeat := 60.0 / float64(dv.bpm)
+	curTime := elapsedBeats * secPerBeat
+	totalTime := totalBeats * secPerBeat
+	return fmt.Sprintf("Beat %.3f/%.3f Time %.3f/%.3fs", elapsedBeats, totalBeats, curTime, totalTime)
 }
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {

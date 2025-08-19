@@ -1289,6 +1289,7 @@ func (g *Game) drawDrumPane(dst *ebiten.Image) {
 	if g.playing {
 		frac += g.engine.Progress()
 	}
+	frac /= float64(g.grid.MaxDiv())
 	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, frac)
 }
 

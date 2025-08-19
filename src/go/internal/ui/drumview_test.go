@@ -223,7 +223,7 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.bpm = 120
 	info := dv.timelineInfo(4)
-	expected := "Beat 4.000/8.0"
+	expected := "Beat 4.000/8.000 Time 2.000/4.000s"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
 	}
@@ -236,11 +236,26 @@ func TestTimelineInfoFractionalBeat(t *testing.T) {
 	dv.bpm = 120
 	dv.timelineBeats = 32
 	info := dv.timelineInfo(1.25)
-	if !strings.HasPrefix(info, "Beat 1.250/32.0") {
+	if !strings.HasPrefix(info, "Beat 1.250/32.000") {
 		t.Fatalf("unexpected beat info: %q", info)
+	}
+	if !strings.Contains(info, "Time 0.625/16.000s") {
+		t.Fatalf("missing time info: %q", info)
 	}
 	if strings.Count(info, "Beat") != 1 {
 		t.Fatalf("duplicate beat counts in %q", info)
+	}
+}
+
+func TestTimelineInfoExtendsTotal(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.bpm = 120
+	dv.timelineBeats = 32
+	info := dv.timelineInfo(32.125)
+	if !strings.HasPrefix(info, "Beat 32.125/32.125") {
+		t.Fatalf("unexpected extended total: %q", info)
 	}
 }
 

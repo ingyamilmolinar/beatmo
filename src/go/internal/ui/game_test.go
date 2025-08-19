@@ -179,7 +179,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	if g.elapsedBeats == 0 {
 		t.Fatalf("expected elapsedBeats to advance, got %d", g.elapsedBeats)
 	}
-	before := g.drum.timelineInfo(float64(g.elapsedBeats))
+	before := g.drum.timelineInfo(float64(g.elapsedBeats) / float64(g.grid.MaxDiv()))
 
 	// Stop playback and drain any further ticks.
 	g.playing = false
@@ -188,7 +188,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
-	after := g.drum.timelineInfo(float64(g.elapsedBeats))
+	after := g.drum.timelineInfo(float64(g.elapsedBeats) / float64(g.grid.MaxDiv()))
 	if before != after {
 		t.Fatalf("timeline advanced after stop: %q -> %q", before, after)
 	}
