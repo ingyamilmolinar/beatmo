@@ -170,14 +170,15 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	// Create a start node so ticks advance the timeline.
 	g.tryAddNode(0, 0, model.NodeTypeRegular)
 
-	// Simulate one tick while playing.
+	// Simulate two ticks while playing so elapsedBeats advances.
 	g.playing = true
 	g.engine.Events <- engine.Event{Step: 0}
 	if err := g.Update(); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
-	if g.elapsedBeats == 0 {
-		t.Fatalf("expected elapsedBeats to advance, got %d", g.elapsedBeats)
+	g.engine.Events <- engine.Event{Step: 1}
+	if err := g.Update(); err != nil {
+		t.Fatalf("update failed: %v", err)
 	}
 	before := g.drum.timelineInfo(float64(g.elapsedBeats) / float64(g.grid.MaxDiv()))
 
@@ -267,8 +268,37 @@ func TestSignalAdvancesThroughSubBeats(t *testing.T) {
 		}
 	}
 
-	if g.elapsedBeats != steps+1 {
-		t.Fatalf("elapsedBeats=%d want %d", g.elapsedBeats, steps+1)
+	if g.elapsedBeats != steps {
+		t.Fatalf("elapsedBeats=%d want %d", g.elapsedBeats, steps)
+	}
+}
+
+func TestTimelineCursorMatchesHighlightedBeat(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(g.grid.MaxDiv(), 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+	g.updateBeatInfos()
+
+	g.spawnPulseFromRow(0, 0)
+	if g.elapsedBeats != 0 {
+		t.Fatalf("elapsedBeats=%d want 0", g.elapsedBeats)
+	}
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 0)]; !ok {
+		t.Fatalf("missing highlight for beat 0")
+	}
+
+	delete(g.highlightedBeats, makeBeatKey(0, g.activePulse.lastIdx))
+	if !g.advancePulse(g.activePulse) {
+		t.Fatalf("advancePulse ended early")
+	}
+	if g.elapsedBeats != 1 {
+		t.Fatalf("elapsedBeats=%d want 1", g.elapsedBeats)
+	}
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 1)]; !ok {
+		t.Fatalf("missing highlight for beat 1")
 	}
 }
 
@@ -2041,7 +2071,7 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 		for key := range g.highlightedBeats {
 			_, idx := splitBeatKey(key)
 			got[i] = idx
-			if idx != g.elapsedBeats-1 {
+			if idx != g.elapsedBeats {
 				t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
 			}
 		}

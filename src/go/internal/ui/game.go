@@ -863,11 +863,12 @@ func (g *Game) spawnPulseFromRow(row, start int) {
 	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
 	fromBeatInfo := path[curIdxWrapped]
 	g.nextBeatIdxs[row] = start
-	g.highlightBeat(row, g.nextBeatIdxs[row], fromBeatInfo, beatDuration)
-	g.nextBeatIdxs[row]++
+	idx := g.nextBeatIdxs[row]
+	g.highlightBeat(row, idx, fromBeatInfo, beatDuration)
 	if row == 0 {
-		g.elapsedBeats = g.nextBeatIdxs[row]
+		g.elapsedBeats = idx
 	}
+	g.nextBeatIdxs[row] = idx + 1
 	nextInfo := g.beatInfoAtRow(row, start+1)
 	if nextInfo.NodeID != model.InvalidNodeID {
 		nextIdxWrapped := g.wrapBeatIndexRow(row, start+1)
@@ -1441,12 +1442,13 @@ func (g *Game) advancePulse(p *pulse) bool {
 		}
 	}
 
-	g.highlightBeat(p.row, g.nextBeatIdxs[p.row], arrivalBeatInfo, beatDuration)
-	p.lastIdx = g.nextBeatIdxs[p.row]
-	g.nextBeatIdxs[p.row]++
+	idx := g.nextBeatIdxs[p.row]
+	g.highlightBeat(p.row, idx, arrivalBeatInfo, beatDuration)
+	p.lastIdx = idx
 	if p.row == 0 {
-		g.elapsedBeats = g.nextBeatIdxs[p.row]
+		g.elapsedBeats = idx
 	}
+	g.nextBeatIdxs[p.row] = idx + 1
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++
