@@ -1061,15 +1061,27 @@ func TestDragMaintainsAlignment(t *testing.T) {
 	nodeX := offX + float64(step*n.I)
 	nodeY := offY + float64(step*n.J)
 
-	xs, ys := g.grid.Lines(g.cam, g.winW, g.split.Y)
+	groups := g.grid.Lines(g.cam, g.winW, g.split.Y)
+	var xs, ys []float64
+	for _, g := range groups {
+		if g.Subdiv.Div == 1 {
+			xs = g.Xs
+			ys = g.Ys
+			break
+		}
+	}
 	foundX, foundY := false, false
-	for _, x := range xs {
+	for _, xw := range xs {
+		i := int(math.Round(xw / g.grid.Step))
+		x := offX + float64(step*i)
 		if math.Abs(x-nodeX) < 1e-3 {
 			foundX = true
 			break
 		}
 	}
-	for _, y := range ys {
+	for _, yw := range ys {
+		j := int(math.Round(yw / g.grid.Step))
+		y := offY + float64(step*j)
 		if math.Abs(y-nodeY) < 1e-3 {
 			foundY = true
 			break

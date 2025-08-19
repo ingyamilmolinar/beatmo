@@ -1099,20 +1099,16 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 	// grid lattice computed in world coordinates then transformed
 	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.winW, g.split.Y)
-	startI := int(math.Floor(minX / g.grid.Step))
-	endI := int(math.Ceil(maxX / g.grid.Step))
-	startJ := int(math.Floor(minY / g.grid.Step))
-	endJ := int(math.Ceil(maxY / g.grid.Step))
-
+	groups := g.grid.Lines(g.cam, g.winW, g.split.Y)
+	for _, lg := range groups {
+		for _, x := range lg.Xs {
+			DrawLineCam(screen, x, minY, x, maxY, &cam, lg.Subdiv.Style.Color, lg.Subdiv.Style.Width)
+		}
+		for _, y := range lg.Ys {
+			DrawLineCam(screen, minX, y, maxX, y, &cam, lg.Subdiv.Style.Color, lg.Subdiv.Style.Width)
+		}
+	}
 	var id ebiten.GeoM
-	for i := startI; i <= endI; i++ {
-		x := float64(i) * g.grid.Step
-		DrawLineCam(screen, x, minY, x, maxY, &cam, colGridLine, 1)
-	}
-	for j := startJ; j <= endJ; j++ {
-		y := float64(j) * g.grid.Step
-		DrawLineCam(screen, minX, y, maxX, y, &cam, colGridLine, 1)
-	}
 
 	// edges with connection animation
 	for i := range g.edges {

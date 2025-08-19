@@ -159,4 +159,5 @@ This debugging session highlighted several critical points:
 
 * Introduced a `Grid` struct with configurable step size to replace the fixed `GridStep` constant.
 * Game logic and tests now obtain spacing through this struct, easing future support for higher beat subdivisions.
-* Next steps: extend `Grid` to manage multiple subdivision levels and render sub-beat lines based on zoom.
+* Added subdivision definitions with per-level styles and zoom thresholds, and render them in `drawGridPane`.
+* Next steps: refine subdivision styling, handle duplicate line overlaps, and hook grid clicks into sub-beat node placement.
