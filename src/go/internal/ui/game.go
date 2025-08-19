@@ -913,11 +913,15 @@ func (g *Game) spawnPulseFrom(start int) { g.spawnPulseFromRow(0, start) }
 
 func (g *Game) Update() error {
 	g.logger.Debugf("[GAME] Update start: frame=%d playing=%t bpm=%d currentStep=%d", g.frame, g.playing, g.bpm, g.currentStep)
-	// Process engine events without blocking
+	// Process engine events without blocking. If playback is stopped,
+	// drain any pending ticks without advancing the timeline so beat and
+	// time counters freeze immediately when the user hits Stop.
 	for {
 		select {
 		case evt := <-g.engine.Events:
-			g.onTick(evt.Step)
+			if g.playing {
+				g.onTick(evt.Step)
+			}
 		default:
 			goto eventsDone
 		}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/tunkul/core/engine"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
@@ -160,6 +161,36 @@ func TestPulseSpeedMatchesDistance(t *testing.T) {
 	want := float64(g.grid.MaxDiv()) / float64(beatDuration)
 	if math.Abs(g.activePulse.speed-want) > 1e-9 {
 		t.Fatalf("pulse speed = %v, want %v", g.activePulse.speed, want)
+	}
+}
+
+// Ensure that beat and time counters halt immediately after pressing Stop.
+func TestBeatCounterFreezesWhenStopped(t *testing.T) {
+	g := New(testLogger)
+	// Create a start node so ticks advance the timeline.
+	g.tryAddNode(0, 0, model.NodeTypeRegular)
+
+	// Simulate one tick while playing.
+	g.playing = true
+	g.engine.Events <- engine.Event{Step: 0}
+	if err := g.Update(); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	if g.elapsedBeats == 0 {
+		t.Fatalf("expected elapsedBeats to advance, got %d", g.elapsedBeats)
+	}
+	before := g.drum.timelineInfo(float64(g.elapsedBeats))
+
+	// Stop playback and drain any further ticks.
+	g.playing = false
+	g.engine.Stop()
+	g.engine.Events <- engine.Event{Step: 0}
+	if err := g.Update(); err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	after := g.drum.timelineInfo(float64(g.elapsedBeats))
+	if before != after {
+		t.Fatalf("timeline advanced after stop: %q -> %q", before, after)
 	}
 }
 

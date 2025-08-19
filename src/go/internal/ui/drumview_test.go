@@ -223,7 +223,7 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.bpm = 120
 	info := dv.timelineInfo(4)
-	expected := "Beat 4.000/8.0 | 00:02.000/00:04.000 | View 00:00.000-00:04.000"
+	expected := "Beat 4.000/8.0"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
 	}

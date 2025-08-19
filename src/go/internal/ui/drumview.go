@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -1292,36 +1291,9 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 }
 
 func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
-	beatsToDuration := func(beats float64) time.Duration {
-		return time.Duration(beats * 60 / float64(dv.bpm) * float64(time.Second))
-	}
+	// Display a single beat counter with fractional progress.
 	totalBeats := float64(dv.timelineBeats)
-	totalDur := beatsToDuration(totalBeats)
-	curDur := beatsToDuration(elapsedBeats)
-	curMin := int(curDur / time.Minute)
-	curSec := int((curDur % time.Minute) / time.Second)
-	curMilli := int((curDur % time.Second) / time.Millisecond)
-	totMin := int(totalDur / time.Minute)
-	totSec := int((totalDur % time.Minute) / time.Second)
-	totMilli := int((totalDur % time.Second) / time.Millisecond)
-
-	viewStartBeat := dv.Offset
-	viewEndBeat := dv.Offset + dv.Length
-	viewStartDur := beatsToDuration(float64(viewStartBeat))
-	viewEndDur := beatsToDuration(float64(viewEndBeat))
-	vStartMin := int(viewStartDur / time.Minute)
-	vStartSec := int((viewStartDur % time.Minute) / time.Second)
-	vStartMilli := int((viewStartDur % time.Second) / time.Millisecond)
-	vEndMin := int(viewEndDur / time.Minute)
-	vEndSec := int((viewEndDur % time.Minute) / time.Second)
-	vEndMilli := int((viewEndDur % time.Second) / time.Millisecond)
-
-	return fmt.Sprintf("Beat %.3f/%.1f | %02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d",
-		elapsedBeats, totalBeats,
-		curMin, curSec, curMilli,
-		totMin, totSec, totMilli,
-		vStartMin, vStartSec, vStartMilli,
-		vEndMin, vEndSec, vEndMilli)
+	return fmt.Sprintf("Beat %.3f/%.1f", elapsedBeats, totalBeats)
 }
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
