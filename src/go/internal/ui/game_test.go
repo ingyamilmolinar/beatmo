@@ -2190,3 +2190,44 @@ func TestMuteAndSoloPlayback(t *testing.T) {
 		t.Fatalf("expected 2 plays after solo off, got %d", len(plays))
 	}
 }
+
+func TestAutoTrackFollowsBeat(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(200, 200)
+	g.drum.Length = 4
+	g.updateBeatInfos()
+	g.refreshDrumRow()
+	g.playing = true
+	g.elapsedBeats = 5
+	g.Update()
+	if g.drum.Offset != 2 {
+		t.Fatalf("offset=%d want 2", g.drum.Offset)
+	}
+}
+
+func TestAutoTrackDisabled(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(200, 200)
+	g.drum.Length = 4
+	g.updateBeatInfos()
+	g.refreshDrumRow()
+	g.playing = true
+	g.drum.follow = false
+	g.elapsedBeats = 5
+	g.Update()
+	if g.drum.Offset != 0 {
+		t.Fatalf("offset=%d want 0", g.drum.Offset)
+	}
+}
+
+func TestTrackButtonTogglesFollow(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(200, 200)
+	if !g.drum.FollowPlayback() {
+		t.Fatalf("follow should start enabled")
+	}
+	g.drum.trackBtn.OnClick()
+	if g.drum.FollowPlayback() {
+		t.Fatalf("follow not toggled off")
+	}
+}

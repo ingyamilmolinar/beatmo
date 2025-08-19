@@ -79,6 +79,7 @@ type DrumView struct {
 	bpmIncBtn *Button // increase BPM
 	lenDecBtn *Button // decrease length
 	lenIncBtn *Button // increase length
+	trackBtn  *Button // toggle follow playback
 	uploadBtn *Button
 	saveBtn   *Button
 
@@ -131,6 +132,7 @@ type DrumView struct {
 	bpmDecPressed bool // State for BPM decrease button
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
+	follow        bool // auto-scroll with playback
 
 	bpmInput string // typed digits while editing
 	bpmPrev  int    // previous BPM before editing
@@ -256,6 +258,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		selRow:        0,
 		activeSlider:  -1,
 		renameRow:     -1,
+		follow:        true,
 	}
 	dv.playBtn = NewButton("▶", PlayButtonStyle, func() {
 		dv.playPressed = true
@@ -286,6 +289,14 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.lenIncAnim = 1
 	})
 	dv.lenIncBtn.Repeat = true
+	dv.trackBtn = NewButton("Track", InstButtonStyle, func() {
+		dv.follow = !dv.follow
+		if dv.follow {
+			dv.trackBtn.Text = "Track"
+		} else {
+			dv.trackBtn.Text = "Free"
+		}
+	})
 	dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
 		dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.naming, dv.instMenuOpen)
 		dv.instMenuOpen = false
@@ -451,7 +462,7 @@ func (dv *DrumView) recalcButtons() {
 	}
 
 	topBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+dv.rowHeight())
-	topGrid := NewGridLayout(topBounds, []float64{1, 1, 1, 2, 1, 1, 1}, []float64{1})
+	topGrid := NewGridLayout(topBounds, []float64{1, 1, 1, 2, 1, 1, 1, 1}, []float64{1})
 	dv.playBtn.SetRect(insetRect(topGrid.Cell(0, 0), buttonPad))
 	dv.stopBtn.SetRect(insetRect(topGrid.Cell(1, 0), buttonPad))
 	dv.bpmDecBtn.SetRect(insetRect(topGrid.Cell(2, 0), buttonPad))
@@ -459,6 +470,7 @@ func (dv *DrumView) recalcButtons() {
 	dv.bpmIncBtn.SetRect(insetRect(topGrid.Cell(4, 0), buttonPad))
 	dv.lenDecBtn.SetRect(insetRect(topGrid.Cell(5, 0), buttonPad))
 	dv.lenIncBtn.SetRect(insetRect(topGrid.Cell(6, 0), buttonPad))
+	dv.trackBtn.SetRect(insetRect(topGrid.Cell(7, 0), buttonPad))
 
 	botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
 	botGrid := NewGridLayout(botBounds, []float64{1}, []float64{1})
@@ -629,6 +641,25 @@ func (dv *DrumView) OffsetChanged() bool {
 		return true
 	}
 	return false
+}
+
+// FollowPlayback reports whether the drum view auto-scrolls with playback.
+func (dv *DrumView) FollowPlayback() bool { return dv.follow }
+
+// TrackBeat adjusts the drum view offset to keep the given beat visible when
+// auto-tracking is enabled.
+func (dv *DrumView) TrackBeat(cur int) {
+	if !dv.follow {
+		return
+	}
+	end := dv.Offset + dv.Length
+	if cur < dv.Offset {
+		dv.Offset = cur
+		dv.offsetChanged = true
+	} else if cur >= end {
+		dv.Offset = cur - dv.Length + 1
+		dv.offsetChanged = true
+	}
 }
 
 func (dv *DrumView) SetLength(length int) {
@@ -962,7 +993,7 @@ func (dv *DrumView) Update() {
 		if handled && left {
 			return
 		}
-		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.addRowBtn, dv.uploadBtn}
+		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.trackBtn, dv.addRowBtn, dv.uploadBtn}
 		for _, btn := range buttons {
 			if handled {
 				break
@@ -1144,6 +1175,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	dv.bpmIncBtn.Draw(dst)
 	dv.lenDecBtn.Draw(dst)
 	dv.lenIncBtn.Draw(dst)
+	dv.trackBtn.Draw(dst)
 	dv.uploadBtn.Draw(dst)
 	// timeline and progress
 	if dv.timelineBeats < dv.Graph.BeatLength() {

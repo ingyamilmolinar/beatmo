@@ -1018,9 +1018,6 @@ eventsDone:
 	if len(deleted) > 0 {
 		g.updateBeatInfos()
 	}
-	if g.drum.OffsetChanged() {
-		g.refreshDrumRow()
-	}
 
 	if g.drum.PlayPressed() {
 		if g.start != nil {
@@ -1076,6 +1073,12 @@ eventsDone:
 		g.activePulse = nil
 	}
 
+	if g.playing {
+		g.drum.TrackBeat(g.elapsedBeats)
+	}
+	if g.drum.OffsetChanged() {
+		g.refreshDrumRow()
+	}
 	if prevLen != g.drum.Length {
 		maxOffset := len(g.beatInfos) - g.drum.Length
 		if maxOffset < 0 {
