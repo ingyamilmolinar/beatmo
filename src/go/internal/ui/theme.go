@@ -31,6 +31,7 @@ var (
 	colTimelineView   = color.RGBA{0, 160, 200, 100}
 	colTimelineViewHi = color.RGBA{0, 200, 240, 255}
 	colTimelineCursor = color.RGBA{240, 240, 40, 255}
+	colTimelineBeat   = color.RGBA{100, 100, 100, 255}
 
 	NodeUI   = NodeStyle{Radius: 16, Fill: color.RGBA{80, 80, 80, 255}, Border: color.RGBA{220, 220, 220, 255}}
 	SignalUI = SignalStyle{Radius: 6, Color: color.RGBA{0, 160, 200, 255}}

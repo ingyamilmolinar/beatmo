@@ -310,6 +310,40 @@ func TestTimelineExpandsAndViewShrinks(t *testing.T) {
 	}
 }
 
+func TestTimelineBeatMarkersDecimate(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.recalcButtons()
+	dv.timelineBeats = 10000 // simulate long timeline
+
+	var view image.Rectangle
+	markers := 0
+	orig := drawRect
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled {
+			if clr, ok := c.(color.RGBA); ok {
+				if clr == colTimelineView {
+					view = r
+				} else if clr == colTimelineBeat && r.Min.Y == dv.timelineRect.Min.Y && r.Max.Y == dv.timelineRect.Max.Y {
+					markers++
+				}
+			}
+		}
+		orig(dst, r, c, filled)
+	}
+	defer func() { drawRect = orig }()
+
+	dv.Draw(ebiten.NewImage(400, 200), nil, 0, nil, 0)
+
+	if view.Dx() < 1 {
+		t.Fatalf("view width = %d want >=1", view.Dx())
+	}
+	if markers > dv.timelineRect.Dx()+1 {
+		t.Fatalf("too many beat markers: %d > %d", markers, dv.timelineRect.Dx()+1)
+	}
+}
+
 func TestDrumViewUpdatesGraphBeatLength(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)

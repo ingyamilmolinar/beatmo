@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -1196,14 +1197,26 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	// current view rectangle
 	viewStart := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
 	viewWidth := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
+	if viewWidth < 1 {
+		viewWidth = 1
+	}
 	viewRect := image.Rect(viewStart, dv.timelineRect.Min.Y, viewStart+viewWidth, dv.timelineRect.Max.Y)
 	drawRect(dst, viewRect, colTimelineView, true)
 	drawRect(dst, viewRect, colTimelineViewHi, false)
 
-	// beat markers
-	for i := 0; i <= totalBeats; i++ {
+	// beat markers, decimated to at most one per pixel column
+	step := 1
+	width := dv.timelineRect.Dx()
+	if totalBeats > width {
+		step = int(math.Ceil(float64(totalBeats) / float64(width)))
+	}
+	prevX := -1
+	for i := 0; i <= totalBeats; i += step {
 		x := dv.timelineRect.Min.X + int(float64(i)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
-		drawRect(dst, image.Rect(x, dv.timelineRect.Min.Y, x+1, dv.timelineRect.Max.Y), color.RGBA{100, 100, 100, 255}, true)
+		if x != prevX {
+			drawRect(dst, image.Rect(x, dv.timelineRect.Min.Y, x+1, dv.timelineRect.Max.Y), colTimelineBeat, true)
+			prevX = x
+		}
 	}
 
 	// current playback cursor
