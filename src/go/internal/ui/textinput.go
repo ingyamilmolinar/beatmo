@@ -184,7 +184,7 @@ func (t *TextInput) Draw(dst *ebiten.Image) {
 			if t.Style.Border != nil {
 				col = t.Style.Border
 			} else {
-				col = colorWhite
+				col = color.White
 			}
 		}
 		r := image.Rect(cx, cy, cx+debugCharW, cy+debugCharH)
@@ -211,5 +211,3 @@ func max(a, b int) int {
 	}
 	return b
 }
-
-var colorWhite = color.White

@@ -1304,23 +1304,24 @@ func (g *Game) advancePulse(p *pulse) bool {
 	g.logger.Debugf("[GAME] advancePulse: Pulse arrived at beat index %d: %+v", arrivalPathIdx, arrivalBeatInfo)
 	if p.row < len(g.drum.Rows) {
 		origin := g.drum.Rows[p.row].Origin
-		if origin != model.InvalidNodeID && arrivalBeatInfo.NodeID == origin {
+		if origin != model.InvalidNodeID && arrivalBeatInfo.NodeID == origin &&
+			p.row < len(g.nextOriginIdxByRow) && p.row < len(g.originIdxsByRow) {
+
+			seq := g.nextOriginIdxByRow[p.row]
+			positions := g.originIdxsByRow[p.row]
 			expectedIdx := 0
-			if p.row < len(g.nextOriginIdxByRow) && p.row < len(g.originIdxsByRow) {
-				seq := g.nextOriginIdxByRow[p.row]
-				positions := g.originIdxsByRow[p.row]
-				if seq < len(positions) {
-					expectedIdx = positions[seq]
-				}
-				if arrivalPathIdx != expectedIdx {
-					panic(fmt.Sprintf("pulse jumped to origin out of order: row=%d idx=%d expected=%d", p.row, arrivalPathIdx, expectedIdx))
-				}
-				seq++
-				if seq >= len(positions) {
-					seq = 0
-				}
-				g.nextOriginIdxByRow[p.row] = seq
+			if seq < len(positions) {
+				expectedIdx = positions[seq]
 			}
+			if arrivalPathIdx != expectedIdx {
+				g.logger.Errorf("pulse jumped to origin out of order: row=%d idx=%d expected=%d", p.row, arrivalPathIdx, expectedIdx)
+				panic(fmt.Sprintf("pulse jumped to origin out of order: row=%d idx=%d expected=%d", p.row, arrivalPathIdx, expectedIdx))
+			}
+			seq++
+			if seq >= len(positions) {
+				seq = 0
+			}
+			g.nextOriginIdxByRow[p.row] = seq
 		}
 	}
 
