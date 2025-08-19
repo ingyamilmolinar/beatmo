@@ -845,12 +845,21 @@ func (g *Game) spawnPulseFromRow(row, start int) {
 	if nextInfo.NodeID != model.InvalidNodeID {
 		nextIdxWrapped := g.wrapBeatIndexRow(row, start+1)
 		unit := g.grid.Unit()
+		x1 := float64(fromBeatInfo.I) * unit
+		y1 := float64(fromBeatInfo.J) * unit
+		x2 := float64(nextInfo.I) * unit
+		y2 := float64(nextInfo.J) * unit
+		dist := hypot(x2-x1, y2-y1)
+		beats := dist / g.grid.Step
+		if beats <= 0 {
+			beats = 1
+		}
 		p := &pulse{
-			x1:           float64(fromBeatInfo.I) * unit,
-			y1:           float64(fromBeatInfo.J) * unit,
-			x2:           float64(nextInfo.I) * unit,
-			y2:           float64(nextInfo.J) * unit,
-			speed:        1.0 / float64(beatDuration),
+			x1:           x1,
+			y1:           y1,
+			x2:           x2,
+			y2:           y2,
+			speed:        1.0 / (float64(beatDuration) * beats),
 			fromBeatInfo: fromBeatInfo,
 			toBeatInfo:   nextInfo,
 			pathIdx:      nextIdxWrapped,
@@ -1376,6 +1385,12 @@ func (g *Game) advancePulse(p *pulse) bool {
 	p.y1 = p.from.Y
 	p.x2 = p.to.X
 	p.y2 = p.to.Y
+	dist := hypot(p.x2-p.x1, p.y2-p.y1)
+	beats := dist / g.grid.Step
+	if beats <= 0 {
+		beats = 1
+	}
+	p.speed = 1.0 / (float64(beatDuration) * beats)
 	p.t = 0 // Reset animation progress
 
 	return true

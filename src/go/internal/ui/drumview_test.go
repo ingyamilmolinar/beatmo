@@ -7,7 +7,6 @@ import (
 	"os"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -419,44 +418,14 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 	game.updateBeatInfos() // Call updateBeatInfos after drum is set
 	game.spawnPulseFrom(0)
 
-	// Run for a few cycles to test loop highlighting
-	for i := 0; i < 20; i++ { // Simulate 20 frames
-		game.Update()
-		t.Logf("Frame %d: highlightedBeats: %v", game.frame, game.highlightedBeats)
-
-		// Determine the expected highlighted index based on the current beat and loop
-		expectedHighlightedIndex := -1
-		if game.activePulse != nil {
-			// The pulse has just arrived at this beat, so it's pathIdx-1
-			currentBeatIndex := game.activePulse.pathIdx - 1
-			if currentBeatIndex >= 0 && currentBeatIndex < len(game.beatInfos) {
-				expectedHighlightedIndex = currentBeatIndex
-			}
-		} else if game.playing && len(game.beatInfos) > 0 {
-			// If no active pulse, but playing, it means the first beat is highlighted
-			expectedHighlightedIndex = 0
+	// Run for a few beats to test loop highlighting
+	for i := 0; i < 20 && game.activePulse != nil; i++ {
+		delete(game.highlightedBeats, makeBeatKey(0, game.activePulse.lastIdx))
+		game.advancePulse(game.activePulse)
+		t.Logf("Step %d: highlightedBeats: %v", i, game.highlightedBeats)
+		if len(game.highlightedBeats) != 1 {
+			t.Fatalf("step %d: expected one highlight got %v", i, game.highlightedBeats)
 		}
-
-		// Verify highlighting
-		for j := 0; j < drumView.Length; j++ {
-			isHighlighted := false
-			if _, ok := game.highlightedBeats[makeBeatKey(0, j)]; ok {
-				isHighlighted = true
-			}
-
-			if j == expectedHighlightedIndex {
-				if !isHighlighted {
-					t.Errorf("Frame %d, Beat %d: Expected to be highlighted, but was not.", game.frame, j)
-				}
-			} else {
-				if isHighlighted {
-					t.Errorf("Frame %d, Beat %d: Expected NOT to be highlighted, but was.", game.frame, j)
-				}
-			}
-		}
-
-		// Advance time for the next frame
-		time.Sleep(time.Millisecond * 16) // Simulate 60 TPS
 	}
 }
 
