@@ -115,6 +115,13 @@ func (g *Grid) StepPixels(scale float64) int {
 func (g *Grid) Lines(cam *Camera, screenW, screenH int) []LineGroup {
 	stepPx := g.StepPixels(cam.Scale)
 	minX, maxX, minY, maxY := visibleWorldRect(cam, screenW, screenH)
+	// pad the visible rectangle by one beat on each side so grid lines extend
+	// beyond the screen edges. This avoids gaps when panning and gives the
+	// impression of an infinite lattice.
+	minX -= g.Step
+	maxX += g.Step
+	minY -= g.Step
+	maxY += g.Step
 	var groups []LineGroup
 	if len(g.Subs) == 0 {
 		return groups

@@ -164,4 +164,5 @@ This debugging session highlighted several critical points:
 * Grid clicks now snap to the finest subdivision, allowing node placement at 32nd-note intersections.
 * Node and signal sizes now scale with zoom so 32nd-note nodes never overlap.
 * Sub-beat nodes now populate drum-row steps, enabling sequencing at 32nd-note resolution.
-* Next steps: polish infinite-grid behavior.
+* Grid line generation now pads the visible area by one beat so panning reveals a seamless infinite lattice.
+* Next steps: refine camera snapping and performance for very large panning ranges.

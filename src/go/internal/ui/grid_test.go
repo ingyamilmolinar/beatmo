@@ -103,3 +103,45 @@ func TestRadiusScaling(t *testing.T) {
 		t.Fatalf("radius clamp failed at extreme zoom")
 	}
 }
+
+func TestLinesExtendBeyondView(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	// Pan the camera by a non-integer multiple of the step to simulate
+	// arbitrary movement across the lattice.
+	cam := &Camera{Scale: 1, OffsetX: 30, OffsetY: -45}
+	minX, maxX, minY, maxY := visibleWorldRect(cam, 100, 100)
+	groups := g.Lines(cam, 100, 100)
+	// Subdivision Div=1 corresponds to beat lines; ensure they extend beyond
+	// the computed visible rectangle on all sides so panning never reveals
+	// empty space.
+	for _, gr := range groups {
+		if gr.Subdiv.Div != 1 {
+			continue
+		}
+		left := math.MaxFloat64
+		right := -math.MaxFloat64
+		top := math.MaxFloat64
+		bottom := -math.MaxFloat64
+		for _, x := range gr.Xs {
+			if x < left {
+				left = x
+			}
+			if x > right {
+				right = x
+			}
+		}
+		for _, y := range gr.Ys {
+			if y < top {
+				top = y
+			}
+			if y > bottom {
+				bottom = y
+			}
+		}
+		if left > minX || right < maxX || top > minY || bottom < maxY {
+			t.Fatalf("grid lines do not extend beyond view: left %f right %f top %f bottom %f", left, right, top, bottom)
+		}
+		return
+	}
+	t.Fatalf("no beat-level lines found")
+}
