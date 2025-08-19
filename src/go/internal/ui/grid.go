@@ -42,8 +42,8 @@ func NewGrid(step float64) *Grid {
 		Step: step,
 		Subs: []Subdivision{
 			{Div: 1, MinPx: 0, Style: LineStyle{Color: colGridLine, Width: 2}},
-			{Div: 4, MinPx: 14, Style: LineStyle{Color: colGridQuarter, Width: 1}},
 			{Div: 2, MinPx: 32, Style: LineStyle{Color: colGridHalf, Width: 1.5}},
+			{Div: 4, MinPx: 14, Style: LineStyle{Color: colGridQuarter, Width: 1}},
 			{Div: 8, MinPx: 10, Style: LineStyle{Color: colGridEighth, Width: 1}},
 			{Div: 16, MinPx: 10, Style: LineStyle{Color: colGridSixteenth, Width: 1}},
 			{Div: 32, MinPx: 8, Style: LineStyle{Color: colGridThirtySecond, Width: 1}},
@@ -75,6 +75,12 @@ func (g *Grid) Lines(cam *Camera, screenW, screenH int) []LineGroup {
 	stepPx := g.StepPixels(cam.Scale)
 	minX, maxX, minY, maxY := visibleWorldRect(cam, screenW, screenH)
 	var groups []LineGroup
+	if len(g.Subs) == 0 {
+		return groups
+	}
+	maxDiv := g.Subs[len(g.Subs)-1].Div
+	drawnX := map[int]struct{}{}
+	drawnY := map[int]struct{}{}
 	for _, sub := range g.Subs {
 		px := stepPx / sub.Div
 		if px < sub.MinPx {
@@ -86,11 +92,22 @@ func (g *Grid) Lines(cam *Camera, screenW, screenH int) []LineGroup {
 		startJ := int(math.Floor(minY / step))
 		endJ := int(math.Ceil(maxY / step))
 		var xs, ys []float64
+		mul := maxDiv / sub.Div
 		for i := startI; i <= endI; i++ {
+			base := i * mul
+			if _, ok := drawnX[base]; ok {
+				continue
+			}
 			xs = append(xs, float64(i)*step)
+			drawnX[base] = struct{}{}
 		}
 		for j := startJ; j <= endJ; j++ {
+			base := j * mul
+			if _, ok := drawnY[base]; ok {
+				continue
+			}
 			ys = append(ys, float64(j)*step)
+			drawnY[base] = struct{}{}
 		}
 		groups = append(groups, LineGroup{Subdiv: sub, Xs: xs, Ys: ys})
 	}
