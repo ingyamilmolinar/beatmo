@@ -1058,17 +1058,12 @@ func (dv *DrumView) Update() {
 		if pos > dv.timelineRect.Max.X {
 			pos = dv.timelineRect.Max.X
 		}
-		totalBeats := dv.timelineBeats
+		total := dv.timelineBeats - dv.Length
+		if total < 0 {
+			total = 0
+		}
 		frac := float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
-		beat := int(frac * float64(totalBeats))
-		if beat < 0 {
-			beat = 0
-		}
-		if beat+dv.Length > dv.timelineBeats {
-			dv.timelineBeats = beat + dv.Length
-			totalBeats = dv.timelineBeats
-			beat = int(frac * float64(totalBeats))
-		}
+		beat := int(frac * float64(total))
 		if beat != dv.Offset {
 			dv.Offset = beat
 			dv.offsetChanged = true

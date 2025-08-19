@@ -344,6 +344,67 @@ func TestTimelineBeatMarkersDecimate(t *testing.T) {
 	}
 }
 
+func TestTimelineScrubSeek(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+2*24), nil, logger)
+	dv.recalcButtons()
+	dv.timelineBeats = 100
+
+	mx := dv.timelineRect.Min.X + dv.timelineRect.Dx()/2
+	my := dv.timelineRect.Min.Y + dv.timelineRect.Dy()/2
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+
+	want := (dv.timelineBeats - dv.Length) / 2
+	if dv.Offset != want {
+		t.Fatalf("offset=%d want %d", dv.Offset, want)
+	}
+}
+
+func TestTimelineScrubLongTimeline(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+2*24), nil, logger)
+	dv.recalcButtons()
+	dv.timelineBeats = 10000
+
+	mx := dv.timelineRect.Max.X - 1
+	my := dv.timelineRect.Min.Y + dv.timelineRect.Dy()/2
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+
+	total := dv.timelineBeats - dv.Length
+	frac := float64(dv.timelineRect.Dx()-1) / float64(dv.timelineRect.Dx())
+	want := int(frac * float64(total))
+	if dv.Offset != want {
+		t.Fatalf("offset=%d want %d", dv.Offset, want)
+	}
+	if dv.timelineBeats != 10000 {
+		t.Fatalf("timelineBeats changed: %d", dv.timelineBeats)
+	}
+}
+
 func TestDrumViewUpdatesGraphBeatLength(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
