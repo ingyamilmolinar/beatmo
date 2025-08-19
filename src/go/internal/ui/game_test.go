@@ -656,8 +656,9 @@ func TestClickAddsNode(t *testing.T) {
 	g.Layout(640, 480)
 
 	pressed := true
+	unitPx := int(g.grid.UnitPixels(g.cam.Scale))
 	restore := SetInputForTest(
-		func() (int, int) { return 10, topOffset + 10 },
+		func() (int, int) { return 1, topOffset + 1 },
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -682,7 +683,7 @@ func TestClickAddsNode(t *testing.T) {
 	pressed = true
 	// click another position
 	restore2 := SetInputForTest(
-		func() (int, int) { return g.grid.StepPixels(g.cam.Scale) + 10, topOffset + 10 },
+		func() (int, int) { return unitPx + 1, topOffset + 1 },
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -1015,11 +1016,11 @@ func TestNodeScreenAlignment(t *testing.T) {
 
 	n := g.tryAddNode(3, 2, model.NodeTypeRegular)
 	g.graph.StartNodeID = n.ID
-	step := g.grid.StepPixels(g.cam.Scale)
+	unitPx := g.grid.UnitPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	sx := offX + float64(step*n.I)
-	sy := offY + float64(step*n.J)
+	sx := offX + unitPx*float64(n.I)
+	sy := offY + unitPx*float64(n.J)
 
 	expX := sx
 	expY := sy
@@ -1055,39 +1056,14 @@ func TestDragMaintainsAlignment(t *testing.T) {
 	pressed = false
 	g.Update() // release
 
-	step := g.grid.StepPixels(g.cam.Scale)
+	unitPx := g.grid.UnitPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	nodeX := offX + float64(step*n.I)
-	nodeY := offY + float64(step*n.J)
-
-	groups := g.grid.Lines(g.cam, g.winW, g.split.Y)
-	var xs, ys []float64
-	for _, g := range groups {
-		if g.Subdiv.Div == 1 {
-			xs = g.Xs
-			ys = g.Ys
-			break
-		}
-	}
-	foundX, foundY := false, false
-	for _, xw := range xs {
-		i := int(math.Round(xw / g.grid.Step))
-		x := offX + float64(step*i)
-		if math.Abs(x-nodeX) < 1e-3 {
-			foundX = true
-			break
-		}
-	}
-	for _, yw := range ys {
-		j := int(math.Round(yw / g.grid.Step))
-		y := offY + float64(step*j)
-		if math.Abs(y-nodeY) < 1e-3 {
-			foundY = true
-			break
-		}
-	}
-	if !foundX || !foundY {
+	nodeX := offX + unitPx*float64(n.I)
+	nodeY := offY + unitPx*float64(n.J)
+	gi := int(math.Round((nodeX - offX) / unitPx))
+	gj := int(math.Round((nodeY - offY) / unitPx))
+	if gi != n.I || gj != n.J {
 		t.Fatalf("node not aligned with grid after drag")
 	}
 }
@@ -1221,12 +1197,12 @@ func TestHighlightMatchesNode(t *testing.T) {
 	g.cam.OffsetX = 12
 	g.cam.OffsetY = 8
 
-	step := g.grid.StepPixels(g.cam.Scale)
-	camScale := float64(step) / g.grid.Step
+	unitPx := g.grid.UnitPixels(g.cam.Scale)
+	camScale := unitPx / g.grid.Unit()
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	worldX := float64(n.I) * g.grid.Step
-	worldY := float64(n.J) * g.grid.Step
+	worldX := float64(n.I) * g.grid.Unit()
+	worldY := float64(n.J) * g.grid.Unit()
 	screenX := worldX*camScale + offX
 	screenY := worldY*camScale + offY + float64(topOffset)
 	half := float64(NodeSpriteSize) * camScale / 2

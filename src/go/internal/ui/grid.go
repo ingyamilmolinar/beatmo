@@ -51,11 +51,29 @@ func NewGrid(step float64) *Grid {
 	}
 }
 
-// Snap world coords to nearest vertex.
+// MaxDiv returns the finest subdivision factor.
+func (g *Grid) MaxDiv() int {
+	if len(g.Subs) == 0 {
+		return 1
+	}
+	return g.Subs[len(g.Subs)-1].Div
+}
+
+// Unit returns the world-space distance between the smallest subdivisions.
+func (g *Grid) Unit() float64 { return g.Step / float64(g.MaxDiv()) }
+
+// UnitPixels returns the on-screen pixel distance between the smallest
+// subdivisions for a given camera scale.
+func (g *Grid) UnitPixels(scale float64) float64 {
+	return float64(g.StepPixels(scale)) / float64(g.MaxDiv())
+}
+
+// Snap world coords to nearest subdivision vertex.
 func (g *Grid) Snap(x, y float64) (gx, gy float64, ix, iy int) {
-	ix = int(math.Round(x / g.Step))
-	iy = int(math.Round(y / g.Step))
-	return float64(ix) * g.Step, float64(iy) * g.Step, ix, iy
+	unit := g.Unit()
+	ix = int(math.Round(x / unit))
+	iy = int(math.Round(y / unit))
+	return float64(ix) * unit, float64(iy) * unit, ix, iy
 }
 
 // StepPixels converts a camera scale to an integer pixel spacing between grid

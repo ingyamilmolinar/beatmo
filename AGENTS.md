@@ -161,4 +161,5 @@ This debugging session highlighted several critical points:
 * Game logic and tests now obtain spacing through this struct, easing future support for higher beat subdivisions.
 * Added subdivision definitions with per-level styles and zoom thresholds, and render them in `drawGridPane`.
 * Sorted subdivision levels and removed overlapping lines so beat-level markers remain distinct.
-* Next steps: hook grid clicks into sub-beat node placement.
+* Grid clicks now snap to the finest subdivision, allowing node placement at 32nd-note intersections.
+* Next steps: integrate sub-beat nodes with drum-row sequencing and polish infinite-grid behavior.

@@ -64,3 +64,19 @@ func TestLinesNoOverlap(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapFinestSubdivision(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	unit := g.Unit()
+	gx, gy, i, j := g.Snap(0.6*unit, 1.2*unit)
+	if i != 1 || j != 1 {
+		t.Fatalf("snap coarse i=%d j=%d", i, j)
+	}
+	if math.Abs(gx-unit) > 1e-9 || math.Abs(gy-unit) > 1e-9 {
+		t.Fatalf("coords (%f,%f) want (%f,%f)", gx, gy, unit, unit)
+	}
+	gx, _, i, _ = g.Snap(1.6*unit, 0)
+	if i != 2 || math.Abs(gx-2*unit) > 1e-9 {
+		t.Fatalf("snap fine i=%d gx=%f", i, gx)
+	}
+}

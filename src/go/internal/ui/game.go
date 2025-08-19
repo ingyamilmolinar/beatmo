@@ -73,7 +73,7 @@ func rawBeatLen(path []model.BeatInfo, isLoop bool, loopStart int) int {
 type uiNode struct {
 	ID       model.NodeID
 	I, J     int     // grid indices
-	X, Y     float64 // cached world coords (grid.Step*I, grid.Step*J)
+	X, Y     float64 // cached world coords (grid.Unit()*I, grid.Unit()*J)
 	Selected bool
 	Start    bool
 	path     []model.NodeID // Path taken by the pulse to reach this node
@@ -167,13 +167,13 @@ type Game struct {
 
 // Rectangle in *screen* pixels (y already includes the transport offset).
 func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
-	stepPx := g.grid.StepPixels(g.cam.Scale)  // grid step in screen px
-	camScale := float64(stepPx) / g.grid.Step // world→screen factor
-	offX := math.Round(g.cam.OffsetX)         // camera panning
+	unitPx := g.grid.UnitPixels(g.cam.Scale) // px per smallest subdivision
+	camScale := unitPx / g.grid.Unit()       // world→screen factor
+	offX := math.Round(g.cam.OffsetX)        // camera panning
 	offY := math.Round(g.cam.OffsetY)
 
-	sx := offX + float64(stepPx*n.I)             // sprite centre X
-	sy := offY + float64(stepPx*n.J) + topOffset // sprite centre Y
+	sx := offX + unitPx*float64(n.I)             // sprite centre X
+	sy := offY + unitPx*float64(n.J) + topOffset // sprite centre Y
 	size := float64(NodeSpriteSize) * camScale
 	half := size / 2
 
@@ -240,8 +240,8 @@ func (g *Game) Layout(w, h int) (int, int) {
 	g.split.Y = int(float64(h) * g.split.ratio)
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 	if enableDefaultStart && len(g.nodes) == 0 {
-		ci := int(float64(w) / (2 * g.grid.Step))
-		cj := int(float64(g.split.Y-topOffset) / (2 * g.grid.Step))
+		ci := int(float64(w) / (2 * g.grid.Unit()))
+		cj := int(float64(g.split.Y-topOffset) / (2 * g.grid.Unit()))
 		g.pendingStartRow = 0
 		g.tryAddNode(ci, cj, model.NodeTypeRegular)
 	}
@@ -309,7 +309,8 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		return n
 	}
 	id := g.graph.AddNode(i, j, nodeType)
-	n := &uiNode{ID: id, I: i, J: j, X: float64(i) * g.grid.Step, Y: float64(j) * g.grid.Step}
+	unit := g.grid.Unit()
+	n := &uiNode{ID: id, I: i, J: j, X: float64(i) * unit, Y: float64(j) * unit}
 
 	if nodeType == model.NodeTypeRegular {
 		if g.pendingStartRow >= 0 {
@@ -844,11 +845,12 @@ func (g *Game) spawnPulseFromRow(row, start int) {
 	nextInfo := g.beatInfoAtRow(row, start+1)
 	if nextInfo.NodeID != model.InvalidNodeID {
 		nextIdxWrapped := g.wrapBeatIndexRow(row, start+1)
+		unit := g.grid.Unit()
 		p := &pulse{
-			x1:           float64(fromBeatInfo.I) * g.grid.Step,
-			y1:           float64(fromBeatInfo.J) * g.grid.Step,
-			x2:           float64(nextInfo.I) * g.grid.Step,
-			y2:           float64(nextInfo.J) * g.grid.Step,
+			x1:           float64(fromBeatInfo.I) * unit,
+			y1:           float64(fromBeatInfo.J) * unit,
+			x2:           float64(nextInfo.I) * unit,
+			y2:           float64(nextInfo.J) * unit,
 			speed:        1.0 / float64(beatDuration),
 			fromBeatInfo: fromBeatInfo,
 			toBeatInfo:   nextInfo,
@@ -1089,10 +1091,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	top.Fill(colBGTop)
 
 	// camera matrix for world drawings (shift down by bar height)
-	stepPx := g.grid.StepPixels(g.cam.Scale)
+	unitPx := g.grid.UnitPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	camScale := float64(stepPx) / g.grid.Step
+	camScale := unitPx / g.grid.Unit()
 	var cam ebiten.GeoM
 	cam.Scale(camScale, camScale)
 	cam.Translate(offX, offY+float64(topOffset))
