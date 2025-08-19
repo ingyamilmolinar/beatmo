@@ -40,6 +40,33 @@ func assertNotPanics(t *testing.T, f func()) {
 	f()
 }
 
+func TestDropdownBlocksEditorClick(t *testing.T) {
+        g := New(testLogger)
+        g.Layout(200, 200)
+
+        before := len(g.graph.Nodes)
+        g.drum.rowLabels[0].OnClick()
+        if !g.drum.instMenuOpen {
+                t.Fatalf("menu not open")
+        }
+        r := g.drum.instMenuBtns[0].Rect()
+        restore := SetInputForTest(
+                func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
+                func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+                func(ebiten.Key) bool { return false },
+                func() []rune { return nil },
+                func() (float64, float64) { return 0, 0 },
+                func() (int, int) { return 200, 200 },
+        )
+        g.Update()
+        restore()
+
+        after := len(g.graph.Nodes)
+        if after != before {
+                t.Fatalf("editor handled click under menu: nodes %d -> %d", before, after)
+        }
+}
+
 func TestHighlightsAllRows(t *testing.T) {
 	g := New(testLogger)
 	// create three independent origin nodes

@@ -880,19 +880,23 @@ eventsDone:
 	g.split.Update(g.winH)
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 
-	// camera pan only when not dragging link or splitter
-	mx, my := cursorPosition()
-	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
-	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing()
-	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
-	drag := g.cam.HandleMouse(panOK)
-	g.camDragging = drag
-	if left && drag {
-		g.camDragged = true
-	}
+        // camera pan only when not dragging link or splitter
+        mx, my := cursorPosition()
+        shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
+        panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing()
+        left := isMouseButtonPressed(ebiten.MouseButtonLeft)
+        drag := g.cam.HandleMouse(panOK)
+        g.camDragging = drag
+        if left && drag {
+                g.camDragged = true
+        }
 
-	// editor interactions
-	g.handleEditor()
+        // editor interactions (skip when an overlay consumes the cursor)
+        if !g.drum.BlocksAt(mx, my) {
+                g.handleEditor()
+        } else {
+                g.leftPrev = left
+        }
 
 	// edge animation progress
 	for i := range g.edges {

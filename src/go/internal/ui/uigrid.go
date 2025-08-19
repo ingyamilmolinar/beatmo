@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	debugCharW = 7  // width of a character drawn by DebugPrintAt
-	debugCharH = 13 // height of a character drawn by DebugPrintAt
+        // Ebiten's debug font uses a 6x13 glyph. Using 7 previously caused text
+        // input cursors to drift ahead of the character being edited.
+        debugCharW = 6  // width of a character drawn by DebugPrintAt
+        debugCharH = 13 // height of a character drawn by DebugPrintAt
 )
 
 // insetRect returns r shrunk by pad pixels on all sides.
