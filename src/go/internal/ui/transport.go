@@ -14,16 +14,12 @@ type Transport struct {
 	BPM     int
 	Playing bool
 
-	boxRect  image.Rectangle // bpm input box coords
+	bpmBox   *TextInput
 	playRect image.Rectangle
 	stopRect image.Rectangle
-	focusBox bool
 
-	boxAnim      float64
 	bpmErrorAnim float64
-
-	bpmInput string // typed digits while editing
-	bpmPrev  int    // previous BPM before editing
+	bpmPrev      int
 }
 
 func (t *Transport) SetBPM(b int) {
@@ -41,9 +37,13 @@ func (t *Transport) SetBPM(b int) {
 }
 
 func NewTransport(w int) *Transport {
+	_ = w
+	r := image.Rect(50, 8, 120, 30)
+	ti := NewTextInput(r, BPMBoxStyle)
+	ti.SetText("120")
 	return &Transport{
 		BPM:      120,
-		boxRect:  image.Rect(50, 8, 120, 30),
+		bpmBox:   ti,
 		playRect: image.Rect(140, 8, 170, 30),
 		stopRect: image.Rect(180, 8, 210, 30),
 	}
@@ -51,18 +51,10 @@ func NewTransport(w int) *Transport {
 
 func (t *Transport) Update() {
 	x, y := cursorPosition()
-	prevFocus := t.focusBox
+	prev := t.bpmBox.Focused()
+	t.bpmBox.Update()
 
 	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
-		if t.boxRect.Min.X <= x && x <= t.boxRect.Max.X &&
-			t.boxRect.Min.Y <= y && y <= t.boxRect.Max.Y {
-			t.focusBox = true
-			t.boxAnim = 1
-			t.bpmPrev = t.BPM
-			t.bpmInput = ""
-		} else {
-			t.focusBox = false
-		}
 		if pt(x, y, t.playRect) {
 			t.Playing = true
 		}
@@ -71,42 +63,24 @@ func (t *Transport) Update() {
 		}
 	}
 
-	if t.focusBox {
-		if ch := inputChars(); len(ch) > 0 {
-			if _, err := strconv.Atoi(string(ch)); err == nil {
-				t.bpmInput += string(ch)
-			}
-		}
-		if isKeyPressed(ebiten.KeyBackspace) {
-			if l := len(t.bpmInput); l > 0 {
-				t.bpmInput = t.bpmInput[:l-1]
-			}
-		}
-		if isKeyPressed(ebiten.KeyEnter) {
-			t.focusBox = false
-		}
-		if t.bpmInput != "" {
-			if v, err := strconv.Atoi(t.bpmInput); err == nil {
-				t.BPM = v
-			}
-		} else {
-			t.BPM = t.bpmPrev
-		}
+	if !prev && t.bpmBox.Focused() {
+		t.bpmPrev = t.BPM
+		t.bpmBox.SetText("")
 	}
 
-	if !t.focusBox && prevFocus {
-		if t.bpmInput == "" {
-			t.BPM = t.bpmPrev
+	if t.bpmBox.Focused() {
+		if v, err := strconv.Atoi(t.bpmBox.Value()); err == nil {
+			t.BPM = v
 		}
-		t.SetBPM(t.BPM)
-		t.bpmInput = ""
+	} else if prev {
+		if t.bpmBox.Value() == "" {
+			t.BPM = t.bpmPrev
+		} else if v, err := strconv.Atoi(t.bpmBox.Value()); err == nil {
+			t.SetBPM(v)
+		}
+		t.bpmBox.SetText(fmt.Sprintf("%d", t.BPM))
 	}
 
-	// decay animations
-	t.boxAnim *= 0.85
-	if t.boxAnim < 0.01 {
-		t.boxAnim = 0
-	}
 	t.bpmErrorAnim *= 0.85
 	if t.bpmErrorAnim < 0.01 {
 		t.bpmErrorAnim = 0
@@ -122,17 +96,10 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 	// BPM label
 	ebitenutil.DebugPrintAt(dst, "BPM:", 10, 12)
 
-	BPMBoxStyle.DrawAnimated(dst, t.boxRect, t.focusBox, t.boxAnim)
+	t.bpmBox.Draw(dst)
 	if t.bpmErrorAnim > 0 {
-		drawRect(dst, t.boxRect, fadeColor(colError, t.bpmErrorAnim), false)
+		drawRect(dst, t.bpmBox.Rect, fadeColor(colError, t.bpmErrorAnim), false)
 	}
-	text := t.bpmInput
-	if !t.focusBox {
-		text = fmt.Sprintf("%d", t.BPM)
-	}
-	ebitenutil.DebugPrintAt(dst,
-		text,
-		t.boxRect.Min.X+4, t.boxRect.Min.Y+4)
 
 	// play / stop squares
 	drawRect(dst, t.playRect, color.White, t.Playing)

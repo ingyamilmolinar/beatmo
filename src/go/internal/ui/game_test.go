@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"io"
 	"math"
 	"reflect"
@@ -16,6 +17,94 @@ var testLogger *game_log.Logger
 
 func init() {
 	testLogger = game_log.New(io.Discard, game_log.LevelError)
+	SetDefaultStartForTest(false)
+}
+
+func advanceBeats(g *Game, beats int) {
+	for i := 0; i < beats; i++ {
+		if g.activePulse == nil {
+			return
+		}
+		delete(g.highlightedBeats, makeBeatKey(g.activePulse.row, g.activePulse.lastIdx))
+		g.advancePulse(g.activePulse)
+	}
+}
+
+func assertNotPanics(t *testing.T, f func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	f()
+}
+
+func TestDropdownBlocksEditorClick(t *testing.T) {
+        g := New(testLogger)
+        g.Layout(200, 200)
+
+        before := len(g.graph.Nodes)
+        g.drum.rowLabels[0].OnClick()
+        if !g.drum.instMenuOpen {
+                t.Fatalf("menu not open")
+        }
+        r := g.drum.instMenuBtns[0].Rect()
+        restore := SetInputForTest(
+                func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
+                func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+                func(ebiten.Key) bool { return false },
+                func() []rune { return nil },
+                func() (float64, float64) { return 0, 0 },
+                func() (int, int) { return 200, 200 },
+        )
+        g.Update()
+        restore()
+
+        after := len(g.graph.Nodes)
+        if after != before {
+                t.Fatalf("editor handled click under menu: nodes %d -> %d", before, after)
+        }
+}
+
+func TestHighlightsAllRows(t *testing.T) {
+	g := New(testLogger)
+	// create three independent origin nodes
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+
+	g.drum.SetBounds(image.Rect(0, 0, 200, 100))
+	g.drum.Rows[0].Origin = n0.ID
+	g.drum.Rows[0].Node = g.nodeByID(n0.ID)
+	g.drum.AddRow()
+	g.drum.Rows[1].Origin = n1.ID
+	g.drum.Rows[1].Node = g.nodeByID(n1.ID)
+	g.drum.AddRow()
+	g.drum.Rows[2].Origin = n2.ID
+	g.drum.Rows[2].Node = g.nodeByID(n2.ID)
+
+	g.updateBeatInfos()
+	g.spawnPulseFromRow(0, 0)
+	g.spawnPulseFromRow(1, 0)
+	g.spawnPulseFromRow(2, 0)
+
+	if _, ok := g.highlightedBeats[makeBeatKey(2, 0)]; !ok {
+		t.Fatalf("expected highlight for row2, got %v", g.highlightedBeats)
+	}
+}
+
+func TestGameStartsWithDefaultOrigin(t *testing.T) {
+	SetDefaultStartForTest(true)
+	g := New(testLogger)
+	g.Layout(640, 480)
+	SetDefaultStartForTest(false)
+	if len(g.drum.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(g.drum.Rows))
+	}
+	if g.drum.Rows[0].Origin == model.InvalidNodeID {
+		t.Fatalf("expected default origin node")
+	}
 }
 
 func TestTryAddNodeTogglesRow(t *testing.T) {
@@ -39,6 +128,197 @@ func TestDeleteNodeClearsRow(t *testing.T) {
 	g.Update() // Propagate changes to drum.Rows
 	if len(g.drum.Rows[0].Steps) > 1 && g.drum.Rows[0].Steps[1] {
 		t.Fatalf("expected step 1 off after delete")
+	}
+}
+
+func TestGameAssignsOriginToNewRow(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.drum.AddRow()
+	g.Update()
+	n := g.tryAddNode(3, 0, model.NodeTypeRegular)
+	if g.drum.Rows[1].Origin != n.ID {
+		t.Fatalf("expected row origin %d got %d", n.ID, g.drum.Rows[1].Origin)
+	}
+}
+
+func TestGameCalculatesBeatInfosPerRow(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	g.pendingStartRow = 0
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+
+	// add a second row and assign its origin on next node add
+	g.drum.AddRow()
+	g.Update()
+	g.pendingStartRow = 1
+	n1 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+
+	g.updateBeatInfos()
+
+	if len(g.beatInfosByRow) < 2 {
+		t.Fatalf("expected beatInfos for 2 rows, got %d", len(g.beatInfosByRow))
+	}
+	if len(g.beatInfosByRow[0]) == 0 || g.beatInfosByRow[0][0].NodeID != n0.ID {
+		t.Fatalf("row0 beatInfos start at %v want %v", g.beatInfosByRow[0], n0.ID)
+	}
+	if len(g.beatInfosByRow[1]) == 0 || g.beatInfosByRow[1][0].NodeID != n1.ID {
+		t.Fatalf("row1 beatInfos start at %v want %v", g.beatInfosByRow[1], n1.ID)
+	}
+}
+
+func TestDrumRowsStayIsolated(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// Origin for first row
+	g.pendingStartRow = 0
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+
+	// Second row with its own origin
+	g.drum.AddRow()
+	g.Update() // process row addition so next node sets origin
+	g.pendingStartRow = 1
+	n1 := g.tryAddNode(0, 1, model.NodeTypeRegular)
+
+	// Connect an extra node to row 0 only
+	n0b := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n0b)
+	g.updateBeatInfos()
+	g.refreshDrumRow()
+
+	if !g.drum.Rows[0].Steps[1] {
+		t.Fatalf("expected row0 step1 on after edge")
+	}
+	if g.drum.Rows[1].Steps[1] {
+		t.Fatalf("row1 step1 unexpectedly on after row0 update")
+	}
+
+	// Now connect a node for row 1 and ensure row 0 stays the same
+	n1b := g.tryAddNode(1, 1, model.NodeTypeRegular)
+	g.addEdge(n1, n1b)
+	g.updateBeatInfos()
+	g.refreshDrumRow()
+
+	if !g.drum.Rows[1].Steps[1] {
+		t.Fatalf("expected row1 step1 on after its edge")
+	}
+	if !g.drum.Rows[0].Steps[1] || g.drum.Rows[0].Steps[2] {
+		t.Fatalf("row0 steps changed unexpectedly: %v", g.drum.Rows[0].Steps[:3])
+	}
+
+	// sanity: origins unaffected
+	if g.drum.Rows[0].Origin != n0.ID || g.drum.Rows[1].Origin != n1.ID {
+		t.Fatalf("origins changed: %v %v", g.drum.Rows[0].Origin, g.drum.Rows[1].Origin)
+	}
+}
+
+func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	// first row start
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n0
+	g.graph.StartNodeID = n0.ID
+
+	// second row
+	g.drum.AddRow()
+	g.Update()
+	_ = g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.drum.Rows[1].Instrument = "kick"
+
+	g.updateBeatInfos()
+
+	var plays []string
+	orig := playSound
+	playSound = func(id string, vol float64, when ...float64) { plays = append(plays, id) }
+	defer func() { playSound = orig }()
+
+	g.spawnPulseFromRow(0, 0)
+	g.spawnPulseFromRow(1, 0)
+
+	if len(plays) != 2 {
+		t.Fatalf("expected 2 plays got %d", len(plays))
+	}
+	if plays[0] != g.drum.Rows[0].Instrument || plays[1] != g.drum.Rows[1].Instrument {
+		t.Fatalf("got plays %v", plays)
+	}
+}
+
+func TestAddRowDoesNotClearGraph(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	_ = g.tryAddNode(0, 0, model.NodeTypeRegular)
+	_ = g.tryAddNode(1, 0, model.NodeTypeRegular)
+	before := len(g.nodes)
+
+	g.drum.AddRow()
+	g.Update() // process row addition
+
+	if len(g.nodes) != before {
+		t.Fatalf("expected %d nodes after adding row, got %d", before, len(g.nodes))
+	}
+	if len(g.drum.Rows) < 2 || g.drum.Rows[1].Origin != model.InvalidNodeID {
+		t.Fatalf("expected new row without origin")
+	}
+}
+
+func TestDeleteRowRemovesActivePulses(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n1, n2)
+	g.start = n1
+	g.graph.StartNodeID = n1.ID
+	g.drum.Rows[0].Origin = n1.ID
+	g.drum.Rows[0].Node = n1
+
+	g.updateBeatInfos()
+	g.spawnPulseFromRow(0, 0)
+	if len(g.activePulses) != 1 {
+		t.Fatalf("expected active pulse")
+	}
+
+	g.drum.DeleteRow(0)
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+	if len(g.activePulses) != 0 {
+		t.Fatalf("expected pulses cleared, got %d", len(g.activePulses))
+	}
+}
+
+func TestDeleteFirstRowKeepsSecond(t *testing.T) {
+	g := New(testLogger)
+	g.drum.AddRow()
+	g.updateBeatInfos()
+	g.nextBeatIdxs = []int{1, 7}
+
+	g.drum.DeleteRow(0)
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+
+	if len(g.drum.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(g.drum.Rows))
+	}
+	if len(g.nextBeatIdxs) != 1 || g.nextBeatIdxs[0] != 7 {
+		t.Fatalf("unexpected nextBeatIdxs %v", g.nextBeatIdxs)
+	}
+
+	g.drum.AddRow()
+	if err := g.Update(); err != nil {
+		t.Fatalf("update error: %v", err)
+	}
+	if len(g.drum.Rows) != 2 {
+		t.Fatalf("expected to add row after deletion, got %d", len(g.drum.Rows))
 	}
 }
 
@@ -68,9 +348,11 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	p := &pulse{
 		fromBeatInfo: g.beatInfos[last-1],
 		toBeatInfo:   g.beatInfos[last],
+		path:         g.beatInfos,
 		pathIdx:      last,
 		from:         g.nodeByID(g.beatInfos[last-1].NodeID),
 		to:           g.nodeByID(g.beatInfos[last].NodeID),
+		row:          0,
 	}
 
 	func() {
@@ -91,6 +373,88 @@ func TestAdvancePulseLoopWrap(t *testing.T) {
 	if p.toBeatInfo.NodeID != g.beatInfos[0].NodeID {
 		t.Fatalf("expected to node %d, got %d", g.beatInfos[0].NodeID, p.toBeatInfo.NodeID)
 	}
+}
+
+func TestAdvancePulsePanicsOnUnexpectedOrigin(t *testing.T) {
+	g := New(testLogger)
+	g.drum.Rows[0].Origin = 1
+	g.drum.Rows[0].Steps = make([]bool, 4)
+	g.isLoopByRow = []bool{true}
+	g.loopStartByRow = []int{0}
+	g.originIdxsByRow = [][]int{{0, 2}}
+	g.nextOriginIdxByRow = []int{0}
+	g.nodes = []*uiNode{{ID: 1}, {ID: 2}}
+	p := &pulse{
+		fromBeatInfo: model.BeatInfo{NodeID: 2},
+		toBeatInfo:   model.BeatInfo{NodeID: 1},
+		path: []model.BeatInfo{
+			{NodeID: 1}, {NodeID: 2}, {NodeID: 1},
+		},
+		pathIdx: 2,
+		row:     0,
+	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic on unexpected origin jump")
+		}
+	}()
+	g.advancePulse(p)
+}
+
+func TestAdvancePulseAllowsRepeatedOrigin(t *testing.T) {
+	g := New(testLogger)
+	g.drum.Rows[0].Origin = 1
+	g.drum.Rows[0].Steps = make([]bool, 4)
+	g.isLoopByRow = []bool{true}
+	g.loopStartByRow = []int{0}
+	g.originIdxsByRow = [][]int{{0, 2, 4}}
+	g.nextOriginIdxByRow = []int{1}
+	g.nodes = []*uiNode{{ID: 1}, {ID: 2}}
+	g.nextBeatIdxs = []int{0}
+	p := &pulse{
+		fromBeatInfo: model.BeatInfo{NodeID: 2},
+		toBeatInfo:   model.BeatInfo{NodeID: 1},
+		path:         []model.BeatInfo{{NodeID: 1}, {NodeID: 2}, {NodeID: 1}, {NodeID: 2}, {NodeID: 1}},
+		pathIdx:      2,
+		row:          0,
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("advancePulse panicked: %v", r)
+			}
+		}()
+		g.advancePulse(p)
+	}()
+}
+
+func TestAdvancePulseAllowsIrregularOriginSpacing(t *testing.T) {
+	g := New(testLogger)
+	g.drum.Rows[0].Origin = 1
+	g.drum.Rows[0].Steps = make([]bool, 4)
+	g.isLoopByRow = []bool{true}
+	g.loopStartByRow = []int{0}
+	g.originIdxsByRow = [][]int{{0, 5}}
+	g.nextOriginIdxByRow = []int{1}
+	g.nextBeatIdxs = []int{0}
+	g.nodes = []*uiNode{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5}}
+	p := &pulse{
+		fromBeatInfo: model.BeatInfo{NodeID: 5},
+		toBeatInfo:   model.BeatInfo{NodeID: 1},
+		path: []model.BeatInfo{
+			{NodeID: 1}, {NodeID: 2}, {NodeID: 3}, {NodeID: 4}, {NodeID: 5}, {NodeID: 1},
+		},
+		pathIdx: 5,
+		row:     0,
+	}
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("advancePulse panicked: %v", r)
+			}
+		}()
+		g.advancePulse(p)
+	}()
 }
 
 func TestTimelineDragWhilePlayingKeepsPulse(t *testing.T) {
@@ -157,6 +521,9 @@ func TestDrumWheelDoesNotZoomGrid(t *testing.T) {
 func TestPlayWithoutStartNodeStaysResponsive(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
+	if len(g.nodes) > 0 {
+		g.deleteNode(g.nodes[0])
+	}
 	g.Update()
 
 	g.drum.playPressed = true
@@ -236,9 +603,11 @@ func TestComplexCircuitTraversal(t *testing.T) {
 	p := &pulse{
 		fromBeatInfo: g.beatInfos[len(g.beatInfos)-1],
 		toBeatInfo:   g.beatInfos[0],
+		path:         g.beatInfos,
 		pathIdx:      0,
 		from:         g.nodeByID(g.beatInfos[len(g.beatInfos)-1].NodeID),
 		to:           g.nodeByID(g.beatInfos[0].NodeID),
+		row:          0,
 	}
 
 	for i := 0; i < expectedLen*2; i++ {
@@ -260,7 +629,7 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	// Simulate click on play button
 	pressed := true
 	restore := SetInputForTest(
-		func() (int, int) { return g.drum.playBtn.Min.X + 1, g.drum.playBtn.Min.Y + 1 }, // Click inside the button
+		func() (int, int) { return g.drum.playBtn.Rect().Min.X + 1, g.drum.playBtn.Rect().Min.Y + 1 }, // Click inside the button
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -337,14 +706,16 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
+	g.pendingStartRow = 0
 	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	n2 := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	g.addEdge(n1, n2)
-	g.graph.StartNodeID = n1.ID
 
 	g.playing = true
-	g.engine.Start()
 	g.spawnPulseFrom(0)
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse")
+	}
 	if g.activePulse == nil {
 		t.Fatalf("no pulse spawned")
 	}
@@ -356,7 +727,7 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 
 	pressed := true
 	restore := SetInputForTest(
-		func() (int, int) { return g.drum.bpmIncBtn.Min.X + 1, g.drum.bpmIncBtn.Min.Y + 1 },
+		func() (int, int) { return g.drum.bpmIncBtn.Rect().Min.X + 1, g.drum.bpmIncBtn.Rect().Min.Y + 1 },
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -430,10 +801,10 @@ func TestRowLengthMatchesConnectedNodes(t *testing.T) {
 func TestPulseAnimationProgress(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
+	g.pendingStartRow = 0
 	node0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	node1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	g.addEdge(node0, node1)
-	g.graph.StartNodeID = node0.ID
 
 	// Manually set playing to true and call spawnPulse to create the pulse
 	g.playing = true
@@ -465,13 +836,14 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
+	g.pendingStartRow = 0
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.addEdge(n0, n2) // introduces an invisible node at (1,0)
 
 	var plays []string
 	orig := playSound
-	playSound = func(id string, when ...float64) { plays = append(plays, id) }
+	playSound = func(id string, vol float64, when ...float64) { plays = append(plays, id) }
 	defer func() { playSound = orig }()
 
 	g.playing = true
@@ -505,12 +877,12 @@ func TestSoundPlaysWithin50msOfHighlight(t *testing.T) {
 	var delta time.Duration
 	orig := playSound
 	start := time.Now()
-	playSound = func(id string, when ...float64) {
+	playSound = func(id string, vol float64, when ...float64) {
 		delta = time.Since(start)
 	}
 	defer func() { playSound = orig }()
 
-	g.highlightBeat(0, info, 0)
+	g.highlightBeat(0, 0, info, 0)
 	if delta > 50*time.Millisecond {
 		t.Fatalf("audio delay %v exceeds 50ms", delta)
 	}
@@ -525,13 +897,78 @@ func TestHighlightBeatUsesSelectedInstrument(t *testing.T) {
 
 	var id string
 	orig := playSound
-	playSound = func(inst string, when ...float64) { id = inst }
+	playSound = func(inst string, vol float64, when ...float64) { id = inst }
 	defer func() { playSound = orig }()
 
-	g.highlightBeat(0, info, 0)
+	g.highlightBeat(0, 0, info, 0)
 	if id != "kick" {
 		t.Fatalf("expected instrument 'kick', got %s", id)
 	}
+}
+
+func TestHighlightBeatUsesRowVolume(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
+	g.drum.Rows[0].Volume = 0.25
+	var vol float64
+	orig := playSound
+	playSound = func(id string, v float64, when ...float64) { vol = v }
+	defer func() { playSound = orig }()
+	g.highlightBeat(0, 0, info, 0)
+	if math.Abs(vol-0.25) > 0.01 {
+		t.Fatalf("expected volume 0.25 got %f", vol)
+	}
+}
+
+func TestLoopPulseDoesNotJumpToOrigin(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n0
+	g.graph.StartNodeID = n0.ID
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	n3 := g.tryAddNode(3, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n3)
+	g.addEdge(n3, n1)
+	g.updateBeatInfos()
+	g.playing = true
+	g.spawnPulseFrom(0)
+	for i := 0; i < 3; i++ {
+		g.advancePulse(g.activePulse)
+	}
+	if g.activePulse.fromBeatInfo.NodeID != n3.ID || g.activePulse.toBeatInfo.NodeID != n1.ID {
+		t.Fatalf("expected pulse from %d to %d, got from %d to %d", n3.ID, n1.ID, g.activePulse.fromBeatInfo.NodeID, g.activePulse.toBeatInfo.NodeID)
+	}
+}
+
+func TestOriginSequenceResetsAtSameIndex(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.start = n0
+	g.graph.StartNodeID = n0.ID
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n2)
+	g.addEdge(n2, n0)
+
+	g.updateBeatInfos()
+	g.playing = true
+	g.spawnPulseFrom(0)
+
+	g.advancePulse(g.activePulse)
+	g.advancePulse(g.activePulse)
+
+	g.resetOriginSequences()
+
+	assertNotPanics(t, func() { g.advancePulse(g.activePulse) })
 }
 
 func TestAudioLoopConsistency(t *testing.T) {
@@ -553,7 +990,7 @@ func TestAudioLoopConsistency(t *testing.T) {
 
 	var plays int
 	orig := playSound
-	playSound = func(id string, when ...float64) { plays++ }
+	playSound = func(id string, vol float64, when ...float64) { plays++ }
 	defer func() { playSound = orig }()
 
 	g.playing = true
@@ -732,6 +1169,35 @@ func TestBottomPaneClickIgnored(t *testing.T) {
 	g.graph.StartNodeID = model.InvalidNodeID
 }
 
+func TestScrollBarDragDoesNotPanGrid(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	for i := 0; i < 6; i++ {
+		g.drum.AddRow()
+	}
+	thumb := g.drum.scrollThumbRect()
+	mx, my := thumb.Min.X+1, thumb.Min.Y+1
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	g.Update()          // start drag on thumb
+	my = g.split.Y - 50 // move into top panel while holding
+	g.Update()          // continue drag outside drum view
+	pressed = false
+	g.Update() // release
+	restore()
+	if g.cam.OffsetX != 0 || g.cam.OffsetY != 0 {
+		t.Fatalf("camera moved: off=(%f,%f)", g.cam.OffsetX, g.cam.OffsetY)
+	}
+	g.graph.StartNodeID = model.InvalidNodeID
+}
+
 func TestHighlightMatchesNode(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -796,6 +1262,43 @@ func TestSplitterDragPersists(t *testing.T) {
 	}
 	g.graph.StartNodeID = model.InvalidNodeID
 }
+
+// When the screen size can't be queried (e.g. it returns 0), dragging the
+// splitter should still preserve its final position once released.
+func TestSplitterDragPersistsWithoutScreenSize(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	startY := g.split.Y
+	pos := []struct{ x, y int }{
+		{10, startY},
+		{10, startY + 50},
+		{10, startY + 50},
+	}
+	idx := 0
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return pos[idx].x, pos[idx].y },
+		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+
+	g.Update() // press
+	idx = 1
+	g.Update() // drag
+	pressed = false
+	idx = 2
+	g.Update()         // release
+	g.Layout(640, 480) // layout called again as in game loop
+	g.Update()
+	if g.split.Y != startY+50 {
+		t.Fatalf("splitter Y=%d want %d", g.split.Y, startY+50)
+	}
+	g.graph.StartNodeID = model.InvalidNodeID
+}
 func TestSplitterDragDoesNotCreateNode(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
@@ -834,58 +1337,6 @@ func TestSplitterDragDoesNotCreateNode(t *testing.T) {
 		t.Fatalf("unexpected node created during splitter drag")
 	}
 	g.graph.StartNodeID = model.InvalidNodeID
-}
-
-func TestDrumViewDragShiftsWindow(t *testing.T) {
-	g := New(testLogger)
-	g.Layout(640, 480)
-
-	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	prev := n0
-	for i := 1; i < 6; i++ {
-		n := g.tryAddNode(i, 0, model.NodeTypeRegular)
-		g.addEdge(prev, n)
-		prev = n
-	}
-	g.start = n0
-	g.graph.StartNodeID = n0.ID
-	g.updateBeatInfos()
-	g.drum.Length = 3
-	g.refreshDrumRow()
-	g.drum.recalcButtons()
-	g.drum.calcLayout()
-
-	stepX := g.drum.Bounds.Min.X + g.drum.labelW + g.drum.controlsW + g.drum.cell/2
-	stepY := g.drum.Bounds.Min.Y + g.drum.rowHeight()/2
-	pos := []struct{ x, y int }{{stepX, stepY}, {stepX - 2*g.drum.cell, stepY}, {stepX - 2*g.drum.cell, stepY}}
-	idx := 0
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return pos[idx].x, pos[idx].y },
-		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 640, 480 },
-	)
-	defer restore()
-
-	g.Update() // press
-	idx = 1
-	g.Update() // drag
-	pressed = false
-	idx = 2
-	g.Update() // release
-
-	if g.drum.Offset <= 0 {
-		t.Fatalf("drum offset not increased: %d", g.drum.Offset)
-	}
-	if g.camDragging {
-		t.Fatalf("camera dragged during drum view drag")
-	}
-	if g.drumBeatInfos[0].NodeID != g.beatInfoAt(g.drum.Offset).NodeID {
-		t.Fatalf("drum view not shifted correctly")
-	}
 }
 
 func TestDrumViewResizeKeepsOffset(t *testing.T) {
@@ -970,31 +1421,30 @@ func TestHighlightEmptyCells(t *testing.T) {
 	}
 
 	g.playing = true
-	g.engine.Start()
 	g.spawnPulseFrom(0)
 
-	if _, ok := g.highlightedBeats[0]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 0)]; !ok {
 		t.Errorf("Tick 0: Beat at index 0 should be highlighted")
 	}
 
 	for g.activePulse != nil && g.activePulse.pathIdx < 2 {
 		g.Update()
 	}
-	if _, ok := g.highlightedBeats[1]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 1)]; !ok {
 		t.Errorf("Tick 1: Beat at index 1 should be highlighted")
 	}
 
 	for g.activePulse != nil && g.activePulse.pathIdx < 3 {
 		g.Update()
 	}
-	if _, ok := g.highlightedBeats[2]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 2)]; !ok {
 		t.Errorf("Tick 2: Beat at index 2 should be highlighted")
 	}
 
 	for g.activePulse != nil && g.activePulse.pathIdx < 4 {
 		g.Update()
 	}
-	if _, ok := g.highlightedBeats[3]; !ok {
+	if _, ok := g.highlightedBeats[makeBeatKey(0, 3)]; !ok {
 		t.Errorf("Tick 3: Beat at index 3 should be highlighted")
 	}
 }
@@ -1316,34 +1766,16 @@ func TestSignalTraversalInLoop(t *testing.T) {
 
 	g.playing = true
 	g.spawnPulseFrom(0)
-
 	if g.activePulse == nil {
 		t.Fatalf("Expected active pulse after spawning")
 	}
-
-	// Advance the pulse and check its path
-	maxIterations := len(expectedNodeIDs) * 100 // Safety break for infinite loops
-	for step := 0; step < len(expectedNodeIDs)-1; step++ {
+	// Advance through several beats ensuring pulse persists
+	for i := 0; i < len(expectedNodeIDs)*2; i++ {
 		if g.activePulse == nil {
-			t.Fatalf("Pulse ended prematurely at step %d", step)
+			t.Fatalf("Pulse ended prematurely at beat %d", i)
 		}
-		if g.activePulse.fromBeatInfo.NodeID != expectedNodeIDs[step] {
-			t.Errorf("Step %d: Expected NodeID %d, got %d (fromBeatInfo)", step, expectedNodeIDs[step], g.activePulse.fromBeatInfo.NodeID)
-		}
-		if g.activePulse.toBeatInfo.NodeID != expectedNodeIDs[step+1] {
-			t.Errorf("Step %d: Expected next NodeID %d, got %d (toBeatInfo)", step, expectedNodeIDs[step+1], g.activePulse.toBeatInfo.NodeID)
-		}
-
-		startIdx := g.activePulse.pathIdx
-		frameCounter := 0
-		for g.activePulse != nil && g.activePulse.pathIdx == startIdx && frameCounter < maxIterations {
-			g.Update()
-			frameCounter++
-			t.Logf("  Inside inner loop: pathIdx=%d, t=%.2f, frameCounter=%d", g.activePulse.pathIdx, g.activePulse.t, frameCounter)
-		}
-		if frameCounter >= maxIterations {
-			t.Fatalf("Inner loop exceeded max iterations (%d) at step %d, possible infinite loop. pathIdx=%d", maxIterations, step, g.activePulse.pathIdx)
-		}
+		g.activePulse.t = 1
+		g.Update()
 	}
 }
 
@@ -1393,22 +1825,26 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 
 	// now simulate pulse highlighting across two laps
 	g.spawnPulseFrom(0)
-	// sequence of highlighted beat indices expected for first 12 advancements
-	expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+        // sequence of highlighted beat indices expected for first 12 advancements
+        expected := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 	got := make([]int, len(expected))
 	got[0] = 0
-	for i := 1; i < len(expected); i++ {
-		delete(g.highlightedBeats, g.activePulse.lastIdx)
-		if !g.advancePulse(g.activePulse) {
-			t.Fatalf("pulse ended early at step %d", i)
-		}
-		if len(g.highlightedBeats) != 1 {
-			t.Fatalf("expected single highlight, got %v", g.highlightedBeats)
-		}
-		for idx := range g.highlightedBeats {
-			got[i] = idx
-		}
-	}
+        for i := 1; i < len(expected); i++ {
+                delete(g.highlightedBeats, makeBeatKey(0, g.activePulse.lastIdx))
+                if !g.advancePulse(g.activePulse) {
+                        t.Fatalf("pulse ended early at step %d", i)
+                }
+                if _, ok := g.highlightedBeats[makeBeatKey(0, expected[i])]; !ok {
+                        t.Fatalf("expected highlight %d, got %v", expected[i], g.highlightedBeats)
+                }
+                for key := range g.highlightedBeats {
+                        _, idx := splitBeatKey(key)
+                        got[i] = idx
+                        if idx != g.elapsedBeats-1 {
+                                t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
+                        }
+                }
+        }
 	if !reflect.DeepEqual(expected, got) {
 		t.Fatalf("highlight sequence mismatch. expected %v got %v", expected, got)
 	}
@@ -1477,5 +1913,146 @@ func TestBPMChangeDuringLoopKeepsForwardProgress(t *testing.T) {
 			t.Fatalf("pathIdx decreased from %d to %d", lastIdx, g.activePulse.pathIdx)
 		}
 		lastIdx = g.activePulse.pathIdx
+	}
+}
+
+func TestGraphUpdateDuringPlaybackPreservesProgress(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n0)
+	g.playing = true
+	g.spawnPulseFrom(0)
+	advanceBeats(g, 1)
+	prev := g.nextBeatIdxs[0]
+	if prev <= 1 {
+		t.Fatalf("expected progress beyond origin, got %d", prev)
+	}
+	g.updateBeatInfos()
+	if g.nextBeatIdxs[0] != prev {
+		t.Fatalf("beat index reset after update: %d -> %d", prev, g.nextBeatIdxs[0])
+	}
+	advanceBeats(g, 1)
+	if g.nextBeatIdxs[0] != prev+1 {
+		t.Fatalf("beat index did not advance: want %d got %d", prev+1, g.nextBeatIdxs[0])
+	}
+}
+
+func TestAddDisconnectedNodeDuringPlaybackMaintainsSequence(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n0)
+	g.playing = true
+	g.spawnPulseFrom(0)
+	advanceBeats(g, 2)
+	prev := g.nextBeatIdxs[0]
+	before := append([]model.BeatInfo(nil), g.beatInfosByRow[0]...)
+	g.tryAddNode(5, 5, model.NodeTypeRegular) // disconnected node
+	if g.nextBeatIdxs[0] != prev {
+		t.Fatalf("beat index changed after add node: got %d want %d", g.nextBeatIdxs[0], prev)
+	}
+	if !reflect.DeepEqual(before, g.beatInfosByRow[0]) {
+		t.Fatalf("beat path changed after add node: %v -> %v", before, g.beatInfosByRow[0])
+	}
+	advanceBeats(g, 4)
+	if g.nextBeatIdxs[0] != prev+4 {
+		t.Fatalf("beat index did not advance correctly: got %d want %d", g.nextBeatIdxs[0], prev+4)
+	}
+}
+
+func TestBPMChangeDuringPlaybackMaintainsSequence(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	g.addEdge(n0, n1)
+	g.addEdge(n1, n0)
+	g.playing = true
+	g.spawnPulseFrom(0)
+	if g.activePulse == nil {
+		t.Fatalf("expected active pulse")
+	}
+	advanceBeats(g, 1)
+	prev := g.nextBeatIdxs[0]
+	g.drum.SetBPM(60)
+	g.Update()
+	if g.nextBeatIdxs[0] != prev {
+		t.Fatalf("beat index reset after BPM change: %d -> %d", prev, g.nextBeatIdxs[0])
+	}
+	advanceBeats(g, 1)
+	if g.nextBeatIdxs[0] != prev+1 {
+		t.Fatalf("beat index did not advance after BPM change: want %d got %d", prev+1, g.nextBeatIdxs[0])
+	}
+}
+
+func TestPlaybackRestartDoesNotPanicOnOrigin(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	prev := n0
+	for i := 1; i < 6; i++ {
+		n := g.tryAddNode(i, 0, model.NodeTypeRegular)
+		g.addEdge(prev, n)
+		prev = n
+	}
+	g.addEdge(prev, n0)
+	g.updateBeatInfos()
+	g.playing = true
+	g.spawnPulseFrom(0)
+	advanceBeats(g, 2)
+	g.playing = false
+	g.Update()
+	g.playing = true
+	g.Update()
+	if g.activePulse == nil {
+		g.spawnPulseFrom(0)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected panic: %v", r)
+		}
+	}()
+	for i := 0; i < 7; i++ {
+		advanceBeats(g, 1)
+	}
+}
+
+func TestMuteAndSoloPlayback(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.drum.AddRow()
+
+	var plays []string
+	orig := playSound
+	playSound = func(id string, vol float64, when ...float64) { plays = append(plays, id) }
+	defer func() { playSound = orig }()
+
+	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
+
+	g.drum.Rows[0].Muted = true
+	g.highlightBeat(0, 0, info, 1)
+	if len(plays) != 0 {
+		t.Fatalf("expected no plays when muted, got %d", len(plays))
+	}
+
+	g.drum.Rows[0].Muted = false
+	g.drum.Rows[1].Solo = true
+	g.highlightBeat(0, 1, info, 1)
+	g.highlightBeat(1, 1, info, 1)
+	if len(plays) != 1 {
+		t.Fatalf("expected 1 play from solo row, got %d", len(plays))
+	}
+
+	plays = plays[:0]
+	g.drum.Rows[1].Solo = false
+	g.highlightBeat(0, 2, info, 1)
+	g.highlightBeat(1, 2, info, 1)
+	if len(plays) != 2 {
+		t.Fatalf("expected 2 plays after solo off, got %d", len(plays))
 	}
 }

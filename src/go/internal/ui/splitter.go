@@ -7,41 +7,43 @@ import (
 
 // Splitter holds the Y-coordinate of the horizontal divider.
 type Splitter struct {
-    Y        int     // divider position in screen px
-    ratio    float64 // Y / screen height
-    dragging bool    // true while the user is moving it
+	Y        int     // divider position in screen px
+	ratio    float64 // Y / screen height
+	dragging bool    // true while the user is moving it
 }
 
 func NewSplitter(totalH int) *Splitter {
-    return &Splitter{Y: totalH / 2, ratio: 0.5}
+	return &Splitter{Y: totalH / 2, ratio: 0.5}
 }
 
-func (s *Splitter) Update() {
+// Update adjusts the divider position based on the current cursor position
+// and window height. The caller must provide the total window height so the
+// splitter can preserve its relative location when the window resizes.
+func (s *Splitter) Update(totalH int) {
 	const grab = 5 // px hit-box around the divider
 
 	_, y := cursorPosition()
 
-        if isMouseButtonPressed(ebiten.MouseButtonLeft) {
-                // start drag if cursor is near the divider
-                if !s.dragging && utils.Abs(y-s.Y) <= grab {
-                        s.dragging = true
-                }
-                if s.dragging {
-                        s.Y = y
+	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
+		// start drag if cursor is near the divider
+		if !s.dragging && utils.Abs(y-s.Y) <= grab {
+			s.dragging = true
+		}
+		if s.dragging {
+			s.Y = y
 
-                        // clamp to sensible range
-                        _, screenH := screenSize()
-                        if s.Y < 120 {
-                                s.Y = 120
-                        }
-                        if s.Y > screenH-120 {
-                                s.Y = screenH - 120
-                        }
-                        if screenH > 0 {
-                                s.ratio = float64(s.Y) / float64(screenH)
-                        }
-                }
-        } else {
-                s.dragging = false
-        }
+			// clamp to sensible range
+			if s.Y < 120 {
+				s.Y = 120
+			}
+			if s.Y > totalH-120 {
+				s.Y = totalH - 120
+			}
+			if totalH > 0 {
+				s.ratio = float64(s.Y) / float64(totalH)
+			}
+		}
+	} else {
+		s.dragging = false
+	}
 }

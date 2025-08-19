@@ -1,5 +1,6 @@
 # Project Guidelines
 - **Before running any commands, execute `sudo make dependencies`** to install all required system and Node packages. This may take several minutes but prevents environment-related failures.
+- **Before opening any PR, run `make wasm` and `make test-real`** (even if they are no-ops on systems without native dependencies) unless explicitly instructed to skip them.
 - Use Go 1.23.x as specified in `go.mod`.
 - **Run the unit tests before opening a PR.** Use the stubbed Ebiten API via
   `go test -tags test -modfile=go.test.mod -timeout 1s ./...` for maximum portability.
@@ -126,3 +127,30 @@ This debugging session highlighted several critical points:
 * Miniaudio is compiled to WebAssembly via `emcc` during `make wasm`, producing `drums.js` at build time.
 * JavaScript wrapper `audio.js` exposes `window.playSound(id)` used by the Go runtime on WASM builds.
 * Current integration triggers snare and kick playback but does not yet support precise scheduling or mixing with Go's audio engine.
+
+## DrumView multi-row
+
+* Drum view UI now supports adding and deleting rows with `+` and per-row delete buttons.
+* Instruments are tracked per row and can be cycled for the selected row.
+* Each drum row tracks a distinct origin node. After adding a row, the next grid click assigns its origin, and deleting a row removes the associated node from the graph.
+* Row additions are now reported via `ConsumeAddedRows`, and each row stores a pointer to its origin UI node so `Game` no longer keeps a separate `startNodes` slice.
+* Beat paths are computed per drum row via `beatInfosByRow`, with the first row auto-syncing its origin to the game start node.
+* The global instrument selector next to the upload button has been removed. Upload is now the only top-level control, and instrument changes occur via per-row labels.
+* `Game` creates a centered origin node for row 0 by default; tests can disable this via `SetDefaultStartForTest(false)`.
+* Signals now propagate concurrently from each row's origin and trigger per-row instrument playback.
+* Drum view now highlights beats for every row based on encoded row/index keys.
+* Beat highlight keys are stored with absolute beat indices so the drum view markers remain in sync with the timeline cursor.
+* The drum view reserves an extra row for a trailing "+" button so existing grids remain intact; adding a row no longer clears the grid and awaits the user's next grid click for origin placement.
+* Row labels are clickable to cycle instruments, and a fixed 24px row height with internal padding keeps per-row buttons aligned without overlapping the transport panel.
+* Control panel uses a grid-based component system (`uigrid.go`) with declarative buttons and centered text to prevent overlapping layouts.
+* Each drum row exposes a volume slider with percentage readout; `Game` passes the row’s volume to audio playback.
+* Editing a row name shows a blinking cursor immediately and hides the underlying label to avoid visual artifacts.
+* The last remaining drum row cannot be deleted; its delete button is disabled.
+* Volume sliders now capture mouse drags, so releasing over other controls no longer triggers unintended actions; regression tests cover this.
+* Fixed loop traversal so pulses transition from the last node back to the loop start without jumping to the origin.
+* Nodes and drum cells are color-coded per instrument; origin nodes use a brighter shade.
+* Each row has a "set origin" button that lets the next grid click reassign its start node.
+* Pulse advancement now panics if a signal revisits its origin out of sequence, helping catch loop-order bugs in tests.
+* Deleting a drum row now purges its active pulses and shifts remaining rows so orphaned signals can't panic.
+* Reset origin-sequence bookkeeping on seek or playback restarts to avoid false "pulse jumped to origin" panics; regression tests cover this.
+* Row labels now include a small edit button to rename instruments; the rename dialog uses a blinking block cursor and key-repeat timing consistent with button holds.

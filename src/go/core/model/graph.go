@@ -10,7 +10,7 @@ const InvalidNodeID NodeID = -1
 
 type NodeID int
 
-type Node struct{
+type Node struct {
 	I, J int
 	Type NodeType // New field: NodeType
 }
@@ -31,13 +31,13 @@ type BeatInfo struct {
 }
 
 type Graph struct {
-	Nodes         map[NodeID]Node
-	Edges         map[[2]NodeID]struct{}
-	Next          NodeID
-	Row           []bool
-	StartNodeID   NodeID // ID of the explicit start node
+	Nodes           map[NodeID]Node
+	Edges           map[[2]NodeID]struct{}
+	Next            NodeID
+	Row             []bool
+	StartNodeID     NodeID // ID of the explicit start node
 	beatLengthValue int    // Desired length of the beat row
-	logger        *game_log.Logger
+	logger          *game_log.Logger
 }
 
 func NewGraph(logger *game_log.Logger) *Graph {
@@ -47,7 +47,7 @@ func NewGraph(logger *game_log.Logger) *Graph {
 		Next:            0,
 		Row:             make([]bool, 4),
 		StartNodeID:     InvalidNodeID, // Initialize with an invalid ID
-		beatLengthValue: 16, // Default beat length
+		beatLengthValue: 16,            // Default beat length
 		logger:          logger,
 	}
 }
@@ -80,7 +80,7 @@ func (g *Graph) GetNodeByID(id NodeID) (Node, bool) {
 	return n, ok
 }
 
-	func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
+func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 	g.logger.Debugf("[GRAPH] CalculateBeatRow: Start. StartNodeID: %d, BeatLengthValue: %d", g.StartNodeID, g.beatLengthValue)
 
 	if g.StartNodeID == InvalidNodeID {
@@ -193,6 +193,16 @@ func (g *Graph) GetNodeByID(id NodeID) (Node, bool) {
 	return beatRow, isLoop, loopStartIndex
 }
 
+// CalculateBeatRowFrom computes the beat row starting from the provided node ID
+// without permanently modifying the graph's StartNodeID.
+func (g *Graph) CalculateBeatRowFrom(start NodeID) ([]BeatInfo, bool, int) {
+	prev := g.StartNodeID
+	g.StartNodeID = start
+	row, loop, idx := g.CalculateBeatRow()
+	g.StartNodeID = prev
+	return row, loop, idx
+}
+
 func (g *Graph) getIntermediateGridPoints(node1I int, node1J int, node2I int, node2J int) []NodeID {
 	var intermediateNodeIDs []NodeID
 	g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Calculating intermediate points between (%d,%d) and (%d,%d)", node1I, node1J, node2I, node2J)
@@ -241,7 +251,6 @@ func (g *Graph) getIntermediateGridPoints(node1I int, node1J int, node2I int, no
 	g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Returning intermediateNodeIDs: %v", intermediateNodeIDs)
 	return intermediateNodeIDs
 }
-
 
 func (g *Graph) IsLoop() bool {
 	g.logger.Debugf("[GRAPH] IsLoop called. StartNodeID: %d, Nodes: %v, Edges: %v", g.StartNodeID, g.Nodes, g.Edges)
