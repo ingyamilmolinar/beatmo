@@ -8,6 +8,7 @@ import (
 const DefaultGridStep = 60 // world-space px between vertices
 
 // LineStyle describes how a grid subdivision should be rendered.
+// Width specifies the desired on-screen thickness in pixels.
 type LineStyle struct {
 	Color color.Color
 	Width float64
@@ -41,8 +42,8 @@ func NewGrid(step float64) *Grid {
 	return &Grid{
 		Step: step,
 		Subs: []Subdivision{
-			{Div: 1, MinPx: 0, Style: LineStyle{Color: colGridLine, Width: 2}},
-			{Div: 2, MinPx: 32, Style: LineStyle{Color: colGridHalf, Width: 1.5}},
+			{Div: 1, MinPx: 0, Style: LineStyle{Color: colGridLine, Width: 1}},
+			{Div: 2, MinPx: 32, Style: LineStyle{Color: colGridHalf, Width: 1}},
 			{Div: 4, MinPx: 14, Style: LineStyle{Color: colGridQuarter, Width: 1}},
 			{Div: 8, MinPx: 10, Style: LineStyle{Color: colGridEighth, Width: 1}},
 			{Div: 16, MinPx: 10, Style: LineStyle{Color: colGridSixteenth, Width: 1}},

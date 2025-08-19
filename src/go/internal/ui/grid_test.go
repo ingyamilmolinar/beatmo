@@ -145,3 +145,17 @@ func TestLinesExtendBeyondView(t *testing.T) {
 	}
 	t.Fatalf("no beat-level lines found")
 }
+
+func TestLineWidthConstantAcrossZoom(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	scales := []float64{0.5, 1, 2, 4}
+	for _, s := range scales {
+		unitPx := g.UnitPixels(s)
+		camScale := unitPx / g.Unit()
+		world := g.Subs[0].Style.Width / camScale
+		screen := world * camScale
+		if math.Abs(screen-g.Subs[0].Style.Width) > 1e-9 {
+			t.Fatalf("screen width=%f want=%f at scale %f", screen, g.Subs[0].Style.Width, s)
+		}
+	}
+}

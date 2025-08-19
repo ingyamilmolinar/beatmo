@@ -1102,11 +1102,13 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.winW, g.split.Y)
 	groups := g.grid.Lines(g.cam, g.winW, g.split.Y)
 	for _, lg := range groups {
+		// convert desired pixel width to world units so screen thickness stays constant
+		w := lg.Subdiv.Style.Width / camScale
 		for _, x := range lg.Xs {
-			DrawLineCam(screen, x, minY, x, maxY, &cam, lg.Subdiv.Style.Color, lg.Subdiv.Style.Width)
+			DrawLineCam(screen, x, minY, x, maxY, &cam, lg.Subdiv.Style.Color, w)
 		}
 		for _, y := range lg.Ys {
-			DrawLineCam(screen, minX, y, maxX, y, &cam, lg.Subdiv.Style.Color, lg.Subdiv.Style.Width)
+			DrawLineCam(screen, minX, y, maxX, y, &cam, lg.Subdiv.Style.Color, w)
 		}
 	}
 	var id ebiten.GeoM
