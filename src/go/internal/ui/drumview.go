@@ -98,6 +98,7 @@ type DrumView struct {
 	instMenuOpen bool
 	instMenuRow  int
 	instMenuBtns []*Button
+	instHold     bool
 
 	deleted    []deletedRow
 	added      []int
@@ -173,26 +174,8 @@ func (dv *DrumView) Capturing() bool {
 // the instrument dropdown or rename dialog. When true, clicks at that position
 // should not reach underlying UI elements.
 func (dv *DrumView) BlocksAt(x, y int) bool {
-	if dv.instMenuOpen {
-		if dv.instMenuRow >= 0 && dv.instMenuRow < len(dv.rowLabels) {
-			lbl := dv.rowLabels[dv.instMenuRow].Rect()
-			menu := image.Rect(lbl.Min.X, lbl.Max.Y, lbl.Max.X, lbl.Max.Y+len(dv.instMenuBtns)*dv.rowHeight())
-			if pt(x, y, lbl) || pt(x, y, menu) {
-				return true
-			}
-		}
-	}
-	if dv.renameBox != nil {
-		if pt(x, y, dv.renameBox.Rect) {
-			return true
-		}
-	}
-	if dv.naming {
-		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
-		save := image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+50, box.Max.Y)
-		if pt(x, y, box) || pt(x, y, save) {
-			return true
-		}
+	if dv.instMenuOpen || dv.instHold || dv.renameBox != nil || dv.naming {
+		return true
 	}
 	return false
 }
@@ -590,7 +573,6 @@ func (dv *DrumView) buildInstMenu() {
 		optID := id
 		btn := NewButton(strings.ToUpper(id[:1])+id[1:], DropdownStyle, func() {
 			dv.SetInstrument(optID)
-			dv.instMenuOpen = false
 		})
 		btn.SetRect(insetRect(r, buttonPad))
 		dv.instMenuBtns = append(dv.instMenuBtns, btn)
@@ -821,6 +803,13 @@ func (dv *DrumView) Update() {
 		return
 	}
 
+	if dv.instHold {
+		if !isMouseButtonPressed(ebiten.MouseButtonLeft) {
+			dv.instHold = false
+		}
+		return
+	}
+
 	dv.recalcButtons()
 	if dv.bgDirty {
 		dv.calcLayout()
@@ -873,6 +862,8 @@ func (dv *DrumView) Update() {
 	if dv.instMenuOpen {
 		for _, btn := range dv.instMenuBtns {
 			if btn.Handle(mx, my, left) {
+				dv.instMenuOpen = false
+				dv.instHold = true
 				return
 			}
 		}
@@ -881,11 +872,11 @@ func (dv *DrumView) Update() {
 			menu := image.Rect(lbl.Min.X, lbl.Max.Y, lbl.Max.X, lbl.Max.Y+len(dv.instMenuBtns)*dv.rowHeight())
 			if !pt(mx, my, lbl) && !pt(mx, my, menu) {
 				dv.instMenuOpen = false
-				// allow the click to reach underlying controls
-			} else {
-				return
+				dv.instHold = true
 			}
+			return
 		}
+		return
 	}
 
 	stepsRect := image.Rect(dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+timelineHeight, dv.Bounds.Max.X, dv.Bounds.Max.Y)

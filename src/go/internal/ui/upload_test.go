@@ -58,9 +58,9 @@ func TestUploadWAVMultipleAllowsInstrumentChange(t *testing.T) {
 }
 
 func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
-        g := New(testLogger)
-        g.Layout(640, 480)
-        g.drum.recalcButtons()
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.drum.recalcButtons()
 
 	// first upload via button click
 	r := g.drum.uploadBtn.Rect()
@@ -82,22 +82,22 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 		t.Fatalf("expected first instrument 'a', got %s", g.drum.Rows[0].Instrument)
 	}
 
-        // simulate clicking upload button again
-        restore2 := SetInputForTest(
-                func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
-                func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-                func(k ebiten.Key) bool { return false },
-                func() []rune { return nil },
-                func() (float64, float64) { return 0, 0 },
-                func() (int, int) { return 0, 0 },
-        )
-        g.drum.Update()
-        if !g.drum.uploading {
-                t.Fatalf("upload button inactive")
-        }
-        restore2()
-        g.drum.Update()
-        audio.ResetInstruments()
+	// simulate clicking upload button again
+	restore2 := SetInputForTest(
+		func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	g.drum.Update()
+	if !g.drum.uploading {
+		t.Fatalf("upload button inactive")
+	}
+	restore2()
+	g.drum.Update()
+	audio.ResetInstruments()
 }
 
 // When the instrument menu is open, clicking Upload should close the menu and
@@ -116,8 +116,8 @@ func TestUploadButtonWhileMenuOpen(t *testing.T) {
 	r := g.drum.uploadBtn.Rect()
 	click(g, r.Min.X+1, r.Min.Y+1)
 
-	if !g.drum.uploading {
-		t.Fatalf("upload button inactive while menu open")
+	if g.drum.uploading {
+		t.Fatalf("upload triggered while menu open")
 	}
 }
 

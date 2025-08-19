@@ -700,6 +700,38 @@ func TestDropdownBlocksUnderlyingControls(t *testing.T) {
 	}
 }
 
+func TestDropdownOutsideClickDoesNotTriggerUnderlyingControls(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 200, timelineHeight+3*24), graph, logger)
+	dv.Update()
+
+	// open menu
+	dv.rowLabels[0].OnClick()
+	dv.Update()
+
+	// click outside menu where the add-row button resides
+	add := dv.addRowBtn.Rect()
+	mx, my := add.Min.X+1, add.Min.Y+1
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	dv.Update()
+	if len(dv.ConsumeAddedRows()) != 0 {
+		t.Fatalf("add row triggered via outside dropdown click")
+	}
+	pressed = false
+	dv.Update()
+	restore()
+}
+
 func TestRenameBoxBlocksUnderlyingControls(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -938,7 +970,19 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 	if len(dv.instMenuBtns) < 2 {
 		t.Fatalf("expected at least two instrument options")
 	}
-	dv.instMenuBtns[1].OnClick() // select second instrument
+	btn := dv.instMenuBtns[1]
+	bx, by := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
+	restore := SetInputForTest(
+		func() (int, int) { return bx, by },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	dv.Update()
 	if dv.Rows[0].Instrument != audio.Instruments()[1] {
 		t.Fatalf("instrument not set via dropdown: %s vs %s", dv.Rows[0].Instrument, audio.Instruments()[1])
 	}
@@ -960,7 +1004,19 @@ func TestSelectingInstrumentDoesNotAddRow(t *testing.T) {
 	if len(dv.instMenuBtns) == 0 {
 		t.Fatalf("no instrument buttons")
 	}
-	dv.instMenuBtns[0].OnClick()
+	b0 := dv.instMenuBtns[0]
+	bx, by := b0.Rect().Min.X+1, b0.Rect().Min.Y+1
+	restore := SetInputForTest(
+		func() (int, int) { return bx, by },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	dv.Update()
 	if len(dv.Rows) != startRows {
 		t.Fatalf("rows=%d want %d", len(dv.Rows), startRows)
 	}
@@ -969,7 +1025,19 @@ func TestSelectingInstrumentDoesNotAddRow(t *testing.T) {
 	if !dv.instMenuOpen {
 		t.Fatalf("menu not reopened")
 	}
-	dv.instMenuBtns[len(dv.instMenuBtns)-1].OnClick()
+	last := dv.instMenuBtns[len(dv.instMenuBtns)-1]
+	bx, by = last.Rect().Min.X+1, last.Rect().Min.Y+1
+	restore = SetInputForTest(
+		func() (int, int) { return bx, by },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	restore()
+	dv.Update()
 	if len(dv.Rows) != startRows {
 		t.Fatalf("rows grew after change: %d", len(dv.Rows))
 	}
