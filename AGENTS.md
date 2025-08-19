@@ -166,4 +166,5 @@ This debugging session highlighted several critical points:
 * Sub-beat nodes now populate drum-row steps, enabling sequencing at 32nd-note resolution.
 * Grid line generation now pads the visible area by one beat so panning reveals a seamless infinite lattice.
 * Camera offsets now snap to integer pixels and clamp to a safe range so panning across vast distances stays performant and lines remain crisp.
+* Mouse wheel zoom now scales smoothly around the cursor so the pointed world position stays fixed while zooming.
 * Next steps: profile grid rendering at extreme pan/zoom combinations for further optimizations.

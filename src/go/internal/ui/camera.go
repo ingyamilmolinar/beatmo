@@ -68,11 +68,20 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 	dragging := false
 	if allowPan {
 		if _, wheelY := wheel(); wheelY != 0 {
-			if wheelY > 0 {
-				c.Scale *= 1.1
-			} else {
-				c.Scale *= 0.9
+			mx, my := cursorPosition()
+			wx := (float64(mx) - c.OffsetX) / c.Scale
+			wy := (float64(my) - c.OffsetY) / c.Scale
+			const zoomFactor = 1.05
+			newScale := c.Scale * math.Pow(zoomFactor, wheelY)
+			const minScale, maxScale = 0.1, 10.0
+			if newScale < minScale {
+				newScale = minScale
+			} else if newScale > maxScale {
+				newScale = maxScale
 			}
+			c.OffsetX = float64(mx) - wx*newScale
+			c.OffsetY = float64(my) - wy*newScale
+			c.Scale = newScale
 		}
 		if isMouseButtonPressed(ebiten.MouseButtonLeft) {
 			x, y := cursorPosition()
