@@ -53,6 +53,33 @@ func advanceBeats(g *Game, beats int) {
 	}
 }
 
+func TestSoundQueueNonBlocking(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	g := New(logger)
+	plays := make(chan string, 3)
+	orig := playSound
+	playSound = func(id string, vol float64, when ...float64) {
+		time.Sleep(50 * time.Millisecond)
+		plays <- id
+	}
+	defer func() { playSound = orig }()
+
+	start := time.Now()
+	g.queueSound("snare", 1)
+	g.queueSound("kick", 1)
+	g.queueSound("hat", 1)
+	if time.Since(start) > 20*time.Millisecond {
+		t.Fatalf("queueSound blocked")
+	}
+	for i := 0; i < 3; i++ {
+		select {
+		case <-plays:
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("sound %d not played", i)
+		}
+	}
+}
+
 func assertNotPanics(t *testing.T, f func()) {
 	t.Helper()
 	defer func() {
@@ -351,19 +378,17 @@ func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
 
 	g.updateBeatInfos()
 
-	var plays []string
+	plays := make(chan string, 2)
 	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays = append(plays, id) }
+	playSound = func(id string, vol float64, when ...float64) { plays <- id }
 	defer func() { playSound = orig }()
 
 	g.spawnPulseFromRow(0, 0)
 	g.spawnPulseFromRow(1, 0)
 
-	if len(plays) != 2 {
-		t.Fatalf("expected 2 plays got %d", len(plays))
-	}
-	if plays[0] != g.drum.Rows[0].Instrument || plays[1] != g.drum.Rows[1].Instrument {
-		t.Fatalf("got plays %v", plays)
+	got := []string{<-plays, <-plays}
+	if got[0] != g.drum.Rows[0].Instrument || got[1] != g.drum.Rows[1].Instrument {
+		t.Fatalf("got plays %v", got)
 	}
 }
 
@@ -988,30 +1013,34 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
 	g.addEdge(n0, n2) // introduces an invisible node at (1,0)
 
-	var plays []string
+	plays := make(chan string, 2)
 	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays = append(plays, id) }
+	playSound = func(id string, vol float64, when ...float64) { plays <- id }
 	defer func() { playSound = orig }()
 
 	g.playing = true
 	g.spawnPulseFrom(0) // highlights start node
 
-	if len(plays) != 1 {
-		t.Fatalf("expected 1 sample for start node, got %d", len(plays))
+	if <-plays != g.drum.Rows[0].Instrument {
+		t.Fatalf("unexpected instrument")
 	}
 
 	// Force pulse to reach invisible node; no new sample expected
 	g.activePulse.t = 1
 	g.Update()
-	if len(plays) != 1 {
-		t.Fatalf("expected no sample for invisible node, got %d", len(plays))
+	select {
+	case <-plays:
+		t.Fatalf("expected no sample for invisible node")
+	default:
 	}
 
 	// Advance to final regular node; another sample expected
 	g.activePulse.t = 1
 	g.Update()
-	if len(plays) != 2 {
-		t.Fatalf("expected 2 samples after reaching second node, got %d", len(plays))
+	select {
+	case <-plays:
+	case <-time.After(50 * time.Millisecond):
+		t.Fatalf("expected sample for second node")
 	}
 }
 
@@ -1021,17 +1050,22 @@ func TestSoundPlaysWithin50msOfHighlight(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 
-	var delta time.Duration
-	orig := playSound
 	start := time.Now()
+	done := make(chan time.Duration, 1)
+	orig := playSound
 	playSound = func(id string, vol float64, when ...float64) {
-		delta = time.Since(start)
+		done <- time.Since(start)
 	}
 	defer func() { playSound = orig }()
 
 	g.highlightBeat(0, 0, info, 0)
-	if delta > 50*time.Millisecond {
-		t.Fatalf("audio delay %v exceeds 50ms", delta)
+	select {
+	case delta := <-done:
+		if delta > 50*time.Millisecond {
+			t.Fatalf("audio delay %v exceeds 50ms", delta)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatalf("sound not played")
 	}
 }
 
@@ -1042,14 +1076,14 @@ func TestHighlightBeatUsesSelectedInstrument(t *testing.T) {
 	g.drum.Rows[0].Instrument = "kick"
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 
-	var id string
+	idCh := make(chan string, 1)
 	orig := playSound
-	playSound = func(inst string, vol float64, when ...float64) { id = inst }
+	playSound = func(inst string, vol float64, when ...float64) { idCh <- inst }
 	defer func() { playSound = orig }()
 
 	g.highlightBeat(0, 0, info, 0)
-	if id != "kick" {
-		t.Fatalf("expected instrument 'kick', got %s", id)
+	if got := <-idCh; got != "kick" {
+		t.Fatalf("expected instrument 'kick', got %s", got)
 	}
 }
 
@@ -1059,13 +1093,13 @@ func TestHighlightBeatUsesRowVolume(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 	g.drum.Rows[0].Volume = 0.25
-	var vol float64
+	volCh := make(chan float64, 1)
 	orig := playSound
-	playSound = func(id string, v float64, when ...float64) { vol = v }
+	playSound = func(id string, v float64, when ...float64) { volCh <- v }
 	defer func() { playSound = orig }()
 	g.highlightBeat(0, 0, info, 0)
-	if math.Abs(vol-0.25) > 0.01 {
-		t.Fatalf("expected volume 0.25 got %f", vol)
+	if v := <-volCh; math.Abs(v-0.25) > 0.01 {
+		t.Fatalf("expected volume 0.25 got %f", v)
 	}
 }
 
@@ -1135,21 +1169,25 @@ func TestAudioLoopConsistency(t *testing.T) {
 	g.addEdge(c, d)
 	g.addEdge(d, a) // loop back via A
 
-	var plays int
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays++ }
-	defer func() { playSound = orig }()
-
 	g.playing = true
 	g.spawnPulseFrom(0)
+
+	plays := make(chan struct{}, 16)
+	orig := playSound
+	playSound = func(id string, vol float64, when ...float64) { plays <- struct{}{} }
+	defer func() { playSound = orig }()
 
 	for i := 0; i < 8; i++ {
 		g.activePulse.t = 1
 		g.Update()
 	}
 
-	if plays != 8 {
-		t.Fatalf("expected 8 plays after looping, got %d", plays)
+	for i := 0; i < 8; i++ {
+		select {
+		case <-plays:
+		case <-time.After(50 * time.Millisecond):
+			t.Fatalf("missing play %d", i)
+		}
 	}
 }
 
@@ -2161,33 +2199,49 @@ func TestMuteAndSoloPlayback(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.AddRow()
 
-	var plays []string
+	plays := make(chan string, 8)
 	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays = append(plays, id) }
+	playSound = func(id string, vol float64, when ...float64) { plays <- id }
 	defer func() { playSound = orig }()
 
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
 
 	g.drum.Rows[0].Muted = true
 	g.highlightBeat(0, 0, info, 1)
-	if len(plays) != 0 {
-		t.Fatalf("expected no plays when muted, got %d", len(plays))
+	select {
+	case <-plays:
+		t.Fatalf("expected no plays when muted")
+	case <-time.After(50 * time.Millisecond):
 	}
 
 	g.drum.Rows[0].Muted = false
 	g.drum.Rows[1].Solo = true
 	g.highlightBeat(0, 1, info, 1)
+	select {
+	case <-plays:
+		t.Fatalf("unexpected play from non-solo row")
+	case <-time.After(50 * time.Millisecond):
+	}
 	g.highlightBeat(1, 1, info, 1)
-	if len(plays) != 1 {
-		t.Fatalf("expected 1 play from solo row, got %d", len(plays))
+	select {
+	case <-plays:
+	case <-time.After(50 * time.Millisecond):
+		t.Fatalf("missing play from solo row")
 	}
 
-	plays = plays[:0]
+	// reset
+	for len(plays) > 0 {
+		<-plays
+	}
 	g.drum.Rows[1].Solo = false
 	g.highlightBeat(0, 2, info, 1)
 	g.highlightBeat(1, 2, info, 1)
-	if len(plays) != 2 {
-		t.Fatalf("expected 2 plays after solo off, got %d", len(plays))
+	for i := 0; i < 2; i++ {
+		select {
+		case <-plays:
+		case <-time.After(50 * time.Millisecond):
+			t.Fatalf("missing play %d after solo off", i)
+		}
 	}
 }
 

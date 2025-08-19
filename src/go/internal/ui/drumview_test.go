@@ -222,7 +222,7 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.bpm = 120
 	info := dv.timelineInfo(4)
-	expected := "00:02.000/00:04.000 | View 00:00.000-00:04.000 | Beats 1-8/8"
+	expected := "Beat 4.000 | 00:02.000/00:04.000 | View 00:00.000-00:04.000 | Beats 1-8/8"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
 	}
@@ -238,10 +238,15 @@ func TestTimelineViewRect(t *testing.T) {
 
 	var got image.Rectangle
 	orig := drawRect
+	drewBorder := false
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
 			if clr, ok := c.(color.RGBA); ok && clr == colTimelineView {
 				got = r
+			}
+		} else {
+			if clr, ok := c.(color.RGBA); ok && clr == colTimelineViewHi {
+				drewBorder = true
 			}
 		}
 	}
@@ -253,8 +258,8 @@ func TestTimelineViewRect(t *testing.T) {
 	start := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
 	width := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
 	want := image.Rect(start, dv.timelineRect.Min.Y, start+width, dv.timelineRect.Max.Y)
-	if got != want {
-		t.Fatalf("view rect = %v want %v", got, want)
+	if got != want || !drewBorder {
+		t.Fatalf("view rect/border mismatch: rect=%v border=%t want %v", got, drewBorder, want)
 	}
 }
 

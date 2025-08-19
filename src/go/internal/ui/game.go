@@ -108,15 +108,22 @@ type pulse struct {
 	row                      int
 }
 
+type soundReq struct {
+	id   string
+	vol  float64
+	when []float64
+}
+
 type Game struct {
 	/* subsystems */
-	cam    *Camera
-	split  *Splitter
-	drum   *DrumView
-	graph  *model.Graph
-	engine *engine.Engine
-	logger *game_log.Logger
-	grid   *Grid
+	cam     *Camera
+	split   *Splitter
+	drum    *DrumView
+	graph   *model.Graph
+	engine  *engine.Engine
+	logger  *game_log.Logger
+	grid    *Grid
+	audioCh chan soundReq
 
 	/* graph data */
 	nodes           []*uiNode
@@ -228,11 +235,19 @@ func New(logger *game_log.Logger) *Game {
 		activePulses:       []*pulse{},
 		pendingStartRow:    -1,
 		grid:               NewGrid(DefaultGridStep),
+		audioCh:            make(chan soundReq, 32),
 	}
 
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
+	go g.audioLoop()
 	return g
+}
+
+func (g *Game) audioLoop() {
+	for req := range g.audioCh {
+		playSound(req.id, req.vol, req.when...)
+	}
 }
 
 func (g *Game) Layout(w, h int) (int, int) {
@@ -1266,7 +1281,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, g.elapsedBeats)
+	frac := float64(g.elapsedBeats) + g.engine.Progress()
+	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, frac)
 }
 
 func (g *Game) rootNode() *uiNode {
@@ -1343,8 +1359,16 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 				return
 			}
 		}
-		playSound(inst, vol, audio.Now())
+		g.queueSound(inst, vol)
 		g.logger.Debugf("[GAME] highlightBeat: Played %s at vol %.2f for node %d at beat %d row %d", inst, vol, info.NodeID, idx, row)
+	}
+}
+
+func (g *Game) queueSound(id string, vol float64) {
+	req := soundReq{id: id, vol: vol, when: []float64{audio.Now()}}
+	select {
+	case g.audioCh <- req:
+	default:
 	}
 }
 

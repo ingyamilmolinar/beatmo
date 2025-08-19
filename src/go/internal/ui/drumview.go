@@ -1152,7 +1152,7 @@ func (dv *DrumView) Update() {
 	}
 }
 
-func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo, elapsedBeats int) {
+func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, frame int64, beatInfos []model.BeatInfo, elapsedBeats float64) {
 	dv.logger.Debugf("[DRUMVIEW] Draw called. beatInfos: %v, highlightedBeats: %v", beatInfos, highlightedBeats)
 	// draw background
 	op := &ebiten.DrawImageOptions{}
@@ -1182,8 +1182,8 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	if dv.timelineBeats < dv.Graph.BeatLength() {
 		dv.timelineBeats = dv.Graph.BeatLength()
 	}
-	if elapsedBeats+dv.Length > dv.timelineBeats {
-		dv.timelineBeats = elapsedBeats + dv.Length
+	if int(elapsedBeats)+dv.Length > dv.timelineBeats {
+		dv.timelineBeats = int(elapsedBeats) + dv.Length
 	}
 	if dv.Offset+dv.Length > dv.timelineBeats {
 		dv.timelineBeats = dv.Offset + dv.Length
@@ -1198,6 +1198,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	viewWidth := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
 	viewRect := image.Rect(viewStart, dv.timelineRect.Min.Y, viewStart+viewWidth, dv.timelineRect.Max.Y)
 	drawRect(dst, viewRect, colTimelineView, true)
+	drawRect(dst, viewRect, colTimelineViewHi, false)
 
 	// beat markers
 	for i := 0; i <= totalBeats; i++ {
@@ -1282,11 +1283,11 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	}
 }
 
-func (dv *DrumView) timelineInfo(elapsedBeats int) string {
-	beatsToDuration := func(beats int) time.Duration {
-		return time.Duration(float64(beats) * 60 / float64(dv.bpm) * float64(time.Second))
+func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
+	beatsToDuration := func(beats float64) time.Duration {
+		return time.Duration(beats * 60 / float64(dv.bpm) * float64(time.Second))
 	}
-	totalBeats := dv.timelineBeats
+	totalBeats := float64(dv.timelineBeats)
 	totalDur := beatsToDuration(totalBeats)
 	curDur := beatsToDuration(elapsedBeats)
 	curMin := int(curDur / time.Minute)
@@ -1298,8 +1299,8 @@ func (dv *DrumView) timelineInfo(elapsedBeats int) string {
 
 	viewStartBeat := dv.Offset
 	viewEndBeat := dv.Offset + dv.Length
-	viewStartDur := beatsToDuration(viewStartBeat)
-	viewEndDur := beatsToDuration(viewEndBeat)
+	viewStartDur := beatsToDuration(float64(viewStartBeat))
+	viewEndDur := beatsToDuration(float64(viewEndBeat))
 	vStartMin := int(viewStartDur / time.Minute)
 	vStartSec := int((viewStartDur % time.Minute) / time.Second)
 	vStartMilli := int((viewStartDur % time.Second) / time.Millisecond)
@@ -1307,12 +1308,13 @@ func (dv *DrumView) timelineInfo(elapsedBeats int) string {
 	vEndSec := int((viewEndDur % time.Minute) / time.Second)
 	vEndMilli := int((viewEndDur % time.Second) / time.Millisecond)
 
-	return fmt.Sprintf("%02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d | Beats %d-%d/%d",
+	return fmt.Sprintf("Beat %.3f | %02d:%02d.%03d/%02d:%02d.%03d | View %02d:%02d.%03d-%02d:%02d.%03d | Beats %d-%d/%d",
+		elapsedBeats,
 		curMin, curSec, curMilli,
 		totMin, totSec, totMilli,
 		vStartMin, vStartSec, vStartMilli,
 		vEndMin, vEndSec, vEndMilli,
-		viewStartBeat+1, viewEndBeat, totalBeats)
+		viewStartBeat+1, viewEndBeat, int(totalBeats))
 }
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
