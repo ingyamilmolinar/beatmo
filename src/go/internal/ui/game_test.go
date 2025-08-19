@@ -2200,8 +2200,8 @@ func TestAutoTrackFollowsBeat(t *testing.T) {
 	g.playing = true
 	g.elapsedBeats = 5
 	g.Update()
-	if g.drum.Offset != 2 {
-		t.Fatalf("offset=%d want 2", g.drum.Offset)
+	if g.drum.Offset != 3 {
+		t.Fatalf("offset=%d want 3", g.drum.Offset)
 	}
 }
 
@@ -2229,5 +2229,38 @@ func TestTrackButtonTogglesFollow(t *testing.T) {
 	g.drum.trackBtn.OnClick()
 	if g.drum.FollowPlayback() {
 		t.Fatalf("follow not toggled off")
+	}
+}
+
+func TestNodeHoverScalesRadius(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	SetDefaultStartForTest(true)
+	g := New(logger)
+	g.Layout(200, 200)
+	defer SetDefaultStartForTest(false)
+	n := g.nodeAt(0, 0)
+	if n == nil {
+		t.Fatal("missing origin node")
+	}
+	x1, y1, x2, y2 := g.nodeScreenRect(n)
+	mx := int((x1 + x2) / 2)
+	my := int((y1 + y2) / 2)
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	g.Update()
+	restore()
+	base := g.grid.NodeRadius(g.cam.Scale)
+	if r := g.nodeRadius(n); r <= base {
+		t.Fatalf("expected larger radius when hovered")
+	}
+	g.hover = nil
+	if r := g.nodeRadius(n); r != base {
+		t.Fatalf("expected base radius when not hovered")
 	}
 }

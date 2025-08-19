@@ -130,6 +130,7 @@ type Game struct {
 	renderedPulsesCount int
 	highlightedBeats    map[int]int64 // Encoded row/index keys
 	selNeighbors        map[*uiNode]bool
+	hover               *uiNode
 	cursorLabel         string
 
 	/* editor state */
@@ -177,6 +178,14 @@ func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 	sy := offY + unitPx*float64(n.J) + topOffset
 	r := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
 	return sx - r, sy - r, sx + r, sy + r
+}
+
+func (g *Game) nodeRadius(n *uiNode) float64 {
+	r := g.grid.NodeRadius(g.cam.Scale)
+	if g.hover == n {
+		r *= 2
+	}
+	return r
 }
 
 // computeSelNeighbors refreshes the neighbor set for the currently selected node.
@@ -921,6 +930,15 @@ eventsDone:
 		g.leftPrev = left
 	}
 
+	if my >= topOffset && !g.blocksAt(mx, my) {
+		wx := (float64(mx) - g.cam.OffsetX) / g.cam.Scale
+		wy := (float64(my-topOffset) - g.cam.OffsetY) / g.cam.Scale
+		_, _, i, j := g.grid.Snap(wx, wy)
+		g.hover = g.nodeAt(i, j)
+	} else {
+		g.hover = nil
+	}
+
 	// edge animation progress
 	for i := range g.edges {
 		if g.edges[i].t < 1 {
@@ -1166,13 +1184,13 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 	// nodes
 	nodeStyle := NodeUI
-	nodeStyle.Radius = float32(g.grid.NodeRadius(g.cam.Scale))
 	for _, n := range g.nodes {
 		nodeInfo, ok := g.graph.Nodes[n.ID]
 		if !ok || nodeInfo.Type != model.NodeTypeRegular {
 			continue
 		}
 		style := nodeStyle
+		style.Radius = float32(g.nodeRadius(n))
 		if row, ok := g.nodeRows[n.ID]; ok {
 			if row >= 0 && row < len(g.drum.Rows) {
 				base := g.drum.Rows[row].Color

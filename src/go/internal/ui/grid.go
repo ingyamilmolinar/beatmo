@@ -101,10 +101,10 @@ func (g *Grid) EdgeThickness(scale float64) float64 {
 	return 1 / scale
 }
 
-// EdgeArrowSize returns the world-space length of arrow heads. The size equals
-// two of the smallest subdivision units so direction markers stay subtle.
+// EdgeArrowSize returns the world-space length of arrow heads. Keeping them at
+// one subdivision unit ensures connection arrows remain understated.
 func (g *Grid) EdgeArrowSize() float64 {
-	return 2 * g.Unit()
+	return g.Unit()
 }
 
 // Snap world coords to nearest subdivision vertex.

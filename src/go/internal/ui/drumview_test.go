@@ -1287,3 +1287,23 @@ func TestMuteSoloInteractions(t *testing.T) {
 		t.Fatalf("other rows should be muted when a solo is active")
 	}
 }
+
+func TestTrackBeatCentersCurrent(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	dv.SetLength(8)
+	dv.follow = true
+
+	dv.TrackBeat(1)
+	if dv.Offset != 0 {
+		t.Fatalf("expected offset 0 near start, got %d", dv.Offset)
+	}
+
+	dv.TrackBeat(6)
+	if dv.Offset != 2 {
+		t.Fatalf("offset=%d want 2", dv.Offset)
+	}
+	if !dv.OffsetChanged() {
+		t.Fatalf("expected offset change after tracking")
+	}
+}

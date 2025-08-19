@@ -8,6 +8,10 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// drawEdgeLine is defined as a variable so tests can intercept edge rendering
+// and verify arrowhead behaviour.
+var drawEdgeLine = DrawLineCam
+
 // pixel helper is defined in widgets.go and reused here.
 
 // fadeColor returns c with its alpha scaled by t (0..1).
@@ -92,7 +96,7 @@ func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *
 	col := fadeColor(s.Color, t)
 	ex := x1 + (x2-x1)*t
 	ey := y1 + (y2-y1)*t
-	DrawLineCam(dst, x1, y1, ex, ey, cam, col, s.Thickness)
+	drawEdgeLine(dst, x1, y1, ex, ey, cam, col, s.Thickness)
 	if t < 1 {
 		return
 	}
@@ -103,18 +107,8 @@ func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *
 	leftY := y2 - s.ArrowSize*math.Sin(angle-math.Pi/6)
 	rightX := x2 - s.ArrowSize*math.Cos(angle+math.Pi/6)
 	rightY := y2 - s.ArrowSize*math.Sin(angle+math.Pi/6)
-	DrawLineCam(dst, x2, y2, leftX, leftY, cam, col, s.Thickness)
-	DrawLineCam(dst, x2, y2, rightX, rightY, cam, col, s.Thickness)
-
-	// Permanent direction marker at midpoint
-	mx := (x1 + x2) / 2
-	my := (y1 + y2) / 2
-	midLeftX := mx - s.ArrowSize*math.Cos(angle-math.Pi/6)
-	midLeftY := my - s.ArrowSize*math.Sin(angle-math.Pi/6)
-	midRightX := mx - s.ArrowSize*math.Cos(angle+math.Pi/6)
-	midRightY := my - s.ArrowSize*math.Sin(angle+math.Pi/6)
-	DrawLineCam(dst, mx, my, midLeftX, midLeftY, cam, col, s.Thickness)
-	DrawLineCam(dst, mx, my, midRightX, midRightY, cam, col, s.Thickness)
+	drawEdgeLine(dst, x2, y2, leftX, leftY, cam, col, s.Thickness)
+	drawEdgeLine(dst, x2, y2, rightX, rightY, cam, col, s.Thickness)
 }
 
 // ButtonStyle describes rectangular button visuals.

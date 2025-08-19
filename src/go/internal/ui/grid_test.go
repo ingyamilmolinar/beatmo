@@ -111,7 +111,7 @@ func TestEdgeStyleScaling(t *testing.T) {
 	if math.Abs(t1*1-t2*2) > 1e-9 {
 		t.Fatalf("edge thickness mismatch: t1=%f t2=%f", t1, t2)
 	}
-	want := 2 * g.Unit()
+	want := g.Unit()
 	if g.EdgeArrowSize() != want {
 		t.Fatalf("arrow size=%f want=%f", g.EdgeArrowSize(), want)
 	}

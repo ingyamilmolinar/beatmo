@@ -652,12 +652,13 @@ func (dv *DrumView) TrackBeat(cur int) {
 	if !dv.follow {
 		return
 	}
-	end := dv.Offset + dv.Length
-	if cur < dv.Offset {
-		dv.Offset = cur
-		dv.offsetChanged = true
-	} else if cur >= end {
-		dv.Offset = cur - dv.Length + 1
+	half := dv.Length / 2
+	desired := cur - half
+	if desired < 0 {
+		desired = 0
+	}
+	if dv.Offset != desired {
+		dv.Offset = desired
 		dv.offsetChanged = true
 	}
 }
