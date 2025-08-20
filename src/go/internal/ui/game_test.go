@@ -1,17 +1,17 @@
 package ui
 
 import (
-	"image"
-	"io"
-	"math"
-	"reflect"
-	"testing"
-	"time"
+        "image"
+        "io"
+        "math"
+        "reflect"
+        "testing"
+        "time"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/engine"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+        "github.com/hajimehoshi/ebiten/v2"
+       "github.com/ingyamilmolinar/tunkul/core/engine"
+       "github.com/ingyamilmolinar/tunkul/core/model"
+        game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
 var testLogger *game_log.Logger
@@ -249,6 +249,36 @@ func TestPlayButtonTogglesPause(t *testing.T) {
 	if g.elapsedBeats != 5 {
 		t.Fatalf("elapsedBeats=%d want 5 after resume", g.elapsedBeats)
 	}
+}
+
+func TestPauseKeepsHighlight(t *testing.T) {
+        g := New(testLogger)
+        g.Layout(640, 480)
+
+        // simulate an active highlight at beat 0
+        g.playing = true
+        info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
+        g.highlightBeat(0, 0, info, 5)
+
+        // pause playback via play button
+        g.drum.playPressed = true
+        if err := g.Update(); err != nil {
+                t.Fatalf("pause update failed: %v", err)
+        }
+        if g.playing {
+                t.Fatalf("expected paused state")
+        }
+
+        // advance several frames while paused
+        for i := 0; i < 10; i++ {
+                if err := g.Update(); err != nil {
+                        t.Fatalf("update %d failed: %v", i, err)
+                }
+        }
+
+        if _, ok := g.highlightedBeats[makeBeatKey(0, 0)]; !ok {
+                t.Fatalf("highlight cleared while paused")
+        }
 }
 
 func TestMouseCoordinateLabel(t *testing.T) {
