@@ -315,6 +315,64 @@ func TestPauseKeepsHighlight(t *testing.T) {
 	}
 }
 
+// TestPauseStopsPulseProgress verifies that pausing via the play button
+// freezes active pulses so no further audio events fire.
+func TestPauseStopsPulseProgress(t *testing.T) {
+        g := New(testLogger)
+        g.Layout(640, 480)
+
+        // Build a simple two-node path one beat apart.
+        n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
+        n2 := g.tryAddNode(g.grid.MaxDiv(), 0, model.NodeTypeRegular)
+        g.addEdge(n1, n2)
+        g.updateBeatInfos()
+
+        // Spawn a pulse and start playback.
+        plays := make(chan struct{}, 16)
+        orig := playSound
+        playSound = func(string, float64, ...float64) { plays <- struct{}{} }
+        defer func() { playSound = orig }()
+
+        g.playing = true
+        g.spawnPulseFromRow(0, 0)
+        if err := g.Update(); err != nil {
+                t.Fatalf("initial update failed: %v", err)
+        }
+
+        // Pause via play button on the next frame.
+        g.drum.playPressed = true
+        if err := g.Update(); err != nil {
+                t.Fatalf("pause update failed: %v", err)
+        }
+        if g.playing {
+                t.Fatalf("expected paused state")
+        }
+
+        for len(plays) > 0 {
+                <-plays
+        }
+
+        if len(g.activePulses) != 1 {
+                t.Fatalf("expected one active pulse, got %d", len(g.activePulses))
+        }
+        p := g.activePulses[0]
+        startT := p.t
+
+        // Advance several frames while paused.
+        for i := 0; i < 10; i++ {
+                if err := g.Update(); err != nil {
+                        t.Fatalf("update %d failed: %v", i, err)
+                }
+        }
+
+        if p.t != startT {
+                t.Fatalf("pulse advanced while paused: %.3f -> %.3f", startT, p.t)
+        }
+        if len(plays) != 0 {
+                t.Fatalf("audio played while paused")
+        }
+}
+
 func TestMouseCoordinateLabel(t *testing.T) {
 	SetDefaultStartForTest(true)
 	defer SetDefaultStartForTest(false)

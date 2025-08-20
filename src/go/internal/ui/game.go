@@ -981,29 +981,31 @@ eventsDone:
                 g.frame++
         }
 
-	for i := 0; i < len(g.activePulses); {
-		p := g.activePulses[i]
-		g.logger.Debugf("[GAME] Update: processing active pulse row=%d t=%.2f from=%+v to=%+v", p.row, p.t, p.fromBeatInfo, p.toBeatInfo)
-		p.t += p.speed
-		if p.t >= 1 {
-			prevIdx := p.lastIdx
-			delete(g.highlightedBeats, makeBeatKey(p.row, prevIdx))
-			if !g.advancePulse(p) {
-				g.logger.Infof("[GAME] Update: pulse for row %d removed", p.row)
-				if p.row == 0 {
-					g.activePulse = nil
-				}
-				g.activePulses = append(g.activePulses[:i], g.activePulses[i+1:]...)
-				for key := range g.highlightedBeats {
-					if r, _ := splitBeatKey(key); r == p.row {
-						delete(g.highlightedBeats, key)
-					}
-				}
-				continue
-			}
-		}
-		i++
-	}
+        if g.playing {
+                for i := 0; i < len(g.activePulses); {
+                        p := g.activePulses[i]
+                        g.logger.Debugf("[GAME] Update: processing active pulse row=%d t=%.2f from=%+v to=%+v", p.row, p.t, p.fromBeatInfo, p.toBeatInfo)
+                        p.t += p.speed
+                        if p.t >= 1 {
+                                prevIdx := p.lastIdx
+                                delete(g.highlightedBeats, makeBeatKey(p.row, prevIdx))
+                                if !g.advancePulse(p) {
+                                        g.logger.Infof("[GAME] Update: pulse for row %d removed", p.row)
+                                        if p.row == 0 {
+                                                g.activePulse = nil
+                                        }
+                                        g.activePulses = append(g.activePulses[:i], g.activePulses[i+1:]...)
+                                        for key := range g.highlightedBeats {
+                                                if r, _ := splitBeatKey(key); r == p.row {
+                                                        delete(g.highlightedBeats, key)
+                                                }
+                                        }
+                                        continue
+                                }
+                        }
+                        i++
+                }
+        }
 
 	// Clear expired highlights
 	g.clearExpiredHighlights()
