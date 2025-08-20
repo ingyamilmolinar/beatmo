@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -125,8 +126,8 @@ type Game struct {
 	logger         *game_log.Logger
 	grid           *Grid
 	audioCh        chan soundReq
-        bpmCh          chan int
-        bpmAck         chan int
+	bpmCh          chan int
+	bpmAck         chan int
 	playFn         func(string, float64, ...float64)
 
 	/* graph data */
@@ -156,8 +157,8 @@ type Game struct {
 	/* game state */
 	playing            bool
 	paused             bool
-        bpm                int
-        appliedBPM         int
+	bpm                int
+	appliedBPM         int
 	currentStep        int // Current step in the sequence
 	lastBeatFrame      int64
 	beatInfos          []model.BeatInfo   // Full traversal path for primary start
@@ -241,19 +242,19 @@ func New(logger *game_log.Logger) *Game {
 		nodeRows:           make(map[model.NodeID]int),
 		activePulses:       []*pulse{},
 		pendingStartRow:    -1,
-                grid:               NewGrid(DefaultGridStep),
-                audioCh:            make(chan soundReq, 32),
-                bpmCh:              make(chan int, 1),
-                bpmAck:             make(chan int, 1),
-                playFn:             playSound,
+		grid:               NewGrid(DefaultGridStep),
+		audioCh:            make(chan soundReq, 32),
+		bpmCh:              make(chan int, 1),
+		bpmAck:             make(chan int, 1),
+		playFn:             playSound,
 	}
 
 	// bottom drum-machine view
-        g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
-        g.appliedBPM = g.drum.BPM()
-        go g.audioLoop()
-        go g.bpmLoop()
-        return g
+	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
+	g.appliedBPM = g.drum.BPM()
+	go g.audioLoop()
+	go g.bpmLoop()
+	return g
 }
 
 func (g *Game) audioLoop() {
@@ -275,16 +276,18 @@ func (g *Game) bpmLoop() {
 			case b = <-g.bpmCh:
 				// keep draining
 			default:
-                                g.logger.Debugf("[GAME] applying BPM=%d", b)
-                                g.engine.SetBPM(b)
-                                audio.SetBPM(b)
-                                select {
-                                case g.bpmAck <- b:
-                                default:
-                                        <-g.bpmAck
-                                        g.bpmAck <- b
-                                }
-                                goto next
+				start := time.Now()
+				g.logger.Debugf("[GAME] applying BPM=%d", b)
+				g.engine.SetBPM(b)
+				audio.SetBPM(b)
+				g.logger.Debugf("[GAME] applied BPM=%d in %s", b, time.Since(start))
+				select {
+				case g.bpmAck <- b:
+				default:
+					<-g.bpmAck
+					g.bpmAck <- b
+				}
+				goto next
 			}
 		}
 	next:
@@ -1048,7 +1051,7 @@ eventsDone:
 
 	// drum view logic
 	prevPlaying := g.playing
-        prevLen := g.drum.Length
+	prevLen := g.drum.Length
 	g.drum.Update()
 	for _, idx := range g.drum.ConsumeAddedRows() {
 		g.pendingStartRow = idx
@@ -1114,30 +1117,32 @@ eventsDone:
 		g.playing = false
 		g.paused = false
 	}
-        g.bpm = g.drum.BPM()
-        if g.bpm != g.appliedBPM {
-                select {
-                case g.bpmCh <- g.bpm:
-                default:
-                        <-g.bpmCh
-                        g.bpmCh <- g.bpm
-                }
-        }
+	g.bpm = g.drum.BPM()
+	if g.bpm != g.appliedBPM {
+		g.logger.Debugf("[GAME] queue BPM %d", g.bpm)
+		select {
+		case g.bpmCh <- g.bpm:
+		default:
+			<-g.bpmCh
+			g.bpmCh <- g.bpm
+		}
+	}
 
-        select {
-        case applied := <-g.bpmAck:
-                ratio := float64(applied) / float64(g.appliedBPM)
-                beatDuration := int64(60.0 / float64(applied) * ebitenTPS)
-                for _, p := range g.activePulses {
-                        p.t *= ratio
-                        if p.t >= 1 {
-                                p.t = 0.999999
-                        }
-                        p.speed = 1.0 / float64(beatDuration)
-                }
-                g.appliedBPM = applied
-        default:
-        }
+	select {
+	case applied := <-g.bpmAck:
+		g.logger.Debugf("[GAME] ack BPM %d", applied)
+		ratio := float64(applied) / float64(g.appliedBPM)
+		beatDuration := int64(60.0 / float64(applied) * ebitenTPS)
+		for _, p := range g.activePulses {
+			p.t *= ratio
+			if p.t >= 1 {
+				p.t = 0.999999
+			}
+			p.speed = 1.0 / float64(beatDuration)
+		}
+		g.appliedBPM = applied
+	default:
+	}
 
 	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
