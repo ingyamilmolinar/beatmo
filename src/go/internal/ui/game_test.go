@@ -2443,10 +2443,21 @@ func TestMuteAndSoloPlayback(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.AddRow()
 
-	plays := make(chan string, 8)
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays <- id }
-	defer func() { playSound = orig }()
+        plays := make(chan string, 8)
+        orig := playSound
+        playSound = func(id string, vol float64, when ...float64) { plays <- id }
+        defer func() { playSound = orig }()
+
+        // Drain any plays emitted during initialization
+        time.Sleep(10 * time.Millisecond)
+        for {
+                select {
+                case <-plays:
+                default:
+                        goto drained
+                }
+        }
+drained:
 
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
 
