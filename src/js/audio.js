@@ -45,7 +45,7 @@ export async function playSound(id) {
     m.ccall(RENDER[id], null, ['number','number','number'], [ptr, sr, frames]);
     const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
     m._free(ptr);
-    const gain = id === 'snare' ? 0.5 : id === 'kick' ? 1.0 : 0.8;
+    const gain = id === 'snare' ? 0.1 : id === 'kick' ? 1.0 : 0.8;
     for (let i = 0; i < data.length; i++) data[i] *= gain;
     const buffer = getCtx().createBuffer(1, frames, sr);
     buffer.copyToChannel(data, 0);

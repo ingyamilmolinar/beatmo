@@ -126,6 +126,7 @@ type Game struct {
 	grid           *Grid
 	audioCh        chan soundReq
 	bpmCh          chan int
+	playFn         func(string, float64, ...float64)
 
 	/* graph data */
 	nodes           []*uiNode
@@ -241,6 +242,7 @@ func New(logger *game_log.Logger) *Game {
 		grid:               NewGrid(DefaultGridStep),
 		audioCh:            make(chan soundReq, 32),
 		bpmCh:              make(chan int, 1),
+		playFn:             playSound,
 	}
 
 	// bottom drum-machine view
@@ -252,8 +254,13 @@ func New(logger *game_log.Logger) *Game {
 
 func (g *Game) audioLoop() {
 	for req := range g.audioCh {
-		playSound(req.id, req.vol, req.when...)
+		g.playFn(req.id, req.vol, req.when...)
 	}
+}
+
+// SetPlayFunc overrides the audio playback function used by this game instance.
+func (g *Game) SetPlayFunc(fn func(string, float64, ...float64)) {
+	g.playFn = fn
 }
 
 func (g *Game) bpmLoop() {
@@ -1137,6 +1144,9 @@ eventsDone:
 		} else {
 			g.engine.Stop()
 			g.logger.Infof("[GAME] Engine stopped.")
+			for len(g.audioCh) > 0 {
+				<-g.audioCh
+			}
 			if !g.paused {
 				g.elapsedBeats = 0
 				g.activePulses = nil

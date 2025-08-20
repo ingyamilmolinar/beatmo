@@ -58,12 +58,10 @@ func TestSoundQueueNonBlocking(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	g := New(logger)
 	plays := make(chan string, 3)
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) {
+	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
 		time.Sleep(50 * time.Millisecond)
 		plays <- id
-	}
-	defer func() { playSound = orig }()
+	})
 
 	start := time.Now()
 	g.queueSound("snare", 1)
@@ -329,9 +327,7 @@ func TestPauseStopsPulseProgress(t *testing.T) {
 
 	// Spawn a pulse and start playback.
 	plays := make(chan struct{}, 16)
-	orig := playSound
-	playSound = func(string, float64, ...float64) { plays <- struct{}{} }
-	defer func() { playSound = orig }()
+	g.SetPlayFunc(func(string, float64, ...float64) { plays <- struct{}{} })
 
 	g.playing = true
 	g.spawnPulseFromRow(0, 0)
@@ -618,9 +614,7 @@ func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
 	g.updateBeatInfos()
 
 	plays := make(chan string, 2)
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays <- id }
-	defer func() { playSound = orig }()
+	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- id })
 
 	g.spawnPulseFromRow(0, 0)
 	g.spawnPulseFromRow(1, 0)
@@ -1252,9 +1246,7 @@ func TestPlaySoundOnRegularNodesOnly(t *testing.T) {
 	g.addEdge(n0, n2) // introduces an invisible node at (1,0)
 
 	plays := make(chan string, 2)
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays <- id }
-	defer func() { playSound = orig }()
+	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- id })
 
 	g.playing = true
 	g.spawnPulseFrom(0) // highlights start node
@@ -1290,11 +1282,9 @@ func TestSoundPlaysWithin50msOfHighlight(t *testing.T) {
 
 	start := time.Now()
 	done := make(chan time.Duration, 1)
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) {
+	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
 		done <- time.Since(start)
-	}
-	defer func() { playSound = orig }()
+	})
 
 	g.highlightBeat(0, 0, info, 0)
 	select {
@@ -1315,9 +1305,7 @@ func TestHighlightBeatUsesSelectedInstrument(t *testing.T) {
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 
 	idCh := make(chan string, 1)
-	orig := playSound
-	playSound = func(inst string, vol float64, when ...float64) { idCh <- inst }
-	defer func() { playSound = orig }()
+	g.SetPlayFunc(func(inst string, vol float64, when ...float64) { idCh <- inst })
 
 	g.highlightBeat(0, 0, info, 0)
 	if got := <-idCh; got != "kick" {
@@ -1332,9 +1320,7 @@ func TestHighlightBeatUsesRowVolume(t *testing.T) {
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
 	g.drum.Rows[0].Volume = 0.25
 	volCh := make(chan float64, 1)
-	orig := playSound
-	playSound = func(id string, v float64, when ...float64) { volCh <- v }
-	defer func() { playSound = orig }()
+	g.SetPlayFunc(func(id string, v float64, when ...float64) { volCh <- v })
 	g.highlightBeat(0, 0, info, 0)
 	if v := <-volCh; math.Abs(v-0.25) > 0.01 {
 		t.Fatalf("expected volume 0.25 got %f", v)
@@ -1411,9 +1397,7 @@ func TestAudioLoopConsistency(t *testing.T) {
 	g.spawnPulseFrom(0)
 
 	plays := make(chan struct{}, 16)
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays <- struct{}{} }
-	defer func() { playSound = orig }()
+	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- struct{}{} })
 
 	for i := 0; i < 8; i++ {
 		g.activePulse.t = 1
@@ -2443,9 +2427,7 @@ func TestMuteAndSoloPlayback(t *testing.T) {
 	g.drum.AddRow()
 
 	plays := make(chan string, 8)
-	orig := playSound
-	playSound = func(id string, vol float64, when ...float64) { plays <- id }
-	defer func() { playSound = orig }()
+	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- id })
 
 	// Drain any plays emitted during initialization or lingering from previous tests
 	time.Sleep(50 * time.Millisecond)
