@@ -45,7 +45,8 @@ func TestBPMButtonHoldNonBlocking(t *testing.T) {
 	audio.SetBPMFunc = func(int) { <-block }
 	defer func() { audio.SetBPMFunc = func(int) {} }()
 
-	for i := 0; i < 5; i++ {
+	// warm up engine so scheduler progress is available
+	for i := 0; i < 30; i++ {
 		g.drum.bpmIncBtn.OnClick()
 		done := make(chan struct{})
 		go func() {

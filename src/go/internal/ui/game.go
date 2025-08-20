@@ -923,7 +923,6 @@ func (g *Game) spawnPulseFrom(start int) { g.spawnPulseFromRow(0, start) }
 /* ─────────────── Update & tick ────────────────────────────────────────── */
 
 func (g *Game) Update() error {
-	g.logger.Debugf("[GAME] Update start: frame=%d playing=%t bpm=%d currentStep=%d", g.frame, g.playing, g.bpm, g.currentStep)
 	// Process engine events without blocking. If playback is stopped,
 	// drain any pending ticks without advancing the timeline so beat and
 	// time counters freeze immediately when the user hits Stop.
@@ -991,7 +990,6 @@ eventsDone:
 	if g.playing {
 		for i := 0; i < len(g.activePulses); {
 			p := g.activePulses[i]
-			g.logger.Debugf("[GAME] Update: processing active pulse row=%d t=%.2f from=%+v to=%+v", p.row, p.t, p.fromBeatInfo, p.toBeatInfo)
 			p.t += p.speed
 			if p.t >= 1 {
 				prevIdx := p.lastIdx
@@ -1016,7 +1014,6 @@ eventsDone:
 
 	// Clear expired highlights
 	g.clearExpiredHighlights()
-	g.logger.Debugf("[GAME] Current highlightedBeats: %v", g.highlightedBeats)
 
 	// drum view logic
 	prevPlaying := g.playing
@@ -1090,7 +1087,6 @@ eventsDone:
 	g.bpm = g.drum.BPM()
 
 	if g.bpm != prevBPM {
-		g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
 		select {
 		case g.bpmCh <- g.bpm:
 		default:
@@ -1158,7 +1154,6 @@ eventsDone:
 		}
 		g.refreshDrumRow()
 	}
-	g.logger.Debugf("[GAME] Update end. Frame: %d", g.frame)
 	return nil
 }
 
@@ -1363,7 +1358,6 @@ func (g *Game) pulseForRow(row int) *pulse {
 }
 
 func (g *Game) onTick(step int) {
-	g.logger.Debugf("[GAME] On tick: step %d", step)
 	g.currentStep = step
 
 	if step == 0 {
