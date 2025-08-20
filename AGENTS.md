@@ -122,6 +122,7 @@ This debugging session highlighted several critical points:
 ## Lessons from Tempo Changes
 *   **Rescale in-flight pulses on tempo changes:** When BPM updates, scale the active pulse's progress and recompute audio scheduling so the signal keeps moving forward without jumping or reversing.
 *   **BPM input validation:** The BPM box accepts values between 1 and 1000, highlighting invalid entries in red.
+*   **BPM adjustments run asynchronously:** Plus/minus buttons queue tempo changes through a channel so holding them never stalls animation or audio, and pressing Enter in the BPM field commits the value immediately.
 
 ## Miniaudio Integration Notes
 

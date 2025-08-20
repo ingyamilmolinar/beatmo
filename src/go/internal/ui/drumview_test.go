@@ -1341,9 +1341,7 @@ func TestDrumViewBPMTextInput(t *testing.T) {
 	chars = []rune{'0'}
 	dv.Update()
 
-	// click outside to commit
-	pressed = true
-	mx, my = 0, 0
+	chars = []rune{'\r'}
 	dv.Update()
 
 	if dv.BPM() != 250 {
@@ -1383,9 +1381,7 @@ func TestDrumViewBPMTextInputInvalid(t *testing.T) {
 	chars = []rune{'0'}
 	dv.Update()
 
-	// click outside to commit
-	pressed = true
-	mx, my = 0, 0
+	chars = []rune{'\r'}
 	dv.Update()
 
 	if dv.BPM() != 120 {
