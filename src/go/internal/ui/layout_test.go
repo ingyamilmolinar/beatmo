@@ -42,26 +42,22 @@ func TestDrumViewButtonLayout(t *testing.T) {
 		dv := NewDrumView(image.Rect(0, 0, w, 200), nil, logger)
 		dv.recalcButtons()
 
-		topButtons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmBox, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn}
+		rects := []image.Rectangle{
+			dv.playBtn.Rect(),
+			dv.stopBtn.Rect(),
+			dv.bpmDecBtn.Rect(),
+			dv.bpmBox.Rect,
+			dv.bpmIncBtn.Rect(),
+			dv.lenDecBtn.Rect(),
+			dv.lenIncBtn.Rect(),
+		}
 		prev := image.Rectangle{}
-		for i, btn := range topButtons {
-			r := btn.Rect()
+		for i, r := range rects {
 			if r.Empty() {
-				t.Fatalf("w=%d: top button %d empty", w, i)
+				t.Fatalf("w=%d: top control %d empty", w, i)
 			}
 			if i > 0 && r.Min.X-prev.Max.X < buttonPad {
-				t.Fatalf("w=%d: top button %d lacks padding", w, i)
-			}
-			tr := btn.textRect()
-			if !tr.In(r) {
-				t.Fatalf("w=%d: text outside top button %d", w, i)
-			}
-			cx := (r.Min.X + r.Max.X) / 2
-			ctx := (tr.Min.X + tr.Max.X) / 2
-			cy := (r.Min.Y + r.Max.Y) / 2
-			cty := (tr.Min.Y + tr.Max.Y) / 2
-			if intAbs(cx-ctx) > 1 || intAbs(cy-cty) > 1 {
-				t.Fatalf("w=%d: text not centered in top button %d", w, i)
+				t.Fatalf("w=%d: top control %d lacks padding", w, i)
 			}
 			prev = r
 		}

@@ -80,3 +80,6 @@ func (e *Engine) Close() { e.cancel() }
 
 // BeatLength exposes the scheduler's beat length.
 func (e *Engine) BeatLength() int { return e.sched.BeatLength }
+
+// Progress exposes the scheduler's current beat progress.
+func (e *Engine) Progress() float64 { return e.sched.Progress() }

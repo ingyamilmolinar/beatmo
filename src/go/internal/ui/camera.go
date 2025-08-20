@@ -41,6 +41,26 @@ func (c *Camera) GeoMRounded() ebiten.GeoM {
 	return m
 }
 
+// Snap clamps the camera offsets to integer pixels and limits their magnitude
+// so panning across huge distances doesn't accumulate floating-point error.
+// Snapping keeps grid lines aligned with world coordinates and avoids
+// precision loss when the camera moves very far from the origin.
+func (c *Camera) Snap() {
+	c.OffsetX = math.Round(c.OffsetX)
+	c.OffsetY = math.Round(c.OffsetY)
+	const limit = 1e6 // keep offsets in a sane range for numeric stability
+	if c.OffsetX > limit {
+		c.OffsetX = limit
+	} else if c.OffsetX < -limit {
+		c.OffsetX = -limit
+	}
+	if c.OffsetY > limit {
+		c.OffsetY = limit
+	} else if c.OffsetY < -limit {
+		c.OffsetY = -limit
+	}
+}
+
 // HandleMouse mutates Scale / Offset by reading Ebiten’s mouse state.
 // When allowPan is false (e.g. cursor over drum view) the camera ignores
 // both wheel zoom and dragging so drum interactions don’t affect the grid.
@@ -48,11 +68,20 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 	dragging := false
 	if allowPan {
 		if _, wheelY := wheel(); wheelY != 0 {
-			if wheelY > 0 {
-				c.Scale *= 1.1
-			} else {
-				c.Scale *= 0.9
+			mx, my := cursorPosition()
+			wx := (float64(mx) - c.OffsetX) / c.Scale
+			wy := (float64(my) - c.OffsetY) / c.Scale
+			const zoomFactor = 1.05
+			newScale := c.Scale * math.Pow(zoomFactor, wheelY)
+			const minScale, maxScale = 0.1, 10.0
+			if newScale < minScale {
+				newScale = minScale
+			} else if newScale > maxScale {
+				newScale = maxScale
 			}
+			c.OffsetX = float64(mx) - wx*newScale
+			c.OffsetY = float64(my) - wy*newScale
+			c.Scale = newScale
 		}
 		if isMouseButtonPressed(ebiten.MouseButtonLeft) {
 			x, y := cursorPosition()
@@ -70,6 +99,7 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 	} else {
 		clearMousePos()
 	}
+	c.Snap()
 	return dragging
 }
 

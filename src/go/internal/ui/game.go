@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/ingyamilmolinar/tunkul/core/engine"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
@@ -73,7 +74,7 @@ func rawBeatLen(path []model.BeatInfo, isLoop bool, loopStart int) int {
 type uiNode struct {
 	ID       model.NodeID
 	I, J     int     // grid indices
-	X, Y     float64 // cached world coords (GridStep*I, GridStep*J)
+	X, Y     float64 // cached world coords (grid.Unit()*I, grid.Unit()*J)
 	Selected bool
 	Start    bool
 	path     []model.NodeID // Path taken by the pulse to reach this node
@@ -107,14 +108,24 @@ type pulse struct {
 	row                      int
 }
 
+type soundReq struct {
+	id   string
+	vol  float64
+	when []float64
+}
+
 type Game struct {
 	/* subsystems */
-	cam    *Camera
-	split  *Splitter
-	drum   *DrumView
-	graph  *model.Graph
-	engine *engine.Engine
-	logger *game_log.Logger
+	cam            *Camera
+	split          *Splitter
+	drum           *DrumView
+	graph          *model.Graph
+	engine         *engine.Engine
+	engineProgress func() float64
+	logger         *game_log.Logger
+	grid           *Grid
+	audioCh        chan soundReq
+	bpmCh          chan int
 
 	/* graph data */
 	nodes           []*uiNode
@@ -128,6 +139,8 @@ type Game struct {
 	renderedPulsesCount int
 	highlightedBeats    map[int]int64 // Encoded row/index keys
 	selNeighbors        map[*uiNode]bool
+	hover               *uiNode
+	cursorLabel         string
 
 	/* editor state */
 	sel            *uiNode
@@ -140,6 +153,7 @@ type Game struct {
 
 	/* game state */
 	playing            bool
+	paused             bool
 	bpm                int
 	currentStep        int // Current step in the sequence
 	lastBeatFrame      int64
@@ -166,17 +180,22 @@ type Game struct {
 
 // Rectangle in *screen* pixels (y already includes the transport offset).
 func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
-	stepPx := StepPixels(g.cam.Scale)               // grid step in screen px
-	camScale := float64(stepPx) / float64(GridStep) // world→screen factor
-	offX := math.Round(g.cam.OffsetX)               // camera panning
+	unitPx := g.grid.UnitPixels(g.cam.Scale) // px per smallest subdivision
+	offX := math.Round(g.cam.OffsetX)        // camera panning
 	offY := math.Round(g.cam.OffsetY)
 
-	sx := offX + float64(stepPx*n.I)             // sprite centre X
-	sy := offY + float64(stepPx*n.J) + topOffset // sprite centre Y
-	size := float64(NodeSpriteSize) * camScale
-	half := size / 2
+	sx := offX + unitPx*float64(n.I)
+	sy := offY + unitPx*float64(n.J) + topOffset
+	r := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
+	return sx - r, sy - r, sx + r, sy + r
+}
 
-	return sx - half, sy - half, sx + half, sy + half
+func (g *Game) nodeRadius(n *uiNode) float64 {
+	r := g.grid.NodeRadius(g.cam.Scale)
+	if g.hover == n {
+		r *= 2
+	}
+	return r
 }
 
 // computeSelNeighbors refreshes the neighbor set for the currently selected node.
@@ -203,6 +222,7 @@ func New(logger *game_log.Logger) *Game {
 		logger:             logger,
 		graph:              eng.Graph,
 		engine:             eng,
+		engineProgress:     eng.Progress,
 		split:              NewSplitter(720), // real height set in Layout below
 		highlightedBeats:   make(map[int]int64),
 		bpm:                120, // Default BPM
@@ -218,11 +238,40 @@ func New(logger *game_log.Logger) *Game {
 		nodeRows:           make(map[model.NodeID]int),
 		activePulses:       []*pulse{},
 		pendingStartRow:    -1,
+		grid:               NewGrid(DefaultGridStep),
+		audioCh:            make(chan soundReq, 32),
+		bpmCh:              make(chan int, 1),
 	}
 
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
+	go g.audioLoop()
+	go g.bpmLoop()
 	return g
+}
+
+func (g *Game) audioLoop() {
+	for req := range g.audioCh {
+		playSound(req.id, req.vol, req.when...)
+	}
+}
+
+func (g *Game) bpmLoop() {
+	for b := range g.bpmCh {
+		// Drain any pending updates so only the latest BPM is applied.
+		for {
+			select {
+			case b = <-g.bpmCh:
+				// keep draining
+			default:
+				g.logger.Debugf("[GAME] applying BPM=%d", b)
+				g.engine.SetBPM(b)
+				audio.SetBPM(b)
+				goto next
+			}
+		}
+	next:
+	}
 }
 
 func (g *Game) Layout(w, h int) (int, int) {
@@ -238,10 +287,11 @@ func (g *Game) Layout(w, h int) (int, int) {
 	g.split.Y = int(float64(h) * g.split.ratio)
 	g.drum.SetBounds(image.Rect(0, g.split.Y, g.winW, g.winH))
 	if enableDefaultStart && len(g.nodes) == 0 {
-		ci := w / (2 * GridStep)
-		cj := (g.split.Y - topOffset) / (2 * GridStep)
+		g.cam.OffsetX = float64(w) / 2
+		g.cam.OffsetY = float64(g.split.Y-topOffset) / 2
+		g.cam.Snap()
 		g.pendingStartRow = 0
-		g.tryAddNode(ci, cj, model.NodeTypeRegular)
+		g.tryAddNode(0, 0, model.NodeTypeRegular)
 	}
 	g.logger.Infof("[GAME] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
@@ -307,7 +357,8 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		return n
 	}
 	id := g.graph.AddNode(i, j, nodeType)
-	n := &uiNode{ID: id, I: i, J: j, X: float64(i * GridStep), Y: float64(j * GridStep)}
+	unit := g.grid.Unit()
+	n := &uiNode{ID: id, I: i, J: j, X: float64(i) * unit, Y: float64(j) * unit}
 
 	if nodeType == model.NodeTypeRegular {
 		if g.pendingStartRow >= 0 {
@@ -449,7 +500,9 @@ func (g *Game) updateBeatInfos() {
 	g.resetOriginSequences()
 
 	if maxLen > g.drum.Length {
-		g.drum.Length = maxLen
+		g.drum.SetLength(maxLen)
+	} else {
+		g.drum.SetBeatLength(maxLen)
 	}
 
 	// Rebind active pulses to the updated beat paths while preserving
@@ -723,7 +776,7 @@ func (g *Game) handleEditor() {
 	}
 	wx := (float64(x) - g.cam.OffsetX) / g.cam.Scale
 	wy := (float64(y-topOffset) - g.cam.OffsetY) / g.cam.Scale
-	gx, gy, i, j := Snap(wx, wy)
+	gx, gy, i, j := g.grid.Snap(wx, wy)
 
 	// ---------------- delete node (right-click) ----------------
 	if right && !shift && !left {
@@ -834,20 +887,31 @@ func (g *Game) spawnPulseFromRow(row, start int) {
 	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
 	fromBeatInfo := path[curIdxWrapped]
 	g.nextBeatIdxs[row] = start
-	g.highlightBeat(row, g.nextBeatIdxs[row], fromBeatInfo, beatDuration)
-	g.nextBeatIdxs[row]++
+	idx := g.nextBeatIdxs[row]
+	g.highlightBeat(row, idx, fromBeatInfo, beatDuration)
 	if row == 0 {
-		g.elapsedBeats = g.nextBeatIdxs[row]
+		g.elapsedBeats = idx
 	}
+	g.nextBeatIdxs[row] = idx + 1
 	nextInfo := g.beatInfoAtRow(row, start+1)
 	if nextInfo.NodeID != model.InvalidNodeID {
 		nextIdxWrapped := g.wrapBeatIndexRow(row, start+1)
+		unit := g.grid.Unit()
+		x1 := float64(fromBeatInfo.I) * unit
+		y1 := float64(fromBeatInfo.J) * unit
+		x2 := float64(nextInfo.I) * unit
+		y2 := float64(nextInfo.J) * unit
+		dist := hypot(x2-x1, y2-y1)
+		beats := dist / g.grid.Step
+		if beats <= 0 {
+			beats = 1
+		}
 		p := &pulse{
-			x1:           float64(fromBeatInfo.I * GridStep),
-			y1:           float64(fromBeatInfo.J * GridStep),
-			x2:           float64(nextInfo.I * GridStep),
-			y2:           float64(nextInfo.J * GridStep),
-			speed:        1.0 / float64(beatDuration),
+			x1:           x1,
+			y1:           y1,
+			x2:           x2,
+			y2:           y2,
+			speed:        1.0 / (float64(beatDuration) * beats),
 			fromBeatInfo: fromBeatInfo,
 			toBeatInfo:   nextInfo,
 			pathIdx:      nextIdxWrapped,
@@ -873,12 +937,15 @@ func (g *Game) spawnPulseFrom(start int) { g.spawnPulseFromRow(0, start) }
 /* ─────────────── Update & tick ────────────────────────────────────────── */
 
 func (g *Game) Update() error {
-	g.logger.Debugf("[GAME] Update start: frame=%d playing=%t bpm=%d currentStep=%d", g.frame, g.playing, g.bpm, g.currentStep)
-	// Process engine events without blocking
+	// Process engine events without blocking. If playback is stopped,
+	// drain any pending ticks without advancing the timeline so beat and
+	// time counters freeze immediately when the user hits Stop.
 	for {
 		select {
 		case evt := <-g.engine.Events:
-			g.onTick(evt.Step)
+			if g.playing {
+				g.onTick(evt.Step)
+			}
 		default:
 			goto eventsDone
 		}
@@ -906,6 +973,15 @@ eventsDone:
 		g.leftPrev = left
 	}
 
+	if my >= topOffset && !g.blocksAt(mx, my) {
+		wx := (float64(mx) - g.cam.OffsetX) / g.cam.Scale
+		wy := (float64(my-topOffset) - g.cam.OffsetY) / g.cam.Scale
+		_, _, i, j := g.grid.Snap(wx, wy)
+		g.hover = g.nodeAt(i, j)
+	} else {
+		g.hover = nil
+	}
+
 	// edge animation progress
 	for i := range g.edges {
 		if g.edges[i].t < 1 {
@@ -921,35 +997,37 @@ eventsDone:
 			}
 		}
 	}
-	g.frame++
+	if g.playing {
+		g.frame++
+	}
 
-	for i := 0; i < len(g.activePulses); {
-		p := g.activePulses[i]
-		g.logger.Debugf("[GAME] Update: processing active pulse row=%d t=%.2f from=%+v to=%+v", p.row, p.t, p.fromBeatInfo, p.toBeatInfo)
-		p.t += p.speed
-		if p.t >= 1 {
-			prevIdx := p.lastIdx
-			delete(g.highlightedBeats, makeBeatKey(p.row, prevIdx))
-			if !g.advancePulse(p) {
-				g.logger.Infof("[GAME] Update: pulse for row %d removed", p.row)
-				if p.row == 0 {
-					g.activePulse = nil
-				}
-				g.activePulses = append(g.activePulses[:i], g.activePulses[i+1:]...)
-				for key := range g.highlightedBeats {
-					if r, _ := splitBeatKey(key); r == p.row {
-						delete(g.highlightedBeats, key)
+	if g.playing {
+		for i := 0; i < len(g.activePulses); {
+			p := g.activePulses[i]
+			p.t += p.speed
+			if p.t >= 1 {
+				prevIdx := p.lastIdx
+				delete(g.highlightedBeats, makeBeatKey(p.row, prevIdx))
+				if !g.advancePulse(p) {
+					g.logger.Infof("[GAME] Update: pulse for row %d removed", p.row)
+					if p.row == 0 {
+						g.activePulse = nil
 					}
+					g.activePulses = append(g.activePulses[:i], g.activePulses[i+1:]...)
+					for key := range g.highlightedBeats {
+						if r, _ := splitBeatKey(key); r == p.row {
+							delete(g.highlightedBeats, key)
+						}
+					}
+					continue
 				}
-				continue
 			}
+			i++
 		}
-		i++
 	}
 
 	// Clear expired highlights
 	g.clearExpiredHighlights()
-	g.logger.Debugf("[GAME] Current highlightedBeats: %v", g.highlightedBeats)
 
 	// drum view logic
 	prevPlaying := g.playing
@@ -1003,12 +1081,12 @@ eventsDone:
 	if len(deleted) > 0 {
 		g.updateBeatInfos()
 	}
-	if g.drum.OffsetChanged() {
-		g.refreshDrumRow()
-	}
 
 	if g.drum.PlayPressed() {
-		if g.start != nil {
+		if g.playing {
+			g.playing = false
+			g.paused = true
+		} else if g.start != nil {
 			audio.Resume()
 			g.playing = true
 		} else {
@@ -1018,12 +1096,18 @@ eventsDone:
 	}
 	if g.drum.StopPressed() {
 		g.playing = false
+		g.paused = false
 	}
 	g.bpm = g.drum.BPM()
 
 	if g.bpm != prevBPM {
-		g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
-		audio.SetBPM(g.bpm)
+		// queue BPM change without blocking the update loop
+		select {
+		case g.bpmCh <- g.bpm:
+		default:
+			<-g.bpmCh
+			g.bpmCh <- g.bpm
+		}
 		beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
 		for _, p := range g.activePulses {
 			p.t *= float64(g.bpm) / float64(prevBPM)
@@ -1037,30 +1121,44 @@ eventsDone:
 	if g.playing != prevPlaying {
 		g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, g.playing)
 		if g.playing {
-			for i := range g.nextBeatIdxs {
-				g.nextBeatIdxs[i] = 0
+			if !g.paused {
+				for i := range g.nextBeatIdxs {
+					g.nextBeatIdxs[i] = 0
+				}
+				g.resetOriginSequences()
+				g.elapsedBeats = 0
+				g.activePulses = nil
+				g.activePulse = nil
+				g.highlightedBeats = map[int]int64{}
 			}
-			g.resetOriginSequences()
-			g.elapsedBeats = 0
-			g.activePulses = nil
-			g.activePulse = nil
-			g.highlightedBeats = map[int]int64{}
 			g.engine.Start()
+			g.paused = false
 			g.logger.Infof("[GAME] Engine started.")
 		} else {
 			g.engine.Stop()
 			g.logger.Infof("[GAME] Engine stopped.")
+			if !g.paused {
+				g.elapsedBeats = 0
+				g.activePulses = nil
+				g.activePulse = nil
+				g.highlightedBeats = map[int]int64{}
+			}
 		}
+		g.drum.SetPlaying(g.playing)
 	}
 
-	if g.playing {
-		g.engine.SetBPM(g.bpm)
-	} else {
+	if !g.playing && !g.paused {
 		g.logger.Infof("[GAME] Update: stopping playback, removing active pulses.")
 		g.activePulses = nil
 		g.activePulse = nil
 	}
 
+	if g.playing {
+		g.drum.TrackBeat(g.elapsedBeats)
+	}
+	if g.drum.OffsetChanged() {
+		g.refreshDrumRow()
+	}
 	if prevLen != g.drum.Length {
 		maxOffset := len(g.beatInfos) - g.drum.Length
 		if maxOffset < 0 {
@@ -1071,7 +1169,6 @@ eventsDone:
 		}
 		g.refreshDrumRow()
 	}
-	g.logger.Debugf("[GAME] Update end. Frame: %d", g.frame)
 	return nil
 }
 
@@ -1087,55 +1184,74 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	top.Fill(colBGTop)
 
 	// camera matrix for world drawings (shift down by bar height)
-	stepPx := StepPixels(g.cam.Scale)
+	unitPx := g.grid.UnitPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	camScale := float64(stepPx) / float64(GridStep)
+	camScale := unitPx / g.grid.Unit()
 	var cam ebiten.GeoM
 	cam.Scale(camScale, camScale)
 	cam.Translate(offX, offY+float64(topOffset))
 
 	// grid lattice computed in world coordinates then transformed
 	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.winW, g.split.Y)
-	startI := int(math.Floor(minX / GridStep))
-	endI := int(math.Ceil(maxX / GridStep))
-	startJ := int(math.Floor(minY / GridStep))
-	endJ := int(math.Ceil(maxY / GridStep))
-
+	groups := g.grid.Lines(g.cam, g.winW, g.split.Y)
+	for _, lg := range groups {
+		// convert desired pixel width to world units so screen thickness stays constant
+		w := lg.Subdiv.Style.Width / camScale
+		for _, x := range lg.Xs {
+			DrawLineCam(screen, x, minY, x, maxY, &cam, lg.Subdiv.Style.Color, w)
+		}
+		for _, y := range lg.Ys {
+			DrawLineCam(screen, minX, y, maxX, y, &cam, lg.Subdiv.Style.Color, w)
+		}
+	}
 	var id ebiten.GeoM
-	for i := startI; i <= endI; i++ {
-		x := float64(i * GridStep)
-		DrawLineCam(screen, x, minY, x, maxY, &cam, colGridLine, 1)
-	}
-	for j := startJ; j <= endJ; j++ {
-		y := float64(j * GridStep)
-		DrawLineCam(screen, minX, y, maxX, y, &cam, colGridLine, 1)
-	}
 
 	// edges with connection animation
+	sigStyle := SignalUI
+	sigStyle.Radius = float32(g.grid.SignalRadius(g.cam.Scale))
+	edgeThick := g.grid.EdgeThickness(g.cam.Scale)
+	arrow := g.grid.EdgeArrowSize()
 	for i := range g.edges {
 		e := &g.edges[i]
-		EdgeUI.DrawProgress(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam, e.t)
+		edgeStyle := EdgeUI
+		edgeStyle.Thickness = edgeThick
+		edgeStyle.ArrowSize = arrow
+		if row, ok := g.nodeRows[e.A.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
+			base := g.drum.Rows[row].Color
+			edgeStyle.Color = adjustColor(base, 80)
+		}
+		edgeStyle.DrawProgress(screen, e.A.X, e.A.Y, e.B.X, e.B.Y, &cam, e.t)
 		if e.pulse >= 0 {
 			px := e.A.X + (e.B.X-e.A.X)*e.pulse
 			py := e.A.Y + (e.B.Y-e.A.Y)*e.pulse
-			SignalUI.Draw(screen, px, py, &cam)
+			sigStyle.Color = edgeStyle.Color
+			sigStyle.Draw(screen, px, py, &cam)
 		}
 	}
 
 	// link preview
 	if g.linkDrag.active {
-		EdgeUI.Draw(screen, g.linkDrag.from.X, g.linkDrag.from.Y,
+		edgeStyle := EdgeUI
+		edgeStyle.Thickness = edgeThick
+		edgeStyle.ArrowSize = arrow
+		if row, ok := g.nodeRows[g.linkDrag.from.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
+			base := g.drum.Rows[row].Color
+			edgeStyle.Color = adjustColor(base, 80)
+		}
+		edgeStyle.Draw(screen, g.linkDrag.from.X, g.linkDrag.from.Y,
 			g.linkDrag.toX, g.linkDrag.toY, &cam)
 	}
 
 	// nodes
+	nodeStyle := NodeUI
 	for _, n := range g.nodes {
 		nodeInfo, ok := g.graph.Nodes[n.ID]
 		if !ok || nodeInfo.Type != model.NodeTypeRegular {
 			continue
 		}
-		style := NodeUI
+		style := nodeStyle
+		style.Radius = float32(g.nodeRadius(n))
 		if row, ok := g.nodeRows[n.ID]; ok {
 			if row >= 0 && row < len(g.drum.Rows) {
 				base := g.drum.Rows[row].Color
@@ -1169,9 +1285,38 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	for _, p := range g.activePulses {
 		px := p.x1 + (p.x2-p.x1)*p.t
 		py := p.y1 + (p.y2-p.y1)*p.t
-		DrawLineCam(screen, p.x1, p.y1, px, py, &cam, fadeColor(SignalUI.Color, 0.6), EdgeUI.Thickness)
-		SignalUI.Draw(screen, px, py, &cam)
+		col := SignalUI.Color
+		if p.row >= 0 && p.row < len(g.drum.Rows) {
+			base := g.drum.Rows[p.row].Color
+			col = adjustColor(base, 80)
+		}
+		DrawLineCam(screen, p.x1, p.y1, px, py, &cam, fadeColor(col, 0.6), edgeThick)
+		sigStyle.Color = col
+		sigStyle.Draw(screen, px, py, &cam)
 		g.renderedPulsesCount++
+	}
+
+	// cursor coordinate label
+	mx, my := cursorPosition()
+	if my < g.split.Y {
+		camScale := unitPx / g.grid.Unit()
+		wx := (float64(mx) - offX) / camScale
+		wy := (float64(my) - offY - float64(topOffset)) / camScale
+		_, _, ix, iy := g.grid.Snap(wx, wy)
+		bx, nx, dx := g.grid.BeatSubdivision(ix)
+		by, ny, dy := g.grid.BeatSubdivision(iy)
+		xs := "0"
+		ys := "0"
+		if nx != 0 {
+			xs = fmt.Sprintf("%d/%d", nx, dx)
+		}
+		if ny != 0 {
+			ys = fmt.Sprintf("%d/%d", ny, dy)
+		}
+		g.cursorLabel = fmt.Sprintf("(%d:%s, %d:%s)", bx, xs, by, ys)
+		ebitenutil.DebugPrintAt(screen, g.cursorLabel, mx+8, my+16)
+	} else {
+		g.cursorLabel = ""
 	}
 
 	// splitter line
@@ -1182,7 +1327,15 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, g.elapsedBeats)
+	g.drum.Draw(dst, g.highlightedBeats, g.frame, g.drumBeatInfos, g.currentBeat())
+}
+
+func (g *Game) currentBeat() float64 {
+	frac := float64(g.elapsedBeats)
+	if g.playing && g.engineProgress != nil {
+		frac += g.engineProgress()
+	}
+	return frac
 }
 
 func (g *Game) rootNode() *uiNode {
@@ -1220,7 +1373,6 @@ func (g *Game) pulseForRow(row int) *pulse {
 }
 
 func (g *Game) onTick(step int) {
-	g.logger.Debugf("[GAME] On tick: step %d", step)
 	g.currentStep = step
 
 	if step == 0 {
@@ -1259,8 +1411,16 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 				return
 			}
 		}
-		playSound(inst, vol, audio.Now())
+		g.queueSound(inst, vol)
 		g.logger.Debugf("[GAME] highlightBeat: Played %s at vol %.2f for node %d at beat %d row %d", inst, vol, info.NodeID, idx, row)
+	}
+}
+
+func (g *Game) queueSound(id string, vol float64) {
+	req := soundReq{id: id, vol: vol, when: []float64{audio.Now()}}
+	select {
+	case g.audioCh <- req:
+	default:
 	}
 }
 
@@ -1325,12 +1485,13 @@ func (g *Game) advancePulse(p *pulse) bool {
 		}
 	}
 
-	g.highlightBeat(p.row, g.nextBeatIdxs[p.row], arrivalBeatInfo, beatDuration)
-	p.lastIdx = g.nextBeatIdxs[p.row]
-	g.nextBeatIdxs[p.row]++
+	idx := g.nextBeatIdxs[p.row]
+	g.highlightBeat(p.row, idx, arrivalBeatInfo, beatDuration)
+	p.lastIdx = idx
 	if p.row == 0 {
-		g.elapsedBeats = g.nextBeatIdxs[p.row]
+		g.elapsedBeats = idx
 	}
+	g.nextBeatIdxs[p.row] = idx + 1
 
 	// Advance pathIdx for the *next* pulse segment
 	p.pathIdx++
@@ -1371,6 +1532,12 @@ func (g *Game) advancePulse(p *pulse) bool {
 	p.y1 = p.from.Y
 	p.x2 = p.to.X
 	p.y2 = p.to.Y
+	dist := hypot(p.x2-p.x1, p.y2-p.y1)
+	beats := dist / g.grid.Step
+	if beats <= 0 {
+		beats = 1
+	}
+	p.speed = 1.0 / (float64(beatDuration) * beats)
 	p.t = 0 // Reset animation progress
 
 	return true

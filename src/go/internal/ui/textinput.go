@@ -80,12 +80,17 @@ func (t *TextInput) Update() bool {
 	if chars := inputChars(); len(chars) > 0 {
 		for _, r := range chars {
 			if r == '\n' || r == '\r' {
+				t.focused = false
+				consumed = true
 				continue
 			}
 			before := t.Text[:byteIndex(t.Text, t.cursor)]
 			after := t.Text[byteIndex(t.Text, t.cursor):]
 			t.Text = before + string(r) + after
 			t.cursor++
+		}
+		if !t.focused {
+			return true
 		}
 	}
 

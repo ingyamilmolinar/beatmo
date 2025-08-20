@@ -121,6 +121,8 @@ This debugging session highlighted several critical points:
 
 ## Lessons from Tempo Changes
 *   **Rescale in-flight pulses on tempo changes:** When BPM updates, scale the active pulse's progress and recompute audio scheduling so the signal keeps moving forward without jumping or reversing.
+*   **BPM input validation:** The BPM box accepts values between 1 and 1000, highlighting invalid entries in red.
+*   **BPM adjustments run asynchronously:** Plus/minus buttons queue tempo changes through a channel so holding them never stalls animation or audio, and pressing Enter in the BPM field commits the value immediately. A dedicated `bpmLoop` drains pending updates and applies only the latest BPM, preventing backlog buildup when users spam the controls.
 
 ## Miniaudio Integration Notes
 
@@ -154,3 +156,30 @@ This debugging session highlighted several critical points:
 * Deleting a drum row now purges its active pulses and shifts remaining rows so orphaned signals can't panic.
 * Reset origin-sequence bookkeeping on seek or playback restarts to avoid false "pulse jumped to origin" panics; regression tests cover this.
 * Row labels now include a small edit button to rename instruments; the rename dialog uses a blinking block cursor and key-repeat timing consistent with button holds.
+* Added a global "Track" toggle that auto-scrolls the drum view with playback; disabling it lets users explore the timeline independently.
+* `Game.currentBeat` now derives from elapsed beats plus scheduler fractions, keeping the global timeline cursor and drum highlights in perfect lockstep.
+* The play button doubles as a pause/resume toggle; playback state switches between "▶" and "⏸" without resetting progress until Stop is pressed.
+
+## Grid resolution refactor (WIP)
+
+* Introduced a `Grid` struct with configurable step size to replace the fixed `GridStep` constant.
+* Game logic and tests now obtain spacing through this struct, easing future support for higher beat subdivisions.
+* Added subdivision definitions with per-level styles and zoom thresholds, and render them in `drawGridPane`.
+* Sorted subdivision levels and removed overlapping lines so beat-level markers remain distinct.
+* Grid clicks now snap to the finest subdivision, allowing node placement at 32nd-note intersections.
+* Node and signal sizes now scale with zoom so 32nd-note nodes never overlap.
+* Sub-beat nodes now populate drum-row steps, enabling sequencing at 32nd-note resolution.
+* Pulse speed scales with grid distance so signals traverse one beat per main intersection; tests cover 32nd-note traversal.
+* Grid line generation now pads the visible area by one beat so panning reveals a seamless infinite lattice.
+* Camera offsets now snap to integer pixels and clamp to a safe range so panning across vast distances stays performant and lines remain crisp.
+* Mouse wheel zoom now scales smoothly around the cursor so the pointed world position stays fixed while zooming.
+* Grid lines keep a consistent thin width at all zoom levels; color contrast differentiates beat subdivisions.
+* Connection arrows shrink to 32nd‑note units, inherit node colors, and use a constant 1px thickness so links stay unobtrusive.
+* Cursor shows a live (beat:sub-beat) coordinate label, and the default start node sits at (0:0) with the camera centered.
+* Next steps: profile grid rendering at extreme pan/zoom combinations for further optimizations.
+
+## Audio precision
+
+* Sound playback now uses a dedicated goroutine and queue so heavy UI work never blocks audio.
+* Tests cover non-blocking sound queuing; next step is moving pulse advancement off the main thread.
+* BPM changes flow through a buffered channel so rapid adjustments don't spawn goroutines or stall playback.

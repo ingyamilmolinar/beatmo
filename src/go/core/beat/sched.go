@@ -38,6 +38,7 @@ func (s *Scheduler) Start() {
 func (s *Scheduler) Stop() {
 	s.running = false
 	s.currentStep = 0
+	s.last = time.Time{}
 	log.Printf("[SCHEDULER] Stopped")
 }
 
@@ -61,4 +62,13 @@ func (s *Scheduler) Tick() {
 		}
 		s.currentStep = (s.currentStep + 1) % s.BeatLength
 	}
+}
+
+// Progress returns the fraction of the current beat that has elapsed.
+func (s *Scheduler) Progress() float64 {
+	if s.BPM <= 0 || s.last.IsZero() {
+		return 0
+	}
+	spb := time.Minute / time.Duration(s.BPM)
+	return float64(s.now().Sub(s.last)) / float64(spb)
 }

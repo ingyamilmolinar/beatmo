@@ -18,8 +18,8 @@ type Transport struct {
 	playRect image.Rectangle
 	stopRect image.Rectangle
 
-	bpmErrorAnim float64
-	bpmPrev      int
+        bpmErrorAnim float64
+        bpmPrev      int
 }
 
 func (t *Transport) SetBPM(b int) {
@@ -51,40 +51,46 @@ func NewTransport(w int) *Transport {
 
 func (t *Transport) Update() {
 	x, y := cursorPosition()
-	prev := t.bpmBox.Focused()
-	t.bpmBox.Update()
+        prev := t.bpmBox.Focused()
+        t.bpmBox.Update()
 
-	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
-		if pt(x, y, t.playRect) {
-			t.Playing = true
-		}
-		if pt(x, y, t.stopRect) {
-			t.Playing = false
-		}
-	}
+        if isMouseButtonPressed(ebiten.MouseButtonLeft) {
+                if pt(x, y, t.playRect) {
+                        t.Playing = true
+                }
+                if pt(x, y, t.stopRect) {
+                        t.Playing = false
+                }
+        }
 
-	if !prev && t.bpmBox.Focused() {
-		t.bpmPrev = t.BPM
-		t.bpmBox.SetText("")
-	}
+        if !prev && t.bpmBox.Focused() {
+                t.bpmPrev = t.BPM
+                t.bpmBox.SetText("")
+        }
 
-	if t.bpmBox.Focused() {
-		if v, err := strconv.Atoi(t.bpmBox.Value()); err == nil {
-			t.BPM = v
-		}
-	} else if prev {
-		if t.bpmBox.Value() == "" {
-			t.BPM = t.bpmPrev
-		} else if v, err := strconv.Atoi(t.bpmBox.Value()); err == nil {
-			t.SetBPM(v)
-		}
-		t.bpmBox.SetText(fmt.Sprintf("%d", t.BPM))
-	}
+        if t.bpmBox.Focused() {
+                if txt := t.bpmBox.Value(); txt != "" {
+                        if v, err := strconv.Atoi(txt); err != nil || v < 1 || v > maxBPM {
+                                t.bpmErrorAnim = 1
+                        }
+                }
+        } else if prev {
+                txt := t.bpmBox.Value()
+                if txt == "" {
+                        t.SetBPM(t.bpmPrev)
+                } else if v, err := strconv.Atoi(txt); err == nil && v >= 1 && v <= maxBPM {
+                        t.SetBPM(v)
+                } else {
+                        t.bpmErrorAnim = 1
+                        t.SetBPM(t.bpmPrev)
+                }
+                t.bpmBox.SetText(fmt.Sprintf("%d", t.BPM))
+        }
 
-	t.bpmErrorAnim *= 0.85
-	if t.bpmErrorAnim < 0.01 {
-		t.bpmErrorAnim = 0
-	}
+        t.bpmErrorAnim *= 0.85
+        if t.bpmErrorAnim < 0.01 {
+                t.bpmErrorAnim = 0
+        }
 }
 
 func (t *Transport) Draw(dst *ebiten.Image) {

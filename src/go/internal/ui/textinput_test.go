@@ -77,6 +77,35 @@ func TestTextInputEditing(t *testing.T) {
 	}
 }
 
+func TestTextInputEnterDefocuses(t *testing.T) {
+	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
+	mx, my := 1, 1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
+
+	ti.Update() // focus
+	pressed = false
+
+	chars = []rune{'1', '2', '3', '\r'}
+	ti.Update()
+
+	if ti.Focused() {
+		t.Fatalf("expected input to lose focus on enter")
+	}
+	if ti.Value() != "123" {
+		t.Fatalf("expected value '123' got %q", ti.Value())
+	}
+}
+
 func TestTextInputHighlightAndCursor(t *testing.T) {
 	style := TextInputStyle{Fill: color.RGBA{10, 20, 30, 255}, Border: color.Black, Cursor: color.White}
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), style)
@@ -208,55 +237,55 @@ func TestTextInputCursorPosition(t *testing.T) {
 // cursor alignment regression test: ensure caret sits exactly after the
 // preceding glyphs with no extra spacing.
 func TestTextInputCursorAlignment(t *testing.T) {
-        ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
-        ti.focused = true
-        ti.SetText("abcd")
-        ti.cursor = 2 // between b and c
+	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("abcd")
+	ti.cursor = 2 // between b and c
 
-        var cur image.Rectangle
-        old := drawCursor
-        drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) { cur = r }
-        defer func() { drawCursor = old }()
+	var cur image.Rectangle
+	old := drawCursor
+	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) { cur = r }
+	defer func() { drawCursor = old }()
 
-        ti.Draw(ebiten.NewImage(80, 20))
+	ti.Draw(ebiten.NewImage(80, 20))
 
-        want := ti.Rect.Min.X + 4 + 6*2 // two glyphs at 6px each
-        if cur.Min.X != want {
-                t.Fatalf("cursor x=%d want %d", cur.Min.X, want)
-        }
+	want := ti.Rect.Min.X + 4 + 6*2 // two glyphs at 6px each
+	if cur.Min.X != want {
+		t.Fatalf("cursor x=%d want %d", cur.Min.X, want)
+	}
 }
 
 func TestTextInputOverflow(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
-        vis, start := ti.visibleText()
-        if utf8.RuneCountInString(vis) > 5 {
-                t.Fatalf("visible too long: %q", vis)
-        }
-        if start != 5 {
-                t.Fatalf("start=%d", start)
-        }
+	vis, start := ti.visibleText()
+	if utf8.RuneCountInString(vis) > 5 {
+		t.Fatalf("visible too long: %q", vis)
+	}
+	if start != 5 {
+		t.Fatalf("start=%d", start)
+	}
 }
 
 func TestTextInputVisibleTextStart(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	ti.cursor = 0
-        vis, start := ti.visibleText()
-        if vis != "abcde" || start != 0 {
-                t.Fatalf("vis=%q start=%d", vis, start)
-        }
+	vis, start := ti.visibleText()
+	if vis != "abcde" || start != 0 {
+		t.Fatalf("vis=%q start=%d", vis, start)
+	}
 }
 
 func TestTextInputMidCursorWindow(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	ti.cursor = 5
-        _, start := ti.visibleText()
-        if start != 0 {
-                t.Fatalf("start=%d", start)
-        }
-        var cur image.Rectangle
+	_, start := ti.visibleText()
+	if start != 0 {
+		t.Fatalf("start=%d", start)
+	}
+	var cur image.Rectangle
 	old := drawCursor
 	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
 		cur = r
