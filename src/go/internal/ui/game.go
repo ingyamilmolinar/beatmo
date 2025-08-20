@@ -240,7 +240,7 @@ func New(logger *game_log.Logger) *Game {
 		pendingStartRow:    -1,
 		grid:               NewGrid(DefaultGridStep),
 		audioCh:            make(chan soundReq, 32),
-		bpmCh:              make(chan int, 1),
+		bpmCh:              make(chan int, 16),
 	}
 
 	// bottom drum-machine view
@@ -248,6 +248,7 @@ func New(logger *game_log.Logger) *Game {
 	go g.audioLoop()
 	go func() {
 		for b := range g.bpmCh {
+			g.engine.SetBPM(b)
 			audio.SetBPM(b)
 		}
 	}()
@@ -1130,9 +1131,7 @@ eventsDone:
 		g.drum.SetPlaying(g.playing)
 	}
 
-	if g.playing {
-		g.engine.SetBPM(g.bpm)
-	} else if !g.paused {
+	if !g.playing && !g.paused {
 		g.logger.Infof("[GAME] Update: stopping playback, removing active pulses.")
 		g.activePulses = nil
 		g.activePulse = nil

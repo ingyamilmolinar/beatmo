@@ -67,3 +67,22 @@ func TestBPMButtonHoldNonBlocking(t *testing.T) {
 		t.Fatalf("expected BPM to increase, got %d", g.bpm)
 	}
 }
+
+func TestBPMChangeUpdatesEngineAsync(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.playing = true
+
+	target := g.drum.BPM() + 10
+	g.drum.SetBPM(target)
+	g.Update()
+
+	deadline := time.Now().Add(50 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if g.engine.BPM() == target {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("engine BPM not updated: %d", g.engine.BPM())
+}
