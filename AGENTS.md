@@ -121,6 +121,7 @@ This debugging session highlighted several critical points:
 
 ## Lessons from Tempo Changes
 *   **Rescale in-flight pulses on tempo changes:** When BPM updates, scale the active pulse's progress and recompute audio scheduling so the signal keeps moving forward without jumping or reversing.
+*   **BPM input validation:** The BPM box accepts values between 1 and 1000, highlighting invalid entries in red.
 
 ## Miniaudio Integration Notes
 
@@ -180,3 +181,4 @@ This debugging session highlighted several critical points:
 
 * Sound playback now uses a dedicated goroutine and queue so heavy UI work never blocks audio.
 * Tests cover non-blocking sound queuing; next step is moving pulse advancement off the main thread.
+* BPM changes flow through a buffered channel so rapid adjustments don't spawn goroutines or stall playback.

@@ -75,7 +75,7 @@ type DrumView struct {
 	playBtn   *Button
 	stopBtn   *Button
 	bpmDecBtn *Button // decrease BPM
-	bpmBox    *Button
+	bpmBox    *TextInput
 	bpmIncBtn *Button // increase BPM
 	lenDecBtn *Button // decrease length
 	lenIncBtn *Button // increase length
@@ -124,18 +124,14 @@ type DrumView struct {
 
 	// internal ui state
 	bpm           int
-	focusBPM      bool
 	playPressed   bool
 	stopPressed   bool
 	Length        int  // Length of the drum view, independent of graph
-	bpmIncPressed bool // State for BPM increase button
-	bpmDecPressed bool // State for BPM decrease button
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
 	follow        bool // auto-scroll with playback
 
-	bpmInput string // typed digits while editing
-	bpmPrev  int    // previous BPM before editing
+	bpmPrev int // previous BPM before editing
 
 	// button animations
 	playAnim     float64
@@ -145,7 +141,6 @@ type DrumView struct {
 	lenDecAnim   float64
 	lenIncAnim   float64
 	uploadAnim   float64
-	bpmFocusAnim float64
 	bpmErrorAnim float64
 	saveAnim     float64
 	namePhase    float64
@@ -269,13 +264,14 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.stopAnim = 1
 	})
 	dv.bpmDecBtn = NewButton("-", BPMDecStyle, func() {
-		dv.bpmDecPressed = true
+		dv.SetBPM(dv.bpm - 1)
 		dv.bpmDecAnim = 1
 	})
 	dv.bpmDecBtn.Repeat = true
-	dv.bpmBox = NewButton("120", BPMBoxStyle, nil)
+	dv.bpmBox = NewTextInput(image.Rect(0, 0, 0, 0), BPMBoxStyle)
+	dv.bpmBox.SetText("120")
 	dv.bpmIncBtn = NewButton("+", BPMIncStyle, func() {
-		dv.bpmIncPressed = true
+		dv.SetBPM(dv.bpm + 1)
 		dv.bpmIncAnim = 1
 	})
 	dv.bpmIncBtn.Repeat = true
@@ -466,7 +462,7 @@ func (dv *DrumView) recalcButtons() {
 	dv.playBtn.SetRect(insetRect(topGrid.Cell(0, 0), buttonPad))
 	dv.stopBtn.SetRect(insetRect(topGrid.Cell(1, 0), buttonPad))
 	dv.bpmDecBtn.SetRect(insetRect(topGrid.Cell(2, 0), buttonPad))
-	dv.bpmBox.SetRect(insetRect(topGrid.Cell(3, 0), buttonPad))
+	dv.bpmBox.Rect = insetRect(topGrid.Cell(3, 0), buttonPad)
 	dv.bpmIncBtn.SetRect(insetRect(topGrid.Cell(4, 0), buttonPad))
 	dv.lenDecBtn.SetRect(insetRect(topGrid.Cell(5, 0), buttonPad))
 	dv.lenIncBtn.SetRect(insetRect(topGrid.Cell(6, 0), buttonPad))
@@ -642,6 +638,9 @@ func (dv *DrumView) SetBPM(b int) {
 		return
 	}
 	dv.bpm = b
+	if dv.bpmBox != nil && !dv.bpmBox.Focused() {
+		dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
+	}
 }
 
 func (dv *DrumView) OffsetChanged() bool {
@@ -749,7 +748,6 @@ func (dv *DrumView) decayAnims() {
 	decay(&dv.lenDecAnim)
 	decay(&dv.lenIncAnim)
 	decay(&dv.uploadAnim)
-	decay(&dv.bpmFocusAnim)
 	decay(&dv.bpmErrorAnim)
 	decay(&dv.saveAnim)
 }
@@ -857,7 +855,7 @@ func (dv *DrumView) Update() {
 		dv.bgDirty = false
 	}
 
-	prevFocus := dv.focusBPM
+	prevFocus := dv.bpmBox.Focused()
 
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
@@ -1012,18 +1010,6 @@ func (dv *DrumView) Update() {
 				handled = true
 			}
 		}
-		if dv.bpmBox.Handle(mx, my, left) {
-			if left && !dv.focusBPM {
-				dv.focusBPM = true
-				dv.bpmFocusAnim = 1
-				dv.bpmPrev = dv.bpm
-				dv.bpmInput = ""
-				dv.logger.Debugf("[DRUMVIEW] BPM box clicked. focusingBPM: %t", dv.focusBPM)
-			}
-			if left {
-				handled = true
-			}
-		}
 	}
 
 	if left {
@@ -1032,9 +1018,6 @@ func (dv *DrumView) Update() {
 				dv.dragging = true
 				dv.dragStartX = mx
 				dv.startOffset = dv.Offset
-			} else if dv.focusBPM {
-				dv.focusBPM = false
-				dv.logger.Debugf("[DRUMVIEW] Clicked outside BPM box. focusingBPM: %t", dv.focusBPM)
 			}
 		}
 	} else {
@@ -1081,49 +1064,35 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	/* ——— BPM editing ——— */
-	if dv.focusBPM {
-		for _, r := range inputChars() {
-			if r >= '0' && r <= '9' {
-				dv.bpmInput += string(r)
+	/* ——— BPM text input ——— */
+	dv.bpmBox.Update()
+	if !prevFocus && dv.bpmBox.Focused() {
+		dv.bpmPrev = dv.bpm
+		dv.bpmBox.SetText("")
+	}
+	if dv.bpmBox.Focused() {
+		if txt := dv.bpmBox.Value(); txt != "" {
+			if v, err := strconv.Atoi(txt); err == nil {
+				if v >= 1 && v <= maxBPM {
+					dv.bpm = v
+				} else {
+					dv.bpmErrorAnim = 1
+				}
+			} else {
+				dv.bpmErrorAnim = 1
 			}
 		}
-		if isKeyPressed(ebiten.KeyBackspace) {
-			if l := len(dv.bpmInput); l > 0 {
-				dv.bpmInput = dv.bpmInput[:l-1]
-			}
-		}
-		if isKeyPressed(ebiten.KeyEnter) {
-			dv.focusBPM = false
-		}
-		if dv.bpmInput != "" {
-			if v, err := strconv.Atoi(dv.bpmInput); err == nil {
-				dv.bpm = v
-				dv.logger.Debugf("[DRUMVIEW] BPM changed to: %d", dv.bpm)
-			}
+	} else if prevFocus {
+		txt := dv.bpmBox.Value()
+		if txt == "" {
+			dv.SetBPM(dv.bpmPrev)
+		} else if v, err := strconv.Atoi(txt); err == nil && v >= 1 && v <= maxBPM {
+			dv.SetBPM(v)
 		} else {
-			dv.bpm = dv.bpmPrev
+			dv.bpmErrorAnim = 1
+			dv.SetBPM(dv.bpmPrev)
 		}
-	}
-
-	if !dv.focusBPM && prevFocus {
-		if dv.bpmInput == "" {
-			dv.bpm = dv.bpmPrev
-		}
-		dv.SetBPM(dv.bpm)
-		dv.bpmInput = ""
-	}
-
-	/* ——— BPM editing via buttons ——— */
-	if dv.bpmIncPressed {
-		dv.SetBPM(dv.bpm + 1)
-		dv.logger.Infof("[DRUMVIEW] BPM increased to: %d", dv.bpm)
-		dv.bpmIncPressed = false
-	}
-	if dv.bpmDecPressed {
-		dv.SetBPM(dv.bpm - 1)
-		dv.logger.Infof("[DRUMVIEW] BPM decreased to: %d", dv.bpm)
-		dv.bpmDecPressed = false
+		dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
 	}
 
 	/* ——— Length editing ——— */
@@ -1166,17 +1135,13 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	dv.decayAnims()
 	dv.calcLayout()
 
-	bpmText := dv.bpmInput
-	if !dv.focusBPM {
-		bpmText = strconv.Itoa(dv.bpm)
-	}
-	dv.bpmBox.Text = bpmText
-	if len(dv.Rows) > 0 {
-	}
 	dv.playBtn.Draw(dst)
 	dv.stopBtn.Draw(dst)
 	dv.bpmDecBtn.Draw(dst)
 	dv.bpmBox.Draw(dst)
+	if dv.bpmErrorAnim > 0 {
+		drawRect(dst, dv.bpmBox.Rect, fadeColor(colError, dv.bpmErrorAnim), false)
+	}
 	dv.bpmIncBtn.Draw(dst)
 	dv.lenDecBtn.Draw(dst)
 	dv.lenIncBtn.Draw(dst)

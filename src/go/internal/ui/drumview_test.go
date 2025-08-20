@@ -1313,7 +1313,87 @@ func TestDrumViewSetBPMClamp(t *testing.T) {
 }
 
 func TestDrumViewBPMTextInput(t *testing.T) {
-	t.Skip("text input focus under refactor")
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+
+	r := dv.bpmBox.Rect
+	mx, my := r.Min.X+1, r.Min.Y+1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
+
+	dv.Update() // click to focus
+	pressed = false
+
+	chars = []rune{'2'}
+	dv.Update()
+	chars = []rune{'5'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+
+	// click outside to commit
+	pressed = true
+	mx, my = 0, 0
+	dv.Update()
+
+	if dv.BPM() != 250 {
+		t.Fatalf("expected BPM 250 got %d", dv.BPM())
+	}
+}
+
+func TestDrumViewBPMTextInputInvalid(t *testing.T) {
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+
+	r := dv.bpmBox.Rect
+	mx, my := r.Min.X+1, r.Min.Y+1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
+
+	dv.Update() // focus
+	pressed = false
+
+	// enter out-of-range value
+	chars = []rune{'2'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+
+	// click outside to commit
+	pressed = true
+	mx, my = 0, 0
+	dv.Update()
+
+	if dv.BPM() != 120 {
+		t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
+	}
+	if dv.bpmErrorAnim == 0 {
+		t.Fatalf("expected error highlight for invalid BPM input")
+	}
 }
 
 func TestVolumeSliderUpdatesRowVolume(t *testing.T) {

@@ -125,6 +125,7 @@ type Game struct {
 	logger         *game_log.Logger
 	grid           *Grid
 	audioCh        chan soundReq
+	bpmCh          chan int
 
 	/* graph data */
 	nodes           []*uiNode
@@ -239,11 +240,17 @@ func New(logger *game_log.Logger) *Game {
 		pendingStartRow:    -1,
 		grid:               NewGrid(DefaultGridStep),
 		audioCh:            make(chan soundReq, 32),
+		bpmCh:              make(chan int, 1),
 	}
 
 	// bottom drum-machine view
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
 	go g.audioLoop()
+	go func() {
+		for b := range g.bpmCh {
+			audio.SetBPM(b)
+		}
+	}()
 	return g
 }
 
@@ -977,35 +984,35 @@ eventsDone:
 			}
 		}
 	}
-        if g.playing {
-                g.frame++
-        }
+	if g.playing {
+		g.frame++
+	}
 
-        if g.playing {
-                for i := 0; i < len(g.activePulses); {
-                        p := g.activePulses[i]
-                        g.logger.Debugf("[GAME] Update: processing active pulse row=%d t=%.2f from=%+v to=%+v", p.row, p.t, p.fromBeatInfo, p.toBeatInfo)
-                        p.t += p.speed
-                        if p.t >= 1 {
-                                prevIdx := p.lastIdx
-                                delete(g.highlightedBeats, makeBeatKey(p.row, prevIdx))
-                                if !g.advancePulse(p) {
-                                        g.logger.Infof("[GAME] Update: pulse for row %d removed", p.row)
-                                        if p.row == 0 {
-                                                g.activePulse = nil
-                                        }
-                                        g.activePulses = append(g.activePulses[:i], g.activePulses[i+1:]...)
-                                        for key := range g.highlightedBeats {
-                                                if r, _ := splitBeatKey(key); r == p.row {
-                                                        delete(g.highlightedBeats, key)
-                                                }
-                                        }
-                                        continue
-                                }
-                        }
-                        i++
-                }
-        }
+	if g.playing {
+		for i := 0; i < len(g.activePulses); {
+			p := g.activePulses[i]
+			g.logger.Debugf("[GAME] Update: processing active pulse row=%d t=%.2f from=%+v to=%+v", p.row, p.t, p.fromBeatInfo, p.toBeatInfo)
+			p.t += p.speed
+			if p.t >= 1 {
+				prevIdx := p.lastIdx
+				delete(g.highlightedBeats, makeBeatKey(p.row, prevIdx))
+				if !g.advancePulse(p) {
+					g.logger.Infof("[GAME] Update: pulse for row %d removed", p.row)
+					if p.row == 0 {
+						g.activePulse = nil
+					}
+					g.activePulses = append(g.activePulses[:i], g.activePulses[i+1:]...)
+					for key := range g.highlightedBeats {
+						if r, _ := splitBeatKey(key); r == p.row {
+							delete(g.highlightedBeats, key)
+						}
+					}
+					continue
+				}
+			}
+			i++
+		}
+	}
 
 	// Clear expired highlights
 	g.clearExpiredHighlights()
@@ -1082,15 +1089,18 @@ eventsDone:
 	}
 	g.bpm = g.drum.BPM()
 
-        if g.bpm != prevBPM {
-                g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
-                go audio.SetBPM(g.bpm)
-                beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
-                for _, p := range g.activePulses {
-                        p.t *= float64(g.bpm) / float64(prevBPM)
-                        if p.t >= 1 {
-                                p.t = 0.999999
-                        }
+	if g.bpm != prevBPM {
+		g.logger.Debugf("[GAME] BPM changed from %d to %d", prevBPM, g.bpm)
+		select {
+		case g.bpmCh <- g.bpm:
+		default:
+		}
+		beatDuration := int64(60.0 / float64(g.bpm) * ebitenTPS)
+		for _, p := range g.activePulses {
+			p.t *= float64(g.bpm) / float64(prevBPM)
+			if p.t >= 1 {
+				p.t = 0.999999
+			}
 			p.speed = 1.0 / float64(beatDuration)
 		}
 	}
@@ -1124,13 +1134,13 @@ eventsDone:
 		g.drum.SetPlaying(g.playing)
 	}
 
-        if g.playing {
-                g.engine.SetBPM(g.bpm)
-        } else if !g.paused {
-                g.logger.Infof("[GAME] Update: stopping playback, removing active pulses.")
-                g.activePulses = nil
-                g.activePulse = nil
-        }
+	if g.playing {
+		g.engine.SetBPM(g.bpm)
+	} else if !g.paused {
+		g.logger.Infof("[GAME] Update: stopping playback, removing active pulses.")
+		g.activePulses = nil
+		g.activePulse = nil
+	}
 
 	if g.playing {
 		g.drum.TrackBeat(g.elapsedBeats)
