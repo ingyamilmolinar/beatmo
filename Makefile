@@ -36,6 +36,7 @@ test-real: $(C_LIB)
 	cd src/go && xvfb-run go test -timeout 1s ./...
 	$(MAKE) wasm
 	node src/js/audio.browser.test.js
+	node src/js/bpm.browser.test.js
 
 test-xvfb:
 	cd src/go; xvfb-run go test -tags test -timeout 1s ./...

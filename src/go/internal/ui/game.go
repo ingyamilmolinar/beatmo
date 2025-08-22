@@ -254,6 +254,7 @@ func New(logger *game_log.Logger) *Game {
 	g.appliedBPM = g.drum.BPM()
 	go g.audioLoop()
 	go g.bpmLoop()
+	g.initJS()
 	return g
 }
 
@@ -1198,6 +1199,7 @@ eventsDone:
 		}
 		g.refreshDrumRow()
 	}
+	g.reportStateJS()
 	return nil
 }
 
