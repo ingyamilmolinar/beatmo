@@ -1312,6 +1312,19 @@ func TestDrumViewSetBPMClamp(t *testing.T) {
 	}
 }
 
+func TestDrumViewSecPerBeatUpdates(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	if dv.secPerBeat != 0.5 {
+		t.Fatalf("expected secPerBeat 0.5, got %f", dv.secPerBeat)
+	}
+	dv.SetBPM(240)
+	if dv.secPerBeat != 0.25 {
+		t.Fatalf("expected secPerBeat 0.25, got %f", dv.secPerBeat)
+	}
+}
+
 func TestDrumViewBPMTextInput(t *testing.T) {
 	g := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
@@ -1334,23 +1347,23 @@ func TestDrumViewBPMTextInput(t *testing.T) {
 	dv.Update() // click to focus
 	pressed = false
 
-        chars = []rune{'2'}
-        dv.Update()
-        chars = []rune{'5'}
-        dv.Update()
-        chars = []rune{'0'}
-        dv.Update()
+	chars = []rune{'2'}
+	dv.Update()
+	chars = []rune{'5'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
 
-        if dv.BPM() != 120 {
-                t.Fatalf("BPM changed before commit: %d", dv.BPM())
-        }
+	if dv.BPM() != 120 {
+		t.Fatalf("BPM changed before commit: %d", dv.BPM())
+	}
 
-        chars = []rune{'\r'}
-        dv.Update()
+	chars = []rune{'\r'}
+	dv.Update()
 
-        if dv.BPM() != 250 {
-                t.Fatalf("expected BPM 250 got %d", dv.BPM())
-        }
+	if dv.BPM() != 250 {
+		t.Fatalf("expected BPM 250 got %d", dv.BPM())
+	}
 }
 
 func TestDrumViewBPMTextInputInvalid(t *testing.T) {
@@ -1376,68 +1389,68 @@ func TestDrumViewBPMTextInputInvalid(t *testing.T) {
 	pressed = false
 
 	// enter out-of-range value
-        chars = []rune{'2'}
-        dv.Update()
-        chars = []rune{'0'}
-        dv.Update()
-        chars = []rune{'0'}
-        dv.Update()
-        chars = []rune{'0'}
-        dv.Update()
+	chars = []rune{'2'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
 
-        if dv.BPM() != 120 {
-                t.Fatalf("BPM changed before commit: %d", dv.BPM())
-        }
+	if dv.BPM() != 120 {
+		t.Fatalf("BPM changed before commit: %d", dv.BPM())
+	}
 
-        chars = []rune{'\r'}
-        dv.Update()
+	chars = []rune{'\r'}
+	dv.Update()
 
-        if dv.BPM() != 120 {
-                t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
-        }
-        if dv.bpmErrorAnim == 0 {
-                t.Fatalf("expected error highlight for invalid BPM input")
-        }
+	if dv.BPM() != 120 {
+		t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
+	}
+	if dv.bpmErrorAnim == 0 {
+		t.Fatalf("expected error highlight for invalid BPM input")
+	}
 }
 
 func TestDrumViewBPMTextInputNonNumeric(t *testing.T) {
-        g := model.NewGraph(testLogger)
-        dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
-        dv.calcLayout()
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
 
-        r := dv.bpmBox.Rect
-        mx, my := r.Min.X+1, r.Min.Y+1
-        pressed := true
-        chars := []rune{}
-        restore := SetInputForTest(
-                func() (int, int) { return mx, my },
-                func(ebiten.MouseButton) bool { return pressed },
-                func(ebiten.Key) bool { return false },
-                func() []rune { c := chars; chars = nil; return c },
-                func() (float64, float64) { return 0, 0 },
-                func() (int, int) { return 200, 200 },
-        )
-        defer restore()
+	r := dv.bpmBox.Rect
+	mx, my := r.Min.X+1, r.Min.Y+1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
 
-        dv.Update() // focus
-        pressed = false
+	dv.Update() // focus
+	pressed = false
 
-        chars = []rune{'a'}
-        dv.Update()
+	chars = []rune{'a'}
+	dv.Update()
 
-        if dv.BPM() != 120 {
-                t.Fatalf("BPM changed before commit: %d", dv.BPM())
-        }
+	if dv.BPM() != 120 {
+		t.Fatalf("BPM changed before commit: %d", dv.BPM())
+	}
 
-        chars = []rune{'\r'}
-        dv.Update()
+	chars = []rune{'\r'}
+	dv.Update()
 
-        if dv.BPM() != 120 {
-                t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
-        }
-        if dv.bpmErrorAnim == 0 {
-                t.Fatalf("expected error highlight for invalid BPM input")
-        }
+	if dv.BPM() != 120 {
+		t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
+	}
+	if dv.bpmErrorAnim == 0 {
+		t.Fatalf("expected error highlight for invalid BPM input")
+	}
 }
 
 func TestVolumeSliderUpdatesRowVolume(t *testing.T) {

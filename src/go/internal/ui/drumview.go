@@ -124,6 +124,7 @@ type DrumView struct {
 
 	// internal ui state
 	bpm           int
+	secPerBeat    float64
 	playPressed   bool
 	stopPressed   bool
 	Length        int  // Length of the drum view, independent of graph
@@ -243,6 +244,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		Bounds:        b,
 		labelW:        100,
 		bpm:           120,
+		secPerBeat:    0.5,
 		bgDirty:       true,
 		Graph:         g,
 		logger:        logger,
@@ -640,6 +642,7 @@ func (dv *DrumView) SetBPM(b int) {
 	}
 	dv.logger.Debugf("[DRUMVIEW] SetBPM %d", b)
 	dv.bpm = b
+	dv.secPerBeat = 60.0 / float64(dv.bpm)
 	if dv.bpmBox != nil && !dv.bpmBox.Focused() {
 		dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
 	}
@@ -1267,9 +1270,8 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 
 func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
 	totalBeats := math.Max(float64(dv.timelineBeats), elapsedBeats)
-	secPerBeat := 60.0 / float64(dv.bpm)
-	curTime := elapsedBeats * secPerBeat
-	totalTime := totalBeats * secPerBeat
+	curTime := elapsedBeats * dv.secPerBeat
+	totalTime := totalBeats * dv.secPerBeat
 	return fmt.Sprintf("Beat %.3f/%.3f Time %.3f/%.3fs", elapsedBeats, totalBeats, curTime, totalTime)
 }
 

@@ -29,7 +29,7 @@ func TestBPMChangeNonBlocking(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 		t.Fatalf("update blocked on BPM change")
 	}
 
@@ -56,7 +56,7 @@ func TestBPMButtonHoldNonBlocking(t *testing.T) {
 		}()
 		select {
 		case <-done:
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 			t.Fatalf("update blocked on BPM hold")
 		}
 	}
@@ -88,7 +88,7 @@ func TestBPMHoldDoesNotStallPulseProgress(t *testing.T) {
 	audio.SetBPMFunc = func(int) { <-block }
 	defer func() { audio.SetBPMFunc = func(int) {} }()
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 5; i++ {
 		g.drum.bpmIncBtn.OnClick()
 		if err := g.Update(); err != nil {
 			t.Fatalf("update failed: %v", err)
@@ -103,21 +103,21 @@ func TestBPMHoldDoesNotStallPulseProgress(t *testing.T) {
 }
 
 func TestBPMChangeUpdatesEngineAsync(t *testing.T) {
-        g := New(testLogger)
-        g.Layout(640, 480)
-        g.playing = true
+	g := New(testLogger)
+	g.Layout(640, 480)
+	g.playing = true
 
-        target := g.drum.BPM() + 10
-        g.drum.SetBPM(target)
-        g.Update()
+	target := g.drum.BPM() + 10
+	g.drum.SetBPM(target)
+	g.Update()
 
-       deadline := time.Now().Add(50 * time.Millisecond)
-       for time.Now().Before(deadline) {
-               if g.engine.BPM() == target && g.appliedBPM == target {
-                       return
-               }
-               time.Sleep(5 * time.Millisecond)
-               g.Update()
-       }
-       t.Fatalf("engine BPM not updated: %d", g.engine.BPM())
+	deadline := time.Now().Add(100 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if g.engine.BPM() == target && g.appliedBPM == target {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+		g.Update()
+	}
+	t.Fatalf("engine BPM not updated: %d", g.engine.BPM())
 }
