@@ -160,7 +160,7 @@ This debugging session highlighted several critical points:
 * `Game.currentBeat` now derives from elapsed beats plus scheduler fractions, keeping the global timeline cursor and drum highlights in perfect lockstep.
 * The play button doubles as a pause/resume toggle; playback state switches between "▶" and "⏸" without resetting progress until Stop is pressed.
 
-## Grid resolution refactor (WIP)
+## Grid resolution refactor
 
 * Introduced a `Grid` struct with configurable step size to replace the fixed `GridStep` constant.
 * Game logic and tests now obtain spacing through this struct, easing future support for higher beat subdivisions.

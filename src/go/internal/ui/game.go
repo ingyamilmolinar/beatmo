@@ -70,6 +70,22 @@ func rawBeatLen(path []model.BeatInfo, isLoop bool, loopStart int) int {
 	return len(path)
 }
 
+// sendLatest writes v to ch, dropping older values if the buffer is full.
+// It loops until the send succeeds without ever blocking.
+func sendLatest[T any](ch chan T, v T) {
+	for {
+		select {
+		case ch <- v:
+			return
+		default:
+			select {
+			case <-ch:
+			default:
+			}
+		}
+	}
+}
+
 /* ───────────────────────── data types ───────────────────────── */
 
 type uiNode struct {
@@ -282,12 +298,7 @@ func (g *Game) bpmLoop() {
 				g.engine.SetBPM(b)
 				audio.SetBPM(b)
 				g.logger.Debugf("[GAME] applied BPM=%d in %s", b, time.Since(start))
-				select {
-				case g.bpmAck <- b:
-				default:
-					<-g.bpmAck
-					g.bpmAck <- b
-				}
+				sendLatest(g.bpmAck, b)
 				goto next
 			}
 		}
@@ -1121,12 +1132,7 @@ eventsDone:
 	g.bpm = g.drum.BPM()
 	if g.bpm != g.appliedBPM {
 		g.logger.Debugf("[GAME] queue BPM %d", g.bpm)
-		select {
-		case g.bpmCh <- g.bpm:
-		default:
-			<-g.bpmCh
-			g.bpmCh <- g.bpm
-		}
+		sendLatest(g.bpmCh, g.bpm)
 	}
 
 	select {
