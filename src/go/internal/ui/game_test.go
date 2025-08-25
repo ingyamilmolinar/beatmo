@@ -228,6 +228,58 @@ func TestCurrentBeatMonotonic(t *testing.T) {
 	}
 }
 
+// Regression for jittery beat counter: when the scheduler's progress wraps to
+// the next beat before the game processes the corresponding tick event,
+// currentBeat should still advance to the next integer beat rather than
+// lingering on the previous one.
+func TestCurrentBeatAdvancesOnProgressWrap(t *testing.T) {
+    g := New(testLogger)
+    g.playing = true
+    sub := g.grid.MaxDiv()
+    g.elapsedBeats = 4 * sub // start on beat 4
+    seq := []float64{0.9, 0.05}
+    var i int
+    g.engineProgress = func() float64 {
+        v := seq[i]
+        i++
+        return v
+    }
+    first := g.currentBeat()
+    second := g.currentBeat()
+    if int(second) != 5 {
+        t.Fatalf("beat floor=%d want 5", int(second))
+    }
+    if second <= first {
+        t.Fatalf("beat did not advance: %v -> %v", first, second)
+    }
+}
+
+// TrackBeat should react immediately to progress wrap so the drum view follows
+// playback without waiting for internal counters to update.
+func TestTrackBeatUpdatesOnProgressWrap(t *testing.T) {
+    g := New(testLogger)
+    g.drum.SetLength(8)
+    g.drum.follow = true
+    g.playing = true
+    sub := g.grid.MaxDiv()
+    g.elapsedBeats = 4 * sub // beat 4 centered at offset 0
+    seq := []float64{0.9, 0.05}
+    var i int
+    g.engineProgress = func() float64 {
+        v := seq[i]
+        i++
+        return v
+    }
+    g.drum.TrackBeat(int(g.currentBeat()))
+    if g.drum.Offset != 0 {
+        t.Fatalf("initial offset=%d want 0", g.drum.Offset)
+    }
+    g.drum.TrackBeat(int(g.currentBeat()))
+    if g.drum.Offset != 1 {
+        t.Fatalf("offset=%d want 1 after wrap", g.drum.Offset)
+    }
+}
+
 func TestUpdateBeatInfosDoesNotClampOffset(t *testing.T) {
 	g := New(testLogger)
 	g.drum.SetLength(8)
