@@ -216,6 +216,30 @@ func TestCurrentBeatConvertsSubBeats(t *testing.T) {
 	}
 }
 
+func TestCurrentBeatMonotonic(t *testing.T) {
+	g := New(testLogger)
+	g.playing = true
+	g.engineProgress = func() float64 { return 0.9 }
+	first := g.currentBeat()
+	g.engineProgress = func() float64 { return 0.1 }
+	second := g.currentBeat()
+	if second < first {
+		t.Fatalf("beat regressed: %f -> %f", first, second)
+	}
+}
+
+func TestUpdateBeatInfosDoesNotClampOffset(t *testing.T) {
+	g := New(testLogger)
+	g.drum.SetLength(8)
+	g.drum.timelineBeats = 100
+	g.beatInfos = make([]model.BeatInfo, 8)
+	g.drum.Offset = 50
+	g.updateBeatInfos()
+	if g.drum.Offset != 50 {
+		t.Fatalf("offset clamped to %d", g.drum.Offset)
+	}
+}
+
 func TestSeekSetsCurrentBeat(t *testing.T) {
 	g := New(testLogger)
 	g.Seek(5)

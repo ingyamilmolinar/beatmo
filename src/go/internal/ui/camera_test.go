@@ -40,8 +40,25 @@ func TestCameraZoomAnchorsCursor(t *testing.T) {
 	if math.Abs(sx-float64(cursorX)) > 0.5 || math.Abs(sy-float64(cursorY)) > 0.5 {
 		t.Fatalf("cursor moved after zoom: got (%f,%f) want (%d,%d)", sx, sy, cursorX, cursorY)
 	}
-	expected := 2 * math.Pow(1.05, 1)
+	expected := 2 * math.Pow(1.05, 0.1)
 	if math.Abs(cam.Scale-expected) > 1e-9 {
 		t.Fatalf("scale=%f want %f", cam.Scale, expected)
+	}
+}
+
+func TestCameraZoomSensitivity(t *testing.T) {
+	cam := &Camera{Scale: 1}
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 40 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+	cam.HandleMouse(true)
+	if cam.Scale > 2 {
+		t.Fatalf("zoom too fast: %f", cam.Scale)
 	}
 }

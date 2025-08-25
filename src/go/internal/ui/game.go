@@ -190,6 +190,8 @@ type Game struct {
 	nextBeatIdxs       []int                // Absolute beat index per row
 	nodeRows           map[model.NodeID]int // nodeID -> row index
 	elapsedBeats       int
+	lastBeat           float64
+	lastProg           float64
 
 	/* misc */
 	winW, winH int
@@ -567,10 +569,10 @@ func (g *Game) updateBeatInfos() {
 
 	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))
 
-	// Preserve current drum offset when the beat path changes. Clamp to the
-	// new valid range instead of resetting to zero so resizing the drum view
-	// doesn't jump back to the origin.
-	maxOffset := len(g.beatInfos) - g.drum.Length
+	// Preserve current drum offset when the beat path changes. Clamp against
+	// the timeline length rather than the raw beat path so tracking can
+	// continue beyond the initial graph traversal.
+	maxOffset := g.drum.timelineBeats - g.drum.Length
 	if maxOffset < 0 {
 		maxOffset = 0
 	}
@@ -1190,7 +1192,7 @@ eventsDone:
 	}
 
 	if g.playing {
-		g.drum.TrackBeat(g.elapsedBeats / g.grid.MaxDiv())
+		g.drum.TrackBeat(int(g.currentBeat()))
 	}
 	if g.drum.OffsetChanged() {
 		g.refreshDrumRow()
@@ -1368,11 +1370,25 @@ func (g *Game) drawDrumPane(dst *ebiten.Image) {
 }
 
 func (g *Game) currentBeat() float64 {
-	frac := float64(g.elapsedBeats) / float64(g.grid.MaxDiv())
+	sub := float64(g.grid.MaxDiv())
+	base := float64(g.elapsedBeats) / sub
 	if g.playing && g.engineProgress != nil {
-		frac += g.engineProgress()
+		prog := g.engineProgress()
+		if prog < g.lastProg {
+			base += 1.0 / sub
+		}
+		beat := base + prog
+		if beat < g.lastBeat {
+			beat = g.lastBeat
+		} else {
+			g.lastBeat = beat
+		}
+		g.lastProg = prog
+		return beat
 	}
-	return frac
+	g.lastProg = 0
+	g.lastBeat = base
+	return base
 }
 
 func (g *Game) rootNode() *uiNode {

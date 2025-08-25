@@ -71,8 +71,11 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 			mx, my := cursorPosition()
 			wx := (float64(mx) - c.OffsetX) / c.Scale
 			wy := (float64(my) - c.OffsetY) / c.Scale
-			const zoomFactor = 1.05
-			newScale := c.Scale * math.Pow(zoomFactor, wheelY)
+			const (
+				zoomFactor      = 1.05
+				zoomSensitivity = 0.1
+			)
+			newScale := c.Scale * math.Pow(zoomFactor, wheelY*zoomSensitivity)
 			const minScale, maxScale = 0.1, 10.0
 			if newScale < minScale {
 				newScale = minScale
