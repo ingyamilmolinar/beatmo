@@ -1190,7 +1190,7 @@ eventsDone:
 	}
 
 	if g.playing {
-		g.drum.TrackBeat(g.elapsedBeats)
+		g.drum.TrackBeat(g.elapsedBeats / g.grid.MaxDiv())
 	}
 	if g.drum.OffsetChanged() {
 		g.refreshDrumRow()
@@ -1368,7 +1368,7 @@ func (g *Game) drawDrumPane(dst *ebiten.Image) {
 }
 
 func (g *Game) currentBeat() float64 {
-	frac := float64(g.elapsedBeats)
+	frac := float64(g.elapsedBeats) / float64(g.grid.MaxDiv())
 	if g.playing && g.engineProgress != nil {
 		frac += g.engineProgress()
 	}
@@ -1478,15 +1478,16 @@ func (g *Game) Seek(beats int) {
 	g.highlightedBeats = map[int]int64{}
 	g.activePulses = nil
 	g.activePulse = nil
+	sub := beats * g.grid.MaxDiv()
 	if g.playing {
 		for row := range g.drum.Rows {
-			g.spawnPulseFromRow(row, beats)
+			g.spawnPulseFromRow(row, sub)
 		}
 	} else {
 		for i := range g.nextBeatIdxs {
-			g.nextBeatIdxs[i] = beats
+			g.nextBeatIdxs[i] = sub
 		}
-		g.elapsedBeats = beats
+		g.elapsedBeats = sub
 	}
 	g.resetOriginSequences()
 }

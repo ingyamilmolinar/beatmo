@@ -178,7 +178,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
-	before := g.drum.timelineInfo(float64(g.elapsedBeats))
+	before := g.drum.timelineInfo(g.currentBeat())
 
 	// Stop playback and drain any further ticks.
 	g.playing = false
@@ -187,7 +187,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
-	after := g.drum.timelineInfo(float64(g.elapsedBeats))
+	after := g.drum.timelineInfo(g.currentBeat())
 	if before != after {
 		t.Fatalf("timeline advanced after stop: %q -> %q", before, after)
 	}
@@ -196,7 +196,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 func TestCurrentBeatScalesEngineProgress(t *testing.T) {
 	g := New(testLogger)
 	g.playing = true
-	g.elapsedBeats = 1 // one beat
+	g.elapsedBeats = g.grid.MaxDiv() // one beat
 	g.engineProgress = func() float64 { return 0.5 }
 	if got := g.currentBeat(); math.Abs(got-1.5) > 1e-9 {
 		t.Fatalf("currentBeat=%v want 1.5", got)
@@ -204,6 +204,23 @@ func TestCurrentBeatScalesEngineProgress(t *testing.T) {
 	g.playing = false
 	if got := g.currentBeat(); math.Abs(got-1.0) > 1e-9 {
 		t.Fatalf("currentBeat after stop=%v want 1", got)
+	}
+}
+
+func TestCurrentBeatConvertsSubBeats(t *testing.T) {
+	g := New(testLogger)
+	sub := g.grid.MaxDiv()
+	g.elapsedBeats = 2*sub + sub/2 // 2.5 beats in subdivisions
+	if got := g.currentBeat(); math.Abs(got-2.5) > 1e-9 {
+		t.Fatalf("currentBeat=%v want 2.5", got)
+	}
+}
+
+func TestSeekSetsCurrentBeat(t *testing.T) {
+	g := New(testLogger)
+	g.Seek(5)
+	if got := g.currentBeat(); math.Abs(got-5) > 1e-9 {
+		t.Fatalf("currentBeat after seek=%v want 5", got)
 	}
 }
 
@@ -2236,7 +2253,7 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 				t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
 			}
 			beats := g.currentBeat()
-			wantBeat := float64(g.elapsedBeats)
+			wantBeat := float64(g.elapsedBeats) / float64(g.grid.MaxDiv())
 			if math.Abs(beats-wantBeat) > 1e-9 {
 				t.Fatalf("currentBeat=%v want %v", beats, wantBeat)
 			}
@@ -2488,7 +2505,7 @@ func TestAutoTrackFollowsBeat(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 	g.playing = true
-	g.elapsedBeats = 5
+	g.elapsedBeats = 5 * g.grid.MaxDiv()
 	g.Update()
 	if g.drum.Offset != 3 {
 		t.Fatalf("offset=%d want 3", g.drum.Offset)
@@ -2503,7 +2520,7 @@ func TestAutoTrackDisabled(t *testing.T) {
 	g.refreshDrumRow()
 	g.playing = true
 	g.drum.follow = false
-	g.elapsedBeats = 5
+	g.elapsedBeats = 5 * g.grid.MaxDiv()
 	g.Update()
 	if g.drum.Offset != 0 {
 		t.Fatalf("offset=%d want 0", g.drum.Offset)

@@ -39,6 +39,17 @@ func TestNewDrumView(t *testing.T) {
 	}
 }
 
+func TestTimelineInfoFormatsBeatAndTime(t *testing.T) {
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), nil, testLogger)
+	dv.timelineBeats = 4
+	dv.secPerBeat = 0.5
+	got := dv.timelineInfo(2.5)
+	want := "Beat 2.500/4.000 Time 1.250/2.000s"
+	if got != want {
+		t.Fatalf("timelineInfo=%q want %q", got, want)
+	}
+}
+
 func TestDrumViewLengthIncrease(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
