@@ -233,51 +233,76 @@ func TestCurrentBeatMonotonic(t *testing.T) {
 // currentBeat should still advance to the next integer beat rather than
 // lingering on the previous one.
 func TestCurrentBeatAdvancesOnProgressWrap(t *testing.T) {
-    g := New(testLogger)
-    g.playing = true
-    sub := g.grid.MaxDiv()
-    g.elapsedBeats = 4 * sub // start on beat 4
-    seq := []float64{0.9, 0.05}
-    var i int
-    g.engineProgress = func() float64 {
-        v := seq[i]
-        i++
-        return v
-    }
-    first := g.currentBeat()
-    second := g.currentBeat()
-    if int(second) != 5 {
-        t.Fatalf("beat floor=%d want 5", int(second))
-    }
-    if second <= first {
-        t.Fatalf("beat did not advance: %v -> %v", first, second)
-    }
+	g := New(testLogger)
+	g.playing = true
+	sub := g.grid.MaxDiv()
+	g.elapsedBeats = 4 * sub // start on beat 4
+	seq := []float64{0.9, 0.05}
+	var i int
+	g.engineProgress = func() float64 {
+		v := seq[i]
+		i++
+		return v
+	}
+	first := g.currentBeat()
+	second := g.currentBeat()
+	if int(second) != 5 {
+		t.Fatalf("beat floor=%d want 5", int(second))
+	}
+	if second <= first {
+		t.Fatalf("beat did not advance: %v -> %v", first, second)
+	}
+}
+
+// Small drops in scheduler progress should be ignored so the beat counter
+// advances smoothly without jumping ahead.
+func TestCurrentBeatIgnoresJitter(t *testing.T) {
+	g := New(testLogger)
+	g.playing = true
+	sub := g.grid.MaxDiv()
+	g.elapsedBeats = 4 * sub // start on beat 4
+	seq := []float64{0.6, 0.4, 0.8}
+	var i int
+	g.engineProgress = func() float64 {
+		v := seq[i]
+		i++
+		return v
+	}
+	a := g.currentBeat()
+	b := g.currentBeat()
+	c := g.currentBeat()
+	if b != a {
+		t.Fatalf("beat changed on jitter: %v -> %v", a, b)
+	}
+	if c <= b {
+		t.Fatalf("beat did not advance: %v -> %v", b, c)
+	}
 }
 
 // TrackBeat should react immediately to progress wrap so the drum view follows
 // playback without waiting for internal counters to update.
 func TestTrackBeatUpdatesOnProgressWrap(t *testing.T) {
-    g := New(testLogger)
-    g.drum.SetLength(8)
-    g.drum.follow = true
-    g.playing = true
-    sub := g.grid.MaxDiv()
-    g.elapsedBeats = 4 * sub // beat 4 centered at offset 0
-    seq := []float64{0.9, 0.05}
-    var i int
-    g.engineProgress = func() float64 {
-        v := seq[i]
-        i++
-        return v
-    }
-    g.drum.TrackBeat(int(g.currentBeat()))
-    if g.drum.Offset != 0 {
-        t.Fatalf("initial offset=%d want 0", g.drum.Offset)
-    }
-    g.drum.TrackBeat(int(g.currentBeat()))
-    if g.drum.Offset != 1 {
-        t.Fatalf("offset=%d want 1 after wrap", g.drum.Offset)
-    }
+	g := New(testLogger)
+	g.drum.SetLength(8)
+	g.drum.follow = true
+	g.playing = true
+	sub := g.grid.MaxDiv()
+	g.elapsedBeats = 4 * sub // beat 4 centered at offset 0
+	seq := []float64{0.9, 0.05}
+	var i int
+	g.engineProgress = func() float64 {
+		v := seq[i]
+		i++
+		return v
+	}
+	g.drum.TrackBeat(int(g.currentBeat()))
+	if g.drum.Offset != 0 {
+		t.Fatalf("initial offset=%d want 0", g.drum.Offset)
+	}
+	g.drum.TrackBeat(int(g.currentBeat()))
+	if g.drum.Offset != 1 {
+		t.Fatalf("offset=%d want 1 after wrap", g.drum.Offset)
+	}
 }
 
 func TestUpdateBeatInfosDoesNotClampOffset(t *testing.T) {
@@ -2600,6 +2625,40 @@ func TestAutoTrackDisabled(t *testing.T) {
 	g.Update()
 	if g.drum.Offset != 0 {
 		t.Fatalf("offset=%d want 0", g.drum.Offset)
+	}
+}
+
+// Rendering regression: a small progress dip should not shift the drum view
+// or misplace the highlight when tracking is enabled.
+func TestAutoTrackIgnoresProgressJitter(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(400, timelineHeight+24)
+	g.drum.SetLength(8)
+	g.updateBeatInfos()
+	g.refreshDrumRow()
+	g.playing = true
+	sub := g.grid.MaxDiv()
+	g.elapsedBeats = 4 * sub
+	seq := []float64{0.6, 0.4}
+	var i int
+	g.engineProgress = func() float64 {
+		if i < len(seq) {
+			v := seq[i]
+			i++
+			return v
+		}
+		return seq[len(seq)-1]
+	}
+	g.Update() // first progress
+	g.Update() // jitter drop
+	if g.drum.Offset != 0 {
+		t.Fatalf("offset=%d want 0", g.drum.Offset)
+	}
+	// draw the drum view to ensure rendering path runs; tracking should have
+	// kept the offset stable despite the progress jitter
+	g.drum.Draw(ebiten.NewImage(400, timelineHeight+24), nil, 0, nil, g.currentBeat())
+	if g.drum.Offset != 0 {
+		t.Fatalf("offset changed after draw: %d", g.drum.Offset)
 	}
 }
 

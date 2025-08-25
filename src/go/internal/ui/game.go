@@ -1374,10 +1374,10 @@ func (g *Game) currentBeat() float64 {
 	base := float64(g.elapsedBeats) / sub
 	if g.playing && g.engineProgress != nil {
 		prog := g.engineProgress()
-               if prog < g.lastProg {
-                       base += 1
-               }
-               beat := base + prog
+		if prog < g.lastProg && g.lastProg-prog > 0.5 {
+			base += 1
+		}
+		beat := base + prog
 		if beat < g.lastBeat {
 			beat = g.lastBeat
 		} else {
