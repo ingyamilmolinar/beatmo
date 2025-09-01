@@ -1,8 +1,10 @@
 package ui
 
 import (
-	"image/color"
-	"math"
+       "image/color"
+       "math"
+
+       "github.com/ingyamilmolinar/tunkul/internal/utils"
 )
 
 const DefaultGridStep = 60 // world-space px between vertices
@@ -127,18 +129,8 @@ func (g *Grid) BeatSubdivision(idx int) (beat, num, den int) {
 	if rem == 0 {
 		return beat, 0, 1
 	}
-	d := gcd(rem, div)
-	return beat, rem / d, div / d
-}
-
-func gcd(a, b int) int {
-	for b != 0 {
-		a, b = b, a%b
-	}
-	if a < 0 {
-		return -a
-	}
-	return a
+       d := utils.GCD(rem, div)
+       return beat, rem / d, div / d
 }
 
 // StepPixels converts a camera scale to an integer pixel spacing between grid

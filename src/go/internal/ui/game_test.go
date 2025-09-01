@@ -1443,6 +1443,34 @@ func TestHighlightBeatUsesRowVolume(t *testing.T) {
 	}
 }
 
+func TestVolumeSliderAffectsPlayback(t *testing.T) {
+        g := New(testLogger)
+        g.Layout(640, 480)
+        n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+        info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
+        r := g.drum.rowVolSliders[0].Rect()
+        mx := r.Min.X + r.Dx()/4
+        my := r.Min.Y + r.Dy()/2
+        restore := SetInputForTest(
+                func() (int, int) { return mx, my },
+                func(ebiten.MouseButton) bool { return true },
+                func(ebiten.Key) bool { return false },
+                func() []rune { return nil },
+                func() (float64, float64) { return 0, 0 },
+                func() (int, int) { return 0, 0 },
+        )
+        g.drum.Update()
+        restore()
+
+        volCh := make(chan float64, 1)
+        g.SetPlayFunc(func(id string, v float64, when ...float64) { volCh <- v })
+        g.highlightBeat(0, 0, info, 0)
+        v := <-volCh
+        if math.Abs(v-0.25) > 0.02 {
+                t.Fatalf("expected volume ~0.25 got %f", v)
+        }
+}
+
 func TestLoopPulseDoesNotJumpToOrigin(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)

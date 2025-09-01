@@ -1075,24 +1075,24 @@ func (dv *DrumView) Update() {
 		dv.bpmPrev = dv.bpm
 		dv.bpmBox.SetText("")
 	}
-	if dv.bpmBox.Focused() {
-		if txt := dv.bpmBox.Value(); txt != "" {
-			if v, err := strconv.Atoi(txt); err != nil || v < 1 || v > maxBPM {
-				dv.bpmErrorAnim = 1
-			}
-		}
-	} else if prevFocus {
-		txt := dv.bpmBox.Value()
-		if txt == "" {
-			dv.SetBPM(dv.bpmPrev)
-		} else if v, err := strconv.Atoi(txt); err == nil && v >= 1 && v <= maxBPM {
-			dv.SetBPM(v)
-		} else {
-			dv.bpmErrorAnim = 1
-			dv.SetBPM(dv.bpmPrev)
-		}
-		dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
-	}
+       if dv.bpmBox.Focused() {
+               if txt := dv.bpmBox.Value(); txt != "" {
+                       if _, ok := parseBPM(txt); !ok {
+                               dv.bpmErrorAnim = 1
+                       }
+               }
+       } else if prevFocus {
+               txt := dv.bpmBox.Value()
+               if txt == "" {
+                       dv.SetBPM(dv.bpmPrev)
+               } else if v, ok := parseBPM(txt); ok {
+                       dv.SetBPM(v)
+               } else {
+                       dv.bpmErrorAnim = 1
+                       dv.SetBPM(dv.bpmPrev)
+               }
+               dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
+       }
 
 	if dv.bpmDelta != 0 {
 		dv.SetBPM(dv.bpm + dv.bpmDelta)

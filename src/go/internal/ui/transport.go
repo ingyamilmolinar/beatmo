@@ -1,13 +1,12 @@
 package ui
 
 import (
-	"fmt"
-	"image"
-	"image/color"
-	"strconv"
+       "fmt"
+       "image"
+       "image/color"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+       "github.com/hajimehoshi/ebiten/v2"
+       "github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 type Transport struct {
@@ -68,24 +67,24 @@ func (t *Transport) Update() {
                 t.bpmBox.SetText("")
         }
 
-        if t.bpmBox.Focused() {
-                if txt := t.bpmBox.Value(); txt != "" {
-                        if v, err := strconv.Atoi(txt); err != nil || v < 1 || v > maxBPM {
-                                t.bpmErrorAnim = 1
-                        }
-                }
-        } else if prev {
-                txt := t.bpmBox.Value()
-                if txt == "" {
-                        t.SetBPM(t.bpmPrev)
-                } else if v, err := strconv.Atoi(txt); err == nil && v >= 1 && v <= maxBPM {
-                        t.SetBPM(v)
-                } else {
-                        t.bpmErrorAnim = 1
-                        t.SetBPM(t.bpmPrev)
-                }
-                t.bpmBox.SetText(fmt.Sprintf("%d", t.BPM))
-        }
+       if t.bpmBox.Focused() {
+               if txt := t.bpmBox.Value(); txt != "" {
+                       if _, ok := parseBPM(txt); !ok {
+                               t.bpmErrorAnim = 1
+                       }
+               }
+       } else if prev {
+               txt := t.bpmBox.Value()
+               if txt == "" {
+                       t.SetBPM(t.bpmPrev)
+               } else if v, ok := parseBPM(txt); ok {
+                       t.SetBPM(v)
+               } else {
+                       t.bpmErrorAnim = 1
+                       t.SetBPM(t.bpmPrev)
+               }
+               t.bpmBox.SetText(fmt.Sprintf("%d", t.BPM))
+       }
 
         t.bpmErrorAnim *= 0.85
         if t.bpmErrorAnim < 0.01 {

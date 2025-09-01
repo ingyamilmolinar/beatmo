@@ -1,18 +1,19 @@
 package ui
 
 import (
-	"fmt"
-	"image"
-	"image/color"
-	"math"
-	"time"
+        "fmt"
+        "image"
+        "image/color"
+        "math"
+        "time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/ingyamilmolinar/tunkul/core/engine"
 	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+       "github.com/ingyamilmolinar/tunkul/internal/audio"
+       game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+       "github.com/ingyamilmolinar/tunkul/internal/utils"
 )
 
 const (
@@ -70,20 +71,22 @@ func rawBeatLen(path []model.BeatInfo, isLoop bool, loopStart int) int {
 	return len(path)
 }
 
-// sendLatest writes v to ch, dropping older values if the buffer is full.
-// It loops until the send succeeds without ever blocking.
+// sendLatest writes v to ch, dropping an existing item if the buffer is full.
+// It never blocks and will silently discard v if the channel remains full.
 func sendLatest[T any](ch chan T, v T) {
-	for {
-		select {
-		case ch <- v:
-			return
-		default:
-			select {
-			case <-ch:
-			default:
-			}
-		}
-	}
+       select {
+       case ch <- v:
+               return
+       default:
+               select {
+               case <-ch:
+               default:
+               }
+               select {
+               case ch <- v:
+               default:
+               }
+       }
 }
 
 /* ───────────────────────── data types ───────────────────────── */
@@ -1469,11 +1472,11 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 }
 
 func (g *Game) queueSound(id string, vol float64) {
-	req := soundReq{id: id, vol: vol, when: []float64{audio.Now()}}
-	select {
-	case g.audioCh <- req:
-	default:
-	}
+       req := soundReq{id: id, vol: utils.Clamp01(vol), when: []float64{audio.Now()}}
+       select {
+       case g.audioCh <- req:
+       default:
+       }
 }
 
 func (g *Game) clearExpiredHighlights() {
