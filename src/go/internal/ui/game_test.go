@@ -196,7 +196,7 @@ func TestBeatCounterFreezesWhenStopped(t *testing.T) {
 func TestCurrentBeatScalesEngineProgress(t *testing.T) {
 	g := New(testLogger)
 	g.playing = true
-	g.elapsedBeats = g.grid.MaxDiv() // one beat
+	g.elapsedBeats = 1 // one beat
 	g.engineProgress = func() float64 { return 0.5 }
 	if got := g.currentBeat(); math.Abs(got-1.5) > 1e-9 {
 		t.Fatalf("currentBeat=%v want 1.5", got)
@@ -209,8 +209,9 @@ func TestCurrentBeatScalesEngineProgress(t *testing.T) {
 
 func TestCurrentBeatConvertsSubBeats(t *testing.T) {
 	g := New(testLogger)
-	sub := g.grid.MaxDiv()
-	g.elapsedBeats = 2*sub + sub/2 // 2.5 beats in subdivisions
+	g.playing = true
+	g.elapsedBeats = 2
+	g.engineProgress = func() float64 { return 0.5 }
 	if got := g.currentBeat(); math.Abs(got-2.5) > 1e-9 {
 		t.Fatalf("currentBeat=%v want 2.5", got)
 	}
@@ -235,8 +236,7 @@ func TestCurrentBeatMonotonic(t *testing.T) {
 func TestCurrentBeatAdvancesOnProgressWrap(t *testing.T) {
 	g := New(testLogger)
 	g.playing = true
-	sub := g.grid.MaxDiv()
-	g.elapsedBeats = 4 * sub // start on beat 4
+	g.elapsedBeats = 4 // start on beat 4
 	seq := []float64{0.9, 0.05}
 	var i int
 	g.engineProgress = func() float64 {
@@ -259,8 +259,7 @@ func TestCurrentBeatAdvancesOnProgressWrap(t *testing.T) {
 func TestCurrentBeatIgnoresJitter(t *testing.T) {
 	g := New(testLogger)
 	g.playing = true
-	sub := g.grid.MaxDiv()
-	g.elapsedBeats = 4 * sub // start on beat 4
+	g.elapsedBeats = 4 // start on beat 4
 	seq := []float64{0.6, 0.4, 0.8}
 	var i int
 	g.engineProgress = func() float64 {
@@ -286,8 +285,7 @@ func TestTrackBeatUpdatesOnProgressWrap(t *testing.T) {
 	g.drum.SetLength(8)
 	g.drum.follow = true
 	g.playing = true
-	sub := g.grid.MaxDiv()
-	g.elapsedBeats = 4 * sub // beat 4 centered at offset 0
+	g.elapsedBeats = 4 // beat 4 centered at offset 0
 	seq := []float64{0.9, 0.05}
 	var i int
 	g.engineProgress = func() float64 {
@@ -2354,7 +2352,7 @@ func TestLoopExpansionAndHighlighting(t *testing.T) {
 				t.Fatalf("timeline and highlight out of sync: got %d elapsed %d", idx, g.elapsedBeats)
 			}
 			beats := g.currentBeat()
-			wantBeat := float64(g.elapsedBeats) / float64(g.grid.MaxDiv())
+			wantBeat := float64(g.elapsedBeats)
 			if math.Abs(beats-wantBeat) > 1e-9 {
 				t.Fatalf("currentBeat=%v want %v", beats, wantBeat)
 			}
@@ -2606,7 +2604,7 @@ func TestAutoTrackFollowsBeat(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 	g.playing = true
-	g.elapsedBeats = 5 * g.grid.MaxDiv()
+	g.elapsedBeats = 5
 	g.Update()
 	if g.drum.Offset != 3 {
 		t.Fatalf("offset=%d want 3", g.drum.Offset)
@@ -2621,7 +2619,7 @@ func TestAutoTrackDisabled(t *testing.T) {
 	g.refreshDrumRow()
 	g.playing = true
 	g.drum.follow = false
-	g.elapsedBeats = 5 * g.grid.MaxDiv()
+	g.elapsedBeats = 5
 	g.Update()
 	if g.drum.Offset != 0 {
 		t.Fatalf("offset=%d want 0", g.drum.Offset)
@@ -2637,8 +2635,7 @@ func TestAutoTrackIgnoresProgressJitter(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 	g.playing = true
-	sub := g.grid.MaxDiv()
-	g.elapsedBeats = 4 * sub
+	g.elapsedBeats = 4
 	seq := []float64{0.6, 0.4}
 	var i int
 	g.engineProgress = func() float64 {
