@@ -29,7 +29,7 @@ func SelectWAV() (string, error) {
 	var retErr error
 
 	var change js.Func
-	change = js.FuncOf(func(this js.Value, args []js.Value) any {
+	change = js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		files := input.Get("files")
 		if files.Length() == 0 {
 			retErr = fmt.Errorf("no file selected")

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tunkul UI Playtest</title>
+  </head>
+  <body>
+    <script type="module" src="audio.js"></script>
+    <script src="wasm_exec.js"></script>
+    <script>
+      const go = new Go();
+      WebAssembly.instantiateStreaming(fetch('play_ui.wasm'), go.importObject)
+        .then(result => go.run(result.instance))
+        .catch(err => console.error(err));
+    </script>
+  </body>
+  </html>
+

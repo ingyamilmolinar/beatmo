@@ -498,7 +498,9 @@ func TestDrumViewLooping(t *testing.T) {
 	game := &Game{graph: graph, drum: drumView, logger: logger}
 	game.updateBeatInfos()
 
-	expectedSteps := []bool{true, true, true, true, true, true, true, true, true, true}
+    // Intermediate pass-through duplicates appear as invisible steps when an
+    // edge skips back across existing nodes.
+    expectedSteps := []bool{true, true, true, false, true, true, false, true, true, false}
 	t.Logf("Generated drum row: %v", drumView.Rows[0].Steps)
 	if len(drumView.Rows[0].Steps) != len(expectedSteps) {
 		t.Fatalf("Expected %d steps, but got %d", len(expectedSteps), len(drumView.Rows[0].Steps))
@@ -583,10 +585,10 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	}
 	defer func() { drawButton = orig }()
 
-	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
-	if count != 16 {
-		t.Fatalf("expected 16 buttons drawn, got %d", count)
-	}
+    dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
+    if count != 18 {
+        t.Fatalf("expected 18 buttons drawn, got %d", count)
+    }
 }
 
 func TestDrumViewHighlightsMultipleRows(t *testing.T) {

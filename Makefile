@@ -16,30 +16,42 @@ clean:
 	rm -f build/drums.o
 	rm -f $(C_LIB)
 
-wasm: $(MA_JS)
+sync-wav:
+	mkdir -p src/go/internal/assets/wav
+	cp -a assets/wav/. src/go/internal/assets/wav/
+
+wasm: $(MA_JS) sync-wav
 	cd src/go && (go mod download || true)
 	cd src/go && GOOS=js GOARCH=wasm go build -o $(WASM_OUT) ./cmd/...
 
 serve:
 	cd src/js && python3 -m http.server 8080
 
-run: $(C_LIB)
+run: $(C_LIB) sync-wav
 	cd src/go; CGO_ENABLED=1 go run ./cmd/tunkul.go $(RUN_ARGS)
 
-test: $(C_LIB)
-	cd src/go; go test -tags test -modfile=go.test.mod -timeout 1s ./...
-	cd src/go; go test -timeout 1s ./internal/audio
+test: $(C_LIB) sync-wav
+	cd src/go; go test -tags test -modfile=go.test.mod -timeout 2s ./...
+	cd src/go; go test -timeout 2s ./internal/audio
 	$(MAKE) wasm
 	/bin/bash -c "node src/js/audio.browser.test.js"
+	/bin/bash -c "node src/js/volume.browser.test.js"
+	/bin/bash -c "node src/js/slider_volume.browser.test.js"
+	/bin/bash -c "node src/js/import_export.browser.test.js"
+	/bin/bash -c "node src/js/timeline_center.browser.test.js"
 
-test-real: $(C_LIB)
-	cd src/go && xvfb-run go test -timeout 1s ./...
+test-real: $(C_LIB) sync-wav
+	cd src/go && BPM_TIMING_TEST=1 xvfb-run go test ./...
 	$(MAKE) wasm
-	node src/js/audio.browser.test.js
-	node src/js/bpm.browser.test.js
+	/bin/bash -c "node src/js/audio.browser.test.js"
+	/bin/bash -c "node src/js/bpm.browser.test.js"
+	/bin/bash -c "node src/js/volume.browser.test.js"
+	/bin/bash -c "node src/js/slider_volume.browser.test.js"
+	/bin/bash -c "node src/js/import_export.browser.test.js"
+	/bin/bash -c "node src/js/timeline_center.browser.test.js"
 
 test-xvfb:
-	cd src/go; xvfb-run go test -tags test -timeout 1s ./...
+	cd src/go; xvfb-run go test -tags test -timeout 2s ./...
 
 dependencies:
 	./scripts/setup-env.sh

@@ -57,8 +57,13 @@ func instColor(id string) color.Color {
 /* ───────────────────────────────────────────────────────────── */
 
 type uploadResult struct {
-	path string
-	err  error
+    path string
+    err  error
+}
+
+type importResult struct {
+    data []byte
+    err  error
 }
 
 type DrumView struct {
@@ -80,7 +85,9 @@ type DrumView struct {
 	lenDecBtn *Button // decrease length
 	lenIncBtn *Button // increase length
 	trackBtn  *Button // toggle follow playback
-	uploadBtn *Button
+    uploadBtn *Button
+    importBtn *Button
+    exportBtn *Button
 	saveBtn   *Button
 
 	// per-row components
@@ -106,18 +113,32 @@ type DrumView struct {
 	originReq  []int
 	renameRow  int
 	renameBox  *TextInput
-	renameHold bool
+    renameHold bool
+
+    // import handler
+    onImport func([]byte) error
 
 	bgDirty bool
 	bgCache []*ebiten.Image
 
 	instOptions []string
 
-	uploading  bool
-	uploadCh   chan uploadResult
-	pendingWAV string
-	naming     bool
-	nameInput  string
+    uploading  bool
+    uploadCh   chan uploadResult
+    pendingWAV string
+    naming     bool
+    nameInput  string
+
+    // JSON import
+    importing bool
+    importCh  chan importResult
+
+	// sample loading status (WASM): show a transient message while embedded
+	// samples are being registered and another once finished.
+	samplesTotal  int
+	samplesLoaded int
+	showLoading   bool
+	doneMsgTimer  int // frames to show "Finished loading samples"
 
 	timelineRect  image.Rectangle // progress bar for fast seek
 	timelineBeats int             // total beats represented by timeline
@@ -240,24 +261,25 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		inst = opts[0]
 		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
-	dv := &DrumView{
-		Bounds:        b,
-		labelW:        100,
-		bpm:           120,
-		secPerBeat:    0.5,
-		bgDirty:       true,
-		Graph:         g,
-		logger:        logger,
-		Length:        8, // Default length
-		Offset:        0,
-		instOptions:   opts,
-		uploadCh:      make(chan uploadResult, 1),
-		timelineBeats: 8,
-		selRow:        0,
-		activeSlider:  -1,
-		renameRow:     -1,
-		follow:        true,
-	}
+    dv := &DrumView{
+        Bounds:        b,
+        labelW:        100,
+        bpm:           120,
+        secPerBeat:    0.5,
+        bgDirty:       true,
+        Graph:         g,
+        logger:        logger,
+        Length:        8, // Default length
+        Offset:        0,
+        instOptions:   opts,
+        uploadCh:      make(chan uploadResult, 1),
+        importCh:      make(chan importResult, 1),
+        timelineBeats: 8,
+        selRow:        0,
+        activeSlider:  -1,
+        renameRow:     -1,
+        follow:        true,
+    }
 	dv.playBtn = NewButton("▶", PlayButtonStyle, func() {
 		dv.playPressed = true
 		dv.playAnim = 1
@@ -296,19 +318,37 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.trackBtn.Text = "Free"
 		}
 	})
-	dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
-		dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.naming, dv.instMenuOpen)
-		dv.instMenuOpen = false
-		if !dv.uploading && !dv.naming {
-			dv.uploadAnim = 1
-			dv.uploading = true
-			dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
-			go func() {
-				path, err := audio.SelectWAV()
-				dv.uploadCh <- uploadResult{path: path, err: err}
-			}()
-		}
-	})
+    dv.uploadBtn = NewButton("Upload", UploadBtnStyle, func() {
+        dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.naming, dv.instMenuOpen)
+        dv.instMenuOpen = false
+        if !dv.uploading && !dv.naming {
+            dv.uploadAnim = 1
+            dv.uploading = true
+            dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
+            go func() {
+                path, err := audio.SelectWAV()
+                dv.uploadCh <- uploadResult{path: path, err: err}
+            }()
+        }
+    })
+    dv.importBtn = NewButton("Import", UploadBtnStyle, func() {
+        dv.logger.Debugf("[DRUMVIEW] Import button clicked (web=%v)", true)
+        // Extra JS console log for web debugging
+        log := jsLog
+        log("Import button pressed; importing=%v, naming=%v, uploading=%v", dv.importing, dv.naming, dv.uploading)
+        if dv.importing || dv.naming || dv.uploading { return }
+        dv.importing = true
+        selectJSONAsync(func(data []byte, err error) {
+            jsLog("Import callback invoked; bytes=%d err=%v", len(data), err)
+            dv.importCh <- importResult{data: data, err: err}
+        })
+    })
+    dv.exportBtn = NewButton("Export", UploadBtnStyle, func() {
+        dv.logger.Debugf("[DRUMVIEW] Export button clicked")
+        if err := dv.Export(); err != nil {
+            dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
+        }
+    })
 	dv.saveBtn = NewButton("Save", InstButtonStyle, nil)
 	dv.addRowBtn = NewButton("+", InstButtonStyle, func() {
 		dv.AddRow()
@@ -471,9 +511,12 @@ func (dv *DrumView) recalcButtons() {
 	dv.lenIncBtn.SetRect(insetRect(topGrid.Cell(6, 0), buttonPad))
 	dv.trackBtn.SetRect(insetRect(topGrid.Cell(7, 0), buttonPad))
 
-	botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
-	botGrid := NewGridLayout(botBounds, []float64{1}, []float64{1})
-	dv.uploadBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
+    botBounds := image.Rect(dv.Bounds.Min.X+dv.labelW, dv.Bounds.Min.Y+dv.rowHeight(), dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+2*dv.rowHeight())
+    // Split bottom row into three equal columns: Upload, Import, Export.
+    botGrid := NewGridLayout(botBounds, []float64{1, 1, 1}, []float64{1})
+    dv.uploadBtn.SetRect(insetRect(botGrid.Cell(0, 0), buttonPad))
+    dv.importBtn.SetRect(insetRect(botGrid.Cell(1, 0), buttonPad))
+    dv.exportBtn.SetRect(insetRect(botGrid.Cell(2, 0), buttonPad))
 
 	top := dv.Bounds.Min.Y + timelineHeight - timelineBarHeight - 5
 	dv.timelineRect = image.Rect(
@@ -762,9 +805,40 @@ func (dv *DrumView) Update() {
 		return
 	}
 
-	dv.refreshInstruments()
+    dv.refreshInstruments()
 
-	if dv.uploading {
+    // Handle pending JSON import
+    if dv.importing {
+        select {
+        case res := <-dv.importCh:
+            dv.importing = false
+            if res.err != nil {
+                dv.logger.Infof("[DRUMVIEW] Import failed: %v", res.err)
+            } else if dv.onImport != nil {
+                if err := dv.onImport(res.data); err != nil {
+                    dv.logger.Infof("[DRUMVIEW] Import error: %v", err)
+                }
+            }
+        default:
+        }
+    }
+
+	// Update sample loading status (WASM returns non-zero).
+	if loaded, total := audio.SampleLoadProgress(); total > 0 {
+		// When total becomes available, consider ourselves loading until done.
+		dv.samplesTotal = total
+		dv.samplesLoaded = loaded
+		if loaded < total {
+			dv.showLoading = true
+			dv.doneMsgTimer = 0
+		} else if dv.showLoading && loaded >= total {
+			// Just finished.
+			dv.showLoading = false
+			dv.doneMsgTimer = 180 // ~3 seconds at 60fps
+		}
+	}
+
+    if dv.uploading {
 		select {
 		case res := <-dv.uploadCh:
 			dv.uploading = false
@@ -808,8 +882,8 @@ func (dv *DrumView) Update() {
 			dv.pendingWAV = ""
 			dv.nameInput = ""
 		}
-		mx, my := cursorPosition()
-		left := isMouseButtonPressed(ebiten.MouseButtonLeft)
+    mx, my := cursorPosition()
+    left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 		if dv.saveBtn.Handle(mx, my, left) {
 			dv.saveAnim = 1
 		}
@@ -860,7 +934,15 @@ func (dv *DrumView) Update() {
 		dv.bgDirty = false
 	}
 
-	prevFocus := dv.bpmBox.Focused()
+    prevFocus := dv.bpmBox.Focused()
+
+    // Early BPM text input handling so focus/blur on the BPM box is
+    // registered even if other controls short-circuit later in Update.
+    dv.bpmBox.Update()
+    if !prevFocus && dv.bpmBox.Focused() {
+        dv.bpmPrev = dv.bpm
+        dv.bpmBox.SetText("")
+    }
 
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
@@ -903,7 +985,7 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	if dv.instMenuOpen {
+    if dv.instMenuOpen {
 		for _, btn := range dv.instMenuBtns {
 			if btn.Handle(mx, my, left) {
 				dv.instMenuOpen = false
@@ -954,6 +1036,7 @@ func (dv *DrumView) Update() {
 		s := dv.rowVolSliders[dv.activeSlider]
 		if s.Handle(mx, my, left) {
 			dv.Rows[dv.activeSlider].Volume = s.Value
+			dv.logger.Infof("[DRUMVIEW] Row %d volume changed via slider: %.3f", dv.activeSlider, s.Value)
 		}
 		if !left {
 			dv.activeSlider = -1
@@ -963,6 +1046,7 @@ func (dv *DrumView) Update() {
 	for i, s := range dv.rowVolSliders {
 		if s.Handle(mx, my, left) {
 			dv.Rows[i].Volume = s.Value
+			dv.logger.Infof("[DRUMVIEW] Row %d volume changed via slider: %.3f", i, s.Value)
 			dv.activeSlider = i
 			if !left {
 				dv.activeSlider = -1
@@ -1006,16 +1090,51 @@ func (dv *DrumView) Update() {
 		if handled && left {
 			return
 		}
-		buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.trackBtn, dv.addRowBtn, dv.uploadBtn}
-		for _, btn := range buttons {
-			if handled {
-				break
+        buttons := []*Button{dv.playBtn, dv.stopBtn, dv.bpmDecBtn, dv.bpmIncBtn, dv.lenDecBtn, dv.lenIncBtn, dv.trackBtn, dv.addRowBtn, dv.uploadBtn, dv.importBtn, dv.exportBtn}
+        for _, btn := range buttons {
+            if handled {
+                break
+            }
+            if btn.Handle(mx, my, left) {
+                handled = true
+            }
+        }
+    }
+
+		// Handle BPM text box early so clicks on it are processed even when
+		// other controls are being interacted with in the same frame. This keeps
+		// the manual BPM editor responsive.
+		{
+			// Reuse the prevFocus computed at the beginning of Update.
+			dv.bpmBox.Update()
+			if !prevFocus && dv.bpmBox.Focused() {
+				dv.bpmPrev = dv.bpm
+				dv.bpmBox.SetText("")
 			}
-			if btn.Handle(mx, my, left) {
-				handled = true
+    if dv.bpmBox.Focused() {
+        if txt := dv.bpmBox.Value(); txt != "" {
+            if _, ok := parseBPM(txt); !ok {
+                dv.bpmErrorAnim = 1
+            }
+        }
+    } else if prevFocus {
+				txt := dv.bpmBox.Value()
+				if txt == "" {
+					dv.SetBPM(dv.bpmPrev)
+				} else if v, ok := parseBPM(txt); ok {
+					dv.SetBPM(v)
+				} else {
+					dv.bpmErrorAnim = 1
+					dv.SetBPM(dv.bpmPrev)
+				}
+				dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
+			}
+
+			if dv.bpmDelta != 0 {
+				dv.SetBPM(dv.bpm + dv.bpmDelta)
+				dv.bpmDelta = 0
 			}
 		}
-	}
 
 	if left {
 		if !dv.dragging {
@@ -1042,62 +1161,32 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	// timeline scrubbing
-	if left && pt(mx, my, dv.timelineRect) {
-		dv.scrubbing = true
-	}
-	if dv.scrubbing {
-		pos := mx
-		if pos < dv.timelineRect.Min.X {
-			pos = dv.timelineRect.Min.X
-		}
-		if pos > dv.timelineRect.Max.X {
-			pos = dv.timelineRect.Max.X
-		}
-		total := dv.timelineBeats - dv.Length
-		if total < 0 {
-			total = 0
-		}
-		frac := float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
-		beat := int(frac * float64(total))
-		if beat != dv.Offset {
-			dv.Offset = beat
-			dv.offsetChanged = true
-		}
-		if !left {
-			dv.scrubbing = false
-		}
-	}
+    // timeline scrubbing (center the view around the clicked beat)
+    if left && pt(mx, my, dv.timelineRect) {
+        dv.scrubbing = true
+    }
+    if dv.scrubbing {
+        pos := mx
+        if pos < dv.timelineRect.Min.X { pos = dv.timelineRect.Min.X }
+        if pos > dv.timelineRect.Max.X { pos = dv.timelineRect.Max.X }
+        totalBeats := dv.timelineBeats
+        if totalBeats < dv.Length { totalBeats = dv.Length }
+        frac := float64(pos-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
+        center := int(frac * float64(totalBeats))
+        desired := center - dv.Length/2
+        maxOff := dv.timelineBeats - dv.Length
+        if maxOff < 0 { maxOff = 0 }
+        if desired < 0 { desired = 0 }
+        if desired > maxOff { desired = maxOff }
+        if desired != dv.Offset {
+            dv.Offset = desired
+            dv.offsetChanged = true
+            dv.logger.Debugf("[DRUMVIEW] Timeline center: center=%d offset=%d len=%d total=%d", center, dv.Offset, dv.Length, dv.timelineBeats)
+        }
+        if !left { dv.scrubbing = false }
+    }
 
-	/* ——— BPM text input ——— */
-	dv.bpmBox.Update()
-	if !prevFocus && dv.bpmBox.Focused() {
-		dv.bpmPrev = dv.bpm
-		dv.bpmBox.SetText("")
-	}
-       if dv.bpmBox.Focused() {
-               if txt := dv.bpmBox.Value(); txt != "" {
-                       if _, ok := parseBPM(txt); !ok {
-                               dv.bpmErrorAnim = 1
-                       }
-               }
-       } else if prevFocus {
-               txt := dv.bpmBox.Value()
-               if txt == "" {
-                       dv.SetBPM(dv.bpmPrev)
-               } else if v, ok := parseBPM(txt); ok {
-                       dv.SetBPM(v)
-               } else {
-                       dv.bpmErrorAnim = 1
-                       dv.SetBPM(dv.bpmPrev)
-               }
-               dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
-       }
-
-	if dv.bpmDelta != 0 {
-		dv.SetBPM(dv.bpm + dv.bpmDelta)
-		dv.bpmDelta = 0
-	}
+	// (moved BPM text input handling earlier)
 
 	/* ——— Length editing ——— */
 	if dv.lenIncPressed {
@@ -1149,8 +1238,20 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightedBeats map[int]int64, fram
 	dv.bpmIncBtn.Draw(dst)
 	dv.lenDecBtn.Draw(dst)
 	dv.lenIncBtn.Draw(dst)
-	dv.trackBtn.Draw(dst)
-	dv.uploadBtn.Draw(dst)
+    dv.trackBtn.Draw(dst)
+    dv.uploadBtn.Draw(dst)
+    dv.importBtn.Draw(dst)
+    dv.exportBtn.Draw(dst)
+
+	// Display sample loading messages near the upload button area.
+    if dv.showLoading && dv.samplesTotal > 0 {
+        msg := fmt.Sprintf("loading samples... (%d/%d)", dv.samplesLoaded, dv.samplesTotal)
+        ebitenutil.DebugPrintAt(dst, msg, dv.uploadBtn.Rect().Min.X, dv.uploadBtn.Rect().Max.Y+20)
+    } else if dv.doneMsgTimer > 0 {
+        dv.doneMsgTimer--
+        msg := "Finished loading samples"
+        ebitenutil.DebugPrintAt(dst, msg, dv.uploadBtn.Rect().Min.X, dv.uploadBtn.Rect().Max.Y+20)
+    }
 	// timeline and progress
 	if dv.timelineBeats < dv.Graph.BeatLength() {
 		dv.timelineBeats = dv.Graph.BeatLength()

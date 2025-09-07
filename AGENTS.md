@@ -1,8 +1,20 @@
+## Project Overview
+Tunkul is a grid-based beat sequencer written in Go with Ebiten. The program
+renders a node graph where each node represents a drum hit. A bottom drum-machine
+panel shows the active steps. The scheduler in `core/beat` triggers beats at a
+configurable BPM using the pure data structures from `core/model`. The UI layer
+translates mouse and keyboard input into model operations and draws the results
+with Ebiten.
+
+Key technologies:
+- Go 1.23
+- Ebiten for cross-platform rendering (stubbed for headless tests)
+- WASM build via `make wasm`
+
 # Project Guidelines
-- **Before running any commands, execute `sudo make dependencies`** to install all required system and Node packages. This may take several minutes but prevents environment-related failures.
-- **Before opening any PR, run `make wasm` and `make test-real`** (even if they are no-ops on systems without native dependencies) unless explicitly instructed to skip them.
+- **Before opening any PR or wrapping up a set of changes, run `make wasm` and `make test-real`**  unless explicitly instructed to skip them.
 - Use Go 1.23.x as specified in `go.mod`.
-- **Run the unit tests before opening a PR.** Use the stubbed Ebiten API via
+- **Run the unit tests before opening a PR or wrapping up changes.** Use the stubbed Ebiten API via
   `go test -tags test -modfile=go.test.mod -timeout 1s ./...` for maximum portability.
   If your system has a working X11 environment you may instead execute
   `xvfb-run go test -timeout 1s ./...` to test against the real Ebiten library.
@@ -23,17 +35,6 @@
   so Go can download dependencies. If networking is disabled, use the stubbed
   modules or ensure all packages are vendored.
 
-### Git sync
-After cloning the repository, make sure your local branch tracks the latest
-remote branch used for development:
-
-```sh
-git remote add origin https://github.com/ingyamilmolinar/tunkul.git  # if not set
-git fetch origin
-git pull --no-rebase origin <development-branch>
-```
-Resolve any merge conflicts before proceeding.
-
 ### Headless X11
 Install `xvfb` and run the game via `xvfb-run` on systems without a display:
 
@@ -42,19 +43,6 @@ sudo apt-get install -y xvfb
 xvfb-run go run ./cmd/tunkul.go
 ```
 The virtual framebuffer lets Ebiten create a window while logs are printed to the console.
-
-## Project Overview
-Tunkul is a grid-based beat sequencer written in Go with Ebiten. The program
-renders a node graph where each node represents a drum hit. A bottom drum-machine
-panel shows the active steps. The scheduler in `core/beat` triggers beats at a
-configurable BPM using the pure data structures from `core/model`. The UI layer
-translates mouse and keyboard input into model operations and draws the results
-with Ebiten.
-
-Key technologies:
-- Go 1.23
-- Ebiten for cross-platform rendering (stubbed for headless tests)
-- WASM build via `make wasm`
 
 ### Git hooks
 Run the following command once after cloning to ensure tests and the wasm build

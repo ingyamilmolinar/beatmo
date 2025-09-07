@@ -135,16 +135,34 @@ if (delay > AUDIO_START_DELAY_THRESHOLD_MS) {
   );
 }
 
-const win = 1024;
-const avg = (offset) => {
-  let sum = 0;
-  for (let i = 0; i < win; i++) sum += Math.abs(samples[offset + i] || 0);
-  return sum / win;
+// Compare instrument waveforms by correlation instead of amplitude.
+const segLen = 4096;
+const seg = (off) => {
+  const a = new Float32Array(segLen);
+  for (let i = 0; i < segLen; i++) a[i] = samples[off + i] || 0;
+  return a;
 };
-const avgSnare = avg(first);
-const avgKick = avg(second);
-if (Math.abs(avgSnare - avgKick) < 0.01) {
-  throw new Error("snare and kick outputs too similar");
+const znorm = (a) => {
+  let mean = 0;
+  for (let i = 0; i < a.length; i++) mean += a[i];
+  mean /= a.length;
+  let norm2 = 0;
+  const out = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i++) { const v = a[i] - mean; out[i] = v; norm2 += v*v; }
+  const n = Math.sqrt(norm2) || 1;
+  for (let i = 0; i < a.length; i++) out[i] /= n;
+  return out;
+};
+const corr = (x, y) => {
+  let d = 0;
+  for (let i = 0; i < x.length; i++) d += x[i] * y[i];
+  return Math.abs(d / x.length);
+};
+const sSeg = znorm(seg(Math.max(0, first + 512)));
+const kSeg = znorm(seg(Math.max(0, second + 512)));
+const similarity = corr(sSeg, kSeg);
+if (!(similarity < 0.9)) {
+  throw new Error(`instrument waveforms too similar: corr=${similarity.toFixed(4)}`);
 }
 
 console.log(

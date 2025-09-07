@@ -92,7 +92,8 @@ func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 		return beatRow, false, -1
 	}
 
-	path := []NodeID{}
+    path := []NodeID{}
+    intermediateSet := make(map[NodeID]bool)
 	visited := make(map[NodeID]int)
 	isLoop := false
 	loopStartIndex := -1
@@ -139,22 +140,31 @@ func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 
 		currentNode := g.Nodes[currentNodeID]
 		nextNode := g.Nodes[nextNodeID]
-		intermediateIDs := g.getIntermediateGridPoints(currentNode.I, currentNode.J, nextNode.I, nextNode.J)
-		if len(intermediateIDs) > 0 {
-			g.logger.Debugf("[GRAPH] CalculateBeatRow: Adding intermediate nodes: %v", intermediateIDs)
-		}
-		path = append(path, intermediateIDs...)
-		currentNodeID = nextNodeID
-	}
+        intermediateIDs := g.getIntermediateGridPoints(currentNode.I, currentNode.J, nextNode.I, nextNode.J)
+        if len(intermediateIDs) > 0 {
+            g.logger.Debugf("[GRAPH] CalculateBeatRow: Adding intermediate nodes: %v", intermediateIDs)
+        }
+        for _, id := range intermediateIDs {
+            intermediateSet[id] = true
+            path = append(path, id)
+        }
+        currentNodeID = nextNodeID
+    }
 
 	beatRow := []BeatInfo{}
-	for _, id := range path {
-		if node, ok := g.Nodes[id]; ok {
-			beatRow = append(beatRow, BeatInfo{NodeID: id, NodeType: node.Type, I: node.I, J: node.J})
-		} else {
-			g.logger.Warnf("[GRAPH] CalculateBeatRow: Node ID %d not found in graph.Nodes. Skipping.", id)
-		}
-	}
+    for _, id := range path {
+        if node, ok := g.Nodes[id]; ok {
+            nt := node.Type
+            if intermediateSet[id] {
+                // Treat intermediate pass-through nodes as invisible for the
+                // purposes of the beat row so drum steps are not affected.
+                nt = NodeTypeInvisible
+            }
+            beatRow = append(beatRow, BeatInfo{NodeID: id, NodeType: nt, I: node.I, J: node.J})
+        } else {
+            g.logger.Warnf("[GRAPH] CalculateBeatRow: Node ID %d not found in graph.Nodes. Skipping.", id)
+        }
+    }
 	g.logger.Debugf("[GRAPH] CalculateBeatRow: Raw beatRow before padding/loop handling: %v", beatRow)
 
 	if isLoop {
@@ -207,47 +217,47 @@ func (g *Graph) getIntermediateGridPoints(node1I int, node1J int, node2I int, no
 	var intermediateNodeIDs []NodeID
 	g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Calculating intermediate points between (%d,%d) and (%d,%d)", node1I, node1J, node2I, node2J)
 
-	if node1I == node2I { // Vertical line
-		step := 1
-		if node1J > node2J {
-			step = -1
-		}
-		for j := node1J + step; j != node2J; j += step {
-			foundIntermediateNodeID := InvalidNodeID
-			for id, node := range g.Nodes {
-				if node.I == node1I && node.J == j && node.Type == NodeTypeInvisible {
-					foundIntermediateNodeID = id
-					break
-				}
-			}
-			if foundIntermediateNodeID != InvalidNodeID {
-				intermediateNodeIDs = append(intermediateNodeIDs, foundIntermediateNodeID)
-				g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Found intermediate invisible node %d at (%d,%d)", foundIntermediateNodeID, node1I, j)
-			} else {
-				g.logger.Warnf("[GRAPH] Missing invisible node at (%d, %d) along vertical path", node1I, j)
-			}
-		}
-	} else if node1J == node2J { // Horizontal line
-		step := 1
-		if node1I > node2I {
-			step = -1
-		}
-		for i := node1I + step; i != node2I; i += step {
-			foundIntermediateNodeID := InvalidNodeID
-			for id, node := range g.Nodes {
-				if node.I == i && node.J == node1J && node.Type == NodeTypeInvisible {
-					foundIntermediateNodeID = id
-					break
-				}
-			}
-			if foundIntermediateNodeID != InvalidNodeID {
-				intermediateNodeIDs = append(intermediateNodeIDs, foundIntermediateNodeID)
-				g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Found intermediate invisible node %d at (%d,%d)", foundIntermediateNodeID, i, node1J)
-			} else {
-				g.logger.Warnf("[GRAPH] Missing invisible node at (%d, %d) along horizontal path", i, node1J)
-			}
-		}
-	}
+    if node1I == node2I { // Vertical line
+        step := 1
+        if node1J > node2J {
+            step = -1
+        }
+        for j := node1J + step; j != node2J; j += step {
+            foundIntermediateNodeID := InvalidNodeID
+            for id, node := range g.Nodes {
+                if node.I == node1I && node.J == j { // include any node type
+                    foundIntermediateNodeID = id
+                    break
+                }
+            }
+            if foundIntermediateNodeID != InvalidNodeID {
+                intermediateNodeIDs = append(intermediateNodeIDs, foundIntermediateNodeID)
+                g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Found intermediate node %d at (%d,%d)", foundIntermediateNodeID, node1I, j)
+            } else {
+                g.logger.Warnf("[GRAPH] Missing invisible node at (%d, %d) along vertical path", node1I, j)
+            }
+        }
+    } else if node1J == node2J { // Horizontal line
+        step := 1
+        if node1I > node2I {
+            step = -1
+        }
+        for i := node1I + step; i != node2I; i += step {
+            foundIntermediateNodeID := InvalidNodeID
+            for id, node := range g.Nodes {
+                if node.I == i && node.J == node1J { // include any node type
+                    foundIntermediateNodeID = id
+                    break
+                }
+            }
+            if foundIntermediateNodeID != InvalidNodeID {
+                intermediateNodeIDs = append(intermediateNodeIDs, foundIntermediateNodeID)
+                g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Found intermediate node %d at (%d,%d)", foundIntermediateNodeID, i, node1J)
+            } else {
+                g.logger.Warnf("[GRAPH] Missing invisible node at (%d, %d) along horizontal path", i, node1J)
+            }
+        }
+    }
 	g.logger.Debugf("[GRAPH] getIntermediateGridPoints: Returning intermediateNodeIDs: %v", intermediateNodeIDs)
 	return intermediateNodeIDs
 }
