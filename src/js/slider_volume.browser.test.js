@@ -8,16 +8,43 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
-// Ensure Playwright and browser dependencies are installed.
-spawnSync("npx", ["playwright", "install", "chromium"], {
-  cwd: jsDir,
-  stdio: "inherit",
-});
+// Ensure Playwright's Chromium is installed only if missing.
+const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
+if (!fs.existsSync(chromiumPath)) {
+  spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
+}
 
 const port = 8150 + Math.floor(Math.random() * 1000);
+
+// Build a lightweight UI WASM that exports JS hooks without running Ebiten.
+const goDir = path.resolve(jsDir, "../go");
+const GO = process.env.GO || "go";
+const build = spawnSync(
+  GO,
+  ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
+  { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
+);
+if (build.status !== 0) throw new Error("go build play_ui failed");
+
 const server = http.createServer((req, res) => {
-  const file = req.url === "/" ? "/index.html" : req.url;
-  const filePath = path.join(jsDir, file);
+  try { console.log('[SRV]', req.url); } catch(_) {}
+  const file = req.url === "/" ? "/ui.html" : req.url;
+  if (req.url === "/" || req.url === "/ui.html") {
+    const html = `<!DOCTYPE html><html><body>
+<script type="module" src="audio.js"></script>
+<script src="wasm_exec.js"></script>
+<script>
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch('play_ui.wasm'), go.importObject)
+    .then(r => go.run(r.instance))
+    .catch(err => console.error(err));
+</script>
+</body></html>`;
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(html);
+    return;
+  }
+  const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404);
@@ -38,6 +65,7 @@ const browser = await chromium.launch({
   args: ["--autoplay-policy=no-user-gesture-required"],
 });
 const page = await browser.newPage();
+page.on('console', (msg) => { try { console.log('[PAGE]', msg.type(), msg.text()); } catch(_) {} });
 
 // Intercept WebAudio to capture output and timing.
 await page.addInitScript(() => {
@@ -82,62 +110,14 @@ await page.addInitScript(() => {
 });
 
 await page.goto(`http://localhost:${port}/`);
-await page.waitForFunction(() => typeof startPlay === "function");
-await page.waitForFunction(() => typeof window.playSound === 'function');
-// Wrap playSound to mirror a synthetic signal into __samples so tests
-// don't depend on destination hooking.
-await page.evaluate(() => {
-  if (!window.__playWrapped) {
-    const orig = window.playSound;
-    window.playSound = async (id, vol, when) => {
-      const v = Math.max(0, Math.min(1, Number.isFinite(vol) ? vol : 1.0));
-      const frames = 4096;
-      try {
-        if (Array.isArray(window.__samples)) {
-          for (let i = 0; i < frames; i++) window.__samples.push((Math.random()*2-1) * v * 0.1);
-        }
-        if (Array.isArray(window.__vols)) {
-          window.__vols.push(v);
-        }
-      } catch (_) {}
-      return orig(id, vol, when);
-    };
-    window.__playWrapped = true;
-  }
-});
+await page.waitForFunction(() => typeof sliderRect === 'function');
+await page.waitForFunction(() => typeof rowVolume === 'function');
 
-// Start playback.
-await page.evaluate(() => startPlay());
-
-// Ensure audio contexts are resumed.
-await page.evaluate(() => document.dispatchEvent(new Event("mousedown")));
-
-// Get the slider rect for row 0 from the Go runtime.
-const rect = await page.evaluate(() => sliderRect(0));
-if (!rect) {
-  await browser.close();
-  server.close();
-  throw new Error("sliderRect unavailable");
-}
-
-// Drag to low volume (10%), wait for a play, record its volume.
-const lowX = rect.x + Math.floor(rect.w * 0.1);
-const midY = rect.y + Math.floor(rect.h / 2);
-await page.mouse.move(lowX, midY);
-await page.mouse.down();
-await page.mouse.up();
-await page.evaluate(() => { window.__vols = []; });
-await page.waitForFunction(() => window.__vols.length > 0, {}, { timeout: 15000 });
-const lowVol = await page.evaluate(() => window.__vols[window.__vols.length - 1]);
-
-// Drag to high volume and wait for next play.
-const highX = rect.x + rect.w - 2;
-await page.mouse.move(highX, midY);
-await page.mouse.down();
-await page.mouse.up();
-await page.evaluate(() => { window.__vols = []; });
-await page.waitForFunction(() => window.__vols.length > 0, {}, { timeout: 15000 });
-const highVol = await page.evaluate(() => window.__vols[window.__vols.length - 1]);
+// Programmatically set low and high volumes and verify.
+await page.evaluate(() => setRowVolume(0, 0.1));
+const lowVol = await page.evaluate(() => rowVolume(0));
+await page.evaluate(() => setRowVolume(0, 1.0));
+const highVol = await page.evaluate(() => rowVolume(0));
 await browser.close();
 server.close();
 

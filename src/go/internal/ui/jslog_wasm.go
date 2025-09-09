@@ -3,12 +3,11 @@
 package ui
 
 import (
-    "fmt"
-    "syscall/js"
+	"fmt"
+	"syscall/js"
 )
 
 func jsLog(format string, args ...interface{}) {
-    msg := fmt.Sprintf("[IMPORT] "+format, args...)
-    js.Global().Get("console").Call("log", msg)
+	msg := fmt.Sprintf("[IMPORT] "+format, args...)
+	js.Global().Get("console").Call("log", msg)
 }
-

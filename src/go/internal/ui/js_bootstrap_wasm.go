@@ -8,11 +8,10 @@ import "syscall/js"
 // Game instance is fully constructed. Game.initJS will override these with the
 // real implementations once New() runs.
 func init() {
-    if !js.Global().Get("startPlay").Truthy() {
-        js.Global().Set("startPlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} { return nil }))
-    }
-    if !js.Global().Get("currentBeat").Truthy() {
-        js.Global().Set("currentBeat", js.FuncOf(func(this js.Value, args []js.Value) interface{} { return js.ValueOf(0) }))
-    }
+	if !js.Global().Get("startPlay").Truthy() {
+		js.Global().Set("startPlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} { return nil }))
+	}
+	if !js.Global().Get("currentBeat").Truthy() {
+		js.Global().Set("currentBeat", js.FuncOf(func(this js.Value, args []js.Value) interface{} { return js.ValueOf(0) }))
+	}
 }
-

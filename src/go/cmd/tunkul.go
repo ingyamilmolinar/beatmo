@@ -10,8 +10,11 @@ import (
 	"github.com/ingyamilmolinar/tunkul/internal/ui"
 )
 
+// defaultLog is overridden via -ldflags "-X main.defaultLog=..." at build time.
+var defaultLog = "DEBUG"
+
 func main() {
-	logLevel := flag.String("log", "DEBUG", "Log level (DEBUG, INFO, ERROR, NONE)")
+	logLevel := flag.String("log", defaultLog, "Log level (DEBUG, INFO, ERROR, NONE)")
 	demo := flag.Bool("demo", false, "run a demo circuit and exit")
 	flag.Parse()
 

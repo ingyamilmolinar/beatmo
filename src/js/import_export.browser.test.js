@@ -10,8 +10,9 @@ const jsDir = __dirname;
 // Build the UI playtest wasm that keeps Go alive and exposes export/import.
 import { spawnSync } from "child_process";
 const goDir = path.resolve(jsDir, "../go");
+const GO = process.env.GO || "go";
 const build = spawnSync(
-  "go",
+  GO,
   ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );

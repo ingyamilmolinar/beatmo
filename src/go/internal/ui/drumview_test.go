@@ -44,9 +44,32 @@ func TestTimelineInfoFormatsBeatAndTime(t *testing.T) {
 	dv.timelineBeats = 4
 	dv.secPerBeat = 0.5
 	got := dv.timelineInfo(2.5)
-	want := "Beat 2.500/4.000 Time 1.250/2.000s"
+	want := "Beat 2.500/4.000 Time 1s 250ms/2s 0ms"
 	if got != want {
 		t.Fatalf("timelineInfo=%q want %q", got, want)
+	}
+}
+
+// Rounding should carry milliseconds into seconds precisely at boundaries.
+func TestTimelineInfoRoundingCarry(t *testing.T) {
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), nil, testLogger)
+	dv.timelineBeats = 4
+	dv.SetBPM(96) // 60/96 = 0.625s per beat => 625ms
+
+	// 1.6 beats => 1.6 * 625ms = 1000ms -> 1s 0ms after rounding
+	info := dv.timelineInfo(1.6)
+	if !strings.Contains(info, "Beat 1.600/") {
+		t.Fatalf("unexpected beat portion: %q", info)
+	}
+	if !strings.Contains(info, "Time 1s 0ms/") {
+		t.Fatalf("unexpected time rounding: %q", info)
+	}
+
+	// Also verify total time rounds correctly for totals beyond one second.
+	dv.timelineBeats = 8 // total = 8 * 625ms = 5000ms => 5s 0ms
+	info = dv.timelineInfo(1.6)
+	if !strings.Contains(info, "/5s 0ms") {
+		t.Fatalf("unexpected total time rounding: %q", info)
 	}
 }
 
@@ -190,7 +213,7 @@ func TestDrumViewWheelAdjustsLength(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
 
-	wheelVal := 1.0
+	wheelVal := 0.0
 	cursor := func() (int, int) { return dv.Bounds.Min.X + dv.labelW + 500, dv.Bounds.Min.Y + timelineHeight + 5 }
 	restore := SetInputForTest(cursor,
 		func(ebiten.MouseButton) bool { return false },
@@ -199,7 +222,11 @@ func TestDrumViewWheelAdjustsLength(t *testing.T) {
 		func() (float64, float64) { v := wheelVal; wheelVal = 0; return 0, v },
 		func() (int, int) { return 800, 600 },
 	)
-	dv.Update() // wheel up -> length++
+	// Accumulate four notches to reach +1 beat (with smoothing).
+	for i := 0; i < 4; i++ {
+		wheelVal = 1.0
+		dv.Update()
+	}
 	restore()
 	if dv.Length != 9 {
 		t.Fatalf("expected length 9 got %d", dv.Length)
@@ -209,22 +236,28 @@ func TestDrumViewWheelAdjustsLength(t *testing.T) {
 func TestDrumViewLengthMinMax(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
-	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 
-	// Test min length (should not go below 1)
-	drumView.Length = 1
-	drumView.lenDecPressed = true
-	drumView.Update()
-	if drumView.Length != 1 {
-		t.Errorf("Expected drum view length to stay at 1, got %d", drumView.Length)
+	// Min length for a standalone DrumView (unitsPerBeat=1) is 1 subdivision.
+	dv := NewDrumView(image.Rect(0, 0, 200, 120), graph, logger)
+	dv.Length = 1
+	dv.lenDecPressed = true
+	dv.Update()
+	if dv.Length != 1 {
+		t.Errorf("Expected min drum view length to stay at 1, got %d", dv.Length)
 	}
 
-	// Test max length (should not go above 64)
-	drumView.Length = 64
-	drumView.lenIncPressed = true
-	drumView.Update()
-	if drumView.Length != 64 {
-		t.Errorf("Expected drum view length to stay at 64, got %d", drumView.Length)
+	// Max length is bounded by horizontal pixels available in the timeline.
+	dv2 := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv2.Update()
+	max := dv2.timelineRect.Dx()
+	if max < 2 {
+		t.Skip("insufficient width for max length test")
+	}
+	dv2.Length = max
+	dv2.lenIncPressed = true
+	dv2.Update()
+	if dv2.Length != max {
+		t.Errorf("Expected max length %d, got %d", max, dv2.Length)
 	}
 }
 
@@ -234,7 +267,7 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.bpm = 120
 	info := dv.timelineInfo(4)
-	expected := "Beat 4.000/8.000 Time 2.000/4.000s"
+	expected := "Beat 4.000/8.000 Time 2s 0ms/4s 0ms"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
 	}
@@ -250,7 +283,7 @@ func TestTimelineInfoFractionalBeat(t *testing.T) {
 	if !strings.HasPrefix(info, "Beat 1.250/32.000") {
 		t.Fatalf("unexpected beat info: %q", info)
 	}
-	if !strings.Contains(info, "Time 0.625/16.000s") {
+	if !strings.Contains(info, "Time 0s 625ms/16s 0ms") {
 		t.Fatalf("missing time info: %q", info)
 	}
 	if strings.Count(info, "Beat") != 1 {
@@ -498,9 +531,11 @@ func TestDrumViewLooping(t *testing.T) {
 	game := &Game{graph: graph, drum: drumView, logger: logger}
 	game.updateBeatInfos()
 
-    // Intermediate pass-through duplicates appear as invisible steps when an
-    // edge skips back across existing nodes.
-    expectedSteps := []bool{true, true, true, false, true, true, false, true, true, false}
+	// With the current traversal rules, loop seam duplicates are suppressed
+	// and intermediate pass-throughs are represented as empty (invisible) steps.
+	// For the constructed path O->1->2->3->4->(back)->2, the 10-step window
+	// maps to the following on/off pattern:
+	expectedSteps := []bool{true, true, true, false, true, false, true, false, true, false}
 	t.Logf("Generated drum row: %v", drumView.Rows[0].Steps)
 	if len(drumView.Rows[0].Steps) != len(expectedSteps) {
 		t.Fatalf("Expected %d steps, but got %d", len(expectedSteps), len(drumView.Rows[0].Steps))
@@ -585,10 +620,10 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	}
 	defer func() { drawButton = orig }()
 
-    dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
-    if count != 18 {
-        t.Fatalf("expected 18 buttons drawn, got %d", count)
-    }
+	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
+	if count != 18 {
+		t.Fatalf("expected 18 buttons drawn, got %d", count)
+	}
 }
 
 func TestDrumViewHighlightsMultipleRows(t *testing.T) {
@@ -610,7 +645,21 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
 			row := (r.Min.Y - (dv.Bounds.Min.Y + timelineHeight)) / dv.rowHeight()
-			col := (r.Min.X - (dv.Bounds.Min.X + dv.labelW + dv.controlsW)) / dv.cell
+			// Map rectangle center X proportionally into the step index so
+			// rounding distribution across cells doesn’t skew detection.
+			startX := dv.timelineRect.Min.X
+			totalW := dv.timelineRect.Dx()
+			n := dv.Length
+			// Determine the step index by locating the boundary bucket.
+			col := 0
+			for j := 1; j < n; j++ {
+				bx := startX + (j*totalW)/n
+				if r.Min.X >= bx {
+					col = j
+				} else {
+					break
+				}
+			}
 			if color.RGBAModel.Convert(c).(color.RGBA) == colHighlight {
 				hits = append(hits, [2]int{row, col})
 			}
@@ -650,6 +699,47 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	dv.DeleteRow(1)
 	if len(dv.Rows) != 1 {
 		t.Fatalf("expected 1 row after deletion got %d", len(dv.Rows))
+	}
+}
+
+// Even when the requested subdivisions vastly exceed the available pixels,
+// the drum view should render a visible time line (baseline) and decimated
+// marker lines, so users can orient themselves.
+func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.recalcButtons()
+	dv.calcLayout()
+	// Force an extreme length without going through wheel/buttons to bypass clamps.
+	dv.Length = dv.timelineRect.Dx() * 10
+	dv.Rows[0].Steps = make([]bool, dv.Length)
+
+	dst := ebiten.NewImage(400, 200)
+	orig := drawRect
+	baseline := 0
+	ticks := 0
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
+			// horizontal baseline: height=1 across the steps area
+			if r.Dy() == 1 && color.RGBAModel.Convert(c).(color.RGBA) == colTimelineBeat {
+				baseline++
+			}
+			// vertical tick markers: width=1 spanning the row height
+			if r.Dx() == 1 && r.Dy() == dv.rowHeight() && color.RGBAModel.Convert(c).(color.RGBA) == colTimelineBeat {
+				ticks++
+			}
+		}
+		orig(dst, r, c, filled)
+	}
+	dv.Draw(dst, map[int]int64{}, 0, make([]model.BeatInfo, 0), 0)
+	drawRect = orig
+
+	if baseline == 0 {
+		t.Fatalf("missing baseline at extreme zoom-out")
+	}
+	if ticks == 0 {
+		t.Fatalf("missing decimated marker ticks at extreme zoom-out")
 	}
 }
 

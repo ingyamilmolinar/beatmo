@@ -4,24 +4,24 @@ import "image"
 
 // GCD returns the greatest common divisor of a and b.
 func GCD(a, b int) int {
-        for b != 0 {
-                a, b = b, a%b
-        }
-        if a < 0 {
-                return -a
-        }
-        return a
+	for b != 0 {
+		a, b = b, a%b
+	}
+	if a < 0 {
+		return -a
+	}
+	return a
 }
 
 // Clamp01 clamps v to the [0,1] range.
 func Clamp01(v float64) float64 {
-        if v < 0 {
-                return 0
-        }
-        if v > 1 {
-                return 1
-        }
-        return v
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
 
 func Abs(x int) int {

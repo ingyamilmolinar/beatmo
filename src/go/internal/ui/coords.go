@@ -11,4 +11,3 @@ func PointBeats(g *Grid, bx, by float64) [2]int { return [2]int{ToSub(g, bx), To
 
 // PointIJ returns a pair in subdivision-space from JSON export coordinates.
 func PointIJ(i, j int) [2]int { return [2]int{i, j} }
-

@@ -1,10 +1,10 @@
 package ui
 
 import (
-       "image/color"
-       "math"
+	"image/color"
+	"math"
 
-       "github.com/ingyamilmolinar/tunkul/internal/utils"
+	"github.com/ingyamilmolinar/tunkul/internal/utils"
 )
 
 const DefaultGridStep = 60 // world-space px between vertices
@@ -37,11 +37,24 @@ type LineGroup struct {
 type Grid struct {
 	Step float64 // world-space px between beats
 	Subs []Subdivision
+
+	// cache for grid lines: reused when camera and screen are unchanged
+	cacheValid     bool
+	cacheScale     float64
+	cacheOffX      float64
+	cacheOffY      float64
+	cacheW, cacheH int
+	cacheGroups    []LineGroup
+	cacheStep      float64
+	cacheSubSig    uint64
+
+	// precomputed signature of Subs (Div, MinPx); updated by SetSubs/NewGrid
+	subSig uint64
 }
 
 // NewGrid constructs a grid with default subdivision styles.
 func NewGrid(step float64) *Grid {
-	return &Grid{
+	g := &Grid{
 		Step: step,
 		Subs: []Subdivision{
 			{Div: 1, MinPx: 0, Style: LineStyle{Color: colGridLine, Width: 1}},
@@ -52,6 +65,25 @@ func NewGrid(step float64) *Grid {
 			{Div: 32, MinPx: 8, Style: LineStyle{Color: colGridThirtySecond, Width: 1}},
 		},
 	}
+	g.recomputeSubSig()
+	return g
+}
+
+// SetSubs replaces the grid subdivision configuration and recomputes internal
+// caches. Prefer using this instead of assigning Subs directly so caches stay
+// coherent.
+func (g *Grid) SetSubs(subs []Subdivision) {
+	g.Subs = subs
+	g.recomputeSubSig()
+	g.cacheValid = false
+}
+
+func (g *Grid) recomputeSubSig() {
+	var sig uint64
+	for i := range g.Subs {
+		sig = sig*131 + uint64(g.Subs[i].Div*257+g.Subs[i].MinPx)
+	}
+	g.subSig = sig
 }
 
 // MaxDiv returns the finest subdivision factor.
@@ -129,8 +161,8 @@ func (g *Grid) BeatSubdivision(idx int) (beat, num, den int) {
 	if rem == 0 {
 		return beat, 0, 1
 	}
-       d := utils.GCD(rem, div)
-       return beat, rem / d, div / d
+	d := utils.GCD(rem, div)
+	return beat, rem / d, div / d
 }
 
 // StepPixels converts a camera scale to an integer pixel spacing between grid
@@ -147,6 +179,18 @@ func (g *Grid) StepPixels(scale float64) int {
 // Lines returns world-space coordinates for visible grid subdivisions based on
 // the camera and screen size.
 func (g *Grid) Lines(cam *Camera, screenW, screenH int) []LineGroup {
+	// Use precomputed subdivision signature; recomputed via SetSubs/NewGrid.
+	subSig := g.subSig
+	// Fast path: if camera, screen, step and subdivision signature are unchanged,
+	// reuse cached lines. Camera offsets are snapped to integer pixels by Camera.Snap().
+	if g.cacheValid &&
+		g.cacheScale == cam.Scale &&
+		g.cacheOffX == cam.OffsetX &&
+		g.cacheOffY == cam.OffsetY &&
+		g.cacheW == screenW && g.cacheH == screenH &&
+		g.cacheStep == g.Step && g.cacheSubSig == subSig {
+		return g.cacheGroups
+	}
 	stepPx := g.StepPixels(cam.Scale)
 	minX, maxX, minY, maxY := visibleWorldRect(cam, screenW, screenH)
 	// pad the visible rectangle by one beat on each side so grid lines extend
@@ -193,5 +237,14 @@ func (g *Grid) Lines(cam *Camera, screenW, screenH int) []LineGroup {
 		}
 		groups = append(groups, LineGroup{Subdiv: sub, Xs: xs, Ys: ys})
 	}
+	// Update cache
+	g.cacheValid = true
+	g.cacheScale = cam.Scale
+	g.cacheOffX = cam.OffsetX
+	g.cacheOffY = cam.OffsetY
+	g.cacheW, g.cacheH = screenW, screenH
+	g.cacheGroups = groups
+	g.cacheStep = g.Step
+	g.cacheSubSig = subSig
 	return groups
 }

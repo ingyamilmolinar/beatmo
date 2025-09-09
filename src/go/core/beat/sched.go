@@ -2,6 +2,7 @@ package beat
 
 import (
 	"log"
+	"math"
 	"time"
 )
 
@@ -25,6 +26,26 @@ func NewScheduler() *Scheduler {
 }
 
 func (s *Scheduler) SetBPM(bpm int) {
+	// Preserve fractional progress across BPM changes to avoid immediate
+	// catch-up bursts. Map the elapsed fraction using the old spb into the
+	// new spb so the next tick fires smoothly on the new timeline.
+	old := s.BPM
+	if bpm <= 0 {
+		s.BPM = bpm
+		return
+	}
+	if !s.last.IsZero() && old > 0 && old != bpm {
+		now := s.now()
+		oldSpb := time.Minute / time.Duration(old)
+		newSpb := time.Minute / time.Duration(bpm)
+		elapsed := now.Sub(s.last)
+		// Fraction of the current beat with old BPM; keep it within [0,1).
+		frac := float64(elapsed) / float64(oldSpb)
+		frac = frac - math.Floor(frac)
+		// Rebase last so that now - last corresponds to the same fraction of new beat.
+		adj := time.Duration(frac * float64(newSpb))
+		s.last = now.Add(-adj)
+	}
 	s.BPM = bpm
 }
 

@@ -21,6 +21,7 @@ type Engine struct {
 	Graph  *model.Graph
 	sched  *beat.Scheduler
 	Events chan Event
+	subs   []chan Event
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -40,9 +41,17 @@ func New(logger *game_log.Logger) *Engine {
 	}
 
 	sched.OnTick = func(step int) {
+		evt := Event{Step: step}
 		select {
-		case e.Events <- Event{Step: step}:
+		case e.Events <- evt:
 		default:
+		}
+		// broadcast to subscribers non-blockingly
+		for _, ch := range e.subs {
+			select {
+			case ch <- evt:
+			default:
+			}
 		}
 	}
 
@@ -83,3 +92,12 @@ func (e *Engine) BeatLength() int { return e.sched.BeatLength }
 
 // Progress exposes the scheduler's current beat progress.
 func (e *Engine) Progress() float64 { return e.sched.Progress() }
+
+// Subscribe returns a channel that receives tick events in parallel to Events.
+// The returned channel is buffered; delivery is best-effort and may drop
+// events if the receiver falls behind.
+func (e *Engine) Subscribe() <-chan Event {
+	ch := make(chan Event, 16)
+	e.subs = append(e.subs, ch)
+	return ch
+}
