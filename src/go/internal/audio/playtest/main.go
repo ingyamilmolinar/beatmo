@@ -13,9 +13,9 @@ import (
 func main() {
 	js.Global().Set("__wasmReady", false)
 	perf := js.Global().Get("performance")
-	js.Global().Get("document").Call("addEventListener", "mousedown", js.FuncOf(func(js.Value, []js.Value) any {
+	js.Global().Get("document").Call("addEventListener", "mousedown", js.FuncOf(func(js.Value, []js.Value) interface{} {
 		audio.Resume()
-		js.Global().Call("setTimeout", js.FuncOf(func(js.Value, []js.Value) any {
+		js.Global().Call("setTimeout", js.FuncOf(func(js.Value, []js.Value) interface{} {
 			js.Global().Set("__playTime", perf.Call("now"))
 			audio.Play("snare")
 			go func() {

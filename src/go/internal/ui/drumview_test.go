@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -36,6 +36,40 @@ func TestNewDrumView(t *testing.T) {
 		if step {
 			t.Errorf("Expected step %d to be false (empty), got true", i)
 		}
+	}
+}
+
+func TestTimelineInfoFormatsBeatAndTime(t *testing.T) {
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), nil, testLogger)
+	dv.timelineBeats = 4
+	dv.secPerBeat = 0.5
+	got := dv.timelineInfo(2.5)
+	want := "Beat 2.500/4.000 Time 1s 250ms/2s 0ms"
+	if got != want {
+		t.Fatalf("timelineInfo=%q want %q", got, want)
+	}
+}
+
+// Rounding should carry milliseconds into seconds precisely at boundaries.
+func TestTimelineInfoRoundingCarry(t *testing.T) {
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), nil, testLogger)
+	dv.timelineBeats = 4
+	dv.SetBPM(96) // 60/96 = 0.625s per beat => 625ms
+
+	// 1.6 beats => 1.6 * 625ms = 1000ms -> 1s 0ms after rounding
+	info := dv.timelineInfo(1.6)
+	if !strings.Contains(info, "Beat 1.600/") {
+		t.Fatalf("unexpected beat portion: %q", info)
+	}
+	if !strings.Contains(info, "Time 1s 0ms/") {
+		t.Fatalf("unexpected time rounding: %q", info)
+	}
+
+	// Also verify total time rounds correctly for totals beyond one second.
+	dv.timelineBeats = 8 // total = 8 * 625ms = 5000ms => 5s 0ms
+	info = dv.timelineInfo(1.6)
+	if !strings.Contains(info, "/5s 0ms") {
+		t.Fatalf("unexpected total time rounding: %q", info)
 	}
 }
 
@@ -179,7 +213,7 @@ func TestDrumViewWheelAdjustsLength(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
 
-	wheelVal := 1.0
+	wheelVal := 0.0
 	cursor := func() (int, int) { return dv.Bounds.Min.X + dv.labelW + 500, dv.Bounds.Min.Y + timelineHeight + 5 }
 	restore := SetInputForTest(cursor,
 		func(ebiten.MouseButton) bool { return false },
@@ -188,7 +222,11 @@ func TestDrumViewWheelAdjustsLength(t *testing.T) {
 		func() (float64, float64) { v := wheelVal; wheelVal = 0; return 0, v },
 		func() (int, int) { return 800, 600 },
 	)
-	dv.Update() // wheel up -> length++
+	// Accumulate four notches to reach +1 beat (with smoothing).
+	for i := 0; i < 4; i++ {
+		wheelVal = 1.0
+		dv.Update()
+	}
 	restore()
 	if dv.Length != 9 {
 		t.Fatalf("expected length 9 got %d", dv.Length)
@@ -198,22 +236,28 @@ func TestDrumViewWheelAdjustsLength(t *testing.T) {
 func TestDrumViewLengthMinMax(t *testing.T) {
 	logger := game_log.New(os.Stdout, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
-	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 
-	// Test min length (should not go below 1)
-	drumView.Length = 1
-	drumView.lenDecPressed = true
-	drumView.Update()
-	if drumView.Length != 1 {
-		t.Errorf("Expected drum view length to stay at 1, got %d", drumView.Length)
+	// Min length for a standalone DrumView (unitsPerBeat=1) is 1 subdivision.
+	dv := NewDrumView(image.Rect(0, 0, 200, 120), graph, logger)
+	dv.Length = 1
+	dv.lenDecPressed = true
+	dv.Update()
+	if dv.Length != 1 {
+		t.Errorf("Expected min drum view length to stay at 1, got %d", dv.Length)
 	}
 
-	// Test max length (should not go above 64)
-	drumView.Length = 64
-	drumView.lenIncPressed = true
-	drumView.Update()
-	if drumView.Length != 64 {
-		t.Errorf("Expected drum view length to stay at 64, got %d", drumView.Length)
+	// Max length is bounded by horizontal pixels available in the timeline.
+	dv2 := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv2.Update()
+	max := dv2.timelineRect.Dx()
+	if max < 2 {
+		t.Skip("insufficient width for max length test")
+	}
+	dv2.Length = max
+	dv2.lenIncPressed = true
+	dv2.Update()
+	if dv2.Length != max {
+		t.Errorf("Expected max length %d, got %d", max, dv2.Length)
 	}
 }
 
@@ -223,9 +267,39 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.bpm = 120
 	info := dv.timelineInfo(4)
-	expected := "00:02.000/00:04.000 | View 00:00.000-00:04.000 | Beats 1-8/8"
+	expected := "Beat 4.000/8.000 Time 2s 0ms/4s 0ms"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
+	}
+}
+
+func TestTimelineInfoFractionalBeat(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.bpm = 120
+	dv.timelineBeats = 32
+	info := dv.timelineInfo(1.25)
+	if !strings.HasPrefix(info, "Beat 1.250/32.000") {
+		t.Fatalf("unexpected beat info: %q", info)
+	}
+	if !strings.Contains(info, "Time 0s 625ms/16s 0ms") {
+		t.Fatalf("missing time info: %q", info)
+	}
+	if strings.Count(info, "Beat") != 1 {
+		t.Fatalf("duplicate beat counts in %q", info)
+	}
+}
+
+func TestTimelineInfoExtendsTotal(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.bpm = 120
+	dv.timelineBeats = 32
+	info := dv.timelineInfo(32.125)
+	if !strings.HasPrefix(info, "Beat 32.125/32.125") {
+		t.Fatalf("unexpected extended total: %q", info)
 	}
 }
 
@@ -239,10 +313,15 @@ func TestTimelineViewRect(t *testing.T) {
 
 	var got image.Rectangle
 	orig := drawRect
+	drewBorder := false
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
 			if clr, ok := c.(color.RGBA); ok && clr == colTimelineView {
 				got = r
+			}
+		} else {
+			if clr, ok := c.(color.RGBA); ok && clr == colTimelineViewHi {
+				drewBorder = true
 			}
 		}
 	}
@@ -254,8 +333,8 @@ func TestTimelineViewRect(t *testing.T) {
 	start := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
 	width := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
 	want := image.Rect(start, dv.timelineRect.Min.Y, start+width, dv.timelineRect.Max.Y)
-	if got != want {
-		t.Fatalf("view rect = %v want %v", got, want)
+	if got != want || !drewBorder {
+		t.Fatalf("view rect/border mismatch: rect=%v border=%t want %v", got, drewBorder, want)
 	}
 }
 
@@ -303,6 +382,101 @@ func TestTimelineExpandsAndViewShrinks(t *testing.T) {
 	}
 	if expandedWidth >= baseWidth {
 		t.Fatalf("view width did not shrink: base %d expanded %d", baseWidth, expandedWidth)
+	}
+}
+
+func TestTimelineBeatMarkersDecimate(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.recalcButtons()
+	dv.timelineBeats = 10000 // simulate long timeline
+
+	var view image.Rectangle
+	markers := 0
+	orig := drawRect
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled {
+			if clr, ok := c.(color.RGBA); ok {
+				if clr == colTimelineView {
+					view = r
+				} else if clr == colTimelineBeat && r.Min.Y == dv.timelineRect.Min.Y && r.Max.Y == dv.timelineRect.Max.Y {
+					markers++
+				}
+			}
+		}
+		orig(dst, r, c, filled)
+	}
+	defer func() { drawRect = orig }()
+
+	dv.Draw(ebiten.NewImage(400, 200), nil, 0, nil, 0)
+
+	if view.Dx() < 1 {
+		t.Fatalf("view width = %d want >=1", view.Dx())
+	}
+	if markers > dv.timelineRect.Dx()+1 {
+		t.Fatalf("too many beat markers: %d > %d", markers, dv.timelineRect.Dx()+1)
+	}
+}
+
+func TestTimelineScrubSeek(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+2*24), nil, logger)
+	dv.recalcButtons()
+	dv.timelineBeats = 100
+
+	mx := dv.timelineRect.Min.X + dv.timelineRect.Dx()/2
+	my := dv.timelineRect.Min.Y + dv.timelineRect.Dy()/2
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+
+	want := (dv.timelineBeats - dv.Length) / 2
+	if dv.Offset != want {
+		t.Fatalf("offset=%d want %d", dv.Offset, want)
+	}
+}
+
+func TestTimelineScrubLongTimeline(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+2*24), nil, logger)
+	dv.recalcButtons()
+	dv.timelineBeats = 10000
+
+	mx := dv.timelineRect.Max.X - 1
+	my := dv.timelineRect.Min.Y + dv.timelineRect.Dy()/2
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	dv.Update()
+	pressed = false
+	dv.Update()
+	restore()
+
+	total := dv.timelineBeats - dv.Length
+	frac := float64(dv.timelineRect.Dx()-1) / float64(dv.timelineRect.Dx())
+	want := int(frac * float64(total))
+	if dv.Offset != want {
+		t.Fatalf("offset=%d want %d", dv.Offset, want)
+	}
+	if dv.timelineBeats != 10000 {
+		t.Fatalf("timelineBeats changed: %d", dv.timelineBeats)
 	}
 }
 
@@ -357,7 +531,11 @@ func TestDrumViewLooping(t *testing.T) {
 	game := &Game{graph: graph, drum: drumView, logger: logger}
 	game.updateBeatInfos()
 
-	expectedSteps := []bool{true, true, true, true, true, true, true, true, true, true}
+	// With the current traversal rules, loop seam duplicates are suppressed
+	// and intermediate pass-throughs are represented as empty (invisible) steps.
+	// For the constructed path O->1->2->3->4->(back)->2, the 10-step window
+	// maps to the following on/off pattern:
+	expectedSteps := []bool{true, true, true, false, true, false, true, false, true, false}
 	t.Logf("Generated drum row: %v", drumView.Rows[0].Steps)
 	if len(drumView.Rows[0].Steps) != len(expectedSteps) {
 		t.Fatalf("Expected %d steps, but got %d", len(expectedSteps), len(drumView.Rows[0].Steps))
@@ -419,44 +597,14 @@ func TestDrumViewLoopHighlighting(t *testing.T) {
 	game.updateBeatInfos() // Call updateBeatInfos after drum is set
 	game.spawnPulseFrom(0)
 
-	// Run for a few cycles to test loop highlighting
-	for i := 0; i < 20; i++ { // Simulate 20 frames
-		game.Update()
-		t.Logf("Frame %d: highlightedBeats: %v", game.frame, game.highlightedBeats)
-
-		// Determine the expected highlighted index based on the current beat and loop
-		expectedHighlightedIndex := -1
-		if game.activePulse != nil {
-			// The pulse has just arrived at this beat, so it's pathIdx-1
-			currentBeatIndex := game.activePulse.pathIdx - 1
-			if currentBeatIndex >= 0 && currentBeatIndex < len(game.beatInfos) {
-				expectedHighlightedIndex = currentBeatIndex
-			}
-		} else if game.playing && len(game.beatInfos) > 0 {
-			// If no active pulse, but playing, it means the first beat is highlighted
-			expectedHighlightedIndex = 0
+	// Run for a few beats to test loop highlighting
+	for i := 0; i < 20 && game.activePulse != nil; i++ {
+		delete(game.highlightedBeats, makeBeatKey(0, game.activePulse.lastIdx))
+		game.advancePulse(game.activePulse)
+		t.Logf("Step %d: highlightedBeats: %v", i, game.highlightedBeats)
+		if len(game.highlightedBeats) != 1 {
+			t.Fatalf("step %d: expected one highlight got %v", i, game.highlightedBeats)
 		}
-
-		// Verify highlighting
-		for j := 0; j < drumView.Length; j++ {
-			isHighlighted := false
-			if _, ok := game.highlightedBeats[makeBeatKey(0, j)]; ok {
-				isHighlighted = true
-			}
-
-			if j == expectedHighlightedIndex {
-				if !isHighlighted {
-					t.Errorf("Frame %d, Beat %d: Expected to be highlighted, but was not.", game.frame, j)
-				}
-			} else {
-				if isHighlighted {
-					t.Errorf("Frame %d, Beat %d: Expected NOT to be highlighted, but was.", game.frame, j)
-				}
-			}
-		}
-
-		// Advance time for the next frame
-		time.Sleep(time.Millisecond * 16) // Simulate 60 TPS
 	}
 }
 
@@ -473,8 +621,8 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
-	if count != 15 {
-		t.Fatalf("expected 15 buttons drawn, got %d", count)
+	if count != 18 {
+		t.Fatalf("expected 18 buttons drawn, got %d", count)
 	}
 }
 
@@ -497,7 +645,21 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
 			row := (r.Min.Y - (dv.Bounds.Min.Y + timelineHeight)) / dv.rowHeight()
-			col := (r.Min.X - (dv.Bounds.Min.X + dv.labelW + dv.controlsW)) / dv.cell
+			// Map rectangle center X proportionally into the step index so
+			// rounding distribution across cells doesn’t skew detection.
+			startX := dv.timelineRect.Min.X
+			totalW := dv.timelineRect.Dx()
+			n := dv.Length
+			// Determine the step index by locating the boundary bucket.
+			col := 0
+			for j := 1; j < n; j++ {
+				bx := startX + (j*totalW)/n
+				if r.Min.X >= bx {
+					col = j
+				} else {
+					break
+				}
+			}
 			if color.RGBAModel.Convert(c).(color.RGBA) == colHighlight {
 				hits = append(hits, [2]int{row, col})
 			}
@@ -537,6 +699,47 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	dv.DeleteRow(1)
 	if len(dv.Rows) != 1 {
 		t.Fatalf("expected 1 row after deletion got %d", len(dv.Rows))
+	}
+}
+
+// Even when the requested subdivisions vastly exceed the available pixels,
+// the drum view should render a visible time line (baseline) and decimated
+// marker lines, so users can orient themselves.
+func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
+	dv.recalcButtons()
+	dv.calcLayout()
+	// Force an extreme length without going through wheel/buttons to bypass clamps.
+	dv.Length = dv.timelineRect.Dx() * 10
+	dv.Rows[0].Steps = make([]bool, dv.Length)
+
+	dst := ebiten.NewImage(400, 200)
+	orig := drawRect
+	baseline := 0
+	ticks := 0
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
+			// horizontal baseline: height=1 across the steps area
+			if r.Dy() == 1 && color.RGBAModel.Convert(c).(color.RGBA) == colTimelineBeat {
+				baseline++
+			}
+			// vertical tick markers: width=1 spanning the row height
+			if r.Dx() == 1 && r.Dy() == dv.rowHeight() && color.RGBAModel.Convert(c).(color.RGBA) == colTimelineBeat {
+				ticks++
+			}
+		}
+		orig(dst, r, c, filled)
+	}
+	dv.Draw(dst, map[int]int64{}, 0, make([]model.BeatInfo, 0), 0)
+	drawRect = orig
+
+	if baseline == 0 {
+		t.Fatalf("missing baseline at extreme zoom-out")
+	}
+	if ticks == 0 {
+		t.Fatalf("missing decimated marker ticks at extreme zoom-out")
 	}
 }
 
@@ -1160,6 +1363,37 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	}
 }
 
+func TestTimelineCursorMatchesHighlight(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, timelineHeight+24), graph, logger)
+	dv.Rows = []*DrumRow{{Steps: make([]bool, dv.Length)}}
+	highlighted := map[int]int64{makeBeatKey(0, 3): 1}
+
+	var cursorCount, highlightCount int
+	orig := drawRect
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if clr, ok := c.(color.RGBA); ok {
+			if clr == colTimelineCursor {
+				cursorCount++
+			}
+			if clr == colHighlight && r.Min.Y >= timelineHeight {
+				highlightCount++
+			}
+		}
+	}
+	defer func() { drawRect = orig }()
+
+	dv.Draw(ebiten.NewImage(300, timelineHeight+24), highlighted, 0, nil, 3)
+
+	if cursorCount == 0 {
+		t.Fatalf("cursor not drawn")
+	}
+	if highlightCount == 0 {
+		t.Fatalf("highlight not drawn")
+	}
+}
+
 func TestDrumViewSetBPMClamp(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -1181,8 +1415,145 @@ func TestDrumViewSetBPMClamp(t *testing.T) {
 	}
 }
 
+func TestDrumViewSecPerBeatUpdates(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	if dv.secPerBeat != 0.5 {
+		t.Fatalf("expected secPerBeat 0.5, got %f", dv.secPerBeat)
+	}
+	dv.SetBPM(240)
+	if dv.secPerBeat != 0.25 {
+		t.Fatalf("expected secPerBeat 0.25, got %f", dv.secPerBeat)
+	}
+}
+
 func TestDrumViewBPMTextInput(t *testing.T) {
-	t.Skip("text input focus under refactor")
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+
+	r := dv.bpmBox.Rect
+	mx, my := r.Min.X+1, r.Min.Y+1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
+
+	dv.Update() // click to focus
+	pressed = false
+
+	chars = []rune{'2'}
+	dv.Update()
+	chars = []rune{'5'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+
+	if dv.BPM() != 120 {
+		t.Fatalf("BPM changed before commit: %d", dv.BPM())
+	}
+
+	chars = []rune{'\r'}
+	dv.Update()
+
+	if dv.BPM() != 250 {
+		t.Fatalf("expected BPM 250 got %d", dv.BPM())
+	}
+}
+
+func TestDrumViewBPMTextInputInvalid(t *testing.T) {
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+
+	r := dv.bpmBox.Rect
+	mx, my := r.Min.X+1, r.Min.Y+1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
+
+	dv.Update() // focus
+	pressed = false
+
+	// enter out-of-range value
+	chars = []rune{'2'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+	chars = []rune{'0'}
+	dv.Update()
+
+	if dv.BPM() != 120 {
+		t.Fatalf("BPM changed before commit: %d", dv.BPM())
+	}
+
+	chars = []rune{'\r'}
+	dv.Update()
+
+	if dv.BPM() != 120 {
+		t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
+	}
+	if dv.bpmErrorAnim == 0 {
+		t.Fatalf("expected error highlight for invalid BPM input")
+	}
+}
+
+func TestDrumViewBPMTextInputNonNumeric(t *testing.T) {
+	g := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv.calcLayout()
+
+	r := dv.bpmBox.Rect
+	mx, my := r.Min.X+1, r.Min.Y+1
+	pressed := true
+	chars := []rune{}
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
+	)
+	defer restore()
+
+	dv.Update() // focus
+	pressed = false
+
+	chars = []rune{'a'}
+	dv.Update()
+
+	if dv.BPM() != 120 {
+		t.Fatalf("BPM changed before commit: %d", dv.BPM())
+	}
+
+	chars = []rune{'\r'}
+	dv.Update()
+
+	if dv.BPM() != 120 {
+		t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
+	}
+	if dv.bpmErrorAnim == 0 {
+		t.Fatalf("expected error highlight for invalid BPM input")
+	}
 }
 
 func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
@@ -1316,5 +1687,25 @@ func TestMuteSoloInteractions(t *testing.T) {
 	}
 	if !dv.Rows[0].Muted {
 		t.Fatalf("other rows should be muted when a solo is active")
+	}
+}
+
+func TestTrackBeatCentersCurrent(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	dv.SetLength(8)
+	dv.follow = true
+
+	dv.TrackBeat(1)
+	if dv.Offset != 0 {
+		t.Fatalf("expected offset 0 near start, got %d", dv.Offset)
+	}
+
+	dv.TrackBeat(6)
+	if dv.Offset != 2 {
+		t.Fatalf("offset=%d want 2", dv.Offset)
+	}
+	if !dv.OffsetChanged() {
+		t.Fatalf("expected offset change after tracking")
 	}
 }

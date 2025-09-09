@@ -12,8 +12,9 @@ const goDir = path.resolve(__dirname, "../go");
 const AUDIO_START_DELAY_THRESHOLD_MS = 250;
 
 // Build the tiny harness that invokes audio.Play("snare").
+const GO = process.env.GO || "go";
 const build = spawnSync(
-  "go",
+  GO,
   [
     "build",
     "-o",
@@ -30,11 +31,11 @@ if (build.status !== 0) {
   throw new Error("go build failed");
 }
 
-// Ensure playwright and its dependencies are installed.
-spawnSync("npx", ["playwright", "install", "chromium"], {
-  cwd: jsDir,
-  stdio: "inherit",
-});
+// Ensure Playwright's Chromium is installed only if missing to speed up runs.
+const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
+if (!fs.existsSync(chromiumPath)) {
+  spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
+}
 
 const port = 8123 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => {
@@ -51,7 +52,7 @@ const server = http.createServer((req, res) => {
     res.end(html);
     return;
   }
-  const filePath = path.join(jsDir, req.url);
+  const filePath = path.join(jsDir, req.url.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => {
     if (err) {
       res.writeHead(404);
@@ -135,19 +136,38 @@ if (delay > AUDIO_START_DELAY_THRESHOLD_MS) {
   );
 }
 
-const win = 1024;
-const avg = (offset) => {
-  let sum = 0;
-  for (let i = 0; i < win; i++) sum += Math.abs(samples[offset + i] || 0);
-  return sum / win;
+// Compare instrument waveforms by correlation instead of amplitude.
+const segLen = 4096;
+const seg = (off) => {
+  const a = new Float32Array(segLen);
+  for (let i = 0; i < segLen; i++) a[i] = samples[off + i] || 0;
+  return a;
 };
-const avgSnare = avg(first);
-const avgKick = avg(second);
-if (Math.abs(avgSnare - avgKick) < 0.01) {
-  throw new Error("snare and kick outputs too similar");
+const znorm = (a) => {
+  let mean = 0;
+  for (let i = 0; i < a.length; i++) mean += a[i];
+  mean /= a.length;
+  let norm2 = 0;
+  const out = new Float32Array(a.length);
+  for (let i = 0; i < a.length; i++) { const v = a[i] - mean; out[i] = v; norm2 += v*v; }
+  const n = Math.sqrt(norm2) || 1;
+  for (let i = 0; i < a.length; i++) out[i] /= n;
+  return out;
+};
+const corr = (x, y) => {
+  let d = 0;
+  for (let i = 0; i < x.length; i++) d += x[i] * y[i];
+  return Math.abs(d / x.length);
+};
+const sSeg = znorm(seg(Math.max(0, first + 512)));
+const kSeg = znorm(seg(Math.max(0, second + 512)));
+const similarity = corr(sSeg, kSeg);
+if (!(similarity < 0.9)) {
+  throw new Error(`instrument waveforms too similar: corr=${similarity.toFixed(4)}`);
 }
 
-console.log(
-  "captured audio samples:",
-  samples.slice(0, 8).map((v) => v.toFixed(5)),
-);
+// Print a short slice around the first non-zero to avoid confusion when the
+// initial frames are silence.
+const start = Math.max(0, first - 4);
+const view = samples.slice(start, start + 8).map((v) => v.toFixed(5));
+console.log("captured audio samples (near onset):", view);

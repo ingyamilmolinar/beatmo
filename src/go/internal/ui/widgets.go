@@ -32,9 +32,12 @@ func pixel(c color.Color) *ebiten.Image {
 	return img
 }
 
-/* ------------------------------------------------------------------
-   DrawLineCam – world-coords → line with camera transform
-   ------------------------------------------------------------------ */
+/*
+------------------------------------------------------------------
+
+	DrawLineCam – world-coords → line with camera transform
+	------------------------------------------------------------------
+*/
 var lineOpt ebiten.DrawImageOptions
 
 func DrawLineCam(dst *ebiten.Image,
@@ -58,4 +61,3 @@ func DrawLineCam(dst *ebiten.Image,
 
 	dst.DrawImage(pixel(col), &lineOpt)
 }
-

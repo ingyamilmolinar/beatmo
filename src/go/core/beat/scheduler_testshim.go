@@ -37,7 +37,7 @@ func (m *MockGraph) BeatLength() int {
 // AddNode, RemoveNode, GetNodeByID, ToggleStep are not used by the scheduler,
 // so we can provide dummy implementations to satisfy the interface.
 func (m *MockGraph) AddNode(i, j int, nodeType model.NodeType) model.NodeID { return 0 }
-func (m *MockGraph) RemoveNode(id model.NodeID)     {}
+func (m *MockGraph) RemoveNode(id model.NodeID)                             {}
 func (m *MockGraph) GetNodeByID(id model.NodeID) (model.Node, bool) {
 	return model.Node{}, false
 }

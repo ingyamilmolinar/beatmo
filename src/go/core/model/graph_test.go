@@ -25,6 +25,7 @@ func TestCalculateBeatRow_SimplePath(t *testing.T) {
 
 	initialPath := []BeatInfo{
 		{NodeID: n0, NodeType: NodeTypeRegular, I: 0, J: 0},
+		{NodeID: InvalidNodeID, NodeType: NodeTypeInvisible, I: 0, J: 1},
 		{NodeID: n1, NodeType: NodeTypeRegular, I: 0, J: 2},
 	}
 

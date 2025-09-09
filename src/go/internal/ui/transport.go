@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -69,14 +68,20 @@ func (t *Transport) Update() {
 	}
 
 	if t.bpmBox.Focused() {
-		if v, err := strconv.Atoi(t.bpmBox.Value()); err == nil {
-			t.BPM = v
+		if txt := t.bpmBox.Value(); txt != "" {
+			if _, ok := parseBPM(txt); !ok {
+				t.bpmErrorAnim = 1
+			}
 		}
 	} else if prev {
-		if t.bpmBox.Value() == "" {
-			t.BPM = t.bpmPrev
-		} else if v, err := strconv.Atoi(t.bpmBox.Value()); err == nil {
+		txt := t.bpmBox.Value()
+		if txt == "" {
+			t.SetBPM(t.bpmPrev)
+		} else if v, ok := parseBPM(txt); ok {
 			t.SetBPM(v)
+		} else {
+			t.bpmErrorAnim = 1
+			t.SetBPM(t.bpmPrev)
 		}
 		t.bpmBox.SetText(fmt.Sprintf("%d", t.BPM))
 	}

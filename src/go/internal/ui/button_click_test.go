@@ -16,7 +16,7 @@ func TestControlButtonsClickable(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
-	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.uploadBtn}
+	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn, g.drum.uploadBtn}
 	for i, btn := range buttons {
 		called := false
 		btn.OnClick = func() { called = true }
@@ -35,7 +35,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
-	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.uploadBtn}
+	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn, g.drum.uploadBtn}
 	for i := 0; i < len(buttons); i++ {
 		ri := buttons[i].Rect()
 		for j := i + 1; j < len(buttons); j++ {
