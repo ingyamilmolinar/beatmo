@@ -6,8 +6,8 @@ import "testing"
 
 func TestMixerPlaysSequentialVoices(t *testing.T) {
 	m := &mixer{}
-	m.Schedule(Snare{}.NewVoice(120, sampleRate), 0)
-	m.Schedule(Snare{}.NewVoice(120, sampleRate), sampleRate/4)
+	m.Schedule("snare", Snare{}.NewVoice(120, sampleRate), 0)
+	m.Schedule("snare", Snare{}.NewVoice(120, sampleRate), sampleRate/4)
 	buf := make([]byte, sampleRate)
 	m.Read(buf)
 	first := -1

@@ -10,6 +10,7 @@ type Splitter struct {
 	Y        int     // divider position in screen px
 	ratio    float64 // Y / screen height
 	dragging bool    // true while the user is moving it
+	userSet  bool    // set to true after the user drags at least once
 }
 
 func NewSplitter(totalH int) *Splitter {
@@ -21,13 +22,19 @@ func NewSplitter(totalH int) *Splitter {
 // splitter can preserve its relative location when the window resizes.
 func (s *Splitter) Update(totalH int) {
 	const grab = 5 // px hit-box around the divider
-
+	if suppressClicksUntilRelease {
+		if !isMouseButtonPressed(ebiten.MouseButtonLeft) {
+			suppressClicksUntilRelease = false
+		}
+		return
+	}
 	_, y := cursorPosition()
 
 	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
 		// start drag if cursor is near the divider
 		if !s.dragging && utils.Abs(y-s.Y) <= grab {
 			s.dragging = true
+			s.userSet = true
 		}
 		if s.dragging {
 			s.Y = y

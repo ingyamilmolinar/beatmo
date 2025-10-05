@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/beat"
@@ -24,6 +25,15 @@ type Engine struct {
 	subs   []chan Event
 	ctx    context.Context
 	cancel context.CancelFunc
+	// Predictor holds prediction buffers/contexts outside the UI.
+	Predictor *Predictor
+
+	// perf (best-effort): engine ticker interval stats for diagnostics
+	lastTick  time.Time
+	tickCount int64
+	tickSum   time.Duration
+	tickMax   time.Duration
+	tickLogAt time.Time
 }
 
 // New creates a new Engine instance and starts its run loop.
@@ -39,6 +49,23 @@ func New(logger *game_log.Logger) *Engine {
 		ctx:    ctx,
 		cancel: cancel,
 	}
+
+	// Initialize predictor bound to this engine's graph unless explicitly
+	// disabled via env. Default is enabled to make engine the single source
+	// of truth for prediction buffers and contexts.
+	if os.Getenv("USE_ENGINE_PREDICTOR") != "0" { // default ON
+		e.Predictor = NewPredictor(graph)
+	}
+	graph.SetNodeChangedHook(func(id model.NodeID) {
+		if e.Predictor == nil {
+			return
+		}
+		if node, ok := graph.GetNodeByID(id); ok {
+			e.Predictor.UpdateNode(id, node)
+		} else {
+			e.Predictor.DeleteNode(id)
+		}
+	})
 
 	sched.OnTick = func(step int) {
 		evt := Event{Step: step}
@@ -65,6 +92,35 @@ func (e *Engine) run() {
 	for {
 		select {
 		case <-ticker.C:
+			// Perf: measure ticker jitter and log occasionally
+			now := time.Now()
+			if !e.lastTick.IsZero() {
+				dt := now.Sub(e.lastTick)
+				e.tickCount++
+				e.tickSum += dt
+				if dt > e.tickMax {
+					e.tickMax = dt
+				}
+				if e.tickLogAt.IsZero() {
+					e.tickLogAt = now.Add(2 * time.Second)
+				}
+				if now.After(e.tickLogAt) {
+					avg := time.Duration(0)
+					if e.tickCount > 0 {
+						avg = time.Duration(int64(e.tickSum) / e.tickCount)
+					}
+					// Log to stdout; the app’s logger isn’t wired here.
+					// This is for side-by-side desktop/wasm comparison.
+					// Format is stable so tests can grep if desired.
+					// PERF engine: avg=.. max=.. count=..
+					_ = os.Stderr // avoid linter complaining in non-test builds
+					// Use print to avoid import cycles with logger.
+					println("PERF engine ticker:", "avg=", avg.String(), "max=", e.tickMax.String(), "count=", e.tickCount)
+					e.tickCount, e.tickSum, e.tickMax = 0, 0, 0
+					e.tickLogAt = now.Add(2 * time.Second)
+				}
+			}
+			e.lastTick = now
 			e.sched.Tick()
 		case <-e.ctx.Done():
 			return

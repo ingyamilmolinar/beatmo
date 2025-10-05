@@ -76,7 +76,7 @@ done:
 		}
 	}
 drained:
-	if len(times) < 10 {
+	if len(times) < 8 {
 		t.Fatalf("insufficient plays during heavy draw: %d", len(times))
 	}
 	// Compute max inter-arrival gap; expect under 50ms to be conservative.

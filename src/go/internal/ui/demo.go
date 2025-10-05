@@ -4,12 +4,36 @@ package ui
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/ingyamilmolinar/tunkul/core/model"
+	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
+
+// expandHome expands a leading ~ in a path to the user's home directory.
+func expandHome(p string) string {
+	if p == "" {
+		return p
+	}
+	if p[0] != '~' {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, "~\\") {
+		return filepath.Join(home, p[2:])
+	}
+	return p
+}
 
 // buildDemo constructs a multi-row, multi-length circuit showcasing the game.
 // It places four instruments (kick, snare, two hi-hats) and creates distinct
@@ -17,6 +41,76 @@ import (
 func (g *Game) buildDemo() {
 	if g.demoBuilt || g.drum == nil || g.graph == nil {
 		return
+	}
+
+	// Optional override: when TUNKUL_DEMO_CONFIG (or TUNKUL_CONFIG) is set,
+	// load that JSON as the initial circuit.
+	cfg := os.Getenv("TUNKUL_DEMO_CONFIG")
+	if cfg == "" {
+		cfg = os.Getenv("TUNKUL_CONFIG")
+	}
+	if cfg != "" {
+		path := expandHome(cfg)
+		g.logger.Infof("[DEMO] Loading env config: %s", path)
+		if data, err := os.ReadFile(path); err == nil {
+			if err := g.Import(data); err == nil {
+				g.logger.Infof("[DEMO] Imported env config: rows=%d nodes=%d start=%v", len(g.drum.Rows), len(g.graph.Nodes), g.graph.StartNodeID)
+				// If the imported config lacks instruments, create a sensible
+				// default drum row and set a start node so playback and the
+				// drum view work out of the box.
+				if len(g.drum.Rows) == 0 {
+					// Pick the lowest non-invisible node id as origin.
+					minID := model.InvalidNodeID
+					for id, n := range g.graph.Nodes {
+						if n.Type == model.NodeTypeInvisible {
+							continue
+						}
+						if minID == model.InvalidNodeID || id < minID {
+							minID = id
+						}
+					}
+					if minID != model.InvalidNodeID {
+						g.drum.AddRow()
+						g.drum.selRow = 0
+						g.drum.SetInstrument("kick")
+						if len(g.drum.Rows) > 0 {
+							g.drum.Rows[0].Name = "Row"
+							g.drum.Rows[0].Origin = minID
+							g.drum.Rows[0].Node = g.nodeByID(minID)
+						}
+						g.start = g.nodeByID(minID)
+						g.graph.StartNodeID = minID
+						g.logger.Infof("[DEMO] Added default row and start from node %d", minID)
+					}
+				} else if g.graph.StartNodeID == model.InvalidNodeID && g.drum.Rows[0].Origin != model.InvalidNodeID {
+					// Ensure graph has a valid start matching row 0.
+					id := g.drum.Rows[0].Origin
+					g.graph.StartNodeID = id
+					g.start = g.nodeByID(id)
+					g.logger.Infof("[DEMO] Set start from row 0 origin: %d", id)
+				}
+				// Recompute beat paths so drum view and playback are ready.
+				g.updateBeatInfos()
+				g.logger.Infof("[DEMO] After import: beatPath[0]=%d drumLen=%d rows=%d", len(g.beatInfosByRow[0]), g.drum.Length, len(g.drum.Rows))
+				g.demoBuilt = true
+				return
+			} else {
+				g.logger.Infof("[DEMO] Failed to import %s: %v (falling back)", cfg, err)
+			}
+		} else {
+			g.logger.Infof("[DEMO] Cannot read %s: %v (falling back)", cfg, err)
+		}
+	}
+
+	// Default demo from embedded JSON. If import fails for any reason, fall
+	// back to the programmatic construction below to guarantee a usable demo.
+	if len(assets_pkg.DefaultDemoJSON) > 0 {
+		if err := g.Import(assets_pkg.DefaultDemoJSON); err == nil {
+			g.demoBuilt = true
+			return
+		}
+		// Log failure but proceed with programmatic fallback
+		// (err in scope above)
 	}
 
 	// Aim for a human-friendly four-on-the-floor groove at ~100 BPM.

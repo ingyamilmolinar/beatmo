@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -19,6 +21,13 @@ func main() {
 	flag.Parse()
 
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
+
+	// Optional pprof server for profiling: enable with PPROF=1 and visit http://localhost:6060
+	if os.Getenv("PPROF") == "1" {
+		go func() {
+			_ = http.ListenAndServe("localhost:6060", nil)
+		}()
+	}
 
 	// Create an instance of our game
 	g := ui.New(logger)

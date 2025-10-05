@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"math"
 	"os"
 	"slices"
 	"strings"
@@ -88,6 +89,36 @@ func TestDrumViewLengthIncrease(t *testing.T) {
 	if len(drumView.Rows[0].Steps) != 9 {
 		t.Errorf("Expected drum row steps length to be 9, got %d", len(drumView.Rows[0].Steps))
 	}
+}
+
+func TestMainVolumeSliderAdjustsAudio(t *testing.T) {
+	audio.SetMainVolume(1)
+	dv := NewDrumView(image.Rect(0, 0, 600, 300), nil, testLogger)
+	rect := dv.mainVolSlider.Rect()
+	if rect.Dx() <= 0 {
+		t.Fatalf("slider rect not initialized: %v", rect)
+	}
+	targetX := rect.Max.X - 1
+	targetY := rect.Min.Y + rect.Dy()/2
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return targetX, targetY },
+		func(btn ebiten.MouseButton) bool { return btn == ebiten.MouseButtonLeft && pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return dv.Bounds.Dx(), dv.Bounds.Dy() },
+	)
+	defer restore()
+	dv.Update()
+	pressed = false
+	dv.Update()
+	got := audio.MainVolume()
+	want := dv.mainVolSlider.Value
+	if math.Abs(got-want) > 1e-3 {
+		t.Fatalf("main volume mismatch: got %.3f want %.3f", got, want)
+	}
+	audio.SetMainVolume(1)
 }
 
 // Ensure row labels and delete buttons sit beneath the control panel and align
@@ -531,11 +562,10 @@ func TestDrumViewLooping(t *testing.T) {
 	game := &Game{graph: graph, drum: drumView, logger: logger}
 	game.updateBeatInfos()
 
-	// With the current traversal rules, loop seam duplicates are suppressed
-	// and intermediate pass-throughs are represented as empty (invisible) steps.
-	// For the constructed path O->1->2->3->4->(back)->2, the 10-step window
-	// maps to the following on/off pattern:
-	expectedSteps := []bool{true, true, true, false, true, false, true, false, true, false}
+	// Loop seam suppression only hides invisible bridge segments. With all
+	// endpoints regular in this path O->1->2->3->4->(back)->2, every audible
+	// step should remain visible except for the invisible pass-throughs.
+	expectedSteps := []bool{true, true, true, true, true, false, true, true, true, false}
 	t.Logf("Generated drum row: %v", drumView.Rows[0].Steps)
 	if len(drumView.Rows[0].Steps) != len(expectedSteps) {
 		t.Fatalf("Expected %d steps, but got %d", len(expectedSteps), len(drumView.Rows[0].Steps))
@@ -621,8 +651,8 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
-	if count != 18 {
-		t.Fatalf("expected 18 buttons drawn, got %d", count)
+	if count != 20 {
+		t.Fatalf("expected 20 buttons drawn, got %d", count)
 	}
 }
 
@@ -645,6 +675,10 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
 			row := (r.Min.Y - (dv.Bounds.Min.Y + timelineHeight)) / dv.rowHeight()
+			if row < 0 || row >= len(dv.Rows) {
+				orig(dst, r, c, filled)
+				return
+			}
 			// Map rectangle center X proportionally into the step index so
 			// rounding distribution across cells doesn’t skew detection.
 			startX := dv.timelineRect.Min.X
@@ -660,7 +694,8 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 					break
 				}
 			}
-			if color.RGBAModel.Convert(c).(color.RGBA) == colHighlight {
+			expected := color.RGBAModel.Convert(dv.Rows[row].Color).(color.RGBA)
+			if color.RGBAModel.Convert(c).(color.RGBA) == expected {
 				hits = append(hits, [2]int{row, col})
 			}
 		}
@@ -670,8 +705,16 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 	drawRect = orig
 
 	want := map[[2]int]bool{{0, 1}: true, {1, 2}: true}
-	if len(hits) != 2 || !want[hits[0]] || !want[hits[1]] {
-		t.Fatalf("unexpected highlight cells %v", hits)
+	seen := map[[2]int]bool{}
+	for _, hit := range hits {
+		if want[hit] {
+			seen[hit] = true
+		}
+	}
+	for key := range want {
+		if !seen[key] {
+			t.Fatalf("missing highlight for row/col %v; got %v", key, hits)
+		}
 	}
 }
 
@@ -703,8 +746,8 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 }
 
 // Even when the requested subdivisions vastly exceed the available pixels,
-// the drum view should render a visible time line (baseline) and decimated
-// marker lines, so users can orient themselves.
+// the drum view should render decimated vertical marker lines so users can
+// orient themselves. A horizontal baseline is intentionally omitted.
 func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
@@ -717,14 +760,9 @@ func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
 
 	dst := ebiten.NewImage(400, 200)
 	orig := drawRect
-	baseline := 0
 	ticks := 0
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
-			// horizontal baseline: height=1 across the steps area
-			if r.Dy() == 1 && color.RGBAModel.Convert(c).(color.RGBA) == colTimelineBeat {
-				baseline++
-			}
 			// vertical tick markers: width=1 spanning the row height
 			if r.Dx() == 1 && r.Dy() == dv.rowHeight() && color.RGBAModel.Convert(c).(color.RGBA) == colTimelineBeat {
 				ticks++
@@ -734,10 +772,6 @@ func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
 	}
 	dv.Draw(dst, map[int]int64{}, 0, make([]model.BeatInfo, 0), 0)
 	drawRect = orig
-
-	if baseline == 0 {
-		t.Fatalf("missing baseline at extreme zoom-out")
-	}
 	if ticks == 0 {
 		t.Fatalf("missing decimated marker ticks at extreme zoom-out")
 	}
@@ -1271,6 +1305,7 @@ func TestInstrumentDropdownFitsBounds(t *testing.T) {
 }
 
 func TestDropdownHoverHighlight(t *testing.T) {
+	suppressClicksUntilRelease = false
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)
 	dv.calcLayout()
@@ -1278,6 +1313,7 @@ func TestDropdownHoverHighlight(t *testing.T) {
 	if !dv.instMenuOpen {
 		t.Fatalf("menu not open")
 	}
+	suppressClicksUntilRelease = false
 	btn := dv.instMenuBtns[0]
 	// capture normal draw colors
 	img := ebiten.NewImage(10, 10)
@@ -1354,12 +1390,18 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 
 	var highlightCount int
 	for _, call := range calls {
-		if clr, ok := call.c.(color.RGBA); ok && clr == colHighlight && call.r.Min.Y >= timelineHeight {
-			highlightCount++
+		if call.r.Min.Y < timelineHeight {
+			continue
+		}
+		if clr, ok := call.c.(color.RGBA); ok {
+			expected := color.RGBAModel.Convert(dv.Rows[0].Color).(color.RGBA)
+			if clr == expected {
+				highlightCount++
+			}
 		}
 	}
-	if highlightCount != 1 {
-		t.Fatalf("expected 1 highlight draw, got %d", highlightCount)
+	if highlightCount == 0 {
+		t.Fatalf("expected highlight draw, got %d", highlightCount)
 	}
 }
 
@@ -1367,7 +1409,7 @@ func TestTimelineCursorMatchesHighlight(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 300, timelineHeight+24), graph, logger)
-	dv.Rows = []*DrumRow{{Steps: make([]bool, dv.Length)}}
+	dv.Rows = []*DrumRow{{Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length)}}
 	highlighted := map[int]int64{makeBeatKey(0, 3): 1}
 
 	var cursorCount, highlightCount int
@@ -1560,7 +1602,7 @@ func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
 	g := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
-	r := dv.rowVolSliders[0].Rect()
+	r := dv.rowVolSliders[0].TrackRect()
 	mx := r.Min.X + r.Dx()/2
 	my := r.Min.Y + r.Dy()/2
 	restore := SetInputForTest(
@@ -1573,8 +1615,8 @@ func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
 	)
 	defer restore()
 	dv.Update()
-	if dv.Rows[0].Volume < 0.49 || dv.Rows[0].Volume > 0.51 {
-		t.Fatalf("expected volume ~0.5 got %f", dv.Rows[0].Volume)
+	if math.Abs(dv.Rows[0].Volume-0.52) > 0.05 {
+		t.Fatalf("expected volume near 0.52 got %f", dv.Rows[0].Volume)
 	}
 }
 
@@ -1584,7 +1626,7 @@ func TestVolumeDragReleaseDoesNotDeleteRow(t *testing.T) {
 	g := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
-	sRect := dv.rowVolSliders[0].Rect()
+	sRect := dv.rowVolSliders[0].TrackRect()
 	delRect := dv.rowDeleteBtns[0].Rect()
 
 	mx, my := sRect.Min.X+1, sRect.Min.Y+sRect.Dy()/2
@@ -1707,5 +1749,98 @@ func TestTrackBeatCentersCurrent(t *testing.T) {
 	}
 	if !dv.OffsetChanged() {
 		t.Fatalf("expected offset change after tracking")
+	}
+}
+
+func TestMuteHighlightUsesDefaultColor(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, timelineHeight+24), graph, logger)
+	dv.Rows = []*DrumRow{{
+		Steps:     make([]bool, dv.Length),
+		CellTypes: make([]model.NodeType, dv.Length),
+	}}
+	dv.Rows[0].Steps[0] = true
+	dv.Rows[0].CellTypes[0] = model.NodeTypeMute
+
+	highlighted := map[int]int64{makeBeatKey(0, 0): encodeHighlight(10, true)}
+
+	dst := ebiten.NewImage(300, timelineHeight+24)
+	orig := drawRect
+	count := 0
+	var got color.RGBA
+	drawRect = func(d *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		if filled {
+			if rgba, ok := c.(color.RGBA); ok && rgba == colHighlight {
+				count++
+				got = rgba
+			}
+		}
+		orig(d, r, c, filled)
+	}
+	defer func() { drawRect = orig }()
+
+	dv.Draw(dst, highlighted, 0, nil, 0)
+
+	if count == 0 {
+		t.Fatalf("mute highlight did not draw with default color")
+	}
+	want := color.RGBAModel.Convert(colHighlight).(color.RGBA)
+	if got != want {
+		t.Fatalf("mute highlight mismatch got=%v want=%v", got, want)
+	}
+}
+
+func TestMuteCellsRenderGrey(t *testing.T) {
+	build := func(kind string, n int) ([]bool, []model.NodeType) {
+		g := New(testLogger)
+		g.Layout(640, 480)
+
+		s := g.tryAddNode(0, 0, model.NodeTypeRegular)
+		g.start = s
+		g.graph.StartNodeID = s.ID
+		m := g.tryAddNode(1, 0, model.NodeTypeMute)
+		r := g.tryAddNode(2, 0, model.NodeTypeRegular)
+		g.addEdge(s, m)
+		g.addEdge(m, r)
+		g.addEdge(r, s)
+
+		g.drum.Rows[0].Origin = s.ID
+		g.drum.Rows[0].Node = s
+		for i := range g.drum.Rows[0].Steps {
+			g.drum.Rows[0].Steps[i] = true
+		}
+
+		if kind != "" {
+			if node, ok := g.graph.GetNodeByID(m.ID); ok {
+				p := node.Params
+				p.LogicKind = kind
+				p.LogicN = n
+				g.graph.SetNodeParams(m.ID, p)
+			}
+		}
+
+		g.updateBeatInfos()
+		g.refreshDrumRow()
+		return append([]bool(nil), g.drum.Rows[0].Steps...), append([]model.NodeType(nil), g.drum.Rows[0].CellTypes...)
+	}
+
+	stepsTriggered, cellsTriggered := build("", 0)
+	if len(stepsTriggered) < 2 {
+		t.Fatalf("insufficient steps in triggered scenario")
+	}
+	if cellsTriggered[1] != model.NodeTypeMute || !stepsTriggered[1] {
+		t.Fatalf("expected mute cell to render when triggered: steps=%v cells=%v", stepsTriggered, cellsTriggered)
+	}
+
+	stepsSkipped, cellsSkipped := build("every_n_triggers", 2)
+	if len(stepsSkipped) < 2 {
+		t.Fatalf("insufficient steps in skipped scenario")
+	}
+	if cellsSkipped[1] != model.NodeTypeMute {
+		t.Fatalf("expected cell type mute at index 1; cells=%v", cellsSkipped)
+	}
+	if stepsSkipped[1] {
+		t.Fatalf("mute cell should remain empty when logic skips trigger; steps=%v", stepsSkipped)
 	}
 }

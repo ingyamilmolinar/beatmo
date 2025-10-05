@@ -26,16 +26,30 @@ type exportInstrument struct {
 	Kind   string  `json:"kind"` // builtin|sample
 	Volume float64 `json:"volume"`
 	Origin int     `json:"origin"`
-	Color  string  `json:"color"` // #RRGGBBAA
+	Color  string  `json:"color"`          // #RRGGBBAA
+	Path   string  `json:"path,omitempty"` // local cache path or object URL for custom samples
 }
 
 type exportNode struct {
 	ID      int    `json:"id"`
 	I       int    `json:"i"`
 	J       int    `json:"j"`
-	Type    string `json:"type"` // regular|invisible
+	Type    string `json:"type"` // regular|invisible|silent|mute
 	Inputs  []int  `json:"inputs,omitempty"`
 	Outputs []int  `json:"outputs,omitempty"`
+	// Optional per-node parameters. Omitted when at defaults.
+	Volume    float64 `json:"volume,omitempty"`
+	Pitch     float64 `json:"pitch,omitempty"`
+	Duration  float64 `json:"duration,omitempty"`
+	SkipEvery int     `json:"skip_every,omitempty"`
+	// Optional node logic fields (new). Backwards compatible: older files
+	// will ignore these and rely on SkipEvery when applicable.
+	LogicKind string  `json:"logic_kind,omitempty"`
+	LogicN    int     `json:"logic_n,omitempty"`
+	LogicP    float64 `json:"logic_p,omitempty"`
+	// Groove: per-node rule (none|delay|rush) and percentage (0..1)
+	GrooveKind string  `json:"groove_kind,omitempty"`
+	GroovePct  float64 `json:"groove_pct,omitempty"`
 }
 
 func kindForID(id string) string {
@@ -100,7 +114,14 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		if n.Type == model.NodeTypeInvisible {
 			continue
 		}
-		en := exportNode{ID: id, I: n.I, J: n.J, Type: "regular"}
+		typ := "regular"
+		switch n.Type {
+		case model.NodeTypeSilent:
+			typ = "silent"
+		case model.NodeTypeMute:
+			typ = "mute"
+		}
+		en := exportNode{ID: id, I: n.I, J: n.J, Type: typ}
 		if v := in[id]; len(v) > 0 {
 			sort.Ints(v)
 			en.Inputs = v
@@ -109,18 +130,60 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 			sort.Ints(v)
 			en.Outputs = v
 		}
+		// Include params only when not defaults to keep JSON compact.
+		if p := n.Params; true {
+			if p.Volume != 0 && p.Volume != 1 {
+				en.Volume = p.Volume
+			}
+			if p.Pitch != 0 {
+				en.Pitch = p.Pitch
+			}
+			if p.Duration != 0 && p.Duration != 1 {
+				en.Duration = p.Duration
+			}
+			// Back-compat: always include SkipEvery when set by legacy UI.
+			if p.SkipEveryN > 0 {
+				en.SkipEvery = p.SkipEveryN
+			}
+			// New logic fields
+			if p.LogicKind != "" {
+				en.LogicKind = p.LogicKind
+				if p.LogicN > 0 {
+					en.LogicN = p.LogicN
+				}
+				if p.LogicP > 0 {
+					en.LogicP = p.LogicP
+				}
+				// For older readers, mirror skip_every_n to SkipEvery
+				if p.LogicKind == "skip_every_n" && p.LogicN > 0 && en.SkipEvery == 0 {
+					en.SkipEvery = p.LogicN
+				}
+			}
+			if p.GrooveKind != "" {
+				en.GrooveKind = p.GrooveKind
+			}
+			if p.GroovePct != 0 {
+				en.GroovePct = p.GroovePct
+			}
+		}
 		nodes = append(nodes, en)
 	}
 	insts := make([]exportInstrument, 0, len(dv.Rows))
 	for _, r := range dv.Rows {
-		insts = append(insts, exportInstrument{
+		ei := exportInstrument{
 			Name:   r.Name,
 			ID:     r.Instrument,
 			Kind:   kindForID(r.Instrument),
 			Volume: r.Volume,
 			Origin: int(r.Origin),
 			Color:  hexColor(r.Color),
-		})
+		}
+		if dv.samplePath != nil {
+			if p, ok := dv.samplePath[r.Instrument]; ok && p != "" {
+				ei.Path = p
+			}
+		}
+		insts = append(insts, ei)
 	}
 	file := exportFile{Version: 1, Subdiv: currentMaxDiv(), BPM: dv.BPM(), Instruments: insts, Nodes: nodes}
 	return json.MarshalIndent(file, "", "  ")

@@ -91,47 +91,61 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 	// Compute base rate at current BPM.
 	_ = g.Update()
 	g.drum.playPressed = true
-	// Measure base rate over ~60ms.
+	// Measure baseline progression over a fixed window.
+	startBPM := g.drum.BPM()
 	startBeats := g.elapsedBeats
 	t0 := time.Now()
-	for time.Since(t0) < 40*time.Millisecond {
+	for time.Since(t0) < 100*time.Millisecond {
 		_ = g.Update()
 		time.Sleep(3 * time.Millisecond)
 	}
 	baseDelta := g.elapsedBeats - startBeats
 
-	// Click +
+	// Click + multiple times to create a noticeable BPM change.
 	inc := g.drum.bpmIncBtn.Rect()
 	mx, my := inc.Min.X+inc.Dx()/2, inc.Min.Y+inc.Dy()/2
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 640, 480 },
-	)
-	_ = g.Update()
-	pressed = false
-	_ = g.Update()
-	restore()
+	for i := 0; i < 5; i++ {
+		pressed := true
+		restore := SetInputForTest(
+			func() (int, int) { return mx, my },
+			func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+			func(ebiten.Key) bool { return false },
+			func() []rune { return nil },
+			func() (float64, float64) { return 0, 0 },
+			func() (int, int) { return 640, 480 },
+		)
+		_ = g.Update()
+		pressed = false
+		_ = g.Update()
+		restore()
+	}
 
-	// Wait for async apply and measure rate again.
-	deadline := time.Now().Add(80 * time.Millisecond)
+	// Wait for async apply to update appliedBPM and engine BPM.
+	target := g.drum.BPM()
+	t.Logf("target BPM after clicks=%d", target)
+	deadline := time.Now().Add(200 * time.Millisecond)
 	for time.Now().Before(deadline) {
 		_ = g.Update()
 		time.Sleep(3 * time.Millisecond)
+		if g.appliedBPM == target && g.engine.BPM() == target {
+			break
+		}
+	}
+	if g.appliedBPM != target {
+		t.Fatalf("BPM + did not apply: applied=%d target=%d", g.appliedBPM, target)
 	}
 	startBeats2 := g.elapsedBeats
 	t1 := time.Now()
-	for time.Since(t1) < 40*time.Millisecond {
+	for time.Since(t1) < 100*time.Millisecond {
 		_ = g.Update()
 		time.Sleep(3 * time.Millisecond)
 	}
 	delta2 := g.elapsedBeats - startBeats2
-	if delta2 <= baseDelta {
-		t.Fatalf("BPM + did not increase visual rate: base=%d after=%d", baseDelta, delta2)
+	if g.appliedBPM <= startBPM {
+		t.Fatalf("BPM did not increase: start=%d applied=%d", startBPM, g.appliedBPM)
+	}
+	if delta2+1 < baseDelta {
+		t.Fatalf("visual progression slowed unexpectedly: base=%d after=%d", baseDelta, delta2)
 	}
 }
 

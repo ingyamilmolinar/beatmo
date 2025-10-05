@@ -139,6 +139,28 @@ func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed 
 	drawButton(dst, animRect, s.Fill, s.Border, pressed)
 }
 
+// ColorSwatchStyle draws a solid color swatch button whose fill is provided
+// dynamically via a function. This is used for per-row color selection where
+// each button reflects the current row color.
+type ColorSwatchStyle struct {
+	Color  func() color.Color
+	Border color.Color
+}
+
+func (s ColorSwatchStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
+	col := color.Color(color.RGBA{200, 200, 200, 255})
+	if s.Color != nil {
+		if c := s.Color(); c != nil {
+			col = c
+		}
+	}
+	// Slight hover brighten for feedback.
+	if hovered && !pressed {
+		col = adjustColor(col, 20)
+	}
+	drawButton(dst, r, col, s.Border, pressed)
+}
+
 // TextInputStyle styles a text input box.
 type TextInputStyle struct {
 	Fill   color.Color
@@ -191,7 +213,11 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 		}
 	}
 	if highlighted {
-		fill = s.Highlight
+		if onCol != nil {
+			fill = onCol
+		} else {
+			fill = s.Highlight
+		}
 	}
 	drawRect(dst, r, fill, true)
 	drawRect(dst, r, s.Border, false)

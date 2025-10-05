@@ -2,10 +2,10 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 const (
@@ -37,7 +37,27 @@ type Button struct {
 	hovered bool
 	Repeat  bool
 	held    int
+	// ConsumeOnPress: when true, after the first press triggers OnClick, suppress
+	// any further button clicks across the UI until the mouse is released. Use
+	// this for destructive actions to avoid cascading operations when the layout
+	// changes under a held cursor.
+	ConsumeOnPress bool
+	// Optional icon to draw inside the button. When set, the icon is drawn
+	// using simple vector primitives so it renders under the default Ebiten
+	// debug font (which lacks many Unicode glyphs). Supported values:
+	// "play", "pause", "stop", "pencil". IconColor defaults to
+	// colButtonBorder when zero.
+	Icon      string
+	IconColor color.Color
 }
+
+// Global guard to prevent multiple buttons from firing while a mouse press is
+// held after a non-repeat click caused the UI to reflow under the cursor.
+var suppressClicksUntilRelease bool
+
+// SuppressClicksUntilMouseUp enables the global guard; the next mouse release
+// clears it inside Handle.
+func SuppressClicksUntilMouseUp() { suppressClicksUntilRelease = true }
 
 // NewButton constructs a button with the given label, style, and optional click handler.
 func NewButton(text string, style ButtonVisual, onClick func()) *Button {
@@ -56,7 +76,33 @@ func (b *Button) Draw(dst *ebiten.Image) {
 		b.Style.Draw(dst, b.r, b.pressed, b.hovered)
 	}
 	tr := b.textRect()
-	ebitenutil.DebugPrintAt(dst, b.Text, tr.Min.X, tr.Min.Y)
+	spr := TextSprite(b.Text)
+	var op ebiten.DrawImageOptions
+	op.GeoM.Translate(float64(tr.Min.X), float64(tr.Min.Y))
+	dst.DrawImage(spr, &op)
+	// Icon overlay (font-independent)
+	if b.Icon != "" {
+		col := b.IconColor
+		if col == nil {
+			col = colButtonBorder
+		}
+		// Leave a small margin inside the button bounds.
+		pad := 3
+		if b.r.Dx() < 10 || b.r.Dy() < 10 {
+			pad = 2
+		}
+		box := image.Rect(b.r.Min.X+pad, b.r.Min.Y+pad, b.r.Max.X-pad, b.r.Max.Y-pad)
+		switch b.Icon {
+		case "play":
+			drawPlayIcon(dst, box, col)
+		case "pause":
+			drawPauseIcon(dst, box, col)
+		case "stop":
+			drawStopIcon(dst, box, col)
+		case "pencil":
+			drawPencilIcon(dst, box, col)
+		}
+	}
 }
 
 // textRect returns the rectangle occupied by the button's text when drawn.
@@ -70,6 +116,14 @@ func (b *Button) textRect() image.Rectangle {
 
 // Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
 func (b *Button) Handle(mx, my int, pressed bool) bool {
+	if suppressClicksUntilRelease {
+		if !pressed {
+			suppressClicksUntilRelease = false
+		}
+		b.pressed = false
+		b.held = 0
+		return false
+	}
 	inside := image.Pt(mx, my).In(b.r)
 	b.hovered = inside
 	if pressed && inside {
@@ -77,6 +131,9 @@ func (b *Button) Handle(mx, my int, pressed bool) bool {
 		if b.held == 1 {
 			if b.OnClick != nil {
 				b.OnClick()
+			}
+			if b.ConsumeOnPress {
+				suppressClicksUntilRelease = true
 			}
 		} else if b.Repeat && b.repeatTick() {
 			if b.OnClick != nil {

@@ -84,8 +84,10 @@ func TestBPMFunctional60(t *testing.T) {
 		t.Fatalf("no intervals computed; times=%v", times)
 	}
 	for i, d := range intervals {
-		if d < 970*time.Millisecond || d > 1030*time.Millisecond {
-			t.Fatalf("interval %d not ~1s: got %v (events=%d)", i, d, len(times))
+		low := 998*time.Millisecond + 500*time.Microsecond
+		high := 1001*time.Millisecond + 500*time.Microsecond
+		if d < low || d > high { // ±1.5ms
+			t.Fatalf("interval %d not ~1s (±1.5ms): got %v (events=%d)", i, d, len(times))
 		}
 	}
 }
@@ -174,7 +176,7 @@ func TestBPMStressShortSegmentsHighBPM(t *testing.T) {
 		t.Fatalf("no audio callbacks captured")
 	}
 	expected := (60_000.0 / float64(bpm)) / 32.0 // ms per corner at 1/32 beat
-	tol := 8.0                                   // ms
+	tol := 1.8                                   // ms (tight but robust)
 	for id, arr := range got {
 		if len(arr) < 3 {
 			t.Fatalf("insufficient events for %s: %d", id, len(arr))
@@ -268,7 +270,7 @@ func TestHighlightAudioSync25ms(t *testing.T) {
 	hl := hlTimes[1:n]
 	au := auTimes[1:n]
 
-	tol := 5.0 // ms
+	tol := 0.05 // ms (50µs)
 	for i := 0; i < len(hl) && i < len(au); i++ {
 		diff := au[i].Sub(hl[i]).Seconds() * 1000
 		if diff < 0 {

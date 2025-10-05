@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -33,6 +34,8 @@ func buildSubdivLoop(g *Game) {
 // collapse into a burst. This catches a regression where the scheduler jumps
 // ahead relative to the original playStart when BPM changes.
 func TestBPMChange_NoAudioBurst(t *testing.T) {
+	os.Setenv("BPM_TIMING_TEST", "1")
+	defer os.Unsetenv("BPM_TIMING_TEST")
 	g := New(testLogger)
 	g.SetUseSequencerForTest(true)
 	w, h := 800, 600
@@ -49,9 +52,13 @@ func TestBPMChange_NoAudioBurst(t *testing.T) {
 
 	buildSubdivLoop(g)
 
-	// Capture audio callback times.
-	var times []time.Time
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { times = append(times, time.Now()) })
+	// Capture scheduled subdivision indices via scheduleHook.
+	var idxs []int
+	g.scheduleHook = func(row, idx int) {
+		if row == 0 {
+			idxs = append(idxs, idx)
+		}
+	}
 
 	// Start at 120 BPM.
 	g.drum.SetBPM(120)
@@ -64,23 +71,24 @@ func TestBPMChange_NoAudioBurst(t *testing.T) {
 
 	// Start playback and run briefly to collect some events.
 	g.drum.playPressed = true
-	run1 := time.Now().Add(200 * time.Millisecond)
+	run1 := time.Now().Add(80 * time.Millisecond)
 	for time.Now().Before(run1) {
 		_ = g.Update()
 		time.Sleep(2 * time.Millisecond)
 	}
 
 	// Change BPM upward significantly to magnify any burst if present.
+	idxs = nil
 	g.drum.SetBPM(240)
 	// Let updates flow while capturing more events.
-	run2 := time.Now().Add(250 * time.Millisecond)
+	run2 := time.Now().Add(120 * time.Millisecond)
 	for time.Now().Before(run2) {
 		_ = g.Update()
 		time.Sleep(2 * time.Millisecond)
 	}
 
-	if len(times) < 8 {
-		t.Fatalf("insufficient audio events recorded: %d", len(times))
+	if len(idxs) < 8 {
+		t.Fatalf("insufficient audio events recorded: %d", len(idxs))
 	}
 
 	// Expected interval between subdivision callbacks at 240 BPM.
@@ -89,8 +97,12 @@ func TestBPMChange_NoAudioBurst(t *testing.T) {
 	expected := 60.0 / (240.0 * div)
 	// Tolerate scheduling jitter; flag a burst if an interval drops below 60% of expected.
 	thresh := expected * 0.6
-	for i := 1; i < len(times); i++ {
-		dt := times[i].Sub(times[i-1]).Seconds()
+	for i := 1; i < len(idxs); i++ {
+		delta := idxs[i] - idxs[i-1]
+		if delta <= 0 {
+			continue
+		}
+		dt := (float64(delta) / div) * (60.0 / 240.0)
 		if dt < thresh {
 			t.Fatalf("audio burst detected: interval=%.4fms < %.4fms", dt*1000, thresh*1000)
 		}

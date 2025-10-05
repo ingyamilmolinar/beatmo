@@ -5,9 +5,10 @@ import (
 	"testing"
 )
 
-// Test that placing a node on a pass-through intersection (where an edge runs)
-// does not change the beat path or drum view state.
-func TestPlaceNodeOnPassThroughDoesNotChangeBeat(t *testing.T) {
+// With auto-stitching enabled, placing a node on a pass-through intersection
+// (where an edge runs) should split that edge so the new node becomes part of
+// the traversal.
+func TestPlaceNodeOnPassThroughSplitsEdge(t *testing.T) {
 	g := New(testLogger)
 	g.Layout(640, 480)
 
@@ -21,37 +22,19 @@ func TestPlaceNodeOnPassThroughDoesNotChangeBeat(t *testing.T) {
 	g.addEdge(c, d)
 	g.addEdge(d, a)
 
-	// Capture initial beat path and drum view state.
-	g.updateBeatInfos()
-	initial := append([]model.BeatInfo(nil), g.beatInfos...)
-	if len(g.drum.Rows) == 0 {
-		t.Fatalf("no drum rows")
-	}
-	steps0 := append([]bool(nil), g.drum.Rows[0].Steps...)
-	length0 := g.drum.Length
-
 	// Place a node on a pass-through intersection along edge (0,0)->(2,0): at (1,0).
-	g.tryAddNode(1, 0, model.NodeTypeRegular)
-
-	// Verify beat path unchanged.
-	if len(g.beatInfos) != len(initial) {
-		t.Fatalf("beat path length changed: %d -> %d", len(initial), len(g.beatInfos))
+	mid := g.tryAddNode(1, 0, model.NodeTypeRegular)
+	if mid == nil {
+		t.Fatalf("failed to insert mid node")
 	}
-	for i := range initial {
-		if initial[i].NodeID != g.beatInfos[i].NodeID || initial[i].NodeType != g.beatInfos[i].NodeType || initial[i].I != g.beatInfos[i].I || initial[i].J != g.beatInfos[i].J {
-			t.Fatalf("beat info changed at %d: before=%+v after=%+v", i, initial[i], g.beatInfos[i])
-		}
+	// Verify the original edge is replaced by two edges through the new node.
+	if _, ok := g.graph.Edges[[2]model.NodeID{a.ID, b.ID}]; ok {
+		t.Fatalf("original edge still present in graph")
 	}
-	// Drum steps and length unchanged.
-	if g.drum.Length != length0 {
-		t.Fatalf("drum length changed: %d -> %d", length0, g.drum.Length)
+	if _, ok := g.graph.Edges[[2]model.NodeID{a.ID, mid.ID}]; !ok {
+		t.Fatalf("missing A-mid edge in graph")
 	}
-	if len(g.drum.Rows[0].Steps) != len(steps0) {
-		t.Fatalf("steps len changed: %d -> %d", len(steps0), len(g.drum.Rows[0].Steps))
-	}
-	for i := range steps0 {
-		if steps0[i] != g.drum.Rows[0].Steps[i] {
-			t.Fatalf("steps changed at %d: before=%v after=%v", i, steps0[i], g.drum.Rows[0].Steps[i])
-		}
+	if _, ok := g.graph.Edges[[2]model.NodeID{mid.ID, b.ID}]; !ok {
+		t.Fatalf("missing mid-B edge in graph")
 	}
 }

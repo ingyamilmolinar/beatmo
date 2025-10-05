@@ -42,49 +42,69 @@ func TestDrumViewButtonLayout(t *testing.T) {
 		dv := NewDrumView(image.Rect(0, 0, w, 200), nil, logger)
 		dv.recalcButtons()
 
-		rects := []image.Rectangle{
-			dv.playBtn.Rect(),
-			dv.stopBtn.Rect(),
-			dv.bpmDecBtn.Rect(),
-			dv.bpmBox.Rect,
-			dv.bpmIncBtn.Rect(),
-			dv.lenDecBtn.Rect(),
-			dv.lenIncBtn.Rect(),
+		// Verify BPM +/- are vertically stacked in the same column
+		inc := dv.bpmIncBtn.Rect()
+		dec := dv.bpmDecBtn.Rect()
+		if inc.Empty() || dec.Empty() {
+			t.Fatalf("w=%d: bpm +/- rects empty", w)
 		}
-		prev := image.Rectangle{}
-		for i, r := range rects {
-			if r.Empty() {
-				t.Fatalf("w=%d: top control %d empty", w, i)
-			}
-			if i > 0 && r.Min.X-prev.Max.X < buttonPad {
-				t.Fatalf("w=%d: top control %d lacks padding", w, i)
-			}
-			prev = r
+		if inc.Min.X != dec.Min.X || inc.Max.X != dec.Max.X {
+			t.Fatalf("w=%d: bpm +/- not in same column: inc=%v dec=%v", w, inc, dec)
+		}
+		if !(inc.Min.Y < dec.Min.Y) {
+			t.Fatalf("w=%d: bpm + not above - (inc=%v, dec=%v)", w, inc, dec)
+		}
+		// Entire pair should live within the top row bounds
+		topMinY := dv.Bounds.Min.Y
+		topMaxY := dv.Bounds.Min.Y + dv.rowHeight()
+		if inc.Min.Y < topMinY || dec.Max.Y > topMaxY {
+			t.Fatalf("w=%d: bpm +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, inc, dec, topMinY, topMaxY)
 		}
 
-		bottomButtons := []*Button{dv.uploadBtn}
-		prev = image.Rectangle{}
-		for i, btn := range bottomButtons {
-			r := btn.Rect()
-			if r.Empty() {
-				t.Fatalf("w=%d: bottom button %d empty", w, i)
-			}
-			if i > 0 && r.Min.X-prev.Max.X < buttonPad {
-				t.Fatalf("w=%d: bottom button %d lacks padding", w, i)
-			}
-			tr := btn.textRect()
-			if !tr.In(r) {
-				t.Fatalf("w=%d: text outside bottom button %d", w, i)
-			}
-			cx := (r.Min.X + r.Max.X) / 2
-			ctx := (tr.Min.X + tr.Max.X) / 2
-			cy := (r.Min.Y + r.Max.Y) / 2
-			cty := (tr.Min.Y + tr.Max.Y) / 2
-			if intAbs(cx-ctx) > 1 || intAbs(cy-cty) > 1 {
-				t.Fatalf("w=%d: text not centered in bottom button %d", w, i)
-			}
-			prev = r
+		// Verify Length +/- are vertically stacked in the same column
+		linc := dv.lenIncBtn.Rect()
+		ldec := dv.lenDecBtn.Rect()
+		if linc.Empty() || ldec.Empty() {
+			t.Fatalf("w=%d: len +/- rects empty", w)
 		}
+		if linc.Min.X != ldec.Min.X || linc.Max.X != ldec.Max.X {
+			t.Fatalf("w=%d: len +/- not in same column: inc=%v dec=%v", w, linc, ldec)
+		}
+		if !(linc.Min.Y < ldec.Min.Y) {
+			t.Fatalf("w=%d: len + not above - (inc=%v, dec=%v)", w, linc, ldec)
+		}
+		if linc.Min.Y < topMinY || ldec.Max.Y > topMaxY {
+			t.Fatalf("w=%d: len +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, linc, ldec, topMinY, topMaxY)
+		}
+
+		// Bottom row sanity (Upload at least)
+		r := dv.uploadBtn.Rect()
+		if r.Empty() {
+			t.Fatalf("w=%d: upload rect empty", w)
+		}
+		tr := dv.uploadBtn.textRect()
+		if !tr.In(r) {
+			t.Fatalf("w=%d: upload text outside rect", w)
+		}
+	}
+}
+
+// Ensure commonly visible icon buttons render expected glyphs.
+func TestTopIconButtonsHaveGlyphs(t *testing.T) {
+	logger := log.New(os.Stdout, log.LevelInfo)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	if dv.playBtn.Text != "▶" {
+		t.Fatalf("play icon = %q want ▶", dv.playBtn.Text)
+	}
+	if dv.stopBtn.Text != "■" {
+		t.Fatalf("stop icon = %q want ■", dv.stopBtn.Text)
+	}
+	dv.calcLayout()
+	if len(dv.rowEditBtns) == 0 {
+		t.Fatalf("no row edit buttons built")
+	}
+	if dv.rowEditBtns[0].Text != "✎" {
+		t.Fatalf("pencil icon = %q want ✎", dv.rowEditBtns[0].Text)
 	}
 }
 

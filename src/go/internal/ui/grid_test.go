@@ -1,9 +1,12 @@
 package ui
 
 import (
+	"io"
 	"math"
 	"reflect"
 	"testing"
+
+	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
 func TestStepPixelsAlignment(t *testing.T) {
@@ -83,6 +86,7 @@ func TestSnapFinestSubdivision(t *testing.T) {
 
 func TestRadiusScaling(t *testing.T) {
 	g := NewGrid(DefaultGridStep)
+	// Node radius never overlaps neighbors
 	r1 := g.NodeRadius(1)
 	r2 := g.NodeRadius(2)
 	if r1*2 >= g.Unit() {
@@ -91,16 +95,35 @@ func TestRadiusScaling(t *testing.T) {
 	if r2*2 >= g.Unit() {
 		t.Fatalf("node radius overlaps unit at scale2: r=%f unit=%f", r2, g.Unit())
 	}
-	if r1*1 >= r2*2 { // screen radius r*scale
-		t.Fatalf("screen radius did not grow: r1=%f r2=%f", r1, r2)
+	// Screen radius is non-decreasing with scale (may clamp to a minimum or maximum).
+	if r1*1 > r2*2+1e-9 { // compare screen pixels: r*scale
+		t.Fatalf("node screen radius shrank with larger scale: r1=%f r2=%f", r1, r2)
 	}
+	// Signal radius is also non-decreasing and enforces a minimum on-screen size.
 	sr1 := g.SignalRadius(1)
 	sr2 := g.SignalRadius(2)
-	if sr1*1 >= sr2*2 {
-		t.Fatalf("signal screen radius did not grow: r1=%f r2=%f", sr1, sr2)
+	if sr1*1 > sr2*2+1e-9 {
+		t.Fatalf("signal screen radius shrank with larger scale: r1=%f r2=%f", sr1, sr2)
 	}
-	if g.NodeRadius(100)*100 > 16 || g.SignalRadius(100)*100 > 6 {
+	// At extreme zoom-in, both nodes and signals clamp to their maximum on-screen sizes.
+	if g.NodeRadius(100)*100 > 16+1e-6 || g.SignalRadius(100)*100 > 6+1e-6 {
 		t.Fatalf("radius clamp failed at extreme zoom")
+	}
+}
+
+func TestMinPixelSizesWhenPossible(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	// Choose a scale where node min pixels (8px) are achievable without overlap.
+	need := 8.0 / (0.4 * g.Unit())
+	scale := need + 2 // safely above threshold
+	scr := g.NodeRadius(scale) * scale
+	if scr < 7.9 { // ~8px with tolerance
+		t.Fatalf("node min px not enforced: got %.2fpx at scale %.2f (need>=%.2f)", scr, scale, need)
+	}
+	// Signals should enforce a 4px minimum even at moderate zoom-outs.
+	s1 := g.SignalRadius(0.5) * 0.5
+	if s1 < 3.9 {
+		t.Fatalf("signal min px not enforced at zoom-out: got %.2fpx", s1)
 	}
 }
 
@@ -111,7 +134,7 @@ func TestEdgeStyleScaling(t *testing.T) {
 	if math.Abs(t1*1-t2*2) > 1e-9 {
 		t.Fatalf("edge thickness mismatch: t1=%f t2=%f", t1, t2)
 	}
-	want := g.Unit()
+	want := 0.15 * g.Step
 	if g.EdgeArrowSize() != want {
 		t.Fatalf("arrow size=%f want=%f", g.EdgeArrowSize(), want)
 	}
@@ -170,5 +193,27 @@ func TestLineWidthConstantAcrossZoom(t *testing.T) {
 		if math.Abs(screen-g.Subs[0].Style.Width) > 1e-9 {
 			t.Fatalf("screen width=%f want=%f at scale %f", screen, g.Subs[0].Style.Width, s)
 		}
+	}
+}
+
+func TestPrimaryGridVisibleAfterSubdivChangeAtMinZoom(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	g := New(logger)
+	g.Layout(800, 600)
+	if err := g.SetSubdivisions(16); err != nil {
+		t.Fatalf("SetSubdivisions: %v", err)
+	}
+	g.cam.Scale = 0.1
+	g.cam.Snap()
+	groups := g.grid.Lines(g.cam, 800, g.split.Y)
+	found := false
+	for _, gr := range groups {
+		if gr.Subdiv.Div == 1 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("beat grid lines hidden at min zoom; groups=%v", groups)
 	}
 }

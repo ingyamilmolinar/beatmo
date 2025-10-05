@@ -52,17 +52,21 @@ func TestImportScalesSubdivisionsAndKeepsOrthogonality(t *testing.T) {
 		t.Fatalf("import failed: %v", err)
 	}
 
-	// After scaling from 32 -> 16, points should be halved.
-	pts := [][2]int{{0, 16}, {16, 16}, {16, 32}, {0, 32}}
+	// With import applying the JSON's subdiv, the grid now uses 32 and node
+	// coordinates match the file exactly.
+	if g.grid.MaxDiv() != 32 {
+		t.Fatalf("import should set grid subdiv to 32; got %d", g.grid.MaxDiv())
+	}
+	pts := [][2]int{{0, 32}, {32, 32}, {32, 64}, {0, 64}}
 	for _, p := range pts {
 		if n := g.nodeAt(p[0], p[1]); n == nil {
 			t.Fatalf("expected node at (%d,%d)", p[0], p[1])
 		}
 	}
 	// Orthogonality: check the first two nodes share same J (horizontal), next share same I (vertical).
-	a := g.nodeAt(0, 16)
-	b := g.nodeAt(16, 16)
-	c := g.nodeAt(16, 32)
+	a := g.nodeAt(0, 32)
+	b := g.nodeAt(32, 32)
+	c := g.nodeAt(32, 64)
 	if a == nil || b == nil || c == nil {
 		t.Fatalf("missing nodes after import")
 	}

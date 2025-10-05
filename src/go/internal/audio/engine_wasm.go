@@ -20,6 +20,7 @@ func Register(id string, inst Instrument) {
 	instrumentsMu.Lock()
 	instruments = append(instruments, id)
 	instrumentsMu.Unlock()
+	InstrumentChannel(id)
 }
 
 func Play(id string, when ...float64) {
@@ -50,11 +51,58 @@ func PlayVol(id string, vol float64, when ...float64) {
 	fn.Invoke(id, vol)
 }
 
+// PlayParams forwards volume, pitch (semitones) and duration multiplier to the
+// WebAudio bridge. The JS side applies playbackRate = 2^(pitch/12)/dur.
+func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
+	fn := js.Global().Get("playSoundParams")
+	if !fn.Truthy() {
+		// Fallback to volume-only if extended bridge is not present.
+		PlayVol(id, vol, when...)
+		return
+	}
+	if len(when) > 0 {
+		fn.Invoke(id, vol, pitch, dur, when[0])
+		return
+	}
+	fn.Invoke(id, vol, pitch, dur)
+}
+
+// PlayParamsAt schedules a sound with explicit 'when'. When when<=0 starts immediately.
+func PlayParamsAt(id string, vol, pitch, dur, when float64) {
+	if when > 0 {
+		PlayParams(id, vol, pitch, dur, when)
+	} else {
+		PlayParams(id, vol, pitch, dur)
+	}
+}
+
+// SampleSeconds returns the base sample duration in seconds for an instrument ID.
+// For synthesized instruments, this reads from the JS audio bridge; for WAVs,
+// it reflects the decoded buffer duration. Returns 0 if unknown.
+func SampleSeconds(id string) float64 {
+	fn := js.Global().Get("sampleDurationSec")
+	if !fn.Truthy() {
+		return 0
+	}
+	v := fn.Invoke(id)
+	if v.Truthy() {
+		return v.Float()
+	}
+	return 0
+}
+
+func Stop(id string) {
+	if fn := js.Global().Get("stopSound"); fn.Truthy() {
+		fn.Invoke(id)
+	}
+}
+
 // ResetInstruments restores the default instrument ID list.
 func ResetInstruments() {
 	instrumentsMu.Lock()
 	instruments = []string{"snare", "kick", "hihat", "tom", "clap"}
 	instrumentsMu.Unlock()
+	resetInstrumentChannels(instruments)
 }
 
 // Now returns the current WebAudio time in seconds as reported by
@@ -74,7 +122,7 @@ func Now() float64 {
 	return 0
 }
 
-func Reset() {}
+func Reset() { resetChannels() }
 
 func Resume() {
 	// Ask JS to resume the AudioContext, typically after a user gesture.
@@ -102,4 +150,5 @@ func RenameInstrument(oldID, newID string) {
 		}
 	}
 	instrumentsMu.Unlock()
+	renameInstrumentChannel(oldID, newID)
 }

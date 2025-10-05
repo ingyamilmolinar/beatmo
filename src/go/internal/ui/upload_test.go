@@ -125,6 +125,7 @@ func TestUploadButtonWhileMenuOpen(t *testing.T) {
 // button should still respond to clicks and begin another file selection.
 
 func TestUploadButtonClickableTwice(t *testing.T) {
+	suppressClicksUntilRelease = false
 	g := New(testLogger)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
@@ -145,6 +146,7 @@ func TestUploadButtonClickableTwice(t *testing.T) {
 	g.drum.Update()
 	restore()
 
+	r = g.drum.uploadBtn.Rect()
 	click(g, r.Min.X+1, r.Min.Y+1)
 	if !g.drum.uploading {
 		t.Fatalf("second click did not trigger upload")

@@ -39,10 +39,19 @@ func (t *TextInput) SetText(s string) {
 func (t *TextInput) Value() string { return t.Text }
 
 // Update processes mouse/keyboard input.
+
 func (t *TextInput) Update() bool {
+	skipClick := false
+	if suppressClicksUntilRelease {
+		if isMouseButtonPressed(ebiten.MouseButtonLeft) {
+			skipClick = true
+		} else {
+			suppressClicksUntilRelease = false
+		}
+	}
 	mx, my := cursorPosition()
 	consumed := false
-	if isMouseButtonPressed(ebiten.MouseButtonLeft) {
+	if isMouseButtonPressed(ebiten.MouseButtonLeft) && !skipClick {
 		if image.Pt(mx, my).In(t.Rect) {
 			t.focused = true
 			t.anim = 1
@@ -93,6 +102,12 @@ func (t *TextInput) Update() bool {
 			return true
 		}
 	}
+	// Treat Enter as commit even when it is not part of InputChars().
+	if t.focused && isKeyPressed(ebiten.KeyEnter) {
+		t.focused = false
+		consumed = true
+		return true
+	}
 
 	if t.keyRepeat(ebiten.KeyBackspace) {
 		if t.cursor > 0 {
@@ -116,20 +131,20 @@ func (t *TextInput) Update() bool {
 }
 
 func (t *TextInput) keyRepeat(k ebiten.Key) bool {
+	// Consistent, smooth repeat across all text inputs:
+	// - First press fires immediately
+	// - Initial delay ~24 frames (~400ms at 60fps)
+	// - Then repeat at a fixed interval of 6 frames (~10Hz)
+	const delay = 24
+	const interval = 6
 	if isKeyPressed(k) {
 		t.repeat[k]++
 		d := t.repeat[k]
 		if d == 1 {
 			return true
 		}
-		if d > 60 {
-			step := d - 60
-			accel := step / 30
-			if accel > 5 {
-				accel = 5
-			}
-			interval := 6 - accel
-			if step%interval == 0 {
+		if d > delay {
+			if (d-delay)%interval == 0 {
 				return true
 			}
 		}

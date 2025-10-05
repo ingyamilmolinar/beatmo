@@ -12,16 +12,76 @@ type NodeID int
 
 type Node struct {
 	I, J int
-	Type NodeType // New field: NodeType
+	Type NodeType // Node type (audible/silent/invisible)
+	// Params define per-node playback parameters and optional user logic.
+	Params NodeParams
 }
 
 // NodeType defines the type of a node.
 type NodeType int
 
 const (
+	// NodeTypeRegular is a visible, audible node.
 	NodeTypeRegular NodeType = iota
+	// NodeTypeInvisible is not drawn and never plays audio.
 	NodeTypeInvisible
+	// NodeTypeSilent is visible but never plays audio. Useful for
+	// orthogonal routing without introducing audible triggers at corners.
+	NodeTypeSilent
+	// NodeTypeMute is visible and treated as a timeline event, but it actively
+	// mutes the instrument so no sound is produced while it is in effect.
+	NodeTypeMute
 )
+
+// NodeParams centralizes per‑node behavior and is kept within the model so
+// callers (UI, engine) can query a node’s intent without scattering logic.
+//
+// Volume/Pitch/Duration are multiplicative adjustments applied on top of any
+// row/global settings. They default to 1, 0, 1 respectively.
+//
+// Logic, when present, can further adjust playback parameters or disable a
+// node on a per‑trigger basis. It may also suggest routing decisions via
+// RouteNext, which higher layers may optionally use. The model itself remains
+// traversal‑agnostic; UI decides whether to honor routing suggestions.
+type NodeParams struct {
+	Volume   float64   // multiplicative gain (default 1)
+	Pitch    float64   // semitone offset (default 0)
+	Duration float64   // time multiplier (default 1)
+	Logic    NodeLogic // optional user logic
+	// SkipEveryN disables playback for every Nth trigger (N>0). 0 disables.
+	SkipEveryN int
+	// LogicKind selects a built-in logic rule. Empty means none. Supported:
+	//  "prev_fired"        – legacy alias of "trigger_if_prev_triggered"
+	//  "every_n_loops"     – fire once every N completed loop iterations
+	//  "every_n_triggers"  – fire on every Nth trigger (complement of skip)
+	//  "probability"       – fire with probability P (0..1)
+	LogicKind string
+	LogicN    int
+	LogicP    float64
+	// Groove parameters (per-node): one of none|delay|rush with percentage 0..1
+	GrooveKind string  // ""|"delay"|"rush"
+	GroovePct  float64 // 0..1 fraction of one subdivision length
+}
+
+// NodeLogic computes per‑trigger behavior for a node.
+type NodeLogic func(NodeContext) NodeDecision
+
+// NodeContext describes the current trigger in a timeline.
+type NodeContext struct {
+	NodeID        NodeID
+	Row           int // drum row index (if applicable)
+	AbsoluteIndex int // absolute subdivision index in the timeline
+	TriggerCount  int // 1‑based count of times this node has been triggered for the row
+}
+
+// NodeDecision returned by NodeLogic. Zero values imply no change.
+type NodeDecision struct {
+	Enabled     *bool    // if set and false, suppress playback for this trigger
+	VolumeMul   float64  // multiplicative gain (default 1 when 0)
+	PitchDelta  float64  // additional semitones (default 0)
+	DurationMul float64  // multiplicative time (default 1 when 0)
+	RouteNext   []NodeID // optional suggested next outputs
+}
 
 // BeatInfo holds information about a beat in the drum row.
 type BeatInfo struct {
@@ -38,6 +98,7 @@ type Graph struct {
 	StartNodeID     NodeID // ID of the explicit start node
 	beatLengthValue int    // Desired length of the beat row
 	logger          *game_log.Logger
+	onNodeChanged   func(NodeID)
 }
 
 func NewGraph(logger *game_log.Logger) *Graph {
@@ -52,11 +113,21 @@ func NewGraph(logger *game_log.Logger) *Graph {
 	}
 }
 
+// SetNodeChangedHook registers a callback invoked whenever a node's parameters
+// or type are modified through Graph helpers.
+func (g *Graph) SetNodeChangedHook(fn func(NodeID)) {
+	g.onNodeChanged = fn
+}
+
 func (g *Graph) AddNode(i, j int, nodeType NodeType) NodeID {
 	id := g.Next
 	g.Next++
-	g.Nodes[id] = Node{I: i, J: j, Type: nodeType}
+	// Initialize sensible defaults for params.
+	g.Nodes[id] = Node{I: i, J: j, Type: nodeType, Params: NodeParams{Volume: 1, Duration: 1}}
 	g.logger.Debugf("[GRAPH] Added node: %d at (%d, %d) with type %v", id, i, j, nodeType)
+	if g.onNodeChanged != nil {
+		g.onNodeChanged(id)
+	}
 	return id
 }
 
@@ -69,6 +140,9 @@ func (g *Graph) RemoveNode(id NodeID) {
 		}
 	}
 	g.logger.Debugf("[GRAPH] Removed node: %d at (%d, %d)", id, n.I, n.J)
+	if g.onNodeChanged != nil {
+		g.onNodeChanged(id)
+	}
 }
 
 func (g *Graph) ToggleStep(i int) {
@@ -78,6 +152,43 @@ func (g *Graph) ToggleStep(i int) {
 func (g *Graph) GetNodeByID(id NodeID) (Node, bool) {
 	n, ok := g.Nodes[id]
 	return n, ok
+}
+
+// SetNodeParams updates the playback parameters for a node. Zero values for
+// Volume and Duration are interpreted as identity (1). Pitch is absolute.
+func (g *Graph) SetNodeParams(id NodeID, p NodeParams) {
+	n, ok := g.Nodes[id]
+	if !ok {
+		return
+	}
+	// Do not coerce zero values; allow explicit 0 volume/duration.
+	n.Params.Volume = p.Volume
+	n.Params.Pitch = p.Pitch
+	n.Params.Duration = p.Duration
+	n.Params.Logic = p.Logic
+	n.Params.SkipEveryN = p.SkipEveryN
+	n.Params.LogicKind = p.LogicKind
+	n.Params.LogicN = p.LogicN
+	n.Params.LogicP = p.LogicP
+	n.Params.GrooveKind = p.GrooveKind
+	n.Params.GroovePct = p.GroovePct
+	g.Nodes[id] = n
+	if g.onNodeChanged != nil {
+		g.onNodeChanged(id)
+	}
+}
+
+// SetNodeLogic attaches a logic callback to a node.
+func (g *Graph) SetNodeLogic(id NodeID, logic NodeLogic) {
+	n, ok := g.Nodes[id]
+	if !ok {
+		return
+	}
+	n.Params.Logic = logic
+	g.Nodes[id] = n
+	if g.onNodeChanged != nil {
+		g.onNodeChanged(id)
+	}
 }
 
 func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {

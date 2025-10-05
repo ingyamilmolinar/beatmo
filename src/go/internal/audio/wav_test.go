@@ -83,7 +83,7 @@ func TestRegisterWAVPlaysSample(t *testing.T) {
 		t.Fatalf("instrument not registered")
 	}
 	m := &mixer{}
-	m.Schedule(inst.NewVoice(120, sampleRate), 0)
+	m.Schedule("testwav", inst.NewVoice(120, sampleRate), 0)
 	buf := make([]byte, sampleRate/100*2)
 	m.Read(buf)
 	nonZero := false

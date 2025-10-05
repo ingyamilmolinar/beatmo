@@ -93,14 +93,10 @@ const ref = await page.evaluate(async () => {
 });
 
 // Now play via the high-level API and capture its buffer.
-await page.evaluate(() => { window.__samples = []; });
+await page.evaluate(() => { window.__samples = []; window.__captureSamples = true; });
 await page.evaluate(() => window.playSound('snare', 1.0));
 await page.waitForFunction(() => window.__done === true, {}, { timeout: 10000 });
 const out = await page.evaluate(() => window.__samples.slice(0, 44100));
-
-await browser.close();
-server.close();
-
 // Compare by correlation; require near-identical shape.
 const corr = (x, y) => {
   const n = Math.min(x.length, y.length);
@@ -122,9 +118,10 @@ await (async () => {
   const sr = 44100;
   const sec = 0.5; // kick length in audio.js
   const frames = Math.floor(sr * sec);
-  const factory = await page.evaluateHandle(() => window.__drumsFactory);
-  const kickRef = await page.evaluate(async (factory, frames, sr) => {
-    const m = await factory;
+  const kickRef = await page.evaluate(async ({ frames, sr }) => {
+    const factory = window.__drumsFactory;
+    if (typeof factory !== 'function') throw new Error('no drumsFactory');
+    const m = await factory();
     const ptr = m._malloc(frames * 4);
     m.ccall('render_kick', null, ['number','number','number'], [ptr, sr, frames]);
     const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
@@ -133,8 +130,8 @@ await (async () => {
     let peak = 0; for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > peak) peak = a; }
     if (peak > 0) { const inv = 1/peak; for (let i = 0; i < data.length; i++) data[i] *= inv; }
     return Array.from(data);
-  }, factory, frames, sr);
-  await page.evaluate(() => { window.__samples = []; window.__done = false; });
+  }, { frames, sr });
+  await page.evaluate(() => { window.__samples = []; window.__done = false; window.__captureSamples = true; });
   await page.evaluate(() => window.playSound('kick', 1.0));
   await page.waitForFunction(() => window.__done === true, {}, { timeout: 10000 });
   const kickOut = await page.evaluate(() => window.__samples.slice(0, 44100));
@@ -142,3 +139,6 @@ await (async () => {
   if (ck < 0.98) throw new Error(`miniaudio JS render mismatch (kick): corr=${ck.toFixed(4)}`);
   console.log('drums.js consistency verified (kick)', { corr: ck.toFixed(4) });
 })();
+
+await browser.close();
+server.close();

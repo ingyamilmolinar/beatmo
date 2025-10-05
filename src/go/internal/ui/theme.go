@@ -22,10 +22,12 @@ var (
 	colDropdownEdge = color.RGBA{240, 240, 120, 255}
 	colError        = color.RGBA{200, 60, 60, 255}
 
-	colStep       = color.RGBA{0, 160, 200, 255}
-	colStepOff    = color.RGBA{25, 25, 25, 255}
-	colStepBorder = color.RGBA{60, 60, 60, 255}
-	colHighlight  = color.RGBA{240, 240, 40, 255}
+	colStep          = color.RGBA{0, 160, 200, 255}
+	colStepOff       = color.RGBA{25, 25, 25, 255}
+	colStepBorder    = color.RGBA{60, 60, 60, 255}
+	colHighlight     = color.RGBA{240, 240, 40, 255}
+	colMuteCell      = color.RGBA{140, 140, 140, 255}
+	colMuteHighlight = color.RGBA{120, 120, 120, 180}
 
 	colTimelineTotal  = color.RGBA{40, 40, 40, 255}
 	colTimelineView   = color.RGBA{0, 160, 200, 100}
@@ -46,8 +48,11 @@ var (
 	LenIncStyle         = ButtonStyle{Fill: colLenInc, Border: colButtonBorder}
 	InstButtonStyle     = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
 	UploadBtnStyle      = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
+	PopupButtonStyle    = ButtonStyle{Fill: colBPMBox, Border: colButtonBorder}
 	DropdownStyle       = ButtonStyle{Fill: colDropdown, Border: colDropdownEdge}
 	DisabledButtonStyle = ButtonStyle{Fill: color.RGBA{70, 70, 70, 255}, Border: colButtonBorder}
+	// Missing instrument row label style
+	MissingInstStyle = ButtonStyle{Fill: colError, Border: colButtonBorder}
 
 	DrumCellUI = DrumCellStyle{
 		On:        colStep,

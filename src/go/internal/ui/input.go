@@ -9,6 +9,7 @@ var (
 	inputChars           = ebiten.InputChars
 	wheel                = ebiten.Wheel
 	screenSize           = ebiten.ScreenSizeInFullscreen
+	inputForTestActive   bool
 )
 
 // SetInputForTest replaces input functions during tests and returns a function
@@ -33,6 +34,8 @@ func SetInputForTest(
 	inputChars = chars
 	wheel = wh
 	screenSize = screen
+	suppressClicksUntilRelease = false
+	inputForTestActive = true
 	return func() {
 		cursorPosition = oldCursor
 		isMouseButtonPressed = oldMouse
@@ -40,5 +43,7 @@ func SetInputForTest(
 		inputChars = oldChars
 		wheel = oldWheel
 		screenSize = oldScreen
+		suppressClicksUntilRelease = false
+		inputForTestActive = false
 	}
 }

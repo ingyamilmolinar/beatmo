@@ -108,9 +108,24 @@ func (g *Grid) UnitPixels(scale float64) float64 {
 // subdivision so adjacent nodes never overlap. The visual size is capped to a
 // reasonable maximum to keep nodes readable when heavily zoomed in.
 func (g *Grid) NodeRadius(scale float64) float64 {
-	r := 0.4 * g.Unit() // world units, 40% of smallest subdivision
-	if screen := r * scale; screen > 16 {
-		r = 16 / scale
+	// Base world radius capped so two adjacent nodes at the finest
+	// subdivision never overlap (<= 0.8*Unit apart).
+	base := 0.4 * g.Unit()
+	// Apply min/max on-screen sizes for readability while zoomed in/out.
+	const minPx = 8.0
+	const maxPx = 16.0
+	r := base
+	scr := r * scale
+	if scr < minPx {
+		// Request at least minPx on screen when possible.
+		r = minPx / scale
+	}
+	if scr > maxPx {
+		r = maxPx / scale
+	}
+	// Never exceed the base (non-overlap) bound.
+	if r > base {
+		r = base
 	}
 	return r
 }
@@ -119,9 +134,19 @@ func (g *Grid) NodeRadius(scale float64) float64 {
 // NodeRadius it scales with zoom and caps the on-screen size to avoid oversized
 // pulses at extreme zoom factors.
 func (g *Grid) SignalRadius(scale float64) float64 {
-	r := 0.2 * g.Unit()
-	if screen := r * scale; screen > 6 {
-		r = 6 / scale
+	// Base follows grid unit for proportional look.
+	base := 0.2 * g.Unit()
+	// Ensure pulses remain visible at bird's‑eye zoom levels.
+	const minPx = 4.0
+	const maxPx = 6.0
+	r := base
+	scr := r * scale
+	if scr < minPx {
+		r = minPx / scale
+		scr = minPx
+	}
+	if scr > maxPx {
+		r = maxPx / scale
 	}
 	return r
 }
@@ -138,7 +163,10 @@ func (g *Grid) EdgeThickness(scale float64) float64 {
 // EdgeArrowSize returns the world-space length of arrow heads. Keeping them at
 // one subdivision unit ensures connection arrows remain understated.
 func (g *Grid) EdgeArrowSize() float64 {
-	return g.Unit()
+	// Keep arrowheads at a fixed fraction of a beat in world-space so they
+	// remain visually consistent across subdivision changes. Using Step (px
+	// per beat in world units) decouples size from MaxDiv.
+	return 0.15 * g.Step
 }
 
 // Snap world coords to nearest subdivision vertex.

@@ -6,7 +6,6 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 type Transport struct {
@@ -19,6 +18,10 @@ type Transport struct {
 
 	bpmErrorAnim float64
 	bpmPrev      int
+
+	// cached top bar background to avoid per-frame allocations
+	barCache *ebiten.Image
+	barW     int
 }
 
 func (t *Transport) SetBPM(b int) {
@@ -76,12 +79,20 @@ func (t *Transport) Update() {
 	} else if prev {
 		txt := t.bpmBox.Value()
 		if txt == "" {
-			t.SetBPM(t.bpmPrev)
+			prevVal := t.bpmPrev
+			if prevVal < 1 {
+				prevVal = t.BPM
+			}
+			t.SetBPM(prevVal)
 		} else if v, ok := parseBPM(txt); ok {
 			t.SetBPM(v)
 		} else {
 			t.bpmErrorAnim = 1
-			t.SetBPM(t.bpmPrev)
+			prevVal := t.bpmPrev
+			if prevVal < 1 {
+				prevVal = t.BPM
+			}
+			t.SetBPM(prevVal)
 		}
 		t.bpmBox.SetText(fmt.Sprintf("%d", t.BPM))
 	}
@@ -93,13 +104,18 @@ func (t *Transport) Update() {
 }
 
 func (t *Transport) Draw(dst *ebiten.Image) {
-	// background bar
-	bar := ebiten.NewImage(dst.Bounds().Dx(), 40)
-	bar.Fill(color.RGBA{15, 15, 15, 255})
-	dst.DrawImage(bar, nil)
+	// background bar (cached)
+	w := dst.Bounds().Dx()
+	const h = 40
+	if t.barCache == nil || t.barW != w {
+		t.barCache = ebiten.NewImage(w, h)
+		t.barCache.Fill(color.RGBA{15, 15, 15, 255})
+		t.barW = w
+	}
+	dst.DrawImage(t.barCache, nil)
 
 	// BPM label
-	ebitenutil.DebugPrintAt(dst, "BPM:", 10, 12)
+	DrawTextAt(dst, "BPM:", 10, 12)
 
 	t.bpmBox.Draw(dst)
 	if t.bpmErrorAnim > 0 {
@@ -108,8 +124,8 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 
 	// play / stop squares
 	drawRect(dst, t.playRect, color.White, t.Playing)
-	ebitenutil.DebugPrintAt(dst, "▶", t.playRect.Min.X+6, t.playRect.Min.Y+3)
+	DrawTextAt(dst, "▶", t.playRect.Min.X+6, t.playRect.Min.Y+3)
 
 	drawRect(dst, t.stopRect, color.White, !t.Playing)
-	ebitenutil.DebugPrintAt(dst, "■", t.stopRect.Min.X+6, t.stopRect.Min.Y+3)
+	DrawTextAt(dst, "■", t.stopRect.Min.X+6, t.stopRect.Min.Y+3)
 }

@@ -6,7 +6,9 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2086,7 +2088,7 @@ func TestVolumeSliderAffectsPlayback(t *testing.T) {
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
-	r := g.drum.rowVolSliders[0].Rect()
+	r := g.drum.rowVolSliders[0].TrackRect()
 	mx := r.Min.X + r.Dx()/4
 	my := r.Min.Y + r.Dy()/2
 	restore := SetInputForTest(
@@ -2783,8 +2785,8 @@ func TestDrumViewLoopingHighlighting(t *testing.T) {
 	// Update beat infos to populate drum view steps
 	g.updateBeatInfos()
 
-	// Duplicate at loop seam is suppressed (index 3 becomes false).
-	expectedDrumRow := []bool{true, false, true, false, true, true}
+	// Only invisible seam segments are suppressed; regular nodes remain visible.
+	expectedDrumRow := []bool{true, false, true, true, true, true}
 
 	if len(g.drum.Rows[0].Steps) != len(expectedDrumRow) {
 		t.Fatalf("Expected drum row length %d, got %d", len(expectedDrumRow), len(g.drum.Rows[0].Steps))
@@ -2827,8 +2829,8 @@ func TestDrumViewLoopingHighlighting(t *testing.T) {
 
 	g.updateBeatInfos()
 
-	// Seam suppression also applies here (index 1 becomes false).
-	expectedDrumRow2 := []bool{true, false, true, true, true, true}
+	// No invisible seam bridges in this circuit; all steps should remain visible.
+	expectedDrumRow2 := []bool{true, true, true, true, true, true}
 
 	if len(g.drum.Rows[0].Steps) != len(expectedDrumRow2) {
 		t.Fatalf("Expected drum row length %d, got %d", len(expectedDrumRow2), len(g.drum.Rows[0].Steps))
@@ -3370,13 +3372,11 @@ func TestNodeHoverScalesRadius(t *testing.T) {
 	)
 	g.Update()
 	restore()
-	base := g.grid.NodeRadius(g.cam.Scale)
-	if r := g.nodeRadius(n); r <= base {
-		t.Fatalf("expected larger radius when hovered")
-	}
+	rHover := g.nodeRadius(n)
 	g.hover = nil
-	if r := g.nodeRadius(n); r != base {
-		t.Fatalf("expected base radius when not hovered")
+	rNoHover := g.nodeRadius(n)
+	if rHover <= rNoHover {
+		t.Fatalf("expected larger radius when hovered: hover=%.2f base=%.2f", rHover, rNoHover)
 	}
 }
 
@@ -3425,4 +3425,39 @@ func TestDrumZoomGlobalMinMax(t *testing.T) {
 	if g.drum.Length < inc {
 		t.Fatalf("length dropped below 1 beat: %d < %d", g.drum.Length, inc)
 	}
+}
+
+func TestDrawDrumPaneConcurrentHighlights(t *testing.T) {
+	g := New(testLogger)
+	g.Layout(640, 480)
+	dst := ebiten.NewImage(640, 480)
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		idx := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			row := idx % len(g.drum.Rows)
+			beat := idx % g.drum.Length
+			g.highlightSet(makeBeatKey(row, beat), encodeHighlight(g.frame+int64(beat), idx%2 == 0))
+			if idx%3 == 0 {
+				g.clearRowHighlights(row)
+			}
+			idx++
+			runtime.Gosched()
+		}
+	}()
+
+	for i := 0; i < 512; i++ {
+		g.drawDrumPane(dst)
+	}
+	close(stop)
+	wg.Wait()
 }
