@@ -2,43 +2,25 @@ package ui
 
 import (
 	"math"
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
 )
 
-// TestGlobalCameraAlignment_DefaultDemo loads the default demo via the test
-// buildDemo path and verifies, at the global camera view level, that:
+// TestGlobalCameraAlignment_DefaultDemo loads the embedded default demo and
+// verifies, at the global camera view level, that:
 //   - Every visible node center is phase-aligned with the grid pixel lattice
 //   - Every edge endpoint projects to the exact same screen pixel as its node
 //   - After an initial Draw pass (which builds caches), alignment still holds
 func TestGlobalCameraAlignment_DefaultDemo(t *testing.T) {
-	// Point buildDemo to the embedded default demo JSON.
-	// Tests run under src/go; path below resolves from there.
-	// Resolve demo path relative to current working directory (package folder).
-	demoPath := "internal/assets/default_demo.json"
-	if _, err := os.Stat(demoPath); err != nil {
-		// When running from package directory ./internal/ui, adjust path.
-		alt := "../assets/default_demo.json"
-		if _, err2 := os.Stat(alt); err2 == nil {
-			demoPath = alt
-		}
-	}
-	old := os.Getenv("TUNKUL_DEMO_CONFIG")
-	os.Setenv("TUNKUL_DEMO_CONFIG", demoPath)
-	defer os.Setenv("TUNKUL_DEMO_CONFIG", old)
-
-	// Use the demo instead of auto default-start node.
-	SetDefaultStartForTest(false)
-	defer SetDefaultStartForTest(false)
-
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.Layout(1280, 720)
-	g.buildDemo()
-	if !g.demoBuilt {
-		t.Fatalf("demo not built; check TUNKUL_DEMO_CONFIG path")
+	t.Cleanup(g.CloseForTest)
+	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+		t.Fatalf("import demo: %v", err)
 	}
+	g.Layout(1280, 720)
 
 	screen := ebiten.NewImage(1280, 720)
 	checkAll := func() {

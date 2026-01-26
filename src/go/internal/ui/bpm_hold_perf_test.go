@@ -4,7 +4,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
@@ -14,24 +13,33 @@ import (
 // acknowledge tempo changes. It exercises a large number of updates while
 // audio.SetBPM sleeps and asserts each call to Update returns promptly.
 func TestBPMHoldUpdateLatency(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.playing = true
+	g.SetPlaying(true)
 
 	// Simulate a sluggish audio layer.
-	audio.SetBPMFunc = func(int) { time.Sleep(10 * time.Millisecond) }
-	defer func() { audio.SetBPMFunc = func(int) {} }()
-
-	const maxUpdate = 5 * time.Millisecond
+	block := make(chan struct{})
+	blockClosed := false
+	t.Cleanup(func() {
+		if !blockClosed {
+			close(block)
+		}
+	})
+	prevSetBPM := audio.SetBPMFunc
+	audio.SetBPMFuncForTest(func(int) { <-block })
+	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	for i := 0; i < 30; i++ {
 		g.drum.bpmIncBtn.OnClick()
-		start := time.Now()
-		if err := g.Update(); err != nil {
-			t.Fatalf("update failed: %v", err)
-		}
-		if dur := time.Since(start); dur > maxUpdate {
-			t.Fatalf("update took %v which exceeds %v", dur, maxUpdate)
-		}
+		done := make(chan struct{})
+		go func() {
+			_ = g.Update()
+			close(done)
+		}()
+		waitForChan(t, done, 100000)
 	}
+	close(block)
+	blockClosed = true
 }

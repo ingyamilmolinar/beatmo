@@ -2,21 +2,18 @@ package ui
 
 import (
 	"image/color"
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Test that baseline edges remain visible when the cache is disabled and the
-// connection animation has completed (t >= 1). This protects against the bug
-// where edges vanished in no-cache/safe modes.
-func TestEdgeVisibleWithoutCache(t *testing.T) {
-	old := os.Getenv("NO_EDGE_CACHE")
-	os.Setenv("NO_EDGE_CACHE", "1")
-	defer os.Setenv("NO_EDGE_CACHE", old)
+// Test that baseline edges remain visible once the connection animation
+// completes (t >= 1) in the default cached path.
+func TestEdgeVisibleWithCache(t *testing.T) {
+	assertDefaultParityState(t)
 
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Build a simple edge (0,0) -> (1,0)

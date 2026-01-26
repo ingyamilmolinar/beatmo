@@ -12,8 +12,10 @@ var screenEdgesDefault = false
 const defaultEdgeCachePad = 128
 const defaultGridCachePad = 64
 
-// Enable simple draw by default on web builds for better perf.
+// Default to simple draw on web builds for perf. Interactive sessions disable
+// it automatically after the first user interaction (see index.html).
 const simpleDrawDefault = true
+const simpleDrawAutoDisableFramesDefault = 0 // stay in simple draw unless toggled via API
 
 // Throttle timeline info text updates in web builds to reduce per-frame
 // text rendering overhead. Value in milliseconds; 0 disables throttling.

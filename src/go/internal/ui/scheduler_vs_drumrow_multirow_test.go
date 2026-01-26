@@ -3,13 +3,14 @@ package ui
 import (
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
-	"time"
 )
 
 // TestSchedulerVsDrumRow_MultiRowMixedRules verifies both rows stay in lockstep
 // with the scheduler across a horizon for different circuits and mixed rules.
 func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(1024, 720)
 	// Row 0 rectangle (same as previous test but tweak rules a bit)
 	A := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -96,12 +97,16 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 
 	// Add row 1 and point origin to G
 	g.drum.AddRow()
-	g.drum.Rows[1].Instrument = "row2" // distinct id for capture
+	if len(g.drum.rowLabels) < 2 {
+		t.Fatalf("expected row labels for selection")
+	}
+	g.drum.rowLabels[1].OnClick()
+	g.drum.SetInstrument("row2") // distinct id for capture
 	g.drum.Rows[1].Origin = G.ID
 	g.drum.Rows[1].Node = g.nodeByID(G.ID)
 
 	horizon := 60
-	g.drum.Length = horizon
+	g.drum.SetLength(horizon)
 	g.updateBeatInfos()
 	g.drum.Offset = 0
 	g.refreshDrumRow()
@@ -110,35 +115,28 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 
 	got0 := make([]bool, horizon)
 	got1 := make([]bool, horizon)
-	done := make(chan struct{}, horizon*2)
 	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
-		idx := 0
-		if len(g.seqNextIdxs) > 0 {
-			idx = g.seqNextIdxs[0] - 1
-		}
 		if id == g.drum.Rows[0].Instrument {
+			if len(g.seqNextIdxs) < 1 {
+				return
+			}
+			idx := g.seqNextIdxs[0] - 1
 			if idx >= 0 && idx < len(got0) {
 				got0[idx] = true
 			}
-		} else {
-			// assume row 1
+		} else if id == g.drum.Rows[1].Instrument {
+			if len(g.seqNextIdxs) < 2 {
+				return
+			}
+			idx := g.seqNextIdxs[1] - 1
 			if idx >= 0 && idx < len(got1) {
 				got1[idx] = true
 			}
 		}
-		done <- struct{}{}
 	})
-	g.seqNextIdxs = make([]int, len(g.drum.Rows))
-	for i := 0; i < horizon; i++ {
-		g.seqScheduleBeat()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Millisecond):
-		}
-		select {
-		case <-done:
-		case <-time.After(10 * time.Millisecond):
-		}
+	g.SetPlaying(true)
+	for abs := 0; abs < horizon; abs++ {
+		scheduleAbsForMuteTest(g, abs)
 	}
 	for i := 0; i < horizon; i++ {
 		if got0[i] != want0[i] {

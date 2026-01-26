@@ -2,11 +2,13 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
@@ -14,24 +16,20 @@ import (
 // (rounded to the nearest screen pixel) coincides with the grid lattice and
 // with rounded world→screen projections used for edges/pulses.
 func TestGlobalCameraPixelSnap(t *testing.T) {
+	assertDefaultParityState(t)
 	// Use the embedded default demo
-	demoPath := "internal/assets/default_demo.json"
-	if _, err := os.Stat(demoPath); err != nil {
-		alt := "../assets/default_demo.json"
-		if _, err2 := os.Stat(alt); err2 == nil {
-			demoPath = alt
-		}
+	out := io.Discard
+	if testing.Verbose() {
+		out = os.Stdout
 	}
-	os.Setenv("TUNKUL_DEMO_CONFIG", demoPath)
-	os.Setenv("DEBUG_DRAW_NODES", "1")
-	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	logger := game_log.New(out, game_log.LevelDebug)
 
 	g := New(logger)
-	g.Layout(1280, 720)
-	g.buildDemo()
-	if !g.demoBuilt {
-		t.Fatalf("demo not built")
+	t.Cleanup(g.CloseForTest)
+	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+		t.Fatalf("import demo: %v", err)
 	}
+	g.Layout(1280, 720)
 	screen := ebiten.NewImage(1280, 720)
 
 	check := func(note string) {
@@ -55,7 +53,9 @@ func TestGlobalCameraPixelSnap(t *testing.T) {
 			// Edge/pulse projection rounding
 			ex := math.Round(n.X*camScale + offX)
 			ey := math.Round(n.Y*camScale + offY + float64(topOffset))
-			fmt.Fprintf(os.Stdout, "[PIX] %s id=%d grid=(%d,%d) dc=(%.0f,%.0f) grid=(%.0f,%.0f) edge=(%.0f,%.0f)\n", note, n.ID, n.I, n.J, dcx, dcy, gx, gy, ex, ey)
+			if testing.Verbose() {
+				fmt.Fprintf(out, "[PIX] %s id=%d grid=(%d,%d) dc=(%.0f,%.0f) grid=(%.0f,%.0f) edge=(%.0f,%.0f)\n", note, n.ID, n.I, n.J, dcx, dcy, gx, gy, ex, ey)
+			}
 			if dcx != gx || dcy != gy {
 				t.Fatalf("%s: drawn center != grid lattice: got(%.0f,%.0f) want(%.0f,%.0f)", note, dcx, dcy, gx, gy)
 			}

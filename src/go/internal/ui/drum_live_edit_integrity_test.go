@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"testing"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
-	"testing"
-	"time"
 )
 
 // Live edits (add/remove nodes) must not alter the past part of the visible
@@ -12,9 +12,10 @@ import (
 // unchanged. Sprite caches must rebuild only for affected rows.
 func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(1024, 720)
-	g.drum.follow = false // fixed window
+	g.drum.SetFollow(false) // fixed window
 
 	// Build a 1x1 rectangle for row 0: a(0,0)->b(1,0)->c(1,1)->d(0,1)->a
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -41,7 +42,7 @@ func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 	g.drum.Rows[1].Origin = e.ID
 	g.drum.Rows[1].Node = g.nodeByID(e.ID)
 
-	g.drum.Length = 24
+	g.drum.SetLength(24)
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
@@ -56,17 +57,9 @@ func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 
 	// Start playback and freeze some past
 	g.drum.SetBPM(120)
-	until := time.Now().Add(80 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
-	g.drum.playPressed = true
-	run := time.Now().Add(150 * time.Millisecond)
-	for time.Now().Before(run) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	advancePlaybackByAbs(g, g.grid.MaxDiv()*3)
 	pastAbs := 0
 	if len(g.nextBeatIdxs) > 0 {
 		pastAbs = g.nextBeatIdxs[0]

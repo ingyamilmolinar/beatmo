@@ -21,6 +21,9 @@ func main() {
 	flag.Parse()
 
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
+	if stop := startPyroscope(logger); stop != nil {
+		defer stop()
+	}
 
 	// Optional pprof server for profiling: enable with PPROF=1 and visit http://localhost:6060
 	if os.Getenv("PPROF") == "1" {
@@ -38,8 +41,10 @@ func main() {
 	// Optional window settings (not used in WASM, but for desktop builds)
 	ebiten.SetWindowSize(1280, 720)
 	ebiten.SetWindowTitle("Tunkul - Node Music Game")
-	// Run as fast as possible for smoother gameplay
-	ebiten.SetTPS(ebiten.SyncWithFPS)
+	// Keep simulation running at a fixed TPS even if rendering falls behind. This
+	// decouples Update() (audio/scheduler) from Draw() so slow frames on web do not
+	// stall playback timing.
+	ebiten.SetTPS(60)
 
 	// Run the game. On WASM, this will create a <canvas> in index.html
 	if err := ebiten.RunGame(g); err != nil {

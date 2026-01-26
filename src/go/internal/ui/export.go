@@ -6,9 +6,9 @@ import (
 	"image/color"
 	"sort"
 	"strings"
-)
-import (
+
 	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
 
 // Export schema
@@ -18,16 +18,18 @@ type exportFile struct {
 	BPM         int                `json:"bpm"`
 	Instruments []exportInstrument `json:"instruments"`
 	Nodes       []exportNode       `json:"nodes"`
+	EQ          *exportEQ          `json:"eq,omitempty"`
 }
 
 type exportInstrument struct {
-	Name   string  `json:"name"`
-	ID     string  `json:"id"`
-	Kind   string  `json:"kind"` // builtin|sample
-	Volume float64 `json:"volume"`
-	Origin int     `json:"origin"`
-	Color  string  `json:"color"`          // #RRGGBBAA
-	Path   string  `json:"path,omitempty"` // local cache path or object URL for custom samples
+	Name   string    `json:"name"`
+	ID     string    `json:"id"`
+	Kind   string    `json:"kind"` // builtin|sample
+	Volume float64   `json:"volume"`
+	Origin int       `json:"origin"`
+	Color  string    `json:"color"`          // #RRGGBBAA
+	Path   string    `json:"path,omitempty"` // local cache path or object URL for custom samples
+	EQ     *exportEQ `json:"eq,omitempty"`   // per-instrument EQ settings
 }
 
 type exportNode struct {
@@ -52,9 +54,26 @@ type exportNode struct {
 	GroovePct  float64 `json:"groove_pct,omitempty"`
 }
 
+// exportEQ encodes the master EQ settings. Optional; absent for legacy files.
+type exportEQ struct {
+	GainsDB   []float64    `json:"gains_db,omitempty"`   // per band gain in dB
+	BandsHz   [][2]float64 `json:"bands_hz,omitempty"`
+	BandMuted []bool       `json:"band_muted,omitempty"` // per band mute state
+}
+
+// kindForID determines the instrument kind by checking catalog metadata.
+// WAV-based and embedded samples return "sample", synthesized instruments return "builtin".
 func kindForID(id string) string {
+	// Legacy "sample-" prefix check for backwards compatibility
 	if strings.HasPrefix(id, "sample-") {
 		return "sample"
+	}
+	// Look up in catalog to check Source field
+	if meta, ok := audio.CatalogLookup(id); ok {
+		switch meta.Source {
+		case "wav", "embedded":
+			return "sample"
+		}
 	}
 	return "builtin"
 }
@@ -141,10 +160,6 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 			if p.Duration != 0 && p.Duration != 1 {
 				en.Duration = p.Duration
 			}
-			// Back-compat: always include SkipEvery when set by legacy UI.
-			if p.SkipEveryN > 0 {
-				en.SkipEvery = p.SkipEveryN
-			}
 			// New logic fields
 			if p.LogicKind != "" {
 				en.LogicKind = p.LogicKind
@@ -153,10 +168,6 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 				}
 				if p.LogicP > 0 {
 					en.LogicP = p.LogicP
-				}
-				// For older readers, mirror skip_every_n to SkipEvery
-				if p.LogicKind == "skip_every_n" && p.LogicN > 0 && en.SkipEvery == 0 {
-					en.SkipEvery = p.LogicN
 				}
 			}
 			if p.GrooveKind != "" {
@@ -170,22 +181,86 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	}
 	insts := make([]exportInstrument, 0, len(dv.Rows))
 	for _, r := range dv.Rows {
+		kind := kindForID(r.Instrument)
 		ei := exportInstrument{
 			Name:   r.Name,
 			ID:     r.Instrument,
-			Kind:   kindForID(r.Instrument),
+			Kind:   kind,
 			Volume: r.Volume,
 			Origin: int(r.Origin),
 			Color:  hexColor(r.Color),
 		}
+		// Check samplePath for custom uploaded instruments
 		if dv.samplePath != nil {
 			if p, ok := dv.samplePath[r.Instrument]; ok && p != "" {
 				ei.Path = p
+				// Custom uploads are samples even if kindForID says builtin
+				ei.Kind = "sample"
+			}
+		}
+		// For catalog-based samples without a custom path, try catalog lookup
+		if ei.Path == "" && (kind == "sample" || ei.Kind == "sample") {
+			if meta, ok := audio.CatalogLookup(r.Instrument); ok && meta.Path != "" {
+				ei.Path = meta.Path
+			}
+		}
+		// Export per-instrument EQ if any band is non-zero or muted
+		if len(r.EQGainsDB) > 0 || len(r.EQBandMuted) > 0 {
+			hasNonZeroGain := false
+			for _, g := range r.EQGainsDB {
+				if g != 0 {
+					hasNonZeroGain = true
+					break
+				}
+			}
+			hasMutedBand := false
+			for _, m := range r.EQBandMuted {
+				if m {
+					hasMutedBand = true
+					break
+				}
+			}
+			if hasNonZeroGain || hasMutedBand {
+				eq := exportEQ{}
+				eq.GainsDB = append(eq.GainsDB, r.EQGainsDB...)
+				for _, b := range eqBandDefs {
+					eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
+				}
+				if hasMutedBand {
+					eq.BandMuted = append(eq.BandMuted, r.EQBandMuted...)
+				}
+				ei.EQ = &eq
 			}
 		}
 		insts = append(insts, ei)
 	}
 	file := exportFile{Version: 1, Subdiv: currentMaxDiv(), BPM: dv.BPM(), Instruments: insts, Nodes: nodes}
+	// Export master EQ if any band has non-zero gain or is muted.
+	hasNonZeroGain := false
+	for _, g := range dv.eqBandGainsDB {
+		if g != 0 {
+			hasNonZeroGain = true
+			break
+		}
+	}
+	hasMutedBand := false
+	for _, m := range dv.eqBandMuted {
+		if m {
+			hasMutedBand = true
+			break
+		}
+	}
+	if hasNonZeroGain || hasMutedBand {
+		eq := exportEQ{}
+		eq.GainsDB = append(eq.GainsDB, dv.eqBandGainsDB...)
+		for _, b := range eqBandDefs {
+			eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
+		}
+		if hasMutedBand {
+			eq.BandMuted = append(eq.BandMuted, dv.eqBandMuted...)
+		}
+		file.EQ = &eq
+	}
 	return json.MarshalIndent(file, "", "  ")
 }
 

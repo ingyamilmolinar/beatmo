@@ -4,13 +4,14 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
 // Build the UI playtest WASM harness.
 const goDir = path.resolve(jsDir, "../go");
-const GO = process.env.GO || "go";
+const GO = resolveGoBinary();
 const build = spawnSync(
   GO,
   ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
@@ -20,10 +21,8 @@ if (build.status !== 0) throw new Error("go build play_ui failed");
 
 // Minimal file server for the harness.
 const port = 8420 + Math.floor(Math.random() * 1000);
-const server = http.createServer((req, res) => {
-  const file = req.url === "/" ? "/ui.html" : req.url;
-  if (req.url === "/" || req.url === "/ui.html") {
-    const html = `<!DOCTYPE html><html><body>
+const server = http.createServer((req, res) => { const file = req.url === "/" ? "/ui.html" : req.url;
+  if (req.url === "/" || req.url === "/ui.html") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
 <script src="wasm_exec.js"></script>
 <script>
@@ -31,9 +30,7 @@ const server = http.createServer((req, res) => {
   WebAssembly.instantiateStreaming(fetch('play_ui.wasm'), go.importObject)
     .then(r => go.run(r.instance))
     .catch(err => console.error(err));
-  window.__ready = new Promise(r => {
-    const iv = setInterval(() => {
-      if (typeof buildPerfRect === 'function' && typeof setBPM === 'function' && typeof startPlay === 'function') { clearInterval(iv); r(true); }
+  window.__ready = new Promise(r => { const iv = setInterval(() => { if (typeof buildPerfRect === 'function' && typeof setBPM === 'function' && typeof startPlay === 'function') { clearInterval(iv); r(true); }
     }, 10);
   });
   </script>
@@ -43,8 +40,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
-  fs.readFile(filePath, (err, data) => {
-    if (err) { res.writeHead(404); res.end(); return; }
+  fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
     let ct = "text/plain";
     if (filePath.endsWith(".html")) ct = "text/html";
     else if (filePath.endsWith(".js")) ct = "application/javascript";
@@ -56,22 +52,20 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(port, r));
 
 let browser;
-try {
-  browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
+try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/`);
   await page.waitForFunction(() => window.__ready);
+  await assertSimpleDrawMode(page, true, "batch audio");
+  await clearSchedulerMismatches(page);
 
   // Wrap bridge calls to count invocations.
-  await page.evaluate(() => {
-    window.__counts = { batch: 0, params: 0 };
+  await page.evaluate(() => { window.__counts = { batch: 0, params: 0 };
     const ob = window.playSoundsBatch;
     const op = window.playSoundParams;
-    if (typeof window.playSoundsBatch === 'function') {
-      window.playSoundsBatch = (arr) => { window.__counts.batch++; return ob.call(window, arr); };
+    if (typeof window.playSoundsBatch === 'function') { window.playSoundsBatch = (arr) => { window.__counts.batch++; return ob.call(window, arr); };
     }
-    if (typeof window.playSoundParams === 'function') {
-      window.playSoundParams = (id, vol, pitch, dur, when) => { window.__counts.params++; return op.call(window, id, vol, pitch, dur, when); };
+    if (typeof window.playSoundParams === 'function') { window.playSoundParams = (id, vol, pitch, dur, when) => { window.__counts.params++; return op.call(window, id, vol, pitch, dur, when); };
     }
     if (typeof window.resumeAudio === 'function') { window.resumeAudio(); }
   });
@@ -88,17 +82,13 @@ try {
   console.log('batch test:', res);
 
   // Batch path should be used and reduce dispatch count vs enqueues.
-  if (!res.counts || res.counts.batch <= 0) {
-    throw new Error('batch bridge not invoked');
+  if (!res.counts || res.counts.batch <= 0) { throw new Error('batch bridge not invoked');
   }
-  if (res.counts.params > 2) {
-    throw new Error('unexpected fallback to per-item params calls');
+  if (res.counts.params > 2) { throw new Error('unexpected fallback to per-item params calls');
   }
-  if (!(res.stats.audioDeq < res.stats.audioEnq)) {
-    throw new Error(`expected fewer dispatches than enqueues; got deq=${res.stats.audioDeq} enq=${res.stats.audioEnq}`);
+  if (!(res.stats.audioDeq < res.stats.audioEnq)) { throw new Error(`expected fewer dispatches than enqueues; got deq=${res.stats.audioDeq} enq=${res.stats.audioEnq}`);
   }
-} finally {
-  if (browser) await browser.close();
+  await assertNoSchedulerMismatches(page, "batch audio: scheduler mismatches");
+} finally { if (browser) await browser.close();
   server.close();
 }
-

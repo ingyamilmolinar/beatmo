@@ -1,0 +1,718 @@
+{
+  "version": 1,
+  "subdiv": 8,
+  "bpm": 120,
+  "instruments": [
+    {
+      "name": "Kick",
+      "id": "kick",
+      "kind": "builtin",
+      "volume": 0.69,
+      "origin": 0,
+      "color": "#50C878FF"
+    },
+    {
+      "name": "Snare",
+      "id": "snare",
+      "kind": "builtin",
+      "volume": 0.85,
+      "origin": 3,
+      "color": "#C87850FF"
+    },
+    {
+      "name": "Hi-Hat",
+      "id": "hihat",
+      "kind": "builtin",
+      "volume": 0.77,
+      "origin": 6,
+      "color": "#FFF610FF"
+    },
+    {
+      "name": "Clap",
+      "id": "clap",
+      "kind": "builtin",
+      "volume": 0.44,
+      "origin": 13,
+      "color": "#C85078FF"
+    },
+    {
+      "name": "Tom",
+      "id": "tom",
+      "kind": "builtin",
+      "volume": 0.2,
+      "origin": 15,
+      "color": "#7850C8FF"
+    },
+    {
+      "name": "Cowbell",
+      "id": "cowbell",
+      "kind": "builtin",
+      "volume": 0.08,
+      "origin": 25,
+      "color": "#DC8C64FF"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": -16,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        23
+      ],
+      "outputs": [
+        21
+      ]
+    },
+    {
+      "id": 1,
+      "i": -8,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        9
+      ],
+      "outputs": [
+        2
+      ]
+    },
+    {
+      "id": 2,
+      "i": -16,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        1
+      ],
+      "outputs": [
+        23
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 3,
+      "i": 0,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        33
+      ],
+      "outputs": [
+        24
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 4,
+      "i": 16,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        22
+      ],
+      "outputs": [
+        35
+      ],
+      "volume": 2
+    },
+    {
+      "id": 5,
+      "i": 16,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        34
+      ],
+      "outputs": [
+        31
+      ],
+      "volume": 2
+    },
+    {
+      "id": 6,
+      "i": 8,
+      "j": 8,
+      "type": "mute",
+      "inputs": [
+        45
+      ],
+      "outputs": [
+        44
+      ]
+    },
+    {
+      "id": 7,
+      "i": -8,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        13
+      ],
+      "outputs": [
+        40
+      ]
+    },
+    {
+      "id": 8,
+      "i": -24,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        38
+      ],
+      "outputs": [
+        36
+      ]
+    },
+    {
+      "id": 9,
+      "i": -8,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        20
+      ],
+      "outputs": [
+        1
+      ],
+      "volume": 2,
+      "pitch": 15,
+      "duration": 2.45
+    },
+    {
+      "id": 10,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        30
+      ],
+      "outputs": [
+        32
+      ],
+      "volume": 2
+    },
+    {
+      "id": 11,
+      "i": 12,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        44
+      ],
+      "outputs": [
+        43
+      ],
+      "volume": 0.9999999999999992
+    },
+    {
+      "id": 12,
+      "i": 8,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        42
+      ],
+      "outputs": [
+        45
+      ]
+    },
+    {
+      "id": 13,
+      "i": -24,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        28
+      ],
+      "outputs": [
+        7
+      ]
+    },
+    {
+      "id": 14,
+      "i": -8,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        39
+      ],
+      "outputs": [
+        38
+      ]
+    },
+    {
+      "id": 15,
+      "i": -32,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        19
+      ],
+      "outputs": [
+        18
+      ],
+      "volume": 2,
+      "duration": 1.45
+    },
+    {
+      "id": 16,
+      "i": -32,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        17
+      ],
+      "outputs": [
+        19
+      ],
+      "logic_kind": "skip_every_n",
+      "logic_n": 2
+    },
+    {
+      "id": 17,
+      "i": -36,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        27
+      ],
+      "outputs": [
+        16
+      ],
+      "volume": 1.5,
+      "pitch": -2,
+      "duration": 1.5,
+      "logic_kind": "skip_every_n",
+      "logic_n": 2
+    },
+    {
+      "id": 18,
+      "i": -36,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        15
+      ],
+      "outputs": [
+        27
+      ],
+      "volume": 1.5,
+      "pitch": -2,
+      "duration": 1.8
+    },
+    {
+      "id": 19,
+      "i": -32,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        16
+      ],
+      "outputs": [
+        15
+      ],
+      "pitch": -6,
+      "duration": 0.7,
+      "logic_kind": "skip_every_n",
+      "logic_n": 2
+    },
+    {
+      "id": 20,
+      "i": -10,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        21
+      ],
+      "outputs": [
+        9
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 21,
+      "i": -12,
+      "j": -8,
+      "type": "regular",
+      "inputs": [
+        0
+      ],
+      "outputs": [
+        20
+      ],
+      "volume": 1.5,
+      "pitch": 6,
+      "duration": 0.8
+    },
+    {
+      "id": 22,
+      "i": 14,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        29
+      ],
+      "outputs": [
+        4
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 23,
+      "i": -16,
+      "j": -2,
+      "type": "regular",
+      "inputs": [
+        2
+      ],
+      "outputs": [
+        0
+      ],
+      "volume": 1.5,
+      "pitch": -2,
+      "duration": 0.8
+    },
+    {
+      "id": 24,
+      "i": 2,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        3
+      ],
+      "outputs": [
+        29
+      ],
+      "volume": 1.5
+    },
+    {
+      "id": 25,
+      "i": -33,
+      "j": -1,
+      "type": "regular",
+      "inputs": [
+        26
+      ],
+      "outputs": [
+        26
+      ],
+      "duration": 0.7000000000000001,
+      "logic_kind": "skip_every_n",
+      "logic_n": 4,
+      "logic_p": 0.9999999999999999,
+      "groove_kind": "rush"
+    },
+    {
+      "id": 26,
+      "i": -31,
+      "j": -1,
+      "type": "regular",
+      "inputs": [
+        25
+      ],
+      "outputs": [
+        25
+      ],
+      "logic_kind": "skip_every_n",
+      "logic_n": 8,
+      "logic_p": 0.9,
+      "groove_kind": "delay",
+      "groove_pct": 0.3
+    },
+    {
+      "id": 27,
+      "i": -36,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        18
+      ],
+      "outputs": [
+        17
+      ],
+      "volume": 2
+    },
+    {
+      "id": 28,
+      "i": -24,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        37
+      ],
+      "outputs": [
+        13
+      ]
+    },
+    {
+      "id": 29,
+      "i": 8,
+      "j": -16,
+      "type": "regular",
+      "inputs": [
+        24
+      ],
+      "outputs": [
+        22
+      ]
+    },
+    {
+      "id": 30,
+      "i": 8,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        31
+      ],
+      "outputs": [
+        10
+      ]
+    },
+    {
+      "id": 31,
+      "i": 14,
+      "j": 0,
+      "type": "regular",
+      "inputs": [
+        5
+      ],
+      "outputs": [
+        30
+      ]
+    },
+    {
+      "id": 32,
+      "i": 0,
+      "j": -4,
+      "type": "regular",
+      "inputs": [
+        10
+      ],
+      "outputs": [
+        33
+      ],
+      "volume": 0.3,
+      "logic_kind": "probability",
+      "logic_p": 0.3
+    },
+    {
+      "id": 33,
+      "i": 0,
+      "j": -6,
+      "type": "regular",
+      "inputs": [
+        32
+      ],
+      "outputs": [
+        3
+      ]
+    },
+    {
+      "id": 34,
+      "i": 16,
+      "j": -4,
+      "type": "regular",
+      "inputs": [
+        35
+      ],
+      "outputs": [
+        5
+      ]
+    },
+    {
+      "id": 35,
+      "i": 16,
+      "j": -10,
+      "type": "regular",
+      "inputs": [
+        4
+      ],
+      "outputs": [
+        34
+      ]
+    },
+    {
+      "id": 36,
+      "i": -24,
+      "j": 20,
+      "type": "regular",
+      "inputs": [
+        8
+      ],
+      "outputs": [
+        37
+      ]
+    },
+    {
+      "id": 37,
+      "i": -24,
+      "j": 18,
+      "type": "regular",
+      "inputs": [
+        36
+      ],
+      "outputs": [
+        28
+      ]
+    },
+    {
+      "id": 38,
+      "i": -22,
+      "j": 24,
+      "type": "regular",
+      "inputs": [
+        14
+      ],
+      "outputs": [
+        8
+      ]
+    },
+    {
+      "id": 39,
+      "i": -8,
+      "j": 20,
+      "type": "regular",
+      "inputs": [
+        40
+      ],
+      "outputs": [
+        14
+      ],
+      "logic_kind": "every_n_triggers",
+      "logic_n": 2
+    },
+    {
+      "id": 40,
+      "i": -8,
+      "j": 16,
+      "type": "regular",
+      "inputs": [
+        7
+      ],
+      "outputs": [
+        39
+      ],
+      "logic_kind": "every_n_triggers",
+      "logic_n": 2
+    },
+    {
+      "id": 41,
+      "i": 12,
+      "j": 12,
+      "type": "mute",
+      "inputs": [
+        43
+      ],
+      "outputs": [
+        42
+      ]
+    },
+    {
+      "id": 42,
+      "i": 10,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        41
+      ],
+      "outputs": [
+        12
+      ]
+    },
+    {
+      "id": 43,
+      "i": 12,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        11
+      ],
+      "outputs": [
+        41
+      ],
+      "volume": 1.1
+    },
+    {
+      "id": 44,
+      "i": 10,
+      "j": 8,
+      "type": "regular",
+      "inputs": [
+        6
+      ],
+      "outputs": [
+        11
+      ]
+    },
+    {
+      "id": 45,
+      "i": 8,
+      "j": 10,
+      "type": "regular",
+      "inputs": [
+        12
+      ],
+      "outputs": [
+        6
+      ]
+    }
+  ],
+  "eq": {
+    "gains_db": [
+      -4.1,
+      -4.1,
+      -3.4,
+      -2.5,
+      -4.7,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "bands_hz": [
+      [
+        20,
+        40
+      ],
+      [
+        40,
+        80
+      ],
+      [
+        80,
+        160
+      ],
+      [
+        160,
+        315
+      ],
+      [
+        315,
+        630
+      ],
+      [
+        630,
+        1250
+      ],
+      [
+        1250,
+        2500
+      ],
+      [
+        2500,
+        5000
+      ],
+      [
+        5000,
+        10000
+      ],
+      [
+        10000,
+        20000
+      ]
+    ]
+  }
+}

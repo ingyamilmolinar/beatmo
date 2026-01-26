@@ -9,12 +9,14 @@ import (
 
 // Clicking a subdiv menu item should not trigger underlying controls.
 func TestSubdivMenuNoClickThrough(t *testing.T) {
+	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.recalcButtons()
 	// Open menu
 	c := dv.subdivBtn.Rect()
 	cx, cy := (c.Min.X+c.Max.X)/2, (c.Min.Y+c.Max.Y)/2
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
+	t.Cleanup(restore)
 	dv.Update()
 	restore()
 	if !dv.subdivMenuOpen || len(dv.subdivMenuBtns) == 0 {
@@ -24,6 +26,7 @@ func TestSubdivMenuNoClickThrough(t *testing.T) {
 	r := dv.subdivMenuBtns[0].Rect()
 	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	restore = SetInputForTest(func() (int, int) { return rx, ry }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
+	t.Cleanup(restore)
 	dv.Update()
 	restore()
 	if dv.subdivMenuOpen {

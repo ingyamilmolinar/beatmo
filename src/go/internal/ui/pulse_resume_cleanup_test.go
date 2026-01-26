@@ -4,27 +4,27 @@ import "testing"
 
 // Ensure pulses and highlights from a paused state don't linger after resume.
 func TestResumeClearsOrphanPulses(t *testing.T) {
-	SetDefaultStartForTest(true)
+	withDefaultStart(t, true)
 	g := New(testLogger)
-	defer SetDefaultStartForTest(false)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Start playback
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
 	if len(g.activePulses) == 0 {
 		t.Fatalf("no pulses after start")
 	}
 	// Pause playback
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
-	if !g.paused {
+	if !g.Paused() {
 		t.Fatalf("expected paused state")
 	}
 	// Resume playback; orphan pulses should be cleared and respawned
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
-	if !g.playing {
+	if !g.Playing() {
 		t.Fatalf("expected playing state after resume")
 	}
 	// Should have at most one pulse per row

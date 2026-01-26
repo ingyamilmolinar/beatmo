@@ -4,18 +4,18 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
 const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
-if (!fs.existsSync(chromiumPath)) {
-  spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
+if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
 const port = 8230 + Math.floor(Math.random() * 1000);
 const goDir = path.resolve(jsDir, "../go");
-const GO = process.env.GO || "go";
+const GO = resolveGoBinary();
 const build = spawnSync(
   GO,
   ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
@@ -23,10 +23,8 @@ const build = spawnSync(
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
 
-const server = http.createServer((req, res) => {
-  const file = req.url === "/" ? "/ui.html" : req.url;
-  if (req.url === "/" || req.url === "/ui.html") {
-    const html = `<!DOCTYPE html><html><body>
+const server = http.createServer((req, res) => { const file = req.url === "/" ? "/ui.html" : req.url;
+  if (req.url === "/" || req.url === "/ui.html") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
 <script src="wasm_exec.js"></script>
 <script>
@@ -41,8 +39,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   const fp = path.join(jsDir, file.replace(/^\//, ""));
-  fs.readFile(fp, (err, data) => {
-    if (err) { res.writeHead(404); res.end(); return; }
+  fs.readFile(fp, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
     let ct = "text/plain";
     if (fp.endsWith(".html")) ct = "text/html";
     else if (fp.endsWith(".js")) ct = "application/javascript";
@@ -61,33 +58,33 @@ await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof ensureDefaultPath === 'function');
 await page.evaluate(() => ensureDefaultPath());
 await page.waitForFunction(() => typeof startPlay === 'function');
+await assertSimpleDrawMode(page, true, "playback highlight");
+await clearSchedulerMismatches(page);
 await page.evaluate(() => startPlay());
 
 // Sample visibleAt around the current beat over ~1.5s to ensure progression.
 await page.waitForFunction(() => typeof gridSubdiv === 'function' && typeof visibleAt === 'function' && typeof currentBeat === 'function');
-const seen = await page.evaluate(async () => {
-  const div = gridSubdiv();
+const seen = await page.evaluate(async () => { const div = gridSubdiv();
   const seenIdx = new Set();
   const samples = 30;
-  for (let i = 0; i < samples; i++) {
-    const beat = currentBeat();
+  for (let i = 0; i < samples; i++) { const beat = currentBeat();
     const abs = Math.floor(beat * div);
+    // Make sure predictor buffers cover the probed region.
+    if (typeof ensure === 'function') { ensure(abs + div * 2);
+    }
     // Record the exact abs if visible, otherwise probe +/- 1 around it.
-    if (visibleAt(0, abs)) {
-      seenIdx.add(abs);
-    } else if (visibleAt(0, abs-1)) {
-      seenIdx.add(abs-1);
-    } else if (visibleAt(0, abs+1)) {
-      seenIdx.add(abs+1);
+    if (visibleAt(0, abs)) { seenIdx.add(abs);
+    } else if (visibleAt(0, abs-1)) { seenIdx.add(abs-1);
+    } else if (visibleAt(0, abs+1)) { seenIdx.add(abs+1);
     }
     await new Promise((r) => setTimeout(r, 50));
   }
   return Array.from(seenIdx).sort((a,b)=>a-b);
 });
-if (!seen || seen.length < 4) {
-  throw new Error(`insufficient highlight progression: ${JSON.stringify(seen)}`);
+if (!seen || seen.length < 4) { throw new Error(`insufficient highlight progression: ${JSON.stringify(seen)}`);
 }
 
+await assertNoSchedulerMismatches(page, "playback highlight: scheduler mismatches");
 await browser.close();
 server.close();
 console.log('playback highlight progression verified');

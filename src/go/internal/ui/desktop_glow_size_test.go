@@ -10,18 +10,26 @@ import (
 // TestDesktopNodeGlowReasonableSize ensures glow radius is clamped to a
 // reasonable fraction of the pane height on desktop.
 func TestDesktopNodeGlowReasonableSize(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
+	assertDefaultSimpleDraw(t, g)
 	g.simpleDraw = false
 	if len(g.drum.Rows) == 0 {
 		g.drum.AddRow()
 	}
-	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.pendingStartRow = -1
+	n := g.nodeAt(0, 0)
+	if n == nil {
+		n = g.tryAddNode(0, 0, model.NodeTypeRegular)
+	}
 	if n == nil {
 		t.Fatalf("failed to add node")
 	}
 	g.nodeRows[n.ID] = 0
-	g.nodeAnim[n.ID] = 1
+	g.nodeAnimSet(n.ID, 1)
+	g.quietFrames = 0
 	screen := ebiten.NewImage(g.winW, g.winH)
 	g.Draw(screen)
 	if g.lastGlowScr <= 0 {

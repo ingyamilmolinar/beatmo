@@ -12,8 +12,10 @@ import (
 // node and then delete the row; ensure no panic occurs on subsequent node
 // deletions and the row clears its origin state.
 func TestDeleteOriginNodeThenDeleteRow_NoPanicAndClearsRow(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Build a rectangle loop at (0,0)->(1,0)->(1,1)->(0,1)->(0,0)

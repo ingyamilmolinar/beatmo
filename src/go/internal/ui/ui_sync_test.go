@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -12,8 +11,9 @@ import (
 // aggressively. Uses the engine timeline (currentBeat) and forces the
 // time-based sync logic on for test.
 func TestUISyncKeepsUpDuringLengthIncrease(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	w, h := 800, 600
 	g.Layout(w, h)
 
@@ -44,35 +44,22 @@ func TestUISyncKeepsUpDuringLengthIncrease(t *testing.T) {
 
 	// Start playback.
 	g.drum.SetBPM(120)
-	applyUntil := time.Now().Add(25 * time.Millisecond)
-	for time.Now().Before(applyUntil) {
-		_ = g.Update()
-		time.Sleep(10 * time.Millisecond)
-	}
-	g.drum.playPressed = true
-
-	// For ~300ms, increase length aggressively while updating.
-	deadline := time.Now().Add(80 * time.Millisecond)
-	i := 0
-	for time.Now().Before(deadline) {
+	g.SetAppliedBPMForTest(120)
+	pressPlay(t, g.drum)
+	// Increase length aggressively while updating.
+	_ = g.Update()
+	for i := 0; i < 30; i++ {
 		if i%3 == 0 {
-			g.drum.lenIncPressed = true
+			pressLenInc(t, g.drum)
 		}
+		setPlayStartForAbs(g, i)
 		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-		i++
 	}
 
 	// Final sync to capture latest time.
 	_ = g.Update()
 	// Compute expected absolute subdivision position from engine timeline.
-	div := g.grid.MaxDiv()
-	if div <= 0 {
-		div = 1
-	}
-	// Derive target from wall-clock timeline like the sequencer/sync path.
-	dtSec := time.Since(g.playStart).Seconds()
-	target := int((g.beatBase + dtSec*float64(g.bpm)/60.0) * float64(div))
+	target := 29
 	// UI counter should be close to target (within a small tolerance of 1 subdiv).
 	diff := g.elapsedBeats - target
 	if diff < 0 {

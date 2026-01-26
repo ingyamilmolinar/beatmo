@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -11,8 +10,10 @@ import (
 // TestGridLayerCacheReuse ensures the grid layer cache reuses via blit when the
 // camera pans within the pad, and only rebuilds on first draw.
 func TestGridLayerCacheReuse(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelError)
+	assertDefaultParityState(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 360)
 	// Force a known scale to stabilize stepPx.
 	g.cam.Scale = 1.0

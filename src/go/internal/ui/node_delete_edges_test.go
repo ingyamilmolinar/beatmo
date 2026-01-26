@@ -6,7 +6,9 @@ import (
 )
 
 func TestDeleteNodeClearsAttachedEdges(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "subdiv": 8,
+  "bpm": 120,
+  "instruments": [
+    {
+      "name": "Sample-high-tom-9-wonder",
+      "id": "sample-high-tom-9-wonder",
+      "kind": "sample",
+      "volume": 1,
+      "origin": 0,
+      "color": "#50C8C8FF"
+    }
+  ],
+  "nodes": [
+    { "id": 0, "i": 0, "j": 0, "type": "regular", "inputs": [3], "outputs": [1] },
+    { "id": 1, "i": 8, "j": 0, "type": "regular", "inputs": [0], "outputs": [2] },
+    { "id": 2, "i": 16, "j": 0, "type": "regular", "inputs": [1], "outputs": [3] },
+    { "id": 3, "i": 24, "j": 0, "type": "regular", "inputs": [2], "outputs": [0] }
+  ]
+}

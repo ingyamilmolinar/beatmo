@@ -20,6 +20,32 @@ func insetRect(r image.Rectangle, pad int) image.Rectangle {
 	return image.Rect(r.Min.X+pad, r.Min.Y+pad, r.Max.X-pad, r.Max.Y-pad)
 }
 
+// clipTextToWidth trims text so that its rendered width (using debug font) does
+// not exceed maxW. It preserves whole runes and appends "..." when truncating.
+func clipTextToWidth(text string, maxW int) string {
+	if maxW <= 0 {
+		return ""
+	}
+	maxRunes := maxW / debugCharW
+	if maxRunes <= 0 {
+		return ""
+	}
+	if maxRunes >= utf8.RuneCountInString(text) {
+		return text
+	}
+	ellipsis := "..."
+	ellRunes := len(ellipsis)
+	keepRunes := maxRunes - ellRunes
+	if keepRunes < 0 {
+		keepRunes = 0
+	}
+	rs := []rune(text)
+	if keepRunes > len(rs) {
+		keepRunes = len(rs)
+	}
+	return string(rs[:keepRunes]) + ellipsis
+}
+
 // ButtonVisual is implemented by styles capable of drawing a button.
 // pressed indicates the mouse button is currently down; hovered indicates the
 // cursor is over the control so styles can provide hover feedback.
@@ -75,8 +101,10 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	if b.Style != nil {
 		b.Style.Draw(dst, b.r, b.pressed, b.hovered)
 	}
-	tr := b.textRect()
-	spr := TextSprite(b.Text)
+	// Clip text to fit within the button rect.
+	clipped := clipTextToWidth(b.Text, b.r.Dx()-2*buttonPad)
+	tr := b.textRectFor(clipped)
+	spr := TextSprite(clipped)
 	var op ebiten.DrawImageOptions
 	op.GeoM.Translate(float64(tr.Min.X), float64(tr.Min.Y))
 	dst.DrawImage(spr, &op)
@@ -101,13 +129,19 @@ func (b *Button) Draw(dst *ebiten.Image) {
 			drawStopIcon(dst, box, col)
 		case "pencil":
 			drawPencilIcon(dst, box, col)
+		case "save":
+			drawSaveIcon(dst, box, col)
 		}
 	}
 }
 
 // textRect returns the rectangle occupied by the button's text when drawn.
 func (b *Button) textRect() image.Rectangle {
-	w := debugCharW * utf8.RuneCountInString(b.Text)
+	return b.textRectFor(b.Text)
+}
+
+func (b *Button) textRectFor(text string) image.Rectangle {
+	w := debugCharW * utf8.RuneCountInString(text)
 	h := debugCharH
 	x := b.r.Min.X + (b.r.Dx()-w)/2
 	y := b.r.Min.Y + (b.r.Dy()-h)/2

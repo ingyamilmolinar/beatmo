@@ -10,7 +10,9 @@ import (
 // Probability logic should control whether the mute clears audio, without applying
 // a sustained gate to future beats.
 func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -32,7 +34,7 @@ func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
 	}
 	g.updateBeatInfos()
 
-	g.playing = true
+	g.SetPlaying(true)
 	plays := 0
 	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
 	inst := g.drum.Rows[0].Instrument
@@ -45,12 +47,12 @@ func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
 	defer audio.SetStopHook(nil)
 
 	// Regular beat plays.
-	g.seqScheduleBeat()
+	scheduleAbsForMuteTest(g, 0)
 	if plays != 1 {
 		t.Fatalf("regular did not play: plays=%d", plays)
 	}
 	// Mute with P=0 should not clear audio.
-	g.seqScheduleBeat()
+	scheduleAbsForMuteTest(g, 1)
 	if stops != 0 {
 		t.Fatalf("mute with P=0 stopped audio: stops=%d", stops)
 	}
@@ -64,20 +66,25 @@ func TestMuteNodeProbabilityStopsAudioWithoutGate(t *testing.T) {
 	}
 
 	// Advance until mute fires.
-	for i := 0; i < 8 && stops < 1; i++ {
-		g.seqScheduleBeat()
+	muteAbs := -1
+	for abs := 2; abs < 64 && stops < 1; abs++ {
+		prevStops := stops
+		scheduleAbsForMuteTest(g, abs)
+		if stops > prevStops {
+			muteAbs = abs
+		}
 	}
 	if stops < 1 {
 		t.Fatalf("mute with P=1 did not stop audio: stops=%d", stops)
 	}
+	if muteAbs < 0 {
+		t.Fatalf("expected to capture mute abs when stop occurred")
+	}
 
 	// Immediately following beat should still play (no hold gate).
 	prevPlays := plays
-	g.seqScheduleBeat()
+	scheduleAbsForMuteTest(g, muteAbs+1)
 	if plays != prevPlays+1 {
 		t.Fatalf("audio did not resume after mute: plays=%d prev=%d", plays, prevPlays)
 	}
-
-	g.playing = false
-	g.engine.Stop()
 }

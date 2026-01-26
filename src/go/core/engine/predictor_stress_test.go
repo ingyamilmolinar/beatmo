@@ -9,7 +9,7 @@ import (
 )
 
 // buildLongPath builds a long single-row loop path with regular nodes.
-func buildLongPath(n int) (*model.Graph, [][]model.BeatInfo, []bool, []int) {
+func buildLongPath(n int) (*model.Graph, [][]model.BeatInfo, []bool, []int, map[model.NodeID]model.Node) {
 	logger := game_log.New(nil, game_log.LevelError)
 	g := model.NewGraph(logger)
 	prev := g.AddNode(0, 0, model.NodeTypeRegular)
@@ -23,14 +23,18 @@ func buildLongPath(n int) (*model.Graph, [][]model.BeatInfo, []bool, []int) {
 	g.StartNodeID = ids[0]
 	row, loop, start := g.CalculateBeatRow()
 	_ = loop
-	return g, [][]model.BeatInfo{row}, []bool{true}, []int{start}
+	nodes := make(map[model.NodeID]model.Node, len(g.Nodes))
+	for id, node := range g.Nodes {
+		nodes[id] = node
+	}
+	return g, [][]model.BeatInfo{row}, []bool{true}, []int{start}, nodes
 }
 
 func TestEnginePredictor_BackgroundKeepsAhead(t *testing.T) {
 	// Build a long loop and start background precompute; ensure horizon grows.
-	g, paths, isLoop, loopStart := buildLongPath(256)
+	g, paths, isLoop, loopStart, nodes := buildLongPath(256)
 	p := NewPredictor(g)
-	p.SetPaths(paths, isLoop, loopStart)
+	p.SetPaths(paths, isLoop, loopStart, nodes)
 	targetH := 2048
 	p.StartBackground(func() int { return targetH })
 	defer p.StopBackground()
@@ -69,8 +73,12 @@ func TestPredictorBeatInfoHandlesNegativeIndex(t *testing.T) {
 		t.Fatalf("expected loop start >0, got %d", loopStart)
 	}
 
+	nodes := make(map[model.NodeID]model.Node, len(g.Nodes))
+	for id, node := range g.Nodes {
+		nodes[id] = node
+	}
 	p := NewPredictor(g)
-	p.SetPaths([][]model.BeatInfo{path}, []bool{isLoop}, []int{loopStart})
+	p.SetPaths([][]model.BeatInfo{path}, []bool{isLoop}, []int{loopStart}, nodes)
 
 	defer func() {
 		if r := recover(); r != nil {

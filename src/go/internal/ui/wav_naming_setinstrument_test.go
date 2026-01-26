@@ -5,7 +5,9 @@ import "testing"
 // Ensure SetInstrument safely handles an out-of-range selRow (e.g., after
 // rows changed via import/upload flows) without panicking.
 func TestSetInstrumentSelRowClamp(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	dv := g.drum
 	// Add a few rows to have a non-trivial length.

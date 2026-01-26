@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
-	"time"
+
+	"github.com/ingyamilmolinar/tunkul/core/model"
 )
 
 // Complex live edits must keep DrumView window aligned with the sequencer:
@@ -12,7 +12,8 @@ import (
 // - The Steps cell under the highlight matches predictor.VisibleAt
 func TestLiveEdit_ComplexSequence_SyncWithSequencer(t *testing.T) {
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(1024, 720)
 
 	// Base loop row 0
@@ -37,23 +38,22 @@ func TestLiveEdit_ComplexSequence_SyncWithSequencer(t *testing.T) {
 	g.drum.Rows[1].Origin = E.ID
 	g.drum.Rows[1].Node = g.nodeByID(E.ID)
 
-	g.drum.Length = 24
+	g.drum.SetLength(24)
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 	g.drum.SetBPM(120)
-	until := time.Now().Add(80 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
+	_ = g.Update()
 
-	step := func(loops int) {
-		end := time.Now().Add(time.Duration(loops) * 30 * time.Millisecond)
-		for time.Now().Before(end) {
-			_ = g.Update()
-			time.Sleep(2 * time.Millisecond)
+	step := func(steps int) {
+		advancePlaybackByAbs(g, steps)
+		g.refreshDrumRow()
+		type exp struct {
+			next   int
+			want   bool
+			active bool
 		}
+		expected := make([]exp, len(g.drum.Rows))
 		// Validate for both rows: highlight alignment and next-step consistency.
 		for row := range g.drum.Rows {
 			last := 0
@@ -81,12 +81,16 @@ func TestLiveEdit_ComplexSequence_SyncWithSequencer(t *testing.T) {
 				g.engine.Predictor.Ensure(nextIdx + 1)
 				want = g.engine.Predictor.VisibleAt(row, nextIdx)
 			}
-			// Advance updates until row moves to nextIdx (bound to a small window).
-			deadline := time.Now().Add(120 * time.Millisecond)
-			for (row >= len(g.nextBeatIdxs) || g.nextBeatIdxs[row]-1 < nextIdx) && time.Now().Before(deadline) {
-				_ = g.Update()
-				time.Sleep(2 * time.Millisecond)
+			expected[row] = exp{next: nextIdx, want: want, active: true}
+		}
+		advancePlaybackByAbs(g, 1)
+		g.refreshDrumRow()
+		for row := range g.drum.Rows {
+			if !expected[row].active {
+				continue
 			}
+			nextIdx := expected[row].next
+			want := expected[row].want
 			cur := 0
 			if row < len(g.nextBeatIdxs) {
 				cur = g.nextBeatIdxs[row] - 1
@@ -95,12 +99,27 @@ func TestLiveEdit_ComplexSequence_SyncWithSequencer(t *testing.T) {
 				t.Fatalf("row %d did not advance to next idx; got %d want %d", row, cur, nextIdx)
 			}
 			// Ensure window contains now current index and Steps agrees with earlier predictor decision.
+			g.refreshDrumRow()
 			if cur < g.drum.Offset || cur >= g.drum.Offset+g.drum.Length {
 				t.Fatalf("row %d new last out of window: %d", row, cur)
 			}
 			j := cur - g.drum.Offset
 			got := g.drum.Rows[row].Steps[j]
 			if got != want {
+				if g.engine != nil && g.engine.Predictor != nil {
+					_, vis, _ := g.engine.Predictor.Snapshot()
+					if row < len(vis) {
+						max := len(vis[row])
+						if max > 16 {
+							max = 16
+						}
+						maxSteps := len(g.drum.Rows[row].Steps)
+						if maxSteps > 16 {
+							maxSteps = 16
+						}
+						t.Logf("row %d vis[0:%d]=%v steps[0:%d]=%v offset=%d next=%v cur=%d playing=%v", row, max, vis[row][:max], maxSteps, g.drum.Rows[row].Steps[:maxSteps], g.drum.Offset, g.nextBeatIdxs, cur, g.Playing())
+					}
+				}
 				t.Fatalf("row %d lag/phase at abs=%d: steps=%v want=%v", row, cur, got, want)
 			}
 		}

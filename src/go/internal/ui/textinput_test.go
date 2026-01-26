@@ -10,7 +10,10 @@ import (
 )
 
 func TestTextInputEditing(t *testing.T) {
+	assertDefaultParityState(t)
+	prevSuppress := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
+	t.Cleanup(func() { suppressClicksUntilRelease = prevSuppress })
 	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
 	restore := SetInputForTest(
 		func() (int, int) { return 5, 5 },
@@ -20,6 +23,7 @@ func TestTextInputEditing(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update() // focus
 	restore()
 
@@ -32,6 +36,7 @@ func TestTextInputEditing(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 	if ti.Text != "abc" {
@@ -52,6 +57,7 @@ func TestTextInputEditing(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 
@@ -68,6 +74,7 @@ func TestTextInputEditing(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 	if ti.Text != "ac" {
@@ -79,6 +86,7 @@ func TestTextInputEditing(t *testing.T) {
 }
 
 func TestTextInputEnterDefocuses(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
 	mx, my := 1, 1
 	pressed := true
@@ -108,6 +116,7 @@ func TestTextInputEnterDefocuses(t *testing.T) {
 }
 
 func TestTextInputHighlightAndCursor(t *testing.T) {
+	assertDefaultParityState(t)
 	style := TextInputStyle{Fill: color.RGBA{10, 20, 30, 255}, Border: color.Black, Cursor: color.White}
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), style)
 	restore := SetInputForTest(
@@ -118,6 +127,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update() // focus
 	restore()
 
@@ -150,6 +160,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 }
 
 func TestTextInputBackspaceHold(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
 	ti.focused = true
 	ti.SetText("abcd")
@@ -161,6 +172,7 @@ func TestTextInputBackspaceHold(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	if ti.Text != "abc" {
 		t.Fatalf("expected single deletion, got %q", ti.Text)
@@ -175,6 +187,7 @@ func TestTextInputBackspaceHold(t *testing.T) {
 }
 
 func TestTextInputCursorBlinks(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
 	ti.focused = true
 
@@ -200,6 +213,7 @@ func TestTextInputCursorBlinks(t *testing.T) {
 }
 
 func TestTextInputClickMovesCursor(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
 	ti.SetText("abcd")
 	restore := SetInputForTest(
@@ -210,6 +224,7 @@ func TestTextInputClickMovesCursor(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
+	t.Cleanup(restore)
 	ti.Update()
 	restore()
 	if ti.cursor != 2 {
@@ -218,6 +233,7 @@ func TestTextInputClickMovesCursor(t *testing.T) {
 }
 
 func TestTextInputCursorPosition(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdef")
 	ti.cursor = 4
@@ -238,6 +254,7 @@ func TestTextInputCursorPosition(t *testing.T) {
 // cursor alignment regression test: ensure caret sits exactly after the
 // preceding glyphs with no extra spacing.
 func TestTextInputCursorAlignment(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
 	ti.focused = true
 	ti.SetText("abcd")
@@ -257,6 +274,7 @@ func TestTextInputCursorAlignment(t *testing.T) {
 }
 
 func TestTextInputOverflow(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	vis, start := ti.visibleText()
@@ -269,6 +287,7 @@ func TestTextInputOverflow(t *testing.T) {
 }
 
 func TestTextInputVisibleTextStart(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	ti.cursor = 0
@@ -279,6 +298,7 @@ func TestTextInputVisibleTextStart(t *testing.T) {
 }
 
 func TestTextInputMidCursorWindow(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	ti.cursor = 5
@@ -301,6 +321,7 @@ func TestTextInputMidCursorWindow(t *testing.T) {
 }
 
 func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
+	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 100, 24), BPMBoxStyle)
 	ti.focused = true
 	ti.anim = 1
@@ -309,8 +330,8 @@ func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
 	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
 		got = r
 	}
+	defer func() { drawButton = old }()
 	ti.Draw(ebiten.NewImage(100, 24))
-	drawButton = old
 	if got.Dy() != 20 || got.Dx() != 96 {
 		t.Fatalf("animRect=%v", got)
 	}

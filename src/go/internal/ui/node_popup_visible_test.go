@@ -8,7 +8,9 @@ import (
 // The node popup panel should be fully visible within the grid view (top pane),
 // clamped away from screen edges even for nodes near the borders.
 func TestNodePopupClampedInsideTopPane(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
+	t.Cleanup(g.CloseForTest)
 	g.Layout(400, 300)
 	// Create a node near the right edge of the grid area
 	// Position in grid units: use a high I so its screen X is near winW

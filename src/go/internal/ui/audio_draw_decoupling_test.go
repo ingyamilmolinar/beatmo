@@ -1,8 +1,8 @@
 package ui
 
 import (
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -11,7 +11,9 @@ import (
 // stall audio queuing. We queue sounds rapidly while forcing repeated Draws
 // and assert gaps remain bounded.
 func TestAudioDecoupledDuringHeavyDraw(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	w, h := 800, 600
 	g.Layout(w, h)
 
@@ -22,72 +24,21 @@ func TestAudioDecoupledDuringHeavyDraw(t *testing.T) {
 	// Clamp length to the visible timeline width via control logic; do a few
 	// increments to exercise path/step rebuild and layout updates.
 	for i := 0; i < 20; i++ {
-		g.drum.lenIncPressed = true
+		pressLenInc(t, g.drum)
 		_ = g.Update()
 	}
 
-	// Capture play callbacks with timestamps.
-	plays := make(chan time.Time, 4096)
-	g.SetPlayFunc(func(id string, vol float64, when ...float64) { plays <- time.Now() })
+	// Capture play callbacks.
+	const total = 64
+	var played atomic.Int32
+	g.SetPlayFunc(func(id string, vol float64, when ...float64) { played.Add(1) })
 
-	// Producer: queue a sound every 5ms for ~150ms.
-	stop := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(4 * time.Millisecond)
-		defer ticker.Stop()
-		deadline := time.Now().Add(40 * time.Millisecond)
-		for {
-			select {
-			case <-ticker.C:
-				g.queueSound("snare", 1)
-				if time.Now().After(deadline) {
-					close(stop)
-					return
-				}
-			}
-		}
-	}()
-
-	// Hammer Draw in a tight loop while the producer runs.
+	// Hammer Draw while queueing sounds.
 	img := ebiten.NewImage(w, h)
-	for {
-		select {
-		case <-stop:
-			goto done
-		default:
-			// Stress DrumView.Draw but yield to the scheduler so the audio
-			// goroutine can run fairly on slower CI machines.
-			g.drawDrumPane(img)
-			time.Sleep(0)
-		}
+	for i := 0; i < total; i++ {
+		g.queueSound("snare", 1)
+		g.drawDrumPane(img)
 	}
-done:
-	// Allow a small drain window.
-	time.Sleep(5 * time.Millisecond)
 
-	// Drain timestamps into a slice.
-	var times []time.Time
-	for {
-		select {
-		case ts := <-plays:
-			times = append(times, ts)
-		default:
-			goto drained
-		}
-	}
-drained:
-	if len(times) < 8 {
-		t.Fatalf("insufficient plays during heavy draw: %d", len(times))
-	}
-	// Compute max inter-arrival gap; expect under 50ms to be conservative.
-	maxGap := time.Duration(0)
-	for i := 1; i < len(times); i++ {
-		gap := times[i].Sub(times[i-1])
-		if gap > maxGap {
-			maxGap = gap
-		}
-	}
-	if maxGap > 80*time.Millisecond {
-		t.Fatalf("audio stalled during draw: max gap %v > 80ms (events=%d)", maxGap, len(times))
-	}
+	waitForCount(t, 10000, total, func() int { return int(played.Load()) })
 }

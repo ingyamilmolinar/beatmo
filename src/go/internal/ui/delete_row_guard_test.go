@@ -9,6 +9,7 @@ import (
 // Simulate holding the mouse down on a row delete button and ensure only one row
 // is deleted even if the button row shifts under the cursor.
 func TestDeleteRow_NoCascadeOnHeldPress(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(ebiten.NewImage(600, 200).Bounds(), nil, logger)
 	// Add two more rows (total 3)

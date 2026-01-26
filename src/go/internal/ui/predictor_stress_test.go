@@ -56,42 +56,42 @@ func buildRectangleWithLogic(g *Game) *uiNode {
 	return A
 }
 
-// TestSeqBeatSchedulesUnderHeavyPrediction_Legacy verifies seqScheduleBeat keeps
-// scheduling in the presence of heavy prediction work (legacy path), by gating
-// from DrumView Steps exclusively.
-func TestSeqBeatSchedulesUnderHeavyPrediction_Legacy(t *testing.T) {
+// TestSeqScheduleTimeAdvancesUnderHeavyPrediction verifies the time-based
+// sequencer keeps advancing even when predictor Ensure() is busy.
+func TestSeqScheduleTimeAdvancesUnderHeavyPrediction(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 768)
 	start := buildRectangleWithLogic(g)
 	g.start = start
 	g.graph.StartNodeID = start.ID
-	g.drum.Length = 128
+	g.drum.SetLength(128)
 	g.updateBeatInfos()
 	g.drum.Offset = 0
 	g.refreshDrumRow()
-	want := append([]bool(nil), g.drum.Rows[0].Steps...)
-	got := make([]bool, len(want))
 	g.SetPlayFunc(func(id string, vol float64, when ...float64) {})
 
-	// Hammer computePredictions in a goroutine to simulate heavy work.
-	done := make(chan struct{}, 1)
+	if g.engine == nil || g.engine.Predictor == nil {
+		t.Fatalf("missing engine predictor")
+	}
+
+	// Hammer Ensure() in a goroutine to simulate heavy work.
+	done := make(chan struct{})
 	go func() {
-		g.computePredictions(len(want) * 32)
-		done <- struct{}{}
+		for i := 0; i < 32; i++ {
+			g.engine.Predictor.Ensure(len(g.drum.Rows[0].Steps) * 32)
+		}
+		close(done)
 	}()
 
-	// Drive scheduler from DrumView Steps (seqScheduleBeat) repeatedly.
-	g.seqNextIdxs = make([]int, len(g.drum.Rows))
-	for i := 0; i < len(want); i++ {
-		g.seqScheduleBeat()
-		if i < len(got) {
-			got[i] = (i < len(g.drum.Rows[0].Steps) && g.drum.Rows[0].Steps[i])
-		}
+	g.SetPlaying(true)
+	steps := len(g.drum.Rows[0].Steps)
+	for abs := 0; abs < steps; abs++ {
+		scheduleAbsForMuteTest(g, abs)
 	}
-	<-done
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("mismatch at %d: got=%v want=%v", i, got[i], want[i])
-		}
+	waitForChan(t, done, 10000)
+	if len(g.seqNextIdxs) == 0 || g.seqNextIdxs[0] < steps {
+		t.Fatalf("sequencer did not advance: got=%v want>=%d", g.seqNextIdxs, steps)
 	}
 }

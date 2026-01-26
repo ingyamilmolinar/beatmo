@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"os"
 	"testing"
 
 	"github.com/ingyamilmolinar/tunkul/internal/log"
@@ -17,8 +16,10 @@ const (
 // var testFont font.Face
 
 func TestMainLayout(t *testing.T) {
-	logger := log.New(os.Stdout, log.LevelInfo)
+	assertDefaultParityState(t)
+	logger := log.New(testLogOutput(), log.LevelInfo)
 	game := New(logger)
+	t.Cleanup(game.CloseForTest)
 	game.Layout(TestWinW, TestWinH)
 
 	if game.split.Y <= 0 || game.split.Y >= TestWinH {
@@ -36,7 +37,8 @@ func TestMainLayout(t *testing.T) {
 }
 
 func TestDrumViewButtonLayout(t *testing.T) {
-	logger := log.New(os.Stdout, log.LevelInfo)
+	assertDefaultParityState(t)
+	logger := log.New(testLogOutput(), log.LevelInfo)
 	widths := []int{320, 640, 1280}
 	for _, w := range widths {
 		dv := NewDrumView(image.Rect(0, 0, w, 200), nil, logger)
@@ -54,11 +56,11 @@ func TestDrumViewButtonLayout(t *testing.T) {
 		if !(inc.Min.Y < dec.Min.Y) {
 			t.Fatalf("w=%d: bpm + not above - (inc=%v, dec=%v)", w, inc, dec)
 		}
-		// Entire pair should live within the top row bounds
-		topMinY := dv.Bounds.Min.Y
-		topMaxY := dv.Bounds.Min.Y + dv.rowHeight()
-		if inc.Min.Y < topMinY || dec.Max.Y > topMaxY {
-			t.Fatalf("w=%d: bpm +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, inc, dec, topMinY, topMaxY)
+		// Entire pair should live within the top half of the transport widget
+		trans := dv.widgetRects[WidgetTransport]
+		topMaxY := trans.Min.Y + trans.Dy()/2
+		if inc.Min.Y < trans.Min.Y || dec.Max.Y > topMaxY {
+			t.Fatalf("w=%d: bpm +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, inc, dec, trans.Min.Y, topMaxY)
 		}
 
 		// Verify Length +/- are vertically stacked in the same column
@@ -73,8 +75,8 @@ func TestDrumViewButtonLayout(t *testing.T) {
 		if !(linc.Min.Y < ldec.Min.Y) {
 			t.Fatalf("w=%d: len + not above - (inc=%v, dec=%v)", w, linc, ldec)
 		}
-		if linc.Min.Y < topMinY || ldec.Max.Y > topMaxY {
-			t.Fatalf("w=%d: len +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, linc, ldec, topMinY, topMaxY)
+		if linc.Min.Y < trans.Min.Y || ldec.Max.Y > topMaxY {
+			t.Fatalf("w=%d: len +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, linc, ldec, trans.Min.Y, topMaxY)
 		}
 
 		// Bottom row sanity (Upload at least)
@@ -91,7 +93,8 @@ func TestDrumViewButtonLayout(t *testing.T) {
 
 // Ensure commonly visible icon buttons render expected glyphs.
 func TestTopIconButtonsHaveGlyphs(t *testing.T) {
-	logger := log.New(os.Stdout, log.LevelInfo)
+	assertDefaultParityState(t)
+	logger := log.New(testLogOutput(), log.LevelInfo)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	if dv.playBtn.Text != "▶" {
 		t.Fatalf("play icon = %q want ▶", dv.playBtn.Text)
@@ -106,21 +109,36 @@ func TestTopIconButtonsHaveGlyphs(t *testing.T) {
 	if dv.rowEditBtns[0].Text != "✎" {
 		t.Fatalf("pencil icon = %q want ✎", dv.rowEditBtns[0].Text)
 	}
+	if len(dv.rowSaveBtns) == 0 {
+		t.Fatalf("no row save buttons built")
+	}
+	if dv.rowSaveBtns[0].Icon != "save" {
+		t.Fatalf("save icon = %q want save", dv.rowSaveBtns[0].Icon)
+	}
 }
 
 func TestDrumRowEditButtonLayout(t *testing.T) {
-	logger := log.New(os.Stdout, log.LevelInfo)
+	assertDefaultParityState(t)
+	logger := log.New(testLogOutput(), log.LevelInfo)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()
 	dv.calcLayout()
 	lbl := dv.rowLabels[0].Rect()
 	edit := dv.rowEditBtns[0].Rect()
+	save := dv.rowSaveBtns[0].Rect()
+	color := dv.rowColorBtns[0].Rect()
 	slider := dv.rowVolSliders[0].Rect()
 	if lbl.Max.X > edit.Min.X {
 		t.Fatalf("edit button overlaps label")
 	}
-	if edit.Max.X > slider.Min.X {
-		t.Fatalf("edit button overlaps slider")
+	if edit.Max.X > save.Min.X {
+		t.Fatalf("save button overlaps edit")
+	}
+	if save.Max.X > color.Min.X {
+		t.Fatalf("save button overlaps color")
+	}
+	if color.Max.X > slider.Min.X {
+		t.Fatalf("color button overlaps slider")
 	}
 }
 

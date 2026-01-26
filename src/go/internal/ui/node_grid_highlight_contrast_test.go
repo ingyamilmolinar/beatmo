@@ -13,23 +13,31 @@ import (
 // node highlights render with a thick, high-contrast outline (multiple
 // drawRect border calls, including white and row-colored rings).
 func TestSimpleDrawNodeHighlightThickOutline(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 360)
+	assertDefaultSimpleDraw(t, g)
 	g.simpleDraw = true
+	g.pendingStartRow = -1
 	// Ensure row 0 exists and has a known color.
 	if len(g.drum.Rows) == 0 {
 		g.drum.AddRow()
 	}
 	rowColor := color.RGBA{8, 160, 240, 255}
-	g.drum.Rows[0].Color = rowColor
+	g.drum.SetRowColor(0, rowColor)
 
 	// Add a regular node and mark it animating.
-	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	n := g.nodeAt(0, 0)
+	if n == nil {
+		n = g.tryAddNode(0, 0, model.NodeTypeRegular)
+	}
 	if n == nil {
 		t.Fatalf("failed to add node")
 	}
-	g.nodeRows[n.ID] = 0 // map node to row 0 for color
-	g.nodeAnim[n.ID] = 1 // active highlight
+	g.nodeRows[n.ID] = 0   // map node to row 0 for color
+	g.nodeAnimSet(n.ID, 1) // active highlight
+	g.quietFrames = 0
 
 	// Intercept drawRect to capture border strokes.
 	var borderCount int

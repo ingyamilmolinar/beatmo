@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/model"
 )
@@ -10,14 +9,16 @@ import (
 // TestNodeMenuVolumePercentAdjustsAudio opens the popup, clicks VOL- once
 // (100% -> 90%), and verifies the next playback uses the reduced volume.
 func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
 
 	// Simple two-node path
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	g.addEdge(n0, n1)
+	g.updateBeatInfos()
 
 	// Open node menu on n1
 	g.sel = n1
@@ -42,18 +43,11 @@ func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 	vols := make(chan float64, 2)
 	g.SetPlayFunc(func(_ string, v float64, _ ...float64) { vols <- v })
 
-	g.playing = true
-	g.spawnPulseFrom(0)
-	v0 := <-vols // n0 baseline
-	// Advance to n1
-	g.activePulse.t = 1
-	g.Update()
-	var v1 float64
-	select {
-	case v1 = <-vols:
-	case <-time.After(50 * time.Millisecond):
-		t.Fatalf("no playback at n1")
-	}
+	g.SetPlaying(true)
+	scheduleAbsForMuteTest(g, 0)
+	v0 := waitForChan(t, vols, 10000)
+	scheduleAbsForMuteTest(g, 1)
+	v1 := waitForChan(t, vols, 10000)
 
 	// Expect approx 0.9x vs baseline
 	if v0 <= 0 || v1 <= 0 {

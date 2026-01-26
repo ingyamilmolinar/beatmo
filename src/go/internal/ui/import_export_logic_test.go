@@ -7,9 +7,11 @@ import (
 )
 
 // TestExportIncludesLogicFields ensures new logic fields are present in export
-// and that SkipEvery mirrors skip_every_n for backwards compatibility.
+// and that legacy SkipEvery is not emitted.
 func TestExportIncludesLogicFields(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	// Use skip_every_n logic
@@ -36,8 +38,8 @@ func TestExportIncludesLogicFields(t *testing.T) {
 			if n.LogicKind != "skip_every_n" || n.LogicN != 3 {
 				t.Fatalf("missing logic fields: kind=%q n=%d", n.LogicKind, n.LogicN)
 			}
-			if n.SkipEvery != 3 {
-				t.Fatalf("expected SkipEvery mirror 3, got %d", n.SkipEvery)
+			if n.SkipEvery != 0 {
+				t.Fatalf("expected SkipEvery omitted, got %d", n.SkipEvery)
 			}
 			found = true
 		}
@@ -50,6 +52,7 @@ func TestExportIncludesLogicFields(t *testing.T) {
 // TestImportLogicFieldsOverrideSkip verifies import applies logic fields and
 // still supports legacy SkipEvery when logic is absent.
 func TestImportLogicFieldsOverrideSkip(t *testing.T) {
+	assertDefaultParityState(t)
 	// Build a minimal export JSON with both logic and skip fields for a node
 	file := exportFile{
 		Version:     1,
@@ -62,6 +65,7 @@ func TestImportLogicFieldsOverrideSkip(t *testing.T) {
 	}
 	data, _ := json.Marshal(file)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
@@ -73,7 +77,7 @@ func TestImportLogicFieldsOverrideSkip(t *testing.T) {
 			if n.Params.LogicKind != "skip_every_n" || n.Params.LogicN != 2 {
 				t.Fatalf("logic not applied: %+v", n.Params)
 			}
-			// SkipEveryN should remain default when logic specified (eval ignores it anyway)
+			// SkipEveryN is deprecated and should be normalized away.
 			if n.Params.SkipEveryN != 0 {
 				t.Fatalf("unexpected SkipEveryN: %d", n.Params.SkipEveryN)
 			}

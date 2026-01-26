@@ -10,7 +10,9 @@ import (
 // Full flow: import missing instrument -> menu includes id -> switch to available ->
 // missing id persists in menu -> register WAV with same id -> becomes available & playable.
 func TestMissingInstrumentMenuAndAvailabilityFlow(t *testing.T) {
+	withDefaultAudio(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	dv := g.drum
 	// Ensure baseline instruments are present
@@ -56,7 +58,9 @@ func TestMissingInstrumentMenuAndAvailabilityFlow(t *testing.T) {
 		t.Fatalf("myst disappeared from instOptions")
 	}
 	// Register a WAV with the same id to make it available
-	audio.RegisterWAV("myst", "dummy.wav")
+	if err := audio.RegisterWAV("myst", writeTempWAV(t, "myst.wav")); err != nil {
+		t.Fatalf("register wav: %v", err)
+	}
 	dv.refreshInstruments()
 	if !dv.IsInstrumentAvailable("myst") {
 		t.Fatalf("myst did not become available after register")
@@ -66,13 +70,12 @@ func TestMissingInstrumentMenuAndAvailabilityFlow(t *testing.T) {
 	if !dv.IsInstrumentAvailable(dv.Rows[dv.selRow].Instrument) {
 		t.Fatalf("row instrument still marked missing")
 	}
-	// Playback should not be suppressed now; set play func to count triggers
-	plays := 0
-	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
+	// Playback should no longer be suppressed after registering the instrument.
+	played := make(chan struct{}, 1)
+	g.SetPlayFunc(func(string, float64, ...float64) { played <- struct{}{} })
 	info := g.beatInfoAtRow(0, 0)
 	if info.NodeType == 0 {
 		g.highlightBeat(0, 0, info, 10)
 	}
-	// highlightBeat may be gated by sequencer/time; we permit zero plays here
-	// but ensure no suppression due to missing instrument (i.e., gating would have returned early).
+	waitForChan(t, played, 10000)
 }

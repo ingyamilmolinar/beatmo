@@ -8,6 +8,7 @@ import (
 )
 
 func TestEdgeStyleDrawProgressSingleArrow(t *testing.T) {
+	assertDefaultParityState(t)
 	img := ebiten.NewImage(10, 10)
 	var cam ebiten.GeoM
 	s := EdgeStyle{Color: color.White, Thickness: 1, ArrowSize: 1}

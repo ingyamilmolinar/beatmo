@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -12,8 +11,10 @@ import (
 // TestDrawCullingSkipsOffscreen verifies edges and nodes inside the viewport
 // are drawn, then culling skips them after a large pan.
 func TestDrawCullingSkipsOffscreen(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelError)
+	assertDefaultParityState(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Place a small rectangle at the origin (initially visible).
 	g.pendingStartRow = 0

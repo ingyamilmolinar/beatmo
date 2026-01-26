@@ -4,9 +4,9 @@ import "testing"
 
 // Nodes should shrink on zoom-in and grow on zoom-out in screen pixels.
 func TestNodeSizeRespondsToZoom(t *testing.T) {
-	SetDefaultStartForTest(true)
+	withDefaultStart(t, true)
 	g := New(testLogger)
-	defer SetDefaultStartForTest(false)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.nodeAt(0, 0)
 	if n == nil {

@@ -1,9 +1,10 @@
 package beat
 
 import (
-	"log"
 	"math"
 	"time"
+
+	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
 type Scheduler struct {
@@ -14,14 +15,16 @@ type Scheduler struct {
 	running     bool
 	currentStep int
 	BeatLength  int
+	logger      *game_log.Logger
 }
 
-func NewScheduler() *Scheduler {
+func NewScheduler(logger *game_log.Logger) *Scheduler {
 	return &Scheduler{
 		BPM:         120,
 		now:         time.Now,
 		currentStep: 0,
 		BeatLength:  16,
+		logger:      logger,
 	}
 }
 
@@ -53,14 +56,18 @@ func (s *Scheduler) Start() {
 	s.running = true
 	s.last = time.Time{}
 	s.currentStep = 0
-	log.Printf("[SCHEDULER] Started")
+	if s.logger != nil {
+		s.logger.Debugf("[SCHEDULER] Started")
+	}
 }
 
 func (s *Scheduler) Stop() {
 	s.running = false
 	s.currentStep = 0
 	s.last = time.Time{}
-	log.Printf("[SCHEDULER] Stopped")
+	if s.logger != nil {
+		s.logger.Debugf("[SCHEDULER] Stopped")
+	}
 }
 
 func (s *Scheduler) Tick() {

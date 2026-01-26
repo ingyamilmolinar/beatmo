@@ -12,14 +12,22 @@ type Voice interface{}
 type Instrument interface{}
 
 var (
-	instruments   = []string{"snare", "kick", "hihat", "tom", "clap"}
+	instruments   = []string{"snare", "kick", "hihat", "tom", "clap", "cowbell"}
 	instrumentsMu sync.RWMutex
 )
 
 func Register(id string, inst Instrument) {
 	instrumentsMu.Lock()
+	for _, existing := range instruments {
+		if existing == id {
+			instrumentsMu.Unlock()
+			InstrumentChannel(id)
+			return
+		}
+	}
 	instruments = append(instruments, id)
 	instrumentsMu.Unlock()
+	bumpInstrumentsVersion()
 	InstrumentChannel(id)
 }
 
@@ -100,8 +108,13 @@ func Stop(id string) {
 // ResetInstruments restores the default instrument ID list.
 func ResetInstruments() {
 	instrumentsMu.Lock()
-	instruments = []string{"snare", "kick", "hihat", "tom", "clap"}
+	instruments = []string{
+		"snare", "kick", "hihat", "tom", "clap", "cowbell",
+		"snare-1", "kick-1", "hihat-1", "tom-1", "clap-1", "cowbell-1",
+		"snare-2", "kick-2", "hihat-2", "tom-2", "clap-2", "cowbell-2",
+	}
 	instrumentsMu.Unlock()
+	bumpInstrumentsVersion()
 	resetInstrumentChannels(instruments)
 }
 

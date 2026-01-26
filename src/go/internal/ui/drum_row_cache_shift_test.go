@@ -11,13 +11,13 @@ import (
 // For large length (steps per pixel ~1), a shift of 1 step is a 1px shift and
 // should use incremental update (no generation bump) within pad.
 func TestRowCacheOffsetSmallShiftReuse(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()
 	dv.calcLayout()
 	// Make each step ~1px wide so a +1 offset is a tiny pixel shift
-	dv.Length = dv.timelineRect.Dx()
-	dv.Rows[0].Steps = make([]bool, dv.Length)
+	dv.SetLength(dv.timelineRect.Dx())
 	dst := ebiten.NewImage(400, 200)
 	dv.Draw(dst, map[int]int64{}, 0, nil, 0)
 	if len(dv.rowCacheGen) == 0 {
@@ -36,6 +36,7 @@ func TestRowCacheOffsetSmallShiftReuse(t *testing.T) {
 // With a small pad, a 1-step shift at default length should exceed pad and
 // trigger a rebuild (generation bump).
 func TestRowCacheOffsetLargeShiftRebuild(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()

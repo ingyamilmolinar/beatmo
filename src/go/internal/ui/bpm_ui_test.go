@@ -1,16 +1,20 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"math"
 	"testing"
 	"time"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/tunkul/core/model"
 )
 
 // TestBPMButtonsWithMouseClick simulates real mouse clicks on the +/- buttons
 // and verifies that Game picks up the BPM change and applies it to the engine.
 func TestBPMButtonsWithMouseClick(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Place cursor over the + button and press.
@@ -43,17 +47,12 @@ func TestBPMButtonsWithMouseClick(t *testing.T) {
 	}
 
 	// Wait briefly for the async bpmLoop to apply to engine/appliedBPM.
-	deadline := time.Now().Add(200 * time.Millisecond)
 	target := g.drum.BPM()
-	for time.Now().Before(deadline) {
-		if g.engine.BPM() == target && g.appliedBPM == target {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-		_ = g.Update()
-	}
-	if g.engine.BPM() != target || g.appliedBPM != target {
-		t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d target=%d", g.engine.BPM(), g.appliedBPM, target)
+	waitForUpdateCond(t, g, 10000, func() bool {
+		return g.engine.BPM() == target && g.AppliedBPM() == target
+	})
+	if g.engine.BPM() != target || g.AppliedBPM() != target {
+		t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d target=%d", g.engine.BPM(), g.AppliedBPM(), target)
 	}
 
 	// Now click the - button.
@@ -75,8 +74,9 @@ func TestBPMButtonsWithMouseClick(t *testing.T) {
 
 // Ensure +/- in time-based mode affects visual speed (subdivisions per second).
 func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Build a 1-beat segment: (0,0) -> (div,0)
@@ -90,16 +90,19 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 	// Click + once to change BPM, and compare before/after rates.
 	// Compute base rate at current BPM.
 	_ = g.Update()
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	// Measure baseline progression over a fixed window.
 	startBPM := g.drum.BPM()
-	startBeats := g.elapsedBeats
-	t0 := time.Now()
-	for time.Since(t0) < 100*time.Millisecond {
-		_ = g.Update()
-		time.Sleep(3 * time.Millisecond)
+	dt := 100 * time.Millisecond
+	g.SetBeatBaseForTest(0)
+	g.elapsedBeats = 0
+	baseAbs := int(math.Ceil(dt.Seconds() * float64(startBPM) / 60.0 * float64(g.grid.MaxDiv())))
+	if baseAbs < 1 {
+		baseAbs = 1
 	}
-	baseDelta := g.elapsedBeats - startBeats
+	setPlayStartForAbs(g, baseAbs)
+	_ = g.Update()
+	baseDelta := g.elapsedBeats
 
 	// Click + multiple times to create a noticeable BPM change.
 	inc := g.drum.bpmIncBtn.Rect()
@@ -114,6 +117,7 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 			func() (float64, float64) { return 0, 0 },
 			func() (int, int) { return 640, 480 },
 		)
+		t.Cleanup(restore)
 		_ = g.Update()
 		pressed = false
 		_ = g.Update()
@@ -123,26 +127,23 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 	// Wait for async apply to update appliedBPM and engine BPM.
 	target := g.drum.BPM()
 	t.Logf("target BPM after clicks=%d", target)
-	deadline := time.Now().Add(200 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		_ = g.Update()
-		time.Sleep(3 * time.Millisecond)
-		if g.appliedBPM == target && g.engine.BPM() == target {
-			break
-		}
+	waitForUpdateCond(t, g, 10000, func() bool {
+		return g.AppliedBPM() == target && g.engine.BPM() == target
+	})
+	if g.AppliedBPM() != target {
+		t.Fatalf("BPM + did not apply: applied=%d target=%d", g.AppliedBPM(), target)
 	}
-	if g.appliedBPM != target {
-		t.Fatalf("BPM + did not apply: applied=%d target=%d", g.appliedBPM, target)
+	g.SetBeatBaseForTest(0)
+	g.elapsedBeats = 0
+	afterAbs := int(math.Ceil(dt.Seconds() * float64(target) / 60.0 * float64(g.grid.MaxDiv())))
+	if afterAbs < 1 {
+		afterAbs = 1
 	}
-	startBeats2 := g.elapsedBeats
-	t1 := time.Now()
-	for time.Since(t1) < 100*time.Millisecond {
-		_ = g.Update()
-		time.Sleep(3 * time.Millisecond)
-	}
-	delta2 := g.elapsedBeats - startBeats2
-	if g.appliedBPM <= startBPM {
-		t.Fatalf("BPM did not increase: start=%d applied=%d", startBPM, g.appliedBPM)
+	setPlayStartForAbs(g, afterAbs)
+	_ = g.Update()
+	delta2 := g.elapsedBeats
+	if g.AppliedBPM() <= startBPM {
+		t.Fatalf("BPM did not increase: start=%d applied=%d", startBPM, g.AppliedBPM())
 	}
 	if delta2+1 < baseDelta {
 		t.Fatalf("visual progression slowed unexpectedly: base=%d after=%d", baseDelta, delta2)
@@ -151,12 +152,13 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 
 // Manual BPM editor in time-based mode affects speed and engine/applied BPM.
 func TestBPMEditorCommitTimeBased(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Focus editor and type 200, then enter.
 	_ = g.Update()
-	g.drum.bpmBox.focused = true
+	focusTextInput(t, g.drum, g.drum.bpmBox)
 	g.drum.bpmBox.SetText("")
 	chars := []rune{}
 	restore := SetInputForTest(
@@ -181,26 +183,24 @@ func TestBPMEditorCommitTimeBased(t *testing.T) {
 		t.Fatalf("BPM editor did not commit: %d", g.drum.BPM())
 	}
 	// Let async apply update engine/applied and time-based sync.
-	deadline := time.Now().Add(150 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		_ = g.Update()
-		time.Sleep(4 * time.Millisecond)
-	}
-	if g.appliedBPM != 200 {
-		t.Fatalf("appliedBPM not updated: %d", g.appliedBPM)
+	waitForUpdateCond(t, g, 10000, func() bool { return g.AppliedBPM() == 200 })
+	if g.AppliedBPM() != 200 {
+		t.Fatalf("appliedBPM not updated: %d", g.AppliedBPM())
 	}
 }
 
 // TestBPMEditorCommit simulates typing a BPM in the text box and pressing Enter,
 // validating that the value applies to Game and the engine asynchronously.
 func TestBPMEditorCommit(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Let layout settle so button/text rects are up to date, then directly
 	// set focus on the bpmBox (package-private access is allowed in tests).
 	_ = g.Update()
-	g.drum.bpmBox.focused = true
+	focusTextInput(t, g.drum, g.drum.bpmBox)
 	g.drum.bpmBox.SetText("")
 	chars := []rune{}
 	restore := SetInputForTest(
@@ -244,16 +244,11 @@ func TestBPMEditorCommit(t *testing.T) {
 	}
 
 	// Wait for async engine/apply.
-	deadline := time.Now().Add(100 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if g.engine.BPM() == 200 && g.appliedBPM == 200 {
-			break
-		}
-		time.Sleep(3 * time.Millisecond)
-		_ = g.Update()
-	}
-	if g.engine.BPM() != 200 || g.appliedBPM != 200 {
-		t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d", g.engine.BPM(), g.appliedBPM)
+	waitForUpdateCond(t, g, 10000, func() bool {
+		return g.engine.BPM() == 200 && g.AppliedBPM() == 200
+	})
+	if g.engine.BPM() != 200 || g.AppliedBPM() != 200 {
+		t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d", g.engine.BPM(), g.AppliedBPM())
 	}
 }
 

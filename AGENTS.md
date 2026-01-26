@@ -1,244 +1,334 @@
 ## Overview
-- Tunkul is a grid-based beat sequencer that walks a directed graph to drive multi-row drum playback.
-- Primary targets: native desktop (Ebiten) and WebAssembly (Emscripten + WebAudio).
-- Codebase is Go 1.23; high-level systems are graph model, beat scheduler/engine, UI, audio backends, and JS bridges.
 
-## Agent Quick Start
-- Install deps once: `sudo make dependencies` (runs `scripts/setup-env.sh`: X11/ALSA/OpenGL, Node, Emscripten, Playwright).
-- Run desktop quickly: `make run` or `make run-debug`.
-- Fast Go tests (stubbed Ebiten): `cd src/go && go test -tags test -modfile=go.test.mod -timeout 20s ./...`.
-- Full suite: `make test` (C lib + WASM + Go + browser tests). Real Ebiten: `make test-real`.
-- Single browser harness: `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js`.
-- Build WASM only: `make wasm` (outputs `src/js/main.wasm`; do not commit).
+- **Tunkul** is a graph-driven grid sequencer. Each node/edge in the directed graph maps to drum events that are scheduled in real time.
+- Targets: **desktop** (Ebiten) and **WASM** (Go WASM + Emscripten DSP + WebAudio).
+- Toolchain: **Go 1.23**, JavaScript/WebAudio harnesses, miniaudio C DSP.
+- Core pillars:
+  - Graph + traversal (`src/go/core/model`).
+  - Engine scheduler + predictor (`src/go/core/engine`).
+  - Ebiten UI/game loop (`src/go/internal/ui`).
+  - Audio backends (`src/go/internal/audio`, `src/js/audio.js`).
+  - Playwright browser suites (`src/js/*.browser.test.js`).
 
-## Toolchain & Setup
-- Go lives under `.tools/go/bin/go` if the bundled toolchain has been bootstrapped; fall back to the system `go` otherwise (Makefile auto-detects via `GO ?=`).
-- Install native + Node dependencies via `sudo make dependencies` (runs `scripts/setup-env.sh`).
-- Optional: Emscripten is only required to regenerate `src/js/drums.single.js`. Without it, existing build artifacts are reused.
-- WASM runtime uses Go's `wasm_exec.js`; browser harnesses rely on Node 18+.
-- First builds may fetch Go modules; Makefile wraps with `($(GO) mod download || true)`.
+---
 
-## Daily Commands
-- Desktop run (reuses cached C library and audio assets): `make run` or `make run-debug` (enables verbose logs at DEBUG).
-- Headless demo: `xvfb-run make run RUN_ARGS=-demo`.
-- Stubbed tests (fast path, headless Ebiten): `cd src/go && go test -tags test -modfile=go.test.mod -timeout 20s ./...`.
-- Full Makefile test suite (`make test`): builds C lib + WASM, runs Go stub tests, audio unit tests, then Node browser tests (`audio`, `volume`, `slider_volume`, `import_export`, `timeline_center`, `popup_node`, `zoom_grid`, `perf`, `perf_e2e`). Requires Node and may download modules. Alias: `make tests`.
-- Real Ebiten coverage (`make test-real`): runs UI/audio tests under `xvfb-run`, regenerates WASM, executes browser tests, and adds `bpm.browser.test.js`.
-- Select JS harness: `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js` for consistency with the bundled toolchain.
-- WASM build: `make wasm` (outputs `src/js/main.wasm`; do not commit the artifact).
-- Audio asset sync: `make sync-wav` copies `assets/wav` into `src/go/internal/assets/wav`.
-- Camera/debug log run: `make run-cam-logs` (sets `DEBUG_GEOM=1` + node draw flags).
-- Generated binaries: `src/go/ui.test` is produced by Go; treat it as a build artifact.
+## Quick Start Commands
 
-## Repository Layout
-- `src/go/cmd/tunkul.go` – Entry point for desktop and WASM builds; wires up engine, UI, audio, debug toggles, optional `PPROF=1` server.
-- `src/go/core/beat` – Minimal scheduler emitting ticks at BPM with pause/resume support.
-- `src/go/core/model` – Graph data model; node/edge definitions, traversal helpers, beat row computation, loop detection; per-node params include logic and groove (delay/rush) settings.
-- `src/go/core/engine` – Timing engine that wraps the scheduler, emits `Events`, coordinates audio and UI, and hosts the concurrency-safe `Predictor` for look‑ahead visibility/audibility. Toggle via `USE_ENGINE_PREDICTOR=0` to disable.
-- `src/go/internal/ui` – Ebiten game loop plus subsystems: camera, grid rendering, drum view, predictor integration, import/export, groove controls, perf logging, JS bridges. Extensive headless tests live here under `-tags test`.
-- `src/go/internal/audio` – Native backend (Oto) and WASM bridge, instrument registry, volume/pitch/duration playback, latency tests, WAV registration/export helpers, and stub implementations for tests.
-- `src/go/internal/assets` – Embedded demo JSON (`default_demo.json`) and audio assets (synced via `make sync-wav`).
-- `src/go/internal/ebitestub` – No-op Ebiten replacements to enable unit tests without graphics.
-- `src/js` – WebAudio bridge (`audio.js`), generated DSP (`drums.single.js`), browser tests, perf harnesses, HTML harnesses.
-- `src/c` – Miniaudio-backed C DSP for drums (`drums.c`, `miniaudio.c`), compiled to static lib and JS glue.
-- `build` – Generated static libraries.
+| Task | Command | Notes |
+|------|---------|-------|
+| Install deps | `sudo make dependencies` | Installs X11/ALSA/OpenGL, Node, Emscripten, Playwright. |
+| Desktop run | `make run` _(or `make run-debug`)_ | Uses cached C/WAV assets. |
+| Headless demo | `xvfb-run make run RUN_ARGS=-demo` | CI smoke test. |
+| fast Go tests | `cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod ./...` | Ebiten stubbed renderer. |
+| Full pipeline | `make test` | Builds C lib + WASM, runs Go + Playwright harnesses. |
+| Real Ebiten | `make test-real` | xvfb + browser suites (adds `bpm.browser.test.js`). |
+| Single browser harness | `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js` | Uses bundled Go toolchain. |
+| Build WASM only | `make wasm` | Produces `src/js/main.wasm` (do **not** commit). |
+| Sync WAV embeds | `make sync-wav` | Mirrors `assets/wav` into Go embeds. |
 
-## Architecture Highlights
-### Graph & Traversal (`core/model`)
-- `Graph.Edges` map `[2]NodeID` to edge metadata; intermediate grid points become `NodeTypeInvisible` nodes so the UI draws orthogonal segments.
-- `CalculateBeatRow` returns `[]BeatInfo` plus loop metadata (`isLoop`, `loopStartIndex`). Callers may further clamp to beat length with `SetBeatLength`.
-- Utility functions (`wrapBeatIndexRow`, `getIntermediateGridPoints`, etc.) keep traversal indexes aligned with UI pulses.
+Bundled Go lives at `.tools/go/bin/go`; the Makefile falls back to system Go when missing. WASM builds rely on Go’s `wasm_exec.js`; Playwright harnesses require **Node 18+**.
 
-### Timing Engine (`core/beat`, `core/engine`)
-- Scheduler exposes `Tick`, `Progress`, and BPM setters. It drives a buffered engine loop that emits `Event`s on its goroutine.
-- Engine mirrors BPM changes to audio backends, handles start/stop, and feeds the UI.
-- `Predictor` maintains per-row visibility/audibility buffers to decouple playback from immediate graph mutations. UI updates row paths via `SetPaths`; predictor grows buffers lazily with `Ensure` and can run background horizon expansion.
+---
 
-### UI (`internal/ui`)
-- `Game.New` builds the world: graph view, drum view, audio queue, predictor wiring, import/export, demo bootstrapping (`defaults_notjs.go`, `defaults_js.go`).
-- `Game.Update` consumes engine events, advances pulses, handles input (mouse, wheel, keyboard, touch), and schedules audio through `audioCh` (drop‑oldest semantics preserved).
-- Camera subsystem (`camera.go`) supports pixel snapping, zoom anchoring, drag pans, split panes, and exports debug instrumentation.
-- Rendering path uses caches: grid tiles, edge layer cache, node sprite atlas (`nodesprite.go`), timeline background. Safe/deterministic variants exist for diagnostics (`render_blit.go`, env toggles below).
-- Drum view maintains per-row state (instrument, origin beat, mute/solo, probability, groove) and synchronizes predictions (`drumview.go` + numerous regression tests). For deep dives we keep a Playwright trace helper (`scripts/capture_wasm_trace.mjs`) that builds the WASM bundle, plays the perf scenario, and writes `trace/perf_e2e_trace.json` so you can inspect a Chrome trace (top categories are printed in the console).
-- RowsLayer caching keeps draw cost manageable. Avoid forcing a full rebuild unless the window bounds change; prefer shifting cached sprites and only repainting rows that actually mutated. When investigating WASM draw spikes, confirm `rowsLayerGen` advances only on real mutations and not every frame.
-- JS bridge (`js_exports.go`) exposes hooks for browser tests to trigger playback, adjust BPM, probe UI layout, read timeline geometry, open node menus, export/import JSON, and inspect prediction buffers.
+## Repository Structure (Exhaustive Highlights)
 
-### Audio (`internal/audio`)
-- Desktop path wraps Oto mixer and supports volume envelopes, instrument loading, pitch/duration resampling, and WAV registration (`sample_desktop.go`).
-- WASM path proxies to `window.playSound`, `window.playSoundParams`, and `window.audioNow`.
-- Headless tests use stubs and latency harnesses (`engine_test.go`, `latency_test.go`, `wav_test.go`).
-- Audio engine is tightly coupled to scheduler ticks; ensure BPM changes travel through the buffered `bpmCh`.
-- Embedded WAVs can auto‑register on startup; see `internal/assets/wav_embed.go` and `AutoLoadEmbeddedWAVs`.
+```
+src/go/            Go sources (command, core packages, internal subsystems)
+  cmd/             Entry points (desktop/WASM)
+  core/            Shared logic (beat scheduler, engine, predictor, graph)
+  internal/        Ebiten UI, audio backends, assets, utilities
+src/js/            WebAudio bridge, Playwright harnesses, WASM HTML
+src/c/             Miniaudio DSP (compiled into static libs/WASM)
+assets/            WAV samples (synced into Go embeds)
+build/             Generated static libraries
+```
 
-### JavaScript & Browser Harnesses (`src/js`)
-- Each `.browser.test.js` script spins up Playwright in headless mode; some (perf harnesses) only execute Go `Update` logic against WASM.
-- Additional flows: live edit sync, probability edits, mute logic, zoom/grid behavior. Use `GO=$(pwd)/.tools/go/bin/go node <file>` to run under the bundled toolchain.
-- WebAudio bridge (`audio.js`) provides `window.playSound*`, `window.audioNow()`, `window.resumeAudio()`, and a rolling debug buffer; inspect with `window.getAudioDebug()`.
+### `src/go/cmd`
+- `tunkul.go` — desktop/WASM entry wiring UI, engine, audio, CLI flags, optional `PPROF=1`.
+
+### `src/go/core`
+
+| Package | Key Files | Description |
+|---------|-----------|-------------|
+| `beat` | `sched.go`, `sched_test.go`, `scheduler_testshim.go` | BPM ticker, pause/resume, phase-preserving `SetBPM`. |
+| `model` | `graph.go`, `graph_params.go`, `graph_traversal.go`, `node_types.go`, `graph_test.go` | Directed graph, traversal helpers, node parameters (volume/pitch/duration/logic/groove), loop detection, JSON export/import. |
+| `engine` | `engine.go`, `predictor_*.go`, `predictor_*_test.go`, `engine_close_test.go` | Engine loop, event dispatch, concurrency-safe **predictor** (audible/visible/triggered buffers, `Ensure`, `UpdateNode`, `DeleteNode`, background horizon). |
+
+> **Predictor (`predictor_*.go`) cheat sheet**
+> - `Ensure(horizon)` grows buffers and recomputes when `predDirty`.
+> - `UpdateNode` / `DeleteNode` refresh cached node parameters.
+> - `VisibleAt` / `AudibleAt` / `TriggeredAt` expose per-row state for UI/audio.
+
+### `src/go/internal`
+
+| Directory | Purpose | Notable Files |
+|-----------|---------|---------------|
+| `assets` | Embedded JSON/WAVs | `default_demo.json`, generated go embeds. |
+| `audio` | Desktop & WASM audio engines | Desktop: `engine_*.go`; WASM: `engine_wasm.go`; plus channel mixers, sample loaders. |
+| `ebitestub` | No-op Ebiten replacements for tests | Stub renderer/game loop. |
+| `gamestate` | Transport state machine | `state.go`. |
+| `graphruntime` | Graph traversal runtime | `runtime.go`. |
+| `log` | Lightweight logger | `log.go`. |
+| `timeline` | Timeline commit service | `service*.go`. |
+| `utils` | Shared helpers | `math.go`. |
+| `ui` | Ebiten UI, DrumView, predictor integration, import/export, instrumentation, **extensive tests** | See breakdown below. |
+
+#### `src/go/internal/ui` (selected highlights)
+
+| File / Folder | Role |
+|---------------|------|
+| `game_*.go` | Core runtime split by ownership (input, graph edits, update loop, draw paths, sequencer/audio scheduling, parity). Entry glue lives in `game.go`. |
+| `drumview_*.go` | Drum pane split by ownership (layout/menus, update/draw, caches, EQ/waveform). Base types live in `drumview.go`. |
+| `timeline_alias.go` | UI-facing timeline types (re-exports `internal/timeline.Snapshot`). Timeline storage lives in `src/go/internal/timeline/service.go`. |
+| `audio*.go` | UI-side audio helpers, lookahead tuning, highlight duration math. |
+| `import*.go` / `export*.go` | JSON import/export and validation, Playwright shims. |
+| `js_exports_*.go` | WASM bridge: exports `dumpRowState`, `dumpTimelineSegments`, `visibleAt`, `triggeredAt`, `setNodeLogicGrid`, `addNode`, `addEdgeGrid`, etc. |
+| `game_instrumentation.go` | Shared instrumentation (`rowStateSnapshot`, `dumpRowState`, `dumpTimelineSegments`). |
+| `assets/` | UI textures/icons. |
+| **Tests** | 70+ files covering caching, audio, predictor, import/export (`drum_sync_invariant_test.go`, `drum_future_cache_test.go`, `game_draw_throttle_test.go`, etc.). |
+
+#### Go Test Buckets
+- **Predictor/audio**: `predictor_*_test.go`, `mute_node_audio_test.go`, `probability_prediction_consistency_test.go`.
+- **DrumView invariants**: `drum_sync_invariant_test.go`, `drum_future_readd_test.go`, `drum_rows_layer_cache_test.go`.
+- **Import/export**: `import_validation_test.go`, `import_button_flow_test.go`, etc.
+- **Perf & caching**: `game_draw_throttle_test.go`, `perf_test.go`.
+
+### `src/js`
+
+| File / Area | Purpose |
+|-------------|---------|
+| `audio.js` | WebAudio queue: event batching, render cache (`ensureRenderedSample`), `resetPerfStats`, `getAudioScheduleMetrics` with 180s history. |
+| `browser_test_helpers.js` | Shared Playwright helpers (e.g., fail tests on `recentSchedulerMismatches()`). |
+| `drums.single.js` | Generated Emscripten synth DSP. |
+| `drums.js` | Core DSP glue used in consistency tests. |
+| `index.html`, `play_ui.html` | WASM harness pages for Playwright runs. |
+| `wasm_exec.js` | Go WASM runtime shim. |
+| **Playwright suites** | Comprehensive coverage: logic/circuit sync (`logic_sync.browser.test.js`, `circuit_sync.browser.test.js`), perf (`perf.browser.test.js`, `perf_e2e.browser.test.js`, `pan_stress.browser.test.js`), UI flows (`live_edit_scenario.browser.test.js`, `import_export.browser.test.js`), audio behaviors (`audio.browser.test.js`, `batch_audio.browser.test.js`, `wav_bus.browser.test.js`). |
+
+### `src/c`
+- `drums.c`, `miniaudio.c`, `miniaudio.h` — miniaudio DSP, compiled into static libraries/WASM modules consumed by Go/JS layers.
+
+---
+
+## Predictor, DrumView & Cache Interactions (Current Behavior)
+
+1. **Node/logic update** → `Graph.SetNodeParams` → `Game` node-changed hook:
+   - Determine affected row (`rowIndexForNode`).
+   - Reset row logic state & predictor contexts (`predDirty`, `pathsDirty`).
+   - Notify `engine.Predictor.UpdateNode/DeleteNode`.
+   - If idle (`!g.playing`), call `refreshDrumRow()` immediately so DrumView matches predictor state.
+2. **Timeline façade** (`internal/timeline.Service`) keeps immutable arrays for past/present/future. DrumView only stitches those slices; timeline commits happen via the service (`RecordCommitKind`, `ReplaceCommit`, `Trim*`, `Snapshot`).
+3. **RowsLayer caching**:
+   - `rowsLayerDirty` triggers rebuilds; otherwise the layer shifts using cached sprites/pads.
+   - Stripe mode (`setRowsLayerStripes`) splits the layer into vertical stripes for WASM perf.
+   - Simple-draw mode (default for WASM perf harnesses) skips heavy UI controls.
+4. **Perf counters**: `Game` exposes recent timings through `perfStats()` (fps, update/draw averages, `drawGridMS`, `drawDrumMS`, `updateMS`, `refreshMS`, audio queue stats).
+5. **Instrumentation**: `dumpRowState`, `dumpTimelineSegments`, `predictorAudibleSnapshot` are available in Go tests and JS harnesses.
+
+---
 
 ## Testing & Diagnostics
-- Primary fast loop: `cd src/go && go test -tags test -modfile=go.test.mod ./...`. This uses Ebiten stubs; demo auto‑start is suppressed in tests via `demo_stub.go`.
-- Real Ebiten: `BPM_TIMING_TEST=1 xvfb-run -a go test ./...` exercises actual rendering and ensures audio timing stays in sync.
-- Focused packages: `go test ./core/model`, `go test ./core/engine`, `go test ./internal/audio`.
-- UI input helpers: `SetInputForTest` injects mouse/keyboard events; various `*_test.go` files demonstrate usage (camera drag/zoom, node interactions, drum edits, import/export flows).
-- JS helpers from `js_exports.go`: `startPlay`, `incrementBPM`, `sliderRect`, `timelineRect`, `drumOffset`, `drumLength`, `timelineBeats`, `openNodeMenu`, `nodeMenuAction`, `exportJSON`, `importJSON`, etc.
-- Perf counters: `src/go/internal/ui/perf_test.go`, `src/js/perf.browser.test.js`, `src/js/perf_e2e.browser.test.js`.
-- Predictive engine coverage: `core/engine/predictor*_test.go` (Go) and `internal/ui/predictor_*_test.go` (UI consistency).
-- Groove and timing: `internal/ui/groove_timing_test.go`, `internal/ui/bpm_change_no_jump_test.go`, `internal/ui/multi_prob_sched_vs_drumrow_test.go`.
 
-## Debug & Rendering Toggles (env vars)
-- `DEBUG_GEOM=1` – per‑frame geometry logs, camera state, and draw corner dumps.
-- `DEBUG_DRAW_NODES=1` – enable verbose node draw logs; implied by `DEBUG_GEOM`.
-- `RENDER_SAFE=1` – draw nodes and edges entirely in screen space; bypass caches, transforms, and sprite atlases (slow but definitive).
-- `SCREEN_EDGES=1` – screen‑space edges while leaving node sprites active; helpful for cache vs. math mismatches.
-- `NO_GRID_DRAW=1` – skip grid background to highlight geometry overlays.
-- `NO_EDGE_CACHE=1` – disable edge cache; verifies baseline edges stay visible without cached blits.
-- `NO_SPRITE_NODES=1` – render nodes through world‑to‑camera transforms instead of sprite atlas.
-- `NO_PIXEL_SNAP=1` – bypass pixel snapping to expose sub‑pixel drift.
-- Deprecated: `DRAW_TO_TOP` no longer applicable (top‑pane draws to background subimage).
-- Combined deterministic path: `SCREEN_EDGES=1` + `RENDER_SAFE=1`.
-- `[FRAME]` log prints active modes for quick confirmation.
+### Go (`src/go/internal/ui`)
+Run `cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod ./internal/ui` to cover:
+- Predictor/audio invariants (`drum_sync_invariant_test.go`, `mute_node_audio_test.go`).
+- DrumView caching (`drum_rows_layer_cache_test.go`).
+- Import/export flows (`import_validation_test.go`, etc.).
+- Perf throttling (`game_draw_throttle_test.go`).
 
-## Performance & Instrumentation
-- `PERF_LOG=1` – periodic logs (~2s) with FPS, Update/Draw avg/max, audio queue depth, Go→JS call timings, heap stats.
-- `PPROF=1` – launches `net/http/pprof` server on `localhost:6060` (desktop build only).
-- Engine ticker logs jitter as `PERF engine ticker: avg=.. max=.. count=..`.
+### Browser (`src/js`)
 
-### Performance Checklist
-- Batching active (WASM): confirm `audio.PlayBatch` path is used (in perfStats, `audioDeq` ≈ half of `audioEnq`) and there is no per‑event console spam. Keep `TUNKUL_AUDIO_DEBUG` off unless debugging.
-- Volume buses reused: in the browser, `__audioBusCount()` should be small (≈16 levels per instrument), not growing with the number of triggers.
-- Warm caches: call `forceDraw()` after layout so `gridCacheInfo()` reports `tileReady=true` and `cacheReady=true`; let DrumView build row sprites and the `rowsLayer` once before measuring.
-- Simple draw on web: enable `setSimpleDraw(true)` for perf runs; the grid remains visible while node/edge overlays are simplified.
-- Text caching: use `DrawTextAt` for labels; avoid `ebitenutil.DebugPrintAt` in hot paths and ensure timeline info uses web throttling.
-- Predictor horizon: ensure `ensurePredictions()` covers the visible window + lookahead to avoid recomputation thrash.
-- Visual clamps: desktop glow radius is clamped (≤ grid pane height/8); web outline highlight uses cheap rings (no large fills).
-- Harness load: reduce BPM/shapes/window for perf tests, and call `stopPlay()` when appropriate to end runs deterministically.
-- Logs/profiling: use `PERF_LOG=1` to watch FPS, call latencies, and queue metrics; use `PPROF=1` for desktop CPU/mem profiling.
-- Audio/HL sync: verify `sampleDurationSec(id)` returns >0 for instruments and that node/timeline highlight duration matches audio (pitch/duration scaling).
-- Channels non‑blocking: keep `audioCh`/`bpmCh` buffered and use `sendLatest`/`sendLatestBPM`; avoid blocking sends in hot paths.
-- Validate with harnesses: `perf.browser.test.js` (Update‑only ~55 FPS) and `perf_e2e.browser.test.js` (Draw ~20ms, Go→JS callAvg < 0.3ms) as baselines.
+| Harness | Focus | Key Exports / Checks |
+|---------|-------|----------------------|
+| `logic_sync.browser.test.js` | Probability/logic edits must clear stale steps | `setNodeLogicGrid`, `rowWindow`, `visibleAt`, `triggeredAt`. |
+| `circuit_sync.browser.test.js` | Delete/re-add flows keep DrumView/predictor aligned | `addNode`, `deleteNodeGrid`, `rowWindow`. |
+| `pan_stress.browser.test.js` | Pan performance (FPS ≥ 6, draw ≤ 20 ms) | `resetPerfStats`, `perfStats`. |
+| `perf.browser.test.js` | Update-only performance | `buildPerfRect`, `startPlay`, perf counters. |
+| `perf_e2e.browser.test.js` | Update+Draw+Audio perf | `resetPerfStats`, `resetAudioScheduleMetrics`, audio lag quantiles. |
+| `drums_consistency.browser.test.js` | Synth vs WebAudio correlation | Captures `__samples` vs DSP reference. |
+| `live_edit_scenario.browser.test.js` | Real-time editing (timeline dumps, predictor parity). | 
 
-#### Quick Commands
-- Run stubbed Go tests (fast):
-  - `cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod -timeout 60s ./...`
-- WASM Update‑only perf harness (no Draw):
-  - `GO=$(pwd)/.tools/go/bin/go node src/js/perf.browser.test.js`
-- WASM end‑to‑end perf harness (Update+Draw):
-  - `GO=$(pwd)/.tools/go/bin/go node src/js/perf_e2e.browser.test.js`
-- Grid + timeline highlight presence (simple draw):
-  - `GO=$(pwd)/.tools/go/bin/go node src/js/grid_and_highlights.browser.test.js`
-- Node grid highlight (simple draw):
-  - `GO=$(pwd)/.tools/go/bin/go node src/js/node_grid_highlight.browser.test.js`
-- Highlight duration matches audio (regular + simple):
-  - `GO=$(pwd)/.tools/go/bin/go node src/js/highlight_duration.browser.test.js`
-- Batch bridge check (WASM):
-  - `GO=$(pwd)/.tools/go/bin/go node src/js/batch_audio.browser.test.js`
-- WAV bus reuse check (WASM):
-  - `GO=$(pwd)/.tools/go/bin/go node src/js/wav_bus.browser.test.js`
-- Desktop run with perf logs:
-  - `PERF_LOG=1 make run`
-- Desktop run with pprof server:
-  - `PPROF=1 make run` then visit `http://localhost:6060` (CPU/mem profiles)
+### Instrumentation & Metrics
+- `resetPerfStats()` / `resetAudioScheduleMetrics()` ensure clean baselines before perf tests.
+- `getAudioScheduleMetrics()` exposes lead/lag quantiles + history (180 entries).
+- `dumpRowState(row)` returns timeline offset/masks and predictor buffers for debugging/tracing.
+- `recentSchedulerMismatches()` / `clearSchedulerMismatches()` expose and reset the scheduler-vs-UI mismatch ring in WASM/Playwright harnesses.
 
-### Hot Paths & Current Mitigations (Oct 2025)
-- WASM Go→JS bridge:
-  - Hot: many small cross‑boundary calls are expensive on the browser main thread.
-  - Mitigation: `audio.PlayBatch` (Go) + `window.playSoundsBatch` (JS) reduces calls by batching sound events. Expect `audioDeq` ≈ 1/2 `audioEnq` in `perfStats()`.
-  - JS: volume buses reuse `GainNode`s per instrument + quantized volume (16 levels) to avoid per‑voice node creation.
+### Debug Toggles (Env Vars)
+- `PPROF=1` — start pprof server on `localhost:6060` (desktop).
+- `TUNKUL_DEMO_CONFIG` / `TUNKUL_CONFIG` — choose a demo JSON file.
+- `DEBUG_GEOM=1`, `DEBUG_DRAW_NODES=1` — verbose geometry / per-node draw logs.
+- `RENDER_SAFE=1`, `SCREEN_EDGES=1` — render in screen space (debug caches).
+- `NO_GRID_DRAW=1`, `NO_GRID_TILE_CACHE=1`, `NO_EDGE_CACHE=1`, `NO_SPRITE_NODES=1`, `NO_PIXEL_SNAP=1` — disable specific caches/draw paths.
+- `PERF_LOG=1`, `PERF_FAST_PATH=1`, `PERF_BROWSER_UPDATE_MAX_MS=<any>` — enable perf logging / force fast-path refresh gating.
+- `TIMELINE_TRACE=1`, `TIMELINE_TRACE_ROW=<row>`, `DEBUG_HISTORY_SEED=1` — timeline masking/seed tracing.
+- `PARITY_FATAL=0|false` / `PARITY_WATCH=log|panic` / `PARITY_WASM_FATAL=1|true|panic` / `PARITY_DUMP_STDERR=1` — parity diagnostics.
+- `TUNKUL_ROW_SNAPSHOTS=1|true`, `BPM_TIMING_TEST=1`, `PREVIEW_DEBUG=1` — test/debug-only modes.
+- Deterministic combo: `SCREEN_EDGES=1` + `RENDER_SAFE=1`.
 
-- Rendering (UI) in WASM:
-  - Hot: per‑frame grid tiling, edge drawing, text rendering, and row sprites.
-  - Mitigations:
-    - Grid: tile cache + screen‑space cache with pan pad; reuse unless scale/subdiv changes.
-    - Edges: screen‑space cache (`edgeCache`) with pad; reuse unless color/scale changes.
-    - Rows: DrumView builds per‑row sprites and composes a `rowsLayer` (visible rows only). Highlights are drawn dynamically on top.
-    - Text: cached text sprites via `DrawTextAt`; timeline info throttled on web (`timelineInfoThrottleMS`).
-    - Simple draw (web): optional simplified path (no grid skip, but lighter node/edge overlays). Toggle via `setSimpleDraw(true)` in WASM.
+---
 
-- Node highlights (main grid) vs audio:
-  - Highlights are time‑based and match the audible duration (sample seconds scaled by pitch/duration rate). Timeline highlight frames and node highlight expiry (wall clock) are derived from the same duration.
-  - Web simple draw uses a high‑contrast, cheap outline overlay (two white rings + inner row‑colored ring) for visibility; desktop retains the original sprite + glow path.
-  - Desktop glow is clamped to ≤ 1/8 of the grid‑pane height to avoid oversized overdraw at extreme zooms.
+## Performance Notes
 
-### Practical Guidelines
-- Prefer batching when scheduling multiple audio events in WASM:
-  - Go: collect `audio.BatchParam` and call `audio.PlayBatch` once per frame.
-  - JS: `window.playSoundsBatch([{id, vol, pitch, dur, when}, ...])`.
+- Simple-draw mode (default for WASM perf harnesses) removes UI chrome, keeping draw ≤ ~15 ms on pan stress tests.
+- Predictor background worker throttles lookahead when draw time crosses 10/14/18 ms thresholds.
+- `audio.js` re-enqueues synth renders if the cache is cold, preventing silent leading samples in captures.
+- Harnesses reset perf counters and audio metrics before measuring, avoiding warm-up artifacts.
 
-- Avoid excessive logging in perf scenarios: console floods block timers and JS event loop. Keep `[AUDIOJS]` logging off unless debugging.
-- Sequencer batching: `scheduleSound` accepts an optional `baseNow` so we only call `audio.Now()` once per frame per row. UI-triggered paths should pass `math.NaN()` to fall back to the old behaviour.
+### Test Logging
+- Default Go test runs are **silent** (logger level `NONE`) so passing tests emit no logs.
+- Opt in with `-test.v` or `TEST_LOG=1 make test` / `TUNKUL_TEST_LOG=1` (set `TEST_LOG_LEVEL` / `TUNKUL_TEST_LOG_LEVEL=TRACE|DEBUG|INFO|ERROR` to adjust verbosity). `make test` and `make test-debug` keep logs off unless you explicitly opt in.
 
-- Use caches:
-  - Grid + Edge caches reuse across pans/small transforms with pad; invalidate on scale/subdiv/color sig changes.
-- Row sprites + `rowsLayer` reduce per‑frame composition work in DrumView (only highlights and controls draw dynamically). Instrument `DrumView.Draw` when chasing regressions to confirm how many rows get repainted and whether `rowsLayerDirty` flips every frame.
-  - Text via `DrawTextAt` to avoid repeated `ebitenutil.DebugPrintAt`.
+---
 
-- Simple draw (web) is enabled by default and intended for perf; it keeps the grid on, simplifies node/edge overlays, and preserves clarity of node/timeline highlights.
+## DrumView State Pipeline (Predictor → Sequencer → Timeline → UI Slate → Caches)
 
-### Useful WASM Exports for Perf/Tests
-- `setSimpleDraw(bool)`, `forceDraw()` – control simplified rendering and force a frame render for cache warmup.
-- `gridCacheInfo()` – inspect tile/cache readiness.
-- `nodeHighlightedAt(i,j)`, `nodeIdAt(i,j)` – probe grid highlight state per node.
-- `sampleDurationSec(id)` – synth/WAV seconds; used for highlight/audio duration matching.
-- Browser perf harnesses: `node src/js/perf.browser.test.js` (Update only) and `node src/js/perf_e2e.browser.test.js` (Update + Draw).
-- When modifying render caches/node sprites, ensure edge cache reuse respects layout changes (pane resize, zoom) and that baseline primitives still draw when caches are bypassed (guarded by tests like `edge_cache_blit_test.go` and `edge_visibility_no_cache_test.go`).
+This is the authoritative reference for how *playback/audio truth* becomes the
+final DrumView `Steps`/`CellTypes` UI slate, and how caches stay correct during
+live edits.
 
-## Assets, Import/Export & Defaults
-- Default demo graph lives in `internal/assets/default_demo.json`. Desktop build embeds it via `demo_embed.go`; browser build fetches via JS bridge defaults.
-- UI import/export handles JSON graphs and WAV paths; tests (`export_import_wav_path_test.go`, `import_*.go`) ensure cross‑platform paths and instrument fallbacks behave. Embedded WAVs auto‑register on startup.
-- `tunkul-export.json` captures a reference export for regression testing.
+**Key code paths**
+- `src/go/internal/ui/game_*.go` (notably `game_sequencer_schedule.go`, `game_sequencer_highlight.go`, `game_sync_ui.go`, `game_refresh_drum_row.go`, `game_graph_update_beat_infos.go`): `seqScheduleTime`, `applySequencerHighlight`, `syncUIToTime`, `refreshDrumRow`, `updateBeatInfos`.
+- `src/go/core/engine/predictor_*.go`: engine predictor buffers (`Ensure`, `SetPaths`, `VisibleAt`, `TriggeredAt`, `AudibleAt`).
+- `src/go/internal/ui/preview/window_builder.go`: pure window construction (`preview.BuildRowWindow`) and precedence table.
+- `src/go/internal/timeline/service*.go`: commit ring + immutable sidecar (`RecordCommitKind`, `ReplaceCommit`, `SeedFromWindow`, `TrimAfterPathChange`, `UpdateRowSegments`, `Snapshot`).
+- `src/go/internal/ui/drumview_*.go` (notably `drumview_cache_*.go`): row sprite + rows-layer caches (`buildRowSprite`, `rowsLayerMaybeRebuild`, `rowsStripesMaybeRebuild`, `markRowDirty`, `markRowsShiftDirty`).
 
-## Generated / Cautions
-- Built outputs should not be committed unless intentionally regenerated: `build/libdrums.a`, `src/js/main.wasm`, `src/js/play_ui.wasm`, `src/js/playtest.wasm`, `src/go/ui.test`.
-- Browser tests require Playwright dependencies; if unavailable, run Go‑only suites and call out the omission in reviews.
-- Optional pre‑commit hook (formats, stubbed tests, `make wasm`): `git config core.hooksPath .githooks`.
-- Before sending a PR: run stubbed Go tests, WASM build (`make wasm`), and relevant Node harnesses. Prefer real Ebiten tests (`make test-real`) when graphics/audio changes are involved.
+### Glossary (indices & boundaries)
+- `abs`: absolute subdivision index (internal time unit). One beat is `grid.MaxDiv()` subdivisions.
+- DrumView window: `Offset` (first visible `abs`) + `Length` (window size in subdivisions).
+- `nextBeatIdxs[row]`: UI row boundary; `abs < nextBeatIdxs[row]` is considered past for that row.
+- `seqNextIdxs[row]`: sequencer row boundary; used alongside `nextBeatIdxs[row]` to define the authoritative past boundary.
+- “True past” boundary used by masking/immutability: `pastExclusive = max(nextBeatIdxs[row], seqNextIdxs[row])`.
 
-## Agent Tips
-- Keep changes scoped to their subsystem; the engine handles scheduling and prediction—graph traversal and audio queuing belong to the UI.
-- Preserve buffered channels (`bpmCh`, `audioCh`) and drop‑oldest semantics to avoid deadlocks or stalls.
-- When investigating rendering glitches, use toggles progressively: strip layers (`NO_GRID_DRAW`, `NO_EDGE_CACHE`, `NO_SPRITE_NODES`), then force screen‑space (`SCREEN_EDGES`, `RENDER_SAFE`). Use fiducial logs to cross‑check math vs presentation.
-- When adding tests under `internal/ui`, import `internal/ebitestub` stubs via `//go:build test` to stay headless.
-- For WASM issues, scheduling uses `window.audioNow()`; keep conversions consistent between desktop and web paths. Resume contexts via `window.resumeAudio()` in tests as needed.
-- UI caches depend on camera scale and split dimensions—invalidate caches when these change to prevent stale blits.
-- Predictor is owned by the engine by default; if you touch prediction paths, consider `USE_ENGINE_PREDICTOR=0` to compare legacy UI prediction vs engine.
+### Ownership model (who is the source of truth?)
+- **Graph / traversal**: `updateBeatInfos()` computes per-row paths (`beatInfosByRow`, loop facts). This is the only place the UI’s notion of “the path” should be rebuilt.
+- **Predictor (engine-owned)**: `engine.Predictor` is concurrency-safe and owns predicted buffers:
+  - `VisibleAt(row, abs)` for regular nodes (what the UI should show as ON).
+  - `TriggeredAt(row, abs)` for mute nodes (mute “fires” even though it’s not audible).
+  - `AudibleAt(row, abs)` for audio parity/debug (what would actually produce sound).
+- **Predictor snapshots**: legacy UI-owned predictor snapshots were removed; tests/preview read directly from the engine predictor.
+- **Timeline (history + masking)**: `timeline.Service` stores commits for *immutability/masking* and instrumentation dumps. It is not what DrumView renders from directly.
+- **DrumView slate (render inputs)**: DrumView renders strictly from `drum.Rows[row].Steps` and `drum.Rows[row].CellTypes`. Keeping these correct + invalidating caches is the core responsibility of `refreshDrumRow()`.
 
-## Code Style & Conventions
-- Subsystem boundaries
-  - `core/engine`: scheduling, events, predictor ownership. Avoid UI/audio queuing here.
-  - `internal/ui`: graph traversal to beat rows, UI/input, audio queueing, predictor integration.
-  - `core/model`: pure data and helpers; keep playback rules as parameters (logic/groove) not side effects.
-- Concurrency & channels
-  - Preserve non‑blocking, drop‑oldest behavior on `audioCh` and `bpmCh`. Only the latest BPM matters—mirror `sendLatest`/`sendLatestBPM` patterns.
-  - Keep buffered channels; do not introduce blocking sends in hot paths.
-- Prediction & graph lifetime
-  - Engine owns `Predictor` and listens for node changes. Do not replace `g.graph` pointers at runtime—mutate in place (as `Import` does) to keep references valid.
-- Tests
-  - Prefer headless tests under `-tags test` using `internal/ebitestub` and `go.test.mod`.
-  - Use `SetInputForTest` for UI events; follow patterns in existing `*_test.go` files.
-- Changes
-  - Keep patches minimal and scoped. Maintain existing style. Update adjacent tests when changing behavior.
-  - Never commit generated artifacts: `build/libdrums.a`, `src/js/*.wasm`, `src/go/ui.test`.
+### Runtime flow (audio → UI)
+1. **Audio scheduling (sequencer truth)**
+   - `seqScheduleTime()` advances `seqNextIdxs[row]` based on wall-clock time + applied BPM and schedules audio in small bursts to catch up.
+   - It does *not* mutate DrumView rows directly; it emits highlight events onto `hlCh` so the UI thread can apply them safely.
 
-## Troubleshooting
-- Browser audio not playing: browsers often start AudioContext suspended. Call `window.resumeAudio()` or trigger a pointer event before playback.
-- Playwright/browser tests fail: ensure `sudo make dependencies` ran (installs Node modules and Chromium with `npx playwright install --with-deps chromium`).
-- DSP module (`drums.single.js`) missing: Emscripten is optional; if not installed, existing artifact is reused. Regenerate with a working `emcc` or keep the committed single-file JS.
-- WASM not loading in harness: serve from `src/js` (`make serve`) or run Node harnesses with `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js` to use the bundled Go.
-- Engine profiling: set `PPROF=1` for desktop and visit `http://localhost:6060`; enable `PERF_LOG=1` for periodic perf logs.
+2. **UI thread applies highlights (playhead + history commits)**
+   - `Game.Update` drains `hlCh` and calls `applySequencerHighlight(row, idx, BeatInfo)` on the UI thread.
+   - This is where `nextBeatIdxs[row] = idx+1` advances, and where timeline history is recorded:
+     - `CommitKindPlayback` while playing (immutable history).
+     - `CommitKindSeeded` while not playing (speculative bookkeeping).
+   - Mute nodes are committed as “on” when triggered so rendering and parity stay consistent.
 
-### Field Note: WASM perf stalls (Oct 2025)
-- Symptom: perf harness stalled due to excessive console logging and many Go→JS calls.
-- Root cause: per‑event logging and unbatched scheduling overwhelmed the main thread; timers starved.
-- Fixes adopted:
-  - Batched audio scheduling (`PlayBatch`/`playSoundsBatch`) to reduce crossings.
-  - Volume buses to avoid per‑voice `GainNode` creation.
-  - Lighter perf harness scenarios and explicit `stopPlay` when appropriate.
-  - Forced frame renders (`forceDraw()`) in tests to warm caches deterministically.
+3. **UI catch-up when rendering lags**
+   - `syncUIToTime()` re-anchors pulses/counters to the wall-clock timeline and *freezes newly passed indices* by recording playback commits up to the new target. This makes past immutability robust even if highlight events arrive late.
 
-### Possible Refactors for Debuggability
-- The `seqScheduleTime` hot loop mixes predictor reads, gating logic, highlight bookkeeping, and audio queueing. Splitting the scheduling step (`scheduleSubdivision` / `applyMuteLogic`) would make it easier to probe from both WASM and desktop paths.
-- `every_n_*` logic currently lives in both `internal/ui` and `core/engine/predictor`. A small shared helper (even a `logic` package) would prevent subtle divergences like the one that triggered this debug session.
-- The browser harnesses repeat the same web-server boilerplate. Extracting a tiny `serveHarness` utility (spin up HTTP, expose `waitForExports`) would keep future tests consistent and shorten the per-test code.
+4. **Slate rebuild (`refreshDrumRow`)**
+   - `refreshDrumRow()` is the authoritative “build the UI slate” step. It runs every frame during playback (unless perf-throttled) and is forced immediately by graph edits.
+   - High-level responsibilities:
+     - Ensure predictor horizon covers `Offset+Length` (and any lookahead needed).
+     - If `pathsDirty`, call `engine.Predictor.SetPaths(...)` before reading predictor values so edits don’t render stale state.
+     - Reconcile frozen ranges so speculative timeline entries cannot leak forward and mask re-added nodes.
+     - Demote “leaked future” immutable commits: any Playback/Import commit at `abs >= pastExclusive` is demoted to `CommitKindReleased` (value/type preserved) so it stops masking future edits.
+     - Build fresh `Steps`/`CellTypes` via `buildRowWindow` → `preview.BuildRowWindow` (pure, deterministic).
+     - Publish timeline segments for instrumentation (`timeline.UpdateRowSegments`).
+     - Compute `rowRenderSig(Steps, CellTypes)` and call `drum.markRowDirty(row)` only when render-relevant slate inputs changed.
+   - **Row snapshot safety**: to prevent in-place mutation bugs, `refreshDrumRow` swaps in freshly built slices and reuses scratch buffers (or allocates fresh when `TUNKUL_ROW_SNAPSHOTS=1|true`).
 
-## Docs Notes
-- Some docs may reference `make test-mock`. Use `make test` for the full stubbed path, or run stubbed Go tests directly with `cd src/go && go test -tags test -modfile=go.test.mod -timeout 20s ./...`.
+### Single precedence table (window construction)
+All window building must follow a single rule order (implemented in `preview.BuildRowWindow`):
+1. **Immutable timeline commits** (`CommitKindPlayback`/`CommitKindImport`) for **true past only** (`abs < pastExclusive`).
+2. **Freeze preservation**: when the window is stationary, preserve already-rendered past cells from the previous window snapshot (bounded so it can’t mask future edits).
+3. **Predictor/live preview** for everything else (future window, or past cells with no immutable history).
+
+Window construction must be timeline-pure. Any timeline mutation (demotion, trim, reconciliation) belongs in `refreshDrumRow()`.
+
+### Edit flows (what must happen on graph changes)
+- **Node param/type changes**: `Graph.SetNodeChangedHook` marks `predDirty` + `pathsDirty`, forces refresh under perf fast-path, and calls `drum.markRowDirty(row)` so edits that don’t change `Steps` still redraw immediately.
+- **Circuit/path changes** (`updateBeatInfos()`):
+  - Recomputes `beatInfosByRow` and loop facts.
+  - Calls `engine.Predictor.SetPaths(...)` and optionally `RebaseAt(...)` to keep contexts aligned.
+  - Seeds already-rendered history for changed paths (`timeline.SeedFromWindow`) so previously-rendered past stays stable.
+  - Trims speculative commits after path edits (`timeline.TrimAfterPathChange`) and clamps `frozenUpToByRow` so future windows can follow the predictor again.
+  - Marks affected rows dirty and refreshes immediately.
+
+### DrumView caching layers (render performance & correctness)
+DrumView has multiple caching layers; they all ultimately depend on the correctness of `Rows[i].Steps` and `Rows[i].CellTypes`:
+- **Per-row sprite cache (`rowCache[i]`)**: a row-height sprite built from `Steps` + `CellTypes` + row color. It supports incremental reuse on small offset shifts by shifting the cached image and redrawing only the uncovered strip.
+  - Invalidated via `markRowDirty(i)` (single row) or `markAllRowsDirty()` (full).
+  - Offset shifts call `markRowsShiftDirty()` to allow incremental reuse rather than forcing a full rebuild.
+- **Rows composite layer (`rowsLayer`)**: a cached composition of all visible row sprites. It also supports small horizontal shift reuse and uses an adaptive pad on WASM to reduce rebuild churn during pans.
+- **WASM stripe mode (`rowsStripes`)**: optional vertical-stripe composition for browser perf; same invalidation rules but rebuilds smaller surfaces.
+- **Simple-draw mode**: skips heavy UI chrome and uses lightweight highlight sprites; it still depends on the same slate + invalidation rules.
+
+### Invariants (must hold)
+- **Past immutability**: once `abs < pastExclusive` (or a cell is a Playback/Import commit), rendered `Steps` + `CellTypes` must never change; edits may only affect `abs >= pastExclusive`.
+- **Realtime edits**: any graph edit must reflect in DrumView within ≤1 frame, including cache invalidation (even under perf fast-path).
+- **Single precedence table**: window construction must follow the explicit rule order above; do not add scattered overrides.
+
+### Open work (non-blocking)
+- Predictor cache struct / mockable interfaces once legacy predictor mirrors are removable.
+- Scenario DSL + golden timeline snapshots for regressions.
+- Reusable image pool for `*ebiten.Image` row sprites.
+
+### 2025-12-08 Fresh Gotchas (concurrency, mute, Playwright)
+- `lastTriggeredByRow` is now mutex-protected. **Never write/read the map directly** in tests; use `setLastTriggeredForTest`, `lastTriggeredForTest`, or `lastTriggeredRowSnapshotForTest` on `Game`. Direct map access will race the sequencer and can panic.
+- Predictor mute gate: engine predictor only gates the mute subdivision (`idx+hold+1`) so audio resumes immediately on the following beat; UI/audio mute tests assume this behavior.
+- WASM/Playwright builds: when running Node harnesses that call `go build` (e.g., `mute_logic.browser.test.js`), pass an **absolute** GO path: `GO=/home/ymolinar/Repos/tunkul/.tools/go/bin/go node src/js/<test>.browser.test.js`. Relative `.tools/...` can fail because cwd becomes `src/go`.
+- Parity on WASM stays log-only unless `PARITY_WASM_FATAL=1|true|panic`; desktop honors `PARITY_WATCH`/`PARITY_FATAL` as before.
+
+---
+
+## Maintenance Tips for Future Agents
+
+- Use `.tools/go/bin/go` for all Go/testing tasks to avoid version drift.
+- Use `.tools/go/bin/gofmt` if system `gofmt` is unavailable.
+- When splitting long Go files, prefer the deterministic splitters (avoid manual cut/paste):
+  - UI: `go run scripts/split_ui_phase1.go`
+  - Audio/timeline: `go run scripts/split_phase1_longfiles.go`
+- Split by subsystem ownership; avoid micro-files unless they isolate a single hot path (e.g., a giant draw/update function).
+- After modifying predictor/DrumView/caching logic, run:
+  - `cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod ./internal/timeline ./internal/ui`
+  - `GO=$(pwd)/.tools/go/bin/go node src/js/logic_sync.browser.test.js`
+  - `GO=$(pwd)/.tools/go/bin/go node src/js/circuit_sync.browser.test.js`
+- For perf regressions, compare `perf.browser` vs `perf_e2e` outputs (post `resetPerfStats`).
+- Inspect `dumpRowState` / `dumpTimelineSegments` via browser console for timeline anomalies.
+- Keep generated WASM (`src/js/main.wasm`) out of commits — use `make wasm` locally only.
+
+### 2025-12-05 Parity & Sequencer Gotchas
+- Parity scans now ignore beats before the playhead (`playheadFloor`) but still run while paused; past audio events no longer demand highlights.
+- `parityCheck` only runs when parity fatal is enabled (`PARITY_FATAL`) and skips mute nodes; highlight parity lives in `parityScan`.
+- `parityCheck` also skips cells when the predictor marks them invisible (logic/probability gated) even if a slate cell exists—this avoids panics when logic mutes a note but the authored slate remains true.
+- Past audio events stored in `parityAudio` are ignored once the playhead advances; tests (`parity_past_audio_test`) cover this.
+- `audio_missing` parity now gives a short 120 ms grace after a sequencer decision before panicking, so races between decision logging and audio logging don’t produce false positives; after the grace, any missing audio still panics even if the playhead hasn’t advanced.
+- Scheduler parity ignores beats strictly older than `playheadFloor()-1` (i.e., more than one step behind the next beat) to avoid past-state panics while still checking the current beat; see `parity_past_scheduler_test`.
+- During imports `g.importing` disables parity scans/checks and clears parity buffers (ring/audio/seq decisions); `renderReady` is temporarily false. This prevents import-time refresh parity panics.
+- Perf counter test (`TestDesktopPerfCountersCollect`) needs sequencer enabled; leave it on for desktop runs.
+- Quick sanity: `cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod ./internal/ui`.
+- Sequencer parity expectations come from `parityExpected` (engine predictor); `seqScheduleTime` calls `Predictor.Ensure(idx+1)` before parity bookkeeping.
+- ParityCheck allows a one-beat grace: if the sequencer just scheduled idx and slate hasn’t refreshed yet (`idx == seqNextIdxs[row]-1`), the mismatch is ignored to avoid false positives during tight render/refresh loops.
+- On WASM/Playwright runs parity fatal is downgraded to log-only by default; set `PARITY_WASM_FATAL=1|true|panic` to re-enable panics. Desktop/CLI still honor `PARITY_WATCH`/`PARITY_FATAL` normally.
+- Mute gate: engine predictor now gates only the mute subdivision (`idx+hold+1`), so audio resumes immediately on the following beat; UI mute/audio tests expect this.
+
+## 2025-11-28 WebAudio/WASM Integration Notes (critical)
+
+- **Sample-rate correctness**: WebAudio contexts often default to 48 kHz. We now render synth buffers at `AudioContext.sampleRate` (see `ensureRenderedSample` in `src/js/audio.js`). If you change render lengths/amps, preserve the dynamic SR or you’ll get pitch/tempo drift and “chipmunk” timbre in browsers.
+- **Render cache invalidation**: Cached renders include `sr`/`frames`; a mismatched `sr` triggers re-render. Tests read `window.__renderMeta` for verification.
+- **Main bus wiring**: `rewireChannel` special-cases the main channel (ingress==gain) to connect `(eq?)->(analyser?)->destination` and avoid feedback/silence. Preserve this when adding EQ/analyser nodes.
+- **Analyzer/waveform exports**: `channelAnalyzerSnapshot` now returns `wave` (clamped time-domain) plus `spectrum`. DrumView waveform uses this; JS/Go tests tap it.
+- **EQ bands & controls (2025-11-29)**:
+  - DrumView EQ panel shows 10 fixed bands (Hz ranges 20–20k) with sliders (±12 dB, 0.1 dB steps). Alternating band backgrounds + Hz labels. Waveform toggle still available.
+  - Applying EQ re-attaches the analyser so waveform/spectrum stay live after EQ changes.
+  - Go tests: `drumview_eq_columns_test.go`, `drumview_eq_controls_test.go`, `drumview_eq_wave_after_eq_test.go`.
+  - JS tests: `eq_panel_columns.browser.test.js`, `eq_controls_wave.browser.test.js`.
+  - JS exports: `eqBandsSnapshot()` (values + Hz labels), `eqControlsSnapshot()` (current gains).
+- **Tests to run for audio regressions**:
+  - `cd src/js && node audio_render_rate.browser.test.js` (validates render SR/duration == AudioContext SR).
+  - `cd src/js && node audio_presence.browser.test.js` (WASM harness proves audible waveform on main bus).
+  - `cd src/js && node audio_cache.browser.test.js` (render cache semantics).
+  - For Go desktop path: `cd src/go && go test ./internal/audio -tags test` (uses Ebiten stubs).
+- **Context exposure**: `window.__audioCtx` / `__audioCtxSR` are set for diagnostics; leave in place for Playwright assertions.
+- **When debugging “no sound in browser”**: Check (1) AudioContext resumed, (2) render cache built at the correct SR, (3) main bus analyser not creating a loop, (4) wasm module loaded (`drums.single.js`). The presence test spins a mini static server to verify end-to-end.

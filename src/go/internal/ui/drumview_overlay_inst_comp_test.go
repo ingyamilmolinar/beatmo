@@ -1,0 +1,429 @@
+//go:build test
+
+package ui
+
+import (
+	"image"
+	"testing"
+)
+
+// clearClickSuppressionInst clears the global click suppression state for tests.
+func clearClickSuppressionInst(t *testing.T) {
+	prev := suppressClicksUntilRelease
+	suppressClicksUntilRelease = false
+	t.Cleanup(func() { suppressClicksUntilRelease = prev })
+}
+
+func TestInstrumentMenuComponent_OpenClose(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+
+	// Initially closed
+	if comp.IsOpen() {
+		t.Error("expected menu to be closed initially")
+	}
+
+	// Set props with ForceCategories to start in categories mode
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect:        image.Rect(10, 100, 100, 124),
+		VertBounds:        image.Rect(0, 50, 300, 500),
+		CurrentInstrument: "kick",
+		Categories:        []string{"Kicks", "Snares"},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: "Kicks"},
+			{ID: "snare", Label: "Snare", Category: "Snares"},
+			{ID: "hihat", Label: "Hi-Hat", Category: "Cymbals"},
+		},
+		RowHeight:       24,
+		LabelWidth:      100,
+		ControlsWidth:   200,
+		ForceCategories: true, // Start in categories mode
+	})
+	comp.Open()
+
+	if !comp.IsOpen() {
+		t.Error("expected menu to be open after Open()")
+	}
+
+	// Should start in categories mode (since ForceCategories is set)
+	if comp.Mode() != InstMenuModeCategories {
+		t.Errorf("expected categories mode, got %s", comp.Mode())
+	}
+
+	// Close
+	comp.Close()
+	if comp.IsOpen() {
+		t.Error("expected menu to be closed after Close()")
+	}
+}
+
+func TestInstrumentMenuComponent_CategoriesMode(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect:        image.Rect(10, 100, 100, 124),
+		VertBounds:        image.Rect(0, 50, 300, 500),
+		CurrentInstrument: "kick",
+		Categories:        []string{"Kicks", "Snares", "Cymbals"},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: "Kicks"},
+			{ID: "snare", Label: "Snare", Category: "Snares"},
+			{ID: "hihat", Label: "Hi-Hat", Category: "Cymbals"},
+		},
+		RowHeight:       24,
+		ForceCategories: true, // Start in categories mode
+	})
+	comp.Open()
+
+	// Should start in categories mode (since ForceCategories is set)
+	if comp.Mode() != InstMenuModeCategories {
+		t.Errorf("expected categories mode, got %s", comp.Mode())
+	}
+
+	// Should have category buttons
+	if len(comp.categoryBtns) == 0 {
+		t.Error("expected category buttons to be created")
+	}
+
+	// Active category should be set based on current instrument
+	if comp.ActiveCategory() != "Kicks" {
+		t.Errorf("expected active category 'Kicks', got '%s'", comp.ActiveCategory())
+	}
+}
+
+func TestInstrumentMenuComponent_InstrumentsMode(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect:        image.Rect(10, 100, 100, 124),
+		VertBounds:        image.Rect(0, 50, 300, 500),
+		CurrentInstrument: "kick",
+		Categories:        []string{}, // No categories - go directly to instruments
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: "snare", Label: "Snare", Category: ""},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+
+	// Should start in instruments mode (no categories)
+	if comp.Mode() != InstMenuModeInstruments {
+		t.Errorf("expected instruments mode, got %s", comp.Mode())
+	}
+
+	// Should have instrument buttons
+	if len(comp.instBtns) == 0 {
+		t.Error("expected instrument buttons to be created")
+	}
+}
+
+func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
+	clearClickSuppressionInst(t)
+
+	comp := NewInstrumentMenuComponent("test-inst")
+
+	var selectedID string
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: "snare", Label: "Snare", Category: ""},
+		},
+		RowHeight: 24,
+		OnSelect: func(instID string) {
+			selectedID = instID
+		},
+	})
+	comp.Open()
+
+	// Clear suppression again (Open calls SuppressClicksUntilMouseUp)
+	suppressClicksUntilRelease = false
+
+	// Find and click the first instrument button
+	if len(comp.instBtns) == 0 {
+		t.Fatal("no instrument buttons")
+	}
+
+	btn := comp.instBtns[0]
+	btnRect := btn.Rect()
+
+	// Button.Handle triggers OnClick on first press (held==1)
+	result := comp.HandleInput(btnRect.Min.X+5, btnRect.Min.Y+5, true)
+	if result == InputIgnored {
+		t.Error("expected input to be consumed on button press")
+	}
+
+	// Button callback is fired on press, so menu should be closed
+	if comp.IsOpen() {
+		t.Error("expected menu to be closed after selection")
+	}
+
+	// Verify callback was invoked
+	if selectedID != "kick" {
+		t.Errorf("expected selectedID 'kick', got '%s'", selectedID)
+	}
+}
+
+func TestInstrumentMenuComponent_HoldCapture(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+
+	// Close and verify hold state
+	comp.Close()
+
+	// Should be capturing after close (hold is true)
+	if !comp.Capturing() {
+		t.Error("expected Capturing() to be true after closing")
+	}
+
+	// HandleInput should capture while holding
+	result := comp.HandleInput(50, 50, true)
+	if result != InputCaptured {
+		t.Errorf("expected InputCaptured while holding, got %v", result)
+	}
+
+	// Release should clear hold
+	result = comp.HandleInput(50, 50, false)
+	if result != InputCaptured {
+		t.Errorf("expected InputCaptured on release, got %v", result)
+	}
+
+	// After release, should no longer be capturing
+	if comp.Capturing() {
+		t.Error("expected Capturing() to be false after mouse release")
+	}
+}
+
+func TestInstrumentMenuComponent_ClickOutsideCloses(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+
+	var closeCalled bool
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+		},
+		RowHeight: 24,
+		OnClose: func() {
+			closeCalled = true
+		},
+	})
+	comp.Open()
+
+	// Click far outside the menu bounds
+	result := comp.HandleInput(500, 500, true)
+	if result != InputConsumed {
+		t.Errorf("expected click outside to be consumed, got %v", result)
+	}
+
+	if !closeCalled {
+		t.Error("expected OnClose callback to be called")
+	}
+	if comp.IsOpen() {
+		t.Error("expected menu to be closed after click outside")
+	}
+}
+
+func TestInstrumentMenuComponent_SearchFiltering(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick Drum", Category: ""},
+			{ID: "snare", Label: "Snare Drum", Category: ""},
+			{ID: "hihat", Label: "Hi-Hat", Category: ""},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+
+	// Verify all instruments shown initially
+	initialCount := len(comp.instBtns)
+	if initialCount == 0 {
+		t.Fatal("no instrument buttons initially")
+	}
+
+	// Simulate search by directly setting state and rebuilding
+	comp.state.searchText = "kick"
+	comp.rebuildMenu()
+
+	// Should show fewer results
+	if len(comp.state.filteredInsts) != 1 {
+		t.Errorf("expected 1 filtered instrument, got %d", len(comp.state.filteredInsts))
+	}
+	if comp.state.filteredInsts[0] != "kick" {
+		t.Errorf("expected 'kick' to match search, got '%s'", comp.state.filteredInsts[0])
+	}
+}
+
+func TestInstrumentMenuComponent_CategoryFiltering(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{"Kicks", "Snares"},
+		Instruments: []InstrumentOption{
+			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
+			{ID: "kick2", Label: "Kick 2", Category: "Kicks"},
+			{ID: "snare1", Label: "Snare 1", Category: "Snares"},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+
+	// Switch to instruments mode with active category
+	comp.state.activeCat = "Kicks"
+	comp.state.mode = InstMenuModeInstruments
+	comp.rebuildMenu()
+
+	// Should only show kicks
+	if len(comp.state.filteredInsts) != 2 {
+		t.Errorf("expected 2 filtered instruments (kicks only), got %d", len(comp.state.filteredInsts))
+	}
+	for _, id := range comp.state.filteredInsts {
+		if comp.state.categoryByID[id] != "Kicks" {
+			t.Errorf("expected category 'Kicks', got '%s' for instrument '%s'",
+				comp.state.categoryByID[id], id)
+		}
+	}
+}
+
+func TestInstrumentMenuComponent_HandleInputWhenClosed(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+		},
+		RowHeight: 24,
+	})
+
+	// Don't open the menu, input should be ignored
+	result := comp.HandleInput(50, 100, true)
+	if result != InputIgnored {
+		t.Error("expected input to be ignored when menu is closed")
+	}
+}
+
+func TestInstrumentMenuComponent_BoundsSet(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+
+	// After open, bounds should be non-empty
+	bounds := comp.Bounds()
+	if bounds.Empty() {
+		t.Error("expected non-empty bounds after opening")
+	}
+}
+
+func TestInstrumentMenuComponent_EmptyInstruments(t *testing.T) {
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect:  image.Rect(10, 100, 100, 124),
+		VertBounds:  image.Rect(0, 50, 300, 500),
+		Categories:  []string{},
+		Instruments: []InstrumentOption{},
+		RowHeight:   24,
+	})
+	comp.Open()
+
+	// Should handle empty instruments gracefully
+	// In instruments mode, should show "No matches" placeholder
+	if comp.Mode() != InstMenuModeInstruments {
+		t.Errorf("expected instruments mode, got %s", comp.Mode())
+	}
+	// Should have one placeholder button
+	if len(comp.instBtns) != 1 {
+		t.Errorf("expected 1 placeholder button, got %d", len(comp.instBtns))
+	}
+}
+
+func TestInstrumentMenuComponent_ScrollState(t *testing.T) {
+	// Create menu with many instruments to trigger scrolling
+	insts := []InstrumentOption{}
+	for i := 0; i < 20; i++ {
+		insts = append(insts, InstrumentOption{
+			ID:       "inst" + string(rune('a'+i)),
+			Label:    "Instrument " + string(rune('A'+i)),
+			Category: "",
+		})
+	}
+
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect:  image.Rect(10, 100, 100, 124),
+		VertBounds:  image.Rect(0, 50, 300, 400), // Limited height
+		Categories:  []string{},
+		Instruments: insts,
+		RowHeight:   24,
+	})
+	comp.Open()
+
+	scroll := comp.Scroll()
+	if scroll.Total != 20 {
+		t.Errorf("expected scroll.Total = 20, got %d", scroll.Total)
+	}
+	if !scroll.HasScroll() {
+		t.Error("expected scrolling to be enabled")
+	}
+}
+
+func TestInstrumentMenuComponent_WheelScroll(t *testing.T) {
+	// Create menu with many instruments
+	insts := []InstrumentOption{}
+	for i := 0; i < 20; i++ {
+		insts = append(insts, InstrumentOption{
+			ID:       "inst" + string(rune('a'+i)),
+			Label:    "Instrument " + string(rune('A'+i)),
+			Category: "",
+		})
+	}
+
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect:  image.Rect(10, 100, 100, 124),
+		VertBounds:  image.Rect(0, 50, 300, 400),
+		Categories:  []string{},
+		Instruments: insts,
+		RowHeight:   24,
+	})
+	comp.Open()
+
+	initialFirst := comp.Scroll().First
+
+	// Scroll down
+	bounds := comp.Bounds()
+	result := comp.HandleWheel(bounds.Min.X+10, bounds.Min.Y+10, -1)
+	if result == InputIgnored {
+		t.Error("expected wheel scroll to be handled")
+	}
+
+	// First should have changed
+	if comp.Scroll().First == initialFirst {
+		t.Error("expected scroll.First to change after wheel scroll")
+	}
+}

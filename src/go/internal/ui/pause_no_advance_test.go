@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -11,8 +10,9 @@ import (
 // Verifies that pressing pause does not advance the highlighted subdivision
 // even by a single step; the marker remains fixed for the pause frame.
 func TestPauseDoesNotAdvanceHighlight(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	w, h := 640, 480
 	g.Layout(w, h)
 	restore := SetInputForTest(
@@ -33,25 +33,19 @@ func TestPauseDoesNotAdvanceHighlight(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.drum.SetBPM(120)
-	until := time.Now().Add(20 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	g.SetAppliedBPMForTest(120)
 
-	g.drum.playPressed = true
-	// Let it move slightly
-	until = time.Now().Add(30 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	// Advance deterministically.
+	setPlayStartForAbs(g, div+1)
+	_ = g.Update()
 
 	// Snapshot current subdivision and highlight
 	prev := g.elapsedBeats
 
 	// Pause now
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
 
 	if g.elapsedBeats != prev {

@@ -8,7 +8,9 @@ import (
 // Ensure nodes remain reasonably clickable when zoomed in by enforcing a
 // minimum on-screen radius, unless neighbors would overlap.
 func TestNodeMinSizeZoomIn(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Single node to avoid overlap constraints
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)

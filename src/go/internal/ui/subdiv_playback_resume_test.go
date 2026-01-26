@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -12,8 +11,10 @@ import (
 // Repro for: after changing subdivisions following an earlier playback,
 // the timeline counter and global playhead should advance normally.
 func TestTimelineAdvancesAfterSubdivChangeAndEdit(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Freeze input so UI noise doesn't interfere.
 	restore := SetInputForTest(
@@ -41,13 +42,11 @@ func TestTimelineAdvancesAfterSubdivChangeAndEdit(t *testing.T) {
 	g.updateBeatInfos()
 
 	// Start, let it run briefly, then stop.
-	g.drum.playPressed = true
-	until := time.Now().Add(250 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(10 * time.Millisecond)
-	}
-	g.drum.stopPressed = true
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	setPlayStartForAbs(g, g.grid.MaxDiv()+2)
+	_ = g.Update()
+	pressStop(t, g.drum)
 	_ = g.Update()
 
 	// Edit: add a new node connected to the existing circuit.
@@ -65,23 +64,12 @@ func TestTimelineAdvancesAfterSubdivChangeAndEdit(t *testing.T) {
 
 	// Fresh playback should make the timeline advance from the new base.
 	startBeat := g.displayBeat()
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
-	// Allow a short window for time to advance.
-	until = time.Now().Add(300 * time.Millisecond)
-	var moved bool
-	var last float64
-	for time.Now().Before(until) {
-		_ = g.Update()
-		b := g.displayBeat()
-		if b > startBeat+0.01 { // at least ~1/100 beat progression
-			moved = true
-			last = b
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if !moved {
+	setPlayStartForAbs(g, g.grid.MaxDiv()+1)
+	_ = g.Update()
+	last := g.displayBeat()
+	if !(last > startBeat+0.01) {
 		t.Fatalf("timeline did not advance after subdiv change: start=%.3f last=%.3f", startBeat, last)
 	}
 }

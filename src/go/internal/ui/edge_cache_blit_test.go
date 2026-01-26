@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -11,8 +10,10 @@ import (
 // Test that the cache blit applies (-pad+dx, -pad+dy) so cached content aligns
 // with the intended top-pane coordinates across reuse and small pans.
 func TestEdgeCacheBlitOffsets(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelError)
+	assertDefaultParityState(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// One horizontal edge
 	a := g.tryAddNode(0, 0, 0)

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -10,7 +9,9 @@ import (
 // Ensure that clicking the BPM + button updates the game's BPM and that a
 // draw call between frames does not revert the change.
 func TestBPMButtonsSurviveDrawLoop(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Click the + button via its handler to avoid input geometry flakiness.
@@ -33,23 +34,20 @@ func TestBPMButtonsSurviveDrawLoop(t *testing.T) {
 	}
 
 	// Engine/applied BPM should converge asynchronously.
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		_ = g.Update()
-		if g.appliedBPM == afterClick && g.engine.BPM() == afterClick {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if g.appliedBPM != afterClick || g.engine.BPM() != afterClick {
-		t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d target=%d", g.engine.BPM(), g.appliedBPM, afterClick)
+	waitForUpdateCond(t, g, 10000, func() bool {
+		return g.AppliedBPM() == afterClick && g.engine.BPM() == afterClick
+	})
+	if g.AppliedBPM() != afterClick || g.engine.BPM() != afterClick {
+		t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d target=%d", g.engine.BPM(), g.AppliedBPM(), afterClick)
 	}
 }
 
 // Ensure that committing a BPM value via the text box survives a draw call
 // during the same frame and affects playback.
 func TestBPMEditorSurvivesDrawLoop(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Simulate a user edit by setting BPM directly, then propagate.
@@ -64,13 +62,10 @@ func TestBPMEditorSurvivesDrawLoop(t *testing.T) {
 	}
 
 	// Wait briefly for engine/applied BPM to converge.
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		_ = g.Update()
-		if g.appliedBPM == 200 && g.engine.BPM() == 200 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
+	waitForUpdateCond(t, g, 10000, func() bool {
+		return g.AppliedBPM() == 200 && g.engine.BPM() == 200
+	})
+	if g.AppliedBPM() != 200 || g.engine.BPM() != 200 {
+		t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d", g.engine.BPM(), g.AppliedBPM())
 	}
-	t.Fatalf("engine/applied BPM not updated: engine=%d applied=%d", g.engine.BPM(), g.appliedBPM)
 }

@@ -19,6 +19,11 @@ type TextInput struct {
 	anim    float64
 	blink   int
 	repeat  map[ebiten.Key]int
+	// Optional per-field validation and constraints
+	// Accept, when non-nil, should return true if rune r is allowed.
+	Accept func(rune) bool
+	// MaxLen, when >0, caps the number of runes permitted in Text.
+	MaxLen int
 }
 
 // NewTextInput constructs a text input with the given rectangle and style.
@@ -31,6 +36,14 @@ func (t *TextInput) Focused() bool { return t.focused }
 
 // SetText sets the current text and resets the cursor to the end.
 func (t *TextInput) SetText(s string) {
+	// Enforce MaxLen when set; do not filter content here beyond length.
+	if t.MaxLen > 0 {
+		rs := []rune(s)
+		if len(rs) > t.MaxLen {
+			rs = rs[:t.MaxLen]
+		}
+		s = string(rs)
+	}
 	t.Text = s
 	t.cursor = utf8.RuneCountInString(s)
 }
@@ -92,6 +105,19 @@ func (t *TextInput) Update() bool {
 				t.focused = false
 				consumed = true
 			} else {
+				// Default filter to printable ASCII unless Accept overrides.
+				if t.Accept != nil {
+					if !t.Accept(r) {
+						continue
+					}
+				} else {
+					if r < 32 || r > 126 {
+						continue
+					}
+				}
+				if t.MaxLen > 0 && utf8.RuneCountInString(t.Text) >= t.MaxLen {
+					continue
+				}
 				before := t.Text[:byteIndex(t.Text, t.cursor)]
 				after := t.Text[byteIndex(t.Text, t.cursor):]
 				t.Text = before + string(r) + after

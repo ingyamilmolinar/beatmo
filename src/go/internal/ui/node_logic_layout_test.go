@@ -9,7 +9,9 @@ import (
 // TestNodeLogicLayout_NoOverlap ensures logic selector and +/- buttons never overlap
 // and align with other rows' buttons.
 func TestNodeLogicLayout_NoOverlap(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	// set a logic that uses N
@@ -50,7 +52,9 @@ func TestNodeLogicLayout_NoOverlap(t *testing.T) {
 
 // TestNodeLogicLayout_ProbabilityButtonsAligned ensures probability +/- align and do not overlap.
 func TestNodeLogicLayout_ProbabilityButtonsAligned(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -11,8 +10,9 @@ import (
 // Ensure that between successive UI updates, the highlighted subdivision does
 // not advance by more than one step when time-based sync is active.
 func TestNeverJumpSubdivPerFrame(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -31,18 +31,13 @@ func TestNeverJumpSubdivPerFrame(t *testing.T) {
 	g.addEdge(n0, n1)
 	g.updateBeatInfos()
 
-	g.drum.SetBPM(120)
-	until := time.Now().Add(30 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
-	g.drum.playPressed = true
-
-	// Run for ~200ms. Per Update, delta of elapsedBeats must be <= 1.
+	g.drum.SetBPM(60)
+	g.SetAppliedBPMForTest(60)
+	pressPlay(t, g.drum)
+	// Step deterministically; delta of elapsedBeats must be <= 1.
 	last := g.elapsedBeats
-	start := time.Now()
-	for time.Since(start) < 200*time.Millisecond {
+	for abs := 0; abs < g.grid.MaxDiv()*2; abs++ {
+		setPlayStartForAbs(g, abs)
 		_ = g.Update()
 		cur := g.elapsedBeats
 		if cur < last {
@@ -52,6 +47,5 @@ func TestNeverJumpSubdivPerFrame(t *testing.T) {
 			t.Fatalf("elapsedBeats jumped by >1: %d -> %d", last, cur)
 		}
 		last = cur
-		time.Sleep(5 * time.Millisecond)
 	}
 }

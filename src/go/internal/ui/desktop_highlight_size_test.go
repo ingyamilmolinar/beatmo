@@ -14,8 +14,11 @@ import (
 // of the screen. We approximate by capturing drawRect calls near the node center
 // and verifying the outline size is bounded.
 func TestDesktopNodeHighlightReasonableSize(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
+	assertDefaultSimpleDraw(t, g)
 	g.simpleDraw = false
 	if len(g.drum.Rows) == 0 {
 		g.drum.AddRow()

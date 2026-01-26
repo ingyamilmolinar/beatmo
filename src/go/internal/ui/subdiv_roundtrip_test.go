@@ -6,7 +6,9 @@ import (
 )
 
 func TestExportImportSubdivRoundTrip(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	if err := g.SetSubdivisions(16); err != nil {
 		t.Fatalf("set subdiv: %v", err)
@@ -21,6 +23,7 @@ func TestExportImportSubdivRoundTrip(t *testing.T) {
 	}
 	// Import into a new game
 	g2 := New(testLogger)
+	t.Cleanup(g2.CloseForTest)
 	g2.Layout(800, 600)
 	if err := g2.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
@@ -48,10 +51,12 @@ func TestExportImportSubdivRoundTrip(t *testing.T) {
 }
 
 func TestSetSubdivWhilePlayingDenied(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Start playing
-	g.playing = true
+	g.SetPlaying(true)
 	err := g.SetSubdivisions(8)
 	if err == nil {
 		t.Fatalf("expected error when changing subdiv while playing")
@@ -63,7 +68,9 @@ func TestSetSubdivWhilePlayingDenied(t *testing.T) {
 }
 
 func TestToSubReflectsSubdivisions(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	if err := g.SetSubdivisions(32); err != nil {
 		t.Fatalf("set subdiv 32: %v", err)

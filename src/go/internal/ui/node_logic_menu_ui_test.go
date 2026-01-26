@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/model"
 )
@@ -10,9 +9,10 @@ import (
 // TestNodeLogicDropdown_OpenSelectAndAdjust mirrors the instrument dropdown UX:
 // it opens the logic menu, selects a rule, and adjusts its parameter via +/-.
 func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
 
 	// Build a simple loop s0 -> r1 -> s2 -> (back)
 	s0 := g.tryAddNode(0, 0, model.NodeTypeSilent)
@@ -105,17 +105,9 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 	}
 	plays := 0
 	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
-	g.playing = true
-	g.spawnPulseFrom(0)
-	time.Sleep(5 * time.Millisecond)
-	for i := 0; i < 4; i++ {
-		g.activePulse.t = 1
-		g.Update() // to s2
-		g.activePulse.t = 1
-		g.Update() // to s0
-		g.activePulse.t = 1
-		g.Update() // to r1
-		time.Sleep(2 * time.Millisecond)
+	g.SetPlaying(true)
+	for abs := 0; abs < 24; abs++ {
+		scheduleAbsForMuteTest(g, abs)
 	}
 	if plays == 0 {
 		t.Fatalf("expected some plays with every 2 triggers")

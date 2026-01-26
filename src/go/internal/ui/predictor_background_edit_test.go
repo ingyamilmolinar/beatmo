@@ -64,19 +64,32 @@ func buildComplexGraph(g *Game) []*uiNode {
 }
 
 func TestComplexPredictionDeterministicAndAhead(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 768)
 	nodes := buildComplexGraph(g)
 	g.start = nodes[0]
 	g.graph.StartNodeID = nodes[0].ID
 	g.updateBeatInfos()
 	horizon := 512
-	g.drum.Length = 64
-	g.computePredictions(horizon)
-	snap1 := append([]bool(nil), g.predVisibleByRow[0]...)
-	// Recompute again; snapshot should remain identical
-	g.computePredictions(horizon)
-	snap2 := append([]bool(nil), g.predVisibleByRow[0]...)
+	if g.engine == nil || g.engine.Predictor == nil {
+		t.Fatalf("missing engine predictor")
+	}
+	g.engine.Predictor.Ensure(horizon)
+	snap1 := make([]bool, horizon)
+	for i := 0; i < horizon; i++ {
+		snap1[i] = g.engine.Predictor.VisibleAt(0, i)
+	}
+	// Force a full recompute via UpdateNode using the same params; snapshot should remain identical.
+	if n, ok := g.graph.GetNodeByID(nodes[0].ID); ok {
+		g.engine.Predictor.UpdateNode(nodes[0].ID, n)
+	}
+	g.engine.Predictor.Ensure(horizon)
+	snap2 := make([]bool, horizon)
+	for i := 0; i < horizon; i++ {
+		snap2[i] = g.engine.Predictor.VisibleAt(0, i)
+	}
 	if len(snap1) != len(snap2) {
 		t.Fatalf("snapshot lengths differ: %d vs %d", len(snap1), len(snap2))
 	}
@@ -87,54 +100,50 @@ func TestComplexPredictionDeterministicAndAhead(t *testing.T) {
 	}
 }
 
-func TestLiveEditClearsFutureCache(t *testing.T) {
+func TestLiveEditRecomputesPredictions(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Simple 2-node loop
 	A := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	B := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	g.addEdge(A, B)
 	g.addEdge(B, A)
-	// Start with A probability 0.25
+	// Start with A probability 0.0 (always skipped).
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
 		p.LogicKind = "probability"
-		p.LogicP = 0.25
+		p.LogicP = 0.0
 		g.graph.SetNodeParams(A.ID, p)
 	}
 	g.start = A
 	g.graph.StartNodeID = A.ID
 	g.updateBeatInfos()
-	horizon := 256
-	g.computePredictions(horizon)
-	before := append([]bool(nil), g.predAudibleByRow[0]...)
-
-	// Simulate playback halfway and then edit A to probability 1.0
-	cur := 128
-	g.elapsedBeats = cur
-	if g.engine != nil && g.engine.Predictor != nil {
-		g.engine.Predictor.RebaseAt(cur)
+	horizon := 128
+	if g.engine == nil || g.engine.Predictor == nil {
+		t.Fatalf("missing engine predictor")
 	}
+	g.engine.Predictor.Ensure(horizon)
+	for i := 0; i < horizon; i++ {
+		bi := g.beatInfoAtRow(0, i)
+		if bi.NodeID == A.ID && g.engine.Predictor.AudibleAt(0, i) {
+			t.Fatalf("expected A silent before edit at %d (probability=0)", i)
+		}
+	}
+
+	// Edit A to probability 1.0 and ensure predictions are recomputed.
 	if n, ok := g.graph.GetNodeByID(A.ID); ok {
 		p := n.Params
 		p.LogicKind = "probability"
 		p.LogicP = 1.0
 		g.graph.SetNodeParams(A.ID, p)
 	}
-	// Recompute
-	g.computePredictions(horizon)
-	after := append([]bool(nil), g.predAudibleByRow[0]...)
-	// Prefix before cur should be unchanged
-	for i := 0; i < cur && i < len(before) && i < len(after); i++ {
-		if before[i] != after[i] {
-			t.Fatalf("edit affected past at %d: %v -> %v", i, before[i], after[i])
-		}
-	}
-	// After cur, all occurrences of A should now be audible.
-	for i := cur; i < len(after); i++ {
+	g.engine.Predictor.Ensure(horizon)
+	for i := 0; i < horizon; i++ {
 		bi := g.beatInfoAtRow(0, i)
-		if bi.NodeID == A.ID && !after[i] {
-			t.Fatalf("expected A audible after edit at %d", i)
+		if bi.NodeID == A.ID && !g.engine.Predictor.AudibleAt(0, i) {
+			t.Fatalf("expected A audible after edit at %d (probability=1)", i)
 		}
 	}
 }

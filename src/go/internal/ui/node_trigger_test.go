@@ -7,7 +7,9 @@ import (
 )
 
 func TestNodeTriggeredRespectsMuteLogic(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -21,13 +23,17 @@ func TestNodeTriggeredRespectsMuteLogic(t *testing.T) {
 	g.graph.StartNodeID = start.ID
 
 	if n, ok := g.graph.GetNodeByID(mute.ID); ok {
-		n.Params.LogicKind = "every_n_triggers"
-		n.Params.LogicN = 2
-		g.graph.Nodes[mute.ID] = n
+		p := n.Params
+		p.LogicKind = "every_n_triggers"
+		p.LogicN = 2
+		g.graph.SetNodeParams(mute.ID, p)
 	}
 
 	g.updateBeatInfos()
-	g.ensurePredictions(32)
+	if g.engine == nil || g.engine.Predictor == nil {
+		t.Fatalf("missing engine predictor")
+	}
+	g.engine.Predictor.Ensure(32)
 
 	muteIdx := -1
 	cycle := len(g.beatInfosByRow[0])

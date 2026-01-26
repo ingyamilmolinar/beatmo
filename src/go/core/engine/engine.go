@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/beat"
@@ -25,6 +24,7 @@ type Engine struct {
 	subs   []chan Event
 	ctx    context.Context
 	cancel context.CancelFunc
+	logger *game_log.Logger
 	// Predictor holds prediction buffers/contexts outside the UI.
 	Predictor *Predictor
 
@@ -39,7 +39,7 @@ type Engine struct {
 // New creates a new Engine instance and starts its run loop.
 func New(logger *game_log.Logger) *Engine {
 	graph := model.NewGraph(logger)
-	sched := beat.NewScheduler()
+	sched := beat.NewScheduler(logger)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	e := &Engine{
@@ -48,18 +48,13 @@ func New(logger *game_log.Logger) *Engine {
 		Events: make(chan Event, 16),
 		ctx:    ctx,
 		cancel: cancel,
+		logger: logger,
 	}
 
-	// Initialize predictor bound to this engine's graph unless explicitly
-	// disabled via env. Default is enabled to make engine the single source
-	// of truth for prediction buffers and contexts.
-	if os.Getenv("USE_ENGINE_PREDICTOR") != "0" { // default ON
-		e.Predictor = NewPredictor(graph)
-	}
+	// Engine predictor is the single source of truth for prediction buffers and
+	// contexts across desktop/WASM and tests.
+	e.Predictor = NewPredictor(graph)
 	graph.SetNodeChangedHook(func(id model.NodeID) {
-		if e.Predictor == nil {
-			return
-		}
 		if node, ok := graph.GetNodeByID(id); ok {
 			e.Predictor.UpdateNode(id, node)
 		} else {
@@ -109,13 +104,10 @@ func (e *Engine) run() {
 					if e.tickCount > 0 {
 						avg = time.Duration(int64(e.tickSum) / e.tickCount)
 					}
-					// Log to stdout; the app’s logger isn’t wired here.
-					// This is for side-by-side desktop/wasm comparison.
-					// Format is stable so tests can grep if desired.
-					// PERF engine: avg=.. max=.. count=..
-					_ = os.Stderr // avoid linter complaining in non-test builds
-					// Use print to avoid import cycles with logger.
-					println("PERF engine ticker:", "avg=", avg.String(), "max=", e.tickMax.String(), "count=", e.tickCount)
+					// [PERF/ENGINE] avg=.. max=.. count=.. (debug-only)
+					if e.logger != nil {
+						e.logger.Debugf("[PERF/ENGINE] ticker avg=%s max=%s count=%d", avg.String(), e.tickMax.String(), e.tickCount)
+					}
 					e.tickCount, e.tickSum, e.tickMax = 0, 0, 0
 					e.tickLogAt = now.Add(2 * time.Second)
 				}
@@ -141,7 +133,13 @@ func (e *Engine) SetBPM(bpm int) { e.sched.SetBPM(bpm) }
 func (e *Engine) BPM() int { return e.sched.BPM }
 
 // Close terminates the engine goroutine.
-func (e *Engine) Close() { e.cancel() }
+func (e *Engine) Close() {
+	// Stop engine loop and background predictor precompute if active.
+	e.cancel()
+	if e.Predictor != nil {
+		e.Predictor.StopBackground()
+	}
+}
 
 // BeatLength exposes the scheduler's beat length.
 func (e *Engine) BeatLength() int { return e.sched.BeatLength }

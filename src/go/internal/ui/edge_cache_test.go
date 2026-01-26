@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -10,8 +9,10 @@ import (
 )
 
 func TestEdgeCacheRebuildOnGraphChange(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelError)
+	assertDefaultParityState(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	g.pendingStartRow = 0
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)

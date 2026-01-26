@@ -12,7 +12,9 @@ import (
 // TestEdgeColorTracksRowColor ensures edges are drawn with the same color as
 // their row's node color and that changing the row color rebuilds the cache.
 func TestEdgeColorTracksRowColor(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Build a simple edge on row 0 from (0,0) -> (1,0)

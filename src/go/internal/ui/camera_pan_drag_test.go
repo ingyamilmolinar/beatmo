@@ -11,7 +11,9 @@ import (
 // TestCameraPanDrag moves the camera by dragging and verifies that node and
 // edge screen positions translate by the same delta across the full Update path.
 func TestCameraPanDrag(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	n0 := g.tryAddNode(6, 4, model.NodeTypeRegular)
 	n1 := g.tryAddNode(10, 4, model.NodeTypeRegular)

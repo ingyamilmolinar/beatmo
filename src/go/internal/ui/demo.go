@@ -102,15 +102,25 @@ func (g *Game) buildDemo() {
 		}
 	}
 
-	// Default demo from embedded JSON. If import fails for any reason, fall
-	// back to the programmatic construction below to guarantee a usable demo.
+	// Primary startup demo: evolving rock kit built from the embedded
+	// startup_demo.json. If this fails, fall back to the legacy default
+	// JSON (kept for tests) and finally the programmatic construction
+	// below to guarantee a usable demo.
+	if len(assets_pkg.StartupDemoJSON) > 0 {
+		if err := g.Import(assets_pkg.StartupDemoJSON); err == nil {
+			g.logger.Infof("[DEMO] Using embedded startup rock demo (rows=%d)", len(g.drum.Rows))
+			g.demoBuilt = true
+			return
+		} else {
+			g.logger.Infof("[DEMO] Failed to import startup demo JSON: %v (falling back)", err)
+		}
+	}
 	if len(assets_pkg.DefaultDemoJSON) > 0 {
 		if err := g.Import(assets_pkg.DefaultDemoJSON); err == nil {
+			g.logger.Infof("[DEMO] Using legacy default demo JSON")
 			g.demoBuilt = true
 			return
 		}
-		// Log failure but proceed with programmatic fallback
-		// (err in scope above)
 	}
 
 	// Aim for a human-friendly four-on-the-floor groove at ~100 BPM.
@@ -228,9 +238,9 @@ func (g *Game) buildDemo() {
 // RunDemo builds the demo circuit, starts playback, and exits after a short delay.
 func (g *Game) RunDemo() {
 	g.buildDemo()
-	g.playing = true
+	g.SetPlaying(true)
 	g.engine.Start()
-	g.spawnPulseFrom(0)
+	g.spawnPulseFromRow(0, 0)
 	go func() {
 		time.Sleep(2 * time.Second)
 		g.logger.Infof("[DEMO] Finished demo run")

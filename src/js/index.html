@@ -16,9 +16,17 @@
       .then(result => {
         go.run(result.instance);
         console.log("Tunkul WASM game started");
+        // Disable simpleDraw mode once WASM is loaded to show full UI
+        const disableSimpleDraw = () => {
+          if (typeof setSimpleDraw === "function") {
+            try { setSimpleDraw(false); } catch (_) {}
+            return;
+          }
+          requestAnimationFrame(disableSimpleDraw);
+        };
+        disableSimpleDraw();
       })
       .catch(err => console.error(err));
   </script>
 </body>
 </html>
-

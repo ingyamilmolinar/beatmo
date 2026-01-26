@@ -8,7 +8,9 @@ import (
 
 // Ensure LOG button aligns with other rows and rule text does not overlap button.
 func TestLogicButtonAlignedAndTextNotOverlap(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
@@ -41,7 +43,9 @@ func TestLogicButtonAlignedAndTextNotOverlap(t *testing.T) {
 
 // Logic dropdown renders as a side panel to the right of the main popup.
 func TestLogicDropdownSidePanel(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
@@ -75,7 +79,9 @@ func TestLogicDropdownSidePanel(t *testing.T) {
 
 // Groove dropdown also renders as side panel.
 func TestGrooveDropdownSidePanel(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n

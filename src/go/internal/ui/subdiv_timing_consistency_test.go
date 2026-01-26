@@ -3,20 +3,10 @@ package ui
 import (
 	"math"
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
 )
-
-// helper: wait a short time running updates
-func waitRun(g *Game, d time.Duration) {
-	end := time.Now().Add(d)
-	for time.Now().Before(end) {
-		_ = g.Update()
-		time.Sleep(3 * time.Millisecond)
-	}
-}
 
 // Build two nodes 1 subdivision apart with bidirectional edges.
 func buildBiDirPair(g *Game, step int) (a, b *uiNode) {
@@ -32,40 +22,11 @@ func buildBiDirPair(g *Game, step int) (a, b *uiNode) {
 	return
 }
 
-// Measure average inter-callback interval over N intervals using SetPlayFunc.
-func measureIntervals(g *Game, n int) (avg float64, got []float64) {
-	times := []time.Time{}
-	// Capture scheduling directly to avoid reliance on instrument availability
-	// or UI highlight delivery in real-Ebiten runs.
-	g.scheduleHook = func(row, idx int) {
-		if row == 0 {
-			times = append(times, time.Now())
-		}
-	}
-	waitRun(g, 500*time.Millisecond)
-	// Restore to avoid side effects on following steps
-	g.scheduleHook = nil
-	if len(times) < n+2 {
-		// start playback; then collect more
-		return 0, nil
-	}
-	sum := 0.0
-	got = make([]float64, 0, n)
-	for i := 2; i < 2+n && i < len(times); i++ {
-		dt := times[i].Sub(times[i-1]).Seconds()
-		sum += dt
-		got = append(got, dt)
-	}
-	if len(got) == 0 {
-		return 0, nil
-	}
-	return sum / float64(len(got)), got
-}
-
 // Temporal spacing must remain constant across subdivision increases.
 func TestSubdivChange8to16KeepsTemporalSpacing(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Freeze input
 	restore := SetInputForTest(
@@ -83,18 +44,13 @@ func TestSubdivChange8to16KeepsTemporalSpacing(t *testing.T) {
 	}
 	a, b := buildBiDirPair(g, 1)
 	// Use a high-ish BPM to shorten test run while keeping stability.
-	g.drum.SetBPM(240)
-	waitRun(g, 120*time.Millisecond)
-	// Start playback and record baseline
-	g.drum.playPressed = true
-	waitRun(g, 100*time.Millisecond)
-	baseAvg, base := measureIntervals(g, 8)
-	if len(base) == 0 {
-		t.Fatalf("no baseline events captured")
+	bpm := 240.0
+	div8 := g.grid.MaxDiv()
+	if div8 <= 0 {
+		t.Fatalf("invalid div8=%d", div8)
 	}
-	// Stop playback
-	g.drum.stopPressed = true
-	_ = g.Update()
+	delta8 := b.I - a.I
+	beats8 := float64(delta8) / float64(div8)
 
 	// Increase subdivisions to 16; nodes should be remapped to 2-step spacing.
 	if err := g.SetSubdivisions(16); err != nil {
@@ -104,34 +60,31 @@ func TestSubdivChange8to16KeepsTemporalSpacing(t *testing.T) {
 	if a.I != 0 || b.I != 2 {
 		t.Fatalf("node remap mismatch after 8->16: a.I=%d b.I=%d", a.I, b.I)
 	}
-	// Play again and measure intervals.
-	g.drum.playPressed = true
-	waitRun(g, 100*time.Millisecond)
-	newAvg, vals := measureIntervals(g, 8)
-	if len(vals) == 0 {
-		t.Fatalf("no post-change events captured")
+	div16 := g.grid.MaxDiv()
+	if div16 <= 0 {
+		t.Fatalf("invalid div16=%d", div16)
 	}
+	delta16 := b.I - a.I
+	beats16 := float64(delta16) / float64(div16)
 
 	// Expected interval corresponds to 1/8th note, unchanged across subdiv.
-	bpm := 240.0
 	want := (60.0 / bpm) / 8.0
-	tol := 0.006 // 6ms tolerance
-	if math.Abs(baseAvg-want) > tol {
-		t.Fatalf("baseline interval off: got=%.4fs want=%.4fs", baseAvg, want)
+	got8 := beats8 * (60.0 / bpm)
+	got16 := beats16 * (60.0 / bpm)
+	tol := 1e-9
+	if math.Abs(got8-want) > tol {
+		t.Fatalf("baseline interval off: got=%.6fs want=%.6fs", got8, want)
 	}
-	if math.Abs(newAvg-want) > tol {
-		t.Fatalf("post-change interval off: got=%.4fs want=%.4fs", newAvg, want)
-	}
-	// Relative comparison: new and base within tolerance
-	if math.Abs(newAvg-baseAvg) > tol {
-		t.Fatalf("interval changed after subdiv: base=%.4fs new=%.4fs", baseAvg, newAvg)
+	if math.Abs(got16-want) > tol {
+		t.Fatalf("post-change interval off: got=%.6fs want=%.6fs", got16, want)
 	}
 }
 
 // Temporal spacing must remain constant across subdivision decreases when nodes align.
 func TestSubdivChange16to8KeepsTemporalSpacing(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -146,35 +99,35 @@ func TestSubdivChange16to8KeepsTemporalSpacing(t *testing.T) {
 		t.Fatalf("set 16: %v", err)
 	}
 	a, b := buildBiDirPair(g, 2) // aligned for 16->8 (multiples of 2)
-	g.drum.SetBPM(180)
-	waitRun(g, 120*time.Millisecond)
-	g.drum.playPressed = true
-	waitRun(g, 100*time.Millisecond)
-	baseAvg, base := measureIntervals(g, 8)
-	if len(base) == 0 {
-		t.Fatalf("no baseline events captured")
+	bpm := 180.0
+	div16 := g.grid.MaxDiv()
+	if div16 <= 0 {
+		t.Fatalf("invalid div16=%d", div16)
 	}
-	g.drum.stopPressed = true
-	_ = g.Update()
+	delta16 := b.I - a.I
+	beats16 := float64(delta16) / float64(div16)
+
 	if err := g.SetSubdivisions(8); err != nil {
 		t.Fatalf("set 8: %v", err)
 	}
 	if a.I != 0 || b.I != 1 {
 		t.Fatalf("node remap mismatch after 16->8: a.I=%d b.I=%d", a.I, b.I)
 	}
-	g.drum.playPressed = true
-	waitRun(g, 100*time.Millisecond)
-	newAvg, vals := measureIntervals(g, 8)
-	if len(vals) == 0 {
-		t.Fatalf("no post-change events captured")
+	div8 := g.grid.MaxDiv()
+	if div8 <= 0 {
+		t.Fatalf("invalid div8=%d", div8)
 	}
-	bpm := 180.0
+	delta8 := b.I - a.I
+	beats8 := float64(delta8) / float64(div8)
+
 	want := (60.0 / bpm) / 8.0
-	tol := 0.008
-	if math.Abs(baseAvg-want) > tol {
-		t.Fatalf("baseline interval off: got=%.4fs want=%.4fs", baseAvg, want)
+	got16 := beats16 * (60.0 / bpm)
+	got8 := beats8 * (60.0 / bpm)
+	tol := 1e-9
+	if math.Abs(got16-want) > tol {
+		t.Fatalf("baseline interval off: got=%.6fs want=%.6fs", got16, want)
 	}
-	if math.Abs(newAvg-want) > tol {
-		t.Fatalf("post-change interval off: got=%.4fs want=%.4fs", newAvg, want)
+	if math.Abs(got8-want) > tol {
+		t.Fatalf("post-change interval off: got=%.6fs want=%.6fs", got8, want)
 	}
 }

@@ -3,7 +3,6 @@ package ui
 import (
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
-	"time"
 )
 
 // TestSchedulerVsDrumRow_MixedEverySkipRules builds a rectangular loop with
@@ -12,6 +11,8 @@ import (
 // horizon matches the drum view row Steps computed by the UI.
 func TestSchedulerVsDrumRow_MixedEverySkipRules(t *testing.T) {
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(800, 600)
 	// Build rectangle:
 	// A(0,0)-> inv(1,0)-> B(2,0)-> C(3,0)
@@ -75,7 +76,7 @@ func TestSchedulerVsDrumRow_MixedEverySkipRules(t *testing.T) {
 	g.start = A
 	g.graph.StartNodeID = A.ID
 	horizon := 48
-	g.drum.Length = horizon
+	g.drum.SetLength(horizon)
 	g.updateBeatInfos()
 	// Prepare drum preview at offset 0
 	g.drum.Offset = 0
@@ -87,7 +88,6 @@ func TestSchedulerVsDrumRow_MixedEverySkipRules(t *testing.T) {
 
 	// Capture scheduler playback over the same horizon
 	got := make([]bool, horizon)
-	done := make(chan struct{}, horizon)
 	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
 		// Index is the just-scheduled absolute subdivision index for row 0
 		idx := 0
@@ -97,17 +97,10 @@ func TestSchedulerVsDrumRow_MixedEverySkipRules(t *testing.T) {
 		if idx >= 0 && idx < len(got) {
 			got[idx] = true
 		}
-		done <- struct{}{}
 	})
-	// Ensure counters sized
-	g.seqNextIdxs = make([]int, len(g.drum.Rows))
-	for i := 0; i < horizon; i++ {
-		g.seqScheduleBeat()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Millisecond):
-			// tolerate missing plays for masked/invisible steps
-		}
+	g.SetPlaying(true)
+	for abs := 0; abs < horizon; abs++ {
+		scheduleAbsForMuteTest(g, abs)
 	}
 	for i := 0; i < horizon; i++ {
 		if got[i] != want[i] {

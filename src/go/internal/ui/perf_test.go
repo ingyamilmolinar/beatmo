@@ -1,9 +1,7 @@
 package ui
 
 import (
-	"os"
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -14,8 +12,10 @@ import (
 // Ebiten stubs and verifies that perf counters are populated while audio
 // scheduling is active. It prints a brief summary for humans to compare.
 func TestDesktopPerfCountersCollect(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelError)
+	assertDefaultParityState(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Freeze input to avoid incidental UI work.
@@ -28,8 +28,6 @@ func TestDesktopPerfCountersCollect(t *testing.T) {
 		func() (int, int) { return 800, 600 },
 	)
 	defer restore()
-
-	SetDefaultStartForTest(false)
 
 	// Build 3 tiny rectangles (1 grid-unit sides) to stress subdivision rate.
 	build := func(row, x int) {
@@ -52,24 +50,16 @@ func TestDesktopPerfCountersCollect(t *testing.T) {
 	build(2, 6)
 	g.updateBeatInfos()
 
-	g.SetUseSequencerForTest(true)
 	g.drum.SetBPM(180)
 
 	// Let BPM apply and then start.
-	deadline := time.Now().Add(150 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
-	g.drum.playPressed = true
+	waitForUpdateCond(t, g, 10000, func() bool { return g.AppliedBPM() == 180 })
+	pressPlay(t, g.drum)
+	_ = g.Update()
 
-	// Run briefly to accumulate metrics.
-	runFor := 800 * time.Millisecond
-	end := time.Now().Add(runFor)
-	for time.Now().Before(end) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	// Run a deterministic number of frames to accumulate metrics.
+	advancePlaybackByAbs(g, g.grid.MaxDiv()*8)
+	waitForUpdateCond(t, g, 10000, func() bool { return g.PerfSnapshot().AudioDeq > 0 })
 
 	s := g.PerfSnapshot()
 	t.Logf("perf desktop: fps=%.1f upd_avg=%.3fms upd_max=%.3fms enq=%d deq=%d qlat_avg=%.3fms call_avg=%.3fms",

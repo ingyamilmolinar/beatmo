@@ -7,7 +7,9 @@ import (
 )
 
 func TestExportJSONContentAndSaveCalled(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Build simple chain A->B->C and one stray node D
@@ -20,7 +22,7 @@ func TestExportJSONContentAndSaveCalled(t *testing.T) {
 
 	// Tweak drum rows
 	g.drum.Rows[0].Name = "Snare"
-	g.drum.Rows[0].Instrument = "snare"
+	g.drum.SetInstrument("snare")
 	g.drum.Rows[0].Volume = 0.7
 	g.drum.Rows[0].Origin = a.ID
 	g.drum.SetBPM(123)

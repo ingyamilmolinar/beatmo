@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/tunkul/internal/gamestate"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
@@ -12,28 +13,31 @@ func stubGameForHighlight(nodeType model.NodeType, triggered bool) *Game {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	const size = 64
 	g := &Game{
-		highlightedBeats:   make(map[int]int64),
-		lastTriggeredByRow: make(map[int]map[model.NodeID]bool),
-		nodeAnim:           make(map[model.NodeID]float64),
-		logger:             logger,
-		graph:              model.NewGraph(logger),
+		state:            gamestate.New(120),
+		highlightedBeats: make(map[int]int64),
+		nodeAnim:         make(map[model.NodeID]float64),
+		logger:           logger,
+		graph:            model.NewGraph(logger),
+		// Prevent highlightBeat from early-returning due to missing instruments in stubbed DrumView.
+		playFn: func(string, float64, ...float64) {},
 	}
 	g.drum = &DrumView{
-		Rows:   []*DrumRow{{Steps: make([]bool, size), CellTypes: make([]model.NodeType, size)}},
-		Length: size,
+		Rows:   []*DrumRow{{}},
+		Graph:  g.graph,
+		logger: logger,
 	}
+	g.drum.SetLength(size)
 	g.drum.Rows[0].CellTypes[0] = nodeType
-	g.predTriggeredByRow = [][]bool{make([]bool, size)}
-	g.predTriggeredByRow[0][0] = triggered
-	g.predVisibleByRow = [][]bool{make([]bool, size)}
-	g.predAudibleByRow = [][]bool{make([]bool, size)}
-	g.predHorizon = size
-	g.lastTriggeredByRow[0] = make(map[model.NodeID]bool)
-	g.lastTriggeredByRow[0][1] = triggered
+	g.state.SetPlaying(true)
+	// Ensure nodeTriggeredState sees the node as present in the graph.
+	g.graph.AddNode(0, 0, nodeType) // id=0
+	g.graph.AddNode(0, 0, nodeType) // id=1
+	g.setLastTriggeredForTest(0, 1, triggered)
 	return g
 }
 
 func TestHighlightBeatSkipsUntriggeredRegular(t *testing.T) {
+	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, false)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
 	key := makeBeatKey(0, 0)
@@ -42,12 +46,13 @@ func TestHighlightBeatSkipsUntriggeredRegular(t *testing.T) {
 	if _, ok := g.highlightedBeats[key]; ok {
 		t.Fatalf("highlight present for skipped regular node")
 	}
-	if g.lastTriggeredByRow[0][info.NodeID] {
+	if v, _ := g.lastTriggeredForTest(0, info.NodeID); v {
 		t.Fatalf("lastTriggered recorded true for skipped regular node")
 	}
 }
 
 func TestHighlightBeatSkipsUntriggeredMute(t *testing.T) {
+	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeMute, false)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeMute}
 	key := makeBeatKey(0, 0)
@@ -56,7 +61,7 @@ func TestHighlightBeatSkipsUntriggeredMute(t *testing.T) {
 	if _, ok := g.highlightedBeats[key]; ok {
 		t.Fatalf("highlight present for skipped mute node")
 	}
-	if g.lastTriggeredByRow[0][info.NodeID] {
+	if v, _ := g.lastTriggeredForTest(0, info.NodeID); v {
 		t.Fatalf("lastTriggered recorded true for skipped mute node")
 	}
 	if g.nodeAnim[info.NodeID] != 0 {
@@ -65,6 +70,7 @@ func TestHighlightBeatSkipsUntriggeredMute(t *testing.T) {
 }
 
 func TestHighlightVisualSkipsUntriggeredRegular(t *testing.T) {
+	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, false)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
 	key := makeBeatKey(0, 0)
@@ -76,6 +82,7 @@ func TestHighlightVisualSkipsUntriggeredRegular(t *testing.T) {
 }
 
 func TestHighlightVisualSkipsUntriggeredMute(t *testing.T) {
+	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeMute, false)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeMute}
 	key := makeBeatKey(0, 0)
@@ -90,12 +97,11 @@ func TestHighlightVisualSkipsUntriggeredMute(t *testing.T) {
 }
 
 func TestHighlightBeatRequiresAudibleRow(t *testing.T) {
+	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, true)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
-	g.drum.instMu.Lock()
-	g.drum.instAvail = map[string]bool{"snare": true}
-	g.drum.instMu.Unlock()
-	g.drum.Rows[0].Instrument = "snare"
+	g.drum.SetInstrument("snare")
+	ensureInstrumentAvailable(t, g, "snare")
 	key := makeBeatKey(0, 0)
 
 	g.highlightBeat(0, 0, info, 10)
@@ -108,13 +114,12 @@ func TestHighlightBeatRequiresAudibleRow(t *testing.T) {
 }
 
 func TestHighlightBeatSkipsMutedRow(t *testing.T) {
+	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, true)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
-	g.drum.instMu.Lock()
-	g.drum.instAvail = map[string]bool{"snare": true}
-	g.drum.instMu.Unlock()
-	g.drum.Rows[0].Instrument = "snare"
-	g.drum.Rows[0].Muted = true
+	g.drum.SetInstrument("snare")
+	ensureInstrumentAvailable(t, g, "snare")
+	setRowMuted(t, g.drum, 0, true)
 	key := makeBeatKey(0, 0)
 
 	g.highlightBeat(0, 0, info, 10)
@@ -127,13 +132,12 @@ func TestHighlightBeatSkipsMutedRow(t *testing.T) {
 }
 
 func TestHighlightVisualSkipsMutedRow(t *testing.T) {
+	assertDefaultParityState(t)
 	g := stubGameForHighlight(model.NodeTypeRegular, true)
 	info := model.BeatInfo{NodeID: 1, NodeType: model.NodeTypeRegular}
-	g.drum.instMu.Lock()
-	g.drum.instAvail = map[string]bool{"snare": true}
-	g.drum.instMu.Unlock()
-	g.drum.Rows[0].Instrument = "snare"
-	g.drum.Rows[0].Muted = true
+	g.drum.SetInstrument("snare")
+	ensureInstrumentAvailable(t, g, "snare")
+	setRowMuted(t, g.drum, 0, true)
 	key := makeBeatKey(0, 0)
 
 	g.highlightVisual(0, 0, info, 10)

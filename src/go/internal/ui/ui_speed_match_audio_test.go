@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -11,8 +10,9 @@ import (
 // Verifies that under the time-based visual path, the UI subdivision index
 // (elapsedBeats) keeps up with the audio timebase within 1 subdivision.
 func TestUISpeedMatchesAudioNoLag(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	w, h := 800, 600
 	g.Layout(w, h)
 	restore := SetInputForTest(
@@ -39,30 +39,19 @@ func TestUISpeedMatchesAudioNoLag(t *testing.T) {
 
 	// Faster tempo to stress catch-up such that per-frame delta can exceed 1 subdiv.
 	g.drum.SetBPM(240)
-	// Apply BPM quickly.
-	until := time.Now().Add(30 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	g.SetAppliedBPMForTest(240)
 
 	// Start playback and allow one frame to establish timebase in UI.
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
-	time.Sleep(17 * time.Millisecond)
-	_ = g.Update()
-	start := time.Now()
-	run := 40 * time.Millisecond
 	tol := 1 // subdivisions
-	for time.Since(start) < run {
+	for abs := 0; abs < div*2; abs++ {
+		setPlayStartForAbs(g, abs)
 		_ = g.Update()
-		// Expected absolute subdivision from wall-clock.
-		dt := time.Since(g.playStart).Seconds()
-		expected := int((g.beatBase + dt*float64(g.bpm)/60.0) * float64(div))
+		expected := abs
 		lag := expected - g.elapsedBeats
 		if lag > tol {
 			t.Fatalf("UI lag behind audio: expected=%d got=%d lag=%d", expected, g.elapsedBeats, lag)
 		}
-		time.Sleep(17 * time.Millisecond) // ~60fps frame pacing
 	}
 }

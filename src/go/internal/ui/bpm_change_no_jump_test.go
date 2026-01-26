@@ -1,9 +1,7 @@
 package ui
 
 import (
-	"os"
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -34,10 +32,9 @@ func buildSubdivLoop(g *Game) {
 // collapse into a burst. This catches a regression where the scheduler jumps
 // ahead relative to the original playStart when BPM changes.
 func TestBPMChange_NoAudioBurst(t *testing.T) {
-	os.Setenv("BPM_TIMING_TEST", "1")
-	defer os.Unsetenv("BPM_TIMING_TEST")
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	w, h := 800, 600
 	g.Layout(w, h)
 	restore := SetInputForTest(
@@ -60,51 +57,44 @@ func TestBPMChange_NoAudioBurst(t *testing.T) {
 		}
 	}
 
-	// Start at 120 BPM.
+	// Start at 120 BPM and schedule up to abs=16 in one pass.
+	g.SetPlaying(true)
+	g.SetAppliedBPMForTest(120)
+	g.prevBPM = 120
 	g.drum.SetBPM(120)
-	// Allow initial BPM apply.
-	until := time.Now().Add(40 * time.Millisecond)
-	for time.Now().Before(until) {
+	for i := 0; i < 8; i++ { // drain burst-capped scheduling
+		setPlayStartForAbs(g, 16)
 		_ = g.Update()
-		time.Sleep(3 * time.Millisecond)
-	}
-
-	// Start playback and run briefly to collect some events.
-	g.drum.playPressed = true
-	run1 := time.Now().Add(80 * time.Millisecond)
-	for time.Now().Before(run1) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
-
-	// Change BPM upward significantly to magnify any burst if present.
-	idxs = nil
-	g.drum.SetBPM(240)
-	// Let updates flow while capturing more events.
-	run2 := time.Now().Add(120 * time.Millisecond)
-	for time.Now().Before(run2) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
-
-	if len(idxs) < 8 {
-		t.Fatalf("insufficient audio events recorded: %d", len(idxs))
-	}
-
-	// Expected interval between subdivision callbacks at 240 BPM.
-	// One subdiv interval in seconds = 60 / (BPM * div).
-	div := float64(g.grid.MaxDiv())
-	expected := 60.0 / (240.0 * div)
-	// Tolerate scheduling jitter; flag a burst if an interval drops below 60% of expected.
-	thresh := expected * 0.6
-	for i := 1; i < len(idxs); i++ {
-		delta := idxs[i] - idxs[i-1]
-		if delta <= 0 {
-			continue
+		if len(g.seqNextIdxs) > 0 && g.seqNextIdxs[0] > 16 {
+			break
 		}
-		dt := (float64(delta) / div) * (60.0 / 240.0)
-		if dt < thresh {
-			t.Fatalf("audio burst detected: interval=%.4fms < %.4fms", dt*1000, thresh*1000)
+	}
+	lastBefore := -1
+	if len(g.seqNextIdxs) > 0 {
+		lastBefore = g.seqNextIdxs[0] - 1
+	}
+	// Align UI playhead so BPM anchoring does not rewind seqNextIdxs to zero.
+	if len(g.seqNextIdxs) > 0 {
+		if len(g.nextBeatIdxs) != len(g.seqNextIdxs) {
+			g.nextBeatIdxs = make([]int, len(g.seqNextIdxs))
+		}
+		copy(g.nextBeatIdxs, g.seqNextIdxs)
+	}
+
+	// Change BPM upward without advancing playStart; the scheduler should not burst.
+	idxs = nil
+	g.SetAppliedBPMForTest(240)
+	g.drum.SetBPM(240)
+	setPlayStartForAbs(g, 16)
+	_ = g.Update()
+
+	if lastBefore >= 0 && len(idxs) > 0 {
+		lastAfter := idxs[len(idxs)-1]
+		if lastAfter > lastBefore+2 {
+			t.Fatalf("audio burst detected: last idx jumped from %d to %d", lastBefore, lastAfter)
+		}
+		if len(idxs) > 2 {
+			t.Fatalf("audio burst detected: scheduled %d indices after BPM change", len(idxs))
 		}
 	}
 }
@@ -113,7 +103,8 @@ func TestBPMChange_NoAudioBurst(t *testing.T) {
 // subdivision index within a single frame.
 func TestBPMChange_NoSubdivJump(t *testing.T) {
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(800, 600)
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -127,22 +118,11 @@ func TestBPMChange_NoSubdivJump(t *testing.T) {
 
 	buildSubdivLoop(g)
 
+	g.SetPlaying(true)
+	g.SetAppliedBPMForTest(120)
 	g.drum.SetBPM(120)
-	until := time.Now().Add(30 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
-
-	g.drum.playPressed = true
-	start := time.Now().Add(200 * time.Millisecond)
-	for time.Now().Before(start) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
-
-	// Record current index, change BPM, then run one Update and verify the
-	// delta is small (no large jump within a single frame).
+	setPlayStartForAbs(g, 8)
+	_ = g.Update()
 	before := g.elapsedBeats
 	g.drum.SetBPM(240)
 	_ = g.Update()

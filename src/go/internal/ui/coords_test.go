@@ -3,7 +3,9 @@ package ui
 import "testing"
 
 func TestToSubRoundingNegative(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	max := g.grid.MaxDiv()
 	if ToSub(g.grid, -1) != -max {

@@ -29,7 +29,9 @@ func hasEdge(g *Game, ai, aj, bi, bj int) bool {
 }
 
 func TestAutoStitchHorizontal(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(3, 0, model.NodeTypeRegular)
@@ -55,7 +57,9 @@ func TestAutoStitchHorizontal(t *testing.T) {
 }
 
 func TestAutoStitchVertical(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(0, 4, model.NodeTypeRegular)
@@ -80,7 +84,9 @@ func TestAutoStitchVertical(t *testing.T) {
 }
 
 func TestAutoStitchCrossingBothAxes(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Horizontal A -- B
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)

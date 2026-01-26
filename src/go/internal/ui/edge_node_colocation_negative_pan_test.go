@@ -9,7 +9,9 @@ import (
 
 // Negative panning should not break colocation due to modulo arithmetic.
 func TestEdgeNodeColocationNegativePan(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	a := g.tryAddNode(2, 3, 0)
 	b := g.tryAddNode(9, 3, 0)

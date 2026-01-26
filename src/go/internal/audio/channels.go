@@ -60,9 +60,23 @@ func (c *Channel) ProcessSample(input float64) float64 {
 	return out
 }
 
+// ProcessBlock processes input samples and adds results to output.
+// Uses ProcessSample internally to correctly chain through parent channels.
+func (c *Channel) ProcessBlock(input, output []float64) {
+	for i, x := range input {
+		output[i] += c.ProcessSample(x)
+	}
+}
+
 func (c *Channel) replaceProcessors(list []Processor) {
 	c.mu.Lock()
 	c.processors = append([]Processor(nil), list...)
+	c.mu.Unlock()
+}
+
+func (c *Channel) addProcessor(p Processor) {
+	c.mu.Lock()
+	c.processors = append(c.processors, p)
 	c.mu.Unlock()
 }
 
@@ -125,8 +139,12 @@ func (cm *channelManager) ensureInstrumentChannel(id string) *Channel {
 	created := false
 	cm.mu.Lock()
 	if ch, ok = cm.instruments[id]; !ok {
-		ch = newChannel(id, cm.main)
-		cm.channels[id] = ch
+		if existing, ok := cm.channels[id]; ok {
+			ch = existing
+		} else {
+			ch = newChannel(id, cm.main)
+			cm.channels[id] = ch
+		}
 		cm.instruments[id] = ch
 		created = true
 	}
@@ -224,6 +242,7 @@ func InstrumentChannel(id string) *Channel {
 func resetChannels() {
 	chanMgr.reset()
 	platformChannelVolumeChanged(mainChannelID, chanMgr.main.Volume())
+	resetAnalyzers()
 }
 
 func resetInstrumentChannels(ids []string) {
@@ -232,6 +251,7 @@ func resetInstrumentChannels(ids []string) {
 	for _, id := range ids {
 		platformChannelVolumeChanged(id, chanMgr.volume(id))
 	}
+	resetAnalyzers()
 }
 
 func renameInstrumentChannel(oldID, newID string) {
@@ -241,6 +261,18 @@ func renameInstrumentChannel(oldID, newID string) {
 
 func channelForInstrument(id string) *Channel {
 	return chanMgr.channelForInstrument(id)
+}
+
+// SetChannelProcessors replaces the processor chain for the given channel ID.
+func SetChannelProcessors(id string, procs ...Processor) {
+	ch := chanMgr.ensureChannel(id)
+	ch.replaceProcessors(procs)
+}
+
+// AddChannelProcessor appends a processor to the existing chain.
+func AddChannelProcessor(id string, p Processor) {
+	ch := chanMgr.ensureChannel(id)
+	ch.addProcessor(p)
 }
 
 // platformChannelVolumeChanged is implemented per-platform to propagate volume

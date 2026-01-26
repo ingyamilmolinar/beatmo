@@ -3,7 +3,6 @@ package ui
 import (
 	"image"
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -22,8 +21,10 @@ func makeSimpleEdge(g *Game) {
 
 // Test that pulse animation progress is smooth (monotonic and bounded) after changing subdiv.
 func TestPulseAnimationSmoothAfterSubdivChange(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Simple edge and BPM
 	makeSimpleEdge(g)
@@ -33,11 +34,12 @@ func TestPulseAnimationSmoothAfterSubdivChange(t *testing.T) {
 		t.Fatalf("set subdiv: %v", err)
 	}
 	// Start playback and spawn a pulse
-	g.playing = true
+	g.SetPlaying(true)
 	g.spawnPulseFromRow(0, 0)
 	// Simulate frames and record progress
 	var last float64 = -1
 	for i := 0; i < 60; i++ {
+		setPlayStartForAbs(g, i+1)
 		_ = g.Update()
 		if g.activePulse == nil {
 			continue
@@ -56,12 +58,12 @@ func TestPulseAnimationSmoothAfterSubdivChange(t *testing.T) {
 			}
 		}
 		last = tval
-		time.Sleep(5 * time.Millisecond)
 	}
 }
 
 // Ensure Subdiv button draws and can be clicked without affecting animation smoothness.
 func TestSubdivButtonDrawAndClickDoesNotStall(t *testing.T) {
+	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.recalcButtons()
 	dst := ebiten.NewImage(640, 200)
@@ -73,6 +75,7 @@ func TestSubdivButtonDrawAndClickDoesNotStall(t *testing.T) {
 	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
 	dv.Update()
+	t.Cleanup(restore)
 	restore()
 	if !dv.subdivMenuOpen {
 		t.Fatalf("subdiv menu did not open on click")

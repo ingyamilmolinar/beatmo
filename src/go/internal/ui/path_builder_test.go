@@ -6,7 +6,9 @@ import (
 )
 
 func TestBuildPathOrthogonalityValidation(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Diagonal segment should be rejected.
 	pts := [][2]int{{0, 0}, {1, 1}}
@@ -16,7 +18,9 @@ func TestBuildPathOrthogonalityValidation(t *testing.T) {
 }
 
 func TestKickAndSnareBeatSizedSegments(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	max := g.grid.MaxDiv()
 	// Kick: 1x1 beat rectangle at negative coords

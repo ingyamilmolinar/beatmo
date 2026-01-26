@@ -10,7 +10,9 @@ import (
 // TestEqualRowPulseSpeeds ensures that for equal-length segments on different
 // rows, per-frame progress uses the same dt and therefore produces similar t.
 func TestEqualRowPulseSpeeds(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.SetBPM(120)
 
@@ -30,7 +32,7 @@ func TestEqualRowPulseSpeeds(t *testing.T) {
 	g.drum.Rows[1].Node = g.nodeByID(n10.ID)
 
 	g.updateBeatInfos()
-	g.playing = true
+	g.SetPlaying(true)
 	g.spawnPulseFromRow(0, 0)
 	g.spawnPulseFromRow(1, 0)
 	if g.pulseForRow(0) == nil || g.pulseForRow(1) == nil {

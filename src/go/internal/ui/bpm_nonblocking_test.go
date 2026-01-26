@@ -4,20 +4,28 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/model"
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
 
 func TestBPMChangeNonBlocking(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.playing = true
+	g.SetPlaying(true)
 
 	block := make(chan struct{})
-	audio.SetBPMFunc = func(int) { <-block }
-	defer func() { audio.SetBPMFunc = func(int) {} }()
+	blockClosed := false
+	t.Cleanup(func() {
+		if !blockClosed {
+			close(block)
+		}
+	})
+	prevSetBPM := audio.SetBPMFunc
+	audio.SetBPMFuncForTest(func(int) { <-block })
+	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	g.drum.SetBPM(g.drum.BPM() + 1)
 
@@ -27,24 +35,30 @@ func TestBPMChangeNonBlocking(t *testing.T) {
 		close(done)
 	}()
 
-	select {
-	case <-done:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatalf("update blocked on BPM change")
-	}
+	waitForChan(t, done, 10000)
 
 	close(block)
-	<-done
+	blockClosed = true
+	waitForChan(t, done, 10000)
 }
 
 func TestBPMButtonHoldNonBlocking(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.playing = true
+	g.SetPlaying(true)
 
 	block := make(chan struct{})
-	audio.SetBPMFunc = func(int) { <-block }
-	defer func() { audio.SetBPMFunc = func(int) {} }()
+	blockClosed := false
+	t.Cleanup(func() {
+		if !blockClosed {
+			close(block)
+		}
+	})
+	prevSetBPM := audio.SetBPMFunc
+	audio.SetBPMFuncForTest(func(int) { <-block })
+	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	// warm up engine so scheduler progress is available
 	for i := 0; i < 30; i++ {
@@ -54,15 +68,12 @@ func TestBPMButtonHoldNonBlocking(t *testing.T) {
 			g.Update()
 			close(done)
 		}()
-		select {
-		case <-done:
-		case <-time.After(100 * time.Millisecond):
-			t.Fatalf("update blocked on BPM hold")
-		}
+		waitForChan(t, done, 10000)
 	}
 
 	close(block)
-	g.playing = false
+	blockClosed = true
+	stopPlaybackForTest(g)
 	g.engine.Stop()
 	if g.bpm <= 120 {
 		t.Fatalf("expected BPM to increase, got %d", g.bpm)
@@ -70,7 +81,9 @@ func TestBPMButtonHoldNonBlocking(t *testing.T) {
 }
 
 func TestBPMHoldDoesNotStallPulseProgress(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// set up simple path with two nodes and an edge
 	n1 := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -82,11 +95,18 @@ func TestBPMHoldDoesNotStallPulseProgress(t *testing.T) {
 		t.Fatalf("expected one active pulse, got %d", len(g.activePulses))
 	}
 	p := g.activePulses[0]
-	g.playing = true
+	g.SetPlaying(true)
 
 	block := make(chan struct{})
-	audio.SetBPMFunc = func(int) { <-block }
-	defer func() { audio.SetBPMFunc = func(int) {} }()
+	blockClosed := false
+	t.Cleanup(func() {
+		if !blockClosed {
+			close(block)
+		}
+	})
+	prevSetBPM := audio.SetBPMFunc
+	audio.SetBPMFuncForTest(func(int) { <-block })
+	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	for i := 0; i < 5; i++ {
 		g.drum.bpmIncBtn.OnClick()
@@ -98,26 +118,23 @@ func TestBPMHoldDoesNotStallPulseProgress(t *testing.T) {
 		t.Fatalf("pulse progress stalled")
 	}
 	close(block)
-	g.playing = false
+	blockClosed = true
+	stopPlaybackForTest(g)
 	g.engine.Stop()
 }
 
 func TestBPMChangeUpdatesEngineAsync(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.playing = true
+	g.SetPlaying(true)
 
 	target := g.drum.BPM() + 10
 	g.drum.SetBPM(target)
 	g.Update()
 
-	deadline := time.Now().Add(100 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if g.engine.BPM() == target && g.appliedBPM == target {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-		g.Update()
-	}
-	t.Fatalf("engine BPM not updated: %d", g.engine.BPM())
+	waitForUpdateCond(t, g, 2000, func() bool {
+		return g.engine.BPM() == target && g.AppliedBPM() == target
+	})
 }

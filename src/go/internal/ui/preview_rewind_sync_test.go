@@ -13,13 +13,14 @@ func expectedFromZero(g *Game, row, base, n int) []bool {
 		base = 0
 	}
 	horizon := base + n
-	g.computePredictions(horizon)
 	out := make([]bool, n)
+	if g.engine == nil || g.engine.Predictor == nil {
+		return out
+	}
+	g.engine.Predictor.Ensure(horizon)
 	for i := 0; i < n; i++ {
 		idx := base + i
-		if row < len(g.predVisibleByRow) && idx < len(g.predVisibleByRow[row]) {
-			out[i] = g.predVisibleByRow[row][idx]
-		}
+		out[i] = g.engine.Predictor.VisibleAt(row, idx)
 	}
 	return out
 }
@@ -68,7 +69,9 @@ func buildComplexLoop(g *Game) (a, b, c, d *uiNode) {
 // incorrect visible steps for windows before the current playback index. It
 // should instead match predictions computed from zero.
 func TestPreviewRewindMatchesPredictions(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	a, _, _, _ := buildComplexLoop(g)
 	g.start = a
@@ -76,7 +79,7 @@ func TestPreviewRewindMatchesPredictions(t *testing.T) {
 	g.updateBeatInfos()
 
 	// Advance playback to build up live counters/state.
-	g.playing = true
+	g.SetPlaying(true)
 	g.spawnPulseFromRow(0, 0)
 	for step := 0; step < 16 && g.activePulse != nil; step++ {
 		_ = g.advancePulse(g.activePulse)
@@ -103,7 +106,7 @@ func TestPreviewRewindMatchesPredictions(t *testing.T) {
 	}
 	for i := 0; i < n; i++ {
 		if got[i] != want[i] {
-			t.Fatalf("rewind mismatch at base=%d +%d: got=%v want=%v\npreview=%v\n", base, i, got[i], want[i], got[:n])
+			t.Fatalf("rewind mismatch at base=%d +%d: got=%v want=%v\npreview=%v\nwant=%v\n", base, i, got[i], want[i], got[:n], want[:n])
 		}
 	}
 }

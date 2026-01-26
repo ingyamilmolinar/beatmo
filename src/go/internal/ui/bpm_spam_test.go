@@ -4,7 +4,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
@@ -12,14 +11,23 @@ import (
 // TestBPMSpamCoalesces verifies that rapid BPM changes while the audio layer
 // is busy are coalesced and do not stall the game loop.
 func TestBPMSpamCoalesces(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.playing = true
+	g.SetPlaying(true)
 
 	block := make(chan struct{})
+	blockClosed := false
+	t.Cleanup(func() {
+		if !blockClosed {
+			close(block)
+		}
+	})
 	var last int
-	audio.SetBPMFunc = func(b int) { last = b; <-block }
-	defer func() { audio.SetBPMFunc = func(int) {} }()
+	prevSetBPM := audio.SetBPMFunc
+	audio.SetBPMFuncForTest(func(b int) { last = b; <-block })
+	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	// Trigger an initial BPM change that will block inside SetBPMFunc.
 	g.drum.bpmIncBtn.OnClick()
@@ -33,12 +41,9 @@ func TestBPMSpamCoalesces(t *testing.T) {
 
 	// Unblock audio and allow the BPM goroutine to apply the latest value.
 	close(block)
-	deadline := time.Now().Add(50 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		if last == g.drum.BPM() {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	blockClosed = true
+	waitForUpdateCond(t, g, 10000, func() bool { return last == g.drum.BPM() })
+	if last != g.drum.BPM() {
+		t.Fatalf("expected audio BPM %d, got %d", g.drum.BPM(), last)
 	}
-	t.Fatalf("expected audio BPM %d, got %d", g.drum.BPM(), last)
 }

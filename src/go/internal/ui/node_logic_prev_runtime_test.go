@@ -17,121 +17,113 @@ func buildPrevChain(g *Game) (s0, a, b *uiNode) {
 	g.addEdge(s1, b)
 	g.addEdge(b, s2)
 	g.addEdge(s2, s0)
-	g.updateBeatInfos()
 	return s0, a, b
 }
 
 func TestRuntimeTriggerIfPrevTriggered(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	s0, a, b := buildPrevChain(g)
 	g.start = s0
 	g.graph.StartNodeID = s0.ID
-	// b triggers only if previous triggered
+	// Make A skip every 2nd trigger so B can observe both prev-triggered states.
+	if n, ok := g.graph.GetNodeByID(a.ID); ok {
+		p := n.Params
+		p.LogicKind = "skip_every_n"
+		p.LogicN = 2
+		g.graph.SetNodeParams(a.ID, p)
+	}
+	// B triggers only if previous regular triggered.
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
 		p.LogicKind = "trigger_if_prev_triggered"
 		g.graph.SetNodeParams(b.ID, p)
 	}
-	// Find absolute indices for a and b
-	idxA, idxB := -1, -1
-	for i := 0; i < 16; i++ {
+	g.updateBeatInfos()
+
+	idxA := make([]int, 0, 2)
+	idxB := make([]int, 0, 2)
+	for i := 0; i < 64 && (len(idxA) < 2 || len(idxB) < 2); i++ {
 		info := g.beatInfoAtRow(0, i)
-		if info.NodeID == a.ID {
-			idxA = i
+		if info.NodeID == a.ID && info.NodeType == model.NodeTypeRegular {
+			idxA = append(idxA, i)
 		}
-		if info.NodeID == b.ID {
-			idxB = i
+		if info.NodeID == b.ID && info.NodeType == model.NodeTypeRegular {
+			idxB = append(idxB, i)
 		}
 	}
-	if idxA < 0 || idxB < 0 {
-		t.Fatalf("missing a/b in beat path")
+	if len(idxA) < 2 || len(idxB) < 2 {
+		t.Fatalf("missing repeated a/b in beat path: idxA=%v idxB=%v", idxA, idxB)
 	}
-	// Simulate eval for A (triggered)
-	ok, _, _, _ := g.evalNodePlayback(0, idxA, g.beatInfoAtRow(0, idxA))
-	if !ok {
-		t.Fatalf("expected a to trigger")
+	horizon := idxB[1] + 1
+	g.engine.Predictor.Ensure(horizon)
+
+	if got := g.engine.Predictor.AudibleAt(0, idxA[0]); !got {
+		t.Fatalf("expected a audible at abs=%d", idxA[0])
 	}
-	if g.lastTriggeredByRow[0] == nil {
-		g.lastTriggeredByRow[0] = map[model.NodeID]bool{}
+	if got := g.engine.Predictor.AudibleAt(0, idxA[1]); got {
+		t.Fatalf("expected a suppressed at abs=%d (skip_every_n=2)", idxA[1])
 	}
-	g.lastTriggeredByRow[0][a.ID] = true
-	// Now B should trigger
-	ok, _, _, _ = g.evalNodePlayback(0, idxB, g.beatInfoAtRow(0, idxB))
-	if !ok {
-		t.Fatalf("expected b to trigger when prev a triggered")
+	if got := g.engine.Predictor.AudibleAt(0, idxB[0]); !got {
+		t.Fatalf("expected b audible at abs=%d when prev a triggered", idxB[0])
 	}
-	// Now force a to skip and ensure b suppresses
-	if n, ok := g.graph.GetNodeByID(a.ID); ok {
-		p := n.Params
-		p.LogicKind = "skip_every_n"
-		p.LogicN = 1
-		g.graph.SetNodeParams(a.ID, p)
-	}
-	ok, _, _, _ = g.evalNodePlayback(0, idxA, g.beatInfoAtRow(0, idxA))
-	if ok {
-		t.Fatalf("expected a to skip")
-	}
-	g.lastTriggeredByRow[0][a.ID] = false
-	ok, _, _, _ = g.evalNodePlayback(0, idxB, g.beatInfoAtRow(0, idxB))
-	if ok {
-		t.Fatalf("expected b suppressed when prev a skipped")
+	if got := g.engine.Predictor.AudibleAt(0, idxB[1]); got {
+		t.Fatalf("expected b suppressed at abs=%d when prev a skipped", idxB[1])
 	}
 }
 
 func TestRuntimeTriggerIfPrevSkipped(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	s0, a, b := buildPrevChain(g)
 	g.start = s0
 	g.graph.StartNodeID = s0.ID
-	// b triggers only if previous skipped
+	// Make A skip every 2nd trigger so B can observe both prev-triggered states.
+	if n, ok := g.graph.GetNodeByID(a.ID); ok {
+		p := n.Params
+		p.LogicKind = "skip_every_n"
+		p.LogicN = 2
+		g.graph.SetNodeParams(a.ID, p)
+	}
+	// B triggers only if previous regular skipped.
 	if n, ok := g.graph.GetNodeByID(b.ID); ok {
 		p := n.Params
 		p.LogicKind = "trigger_if_prev_skipped"
 		g.graph.SetNodeParams(b.ID, p)
 	}
-	// Indices
-	idxA, idxB := -1, -1
-	for i := 0; i < 16; i++ {
+	g.updateBeatInfos()
+
+	idxA := make([]int, 0, 2)
+	idxB := make([]int, 0, 2)
+	for i := 0; i < 64 && (len(idxA) < 2 || len(idxB) < 2); i++ {
 		info := g.beatInfoAtRow(0, i)
-		if info.NodeID == a.ID {
-			idxA = i
+		if info.NodeID == a.ID && info.NodeType == model.NodeTypeRegular {
+			idxA = append(idxA, i)
 		}
-		if info.NodeID == b.ID {
-			idxB = i
+		if info.NodeID == b.ID && info.NodeType == model.NodeTypeRegular {
+			idxB = append(idxB, i)
 		}
 	}
-	if idxA < 0 || idxB < 0 {
-		t.Fatalf("missing a/b in beat path")
+	if len(idxA) < 2 || len(idxB) < 2 {
+		t.Fatalf("missing repeated a/b in beat path: idxA=%v idxB=%v", idxA, idxB)
 	}
-	// A triggers -> B should suppress
-	ok, _, _, _ := g.evalNodePlayback(0, idxA, g.beatInfoAtRow(0, idxA))
-	if !ok {
-		t.Fatalf("expected a to trigger initially")
+	horizon := idxB[1] + 1
+	g.engine.Predictor.Ensure(horizon)
+
+	if got := g.engine.Predictor.AudibleAt(0, idxA[0]); !got {
+		t.Fatalf("expected a audible at abs=%d", idxA[0])
 	}
-	if g.lastTriggeredByRow[0] == nil {
-		g.lastTriggeredByRow[0] = map[model.NodeID]bool{}
+	if got := g.engine.Predictor.AudibleAt(0, idxA[1]); got {
+		t.Fatalf("expected a suppressed at abs=%d (skip_every_n=2)", idxA[1])
 	}
-	g.lastTriggeredByRow[0][a.ID] = true
-	ok, _, _, _ = g.evalNodePlayback(0, idxB, g.beatInfoAtRow(0, idxB))
-	if ok {
-		t.Fatalf("expected b suppressed when prev a triggered")
+	if got := g.engine.Predictor.AudibleAt(0, idxB[0]); got {
+		t.Fatalf("expected b suppressed at abs=%d when prev a triggered", idxB[0])
 	}
-	// Now force a to skip -> B should trigger
-	if n, ok := g.graph.GetNodeByID(a.ID); ok {
-		p := n.Params
-		p.LogicKind = "skip_every_n"
-		p.LogicN = 1
-		g.graph.SetNodeParams(a.ID, p)
-	}
-	ok, _, _, _ = g.evalNodePlayback(0, idxA, g.beatInfoAtRow(0, idxA))
-	if ok {
-		t.Fatalf("expected a to skip with skip_every_n=1")
-	}
-	g.lastTriggeredByRow[0][a.ID] = false
-	ok, _, _, _ = g.evalNodePlayback(0, idxB, g.beatInfoAtRow(0, idxB))
-	if !ok {
-		t.Fatalf("expected b to trigger when prev a skipped")
+	if got := g.engine.Predictor.AudibleAt(0, idxB[1]); !got {
+		t.Fatalf("expected b audible at abs=%d when prev a skipped", idxB[1])
 	}
 }

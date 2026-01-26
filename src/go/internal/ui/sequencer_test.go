@@ -9,7 +9,9 @@ import (
 // independent of UI rendering or Update calls. We simulate beats via the
 // internal helper to avoid relying on wall-clock scheduler in tests.
 func TestSequencerSchedulesOnBeatsIndependently(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Build a simple beat path of regular nodes.
 	n0 := g.tryAddNode(0, 0, 0)
@@ -24,9 +26,9 @@ func TestSequencerSchedulesOnBeatsIndependently(t *testing.T) {
 	var plays int32
 	g.SetPlayFunc(func(string, float64, ...float64) { atomic.AddInt32(&plays, 1) })
 
-	g.playing = true
-	// Trigger one beat and verify sequencer advanced independently of UI.
-	g.seqScheduleBeat()
+	g.SetPlaying(true)
+	// Trigger one beat and verify the time-based sequencer advanced.
+	scheduleAbsForMuteTest(g, 0)
 	if g.seqNextIdxs == nil || len(g.seqNextIdxs) == 0 {
 		t.Fatalf("missing sequencer counters")
 	}

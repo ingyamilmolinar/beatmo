@@ -8,6 +8,7 @@ import (
 )
 
 func TestCameraSnap(t *testing.T) {
+	assertDefaultParityState(t)
 	cam := &Camera{Scale: 1, OffsetX: 12.7, OffsetY: -3.4}
 	cam.Snap()
 	if cam.OffsetX != 13 || cam.OffsetY != -3 {
@@ -22,6 +23,7 @@ func TestCameraSnap(t *testing.T) {
 }
 
 func TestCameraZoomAnchorsCursor(t *testing.T) {
+	assertDefaultParityState(t)
 	cam := &Camera{Scale: 2, OffsetX: 10, OffsetY: 20}
 	cursorX, cursorY := 100, 50
 	restore := SetInputForTest(
@@ -47,6 +49,7 @@ func TestCameraZoomAnchorsCursor(t *testing.T) {
 }
 
 func TestCameraZoomSensitivity(t *testing.T) {
+	assertDefaultParityState(t)
 	cam := &Camera{Scale: 1}
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },

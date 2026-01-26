@@ -11,6 +11,8 @@ import (
 // drum view mirrors that exact state.
 func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(900, 600)
 	// Build 6-node ring: A->B->C->D->E->F->A
 	A := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -59,14 +61,17 @@ func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 	g.start = A
 	g.graph.StartNodeID = A.ID
 	horizon := 180
-	g.drum.Length = horizon
+	g.drum.SetLength(horizon)
 	g.updateBeatInfos()
-	g.computePredictions(horizon)
+	g.engine.Predictor.Ensure(horizon)
 	// Drum should mirror prediction windows.
 	g.drum.Offset = 0
 	g.refreshDrumRow()
 	gotSteps := append([]bool(nil), g.drum.Rows[0].Steps...)
-	wantSteps := append([]bool(nil), g.predVisibleByRow[0][:horizon]...)
+	wantSteps := make([]bool, horizon)
+	for i := 0; i < horizon; i++ {
+		wantSteps[i] = g.engine.Predictor.VisibleAt(0, i)
+	}
 	for i := 0; i < horizon; i++ {
 		if gotSteps[i] != wantSteps[i] {
 			t.Fatalf("drum vs predVisible mismatch at %d: got=%v want=%v", i, gotSteps[i], wantSteps[i])
@@ -76,7 +81,7 @@ func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 	seg := g.loopLenByRow[0]
 	start := g.loopStartByRow[0]
 	win := 24
-	g.drum.Length = win
+	g.drum.SetLength(win)
 	for off := 0; off+win <= horizon; off += 9 {
 		if seg > 0 {
 			k0 := (off - (start + 1)) % seg
@@ -90,10 +95,10 @@ func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 		g.drum.Offset = off
 		g.refreshDrumRow()
 		gotW := append([]bool(nil), g.drum.Rows[0].Steps...)
-		wantW := append([]bool(nil), g.predVisibleByRow[0][off:off+win]...)
 		for i := 0; i < win; i++ {
-			if gotW[i] != wantW[i] {
-				t.Fatalf("window off=%d idx=%d mismatch: got=%v want=%v", off, i, gotW[i], wantW[i])
+			want := g.engine.Predictor.VisibleAt(0, off+i)
+			if gotW[i] != want {
+				t.Fatalf("window off=%d idx=%d mismatch: got=%v want=%v", off, i, gotW[i], want)
 			}
 		}
 	}

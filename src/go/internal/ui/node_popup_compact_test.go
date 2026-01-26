@@ -7,7 +7,9 @@ import (
 
 // Ensure the node popup is reasonably compact while showing all controls.
 func TestNodePopupCompactSize(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 360)
 	// Build a regular node and open menu
 	n := g.tryAddNode(2, 0, 0)

@@ -13,7 +13,9 @@ import (
 // TestNodeMenuButtonsRespondOnPress verifies popup buttons trigger on press and
 // are decoupled from direct state changes (processed via queue within Update()).
 func TestNodeMenuButtonsRespondOnPress(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Add a node and open its menu
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -54,7 +56,9 @@ func TestNodeMenuButtonsRespondOnPress(t *testing.T) {
 // TestMuteSoloNoAutoRepeat ensures holding down the mouse does not auto-toggle
 // mute/solo buttons repeatedly.
 func TestMuteSoloNoAutoRepeat(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	dv := g.drum
 	dv.recalcButtons()
@@ -86,7 +90,9 @@ func TestMuteSoloNoAutoRepeat(t *testing.T) {
 
 // TestExportImportNodeParams verifies node params and type survive export/import.
 func TestExportImportNodeParams(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(2, 0, model.NodeTypeSilent)
@@ -95,7 +101,8 @@ func TestExportImportNodeParams(t *testing.T) {
 	p.Volume = 1.5
 	p.Pitch = 2
 	p.Duration = 1.25
-	p.SkipEveryN = 3
+	p.LogicKind = "skip_every_n"
+	p.LogicN = 3
 	g.graph.SetNodeParams(b.ID, p)
 	// Row origin
 	g.drum.Rows[0].Origin = a.ID
@@ -116,7 +123,7 @@ func TestExportImportNodeParams(t *testing.T) {
 			if n.Type != "silent" {
 				t.Fatalf("type=%s want silent", n.Type)
 			}
-			if n.Volume <= 0 || n.Pitch != 2 || n.Duration <= 1 || n.SkipEvery != 3 {
+			if n.Volume <= 0 || n.Pitch != 2 || n.Duration <= 1 || n.LogicKind != "skip_every_n" || n.LogicN != 3 {
 				t.Fatalf("params not serialized: %+v", n)
 			}
 			found = true
@@ -135,7 +142,6 @@ func TestExportImportNodeParams(t *testing.T) {
 			if n.Type != model.NodeTypeSilent {
 				t.Fatalf("import type wrong: %v", n.Type)
 			}
-			// Legacy SkipEvery should be upgraded to logic_kind=skip_every_n for UI parity
 			if n.Params.LogicKind != "skip_every_n" || n.Params.LogicN != 3 || n.Params.Pitch != 2 {
 				t.Fatalf("import params wrong: %+v", n.Params)
 			}
@@ -148,7 +154,9 @@ func TestExportImportNodeParams(t *testing.T) {
 }
 
 func TestNodeMenuMuteCycle(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
@@ -206,7 +214,9 @@ func TestNodeMenuMuteCycle(t *testing.T) {
 }
 
 func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
@@ -268,7 +278,9 @@ func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
 }
 
 func TestNodeMenuMuteClickDoesNotTriggerLogic(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
@@ -345,7 +357,9 @@ func TestNodeMenuMuteClickDoesNotTriggerLogic(t *testing.T) {
 }
 
 func TestExportImportMuteNode(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	src := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	mute := g.tryAddNode(2, 0, model.NodeTypeMute)

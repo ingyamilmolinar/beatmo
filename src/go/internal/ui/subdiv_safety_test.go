@@ -9,7 +9,9 @@ import (
 // buildTestGame initializes a game with frozen input for UI tests.
 func buildTestGame(t *testing.T) *Game {
 	t.Helper()
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -42,7 +44,7 @@ func TestSetSubdivDisallowUnalignedDownscale(t *testing.T) {
 		t.Fatalf("pre div=%d want 32", div)
 	}
 	// Stop playback if it was toggled; ensure not playing
-	g.playing = false
+	stopPlaybackForTest(g)
 	// Attempt to lower to 4.
 	if err := g.SetSubdivisions(4); err == nil {
 		t.Fatalf("expected error lowering to 4 with misaligned nodes")

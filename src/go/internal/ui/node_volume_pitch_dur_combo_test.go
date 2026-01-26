@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/model"
 )
@@ -10,13 +9,15 @@ import (
 // Repro: Changing volume on a node that also has pitch and duration set must
 // still affect playback volume. This ensures the three parameters combine.
 func TestNodeVolumeWorksWithPitchAndDuration(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	g.addEdge(a, b)
+	g.updateBeatInfos()
 
 	// Apply pitch and duration to the second node along with a loud volume.
 	g.graph.SetNodeParams(b.ID, model.NodeParams{Volume: 1.5, Pitch: +3, Duration: 0.75})
@@ -24,19 +25,11 @@ func TestNodeVolumeWorksWithPitchAndDuration(t *testing.T) {
 	vols := make(chan float64, 2)
 	g.SetPlayFunc(func(_ string, v float64, _ ...float64) { vols <- v })
 
-	g.playing = true
-	g.spawnPulseFrom(0)
-	v0 := <-vols // baseline for node a
-
-	// advance to b
-	g.activePulse.t = 1
-	g.Update()
-	var v1 float64
-	select {
-	case v1 = <-vols:
-	case <-time.After(50 * time.Millisecond):
-		t.Fatalf("expected playback at node b")
-	}
+	g.SetPlaying(true)
+	scheduleAbsForMuteTest(g, 0)
+	v0 := waitForChan(t, vols, 10000)
+	scheduleAbsForMuteTest(g, 1)
+	v1 := waitForChan(t, vols, 10000)
 
 	if v0 <= 0 || v1 <= 0 {
 		t.Fatalf("unexpected zero volumes: v0=%.3f v1=%.3f", v0, v1)

@@ -21,19 +21,12 @@ func verifyMutePattern(t *testing.T, g *Game, row int, muteID model.NodeID, step
 	defer audio.SetStopHook(nil)
 
 	got := make([]bool, 0, len(want))
-	if len(g.seqNextIdxs) == 0 {
-		g.seqNextIdxs = make([]int, len(g.drum.Rows))
-	}
-	for step := 0; step < steps && len(got) < len(want); step++ {
-		idx := g.seqNextIdxs[row]
-		info := g.beatInfoAtRow(row, idx)
-		g.seqScheduleBeat()
+	g.seqNextIdxs = make([]int, len(g.drum.Rows))
+	for abs := 0; abs < steps && len(got) < len(want); abs++ {
+		info := g.beatInfoAtRow(row, abs)
+		scheduleAbsForMuteTest(g, abs)
 		if info.NodeID == muteID {
-			// Muted if we saw a stop since last encounter
-			triggered := false
-			if m, ok := g.lastTriggeredByRow[row]; ok {
-				triggered = m[muteID]
-			}
+			triggered, _ := g.lastTriggeredForTest(row, muteID)
 			got = append(got, triggered)
 		}
 	}
@@ -55,9 +48,10 @@ func verifyMutePattern(t *testing.T, g *Game, row int, muteID model.NodeID, step
 // Two-node loop: A(regular) <-> B(mute). Verify skip_every_n and every_n_triggers
 // patterns for N=2 and N=3.
 func TestMuteNodeSkipEveryN_TwoNodeLoop(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(1, 0, model.NodeTypeMute)
@@ -77,7 +71,7 @@ func TestMuteNodeSkipEveryN_TwoNodeLoop(t *testing.T) {
 		g.graph.SetNodeParams(b.ID, p)
 	}
 	g.updateBeatInfos()
-	g.playing = true
+	g.SetPlaying(true)
 	verifyMutePattern(t, g, 0, b.ID, len(g.beatInfosByRow[0])*4, []bool{true, false, true, false})
 
 	// N=3: [true,true,false,true,true,false]
@@ -87,13 +81,15 @@ func TestMuteNodeSkipEveryN_TwoNodeLoop(t *testing.T) {
 		p.LogicN = 3
 		g.graph.SetNodeParams(b.ID, p)
 	}
+	g.seqNextIdxs = nil
 	verifyMutePattern(t, g, 0, b.ID, len(g.beatInfosByRow[0])*6, []bool{true, true, false, true, true, false})
 }
 
 func TestMuteNodeEveryNTriggers_TwoNodeLoop(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	b := g.tryAddNode(1, 0, model.NodeTypeMute)
@@ -113,7 +109,7 @@ func TestMuteNodeEveryNTriggers_TwoNodeLoop(t *testing.T) {
 		g.graph.SetNodeParams(b.ID, p)
 	}
 	g.updateBeatInfos()
-	g.playing = true
+	g.SetPlaying(true)
 	verifyMutePattern(t, g, 0, b.ID, len(g.beatInfosByRow[0])*4, []bool{false, true, false, true})
 
 	// N=3: [false,false,true,false,false,true]
@@ -123,5 +119,6 @@ func TestMuteNodeEveryNTriggers_TwoNodeLoop(t *testing.T) {
 		p.LogicN = 3
 		g.graph.SetNodeParams(b.ID, p)
 	}
+	g.seqNextIdxs = nil
 	verifyMutePattern(t, g, 0, b.ID, len(g.beatInfosByRow[0])*6, []bool{false, false, true, false, false, true})
 }

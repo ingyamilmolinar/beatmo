@@ -9,7 +9,9 @@ import (
 
 // Verifies that importing a simple loop populates drum preview steps.
 func TestImportPopulatesDrumPreview_SimpleLoop(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Simple two-node loop at 0 and 16
 	exp := exportFile{
@@ -49,11 +51,13 @@ func TestImportPopulatesDrumPreview_SimpleLoop(t *testing.T) {
 
 // Verifies that the embedded default demo JSON also populates preview.
 func TestEmbeddedDemoPopulatesPreview(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	data := assets_pkg.DefaultDemoJSON
 	if len(data) == 0 {
-		t.Skip("no embedded demo JSON")
+		t.Fatalf("embedded demo JSON missing")
 	}
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import: %v", err)

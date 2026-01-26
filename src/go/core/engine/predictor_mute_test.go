@@ -22,9 +22,14 @@ func TestPredictorMuteClearsAudioOnly(t *testing.T) {
 		{NodeID: tailID, NodeType: model.NodeTypeRegular},
 		{NodeID: startID, NodeType: model.NodeTypeRegular},
 	}}
+	nodes := map[model.NodeID]model.Node{
+		startID: graph.Nodes[startID],
+		muteID:  graph.Nodes[muteID],
+		tailID: graph.Nodes[tailID],
+	}
 
 	pred := NewPredictor(graph)
-	pred.SetPaths(paths, []bool{true}, []int{0})
+	pred.SetPaths(paths, []bool{true}, []int{0}, nodes)
 	pred.Ensure(6)
 
 	cases := []struct {

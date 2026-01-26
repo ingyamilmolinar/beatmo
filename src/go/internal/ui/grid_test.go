@@ -10,6 +10,7 @@ import (
 )
 
 func TestStepPixelsAlignment(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	scales := []float64{0.5, 0.75, 1.0, 1.25, 1.7}
 	for _, s := range scales {
@@ -22,6 +23,7 @@ func TestStepPixelsAlignment(t *testing.T) {
 }
 
 func TestSubdivisionVisibility(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	cam := &Camera{Scale: 1}
 	groups := g.Lines(cam, 640, 480)
@@ -45,6 +47,7 @@ func TestSubdivisionVisibility(t *testing.T) {
 }
 
 func TestLinesNoOverlap(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	cam := &Camera{Scale: 2}
 	groups := g.Lines(cam, 200, 200)
@@ -69,6 +72,7 @@ func TestLinesNoOverlap(t *testing.T) {
 }
 
 func TestSnapFinestSubdivision(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	unit := g.Unit()
 	gx, gy, i, j := g.Snap(0.6*unit, 1.2*unit)
@@ -85,6 +89,7 @@ func TestSnapFinestSubdivision(t *testing.T) {
 }
 
 func TestRadiusScaling(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	// Node radius never overlaps neighbors
 	r1 := g.NodeRadius(1)
@@ -112,6 +117,7 @@ func TestRadiusScaling(t *testing.T) {
 }
 
 func TestMinPixelSizesWhenPossible(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	// Choose a scale where node min pixels (8px) are achievable without overlap.
 	need := 8.0 / (0.4 * g.Unit())
@@ -128,6 +134,7 @@ func TestMinPixelSizesWhenPossible(t *testing.T) {
 }
 
 func TestEdgeStyleScaling(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	t1 := g.EdgeThickness(1)
 	t2 := g.EdgeThickness(2)
@@ -141,6 +148,7 @@ func TestEdgeStyleScaling(t *testing.T) {
 }
 
 func TestLinesExtendBeyondView(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	// Pan the camera by a non-integer multiple of the step to simulate
 	// arbitrary movement across the lattice.
@@ -183,6 +191,7 @@ func TestLinesExtendBeyondView(t *testing.T) {
 }
 
 func TestLineWidthConstantAcrossZoom(t *testing.T) {
+	assertDefaultParityState(t)
 	g := NewGrid(DefaultGridStep)
 	scales := []float64{0.5, 1, 2, 4}
 	for _, s := range scales {
@@ -197,8 +206,10 @@ func TestLineWidthConstantAcrossZoom(t *testing.T) {
 }
 
 func TestPrimaryGridVisibleAfterSubdivChangeAtMinZoom(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	if err := g.SetSubdivisions(16); err != nil {
 		t.Fatalf("SetSubdivisions: %v", err)

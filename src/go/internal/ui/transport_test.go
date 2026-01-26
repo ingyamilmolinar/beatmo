@@ -7,6 +7,7 @@ import (
 )
 
 func TestTransportSetBPMClamp(t *testing.T) {
+	assertDefaultParityState(t)
 	tr := NewTransport(200)
 	tr.SetBPM(200)
 	tr.SetBPM(maxBPM + 500)
@@ -16,17 +17,18 @@ func TestTransportSetBPMClamp(t *testing.T) {
 	if tr.bpmErrorAnim == 0 {
 		t.Errorf("expected error animation on high bpm")
 	}
-	tr.bpmErrorAnim = 0
-	tr.SetBPM(0)
-	if tr.BPM != 1 {
-		t.Fatalf("low BPM not clamped: %d", tr.BPM)
+	trLow := NewTransport(200)
+	trLow.SetBPM(0)
+	if trLow.BPM != 1 {
+		t.Fatalf("low BPM not clamped: %d", trLow.BPM)
 	}
-	if tr.bpmErrorAnim == 0 {
+	if trLow.bpmErrorAnim == 0 {
 		t.Errorf("expected error animation on low bpm")
 	}
 }
 
 func TestTransportBPMTextInput(t *testing.T) {
+	assertDefaultParityState(t)
 	tr := NewTransport(200)
 	tr.SetBPM(200)
 
@@ -68,6 +70,7 @@ func TestTransportBPMTextInput(t *testing.T) {
 }
 
 func TestTransportBPMTextInputNonNumeric(t *testing.T) {
+	assertDefaultParityState(t)
 	tr := NewTransport(200)
 	tr.SetBPM(200)
 

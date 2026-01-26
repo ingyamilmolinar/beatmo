@@ -11,12 +11,27 @@ import (
 // Test that arrowheads are drawn in the screen-space edge path when the
 // connection is complete (t >= 1).
 func TestScreenEdgesDrawArrows(t *testing.T) {
-	old := os.Getenv("SCREEN_EDGES")
-	os.Setenv("SCREEN_EDGES", "1")
-	defer os.Setenv("SCREEN_EDGES", old)
+	assertDefaultParityState(t)
+	if screenEdgesDefault {
+		t.Fatalf("screenEdgesDefault=true; test assumes SCREEN_EDGES is required to enable screen-space edges")
+	}
+	if simpleDrawDefault {
+		t.Fatalf("simpleDrawDefault=true; test assumes SCREEN_EDGES is the sole trigger for screen-space edges")
+	}
+	if v := os.Getenv("SCREEN_EDGES"); v != "" {
+		t.Fatalf("SCREEN_EDGES=%q; test requires default unset env", v)
+	}
+	if v := os.Getenv("RENDER_SAFE"); v != "" {
+		t.Fatalf("RENDER_SAFE=%q; test requires default unset env", v)
+	}
+	t.Setenv("SCREEN_EDGES", "1")
 
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
+	if g.simpleDraw {
+		t.Fatalf("simpleDraw=%v want false before enabling SCREEN_EDGES", g.simpleDraw)
+	}
 
 	a := g.tryAddNode(0, 0, 0)
 	b := g.tryAddNode(1, 0, 0)

@@ -12,7 +12,9 @@ import (
 // wheel zoom keeps the world point under the cursor fixed in screen space, and
 // that nodes and edges remain colocated after zoom.
 func TestZoomAnchorsAtCursor(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Simple horizontal edge.

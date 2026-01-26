@@ -10,7 +10,9 @@ import (
 // TestEdgeNodeColocationOnPanAndZoom verifies that edge endpoints project to the
 // exact same screen positions as their corresponding node centers across zoom and pan.
 func TestEdgeNodeColocationOnPanAndZoom(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Build two nodes with a single horizontal edge on row 0.

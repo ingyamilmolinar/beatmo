@@ -11,7 +11,9 @@ import (
 // after import there is no pending origin selection and clicking a node does
 // not reassign origins implicitly.
 func TestImportClearsPendingOriginAndPopupClickDoesNotReassign(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Construct a simple exported file with two nodes and two instruments
@@ -53,6 +55,7 @@ func TestImportClearsPendingOriginAndPopupClickDoesNotReassign(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return g.winW, g.winH },
 	)
+	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
 	restore = SetInputForTest(
@@ -63,6 +66,7 @@ func TestImportClearsPendingOriginAndPopupClickDoesNotReassign(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return g.winW, g.winH },
 	)
+	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
 	// Verify row origins unchanged

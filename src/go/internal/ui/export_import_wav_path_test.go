@@ -1,3 +1,5 @@
+//go:build test
+
 package ui
 
 import (
@@ -7,16 +9,20 @@ import (
 
 // Test that export includes custom WAV path and import auto-registers it.
 func TestExportImportWAVPath(t *testing.T) {
+	withDefaultAudio(t)
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	// Simulate a custom upload result
-	g.drum.pendingWAV = "/tmp/my-kick.wav"
+	// Simulate a custom upload result via the upload flow.
+	startUploadForTest(t, g.drum)
+	waitForUploadNaming(t, g)
 	g.drum.registerInstrument("mykick")
 	if !g.drum.IsInstrumentAvailable("mykick") {
 		t.Fatalf("expected mykick to be available after register")
 	}
 	// Set row 0 to custom instrument
-	g.drum.Rows[0].Instrument = "mykick"
+	g.drum.SetInstrument("mykick")
 	g.drum.Rows[0].Name = "MyKick"
 	data, err := g.drum.exportBytes()
 	if err != nil {
@@ -44,6 +50,7 @@ func TestExportImportWAVPath(t *testing.T) {
 
 	// Now import and ensure the instrument becomes available without user upload
 	g2 := New(testLogger)
+	t.Cleanup(g2.CloseForTest)
 	g2.Layout(640, 480)
 	if err := g2.Import(data); err != nil {
 		t.Fatalf("import: %v", err)

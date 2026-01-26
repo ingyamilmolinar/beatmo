@@ -9,7 +9,9 @@ import (
 // When creating a node via origin selection, ensure we do not auto-stitch
 // edges of other circuits that happen to be colinear at the clicked location.
 func TestOriginSelectDoesNotStitchOtherCircuits(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Circuit A: a0 -> a1 across y=0

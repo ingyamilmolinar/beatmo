@@ -2,14 +2,17 @@ package ui
 
 import (
 	"encoding/json"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
 	"testing"
+
+	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
 
 // After registering a WAV matching a missing instrument ID, the row label
 // style should switch from MissingInstStyle to InstButtonStyle.
 func TestMissingInstrumentStyleResetsOnRegister(t *testing.T) {
+	withDefaultAudio(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	dv := g.drum
 	dv.refreshInstruments()
@@ -31,12 +34,11 @@ func TestMissingInstrumentStyleResetsOnRegister(t *testing.T) {
 		t.Fatalf("expected missing style; got %+v", dv.rowLabels[0].Style)
 	}
 	// Register matching WAV and refresh instruments
-	if err := audio.RegisterWAV("myst", "dummy.wav"); err != nil {
+	if err := audio.RegisterWAV("myst", writeTempWAV(t, "myst.wav")); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	dv.refreshInstruments()
 	if dv.rowLabels[0].Style != InstButtonStyle {
 		t.Fatalf("expected normal style after register; got %+v", dv.rowLabels[0].Style)
 	}
-	audio.ResetInstruments()
 }

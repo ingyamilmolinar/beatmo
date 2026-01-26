@@ -9,6 +9,7 @@ import (
 func newGameWithStart(t *testing.T) *Game {
 	t.Helper()
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	n0.Start = true
@@ -18,6 +19,7 @@ func newGameWithStart(t *testing.T) *Game {
 }
 
 func TestRowStepsExcludeSilentInvisible(t *testing.T) {
+	assertDefaultParityState(t)
 	g := newGameWithStart(t)
 	a := g.start
 	s := g.tryAddNode(1, 0, model.NodeTypeSilent)
@@ -36,6 +38,7 @@ func TestRowStepsExcludeSilentInvisible(t *testing.T) {
 }
 
 func TestRowStepsEveryNTriggers(t *testing.T) {
+	assertDefaultParityState(t)
 	g := newGameWithStart(t)
 	a := g.start
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
@@ -57,6 +60,7 @@ func TestRowStepsEveryNTriggers(t *testing.T) {
 }
 
 func TestRowStepsSkipEveryN(t *testing.T) {
+	assertDefaultParityState(t)
 	g := newGameWithStart(t)
 	a := g.start
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
@@ -78,6 +82,7 @@ func TestRowStepsSkipEveryN(t *testing.T) {
 }
 
 func TestRowStepsPrevTriggeredAndPrevSkipped(t *testing.T) {
+	assertDefaultParityState(t)
 	g := newGameWithStart(t)
 	a := g.start
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
@@ -139,6 +144,7 @@ func TestRowStepsPrevTriggeredAndPrevSkipped(t *testing.T) {
 }
 
 func TestRowStepsProbabilityEdgeCases(t *testing.T) {
+	assertDefaultParityState(t)
 	g := newGameWithStart(t)
 	a := g.start
 	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
@@ -182,25 +188,5 @@ func TestRowStepsProbabilityEdgeCases(t *testing.T) {
 				break
 			}
 		}
-	}
-}
-
-func TestRowStepsEveryNLoopsAlias(t *testing.T) {
-	g := newGameWithStart(t)
-	a := g.start
-	b := g.tryAddNode(1, 0, model.NodeTypeRegular)
-	g.addEdge(a, b)
-	g.addEdge(b, a)
-	// Alias behaves like every_n_triggers
-	if n, ok := g.graph.GetNodeByID(a.ID); ok {
-		p := n.Params
-		p.LogicKind = "every_n_loops"
-		p.LogicN = 2
-		g.graph.SetNodeParams(a.ID, p)
-	}
-	g.updateBeatInfos()
-	steps := g.drum.Rows[0].Steps
-	if steps[0] != false {
-		t.Fatalf("every_n_loops: expected A at idx0 suppressed: %v", steps[:4])
 	}
 }

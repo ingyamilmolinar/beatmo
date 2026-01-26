@@ -13,7 +13,8 @@ import (
 // portion of the affected row may change.
 func TestNoJumpOnEditDuringPlayback(t *testing.T) {
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(800, 600)
 
 	// 1x1 loop
@@ -27,12 +28,12 @@ func TestNoJumpOnEditDuringPlayback(t *testing.T) {
 	g.addEdge(d, a)
 	g.start = a
 	g.graph.StartNodeID = a.ID
-	g.drum.Length = 16
+	g.drum.SetLength(16)
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Freeze header scale during playback
-	g.drum.SetPlaying(true)
+	// Freeze header scale during playback.
+	g.SetPlaying(true)
 
 	// Choose a synthetic elapsed position in the middle for Draw.
 	elapsed := 5.0
@@ -41,6 +42,7 @@ func TestNoJumpOnEditDuringPlayback(t *testing.T) {
 	dst := ebiten.NewImage(800, 240)
 	var curX1, curX2 int
 	orig := drawRect
+	t.Cleanup(func() { drawRect = orig })
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
 			if color.RGBAModel.Convert(c).(color.RGBA) == colTimelineCursor {

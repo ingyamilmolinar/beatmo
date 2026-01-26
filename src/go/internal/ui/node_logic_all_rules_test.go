@@ -7,8 +7,9 @@ import (
 )
 
 // Ensure removed skip_* rules are mapped to canonical trigger_* rules on import
-// and that selecting None clears legacy SkipEvery gating.
+// and that selecting None clears logic kind.
 func TestImportMapsRemovedSkipRulesAndNoneClearsLegacy(t *testing.T) {
+	assertDefaultParityState(t)
 	// Build a file with two nodes: b uses removed skip_if_prev_triggered,
 	// c uses removed skip_if_prev_skipped. Also include a node with legacy SkipEvery.
 	file := exportFile{
@@ -23,6 +24,7 @@ func TestImportMapsRemovedSkipRulesAndNoneClearsLegacy(t *testing.T) {
 	}
 	data, _ := json.Marshal(file)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
@@ -46,7 +48,10 @@ func TestImportMapsRemovedSkipRulesAndNoneClearsLegacy(t *testing.T) {
 	if node3.Params.LogicKind != "trigger_if_prev_triggered" {
 		t.Fatalf("expected node3 mapped to trigger_if_prev_triggered, got %q", node3.Params.LogicKind)
 	}
-	// Now select node4 and choose None: legacy SkipEvery should be cleared
+	if node4.Params.LogicKind != "skip_every_n" || node4.Params.LogicN != 2 {
+		t.Fatalf("expected legacy SkipEvery upgraded to skip_every_n; got kind=%q n=%d", node4.Params.LogicKind, node4.Params.LogicN)
+	}
+	// Now select node4 and choose None: logic should be cleared
 	// find ui node for node4
 	var u4 *uiNode
 	for _, u := range g.nodes {
@@ -73,10 +78,10 @@ func TestImportMapsRemovedSkipRulesAndNoneClearsLegacy(t *testing.T) {
 		t.Fatalf("none item click failed")
 	}
 	_ = g.Update()
-	// Ensure SkipEveryN cleared
+	// Ensure logic cleared
 	if n, ok := g.graph.GetNodeByID(u4.ID); ok {
-		if n.Params.SkipEveryN != 0 {
-			t.Fatalf("SkipEveryN not cleared on None: %d", n.Params.SkipEveryN)
+		if n.Params.LogicKind != "" {
+			t.Fatalf("LogicKind not cleared on None: %q", n.Params.LogicKind)
 		}
 	}
 }

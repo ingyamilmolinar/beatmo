@@ -2,11 +2,13 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
@@ -14,27 +16,21 @@ import (
 // subdivisions, nodes, edges, and the grid remain pixel-aligned from the
 // user's perspective across a few zoom/pan states.
 func TestGlobalCameraAlignment_Subdivisions(t *testing.T) {
+	assertDefaultParityState(t)
 	// Use embedded default demo which is aligned on multiples of 16 so we can
 	// safely reduce subdivisions.
-	demoPath := "internal/assets/default_demo.json"
-	if _, err := os.Stat(demoPath); err != nil {
-		alt := "../assets/default_demo.json"
-		if _, err2 := os.Stat(alt); err2 == nil {
-			demoPath = alt
-		}
+	out := io.Discard
+	if testing.Verbose() {
+		out = os.Stdout
 	}
-	os.Setenv("TUNKUL_DEMO_CONFIG", demoPath)
-
-	// Enable draw logs for easier debugging if this regresses.
-	os.Setenv("DEBUG_DRAW_NODES", "1")
-	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	logger := game_log.New(out, game_log.LevelDebug)
 
 	g := New(logger)
-	g.Layout(1280, 720)
-	g.buildDemo()
-	if !g.demoBuilt {
-		t.Fatalf("demo not built; check TUNKUL_DEMO_CONFIG path")
+	t.Cleanup(g.CloseForTest)
+	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+		t.Fatalf("import demo: %v", err)
 	}
+	g.Layout(1280, 720)
 
 	// Helper that checks alignment at current camera state.
 	screen := ebiten.NewImage(1280, 720)

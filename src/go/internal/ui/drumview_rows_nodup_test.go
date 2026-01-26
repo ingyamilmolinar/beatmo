@@ -13,6 +13,7 @@ import (
 // two cell bands. Previously a 1px line across the steps area made each row
 // look like two stacked cell strips; that line should no longer be drawn.
 func TestDrumViewRows_NoBaselineSplit(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 600, 220), nil, logger)
 	// Add a second row

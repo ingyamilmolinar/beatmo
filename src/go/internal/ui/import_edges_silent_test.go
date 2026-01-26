@@ -7,7 +7,9 @@ import (
 
 // Ensure edges are created from silent nodes as well as regular nodes.
 func TestImportCreatesEdgesFromSilentNodes(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// A square loop where every other node is silent. All edges should be created.
 	exp := exportFile{

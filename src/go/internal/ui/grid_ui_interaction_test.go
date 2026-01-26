@@ -19,7 +19,9 @@ func screenPosForGrid(g *Game, i, j int) (x, y int) {
 
 // After lowering subdivisions, adding and removing nodes via mouse should still work.
 func TestNodeAddRemoveAfterSubdivChange(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	if err := g.SetSubdivisions(32); err != nil {
 		t.Fatalf("set 32: %v", err)
@@ -47,6 +49,7 @@ func TestNodeAddRemoveAfterSubdivChange(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 800, 600 },
 	)
+	t.Cleanup(restore)
 	_ = g.Update() // mouse down
 	pressed = false
 	_ = g.Update() // mouse up -> add
@@ -63,6 +66,7 @@ func TestNodeAddRemoveAfterSubdivChange(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 800, 600 },
 	)
+	t.Cleanup(restore2)
 	_ = g.Update()
 	restore2()
 	_ = g.Update()

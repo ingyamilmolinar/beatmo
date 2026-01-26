@@ -8,7 +8,9 @@ import (
 // Deleting a linear in-between node should reconnect its predecessor to its successor
 // preserving a straight path.
 func TestDeleteNodeReconnectsLinear(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -32,7 +34,9 @@ func TestDeleteNodeReconnectsLinear(t *testing.T) {
 // Only reconnect orthogonal straight paths: if predecessor and successor do not share
 // row or column, do not connect.
 func TestDeleteCornerDoesNotReconnectDiagonal(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -53,7 +57,9 @@ func TestDeleteCornerDoesNotReconnectDiagonal(t *testing.T) {
 
 // When deleting a node with multiple successors, only valid orthogonal reconnections are created.
 func TestDeleteNodeReconnectsOnlyAlignedSuccessors(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)

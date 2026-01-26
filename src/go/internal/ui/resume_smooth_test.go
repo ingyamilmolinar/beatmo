@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -11,8 +10,9 @@ import (
 // Ensures highlight index and drum offset do not jump on resume and advance
 // smoothly in small increments.
 func TestResumeHighlightSmoothNoJump(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	w, h := 640, 480
 	g.Layout(w, h)
 	restore := SetInputForTest(
@@ -33,27 +33,25 @@ func TestResumeHighlightSmoothNoJump(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.drum.SetBPM(120)
-	until := time.Now().Add(12 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	g.SetAppliedBPMForTest(120)
 
-	g.drum.playPressed = true
-	until = time.Now().Add(24 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	// Start playback.
+	pressPlay(t, g.drum)
+	_ = g.Update()
+
+	// Advance deterministically to a known subdivision.
+	targetAbs := g.grid.MaxDiv() + 2
+	setPlayStartForAbs(g, targetAbs)
+	_ = g.Update()
 
 	// Pause, record state
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
 	pausedIdx := g.elapsedBeats
 	pausedOff := g.drum.Offset
 
 	// Resume, ensure no jump
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
 	if g.elapsedBeats != pausedIdx {
 		t.Fatalf("resume jumped: idx %d -> %d", pausedIdx, g.elapsedBeats)
@@ -65,13 +63,13 @@ func TestResumeHighlightSmoothNoJump(t *testing.T) {
 	// Advance a few frames; ensure highlight progresses by at most 1/subdiv per update
 	last := g.elapsedBeats
 	for i := 0; i < 5; i++ {
+		setPlayStartForAbs(g, pausedIdx+i+1)
 		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
 		cur := g.elapsedBeats
 		if cur < last {
 			t.Fatalf("highlight moved backwards: %d -> %d", last, cur)
 		}
-		if cur-last > 2 { // allow up to 2 subdiv in case of timer tick
+		if cur-last > 2 { // allow up to 2 subdiv in case of rounding
 			t.Fatalf("highlight jumped too far: %d -> %d", last, cur)
 		}
 		last = cur

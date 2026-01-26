@@ -9,7 +9,9 @@ import (
 // (where an edge runs) should split that edge so the new node becomes part of
 // the traversal.
 func TestPlaceNodeOnPassThroughSplitsEdge(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Build a 2x2 square loop: (0,0)->(2,0)->(2,2)->(0,2)->(0,0)

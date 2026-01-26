@@ -1,16 +1,17 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
-	"time"
+
+	"github.com/ingyamilmolinar/tunkul/core/model"
 )
 
 // Changing DrumView length during active playback must not blank the rows.
 // Steps must be recomputed immediately and caches updated without clearing.
 func TestNoBlankOnLengthChangeDuringPlayback(t *testing.T) {
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(1024, 720)
 
 	// Row 0 rectangle
@@ -36,26 +37,22 @@ func TestNoBlankOnLengthChangeDuringPlayback(t *testing.T) {
 	g.drum.Rows[1].Origin = e.ID
 	g.drum.Rows[1].Node = g.nodeByID(e.ID)
 
-	g.drum.Length = 16
+	g.drum.SetLength(16)
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
 	// Start playing and let it run a bit.
 	g.drum.SetBPM(120)
-	until := time.Now().Add(60 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
+	g.SetAppliedBPMForTest(120)
+	g.SetPlaying(true)
+	for abs := 0; abs <= 8; abs++ {
+		scheduleAbsForMuteTest(g, abs)
 	}
-	g.drum.playPressed = true
-	run := time.Now().Add(100 * time.Millisecond)
-	for time.Now().Before(run) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	g.elapsedBeats = 8
+	g.refreshDrumRow()
 
 	// Press + to increase length while playing.
-	g.drum.lenIncPressed = true
+	pressLenInc(t, g.drum)
 	_ = g.Update()
 
 	// Steps must be recomputed and contain at least one visible cell per row.

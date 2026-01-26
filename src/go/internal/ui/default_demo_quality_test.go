@@ -10,13 +10,15 @@ import (
 // Ensure the embedded default demo attaches known instruments and avoids
 // overlapping regular-node coordinates across different circuits (rows).
 func TestDefaultDemoQuality(t *testing.T) {
+	assertDefaultParityState(t)
 	data := assets_pkg.DefaultDemoJSON
 	if len(data) == 0 {
-		t.Skip("no embedded demo JSON")
+		t.Fatalf("embedded demo JSON missing")
 	}
 
 	// Import via Game to build paths and DrumView.
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
@@ -60,9 +62,10 @@ func TestDefaultDemoQuality(t *testing.T) {
 // Ensure the default demo includes at least one node using built-in logic to
 // showcase features like probability or every-n.
 func TestDefaultDemoIncludesLogicNodes(t *testing.T) {
+	assertDefaultParityState(t)
 	data := assets_pkg.DefaultDemoJSON
 	if len(data) == 0 {
-		t.Skip("no embedded demo JSON")
+		t.Fatalf("embedded demo JSON missing")
 	}
 	var f exportFile
 	if err := json.Unmarshal(data, &f); err != nil {

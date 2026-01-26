@@ -9,7 +9,9 @@ import (
 
 // Ensure that rows referencing missing instruments are marked red and silent.
 func TestImportMissingInstrumentMarksRedAndSilent(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Export-like JSON with a missing instrument id "unknown"
 	exp := exportFile{

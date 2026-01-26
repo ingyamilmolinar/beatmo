@@ -1,17 +1,19 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/tunkul/core/model"
 )
 
 // TestNodeTriggerAnimationIncreasesRadius verifies that when a node is
 // audibly triggered, its on-screen radius increases above the baseline and
 // then decays, while remaining clamped to non-overlapping bounds.
 func TestNodeTriggerAnimationIncreasesRadius(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
 
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	n1 := g.tryAddNode(2, 0, model.NodeTypeRegular)
@@ -19,8 +21,8 @@ func TestNodeTriggerAnimationIncreasesRadius(t *testing.T) {
 
 	// Baseline (pre-trigger) screen radius
 	base := g.nodeRadius(n0)
-	g.playing = true
-	g.spawnPulseFrom(0) // triggers n0 immediately
+	g.SetPlaying(true)
+	g.spawnPulseFromRow(0, 0) // triggers n0 immediately
 
 	r0 := g.nodeRadius(n0)
 	if r0 <= base {
@@ -36,9 +38,10 @@ func TestNodeTriggerAnimationIncreasesRadius(t *testing.T) {
 
 // Peak growth should be limited to a restrained fraction of remaining headroom.
 func TestNodeAnimPeakLimited(t *testing.T) {
-	SetDefaultStartForTest(true)
+	withDefaultStart(t, true)
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	defer SetDefaultStartForTest(false)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.nodeAt(0, 0)
 	if n == nil {
@@ -59,45 +62,60 @@ func TestNodeAnimPeakLimited(t *testing.T) {
 	}
 }
 
-// TestNodeAnimRespectsSkipEveryN ensures node-level logic gating (SkipEveryN)
+// TestNodeAnimRespectsSkipEveryNLogic ensures node-level gating (skip_every_n)
 // inhibits the animation on skipped triggers.
-func TestNodeAnimRespectsSkipEveryN(t *testing.T) {
+func TestNodeAnimRespectsSkipEveryNLogic(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
-
-	s0 := g.tryAddNode(0, 0, model.NodeTypeSilent)
+	g.pendingStartRow = 0
+	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	r1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
-	s2 := g.tryAddNode(2, 0, model.NodeTypeSilent)
-	g.addEdge(s0, r1)
-	g.addEdge(r1, s2)
-	g.addEdge(s2, s0)
+	n2 := g.tryAddNode(2, 0, model.NodeTypeRegular)
+	if n0 == nil || r1 == nil || n2 == nil {
+		t.Fatalf("failed to create nodes for skip logic test")
+	}
+	g.addEdge(n0, r1)
+	g.addEdge(r1, n2)
+	g.addEdge(n2, n0)
+	g.pendingStartRow = -1
 
 	// Skip every 2nd trigger at r1
-	g.graph.SetNodeParams(r1.ID, model.NodeParams{SkipEveryN: 2})
-
-	g.playing = true
-	g.spawnPulseFrom(0) // starts at s0; no animation expected yet
-
-	// Step to r1 (first trigger) -> should animate
-	g.activePulse.t = 1
-	_ = g.Update()
-	if v := g.nodeAnim[r1.ID]; v == 0 {
-		t.Fatalf("expected animation at first trigger; got 0")
+	if n, ok := g.graph.GetNodeByID(r1.ID); ok {
+		p := n.Params
+		p.LogicKind = "skip_every_n"
+		p.LogicN = 2
+		g.graph.SetNodeParams(r1.ID, p)
 	}
-	// Reset anim to measure next trigger distinctly
-	g.nodeAnim[r1.ID] = 0
+	g.updateBeatInfos()
+	g.refreshDrumRow()
 
-	// Step s2, then back to s0, then to r1 again (second trigger skipped)
-	g.activePulse.t = 1
-	_ = g.Update() // to s2
-	g.activePulse.t = 1
-	_ = g.Update() // to s0
-	g.activePulse.t = 1
-	_ = g.Update() // to r1 again (skip)
-	// Peek immediately after update
-	if v := g.nodeAnim[r1.ID]; v != 0 {
-		t.Fatalf("expected no animation on skipped trigger; got %f", v)
+	g.drum.SetInstrument("snare")
+	ensureInstrumentAvailable(t, g, "snare")
+
+	var hits []int
+	g.highlightHook = func(row, idx int) {
+		if row != 0 {
+			return
+		}
+		if bi := g.beatInfoAtRow(0, idx); bi.NodeID == r1.ID {
+			hits = append(hits, idx)
+		}
+	}
+
+	bpm := 120
+	g.drum.SetBPM(bpm)
+	g.SetAppliedBPMForTest(bpm)
+	g.prevBPM = bpm
+	g.SetPlaying(true)
+	target := 4
+	for abs := 0; abs <= target; abs++ {
+		setPlayStartForAbs(g, abs)
+		_ = g.Update()
+	}
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 highlighted trigger for skip_every_n, got %v", hits)
 	}
 }
 
@@ -106,9 +124,10 @@ func TestNodeAnimRespectsSkipEveryN(t *testing.T) {
 // TestNodeSizeScalesWithZoomOut ensures nodes become larger on screen as the
 // user zooms out (smaller camera scale), providing visibility at bird's‑eye view.
 func TestNodeSizeScalesWithZoomOut(t *testing.T) {
-	SetDefaultStartForTest(true)
+	withDefaultStart(t, true)
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	defer SetDefaultStartForTest(false)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.nodeAt(0, 0)
 	if n == nil {

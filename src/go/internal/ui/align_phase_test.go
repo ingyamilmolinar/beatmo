@@ -2,7 +2,6 @@ package ui
 
 import (
 	"math"
-	"os"
 	"testing"
 
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
@@ -13,8 +12,10 @@ import (
 // against the expected pixel coordinate computed via rounded world→screen math
 // that the grid tile uses.
 func TestNodeGridPhaseOnPanAndZoom(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelError)
+	assertDefaultParityState(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// Place a single node at (i=10,j=5) grid coords
 	n := g.tryAddNode(10, 5, 0)

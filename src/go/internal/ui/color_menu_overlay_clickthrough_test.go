@@ -12,7 +12,9 @@ import (
 // swatch clicks would close the menu and a still-held mouse press could fire
 // the underlying Upload button on the following Update.
 func TestColorMenuOverUploadDoesNotClickThrough(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 700)
 
 	// Make drum pane small enough to force the color menu to open upward,
@@ -55,6 +57,7 @@ func TestColorMenuOverUploadDoesNotClickThrough(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 800, 700 },
 	)
+	t.Cleanup(restore)
 	// First update: click swatch (menu handles and closes)
 	_ = g.Update()
 	// Second update: still held; without suppression this used to trigger Upload

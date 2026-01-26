@@ -13,6 +13,7 @@ import (
 // TestRowCacheRebuildOnLengthAndColor verifies that the per-row sprite cache is
 // reused when stable and rebuilt on length or color changes.
 func TestRowCacheRebuildOnLengthAndColor(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()
@@ -30,7 +31,7 @@ func TestRowCacheRebuildOnLengthAndColor(t *testing.T) {
 		t.Fatalf("expected row cache reuse; got new pointer on second draw")
 	}
 	// Change length -> rebuild
-	dv.lenIncPressed = true
+	pressLenInc(t, dv)
 	dv.Update()
 	dv.Draw(dst, map[int]int64{}, 0, nil, 0)
 	if dv.rowCache[0] == first {

@@ -5,11 +5,13 @@ import (
 	"testing"
 )
 
-// TestEvalMatchesPredictionAcrossComplexCircuits verifies evalNodePlayback
-// and prediction-based preview agree exactly across a range of steps for
-// circuits with combined node rules and invisible nodes.
-func TestEvalMatchesPredictionAcrossComplexCircuits(t *testing.T) {
+// TestDrumViewMatchesPredictionAcrossComplexCircuits verifies DrumView windows
+// render directly from the engine predictor across a circuit with mixed logic
+// and invisible nodes.
+func TestDrumViewMatchesPredictionAcrossComplexCircuits(t *testing.T) {
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(640, 480)
 	// Build a rectangular loop with invisible links and mixed logic:
 	// A(0,0) -> inv(1,0) -> B(2,0) -> C(3,0)
@@ -60,25 +62,30 @@ func TestEvalMatchesPredictionAcrossComplexCircuits(t *testing.T) {
 
 	g.start = a
 	g.graph.StartNodeID = a.ID
-	g.drum.Length = 16
+	g.drum.SetLength(32)
 	g.updateBeatInfos()
 
-	horizon := 32
-	g.computePredictions(horizon)
-	// Reset runtime counters before eval scan to provide a clean baseline.
-	g.nodeTriggerCountsByRow = make(map[int]map[model.NodeID]int)
-	g.lastTriggeredByRow = make(map[int]map[model.NodeID]bool)
-	g.lastFiredNodeByRow = make([]model.NodeID, len(g.drum.Rows))
+	g.drum.Offset = 0
+	g.refreshDrumRow()
 
-	for i := 0; i < horizon; i++ {
-		bi := g.beatInfoAtRow(0, i)
-		ok, _, _, _ := g.evalNodePlayback(0, i, bi)
-		vis := false
-		if i < len(g.predVisibleByRow[0]) {
-			vis = g.predVisibleByRow[0][i]
+	horizon := g.drum.Offset + g.drum.Length
+	if g.engine == nil || g.engine.Predictor == nil {
+		t.Fatalf("engine predictor is nil")
+	}
+	g.engine.Predictor.Ensure(horizon)
+
+	for i := 0; i < g.drum.Length; i++ {
+		abs := g.drum.Offset + i
+		bi := g.beatInfoAtRow(0, abs)
+		want := false
+		if bi.NodeType == model.NodeTypeMute {
+			want = g.engine.Predictor.TriggeredAt(0, abs)
+		} else {
+			want = g.engine.Predictor.VisibleAt(0, abs)
 		}
-		if ok != vis {
-			t.Fatalf("idx %d: eval=%v predVis=%v node=%+v", i, ok, vis, bi)
+		got := g.drum.Rows[0].Steps[i]
+		if got != want {
+			t.Fatalf("abs=%d idx=%d: drum=%v pred=%v node=%+v", abs, i, got, want, bi)
 		}
 	}
 }

@@ -9,8 +9,10 @@ import (
 // subdivision to the game's grid and drum timeline without requiring a manual
 // SetSubdivisions call.
 func TestImportAppliesSubdivToGrid(t *testing.T) {
+	assertDefaultParityState(t)
 	// Build and export a simple project at 8 subdivisions per beat.
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	if err := g.SetSubdivisions(8); err != nil {
 		t.Fatalf("set subdiv(8): %v", err)
@@ -32,6 +34,7 @@ func TestImportAppliesSubdivToGrid(t *testing.T) {
 	// Import into a fresh game with default grid (32). Import should update
 	// the game's subdivision to 8 automatically.
 	g2 := New(testLogger)
+	t.Cleanup(g2.CloseForTest)
 	g2.Layout(800, 600)
 	if g2.grid.MaxDiv() != 32 {
 		t.Fatalf("pre import maxdiv=%d want 32", g2.grid.MaxDiv())

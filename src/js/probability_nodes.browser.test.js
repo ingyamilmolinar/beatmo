@@ -4,28 +4,26 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
 const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
-if (!fs.existsSync(chromiumPath)) {
-  spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
+if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
 const port = 8290 + Math.floor(Math.random() * 1000);
 const goDir = path.resolve(jsDir, "../go");
-const GO = process.env.GO || "go";
+const GO = resolveGoBinary();
 const build = spawnSync(
   GO, ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
 
-const server = http.createServer((req, res) => {
-  const file = req.url === "/" ? "/ui.html" : req.url;
-  if (req.url === "/" || req.url === "/ui.html") {
-    const html = `<!DOCTYPE html><html><body>
+const server = http.createServer((req, res) => { const file = req.url === "/" ? "/ui.html" : req.url;
+  if (req.url === "/" || req.url === "/ui.html") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
 <script src="wasm_exec.js"></script>
 <script>
@@ -40,8 +38,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   const fp = path.join(jsDir, file.replace(/^\//, ""));
-  fs.readFile(fp, (err, data) => {
-    if (err) { res.writeHead(404); res.end(); return; }
+  fs.readFile(fp, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
     let ct = "text/plain";
     if (fp.endsWith(".html")) ct = "text/html";
     else if (fp.endsWith(".js")) ct = "application/javascript";
@@ -58,10 +55,10 @@ page.on('console', (msg) => { try { console.log('[PAGE]', msg.type(), msg.text()
 
 await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof addNode === 'function' && typeof addEdgeGrid === 'function');
+await assertSimpleDrawMode(page, true, "probability nodes");
 
 // Build a simple two-node linear path and set as origin
-await page.evaluate(() => {
-  const i0=12, j0=0, i1=16, j1=0;
+await page.evaluate(() => { const i0=12, j0=0, i1=16, j1=0;
   addNode(i0, j0, 'regular');
   addNode(i1, j1, 'regular');
   addEdgeGrid(i0, j0, i1, j1);
@@ -74,13 +71,11 @@ await page.waitForFunction(() => typeof setNodeLogicGrid === 'function' && typeo
 // Set probability param and verify propagation
 await page.evaluate(() => setNodeLogicGrid(12,0,'probability',0,0.5));
 const pA = await page.evaluate(() => nodeParams(12,0));
-if (!pA || pA.logicKind !== 'probability' || Math.abs(pA.logicP - 0.5) > 1e-6) {
-  throw new Error(`nodeParams not updated: ${JSON.stringify(pA)}`);
+if (!pA || pA.logicKind !== 'probability' || Math.abs(pA.logicP - 0.5) > 1e-6) { throw new Error(`nodeParams not updated: ${JSON.stringify(pA)}`);
 }
 
 // Deterministic probability monotonicity (hash): validate roll ordering without relying on engine predictors.
-function detRoll(row, idx, id) {
-  const toU32 = (v) => BigInt.asUintN(32, BigInt(v >>> 0));
+function detRoll(row, idx, id) { const toU32 = (v) => BigInt.asUintN(32, BigInt(v >>> 0));
   let x = (toU32(row) << 32n) ^ toU32(idx) ^ (toU32(id) << 16n) ^ 0x9E3779B97F4A7C15n;
   x = BigInt.asUintN(64, x + 0x9E3779B97F4A7C15n);
   let z = x;
@@ -96,8 +91,7 @@ const row = 0;
 const ids = [12, 16];
 const rolls = [detRoll(row, 0, ids[0]), detRoll(row, 4, ids[1])];
 const pLow = 0.25, pHigh = 0.75;
-for (let r of rolls) {
-  if (r <= pLow && r > pHigh) throw new Error(`roll monotonicity failed r=${r}`);
+for (let r of rolls) { if (r <= pLow && r > pHigh) throw new Error(`roll monotonicity failed r=${r}`);
   if (!(r <= 1.0) || !(r >= 0.0)) throw new Error(`roll out of range r=${r}`);
 }
 

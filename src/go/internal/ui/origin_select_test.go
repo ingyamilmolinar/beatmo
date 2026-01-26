@@ -36,6 +36,7 @@ func clickAt(g *Game, sx, sy int) {
 
 func TestOriginSelectOnExistingNode(t *testing.T) {
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Create two visible nodes
 	n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -79,8 +80,9 @@ func TestOriginSelectOnExistingNode(t *testing.T) {
 
 func TestDrumAutoHeightMatchesRows(t *testing.T) {
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	w, h := 800, 600
-	forceAutoSize = true
+	withForceAutoSize(t, true)
 	g.Layout(w, h)
 	want := timelineHeight + (len(g.drum.Rows)+1)*g.drum.rowHeight()
 	have := g.winH - g.split.Y
@@ -100,5 +102,4 @@ func TestDrumAutoHeightMatchesRows(t *testing.T) {
 			t.Fatalf("after add drum height=%d want %d", have2, want2)
 		}
 	}
-	forceAutoSize = false
 }

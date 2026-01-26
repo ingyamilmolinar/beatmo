@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/model"
 )
@@ -11,11 +10,12 @@ import (
 // immediately update the drum row to show hits on every subdivision.
 func TestDrumRowLoopShorteningFillsSteps(t *testing.T) {
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(1024, 720)
-	g.drum.follow = false
+	g.drum.SetFollow(false)
 
-	g.drum.Length = 16
+	g.drum.SetLength(16)
 	g.drum.Offset = 0
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -44,23 +44,16 @@ func TestDrumRowLoopShorteningFillsSteps(t *testing.T) {
 
 	// Start playback long enough to record history for the alternating pattern.
 	g.drum.SetBPM(120)
-	g.drum.playPressed = true
-	until := time.Now().Add(120 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	advancePlaybackByAbs(g, g.grid.MaxDiv()*2)
 
 	// Live edit: insert a node at (1,0). Auto-stitch splits the edge so every
 	// subdivision now lands on a regular node.
 	_ = g.tryAddNode(1, 0, model.NodeTypeRegular)
 
 	// Allow the UI/game loop to process predictor rebuilds and refresh rows.
-	until = time.Now().Add(120 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	advancePlaybackByAbs(g, g.grid.MaxDiv())
 
 	base := 0
 	if len(g.nextBeatIdxs) > 0 {
@@ -87,11 +80,12 @@ func TestDrumRowLoopShorteningFillsSteps(t *testing.T) {
 // predictions may change.
 func TestDrumRowLoopShorteningPreservesHistory(t *testing.T) {
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
+	assertDefaultParityState(t)
 	g.Layout(1024, 720)
-	g.drum.follow = false
+	g.drum.SetFollow(false)
 
-	g.drum.Length = 16
+	g.drum.SetLength(16)
 	g.drum.Offset = 0
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -107,28 +101,27 @@ func TestDrumRowLoopShorteningPreservesHistory(t *testing.T) {
 	g.refreshDrumRow()
 
 	g.drum.SetBPM(120)
-	g.drum.playPressed = true
-	stop := time.Now().Add(200 * time.Millisecond)
-	for time.Now().Before(stop) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	advancePlaybackByAbs(g, g.grid.MaxDiv()*3)
 
 	if len(g.nextBeatIdxs) == 0 {
 		t.Fatal("missing nextBeatIdxs")
 	}
 	past := g.nextBeatIdxs[0]
 	before := append([]bool(nil), g.drum.Rows[0].Steps...)
+	if val, typ, kind, ok := g.timelineCommittedWithKind(0, 1); ok {
+		t.Logf("before commit abs=1 val=%v typ=%v kind=%v freeze=%v next=%v", val, typ, kind, g.frozenUpToByRow, g.nextBeatIdxs)
+	}
 
 	_ = g.tryAddNode(1, 0, model.NodeTypeRegular)
-	stop = time.Now().Add(120 * time.Millisecond)
-	for time.Now().Before(stop) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	advancePlaybackByAbs(g, g.grid.MaxDiv())
 
 	g.refreshDrumRow()
 	after := g.drum.Rows[0].Steps
+	if val, typ, kind, ok := g.timelineCommittedWithKind(0, 1); ok {
+		t.Logf("after commit abs=1 val=%v typ=%v kind=%v freeze=%v next=%v", val, typ, kind, g.frozenUpToByRow, g.nextBeatIdxs)
+	}
 	limit := minInt(len(before), len(after))
 	for j := 0; j < limit; j++ {
 		abs := g.drum.Offset + j

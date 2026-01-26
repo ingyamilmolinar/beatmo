@@ -18,3 +18,4 @@ const disableEdgeArrows = false
 
 // Desktop can render full visuals; keep simple draw off by default.
 const simpleDrawDefault = false
+const simpleDrawAutoDisableFramesDefault = 0

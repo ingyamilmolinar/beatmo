@@ -34,6 +34,11 @@ var (
 	colTimelineViewHi = color.RGBA{0, 200, 240, 255}
 	colTimelineCursor = color.RGBA{240, 240, 40, 255}
 	colTimelineBeat   = color.RGBA{100, 100, 100, 255}
+	colEQBg           = color.RGBA{15, 20, 26, 220}
+	colEQBar          = color.RGBA{40, 200, 220, 255}
+	colEQBarPeak      = color.RGBA{240, 120, 80, 255}
+	colWaveTrace      = color.RGBA{120, 220, 255, 255}
+	colWaveMid        = color.RGBA{90, 120, 140, 200}
 
 	NodeUI   = NodeStyle{Radius: 16, Fill: color.RGBA{80, 80, 80, 255}, Border: color.RGBA{220, 220, 220, 255}}
 	SignalUI = SignalStyle{Radius: 6, Color: color.RGBA{0, 160, 200, 255}}
@@ -53,6 +58,9 @@ var (
 	DisabledButtonStyle = ButtonStyle{Fill: color.RGBA{70, 70, 70, 255}, Border: colButtonBorder}
 	// Missing instrument row label style
 	MissingInstStyle = ButtonStyle{Fill: colError, Border: colButtonBorder}
+	// EQ band mute button style (red when active, gray when inactive)
+	EQMuteButtonStyle       = ButtonStyle{Fill: color.RGBA{80, 80, 80, 255}, Border: colButtonBorder}
+	EQMuteButtonActiveStyle = ButtonStyle{Fill: color.RGBA{180, 50, 50, 255}, Border: colButtonBorder}
 
 	DrumCellUI = DrumCellStyle{
 		On:        colStep,

@@ -4,18 +4,18 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
 const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
-if (!fs.existsSync(chromiumPath)) {
-  spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
+if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
 const port = 8210 + Math.floor(Math.random() * 1000);
 const goDir = path.resolve(jsDir, "../go");
-const GO = process.env.GO || "go";
+const GO = resolveGoBinary();
 const build = spawnSync(
   GO,
   ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
@@ -23,11 +23,9 @@ const build = spawnSync(
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
 
-const server = http.createServer((req, res) => {
-  const file = req.url === "/" ? "/play_ui.html" : req.url;
+const server = http.createServer((req, res) => { const file = req.url === "/" ? "/play_ui.html" : req.url;
   const fp = path.join(jsDir, file.replace(/^\//, ""));
-  fs.readFile(fp, (err, data) => {
-    if (err) { res.writeHead(404); res.end(); return; }
+  fs.readFile(fp, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
     let ct = "text/plain";
     if (fp.endsWith(".html")) ct = "text/html";
     else if (fp.endsWith(".js")) ct = "application/javascript";
@@ -45,6 +43,7 @@ page.on('console', (msg) => { try { console.log('[PAGE]', msg.type(), msg.text()
 await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof ensureDefaultPath === 'function');
 await page.evaluate(() => ensureDefaultPath());
+await assertSimpleDrawMode(page, true, "zoom anchor");
 
 await page.waitForFunction(() => typeof nodeRect === 'function');
 const r0 = await page.evaluate(() => nodeRect(0,0));
@@ -60,11 +59,9 @@ const r1 = await page.evaluate(() => nodeRect(0,0));
 const nx = Math.floor(r1.x + r1.w/2);
 const ny = Math.floor(r1.y + r1.h/2);
 const tol = 2;
-if (Math.abs(nx - cx) > tol || Math.abs(ny - cy) > tol) {
-  throw new Error(`anchored zoom failed: node moved to (${nx},${ny}) want~=(${cx},${cy})`);
+if (Math.abs(nx - cx) > tol || Math.abs(ny - cy) > tol) { throw new Error(`anchored zoom failed: node moved to (${nx},${ny}) want~=(${cx},${cy})`);
 }
 
 await browser.close();
 server.close();
 console.log('anchored zoom verified');
-

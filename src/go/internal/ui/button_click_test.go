@@ -12,7 +12,9 @@ import (
 // TestControlButtonsClickable ensures that top-panel buttons respond to clicks
 // when unobstructed.
 func TestControlButtonsClickable(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
@@ -31,7 +33,9 @@ func TestControlButtonsClickable(t *testing.T) {
 // TestButtonsDoNotOverlap verifies that control-panel buttons have disjoint
 // rectangles so clicks are unambiguous.
 func TestButtonsDoNotOverlap(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
@@ -49,6 +53,7 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 // TestButtonHoldRepeat verifies that holding a repeat-enabled button triggers
 // repeats after a 1s delay and then every ~100ms with acceleration.
 func TestButtonHoldRepeat(t *testing.T) {
+	assertDefaultParityState(t)
 	b := NewButton("+", ButtonStyle{}, nil)
 	b.Repeat = true
 	b.SetRect(image.Rect(0, 0, 10, 10))
@@ -74,7 +79,9 @@ func TestButtonHoldRepeat(t *testing.T) {
 }
 
 func TestBPMHoldIncrements(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	dv := g.drum
 	dv.recalcButtons()
@@ -83,6 +90,7 @@ func TestBPMHoldIncrements(t *testing.T) {
 	pressed := true
 	restore := SetInputForTest(func() (int, int) { return x, y }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
 	for i := 0; i < 100; i++ {
+		t.Cleanup(restore)
 		dv.Update()
 	}
 	pressed = false

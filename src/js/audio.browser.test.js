@@ -4,6 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { resolveGoBinary } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -12,7 +13,7 @@ const goDir = path.resolve(__dirname, "../go");
 const AUDIO_START_DELAY_THRESHOLD_MS = 250;
 
 // Build the tiny harness that invokes audio.Play("snare").
-const GO = process.env.GO || "go";
+const GO = resolveGoBinary();
 const build = spawnSync(
   GO,
   [
@@ -21,26 +22,21 @@ const build = spawnSync(
     path.join(jsDir, "playtest.wasm"),
     "./internal/audio/playtest",
   ],
-  {
-    cwd: goDir,
+  { cwd: goDir,
     env: { ...process.env, GOOS: "js", GOARCH: "wasm" },
     stdio: "inherit",
   },
 );
-if (build.status !== 0) {
-  throw new Error("go build failed");
+if (build.status !== 0) { throw new Error("go build failed");
 }
 
 // Ensure Playwright's Chromium is installed only if missing to speed up runs.
 const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
-if (!fs.existsSync(chromiumPath)) {
-  spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
+if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
 const port = 8123 + Math.floor(Math.random() * 1000);
-const server = http.createServer((req, res) => {
-  if (req.url === "/play.html") {
-    const html = `<!DOCTYPE html><html><body>
+const server = http.createServer((req, res) => { if (req.url === "/play.html") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
 <script src="wasm_exec.js"></script>
 <script>
@@ -53,9 +49,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   const filePath = path.join(jsDir, req.url.replace(/^\//, ""));
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.writeHead(404);
+  fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404);
       res.end();
       return;
     }
@@ -68,38 +62,29 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(port, r));
 
-const browser = await chromium.launch({
-  args: ["--autoplay-policy=no-user-gesture-required"],
+const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"],
 });
 const page = await browser.newPage();
 
 // Hook into Web Audio to capture raw samples from the ScriptProcessorNode.
-await page.addInitScript(() => {
-  const RealAC = window.AudioContext || window.webkitAudioContext;
+await page.addInitScript(() => { const RealAC = window.AudioContext || window.webkitAudioContext;
   // SAMPLE_TARGET determines how many audio samples to collect before
   // ending the test. 40000 samples at a 44.1kHz sample rate is ~0.9s of
   // audio, sufficient to capture playback and analyze output.
   const SAMPLE_TARGET = 40000;
-  class TestAC extends RealAC {
-    constructor(opts) {
-      super(opts);
+  class TestAC extends RealAC { constructor(opts) { super(opts);
       const dest = super.destination;
       const sp = this.createScriptProcessor(256, 1, 1);
       window.__samples = [];
       window.__firstSampleTime = undefined;
-      sp.addEventListener("audioprocess", (e) => {
-        const data = e.inputBuffer.getChannelData(0);
-        if (window.__firstSampleTime === undefined) {
-          for (let i = 0; i < data.length; i++) {
-            if (data[i] !== 0) {
-              window.__firstSampleTime = performance.now();
+      sp.addEventListener("audioprocess", (e) => { const data = e.inputBuffer.getChannelData(0);
+        if (window.__firstSampleTime === undefined) { for (let i = 0; i < data.length; i++) { if (data[i] !== 0) { window.__firstSampleTime = performance.now();
               break;
             }
           }
         }
         window.__samples.push(...data);
-        if (window.__samples.length >= SAMPLE_TARGET) {
-          window.__done = true;
+        if (window.__samples.length >= SAMPLE_TARGET) { window.__done = true;
         }
       });
       sp.connect(dest);
@@ -125,26 +110,22 @@ server.close();
 const sr = 44100;
 const first = samples.findIndex((v) => v !== 0);
 const second = samples.findIndex((v, i) => i >= sr / 4 && v !== 0);
-if (first < 0 || second < 0) {
-  throw new Error("missing audio data for multiple beats");
+if (first < 0 || second < 0) { throw new Error("missing audio data for multiple beats");
 }
 
 const delay = firstSampleTime - playTime;
-if (delay > AUDIO_START_DELAY_THRESHOLD_MS) {
-  throw new Error(
+if (delay > AUDIO_START_DELAY_THRESHOLD_MS) { throw new Error(
     `audio start delay ${delay}ms exceeds ${AUDIO_START_DELAY_THRESHOLD_MS}ms`,
   );
 }
 
 // Compare instrument waveforms by correlation instead of amplitude.
 const segLen = 4096;
-const seg = (off) => {
-  const a = new Float32Array(segLen);
+const seg = (off) => { const a = new Float32Array(segLen);
   for (let i = 0; i < segLen; i++) a[i] = samples[off + i] || 0;
   return a;
 };
-const znorm = (a) => {
-  let mean = 0;
+const znorm = (a) => { let mean = 0;
   for (let i = 0; i < a.length; i++) mean += a[i];
   mean /= a.length;
   let norm2 = 0;
@@ -154,16 +135,14 @@ const znorm = (a) => {
   for (let i = 0; i < a.length; i++) out[i] /= n;
   return out;
 };
-const corr = (x, y) => {
-  let d = 0;
+const corr = (x, y) => { let d = 0;
   for (let i = 0; i < x.length; i++) d += x[i] * y[i];
   return Math.abs(d / x.length);
 };
 const sSeg = znorm(seg(Math.max(0, first + 512)));
 const kSeg = znorm(seg(Math.max(0, second + 512)));
 const similarity = corr(sSeg, kSeg);
-if (!(similarity < 0.9)) {
-  throw new Error(`instrument waveforms too similar: corr=${similarity.toFixed(4)}`);
+if (!(similarity < 0.9)) { throw new Error(`instrument waveforms too similar: corr=${similarity.toFixed(4)}`);
 }
 
 // Print a short slice around the first non-zero to avoid confusion when the

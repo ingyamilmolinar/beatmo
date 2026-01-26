@@ -7,21 +7,96 @@ import (
 	"image/color"
 )
 
-type Image struct{ w, h int }
-
-func NewImage(w, h int) *Image { return &Image{w: w, h: h} }
-func NewImageFromImage(img image.Image) *Image {
-	b := img.Bounds()
-	return &Image{w: b.Dx(), h: b.Dy()}
+type Image struct {
+	w, h int
+	pix  []color.RGBA
 }
 
-func (i *Image) DrawImage(src *Image, opts *DrawImageOptions) {}
-func (i *Image) Fill(c color.Color)                           {}
-func (i *Image) Bounds() image.Rectangle                      { return image.Rect(0, 0, i.w, i.h) }
-func (i *Image) SubImage(r image.Rectangle) image.Image       { return &Image{w: r.Dx(), h: r.Dy()} }
-func (i *Image) Size() (int, int)                             { return i.w, i.h }
-func (i *Image) ColorModel() color.Model                      { return color.RGBAModel }
-func (i *Image) At(x, y int) color.Color                      { return color.RGBA{} }
+func NewImage(w, h int) *Image {
+	return &Image{w: w, h: h, pix: make([]color.RGBA, w*h)}
+}
+func NewImageFromImage(img image.Image) *Image {
+	b := img.Bounds()
+	out := NewImage(b.Dx(), b.Dy())
+	for y := 0; y < b.Dy(); y++ {
+		for x := 0; x < b.Dx(); x++ {
+			out.pix[y*out.w+x] = color.RGBAModel.Convert(img.At(b.Min.X+x, b.Min.Y+y)).(color.RGBA)
+		}
+	}
+	return out
+}
+
+func (i *Image) DrawImage(src *Image, opts *DrawImageOptions) {
+	if i == nil || src == nil {
+		return
+	}
+	if opts == nil {
+		opts = &DrawImageOptions{}
+	}
+	// Basic scale + translate handling; rotation is ignored for test stubs.
+	scaleX, scaleY := opts.GeoM.scaleX, opts.GeoM.scaleY
+	if scaleX == 0 {
+		scaleX = 1
+	}
+	if scaleY == 0 {
+		scaleY = 1
+	}
+	w := int(float64(src.w) * scaleX)
+	h := int(float64(src.h) * scaleY)
+	if w <= 0 || h <= 0 {
+		return
+	}
+	tx := int(opts.GeoM.translateX)
+	ty := int(opts.GeoM.translateY)
+	// Copy the first pixel of src (common case for 1x1 cached pixels).
+	var c color.RGBA
+	if len(src.pix) > 0 {
+		c = src.pix[0]
+	}
+	for y := 0; y < h; y++ {
+		dstY := ty + y
+		if dstY < 0 || dstY >= i.h {
+			continue
+		}
+		for x := 0; x < w; x++ {
+			dstX := tx + x
+			if dstX < 0 || dstX >= i.w {
+				continue
+			}
+			i.pix[dstY*i.w+dstX] = c
+		}
+	}
+}
+func (i *Image) Fill(c color.Color) {
+	if i == nil {
+		return
+	}
+	rgba := color.RGBAModel.Convert(c).(color.RGBA)
+	for idx := range i.pix {
+		i.pix[idx] = rgba
+	}
+}
+
+func (i *Image) Clear() {
+	if i == nil {
+		return
+	}
+	for idx := range i.pix {
+		i.pix[idx] = color.RGBA{}
+	}
+}
+func (i *Image) Bounds() image.Rectangle { return image.Rect(0, 0, i.w, i.h) }
+func (i *Image) SubImage(r image.Rectangle) image.Image {
+	return &Image{w: r.Dx(), h: r.Dy(), pix: make([]color.RGBA, r.Dx()*r.Dy())}
+}
+func (i *Image) Size() (int, int)        { return i.w, i.h }
+func (i *Image) ColorModel() color.Model { return color.RGBAModel }
+func (i *Image) At(x, y int) color.Color {
+	if x < 0 || y < 0 || x >= i.w || y >= i.h {
+		return color.RGBA{}
+	}
+	return i.pix[y*i.w+x]
+}
 
 var (
 	MockCursorX, MockCursorY int

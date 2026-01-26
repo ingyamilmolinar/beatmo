@@ -2,11 +2,13 @@ package ui
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 )
 
@@ -15,14 +17,16 @@ import (
 // multiple zoom levels. It asserts alignment and prints detailed values to
 // help diagnose offsets when regressions occur.
 func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
-	// Enable node draw logs inside Game.Draw for verbose diagnostics.
-	os.Setenv("DEBUG_DRAW_NODES", "1")
-	logger := game_log.New(os.Stdout, game_log.LevelDebug)
+	out := io.Discard
+	if testing.Verbose() {
+		out = os.Stdout
+	}
+	logger := game_log.New(out, game_log.LevelDebug)
 
-	SetDefaultStartForTest(true)
-	defer SetDefaultStartForTest(false)
+	withDefaultStart(t, true)
 
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	screen := ebiten.NewImage(800, 600)
 
@@ -31,7 +35,7 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 		g.cam.OffsetX = offX
 		g.cam.OffsetY = offY
 		g.cam.Snap()
-		// Draw builds caches and emits DEBUG_DRAW_NODES logs.
+		// Draw builds caches at this camera state.
 		g.Draw(screen)
 		// Compute shared camera transforms used by DrawLineCam.
 		unitPx := g.grid.UnitPixels(g.cam.Scale)
@@ -40,7 +44,11 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 		maxDiv := g.grid.MaxDiv()
 		offXR := math.Round(g.cam.OffsetX)
 		offYR := math.Round(g.cam.OffsetY)
-		log := func(msg string, args ...any) { t.Logf(msg, args...) }
+		log := func(msg string, args ...any) {
+			if testing.Verbose() {
+				t.Logf(msg, args...)
+			}
+		}
 		log("CAM scale=%.4f off=(%.0f,%.0f) stepPx=%d maxDiv=%d", scale, offXR, offYR, stepPx, maxDiv)
 		// Inspect all nodes
 		for _, n := range g.nodes {
@@ -50,8 +58,10 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 			expY := offYR + float64(topOffset) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
 			// Project via DrawLineCam math as a cross-check
 			ex, ey := n.X*camScale+offXR, n.Y*camScale+offYR+float64(topOffset)
-			fmt.Fprintf(os.Stdout, "[GLOBAL] node id=%d grid=(%d,%d) rect=(%.2f,%.2f)-(%.2f,%.2f) center=(%.2f,%.2f) expGrid=(%.0f,%.0f) proj=(%.2f,%.2f)\n",
-				n.ID, n.I, n.J, x1, y1, x2, y2, cx, cy, expX, expY, ex, ey)
+			if testing.Verbose() {
+				fmt.Fprintf(out, "[GLOBAL] node id=%d grid=(%d,%d) rect=(%.2f,%.2f)-(%.2f,%.2f) center=(%.2f,%.2f) expGrid=(%.0f,%.0f) proj=(%.2f,%.2f)\n",
+					n.ID, n.I, n.J, x1, y1, x2, y2, cx, cy, expX, expY, ex, ey)
+			}
 			// Tight tolerance: everything should agree within ~1 px.
 			tol := 0.9
 			if math.Abs(cx-expX) > tol || math.Abs(cy-expY) > tol {
@@ -70,7 +80,9 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 			bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
 			ex0, ey0 := e.A.X*camScale+offXR, e.A.Y*camScale+offYR+float64(topOffset)
 			ex1, ey1 := e.B.X*camScale+offXR, e.B.Y*camScale+offYR+float64(topOffset)
-			fmt.Fprintf(os.Stdout, "[GLOBAL] edge A=%d B=%d projA=(%.2f,%.2f) nodeA=(%.2f,%.2f) projB=(%.2f,%.2f) nodeB=(%.2f,%.2f)\n", e.A.ID, e.B.ID, ex0, ey0, acx, acy, ex1, ey1, bcx, bcy)
+			if testing.Verbose() {
+				fmt.Fprintf(out, "[GLOBAL] edge A=%d B=%d projA=(%.2f,%.2f) nodeA=(%.2f,%.2f) projB=(%.2f,%.2f) nodeB=(%.2f,%.2f)\n", e.A.ID, e.B.ID, ex0, ey0, acx, acy, ex1, ey1, bcx, bcy)
+			}
 			tol := 0.9
 			if math.Abs(ex0-acx) > tol || math.Abs(ey0-acy) > tol {
 				t.Fatalf("edge start misaligned idA=%d proj(%.2f,%.2f) node(%.2f,%.2f)", e.A.ID, ex0, ey0, acx, acy)
@@ -89,25 +101,18 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 // TestGlobalCameraLogging_DemoWithPulse logs and checks a mid-edge pulse position
 // against DrawLineCam projection at various zoom levels, in addition to node/edge alignment.
 func TestGlobalCameraLogging_DemoWithPulse(t *testing.T) {
-	os.Setenv("DEBUG_DRAW_NODES", "1")
-	logger := game_log.New(os.Stdout, game_log.LevelDebug)
-
-	// Load embedded default demo
-	demoPath := "internal/assets/default_demo.json"
-	if _, err := os.Stat(demoPath); err != nil {
-		alt := "../assets/default_demo.json"
-		if _, err2 := os.Stat(alt); err2 == nil {
-			demoPath = alt
-		}
+	out := io.Discard
+	if testing.Verbose() {
+		out = os.Stdout
 	}
-	os.Setenv("TUNKUL_DEMO_CONFIG", demoPath)
+	logger := game_log.New(out, game_log.LevelDebug)
 
 	g := New(logger)
-	g.Layout(1280, 720)
-	g.buildDemo()
-	if !g.demoBuilt {
-		t.Fatalf("demo not built")
+	t.Cleanup(g.CloseForTest)
+	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+		t.Fatalf("import demo: %v", err)
 	}
+	g.Layout(1280, 720)
 
 	// Spawn a pulse on row 0 if available.
 	g.spawnPulseFromRow(0, 0)
@@ -134,7 +139,9 @@ func TestGlobalCameraLogging_DemoWithPulse(t *testing.T) {
 			x1, y1, x2, y2 := g.nodeScreenRect(n)
 			cx, cy := (x1+x2)*0.5, (y1+y2)*0.5
 			ex, ey := n.X*camScale+offXR, n.Y*camScale+offYR+float64(topOffset)
-			fmt.Fprintf(os.Stdout, "[GLOBAL] zoom=%.2f node0 center=(%.2f,%.2f) proj=(%.2f,%.2f)\n", s, cx, cy, ex, ey)
+			if testing.Verbose() {
+				fmt.Fprintf(out, "[GLOBAL] zoom=%.2f node0 center=(%.2f,%.2f) proj=(%.2f,%.2f)\n", s, cx, cy, ex, ey)
+			}
 			if math.Abs(ex-cx) > 0.9 || math.Abs(ey-cy) > 0.9 {
 				t.Fatalf("node/proj mismatch zoom=%.2f", s)
 			}
@@ -146,7 +153,9 @@ func TestGlobalCameraLogging_DemoWithPulse(t *testing.T) {
 			py := p.y1 + (p.y2-p.y1)*p.t
 			sx := px*camScale + offXR
 			sy := py*camScale + offYR + float64(topOffset)
-			fmt.Fprintf(os.Stdout, "[GLOBAL] zoom=%.2f pulse t=%.2f world=(%.2f,%.2f) screen=(%.2f,%.2f)\n", s, p.t, px, py, sx, sy)
+			if testing.Verbose() {
+				fmt.Fprintf(out, "[GLOBAL] zoom=%.2f pulse t=%.2f world=(%.2f,%.2f) screen=(%.2f,%.2f)\n", s, p.t, px, py, sx, sy)
+			}
 			// Just assert finite and within screen reasonably.
 			if math.IsNaN(sx) || math.IsNaN(sy) || math.IsInf(sx, 0) || math.IsInf(sy, 0) {
 				t.Fatalf("invalid pulse screen coords")

@@ -9,6 +9,7 @@ import (
 )
 
 func TestColorWheelEscCancels(t *testing.T) {
+	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
 	before := dv.colorKey(dv.Rows[0].Color)
@@ -27,6 +28,7 @@ func TestColorWheelEscCancels(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 640, 200 },
 	)
+	t.Cleanup(restore)
 	dv.Update()
 	restore()
 	if dv.colorMenuOpen {

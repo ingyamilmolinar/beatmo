@@ -11,7 +11,9 @@ import (
 // audible toggle where necessary. Switching back to Regular restores the rows
 // with previous values.
 func TestNodePopupHidesForSilentAndMute_ThenRestores(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Add a regular node and open its menu
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)

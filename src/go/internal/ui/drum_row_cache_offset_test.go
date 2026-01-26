@@ -11,8 +11,10 @@ import (
 // changes Offset mid-playback, the row cache is invalidated and rebuilt so the
 // visible window continues to update.
 func TestRowCacheRebuildOnOffsetChange(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	dst := ebiten.NewImage(800, 200)
 	// Build initial drum sprites

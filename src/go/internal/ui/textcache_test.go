@@ -3,6 +3,7 @@ package ui
 import "testing"
 
 func TestTextSpriteCaching(t *testing.T) {
+	assertDefaultParityState(t)
 	ClearTextCacheForTest()
 	a := TextSprite("Play")
 	b := TextSprite("Play")

@@ -10,7 +10,9 @@ import (
 // does not create an edge. In particular, releasing over an invisible pass-through
 // node should not create an edge either.
 func TestLinkDragIgnoresEmptyAndInvisibleTargets(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	// Build a horizontal edge with an invisible pass-through node at (1,0).

@@ -181,6 +181,31 @@ var drawPencilIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	}
 }
 
+var drawSaveIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	size := minI(r.Dx(), r.Dy())
+	pad := max1(size / 6)
+	body := image.Rect(r.Min.X+pad, r.Min.Y+pad, r.Max.X-pad, r.Max.Y-pad)
+	if body.Empty() {
+		return
+	}
+	drawRect(dst, body, col, false)
+	labelH := max1(body.Dy() / 4)
+	label := image.Rect(body.Min.X+1, body.Min.Y+1, body.Max.X-1, body.Min.Y+1+labelH)
+	if label.Dx() > 0 && label.Dy() > 0 {
+		drawRect(dst, label, col, true)
+	}
+	notchW := max1(body.Dx() / 4)
+	notchH := max1(body.Dy() / 4)
+	cx := (body.Min.X + body.Max.X) / 2
+	notch := image.Rect(cx-notchW/2, body.Max.Y-notchH-1, cx+notchW/2, body.Max.Y-1)
+	if notch.Dx() > 0 && notch.Dy() > 0 {
+		drawRect(dst, notch, col, true)
+	}
+}
+
 func minI(a, b int) int {
 	if a < b {
 		return a

@@ -8,6 +8,7 @@ import (
 )
 
 func TestDemoLoadsFromEnvConfig_WithInstruments(t *testing.T) {
+	assertDefaultParityState(t)
 	tmp, err := os.CreateTemp("", "tunkul-demo-*.json")
 	if err != nil {
 		t.Fatalf("tmp: %v", err)
@@ -25,10 +26,10 @@ func TestDemoLoadsFromEnvConfig_WithInstruments(t *testing.T) {
 	}
 	tmp.Close()
 
-	os.Setenv("TUNKUL_DEMO_CONFIG", tmp.Name())
-	defer os.Unsetenv("TUNKUL_DEMO_CONFIG")
+	t.Setenv("TUNKUL_DEMO_CONFIG", tmp.Name())
 
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	g.buildDemo()
 	if !g.demoBuilt {
@@ -50,6 +51,7 @@ func TestDemoLoadsFromEnvConfig_WithInstruments(t *testing.T) {
 }
 
 func TestDemoLoadsFromEnvConfig_NoInstruments_FallbackRowAndStart(t *testing.T) {
+	assertDefaultParityState(t)
 	tmp, err := os.CreateTemp("", "tunkul-demo-*.json")
 	if err != nil {
 		t.Fatalf("tmp: %v", err)
@@ -67,10 +69,10 @@ func TestDemoLoadsFromEnvConfig_NoInstruments_FallbackRowAndStart(t *testing.T) 
 	}
 	tmp.Close()
 
-	os.Setenv("TUNKUL_DEMO_CONFIG", tmp.Name())
-	defer os.Unsetenv("TUNKUL_DEMO_CONFIG")
+	t.Setenv("TUNKUL_DEMO_CONFIG", tmp.Name())
 
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	g.buildDemo()
 	if !g.demoBuilt {
@@ -88,6 +90,7 @@ func TestDemoLoadsFromEnvConfig_NoInstruments_FallbackRowAndStart(t *testing.T) 
 }
 
 func TestDemoLoadsFromEnvConfig_TildePath(t *testing.T) {
+	assertDefaultParityState(t)
 	// Create a temp HOME and write the file under it to exercise ~ expansion.
 	dir := t.TempDir()
 	tmp := dir + "/tunkul-demo.json"
@@ -100,14 +103,11 @@ func TestDemoLoadsFromEnvConfig_TildePath(t *testing.T) {
 	if err := os.WriteFile(tmp, []byte(json), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	prevHome := os.Getenv("HOME")
-	os.Setenv("HOME", dir)
-	defer os.Setenv("HOME", prevHome)
-
-	os.Setenv("TUNKUL_DEMO_CONFIG", "~/tunkul-demo.json")
-	defer os.Unsetenv("TUNKUL_DEMO_CONFIG")
+	t.Setenv("HOME", dir)
+	t.Setenv("TUNKUL_DEMO_CONFIG", "~/tunkul-demo.json")
 
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	g.buildDemo()
 	if !g.demoBuilt {

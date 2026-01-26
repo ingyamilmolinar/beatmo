@@ -11,7 +11,9 @@ import (
 // Ensure that when playback is active but a different circuit is greyed out (muted or
 // excluded by solo), we allow selecting a node from that circuit as a new origin.
 func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Circuit A (row 0): a0
@@ -34,8 +36,8 @@ func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
 	}
 
 	// Start playback and mute row 0 to grey it out
-	g.playing = true
-	g.drum.Rows[0].Muted = true
+	g.SetPlaying(true)
+	setRowMuted(t, g.drum, 0, true)
 
 	// Click node a0 (belongs to muted row 0). This should be allowed.
 	x1, y1, x2, y2 := g.nodeScreenRect(a0)
@@ -50,6 +52,7 @@ func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return g.winW, g.winH },
 	)
+	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
 	// release
@@ -61,6 +64,7 @@ func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return g.winW, g.winH },
 	)
+	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
 

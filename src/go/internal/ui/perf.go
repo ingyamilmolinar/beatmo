@@ -22,11 +22,13 @@ type PerfStats struct {
 	AudioQLatAvg float64 // average enqueue→dispatch latency in ms
 	AudioQLatMax float64 // max enqueue→dispatch latency in ms
 
-	AudioCallAvg float64 // average duration of audio.Play* call in ms
-	AudioCallMax float64 // max duration of audio.Play* call in ms
+	AudioCallAvg float64 // average per-event duration of audio.Play* dispatch in ms (batched calls amortized)
+	AudioCallMax float64 // max per-event duration of audio.Play* dispatch in ms
 
 	HeapAllocKB uint64 // current heap allocation in KB
+	HeapSysKB   uint64 // total heap obtained from OS in KB
 	HeapObjects uint64 // live heap objects
+	Goroutines  int    // number of live goroutines
 }
 
 type perfCounters struct {
@@ -52,6 +54,12 @@ type perfCounters struct {
 	drawMaxNS int64
 }
 
+const (
+	perfUpdateWarmupFrames = 3
+	perfDrawWarmupFrames   = 6
+	perfAudioWarmupCount   = 3
+)
+
 func (p *perfCounters) reset() {
 	atomic.StoreInt64(&p.frames, 0)
 	atomic.StoreInt64(&p.updSumNS, 0)
@@ -66,7 +74,14 @@ func (p *perfCounters) reset() {
 }
 
 func (p *perfCounters) onUpdate(d time.Duration) {
+	frames := atomic.LoadInt64(&p.frames)
+	if frames == 0 {
+		p.started = time.Now()
+	}
 	atomic.AddInt64(&p.frames, 1)
+	if frames < perfUpdateWarmupFrames {
+		return
+	}
 	atomic.AddInt64(&p.updSumNS, int64(d))
 	for {
 		max := atomic.LoadInt64(&p.updMaxNS)
@@ -80,6 +95,9 @@ func (p *perfCounters) onUpdate(d time.Duration) {
 }
 
 func (p *perfCounters) onDraw(d time.Duration) {
+	if atomic.LoadInt64(&p.frames) < perfDrawWarmupFrames {
+		return
+	}
 	atomic.AddInt64(&p.drawSumNS, int64(d))
 	for {
 		max := atomic.LoadInt64(&p.drawMaxNS)
@@ -95,7 +113,10 @@ func (p *perfCounters) onDraw(d time.Duration) {
 func (p *perfCounters) onAudioEnq() { atomic.AddInt64(&p.aEnq, 1) }
 
 func (p *perfCounters) onAudioDeq(qLatency, callDur time.Duration) {
-	atomic.AddInt64(&p.aDeq, 1)
+	deq := atomic.AddInt64(&p.aDeq, 1)
+	if deq <= perfAudioWarmupCount {
+		return
+	}
 	atomic.AddInt64(&p.aQLatSumNS, int64(qLatency))
 	for {
 		max := atomic.LoadInt64(&p.aQLatMaxNS)
@@ -136,6 +157,10 @@ func (p *perfCounters) snapshot() PerfStats {
 	aCallMax := atomic.LoadInt64(&p.aCallMaxNS)
 
 	fps := float64(frames) / elapsed
+	activeElapsed := float64(updSum+drwSum) / 1e9
+	if activeElapsed > 0 {
+		fps = float64(frames) / activeElapsed
+	}
 	updAvgMS := 0.0
 	if frames > 0 {
 		updAvgMS = (float64(updSum) / float64(frames)) / 1e6
@@ -171,11 +196,11 @@ func (p *perfCounters) snapshot() PerfStats {
 		AudioCallAvg: callAvgMS,
 		AudioCallMax: callMaxMS,
 	}
-	if runtime.GOARCH != "wasm" {
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		s.HeapAllocKB = ms.Alloc / 1024
-		s.HeapObjects = ms.HeapObjects
-	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	s.HeapAllocKB = ms.Alloc / 1024
+	s.HeapSysKB = ms.HeapSys / 1024
+	s.HeapObjects = ms.HeapObjects
+	s.Goroutines = runtime.NumGoroutine()
 	return s
 }

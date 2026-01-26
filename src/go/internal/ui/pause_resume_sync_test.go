@@ -2,7 +2,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/tunkul/core/model"
@@ -11,8 +10,9 @@ import (
 // Verifies that pausing and resuming resumes from the exact position and does
 // not jump forward/backward.
 func TestPauseResumeKeepsPosition(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	w, h := 640, 480
 	g.Layout(w, h)
 	restore := SetInputForTest(
@@ -33,48 +33,34 @@ func TestPauseResumeKeepsPosition(t *testing.T) {
 	g.updateBeatInfos()
 
 	g.drum.SetBPM(120)
-	// Apply BPM
-	until := time.Now().Add(12 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	g.SetAppliedBPMForTest(120)
 
 	// Start playback
-	g.drum.playPressed = true
-	// Let it advance for a bit
-	until = time.Now().Add(24 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	// Advance to a deterministic subdivision.
+	setPlayStartForAbs(g, g.grid.MaxDiv()+2)
+	_ = g.Update()
 	// Pause
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
 	paused := g.elapsedBeats
 	// While paused, counters freeze
-	until = time.Now().Add(12 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	advanceFrames(g, 3)
 	if g.elapsedBeats != paused {
 		t.Fatalf("counters advanced while paused: %d -> %d", paused, g.elapsedBeats)
 	}
 
 	// Resume
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
 	// Immediately after resume, position should be identical
 	if g.elapsedBeats != paused {
 		t.Fatalf("resume jumped: paused=%d now=%d", paused, g.elapsedBeats)
 	}
-	// After some time, it should advance from the paused position
-	until = time.Now().Add(24 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	// After advancing the timebase, it should advance from the paused position
+	setPlayStartForAbs(g, paused+2)
+	_ = g.Update()
 	if g.elapsedBeats <= paused {
 		t.Fatalf("did not advance after resume: %d -> %d", paused, g.elapsedBeats)
 	}
@@ -82,8 +68,9 @@ func TestPauseResumeKeepsPosition(t *testing.T) {
 
 // Verifies that resuming does not cause a burst of catch-up audio events.
 func TestPauseResumeNoBurstAudio(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
-	g.SetUseSequencerForTest(true)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Tight path with frequent triggers: nodes 0..4 one unit apart, loop back.
 	for i := 0; i < 5; i++ {
@@ -97,46 +84,53 @@ func TestPauseResumeNoBurstAudio(t *testing.T) {
 	}
 	g.updateBeatInfos()
 	g.drum.SetBPM(180)
-	// Apply BPM
-	until := time.Now().Add(30 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(5 * time.Millisecond)
-	}
+	g.SetAppliedBPMForTest(180)
 
 	// Capture plays
 	plays := make(chan struct{}, 1024)
 	g.SetPlayFunc(func(string, float64, ...float64) { plays <- struct{}{} })
 
-	// Start and run briefly
-	g.drum.playPressed = true
-	until = time.Now().Add(60 * time.Millisecond)
-	for time.Now().Before(until) {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
-	}
+	// Start and advance to a deterministic point.
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	setPlayStartForAbs(g, g.grid.MaxDiv()+4)
+	_ = g.Update()
 
 	// Pause and drain
-	g.drum.playPressed = true
+	pressPlay(t, g.drum)
 	_ = g.Update()
 	for len(plays) > 0 {
 		<-plays
 	}
+	paused := g.elapsedBeats
+
+	// Simulate a backlog before resume; resume should clamp counters.
+	if len(g.seqNextIdxs) != len(g.drum.Rows) {
+		g.seqNextIdxs = make([]int, len(g.drum.Rows))
+	}
+	if len(g.nextBeatIdxs) != len(g.drum.Rows) {
+		g.nextBeatIdxs = make([]int, len(g.drum.Rows))
+	}
+	for i := range g.seqNextIdxs {
+		g.seqNextIdxs[i] = 0
+		g.nextBeatIdxs[i] = paused
+	}
 
 	// Resume and observe a short window for bursts
-	g.drum.playPressed = true
-	start := time.Now()
-	for time.Since(start) < 20*time.Millisecond {
-		_ = g.Update()
-		time.Sleep(2 * time.Millisecond)
+	pressPlay(t, g.drum)
+	_ = g.Update()
+	setPlayStartForAbs(g, paused)
+	g.scheduleHook = func(row, idx int) {
+		if row == 0 {
+			plays <- struct{}{}
+		}
 	}
-	// Expected events in 20ms ≈ div * bpm/60 * window; allow small tolerance.
-	div := g.grid.MaxDiv()
-	if div <= 0 {
-		div = 1
+	g.seqScheduleTime()
+	g.scheduleHook = nil
+	if len(g.seqNextIdxs) > 0 && g.seqNextIdxs[0] < paused {
+		t.Fatalf("resume did not clamp seqNextIdxs: %v (paused=%d)", g.seqNextIdxs, paused)
 	}
-	expected := int(float64(div) * float64(g.bpm) / 60.0 * 0.02)
-	if len(plays) > expected+1 {
-		t.Fatalf("burst on resume: %d events in 20ms (expected ~%d)", len(plays), expected)
+	if len(plays) != 0 {
+		t.Fatalf("burst on resume: scheduled %d events immediately", len(plays))
 	}
 }

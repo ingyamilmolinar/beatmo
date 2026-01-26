@@ -68,6 +68,7 @@ func writeTestWAV(path string) error {
 }
 
 func TestRegisterWAVPlaysSample(t *testing.T) {
+	withDefaultAudio(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.wav")
 	if err := writeTestWAV(path); err != nil {

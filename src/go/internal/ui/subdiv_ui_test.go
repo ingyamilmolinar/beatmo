@@ -1,20 +1,24 @@
 package ui
 
 import (
+	"image"
+	"strconv"
+	"testing"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
-	"image"
-	"testing"
 )
 
 // Ensure subdiv button exists, opens a dropdown, and selection updates text.
 func TestDrumViewSubdivDropdownOpensAndSelects(t *testing.T) {
+	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.recalcButtons()
 	center := dv.subdivBtn.Rect()
 	cx, cy := (center.Min.X+center.Max.X)/2, (center.Min.Y+center.Max.Y)/2
 	// click to open
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
+	t.Cleanup(restore)
 	dv.Update()
 	restore()
 	if !dv.subdivMenuOpen {
@@ -23,23 +27,27 @@ func TestDrumViewSubdivDropdownOpensAndSelects(t *testing.T) {
 	if len(dv.subdivMenuBtns) == 0 {
 		t.Fatalf("no subdiv menu items")
 	}
+	selectedText := dv.subdivMenuBtns[0].Text
 	// click first item
 	r := dv.subdivMenuBtns[0].Rect()
 	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	restore = SetInputForTest(func() (int, int) { return rx, ry }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
+	t.Cleanup(restore)
 	dv.Update()
 	restore()
 	if dv.subdivMenuOpen {
 		t.Fatalf("subdiv menu did not close after selection")
 	}
-	if dv.subdivBtn.Text == "" {
-		t.Fatalf("subdiv button text not updated")
+	if dv.subdivBtn.Text != selectedText {
+		t.Fatalf("subdiv button text %q want %q", dv.subdivBtn.Text, selectedText)
 	}
 }
 
 // Game wiring: selecting subdiv value applies to grid via SetSubdivisions when stopped.
 func TestGameSubdivDropdownAppliesGrid(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(game_log.New(nil, game_log.LevelError))
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	dv := g.drum
 	dv.recalcButtons()
@@ -47,31 +55,40 @@ func TestGameSubdivDropdownAppliesGrid(t *testing.T) {
 	c := dv.subdivBtn.Rect()
 	cx, cy := (c.Min.X+c.Max.X)/2, (c.Min.Y+c.Max.Y)/2
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
 	if !dv.subdivMenuOpen {
 		t.Fatalf("menu did not open")
 	}
-	// pick value 8 if available
+	// pick any value different from the current grid maxdiv
+	current := g.grid.MaxDiv()
 	var target *Button
+	var targetVal int
 	for _, b := range dv.subdivMenuBtns {
-		if b.Text == "8" {
+		v, err := strconv.Atoi(b.Text)
+		if err != nil {
+			continue
+		}
+		if v != current {
 			target = b
+			targetVal = v
 			break
 		}
 	}
 	if target == nil {
-		t.Skip("no 8 option; environment dependent")
+		t.Fatalf("no alternate subdiv option found; current=%d", current)
 	}
 	r := target.Rect()
 	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	restore = SetInputForTest(func() (int, int) { return rx, ry }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
-	if g.grid.MaxDiv() != 8 {
-		t.Fatalf("grid maxdiv=%d want 8", g.grid.MaxDiv())
+	if g.grid.MaxDiv() != targetVal {
+		t.Fatalf("grid maxdiv=%d want %d", g.grid.MaxDiv(), targetVal)
 	}
-	if g.drum.timelineUnitsPerBeat != 8 {
-		t.Fatalf("timelineUnits=%d want 8", g.drum.timelineUnitsPerBeat)
+	if g.drum.timelineUnitsPerBeat != targetVal {
+		t.Fatalf("timelineUnits=%d want %d", g.drum.timelineUnitsPerBeat, targetVal)
 	}
 }

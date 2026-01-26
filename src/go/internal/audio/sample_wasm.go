@@ -17,6 +17,11 @@ func RegisterWAV(id, path string) error {
 	return nil
 }
 
+// RegisterAudio mirrors RegisterWAV for API parity; decoding is delegated to JS.
+func RegisterAudio(id, path string) error {
+	return RegisterWAV(id, path)
+}
+
 // SelectWAV triggers a browser file picker and returns the chosen file as an object URL.
 func SelectWAV() (string, error) {
 	doc := js.Global().Get("document")

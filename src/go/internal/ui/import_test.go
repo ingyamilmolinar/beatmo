@@ -6,7 +6,9 @@ import (
 )
 
 func TestImportScalesSubdivisionsAndKeepsOrthogonality(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Make current grid use 16 subdivisions per beat instead of default 32.
 	g.grid.SetSubs([]Subdivision{{Div: 1}, {Div: 2}, {Div: 4}, {Div: 8}, {Div: 16}})

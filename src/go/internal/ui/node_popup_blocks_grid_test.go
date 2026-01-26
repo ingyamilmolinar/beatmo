@@ -8,7 +8,9 @@ import (
 
 // Clicking inside the popup panel (not on a button) must not create grid nodes.
 func TestNodePopupBlocksGridClicks(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
@@ -44,7 +46,9 @@ func TestNodePopupBlocksGridClicks(t *testing.T) {
 
 // Clicking logic +/- must adjust value and not create grid nodes.
 func TestNodePopupButtonsClickableNoGrid(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {

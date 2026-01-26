@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"os"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -11,8 +10,10 @@ import (
 // TestGridTileCacheRebuildOnScaleChange verifies the grid tile is cached
 // across pans but rebuilt when scale changes.
 func TestGridTileCacheRebuildOnScaleChange(t *testing.T) {
-	logger := game_log.New(os.Stdout, game_log.LevelError)
+	assertDefaultParityState(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 	// First draw builds the tile.
 	img := ebiten.NewImage(800, g.split.Y)

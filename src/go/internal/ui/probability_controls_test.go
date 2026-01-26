@@ -1,14 +1,16 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
-	"time"
+
+	"github.com/ingyamilmolinar/tunkul/core/model"
 )
 
 // Ensure Probability logic +/- buttons are clickable and adjust P within [0,1].
 func TestProbabilityControlsAdjustP(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	// Single node and open its menu
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -46,7 +48,6 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
-	time.Sleep(1 * time.Millisecond)
 	after := 0.0
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		after = mn.Params.LogicP
@@ -62,7 +63,6 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
-	time.Sleep(1 * time.Millisecond)
 	after2 := 0.0
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		after2 = mn.Params.LogicP

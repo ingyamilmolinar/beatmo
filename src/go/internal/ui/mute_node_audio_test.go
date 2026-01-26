@@ -8,8 +8,32 @@ import (
 	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
 
+func scheduleAbsForMuteTest(g *Game, abs int) {
+	// Ensure per-row counters exist when tests drive scheduling directly.
+	if g != nil && g.drum != nil {
+		if len(g.seqNextIdxs) != len(g.drum.Rows) {
+			g.seqNextIdxs = make([]int, len(g.drum.Rows))
+		}
+		if len(g.nextBeatIdxs) != len(g.drum.Rows) {
+			g.nextBeatIdxs = make([]int, len(g.drum.Rows))
+		}
+	}
+	setPlayStartForAbs(g, abs)
+	g.seqScheduleTime()
+	for {
+		select {
+		case ev := <-g.hlCh:
+			g.applySequencerHighlight(ev.row, ev.idx, ev.info)
+		default:
+			return
+		}
+	}
+}
+
 func TestMuteNodeStopsAudioWithoutGating(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -41,7 +65,7 @@ func TestMuteNodeStopsAudioWithoutGating(t *testing.T) {
 		t.Fatalf("mute index not found")
 	}
 
-	g.playing = true
+	g.SetPlaying(true)
 	plays := 0
 	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
 
@@ -54,12 +78,12 @@ func TestMuteNodeStopsAudioWithoutGating(t *testing.T) {
 	})
 	defer audio.SetStopHook(nil)
 
-	g.seqScheduleBeat()
+	scheduleAbsForMuteTest(g, 0)
 	if plays != 1 || stops != 0 {
 		t.Fatalf("after regular beat: plays=%d stops=%d", plays, stops)
 	}
 
-	g.seqScheduleBeat()
+	scheduleAbsForMuteTest(g, 1)
 	if stops != 1 {
 		t.Fatalf("mute beat did not stop audio: stops=%d", stops)
 	}
@@ -68,7 +92,7 @@ func TestMuteNodeStopsAudioWithoutGating(t *testing.T) {
 	}
 
 	// Next beat should resume playback immediately (no gate hold).
-	g.seqScheduleBeat()
+	scheduleAbsForMuteTest(g, 2)
 	if plays != 2 {
 		t.Fatalf("tail beat should play after mute: plays=%d", plays)
 	}
@@ -77,25 +101,16 @@ func TestMuteNodeStopsAudioWithoutGating(t *testing.T) {
 		t.Fatalf("unexpected mute gate extension: %v", g.muteUntilByRow)
 	}
 
-	g.ensurePredictions(muteIdx + 2)
-	if g.engine != nil && g.engine.Predictor != nil {
-		if !g.engine.Predictor.AudibleAt(0, muteIdx+1) {
-			t.Fatalf("predictor muted following beat")
-		}
-	} else {
-		if row := 0; row < len(g.predAudibleByRow) && muteIdx+1 < len(g.predAudibleByRow[row]) {
-			if !g.predAudibleByRow[row][muteIdx+1] {
-				t.Fatalf("legacy predictions muted following beat")
-			}
-		}
+	g.engine.Predictor.Ensure(muteIdx + 2)
+	if !g.engine.Predictor.AudibleAt(0, muteIdx+1) {
+		t.Fatalf("predictor muted following beat")
 	}
-
-	g.playing = false
-	g.engine.Stop()
 }
 
 func TestMuteNodeHighlightRespectsLogic(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -119,7 +134,7 @@ func TestMuteNodeHighlightRespectsLogic(t *testing.T) {
 	}
 	g.updateBeatInfos()
 
-	g.playing = true
+	g.SetPlaying(true)
 	g.SetPlayFunc(func(string, float64, ...float64) {})
 
 	muteIdx := -1
@@ -134,22 +149,12 @@ func TestMuteNodeHighlightRespectsLogic(t *testing.T) {
 	}
 
 	states := make([]bool, 0, 4)
-	if len(g.seqNextIdxs) == 0 {
-		g.seqNextIdxs = make([]int, len(g.drum.Rows))
-	}
-	steps := len(g.beatInfosByRow[0]) * 6
-	for step := 0; step < steps && len(states) < 4; step++ {
-		idx := g.seqNextIdxs[0]
-		info := g.beatInfoAtRow(0, idx)
-		g.seqScheduleBeat()
-		select {
-		case ev := <-g.hlCh:
-			beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
-			g.highlightBeat(ev.row, ev.idx, ev.info, beatDuration)
-		default:
-		}
+	maxSteps := len(g.beatInfosByRow[0])*16 + 32
+	for abs := 0; abs < maxSteps && len(states) < 4; abs++ {
+		info := g.beatInfoAtRow(0, abs)
+		scheduleAbsForMuteTest(g, abs)
 		if info.NodeID == mute.ID {
-			key := makeBeatKey(0, idx)
+			key := makeBeatKey(0, abs)
 			_, highlighted := g.highlightedBeats[key]
 			states = append(states, highlighted)
 			delete(g.highlightedBeats, key)
@@ -164,12 +169,12 @@ func TestMuteNodeHighlightRespectsLogic(t *testing.T) {
 			t.Fatalf("mute highlight pattern mismatch got=%v want=%v", states, expected)
 		}
 	}
-	g.playing = false
-	g.engine.Stop()
 }
 
 func TestMuteNodeLogicEveryNTriggers(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -196,7 +201,7 @@ func TestMuteNodeLogicEveryNTriggers(t *testing.T) {
 		t.Fatalf("beat infos not generated: %+v", g.beatInfosByRow)
 	}
 
-	g.playing = true
+	g.SetPlaying(true)
 	plays := 0
 	g.SetPlayFunc(func(string, float64, ...float64) { plays++ })
 
@@ -219,31 +224,22 @@ func TestMuteNodeLogicEveryNTriggers(t *testing.T) {
 	}
 
 	muteTriggers := make([]bool, 0, 4)
-	steps := cycleLen * 6
-	for step := 0; step < steps && len(muteTriggers) < 4; step++ {
-		idx := g.seqNextIdxs[0]
-		info := g.beatInfoAtRow(0, idx)
-		g.seqScheduleBeat()
-		select {
-		case ev := <-g.hlCh:
-			beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
-			g.highlightBeat(ev.row, ev.idx, ev.info, beatDuration)
-		default:
-		}
+	maxSteps := cycleLen*16 + 32
+	for abs := 0; abs < maxSteps && len(muteTriggers) < 4; abs++ {
+		info := g.beatInfoAtRow(0, abs)
+		scheduleAbsForMuteTest(g, abs)
 		if info.NodeID == mute.ID {
-			state := false
-			if m, ok := g.lastTriggeredByRow[0]; ok {
-				state = m[mute.ID]
-			}
+			state, _ := g.lastTriggeredForTest(0, mute.ID)
 			muteTriggers = append(muteTriggers, state)
-			key := makeBeatKey(0, idx)
+			key := makeBeatKey(0, abs)
 			_, highlighted := g.highlightedBeats[key]
 			if state && !highlighted {
-				t.Fatalf("mute should highlight when triggered at idx %d", idx)
+				t.Fatalf("mute should highlight when triggered at idx %d", abs)
 			}
 			if !state && highlighted {
-				t.Fatalf("mute highlight persisted when logic disabled at idx %d", idx)
+				t.Fatalf("mute highlight persisted when logic disabled at idx %d", abs)
 			}
+			delete(g.highlightedBeats, key)
 		}
 	}
 	if len(muteTriggers) < 4 {
@@ -259,12 +255,12 @@ func TestMuteNodeLogicEveryNTriggers(t *testing.T) {
 	if g.nodeAnim[mute.ID] <= 0 {
 		t.Fatalf("mute node animation not triggered")
 	}
-	g.playing = false
-	g.engine.Stop()
 }
 
 func TestMuteNodeHighlight(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -283,32 +279,12 @@ func TestMuteNodeHighlight(t *testing.T) {
 	}
 	g.updateBeatInfos()
 
-	g.playing = true
+	g.SetPlaying(true)
 	g.SetPlayFunc(func(string, float64, ...float64) {})
 
-	// Advance one full cycle so the mute node fires once.
-	cycleLen := len(g.beatInfosByRow[0])
-	for i := 0; i < cycleLen; i++ {
-		g.seqScheduleBeat()
-	}
-	// Drain highlight event for the mute node and apply.
-	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
-	processed := false
-	for {
-		select {
-		case ev := <-g.hlCh:
-			g.highlightBeat(ev.row, ev.idx, ev.info, beatDuration)
-			if ev.info.NodeID == mute.ID {
-				processed = true
-			}
-		default:
-			goto done
-		}
-	}
-done:
-	if !processed {
-		t.Fatalf("mute highlight event not received")
-	}
+	// Advance until we schedule the mute node once.
+	scheduleAbsForMuteTest(g, 0)
+	scheduleAbsForMuteTest(g, 1)
 	if g.nodeAnim[mute.ID] <= 0 {
 		t.Fatalf("mute node animation not activated")
 	}
@@ -340,8 +316,8 @@ type muteObservation struct {
 func setupMuteLoopGame(t *testing.T, logicKind string, logicN int) (*Game, model.NodeID) {
 	t.Helper()
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	g.SetUseSequencerForTest(false)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.start = start
@@ -363,7 +339,7 @@ func setupMuteLoopGame(t *testing.T, logicKind string, logicN int) (*Game, model
 	}
 
 	g.updateBeatInfos()
-	g.playing = true
+	g.SetPlaying(true)
 	g.SetPlayFunc(func(string, float64, ...float64) {})
 
 	return g, mute.ID
@@ -374,36 +350,17 @@ func collectMuteObservations(t *testing.T, g *Game, row int, muteID model.NodeID
 	if row < 0 || row >= len(g.beatInfosByRow) || len(g.beatInfosByRow[row]) == 0 {
 		t.Fatalf("invalid beat infos for row %d", row)
 	}
-	if len(g.seqNextIdxs) == 0 {
-		g.seqNextIdxs = make([]int, len(g.drum.Rows))
-	}
-	beatDuration := int64(60.0 / float64(g.drum.bpm) * ebitenTPS)
 	observations := make([]muteObservation, 0, want)
 	prevStops := stops()
-	maxSteps := len(g.beatInfosByRow[row])*want*3 + want
-	for step := 0; len(observations) < want && step < maxSteps; step++ {
-		idx := g.seqNextIdxs[row]
-		info := g.beatInfoAtRow(row, idx)
-		g.seqScheduleBeat()
-	drain:
-		for {
-			select {
-			case ev := <-g.hlCh:
-				g.highlightBeat(ev.row, ev.idx, ev.info, beatDuration)
-			default:
-				break drain
-			}
-		}
-
+	maxSteps := len(g.beatInfosByRow[row])*want*8 + 32
+	for abs := 0; len(observations) < want && abs < maxSteps; abs++ {
+		info := g.beatInfoAtRow(row, abs)
+		scheduleAbsForMuteTest(g, abs)
 		if info.NodeID != muteID {
 			continue
 		}
-		triggered := false
-		if m, ok := g.lastTriggeredByRow[row]; ok {
-			triggered = m[muteID]
-		}
-		g.highlightBeat(row, idx, info, beatDuration)
-		key := makeBeatKey(row, idx)
+		triggered, _ := g.lastTriggeredForTest(row, muteID)
+		key := makeBeatKey(row, abs)
 		val, ok := g.highlightedBeats[key]
 		highlight := ok && isMuteHighlight(val)
 		currStops := stops()
@@ -413,6 +370,7 @@ func collectMuteObservations(t *testing.T, g *Game, row int, muteID model.NodeID
 			stopDelta: currStops - prevStops,
 		})
 		prevStops = currStops
+		delete(g.highlightedBeats, key)
 	}
 	if len(observations) != want {
 		t.Fatalf("insufficient mute samples: got %d want %d", len(observations), want)
@@ -420,7 +378,8 @@ func collectMuteObservations(t *testing.T, g *Game, row int, muteID model.NodeID
 	return observations
 }
 
-func TestMuteNodeSkipEveryNLoopAudioHighlight(t *testing.T) {
+func TestMuteNodeSkipEveryNLogicLoopAudioHighlight(t *testing.T) {
+	assertDefaultParityState(t)
 	cases := []struct {
 		n    int
 		want []bool
@@ -433,7 +392,7 @@ func TestMuteNodeSkipEveryNLoopAudioHighlight(t *testing.T) {
 		t.Run("N="+strconv.Itoa(tc.n), func(t *testing.T) {
 			g, muteID := setupMuteLoopGame(t, "skip_every_n", tc.n)
 			defer func() {
-				g.playing = false
+				stopPlaybackForTest(g)
 				if g.engine != nil {
 					g.engine.Stop()
 				}
@@ -474,6 +433,7 @@ func TestMuteNodeSkipEveryNLoopAudioHighlight(t *testing.T) {
 }
 
 func TestMuteNodeEveryNLoopAudioHighlight(t *testing.T) {
+	assertDefaultParityState(t)
 	cases := []struct {
 		n    int
 		want []bool
@@ -486,7 +446,7 @@ func TestMuteNodeEveryNLoopAudioHighlight(t *testing.T) {
 		t.Run("N="+strconv.Itoa(tc.n), func(t *testing.T) {
 			g, muteID := setupMuteLoopGame(t, "every_n_triggers", tc.n)
 			defer func() {
-				g.playing = false
+				stopPlaybackForTest(g)
 				if g.engine != nil {
 					g.engine.Stop()
 				}
@@ -527,7 +487,9 @@ func TestMuteNodeEveryNLoopAudioHighlight(t *testing.T) {
 }
 
 func TestMuteNodeDrumViewPredictionConsistency(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
 	start := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -567,11 +529,12 @@ func TestMuteNodeDrumViewPredictionConsistency(t *testing.T) {
 		}
 	}
 
-	g.playing = true
-	for i := 0; i < 3; i++ {
-		g.seqScheduleBeat()
-	}
-	g.playing = false
+	g.SetPlaying(true)
+	scheduleAbsForMuteTest(g, 0)
+	scheduleAbsForMuteTest(g, 1)
+	scheduleAbsForMuteTest(g, 2)
+	pressStop(t, g.drum)
+	_ = g.Update()
 	g.refreshDrumRow()
 
 	for i, on := range g.drum.Rows[0].Steps {

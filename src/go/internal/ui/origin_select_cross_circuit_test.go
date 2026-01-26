@@ -34,7 +34,9 @@ func clickGame(g *Game, sx, sy int) {
 
 // Ensure origin selection for a row ignores clicks on nodes belonging to a different circuit.
 func TestOriginSelectIgnoresDifferentCircuitNode(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
 	// Circuit A (row 0): a0 -> a1
@@ -70,7 +72,7 @@ func TestOriginSelectIgnoresDifferentCircuitNode(t *testing.T) {
 
 	// Re-enter origin mode for row 1, set playing active; clicking a node from circuit A (a0)
 	// should NOT change because row 0 is audible and playback is active.
-	g.playing = true
+	g.SetPlaying(true)
 	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, true)
 	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, false)
 	_ = g.Update()

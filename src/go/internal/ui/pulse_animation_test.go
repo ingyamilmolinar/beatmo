@@ -4,7 +4,6 @@ package ui
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ingyamilmolinar/tunkul/core/model"
 )
@@ -12,7 +11,9 @@ import (
 // TestPulseAnimationSmooth verifies that pulse progress advances smoothly
 // frame-to-frame at roughly the expected rate for a 1-beat segment at 60 BPM.
 func TestPulseAnimationSmooth(t *testing.T) {
+	assertDefaultParityState(t)
 	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.SetBPM(60)
 	// Create a 1-beat horizontal segment: distance = 32 units → 1 beat.
@@ -20,15 +21,15 @@ func TestPulseAnimationSmooth(t *testing.T) {
 	n1 := g.tryAddNode(g.grid.MaxDiv(), 0, model.NodeTypeRegular)
 	g.addEdge(n0, n1)
 	g.updateBeatInfos()
-	g.playing = true
-	g.spawnPulseFrom(0)
+	g.SetPlaying(true)
+	g.spawnPulseFromRow(0, 0)
 	if g.activePulse == nil {
 		t.Fatalf("expected active pulse")
 	}
 	// Over ~10 frames, progress should increase monotonically and be < 1.
 	_ = g.activePulse.t
 	for i := 0; i < 10; i++ {
-		time.Sleep(5 * time.Millisecond) // simulate frame spacing
+		setPlayStartForAbs(g, i+1)
 		g.Update()
 		if g.activePulse == nil {
 			t.Fatalf("pulse disappeared unexpectedly at frame %d", i)

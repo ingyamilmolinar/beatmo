@@ -11,6 +11,7 @@ import (
 )
 
 func TestUniqueColorsAcrossRows(t *testing.T) {
+	assertDefaultParityState(t)
 	logger := game_log.New(testDiscard{}, game_log.LevelError)
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+4*24), graph, logger)
@@ -22,9 +23,12 @@ func TestUniqueColorsAcrossRows(t *testing.T) {
 		t.Fatalf("expected >=3 rows, got %d", len(dv.Rows))
 	}
 	id := dv.Rows[0].Instrument
-	dv.selRow = 1
+	if len(dv.rowLabels) < 3 {
+		t.Fatalf("expected row labels for selection")
+	}
+	dv.rowLabels[1].OnClick()
 	dv.SetInstrument(id)
-	dv.selRow = 2
+	dv.rowLabels[2].OnClick()
 	dv.SetInstrument(id)
 
 	// Colors must be unique across rows
@@ -39,6 +43,7 @@ func TestUniqueColorsAcrossRows(t *testing.T) {
 }
 
 func TestColorButtonLayoutAndMenu(t *testing.T) {
+	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 500, timelineHeight+3*24), graph, testLogger)
 	dv.calcLayout()
@@ -46,12 +51,13 @@ func TestColorButtonLayoutAndMenu(t *testing.T) {
 	if len(dv.rowColorBtns) == 0 {
 		t.Fatalf("missing rowColorBtns")
 	}
-	// Button order: edit < color < slider
+	// Button order: edit < save < color < slider
 	er := dv.rowEditBtns[0].Rect()
+	sv := dv.rowSaveBtns[0].Rect()
 	cr := dv.rowColorBtns[0].Rect()
 	sr := dv.rowVolSliders[0].Rect()
-	if !(er.Max.X <= cr.Min.X && cr.Max.X <= sr.Min.X) {
-		t.Fatalf("color button not placed between edit and slider: edit=%v color=%v slider=%v", er, cr, sr)
+	if !(er.Max.X <= sv.Min.X && sv.Max.X <= cr.Min.X && cr.Max.X <= sr.Min.X) {
+		t.Fatalf("button order invalid: edit=%v save=%v color=%v slider=%v", er, sv, cr, sr)
 	}
 
 	// Open color menu
@@ -68,6 +74,7 @@ func TestColorButtonLayoutAndMenu(t *testing.T) {
 }
 
 func TestSetRowColorRejectsDuplicate(t *testing.T) {
+	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+3*24), graph, testLogger)
 	dv.AddRow()
@@ -83,6 +90,7 @@ func TestSetRowColorRejectsDuplicate(t *testing.T) {
 }
 
 func TestRowColorSwatchPerRowAndUpdate(t *testing.T) {
+	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 500, timelineHeight+4*24), graph, testLogger)
 	dv.AddRow()
@@ -95,7 +103,7 @@ func TestRowColorSwatchPerRowAndUpdate(t *testing.T) {
 		color.RGBA{10, 10, 50, 255},
 	}
 	for i := range dv.Rows {
-		dv.Rows[i].Color = dv.ensureUniqueColor(cols[i], i)
+		dv.SetRowColor(i, cols[i])
 	}
 	// Capture fill colors used by swatch buttons on draw.
 	img := ebiten.NewImage(10, 10)
@@ -135,6 +143,7 @@ func TestRowColorSwatchPerRowAndUpdate(t *testing.T) {
 }
 
 func TestColorWheelClickSetsColor(t *testing.T) {
+	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 500, timelineHeight+3*24), graph, testLogger)
 	dv.calcLayout()
@@ -156,6 +165,7 @@ func TestColorWheelClickSetsColor(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 500, timelineHeight + 3*24 },
 	)
+	t.Cleanup(restoreUp)
 	dv.Update()
 	restoreUp()
 	restoreDown := SetInputForTest(
@@ -166,6 +176,7 @@ func TestColorWheelClickSetsColor(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 500, timelineHeight + 3*24 },
 	)
+	t.Cleanup(restoreDown)
 	dv.Update()
 	restoreDown()
 	after := dv.colorKey(dv.Rows[0].Color)
