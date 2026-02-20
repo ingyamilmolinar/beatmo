@@ -77,8 +77,8 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 	dv := newDrumViewForTrackTest(t, true)
 
 	// Row 0 buttons should have equal width (±1px tolerance).
-	row0Btns := []*Button{dv.playBtn, dv.stopBtn, dv.subdivBtn}
-	refW := dv.playBtn.Rect().Dx()
+	row0Btns := []*Button{dv.playBtn(), dv.stopBtn(), dv.subdivBtn()}
+	refW := dv.playBtn().Rect().Dx()
 	for _, b := range row0Btns {
 		w := b.Rect().Dx()
 		diff := w - refW
@@ -91,11 +91,11 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 	}
 	// Row 1 buttons should have equal width within their row (±1px tolerance).
 	var row1Btns []*Button
-	if dv.viewSwitchBtn != nil {
-		row1Btns = append(row1Btns, dv.viewSwitchBtn)
+	if dv.viewSwitchBtn() != nil {
+		row1Btns = append(row1Btns, dv.viewSwitchBtn())
 	}
-	if dv.overflowBtn != nil {
-		row1Btns = append(row1Btns, dv.overflowBtn)
+	if dv.overflowBtn() != nil {
+		row1Btns = append(row1Btns, dv.overflowBtn())
 	}
 	if len(row1Btns) > 1 {
 		ref1W := row1Btns[0].Rect().Dx()
@@ -112,8 +112,8 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 	}
 
 	// BPM +/- height should be approximately half of play button height (±2px).
-	playH := dv.playBtn.Rect().Dy()
-	bpmIncH := dv.bpmIncBtn.Rect().Dy()
+	playH := dv.playBtn().Rect().Dy()
+	bpmIncH := dv.bpmIncBtn().Rect().Dy()
 	halfH := playH / 2
 	diff := bpmIncH - halfH
 	if diff < 0 {
@@ -124,7 +124,7 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 	}
 
 	// Track button is hidden on mobile (desktop-only).
-	trackR := dv.trackBtn.Rect()
+	trackR := dv.trackBtn().Rect()
 	if !trackR.Empty() {
 		t.Errorf("track button should be hidden on mobile, got %v", trackR)
 	}

@@ -87,7 +87,7 @@ func TestDrumView_LiveReaddDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	}
 
 	// Build baseline row cache so stale-render regressions would be visible.
-	dst := ebiten.NewImage(800, 240)
+	dst := ebiten.NewImage(1024, 720)
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCacheGen) == 0 {
 		t.Fatalf("expected row cache generation tracking")
@@ -226,7 +226,7 @@ func TestDrumView_LiveReaddNonPrimaryRowDuringPlaybackUpdatesFutureWindow(t *tes
 	}
 
 	// Ensure baseline row caches are built.
-	dst := ebiten.NewImage(800, 240)
+	dst := ebiten.NewImage(1024, 720)
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCacheGen) <= row {
 		t.Fatalf("expected row cache generation tracking for row %d", row)
@@ -387,7 +387,7 @@ func TestDrumView_LiveInsertDuringPlaybackUpdatesFutureWindow(t *testing.T) {
 	before := append([]bool(nil), g.drum.Rows[row].Steps...)
 
 	// Ensure baseline caches are built.
-	dst := ebiten.NewImage(800, 240)
+	dst := ebiten.NewImage(1024, 720)
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCacheGen) == 0 {
 		t.Fatalf("expected row cache generation tracking")

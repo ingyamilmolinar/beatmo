@@ -237,7 +237,7 @@ try {
   if (snap.rows?.length > 0) {
     const row0 = snap.rows[0];
     if (row0.label) assert(row0.label.w > 10, "Desktop: label too narrow");
-    if (row0.edit) assert(row0.edit.w > 5, "Desktop: edit button too narrow");
+    // Edit/save/color/origin/delete are hidden on desktop (in overflow menu).
     if (row0.mute) assert(row0.mute.w > 5, "Desktop: mute button too narrow");
     if (row0.solo) assert(row0.solo.w > 5, "Desktop: solo button too narrow");
   }

@@ -36,12 +36,12 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after calcLayout")
 	}
 
 	// Get row label rect
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	if lblRect.Empty() {
 		t.Fatal("row label rect is empty")
 	}
@@ -50,7 +50,7 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	t.Logf("Row label rect: %v, click at (%d, %d)", lblRect, cx, cy)
 
 	// Verify menu is initially closed
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("inst menu should be closed initially")
 	}
 	if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() {
@@ -69,9 +69,9 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	dv.Update()
 
 	t.Logf("After frame 1 (press): instMenuOpen=%v, compOpen=%v, suppress=%v",
-		dv.instMenuOpen, dv.instMenuComp != nil && dv.instMenuComp.IsOpen(), suppressClicksUntilRelease)
+		dv.IsInstMenuOpen(), dv.instMenuComp != nil && dv.instMenuComp.IsOpen(), suppressClicksUntilRelease)
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("inst menu should be OPEN after clicking row label")
 	}
 	if dv.instMenuComp != nil && !dv.instMenuComp.IsOpen() {
@@ -81,9 +81,9 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	// Frame 2: Mouse still held
 	dv.Update()
 	t.Logf("After frame 2 (held): instMenuOpen=%v, compOpen=%v, suppress=%v",
-		dv.instMenuOpen, dv.instMenuComp != nil && dv.instMenuComp.IsOpen(), suppressClicksUntilRelease)
+		dv.IsInstMenuOpen(), dv.instMenuComp != nil && dv.instMenuComp.IsOpen(), suppressClicksUntilRelease)
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("inst menu should STILL be open after frame 2 (held)")
 	}
 
@@ -100,9 +100,9 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	dv.Update()
 
 	t.Logf("After frame 3 (release): instMenuOpen=%v, compOpen=%v, suppress=%v",
-		dv.instMenuOpen, dv.instMenuComp != nil && dv.instMenuComp.IsOpen(), suppressClicksUntilRelease)
+		dv.IsInstMenuOpen(), dv.instMenuComp != nil && dv.instMenuComp.IsOpen(), suppressClicksUntilRelease)
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("inst menu should STILL be open after mouse release")
 	}
 
@@ -118,7 +118,7 @@ func TestInstMenuStaysOpenAfterClick(t *testing.T) {
 	)
 	for i := 4; i <= 8; i++ {
 		dv.Update()
-		open := dv.instMenuOpen
+		open := dv.IsInstMenuOpen()
 		compOpen := dv.instMenuComp != nil && dv.instMenuComp.IsOpen()
 		if !open || !compOpen {
 			t.Fatalf("inst menu closed unexpectedly on frame %d: open=%v, compOpen=%v", i, open, compOpen)
@@ -156,7 +156,7 @@ func TestInstMenuStaysOpenQuickClick(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
@@ -164,9 +164,9 @@ func TestInstMenuStaysOpenQuickClick(t *testing.T) {
 	clickDrumView(t, dv, cx, cy)
 
 	t.Logf("After quick click: instMenuOpen=%v, compOpen=%v",
-		dv.instMenuOpen, dv.instMenuComp != nil && dv.instMenuComp.IsOpen())
+		dv.IsInstMenuOpen(), dv.instMenuComp != nil && dv.instMenuComp.IsOpen())
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("inst menu should be open after quick click")
 	}
 
@@ -181,7 +181,7 @@ func TestInstMenuStaysOpenQuickClick(t *testing.T) {
 	)
 	for i := 0; i < 5; i++ {
 		dv.Update()
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatalf("menu closed on frame %d after quick click", i)
 		}
 	}
@@ -216,7 +216,7 @@ func TestInstMenuToggleOnSecondClick(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
@@ -239,10 +239,10 @@ func TestInstMenuToggleOnSecondClick(t *testing.T) {
 	// First click: opens menu
 	clickDrumView(t, dv, cx, cy)
 	t.Logf("After 1st click: instMenuOpen=%v, compOpen=%v, capturing=%v",
-		dv.instMenuOpen,
+		dv.IsInstMenuOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.IsOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.Capturing())
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open after first click")
 	}
 
@@ -252,27 +252,27 @@ func TestInstMenuToggleOnSecondClick(t *testing.T) {
 	// Second click: toggles menu closed
 	clickDrumView(t, dv, cx, cy)
 	t.Logf("After 2nd click: instMenuOpen=%v, compOpen=%v, capturing=%v",
-		dv.instMenuOpen,
+		dv.IsInstMenuOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.IsOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.Capturing())
-	if dv.instMenuOpen || (dv.instMenuComp != nil && dv.instMenuComp.IsOpen()) {
+	if dv.IsInstMenuOpen() || (dv.instMenuComp != nil && dv.instMenuComp.IsOpen()) {
 		t.Fatal("menu should be CLOSED after second click (toggle)")
 	}
 
 	// Settle — let hold state clear
 	idle(3)
 	t.Logf("After settle: instMenuOpen=%v, compOpen=%v, capturing=%v",
-		dv.instMenuOpen,
+		dv.IsInstMenuOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.IsOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.Capturing())
 
 	// Third click: opens menu again
 	clickDrumView(t, dv, cx, cy)
 	t.Logf("After 3rd click: instMenuOpen=%v, compOpen=%v, capturing=%v",
-		dv.instMenuOpen,
+		dv.IsInstMenuOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.IsOpen(),
 		dv.instMenuComp != nil && dv.instMenuComp.Capturing())
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open again after third click")
 	}
 
@@ -318,11 +318,11 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created")
 	}
 
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
@@ -338,9 +338,9 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	dv.Update()
 	restorePress()
 
-	if !dv.contextMenuOpen {
-		t.Fatalf("mobile context menu should be open after press on label (contextMenuOpen=%v, renameHold=%v, anyDragActive=%v)",
-			dv.contextMenuOpen, dv.renameHold, dv.anyDragActive())
+	if !dv.IsContextMenuOpen() {
+		t.Fatalf("mobile context menu should be open after press on label (contextMenuOpen=%v, anyDragActive=%v)",
+			dv.IsContextMenuOpen(), dv.anyDragActive())
 	}
 
 	// Frame 2: release
@@ -355,7 +355,7 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	dv.Update()
 	restoreRel()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("mobile context menu should still be open after release")
 	}
 
@@ -370,7 +370,7 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	)
 	for i := 0; i < 10; i++ {
 		dv.Update()
-		if !dv.contextMenuOpen {
+		if !dv.IsContextMenuOpen() {
 			t.Fatalf("mobile context menu closed on idle frame %d", i)
 		}
 	}
@@ -416,11 +416,11 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created")
 	}
 
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
@@ -436,7 +436,7 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	dv.Update()
 	r1()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open after press on label")
 	}
 
@@ -452,7 +452,7 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	dv.Update()
 	r2()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should stay open after release")
 	}
 
@@ -480,7 +480,7 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	)
 	for i := 0; i < 5; i++ {
 		dv.Update()
-		if !dv.contextMenuOpen {
+		if !dv.IsContextMenuOpen() {
 			t.Fatalf("context menu closed on idle frame %d", i)
 		}
 	}
@@ -534,14 +534,14 @@ func TestInstMenuMobileWithCategories(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created")
 	}
 
 	// On mobile, clicking the label opens the context menu.
 	// Then clicking "Instrument" in the context menu opens the inst menu.
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -559,9 +559,9 @@ func TestInstMenuMobileWithCategories(t *testing.T) {
 	instBtn.OnClick()
 
 	t.Logf("After Instrument click: instMenuOpen=%v, compOpen=%v",
-		dv.instMenuOpen, dv.instMenuComp != nil && dv.instMenuComp.IsOpen())
+		dv.IsInstMenuOpen(), dv.instMenuComp != nil && dv.instMenuComp.IsOpen())
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("mobile inst menu with categories should be open")
 	}
 
@@ -584,7 +584,7 @@ func TestInstMenuMobileWithCategories(t *testing.T) {
 	)
 	for i := 0; i < 10; i++ {
 		dv.Update()
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatalf("mobile category menu closed on frame %d", i)
 		}
 	}

@@ -149,16 +149,16 @@ func (dv *DrumView) refreshInstruments() {
 	dv.instMu.Unlock()
 	// Update row label styles to reflect new availability.
 	for i := range dv.Rows {
-		if i < len(dv.rowLabels) {
+		if i < len(dv.rowLabels()) {
 			id := dv.Rows[i].Instrument
 			if dv.IsInstrumentAvailable(id) {
-				dv.rowLabels[i].Style = InstButtonStyle
+				dv.rowLabels()[i].Style = InstButtonStyle
 			} else {
-				dv.rowLabels[i].Style = MissingInstStyle
+				dv.rowLabels()[i].Style = MissingInstStyle
 			}
 		}
 	}
-	if changed && dv.instMenuOpen {
+	if changed && dv.IsInstMenuOpen() {
 		dv.buildInstMenu()
 	}
 }
@@ -199,7 +199,7 @@ func (dv *DrumView) EnsureInstrumentKnown(id string) {
 // instrument list (IDs, names, or relative paths). It rebuilds the menu if open.
 func (dv *DrumView) SetInstrumentSearch(q string) {
 	dv.instSearch = q
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		dv.buildInstMenu()
 	}
 }

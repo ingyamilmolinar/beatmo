@@ -22,7 +22,7 @@ func TestParityCheckSkippedDuringImportDialog(t *testing.T) {
 	old := selectJSONAsyncFn
 	selectJSONAsyncFn = func(cb func([]byte, error)) {}
 	defer func() { selectJSONAsyncFn = old }()
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	if !g.importDialog || !g.drum.importing {
 		t.Fatalf("import dialog not active after click: dialog=%v importing=%v", g.importDialog, g.drum.importing)
 	}

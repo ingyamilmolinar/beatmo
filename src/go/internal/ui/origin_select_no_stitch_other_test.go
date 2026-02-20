@@ -27,7 +27,7 @@ func TestOriginSelectDoesNotStitchOtherCircuits(t *testing.T) {
 	g.drum.AddRow()
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
-	btn := g.drum.rowOriginBtns[1]
+	btn := g.drum.rowOriginBtns()[1]
 	r := btn.Rect()
 	_ = btn.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	_ = btn.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, false)

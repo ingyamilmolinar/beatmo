@@ -26,7 +26,7 @@ func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
 	// Arm origin selection for row 1
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
-	ob := g.drum.rowOriginBtns[1]
+	ob := g.drum.rowOriginBtns()[1]
 	or := ob.Rect()
 	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, true)
 	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, false)

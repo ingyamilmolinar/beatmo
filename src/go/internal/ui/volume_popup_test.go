@@ -23,7 +23,7 @@ func TestVolumePopupOpenClose(t *testing.T) {
 	if len(dv.Rows) == 0 {
 		t.Fatal("expected at least one row after NewDrumView")
 	}
-	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) == 0 || dv.rowVolSliders()[0].Rect().Empty() {
 		t.Skip("rowVolSliders[0] has empty rect after layout — cannot test popup positioning")
 	}
 
@@ -80,7 +80,7 @@ func TestVolumePopupInputDrag(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) == 0 || dv.rowVolSliders()[0].Rect().Empty() {
 		t.Skip("rowVolSliders[0] has empty rect — cannot test popup input")
 	}
 
@@ -120,7 +120,7 @@ func TestVolumePopupInputClamping(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) == 0 || dv.rowVolSliders()[0].Rect().Empty() {
 		t.Skip("rowVolSliders[0] has empty rect — cannot test popup clamping")
 	}
 
@@ -161,7 +161,7 @@ func TestVolumePopupInputOutside(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) == 0 || dv.rowVolSliders()[0].Rect().Empty() {
 		t.Skip("rowVolSliders[0] has empty rect — cannot test popup input")
 	}
 
@@ -189,8 +189,8 @@ func TestMasterVolumePopupOpenClose(t *testing.T) {
 	if dv.mainVolIconRect.Empty() {
 		dv.mainVolIconRect = image.Rect(100, 100, 130, 130)
 	}
-	if dv.mainVolSlider == nil {
-		dv.mainVolSlider = NewSlider(1.0)
+	if dv.mainVolSlider() == nil {
+		dv.transportZone.mainVolSlider = NewSlider(1.0)
 	}
 
 	dv.openMasterVolumePopup()
@@ -224,8 +224,8 @@ func TestMasterVolumePopupInputDrag(t *testing.T) {
 	if dv.mainVolIconRect.Empty() {
 		dv.mainVolIconRect = image.Rect(100, 100, 130, 130)
 	}
-	if dv.mainVolSlider == nil {
-		dv.mainVolSlider = NewSlider(1.0)
+	if dv.mainVolSlider() == nil {
+		dv.transportZone.mainVolSlider = NewSlider(1.0)
 	}
 	audio.SetMainVolume(1.0)
 
@@ -243,7 +243,7 @@ func TestMasterVolumePopupInputDrag(t *testing.T) {
 		t.Fatal("masterVolPopup.IsDragging() should be true after drag")
 	}
 
-	vol := dv.mainVolSlider.Value
+	vol := dv.mainVolSlider().Value
 	if vol >= 1.0 {
 		t.Fatalf("slider value should have decreased from 1.0, got %f", vol)
 	}
@@ -271,7 +271,7 @@ func TestVolumePopupOverlayInterface(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	o := dv.volPopupOverlay
+	o := &SliderPopupOverlay{Popup: dv.volPopup}
 
 	if o.ID() != "volume-popup" {
 		t.Fatalf("ID() = %q, want %q", o.ID(), "volume-popup")
@@ -286,7 +286,7 @@ func TestVolumePopupOverlayInterface(t *testing.T) {
 	}
 
 	// Open the popup (need valid slider rect).
-	if len(dv.rowVolSliders) > 0 && !dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) > 0 && !dv.rowVolSliders()[0].Rect().Empty() {
 		dv.openVolumePopup(0)
 		if !o.IsOpen() {
 			t.Fatal("IsOpen() should be true after openVolumePopup")
@@ -322,11 +322,11 @@ func TestMasterVolumePopupOverlayInterface(t *testing.T) {
 	if dv.mainVolIconRect.Empty() {
 		dv.mainVolIconRect = image.Rect(100, 100, 130, 130)
 	}
-	if dv.mainVolSlider == nil {
-		dv.mainVolSlider = NewSlider(1.0)
+	if dv.mainVolSlider() == nil {
+		dv.transportZone.mainVolSlider = NewSlider(1.0)
 	}
 
-	o := dv.masterVolPopupOverlay
+	o := &SliderPopupOverlay{Popup: dv.masterVolPopup}
 
 	if o.ID() != "master-volume-popup" {
 		t.Fatalf("ID() = %q, want %q", o.ID(), "master-volume-popup")
@@ -365,11 +365,11 @@ func TestVolumePopupOverlayHandleInput(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) == 0 || dv.rowVolSliders()[0].Rect().Empty() {
 		t.Skip("rowVolSliders[0] has empty rect — cannot test overlay input")
 	}
 
-	o := dv.volPopupOverlay
+	o := &SliderPopupOverlay{Popup: dv.volPopup}
 
 	// When popup is closed, input should be ignored.
 	result := o.HandleInput(100, 100, true)
@@ -410,11 +410,11 @@ func TestMasterVolumePopupOverlayHandleInput(t *testing.T) {
 	if dv.mainVolIconRect.Empty() {
 		dv.mainVolIconRect = image.Rect(100, 100, 130, 130)
 	}
-	if dv.mainVolSlider == nil {
-		dv.mainVolSlider = NewSlider(1.0)
+	if dv.mainVolSlider() == nil {
+		dv.transportZone.mainVolSlider = NewSlider(1.0)
 	}
 
-	o := dv.masterVolPopupOverlay
+	o := &SliderPopupOverlay{Popup: dv.masterVolPopup}
 
 	// Closed: input ignored.
 	result := o.HandleInput(100, 100, true)

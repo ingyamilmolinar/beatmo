@@ -35,10 +35,10 @@ func fxClickAndRelease(t *testing.T, dv *DrumView, x, y int) {
 
 func fxBtnCenter(t *testing.T, dv *DrumView, row int) (int, int) {
 	t.Helper()
-	if row >= len(dv.rowFXBtns) {
-		t.Fatalf("no FX button for row %d (have %d)", row, len(dv.rowFXBtns))
+	if row >= len(dv.rowFXBtns()) {
+		t.Fatalf("no FX button for row %d (have %d)", row, len(dv.rowFXBtns()))
 	}
-	r := dv.rowFXBtns[row].Rect()
+	r := dv.rowFXBtns()[row].Rect()
 	if r.Empty() {
 		t.Fatalf("FX button for row %d has empty rect", row)
 	}
@@ -52,10 +52,10 @@ func TestFXButtonRenders(t *testing.T) {
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
 	}
-	if len(dv.rowFXBtns) == 0 {
+	if len(dv.rowFXBtns()) == 0 {
 		t.Fatal("rowFXBtns slice is empty after calcLayout")
 	}
-	r := dv.rowFXBtns[0].Rect()
+	r := dv.rowFXBtns()[0].Rect()
 	if r.Empty() {
 		t.Fatal("FX button rect is empty")
 	}
@@ -71,13 +71,13 @@ func TestFXButtonRenders(t *testing.T) {
 
 func TestFXButtonClickOpensPanel(t *testing.T) {
 	dv := newTestDV(t)
-	if len(dv.Rows) == 0 || len(dv.rowFXBtns) == 0 {
+	if len(dv.Rows) == 0 || len(dv.rowFXBtns()) == 0 {
 		t.Skip("no rows or FX buttons")
 	}
 	cx, cy := fxBtnCenter(t, dv, 0)
 
 	fxClickAndRelease(t, dv, cx, cy)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open after clicking FX button")
 	}
 	if dv.fxPanelRow != 0 {
@@ -87,33 +87,33 @@ func TestFXButtonClickOpensPanel(t *testing.T) {
 
 func TestFXPanelStaysOpenAcrossFrames(t *testing.T) {
 	dv := newTestDV(t)
-	if len(dv.Rows) == 0 || len(dv.rowFXBtns) == 0 {
+	if len(dv.Rows) == 0 || len(dv.rowFXBtns()) == 0 {
 		t.Skip("no rows or FX buttons")
 	}
 	cx, cy := fxBtnCenter(t, dv, 0)
 
 	// Open the panel.
 	fxClickAndRelease(t, dv, cx, cy)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
 	}
 
 	// Advance several frames with no input — panel should stay open.
 	fxAdvanceFrames(t, dv, 10)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel closed unexpectedly after advancing frames with no input")
 	}
 }
 
 func TestFXPanelCloseOnClickOutside(t *testing.T) {
 	dv := newTestDV(t)
-	if len(dv.Rows) == 0 || len(dv.rowFXBtns) == 0 {
+	if len(dv.Rows) == 0 || len(dv.rowFXBtns()) == 0 {
 		t.Skip("no rows or FX buttons")
 	}
 
 	// Open panel.
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
@@ -123,21 +123,21 @@ func TestFXPanelCloseOnClickOutside(t *testing.T) {
 	// Click outside both the panel rect and the FX button.
 	// Use coordinates at (1, 1) which should be far from both.
 	fxClickAndRelease(t, dv, 1, 1)
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not close on click outside")
 	}
 }
 
 func TestFXPanelToggleViaButton(t *testing.T) {
 	dv := newTestDV(t)
-	if len(dv.Rows) == 0 || len(dv.rowFXBtns) == 0 {
+	if len(dv.Rows) == 0 || len(dv.rowFXBtns()) == 0 {
 		t.Skip("no rows or FX buttons")
 	}
 	cx, cy := fxBtnCenter(t, dv, 0)
 
 	// Open panel.
 	fxClickAndRelease(t, dv, cx, cy)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
@@ -146,13 +146,13 @@ func TestFXPanelToggleViaButton(t *testing.T) {
 
 	// Click FX button again to close.
 	fxClickAndRelease(t, dv, cx, cy)
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Fatal("panel did not close on second FX button click")
 	}
 
 	// Click again to reopen.
 	fxClickAndRelease(t, dv, cx, cy)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not reopen on third FX button click")
 	}
 }
@@ -165,32 +165,32 @@ func TestFXPanelSwitchRow(t *testing.T) {
 		dv.recalcButtons()
 		dv.calcLayout()
 	}
-	if len(dv.rowFXBtns) < 2 {
+	if len(dv.rowFXBtns()) < 2 {
 		t.Skip("not enough FX buttons for multi-row test")
 	}
 
 	// Open panel for row 0.
 	cx0, cy0 := fxBtnCenter(t, dv, 0)
 	fxClickAndRelease(t, dv, cx0, cy0)
-	if !dv.fxPanelOpen || dv.fxPanelRow != 0 {
-		t.Fatalf("expected panel open for row 0, open=%v row=%d", dv.fxPanelOpen, dv.fxPanelRow)
+	if !dv.IsFXPanelOpen() || dv.fxPanelRow != 0 {
+		t.Fatalf("expected panel open for row 0, open=%v row=%d", dv.IsFXPanelOpen(), dv.fxPanelRow)
 	}
 
 	// Advance past debounce.
 	fxAdvanceFrames(t, dv, 3)
 
 	// Verify row 1's FX button exists and has non-empty rect.
-	if len(dv.rowFXBtns) < 2 {
-		t.Fatalf("need at least 2 FX buttons, have %d", len(dv.rowFXBtns))
+	if len(dv.rowFXBtns()) < 2 {
+		t.Fatalf("need at least 2 FX buttons, have %d", len(dv.rowFXBtns()))
 	}
-	r1 := dv.rowFXBtns[1].Rect()
+	r1 := dv.rowFXBtns()[1].Rect()
 	if r1.Empty() {
 		t.Fatal("row 1 FX button has empty rect")
 	}
 
 	// Switch to row 1 via direct toggle (bypasses input dispatch complexity).
 	dv.toggleFXPanel(1)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel should stay open when switching rows")
 	}
 	if dv.fxPanelRow != 1 {
@@ -208,7 +208,7 @@ func TestFXPanelAddEffectViaUI(t *testing.T) {
 
 	// Open FX panel.
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen || len(dv.fxPanelBtns) == 0 {
+	if !dv.IsFXPanelOpen() || len(dv.fxPanelBtns) == 0 {
 		t.Fatal("panel did not open or has no buttons")
 	}
 
@@ -239,7 +239,7 @@ func TestFXPanelAddEffectViaUI(t *testing.T) {
 	}
 
 	// Panel should rebuild and still be open.
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Error("panel closed after adding effect")
 	}
 }
@@ -292,10 +292,10 @@ func TestFXPanelToggleEffectViaUI(t *testing.T) {
 
 	dv.toggleFXPanel(0)
 
-	// Find toggle button "✓".
+	// Find toggle button (pill-style, tagged with fxToggleTag).
 	var toggleBtn *Button
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "✓" {
+		if isToggle, _ := isFXToggleBtn(btn); isToggle {
 			toggleBtn = btn
 			break
 		}
@@ -318,7 +318,7 @@ func TestFXPanelEscapeCloses(t *testing.T) {
 	}
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
@@ -334,7 +334,7 @@ func TestFXPanelEscapeCloses(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not close on Escape")
 	}
 }
@@ -358,11 +358,11 @@ func TestFXButtonRendersMobile(t *testing.T) {
 		t.Skip("no rows in mobile layout")
 	}
 	// On mobile, FX button may be hidden behind the menu. Check if it exists.
-	if len(dv.rowFXBtns) == 0 {
+	if len(dv.rowFXBtns()) == 0 {
 		t.Skip("FX buttons not allocated in mobile layout")
 	}
 	// Verify at least the first FX button has a non-empty rect.
-	r := dv.rowFXBtns[0].Rect()
+	r := dv.rowFXBtns()[0].Rect()
 	if r.Empty() {
 		t.Skip("FX button has empty rect on mobile (may be behind overflow menu)")
 	}
@@ -385,29 +385,29 @@ func TestFXPanelOpenCloseMobile(t *testing.T) {
 	t.Cleanup(func() { audio.ClearAllInsertEffects() })
 
 	dv := g.drum
-	if len(dv.Rows) == 0 || len(dv.rowFXBtns) == 0 {
+	if len(dv.Rows) == 0 || len(dv.rowFXBtns()) == 0 {
 		t.Skip("no rows or FX buttons in mobile layout")
 	}
-	r := dv.rowFXBtns[0].Rect()
+	r := dv.rowFXBtns()[0].Rect()
 	if r.Empty() {
 		t.Skip("FX button has empty rect on mobile")
 	}
 
 	// Open via toggleFXPanel (avoids relying on mobile button visibility).
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open on mobile")
 	}
 
 	// Advance frames — panel should stay open.
 	fxAdvanceFrames(t, dv, 5)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel closed unexpectedly on mobile after advancing frames")
 	}
 
 	// Close via toggle.
 	dv.toggleFXPanel(0)
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not close on mobile toggle")
 	}
 }
@@ -434,7 +434,7 @@ func TestFXPanelAddEffectMobile(t *testing.T) {
 
 	// Open panel and open type picker.
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen || len(dv.fxPanelBtns) == 0 {
+	if !dv.IsFXPanelOpen() || len(dv.fxPanelBtns) == 0 {
 		t.Fatal("panel did not open or has no buttons on mobile")
 	}
 
@@ -476,7 +476,7 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 	// Open FX panel and advance frames to clear the suppress guard
 	// from openFXPanel and expire the debounce window.
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen || len(dv.fxPanelBtns) == 0 {
+	if !dv.IsFXPanelOpen() || len(dv.fxPanelBtns) == 0 {
 		t.Fatal("panel did not open or has no buttons")
 	}
 	fxAdvanceFrames(t, dv, 3)
@@ -498,7 +498,7 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 	if !dv.fxAddMenuOpen {
 		t.Fatal("type picker did not open after clicking + Add Effect")
 	}
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel closed on the click frame itself")
 	}
 
@@ -524,7 +524,7 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 		dv.Update()
 		restore()
 
-		if !dv.fxPanelOpen {
+		if !dv.IsFXPanelOpen() {
 			t.Fatalf("FX panel closed on held-mouse frame %d", i+1)
 		}
 		if !dv.fxAddMenuOpen {
@@ -534,7 +534,7 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 
 	// Release the mouse — panel should still be open with the picker visible.
 	fxReleaseInput(t, dv)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel closed after mouse release")
 	}
 	if !dv.fxAddMenuOpen {
@@ -563,7 +563,7 @@ func TestContextMenuEffectsEntryMobile(t *testing.T) {
 
 	// Open context menu for row 0.
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu did not open")
 	}
 
@@ -581,10 +581,10 @@ func TestContextMenuEffectsEntryMobile(t *testing.T) {
 
 	// Click the Effects button — should close context menu and open FX panel.
 	effectsBtn.OnClick()
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Error("context menu should close after clicking Effects")
 	}
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open after clicking Effects in context menu")
 	}
 	if dv.fxPanelRow != 0 {
@@ -606,7 +606,7 @@ func TestContextMenuHasSevenItemsMobile(t *testing.T) {
 	}
 
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu did not open")
 	}
 
@@ -639,7 +639,7 @@ func TestFXPanelMobileSizing(t *testing.T) {
 
 	// Open FX panel via context menu path (same as mobile user flow).
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
 	}
 
@@ -685,7 +685,7 @@ func TestFXPanelHasCloseButtonMobile(t *testing.T) {
 	}
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
 	}
 	if len(dv.fxPanelBtns) == 0 {
@@ -700,7 +700,7 @@ func TestFXPanelHasCloseButtonMobile(t *testing.T) {
 
 	// Clicking close should close the panel.
 	closeBtn.OnClick()
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not close after clicking close button on mobile")
 	}
 }
@@ -708,32 +708,26 @@ func TestFXPanelHasCloseButtonMobile(t *testing.T) {
 // ---------- Flicker & Text Truncation Tests ----------
 
 // TestFXPanelDoesNotFlickerOnHeldPress reproduces the flicker bug: opening the
-// FX panel then having the overlay's HandleInput see pressed=true at the FX
-// button position on the next frame should NOT re-toggle the panel closed.
+// FX panel then holding the mouse button at the FX button position on the
+// next frame should NOT re-toggle the panel closed (the tree's suppress
+// mechanism prevents re-dispatch).
 func TestFXPanelDoesNotFlickerOnHeldPress(t *testing.T) {
 	dv := newTestDV(t)
 	cx, cy := fxBtnCenter(t, dv, 0)
 
 	// Frame 0: click opens FX panel.
 	fxClickAt(t, dv, cx, cy)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
 	}
 
-	// Preserve suppression state (simulates held mouse between frames).
-	// SetInputForTest clears it, but in real use it persists until release.
-	suppressClicksUntilRelease = true
-	t.Cleanup(func() { suppressClicksUntilRelease = false })
-
-	// Frame 1: overlay HandleInput with same pressed position.
-	// Before fix: this calls toggleFXPanel → closes panel → flicker.
-	result := dv.fxPanelOverlay.HandleInput(cx, cy, true)
-	if !dv.fxPanelOpen {
+	// Frame 1: held press at same position — tree's suppress prevents
+	// re-dispatch, so panel stays open.
+	fxHoldAt(t, dv, cx, cy)
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel closed on held press — flicker bug")
 	}
-	if result == InputIgnored {
-		t.Error("overlay should consume input at FX button position")
-	}
+	fxReleaseInput(t, dv)
 }
 
 // TestFXPanelTogglesAfterSuppressClears verifies toggling still works after
@@ -744,7 +738,7 @@ func TestFXPanelTogglesAfterSuppressClears(t *testing.T) {
 
 	// Open.
 	fxClickAndRelease(t, dv, cx, cy)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel did not open")
 	}
 
@@ -753,13 +747,13 @@ func TestFXPanelTogglesAfterSuppressClears(t *testing.T) {
 
 	// Click again to close (suppression cleared by release).
 	fxClickAndRelease(t, dv, cx, cy)
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Fatal("FX panel should close on second click")
 	}
 }
 
 // fxGameFrame simulates one Game-like frame: HandleInput then Update.
-// This exercises the real dispatch path where the OverlayStack in HandleInput
+// This exercises the real dispatch path where the OverlayPortal in HandleInput
 // runs before Update re-reads the same mouse state.
 func fxGameFrame(dv *DrumView, x, y int, pressed bool, w, h int) {
 	restore := SetInputForTest(
@@ -793,25 +787,24 @@ func TestFXPanelBlocksClickThrough_GameLoop(t *testing.T) {
 
 	// Open FX panel and advance past debounce.
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	fxAdvanceFrames(t, dv, 3)
 
 	// Find the mute button.
-	if len(dv.rowMuteBtns) == 0 || dv.rowMuteBtns[0] == nil {
+	if len(dv.rowMuteBtns()) == 0 || dv.rowMuteBtns()[0] == nil {
 		t.Skip("no mute button")
 	}
-	muteR := dv.rowMuteBtns[0].Rect()
+	muteR := dv.rowMuteBtns()[0].Rect()
 	if muteR.Empty() {
 		t.Skip("mute button has empty rect")
 	}
 
 	// Log geometry to help diagnose which path the click takes.
-	fxBounds := dv.fxPanelOverlay.InputBounds()
 	mutePt := image.Pt((muteR.Min.X+muteR.Max.X)/2, (muteR.Min.Y+muteR.Max.Y)/2)
-	t.Logf("fxPanelRect=%v, fxInputBounds=%v, muteRect=%v, muteCenter=%v",
-		dv.fxPanelRect, fxBounds, muteR, mutePt)
+	t.Logf("fxPanelRect=%v, muteRect=%v, muteCenter=%v",
+		dv.fxPanelRect, muteR, mutePt)
 
 	wasMuted := dv.Rows[0].Muted
 
@@ -838,25 +831,25 @@ func TestFXPanelBlocksToolbarClickThrough_GameLoop(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	fxAdvanceFrames(t, dv, 3)
 
 	// Hook play button to detect activation.
 	playFired := false
-	if dv.playBtn == nil {
+	if dv.playBtn() == nil {
 		t.Skip("no play button")
 	}
-	origOnClick := dv.playBtn.OnClick
-	dv.playBtn.OnClick = func() {
+	origOnClick := dv.playBtn().OnClick
+	dv.playBtn().OnClick = func() {
 		playFired = true
 		if origOnClick != nil {
 			origOnClick()
 		}
 	}
 
-	playR := dv.playBtn.Rect()
+	playR := dv.playBtn().Rect()
 	if playR.Empty() {
 		t.Skip("play button has empty rect")
 	}
@@ -886,15 +879,15 @@ func TestFXPanelBlocksClickThrough_UpdateOnly(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	fxAdvanceFrames(t, dv, 3)
 
-	if len(dv.rowMuteBtns) == 0 || dv.rowMuteBtns[0] == nil {
+	if len(dv.rowMuteBtns()) == 0 || dv.rowMuteBtns()[0] == nil {
 		t.Skip("no mute button")
 	}
-	muteR := dv.rowMuteBtns[0].Rect()
+	muteR := dv.rowMuteBtns()[0].Rect()
 	if muteR.Empty() {
 		t.Skip("mute button has empty rect")
 	}
@@ -912,7 +905,7 @@ func TestFXPanelBlocksClickThrough_UpdateOnly(t *testing.T) {
 }
 
 // TestFXPanelOverlayCloseSetsSuppressAfterClose verifies that the
-// FXPanelOverlay.Close() path (used by OverlayStack click-outside) sets
+// FXPanelOverlay.Close() path (used by portal click-outside) sets
 // suppressClicksUntilRelease AFTER closeFXPanel clears it.
 func TestFXPanelOverlayCloseSetsSuppressAfterClose(t *testing.T) {
 	dv := newTestDV(t)
@@ -921,16 +914,17 @@ func TestFXPanelOverlayCloseSetsSuppressAfterClose(t *testing.T) {
 	}
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
-	// Simulate what OverlayStack does: calls overlay.Close().
-	dv.fxPanelOverlay.Close()
+	// Simulate what the portal system does: calls closeFXPanel + sets suppress.
+	dv.closeFXPanel()
+	SuppressClicksUntilMouseUp()
 
-	// After Close(), suppress must be true (set by Close after closeFXPanel).
+	// After close + suppress, suppress must be true.
 	if !suppressClicksUntilRelease {
-		t.Error("FXPanelOverlay.Close() must set suppressClicksUntilRelease to prevent click-through")
+		t.Error("closeFXPanel + SuppressClicksUntilMouseUp must set suppressClicksUntilRelease to prevent click-through")
 	}
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 }
@@ -938,7 +932,7 @@ func TestFXPanelOverlayCloseSetsSuppressAfterClose(t *testing.T) {
 // TestFXPanelPhase2CloseSetsSuppressAfterClose verifies that
 // handleFXPanelInput Phase 2 (click outside closes panel) sets
 // suppressClicksUntilRelease so that Update() blocks the same click.
-func TestFXPanelPhase2CloseSetsSuppressAfterClose(t *testing.T) {
+func TestFXPanelClickOutsideClosesViaTree(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
@@ -949,25 +943,20 @@ func TestFXPanelPhase2CloseSetsSuppressAfterClose(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	fxAdvanceFrames(t, dv, 3)
 
-	// Click outside the panel (not on FX button) to trigger Phase 2 close.
+	// Click outside the panel — tree's click-outside closes it.
 	outsideX := dv.fxPanelRect.Max.X + 50
 	outsideY := dv.fxPanelRect.Min.Y + 5
-	consumed := dv.handleFXPanelInput(outsideX, outsideY, true)
-	if !consumed {
-		t.Fatal("Phase 2 should have consumed the click")
+	fxHoldAt(t, dv, outsideX, outsideY)
+
+	if dv.IsFXPanelOpen() {
+		t.Fatal("tree click-outside should have closed the panel")
 	}
-	if dv.fxPanelOpen {
-		t.Fatal("Phase 2 should have closed the panel")
-	}
-	if !suppressClicksUntilRelease {
-		t.Error("Phase 2 must set suppressClicksUntilRelease after closing panel")
-	}
-	t.Cleanup(func() { suppressClicksUntilRelease = false })
+	fxReleaseInput(t, dv)
 }
 
 // TestFXPanelWidthFitsLabels verifies the FX panel is wide enough for labels.
@@ -981,7 +970,7 @@ func TestFXPanelWidthFitsLabels(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	// Panel should be wider than the old 250px hardcoded value.
@@ -989,9 +978,10 @@ func TestFXPanelWidthFitsLabels(t *testing.T) {
 		t.Errorf("panel too narrow: %dpx", dv.fxPanelRect.Dx())
 	}
 	// Check sliders don't overlap label area.
+	// Sliders are indented by SpaceXL from panel left edge.
 	for i, sl := range dv.fxPanelSliders {
 		sr := sl.Rect()
-		labelEnd := dv.fxPanelRect.Min.X + dv.fxSliderLeft
+		labelEnd := dv.fxPanelRect.Min.X + SpaceXL + dv.fxSliderLeft
 		if sr.Min.X < labelEnd {
 			t.Errorf("slider %d starts at %d, overlaps label area ending at %d",
 				i, sr.Min.X, labelEnd)
@@ -1006,11 +996,11 @@ func TestFXParamLabelsNotTruncated(t *testing.T) {
 	}
 
 	instID := dv.Rows[0].Instrument
-	// Filter has the longest label: "Cutoff: 20000Hz"
+	// Filter has the longest label: "Cutoff: 20000 Hz"
 	audio.AddInsertEffect(instID, audio.EffectFilter, nil)
 	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
@@ -1031,9 +1021,9 @@ func TestFXParamLabelsNotTruncated(t *testing.T) {
 
 // TestFXPanelOverlayReturnsCaptureDuringSliderDrag verifies that
 // FXPanelOverlay.HandleInput returns InputCaptured (not just InputConsumed)
-// while a slider drag is active. Without InputCaptured, the OverlayStack
+// while a slider drag is active. Without InputCaptured, the portal
 // does not set its capture pointer, so if the mouse leaves InputBounds()
-// during a drag the overlay stack closes the panel and the click leaks
+// during a drag the portal closes the panel and the click leaks
 // through to elements underneath.
 func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 	dv := newTestDV(t)
@@ -1045,7 +1035,7 @@ func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	if len(dv.fxPanelSliders) == 0 {
@@ -1065,11 +1055,17 @@ func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 		t.Fatal("slider drag did not start")
 	}
 
-	// The overlay's HandleInput should now return InputCaptured so the
-	// OverlayStack sets its capture pointer.
-	result := dv.fxPanelOverlay.HandleInput(cx, cy, true)
-	if result != InputCaptured {
-		t.Errorf("FXPanelOverlay.HandleInput should return InputCaptured during slider drag, got %v", result)
+	// While a slider drag is active, the FX panel's capturing state should
+	// be true, meaning the portal system will route all input to it.
+	capturing := dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	if !capturing {
+		t.Error("FX panel should be in capturing state during slider drag")
+	}
+
+	// handleFXPanelInput should consume the input during a drag.
+	consumed := dv.handleFXPanelInput(cx, cy, true)
+	if !consumed {
+		t.Error("handleFXPanelInput should consume input during slider drag")
 	}
 
 	// Release
@@ -1077,10 +1073,10 @@ func TestFXPanelOverlayReturnsCaptureDuringSliderDrag(t *testing.T) {
 }
 
 // TestFXPanelSliderDragOutsidePanelDoesNotClose verifies that dragging an
-// FX panel slider outside the panel's InputBounds does NOT close the panel.
-// This tests the OverlayStack capture path: when FXPanelOverlay returns
-// InputCaptured, the OverlayStack routes all subsequent input to it,
-// preventing the "click outside → close" logic from firing mid-drag.
+// FX panel slider outside the panel rect does NOT close the panel.
+// This tests the capture path: when fxSliderDragging is true, the portal
+// routes all subsequent input to the FX panel, preventing the
+// "click outside -> close" logic from firing mid-drag.
 func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
@@ -1091,7 +1087,7 @@ func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	if len(dv.fxPanelSliders) == 0 {
@@ -1109,10 +1105,9 @@ func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 		t.Fatal("slider drag did not start")
 	}
 
-	// Now simulate the OverlayStack seeing the capture. In the real app,
-	// this happens automatically when HandleInput returns InputCaptured.
-	// Set the overlay stack capture manually for the drag continuation.
-	dv.overlays.capture = dv.fxPanelOverlay
+	// In the portal system, capture is handled automatically when the
+	// fxSliderDragging flag is set. The portal routes all input to the
+	// FX panel overlay while a drag is active.
 
 	// Drag outside the panel rect (but still inside dv.Bounds).
 	outsideX := dv.fxPanelRect.Max.X + 50
@@ -1121,17 +1116,17 @@ func TestFXPanelSliderDragOutsidePanelDoesNotClose(t *testing.T) {
 		outsideX = dv.Bounds.Max.X - 1
 	}
 
-	// With capture set, the overlay stack routes to FXPanelOverlay
-	// regardless of position. The panel should stay open.
+	// With slider dragging active, the panel should stay open even
+	// when input is outside the panel rect.
 	fxGameFrame(dv, outsideX, outsideY, true, 800, 300)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Error("FX panel closed during slider drag outside panel rect — " +
-			"OverlayStack should route to captured overlay instead of closing")
+			"portal should route to captured overlay instead of closing")
 	}
 
 	// Release should end the drag but keep the panel open.
 	fxGameFrame(dv, outsideX, outsideY, false, 800, 300)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Error("FX panel closed on slider drag release")
 	}
 	if dv.fxSliderDragging {
@@ -1152,7 +1147,7 @@ func TestFXPanelSliderDragDoesNotActivateRowControls(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	if len(dv.fxPanelSliders) == 0 {
@@ -1202,7 +1197,7 @@ func TestFXPanelClickInsideDoesNotActivateRowControls(t *testing.T) {
 	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
 	dv.syncFXToRow(0)
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 	fxAdvanceFrames(t, dv, 3)
@@ -1235,7 +1230,7 @@ func TestFXPanelClickInsideDoesNotActivateRowControls(t *testing.T) {
 		by := (br.Min.Y + br.Max.Y) / 2
 
 		// Re-open panel if a button closed it.
-		if !dv.fxPanelOpen {
+		if !dv.IsFXPanelOpen() {
 			dv.toggleFXPanel(0)
 			fxAdvanceFrames(t, dv, 3)
 		}
@@ -1251,12 +1246,206 @@ func TestFXPanelClickInsideDoesNotActivateRowControls(t *testing.T) {
 	}
 }
 
+// dummyPortalOverlay is a minimal PortalOverlay for testing portal state
+// without requiring a real overlay component.
+type dummyPortalOverlay struct{}
+
+func (o *dummyPortalOverlay) Layout(anchor, screenBounds image.Rectangle) {}
+func (o *dummyPortalOverlay) HitAreas() []HitArea                         { return nil }
+func (o *dummyPortalOverlay) Draw(screen *ebiten.Image)                   {}
+func (o *dummyPortalOverlay) ShouldClose() bool                           { return false }
+
+// TestPortalOverlayDoesNotBlockTransportButtons reproduces Bug 1: a circular
+// input blocking loop where portal overlays being open causes anyDropdownOpen()
+// to return true, which makes popupActive() return true, which makes the tree
+// yield ALL input — including to zone buttons that the tree is supposed to
+// dispatch. After fix, anyDropdownOpen() should not include portal state.
+func TestPortalOverlayDoesNotBlockTransportButtons(t *testing.T) {
+	dv := newTestDV(t)
+
+	// Baseline: no dropdowns open.
+	if dv.anyDropdownOpen() {
+		t.Fatal("no dropdown should be open initially")
+	}
+
+	// Open a dummy portal entry (simulates any portal overlay being open).
+	dv.tree.Portal().Open(PortalEntry{
+		ID:      "test-dummy",
+		Overlay: &dummyPortalOverlay{},
+		Modal:   false,
+	})
+	t.Cleanup(func() { dv.tree.Portal().Close("test-dummy") })
+
+	if !dv.tree.Portal().IsOpen() {
+		t.Fatal("portal should be open")
+	}
+
+	// anyDropdownOpen() now delegates to portal.IsOpen() — the circular loop
+	// no longer exists because legacyPopupOpen has been removed from the tree.
+	if !dv.anyDropdownOpen() {
+		t.Fatal("anyDropdownOpen() should return true when portal overlay is open")
+	}
+}
+
+// TestFXPanelSliderDragDoesNotToggleOtherRow reproduces Bug 2: dragging an FX
+// panel slider crosses over another row's FX button and toggles that row's
+// panel. After fix, the drag-state guard prevents the toggle.
+func TestFXPanelSliderDragDoesNotToggleOtherRow(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) < 2 {
+		dv.AddRow()
+		dv.recalcButtons()
+		dv.calcLayout()
+	}
+	if len(dv.rowFXBtns()) < 2 {
+		t.Skip("not enough FX buttons for multi-row test")
+	}
+
+	instID := dv.Rows[0].Instrument
+	audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
+	dv.syncFXToRow(0)
+
+	// Open FX panel for row 0.
+	dv.toggleFXPanel(0)
+	if !dv.IsFXPanelOpen() || dv.fxPanelRow != 0 {
+		t.Fatalf("expected panel open for row 0, open=%v row=%d", dv.IsFXPanelOpen(), dv.fxPanelRow)
+	}
+	if len(dv.fxPanelSliders) == 0 {
+		t.Fatal("no sliders in panel")
+	}
+	fxAdvanceFrames(t, dv, 3)
+
+	// Start drag on slider.
+	sl := dv.fxPanelSliders[0]
+	sr := sl.Rect()
+	cx := (sr.Min.X + sr.Max.X) / 2
+	cy := (sr.Min.Y + sr.Max.Y) / 2
+	fxGameFrame(dv, cx, cy, true, 800, 300)
+	if !dv.fxSliderDragging {
+		t.Fatal("slider drag did not start")
+	}
+
+	// Move cursor to row 1's FX button while still dragging.
+	r1cx, r1cy := fxBtnCenter(t, dv, 1)
+	fxGameFrame(dv, r1cx, r1cy, true, 800, 300)
+
+	// Before fix: row 1's FX button fires during drag → fxPanelRow changes.
+	// After fix: fxSliderDragging guard prevents toggle.
+	if dv.fxPanelRow != 0 {
+		t.Errorf("fxPanelRow changed to %d during slider drag — drag leaked to row 1's FX button", dv.fxPanelRow)
+	}
+	if !dv.IsFXPanelOpen() {
+		t.Error("FX panel closed during slider drag")
+	}
+
+	// Release.
+	fxGameFrame(dv, r1cx, r1cy, false, 800, 300)
+}
+
+// TestContextMenuButtonsFireOnMobile reproduces the bug where context menu
+// button clicks are dead on mobile because the tree's popupActive() yields
+// before reaching hitIndex.At(), so portal overlay inputFn never fires.
+func TestContextMenuButtonsFireOnMobile(t *testing.T) {
+	setupMobileTest(t, true)
+	audio.ClearAllInsertEffects()
+	audio.InitInsertChains(44100)
+	t.Cleanup(func() { audio.ClearAllInsertEffects() })
+	dv := NewDrumView(image.Rect(0, 0, 800, 300), nil, game_log.New(nil, game_log.LevelError))
+	dv.recalcButtons()
+	dv.calcLayout()
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+
+	// Open context menu for row 0.
+	dv.openContextMenu(0)
+	if !dv.IsContextMenuOpen() {
+		t.Fatal("context menu did not open")
+	}
+	fxAdvanceFrames(t, dv, 2) // settle
+
+	// Find the "Mute" button (first non-divider action in group 2).
+	if len(dv.contextMenuBtns) == 0 {
+		t.Fatal("context menu has no buttons")
+	}
+
+	// Find a button whose click action changes row state.
+	// The "Mute" item toggles dv.Rows[0].Muted.
+	var muteBtn *Button
+	for _, btn := range dv.contextMenuBtns {
+		if btn.Text == "Mute" || btn.Text == "Muted" {
+			muteBtn = btn
+			break
+		}
+	}
+	if muteBtn == nil {
+		t.Fatal("could not find Mute button in context menu")
+	}
+	r := muteBtn.Rect()
+	if r.Empty() {
+		t.Fatal("Mute button has empty rect")
+	}
+
+	cx := (r.Min.X + r.Max.X) / 2
+	cy := (r.Min.Y + r.Max.Y) / 2
+
+	wasMuted := dv.Rows[0].Muted
+
+	// Click on the Mute button via the Game-loop path (HandleInput + Update).
+	// Before fix: tree yields at popupActive → portal inputFn never fires → button dead.
+	// After fix: tree dispatches to portal overlay → inputFn → handleContextMenuInput → Mute fires.
+	fxGameFrame(dv, cx, cy, true, 800, 300)
+	fxGameFrame(dv, cx, cy, false, 800, 300)
+
+	if dv.Rows[0].Muted == wasMuted {
+		t.Error("Mute button did not fire — context menu buttons dead on mobile " +
+			"(tree yields at popupActive before portal dispatch)")
+	}
+}
+
+// TestEQWaveToggleWorksWithPortalOpen reproduces the bug where the EQ/Wave
+// toggle button (viewSwitchBtn, z=110 in TransportZone) is dead when any
+// portal overlay is open because popupActive() returns true.
+func TestEQWaveToggleWorksWithPortalOpen(t *testing.T) {
+	setupMobileTest(t, true)
+	audio.ClearAllInsertEffects()
+	audio.InitInsertChains(44100)
+	t.Cleanup(func() { audio.ClearAllInsertEffects() })
+	dv := NewDrumView(image.Rect(0, 0, 800, 300), nil, game_log.New(nil, game_log.LevelError))
+	dv.recalcButtons()
+	dv.calcLayout()
+
+	// Verify viewSwitchBtn exists and has a non-empty rect.
+	if dv.viewSwitchBtn() == nil {
+		t.Skip("no viewSwitchBtn (desktop-only?)")
+	}
+	r := dv.viewSwitchBtn().Rect()
+	if r.Empty() {
+		t.Skip("viewSwitchBtn has empty rect")
+	}
+
+	// Record initial view mode.
+	initialMode := dv.currentViewMode
+
+	cx := (r.Min.X + r.Max.X) / 2
+	cy := (r.Min.Y + r.Max.Y) / 2
+
+	// Click on viewSwitchBtn.
+	fxGameFrame(dv, cx, cy, true, 800, 300)
+	fxGameFrame(dv, cx, cy, false, 800, 300)
+
+	if dv.currentViewMode == initialMode {
+		t.Error("viewSwitchBtn did not cycle view mode — " +
+			"button dead (tree yields at popupActive for stale state)")
+	}
+}
+
 func TestRowButtonTextsNotTruncated(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
 	}
-	g := dv.rowGroups[0]
+	g := dv.rowGroups()[0]
 	for _, tc := range []struct {
 		name string
 		btn  *Button

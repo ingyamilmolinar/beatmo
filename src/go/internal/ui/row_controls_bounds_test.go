@@ -97,22 +97,22 @@ func TestMobileRowLabelRectsNonEmpty(t *testing.T) {
 	}
 
 	for i := g.drum.rowOffset; i < endRow; i++ {
-		if i < len(g.drum.rowLabels) {
-			r := g.drum.rowLabels[i].Rect()
+		if i < len(g.drum.rowLabels()) {
+			r := g.drum.rowLabels()[i].Rect()
 			if r.Empty() {
 				t.Errorf("row %d label rect is empty", i)
 			}
 		} else {
-			t.Errorf("row %d has no label button (rowLabels len=%d)", i, len(g.drum.rowLabels))
+			t.Errorf("row %d has no label button (rowLabels len=%d)", i, len(g.drum.rowLabels()))
 		}
 
-		if i < len(g.drum.rowMuteBtns) {
-			r := g.drum.rowMuteBtns[i].Rect()
+		if i < len(g.drum.rowMuteBtns()) {
+			r := g.drum.rowMuteBtns()[i].Rect()
 			if !r.Empty() {
 				t.Errorf("row %d mute button should have empty rect on mobile, got %v", i, r)
 			}
 		} else {
-			t.Errorf("row %d has no mute button (rowMuteBtns len=%d)", i, len(g.drum.rowMuteBtns))
+			t.Errorf("row %d has no mute button (rowMuteBtns len=%d)", i, len(g.drum.rowMuteBtns()))
 		}
 	}
 }

@@ -220,7 +220,7 @@ func TestTouchScrollInDrumView(t *testing.T) {
 
 	// Apply a positive delta large enough to scroll by multiple rows.
 	dv.syncRowScroll()
-	dv.rowScroll.applyPixelDelta(float64(rh * 3))
+	dv.rowScroll().applyPixelDelta(float64(rh * 3))
 	dv.flushRowScroll()
 	if dv.rowOffset <= 0 {
 		t.Fatalf("expected rowOffset>0 after positive delta, got %d", dv.rowOffset)
@@ -231,7 +231,7 @@ func TestTouchScrollInDrumView(t *testing.T) {
 
 	// Apply a large negative delta — should clamp to 0.
 	dv.syncRowScroll()
-	dv.rowScroll.applyPixelDelta(float64(-rh * 100))
+	dv.rowScroll().applyPixelDelta(float64(-rh * 100))
 	dv.flushRowScroll()
 	if dv.rowOffset != 0 {
 		t.Fatalf("expected rowOffset clamped to 0, got %d", dv.rowOffset)
@@ -239,7 +239,7 @@ func TestTouchScrollInDrumView(t *testing.T) {
 
 	// Apply a huge positive delta — should clamp to maxOffset.
 	dv.syncRowScroll()
-	dv.rowScroll.applyPixelDelta(float64(rh * 100))
+	dv.rowScroll().applyPixelDelta(float64(rh * 100))
 	dv.flushRowScroll()
 	maxOff := totalRows - visRows
 	if maxOff < 0 {

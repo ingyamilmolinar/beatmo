@@ -287,7 +287,7 @@ func TestOverflowMenuStaysOpenAfterButtonTap(t *testing.T) {
 	dv := newDrumViewForOverflowTest(t, image.Rect(0, 0, W, H))
 
 	// Locate the overflow button.
-	btnRect := dv.overflowBtn.Rect()
+	btnRect := dv.overflowBtn().Rect()
 	if btnRect.Empty() {
 		t.Skip("overflow button rect empty — layout may differ")
 	}
@@ -311,7 +311,7 @@ func TestOverflowMenuStaysOpenAfterButtonTap(t *testing.T) {
 	suppressClicksUntilRelease = savedSuppress
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
-	if !dv.overflowMenuOpen {
+	if !dv.IsOverflowMenuOpen() {
 		t.Fatal("expected overflow menu to open after tapping button")
 	}
 
@@ -337,7 +337,7 @@ func TestOverflowMenuStaysOpenAfterButtonTap(t *testing.T) {
 
 	dv.HandleInput(outsideX, outsideY, true)
 
-	if !dv.overflowMenuOpen {
+	if !dv.IsOverflowMenuOpen() {
 		t.Errorf(
 			"overflow menu was closed by HandleInput(left=true) while suppressClicksUntilRelease — flicker bug\n"+
 				"  tap pos:    (%d,%d)\n"+
@@ -364,7 +364,7 @@ func TestOverflowMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	dv := newDrumViewForOverflowTest(t, image.Rect(0, 0, W, H))
 
 	// Locate the overflow button.
-	btnRect := dv.overflowBtn.Rect()
+	btnRect := dv.overflowBtn().Rect()
 	if btnRect.Empty() {
 		t.Skip("overflow button rect empty — layout may differ")
 	}
@@ -383,7 +383,7 @@ func TestOverflowMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	dv.Update()
 	resetOpen()
 
-	if !dv.overflowMenuOpen {
+	if !dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu must be open before testing close")
 	}
 
@@ -410,9 +410,19 @@ func TestOverflowMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 		outsideY = popupRect.Min.Y - 30
 	}
 
-	dv.HandleInput(outsideX, outsideY, true)
+	// Click-outside closing is handled by the tree. Go through Update.
+	resetOutside := SetInputForTest(
+		func() (int, int) { return outsideX, outsideY },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	resetOutside()
 
-	if dv.overflowMenuOpen {
+	if dv.IsOverflowMenuOpen() {
 		t.Errorf("overflow menu should close when tapping outside after suppression cleared (tap pos: %d,%d, popup rect: %v)",
 			outsideX, outsideY, popupRect)
 	}
@@ -457,7 +467,7 @@ func TestOverflowBtnTapDoesNotTriggerAdjacentButton(t *testing.T) {
 	dv.Update()
 	reset()
 
-	btnRect := dv.overflowBtn.Rect()
+	btnRect := dv.overflowBtn().Rect()
 	if btnRect.Empty() {
 		t.Skip("overflow button rect empty — layout may differ")
 	}
@@ -496,7 +506,7 @@ func TestOverflowBtnTapDoesNotTriggerAdjacentButton(t *testing.T) {
 	dv.Update()
 	reset2()
 
-	if !dv.overflowMenuOpen {
+	if !dv.IsOverflowMenuOpen() {
 		t.Error("expected overflow menu to open after tapping overflow button")
 	}
 	if dv.currentViewMode != viewModeBefore {
@@ -514,7 +524,7 @@ func TestBPMBoxFitsThreeDigits(t *testing.T) {
 	const W, H = 390, 844
 	dv := newDrumViewForOverflowTest(t, image.Rect(0, 0, W, H))
 
-	bpmW := dv.bpmBox.Rect.Dx()
+	bpmW := dv.bpmBox().Rect.Dx()
 	needed := TextWidth("120")
 
 	if bpmW < needed {

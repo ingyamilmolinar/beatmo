@@ -17,8 +17,8 @@ type mockHandler struct {
 }
 
 func (m *mockHandler) InputBounds() image.Rectangle { return m.bounds }
-func (m *mockHandler) ZIndex() int             { return m.zIndex }
-func (m *mockHandler) Capturing() bool         { return m.captured }
+func (m *mockHandler) ZIndex() int                  { return m.zIndex }
+func (m *mockHandler) Capturing() bool              { return m.captured }
 
 func (m *mockHandler) HandleInput(x, y int, pressed bool) InputResult {
 	m.handled = true

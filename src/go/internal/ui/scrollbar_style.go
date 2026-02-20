@@ -17,20 +17,20 @@ type ScrollbarStyle struct {
 
 var (
 	DefaultScrollbarStyle = ScrollbarStyle{
-		TrackColor: color.RGBA{80, 80, 80, 255},
-		ThumbColor: color.RGBA{200, 200, 200, 255},
+		TrackColor: color.NRGBA{255, 255, 255, 8},
+		ThumbColor: color.NRGBA{255, 255, 255, 40},
 		Width:      6,
 		MinThumbH:  10,
 	}
 	MobileScrollbarStyle = ScrollbarStyle{
-		TrackColor: color.RGBA{80, 80, 80, 255},
-		ThumbColor: color.RGBA{200, 200, 200, 255},
+		TrackColor: color.NRGBA{255, 255, 255, 8},
+		ThumbColor: color.NRGBA{255, 255, 255, 50},
 		Width:      16,
 		MinThumbH:  44,
 	}
 	DropdownScrollbarStyle = ScrollbarStyle{
-		TrackColor: color.RGBA{70, 70, 70, 255},
-		ThumbColor: color.RGBA{200, 200, 200, 255},
+		TrackColor: color.NRGBA{255, 255, 255, 8},
+		ThumbColor: color.NRGBA{255, 255, 255, 40},
 		Width:      10,
 		MinThumbH:  12,
 	}
@@ -38,12 +38,7 @@ var (
 
 // ScrollbarStyleForPlatform returns the appropriate scrollbar style for the
 // current platform (mobile or desktop).
-func ScrollbarStyleForPlatform() ScrollbarStyle {
-	if isSmallScreen() {
-		return MobileScrollbarStyle
-	}
-	return DefaultScrollbarStyle
-}
+func ScrollbarStyleForPlatform() ScrollbarStyle { return Profile().ScrollbarStyle }
 
 // Draw renders the scrollbar track and thumb. It is stateless — it draws
 // whatever rectangles are given.

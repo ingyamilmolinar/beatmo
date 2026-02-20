@@ -192,7 +192,7 @@ func TestFocusRectCoordinatesMatchGameCoords(t *testing.T) {
 	}
 
 	// The registered rect must match bpmBox.Rect exactly (game coordinates).
-	box := dv.bpmBox.Rect
+	box := dv.bpmBox().Rect
 	if found.X != box.Min.X || found.Y != box.Min.Y {
 		t.Fatalf("bpm rect origin mismatch: registered=(%d,%d) bpmBox=(%d,%d)",
 			found.X, found.Y, box.Min.X, box.Min.Y)

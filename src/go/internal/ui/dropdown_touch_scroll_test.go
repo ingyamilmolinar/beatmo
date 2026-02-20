@@ -18,7 +18,7 @@ func TestInstMenuCompTouchScrollCategories(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	comp := NewInstrumentMenuComponent("test-scroll-cats")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		Categories: []string{"Cat A", "Cat B", "Cat C", "Cat D", "Cat E",
 			"Cat F", "Cat G", "Cat H", "Cat I", "Cat J"},
@@ -83,7 +83,7 @@ func TestInstMenuCompTouchScrollInstruments(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	var selected string
-	comp := NewInstrumentMenuComponent("test-scroll-inst")
+	comp := NewInstrumentMenuComponent()
 	insts := make([]InstrumentOption, 20)
 	for i := range insts {
 		id := "inst_" + string(rune('a'+i))
@@ -127,7 +127,7 @@ func TestInstMenuCompQuickTapSelectsCategory(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	comp := NewInstrumentMenuComponent("test-tap-cat")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		Categories: []string{"Kicks", "Snares"},
 		Instruments: []InstrumentOption{
@@ -178,7 +178,7 @@ func TestInstMenuCompQuickTapSelectsInstrument(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	var selected string
-	comp := NewInstrumentMenuComponent("test-tap-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		Instruments: []InstrumentOption{
 			{ID: "kick", Label: "Kick", Category: ""},
@@ -222,7 +222,7 @@ func TestContextMenuDeferredTap(t *testing.T) {
 	dv.calcLayout()
 	dv.openContextMenu(0)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu not open")
 	}
 	if len(dv.contextMenuBtns) == 0 {
@@ -243,7 +243,7 @@ func TestContextMenuDeferredTap(t *testing.T) {
 	if !consumed {
 		t.Fatal("not consumed on press")
 	}
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu closed on press")
 	}
 	if !dv.contextMenuDeferredTap.Active() {
@@ -253,7 +253,7 @@ func TestContextMenuDeferredTap(t *testing.T) {
 	// Release — fires the deferred tap.
 	dv.handleContextMenuInput(cx, cy, false)
 	// The first button is "Instrument" which closes the context menu.
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu still open after tap release")
 	}
 }
@@ -273,9 +273,9 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 	dv.calcLayout()
 
 	// Need overflow button to be non-nil for popup rect calculation.
-	dv.overflowBtn = NewButton("...", PopupButtonStyle, nil)
-	dv.overflowBtn.SetRect(image.Rect(10, 10, 60, 50))
-	dv.overflowMenuOpen = true
+	dv.transportZone.overflowBtn = NewButton("...", PopupButtonStyle, nil)
+	dv.overflowBtn().SetRect(image.Rect(10, 10, 60, 50))
+	dv.openOverflowMenuPortal()
 
 	popupRect := dv.overflowPopupRect()
 	if popupRect.Empty() {
@@ -289,7 +289,7 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 	if !consumed {
 		t.Fatal("not consumed on press")
 	}
-	if !dv.overflowMenuOpen {
+	if !dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu closed on press")
 	}
 	if !dv.overflowDeferredTap.Active() {
@@ -299,7 +299,7 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 	// Release — fires the deferred tap.
 	dv.handleOverflowMenuInput(cx, cy, false)
 	// The first button is "Upload" which closes overflow menu.
-	if dv.overflowMenuOpen {
+	if dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu still open after tap release")
 	}
 }
@@ -319,7 +319,7 @@ func TestInstMenuOpenForRowUsesComponent(t *testing.T) {
 	dv.Rows = append(dv.Rows, &DrumRow{Name: "Row 1", Instrument: "kick"})
 	dv.calcLayout()
 
-	comp := NewInstrumentMenuComponent("test-open-for-row")
+	comp := NewInstrumentMenuComponent()
 	dv.instMenuComp = comp
 
 	dv.openInstMenuForRow(0)
@@ -327,7 +327,7 @@ func TestInstMenuOpenForRowUsesComponent(t *testing.T) {
 	if !comp.IsOpen() {
 		t.Fatal("instMenuComp.IsOpen() should be true after openInstMenuForRow")
 	}
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("instMenuOpen should be true")
 	}
 }
@@ -346,7 +346,7 @@ func TestInstMenuDesktopImmediateFire(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
 	var selected string
-	comp := NewInstrumentMenuComponent("test-desktop-fire")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		Instruments: []InstrumentOption{
 			{ID: "kick", Label: "Kick", Category: ""},

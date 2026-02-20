@@ -71,8 +71,8 @@ func TestNotificationOnInvalidBPM(t *testing.T) {
 	g := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, g)
 	dv.calcLayout()
-	focusTextInput(t, dv, dv.bpmBox)
-	dv.bpmBox.SetText("abc")
+	focusTextInput(t, dv, dv.bpmBox())
+	dv.bpmBox().SetText("abc")
 	// Simulate Enter to commit invalid BPM
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },

@@ -14,32 +14,37 @@ func TestDrumViewSubdivDropdownOpensAndSelects(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.recalcButtons()
-	center := dv.subdivBtn.Rect()
+	center := dv.subdivBtn().Rect()
 	cx, cy := (center.Min.X+center.Max.X)/2, (center.Min.Y+center.Max.Y)/2
-	// click to open
+	// Press to open
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
 	t.Cleanup(restore)
 	dv.Update()
 	restore()
-	if !dv.subdivMenuOpen {
+	// Release frame (tree needs press→release cycle)
+	restore = SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return false }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
+	dv.Update()
+	restore()
+	if !dv.IsSubdivMenuOpen() {
 		t.Fatalf("subdiv menu did not open")
 	}
 	if len(dv.subdivMenuBtns) == 0 {
 		t.Fatalf("no subdiv menu items")
 	}
 	selectedText := dv.subdivMenuBtns[0].Text
-	// click first item
+	// Click first item
 	r := dv.subdivMenuBtns[0].Rect()
 	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	restore = SetInputForTest(func() (int, int) { return rx, ry }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 640, 200 })
 	t.Cleanup(restore)
 	dv.Update()
 	restore()
-	if dv.subdivMenuOpen {
+	if dv.IsSubdivMenuOpen() {
 		t.Fatalf("subdiv menu did not close after selection")
 	}
-	if dv.subdivBtn.Text != selectedText {
-		t.Fatalf("subdiv button text %q want %q", dv.subdivBtn.Text, selectedText)
+	wantText := "\u00f7" + selectedText // ÷ prefix
+	if dv.subdivBtn().Text != wantText {
+		t.Fatalf("subdiv button text %q want %q", dv.subdivBtn().Text, wantText)
 	}
 }
 
@@ -51,17 +56,21 @@ func TestGameSubdivDropdownAppliesGrid(t *testing.T) {
 	g.Layout(800, 600)
 	dv := g.drum
 	dv.recalcButtons()
-	// open
-	c := dv.subdivBtn.Rect()
+	// Press to open
+	c := dv.subdivBtn().Rect()
 	cx, cy := (c.Min.X+c.Max.X)/2, (c.Min.Y+c.Max.Y)/2
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return true }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
 	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
-	if !dv.subdivMenuOpen {
+	// Release frame (tree needs press→release cycle)
+	restore = SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return false }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
+	_ = g.Update()
+	restore()
+	if !dv.IsSubdivMenuOpen() {
 		t.Fatalf("menu did not open")
 	}
-	// pick any value different from the current grid maxdiv
+	// Pick any value different from the current grid maxdiv
 	current := g.grid.MaxDiv()
 	var target *Button
 	var targetVal int

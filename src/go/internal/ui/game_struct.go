@@ -18,10 +18,12 @@ import (
 
 type Game struct {
 	/* subsystems */
-	cam             *Camera
-	split           *Splitter
-	drum            *DrumView
-	inputDispatcher *InputDispatcher
+	cam                       *Camera
+	split                     *Splitter
+	drum                      *DrumView
+	inputDispatcher           *InputDispatcher
+	lastDispatcherSidebarOpen bool
+	dispatcherDirty           bool
 	graph           *model.Graph
 	graphRuntime    *graphruntime.Runtime
 	state           *gamestate.State
@@ -112,6 +114,7 @@ type Game struct {
 	nextOriginIdxByRow []int
 	nextBeatIdxs       []int                // Absolute beat index per row
 	nextIdxSticky      []bool               // Preserve nextBeatIdxs on row shifts
+	startNextBuf       []int                // Reusable buffer for frame-start snapshot of nextBeatIdxs
 	nodeRows           map[model.NodeID]int // nodeID -> row index
 	elapsedBeats       int
 	nodeCacheMu        sync.RWMutex
@@ -122,7 +125,7 @@ type Game struct {
 	start           *uiNode // explicit “root/start” node (⇧S to set)
 	centered        bool    // camera centered on first layout
 	lastHorizontal  *bool   // track previous orientation for change detection
-	lastSmallScreen *bool   // track previous isSmallScreen() for mode transition detection
+	lastSmallScreen *bool   // track previous Profile().IsMobile() for mode transition detection
 	demoBuilt       bool    // demo circuit built once
 	demoScheduled   bool    // build demo on next update
 	// Benchmark mode fields (set via RunBenchmark)
@@ -309,6 +312,16 @@ type Game struct {
 	// Per-frame pre-computed node radii (avoids O(n²) neighbor checks in draw loop)
 	nodeRadiiCache []float64
 
+	// Static node layer cache: all nodes in default (non-highlighted) state.
+	// Rebuilt only when camera moves beyond pad, graph changes, or scale changes.
+	nodeLayer         *ebiten.Image
+	nodeLayerDirty    bool
+	nodeLayerCamOffX  float64
+	nodeLayerCamOffY  float64
+	nodeLayerCamScale float64
+	nodeLayerGraphSig uint64 // hash of node positions + colors + types
+	nodeLayerPad      int    // reuse tolerance for camera pans
+
 	// node sprite cache (screen-space) keyed by radius px + colors
 	nodeSpriteCache map[spriteKey]*ebiten.Image
 
@@ -342,8 +355,6 @@ type Game struct {
 
 	// Segmented drum timeline; stores committed past beats per row.
 	timeline *timeline.Service
-	// Pluggable UI overlays/controls.
-	components *ComponentRegistry
 	// Highest absolute subdivision index frozen per row (inclusive). Starts
 	// at -1; grows monotonically while playing. Reset on Stop.
 	frozenUpToByRow []int

@@ -34,7 +34,7 @@ func (g *Game) queueSoundParams(id string, vol, pitch, dur float64) {
 	}
 	g.logger.Tracef("[AUDIO/QUEUE] id=%s vol=%.3f when=%v", id, vol, req.when)
 	g.perf.onAudioEnq()
-	sendLatest(g.audioCh, req)
+	sendLatest(g.audioCh, req, &g.perf.aDrops)
 }
 
 // queueSoundAtParams schedules with explicit timestamp seconds.
@@ -45,7 +45,7 @@ func (g *Game) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, when
 	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, when: whenSec, hasWhen: true, enqAt: time.Now(), gen: g.audioGen.Load(), row: row, abs: abs}
 	g.logger.Tracef("[AUDIO/QUEUE] id=%s vol=%.3f when=[%.6f]", id, vol, whenSec)
 	g.perf.onAudioEnq()
-	sendLatest(g.audioCh, req)
+	sendLatest(g.audioCh, req, &g.perf.aDrops)
 }
 
 func (g *Game) runtimeAudioLookahead() float64 {
@@ -54,8 +54,8 @@ func (g *Game) runtimeAudioLookahead() float64 {
 		look = 0
 	}
 	if !g.Playing() {
-		if look > 0.12 {
-			return 0.12
+		if look > 0.06 {
+			return 0.06
 		}
 		return look
 	}
@@ -68,22 +68,30 @@ func (g *Game) runtimeAudioLookahead() float64 {
 	s := g.perf.snapshot()
 	extra := 0.0
 	if s.AudioQLatMax > 18 {
-		extra = math.Max(extra, 0.06)
+		extra = math.Max(extra, 0.03)
 	} else if s.AudioQLatMax > 12 {
-		extra = math.Max(extra, 0.04)
-	}
-	if s.DrawAvgMS > 18.0 || s.UpdateMaxMS > 25.0 {
-		extra = math.Max(extra, 0.06)
-	} else if s.DrawAvgMS > 14.0 || s.UpdateMaxMS > 18.0 {
-		extra = math.Max(extra, 0.04)
-	} else if s.DrawAvgMS > 11.0 || s.UpdateAvgMS > 8.0 {
 		extra = math.Max(extra, 0.02)
 	}
+	if s.DrawAvgMS > 18.0 || s.UpdateMaxMS > 25.0 {
+		extra = math.Max(extra, 0.03)
+	} else if s.DrawAvgMS > 14.0 || s.UpdateMaxMS > 18.0 {
+		extra = math.Max(extra, 0.02)
+	} else if s.DrawAvgMS > 11.0 || s.UpdateAvgMS > 8.0 {
+		extra = math.Max(extra, 0.01)
+	}
 	look += extra
-	if look > 0.12 {
-		look = 0.12
+	if look > 0.06 {
+		look = 0.06
 	}
 	return look
+}
+
+// audioChNearFull returns true if the audio channel is above 75% capacity.
+// Used by seqScheduleTime to skip the entire tick when the audioLoop
+// goroutine hasn't drained the channel yet. The tick retries in 4ms
+// without advancing any seqNextIdxs, so no beats are lost.
+func (g *Game) audioChNearFull() bool {
+	return len(g.audioCh) >= cap(g.audioCh)*3/4
 }
 
 // scheduleSound applies groove (swing and micro-delay) and enqueues the sound.

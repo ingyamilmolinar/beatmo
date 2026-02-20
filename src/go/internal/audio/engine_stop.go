@@ -5,17 +5,17 @@
 // The desktop mixer uses a 3-phase block processing design to prevent shared
 // biquad EQ state corruption.
 //
-//   Phase 1: Render voices → per-instrument buffers (NO EQ)
-//            Each voice: voice.Sample() → voiceTemp, apply mixHeadroom (0.25×),
-//            accumulate into instBufs[instrumentID].
+//	Phase 1: Render voices → per-instrument buffers (NO EQ)
+//	         Each voice: voice.Sample() → voiceTemp, apply mixHeadroom (0.25×),
+//	         accumulate into instBufs[instrumentID].
 //
-//   Phase 2: Per-instrument channel EQ → masterBuf
-//            For each active instrument: channel.ProcessBlockLocal(instBuf, masterBuf)
-//            (applies volume + EQ; does NOT recurse to parent channel).
+//	Phase 2: Per-instrument channel EQ → masterBuf
+//	         For each active instrument: channel.ProcessBlockLocal(instBuf, masterBuf)
+//	         (applies volume + EQ; does NOT recurse to parent channel).
 //
-//   Phase 2.5: Send effects (delay + reverb) → masterBuf
+//	Phase 2.5: Send effects (delay + reverb) → masterBuf
 //
-//   Phase 3: Master channel EQ → workBuf → output capture → hard clamp [-1,1] → int16 (×32767)
+//	Phase 3: Master channel EQ → workBuf → output capture → hard clamp [-1,1] → int16 (×32767)
 //
 // WHY 3 PHASES: each biquad filter is stateful (x1, x2, y1, y2) and expects a
 // continuous signal stream. The old code processed individual voices through
@@ -25,14 +25,15 @@
 // voices at the GainNode level before routing through filter nodes.
 //
 // Debugging workflow (each env var isolates a pipeline stage):
-//   TEST_TONE=1           → pure 440Hz sine, bypasses all synth (tests Oto/driver)
-//   TEST_VOICE=1          → simple 220Hz sine per hit (tests voice/mixer path)
-//   BYPASS_CHANNEL_PROC=1 → skip channel processing (isolates mixer vs EQ)
-//   AUDIO_CLIP_DEBUG=1    → log clipping events before hard clamp
-//   DEBUG_MIXER=1         → log workBuf min/max values periodically
-//   BYPASS_HEADROOM=1     → skip 0.25× attenuation (test headroom sufficiency)
-//   TEST_RAW_VOICE=1      → output first voice raw (test voice buffer integrity)
-//   SINGLE_VOICE=1        → limit to one voice (test multi-voice accumulation)
+//
+//	TEST_TONE=1           → pure 440Hz sine, bypasses all synth (tests Oto/driver)
+//	TEST_VOICE=1          → simple 220Hz sine per hit (tests voice/mixer path)
+//	BYPASS_CHANNEL_PROC=1 → skip channel processing (isolates mixer vs EQ)
+//	AUDIO_CLIP_DEBUG=1    → log clipping events before hard clamp
+//	DEBUG_MIXER=1         → log workBuf min/max values periodically
+//	BYPASS_HEADROOM=1     → skip 0.25× attenuation (test headroom sufficiency)
+//	TEST_RAW_VOICE=1      → output first voice raw (test voice buffer integrity)
+//	SINGLE_VOICE=1        → limit to one voice (test multi-voice accumulation)
 package audio
 
 import (
@@ -501,6 +502,12 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		outputCaptureMu.Lock()
 		outputCaptureBuf = append(outputCaptureBuf, m.workBuf[:blockLen]...)
 		outputCaptureMu.Unlock()
+	}
+
+	// Multi-channel capture: tap per-instrument + master for recording feature.
+	// The atomic pointer check is zero-cost when not recording.
+	if mc := multiCapturePtr.Load(); mc != nil {
+		mc.appendBlock(m.instBufs, m.instSlotIDs, m.activeSlots, m.workBuf[:], blockLen)
 	}
 
 	// Diagnostic: count clipping events before hard clamp

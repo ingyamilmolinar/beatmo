@@ -84,11 +84,11 @@ func (s *Splitter) UpdateResize(totalH, winW int) {
 			}
 			minY := 120
 			maxY := totalH - 120
-			if isSmallScreen() {
-				if q := totalH / 4; q > minY {
+			if f := Profile().SplitterMinFraction; f > 0 {
+				if q := int(f * float64(totalH)); q > minY {
 					minY = q
 				}
-				if q := totalH - totalH/4; q < maxY {
+				if q := totalH - int(f*float64(totalH)); q < maxY {
 					maxY = q
 				}
 			}
@@ -107,11 +107,11 @@ func (s *Splitter) UpdateResize(totalH, winW int) {
 			}
 			minX := 120
 			maxX := winW - 120
-			if isSmallScreen() {
-				if q := winW / 4; q > minX {
+			if f := Profile().SplitterMinFraction; f > 0 {
+				if q := int(f * float64(winW)); q > minX {
 					minX = q
 				}
-				if q := winW - winW/4; q < maxX {
+				if q := winW - int(f*float64(winW)); q < maxX {
 					maxX = q
 				}
 			}
@@ -134,8 +134,8 @@ func (s *Splitter) Update(totalH, winW int) {
 	// Legacy direct input handling (bypassed when using InputDispatcher)
 	grab := TouchGrabZone() // px hit-box around the divider
 	initGrab := grab
-	if isSmallScreen() && grab > 8 {
-		initGrab = 8
+	if t := Profile().SplitterGrabThreshold; t > 0 && grab > t {
+		initGrab = t
 	}
 	if suppressClicksUntilRelease {
 		if !isMouseButtonPressed(ebiten.MouseButtonLeft) {
@@ -163,11 +163,11 @@ func (s *Splitter) Update(totalH, winW int) {
 				s.Y = my
 				minY := 120
 				maxY := totalH - 120
-				if isSmallScreen() {
-					if q := totalH / 4; q > minY {
+				if f := Profile().SplitterMinFraction; f > 0 {
+					if q := int(f * float64(totalH)); q > minY {
 						minY = q
 					}
-					if q := totalH - totalH/4; q < maxY {
+					if q := totalH - int(f*float64(totalH)); q < maxY {
 						maxY = q
 					}
 				}
@@ -202,11 +202,11 @@ func (s *Splitter) Update(totalH, winW int) {
 				s.X = mx
 				minX := 120
 				maxX := winW - 120
-				if isSmallScreen() {
-					if q := winW / 4; q > minX {
+				if f := Profile().SplitterMinFraction; f > 0 {
+					if q := int(f * float64(winW)); q > minX {
 						minX = q
 					}
-					if q := winW - winW/4; q < maxX {
+					if q := winW - int(f*float64(winW)); q < maxX {
 						maxX = q
 					}
 				}
@@ -268,8 +268,8 @@ func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
 	// On small screens, use a tighter initiation threshold so the grab zone
 	// doesn't extend far into the drum area and steal button taps.
 	initGrab := grab
-	if isSmallScreen() && grab > 8 {
-		initGrab = 8
+	if t := Profile().SplitterGrabThreshold; t > 0 && grab > t {
+		initGrab = t
 	}
 
 	if suppressClicksUntilRelease {
@@ -299,11 +299,11 @@ func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
 					s.Y = y
 					minY := 120
 					maxY := s.totalH - 120
-					if isSmallScreen() {
-						if q := s.totalH / 4; q > minY {
+					if f := Profile().SplitterMinFraction; f > 0 {
+						if q := int(f * float64(s.totalH)); q > minY {
 							minY = q
 						}
-						if q := s.totalH - s.totalH/4; q < maxY {
+						if q := s.totalH - int(f*float64(s.totalH)); q < maxY {
 							maxY = q
 						}
 					}
@@ -343,11 +343,11 @@ func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
 					s.X = x
 					minX := 120
 					maxX := s.winW - 120
-					if isSmallScreen() {
-						if q := s.winW / 4; q > minX {
+					if f := Profile().SplitterMinFraction; f > 0 {
+						if q := int(f * float64(s.winW)); q > minX {
 							minX = q
 						}
-						if q := s.winW - s.winW/4; q < maxX {
+						if q := s.winW - int(f*float64(s.winW)); q < maxX {
 							maxX = q
 						}
 					}

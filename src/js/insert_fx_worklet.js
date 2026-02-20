@@ -21,7 +21,12 @@
 // functions via the WASM module.
 
 /* eslint-disable no-undef */
-const _EFFECT_TYPES = ['distortion', 'delay', 'reverb', 'chorus', 'bitcrusher', 'filter'];
+const _EFFECT_TYPES = [
+  'distortion', 'delay', 'reverb', 'chorus', 'bitcrusher', 'filter',
+  'waveshaper', 'ringmod', 'tremolo', 'gate', 'limiter',
+  'flanger', 'phaser', 'autowah',
+  'compressor', 'transient', 'tape', 'pitchshift',
+];
 
 class InsertFXProcessor extends AudioWorkletProcessor {
   constructor(_options) {
@@ -138,6 +143,92 @@ class InsertFXProcessor extends AudioWorkletProcessor {
             p.mode ?? 0, p.cutoff ?? 1000, p.q ?? 0.707, p.mix ?? 1);
           break;
         }
+        case 'waveshaper': {
+          entry.cPtr = m._malloc(32);
+          m._ifx_waveshaper_init(entry.cPtr,
+            p.curve ?? 0, p.drive ?? 2, p.mix ?? 1);
+          break;
+        }
+        case 'ringmod': {
+          entry.cPtr = m._malloc(64);
+          m._ifx_ringmod_init(entry.cPtr, sr,
+            p.frequency ?? 440, p.shape ?? 0, p.mix ?? 0.5);
+          break;
+        }
+        case 'tremolo': {
+          entry.cPtr = m._malloc(64);
+          m._ifx_tremolo_init(entry.cPtr, sr,
+            p.rate ?? 4, p.depth ?? 0.5, p.shape ?? 0, p.mix ?? 1);
+          break;
+        }
+        case 'gate': {
+          entry.cPtr = m._malloc(64);
+          m._ifx_gate_init(entry.cPtr, sr,
+            p.threshold ?? -30, p.attack ?? 1, p.release ?? 50, p.range ?? -90);
+          break;
+        }
+        case 'limiter': {
+          entry.cPtr = m._malloc(64);
+          m._ifx_limiter_init(entry.cPtr, sr,
+            p.threshold ?? -1, p.release ?? 50, p.ceiling ?? -0.3);
+          break;
+        }
+        case 'flanger': {
+          entry.cPtr = m._malloc(128);
+          const depthMs = p.depth ?? 3;
+          const bufLen = Math.max(64, Math.round(depthMs * 0.001 * sr * 2) + 64);
+          const bufPtr = m._malloc(bufLen * 4);
+          entry.auxPtrs.push(bufPtr);
+          m._ifx_flanger_init(entry.cPtr, sr, bufPtr, bufLen,
+            p.rate ?? 0.5, p.depth ?? 3, p.feedback ?? 0.5, p.mix ?? 0.5);
+          break;
+        }
+        case 'phaser': {
+          entry.cPtr = m._malloc(256);
+          m._ifx_phaser_init(entry.cPtr, sr,
+            p.stages ?? 4, p.rate ?? 0.5, p.depth ?? 0.7,
+            p.feedback ?? 0.5, p.mix ?? 0.5);
+          break;
+        }
+        case 'autowah': {
+          entry.cPtr = m._malloc(128);
+          m._ifx_autowah_init(entry.cPtr, sr,
+            p.sensitivity ?? 0.5, p.rate ?? 2, p.depth ?? 0.7, p.mix ?? 0.5);
+          break;
+        }
+        case 'compressor': {
+          entry.cPtr = m._malloc(128);
+          m._ifx_compressor_init(entry.cPtr, sr,
+            p.threshold ?? -20, p.ratio ?? 4,
+            p.attack ?? 10, p.release ?? 100,
+            p.makeup ?? 0, p.mix ?? 1);
+          break;
+        }
+        case 'transient': {
+          entry.cPtr = m._malloc(128);
+          m._ifx_transient_init(entry.cPtr, sr,
+            p.attack ?? 100, p.sustain ?? 100, p.speed ?? 10);
+          break;
+        }
+        case 'tape': {
+          entry.cPtr = m._malloc(128);
+          const tBufLen = Math.max(64, Math.round(0.01 * sr) + 64);
+          const tBufPtr = m._malloc(tBufLen * 4);
+          entry.auxPtrs.push(tBufPtr);
+          m._ifx_tape_init(entry.cPtr, sr, tBufPtr, tBufLen,
+            p.drive ?? 2, p.warmth ?? 0.5,
+            p.wow ?? 0, p.flutter ?? 0, p.mix ?? 1);
+          break;
+        }
+        case 'pitchshift': {
+          entry.cPtr = m._malloc(128);
+          const psBufLen = Math.max(64, Math.round(0.15 * sr) + 64);
+          const psBufPtr = m._malloc(psBufLen * 4);
+          entry.auxPtrs.push(psBufPtr);
+          m._ifx_pitchshift_init(entry.cPtr, sr, psBufPtr, psBufLen,
+            p.pitch ?? 0, p.mix ?? 1, p.window ?? 50);
+          break;
+        }
         }
       }
 
@@ -165,6 +256,18 @@ class InsertFXProcessor extends AudioWorkletProcessor {
     case 'chorus':      m._ifx_chorus_set_param(slot.cPtr, namePtr, value); break;
     case 'bitcrusher':  m._ifx_bitcrusher_set_param(slot.cPtr, namePtr, value); break;
     case 'filter':      m._ifx_filter_set_param(slot.cPtr, namePtr, value); break;
+    case 'waveshaper':  m._ifx_waveshaper_set_param(slot.cPtr, namePtr, value); break;
+    case 'ringmod':     m._ifx_ringmod_set_param(slot.cPtr, namePtr, value); break;
+    case 'tremolo':     m._ifx_tremolo_set_param(slot.cPtr, namePtr, value); break;
+    case 'gate':        m._ifx_gate_set_param(slot.cPtr, namePtr, value); break;
+    case 'limiter':     m._ifx_limiter_set_param(slot.cPtr, namePtr, value); break;
+    case 'flanger':     m._ifx_flanger_set_param(slot.cPtr, namePtr, value); break;
+    case 'phaser':      m._ifx_phaser_set_param(slot.cPtr, namePtr, value); break;
+    case 'autowah':     m._ifx_autowah_set_param(slot.cPtr, namePtr, value); break;
+    case 'compressor':  m._ifx_compressor_set_param(slot.cPtr, namePtr, value); break;
+    case 'transient':   m._ifx_transient_set_param(slot.cPtr, namePtr, value); break;
+    case 'tape':        m._ifx_tape_set_param(slot.cPtr, namePtr, value); break;
+    case 'pitchshift':  m._ifx_pitchshift_set_param(slot.cPtr, namePtr, value); break;
     }
 
     m._free(namePtr);
@@ -222,6 +325,18 @@ class InsertFXProcessor extends AudioWorkletProcessor {
       case 'chorus':      m._ifx_chorus_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
       case 'bitcrusher':  m._ifx_bitcrusher_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
       case 'filter':      m._ifx_filter_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'waveshaper':  m._ifx_waveshaper_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'ringmod':     m._ifx_ringmod_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'tremolo':     m._ifx_tremolo_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'gate':        m._ifx_gate_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'limiter':     m._ifx_limiter_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'flanger':     m._ifx_flanger_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'phaser':      m._ifx_phaser_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'autowah':     m._ifx_autowah_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'compressor':  m._ifx_compressor_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'transient':   m._ifx_transient_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'tape':        m._ifx_tape_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
+      case 'pitchshift':  m._ifx_pitchshift_process(slot.cPtr, srcOff * 4, dstOff * 4, n); break;
       }
 
       // Swap src/dst for ping-pong.

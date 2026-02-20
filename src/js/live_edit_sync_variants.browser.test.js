@@ -41,6 +41,17 @@ async function setupAndPlay(page, bpm, label) {
   await page.waitForFunction(() => typeof startPlay === 'function');
   await assertSimpleDrawMode(page, false, label);
 
+  // Clear default demo circuit — only 1 row needed for this test.
+  await page.evaluate(() => {
+    importJSON(JSON.stringify({
+      version: 1, subdiv: 8, bpm: 120,
+      instruments: [{name: "Kick", id: "kick", kind: "builtin", volume: 1.0, origin: -1, color: "#C87850FF"}],
+      nodes: [],
+      eq: {gains_db: [0,0,0,0,0,0,0,0,0,0], bands_hz: []}
+    }));
+    forceDraw();
+  });
+
   await page.evaluate((bpm) => { setFollow?.(true);
     addNode?.(0,0,'regular');
     addNode?.(1,0,'regular');

@@ -26,6 +26,15 @@ func (g *Game) seqScheduleTime() {
 	}()
 
 	parityEnabled := !runningUnderGoTest() || g.parityWatch != parityWatchOff
+
+	// Skip entire tick when the audio channel is near-full. The audioLoop
+	// goroutine hasn't drained pending events yet; computing more would
+	// waste CPU since sendLatest will drop them. The 4ms ticker retries
+	// shortly, and no seqNextIdxs are advanced, so no beats are lost.
+	if g.audioChNearFull() {
+		return
+	}
+
 	if g.drum == nil {
 		return
 	}

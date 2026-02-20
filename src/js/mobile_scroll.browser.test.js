@@ -163,8 +163,9 @@ console.log("Test 3: Scroll clamped at limits");
     const vis = await page.evaluate(() => totalVisibleRows?.());
     const maxOff = totalR - vis;
 
-    console.log(`  rowOffset=${off}, totalRows=${totalR}, visibleRows=${vis}, maxOff=${maxOff}`);
-    assert(off <= maxOff || maxOff < 0, `rowOffset ${off} exceeds max ${maxOff}`);
+    const expectedOff = Math.min(9999, maxOff);
+    console.log(`  rowOffset=${off}, totalRows=${totalR}, visibleRows=${vis}, maxOff=${maxOff}, expected=${expectedOff}`);
+    assert(off === expectedOff, `Expected rowOffset=${expectedOff} after setRowOffset(9999), got ${off}`);
 
     // Also verify 0 clamp
     await page.evaluate(() => setRowOffset?.(-100));

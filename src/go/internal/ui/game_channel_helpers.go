@@ -1,12 +1,18 @@
 package ui
 
+import "sync/atomic"
+
 // sendLatest writes v to ch, dropping an existing item if the buffer is full.
 // It never blocks and will silently discard v if the channel remains full.
-func sendLatest[T any](ch chan T, v T) {
+// If drops is non-nil, it is incremented each time an item is dropped.
+func sendLatest[T any](ch chan T, v T, drops *atomic.Int64) {
 	select {
 	case ch <- v:
 		return
 	default:
+		if drops != nil {
+			drops.Add(1)
+		}
 		select {
 		case <-ch:
 		default:

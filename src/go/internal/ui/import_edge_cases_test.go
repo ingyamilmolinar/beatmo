@@ -185,9 +185,9 @@ func TestImportMasterVolumeApplied(t *testing.T) {
 		t.Fatalf("expected master volume 0.5, got %f", got)
 	}
 	// Also check slider state if available.
-	if g.drum.mainVolSlider != nil {
-		if math.Abs(g.drum.mainVolSlider.Value-0.5) > 1e-9 {
-			t.Fatalf("expected mainVolSlider.Value 0.5, got %f", g.drum.mainVolSlider.Value)
+	if g.drum.mainVolSlider() != nil {
+		if math.Abs(g.drum.mainVolSlider().Value-0.5) > 1e-9 {
+			t.Fatalf("expected mainVolSlider.Value 0.5, got %f", g.drum.mainVolSlider().Value)
 		}
 	}
 }
@@ -225,15 +225,15 @@ func TestImportEQFieldParsing(t *testing.T) {
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import failed: %v", err)
 	}
-	if len(g.drum.eqBandGainsDB) != len(eqBandDefs) {
-		t.Fatalf("expected %d EQ bands, got %d", len(eqBandDefs), len(g.drum.eqBandGainsDB))
+	if len(g.drum.eqBandGainsDB()) != len(eqBandDefs) {
+		t.Fatalf("expected %d EQ bands, got %d", len(eqBandDefs), len(g.drum.eqBandGainsDB()))
 	}
 	for i, want := range gains {
-		if i >= len(g.drum.eqBandGainsDB) {
+		if i >= len(g.drum.eqBandGainsDB()) {
 			break
 		}
-		if math.Abs(g.drum.eqBandGainsDB[i]-want) > 1e-9 {
-			t.Errorf("EQ band %d: want %.1f, got %.1f", i, want, g.drum.eqBandGainsDB[i])
+		if math.Abs(g.drum.eqBandGainsDB()[i]-want) > 1e-9 {
+			t.Errorf("EQ band %d: want %.1f, got %.1f", i, want, g.drum.eqBandGainsDB()[i])
 		}
 	}
 }

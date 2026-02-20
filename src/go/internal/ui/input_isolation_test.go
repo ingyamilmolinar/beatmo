@@ -31,9 +31,9 @@ func TestInputIsolation_EQPanelDoesNotTriggerSplitter(t *testing.T) {
 }
 
 func TestInputIsolation_DrumViewBlocksAtSpatialCheck(t *testing.T) {
-	dv := &DrumView{
-		Bounds: image.Rect(0, 300, 800, 600),
-	}
+	assertDefaultParityState(t)
+	dv := NewDrumView(image.Rect(0, 300, 800, 600), nil, testLogger)
+	dv.calcLayout()
 
 	// Point outside drum view bounds (in grid pane)
 	if dv.BlocksAt(400, 100) {
@@ -45,8 +45,8 @@ func TestInputIsolation_DrumViewBlocksAtSpatialCheck(t *testing.T) {
 		t.Error("DrumView should not block when no overlays are open")
 	}
 
-	// Point inside drum view bounds, overlay open
-	dv.instMenuOpen = true
+	// Point inside drum view bounds, overlay open (via portal path)
+	dv.openInstMenuForRow(0)
 	if !dv.BlocksAt(400, 400) {
 		t.Error("DrumView should block when instrument menu is open")
 	}
@@ -55,6 +55,7 @@ func TestInputIsolation_DrumViewBlocksAtSpatialCheck(t *testing.T) {
 	if dv.BlocksAt(400, 100) {
 		t.Error("DrumView should not block outside bounds even with overlay open")
 	}
+	dv.CloseAllPopups()
 }
 
 func TestInputIsolation_SplitterRespectsGrabZone(t *testing.T) {
@@ -71,12 +72,12 @@ func TestInputIsolation_SplitterRespectsGrabZone(t *testing.T) {
 		y        int
 		expected InputResult
 	}{
-		{"above grab zone", 200, InputIgnored},          // Too far above
-		{"at grab zone top", 295, InputCaptured},        // Within 5px grab
-		{"on divider", 300, InputCaptured},              // Exactly on divider
-		{"at grab zone bottom", 305, InputCaptured},     // Within 5px grab
-		{"below grab zone", 310, InputIgnored},          // Just outside (below)
-		{"well below in drum pane", 400, InputIgnored},  // In drum pane
+		{"above grab zone", 200, InputIgnored},         // Too far above
+		{"at grab zone top", 295, InputCaptured},       // Within 5px grab
+		{"on divider", 300, InputCaptured},             // Exactly on divider
+		{"at grab zone bottom", 305, InputCaptured},    // Within 5px grab
+		{"below grab zone", 310, InputIgnored},         // Just outside (below)
+		{"well below in drum pane", 400, InputIgnored}, // In drum pane
 	}
 
 	for _, tc := range tests {
@@ -91,80 +92,75 @@ func TestInputIsolation_SplitterRespectsGrabZone(t *testing.T) {
 }
 
 // TestInputIsolation_AnyDropdownOpen tests the anyDropdownOpen() helper method
-// that consolidates all dropdown menu state checks.
+// which delegates to the portal system.
 func TestInputIsolation_AnyDropdownOpen(t *testing.T) {
-	dv := &DrumView{}
+	assertDefaultParityState(t)
+	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, testLogger)
+	dv.calcLayout()
 
 	// No dropdowns open
 	if dv.anyDropdownOpen() {
 		t.Error("anyDropdownOpen() should be false when no dropdowns are open")
 	}
 
-	// Test each dropdown individually
+	// Test each dropdown individually via portal path
 	dropdownTests := []struct {
 		name  string
 		setup func()
+		clean func()
 	}{
-		{"subdiv menu", func() { dv.subdivMenuOpen = true }},
-		{"instrument menu", func() { dv.instMenuOpen = true }},
-		{"color menu", func() { dv.colorMenuOpen = true }},
-		{"eq channel menu", func() { dv.eqChannelOpen = true }},
+		{"subdiv menu", func() { dv.subdivBtn().OnClick() }, func() { dv.CloseAllPopups() }},
+		{"instrument menu", func() { dv.openInstMenuForRow(0) }, func() { dv.CloseAllPopups() }},
+		{"eq channel menu", func() { dv.eqPanelZone.eqChannelBtn.OnClick() }, func() { dv.CloseAllPopups() }},
+		{"overflow menu", func() { dv.openOverflowMenuPortal() }, func() { dv.CloseAllPopups() }},
 	}
 
 	for _, tc := range dropdownTests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset all
-			dv.subdivMenuOpen = false
-			dv.instMenuOpen = false
-			dv.colorMenuOpen = false
-			dv.eqChannelOpen = false
-
+			tc.clean() // Reset all
 			tc.setup()
 
 			if !dv.anyDropdownOpen() {
 				t.Errorf("anyDropdownOpen() should be true when %s is open", tc.name)
 			}
+			tc.clean()
 		})
 	}
 }
 
 func TestInputIsolation_OverlayBlocksInput(t *testing.T) {
-	dv := &DrumView{
-		Bounds: image.Rect(0, 300, 800, 600),
-	}
+	assertDefaultParityState(t)
+	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
+	dv.calcLayout()
 
 	overlayTests := []struct {
 		name   string
 		setup  func()
+		clean  func()
 		blocks bool
 	}{
-		{"no overlay", func() {}, false},
-		{"instrument menu", func() { dv.instMenuOpen = true }, true},
-		{"color menu", func() { dv.colorMenuOpen = true }, true},
-		{"subdiv menu", func() { dv.subdivMenuOpen = true }, true},
-		{"eq channel menu", func() { dv.eqChannelOpen = true }, true},
-		{"inst hold", func() { dv.instHold = true }, true},
-		{"rename box", func() { dv.renameBox = &TextInput{} }, true},
-		{"naming", func() { dv.naming = true }, true},
+		{"no overlay", func() {}, func() {}, false},
+		{"instrument menu", func() { dv.openInstMenuForRow(0) }, func() { dv.CloseAllPopups() }, true},
+		{"subdiv menu", func() { dv.subdivBtn().OnClick() }, func() { dv.CloseAllPopups() }, true},
+		{"eq channel menu", func() { dv.eqPanelZone.eqChannelBtn.OnClick() }, func() { dv.CloseAllPopups() }, true},
+		{"rename box", func() {
+			dv.renameComp.SetProps(RenameProps{AnchorRect: image.Rect(0, 0, 80, 20), InitialText: "test", MaxLen: 32})
+			dv.renameComp.Open()
+			dv.openRenamePortal()
+		}, func() { dv.closeRename() }, true},
+		{"naming", func() { dv.openNamingPortal() }, func() { dv.closeNaming() }, true},
 	}
 
 	for _, tc := range overlayTests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Reset state
-			dv.instMenuOpen = false
-			dv.colorMenuOpen = false
-			dv.subdivMenuOpen = false
-			dv.eqChannelOpen = false
-			dv.instHold = false
-			dv.renameBox = nil
-			dv.naming = false
-
+			tc.clean()
 			tc.setup()
 
 			// Test point inside drum view bounds
 			if dv.BlocksAt(400, 400) != tc.blocks {
 				t.Errorf("expected BlocksAt to return %v", tc.blocks)
 			}
+			tc.clean()
 		})
 	}
 }
@@ -254,15 +250,15 @@ func TestPopupBlocksBPMFocus(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if dv.bpmBox == nil {
+	if dv.bpmBox() == nil {
 		t.Fatal("bpmBox not initialised after calcLayout")
 	}
 
-	// Open instrument menu
-	dv.instMenuOpen = true
+	// Open instrument menu via portal path
+	dv.openInstMenuForRow(0)
 
 	// Simulate a click at the BPM box center
-	r := dv.bpmBox.Rect
+	r := dv.bpmBox().Rect
 	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
@@ -276,7 +272,7 @@ func TestPopupBlocksBPMFocus(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.bpmBox.Focused() {
+	if dv.bpmBox().Focused() {
 		t.Fatal("BPM box gained focus while instrument menu was open — popup failed to block input")
 	}
 }
@@ -288,13 +284,13 @@ func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 		name  string
 		setup func(dv *DrumView)
 	}{
-		{"instMenu", func(dv *DrumView) { dv.instMenuOpen = true }},
-		{"colorMenu", func(dv *DrumView) { dv.colorMenuOpen = true }},
-		{"subdivMenu", func(dv *DrumView) { dv.subdivMenuOpen = true }},
-		{"fxPanel", func(dv *DrumView) { dv.fxPanelOpen = true }},
-		{"eqChannel", func(dv *DrumView) { dv.eqChannelOpen = true }},
-		{"contextMenu", func(dv *DrumView) { dv.contextMenuOpen = true }},
-		{"overflowMenu", func(dv *DrumView) { dv.overflowMenuOpen = true }},
+		{"instMenu", func(dv *DrumView) { dv.openInstMenuForRow(0) }},
+		{"colorMenu", func(dv *DrumView) { dv.rowColorBtns()[0].OnClick() }},
+		{"subdivMenu", func(dv *DrumView) { dv.subdivBtn().OnClick() }},
+		{"fxPanel", func(dv *DrumView) { dv.openFXPanelPortal() }},
+		{"eqChannel", func(dv *DrumView) { dv.eqPanelZone.eqChannelBtn.OnClick() }},
+		{"contextMenu", func(dv *DrumView) { dv.openContextMenuPortal() }},
+		{"overflowMenu", func(dv *DrumView) { dv.openOverflowMenuPortal() }},
 	}
 
 	for _, tc := range popups {
@@ -308,7 +304,7 @@ func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 			dv.recalcButtons()
 			dv.calcLayout()
 
-			if dv.bpmBox == nil {
+			if dv.bpmBox() == nil {
 				t.Fatal("bpmBox not initialised")
 			}
 
@@ -316,7 +312,7 @@ func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 			tc.setup(dv)
 
 			// Simulate click at BPM box center
-			r := dv.bpmBox.Rect
+			r := dv.bpmBox().Rect
 			cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
 			restore := SetInputForTest(
 				func() (int, int) { return cx, cy },
@@ -330,7 +326,7 @@ func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 			dv.Update()
 			restore()
 
-			if dv.bpmBox.Focused() {
+			if dv.bpmBox().Focused() {
 				t.Fatalf("BPM box gained focus while %s was open", tc.name)
 			}
 		})
@@ -393,7 +389,7 @@ func TestInputIsolation_LayoutHandlerCapture(t *testing.T) {
 }
 
 // TestSliderCrossGroupIsolation_MainVolToEQ verifies that while dragging the
-// main volume slider, moving the cursor over an EQ slider does not change EQ.
+// main volume slider, moving the cursor over the EQ panel does not change EQ gains.
 func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
 	assertDefaultParityState(t)
 	audio.ClearAllInsertEffects()
@@ -422,28 +418,30 @@ func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if dv.mainVolSlider == nil || dv.mainVolSlider.Rect().Empty() {
+	if dv.mainVolSlider() == nil || dv.mainVolSlider().Rect().Empty() {
 		t.Skip("main vol slider not visible")
 	}
 
-	// Find an EQ slider that is visible.
-	eqSliderIdx := -1
-	for i, s := range dv.eqSliders {
-		if s != nil && !s.Rect().Empty() {
-			eqSliderIdx = i
+	// Find an EQ mute button that is visible to use as a drag target in the EQ area.
+	eqMuteBtns := dv.eqMuteBtns()
+	eqTargetIdx := -1
+	for i, btn := range eqMuteBtns {
+		if btn != nil && !btn.Rect().Empty() {
+			eqTargetIdx = i
 			break
 		}
 	}
-	if eqSliderIdx < 0 {
-		t.Skip("no EQ sliders visible")
+	if eqTargetIdx < 0 {
+		t.Skip("no EQ mute buttons visible")
 	}
 
-	// Record initial EQ gain.
-	origGain := dv.eqBandGainsDB[eqSliderIdx]
-	origMainVol := dv.mainVolSlider.Value
+	// Record initial EQ gains.
+	origGains := make([]float64, len(dv.eqBandGainsDB()))
+	copy(origGains, dv.eqBandGainsDB())
+	origMainVol := dv.mainVolSlider().Value
 
 	// Frame 1: Press on main vol slider center.
-	mvr := dv.mainVolSlider.Rect()
+	mvr := dv.mainVolSlider().Rect()
 	mvCx, mvCy := (mvr.Min.X+mvr.Max.X)/2, (mvr.Min.Y+mvr.Max.Y)/2
 
 	r := SetInputForTest(
@@ -457,13 +455,13 @@ func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.activeSliderKind != sliderKindMainVol {
-		t.Fatalf("expected activeSliderKind=sliderKindMainVol, got %d", dv.activeSliderKind)
+	if dv.mainVolGroup() == nil || !dv.mainVolGroup().Capturing() {
+		t.Fatalf("expected mainVolGroup to be capturing after press")
 	}
 
-	// Frame 2: Drag to the EQ slider's position (still holding mouse).
-	eqR := dv.eqSliders[eqSliderIdx].Rect()
-	eqCx, eqCy := eqR.Max.X-1, (eqR.Min.Y+eqR.Max.Y)/2
+	// Frame 2: Drag to the EQ mute button's position (still holding mouse).
+	eqBtnR := eqMuteBtns[eqTargetIdx].Rect()
+	eqCx, eqCy := (eqBtnR.Min.X+eqBtnR.Max.X)/2, (eqBtnR.Min.Y+eqBtnR.Max.Y)/2
 
 	r = SetInputForTest(
 		func() (int, int) { return eqCx, eqCy },
@@ -476,21 +474,23 @@ func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
 	dv.Update()
 	r()
 
-	// Main vol should have changed (dragged to a new position).
-	if dv.activeSliderKind != sliderKindMainVol {
-		t.Fatalf("activeSliderKind should still be sliderKindMainVol, got %d", dv.activeSliderKind)
+	// Main vol group should still be capturing (dragged to a new position).
+	if !dv.mainVolGroup().Capturing() {
+		t.Fatalf("mainVolGroup should still be capturing during drag")
 	}
 
-	// EQ gain should NOT have changed.
-	if dv.eqBandGainsDB[eqSliderIdx] != origGain {
-		t.Fatalf("EQ gain changed from %.2f to %.2f while main vol slider was active", origGain, dv.eqBandGainsDB[eqSliderIdx])
+	// EQ gains should NOT have changed.
+	for i, g := range dv.eqBandGainsDB() {
+		if g != origGains[i] {
+			t.Fatalf("EQ band %d gain changed from %.2f to %.2f while main vol slider was active", i, origGains[i], g)
+		}
 	}
 
 	_ = origMainVol // used for documentation clarity
 }
 
-// TestSliderCrossGroupIsolation_RowVolToMainVol verifies that while dragging a
-// row volume slider, the main volume slider is not affected.
+// TestSliderCrossGroupIsolation_RowVolToMainVol verifies that clicking on the
+// row volume icon area (which opens a popup) does not affect the main volume slider.
 func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
 	assertDefaultParityState(t)
 	audio.ClearAllInsertEffects()
@@ -518,17 +518,17 @@ func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) == 0 || dv.rowVolSliders()[0].Rect().Empty() {
 		t.Skip("row vol slider not visible")
 	}
-	if dv.mainVolSlider == nil || dv.mainVolSlider.Rect().Empty() {
+	if dv.mainVolSlider() == nil || dv.mainVolSlider().Rect().Empty() {
 		t.Skip("main vol slider not visible")
 	}
 
-	origMainVol := dv.mainVolSlider.Value
+	origMainVol := dv.mainVolSlider().Value
 
-	// Frame 1: Press on row vol slider.
-	rvr := dv.rowVolSliders[0].Rect()
+	// Frame 1: Click on row vol area (opens popup, does not capture slider).
+	rvr := dv.rowVolSliders()[0].Rect()
 	rvCx, rvCy := (rvr.Min.X+rvr.Max.X)/2, (rvr.Min.Y+rvr.Max.Y)/2
 
 	r := SetInputForTest(
@@ -542,12 +542,8 @@ func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.activeSliderKind != sliderKindRowVol {
-		t.Fatalf("expected activeSliderKind=sliderKindRowVol, got %d", dv.activeSliderKind)
-	}
-
-	// Frame 2: Drag to main vol slider position.
-	mvr := dv.mainVolSlider.Rect()
+	// Frame 2: Move to main vol slider position with button held.
+	mvr := dv.mainVolSlider().Rect()
 	mvCx, mvCy := mvr.Max.X-1, (mvr.Min.Y+mvr.Max.Y)/2
 
 	r = SetInputForTest(
@@ -561,8 +557,8 @@ func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.mainVolSlider.Value != origMainVol {
-		t.Fatalf("main vol changed from %.2f to %.2f while row vol slider was active", origMainVol, dv.mainVolSlider.Value)
+	if dv.mainVolSlider().Value != origMainVol {
+		t.Fatalf("main vol changed from %.2f to %.2f while row vol area was clicked", origMainVol, dv.mainVolSlider().Value)
 	}
 }
 
@@ -595,16 +591,16 @@ func TestMainVolSliderReturnsAfterHandling(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if dv.mainVolSlider == nil || dv.mainVolSlider.Rect().Empty() {
+	if dv.mainVolSlider() == nil || dv.mainVolSlider().Rect().Empty() {
 		t.Skip("main vol slider not visible")
 	}
 
 	// Record all EQ gains before the click.
-	origGains := make([]float64, len(dv.eqBandGainsDB))
-	copy(origGains, dv.eqBandGainsDB)
+	origGains := make([]float64, len(dv.eqBandGainsDB()))
+	copy(origGains, dv.eqBandGainsDB())
 
 	// Click at main vol slider center.
-	mvr := dv.mainVolSlider.Rect()
+	mvr := dv.mainVolSlider().Rect()
 	mvCx, mvCy := (mvr.Min.X+mvr.Max.X)/2, (mvr.Min.Y+mvr.Max.Y)/2
 
 	r := SetInputForTest(
@@ -619,7 +615,7 @@ func TestMainVolSliderReturnsAfterHandling(t *testing.T) {
 	r()
 
 	// Verify no EQ gain changed.
-	for i, g := range dv.eqBandGainsDB {
+	for i, g := range dv.eqBandGainsDB() {
 		if g != origGains[i] {
 			t.Fatalf("EQ band %d gain changed from %.2f to %.2f after main vol click", i, origGains[i], g)
 		}
@@ -627,28 +623,29 @@ func TestMainVolSliderReturnsAfterHandling(t *testing.T) {
 }
 
 // TestAnyDragActive_IncludesMainVolSlider verifies that anyDragActive returns
-// true when the main volume slider is being dragged.
+// true when the main volume slider group is capturing.
 func TestAnyDragActive_IncludesMainVolSlider(t *testing.T) {
+	mainVol := NewSlider(1.0)
+	mainVol.SetRect(image.Rect(0, 0, 100, 20))
 	dv := &DrumView{
-		rowScroll:    NewScrollBehavior(DefaultScrollbarStyle, 24),
-		activeSlider: -1,
+		rowRackZone:     NewRowRackZone(RowRackCallbacks{}),
+		eqCurveDragBand: -1,
 	}
-	dv.mainVolSlider = NewSlider(1.0)
+	dv.transportZone = &TransportZone{
+		mainVolSlider: mainVol,
+		mainVolGroup:  NewSliderGroup([]*Slider{mainVol}, nil),
+	}
 
 	if dv.anyDragActive() {
 		t.Fatal("anyDragActive should be false initially")
 	}
 
-	// Simulate main vol slider dragging.
-	dv.mainVolSlider.dragging = true
-	if !dv.anyDragActive() {
-		t.Fatal("anyDragActive should be true when mainVolSlider is dragging")
+	// Simulate main vol slider group capturing.
+	dv.mainVolGroup().HandleInput(50, 10, true)
+	if !dv.mainVolGroup().Capturing() {
+		t.Fatal("mainVolGroup should be capturing")
 	}
-
-	// Also test via activeSliderKind.
-	dv.mainVolSlider.dragging = false
-	dv.activeSliderKind = sliderKindMainVol
 	if !dv.anyDragActive() {
-		t.Fatal("anyDragActive should be true when activeSliderKind is set")
+		t.Fatal("anyDragActive should be true when mainVolGroup is capturing")
 	}
 }

@@ -45,19 +45,19 @@ func TestRegisterInstrumentReplacesMatchingRowsOnly(t *testing.T) {
 		t.Fatalf("expected default drum rows")
 	}
 	g.drum.Update()
-	if len(g.drum.rowLabels) < 1 {
+	if len(g.drum.rowLabels()) < 1 {
 		t.Fatalf("expected row labels for selection")
 	}
-	g.drum.rowLabels[0].OnClick()
+	g.drum.rowLabels()[0].OnClick()
 	g.drum.SetInstrument("kick")
 	g.drum.AddRow()
 	g.drum.Update()
-	if len(g.drum.rowLabels) < 2 {
+	if len(g.drum.rowLabels()) < 2 {
 		t.Fatalf("expected row labels for selection")
 	}
-	g.drum.rowLabels[1].OnClick()
+	g.drum.rowLabels()[1].OnClick()
 	g.drum.SetInstrument("snare")
-	g.drum.rowLabels[0].OnClick() // selection unrelated to the instrument being updated
+	g.drum.rowLabels()[0].OnClick() // selection unrelated to the instrument being updated
 
 	startUploadForTest(t, g.drum)
 	waitForUploadNaming(t, g)

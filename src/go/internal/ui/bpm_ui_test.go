@@ -18,7 +18,7 @@ func TestBPMButtonsWithMouseClick(t *testing.T) {
 	g.Layout(640, 480)
 
 	// Place cursor over the + button and press.
-	inc := g.drum.bpmIncBtn.Rect()
+	inc := g.drum.bpmIncBtn().Rect()
 	mx, my := inc.Min.X+inc.Dx()/2, inc.Min.Y+inc.Dy()/2
 	pressed := true
 	restore := SetInputForTest(
@@ -40,7 +40,7 @@ func TestBPMButtonsWithMouseClick(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update err: %v", err)
 	}
-	t.Logf("box after release=%v", g.drum.bpmBox.Rect)
+	t.Logf("box after release=%v", g.drum.bpmBox().Rect)
 
 	if g.drum.BPM() <= start {
 		t.Fatalf("expected BPM to increase after + click, got %d -> %d", start, g.drum.BPM())
@@ -56,7 +56,7 @@ func TestBPMButtonsWithMouseClick(t *testing.T) {
 	}
 
 	// Now click the - button.
-	dec := g.drum.bpmDecBtn.Rect()
+	dec := g.drum.bpmDecBtn().Rect()
 	mx, my = dec.Min.X+dec.Dx()/2, dec.Min.Y+dec.Dy()/2
 	pressed = true
 	if err := g.Update(); err != nil {
@@ -105,7 +105,7 @@ func TestBPMButtonsAffectSpeedTimeBased(t *testing.T) {
 	baseDelta := g.elapsedBeats
 
 	// Click + multiple times to create a noticeable BPM change.
-	inc := g.drum.bpmIncBtn.Rect()
+	inc := g.drum.bpmIncBtn().Rect()
 	mx, my := inc.Min.X+inc.Dx()/2, inc.Min.Y+inc.Dy()/2
 	for i := 0; i < 5; i++ {
 		pressed := true
@@ -158,8 +158,8 @@ func TestBPMEditorCommitTimeBased(t *testing.T) {
 	g.Layout(640, 480)
 	// Focus editor and type 200, then enter.
 	_ = g.Update()
-	focusTextInput(t, g.drum, g.drum.bpmBox)
-	g.drum.bpmBox.SetText("")
+	focusTextInput(t, g.drum, g.drum.bpmBox())
+	g.drum.bpmBox().SetText("")
 	chars := []rune{}
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -200,8 +200,8 @@ func TestBPMEditorCommit(t *testing.T) {
 	// Let layout settle so button/text rects are up to date, then directly
 	// set focus on the bpmBox (package-private access is allowed in tests).
 	_ = g.Update()
-	focusTextInput(t, g.drum, g.drum.bpmBox)
-	g.drum.bpmBox.SetText("")
+	focusTextInput(t, g.drum, g.drum.bpmBox())
+	g.drum.bpmBox().SetText("")
 	chars := []rune{}
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -216,17 +216,17 @@ func TestBPMEditorCommit(t *testing.T) {
 	// Type 2,0,0 then commit.
 	chars = []rune{'2'}
 	_ = g.Update()
-	if v := g.drum.bpmBox.Value(); v == "" {
+	if v := g.drum.bpmBox().Value(); v == "" {
 		t.Logf("after '2' text empty")
 	} else {
 		t.Logf("after '2' text=%q", v)
 	}
 	chars = []rune{'0'}
 	_ = g.Update()
-	t.Logf("after '20' text=%q", g.drum.bpmBox.Value())
+	t.Logf("after '20' text=%q", g.drum.bpmBox().Value())
 	chars = []rune{'0'}
 	_ = g.Update()
-	t.Logf("after '200' text=%q", g.drum.bpmBox.Value())
+	t.Logf("after '200' text=%q", g.drum.bpmBox().Value())
 
 	// Still focused; BPM should not have changed yet until Enter.
 	if g.drum.BPM() != 120 {
@@ -240,7 +240,7 @@ func TestBPMEditorCommit(t *testing.T) {
 	}
 
 	if g.drum.BPM() != 200 {
-		t.Fatalf("expected BPM 200 got %d (focused=%v, text=%q)", g.drum.BPM(), g.drum.bpmBox.Focused(), g.drum.bpmBox.Value())
+		t.Fatalf("expected BPM 200 got %d (focused=%v, text=%q)", g.drum.BPM(), g.drum.bpmBox().Focused(), g.drum.bpmBox().Value())
 	}
 
 	// Wait for async engine/apply.

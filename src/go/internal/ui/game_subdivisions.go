@@ -110,8 +110,8 @@ func (g *Game) SetSubdivisions(n int) error {
 	}
 	if g.drum != nil {
 		g.drum.timelineUnitsPerBeat = g.grid.MaxDiv()
-		if g.drum.subdivBtn != nil {
-			g.drum.subdivBtn.Text = fmt.Sprintf("%d", g.grid.MaxDiv())
+		if g.drum.subdivBtn() != nil {
+			g.drum.subdivBtn().Text = fmt.Sprintf("\u00f7%d", g.grid.MaxDiv())
 		}
 	}
 	g.edgesDirty = true

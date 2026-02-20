@@ -37,12 +37,7 @@ const (
 )
 
 // tlBarHeight returns the timeline bar height, larger on mobile for touch targets.
-func tlBarHeight() int {
-	if isSmallScreen() {
-		return timelineBarHeightMobile
-	}
-	return timelineBarHeightDesktop
-}
+func tlBarHeight() int { return Profile().TimelineBarH }
 
 // instMenuMode is an enum describing the instrument dropdown view.
 type instMenuMode string
@@ -53,17 +48,6 @@ const (
 	instMenuModeInstruments instMenuMode = "instruments"
 )
 
-// sliderKind identifies which slider group is currently capturing input.
-type sliderKind int
-
-const (
-	sliderKindNone    sliderKind = iota
-	sliderKindRowVol             // per-row volume slider
-	sliderKindMainVol            // master volume slider
-	sliderKindEQ                 // EQ band gain slider
-	sliderKindEQCurve            // EQ curve drag (band handle or filter drag)
-)
-
 // viewMode describes which pane is visible in the mobile drum view.
 type viewMode int
 
@@ -72,7 +56,7 @@ const (
 	viewModeAudio                 // EQ/Wave panel visible (has its own EQ↔Wave toggle)
 )
 
-var eqPanelHeight = 180
+var eqPanelHeight = 190
 
 type eqBandDef struct {
 	loHz float64
@@ -149,17 +133,16 @@ type importResult struct {
 }
 
 type DrumView struct {
-	Rows       []*DrumRow
-	Bounds     image.Rectangle
-	Graph      *model.Graph
-	logger     *game_log.Logger
-	components *ComponentRegistry
-	overlays   *OverlayStack
-
-	// Overlay adapters for direct dispatch (context/overflow menus)
-	contextMenuOverlay  *ContextMenuOverlay
-	overflowMenuOverlay *OverflowMenuOverlay
-	fxPanelOverlay      *FXPanelOverlay
+	Rows             []*DrumRow
+	Bounds           image.Rectangle
+	Graph            *model.Graph
+	logger           *game_log.Logger
+	tree             *DrumViewTree     // zone-based component tree (Phase 1+)
+	eqPanelZone      *EQPanelZone      // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
+	transportZone    *TransportZone    // Phase 3: transport zone (owns transport buttons/state)
+	rowRackZone      *RowRackZone      // Phase 4: row rack zone (owns per-row buttons/sliders/scroll)
+	timelineZone     *TimelineZone     // Phase 5: timeline zone (owns drag/scrub)
+	layoutResizeZone *layoutResizeZone // layout resize zone (column/row divider pills)
 
 	// Overlay components (Phase 5 integration)
 	subdivMenuComp *SubdivMenuComponent
@@ -183,50 +166,19 @@ type DrumView struct {
 	labelW    int
 	controlsW int // width reserved for control buttons
 
-	// Persistent layout group for transport controls.
-	transportGroup *LayoutGroup
-
-	// control-panel components
-	playBtn         *Button
-	stopBtn         *Button
-	bpmDecBtn       *Button // decrease BPM
-	bpmBox          *TextInput
-	bpmIncBtn       *Button // increase BPM
-	subdivBtn       *Button // subdivisions-per-beat dropdown
+	// control-panel components (non-transport)
 	lenDecBtn       *Button // decrease length
 	lenIncBtn       *Button // increase length
-	trackBtn        *Button // toggle follow playback
-	uploadBtn       *Button
-	importBtn       *Button
-	exportBtn       *Button
 	saveBtn         *Button
-	mainVolSlider   *Slider
 	mainVolRect     image.Rectangle
 	mainVolIconRect image.Rectangle
 
-	// per-row components
-	addRowBtn        *Button
-	rowLabels        []*Button
-	rowEditBtns      []*Button
-	rowSaveBtns      []*Button
-	rowColorBtns     []*Button
-	rowDeleteBtns    []*Button
-	rowVolSliders    []*Slider
-	rowOriginBtns    []*Button
-	rowMuteBtns      []*Button
-	rowSoloBtns      []*Button
-	rowMenuBtns      []*Button // per-row kebab menu button (mobile only)
-	rowFXBtns        []*Button // per-row FX button for insert effects
-	rowGroups        []RowButtonGroup
-	selRow           int
-	activeSlider     int        // index of row-volume slider capturing mouse events, -1 if none
-	activeSliderKind sliderKind // which slider group is currently capturing, sliderKindNone if idle
+	// per-row components: owned by rowRackZone, accessed via accessor methods.
+	selRow int
 
 	// instrument selection dropdown
-	instMenuOpen               bool
 	instMenuRow                int
 	instMenuBtns               []*Button
-	instHold                   bool
 	instMenuScroll             VerticalScroller
 	instMenuLastAdded          string
 	instMenuUserScrolled       bool
@@ -249,20 +201,14 @@ type DrumView struct {
 	instRefreshDirty           bool
 
 	// color picker: wheel popup
-	colorMenuOpen  bool
 	colorMenuRow   int
-	colorMenuBtns  []*Button  // deprecated (kept for compatibility; unused)
-	colorHexBox    *TextInput // deprecated; no longer used
 	colorWheelRect image.Rectangle
 	colorWheelImg  *ebiten.Image
 	wheelCacheW    int
 	wheelCacheH    int
-	colorHold      bool
 
 	// FX panel
-	fxPanelOpen      bool
 	fxPanelRow       int
-	fxPanelOpenSeq   int // updateSeq when panel opened (for click debounce)
 	fxPanelRect      image.Rectangle
 	fxPanelBtns      []*Button         // add/remove/toggle/reorder buttons within the panel
 	fxPanelSliders   []*Slider         // param sliders within the panel
@@ -278,7 +224,6 @@ type DrumView struct {
 	fxViewportRect   image.Rectangle // scrollable content area (between header and footer)
 
 	// subdiv dropdown
-	subdivMenuOpen bool
 	subdivMenuBtns []*Button
 
 	deleted            []deletedRow
@@ -288,7 +233,6 @@ type DrumView struct {
 	deleteConfirmFrame int64 // frame when first click happened
 	renameRow          int
 	renameBox          *TextInput
-	renameHold         bool
 
 	// import handler
 	onImport            func([]byte) error
@@ -307,7 +251,6 @@ type DrumView struct {
 	uploading  bool
 	uploadCh   chan uploadResult
 	pendingWAV string
-	naming     bool
 	nameInput  string     // legacy helper, not used for typing anymore
 	nameBox    *TextInput // active while naming
 
@@ -325,17 +268,6 @@ type DrumView struct {
 	samplesLoaded int
 	showLoading   bool
 	doneMsgTimer  int // frames to show "Finished loading samples"
-
-	// timeline base cache (background + beat markers)
-	tlCache      *ebiten.Image
-	tlCacheW     int
-	tlCacheH     int
-	tlCacheBeats int
-	tlCacheStep  int
-	// cached timeline info label to reduce fmt/string allocs
-	lastInfoCurMS int
-	lastInfoTotMS int
-	lastInfoText  string
 
 	// per-row cached sprites for the steps area (no highlights). Each sprite
 	// covers the full timeline width and one row height. Rebuilt when length,
@@ -410,60 +342,47 @@ type DrumView struct {
 
 	// Mobile EQ collapse: hides the Wave/EQ panel by default on mobile.
 	mobileEQCollapsed bool
-	mobileEQInited    bool    // true once the mobile-default has been applied
-	eqToggleMobile    *Button // "EQ" button in transport to toggle panel (legacy, hidden)
-	mobileEQMode      bool    // true = EQ panel replaces rows on mobile
+	mobileEQInited    bool // true once the mobile-default has been applied
+	mobileEQMode      bool // true = EQ panel replaces rows on mobile
+
+	// userAdjustedLength is set when the user manually changes the timeline
+	// length via +/- buttons. When false, the mobile default cap is applied
+	// in SetBounds and updateBeatInfos to keep the initial view at 8 beats.
+	userAdjustedLength bool
 
 	// Mobile view switching (Rows → EQ → Wave cycle)
 	currentViewMode viewMode
-	viewSwitchBtn   *Button
 
 	// Mobile overflow menu for Upload/Import/Export
-	overflowMenuOpen bool
-	overflowBtn      *Button
-	overflowScroll   *ScrollBehavior // scroll when items overflow
+	overflowScroll *ScrollBehavior // scroll when items overflow
 
 	// Mobile beat counter rect (inside transport row, 7th column on mobile)
 	beatCounterRect image.Rectangle
 
 	// Mobile per-row volume popup
-	volPopup        *SliderPopup
-	volPopupRow     int // which row's volume is being edited
-	volPopupOverlay *SliderPopupOverlay
+	volPopup    *SliderPopup
+	volPopupRow int // which row's volume is being edited
 
 	// Master volume popup (desktop icon-click opens vertical slider)
-	masterVolPopup        *SliderPopup
-	masterVolPopupOverlay *SliderPopupOverlay
-
-	// Mobile EQ band popup
-	eqPopup        *SliderPopup
-	eqPopupBand    int // which band (0-9)
-	eqPopupOverlay *SliderPopupOverlay
+	masterVolPopup *SliderPopup
 
 	// Mobile context menu for row controls (long-press on row label)
-	contextMenuOpen       bool
 	contextMenuRow        int
 	contextMenuRect       image.Rectangle
 	contextMenuBtns       []*Button
+	contextMenuIcons      []string         // icon name per button (parallel to contextMenuBtns, excluding close btn)
 	contextMenuHeaderRect image.Rectangle // mobile bottom sheet header area
 	contextMenuScroll     *ScrollBehavior // scroll when items overflow
 
 	// EQ visualization (supports master and per-instrument channels)
 	eqRect          image.Rectangle
 	eqWaveformMode  bool
-	eqToggleBtn     *Button
 	eqBandVals      []float64
 	eqLastBands     []float64
-	eqSliders       []*Slider
-	eqBandBtns      []*Button // Mobile: tappable band buttons that open popup
-	eqMuteBtns      []*Button // Per-band mute buttons
-	eqBandGainsDB   []float64
-	eqBandMuted     []bool // Per-band mute state for master channel
 	eqApplied       []audio.EQBand
+	masterGainsDB   []float64       // master channel EQ gains (separate from zone working copy)
+	masterMuted     []bool          // master channel EQ mute state
 	eqActiveChannel string          // "main" or instrument ID; empty defaults to "main"
-	eqChannelBtn    *Button         // Button showing current channel selection
-	eqChannelOpen   bool            // Dropdown open state
-	eqChannelBtns   []*Button       // Dropdown menu buttons
 	eqChannelScroll *ScrollBehavior // Scroll state for EQ channel dropdown
 	// Deferred taps: two-phase mobile tap pattern (position stored on press,
 	// fired on release if no scroll committed). Replaces 15 individual fields.
@@ -472,10 +391,7 @@ type DrumView struct {
 	contextMenuDeferredTap DeferredTap
 	overflowDeferredTap    DeferredTap
 	fxPanelDeferredTap     DeferredTap
-	subdivDeferredTap      DeferredTap
 
-	// Touch scroll behavior for legacy instrument menu (deferred tap + momentum).
-	instMenuTouchScroll *ScrollBehavior
 	// EQ frequency response curve
 	eqCurveDragBand   int                       // -1 when not dragging, else band index
 	eqCurveDragFilter string                    // "" when not dragging, "hpf" or "lpf" when dragging a filter handle
@@ -487,8 +403,6 @@ type DrumView struct {
 	hpfCutoffHz float64 // cutoff frequency (20–2000 Hz range)
 	lpfEnabled  bool    // low-pass filter on/off
 	lpfCutoffHz float64 // cutoff frequency (1000–20000 Hz range)
-	hpfBtn      *Button // toggle button for HPF
-	lpfBtn      *Button // toggle button for LPF
 
 	// eqTestSnapshot lets tests inject a deterministic analyzer reading.
 	eqTestSnapshot      *audio.AnalyzerSnapshot
@@ -531,12 +445,10 @@ type DrumView struct {
 	// window scrolling
 	Offset        int // index of first visible beat
 	dragging      bool
-	dragStartX    int
-	startOffset   int
 	offsetChanged bool
 
-	rowOffset int
-	rowScroll *ScrollBehavior
+	rowOffset         int
+	rowScrollFromZone bool // set by zone callbacks to signal zone→dv sync needed
 
 	scrubbing bool
 
@@ -559,11 +471,6 @@ type DrumView struct {
 	simpleDraw bool
 	// perfDrawLite skips expensive, non-critical chrome when perf fast path is on.
 	perfDrawLite bool
-
-	// cached sprites for simple highlight rendering
-	hlSpriteReg  *ebiten.Image
-	hlSpriteMute *ebiten.Image
-	hlSpriteH    int
 
 	// notifications: small popups in the top-right of the drum view panel
 	notifs []notification
@@ -589,13 +496,137 @@ type DrumView struct {
 	// to avoid ~130 DrawImage calls every frame (1 blit on cache hit).
 	toolbarCache     *ebiten.Image
 	toolbarCacheHash uint64
-	toolbarCacheRect image.Rectangle
 
 	// Row controls caching: renders per-row buttons/sliders to a cached image
 	// to avoid excessive DrawImage calls every frame.
-	rowControlsCache       *ebiten.Image
-	rowControlsCacheDirty  bool
-	rowControlsCacheRowOff int             // cached rowOffset for invalidation
-	rowControlsCacheVis    int             // cached visible rows count
-	rowControlsCacheRect   image.Rectangle // cached bounds
+	rowControlsCacheDirty bool
+	rowControlsCacheRect  image.Rectangle // cached bounds
 }
+
+// --- EQ zone accessor methods (delegate to eqPanelZone) ---
+
+func (dv *DrumView) eqMuteBtns() []*Button    { return dv.eqPanelZone.eqMuteBtns }
+func (dv *DrumView) eqBandGainsDB() []float64 { return dv.eqPanelZone.bandGainsDB }
+func (dv *DrumView) eqBandMuted() []bool      { return dv.eqPanelZone.bandMuted }
+func (dv *DrumView) eqToggleBtn() *Button     { return dv.eqPanelZone.eqToggleBtn }
+func (dv *DrumView) eqChannelBtn() *Button    { return dv.eqPanelZone.eqChannelBtn }
+func (dv *DrumView) hpfBtn() *Button          { return dv.eqPanelZone.hpfBtn }
+func (dv *DrumView) lpfBtn() *Button          { return dv.eqPanelZone.lpfBtn }
+
+// --- RowRack zone accessor methods (delegate to rowRackZone) ---
+
+func (dv *DrumView) addRowBtn() *Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.AddRowButton()
+}
+func (dv *DrumView) rowEntryCount() int {
+	if dv.rowRackZone == nil {
+		return 0
+	}
+	return dv.rowRackZone.EntryCount()
+}
+func (dv *DrumView) rowLabels() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowLabels()
+}
+func (dv *DrumView) rowEditBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowEditBtns()
+}
+func (dv *DrumView) rowSaveBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowSaveBtns()
+}
+func (dv *DrumView) rowColorBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowColorBtns()
+}
+func (dv *DrumView) rowDeleteBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowDeleteBtns()
+}
+func (dv *DrumView) rowVolSliders() []*Slider {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowVolSliders()
+}
+func (dv *DrumView) rowOriginBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowOriginBtns()
+}
+func (dv *DrumView) rowMuteBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowMuteBtns()
+}
+func (dv *DrumView) rowSoloBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowSoloBtns()
+}
+func (dv *DrumView) rowMenuBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowMenuBtns()
+}
+func (dv *DrumView) rowFXBtns() []*Button {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowFXBtns()
+}
+func (dv *DrumView) rowGroups() []RowButtonGroup {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowGroups()
+}
+func (dv *DrumView) rowVolGroup() *SliderGroup {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowVolGroup()
+}
+func (dv *DrumView) rowScroll() *ScrollBehavior {
+	if dv.rowRackZone == nil {
+		return nil
+	}
+	return dv.rowRackZone.RowScroll()
+}
+
+// --- Transport zone accessor methods (delegate to transportZone) ---
+
+func (dv *DrumView) playBtn() *Button             { return dv.transportZone.playBtn }
+func (dv *DrumView) stopBtn() *Button             { return dv.transportZone.stopBtn }
+func (dv *DrumView) bpmDecBtn() *Button           { return dv.transportZone.bpmDecBtn }
+func (dv *DrumView) bpmBox() *TextInput           { return dv.transportZone.bpmBox }
+func (dv *DrumView) bpmIncBtn() *Button           { return dv.transportZone.bpmIncBtn }
+func (dv *DrumView) subdivBtn() *Button           { return dv.transportZone.subdivBtn }
+func (dv *DrumView) trackBtn() *Button            { return dv.transportZone.trackBtn }
+func (dv *DrumView) uploadBtn() *Button           { return dv.transportZone.uploadBtn }
+func (dv *DrumView) importBtn() *Button           { return dv.transportZone.importBtn }
+func (dv *DrumView) exportBtn() *Button           { return dv.transportZone.exportBtn }
+func (dv *DrumView) eqToggleMobile() *Button      { return dv.transportZone.eqToggleMobile }
+func (dv *DrumView) viewSwitchBtn() *Button       { return dv.transportZone.viewSwitchBtn }
+func (dv *DrumView) overflowBtn() *Button         { return dv.transportZone.overflowBtn }
+func (dv *DrumView) mainVolSlider() *Slider       { return dv.transportZone.mainVolSlider }
+func (dv *DrumView) mainVolGroup() *SliderGroup   { return dv.transportZone.mainVolGroup }
+func (dv *DrumView) transportGroup() *LayoutGroup { return dv.transportZone.transportGroup }

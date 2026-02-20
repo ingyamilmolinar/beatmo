@@ -17,7 +17,7 @@ endif
 
 $(MA_JS): $(C_SRC) $(C_HDRS)
 	@if command -v emcc >/dev/null 2>&1; then \
-		emcc $(C_SRC) -O3 -DMA_ENABLE_MP3 -sWASM=1 -sSINGLE_FILE=1 -sENVIRONMENT=web -sASSERTIONS=0 -sALLOW_MEMORY_GROWTH=0 -sEXPORTED_FUNCTIONS='[_render_snare,_render_kick,_render_hihat,_render_open_hihat,_render_tom,_render_tom_high,_render_tom_low,_render_clap,_render_cowbell,_render_bass_guitar,_render_sub_bass,_render_snare_rimshot,_render_snare_sidestick,_render_kick_deep,_render_kick_punchy,_render_kick_lofi,_render_kick_tight,_render_shaker,_render_ride,_render_crash,_render_fm_bass,_render_fm_bell,_render_fm_lead,_render_fm_epiano,_render_fm_pluck,_render_snare_p,_render_kick_p,_render_hihat_p,_render_clap_p,_render_tom_p,_render_cowbell_p,_load_wav,_result_description,_delay_init,_delay_process,_delay_reset,_reverb_buffer_size,_reverb_init,_reverb_process,_reverb_reset,_ifx_distortion_init,_ifx_distortion_process,_ifx_distortion_reset,_ifx_distortion_set_param,_ifx_delay_init,_ifx_delay_process,_ifx_delay_reset,_ifx_delay_set_param,_ifx_reverb_mem_size,_ifx_reverb_init,_ifx_reverb_process,_ifx_reverb_reset,_ifx_reverb_set_param,_ifx_chorus_init,_ifx_chorus_process,_ifx_chorus_reset,_ifx_chorus_set_param,_ifx_bitcrusher_init,_ifx_bitcrusher_process,_ifx_bitcrusher_reset,_ifx_bitcrusher_set_param,_ifx_filter_init,_ifx_filter_process,_ifx_filter_reset,_ifx_filter_set_param,_malloc,_free]' -sEXPORTED_RUNTIME_METHODS='["cwrap","ccall","HEAPF32"]' -sMODULARIZE=1 -sEXPORT_ES6=1 -o $(MA_JS); \
+		emcc $(C_SRC) -O3 -DMA_ENABLE_MP3 -sWASM=1 -sSINGLE_FILE=1 -sENVIRONMENT=web -sASSERTIONS=0 -sALLOW_MEMORY_GROWTH=0 -sEXPORTED_FUNCTIONS='[_render_snare,_render_kick,_render_hihat,_render_open_hihat,_render_tom,_render_tom_high,_render_tom_low,_render_clap,_render_cowbell,_render_bass_guitar,_render_sub_bass,_render_snare_rimshot,_render_snare_sidestick,_render_kick_deep,_render_kick_punchy,_render_kick_lofi,_render_kick_tight,_render_shaker,_render_ride,_render_crash,_render_fm_bass,_render_fm_bell,_render_fm_lead,_render_fm_epiano,_render_fm_pluck,_render_snare_p,_render_kick_p,_render_hihat_p,_render_clap_p,_render_tom_p,_render_cowbell_p,_load_wav,_result_description,_delay_init,_delay_process,_delay_reset,_reverb_buffer_size,_reverb_init,_reverb_process,_reverb_reset,_ifx_distortion_init,_ifx_distortion_process,_ifx_distortion_reset,_ifx_distortion_set_param,_ifx_delay_init,_ifx_delay_process,_ifx_delay_reset,_ifx_delay_set_param,_ifx_reverb_mem_size,_ifx_reverb_init,_ifx_reverb_process,_ifx_reverb_reset,_ifx_reverb_set_param,_ifx_chorus_init,_ifx_chorus_process,_ifx_chorus_reset,_ifx_chorus_set_param,_ifx_bitcrusher_init,_ifx_bitcrusher_process,_ifx_bitcrusher_reset,_ifx_bitcrusher_set_param,_ifx_filter_init,_ifx_filter_process,_ifx_filter_reset,_ifx_filter_set_param,_ifx_waveshaper_init,_ifx_waveshaper_process,_ifx_waveshaper_reset,_ifx_waveshaper_set_param,_ifx_ringmod_init,_ifx_ringmod_process,_ifx_ringmod_reset,_ifx_ringmod_set_param,_ifx_tremolo_init,_ifx_tremolo_process,_ifx_tremolo_reset,_ifx_tremolo_set_param,_ifx_gate_init,_ifx_gate_process,_ifx_gate_reset,_ifx_gate_set_param,_ifx_limiter_init,_ifx_limiter_process,_ifx_limiter_reset,_ifx_limiter_set_param,_ifx_flanger_init,_ifx_flanger_process,_ifx_flanger_reset,_ifx_flanger_set_param,_ifx_phaser_init,_ifx_phaser_process,_ifx_phaser_reset,_ifx_phaser_set_param,_ifx_autowah_init,_ifx_autowah_process,_ifx_autowah_reset,_ifx_autowah_set_param,_ifx_compressor_init,_ifx_compressor_process,_ifx_compressor_reset,_ifx_compressor_set_param,_ifx_transient_init,_ifx_transient_process,_ifx_transient_reset,_ifx_transient_set_param,_ifx_tape_init,_ifx_tape_process,_ifx_tape_reset,_ifx_tape_set_param,_ifx_pitchshift_init,_ifx_pitchshift_process,_ifx_pitchshift_reset,_ifx_pitchshift_set_param,_malloc,_free]' -sEXPORTED_RUNTIME_METHODS='["cwrap","ccall","HEAPF32"]' -sMODULARIZE=1 -sEXPORT_ES6=1 -o $(MA_JS); \
 	else \
 		if [ -f "$(MA_JS)" ]; then \
 			echo "[INFO] emcc not found; using existing $(MA_JS)"; \
@@ -157,10 +157,12 @@ screenshot: $(C_LIB) wasm
 	GO=$(GO) OUTDIR=$(or $(OUTDIR),screenshots) ./scripts/screenshot.sh
 
 run: $(C_LIB) sync-wav
-	cd src/go; CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd && /tmp/beatmo -log INFO $(RUN_ARGS)
+	cd src/go && CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd
+	/tmp/beatmo -log INFO $(RUN_ARGS)
 
 run-debug: $(C_LIB) sync-wav
-	cd src/go; TIMELINE_TRACE=1 PERF_LOG=1 CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd && TIMELINE_TRACE=1 PERF_LOG=1 /tmp/beatmo -log DEBUG $(RUN_ARGS)
+	cd src/go && TIMELINE_TRACE=1 PERF_LOG=1 CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd
+	TIMELINE_TRACE=1 PERF_LOG=1 /tmp/beatmo -log DEBUG $(RUN_ARGS)
 
 bench: $(C_LIB) sync-wav
 	cd src/go; PERF_LOG=1 CGO_ENABLED=1 $(GO) run ./cmd -log INFO -bench-bpm $(or $(BPM),200) -bench-secs $(or $(SECS),10) $(RUN_ARGS)
@@ -406,12 +408,13 @@ deploy:
 
 # ─── Coverage ────────────────────────────────────────────────────────────────
 
-# Go test coverage
+# Go test coverage (continues on test failures, warns instead of aborting)
 coverage-go: $(C_LIB) sync-wav
 	@mkdir -p coverage
-	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod \
-		-coverprofile=../../coverage/go.out -covermode=atomic -timeout 60s ./...
-	@cd src/go && $(GO) tool cover -func=../../coverage/go.out | tail -1
+	@cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod \
+		-coverprofile=../../coverage/go.out -covermode=atomic -timeout 60s ./... \
+		|| echo "WARNING: Some Go tests failed — coverage data still collected"
+	@if [ -f coverage/go.out ]; then cd src/go && $(GO) tool cover -func=../../coverage/go.out | tail -1; fi
 
 # Browser test coverage (builds coverage-instrumented WASM, runs all browser tests)
 coverage-browser: wasm-cover
@@ -426,13 +429,34 @@ coverage-js:
 		echo "No JS coverage data. Run browser tests with JS_COVERAGE=1 first."; \
 	fi
 
-# Both Go and browser coverage
-coverage: coverage-go coverage-browser coverage-js
+# All coverage (continues through failures, warns at end)
+coverage:
+	@rc=0; \
+	$(MAKE) coverage-go || rc=1; \
+	$(MAKE) coverage-browser || rc=1; \
+	$(MAKE) coverage-js || rc=1; \
+	if [ $$rc -ne 0 ]; then \
+		echo ""; \
+		echo "WARNING: Some coverage targets had failures — see output above"; \
+	fi
 
 # Generate HTML reports from coverage profiles
 coverage-report:
-	@[ -f coverage/go.out ] && cd src/go && $(GO) tool cover -html=../../coverage/go.out -o ../../coverage/go.html && echo "Go coverage report: coverage/go.html" || echo "No Go coverage data (run make coverage-go first)"
-	@[ -f coverage/browser.out ] && cd src/go && $(GO) tool cover -html=../../coverage/browser.out -o ../../coverage/browser.html && echo "Browser coverage report: coverage/browser.html" || echo "No browser coverage data (run make coverage-browser first)"
+	@for prof in go browser; do \
+		if [ -f coverage/$$prof.out ]; then \
+			head -1 coverage/$$prof.out > coverage/$$prof.clean.out; \
+			tail -n +2 coverage/$$prof.out | while IFS= read -r line; do \
+				f=$$(echo "$$line" | cut -d: -f1); \
+				resolved="src/go/$${f#github.com/ingyamilmolinar/beatmo/}"; \
+				[ -f "$$resolved" ] && echo "$$line"; \
+			done >> coverage/$$prof.clean.out; \
+			cd src/go && $(GO) tool cover -html=../../coverage/$$prof.clean.out -o ../../coverage/$$prof.html && cd ../.. && \
+			rm -f coverage/$$prof.clean.out && \
+			echo "$$(echo $$prof | sed 's/^b/B/;s/^g/G/') coverage report: coverage/$$prof.html"; \
+		else \
+			echo "No $$prof coverage data (run make coverage-$$prof first)"; \
+		fi; \
+	done
 
 # Generate coverage graph (DOT + SVG/PNG) from Go coverage profile.
 # Usage: make coverage-graph [MAX_FUNCS=20] [MAX_METHODS=10] [MAX_TYPES=15]

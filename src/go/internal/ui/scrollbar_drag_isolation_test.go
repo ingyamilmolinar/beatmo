@@ -29,8 +29,8 @@ func TestScrollbarDragDoesNotActivateRowButtons(t *testing.T) {
 	}
 
 	// Simulate scrollbar drag active
-	dv.rowScroll.VS.dragging = true
-	muteRect := dv.rowMuteBtns[0].Rect()
+	dv.rowScroll().VS.dragging = true
+	muteRect := dv.rowMuteBtns()[0].Rect()
 	cx := muteRect.Min.X + muteRect.Dx()/2
 	cy := muteRect.Min.Y + muteRect.Dy()/2
 
@@ -64,10 +64,10 @@ func TestTouchScrollDoesNotActivateRowButtons(t *testing.T) {
 	}
 
 	// Start a touch scroll and move past dead zone to commit vertical direction
-	dv.rowScroll.HandleTouchBegin(100, 400)
-	dv.rowScroll.TS.Move(100, 420) // 20px vertical > 8px dead zone
+	dv.rowScroll().HandleTouchBegin(100, 400)
+	dv.rowScroll().TS.Move(100, 420) // 20px vertical > 8px dead zone
 
-	muteRect := dv.rowMuteBtns[0].Rect()
+	muteRect := dv.rowMuteBtns()[0].Rect()
 	cx := muteRect.Min.X + muteRect.Dx()/2
 	cy := muteRect.Min.Y + muteRect.Dy()/2
 
@@ -102,7 +102,7 @@ func TestScrubbingDoesNotActivateRowButtons(t *testing.T) {
 
 	dv.scrubbing = true
 
-	muteRect := dv.rowMuteBtns[0].Rect()
+	muteRect := dv.rowMuteBtns()[0].Rect()
 	cx := muteRect.Min.X + muteRect.Dx()/2
 	cy := muteRect.Min.Y + muteRect.Dy()/2
 
@@ -127,9 +127,10 @@ func TestScrubbingDoesNotActivateRowButtons(t *testing.T) {
 // for each individual drag state and false when all are inactive.
 func TestAnyDragActiveIncludesAllStates(t *testing.T) {
 	dv := &DrumView{
-		activeSlider: -1,
-		rowScroll:    NewScrollBehavior(DefaultScrollbarStyle, 24),
+		rowRackZone:     NewRowRackZone(RowRackCallbacks{}),
+		eqCurveDragBand: -1,
 	}
+	dv.transportZone = &TransportZone{}
 
 	if dv.anyDragActive() {
 		t.Error("anyDragActive() should be false when all states are inactive")
@@ -142,8 +143,8 @@ func TestAnyDragActiveIncludesAllStates(t *testing.T) {
 	}{
 		{
 			"rowScroll.Dragging",
-			func() { dv.rowScroll.VS.dragging = true },
-			func() { dv.rowScroll.VS.dragging = false },
+			func() { dv.rowScroll().VS.dragging = true },
+			func() { dv.rowScroll().VS.dragging = false },
 		},
 		{
 			"dragging",
@@ -156,34 +157,31 @@ func TestAnyDragActiveIncludesAllStates(t *testing.T) {
 			func() { dv.scrubbing = false },
 		},
 		{
-			"activeSlider",
-			func() { dv.activeSlider = 0 },
-			func() { dv.activeSlider = -1 },
+			"rowVolGroup.Capturing",
+			func() {
+				// Set up a standalone slider group that captures without
+				// the popup-opening onChange callback.
+				s := NewSlider(0.5)
+				s.SetRect(image.Rect(0, 0, 100, 20))
+				s.dragging = true // directly set capture state
+				grp := NewSliderGroup([]*Slider{s}, nil)
+				grp.HandleInput(50, 10, true) // activates the group
+				dv.rowRackZone.rowVolGroup = grp
+			},
+			func() {
+				dv.rowVolGroup().Release()
+				dv.rowVolGroup().SetSliders(nil)
+			},
 		},
 		{
 			"rowScroll.ScrollingCommitted",
-			func() { dv.rowScroll.HandleTouchBegin(0, 0); dv.rowScroll.TS.Move(0, 20) },
-			func() { dv.rowScroll.ResetTouch() },
+			func() { dv.rowScroll().HandleTouchBegin(0, 0); dv.rowScroll().TS.Move(0, 20) },
+			func() { dv.rowScroll().ResetTouch() },
 		},
 		{
 			"instMenuScroll.dragging",
 			func() { dv.instMenuScroll.dragging = true },
 			func() { dv.instMenuScroll.dragging = false },
-		},
-		{
-			"colorHold",
-			func() { dv.colorHold = true },
-			func() { dv.colorHold = false },
-		},
-		{
-			"instHold",
-			func() { dv.instHold = true },
-			func() { dv.instHold = false },
-		},
-		{
-			"renameHold",
-			func() { dv.renameHold = true },
-			func() { dv.renameHold = false },
 		},
 	}
 

@@ -44,7 +44,7 @@ func TestDesktopBeatCounterNotBehindToolbar(t *testing.T) {
 		t.Fatalf("beatCounterRect %v overlaps transport %v", dv.beatCounterRect, transport)
 	}
 	// Also check it doesn't overlap any primary toolbar buttons.
-	for _, btn := range []*Button{dv.playBtn, dv.stopBtn, dv.uploadBtn, dv.importBtn, dv.exportBtn} {
+	for _, btn := range []*Button{dv.playBtn(), dv.stopBtn(), dv.uploadBtn(), dv.importBtn(), dv.exportBtn()} {
 		if btn == nil {
 			continue
 		}
@@ -67,21 +67,21 @@ func TestDesktopBeatCounterWithinBounds(t *testing.T) {
 	}
 }
 
-// TestDesktopTwoRowTransport verifies the desktop transport is a two-row
-// layout — play is in row 0 and upload is in row 1.
-func TestDesktopTwoRowTransport(t *testing.T) {
+// TestDesktopSingleRowTransport verifies the desktop transport is a single-row
+// layout — play and upload are in the same row.
+func TestDesktopSingleRowTransport(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), graph, testLogger)
 	dv.recalcButtons()
-	playR := dv.playBtn.Rect()
-	uploadR := dv.uploadBtn.Rect()
+	playR := dv.playBtn().Rect()
+	uploadR := dv.uploadBtn().Rect()
 	if playR.Empty() || uploadR.Empty() {
 		t.Fatalf("play or upload button has empty rect: play=%v upload=%v", playR, uploadR)
 	}
-	// Upload should be below play (in a different row).
-	if uploadR.Min.Y < playR.Max.Y {
-		t.Fatalf("upload %v should be below play %v in two-row layout", uploadR, playR)
+	// Upload should be in the same row as play (overlapping Y ranges).
+	if uploadR.Min.Y >= playR.Max.Y || uploadR.Max.Y <= playR.Min.Y {
+		t.Fatalf("upload %v should overlap Y range with play %v in single-row layout", uploadR, playR)
 	}
 }
 
@@ -137,28 +137,22 @@ func TestDesktopAndMobileBothTwoRowHeaders(t *testing.T) {
 	}
 }
 
-// TestDesktopInlineVolumeSlider verifies the desktop master volume is an
-// inline slider (not popup-based).
-func TestDesktopInlineVolumeSlider(t *testing.T) {
+// TestDesktopVolumeIconPopup verifies the desktop master volume uses an
+// icon-only control (popup-based, no inline slider).
+func TestDesktopVolumeIconPopup(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), graph, testLogger)
 	dv.recalcButtons()
-	if dv.mainVolSlider == nil {
+	if dv.mainVolSlider() == nil {
 		t.Fatal("mainVolSlider is nil")
 	}
-	sliderR := dv.mainVolSlider.Rect()
-	if sliderR.Empty() {
-		t.Fatal("desktop mainVolSlider rect is empty — should be inline")
+	sliderR := dv.mainVolSlider().Rect()
+	if !sliderR.Empty() {
+		t.Fatal("desktop mainVolSlider rect should be empty — popup mode")
 	}
-	// Icon rect should also be set (for the speaker icon overlay).
 	if dv.mainVolIconRect.Empty() {
 		t.Fatal("desktop mainVolIconRect is empty")
-	}
-	// Slider should be in the second row (below play button).
-	playR := dv.playBtn.Rect()
-	if sliderR.Min.Y < playR.Max.Y {
-		t.Fatalf("inline slider %v should be in row 1 (below play %v)", sliderR, playR)
 	}
 }
 
@@ -176,8 +170,8 @@ func TestMobileVolumeIconOpensPopup(t *testing.T) {
 		t.Fatal("mobile mainVolIconRect is empty — should be visible")
 	}
 	// Inline slider should be hidden.
-	if dv.mainVolSlider != nil && !dv.mainVolSlider.Rect().Empty() {
-		t.Fatalf("mobile mainVolSlider rect should be empty, got %v", dv.mainVolSlider.Rect())
+	if dv.mainVolSlider() != nil && !dv.mainVolSlider().Rect().Empty() {
+		t.Fatalf("mobile mainVolSlider rect should be empty, got %v", dv.mainVolSlider().Rect())
 	}
 	// Open popup via the icon.
 	dv.openMasterVolumePopup()
@@ -202,9 +196,9 @@ func TestDesktopTwoRowNoOverlap(t *testing.T) {
 	dv.recalcButtons()
 
 	// Row 0: play, stop, bpm, subdiv, len buttons
-	row0 := []*Button{dv.playBtn, dv.stopBtn, dv.subdivBtn}
+	row0 := []*Button{dv.playBtn(), dv.stopBtn(), dv.subdivBtn()}
 	// Row 1: upload, import, export
-	row1 := []*Button{dv.uploadBtn, dv.importBtn, dv.exportBtn}
+	row1 := []*Button{dv.uploadBtn(), dv.importBtn(), dv.exportBtn()}
 
 	for _, b0 := range row0 {
 		for _, b1 := range row1 {
@@ -228,7 +222,7 @@ func TestMobileTwoRowTransport(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 390, 844), graph, testLogger)
 	dv.recalcButtons()
 
-	playR := dv.playBtn.Rect()
+	playR := dv.playBtn().Rect()
 	if playR.Empty() {
 		t.Fatal("mobile play button has empty rect")
 	}
@@ -241,8 +235,8 @@ func TestMobileTwoRowTransport(t *testing.T) {
 		t.Fatalf("mobile volIcon %v should be below play %v in two-row layout", volR, playR)
 	}
 	// Overflow button should also be in row 1.
-	if dv.overflowBtn != nil {
-		oR := dv.overflowBtn.Rect()
+	if dv.overflowBtn() != nil {
+		oR := dv.overflowBtn().Rect()
 		if !oR.Empty() && oR.Min.Y < playR.Max.Y {
 			t.Fatalf("mobile overflow %v should be below play %v in two-row layout", oR, playR)
 		}
@@ -259,14 +253,14 @@ func TestMobileTwoRowNoOverlap(t *testing.T) {
 	dv.recalcButtons()
 
 	// Row 0: play, stop, bpm-related, subdiv, len
-	row0 := []*Button{dv.playBtn, dv.stopBtn, dv.subdivBtn}
+	row0 := []*Button{dv.playBtn(), dv.stopBtn(), dv.subdivBtn()}
 	// Row 1 buttons
 	var row1 []*Button
-	if dv.viewSwitchBtn != nil {
-		row1 = append(row1, dv.viewSwitchBtn)
+	if dv.viewSwitchBtn() != nil {
+		row1 = append(row1, dv.viewSwitchBtn())
 	}
-	if dv.overflowBtn != nil {
-		row1 = append(row1, dv.overflowBtn)
+	if dv.overflowBtn() != nil {
+		row1 = append(row1, dv.overflowBtn())
 	}
 
 	for _, b0 := range row0 {
@@ -301,7 +295,7 @@ func TestTrackButtonInTimelineArea(t *testing.T) {
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), graph, testLogger)
 	dv.recalcButtons()
-	trackR := dv.trackBtn.Rect()
+	trackR := dv.trackBtn().Rect()
 	if trackR.Empty() {
 		t.Fatal("desktop trackBtn rect is empty")
 	}

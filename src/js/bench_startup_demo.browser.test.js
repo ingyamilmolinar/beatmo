@@ -168,13 +168,23 @@ for (const r of results) {
 }
 console.log("╚══════╩═══════╩═════════╩═════════╩═════════╩═════════╩═══════╩═════════╩═════════╩═════════╩═══════╝");
 
-// Timing assertions (relaxed for benchmarking — soft only)
+// Timing assertions (tightened for sequential execution with exclusive CPU)
 for (const r of results) {
-  softAssert(r.overdue === 0, `BPM=${r.bpm}: ${r.overdue} overdue events`);
-  softAssert(r.lagP90 == null || r.lagP90 <= 0.012,
-    `BPM=${r.bpm}: lagP90 ${fmtMs(r.lagP90)} > 12ms`);
-  softAssert(r.lagP99 == null || r.lagP99 <= 0.025,
-    `BPM=${r.bpm}: lagP99 ${fmtMs(r.lagP99)} > 25ms`);
+  hardAssert(r.overdue === 0, `BPM=${r.bpm}: ${r.overdue} overdue events`);
+  hardAssert(r.lagP90 == null || r.lagP90 <= 0.010,
+    `BPM=${r.bpm}: lagP90 ${fmtMs(r.lagP90)} > 10ms`);
+  hardAssert(r.lagP99 == null || r.lagP99 <= 0.020,
+    `BPM=${r.bpm}: lagP99 ${fmtMs(r.lagP99)} > 20ms`);
+}
+
+// FPS floor and update time ceiling (BPM-scaled)
+for (const r of results) {
+  const fpsFloor = r.bpm <= 200 ? 20 : (r.bpm <= 240 ? 18 : 12);
+  hardAssert(r.fpsAvg >= fpsFloor,
+    `BPM=${r.bpm}: fpsAvg ${r.fpsAvg.toFixed(1)} below floor ${fpsFloor}`);
+  const updateMax = r.bpm <= 200 ? 2.5 : 3.0;
+  hardAssert(r.updateAvgMS <= updateMax,
+    `BPM=${r.bpm}: updateAvgMS ${r.updateAvgMS.toFixed(3)}ms exceeded ${updateMax}ms`);
 }
 
 // ---------------------------------------------------------------------------

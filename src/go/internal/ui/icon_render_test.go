@@ -28,7 +28,7 @@ func TestPlayAndStopIconsRender(t *testing.T) {
 		drawStopIcon = origStop
 	}()
 
-	buttons := []*Button{dv.playBtn, dv.stopBtn}
+	buttons := []*Button{dv.playBtn(), dv.stopBtn()}
 	for _, b := range buttons {
 		r := b.Rect()
 		img := ebiten.NewImage(r.Dx(), r.Dy())
@@ -57,14 +57,16 @@ func TestPencilIconRenders(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, testLogger)
 	dv.recalcButtons()
 	dv.calcLayout()
-	if len(dv.rowEditBtns) == 0 {
+	if len(dv.rowEditBtns()) == 0 {
 		t.Fatalf("no row edit buttons")
 	}
-	b := dv.rowEditBtns[0]
-	r := b.Rect()
-	img := ebiten.NewImage(r.Dx(), r.Dy())
+	b := dv.rowEditBtns()[0]
+	// Edit button is hidden on desktop (empty rect); give it a test rect
+	// so we can verify the pencil icon draws correctly.
+	testRect := image.Rect(0, 0, 24, 24)
+	img := ebiten.NewImage(testRect.Dx(), testRect.Dy())
 	old := b.r
-	b.r = image.Rect(0, 0, r.Dx(), r.Dy())
+	b.r = testRect
 	b.Draw(img)
 	b.r = old
 	if called == 0 {
@@ -84,14 +86,16 @@ func TestSaveIconRenders(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, testLogger)
 	dv.recalcButtons()
 	dv.calcLayout()
-	if len(dv.rowSaveBtns) == 0 {
+	if len(dv.rowSaveBtns()) == 0 {
 		t.Fatalf("no row save buttons")
 	}
-	b := dv.rowSaveBtns[0]
-	r := b.Rect()
-	img := ebiten.NewImage(r.Dx(), r.Dy())
+	b := dv.rowSaveBtns()[0]
+	// Save button is hidden on desktop (empty rect); give it a test rect
+	// so we can verify the save icon draws correctly.
+	testRect := image.Rect(0, 0, 24, 24)
+	img := ebiten.NewImage(testRect.Dx(), testRect.Dy())
 	old := b.r
-	b.r = image.Rect(0, 0, r.Dx(), r.Dy())
+	b.r = testRect
 	b.Draw(img)
 	b.r = old
 	if called == 0 {

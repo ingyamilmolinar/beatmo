@@ -265,29 +265,31 @@ func TestEQChannelMenuBuild(t *testing.T) {
 	g.drum.AddRow()
 	g.drum.AddRow()
 
-	// Build the menu
-	g.drum.buildEQChannelMenu()
+	// Open the dropdown via portal path.
+	z := g.drum.eqPanelZone
+	z.eqChannelBtn.OnClick()
 
 	// Total items should be Master + 3 rows = 4
-	if g.drum.eqChannelScroll.VS.Total != 4 {
-		t.Errorf("expected 4 total channel items (Master + 3 rows), got %d", g.drum.eqChannelScroll.VS.Total)
+	scroll := z.channelScroll
+	if scroll.VS.Total != 4 {
+		t.Errorf("expected 4 total channel items (Master + 3 rows), got %d", scroll.VS.Total)
 	}
 
-	// Visible buttons may be limited by available vertical space; check we have at least one
-	if len(g.drum.eqChannelBtns) < 1 {
-		t.Errorf("expected at least 1 channel button, got %d", len(g.drum.eqChannelBtns))
+	// Portal should be open.
+	if !g.drum.tree.Portal().Has("eq-channel-dropdown") {
+		t.Error("expected eq-channel-dropdown portal to be open")
 	}
 
-	// First button should be Master
-	if g.drum.eqChannelBtns[0].Text != "Master" {
-		t.Errorf("first button should be 'Master', got %q", g.drum.eqChannelBtns[0].Text)
+	// Channel button should show "Master" initially.
+	if z.eqChannelBtn.Text != "Master" {
+		t.Errorf("channel button should show 'Master', got %q", z.eqChannelBtn.Text)
 	}
 
 	// If total > visible, scrollbar should be present
-	if g.drum.eqChannelScroll.VS.Total > g.drum.eqChannelScroll.VS.Visible {
-		if !g.drum.eqChannelScroll.HasScroll() {
+	if scroll.VS.Total > scroll.VS.Visible {
+		if !scroll.HasScroll() {
 			t.Errorf("expected scrollbar when total (%d) > visible (%d)",
-				g.drum.eqChannelScroll.VS.Total, g.drum.eqChannelScroll.VS.Visible)
+				scroll.VS.Total, scroll.VS.Visible)
 		}
 	}
 }
@@ -306,16 +308,16 @@ func TestEQChannelDropdownButtonsAreVisible(t *testing.T) {
 	dv.AddRow()
 	dv.AddRow()
 
-	// Open the menu
-	dv.eqChannelOpen = true
-	dv.buildEQChannelMenu()
+	// Open the dropdown via portal path
+	z := dv.eqPanelZone
+	z.eqChannelBtn.OnClick()
 
-	// Check that the trigger button and menu buttons are all visible within the drum view bounds
-	if dv.eqChannelBtn == nil {
+	// Check that the trigger button is visible within the drum view bounds
+	if dv.eqChannelBtn() == nil {
 		t.Fatalf("eqChannelBtn is nil")
 	}
 
-	triggerRect := dv.eqChannelBtn.Rect()
+	triggerRect := dv.eqChannelBtn().Rect()
 	t.Logf("Trigger button rect: %v", triggerRect)
 	t.Logf("DrumView bounds: %v", dv.Bounds)
 	t.Logf("EQ rect: %v", dv.eqRect)
@@ -325,31 +327,20 @@ func TestEQChannelDropdownButtonsAreVisible(t *testing.T) {
 		t.Errorf("trigger button %v is not within EQ panel %v", triggerRect, dv.eqRect)
 	}
 
-	// Each dropdown button should be visible
-	for i, btn := range dv.eqChannelBtns {
-		r := btn.Rect()
-		t.Logf("Dropdown button %d (%s) rect: %v", i, btn.Text, r)
-
-		// Button should have non-zero dimensions
-		if r.Dx() <= 0 || r.Dy() <= 0 {
-			t.Errorf("button %d has invalid dimensions: %v", i, r)
-		}
-
-		// Button should be positioned below the trigger
-		if r.Min.Y <= triggerRect.Min.Y {
-			t.Errorf("button %d rect %v should be below trigger %v", i, r, triggerRect)
-		}
+	// Portal should be open with the dropdown
+	if !dv.tree.Portal().Has("eq-channel-dropdown") {
+		t.Error("expected eq-channel-dropdown portal to be open")
 	}
 
-	// Menu rect should encompass all buttons
-	menuRect := dv.eqChannelMenuRect()
+	// Menu view rect from portal scroll should be non-empty and below the trigger
+	menuRect := z.channelScroll.VS.View
 	t.Logf("Menu rect: %v", menuRect)
 
-	for i, btn := range dv.eqChannelBtns {
-		r := btn.Rect()
-		if !r.In(menuRect) && !r.Overlaps(menuRect) {
-			t.Errorf("button %d rect %v not in menu rect %v", i, r, menuRect)
-		}
+	if menuRect.Empty() {
+		t.Error("menu view rect should not be empty")
+	}
+	if menuRect.Min.Y <= triggerRect.Min.Y {
+		t.Errorf("menu rect %v should be below trigger %v", menuRect, triggerRect)
 	}
 }
 
@@ -376,12 +367,12 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 	if dv.eqActiveChannel != "main" {
 		t.Fatalf("initial active channel should be 'main', got %q", dv.eqActiveChannel)
 	}
-	if dv.eqChannelBtn == nil {
+	if dv.eqChannelBtn() == nil {
 		t.Fatalf("eqChannelBtn is nil")
 	}
 
 	// Click the EQ channel button to open the dropdown
-	center := dv.eqChannelBtn.Rect()
+	center := dv.eqChannelBtn().Rect()
 	cx, cy := (center.Min.X+center.Max.X)/2, (center.Min.Y+center.Max.Y)/2
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
@@ -395,21 +386,28 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if !dv.eqChannelOpen {
+	if !dv.IsEQChannelOpen() && (dv.eqPanelZone == nil || !dv.eqPanelZone.ChannelDropdownOpen()) {
 		t.Fatalf("EQ channel menu did not open")
 	}
-	if len(dv.eqChannelBtns) == 0 {
-		t.Fatalf("no EQ channel menu items")
-	}
 
-	// Click the second item (first instrument row - "Kick")
-	// Item 0 is "Master", item 1 should be the first instrument
-	if len(dv.eqChannelBtns) < 2 {
-		t.Fatalf("expected at least 2 menu items, got %d", len(dv.eqChannelBtns))
-	}
+	// Release frame to clear suppress.
+	restore = SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	dv.Update()
+	restore()
 
-	r := dv.eqChannelBtns[1].Rect()
-	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+	// Click the second item (first instrument row - "Kick").
+	// Portal buttons are positioned at anchor.Max.Y + i*btnH.
+	anchor := dv.eqChannelBtn().Rect()
+	btnH := 24 // dropdown button height
+	rx := (anchor.Min.X + anchor.Max.X) / 2
+	ry := anchor.Max.Y + btnH + btnH/2 // center of second button (index 1)
 	// Press frame
 	restore = SetInputForTest(
 		func() (int, int) { return rx, ry },
@@ -419,7 +417,6 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 640, 480 },
 	)
-	t.Cleanup(restore)
 	dv.Update()
 	restore()
 
@@ -435,14 +432,14 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.eqChannelOpen {
+	if dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen()) {
 		t.Fatalf("EQ channel menu did not close after selection")
 	}
 	if dv.eqActiveChannel != "kick" {
 		t.Fatalf("active channel should be 'kick', got %q", dv.eqActiveChannel)
 	}
-	if dv.eqChannelBtn.Text != "Kick" {
-		t.Fatalf("button text should be 'Kick', got %q", dv.eqChannelBtn.Text)
+	if dv.eqChannelBtn().Text != "Kick" {
+		t.Fatalf("button text should be 'Kick', got %q", dv.eqChannelBtn().Text)
 	}
 }
 
@@ -468,12 +465,12 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 	if dv.eqActiveChannel != "main" {
 		t.Fatalf("initial active channel should be 'main', got %q", dv.eqActiveChannel)
 	}
-	if dv.eqChannelBtn == nil {
+	if dv.eqChannelBtn() == nil {
 		t.Fatalf("eqChannelBtn is nil")
 	}
 
-	// Click the EQ channel button to open the dropdown
-	center := dv.eqChannelBtn.Rect()
+	// Click the EQ channel button to open the dropdown (press + release).
+	center := dv.eqChannelBtn().Rect()
 	cx, cy := (center.Min.X+center.Max.X)/2, (center.Min.Y+center.Max.Y)/2
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
@@ -483,24 +480,30 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 640, 480 },
 	)
-	t.Cleanup(restore)
+	_ = g.Update()
+	restore()
+	// Release frame to clear suppress.
+	restore = SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
 	_ = g.Update()
 	restore()
 
-	if !dv.eqChannelOpen {
+	if !dv.IsEQChannelOpen() && (dv.eqPanelZone == nil || !dv.eqPanelZone.ChannelDropdownOpen()) {
 		t.Fatalf("EQ channel menu did not open via Game.Update()")
 	}
-	if len(dv.eqChannelBtns) == 0 {
-		t.Fatalf("no EQ channel menu items")
-	}
 
-	// Click the second item (first instrument row - "Kick")
-	if len(dv.eqChannelBtns) < 2 {
-		t.Fatalf("expected at least 2 menu items, got %d", len(dv.eqChannelBtns))
-	}
-
-	r := dv.eqChannelBtns[1].Rect()
-	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+	// Click the second item (first instrument row - "Kick").
+	// Portal buttons are positioned at anchor.Max.Y + i*btnH.
+	anchor := dv.eqChannelBtn().Rect()
+	btnH := 24 // dropdown button height
+	rx := (anchor.Min.X + anchor.Max.X) / 2
+	ry := anchor.Max.Y + btnH + btnH/2 // center of second button (index 1)
 	// Press frame
 	restore = SetInputForTest(
 		func() (int, int) { return rx, ry },
@@ -510,7 +513,6 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 640, 480 },
 	)
-	t.Cleanup(restore)
 	_ = g.Update()
 	restore()
 
@@ -526,14 +528,14 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 	_ = g.Update()
 	restore()
 
-	if dv.eqChannelOpen {
+	if dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen()) {
 		t.Fatalf("EQ channel menu did not close after selection via Game.Update()")
 	}
 	if dv.eqActiveChannel != "kick" {
 		t.Fatalf("active channel should be 'kick', got %q", dv.eqActiveChannel)
 	}
-	if dv.eqChannelBtn.Text != "Kick" {
-		t.Fatalf("button text should be 'Kick', got %q", dv.eqChannelBtn.Text)
+	if dv.eqChannelBtn().Text != "Kick" {
+		t.Fatalf("button text should be 'Kick', got %q", dv.eqChannelBtn().Text)
 	}
 }
 
@@ -549,7 +551,7 @@ func TestEQChannelDropdownBlocksLayoutHandler(t *testing.T) {
 	dv := g.drum
 
 	// Menu closed - should not be capturing or blocking
-	dv.eqChannelOpen = false
+	dv.CloseAllPopups()
 	if dv.Capturing() {
 		t.Error("Capturing() should be false when eqChannelOpen is false")
 	}
@@ -560,14 +562,15 @@ func TestEQChannelDropdownBlocksLayoutHandler(t *testing.T) {
 		t.Error("BlocksAt() should be false when eqChannelOpen is false")
 	}
 
-	// Menu open - should be capturing and blocking
-	dv.eqChannelOpen = true
+	// Menu open via portal path - should be capturing and blocking
+	dv.eqPanelZone.eqChannelBtn.OnClick()
 	if !dv.Capturing() {
-		t.Error("Capturing() should be true when eqChannelOpen is true")
+		t.Error("Capturing() should be true when EQ channel dropdown is open")
 	}
 	if !dv.BlocksAt(cx, cy) {
-		t.Error("BlocksAt() should be true when eqChannelOpen is true")
+		t.Error("BlocksAt() should be true when EQ channel dropdown is open")
 	}
+	dv.CloseAllPopups()
 }
 
 // TestEQChannelDropdownNoFlickerOnClick simulates the click flow that was
@@ -587,12 +590,12 @@ func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 	dv.Rows[0].Instrument = "kick"
 	dv.Rows[0].Name = "Kick"
 
-	if dv.eqChannelBtn == nil {
+	if dv.eqChannelBtn() == nil {
 		t.Fatalf("eqChannelBtn is nil")
 	}
 
 	// Click and hold on the EQ channel button to open the dropdown
-	center := dv.eqChannelBtn.Rect()
+	center := dv.eqChannelBtn().Rect()
 	cx, cy := (center.Min.X+center.Max.X)/2, (center.Min.Y+center.Max.Y)/2
 
 	// Simulate press down
@@ -606,7 +609,9 @@ func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 	)
 	dv.Update()
 
-	if !dv.eqChannelOpen {
+	// Check either legacy dv.IsEQChannelOpen() or zone-based channelOpen (Phase 6 portal path).
+	eqChOpen := dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen())
+	if !eqChOpen {
 		restore()
 		t.Fatalf("EQ channel menu did not open on first Update()")
 	}
@@ -616,7 +621,8 @@ func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 	// interfere, potentially closing the menu or causing flicker
 	for i := 0; i < 5; i++ {
 		dv.Update()
-		if !dv.eqChannelOpen {
+		eqChOpen = dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen())
+		if !eqChOpen {
 			restore()
 			t.Fatalf("EQ channel menu closed unexpectedly on Update() iteration %d (flickering bug)", i)
 		}
@@ -637,7 +643,8 @@ func TestEQChannelDropdownNoFlickerOnClick(t *testing.T) {
 	restore()
 
 	// Menu should still be open after release (only closes on click outside or selection)
-	if !dv.eqChannelOpen {
+	eqChOpen = dv.IsEQChannelOpen() || (dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen())
+	if !eqChOpen {
 		t.Fatalf("EQ channel menu should remain open after mouse release")
 	}
 }
@@ -653,16 +660,16 @@ func TestEQBandMuteProducesSilence(t *testing.T) {
 	g.Layout(640, 480)
 
 	// Ensure we have EQ band arrays initialized
-	if len(g.drum.eqBandMuted) != len(eqBandDefs) {
+	if len(g.drum.eqBandMuted()) != len(eqBandDefs) {
 		// Initialize if not already done
-		g.drum.eqBandMuted = make([]bool, len(eqBandDefs))
+		g.drum.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	}
-	if len(g.drum.eqBandGainsDB) != len(eqBandDefs) {
-		g.drum.eqBandGainsDB = make([]float64, len(eqBandDefs))
+	if len(g.drum.eqBandGainsDB()) != len(eqBandDefs) {
+		g.drum.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
 	}
 
 	// Mute the first band (low frequencies)
-	g.drum.eqBandMuted[0] = true
+	g.drum.eqBandMuted()[0] = true
 	g.drum.applyMasterEQ()
 
 	// Verify the band is marked as muted in the applied EQ
@@ -689,28 +696,28 @@ func TestEQBandMuteToggle(t *testing.T) {
 	g.Layout(640, 480)
 
 	// Initialize mute state
-	if len(g.drum.eqBandMuted) != len(eqBandDefs) {
-		g.drum.eqBandMuted = make([]bool, len(eqBandDefs))
+	if len(g.drum.eqBandMuted()) != len(eqBandDefs) {
+		g.drum.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	}
 
 	// Initial state: no bands muted
-	for i, muted := range g.drum.eqBandMuted {
+	for i, muted := range g.drum.eqBandMuted() {
 		if muted {
 			t.Errorf("band %d should not be muted initially", i)
 		}
 	}
 
 	// Toggle mute on band 2
-	g.drum.eqBandMuted[2] = true
+	g.drum.eqBandMuted()[2] = true
 
 	// Verify state
-	if !g.drum.eqBandMuted[2] {
+	if !g.drum.eqBandMuted()[2] {
 		t.Error("band 2 should be muted after toggle")
 	}
 
 	// Toggle off
-	g.drum.eqBandMuted[2] = false
-	if g.drum.eqBandMuted[2] {
+	g.drum.eqBandMuted()[2] = false
+	if g.drum.eqBandMuted()[2] {
 		t.Error("band 2 should not be muted after second toggle")
 	}
 }
@@ -728,10 +735,10 @@ func TestEQBandMuteExport(t *testing.T) {
 	g.updateBeatInfos()
 
 	// Initialize and set mute state
-	g.drum.eqBandMuted = make([]bool, len(eqBandDefs))
-	g.drum.eqBandGainsDB = make([]float64, len(eqBandDefs))
-	g.drum.eqBandMuted[0] = true // Mute first band
-	g.drum.eqBandMuted[5] = true // Mute sixth band
+	g.drum.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
+	g.drum.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
+	g.drum.eqBandMuted()[0] = true // Mute first band
+	g.drum.eqBandMuted()[5] = true // Mute sixth band
 
 	// Export
 	data, err := g.drum.exportBytes()
@@ -811,23 +818,23 @@ func TestEQBandMuteButtonSingleClickToggle(t *testing.T) {
 	dv.recalcButtons()
 
 	// Initialize mute state
-	if len(dv.eqBandMuted) != len(eqBandDefs) {
-		dv.eqBandMuted = make([]bool, len(eqBandDefs))
+	if len(dv.eqBandMuted()) != len(eqBandDefs) {
+		dv.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	}
-	if len(dv.eqBandGainsDB) != len(eqBandDefs) {
-		dv.eqBandGainsDB = make([]float64, len(eqBandDefs))
+	if len(dv.eqBandGainsDB()) != len(eqBandDefs) {
+		dv.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
 	}
 
 	// Verify band 0 starts unmuted
-	if dv.eqBandMuted[0] {
+	if dv.eqBandMuted()[0] {
 		t.Fatal("band 0 should be unmuted initially")
 	}
 
 	// Ensure EQ mute buttons are created with OnClick callbacks
-	if len(dv.eqMuteBtns) == 0 || dv.eqMuteBtns[0] == nil {
+	if len(dv.eqMuteBtns()) == 0 || dv.eqMuteBtns()[0] == nil {
 		t.Fatal("EQ mute buttons not initialized")
 	}
-	if dv.eqMuteBtns[0].OnClick == nil {
+	if dv.eqMuteBtns()[0].OnClick == nil {
 		t.Fatal("EQ mute button OnClick callback is nil - this is the bug we're fixing")
 	}
 
@@ -836,7 +843,7 @@ func TestEQBandMuteButtonSingleClickToggle(t *testing.T) {
 	dv.toggleEQBandMute(0)
 
 	// Verify mute toggled ON
-	if !dv.eqBandMuted[0] {
+	if !dv.eqBandMuted()[0] {
 		t.Error("band 0 should be muted after first toggle")
 	}
 
@@ -844,7 +851,7 @@ func TestEQBandMuteButtonSingleClickToggle(t *testing.T) {
 	dv.toggleEQBandMute(0)
 
 	// Verify mute toggled OFF
-	if dv.eqBandMuted[0] {
+	if dv.eqBandMuted()[0] {
 		t.Error("band 0 should be unmuted after second toggle")
 	}
 }
@@ -863,25 +870,25 @@ func TestEQBandMuteHoldNoMultipleToggles(t *testing.T) {
 	dv.calcLayout()
 
 	// Initialize mute state
-	if len(dv.eqBandMuted) != len(eqBandDefs) {
-		dv.eqBandMuted = make([]bool, len(eqBandDefs))
+	if len(dv.eqBandMuted()) != len(eqBandDefs) {
+		dv.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	}
-	if len(dv.eqBandGainsDB) != len(eqBandDefs) {
-		dv.eqBandGainsDB = make([]float64, len(eqBandDefs))
+	if len(dv.eqBandGainsDB()) != len(eqBandDefs) {
+		dv.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
 	}
 
 	// Verify band 0 starts unmuted
-	if dv.eqBandMuted[0] {
+	if dv.eqBandMuted()[0] {
 		t.Fatal("band 0 should be unmuted initially")
 	}
 
 	// Ensure mute buttons are initialized
-	if len(dv.eqMuteBtns) == 0 || dv.eqMuteBtns[0] == nil {
+	if len(dv.eqMuteBtns()) == 0 || dv.eqMuteBtns()[0] == nil {
 		t.Fatal("EQ mute buttons not initialized")
 	}
 
 	// Get button position (use center of button rect)
-	btn := dv.eqMuteBtns[0]
+	btn := dv.eqMuteBtns()[0]
 	r := btn.Rect()
 	// If button rect is empty, skip this part of the test
 	if r.Empty() {
@@ -907,7 +914,7 @@ func TestEQBandMuteHoldNoMultipleToggles(t *testing.T) {
 
 	// After many frames of holding, the mute should have toggled exactly once
 	// (not 10 times, which would leave it unmuted if it started unmuted)
-	if !dv.eqBandMuted[0] {
+	if !dv.eqBandMuted()[0] {
 		t.Error("band 0 should be muted after holding button (single toggle, not per-frame)")
 	}
 
@@ -924,7 +931,7 @@ func TestEQBandMuteHoldNoMultipleToggles(t *testing.T) {
 	restore()
 
 	// State should still be muted (release doesn't toggle)
-	if !dv.eqBandMuted[0] {
+	if !dv.eqBandMuted()[0] {
 		t.Error("band 0 should still be muted after button release")
 	}
 }
@@ -941,15 +948,15 @@ func TestEQBandMuteUnmutePreservesGain(t *testing.T) {
 	dv := g.drum
 
 	// Initialize EQ state
-	if len(dv.eqBandMuted) != len(eqBandDefs) {
-		dv.eqBandMuted = make([]bool, len(eqBandDefs))
+	if len(dv.eqBandMuted()) != len(eqBandDefs) {
+		dv.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	}
-	if len(dv.eqBandGainsDB) != len(eqBandDefs) {
-		dv.eqBandGainsDB = make([]float64, len(eqBandDefs))
+	if len(dv.eqBandGainsDB()) != len(eqBandDefs) {
+		dv.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
 	}
 
 	// Set band 0 gain to +6dB
-	dv.eqBandGainsDB[0] = 6.0
+	dv.eqBandGainsDB()[0] = 6.0
 	dv.applyMasterEQ()
 
 	// Verify gain is +6dB
@@ -959,24 +966,24 @@ func TestEQBandMuteUnmutePreservesGain(t *testing.T) {
 
 	// Mute the band
 	dv.toggleEQBandMute(0)
-	if !dv.eqBandMuted[0] {
+	if !dv.eqBandMuted()[0] {
 		t.Error("band should be muted")
 	}
 
 	// Verify gain is still +6dB (muting doesn't change the gain value)
-	if dv.eqBandGainsDB[0] != 6.0 {
-		t.Errorf("gain should still be 6.0 after mute, got %f", dv.eqBandGainsDB[0])
+	if dv.eqBandGainsDB()[0] != 6.0 {
+		t.Errorf("gain should still be 6.0 after mute, got %f", dv.eqBandGainsDB()[0])
 	}
 
 	// Unmute the band
 	dv.toggleEQBandMute(0)
-	if dv.eqBandMuted[0] {
+	if dv.eqBandMuted()[0] {
 		t.Error("band should be unmuted")
 	}
 
 	// Verify gain is still +6dB after unmute
-	if dv.eqBandGainsDB[0] != 6.0 {
-		t.Errorf("gain should still be 6.0 after unmute, got %f", dv.eqBandGainsDB[0])
+	if dv.eqBandGainsDB()[0] != 6.0 {
+		t.Errorf("gain should still be 6.0 after unmute, got %f", dv.eqBandGainsDB()[0])
 	}
 
 	// Apply and verify in applied EQ
@@ -1030,7 +1037,7 @@ func TestPerInstrumentEQBandMuteToggle(t *testing.T) {
 	}
 
 	// Master channel should be unaffected
-	if len(dv.eqBandMuted) > 2 && dv.eqBandMuted[2] {
+	if len(dv.eqBandMuted()) > 2 && dv.eqBandMuted()[2] {
 		t.Error("master channel band 2 should not be muted")
 	}
 
@@ -1069,14 +1076,14 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	dv.Rows[1].Name = "Snare"
 
 	// Initialize EQ state for master and rows
-	if len(dv.eqBandMuted) != len(eqBandDefs) {
-		dv.eqBandMuted = make([]bool, len(eqBandDefs))
+	if len(dv.eqBandMuted()) != len(eqBandDefs) {
+		dv.eqPanelZone.bandMuted = make([]bool, len(eqBandDefs))
 	}
 	dv.ensureRowEQMuted(0)
 	dv.ensureRowEQMuted(1)
 
 	// Skip if mute buttons not initialized
-	if len(dv.eqMuteBtns) == 0 || dv.eqMuteBtns[0] == nil {
+	if len(dv.eqMuteBtns()) == 0 || dv.eqMuteBtns()[0] == nil {
 		t.Skip("EQ mute buttons not initialized")
 	}
 
@@ -1087,12 +1094,12 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	}
 
 	// Mute band 0 on Master
-	dv.eqBandMuted[0] = true
+	dv.eqBandMuted()[0] = true
 	// Re-sync after manual change
 	dv.setEQActiveChannel("main")
 
 	// Verify button 0 shows muted (active style)
-	if dv.eqMuteBtns[0].Style != EQMuteButtonActiveStyle {
+	if dv.eqMuteBtns()[0].Style != EQMuteButtonActiveStyle {
 		t.Error("band 0 button should show active style when Master band 0 is muted")
 	}
 
@@ -1103,7 +1110,7 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	}
 
 	// Verify button 0 now shows unmuted (Kick's state)
-	if dv.eqMuteBtns[0].Style != EQMuteButtonStyle {
+	if dv.eqMuteBtns()[0].Style != EQMuteButtonStyle {
 		t.Error("band 0 button should show normal style when Kick band 0 is unmuted")
 	}
 
@@ -1113,7 +1120,7 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	dv.setEQActiveChannel("kick")
 
 	// Verify button 1 shows muted on Kick
-	if dv.eqMuteBtns[1].Style != EQMuteButtonActiveStyle {
+	if dv.eqMuteBtns()[1].Style != EQMuteButtonActiveStyle {
 		t.Error("band 1 button should show active style when Kick band 1 is muted")
 	}
 
@@ -1121,12 +1128,12 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	dv.setEQActiveChannel("main")
 
 	// Verify band 0 still shows muted (Master's state)
-	if dv.eqMuteBtns[0].Style != EQMuteButtonActiveStyle {
+	if dv.eqMuteBtns()[0].Style != EQMuteButtonActiveStyle {
 		t.Error("band 0 button should show active style when back on Master (band 0 muted)")
 	}
 
 	// Verify band 1 shows unmuted (Master band 1 is not muted)
-	if dv.eqMuteBtns[1].Style != EQMuteButtonStyle {
+	if dv.eqMuteBtns()[1].Style != EQMuteButtonStyle {
 		t.Error("band 1 button should show normal style when back on Master (band 1 unmuted)")
 	}
 }

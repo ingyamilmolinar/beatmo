@@ -53,7 +53,7 @@ func TestRowCacheLiveUpdate_PerRowInvalidation(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Build initial caches.
-	dst := ebiten.NewImage(800, 240)
+	dst := ebiten.NewImage(800, 600)
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCache) < 2 || g.drum.rowCache[0] == nil || g.drum.rowCache[1] == nil {
 		t.Fatalf("expected two built row caches")
@@ -123,7 +123,7 @@ func TestRowCacheLiveUpdate_CellTypeChangeInvalidatesRowCache(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Build initial caches.
-	dst := ebiten.NewImage(800, 240)
+	dst := ebiten.NewImage(800, 600)
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCache) < 2 || g.drum.rowCache[0] == nil || g.drum.rowCache[1] == nil {
 		t.Fatalf("expected two built row caches")

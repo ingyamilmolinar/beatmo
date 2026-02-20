@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"image/color"
 	"math"
 	"strconv"
 	"strings"
@@ -484,10 +485,10 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		row := args[0].Int()
-		if row < 0 || row >= len(g.drum.rowVolSliders) {
+		if row < 0 || row >= len(g.drum.rowVolSliders()) {
 			return nil
 		}
-		return rectToJS(g.drum.rowVolSliders[row].Rect())
+		return rectToJS(g.drum.rowVolSliders()[row].Rect())
 	}))
 
 	// timelineRect() -> {x,y,w,h}
@@ -500,10 +501,10 @@ func (g *Game) initJSGraphUI() {
 
 	// bpmBoxRect() -> {x,y,w,h}
 	js.Global().Set("bpmBoxRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.bpmBox == nil {
+		if g.drum == nil || g.drum.bpmBox() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.bpmBox.Rect)
+		return rectToJS(g.drum.bpmBox().Rect)
 	}))
 
 	// splitY() -> int
@@ -605,6 +606,9 @@ func (g *Game) initJSGraphUI() {
 			off = max
 		}
 		g.drum.rowOffset = off
+		if g.drum.rowRackZone != nil {
+			g.drum.rowRackZone.SetRowOffset(off)
+		}
 		return nil
 	}))
 
@@ -664,10 +668,10 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.rowLabels) {
+		if i < 0 || i >= len(g.drum.rowLabels()) {
 			return nil
 		}
-		return rectToJS(g.drum.rowLabels[i].Rect())
+		return rectToJS(g.drum.rowLabels()[i].Rect())
 	}))
 
 	js.Global().Set("rowEditBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
@@ -675,10 +679,10 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.rowEditBtns) {
+		if i < 0 || i >= len(g.drum.rowEditBtns()) {
 			return nil
 		}
-		return rectToJS(g.drum.rowEditBtns[i].Rect())
+		return rectToJS(g.drum.rowEditBtns()[i].Rect())
 	}))
 
 	// rowLabelText(row) -> string
@@ -687,10 +691,10 @@ func (g *Game) initJSGraphUI() {
 			return js.ValueOf("")
 		}
 		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.rowLabels) {
+		if i < 0 || i >= len(g.drum.rowLabels()) {
 			return js.ValueOf("")
 		}
-		return js.ValueOf(g.drum.rowLabels[i].Text)
+		return js.ValueOf(g.drum.rowLabels()[i].Text)
 	}))
 
 	js.Global().Set("rowColorBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
@@ -698,10 +702,10 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.rowColorBtns) {
+		if i < 0 || i >= len(g.drum.rowColorBtns()) {
 			return nil
 		}
-		return rectToJS(g.drum.rowColorBtns[i].Rect())
+		return rectToJS(g.drum.rowColorBtns()[i].Rect())
 	}))
 
 	// rowMuteBtnRect(row), rowSoloBtnRect(row)
@@ -710,10 +714,10 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.rowMuteBtns) {
+		if i < 0 || i >= len(g.drum.rowMuteBtns()) {
 			return nil
 		}
-		return rectToJS(g.drum.rowMuteBtns[i].Rect())
+		return rectToJS(g.drum.rowMuteBtns()[i].Rect())
 	}))
 
 	js.Global().Set("rowSoloBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
@@ -721,10 +725,10 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.rowSoloBtns) {
+		if i < 0 || i >= len(g.drum.rowSoloBtns()) {
 			return nil
 		}
-		return rectToJS(g.drum.rowSoloBtns[i].Rect())
+		return rectToJS(g.drum.rowSoloBtns()[i].Rect())
 	}))
 
 	// rowMuted(row) / rowSoloed(row)
@@ -870,8 +874,29 @@ func (g *Game) initJSGraphUI() {
 		}
 		g.drum.selRow = row
 		g.drum.colorMenuRow = row
-		g.drum.colorMenuOpen = true
+		if g.drum.colorWheelComp != nil {
+			rackBounds := g.drum.widgetRects[WidgetRack]
+			if rackBounds.Empty() {
+				rackBounds = g.drum.Bounds
+			}
+			anchor := g.drum.rowColorBtns()[row].Rect()
+			if anchor.Empty() && row < len(g.drum.rowLabels()) {
+				anchor = g.drum.rowLabels()[row].Rect()
+			}
+			g.drum.colorWheelComp.SetProps(ColorWheelProps{
+				AnchorRect: anchor,
+				Bounds:     rackBounds,
+				RowHeight:  g.drum.rowHeight(),
+				OnColorPick: func(c color.Color) {
+					g.drum.SetRowColor(g.drum.colorMenuRow, c)
+				},
+				OnClose: func() {},
+			})
+			g.drum.colorWheelComp.Open()
+			g.drum.colorWheelComp.ClearHold()
+		}
 		g.drum.buildColorMenu()
+		g.drum.openColorWheelPortal()
 		r := g.drum.colorWheelRect
 		if r.Dx() <= 0 || r.Dy() <= 0 {
 			return nil
@@ -892,7 +917,7 @@ func (g *Game) initJSGraphUI() {
 		y := int(float64(r.Min.Y) + fy*float64(r.Dy()))
 		col := g.drum.pickColorFromWheel(x, y)
 		g.drum.SetRowColor(row, col)
-		g.drum.colorMenuOpen = false
+		g.drum.closeColorWheelPortal()
 		return nil
 	}))
 
@@ -907,17 +932,38 @@ func (g *Game) initJSGraphUI() {
 		}
 		g.drum.selRow = i
 		g.drum.colorMenuRow = i
-		g.drum.colorMenuOpen = true
+		if g.drum.colorWheelComp != nil {
+			rackBounds := g.drum.widgetRects[WidgetRack]
+			if rackBounds.Empty() {
+				rackBounds = g.drum.Bounds
+			}
+			anchor := g.drum.rowColorBtns()[i].Rect()
+			if anchor.Empty() && i < len(g.drum.rowLabels()) {
+				anchor = g.drum.rowLabels()[i].Rect()
+			}
+			g.drum.colorWheelComp.SetProps(ColorWheelProps{
+				AnchorRect: anchor,
+				Bounds:     rackBounds,
+				RowHeight:  g.drum.rowHeight(),
+				OnColorPick: func(c color.Color) {
+					g.drum.SetRowColor(g.drum.colorMenuRow, c)
+				},
+				OnClose: func() {},
+			})
+			g.drum.colorWheelComp.Open()
+			g.drum.colorWheelComp.ClearHold()
+		}
 		g.drum.buildColorMenu()
+		g.drum.openColorWheelPortal()
 		return nil
 	}))
 
 	// subdivBtnRect() -> {x,y,w,h}
 	js.Global().Set("subdivBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.subdivBtn == nil {
+		if g.drum == nil || g.drum.subdivBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.subdivBtn.Rect())
+		return rectToJS(g.drum.subdivBtn().Rect())
 	}))
 
 	// openSubdivMenu()
@@ -925,8 +971,8 @@ func (g *Game) initJSGraphUI() {
 		if g.drum == nil {
 			return nil
 		}
-		g.drum.subdivMenuOpen = true
 		g.drum.buildSubdivMenu()
+		g.drum.openSubdivMenuPortal()
 		return nil
 	}))
 
@@ -979,10 +1025,10 @@ func (g *Game) initJSGraphUI() {
 
 	// uploadBtnRect() -> {x,y,w,h}
 	js.Global().Set("uploadBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.uploadBtn == nil {
+		if g.drum == nil || g.drum.uploadBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.uploadBtn.Rect())
+		return rectToJS(g.drum.uploadBtn().Rect())
 	}))
 
 	// isUploading() -> bool
@@ -995,14 +1041,14 @@ func (g *Game) initJSGraphUI() {
 
 	// renameBoxRect() -> {x,y,w,h} when active; commitRename(name)
 	js.Global().Set("renameBoxRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.renameBox == nil {
+		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() {
 			return nil
 		}
-		return rectToJS(g.drum.renameBox.Rect)
+		return rectToJS(g.drum.renameComp.Bounds())
 	}))
 
 	js.Global().Set("commitRename", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.renameBox == nil || len(args) < 1 {
+		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() || len(args) < 1 {
 			return nil
 		}
 		name := args[0].String()
@@ -1019,37 +1065,66 @@ func (g *Game) initJSGraphUI() {
 			}
 			g.drum.Rows[g.drum.renameRow].Instrument = newID
 			g.drum.Rows[g.drum.renameRow].Name = name
-			g.drum.rowLabels[g.drum.renameRow].Text = name
+			g.drum.rowLabels()[g.drum.renameRow].Text = name
 			customColors[newID] = g.drum.Rows[g.drum.renameRow].Color
 			g.drum.invalidateLabelCaches()
 			g.drum.refreshInstruments()
 			g.drum.markRowControlsDirty()
 			g.drum.bgDirty = true
 		}
-		g.drum.renameBox = nil
-		g.drum.renameRow = -1
+		g.drum.closeRename()
 		return nil
 	}))
 
-	// openRenameBox(row)
+	// openRenameBox(row) — opens the rename component through the portal.
 	js.Global().Set("openRenameBox", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || len(args) < 1 {
 			return nil
 		}
 		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.rowLabels) {
+		if i < 0 || i >= len(g.drum.rowLabels()) {
 			return nil
 		}
-		r := g.drum.rowLabels[i].Rect()
+		g.drum.CloseAllPopups()
 		g.drum.renameRow = i
-		g.drum.renameBox = NewTextInput(r, BPMBoxStyle)
-		g.drum.renameBox.MaxLen = 32
-		g.drum.renameBox.SetText(g.drum.Rows[i].Name)
-		g.drum.renameBox.focused = true
-		g.drum.renameBox.anim = 1
-		g.drum.renameHold = false
-		g.drum.instMenuOpen = false
-		g.drum.colorMenuOpen = false
+		r := g.drum.rowLabels()[i].Rect()
+		if g.drum.renameComp != nil {
+			g.drum.renameComp.SetProps(RenameProps{
+				AnchorRect:  r,
+				InitialText: g.drum.Rows[i].Name,
+				MaxLen:      32,
+				OnCommit: func(newName string) {
+					name := strings.TrimSpace(newName)
+					if name != "" && g.drum.renameRow >= 0 && g.drum.renameRow < len(g.drum.Rows) {
+						oldID := g.drum.Rows[g.drum.renameRow].Instrument
+						newID := strings.ToLower(name)
+						audio.RenameInstrument(oldID, newID)
+						if g.drum.samplePath != nil {
+							if p, ok := g.drum.samplePath[oldID]; ok {
+								g.drum.samplePath[newID] = p
+								delete(g.drum.samplePath, oldID)
+							}
+						}
+						g.drum.Rows[g.drum.renameRow].Instrument = newID
+						g.drum.Rows[g.drum.renameRow].Name = name
+						g.drum.rowLabels()[g.drum.renameRow].Text = name
+						customColors[newID] = g.drum.Rows[g.drum.renameRow].Color
+						g.drum.invalidateLabelCaches()
+						g.drum.refreshInstruments()
+						g.drum.markRowControlsDirty()
+						g.drum.bgDirty = true
+						g.drum.notifyInfo("Renamed instrument to: " + name)
+					}
+					g.drum.renameRow = -1
+				},
+				OnCancel: func() {
+					g.drum.renameRow = -1
+				},
+			})
+			g.drum.renameComp.Open()
+			g.drum.renameComp.ClearHold()
+			g.drum.openRenamePortal()
+		}
 		return nil
 	}))
 
@@ -1121,8 +1196,8 @@ func (g *Game) initJSGraphUI() {
 			v = 1
 		}
 		audio.SetMainVolume(v)
-		if g.drum != nil && g.drum.mainVolSlider != nil {
-			g.drum.mainVolSlider.Value = v
+		if g.drum != nil && g.drum.mainVolSlider() != nil {
+			g.drum.mainVolSlider().Value = v
 		}
 		return nil
 	}))
@@ -1147,8 +1222,8 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		g.drum.Rows[r].Volume = v
-		if r < len(g.drum.rowVolSliders) {
-			g.drum.rowVolSliders[r].Value = v
+		if r < len(g.drum.rowVolSliders()) {
+			g.drum.rowVolSliders()[r].Value = v
 		}
 		return nil
 	}))
@@ -1312,34 +1387,34 @@ func (g *Game) initJSGraphUI() {
 
 	// playBtnRect() -> {x,y,w,h}
 	js.Global().Set("playBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.playBtn == nil {
+		if g.drum == nil || g.drum.playBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.playBtn.Rect())
+		return rectToJS(g.drum.playBtn().Rect())
 	}))
 
 	// stopBtnRect() -> {x,y,w,h}
 	js.Global().Set("stopBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.stopBtn == nil {
+		if g.drum == nil || g.drum.stopBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.stopBtn.Rect())
+		return rectToJS(g.drum.stopBtn().Rect())
 	}))
 
 	// bpmIncBtnRect() -> {x,y,w,h}
 	js.Global().Set("bpmIncBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.bpmIncBtn == nil {
+		if g.drum == nil || g.drum.bpmIncBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.bpmIncBtn.Rect())
+		return rectToJS(g.drum.bpmIncBtn().Rect())
 	}))
 
 	// bpmDecBtnRect() -> {x,y,w,h}
 	js.Global().Set("bpmDecBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.bpmDecBtn == nil {
+		if g.drum == nil || g.drum.bpmDecBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.bpmDecBtn.Rect())
+		return rectToJS(g.drum.bpmDecBtn().Rect())
 	}))
 
 	// lenIncBtnRect() -> {x,y,w,h}
@@ -1360,26 +1435,26 @@ func (g *Game) initJSGraphUI() {
 
 	// addRowBtnRect() -> {x,y,w,h}
 	js.Global().Set("addRowBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.addRowBtn == nil {
+		if g.drum == nil || g.drum.addRowBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.addRowBtn.Rect())
+		return rectToJS(g.drum.addRowBtn().Rect())
 	}))
 
 	// importBtnRect() -> {x,y,w,h}
 	js.Global().Set("importBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.importBtn == nil {
+		if g.drum == nil || g.drum.importBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.importBtn.Rect())
+		return rectToJS(g.drum.importBtn().Rect())
 	}))
 
 	// exportBtnRect() -> {x,y,w,h}
 	js.Global().Set("exportBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.exportBtn == nil {
+		if g.drum == nil || g.drum.exportBtn() == nil {
 			return nil
 		}
-		return rectToJS(g.drum.exportBtn.Rect())
+		return rectToJS(g.drum.exportBtn().Rect())
 	}))
 
 	// instMenuOpen() -> bool
@@ -1387,7 +1462,7 @@ func (g *Game) initJSGraphUI() {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
-		return js.ValueOf(g.drum.instMenuOpen)
+		return js.ValueOf(g.drum.IsInstMenuOpen())
 	}))
 
 	// instMenuModeState() -> string ("categories" | "instruments" | "")
@@ -1488,7 +1563,7 @@ func (g *Game) initJSGraphUI() {
 		if g.drum.instMenuComp != nil && g.drum.instMenuComp.IsOpen() {
 			g.drum.instMenuComp.Close()
 		}
-		g.drum.instMenuOpen = false
+		g.drum.closeInstMenuPortal()
 		return nil
 	}))
 
@@ -1497,7 +1572,7 @@ func (g *Game) initJSGraphUI() {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
-		return js.ValueOf(g.drum.colorMenuOpen)
+		return js.ValueOf(g.drum.IsColorMenuOpen())
 	}))
 
 	// isPlaying() -> bool
@@ -1782,6 +1857,76 @@ func (g *Game) initJSGraphUI() {
 			return js.ValueOf(-1)
 		}
 		return js.ValueOf(g.drum.contextMenuRow)
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// FX panel + portal state exports for testing
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// fxPanelOpenJS() -> bool
+	js.Global().Set("fxPanelOpenJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.IsFXPanelOpen())
+	}))
+
+	// fxPanelRowJS() -> int (-1 if not open)
+	js.Global().Set("fxPanelRowJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || !g.drum.IsFXPanelOpen() {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(g.drum.fxPanelRow)
+	}))
+
+	// fxPanelRectJS() -> {x,y,w,h} or null
+	js.Global().Set("fxPanelRectJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || !g.drum.IsFXPanelOpen() {
+			return nil
+		}
+		return rectToJS(g.drum.fxPanelRect)
+	}))
+
+	// rowFXBtnRect(row) -> {x,y,w,h} or null
+	js.Global().Set("rowFXBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || len(args) < 1 {
+			return nil
+		}
+		row := args[0].Int()
+		btns := g.drum.rowFXBtns()
+		if row < 0 || row >= len(btns) || btns[row] == nil {
+			return nil
+		}
+		return rectToJS(btns[row].Rect())
+	}))
+
+	// openFXPanelJS(row) — programmatically open FX panel
+	js.Global().Set("openFXPanelJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || len(args) < 1 {
+			return nil
+		}
+		row := args[0].Int()
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.toggleFXPanel(row)
+		return nil
+	}))
+
+	// portalTopID() -> string
+	js.Global().Set("portalTopID", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.tree == nil {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(g.drum.tree.Portal().TopID())
+	}))
+
+	// portalStackLen() -> int
+	js.Global().Set("portalStackLen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.tree == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.tree.Portal().StackLen())
 	}))
 
 	// ─────────────────────────────────────────────────────────────────────────

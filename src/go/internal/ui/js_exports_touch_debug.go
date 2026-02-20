@@ -89,8 +89,9 @@ func (g *Game) initJSTouchDebug() {
 	// isSmallScreenMode() -> bool
 	// Returns whether the UI is using touch-friendly sizing.
 	js.Global().Set("isSmallScreenMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		return js.ValueOf(isSmallScreen())
+		return js.ValueOf(Profile().IsMobile())
 	}))
+
 }
 
 // init sets up the device pixel ratio getter for WASM.

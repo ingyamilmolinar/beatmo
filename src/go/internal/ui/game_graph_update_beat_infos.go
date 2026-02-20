@@ -138,8 +138,24 @@ func (g *Game) updateBeatInfos() {
 		maxLen = 1
 	}
 	if !g.Playing() && maxLen > g.drum.Length {
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] calling drum.SetLengthClamped maxLen=%d", maxLen)
-		g.drum.SetLengthClamped(maxLen)
+		// Always store the full circuit length so the timeline is scrollable.
+		g.drum.SetBeatLength(maxLen)
+		// Cap the visible window to the platform's preferred default (e.g.
+		// 8 beats on mobile) unless the user manually adjusted length.
+		// Desktop uses DefaultTimelineBeats=0 (no cap).
+		visLen := maxLen
+		if !g.drum.userAdjustedLength {
+			if db := Profile().DefaultTimelineBeats; db > 0 {
+				cap := db * g.drum.timelineUnitsPerBeat
+				if visLen > cap {
+					visLen = cap
+				}
+			}
+		}
+		g.logger.Debugf("[UPDATE_BEAT_INFOS] calling drum.SetLengthClamped visLen=%d (maxLen=%d)", visLen, maxLen)
+		g.drum.SetLengthClamped(visLen)
+		// Restore graph beat length that SetLengthClamped may have shrunk.
+		g.graph.SetBeatLength(maxLen)
 		g.logger.Debugf("[UPDATE_BEAT_INFOS] drum.SetLengthClamped done")
 	} else {
 		// While playing, avoid changing DrumView.Length to prevent window
@@ -399,9 +415,6 @@ func (g *Game) updateBeatInfos() {
 		}
 	}
 	g.nextIdxSticky = nil
-	if pathsChanged {
-		g.notifyComponentsGraphChange(GraphChange{PathsChanged: true})
-	}
 
 	// If paths changed during playback, invalidate any already-scheduled audio
 	// and parity buffers. Otherwise, a live edit can leave an "old" audio event

@@ -3,7 +3,6 @@ package ui
 import (
 	"image"
 	"slices"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -73,11 +72,12 @@ type InstrumentMenuState struct {
 	filteredInsts    []string
 	categoryByID     map[string]string
 	displayLabelByID map[string]string
+	searchHighlights map[string][]int // Per-ID highlight positions from fuzzy search.
 }
 
 // InstrumentMenuComponent is a self-contained dropdown menu for selecting instruments.
 type InstrumentMenuComponent struct {
-	BaseComponent
+	overlayBase
 	props InstrumentMenuProps
 	state InstrumentMenuState
 
@@ -95,10 +95,10 @@ type InstrumentMenuComponent struct {
 }
 
 // NewInstrumentMenuComponent creates a new instrument menu component.
-func NewInstrumentMenuComponent(id string) *InstrumentMenuComponent {
+func NewInstrumentMenuComponent() *InstrumentMenuComponent {
 	return &InstrumentMenuComponent{
-		BaseComponent: *NewBaseComponent(id),
-		scroll:        NewScrollBehavior(DropdownScrollbarStyle, 24),
+		overlayBase: newOverlayBase(),
+		scroll:      NewScrollBehavior(DropdownScrollbarStyle, 24),
 	}
 }
 
@@ -168,7 +168,6 @@ func (m *InstrumentMenuComponent) Open() {
 
 	m.rebuildMaps()
 	m.rebuildMenu()
-	SuppressClicksUntilMouseUp()
 }
 
 // Close closes the menu.
@@ -261,7 +260,7 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 	m.scroll.ItemHeight = rowH
 
 	// On mobile, use full width and always open upward (bottom sheet).
-	if isSmallScreen() {
+	if Profile().UseBottomSheet {
 		base = image.Rect(vertBounds.Min.X, base.Min.Y, vertBounds.Max.X, base.Max.Y)
 	}
 
@@ -270,7 +269,7 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 	if minMenuW < 260 {
 		minMenuW = 260
 	}
-	if isSmallScreen() {
+	if Profile().UseBottomSheet {
 		// Use full width on mobile.
 		minMenuW = vertBounds.Dx()
 	}
@@ -285,7 +284,7 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 	spaceDown := vertBounds.Max.Y - base.Max.Y
 	spaceUp := base.Min.Y - vertBounds.Min.Y
 	openUp := spaceDown < spaceUp
-	if isSmallScreen() {
+	if Profile().UseBottomSheet {
 		openUp = true // always bottom sheet on mobile
 	}
 
@@ -304,7 +303,7 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rectangle, rowH int, openUp bool) {
 	catCount := len(m.props.Categories)
 	vis := instMenuMaxVisibleRowsComp
-	if isSmallScreen() {
+	if Profile().UseBottomSheet {
 		// On mobile, show more rows to fill the screen.
 		mobileVis := (vertBounds.Dy() - rowH*2) / rowH
 		if mobileVis > vis {
@@ -368,7 +367,6 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 			m.state.cameFromCats = true
 			m.state.userScrolled = false
 			m.rebuildMenu()
-			SuppressClicksUntilMouseUp()
 		})
 		if btnCat == m.state.activeCat {
 			btn.Style = PopupButtonStyle
@@ -383,18 +381,27 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 
 // buildInstrumentsMode builds the menu in instruments mode.
 func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Rectangle, rowH int, openUp bool) {
-	// Filter instruments
-	m.state.filteredInsts = m.state.filteredInsts[:0]
+	// Filter instruments: category filter first, then fuzzy search.
+	var catItems []MenuSearchItem
 	for _, inst := range m.props.Instruments {
-		// Filter by category if active
 		if m.state.activeCat != "" && m.state.categoryByID[inst.ID] != m.state.activeCat {
 			continue
 		}
-		// Filter by search
-		if !m.matchSearch(inst.ID) {
-			continue
+		label := m.state.displayLabelByID[inst.ID]
+		if label == "" {
+			label = inst.ID
 		}
-		m.state.filteredInsts = append(m.state.filteredInsts, inst.ID)
+		catItems = append(catItems, MenuSearchItem{Key: inst.ID, Label: label})
+	}
+	var searcher MenuSearcher
+	searchResults := searcher.Search(m.state.searchText, catItems)
+	m.state.filteredInsts = m.state.filteredInsts[:0]
+	m.state.searchHighlights = make(map[string][]int, len(searchResults))
+	for _, r := range searchResults {
+		m.state.filteredInsts = append(m.state.filteredInsts, r.Key)
+		if len(r.Highlights) > 0 {
+			m.state.searchHighlights[r.Key] = r.Highlights
+		}
 	}
 
 	showBack := len(m.props.Categories) > 0
@@ -404,7 +411,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	}
 
 	vis := instMenuMaxVisibleRowsComp
-	if isSmallScreen() {
+	if Profile().UseBottomSheet {
 		// On mobile, fill the screen with instrument rows.
 		mobileVis := (vertBounds.Dy() - rowH*2) / rowH
 		if mobileVis > vis {
@@ -426,7 +433,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		vis = wantMinVis
 	}
 	maxVis := instMenuMaxVisibleRowsComp
-	if isSmallScreen() {
+	if Profile().UseBottomSheet {
 		maxVis = maxVisHost
 	}
 	if vis > maxVis {
@@ -540,7 +547,6 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 			m.state.cameFromCats = false
 			m.state.userScrolled = false
 			m.rebuildMenu()
-			SuppressClicksUntilMouseUp()
 		})
 		m.backBtn.SetRect(insetRect(backRect, buttonPad))
 	} else {
@@ -570,26 +576,13 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 			}
 			m.Close()
 		})
+		btn.Highlights = m.state.searchHighlights[optID]
 		btn.SetRect(insetRect(r, buttonPad))
 		m.instBtns = append(m.instBtns, btn)
 	}
 
 	m.buildCloseBtn()
 	m.SetBounds(m.fullRect)
-}
-
-// matchSearch checks if an instrument ID matches the current search query.
-func (m *InstrumentMenuComponent) matchSearch(id string) bool {
-	q := strings.TrimSpace(strings.ToLower(m.state.searchText))
-	if q == "" {
-		return true
-	}
-	idLower := strings.ToLower(id)
-	if strings.Contains(idLower, q) {
-		return true
-	}
-	label := strings.ToLower(m.state.displayLabelByID[id])
-	return strings.Contains(label, q)
 }
 
 // buildCloseBtn creates the close button at the top-right of the menu.
@@ -740,17 +733,11 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 		return InputConsumed
 	}
 
-	// Handle search box input in instruments mode (outside scroll area)
+	// Consume clicks within the search rect to prevent click-through.
+	// Keyboard/char input is handled by Update() every frame.
 	if m.state.mode == InstMenuModeInstruments && m.searchBox != nil {
 		if pt.In(m.searchRect) {
-			if m.searchBox.Update() {
-				newText := m.searchBox.Value()
-				if newText != m.state.searchText {
-					m.state.searchText = newText
-					m.rebuildMenu()
-				}
-				return InputConsumed
-			}
+			return InputConsumed
 		}
 	}
 
@@ -787,7 +774,6 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 	// closing on category switch (geometry changes between modes)
 	if pressed && !suppressClicksUntilRelease && !pt.In(m.fullRect) && !pt.In(m.props.AnchorRect) {
 		m.Close()
-		SuppressClicksUntilMouseUp()
 		return InputConsumed
 	}
 
@@ -821,7 +807,7 @@ func (m *InstrumentMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed // Always consume when menu is open and cursor is over it
 }
 
-// Update processes per-frame updates (momentum decay only).
+// Update processes per-frame updates (search box polling + momentum decay).
 // Touch move/end is handled entirely in HandleInput to avoid
 // interfering with deferred tap detection.
 func (m *InstrumentMenuComponent) Update() {
@@ -829,6 +815,20 @@ func (m *InstrumentMenuComponent) Update() {
 		return
 	}
 	m.ensureScroll()
+
+	// Poll search box every frame so keyboard input is processed even
+	// when no pointer events are active. HandleInput() only fires on
+	// pointer events (via compHitHandler), so without this, typed
+	// characters are silently lost after the initial click-to-focus.
+	if m.state.mode == InstMenuModeInstruments && m.searchBox != nil {
+		m.searchBox.Update()
+		newText := m.searchBox.Value()
+		if newText != m.state.searchText {
+			m.state.searchText = newText
+			m.rebuildMenu()
+		}
+	}
+
 	if m.scroll.HasMomentum() {
 		if m.scroll.UpdateMomentum() {
 			m.state.userScrolled = true

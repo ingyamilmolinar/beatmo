@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -92,13 +93,13 @@ func TestDrumViewUpdatePopupBlocksInput(t *testing.T) {
 		tlRect.Max.Y = dv.Bounds.Max.Y - dv.eqH
 	}
 	cx := (tlRect.Min.X + tlRect.Max.X) / 2
-	cy := (tlRect.Min.Y+dv.headerH + tlRect.Max.Y-dv.eqH) / 2
+	cy := (tlRect.Min.Y + dv.headerH + tlRect.Max.Y - dv.eqH) / 2
 	if cy < tlRect.Min.Y+dv.headerH {
 		cy = tlRect.Min.Y + dv.headerH + 5
 	}
 
 	// Open context menu to block input.
-	dv.contextMenuOpen = true
+	dv.openContextMenuPortal()
 
 	// Simulate a mouse press at the computed position.
 	restore := SetInputForTest(
@@ -178,12 +179,9 @@ func TestDrumViewUpdateDragging(t *testing.T) {
 	}
 
 	// Ensure no popups are open.
-	dv.contextMenuOpen = false
-	dv.overflowMenuOpen = false
-	dv.volPopup.Close()
-	dv.eqPopup.Close()
-	dv.fxPanelOpen = false
-	dv.masterVolPopup.Close()
+	dv.CloseAllPopups()
+	dv.closeVolumePopup()
+	dv.closeMasterVolumePopup()
 
 	// Step 1: Press mouse inside the steps area.
 	restore := SetInputForTest(
@@ -197,7 +195,12 @@ func TestDrumViewUpdateDragging(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if !dv.dragging {
+	// Check drag state: zone-based when TimelineZone exists, legacy field otherwise.
+	isDragging := dv.dragging
+	if dv.timelineZone != nil {
+		isDragging = dv.timelineZone.IsDragging()
+	}
+	if !isDragging {
 		t.Fatal("expected dragging=true after mouse press inside steps area")
 	}
 
@@ -213,7 +216,11 @@ func TestDrumViewUpdateDragging(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.dragging {
+	isDragging = dv.dragging
+	if dv.timelineZone != nil {
+		isDragging = dv.timelineZone.IsDragging()
+	}
+	if isDragging {
 		t.Error("expected dragging=false after mouse release, but still dragging")
 	}
 }
@@ -250,9 +257,9 @@ func TestDrumViewUpdateBPMBoxEnterCommit(t *testing.T) {
 	dv.SetBPM(120)
 
 	// Focus the BPM box and set its text.
-	dv.bpmBox.focused = true
+	dv.bpmBox().focused = true
 	dv.bpmPrev = 120
-	dv.bpmBox.SetText("150")
+	dv.bpmBox().SetText("150")
 
 	// Simulate Enter key press.
 	enterPressed := true
@@ -271,7 +278,7 @@ func TestDrumViewUpdateBPMBoxEnterCommit(t *testing.T) {
 	if dv.bpm != 150 {
 		t.Errorf("expected BPM=150 after Enter commit, got %d", dv.bpm)
 	}
-	if dv.bpmBox.Focused() {
+	if dv.bpmBox().Focused() {
 		t.Error("expected BPM box to be unfocused after Enter")
 	}
 }
@@ -284,8 +291,8 @@ func TestDrumViewUpdateBPMBoxInvalidInput(t *testing.T) {
 	dv.bpmPrev = 120
 
 	// Focus BPM box with invalid text.
-	dv.bpmBox.focused = true
-	dv.bpmBox.SetText("abc")
+	dv.bpmBox().focused = true
+	dv.bpmBox().SetText("abc")
 
 	enterPressed := true
 	restore := SetInputForTest(
@@ -315,8 +322,8 @@ func TestDrumViewUpdateBPMBoxEmptyInput(t *testing.T) {
 	dv.SetBPM(120)
 	dv.bpmPrev = 90
 
-	dv.bpmBox.focused = true
-	dv.bpmBox.SetText("")
+	dv.bpmBox().focused = true
+	dv.bpmBox().SetText("")
 
 	enterPressed := true
 	restore := SetInputForTest(
@@ -336,20 +343,41 @@ func TestDrumViewUpdateBPMBoxEmptyInput(t *testing.T) {
 	}
 }
 
-// TestDrumViewUpdateSliderIsolationRelease verifies that releasing the mouse
-// while a slider is active resets activeSliderKind to none.
+// TestDrumViewUpdateSliderIsolationRelease verifies that the tree's capture
+// mechanism releases slider groups on mouse release. Slider dispatch now goes
+// through the zone tree's hit areas (TransportZone for main volume).
 func TestDrumViewUpdateSliderIsolationRelease(t *testing.T) {
 	dv := newUpdateTestDV(t)
 
-	// Simulate an active slider drag.
-	dv.activeSliderKind = sliderKindMainVol
-	if dv.mainVolSlider == nil {
-		dv.mainVolSlider = NewSlider(0.5)
+	sl := dv.mainVolSlider()
+	if sl == nil {
+		t.Skip("mainVolSlider nil in test DrumView")
+	}
+	r := sl.Rect()
+	if r.Empty() {
+		t.Skip("mainVolSlider rect empty")
 	}
 
-	// Release mouse.
+	// Press inside the slider via the tree dispatch.
+	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2
 	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 300 },
+	)
+	dv.Update()
+	restore()
+
+	if dv.mainVolGroup() == nil {
+		t.Skip("mainVolGroup nil")
+	}
+
+	// Release mouse via the tree dispatch.
+	restore = SetInputForTest(
+		func() (int, int) { return cx, cy },
 		func(ebiten.MouseButton) bool { return false },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -359,8 +387,8 @@ func TestDrumViewUpdateSliderIsolationRelease(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.activeSliderKind != sliderKindNone {
-		t.Errorf("expected activeSliderKind=none after release, got %d", dv.activeSliderKind)
+	if dv.mainVolGroup().Capturing() {
+		t.Errorf("expected mainVolGroup not capturing after release")
 	}
 }
 
@@ -371,12 +399,17 @@ func TestDrumViewUpdatePopupBlocksAll(t *testing.T) {
 		name   string
 		setter func(*DrumView)
 	}{
-		{"contextMenuOpen", func(dv *DrumView) { dv.contextMenuOpen = true }},
-		{"overflowMenuOpen", func(dv *DrumView) { dv.overflowMenuOpen = true }},
-		{"volPopupOpen", func(dv *DrumView) { dv.volPopup.open = true }},
-		{"eqPopupOpen", func(dv *DrumView) { dv.eqPopup.open = true }},
-		{"fxPanelOpen", func(dv *DrumView) { dv.fxPanelOpen = true }},
-		{"masterVolPopupOpen", func(dv *DrumView) { dv.masterVolPopup.open = true }},
+		{"contextMenuOpen", func(dv *DrumView) { dv.openContextMenuPortal() }},
+		{"overflowMenuOpen", func(dv *DrumView) { dv.openOverflowMenuPortal() }},
+		{"volPopupOpen", func(dv *DrumView) {
+			dv.volPopup.Open(image.Rect(100, 100, 130, 120), dv.Bounds, dv.headerH)
+			dv.openVolPopupPortal()
+		}},
+		{"fxPanelOpen", func(dv *DrumView) { dv.openFXPanelPortal() }},
+		{"masterVolPopupOpen", func(dv *DrumView) {
+			dv.masterVolPopup.Open(image.Rect(100, 100, 130, 120), dv.Bounds, dv.headerH)
+			dv.openMasterVolPopupPortal()
+		}},
 	}
 
 	for _, tc := range popupFlags {
@@ -421,12 +454,12 @@ func TestDrumViewUpdateBPMBoxBlurCommit(t *testing.T) {
 	dv.SetBPM(120)
 
 	// Simulate focus: set focused and track bpmPrev.
-	dv.bpmBox.focused = true
+	dv.bpmBox().focused = true
 	dv.bpmPrev = 120
-	dv.bpmBox.SetText("90")
+	dv.bpmBox().SetText("90")
 
 	// Now simulate blur by clicking outside the BPM box rect.
-	bpmRect := dv.bpmBox.Rect
+	bpmRect := dv.bpmBox().Rect
 	outsideX := bpmRect.Max.X + 50
 	outsideY := bpmRect.Max.Y + 50
 

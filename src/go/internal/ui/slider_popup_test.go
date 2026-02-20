@@ -213,9 +213,6 @@ func TestSliderPopupOverlayInterface(t *testing.T) {
 
 	o := &SliderPopupOverlay{Popup: sp}
 
-	// Verify interface compliance.
-	var _ Overlay = o
-
 	if o.ID() != "test-overlay" {
 		t.Fatalf("ID() = %q, want %q", o.ID(), "test-overlay")
 	}

@@ -15,7 +15,7 @@ func clearClickSuppression(t *testing.T) {
 }
 
 func TestSubdivMenuComponent_OpenClose(t *testing.T) {
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 
 	// Initially closed
 	if comp.IsOpen() {
@@ -51,7 +51,7 @@ func TestSubdivMenuComponent_OpenClose(t *testing.T) {
 func TestSubdivMenuComponent_OnSelectCallback(t *testing.T) {
 	clearClickSuppression(t)
 
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 
 	var selectedValue int
 	comp.SetProps(SubdivMenuProps{
@@ -90,7 +90,7 @@ func TestSubdivMenuComponent_OnSelectCallback(t *testing.T) {
 }
 
 func TestSubdivMenuComponent_ClickOutsideCloses(t *testing.T) {
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 
 	var closeCalled bool
 	comp.SetProps(SubdivMenuProps{
@@ -119,7 +119,7 @@ func TestSubdivMenuComponent_ClickOutsideCloses(t *testing.T) {
 }
 
 func TestSubdivMenuComponent_CapturingFalse(t *testing.T) {
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 	comp.SetProps(SubdivMenuProps{
 		AnchorRect: image.Rect(100, 50, 150, 75),
 		Options:    []int{4, 8, 16, 32},
@@ -134,7 +134,7 @@ func TestSubdivMenuComponent_CapturingFalse(t *testing.T) {
 }
 
 func TestSubdivMenuComponent_ButtonLayout(t *testing.T) {
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 	comp.SetProps(SubdivMenuProps{
 		AnchorRect: image.Rect(100, 50, 150, 75),
 		Options:    []int{4, 8, 16, 32},
@@ -165,7 +165,7 @@ func TestSubdivMenuComponent_ButtonLayout(t *testing.T) {
 }
 
 func TestSubdivMenuComponent_BoundsUpdated(t *testing.T) {
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 	comp.SetProps(SubdivMenuProps{
 		AnchorRect: image.Rect(100, 50, 150, 75),
 		Options:    []int{4, 8, 16, 32},
@@ -201,7 +201,7 @@ func TestSubdivMenuComponent_BoundsUpdated(t *testing.T) {
 }
 
 func TestSubdivMenuComponent_HandleInputWhenClosed(t *testing.T) {
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 	comp.SetProps(SubdivMenuProps{
 		AnchorRect: image.Rect(100, 50, 150, 75),
 		Options:    []int{4, 8, 16, 32},
@@ -216,7 +216,7 @@ func TestSubdivMenuComponent_HandleInputWhenClosed(t *testing.T) {
 }
 
 func TestSubdivMenuComponent_EmptyOptions(t *testing.T) {
-	comp := NewSubdivMenuComponent("test-subdiv")
+	comp := NewSubdivMenuComponent()
 	comp.SetProps(SubdivMenuProps{
 		AnchorRect: image.Rect(100, 50, 150, 75),
 		Options:    []int{},
@@ -227,5 +227,60 @@ func TestSubdivMenuComponent_EmptyOptions(t *testing.T) {
 	// Should handle empty options gracefully
 	if len(comp.buttons) != 0 {
 		t.Errorf("expected 0 buttons for empty options, got %d", len(comp.buttons))
+	}
+}
+
+func TestSubdiv_SetPropsRebuildWhileOpen(t *testing.T) {
+	comp := NewSubdivMenuComponent()
+
+	// Open with initial anchor rect
+	comp.SetProps(SubdivMenuProps{
+		AnchorRect: image.Rect(100, 50, 150, 75),
+		Current:    16,
+		Options:    []int{4, 8, 16, 32},
+		RowHeight:  24,
+	})
+	comp.Open()
+
+	if len(comp.buttons) != 4 {
+		t.Fatalf("expected 4 buttons, got %d", len(comp.buttons))
+	}
+
+	// Record original button positions
+	origBtn0Y := comp.buttons[0].Rect().Min.Y
+	origBounds := comp.Bounds()
+
+	// Change AnchorRect while open → should trigger rebuildButtons
+	newAnchor := image.Rect(200, 300, 250, 325)
+	comp.SetProps(SubdivMenuProps{
+		AnchorRect: newAnchor,
+		Current:    16,
+		Options:    []int{4, 8, 16, 32},
+		RowHeight:  24,
+	})
+
+	// Menu should still be open
+	if !comp.IsOpen() {
+		t.Error("expected menu to remain open after SetProps")
+	}
+
+	// Buttons should still exist
+	if len(comp.buttons) != 4 {
+		t.Fatalf("expected 4 buttons after SetProps, got %d", len(comp.buttons))
+	}
+
+	// First button should now start at the new anchor's bottom (325), not old (75)
+	newBtn0Y := comp.buttons[0].Rect().Min.Y
+	if newBtn0Y == origBtn0Y {
+		t.Errorf("expected button Y to change after anchor rect update, still %d", newBtn0Y)
+	}
+	if newBtn0Y < newAnchor.Max.Y {
+		t.Errorf("first button Y (%d) should be >= new anchor bottom (%d)", newBtn0Y, newAnchor.Max.Y)
+	}
+
+	// Bounds should have updated
+	newBounds := comp.Bounds()
+	if newBounds == origBounds {
+		t.Errorf("expected bounds to change after SetProps, still %v", newBounds)
 	}
 }

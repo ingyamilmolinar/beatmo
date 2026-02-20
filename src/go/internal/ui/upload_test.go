@@ -14,12 +14,12 @@ func waitForUploadNaming(t *testing.T, g *Game) {
 	t.Helper()
 	for i := 0; i < 20; i++ {
 		g.drum.Update()
-		if g.drum.naming {
+		if g.drum.IsNamingOpen() {
 			return
 		}
 		runtime.Gosched()
 	}
-	t.Fatalf("upload click did not enter naming state (uploading=%v naming=%v)", g.drum.uploading, g.drum.naming)
+	t.Fatalf("upload click did not enter naming state (uploading=%v naming=%v)", g.drum.uploading, g.drum.IsNamingOpen())
 }
 
 func TestUploadWAVRegistersInstrument(t *testing.T) {
@@ -91,7 +91,7 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 	initial := g.drum.Rows[0].Instrument
 
 	// first upload via button click
-	r := g.drum.uploadBtn.Rect()
+	r := g.drum.uploadBtn().Rect()
 	click(g, r.Min.X+1, r.Min.Y+1)
 	waitForUploadNaming(t, g)
 	restore := SetInputForTest(
@@ -149,22 +149,22 @@ func TestUploadButtonWhileMenuOpen(t *testing.T) {
 	g.drum.recalcButtons()
 
 	// Open instrument menu via row label button.
-	if len(g.drum.rowLabels) == 0 {
+	if len(g.drum.rowLabels()) == 0 {
 		t.Fatalf("missing row labels for instrument menu")
 	}
-	g.drum.rowLabels[0].OnClick()
-	if !g.drum.instMenuOpen {
+	g.drum.rowLabels()[0].OnClick()
+	if !g.drum.IsInstMenuOpen() {
 		t.Fatalf("instrument menu did not open")
 	}
 
 	// Click Upload while menu is open
-	r := g.drum.uploadBtn.Rect()
+	r := g.drum.uploadBtn().Rect()
 	click(g, r.Min.X+1, r.Min.Y+1)
 
-	if g.drum.instMenuOpen {
+	if g.drum.IsInstMenuOpen() {
 		t.Fatalf("instrument menu still open after upload click")
 	}
-	if !g.drum.uploading && !g.drum.naming {
+	if !g.drum.uploading && !g.drum.IsNamingOpen() {
 		t.Fatalf("upload not triggered while menu open")
 	}
 }
@@ -182,7 +182,7 @@ func TestUploadButtonClickableTwice(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
-	r := g.drum.uploadBtn.Rect()
+	r := g.drum.uploadBtn().Rect()
 	click(g, r.Min.X+1, r.Min.Y+1)
 	waitForUploadNaming(t, g)
 	// dismiss naming dialog
@@ -197,14 +197,14 @@ func TestUploadButtonClickableTwice(t *testing.T) {
 	t.Cleanup(restore)
 	g.drum.Update()
 	restore()
-	if g.drum.naming {
+	if g.drum.IsNamingOpen() {
 		t.Fatalf("naming still active after Escape")
 	}
 
-	r = g.drum.uploadBtn.Rect()
+	r = g.drum.uploadBtn().Rect()
 	click(g, r.Min.X+1, r.Min.Y+1)
 	g.drum.Update()
-	if !g.drum.uploading && !g.drum.naming {
+	if !g.drum.uploading && !g.drum.IsNamingOpen() {
 		t.Fatalf("second click did not trigger upload")
 	}
 }
@@ -222,11 +222,11 @@ func TestUploadButtonIgnoredWhileNaming(t *testing.T) {
 	if g.drum.uploading {
 		t.Fatalf("unexpected uploading state during naming")
 	}
-	g.drum.uploadBtn.OnClick()
+	g.drum.uploadBtn().OnClick()
 	if g.drum.uploading {
 		t.Fatalf("upload started while naming")
 	}
-	if !g.drum.naming {
+	if !g.drum.IsNamingOpen() {
 		t.Fatalf("naming canceled unexpectedly after upload click")
 	}
 }
@@ -244,7 +244,7 @@ func TestUploadButtonIgnoredWhileUploading(t *testing.T) {
 		t.Fatalf("upload not active after starting upload")
 	}
 
-	g.drum.uploadBtn.OnClick()
+	g.drum.uploadBtn().OnClick()
 	if !g.drum.uploading {
 		t.Fatalf("upload cleared unexpectedly after second click")
 	}
@@ -276,11 +276,11 @@ func TestUploadButtonIgnoredWhileImporting(t *testing.T) {
 		t.Fatalf("import picker calls=%d want=1", tries)
 	}
 
-	g.drum.uploadBtn.OnClick()
+	g.drum.uploadBtn().OnClick()
 	if g.drum.uploading {
 		t.Fatalf("upload started while importing")
 	}
-	if g.drum.naming {
+	if g.drum.IsNamingOpen() {
 		t.Fatalf("naming started while importing")
 	}
 }

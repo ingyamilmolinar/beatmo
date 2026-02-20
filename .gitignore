@@ -11,3 +11,4 @@ src/js/testdata/golden/*.png
 src/js/recordings/*/
 !src/js/recordings/.gitkeep
 coverage/
+.superpowers/

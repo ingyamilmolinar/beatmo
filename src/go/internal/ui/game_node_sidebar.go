@@ -17,6 +17,8 @@ const (
 	sidebarMinW      = 200
 	sidebarMaxW      = 400
 	sidebarBtnH      = 28 // unified button/row height
+	sidebarIncBtnW   = 28 // inc/dec button width
+	sidebarIncBtnH   = 24 // inc/dec button height
 	sidebarGap       = 6
 	sidebarPad       = 10
 	sidebarHeaderH   = 36
@@ -25,6 +27,7 @@ const (
 	sidebarResizeW   = 8  // resize grab zone on right edge
 	sidebarTabW      = 24 // collapsed expand-tab width
 	sidebarInnerPad  = 4  // inner padding for text within layout rects
+	sidebarSwatchSz  = 12 // instrument color swatch size in header
 )
 
 // sidebarScaledTextWidth returns the pixel width of s rendered at the given
@@ -252,7 +255,7 @@ func (sb *NodeSidebar) layout() {
 		}
 	}
 	// Section: Move (desktop only)
-	if !isSmallScreen() {
+	if !Profile().IsMobile() {
 		sb.rects["sec-move"] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarSectionH)
 		y += sidebarSectionH
 		if sb.sectionOpen["move"] {
@@ -273,6 +276,7 @@ func (sb *NodeSidebar) layout() {
 }
 
 // layoutSection lays out a simple +/- section (vol, pit, dur).
+// Layout: [label] ... [−] [value pill] [+] right-aligned.
 func (sb *NodeSidebar) layoutSection(y, w, btnX int, id, _ string, hasButtons bool) int {
 	sb.rects["sec-"+id] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarSectionH)
 	y += sidebarSectionH
@@ -280,8 +284,19 @@ func (sb *NodeSidebar) layoutSection(y, w, btnX int, id, _ string, hasButtons bo
 		return y
 	}
 	if hasButtons {
-		sb.rects[id+"-"] = image.Rect(btnX, y, btnX+sidebarBtnH, y+sidebarBtnH)
-		sb.rects[id+"+"] = image.Rect(btnX+sidebarBtnH+sidebarGap, y, btnX+2*sidebarBtnH+sidebarGap, y+sidebarBtnH)
+		// Right-align: [−] [pill] [+]
+		// +button at the far right
+		plusX := w - sidebarPad - sidebarIncBtnW
+		// pill between buttons
+		pillW := 50
+		pillX := plusX - sidebarGap - pillW
+		// −button to the left of pill
+		minusX := pillX - sidebarGap - sidebarIncBtnW
+
+		btnY := y + (sidebarBtnH-sidebarIncBtnH)/2 // vertically center 24px buttons in 28px row
+		sb.rects[id+"-"] = image.Rect(minusX, btnY, minusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
+		sb.rects[id+"val"] = image.Rect(pillX, btnY, pillX+pillW, btnY+sidebarIncBtnH)
+		sb.rects[id+"+"] = image.Rect(plusX, btnY, plusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
 	}
 	y += sidebarBtnH + sidebarGap
 	return y
@@ -307,16 +322,28 @@ func (sb *NodeSidebar) layoutLogicSection(y, w, btnX int, kind string) int {
 		}
 		y += sidebarGap - 2
 	} else {
-		// Parameter adjusters
+		// Parameter adjusters — same [−] [pill] [+] layout as vol/pit/dur
 		kindHasN := kind == "every_n_triggers" || kind == "skip_every_n"
 		kindHasP := kind == "probability"
 		if kindHasN {
-			sb.rects["ln-"] = image.Rect(btnX, y, btnX+sidebarBtnH, y+sidebarBtnH)
-			sb.rects["ln+"] = image.Rect(btnX+sidebarBtnH+sidebarGap, y, btnX+2*sidebarBtnH+sidebarGap, y+sidebarBtnH)
+			plusX := w - sidebarPad - sidebarIncBtnW
+			pillW := 50
+			pillX := plusX - sidebarGap - pillW
+			minusX := pillX - sidebarGap - sidebarIncBtnW
+			btnY := y + (sidebarBtnH-sidebarIncBtnH)/2
+			sb.rects["ln-"] = image.Rect(minusX, btnY, minusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
+			sb.rects["lnval"] = image.Rect(pillX, btnY, pillX+pillW, btnY+sidebarIncBtnH)
+			sb.rects["ln+"] = image.Rect(plusX, btnY, plusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
 			y += sidebarBtnH + sidebarGap
 		} else if kindHasP {
-			sb.rects["lp-"] = image.Rect(btnX, y, btnX+sidebarBtnH, y+sidebarBtnH)
-			sb.rects["lp+"] = image.Rect(btnX+sidebarBtnH+sidebarGap, y, btnX+2*sidebarBtnH+sidebarGap, y+sidebarBtnH)
+			plusX := w - sidebarPad - sidebarIncBtnW
+			pillW := 50
+			pillX := plusX - sidebarGap - pillW
+			minusX := pillX - sidebarGap - sidebarIncBtnW
+			btnY := y + (sidebarBtnH-sidebarIncBtnH)/2
+			sb.rects["lp-"] = image.Rect(minusX, btnY, minusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
+			sb.rects["lpval"] = image.Rect(pillX, btnY, pillX+pillW, btnY+sidebarIncBtnH)
+			sb.rects["lp+"] = image.Rect(plusX, btnY, plusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
 			y += sidebarBtnH + sidebarGap
 		}
 	}
@@ -342,9 +369,15 @@ func (sb *NodeSidebar) layoutGrooveSection(y, w, btnX int) int {
 		}
 		y += sidebarGap - 2
 	} else {
-		// Pct adjusters
-		sb.rects["gp-"] = image.Rect(btnX, y, btnX+sidebarBtnH, y+sidebarBtnH)
-		sb.rects["gp+"] = image.Rect(btnX+sidebarBtnH+sidebarGap, y, btnX+2*sidebarBtnH+sidebarGap, y+sidebarBtnH)
+		// Pct adjusters — same [−] [pill] [+] layout
+		plusX := w - sidebarPad - sidebarIncBtnW
+		pillW := 50
+		pillX := plusX - sidebarGap - pillW
+		minusX := pillX - sidebarGap - sidebarIncBtnW
+		btnY := y + (sidebarBtnH-sidebarIncBtnH)/2
+		sb.rects["gp-"] = image.Rect(minusX, btnY, minusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
+		sb.rects["gpval"] = image.Rect(pillX, btnY, pillX+pillW, btnY+sidebarIncBtnH)
+		sb.rects["gp+"] = image.Rect(plusX, btnY, plusX+sidebarIncBtnW, btnY+sidebarIncBtnH)
 		y += sidebarBtnH + sidebarGap
 	}
 	return y
@@ -1004,10 +1037,10 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	g := sb.game
 	panel := sb.rects["panel"]
 
-	// Panel background with shadow
-	drawPanelShadow(dst, panel, 3)
-	drawRoundedRect(dst, panel, color.NRGBA{40, 40, 40, 230}, RadiusMD, true)
-	drawRoundedRect(dst, panel, color.NRGBA{90, 90, 90, 100}, RadiusMD, false)
+	// Panel background with stronger shadow and elevated surface
+	drawPanelShadow(dst, panel, 6)
+	drawRoundedRect(dst, panel, colPanelBG, RadiusLG, true)
+	drawRoundedRect(dst, panel, color.NRGBA{90, 90, 90, 100}, RadiusLG, false)
 
 	// Fixed header
 	sb.drawHeader(dst)
@@ -1052,7 +1085,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	showLogic := !isSilent
 	showGroove := !isSilent
 
-	valColX := panel.Min.X + panel.Dx()*45/100
+	_ = panel // used by layout; drawing uses sb.rects
 
 	// Volume section
 	if showVol {
@@ -1060,11 +1093,11 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		if sb.sectionOpen["vol"] {
 			if r := sb.rects["vol-"]; !r.Empty() && sb.inViewport(r) {
 				y := r.Min.Y + textOffY
-				DrawTextAtScale(dst, "Vol", sidebarPad+2, y, sidebarTextScale)
+				sidebarDrawTextColorAtScale(dst, "Vol", sidebarPad+2, y, colTextSecondary, sidebarTextScale)
 				pct := int(math.Round(volVal * 100))
-				DrawTextAtScale(dst, fmt.Sprintf("%d%%", pct), valColX, y, sidebarTextScale)
-				sb.drawBtn(dst, "vol-")
-				sb.drawBtn(dst, "vol+")
+				sb.drawIncDecBtn(dst, "vol-", "\u2212") // −
+				sb.drawValuePill(dst, "volval", fmt.Sprintf("%d%%", pct))
+				sb.drawIncDecBtn(dst, "vol+", "+")
 			}
 		}
 	}
@@ -1074,10 +1107,10 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		if sb.sectionOpen["pit"] {
 			if r := sb.rects["pit-"]; !r.Empty() && sb.inViewport(r) {
 				y := r.Min.Y + textOffY
-				DrawTextAtScale(dst, "Pitch", sidebarPad+2, y, sidebarTextScale)
-				DrawTextAtScale(dst, fmt.Sprintf("%+d", int(pitVal)), valColX, y, sidebarTextScale)
-				sb.drawBtn(dst, "pit-")
-				sb.drawBtn(dst, "pit+")
+				sidebarDrawTextColorAtScale(dst, "Pitch", sidebarPad+2, y, colTextSecondary, sidebarTextScale)
+				sb.drawIncDecBtn(dst, "pit-", "\u2212") // −
+				sb.drawValuePill(dst, "pitval", fmt.Sprintf("%+d", int(pitVal)))
+				sb.drawIncDecBtn(dst, "pit+", "+")
 			}
 		}
 	}
@@ -1087,10 +1120,10 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		if sb.sectionOpen["dur"] {
 			if r := sb.rects["dur-"]; !r.Empty() && sb.inViewport(r) {
 				y := r.Min.Y + textOffY
-				DrawTextAtScale(dst, "Dur", sidebarPad+2, y, sidebarTextScale)
-				DrawTextAtScale(dst, fmt.Sprintf("%.2fx", durVal), valColX, y, sidebarTextScale)
-				sb.drawBtn(dst, "dur-")
-				sb.drawBtn(dst, "dur+")
+				sidebarDrawTextColorAtScale(dst, "Dur", sidebarPad+2, y, colTextSecondary, sidebarTextScale)
+				sb.drawIncDecBtn(dst, "dur-", "\u2212") // −
+				sb.drawValuePill(dst, "durval", fmt.Sprintf("%.2fx", durVal))
+				sb.drawIncDecBtn(dst, "dur+", "+")
 			}
 		}
 	}
@@ -1130,19 +1163,21 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 					}
 				}
 			} else if haveNode {
-				// Parameter controls
+				// Parameter controls — styled inc/dec with value pill
 				switch mn.Params.LogicKind {
 				case "every_n_triggers", "skip_every_n":
-					sb.drawBtn(dst, "ln-")
-					sb.drawBtn(dst, "ln+")
 					if lnRect := sb.rects["ln-"]; !lnRect.Empty() && sb.inViewport(lnRect) {
-						DrawTextAtScale(dst, fmt.Sprintf("N: %d", mn.Params.LogicN), sidebarPad+2, lnRect.Min.Y+textOffY, sidebarTextScale)
+						sidebarDrawTextColorAtScale(dst, "N", sidebarPad+2, lnRect.Min.Y+textOffY, colTextSecondary, sidebarTextScale)
+						sb.drawIncDecBtn(dst, "ln-", "\u2212")
+						sb.drawValuePill(dst, "lnval", fmt.Sprintf("%d", mn.Params.LogicN))
+						sb.drawIncDecBtn(dst, "ln+", "+")
 					}
 				case "probability":
-					sb.drawBtn(dst, "lp-")
-					sb.drawBtn(dst, "lp+")
 					if lpRect := sb.rects["lp-"]; !lpRect.Empty() && sb.inViewport(lpRect) {
-						DrawTextAtScale(dst, fmt.Sprintf("P: %.1f", mn.Params.LogicP), sidebarPad+2, lpRect.Min.Y+textOffY, sidebarTextScale)
+						sidebarDrawTextColorAtScale(dst, "P", sidebarPad+2, lpRect.Min.Y+textOffY, colTextSecondary, sidebarTextScale)
+						sb.drawIncDecBtn(dst, "lp-", "\u2212")
+						sb.drawValuePill(dst, "lpval", fmt.Sprintf("%.0f%%", mn.Params.LogicP*100))
+						sb.drawIncDecBtn(dst, "lp+", "+")
 					}
 				}
 			}
@@ -1176,11 +1211,12 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 					}
 				}
 			} else {
-				sb.drawBtn(dst, "gp-")
-				sb.drawBtn(dst, "gp+")
 				if haveNode {
 					if gpRect := sb.rects["gp-"]; !gpRect.Empty() && sb.inViewport(gpRect) {
-						DrawTextAtScale(dst, fmt.Sprintf("Pct: %.0f%%", mn.Params.GroovePct*100), sidebarPad+2, gpRect.Min.Y+textOffY, sidebarTextScale)
+						sidebarDrawTextColorAtScale(dst, "Pct", sidebarPad+2, gpRect.Min.Y+textOffY, colTextSecondary, sidebarTextScale)
+						sb.drawIncDecBtn(dst, "gp-", "\u2212")
+						sb.drawValuePill(dst, "gpval", fmt.Sprintf("%.0f%%", mn.Params.GroovePct*100))
+						sb.drawIncDecBtn(dst, "gp+", "+")
 					}
 				}
 			}
@@ -1204,7 +1240,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		}
 	}
 	// Move section (desktop only)
-	if !isSmallScreen() {
+	if !Profile().IsMobile() {
 		sb.drawSectionHeader(dst, "sec-move", "Move", "move", sepColor, secTextOffY)
 		if sb.sectionOpen["move"] {
 			if moveRect := sb.rects["move"]; !moveRect.Empty() && sb.inViewport(moveRect) {
@@ -1242,7 +1278,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	}
 }
 
-// drawHeader renders the fixed header with instrument info + grid coordinates.
+// drawHeader renders the fixed header with instrument name and color swatch.
 func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	g := sb.game
 	headerRect := sb.rects["header"]
@@ -1252,8 +1288,7 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	hx := headerRect.Min.X
 	hy := headerRect.Min.Y + (sidebarHeaderH-int(float64(TextHeight())*sidebarTextScale))/2
 
-	// Always draw a color swatch and append grid coordinates (i,j).
-	swatchSz := 14
+	// Instrument color swatch (12×12 rounded square) + name only (no coordinates).
 	swatchCol := color.Color(color.RGBA{180, 180, 180, 255}) // default grey
 	label := "Node"
 
@@ -1263,29 +1298,175 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 		label = dr.Name
 	}
 
-	swatchRect := image.Rect(hx, hy+1, hx+swatchSz, hy+1+swatchSz)
-	drawRect(dst, swatchRect, swatchCol, true)
-	textX := hx + swatchSz + 6
+	swatchY := hy + (int(float64(TextHeight())*sidebarTextScale)-sidebarSwatchSz)/2
+	swatchRect := image.Rect(hx, swatchY, hx+sidebarSwatchSz, swatchY+sidebarSwatchSz)
+	drawRoundedRect(dst, swatchRect, swatchCol, 3, true)
+	textX := hx + sidebarSwatchSz + 6
 
-	coordStr := fmt.Sprintf("%s (%d,%d)", label, sb.node.I, sb.node.J)
-	DrawTextAtScale(dst, coordStr, textX, hy, sidebarTextScale)
+	DrawTextAtScale(dst, label, textX, hy, sidebarTextScale)
 }
 
-// drawSectionHeader draws a collapsible section header.
-func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID, label, sectionID string, sepColor color.Color, textOffY int) {
+// drawSectionHeader draws a collapsible section header with filled triangle
+// chevron and optional collapsed-state summary badge.
+func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID, label, sectionID string, _ color.Color, textOffY int) {
 	r, ok := sb.rects[rectID]
 	if !ok || r.Empty() || !sb.inViewport(r) {
 		return
 	}
-	// Separator line above
-	drawRect(dst, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+1), sepColor, true)
+	// Subtle separator line above section
+	drawRect(dst, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+1), colBorderSubtle, true)
 
-	// Chevron
-	chevron := ">"
-	if sb.sectionOpen[sectionID] {
-		chevron = "v"
+	expanded := sb.sectionOpen[sectionID]
+
+	// Filled triangle chevron: proportional to text height
+	triH := int(float64(TextHeight()) * sidebarTextScale)
+	if triH < 6 {
+		triH = 6
 	}
-	DrawTextAtScale(dst, chevron+" "+label, r.Min.X+2, r.Min.Y+textOffY, sidebarTextScale)
+	triW := triH * 2 / 3 // slightly narrower than tall
+	triX := r.Min.X + 2
+	triCY := r.Min.Y + sidebarSectionH/2
+
+	if expanded {
+		// Down-pointing filled triangle (▾) in accent color
+		sb.drawFilledTriangleDown(dst, triX, triCY-triH/2, triW, triH, colTextAccent)
+	} else {
+		// Right-pointing filled triangle (▸) in secondary color
+		sb.drawFilledTriangleRight(dst, triX, triCY-triH/2, triW, triH, colTextSecondary)
+	}
+
+	// Label text after triangle
+	labelX := triX + triW + 6
+	labelCol := colTextPrimary
+	if expanded {
+		labelCol = colTextAccent
+	}
+	sidebarDrawTextColorAtScale(dst, label, labelX, r.Min.Y+textOffY, labelCol, sidebarTextScale)
+
+	// Collapsed summary badge (right-aligned pill with non-default value)
+	if !expanded {
+		badge := sb.sectionBadgeText(sectionID)
+		if badge != "" {
+			badgePadX := 6
+			badgePadY := 2
+			bw := sidebarScaledTextWidth(badge, sidebarTextScale) + 2*badgePadX
+			bh := int(float64(TextHeight())*sidebarTextScale) + 2*badgePadY
+			bx := r.Max.X - bw - 2
+			by := r.Min.Y + (sidebarSectionH-bh)/2
+			pillR := image.Rect(bx, by, bx+bw, by+bh)
+			drawRoundedRect(dst, pillR, colSurface2, RadiusMD/2, true)
+			sidebarDrawTextColorAtScale(dst, badge, bx+badgePadX, by+badgePadY, colTextSecondary, sidebarTextScale)
+		}
+	}
+}
+
+// drawFilledTriangleRight draws a right-pointing filled triangle (play icon shape).
+func (sb *NodeSidebar) drawFilledTriangleRight(dst *ebiten.Image, x, y, w, h int, col color.Color) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	// x0 is left edge, x1 is rightmost tip, y0..y1 is top..bottom
+	for row := 0; row < h; row++ {
+		mid := float64(h-1) / 2
+		dist := math.Abs(float64(row) - mid)
+		t := 1 - dist/math.Max(mid, 1)
+		if t < 0 {
+			t = 0
+		}
+		xr := x + int(math.Round(t*float64(w)))
+		if xr > x {
+			drawRect(dst, image.Rect(x, y+row, xr, y+row+1), col, true)
+		}
+	}
+}
+
+// drawFilledTriangleDown draws a down-pointing filled triangle.
+func (sb *NodeSidebar) drawFilledTriangleDown(dst *ebiten.Image, x, y, w, h int, col color.Color) {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	// Top row is full width, narrows to a point at bottom center.
+	for row := 0; row < h; row++ {
+		t := 1 - float64(row)/math.Max(float64(h-1), 1)
+		halfW := int(math.Round(t * float64(w) / 2))
+		cx := x + w/2
+		if halfW > 0 {
+			drawRect(dst, image.Rect(cx-halfW, y+row, cx+halfW, y+row+1), col, true)
+		} else {
+			// single pixel at tip
+			drawRect(dst, image.Rect(cx, y+row, cx+1, y+row+1), col, true)
+		}
+	}
+}
+
+// sectionBadgeText returns a summary string for a collapsed section with
+// non-default values, or "" if the section has default values.
+func (sb *NodeSidebar) sectionBadgeText(sectionID string) string {
+	if sb.node == nil {
+		return ""
+	}
+	g := sb.game
+	mn, ok := g.graph.GetNodeByID(sb.node.ID)
+	if !ok {
+		return ""
+	}
+	switch sectionID {
+	case "vol":
+		pct := int(math.Round(mn.Params.Volume * 100))
+		if pct != 100 {
+			return fmt.Sprintf("%d%%", pct)
+		}
+	case "pit":
+		p := int(mn.Params.Pitch)
+		if p != 0 {
+			return fmt.Sprintf("%+d", p)
+		}
+	case "dur":
+		if math.Abs(mn.Params.Duration-1.0) > 0.01 {
+			return fmt.Sprintf("%.2fx", mn.Params.Duration)
+		}
+	case "logic":
+		switch mn.Params.LogicKind {
+		case "every_n_triggers":
+			return fmt.Sprintf("Every %d", mn.Params.LogicN)
+		case "skip_every_n":
+			return fmt.Sprintf("Skip %d", mn.Params.LogicN)
+		case "probability":
+			return fmt.Sprintf("P %.0f%%", mn.Params.LogicP*100)
+		case "trigger_if_prev_skipped":
+			return "Prev Skip"
+		case "trigger_if_prev_triggered":
+			return "Prev Trig"
+		}
+	case "groove":
+		kind := strings.ToLower(mn.Params.GrooveKind)
+		if kind == "delay" || kind == "rush" {
+			title := strings.ToUpper(kind[:1]) + kind[1:]
+			return fmt.Sprintf("%s %.0f%%", title, mn.Params.GroovePct*100)
+		}
+	case "aud":
+		switch mn.Type {
+		case model.NodeTypeSilent:
+			return "Silent"
+		case model.NodeTypeMute:
+			return "Muted"
+		}
+	}
+	return ""
+}
+
+// sidebarDrawTextColorAtScale draws text at the given position with color and scale.
+func sidebarDrawTextColorAtScale(dst *ebiten.Image, s string, x, y int, col color.Color, scale float64) {
+	spr := TextSprite(s)
+	var op ebiten.DrawImageOptions
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(float64(x), float64(y))
+	r, g, b, a := col.RGBA()
+	if a > 0 {
+		fa := float64(a) / 0xffff
+		op.ColorScale.Scale(float32(float64(r)/0xffff/fa), float32(float64(g)/0xffff/fa), float32(float64(b)/0xffff/fa), float32(fa))
+	}
+	dst.DrawImage(spr, &op)
 }
 
 // drawExpandTab draws the collapsed sidebar expand tab.
@@ -1308,4 +1489,46 @@ func (sb *NodeSidebar) drawBtn(dst *ebiten.Image, id string) {
 		return
 	}
 	b.Draw(dst)
+}
+
+// drawIncDecBtn draws a 28x24 increment/decrement button as a rounded
+// rectangle: colSurface2 fill, colBorderMedium border, 6px radius.
+// Press state darkens fill by -20. Label in colTextSecondary, centered.
+func (sb *NodeSidebar) drawIncDecBtn(dst *ebiten.Image, key, label string) {
+	r, ok := sb.rects[key]
+	if !ok || r.Empty() || !sb.inViewport(r) {
+		return
+	}
+	pressed := false
+	if b := sb.btns[key]; b != nil {
+		pressed = b.pressed
+	}
+	fill := color.Color(colSurface2)
+	if pressed {
+		fill = adjustColor(fill, -20)
+	}
+	drawRoundedRect(dst, r, fill, 6, true)
+	drawRoundedRect(dst, r, colBorderMedium, 6, false)
+
+	tw := sidebarScaledTextWidth(label, sidebarTextScale)
+	th := int(float64(TextHeight()) * sidebarTextScale)
+	tx := r.Min.X + (r.Dx()-tw)/2
+	ty := r.Min.Y + (r.Dy()-th)/2
+	sidebarDrawTextColorAtScale(dst, label, tx, ty, colTextSecondary, sidebarTextScale)
+}
+
+// drawValuePill draws a centered value display pill between inc/dec buttons:
+// colSurface2 fill, 6px radius, colTextPrimary text centered.
+func (sb *NodeSidebar) drawValuePill(dst *ebiten.Image, key, value string) {
+	r, ok := sb.rects[key]
+	if !ok || r.Empty() || !sb.inViewport(r) {
+		return
+	}
+	drawRoundedRect(dst, r, colSurface2, 6, true)
+
+	tw := sidebarScaledTextWidth(value, sidebarTextScale)
+	th := int(float64(TextHeight()) * sidebarTextScale)
+	tx := r.Min.X + (r.Dx()-tw)/2
+	ty := r.Min.Y + (r.Dy()-th)/2
+	sidebarDrawTextColorAtScale(dst, value, tx, ty, colTextPrimary, sidebarTextScale)
 }

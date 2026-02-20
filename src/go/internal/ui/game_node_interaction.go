@@ -59,37 +59,14 @@ func (g *Game) nodeRadius(n *uiNode) float64 {
 	// without blowing them up: ~10px radius (20px diameter).
 	minFloor := 10.0
 	if scale >= 1.0 && rScr < minFloor && n != nil {
-		// Compute screen-space center of this node using baseline rect.
-		x1, y1, x2, y2 := g.nodeScreenRect(n)
-		cx := (x1 + x2) * 0.5
-		cy := (y1 + y2) * 0.5
-		// Check against other visible nodes using a conservative neighbor size.
-		overlap := false
-		for _, m := range g.nodes {
-			if m == n {
-				continue
-			}
-			mn, ok := g.graph.Nodes[m.ID]
-			if !ok || mn.Type == model.NodeTypeInvisible {
-				continue
-			}
-			mx1, my1, mx2, my2 := g.nodeScreenRect(m)
-			mcx := (mx1 + mx2) * 0.5
-			mcy := (my1 + my2) * 0.5
-			// Use a conservative neighbor radius: cap at 16px baseline plus padding.
-			neighScr := g.grid.NodeRadius(scale) * scale
-			if neighScr < 16 {
-				neighScr = 16
-			}
-			dx := cx - mcx
-			dy := cy - mcy
-			dist := math.Hypot(dx, dy)
-			if dist < (minFloor + neighScr + 2) {
-				overlap = true
-				break
-			}
-		}
-		if !overlap {
+		// O(1) grid-spacing check: nodes sit on a grid with known minimum
+		// distance (UnitPixels * scale). If two minFloor-sized nodes at
+		// adjacent grid positions would not overlap, apply the floor.
+		unitScreen := g.grid.UnitPixels(scale) * scale
+		if unitScreen >= (minFloor*2 + 2) {
+			rScr = minFloor
+		} else if len(g.nodes) <= 1 {
+			// Single node: no neighbors, floor always safe.
 			rScr = minFloor
 		}
 	}

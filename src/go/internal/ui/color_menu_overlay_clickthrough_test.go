@@ -29,12 +29,12 @@ func TestColorMenuOverUploadDoesNotClickThrough(t *testing.T) {
 	g.drum.calcLayout()
 
 	// Open the color menu for row 0 (via button click) and ensure wheel exists.
-	if len(g.drum.rowColorBtns) == 0 {
+	if len(g.drum.rowColorBtns()) == 0 {
 		t.Fatalf("no rowColorBtns")
 	}
-	g.drum.rowColorBtns[0].OnClick()
+	g.drum.rowColorBtns()[0].OnClick()
 	g.drum.Update()
-	if !g.drum.colorMenuOpen {
+	if !g.drum.IsColorMenuOpen() {
 		t.Fatalf("color menu not open")
 	}
 	if g.drum.colorWheelRect.Empty() {

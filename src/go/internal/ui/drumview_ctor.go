@@ -3,9 +3,11 @@ package ui
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"runtime"
 	"strings"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
@@ -41,22 +43,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		timelineUnitsPerBeat: 1,
 		timelineBeats:        8,
 		selRow:               0,
-		activeSlider:         -1,
 		deleteConfirmRow:     -1,
 		renameRow:            -1,
 		follow:               true,
 		samplePath:           make(map[string]string),
 	}
-	dv.overlays = NewOverlayStack()
-	// Register overlay handlers for modal UI elements
-	dv.overlays.Push(&InstrumentMenuOverlay{dv: dv})
-	dv.overlays.Push(&ColorWheelOverlay{dv: dv})
-	dv.overlays.Push(&SubdivMenuOverlay{dv: dv})
-	dv.overlays.Push(&RenameOverlay{dv: dv})
-	dv.overlays.Push(&EQChannelMenuOverlay{dv: dv})
-	dv.fxPanelOverlay = &FXPanelOverlay{dv: dv}
-	dv.contextMenuOverlay = &ContextMenuOverlay{dv: dv}
-	dv.overflowMenuOverlay = &OverflowMenuOverlay{dv: dv}
 	dv.volPopup = NewSliderPopup(SliderPopupConfig{
 		ID:     "volume-popup",
 		ZIndex: 225,
@@ -71,97 +62,37 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			row := dv.volPopupRow
 			if row >= 0 && row < len(dv.Rows) {
 				dv.Rows[row].Volume = v
-				if row < len(dv.rowVolSliders) {
-					dv.rowVolSliders[row].Value = v
+				if row < len(dv.rowVolSliders()) {
+					dv.rowVolSliders()[row].Value = v
 				}
 				dv.markRowControlsDirty()
 			}
 		},
 	})
-	dv.volPopupOverlay = &SliderPopupOverlay{Popup: dv.volPopup}
 	dv.masterVolPopup = NewSliderPopup(SliderPopupConfig{
 		ID:     "master-volume-popup",
 		ZIndex: 226,
 		GetValue: func() float64 {
-			if dv.mainVolSlider != nil {
-				return dv.mainVolSlider.Value
+			if dv.mainVolSlider() != nil {
+				return dv.mainVolSlider().Value
 			}
 			return 0
 		},
 		SetValue: func(v float64) {
-			if dv.mainVolSlider != nil {
-				dv.mainVolSlider.Value = v
+			if dv.mainVolSlider() != nil {
+				dv.mainVolSlider().Value = v
 			}
 			audio.SetMainVolume(v)
 		},
 	})
-	dv.masterVolPopupOverlay = &SliderPopupOverlay{Popup: dv.masterVolPopup}
-	dv.eqPopup = NewSliderPopup(SliderPopupConfig{
-		ID:     "eq-popup",
-		ZIndex: 227,
-		Label: func() string {
-			band := dv.eqPopupBand
-			if band >= 0 && band < len(eqCenterLabels) {
-				return eqCenterLabels[band]
-			}
-			return ""
-		},
-		GetValue: func() float64 {
-			band := dv.eqPopupBand
-			ch := dv.activeEQChannel()
-			if ch == "main" {
-				if band < len(dv.eqBandGainsDB) {
-					return gainDBToSlider(dv.eqBandGainsDB[band])
-				}
-			} else {
-				for _, row := range dv.Rows {
-					if row.Instrument == ch && band < len(row.EQGainsDB) {
-						return gainDBToSlider(row.EQGainsDB[band])
-					}
-				}
-			}
-			return 0.5
-		},
-		SetValue: func(val float64) {
-			band := dv.eqPopupBand
-			gain := sliderToGainDB(val)
-			ch := dv.activeEQChannel()
-			if ch == "main" {
-				if band < len(dv.eqBandGainsDB) {
-					dv.eqBandGainsDB[band] = gain
-				}
-				dv.applyMasterEQ()
-			} else {
-				for j, row := range dv.Rows {
-					if row.Instrument == ch {
-						dv.ensureRowEQ(j)
-						row.EQGainsDB[band] = gain
-						dv.applyRowEQ(j)
-						break
-					}
-				}
-			}
-			if band < len(dv.eqSliders) && dv.eqSliders[band] != nil {
-				dv.eqSliders[band].Value = val
-			}
-		},
-	})
-	dv.eqPopupOverlay = &SliderPopupOverlay{Popup: dv.eqPopup}
-	dv.overlays.Push(dv.fxPanelOverlay)
-	dv.overlays.Push(dv.contextMenuOverlay)
-	dv.overlays.Push(dv.overflowMenuOverlay)
-	dv.overlays.Push(dv.volPopupOverlay)
-	dv.overlays.Push(dv.masterVolPopupOverlay)
-	dv.overlays.Push(dv.eqPopupOverlay)
-	dv.overlays.Push(&NamingOverlay{dv: dv}) // highest z-index (pushed last)
-
 	// Initialize overlay components (Phase 5)
-	dv.subdivMenuComp = NewSubdivMenuComponent("subdiv-menu")
-	dv.renameComp = NewRenameComponent("rename")
-	dv.colorWheelComp = NewColorWheelComponent("color-wheel")
-	dv.instMenuComp = NewInstrumentMenuComponent("inst-menu")
+	dv.subdivMenuComp = NewSubdivMenuComponent()
+	dv.renameComp = NewRenameComponent()
+	dv.colorWheelComp = NewColorWheelComponent()
+	dv.instMenuComp = NewInstrumentMenuComponent()
 
-	dv.rowScroll = NewScrollBehavior(ScrollbarStyleForPlatform(), TouchRowHeight())
+	// rowScroll and rowVolGroup are now created by RowRackZone (Phase 4).
+	// Fields are aliased after zone creation below tree initialization.
 	dv.eqChannelScroll = NewScrollBehavior(DropdownScrollbarStyle, TouchRowHeight())
 	dv.eqActiveChannel = "main"
 	dv.eqCurveDragBand = -1
@@ -171,114 +102,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.lpfEnabled = false
 	dv.lpfCutoffHz = 20000
 	_ = audio.EnableChannelAnalyzer("main", 512)
-	dv.playBtn = NewButton("", PlayButtonStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Play button pressed")
-		dv.playPressed = true
-		dv.playAnim = 1
-	})
-	dv.playBtn.Icon = "play"
-	if isSmallScreen() {
-		dv.playBtn.Style = TransportPlayStyle
-		dv.playBtn.IconColor = colPlayIconTint
-	}
-	dv.stopBtn = NewButton("", StopButtonStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Stop button pressed")
-		dv.stopPressed = true
-		dv.stopAnim = 1
-	})
-	dv.stopBtn.Icon = "stop"
-	if isSmallScreen() {
-		dv.stopBtn.Style = TransportStopStyle
-		dv.stopBtn.IconColor = colStopIconTint
-	}
-	dv.bpmDecBtn = NewButton("", BPMDecStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] BPM - button pressed")
-		dv.bpmDelta--
-		dv.bpmDecAnim = 1
-	})
-	dv.bpmDecBtn.Repeat = true
-	dv.bpmDecBtn.Icon = "minus"
-	dv.bpmDecBtn.IconColor = colIncDecIconHi
-	if isSmallScreen() {
-		dv.bpmDecBtn.Style = TransportDecStyle
-		dv.bpmDecBtn.IconColor = colIncDecIcon
-	}
-	dv.bpmBox = NewTextInput(image.Rect(0, 0, 0, 0), BPMBoxStyle)
-	// Cap BPM entry to a small number of runes (max 1000 -> 4 digits). Validation
-	// happens on commit; non-digits are allowed in the editor to provide clear
-	// error feedback and preserve existing test expectations.
-	dv.bpmBox.MaxLen = 4
-	dv.bpmBox.SetText("120")
-	dv.bpmBox.InputMode = "numeric"
-	dv.bpmBox.MobileInputID = "bpm"
-	dv.bpmBox.OnFocusGained = func() { softKeyboardShow("numeric") }
-	dv.bpmBox.OnFocusLost = func() { softKeyboardHide() }
-	dv.bpmIncBtn = NewButton("", BPMIncStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] BPM + button pressed")
-		dv.bpmDelta++
-		dv.bpmIncAnim = 1
-	})
-	dv.bpmIncBtn.Repeat = true
-	dv.bpmIncBtn.Icon = "plus"
-	dv.bpmIncBtn.IconColor = colIncDecIconHi
-	if isSmallScreen() {
-		dv.bpmIncBtn.Style = TransportIncStyle
-		dv.bpmIncBtn.IconColor = colIncDecIcon
-	}
-	subdivStyle := ButtonVisual(InstButtonStyle)
-	if isSmallScreen() {
-		subdivStyle = TransportMiscStyle
-	}
-	dv.subdivBtn = NewButton("32", subdivStyle, nil)
-	dv.subdivBtn.OnClick = func() {
-		// Toggle: close if already open.
-		if dv.subdivMenuComp != nil && dv.subdivMenuComp.IsOpen() {
-			dv.subdivMenuComp.Close()
-			dv.subdivMenuOpen = false
-			return
-		}
-		// Close all other overlays for mutual exclusivity.
-		dv.CloseAllPopups()
-
-		// Open subdiv menu using component
-		if dv.subdivMenuComp != nil {
-			// Set up props and open
-			dv.subdivMenuComp.SetProps(SubdivMenuProps{
-				AnchorRect: dv.subdivBtn.Rect(),
-				Current:    dv.timelineUnitsPerBeat,
-				Options:    []int{4, 8, 16, 32},
-				RowHeight:  dv.rowHeight(),
-				OnSelect: func(value int) {
-					if dv.onChangeSubdiv != nil {
-						if err := dv.onChangeSubdiv(value); err != nil {
-							return
-						}
-					}
-					dv.subdivBtn.Text = fmt.Sprintf("%d", value)
-					dv.timelineUnitsPerBeat = value
-				},
-				OnClose: func() {
-					// No additional cleanup needed
-				},
-			})
-			dv.subdivMenuComp.Open()
-			SuppressClicksUntilMouseUp()
-		}
-
-		// Keep legacy state in sync for now
-		dv.subdivMenuOpen = dv.subdivMenuComp != nil && dv.subdivMenuComp.IsOpen()
-		if dv.subdivMenuOpen {
-			dv.buildSubdivMenu()
-		}
-	}
-	vol := audio.MainVolume()
-	if vol < 0 {
-		vol = 0
-	}
-	if vol > 1 {
-		vol = 1
-	}
-	dv.mainVolSlider = NewSlider(vol)
+	// Transport buttons are now created by TransportZone (Phase 3).
+	// Fields are aliased after zone creation below tree initialization.
+	// Non-transport buttons remain here.
 	dv.lenDecBtn = NewButton("", LenDecStyle, func() {
 		dv.logger.Infof("[DRUMVIEW] Length - button pressed")
 		dv.lenDecPressed = true
@@ -287,7 +113,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.lenDecBtn.Repeat = true
 	dv.lenDecBtn.Icon = "minus"
 	dv.lenDecBtn.IconColor = colIncDecIconHi
-	if isSmallScreen() {
+	if Profile().IsMobile() {
 		dv.lenDecBtn.Style = TransportDecStyle
 		dv.lenDecBtn.IconColor = colIncDecIcon
 	}
@@ -299,119 +125,21 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.lenIncBtn.Repeat = true
 	dv.lenIncBtn.Icon = "plus"
 	dv.lenIncBtn.IconColor = colIncDecIconHi
-	if isSmallScreen() {
+	if Profile().IsMobile() {
 		dv.lenIncBtn.Style = TransportIncStyle
 		dv.lenIncBtn.IconColor = colIncDecIcon
 	}
-	trackStyle := ButtonVisual(InstButtonStyle)
-	if isSmallScreen() {
-		trackStyle = TransportMiscStyle
-	}
-	dv.trackBtn = NewButton("", trackStyle, func() {
-		dv.SetFollow(!dv.follow)
-	})
-	dv.trackBtn.Icon = "track"
-	dv.syncTrackBtnVisual() // set initial icon/style based on follow state
-	dv.uploadBtn = NewButton("", UploadBtnStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Upload button pressed")
-		dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.naming, dv.instMenuOpen)
-		if dv.importing {
-			return
-		}
-		dv.instMenuOpen = false
-		dv.colorMenuOpen = false
-		if !dv.uploading && !dv.naming {
-			dv.uploadAnim = 1
-			dv.uploading = true
-			dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
-			go func() {
-				path, err := audio.SelectWAV()
-				dv.uploadCh <- uploadResult{path: path, err: err}
-			}()
-		}
-	})
-	dv.uploadBtn.Icon = "upload"
-	dv.importBtn = NewButton("", UploadBtnStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Import button pressed")
-		dv.logger.Debugf("[DRUMVIEW] Import button clicked (web=%v)", true)
-		// Extra JS console log for web debugging
-		log := jsLog
-		log("Import button pressed; importing=%v, naming=%v, uploading=%v", dv.importing, dv.naming, dv.uploading)
-		if dv.importing || dv.naming || dv.uploading {
-			return
-		}
-		if dv.onImportDialogStart != nil {
-			dv.onImportDialogStart()
-		}
-		dv.importing = true
-		dv.importAttemptFrame = int(dv.frame)
-		dv.importAttemptUpdate = dv.updateSeq
-		dv.colorMenuOpen = false
-		dv.instMenuOpen = false
-		selectJSONAsyncFn(func(data []byte, err error) {
-			jsLog("Import callback invoked; bytes=%d err=%v", len(data), err)
-			dv.importCh <- importResult{data: data, err: err}
-		})
-	})
-	dv.importBtn.Icon = "import"
-	dv.exportBtn = NewButton("", UploadBtnStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Export button pressed")
-		dv.logger.Debugf("[DRUMVIEW] Export button clicked")
-		dv.colorMenuOpen = false
-		dv.instMenuOpen = false
-		if err := dv.Export(); err != nil {
-			dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
-		}
-	})
-	dv.exportBtn.Icon = "export"
 	dv.saveBtn = NewButton("Save", InstButtonStyle, nil)
-	// Mobile EQ toggle button (legacy, hidden — replaced by viewSwitchBtn)
-	dv.eqToggleMobile = NewButton("EQ", InstButtonStyle, func() {
-		dv.cycleViewMode()
-	})
-	// Mobile view switch button (Rows ↔ Audio toggle, icon-only)
-	viewStyle := ButtonVisual(TransportMiscStyle)
-	if !isSmallScreen() {
-		viewStyle = InstButtonStyle
-	}
-	dv.viewSwitchBtn = NewButton("", viewStyle, func() {
-		dv.cycleViewMode()
-	})
-	dv.viewSwitchBtn.Icon = "audio" // default: in Rows mode, show audio icon
-	dv.viewSwitchBtn.IconColor = colIncDecIcon
-	// Mobile overflow menu button (visible only on small screens)
-	overflowStyle := ButtonVisual(DropdownStyle)
-	if isSmallScreen() {
-		overflowStyle = TransportMiscStyle
-	}
-	dv.overflowBtn = NewButton("", overflowStyle, func() {
-		if dv.overflowMenuOpen {
-			dv.closeOverflowMenu()
-		} else {
-			dv.CloseAllPopups()
-			dv.overflowMenuOpen = true
-			dv.initOverflowScroll()
-			if isSmallScreen() {
-				dv.registerFilePickerRects()
-			}
-			SuppressClicksUntilMouseUp()
-		}
-	})
-	dv.overflowBtn.Icon = "overflow"
 	// Default: collapsed on mobile. For Go tests with forceSmallScreenForTest,
-	// isSmallScreen() is already true at construction. On WASM, it becomes true
+	// Profile().IsMobile() is already true at construction. On WASM, it becomes true
 	// later when Layout() calls SetTouchScreenSize(); refreshWidgetLayout()
 	// handles the late-init case.
-	if isSmallScreen() {
+	if Profile().IsMobile() {
 		dv.mobileEQCollapsed = true
 		dv.mobileEQInited = true
 	}
-	dv.addRowBtn = NewButton("+", InstButtonStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Add row button pressed")
-		dv.AddRow()
-		dv.selRow = len(dv.Rows) - 1
-	})
-	dv.addRowBtn.Repeat = true
+	// addRowBtn is now created by RowRackZone (Phase 4).
+	// Field is aliased after zone creation below tree initialization.
 
 	baseCol := instColor(inst)
 	// use uniqueness even for first row to keep logic consistent
@@ -423,16 +151,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Update) see valid instruments and do not suppress playback.
 	dv.widgetRects = map[WidgetKind]image.Rectangle{}
 	// Default widget grid: 2 columns (instrument vs timeline) × 3 rows
-	// (header, rows, EQ). Weights approximate the legacy layout.
-	rowWeights := []float64{3, 3, 3} // extra weight for two-row desktop transport
-	if isSmallScreen() {
-		rowWeights = []float64{3, 5, 2} // two-row mobile transport
-	}
-	colWeights := []float64{1, 3} // rack gets 25% — tighter fit for controls
-	if isSmallScreen() {
-		colWeights = []float64{1.5, 1.5} // balanced columns for two-row mobile
-	}
-	dv.widgets = NewWidgetBoard(b, colWeights, rowWeights)
+	// (header, rows, EQ). Weights read from the active LayoutProfile.
+	pp := Profile()
+	dv.widgets = NewWidgetBoard(b, pp.ColWeights, pp.RowWeights)
 	dv.widgets.AddWidget(WidgetPlacement{ID: WidgetTransport, Title: "Transport", Col: 0, Row: 0, ColSpan: 1, RowSpan: 1, MinW: 180, MinH: mobileTransportMinH()})
 	dv.widgets.AddWidget(WidgetPlacement{ID: WidgetRack, Title: "Instruments", Col: 0, Row: 1, ColSpan: 1, RowSpan: 1, MinW: 200, MinH: dv.rowHeight() * 4, Editable: true})
 	dv.widgets.AddWidget(WidgetPlacement{ID: WidgetTimeline, Title: "Timeline", Col: 1, Row: 0, ColSpan: 1, RowSpan: 2, MinW: 320, MinH: dv.rowHeight() * 4, Editable: true})
@@ -443,13 +164,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	}
 	dv.refreshWidgetLayout()
 	dv.refreshInstruments()
-	dv.recalcButtons()
-	if dv.bgDirty {
-		dv.calcLayout()
-		dv.bgDirty = false
-	}
-	dv.ensureRowCache()
-	dv.markAllRowsDirty()
+	// recalcButtons() is deferred until after TransportZone creation below,
+	// because transport buttons are owned by the zone and aliased to DrumView.
+	// Calling recalcButtons() here would crash on nil button pointers.
 	dv.rowCachePadPx = defaultRowCachePadPx
 	dv.rowsLayerPadPx = defaultRowsLayerPadPx
 	if runtime.GOARCH == "wasm" {
@@ -465,6 +182,475 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.layoutHoverIdx = -1
 	dv.layoutHandler = NewLayoutResizeHandler(dv)
 	dv.rowsStripeScratch = nil
+	// Initialize zone-based component tree (Phase 1 infrastructure).
+	dv.tree = NewDrumViewTree()
+	dv.tree.SetBounds(b)
+	dv.tree.SetDragActive(func() bool { return dv.anyDragActive() })
+	// Phase 2: EQ panel zone — owns EQ sliders, buttons, and state.
+	// Callbacks delegate audio operations to DrumView's existing methods.
+	dv.eqPanelZone = NewEQPanelZone(EQCallbacks{
+		OnGainChange: func(band int, db float64) {
+			ch := dv.eqPanelZone.ActiveChannel()
+			if ch == "main" {
+				dv.applyMasterEQ()
+			} else {
+				for j, r := range dv.Rows {
+					if r.Instrument == ch {
+						dv.ensureRowEQ(j)
+						if band < len(r.EQGainsDB) {
+							r.EQGainsDB[band] = db
+						}
+						dv.applyRowEQ(j)
+						break
+					}
+				}
+			}
+		},
+		OnMuteToggle: func(band int) {
+			dv.toggleEQBandMute(band)
+		},
+		OnChannelChange: func(id string) {
+			dv.setEQActiveChannel(id)
+		},
+		OnToggleHPF: func() {
+			dv.toggleHPF()
+		},
+		OnToggleLPF: func() {
+			dv.toggleLPF()
+		},
+		OnApplyEQ: func() {
+			dv.applyEQ()
+		},
+		AnalyzerSnapshot: func(ch string) audio.AnalyzerSnapshot {
+			return dv.analyzerSnapshot()
+		},
+		ActiveRows: func() []*DrumRow {
+			return dv.Rows
+		},
+		HPFEnabled:  func() bool { return dv.activeHPFEnabled() },
+		HPFCutoffHz: func() float64 { return dv.activeHPFCutoffHz() },
+		LPFEnabled:  func() bool { return dv.activeLPFEnabled() },
+		LPFCutoffHz: func() float64 { return dv.activeLPFCutoffHz() },
+		OnHPFCutoffChange: func(hz float64) {
+			dv.setActiveHPF(true, hz)
+			dv.eqCurveDirty = true
+		},
+		OnLPFCutoffChange: func(hz float64) {
+			dv.setActiveLPF(true, hz)
+			dv.eqCurveDirty = true
+		},
+		OnChannelDropdownClose: func() {
+			dv.eqChDeferredTap.Cancel()
+		},
+		DrawWaveform: func(dst *ebiten.Image) {
+			snap := dv.analyzerSnapshot()
+			dv.drawWaveform(dst, snap)
+		},
+	})
+	dv.eqPanelZone.SetPortal(dv.tree.Portal())
+	dv.tree.RegisterZone(dv.eqPanelZone, 130)
+
+	// EQ zone now owns all EQ sliders, buttons, and state. DrumView
+	// provides accessor methods (eqSliders(), eqBandGainsDB(), etc.)
+	// that delegate to eqPanelZone.
+
+	// EQ zone initial layout is deferred to the recalcButtons()+calcLayout()
+	// call after both zones (EQ + Transport) are created and aliased.
+
+	// Phase 3: Transport zone — owns transport buttons, BPM state, and
+	// animation. Callbacks delegate to DrumView's existing methods.
+	dv.transportZone = NewTransportZone(TransportCallbacks{
+		OnPlayToggle: func() {
+			dv.logger.Infof("[DRUMVIEW] Play button pressed")
+		},
+		OnStop: func() {
+			dv.logger.Infof("[DRUMVIEW] Stop button pressed")
+		},
+		OnBPMChange: func(bpm int) {
+			dv.bpm = bpm
+			dv.secPerBeat = 60.0 / float64(bpm)
+			dv.logger.Infof("[DRUMVIEW] BPM set: -> %d", bpm)
+		},
+		OnNotifyError: func(msg string) {
+			dv.notifyError(msg)
+		},
+		OnFollowChange: func(follow bool) {
+			if follow {
+				dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Track")
+			} else {
+				dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Free")
+			}
+		},
+		OnUploadClick: func() {
+			dv.logger.Infof("[DRUMVIEW] Upload button pressed")
+			dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.IsNamingOpen(), dv.IsInstMenuOpen())
+			if dv.importing {
+				return
+			}
+			if !dv.uploading && !dv.IsNamingOpen() {
+				dv.uploading = true
+				dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
+				go func() {
+					path, err := audio.SelectWAV()
+					dv.uploadCh <- uploadResult{path: path, err: err}
+				}()
+			}
+		},
+		OnImportClick: func() {
+			dv.logger.Infof("[DRUMVIEW] Import button pressed")
+			log := jsLog
+			log("Import button pressed; importing=%v, naming=%v, uploading=%v", dv.importing, dv.IsNamingOpen(), dv.uploading)
+			if dv.importing || dv.IsNamingOpen() || dv.uploading {
+				return
+			}
+			if dv.onImportDialogStart != nil {
+				dv.onImportDialogStart()
+			}
+			dv.importing = true
+			dv.importAttemptFrame = int(dv.frame)
+			dv.importAttemptUpdate = dv.updateSeq
+			selectJSONAsyncFn(func(data []byte, err error) {
+				jsLog("Import callback invoked; bytes=%d err=%v", len(data), err)
+				dv.importCh <- importResult{data: data, err: err}
+			})
+		},
+		OnExportClick: func() {
+			dv.logger.Infof("[DRUMVIEW] Export button pressed")
+			if err := dv.Export(); err != nil {
+				dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
+			}
+		},
+		OnViewCycle: func() {
+			dv.cycleViewMode()
+		},
+		IsPlaying: func() bool {
+			return dv.isPlaying
+		},
+		GetMainVolume: audio.MainVolume,
+		SetMainVolume: func(v float64) {
+			audio.SetMainVolume(v)
+		},
+		OnSubdivClick: func() {
+			// Toggle: close if already open.
+			if dv.subdivMenuComp != nil && dv.subdivMenuComp.IsOpen() {
+				dv.subdivMenuComp.Close()
+				dv.closeSubdivMenuPortal()
+				return
+			}
+			dv.CloseAllPopups()
+			if dv.subdivMenuComp != nil {
+				dv.subdivMenuComp.SetProps(SubdivMenuProps{
+					AnchorRect: dv.subdivBtn().Rect(),
+					Current:    dv.timelineUnitsPerBeat,
+					Options:    []int{4, 8, 16, 32},
+					RowHeight:  dv.rowHeight(),
+					OnSelect: func(value int) {
+						if dv.onChangeSubdiv != nil {
+							if err := dv.onChangeSubdiv(value); err != nil {
+								return
+							}
+						}
+						dv.subdivBtn().Text = fmt.Sprintf("\u00f7%d", value)
+						dv.timelineUnitsPerBeat = value
+					},
+					OnClose: func() {},
+				})
+				dv.subdivMenuComp.Open()
+				dv.openSubdivMenuPortal()
+			}
+			if dv.IsSubdivMenuOpen() {
+				dv.buildSubdivMenu()
+			}
+		},
+		OnOverflowOpen: func() {
+			if dv.IsOverflowMenuOpen() {
+				dv.closeOverflowMenu()
+			} else {
+				dv.CloseAllPopups()
+				dv.initOverflowScroll()
+				if Profile().IsMobile() {
+					dv.registerFilePickerRects()
+				}
+				dv.openOverflowMenuPortal()
+			}
+		},
+		OnMasterVolClick: func() {
+			dv.masterVolPopup.Open(dv.mainVolIconRect, dv.Bounds, dv.headerH)
+			dv.openMasterVolPopupPortal()
+		},
+		MasterVolPopup: dv.masterVolPopup,
+	})
+	dv.transportZone.SetPortal(dv.tree.Portal())
+	dv.tree.RegisterZone(dv.transportZone, 100)
+
+	// Sync initial state from ctor-created values.
+	dv.transportZone.SetBPM(dv.bpm)
+	dv.transportZone.SetFollow(dv.follow)
+
+	// Wire input blocking: BPM box is force-blurred when popups/overlays are open.
+	// Note: we don't check tree.Suppress() here — suppress is a transient flag
+	// that persists into the next frame's Phase 2 (zone.Update()), which would
+	// incorrectly force-blur the BPM box after a normal click on it.
+	dv.transportZone.SetInputBlocked(func() bool {
+		treeBlocking := dv.tree != nil && dv.tree.Portal().IsOpen()
+		return dv.anyDropdownOpen() || treeBlocking
+	})
+
+	// Phase 4: Row rack zone — owns per-row buttons/sliders, add-row button,
+	// row scrolling, and row volume slider group.
+	dv.rowRackZone = NewRowRackZone(RowRackCallbacks{
+		OnMuteToggle: func(row int) { dv.toggleMute(row) },
+		OnSoloToggle: func(row int) { dv.toggleSolo(row) },
+		OnDeleteRow: func(row int) {
+			if dv.deleteConfirmRow == row && (dv.frame-dv.deleteConfirmFrame) < 120 {
+				dv.DeleteRow(row)
+				dv.deleteConfirmRow = -1
+			} else {
+				dv.deleteConfirmRow = row
+				dv.deleteConfirmFrame = dv.frame
+			}
+			dv.markRowControlsDirty()
+		},
+		OnOriginReq: func(row int) { dv.originReq = append(dv.originReq, row) },
+		OnAddRow: func() {
+			dv.logger.Infof("[DRUMVIEW] Add row button pressed")
+			dv.AddRow()
+			dv.selRow = len(dv.Rows) - 1
+		},
+		OnRowSelect: func(row int) { dv.selRow = row },
+		OnVolumeChange: func(row int, vol float64) {
+			if row >= 0 && row < len(dv.Rows) {
+				dv.Rows[row].Volume = vol
+				dv.markRowControlsDirty()
+			}
+		},
+		OnContextMenuOpen: func(row int) {
+			dv.openContextMenu(row)
+		},
+		OnInstMenuOpen: func(row int) {
+			dv.openInstMenuForRow(row)
+		},
+		OnColorWheelOpen: func(row int) {
+			dv.selRow = row
+			if dv.colorWheelComp != nil && dv.colorWheelComp.IsOpen() && dv.colorMenuRow == row {
+				dv.colorWheelComp.Close()
+				dv.closeColorWheelPortal()
+				return
+			}
+			if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() {
+				dv.instMenuComp.Close()
+				dv.closeInstMenuPortal()
+			}
+			dv.colorMenuRow = row
+			if dv.colorWheelComp != nil {
+				rackBounds := dv.widgetRects[WidgetRack]
+				if rackBounds.Empty() {
+					rackBounds = dv.Bounds
+				}
+				anchor := dv.rowColorBtns()[row].Rect()
+				if anchor.Empty() && row < len(dv.rowLabels()) {
+					// Desktop: color button is hidden; use the label as anchor.
+					anchor = dv.rowLabels()[row].Rect()
+				}
+				dv.colorWheelComp.SetProps(ColorWheelProps{
+					AnchorRect: anchor,
+					Bounds:     rackBounds,
+					RowHeight:  dv.rowHeight(),
+					OnColorPick: func(c color.Color) {
+						dv.SetRowColor(dv.colorMenuRow, c)
+					},
+					OnClose: func() {},
+				})
+				dv.colorWheelComp.Open()
+				dv.colorWheelComp.ClearHold()
+			}
+			dv.buildColorMenu()
+			dv.openColorWheelPortal()
+		},
+		OnRenameOpen: func(row int) {
+			dv.CloseAllPopups()
+			dv.renameRow = row
+			r := dv.rowLabels()[row].Rect()
+			if dv.renameComp != nil {
+				mobileID := fmt.Sprintf("rename-%d", row)
+				dv.renameComp.SetProps(RenameProps{
+					AnchorRect:    r,
+					InitialText:   dv.Rows[row].Name,
+					MaxLen:        32,
+					MobileInputID: mobileID,
+					OnCommit: func(newName string) {
+						name := strings.TrimSpace(newName)
+						if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
+							if strings.ContainsAny(name, "/\\<>\x00") {
+								dv.notifyError("Invalid characters in name")
+								dv.renameBox = nil
+								dv.renameRow = -1
+								return
+							}
+							oldID := dv.Rows[dv.renameRow].Instrument
+							newID := strings.ToLower(name)
+							dv.logger.Infof("[DRUMVIEW] Rename instrument row=%d %q -> %q", dv.renameRow, oldID, newID)
+							audio.RenameInstrument(oldID, newID)
+							if dv.samplePath != nil {
+								if p, ok := dv.samplePath[oldID]; ok {
+									dv.samplePath[newID] = p
+									delete(dv.samplePath, oldID)
+								}
+							}
+							dv.Rows[dv.renameRow].Instrument = newID
+							dv.Rows[dv.renameRow].Name = name
+							dv.rowLabels()[dv.renameRow].Text = name
+							customColors[newID] = dv.Rows[dv.renameRow].Color
+							dv.invalidateLabelCaches()
+							dv.refreshInstruments()
+							dv.markRowControlsDirty()
+							dv.bgDirty = true
+							dv.notifyInfo("Renamed instrument to: " + name)
+						}
+						dv.renameBox = nil
+						dv.renameRow = -1
+					},
+					OnCancel: func() {
+						dv.renameBox = nil
+						dv.renameRow = -1
+					},
+				})
+				dv.renameComp.Open()
+				dv.renameComp.ClearHold()
+				dv.openRenamePortal()
+				if tb := dv.renameComp.TextBox(); tb != nil {
+					dv.renameBox = tb
+				}
+			}
+			if dv.renameBox == nil {
+				dv.renameBox = NewTextInput(r, BPMBoxStyle)
+				dv.renameBox.MaxLen = 32
+				dv.renameBox.SetText(dv.Rows[row].Name)
+				dv.renameBox.focused = true
+				dv.renameBox.anim = 1
+			}
+		},
+		OnFXPanelToggle:   func(row int) { dv.toggleFXPanel(row) },
+		OnVolPopupOpen:    func(row int) { dv.openVolumePopup(row) },
+		VolumePopup:       dv.volPopup,
+		OnSaveInstrument: func(row int) { dv.saveInstrument(row) },
+		OnScrollChanged: func() {
+			dv.rowScrollFromZone = true
+		},
+		Rows:              func() []*DrumRow { return dv.Rows },
+		IsInstrumentAvail: func(id string) bool { return dv.IsInstrumentAvailable(id) },
+		RowHeight:         func() int { return dv.rowHeight() },
+		DeleteConfirm:     func() (int, int64) { return dv.deleteConfirmRow, dv.deleteConfirmFrame },
+		RenameRow:         func() int { return dv.renameRow },
+		IsMobileEQMode:    func() bool { return dv.mobileEQMode },
+		Frame:             func() int64 { return dv.frame },
+	})
+	dv.rowRackZone.SetPortal(dv.tree.Portal())
+	dv.tree.RegisterZone(dv.rowRackZone, 120)
+
+	// RowRack zone fields are now accessed via accessor methods on DrumView
+	// (addRowBtn(), rowVolGroup(), rowScroll(), etc.).
+
+	// Phase 5: Timeline zone — owns drag/scrub input for the grid and
+	// timeline bar areas. Callbacks delegate offset changes to DrumView.
+	dv.timelineZone = NewTimelineZone(TimelineCallbacks{
+		Rows:                 func() []*DrumRow { return dv.Rows },
+		IsPlaying:            func() bool { return dv.isPlaying },
+		Follow:               func() bool { return dv.follow },
+		BPM:                  func() int { return dv.bpm },
+		SecPerBeat:           func() float64 { return dv.secPerBeat },
+		TimelineUnitsPerBeat: func() int { return dv.timelineUnitsPerBeat },
+		Length:               func() int { return dv.Length },
+		Offset:               func() int { return dv.Offset },
+		RowOffset:            func() int { return dv.rowOffset },
+		VisibleRows:          func() int { return dv.visibleRows() },
+		RowHeight:            func() int { return dv.rowHeight() },
+		Cell:                 func() int { return dv.cell },
+		TimelineBeats:        func() int { return dv.timelineBeats },
+		Frame:                func() int64 { return dv.frame },
+		OnOffsetChange: func(newOffset int) {
+			if newOffset != dv.Offset {
+				dv.Offset = newOffset
+				dv.offsetChanged = true
+				dv.logger.Tracef("[DRUMVIEW/DRAG] offset=%d", dv.Offset)
+			}
+		},
+		OnScrubPosition: func(newOffset int) {
+			if newOffset != dv.Offset {
+				dv.Offset = newOffset
+				dv.offsetChanged = true
+				dv.logger.Tracef("[DRUMVIEW/SCRUB] offset=%d len=%d total=%d", dv.Offset, dv.Length, dv.timelineBeats)
+			}
+		},
+		OnRowsLayerDirty: func() {
+			dv.rowsLayerDirty = true
+		},
+		BeatLength: func() int {
+			if dv.Graph != nil {
+				return dv.Graph.BeatLength()
+			}
+			return 0
+		},
+		SimpleDraw:      func() bool { return dv.simpleDraw },
+		PerfDrawLite:    func() bool { return dv.perfDrawLite },
+		MobileEQActive:  func() bool { return Profile().IsMobile() && dv.mobileEQMode },
+		BeatCounterRect: func() image.Rectangle { return dv.beatCounterRect },
+		RowsTopY:        func() int { return dv.Bounds.Min.Y + dv.headerH },
+		SetTimelineBeats: func(beats int) {
+			dv.timelineBeats = beats
+		},
+		OnRowScrollWheel: func(steps int) bool {
+			dv.rowRackZone.syncScroll()
+			if dv.rowRackZone.RowScroll().HandleWheel(steps) {
+				dv.rowRackZone.flushScroll()
+				dv.rowScrollFromZone = true
+				return true
+			}
+			return false
+		},
+		OnRowScrollDrag: func(targetRowOffset int) {
+			dv.rowRackZone.syncScroll()
+			vs := &dv.rowRackZone.RowScroll().VS
+			if targetRowOffset < 0 {
+				targetRowOffset = 0
+			}
+			max := vs.Total - vs.Visible
+			if max < 0 {
+				max = 0
+			}
+			if targetRowOffset > max {
+				targetRowOffset = max
+			}
+			if vs.First != targetRowOffset {
+				vs.First = targetRowOffset
+				dv.rowRackZone.flushScroll()
+				dv.rowScrollFromZone = true
+			}
+		},
+		DrawRowComposite: func(dst *ebiten.Image) {
+			dv.drawRowComposite(dst)
+		},
+	})
+	dv.timelineZone.SetPortal(dv.tree.Portal())
+	dv.timelineZone.SetButtons(dv.transportZone.trackBtn, dv.lenDecBtn, dv.lenIncBtn)
+	dv.tree.RegisterZone(dv.timelineZone, 110)
+
+	// Layout resize zone — wraps LayoutResizeHandler for tree-based input.
+	dv.layoutResizeZone = newLayoutResizeZone(dv.layoutHandler)
+	dv.tree.RegisterZone(dv.layoutResizeZone, ZResize)
+
+	// Now that all zones (EQ + Transport + RowRack + Timeline) are created
+	// and aliased, run the deferred layout initialization that was skipped
+	// earlier. This computes button positions, zone rects, and row caches.
+	dv.recalcButtons()
+	if dv.bgDirty {
+		dv.calcLayout()
+		dv.bgDirty = false
+	}
+	dv.ensureRowCache()
+	dv.markAllRowsDirty()
+	// Cache aliases are handled by ensureRowCache via timelineZone delegation.
+
 	// Reset global click suppression to ensure clean state for new views/tests.
 	suppressClicksUntilRelease = false
 	return dv

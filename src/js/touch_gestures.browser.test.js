@@ -85,8 +85,8 @@ console.log("Testing touch gestures on mobile viewport...");
 console.log("Test 1: Single-finger drag on grid pans camera");
 const offsetBefore = await page.evaluate(() => camOffset());
 const gridY = 100; // Y position in grid area (above drum view)
-await cdpDrag(page, 200, gridY, 250, gridY + 30, 5);
-await page.waitForTimeout(50);
+await cdpDrag(page, 200, gridY, 300, gridY + 60, 10);
+await page.waitForTimeout(100);
 const offsetAfter = await page.evaluate(() => camOffset());
 const dragMoved = Math.abs(offsetAfter.x - offsetBefore.x) > 5 || Math.abs(offsetAfter.y - offsetBefore.y) > 5;
 assert(dragMoved, `Camera moved after drag (dx=${offsetAfter.x - offsetBefore.x}, dy=${offsetAfter.y - offsetBefore.y})`);

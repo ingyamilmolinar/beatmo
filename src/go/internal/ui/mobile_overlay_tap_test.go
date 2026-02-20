@@ -64,7 +64,7 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 
 	// Open context menu for row 0.
 	dv.OpenContextMenuForTest(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -84,9 +84,10 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 	suppressClicksUntilRelease = false
 
 	// Frame 1: press inside the context menu at a button position.
-	// This simulates the OverlayStack path: press → DeferredTap.Begin.
+	// The portal system now handles context menu input dispatch. Call
+	// handleContextMenuInput directly to simulate the portal path.
 	r := mobileInputAt(t, bx, by, true)
-	dv.HandleInput(bx, by, true)
+	dv.handleContextMenuInput(bx, by, true)
 	r()
 
 	if !dv.contextMenuDeferredTap.Active() {
@@ -94,14 +95,14 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 	}
 
 	// Frame 2: release at (0,0) — simulating mobile touch end where coords
-	// revert to origin. With the capture fix, the OverlayStack should still
-	// route to the context menu overlay.
+	// revert to origin. With portal capture, the context menu input handler
+	// still fires on release because the deferred tap is active.
 	r = mobileInputAt(t, 0, 0, false)
-	result := dv.HandleInput(0, 0, false)
+	handled := dv.handleContextMenuInput(0, 0, false)
 	r()
 
-	if result == InputIgnored {
-		t.Error("HandleInput should not return InputIgnored when overlay has capture on release")
+	if !handled {
+		t.Error("handleContextMenuInput should consume input when deferred tap is active on release")
 	}
 	// The deferred tap should have fired and closed the menu (Instrument button
 	// opens the inst menu and closes the context menu).
@@ -111,14 +112,14 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 }
 
 // TestContextMenuDeferredTapCapture verifies that when a DeferredTap is
-// started on a context menu button, the OverlayStack establishes capture
+// started on a context menu button, the portal system establishes capture
 // so that the release frame (even at coords 0,0) routes to the correct
 // overlay and fires the button.
 func TestContextMenuDeferredTapCapture(t *testing.T) {
 	dv := newMobileTestDV(t)
 
 	dv.OpenContextMenuForTest(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -133,30 +134,27 @@ func TestContextMenuDeferredTapCapture(t *testing.T) {
 
 	suppressClicksUntilRelease = false
 
-	// Press inside menu → OverlayStack should dispatch to ContextMenuOverlay.
+	// Press inside menu -> portal dispatches to context menu overlay.
+	// Call handleContextMenuInput directly to simulate the portal path.
 	r := mobileInputAt(t, bx, by, true)
-	result := dv.HandleInput(bx, by, true)
+	handled := dv.handleContextMenuInput(bx, by, true)
 	r()
 
-	if result != InputCaptured {
-		t.Errorf("expected InputCaptured on press (DeferredTap started), got %v", result)
+	if !handled {
+		t.Error("expected handleContextMenuInput to consume press (DeferredTap started)")
 	}
-	if !dv.overlays.Capturing() {
-		t.Fatal("OverlayStack should have capture set after InputCaptured")
+	if !dv.contextMenuDeferredTap.Active() {
+		t.Fatal("context menu deferred tap should be active after press")
 	}
 
-	// Release at (0,0) — overlay stack capture should route to context menu
-	// overlay even though (0,0) is outside drum bounds.
+	// Release at (0,0) -- portal capture routes to context menu overlay
+	// even though (0,0) is outside drum bounds because deferred tap is active.
 	r = mobileInputAt(t, 0, 0, false)
-	result = dv.HandleInput(0, 0, false)
+	dv.handleContextMenuInput(0, 0, false)
 	r()
 
 	if dv.contextMenuDeferredTap.Active() {
 		t.Error("deferred tap should have fired on release")
-	}
-	// After firing, capture should be released.
-	if dv.overlays.Capturing() {
-		t.Error("OverlayStack capture should be released after DeferredTap fires")
 	}
 }
 
@@ -166,7 +164,7 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 	dv := newMobileTestDV(t)
 
 	// Open overflow menu.
-	dv.overflowMenuOpen = true
+	dv.openOverflowMenuPortal()
 	popupRect := dv.overflowPopupRect()
 	if popupRect.Empty() {
 		t.Skip("overflow popup rect empty")
@@ -178,21 +176,22 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 
 	suppressClicksUntilRelease = false
 
-	// Press inside the overflow menu.
+	// Press inside the overflow menu. The portal system now handles
+	// overflow menu input dispatch. Call handleOverflowMenuInput directly.
 	r := mobileInputAt(t, px, py, true)
-	result := dv.HandleInput(px, py, true)
+	handled := dv.handleOverflowMenuInput(px, py, true)
 	r()
 
 	if !dv.overflowDeferredTap.Active() {
 		t.Fatal("overflow deferred tap should be active after press inside menu")
 	}
-	if result != InputCaptured {
-		t.Errorf("expected InputCaptured, got %v", result)
+	if !handled {
+		t.Error("expected handleOverflowMenuInput to consume press")
 	}
 
 	// Release at (0,0).
 	r = mobileInputAt(t, 0, 0, false)
-	result = dv.HandleInput(0, 0, false)
+	dv.handleOverflowMenuInput(0, 0, false)
 	r()
 
 	if dv.overflowDeferredTap.Active() {
@@ -207,7 +206,7 @@ func TestTapOutsideOpenPopupClosesIt(t *testing.T) {
 	dv := newMobileTestDV(t)
 
 	dv.OpenContextMenuForTest(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -222,14 +221,12 @@ func TestTapOutsideOpenPopupClosesIt(t *testing.T) {
 		outsideX = dv.Bounds.Max.X - 5
 	}
 
+	// Click-outside closing is handled by the tree. Go through Update.
 	r := mobileInputAt(t, outsideX, outsideY, true)
-	result := dv.HandleInput(outsideX, outsideY, true)
+	dv.Update()
 	r()
 
-	if result == InputIgnored {
-		t.Error("pressing outside an open overlay should consume input (close + suppress)")
-	}
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Error("context menu should be closed after tapping outside")
 	}
 }
@@ -263,42 +260,33 @@ func TestLongPressCancelsDeferredTap(t *testing.T) {
 	}
 }
 
-// TestFXPanelOverlayStackDispatch verifies that the FX panel is now
-// dispatched via the OverlayStack (Phase 5) and responds to taps inside
-// the panel rect.
-func TestFXPanelOverlayStackDispatch(t *testing.T) {
+// TestFXPanelPortalDispatch verifies that the FX panel is dispatched via
+// the portal system and responds to taps inside the panel rect.
+func TestFXPanelPortalDispatch(t *testing.T) {
 	dv := newMobileTestDV(t)
 
-	if len(dv.rowFXBtns) == 0 {
+	if len(dv.rowFXBtns()) == 0 {
 		t.Skip("no FX buttons")
 	}
 
-	// Verify FXPanelOverlay is in the overlay stack.
-	found := false
-	for _, o := range dv.overlays.overlays {
-		if o.ID() == "fx-panel" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("FXPanelOverlay should be registered in OverlayStack")
+	// Verify portal/tree exists.
+	if dv.tree == nil {
+		t.Fatal("DrumViewTree should be initialized")
 	}
 
 	// Open the FX panel manually.
-	dv.fxPanelOpen = true
+	dv.openFXPanelPortal()
 	dv.fxPanelRow = 0
-	dv.fxPanelOpenSeq = dv.updateSeq - 5 // past debounce window
 	dv.fxPanelRect = image.Rect(100, 100, 300, 400)
 
-	// The FXPanelOverlay should report as open.
-	if !dv.fxPanelOverlay.IsOpen() {
-		t.Fatal("FXPanelOverlay should be open")
+	// fxPanelOpen should report true.
+	if !dv.IsFXPanelOpen() {
+		t.Fatal("fxPanelOpen should be true")
 	}
 
 	suppressClicksUntilRelease = false
 
-	// Press inside the FX panel rect via HandleInput (OverlayStack path).
+	// Press inside the FX panel rect via HandleInput (portal path).
 	px := dv.fxPanelRect.Min.X + 10
 	py := dv.fxPanelRect.Min.Y + 10
 	r := mobileInputAt(t, px, py, true)
@@ -306,6 +294,6 @@ func TestFXPanelOverlayStackDispatch(t *testing.T) {
 	r()
 
 	if result == InputIgnored {
-		t.Error("HandleInput should consume input inside open FX panel via OverlayStack")
+		t.Error("HandleInput should consume input inside open FX panel via portal")
 	}
 }

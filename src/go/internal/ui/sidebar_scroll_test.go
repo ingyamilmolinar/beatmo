@@ -153,18 +153,21 @@ func TestSidebarTouchScrollMobile(t *testing.T) {
 		t.Fatal("scroll should be enabled when all sections expanded in small mobile pane")
 	}
 
-	// Simulate touch drag within sidebar HandleInput: press at y=200, drag to y=100
+	// Simulate touch drag within sidebar HandleInput.
+	// Use coordinates within the panel bounds (not absolute screen coords).
 	panel := g.sidebar.rects["panel"]
-	cx := panel.Dx() / 2
+	cx := panel.Min.X + panel.Dx()/2
+	startY := panel.Max.Y - 10 // near bottom of panel
+	endY := panel.Min.Y + 20   // near top of panel
 
 	// Press
-	g.sidebar.HandleInput(cx, 200, true)
+	g.sidebar.HandleInput(cx, startY, true)
 	// Drag up (finger moves up = content scrolls down = VS.First increases)
-	for y := 195; y >= 100; y -= 5 {
+	for y := startY - 5; y >= endY; y -= 5 {
 		g.sidebar.HandleInput(cx, y, true)
 	}
 	// Release
-	g.sidebar.HandleInput(cx, 100, false)
+	g.sidebar.HandleInput(cx, endY, false)
 
 	if g.sidebar.scroll.VS.First <= 0 {
 		t.Fatalf("VS.First should increase after touch swipe down, got %d", g.sidebar.scroll.VS.First)
@@ -460,7 +463,7 @@ func TestFXPanelScrollDoesNotFireButtons(t *testing.T) {
 	}
 	g.drum.toggleFXPanel(0)
 	t.Cleanup(func() { g.drum.closeFXPanel() })
-	if !g.drum.fxPanelOpen {
+	if !g.drum.IsFXPanelOpen() {
 		t.Fatal("FX panel should be open")
 	}
 

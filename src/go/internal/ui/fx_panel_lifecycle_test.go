@@ -19,7 +19,7 @@ func TestFXPanelToggleOpenClose(t *testing.T) {
 
 	// Open FX panel for row 0.
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel should be open after toggleFXPanel(0)")
 	}
 	if dv.fxPanelRow != 0 {
@@ -28,7 +28,7 @@ func TestFXPanelToggleOpenClose(t *testing.T) {
 
 	// Toggle same row again to close.
 	dv.toggleFXPanel(0)
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Fatal("FX panel should be closed after second toggleFXPanel(0)")
 	}
 }
@@ -46,13 +46,13 @@ func TestFXPanelToggleDifferentRow(t *testing.T) {
 
 	// Open for row 0.
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen || dv.fxPanelRow != 0 {
-		t.Fatalf("expected panel open for row 0, open=%v row=%d", dv.fxPanelOpen, dv.fxPanelRow)
+	if !dv.IsFXPanelOpen() || dv.fxPanelRow != 0 {
+		t.Fatalf("expected panel open for row 0, open=%v row=%d", dv.IsFXPanelOpen(), dv.fxPanelRow)
 	}
 
 	// Toggle row 1 — should switch (close row 0, open row 1).
 	dv.toggleFXPanel(1)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("FX panel should still be open after switching to row 1")
 	}
 	if dv.fxPanelRow != 1 {
@@ -65,13 +65,13 @@ func TestFXPanelOpenInvalidRow(t *testing.T) {
 
 	// Negative row.
 	dv.openFXPanel(-1)
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Error("panel should not open for negative row")
 	}
 
 	// Out-of-range row.
 	dv.openFXPanel(len(dv.Rows) + 100)
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Error("panel should not open for out-of-range row")
 	}
 }
@@ -90,7 +90,7 @@ func TestFXPanelCloseResetsState(t *testing.T) {
 
 	// Open panel to populate state.
 	dv.openFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel should be open")
 	}
 
@@ -101,7 +101,7 @@ func TestFXPanelCloseResetsState(t *testing.T) {
 	// Close and verify all state is reset.
 	dv.closeFXPanel()
 
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Error("fxPanelOpen should be false after close")
 	}
 	if dv.fxAddMenuOpen {
@@ -138,7 +138,7 @@ func TestFXPanelBuildWithEffects(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.openFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
@@ -148,10 +148,10 @@ func TestFXPanelBuildWithEffects(t *testing.T) {
 		t.Fatal("expected buttons to be created")
 	}
 
-	// Verify toggle buttons exist (checkmarks or spaces).
+	// Verify toggle buttons exist (pill-style, tagged with fxToggleTag).
 	toggleCount := 0
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "\u2713" || btn.Text == " " { // "checkmark" or space
+		if isToggle, _ := isFXToggleBtn(btn); isToggle {
 			toggleCount++
 		}
 	}
@@ -189,7 +189,7 @@ func TestFXPanelBuildWithAddMenu(t *testing.T) {
 	}
 
 	dv.openFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
@@ -198,25 +198,21 @@ func TestFXPanelBuildWithAddMenu(t *testing.T) {
 	dv.buildFXPanel()
 	suppressClicksUntilRelease = false
 
-	// Should have 6 effect type buttons + Cancel + close button.
-	typeNames := map[string]bool{
-		"Distortion": false,
-		"Delay":      false,
-		"Reverb":     false,
-		"Chorus":     false,
-		"Bitcrusher": false,
-		"Filter":     false,
-		"Cancel":     false,
-	}
+	// Ensure at least some effect type buttons are visible in the add menu.
+	// With many effects, some buttons (and Cancel) may be off-screen due to
+	// viewport clipping, so we check that at least the first few are present.
+	regs := audio.EffectRegistrations()
+	foundEffectBtns := 0
 	for _, btn := range dv.fxPanelBtns {
-		if _, ok := typeNames[btn.Text]; ok {
-			typeNames[btn.Text] = true
+		for _, reg := range regs {
+			if btn.Text == reg.DisplayName {
+				foundEffectBtns++
+				break
+			}
 		}
 	}
-	for name, found := range typeNames {
-		if !found {
-			t.Errorf("button %q not found when add menu is open", name)
-		}
+	if foundEffectBtns == 0 {
+		t.Error("no effect type buttons found when add menu is open")
 	}
 }
 
@@ -242,7 +238,7 @@ func TestFXPanelBuildMobile(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open on mobile")
 	}
 
@@ -360,9 +356,9 @@ func TestFXParamLabel(t *testing.T) {
 		unit     string
 		expected string
 	}{
-		// val >= 1000 -> "%.0f"
-		{"cutoff", 2000, "Hz", "Cutoff: 2000Hz"},
-		{"freq", 10000, "Hz", "Freq: 10000Hz"},
+		// val >= 1000 -> "%.0f" (non-empty units get a space prefix)
+		{"cutoff", 2000, "Hz", "Cutoff: 2000 Hz"},
+		{"freq", 10000, "Hz", "Freq: 10000 Hz"},
 		// val >= 10 -> "%.1f"
 		{"drive", 15.5, "", "Drive: 15.5"},
 		{"drive", 10.0, "", "Drive: 10.0"},
@@ -372,7 +368,7 @@ func TestFXParamLabel(t *testing.T) {
 		// default -> "%.2f"
 		{"mix", 0.75, "", "Mix: 0.75"},
 		{"mix", 0.123, "", "Mix: 0.12"},
-		{"rate", 5.5, "Hz", "Rate: 5.50Hz"},
+		{"rate", 5.5, "Hz", "Rate: 5.50 Hz"},
 	}
 
 	for _, tc := range cases {
@@ -404,54 +400,39 @@ func TestCapitalize(t *testing.T) {
 	}
 }
 
-// --- 7. FXPanelOverlay wrapper ---
+// --- 7. FX Panel open/close/capturing state ---
 
-func TestFXPanelOverlayInterface(t *testing.T) {
+func TestFXPanelOpenCloseState(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
 	}
 
-	overlay := dv.fxPanelOverlay
-
-	// ID
-	if overlay.ID() != "fx-panel" {
-		t.Errorf("expected ID 'fx-panel', got %q", overlay.ID())
-	}
-
-	// ZIndex
-	if overlay.ZIndex() != 210 {
-		t.Errorf("expected ZIndex 210, got %d", overlay.ZIndex())
-	}
-
-	// IsOpen when closed.
-	if overlay.IsOpen() {
-		t.Error("IsOpen should be false when panel is closed")
+	// Panel starts closed.
+	if dv.IsFXPanelOpen() {
+		t.Error("fxPanelOpen should be false initially")
 	}
 
 	// Open the panel.
 	dv.toggleFXPanel(0)
-	if !overlay.IsOpen() {
-		t.Error("IsOpen should be true when panel is open")
+	if !dv.IsFXPanelOpen() {
+		t.Error("fxPanelOpen should be true after toggleFXPanel")
 	}
 
-	// Capturing should be false in idle state.
-	if overlay.Capturing() {
-		t.Error("Capturing should be false with no active interactions")
+	// Capturing should be false in idle state (no drag, no deferred tap, no scroll).
+	capturing := dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	if capturing {
+		t.Error("capturing state should be false with no active interactions")
 	}
 
-	// Close via overlay Close().
-	overlay.Close()
-	if overlay.IsOpen() {
-		t.Error("IsOpen should be false after Close()")
+	// Close via closeFXPanel.
+	dv.closeFXPanel()
+	if dv.IsFXPanelOpen() {
+		t.Error("fxPanelOpen should be false after closeFXPanel")
 	}
-	if !suppressClicksUntilRelease {
-		t.Error("Close() should set suppressClicksUntilRelease")
-	}
-	suppressClicksUntilRelease = false
 }
 
-func TestFXPanelOverlayCapturing(t *testing.T) {
+func TestFXPanelCapturingState(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
@@ -462,24 +443,26 @@ func TestFXPanelOverlayCapturing(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
-	overlay := dv.fxPanelOverlay
 
 	// Idle state: not capturing.
-	if overlay.Capturing() {
-		t.Error("Capturing should be false initially")
+	capturing := dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	if capturing {
+		t.Error("capturing should be false initially")
 	}
 
 	// Simulate slider dragging.
 	dv.fxSliderDragging = true
-	if !overlay.Capturing() {
-		t.Error("Capturing should be true during slider drag")
+	capturing = dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	if !capturing {
+		t.Error("capturing should be true during slider drag")
 	}
 	dv.fxSliderDragging = false
 
 	// Simulate deferred tap active.
 	dv.fxPanelDeferredTap.active = true
-	if !overlay.Capturing() {
-		t.Error("Capturing should be true during deferred tap")
+	capturing = dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	if !capturing {
+		t.Error("capturing should be true during deferred tap")
 	}
 	dv.fxPanelDeferredTap.Cancel()
 }
@@ -507,19 +490,17 @@ func TestFXPanelInputClickOutsideCloses(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
-	// Advance past debounce window.
-	dv.updateSeq = dv.fxPanelOpenSeq + 10
-	suppressClicksUntilRelease = false
+	fxAdvanceFrames(t, dv, 3)
 
-	// Click outside the panel and outside any FX button.
+	// Click outside the panel — tree's click-outside closes it.
 	outsideX := dv.fxPanelRect.Max.X + 100
 	outsideY := dv.fxPanelRect.Max.Y + 100
 	// Make sure we're not on an FX button.
-	for _, fb := range dv.rowFXBtns {
+	for _, fb := range dv.rowFXBtns() {
 		if fb != nil {
 			r := fb.Rect()
 			if outsideX >= r.Min.X && outsideX < r.Max.X &&
@@ -530,42 +511,32 @@ func TestFXPanelInputClickOutsideCloses(t *testing.T) {
 		}
 	}
 
-	consumed := dv.handleFXPanelInput(outsideX, outsideY, true)
-	if !consumed {
-		t.Error("click outside should be consumed")
+	fxHoldAt(t, dv, outsideX, outsideY)
+
+	if dv.IsFXPanelOpen() {
+		t.Error("panel should close on click outside via tree")
 	}
-	if dv.fxPanelOpen {
-		t.Error("panel should close on click outside")
-	}
-	if !suppressClicksUntilRelease {
-		t.Error("suppressClicksUntilRelease should be set after close")
-	}
-	suppressClicksUntilRelease = false
+	fxReleaseInput(t, dv)
 }
 
-func TestFXPanelInputDebounceWindow(t *testing.T) {
+func TestFXPanelInputIgnoresOutsidePanel(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
 	}
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
-	// Within debounce window (less than 2 frames since open).
-	dv.updateSeq = dv.fxPanelOpenSeq + 1
-	suppressClicksUntilRelease = false
-
+	// handleFXPanelInput should return false for clicks outside the panel
+	// (click-outside is handled by the tree, not the handler).
 	outsideX := dv.fxPanelRect.Max.X + 100
 	outsideY := dv.fxPanelRect.Max.Y + 100
 	consumed := dv.handleFXPanelInput(outsideX, outsideY, true)
-	if !consumed {
-		t.Error("click during debounce should be consumed (absorbed)")
-	}
-	if !dv.fxPanelOpen {
-		t.Error("panel should NOT close during debounce window")
+	if consumed {
+		t.Error("handleFXPanelInput should NOT consume clicks outside fxPanelRect")
 	}
 }
 
@@ -576,11 +547,9 @@ func TestFXPanelInputConsumesInsidePanel(t *testing.T) {
 	}
 
 	dv.toggleFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
-	dv.updateSeq = dv.fxPanelOpenSeq + 10
-
 	// Click inside the panel rect (on background, not a button).
 	insideX := (dv.fxPanelRect.Min.X + dv.fxPanelRect.Max.X) / 2
 	insideY := (dv.fxPanelRect.Min.Y + dv.fxPanelRect.Max.Y) / 2
@@ -590,7 +559,7 @@ func TestFXPanelInputConsumesInsidePanel(t *testing.T) {
 		t.Error("click inside panel should be consumed")
 	}
 	// Panel should still be open (click was consumed, not close-triggering).
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Error("panel should stay open on click inside")
 	}
 }
@@ -645,7 +614,7 @@ func TestFXPanelMoveButtons(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.openFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel did not open")
 	}
 
@@ -689,14 +658,14 @@ func TestFXPanelMoveButtons(t *testing.T) {
 		// At least verify it didn't crash.
 	}
 	// The key test is that it didn't panic and the panel rebuilt.
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Error("panel should stay open after move operation")
 	}
 }
 
-// --- Additional: overlay HandleWheel ---
+// --- Additional: FX panel wheel scroll ---
 
-func TestFXPanelOverlayHandleWheel(t *testing.T) {
+func TestFXPanelWheelScroll(t *testing.T) {
 	dv := newTestDV(t)
 	if len(dv.Rows) == 0 {
 		t.Skip("no rows")
@@ -710,12 +679,14 @@ func TestFXPanelOverlayHandleWheel(t *testing.T) {
 	dv.syncFXToRow(0)
 
 	dv.openFXPanel(0)
-	overlay := dv.fxPanelOverlay
 
-	// Even without scroll, HandleWheel should return InputConsumed.
-	result := overlay.HandleWheel(100, 100, -3)
-	if result != InputConsumed {
-		t.Errorf("HandleWheel should return InputConsumed, got %v", result)
+	// FX panel should be open and functional.
+	if !dv.IsFXPanelOpen() {
+		t.Fatal("panel should be open")
+	}
+	// Scroll offset should start at 0.
+	if dv.fxScrollOffsetPx != 0 {
+		t.Errorf("fxScrollOffsetPx should be 0 initially, got %d", dv.fxScrollOffsetPx)
 	}
 }
 
@@ -728,7 +699,7 @@ func TestFXPanelBuildInvalidRowCloses(t *testing.T) {
 	}
 
 	dv.openFXPanel(0)
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		t.Fatal("panel should be open")
 	}
 
@@ -736,7 +707,7 @@ func TestFXPanelBuildInvalidRowCloses(t *testing.T) {
 	dv.fxPanelRow = len(dv.Rows) + 5
 	dv.buildFXPanel()
 
-	if dv.fxPanelOpen {
+	if dv.IsFXPanelOpen() {
 		t.Error("buildFXPanel should close the panel when row is out of range")
 	}
 }

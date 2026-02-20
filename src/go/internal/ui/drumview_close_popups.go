@@ -13,64 +13,39 @@ func (dv *DrumView) CancelAllDeferredTaps() {
 	}
 }
 
-// closeRename tears down rename state (renameBox, renameComp, hold flag).
+// closeRename tears down rename state (renameComp).
 func (dv *DrumView) closeRename() {
-	wasOpen := dv.renameBox != nil || (dv.renameComp != nil && dv.renameComp.IsOpen())
-	dv.renameBox = nil
 	dv.renameRow = -1
-	dv.renameHold = false
 	if dv.renameComp != nil && dv.renameComp.IsOpen() {
 		dv.renameComp.Close()
 	}
-	if wasOpen {
-		SuppressClicksUntilMouseUp()
-	}
+	dv.closeRenamePortal()
 }
 
 // closeNaming tears down WAV-naming state.
 func (dv *DrumView) closeNaming() {
-	dv.naming = false
 	dv.pendingWAV = ""
 	dv.nameInput = ""
 	dv.nameBox = nil
+	dv.closeNamingPortal()
 }
 
 // CloseAllPopups closes all open DrumView popups and overlays.
+// Portal CloseTop invokes OnClose callbacks that handle component teardown,
+// boolean clears, and deferred tap cancellation.
 func (dv *DrumView) CloseAllPopups() {
-	dv.instMenuOpen = false
-	dv.instMenuDeferredTap.Cancel()
-	if dv.instMenuTouchScroll != nil {
-		dv.instMenuTouchScroll.ResetTouch()
+	if dv.tree != nil {
+		for dv.tree.Portal().IsOpen() {
+			dv.tree.Portal().CloseTop()
+		}
 	}
-	if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() {
-		dv.instMenuComp.Close()
+	if dv.volPopup != nil && dv.volPopup.IsOpen() {
+		dv.volPopup.Close()
 	}
-	dv.colorMenuOpen = false
-	dv.colorHold = false
-	if dv.colorWheelComp != nil && dv.colorWheelComp.IsOpen() {
-		dv.colorWheelComp.Close()
+	if dv.masterVolPopup != nil && dv.masterVolPopup.IsOpen() {
+		dv.masterVolPopup.Close()
 	}
-	dv.subdivMenuOpen = false
-	dv.subdivDeferredTap.Cancel()
-	if dv.subdivMenuComp != nil && dv.subdivMenuComp.IsOpen() {
-		dv.subdivMenuComp.Close()
-	}
-	dv.eqChannelOpen = false
-	dv.eqChDeferredTap.Cancel()
-	if dv.eqChannelScroll != nil {
-		dv.eqChannelScroll.ResetTouch()
-	}
-	dv.closeFXPanel()
-	dv.closeOverflowMenu()
-	dv.contextMenuOpen = false
-	dv.contextMenuDeferredTap.Cancel()
-	if dv.contextMenuScroll != nil {
-		dv.contextMenuScroll.HandleDragEnd()
-		dv.contextMenuScroll.ResetTouch()
-	}
-	dv.closeVolumePopup()
-	dv.closeMasterVolumePopup()
-	dv.closeEQPopup()
 	dv.closeRename()
 	dv.closeNaming()
+	dv.CancelAllDeferredTaps()
 }

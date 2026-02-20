@@ -18,12 +18,17 @@ func (g *Game) initJSEqWidgets() {
 		}
 		mode := strings.ToLower(args[0].String())
 		g.drum.eqWaveformMode = mode != "eq"
-		if g.drum.eqToggleBtn != nil {
+		if g.drum.eqToggleBtn() != nil {
 			if g.drum.eqWaveformMode {
-				g.drum.eqToggleBtn.Text = "Wave"
+				g.drum.eqToggleBtn().Text = "Wave"
 			} else {
-				g.drum.eqToggleBtn.Text = "EQ"
+				g.drum.eqToggleBtn().Text = "EQ"
 			}
+		}
+		// Keep zone state in sync — the zone is the canonical owner
+		// during normal (non-JS) operation; JS overrides both.
+		if g.drum.eqPanelZone != nil {
+			g.drum.eqPanelZone.SetWaveformMode(g.drum.eqWaveformMode)
 		}
 		return nil
 	}))
@@ -52,12 +57,12 @@ func (g *Game) initJSEqWidgets() {
 	// eqControlsSnapshot() -> { gainsDB: [] } for current slider gains.
 	js.Global().Set("eqControlsSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		obj := js.Global().Get("Object").New()
-		if g.drum == nil || len(g.drum.eqBandGainsDB) == 0 {
+		if g.drum == nil || len(g.drum.eqBandGainsDB()) == 0 {
 			obj.Set("gainsDB", js.Global().Get("Array").New(0))
 			return obj
 		}
-		arr := js.Global().Get("Array").New(len(g.drum.eqBandGainsDB))
-		for i, v := range g.drum.eqBandGainsDB {
+		arr := js.Global().Get("Array").New(len(g.drum.eqBandGainsDB()))
+		for i, v := range g.drum.eqBandGainsDB() {
 			arr.SetIndex(i, v)
 		}
 		obj.Set("gainsDB", arr)
@@ -130,29 +135,29 @@ func (g *Game) initJSEqWidgets() {
 		drumLayout.Set("rowHeight", dv.rowHeight())
 		drumLayout.Set("visibleRows", dv.visibleRows())
 		drumLayout.Set("numRows", len(dv.Rows))
-		drumLayout.Set("isSmallScreen", isSmallScreen())
+		drumLayout.Set("isSmallScreen", Profile().IsMobile())
 		drumLayout.Set("timelineRect", rectToJS(dv.timelineRect))
 		obj.Set("drumLayout", drumLayout)
 
 		// Buttons
 		buttons := js.Global().Get("Object").New()
-		if dv.playBtn != nil {
-			buttons.Set("play", rectToJS(dv.playBtn.Rect()))
+		if dv.playBtn() != nil {
+			buttons.Set("play", rectToJS(dv.playBtn().Rect()))
 		}
-		if dv.stopBtn != nil {
-			buttons.Set("stop", rectToJS(dv.stopBtn.Rect()))
+		if dv.stopBtn() != nil {
+			buttons.Set("stop", rectToJS(dv.stopBtn().Rect()))
 		}
-		if dv.bpmIncBtn != nil {
-			buttons.Set("bpmInc", rectToJS(dv.bpmIncBtn.Rect()))
+		if dv.bpmIncBtn() != nil {
+			buttons.Set("bpmInc", rectToJS(dv.bpmIncBtn().Rect()))
 		}
-		if dv.bpmDecBtn != nil {
-			buttons.Set("bpmDec", rectToJS(dv.bpmDecBtn.Rect()))
+		if dv.bpmDecBtn() != nil {
+			buttons.Set("bpmDec", rectToJS(dv.bpmDecBtn().Rect()))
 		}
-		if dv.addRowBtn != nil {
-			buttons.Set("addRow", rectToJS(dv.addRowBtn.Rect()))
+		if dv.addRowBtn() != nil {
+			buttons.Set("addRow", rectToJS(dv.addRowBtn().Rect()))
 		}
-		if dv.subdivBtn != nil {
-			buttons.Set("subdiv", rectToJS(dv.subdivBtn.Rect()))
+		if dv.subdivBtn() != nil {
+			buttons.Set("subdiv", rectToJS(dv.subdivBtn().Rect()))
 		}
 		if dv.lenIncBtn != nil {
 			buttons.Set("lenInc", rectToJS(dv.lenIncBtn.Rect()))
@@ -160,32 +165,32 @@ func (g *Game) initJSEqWidgets() {
 		if dv.lenDecBtn != nil {
 			buttons.Set("lenDec", rectToJS(dv.lenDecBtn.Rect()))
 		}
-		if dv.trackBtn != nil {
-			buttons.Set("track", rectToJS(dv.trackBtn.Rect()))
+		if dv.trackBtn() != nil {
+			buttons.Set("track", rectToJS(dv.trackBtn().Rect()))
 		}
-		if dv.uploadBtn != nil {
-			buttons.Set("upload", rectToJS(dv.uploadBtn.Rect()))
+		if dv.uploadBtn() != nil {
+			buttons.Set("upload", rectToJS(dv.uploadBtn().Rect()))
 		}
-		if dv.importBtn != nil {
-			buttons.Set("import", rectToJS(dv.importBtn.Rect()))
+		if dv.importBtn() != nil {
+			buttons.Set("import", rectToJS(dv.importBtn().Rect()))
 		}
-		if dv.exportBtn != nil {
-			buttons.Set("export", rectToJS(dv.exportBtn.Rect()))
+		if dv.exportBtn() != nil {
+			buttons.Set("export", rectToJS(dv.exportBtn().Rect()))
 		}
-		if dv.overflowBtn != nil {
-			buttons.Set("overflow", rectToJS(dv.overflowBtn.Rect()))
+		if dv.overflowBtn() != nil {
+			buttons.Set("overflow", rectToJS(dv.overflowBtn().Rect()))
 		}
-		if dv.viewSwitchBtn != nil {
-			buttons.Set("viewSwitch", rectToJS(dv.viewSwitchBtn.Rect()))
+		if dv.viewSwitchBtn() != nil {
+			buttons.Set("viewSwitch", rectToJS(dv.viewSwitchBtn().Rect()))
 		}
-		if dv.bpmBox != nil {
-			buttons.Set("bpmBox", rectToJS(dv.bpmBox.Rect))
+		if dv.bpmBox() != nil {
+			buttons.Set("bpmBox", rectToJS(dv.bpmBox().Rect))
 		}
-		if dv.mainVolSlider != nil {
-			buttons.Set("mainVol", rectToJS(dv.mainVolSlider.Rect()))
+		if dv.mainVolSlider() != nil {
+			buttons.Set("mainVol", rectToJS(dv.mainVolSlider().Rect()))
 		}
-		if dv.eqToggleBtn != nil {
-			buttons.Set("eqToggle", rectToJS(dv.eqToggleBtn.Rect()))
+		if dv.eqToggleBtn() != nil {
+			buttons.Set("eqToggle", rectToJS(dv.eqToggleBtn().Rect()))
 		}
 		obj.Set("buttons", buttons)
 
@@ -210,32 +215,32 @@ func (g *Game) initJSEqWidgets() {
 		rowsArr := js.Global().Get("Array").New(rowCount)
 		for i := 0; i < rowCount; i++ {
 			row := js.Global().Get("Object").New()
-			if i < len(dv.rowLabels) && dv.rowLabels[i] != nil {
-				row.Set("label", rectToJS(dv.rowLabels[i].Rect()))
+			if i < len(dv.rowLabels()) && dv.rowLabels()[i] != nil {
+				row.Set("label", rectToJS(dv.rowLabels()[i].Rect()))
 			}
-			if i < len(dv.rowMuteBtns) && dv.rowMuteBtns[i] != nil {
-				row.Set("mute", rectToJS(dv.rowMuteBtns[i].Rect()))
+			if i < len(dv.rowMuteBtns()) && dv.rowMuteBtns()[i] != nil {
+				row.Set("mute", rectToJS(dv.rowMuteBtns()[i].Rect()))
 			}
-			if i < len(dv.rowSoloBtns) && dv.rowSoloBtns[i] != nil {
-				row.Set("solo", rectToJS(dv.rowSoloBtns[i].Rect()))
+			if i < len(dv.rowSoloBtns()) && dv.rowSoloBtns()[i] != nil {
+				row.Set("solo", rectToJS(dv.rowSoloBtns()[i].Rect()))
 			}
-			if i < len(dv.rowColorBtns) && dv.rowColorBtns[i] != nil {
-				row.Set("color", rectToJS(dv.rowColorBtns[i].Rect()))
+			if i < len(dv.rowColorBtns()) && dv.rowColorBtns()[i] != nil {
+				row.Set("color", rectToJS(dv.rowColorBtns()[i].Rect()))
 			}
-			if i < len(dv.rowEditBtns) && dv.rowEditBtns[i] != nil {
-				row.Set("edit", rectToJS(dv.rowEditBtns[i].Rect()))
+			if i < len(dv.rowEditBtns()) && dv.rowEditBtns()[i] != nil {
+				row.Set("edit", rectToJS(dv.rowEditBtns()[i].Rect()))
 			}
-			if i < len(dv.rowFXBtns) && dv.rowFXBtns[i] != nil {
-				row.Set("fx", rectToJS(dv.rowFXBtns[i].Rect()))
+			if i < len(dv.rowFXBtns()) && dv.rowFXBtns()[i] != nil {
+				row.Set("fx", rectToJS(dv.rowFXBtns()[i].Rect()))
 			}
-			if i < len(dv.rowOriginBtns) && dv.rowOriginBtns[i] != nil {
-				row.Set("origin", rectToJS(dv.rowOriginBtns[i].Rect()))
+			if i < len(dv.rowOriginBtns()) && dv.rowOriginBtns()[i] != nil {
+				row.Set("origin", rectToJS(dv.rowOriginBtns()[i].Rect()))
 			}
-			if i < len(dv.rowDeleteBtns) && dv.rowDeleteBtns[i] != nil {
-				row.Set("delete", rectToJS(dv.rowDeleteBtns[i].Rect()))
+			if i < len(dv.rowDeleteBtns()) && dv.rowDeleteBtns()[i] != nil {
+				row.Set("delete", rectToJS(dv.rowDeleteBtns()[i].Rect()))
 			}
-			if i < len(dv.rowVolSliders) && dv.rowVolSliders[i] != nil {
-				row.Set("volume", rectToJS(dv.rowVolSliders[i].Rect()))
+			if i < len(dv.rowVolSliders()) && dv.rowVolSliders()[i] != nil {
+				row.Set("volume", rectToJS(dv.rowVolSliders()[i].Rect()))
 			}
 			rowsArr.SetIndex(i, row)
 		}
@@ -247,28 +252,19 @@ func (g *Game) initJSEqWidgets() {
 
 		// EQ controls
 		eq := js.Global().Get("Object").New()
-		if dv.eqChannelBtn != nil {
-			eq.Set("channelBtn", rectToJS(dv.eqChannelBtn.Rect()))
+		if dv.eqChannelBtn() != nil {
+			eq.Set("channelBtn", rectToJS(dv.eqChannelBtn().Rect()))
 		}
-		if dv.hpfBtn != nil {
-			eq.Set("hpfBtn", rectToJS(dv.hpfBtn.Rect()))
+		if dv.hpfBtn() != nil {
+			eq.Set("hpfBtn", rectToJS(dv.hpfBtn().Rect()))
 		}
-		if dv.lpfBtn != nil {
-			eq.Set("lpfBtn", rectToJS(dv.lpfBtn.Rect()))
+		if dv.lpfBtn() != nil {
+			eq.Set("lpfBtn", rectToJS(dv.lpfBtn().Rect()))
 		}
 		eq.Set("rect", rectToJS(dv.eqRect))
-		if len(dv.eqSliders) > 0 {
-			eqSliders := js.Global().Get("Array").New(len(dv.eqSliders))
-			for j, s := range dv.eqSliders {
-				if s != nil {
-					eqSliders.SetIndex(j, rectToJS(s.Rect()))
-				}
-			}
-			eq.Set("sliders", eqSliders)
-		}
-		if len(dv.eqMuteBtns) > 0 {
-			eqMutes := js.Global().Get("Array").New(len(dv.eqMuteBtns))
-			for j, b := range dv.eqMuteBtns {
+		if len(dv.eqMuteBtns()) > 0 {
+			eqMutes := js.Global().Get("Array").New(len(dv.eqMuteBtns()))
+			for j, b := range dv.eqMuteBtns() {
 				if b != nil {
 					eqMutes.SetIndex(j, rectToJS(b.Rect()))
 				}
@@ -365,8 +361,8 @@ func (g *Game) initJSEqWidgets() {
 		var gains []float64
 		var muted []bool
 		if ch == "main" {
-			gains = g.drum.eqBandGainsDB
-			muted = g.drum.eqBandMuted
+			gains = g.drum.eqBandGainsDB()
+			muted = g.drum.eqBandMuted()
 		} else {
 			for _, r := range g.drum.Rows {
 				if r.Instrument == ch {

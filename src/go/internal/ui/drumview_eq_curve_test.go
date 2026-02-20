@@ -34,7 +34,7 @@ func TestEQCurveGeometricMean(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	dv.calcLayout()
 
-	bands := dv.buildEQBands(dv.eqBandGainsDB, dv.eqBandMuted)
+	bands := dv.buildEQBands(dv.eqBandGainsDB(), dv.eqBandMuted())
 	expectedCenters := []float64{31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000}
 	for i, b := range bands {
 		expected := expectedCenters[i]
@@ -54,7 +54,7 @@ func TestEQCurveConstantQ(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	dv.calcLayout()
 
-	bands := dv.buildEQBands(dv.eqBandGainsDB, dv.eqBandMuted)
+	bands := dv.buildEQBands(dv.eqBandGainsDB(), dv.eqBandMuted())
 	for i, b := range bands {
 		if math.Abs(b.Q-1.414) > 0.001 {
 			t.Errorf("band %d: expected Q=1.414, got %.3f", i, b.Q)
@@ -96,8 +96,8 @@ func TestEQCurveDragUpdatesGain(t *testing.T) {
 	}
 
 	// Check gain was updated.
-	if dv.eqBandGainsDB[5] < 4.0 {
-		t.Errorf("expected gain > 4 dB after drag, got %.1f", dv.eqBandGainsDB[5])
+	if dv.eqBandGainsDB()[5] < 4.0 {
+		t.Errorf("expected gain > 4 dB after drag, got %.1f", dv.eqBandGainsDB()[5])
 	}
 
 	// Release.
@@ -288,13 +288,12 @@ func TestEQCurveMatchesSliders(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	dv.calcLayout()
 
-	// Set a non-zero gain via slider.
-	if len(dv.eqSliders) < 3 || dv.eqSliders[2] == nil {
-		t.Skip("sliders not allocated")
+	// Set a non-zero gain directly via eqBandGainsDB.
+	if len(dv.eqBandGainsDB()) < 3 {
+		t.Skip("eqBandGainsDB not allocated")
 	}
-	dv.eqSliders[2].Value = 0.75
 	gain := sliderToGainDB(0.75)
-	dv.eqBandGainsDB[2] = gain
+	dv.eqBandGainsDB()[2] = gain
 
 	// Verify curve cache reflects this gain.
 	dv.eqCurveDirty = true

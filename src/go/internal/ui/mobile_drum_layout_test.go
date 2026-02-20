@@ -169,7 +169,7 @@ func TestMobileFABDoesNotOverlapScrollTrack(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	fabRect := dv.addRowBtn.Rect()
+	fabRect := dv.addRowBtn().Rect()
 	if fabRect.Empty() {
 		t.Skip("FAB rect is empty (possibly EQ mode)")
 	}

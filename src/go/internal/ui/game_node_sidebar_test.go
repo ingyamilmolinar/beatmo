@@ -1020,3 +1020,297 @@ func TestSidebarZIndex(t *testing.T) {
 // compile-time guard.
 var _ = image.Pt
 var _ = math.Abs
+
+// ─── P1 Coverage Gap Tests ──────────────────────────────────────────────────
+
+func TestSidebar_LogicDropdownSelection(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.sel = n
+	n.Selected = true
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+
+	// Directly open logic dropdown and re-layout to wire dropdown items.
+	g.sidebar.logicDropdownOpen = true
+	g.sidebar.layout()
+
+	// Select "every_n_triggers".
+	itemBtn := g.sidebar.btns["logic:every_n_triggers"]
+	if itemBtn == nil {
+		t.Fatal("expected 'logic:every_n_triggers' button")
+	}
+	// Execute callback directly (bypassing enqueueUI).
+	itemBtn.OnClick()
+	for _, fn := range g.uiQueue {
+		fn()
+	}
+	g.uiQueue = nil
+
+	if g.sidebar.logicDropdownOpen {
+		t.Error("expected logic dropdown closed after selection")
+	}
+	mn, ok := g.graph.GetNodeByID(n.ID)
+	if !ok {
+		t.Fatal("node not found in graph")
+	}
+	if mn.Params.LogicKind != "every_n_triggers" {
+		t.Errorf("expected LogicKind='every_n_triggers', got %q", mn.Params.LogicKind)
+	}
+	if mn.Params.LogicN < 2 {
+		t.Errorf("expected LogicN >= 2 (default), got %d", mn.Params.LogicN)
+	}
+}
+
+func TestSidebar_GrooveDropdownSelection(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.sel = n
+	n.Selected = true
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+
+	// Directly open groove dropdown and re-layout.
+	g.sidebar.grooveDropdownOpen = true
+	g.sidebar.layout()
+
+	// Select "delay".
+	itemBtn := g.sidebar.btns["groove:delay"]
+	if itemBtn == nil {
+		t.Fatal("expected 'groove:delay' button")
+	}
+	itemBtn.OnClick()
+	for _, fn := range g.uiQueue {
+		fn()
+	}
+	g.uiQueue = nil
+
+	if g.sidebar.grooveDropdownOpen {
+		t.Error("expected groove dropdown closed after selection")
+	}
+	mn, ok := g.graph.GetNodeByID(n.ID)
+	if !ok {
+		t.Fatal("node not found in graph")
+	}
+	if mn.Params.GrooveKind != "delay" {
+		t.Errorf("expected GrooveKind='delay', got %q", mn.Params.GrooveKind)
+	}
+}
+
+func TestSidebar_DropdownMutualExclusion(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.sel = n
+	n.Selected = true
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
+
+	// Open logic dropdown directly.
+	g.sidebar.logicDropdownOpen = true
+	if !g.sidebar.logicDropdownOpen {
+		t.Fatal("expected logic dropdown open")
+	}
+
+	// Open groove dropdown via the toggle logic (same as OnClick handler).
+	g.sidebar.grooveDropdownOpen = true
+	g.sidebar.logicDropdownOpen = false // mutual exclusion (same as OnClick)
+
+	if !g.sidebar.grooveDropdownOpen {
+		t.Error("expected groove dropdown open")
+	}
+	if g.sidebar.logicDropdownOpen {
+		t.Error("expected logic dropdown closed (mutual exclusion)")
+	}
+}
+
+func TestSidebar_ResizeDragUpdatesWidth(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.sel = n
+	n.Selected = true
+	g.sidebar.Open(n)
+	g.sidebar.layout()
+
+	panelR := g.sidebar.rects["panel"]
+	if panelR.Empty() {
+		t.Fatal("expected non-empty panel rect")
+	}
+
+	widthBefore := g.sidebar.width
+
+	// Press on the resize handle.
+	handleR := g.sidebar.resizeHandleRect()
+	hx := (handleR.Min.X + handleR.Max.X) / 2
+	hy := (handleR.Min.Y + handleR.Max.Y) / 2
+
+	result := g.sidebar.HandleInput(hx, hy, true)
+	if result != InputCaptured {
+		t.Fatalf("expected InputCaptured on resize handle press, got %d", result)
+	}
+	if !g.sidebar.resizing {
+		t.Fatal("expected resizing=true after handle press")
+	}
+
+	// Drag left (shrink sidebar).
+	g.sidebar.HandleInput(hx-30, hy, true)
+
+	widthAfter := g.sidebar.width
+	if widthAfter >= widthBefore {
+		t.Errorf("expected width to decrease, before=%d after=%d", widthBefore, widthAfter)
+	}
+
+	// Release.
+	g.sidebar.HandleInput(hx-30, hy, false)
+	if g.sidebar.resizing {
+		t.Error("expected resizing=false after release")
+	}
+}
+
+func TestSidebar_DeferredTapInScroll(t *testing.T) {
+	g := openSidebarWithScroll(t, 250)
+
+	// Use the panel rect for touch start.
+	panelR := g.sidebar.rects["panel"]
+	if panelR.Empty() {
+		t.Skip("no panel rect")
+	}
+	cx := (panelR.Min.X + panelR.Max.X) / 2
+	cy := panelR.Min.Y + panelR.Dy()/2
+
+	g.sidebar.HandleInput(cx, cy, true)
+
+	// Drag past dead zone to commit scroll.
+	for i := 1; i <= 15; i++ {
+		g.sidebar.HandleInput(cx, cy-i*4, true)
+	}
+
+	firstAfterDrag := g.sidebar.scroll.VS.First
+
+	// Release.
+	g.sidebar.HandleInput(cx, cy-60, false)
+
+	// Scroll should have committed — position should have changed.
+	if firstAfterDrag <= 0 && g.sidebar.scroll.VS.First <= 0 {
+		t.Error("expected scroll position to change after drag past dead zone")
+	}
+}
+
+func TestSidebar_SilentNodeHidesParams(t *testing.T) {
+	assertDefaultParityState(t)
+	withDefaultStart(t, false)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	// Place a regular node, then change it to silent in the graph.
+	n := g.tryAddNode(5, 5, model.NodeTypeRegular)
+	if n == nil {
+		t.Fatal("failed to add node")
+	}
+	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
+		mn.Type = model.NodeTypeSilent
+		g.graph.Nodes[n.ID] = mn
+	}
+
+	g.sel = n
+	n.Selected = true
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
+
+	// Silent node should hide vol, pit, dur, logic, groove sections.
+	for _, key := range []string{"sec-vol", "sec-pit", "sec-dur", "sec-logic", "sec-groove"} {
+		if r, ok := g.sidebar.rects[key]; ok && !r.Empty() {
+			t.Errorf("expected section %q hidden for silent node, got rect %v", key, r)
+		}
+	}
+
+	// Logic and groove buttons should not be wired.
+	if g.sidebar.btns["logic"] != nil {
+		t.Error("expected no 'logic' button for silent node")
+	}
+	if g.sidebar.btns["grv"] != nil {
+		t.Error("expected no 'grv' button for silent node")
+	}
+
+	// "aud" section should still exist.
+	if _, ok := g.sidebar.rects["sec-aud"]; !ok {
+		t.Error("expected 'sec-aud' section for silent node")
+	}
+}
+
+func TestSidebar_ScrollbarTrackJump(t *testing.T) {
+	g := openSidebarWithScroll(t, 250)
+
+	bar := g.sidebar.scroll.BarRect()
+	thumb := g.sidebar.scroll.ThumbRect()
+	if bar.Empty() || thumb.Empty() {
+		t.Fatal("expected non-empty scroll bar/thumb")
+	}
+
+	// Click below thumb in track.
+	clickY := thumb.Max.Y + (bar.Max.Y-thumb.Max.Y)/2
+	if clickY >= bar.Max.Y {
+		clickY = bar.Max.Y - 1
+	}
+	clickX := (bar.Min.X + bar.Max.X) / 2
+
+	g.sidebar.HandleInput(clickX, clickY, true)
+	g.sidebar.HandleInput(clickX, clickY, false)
+
+	if g.sidebar.scroll.VS.First <= 0 {
+		t.Error("expected scroll to jump to non-zero after track click below thumb")
+	}
+}
+
+func TestSidebar_ScrollMomentumDecays(t *testing.T) {
+	g := openSidebarWithScroll(t, 250)
+
+	sb := g.sidebar.scroll
+	startY := 200
+	endY := 100
+	sb.HandleTouchBegin(50, startY)
+	for y := startY; y >= endY; y -= 5 {
+		sb.HandleTouchMove(50, y)
+	}
+	sb.HandleTouchEnd()
+
+	if !sb.HasMomentum() {
+		t.Fatal("expected momentum after fling")
+	}
+
+	posAfterFling := sb.VS.First
+	for i := 0; i < 60; i++ {
+		g.sidebar.UpdateScroll()
+	}
+
+	posAfterDecay := sb.VS.First
+	if posAfterDecay <= posAfterFling {
+		t.Errorf("expected scroll position to advance via momentum: %d -> %d", posAfterFling, posAfterDecay)
+	}
+
+	// After enough frames, momentum should stop.
+	for i := 0; i < 200; i++ {
+		g.sidebar.UpdateScroll()
+	}
+	if sb.HasMomentum() {
+		t.Error("expected momentum to decay to zero")
+	}
+}

@@ -39,6 +39,10 @@ func (dv *DrumView) analyzerSnapshot() audio.AnalyzerSnapshot {
 	if dv.eqTestSnapshot != nil {
 		return *dv.eqTestSnapshot
 	}
+	// Skip WebAudio FFT calls when EQ panel is not visible.
+	if dv.eqPanelZone != nil && dv.eqPanelZone.rect.Dy() < 40 {
+		return audio.AnalyzerSnapshot{}
+	}
 	return audio.ChannelAnalyzerSnapshot(dv.activeEQChannel())
 }
 
@@ -49,12 +53,12 @@ func (dv *DrumView) preEQAnalyzerSnapshot() audio.AnalyzerSnapshot {
 	return audio.PreEQAnalyzerSnapshot(dv.activeEQChannel())
 }
 
-// applyMasterEQ applies the master channel EQ from dv.eqBandGainsDB.
+// applyMasterEQ applies the master channel EQ from dv.eqBandGainsDB().
 func (dv *DrumView) applyMasterEQ() {
-	if len(dv.eqBandGainsDB) != len(eqBandDefs) {
+	if len(dv.eqBandGainsDB()) != len(eqBandDefs) {
 		return
 	}
-	bands := dv.buildFullEQBands(dv.eqBandGainsDB, dv.eqBandMuted, dv.hpfEnabled, dv.hpfCutoffHz, dv.lpfEnabled, dv.lpfCutoffHz)
+	bands := dv.buildFullEQBands(dv.eqBandGainsDB(), dv.eqBandMuted(), dv.hpfEnabled, dv.hpfCutoffHz, dv.lpfEnabled, dv.lpfCutoffHz)
 	// Persist for tests/exports and push to audio engine.
 	dv.eqApplied = bands
 	audio.SetChannelEQ("main", audio.SampleRate(), bands...)
@@ -62,6 +66,9 @@ func (dv *DrumView) applyMasterEQ() {
 	_ = audio.EnableChannelAnalyzer("main", 512)
 	_ = audio.EnablePreEQAnalyzer("main", 512)
 	dv.eqCurveDirty = true
+	if dv.eqPanelZone != nil {
+		dv.eqPanelZone.curveDirty = true
+	}
 }
 
 // applyRowEQ applies EQ for a specific instrument row.
@@ -87,6 +94,9 @@ func (dv *DrumView) applyRowEQ(row int) {
 	_ = audio.EnableChannelAnalyzer(channelID, 512)
 	_ = audio.EnablePreEQAnalyzer(channelID, 512)
 	dv.eqCurveDirty = true
+	if dv.eqPanelZone != nil {
+		dv.eqPanelZone.curveDirty = true
+	}
 }
 
 // buildEQBands constructs audio.EQBand slice from gains and muted arrays.
@@ -141,19 +151,23 @@ func (dv *DrumView) applyEQ() {
 // setEQActiveChannel switches the EQ view to the specified channel.
 // Pass "main" for master or an instrument ID for per-row EQ.
 func (dv *DrumView) setEQActiveChannel(id string) {
-	// Disable analyzers on the previous channel to save FFT CPU.
 	prev := dv.activeEQChannel()
-	if prev != id {
+	channelChanged := prev != id
+
+	if channelChanged {
+		// Disable analyzers on the previous channel to save FFT CPU.
 		audio.SetAnalyzerEnabled(prev, false)
+		// Save the zone's working copy back to the appropriate store before
+		// switching, so master gains are not lost when switching to an instrument.
+		dv.saveZoneBandState(prev)
 	}
 
 	dv.eqActiveChannel = id
-	dv.eqChannelOpen = false
 
 	// Update button text
-	if dv.eqChannelBtn != nil {
+	if dv.eqChannelBtn() != nil {
 		if id == "" || id == "main" {
-			dv.eqChannelBtn.Text = "Master"
+			dv.eqChannelBtn().Text = "Master"
 		} else {
 			// Find row name for this instrument
 			label := id
@@ -164,57 +178,46 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 				}
 			}
 			// Truncate to fit button width using pixel-based metrics
-			if dv.eqChannelBtn != nil && !dv.eqChannelBtn.Rect().Empty() {
-				maxW := dv.eqChannelBtn.Rect().Dx() - 8
+			if dv.eqChannelBtn() != nil && !dv.eqChannelBtn().Rect().Empty() {
+				maxW := dv.eqChannelBtn().Rect().Dx() - 8
 				if maxW > 0 {
 					label = clipTextToWidth(label, maxW)
 				}
 			}
-			dv.eqChannelBtn.Text = label
+			dv.eqChannelBtn().Text = label
 		}
 	}
 
-	// Sync slider values from the selected channel's EQ gains
+	// Load gains/muted from the target channel's backing store and sync the
+	// zone's working arrays so curve/handles update correctly.
+	// For same-channel re-select (e.g., after external row data changes),
+	// master reads from the zone's live data; instruments reload from the row.
 	var gains []float64
-	if id == "" || id == "main" {
-		gains = dv.eqBandGainsDB
-	} else {
-		for _, r := range dv.Rows {
-			if r.Instrument == id {
-				gains = r.EQGainsDB
-				break
-			}
-		}
-	}
-
-	// Update sliders to reflect the channel's current EQ
-	for i, s := range dv.eqSliders {
-		if s == nil {
-			continue
-		}
-		if i < len(gains) {
-			s.Value = gainDBToSlider(gains[i])
-		} else {
-			s.Value = 0.5 // center = 0dB
-		}
-	}
-
-	// Sync mute button state from the selected channel's mute state
 	var muted []bool
-	if id == "" || id == "main" {
-		muted = dv.eqBandMuted
+	if channelChanged {
+		gains, muted = dv.loadChannelBandState(id)
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.SyncBandState(gains, muted)
+		}
+	} else if id == "" || id == "main" {
+		// Same master channel: the zone IS the authoritative store.
+		// Sync dB input texts in case bandGainsDB was modified externally
+		// (e.g., import writes directly into the shared backing array).
+		if dv.eqPanelZone != nil {
+			muted = dv.eqPanelZone.bandMuted
+			dv.eqPanelZone.syncAllDBInputTexts()
+		}
 	} else {
-		for j, r := range dv.Rows {
-			if r.Instrument == id {
-				dv.ensureRowEQMuted(j)
-				muted = r.EQBandMuted
-				break
-			}
+		// Same instrument channel: reload from the row (external code may
+		// have modified row.EQGainsDB or row.EQBandMuted directly).
+		gains, muted = dv.loadChannelBandState(id)
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.SyncBandState(gains, muted)
 		}
 	}
 
 	// Update mute buttons to reflect the channel's current mute state
-	for i, btn := range dv.eqMuteBtns {
+	for i, btn := range dv.eqMuteBtns() {
 		if btn == nil {
 			continue
 		}
@@ -235,6 +238,71 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 	_ = audio.EnablePreEQAnalyzer(active, 512)
 	audio.SetAnalyzerEnabled(active, true)
 	dv.eqCurveDirty = true
+}
+
+// saveZoneBandState copies the zone's current working bandGainsDB/bandMuted
+// back to the appropriate backing store (masterGainsDB for "main", or the
+// matching DrumRow for per-instrument channels).
+func (dv *DrumView) saveZoneBandState(ch string) {
+	if dv.eqPanelZone == nil {
+		return
+	}
+	z := dv.eqPanelZone
+	if ch == "" || ch == "main" {
+		dv.ensureMasterBandState()
+		copy(dv.masterGainsDB, z.bandGainsDB)
+		copy(dv.masterMuted, z.bandMuted)
+	} else {
+		for j, r := range dv.Rows {
+			if r.Instrument == ch {
+				dv.ensureRowEQ(j)
+				dv.ensureRowEQMuted(j)
+				copy(r.EQGainsDB, z.bandGainsDB)
+				copy(r.EQBandMuted, z.bandMuted)
+				break
+			}
+		}
+	}
+}
+
+// loadChannelBandState returns the gains and muted slices for the given
+// channel from the backing store. Returns fresh copies for "main" so
+// SyncBandState doesn't alias the master store.
+func (dv *DrumView) loadChannelBandState(id string) (gains []float64, muted []bool) {
+	if id == "" || id == "main" {
+		dv.ensureMasterBandState()
+		gains = dv.masterGainsDB
+		muted = dv.masterMuted
+	} else {
+		for j, r := range dv.Rows {
+			if r.Instrument == id {
+				dv.ensureRowEQ(j)
+				dv.ensureRowEQMuted(j)
+				gains = r.EQGainsDB
+				muted = r.EQBandMuted
+				break
+			}
+		}
+	}
+	return
+}
+
+// ensureMasterBandState initializes masterGainsDB and masterMuted if needed,
+// seeding from the zone's current values when first created.
+func (dv *DrumView) ensureMasterBandState() {
+	n := len(eqBandDefs)
+	if len(dv.masterGainsDB) != n {
+		dv.masterGainsDB = make([]float64, n)
+		if dv.eqPanelZone != nil && len(dv.eqPanelZone.bandGainsDB) == n {
+			copy(dv.masterGainsDB, dv.eqPanelZone.bandGainsDB)
+		}
+	}
+	if len(dv.masterMuted) != n {
+		dv.masterMuted = make([]bool, n)
+		if dv.eqPanelZone != nil && len(dv.eqPanelZone.bandMuted) == n {
+			copy(dv.masterMuted, dv.eqPanelZone.bandMuted)
+		}
+	}
 }
 
 // cycleEQChannel advances to the next EQ channel in sequence:
@@ -412,18 +480,18 @@ func (dv *DrumView) buildFullEQBands(gains []float64, muted []bool, hpfOn bool, 
 
 // syncFilterButtonStyles updates the HPF/LPF button appearance for the active channel.
 func (dv *DrumView) syncFilterButtonStyles() {
-	if dv.hpfBtn != nil {
+	if dv.hpfBtn() != nil {
 		if dv.activeHPFEnabled() {
-			dv.hpfBtn.Style = EQFilterButtonActiveStyle
+			dv.hpfBtn().Style = EQFilterButtonActiveStyle
 		} else {
-			dv.hpfBtn.Style = InstButtonStyle
+			dv.hpfBtn().Style = InstButtonStyle
 		}
 	}
-	if dv.lpfBtn != nil {
+	if dv.lpfBtn() != nil {
 		if dv.activeLPFEnabled() {
-			dv.lpfBtn.Style = EQFilterButtonActiveStyle
+			dv.lpfBtn().Style = EQFilterButtonActiveStyle
 		} else {
-			dv.lpfBtn.Style = InstButtonStyle
+			dv.lpfBtn().Style = InstButtonStyle
 		}
 	}
 }
@@ -433,10 +501,10 @@ func (dv *DrumView) syncFilterButtonStyles() {
 func (dv *DrumView) toggleEQBandMute(band int) {
 	ch := dv.activeEQChannel()
 	if ch == "main" {
-		if band >= 0 && band < len(dv.eqBandMuted) {
-			dv.eqBandMuted[band] = !dv.eqBandMuted[band]
+		if band >= 0 && band < len(dv.eqBandMuted()) {
+			dv.eqBandMuted()[band] = !dv.eqBandMuted()[band]
 			dv.applyMasterEQ()
-			dv.logger.Infof("[DRUMVIEW] EQ band %d mute toggled: %v", band, dv.eqBandMuted[band])
+			dv.logger.Infof("[DRUMVIEW] EQ band %d mute toggled: %v", band, dv.eqBandMuted()[band])
 		}
 	} else {
 		// Per-instrument EQ

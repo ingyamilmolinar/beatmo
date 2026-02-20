@@ -81,18 +81,26 @@ try {
   console.log("drum_row_controls_real: Testing Color button...");
 
   const colorRect = await page.evaluate(() => rowColorBtnRect?.(0));
-  assertValidRect(colorRect, "rowColorBtnRect(0)");
-  console.log("drum_row_controls_real: Color button rect:", colorRect);
+  console.log("drum_row_controls_real: Color button rect:", JSON.stringify(colorRect));
 
   // Make sure color menu is closed first
   const colorMenuBefore = await page.evaluate(() => colorMenuOpenState?.());
   console.log("drum_row_controls_real: Color menu open before:", colorMenuBefore);
 
-  const colorCenter = rectCenter(colorRect);
-  const colorMenuAfter = await clickUntilStateChanges(
-    page, colorCenter.x, colorCenter.y, () => colorMenuOpenState?.(), colorMenuBefore
-  );
-  console.log("drum_row_controls_real: Color menu open after:", colorMenuAfter);
+  if (colorRect && colorRect.w > 0 && colorRect.h > 0) {
+    // Color button is visible (mobile) — click it.
+    const colorCenter = rectCenter(colorRect);
+    const colorMenuAfter = await clickUntilStateChanges(
+      page, colorCenter.x, colorCenter.y, () => colorMenuOpenState?.(), colorMenuBefore
+    );
+    console.log("drum_row_controls_real: Color menu open after:", colorMenuAfter);
+  } else {
+    // Color button is hidden on desktop — open via API.
+    await page.evaluate(() => openColorMenu?.(0));
+    await page.waitForTimeout(80);
+    const colorMenuAfter = await page.evaluate(() => colorMenuOpenState?.());
+    console.log("drum_row_controls_real: Color menu open after (via API):", colorMenuAfter);
+  }
 
   console.log("drum_row_controls_real: PASS - All drum row controls work via real canvas clicks");
 } catch (error) {

@@ -22,7 +22,7 @@ func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 
 	// Open menu via row label click.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open after clicking row label")
 	}
 
@@ -71,7 +71,7 @@ func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 
 	// Frame 1: Press fires Back button → mode switches to categories.
 	dv.Update()
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should stay open during back button press")
 	}
 	if comp.Mode() != InstMenuModeCategories {
@@ -82,7 +82,7 @@ func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 	// the deferred tap capture at line 729.
 	for i := 0; i < 3; i++ {
 		dv.Update()
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatalf("menu closed during held frame %d", i)
 		}
 		if comp.Mode() != InstMenuModeCategories {
@@ -96,7 +96,7 @@ func TestInstMenuBackHeldNoSpuriousDeferredTap(t *testing.T) {
 	dv.Update()
 	r()
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should stay open after release")
 	}
 	if comp.Mode() != InstMenuModeCategories {
@@ -119,7 +119,7 @@ func TestInstMenuBackHeldMobileNoFlicker(t *testing.T) {
 
 	// Open menu programmatically.
 	dv.openInstMenuForRow(0)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open")
 	}
 
@@ -178,7 +178,7 @@ func TestInstMenuBackHeldMobileNoFlicker(t *testing.T) {
 	dv.Update()
 	r()
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should stay open after mobile back+hold+release")
 	}
 	if comp.Mode() != InstMenuModeCategories {
@@ -199,7 +199,7 @@ func TestInstMenuCategoryHeldNoDeferredTapOnInstruments(t *testing.T) {
 
 	// Open menu.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open")
 	}
 
@@ -260,7 +260,7 @@ func TestInstMenuCategoryHeldNoDeferredTapOnInstruments(t *testing.T) {
 	dv.Update()
 	r()
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should stay open after category+hold+release")
 	}
 	if comp.Mode() != InstMenuModeInstruments {
@@ -275,12 +275,12 @@ func TestInstMenuCategoryHeldNoDeferredTapOnInstruments(t *testing.T) {
 func TestInstMenuOpenClearsDeferredTapState(t *testing.T) {
 	assertDefaultParityState(t)
 
-	comp := NewInstrumentMenuComponent("test-deferred-clear")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
-		AnchorRect:  image.Rect(100, 100, 200, 124),
-		VertBounds:  image.Rect(0, 0, 800, 600),
-		RowHeight:   24,
-		LabelWidth:  100,
+		AnchorRect:    image.Rect(100, 100, 200, 124),
+		VertBounds:    image.Rect(0, 0, 800, 600),
+		RowHeight:     24,
+		LabelWidth:    100,
 		ControlsWidth: 100,
 		Instruments: []InstrumentOption{
 			{ID: "kick", Label: "Kick"},
@@ -301,59 +301,23 @@ func TestInstMenuOpenClearsDeferredTapState(t *testing.T) {
 	}
 }
 
-// TestEQChannelMenuSuppressBlocksDeferredTap verifies that the EQ channel
-// menu does not capture a deferred tap while suppressClicksUntilRelease is active.
+// TestEQChannelMenuSuppressBlocksDeferredTap verifies that DeferredTap.Begin()
+// does not capture a tap while suppressClicksUntilRelease is active. This is
+// the portal-era equivalent of the legacy handleEQChannelMenuInput guard.
 func TestEQChannelMenuSuppressBlocksDeferredTap(t *testing.T) {
 	assertDefaultParityState(t)
 
-	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, testLogger)
-	dv.Rows = []*DrumRow{{
-		Name:       "Kick",
-		Instrument: "kick",
-		Steps:      make([]bool, 8),
-		Volume:     1.0,
-	}}
-	dv.Length = 8
+	// DeferredTap.Begin() checks suppressClicksUntilRelease directly.
+	var dt DeferredTap
 
-	// Warm-up to create layout.
-	warmUp := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 600 },
-	)
-	dv.Update()
-	warmUp()
-
-	// Set up EQ channel menu state.
-	dv.eqChannelOpen = true
-	if dv.eqChannelBtn == nil {
-		// Create a synthetic button so eqChannelMenuRect() works.
-		dv.eqChannelBtn = NewButton("Master", DropdownStyle, nil)
-		dv.eqChannelBtn.SetRect(image.Rect(100, 500, 200, 524))
-	}
-	if dv.eqChannelScroll == nil {
-		dv.eqChannelScroll = NewScrollBehavior(DropdownScrollbarStyle, 24)
-	}
-	dv.buildEQChannelMenu()
-
-	menuRect := dv.eqChannelMenuRect()
-	if menuRect.Empty() {
-		t.Skip("EQ channel menu rect is empty — cannot test deferred tap guard")
-	}
-
-	// Simulate: suppress is active, mouse pressed inside the menu area.
 	suppressClicksUntilRelease = true
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
-	mx := menuRect.Min.X + menuRect.Dx()/2
-	my := menuRect.Min.Y + menuRect.Dy()/2
-	dv.handleEQChannelMenuInput(mx, my, true)
-
-	if dv.eqChDeferredTap.Active() {
-		t.Fatal("EQ channel menu should NOT capture deferred tap while suppress is active")
+	if dt.Begin(100, 200) {
+		t.Fatal("Begin should return false while suppress is active")
+	}
+	if dt.Active() {
+		t.Fatal("deferred tap should NOT be active while suppress blocks it")
 	}
 }
 
@@ -369,7 +333,7 @@ func TestInstMenuCloseButtonViaDeferredTap(t *testing.T) {
 
 	// Open menu via row label click.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open after clicking row label")
 	}
 
@@ -408,7 +372,7 @@ func TestInstMenuCloseButtonViaDeferredTap(t *testing.T) {
 	r()
 
 	// Menu should still be open (touch is held).
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should still be open during press")
 	}
 
@@ -417,7 +381,7 @@ func TestInstMenuCloseButtonViaDeferredTap(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("menu should be closed after tapping close button via deferred tap")
 	}
 	if !closedCalled {
@@ -440,7 +404,7 @@ func TestInstMenuCloseButtonViaDeferredTapMobile(t *testing.T) {
 
 	// Open menu programmatically.
 	dv.openInstMenuForRow(0)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open")
 	}
 
@@ -478,7 +442,7 @@ func TestInstMenuCloseButtonViaDeferredTapMobile(t *testing.T) {
 	dv.Update()
 	r()
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should still be open during press")
 	}
 
@@ -487,7 +451,7 @@ func TestInstMenuCloseButtonViaDeferredTapMobile(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("menu should be closed after mobile close button deferred tap")
 	}
 	if !closedCalled {
@@ -510,7 +474,7 @@ func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 
 		// Open menu.
 		clickDrumViewAt(t, dv, cx, cy, W, H)
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatal("menu should be open")
 		}
 
@@ -536,7 +500,7 @@ func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 			r := pressDrumView(dv, mx, my, W, H)
 			dv.Update()
 			r()
-			if !dv.instMenuOpen {
+			if !dv.IsInstMenuOpen() {
 				t.Fatalf("inst menu closed on held frame %d", i)
 			}
 		}
@@ -546,7 +510,7 @@ func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 		dv.Update()
 		r()
 
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatal("inst menu should be open after held+release")
 		}
 	})
@@ -570,16 +534,16 @@ func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 		dv.Update()
 		warmUp()
 
-		if dv.subdivBtn == nil {
+		if dv.subdivBtn() == nil {
 			t.Skip("subdivBtn not created")
 		}
 
 		// Open subdiv menu.
-		dv.subdivMenuOpen = true
+		dv.openSubdivMenuPortal()
 		SuppressClicksUntilMouseUp()
 		suppressClicksUntilRelease = false // clear for test
 
-		br := dv.subdivBtn.Rect()
+		br := dv.subdivBtn().Rect()
 		if br.Empty() {
 			t.Skip("subdivBtn rect empty")
 		}
@@ -598,7 +562,7 @@ func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 			r := pressDrumView(dv, mx, my, W, H)
 			dv.Update()
 			r()
-			if !dv.subdivMenuOpen {
+			if !dv.IsSubdivMenuOpen() {
 				t.Fatalf("subdiv menu closed on held frame %d", i)
 			}
 		}
@@ -608,7 +572,7 @@ func TestInstMenuAllPopupsHeldMouseStable(t *testing.T) {
 		dv.Update()
 		r()
 
-		if !dv.subdivMenuOpen {
+		if !dv.IsSubdivMenuOpen() {
 			t.Fatal("subdiv menu should be open after held+release")
 		}
 	})

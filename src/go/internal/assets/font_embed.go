@@ -2,8 +2,8 @@ package assets
 
 import _ "embed"
 
-//go:embed fonts/GoRegular.ttf
+//go:embed fonts/Inter-Regular.ttf
 var GoRegularTTF []byte
 
-//go:embed fonts/GoBold.ttf
+//go:embed fonts/Inter-SemiBold.ttf
 var GoBoldTTF []byte

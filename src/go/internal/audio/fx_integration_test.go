@@ -217,8 +217,8 @@ func TestChannelProcessorChainIncludesInserts(t *testing.T) {
 	}
 }
 
-// TestChainAllSixEffectsProcess adds all 6 effect types and processes a sine through
-// the channel. Verifies no NaN/Inf and the output is non-silent.
+// TestChainAllSixEffectsProcess adds all 6 original effect types and processes a sine
+// through the channel. Verifies no NaN/Inf and the output is non-silent.
 func TestChainAllSixEffectsProcess(t *testing.T) {
 	resetChains(t)
 	id := "integ-all6"
@@ -263,6 +263,90 @@ func TestChainAllSixEffectsProcess(t *testing.T) {
 	}
 	if !nonZero {
 		t.Error("output is silent with all 6 effects")
+	}
+}
+
+// TestChainAllEffectsProcess adds all 14 effect types and processes a sine through
+// the channel. Verifies no NaN/Inf and the output is non-silent.
+func TestChainAllEffectsProcess(t *testing.T) {
+	resetChains(t)
+	id := "integ-all14"
+	ch := InstrumentChannel(id)
+
+	allTypes := EffectTypeOrder()
+	for _, et := range allTypes {
+		AddInsertEffect(id, et, nil)
+	}
+
+	slots := GetInsertEffects(id)
+	if len(slots) != len(allTypes) {
+		t.Fatalf("expected %d effects, got %d", len(allTypes), len(slots))
+	}
+
+	const sr = 44100
+	input := sineSamples(440, sr, sr/2) // 0.5 second
+
+	output := processThrough(ch, input)
+
+	for i, s := range output {
+		if math.IsNaN(s) {
+			t.Fatalf("NaN at sample %d", i)
+		}
+		if math.IsInf(s, 0) {
+			t.Fatalf("Inf at sample %d", i)
+		}
+	}
+
+	nonZero := false
+	for _, s := range output {
+		if math.Abs(s) > 1e-10 {
+			nonZero = true
+			break
+		}
+	}
+	if !nonZero {
+		t.Error("output is silent with all effects")
+	}
+}
+
+// TestRegistryContainsAllEffects verifies all registered effect types are present.
+func TestRegistryContainsAllEffects(t *testing.T) {
+	regs := EffectRegistrations()
+	expected := []EffectType{
+		EffectDistortion, EffectDelay, EffectReverb, EffectChorus,
+		EffectBitcrusher, EffectFilter,
+		EffectPhaser, EffectFlanger, EffectTremolo,
+		EffectGate, EffectLimiter,
+		EffectRingMod, EffectWaveshaper, EffectAutoWah,
+		EffectCompressor, EffectTransient,
+		EffectTape, EffectPitchShift,
+	}
+	for _, et := range expected {
+		if _, ok := regs[et]; !ok {
+			t.Errorf("effect type %q not registered", et)
+		}
+	}
+	if len(regs) != len(expected) {
+		t.Errorf("expected %d registered effects, got %d", len(expected), len(regs))
+	}
+}
+
+// TestRegistryDisplayNames verifies all effects have display names.
+func TestRegistryDisplayNames(t *testing.T) {
+	regs := EffectRegistrations()
+	for et, reg := range regs {
+		if reg.DisplayName == "" {
+			t.Errorf("effect %q has empty DisplayName", et)
+		}
+		if reg.Category == "" {
+			t.Errorf("effect %q has empty Category", et)
+		}
+		if len(reg.Params) == 0 {
+			t.Errorf("effect %q has no params defined", et)
+		}
+		if reg.New == nil {
+			t.Errorf("effect %q has nil New function", et)
+		}
 	}
 }
 

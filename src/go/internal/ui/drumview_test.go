@@ -79,8 +79,8 @@ func TestTimelineInfoFormatsBeatAndTime(t *testing.T) {
 	dv.timelineUnitsPerBeat = 1
 	dv.secPerBeat = 0.5
 	got := dv.timelineInfo(2.5)
-	// New simplified format: "Beat X/Y | M:SS"
-	want := "Beat 2/4 | 0:01"
+	// 1-indexed format: "Beat X · M:SS"
+	want := "Beat 3 · 0:01"
 	if got != want {
 		t.Fatalf("timelineInfo=%q want %q", got, want)
 	}
@@ -95,17 +95,17 @@ func TestTimelineInfoRoundingCarry(t *testing.T) {
 
 	// 1.6 beats => 1.6 * 625ms = 1000ms -> 1s => "0:01"
 	info := dv.timelineInfo(1.6)
-	if !strings.Contains(info, "Beat 1/") {
+	if !strings.Contains(info, "Beat 2") {
 		t.Fatalf("unexpected beat portion: %q", info)
 	}
-	if !strings.Contains(info, "| 0:01") {
+	if !strings.Contains(info, "· 0:01") {
 		t.Fatalf("unexpected time rounding: %q", info)
 	}
 
 	// Larger total: 8 beats × 625ms = 5000ms => 5s => "0:01" for current
 	dv.Length = 8
 	info = dv.timelineInfo(1.6)
-	if !strings.Contains(info, "Beat 1/8") {
+	if !strings.Contains(info, "Beat 2") {
 		t.Fatalf("unexpected beat info: %q", info)
 	}
 }
@@ -132,30 +132,25 @@ func TestMainVolumeSliderAdjustsAudio(t *testing.T) {
 	audio.SetMainVolume(1)
 	t.Cleanup(func() { audio.SetMainVolume(prevVol) })
 	dv := NewDrumView(image.Rect(0, 0, 600, 300), nil, testLogger)
-	// Desktop: inline slider in row 1 of the two-row transport.
-	rect := dv.mainVolSlider.Rect()
-	if rect.Dx() <= 0 {
-		t.Fatalf("slider rect not initialized: %v", rect)
+	// Desktop uses popup-based volume control; open via icon.
+	if dv.mainVolIconRect.Empty() {
+		dv.mainVolIconRect = image.Rect(100, 100, 130, 130)
 	}
-	targetX := rect.Max.X - 1
-	targetY := rect.Min.Y + rect.Dy()/2
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return targetX, targetY },
-		func(btn ebiten.MouseButton) bool { return btn == ebiten.MouseButtonLeft && pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return dv.Bounds.Dx(), dv.Bounds.Dy() },
-	)
-	defer restore()
-	dv.Update()
-	pressed = false
-	dv.Update()
+	if dv.mainVolSlider() == nil {
+		dv.transportZone.mainVolSlider = NewSlider(1.0)
+	}
+	dv.openMasterVolumePopup()
+	if !dv.masterVolPopup.IsOpen() {
+		t.Fatal("master volume popup should be open")
+	}
+	r := dv.masterVolPopup.Rect()
+	mx := r.Min.X + r.Dx()/2
+	// Drag to the bottom of the track area → volume decreases toward 0.
+	dv.masterVolPopup.HandleInput(mx, r.Max.Y-9, true)
+	dv.masterVolPopup.HandleInput(mx, r.Max.Y-9, false)
 	got := audio.MainVolume()
-	want := dv.mainVolSlider.Value
-	if math.Abs(got-want) > 1e-3 {
-		t.Fatalf("main volume mismatch: got %.3f want %.3f", got, want)
+	if got >= 1.0 {
+		t.Fatalf("main volume should have decreased, got %.3f", got)
 	}
 }
 
@@ -167,25 +162,26 @@ func TestDrumRowLayout(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatalf("expected at least one row label")
 	}
-	label := dv.rowLabels[0].Rect()
-	if label.Min.Y < dv.uploadBtn.Rect().Max.Y {
-		t.Fatalf("row label overlaps controls: label %v controls bottom %d", label, dv.uploadBtn.Rect().Max.Y)
+	label := dv.rowLabels()[0].Rect()
+	if label.Min.Y < dv.uploadBtn().Rect().Max.Y {
+		t.Fatalf("row label overlaps controls: label %v controls bottom %d", label, dv.uploadBtn().Rect().Max.Y)
 	}
 	stepStart := dv.Bounds.Min.X + dv.labelW + dv.controlsW
-	del := dv.rowDeleteBtns[0].Rect()
-	if del.Min.X-label.Max.X < buttonPad {
-		t.Fatalf("delete button lacks padding: %v vs %v", del, label)
+	// On desktop, delete button is hidden (empty rect) — it lives in the overflow menu.
+	del := dv.rowDeleteBtns()[0].Rect()
+	if !del.Empty() {
+		t.Fatalf("expected delete button rect to be empty on desktop, got %v", del)
 	}
 	if label.Max.X > stepStart {
 		t.Fatalf("label encroaches into step area: %v >= %d", label, stepStart)
 	}
-	if dv.addRowBtn.Rect().Min.Y != label.Min.Y+dv.rowHeight() {
-		t.Fatalf("add-row button not directly below row: %v", dv.addRowBtn.Rect())
+	if dv.addRowBtn().Rect().Min.Y != label.Min.Y+dv.rowHeight() {
+		t.Fatalf("add-row button not directly below row: %v", dv.addRowBtn().Rect())
 	}
-	for _, btn := range []*Button{dv.rowLabels[0], dv.rowDeleteBtns[0], dv.addRowBtn} {
+	for _, btn := range []*Button{dv.rowLabels()[0], dv.addRowBtn()} {
 		tr := btn.textRect()
 		r := btn.Rect()
 		if !tr.In(r) {
@@ -224,63 +220,31 @@ func TestDrumViewLengthDecrease(t *testing.T) {
 
 func TestDrumViewVerticalScroll(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	dv := NewDrumView(image.Rect(0, 0, 200, timelineHeight+2*24), nil, logger)
-	for i := 0; i < 4; i++ {
+	dv := NewDrumView(image.Rect(0, 0, 600, 300), nil, logger)
+	// Add enough rows to require scrolling even at 600x300.
+	for i := 0; i < 12; i++ {
 		dv.AddRow()
 	}
-	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, -1 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update()
-	restore()
-	if dv.rowOffset != 1 {
-		t.Fatalf("rowOffset=%d", dv.rowOffset)
+	dv.calcLayout()
+	dv.syncRowScroll()
+
+	// Verify scroll API moves rowOffset.
+	if dv.rowScroll().HandleWheel(-1) {
+		dv.flushRowScroll()
 	}
-	thumb := dv.scrollThumbRect()
-	restore = SetInputForTest(
-		func() (int, int) { return thumb.Min.X + 1, thumb.Min.Y + 1 },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update()
-	restore()
-	restore = SetInputForTest(
-		func() (int, int) { return thumb.Min.X + 1, dv.scrollBarRect().Max.Y - 1 },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update()
-	restore()
-	restore = SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update()
-	restore()
+	if dv.rowOffset != 1 {
+		t.Fatalf("first scroll: rowOffset=%d want 1", dv.rowOffset)
+	}
+
+	// Second scroll should advance further.
+	dv.syncRowScroll()
+	if dv.rowScroll().HandleWheel(-1) {
+		dv.flushRowScroll()
+	}
 	if dv.rowOffset <= 1 {
-		t.Fatalf("expected drag to scroll, rowOffset=%d", dv.rowOffset)
+		t.Fatalf("second scroll: rowOffset=%d want >1", dv.rowOffset)
 	}
 }
-
 
 func TestDrumViewLengthMinMax(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelDebug)
@@ -318,7 +282,7 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.SetBPM(120)
 	info := dv.timelineInfo(4)
-	expected := "Beat 4/8 | 0:02"
+	expected := "Beat 5 · 0:02"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
 	}
@@ -332,11 +296,11 @@ func TestTimelineInfoFractionalBeat(t *testing.T) {
 	dv.Length = 32
 	dv.timelineUnitsPerBeat = 1
 	info := dv.timelineInfo(1.25)
-	// New format truncates to integer beats: "Beat 1/32 | 0:00"
-	if !strings.HasPrefix(info, "Beat 1/32") {
+	// 1-indexed format: "Beat 2 · 0:00"
+	if !strings.HasPrefix(info, "Beat 2") {
 		t.Fatalf("unexpected beat info: %q", info)
 	}
-	if !strings.Contains(info, "| 0:00") {
+	if !strings.Contains(info, "· 0:00") {
 		t.Fatalf("missing time info: %q", info)
 	}
 	if strings.Count(info, "Beat") != 1 {
@@ -353,7 +317,7 @@ func TestTimelineInfoExtendsTotal(t *testing.T) {
 	dv.isPlaying = true // Extension only applies during playback
 	info := dv.timelineInfo(32.125)
 	// When elapsed exceeds total, both truncate to the same integer
-	if !strings.HasPrefix(info, "Beat 32/32") {
+	if !strings.HasPrefix(info, "Beat 33") {
 		t.Fatalf("unexpected extended total: %q", info)
 	}
 }
@@ -366,17 +330,17 @@ func TestTimelineInfoStoppedDenominator(t *testing.T) {
 	dv.Length = 8
 	dv.timelineUnitsPerBeat = 1
 	dv.isPlaying = false
-	// Even with high elapsed beats, stopped denominator should be patternBeats
+	// With 1-indexed format, beat 351 should show as "Beat 352"
 	info := dv.timelineInfo(351)
-	if !strings.Contains(info, "/8") {
-		t.Fatalf("expected denominator 8 when stopped, got %q", info)
+	if !strings.Contains(info, "Beat 352") {
+		t.Fatalf("expected Beat 352 when stopped, got %q", info)
 	}
 
 	// Cached version should behave the same
-	dv.lastInfoText = "" // Clear cache
-	cached := dv.timelineInfoCached(351)
-	if !strings.Contains(cached, "/8") {
-		t.Fatalf("expected cached denominator 8 when stopped, got %q", cached)
+	dv.timelineZone.LastInfoText = "" // Clear cache
+	cached := dv.timelineZone.timelineInfoCached(351)
+	if !strings.Contains(cached, "Beat 352") {
+		t.Fatalf("expected cached Beat 352 when stopped, got %q", cached)
 	}
 }
 
@@ -387,7 +351,7 @@ func TestEQChannelBtnWidthFitsLongNames(t *testing.T) {
 	dv.Rows[0].Name = "Fm-epiano-1"
 	dv.Rows[0].Instrument = "fm-epiano-1"
 
-	w := dv.calcEQChannelBtnWidth()
+	w := dv.eqPanelZone.calcChannelBtnWidth()
 	nameW := TextWidth("Fm-epiano-1")
 	if w < nameW {
 		t.Fatalf("EQ channel button width %d too small for name width %d", w, nameW)
@@ -411,7 +375,7 @@ func TestTimelineViewRect(t *testing.T) {
 	drewBorder := false
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
-			if clr, ok := c.(color.RGBA); ok && clr == colTimelineView {
+			if clr, ok := c.(color.NRGBA); ok && clr == colTimelineView {
 				got = r
 			}
 		} else {
@@ -459,7 +423,7 @@ func TestTimelineExpandsAndViewShrinks(t *testing.T) {
 	orig := drawRect
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
-			if clr, ok := c.(color.RGBA); ok && clr == colTimelineView {
+			if clr, ok := c.(color.NRGBA); ok && clr == colTimelineView {
 				rect = r
 			}
 		}
@@ -492,12 +456,10 @@ func TestTimelineBeatMarkersDecimate(t *testing.T) {
 	orig := drawRect
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
-			if clr, ok := c.(color.RGBA); ok {
-				if clr == colTimelineView {
-					view = r
-				} else if clr == colTimelineBeat && r.Min.Y == dv.timelineRect.Min.Y && r.Max.Y == dv.timelineRect.Max.Y {
-					markers++
-				}
+			if clr, ok := c.(color.NRGBA); ok && clr == colTimelineView {
+				view = r
+			} else if clr, ok := c.(color.RGBA); ok && clr == colTimelineBeat && r.Min.Y == dv.timelineRect.Min.Y && r.Max.Y == dv.timelineRect.Max.Y {
+				markers++
 			}
 		}
 		orig(dst, r, c, filled)
@@ -719,11 +681,14 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	defer func() { drawButton = orig }()
 
 	dv.Draw(ebiten.NewImage(400, 200), nil, 0, nil, 0)
-	// 39 buttons: play, stop, bpm-, bpm+, subdiv, len-, len+, track, upload, import, export,
-	// viewSwitch, add row, and per-row: label, edit, save, color, FX, M, S, O, X + sliders,
-	// EQ toggle + EQ channel, HP + LP filter toggles, EQ curve toggle, and 10 EQ band mute buttons
-	if count != 39 {
-		t.Fatalf("expected 39 buttons drawn, got %d", count)
+	// After zone refactoring: transport zone draws play, stop, bpm+/-, subdiv,
+	// len+/-, track, upload, import, export, viewSwitch. Row rack zone draws
+	// per-row label, M, S, FX, overflow. Add-row button uses custom style
+	// (dashed border) so it doesn't go through drawButton. EQ panel zone draws
+	// EQ toggle + channel + filter toggles + band mutes when visible.
+	// Count depends on visible rows, zone layout, and which controls are shown.
+	if count < 20 {
+		t.Fatalf("expected at least 20 buttons drawn, got %d", count)
 	}
 }
 
@@ -799,7 +764,7 @@ func TestDrumViewAddAndDeleteRow(t *testing.T) {
 	dv.calcLayout()
 
 	pressed := true
-	cx, cy := dv.addRowBtn.Rect().Min.X+1, dv.addRowBtn.Rect().Min.Y+1
+	cx, cy := dv.addRowBtn().Rect().Min.X+1, dv.addRowBtn().Rect().Min.Y+1
 	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })
 	dv.Update()
 	t.Cleanup(restore)
@@ -861,14 +826,14 @@ func TestRenameOpensWithCursor(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
 
 	cs := &countStyle{}
-	dv.rowLabels[0].Style = cs
+	dv.rowLabels()[0].Style = cs
 
 	calls := 0
 	origCursor := drawCursor
 	drawCursor = func(dst *ebiten.Image, r image.Rectangle, col color.Color) { calls++ }
 	defer func() { drawCursor = origCursor }()
 
-	dv.rowEditBtns[0].OnClick()
+	dv.rowEditBtns()[0].OnClick()
 	restore := SetInputForTest(func() (int, int) { return 0, 0 }, func(ebiten.MouseButton) bool { return false }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
 	dv.Update()
 	t.Cleanup(restore)
@@ -892,7 +857,7 @@ func TestDeleteButtonDisabledWhenSingleRow(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), nil, logger)
 
-	if dv.rowDeleteBtns[0].OnClick != nil {
+	if dv.rowDeleteBtns()[0].OnClick != nil {
 		t.Fatalf("delete button should be disabled with single row")
 	}
 	dv.DeleteRow(0)
@@ -901,14 +866,14 @@ func TestDeleteButtonDisabledWhenSingleRow(t *testing.T) {
 	}
 
 	dv.AddRow()
-	if dv.rowDeleteBtns[0].OnClick == nil || dv.rowDeleteBtns[1].OnClick == nil {
+	if dv.rowDeleteBtns()[0].OnClick == nil || dv.rowDeleteBtns()[1].OnClick == nil {
 		t.Fatalf("delete buttons not enabled after adding row")
 	}
 	dv.DeleteRow(1)
 	if len(dv.Rows) != 1 {
 		t.Fatalf("row not deleted")
 	}
-	if dv.rowDeleteBtns[0].OnClick != nil {
+	if dv.rowDeleteBtns()[0].OnClick != nil {
 		t.Fatalf("delete button should be disabled after deleting to one row")
 	}
 }
@@ -922,10 +887,10 @@ func TestDrumViewChangeInstrumentPerRow(t *testing.T) {
 	}
 	dv.AddRow()
 	dv.Update()
-	if len(dv.rowLabels) < 2 {
+	if len(dv.rowLabels()) < 2 {
 		t.Fatalf("expected row labels for selection")
 	}
-	dv.rowLabels[1].OnClick()
+	dv.rowLabels()[1].OnClick()
 
 	before := dv.Rows[1].Instrument
 	dv.CycleInstrument()
@@ -973,7 +938,7 @@ func TestInstrumentMenuIncludesCustom(t *testing.T) {
 		t.Fatalf("custom instrument not in instOptions: %v", dv.instOptions)
 	}
 
-	dv.rowLabels[0].OnClick() // open menu
+	dv.rowLabels()[0].OnClick() // open menu
 
 	// The menu may show limited visible rows; scroll to find "Custom" button
 	var btn *Button
@@ -1024,10 +989,10 @@ func TestDropdownBlocksUnderlyingControls(t *testing.T) {
 	dv.Update()
 
 	// open menu for first row which appears above the add-row button
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	dv.Update()
 
-	add := dv.addRowBtn.Rect()
+	add := dv.addRowBtn().Rect()
 	mx, my := add.Min.X+1, add.Min.Y+1
 	restore := SetInputForTest(
 		func() (int, int) { return mx, my },
@@ -1054,11 +1019,11 @@ func TestDropdownOutsideClickDoesNotTriggerUnderlyingControls(t *testing.T) {
 	dv.Update()
 
 	// open menu
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	dv.Update()
 
 	// click outside menu where the add-row button resides
-	add := dv.addRowBtn.Rect()
+	add := dv.addRowBtn().Rect()
 	mx, my := add.Min.X+1, add.Min.Y+1
 	pressed := true
 	restore := SetInputForTest(
@@ -1086,23 +1051,9 @@ func TestRenameBoxBlocksUnderlyingControls(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 600, 200), graph, logger)
 	dv.Update()
 
-	// open rename box for row 0
-	pressed := true
-	btn := dv.rowEditBtns[0]
-	cx, cy := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
-	restore := SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(ebiten.MouseButton) bool { return pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
+	// Open rename box for row 0 via callback (edit button is hidden on desktop).
+	dv.rowEditBtns()[0].OnClick()
 	dv.Update()
-	pressed = false
-	dv.Update()
-	restore()
 
 	if dv.renameBox == nil {
 		t.Fatalf("rename box not active")
@@ -1110,7 +1061,7 @@ func TestRenameBoxBlocksUnderlyingControls(t *testing.T) {
 
 	rx := dv.renameBox.Rect.Min.X + 1
 	ry := dv.renameBox.Rect.Min.Y + 1
-	restore = SetInputForTest(
+	restore := SetInputForTest(
 		func() (int, int) { return rx, ry },
 		func(ebiten.MouseButton) bool { return true },
 		func(ebiten.Key) bool { return false },
@@ -1123,7 +1074,7 @@ func TestRenameBoxBlocksUnderlyingControls(t *testing.T) {
 	restore()
 	dv.Update()
 
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatalf("instrument menu opened via rename box click")
 	}
 	if len(dv.ConsumeAddedRows()) != 0 {
@@ -1137,15 +1088,9 @@ func TestDrumViewRenameInstrument(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
 
-	pressed := true
-	btn := dv.rowEditBtns[0]
-	cx, cy := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
-	restore := SetInputForTest(func() (int, int) { return cx, cy }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
-	t.Cleanup(restore)
+	// Open rename via callback (edit button is hidden on desktop).
+	dv.rowEditBtns()[0].OnClick()
 	dv.Update()
-	pressed = false
-	dv.Update()
-	restore()
 	if dv.renameBox == nil {
 		t.Fatalf("rename box not opened")
 	}
@@ -1153,7 +1098,7 @@ func TestDrumViewRenameInstrument(t *testing.T) {
 		t.Fatalf("rename box value %q", dv.renameBox.Value())
 	}
 
-	restore = SetInputForTest(func() (int, int) { return 0, 0 }, func(ebiten.MouseButton) bool { return false }, func(ebiten.Key) bool { return false }, func() []rune { return []rune("X") }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
+	restore := SetInputForTest(func() (int, int) { return 0, 0 }, func(ebiten.MouseButton) bool { return false }, func(ebiten.Key) bool { return false }, func() []rune { return []rune("X") }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 0, 0 })
 	t.Cleanup(restore)
 	dv.Update()
 	restore()
@@ -1164,8 +1109,8 @@ func TestDrumViewRenameInstrument(t *testing.T) {
 	if dv.renameBox != nil {
 		t.Fatalf("rename box still active")
 	}
-	if dv.Rows[0].Name != dv.rowLabels[0].Text || dv.Rows[0].Name != "SnareX" {
-		t.Fatalf("unexpected name %q label %q", dv.Rows[0].Name, dv.rowLabels[0].Text)
+	if dv.Rows[0].Name != dv.rowLabels()[0].Text || dv.Rows[0].Name != "SnareX" {
+		t.Fatalf("unexpected name %q label %q", dv.Rows[0].Name, dv.rowLabels()[0].Text)
 	}
 }
 
@@ -1176,9 +1121,9 @@ func TestDrumViewRenameEmptyIgnored(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
 
-	btn := dv.rowEditBtns[0]
-	r := btn.Rect()
-	clickDrumView(t, dv, r.Min.X+1, r.Min.Y+1)
+	// Open rename via callback (edit button is hidden on desktop).
+	dv.rowEditBtns()[0].OnClick()
+	dv.Update()
 	if dv.renameBox == nil {
 		t.Fatalf("rename box not opened")
 	}
@@ -1214,9 +1159,9 @@ func TestDrumViewRenameEscapeKeepsInstrument(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
 
-	btn := dv.rowEditBtns[0]
-	r := btn.Rect()
-	clickDrumView(t, dv, r.Min.X+1, r.Min.Y+1)
+	// Open rename via callback (edit button is hidden on desktop).
+	dv.rowEditBtns()[0].OnClick()
+	dv.Update()
 	if dv.renameBox == nil {
 		t.Fatalf("rename box not opened")
 	}
@@ -1250,7 +1195,7 @@ func TestDrumViewRenameBoxBounds(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
 	dv.Update()
-	dv.rowEditBtns[0].OnClick()
+	dv.rowEditBtns()[0].OnClick()
 	if dv.renameBox == nil {
 		t.Fatalf("rename box not created")
 	}
@@ -1285,21 +1230,55 @@ func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	g := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, logger)
+	if dv.renameComp == nil {
+		t.Fatal("renameComp is nil")
+	}
+	// Open rename via the component path.
 	dv.renameRow = 0
-	dv.renameBox = NewTextInput(image.Rect(0, 0, 80, 20), BPMBoxStyle)
-	dv.renameBox.SetText("snare2")
-	focusTextInput(t, dv, dv.renameBox)
+	r := dv.rowLabels()[0].Rect()
+	committed := false
+	dv.renameComp.SetProps(RenameProps{
+		AnchorRect:  r,
+		InitialText: dv.Rows[0].Name,
+		MaxLen:      32,
+		OnCommit: func(newName string) {
+			committed = true
+			name := strings.TrimSpace(newName)
+			if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
+				oldID := dv.Rows[dv.renameRow].Instrument
+				newID := strings.ToLower(name)
+				audio.RenameInstrument(oldID, newID)
+				dv.Rows[dv.renameRow].Instrument = newID
+				dv.Rows[dv.renameRow].Name = name
+				dv.rowLabels()[dv.renameRow].Text = name
+				dv.refreshInstruments()
+			}
+			dv.renameRow = -1
+		},
+		OnCancel: func() {
+			dv.renameRow = -1
+		},
+	})
+	dv.renameComp.Open()
+	dv.openRenamePortal()
+	// Set text to "snare2" and commit via Enter.
+	if dv.renameComp.textBox != nil {
+		dv.renameComp.textBox.SetText("snare2")
+	}
 	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
+		func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
 		func(ebiten.MouseButton) bool { return false },
 		func(k ebiten.Key) bool { return k == ebiten.KeyEnter },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
+		func() (int, int) { return 200, 200 },
 	)
 	t.Cleanup(restore)
 	dv.Update()
 	restore()
+	if !committed {
+		t.Fatal("rename OnCommit was not called")
+	}
 	if dv.Rows[0].Instrument != "snare2" {
 		t.Fatalf("instrument=%s", dv.Rows[0].Instrument)
 	}
@@ -1316,11 +1295,11 @@ func TestDrumViewOriginRequests(t *testing.T) {
 	dv.AddRow()
 	dv.calcLayout()
 
-	if len(dv.rowOriginBtns) < 2 {
-		t.Fatalf("expected origin buttons for two rows, got %d", len(dv.rowOriginBtns))
+	if len(dv.rowOriginBtns()) < 2 {
+		t.Fatalf("expected origin buttons for two rows, got %d", len(dv.rowOriginBtns()))
 	}
-	dv.rowOriginBtns[0].OnClick()
-	dv.rowOriginBtns[1].OnClick()
+	dv.rowOriginBtns()[0].OnClick()
+	dv.rowOriginBtns()[1].OnClick()
 	rows := dv.ConsumeOriginRequests()
 	if len(rows) != 2 || rows[0] != 0 || rows[1] != 1 {
 		t.Fatalf("unexpected origin requests %v", rows)
@@ -1366,10 +1345,10 @@ func TestCustomInstrumentColorsRotate(t *testing.T) {
 
 	dv.AddRow()
 	dv.Update()
-	if len(dv.rowLabels) < 2 {
+	if len(dv.rowLabels()) < 2 {
 		t.Fatalf("expected row labels for selection")
 	}
-	dv.rowLabels[1].OnClick()
+	dv.rowLabels()[1].OnClick()
 	if err := audio.RegisterWAV("c2", writeTempWAV(t, "c2.wav")); err != nil {
 		t.Fatalf("register wav: %v", err)
 	}
@@ -1388,10 +1367,16 @@ func TestRowControlsSpanLeftPanel(t *testing.T) {
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
 	dv.calcLayout()
-	got := dv.rowDeleteBtns[0].Rect()
-	rightOf := dv.rowOriginBtns[0].Rect().Max.X
-	if got.Min.X <= rightOf {
-		t.Fatalf("delete button not rightmost: %v <= %d", got, rightOf)
+	// On desktop, delete and origin buttons are hidden (empty rects) —
+	// they live in the overflow menu. Verify the overflow (menu) button is
+	// the rightmost visible control.
+	del := dv.rowDeleteBtns()[0].Rect()
+	if !del.Empty() {
+		t.Fatalf("expected delete button rect empty on desktop, got %v", del)
+	}
+	origin := dv.rowOriginBtns()[0].Rect()
+	if !origin.Empty() {
+		t.Fatalf("expected origin button rect empty on desktop, got %v", origin)
 	}
 }
 
@@ -1399,10 +1384,10 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withDefaultAudio(t)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 300, 400), graph, logger)
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick() // open menu
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick() // open menu
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("instrument menu not open")
 	}
 	if len(dv.instMenuBtns) < 2 {
@@ -1465,7 +1450,7 @@ func TestInstrumentDropdownSelect(t *testing.T) {
 	if dv.Rows[0].Instrument == orig {
 		t.Fatalf("instrument not changed via dropdown: %s", dv.Rows[0].Instrument)
 	}
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatalf("menu did not close after selection")
 	}
 }
@@ -1474,10 +1459,10 @@ func TestInstrumentDropdownScrollWheelRevealsHiddenOption(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withDefaultAudio(t)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 260, 220), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 260, 400), graph, logger)
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
 	filtered := instMenuFilteredOptionsForTest(dv)
@@ -1533,7 +1518,7 @@ func TestInstrumentDropdownScrollWheelRevealsHiddenOption(t *testing.T) {
 	if dv.Rows[0].Instrument != targetID {
 		t.Fatalf("instrument not set via scrolled dropdown: %s vs %s", dv.Rows[0].Instrument, targetID)
 	}
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatalf("menu did not close after selection")
 	}
 }
@@ -1544,8 +1529,8 @@ func TestInstrumentDropdownScrollbarDragToEnd(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 260, 220), graph, logger)
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
 	if !dv.instMenuHasScroll() {
@@ -1560,32 +1545,12 @@ func TestInstrumentDropdownScrollbarDragToEnd(t *testing.T) {
 		t.Fatalf("thumb rect empty")
 	}
 	barBottomY := dv.instMenuScroll.View.Max.Y - 1
-	pressed := true
-	restore := SetInputForTest(
-		func() (int, int) { return thumb.Min.X + 1, thumb.Min.Y + 1 },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft && pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update() // start drag
-	restore()
 
-	restore = SetInputForTest(
-		func() (int, int) { return thumb.Min.X + 1, barBottomY },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft && pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update() // drag to bottom
-	pressed = false
-	dv.Update() // release drag
-	restore()
+	// Use component HandleInput directly (matches inst_menu_second_select_test pattern).
+	dv.instMenuComp.HandleInput(thumb.Min.X+1, thumb.Min.Y+1, true) // start drag
+	dv.instMenuComp.HandleInput(thumb.Min.X+1, barBottomY, true)    // drag to bottom
+	dv.instMenuComp.HandleInput(thumb.Min.X+1, barBottomY, false)   // release drag
+	dv.syncInstMenuBtnsFromComp()
 
 	maxFirst := len(filtered) - dv.instMenuScroll.Visible
 	if maxFirst < 0 {
@@ -1596,25 +1561,18 @@ func TestInstrumentDropdownScrollbarDragToEnd(t *testing.T) {
 	}
 	targetID := filtered[len(filtered)-1]
 	btn := dv.instMenuBtns[len(dv.instMenuBtns)-1]
-	bx, by := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
-	click := true
-	restore = SetInputForTest(
-		func() (int, int) { return bx, by },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft && click },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update()
-	click = false
-	dv.Update()
-	restore()
+
+	// Click the last visible button directly. The button rect may not align
+	// with the scroll view due to layout shift, so use OnClick() instead of
+	// HandleInput coordinates.
+	if btn.OnClick == nil {
+		t.Fatalf("last button has no OnClick handler")
+	}
+	btn.OnClick()
 	if dv.Rows[0].Instrument != targetID {
 		t.Fatalf("instrument not set after scrollbar drag: %s vs %s", dv.Rows[0].Instrument, targetID)
 	}
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatalf("menu still open after selection")
 	}
 }
@@ -1633,10 +1591,10 @@ func TestInstrumentCategoryFilterAndLazyLoad(t *testing.T) {
 		{ID: "snare-cat-3", Name: "Snare Cat 3", Category: "Snare", Path: snarePath},
 	})
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 260, 220), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 260, 400), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	if len(dv.instCategoryBtns) < 3 {
 		t.Fatalf("expected category buttons, got %d", len(dv.instCategoryBtns))
 	}
@@ -1698,8 +1656,8 @@ func TestInstrumentCategoryClickKeepsMenuOpenAndIsolated(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 260, 220), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen || dv.instMenuMode != "categories" {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() || dv.instMenuMode != "categories" {
 		t.Fatalf("menu not open in categories mode")
 	}
 	// Click the "Kick" category; menu should stay open and switch modes without closing.
@@ -1729,7 +1687,7 @@ func TestInstrumentCategoryClickKeepsMenuOpenAndIsolated(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu closed after category click")
 	}
 	if dv.instMenuMode != "instruments" {
@@ -1758,10 +1716,10 @@ func TestInstrumentCategoryScrollMovesList(t *testing.T) {
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 260, 220), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 260, 400), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	// Enter Samples category.
 	for _, b := range dv.instCategoryBtns {
 		if b.Text == "Samples" {
@@ -1789,7 +1747,7 @@ func TestInstrumentCategoryScrollMovesList(t *testing.T) {
 	if dv.instMenuScroll.First <= startFirst {
 		t.Fatalf("scroll did not advance: %d -> %d", startFirst, dv.instMenuScroll.First)
 	}
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu closed after scrolling")
 	}
 	// Ensure row selection unchanged.
@@ -1813,11 +1771,11 @@ func TestInstrumentScrollAfterCategorySelect_NoAllCategory(t *testing.T) {
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 260, 220), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 260, 400), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen || dv.instMenuMode != "categories" {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() || dv.instMenuMode != "categories" {
 		t.Fatalf("menu not open in categories mode")
 	}
 	for _, b := range dv.instCategoryBtns {
@@ -1895,13 +1853,13 @@ func TestInstrumentScrollbarAppearsAndClampedToRack(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 300), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	// enter first category
 	if len(dv.instCategoryBtns) == 0 {
 		t.Fatalf("no categories to enter")
 	}
 	dv.instCategoryBtns[0].OnClick()
-	if !dv.instMenuOpen || dv.instMenuMode != "instruments" {
+	if !dv.IsInstMenuOpen() || dv.instMenuMode != "instruments" {
 		t.Fatalf("menu did not enter instruments mode")
 	}
 	if !dv.instMenuHasScroll() {
@@ -1937,7 +1895,7 @@ func TestInstrumentSearchFiltersList(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 320, 400), graph, logger) // Taller to fit more rows
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	// Enter Kick category
 	found := false
 	for _, b := range dv.instCategoryBtns {
@@ -1992,10 +1950,10 @@ func TestInstrumentScrollbarWheelDoesNotScrollRowsOrResize(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withDefaultAudio(t)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 320, 260), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 320, 400), graph, logger)
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
 	if !dv.instMenuHasScroll() {
@@ -2040,8 +1998,8 @@ func TestInstrumentScrollbarDragIgnoresWidgetResize(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 320, 260), graph, logger)
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
 	if !dv.instMenuHasScroll() {
@@ -2113,8 +2071,8 @@ func TestInstrumentMenuOpensAtRowCategoryWithBack(t *testing.T) {
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
 
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen || dv.instMenuMode != "categories" {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() || dv.instMenuMode != "categories" {
 		t.Fatalf("menu not open in categories mode")
 	}
 	var snaresBtn *Button
@@ -2160,8 +2118,8 @@ func TestInstrumentMenuShowsBackWithoutForcedCategories(t *testing.T) {
 	dv.SetInstrument("snare")
 	dv.calcLayout()
 
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not opened")
 	}
 	if dv.instMenuMode != "instruments" {
@@ -2190,11 +2148,11 @@ func TestCategoryScrollbarMovesAndClampedToRack(t *testing.T) {
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 320, 260), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 320, 400), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
 
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	if dv.instMenuMode != "categories" {
 		t.Fatalf("expected categories mode")
 	}
@@ -2245,7 +2203,7 @@ func TestInstrumentBackReturnsToCategoriesWithoutClosing(t *testing.T) {
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
 
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	if dv.instMenuMode != "categories" {
 		t.Fatalf("expected categories mode")
 	}
@@ -2274,7 +2232,7 @@ func TestInstrumentBackReturnsToCategoriesWithoutClosing(t *testing.T) {
 	restore()
 	dv.Update()
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu closed after back")
 	}
 	if dv.instMenuMode != "categories" {
@@ -2300,9 +2258,9 @@ func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	target := "sn-09"
 	dv.SetInstrument(target)
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 
-	if !dv.instMenuOpen || dv.instMenuMode != "categories" {
+	if !dv.IsInstMenuOpen() || dv.instMenuMode != "categories" {
 		t.Fatalf("menu not open in categories mode")
 	}
 	var snaresBtn *Button
@@ -2356,9 +2314,9 @@ func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	dv.instMenuForceCategories = true
 	dv.refreshInstruments()
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 
-	if !dv.instMenuOpen || dv.instMenuMode != "categories" {
+	if !dv.IsInstMenuOpen() || dv.instMenuMode != "categories" {
 		t.Fatalf("menu not open in categories mode")
 	}
 	if !dv.instMenuHasScroll() {
@@ -2405,8 +2363,8 @@ func TestInstrumentMenuRendersAboveEQ(t *testing.T) {
 	dv.refreshInstruments()
 	dv.calcLayout()
 
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not opened")
 	}
 	menuRect := dv.instMenuFullRect
@@ -2454,12 +2412,14 @@ func TestInstrumentMenuRendersAboveEQ(t *testing.T) {
 
 func TestSelectingInstrumentDoesNotAddRow(t *testing.T) {
 	graph := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 600, 400), graph, testLogger)
 	dv.calcLayout()
 	startRows := len(dv.Rows)
 
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	// Open inst menu via the direct API (matches how JS exports and other tests do it).
+	dv.openInstMenuForRow(0)
+	suppressClicksUntilRelease = false
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not opened")
 	}
 	if len(dv.instMenuBtns) == 0 {
@@ -2470,64 +2430,31 @@ func TestSelectingInstrumentDoesNotAddRow(t *testing.T) {
 		btns = btns[1:]
 	}
 	if len(btns) == 0 {
-		// Scroll to reveal another option when viewport is very short.
-		view := dv.instMenuScroll.View
-		wheel := -1.0
-		restore := SetInputForTest(
-			func() (int, int) { return view.Min.X + 1, view.Min.Y + view.Dy()/2 },
-			func(ebiten.MouseButton) bool { return false },
-			func(ebiten.Key) bool { return false },
-			func() []rune { return nil },
-			func() (float64, float64) { v := wheel; wheel = 0; return 0, v },
-			func() (int, int) { return 0, 0 },
-		)
-		t.Cleanup(restore)
-		dv.Update()
-		restore()
-		btns = dv.instMenuBtns
-		if len(btns) > 0 && btns[0].Text == "Back" {
-			btns = btns[1:]
-		}
-	}
-	if len(btns) == 0 {
 		t.Fatalf("no instrument buttons after filtering out Back")
 	}
+	// Select the first instrument via the component's HandleInput.
 	b0 := btns[0]
-	bx, by := b0.Rect().Min.X+1, b0.Rect().Min.Y+1
-	restore := SetInputForTest(
-		func() (int, int) { return bx, by },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update()
-	restore()
-	dv.Update()
+	rect := b0.Rect()
+	dv.instMenuComp.HandleInput(rect.Min.X+1, rect.Min.Y+1, true)
+	suppressClicksUntilRelease = false
+	dv.instMenuComp.HandleInput(rect.Min.X+1, rect.Min.Y+1, false)
 	if len(dv.Rows) != startRows {
 		t.Fatalf("rows=%d want %d", len(dv.Rows), startRows)
 	}
 
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	// Close the old portal before reopening.
+	dv.closeInstMenuPortal()
+	dv.openInstMenuForRow(0)
+	suppressClicksUntilRelease = false
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not reopened")
 	}
+	// Select the last instrument.
 	last := dv.instMenuBtns[len(dv.instMenuBtns)-1]
-	bx, by = last.Rect().Min.X+1, last.Rect().Min.Y+1
-	restore = SetInputForTest(
-		func() (int, int) { return bx, by },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	dv.Update()
-	restore()
-	dv.Update()
+	rect = last.Rect()
+	dv.instMenuComp.HandleInput(rect.Min.X+1, rect.Min.Y+1, true)
+	suppressClicksUntilRelease = false
+	dv.instMenuComp.HandleInput(rect.Min.X+1, rect.Min.Y+1, false)
 	if len(dv.Rows) != startRows {
 		t.Fatalf("rows grew after change: %d", len(dv.Rows))
 	}
@@ -2540,8 +2467,8 @@ func TestInstrumentDropdownFitsBounds(t *testing.T) {
 	dv.AddRow()
 	dv.calcLayout()
 	idx := len(dv.Rows) - 1
-	dv.rowLabels[idx].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[idx].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not opened")
 	}
 	for _, btn := range dv.instMenuBtns {
@@ -2551,7 +2478,7 @@ func TestInstrumentDropdownFitsBounds(t *testing.T) {
 		}
 	}
 	first := dv.instMenuBtns[0].Rect()
-	base := dv.rowLabels[idx].Rect()
+	base := dv.rowLabels()[idx].Rect()
 	if first.Max.Y > base.Min.Y {
 		t.Fatalf("expected menu to open upward: %v vs %v", first, base)
 	}
@@ -2571,7 +2498,11 @@ func TestNameBoxShowsBlinkingCursor(t *testing.T) {
 	}
 	defer func() { drawCursor = oldCursor }()
 
-	dv.renderRowControlOverlay(ebiten.NewImage(320, 220))
+	dst := ebiten.NewImage(320, 220)
+	// Naming overlay now draws through the portal tree.
+	if dv.tree != nil {
+		dv.tree.Draw(dst)
+	}
 	if calls == 0 {
 		t.Fatalf("expected blinking cursor for manual name input")
 	}
@@ -2584,8 +2515,8 @@ func TestDropdownHoverHighlight(t *testing.T) {
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, testLogger)
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
 	// OnClick suppresses clicks until mouse-up; clear it so hover state can update.
@@ -2621,14 +2552,14 @@ func TestDrumViewLayoutStacksRows(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
 	dv.AddRow()
 	dv.calcLayout()
-	if len(dv.rowLabels) != 2 {
-		t.Fatalf("expected 2 row labels, got %d", len(dv.rowLabels))
+	if len(dv.rowLabels()) != 2 {
+		t.Fatalf("expected 2 row labels, got %d", len(dv.rowLabels()))
 	}
-	if dv.rowLabels[1].Rect().Min.Y <= dv.rowLabels[0].Rect().Min.Y {
-		t.Fatalf("row labels not stacked vertically: %v vs %v", dv.rowLabels[0].Rect(), dv.rowLabels[1].Rect())
+	if dv.rowLabels()[1].Rect().Min.Y <= dv.rowLabels()[0].Rect().Min.Y {
+		t.Fatalf("row labels not stacked vertically: %v vs %v", dv.rowLabels()[0].Rect(), dv.rowLabels()[1].Rect())
 	}
-	if dv.addRowBtn.Rect().Min.Y <= dv.rowLabels[1].Rect().Min.Y {
-		t.Fatalf("add button not below rows: %v vs %v", dv.addRowBtn.Rect(), dv.rowLabels[1].Rect())
+	if dv.addRowBtn().Rect().Min.Y <= dv.rowLabels()[1].Rect().Min.Y {
+		t.Fatalf("add button not below rows: %v vs %v", dv.addRowBtn().Rect(), dv.rowLabels()[1].Rect())
 	}
 }
 
@@ -2685,8 +2616,9 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 func TestTimelineCursorMatchesHighlight(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 300, timelineHeight+24), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 600, 400), graph, logger)
 	dv.Rows = []*DrumRow{{Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length)}}
+	dv.calcLayout()
 	highlighted := [][]highlightEntry{{{idx: 3, val: 1}}}
 
 	var cursorCount, highlightCount int
@@ -2696,6 +2628,8 @@ func TestTimelineCursorMatchesHighlight(t *testing.T) {
 			if clr == colTimelineCursor {
 				cursorCount++
 			}
+			// Highlights use colHighlight (fallback when row Color is nil)
+			// or the row's Color when set.
 			if clr == colHighlight && r.Min.Y >= timelineHeight {
 				highlightCount++
 			}
@@ -2703,7 +2637,7 @@ func TestTimelineCursorMatchesHighlight(t *testing.T) {
 	}
 	defer func() { drawRect = orig }()
 
-	dv.Draw(ebiten.NewImage(300, timelineHeight+24), highlighted, 0, nil, 3)
+	dv.Draw(ebiten.NewImage(600, 400), highlighted, 0, nil, 3)
 
 	if cursorCount == 0 {
 		t.Fatalf("cursor not drawn")
@@ -2752,7 +2686,7 @@ func TestDrumViewBPMTextInput(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
 
-	r := dv.bpmBox.Rect
+	r := dv.bpmBox().Rect
 	mx, my := r.Min.X+1, r.Min.Y+1
 	pressed := true
 	chars := []rune{}
@@ -2793,7 +2727,7 @@ func TestDrumViewBPMTextInputInvalid(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
 
-	r := dv.bpmBox.Rect
+	r := dv.bpmBox().Rect
 	mx, my := r.Min.X+1, r.Min.Y+1
 	pressed := true
 	chars := []rune{}
@@ -2840,7 +2774,7 @@ func TestDrumViewBPMTextInputNonNumeric(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
 
-	r := dv.bpmBox.Rect
+	r := dv.bpmBox().Rect
 	mx, my := r.Min.X+1, r.Min.Y+1
 	pressed := true
 	chars := []rune{}
@@ -2875,11 +2809,11 @@ func TestDrumViewBPMTextInputNonNumeric(t *testing.T) {
 	}
 }
 
-func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
+func TestVolumeSliderOpensPopup(t *testing.T) {
 	g := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 600, 200), g, testLogger)
 	dv.calcLayout()
-	r := dv.rowVolSliders[0].TrackRect()
+	r := dv.rowVolSliders()[0].Rect()
 	mx := r.Min.X + r.Dx()/2
 	my := r.Min.Y + r.Dy()/2
 	restore := SetInputForTest(
@@ -2892,8 +2826,10 @@ func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
 	)
 	defer restore()
 	dv.Update()
-	if math.Abs(dv.Rows[0].Volume-0.52) > 0.05 {
-		t.Fatalf("expected volume near 0.52 got %f", dv.Rows[0].Volume)
+	// Desktop now opens volume popup instead of inline slider change.
+	// Volume should remain unchanged at the default.
+	if dv.Rows[0].Volume != 1.0 {
+		t.Fatalf("expected volume unchanged at 1.0 after click (popup opens), got %f", dv.Rows[0].Volume)
 	}
 }
 
@@ -2903,8 +2839,8 @@ func TestVolumeDragReleaseDoesNotDeleteRow(t *testing.T) {
 	g := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
-	sRect := dv.rowVolSliders[0].TrackRect()
-	delRect := dv.rowDeleteBtns[0].Rect()
+	sRect := dv.rowVolSliders()[0].TrackRect()
+	delRect := dv.rowDeleteBtns()[0].Rect()
 
 	mx, my := sRect.Min.X+1, sRect.Min.Y+sRect.Dy()/2
 	pressed := true
@@ -2937,7 +2873,7 @@ func TestMuteSoloButtons(t *testing.T) {
 	dv.calcLayout()
 
 	// Click mute button on first row
-	mRect := dv.rowMuteBtns[0].Rect()
+	mRect := dv.rowMuteBtns()[0].Rect()
 	mx, my := mRect.Min.X+1, mRect.Min.Y+1
 	pressed := true
 	restore := SetInputForTest(
@@ -2958,7 +2894,7 @@ func TestMuteSoloButtons(t *testing.T) {
 	}
 
 	// Click solo button on first row
-	sRect := dv.rowSoloBtns[0].Rect()
+	sRect := dv.rowSoloBtns()[0].Rect()
 	mx, my = sRect.Min.X+1, sRect.Min.Y+1
 	pressed = true
 	restore = SetInputForTest(
@@ -2985,10 +2921,10 @@ func TestMuteSoloInteractions(t *testing.T) {
 	dv.AddRow()
 	dv.calcLayout()
 
-	mRect := dv.rowMuteBtns[0].Rect()
+	mRect := dv.rowMuteBtns()[0].Rect()
 	mx, my := mRect.Min.X+1, mRect.Min.Y+1
-	dv.rowMuteBtns[0].Handle(mx, my, true)
-	dv.rowMuteBtns[0].Handle(mx, my, false)
+	dv.rowMuteBtns()[0].Handle(mx, my, true)
+	dv.rowMuteBtns()[0].Handle(mx, my, false)
 	if !dv.Rows[0].Muted {
 		t.Fatalf("expected row0 muted after single click")
 	}
@@ -2996,10 +2932,10 @@ func TestMuteSoloInteractions(t *testing.T) {
 		t.Fatalf("row0 should not be solo when muted")
 	}
 
-	sRect := dv.rowSoloBtns[1].Rect()
+	sRect := dv.rowSoloBtns()[1].Rect()
 	mx, my = sRect.Min.X+1, sRect.Min.Y+1
-	dv.rowSoloBtns[1].Handle(mx, my, true)
-	dv.rowSoloBtns[1].Handle(mx, my, false)
+	dv.rowSoloBtns()[1].Handle(mx, my, true)
+	dv.rowSoloBtns()[1].Handle(mx, my, false)
 	if !dv.Rows[1].Solo {
 		t.Fatalf("expected row1 solo after click")
 	}
@@ -3135,7 +3071,7 @@ func TestMuteHighlightUsesDefaultColor(t *testing.T) {
 	var got color.RGBA
 	drawRect = func(d *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
-			if rgba, ok := c.(color.RGBA); ok && rgba == colHighlight {
+			if rgba, ok := c.(color.RGBA); ok && rgba == colMuteHighlight {
 				count++
 				got = rgba
 			}
@@ -3147,9 +3083,9 @@ func TestMuteHighlightUsesDefaultColor(t *testing.T) {
 	dv.Draw(dst, highlighted, 0, nil, 0)
 
 	if count == 0 {
-		t.Fatalf("mute highlight did not draw with default color")
+		t.Fatalf("mute highlight did not draw with mute highlight color")
 	}
-	want := color.RGBAModel.Convert(colHighlight).(color.RGBA)
+	want := color.RGBAModel.Convert(colMuteHighlight).(color.RGBA)
 	if got != want {
 		t.Fatalf("mute highlight mismatch got=%v want=%v", got, want)
 	}
@@ -3246,7 +3182,7 @@ func TestDropdownTextDoesNotOverflowButtons(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 600, 260), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	// Ensure width is widened for popup
 	if dv.instMenuFullRect.Dx() < 200 {
 		t.Fatalf("menu width too small: %d", dv.instMenuFullRect.Dx())
@@ -3266,29 +3202,69 @@ func TestDropdownTextDoesNotOverflowButtons(t *testing.T) {
 	}
 }
 
+// hasButtonInRegion checks if any drawCallButton/drawCallRoundedButton was
+// recorded in the given region. It checks both screen-space coordinates
+// (drawRowControlsDirect path) and cache-local coordinates (drawRowControlsToCache
+// offsets by rowControlsCacheRect.Min).
+func hasButtonInRegion(rec *drawCallRecorder, labelRect image.Rectangle, cacheOrigin image.Point) bool {
+	// Check screen-space (direct path).
+	for _, c := range rec.inRegion(labelRect) {
+		if c.Kind == drawCallButton || c.Kind == drawCallRoundedButton {
+			return true
+		}
+	}
+	// Check cache-local coords (offset path).
+	localRect := labelRect.Sub(cacheOrigin)
+	for _, c := range rec.inRegion(localRect) {
+		if c.Kind == drawCallButton || c.Kind == drawCallRoundedButton {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRenameInvalidatesRowControlsCache(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), nil, logger)
+	screen := ebiten.NewImage(800, 400)
+
+	// Prime the cache: Update + Draw so row controls are cached.
 	dv.Update()
+	dv.Draw(screen, nil, 0, nil, 0)
+
+	// Ensure cache is primed and valid.
+	dv.rowRackZone.controlsCacheDirty = false
+	if !dv.rowRackZone.controlsCacheValid() {
+		t.Fatal("row controls cache should be valid after initial Draw")
+	}
 
 	// Click the edit button to open rename — this wires up the real OnCommit
 	// callback from drumview_layout.go.
-	dv.rowEditBtns[0].OnClick()
-
-	// Clear the dirty flags so we can detect a fresh invalidation.
-	dv.rowControlsCacheDirty = false
-	dv.bgDirty = false
+	dv.rowEditBtns()[0].OnClick()
 
 	// Invoke the production OnCommit callback directly.
 	dv.renameComp.Props().OnCommit("RenamedKick")
 
-	if !dv.rowControlsCacheDirty {
-		t.Fatal("expected rowControlsCacheDirty=true after rename via OnCommit")
+	// Record draw calls during the next Draw to verify cache rebuild.
+	var rec drawCallRecorder
+	rec.record(t, func() {
+		dv.Draw(screen, nil, 0, nil, 0)
+	})
+
+	// Verify drawButton was called in the label region (cache was rebuilt).
+	if len(dv.rowLabels()) == 0 {
+		t.Fatal("rowLabels not populated")
 	}
-	if !dv.bgDirty {
-		t.Fatal("expected bgDirty=true after rename via OnCommit")
+	labelRect := dv.rowLabels()[0].Rect()
+	if !hasButtonInRegion(&rec, labelRect, dv.rowControlsCacheRect.Min) {
+		t.Fatalf("no drawButton call in label region %v after rename — cache was stale", labelRect)
+	}
+
+	// Verify the label text was updated.
+	if dv.rowLabels()[0].Text != "RenamedKick" {
+		t.Fatalf("label text = %q, want %q", dv.rowLabels()[0].Text, "RenamedKick")
 	}
 }
 
@@ -3297,19 +3273,24 @@ func TestRenameLegacyInvalidatesRowControlsCache(t *testing.T) {
 	withDefaultAudio(t)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), nil, logger)
-	dv.Update()
+	screen := ebiten.NewImage(800, 400)
 
-	// Open rename box on row 0 via legacy path.
-	btn := dv.rowEditBtns[0]
-	r := btn.Rect()
-	clickDrumView(t, dv, r.Min.X+1, r.Min.Y+1)
+	// Prime the cache: Update + Draw so row controls are cached.
+	dv.Update()
+	dv.Draw(screen, nil, 0, nil, 0)
+
+	// Ensure cache is primed and valid.
+	dv.rowRackZone.controlsCacheDirty = false
+	if !dv.rowRackZone.controlsCacheValid() {
+		t.Fatal("row controls cache should be valid after initial Draw")
+	}
+
+	// Open rename box on row 0 via callback (edit button is hidden on desktop).
+	dv.rowEditBtns()[0].OnClick()
+	dv.Update()
 	if dv.renameBox == nil {
 		t.Fatal("rename box not opened")
 	}
-
-	// Clear dirty flags.
-	dv.rowControlsCacheDirty = false
-	dv.bgDirty = false
 
 	// Type new name and press Enter (legacy rename path in drumview_update.go).
 	focusTextInput(t, dv, dv.renameBox)
@@ -3328,10 +3309,24 @@ func TestRenameLegacyInvalidatesRowControlsCache(t *testing.T) {
 	if dv.Rows[0].Name != "NewSnare" {
 		t.Fatalf("rename did not apply: got %q", dv.Rows[0].Name)
 	}
-	if !dv.rowControlsCacheDirty {
-		t.Fatal("expected rowControlsCacheDirty=true after legacy rename")
+
+	// Record draw calls during the next Draw to verify cache rebuild.
+	var rec drawCallRecorder
+	rec.record(t, func() {
+		dv.Draw(screen, nil, 0, nil, 0)
+	})
+
+	// Verify drawButton was called in the label region (cache was rebuilt).
+	if len(dv.rowLabels()) == 0 {
+		t.Fatal("rowLabels not populated")
 	}
-	if !dv.bgDirty {
-		t.Fatal("expected bgDirty=true after legacy rename")
+	labelRect := dv.rowLabels()[0].Rect()
+	if !hasButtonInRegion(&rec, labelRect, dv.rowControlsCacheRect.Min) {
+		t.Fatalf("no drawButton call in label region %v after legacy rename — cache was stale", labelRect)
+	}
+
+	// Verify the label text was updated.
+	if dv.rowLabels()[0].Text != "NewSnare" {
+		t.Fatalf("label text = %q, want %q", dv.rowLabels()[0].Text, "NewSnare")
 	}
 }

@@ -16,7 +16,7 @@ func TestRowCacheRebuildOnOffsetChange(t *testing.T) {
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
-	dst := ebiten.NewImage(800, 200)
+	dst := ebiten.NewImage(800, 600)
 	// Build initial drum sprites
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCache) == 0 || g.drum.rowCache[0] == nil {

@@ -47,7 +47,7 @@ func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Build initial caches
-	dst := ebiten.NewImage(1024, 240)
+	dst := ebiten.NewImage(1024, 720)
 	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCache) < 2 || g.drum.rowCache[0] == nil || g.drum.rowCache[1] == nil {
 		t.Fatalf("expected two row caches built")

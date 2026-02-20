@@ -112,10 +112,10 @@ func TestImportWAVInstrumentFromCatalog(t *testing.T) {
 
 	// Verify row label does NOT have MissingInstStyle
 	g.drum.calcLayout()
-	if len(g.drum.rowLabels) == 0 {
+	if len(g.drum.rowLabels()) == 0 {
 		t.Fatalf("no row labels")
 	}
-	style, ok := g.drum.rowLabels[0].Style.(ButtonStyle)
+	style, ok := g.drum.rowLabels()[0].Style.(ButtonStyle)
 	if !ok {
 		t.Fatalf("label style is not a ButtonStyle")
 	}
@@ -167,10 +167,10 @@ func TestImportMissingWAVShowsRedLabel(t *testing.T) {
 
 	// Verify row label HAS MissingInstStyle
 	g.drum.calcLayout()
-	if len(g.drum.rowLabels) == 0 {
+	if len(g.drum.rowLabels()) == 0 {
 		t.Fatalf("no row labels")
 	}
-	style, ok := g.drum.rowLabels[0].Style.(ButtonStyle)
+	style, ok := g.drum.rowLabels()[0].Style.(ButtonStyle)
 	if !ok {
 		t.Fatalf("label style is not a ButtonStyle")
 	}

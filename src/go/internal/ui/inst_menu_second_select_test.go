@@ -39,7 +39,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after calcLayout")
 	}
 
@@ -47,12 +47,12 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	if dv.Rows[0].Instrument != "kick" {
 		t.Fatalf("expected initial instrument 'kick', got %q", dv.Rows[0].Instrument)
 	}
-	if dv.rowLabels[0].Text != "Kick" {
-		t.Fatalf("expected initial label 'Kick', got %q", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Kick" {
+		t.Fatalf("expected initial label 'Kick', got %q", dv.rowLabels()[0].Text)
 	}
 
 	// Create the instrument menu component
-	dv.instMenuComp = NewInstrumentMenuComponent("test-inst-menu")
+	dv.instMenuComp = NewInstrumentMenuComponent()
 
 	// === FIRST SELECTION: Change from kick to snare ===
 	t.Log("=== FIRST SELECTION: kick -> snare ===")
@@ -73,7 +73,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 
 	// Set props and open the menu (simulating what lbl.OnClick does)
 	dv.instMenuComp.SetProps(InstrumentMenuProps{
-		AnchorRect:        dv.rowLabels[0].Rect(),
+		AnchorRect:        dv.rowLabels()[0].Rect(),
 		VertBounds:        dv.Bounds,
 		RowIndex:          0,
 		CurrentInstrument: dv.Rows[0].Instrument,
@@ -86,7 +86,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 		},
 	})
 	dv.instMenuComp.Open()
-	dv.instMenuOpen = true
+	dv.openInstMenuPortal()
 	suppressClicksUntilRelease = false
 
 	// Find and click the "snare" button
@@ -122,15 +122,19 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	}
 
 	// Verify the label was updated after calcLayout
-	if dv.rowLabels[0].Text != "Snare" {
-		t.Fatalf("after first selection + calcLayout: expected label 'Snare', got %q", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Snare" {
+		t.Fatalf("after first selection + calcLayout: expected label 'Snare', got %q", dv.rowLabels()[0].Text)
 	}
 
 	t.Logf("First selection successful: Rows[0].Instrument=%q, Rows[0].Name=%q, rowLabels[0].Text=%q",
-		dv.Rows[0].Instrument, dv.Rows[0].Name, dv.rowLabels[0].Text)
+		dv.Rows[0].Instrument, dv.Rows[0].Name, dv.rowLabels()[0].Text)
 
 	// === SECOND SELECTION: Change from snare to hihat ===
 	t.Log("=== SECOND SELECTION: snare -> hihat ===")
+
+	// Close the old portal entry before reopening to avoid the OnClose
+	// callback (which fires during closeByID) from closing the newly-opened comp.
+	dv.closeInstMenuPortal()
 
 	// Simulate clicking the row label again to open the menu
 	dv.selRow = 0
@@ -138,7 +142,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 
 	// Update props for the menu with current instrument
 	dv.instMenuComp.SetProps(InstrumentMenuProps{
-		AnchorRect:        dv.rowLabels[0].Rect(),
+		AnchorRect:        dv.rowLabels()[0].Rect(),
 		VertBounds:        dv.Bounds,
 		RowIndex:          0,
 		CurrentInstrument: dv.Rows[0].Instrument, // Should be "snare" now
@@ -151,7 +155,7 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 		},
 	})
 	dv.instMenuComp.Open()
-	dv.instMenuOpen = true
+	dv.openInstMenuPortal()
 	suppressClicksUntilRelease = false
 
 	// Find and click the "hihat" button
@@ -181,8 +185,8 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	}
 
 	// Before calcLayout, the label should already be updated by SetInstrument
-	if dv.rowLabels[0].Text != "Hihat" {
-		t.Logf("WARNING: rowLabels[0].Text=%q before calcLayout (expected 'Hihat')", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Hihat" {
+		t.Logf("WARNING: rowLabels[0].Text=%q before calcLayout (expected 'Hihat')", dv.rowLabels()[0].Text)
 	}
 
 	// Simulate an update cycle (bgDirty triggers calcLayout)
@@ -192,14 +196,14 @@ func TestInstrumentMenuSecondSelectionUpdatesLabel(t *testing.T) {
 	}
 
 	// THIS IS THE BUG: Verify the label was updated after calcLayout
-	if dv.rowLabels[0].Text != "Hihat" {
+	if dv.rowLabels()[0].Text != "Hihat" {
 		t.Fatalf("BUG REPRODUCED: after second selection + calcLayout: expected label 'Hihat', got %q\n"+
 			"Rows[0].Instrument=%q, Rows[0].Name=%q",
-			dv.rowLabels[0].Text, dv.Rows[0].Instrument, dv.Rows[0].Name)
+			dv.rowLabels()[0].Text, dv.Rows[0].Instrument, dv.Rows[0].Name)
 	}
 
 	t.Logf("Second selection successful: Rows[0].Instrument=%q, Rows[0].Name=%q, rowLabels[0].Text=%q",
-		dv.Rows[0].Instrument, dv.Rows[0].Name, dv.rowLabels[0].Text)
+		dv.Rows[0].Instrument, dv.Rows[0].Name, dv.rowLabels()[0].Text)
 }
 
 // TestInstrumentMenuThirdSelectionUpdatesLabel extends the test to a third
@@ -226,11 +230,11 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after calcLayout")
 	}
 
-	dv.instMenuComp = NewInstrumentMenuComponent("test-inst-menu")
+	dv.instMenuComp = NewInstrumentMenuComponent()
 
 	var instOpts []InstrumentOption
 	for _, id := range dv.instOptions {
@@ -242,11 +246,15 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 
 	// Helper to select an instrument
 	selectInstrument := func(instID string) {
+		// Close old portal entry before reopening to avoid OnClose callback
+		// from closing the newly-opened comp (closeByID fires old OnClose).
+		dv.closeInstMenuPortal()
+
 		dv.selRow = 0
 		dv.instMenuRow = 0
 
 		dv.instMenuComp.SetProps(InstrumentMenuProps{
-			AnchorRect:        dv.rowLabels[0].Rect(),
+			AnchorRect:        dv.rowLabels()[0].Rect(),
 			VertBounds:        dv.Bounds,
 			RowIndex:          0,
 			CurrentInstrument: dv.Rows[0].Instrument,
@@ -259,7 +267,7 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 			},
 		})
 		dv.instMenuComp.Open()
-		dv.instMenuOpen = true
+		dv.openInstMenuPortal()
 		suppressClicksUntilRelease = false
 
 		var btn *Button
@@ -286,26 +294,26 @@ func TestInstrumentMenuThirdSelectionUpdatesLabel(t *testing.T) {
 
 	// Selection 1: kick -> snare
 	selectInstrument("snare")
-	if dv.rowLabels[0].Text != "Snare" {
-		t.Fatalf("after selection 1: expected label 'Snare', got %q", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Snare" {
+		t.Fatalf("after selection 1: expected label 'Snare', got %q", dv.rowLabels()[0].Text)
 	}
 
 	// Selection 2: snare -> hihat
 	selectInstrument("hihat")
-	if dv.rowLabels[0].Text != "Hihat" {
-		t.Fatalf("after selection 2: expected label 'Hihat', got %q", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Hihat" {
+		t.Fatalf("after selection 2: expected label 'Hihat', got %q", dv.rowLabels()[0].Text)
 	}
 
 	// Selection 3: hihat -> tom
 	selectInstrument("tom")
-	if dv.rowLabels[0].Text != "Tom" {
-		t.Fatalf("after selection 3: expected label 'Tom', got %q", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Tom" {
+		t.Fatalf("after selection 3: expected label 'Tom', got %q", dv.rowLabels()[0].Text)
 	}
 
 	// Selection 4: tom -> kick (back to original)
 	selectInstrument("kick")
-	if dv.rowLabels[0].Text != "Kick" {
-		t.Fatalf("after selection 4: expected label 'Kick', got %q", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Kick" {
+		t.Fatalf("after selection 4: expected label 'Kick', got %q", dv.rowLabels()[0].Text)
 	}
 
 	t.Log("All selections successful")
@@ -337,12 +345,12 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after calcLayout")
 	}
 
 	// Create the instrument menu component
-	dv.instMenuComp = NewInstrumentMenuComponent("test-inst-menu")
+	dv.instMenuComp = NewInstrumentMenuComponent()
 
 	// Helper to simulate clicking a row label and selecting an instrument
 	// This follows the actual code path from drumview_layout.go
@@ -354,7 +362,7 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 
 		// Get the row label button and simulate clicking it
 		// This triggers lbl.OnClick (from drumview_layout.go:387)
-		labelBtn := dv.rowLabels[0]
+		labelBtn := dv.rowLabels()[0]
 		if labelBtn.OnClick == nil {
 			t.Fatal("row label button has no OnClick handler")
 		}
@@ -363,7 +371,7 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 		labelBtn.OnClick()
 		suppressClicksUntilRelease = false
 
-		if !dv.instMenuOpen && (dv.instMenuComp == nil || !dv.instMenuComp.IsOpen()) {
+		if !dv.IsInstMenuOpen() && (dv.instMenuComp == nil || !dv.instMenuComp.IsOpen()) {
 			t.Fatal("menu should be open after clicking row label")
 		}
 
@@ -409,9 +417,9 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 		if dv.Rows[0].Instrument != expectedID {
 			t.Fatalf("expected instrument %q, got %q", expectedID, dv.Rows[0].Instrument)
 		}
-		if dv.rowLabels[0].Text != expectedLabel {
+		if dv.rowLabels()[0].Text != expectedLabel {
 			t.Fatalf("expected label %q, got %q (Rows[0].Name=%q)",
-				expectedLabel, dv.rowLabels[0].Text, dv.Rows[0].Name)
+				expectedLabel, dv.rowLabels()[0].Text, dv.Rows[0].Name)
 		}
 	}
 
@@ -419,17 +427,17 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 	// Button label is "Snare", ID is "snare", row label should show "Snare"
 	t.Log("=== Selection 1: kick -> snare ===")
 	selectInstrumentViaUI("Snare", "snare", "Snare")
-	t.Logf("After selection 1: label=%q, instrument=%q", dv.rowLabels[0].Text, dv.Rows[0].Instrument)
+	t.Logf("After selection 1: label=%q, instrument=%q", dv.rowLabels()[0].Text, dv.Rows[0].Instrument)
 
 	// Second selection: snare -> hihat
 	t.Log("=== Selection 2: snare -> hihat ===")
 	selectInstrumentViaUI("Hihat", "hihat", "Hihat")
-	t.Logf("After selection 2: label=%q, instrument=%q", dv.rowLabels[0].Text, dv.Rows[0].Instrument)
+	t.Logf("After selection 2: label=%q, instrument=%q", dv.rowLabels()[0].Text, dv.Rows[0].Instrument)
 
 	// Third selection: hihat -> kick
 	t.Log("=== Selection 3: hihat -> kick ===")
 	selectInstrumentViaUI("Kick", "kick", "Kick")
-	t.Logf("After selection 3: label=%q, instrument=%q", dv.rowLabels[0].Text, dv.Rows[0].Instrument)
+	t.Logf("After selection 3: label=%q, instrument=%q", dv.rowLabels()[0].Text, dv.Rows[0].Instrument)
 
 	t.Log("All selections via UI successful")
 }
@@ -459,7 +467,7 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 	dv.calcLayout()
 	dv.bgDirty = false
 
-	dv.instMenuComp = NewInstrumentMenuComponent("test-inst-menu")
+	dv.instMenuComp = NewInstrumentMenuComponent()
 
 	// Helper to run a partial update cycle (just the layout part)
 	runLayoutUpdate := func() {
@@ -475,7 +483,7 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 		t.Helper()
 
 		// Open the menu via label click
-		labelBtn := dv.rowLabels[0]
+		labelBtn := dv.rowLabels()[0]
 		labelBtn.OnClick()
 		suppressClicksUntilRelease = false
 
@@ -506,9 +514,9 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 		if dv.Rows[0].Name != expectedLabel {
 			t.Fatalf("name mismatch: got %q, want %q", dv.Rows[0].Name, expectedLabel)
 		}
-		if dv.rowLabels[0].Text != expectedLabel {
+		if dv.rowLabels()[0].Text != expectedLabel {
 			t.Fatalf("label mismatch: got %q, want %q (instrument=%q, name=%q)",
-				dv.rowLabels[0].Text, expectedLabel, dv.Rows[0].Instrument, dv.Rows[0].Name)
+				dv.rowLabels()[0].Text, expectedLabel, dv.Rows[0].Instrument, dv.Rows[0].Name)
 		}
 	}
 
@@ -570,8 +578,8 @@ func TestSetInstrumentInvalidatesRowControlsCache(t *testing.T) {
 	}
 
 	// Also verify the label text was updated
-	if dv.rowLabels[0].Text != "Snare" {
-		t.Fatalf("expected label 'Snare', got %q", dv.rowLabels[0].Text)
+	if dv.rowLabels()[0].Text != "Snare" {
+		t.Fatalf("expected label 'Snare', got %q", dv.rowLabels()[0].Text)
 	}
 	if dv.Rows[0].Name != "Snare" {
 		t.Fatalf("expected name 'Snare', got %q", dv.Rows[0].Name)

@@ -95,11 +95,11 @@ func TestOrientationChangeButtonsInBounds(t *testing.T) {
 		bounds := g.drum.Bounds
 
 		btns := map[string]*Button{
-			"play":   g.drum.playBtn,
-			"stop":   g.drum.stopBtn,
-			"bpmInc": g.drum.bpmIncBtn,
-			"bpmDec": g.drum.bpmDecBtn,
-			"subdiv": g.drum.subdivBtn,
+			"play":   g.drum.playBtn(),
+			"stop":   g.drum.stopBtn(),
+			"bpmInc": g.drum.bpmIncBtn(),
+			"bpmDec": g.drum.bpmDecBtn(),
+			"subdiv": g.drum.subdivBtn(),
 		}
 		for name, btn := range btns {
 			r := btn.Rect()

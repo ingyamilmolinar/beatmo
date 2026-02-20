@@ -7,6 +7,8 @@ import (
 
 func TestSliderFullRange(t *testing.T) {
 	assertDefaultParityState(t)
+	suppressClicksUntilRelease = false
+	t.Cleanup(func() { suppressClicksUntilRelease = false })
 	s := NewSlider(0)
 	s.SetRect(image.Rect(0, 0, 100, 10))
 	centerX := s.Rect().Min.X + s.Rect().Dx()/2

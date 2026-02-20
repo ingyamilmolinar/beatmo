@@ -45,10 +45,10 @@ func TestKebabTapDoesNotOpenInstMenu(t *testing.T) {
 	warmUp()
 
 	// Find the kebab button for row 0.
-	if len(dv.rowMenuBtns) == 0 {
+	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created after warm-up")
 	}
-	kebabRect := dv.rowMenuBtns[0].Rect()
+	kebabRect := dv.rowMenuBtns()[0].Rect()
 	if kebabRect.Empty() {
 		t.Skip("kebab button rect empty (not visible in this layout)")
 	}
@@ -66,11 +66,11 @@ func TestKebabTapDoesNotOpenInstMenu(t *testing.T) {
 	)
 	dv.Update()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		r()
 		t.Fatal("context menu should be open after kebab press")
 	}
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		r()
 		t.Fatal("inst menu should NOT be open after kebab press (frame 1)")
 	}
@@ -79,11 +79,11 @@ func TestKebabTapDoesNotOpenInstMenu(t *testing.T) {
 	// NOT be captured because suppressClicksUntilRelease is still active.
 	dv.Update()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		r()
 		t.Fatal("context menu should still be open (frame 2)")
 	}
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		r()
 		t.Fatal("inst menu should NOT be open while holding (frame 2)")
 	}
@@ -106,10 +106,10 @@ func TestKebabTapDoesNotOpenInstMenu(t *testing.T) {
 	dv.Update()
 	r()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should still be open after release (frame 3)")
 	}
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("inst menu should NOT be open after release (frame 3)")
 	}
 }
@@ -150,10 +150,10 @@ func TestKebabTapWorksWithScrollableRows(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowMenuBtns) == 0 {
+	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created after warm-up")
 	}
-	kebabRect := dv.rowMenuBtns[0].Rect()
+	kebabRect := dv.rowMenuBtns()[0].Rect()
 	if kebabRect.Empty() {
 		t.Skip("kebab button rect empty (not visible in this layout)")
 	}
@@ -174,10 +174,11 @@ func TestKebabTapWorksWithScrollableRows(t *testing.T) {
 		func() (int, int) { return W, H },
 	)
 	SetTouchOverrideActiveForTest(true)
+	SetTouchOverrideXYForTest(kx, ky)
 	dv.Update()
 	r()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT open during real touch (dead zone should block)")
 	}
 
@@ -209,7 +210,7 @@ func TestKebabTapWorksWithScrollableRows(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open after injected tap on kebab button")
 	}
 }
@@ -249,10 +250,10 @@ func TestRowLabelTapWorksWithScrollableRows(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after warm-up")
 	}
-	labelRect := dv.rowLabels[0].Rect()
+	labelRect := dv.rowLabels()[0].Rect()
 	if labelRect.Empty() {
 		t.Skip("row label rect empty (not visible in this layout)")
 	}
@@ -271,10 +272,11 @@ func TestRowLabelTapWorksWithScrollableRows(t *testing.T) {
 		func() (int, int) { return W, H },
 	)
 	SetTouchOverrideActiveForTest(true)
+	SetTouchOverrideXYForTest(lx, ly)
 	dv.Update()
 	r()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT open during real touch (dead zone should block)")
 	}
 
@@ -306,7 +308,7 @@ func TestRowLabelTapWorksWithScrollableRows(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open after injected tap on row label")
 	}
 }
@@ -345,10 +347,10 @@ func TestKebabTapOverlapScrollerActive(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowMenuBtns) == 0 {
+	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created after warm-up")
 	}
-	kebabRect := dv.rowMenuBtns[0].Rect()
+	kebabRect := dv.rowMenuBtns()[0].Rect()
 	if kebabRect.Empty() {
 		t.Skip("kebab button rect empty (not visible in this layout)")
 	}
@@ -367,13 +369,14 @@ func TestKebabTapOverlapScrollerActive(t *testing.T) {
 		func() (int, int) { return W, H },
 	)
 	SetTouchOverrideActiveForTest(true)
+	SetTouchOverrideXYForTest(kx, ky)
 	dv.Update()
 	r()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT open during real touch (dead zone should block)")
 	}
-	if !dv.rowScroll.TouchActive() {
+	if !dv.rowScroll().TouchActive() {
 		t.Fatal("row scroller should be active after real touch press")
 	}
 
@@ -397,7 +400,7 @@ func TestKebabTapOverlapScrollerActive(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open after injected tap on kebab (scroller overlap)")
 	}
 }
@@ -434,10 +437,10 @@ func TestRowLabelTapOverlapScrollerActive(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after warm-up")
 	}
-	labelRect := dv.rowLabels[0].Rect()
+	labelRect := dv.rowLabels()[0].Rect()
 	if labelRect.Empty() {
 		t.Skip("row label rect empty (not visible in this layout)")
 	}
@@ -456,20 +459,31 @@ func TestRowLabelTapOverlapScrollerActive(t *testing.T) {
 		func() (int, int) { return W, H },
 	)
 	SetTouchOverrideActiveForTest(true)
+	SetTouchOverrideXYForTest(lx, ly)
 	dv.Update()
 	r()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT open during real touch (dead zone should block)")
 	}
-	if !dv.rowScroll.TouchActive() {
+	if !dv.rowScroll().TouchActive() {
 		t.Fatal("row scroller should be active after real touch press")
 	}
 
-	// Phase 2 (release) is SKIPPED — go directly to injection while scroller
-	// is still active.
+	// Phase 2: Release — clears the tree's press state so the injected tap
+	// is recognized as a new press.
+	r = SetInputForTest(
+		func() (int, int) { return lx, ly },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	r()
 
-	// Phase 3: Injected tap press — scroller still active from Phase 1.
+	// Phase 3: Injected tap press — scroller may still have momentum.
 	r = SetInputForTest(
 		func() (int, int) { return lx, ly },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -483,7 +497,7 @@ func TestRowLabelTapOverlapScrollerActive(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open after injected tap on row label (scroller overlap)")
 	}
 }
@@ -520,7 +534,7 @@ func TestContextMenuCloseButtonDoesNotFireInstrument(t *testing.T) {
 
 	// Open context menu for row 0.
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -541,11 +555,11 @@ func TestContextMenuCloseButtonDoesNotFireInstrument(t *testing.T) {
 	dv.fireContextMenuTapAt(cx, cy)
 
 	// Context menu should be closed.
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be closed after tapping close button")
 	}
 	// Instrument menu should NOT have opened.
-	instOpen := dv.instMenuOpen || (dv.instMenuComp != nil && dv.instMenuComp.IsOpen())
+	instOpen := dv.IsInstMenuOpen() || (dv.instMenuComp != nil && dv.instMenuComp.IsOpen())
 	if instOpen {
 		t.Fatal("instrument menu should NOT open when tapping the close button")
 	}
@@ -581,13 +595,13 @@ func TestContextMenuColorOpensPickerOnMobile(t *testing.T) {
 	warmUp()
 
 	// Precondition: the color swatch button has an empty rect on mobile.
-	if len(dv.rowColorBtns) > 0 && !dv.rowColorBtns[0].Rect().Empty() {
+	if len(dv.rowColorBtns()) > 0 && !dv.rowColorBtns()[0].Rect().Empty() {
 		t.Skip("color swatch button has a non-empty rect; mobile zero-weight layout not active")
 	}
 
 	// Open context menu and fire the Color item.
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -602,7 +616,7 @@ func TestContextMenuColorOpensPickerOnMobile(t *testing.T) {
 	colorBtn.OnClick()
 
 	// Color menu should be open.
-	if !dv.colorMenuOpen {
+	if !dv.IsColorMenuOpen() {
 		t.Fatal("color menu should be open after tapping Color in context menu")
 	}
 
@@ -641,16 +655,16 @@ func TestOverflowMenuCloseButtonDoesNotFireUpload(t *testing.T) {
 	warmUp()
 
 	// The overflow button needs a non-empty rect for the popup to appear.
-	if dv.overflowBtn == nil {
+	if dv.overflowBtn() == nil {
 		t.Fatal("overflow button is nil")
 	}
-	if dv.overflowBtn.Rect().Empty() {
+	if dv.overflowBtn().Rect().Empty() {
 		// Give it a rect manually for testing.
-		dv.overflowBtn.SetRect(image.Rect(W-60, 0, W, 44))
+		dv.overflowBtn().SetRect(image.Rect(W-60, 0, W, 44))
 	}
 
 	// Open the overflow menu.
-	dv.overflowMenuOpen = true
+	dv.openOverflowMenuPortal()
 	popupRect := dv.overflowPopupRect()
 	if popupRect.Empty() {
 		t.Fatal("overflow popup rect is empty")
@@ -669,8 +683,8 @@ func TestOverflowMenuCloseButtonDoesNotFireUpload(t *testing.T) {
 
 	// Track whether Upload was called.
 	uploadCalled := false
-	origUpload := dv.uploadBtn
-	dv.uploadBtn = NewButton("Upload", DropdownStyle, func() { uploadCalled = true })
+	origUpload := dv.uploadBtn()
+	dv.transportZone.uploadBtn = NewButton("Upload", DropdownStyle, func() { uploadCalled = true })
 
 	// Fire tap at close button center.
 	cx := closeRect.Min.X + closeRect.Dx()/2
@@ -678,7 +692,7 @@ func TestOverflowMenuCloseButtonDoesNotFireUpload(t *testing.T) {
 	dv.fireOverflowMenuTapAt(cx, cy)
 
 	// Overflow menu should be closed.
-	if dv.overflowMenuOpen {
+	if dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu should be closed after tapping close button")
 	}
 	// Upload should NOT have been called.
@@ -687,16 +701,12 @@ func TestOverflowMenuCloseButtonDoesNotFireUpload(t *testing.T) {
 	}
 
 	// Restore.
-	dv.uploadBtn = origUpload
+	dv.transportZone.uploadBtn = origUpload
 }
 
 // TestContextMenuColorPickerCloseUnblocksButtons verifies that closing the
-// color picker (opened via context menu "Color") clears colorHold, which
-// unblocks anyDragActive() and allows row buttons to work again.
-//
-// Root cause: openColorPickerForRow sets colorHold=true, but the
-// colorWheelComp's OnClose callback only cleared colorMenuOpen, not colorHold.
-// This left anyDragActive() returning true permanently, blocking all row input.
+// color picker (opened via context menu "Color") does not leave
+// anyDragActive() stuck, and allows row buttons to work again.
 func TestContextMenuColorPickerCloseUnblocksButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -725,7 +735,7 @@ func TestContextMenuColorPickerCloseUnblocksButtons(t *testing.T) {
 
 	// Open context menu and fire the Color item.
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 	if len(dv.contextMenuBtns) < 3 {
@@ -733,28 +743,20 @@ func TestContextMenuColorPickerCloseUnblocksButtons(t *testing.T) {
 	}
 	dv.contextMenuBtns[2].OnClick() // "Color" item
 
-	// Verify colorHold is set and anyDragActive is true.
-	if !dv.colorHold {
-		t.Fatal("colorHold should be true after opening color picker")
-	}
-	if !dv.colorMenuOpen {
+	// Color wheel should be open and anyDragActive should NOT be true
+	// (hold flags no longer feed into anyDragActive).
+	if !dv.IsColorMenuOpen() {
 		t.Fatal("colorMenuOpen should be true")
 	}
-	if !dv.anyDragActive() {
-		t.Fatal("anyDragActive should be true while colorHold is set")
+	if dv.anyDragActive() {
+		t.Fatal("anyDragActive should be false — hold flags no longer block")
 	}
 
-	// Close the color wheel via the component.
-	if dv.colorWheelComp == nil {
-		t.Fatal("colorWheelComp is nil")
-	}
-	dv.colorWheelComp.Close()
+	// Close the color wheel via the portal (which invokes the comp's OnClose).
+	dv.closeColorWheelPortal()
 
-	// After closing: colorHold, colorMenuOpen, and anyDragActive should all be false.
-	if dv.colorHold {
-		t.Fatal("colorHold should be false after closing color picker")
-	}
-	if dv.colorMenuOpen {
+	// After closing: colorMenuOpen and anyDragActive should be false.
+	if dv.IsColorMenuOpen() {
 		t.Fatal("colorMenuOpen should be false after closing color picker")
 	}
 	if dv.anyDragActive() {
@@ -762,22 +764,22 @@ func TestContextMenuColorPickerCloseUnblocksButtons(t *testing.T) {
 	}
 
 	// Verify row buttons work: open context menu via kebab.
-	if len(dv.rowMenuBtns) == 0 {
+	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created")
 	}
-	kebabRect := dv.rowMenuBtns[0].Rect()
+	kebabRect := dv.rowMenuBtns()[0].Rect()
 	if kebabRect.Empty() {
 		t.Skip("kebab button rect empty")
 	}
-	dv.rowMenuBtns[0].OnClick()
-	if !dv.contextMenuOpen {
+	dv.rowMenuBtns()[0].OnClick()
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open after color picker close — buttons are unblocked")
 	}
 }
 
-// TestCloseAllPopupsClearsColorHold verifies that CloseAllPopups clears
-// colorHold in addition to colorMenuOpen.
-func TestCloseAllPopupsClearsColorHold(t *testing.T) {
+// TestCloseAllPopupsClearsColorMenu verifies that CloseAllPopups closes
+// the color wheel portal.
+func TestCloseAllPopupsClearsColorMenu(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -803,19 +805,12 @@ func TestCloseAllPopupsClearsColorHold(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	// Manually set the stuck state.
-	dv.colorHold = true
-	dv.colorMenuOpen = true
-	if !dv.anyDragActive() {
-		t.Fatal("anyDragActive should be true with colorHold set")
-	}
+	// Open the color wheel portal.
+	dv.openColorWheelPortal()
 
 	dv.CloseAllPopups()
 
-	if dv.colorHold {
-		t.Fatal("colorHold should be false after CloseAllPopups")
-	}
-	if dv.colorMenuOpen {
+	if dv.IsColorMenuOpen() {
 		t.Fatal("colorMenuOpen should be false after CloseAllPopups")
 	}
 	if dv.anyDragActive() {
@@ -858,10 +853,10 @@ func TestKebabTapViaHandleInputPipeline(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowMenuBtns) == 0 {
+	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created after warm-up")
 	}
-	kebabRect := dv.rowMenuBtns[0].Rect()
+	kebabRect := dv.rowMenuBtns()[0].Rect()
 	if kebabRect.Empty() {
 		t.Skip("kebab button rect empty (not visible in this layout)")
 	}
@@ -880,11 +875,12 @@ func TestKebabTapViaHandleInputPipeline(t *testing.T) {
 		func() (int, int) { return W, H },
 	)
 	SetTouchOverrideActiveForTest(true)
+	SetTouchOverrideXYForTest(kx, ky)
 	dv.HandleInput(kx, ky, true)
 	dv.Update()
 	r()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT open during real touch press")
 	}
 
@@ -916,7 +912,7 @@ func TestKebabTapViaHandleInputPipeline(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open after injected tap via HandleInput pipeline")
 	}
 
@@ -933,7 +929,7 @@ func TestKebabTapViaHandleInputPipeline(t *testing.T) {
 	dv.Update()
 	r()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should remain open after injection release frame")
 	}
 }
@@ -970,10 +966,10 @@ func TestRowLabelTapViaHandleInputPipeline(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after warm-up")
 	}
-	labelRect := dv.rowLabels[0].Rect()
+	labelRect := dv.rowLabels()[0].Rect()
 	if labelRect.Empty() {
 		t.Skip("row label rect empty (not visible in this layout)")
 	}
@@ -992,11 +988,12 @@ func TestRowLabelTapViaHandleInputPipeline(t *testing.T) {
 		func() (int, int) { return W, H },
 	)
 	SetTouchOverrideActiveForTest(true)
+	SetTouchOverrideXYForTest(lx, ly)
 	dv.HandleInput(lx, ly, true)
 	dv.Update()
 	r()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT open during real touch press")
 	}
 
@@ -1028,7 +1025,7 @@ func TestRowLabelTapViaHandleInputPipeline(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open after injected tap on row label via HandleInput pipeline")
 	}
 }
@@ -1062,10 +1059,10 @@ func TestButtonTapAfterContextMenuClose(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowMenuBtns) == 0 {
+	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created after warm-up")
 	}
-	kebabRect := dv.rowMenuBtns[0].Rect()
+	kebabRect := dv.rowMenuBtns()[0].Rect()
 	if kebabRect.Empty() {
 		t.Skip("kebab button rect empty (not visible in this layout)")
 	}
@@ -1074,7 +1071,7 @@ func TestButtonTapAfterContextMenuClose(t *testing.T) {
 
 	// Step 1: Open context menu directly.
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -1099,7 +1096,7 @@ func TestButtonTapAfterContextMenuClose(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be closed after click outside via HandleInput")
 	}
 
@@ -1133,7 +1130,7 @@ func TestButtonTapAfterContextMenuClose(t *testing.T) {
 	dv.Update()
 	r()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should re-open after kebab tap following close cycle")
 	}
 }
@@ -1176,7 +1173,7 @@ func TestKebabTapDoesNotRegisterRenameTrigger(t *testing.T) {
 	warmUp()
 
 	// Context menu closed: rename trigger must NOT be registered.
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		// good — context menu is closed
 	} else {
 		t.Fatal("context menu should not be open initially")
@@ -1187,7 +1184,7 @@ func TestKebabTapDoesNotRegisterRenameTrigger(t *testing.T) {
 
 	// Open context menu for row 0.
 	dv.openContextMenu(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -1201,7 +1198,7 @@ func TestKebabTapDoesNotRegisterRenameTrigger(t *testing.T) {
 	}
 
 	// Close context menu and re-run recalcButtons.
-	dv.contextMenuOpen = false
+	dv.closeContextMenuPortal()
 	testMobileInputTriggerRegistered = make(map[string]bool) // reset
 	dv.recalcButtons()
 
@@ -1246,10 +1243,10 @@ func TestMouseClickWorksOnMobileLayout(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowMenuBtns) == 0 {
+	if len(dv.rowMenuBtns()) == 0 {
 		t.Fatal("rowMenuBtns not created after warm-up")
 	}
-	kebabRect := dv.rowMenuBtns[0].Rect()
+	kebabRect := dv.rowMenuBtns()[0].Rect()
 	if kebabRect.Empty() {
 		t.Skip("kebab button rect empty (not visible in this layout)")
 	}
@@ -1271,12 +1268,12 @@ func TestMouseClickWorksOnMobileLayout(t *testing.T) {
 	r()
 
 	// The touch scroll should NOT have started (mouse clicks skip it).
-	if dv.rowScroll.TouchActive() {
+	if dv.rowScroll().TouchActive() {
 		t.Fatal("row scroller should NOT be active for mouse clicks (no touch override)")
 	}
 
 	// The kebab button should have opened the context menu.
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open on mouse click in mobile layout")
 	}
 }
@@ -1313,10 +1310,10 @@ func TestMouseClickOnLabelWorksOnMobileLayout(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after warm-up")
 	}
-	labelRect := dv.rowLabels[0].Rect()
+	labelRect := dv.rowLabels()[0].Rect()
 	if labelRect.Empty() {
 		t.Skip("row label rect empty (not visible in this layout)")
 	}
@@ -1337,12 +1334,12 @@ func TestMouseClickOnLabelWorksOnMobileLayout(t *testing.T) {
 	r()
 
 	// The touch scroll should NOT have started.
-	if dv.rowScroll.TouchActive() {
+	if dv.rowScroll().TouchActive() {
 		t.Fatal("row scroller should NOT be active for mouse clicks (no touch override)")
 	}
 
 	// On mobile, the label button opens the context menu (not the instrument menu).
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should open on label click in mobile layout")
 	}
 }
@@ -1376,19 +1373,19 @@ func TestContextMenuBlocksTransportButtons(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if dv.playBtn == nil || dv.playBtn.Rect().Empty() {
+	if dv.playBtn() == nil || dv.playBtn().Rect().Empty() {
 		t.Skip("play button not visible in this layout")
 	}
 
 	// Track whether play was fired.
 	playFired := false
-	dv.playBtn.OnClick = func() { playFired = true }
+	dv.playBtn().OnClick = func() { playFired = true }
 
-	// Open the context menu.
-	dv.contextMenuOpen = true
+	// Open the context menu via portal path so the portal guard blocks transport.
+	dv.openContextMenuPortal()
 
 	// Simulate a click at the play button's center.
-	pr := dv.playBtn.Rect()
+	pr := dv.playBtn().Rect()
 	cx, cy := (pr.Min.X+pr.Max.X)/2, (pr.Min.Y+pr.Max.Y)/2
 
 	r := SetInputForTest(
@@ -1433,16 +1430,17 @@ func TestOverflowMenuBlocksWidgets(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if dv.addRowBtn == nil || dv.addRowBtn.Rect().Empty() {
+	if dv.addRowBtn() == nil || dv.addRowBtn().Rect().Empty() {
 		t.Skip("addRowBtn not visible")
 	}
 
 	addFired := false
-	dv.addRowBtn.OnClick = func() { addFired = true }
+	dv.addRowBtn().OnClick = func() { addFired = true }
 
-	dv.overflowMenuOpen = true
+	// Open via portal path so the portal guard blocks underlying widgets.
+	dv.openOverflowMenuPortal()
 
-	ar := dv.addRowBtn.Rect()
+	ar := dv.addRowBtn().Rect()
 	cx, cy := (ar.Min.X+ar.Max.X)/2, (ar.Min.Y+ar.Max.Y)/2
 
 	r := SetInputForTest(
@@ -1487,14 +1485,15 @@ func TestContextMenuBlocksRowVolumeSlider(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+	if len(dv.rowVolSliders()) == 0 || dv.rowVolSliders()[0].Rect().Empty() {
 		t.Skip("row volume slider not visible")
 	}
 
 	origVol := dv.Rows[0].Volume
-	dv.contextMenuOpen = true
+	// Open via portal path so the portal guard blocks underlying widgets.
+	dv.openContextMenuPortal()
 
-	sr := dv.rowVolSliders[0].Rect()
+	sr := dv.rowVolSliders()[0].Rect()
 	// Click at the far right of the slider (would set vol to ~1.0)
 	cx, cy := sr.Max.X-1, (sr.Min.Y+sr.Max.Y)/2
 
@@ -1577,7 +1576,7 @@ func TestContextMenuClosedReturnsEarly(t *testing.T) {
 	dv.Length = 8
 
 	// Context menu is closed by default.
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be closed by default")
 	}
 
@@ -1588,8 +1587,9 @@ func TestContextMenuClosedReturnsEarly(t *testing.T) {
 	}
 }
 
-// TestContextMenuClickOutsideCloses verifies that clicking outside an open
-// context menu closes it and consumes the input event.
+// TestContextMenuClickOutsideCloses verifies that handleContextMenuInput
+// returns false for clicks outside the menu rect (click-outside closing
+// is handled by the tree, not the handler).
 func TestContextMenuClickOutsideCloses(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 800, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -1609,22 +1609,17 @@ func TestContextMenuClickOutsideCloses(t *testing.T) {
 	restore()
 
 	// Manually open the context menu.
-	dv.contextMenuOpen = true
+	dv.openContextMenuPortal()
 	dv.contextMenuRow = 0
 	dv.contextMenuRect = image.Rect(100, 100, 300, 400)
 
-	// Ensure the suppression guard is clear so outside clicks actually close.
 	suppressClicksUntilRelease = false
 
-	// Click well outside the menu rect.
+	// Click well outside the menu rect — handler should NOT consume
+	// (click-outside is handled by the tree).
 	got := dv.handleContextMenuInput(500, 500, true)
-
-	// Should consume the input and close the menu.
-	if !got {
-		t.Fatal("expected handleContextMenuInput to consume click outside")
-	}
-	if dv.contextMenuOpen {
-		t.Fatal("expected context menu to close after outside click")
+	if got {
+		t.Fatal("handleContextMenuInput should return false for clicks outside contextMenuRect")
 	}
 }
 
@@ -1637,7 +1632,7 @@ func TestOverflowMenuClosedReturnsEarly(t *testing.T) {
 	dv.Length = 8
 
 	// Overflow menu is closed by default.
-	if dv.overflowMenuOpen {
+	if dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu should be closed by default")
 	}
 
@@ -1675,7 +1670,7 @@ func TestContextMenuDesktopButtonIteration(t *testing.T) {
 	// Open context menu with buttons via the real method so buttons are populated.
 	dv.openContextMenu(0)
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open after openContextMenu(0)")
 	}
 	if len(dv.contextMenuBtns) == 0 {

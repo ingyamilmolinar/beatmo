@@ -27,7 +27,7 @@ func (g *Game) bpmLoop() {
 				g.engine.SetBPM(b)
 				audio.SetBPM(b)
 				g.logger.Debugf("[GAME] applied BPM=%d in %s", b, time.Since(start))
-				sendLatest(g.bpmAck, b)
+				sendLatest(g.bpmAck, b, nil)
 				// If UI has moved on while we were applying BPM (e.g. audio
 				// layer was blocked), immediately converge to the current
 				// desired DrumView BPM without waiting for another Update().
@@ -47,7 +47,7 @@ func (g *Game) bpmLoop() {
 					g.engine.SetBPM(b)
 					audio.SetBPM(b)
 					g.logger.Debugf("[GAME] reconciled BPM=%d in %s", b, time.Since(start))
-					sendLatest(g.bpmAck, b)
+					sendLatest(g.bpmAck, b, nil)
 				}
 				goto applied
 			}

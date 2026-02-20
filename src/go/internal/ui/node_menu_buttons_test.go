@@ -70,10 +70,10 @@ func TestMuteSoloNoAutoRepeat(t *testing.T) {
 	dv := g.drum
 	dv.recalcButtons()
 	dv.calcLayout()
-	if len(dv.rowMuteBtns) == 0 {
+	if len(dv.rowMuteBtns()) == 0 {
 		t.Fatalf("no mute button")
 	}
-	btn := dv.rowMuteBtns[0]
+	btn := dv.rowMuteBtns()[0]
 	r := btn.Rect()
 	mx := (r.Min.X + r.Max.X) / 2
 	my := (r.Min.Y + r.Max.Y) / 2

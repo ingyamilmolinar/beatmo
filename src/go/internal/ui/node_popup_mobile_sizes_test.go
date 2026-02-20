@@ -29,14 +29,20 @@ func TestNodePopupMobileButtonSizes(t *testing.T) {
 	g.sidebar.sectionOpen["aud"] = true
 	g.sidebar.layout()
 
+	// Inc/dec buttons use sidebarIncBtnH (24px), other buttons use sidebarBtnH (28px)
+	incDecIDs := map[string]bool{"vol-": true, "vol+": true, "pit-": true, "pit+": true, "dur-": true, "dur+": true, "gp-": true, "gp+": true}
 	allIDs := []string{"vol-", "vol+", "pit-", "pit+", "dur-", "dur+", "gp-", "gp+", "logic", "grv", "aud"}
 	for _, id := range allIDs {
 		r := g.sidebar.rects[id]
 		if r.Empty() {
 			continue
 		}
-		if r.Dy() != sidebarBtnH {
-			t.Errorf("button %q height: want %d, got %d", id, sidebarBtnH, r.Dy())
+		wantH := sidebarBtnH
+		if incDecIDs[id] {
+			wantH = sidebarIncBtnH
+		}
+		if r.Dy() != wantH {
+			t.Errorf("button %q height: want %d, got %d", id, wantH, r.Dy())
 		}
 	}
 }
@@ -180,14 +186,14 @@ func TestNodePopupDesktopUnchanged(t *testing.T) {
 		t.Fatalf("expected desktop panel width %d, got %d", sidebarDefaultW, panel.Dx())
 	}
 
-	// All +/- buttons use uniform sidebarBtnH.
+	// All +/- buttons use sidebarIncBtnH (24px, vertically centered in 28px rows).
 	for _, id := range []string{"vol-", "vol+", "pit-", "pit+", "dur-", "dur+"} {
 		r := g.sidebar.rects[id]
 		if r.Empty() {
 			continue
 		}
-		if r.Dy() != sidebarBtnH {
-			t.Errorf("button %q height: want %d, got %d", id, sidebarBtnH, r.Dy())
+		if r.Dy() != sidebarIncBtnH {
+			t.Errorf("button %q height: want %d, got %d", id, sidebarIncBtnH, r.Dy())
 		}
 	}
 }

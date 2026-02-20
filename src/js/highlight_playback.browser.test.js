@@ -88,8 +88,9 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
     let hasAny = false;
     for (let t = 0; t < 40 && !hasAny; t++) {
       await page.waitForTimeout(50);
-      await page.evaluate(() => { syncHighlights?.(); if (typeof forceDraw === 'function') forceDraw(); });
       hasAny = await page.evaluate(() => {
+        syncHighlights?.();
+        if (typeof forceDraw === 'function') forceDraw();
         if (typeof hasRealtimeHighlight !== 'function') return false;
         if (typeof currentBeat !== 'function' || typeof gridSubdiv !== 'function') return false;
         const beat = currentBeat();

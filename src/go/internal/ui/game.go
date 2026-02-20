@@ -14,7 +14,7 @@ const desktopTopOffset = 40
 // On mobile (small screen), the transport bar lives in the drum pane,
 // so no offset is needed. On desktop, reserves 40px at the top.
 func gridTopOffset() int {
-	if isSmallScreen() {
+	if Profile().IsMobile() {
 		return 0
 	}
 	return desktopTopOffset

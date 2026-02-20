@@ -14,8 +14,8 @@ func TestTouchSizesDesktop(t *testing.T) {
 	if TouchGrabZone() != 5 {
 		t.Errorf("TouchGrabZone() = %d, want 5", TouchGrabZone())
 	}
-	if TouchRowHeight() != 24 {
-		t.Errorf("TouchRowHeight() = %d, want 24", TouchRowHeight())
+	if TouchRowHeight() != 28 {
+		t.Errorf("TouchRowHeight() = %d, want 28", TouchRowHeight())
 	}
 	if TouchMinTarget() != 0 {
 		t.Errorf("TouchMinTarget() = %d, want 0", TouchMinTarget())
@@ -26,16 +26,16 @@ func TestTouchSizesDesktop(t *testing.T) {
 	if RowControlBtnSize() != 0 {
 		t.Errorf("RowControlBtnSize() = %d, want 0", RowControlBtnSize())
 	}
-	if MinCellWidth() != 4 {
-		t.Errorf("MinCellWidth() = %d, want 4", MinCellWidth())
+	if MinCellWidth() != 2 {
+		t.Errorf("MinCellWidth() = %d, want 2", MinCellWidth())
 	}
 }
 
 func TestTouchSizesMobile(t *testing.T) {
 	withSmallScreen(t, true)
 
-	if SplitterHandleLen() != 44 {
-		t.Errorf("SplitterHandleLen() = %d, want 44", SplitterHandleLen())
+	if SplitterHandleLen() != 56 {
+		t.Errorf("SplitterHandleLen() = %d, want 56", SplitterHandleLen())
 	}
 	if SplitterHandleThick() != 6 {
 		t.Errorf("SplitterHandleThick() = %d, want 6", SplitterHandleThick())
@@ -55,8 +55,8 @@ func TestTouchSizesMobile(t *testing.T) {
 	if RowControlBtnSize() != 36 {
 		t.Errorf("RowControlBtnSize() = %d, want 36", RowControlBtnSize())
 	}
-	if MinCellWidth() != 4 {
-		t.Errorf("MinCellWidth() = %d, want 4", MinCellWidth())
+	if MinCellWidth() != 2 {
+		t.Errorf("MinCellWidth() = %d, want 2", MinCellWidth())
 	}
 }
 

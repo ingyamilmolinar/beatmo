@@ -302,14 +302,14 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	}
 	// Export master EQ if any band has non-zero gain, is muted, or filters enabled.
 	masterHasNonZeroGain := false
-	for _, g := range dv.eqBandGainsDB {
+	for _, g := range dv.eqBandGainsDB() {
 		if g != 0 {
 			masterHasNonZeroGain = true
 			break
 		}
 	}
 	masterHasMutedBand := false
-	for _, m := range dv.eqBandMuted {
+	for _, m := range dv.eqBandMuted() {
 		if m {
 			masterHasMutedBand = true
 			break
@@ -318,12 +318,12 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	masterHasFilters := dv.hpfEnabled || dv.lpfEnabled
 	if masterHasNonZeroGain || masterHasMutedBand || masterHasFilters {
 		eq := exportEQ{}
-		eq.GainsDB = append(eq.GainsDB, dv.eqBandGainsDB...)
+		eq.GainsDB = append(eq.GainsDB, dv.eqBandGainsDB()...)
 		for _, b := range eqBandDefs {
 			eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
 		}
 		if masterHasMutedBand {
-			eq.BandMuted = append(eq.BandMuted, dv.eqBandMuted...)
+			eq.BandMuted = append(eq.BandMuted, dv.eqBandMuted()...)
 		}
 		eq.HPFEnabled = dv.hpfEnabled
 		eq.HPFCutoffHz = dv.hpfCutoffHz

@@ -181,10 +181,10 @@ func TestLayoutButtonRectsValidAfterRotation(t *testing.T) {
 
 	bounds := g.drum.Bounds
 	btns := map[string]*Button{
-		"play":   g.drum.playBtn,
-		"stop":   g.drum.stopBtn,
-		"bpmInc": g.drum.bpmIncBtn,
-		"bpmDec": g.drum.bpmDecBtn,
+		"play":   g.drum.playBtn(),
+		"stop":   g.drum.stopBtn(),
+		"bpmInc": g.drum.bpmIncBtn(),
+		"bpmDec": g.drum.bpmDecBtn(),
 	}
 	for name, btn := range btns {
 		if btn == nil {

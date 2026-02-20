@@ -331,10 +331,8 @@ func (g *Game) refreshDrumRow() {
 					// Playback with stationary window: count cell diffs to allow
 					// the cheap cell-patch path instead of full row rebuilds.
 					diff := countCellDiffs(prevSteps, prevTypes, r.Steps, r.CellTypes)
-					if diff > 0 && diff <= rowCachePatchMax {
+					if diff > 0 {
 						g.drum.markRowCellsDirty(rowIdx)
-					} else {
-						g.drum.markRowDirty(rowIdx)
 					}
 				} else {
 					g.drum.markRowDirty(rowIdx)

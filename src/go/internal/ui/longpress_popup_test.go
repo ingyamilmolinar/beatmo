@@ -258,10 +258,10 @@ func TestLongPressPopupDrumPaneUnchanged(t *testing.T) {
 	advanceFrames(g, 2)
 
 	// Ensure there is at least one row label.
-	if len(g.drum.rowLabels) == 0 {
+	if len(g.drum.rowLabels()) == 0 {
 		t.Skip("no row labels to test against")
 	}
-	lbl := g.drum.rowLabels[0]
+	lbl := g.drum.rowLabels()[0]
 	r := lbl.Rect()
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
@@ -272,7 +272,7 @@ func TestLongPressPopupDrumPaneUnchanged(t *testing.T) {
 		t.Fatal("long-press popup should NOT open for drum pane")
 	}
 	// The context menu should have been opened by the drum pane handler.
-	if !g.drum.contextMenuOpen {
+	if !g.drum.IsContextMenuOpen() {
 		t.Fatal("drum context menu should have opened")
 	}
 }

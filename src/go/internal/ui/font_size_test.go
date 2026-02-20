@@ -38,8 +38,11 @@ func TestFontSizeBodyFitsDesktopRow(t *testing.T) {
 // TestFontSizeHierarchy verifies the type scale has proper ordering and
 // minimum separation between sizes for visual hierarchy.
 func TestFontSizeHierarchy(t *testing.T) {
-	if FontSizeCaption >= FontSizeBody {
-		t.Fatalf("FontSizeCaption (%.0f) must be < FontSizeBody (%.0f)", FontSizeCaption, FontSizeBody)
+	if FontSizeCaption >= FontSizeSmall {
+		t.Fatalf("FontSizeCaption (%.0f) must be < FontSizeSmall (%.0f)", FontSizeCaption, FontSizeSmall)
+	}
+	if FontSizeSmall >= FontSizeBody {
+		t.Fatalf("FontSizeSmall (%.0f) must be < FontSizeBody (%.0f)", FontSizeSmall, FontSizeBody)
 	}
 	if FontSizeBody >= FontSizeLabel {
 		t.Fatalf("FontSizeBody (%.0f) must be < FontSizeLabel (%.0f)", FontSizeBody, FontSizeLabel)

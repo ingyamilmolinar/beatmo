@@ -20,9 +20,9 @@ func TestExportIncludesEQ(t *testing.T) {
 	g.drum.Rows[0].Origin = ui.ID
 	g.drum.Rows[0].Node = ui
 	// Set EQ gains.
-	g.drum.eqBandGainsDB = make([]float64, len(eqBandDefs))
-	g.drum.eqBandGainsDB[0] = 3
-	g.drum.eqBandGainsDB[5] = -2
+	g.drum.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
+	g.drum.eqBandGainsDB()[0] = 3
+	g.drum.eqBandGainsDB()[5] = -2
 
 	data, err := g.drum.exportBytes()
 	if err != nil {
@@ -64,8 +64,8 @@ func TestImportAppliesEQ(t *testing.T) {
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if len(g.drum.eqBandGainsDB) == 0 || g.drum.eqBandGainsDB[0] != 6 {
-		t.Fatalf("eq gains not applied: %+v", g.drum.eqBandGainsDB)
+	if len(g.drum.eqBandGainsDB()) == 0 || g.drum.eqBandGainsDB()[0] != 6 {
+		t.Fatalf("eq gains not applied: %+v", g.drum.eqBandGainsDB())
 	}
 	rec := audio.LastSetEQ()
 	if rec.ID != "main" {
@@ -196,11 +196,9 @@ func TestImportLegacyNoFilters(t *testing.T) {
 	}
 }
 
-func TestImportSyncsEQSliders(t *testing.T) {
+func TestImportSyncsEQGains(t *testing.T) {
 	assertDefaultParityState(t)
-	// Create a file with master EQ gains that map to non-50% slider values
-	// Gain of 12 dB should map to slider value 1.0 (formula: value = gain/24 + 0.5)
-	// Gain of -12 dB should map to slider value 0.0
+	// Create a file with master EQ gains and per-instrument EQ gains.
 	file := exportFile{
 		Version: 1,
 		Subdiv:  32,
@@ -222,54 +220,47 @@ func TestImportSyncsEQSliders(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(400, 300)
 
-	// Initialize EQ sliders (normally done by draw, but we need them for test)
-	if g.drum.eqSliders == nil {
-		g.drum.eqSliders = make([]*Slider, len(eqBandDefs))
-		for i := range g.drum.eqSliders {
-			g.drum.eqSliders[i] = &Slider{Value: 0.5} // default to center
-		}
-	}
-
-	// Import the file
+	// Import the file.
 	if err := g.Import(data); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 
-	// Verify master EQ sliders are synced (master is active by default)
-	// Gain 12 -> slider (12/24)+0.5 = 1.0
-	// Gain -6 -> slider (-6/24)+0.5 = 0.25
+	// Verify master EQ gains are synced (master is active by default).
 	if g.drum.activeEQChannel() != "main" {
 		t.Fatalf("expected main channel active, got %s", g.drum.activeEQChannel())
 	}
-	if len(g.drum.eqSliders) < 2 {
-		t.Fatalf("expected sliders initialized")
+	gains := g.drum.eqBandGainsDB()
+	if len(gains) < 2 {
+		t.Fatalf("expected EQ gains initialized, got %d", len(gains))
 	}
-	// Band 0: gain 12 dB -> slider 1.0
-	if g.drum.eqSliders[0].Value != 1.0 {
-		t.Errorf("slider[0] expected 1.0 for 12dB, got %f", g.drum.eqSliders[0].Value)
+	// Band 0: gain 12 dB.
+	if gains[0] != 12 {
+		t.Errorf("band[0] expected 12 dB, got %f", gains[0])
 	}
-	// Band 1: gain -6 dB -> slider 0.25
-	expected1 := (-6.0 / 24.0) + 0.5
-	if g.drum.eqSliders[1].Value != expected1 {
-		t.Errorf("slider[1] expected %f for -6dB, got %f", expected1, g.drum.eqSliders[1].Value)
+	// Band 1: gain -6 dB.
+	if gains[1] != -6 {
+		t.Errorf("band[1] expected -6 dB, got %f", gains[1])
 	}
-	// Band 2: gain 0 dB -> slider 0.5
-	if g.drum.eqSliders[2].Value != 0.5 {
-		t.Errorf("slider[2] expected 0.5 for 0dB, got %f", g.drum.eqSliders[2].Value)
+	// Band 2: gain 0 dB.
+	if gains[2] != 0 {
+		t.Errorf("band[2] expected 0 dB, got %f", gains[2])
 	}
 
-	// Now switch to the instrument channel and verify those sliders sync
+	// Switch to the instrument channel and verify per-instrument gains.
 	g.drum.setEQActiveChannel("kick")
 	if g.drum.activeEQChannel() != "kick" {
 		t.Fatalf("expected kick channel active, got %s", g.drum.activeEQChannel())
 	}
-	// Band 0: gain -12 dB -> slider 0.0
-	if g.drum.eqSliders[0].Value != 0.0 {
-		t.Errorf("instrument slider[0] expected 0.0 for -12dB, got %f", g.drum.eqSliders[0].Value)
+	kickGains := g.drum.eqBandGainsDB()
+	if len(kickGains) < 2 {
+		t.Fatalf("expected kick EQ gains, got %d", len(kickGains))
 	}
-	// Band 1: gain 6 dB -> slider 0.75
-	expected1Inst := (6.0 / 24.0) + 0.5
-	if g.drum.eqSliders[1].Value != expected1Inst {
-		t.Errorf("instrument slider[1] expected %f for 6dB, got %f", expected1Inst, g.drum.eqSliders[1].Value)
+	// Band 0: gain -12 dB.
+	if kickGains[0] != -12 {
+		t.Errorf("kick band[0] expected -12 dB, got %f", kickGains[0])
+	}
+	// Band 1: gain 6 dB.
+	if kickGains[1] != 6 {
+		t.Errorf("kick band[1] expected 6 dB, got %f", kickGains[1])
 	}
 }

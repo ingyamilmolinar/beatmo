@@ -98,10 +98,10 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 
 	// Add row 1 and point origin to G
 	g.drum.AddRow()
-	if len(g.drum.rowLabels) < 2 {
+	if len(g.drum.rowLabels()) < 2 {
 		t.Fatalf("expected row labels for selection")
 	}
-	g.drum.rowLabels[1].OnClick()
+	g.drum.rowLabels()[1].OnClick()
 	g.drum.SetInstrument("row2") // distinct id for capture
 	g.drum.Rows[1].Origin = G.ID
 	g.drum.Rows[1].Node = g.nodeByID(G.ID)

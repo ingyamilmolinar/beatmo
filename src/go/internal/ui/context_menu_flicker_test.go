@@ -49,10 +49,10 @@ func TestContextMenuStaysOpenAfterLabelTap(t *testing.T) {
 	dv.Update()
 	resetWarm()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("no row labels after warm-up")
 	}
-	labelRect := dv.rowLabels[0].Rect()
+	labelRect := dv.rowLabels()[0].Rect()
 	if labelRect.Empty() {
 		t.Skip("label rect empty — layout may differ in this configuration")
 	}
@@ -82,22 +82,22 @@ func TestContextMenuStaysOpenAfterLabelTap(t *testing.T) {
 	suppressClicksUntilRelease = savedSuppress
 	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("expected context menu to open after tapping row label")
 	}
 
 	// ── Frame 1: InputDispatcher runs with left=true at same label position ──
 	// suppressClicksUntilRelease is still true (touch not released yet).
-	// The dispatcher calls dv.HandleInput → OverlayStack.HandleInput.
+	// The dispatcher calls dv.HandleInput → portal.HandleInput.
 	// The label position is NOT inside the context-menu bottom-sheet rect
 	// (it opened below the label), so the "click outside to close" logic fires.
 	//
-	// Expected: menu stays open (OverlayStack guards on suppressClicksUntilRelease).
+	// Expected: menu stays open (portal guards on suppressClicksUntilRelease).
 	// Actual before fix: contextMenuOpen = false (menu closes = 1-frame flicker).
 	result := dv.HandleInput(lx, ly, true)
 	_ = result // result is informational; the key assertion is below
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		menuRect := dv.contextMenuRect
 		t.Errorf(
 			"context menu was closed by HandleInput(left=true) at label pos (%d,%d) — flicker bug\n"+
@@ -142,10 +142,10 @@ func TestContextMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	dv.Update()
 	resetWarm()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("no row labels after warm-up")
 	}
-	labelRect := dv.rowLabels[0].Rect()
+	labelRect := dv.rowLabels()[0].Rect()
 	if labelRect.Empty() {
 		t.Skip("label rect empty")
 	}
@@ -164,7 +164,7 @@ func TestContextMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	dv.Update()
 	resetOpen()
 
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu must be open before testing close")
 	}
 
@@ -180,16 +180,25 @@ func TestContextMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	dv.Update() // clears suppressClicksUntilRelease (left=false)
 	resetRelease()
 
-	// Now tap outside the menu rect — should close.
+	// Now tap outside the menu rect — tree's click-outside closes it.
 	outsideX := dv.contextMenuRect.Min.X + 5
 	outsideY := dv.contextMenuRect.Min.Y - 20 // above the menu
 	if outsideY < dv.Bounds.Min.Y {
 		outsideY = dv.contextMenuRect.Max.Y + 5 // flip below
 	}
 
-	dv.HandleInput(outsideX, outsideY, true)
+	resetOutside := SetInputForTest(
+		func() (int, int) { return outsideX, outsideY },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	resetOutside()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Errorf("context menu should close when tapping outside after suppression cleared (tap pos: %d,%d, menu rect: %v)",
 			outsideX, outsideY, dv.contextMenuRect)
 	}

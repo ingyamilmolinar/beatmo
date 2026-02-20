@@ -9,6 +9,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// popupThumbSize is the thumb diameter used for slider popup rendering.
+const popupThumbSize = 12
+
 // SliderPopupConfig configures a reusable vertical slider popup.
 type SliderPopupConfig struct {
 	ID       string
@@ -52,7 +55,6 @@ func (sp *SliderPopup) Open(anchor, bounds image.Rectangle, headerH int) {
 	sp.rect = image.Rect(x, y, x+popupW, y+popupH)
 	sp.dragging = false
 	sp.open = true
-	SuppressClicksUntilMouseUp()
 }
 
 // Close closes the popup.
@@ -137,12 +139,11 @@ func (sp *SliderPopup) Draw(dst *ebiten.Image) {
 	}
 
 	// Thumb.
-	const thumbSize = 8
 	thumbRect := image.Rect(
-		trackX-thumbSize/2+1,
-		thumbY-thumbSize/2,
-		trackX+thumbSize/2+1,
-		thumbY+thumbSize/2,
+		trackX-popupThumbSize/2+1,
+		thumbY-popupThumbSize/2,
+		trackX+popupThumbSize/2+1,
+		thumbY+popupThumbSize/2,
 	)
 	drawRect(dst, thumbRect, colStep, true)
 	drawRect(dst, thumbRect, color.RGBA{255, 255, 255, 180}, false)
@@ -200,7 +201,6 @@ func (o *SliderPopupOverlay) InputBounds() image.Rectangle { return o.Popup.Rect
 func (o *SliderPopupOverlay) Capturing() bool              { return o.Popup.IsDragging() }
 func (o *SliderPopupOverlay) Close() {
 	o.Popup.Close()
-	SuppressClicksUntilMouseUp()
 }
 func (o *SliderPopupOverlay) HandleInput(x, y int, pressed bool) InputResult {
 	if o.Popup.HandleInput(x, y, pressed) {

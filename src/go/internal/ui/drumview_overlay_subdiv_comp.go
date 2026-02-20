@@ -30,16 +30,16 @@ type SubdivMenuState struct {
 
 // SubdivMenuComponent is a self-contained dropdown menu for selecting subdivisions.
 type SubdivMenuComponent struct {
-	BaseComponent
+	overlayBase
 	props   SubdivMenuProps
 	state   SubdivMenuState
 	buttons []*Button
 }
 
 // NewSubdivMenuComponent creates a new subdivision menu component.
-func NewSubdivMenuComponent(id string) *SubdivMenuComponent {
+func NewSubdivMenuComponent() *SubdivMenuComponent {
 	return &SubdivMenuComponent{
-		BaseComponent: *NewBaseComponent(id),
+		overlayBase: newOverlayBase(),
 	}
 }
 
@@ -154,7 +154,6 @@ func (s *SubdivMenuComponent) HandleInput(x, y int, pressed bool) InputResult {
 	// If pressed outside full bounds (menu + anchor), close it
 	if pressed && !pt.In(fullBounds) {
 		s.Close()
-		SuppressClicksUntilMouseUp()
 		return InputConsumed
 	}
 

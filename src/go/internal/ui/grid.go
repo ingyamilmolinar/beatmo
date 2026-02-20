@@ -113,12 +113,9 @@ func (g *Grid) NodeRadius(scale float64) float64 {
 	base := 0.4 * g.Unit()
 	// Apply min/max on-screen sizes for readability while zoomed in/out.
 	// Mobile uses larger minimums for tap targets and visibility.
-	minPx := 8.0
-	maxPx := 16.0
-	if isSmallScreen() {
-		minPx = 12.0
-		maxPx = 20.0
-	}
+	p := Profile()
+	minPx := float64(p.NodeMinPx)
+	maxPx := float64(p.NodeMaxPx)
 	r := base
 	scr := r * scale
 	if scr < minPx {
@@ -162,11 +159,7 @@ func (g *Grid) EdgeThickness(scale float64) float64 {
 	if scale <= 0 {
 		return 1
 	}
-	// Mobile: 2px edges for visibility on small screens.
-	if isSmallScreen() {
-		return 2 / scale
-	}
-	return 1 / scale
+	return float64(Profile().EdgeThickMul) / scale
 }
 
 // EdgeArrowSize returns the world-space length of arrow heads. Keeping them at

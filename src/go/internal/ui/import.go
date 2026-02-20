@@ -173,7 +173,9 @@ func (g *Game) Import(data []byte) error {
 				gains[i] = v
 			}
 		}
-		g.drum.eqBandGainsDB = gains
+		// Copy into existing slice to preserve the shared alias with EQPanelZone.bandGainsDB.
+		// See drumview_ctor.go:305 — dv.eqBandGainsDB and z.bandGainsDB share the same backing array.
+		copy(g.drum.eqBandGainsDB(), gains)
 		// Import band mute state
 		muted := make([]bool, len(eqBandDefs))
 		for i := range muted {
@@ -181,7 +183,7 @@ func (g *Game) Import(data []byte) error {
 				muted[i] = f.EQ.BandMuted[i]
 			}
 		}
-		g.drum.eqBandMuted = muted
+		copy(g.drum.eqBandMuted(), muted)
 		// Import HPF/LPF for master channel
 		g.drum.hpfEnabled = f.EQ.HPFEnabled
 		if f.EQ.HPFCutoffHz > 0 {
@@ -480,13 +482,13 @@ func (g *Game) Import(data []byte) error {
 	if f.MasterVolume > 0 {
 		mv := clampF64(f.MasterVolume, 0, 1)
 		audio.SetMainVolume(mv)
-		if g.drum.mainVolSlider != nil {
-			g.drum.mainVolSlider.Value = mv
+		if g.drum.mainVolSlider() != nil {
+			g.drum.mainVolSlider().Value = mv
 		}
 	} else {
 		audio.SetMainVolume(1)
-		if g.drum.mainVolSlider != nil {
-			g.drum.mainVolSlider.Value = 1
+		if g.drum.mainVolSlider() != nil {
+			g.drum.mainVolSlider().Value = 1
 		}
 	}
 	// Clear any pending UI-added rows state so origin selection does not remain

@@ -84,12 +84,12 @@ func startUploadForTest(t *testing.T, dv *DrumView) {
 	if dv == nil {
 		t.Fatalf("nil drum view while starting upload")
 	}
-	if dv.uploadBtn == nil || dv.uploadBtn.OnClick == nil {
+	if dv.uploadBtn() == nil || dv.uploadBtn().OnClick == nil {
 		t.Fatalf("upload button missing while starting upload")
 	}
-	dv.uploadBtn.OnClick()
+	dv.uploadBtn().OnClick()
 	if !dv.uploading {
-		t.Fatalf("upload not started (uploading=%v naming=%v)", dv.uploading, dv.naming)
+		t.Fatalf("upload not started (uploading=%v naming=%v)", dv.uploading, dv.IsNamingOpen())
 	}
 }
 
@@ -117,12 +117,12 @@ func waitForNaming(t *testing.T, dv *DrumView) {
 	}
 	for i := 0; i < 60; i++ {
 		dv.Update()
-		if dv.naming {
+		if dv.IsNamingOpen() {
 			return
 		}
 		runtime.Gosched()
 	}
-	t.Fatalf("upload did not enter naming state (uploading=%v naming=%v)", dv.uploading, dv.naming)
+	t.Fatalf("upload did not enter naming state (uploading=%v naming=%v)", dv.uploading, dv.IsNamingOpen())
 }
 
 func startImportForTest(t *testing.T, dv *DrumView) {
@@ -130,10 +130,10 @@ func startImportForTest(t *testing.T, dv *DrumView) {
 	if dv == nil {
 		t.Fatalf("nil drum view while starting import")
 	}
-	if dv.importBtn == nil || dv.importBtn.OnClick == nil {
+	if dv.importBtn() == nil || dv.importBtn().OnClick == nil {
 		t.Fatalf("import button missing while starting import")
 	}
-	dv.importBtn.OnClick()
+	dv.importBtn().OnClick()
 	if !dv.importing {
 		t.Fatalf("import not started (importing=%v)", dv.importing)
 	}
@@ -193,8 +193,10 @@ func withSmallScreen(t *testing.T, enabled bool) {
 		t.Fatalf("forceSmallScreenForTest=%v want false (default) before override", prev)
 	}
 	forceSmallScreenForTest = enabled
+	UpdateProfile()
 	t.Cleanup(func() {
 		forceSmallScreenForTest = prev
+		UpdateProfile()
 	})
 }
 
@@ -402,8 +404,8 @@ func pressPlay(t *testing.T, dv *DrumView) {
 	if dv == nil {
 		t.Fatalf("nil drum view while pressing play")
 	}
-	if dv.playBtn != nil && dv.playBtn.OnClick != nil {
-		dv.playBtn.OnClick()
+	if dv.playBtn() != nil && dv.playBtn().OnClick != nil {
+		dv.playBtn().OnClick()
 		return
 	}
 	dv.playPressed = true
@@ -414,8 +416,8 @@ func pressStop(t *testing.T, dv *DrumView) {
 	if dv == nil {
 		t.Fatalf("nil drum view while pressing stop")
 	}
-	if dv.stopBtn != nil && dv.stopBtn.OnClick != nil {
-		dv.stopBtn.OnClick()
+	if dv.stopBtn() != nil && dv.stopBtn().OnClick != nil {
+		dv.stopBtn().OnClick()
 		return
 	}
 	dv.stopPressed = true

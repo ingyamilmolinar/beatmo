@@ -82,7 +82,7 @@ func (g *Game) initJSHarness() {
 		}
 		// Require at least one drawable rows representation.
 		// On small screens, the direct draw path bypasses rowsLayer/stripes.
-		if isSmallScreen() && g.drum.directDrawCount > 0 {
+		if Profile().IsMobile() && g.drum.directDrawCount > 0 {
 			// Direct draw path is active — no layer/stripe needed.
 		} else if g.drum.rowsStripingEnabled && g.drum.rowsStripeCount > 1 {
 			if len(g.drum.rowsStripes) == 0 {
@@ -398,7 +398,7 @@ func (g *Game) initJSHarness() {
 		obj.Set("rowHeight", dv.rowHeight())
 		obj.Set("rowOffset", dv.rowOffset)
 		obj.Set("rowsStripingEnabled", dv.rowsStripingEnabled)
-		obj.Set("isSmallScreen", isSmallScreen())
+		obj.Set("isSmallScreen", Profile().IsMobile())
 		obj.Set("touchScreenWidth", touchScreenWidth)
 		obj.Set("touchScreenHeight", touchScreenHeight)
 		obj.Set("numRows", len(dv.Rows))

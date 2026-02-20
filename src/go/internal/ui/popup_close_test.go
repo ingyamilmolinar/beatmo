@@ -94,7 +94,7 @@ func TestInstMenuCloseButton(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	comp := NewInstrumentMenuComponent("test-close")
+	comp := NewInstrumentMenuComponent()
 	closeCalled := false
 	comp.SetProps(InstrumentMenuProps{
 		Categories:  []string{"Kicks"},
@@ -136,7 +136,7 @@ func TestInstMenuEscClose(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	comp := NewInstrumentMenuComponent("test-esc")
+	comp := NewInstrumentMenuComponent()
 	closeCalled := false
 	comp.SetProps(InstrumentMenuProps{
 		Categories:  []string{"Kicks"},
@@ -174,7 +174,7 @@ func TestInstMenuEscClose(t *testing.T) {
 func TestColorWheelCloseButton(t *testing.T) {
 	assertDefaultParityState(t)
 
-	comp := NewColorWheelComponent("test-close")
+	comp := NewColorWheelComponent()
 	closeCalled := false
 	comp.SetProps(ColorWheelProps{
 		AnchorRect: image.Rect(100, 100, 130, 120),
@@ -209,7 +209,7 @@ func TestContextMenuCloseButton(t *testing.T) {
 	dv.calcLayout()
 
 	dv.OpenContextMenuForTest(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatalf("context menu not open")
 	}
 
@@ -230,7 +230,7 @@ func TestContextMenuCloseButton(t *testing.T) {
 	suppressClicksUntilRelease = false
 	closeBtn.Handle(cx, cy, true)
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatalf("context menu still open after clicking close button")
 	}
 }
@@ -242,7 +242,7 @@ func TestContextMenuEscClose(t *testing.T) {
 	dv.calcLayout()
 
 	dv.OpenContextMenuForTest(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatalf("context menu not open")
 	}
 
@@ -258,7 +258,7 @@ func TestContextMenuEscClose(t *testing.T) {
 
 	dv.Update()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatalf("context menu still open after ESC")
 	}
 }
@@ -305,7 +305,8 @@ func TestOverflowMenuEscClose(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
 
-	dv.SetOverflowMenuOpen(true)
+	// Open via portal path so tree's ESC handler can close it.
+	dv.openOverflowMenuPortal()
 
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -329,7 +330,13 @@ func TestSubdivDropdownEscClose(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
-	dv.subdivMenuOpen = true
+
+	// Open via portal path so tree's ESC handler can close it.
+	dv.subdivBtn().OnClick()
+
+	if !dv.IsSubdivMenuOpen() {
+		t.Fatalf("subdiv menu did not open")
+	}
 
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -343,7 +350,7 @@ func TestSubdivDropdownEscClose(t *testing.T) {
 
 	dv.Update()
 
-	if dv.subdivMenuOpen {
+	if dv.IsSubdivMenuOpen() {
 		t.Fatalf("subdiv menu still open after ESC")
 	}
 }
@@ -353,7 +360,13 @@ func TestEQChannelDropdownEscClose(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
-	dv.eqChannelOpen = true
+
+	// Open via portal path so tree's ESC handler can close it.
+	dv.eqPanelZone.eqChannelBtn.OnClick()
+
+	if !dv.tree.Portal().Has("eq-channel-dropdown") {
+		t.Fatalf("eq-channel-dropdown portal not open")
+	}
 
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -367,8 +380,8 @@ func TestEQChannelDropdownEscClose(t *testing.T) {
 
 	dv.Update()
 
-	if dv.eqChannelOpen {
-		t.Fatalf("EQ channel menu still open after ESC")
+	if dv.tree.Portal().Has("eq-channel-dropdown") {
+		t.Fatalf("EQ channel dropdown portal still open after ESC")
 	}
 }
 
@@ -384,34 +397,34 @@ func TestCloseAllPopups(t *testing.T) {
 	g.sidebar.Open(n)
 
 	// Open drum view popups
-	g.drum.instMenuOpen = true
-	g.drum.colorMenuOpen = true
-	g.drum.subdivMenuOpen = true
-	g.drum.eqChannelOpen = true
-	g.drum.overflowMenuOpen = true
-	g.drum.contextMenuOpen = true
+	g.drum.openInstMenuPortal()
+	g.drum.openColorWheelPortal()
+	g.drum.openSubdivMenuPortal()
+	g.drum.eqPanelZone.eqChannelBtn.OnClick()
+	g.drum.openOverflowMenuPortal()
+	g.drum.openContextMenuPortal()
 
 	g.closeAllPopups()
 
 	if g.sidebar.IsOpen() {
 		t.Fatalf("node menu still open")
 	}
-	if g.drum.instMenuOpen {
+	if g.drum.IsInstMenuOpen() {
 		t.Fatalf("inst menu still open")
 	}
-	if g.drum.colorMenuOpen {
+	if g.drum.IsColorMenuOpen() {
 		t.Fatalf("color menu still open")
 	}
-	if g.drum.subdivMenuOpen {
+	if g.drum.IsSubdivMenuOpen() {
 		t.Fatalf("subdiv menu still open")
 	}
-	if g.drum.eqChannelOpen {
+	if g.drum.IsEQChannelOpen() {
 		t.Fatalf("EQ channel still open")
 	}
-	if g.drum.overflowMenuOpen {
+	if g.drum.IsOverflowMenuOpen() {
 		t.Fatalf("overflow menu still open")
 	}
-	if g.drum.contextMenuOpen {
+	if g.drum.IsContextMenuOpen() {
 		t.Fatalf("context menu still open")
 	}
 }

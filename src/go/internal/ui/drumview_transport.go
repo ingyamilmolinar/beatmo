@@ -10,6 +10,12 @@ import (
 )
 
 func (dv *DrumView) PlayPressed() bool {
+	if dv.transportZone != nil {
+		if dv.transportZone.PlayPressed() {
+			dv.playPressed = false
+			return true
+		}
+	}
 	if dv.playPressed {
 		dv.playPressed = false
 		return true
@@ -20,16 +26,26 @@ func (dv *DrumView) PlayPressed() bool {
 // SetPlaying updates the play button label to reflect playback state.
 func (dv *DrumView) SetPlaying(p bool) {
 	dv.isPlaying = p
+	if dv.transportZone != nil {
+		dv.transportZone.SetPlaying(p)
+		return
+	}
 	if p {
-		dv.playBtn.Text = "⏸"
-		dv.playBtn.Icon = "pause"
+		dv.playBtn().Text = "⏸"
+		dv.playBtn().Icon = "pause"
 	} else {
-		dv.playBtn.Text = "▶"
-		dv.playBtn.Icon = "play"
+		dv.playBtn().Text = "▶"
+		dv.playBtn().Icon = "play"
 	}
 }
 
 func (dv *DrumView) StopPressed() bool {
+	if dv.transportZone != nil {
+		if dv.transportZone.StopPressed() {
+			dv.stopPressed = false
+			return true
+		}
+	}
 	if dv.stopPressed {
 		dv.stopPressed = false
 		return true
@@ -37,11 +53,54 @@ func (dv *DrumView) StopPressed() bool {
 	return false
 }
 
+// RecordPressed returns true (once) if the record button was pressed.
+func (dv *DrumView) RecordPressed() bool {
+	if dv.transportZone != nil {
+		return dv.transportZone.RecordPressed()
+	}
+	return false
+}
+
+// SetRecording updates the record button visual state.
+func (dv *DrumView) SetRecording(rec bool) {
+	if dv.transportZone != nil {
+		dv.transportZone.SetRecording(rec)
+	}
+}
+
+// IsRecording returns whether the UI is showing recording state.
+func (dv *DrumView) IsRecording() bool {
+	if dv.transportZone != nil {
+		return dv.transportZone.IsRecording()
+	}
+	return false
+}
+
 func (dv *DrumView) BPM() int {
+	if dv.transportZone != nil {
+		return dv.transportZone.BPM()
+	}
 	return dv.bpm
 }
 
 func (dv *DrumView) SetBPM(b int) {
+	if dv.transportZone != nil {
+		prev := dv.BPM()
+		dv.transportZone.SetBPM(b)
+		dv.bpm = dv.transportZone.BPM()
+		// Sync error animation bidirectionally: take the higher value so
+		// that both zone-generated errors (clamping) and DrumView-generated
+		// errors (invalid text input) are preserved.
+		if dv.transportZone.BPMErrorAnim() > dv.bpmErrorAnim {
+			dv.bpmErrorAnim = dv.transportZone.BPMErrorAnim()
+		}
+		dv.transportZone.bpmErrorAnim = dv.bpmErrorAnim
+		dv.secPerBeat = 60.0 / float64(dv.bpm)
+		if prev != dv.bpm {
+			dv.logger.Infof("[DRUMVIEW] BPM set: %d -> %d", prev, dv.bpm)
+		}
+		return
+	}
 	if b < 1 {
 		dv.bpm = 1
 		dv.bpmErrorAnim = 1
@@ -56,8 +115,8 @@ func (dv *DrumView) SetBPM(b int) {
 	dv.logger.Infof("[DRUMVIEW] BPM set: %d -> %d", prev, b)
 	dv.bpm = b
 	dv.secPerBeat = 60.0 / float64(dv.bpm)
-	if dv.bpmBox != nil && !dv.bpmBox.Focused() {
-		dv.bpmBox.SetText(strconv.Itoa(dv.bpm))
+	if dv.bpmBox() != nil && !dv.bpmBox().Focused() {
+		dv.bpmBox().SetText(strconv.Itoa(dv.bpm))
 	}
 }
 
@@ -70,14 +129,23 @@ func (dv *DrumView) OffsetChanged() bool {
 }
 
 // FollowPlayback reports whether the drum view auto-scrolls with playback.
-func (dv *DrumView) FollowPlayback() bool { return dv.follow }
+func (dv *DrumView) FollowPlayback() bool {
+	if dv.transportZone != nil {
+		return dv.transportZone.FollowPlayback()
+	}
+	return dv.follow
+}
 
 // SetFollow toggles whether the drum view auto-scrolls with playback. It keeps
 // the track button label in sync so UI indicators match the internal state.
 func (dv *DrumView) SetFollow(f bool) {
+	if dv.transportZone != nil {
+		dv.transportZone.SetFollow(f)
+		dv.follow = f
+		return
+	}
 	changed := dv.follow != f
 	dv.follow = f
-	// Update track button icon and style to reflect state.
 	dv.syncTrackBtnVisual()
 	if changed {
 		if dv.follow {
@@ -90,20 +158,24 @@ func (dv *DrumView) SetFollow(f bool) {
 
 // syncTrackBtnVisual updates the track button icon and style to match follow state.
 func (dv *DrumView) syncTrackBtnVisual() {
-	if dv.trackBtn == nil {
+	if dv.transportZone != nil {
+		dv.transportZone.syncTrackBtnVisual()
+		return
+	}
+	if dv.trackBtn() == nil {
 		return
 	}
 	if dv.follow {
-		dv.trackBtn.Icon = "track"
-		if isSmallScreen() {
-			dv.trackBtn.Style = TransportFollowOnStyle
-			dv.trackBtn.IconColor = colFollowActive
+		dv.trackBtn().Icon = "track"
+		if Profile().IsMobile() {
+			dv.trackBtn().Style = TransportFollowOnStyle
+			dv.trackBtn().IconColor = colFollowActive
 		}
 	} else {
-		dv.trackBtn.Icon = "track-off"
-		if isSmallScreen() {
-			dv.trackBtn.Style = TransportMiscStyle
-			dv.trackBtn.IconColor = colIncDecIcon
+		dv.trackBtn().Icon = "track-off"
+		if Profile().IsMobile() {
+			dv.trackBtn().Style = TransportMiscStyle
+			dv.trackBtn().IconColor = colIncDecIcon
 		}
 	}
 }
@@ -242,12 +314,12 @@ func (dv *DrumView) SetInstrument(id string) {
 	}
 	dv.Rows[dv.selRow].Color = dv.ensureUniqueColor(instColor(id), dv.selRow)
 	// Update label text and style immediately; also mark layout dirty so full rebuild
-	if dv.selRow < len(dv.rowLabels) {
-		dv.rowLabels[dv.selRow].Text = dv.Rows[dv.selRow].Name
+	if dv.selRow < len(dv.rowLabels()) {
+		dv.rowLabels()[dv.selRow].Text = dv.Rows[dv.selRow].Name
 		if dv.IsInstrumentAvailable(id) {
-			dv.rowLabels[dv.selRow].Style = InstButtonStyle
+			dv.rowLabels()[dv.selRow].Style = InstButtonStyle
 		} else {
-			dv.rowLabels[dv.selRow].Style = MissingInstStyle
+			dv.rowLabels()[dv.selRow].Style = MissingInstStyle
 		}
 	}
 	// Instrument changes also update the row color; invalidate row caches so the
@@ -289,10 +361,10 @@ func (dv *DrumView) registerInstrument(id string) {
 	if id == "" {
 		dv.logger.Infof("[DRUMVIEW] Ignored empty WAV name")
 		dv.notifyError("Instrument name cannot be empty")
-		dv.naming = false
 		dv.pendingWAV = ""
 		dv.nameInput = ""
 		dv.nameBox = nil
+		dv.closeNamingPortal()
 		dv.savePressed = false
 		return
 	}
@@ -312,7 +384,7 @@ func (dv *DrumView) registerInstrument(id string) {
 		}
 		dv.samplePath[canonicalID] = dv.pendingWAV
 		dv.refreshInstruments()
-		if dv.instMenuOpen {
+		if dv.IsInstMenuOpen() {
 			dv.buildInstMenu()
 		}
 		if existed {
@@ -331,9 +403,9 @@ func (dv *DrumView) registerInstrument(id string) {
 		dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
 		dv.notifyError("Error loading WAV: " + err.Error())
 	}
-	dv.naming = false
 	dv.pendingWAV = ""
 	dv.nameInput = ""
 	dv.nameBox = nil
+	dv.closeNamingPortal()
 	dv.savePressed = false
 }

@@ -142,24 +142,23 @@ func TestTopLevelControlsBoundedByWidgets(t *testing.T) {
 		rect image.Rectangle
 		box  image.Rectangle
 	}{
-		{"play", dv.playBtn.Rect(), tr},
-		{"stop", dv.stopBtn.Rect(), tr},
-		{"bpmBox", dv.bpmBox.Rect, tr},
-		{"bpmInc", dv.bpmIncBtn.Rect(), tr},
-		{"bpmDec", dv.bpmDecBtn.Rect(), tr},
+		{"play", dv.playBtn().Rect(), tr},
+		{"stop", dv.stopBtn().Rect(), tr},
+		{"bpmBox", dv.bpmBox().Rect, tr},
+		{"bpmInc", dv.bpmIncBtn().Rect(), tr},
+		{"bpmDec", dv.bpmDecBtn().Rect(), tr},
 		{"lenInc", dv.lenIncBtn.Rect(), tl},
 		{"lenDec", dv.lenDecBtn.Rect(), tl},
-		{"track", dv.trackBtn.Rect(), tl},
-		{"upload", dv.uploadBtn.Rect(), tr},
-		{"import", dv.importBtn.Rect(), tr},
-		{"export", dv.exportBtn.Rect(), tr},
-		{"rowLabel0", dv.rowLabels[0].Rect(), rack},
-		{"rowEdit0", dv.rowEditBtns[0].Rect(), rack},
-		{"rowSave0", dv.rowSaveBtns[0].Rect(), rack},
-		{"addRow", dv.addRowBtn.Rect(), rack},
+		{"track", dv.trackBtn().Rect(), tl},
+		{"upload", dv.uploadBtn().Rect(), tr},
+		{"import", dv.importBtn().Rect(), tr},
+		{"export", dv.exportBtn().Rect(), tr},
+		{"rowLabel0", dv.rowLabels()[0].Rect(), rack},
+		// rowEdit0 and rowSave0 are hidden on desktop (empty rects).
+		{"addRow", dv.addRowBtn().Rect(), rack},
 		{"timeline", dv.timelineRect, tl},
 		{"eq", dv.eqRect, wave},
-		{"eqToggle", dv.eqToggleBtn.Rect(), wave},
+		{"eqToggle", dv.eqToggleBtn().Rect(), wave},
 	}
 	for _, c := range controls {
 		if c.rect.Empty() {
@@ -193,8 +192,8 @@ func TestControlsStayBoundedAfterWaveGrow(t *testing.T) {
 		rect image.Rectangle
 		box  image.Rectangle
 	}{
-		{"addRow", dv.addRowBtn.Rect(), rack},
-		{"rowLabel0", dv.rowLabels[0].Rect(), rack},
+		{"addRow", dv.addRowBtn().Rect(), rack},
+		{"rowLabel0", dv.rowLabels()[0].Rect(), rack},
 		{"timeline", dv.timelineRect, tl},
 		{"eq", dv.eqRect, wave},
 	}
@@ -228,7 +227,7 @@ func TestAddRowButtonStaysAfterLastRow(t *testing.T) {
 		rawAddY = rack.Max.Y - dv.rowHeight()
 	}
 	expected := rawAddY + buttonPad
-	got := dv.addRowBtn.Rect().Min.Y
+	got := dv.addRowBtn().Rect().Min.Y
 	if got != expected {
 		t.Fatalf("add row button should follow last row. got Y=%d expected=%d (rowsTop=%d rows=%d offset=%d visRows=%d)", got, expected, rowsTop, len(dv.Rows), dv.rowOffset, dv.visibleRows())
 	}
@@ -236,8 +235,8 @@ func TestAddRowButtonStaysAfterLastRow(t *testing.T) {
 	if rack.Empty() {
 		t.Fatalf("rack rect empty")
 	}
-	if dv.addRowBtn.Rect().Min.X < rack.Min.X || dv.addRowBtn.Rect().Max.X > rack.Max.X {
-		t.Fatalf("add button must stay within rack width: btn=%v rack=%v", dv.addRowBtn.Rect(), rack)
+	if dv.addRowBtn().Rect().Min.X < rack.Min.X || dv.addRowBtn().Rect().Max.X > rack.Max.X {
+		t.Fatalf("add button must stay within rack width: btn=%v rack=%v", dv.addRowBtn().Rect(), rack)
 	}
 }
 
@@ -260,7 +259,7 @@ func TestAddRowButtonAutoScrollsIntoViewOnShrink(t *testing.T) {
 	if dv.rowOffset != maxOff {
 		t.Fatalf("rowOffset should clamp to end after shrink. got=%d want=%d", dv.rowOffset, maxOff)
 	}
-	btn := dv.addRowBtn.Rect()
+	btn := dv.addRowBtn().Rect()
 	rack := dv.widgetRects[WidgetRack]
 	if rack.Empty() {
 		t.Fatalf("rack rect empty")
@@ -289,8 +288,8 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 	dv := newTestDrumView(t, 1280, 720)
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
-	basePlay := dv.playBtn.Rect()
-	baseUpload := dv.uploadBtn.Rect()
+	basePlay := dv.playBtn().Rect()
+	baseUpload := dv.uploadBtn().Rect()
 	if basePlay.Dy() <= 0 || baseUpload.Dy() <= 0 {
 		t.Fatalf("base button heights invalid: play=%v upload=%v", basePlay, baseUpload)
 	}
@@ -300,14 +299,14 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
 	dv.calcLayout()
-	largePlay := dv.playBtn.Rect()
-	largeUpload := dv.uploadBtn.Rect()
+	largePlay := dv.playBtn().Rect()
+	largeUpload := dv.uploadBtn().Rect()
 	if diff := absInt(largePlay.Dy() - largeUpload.Dy()); diff > 10 {
 		t.Fatalf("grown heights should stay aligned: play=%d upload=%d diff=%d", largePlay.Dy(), largeUpload.Dy(), diff)
 	}
 	// Padding: ensure gap between play and stop exists
-	if dv.stopBtn.Rect().Min.X-dv.playBtn.Rect().Max.X <= 1 {
-		t.Fatalf("expected horizontal padding between play and stop buttons: play=%v stop=%v", dv.playBtn.Rect(), dv.stopBtn.Rect())
+	if dv.stopBtn().Rect().Min.X-dv.playBtn().Rect().Max.X <= 1 {
+		t.Fatalf("expected horizontal padding between play and stop buttons: play=%v stop=%v", dv.playBtn().Rect(), dv.stopBtn().Rect())
 	}
 }
 
@@ -336,7 +335,7 @@ func TestAddRowButtonNeverOverlapsEQPanel(t *testing.T) {
 		t.Fatalf("wave rect empty — eqH not applied")
 	}
 
-	btn := dv.addRowBtn.Rect()
+	btn := dv.addRowBtn().Rect()
 	if btn.Empty() {
 		t.Fatalf("add button rect empty")
 	}
@@ -359,7 +358,7 @@ func TestAddRowButtonNeverOverlapsEQPanel(t *testing.T) {
 	dv2.refreshWidgetLayout()
 	dv2.calcLayout()
 	wave2 := dv2.widgetRects[WidgetWave]
-	btn2 := dv2.addRowBtn.Rect()
+	btn2 := dv2.addRowBtn().Rect()
 	if !btn2.Empty() && !wave2.Empty() && btn2.Max.Y > wave2.Min.Y {
 		t.Fatalf("add button overlaps EQ panel with default rows: btn=%v wave=%v", btn2, wave2)
 	}
@@ -380,12 +379,12 @@ func TestAddRowButtonNoOverlapAfterUpdateRowRects(t *testing.T) {
 			dv.AddRow()
 		}
 		dv.calcLayout()
-		btnAfterCalc := dv.addRowBtn.Rect()
+		btnAfterCalc := dv.addRowBtn().Rect()
 		if btnAfterCalc.Empty() {
 			t.Fatalf("add button rect empty after calcLayout")
 		}
 		dv.updateRowRects()
-		btnAfterUpdate := dv.addRowBtn.Rect()
+		btnAfterUpdate := dv.addRowBtn().Rect()
 		if btnAfterUpdate.Empty() {
 			t.Fatalf("add button rect empty after updateRowRects")
 		}
@@ -404,12 +403,12 @@ func TestAddRowButtonNoOverlapAfterUpdateRowRects(t *testing.T) {
 		}
 		dv.updateRowRects()
 
-		btn := dv.addRowBtn.Rect()
+		btn := dv.addRowBtn().Rect()
 		if btn.Empty() {
 			t.Fatalf("add button rect empty after updateRowRects")
 		}
-		for i := 0; i < len(dv.rowLabels); i++ {
-			rowRect := dv.rowLabels[i].Rect()
+		for i := 0; i < len(dv.rowLabels()); i++ {
+			rowRect := dv.rowLabels()[i].Rect()
 			if rowRect.Empty() {
 				continue
 			}
@@ -418,9 +417,9 @@ func TestAddRowButtonNoOverlapAfterUpdateRowRects(t *testing.T) {
 			}
 		}
 		// Verify the button starts at or below the last row's bottom.
-		lastIdx := len(dv.rowLabels) - 1
+		lastIdx := len(dv.rowLabels()) - 1
 		if lastIdx >= 0 {
-			lastRowBottom := dv.rowLabels[lastIdx].Rect().Max.Y
+			lastRowBottom := dv.rowLabels()[lastIdx].Rect().Max.Y
 			if btn.Min.Y < lastRowBottom {
 				t.Fatalf("add button starts above last row bottom: btn.Min.Y=%d lastRowBottom=%d",
 					btn.Min.Y, lastRowBottom)
@@ -435,15 +434,15 @@ func TestAddRowButtonNoOverlapAfterUpdateRowRects(t *testing.T) {
 			dv.AddRow()
 		}
 		dv.calcLayout()
-		rects := make([]image.Rectangle, len(dv.rowLabels))
-		for i := range dv.rowLabels {
-			rects[i] = dv.rowLabels[i].Rect()
+		rects := make([]image.Rectangle, len(dv.rowLabels()))
+		for i := range dv.rowLabels() {
+			rects[i] = dv.rowLabels()[i].Rect()
 		}
 		dv.updateRowRects()
-		for i := range dv.rowLabels {
-			if dv.rowLabels[i].Rect() != rects[i] {
+		for i := range dv.rowLabels() {
+			if dv.rowLabels()[i].Rect() != rects[i] {
 				t.Fatalf("row %d label rect differs: calcLayout=%v updateRowRects=%v",
-					i, rects[i], dv.rowLabels[i].Rect())
+					i, rects[i], dv.rowLabels()[i].Rect())
 			}
 		}
 	})

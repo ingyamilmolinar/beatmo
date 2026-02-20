@@ -34,16 +34,16 @@ type ColorWheelState struct {
 
 // ColorWheelComponent is a self-contained HSV color picker wheel.
 type ColorWheelComponent struct {
-	BaseComponent
+	overlayBase
 	props    ColorWheelProps
 	state    ColorWheelState
 	closeBtn *Button
 }
 
 // NewColorWheelComponent creates a new color wheel component.
-func NewColorWheelComponent(id string) *ColorWheelComponent {
+func NewColorWheelComponent() *ColorWheelComponent {
 	return &ColorWheelComponent{
-		BaseComponent: *NewBaseComponent(id),
+		overlayBase: newOverlayBase(),
 	}
 }
 
@@ -56,10 +56,17 @@ func (c *ColorWheelComponent) SetProps(p ColorWheelProps) {
 func (c *ColorWheelComponent) Props() ColorWheelProps { return c.props }
 
 // Open opens the color wheel.
+// Note: hold is NOT set here because the portal tree's capture system
+// prevents double-dispatch of the opening press. Setting hold would block
+// all subsequent input until a mouse release clears it.
 func (c *ColorWheelComponent) Open() {
 	c.state.open = true
-	c.state.hold = true
 	c.rebuildWheel()
+}
+
+// ClearHold clears the hold state (for testing when opened via direct callback).
+func (c *ColorWheelComponent) ClearHold() {
+	c.state.hold = false
 }
 
 // Close closes the color wheel.
@@ -78,69 +85,44 @@ func (c *ColorWheelComponent) IsOpen() bool {
 }
 
 // rebuildWheel recalculates wheel position and regenerates the image cache.
+// The wheel fills the smaller dimension of Bounds (square) and is centered.
 func (c *ColorWheelComponent) rebuildWheel() {
 	if c.props.AnchorRect.Empty() || c.props.Bounds.Empty() {
 		c.SetBounds(image.Rectangle{})
 		return
 	}
 
-	base := c.props.AnchorRect
 	bounds := c.props.Bounds
-	rowH := c.props.RowHeight
-	if rowH <= 0 {
-		rowH = 24
+
+	// Diameter = smaller of container width/height (fill the section).
+	wheel := bounds.Dx()
+	if bounds.Dy() < wheel {
+		wheel = bounds.Dy()
+	}
+	if wheel < 1 {
+		wheel = 1
 	}
 
-	// Calculate wheel size
-	target := rowH * 6
-	if target < 60 {
-		target = 60
+	// Center within bounds.
+	cx := bounds.Min.X + bounds.Dx()/2
+	cy := bounds.Min.Y + bounds.Dy()/2
+	half := wheel / 2
+	rect := image.Rect(cx-half, cy-half, cx-half+wheel, cy-half+wheel)
+
+	// Clamp to stay fully inside bounds.
+	if rect.Min.X < bounds.Min.X {
+		rect = rect.Add(image.Pt(bounds.Min.X-rect.Min.X, 0))
 	}
-	if target > 200 {
-		target = 200
+	if rect.Min.Y < bounds.Min.Y {
+		rect = rect.Add(image.Pt(0, bounds.Min.Y-rect.Min.Y))
 	}
-	maxSize := bounds.Dx()
-	if bounds.Dy() < maxSize {
-		maxSize = bounds.Dy()
+	if rect.Max.X > bounds.Max.X {
+		rect = rect.Add(image.Pt(bounds.Max.X-rect.Max.X, 0))
 	}
-	if maxSize < 1 {
-		maxSize = 1
-	}
-	wheel := target
-	if wheel > maxSize {
-		wheel = maxSize
-	}
-	if wheel < 20 {
-		wheel = maxSize
+	if rect.Max.Y > bounds.Max.Y {
+		rect = rect.Add(image.Pt(0, bounds.Max.Y-rect.Max.Y))
 	}
 
-	// Position: prefer above anchor, else below; clamp to bounds
-	wantY := base.Min.Y - wheel
-	if wantY < bounds.Min.Y {
-		wantY = base.Max.Y
-	}
-	if wantY < bounds.Min.Y {
-		wantY = bounds.Min.Y
-	}
-	if wantY > bounds.Max.Y-wheel {
-		wantY = bounds.Max.Y - wheel
-	}
-	if wantY < bounds.Min.Y {
-		wantY = bounds.Min.Y
-	}
-
-	wantX := base.Min.X
-	if wantX < bounds.Min.X {
-		wantX = bounds.Min.X
-	}
-	if wantX > bounds.Max.X-wheel {
-		wantX = bounds.Max.X - wheel
-	}
-	if wantX < bounds.Min.X {
-		wantX = bounds.Min.X
-	}
-
-	rect := image.Rect(wantX, wantY, wantX+wheel, wantY+wheel)
 	c.SetBounds(rect)
 	c.rebuildImage()
 
@@ -273,7 +255,6 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 	if c.state.picked {
 		if !pressed {
 			c.Close()
-			SuppressClicksUntilMouseUp()
 			return InputConsumed
 		}
 		return InputCaptured
@@ -286,8 +267,16 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 	pt := image.Pt(x, y)
 
-	// If pressed inside wheel, pick color and defer close until release
+	// If pressed inside wheel bounds, check if inside the circular wheel.
 	if pressed && pt.In(c.bounds) {
+		r := c.bounds
+		cx := float64(r.Min.X + r.Dx()/2)
+		cy := float64(r.Min.Y + r.Dy()/2)
+		radius := float64(imin(r.Dx(), r.Dy())) / 2
+		dx, dy := float64(x)-cx, float64(y)-cy
+		if dx*dx+dy*dy > radius*radius {
+			return InputConsumed // inside rect but outside circle — absorb without picking
+		}
 		col := c.pickColorAt(x, y)
 		if c.props.OnColorPick != nil {
 			c.props.OnColorPick(col)
@@ -299,7 +288,6 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 	// If pressed outside wheel, close
 	if pressed && !pt.In(c.bounds) {
 		c.Close()
-		SuppressClicksUntilMouseUp()
 		return InputConsumed
 	}
 

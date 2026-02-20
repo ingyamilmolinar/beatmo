@@ -4,11 +4,55 @@ package ui
 
 import (
 	"math"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
+
+func TestRuntimeAudioLookaheadMaxCap(t *testing.T) {
+	assertDefaultParityState(t)
+	g := buildTestGame(t)
+	g.audioLookaheadSec = 0.04
+	g.SetPlayingForTest(true)
+
+	// Simulate high draw times to trigger max extra.
+	// snapshot() computes drawAvgMS = drawSumNS / frames / 1e6.
+	// To get drawAvgMS=25.0: frames=10, drawSumNS = 25 * 10 * 1e6 = 250_000_000
+	g.perf.reset()
+	atomic.StoreInt64(&g.perf.frames, 10)
+	atomic.StoreInt64(&g.perf.drawSumNS, 250_000_000) // 25ms avg
+
+	got := g.runtimeAudioLookahead()
+	// With 40ms base + 30ms extra (DrawAvg > 18) = 70ms, but cap is 60ms
+	if got > 0.061 {
+		t.Errorf("expected max cap of 60ms, got %.3f", got)
+	}
+}
+
+func TestRuntimeAudioLookaheadZeroRespected(t *testing.T) {
+	assertDefaultParityState(t)
+	g := buildTestGame(t)
+	g.audioLookaheadSec = 0
+
+	got := g.runtimeAudioLookahead()
+	if got != 0 {
+		t.Errorf("expected 0 when base is 0, got %f", got)
+	}
+}
+
+func TestRuntimeAudioLookaheadNotPlayingCap(t *testing.T) {
+	assertDefaultParityState(t)
+	g := buildTestGame(t)
+	g.audioLookaheadSec = 0.04
+
+	// Not playing: should cap at 60ms (new cap)
+	got := g.runtimeAudioLookahead()
+	if got > 0.061 {
+		t.Errorf("expected not-playing cap of 60ms, got %.3f", got)
+	}
+}
 
 // TestExpectedHighlightSecondsUnknownInstrumentFallback verifies the BPM
 // fallback path at a normal BPM. Under the test stub, SampleSeconds always
@@ -131,5 +175,31 @@ func TestScheduleSoundMuteNodeStopsAudio(t *testing.T) {
 
 	if stopped != "kick" {
 		t.Fatalf("expected audio.Stop called with %q, got %q", "kick", stopped)
+	}
+}
+
+func TestAudioChNearFull(t *testing.T) {
+	assertDefaultParityState(t)
+	g := buildTestGame(t)
+
+	// Fill audioCh to >75% capacity (128 * 0.75 = 96)
+	for i := 0; i < 100; i++ {
+		select {
+		case g.audioCh <- soundReq{id: "fill"}:
+		default:
+		}
+	}
+
+	if !g.audioChNearFull() {
+		t.Fatal("expected audioChNearFull() to return true")
+	}
+
+	// Drain channel
+	for len(g.audioCh) > 0 {
+		<-g.audioCh
+	}
+
+	if g.audioChNearFull() {
+		t.Fatal("expected audioChNearFull() to return false after drain")
 	}
 }

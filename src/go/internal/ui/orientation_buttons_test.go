@@ -22,8 +22,8 @@ func TestLandscapeButtonRectsInsideDrumBounds(t *testing.T) {
 		t.Fatal("drum bounds empty after landscape layout")
 	}
 
-	playR := g.drum.playBtn.Rect()
-	stopR := g.drum.stopBtn.Rect()
+	playR := g.drum.playBtn().Rect()
+	stopR := g.drum.stopBtn().Rect()
 
 	if playR.Empty() {
 		t.Fatal("playBtn rect is empty")
@@ -59,7 +59,7 @@ func TestPortraitToLandscapeButtonRectsUpdate(t *testing.T) {
 
 	// Portrait first — stacked
 	g.Layout(400, 800)
-	playPortrait := g.drum.playBtn.Rect()
+	playPortrait := g.drum.playBtn().Rect()
 	if playPortrait.Empty() {
 		t.Fatal("playBtn rect empty in portrait")
 	}
@@ -70,7 +70,7 @@ func TestPortraitToLandscapeButtonRectsUpdate(t *testing.T) {
 
 	// Switch to landscape — side-by-side
 	g.Layout(800, 400)
-	playLandscape := g.drum.playBtn.Rect()
+	playLandscape := g.drum.playBtn().Rect()
 	if playLandscape.Empty() {
 		t.Fatal("playBtn rect empty after switching to landscape")
 	}
@@ -91,7 +91,7 @@ func TestLandscapeToPortraitButtonRectsUpdate(t *testing.T) {
 
 	// Landscape first — side-by-side
 	g.Layout(800, 400)
-	playLandscape := g.drum.playBtn.Rect()
+	playLandscape := g.drum.playBtn().Rect()
 	if playLandscape.Empty() {
 		t.Fatal("playBtn rect empty in landscape")
 	}
@@ -101,7 +101,7 @@ func TestLandscapeToPortraitButtonRectsUpdate(t *testing.T) {
 
 	// Switch to portrait — stacked
 	g.Layout(400, 800)
-	playPortrait := g.drum.playBtn.Rect()
+	playPortrait := g.drum.playBtn().Rect()
 	if playPortrait.Empty() {
 		t.Fatal("playBtn rect empty after switching to portrait")
 	}
@@ -129,8 +129,8 @@ func TestOrientationRoundTripButtonsValid(t *testing.T) {
 		if db.Empty() {
 			t.Fatalf("%s: drum bounds empty", label)
 		}
-		playR := g.drum.playBtn.Rect()
-		stopR := g.drum.stopBtn.Rect()
+		playR := g.drum.playBtn().Rect()
+		stopR := g.drum.stopBtn().Rect()
 		if playR.Empty() {
 			t.Fatalf("%s: playBtn rect empty", label)
 		}

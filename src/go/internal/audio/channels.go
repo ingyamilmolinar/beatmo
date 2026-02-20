@@ -56,6 +56,14 @@ type Channel struct {
 	// Cached block-processing capability (recomputed when processors change).
 	allBlock   bool             // true when all processors implement BlockProcessor
 	blockProcs []BlockProcessor // pre-cast processors (nil if !allBlock or no processors)
+
+	// Crossfade state: when processors are replaced, the old chain is kept
+	// briefly and blended with the new chain to avoid clicks from abrupt
+	// chain swaps (e.g., effect toggle on/off).
+	oldProcessors  []Processor
+	xfadePos       int
+	xfadeLen       int
+	samplesThruOld uint32 // atomic: >0 if audio was processed with current chain
 }
 
 func newChannel(id string, parent *Channel) *Channel {
@@ -172,12 +180,40 @@ func (c *Channel) ProcessSampleLocal(input float64) float64 {
 	gain := c.Volume()
 	out := input * gain
 
+	// Mark that audio has been processed with the current chain.
+	atomic.StoreUint32(&c.samplesThruOld, 1)
+
 	if !bypassEQ {
 		c.mu.RLock()
 		procs := c.processors
+		oldProcs := c.oldProcessors
+		xfadePos := c.xfadePos
+		xfadeLen := c.xfadeLen
 		c.mu.RUnlock()
-		for _, p := range procs {
-			out = p.ProcessSample(out)
+
+		if oldProcs != nil && xfadePos < xfadeLen {
+			// Crossfade between old and new processor chains.
+			oldOut := out
+			for _, p := range oldProcs {
+				oldOut = p.ProcessSample(oldOut)
+			}
+			newOut := out
+			for _, p := range procs {
+				newOut = p.ProcessSample(newOut)
+			}
+			t := float64(xfadePos) / float64(xfadeLen)
+			out = oldOut*(1-t) + newOut*t
+
+			c.mu.Lock()
+			c.xfadePos++
+			if c.xfadePos >= c.xfadeLen {
+				c.oldProcessors = nil
+			}
+			c.mu.Unlock()
+		} else {
+			for _, p := range procs {
+				out = p.ProcessSample(out)
+			}
 		}
 	}
 
@@ -297,9 +333,23 @@ func (c *Channel) cacheBlockCapability() {
 	c.blockProcs = bp
 }
 
+// channelXfadeSamples is the crossfade duration when the processor chain is
+// replaced, preventing clicks from abrupt chain swaps (e.g., effect toggle).
+// ~5ms at 44100 Hz.
+const channelXfadeSamples = 220
+
 func (c *Channel) replaceProcessors(list []Processor) {
 	c.mu.Lock()
+	// Only crossfade if audio was actually processed with the current chain.
+	// This avoids crossfading when effects are configured before playback starts,
+	// or when multiple chain changes happen in rapid succession without audio.
+	if atomic.LoadUint32(&c.samplesThruOld) > 0 {
+		c.oldProcessors = c.processors
+		c.xfadePos = 0
+		c.xfadeLen = channelXfadeSamples
+	}
 	c.processors = append([]Processor(nil), list...)
+	atomic.StoreUint32(&c.samplesThruOld, 0)
 	c.cacheBlockCapability()
 	c.mu.Unlock()
 }

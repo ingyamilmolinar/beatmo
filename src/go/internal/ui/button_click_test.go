@@ -17,12 +17,16 @@ func TestControlButtonsClickable(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
+	g.drum.calcLayout() // positions trackBtn in the timeline area
 
-	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn, g.drum.uploadBtn}
+	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn(), g.drum.uploadBtn()}
 	for i, btn := range buttons {
 		called := false
 		btn.OnClick = func() { called = true }
 		r := btn.Rect()
+		if r.Empty() {
+			t.Fatalf("button %d (%s) has empty rect", i, btn.Text)
+		}
 		click(g, r.Min.X+1, r.Min.Y+1)
 		if !called {
 			t.Fatalf("button %d (%s) not clickable", i, btn.Text)
@@ -38,8 +42,9 @@ func TestButtonsDoNotOverlap(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
+	g.drum.calcLayout()
 
-	buttons := []*Button{g.drum.playBtn, g.drum.stopBtn, g.drum.bpmDecBtn, g.drum.bpmIncBtn, g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn, g.drum.uploadBtn}
+	buttons := []*Button{g.drum.playBtn(), g.drum.stopBtn(), g.drum.bpmDecBtn(), g.drum.bpmIncBtn(), g.drum.lenDecBtn, g.drum.lenIncBtn, g.drum.trackBtn(), g.drum.uploadBtn()}
 	for i := 0; i < len(buttons); i++ {
 		ri := buttons[i].Rect()
 		for j := i + 1; j < len(buttons); j++ {
@@ -85,7 +90,7 @@ func TestBPMHoldIncrements(t *testing.T) {
 	g.Layout(640, 480)
 	dv := g.drum
 	dv.recalcButtons()
-	btn := dv.bpmIncBtn
+	btn := dv.bpmIncBtn()
 	x, y := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
 	pressed := true
 	restore := SetInputForTest(func() (int, int) { return x, y }, func(ebiten.MouseButton) bool { return pressed }, func(ebiten.Key) bool { return false }, func() []rune { return nil }, func() (float64, float64) { return 0, 0 }, func() (int, int) { return 800, 600 })

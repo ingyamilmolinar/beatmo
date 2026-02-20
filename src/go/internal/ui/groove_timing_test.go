@@ -68,10 +68,10 @@ func TestGrooveDelaySchedulesWithinOneSubdivision(t *testing.T) {
 	bpm := 120
 	g.drum.SetBPM(bpm)
 	g.SetAppliedBPMForTest(bpm)
-	look := g.runtimeAudioLookahead()
+	g.audioLookaheadSec = 0
 	secPerSub := (60.0 / float64(bpm)) / float64(g.grid.MaxDiv())
 	when := captureScheduledWhen(t, g)
-	expected := look + secPerSub
+	expected := secPerSub
 	if diff := when - expected; diff < -0.003 || diff > 0.003 {
 		t.Fatalf("delay schedule mismatch: got %.4fs want %.4fs", when, expected)
 	}
@@ -95,10 +95,10 @@ func TestGrooveRushClampedWithinSubdivision(t *testing.T) {
 	bpm := 120
 	g.drum.SetBPM(bpm)
 	g.SetAppliedBPMForTest(bpm)
-	look := g.runtimeAudioLookahead()
+	g.audioLookaheadSec = 0
 	secPerSub := (60.0 / float64(bpm)) / float64(g.grid.MaxDiv())
 	when := captureScheduledWhen(t, g)
-	expected := look - secPerSub
+	expected := -secPerSub
 	if diff := when - expected; diff < -0.003 || diff > 0.003 {
 		t.Fatalf("rush schedule mismatch: got %.4fs want %.4fs", when, expected)
 	}

@@ -14,6 +14,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GO="${GO:-$ROOT/.tools/go/bin/go}"
 OUTDIR="${OUTDIR:-$ROOT/screenshots}"
 mkdir -p "$OUTDIR"
+OUTDIR="$(cd "$OUTDIR" && pwd)"
 
 echo "=== Beatmo Screenshots ==="
 echo "Output: $OUTDIR"

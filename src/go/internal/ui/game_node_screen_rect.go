@@ -1,9 +1,6 @@
 package ui
 
-import (
-	"math"
-	"os"
-)
+import "math"
 
 /* ───────────────── helper: node’s screen rect ───────────────── */
 
@@ -12,7 +9,7 @@ func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 	unitPx := g.grid.UnitPixels(g.cam.Scale) // px per smallest subdivision
 	// Allow disabling pixel snapping for diagnostics.
 	var offX, offY float64
-	if os.Getenv("NO_PIXEL_SNAP") == "1" {
+	if envNoPixelSnap {
 		offX = g.cam.OffsetX
 		offY = g.cam.OffsetY
 	} else {

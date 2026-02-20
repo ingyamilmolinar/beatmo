@@ -15,7 +15,7 @@ func TestBPMButtonsSurviveDrawLoop(t *testing.T) {
 	g.Layout(800, 600)
 
 	// Click the + button via its handler to avoid input geometry flakiness.
-	g.drum.bpmIncBtn.OnClick()
+	g.drum.bpmIncBtn().OnClick()
 	_ = g.Update()
 
 	// Capture the new BPM after the click.

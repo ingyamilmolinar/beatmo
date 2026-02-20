@@ -205,6 +205,10 @@ type DrumCellStyle struct {
 	Border    color.Color
 }
 
+// narrowCellThreshold is the cell width (px) at or below which borders are
+// suppressed to keep active cells visible at high subdivisions.
+const narrowCellThreshold = 6
+
 // Draw renders a drum cell considering its state. onCol overrides the default On color.
 func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighted bool, onCol color.Color) {
 	fill := s.Off
@@ -222,12 +226,23 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 			fill = s.Highlight
 		}
 	}
+
+	narrow := r.Dx() <= narrowCellThreshold
+
 	drawRect(dst, r, fill, true)
-	if (on || highlighted) && r.Dy() > 4 {
-		topStrip := image.Rect(r.Min.X+1, r.Min.Y, r.Max.X-1, r.Min.Y+1)
-		drawRect(dst, topStrip, adjustColor(fill, 30), true)
+
+	if !narrow {
+		// Normal path: top strip + full border
+		if (on || highlighted) && r.Dy() > 4 {
+			topStrip := image.Rect(r.Min.X+1, r.Min.Y, r.Max.X-1, r.Min.Y+1)
+			drawRect(dst, topStrip, adjustColor(fill, 30), true)
+		}
+		drawRect(dst, r, s.Border, false)
+	} else if on || highlighted {
+		// Narrow active cell: right-edge separator only (1px vs 2px)
+		drawRect(dst, image.Rect(r.Max.X-1, r.Min.Y, r.Max.X, r.Max.Y), s.Border, true)
 	}
-	drawRect(dst, r, s.Border, false)
+	// Narrow inactive: no border — row stripe background provides separation
 }
 
 // DrumRowStyle is reserved for future customisation of entire rows.

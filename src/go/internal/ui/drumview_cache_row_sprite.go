@@ -136,12 +136,9 @@ func (dv *DrumView) buildRowSprite(i int) int {
 					}
 					if step != prevSteps[j] || typ != prevTypes[j] {
 						diff++
-						if diff > rowCachePatchMax {
-							break
-						}
 					}
 				}
-				if diff > 0 && diff <= rowCachePatchMax {
+				if diff > 0 {
 					onCol := dv.Rows[i].Color
 					cellActive := func(idx int) bool { return idx < len(dv.Rows[i].Steps) && dv.Rows[i].Steps[idx] }
 					for j := 0; j < n; j++ {

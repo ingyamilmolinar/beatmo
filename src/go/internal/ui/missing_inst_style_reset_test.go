@@ -27,18 +27,18 @@ func TestMissingInstrumentStyleResetsOnRegister(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 	dv.recalcButtons()
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatalf("no row labels")
 	}
-	if dv.rowLabels[0].Style != MissingInstStyle {
-		t.Fatalf("expected missing style; got %+v", dv.rowLabels[0].Style)
+	if dv.rowLabels()[0].Style != MissingInstStyle {
+		t.Fatalf("expected missing style; got %+v", dv.rowLabels()[0].Style)
 	}
 	// Register matching WAV and refresh instruments
 	if err := audio.RegisterWAV("myst", writeTempWAV(t, "myst.wav")); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	dv.refreshInstruments()
-	if dv.rowLabels[0].Style != InstButtonStyle {
-		t.Fatalf("expected normal style after register; got %+v", dv.rowLabels[0].Style)
+	if dv.rowLabels()[0].Style != InstButtonStyle {
+		t.Fatalf("expected normal style after register; got %+v", dv.rowLabels()[0].Style)
 	}
 }

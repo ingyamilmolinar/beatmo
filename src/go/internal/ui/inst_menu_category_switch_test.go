@@ -15,11 +15,11 @@ func TestInstrumentMenuCategorySwitchDoesNotClose(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	comp := NewInstrumentMenuComponent("test-cat-switch")
+	comp := NewInstrumentMenuComponent()
 	closeCalled := false
 
 	comp.SetProps(InstrumentMenuProps{
-		Categories:  []string{"Kicks", "Snares", "Cymbals"},
+		Categories: []string{"Kicks", "Snares", "Cymbals"},
 		Instruments: []InstrumentOption{
 			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
 			{ID: "kick2", Label: "Kick 2", Category: "Kicks"},
@@ -93,11 +93,11 @@ func TestInstrumentMenuBackButtonDoesNotClose(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	comp := NewInstrumentMenuComponent("test-back-btn")
+	comp := NewInstrumentMenuComponent()
 	closeCalled := false
 
 	comp.SetProps(InstrumentMenuProps{
-		Categories:  []string{"Kicks", "Snares"},
+		Categories: []string{"Kicks", "Snares"},
 		Instruments: []InstrumentOption{
 			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
 			{ID: "snare1", Label: "Snare 1", Category: "Snares"},
@@ -159,11 +159,11 @@ func TestInstrumentMenuMultipleCategorySwitches(t *testing.T) {
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 
-	comp := NewInstrumentMenuComponent("test-multi-switch")
+	comp := NewInstrumentMenuComponent()
 	closeCalled := false
 
 	comp.SetProps(InstrumentMenuProps{
-		Categories:  []string{"Kicks", "Snares", "Cymbals"},
+		Categories: []string{"Kicks", "Snares", "Cymbals"},
 		Instruments: []InstrumentOption{
 			{ID: "kick1", Label: "Kick 1", Category: "Kicks"},
 			{ID: "snare1", Label: "Snare 1", Category: "Snares"},

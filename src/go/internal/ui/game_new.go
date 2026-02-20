@@ -27,8 +27,9 @@ func New(logger *game_log.Logger) *Game {
 	}
 	eng := engine.New(logger)
 	g := &Game{
-		cam:                NewCamera(),
-		inputDispatcher:    NewInputDispatcher(),
+		cam:             NewCamera(),
+		inputDispatcher: NewInputDispatcher(),
+		dispatcherDirty: true,
 		logger:             logger,
 		graph:              eng.Graph,
 		graphRuntime:       graphruntime.NewRuntime(eng.Graph),
@@ -132,10 +133,9 @@ func New(logger *game_log.Logger) *Game {
 	currentMaxDiv = func() int { return g.grid.MaxDiv() }
 	// allow DrumView to request subdivision changes
 	g.drum.onChangeSubdiv = g.validateSubdivisions
-	if g.drum.subdivBtn != nil {
-		g.drum.subdivBtn.Text = fmt.Sprintf("%d", g.grid.MaxDiv())
+	if g.drum.subdivBtn() != nil {
+		g.drum.subdivBtn().Text = fmt.Sprintf("\u00f7%d", g.grid.MaxDiv())
 	}
-	g.ensureComponentRegistry()
 	g.state.SetAppliedBPM(g.drum.BPM())
 	g.prevBPM = g.state.AppliedBPM()
 	go g.audioLoop()
@@ -215,13 +215,13 @@ func New(logger *game_log.Logger) *Game {
 	// slightly in the future to avoid main-thread jank affecting starts.
 	if runtime.GOOS == "js" {
 		g.drawMinInterval = 40 * time.Millisecond
-		g.audioLookaheadSec = 0.08
+		g.audioLookaheadSec = 0.04
 	} else {
 		// Desktop baseline lookahead: 20ms absorbs seqMu contention jitter.
-		// Less than WASM's 80ms because the dedicated 1ms sequencer goroutine
-		// needs less buffer. Combined with runtimeAudioLookahead() (+60ms
-		// dynamic), this eliminates the zero-tolerance scheduling that caused
-		// overdue audio events.
+		// Less than WASM's 40ms because the dedicated 1ms sequencer goroutine
+		// needs less buffer. Combined with runtimeAudioLookahead() (+30ms
+		// dynamic, 60ms cap), this eliminates the zero-tolerance scheduling
+		// that caused overdue audio events.
 		g.audioLookaheadSec = 0.02
 	}
 

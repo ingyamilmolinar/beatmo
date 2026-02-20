@@ -198,7 +198,7 @@ func (g *Game) initJSPlaybackPerf() {
 
 	// commitBPM(n) simulates typing a number and pressing Enter in the BPM box.
 	js.Global().Set("commitBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.bpmBox == nil {
+		if g.drum == nil || g.drum.bpmBox() == nil {
 			return nil
 		}
 		if len(args) < 1 {
@@ -208,10 +208,10 @@ func (g *Game) initJSPlaybackPerf() {
 		if b < 1 {
 			b = 1
 		}
-		g.drum.bpmBox.focused = true
-		g.drum.bpmBox.SetText(strconv.Itoa(b))
+		g.drum.bpmBox().focused = true
+		g.drum.bpmBox().SetText(strconv.Itoa(b))
 		g.drum.SetBPM(b)
-		g.drum.bpmBox.focused = false
+		g.drum.bpmBox().focused = false
 		return nil
 	}))
 
@@ -231,6 +231,11 @@ func (g *Game) initJSPlaybackPerf() {
 		obj.Set("audioQLatMax", s.AudioQLatMax)
 		obj.Set("audioCallAvg", s.AudioCallAvg)
 		obj.Set("audioCallMax", s.AudioCallMax)
+		obj.Set("audioDrops", int(s.AudioDrops))
+		obj.Set("heapAllocKB", int(s.HeapAllocKB))
+		obj.Set("heapSysKB", int(s.HeapSysKB))
+		obj.Set("heapObjects", int(s.HeapObjects))
+		obj.Set("goroutines", s.Goroutines)
 		// Extra UI metrics for perf analysis (web only usage):
 		if g.drum != nil {
 			obj.Set("rowsLayerBytes", g.drum.rowsLayerBytes)

@@ -44,14 +44,14 @@ func TestOverflowMenuRegistersFilePickerRects(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	if dv.overflowBtn == nil {
+	if dv.overflowBtn() == nil {
 		t.Fatal("overflowBtn not created after warm-up")
 	}
 
 	// Click the overflow button to open the menu.
-	dv.overflowBtn.OnClick()
+	dv.overflowBtn().OnClick()
 
-	if !dv.overflowMenuOpen {
+	if !dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu should be open after clicking overflow button")
 	}
 
@@ -122,14 +122,14 @@ func TestOverflowMenuClearsFilePickerRectsOnClose(t *testing.T) {
 	warmUp()
 
 	// Open overflow menu — rects are registered.
-	dv.overflowBtn.OnClick()
+	dv.overflowBtn().OnClick()
 	if len(captured) < 2 {
 		t.Fatalf("expected rects after open, got %d", len(captured))
 	}
 
 	// Close overflow menu via the button toggle.
-	dv.overflowBtn.OnClick()
-	if dv.overflowMenuOpen {
+	dv.overflowBtn().OnClick()
+	if dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu should be closed after second click")
 	}
 	if len(captured) != 0 {
@@ -171,7 +171,7 @@ func TestFilePickerRectsNotRegisteredOnDesktop(t *testing.T) {
 
 	// Manually open the overflow menu (on desktop, the button may not be visible
 	// but we can test the OnClick handler directly).
-	dv.overflowBtn.OnClick()
+	dv.overflowBtn().OnClick()
 
 	if len(captured) != 0 {
 		t.Fatalf("expected 0 file picker rects on desktop, got %d", len(captured))

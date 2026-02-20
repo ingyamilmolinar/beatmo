@@ -49,7 +49,7 @@ func TestOriginSelectOnExistingNode(t *testing.T) {
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
 	// Press origin select for row 1
-	btn := g.drum.rowOriginBtns[1]
+	btn := g.drum.rowOriginBtns()[1]
 	r := btn.Rect()
 	// Use Button.Handle directly to enqueue request
 	_ = btn.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)

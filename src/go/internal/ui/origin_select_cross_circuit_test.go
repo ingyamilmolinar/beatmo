@@ -56,10 +56,9 @@ func TestOriginSelectIgnoresDifferentCircuitNode(t *testing.T) {
 	// Select origin mode for row 1, set to b0 first.
 	g.drum.recalcButtons()
 	g.drum.calcLayout()
-	ob := g.drum.rowOriginBtns[1]
-	or := ob.Rect()
-	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, true)
-	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, false)
+	ob := g.drum.rowOriginBtns()[1]
+	// Origin button is hidden on desktop — trigger via callback directly.
+	ob.OnClick()
 	_ = g.Update()
 	if g.pendingStartRow != 1 {
 		t.Fatalf("pendingStartRow=%d want 1", g.pendingStartRow)
@@ -73,8 +72,7 @@ func TestOriginSelectIgnoresDifferentCircuitNode(t *testing.T) {
 	// Re-enter origin mode for row 1, set playing active; clicking a node from circuit A (a0)
 	// should NOT change because row 0 is audible and playback is active.
 	g.SetPlaying(true)
-	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, true)
-	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, false)
+	ob.OnClick()
 	_ = g.Update()
 	if g.pendingStartRow != 1 {
 		t.Fatalf("pendingStartRow=%d want 1 (before wrong click)", g.pendingStartRow)

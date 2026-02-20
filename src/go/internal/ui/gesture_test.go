@@ -12,8 +12,8 @@ import (
 
 // mockTouchState holds mock touch data for testing.
 type mockTouchState struct {
-	ids  []ebiten.TouchID
-	pos  map[ebiten.TouchID]struct{ x, y int }
+	ids []ebiten.TouchID
+	pos map[ebiten.TouchID]struct{ x, y int }
 }
 
 func newMockTouchState() *mockTouchState {
@@ -223,10 +223,10 @@ func TestTouchDistanceCalculation(t *testing.T) {
 		x1, y1, x2, y2 int
 		expected       float64
 	}{
-		{0, 0, 3, 4, 5.0},     // 3-4-5 triangle
-		{0, 0, 0, 10, 10.0},   // vertical
-		{0, 0, 10, 0, 10.0},   // horizontal
-		{0, 0, 0, 0, 0.0},     // same point
+		{0, 0, 3, 4, 5.0},   // 3-4-5 triangle
+		{0, 0, 0, 10, 10.0}, // vertical
+		{0, 0, 10, 0, 10.0}, // horizontal
+		{0, 0, 0, 0, 0.0},   // same point
 	}
 
 	for _, tt := range tests {

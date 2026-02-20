@@ -74,6 +74,14 @@ type Button struct {
 	// colButtonBorder when zero.
 	Icon      string
 	IconColor color.Color
+	// Highlights contains rune indices in Text to draw with a colored
+	// background, used for fuzzy search match visualization. Only applied
+	// when Icon is empty. Indices that fall outside the clipped text are
+	// silently ignored.
+	Highlights []int
+	// TextColor overrides the default white text color when non-nil.
+	// Used for semantic coloring (e.g. red text on delete menu items).
+	TextColor color.Color
 }
 
 // Global guard to prevent multiple buttons from firing while a mouse press is
@@ -116,9 +124,21 @@ func (b *Button) Draw(dst *ebiten.Image) {
 		h := int(float64(TextHeight()) * scale)
 		x := b.r.Min.X + (b.r.Dx()-w)/2
 		y := b.r.Min.Y + (b.r.Dy()-h)/2
+
+		// Draw fuzzy-match highlight rectangles behind matched chars.
+		if len(b.Highlights) > 0 {
+			drawButtonHighlights(dst, clipped, b.Highlights, x, y, scale)
+		}
+
 		var op ebiten.DrawImageOptions
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(float64(x), float64(y))
+		if b.TextColor != nil {
+			r, g, bb, a := b.TextColor.RGBA()
+			if a > 0 {
+				op.ColorScale.Scale(float32(r)/float32(a), float32(g)/float32(a), float32(bb)/float32(a), float32(a)/0xffff)
+			}
+		}
 		dst.DrawImage(spr, &op)
 	}
 	// Icon overlay (font-independent)
@@ -137,6 +157,18 @@ func (b *Button) Draw(dst *ebiten.Image) {
 			pad = 2
 		}
 		box := image.Rect(b.r.Min.X+pad, b.r.Min.Y+pad, b.r.Max.X-pad, b.r.Max.Y-pad)
+		// Sprite cache path: 1 DrawImage blit instead of many drawRect calls.
+		if spr := iconSprite(b.Icon, box.Dx(), box.Dy()); spr != nil {
+			var op ebiten.DrawImageOptions
+			op.GeoM.Translate(float64(box.Min.X), float64(box.Min.Y))
+			cr, cg, cb, ca := col.RGBA()
+			if ca > 0 {
+				op.ColorScale.Scale(float32(cr)/float32(ca), float32(cg)/float32(ca), float32(cb)/float32(ca), float32(ca)/0xffff)
+			}
+			dst.DrawImage(spr, &op)
+			return
+		}
+		// Fallback: original per-pixel path (test builds / unknown icons).
 		switch b.Icon {
 		case "play":
 			drawPlayIcon(dst, box, col)
@@ -144,6 +176,8 @@ func (b *Button) Draw(dst *ebiten.Image) {
 			drawPauseIcon(dst, box, col)
 		case "stop":
 			drawStopIcon(dst, box, col)
+		case "record":
+			drawRecordIcon(dst, box, col)
 		case "pencil":
 			drawPencilIcon(dst, box, col)
 		case "save":
@@ -178,6 +212,33 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	}
 }
 
+// colFuzzyHighlight is the background color for fuzzy-match highlighted chars.
+var colFuzzyHighlight = color.NRGBA{0, 200, 255, 60} // cyan accent, semi-transparent
+
+// drawButtonHighlights draws small colored rectangles behind characters at
+// the given rune indices. Used to visualize fuzzy search matches in buttons.
+func drawButtonHighlights(dst *ebiten.Image, text string, highlights []int, baseX, baseY int, scale float64) {
+	rs := []rune(text)
+	th := TextHeight()
+	// Build a set for O(1) lookup.
+	hlSet := make(map[int]bool, len(highlights))
+	for _, idx := range highlights {
+		hlSet[idx] = true
+	}
+	xOff := 0
+	for i, r := range rs {
+		cw := TextWidth(string(r))
+		if hlSet[i] {
+			sx := baseX + int(float64(xOff)*scale)
+			sy := baseY
+			sw := int(float64(cw) * scale)
+			sh := int(float64(th) * scale)
+			drawRect(dst, image.Rect(sx, sy, sx+sw, sy+sh), colFuzzyHighlight, true)
+		}
+		xOff += cw
+	}
+}
+
 // textRect returns the rectangle occupied by the button's text when drawn,
 // clamped to the button bounds. Matches Draw(): clips text to button width
 // and applies TextScale.
@@ -196,16 +257,18 @@ func (b *Button) textRect() image.Rectangle {
 	return image.Rect(x, y, x+w, y+h).Intersect(b.r)
 }
 
-// Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
+// HandleInputResult processes a mouse click at (mx,my) and returns an
+// InputResult instead of a bool.  It triggers OnClick when pressed inside.
 // On touch devices, the hit area is expanded to meet minimum touch target size.
-func (b *Button) Handle(mx, my int, pressed bool) bool {
+// Returns InputConsumed on click, InputIgnored otherwise.
+func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
 	if suppressClicksUntilRelease {
 		if !pressed {
 			suppressClicksUntilRelease = false
 		}
 		b.pressed = false
 		b.held = 0
-		return false
+		return InputIgnored
 	}
 	// Expand hit area for touch devices (skip if button has zero-area rect,
 	// e.g. hidden columns on mobile that should not be interactable).
@@ -240,11 +303,18 @@ func (b *Button) Handle(mx, my int, pressed bool) bool {
 			}
 		}
 		b.pressed = true
-		return true
+		return InputConsumed
 	}
 	b.pressed = false
 	b.held = 0
-	return false
+	return InputIgnored
+}
+
+// Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
+// On touch devices, the hit area is expanded to meet minimum touch target size.
+// Backward-compatible wrapper around HandleInputResult.
+func (b *Button) Handle(mx, my int, pressed bool) bool {
+	return b.HandleInputResult(mx, my, pressed) != InputIgnored
 }
 
 func (b *Button) repeatTick() bool {

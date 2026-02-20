@@ -11,13 +11,13 @@ import (
 )
 
 // parseMS extracts the current time in milliseconds from a timelineInfo string.
-// New format: "Beat X/Y | M:SS" — only has second-level precision.
+// Format: "Beat X · M:SS" — only has second-level precision.
 func parseMS(info string) int {
-	p := strings.Index(info, "| ")
+	p := strings.Index(info, "· ")
 	if p < 0 {
 		return -1
 	}
-	part := strings.TrimSpace(info[p+2:])
+	part := strings.TrimSpace(info[p+len("· "):])
 	var m, s int
 	fmt.Sscanf(part, "%d:%d", &m, &s)
 	return (m*60 + s) * 1000

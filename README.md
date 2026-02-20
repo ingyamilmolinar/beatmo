@@ -70,6 +70,29 @@ Use the bundled toolchain to avoid version drift:
 export GO=$(pwd)/.tools/go/bin/go
 ```
 
+## Quick Start
+
+| Task | Command |
+|------|---------|
+| Install deps | `sudo make dependencies` |
+| Desktop run | `make run` |
+| Debug run | `make run-debug` |
+| Fast Go tests | `cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod ./...` |
+| Full pipeline | `make test` |
+| Real Ebiten tests | `make test-real` |
+| Single browser test | `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js` |
+| Cross-platform parity | `make test-parity` |
+| Build WASM | `make wasm` |
+| Headless stubbed tests | `make test-xvfb` |
+| List browser tests | `make test-browser-list` |
+| Sync WAV embeds | `make sync-wav` |
+| Go coverage | `make coverage-go` |
+| Browser coverage (Go+JS) | `make coverage-browser` |
+| JS source coverage | `make coverage-js` |
+| All coverage | `make coverage` |
+| Coverage HTML reports | `make coverage-report` |
+| Coverage graph (DOT/SVG) | `make coverage-graph` |
+
 ## Testing
 
 Unit tests can run in two modes. For the fast, stubbed Ebiten path use the
@@ -99,26 +122,6 @@ under `xvfb-run`:
 make test-xvfb
 ```
 
-### Audio mixer/EQ tests
-
-Fast biquad corruption and channel isolation tests (stubbed Ebiten, no X11):
-
-```sh
-cd src/go && go test -tags test -modfile=go.test.mod ./internal/audio/... -run "Biquad|Channel|ProcessBlock"
-```
-
-Desktop mixer tests with real voices and EQ (requires X11 or `xvfb-run`):
-
-```sh
-cd src/go && xvfb-run -a go test ./internal/audio/... -run "Mixer"
-```
-
-Browser mixer EQ parity test:
-
-```sh
-GO=$(pwd)/.tools/go/bin/go node src/js/mixer_eq_parity.browser.test.js
-```
-
 ### Cross-platform parity tests
 
 Run the Go golden-file generator and then the WASM comparison:
@@ -127,30 +130,41 @@ Run the Go golden-file generator and then the WASM comparison:
 make test-parity
 ```
 
-This loads shared JSON fixtures (`src/go/internal/assets/parity_fixture_*.json`)
-into both the native Go predictor and the WASM predictor, then verifies
-bit-identical outputs for `VisibleAt`, `AudibleAt`, and `TriggeredAt` over a
-64-beat horizon.
+## Code Coverage
 
-### E2E workflow tests
-
-Multi-step scenario tests exercising the full user workflow (build circuit,
-play, live-edit, export, import, verify):
+### Go coverage
 
 ```sh
-# Browser (3 scenarios: lifecycle, BPM stress, row-add-during-playback)
-GO=$(pwd)/.tools/go/bin/go node src/js/e2e_workflow.browser.test.js
-
-# Go (same 3 scenarios with stubbed Ebiten)
-cd src/go && go test -tags test -modfile=go.test.mod -run TestE2E ./internal/ui
+make coverage-go              # Go unit test coverage (atomic mode, outputs coverage/go.out)
 ```
 
-### Real-input browser tests
+### Browser coverage (Go + JS via WASM)
 
-Tests under `src/js/real_input_*.browser.test.js` exercise the UI via actual
-Playwright mouse events (clicks, drags, shift-drags) instead of direct JS API
-calls. They use helpers in `real_input_actions.js` which translate grid
-coordinates to screen positions via the `gridToScreen(i, j)` JS export.
+```sh
+make coverage-browser         # Build coverage-instrumented WASM, run all browser tests, collect Go coverage
+```
+
+### JS source coverage
+
+```sh
+make coverage-js              # V8 coverage report via c8 (requires a prior browser run with JS_COVERAGE=1)
+```
+
+### All coverage
+
+```sh
+make coverage                 # Run coverage-go + coverage-browser + coverage-js in sequence
+```
+
+### Reports & visualization
+
+```sh
+make coverage-report          # Generate HTML reports (coverage/go.html, coverage/browser.html)
+make coverage-graph           # Generate per-function DOT/SVG/PNG coverage graph (requires graphviz for SVG/PNG)
+```
+
+Coverage data lands in `coverage/`. Set `COVERAGE=1` and/or `JS_COVERAGE=1` when
+running browser tests manually to collect data outside of `make coverage-browser`.
 
 ## Debugging
 The UI and game layers now emit verbose logs describing user interactions and
@@ -186,40 +200,163 @@ Notes:
 - On WASM runs, parity panics are **disabled by default**; set `PARITY_WASM_FATAL=1`
   if you need fatal parity during debugging.
 
-### Gotchas for writing browser E2E tests
+## Performance instrumentation
+- Enable periodic UI perf logs with `PERF_LOG=1`. Prints fps, Update/Draw timing, and audio latency every ~2 seconds.
 
-- **JS export names**: Playback controls are `startPlay()` / `stopPlay()`, NOT
-  `start()` / `stop()`. Optional chaining (`?.()`) silently returns `undefined`
-  for missing functions, so typos cause silent no-ops.
-- **Settling after `importJSON()`**: After importing a JSON fixture mid-test,
-  always call `forceDraw()` and wait 300-500ms before clicking buttons or
-  reading state. The layout needs multiple frames to recalculate button rects.
-- **Prefer API calls for non-input features**: Use `startPlay()`/`stopPlay()`
-  instead of `clickPlayBtn()`/`clickStopBtn()` when the test focus is not
-  button interaction (e.g., BPM stress, row operations). Real mouse clicks are
-  fragile after mid-test imports.
-- **Canvas pixel reads**: Ebiten uses WebGL; direct `readPixels` after buffer
-  swap doesn't work. Use `canvasPixelAt(page, x, y)` from
-  `real_input_actions.js` which screenshots + decodes via offscreen canvas.
-- **State leaks between scenarios**: If a test has multiple scenarios, ensure
-  each stops playback properly. A silent no-op stop means the next
-  `startPlay()` toggles playback off instead of on.
-- **Test stub EQ is not real filtering**: Under `-tags test`, `NewEQProcessor`
-  returns a `gainProcessor` (amplitude scaling only), not biquad filters. Tests
-  that need actual frequency-dependent filtering must use `makeBiquad()`
-  directly and pass it to `SetChannelProcessors()` — the `*biquad` type
-  implements the `Processor` interface.
-- **Mobile audio unlock**: `audio.js` uses multi-event unlock listeners
-  (`touchstart`, `touchend`, `pointerdown`, `mousedown`, `keydown`) with a silent
-  buffer play trick for iOS. Synth samples are pre-rendered to raw `Float32Array`
-  without creating an AudioContext; `AudioBuffer` is created lazily on first play.
-  For mobile emulation tests, use `cdpTap()` from `touch_cdp_helpers.js`.
+## Environment Variables
 
-## Performance instrumentation and tests
-- Enable periodic UI perf logs with `PERF_LOG=1` when running Beatmo. It prints every ~2 seconds:
-  fps, Update/Draw average/max (ms), audio queue latency and Go→JS audio call timings.
-- Engine ticker jitter logs (debug level only) as: `[PERF/ENGINE] ticker avg=.. max=.. count=..`.
-- Browser audio bridge emits debug events; inspect via `window.getAudioDebug()` in devtools.
+### Runtime Configuration
+
+| Variable | Purpose |
+|----------|---------|
+| `BEATMO_ASSETS=<path>` | Override default assets root directory |
+| `BEATMO_CONFIG=<path>` | Load custom JSON circuit as initial demo |
+| `BEATMO_DEMO_CONFIG=<path>` | Load custom JSON circuit (takes precedence over `BEATMO_CONFIG`) |
+| `BEATMO_ROW_SNAPSHOTS=1` | Enable row snapshot mode |
+| `AUDIO_SAMPLE_RATE=<int>` | Override default audio sample rate (default: 44100) |
+| `SEQ_TICK_MS=<int>` | Override sequencer tick duration (default: 4ms on WASM) |
+| `PERF_FAST_PATH=1` | Enable fast perf path (auto-enabled on WASM) |
+| `PERF_BROWSER_UPDATE_MAX_MS=<int>` | Set max Update() duration for browser perf optimization |
+| `BPM_TIMING_TEST=1` | Enable BPM timing test mode |
+
+### Profiling
+
+| Variable | Purpose |
+|----------|---------|
+| `PPROF=1` | Start pprof server on `localhost:6060` |
+| `PERF_LOG=1` | Emit perf logs every ~2s |
+| `PYROSCOPE_URL=<url>` | Pyroscope profiling backend URL |
+| `PYROSCOPE_APP=<name>` | Pyroscope app identifier (default: `beatmo`) |
+
+### Audio Debugging
+
+| Variable | Purpose |
+|----------|---------|
+| `TEST_TONE=1` | Output pure 440Hz sine wave, bypassing all synth (tests Oto/driver) |
+| `TEST_VOICE=1` | Replace C synth with simple 220Hz sine voices (tests voice/mixer path) |
+| `TEST_RAW_VOICE=1` | Output first voice's raw samples, bypassing all processing |
+| `TEST_RAW_VOICE_FULL=1` | With `TEST_RAW_VOICE`, use full amplitude (1.0×) instead of 0.2× |
+| `TEST_RAW_VOICE_NOSCALE=1` | With `TEST_RAW_VOICE`, skip all multiplication (direct to int16) |
+| `SINGLE_VOICE=1` | Limit mixer to one voice at a time (tests multi-voice accumulation) |
+| `AUDIO_CLIP_DEBUG=1` | Log clipping events (samples exceeding ±1.0 before hard clamp) |
+| `DEBUG_MIXER=1` | Log mixer workBuf min/max values and voice stats periodically |
+| `BYPASS_CHANNEL_PROC=1` | Skip all channel processing (volume, EQ) — isolates mixer vs channel |
+| `BYPASS_HEADROOM=1` | Skip per-voice headroom attenuation (0.25×) |
+| `BYPASS_EQ=1` | Skip all EQ/processor processing |
+| `BYPASS_NORMALIZE=1` | Skip peak normalization during export |
+| `DEBUG_CHANNEL=1` | Log channel processing values |
+
+### UI Rendering & Geometry
+
+| Variable | Purpose |
+|----------|---------|
+| `RENDER_SAFE=1` | Force drawRect-based rendering instead of sprite cache (for pixel testing) |
+| `SCREEN_EDGES=1` | Draw screen-space edge arrows at viewport edges |
+| `NO_GRID_DRAW=1` | Skip grid pane drawing entirely |
+| `NO_GRID_TILE_CACHE=1` | Disable grid tile caching (force redraw every frame) |
+| `NO_PIXEL_SNAP=1` | Disable pixel snapping for geometry diagnostics |
+| `NO_EDGE_CACHE=1` | Disable edge cache (force redraw every frame) |
+| `NO_SPRITE_NODES=1` | Disable node sprite rendering |
+| `DEBUG_GEOM=1` | Verbose geometry logs |
+| `DEBUG_DRAW_NODES=1` | Enable detailed node draw logs |
+| `BEATMO_DEBUG_INST=1` | Debug logging for instrument menu operations |
+
+### Timeline & Parity
+
+| Variable | Purpose |
+|----------|---------|
+| `TIMELINE_TRACE=1` | Trace timeline masking logic |
+| `TIMELINE_TRACE_ROW=<int>` | Specify which row to trace (default: 0) |
+| `DEBUG_HISTORY_SEED=1` | Debug timeline history seeding logic |
+| `PARITY_FATAL=0\|false` | Disable parity panics |
+| `PARITY_WATCH=log\|panic` | Parity mode (desktop) |
+| `PARITY_WASM_FATAL=1\|true\|panic` | Enable parity panics on WASM |
+| `PARITY_DUMP_STDERR=1` | Dump parity error messages to stderr |
+| `PARITY_SCAN_STRIDE=<int>` | Parity scan stride (cells per scan pass) |
+
+### Test Infrastructure (Go)
+
+| Variable | Purpose |
+|----------|---------|
+| `BEATMO_TEST_LOG=1` | Enable verbose logging during tests (default silent) |
+| `BEATMO_TEST_LOG_LEVEL=<level>` | Test log level: `TRACE`, `DEBUG`, `INFO`, `ERROR` |
+| `FONTCACHE_SUBPROCESS=1` | Internal: font cache test subprocess marker |
+
+### Test Infrastructure (Browser / JS)
+
+| Variable | Purpose |
+|----------|---------|
+| `GO=<path>` | Path to Go binary for WASM builds |
+| `BROWSER_JOBS=<int>` | Number of parallel browser test jobs (default: 4) |
+| `BROWSER_TEST_PORT_BASE=<int>` | Base port for browser test servers (default: random 8500-9499) |
+| `WASM_PREBUILT=1` | Skip WASM rebuild if binary exists |
+| `TEST_LOG=1` | Enable page console logging in browser tests |
+| `COVERAGE=1` | Enable Go coverage flushing during browser tests |
+| `JS_COVERAGE=1` | Enable JS source coverage collection via Playwright |
+| `FILTER=<pattern>` | Test filter pattern for `make test-browser-filter` |
+
+### Browser Performance Thresholds
+
+| Variable | Purpose |
+|----------|---------|
+| `PERF_E2E_FPS_MIN=<float>` | Min FPS for e2e perf test |
+| `PERF_E2E_DRAW_MAX_MS=<float>` | Max avg draw time for e2e perf test |
+| `PERF_E2E_UPDATE_MAX_MS=<float>` | Max avg update time for e2e perf test |
+| `PERF_E2E_AUDIO_CALL_MAX_MS=<float>` | Max avg audio call duration for e2e perf test |
+| `PERF_E2E_AUDIO_QLAT_MAX_MS=<float>` | Max audio queue latency for e2e perf test |
+| `PERF_E2E_OVERDUE_MAX=<int>` | Max overdue audio events |
+| `PERF_E2E_SMALL_LEAD_MAX=<int>` | Max audio events with <4ms lead time |
+| `PERF_BROWSER_FPS_MIN=<float>` | Min FPS for browser perf test |
+| `PERF_BROWSER_UPDATE_MAX_MS=<float>` | Max avg update time for perf test |
+| `PERF_BROWSER_UPDATE_JITTER_MS=<float>` | Update timing jitter tolerance |
+| `PAN_STRESS_FPS_MIN=<float>` | Min FPS for pan stress test |
+| `PAN_STRESS_DRAW_MAX_MS=<float>` | Max avg draw time for pan stress test |
+| `STRESS_COMPLEX_FPS_MIN=<float>` | Min FPS for complex stress test |
+| `STRESS_COMPLEX_DRAW_MAX_MS=<float>` | Max avg draw time for complex stress test |
+| `STRESS_COMPLEX_INTERVAL_MS=<int>` | Sample interval for stress test |
+| `STRESS_COMPLEX_SAMPLES=<int>` | Number of stress test samples |
+| `DRUM_EDIT_TIMEOUT_MS=<int>` | Timeout for drum edit changes (default: 350ms) |
+| `DRUM_EDIT_CYCLE_MS=<int>` | Cycle wait for drum edits (default: 220ms) |
+
+### Benchmarking
+
+| Variable | Purpose |
+|----------|---------|
+| `BPM=<int>` | BPM for `make bench` |
+| `SECS=<int>` | Benchmark duration in seconds |
+| `BPM_LEVELS=<space-separated>` | BPM levels for `bench-desktop.sh` |
+| `DURATION=<int>` | Duration per BPM level (default: 15s) |
+| `RESULTS_DIR=<path>` | Results output directory (default: `bench-results`) |
+| `BENCH_CIRCUIT=<name>` | Circuit for perf_e2e benchmark (`startup` or synthetic) |
+| `BENCH_BPM=<int>` | BPM for perf_e2e benchmark (default: 200) |
+| `BENCH_DURATION=<int>` | Duration for perf_e2e in ms |
+
+### LLM Recording & Agent
+
+| Variable | Purpose |
+|----------|---------|
+| `LLM_RECORD=1` | Enable browser recording for LLM tests |
+| `LLM_RECORD_NAME=<string>` | Recording session name |
+| `LLM_RECORD_INTERVAL=<int>` | Frame capture interval in ms (default: 500) |
+| `ANTHROPIC_API_KEY=<key>` | Claude API key for agent/evaluate |
+| `MODEL=<model-id>` | Claude model for agent (default: `claude-haiku-4-5-20251001`) |
+
+### Deployment (GCP)
+
+| Variable | Purpose |
+|----------|---------|
+| `GCP_PROJECT=<id>` | GCP project ID |
+| `GCS_BUCKET=<name>` | GCS bucket name |
+| `GCS_LOCATION=<region>` | GCS bucket region (default: `us-central1`) |
+| `DOMAIN=<domain>` | Domain for static site (default: `beatmo.io`) |
+| `DRY_RUN=1` | Preview deployment without changes |
+
+### External Services
+
+| Variable | Purpose |
+|----------|---------|
+| `BROWSERSTACK_USERNAME` | BrowserStack username for visual/device testing |
+| `BROWSERSTACK_ACCESS_KEY` | BrowserStack access key |
 
 ## Contributing Notes
 - Keep patches scoped to subsystems; avoid crossing UI/engine/audio boundaries without strong rationale.
@@ -227,92 +364,14 @@ Notes:
 - Prefer adding tests in `src/go/internal/ui` with `-tags test` for fast headless runs; engine/model packages use regular tests.
 - For web harness tests, run with `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js`.
 
-### Quick perf checks
-- Desktop (stubbed Ebiten): `cd src/go && go test -tags test ./internal/ui -run PerfCounters`
-- Browser (Update-only harness): `GO=$(pwd)/.tools/go/bin/go node src/js/perf.browser.test.js`
-- Browser (full render using main.wasm): `GO=$(pwd)/.tools/go/bin/go node src/js/perf_e2e.browser.test.js`
-
-### Debugging parity / scheduler issues
-- Desktop parity fatal follows `PARITY_WATCH` / `PARITY_FATAL`. On WASM, fatals
-  are off unless you set `PARITY_WASM_FATAL=1|true|panic`.
-- A one-beat grace is applied when the sequencer just scheduled a beat
-  (`idx == seqNextIdxs[row]-1`) to avoid false mismatches during redraw.
-- Predictor is the single source of truth for DrumView; schedulers call
-  `Predictor.Ensure(idx+1)` before parity bookkeeping.
-
-### Concurrency gotcha
-`lastTriggeredByRow` is mutex-protected. In tests, use:
-`setLastTriggeredForTest`, `lastTriggeredForTest`, or
-`lastTriggeredRowSnapshotForTest` on `Game` instead of touching the map
-directly, otherwise sequencer goroutines can race and crash.
-
 ### Input system & touch on mobile
-The UI reads input through function variables `cursorPosition` and
-`isMouseButtonPressed` in `input.go` — **not** direct Ebiten calls. On WASM,
-Ebiten does not map touch events to mouse, so these functions are wrapped with a
-touch-to-mouse override (`touch.go`). When a single touch is active, all
-existing mouse-based handlers (DrumView, Camera, Splitter, Editor) see touch
-coordinates transparently.
-
-Key points:
-- `globalTouchState.Update()` must run **before** any `cursorPosition()` reads
-  each frame. `updateTouchOverride()` runs immediately after to set the
-  frame-level override state.
-- Taps in the drum area use a 2-frame injection cycle (`injectTouchTap`)
-  because the touch has already ended by the time the tap gesture fires.
-- Multi-touch gestures (pinch zoom, two-finger pan) are handled directly as
-  gesture events and do **not** go through the mouse override.
-- `SetInputForTest` automatically disables the touch override so test mocks
-  work without interference.
-- See `CLAUDE.md` for the full input flow diagram and platform behavior table.
+Touch input is transparently mapped to mouse via a frame-level override in `input.go` / `touch.go`, so all mouse-based handlers work on mobile without modification. See the header comment in `src/go/internal/ui/input.go` for the full platform behavior table.
 
 ### Audio mixer architecture
-The desktop mixer processes audio in 3 phases to prevent biquad EQ state
-corruption. Biquad filters are stateful and expect continuous input —
-interleaving unrelated voice signals through shared filters caused distortion.
-The fix sums all voices per-instrument first, then applies EQ to the coherent
-sum. See `CLAUDE.md` for the full pipeline diagram.
-
-### Insert effects
-Six per-instrument insert effects (distortion, delay, reverb, chorus,
-bitcrusher, filter) are implemented in C (`src/c/insert_fx.c`) with
-block-based processing. Desktop uses CGo bridges; tests use pure Go fallbacks
-via build tags (`test || js`). On WASM, an AudioWorklet
-(`src/js/insert_fx_worklet.js`) runs the C effects via Emscripten, falling back
-to WebAudio node graphs if worklet init fails. The `BlockProcessor` interface
-allows the channel mixer to call each effect once per block instead of per
-sample, reducing CGo overhead.
-
-### DSP modules
-Reusable C building blocks shared across synths and effects:
-- **Wavetable oscillator** (`wavetable.c`) — guard-point interpolation,
-  band-limited waveform generation (sine, saw, square, triangle). Replaces
-  `sin()` calls in `fmsynth.c`.
-- **ADSR envelope** (`adsr.c`) — state-machine with linear/exponential curves.
-- **LFO** (`lfo.c`) — 5 shapes via wavetable, plus random sample-and-hold.
-- **Stereo panning** (`pan.c`) — equal-power pan law with block processing.
+The desktop mixer uses a 3-phase block processing design (voices → per-instrument EQ → master EQ) to prevent biquad state corruption. See the header comment in `src/go/internal/audio/engine_stop.go` for the full pipeline description and debugging workflow.
 
 ### Audio debugging (desktop)
-The mixer has environment variables for isolating audio issues:
-
-| Variable | Purpose |
-|----------|---------|
-| `TEST_TONE=1` | Output 440Hz sine, bypassing synth (test driver) |
-| `TEST_VOICE=1` | Replace synth with simple sine voices |
-| `BYPASS_CHANNEL_PROC=1` | Skip EQ/volume processing |
-| `BYPASS_HEADROOM=1` | Skip per-voice 0.25× headroom |
-| `AUDIO_CLIP_DEBUG=1` | Log clipping events |
-| `DEBUG_MIXER=1` | Log mixer workBuf min/max values |
-| `SINGLE_VOICE=1` | Limit to one voice at a time |
-
-Typical workflow:
-```bash
-TEST_TONE=1 make run              # Verify driver works
-BYPASS_CHANNEL_PROC=1 make run    # Isolate channel processing
-AUDIO_CLIP_DEBUG=1 make run       # Check for clipping
-```
-
-See `CLAUDE.md` for full audio debugging documentation.
+The mixer supports several env vars for isolating audio issues. See the [Audio Debugging](#audio-debugging) section above for the full variable table.
 
 ## Git hooks
 Enable the optional pre-commit hook so every commit formats the code, runs the tests with the stubbed Ebiten module and builds the wasm binary:

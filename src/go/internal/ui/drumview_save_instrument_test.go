@@ -40,7 +40,7 @@ func TestSaveInstrumentCopiesWavToSavedDir(t *testing.T) {
 	id := "snare-hit"
 	dv.Rows[0].Instrument = id
 	dv.Rows[0].Name = "Hit"
-	dv.rowLabels[0].Text = "Hit"
+	dv.rowLabels()[0].Text = "Hit"
 	dv.instRefreshDirty = true
 	dv.refreshInstruments()
 	if _, ok := dv.instMeta[id]; !ok {
@@ -89,7 +89,7 @@ func TestSaveInstrumentUsesSamplePathWhenMissingMeta(t *testing.T) {
 	dv.samplePath = map[string]string{"custom": src}
 	dv.Rows[0].Instrument = "custom"
 	dv.Rows[0].Name = "Custom"
-	dv.rowLabels[0].Text = "Custom"
+	dv.rowLabels()[0].Text = "Custom"
 	dv.instRefreshDirty = true
 	dv.refreshInstruments()
 
@@ -114,7 +114,7 @@ func TestSaveInstrumentRejectsSynth(t *testing.T) {
 	dv := newTestDrumView(t, 800, 600)
 	dv.Rows[0].Instrument = "snare"
 	dv.Rows[0].Name = "Snare"
-	dv.rowLabels[0].Text = "Snare"
+	dv.rowLabels()[0].Text = "Snare"
 	dv.instRefreshDirty = true
 	dv.refreshInstruments()
 
@@ -136,7 +136,7 @@ func TestSaveInstrumentRejectsMissingPath(t *testing.T) {
 	dv := newTestDrumView(t, 800, 600)
 	dv.Rows[0].Instrument = "kick-a"
 	dv.Rows[0].Name = "Kick A"
-	dv.rowLabels[0].Text = "Kick A"
+	dv.rowLabels()[0].Text = "Kick A"
 	dv.instRefreshDirty = true
 	dv.refreshInstruments()
 
@@ -179,21 +179,23 @@ func TestSaveInstrumentButtonWorksDuringPlayback(t *testing.T) {
 	id := "snare-hit"
 	dv.Rows[0].Instrument = id
 	dv.Rows[0].Name = "Hit"
-	dv.rowLabels[0].Text = "Hit"
+	dv.rowLabels()[0].Text = "Hit"
 	dv.instRefreshDirty = true
 	dv.refreshInstruments()
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	btn := dv.rowSaveBtns[0]
+	btn := dv.rowSaveBtns()[0]
 	if btn.OnClick == nil {
 		t.Fatalf("save button missing OnClick handler")
 	}
+	// On desktop the save button is hidden (empty rect) — it lives in the
+	// overflow menu. Invoke the callback directly to test save logic.
 	r := btn.Rect()
-	if r.Empty() {
-		t.Fatalf("save button rect empty during playback")
+	if !r.Empty() {
+		t.Fatalf("expected save button rect to be empty on desktop, got %v", r)
 	}
-	clickDrumView(t, dv, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
+	btn.OnClick()
 
 	if len(dv.notifs) == 0 {
 		t.Fatalf("save click produced no notification")

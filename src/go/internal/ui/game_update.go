@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"math"
-	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -40,7 +39,7 @@ func (g *Game) Update() error {
 		g.lastUpdateMS = float64(dur) / 1e6
 		g.perf.onUpdate(dur)
 		// Periodic perf log (opt-in: PERF_LOG=1)
-		if os.Getenv("PERF_LOG") == "1" {
+		if perfLogEnabled {
 			now := time.Now()
 			if g.perf.nextLog.IsZero() {
 				g.perf.nextLog = now.Add(2 * time.Second)
@@ -131,7 +130,13 @@ func (g *Game) Update() error {
 		}
 	}
 	beatsAtFrameStart := g.elapsedBeats
-	startNext := append([]int(nil), g.nextBeatIdxs...)
+	if cap(g.startNextBuf) < len(g.nextBeatIdxs) {
+		g.startNextBuf = make([]int, len(g.nextBeatIdxs))
+	} else {
+		g.startNextBuf = g.startNextBuf[:len(g.nextBeatIdxs)]
+	}
+	copy(g.startNextBuf, g.nextBeatIdxs)
+	startNext := g.startNextBuf
 	fastPath := g.perfMode.FastPathEnabled()
 
 	// Detect node parameter edits (e.g., probability changes) and rebase
@@ -213,6 +218,13 @@ eventsDone:
 	// Skip if a multi-touch gesture just ended — the tap is spurious.
 	if gesture != nil && gesture.Kind == GestureTap && !g.split.InGridPane(gesture.X, gesture.Y) && g.drum != nil && !globalTouchState.RecentMultiTouch() {
 		injectTouchTap(gesture.X, gesture.Y)
+		// Reset the tree's wasPressed so it sees the injected tap as a
+		// fresh press. Without this, wasPressed carries over from the
+		// touch-override hold (where touchDeadZone blocked dispatch),
+		// and the tree never dispatches the tap injection.
+		if g.drum.tree != nil {
+			g.drum.tree.wasPressed = false
+		}
 	}
 
 	// Set frame-level touch override so cursorPosition() and
@@ -278,16 +290,21 @@ eventsDone:
 			g.split.guardFrames--
 		}
 
-		// Rebuild handler list each frame (overlays are dynamic)
-		g.inputDispatcher.Clear()
-		if g.sidebar.IsOpen() {
-			g.inputDispatcher.Register(g.sidebar)
+		// Rebuild handler list only when sidebar state changes.
+		sidebarOpen := g.sidebar.IsOpen()
+		if g.dispatcherDirty || sidebarOpen != g.lastDispatcherSidebarOpen {
+			g.dispatcherDirty = false
+			g.lastDispatcherSidebarOpen = sidebarOpen
+			g.inputDispatcher.Clear()
+			if sidebarOpen {
+				g.inputDispatcher.Register(g.sidebar)
+			}
+			g.inputDispatcher.Register(g.split)
+			if g.drum != nil {
+				g.inputDispatcher.Register(g.drum)
+			}
+			g.inputDispatcher.Sort()
 		}
-		g.inputDispatcher.Register(g.split)
-		if g.drum != nil {
-			g.inputDispatcher.Register(g.drum)
-		}
-		g.inputDispatcher.Sort()
 
 		// Skip normal input dispatch if touch gesture was fully handled
 		inputHandled := touchHandled
@@ -299,9 +316,9 @@ eventsDone:
 		// Nudge BPM text input focus early when clicking inside the BPM box so
 		// manual editing works even if other handlers short-circuit later.
 		if g.drum != nil && !inputHandled {
-			r := g.drum.bpmBox.Rect
+			r := g.drum.bpmBox().Rect
 			if left && mx >= r.Min.X && mx < r.Max.X && my >= r.Min.Y && my < r.Max.Y {
-				g.drum.bpmBox.focused = true
+				g.drum.bpmBox().focused = true
 			}
 		}
 		// Only handle editor if input not consumed by dispatcher
@@ -435,8 +452,8 @@ eventsDone:
 		}
 		if err := g.SetSubdivisions(pendingSubdiv); err != nil && g.drum != nil && prev > 0 {
 			g.drum.timelineUnitsPerBeat = prev
-			if g.drum.subdivBtn != nil {
-				g.drum.subdivBtn.Text = fmt.Sprintf("%d", prev)
+			if g.drum.subdivBtn() != nil {
+				g.drum.subdivBtn().Text = fmt.Sprintf("\u00f7%d", prev)
 			}
 		}
 	}
@@ -459,6 +476,16 @@ eventsDone:
 	// Not guarded by fastPath since it's just mouse delta math (not expensive).
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
 	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.longPressPopup
+
+	// Diagnostic: log why panOK is false for grid touches on mobile.
+	// Throttled to once per 60 frames to avoid log spam.
+	if !panOK && left && g.split.InGridPane(mx, my) && touchOverrideActive && g.frame%60 == 0 {
+		g.logger.Infof("[PAN-DEBUG] panOK=false grid touch at (%d,%d) "+
+			"linkDrag=%v splitDrag=%v shift=%v inDrum=%v capturing=%v menuHit=%v popup=%v",
+			mx, my, g.linkDrag.active, g.split.dragging, shift,
+			pt(mx, my, g.drum.Bounds), g.drum.Capturing(), g.menuHit(mx, my), g.longPressPopup)
+		g.drum.logCapturingState()
+	}
 
 	// Dispatch wheel to registered handlers (sidebar, drumview) first.
 	// If consumed, skip camera zoom so scrolling doesn't also zoom.
@@ -686,6 +713,53 @@ eventsDone:
 		g.parityWatch = parityWatchDefault
 		parityFatalEnabled.Store(true)
 	}
+	// Handle record toggle
+	if g.drum.RecordPressed() {
+		if audio.IsRecording() {
+			g.logger.Infof("[GAME] Record stop pressed")
+			result, err := audio.StopRecording()
+			g.drum.SetRecording(false)
+			if err != nil {
+				g.logger.Infof("[GAME] Recording error: %v", err)
+				g.drum.notifyError("Recording failed: " + err.Error())
+			} else if result != nil {
+				path, err := audio.SaveRecording(result)
+				if err != nil {
+					g.logger.Infof("[GAME] Save recording error: %v", err)
+					g.drum.notifyError("Recording save failed: " + err.Error())
+				} else {
+					g.logger.Infof("[GAME] Recording saved to %s", path)
+					g.drum.notifyInfo("Recording saved: " + path)
+				}
+			}
+		} else {
+			g.logger.Infof("[GAME] Record start pressed")
+			instruments := make([]audio.InstrumentMeta, 0, len(g.drum.Rows))
+			for _, row := range g.drum.Rows {
+				if row.Instrument != "" {
+					instruments = append(instruments, audio.InstrumentMeta{
+						ID:   row.Instrument,
+						Name: row.Name,
+					})
+				}
+			}
+			opts := audio.RecordingOptions{
+				Format:      audio.FormatWAV24,
+				Instruments: instruments,
+				BPM:         g.drum.BPM(),
+			}
+			if err := audio.StartRecording(opts); err != nil {
+				g.logger.Infof("[GAME] Start recording error: %v", err)
+				g.drum.notifyError("Cannot start recording: " + err.Error())
+			} else {
+				g.drum.SetRecording(true)
+				// Auto-start playback if not already playing
+				if !g.Playing() {
+					g.drum.playPressed = true
+				}
+			}
+		}
+	}
 	// Detect BPM changes from the UI and re-anchor the timebase so that
 	// playback position remains continuous without a jump. We must compute
 	// the current absolute beat using the previous BPM, then reset the base
@@ -841,7 +915,7 @@ eventsDone:
 // over a splitter pill handle, or restores the default cursor otherwise.
 // Skipped on mobile where cursor shapes are irrelevant.
 func (g *Game) updateCursorShape() {
-	if isSmallScreen() {
+	if Profile().IsMobile() {
 		return
 	}
 	mx, my := cursorPosition()

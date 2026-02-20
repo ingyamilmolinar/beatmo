@@ -103,7 +103,6 @@ func (h *LayoutResizeHandler) HandleInput(x, y int, pressed bool) InputResult {
 			}
 			if pressed && nearPill {
 				h.startDrag(axis, idx, y)
-				suppressClicksUntilRelease = true
 				return InputConsumed
 			}
 			return InputIgnored
@@ -221,7 +220,7 @@ func (h *LayoutResizeHandler) detectColumnDivider(x, y int) (string, int) {
 	if h.dv.widgets == nil {
 		return "", -1
 	}
-	if isSmallScreen() {
+	if !Profile().EnableLayoutResize {
 		return "", -1
 	}
 	off := h.dv.Bounds.Min
@@ -274,7 +273,7 @@ func (h *LayoutResizeHandler) detectRowDivider(x, y int) (string, int) {
 	if h.dv.widgets == nil {
 		return "", -1
 	}
-	if isSmallScreen() {
+	if !Profile().EnableLayoutResize {
 		return "", -1
 	}
 	off := h.dv.Bounds.Min
@@ -388,20 +387,20 @@ func (h *LayoutResizeHandler) handleDrag(x, y int, pressed bool) {
 // grab zone from stealing clicks meant for row controls.
 func (h *LayoutResizeHandler) pointInsideRowControl(x, y int) bool {
 	pt := image.Pt(x, y)
-	for i := range h.dv.rowGroups {
+	for i := range h.dv.rowGroups() {
 		for _, btn := range []*Button{
-			h.dv.rowGroups[i].Mute, h.dv.rowGroups[i].Solo,
-			h.dv.rowGroups[i].FX, h.dv.rowGroups[i].Origin,
-			h.dv.rowGroups[i].Delete, h.dv.rowGroups[i].Edit,
-			h.dv.rowGroups[i].Save, h.dv.rowGroups[i].Menu,
-			h.dv.rowGroups[i].Label,
+			h.dv.rowGroups()[i].Mute, h.dv.rowGroups()[i].Solo,
+			h.dv.rowGroups()[i].FX, h.dv.rowGroups()[i].Origin,
+			h.dv.rowGroups()[i].Delete, h.dv.rowGroups()[i].Edit,
+			h.dv.rowGroups()[i].Save, h.dv.rowGroups()[i].Menu,
+			h.dv.rowGroups()[i].Label,
 		} {
 			if btn != nil && !btn.Rect().Empty() && pt.In(btn.Rect()) {
 				return true
 			}
 		}
 	}
-	for _, s := range h.dv.rowVolSliders {
+	for _, s := range h.dv.rowVolSliders() {
 		if s != nil && !s.Rect().Empty() && pt.In(s.Rect()) {
 			return true
 		}

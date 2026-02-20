@@ -13,14 +13,13 @@ func TestEQControlSlidersApplyGains(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	dv.eqWaveformMode = false
-	// Simulate one draw to ensure bands/sliders allocated.
+	// Simulate one draw to ensure bands allocated.
 	dv.calcLayout()
-	if len(dv.eqSliders) != len(eqBandDefs) {
-		t.Fatalf("expected %d sliders, got %d", len(eqBandDefs), len(dv.eqSliders))
+	if len(dv.eqBandGainsDB()) != len(eqBandDefs) {
+		t.Fatalf("expected %d EQ bands, got %d", len(eqBandDefs), len(dv.eqBandGainsDB()))
 	}
 	// Boost first band.
-	dv.eqSliders[0].Value = 1.0
-	dv.eqBandGainsDB[0] = 12
+	dv.eqBandGainsDB()[0] = 12
 	dv.applyEQ()
 	rec := audio.LastSetEQ()
 	if rec.ID != "main" {
@@ -33,9 +32,8 @@ func TestEQControlSlidersApplyGains(t *testing.T) {
 		t.Fatalf("expected first band gain > 0, got %.2f", rec.Bands[0].GainDB)
 	}
 	// Cut high band.
-	last := len(dv.eqSliders) - 1
-	dv.eqSliders[last].Value = 0.0
-	dv.eqBandGainsDB[last] = -12
+	last := len(dv.eqBandGainsDB()) - 1
+	dv.eqBandGainsDB()[last] = -12
 	dv.applyEQ()
 	rec = audio.LastSetEQ()
 	if rec.Bands[last].GainDB >= 0 {

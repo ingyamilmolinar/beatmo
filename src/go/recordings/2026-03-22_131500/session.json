@@ -1,0 +1,57 @@
+{
+  "bpm": 120,
+  "duration_seconds": 2.211338852,
+  "sample_rate": 44100,
+  "format": "wav24",
+  "timestamp": "2026-03-22_131500",
+  "channels": [
+    {
+      "id": "master",
+      "name": "Master",
+      "filename": "master.wav",
+      "samples": 97461
+    },
+    {
+      "id": "kick-deep",
+      "name": "Kick-deep",
+      "filename": "kick-deep.wav",
+      "samples": 97461
+    },
+    {
+      "id": "snare",
+      "name": "Snare",
+      "filename": "snare.wav",
+      "samples": 97461
+    },
+    {
+      "id": "hihat",
+      "name": "Hi-Hat",
+      "filename": "hihat.wav",
+      "samples": 97461
+    },
+    {
+      "id": "clap",
+      "name": "Clap",
+      "filename": "clap.wav",
+      "samples": 97461
+    },
+    {
+      "id": "tom",
+      "name": "Tom",
+      "filename": "tom.wav",
+      "samples": 97461
+    },
+    {
+      "id": "cowbell",
+      "name": "Cowbell",
+      "filename": "cowbell.wav",
+      "samples": 97461
+    },
+    {
+      "id": "fm-epiano-1",
+      "name": "Fm-epiano-1",
+      "filename": "fm-epiano-1.wav",
+      "samples": 97461
+    }
+  ]
+}

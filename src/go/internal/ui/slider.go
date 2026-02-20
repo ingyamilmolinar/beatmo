@@ -19,6 +19,10 @@ type Slider struct {
 	// cache for label to avoid per-frame fmt.Sprintf churn
 	lastPct   int
 	lastLabel string
+
+	// Optional overrides (0/nil = use Profile() defaults).
+	TrackH     int   // track height override; 0 = Profile().SliderTrackH
+	LabelAbove *bool // label position override; nil = Profile().SliderLabelAbove
 }
 
 func NewSlider(v float64) *Slider { return &Slider{Value: v} }
@@ -27,26 +31,37 @@ func (s *Slider) SetRect(r image.Rectangle) { s.r = r }
 
 func (s *Slider) Rect() image.Rectangle { return s.r }
 
-// Handle processes mouse interaction.
-func (s *Slider) Handle(mx, my int, pressed bool) bool {
+// HandleInputResult processes mouse interaction and returns an InputResult.
+// Returns InputCaptured during an active drag, InputConsumed on release after
+// a drag, and InputIgnored when the slider is not involved.
+func (s *Slider) HandleInputResult(mx, my int, pressed bool) InputResult {
 	if suppressClicksUntilRelease {
 		if !pressed {
 			suppressClicksUntilRelease = false
 		}
 		s.dragging = false
-		return false
+		return InputIgnored
 	}
 	if pressed {
 		if s.dragging || image.Pt(mx, my).In(s.r) {
 			s.dragging = true
 			s.setFromX(mx)
-			return true
+			return InputCaptured
 		}
 	} else if s.dragging {
 		s.dragging = false
-		return true
+		return InputConsumed
 	}
-	return false
+	return InputIgnored
+}
+
+// Capturing returns whether the slider is in an active drag.
+func (s *Slider) Capturing() bool { return s.dragging }
+
+// Handle processes mouse interaction.
+// Backward-compatible wrapper around HandleInputResult.
+func (s *Slider) Handle(mx, my int, pressed bool) bool {
+	return s.HandleInputResult(mx, my, pressed) != InputIgnored
 }
 
 func (s *Slider) setFromX(mx int) {
@@ -71,14 +86,14 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 	track, spr := s.trackRect()
 
 	// Track height: thicker on mobile for easier interaction.
-	trackH := 4
-	thumbH := 12
-	thumbW := 8
-	if isSmallScreen() {
-		trackH = 6
-		thumbH = 18
-		thumbW = 10
+	// Use per-slider override if set, otherwise fall back to Profile.
+	p := Profile()
+	trackH := p.SliderTrackH
+	if s.TrackH > 0 {
+		trackH = s.TrackH
 	}
+	thumbH := p.SliderThumbH
+	thumbW := p.SliderThumbW
 	midY := track.Min.Y + track.Dy()/2
 	trackY := midY - trackH/2
 	trackDraw := image.Rect(track.Min.X, trackY, track.Max.X, trackY+trackH)
@@ -89,6 +104,11 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 
 	// Filled portion (accent color from left to current value).
 	knobX := track.Min.X + int(s.Value*float64(track.Dx()-1))
+	// Ensure thumb is always visible — at least thumbW/2+1 from track start.
+	minKnobX := track.Min.X + thumbW/2 + 1
+	if knobX < minKnobX {
+		knobX = minKnobX
+	}
 	fillRect := image.Rect(track.Min.X, trackY, knobX, trackY+trackH)
 	if fillRect.Dx() > 0 {
 		drawRoundedRect(dst, fillRect, color.RGBA{0, 150, 200, 220}, trackRadius, true)
@@ -105,7 +125,13 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 	// Subtle border on thumb for definition.
 	drawRoundedRect(dst, thumbRect, color.NRGBA{0, 0, 0, 60}, thumbRadius, false)
 
-	// Label: above the track on mobile, to the left on desktop.
+	// Label position: use per-slider override if set, otherwise Profile default.
+	labelAbove := p.SliderLabelAbove
+	if s.LabelAbove != nil {
+		labelAbove = *s.LabelAbove
+	}
+
+	// Label: above the track when labelAbove is set, to the left otherwise.
 	pct := int(math.Round(s.Value * 100))
 	if pct != s.lastPct {
 		s.lastPct = pct
@@ -115,7 +141,7 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 	if spr == nil {
 		spr = TextSprite(s.lastLabel)
 	}
-	if isSmallScreen() {
+	if labelAbove {
 		// Position label above the track so it doesn't overlap.
 		labelX := float64(track.Min.X+track.Dx()/2) - float64(spr.Bounds().Dx())/2
 		labelY := float64(trackY) - float64(spr.Bounds().Dy()) - 2

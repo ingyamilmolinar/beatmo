@@ -64,11 +64,11 @@ func newCategoryDrumView(t *testing.T, w, h int) (*DrumView, int, int) {
 	dv.Update()
 	warmUp()
 
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("rowLabels not created after warm-up")
 	}
 
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 	return dv, cx, cy
@@ -123,7 +123,7 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 
 	// Open menu via row label click.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open after clicking row label")
 	}
 
@@ -153,7 +153,7 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 		dv.Update()
 		r()
 
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatal("menu should stay open during back button press")
 		}
 
@@ -162,7 +162,7 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 		dv.Update()
 		r()
 
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatal("menu should stay open while back button held")
 		}
 
@@ -171,7 +171,7 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 		dv.Update()
 		r()
 
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatal("menu should stay open after back button release")
 		}
 
@@ -179,7 +179,7 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 		ri := idleFrames(dv, 1, W, H)
 		ri()
 
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatal("menu should stay open after idle frame following back")
 		}
 
@@ -194,7 +194,7 @@ func TestInstMenuBackButtonViaDrumViewUpdate(t *testing.T) {
 	// Now we're in categories mode. Verify it stays open for several idle frames.
 	ri := idleFrames(dv, 5, W, H)
 	ri()
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu closed during idle frames after back")
 	}
 
@@ -211,7 +211,7 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 
 	// Open menu.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open")
 	}
 
@@ -251,7 +251,7 @@ func TestInstMenuBackThenCategoryRoundtrip(t *testing.T) {
 	cr := cymbalsBtn.Rect()
 	clickDrumViewAt(t, dv, cr.Min.X+cr.Dx()/2, cr.Min.Y+cr.Dy()/2, W, H)
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should stay open after selecting Cymbals")
 	}
 	if comp.Mode() != InstMenuModeInstruments {
@@ -335,7 +335,7 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 
 	// Open menu.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open")
 	}
 
@@ -389,7 +389,7 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	clickDrumViewAt(t, dv, hr.Min.X+hr.Dx()/2, hr.Min.Y+hr.Dy()/2, W, H)
 
 	// Menu should close after selection.
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("menu should close after instrument selection")
 	}
 
@@ -416,14 +416,14 @@ func TestInstMenuMobileTapPatternFullFlow(t *testing.T) {
 
 	// Open menu programmatically (matches the API path used in real mobile tests).
 	dv.openInstMenuForRow(0)
-	if !dv.instMenuOpen {
-		t.Fatalf("mobile menu should be open after openInstMenuForRow (instMenuOpen=%v)", dv.instMenuOpen)
+	if !dv.IsInstMenuOpen() {
+		t.Fatalf("mobile menu should be open after openInstMenuForRow (instMenuOpen=%v)", dv.IsInstMenuOpen())
 	}
 
 	// Verify stays open for 10 idle frames.
 	ri := idleFrames(dv, 10, W, H)
 	ri()
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("mobile menu closed during idle frames")
 	}
 
@@ -457,7 +457,7 @@ func TestInstMenuMobileTapPatternFullFlow(t *testing.T) {
 	ir := instBtn.Rect()
 	clickDrumViewAt(t, dv, ir.Min.X+ir.Dx()/2, ir.Min.Y+ir.Dy()/2, W, H)
 
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		// If menu is still open, it might need another idle frame.
 		ri = idleFrames(dv, 2, W, H)
 		ri()
@@ -478,21 +478,21 @@ func TestInstMenuClickOutsideCloses(t *testing.T) {
 
 	// Open menu.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open")
 	}
 
 	// Let suppress clear with idle frames.
 	ri := idleFrames(dv, 5, W, H)
 	ri()
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu closed during idle frames")
 	}
 
 	// Click well outside the menu area.
 	clickDrumViewAt(t, dv, W-10, H-10, W, H)
 
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("menu should close after clicking outside")
 	}
 
@@ -509,7 +509,7 @@ func TestInstMenuRapidToggle(t *testing.T) {
 
 	// 1. Open
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("step 1: menu should be open")
 	}
 
@@ -519,7 +519,7 @@ func TestInstMenuRapidToggle(t *testing.T) {
 
 	// 2. Toggle close by clicking label again.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("step 2: menu should be closed (toggle)")
 	}
 
@@ -528,7 +528,7 @@ func TestInstMenuRapidToggle(t *testing.T) {
 
 	// 3. Reopen.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("step 3: menu should be open again")
 	}
 
@@ -537,7 +537,7 @@ func TestInstMenuRapidToggle(t *testing.T) {
 
 	// 4. Close via click outside.
 	clickDrumViewAt(t, dv, W-10, H-10, W, H)
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		t.Fatal("step 4: menu should close from click-outside")
 	}
 
@@ -546,7 +546,7 @@ func TestInstMenuRapidToggle(t *testing.T) {
 
 	// 5. Reopen one more time.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("step 5: menu should be open after rapid toggle cycle")
 	}
 
@@ -565,7 +565,7 @@ func TestInstMenuBackButtonStaysCategoriesAfterClick(t *testing.T) {
 
 	// Open menu.
 	clickDrumViewAt(t, dv, cx, cy, W, H)
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu should be open")
 	}
 
@@ -603,7 +603,7 @@ func TestInstMenuBackButtonStaysCategoriesAfterClick(t *testing.T) {
 	// Quick click (press + release) on back button.
 	clickDrumViewAt(t, dv, bx, by, W, H)
 
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Fatal("menu closed after back button click")
 	}
 	if comp.Mode() != InstMenuModeCategories {
@@ -622,7 +622,7 @@ func TestInstMenuBackButtonStaysCategoriesAfterClick(t *testing.T) {
 		)
 		dv.Update()
 		r()
-		if !dv.instMenuOpen {
+		if !dv.IsInstMenuOpen() {
 			t.Fatalf("menu closed on idle frame %d after back click", i)
 		}
 		if comp.Mode() != InstMenuModeCategories {

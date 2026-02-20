@@ -83,9 +83,9 @@ func TestMobileOverflowMenuHidesFileButtons(t *testing.T) {
 		name string
 		btn  *Button
 	}{
-		{"upload", dv.uploadBtn},
-		{"import", dv.importBtn},
-		{"export", dv.exportBtn},
+		{"upload", dv.uploadBtn()},
+		{"import", dv.importBtn()},
+		{"export", dv.exportBtn()},
 	} {
 		r := pair.btn.Rect()
 		if r.Dx()*r.Dy() > 0 {
@@ -115,14 +115,14 @@ func TestMobileTransportNoOverlap(t *testing.T) {
 
 	dv := g.drum
 	btns := []*Button{
-		dv.playBtn, dv.stopBtn, dv.bpmIncBtn, dv.bpmDecBtn,
-		dv.subdivBtn,
+		dv.playBtn(), dv.stopBtn(), dv.bpmIncBtn(), dv.bpmDecBtn(),
+		dv.subdivBtn(),
 	}
-	if dv.eqToggleMobile != nil {
-		btns = append(btns, dv.eqToggleMobile)
+	if dv.eqToggleMobile() != nil {
+		btns = append(btns, dv.eqToggleMobile())
 	}
-	if dv.overflowBtn != nil {
-		btns = append(btns, dv.overflowBtn)
+	if dv.overflowBtn() != nil {
+		btns = append(btns, dv.overflowBtn())
 	}
 	for i := 0; i < len(btns); i++ {
 		for j := i + 1; j < len(btns); j++ {
@@ -149,7 +149,7 @@ func TestMobileAddRowButtonFAB(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	fab := dv.addRowBtn.Rect()
+	fab := dv.addRowBtn().Rect()
 	if fab.Empty() {
 		t.Fatal("addRowBtn rect is empty")
 	}
@@ -159,7 +159,7 @@ func TestMobileAddRowButtonFAB(t *testing.T) {
 		t.Errorf("FAB should be on right side, got Min.X=%d, midpoint=%d", fab.Min.X, midX)
 	}
 	// Shouldn't overlap row labels
-	for i, lbl := range dv.rowLabels {
+	for i, lbl := range dv.rowLabels() {
 		lr := lbl.Rect()
 		if lr.Empty() {
 			continue
@@ -186,23 +186,23 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 		t.Fatal("no rows")
 	}
 	// Check that label button exists and is non-empty
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("no row labels")
 	}
-	lr := dv.rowLabels[0].Rect()
+	lr := dv.rowLabels()[0].Rect()
 	if lr.Empty() {
 		t.Error("label button has empty rect on mobile")
 	}
 	// Mute buttons should be hidden on mobile (in context menu)
-	if len(dv.rowMuteBtns) > 0 {
-		mr := dv.rowMuteBtns[0].Rect()
+	if len(dv.rowMuteBtns()) > 0 {
+		mr := dv.rowMuteBtns()[0].Rect()
 		if !mr.Empty() {
 			t.Error("mute button should have empty rect on mobile")
 		}
 	}
 	// Solo buttons should be hidden on mobile (in context menu)
-	if len(dv.rowSoloBtns) > 0 {
-		sr := dv.rowSoloBtns[0].Rect()
+	if len(dv.rowSoloBtns()) > 0 {
+		sr := dv.rowSoloBtns()[0].Rect()
 		if !sr.Empty() {
 			t.Error("solo button should have empty rect on mobile")
 		}
@@ -214,10 +214,10 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 		name string
 		btns []*Button
 	}{
-		{"edit", dv.rowEditBtns},
-		{"color", dv.rowColorBtns},
-		{"origin", dv.rowOriginBtns},
-		{"delete", dv.rowDeleteBtns},
+		{"edit", dv.rowEditBtns()},
+		{"color", dv.rowColorBtns()},
+		{"origin", dv.rowOriginBtns()},
+		{"delete", dv.rowDeleteBtns()},
 	} {
 		if len(pair.btns) == 0 {
 			continue
@@ -313,10 +313,10 @@ func TestMobileLabelNotTruncated(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	if len(dv.rowLabels) == 0 {
+	if len(dv.rowLabels()) == 0 {
 		t.Fatal("no row labels")
 	}
-	lr := dv.rowLabels[0].Rect()
+	lr := dv.rowLabels()[0].Rect()
 	// "Kick" is 4 chars × debugCharW (~6px) = 24px minimum. Add small padding.
 	// Label column is narrower on mobile to give the kebab button enough touch area.
 	minW := 4*debugCharW + 4
@@ -349,10 +349,10 @@ func TestMobileBeatInfoVisible(t *testing.T) {
 		t.Error("lenIncBtn should be visible on mobile (in timeline area)")
 	}
 	// Overflow button should be visible
-	if dv.overflowBtn == nil {
+	if dv.overflowBtn() == nil {
 		t.Fatal("overflowBtn is nil")
 	}
-	if dv.overflowBtn.Rect().Empty() {
+	if dv.overflowBtn().Rect().Empty() {
 		t.Error("overflowBtn should be visible on mobile")
 	}
 }
@@ -375,8 +375,9 @@ func TestDesktopEQVisible(t *testing.T) {
 	// the collapsed flag is false.
 }
 
-// TestDesktopRowControlsFull verifies that all 8 row control columns have
-// non-empty rects on desktop.
+// TestDesktopRowControlsFull verifies the desktop 6-column layout:
+// Label | VolBar | M | S | FX | Overflow. Edit/save/color/origin/delete
+// are hidden (empty rects) — they live in the overflow menu.
 func TestDesktopRowControlsFull(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -389,19 +390,16 @@ func TestDesktopRowControlsFull(t *testing.T) {
 	if len(dv.Rows) == 0 {
 		t.Fatal("no rows")
 	}
-	checks := []struct {
+	// Buttons that should be visible on desktop.
+	visible := []struct {
 		name string
 		btns []*Button
 	}{
-		{"label", dv.rowLabels},
-		{"edit", dv.rowEditBtns},
-		{"color", dv.rowColorBtns},
-		{"mute", dv.rowMuteBtns},
-		{"solo", dv.rowSoloBtns},
-		{"origin", dv.rowOriginBtns},
-		{"delete", dv.rowDeleteBtns},
+		{"label", dv.rowLabels()},
+		{"mute", dv.rowMuteBtns()},
+		{"solo", dv.rowSoloBtns()},
 	}
-	for _, c := range checks {
+	for _, c := range visible {
 		if len(c.btns) == 0 {
 			t.Errorf("desktop: %s buttons slice empty", c.name)
 			continue
@@ -411,9 +409,29 @@ func TestDesktopRowControlsFull(t *testing.T) {
 			t.Errorf("desktop: %s button has zero area: %v", c.name, r)
 		}
 	}
+	// Buttons that should be hidden on desktop (empty rects).
+	hidden := []struct {
+		name string
+		btns []*Button
+	}{
+		{"edit", dv.rowEditBtns()},
+		{"color", dv.rowColorBtns()},
+		{"origin", dv.rowOriginBtns()},
+		{"delete", dv.rowDeleteBtns()},
+	}
+	for _, c := range hidden {
+		if len(c.btns) == 0 {
+			t.Errorf("desktop: %s buttons slice empty", c.name)
+			continue
+		}
+		r := c.btns[0].Rect()
+		if r.Dx()*r.Dy() != 0 {
+			t.Errorf("desktop: %s button should be hidden (empty rect), got %v", c.name, r)
+		}
+	}
 	// Volume slider
-	if len(dv.rowVolSliders) > 0 {
-		vr := dv.rowVolSliders[0].Rect()
+	if len(dv.rowVolSliders()) > 0 {
+		vr := dv.rowVolSliders()[0].Rect()
 		if vr.Dx()*vr.Dy() == 0 {
 			t.Error("desktop: volume slider has zero area")
 		}
@@ -435,9 +453,9 @@ func TestDesktopTransportFull(t *testing.T) {
 		name string
 		btn  *Button
 	}{
-		{"upload", dv.uploadBtn},
-		{"import", dv.importBtn},
-		{"export", dv.exportBtn},
+		{"upload", dv.uploadBtn()},
+		{"import", dv.importBtn()},
+		{"export", dv.exportBtn()},
 	} {
 		r := pair.btn.Rect()
 		if r.Dx()*r.Dy() == 0 {
@@ -445,8 +463,8 @@ func TestDesktopTransportFull(t *testing.T) {
 		}
 	}
 	// Overflow button should have zero area on desktop (hidden).
-	if dv.overflowBtn != nil {
-		or := dv.overflowBtn.Rect()
+	if dv.overflowBtn() != nil {
+		or := dv.overflowBtn().Rect()
 		if or.Dx()*or.Dy() > 0 {
 			t.Errorf("desktop: overflow button should have zero area, got %v", or)
 		}
@@ -468,14 +486,14 @@ func TestDesktopNoContextMenu(t *testing.T) {
 	}
 	// All row control buttons should be present
 	dv := g.drum
-	if len(dv.rowMuteBtns) > 0 {
-		mr := dv.rowMuteBtns[0].Rect()
+	if len(dv.rowMuteBtns()) > 0 {
+		mr := dv.rowMuteBtns()[0].Rect()
 		if mr.Empty() {
 			t.Error("desktop: mute button empty")
 		}
 	}
-	if len(dv.rowSoloBtns) > 0 {
-		sr := dv.rowSoloBtns[0].Rect()
+	if len(dv.rowSoloBtns()) > 0 {
+		sr := dv.rowSoloBtns()[0].Rect()
 		if sr.Empty() {
 			t.Error("desktop: solo button empty")
 		}
@@ -493,7 +511,7 @@ func TestDesktopAddRowButtonInline(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	fab := dv.addRowBtn.Rect()
+	fab := dv.addRowBtn().Rect()
 	if fab.Empty() {
 		t.Fatal("desktop: addRowBtn rect is empty")
 	}

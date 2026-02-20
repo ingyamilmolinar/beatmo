@@ -62,7 +62,7 @@ func TestBPMButtonHoldNonBlocking(t *testing.T) {
 
 	// warm up engine so scheduler progress is available
 	for i := 0; i < 30; i++ {
-		g.drum.bpmIncBtn.OnClick()
+		g.drum.bpmIncBtn().OnClick()
 		done := make(chan struct{})
 		go func() {
 			g.Update()
@@ -109,7 +109,7 @@ func TestBPMHoldDoesNotStallPulseProgress(t *testing.T) {
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	for i := 0; i < 5; i++ {
-		g.drum.bpmIncBtn.OnClick()
+		g.drum.bpmIncBtn().OnClick()
 		if err := g.Update(); err != nil {
 			t.Fatalf("update failed: %v", err)
 		}

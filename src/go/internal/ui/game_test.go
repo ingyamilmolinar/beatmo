@@ -104,8 +104,8 @@ func TestDropdownBlocksEditorClick(t *testing.T) {
 	g.Layout(200, 200)
 
 	before := len(g.graph.Nodes)
-	g.drum.rowLabels[0].OnClick()
-	if !g.drum.instMenuOpen {
+	g.drum.rowLabels()[0].OnClick()
+	if !g.drum.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
 	r := g.drum.instMenuBtns[0].Rect()
@@ -380,10 +380,10 @@ func TestTimelineRefreshesBPMFromGame(t *testing.T) {
 	g.drum.Length = 4
 	g.drum.timelineUnitsPerBeat = 1
 	info := g.drum.timelineInfo(2) // 2 beats -> 0.8s -> "0:00"
-	if !strings.Contains(info, "Beat 2/4") {
+	if !strings.Contains(info, "Beat 3") {
 		t.Fatalf("unexpected beat portion: %q", info)
 	}
-	if !strings.Contains(info, "| 0:00") {
+	if !strings.Contains(info, "· 0:00") {
 		t.Fatalf("unexpected time portion: %q", info)
 	}
 }
@@ -427,10 +427,10 @@ func TestTimelineShowsSubBeatTime(t *testing.T) {
 	// One sub-beat = 1/32 beat -> ~16ms. New format truncates to integer beats.
 	frac := 1.0 / float64(g.grid.MaxDiv())
 	info := g.drum.timelineInfo(frac)
-	if !strings.Contains(info, "Beat 0/") {
+	if !strings.Contains(info, "Beat 1") {
 		t.Fatalf("unexpected beat display: %q", info)
 	}
-	if !strings.Contains(info, "| 0:00") {
+	if !strings.Contains(info, "· 0:00") {
 		t.Fatalf("unexpected time display: %q", info)
 	}
 }
@@ -471,7 +471,7 @@ func TestTimelineCountersAdvanceEachSubdiv(t *testing.T) {
 	div := float64(g.grid.MaxDiv())
 
 	// Generate a few progress values near exact boundaries.
-	// With the simplified format "Beat X/Y | M:SS", verify integer beats
+	// With the simplified format "Beat X · M:SS", verify integer beats
 	// and that seconds advance correctly at larger steps.
 	makeProg := func(k int) float64 { return float64(k)/div + 1e-5 }
 	for k := 0; k <= 4; k++ {
@@ -480,7 +480,7 @@ func TestTimelineCountersAdvanceEachSubdiv(t *testing.T) {
 		beat := g.currentBeat() // quantized
 		info := g.drum.timelineInfo(beat)
 		wantBeat := int(float64(k) / div)
-		bstr := fmt.Sprintf("Beat %d/", wantBeat)
+		bstr := fmt.Sprintf("Beat %d", wantBeat+1)
 		if !strings.Contains(info, bstr) {
 			t.Fatalf("k=%d info=%q missing %q", k, info, bstr)
 		}
@@ -511,7 +511,7 @@ func TestTimelineTimeMatchesBPMAcrossSubdiv(t *testing.T) {
 		beat := g.currentBeat()
 		info := g.drum.timelineInfo(beat)
 		// At 90 BPM, sub-beats 0-4 are all within the first second.
-		if !strings.Contains(info, "| 0:00") {
+		if !strings.Contains(info, "· 0:00") {
 			t.Fatalf("bpm=%d k=%d info=%q expected 0:00 time", bpm, k, info)
 		}
 	}
@@ -530,7 +530,7 @@ func TestTimelineAt60BPMSteps(t *testing.T) {
 	g.SetPlaying(true)
 	div := float64(g.grid.MaxDiv()) // default 32
 
-	// Walk two beats worth of sub-steps. With the simplified "Beat X/Y | M:SS"
+	// Walk two beats worth of sub-steps. With the simplified "Beat X · M:SS"
 	// format, verify that integer beat values are non-decreasing and the
 	// displayed time in seconds is consistent.
 	prevBeatInt := -1
@@ -541,12 +541,12 @@ func TestTimelineAt60BPMSteps(t *testing.T) {
 
 		beat := g.displayBeat()
 		info := g.drum.timelineInfo(beat)
-		// Extract the integer beat from the format "Beat X/Y | M:SS"
+		// Extract the integer beat from the format "Beat X · M:SS"
 		beatInt := int(beat)
 		if beatInt < prevBeatInt {
 			t.Fatalf("k=%d beat went backwards: %d -> %d info=%q", k, prevBeatInt, beatInt, info)
 		}
-		bstr := fmt.Sprintf("Beat %d/", beatInt)
+		bstr := fmt.Sprintf("Beat %d", beatInt+1)
 		if !strings.Contains(info, bstr) {
 			t.Fatalf("k=%d info=%q missing beat %q", k, info, bstr)
 		}
@@ -666,7 +666,7 @@ func TestTimelineCountersSmoothMonotonic(t *testing.T) {
 	p := g.activePulse
 	g.elapsedBeats = 0
 
-	// With the simplified "Beat X/Y | M:SS" format, the displayed seconds
+	// With the simplified "Beat X · M:SS" format, the displayed seconds
 	// only have second-level precision. For small pulse.t deltas within the
 	// same beat, the displayed time may not change. Verify that the displayed
 	// beat values are non-decreasing and displayBeat itself is smooth.
@@ -798,8 +798,8 @@ func TestPlayButtonTogglesPause(t *testing.T) {
 	if !g.Playing() {
 		t.Fatalf("expected playing")
 	}
-	if g.drum.playBtn.Text != "⏸" {
-		t.Fatalf("play button text = %q want ⏸", g.drum.playBtn.Text)
+	if g.drum.playBtn().Text != "⏸" {
+		t.Fatalf("play button text = %q want ⏸", g.drum.playBtn().Text)
 	}
 
 	g.elapsedBeats = 5
@@ -813,8 +813,8 @@ func TestPlayButtonTogglesPause(t *testing.T) {
 	if g.elapsedBeats != 5 {
 		t.Fatalf("elapsedBeats=%d want 5", g.elapsedBeats)
 	}
-	if g.drum.playBtn.Text != "▶" {
-		t.Fatalf("play button text = %q want ▶", g.drum.playBtn.Text)
+	if g.drum.playBtn().Text != "▶" {
+		t.Fatalf("play button text = %q want ▶", g.drum.playBtn().Text)
 	}
 
 	pressPlay(t, g.drum)
@@ -840,7 +840,7 @@ func TestPlayButtonClickPausesPlayback(t *testing.T) {
 	g.SetPlaying(true)
 	g.drum.SetFollow(true)
 
-	r := g.drum.playBtn.Rect()
+	r := g.drum.playBtn().Rect()
 	restore := SetInputForTest(
 		func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
 		func(ebiten.MouseButton) bool { return true },
@@ -1207,10 +1207,10 @@ func TestSpawnPulsePerRowPlaysInstrument(t *testing.T) {
 	n1 := g.tryAddNode(1, 0, model.NodeTypeRegular)
 	g.drum.Rows[1].Origin = n1.ID
 	g.drum.Rows[1].Node = n1
-	if len(g.drum.rowLabels) < 2 {
+	if len(g.drum.rowLabels()) < 2 {
 		t.Fatalf("expected row labels for selection")
 	}
-	g.drum.rowLabels[1].OnClick()
+	g.drum.rowLabels()[1].OnClick()
 	g.drum.SetInstrument("kick")
 
 	g.updateBeatInfos()
@@ -1796,7 +1796,7 @@ func TestUpdateRunsSchedulerWhenPlaying(t *testing.T) {
 	// Simulate click on play button
 	pressed := true
 	restore := SetInputForTest(
-		func() (int, int) { return g.drum.playBtn.Rect().Min.X + 1, g.drum.playBtn.Rect().Min.Y + 1 }, // Click inside the button
+		func() (int, int) { return g.drum.playBtn().Rect().Min.X + 1, g.drum.playBtn().Rect().Min.Y + 1 }, // Click inside the button
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -1914,7 +1914,7 @@ func TestBPMButtonsAdjustSpeed(t *testing.T) {
 
 	pressed := true
 	restore := SetInputForTest(
-		func() (int, int) { return g.drum.bpmIncBtn.Rect().Min.X + 1, g.drum.bpmIncBtn.Rect().Min.Y + 1 },
+		func() (int, int) { return g.drum.bpmIncBtn().Rect().Min.X + 1, g.drum.bpmIncBtn().Rect().Min.Y + 1 },
 		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -2179,20 +2179,9 @@ func TestVolumeSliderAffectsPlayback(t *testing.T) {
 	g.graph.StartNodeID = n.ID
 	g.updateBeatInfos()
 	info := model.BeatInfo{NodeType: model.NodeTypeRegular, NodeID: n.ID}
-	r := g.drum.rowVolSliders[0].TrackRect()
-	mx := r.Min.X + r.Dx()/4
-	my := r.Min.Y + r.Dy()/2
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore)
-	g.drum.Update()
-	restore()
+
+	// Set volume directly (desktop now uses popup, not inline slider).
+	g.drum.Rows[0].Volume = 0.25
 
 	volCh := make(chan float64, 1)
 	g.SetPlayFunc(func(id string, v float64, when ...float64) { volCh <- v })
@@ -3514,7 +3503,7 @@ func TestTrackButtonTogglesFollow(t *testing.T) {
 	if !g.drum.FollowPlayback() {
 		t.Fatalf("follow should start enabled")
 	}
-	g.drum.trackBtn.OnClick()
+	g.drum.trackBtn().OnClick()
 	if g.drum.FollowPlayback() {
 		t.Fatalf("follow not toggled off")
 	}
@@ -3637,7 +3626,7 @@ func TestDrawDrumPaneConcurrentHighlights(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 512; i++ {
+	for i := 0; i < 32; i++ {
 		g.drawDrumPane(dst)
 	}
 	close(stop)

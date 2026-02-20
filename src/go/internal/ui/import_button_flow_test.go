@@ -31,7 +31,7 @@ func TestImportButtonFlowCallsOnImport(t *testing.T) {
 		return nil
 	}
 	// Click import
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	_ = g.Update()
 	if !called {
 		t.Fatalf("onImport never called after import click")
@@ -53,7 +53,7 @@ func TestImportCancelUnblocksAfterTimeout(t *testing.T) {
 	})
 	g.Layout(640, 480)
 	// Click import
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	if !g.drum.importing {
 		t.Fatalf("expected importing=true after click")
 	}
@@ -67,7 +67,7 @@ func TestImportCancelUnblocksAfterTimeout(t *testing.T) {
 	// Next click should be allowed again
 	tries := 0
 	selectJSONAsyncFn = func(cb func([]byte, error)) { tries++ }
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	if tries == 0 {
 		t.Fatalf("import click did not invoke picker after timeout release")
 	}
@@ -85,7 +85,7 @@ func TestImportButtonIgnoredWhileImporting(t *testing.T) {
 	t.Cleanup(func() { closeImportForTest(t, g) })
 	g.Layout(640, 480)
 
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	if tries != 1 {
 		t.Fatalf("picker calls=%d want=1", tries)
 	}
@@ -93,7 +93,7 @@ func TestImportButtonIgnoredWhileImporting(t *testing.T) {
 		t.Fatalf("expected importing=true after click")
 	}
 
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	if tries != 1 {
 		t.Fatalf("import click should be ignored while importing; calls=%d", tries)
 	}
@@ -113,7 +113,7 @@ func TestImportButtonIgnoredWhileNaming(t *testing.T) {
 	startUploadForTest(t, g.drum)
 	waitForUploadNaming(t, g)
 
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	if tries != 0 {
 		t.Fatalf("import picker should not open during naming")
 	}
@@ -134,7 +134,7 @@ func TestImportButtonIgnoredWhileUploading(t *testing.T) {
 	g.Layout(640, 480)
 
 	startUploadForTest(t, g.drum)
-	g.drum.importBtn.OnClick()
+	g.drum.importBtn().OnClick()
 	if tries != 0 {
 		t.Fatalf("import picker should not open during upload")
 	}

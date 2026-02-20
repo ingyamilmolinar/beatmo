@@ -479,6 +479,232 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	// reset last-frame node highlight map
 	g.lastNodeHLReset()
 	nodeStyle := NodeUI
+
+	// Static node layer cache: during playback, most nodes stay in their
+	// default (non-highlighted) state. Cache all base-state nodes into a
+	// layer and only overdraw highlighted/selected nodes per frame,
+	// reducing DrawImage calls from ~58 to ~2-9.
+	useNodeLayer := !envRenderSafe && !envNoSpriteNodes && !g.logDrawNodes
+	if useNodeLayer {
+		nodeGraphSig := g.computeNodeGraphSig()
+		gridW, gridH := g.split.GridW(g.winW), g.split.GridH(g.winH)
+		needRebuild := g.nodeLayer == nil ||
+			g.nodeLayer.Bounds().Dx() != gridW || g.nodeLayer.Bounds().Dy() != gridH ||
+			g.nodeLayerCamScale != camScale ||
+			g.nodeLayerCamOffX != offX || g.nodeLayerCamOffY != offY ||
+			g.nodeLayerGraphSig != nodeGraphSig
+
+		if needRebuild {
+			if g.nodeLayer == nil || g.nodeLayer.Bounds().Dx() != gridW || g.nodeLayer.Bounds().Dy() != gridH {
+				g.nodeLayer = ebiten.NewImage(gridW, gridH)
+			} else {
+				g.nodeLayer.Clear()
+			}
+			if g.nodeSpriteCache == nil {
+				g.nodeSpriteCache = make(map[spriteKey]*ebiten.Image)
+			}
+			cnt := 0
+			for nodeIdx, n := range g.nodes {
+				nodeInfo, ok := g.graph.Nodes[n.ID]
+				if !ok || nodeInfo.Type == model.NodeTypeInvisible {
+					continue
+				}
+				rWorld := g.nodeRadiiCache[nodeIdx]
+				if n.X+rWorld < minX || n.X-rWorld > maxX || n.Y+rWorld < minY || n.Y-rWorld > maxY {
+					continue
+				}
+				sx1, sy1, sx2, sy2 := g.nodeScreenRect(n)
+				if sx2 < 0 || sx1 >= float64(gridW) || sy2 < 0 || sy1 >= float64(gridH) {
+					continue
+				}
+				rPx := int(math.Round((sx2 - sx1) * 0.5))
+				if rPx < 1 {
+					rPx = 1
+				}
+				rowIdx, rowOK := g.nodeRows[n.ID]
+				if !rowOK || rowIdx < 0 || rowIdx >= len(g.drum.Rows) {
+					rowOK = false
+				}
+				fillCol := nodeStyle.Fill
+				borderCol := nodeStyle.Border
+				if rowOK {
+					base := g.drum.Rows[rowIdx].Color
+					if n.Start {
+						fillCol = adjustColor(base, 40)
+					} else {
+						fillCol = base
+					}
+					borderCol = adjustColor(base, 80)
+				}
+				fr, fg, fb, fa := rgba8(fillCol)
+				br, bg, bb, ba := rgba8(borderCol)
+				skey := spriteKey{rpx: rPx, fr: fr, fg: fg, fb: fb, fa: fa, br: br, bg: bg, bb: bb, ba: ba}
+				spr := g.nodeSpriteCache[skey]
+				if spr == nil {
+					spr = buildNodeSprite(fillCol, borderCol, rPx)
+					g.nodeSpriteCache[skey] = spr
+				}
+				var sop ebiten.DrawImageOptions
+				nlcx := (sx1 + sx2) * 0.5
+				nlcy := (sy1 + sy2) * 0.5
+				sop.GeoM.Translate(math.Round(nlcx)-float64(rPx), math.Round(nlcy)-float64(rPx))
+				g.nodeLayer.DrawImage(spr, &sop)
+				cnt++
+			}
+			g.nodeLayerCamScale = camScale
+			g.nodeLayerCamOffX = offX
+			g.nodeLayerCamOffY = offY
+			g.nodeLayerGraphSig = nodeGraphSig
+			g.lastDrawNodes = cnt
+		}
+
+		// Blit static node layer.
+		dst.DrawImage(g.nodeLayer, nil)
+
+		// Per-frame overlay: highlighted nodes, glow, selection boxes.
+		for nodeIdx, n := range g.nodes {
+			nodeInfo, ok := g.graph.Nodes[n.ID]
+			if !ok || nodeInfo.Type == model.NodeTypeInvisible {
+				continue
+			}
+			isMute := nodeInfo.Type == model.NodeTypeMute
+			rowIdx, rowOK := g.nodeRows[n.ID]
+			if !rowOK || rowIdx < 0 || rowIdx >= len(g.drum.Rows) {
+				rowOK = false
+				rowIdx = -1
+			}
+			var highlightCol color.Color = colHighlight
+			if isMute {
+				highlightCol = colMuteHighlight
+			} else if rowOK {
+				highlightCol = g.drum.Rows[rowIdx].Color
+			}
+			aLevel := 0.0
+			if g.pendingStartRow < 0 && g.quietFrames == 0 {
+				if a := g.nodeAnimGet(n.ID); a > 0 {
+					if _, _, hasWindow := g.nodeHighlightUntil(n.ID); !hasWindow {
+						aLevel = a
+						g.lastNodeHLMark(n.ID)
+					}
+				}
+			}
+			if start, end, ok := g.nodeHighlightUntil(n.ID); ok {
+				now := audio.Now()
+				if now >= start && now < end {
+					aLevel = 1
+					g.lastNodeHLMark(n.ID)
+				}
+			}
+			isSelected := g.sel == n && g.pendingStartRow < 0
+			isNeighbor := g.pendingStartRow < 0 && g.selNeighbors != nil && g.selNeighbors[n]
+			if aLevel <= 0 && !isSelected && !isNeighbor {
+				continue
+			}
+			rWorld := g.nodeRadiiCache[nodeIdx]
+			if n.X+rWorld < minX || n.X-rWorld > maxX || n.Y+rWorld < minY || n.Y-rWorld > maxY {
+				continue
+			}
+			sx1, sy1, sx2, sy2 := g.nodeScreenRect(n)
+			if sx2 < 0 || sx1 >= float64(gridW) || sy2 < 0 || sy1 >= float64(gridH) {
+				continue
+			}
+			if aLevel > 0 {
+				rPx := int(math.Round((sx2 - sx1) * 0.5))
+				if rPx < 1 {
+					rPx = 1
+				}
+				fillCol := nodeStyle.Fill
+				borderCol := nodeStyle.Border
+				if rowOK {
+					base := g.drum.Rows[rowIdx].Color
+					if n.Start {
+						fillCol = adjustColor(base, 40)
+					} else {
+						fillCol = base
+					}
+					borderCol = highlightCol
+				}
+				// Glow overlay for animated nodes.
+				if rPx >= 2 && !disableNodeGlow {
+					glowBase := 1.2
+					glowAmp := 0.35
+					rpScr := float64(rPx) * (glowBase + glowAmp*aLevel)
+					maxGlow := float64(gridH) / 8
+					if rpScr > maxGlow {
+						rpScr = maxGlow
+					}
+					if rpScr < 2 {
+						rpScr = 2
+					}
+					g.lastGlowScr = rpScr
+					glow := SignalUI
+					glow.Radius = float32(rpScr / g.cam.Scale)
+					glow.Color = highlightCol
+					nx, ny := snapWorld(n.X), snapWorld(n.Y)
+					glow.Draw(screen, nx, ny, &cam)
+				}
+				// Low-overhead highlight overlay for simpleDraw.
+				if g.simpleDraw || disableNodeGlow {
+					icx := int(math.Round((sx1 + sx2) * 0.5))
+					icy := int(math.Round((sy1 + sy2) * 0.5))
+					ringScale := 1.12 + 0.28*aLevel
+					rp := int(math.Round(float64(rPx) * ringScale))
+					if rp <= rPx {
+						rp = rPx + 1
+					}
+					maxRP := g.winW / 10
+					if gridH/10 < maxRP {
+						maxRP = gridH / 10
+					}
+					if maxRP < 8 {
+						maxRP = 8
+					}
+					if rp > maxRP {
+						rp = maxRP
+					}
+					ix := icx - rp
+					iy := icy - rp
+					outer := color.RGBA{255, 255, 255, 255}
+					drawRect(dst, image.Rect(ix-2, iy-2, ix+2*rp+2, iy+2*rp+2), outer, false)
+					drawRect(dst, image.Rect(ix-1, iy-1, ix+2*rp+1, iy+2*rp+1), outer, false)
+					drawRect(dst, image.Rect(ix, iy, ix+2*rp, iy+2*rp), highlightCol, false)
+				}
+				// Highlighted sprite (overdraws base in static layer).
+				if g.nodeSpriteCache == nil {
+					g.nodeSpriteCache = make(map[spriteKey]*ebiten.Image)
+				}
+				fr, fg, fb, fa := rgba8(fillCol)
+				br, bg, bb, ba := rgba8(borderCol)
+				skey := spriteKey{rpx: rPx, fr: fr, fg: fg, fb: fb, fa: fa, br: br, bg: bg, bb: bb, ba: ba}
+				spr := g.nodeSpriteCache[skey]
+				if spr == nil {
+					spr = buildNodeSprite(fillCol, borderCol, rPx)
+					g.nodeSpriteCache[skey] = spr
+				}
+				var sop ebiten.DrawImageOptions
+				hlcx := (sx1 + sx2) * 0.5
+				hlcy := (sy1 + sy2) * 0.5
+				sop.GeoM.Translate(math.Round(hlcx)-float64(rPx), math.Round(hlcy)-float64(rPx))
+				dst.DrawImage(spr, &sop)
+			}
+			// Selection boxes (cyan ring for selected, faded for neighbors).
+			x1, y1, x2, y2 := sx1, sy1, sx2, sy2
+			var idm ebiten.GeoM
+			if isSelected {
+				DrawLineCam(dst, x1, y1, x2, y1, &idm, colStep, 2)
+				DrawLineCam(dst, x2, y1, x2, y2, &idm, colStep, 2)
+				DrawLineCam(dst, x2, y2, x1, y2, &idm, colStep, 2)
+				DrawLineCam(dst, x1, y2, x1, y1, &idm, colStep, 2)
+			} else if isNeighbor {
+				hl := fadeColor(colStep, 0.5)
+				DrawLineCam(dst, x1, y1, x2, y1, &idm, hl, 2)
+				DrawLineCam(dst, x2, y1, x2, y2, &idm, hl, 2)
+				DrawLineCam(dst, x2, y2, x1, y2, &idm, hl, 2)
+				DrawLineCam(dst, x1, y2, x1, y1, &idm, hl, 2)
+			}
+		}
+	} else {
+	// Fallback: original loop for debug modes (renderSafe, noSpriteNodes, logDrawNodes).
 	for nodeIdx, n := range g.nodes {
 		nodeInfo, ok := g.graph.Nodes[n.ID]
 		if !ok || nodeInfo.Type == model.NodeTypeInvisible {
@@ -705,6 +931,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			DrawLineCam(dst, x1, y2, x1, y1, &id, hl, 2)
 		}
 	}
+	} // end useNodeLayer else
 
 	// Visual overlay: draw crosses after nodes so they are on top
 	if g.logDrawNodes && len(g.edges) > 0 {
@@ -785,7 +1012,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	// Coordinate badge above selected node
 	if g.coordBadgeNode != nil {
 		showBadge := false
-		if isSmallScreen() {
+		if Profile().IsMobile() {
 			// Mobile: show while node is selected, but not when popup is open
 			// (the badge renders on top of the popup since it draws after it).
 			showBadge = (g.sel == g.coordBadgeNode) && !g.sidebar.IsOpen()
@@ -815,7 +1042,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	if g.moveMode && g.movingNode != nil {
 		// Banner at top of grid pane
 		bannerText := fmt.Sprintf("MOVING NODE (%d,%d) — CLICK TO PLACE", g.movingNode.I, g.movingNode.J)
-		if !isSmallScreen() {
+		if Profile().ShowEscHint {
 			bannerText += " (ESC TO CANCEL)"
 		}
 		bannerW := TextWidth(bannerText) + 16
@@ -879,7 +1106,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 	// cursor coordinate label (hidden on mobile)
 	mx, my := cursorPosition()
-	if !isSmallScreen() && g.split.InGridPane(mx, my) {
+	if Profile().ShowCursorLabel && g.split.InGridPane(mx, my) {
 		camScale := unitPx / g.grid.Unit()
 		wx := (float64(mx) - offX) / camScale
 		wy := (float64(my) - offY - float64(gridTopOffset())) / camScale
@@ -901,4 +1128,27 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	}
 
 	// Divider drawn after both panes
+}
+
+// computeNodeGraphSig returns a hash of node positions, types, start flags,
+// and row colors. Used to invalidate the static node layer cache.
+func (g *Game) computeNodeGraphSig() uint64 {
+	s := uint64(len(g.nodes))
+	for _, n := range g.nodes {
+		ni, ok := g.graph.Nodes[n.ID]
+		if !ok {
+			continue
+		}
+		v := uint64(n.I)<<32 | uint64(uint16(n.J))<<16 | uint64(ni.Type)<<8
+		if n.Start {
+			v |= 1
+		}
+		s = (s*1469598103934665603 ^ v) * 1099511628211
+		if row, rok := g.nodeRows[n.ID]; rok && row >= 0 && row < len(g.drum.Rows) {
+			cr := color.RGBAModel.Convert(g.drum.Rows[row].Color).(color.RGBA)
+			cv := uint64(cr.R)<<24 | uint64(cr.G)<<16 | uint64(cr.B)<<8 | uint64(cr.A)
+			s = (s*1469598103934665603 ^ cv) * 1099511628211
+		}
+	}
+	return s
 }

@@ -107,7 +107,7 @@ func TestSplitterDragDoesNotActivateDrumScroll(t *testing.T) {
 
 	dv.Update()
 
-	if dv.rowScroll.TouchActive() {
+	if dv.rowScroll().TouchActive() {
 		t.Error("drum view started touch scroll while splitter holds capture — expected inputCapturedExternally to block it")
 	}
 	if dv.dragging {
@@ -168,7 +168,7 @@ func TestDrumViewCaptureReleasedOnMouseUp(t *testing.T) {
 		t.Fatal("mouseDownInBounds should be set after press")
 	}
 	// Precondition: no touch interaction active.
-	if dv.rowScroll.TouchActive() {
+	if dv.rowScroll().TouchActive() {
 		t.Fatal("TouchActive should be false — no touch begun")
 	}
 
@@ -197,8 +197,8 @@ func TestTouchFlickerDoesNotReleaseDrumCapture(t *testing.T) {
 	}
 
 	// Simulate touch scroll being started (HandleTouchBegin called by drum Update).
-	dv.rowScroll.HandleTouchBegin(400, 450)
-	if !dv.rowScroll.TouchActive() {
+	dv.rowScroll().HandleTouchBegin(400, 450)
+	if !dv.rowScroll().TouchActive() {
 		t.Fatal("TouchActive should be true after HandleTouchBegin")
 	}
 
@@ -224,11 +224,11 @@ func TestTouchScrollMaintainsCaptureBeforeCommit(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 300, 800, 600), graph, logger)
 
 	// Start touch scroll without moving past dead zone.
-	dv.rowScroll.HandleTouchBegin(400, 450)
-	if !dv.rowScroll.TouchActive() {
+	dv.rowScroll().HandleTouchBegin(400, 450)
+	if !dv.rowScroll().TouchActive() {
 		t.Fatal("TouchActive should be true after HandleTouchBegin")
 	}
-	if dv.rowScroll.ScrollingCommitted() {
+	if dv.rowScroll().ScrollingCommitted() {
 		t.Fatal("ScrollingCommitted should be false before movement past dead zone")
 	}
 
@@ -249,14 +249,14 @@ func TestDrumViewCaptureReleasedAfterTouchEnds(t *testing.T) {
 
 	// Press and start touch scroll.
 	dv.HandleInput(400, 450, true)
-	dv.rowScroll.HandleTouchBegin(400, 450)
+	dv.rowScroll().HandleTouchBegin(400, 450)
 	if !dv.Capturing() {
 		t.Fatal("should be capturing after press + touch begin")
 	}
 
 	// Touch ends (as drum.Update() would call on real release).
-	dv.rowScroll.HandleTouchEnd()
-	if dv.rowScroll.TouchActive() {
+	dv.rowScroll().HandleTouchEnd()
+	if dv.rowScroll().TouchActive() {
 		t.Fatal("TouchActive should be false after HandleTouchEnd")
 	}
 
@@ -325,8 +325,8 @@ func TestTouchScrollDoesNotActivateLayoutResize(t *testing.T) {
 	}
 
 	// Start a touch scroll in the rows area.
-	dv.rowScroll.HandleTouchBegin(400, 500)
-	if !dv.rowScroll.TouchActive() {
+	dv.rowScroll().HandleTouchBegin(400, 500)
+	if !dv.rowScroll().TouchActive() {
 		t.Fatal("TouchActive should be true after HandleTouchBegin")
 	}
 
@@ -363,8 +363,8 @@ func TestTouchScrollDoesNotActivateLayoutResize(t *testing.T) {
 	// Verify the guard is specifically due to TouchActive: end touch, then
 	// confirm layoutHandler CAN run (it may or may not detect a divider, but
 	// at minimum it should not be blocked).
-	dv.rowScroll.HandleTouchEnd()
-	if dv.rowScroll.TouchActive() {
+	dv.rowScroll().HandleTouchEnd()
+	if dv.rowScroll().TouchActive() {
 		t.Fatal("TouchActive should be false after HandleTouchEnd")
 	}
 }

@@ -153,8 +153,8 @@ func (g *Game) handleTapInGrid(x, y int) {
 // In the drum pane, opens the mobile context menu for the row label.
 func (g *Game) handleTouchLongPress(x, y int) {
 	// Check if long-press is in the drum pane on a row label (mobile context menu).
-	if isSmallScreen() && g.drum != nil && image.Pt(x, y).In(g.drum.Bounds) {
-		for i, lbl := range g.drum.rowLabels {
+	if Profile().IsMobile() && g.drum != nil && image.Pt(x, y).In(g.drum.Bounds) {
+		for i, lbl := range g.drum.rowLabels() {
 			if image.Pt(x, y).In(lbl.Rect()) {
 				g.drum.openContextMenu(i)
 				return

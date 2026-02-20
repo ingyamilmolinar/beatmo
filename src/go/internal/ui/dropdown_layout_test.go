@@ -20,7 +20,7 @@ func TestInstrumentDropdownNoEmptySpacer(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 420, 260), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
-	dv.rowLabels[0].OnClick()
+	dv.rowLabels()[0].OnClick()
 	if len(dv.instCategoryBtns) == 0 {
 		t.Fatalf("no categories")
 	}
@@ -48,8 +48,8 @@ func TestTransportNotShrunkByWideLabels(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 260), graph, testLogger)
 	dv.Rows[0].Name = "ExtremelyLongRowNameThatStretchesTheLabelColumn"
 	dv.recalcButtons()
-	if dv.playBtn.Rect().Dx() < 16 || dv.stopBtn.Rect().Dx() < 16 {
-		t.Fatalf("transport buttons shrunk: play=%d stop=%d", dv.playBtn.Rect().Dx(), dv.stopBtn.Rect().Dx())
+	if dv.playBtn().Rect().Dx() < 16 || dv.stopBtn().Rect().Dx() < 16 {
+		t.Fatalf("transport buttons shrunk: play=%d stop=%d", dv.playBtn().Rect().Dx(), dv.stopBtn().Rect().Dx())
 	}
 	if dv.instMenuFullRect.Dx() < 200 {
 		t.Fatalf("menu width too small: %d", dv.instMenuFullRect.Dx())

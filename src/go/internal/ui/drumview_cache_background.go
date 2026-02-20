@@ -25,21 +25,12 @@ func (dv *DrumView) updateRowRects() {
 	if len(dv.Rows) == 0 {
 		return
 	}
-	if dv.mainVolSlider != nil {
-		dv.mainVolSlider.SetRect(dv.mainVolRect)
+	if dv.mainVolSlider() != nil {
+		dv.mainVolSlider().SetRect(dv.mainVolRect)
 	}
 	// Ensure we have widgets for each row. This is a safety net for callers
 	// that may have changed the number of rows without invoking calcLayout yet.
-	if len(dv.rowLabels) != len(dv.Rows) ||
-		len(dv.rowEditBtns) != len(dv.Rows) ||
-		len(dv.rowSaveBtns) != len(dv.Rows) ||
-		len(dv.rowColorBtns) != len(dv.Rows) ||
-		len(dv.rowVolSliders) != len(dv.Rows) ||
-		len(dv.rowMuteBtns) != len(dv.Rows) ||
-		len(dv.rowSoloBtns) != len(dv.Rows) ||
-		len(dv.rowOriginBtns) != len(dv.Rows) ||
-		len(dv.rowDeleteBtns) != len(dv.Rows) ||
-		len(dv.rowMenuBtns) != len(dv.Rows) {
+	if dv.rowEntryCount() != len(dv.Rows) {
 		// Full rebuild on mismatch to guarantee integrity.
 		dv.calcLayout()
 		return
@@ -52,21 +43,8 @@ func (dv *DrumView) updateRowRects() {
 		w = dv.Bounds.Dx() - dv.labelW - dv.controlsW
 	}
 	dv.cell = w / len(dv.Rows[0].Steps)
-	vis := dv.visibleRows()
-	rowsTop := dv.Bounds.Min.Y + dv.headerH
-	panelRect := dv.widgetRects[WidgetRack]
-	if panelRect.Empty() {
-		panelRect = image.Rect(dv.Bounds.Min.X, rowsTop, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Max.Y-dv.eqH)
-	}
-	// Clamp rack top to match capped headerH (widget board may allocate more).
-	if panelRect.Min.Y < rowsTop {
-		panelRect.Min.Y = rowsTop
-	}
-	for i := range dv.Rows {
-		rowRect := dv.rowRectForIndex(i, rowsTop, vis, panelRect)
-		dv.positionRowWidgets(i, rowRect)
-	}
-	dv.positionAddRowBtn(rowsTop, panelRect, vis)
+	// Delegate repositioning to the RowRackZone.
+	dv.rowRackZone.Layout(dv.rowRackZone.rect)
 }
 
 // --- Row cache helpers ---

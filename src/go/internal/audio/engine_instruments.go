@@ -39,10 +39,10 @@ func ResetInstruments() {
 			Name:   "snare-1",
 			Render: renderSnareRimshot,
 			Beats:  0.5,
-			Post: func(buf []float32, sr int) {
-				gateTail(buf, 0.5)
-				softClip(buf, 2.5, 0.85)
+			DefaultFX: []EffectSlot{
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 2.5, "tone": 8000, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.5) },
 		},
 		"kick-1": CVariantInstrument{
 			Name:   "kick-1",
@@ -53,58 +53,56 @@ func ResetInstruments() {
 			Name:   "hihat-1",
 			Render: renderOpenHiHat,
 			Beats:  0.7,
-			Post: func(buf []float32, sr int) {
-				hpFilter(buf, sr, 3000.0)
-				softClip(buf, 1.4, 0.95)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 3000, "q": 0.707, "mix": 1}},
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 1.4, "tone": 8000, "mix": 1}},
 			},
 		},
 		"tom-1": CVariantInstrument{
 			Name:   "tom-1",
 			Render: renderTomHigh,
 			Beats:  0.3,
-			Post: func(buf []float32, sr int) {
-				gateTail(buf, 0.4)
-				softClip(buf, 2.0, 0.85)
+			DefaultFX: []EffectSlot{
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 2.0, "tone": 8000, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.4) },
 		},
 		"clap-1": CVariantInstrument{
 			Name:   "clap-1",
 			Render: renderClap,
 			Beats:  0.25,
-			Post: func(buf []float32, sr int) {
-				gateTail(buf, 0.5)
-				lpFilter(buf, sr, 4000.0)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 0, "cutoff": 4000, "q": 0.707, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.5) },
 		},
 		"cowbell-1": CVariantInstrument{
 			Name:   "cowbell-1",
 			Render: renderCowbell,
 			Beats:  0.3,
-			Post: func(buf []float32, sr int) {
-				hpFilter(buf, sr, 800.0)
-				gateTail(buf, 0.6)
-				softClip(buf, 2.5, 0.85)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 800, "q": 0.707, "mix": 1}},
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 2.5, "tone": 8000, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.6) },
 		},
 
 		// Bass variants: different timbres.
 		"bass-guitar-1": CVariantInstrument{
 			Name:   "bass-guitar-1",
 			Render: renderBassGuitar,
-			Beats:  1.2, // Tighter, more percussive
-			Post: func(buf []float32, sr int) {
-				// Brighter, more aggressive pluck
-				hpFilter(buf, sr, 80.0)
-				softClip(buf, 1.6, 0.9)
+			Beats:  1.2,
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 80, "q": 0.707, "mix": 1}},
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 1.6, "tone": 8000, "mix": 1}},
 			},
 		},
 		"sub-bass-1": CVariantInstrument{
 			Name:   "sub-bass-1",
 			Render: renderSubBass,
-			Beats:  1.5, // Shorter, punchier
-			Post: func(buf []float32, sr int) {
-				// Add harmonics for presence on small speakers
-				softClip(buf, 2.0, 0.85)
+			Beats:  1.5,
+			DefaultFX: []EffectSlot{
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 2.0, "tone": 8000, "mix": 1}},
 			},
 		},
 
@@ -113,9 +111,9 @@ func ResetInstruments() {
 			Name:   "snare-2",
 			Render: renderSnare,
 			Beats:  0.6,
-			Post: func(buf []float32, sr int) {
-				crushBits(buf, 4)
-				lpFilter(buf, sr, 3000.0)
+			DefaultFX: []EffectSlot{
+				{Type: EffectBitcrusher, Enabled: true, Params: map[string]float64{"bits": 4, "rate": 1, "mix": 1}},
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 0, "cutoff": 3000, "q": 0.707, "mix": 1}},
 			},
 		},
 		"kick-2": CVariantInstrument{
@@ -127,37 +125,37 @@ func ResetInstruments() {
 			Name:   "hihat-2",
 			Render: renderHiHat,
 			Beats:  0.2,
-			Post: func(buf []float32, sr int) {
-				crushBits(buf, 4)
-				gateTail(buf, 0.35)
+			DefaultFX: []EffectSlot{
+				{Type: EffectBitcrusher, Enabled: true, Params: map[string]float64{"bits": 4, "rate": 1, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.35) },
 		},
 		"tom-2": CVariantInstrument{
 			Name:   "tom-2",
 			Render: renderTomLow,
 			Beats:  0.7,
-			Post: func(buf []float32, sr int) {
-				crushBits(buf, 5)
-				lpFilter(buf, sr, 2000.0)
+			DefaultFX: []EffectSlot{
+				{Type: EffectBitcrusher, Enabled: true, Params: map[string]float64{"bits": 5, "rate": 1, "mix": 1}},
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 0, "cutoff": 2000, "q": 0.707, "mix": 1}},
 			},
 		},
 		"clap-2": CVariantInstrument{
 			Name:   "clap-2",
 			Render: renderClap,
 			Beats:  0.3,
-			Post: func(buf []float32, sr int) {
-				crushBits(buf, 4)
-				softClip(buf, 2.0, 0.8)
-				hpFilter(buf, sr, 500.0)
+			DefaultFX: []EffectSlot{
+				{Type: EffectBitcrusher, Enabled: true, Params: map[string]float64{"bits": 4, "rate": 1, "mix": 1}},
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 2.0, "tone": 8000, "mix": 1}},
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 500, "q": 0.707, "mix": 1}},
 			},
 		},
 		"cowbell-2": CVariantInstrument{
 			Name:   "cowbell-2",
 			Render: renderCowbell,
 			Beats:  0.4,
-			Post: func(buf []float32, sr int) {
-				crushBits(buf, 4)
-				lpFilter(buf, sr, 2500.0)
+			DefaultFX: []EffectSlot{
+				{Type: EffectBitcrusher, Enabled: true, Params: map[string]float64{"bits": 4, "rate": 1, "mix": 1}},
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 0, "cutoff": 2500, "q": 0.707, "mix": 1}},
 			},
 		},
 
@@ -166,10 +164,10 @@ func ResetInstruments() {
 			Name:   "snare-ghost",
 			Render: renderSnare,
 			Beats:  0.4,
-			Post: func(buf []float32, sr int) {
-				lpFilter(buf, sr, 3000.0)
-				gateTail(buf, 0.6)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 0, "cutoff": 3000, "q": 0.707, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.6) },
 		},
 		"kick-tight": CVariantInstrument{
 			Name:   "kick-tight",
@@ -180,19 +178,19 @@ func ResetInstruments() {
 			Name:   "hihat-pedal",
 			Render: renderHiHat,
 			Beats:  0.15,
-			Post: func(buf []float32, sr int) {
-				gateTail(buf, 0.3)
-				hpFilter(buf, sr, 6000.0)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 6000, "q": 0.707, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.3) },
 		},
 		"clap-tight": CVariantInstrument{
 			Name:   "clap-tight",
 			Render: renderClap,
 			Beats:  0.25,
-			Post: func(buf []float32, sr int) {
-				hpFilter(buf, sr, 300.0)
-				gateTail(buf, 0.4)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 300, "q": 0.707, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.4) },
 		},
 
 		// FM synthesis instruments.
@@ -222,50 +220,50 @@ func ResetInstruments() {
 			Beats:  0.5,
 		},
 
-		// FM variants (post-processed).
+		// FM variants (post-processed via DefaultFX).
 		"fm-bass-1": CVariantInstrument{
 			Name:   "fm-bass-1",
 			Render: renderFMBass,
 			Beats:  1.0,
-			Post: func(buf []float32, sr int) {
-				hpFilter(buf, sr, 60.0)
-				softClip(buf, 1.8, 0.9)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 60, "q": 0.707, "mix": 1}},
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 1.8, "tone": 8000, "mix": 1}},
 			},
 		},
 		"fm-bell-1": CVariantInstrument{
 			Name:   "fm-bell-1",
 			Render: renderFMBell,
 			Beats:  1.5,
-			Post: func(buf []float32, sr int) {
-				lpFilter(buf, sr, 4000.0)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 0, "cutoff": 4000, "q": 0.707, "mix": 1}},
 			},
 		},
 		"fm-lead-1": CVariantInstrument{
 			Name:   "fm-lead-1",
 			Render: renderFMLead,
 			Beats:  0.7,
-			Post: func(buf []float32, sr int) {
-				crushBits(buf, 5)
-				gateTail(buf, 0.6)
+			DefaultFX: []EffectSlot{
+				{Type: EffectBitcrusher, Enabled: true, Params: map[string]float64{"bits": 5, "rate": 1, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.6) },
 		},
 		"fm-epiano-1": CVariantInstrument{
 			Name:   "fm-epiano-1",
 			Render: renderFMEPiano,
 			Beats:  1.5,
-			Post: func(buf []float32, sr int) {
-				lpFilter(buf, sr, 3000.0)
-				softClip(buf, 1.4, 0.95)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 0, "cutoff": 3000, "q": 0.707, "mix": 1}},
+				{Type: EffectDistortion, Enabled: true, Params: map[string]float64{"drive": 1.4, "tone": 8000, "mix": 1}},
 			},
 		},
 		"fm-pluck-1": CVariantInstrument{
 			Name:   "fm-pluck-1",
 			Render: renderFMPluck,
 			Beats:  0.3,
-			Post: func(buf []float32, sr int) {
-				hpFilter(buf, sr, 150.0)
-				gateTail(buf, 0.5)
+			DefaultFX: []EffectSlot{
+				{Type: EffectFilter, Enabled: true, Params: map[string]float64{"mode": 1, "cutoff": 150, "q": 0.707, "mix": 1}},
 			},
+			Post: func(buf []float32, _ int) { gateTail(buf, 0.5) },
 		},
 	}
 	instOrder = append([]string(nil), BuiltinInstrumentIDs...)

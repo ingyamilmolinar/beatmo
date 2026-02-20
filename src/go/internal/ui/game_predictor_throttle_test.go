@@ -26,7 +26,9 @@ func TestPredictorBackgroundThrottle(t *testing.T) {
 
 	setDrawAvg := func(ms float64) {
 		g.perf.reset()
-		atomic.StoreInt64(&g.perf.frames, 1)
+		// Use perfDrawWarmupFrames+1 so that drwFrames=1 in snapshot(),
+		// which computes DrawAvgMS = drawSumNS / drwFrames / 1e6.
+		atomic.StoreInt64(&g.perf.frames, int64(perfDrawWarmupFrames)+1)
 		atomic.StoreInt64(&g.perf.drawSumNS, int64(ms*1e6))
 	}
 	computeExpected := func(look int) int {

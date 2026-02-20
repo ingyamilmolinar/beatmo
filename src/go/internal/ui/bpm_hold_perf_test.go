@@ -32,7 +32,7 @@ func TestBPMHoldUpdateLatency(t *testing.T) {
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	for i := 0; i < 30; i++ {
-		g.drum.bpmIncBtn.OnClick()
+		g.drum.bpmIncBtn().OnClick()
 		done := make(chan struct{})
 		go func() {
 			_ = g.Update()

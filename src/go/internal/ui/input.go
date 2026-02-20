@@ -11,10 +11,11 @@ import "github.com/hajimehoshi/ebiten/v2"
 // with touch without modification.
 //
 // Platform behavior:
-//   Desktop:                cursorPosition/isMouseButtonPressed → Ebiten directly
-//   Mobile WASM (1 touch):  → touch override (primary touch X,Y; left=true)
-//   Mobile WASM (2+ touch): → Ebiten (falls through; multi-touch handled as gestures)
-//   Mobile WASM (tap):      → 2-frame injection cycle (see touch.go injectTouchTap)
+//
+//	Desktop:                cursorPosition/isMouseButtonPressed → Ebiten directly
+//	Mobile WASM (1 touch):  → touch override (primary touch X,Y; left=true)
+//	Mobile WASM (2+ touch): → Ebiten (falls through; multi-touch handled as gestures)
+//	Mobile WASM (tap):      → 2-frame injection cycle (see touch.go injectTouchTap)
 //
 // The touch override is FRAME-SCOPED: updateTouchOverride() must run once per
 // frame, after globalTouchState.Update() and before any cursorPosition() reads.

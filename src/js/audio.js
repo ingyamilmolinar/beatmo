@@ -214,7 +214,7 @@ scheduleMetrics.reset();
 const AUDIO_QUEUE_MAX = 8192;
 const AUDIO_FLUSH_CHUNK = 64;
 const AUDIO_FLUSH_BUDGET_MS = 1.2;
-const AUDIO_MIN_LEAD_SEC = 0.008;
+const AUDIO_MIN_LEAD_SEC = 0.004;
 
 const audioQueue = [];
 let audioQueueHead = 0;
@@ -1341,6 +1341,132 @@ function createInsertEffectSubgraph(c, slot) {
       input.connect(dry); dry.connect(output);
       input.connect(bq); bq.connect(wet); wet.connect(output);
       return { input, output, nodes: [bq, dry, wet] };
+    }
+    case 'waveshaper': {
+      const drive = Math.max(1, Math.min(20, p.drive ?? 2));
+      const curve_type = Math.round(p.curve ?? 0);
+      const ws = c.createWaveShaper();
+      const samples = 8192;
+      const curve = new Float32Array(samples);
+      for (let i = 0; i < samples; i++) {
+        const x = (i * 2) / samples - 1;
+        const driven = x * drive;
+        switch (curve_type) {
+        case 1: curve[i] = Math.max(-1, Math.min(1, driven)); break;
+        case 2: { let v = driven; while (v > 1 || v < -1) { if (v > 1) v = 2 - v; if (v < -1) v = -2 - v; } curve[i] = v; break; }
+        case 3: curve[i] = Math.sin(driven * Math.PI * 0.5); break;
+        default: curve[i] = Math.tanh(driven); break;
+        }
+      }
+      ws.curve = curve;
+      ws.oversample = '2x';
+      const input = c.createGain(); input.gain.value = 1;
+      const dry = c.createGain(); dry.gain.value = 1 - mix;
+      const wet = c.createGain(); wet.gain.value = mix;
+      const output = c.createGain(); output.gain.value = 1;
+      input.connect(dry); dry.connect(output);
+      input.connect(ws); ws.connect(wet); wet.connect(output);
+      return { input, output, nodes: [ws, dry, wet] };
+    }
+    case 'ringmod': {
+      const freq = Math.max(20, Math.min(5000, p.frequency ?? 440));
+      const input = c.createGain(); input.gain.value = 1;
+      const dry = c.createGain(); dry.gain.value = 1 - mix;
+      const wet = c.createGain(); wet.gain.value = 0;
+      const carrier = c.createOscillator();
+      carrier.type = (p.shape ?? 0) >= 0.5 ? 'square' : 'sine';
+      carrier.frequency.value = freq;
+      const modGain = c.createGain(); modGain.gain.value = mix;
+      carrier.connect(modGain);
+      modGain.connect(input.gain);
+      carrier.start();
+      const output = c.createGain(); output.gain.value = 1;
+      input.connect(dry); dry.connect(output);
+      input.connect(output);
+      return { input, output, nodes: [carrier, modGain, dry, wet], oscillators: [carrier] };
+    }
+    case 'tremolo': {
+      const rate = Math.max(0.5, Math.min(20, p.rate ?? 4));
+      const depth = Math.max(0, Math.min(1, p.depth ?? 0.5));
+      const input = c.createGain(); input.gain.value = 1;
+      const tremGain = c.createGain(); tremGain.gain.value = 1 - depth * 0.5;
+      const lfo = c.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = rate;
+      const lfoGain = c.createGain(); lfoGain.gain.value = depth * 0.5;
+      lfo.connect(lfoGain);
+      lfoGain.connect(tremGain.gain);
+      lfo.start();
+      const output = c.createGain(); output.gain.value = 1;
+      input.connect(tremGain); tremGain.connect(output);
+      return { input, output, nodes: [tremGain, lfo, lfoGain], oscillators: [lfo] };
+    }
+    case 'gate':
+    case 'transient':
+    case 'pitchshift': {
+      // No good native WebAudio equivalent; passthrough placeholder.
+      const input = c.createGain(); input.gain.value = 1;
+      return { input, output: input, nodes: [] };
+    }
+    case 'limiter':
+    case 'compressor': {
+      const comp = c.createDynamicsCompressor();
+      comp.threshold.value = p.threshold ?? -20;
+      comp.ratio.value = p.ratio ?? 12;
+      comp.attack.value = (p.attack ?? 10) / 1000;
+      comp.release.value = (p.release ?? 100) / 1000;
+      const input = c.createGain(); input.gain.value = 1;
+      const output = c.createGain(); output.gain.value = 1;
+      input.connect(comp); comp.connect(output);
+      return { input, output, nodes: [comp] };
+    }
+    case 'flanger': {
+      const rate = Math.max(0.1, Math.min(10, p.rate ?? 0.5));
+      const depth = Math.max(0, Math.min(0.01, (p.depth ?? 3) / 1000));
+      const feedback = Math.max(-0.95, Math.min(0.95, p.feedback ?? 0.5));
+      const input = c.createGain(); input.gain.value = 1;
+      const dry = c.createGain(); dry.gain.value = 1 - mix;
+      const wet = c.createGain(); wet.gain.value = mix;
+      const delay = c.createDelay(0.05);
+      delay.delayTime.value = 0.003;
+      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = rate;
+      const lfoGain = c.createGain(); lfoGain.gain.value = depth;
+      lfo.connect(lfoGain); lfoGain.connect(delay.delayTime); lfo.start();
+      const fbGain = c.createGain(); fbGain.gain.value = feedback;
+      const output = c.createGain(); output.gain.value = 1;
+      input.connect(dry); dry.connect(output);
+      input.connect(delay); delay.connect(wet); wet.connect(output);
+      delay.connect(fbGain); fbGain.connect(delay);
+      return { input, output, nodes: [delay, lfo, lfoGain, fbGain, dry, wet], oscillators: [lfo] };
+    }
+    case 'phaser':
+    case 'autowah': {
+      // Complex filter chain not well-supported by native nodes; passthrough.
+      const input = c.createGain(); input.gain.value = 1;
+      return { input, output: input, nodes: [] };
+    }
+    case 'tape': {
+      // Saturation via waveshaper + warmth LP filter
+      const drive = Math.max(1, Math.min(10, p.drive ?? 2));
+      const ws = c.createWaveShaper();
+      const samples = 8192;
+      const curve = new Float32Array(samples);
+      const norm = Math.tanh(drive);
+      for (let i = 0; i < samples; i++) {
+        const x = (i * 2) / samples - 1;
+        curve[i] = norm > 0.001 ? Math.tanh(drive * x) / norm : x;
+      }
+      ws.curve = curve; ws.oversample = '2x';
+      const warmth = Math.max(0, Math.min(1, p.warmth ?? 0.5));
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass';
+      lp.frequency.value = 2000 + (1 - warmth) * 18000; lp.Q.value = 0.707;
+      const input = c.createGain(); input.gain.value = 1;
+      const dry = c.createGain(); dry.gain.value = 1 - mix;
+      const wetG = c.createGain(); wetG.gain.value = mix;
+      const output = c.createGain(); output.gain.value = 1;
+      input.connect(dry); dry.connect(output);
+      input.connect(ws); ws.connect(lp); lp.connect(wetG); wetG.connect(output);
+      return { input, output, nodes: [ws, lp, dry, wetG] };
     }
     default:
       return null;
@@ -2626,6 +2752,100 @@ window.resetOutputCaptureNode = () => {
     try { limiter.disconnect(); } catch (_) {}
     limiter.connect(c.destination);
   }
+};
+
+// ─── Multi-Channel Recording Capture ────────────────────────────────────────
+// Per-instrument + master capture for WASM recording. Creates a
+// ScriptProcessorNode tap on each instrument's channel gain output.
+
+let multiCaptureNodes = new Map();  // id → { node, buffer }
+let multiCaptureMaster = null;      // { node, buffer }
+let multiCaptureEnabled = false;
+
+// startMultiChannelCapture(instrumentIDs: string[])
+// Called by Go when recording starts. Creates per-channel capture nodes.
+window.startMultiChannelCapture = (instrumentIDs) => {
+  const c = hasCtx() ? ctx : null;
+  if (!c) {
+    console.warn('[MULTI-CAPTURE] No AudioContext available');
+    return;
+  }
+
+  // Clean up any previous capture
+  window.stopMultiChannelCapture();
+
+  // Capture each instrument channel
+  for (const id of instrumentIDs) {
+    const chain = channelNodes.get(id);
+    if (!chain || !chain.gain) continue;
+
+    const captureNode = c.createScriptProcessor(256, 1, 1);
+    const buf = [];
+
+    captureNode.onaudioprocess = (e) => {
+      if (!multiCaptureEnabled) return;
+      const input = e.inputBuffer.getChannelData(0);
+      for (let i = 0; i < input.length; i++) {
+        buf.push(input[i]);
+      }
+      // Pass through
+      const output = e.outputBuffer.getChannelData(0);
+      for (let i = 0; i < input.length; i++) {
+        output[i] = input[i];
+      }
+    };
+
+    // Tap from channel gain → captureNode → (silent destination)
+    // We connect to a silent destination so the node processes.
+    // The gain node is already connected to main; we add a parallel tap.
+    chain.gain.connect(captureNode);
+    captureNode.connect(c.destination);
+
+    multiCaptureNodes.set(id, { node: captureNode, buffer: buf, chain });
+  }
+
+  // Master capture: reuse existing outputCapture infrastructure
+  window.startOutputCapture();
+
+  multiCaptureEnabled = true;
+  console.log(`[MULTI-CAPTURE] Started: ${instrumentIDs.length} instruments + master`);
+};
+
+// stopMultiChannelCapture() → { master: Float32Array, channels: { id: Float32Array } }
+// Called by Go when recording stops. Returns all captured data.
+window.stopMultiChannelCapture = () => {
+  multiCaptureEnabled = false;
+
+  const result = {
+    master: null,
+    channels: {},
+  };
+
+  // Collect master from existing outputCapture
+  if (outputCaptureEnabled || outputCaptureBuffer.length > 0) {
+    result.master = window.stopOutputCapture();
+  } else {
+    result.master = new Float32Array(0);
+  }
+
+  // Collect per-instrument channels
+  for (const [id, entry] of multiCaptureNodes) {
+    result.channels[id] = new Float32Array(entry.buffer);
+
+    // Disconnect capture node
+    try {
+      if (entry.chain && entry.chain.gain) {
+        entry.chain.gain.disconnect(entry.node);
+      }
+    } catch (_) {}
+    try { entry.node.disconnect(); } catch (_) {}
+  }
+  multiCaptureNodes.clear();
+
+  console.log(`[MULTI-CAPTURE] Stopped: master=${result.master.length} samples, ` +
+    `channels=${Object.keys(result.channels).length}`);
+
+  return result;
 };
 
 // Speaker routing diagnostics — used by mobile_speaker_routing tests.

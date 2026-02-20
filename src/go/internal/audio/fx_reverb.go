@@ -6,10 +6,11 @@ import "math"
 
 // reverb implements a Schroeder reverb: 4 parallel comb filters feeding
 // 2 series allpass filters, with damping and room size control.
+// All user-facing parameters are smoothed to prevent clicks on change.
 type reverb struct {
-	room    float64 // 0-1: scales comb feedback
-	damping float64 // 0-1: LP damping in combs
-	mix     float64 // wet/dry 0-1
+	room    smoothParam // 0-1: scales comb feedback
+	damping smoothParam // 0-1: LP damping in combs
+	mix     smoothParam // wet/dry 0-1
 
 	sr    int
 	combs [4]combFilter
@@ -22,9 +23,9 @@ var apDelays = [2]int{556, 441}
 
 func newReverb(sr int, params map[string]float64) *reverb {
 	r := &reverb{sr: sr}
-	r.room = clampf(params["room"], 0, 1)
-	r.damping = clampf(params["damping"], 0, 1)
-	r.mix = clampf(params["mix"], 0, 1)
+	r.room = newSmoothParam(clampf(params["room"], 0, 1), sr, defaultSmoothTimeMs)
+	r.damping = newSmoothParam(clampf(params["damping"], 0, 1), sr, defaultSmoothTimeMs)
+	r.mix = newSmoothParam(clampf(params["mix"], 0, 1), sr, defaultSmoothTimeMs)
 	r.initFilters()
 	return r
 }
@@ -34,6 +35,8 @@ func (r *reverb) initFilters() {
 	if scale <= 0 {
 		scale = 1
 	}
+	rm := r.room.value()
+	dmp := r.damping.value()
 	for i := 0; i < 4; i++ {
 		length := int(math.Round(float64(combDelays[i]) * scale))
 		if length < 1 {
@@ -41,8 +44,8 @@ func (r *reverb) initFilters() {
 		}
 		r.combs[i] = combFilter{
 			buf:      make([]float64, length),
-			feedback: 0.7 + 0.28*r.room, // 0.7 - 0.98 range
-			damping:  r.damping,
+			feedback: 0.7 + 0.28*rm, // 0.7 - 0.98 range
+			damping:  dmp,
 		}
 	}
 	for i := 0; i < 2; i++ {
@@ -58,6 +61,17 @@ func (r *reverb) initFilters() {
 }
 
 func (r *reverb) ProcessSample(x float64) float64 {
+	rm := r.room.tick()
+	dmp := r.damping.tick()
+	mix := r.mix.tick()
+
+	// Update comb parameters per sample (smoothed).
+	fb := 0.7 + 0.28*rm
+	for i := range r.combs {
+		r.combs[i].feedback = fb
+		r.combs[i].damping = dmp
+	}
+
 	// Sum 4 parallel comb filters
 	var wet float64
 	for i := range r.combs {
@@ -70,7 +84,7 @@ func (r *reverb) ProcessSample(x float64) float64 {
 		wet = r.aps[i].process(wet)
 	}
 
-	return x*(1-r.mix) + wet*r.mix
+	return x*(1-mix) + wet*mix
 }
 
 func (r *reverb) Reset() {
@@ -85,17 +99,11 @@ func (r *reverb) Reset() {
 func (r *reverb) SetParam(name string, value float64) {
 	switch name {
 	case "room":
-		r.room = clampf(value, 0, 1)
-		for i := range r.combs {
-			r.combs[i].feedback = 0.7 + 0.28*r.room
-		}
+		r.room.set(clampf(value, 0, 1))
 	case "damping":
-		r.damping = clampf(value, 0, 1)
-		for i := range r.combs {
-			r.combs[i].damping = r.damping
-		}
+		r.damping.set(clampf(value, 0, 1))
 	case "mix":
-		r.mix = clampf(value, 0, 1)
+		r.mix.set(clampf(value, 0, 1))
 	}
 }
 

@@ -68,7 +68,7 @@ func TestSubdivButtonDrawAndClickDoesNotStall(t *testing.T) {
 	dv.recalcButtons()
 	dst := ebiten.NewImage(640, 200)
 	dv.Draw(dst, nil, 0, nil, 0)
-	r := dv.subdivBtn.Rect()
+	r := dv.subdivBtn().Rect()
 	if r.Empty() {
 		t.Fatalf("subdiv button not laid out")
 	}
@@ -77,7 +77,7 @@ func TestSubdivButtonDrawAndClickDoesNotStall(t *testing.T) {
 	dv.Update()
 	t.Cleanup(restore)
 	restore()
-	if !dv.subdivMenuOpen {
+	if !dv.IsSubdivMenuOpen() {
 		t.Fatalf("subdiv menu did not open on click")
 	}
 }

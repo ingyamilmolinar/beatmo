@@ -293,7 +293,7 @@ func (t *TextInput) visibleText() (string, int) {
 // Draw renders the input.
 func (t *TextInput) Draw(dst *ebiten.Image) {
 	// Skip drawing when native mobile input is active for this TextInput
-	if isSmallScreen() && t.MobileInputID != "" && mobileInputActive(t.MobileInputID) {
+	if Profile().IsMobile() && t.MobileInputID != "" && mobileInputActive(t.MobileInputID) {
 		return
 	}
 	t.Style.DrawAnimated(dst, t.Rect, t.focused, t.anim)
@@ -331,13 +331,6 @@ var drawCursor = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 // drawCursor; keep them exported locally to avoid import cycles.
 func min(a, b int) int {
 	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
 		return a
 	}
 	return b

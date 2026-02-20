@@ -15,8 +15,8 @@ func TestBPMEditorRejectsNonDigits(t *testing.T) {
 	_ = g.Update()
 
 	// Focus editor, clear, type a mix of digits and letters, then press Enter.
-	focusTextInput(t, g.drum, g.drum.bpmBox)
-	g.drum.bpmBox.SetText("")
+	focusTextInput(t, g.drum, g.drum.bpmBox())
+	g.drum.bpmBox().SetText("")
 	// Try to type mix of digits and letters; final commit should be rejected.
 	chars := []rune{'1'}
 	enter := false
@@ -53,8 +53,8 @@ func TestBPMEditorRejectsEmpty(t *testing.T) {
 	g.Layout(640, 480)
 	_ = g.Update()
 
-	focusTextInput(t, g.drum, g.drum.bpmBox)
-	g.drum.bpmBox.SetText("")
+	focusTextInput(t, g.drum, g.drum.bpmBox())
+	g.drum.bpmBox().SetText("")
 
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },

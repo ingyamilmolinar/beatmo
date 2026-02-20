@@ -14,9 +14,9 @@ func TestColorWheelEscCancels(t *testing.T) {
 	dv.calcLayout()
 	before := dv.colorKey(dv.Rows[0].Color)
 	// Open wheel
-	dv.rowColorBtns[0].OnClick()
+	dv.rowColorBtns()[0].OnClick()
 	dv.Update()
-	if !dv.colorMenuOpen {
+	if !dv.IsColorMenuOpen() {
 		t.Fatalf("wheel not open")
 	}
 	// Send Esc
@@ -31,7 +31,7 @@ func TestColorWheelEscCancels(t *testing.T) {
 	t.Cleanup(restore)
 	dv.Update()
 	restore()
-	if dv.colorMenuOpen {
+	if dv.IsColorMenuOpen() {
 		t.Fatalf("wheel still open after Esc")
 	}
 	after := dv.colorKey(dv.Rows[0].Color)

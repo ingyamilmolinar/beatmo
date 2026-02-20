@@ -18,6 +18,7 @@ func (g *Game) Layout(w, h int) (int, int) {
 	g.winW, g.winH = w, h
 	// Update touch screen size for responsive UI sizing
 	SetTouchScreenSize(w, h)
+	UpdateProfile()
 	if g.frameBuffer != nil && (g.frameBufferW != w || g.frameBufferH != h) {
 		g.frameBuffer = nil
 		g.frameBufferW, g.frameBufferH = 0, 0
@@ -53,8 +54,8 @@ func (g *Game) Layout(w, h int) (int, int) {
 	h2 := g.split.horizontal
 	g.lastHorizontal = &h2
 
-	// Detect mobile ↔ desktop transition (isSmallScreen() crossing the 900px threshold).
-	small := isSmallScreen()
+	// Detect mobile ↔ desktop transition (profile class crossing the 900px threshold).
+	small := Profile().IsMobile()
 	if g.lastSmallScreen != nil && *g.lastSmallScreen != small {
 		g.split.userSet = false
 		g.split.ratio = 0
@@ -86,7 +87,7 @@ func (g *Game) Layout(w, h int) (int, int) {
 	}
 	// Auto-size drum pane to fit timeline + rows (+ add-row), avoiding wasted space.
 	if g.drum != nil && !g.split.userSet && (!runningUnderGoTest() || forceAutoSize) {
-		if isSmallScreen() {
+		if Profile().IsMobile() {
 			// Mobile: always stacked — adaptive split (grid ≥50%, drum capped at 50%)
 			y := adaptiveMobilePortraitSplitY(h, g)
 			g.split.Y = y
@@ -98,6 +99,11 @@ func (g *Game) Layout(w, h int) (int, int) {
 			want := desktopHeaderH + (len(g.drum.Rows)+1)*g.drum.rowHeight() + eqPanelHeight
 			minY := 120
 			maxY := h - 120
+			// Cap the drum panel (header + rows + EQ) at 50% of window height
+			// so it doesn't dominate the screen when many instruments are present.
+			if maxDrum := h / 2; want > maxDrum {
+				want = maxDrum
+			}
 			y := h - want
 			if y < minY {
 				y = minY

@@ -168,13 +168,18 @@ func Instruments() []string {
 
 // RenameInstrument updates an instrument ID in the list.
 func RenameInstrument(oldID, newID string) {
+	changed := false
 	instrumentsMu.Lock()
 	for i, id := range instruments {
 		if id == oldID {
 			instruments[i] = newID
+			changed = true
 			break
 		}
 	}
 	instrumentsMu.Unlock()
+	if changed {
+		bumpInstrumentsVersion()
+	}
 	renameInstrumentChannel(oldID, newID)
 }

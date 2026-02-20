@@ -31,7 +31,7 @@ func (g *Game) drawDivider(screen *ebiten.Image) {
 	}
 	g.dividerHover = hover
 	g.dividerThick = thick
-	mobile := isSmallScreen()
+	mobile := Profile().IsMobile()
 	shadowCol := color.RGBA{8, 8, 10, 255}
 	highCol := color.RGBA{50, 50, 58, 255}
 	if g.split.horizontal {
@@ -141,7 +141,6 @@ func (g *Game) buildGridTile(stepPx int) *ebiten.Image {
 }
 
 func (g *Game) drawDrumPane(dst *ebiten.Image) {
-	g.ensureComponentRegistry()
 	// Keep DrumView's seconds-per-beat in sync with the engine/app-lied BPM for
 	// timeline counters without overriding the user-edited BPM control value.
 	// This avoids a race where UI changes are undone by the draw loop before

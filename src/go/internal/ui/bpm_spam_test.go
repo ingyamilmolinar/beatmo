@@ -30,12 +30,12 @@ func TestBPMSpamCoalesces(t *testing.T) {
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	// Trigger an initial BPM change that will block inside SetBPMFunc.
-	g.drum.bpmIncBtn.OnClick()
+	g.drum.bpmIncBtn().OnClick()
 	g.Update()
 
 	// Spam many more BPM increments while the audio goroutine is blocked.
 	for i := 0; i < 50; i++ {
-		g.drum.bpmIncBtn.OnClick()
+		g.drum.bpmIncBtn().OnClick()
 		g.Update()
 	}
 

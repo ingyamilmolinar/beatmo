@@ -28,6 +28,16 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 				targetLen = gl
 			}
 		}
+		// On mobile, cap the target to the platform default (e.g. 8 beats)
+		// unless the user has manually adjusted the length via +/- buttons.
+		if p := Profile(); p.IsMobile() && !dv.userAdjustedLength {
+			if db := p.DefaultTimelineBeats; db > 0 && dv.timelineUnitsPerBeat > 0 {
+				cap := db * dv.timelineUnitsPerBeat
+				if targetLen > cap {
+					targetLen = cap
+				}
+			}
+		}
 		if clamped := dv.clampLength(targetLen); clamped != dv.Length {
 			oldLen := dv.Length
 			dv.Length = clamped
@@ -71,7 +81,9 @@ func (dv *DrumView) AddRow() {
 	dv.markRowControlsDirty()
 	// Invalidate label caches since row names affect label width calculation.
 	dv.invalidateLabelCaches()
-	dv.activeSlider = -1
+	if dv.rowVolGroup() != nil {
+		dv.rowVolGroup().Release()
+	}
 	dv.calcLayout()
 	maxOff := len(dv.Rows) - dv.visibleRows()
 	if maxOff < 0 {
@@ -118,7 +130,9 @@ func (dv *DrumView) DeleteRow(i int) {
 	dv.markRowControlsDirty()
 	// Invalidate label caches since row names affect label width calculation.
 	dv.invalidateLabelCaches()
-	dv.activeSlider = -1
+	if dv.rowVolGroup() != nil {
+		dv.rowVolGroup().Release()
+	}
 	if dv.selRow >= len(dv.Rows) {
 		dv.selRow = len(dv.Rows) - 1
 	}
@@ -131,6 +145,9 @@ func (dv *DrumView) DeleteRow(i int) {
 		dv.rowOffset = maxOff
 	}
 	// Reset caches so indexes realign.
+	if dv.timelineZone != nil {
+		dv.timelineZone.ResetAfterDelete()
+	}
 	dv.rowCache = nil
 	dv.rowDirty = nil
 	dv.rowFullDirty = nil

@@ -14,7 +14,7 @@ func (dv *DrumView) instMenuHasScroll() bool {
 }
 
 func (dv *DrumView) instMenuThumbRect() image.Rectangle {
-	if !dv.instMenuOpen || !dv.instMenuHasScroll() || dv.instMenuScroll.View.Empty() {
+	if !dv.IsInstMenuOpen() || !dv.instMenuHasScroll() || dv.instMenuScroll.View.Empty() {
 		return image.Rect(0, 0, 0, 0)
 	}
 	return dv.instMenuScroll.ThumbRect(instMenuScrollBarWidth, dv.rowHeight()/2)
@@ -90,7 +90,7 @@ func (dv *DrumView) matchInstrumentSearch(id, q string) bool {
 // buildInstMenu rebuilds the instrument dropdown buttons for the selected row.
 func (dv *DrumView) buildInstMenu() {
 	dv.instMenuBtns = dv.instMenuBtns[:0]
-	if dv.instMenuRow < 0 || dv.instMenuRow >= len(dv.rowLabels) {
+	if dv.instMenuRow < 0 || dv.instMenuRow >= len(dv.rowLabels()) {
 		dv.instMenuScroll.View = image.Rect(0, 0, 0, 0)
 		return
 	}
@@ -112,7 +112,7 @@ func (dv *DrumView) buildInstMenu() {
 			dv.instMenuActiveCat = cat
 		}
 	}
-	base := dv.rowLabels[dv.instMenuRow].Rect()
+	base := dv.rowLabels()[dv.instMenuRow].Rect()
 	host := dv.widgetRects[WidgetRack]
 	if host.Empty() {
 		host = image.Rect(dv.Bounds.Min.X, dv.Bounds.Min.Y+dv.headerH, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Max.Y-dv.eqH)
@@ -355,7 +355,6 @@ func (dv *DrumView) buildInstMenu() {
 				dv.instMenuCameFromCategories = true
 				dv.instMenuUserScrolled = false
 				dv.buildInstMenu()
-				SuppressClicksUntilMouseUp()
 			})
 			if btnCat == dv.instMenuActiveCat {
 				btn.Style = PopupButtonStyle
@@ -373,7 +372,6 @@ func (dv *DrumView) buildInstMenu() {
 				dv.instMenuCameFromCategories = false
 				dv.instMenuUserScrolled = false
 				dv.buildInstMenu()
-				SuppressClicksUntilMouseUp()
 			})
 			backBtn.SetRect(insetRect(backRect, buttonPad))
 			dv.instMenuBtns = append(dv.instMenuBtns, backBtn)
@@ -394,11 +392,11 @@ func (dv *DrumView) buildInstMenu() {
 			label := dv.instDisplayLabel(id)
 			btn := NewButton(label, DropdownStyle, func() {
 				dv.SetInstrument(optID)
-				dv.instMenuOpen = false
 				// Close component as well to keep state in sync
 				if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() {
 					dv.instMenuComp.Close()
 				}
+				dv.closeInstMenuPortal()
 			})
 			btn.SetRect(insetRect(r, buttonPad))
 			if os.Getenv("BEATMO_DEBUG_INST") == "1" {
@@ -480,7 +478,7 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 	// Toggle: close if already open for this row.
 	if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() && dv.instMenuRow == rowIdx {
 		dv.instMenuComp.Close()
-		dv.instMenuOpen = false
+		dv.closeInstMenuPortal()
 		dv.instMenuScroll.EndDrag()
 		return
 	}
@@ -512,12 +510,12 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		}
 
 		vertBounds := dv.widgetRects[WidgetRack]
-		if isSmallScreen() {
+		if Profile().IsMobile() {
 			vertBounds = dv.Bounds
 		}
 		anchorRect := image.Rectangle{}
-		if rowIdx < len(dv.rowLabels) {
-			anchorRect = dv.rowLabels[rowIdx].Rect()
+		if rowIdx < len(dv.rowLabels()) {
+			anchorRect = dv.rowLabels()[rowIdx].Rect()
 		}
 		dv.instMenuComp.SetProps(InstrumentMenuProps{
 			AnchorRect:        anchorRect,
@@ -534,7 +532,7 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 				dv.SetInstrument(instID)
 			},
 			OnClose: func() {
-				dv.instMenuOpen = false
+				dv.closeInstMenuPortal()
 			},
 			OnRebuild: func() {
 				dv.syncInstMenuBtnsFromComp()
@@ -542,9 +540,8 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		})
 		dv.instMenuDeferredTap.Cancel()
 		dv.instMenuComp.Open()
+		dv.openInstMenuPortal()
 		dv.syncInstMenuBtnsFromComp()
-		dv.instMenuOpen = true
-		SuppressClicksUntilMouseUp()
 	} else {
 		// Fallback to legacy menu when no component.
 		dv.instMenuScroll.First = 0
@@ -553,8 +550,6 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		} else {
 			dv.instMenuMode = instMenuModeInstruments
 		}
-		dv.instMenuOpen = true
 		dv.buildInstMenu()
-		SuppressClicksUntilMouseUp()
 	}
 }

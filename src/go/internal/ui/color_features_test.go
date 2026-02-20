@@ -23,12 +23,12 @@ func TestUniqueColorsAcrossRows(t *testing.T) {
 		t.Fatalf("expected >=3 rows, got %d", len(dv.Rows))
 	}
 	id := dv.Rows[0].Instrument
-	if len(dv.rowLabels) < 3 {
+	if len(dv.rowLabels()) < 3 {
 		t.Fatalf("expected row labels for selection")
 	}
-	dv.rowLabels[1].OnClick()
+	dv.rowLabels()[1].OnClick()
 	dv.SetInstrument(id)
-	dv.rowLabels[2].OnClick()
+	dv.rowLabels()[2].OnClick()
 	dv.SetInstrument(id)
 
 	// Colors must be unique across rows
@@ -48,25 +48,37 @@ func TestColorButtonLayoutAndMenu(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 500, timelineHeight+3*24), graph, testLogger)
 	dv.calcLayout()
 
-	if len(dv.rowColorBtns) == 0 {
+	if len(dv.rowColorBtns()) == 0 {
 		t.Fatalf("missing rowColorBtns")
 	}
-	// Button order: edit < save < color < slider
-	er := dv.rowEditBtns[0].Rect()
-	sv := dv.rowSaveBtns[0].Rect()
-	cr := dv.rowColorBtns[0].Rect()
-	sr := dv.rowVolSliders[0].Rect()
-	if er.Max.X > sv.Min.X || sv.Max.X > cr.Min.X || cr.Max.X > sr.Min.X {
-		t.Fatalf("button order invalid: edit=%v save=%v color=%v slider=%v", er, sv, cr, sr)
+	// On desktop, edit/save/color buttons are hidden (empty rects) — they live
+	// in the overflow menu. Volume slider should have a non-empty rect.
+	for _, name := range []string{"edit", "save", "color"} {
+		var r image.Rectangle
+		switch name {
+		case "edit":
+			r = dv.rowEditBtns()[0].Rect()
+		case "save":
+			r = dv.rowSaveBtns()[0].Rect()
+		case "color":
+			r = dv.rowColorBtns()[0].Rect()
+		}
+		if !r.Empty() {
+			t.Fatalf("expected %s button rect empty on desktop, got %v", name, r)
+		}
+	}
+	sr := dv.rowVolSliders()[0].Rect()
+	if sr.Empty() {
+		t.Fatalf("volume slider should have non-empty rect, got %v", sr)
 	}
 
-	// Open color menu
-	dv.rowColorBtns[0].OnClick()
+	// Open color menu via button callback (triggers OnColorWheelOpen).
+	dv.rowColorBtns()[0].OnClick()
 	dv.Update()
-	if !dv.colorMenuOpen {
+	if !dv.IsColorMenuOpen() {
 		t.Fatalf("color menu not open")
 	}
-	// Color wheel rectangle should be inside drum view bounds
+	// Color wheel rectangle should be inside drum view bounds.
 	w := dv.colorWheelRect
 	if w.Empty() || w.Min.Y < dv.Bounds.Min.Y || w.Max.Y > dv.Bounds.Max.Y {
 		t.Fatalf("color wheel rect out of bounds: %v vs %v", w, dv.Bounds)
@@ -117,7 +129,7 @@ func TestRowColorSwatchPerRowAndUpdate(t *testing.T) {
 	// Draw each swatch directly and verify its color matches the row color.
 	for i := range dv.Rows {
 		fills = nil
-		dv.rowColorBtns[i].Draw(img)
+		dv.rowColorBtns()[i].Draw(img)
 		if len(fills) == 0 {
 			t.Fatalf("no draw captured for row %d swatch", i)
 		}
@@ -131,7 +143,7 @@ func TestRowColorSwatchPerRowAndUpdate(t *testing.T) {
 	newC := color.RGBA{200, 30, 40, 255}
 	dv.SetRowColor(1, newC)
 	fills = nil
-	dv.rowColorBtns[1].Draw(img)
+	dv.rowColorBtns()[1].Draw(img)
 	if len(fills) == 0 {
 		t.Fatalf("no draw captured after update")
 	}
@@ -148,37 +160,21 @@ func TestColorWheelClickSetsColor(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 500, timelineHeight+3*24), graph, testLogger)
 	dv.calcLayout()
 	before := dv.colorKey(dv.Rows[0].Color)
-	dv.rowColorBtns[0].OnClick()
-	if !dv.colorMenuOpen {
+
+	// Open the color wheel via the button callback (creates portal entry).
+	dv.rowColorBtns()[0].OnClick()
+	if !dv.IsColorMenuOpen() {
 		t.Fatalf("menu not open")
 	}
-	// Click near right edge of wheel
-	r := dv.colorWheelRect
+	// Pick color near right edge of wheel via direct HandleInput.
+	// Hold is automatically cleared by the OnColorWheelOpen callback.
+	r := dv.colorWheelComp.InputBounds()
+	if r.Empty() {
+		t.Fatalf("colorWheelComp InputBounds is empty")
+	}
 	x := (r.Min.X+r.Max.X)/2 + r.Dx()/3
 	y := (r.Min.Y + r.Max.Y) / 2
-	// Release to clear hold, then press to pick
-	restoreUp := SetInputForTest(
-		func() (int, int) { return x, y },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 500, timelineHeight + 3*24 },
-	)
-	t.Cleanup(restoreUp)
-	dv.Update()
-	restoreUp()
-	restoreDown := SetInputForTest(
-		func() (int, int) { return x, y },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 500, timelineHeight + 3*24 },
-	)
-	t.Cleanup(restoreDown)
-	dv.Update()
-	restoreDown()
+	dv.colorWheelComp.HandleInput(x, y, true)
 	after := dv.colorKey(dv.Rows[0].Color)
 	if after == before {
 		t.Fatalf("wheel click did not change color: %s", after)

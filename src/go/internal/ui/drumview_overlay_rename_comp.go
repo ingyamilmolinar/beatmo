@@ -33,16 +33,16 @@ type RenameState struct {
 
 // RenameComponent is a self-contained text input for renaming.
 type RenameComponent struct {
-	BaseComponent
+	overlayBase
 	props   RenameProps
 	state   RenameState
 	textBox *TextInput
 }
 
 // NewRenameComponent creates a new rename component.
-func NewRenameComponent(id string) *RenameComponent {
+func NewRenameComponent() *RenameComponent {
 	return &RenameComponent{
-		BaseComponent: *NewBaseComponent(id),
+		overlayBase: newOverlayBase(),
 	}
 }
 
@@ -55,6 +55,8 @@ func (r *RenameComponent) SetProps(p RenameProps) {
 func (r *RenameComponent) Props() RenameProps { return r.props }
 
 // Open opens the rename dialog with the current props.
+// Note: hold is NOT set here because the portal tree's capture system
+// prevents double-dispatch of the opening press.
 func (r *RenameComponent) Open() {
 	rect := r.props.AnchorRect
 	if rect.Empty() {
@@ -63,9 +65,8 @@ func (r *RenameComponent) Open() {
 
 	// Mobile mode: if a native mobile input is active for this rename ID,
 	// use it instead of creating a TextInput.
-	if isSmallScreen() && r.props.MobileInputID != "" && mobileInputActive(r.props.MobileInputID) {
+	if Profile().IsMobile() && r.props.MobileInputID != "" && mobileInputActive(r.props.MobileInputID) {
 		r.state.open = true
-		r.state.hold = true
 		r.state.mobile = true
 		r.state.mobileID = r.props.MobileInputID
 		r.textBox = nil // No TextInput in mobile mode
@@ -85,7 +86,6 @@ func (r *RenameComponent) Open() {
 	r.textBox.focused = true
 	r.textBox.anim = 1
 	r.state.open = true
-	r.state.hold = true
 	r.state.mobile = false
 	r.state.mobileID = ""
 	r.SetBounds(rect)
@@ -191,7 +191,7 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 	// On small screens, also poll mobile input even if Open() started in
 	// desktop mode (native HTML input may not have been active yet).
-	if isSmallScreen() && r.props.MobileInputID != "" {
+	if Profile().IsMobile() && r.props.MobileInputID != "" {
 		if val, committed, ok := mobileInputPollResult(r.props.MobileInputID); ok {
 			if committed && val != "" {
 				if r.props.OnCommit != nil {
@@ -211,7 +211,16 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 	// Handle keyboard input via TextInput.Update()
 	// Note: TextInput.Update() checks ebiten keyboard state internally
+	wasFocused := r.textBox.Focused()
 	if r.textBox.Update() {
+		// Soft keyboard sends Enter as '\n' char → TextInput defocuses but
+		// isKeyPressed(Enter) at line 169 doesn't fire. Detect focus loss as commit.
+		if wasFocused && !r.textBox.Focused() {
+			if r.props.OnCommit != nil {
+				r.props.OnCommit(r.textBox.Value())
+			}
+			r.Close()
+		}
 		return InputConsumed
 	}
 
@@ -221,7 +230,6 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 			r.props.OnCancel()
 		}
 		r.Close()
-		SuppressClicksUntilMouseUp()
 		return InputConsumed
 	}
 
@@ -241,6 +249,12 @@ func (r *RenameComponent) Draw(dst *ebiten.Image) {
 	r.textBox.Draw(dst)
 }
 
+// ClearHold clears the hold state (for portal-based opening where the tree
+// prevents double-dispatch and hold is unnecessary).
+func (r *RenameComponent) ClearHold() {
+	r.state.hold = false
+}
+
 // Capturing returns whether the component is capturing input.
 func (r *RenameComponent) Capturing() bool {
 	return r.state.hold
@@ -258,6 +272,54 @@ func (r *RenameComponent) InputBounds() image.Rectangle {
 		return image.Rectangle{}
 	}
 	return r.textBox.Rect
+}
+
+// PollKeyboard checks for Enter/Escape keys and runs TextInput.Update().
+// It is called by the portal's updateFn to handle keyboard input per-frame
+// without routing through HandleInput's mouse/hold logic.
+func (r *RenameComponent) PollKeyboard() {
+	if !r.state.open || r.state.mobile || r.textBox == nil {
+		return
+	}
+	if isKeyPressed(ebiten.KeyEnter) {
+		if r.props.OnCommit != nil {
+			r.props.OnCommit(r.textBox.Value())
+		}
+		r.Close()
+		return
+	}
+	if isKeyPressed(ebiten.KeyEscape) {
+		if r.props.OnCancel != nil {
+			r.props.OnCancel()
+		}
+		r.Close()
+		return
+	}
+	// Poll mobile input on small screens (same as HandleInput).
+	if Profile().IsMobile() && r.props.MobileInputID != "" {
+		if val, committed, ok := mobileInputPollResult(r.props.MobileInputID); ok {
+			if committed && val != "" {
+				if r.props.OnCommit != nil {
+					r.props.OnCommit(val)
+				}
+			} else {
+				if r.props.OnCancel != nil {
+					r.props.OnCancel()
+				}
+			}
+			r.Close()
+			return
+		}
+	}
+	wasFocused := r.textBox.Focused()
+	r.textBox.Update()
+	// Soft keyboard sends Enter as '\n' → TextInput defocuses → detect as commit.
+	if wasFocused && !r.textBox.Focused() {
+		if r.props.OnCommit != nil {
+			r.props.OnCommit(r.textBox.Value())
+		}
+		r.Close()
+	}
 }
 
 // HandleWheel consumes wheel events to prevent pass-through.

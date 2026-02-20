@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(__dirname, "../go");
 
-const AUDIO_START_DELAY_THRESHOLD_MS = 250;
+const AUDIO_START_DELAY_THRESHOLD_MS = 250 * Math.max(1, Number(process.env.BROWSER_JOBS ?? "1"));
 
 // Build the tiny harness that invokes audio.Play("snare").
 const GO = resolveGoBinary();

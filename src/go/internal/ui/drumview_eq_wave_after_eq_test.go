@@ -14,8 +14,8 @@ func TestEQWaveformAfterEQ(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 800, 320), nil, logger)
 	// Apply a small EQ change.
-	dv.eqBandGainsDB = make([]float64, len(eqBandDefs))
-	dv.eqBandGainsDB[0] = 3
+	dv.eqPanelZone.bandGainsDB = make([]float64, len(eqBandDefs))
+	dv.eqBandGainsDB()[0] = 3
 	dv.applyEQ()
 
 	snap := dv.analyzerSnapshot()

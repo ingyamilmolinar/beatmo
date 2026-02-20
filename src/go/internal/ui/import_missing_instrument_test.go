@@ -30,11 +30,11 @@ func TestImportMissingInstrumentMarksRedAndSilent(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 	g.drum.calcLayout() // ensure label buttons are rebuilt
-	if len(g.drum.rowLabels) == 0 {
+	if len(g.drum.rowLabels()) == 0 {
 		t.Fatalf("no row labels")
 	}
 	// Row label style should be MissingInstStyle
-	btn := g.drum.rowLabels[0]
+	btn := g.drum.rowLabels()[0]
 	// The style is an interface; we check by drawing semantics via comparing the struct fields.
 	// We rely on our style variable identity (ButtonStyle) for a quick type assertion.
 	if _, ok := btn.Style.(ButtonStyle); !ok {

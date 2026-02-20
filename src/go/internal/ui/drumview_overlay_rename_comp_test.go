@@ -5,10 +5,12 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestRenameComponent_OpenClose(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 
 	// Initially closed
 	if comp.IsOpen() {
@@ -43,39 +45,28 @@ func TestRenameComponent_OpenClose(t *testing.T) {
 	}
 }
 
-func TestRenameComponent_HoldCapture(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+func TestRenameComponent_NoHoldAfterOpen(t *testing.T) {
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:  image.Rect(100, 50, 250, 75),
 		InitialText: "test",
 	})
 	comp.Open()
 
-	// Initially should be capturing (hold is true)
-	if !comp.Capturing() {
-		t.Error("expected Capturing() to be true after opening")
-	}
-
-	// First input while holding should return InputCaptured
-	result := comp.HandleInput(120, 60, true)
-	if result != InputCaptured {
-		t.Errorf("expected InputCaptured while holding, got %v", result)
-	}
-
-	// Release should clear hold
-	result = comp.HandleInput(120, 60, false)
-	if result != InputCaptured {
-		t.Errorf("expected InputCaptured on release, got %v", result)
-	}
-
-	// After release, should no longer be capturing
+	// Open() no longer sets hold — portal tree prevents double-dispatch.
 	if comp.Capturing() {
-		t.Error("expected Capturing() to be false after mouse release")
+		t.Error("expected Capturing() to be false after opening — hold is not set")
+	}
+
+	// Input inside bounds should be consumed (text input), not captured by hold.
+	result := comp.HandleInput(120, 60, true)
+	if result == InputIgnored {
+		t.Error("expected input inside bounds to be handled, got InputIgnored")
 	}
 }
 
 func TestRenameComponent_ClickOutsideCancels(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 
 	var cancelCalled bool
 	comp.SetProps(RenameProps{
@@ -105,7 +96,7 @@ func TestRenameComponent_ClickOutsideCancels(t *testing.T) {
 }
 
 func TestRenameComponent_BoundsSet(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:  image.Rect(100, 50, 250, 75),
 		InitialText: "test",
@@ -134,7 +125,7 @@ func TestRenameComponent_BoundsSet(t *testing.T) {
 }
 
 func TestRenameComponent_HandleInputWhenClosed(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:  image.Rect(100, 50, 250, 75),
 		InitialText: "test",
@@ -148,7 +139,7 @@ func TestRenameComponent_HandleInputWhenClosed(t *testing.T) {
 }
 
 func TestRenameComponent_InputBounds(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:  image.Rect(100, 50, 250, 75),
 		InitialText: "test",
@@ -172,7 +163,7 @@ func TestRenameComponent_InputBounds(t *testing.T) {
 }
 
 func TestRenameComponent_DefaultMaxLen(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:  image.Rect(100, 50, 250, 75),
 		InitialText: "test",
@@ -189,7 +180,7 @@ func TestRenameComponent_DefaultMaxLen(t *testing.T) {
 }
 
 func TestRenameComponent_EmptyAnchorRect(t *testing.T) {
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:  image.Rectangle{}, // empty
 		InitialText: "test",
@@ -209,7 +200,7 @@ func TestRenameComponent_MobileMode_Open(t *testing.T) {
 	testMobileInputActive = map[string]bool{"rename-0": true}
 	defer func() { testMobileInputActive = nil }()
 
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:    image.Rect(100, 50, 250, 75),
 		InitialText:   "kick",
@@ -244,7 +235,7 @@ func TestRenameComponent_MobileMode_Commit(t *testing.T) {
 	}()
 
 	var committed string
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:    image.Rect(100, 50, 250, 75),
 		InitialText:   "kick",
@@ -290,7 +281,7 @@ func TestRenameComponent_MobileMode_Cancel(t *testing.T) {
 	}()
 
 	var cancelCalled bool
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:    image.Rect(100, 50, 250, 75),
 		InitialText:   "kick",
@@ -325,7 +316,7 @@ func TestRenameComponent_MobileMode_DrawNoop(t *testing.T) {
 	testMobileInputActive = map[string]bool{"rename-0": true}
 	defer func() { testMobileInputActive = nil }()
 
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:    image.Rect(100, 50, 250, 75),
 		InitialText:   "kick",
@@ -341,7 +332,7 @@ func TestRenameComponent_DesktopUnchanged(t *testing.T) {
 	forceSmallScreenForTest = false
 	testMobileInputActive = nil
 
-	comp := NewRenameComponent("test-rename")
+	comp := NewRenameComponent()
 	comp.SetProps(RenameProps{
 		AnchorRect:  image.Rect(100, 50, 250, 75),
 		InitialText: "kick",
@@ -357,5 +348,106 @@ func TestRenameComponent_DesktopUnchanged(t *testing.T) {
 	}
 	if comp.state.mobile {
 		t.Error("expected state.mobile to be false on desktop")
+	}
+}
+
+func TestRename_EnterCommits(t *testing.T) {
+	comp := NewRenameComponent()
+
+	var committedName string
+	comp.SetProps(RenameProps{
+		AnchorRect:  image.Rect(100, 50, 250, 75),
+		InitialText: "kick",
+		MaxLen:      32,
+		OnCommit: func(name string) {
+			committedName = name
+		},
+	})
+	comp.Open()
+
+	if !comp.IsOpen() {
+		t.Fatal("expected rename to be open")
+	}
+	if comp.textBox == nil {
+		t.Fatal("expected textBox to be created")
+	}
+
+	// Set text to "Snare" on the TextBox (simulates user typing)
+	comp.textBox.SetText("Snare")
+	if comp.Value() != "Snare" {
+		t.Fatalf("expected Value() to be 'Snare', got '%s'", comp.Value())
+	}
+
+	// Override isKeyPressed to simulate Enter key press
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyEnter },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 600 },
+	)
+	defer restore()
+
+	// HandleInput should detect Enter and commit
+	result := comp.HandleInput(120, 60, false)
+	if result != InputConsumed {
+		t.Errorf("expected InputConsumed on Enter, got %v", result)
+	}
+
+	if committedName != "Snare" {
+		t.Errorf("expected OnCommit('Snare'), got '%s'", committedName)
+	}
+	if comp.IsOpen() {
+		t.Error("expected rename to be closed after Enter commit")
+	}
+}
+
+func TestRename_EscapeCancels(t *testing.T) {
+	comp := NewRenameComponent()
+
+	var cancelCalled bool
+	comp.SetProps(RenameProps{
+		AnchorRect:  image.Rect(100, 50, 250, 75),
+		InitialText: "kick",
+		MaxLen:      32,
+		OnCancel: func() {
+			cancelCalled = true
+		},
+	})
+	comp.Open()
+
+	if !comp.IsOpen() {
+		t.Fatal("expected rename to be open")
+	}
+	if comp.textBox == nil {
+		t.Fatal("expected textBox to be created")
+	}
+
+	// Change text (simulates user typing something different)
+	comp.textBox.SetText("SomethingElse")
+
+	// Override isKeyPressed to simulate Escape key press
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyEscape },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 600 },
+	)
+	defer restore()
+
+	// HandleInput should detect Escape and cancel
+	result := comp.HandleInput(120, 60, false)
+	if result != InputConsumed {
+		t.Errorf("expected InputConsumed on Escape, got %v", result)
+	}
+
+	if !cancelCalled {
+		t.Error("expected OnCancel to be called on Escape")
+	}
+	if comp.IsOpen() {
+		t.Error("expected rename to be closed after Escape")
 	}
 }

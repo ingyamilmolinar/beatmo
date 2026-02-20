@@ -62,8 +62,8 @@ func TestContextMenuMuteInactiveState(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'Mute' label when row is not muted, got items:", itemLabels(items))
 	}
-	if item.style != ButtonVisual(DropdownStyle) {
-		t.Fatalf("expected DropdownStyle for non-muted row, got %v", item.style)
+	if item.style != ButtonVisual(ContextMenuItemStyle) {
+		t.Fatalf("expected ContextMenuItemStyle for non-muted row, got %v", item.style)
 	}
 }
 
@@ -96,8 +96,8 @@ func TestContextMenuSoloInactiveState(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'Solo' label when row is not soloed, got items:", itemLabels(items))
 	}
-	if item.style != ButtonVisual(DropdownStyle) {
-		t.Fatalf("expected DropdownStyle for non-soloed row, got %v", item.style)
+	if item.style != ButtonVisual(ContextMenuItemStyle) {
+		t.Fatalf("expected ContextMenuItemStyle for non-soloed row, got %v", item.style)
 	}
 }
 

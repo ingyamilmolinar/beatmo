@@ -23,7 +23,7 @@ func TestWASMInputNotSkippedInFastPath(t *testing.T) {
 	g.perfMode.SetFastPath(true)
 
 	// Simulate mouse press at the play button
-	btn := g.drum.playBtn
+	btn := g.drum.playBtn()
 	r := btn.Rect()
 	x, y := r.Min.X+1, r.Min.Y+1
 
@@ -72,7 +72,7 @@ func TestWASMDrumViewUpdateCalledInFastPath(t *testing.T) {
 	g.perfMode.SetFastPath(true)
 
 	// Test that BPM increment button works
-	btn := g.drum.bpmIncBtn
+	btn := g.drum.bpmIncBtn()
 	r := btn.Rect()
 	x, y := r.Min.X+1, r.Min.Y+1
 
@@ -237,10 +237,10 @@ func TestAllControlButtonsClickableInFastPath(t *testing.T) {
 	g.perfMode.SetFastPath(true)
 
 	buttons := []*Button{
-		g.drum.playBtn,
-		g.drum.stopBtn,
-		g.drum.bpmDecBtn,
-		g.drum.bpmIncBtn,
+		g.drum.playBtn(),
+		g.drum.stopBtn(),
+		g.drum.bpmDecBtn(),
+		g.drum.bpmIncBtn(),
 		g.drum.lenDecBtn,
 		g.drum.lenIncBtn,
 	}

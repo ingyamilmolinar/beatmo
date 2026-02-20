@@ -10,9 +10,91 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
+// fxToggleTag is the prefix used to identify toggle buttons in the FX panel.
+// The button Text is set to fxToggleTag+"on" or fxToggleTag+"off" so that
+// drawFXPanel can render a pill-style toggle switch instead of a checkbox.
+const fxToggleTag = "\x00fxtoggle:"
+
+// addEffectButtonStyle draws the "+ Add Effect" button with a dashed border,
+// colSurface1 fill, and RadiusMD corners.
+type addEffectButtonStyle struct{}
+
+func (addEffectButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
+	if r.Empty() {
+		return
+	}
+	var fill color.Color = colSurface1
+	if pressed {
+		fill = adjustColor(fill, -20)
+	} else if hovered {
+		fill = adjustColor(fill, 12)
+	}
+	drawRoundedRect(dst, r, fill, RadiusMD, true)
+	drawDashedRoundedBorder(dst, r, colBorderMedium, RadiusMD)
+}
+
+// drawFXTogglePill draws a pill-style toggle switch in the given rect.
+// enabled controls ON/OFF color scheme; mobile controls sizing.
+func drawFXTogglePill(dst *ebiten.Image, r image.Rectangle, enabled, mobile bool) {
+	// Track dimensions.
+	trackW, trackH := 32, 18
+	thumbD := 14
+	if mobile {
+		trackW, trackH = 40, 22
+		thumbD = 18
+	}
+
+	// Center the track vertically and left-align within the rect.
+	cx := r.Min.X + (r.Dx()-trackW)/2
+	cy := r.Min.Y + (r.Dy()-trackH)/2
+	trackR := image.Rect(cx, cy, cx+trackW, cy+trackH)
+	trackRadius := trackH / 2
+
+	// Track color: ON = colPlayGreen, OFF = colSurface3.
+	var trackCol color.Color
+	if enabled {
+		trackCol = colPlayGreen
+	} else {
+		trackCol = colSurface3
+	}
+	drawRoundedRect(dst, trackR, trackCol, trackRadius, true)
+
+	// Thumb: circle centered vertically in the track.
+	thumbY := cy + (trackH-thumbD)/2
+	var thumbX int
+	if enabled {
+		thumbX = cx + trackW - thumbD - (trackH-thumbD)/2
+	} else {
+		thumbX = cx + (trackH-thumbD)/2
+	}
+	thumbR := image.Rect(thumbX, thumbY, thumbX+thumbD, thumbY+thumbD)
+	thumbRadius := thumbD / 2
+
+	// Thumb color: ON = white, OFF = colTextSecondary.
+	var thumbCol color.Color
+	if enabled {
+		thumbCol = color.RGBA{255, 255, 255, 255}
+	} else {
+		thumbCol = colTextSecondary
+	}
+	drawRoundedRect(dst, thumbR, thumbCol, thumbRadius, true)
+}
+
+// isFXToggleBtn returns whether a button is an FX panel toggle, and its state.
+func isFXToggleBtn(btn *Button) (isToggle bool, enabled bool) {
+	if btn == nil {
+		return false, false
+	}
+	if strings.HasPrefix(btn.Text, fxToggleTag) {
+		return true, btn.Text == fxToggleTag+"on"
+	}
+	// Legacy fallback for tests that search by "✓" or " ".
+	return false, false
+}
+
 // toggleFXPanel opens or closes the FX panel for the given row.
 func (dv *DrumView) toggleFXPanel(row int) {
-	if dv.fxPanelOpen && dv.fxPanelRow == row {
+	if dv.IsFXPanelOpen() && dv.fxPanelRow == row {
 		dv.closeFXPanel()
 		return
 	}
@@ -26,18 +108,16 @@ func (dv *DrumView) openFXPanel(row int) {
 		return
 	}
 	dv.fxPanelRow = row
-	dv.fxPanelOpen = true
-	dv.fxPanelOpenSeq = dv.updateSeq
 	dv.fxScrollOffsetPx = 0
 	dv.fxExpandedSlots = map[int]bool{}
 	dv.fxScrollTS.Reset()
 	dv.fxScrollMaxPx = 0
-	SuppressClicksUntilMouseUp()
-	dv.buildFXPanel()
+	dv.buildFXPanel()      // compute correct fxPanelRect FIRST
+	dv.openFXPanelPortal() // register portal with correct rect
 }
 
 func (dv *DrumView) closeFXPanel() {
-	dv.fxPanelOpen = false
+	dv.closeFXPanelPortal()
 	dv.fxAddMenuOpen = false
 	dv.fxPanelBtns = nil
 	dv.fxPanelSliders = nil
@@ -46,11 +126,7 @@ func (dv *DrumView) closeFXPanel() {
 	dv.fxScrollOffsetPx = 0
 	dv.fxScrollTS.Reset()
 	dv.fxScrollMaxPx = 0
-	// Clear the opening-click suppression. Callers that close the panel in
-	// response to a click-outside (handleFXPanelInput Phase 2, OverlayStack)
-	// must call SuppressClicksUntilMouseUp() AFTER this to prevent
-	// click-through to elements underneath.
-	suppressClicksUntilRelease = false
+	dv.fxPanelRect = image.Rectangle{}
 }
 
 // propagateFXSliderValue pushes the current slider value to the audio engine.
@@ -65,23 +141,18 @@ func (dv *DrumView) propagateFXSliderValue(idx int) {
 	audio.SetInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
 }
 
-// Effect type display names
-var effectTypeNames = map[audio.EffectType]string{
-	audio.EffectDistortion: "Distortion",
-	audio.EffectDelay:      "Delay",
-	audio.EffectReverb:     "Reverb",
-	audio.EffectChorus:     "Chorus",
-	audio.EffectBitcrusher: "Bitcrusher",
-	audio.EffectFilter:     "Filter",
+// effectTypeName returns the display name for an effect type from the registry.
+func effectTypeName(t audio.EffectType) string {
+	regs := audio.EffectRegistrations()
+	if r, ok := regs[t]; ok {
+		return r.DisplayName
+	}
+	return string(t)
 }
 
-var effectTypeOrder = []audio.EffectType{
-	audio.EffectDistortion,
-	audio.EffectDelay,
-	audio.EffectReverb,
-	audio.EffectChorus,
-	audio.EffectBitcrusher,
-	audio.EffectFilter,
+// effectTypeOrder returns all effect types in registration order.
+func effectTypeOrder() []audio.EffectType {
+	return audio.EffectTypeOrder()
 }
 
 // fxSliderBinding tracks which effect param a slider controls.
@@ -98,7 +169,7 @@ func (dv *DrumView) fxShowParams(slotIdx int, enabled bool) bool {
 	if !enabled {
 		return false
 	}
-	if !isSmallScreen() {
+	if !Profile().UseBottomSheet {
 		return true
 	}
 	return dv.fxExpandedSlots[slotIdx]
@@ -108,18 +179,18 @@ func (dv *DrumView) fxShowParams(slotIdx int, enabled bool) bool {
 func (dv *DrumView) buildFXPanel() {
 	row := dv.fxPanelRow
 	if row < 0 || row >= len(dv.Rows) {
-		dv.fxPanelOpen = false
+		dv.closeFXPanelPortal()
 		return
 	}
 
 	// Anchor fallback: prefer FX button, fall back to row label (on mobile
 	// the FX column has zero width).
 	anchor := image.Rectangle{}
-	if row < len(dv.rowFXBtns) {
-		anchor = dv.rowFXBtns[row].Rect()
+	if row < len(dv.rowFXBtns()) {
+		anchor = dv.rowFXBtns()[row].Rect()
 	}
-	if anchor.Empty() && row < len(dv.rowLabels) {
-		anchor = dv.rowLabels[row].Rect()
+	if anchor.Empty() && row < len(dv.rowLabels()) {
+		anchor = dv.rowLabels()[row].Rect()
 	}
 
 	r := dv.Rows[row]
@@ -128,7 +199,7 @@ func (dv *DrumView) buildFXPanel() {
 
 	// Panel dimensions — scaled up on mobile for touch targets.
 	var panelW, lineH, headerH, paramH, footerH int
-	mobile := isSmallScreen()
+	mobile := Profile().IsMobile()
 	if mobile {
 		panelW = dv.Bounds.Dx() - 32 // near full-width with 16px margin each side
 		if panelW < 250 {
@@ -139,7 +210,7 @@ func (dv *DrumView) buildFXPanel() {
 		paramH = touchMinTargetPx - 4 // 40px
 		footerH = touchMinTargetPx    // 44px
 	} else {
-		panelW = 320
+		panelW = 340
 		lineH = 28
 		headerH = 32
 		paramH = 26
@@ -168,8 +239,9 @@ func (dv *DrumView) buildFXPanel() {
 			dv.fxSliderLeft = 90
 		}
 		// Ensure panel is wide enough for slider to have at least 120px usable track.
-		// Slider draws a "XX%" label (~28px) inside its rect, so rect needs 148px min.
-		minPanelW := dv.fxSliderLeft + 148 + 8
+		// Sliders are indented by SpaceXL and use label-above, so they need less
+		// horizontal space for the "XX%" label — 120px track minimum suffices.
+		minPanelW := SpaceXL + dv.fxSliderLeft + 120 + 8
 		if panelW < minPanelW {
 			panelW = minPanelW
 		}
@@ -190,7 +262,7 @@ func (dv *DrumView) buildFXPanel() {
 		}
 	}
 	if dv.fxAddMenuOpen {
-		contentH += len(effectTypeOrder)*lineH + lineH // 6 type buttons + cancel
+		contentH += len(effectTypeOrder())*lineH + lineH // 6 type buttons + cancel
 	} else {
 		contentH += footerH
 	}
@@ -263,10 +335,14 @@ func (dv *DrumView) buildFXPanel() {
 		enabled := e.Enabled
 
 		// Button sizing: wider on mobile for touch targets.
+		// Toggle pill is 32×18 (desktop) / 40×22 (mobile), so toggleBtnW
+		// must accommodate the pill; other buttons keep their smaller size.
 		btnW := 24
+		toggleBtnW := 36 // fits 32px pill + 4px padding
 		btnGap := 3
 		if mobile {
 			btnW = 36
+			toggleBtnW = 44 // fits 40px pill + 4px padding
 			btnGap = 4
 		}
 
@@ -276,20 +352,18 @@ func (dv *DrumView) buildFXPanel() {
 		inView := rowBot > dv.fxViewportRect.Min.Y && rowTop < dv.fxViewportRect.Max.Y
 
 		if inView {
-			// Toggle button
-			toggleText := "✓"
-			toggleStyle := InstButtonStyle
+			// Toggle button — tagged text so drawFXPanel renders a pill switch.
+			toggleText := fxToggleTag + "on"
 			if !enabled {
-				toggleText = " "
-				toggleStyle = DisabledButtonStyle
+				toggleText = fxToggleTag + "off"
 			}
-			toggle := NewButton(toggleText, toggleStyle, nil)
-			toggle.SetRect(image.Rect(x+4, y+2, x+4+btnW, y+lineH-2))
+			toggle := NewButton(toggleText, InstButtonStyle, nil)
+			toggle.SetRect(image.Rect(x+4, y+2, x+4+toggleBtnW, y+lineH-2))
 			toggle.OnClick = func() {
 				audio.ToggleInsertEffect(instID, si, !enabled)
 				dv.syncFXToRow(row)
 				dv.buildFXPanel()
-				SuppressClicksUntilMouseUp()
+				dv.refreshFXPortalHitAreas()
 			}
 			dv.fxPanelBtns = append(dv.fxPanelBtns, toggle)
 
@@ -300,7 +374,7 @@ func (dv *DrumView) buildFXPanel() {
 					chevron = "▼"
 				}
 				expBtn := NewButton(chevron, InstButtonStyle, nil)
-				expX := x + 4 + btnW + btnGap
+				expX := x + 4 + toggleBtnW + btnGap
 				expBtn.SetRect(image.Rect(expX, y+2, expX+btnW, y+lineH-2))
 				expBtn.OnClick = func() {
 					if dv.fxExpandedSlots == nil {
@@ -308,7 +382,7 @@ func (dv *DrumView) buildFXPanel() {
 					}
 					dv.fxExpandedSlots[si] = !dv.fxExpandedSlots[si]
 					dv.buildFXPanel()
-					SuppressClicksUntilMouseUp()
+					dv.refreshFXPortalHitAreas()
 				}
 				dv.fxPanelBtns = append(dv.fxPanelBtns, expBtn)
 			}
@@ -322,7 +396,7 @@ func (dv *DrumView) buildFXPanel() {
 					audio.MoveInsertEffect(instID, si, si-1)
 					dv.syncFXToRow(row)
 					dv.buildFXPanel()
-					SuppressClicksUntilMouseUp()
+					dv.refreshFXPortalHitAreas()
 				}
 				dv.fxPanelBtns = append(dv.fxPanelBtns, up)
 			}
@@ -336,7 +410,7 @@ func (dv *DrumView) buildFXPanel() {
 					audio.MoveInsertEffect(instID, si, si+1)
 					dv.syncFXToRow(row)
 					dv.buildFXPanel()
-					SuppressClicksUntilMouseUp()
+					dv.refreshFXPortalHitAreas()
 				}
 				dv.fxPanelBtns = append(dv.fxPanelBtns, down)
 			}
@@ -349,7 +423,7 @@ func (dv *DrumView) buildFXPanel() {
 				audio.RemoveInsertEffect(instID, si)
 				dv.syncFXToRow(row)
 				dv.buildFXPanel()
-				SuppressClicksUntilMouseUp()
+				dv.refreshFXPortalHitAreas()
 			}
 			dv.fxPanelBtns = append(dv.fxPanelBtns, remove)
 		}
@@ -357,6 +431,8 @@ func (dv *DrumView) buildFXPanel() {
 		y += lineH
 
 		// Parameter sliders (only if should be shown)
+		// Indent param rows under their effect header for visual grouping.
+		paramIndent := SpaceXL // 16px
 		if dv.fxShowParams(si, e.Enabled) {
 			cat := audio.InsertEffectCatalog()
 			if defs, ok := cat[e.Type]; ok {
@@ -375,11 +451,15 @@ func (dv *DrumView) buildFXPanel() {
 							norm = 1
 						}
 						sl := NewSlider(norm)
-						sliderLeft := x + dv.fxSliderLeft
+						sliderLeft := x + paramIndent + dv.fxSliderLeft
 						if mobile {
-							sliderLeft = x + 100
+							sliderLeft = x + paramIndent + 100
 						}
 						sl.SetRect(image.Rect(sliderLeft, y+2, x+w-4, y+paramH-2))
+						// FX panel sliders: label-above on all platforms, thicker track.
+						labelAbove := true
+						sl.LabelAbove = &labelAbove
+						sl.TrackH = 6
 						dv.fxPanelSliders = append(dv.fxPanelSliders, sl)
 						dv.fxSliderBindings = append(dv.fxSliderBindings, fxSliderBinding{
 							slotIndex: si,
@@ -395,9 +475,9 @@ func (dv *DrumView) buildFXPanel() {
 
 	// Footer: effect type picker or "Add Effect" button
 	if dv.fxAddMenuOpen {
-		for _, et := range effectTypeOrder {
+		for _, et := range effectTypeOrder() {
 			etCopy := et
-			name := effectTypeNames[et]
+			name := effectTypeName(et)
 			fTop := y
 			fBot := y + lineH
 			fInView := fBot > dv.fxViewportRect.Min.Y && fTop < dv.fxViewportRect.Max.Y
@@ -409,7 +489,7 @@ func (dv *DrumView) buildFXPanel() {
 					dv.syncFXToRow(row)
 					dv.fxAddMenuOpen = false
 					dv.buildFXPanel()
-					SuppressClicksUntilMouseUp()
+					dv.refreshFXPortalHitAreas()
 				}
 				dv.fxPanelBtns = append(dv.fxPanelBtns, btn)
 			}
@@ -424,7 +504,7 @@ func (dv *DrumView) buildFXPanel() {
 			cancelBtn.OnClick = func() {
 				dv.fxAddMenuOpen = false
 				dv.buildFXPanel()
-				SuppressClicksUntilMouseUp()
+				dv.refreshFXPortalHitAreas()
 			}
 			dv.fxPanelBtns = append(dv.fxPanelBtns, cancelBtn)
 		}
@@ -433,13 +513,14 @@ func (dv *DrumView) buildFXPanel() {
 		aBot := y + footerH
 		aInView := aBot > dv.fxViewportRect.Min.Y && aTop < dv.fxViewportRect.Max.Y
 		if aInView {
-			addBtn := NewButton("+ Add Effect", InstButtonStyle, nil)
+			addBtn := NewButton("+ Add Effect", addEffectButtonStyle{}, nil)
+			addBtn.TextColor = colTextSecondary
 			addBtn.SetRect(image.Rect(x+4, y+4, x+w-4, y+footerH-4))
 			addBtn.OnClick = func() {
 				dv.fxAddMenuOpen = true
 				dv.fxScrollOffsetPx = 0 // reset scroll when opening add menu
 				dv.buildFXPanel()
-				SuppressClicksUntilMouseUp()
+				dv.refreshFXPortalHitAreas()
 			}
 			dv.fxPanelBtns = append(dv.fxPanelBtns, addBtn)
 		}
@@ -455,6 +536,14 @@ func (dv *DrumView) buildFXPanel() {
 	dv.fxPanelBtns = append(dv.fxPanelBtns, closeB)
 }
 
+// refreshFXPortalHitAreas immediately updates the portal's hit areas for the
+// FX panel after a buildFXPanel() call changes geometry mid-frame.
+func (dv *DrumView) refreshFXPortalHitAreas() {
+	if dv.tree != nil && dv.tree.Portal().Has("fx-panel") {
+		dv.tree.Portal().RefreshEntry("fx-panel")
+	}
+}
+
 // syncFXToRow copies the current audio insert chain back to the DrumRow model.
 func (dv *DrumView) syncFXToRow(row int) {
 	if row < 0 || row >= len(dv.Rows) {
@@ -465,7 +554,7 @@ func (dv *DrumView) syncFXToRow(row int) {
 
 // drawFXPanel renders the FX panel overlay.
 func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		return
 	}
 	r := dv.fxPanelRect
@@ -483,7 +572,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 
 	// Platform-aware sizes for draw consistency with buildFXPanel.
 	var lineH, headerH, paramH int
-	mobile := isSmallScreen()
+	mobile := Profile().IsMobile()
 	if mobile {
 		lineH = touchMinTargetPx
 		headerH = touchMinTargetPx
@@ -508,24 +597,27 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 	effects := audio.GetInsertEffects(dv.Rows[row].Instrument)
 	y := r.Min.Y + headerH - dv.fxScrollOffsetPx
 
+	paramIndent := SpaceXL // 16px indent for param labels
+
 	for slotIdx, e := range effects {
 		rowTop := y
 		rowBot := y + lineH
 		inView := rowBot > dv.fxViewportRect.Min.Y && rowTop < dv.fxViewportRect.Max.Y
 
 		if inView {
-			name := effectTypeNames[e.Type]
+			name := effectTypeName(e.Type)
 			if name == "" {
 				name = string(e.Type)
 			}
 			if !e.Enabled {
 				name = "(" + name + ")"
 			}
-			nameX := r.Min.X + 28
+			// Name offset accounts for wider pill toggle (36px desktop, 44px mobile).
+			nameX := r.Min.X + 40
 			if mobile {
-				nameX = r.Min.X + 44 // wider toggle button
+				nameX = r.Min.X + 48
 				if e.Enabled {
-					nameX = r.Min.X + 84 // room for expand button
+					nameX = r.Min.X + 88 // room for expand button
 				}
 			}
 			DrawTextAt(dst, name, nameX, y+(lineH-12)/2)
@@ -543,12 +635,12 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 					if slInView {
 						val := e.Params[def.Name]
 						label := fxParamLabel(def.Name, val, def.Unit)
-						maxLabelW := dv.fxSliderLeft - 16
+						maxLabelW := dv.fxSliderLeft - 8
 						if mobile {
-							maxLabelW = 92 // mobile uses fixed slider offset
+							maxLabelW = 92
 						}
 						label = clipTextToWidth(label, maxLabelW)
-						DrawTextAt(dst, label, r.Min.X+8, y+(paramH-12)/2)
+						DrawTextAt(dst, label, r.Min.X+8+paramIndent, y+(paramH-12)/2)
 					}
 					y += paramH
 				}
@@ -568,7 +660,12 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		}
 		br := btn.Rect()
 		if br.Max.Y > dv.fxViewportRect.Min.Y && br.Min.Y < dv.fxViewportRect.Max.Y {
-			btn.Draw(dst)
+			// Render pill-style toggle for effect enable/disable buttons.
+			if isToggle, enabled := isFXToggleBtn(btn); isToggle {
+				drawFXTogglePill(dst, br, enabled, mobile)
+			} else {
+				btn.Draw(dst)
+			}
 		}
 	}
 
@@ -622,7 +719,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 // handleFXPanelInput processes mouse input for the FX panel.
 // Returns true if input was consumed.
 func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
-	if !dv.fxPanelOpen {
+	if !dv.IsFXPanelOpen() {
 		return false
 	}
 
@@ -645,7 +742,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 	}
 
 	// Phase 1: Mobile — touch scroll + sliders + deferred tap coordination.
-	if isSmallScreen() {
+	if Profile().IsMobile() {
 		// Continue committed scroll gesture.
 		if dv.fxScrollTS.ScrollingCommitted() {
 			if left {
@@ -659,6 +756,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 						dv.fxScrollOffsetPx = dv.fxScrollMaxPx
 					}
 					dv.buildFXPanel()
+					dv.refreshFXPortalHitAreas()
 				}
 			} else {
 				// Touch ended — capture velocity for momentum.
@@ -683,6 +781,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 							dv.fxScrollOffsetPx = dv.fxScrollMaxPx
 						}
 						dv.buildFXPanel()
+						dv.refreshFXPortalHitAreas()
 					}
 					return true
 				}
@@ -731,43 +830,14 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		}
 	}
 
-	// Phase 2: Click outside panel closes it — but NOT if clicking the FX
-	// button itself (the row button group will handle the toggle), and skip
-	// for 2 frames after opening to avoid the same click that opened the
-	// panel from closing it. Also skip while suppressClicksUntilRelease is
-	// active to prevent closing on geometry changes.
-	if left && !suppressClicksUntilRelease && !p.In(dv.fxPanelRect) {
-		if dv.updateSeq-dv.fxPanelOpenSeq < 2 {
-			return true // absorb click during debounce window
-		}
-		fxBtnClick := false
-		for _, fb := range dv.rowFXBtns {
-			if fb != nil && p.In(fb.Rect()) {
-				fxBtnClick = true
-				break
-			}
-		}
-		if !fxBtnClick {
-			dv.closeFXPanel()
-			SuppressClicksUntilMouseUp()
-			return true
-		}
-	}
-
-	// Phase 3: Consume any press while click suppression is active to prevent
-	// fall-through during geometry transitions.
-	if left && suppressClicksUntilRelease {
-		return true
-	}
-
-	// Phase 4: Desktop button handling.
+	// Phase 2: Desktop button handling.
 	for _, btn := range dv.fxPanelBtns {
 		if btn != nil && btn.Handle(mx, my, left) {
 			return true
 		}
 	}
 
-	// Phase 5: Desktop slider handling (enhanced with drag tracking).
+	// Phase 3: Desktop slider handling (enhanced with drag tracking).
 	for i, sl := range dv.fxPanelSliders {
 		if sl != nil && sl.Handle(mx, my, left) {
 			if sl.dragging {
@@ -779,7 +849,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		}
 	}
 
-	// Phase 6: Consume all input within panel rect.
+	// Phase 4: Consume all input within panel rect.
 	if p.In(dv.fxPanelRect) {
 		return true
 	}
@@ -834,6 +904,9 @@ func fxParamLabel(name string, val float64, unit string) string {
 		valStr = fmt.Sprintf("%.0f", val)
 	default:
 		valStr = fmt.Sprintf("%.2f", val)
+	}
+	if unit != "" && unit[0] != '%' {
+		return fmt.Sprintf("%s: %s %s", capitalize(name), valStr, unit)
 	}
 	return fmt.Sprintf("%s: %s%s", capitalize(name), valStr, unit)
 }

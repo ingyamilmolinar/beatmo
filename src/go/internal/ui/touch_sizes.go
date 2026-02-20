@@ -13,36 +13,26 @@ const (
 const (
 	desktopSplitterHandleLen   = 50 // pill length (along the divider line)
 	desktopSplitterHandleThick = 8  // pill thickness (perpendicular to divider)
-	touchSplitterHandleLen     = 44
+	touchSplitterHandleLen     = 56
 	touchSplitterHandleThick   = 6
 )
 
 // SplitterHandleLen returns the pill length for the current platform.
-func SplitterHandleLen() int {
-	if isSmallScreen() {
-		return touchSplitterHandleLen
-	}
-	return desktopSplitterHandleLen
-}
+func SplitterHandleLen() int { return Profile().SplitterHandleLen }
 
 // SplitterHandleThick returns the pill thickness for the current platform.
-func SplitterHandleThick() int {
-	if isSmallScreen() {
-		return touchSplitterHandleThick
-	}
-	return desktopSplitterHandleThick
-}
+func SplitterHandleThick() int { return Profile().SplitterHandleThk }
 
 // Desktop defaults
 const (
 	desktopGrabZonePx  = 5
-	desktopRowHeightPx = 24
+	desktopRowHeightPx = 28
 )
 
 // Minimum cell width (in pixels) so drum-view cells remain visually readable.
 const (
-	desktopMinCellWidthPx = 4 // narrow but distinguishable on desktop
-	touchMinCellWidthPx   = 4 // matches desktop; users zoom via +/- buttons or pinch
+	desktopMinCellWidthPx = 2 // allows high cell counts on wide timelines
+	touchMinCellWidthPx   = 2 // matches desktop; users zoom via +/- buttons or pinch
 )
 
 // Threshold for considering a screen "small" (phone/tablet in landscape)
@@ -65,11 +55,8 @@ func SetTouchScreenSize(width, height int) {
 	touchScreenHeight = height
 }
 
-// isSmallScreen reports whether the UI should use touch-friendly sizing.
-// Returns true only on WASM builds with small screens (phones/tablets).
-// Desktop builds always use desktop sizing regardless of window size.
-// Laptop browsers running WASM use desktop sizing unless the window is very small.
-func isSmallScreen() bool {
+// detectSmallScreen is the raw platform detection, used only by UpdateProfile().
+func detectSmallScreen() bool {
 	if forceSmallScreenForTest {
 		return true
 	}
@@ -81,32 +68,21 @@ func isSmallScreen() bool {
 	return touchScreenWidth > 0 && touchScreenWidth < smallScreenWidthPx
 }
 
-// TouchGrabZone returns the grab zone size for splitter/resize handles.
-// Returns a larger zone on small screens for easier touch interaction.
-func TouchGrabZone() int {
-	if isSmallScreen() {
-		return touchGrabZonePx
-	}
-	return desktopGrabZonePx
+// isSmallScreen reports whether the UI should use touch-friendly sizing.
+// All production call sites have been migrated to Profile().IsMobile();
+// this function remains for test code and backward compatibility.
+func isSmallScreen() bool {
+	return Profile().IsMobile()
 }
+
+// TouchGrabZone returns the grab zone size for splitter/resize handles.
+func TouchGrabZone() int { return Profile().GrabZone }
 
 // TouchRowHeight returns the row height for drum view.
-// Returns a larger height on small screens for easier touch interaction.
-func TouchRowHeight() int {
-	if isSmallScreen() {
-		return touchRowHeightPx
-	}
-	return desktopRowHeightPx
-}
+func TouchRowHeight() int { return Profile().RowHeight }
 
 // TouchMinTarget returns the minimum touch target size.
-// Only applies on small screens (phones/tablets).
-func TouchMinTarget() int {
-	if isSmallScreen() {
-		return touchMinTargetPx
-	}
-	return 0 // No minimum on desktop/laptop
-}
+func TouchMinTarget() int { return Profile().MinTarget }
 
 // ExpandHitArea expands a button/control size to meet minimum touch targets.
 // Returns the original size if already large enough or on desktop.
@@ -119,13 +95,7 @@ func ExpandHitArea(size int) int {
 }
 
 // MinCellWidth returns the minimum cell width (in pixels) for drum-view cells.
-// On small screens the threshold is larger so cells remain readable on phones.
-func MinCellWidth() int {
-	if isSmallScreen() {
-		return touchMinCellWidthPx
-	}
-	return desktopMinCellWidthPx
-}
+func MinCellWidth() int { return Profile().MinCellWidth }
 
 // ─── Design Token System ───────────────────────────────────
 // Standardized spacing and sizing scale used throughout the UI.
@@ -156,6 +126,7 @@ const (
 
 // Unified corner radii for all interactive elements
 const (
+	RadiusSM = 6  // compact buttons, context menu groups (desktop)
 	RadiusMD = 8  // standard buttons (transport, row controls, popup items)
 	RadiusLG = 12 // panels, bottom sheets, popups (mobile)
 	RadiusXL = 16 // emphasized panels (mobile bottom sheet)
@@ -179,109 +150,43 @@ const (
 )
 
 // PopupPanelW returns the popup panel width.
-func PopupPanelW() int {
-	if isSmallScreen() {
-		return touchPopupPanelW
-	}
-	return desktopPopupPanelW
-}
+func PopupPanelW() int { return Profile().PopupPanelW }
 
 // PopupBtnW returns the popup button width.
-func PopupBtnW() int {
-	if isSmallScreen() {
-		return touchPopupBtnW
-	}
-	return desktopPopupBtnW
-}
+func PopupBtnW() int { return Profile().PopupBtnW }
 
 // PopupBtnH returns the popup button height.
-func PopupBtnH() int {
-	if isSmallScreen() {
-		return touchPopupBtnH
-	}
-	return desktopPopupBtnH
-}
+func PopupBtnH() int { return Profile().PopupBtnH }
 
 // PopupGap returns the gap between popup elements.
-func PopupGap() int {
-	if isSmallScreen() {
-		return touchPopupGap
-	}
-	return desktopPopupGap
-}
+func PopupGap() int { return Profile().PopupGap }
 
 // PopupPad returns the popup padding.
-func PopupPad() int {
-	if isSmallScreen() {
-		return touchPopupPad
-	}
-	return desktopPopupPad
-}
+func PopupPad() int { return Profile().PopupPad }
 
 // popupTextScale is the text scale factor for popup labels/values on mobile.
 const popupTextScale = 1.5
 
 // PopupTextScale returns the text scale for node popup content.
-// On small screens, text is rendered at 1.5× for readability; desktop uses 1×.
-func PopupTextScale() float64 {
-	if isSmallScreen() {
-		return popupTextScale
-	}
-	return 1.0
-}
+func PopupTextScale() float64 { return Profile().PopupTextScale }
 
 // PopupSectionGap returns the vertical gap between popup sections.
-func PopupSectionGap() int {
-	if isSmallScreen() {
-		return SpaceMD
-	}
-	return SpaceSM
-}
+func PopupSectionGap() int { return Profile().PopupSectionGap }
 
 // PopupRowH returns the unified row height for popup content rows.
-func PopupRowH() int {
-	if isSmallScreen() {
-		return BtnHeightMD
-	}
-	return desktopPopupBtnH
-}
+func PopupRowH() int { return Profile().PopupRowH }
 
 // PopupLabelScale returns the text scale for popup labels.
-func PopupLabelScale() float64 {
-	if isSmallScreen() {
-		return 1.3
-	}
-	return 1.0
-}
+func PopupLabelScale() float64 { return Profile().PopupLabelScale }
 
 // PopupValueScale returns the text scale for popup values.
-func PopupValueScale() float64 {
-	if isSmallScreen() {
-		return 1.5
-	}
-	return 1.0
-}
+func PopupValueScale() float64 { return Profile().PopupValueScale }
 
 // PopupTitleScale returns the text scale for the popup title.
-func PopupTitleScale() float64 {
-	if isSmallScreen() {
-		return 1.7
-	}
-	return 1.0
-}
+func PopupTitleScale() float64 { return Profile().PopupTitleScale }
 
 // TransportBtnSize returns the unified transport button size.
-func TransportBtnSize() int {
-	if isSmallScreen() {
-		return BtnHeightLG
-	}
-	return 0 // desktop uses layout-derived sizing
-}
+func TransportBtnSize() int { return Profile().TransportBtnSize }
 
 // RowControlBtnSize returns the unified row control button size.
-func RowControlBtnSize() int {
-	if isSmallScreen() {
-		return BtnHeightMD
-	}
-	return 0 // desktop uses layout-derived sizing
-}
+func RowControlBtnSize() int { return Profile().RowControlBtnSize }

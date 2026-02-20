@@ -482,6 +482,14 @@ func SetTouchTapInjectedForTest(v bool) { touchTapInjected = v }
 // a hardware touch rather than a mouse.
 func SetTouchOverrideActiveForTest(v bool) { touchOverrideActive = v }
 
+// SetTouchOverrideXYForTest allows tests to set the touch override coordinates.
+// Used with SetTouchOverrideActiveForTest to place the simulated touch at a
+// specific position (e.g., inside the row scroll area for dead zone tests).
+func SetTouchOverrideXYForTest(x, y int) {
+	touchOverrideX = x
+	touchOverrideY = y
+}
+
 // resetTouchOverride clears all touch override state (used in tests).
 func resetTouchOverride() {
 	touchOverrideActive = false

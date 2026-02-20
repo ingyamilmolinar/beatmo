@@ -45,7 +45,7 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 	restore()
 
 	// Verify edit button exists.
-	if len(dv.rowEditBtns) == 0 {
+	if len(dv.rowEditBtns()) == 0 {
 		t.Fatal("no edit buttons after initial Update")
 	}
 
@@ -53,7 +53,7 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 	// This reproduces the real mobile timing: native input isn't active yet
 	// when Open() runs, so mobileInputActive("rename-0") returns false and
 	// Open() falls through to desktop mode.
-	dv.rowEditBtns[0].OnClick()
+	dv.rowEditBtns()[0].OnClick()
 
 	// ── Step 2: Simulate the native input becoming active AFTER Open() ──
 	// On real mobile, the HTML input is created asynchronously. Here we inject
@@ -92,8 +92,8 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 	if dv.Rows[0].Name != "NewKick" {
 		t.Errorf("Rows[0].Name = %q, want %q (was %q)", dv.Rows[0].Name, "NewKick", origName)
 	}
-	if len(dv.rowLabels) > 0 && dv.rowLabels[0].Text != "NewKick" {
-		t.Errorf("rowLabels[0].Text = %q, want %q", dv.rowLabels[0].Text, "NewKick")
+	if len(dv.rowLabels()) > 0 && dv.rowLabels()[0].Text != "NewKick" {
+		t.Errorf("rowLabels[0].Text = %q, want %q", dv.rowLabels()[0].Text, "NewKick")
 	}
 	if dv.Rows[0].Instrument != "newkick" {
 		t.Errorf("Rows[0].Instrument = %q, want %q (was %q)", dv.Rows[0].Instrument, "newkick", origInst)
@@ -153,12 +153,12 @@ func TestRenameInvalidCharsShowsError(t *testing.T) {
 			dv.Update()
 			restore()
 
-			if len(dv.rowEditBtns) == 0 {
+			if len(dv.rowEditBtns()) == 0 {
 				t.Fatal("no edit buttons after initial Update")
 			}
 
 			// Click edit button to open rename dialog (desktop mode).
-			dv.rowEditBtns[0].OnClick()
+			dv.rowEditBtns()[0].OnClick()
 
 			if dv.renameBox == nil {
 				t.Fatal("renameBox not created after edit click")
@@ -170,7 +170,12 @@ func TestRenameInvalidCharsShowsError(t *testing.T) {
 			// Simulate Enter key press to commit.
 			enterPressed := true
 			restore = SetInputForTest(
-				func() (int, int) { return dv.renameBox.Rect.Min.X + 1, dv.renameBox.Rect.Min.Y + 1 },
+				func() (int, int) {
+					if dv.renameBox == nil {
+						return 0, 0
+					}
+					return dv.renameBox.Rect.Min.X + 1, dv.renameBox.Rect.Min.Y + 1
+				},
 				func(b ebiten.MouseButton) bool { return false },
 				func(k ebiten.Key) bool {
 					if k == ebiten.KeyEnter && enterPressed {

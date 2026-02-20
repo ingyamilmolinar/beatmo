@@ -12,11 +12,12 @@ import (
 // Font size constants for the type scale. Defined here (not in fontcache.go)
 // so they are accessible in both production and test builds.
 const (
-	FontSizeCaption float64 = 11
-	FontSizeBody    float64 = 16
-	FontSizeLabel   float64 = 18
-	FontSizeTitle   float64 = 21
-	FontSizeHeading float64 = 24
+	FontSizeCaption float64 = 10
+	FontSizeSmall   float64 = 12
+	FontSizeBody    float64 = 14
+	FontSizeLabel   float64 = 16
+	FontSizeTitle   float64 = 18
+	FontSizeHeading float64 = 20
 )
 
 // textSpriteRenderer is the pluggable function that creates text sprite images.
@@ -128,5 +129,20 @@ func DrawTextAtScale(dst *ebiten.Image, s string, x, y int, scale float64) {
 	var op ebiten.DrawImageOptions
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(float64(x), float64(y))
+	dst.DrawImage(spr, &op)
+}
+
+// DrawTextColorAtScale draws cached text at (x,y) scaled and tinted with col.
+// Combines GeoM.Scale for size and ColorScale for tint in a single blit.
+func DrawTextColorAtScale(dst *ebiten.Image, s string, x, y int, col color.Color, scale float64) {
+	spr := TextSprite(s)
+	var op ebiten.DrawImageOptions
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(float64(x), float64(y))
+	r, g, b, a := col.RGBA()
+	if a > 0 {
+		fa := float64(a) / 0xffff
+		op.ColorScale.Scale(float32(float64(r)/0xffff/fa), float32(float64(g)/0xffff/fa), float32(float64(b)/0xffff/fa), float32(fa))
+	}
 	dst.DrawImage(spr, &op)
 }

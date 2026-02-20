@@ -12,7 +12,7 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 	if dv.widgets == nil {
 		return
 	}
-	if isSmallScreen() {
+	if !Profile().ShowLayoutGuides {
 		return
 	}
 	// When drawing into a local buffer sized to the drum view (e.g., tests),
@@ -23,8 +23,8 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 	if !local {
 		offX, offY = dv.Bounds.Min.X, dv.Bounds.Min.Y
 	}
-	baseCol := colGridLine
-	hoverCol := colButtonBorder
+	baseCol := color.Color(colGridLine)
+	hoverCol := color.Color(colButtonBorder)
 	drawLine := func(x0, y0, x1, y1, thick int, c color.Color) {
 		if x0 > x1 {
 			x0, x1 = x1, x0
@@ -44,7 +44,7 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 	for i := 0; i < len(dv.widgets.colPos); i++ {
 		x := dv.widgets.colPos[i] + offX
 		th := 1
-		col := baseCol
+		var col color.Color = baseCol
 		inner := i > 0 && i < len(dv.widgets.colPos)-1
 		if inner {
 			idx := i - 1
@@ -65,7 +65,7 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 	for i := 0; i < len(dv.widgets.rowPos); i++ {
 		y := dv.widgets.rowPos[i] + offY
 		th := 1
-		col := baseCol
+		var col color.Color = baseCol
 		inner := i > 0 && i < len(dv.widgets.rowPos)-1
 		if inner {
 			idx := i - 1
@@ -92,7 +92,7 @@ func (dv *DrumView) drawLayoutPills(dst *ebiten.Image) {
 	if dv.widgets == nil {
 		return
 	}
-	if isSmallScreen() {
+	if !Profile().ShowLayoutGuides {
 		return
 	}
 	for i := 1; i < len(dv.widgets.colPos)-1; i++ {

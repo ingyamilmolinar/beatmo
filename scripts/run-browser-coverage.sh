@@ -31,7 +31,13 @@ export JS_COVERAGE=1
 export WASM_PREBUILT=1
 export GO
 
-"$SCRIPT_DIR/run-browser-tests.sh" --no-fail-fast "$@" || true
+test_rc=0
+"$SCRIPT_DIR/run-browser-tests.sh" --no-fail-fast "$@" || test_rc=$?
+
+if [[ $test_rc -ne 0 ]]; then
+    echo ""
+    echo "WARNING: Some browser tests failed — collecting coverage from tests that ran"
+fi
 
 echo ""
 echo "========================================"

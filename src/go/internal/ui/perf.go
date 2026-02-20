@@ -1,10 +1,15 @@
 package ui
 
 import (
+	"os"
 	"runtime"
 	"sync/atomic"
 	"time"
 )
+
+// perfLogEnabled caches os.Getenv("PERF_LOG") == "1" at init time to avoid
+// a per-frame syscall (expensive on WASM where it goes through JS interop).
+var perfLogEnabled = os.Getenv("PERF_LOG") == "1"
 
 // PerfStats is a snapshot of recent performance metrics gathered in Game.
 // Values are approximate and reset periodically.
@@ -24,6 +29,7 @@ type PerfStats struct {
 
 	AudioCallAvg float64 // average per-event duration of audio.Play* dispatch in ms (batched calls amortized)
 	AudioCallMax float64 // max per-event duration of audio.Play* dispatch in ms
+	AudioDrops   int64   // number of audio events dropped due to full channel
 
 	HeapAllocKB uint64 // current heap allocation in KB
 	HeapSysKB   uint64 // total heap obtained from OS in KB
@@ -33,11 +39,20 @@ type PerfStats struct {
 	SchedMetrics ScheduleMetricsSnapshot // per-event audio scheduling lead/lag
 }
 
+// perfTrimOutliers is how many top outlier samples to exclude from the
+// trimmed update average (covers GC/scheduling spikes in WASM).
+const perfTrimOutliers = 3
+
 type perfCounters struct {
 	// frame/update
-	frames   int64
-	updSumNS int64
-	updMaxNS int64
+	frames    int64
+	updFrames int64 // frames that contributed to updSumNS (post-warmup)
+	updSumNS  int64
+	updMaxNS  int64
+	// updTopNS holds the top perfTrimOutliers update durations (descending).
+	// Used to compute a trimmed mean that excludes GC/scheduling spikes.
+	// Accessed only from the main goroutine (onUpdate + snapshot).
+	updTopNS [perfTrimOutliers]int64
 	started  time.Time
 	nextLog  time.Time
 
@@ -50,6 +65,10 @@ type perfCounters struct {
 	// audio call (bridge)
 	aCallSumNS int64
 	aCallMaxNS int64
+
+	// aDrops uses atomic.Int64 (not bare int64 like the other fields) because
+	// sendLatest increments it directly via pointer from the scheduling goroutine.
+	aDrops atomic.Int64
 
 	// draw
 	drawSumNS int64
@@ -64,14 +83,17 @@ const (
 
 func (p *perfCounters) reset() {
 	atomic.StoreInt64(&p.frames, 0)
+	atomic.StoreInt64(&p.updFrames, 0)
 	atomic.StoreInt64(&p.updSumNS, 0)
 	atomic.StoreInt64(&p.updMaxNS, 0)
+	p.updTopNS = [perfTrimOutliers]int64{}
 	atomic.StoreInt64(&p.aEnq, 0)
 	atomic.StoreInt64(&p.aDeq, 0)
 	atomic.StoreInt64(&p.aQLatSumNS, 0)
 	atomic.StoreInt64(&p.aQLatMaxNS, 0)
 	atomic.StoreInt64(&p.aCallSumNS, 0)
 	atomic.StoreInt64(&p.aCallMaxNS, 0)
+	p.aDrops.Store(0)
 	p.started = time.Now()
 }
 
@@ -84,14 +106,23 @@ func (p *perfCounters) onUpdate(d time.Duration) {
 	if frames < perfUpdateWarmupFrames {
 		return
 	}
-	atomic.AddInt64(&p.updSumNS, int64(d))
+	atomic.AddInt64(&p.updFrames, 1)
+	ns := int64(d)
+	atomic.AddInt64(&p.updSumNS, ns)
 	for {
 		max := atomic.LoadInt64(&p.updMaxNS)
-		if int64(d) <= max {
+		if ns <= max {
 			break
 		}
-		if atomic.CompareAndSwapInt64(&p.updMaxNS, max, int64(d)) {
+		if atomic.CompareAndSwapInt64(&p.updMaxNS, max, ns) {
 			break
+		}
+	}
+	// Maintain top-N outliers (insertion sort, descending).
+	if ns > p.updTopNS[perfTrimOutliers-1] {
+		p.updTopNS[perfTrimOutliers-1] = ns
+		for i := perfTrimOutliers - 1; i > 0 && p.updTopNS[i] > p.updTopNS[i-1]; i-- {
+			p.updTopNS[i], p.updTopNS[i-1] = p.updTopNS[i-1], p.updTopNS[i]
 		}
 	}
 }
@@ -147,6 +178,7 @@ func (p *perfCounters) snapshot() PerfStats {
 		elapsed = 1
 	}
 	frames := atomic.LoadInt64(&p.frames)
+	updFrames := atomic.LoadInt64(&p.updFrames)
 	updSum := atomic.LoadInt64(&p.updSumNS)
 	updMax := atomic.LoadInt64(&p.updMaxNS)
 	drwSum := atomic.LoadInt64(&p.drawSumNS)
@@ -163,14 +195,24 @@ func (p *perfCounters) snapshot() PerfStats {
 	if activeElapsed > 0 {
 		fps = float64(frames) / activeElapsed
 	}
+	// Trimmed mean: exclude top-N outlier samples (GC/scheduling spikes).
 	updAvgMS := 0.0
-	if frames > 0 {
-		updAvgMS = (float64(updSum) / float64(frames)) / 1e6
+	if updFrames > 0 {
+		trimSum := updSum
+		trimCount := updFrames
+		for _, v := range p.updTopNS {
+			if v > 0 && trimCount > 1 {
+				trimSum -= v
+				trimCount--
+			}
+		}
+		updAvgMS = (float64(trimSum) / float64(trimCount)) / 1e6
 	}
 	updMaxMS := float64(updMax) / 1e6
+	drwFrames := frames - perfDrawWarmupFrames
 	drwAvgMS := 0.0
-	if frames > 0 {
-		drwAvgMS = (float64(drwSum) / float64(frames)) / 1e6
+	if drwFrames > 0 {
+		drwAvgMS = (float64(drwSum) / float64(drwFrames)) / 1e6
 	}
 	drwMaxMS := float64(drwMax) / 1e6
 	qLatAvgMS := 0.0
@@ -197,6 +239,7 @@ func (p *perfCounters) snapshot() PerfStats {
 		AudioQLatMax: qLatMaxMS,
 		AudioCallAvg: callAvgMS,
 		AudioCallMax: callMaxMS,
+		AudioDrops:   p.aDrops.Load(),
 	}
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)

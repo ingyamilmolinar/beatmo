@@ -37,8 +37,8 @@ func TestInstMenuScrollbarBackgroundExtended(t *testing.T) {
 	dv.calcLayout()
 
 	// Open the instrument menu
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu did not open")
 	}
 
@@ -119,8 +119,8 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	dv.calcLayout()
 
 	// Open instrument menu and scroll it
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("instrument menu did not open")
 	}
 	if len(dv.instCategoryBtns) > 0 {
@@ -136,13 +136,14 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	}
 
 	// Close instrument menu
-	dv.instMenuOpen = false
+	dv.CloseAllPopups()
 
-	// Build and open EQ channel menu
-	dv.eqChannelOpen = true
-	dv.buildEQChannelMenu()
+	// Open EQ channel menu via portal path
+	z := dv.eqPanelZone
+	z.eqChannelBtn.OnClick()
+	eqScroll := z.channelScroll
 
-	eqScrollBefore := dv.eqChannelScroll.VS.First
+	eqScrollBefore := eqScroll.VS.First
 
 	// EQ scroll should be independent (still at 0)
 	if eqScrollBefore != 0 {
@@ -150,13 +151,13 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	}
 
 	// Scroll EQ menu
-	if dv.eqChannelScroll.HasScroll() {
-		dv.eqChannelScroll.VS.First = 2
+	if eqScroll.HasScroll() {
+		eqScroll.VS.First = 2
 	}
 
-	// Reopen instrument menu - its scroll should be preserved
-	dv.eqChannelOpen = false
-	dv.rowLabels[0].OnClick()
+	// Close EQ channel menu and reopen instrument menu
+	z.eqChannelBtn.OnClick()
+	dv.rowLabels()[0].OnClick()
 	if len(dv.instCategoryBtns) > 0 {
 		dv.instCategoryBtns[0].OnClick()
 	}
@@ -164,7 +165,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	// The two scrollers use independent state (different types/instances).
 	// Verify by checking that setting one doesn't affect the other.
 	dv.instMenuScroll.First = 5
-	if dv.eqChannelScroll.VS.First == 5 {
+	if eqScroll.VS.First == 5 {
 		t.Errorf("instrument and EQ scrollers should be independent instances")
 	}
 	dv.instMenuScroll.First = 0 // reset
@@ -189,7 +190,7 @@ func TestInstMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	withAudioCatalog(t, entries)
 
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 320, 260), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 320, 400), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
 
@@ -200,8 +201,8 @@ func TestInstMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	dv.calcLayout()
 
 	// Open instrument menu
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
 	if len(dv.instCategoryBtns) > 0 {
@@ -265,19 +266,20 @@ func TestEQMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	}
 	dv.calcLayout()
 
-	// Open EQ channel menu
-	dv.eqChannelOpen = true
-	dv.buildEQChannelMenu()
+	// Open EQ channel menu via portal path
+	z := dv.eqPanelZone
+	z.eqChannelBtn.OnClick()
+	eqScroll := z.channelScroll
 
-	if !dv.eqChannelScroll.HasScroll() {
+	if !eqScroll.HasScroll() {
 		t.Skip("EQ menu doesn't need scroll with this many rows - test not applicable")
 	}
 
 	startRowOff := dv.rowOffset
-	startEQScroll := dv.eqChannelScroll.VS.First
+	startEQScroll := eqScroll.VS.First
 
 	// Simulate wheel scroll over the EQ channel menu
-	menuRect := dv.eqChannelMenuRect()
+	menuRect := eqScroll.VS.View
 	cx, cy := menuRect.Min.X+5, menuRect.Min.Y+menuRect.Dy()/2
 	wheel := -2.0
 
@@ -330,8 +332,8 @@ func TestInstMenuScrollbarClickKeepsMenuOpen(t *testing.T) {
 	dv.calcLayout()
 
 	// Open the instrument menu
-	dv.rowLabels[0].OnClick()
-	if !dv.instMenuOpen {
+	dv.rowLabels()[0].OnClick()
+	if !dv.IsInstMenuOpen() {
 		t.Fatalf("menu did not open")
 	}
 
@@ -354,11 +356,17 @@ func TestInstMenuScrollbarClickKeepsMenuOpen(t *testing.T) {
 	// Click in the middle of the scrollbar track
 	cx, cy := bar.Min.X+bar.Dx()/2, bar.Min.Y+bar.Dy()/2
 
-	// Verify the InputBounds includes the scrollbar
-	overlay := &InstrumentMenuOverlay{dv: dv}
-	bounds := overlay.InputBounds()
+	// Verify the menu full rect (including scrollbar) covers the scrollbar center.
+	bounds := dv.instMenuFullRect
+	if dv.instMenuHasScroll() {
+		// Extend bounds rightward to include the scrollbar.
+		barR := dv.instMenuScroll.BarRect(instMenuScrollBarWidth)
+		if !barR.Empty() {
+			bounds = bounds.Union(barR)
+		}
+	}
 	if !image.Pt(cx, cy).In(bounds) {
-		t.Errorf("scrollbar center (%d,%d) is not within InputBounds %v", cx, cy, bounds)
+		t.Errorf("scrollbar center (%d,%d) is not within menu bounds %v", cx, cy, bounds)
 	}
 
 	// Simulate mouse press on the scrollbar
@@ -377,7 +385,7 @@ func TestInstMenuScrollbarClickKeepsMenuOpen(t *testing.T) {
 	dv.Update()
 
 	// Menu should still be open
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Errorf("menu closed when clicking on scrollbar - InputBounds likely excludes scrollbar area")
 	}
 
@@ -386,7 +394,7 @@ func TestInstMenuScrollbarClickKeepsMenuOpen(t *testing.T) {
 	dv.Update()
 
 	// Menu should still be open after release
-	if !dv.instMenuOpen {
+	if !dv.IsInstMenuOpen() {
 		t.Errorf("menu closed after releasing click on scrollbar")
 	}
 }

@@ -63,8 +63,8 @@ export async function cdpTap(page, x, y) {
       }],
     });
 
-    // Very short delay for tap - just enough for event to register
-    await page.waitForTimeout(16); // ~1 frame at 60fps
+    // Hold long enough for WASM game loop to see the touch across multiple frames
+    await page.waitForTimeout(150); // ≥1 rAF frame even at ~7fps; keeps total hold under 500ms tap threshold with CDP overhead
 
     // Touch end
     await cdp.send('Input.dispatchTouchEvent', {

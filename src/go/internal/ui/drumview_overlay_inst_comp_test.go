@@ -5,6 +5,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // clearClickSuppressionInst clears the global click suppression state for tests.
@@ -15,7 +17,7 @@ func clearClickSuppressionInst(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_OpenClose(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 
 	// Initially closed
 	if comp.IsOpen() {
@@ -57,7 +59,7 @@ func TestInstrumentMenuComponent_OpenClose(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_CategoriesMode(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 100, 124),
 		VertBounds:        image.Rect(0, 50, 300, 500),
@@ -90,7 +92,7 @@ func TestInstrumentMenuComponent_CategoriesMode(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_InstrumentsMode(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:        image.Rect(10, 100, 100, 124),
 		VertBounds:        image.Rect(0, 50, 300, 500),
@@ -118,7 +120,7 @@ func TestInstrumentMenuComponent_InstrumentsMode(t *testing.T) {
 func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
 	clearClickSuppressionInst(t)
 
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 
 	var selectedID string
 	comp.SetProps(InstrumentMenuProps{
@@ -171,7 +173,7 @@ func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_HoldCapture(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
@@ -211,7 +213,7 @@ func TestInstrumentMenuComponent_HoldCapture(t *testing.T) {
 
 func TestInstrumentMenuComponent_ClickOutsideCloses(t *testing.T) {
 	clearClickSuppressionInst(t)
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 
 	var closeCalled bool
 	comp.SetProps(InstrumentMenuProps{
@@ -246,7 +248,7 @@ func TestInstrumentMenuComponent_ClickOutsideCloses(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_SearchFiltering(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
@@ -280,7 +282,7 @@ func TestInstrumentMenuComponent_SearchFiltering(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_CategoryFiltering(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
@@ -312,7 +314,7 @@ func TestInstrumentMenuComponent_CategoryFiltering(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_HandleInputWhenClosed(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
@@ -331,7 +333,7 @@ func TestInstrumentMenuComponent_HandleInputWhenClosed(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_BoundsSet(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
@@ -351,7 +353,7 @@ func TestInstrumentMenuComponent_BoundsSet(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_EmptyInstruments(t *testing.T) {
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:  image.Rect(10, 100, 100, 124),
 		VertBounds:  image.Rect(0, 50, 300, 500),
@@ -383,7 +385,7 @@ func TestInstrumentMenuComponent_ScrollState(t *testing.T) {
 		})
 	}
 
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:  image.Rect(10, 100, 100, 124),
 		VertBounds:  image.Rect(0, 50, 300, 400), // Limited height
@@ -404,7 +406,7 @@ func TestInstrumentMenuComponent_ScrollState(t *testing.T) {
 
 func TestInstrumentMenuComponent_AnchorRectConsumed(t *testing.T) {
 	clearClickSuppressionInst(t)
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 
 	// Use a layout where the anchor rect does NOT overlap the scroll view
 	// (desktop-like: menu opens downward, anchor is above the menu).
@@ -460,7 +462,7 @@ func TestInstrumentMenuComponent_AnchorRectConsumed(t *testing.T) {
 
 func TestInstrumentMenuComponent_SuppressedPressConsumed(t *testing.T) {
 	clearClickSuppressionInst(t)
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect: image.Rect(10, 100, 100, 124),
 		VertBounds: image.Rect(0, 50, 300, 500),
@@ -472,11 +474,9 @@ func TestInstrumentMenuComponent_SuppressedPressConsumed(t *testing.T) {
 		RowHeight: 24,
 	})
 	comp.Open()
-
-	// Open() calls SuppressClicksUntilMouseUp, so suppression should be active.
-	if !suppressClicksUntilRelease {
-		t.Fatal("expected suppressClicksUntilRelease to be true after Open()")
-	}
+	// Suppress is now owned by the tree, not the global flag.
+	// Simulate the tree's suppress being active (as it would be after Open).
+	suppressClicksUntilRelease = true
 
 	// Press at a point outside both fullRect and anchorRect.
 	// With suppression active, this must still be consumed (not ignored)
@@ -487,6 +487,356 @@ func TestInstrumentMenuComponent_SuppressedPressConsumed(t *testing.T) {
 	}
 	if !comp.IsOpen() {
 		t.Error("menu should still be open during suppressed press")
+	}
+}
+
+// ---------- Search box keyboard input tests ----------
+
+// newInstMenuInInstrumentsMode creates an InstrumentMenuComponent already open
+// in instruments mode with a search box, ready for search tests.
+func newInstMenuInInstrumentsMode(t *testing.T) *InstrumentMenuComponent {
+	t.Helper()
+	clearClickSuppressionInst(t)
+	comp := NewInstrumentMenuComponent()
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick Drum", Category: ""},
+			{ID: "snare", Label: "Snare Drum", Category: ""},
+			{ID: "hihat", Label: "Hi-Hat", Category: ""},
+			{ID: "clap", Label: "Clap", Category: ""},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+	if comp.Mode() != InstMenuModeInstruments {
+		t.Fatalf("expected instruments mode, got %s", comp.Mode())
+	}
+	if comp.searchBox == nil {
+		t.Fatal("searchBox should exist in instruments mode")
+	}
+	return comp
+}
+
+func TestInstMenuSearchBox_ClickToFocus(t *testing.T) {
+	comp := newInstMenuInInstrumentsMode(t)
+
+	// Mock cursor inside search box rect + mouse pressed → searchBox.Update() focuses it.
+	sr := comp.searchBox.Rect
+	cx, cy := sr.Min.X+2, sr.Min.Y+2
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	defer restore()
+
+	comp.Update()
+	if !comp.searchBox.Focused() {
+		t.Error("searchBox should be focused after click via Update()")
+	}
+}
+
+func TestInstMenuSearchBox_TypeCharsUpdatesFilter(t *testing.T) {
+	comp := newInstMenuInInstrumentsMode(t)
+
+	// First, focus the search box via a click.
+	sr := comp.searchBox.Rect
+	cx, cy := sr.Min.X+2, sr.Min.Y+2
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	comp.Update()
+	restore()
+
+	if !comp.searchBox.Focused() {
+		t.Fatal("searchBox should be focused after click")
+	}
+
+	// Now type "kick" — consume-once pattern: return chars once, then nil.
+	chars := []rune{'k', 'i', 'c', 'k'}
+	restore = SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	defer restore()
+
+	comp.Update()
+
+	if comp.searchBox.Value() != "kick" {
+		t.Errorf("expected searchBox value 'kick', got %q", comp.searchBox.Value())
+	}
+	if comp.state.searchText != "kick" {
+		t.Errorf("expected state.searchText 'kick', got %q", comp.state.searchText)
+	}
+	// Only "Kick Drum" should match.
+	if len(comp.state.filteredInsts) != 1 {
+		t.Errorf("expected 1 filtered instrument, got %d", len(comp.state.filteredInsts))
+	} else if comp.state.filteredInsts[0] != "kick" {
+		t.Errorf("expected filtered inst 'kick', got %q", comp.state.filteredInsts[0])
+	}
+}
+
+func TestInstMenuSearchBox_BackspaceDeletesChar(t *testing.T) {
+	comp := newInstMenuInInstrumentsMode(t)
+
+	// Focus and type "ab".
+	sr := comp.searchBox.Rect
+	cx, cy := sr.Min.X+2, sr.Min.Y+2
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	comp.Update()
+	restore()
+
+	chars := []rune{'a', 'b'}
+	restore = SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	comp.Update()
+	restore()
+
+	if comp.searchBox.Value() != "ab" {
+		t.Fatalf("expected 'ab', got %q", comp.searchBox.Value())
+	}
+
+	// Now press backspace.
+	restore = SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyBackspace },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	defer restore()
+
+	comp.Update()
+
+	if comp.searchBox.Value() != "a" {
+		t.Errorf("expected 'a' after backspace, got %q", comp.searchBox.Value())
+	}
+}
+
+func TestInstMenuSearchBox_UnfocusOnClickOutside(t *testing.T) {
+	comp := newInstMenuInInstrumentsMode(t)
+
+	// Focus the search box.
+	sr := comp.searchBox.Rect
+	cx, cy := sr.Min.X+2, sr.Min.Y+2
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	comp.Update()
+	restore()
+
+	if !comp.searchBox.Focused() {
+		t.Fatal("searchBox should be focused")
+	}
+
+	// Click outside search rect but inside menu bounds.
+	bounds := comp.Bounds()
+	ox := bounds.Min.X + 5
+	oy := bounds.Max.Y - 5
+	restore = SetInputForTest(
+		func() (int, int) { return ox, oy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	defer restore()
+
+	comp.Update()
+
+	if comp.searchBox.Focused() {
+		t.Error("searchBox should be unfocused after clicking outside its rect")
+	}
+}
+
+func TestInstMenuSearchBox_ClearedOnReopen(t *testing.T) {
+	comp := newInstMenuInInstrumentsMode(t)
+
+	// Set search text directly.
+	comp.SetSearchText("test")
+	if comp.state.searchText != "test" {
+		t.Fatal("searchText should be 'test'")
+	}
+
+	// Close and reopen.
+	comp.Close()
+	comp.Open()
+
+	if comp.state.searchText != "" {
+		t.Errorf("expected searchText cleared on reopen, got %q", comp.state.searchText)
+	}
+	if comp.searchBox != nil && comp.searchBox.Value() != "" {
+		t.Errorf("expected searchBox text cleared on reopen, got %q", comp.searchBox.Value())
+	}
+}
+
+func TestInstMenuSearchBox_EnterCommitsSearch(t *testing.T) {
+	comp := newInstMenuInInstrumentsMode(t)
+
+	// Focus the search box.
+	sr := comp.searchBox.Rect
+	cx, cy := sr.Min.X+2, sr.Min.Y+2
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	comp.Update()
+	restore()
+
+	if !comp.searchBox.Focused() {
+		t.Fatal("searchBox should be focused")
+	}
+
+	// Type some chars then press Enter.
+	chars := []rune{'a'}
+	enter := false
+	restore = SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return enter && k == ebiten.KeyEnter },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	defer restore()
+
+	// Frame 1: type 'a'
+	comp.Update()
+	if comp.searchBox.Value() != "a" {
+		t.Fatalf("expected 'a', got %q", comp.searchBox.Value())
+	}
+
+	// Frame 2: press Enter
+	enter = true
+	comp.Update()
+
+	if comp.searchBox.Focused() {
+		t.Error("searchBox should be unfocused after Enter")
+	}
+}
+
+func TestInstMenuSearchBox_FullIntegration_TypeViaPortal(t *testing.T) {
+	assertDefaultParityState(t)
+
+	const W, H = 800, 600
+	dv, cx, cy := newCategoryDrumView(t, W, H)
+
+	// Open instrument menu by clicking row label.
+	clickDrumViewAt(t, dv, cx, cy, W, H)
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("menu should be open")
+	}
+
+	comp := dv.instMenuComp
+	if comp == nil || !comp.IsOpen() {
+		t.Fatal("instMenuComp should be open")
+	}
+
+	// Ensure we're in instruments mode (may need to select a category first).
+	if comp.Mode() == InstMenuModeCategories {
+		// Click the first category button.
+		if len(comp.categoryBtns) == 0 {
+			t.Fatal("no category buttons")
+		}
+		cr := comp.categoryBtns[0].Rect()
+		ccx := cr.Min.X + cr.Dx()/2
+		ccy := cr.Min.Y + cr.Dy()/2
+		clickDrumViewAt(t, dv, ccx, ccy, W, H)
+		ri := idleFrames(dv, 2, W, H)
+		ri()
+	}
+
+	if comp.Mode() != InstMenuModeInstruments {
+		t.Fatalf("expected instruments mode, got %s", comp.Mode())
+	}
+
+	sb := comp.SearchBox()
+	if sb == nil {
+		t.Fatal("searchBox should exist")
+	}
+
+	// Click the search box to focus it.
+	sr := sb.Rect
+	scx := sr.Min.X + sr.Dx()/2
+	scy := sr.Min.Y + sr.Dy()/2
+
+	r := pressDrumView(dv, scx, scy, W, H)
+	dv.Update()
+	r()
+	r = releaseDrumView(dv, scx, scy, W, H)
+	dv.Update()
+	r()
+
+	if !sb.Focused() {
+		t.Fatal("searchBox should be focused after click")
+	}
+
+	initialCount := len(comp.state.filteredInsts)
+
+	// Type chars on idle frames (no mouse input, just chars via inputChars).
+	chars := []rune{'k', 'i', 'c', 'k'}
+	r = SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { c := chars; chars = nil; return c },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	r()
+
+	// Run a few idle frames to let portal updateFn propagate.
+	ri := idleFrames(dv, 2, W, H)
+	ri()
+
+	if sb.Value() != "kick" {
+		t.Errorf("expected searchBox value 'kick', got %q", sb.Value())
+	}
+
+	// Verify filtering reduced the list.
+	if len(comp.state.filteredInsts) >= initialCount {
+		t.Errorf("expected filtering to reduce instruments: was %d, now %d",
+			initialCount, len(comp.state.filteredInsts))
 	}
 }
 
@@ -501,7 +851,7 @@ func TestInstrumentMenuComponent_WheelScroll(t *testing.T) {
 		})
 	}
 
-	comp := NewInstrumentMenuComponent("test-inst")
+	comp := NewInstrumentMenuComponent()
 	comp.SetProps(InstrumentMenuProps{
 		AnchorRect:  image.Rect(10, 100, 100, 124),
 		VertBounds:  image.Rect(0, 50, 300, 400),

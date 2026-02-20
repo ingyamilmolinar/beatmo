@@ -87,7 +87,7 @@ func (dv *DrumView) saveInstrument(row int) {
 	}
 	dv.instRefreshDirty = true
 	dv.refreshInstruments()
-	if dv.instMenuOpen {
+	if dv.IsInstMenuOpen() {
 		dv.buildInstMenu()
 	}
 	dv.notifyInfo("Saved instrument to Saved/")

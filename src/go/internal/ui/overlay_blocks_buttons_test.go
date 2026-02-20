@@ -49,25 +49,20 @@ func TestEditButtonSuppressesAdjacentButtons(t *testing.T) {
 
 	dv := setupOverlayTestDV(t, 390, 600)
 
-	if len(dv.rowEditBtns) == 0 {
+	if len(dv.rowEditBtns()) == 0 {
 		t.Fatal("no edit buttons after layout")
 	}
 
 	// Directly fire the edit button's OnClick.
-	dv.rowEditBtns[0].OnClick()
+	dv.rowEditBtns()[0].OnClick()
 
 	// Rename should be open.
 	if dv.renameRow != 0 {
 		t.Fatalf("renameRow=%d, want 0", dv.renameRow)
 	}
 
-	// SuppressClicksUntilMouseUp should have been called.
-	if !suppressClicksUntilRelease {
-		t.Fatal("suppressClicksUntilRelease should be true after edit OnClick")
-	}
-
 	// Context menu must NOT be open.
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT be open — edit button should suppress adjacent buttons")
 	}
 }
@@ -82,14 +77,14 @@ func TestEditButtonClosesContextMenu(t *testing.T) {
 
 	// Open context menu first.
 	dv.OpenContextMenuForTest(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open after OpenContextMenuForTest")
 	}
 
 	// Fire edit button — should close context menu and open rename.
-	dv.rowEditBtns[0].OnClick()
+	dv.rowEditBtns()[0].OnClick()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be CLOSED after edit button OnClick")
 	}
 	if dv.renameRow != 0 {
@@ -107,7 +102,7 @@ func TestRenameOverlayBlocksRowButtons(t *testing.T) {
 	dv := setupOverlayTestDV(t, 390, 600)
 
 	// Open rename via edit button.
-	dv.rowEditBtns[0].OnClick()
+	dv.rowEditBtns()[0].OnClick()
 	if dv.renameBox == nil && (dv.renameComp == nil || !dv.renameComp.IsOpen()) {
 		t.Fatal("rename should be open after edit button OnClick")
 	}
@@ -116,7 +111,7 @@ func TestRenameOverlayBlocksRowButtons(t *testing.T) {
 	suppressClicksUntilRelease = false
 
 	// Click the label area — should be blocked by overlay guard.
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	if lblRect.Empty() {
 		t.Skip("label rect empty")
 	}
@@ -134,7 +129,7 @@ func TestRenameOverlayBlocksRowButtons(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should NOT open while rename overlay is active")
 	}
 }
@@ -149,7 +144,7 @@ func TestContextMenuRenameOpensCleanly(t *testing.T) {
 
 	// Open context menu.
 	dv.OpenContextMenuForTest(0)
-	if !dv.contextMenuOpen {
+	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
 
@@ -167,7 +162,7 @@ func TestContextMenuRenameOpensCleanly(t *testing.T) {
 	}
 
 	// Context menu should be closed, rename should be open.
-	if dv.contextMenuOpen {
+	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be CLOSED after tapping Rename")
 	}
 	if dv.renameRow < 0 {
@@ -184,14 +179,14 @@ func TestOverlayBlocksToolbarButtons(t *testing.T) {
 
 	// Open inst menu to create an open overlay.
 	dv.openInstMenuForRow(0)
-	if !dv.isInstMenuOpen() {
+	if !dv.instMenuComp.IsOpen() {
 		t.Fatal("inst menu should be open")
 	}
 
 	// Record whether play button fires.
 	playFired := false
-	origOnClick := dv.playBtn.OnClick
-	dv.playBtn.OnClick = func() {
+	origOnClick := dv.playBtn().OnClick
+	dv.playBtn().OnClick = func() {
 		playFired = true
 		if origOnClick != nil {
 			origOnClick()
@@ -199,7 +194,7 @@ func TestOverlayBlocksToolbarButtons(t *testing.T) {
 	}
 
 	// Click on the play button area.
-	playRect := dv.playBtn.Rect()
+	playRect := dv.playBtn().Rect()
 	if playRect.Empty() {
 		t.Skip("play button rect empty")
 	}
@@ -226,14 +221,14 @@ func TestInstMenuToggleViaOverlay(t *testing.T) {
 
 	// Open inst menu.
 	dv.openInstMenuForRow(0)
-	if !dv.isInstMenuOpen() {
+	if !dv.instMenuComp.IsOpen() {
 		t.Fatal("inst menu should be open")
 	}
 
 	// Clear suppress so we can click.
 	suppressClicksUntilRelease = false
 
-	lblRect := dv.rowLabels[0].Rect()
+	lblRect := dv.rowLabels()[0].Rect()
 	if lblRect.Empty() {
 		t.Fatal("label rect empty")
 	}
@@ -266,7 +261,7 @@ func TestInstMenuToggleViaOverlay(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.isInstMenuOpen() {
+	if dv.instMenuComp.IsOpen() {
 		t.Fatal("inst menu should be CLOSED after clicking label while it was open")
 	}
 }
