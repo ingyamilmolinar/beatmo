@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Build a single-row loop where every subdivision step lands on a regular node

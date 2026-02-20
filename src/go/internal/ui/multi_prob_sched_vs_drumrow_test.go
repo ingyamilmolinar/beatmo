@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestMultipleProbabilityNodes_SchedulerMatchesPrediction verifies that with
@@ -64,15 +65,17 @@ func TestMultipleProbabilityNodes_WindowsMatchPrediction(t *testing.T) {
 	g.drum.SetLength(horizon)
 	g.updateBeatInfos()
 	g.engine.Predictor.Ensure(horizon)
-	// Drum should mirror prediction windows.
+	// Drum should mirror prediction windows. Compare up to the visible
+	// length (may be less than horizon due to screen-aware clamping).
+	visLen := g.drum.Length
 	g.drum.Offset = 0
 	g.refreshDrumRow()
 	gotSteps := append([]bool(nil), g.drum.Rows[0].Steps...)
-	wantSteps := make([]bool, horizon)
-	for i := 0; i < horizon; i++ {
+	wantSteps := make([]bool, visLen)
+	for i := 0; i < visLen; i++ {
 		wantSteps[i] = g.engine.Predictor.VisibleAt(0, i)
 	}
-	for i := 0; i < horizon; i++ {
+	for i := 0; i < visLen; i++ {
 		if gotSteps[i] != wantSteps[i] {
 			t.Fatalf("drum vs predVisible mismatch at %d: got=%v want=%v", i, gotSteps[i], wantSteps[i])
 		}

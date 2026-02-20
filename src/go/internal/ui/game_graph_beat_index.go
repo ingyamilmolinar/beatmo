@@ -1,26 +1,8 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
-
-func (g *Game) beatInfoAt(idx int) model.BeatInfo {
-	if len(g.beatInfos) == 0 {
-		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
-	}
-	if idx < len(g.beatInfos) {
-		return g.beatInfos[idx]
-	}
-	if !g.isLoop {
-		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
-	}
-	loopLen := len(g.beatInfos) - g.loopStartIndex
-	if loopLen <= 0 {
-		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
-	}
-	idx = g.loopStartIndex + (idx-g.loopStartIndex)%loopLen
-	return g.beatInfos[idx]
-}
 
 func (g *Game) beatInfoAtRow(row, idx int) model.BeatInfo {
 	if row < 0 || row >= len(g.beatInfosByRow) {
@@ -45,26 +27,6 @@ func (g *Game) beatInfoAtRow(row, idx int) model.BeatInfo {
 	}
 	idx = g.loopStartByRow[row] + (idx-g.loopStartByRow[row])%loopLen
 	return infos[idx]
-}
-
-func (g *Game) wrapBeatIndex(idx int) int {
-	if len(g.beatInfos) == 0 {
-		return 0
-	}
-	if idx < 0 {
-		return 0
-	}
-	if idx < len(g.beatInfos) {
-		return idx
-	}
-	if !g.isLoop {
-		return len(g.beatInfos) - 1
-	}
-	loopLen := len(g.beatInfos) - g.loopStartIndex
-	if loopLen <= 0 {
-		return len(g.beatInfos) - 1
-	}
-	return g.loopStartIndex + (idx-g.loopStartIndex)%loopLen
 }
 
 func (g *Game) wrapBeatIndexRow(row, idx int) int {

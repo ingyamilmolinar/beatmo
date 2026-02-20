@@ -4,6 +4,7 @@
 #define MA_NO_DEVICE_IO
 #define MA_NO_THREADING
 #include "miniaudio.h"
+#include "synth_params.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -185,8 +186,8 @@ EXPORT void render_snare(float *out, int sampleRate, int samples) {
 }
 
 EXPORT void render_kick(float *out, int sampleRate, int samples) {
-  // Kick: low, organic thump using a mostly harmonic sine stack with a gentle
-  // pitch envelope plus a very dark, low-passed noise thud for extra rawness.
+  // Kick: low thump with a beater click for presence on small speakers.
+  // The click gives audibility even when low-end is rolled off by hardware.
 
   ma_noise_config nc =
       ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
@@ -195,70 +196,88 @@ EXPORT void render_kick(float *out, int sampleRate, int samples) {
     return;
   }
   double lpNoise = 0.0;
+  double lpClick = 0.0;
 
   // Slight per-hit variation via random starting phases.
-  double phase0 = 2.0 * M_PI * ((double)rand() / (double)RAND_MAX);
-  double phase1 = 2.0 * M_PI * ((double)rand() / (double)RAND_MAX);
-  double phase2 = 2.0 * M_PI * ((double)rand() / (double)RAND_MAX);
+  float r0, r1, r2, r3;
+  ma_noise_read_pcm_frames(&noise, &r0, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r1, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r2, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r3, 1, NULL);
+  double phase0 = 2.0 * M_PI * (double)r0;
+  double phase1 = 2.0 * M_PI * (double)r1;
+  double phase2 = 2.0 * M_PI * (double)r2;
+  double phase3 = 2.0 * M_PI * (double)r3;
 
-  // Fundamental and two harmonics (all harmonic to avoid harsh beating).
+  // Fundamental and three harmonics. Upper harmonics provide audibility
+  // on speakers that can't reproduce 55 Hz.
   double f0 = 55.0;       // deep fundamental
-  double f1 = f0 * 2.0;   // 2nd harmonic for body
-  double f2 = f0 * 3.0;   // 3rd harmonic for attack edge
+  double f1 = f0 * 2.0;   // 110 Hz — body
+  double f2 = f0 * 3.0;   // 165 Hz — low-mid presence
+  double f3 = f0 * 4.0;   // 220 Hz — audible on all speakers
 
   for (int i = 0; i < samples; ++i) {
     double tSec  = (double)i / (double)sampleRate;
     double tNorm = (double)i / (double)samples;
 
-    // Dark, low-passed noise "thud" for additional rawness. Heavily filtered
-    // and kept low in the mix so it never turns into hiss.
+    // Dark, low-passed noise "thud" for rawness.
     float n;
     ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
     lpNoise = lpNoise * 0.97 + (double)n * 0.03;
     double noiseEnv = exp(-16.0 * tSec);
     double noiseThud = lpNoise * noiseEnv * 0.18;
 
-    // Gentle, short pitch envelope shared by all harmonics for a natural
-    // "punch" without obvious laser/techno sweep.
-    double pitchEnv = exp(-30.0 * tSec);      // ~0 after a few ms
-    double freqMul  = 1.0 + 0.10 * pitchEnv; // up to +10% at onset
+    // Beater click: HP-filtered noise burst, very short (~2-3ms).
+    // Gives the kick a sharp transient audible on any speaker.
+    float cn;
+    ma_noise_read_pcm_frames(&noise, &cn, 1, NULL);
+    double clickRaw = (double)cn;
+    lpClick = lpClick * 0.85 + clickRaw * 0.15;
+    double hpClick = clickRaw - lpClick;
+    double clickEnv = exp(-120.0 * tSec);
+    double click = hpClick * clickEnv * 0.35;
+
+    // Gentle, short pitch envelope for natural "punch".
+    double pitchEnv = exp(-30.0 * tSec);
+    double freqMul  = 1.0 + 0.10 * pitchEnv;
 
     double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
     double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
     double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+    double step3 = 2.0 * M_PI * f3 * freqMul / (double)sampleRate;
 
     phase0 += step0;
     phase1 += step1;
     phase2 += step2;
+    phase3 += step3;
 
     double s0 = sin(phase0);
     double s1 = sin(phase1);
     double s2 = sin(phase2);
+    double s3 = sin(phase3);
 
-    // Short, punchy envelopes: higher harmonics decay faster so the tail
-    // becomes round and deep instead of bright.
+    // Short, punchy envelopes: higher harmonics decay faster.
     double env0 = exp(-5.5  * tSec); // fundamental
     double env1 = exp(-9.0  * tSec); // body
-    double env2 = exp(-16.0 * tSec); // attack edge
+    double env2 = exp(-12.0 * tSec); // low-mid
+    double env3 = exp(-18.0 * tSec); // mid presence (short)
 
-    // Balance the partials so the fundamental dominates, body supports,
-    // and the edge is present but not harsh.
+    // Balance: fundamental dominates, upper harmonics add presence.
     double tonal =
-        s0 * env0 * 0.95 +
-        s1 * env1 * 0.35 +
-        s2 * env2 * 0.08;
+        s0 * env0 * 0.85 +
+        s1 * env1 * 0.40 +
+        s2 * env2 * 0.20 +
+        s3 * env3 * 0.12;
 
-    // Front-loaded attack boost: make the first few milliseconds hit harder
-    // without changing the overall length.
-    double attackShape = 1.0 + 0.25 * exp(-40.0 * tSec);
+    // Front-loaded attack boost.
+    double attackShape = 1.0 + 0.3 * exp(-40.0 * tSec);
     tonal *= attackShape;
 
-    // Global fade in normalized time so the tail is close to zero at the
-    // buffer end while still leaving enough low-end body to feel bombastic.
+    // Global fade.
     double g = exp(-4.0 * tNorm);
 
-    double mixed = (tonal + noiseThud) * g;
-    float y = softsat((float)mixed * 0.5f) * 1.15f;
+    double mixed = (tonal + noiseThud + click) * g;
+    float y = softsat((float)mixed * 0.55f) * 1.2f;
     if (y > 1.0f) y = 1.0f;
     if (y < -1.0f) y = -1.0f;
     out[i] = y;
@@ -684,13 +703,13 @@ EXPORT void render_cowbell(float *out, int sampleRate, int samples) {
   double detune = 1.0 + 0.01 * (double)seed;
 
   // Base partial frequencies (roughly cowbell-ish region).
-  double freqs[4] = {
+  const double freqs[4] = {
       640.0 * detune,
       920.0 * detune,
       1300.0 * detune,
       1900.0 * detune,
   };
-  double gains[4] = {1.0, 0.85, 0.6, 0.4};
+  const double gains[4] = {1.0, 0.85, 0.6, 0.4};
   double phase[4] = {0, 0, 0, 0};
 
   double lpNoise = 0.0;
@@ -729,10 +748,691 @@ EXPORT void render_cowbell(float *out, int sampleRate, int samples) {
   ma_noise_uninit(&noise, NULL);
 }
 
+EXPORT void render_snare_rimshot(float *out, int sampleRate, int samples) {
+  // Rimshot: 808-inspired inharmonic resonator with heavy saturation.
+  // 4 damped sinusoids at inharmonic ratios + loud HP noise transient
+  // → high-pass (~400 Hz) → hard tanh drive → softsat for raw metallic crunch.
+  ma_noise_config nc = ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise; if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+
+  float seed;
+  ma_noise_read_pcm_frames(&noise, &seed, 1, NULL);
+  double detune = 1.0 + 0.02 * (double)seed;
+
+  // 4 inharmonic partials — ratios 1 : 2.1 : 3.4 : 5.6 (fixed, no drift).
+  double f1 = 500.0 * detune;
+  double f2 = 1050.0 * detune;
+  double f3 = 1700.0 * detune;
+  double f4 = 2800.0 * detune;
+  double phase1 = 0.0, phase2 = 0.0, phase3 = 0.0, phase4 = 0.0;
+
+  // 1st-order high-pass (~400 Hz) to strip warmth, keep only metallic ring.
+  double rc = 1.0 / (2.0 * M_PI * 400.0);
+  double dt = 1.0 / (double)sampleRate;
+  double hpAlpha = rc / (rc + dt);
+  double hpPrev = 0.0, hpOut = 0.0;
+
+  // 1st-order LP coefficient for transient noise HP (white - LP = HP).
+  double lpAlpha = dt / (1.0 / (2.0 * M_PI * 5000.0) + dt);
+  double lpState = 0.0;
+
+  for (int i = 0; i < samples; ++i) {
+    double sec = (double)i / (double)sampleRate;
+    double tNorm = (double)i / (double)samples;
+
+    // --- 4 inharmonic damped sinusoids ---
+    phase1 += 2.0 * M_PI * f1 / (double)sampleRate;
+    phase2 += 2.0 * M_PI * f2 / (double)sampleRate;
+    phase3 += 2.0 * M_PI * f3 / (double)sampleRate;
+    phase4 += 2.0 * M_PI * f4 / (double)sampleRate;
+    double p1 = sin(phase1) * 1.0  * exp(-40.0 * sec);
+    double p2 = sin(phase2) * 0.95 * exp(-50.0 * sec);
+    double p3 = sin(phase3) * 0.8  * exp(-65.0 * sec);
+    double p4 = sin(phase4) * 0.5  * exp(-90.0 * sec);
+    double tones = p1 + p2 + p3 + p4;
+
+    // --- HP noise transient (louder crack, ~5ms) ---
+    float n;
+    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
+    lpState += lpAlpha * ((double)n - lpState);
+    double hpNoise = (double)n - lpState; // white - LP = HP
+    double transient = hpNoise * 0.7 * exp(-200.0 * sec);
+
+    // --- Sharp attack spike (~1ms) for initial hit impact ---
+    double attack = 1.0 + 2.0 * exp(-1500.0 * sec);
+
+    double raw = (tones + transient) * attack;
+
+    // --- 1st-order high-pass (~400 Hz) ---
+    hpOut = hpAlpha * (hpOut + raw - hpPrev);
+    hpPrev = raw;
+
+    // --- Hard tanh drive + softsat for raw metallic crunch ---
+    double driven = tanh(hpOut * 4.0);
+    double global = 1.0 - 0.1 * tNorm;
+    if (global < 0.0) global = 0.0;
+
+    out[i] = 0.95f * softsat((float)(driven * global));
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+EXPORT void render_snare_sidestick(float *out, int sampleRate, int samples) {
+  // Cross-stick: dry, woody click — purely transient, no pitch movement.
+  // 2 fixed-frequency inharmonic damped sines + low-Q bandpass noise.
+  ma_noise_config nc = ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise; if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+
+  float seed;
+  ma_noise_read_pcm_frames(&noise, &seed, 1, NULL);
+  double detune = 1.0 + 0.02 * (double)seed;
+
+  // 2 inharmonic tones at ratio 1 : 2.4 (fixed frequencies, no sweep).
+  double fWood = 500.0 * detune;
+  double fRim = 1200.0 * detune;
+  double phaseWood = 0.0, phaseRim = 0.0;
+
+  // Low-Q bandpass at 1500 Hz for woody mid character (Q=0.7, not ringy).
+  double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
+  {
+    double fc = 1500.0; double Q = 0.7;
+    double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+    double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+    double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+    double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+    b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
+  }
+  double x1_bp = 0, x2_bp = 0, y1_bp = 0, y2_bp = 0;
+
+  for (int i = 0; i < samples; ++i) {
+    double sec = (double)i / (double)sampleRate;
+
+    // Fixed-frequency damped sines.
+    phaseWood += 2.0 * M_PI * fWood / (double)sampleRate;
+    phaseRim += 2.0 * M_PI * fRim / (double)sampleRate;
+    double wood = sin(phaseWood) * 0.5 * exp(-100.0 * sec);
+    double rim = sin(phaseRim) * 0.45 * exp(-120.0 * sec);
+
+    // Low-Q bandpass noise.
+    float n;
+    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
+    double x = (double)n;
+    double ybp = b0_bp*x + b1_bp*x1_bp + b2_bp*x2_bp - a1_bp*y1_bp - a2_bp*y2_bp;
+    x2_bp = x1_bp; x1_bp = x; y2_bp = y1_bp; y1_bp = ybp;
+    double noise_out = ybp * 0.5 * exp(-150.0 * sec);
+
+    double attackBoost = 1.0 + 1.0 * exp(-800.0 * sec);
+    double mixed = (wood + rim + noise_out) * attackBoost;
+
+    out[i] = 0.95f * softsat((float)mixed);
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+EXPORT void render_kick_deep(float *out, int sampleRate, int samples) {
+  // 808-style deep sub kick: lower, boomier, longer sustain.
+  ma_noise_config nc = ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise;
+  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+  double lpNoise = 0.0;
+
+  // Start phase at Pi/2 for maximum punch on first sample.
+  double phase0 = M_PI * 0.5;
+  double phase1 = M_PI * 0.5;
+
+  double f0 = 42.0;       // deep fundamental (lower than standard kick's 55)
+  double f1 = f0 * 2.0;   // subtle 2nd harmonic
+
+  for (int i = 0; i < samples; ++i) {
+    double tSec  = (double)i / (double)sampleRate;
+    double tNorm = (double)i / (double)samples;
+
+    float n;
+    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
+    lpNoise = lpNoise * 0.97 + (double)n * 0.03;
+    double noiseEnv = exp(-20.0 * tSec);
+    double noiseThud = lpNoise * noiseEnv * 0.10;
+
+    // Wider pitch sweep, slower decay than standard kick.
+    double pitchEnv = exp(-15.0 * tSec);
+    double freqMul  = 1.0 + 0.15 * pitchEnv;
+
+    double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+    double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+
+    phase0 += step0;
+    phase1 += step1;
+
+    double s0 = sin(phase0);
+    double s1 = sin(phase1);
+
+    // Much longer decay for the sub tail.
+    double env0 = exp(-3.5 * tSec);
+    double env1 = exp(-7.0 * tSec);
+
+    double tonal = s0 * env0 * 0.95 + s1 * env1 * 0.15;
+
+    // Gentler attack boost.
+    double attackShape = 1.0 + 0.15 * exp(-50.0 * tSec);
+    tonal *= attackShape;
+
+    double g = exp(-3.0 * tNorm);
+    double mixed = (tonal + noiseThud) * g;
+
+    // Clean sub with mild warmth.
+    float y = (float)(tanh(mixed * 1.2) * 0.95);
+    if (y > 1.0f) y = 1.0f;
+    if (y < -1.0f) y = -1.0f;
+    out[i] = y;
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+EXPORT void render_kick_punchy(float *out, int sampleRate, int samples) {
+  // Kick-1 "Punchy/909-style": short, snappy, cuts through a mix.
+  // Higher fundamental (62 Hz), aggressive pitch sweep, loud beater click,
+  // no noise thud, stronger saturation. Clean electronic character.
+  ma_noise_config nc =
+      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise;
+  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+  double lpClick = 0.0;
+
+  float r0, r1;
+  ma_noise_read_pcm_frames(&noise, &r0, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r1, 1, NULL);
+  double phase0 = 2.0 * M_PI * (double)r0;
+  double phase1 = 2.0 * M_PI * (double)r1;
+
+  double f0 = 62.0;       // higher fundamental for presence
+  double f1 = f0 * 2.0;   // 124 Hz — body
+
+  for (int i = 0; i < samples; ++i) {
+    double tSec  = (double)i / (double)sampleRate;
+    double tNorm = (double)i / (double)samples;
+
+    // Beater click: brighter HP filter, louder.
+    float cn;
+    ma_noise_read_pcm_frames(&noise, &cn, 1, NULL);
+    double clickRaw = (double)cn;
+    lpClick = lpClick * 0.80 + clickRaw * 0.20;
+    double hpClick = clickRaw - lpClick;
+    double clickEnv = exp(-120.0 * tSec);
+    double click = hpClick * clickEnv * 0.45;
+
+    // Aggressive pitch envelope: +25% sweep, fast decay.
+    double pitchEnv = exp(-55.0 * tSec);
+    double freqMul  = 1.0 + 0.25 * pitchEnv;
+
+    double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+    double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+
+    phase0 += step0;
+    phase1 += step1;
+
+    double s0 = sin(phase0);
+    double s1 = sin(phase1);
+
+    // Fast body decay: only 2 harmonics for clean electronic character.
+    double env0 = exp(-8.0  * tSec);
+    double env1 = exp(-14.0 * tSec);
+
+    double tonal = s0 * env0 * 0.85 + s1 * env1 * 0.40;
+
+    // Stronger attack boost.
+    double attackShape = 1.0 + 0.5 * exp(-60.0 * tSec);
+    tonal *= attackShape;
+
+    // Faster global fade.
+    double g = exp(-5.0 * tNorm);
+
+    double mixed = (tonal + click) * g;
+    // More aggressive saturation for density.
+    float y = softsat((float)mixed * 0.8f) * 1.3f;
+    if (y > 1.0f) y = 1.0f;
+    if (y < -1.0f) y = -1.0f;
+    out[i] = y;
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+EXPORT void render_kick_lofi(float *out, int sampleRate, int samples) {
+  // Kick-2 "Lo-fi/Warm/Vintage": warm, gritty, thick.
+  // Lower fundamental (50 Hz), gentle pitch sweep, no beater click,
+  // thick noise thud, bit reduction, double saturation, built-in LP darkening.
+  ma_noise_config nc =
+      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise;
+  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+  double lpNoise = 0.0;
+
+  float r0, r1, r2;
+  ma_noise_read_pcm_frames(&noise, &r0, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r1, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r2, 1, NULL);
+  double phase0 = 2.0 * M_PI * (double)r0;
+  double phase1 = 2.0 * M_PI * (double)r1;
+  double phase2 = 2.0 * M_PI * (double)r2;
+
+  double f0 = 50.0;       // lower, more sub-focused
+  double f1 = f0 * 2.0;   // 100 Hz
+  double f2 = f0 * 3.0;   // 150 Hz
+
+  // One-pole LP state for final darkening (~600 Hz).
+  double lpOut = 0.0;
+  double lpAlpha = 2.0 * M_PI * 600.0 / (double)sampleRate;
+  if (lpAlpha > 1.0) lpAlpha = 1.0;
+
+  for (int i = 0; i < samples; ++i) {
+    double tSec  = (double)i / (double)sampleRate;
+    double tNorm = (double)i / (double)samples;
+
+    // Thick noise thud: less filtered, louder.
+    float n;
+    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
+    lpNoise = lpNoise * 0.96 + (double)n * 0.04;
+    double noiseEnv = exp(-12.0 * tSec);
+    double noiseThud = lpNoise * noiseEnv * 0.25;
+
+    // Gentle pitch envelope: +8% sweep, slow decay.
+    double pitchEnv = exp(-20.0 * tSec);
+    double freqMul  = 1.0 + 0.08 * pitchEnv;
+
+    double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+    double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+    double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+
+    phase0 += step0;
+    phase1 += step1;
+    phase2 += step2;
+
+    double s0 = sin(phase0);
+    double s1 = sin(phase1);
+    double s2 = sin(phase2);
+
+    // Slower body decay for fullness.
+    double env0 = exp(-4.5  * tSec);
+    double env1 = exp(-7.0  * tSec);
+    double env2 = exp(-10.0 * tSec);
+
+    double tonal =
+        s0 * env0 * 0.85 +
+        s1 * env1 * 0.40 +
+        s2 * env2 * 0.20;
+
+    // Mild attack boost.
+    double attackShape = 1.0 + 0.2 * exp(-35.0 * tSec);
+    tonal *= attackShape;
+
+    // Slower global fade (more sustain).
+    double g = exp(-3.0 * tNorm);
+
+    double mixed = (tonal + noiseThud) * g;
+
+    // Built-in bit reduction: quantize to ~128 levels (7-bit) for grit.
+    double levels = 128.0;
+    mixed = floor(mixed * levels + 0.5) / levels;
+
+    // Double saturation for harmonic warmth.
+    mixed = tanh(tanh(mixed * 1.5) * 1.8);
+
+    // Built-in one-pole LP to darken the sound (~600 Hz).
+    lpOut += lpAlpha * (mixed - lpOut);
+    mixed = lpOut;
+
+    float y = (float)mixed * 0.95f;
+    if (y > 1.0f) y = 1.0f;
+    if (y < -1.0f) y = -1.0f;
+    out[i] = y;
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+EXPORT void render_kick_tight(float *out, int sampleRate, int samples) {
+  // Kick-tight "Acoustic/Studio": natural, controlled, defined.
+  // Medium fundamental (58 Hz), minimal pitch sweep, bandpass beater transient,
+  // brief room thump, built-in gate, minimal saturation.
+  ma_noise_config nc =
+      ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise;
+  if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+
+  float r0, r1, r2;
+  ma_noise_read_pcm_frames(&noise, &r0, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r1, 1, NULL);
+  ma_noise_read_pcm_frames(&noise, &r2, 1, NULL);
+  double phase0 = 2.0 * M_PI * (double)r0;
+  double phase1 = 2.0 * M_PI * (double)r1;
+  double phase2 = 2.0 * M_PI * (double)r2;
+
+  double f0 = 58.0;       // between deep and punchy
+  double f1 = f0 * 2.0;   // 116 Hz
+  double f2 = f0 * 3.0;   // 174 Hz
+
+  // RBJ biquad bandpass at 2.5 kHz (Q=0.7) for natural beater transient.
+  double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
+  {
+    double fc = 2500.0; double Q = 0.7;
+    double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+    double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+    double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+    double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+    b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
+  }
+  double x1_bp = 0, x2_bp = 0, y1_bp = 0, y2_bp = 0;
+
+  // RBJ biquad bandpass at 200 Hz (Q=0.5) for brief room thump.
+  double b0_rm, b1_rm, b2_rm, a1_rm, a2_rm;
+  {
+    double fc = 200.0; double Q = 0.5;
+    double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+    double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+    double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+    double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+    b0_rm = b0/a0; b1_rm = b1/a0; b2_rm = b2/a0; a1_rm = a1/a0; a2_rm = a2/a0;
+  }
+  double x1_rm = 0, x2_rm = 0, y1_rm = 0, y2_rm = 0;
+
+  for (int i = 0; i < samples; ++i) {
+    double tSec  = (double)i / (double)sampleRate;
+    double tNorm = (double)i / (double)samples;
+
+    float n;
+    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
+    double x = (double)n;
+
+    // Beater transient: bandpass noise at 2.5 kHz for natural "stick on head" sound.
+    double ybp = b0_bp*x + b1_bp*x1_bp + b2_bp*x2_bp - a1_bp*y1_bp - a2_bp*y2_bp;
+    x2_bp = x1_bp; x1_bp = x; y2_bp = y1_bp; y1_bp = ybp;
+    double beaterEnv = exp(-150.0 * tSec);
+    double beater = ybp * beaterEnv * 0.40;
+
+    // Brief room thump: bandpass noise at 200 Hz, very fast decay.
+    double yrm = b0_rm*x + b1_rm*x1_rm + b2_rm*x2_rm - a1_rm*y1_rm - a2_rm*y2_rm;
+    x2_rm = x1_rm; x1_rm = x; y2_rm = y1_rm; y1_rm = yrm;
+    double roomEnv = exp(-80.0 * tSec);
+    double room = yrm * roomEnv * 0.15;
+
+    // Minimal pitch envelope: +5%, ultra-fast decay.
+    double pitchEnv = exp(-65.0 * tSec);
+    double freqMul  = 1.0 + 0.05 * pitchEnv;
+
+    double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+    double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+    double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+
+    phase0 += step0;
+    phase1 += step1;
+    phase2 += step2;
+
+    double s0 = sin(phase0);
+    double s1 = sin(phase1);
+    double s2 = sin(phase2);
+
+    // Fast body decay for tight, controlled sound.
+    double env0 = exp(-7.5  * tSec);
+    double env1 = exp(-12.0 * tSec);
+    double env2 = exp(-17.0 * tSec);
+
+    double tonal =
+        s0 * env0 * 0.85 +
+        s1 * env1 * 0.35 +
+        s2 * env2 * 0.15;
+
+    // Moderate attack boost.
+    double attackShape = 1.0 + 0.3 * exp(-50.0 * tSec);
+    tonal *= attackShape;
+
+    // Built-in gate: envelope goes to 0 after ~45% of buffer.
+    double gate = 1.0;
+    if (tNorm > 0.45) {
+      gate = exp(-12.0 * (tNorm - 0.45));
+    }
+
+    // Global fade.
+    double g = exp(-4.5 * tNorm);
+
+    double mixed = (tonal + beater + room) * g * gate;
+    // Minimal saturation — clean, natural.
+    float y = softsat((float)mixed * 0.45f) * 1.1f;
+    if (y > 1.0f) y = 1.0f;
+    if (y < -1.0f) y = -1.0f;
+    out[i] = y;
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+EXPORT void render_shaker(float *out, int sampleRate, int samples) {
+  // Shaker: noise-based with grain-like micro-bursts for rhythmic texture.
+  ma_noise_config nc = ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise; if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+
+  // Per-hit timing variation seed.
+  float seed;
+  ma_noise_read_pcm_frames(&noise, &seed, 1, NULL);
+  double timeVar = 0.001 * (double)seed; // ±1ms variation
+
+  // Staggered burst offsets (seconds).
+  double burstOff[4] = { 0.000, 0.004, 0.009, 0.015 };
+  const double burstAmp[4] = { 1.0, 0.85, 0.7, 0.5 };
+  for (int k = 0; k < 4; ++k) {
+    burstOff[k] += timeVar;
+  }
+
+  // Bandpass biquad at 8000 Hz, Q=0.7 for shimmer emphasis.
+  double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
+  {
+    double fc = 8000.0; double Q = 0.7;
+    double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+    double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+    double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+    double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+    b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
+  }
+  double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+
+  // One-pole HP state for brightness (~5 kHz).
+  double hpState = 0.0;
+  double hpAlpha = 0.85;
+
+  for (int i = 0; i < samples; ++i) {
+    double sec = (double)i / (double)sampleRate;
+
+    float n;
+    ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
+    double x = (double)n;
+
+    // High-pass the noise for crispness.
+    hpState = hpState * hpAlpha + x * (1.0 - hpAlpha);
+    double hp = x - hpState;
+
+    // Bandpass for shimmer.
+    double ybp = b0_bp*x + b1_bp*x1 + b2_bp*x2 - a1_bp*y1 - a2_bp*y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = ybp;
+
+    // Sum micro-burst envelopes.
+    double burst = 0.0;
+    for (int k = 0; k < 4; ++k) {
+      burst += burstAmp[k] * exp(-200.0 * fabs(sec - burstOff[k]));
+    }
+
+    double overall = exp(-25.0 * sec);
+    double mixed = (hp * 0.6 + ybp * 0.5) * burst * overall;
+
+    out[i] = 0.95f * softsat((float)mixed);
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+#define RIDE_PARTIALS 10
+
+EXPORT void render_ride(float *out, int sampleRate, int samples) {
+  // Ride cymbal: bright metallic ring with bell-like tone.
+  ma_noise_config nc = ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise; if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+
+  static const double baseFreq[RIDE_PARTIALS] = {
+    3100.0, 3800.0, 4700.0, 5900.0, 7100.0,
+    8400.0, 9800.0, 11500.0, 13200.0, 15000.0
+  };
+  static const double baseGain[RIDE_PARTIALS] = {
+    1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.35
+  };
+
+  double phase[RIDE_PARTIALS];
+  double freq[RIDE_PARTIALS];
+  double gain[RIDE_PARTIALS];
+
+  for (int k = 0; k < RIDE_PARTIALS; ++k) {
+    float s;
+    ma_noise_read_pcm_frames(&noise, &s, 1, NULL);
+    double det = 1.0 + 0.015 * (double)s;
+    freq[k] = baseFreq[k] * det;
+    phase[k] = 2.0 * M_PI * (double)s;
+    gain[k] = baseGain[k] / (double)RIDE_PARTIALS;
+  }
+
+  // Bell component: extra sine at ~3000 Hz with slower decay.
+  double bellPhase = 0.0;
+  float bs;
+  ma_noise_read_pcm_frames(&noise, &bs, 1, NULL);
+  double bellFreq = 3000.0 * (1.0 + 0.01 * (double)bs);
+
+  // HP state for cluster.
+  double lpCluster = 0.0;
+  double lpNoise = 0.0;
+
+  for (int i = 0; i < samples; ++i) {
+    double sec = (double)i / (double)sampleRate;
+    double tNorm = (double)i / (double)samples;
+
+    // Sine partial cluster (softer than hi-hat's squares).
+    double cluster = 0.0;
+    for (int k = 0; k < RIDE_PARTIALS; ++k) {
+      phase[k] += 2.0 * M_PI * freq[k] / (double)sampleRate;
+      cluster += sin(phase[k]) * gain[k];
+    }
+
+    // HP the cluster.
+    lpCluster = lpCluster * 0.92 + cluster * 0.08;
+    double hpCluster = cluster - lpCluster;
+
+    // Bell ping with slow decay.
+    bellPhase += 2.0 * M_PI * bellFreq / (double)sampleRate;
+    double bellEnv = exp(-6.0 * sec);
+    double bell = sin(bellPhase) * bellEnv * 0.15;
+
+    // Cluster envelope: fast initial + long tail.
+    double envFast = exp(-40.0 * sec);
+    double envTail = exp(-8.0 * sec);
+    double env = envFast * 0.5 + envTail * 0.8;
+
+    // HP white noise for wash.
+    float wn;
+    ma_noise_read_pcm_frames(&noise, &wn, 1, NULL);
+    double xNoise = (double)wn;
+    lpNoise = lpNoise * 0.92 + xNoise * 0.08;
+    double hpNoise = xNoise - lpNoise;
+    double noiseEnv = exp(-12.0 * sec);
+
+    // LFO for organic shimmer.
+    double lfo = 1.0 + 0.06 * sin(2.0 * M_PI * 7.0 * sec);
+
+    double y = (hpCluster * env + bell) * lfo + hpNoise * noiseEnv * 0.3;
+    y *= exp(-2.0 * tNorm);
+
+    out[i] = 0.9f * softsat((float)y);
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
+#define CRASH_PARTIALS 8
+
+EXPORT void render_crash(float *out, int sampleRate, int samples) {
+  // Crash cymbal: darker, washy cousin of the ride. Tonal bell anchor with
+  // tapered partials and restrained noise wash for a musical, non-harsh sound.
+  ma_noise_config nc = ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
+  ma_noise noise; if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) { return; }
+
+  // Darker frequencies than ride (ride starts at 3100).
+  static const double baseFreq[CRASH_PARTIALS] = {
+    2000.0, 2800.0, 3700.0, 4800.0, 6200.0, 7800.0, 9500.0, 11500.0
+  };
+  // Tapered gain: emphasize mid partials (3-6 kHz), reduce lowest and highest.
+  static const double baseGain[CRASH_PARTIALS] = {
+    0.6, 0.9, 1.0, 1.0, 0.85, 0.65, 0.45, 0.3
+  };
+
+  double phase[CRASH_PARTIALS];
+  double freq[CRASH_PARTIALS];
+  double gain[CRASH_PARTIALS];
+
+  for (int k = 0; k < CRASH_PARTIALS; ++k) {
+    float s;
+    ma_noise_read_pcm_frames(&noise, &s, 1, NULL);
+    double det = 1.0 + 0.02 * (double)s;
+    freq[k] = baseFreq[k] * det;
+    phase[k] = 2.0 * M_PI * (double)s;
+    gain[k] = baseGain[k] / (double)CRASH_PARTIALS;
+  }
+
+  // Bell component at ~2500 Hz (darker than ride's 3000 Hz bell).
+  double bellPhase = 0.0;
+  float bs;
+  ma_noise_read_pcm_frames(&noise, &bs, 1, NULL);
+  double bellFreq = 2500.0 * (1.0 + 0.01 * (double)bs);
+
+  double lpCluster = 0.0;
+  double lpNoise = 0.0;
+
+  for (int i = 0; i < samples; ++i) {
+    double sec = (double)i / (double)sampleRate;
+    double tNorm = (double)i / (double)samples;
+
+    // Sine partial cluster.
+    double cluster = 0.0;
+    for (int k = 0; k < CRASH_PARTIALS; ++k) {
+      phase[k] += 2.0 * M_PI * freq[k] / (double)sampleRate;
+      cluster += sin(phase[k]) * gain[k];
+    }
+
+    // HP the cluster.
+    lpCluster = lpCluster * 0.93 + cluster * 0.07;
+    double hpCluster = cluster - lpCluster;
+
+    // Bell ping with moderate decay (slower than ride for longer ring).
+    bellPhase += 2.0 * M_PI * bellFreq / (double)sampleRate;
+    double bellEnv = exp(-4.0 * sec);
+    double bell = sin(bellPhase) * bellEnv * 0.18;
+
+    // Long cluster decay: crash rings longer than ride.
+    double envFast = exp(-10.0 * sec);
+    double envTail = exp(-3.0 * sec);
+    double env = envFast * 0.5 + envTail * 0.9;
+
+    // HP white noise for wash — restrained, not dominant.
+    float wn;
+    ma_noise_read_pcm_frames(&noise, &wn, 1, NULL);
+    double xNoise = (double)wn;
+    lpNoise = lpNoise * 0.93 + xNoise * 0.07;
+    double hpNoise = xNoise - lpNoise;
+    double noiseEnv = exp(-8.0 * sec);
+
+    // LFO for organic shimmer.
+    double lfo = 1.0 + 0.06 * sin(2.0 * M_PI * 5.0 * sec);
+
+    double y = (hpCluster * env + bell) * lfo + hpNoise * noiseEnv * 0.35;
+    y *= exp(-1.5 * tNorm);
+
+    out[i] = 0.9f * softsat((float)y);
+  }
+  ma_noise_uninit(&noise, NULL);
+}
+
 // Decode an audio file (WAV/MP3/FLAC/OGG where enabled) into mono f32 at the
 // engine sample rate. Returns frame count or a negative ma_result code.
-EXPORT int load_audio(const char *path, float **buffer, int *sampleRate) {
-  const ma_uint32 targetRate = 44100;
+EXPORT int load_audio(const char *path, int targetSampleRate, float **buffer, int *sampleRate) {
+  const ma_uint32 targetRate = (ma_uint32)targetSampleRate;
   ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 1, targetRate);
   ma_decoder dec;
   ma_result res = ma_decoder_init_file(path, &cfg, &dec);
@@ -764,8 +1464,8 @@ EXPORT int load_audio(const char *path, float **buffer, int *sampleRate) {
 }
 
 // Backward-compat shim retained for existing exports.
-EXPORT int load_wav(const char *path, float **buffer, int *sampleRate) {
-  return load_audio(path, buffer, sampleRate);
+EXPORT int load_wav(const char *path, int targetSampleRate, float **buffer, int *sampleRate) {
+  return load_audio(path, targetSampleRate, buffer, sampleRate);
 }
 
 // Bass Guitar: Karplus-Strong plucked string synthesis with finger pluck transient.
@@ -777,9 +1477,11 @@ EXPORT void render_bass_guitar(float *out, int sampleRate, int samples) {
   if (delayLen < 2) delayLen = 2;
   if (delayLen > 4096) delayLen = 4096;
 
-  // Static delay buffer (sufficient for single-voice synth).
-  static float delayBuf[4096];
-  for (int i = 0; i < delayLen; i++) delayBuf[i] = 0.0f;
+  // Use local buffer to prevent cross-call contamination that causes echo.
+  // Previously a static buffer only cleared delayLen elements, leaving stale
+  // data that caused reverb/echo artifacts.
+  float delayBuf[4096];
+  for (int i = 0; i < 4096; i++) delayBuf[i] = 0.0f;
 
   // Initialize with noise generator for randomness.
   ma_noise_config nc = ma_noise_config_init(ma_format_f32, 1, ma_noise_type_white, 0, 1.0);
@@ -915,6 +1617,261 @@ EXPORT void render_sub_bass(float *out, int sampleRate, int samples) {
     double sat = tanh(mixed * 1.2);
 
     out[i] = (float)sat * 0.95f;
+  }
+}
+
+/* ==== Parameterized render variants ====
+ * Each _p() function accepts an optional synth_params pointer.
+ * When params is NULL, behavior is identical to the original function.
+ * Params modify pitch, decay, tone, attack, drive, body, brightness. */
+
+EXPORT void render_snare_p(float *out, int sampleRate, int samples,
+                           const synth_params *params) {
+  /* Render default snare first. */
+  render_snare(out, sampleRate, samples);
+  if (!params) return;
+
+  /* Post-process: apply pitch shift as playback rate change (re-index). */
+  float pitchSt = sp_pitch(params);
+  if (pitchSt != 0.0f) {
+    double rate = pow(2.0, (double)pitchSt / 12.0);
+    /* Simple nearest-neighbor resample in-place via temp buffer. */
+    float *tmp = (float *)malloc((size_t)samples * sizeof(float));
+    if (tmp) {
+      for (int i = 0; i < samples; i++) tmp[i] = out[i];
+      for (int i = 0; i < samples; i++) {
+        double srcIdx = (double)i * rate;
+        int idx = (int)srcIdx;
+        if (idx >= samples) { out[i] = 0.0f; continue; }
+        int idx1 = idx + 1 < samples ? idx + 1 : idx;
+        double frac = srcIdx - (double)idx;
+        out[i] = (float)((1.0 - frac) * (double)tmp[idx] + frac * (double)tmp[idx1]);
+      }
+      free(tmp);
+    }
+  }
+
+  /* Apply decay: shorten or lengthen the envelope. */
+  float decayMul = sp_decay(params);
+  if (decayMul != 1.0f) {
+    for (int i = 0; i < samples; i++) {
+      double t = (double)i / (double)sampleRate;
+      double env = exp(-t * 8.0 * (1.0 / (double)decayMul - 1.0));
+      out[i] *= (float)env;
+    }
+  }
+
+  /* Apply drive (saturation). */
+  if (sp_drive(params) > 0.0f) {
+    for (int i = 0; i < samples; i++) {
+      out[i] = sp_saturate(out[i], params);
+    }
+  }
+
+  /* Apply tone (brightness): simple one-pole LP/HP based on sign. */
+  float tone = sp_tone(params);
+  if (tone != 0.0f) {
+    double cutoff = tone > 0 ? 8000.0 + tone * 8000.0 : 2000.0 + (1.0 + tone) * 6000.0;
+    double rc = 1.0 / (2.0 * M_PI * cutoff);
+    double dt = 1.0 / (double)sampleRate;
+    if (tone < 0) {
+      /* Low-pass for darker sound. */
+      double alpha = dt / (rc + dt);
+      double prev = 0;
+      for (int i = 0; i < samples; i++) {
+        prev += alpha * ((double)out[i] - prev);
+        out[i] = (float)prev;
+      }
+    }
+  }
+}
+
+EXPORT void render_kick_p(float *out, int sampleRate, int samples,
+                          const synth_params *params) {
+  render_kick(out, sampleRate, samples);
+  if (!params) return;
+
+  /* Pitch: re-index for pitch shift. */
+  float pitchSt = sp_pitch(params);
+  if (pitchSt != 0.0f) {
+    double rate = pow(2.0, (double)pitchSt / 12.0);
+    float *tmp = (float *)malloc((size_t)samples * sizeof(float));
+    if (tmp) {
+      for (int i = 0; i < samples; i++) tmp[i] = out[i];
+      for (int i = 0; i < samples; i++) {
+        double srcIdx = (double)i * rate;
+        int idx = (int)srcIdx;
+        if (idx >= samples) { out[i] = 0.0f; continue; }
+        int idx1 = idx + 1 < samples ? idx + 1 : idx;
+        double frac = srcIdx - (double)idx;
+        out[i] = (float)((1.0 - frac) * (double)tmp[idx] + frac * (double)tmp[idx1]);
+      }
+      free(tmp);
+    }
+  }
+
+  /* Decay. */
+  float decayMul = sp_decay(params);
+  if (decayMul != 1.0f) {
+    for (int i = 0; i < samples; i++) {
+      double t = (double)i / (double)sampleRate;
+      double env = exp(-t * 6.0 * (1.0 / (double)decayMul - 1.0));
+      out[i] *= (float)env;
+    }
+  }
+
+  /* Drive. */
+  if (sp_drive(params) > 0.0f) {
+    for (int i = 0; i < samples; i++) {
+      out[i] = sp_saturate(out[i], params);
+    }
+  }
+
+  /* Body: low-frequency resonance boost via one-pole LP mix. */
+  float body = sp_body(params);
+  if (body > 0.0f) {
+    double cutoff = 120.0;
+    double rc = 1.0 / (2.0 * M_PI * cutoff);
+    double dt = 1.0 / (double)sampleRate;
+    double alpha = dt / (rc + dt);
+    double prev = 0;
+    for (int i = 0; i < samples; i++) {
+      prev += alpha * ((double)out[i] - prev);
+      out[i] = out[i] * (1.0f - body * 0.5f) + (float)prev * body;
+    }
+  }
+}
+
+EXPORT void render_hihat_p(float *out, int sampleRate, int samples,
+                           const synth_params *params) {
+  render_hihat(out, sampleRate, samples);
+  if (!params) return;
+
+  /* Decay. */
+  float decayMul = sp_decay(params);
+  if (decayMul != 1.0f) {
+    for (int i = 0; i < samples; i++) {
+      double t = (double)i / (double)sampleRate;
+      double env = exp(-t * 20.0 * (1.0 / (double)decayMul - 1.0));
+      out[i] *= (float)env;
+    }
+  }
+
+  /* Brightness: HP filter to emphasize shimmer. */
+  float brightness = sp_brightness(params);
+  if (brightness > 0.0f) {
+    double cutoff = 4000.0 + brightness * 8000.0;
+    double rc = 1.0 / (2.0 * M_PI * cutoff);
+    double dt = 1.0 / (double)sampleRate;
+    double alpha = rc / (rc + dt);
+    double prevIn = 0, prevOut = 0;
+    for (int i = 0; i < samples; i++) {
+      double x = (double)out[i];
+      double y = alpha * (prevOut + x - prevIn);
+      prevIn = x; prevOut = y;
+      out[i] = (float)(out[i] * (1.0 - brightness * 0.5) + y * brightness * 0.5);
+    }
+  }
+
+  /* Drive. */
+  if (sp_drive(params) > 0.0f) {
+    for (int i = 0; i < samples; i++) {
+      out[i] = sp_saturate(out[i], params);
+    }
+  }
+}
+
+EXPORT void render_clap_p(float *out, int sampleRate, int samples,
+                          const synth_params *params) {
+  render_clap(out, sampleRate, samples);
+  if (!params) return;
+
+  float decayMul = sp_decay(params);
+  if (decayMul != 1.0f) {
+    for (int i = 0; i < samples; i++) {
+      double t = (double)i / (double)sampleRate;
+      double env = exp(-t * 10.0 * (1.0 / (double)decayMul - 1.0));
+      out[i] *= (float)env;
+    }
+  }
+
+  if (sp_drive(params) > 0.0f) {
+    for (int i = 0; i < samples; i++) {
+      out[i] = sp_saturate(out[i], params);
+    }
+  }
+}
+
+EXPORT void render_tom_p(float *out, int sampleRate, int samples,
+                         const synth_params *params) {
+  render_tom(out, sampleRate, samples);
+  if (!params) return;
+
+  /* Pitch shift. */
+  float pitchSt = sp_pitch(params);
+  if (pitchSt != 0.0f) {
+    double rate = pow(2.0, (double)pitchSt / 12.0);
+    float *tmp = (float *)malloc((size_t)samples * sizeof(float));
+    if (tmp) {
+      for (int i = 0; i < samples; i++) tmp[i] = out[i];
+      for (int i = 0; i < samples; i++) {
+        double srcIdx = (double)i * rate;
+        int idx = (int)srcIdx;
+        if (idx >= samples) { out[i] = 0.0f; continue; }
+        int idx1 = idx + 1 < samples ? idx + 1 : idx;
+        double frac = srcIdx - (double)idx;
+        out[i] = (float)((1.0 - frac) * (double)tmp[idx] + frac * (double)tmp[idx1]);
+      }
+      free(tmp);
+    }
+  }
+
+  float decayMul = sp_decay(params);
+  if (decayMul != 1.0f) {
+    for (int i = 0; i < samples; i++) {
+      double t = (double)i / (double)sampleRate;
+      double env = exp(-t * 8.0 * (1.0 / (double)decayMul - 1.0));
+      out[i] *= (float)env;
+    }
+  }
+
+  if (sp_drive(params) > 0.0f) {
+    for (int i = 0; i < samples; i++) {
+      out[i] = sp_saturate(out[i], params);
+    }
+  }
+}
+
+EXPORT void render_cowbell_p(float *out, int sampleRate, int samples,
+                             const synth_params *params) {
+  render_cowbell(out, sampleRate, samples);
+  if (!params) return;
+
+  float pitchSt = sp_pitch(params);
+  if (pitchSt != 0.0f) {
+    double rate = pow(2.0, (double)pitchSt / 12.0);
+    float *tmp = (float *)malloc((size_t)samples * sizeof(float));
+    if (tmp) {
+      for (int i = 0; i < samples; i++) tmp[i] = out[i];
+      for (int i = 0; i < samples; i++) {
+        double srcIdx = (double)i * rate;
+        int idx = (int)srcIdx;
+        if (idx >= samples) { out[i] = 0.0f; continue; }
+        int idx1 = idx + 1 < samples ? idx + 1 : idx;
+        double frac = srcIdx - (double)idx;
+        out[i] = (float)((1.0 - frac) * (double)tmp[idx] + frac * (double)tmp[idx1]);
+      }
+      free(tmp);
+    }
+  }
+
+  float decayMul = sp_decay(params);
+  if (decayMul != 1.0f) {
+    for (int i = 0; i < samples; i++) {
+      double t = (double)i / (double)sampleRate;
+      double env = exp(-t * 12.0 * (1.0 / (double)decayMul - 1.0));
+      out[i] *= (float)env;
+    }
   }
 }
 

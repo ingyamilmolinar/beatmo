@@ -147,6 +147,10 @@ func TestOverlayStack_CaptureMode(t *testing.T) {
 }
 
 func TestOverlayStack_ClickOutsideCloses(t *testing.T) {
+	prev := suppressClicksUntilRelease
+	suppressClicksUntilRelease = false
+	t.Cleanup(func() { suppressClicksUntilRelease = prev })
+
 	s := NewOverlayStack()
 
 	overlay := &mockOverlay{

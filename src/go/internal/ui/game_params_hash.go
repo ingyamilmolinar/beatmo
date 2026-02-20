@@ -3,7 +3,7 @@ package ui
 import (
 	"math"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // paramsHash computes a lightweight hash of node parameters to detect edits.

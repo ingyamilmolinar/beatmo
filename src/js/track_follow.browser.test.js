@@ -4,7 +4,7 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -12,14 +12,15 @@ const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
 // Build main WASM to exercise real Update/Draw loop with follow logic.
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
-const port = 8370 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
@@ -31,7 +32,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -96,5 +98,6 @@ async function verifyFollowDefault() {
 
 await verifyFollowDefault();
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "track_follow");
 await browser.close();
 server.close();

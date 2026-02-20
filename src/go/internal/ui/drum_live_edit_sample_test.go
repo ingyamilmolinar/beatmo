@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func TestDrumView_SampleHighTomReaddParity(t *testing.T) {
@@ -17,7 +17,7 @@ func TestDrumView_SampleHighTomReaddParity(t *testing.T) {
 	g.drum.SetFollow(false)
 	g.drum.SetLength(192)
 
-	// Use testdata file instead of external tunkul.json to avoid dependency on repo state
+	// Use testdata file instead of external beatmo.json to avoid dependency on repo state
 	jsonPath := filepath.Join("testdata", "future_cache_loop.json")
 	data, err := os.ReadFile(jsonPath)
 	if err != nil {

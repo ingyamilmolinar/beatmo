@@ -3,7 +3,7 @@ package beat
 import (
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // GraphInterface defines the methods of model.Graph that Scheduler uses.

@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 /* ─────────────────────── graph helpers ─────────────────────── */
@@ -135,6 +135,8 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		g.sel = n
 		n.Selected = true
 		g.computeSelNeighbors()
+		g.coordBadgeNode = n
+		g.coordBadgeFrame = g.frame
 	}
 	// Auto-stitch only during normal editing. When placing a node as part of
 	// origin selection, never alter other circuits.
@@ -165,7 +167,7 @@ func (g *Game) stitchEdgesAt(n *uiNode) {
 	for _, e := range g.edges {
 		a, b := e.A, e.B
 		// Only consider strictly orthogonal edges.
-		if a.I == b.I && a.I == n.I {
+		if a.I == b.I && a.I == n.I { //nolint:gocritic // badCond: intentional three-way equality check
 			// Vertical: check J strictly between endpoints.
 			minJ, maxJ := a.J, b.J
 			if minJ > maxJ {
@@ -174,7 +176,7 @@ func (g *Game) stitchEdgesAt(n *uiNode) {
 			if n.J > minJ && n.J < maxJ {
 				toSplit = append(toSplit, pair{a, b})
 			}
-		} else if a.J == b.J && a.J == n.J {
+		} else if a.J == b.J && a.J == n.J { //nolint:gocritic // badCond: intentional three-way equality check
 			// Horizontal: check I strictly between endpoints.
 			minI, maxI := a.I, b.I
 			if minI > maxI {
@@ -218,12 +220,6 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	// Capture predecessors and successors before removal for potential reconnection.
 	preds := []*uiNode{}
 	succs := []*uiNode{}
-	row := -1
-	if g.nodeRows != nil {
-		if r, ok := g.nodeRows[n.ID]; ok {
-			row = r
-		}
-	}
 	for e := range g.graph.Edges {
 		if e[1] == n.ID { // pred -> n
 			if p := g.nodesByID[e[0]]; p != nil {
@@ -258,13 +254,6 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	g.graph.RemoveNode(n.ID)
 	g.removeNodeCache(n.ID)
 	g.notifyPredictorNode(n.ID)
-	if row < 0 {
-		if g.nodeRows != nil {
-			if r, ok := g.nodeRows[n.ID]; ok {
-				row = r
-			}
-		}
-	}
 	delete(g.nodesByID, n.ID)
 	g.logger.Infof("[GAME] Node deleted id=%d grid=(%d,%d)", n.ID, n.I, n.J)
 
@@ -291,7 +280,7 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 			if p == nil || s == nil || p.ID == s.ID {
 				continue
 			}
-			if !(p.I == s.I || p.J == s.J) {
+			if p.I != s.I && p.J != s.J {
 				continue
 			} // only orthogonal
 			// Avoid duplicate edges
@@ -305,10 +294,101 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	if g.sel == n {
 		g.sel = nil
 	}
+	if g.coordBadgeNode == n {
+		g.coordBadgeNode = nil
+	}
 	if g.start == n {
 		g.start = nil
 	}
 	if updateBeatInfos {
 		g.updateBeatInfos()
 	}
+}
+
+// moveNodeEdgeLoss previews how many edges would be lost if the node moved
+// to (newI, newJ). An edge is kept only if it remains orthogonal (shares I or J)
+// with the other endpoint at the new position.
+func (g *Game) moveNodeEdgeLoss(n *uiNode, newI, newJ int) int {
+	loss := 0
+	for _, e := range g.edges {
+		if e.A.ID != n.ID && e.B.ID != n.ID {
+			continue
+		}
+		other := e.B
+		if e.B.ID == n.ID {
+			other = e.A
+		}
+		if other.I != newI && other.J != newJ {
+			loss++
+		}
+	}
+	return loss
+}
+
+// moveNode moves a node to a new grid position, preserving its NodeID.
+// Returns false if the destination is occupied.
+func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
+	// Check destination is empty
+	if existing := g.nodeAt(newI, newJ); existing != nil && existing.ID != n.ID {
+		return false
+	}
+
+	// Collect edges touching this node (preserve direction)
+	type edgeRef struct {
+		from, to *uiNode
+	}
+	var touching []edgeRef
+	for _, e := range g.edges {
+		if e.A.ID == n.ID {
+			touching = append(touching, edgeRef{e.A, e.B})
+		} else if e.B.ID == n.ID {
+			touching = append(touching, edgeRef{e.A, e.B})
+		}
+	}
+
+	// Remove all touching edges
+	for _, er := range touching {
+		g.deleteEdgeNoRefresh(er.from, er.to)
+	}
+
+	// Move the node in the graph model
+	g.graph.MoveNode(n.ID, newI, newJ)
+	g.cacheNode(n.ID)
+
+	// Update uiNode coordinates
+	n.I = newI
+	n.J = newJ
+	unit := g.grid.Unit()
+	n.X = float64(newI) * unit
+	n.Y = float64(newJ) * unit
+
+	// Re-add edges that remain orthogonal at the new position
+	for _, er := range touching {
+		from, to := er.from, er.to
+		if from.I == to.I || from.J == to.J {
+			g.addEdgeNoRefresh(from, to)
+		}
+	}
+
+	g.notifyPredictorNode(n.ID)
+	g.edgesDirty = true
+	g.updateBeatInfos()
+	g.computeSelNeighbors()
+
+	// Set coordinate badge for the moved node
+	g.coordBadgeNode = n
+	g.coordBadgeFrame = g.frame
+
+	return true
+}
+
+// cancelMoveMode clears all move mode state.
+func (g *Game) cancelMoveMode() {
+	g.moveMode = false
+	g.movingNode = nil
+	g.moveConfirm = false
+	g.moveConfirmI = 0
+	g.moveConfirmJ = 0
+	g.moveEdgeLoss = 0
+	g.moveSkipRelease = false
 }

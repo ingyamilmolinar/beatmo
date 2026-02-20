@@ -48,10 +48,7 @@ func (dv *DrumView) computeInstLabel(id string) string {
 	if dv.instMeta != nil {
 		if meta, ok := dv.instMeta[id]; ok {
 			if meta.Name != "" {
-				if strings.EqualFold(meta.Name, id) {
-					return meta.Name
-				}
-				return fmt.Sprintf("%s (%s)", meta.Name, id)
+				return meta.Name
 			}
 			if meta.RelPath != "" {
 				base := path.Base(meta.RelPath)
@@ -155,6 +152,9 @@ func (dv *DrumView) buildInstMenu() {
 		dv.instSearchBox = NewTextInput(image.Rect(0, 0, 0, 0), BPMBoxStyle)
 		dv.instSearchBox.MaxLen = 40
 		dv.instSearchBox.SetText(dv.instSearch)
+		dv.instSearchBox.InputMode = "text"
+		dv.instSearchBox.OnFocusGained = func() { softKeyboardShow("text") }
+		dv.instSearchBox.OnFocusLost = func() { softKeyboardHide() }
 	}
 	showBack := dv.instMenuMode == instMenuModeInstruments && len(dv.instCategories) > 0
 	startY := 0
@@ -286,7 +286,7 @@ func (dv *DrumView) buildInstMenu() {
 	}
 	// Bias viewport to show the most recently added instrument when present, unless the user already scrolled.
 	if !dv.instMenuUserScrolled && dv.instMenuMode == instMenuModeInstruments && dv.instMenuLastAdded != "" {
-		if debugInst := os.Getenv("TUNKUL_DEBUG_INST") == "1"; debugInst {
+		if debugInst := os.Getenv("BEATMO_DEBUG_INST") == "1"; debugInst {
 			fmt.Printf("[instMenu/bias] lastAdded=%s idx=%d in=%v\n", dv.instMenuLastAdded, slices.Index(filtered, dv.instMenuLastAdded), slices.Contains(filtered, dv.instMenuLastAdded))
 		}
 		if idx := slices.Index(filtered, dv.instMenuLastAdded); idx >= 0 {
@@ -303,7 +303,7 @@ func (dv *DrumView) buildInstMenu() {
 		if dv.instMenuActiveCat != fallbackInstCategory {
 			idx = slices.Index(dv.instCategories, dv.instMenuActiveCat)
 		}
-		if os.Getenv("TUNKUL_DEBUG_INST") == "1" {
+		if os.Getenv("BEATMO_DEBUG_INST") == "1" {
 			fmt.Printf("[instMenu/cat-bias] active=%q idx=%d vis=%d\n", dv.instMenuActiveCat, idx, vis)
 		}
 		if idx >= 0 {
@@ -340,7 +340,7 @@ func (dv *DrumView) buildInstMenu() {
 	dv.instCategoryBtns = dv.instCategoryBtns[:0]
 	dv.instMenuBtns = dv.instMenuBtns[:0]
 	if dv.instMenuMode == instMenuModeCategories {
-		if os.Getenv("TUNKUL_DEBUG_INST") == "1" {
+		if os.Getenv("BEATMO_DEBUG_INST") == "1" {
 			fmt.Printf("[instMenu/cats] first=%d vis=%d total=%d active=%q scrolled=%v cats=%v\n", dv.instMenuScroll.First, vis, dv.instMenuScroll.Total, dv.instMenuActiveCat, dv.instMenuUserScrolled, dv.instCategories)
 		}
 		start := dv.instMenuScroll.First
@@ -401,28 +401,19 @@ func (dv *DrumView) buildInstMenu() {
 				}
 			})
 			btn.SetRect(insetRect(r, buttonPad))
-			if os.Getenv("TUNKUL_DEBUG_INST") == "1" {
+			if os.Getenv("BEATMO_DEBUG_INST") == "1" {
 				fmt.Printf("[instMenu/btn] %s rect=%v\n", label, btn.Rect())
 			}
 			dv.instMenuBtns = append(dv.instMenuBtns, btn)
 		}
 	}
-	if os.Getenv("TUNKUL_DEBUG_INST") == "1" && dv.instMenuMode == instMenuModeInstruments {
+	if os.Getenv("BEATMO_DEBUG_INST") == "1" && dv.instMenuMode == instMenuModeInstruments {
 		var labels []string
 		for _, b := range dv.instMenuBtns {
 			labels = append(labels, b.Text)
 		}
 		fmt.Printf("[instMenu/build] first=%d vis=%d total=%d labels=%v\n", dv.instMenuScroll.First, dv.instMenuScroll.Visible, dv.instMenuScroll.Total, labels)
 	}
-}
-
-// syncInstMenuCompScroll syncs the component's scroll state from the legacy state.
-// This ensures the component's thumb position matches after legacy wheel handling.
-func (dv *DrumView) syncInstMenuCompScroll() {
-	if dv.instMenuComp == nil || !dv.instMenuComp.IsOpen() {
-		return
-	}
-	dv.instMenuComp.SetScrollFirst(dv.instMenuScroll.First)
 }
 
 // syncInstMenuBtnsFromComp syncs the legacy instMenuBtns from the component's buttons.
@@ -436,9 +427,7 @@ func (dv *DrumView) syncInstMenuBtnsFromComp() {
 	if backBtn := dv.instMenuComp.BackBtn(); backBtn != nil {
 		dv.instMenuBtns = append(dv.instMenuBtns, backBtn)
 	}
-	for _, btn := range dv.instMenuComp.InstBtns() {
-		dv.instMenuBtns = append(dv.instMenuBtns, btn)
-	}
+	dv.instMenuBtns = append(dv.instMenuBtns, dv.instMenuComp.InstBtns()...)
 	// Sync category buttons separately for tests that access them directly
 	dv.instCategoryBtns = dv.instCategoryBtns[:0]
 	for _, btn := range dv.instMenuComp.CategoryBtns() {
@@ -463,4 +452,109 @@ func (dv *DrumView) syncInstMenuBtnsFromComp() {
 	}
 	// Sync search box for legacy access
 	dv.instSearchBox = dv.instMenuComp.SearchBox()
+}
+
+// openInstMenuForRow opens the instrument selector menu for the given row.
+// This consolidates the opening logic so all callers (layout label click,
+// JS export, etc.) always go through the component path when available.
+func (dv *DrumView) openInstMenuForRow(rowIdx int) {
+	if rowIdx < 0 || rowIdx >= len(dv.Rows) {
+		return
+	}
+
+	dv.selRow = rowIdx
+	dv.instMenuCameFromCategories = false
+	dv.instMenuUserScrolled = false
+
+	// Prime category based on the row's current instrument.
+	if dv.instCatByID != nil {
+		if cat, ok := dv.instCatByID[dv.Rows[rowIdx].Instrument]; ok {
+			dv.instMenuActiveCat = cat
+			if dv.instMenuActiveByRow == nil {
+				dv.instMenuActiveByRow = map[int]string{}
+			}
+			dv.instMenuActiveByRow[rowIdx] = cat
+		}
+	}
+
+	// Toggle: close if already open for this row.
+	if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() && dv.instMenuRow == rowIdx {
+		dv.instMenuComp.Close()
+		dv.instMenuOpen = false
+		dv.instMenuScroll.EndDrag()
+		return
+	}
+
+	// Close all other overlays for mutual exclusivity.
+	dv.CloseAllPopups()
+
+	dv.instMenuRow = rowIdx
+
+	// Use InstrumentMenuComponent if available.
+	if dv.instMenuComp != nil {
+		var instOpts []InstrumentOption
+		for _, id := range dv.instOptions {
+			label := id
+			if dv.instLabelCache != nil {
+				if l, ok := dv.instLabelCache[id]; ok {
+					label = l
+				}
+			}
+			cat := ""
+			if dv.instCatByID != nil {
+				cat = dv.instCatByID[id]
+			}
+			instOpts = append(instOpts, InstrumentOption{
+				ID:       id,
+				Label:    label,
+				Category: cat,
+			})
+		}
+
+		vertBounds := dv.widgetRects[WidgetRack]
+		if isSmallScreen() {
+			vertBounds = dv.Bounds
+		}
+		anchorRect := image.Rectangle{}
+		if rowIdx < len(dv.rowLabels) {
+			anchorRect = dv.rowLabels[rowIdx].Rect()
+		}
+		dv.instMenuComp.SetProps(InstrumentMenuProps{
+			AnchorRect:        anchorRect,
+			VertBounds:        vertBounds,
+			RowIndex:          rowIdx,
+			CurrentInstrument: dv.Rows[rowIdx].Instrument,
+			Categories:        dv.instCategories,
+			Instruments:       instOpts,
+			RowHeight:         dv.rowHeight(),
+			LabelWidth:        dv.labelW,
+			ControlsWidth:     dv.controlsW,
+			ForceCategories:   dv.instMenuForceCategories,
+			OnSelect: func(instID string) {
+				dv.SetInstrument(instID)
+			},
+			OnClose: func() {
+				dv.instMenuOpen = false
+			},
+			OnRebuild: func() {
+				dv.syncInstMenuBtnsFromComp()
+			},
+		})
+		dv.instMenuDeferredTap.Cancel()
+		dv.instMenuComp.Open()
+		dv.syncInstMenuBtnsFromComp()
+		dv.instMenuOpen = true
+		SuppressClicksUntilMouseUp()
+	} else {
+		// Fallback to legacy menu when no component.
+		dv.instMenuScroll.First = 0
+		if dv.instMenuForceCategories && len(dv.instCategories) > 0 {
+			dv.instMenuMode = instMenuModeCategories
+		} else {
+			dv.instMenuMode = instMenuModeInstruments
+		}
+		dv.instMenuOpen = true
+		dv.buildInstMenu()
+		SuppressClicksUntilMouseUp()
+	}
 }

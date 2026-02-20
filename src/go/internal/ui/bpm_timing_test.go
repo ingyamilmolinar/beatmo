@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestBPMFunctional60 verifies that, for a 1-beat-per-edge loop, scheduled

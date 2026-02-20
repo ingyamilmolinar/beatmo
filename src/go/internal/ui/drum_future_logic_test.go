@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func advancePlaybackLogic(g *Game, dur time.Duration) {
@@ -52,7 +52,7 @@ func TestDrumView_FutureLogicChangeResetsLiveCounts(t *testing.T) {
 	g.refreshDrumRow()
 
 	dst := ebiten.NewImage(640, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 
 	// Simulate live playback conditions so refreshDrumRow uses buildPreviewFromLive.
 	g.SetPlaying(true)

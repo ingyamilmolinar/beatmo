@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 //go:embed testdata/future_cache_loop.json
@@ -27,7 +27,7 @@ func TestDrumView_FutureRemovalClearsFrozenHistory(t *testing.T) {
 	}
 
 	dst := ebiten.NewImage(640, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 
 	g.drum.SetBPM(120)
 	advancePlayback(g, 80*time.Millisecond)
@@ -119,7 +119,7 @@ func TestDrumView_FutureSameCycleReadd(t *testing.T) {
 		t.Fatalf("import minimal loop: %v", err)
 	}
 	dst := ebiten.NewImage(640, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	g.refreshDrumRow()
 
 	rowIdx := 0
@@ -244,7 +244,7 @@ func waitFutureState(g *Game, dst *ebiten.Image, rowIdx int, targetAbs int, want
 	}
 	for i := 0; i < maxIters; i++ {
 		g.refreshDrumRow()
-		g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+		g.drum.Draw(dst, nil, 0, nil, 0)
 		rel := targetAbs - g.drum.Offset
 		if rel >= 0 && rel < len(g.drum.Rows[rowIdx].Steps) {
 			if g.drum.Rows[rowIdx].Steps[rel] == want {

@@ -5,7 +5,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // TestBPMSpamCoalesces verifies that rapid BPM changes while the audio layer

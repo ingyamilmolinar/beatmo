@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // After registering a WAV matching a missing instrument ID, the row label

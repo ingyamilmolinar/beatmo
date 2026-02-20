@@ -9,25 +9,25 @@ import (
 
 // RowControlsProps contains the external state passed to a row controls component.
 type RowControlsProps struct {
-	RowIndex   int
-	Name       string
-	Instrument string
-	Color      color.Color
-	Volume     float64
-	Muted      bool
-	Solo       bool
+	RowIndex    int
+	Name        string
+	Instrument  string
+	Color       color.Color
+	Volume      float64
+	Muted       bool
+	Solo        bool
 	IsAvailable bool // Whether the instrument is available
 
 	// Callbacks
-	OnLabelClick      func(row int)
-	OnEditClick       func(row int)
-	OnSaveClick       func(row int)
-	OnColorClick      func(row int)
-	OnVolumeChange    func(row int, vol float64)
-	OnMuteToggle      func(row int)
-	OnSoloToggle      func(row int)
-	OnOriginClick     func(row int)
-	OnDeleteClick     func(row int)
+	OnLabelClick   func(row int)
+	OnEditClick    func(row int)
+	OnSaveClick    func(row int)
+	OnColorClick   func(row int)
+	OnVolumeChange func(row int, vol float64)
+	OnMuteToggle   func(row int)
+	OnSoloToggle   func(row int)
+	OnOriginClick  func(row int)
+	OnDeleteClick  func(row int)
 
 	// Whether delete is enabled (disabled when only one row exists)
 	DeleteEnabled bool

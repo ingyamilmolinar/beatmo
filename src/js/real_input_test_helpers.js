@@ -7,6 +7,24 @@
  *
  * Uses Playwright's native mouse methods which properly integrate with the browser's
  * event system and Ebiten's input handling.
+ *
+ * Browser E2E Gotchas:
+ *   - JS export names matter: startPlay()/stopPlay() — NOT start()/stop().
+ *     Optional chaining (?.) silently returns undefined for missing functions,
+ *     so typos fail silently.
+ *   - After importJSON(), UI needs settling: call forceDraw() +
+ *     page.waitForTimeout(300-500) before interacting. Button rects may not
+ *     be valid until layout recalculates.
+ *   - Use API calls (startPlay/stopPlay) when testing non-input features.
+ *     Real mouse clicks are fragile after mid-test imports.
+ *   - Canvas pixel reading: use canvasPixelAt() from real_input_actions.js
+ *     (screenshot → PNG → offscreen canvas decode, bypasses WebGL buffer swap).
+ *   - Cross-scenario state leaks: always stop playback before starting next
+ *     scenario. A silent no-op (calling stop() instead of stopPlay()) means
+ *     the next startPlay() toggles playback OFF.
+ *   - Mobile audio unlock: audio.js registers listeners on touchstart,
+ *     touchend, pointerdown, mousedown, keydown. For mobile emulation tests,
+ *     use CDP trusted touch events via cdpTap() from touch_cdp_helpers.js.
  */
 
 import { chromium } from "playwright";
@@ -15,7 +33,8 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { resolveGoBinary } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -44,8 +63,92 @@ export async function clickAt(page, x, y) {
 export async function clickAndHold(page, x, y, holdMs = 100) {
   await page.mouse.move(x, y);
   await page.mouse.down();
+  // Hold long enough for at least one rAF tick so the WASM game loop sees
+  // pressed=true.  Under CPU contention (parallel tests), rAF can be delayed,
+  // so callers should use generous hold times (≥200ms) and poll for the
+  // expected state change rather than relying on fixed waits.
   await page.waitForTimeout(holdMs);
   await page.mouse.up();
+}
+
+/**
+ * Wait for the game loop to process a mouse-up so that internal input flags
+ * (suppressClicksUntilRelease, held counters, etc.) are fully cleared.
+ *
+ * Polls `debugGridInputState()` — an existing JS export that exposes the
+ * game's internal input state — until it reports a clean release.  Falls back
+ * to a fixed wait when the export is unavailable (e.g. older WASM builds).
+ *
+ * @param {Page}   page       - Playwright page object
+ * @param {number} [timeout=5000] - Max ms to wait for clean state
+ */
+export async function waitForGameLoopRelease(page, timeout = 5000) {
+  // Ensure mouse is up before polling.
+  await page.mouse.up();
+
+  const hasExport = await page.evaluate(() => typeof debugGridInputState === "function");
+  if (!hasExport) {
+    await page.waitForTimeout(500);
+    return;
+  }
+
+  await page.waitForFunction(() => {
+    const s = debugGridInputState();
+    return (
+      s.suppressClicks === false &&
+      s.drumMouseDownInBounds === false &&
+      s.drumAnyDragActive === false &&
+      s.drumAnyDropdownOpen === false
+    );
+  }, { timeout });
+}
+
+/**
+ * Hold mouse down at (x, y) and poll until evalExpr returns a value different
+ * from prevState.  Adapts to any rAF rate — under heavy CPU contention the
+ * poll simply keeps waiting while the button is held.  Retries with a fresh
+ * press cycle if the hold times out (clears suppressClicksUntilRelease).
+ *
+ * @param {Page}     page       - Playwright page object
+ * @param {number}   x          - X coordinate
+ * @param {number}   y          - Y coordinate
+ * @param {Function} evalExpr   - Function evaluated in page context; should return the state to watch
+ * @param {*}        prevState  - The "before" value; we wait until evalExpr !== prevState
+ * @param {Object}   [options]
+ * @param {number}   [options.maxAttempts=5]  - Press-release retry cycles
+ * @param {number}   [options.holdTimeout=3000] - Max ms to keep the button held per attempt
+ * @param {number}   [options.pollMs=100]     - Polling interval inside the hold
+ * @returns {Promise<*>} The new state value (first value !== prevState)
+ */
+export async function clickUntilStateChanges(page, x, y, evalExpr, prevState, options = {}) {
+  const { maxAttempts = 5, holdTimeout = 3000, pollMs = 100 } = options;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    const deadline = Date.now() + holdTimeout;
+    while (Date.now() < deadline) {
+      await page.waitForTimeout(pollMs);
+      const current = await page.evaluate(evalExpr);
+      if (current !== prevState) {
+        await page.mouse.up();
+        return current;
+      }
+    }
+    // Release and wait for the game loop to fully process the mouse-up
+    // so that held counters and suppressClicksUntilRelease are cleared.
+    await waitForGameLoopRelease(page, 5000);
+  }
+  // Gather diagnostics before throwing
+  let diag = "";
+  try {
+    const state = await page.evaluate(() =>
+      typeof debugGridInputState === "function" ? JSON.stringify(debugGridInputState()) : "unavailable"
+    );
+    diag = ` | inputState: ${state}`;
+  } catch (_) {}
+  throw new Error(
+    `clickUntilStateChanges: state did not change after ${maxAttempts} attempts at (${x}, ${y})${diag}`
+  );
 }
 
 /**
@@ -97,6 +200,10 @@ export async function wheelAt(page, x, y, deltaY) {
  * @returns {boolean} - true if build succeeded
  */
 export function buildMainWasm(options = {}) {
+  if (shouldSkipWasmBuild("main.wasm")) {
+    return true;
+  }
+
   const logLevel = options.logLevel ?? "INFO";
   const GO = resolveGoBinary();
 
@@ -122,11 +229,11 @@ export function buildMainWasm(options = {}) {
 
 /**
  * Create an HTTP server that serves the WASM files with correct MIME types.
+ * Uses OS-assigned port (port 0) to avoid EADDRINUSE collisions.
  *
- * @param {number} port - Port to listen on
- * @returns {Promise<http.Server>} - HTTP server instance
+ * @returns {Promise<http.Server>} - HTTP server instance (call server.address().port for assigned port)
  */
-export function createServer(port) {
+export function createServer() {
   const server = http.createServer((req, res) => {
     const file = req.url === "/" ? "/index.html" : req.url;
     const filePath = path.join(jsDir, file.replace(/^\//, ""));
@@ -149,31 +256,36 @@ export function createServer(port) {
   });
 
   return new Promise((resolve) => {
-    server.listen(port, () => resolve(server));
+    server.listen(0, () => resolve(server));
   });
 }
 
 /**
  * Set up a full WASM test environment.
  *
+ * When LLM_RECORD=1 is set, automatically wraps the page with a recorder
+ * that captures events + periodic screenshots. On cleanup, the recording is
+ * saved to src/js/recordings/<name>/. Set LLM_RECORD_NAME to control the
+ * session name (defaults to the test filename or a timestamp).
+ *
  * @param {Object} options - Setup options
- * @param {number} options.port - Port to use (default: random 8500-9500)
  * @param {string} options.logLevel - Log level (default: INFO)
  * @param {boolean} options.headless - Run headless (default: true)
- * @returns {Promise<{page: Page, browser: Browser, server: http.Server, cleanup: Function}>}
+ * @returns {Promise<{page: Page, browser: Browser, server: http.Server, cleanup: Function, recorder?: Object}>}
  */
 export async function setupFullWasm(options = {}) {
-  const port = options.port ?? 8500 + Math.floor(Math.random() * 1000);
   const logLevel = options.logLevel ?? "INFO";
-  const headless = options.headless ?? true;
+  const shouldRecord = process.env.LLM_RECORD === "1";
+  const headless = shouldRecord ? false : (options.headless ?? true);
 
   // Build main.wasm
   if (!buildMainWasm({ logLevel })) {
     throw new Error("go build main.wasm failed");
   }
 
-  // Start server
-  const server = await createServer(port);
+  // Start server on OS-assigned port
+  const server = await createServer();
+  const port = server.address().port;
 
   // Launch browser
   const browser = await chromium.launch({
@@ -197,7 +309,66 @@ export async function setupFullWasm(options = {}) {
   // Wait for initial layout and first draw
   await page.waitForTimeout(200);
 
+  // --- LLM_RECORD integration ---
+  if (shouldRecord) {
+    const { createRecorder } = await import("./llm_test/recorder.js");
+
+    const name =
+      process.env.LLM_RECORD_NAME ??
+      `session_${Date.now()}`;
+    const frameIntervalMs = parseInt(process.env.LLM_RECORD_INTERVAL ?? "500", 10);
+    const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+    const recordingsDir = path.resolve(jsDir, "recordings");
+    const savePath = path.join(recordingsDir, name);
+
+    const recorder = createRecorder(page, {
+      mode: "test",
+      frameIntervalMs,
+      viewport,
+    });
+
+    await recorder.start();
+    const wrappedPage = recorder.getWrappedPage();
+
+    const cleanup = async () => {
+      try {
+        if (isCoverageEnabled()) {
+          const testName = path.basename(process.argv[1], ".js");
+          const covDir = path.resolve(jsDir, "..", "..", "coverage", "browser-raw");
+          await flushCoverage(wrappedPage, covDir, testName);
+        }
+      } catch (e) {
+        console.warn(`[coverage] flush error: ${e.message}`);
+      }
+      try {
+        if (recorder.isRecording()) {
+          await recorder.stop();
+          const recording = await recorder.save(savePath);
+          console.log(
+            `[llm_record] Recording saved to ${savePath}/ ` +
+            `(${recording.events.length} events, ${recording.frames.length} frames)`
+          );
+        }
+      } catch (e) {
+        console.warn(`[llm_record] Failed to save recording: ${e.message}`);
+      }
+      await browser.close();
+      server.close();
+    };
+
+    return { page: wrappedPage, browser, server, cleanup, port, recorder };
+  }
+
   const cleanup = async () => {
+    try {
+      if (isCoverageEnabled()) {
+        const testName = path.basename(process.argv[1], ".js");
+        const covDir = path.resolve(jsDir, "..", "..", "coverage", "browser-raw");
+        await flushCoverage(page, covDir, testName);
+      }
+    } catch (e) {
+      console.warn(`[coverage] flush error: ${e.message}`);
+    }
     await browser.close();
     server.close();
   };

@@ -30,6 +30,15 @@ func (g *GeoM) Scale(x, y float64) {
 
 func (g *GeoM) Rotate(theta float64) {}
 
+// Apply transforms a world coordinate (x, y) to screen space.
+func (g *GeoM) Apply(x, y float64) (float64, float64) {
+	sx, sy := g.scaleX, g.scaleY
+	if sx == 0 && sy == 0 {
+		sx, sy = 1, 1
+	}
+	return x*sx + g.translateX, y*sy + g.translateY
+}
+
 func (g *GeoM) Concat(o GeoM) {
 	if g.scaleX == 0 && g.scaleY == 0 {
 		g.scaleX, g.scaleY = 1, 1

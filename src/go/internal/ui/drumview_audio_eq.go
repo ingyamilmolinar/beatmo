@@ -3,7 +3,7 @@ package ui
 import (
 	"math"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // sliderToGainDB maps EQ slider value (0..1) to gain in dB.
@@ -42,17 +42,26 @@ func (dv *DrumView) analyzerSnapshot() audio.AnalyzerSnapshot {
 	return audio.ChannelAnalyzerSnapshot(dv.activeEQChannel())
 }
 
+func (dv *DrumView) preEQAnalyzerSnapshot() audio.AnalyzerSnapshot {
+	if dv.eqTestPreEQSnapshot != nil {
+		return *dv.eqTestPreEQSnapshot
+	}
+	return audio.PreEQAnalyzerSnapshot(dv.activeEQChannel())
+}
+
 // applyMasterEQ applies the master channel EQ from dv.eqBandGainsDB.
 func (dv *DrumView) applyMasterEQ() {
 	if len(dv.eqBandGainsDB) != len(eqBandDefs) {
 		return
 	}
-	bands := dv.buildEQBands(dv.eqBandGainsDB, dv.eqBandMuted)
+	bands := dv.buildFullEQBands(dv.eqBandGainsDB, dv.eqBandMuted, dv.hpfEnabled, dv.hpfCutoffHz, dv.lpfEnabled, dv.lpfCutoffHz)
 	// Persist for tests/exports and push to audio engine.
 	dv.eqApplied = bands
-	audio.SetChannelEQ("main", 48000, bands...)
-	// Ensure analyzer stays in the chain post-EQ so waveform/spectrum remain live.
+	audio.SetChannelEQ("main", audio.SampleRate(), bands...)
+	// Ensure analyzers stay in the chain so waveform/spectrum remain live.
 	_ = audio.EnableChannelAnalyzer("main", 512)
+	_ = audio.EnablePreEQAnalyzer("main", 512)
+	dv.eqCurveDirty = true
 }
 
 // applyRowEQ applies EQ for a specific instrument row.
@@ -64,17 +73,27 @@ func (dv *DrumView) applyRowEQ(row int) {
 	if len(r.EQGainsDB) != len(eqBandDefs) {
 		return
 	}
-	bands := dv.buildEQBands(r.EQGainsDB, r.EQBandMuted)
+	hpfHz := r.HPFCutoffHz
+	if hpfHz <= 0 {
+		hpfHz = 20
+	}
+	lpfHz := r.LPFCutoffHz
+	if lpfHz <= 0 {
+		lpfHz = 20000
+	}
+	bands := dv.buildFullEQBands(r.EQGainsDB, r.EQBandMuted, r.HPFEnabled, hpfHz, r.LPFEnabled, lpfHz)
 	channelID := r.Instrument
-	audio.SetChannelEQ(channelID, 48000, bands...)
+	audio.SetChannelEQ(channelID, audio.SampleRate(), bands...)
 	_ = audio.EnableChannelAnalyzer(channelID, 512)
+	_ = audio.EnablePreEQAnalyzer(channelID, 512)
+	dv.eqCurveDirty = true
 }
 
 // buildEQBands constructs audio.EQBand slice from gains and muted arrays.
+// Uses geometric mean for center frequency and constant Q=1.414 for 1-octave ISO bands.
 func (dv *DrumView) buildEQBands(gains []float64, muted []bool) []audio.EQBand {
 	bands := make([]audio.EQBand, 0, len(eqBandDefs))
 	for i, def := range eqBandDefs {
-		// Use peaking filters; treat extremes as shelves for smoother feel.
 		kind := audio.EQPeaking
 		if i == 0 {
 			kind = audio.EQLowShelf
@@ -82,21 +101,8 @@ func (dv *DrumView) buildEQBands(gains []float64, muted []bool) []audio.EQBand {
 		if i == len(eqBandDefs)-1 {
 			kind = audio.EQHighShelf
 		}
-		center := (def.loHz + def.hiHz) / 2
-		q := 1.0
-		if center > 0 {
-			// Approximate bandwidth to cover range edges.
-			bw := (def.hiHz - def.loHz) / center
-			if bw > 0 {
-				q = 1 / bw
-				if q < 0.3 {
-					q = 0.3
-				}
-				if q > 4 {
-					q = 4
-				}
-			}
-		}
+		center := math.Sqrt(def.loHz * def.hiHz) // geometric mean
+		q := 1.414                               // standard Q for 1-octave graphic EQ bands
 		gain := 0.0
 		if i < len(gains) {
 			gain = gains[i]
@@ -135,6 +141,12 @@ func (dv *DrumView) applyEQ() {
 // setEQActiveChannel switches the EQ view to the specified channel.
 // Pass "main" for master or an instrument ID for per-row EQ.
 func (dv *DrumView) setEQActiveChannel(id string) {
+	// Disable analyzers on the previous channel to save FFT CPU.
+	prev := dv.activeEQChannel()
+	if prev != id {
+		audio.SetAnalyzerEnabled(prev, false)
+	}
+
 	dv.eqActiveChannel = id
 	dv.eqChannelOpen = false
 
@@ -151,9 +163,12 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 					break
 				}
 			}
-			// Truncate if too long
-			if len(label) > 10 {
-				label = label[:10] + "…"
+			// Truncate to fit button width using pixel-based metrics
+			if dv.eqChannelBtn != nil && !dv.eqChannelBtn.Rect().Empty() {
+				maxW := dv.eqChannelBtn.Rect().Dx() - 8
+				if maxW > 0 {
+					label = clipTextToWidth(label, maxW)
+				}
 			}
 			dv.eqChannelBtn.Text = label
 		}
@@ -211,8 +226,15 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 		}
 	}
 
-	// Enable analyzer for the selected channel
-	_ = audio.EnableChannelAnalyzer(dv.activeEQChannel(), 512)
+	// Sync HPF/LPF button styles for the selected channel
+	dv.syncFilterButtonStyles()
+
+	// Enable analyzers for the selected channel.
+	active := dv.activeEQChannel()
+	_ = audio.EnableChannelAnalyzer(active, 512)
+	_ = audio.EnablePreEQAnalyzer(active, 512)
+	audio.SetAnalyzerEnabled(active, true)
+	dv.eqCurveDirty = true
 }
 
 // cycleEQChannel advances to the next EQ channel in sequence:
@@ -261,6 +283,148 @@ func (dv *DrumView) ensureRowEQMuted(row int) {
 	r := dv.Rows[row]
 	if len(r.EQBandMuted) != len(eqBandDefs) {
 		r.EQBandMuted = make([]bool, len(eqBandDefs))
+	}
+}
+
+// activeHPFEnabled returns whether HPF is enabled for the active channel.
+func (dv *DrumView) activeHPFEnabled() bool {
+	ch := dv.activeEQChannel()
+	if ch == "main" {
+		return dv.hpfEnabled
+	}
+	for _, r := range dv.Rows {
+		if r.Instrument == ch {
+			return r.HPFEnabled
+		}
+	}
+	return false
+}
+
+// activeHPFCutoffHz returns the HPF cutoff for the active channel.
+func (dv *DrumView) activeHPFCutoffHz() float64 {
+	ch := dv.activeEQChannel()
+	if ch == "main" {
+		return dv.hpfCutoffHz
+	}
+	for _, r := range dv.Rows {
+		if r.Instrument == ch {
+			if r.HPFCutoffHz <= 0 {
+				return 20
+			}
+			return r.HPFCutoffHz
+		}
+	}
+	return 20
+}
+
+// activeLPFEnabled returns whether LPF is enabled for the active channel.
+func (dv *DrumView) activeLPFEnabled() bool {
+	ch := dv.activeEQChannel()
+	if ch == "main" {
+		return dv.lpfEnabled
+	}
+	for _, r := range dv.Rows {
+		if r.Instrument == ch {
+			return r.LPFEnabled
+		}
+	}
+	return false
+}
+
+// activeLPFCutoffHz returns the LPF cutoff for the active channel.
+func (dv *DrumView) activeLPFCutoffHz() float64 {
+	ch := dv.activeEQChannel()
+	if ch == "main" {
+		return dv.lpfCutoffHz
+	}
+	for _, r := range dv.Rows {
+		if r.Instrument == ch {
+			if r.LPFCutoffHz <= 0 {
+				return 20000
+			}
+			return r.LPFCutoffHz
+		}
+	}
+	return 20000
+}
+
+// setActiveHPF sets the HPF state for the active channel.
+func (dv *DrumView) setActiveHPF(enabled bool, cutoffHz float64) {
+	ch := dv.activeEQChannel()
+	if ch == "main" {
+		dv.hpfEnabled = enabled
+		dv.hpfCutoffHz = cutoffHz
+	} else {
+		for _, r := range dv.Rows {
+			if r.Instrument == ch {
+				r.HPFEnabled = enabled
+				r.HPFCutoffHz = cutoffHz
+				break
+			}
+		}
+	}
+}
+
+// setActiveLPF sets the LPF state for the active channel.
+func (dv *DrumView) setActiveLPF(enabled bool, cutoffHz float64) {
+	ch := dv.activeEQChannel()
+	if ch == "main" {
+		dv.lpfEnabled = enabled
+		dv.lpfCutoffHz = cutoffHz
+	} else {
+		for _, r := range dv.Rows {
+			if r.Instrument == ch {
+				r.LPFEnabled = enabled
+				r.LPFCutoffHz = cutoffHz
+				break
+			}
+		}
+	}
+}
+
+// toggleHPF toggles the high-pass filter for the active channel.
+func (dv *DrumView) toggleHPF() {
+	enabled := !dv.activeHPFEnabled()
+	dv.setActiveHPF(enabled, dv.activeHPFCutoffHz())
+	dv.applyEQ()
+	dv.eqCurveDirty = true
+}
+
+// toggleLPF toggles the low-pass filter for the active channel.
+func (dv *DrumView) toggleLPF() {
+	enabled := !dv.activeLPFEnabled()
+	dv.setActiveLPF(enabled, dv.activeLPFCutoffHz())
+	dv.applyEQ()
+	dv.eqCurveDirty = true
+}
+
+// buildFullEQBands constructs the full EQ band chain including HPF and LPF filters.
+func (dv *DrumView) buildFullEQBands(gains []float64, muted []bool, hpfOn bool, hpfHz float64, lpfOn bool, lpfHz float64) []audio.EQBand {
+	bands := dv.buildEQBands(gains, muted)
+	if hpfOn && hpfHz > 20 {
+		bands = append([]audio.EQBand{{Kind: audio.EQHighpass, Freq: hpfHz, Q: 0.707}}, bands...)
+	}
+	if lpfOn && lpfHz < 20000 {
+		bands = append(bands, audio.EQBand{Kind: audio.EQLowpass, Freq: lpfHz, Q: 0.707})
+	}
+	return bands
+}
+
+// syncFilterButtonStyles updates the HPF/LPF button appearance for the active channel.
+func (dv *DrumView) syncFilterButtonStyles() {
+	if dv.hpfBtn != nil {
+		if dv.activeHPFEnabled() {
+			dv.hpfBtn.Style = EQFilterButtonActiveStyle
+		} else {
+			dv.hpfBtn.Style = InstButtonStyle
+		}
+	}
+	if dv.lpfBtn != nil {
+		if dv.activeLPFEnabled() {
+			dv.lpfBtn.Style = EQFilterButtonActiveStyle
+		} else {
+			dv.lpfBtn.Style = InstButtonStyle
+		}
 	}
 }
 

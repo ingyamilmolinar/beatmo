@@ -1,11 +1,12 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"image"
 	"image/color"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Ensure that editing a circuit during active playback does not change the
@@ -51,7 +52,7 @@ func TestNoJumpOnEditDuringPlayback(t *testing.T) {
 		}
 		orig(dst, r, c, filled)
 	}
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, elapsed)
+	g.drum.Draw(dst, nil, 0, nil, elapsed)
 	drawRect = orig
 	offBefore := g.drum.Offset
 
@@ -74,7 +75,7 @@ func TestNoJumpOnEditDuringPlayback(t *testing.T) {
 		}
 		orig(dst, r, c, filled)
 	}
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, elapsed)
+	g.drum.Draw(dst, nil, 0, nil, elapsed)
 	drawRect = orig
 
 	if curX1 != curX2 {

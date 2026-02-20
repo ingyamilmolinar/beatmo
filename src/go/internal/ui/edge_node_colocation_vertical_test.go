@@ -28,7 +28,7 @@ func TestEdgeNodeColocationVertical(t *testing.T) {
 		camScale := unitPx / g.grid.Unit()
 		proj := func(wx, wy float64) (sx, sy float64) {
 			sx = wx*camScale + offX
-			sy = wy*camScale + offY + float64(topOffset)
+			sy = wy*camScale + offY + float64(gridTopOffset())
 			return
 		}
 		// Centers from rects

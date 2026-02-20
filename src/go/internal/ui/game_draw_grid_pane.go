@@ -7,15 +7,26 @@ import (
 	"math"
 	"os"
 	"runtime"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+)
+
+// Cached environment variables read once at init to avoid per-frame syscalls.
+// Tests in the same package can override these directly.
+var (
+	envRenderSafe      = os.Getenv("RENDER_SAFE") == "1"
+	envScreenEdges     = os.Getenv("SCREEN_EDGES") == "1"
+	envNoGridDraw      = os.Getenv("NO_GRID_DRAW") == "1"
+	envNoGridTileCache = os.Getenv("NO_GRID_TILE_CACHE") == "1"
+	envNoPixelSnap     = os.Getenv("NO_PIXEL_SNAP") == "1"
+	envNoEdgeCache     = os.Getenv("NO_EDGE_CACHE") == "1"
+	envNoSpriteNodes   = os.Getenv("NO_SPRITE_NODES") == "1"
 )
 
 func (g *Game) drawGridPane(screen *ebiten.Image) {
-	top := screen.SubImage(image.Rect(0, 0, g.winW, g.split.Y)).(*ebiten.Image)
+	top := screen.SubImage(g.split.GridRect(g.winW, g.winH)).(*ebiten.Image)
 	top.Fill(colBGTop)
 	// Always draw top‑pane content into the same subimage to avoid any
 	// compositor/target disparities between cached and direct draws.
@@ -23,11 +34,11 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	// Expose tile/phase to the later [FRAME] log even if grid is disabled.
 	var phaseX, phaseY, tileW, tileH int
 	// Render mode flags
-	renderSafe := (os.Getenv("RENDER_SAFE") == "1")
-	screenEdges := renderSafe || screenEdgesDefault || (os.Getenv("SCREEN_EDGES") == "1") || g.simpleDraw
+	renderSafe := envRenderSafe
+	screenEdges := renderSafe || screenEdgesDefault || envScreenEdges || g.simpleDraw
 
 	// Optionally disable grid drawing entirely for geometry debugging.
-	if os.Getenv("NO_GRID_DRAW") == "1" {
+	if envNoGridDraw {
 		if g.logDrawNodes {
 			g.logger.Debugf("[DRAW-GRID] disabled via NO_GRID_DRAW")
 		}
@@ -35,7 +46,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		// Grid layer cache: build once per scale/subdiv, then blit with translation
 		// for small pans. This reduces per-frame tiling draw calls dramatically.
 		stepPx := g.grid.StepPixels(g.cam.Scale)
-		if os.Getenv("NO_GRID_TILE_CACHE") == "1" {
+		if envNoGridTileCache {
 			g.gridTile = nil
 		}
 		// Ensure the base tile exists for this scale/subdiv.
@@ -56,10 +67,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			// Start positions so that the grid's tile origin aligns with the
 			// camera’s world→screen origin within the cache (including pad).
 			phaseX = ((offXInt % tileW) + tileW) % tileW
-			phaseY = (((offYInt + topOffset) % tileH) + tileH) % tileH
+			phaseY = (((offYInt + gridTopOffset()) % tileH) + tileH) % tileH
 			// Try to reuse an existing grid cache by shifting within pad.
 			reuse := false
-			if g.gridCache != nil && g.gridCacheW == g.winW+2*g.gridCachePad && g.gridCacheH == g.split.Y+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
+			if g.gridCache != nil && g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad && g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
 				dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
 				dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
 				if abs(dx) <= g.gridCachePad && abs(dy) <= g.gridCachePad {
@@ -72,7 +83,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			}
 			if !reuse {
 				// WASM adaptive grid pad: if reuse failed due to pad, enlarge pad.
-				if runtime.GOARCH == "wasm" && g.gridCache != nil && g.gridCacheW == g.winW+2*g.gridCachePad && g.gridCacheH == g.split.Y+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
+				if runtime.GOARCH == "wasm" && g.gridCache != nil && g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad && g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
 					dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
 					dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
 					if abs(dx) > g.gridCachePad || abs(dy) > g.gridCachePad {
@@ -86,8 +97,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 					}
 				}
 				// Rebuild the full grid cache with an offscreen pad to sustain pans.
-				w := g.winW + 2*g.gridCachePad
-				h := g.split.Y + 2*g.gridCachePad
+				w := g.split.GridW(g.winW) + 2*g.gridCachePad
+				h := g.split.GridH(g.winH) + 2*g.gridCachePad
 				g.gridCache = ebiten.NewImage(w, h)
 				g.gridCacheW, g.gridCacheH = w, h
 				g.gridCacheScale = g.cam.Scale
@@ -96,8 +107,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				g.gridCacheStepPx = stepPx
 				g.gridCacheSubSig = g.grid.subSig
 				// Tile the step tile into the cache, aligning the phase plus pad.
-				startX := g.gridCachePad + phaseX - tileW
-				startY := g.gridCachePad + phaseY - tileH
+				// Use modulo so startX/Y ∈ [-tileW, -1], guaranteeing the first tile
+				// covers cache pixel (0,0) regardless of how small tileW is vs the pad.
+				startX := (g.gridCachePad+phaseX)%tileW - tileW
+				startY := (g.gridCachePad+phaseY)%tileH - tileH
 				var op ebiten.DrawImageOptions
 				for y := startY; y < h; y += tileH {
 					for x := startX; x < w; x += tileW {
@@ -118,7 +131,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	unitPx := g.grid.UnitPixels(g.cam.Scale)
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	if os.Getenv("NO_PIXEL_SNAP") == "1" {
+	if envNoPixelSnap {
 		offX = g.cam.OffsetX
 		offY = g.cam.OffsetY
 	}
@@ -134,14 +147,14 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		if screenEdges && !renderSafe {
 			mode += " SCREEN_EDGES"
 		}
-		if os.Getenv("NO_PIXEL_SNAP") == "1" {
+		if envNoPixelSnap {
 			mode += " NO_PIXEL_SNAP"
 		}
 		g.logger.Tracef("[FRAME/SCENE] f=%d nodes=%d edges=%d pulses=%d tile=(%d,%d) phase=(%d,%d) cam=(%.3f,%.0f,%.0f)%s", g.frame, len(g.nodes), len(g.edges), len(g.activePulses), tileW, tileH, phaseX, phaseY, g.cam.Scale, offX, offY, mode)
 	}
 	var cam ebiten.GeoM
 	cam.Scale(camScale, camScale)
-	cam.Translate(offX, offY+float64(topOffset))
+	cam.Translate(offX, offY+float64(gridTopOffset()))
 	// Snap world coordinates to the nearest screen pixel to keep nodes,
 	// edges, and pulses phase-aligned with the tiled grid. This avoids the
 	// half‑pixel drift that occurs when world→screen projects to fractional
@@ -164,7 +177,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	}
 
 	// Visible world rect for culling
-	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.winW, g.split.Y)
+	minX, maxX, minY, maxY := visibleWorldRect(g.cam, g.split.GridW(g.winW), g.split.GridH(g.winH))
 
 	// reset draw counters for this pass
 	g.lastDrawEdges, g.lastDrawNodes, g.lastDrawPulses = 0, 0, 0
@@ -189,11 +202,11 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		arrow = 0
 	}
 	// Render cached baseline edges unless disabled by env or in render-safe.
-	disableCache := (os.Getenv("NO_EDGE_CACHE") == "1") || (os.Getenv("RENDER_SAFE") == "1") || screenEdges
+	disableCache := envNoEdgeCache || envRenderSafe || screenEdges
 	reuseCache := false
 	dx, dy := 0, 0
 	if !disableCache {
-		if g.edgeCache != nil && g.edgeCacheW == g.winW+2*g.edgeCachePad && g.edgeCacheH == g.split.Y+2*g.edgeCachePad && g.edgeCacheScale == camScale && !g.edgesDirty {
+		if g.edgeCache != nil && g.edgeCacheW == g.split.GridW(g.winW)+2*g.edgeCachePad && g.edgeCacheH == g.split.GridH(g.winH)+2*g.edgeCachePad && g.edgeCacheScale == camScale && !g.edgesDirty {
 			dx = int(math.Round(offX - g.edgeCacheOffX))
 			dy = int(math.Round(offY - g.edgeCacheOffY))
 			if abs(dx) <= g.edgeCachePad && abs(dy) <= g.edgeCachePad {
@@ -207,7 +220,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		}
 		if !reuseCache {
 			// WASM adaptive edge pad: if reuse failed due to pad, enlarge pad.
-			if runtime.GOARCH == "wasm" && g.edgeCache != nil && g.edgeCacheW == g.winW+2*g.edgeCachePad && g.edgeCacheH == g.split.Y+2*g.edgeCachePad && g.edgeCacheScale == camScale && !g.edgesDirty {
+			if runtime.GOARCH == "wasm" && g.edgeCache != nil && g.edgeCacheW == g.split.GridW(g.winW)+2*g.edgeCachePad && g.edgeCacheH == g.split.GridH(g.winH)+2*g.edgeCachePad && g.edgeCacheScale == camScale && !g.edgesDirty {
 				dx2 := int(math.Round(offX - g.edgeCacheOffX))
 				dy2 := int(math.Round(offY - g.edgeCacheOffY))
 				if abs(dx2) > g.edgeCachePad || abs(dy2) > g.edgeCachePad {
@@ -220,14 +233,14 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				}
 			}
 			// Rebuild cache centered at current camera offset with pad margin.
-			w := g.winW + 2*g.edgeCachePad
-			h := g.split.Y + 2*g.edgeCachePad
+			w := g.split.GridW(g.winW) + 2*g.edgeCachePad
+			h := g.split.GridH(g.winH) + 2*g.edgeCachePad
 			g.edgeCache = ebiten.NewImage(w, h)
 			g.edgeCacheW, g.edgeCacheH = w, h
 			g.edgeCacheScale, g.edgeCacheOffX, g.edgeCacheOffY = camScale, offX, offY
 			g.edgeCacheColorSig = curColorSig
 			// Culling rect extended by world distance equivalent to pad.
-			minX2, maxX2, minY2, maxY2 := visibleWorldRect(g.cam, g.winW, g.split.Y)
+			minX2, maxX2, minY2, maxY2 := visibleWorldRect(g.cam, g.split.GridW(g.winW), g.split.GridH(g.winH))
 			worldPad := float64(g.edgeCachePad) / camScale
 			minX2 -= worldPad
 			maxX2 += worldPad
@@ -288,11 +301,11 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		}
 		// Optional debug path: draw edges in screen-space to bypass any
 		// backend transform ambiguity (SCREEN_EDGES=1).
-		if os.Getenv("SCREEN_EDGES") == "1" {
+		if envScreenEdges {
 			sx1 := e.A.X*camScale + offX
-			sy1 := e.A.Y*camScale + offY + float64(topOffset)
+			sy1 := e.A.Y*camScale + offY + float64(gridTopOffset())
 			sx2 := e.B.X*camScale + offX
-			sy2 := e.B.Y*camScale + offY + float64(topOffset)
+			sy2 := e.B.Y*camScale + offY + float64(gridTopOffset())
 			x0 := int(math.Round(sx1))
 			y0 := int(math.Round(sy1))
 			x1 := int(math.Round(sx2))
@@ -361,13 +374,11 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			bx, by := snapWorld(e.B.X), snapWorld(e.B.Y)
 			edgeStyle.Draw(dst, ax, ay, bx, by, &cam)
 			g.lastDrawEdges++
-		} else {
-			if e.t < 1 {
-				ax, ay := snapWorld(e.A.X), snapWorld(e.A.Y)
-				bx, by := snapWorld(e.B.X), snapWorld(e.B.Y)
-				edgeStyle.DrawProgress(dst, ax, ay, bx, by, &cam, e.t)
-				g.lastDrawEdges++
-			}
+		} else if e.t < 1 {
+			ax, ay := snapWorld(e.A.X), snapWorld(e.A.Y)
+			bx, by := snapWorld(e.B.X), snapWorld(e.B.Y)
+			edgeStyle.DrawProgress(dst, ax, ay, bx, by, &cam, e.t)
+			g.lastDrawEdges++
 		}
 		if g.logDrawNodes {
 			ax1, ay1, ax2, ay2 := g.nodeScreenRect(e.A)
@@ -375,9 +386,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
 			bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
 			ex0 := e.A.X*camScale + offX
-			ey0 := e.A.Y*camScale + offY + float64(topOffset)
+			ey0 := e.A.Y*camScale + offY + float64(gridTopOffset())
 			ex1 := e.B.X*camScale + offX
-			ey1 := e.B.Y*camScale + offY + float64(topOffset)
+			ey1 := e.B.Y*camScale + offY + float64(gridTopOffset())
 			// Rounded (pixel-snapped) centers used for sprites and edges
 			dcxA, dcyA := math.Round(acx), math.Round(acy)
 			dcxB, dcyB := math.Round(bcx), math.Round(bcy)
@@ -407,9 +418,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		e := &g.edges[0]
 		// Project world→screen endpoints (without cam) using the same math as logs
 		ex0 := e.A.X*camScale + offX
-		ey0 := e.A.Y*camScale + offY + float64(topOffset)
+		ey0 := e.A.Y*camScale + offY + float64(gridTopOffset())
 		ex1 := e.B.X*camScale + offX
-		ey1 := e.B.Y*camScale + offY + float64(topOffset)
+		ey1 := e.B.Y*camScale + offY + float64(gridTopOffset())
 		ax1, ay1, ax2, ay2 := g.nodeScreenRect(e.A)
 		acx, acy := (ax1+ax2)*0.5, (ay1+ay2)*0.5
 		bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
@@ -429,9 +440,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
 		bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
 		ex0 := e.A.X*camScale + offX
-		ey0 := e.A.Y*camScale + offY + float64(topOffset)
+		ey0 := e.A.Y*camScale + offY + float64(gridTopOffset())
 		ex1 := e.B.X*camScale + offX
-		ey1 := e.B.Y*camScale + offY + float64(topOffset)
+		ey1 := e.B.Y*camScale + offY + float64(gridTopOffset())
 		da := math.Hypot(acx-ex0, acy-ey0)
 		db := math.Hypot(bcx-ex1, bcy-ey1)
 		g.logger.Tracef("[DRAW/EDGE-CHECK] first edge A=%d@(%d,%d) B=%d@(%d,%d) nodeA=(%.0f,%.0f) edgeA=(%.0f,%.0f) dA=%.2f nodeB=(%.0f,%.0f) edgeB=(%.0f,%.0f) dB=%.2f cache=%t dx=%d dy=%d",
@@ -455,10 +466,20 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	}
 
 	// nodes
+	// Pre-compute all node radii for this frame (avoids O(n²) neighbor checks in draw loop)
+	if cap(g.nodeRadiiCache) < len(g.nodes) {
+		g.nodeRadiiCache = make([]float64, len(g.nodes))
+	} else {
+		g.nodeRadiiCache = g.nodeRadiiCache[:len(g.nodes)]
+	}
+	for i, n := range g.nodes {
+		g.nodeRadiiCache[i] = g.nodeRadius(n)
+	}
+
 	// reset last-frame node highlight map
 	g.lastNodeHLReset()
 	nodeStyle := NodeUI
-	for _, n := range g.nodes {
+	for nodeIdx, n := range g.nodes {
 		nodeInfo, ok := g.graph.Nodes[n.ID]
 		if !ok || nodeInfo.Type == model.NodeTypeInvisible {
 			continue
@@ -479,7 +500,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		}
 
 		// Cull nodes outside visible rect (include radius pad)
-		rWorld := g.nodeRadius(n)
+		rWorld := g.nodeRadiiCache[nodeIdx]
 		if n.X+rWorld < minX || n.X-rWorld > maxX || n.Y+rWorld < minY || n.Y-rWorld > maxY {
 			continue
 		}
@@ -491,12 +512,16 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		aLevel := 0.0
 		if g.pendingStartRow < 0 && g.quietFrames == 0 {
 			if a := g.nodeAnimGet(n.ID); a > 0 {
-				style.Border = highlightCol
-				aLevel = a
-				g.lastNodeHLMark(n.ID)
+				// When a time-based highlight window exists, defer to it:
+				// the sequencer sets nodeAnim=1 immediately but the window
+				// may not have started yet (lookahead scheduling).
+				if _, _, hasWindow := g.nodeHighlightUntil(n.ID); !hasWindow {
+					style.Border = highlightCol
+					aLevel = a
+					g.lastNodeHLMark(n.ID)
+				}
 			}
 		}
-		// Enforce time-based highlight via nodeHLUntil when present.
 		if start, end, ok := g.nodeHighlightUntil(n.ID); ok {
 			now := audio.Now()
 			if now >= start && now < end {
@@ -504,7 +529,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				g.lastNodeHLMark(n.ID)
 			}
 		}
-		style.Radius = float32(g.nodeRadius(n))
+		style.Radius = float32(g.nodeRadiiCache[nodeIdx])
 		if rowOK {
 			base := g.drum.Rows[rowIdx].Color
 			if n.Start {
@@ -526,12 +551,12 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		// Compute screen-space rect once regardless of draw path (used for selection boxes)
 		sx1, sy1, sx2, sy2 := g.nodeScreenRect(n)
 		// Cull nodes entirely outside the grid pane to avoid unnecessary draws.
-		if sx2 < 0 || sx1 >= float64(g.winW) || sy2 < 0 || sy1 >= float64(g.split.Y) {
+		if sx2 < 0 || sx1 >= float64(g.split.GridW(g.winW)) || sy2 < 0 || sy1 >= float64(g.split.GridH(g.winH)) {
 			continue
 		}
 
 		// Render-safe path (screen-space rectangles for nodes)
-		if os.Getenv("RENDER_SAFE") == "1" {
+		if envRenderSafe {
 			rPx := int(math.Round((sx2 - sx1) * 0.5))
 			if rPx < 1 {
 				rPx = 1
@@ -558,7 +583,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			drawRect(dst, rect, fillCol, true)
 			drawRect(dst, rect, borderCol, false)
 			g.lastDrawNodes++
-		} else if os.Getenv("NO_SPRITE_NODES") == "1" {
+		} else if envNoSpriteNodes {
 			// Draw via camera transform using world coords (no sprites).
 			style.Draw(dst, snapWorld(n.X), snapWorld(n.Y), &cam)
 			g.lastDrawNodes++
@@ -592,7 +617,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				glowBase := 1.2
 				glowAmp := 0.35
 				rpScr := float64(rPx) * (glowBase + glowAmp*aLevel)
-				maxGlow := float64(g.split.Y) / 8
+				maxGlow := float64(g.split.GridH(g.winH)) / 8
 				if rpScr > maxGlow {
 					rpScr = maxGlow
 				}
@@ -618,8 +643,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				}
 				// Safety clamp: prevent accidental huge overlays due to projection bugs
 				maxRP := g.winW / 10
-				if g.split.Y/10 < maxRP {
-					maxRP = g.split.Y / 10
+				if g.split.GridH(g.winH)/10 < maxRP {
+					maxRP = g.split.GridH(g.winH) / 10
 				}
 				if maxRP < 8 {
 					maxRP = 8
@@ -659,7 +684,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				dcx := math.Round(cx)
 				dcy := math.Round(cy)
 				ex := n.X*camScale + offX
-				ey := n.Y*camScale + offY + float64(topOffset)
+				ey := n.Y*camScale + offY + float64(gridTopOffset())
 				wpx := float64(rPx) * 2
 				g.logger.Tracef("[DRAW/NODE-PLACED] id=%d grid=(%d,%d) drawnCenter=(%.0f,%.0f) rect=(%.0f,%.0f)-(%.0f,%.0f) proj=(%.2f,%.2f)", n.ID, n.I, n.J, dcx, dcy, dx, dy, dx+wpx, dy+wpx, ex, ey)
 			}
@@ -685,9 +710,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	if g.logDrawNodes && len(g.edges) > 0 {
 		e := &g.edges[0]
 		ex0 := e.A.X*camScale + offX
-		ey0 := e.A.Y*camScale + offY + float64(topOffset)
+		ey0 := e.A.Y*camScale + offY + float64(gridTopOffset())
 		ex1 := e.B.X*camScale + offX
-		ey1 := e.B.Y*camScale + offY + float64(topOffset)
+		ey1 := e.B.Y*camScale + offY + float64(gridTopOffset())
 		ax1, ay1, ax2, ay2 := g.nodeScreenRect(e.A)
 		acx, acy := (ax1+ax2)*0.5, (ay1+ay2)*0.5
 		bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
@@ -698,177 +723,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		drawCrossScreen(dst, int(math.Round(bcx)), int(math.Round(bcy)), 9, color.RGBA{0, 255, 255, 255})
 	}
 
-	// Node popup menu (draw in screen space)
-	if g.nodeMenuOpen && g.nodeMenuNode != nil {
-		g.updateNodeMenuRects()
-		panel := g.nodeMenuRects["panel"]
-		// Panel background
-		drawButton(screen, panel, color.NRGBA{40, 40, 40, 220}, color.NRGBA{90, 90, 90, 255}, false)
-		// Labels and buttons with current values and consistent animations
-		mn, haveNode := g.graph.GetNodeByID(g.nodeMenuNode.ID)
-		nodeType := model.NodeTypeRegular
-		volVal := 1.0
-		pitVal := 0.0
-		durVal := 1.0
-		if haveNode {
-			nodeType = mn.Type
-			volVal = mn.Params.Volume
-			pitVal = mn.Params.Pitch
-			durVal = mn.Params.Duration
-		}
-		if volRect := g.nodeMenuRects["vol-"]; !volRect.Empty() {
-			y := volRect.Min.Y + 2
-			DrawTextAt(screen, "VOL", panel.Min.X+8, y)
-			pct := int(math.Round(volVal * 100))
-			DrawTextAt(screen, fmt.Sprintf("%d%%", pct), panel.Min.X+110, y)
-			if b := g.nodeMenuBtns["vol-"]; b != nil {
-				b.Draw(screen)
-			}
-			if b := g.nodeMenuBtns["vol+"]; b != nil {
-				b.Draw(screen)
-			}
-		}
-		if pitRect := g.nodeMenuRects["pit-"]; !pitRect.Empty() {
-			y := pitRect.Min.Y + 2
-			DrawTextAt(screen, "PIT", panel.Min.X+8, y)
-			DrawTextAt(screen, fmt.Sprintf("%+d", int(pitVal)), panel.Min.X+110, y)
-			if b := g.nodeMenuBtns["pit-"]; b != nil {
-				b.Draw(screen)
-			}
-			if b := g.nodeMenuBtns["pit+"]; b != nil {
-				b.Draw(screen)
-			}
-		}
-		if durRect := g.nodeMenuRects["dur-"]; !durRect.Empty() {
-			y := durRect.Min.Y + 2
-			DrawTextAt(screen, "DUR", panel.Min.X+8, y)
-			DrawTextAt(screen, fmt.Sprintf("%.2fx", durVal), panel.Min.X+110, y)
-			if b := g.nodeMenuBtns["dur-"]; b != nil {
-				b.Draw(screen)
-			}
-			if b := g.nodeMenuBtns["dur+"]; b != nil {
-				b.Draw(screen)
-			}
-		}
-		// Logic row (only when visible)
-		logicRect := g.nodeMenuRects["logic"]
-		if !logicRect.Empty() {
-			yLogic := logicRect.Min.Y + 2
-			DrawTextAt(screen, "LOGIC", panel.Min.X+8, yLogic)
-			if b := g.nodeMenuBtns["logic"]; b != nil {
-				b.Draw(screen)
-			}
-		}
-		// Audible toggle cycles visible/silent/mute
-		audRect := g.nodeMenuRects["aud"]
-		PopupButtonStyle.DrawAnimated(screen, audRect, false, g.nodeMenuAnim["aud"])
-		label := "AUDIBLE"
-		switch nodeType {
-		case model.NodeTypeSilent:
-			label = "SILENT"
-		case model.NodeTypeMute:
-			label = "MUTE"
-		}
-		DrawTextAt(screen, label, audRect.Min.X+2, audRect.Min.Y+1)
-		// Current logic value at value column
-		cur := "None"
-		if haveNode {
-			switch mn.Params.LogicKind {
-			case "every_n_triggers":
-				cur = "Trigger Every N"
-			case "skip_every_n":
-				cur = "Skip Every N"
-			case "probability":
-				cur = "Probability"
-			case "trigger_if_prev_skipped":
-				cur = "Trigger If Prev Skipped"
-			case "trigger_if_prev_triggered":
-				cur = "Trigger If Prev Triggered"
-			}
-		}
-		if !logicRect.Empty() {
-			yLogic := logicRect.Min.Y + 2
-			DrawTextAt(screen, cur, panel.Min.X+110, yLogic)
-		}
-		// Parameters for current logic
-		if haveNode && !logicRect.Empty() {
-			if mn.Params.LogicKind == "every_n_triggers" || mn.Params.LogicKind == "skip_every_n" {
-				if b := g.nodeMenuBtns["ln-"]; b != nil {
-					b.Draw(screen)
-				}
-				if b := g.nodeMenuBtns["ln+"]; b != nil {
-					b.Draw(screen)
-				}
-				if lnRect := g.nodeMenuRects["ln-"]; !lnRect.Empty() {
-					DrawTextAt(screen, fmt.Sprintf("%d", mn.Params.LogicN), panel.Min.X+110, lnRect.Min.Y+2)
-				}
-			} else if mn.Params.LogicKind == "probability" {
-				if b := g.nodeMenuBtns["lp-"]; b != nil {
-					b.Draw(screen)
-				}
-				if b := g.nodeMenuBtns["lp+"]; b != nil {
-					b.Draw(screen)
-				}
-				if lpRect := g.nodeMenuRects["lp-"]; !lpRect.Empty() {
-					DrawTextAt(screen, fmt.Sprintf("%.1f", mn.Params.LogicP), panel.Min.X+110, lpRect.Min.Y+2)
-				}
-			}
-		}
-		// Groove UI (hidden for mute nodes via empty rects)
-		if grvRect := g.nodeMenuRects["grv"]; !grvRect.Empty() {
-			yGroove := grvRect.Min.Y + 2
-			DrawTextAt(screen, "GROOVE", panel.Min.X+8, yGroove)
-			if b := g.nodeMenuBtns["grv"]; b != nil {
-				b.Draw(screen)
-			}
-			if haveNode {
-				curGroove := "None"
-				switch strings.ToLower(mn.Params.GrooveKind) {
-				case "delay":
-					curGroove = "Delay"
-				case "rush":
-					curGroove = "Rush"
-				}
-				DrawTextAt(screen, curGroove, panel.Min.X+110, yGroove)
-				DrawTextAt(screen, fmt.Sprintf("Pct: %.0f%%", mn.Params.GroovePct*100), panel.Min.X+110, yGroove+18)
-			}
-			if b := g.nodeMenuBtns["gp-"]; b != nil {
-				b.Draw(screen)
-			}
-			if b := g.nodeMenuBtns["gp+"]; b != nil {
-				b.Draw(screen)
-			}
-		}
-		if g.nodeGrooveOpen {
-			for id, r := range g.nodeMenuRects {
-				if strings.HasPrefix(id, "groove:") {
-					if b := g.nodeMenuBtns[id]; b != nil {
-						b.SetRect(r)
-						b.Draw(screen)
-					}
-				}
-			}
-		}
-		// Logic dropdown items
-		if g.nodeLogicOpen {
-			for id := range g.nodeMenuRects {
-				if strings.HasPrefix(id, "logic:") {
-					if b := g.nodeMenuBtns[id]; b != nil {
-						b.Draw(screen)
-					}
-				}
-			}
-		}
-		// Decay animations
-		for k, v := range g.nodeMenuAnim {
-			if v > 0 {
-				v *= 0.85
-				if v < 0.02 {
-					v = 0
-				}
-				g.nodeMenuAnim[k] = v
-			}
-		}
+	// Node sidebar (draw in screen space)
+	if g.sidebar.IsOpen() {
+		g.sidebar.Draw(screen)
 	}
 
 	// Grid zoom buttons disabled; rely on wheel/touch gestures.
@@ -894,7 +751,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		g.renderedPulsesCount++
 		if g.logDrawNodes {
 			sx := px*camScale + offX
-			sy := py*camScale + offY + float64(topOffset)
+			sy := py*camScale + offY + float64(gridTopOffset())
 			g.logger.Tracef("[DRAW/PULSE] frame=%d row=%d t=%.2f world=(%.2f,%.2f) screen=(%.1f,%.1f)", g.frame, p.row, p.t, px, py, sx, sy)
 		}
 	}
@@ -910,9 +767,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
 			bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
 			ex0 := e.A.X*camScale + offX
-			ey0 := e.A.Y*camScale + offY + float64(topOffset)
+			ey0 := e.A.Y*camScale + offY + float64(gridTopOffset())
 			ex1 := e.B.X*camScale + offX
-			ey1 := e.B.Y*camScale + offY + float64(topOffset)
+			ey1 := e.B.Y*camScale + offY + float64(gridTopOffset())
 			da := math.Hypot(acx-ex0, acy-ey0)
 			db := math.Hypot(bcx-ex1, bcy-ey1)
 			if da > maxDA {
@@ -925,12 +782,107 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		g.logger.Debugf("[ALIGN] edges=%d maxDA=%.2f (id=%v) maxDB=%.2f (id=%v)", len(g.edges), maxDA, idOrNil(badA), maxDB, idOrNil(badB))
 	}
 
-	// cursor coordinate label
+	// Coordinate badge above selected node
+	if g.coordBadgeNode != nil {
+		showBadge := false
+		if isSmallScreen() {
+			// Mobile: show while node is selected, but not when popup is open
+			// (the badge renders on top of the popup since it draws after it).
+			showBadge = (g.sel == g.coordBadgeNode) && !g.sidebar.IsOpen()
+		} else {
+			// Desktop: show for 180 frames (~3s at 60 TPS)
+			showBadge = (g.frame-g.coordBadgeFrame < 180)
+		}
+		if !showBadge {
+			g.coordBadgeNode = nil
+		} else {
+			bx1, by1, bx2, _ := g.nodeScreenRect(g.coordBadgeNode)
+			bcx := int(math.Round((bx1 + bx2) * 0.5))
+			bcy := int(math.Round(by1)) - 16
+			if bcy < 2 {
+				bcy = 2
+			}
+			badgeText := fmt.Sprintf("(%d, %d)", g.coordBadgeNode.I, g.coordBadgeNode.J)
+			tw := len(badgeText)*7 + 8
+			pillRect := image.Rect(bcx-tw/2, bcy-1, bcx+tw/2, bcy+13)
+			drawRect(dst, pillRect, color.NRGBA{30, 30, 30, 200}, true)
+			drawRect(dst, pillRect, color.NRGBA{120, 120, 120, 255}, false)
+			DrawTextAt(dst, badgeText, pillRect.Min.X+4, pillRect.Min.Y+2)
+		}
+	}
+
+	// Move mode visual feedback
+	if g.moveMode && g.movingNode != nil {
+		// Banner at top of grid pane
+		bannerText := fmt.Sprintf("MOVING NODE (%d,%d) — CLICK TO PLACE", g.movingNode.I, g.movingNode.J)
+		if !isSmallScreen() {
+			bannerText += " (ESC TO CANCEL)"
+		}
+		bannerW := TextWidth(bannerText) + 16
+		bannerX := (g.split.GridW(g.winW) - bannerW) / 2
+		if bannerX < 0 {
+			bannerX = 0
+		}
+		bannerRect := image.Rect(bannerX, 2, bannerX+bannerW, 22)
+		drawRoundedRect(dst, bannerRect, colPanelBG, popupCornerRadius(), true)
+		drawRoundedRect(dst, bannerRect, colPanelBorder, popupCornerRadius(), false)
+		DrawTextAt(dst, bannerText, bannerX+8, 5)
+
+		// Highlight moving node with pulsing yellow outline
+		mx1, my1, mx2, my2 := g.nodeScreenRect(g.movingNode)
+		hlCol := color.NRGBA{255, 220, 50, 255}
+		var idm ebiten.GeoM
+		DrawLineCam(dst, mx1-1, my1-1, mx2+1, my1-1, &idm, hlCol, 2)
+		DrawLineCam(dst, mx2+1, my1-1, mx2+1, my2+1, &idm, hlCol, 2)
+		DrawLineCam(dst, mx2+1, my2+1, mx1-1, my2+1, &idm, hlCol, 2)
+		DrawLineCam(dst, mx1-1, my2+1, mx1-1, my1-1, &idm, hlCol, 2)
+
+		// Ghost indicator at cursor position (snapped to grid)
+		cmx, cmy := cursorPosition()
+		if g.split.InGridPane(cmx, cmy) && cmy >= gridTopOffset() {
+			gwx := (float64(cmx) - g.cam.OffsetX) / g.cam.Scale
+			gwy := (float64(cmy-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
+			_, _, gi, gj := g.grid.Snap(gwx, gwy)
+			gsx := g.cam.OffsetX + unitPx*float64(gi)
+			gsy := g.cam.OffsetY + unitPx*float64(gj) + float64(gridTopOffset())
+			gr := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
+			ghostRect := image.Rect(int(gsx-gr), int(gsy-gr), int(gsx+gr), int(gsy+gr))
+			drawRect(dst, ghostRect, color.NRGBA{255, 220, 50, 80}, true)
+			drawRect(dst, ghostRect, color.NRGBA{255, 220, 50, 180}, false)
+		}
+	}
+
+	// Move confirmation dialog
+	if g.moveConfirm {
+		dw, dh := 280, 60
+		dx := (g.split.GridW(g.winW) - dw) / 2
+		dy := (g.split.GridH(g.winH) - dh) / 2
+		dialogRect := image.Rect(dx, dy, dx+dw, dy+dh)
+		drawPanel(dst, dialogRect)
+		msgText := fmt.Sprintf("Moving will remove %d edge(s). Continue?", g.moveEdgeLoss)
+		DrawTextAt(dst, msgText, dx+10, dy+8)
+		// Confirm and cancel buttons
+		radius := popupCornerRadius()
+		confirmRect := image.Rect(dx+40, dy+30, dx+120, dy+50)
+		cancelRect := image.Rect(dx+160, dy+30, dx+240, dy+50)
+		drawRoundedRect(dst, confirmRect, color.NRGBA{60, 140, 60, 255}, radius, true)
+		DrawTextAt(dst, "Move", confirmRect.Min.X+12, confirmRect.Min.Y+4)
+		drawRoundedRect(dst, cancelRect, color.NRGBA{140, 60, 60, 255}, radius, true)
+		DrawTextAt(dst, "Cancel", cancelRect.Min.X+8, cancelRect.Min.Y+4)
+	}
+
+	// Long-press quick-action popup (mobile)
+	g.drawLongPressPopup(dst)
+
+	// Connect mode visual feedback
+	g.drawConnectMode(dst)
+
+	// cursor coordinate label (hidden on mobile)
 	mx, my := cursorPosition()
-	if my < g.split.Y {
+	if !isSmallScreen() && g.split.InGridPane(mx, my) {
 		camScale := unitPx / g.grid.Unit()
 		wx := (float64(mx) - offX) / camScale
-		wy := (float64(my) - offY - float64(topOffset)) / camScale
+		wy := (float64(my) - offY - float64(gridTopOffset())) / camScale
 		_, _, ix, iy := g.grid.Snap(wx, wy)
 		bx, nx, dx := g.grid.BeatSubdivision(ix)
 		by, ny, dy := g.grid.BeatSubdivision(iy)

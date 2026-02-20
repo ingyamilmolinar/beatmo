@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/engine"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	"github.com/ingyamilmolinar/tunkul/internal/gamestate"
-	"github.com/ingyamilmolinar/tunkul/internal/graphruntime"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/engine"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/internal/graphruntime"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 /* ───────────────────── constructor & layout ─────────────────── */
@@ -66,8 +66,6 @@ func New(logger *game_log.Logger) *Game {
 		lastEvalIdxByRowNode:        make(map[int]map[model.NodeID]int),
 		nodeLogicTriggerCountsByRow: make(map[int]map[model.NodeID]int),
 		lastTriggeredByRow:          make(map[int]map[model.NodeID]bool),
-		nodeMenuRects:               make(map[string]image.Rectangle),
-		nodeMenuAnim:                make(map[string]float64),
 		nodeAnim:                    make(map[model.NodeID]float64),
 		lastFiredNodeByRow:          []model.NodeID{},
 		muteUntilByRow:              []int{},
@@ -86,6 +84,7 @@ func New(logger *game_log.Logger) *Game {
 		importPrevParityFatal:       true,
 		importPrevParityWatch:       parityWatchDefault,
 	}
+	g.sidebar = NewNodeSidebar(g)
 	g.perfMode.SetFastPath(defaultPerfFastPath)
 	if runningUnderGoTest() {
 		g.parityScanEvery = 1
@@ -98,7 +97,7 @@ func New(logger *game_log.Logger) *Game {
 		g.parityScanStride = 1
 	}
 	g.parityScanLastFrame = -int64(g.parityScanEvery)
-	if v := strings.ToLower(strings.TrimSpace(os.Getenv("TUNKUL_ROW_SNAPSHOTS"))); v == "1" || v == "true" {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("BEATMO_ROW_SNAPSHOTS"))); v == "1" || v == "true" {
 		g.rowSnapshotMode = true
 	}
 
@@ -180,9 +179,9 @@ func New(logger *game_log.Logger) *Game {
 					// Under heavy draw pressure, avoid background expansion.
 					look = 0
 				} else if s.DrawAvgMS > 14.0 {
-					look = look / 4
+					look /= 4
 				} else if s.DrawAvgMS > 10.0 {
-					look = look / 2
+					look /= 2
 				}
 			}
 			need := g.drum.Offset + g.drum.Length
@@ -217,6 +216,13 @@ func New(logger *game_log.Logger) *Game {
 	if runtime.GOOS == "js" {
 		g.drawMinInterval = 40 * time.Millisecond
 		g.audioLookaheadSec = 0.08
+	} else {
+		// Desktop baseline lookahead: 20ms absorbs seqMu contention jitter.
+		// Less than WASM's 80ms because the dedicated 1ms sequencer goroutine
+		// needs less buffer. Combined with runtimeAudioLookahead() (+60ms
+		// dynamic), this eliminates the zero-tolerance scheduling that caused
+		// overdue audio events.
+		g.audioLookaheadSec = 0.02
 	}
 
 	// Defer demo construction to the first layout/update to avoid blocking

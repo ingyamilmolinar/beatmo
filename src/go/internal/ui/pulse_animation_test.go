@@ -5,7 +5,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestPulseAnimationSmooth verifies that pulse progress advances smoothly

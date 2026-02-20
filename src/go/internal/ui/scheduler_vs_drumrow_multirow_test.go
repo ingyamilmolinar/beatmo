@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestSchedulerVsDrumRow_MultiRowMixedRules verifies both rows stay in lockstep
@@ -116,7 +117,8 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 	got0 := make([]bool, horizon)
 	got1 := make([]bool, horizon)
 	g.SetPlayFunc(func(id string, vol float64, when ...float64) {
-		if id == g.drum.Rows[0].Instrument {
+		switch id {
+		case g.drum.Rows[0].Instrument:
 			if len(g.seqNextIdxs) < 1 {
 				return
 			}
@@ -124,7 +126,7 @@ func TestSchedulerVsDrumRow_MultiRowMixedRules(t *testing.T) {
 			if idx >= 0 && idx < len(got0) {
 				got0[idx] = true
 			}
-		} else if id == g.drum.Rows[1].Instrument {
+		case g.drum.Rows[1].Instrument:
 			if len(g.seqNextIdxs) < 2 {
 				return
 			}

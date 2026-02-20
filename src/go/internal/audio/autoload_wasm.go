@@ -6,7 +6,7 @@ import (
 	"sync"
 	"syscall/js"
 
-	"github.com/ingyamilmolinar/tunkul/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
 // AutoLoadEmbeddedWAVs registers all embedded WAVs by creating Blob URLs and

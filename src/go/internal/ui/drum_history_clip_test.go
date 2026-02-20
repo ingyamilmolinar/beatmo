@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestDrumHistoryMaskMatchesInstrumentPanel(t *testing.T) {
@@ -27,8 +27,15 @@ func TestDrumHistoryMaskMatchesInstrumentPanel(t *testing.T) {
 	if rect.Min.X != dv.Bounds.Min.X {
 		t.Fatalf("panel mask min x mismatch: got %d want %d", rect.Min.X, dv.Bounds.Min.X)
 	}
-	if rect.Max.X != dv.timelineRect.Min.X {
-		t.Fatalf("panel mask max x mismatch: got %d want %d", rect.Max.X, dv.timelineRect.Min.X)
+	// The panel mask extends to the rack widget's right edge. On desktop, the
+	// Track button sits between the rack boundary and the timeline start, so
+	// panelMaskRect.Max.X may differ from timelineRect.Min.X.
+	wantMaxX := dv.widgetRects[WidgetRack].Max.X
+	if wantMaxX == 0 {
+		wantMaxX = dv.timelineRect.Min.X
+	}
+	if rect.Max.X != wantMaxX {
+		t.Fatalf("panel mask max x mismatch: got %d want %d", rect.Max.X, wantMaxX)
 	}
 	if rect.Min.Y != dv.Bounds.Min.Y+dv.headerH {
 		t.Fatalf("panel mask min y mismatch: got %d want %d", rect.Min.Y, dv.Bounds.Min.Y+dv.headerH)

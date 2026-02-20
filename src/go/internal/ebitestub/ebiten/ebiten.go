@@ -3,9 +3,13 @@
 package ebiten
 
 import (
+	"errors"
 	"image"
 	"image/color"
 )
+
+// Termination is returned from Update() to signal a clean exit from RunGame.
+var Termination = errors.New("regular termination")
 
 type Image struct {
 	w, h int
@@ -112,8 +116,39 @@ func InputChars() []rune                      { c := Chars; Chars = nil; return 
 func Wheel() (float64, float64)               { return 0, 0 }
 func ScreenSizeInFullscreen() (int, int)      { return 0, 0 }
 
+// Touch support
+type TouchID int
+
+var (
+	MockTouches = map[TouchID]struct{ X, Y int }{}
+)
+
+func TouchIDs() []TouchID {
+	ids := make([]TouchID, 0, len(MockTouches))
+	for id := range MockTouches {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func TouchPosition(id TouchID) (int, int) {
+	if pos, ok := MockTouches[id]; ok {
+		return pos.X, pos.Y
+	}
+	return 0, 0
+}
+
+// ColorScale is a stub for Ebiten's ColorScale.
+type ColorScale struct{}
+
+// Scale is a no-op in the stub.
+func (c *ColorScale) Scale(r, g, b, a float32) {}
+
 // Drawing options
-type DrawImageOptions struct{ GeoM GeoM }
+type DrawImageOptions struct {
+	GeoM       GeoM
+	ColorScale ColorScale
+}
 
 // Constants
 type MouseButton int
@@ -149,3 +184,24 @@ func SetWindowSize(w, h int)      {}
 func SetWindowTitle(title string) {}
 func SetTPS(tps int)              {}
 func RunGame(g Game) error        { return nil }
+
+// CursorShapeType represents a shape of a mouse cursor.
+type CursorShapeType int
+
+const (
+	CursorShapeDefault    CursorShapeType = iota
+	CursorShapeText
+	CursorShapeCrosshair
+	CursorShapePointer
+	CursorShapeEWResize
+	CursorShapeNSResize
+	CursorShapeNESWResize
+	CursorShapeNWSEResize
+	CursorShapeMove
+	CursorShapeNotAllowed
+)
+
+var mockCursorShape CursorShapeType
+
+func SetCursorShape(shape CursorShapeType) { mockCursorShape = shape }
+func CursorShape() CursorShapeType         { return mockCursorShape }

@@ -4,7 +4,7 @@ import (
 	"image"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/internal/utils"
+	"github.com/ingyamilmolinar/beatmo/internal/utils"
 )
 
 /* ─── geometry helpers ─────────────────────────────────────── */
@@ -12,7 +12,17 @@ import (
 // rowHeight returns the fixed pixel height for each drum row and for the
 // trailing "+" button row. Keeping this constant avoids oversized buttons when
 // only a few rows are present, yielding a minimal and consistent layout.
-func (dv *DrumView) rowHeight() int { return 24 }
+// On touch devices, returns a larger height for easier interaction.
+func (dv *DrumView) rowHeight() int { return TouchRowHeight() }
+
+// mobileTransportMinH returns the minimum transport header height.
+// On mobile it targets the compact bar; on desktop a two-row transport.
+func mobileTransportMinH() int {
+	if isSmallScreen() {
+		return mobileHeaderH // two-row mobile transport
+	}
+	return desktopHeaderH // two-row desktop transport
+}
 
 func (dv *DrumView) rowsAreaHeight() int {
 	h := dv.Bounds.Dy() - dv.headerH - dv.eqH
@@ -44,11 +54,29 @@ func (dv *DrumView) refreshWidgetLayout() {
 	} else {
 		dv.headerH = timelineHeight
 	}
-	if dv.headerH < dv.rowHeight()*2 {
-		dv.headerH = dv.rowHeight() * 2
+	minH := timelineHeight
+	if isSmallScreen() && mobileHeaderH > minH {
+		minH = mobileHeaderH
 	}
-	if dv.headerH < timelineHeight {
-		dv.headerH = timelineHeight
+	if dv.headerH < minH {
+		dv.headerH = minH
+	}
+	// Cap header height: desktop uses taller two-row transport, mobile stays compact.
+	maxH := desktopHeaderH
+	if isSmallScreen() {
+		maxH = mobileHeaderMaxH
+	}
+	if dv.headerH > maxH {
+		dv.headerH = maxH
+		// Adjust widget rects so the rack/timeline start at the capped headerH,
+		// not the widget board's uncapped row 0 height.
+		capY := dv.Bounds.Min.Y + dv.headerH
+		if r := dv.widgetRects[WidgetRack]; r.Min.Y > capY {
+			dv.widgetRects[WidgetRack] = image.Rect(r.Min.X, capY, r.Max.X, r.Max.Y)
+		}
+		if r := dv.widgetRects[WidgetTimeline]; r.Min.Y > capY {
+			dv.widgetRects[WidgetTimeline] = image.Rect(r.Min.X, capY, r.Max.X, r.Max.Y)
+		}
 	}
 	if h := dv.widgets.RowHeight(2); h > 0 {
 		dv.eqH = h
@@ -57,6 +85,28 @@ func (dv *DrumView) refreshWidgetLayout() {
 	}
 	if runningUnderGoTest() && eqPanelHeight == 0 {
 		dv.eqH = 0
+	}
+	// Mobile EQ collapse: when the user has toggled EQ off, force zero height.
+	if isSmallScreen() && dv.mobileEQCollapsed {
+		dv.eqH = 0
+	}
+	// On small screens, shrink EQ panel to guarantee at least 2 visible rows.
+	if isSmallScreen() && !dv.mobileEQCollapsed {
+		maxEQ := dv.Bounds.Dy() - dv.headerH - dv.rowHeight()*2
+		if maxEQ < 0 {
+			maxEQ = 0
+		}
+		if dv.eqH > maxEQ {
+			dv.eqH = maxEQ
+		}
+	}
+	// Safety guard: if we have rows but can't fit any, collapse EQ to make room.
+	if dv.rowsAreaHeight() < dv.rowHeight() && len(dv.Rows) > 0 && dv.eqH > 0 {
+		needed := dv.rowHeight() - dv.rowsAreaHeight()
+		dv.eqH -= needed
+		if dv.eqH < 0 {
+			dv.eqH = 0
+		}
 	}
 	leftW := dv.widgets.ColWidth(0)
 	if leftW <= 0 {
@@ -69,9 +119,40 @@ func (dv *DrumView) refreshWidgetLayout() {
 	if dv.controlsW > 520 {
 		dv.controlsW = 520
 	}
+	// On narrow screens, cap controls so label+controls fits in the column.
+	if leftW > 0 && dv.labelW+dv.controlsW > leftW {
+		dv.controlsW = leftW - dv.labelW
+		if dv.controlsW < 0 {
+			dv.controlsW = 0
+		}
+	}
 
-	// Clamp scroll so end of list (rows + add button) stays reachable after resizes.
-	maxOff := len(dv.Rows) + 1 - dv.visibleRows()
+	// Tighten rack column to actual content width (prevents black gap
+	// between controls and timeline on wide windows). controlsW is
+	// already capped at 520, so when the column is wider than
+	// labelW + controlsW the excess is wasted black space.
+	needW := dv.labelW + dv.controlsW
+	if dv.widgets != nil && len(dv.widgets.cols) >= 2 {
+		col0W := dv.widgets.ColWidth(0)
+		if col0W > needW+SpaceMD {
+			totalWeight := dv.widgets.cols[0] + dv.widgets.cols[1]
+			newCol0 := float64(needW+SpaceMD) / float64(dv.Bounds.Dx()) * totalWeight
+			if newCol0 < 0.3*totalWeight {
+				newCol0 = 0.3 * totalWeight // floor
+			}
+			dv.widgets.cols[0] = newCol0
+			dv.widgets.cols[1] = totalWeight - newCol0
+			dv.widgets.recalc()
+			// Re-read rects after recalc.
+			dv.widgetRects[WidgetTransport] = dv.widgets.Rect(WidgetTransport)
+			dv.widgetRects[WidgetRack] = dv.widgets.Rect(WidgetRack)
+			dv.widgetRects[WidgetTimeline] = dv.widgets.Rect(WidgetTimeline)
+			dv.widgetRects[WidgetWave] = dv.widgets.Rect(WidgetWave)
+		}
+	}
+
+	// Clamp scroll so end of list stays reachable after resizes.
+	maxOff := len(dv.Rows) - dv.visibleRows()
 	if maxOff < 0 {
 		maxOff = 0
 	}
@@ -136,6 +217,9 @@ func (dv *DrumView) handleLayoutResize() {
 		}
 	}
 	for i := 1; i < len(dv.widgets.rowPos)-1; i++ {
+		if dv.layoutHandler != nil && dv.layoutHandler.anyWidgetSpansRow(i-1) {
+			continue
+		}
 		y := dv.widgets.rowPos[i] + off.Y
 		if utils.Abs(my-y) <= grab && mx >= dv.Bounds.Min.X && mx <= dv.Bounds.Max.X {
 			dv.layoutHoverAxis = "row"
@@ -182,35 +266,68 @@ func (dv *DrumView) widgetRectsSnapshot() WidgetRectsSnapshot {
 }
 
 func (dv *DrumView) visibleRows() int {
-	return dv.rowsAreaHeight() / dv.rowHeight()
+	rh := dv.rowHeight()
+	if rh <= 0 {
+		return 0
+	}
+	h := dv.rowsAreaHeight()
+	if !isSmallScreen() {
+		h -= rh // reserve one rowHeight for the "+" footer (desktop only)
+	}
+	if h < 0 {
+		h = 0
+	}
+	n := h / rh
+	// Guarantee at least 1 visible row when the area fits a full row,
+	// even if there isn't extra space for the "+" footer.
+	if n == 0 && dv.rowsAreaHeight() >= rh {
+		n = 1
+	}
+	return n
 }
 
 func (dv *DrumView) scrollBarRect() image.Rectangle {
-	w := 6
+	dv.syncRowScroll()
+	return dv.rowScroll.BarRect()
+}
+
+func (dv *DrumView) scrollThumbRect() image.Rectangle {
+	dv.syncRowScroll()
+	return dv.rowScroll.ThumbRect()
+}
+
+// syncRowScroll copies the current row state into rowScroll so its geometry
+// and clamping are up to date. Call before reading BarRect/ThumbRect or
+// invoking any ScrollBehavior input handler.
+func (dv *DrumView) syncRowScroll() {
+	if dv.rowScroll == nil {
+		dv.rowScroll = NewScrollBehavior(ScrollbarStyleForPlatform(), dv.rowHeight())
+	}
+	dv.rowScroll.VS.Total = len(dv.Rows)
+	dv.rowScroll.VS.Visible = dv.visibleRows()
+	dv.rowScroll.VS.First = dv.rowOffset
+	dv.rowScroll.ItemHeight = dv.rowHeight()
+	// Set View for BarRect/ThumbRect calculations.
+	// Constrain the scrollbar track to the actual visible rows area so it
+	// does not extend into leftover space (e.g., the FAB overlay region).
 	rowsTop := dv.Bounds.Min.Y + dv.headerH
-	y1 := rowsTop + dv.rowsAreaHeight()
+	vis := dv.visibleRows()
+	y1 := rowsTop + vis*dv.rowHeight()
+	if maxY := rowsTop + dv.rowsAreaHeight(); y1 > maxY {
+		y1 = maxY
+	}
 	x1 := dv.widgetRects[WidgetTimeline].Max.X
 	if x1 == 0 {
 		x1 = dv.Bounds.Max.X
 	}
-	return image.Rect(x1-w, rowsTop, x1, y1)
+	dv.rowScroll.VS.View = image.Rect(x1-dv.rowScroll.Style.Width, rowsTop, x1, y1)
 }
 
-func (dv *DrumView) scrollThumbRect() image.Rectangle {
-	total := len(dv.Rows) + 1
-	vis := dv.visibleRows()
-	bar := dv.scrollBarRect()
-	if total <= vis {
-		return image.Rect(0, 0, 0, 0)
+// flushRowScroll writes rowScroll.VS.First back to rowOffset and recalculates
+// layout if the value changed.
+func (dv *DrumView) flushRowScroll() {
+	if dv.rowScroll.VS.First != dv.rowOffset {
+		dv.rowOffset = dv.rowScroll.VS.First
+		dv.calcLayout()
 	}
-	h := bar.Dy() * vis / total
-	if h < 10 {
-		h = 10
-	}
-	track := bar.Dy() - h
-	y := bar.Min.Y
-	if total-vis > 0 {
-		y += track * dv.rowOffset / (total - vis)
-	}
-	return image.Rect(bar.Min.X, y, bar.Max.X, y+h)
 }

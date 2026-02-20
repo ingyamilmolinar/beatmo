@@ -3,47 +3,43 @@ package ui
 import (
 	"image"
 	"image/color"
-	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 const (
-	// Ebiten's debug font uses a 6x13 glyph. Using 7 previously caused text
-	// input cursors to drift ahead of the character being edited.
+	// Ebiten's debug font uses 6px-wide glyphs in a 16px-tall cell.
 	debugCharW = 6  // width of a character drawn by DebugPrintAt
-	debugCharH = 13 // height of a character drawn by DebugPrintAt
+	debugCharH = 16 // height of a character drawn by DebugPrintAt
 )
 
 // insetRect returns r shrunk by pad pixels on all sides.
 func insetRect(r image.Rectangle, pad int) image.Rectangle {
+	if r.Dx() < 2*pad || r.Dy() < 2*pad {
+		return image.Rectangle{}
+	}
 	return image.Rect(r.Min.X+pad, r.Min.Y+pad, r.Max.X-pad, r.Max.Y-pad)
 }
 
-// clipTextToWidth trims text so that its rendered width (using debug font) does
-// not exceed maxW. It preserves whole runes and appends "..." when truncating.
+// clipTextToWidth trims text so that its rendered width does not exceed maxW.
+// It preserves whole runes and appends "..." when truncating. Uses proper font
+// metrics when available, falling back to debug font character width.
 func clipTextToWidth(text string, maxW int) string {
 	if maxW <= 0 {
 		return ""
 	}
-	maxRunes := maxW / debugCharW
-	if maxRunes <= 0 {
-		return ""
-	}
-	if maxRunes >= utf8.RuneCountInString(text) {
+	if TextWidth(text) <= maxW {
 		return text
 	}
 	ellipsis := "..."
-	ellRunes := len(ellipsis)
-	keepRunes := maxRunes - ellRunes
-	if keepRunes < 0 {
-		keepRunes = 0
-	}
 	rs := []rune(text)
-	if keepRunes > len(rs) {
-		keepRunes = len(rs)
+	for keepRunes := len(rs) - 1; keepRunes >= 0; keepRunes-- {
+		candidate := string(rs[:keepRunes]) + ellipsis
+		if TextWidth(candidate) <= maxW {
+			return candidate
+		}
 	}
-	return string(rs[:keepRunes]) + ellipsis
+	return ellipsis
 }
 
 // ButtonVisual is implemented by styles capable of drawing a button.
@@ -68,10 +64,13 @@ type Button struct {
 	// this for destructive actions to avoid cascading operations when the layout
 	// changes under a held cursor.
 	ConsumeOnPress bool
+	// TextScale scales the button label text when > 0. A value of 1.5 renders
+	// the debug font at 150%. Zero or negative uses the default 1× scale.
+	TextScale float64
 	// Optional icon to draw inside the button. When set, the icon is drawn
 	// using simple vector primitives so it renders under the default Ebiten
 	// debug font (which lacks many Unicode glyphs). Supported values:
-	// "play", "pause", "stop", "pencil". IconColor defaults to
+	// "play", "pause", "stop", "pencil", "close". IconColor defaults to
 	// colButtonBorder when zero.
 	Icon      string
 	IconColor color.Color
@@ -101,22 +100,40 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	if b.Style != nil {
 		b.Style.Draw(dst, b.r, b.pressed, b.hovered)
 	}
-	// Clip text to fit within the button rect.
-	clipped := clipTextToWidth(b.Text, b.r.Dx()-2*buttonPad)
-	tr := b.textRectFor(clipped)
-	spr := TextSprite(clipped)
-	var op ebiten.DrawImageOptions
-	op.GeoM.Translate(float64(tr.Min.X), float64(tr.Min.Y))
-	dst.DrawImage(spr, &op)
+	// Skip text rendering when an icon is set — the icon is the visual
+	// representation and the debug font can't render Unicode icon glyphs
+	// (they appear as small white rectangles).
+	if b.Icon == "" {
+		scale := b.TextScale
+		if scale <= 0 {
+			scale = 1.0
+		}
+		// Clip text to fit within the button rect.
+		clipped := clipTextToWidth(b.Text, b.r.Dx()-2*buttonPad)
+		spr := TextSprite(clipped)
+		// Center the scaled text within the button.
+		w := int(float64(TextWidth(clipped)) * scale)
+		h := int(float64(TextHeight()) * scale)
+		x := b.r.Min.X + (b.r.Dx()-w)/2
+		y := b.r.Min.Y + (b.r.Dy()-h)/2
+		var op ebiten.DrawImageOptions
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(float64(x), float64(y))
+		dst.DrawImage(spr, &op)
+	}
 	// Icon overlay (font-independent)
 	if b.Icon != "" {
 		col := b.IconColor
 		if col == nil {
 			col = colButtonBorder
 		}
-		// Leave a small margin inside the button bounds.
-		pad := 3
-		if b.r.Dx() < 10 || b.r.Dy() < 10 {
+		// Proportional margin: 18% of min(w,h), min 2px.
+		dim := b.r.Dx()
+		if b.r.Dy() < dim {
+			dim = b.r.Dy()
+		}
+		pad := dim * 18 / 100
+		if pad < 2 {
 			pad = 2
 		}
 		box := image.Rect(b.r.Min.X+pad, b.r.Min.Y+pad, b.r.Max.X-pad, b.r.Max.Y-pad)
@@ -131,24 +148,56 @@ func (b *Button) Draw(dst *ebiten.Image) {
 			drawPencilIcon(dst, box, col)
 		case "save":
 			drawSaveIcon(dst, box, col)
+		case "close":
+			drawCloseIcon(dst, box, col)
+		case "overflow":
+			drawOverflowIcon(dst, box, col)
+		case "plus":
+			drawPlusIcon(dst, box, col)
+		case "minus":
+			drawMinusIcon(dst, box, col)
+		case "rows":
+			drawRowsIcon(dst, box, col)
+		case "audio":
+			drawAudioIcon(dst, box, col)
+		case "chevron-up":
+			drawChevronUpIcon(dst, box, col)
+		case "chevron-down":
+			drawChevronDownIcon(dst, box, col)
+		case "track":
+			drawTrackIcon(dst, box, col)
+		case "track-off":
+			drawTrackOffIcon(dst, box, col)
+		case "upload":
+			drawUploadIcon(dst, box, col)
+		case "import":
+			drawImportIcon(dst, box, col)
+		case "export":
+			drawExportIcon(dst, box, col)
 		}
 	}
 }
 
-// textRect returns the rectangle occupied by the button's text when drawn.
+// textRect returns the rectangle occupied by the button's text when drawn,
+// clamped to the button bounds. Matches Draw(): clips text to button width
+// and applies TextScale.
+//
+//nolint:unused // used by test files with test build tag
 func (b *Button) textRect() image.Rectangle {
-	return b.textRectFor(b.Text)
-}
-
-func (b *Button) textRectFor(text string) image.Rectangle {
-	w := debugCharW * utf8.RuneCountInString(text)
-	h := debugCharH
+	scale := b.TextScale
+	if scale <= 0 {
+		scale = 1.0
+	}
+	clipped := clipTextToWidth(b.Text, b.r.Dx()-2*buttonPad)
+	w := int(float64(TextWidth(clipped)) * scale)
+	h := int(float64(TextHeight()) * scale)
 	x := b.r.Min.X + (b.r.Dx()-w)/2
 	y := b.r.Min.Y + (b.r.Dy()-h)/2
-	return image.Rect(x, y, x+w, y+h)
+	return image.Rect(x, y, x+w, y+h).Intersect(b.r)
 }
 
 // Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
+// On touch devices, the hit area is expanded to meet minimum touch target size.
 func (b *Button) Handle(mx, my int, pressed bool) bool {
 	if suppressClicksUntilRelease {
 		if !pressed {
@@ -158,7 +207,23 @@ func (b *Button) Handle(mx, my int, pressed bool) bool {
 		b.held = 0
 		return false
 	}
-	inside := image.Pt(mx, my).In(b.r)
+	// Expand hit area for touch devices (skip if button has zero-area rect,
+	// e.g. hidden columns on mobile that should not be interactable).
+	hitRect := b.r
+	if minTarget := TouchMinTarget(); minTarget > 0 && !hitRect.Empty() {
+		// Expand hit area if button is smaller than minimum touch target
+		if hitRect.Dx() < minTarget {
+			expand := (minTarget - hitRect.Dx()) / 2
+			hitRect.Min.X -= expand
+			hitRect.Max.X += expand
+		}
+		if hitRect.Dy() < minTarget {
+			expand := (minTarget - hitRect.Dy()) / 2
+			hitRect.Min.Y -= expand
+			hitRect.Max.Y += expand
+		}
+	}
+	inside := image.Pt(mx, my).In(hitRect)
 	b.hovered = inside
 	if pressed && inside {
 		b.held++
@@ -221,21 +286,22 @@ func (g *GridLayout) recalc() {
 	for _, h := range g.rowWeights {
 		totalH += h
 	}
+	// Compute positions as rounded fractions of the total to distribute
+	// rounding error evenly (±1px per cell) instead of accumulating it
+	// in the last cell.
 	g.colPos = make([]int, len(g.colWeights)+1)
-	x := g.bounds.Min.X
+	cumW := 0.0
 	for i, w := range g.colWeights {
-		width := int(float64(g.bounds.Dx()) * (w / totalW))
-		g.colPos[i] = x
-		x += width
+		g.colPos[i] = g.bounds.Min.X + int(cumW/totalW*float64(g.bounds.Dx()))
+		cumW += w
 	}
 	g.colPos[len(g.colWeights)] = g.bounds.Max.X
 
 	g.rowPos = make([]int, len(g.rowWeights)+1)
-	y := g.bounds.Min.Y
+	cumH := 0.0
 	for i, h := range g.rowWeights {
-		height := int(float64(g.bounds.Dy()) * (h / totalH))
-		g.rowPos[i] = y
-		y += height
+		g.rowPos[i] = g.bounds.Min.Y + int(cumH/totalH*float64(g.bounds.Dy()))
+		cumH += h
 	}
 	g.rowPos[len(g.rowWeights)] = g.bounds.Max.Y
 }
@@ -243,4 +309,105 @@ func (g *GridLayout) recalc() {
 // Cell returns the rectangle for the specified cell.
 func (g *GridLayout) Cell(col, row int) image.Rectangle {
 	return image.Rect(g.colPos[col], g.rowPos[row], g.colPos[col+1], g.rowPos[row+1])
+}
+
+// SubGrid creates a new GridLayout within the specified cell, allowing nested
+// grids with different column/row structures.
+func (g *GridLayout) SubGrid(col, row int, cols, rows []float64) *GridLayout {
+	return NewGridLayout(g.Cell(col, row), cols, rows)
+}
+
+// LayoutGroup is a named, hierarchical GridLayout that tracks parent-child
+// relationships. Moving or resizing the parent automatically repositions
+// all children. This enables relocating entire UI sections (e.g., transport
+// controls, row controls) by changing a single parent cell assignment.
+type LayoutGroup struct {
+	ID       string
+	grid     *GridLayout
+	parent   *LayoutGroup
+	pCol     int // parent cell column
+	pRow     int // parent cell row
+	children []*LayoutGroup
+	visible  bool
+}
+
+// NewLayoutGroup creates a top-level layout group.
+func NewLayoutGroup(id string, bounds image.Rectangle, cols, rows []float64) *LayoutGroup {
+	return &LayoutGroup{
+		ID:      id,
+		grid:    NewGridLayout(bounds, cols, rows),
+		visible: true,
+	}
+}
+
+// AddChild creates a child group anchored to the parent's cell at (col, row).
+func (g *LayoutGroup) AddChild(id string, col, row int, cols, rows []float64) *LayoutGroup {
+	child := &LayoutGroup{
+		ID:      id,
+		grid:    NewGridLayout(g.grid.Cell(col, row), cols, rows),
+		parent:  g,
+		pCol:    col,
+		pRow:    row,
+		visible: true,
+	}
+	g.children = append(g.children, child)
+	return child
+}
+
+// Bounds returns the absolute rectangle of this group.
+func (g *LayoutGroup) Bounds() image.Rectangle {
+	if !g.visible {
+		return image.Rectangle{}
+	}
+	return g.grid.bounds
+}
+
+// Cell returns the absolute cell rectangle within this group.
+func (g *LayoutGroup) Cell(col, row int) image.Rectangle {
+	if !g.visible {
+		return image.Rectangle{}
+	}
+	return g.grid.Cell(col, row)
+}
+
+// SetBounds updates the bounds and cascades to all children.
+func (g *LayoutGroup) SetBounds(b image.Rectangle) {
+	g.grid.bounds = b
+	g.grid.recalc()
+	for _, c := range g.children {
+		c.SetBounds(g.grid.Cell(c.pCol, c.pRow))
+	}
+}
+
+// SetVisible hides or shows this group and all its children.
+func (g *LayoutGroup) SetVisible(v bool) {
+	g.visible = v
+	for _, c := range g.children {
+		c.SetVisible(v)
+	}
+}
+
+// Relayout recalculates this group's bounds from its parent cell and cascades.
+func (g *LayoutGroup) Relayout() {
+	if g.parent != nil {
+		g.SetBounds(g.parent.grid.Cell(g.pCol, g.pRow))
+	} else {
+		g.grid.recalc()
+		for _, c := range g.children {
+			c.SetBounds(g.grid.Cell(c.pCol, c.pRow))
+		}
+	}
+}
+
+// Find looks up a child group by ID in the subtree (depth-first).
+func (g *LayoutGroup) Find(id string) *LayoutGroup {
+	if g.ID == id {
+		return g
+	}
+	for _, c := range g.children {
+		if found := c.Find(id); found != nil {
+			return found
+		}
+	}
+	return nil
 }

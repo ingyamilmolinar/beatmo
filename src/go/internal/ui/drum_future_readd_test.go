@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 func advancePlayback(g *Game, dur time.Duration) {
@@ -152,7 +152,7 @@ func TestDrumView_ReaddTwiceBeforeTriggerUpdatesFuture(t *testing.T) {
 	g.updateBeatInfos()
 
 	dst := ebiten.NewImage(640, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 
 	g.drum.SetBPM(120)
 	advancePlayback(g, 100*time.Millisecond)
@@ -184,7 +184,7 @@ func TestDrumView_ReaddTwiceBeforeTriggerUpdatesFuture(t *testing.T) {
 	}
 
 	g.refreshDrumRow()
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	targetNode := g.nodeAt(start+2*step, 0)
 	if targetNode == nil {
 		t.Fatalf("target node missing before delete")
@@ -257,7 +257,7 @@ func TestDrumView_ReaddDuringPlaybackLeavesFutureStale(t *testing.T) {
 
 	dst := ebiten.NewImage(960, 240)
 	g.refreshDrumRow()
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 
 	g.drum.SetBPM(120)
 	advancePlayback(g, 120*time.Millisecond)

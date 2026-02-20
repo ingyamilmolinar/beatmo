@@ -40,7 +40,7 @@ func (g *Game) sequencerLoop() {
 func (g *Game) zoomAtScreen(sx, sy float64, steps float64) {
 	wx := (sx - g.cam.OffsetX) / g.cam.Scale
 	// Account for the transport bar offset in screen space
-	wy := (sy - float64(topOffset) - g.cam.OffsetY) / g.cam.Scale
+	wy := (sy - float64(gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
 	const zoomFactor = 1.05
 	const zoomSensitivity = 0.1
 	newScale := g.cam.Scale * math.Pow(zoomFactor, steps*zoomSensitivity)
@@ -50,7 +50,7 @@ func (g *Game) zoomAtScreen(sx, sy float64, steps float64) {
 		newScale = 10.0
 	}
 	g.cam.OffsetX = sx - wx*newScale
-	g.cam.OffsetY = sy - float64(topOffset) - wy*newScale
+	g.cam.OffsetY = sy - float64(gridTopOffset()) - wy*newScale
 	g.cam.Scale = newScale
 	g.cam.Snap()
 }

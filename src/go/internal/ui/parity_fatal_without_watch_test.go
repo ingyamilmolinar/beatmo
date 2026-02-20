@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Even when parityWatch is off, PARITY_FATAL should still trigger panics on mismatches.

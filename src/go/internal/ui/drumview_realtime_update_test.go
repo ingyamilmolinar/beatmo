@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Regression: changing a row's instrument (which also changes its color) during

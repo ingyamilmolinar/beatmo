@@ -201,3 +201,161 @@ func TestRenameComponent_EmptyAnchorRect(t *testing.T) {
 		t.Error("expected rename to not open with empty anchor rect")
 	}
 }
+
+func TestRenameComponent_MobileMode_Open(t *testing.T) {
+	forceSmallScreenForTest = true
+	defer func() { forceSmallScreenForTest = false }()
+
+	testMobileInputActive = map[string]bool{"rename-0": true}
+	defer func() { testMobileInputActive = nil }()
+
+	comp := NewRenameComponent("test-rename")
+	comp.SetProps(RenameProps{
+		AnchorRect:    image.Rect(100, 50, 250, 75),
+		InitialText:   "kick",
+		MaxLen:        32,
+		MobileInputID: "rename-0",
+	})
+	comp.Open()
+
+	if !comp.IsOpen() {
+		t.Error("expected rename to be open in mobile mode")
+	}
+	if !comp.state.mobile {
+		t.Error("expected state.mobile to be true")
+	}
+	if comp.textBox != nil {
+		t.Error("expected textBox to be nil in mobile mode")
+	}
+}
+
+func TestRenameComponent_MobileMode_Commit(t *testing.T) {
+	forceSmallScreenForTest = true
+	defer func() { forceSmallScreenForTest = false }()
+
+	testMobileInputActive = map[string]bool{"rename-1": true}
+	testMobileInputResult = map[string]*struct {
+		Value     string
+		Committed bool
+	}{}
+	defer func() {
+		testMobileInputActive = nil
+		testMobileInputResult = nil
+	}()
+
+	var committed string
+	comp := NewRenameComponent("test-rename")
+	comp.SetProps(RenameProps{
+		AnchorRect:    image.Rect(100, 50, 250, 75),
+		InitialText:   "kick",
+		MaxLen:        32,
+		MobileInputID: "rename-1",
+		OnCommit:      func(name string) { committed = name },
+	})
+	comp.Open()
+
+	// Release hold
+	comp.HandleInput(0, 0, false)
+
+	// Inject committed result
+	testMobileInputResult["rename-1"] = &struct {
+		Value     string
+		Committed bool
+	}{"snare", true}
+
+	result := comp.HandleInput(0, 0, false)
+	if result != InputConsumed {
+		t.Errorf("expected InputConsumed, got %v", result)
+	}
+	if committed != "snare" {
+		t.Errorf("expected committed='snare', got '%s'", committed)
+	}
+	if comp.IsOpen() {
+		t.Error("expected rename to be closed after commit")
+	}
+}
+
+func TestRenameComponent_MobileMode_Cancel(t *testing.T) {
+	forceSmallScreenForTest = true
+	defer func() { forceSmallScreenForTest = false }()
+
+	testMobileInputActive = map[string]bool{"rename-2": true}
+	testMobileInputResult = map[string]*struct {
+		Value     string
+		Committed bool
+	}{}
+	defer func() {
+		testMobileInputActive = nil
+		testMobileInputResult = nil
+	}()
+
+	var cancelCalled bool
+	comp := NewRenameComponent("test-rename")
+	comp.SetProps(RenameProps{
+		AnchorRect:    image.Rect(100, 50, 250, 75),
+		InitialText:   "kick",
+		MaxLen:        32,
+		MobileInputID: "rename-2",
+		OnCancel:      func() { cancelCalled = true },
+	})
+	comp.Open()
+
+	// Release hold
+	comp.HandleInput(0, 0, false)
+
+	// Inject cancelled result (Escape)
+	testMobileInputResult["rename-2"] = &struct {
+		Value     string
+		Committed bool
+	}{"", false}
+
+	comp.HandleInput(0, 0, false)
+	if !cancelCalled {
+		t.Error("expected OnCancel to be called")
+	}
+	if comp.IsOpen() {
+		t.Error("expected rename to be closed after cancel")
+	}
+}
+
+func TestRenameComponent_MobileMode_DrawNoop(t *testing.T) {
+	forceSmallScreenForTest = true
+	defer func() { forceSmallScreenForTest = false }()
+
+	testMobileInputActive = map[string]bool{"rename-0": true}
+	defer func() { testMobileInputActive = nil }()
+
+	comp := NewRenameComponent("test-rename")
+	comp.SetProps(RenameProps{
+		AnchorRect:    image.Rect(100, 50, 250, 75),
+		InitialText:   "kick",
+		MobileInputID: "rename-0",
+	})
+	comp.Open()
+
+	// Draw should not panic with nil dst in mobile mode (skips drawing)
+	comp.Draw(nil)
+}
+
+func TestRenameComponent_DesktopUnchanged(t *testing.T) {
+	forceSmallScreenForTest = false
+	testMobileInputActive = nil
+
+	comp := NewRenameComponent("test-rename")
+	comp.SetProps(RenameProps{
+		AnchorRect:  image.Rect(100, 50, 250, 75),
+		InitialText: "kick",
+		MaxLen:      32,
+	})
+	comp.Open()
+
+	if !comp.IsOpen() {
+		t.Error("expected rename to be open on desktop")
+	}
+	if comp.textBox == nil {
+		t.Error("expected textBox to be created on desktop")
+	}
+	if comp.state.mobile {
+		t.Error("expected state.mobile to be false on desktop")
+	}
+}

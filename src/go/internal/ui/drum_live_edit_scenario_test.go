@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 type rowSnapshot struct {
@@ -338,12 +337,7 @@ func findPastBeatInfo(t *testing.T, g *Game, row int) (model.BeatInfo, int) {
 }
 
 func TestDrumLiveEditScenario(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatalf("runtime.Caller failed")
-	}
-	root := filepath.Join(filepath.Dir(filename), "../../../../tunkul.json")
-	data, err := os.ReadFile(root)
+	data, err := os.ReadFile(filepath.Join("..", "assets", "live_edit_fixture.json"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -363,7 +357,7 @@ func TestDrumLiveEditScenario(t *testing.T) {
 
 	g.drum.SetBPM(120)
 	g.refreshDrumRow()
-	g.drum.Draw(ebiten.NewImage(1280, 240), map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(ebiten.NewImage(1280, 240), nil, 0, nil, 0)
 
 	advanceGame(g, 60)
 	g.SetPlaying(true)

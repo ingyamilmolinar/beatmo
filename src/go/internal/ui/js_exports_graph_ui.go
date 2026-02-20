@@ -8,8 +8,8 @@ import (
 	"strings"
 	"syscall/js"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (g *Game) initJSGraphUI() {
@@ -143,14 +143,14 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// nodeMenuRect(id) -> {x,y,w,h} for popup control id; "panel" for full panel.
+	// nodeMenuRect(id) -> {x,y,w,h} for sidebar control id; "panel" for full panel.
 	js.Global().Set("nodeMenuRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if len(args) < 1 {
 			return nil
 		}
 		id := args[0].String()
-		g.updateNodeMenuRects()
-		r, ok := g.nodeMenuRects[id]
+		g.sidebar.layout()
+		r, ok := g.sidebar.rects[id]
 		if !ok {
 			return nil
 		}
@@ -211,11 +211,11 @@ func (g *Game) initJSGraphUI() {
 		if len(args) < 1 {
 			return nil
 		}
-		if g.nodeMenuNode == nil {
+		if g.sidebar.Node() == nil {
 			return nil
 		}
 		id := args[0].String()
-		node := g.nodeMenuNode
+		node := g.sidebar.Node()
 		mn, ok := g.graph.GetNodeByID(node.ID)
 		if !ok {
 			return nil
@@ -514,6 +514,22 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.split.Y)
 	}))
 
+	// splitX() -> int
+	js.Global().Set("splitX", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.split == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.split.X)
+	}))
+
+	// layoutHorizontal() -> bool (true=stacked, false=side-by-side)
+	js.Global().Set("layoutHorizontal", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.split == nil {
+			return js.ValueOf(true)
+		}
+		return js.ValueOf(g.split.horizontal)
+	}))
+
 	// setSplitY(y)
 	js.Global().Set("setSplitY", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.split == nil || len(args) < 1 {
@@ -522,8 +538,21 @@ func (g *Game) initJSGraphUI() {
 		y := args[0].Int()
 		g.split.Y = y
 		g.split.userSet = true
+		// Clamp to match UpdateResize bounds
+		minY := 120
+		maxY := g.winH - 120
+		if g.split.Y < minY {
+			g.split.Y = minY
+		}
+		if g.winH > 0 && g.split.Y > maxY {
+			g.split.Y = maxY
+		}
 		if g.winH > 0 {
 			g.split.ratio = float64(g.split.Y) / float64(g.winH)
+		}
+		// Immediately update drum bounds so drumBounds() is consistent
+		if g.drum != nil {
+			g.drum.SetBounds(g.split.DrumRect(g.winW, g.winH))
 		}
 		return nil
 	}))
@@ -779,26 +808,23 @@ func (g *Game) initJSGraphUI() {
 		if i < 0 || i >= len(g.drum.Rows) {
 			return nil
 		}
-		g.drum.selRow = i
-		g.drum.instMenuRow = i
-		g.drum.instMenuOpen = true
-		g.drum.buildInstMenu()
+		g.drum.openInstMenuForRow(i)
 		return nil
 	}))
 
 	// instMenuItemRects() -> [{id,x,y,w,h}]
 	js.Global().Set("instMenuItemRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		arr := js.Global().Get("Array").New()
-		if g.drum == nil {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return arr
 		}
-		for idx := range g.drum.instMenuBtns {
-			btn := g.drum.instMenuBtns[idx]
-			if idx >= 0 && idx < len(g.drum.instOptions) {
-				id := g.drum.instOptions[idx]
+		btns := g.drum.instMenuComp.InstBtns()
+		ids := g.drum.instMenuComp.VisibleInstIDs()
+		for i, btn := range btns {
+			if i < len(ids) {
 				obj := js.Global().Get("Object").New()
 				r := btn.Rect()
-				obj.Set("id", id)
+				obj.Set("id", ids[i])
 				obj.Set("x", r.Min.X)
 				obj.Set("y", r.Min.Y)
 				obj.Set("w", r.Dx())
@@ -995,7 +1021,10 @@ func (g *Game) initJSGraphUI() {
 			g.drum.Rows[g.drum.renameRow].Name = name
 			g.drum.rowLabels[g.drum.renameRow].Text = name
 			customColors[newID] = g.drum.Rows[g.drum.renameRow].Color
+			g.drum.invalidateLabelCaches()
 			g.drum.refreshInstruments()
+			g.drum.markRowControlsDirty()
+			g.drum.bgDirty = true
 		}
 		g.drum.renameBox = nil
 		g.drum.renameRow = -1
@@ -1204,21 +1233,73 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
+	// nodeInfo(i,j) -> {i, j, instrument, row, color} or null
+	js.Global().Set("nodeInfo", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 2 {
+			return nil
+		}
+		i := args[0].Int()
+		j := args[1].Int()
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return nil
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("i", n.I)
+		obj.Set("j", n.J)
+		obj.Set("id", int(n.ID))
+		if row, ok := g.nodeRows[n.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
+			dr := g.drum.Rows[row]
+			obj.Set("row", row)
+			obj.Set("instrument", dr.Instrument)
+			obj.Set("name", dr.Name)
+			obj.Set("color", g.drum.colorKey(dr.Color))
+		} else {
+			obj.Set("row", -1)
+			obj.Set("instrument", "")
+			obj.Set("name", "")
+			obj.Set("color", "")
+		}
+		return obj
+	}))
+
+	// moveNodeGrid(fromI, fromJ, toI, toJ) -> bool
+	// Direct move without confirmation (for programmatic/test use).
+	js.Global().Set("moveNodeGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 4 {
+			return js.ValueOf(false)
+		}
+		fi := args[0].Int()
+		fj := args[1].Int()
+		ti := args[2].Int()
+		tj := args[3].Int()
+		n := g.nodeAt(fi, fj)
+		if n == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.moveNode(n, ti, tj))
+	}))
+
 	// ─────────────────────────────────────────────────────────────────────────
 	// State verification exports for real input tests
 	// ─────────────────────────────────────────────────────────────────────────
 
+	// totalNodes() -> int
+	js.Global().Set("totalNodes", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		return js.ValueOf(len(g.nodes))
+	}))
+
 	// nodeMenuOpen() -> bool
 	js.Global().Set("nodeMenuOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		return js.ValueOf(g.nodeMenuOpen)
+		return js.ValueOf(g.sidebar.IsOpen())
 	}))
 
 	// nodeMenuNodeId() -> int (-1 if none)
 	js.Global().Set("nodeMenuNodeId", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.nodeMenuNode == nil {
+		if g.sidebar.Node() == nil {
 			return js.ValueOf(-1)
 		}
-		return js.ValueOf(int(g.nodeMenuNode.ID))
+		return js.ValueOf(int(g.sidebar.Node().ID))
 	}))
 
 	// selectedNodeId() -> int (-1 if none)
@@ -1309,6 +1390,108 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.instMenuOpen)
 	}))
 
+	// instMenuModeState() -> string ("categories" | "instruments" | "")
+	js.Global().Set("instMenuModeState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(string(g.drum.instMenuComp.Mode()))
+	}))
+
+	// instMenuBackBtnRect() -> {x,y,w,h} | null
+	js.Global().Set("instMenuBackBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return nil
+		}
+		btn := g.drum.instMenuComp.BackBtn()
+		if btn == nil {
+			return nil
+		}
+		return rectToJS(btn.Rect())
+	}))
+
+	// instMenuCategoryRects() -> [{name,x,y,w,h}]
+	js.Global().Set("instMenuCategoryRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return arr
+		}
+		for _, btn := range g.drum.instMenuComp.CategoryBtns() {
+			obj := js.Global().Get("Object").New()
+			r := btn.Rect()
+			obj.Set("name", btn.Text)
+			obj.Set("x", r.Min.X)
+			obj.Set("y", r.Min.Y)
+			obj.Set("w", r.Dx())
+			obj.Set("h", r.Dy())
+			arr.Call("push", obj)
+		}
+		return arr
+	}))
+
+	// instMenuClickBack() - programmatically trigger back button OnClick
+	js.Global().Set("instMenuClickBack", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		btn := g.drum.instMenuComp.BackBtn()
+		if btn == nil || btn.OnClick == nil {
+			return js.ValueOf(false)
+		}
+		btn.OnClick()
+		return js.ValueOf(true)
+	}))
+
+	// instMenuSelectCategory(idx) - programmatically click a category button
+	js.Global().Set("instMenuSelectCategory", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 {
+			return js.ValueOf(false)
+		}
+		idx := args[0].Int()
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		cats := g.drum.instMenuComp.CategoryBtns()
+		if idx < 0 || idx >= len(cats) {
+			return js.ValueOf(false)
+		}
+		if cats[idx].OnClick != nil {
+			cats[idx].OnClick()
+		}
+		return js.ValueOf(true)
+	}))
+
+	// instMenuSelectItem(idx) - programmatically click an instrument button
+	js.Global().Set("instMenuSelectItem", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 {
+			return js.ValueOf(false)
+		}
+		idx := args[0].Int()
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		btns := g.drum.instMenuComp.InstBtns()
+		if idx < 0 || idx >= len(btns) {
+			return js.ValueOf(false)
+		}
+		if btns[idx].OnClick != nil {
+			btns[idx].OnClick()
+		}
+		return js.ValueOf(true)
+	}))
+
+	// closeInstMenu() - explicitly close the instrument menu
+	js.Global().Set("closeInstMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return nil
+		}
+		if g.drum.instMenuComp != nil && g.drum.instMenuComp.IsOpen() {
+			g.drum.instMenuComp.Close()
+		}
+		g.drum.instMenuOpen = false
+		return nil
+	}))
+
 	// colorMenuOpen() -> bool
 	js.Global().Set("colorMenuOpenState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil {
@@ -1322,11 +1505,318 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.Playing())
 	}))
 
-	// closeNodeMenu() - explicitly close the node popup
+	// closeNodeMenu() - explicitly close the node sidebar
 	js.Global().Set("closeNodeMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		g.nodeMenuOpen = false
-		g.nodeMenuNode = nil
+		g.sidebar.Close()
 		return nil
+	}))
+
+	// openNodeSidebar(i, j) - open sidebar for node at grid position
+	js.Global().Set("openNodeSidebar", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 2 {
+			return js.ValueOf(false)
+		}
+		i := args[0].Int()
+		j := args[1].Int()
+		n := g.nodeAt(i, j)
+		if n == nil {
+			return js.ValueOf(false)
+		}
+		if g.sel != nil {
+			g.sel.Selected = false
+		}
+		g.sel = n
+		n.Selected = true
+		g.sidebar.Open(n)
+		return js.ValueOf(true)
+	}))
+
+	// closeAllPopups() - close all open popups (node menu, instrument, color, subdiv, etc.)
+	js.Global().Set("closeAllPopups", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		g.closeAllPopups()
+		return nil
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Node sidebar scroll diagnostics
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// sidebarScrollOffset() -> int (VS.First)
+	js.Global().Set("sidebarScrollOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if !g.sidebar.IsOpen() {
+			return js.ValueOf(0)
+		}
+		g.sidebar.layout()
+		return js.ValueOf(g.sidebar.scroll.VS.First)
+	}))
+
+	// sidebarHasScroll() -> bool
+	js.Global().Set("sidebarHasScroll", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if !g.sidebar.IsOpen() {
+			return js.ValueOf(false)
+		}
+		g.sidebar.layout()
+		return js.ValueOf(g.sidebar.scroll.HasScroll())
+	}))
+
+	// sidebarExpandAllSections() - expand all collapsible sections
+	js.Global().Set("sidebarExpandAllSections", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		g.sidebar.ExpandAllSections()
+		g.sidebar.layout()
+		return nil
+	}))
+
+	// sidebarSectionOpen(name) -> bool — query whether a section is open
+	js.Global().Set("sidebarSectionOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 || !g.sidebar.IsOpen() {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.sidebar.sectionOpen[args[0].String()])
+	}))
+
+	// sidebarSectionRect(name) -> {x,y,w,h} or null — get section header rect
+	js.Global().Set("sidebarSectionRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 || !g.sidebar.IsOpen() {
+			return nil
+		}
+		g.sidebar.layout()
+		r, ok := g.sidebar.rects["sec-"+args[0].String()]
+		if !ok || r.Empty() {
+			return nil
+		}
+		return rectToJS(r)
+	}))
+
+	// sidebarScrollBarRect() -> {x,y,w,h} or null
+	js.Global().Set("sidebarScrollBarRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if !g.sidebar.IsOpen() || !g.sidebar.scroll.HasScroll() {
+			return nil
+		}
+		g.sidebar.layout()
+		return rectToJS(g.sidebar.scroll.BarRect())
+	}))
+
+	// sidebarScrollThumbRect() -> {x,y,w,h} or null
+	js.Global().Set("sidebarScrollThumbRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if !g.sidebar.IsOpen() || !g.sidebar.scroll.HasScroll() {
+			return nil
+		}
+		g.sidebar.layout()
+		return rectToJS(g.sidebar.scroll.ThumbRect())
+	}))
+
+	// sidebarContentHeight() -> int
+	js.Global().Set("sidebarContentHeight", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if !g.sidebar.IsOpen() {
+			return js.ValueOf(0)
+		}
+		g.sidebar.layout()
+		return js.ValueOf(g.sidebar.scroll.VS.Total)
+	}))
+
+	// sidebarPanelRect() -> {x,y,w,h} or null
+	js.Global().Set("sidebarPanelRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if !g.sidebar.IsOpen() {
+			return nil
+		}
+		g.sidebar.layout()
+		r, ok := g.sidebar.rects["panel"]
+		if !ok {
+			return nil
+		}
+		return rectToJS(r)
+	}))
+
+	// sidebarDebugState() -> {scrollOffset, hasScroll, contentH, panelH, viewportH, ...}
+	js.Global().Set("sidebarDebugState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := js.Global().Get("Object").New()
+		obj.Set("open", g.sidebar.IsOpen())
+		if !g.sidebar.IsOpen() {
+			return obj
+		}
+		g.sidebar.layout()
+		obj.Set("scrollOffset", g.sidebar.scroll.VS.First)
+		obj.Set("hasScroll", g.sidebar.scroll.HasScroll())
+		obj.Set("contentH", g.sidebar.scroll.VS.Total)
+		obj.Set("viewportH", g.sidebar.scroll.VS.Visible)
+		if r, ok := g.sidebar.rects["panel"]; ok {
+			obj.Set("panelH", r.Dy())
+		}
+		return obj
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Instrument menu scroll diagnostics
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// instMenuScrollOffset() -> int
+	js.Global().Set("instMenuScrollOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(0)
+		}
+		first, _, _ := g.drum.instMenuComp.ScrollState()
+		return js.ValueOf(first)
+	}))
+
+	// instMenuHasScroll() -> bool
+	js.Global().Set("instMenuHasScroll", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.ValueOf(false)
+		}
+		_, visible, total := g.drum.instMenuComp.ScrollState()
+		return js.ValueOf(total > visible)
+	}))
+
+	// instMenuScrollBarRect() -> {x,y,w,h} or null
+	js.Global().Set("instMenuScrollBarRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return nil
+		}
+		if g.drum.instMenuComp.scroll == nil || !g.drum.instMenuComp.scroll.HasScroll() {
+			return nil
+		}
+		return rectToJS(g.drum.instMenuComp.scroll.BarRect())
+	}))
+
+	// instMenuScrollThumbRect() -> {x,y,w,h} or null
+	js.Global().Set("instMenuScrollThumbRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return nil
+		}
+		if g.drum.instMenuComp.scroll == nil || !g.drum.instMenuComp.scroll.HasScroll() {
+			return nil
+		}
+		return rectToJS(g.drum.instMenuComp.scroll.ThumbRect())
+	}))
+
+	// instMenuDebugState() -> {scrollOffset, hasScroll, totalItems, visibleItems, ...}
+	js.Global().Set("instMenuDebugState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			obj.Set("open", false)
+			return obj
+		}
+		comp := g.drum.instMenuComp
+		obj.Set("open", comp.IsOpen())
+		if !comp.IsOpen() {
+			return obj
+		}
+		first, visible, total := comp.ScrollState()
+		obj.Set("scrollOffset", first)
+		obj.Set("hasScroll", total > visible)
+		obj.Set("visible", visible)
+		obj.Set("total", total)
+		obj.Set("mode", string(comp.Mode()))
+		obj.Set("totalInstBtns", len(comp.InstBtns()))
+		obj.Set("totalCatBtns", len(comp.CategoryBtns()))
+		return obj
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Context menu exports for testing
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// openContextMenuJS(row) — programmatically open context menu for a drum row
+	js.Global().Set("openContextMenuJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || len(args) < 1 {
+			return nil
+		}
+		row := args[0].Int()
+		if row < 0 || row >= len(g.drum.Rows) {
+			return nil
+		}
+		g.drum.openContextMenu(row)
+		return nil
+	}))
+
+	// contextMenuOpenJS() -> bool
+	js.Global().Set("contextMenuOpenJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.ContextMenuOpen())
+	}))
+
+	// contextMenuItemsJS() -> [{label, divider}]
+	js.Global().Set("contextMenuItemsJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || !g.drum.ContextMenuOpen() {
+			return arr
+		}
+		items := g.drum.ContextMenuItemsForTest(g.drum.contextMenuRow)
+		for _, item := range items {
+			obj := js.Global().Get("Object").New()
+			obj.Set("label", item.label)
+			obj.Set("divider", item.divider)
+			arr.Call("push", obj)
+		}
+		return arr
+	}))
+
+	// contextMenuClickJS(label) — click a context menu item by label
+	js.Global().Set("contextMenuClickJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || !g.drum.ContextMenuOpen() || len(args) < 1 {
+			return js.ValueOf(false)
+		}
+		label := args[0].String()
+		for _, btn := range g.drum.ContextMenuBtns() {
+			if btn.Text == label && btn.OnClick != nil {
+				btn.OnClick()
+				return js.ValueOf(true)
+			}
+		}
+		return js.ValueOf(false)
+	}))
+
+	// contextMenuRectJS() -> {x,y,w,h} or null
+	js.Global().Set("contextMenuRectJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || !g.drum.ContextMenuOpen() {
+			return nil
+		}
+		return rectToJS(g.drum.ContextMenuRectVal())
+	}))
+
+	// contextMenuRowJS() -> int (-1 if not open)
+	js.Global().Set("contextMenuRowJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || !g.drum.ContextMenuOpen() {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(g.drum.contextMenuRow)
+	}))
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// Mobile / soft keyboard exports for testing
+	// ─────────────────────────────────────────────────────────────────────────
+
+	// kbProxyFocused() -> bool
+	js.Global().Set("kbProxyFocused", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		return js.ValueOf(softKeyboardActive())
+	}))
+
+	// kbProxyInputMode() -> string
+	js.Global().Set("kbProxyInputMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		doc := js.Global().Get("document")
+		el := doc.Call("getElementById", "beatmo-kb-proxy")
+		if !el.Truthy() {
+			return js.ValueOf("")
+		}
+		return js.ValueOf(el.Call("getAttribute", "inputmode").String())
+	}))
+
+	// longPressDeleteRect() -> {x,y,w,h} or null if popup not open
+	js.Global().Set("longPressDeleteRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if !g.longPressPopup {
+			return nil
+		}
+		return rectToJS(g.longPressPopupDel)
+	}))
+
+	// totalVisibleRows() -> int
+	js.Global().Set("totalVisibleRows", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return js.ValueOf(0)
+		}
+		return js.ValueOf(g.drum.visibleRows())
 	}))
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -1379,9 +1869,9 @@ func (g *Game) initJSGraphUI() {
 		}
 		obj.Set("clickI", g.clickI)
 		obj.Set("clickJ", g.clickJ)
-		obj.Set("nodeMenuOpen", g.nodeMenuOpen)
-		if g.nodeMenuNode != nil {
-			obj.Set("nodeMenuNodeId", int(g.nodeMenuNode.ID))
+		obj.Set("nodeMenuOpen", g.sidebar.IsOpen())
+		if g.sidebar.Node() != nil {
+			obj.Set("nodeMenuNodeId", int(g.sidebar.Node().ID))
 		} else {
 			obj.Set("nodeMenuNodeId", -1)
 		}
@@ -1392,6 +1882,32 @@ func (g *Game) initJSGraphUI() {
 		}
 		obj.Set("camDragging", g.camDragging)
 		obj.Set("camDragged", g.camDragged)
+		// Dispatcher capture diagnostic
+		obj.Set("dispatcherHasCapture", g.inputDispatcher.capture != nil)
+		if g.drum != nil {
+			obj.Set("drumCapturing", g.drum.Capturing())
+			obj.Set("drumMouseDownInBounds", g.drum.mouseDownInBounds)
+			obj.Set("drumAnyDragActive", g.drum.anyDragActive())
+			obj.Set("drumAnyDropdownOpen", g.drum.anyDropdownOpen())
+		}
+		obj.Set("splitDragging", g.split.dragging)
+		obj.Set("connectMode", g.connectMode)
+		obj.Set("moveMode", g.moveMode)
+		obj.Set("longPressPopup", g.longPressPopup)
+		obj.Set("suppressClicks", suppressClicksUntilRelease)
 		return obj
+	}))
+
+	// mobileInputActive(id) -> bool — check if a mobile native input is active
+	js.Global().Set("mobileInputActive", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(mobileInputActive(args[0].String()))
+	}))
+
+	// mobileInputAnyActive() -> bool
+	js.Global().Set("mobileInputAnyActive", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		return js.ValueOf(mobileInputAnyActive())
 	}))
 }

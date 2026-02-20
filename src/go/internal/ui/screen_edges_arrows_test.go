@@ -25,6 +25,8 @@ func TestScreenEdgesDrawArrows(t *testing.T) {
 		t.Fatalf("RENDER_SAFE=%q; test requires default unset env", v)
 	}
 	t.Setenv("SCREEN_EDGES", "1")
+	envScreenEdges = true
+	t.Cleanup(func() { envScreenEdges = false })
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

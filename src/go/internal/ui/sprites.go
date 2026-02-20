@@ -2,9 +2,10 @@ package ui
 
 import (
 	"embed"
-	"github.com/hajimehoshi/ebiten/v2"
 	"image"
 	_ "image/png"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 //go:embed assets/*.png
@@ -28,7 +29,7 @@ func init() {
 	SignalDot = load("assets/signal_dot.png")
 
 	// split sheet
-	w, _ := NodeAnim.Size()
+	w, _ := NodeAnim.Size() //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
 	frameW := 0
 	if w > 0 {
 		frameW = w / 8

@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (g *Game) Seek(beats int) {
@@ -159,4 +159,5 @@ func (g *Game) handlePlaybackTransition(prevPlaying bool) {
 		}
 	}
 	g.drum.SetPlaying(curr)
+	notifyMediaSessionState()
 }

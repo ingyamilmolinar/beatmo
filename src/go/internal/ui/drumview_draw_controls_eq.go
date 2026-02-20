@@ -1,8 +1,8 @@
 package ui
 
 import (
-	"fmt"
 	"image"
+	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -21,12 +21,12 @@ func (dv *DrumView) rowControlsCacheValid() bool {
 	if dv.rowControlsCacheRect.Empty() {
 		return false
 	}
-	// Check mute/solo state changes
+	// Check mute/solo state changes (skip when button rect is empty, e.g. mobile)
 	for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
-		if i < len(dv.rowMuteBtns) && dv.rowMuteBtns[i].pressed != dv.Rows[i].Muted {
+		if i < len(dv.rowMuteBtns) && !dv.rowMuteBtns[i].Rect().Empty() && dv.rowMuteBtns[i].pressed != dv.Rows[i].Muted {
 			return false
 		}
-		if i < len(dv.rowSoloBtns) && dv.rowSoloBtns[i].pressed != dv.Rows[i].Solo {
+		if i < len(dv.rowSoloBtns) && !dv.rowSoloBtns[i].Rect().Empty() && dv.rowSoloBtns[i].pressed != dv.Rows[i].Solo {
 			return false
 		}
 	}
@@ -53,32 +53,64 @@ func (dv *DrumView) computeRowControlsBounds() image.Rectangle {
 	if startRow >= endRow {
 		return image.Rectangle{}
 	}
-	// Use label and delete button rects to determine bounds
+	// Use all widget rects to determine bounds
 	var minX, minY, maxX, maxY int
 	first := true
-	for i := startRow; i < endRow; i++ {
-		if i < len(dv.rowLabels) {
-			r := dv.rowLabels[i].Rect()
-			if first {
-				minX, minY, maxX, maxY = r.Min.X, r.Min.Y, r.Max.X, r.Max.Y
-				first = false
-			} else {
-				if r.Min.X < minX {
-					minX = r.Min.X
-				}
-				if r.Min.Y < minY {
-					minY = r.Min.Y
-				}
-			}
+	expandRect := func(r image.Rectangle) {
+		if r.Empty() {
+			return
 		}
-		if i < len(dv.rowDeleteBtns) {
-			r := dv.rowDeleteBtns[i].Rect()
+		if first {
+			minX, minY, maxX, maxY = r.Min.X, r.Min.Y, r.Max.X, r.Max.Y
+			first = false
+		} else {
+			if r.Min.X < minX {
+				minX = r.Min.X
+			}
+			if r.Min.Y < minY {
+				minY = r.Min.Y
+			}
 			if r.Max.X > maxX {
 				maxX = r.Max.X
 			}
 			if r.Max.Y > maxY {
 				maxY = r.Max.Y
 			}
+		}
+	}
+	for i := startRow; i < endRow; i++ {
+		if i < len(dv.rowLabels) {
+			expandRect(dv.rowLabels[i].Rect())
+		}
+		if i < len(dv.rowMuteBtns) {
+			expandRect(dv.rowMuteBtns[i].Rect())
+		}
+		if i < len(dv.rowSoloBtns) {
+			expandRect(dv.rowSoloBtns[i].Rect())
+		}
+		if i < len(dv.rowVolSliders) {
+			expandRect(dv.rowVolSliders[i].Rect())
+		}
+		if i < len(dv.rowDeleteBtns) {
+			expandRect(dv.rowDeleteBtns[i].Rect())
+		}
+		if i < len(dv.rowOriginBtns) {
+			expandRect(dv.rowOriginBtns[i].Rect())
+		}
+		if i < len(dv.rowEditBtns) {
+			expandRect(dv.rowEditBtns[i].Rect())
+		}
+		if i < len(dv.rowColorBtns) {
+			expandRect(dv.rowColorBtns[i].Rect())
+		}
+		if i < len(dv.rowSaveBtns) {
+			expandRect(dv.rowSaveBtns[i].Rect())
+		}
+		if i < len(dv.rowMenuBtns) {
+			expandRect(dv.rowMenuBtns[i].Rect())
+		}
+		if i < len(dv.rowFXBtns) {
+			expandRect(dv.rowFXBtns[i].Rect())
 		}
 	}
 	if first {
@@ -133,9 +165,28 @@ func (dv *DrumView) drawRowControls(dst *ebiten.Image) {
 // drawRowControlsToCache draws row controls to the cache image with an offset.
 func (dv *DrumView) drawRowControlsToCache(cache *ebiten.Image, offsetX, offsetY int) {
 	vis := dv.visibleRows()
+	mobile := isSmallScreen()
 	for i := range dv.Rows {
 		if i < dv.rowOffset || i >= dv.rowOffset+vis {
 			continue
+		}
+		// Mobile: alternating row background for subtle zebra striping.
+		if mobile && i%2 == 1 && i < len(dv.rowLabels) {
+			lblR := dv.rowLabels[i].Rect()
+			if !lblR.Empty() {
+				zebraR := image.Rect(lblR.Min.X, lblR.Min.Y, lblR.Max.X, lblR.Max.Y)
+				zebraR = zebraR.Sub(image.Pt(offsetX, offsetY))
+				drawRect(cache, zebraR, color.NRGBA{255, 255, 255, 10}, true)
+			}
+		}
+		// Draw accent stripe at the left edge for instrument color identity (mobile only).
+		if mobile && i < len(dv.rowLabels) {
+			lblR := dv.rowLabels[i].Rect()
+			if !lblR.Empty() {
+				stripeR := image.Rect(lblR.Min.X, lblR.Min.Y, lblR.Max.X, lblR.Max.Y)
+				stripeR = stripeR.Sub(image.Pt(offsetX, offsetY))
+				drawAccentStripe(cache, stripeR, dv.Rows[i].Color)
+			}
 		}
 		if i < len(dv.rowLabels) {
 			if dv.renameRow != i {
@@ -148,17 +199,25 @@ func (dv *DrumView) drawRowControlsToCache(cache *ebiten.Image, offsetX, offsetY
 		if i < len(dv.rowSaveBtns) {
 			dv.drawButtonOffset(cache, dv.rowSaveBtns[i], offsetX, offsetY)
 		}
+		if i < len(dv.rowMenuBtns) && !dv.rowMenuBtns[i].Rect().Empty() {
+			dv.drawButtonOffset(cache, dv.rowMenuBtns[i], offsetX, offsetY)
+		}
 		if i < len(dv.rowColorBtns) {
 			dv.drawButtonOffset(cache, dv.rowColorBtns[i], offsetX, offsetY)
 		}
 		if i < len(dv.rowVolSliders) {
-			dv.drawSliderOffset(cache, dv.rowVolSliders[i], offsetX, offsetY)
+			if isSmallScreen() {
+				// Mobile: draw compact speaker icon; tap opens volume popup.
+				dv.drawVolumeIconOffset(cache, i, offsetX, offsetY)
+			} else {
+				dv.drawSliderOffset(cache, dv.rowVolSliders[i], offsetX, offsetY)
+			}
 		}
-		if i < len(dv.rowMuteBtns) {
+		if i < len(dv.rowMuteBtns) && !dv.rowMuteBtns[i].Rect().Empty() {
 			dv.rowMuteBtns[i].pressed = dv.Rows[i].Muted
 			dv.drawButtonOffset(cache, dv.rowMuteBtns[i], offsetX, offsetY)
 		}
-		if i < len(dv.rowSoloBtns) {
+		if i < len(dv.rowSoloBtns) && !dv.rowSoloBtns[i].Rect().Empty() {
 			dv.rowSoloBtns[i].pressed = dv.Rows[i].Solo
 			dv.drawButtonOffset(cache, dv.rowSoloBtns[i], offsetX, offsetY)
 		}
@@ -166,7 +225,29 @@ func (dv *DrumView) drawRowControlsToCache(cache *ebiten.Image, offsetX, offsetY
 			dv.drawButtonOffset(cache, dv.rowOriginBtns[i], offsetX, offsetY)
 		}
 		if i < len(dv.rowDeleteBtns) {
-			dv.drawButtonOffset(cache, dv.rowDeleteBtns[i], offsetX, offsetY)
+			btn := dv.rowDeleteBtns[i]
+			if dv.deleteConfirmRow == i && (dv.frame-dv.deleteConfirmFrame) < 120 {
+				btn.Text = "!!"
+				btn.Style = DeleteConfirmButtonStyle
+			} else {
+				btn.Text = "X"
+				if len(dv.Rows) > 1 {
+					btn.Style = InstButtonStyle
+				}
+			}
+			dv.drawButtonOffset(cache, btn, offsetX, offsetY)
+		}
+		if i < len(dv.rowFXBtns) {
+			dv.drawButtonOffset(cache, dv.rowFXBtns[i], offsetX, offsetY)
+		}
+		// Mobile: draw 1px separator line at row bottom.
+		if mobile && i < len(dv.rowLabels) {
+			lblR := dv.rowLabels[i].Rect()
+			if !lblR.Empty() {
+				sepY := lblR.Max.Y - offsetY
+				sepR := image.Rect(lblR.Min.X-offsetX, sepY, lblR.Max.X-offsetX, sepY+1)
+				drawRect(cache, sepR, color.NRGBA{255, 255, 255, 16}, true)
+			}
 		}
 	}
 }
@@ -174,9 +255,24 @@ func (dv *DrumView) drawRowControlsToCache(cache *ebiten.Image, offsetX, offsetY
 // drawRowControlsDirect draws row controls directly without caching (fallback).
 func (dv *DrumView) drawRowControlsDirect(dst *ebiten.Image) {
 	vis := dv.visibleRows()
+	mobile := isSmallScreen()
 	for i := range dv.Rows {
 		if i < dv.rowOffset || i >= dv.rowOffset+vis {
 			continue
+		}
+		// Mobile: alternating row background for subtle zebra striping.
+		if mobile && i%2 == 1 && i < len(dv.rowLabels) {
+			lblR := dv.rowLabels[i].Rect()
+			if !lblR.Empty() {
+				drawRect(dst, lblR, color.NRGBA{255, 255, 255, 10}, true)
+			}
+		}
+		// Draw accent stripe for instrument color identity (mobile only).
+		if mobile && i < len(dv.rowLabels) {
+			lblR := dv.rowLabels[i].Rect()
+			if !lblR.Empty() {
+				drawAccentStripe(dst, lblR, dv.Rows[i].Color)
+			}
 		}
 		if i < len(dv.rowLabels) {
 			if dv.renameRow != i {
@@ -189,25 +285,61 @@ func (dv *DrumView) drawRowControlsDirect(dst *ebiten.Image) {
 		if i < len(dv.rowSaveBtns) {
 			dv.rowSaveBtns[i].Draw(dst)
 		}
+		if i < len(dv.rowMenuBtns) && !dv.rowMenuBtns[i].Rect().Empty() {
+			dv.rowMenuBtns[i].Draw(dst)
+		}
 		if i < len(dv.rowColorBtns) {
 			dv.rowColorBtns[i].Draw(dst)
 		}
-		if i < len(dv.rowVolSliders) {
+		if i < len(dv.rowVolSliders) && !isSmallScreen() {
 			dv.rowVolSliders[i].Draw(dst)
 		}
-		if i < len(dv.rowMuteBtns) {
-			dv.rowMuteBtns[i].pressed = dv.Rows[i].Muted
+		if i < len(dv.rowMuteBtns) && !dv.rowMuteBtns[i].Rect().Empty() {
+			if dv.Rows[i].Muted {
+				dv.rowMuteBtns[i].Style = MuteActiveStyle
+				dv.rowMuteBtns[i].pressed = false
+			} else {
+				dv.rowMuteBtns[i].Style = InstButtonStyle
+				dv.rowMuteBtns[i].pressed = false
+			}
 			dv.rowMuteBtns[i].Draw(dst)
 		}
-		if i < len(dv.rowSoloBtns) {
-			dv.rowSoloBtns[i].pressed = dv.Rows[i].Solo
+		if i < len(dv.rowSoloBtns) && !dv.rowSoloBtns[i].Rect().Empty() {
+			if dv.Rows[i].Solo {
+				dv.rowSoloBtns[i].Style = SoloActiveStyle
+				dv.rowSoloBtns[i].pressed = false
+			} else {
+				dv.rowSoloBtns[i].Style = InstButtonStyle
+				dv.rowSoloBtns[i].pressed = false
+			}
 			dv.rowSoloBtns[i].Draw(dst)
 		}
 		if i < len(dv.rowOriginBtns) {
 			dv.rowOriginBtns[i].Draw(dst)
 		}
 		if i < len(dv.rowDeleteBtns) {
-			dv.rowDeleteBtns[i].Draw(dst)
+			btn := dv.rowDeleteBtns[i]
+			if dv.deleteConfirmRow == i && (dv.frame-dv.deleteConfirmFrame) < 120 {
+				btn.Text = "!!"
+				btn.Style = DeleteConfirmButtonStyle
+			} else {
+				btn.Text = "X"
+				if len(dv.Rows) > 1 {
+					btn.Style = InstButtonStyle
+				}
+			}
+			btn.Draw(dst)
+		}
+		if i < len(dv.rowFXBtns) {
+			dv.rowFXBtns[i].Draw(dst)
+		}
+		// Mobile: draw 1px separator line at row bottom.
+		if mobile && i < len(dv.rowLabels) {
+			lblR := dv.rowLabels[i].Rect()
+			if !lblR.Empty() {
+				sepY := lblR.Max.Y
+				drawRect(dst, image.Rect(lblR.Min.X, sepY, lblR.Max.X, sepY+1), color.NRGBA{255, 255, 255, 16}, true)
+			}
 		}
 	}
 }
@@ -246,6 +378,14 @@ func (dv *DrumView) drawEQ(dst *ebiten.Image) {
 	// Toggle button UI
 	if dv.eqToggleBtn != nil {
 		dv.eqToggleBtn.Draw(dst)
+	}
+	// HPF/LPF toggle buttons (drawn in both modes)
+	if dv.hpfBtn != nil && !dv.eqRect.Empty() {
+		dv.syncFilterButtonStyles()
+		dv.hpfBtn.Draw(dst)
+	}
+	if dv.lpfBtn != nil && !dv.eqRect.Empty() {
+		dv.lpfBtn.Draw(dst)
 	}
 	if dv.eqWaveformMode {
 		dv.drawWaveform(dst, snap)
@@ -355,8 +495,9 @@ func (dv *DrumView) drawEQ(dst *ebiten.Image) {
 		if i > 0 {
 			drawRect(dst, image.Rect(x0, dv.eqRect.Min.Y, x0+1, dv.eqRect.Max.Y), colGridLine, true)
 		}
-		// Label near the bottom (Hz range).
-		lbl := fmt.Sprintf("%.0f-%.0f", eqBandDefs[i].loHz, eqBandDefs[i].hiHz)
+		// Label near the bottom (ISO center frequency).
+		eqCenterLabels := [10]string{"31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"}
+		lbl := eqCenterLabels[i]
 		if spr := TextSprite(lbl); spr != nil {
 			lw, lh := spr.Bounds().Dx(), spr.Bounds().Dy()
 			cx := x0 + (x1-x0-lw)/2
@@ -384,10 +525,23 @@ func (dv *DrumView) drawEQ(dst *ebiten.Image) {
 		// Slider overlay at the bottom of each band.
 		if i < len(dv.eqSliders) && dv.eqSliders[i] != nil {
 			s := dv.eqSliders[i]
-			s.SetRect(image.Rect(x0+4, sliderY, x1-4, sliderY+sliderH))
-			s.Draw(dst)
+			sliderRect := image.Rect(x0+4, sliderY, x1-4, sliderY+sliderH)
+			s.SetRect(sliderRect)
+			if isSmallScreen() {
+				// On mobile, set the band button rect and draw the button visual.
+				// Input is handled by Button.Handle() which has touch expansion.
+				if i < len(dv.eqBandBtns) && dv.eqBandBtns[i] != nil {
+					dv.eqBandBtns[i].SetRect(sliderRect)
+				}
+				dv.drawEQBandButton(dst, i, sliderRect)
+			} else {
+				s.Draw(dst)
+			}
 		}
 	}
+
+	// EQ frequency response curve overlay.
+	dv.drawEQCurve(dst)
 
 	// RMS overlay line.
 	level := snap.RMS

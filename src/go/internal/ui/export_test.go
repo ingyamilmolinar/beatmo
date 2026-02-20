@@ -2,8 +2,9 @@ package ui
 
 import (
 	"encoding/json"
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func TestExportJSONContentAndSaveCalled(t *testing.T) {

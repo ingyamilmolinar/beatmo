@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // buildLongPath builds a long single-row loop path with regular nodes.
@@ -33,7 +33,7 @@ func buildLongPath(n int) (*model.Graph, [][]model.BeatInfo, []bool, []int, map[
 func TestEnginePredictor_BackgroundKeepsAhead(t *testing.T) {
 	// Build a long loop and start background precompute; ensure horizon grows.
 	g, paths, isLoop, loopStart, nodes := buildLongPath(256)
-	p := NewPredictor(g)
+	p := NewPredictor(g, nil)
 	p.SetPaths(paths, isLoop, loopStart, nodes)
 	targetH := 2048
 	p.StartBackground(func() int { return targetH })
@@ -77,7 +77,7 @@ func TestPredictorBeatInfoHandlesNegativeIndex(t *testing.T) {
 	for id, node := range g.Nodes {
 		nodes[id] = node
 	}
-	p := NewPredictor(g)
+	p := NewPredictor(g, nil)
 	p.SetPaths([][]model.BeatInfo{path}, []bool{isLoop}, []int{loopStart}, nodes)
 
 	defer func() {

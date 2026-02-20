@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 var testLogger *game_log.Logger
@@ -284,6 +284,108 @@ func TestNodeChangedHookFiresOnMutations(t *testing.T) {
 	}
 	if hits[0] != n0 {
 		t.Fatalf("expected hook to receive node id %d, got %v", n0, hits)
+	}
+}
+
+func TestMoveNode(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+	n1 := g.AddNode(4, 0, NodeTypeRegular)
+
+	// Set some params to verify they're preserved
+	g.SetNodeParams(n0, NodeParams{Volume: 0.7, Pitch: 0.3, Duration: 0.5})
+
+	// Move node to new position
+	ok := g.MoveNode(n0, 3, 5)
+	if !ok {
+		t.Fatal("MoveNode returned false for valid node")
+	}
+
+	// Verify position changed
+	moved, exists := g.GetNodeByID(n0)
+	if !exists {
+		t.Fatal("node not found after move")
+	}
+	if moved.I != 3 || moved.J != 5 {
+		t.Fatalf("expected (3,5), got (%d,%d)", moved.I, moved.J)
+	}
+
+	// Verify params preserved
+	if moved.Params.Volume != 0.7 || moved.Params.Pitch != 0.3 || moved.Params.Duration != 0.5 {
+		t.Fatalf("params not preserved: %+v", moved.Params)
+	}
+
+	// Verify other node unaffected
+	other, exists := g.GetNodeByID(n1)
+	if !exists {
+		t.Fatal("other node missing")
+	}
+	if other.I != 4 || other.J != 0 {
+		t.Fatalf("other node moved: (%d,%d)", other.I, other.J)
+	}
+
+	// Move nonexistent node should return false
+	if g.MoveNode(999, 1, 1) {
+		t.Fatal("MoveNode should return false for nonexistent node")
+	}
+}
+
+func TestSetNodeParamsCopiesSynthAndOverrides(t *testing.T) {
+	g := NewGraph(testLogger)
+	n0 := g.AddNode(0, 0, NodeTypeRegular)
+
+	overrides := []EffectOverride{
+		{Type: "distortion", Param: "drive", Value: 0.8},
+		{Type: "delay", Param: "time", Value: 0.5},
+	}
+	p := NodeParams{
+		Volume:          0.7,
+		Pitch:           2,
+		Duration:        1.5,
+		SynthDecay:      0.5,
+		SynthTone:       -0.3,
+		SynthAttack:     0.1,
+		SynthDrive:      0.6,
+		SynthBody:       0.4,
+		SynthColor:      -0.5,
+		SynthBrightness: 0.9,
+		EffectOverrides: overrides,
+	}
+	g.SetNodeParams(n0, p)
+
+	n, ok := g.GetNodeByID(n0)
+	if !ok {
+		t.Fatal("node not found")
+	}
+	if n.Params.SynthDecay != 0.5 {
+		t.Errorf("SynthDecay: got %f want 0.5", n.Params.SynthDecay)
+	}
+	if n.Params.SynthTone != -0.3 {
+		t.Errorf("SynthTone: got %f want -0.3", n.Params.SynthTone)
+	}
+	if n.Params.SynthAttack != 0.1 {
+		t.Errorf("SynthAttack: got %f want 0.1", n.Params.SynthAttack)
+	}
+	if n.Params.SynthDrive != 0.6 {
+		t.Errorf("SynthDrive: got %f want 0.6", n.Params.SynthDrive)
+	}
+	if n.Params.SynthBody != 0.4 {
+		t.Errorf("SynthBody: got %f want 0.4", n.Params.SynthBody)
+	}
+	if n.Params.SynthColor != -0.5 {
+		t.Errorf("SynthColor: got %f want -0.5", n.Params.SynthColor)
+	}
+	if n.Params.SynthBrightness != 0.9 {
+		t.Errorf("SynthBrightness: got %f want 0.9", n.Params.SynthBrightness)
+	}
+	if len(n.Params.EffectOverrides) != 2 {
+		t.Fatalf("EffectOverrides: got %d want 2", len(n.Params.EffectOverrides))
+	}
+	if n.Params.EffectOverrides[0].Type != "distortion" || n.Params.EffectOverrides[0].Value != 0.8 {
+		t.Errorf("EffectOverrides[0]: %+v", n.Params.EffectOverrides[0])
+	}
+	if n.Params.EffectOverrides[1].Type != "delay" || n.Params.EffectOverrides[1].Value != 0.5 {
+		t.Errorf("EffectOverrides[1]: %+v", n.Params.EffectOverrides[1])
 	}
 }
 

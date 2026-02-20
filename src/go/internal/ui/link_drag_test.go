@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Test that releasing a link drag over an empty intersection (no regular node)

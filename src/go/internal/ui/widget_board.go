@@ -103,6 +103,15 @@ func (wb *WidgetBoard) SetWeights(cols, rows []float64) {
 
 // recalc recalculates cumulative positions from weights, enforcing minimums.
 func (wb *WidgetBoard) recalc() {
+	// On narrow panes, cap rack column so the timeline gets at least 60%.
+	effectiveMinColW := wb.minColW
+	if wb.bounds.Dx() > 0 && wb.bounds.Dx() < wb.minColW*2+60 {
+		effectiveMinColW = wb.bounds.Dx() * 40 / 100
+		if effectiveMinColW < 100 {
+			effectiveMinColW = 100
+		}
+	}
+
 	if wb.pixelRows {
 		// Columns remain proportional to weights.
 		sumCols := 0.0
@@ -113,17 +122,22 @@ func (wb *WidgetBoard) recalc() {
 			sumCols = 1
 		}
 		wb.colPos = make([]int, len(wb.cols)+1)
+		totalW := wb.bounds.Dx()
+		cumCol := 0.0
 		x := 0
 		for i, w := range wb.cols {
-			px := int(math.Round(float64(wb.bounds.Dx()) * (w / sumCols)))
-			if px < wb.minColW {
-				px = wb.minColW
-			}
-			if x+px > wb.bounds.Max.X {
-				px = wb.bounds.Max.X - x
-			}
 			wb.colPos[i] = x
-			x += px
+			cumCol += w
+			nextX := int(math.Round(float64(totalW) * (cumCol / sumCols)))
+			px := nextX - x
+			if px < effectiveMinColW {
+				px = effectiveMinColW
+				nextX = x + px
+			}
+			if nextX > wb.bounds.Max.X {
+				nextX = wb.bounds.Max.X
+			}
+			x = nextX
 		}
 		wb.colPos[len(wb.cols)] = wb.bounds.Max.X
 
@@ -158,34 +172,45 @@ func (wb *WidgetBoard) recalc() {
 	if sumRows == 0 {
 		sumRows = 1
 	}
+	// Cumulative rounding: compute each boundary as Round(totalW * cumWeight/sumCols)
+	// so row/col positions tile exactly without gaps or overlaps.
 	wb.colPos = make([]int, len(wb.cols)+1)
+	totalW := wb.bounds.Dx()
+	cumCol := 0.0
 	x := 0
 	for i, w := range wb.cols {
-		px := int(math.Round(float64(wb.bounds.Dx()) * (w / sumCols)))
-		if px < wb.minColW {
-			px = wb.minColW
-		}
-		// Do not exceed bounds; clamp last column to the remaining space.
-		if x+px > wb.bounds.Max.X {
-			px = wb.bounds.Max.X - x
-		}
 		wb.colPos[i] = x
-		x += px
+		cumCol += w
+		nextX := int(math.Round(float64(totalW) * (cumCol / sumCols)))
+		px := nextX - x
+		if px < effectiveMinColW {
+			px = effectiveMinColW
+			nextX = x + px
+		}
+		if nextX > wb.bounds.Max.X {
+			nextX = wb.bounds.Max.X
+		}
+		x = nextX
 	}
 	wb.colPos[len(wb.cols)] = wb.bounds.Max.X
 
+	totalH := wb.bounds.Dy()
+	cumRow := 0.0
 	wb.rowPos = make([]int, len(wb.rows)+1)
 	y := 0
 	for i, h := range wb.rows {
-		py := int(math.Round(float64(wb.bounds.Dy()) * (h / sumRows)))
+		wb.rowPos[i] = y
+		cumRow += h
+		nextY := int(math.Round(float64(totalH) * (cumRow / sumRows)))
+		py := nextY - y
 		if py < wb.minRowH {
 			py = wb.minRowH
+			nextY = y + py
 		}
-		if y+py > wb.bounds.Max.Y {
-			py = wb.bounds.Max.Y - y
+		if nextY > wb.bounds.Max.Y {
+			nextY = wb.bounds.Max.Y
 		}
-		wb.rowPos[i] = y
-		y += py
+		y = nextY
 	}
 	wb.rowPos[len(wb.rows)] = wb.bounds.Max.Y
 }
@@ -267,10 +292,6 @@ func (wb *WidgetBoard) ResizeAxis(axis string, idx int, deltaPx int) {
 		}
 		w0 := wb.cols[idx]
 		w1 := wb.cols[idx+1]
-		total := w0 + w1
-		if total == 0 {
-			total = 1
-		}
 		px0 := float64(wb.bounds.Dx()) * (w0 / (w0 + w1))
 		px1 := float64(wb.bounds.Dx()) * (w1 / (w0 + w1))
 		px0 += float64(deltaPx)
@@ -375,6 +396,12 @@ func (wb *WidgetBoard) ToggleWidget(id WidgetKind, visible bool) {
 	}
 	p.Visible = visible
 	wb.placements[id] = p
+}
+
+// LayoutGroup creates a LayoutGroup whose bounds match the widget's Rect().
+// cols and rows define the grid subdivision within the widget cell.
+func (wb *WidgetBoard) LayoutGroup(id WidgetKind, cols, rows []float64) *LayoutGroup {
+	return NewLayoutGroup(string(id), wb.Rect(id), cols, rows)
 }
 
 func minIntClamp(a, b int) int {

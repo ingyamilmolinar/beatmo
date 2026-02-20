@@ -8,7 +8,7 @@ import "syscall/js"
 // when available to reduce Go→JS crossings. Falls back to per-item dispatch.
 func PlayBatch(reqs []BatchParam) {
 	fnFlat := js.Global().Get("playSoundsBatchFlat")
-	if fnFlat.Truthy() && js.Global().Get("TUNKUL_AUDIO_BATCH_FLAT").Truthy() {
+	if fnFlat.Truthy() && js.Global().Get("BEATMO_AUDIO_BATCH_FLAT").Truthy() {
 		n := len(reqs)
 		if n == 0 {
 			return

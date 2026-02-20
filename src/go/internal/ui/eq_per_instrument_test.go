@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func TestEQSliderLinearMapping(t *testing.T) {
@@ -269,8 +269,8 @@ func TestEQChannelMenuBuild(t *testing.T) {
 	g.drum.buildEQChannelMenu()
 
 	// Total items should be Master + 3 rows = 4
-	if g.drum.eqChannelScroll.Total != 4 {
-		t.Errorf("expected 4 total channel items (Master + 3 rows), got %d", g.drum.eqChannelScroll.Total)
+	if g.drum.eqChannelScroll.VS.Total != 4 {
+		t.Errorf("expected 4 total channel items (Master + 3 rows), got %d", g.drum.eqChannelScroll.VS.Total)
 	}
 
 	// Visible buttons may be limited by available vertical space; check we have at least one
@@ -284,10 +284,10 @@ func TestEQChannelMenuBuild(t *testing.T) {
 	}
 
 	// If total > visible, scrollbar should be present
-	if g.drum.eqChannelScroll.Total > g.drum.eqChannelScroll.Visible {
+	if g.drum.eqChannelScroll.VS.Total > g.drum.eqChannelScroll.VS.Visible {
 		if !g.drum.eqChannelScroll.HasScroll() {
 			t.Errorf("expected scrollbar when total (%d) > visible (%d)",
-				g.drum.eqChannelScroll.Total, g.drum.eqChannelScroll.Visible)
+				g.drum.eqChannelScroll.VS.Total, g.drum.eqChannelScroll.VS.Visible)
 		}
 	}
 }
@@ -410,6 +410,7 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 
 	r := dv.eqChannelBtns[1].Rect()
 	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+	// Press frame
 	restore = SetInputForTest(
 		func() (int, int) { return rx, ry },
 		func(ebiten.MouseButton) bool { return true },
@@ -419,6 +420,18 @@ func TestEQChannelDropdownOpensAndSelects(t *testing.T) {
 		func() (int, int) { return 640, 480 },
 	)
 	t.Cleanup(restore)
+	dv.Update()
+	restore()
+
+	// Release frame — deferred tap fires the button
+	restore = SetInputForTest(
+		func() (int, int) { return rx, ry },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
 	dv.Update()
 	restore()
 
@@ -488,6 +501,7 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 
 	r := dv.eqChannelBtns[1].Rect()
 	rx, ry := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+	// Press frame
 	restore = SetInputForTest(
 		func() (int, int) { return rx, ry },
 		func(ebiten.MouseButton) bool { return true },
@@ -497,6 +511,18 @@ func TestEQChannelDropdownViaGameUpdate(t *testing.T) {
 		func() (int, int) { return 640, 480 },
 	)
 	t.Cleanup(restore)
+	_ = g.Update()
+	restore()
+
+	// Release frame — deferred tap fires the button
+	restore = SetInputForTest(
+		func() (int, int) { return rx, ry },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
 	_ = g.Update()
 	restore()
 
@@ -704,8 +730,8 @@ func TestEQBandMuteExport(t *testing.T) {
 	// Initialize and set mute state
 	g.drum.eqBandMuted = make([]bool, len(eqBandDefs))
 	g.drum.eqBandGainsDB = make([]float64, len(eqBandDefs))
-	g.drum.eqBandMuted[0] = true  // Mute first band
-	g.drum.eqBandMuted[5] = true  // Mute sixth band
+	g.drum.eqBandMuted[0] = true // Mute first band
+	g.drum.eqBandMuted[5] = true // Mute sixth band
 
 	// Export
 	data, err := g.drum.exportBytes()

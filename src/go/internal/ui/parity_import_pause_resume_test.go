@@ -9,10 +9,11 @@ func TestImportPauseResumeParityStable(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.parityWatch = parityWatchPanic
+	g.SetPlayFunc(func(string, float64, ...float64) {})
 	g.Layout(1024, 720)
 
-	if err := g.Import([]byte(tunkulProjectJSON)); err != nil {
-		t.Fatalf("import tunkul project: %v", err)
+	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
+		t.Fatalf("import beatmo project: %v", err)
 	}
 	g.updateBeatInfos()
 	ensureRowInstrumentsAvailable(t, g)

@@ -12,7 +12,7 @@ type InstrumentMenuOverlay struct {
 func (o *InstrumentMenuOverlay) ID() string { return "inst-menu" }
 
 func (o *InstrumentMenuOverlay) IsOpen() bool {
-	return o.dv.instMenuOpen
+	return o.dv.isInstMenuOpen()
 }
 
 func (o *InstrumentMenuOverlay) ZIndex() int { return 200 }
@@ -88,6 +88,21 @@ func (o *InstrumentMenuOverlay) HandleInput(x, y int, pressed bool) InputResult 
 		}
 		return InputCaptured
 	}
+
+	// Detect click on the anchor label → toggle menu closed.
+	// Skip while suppressClicksUntilRelease is active — the press that opened the
+	// menu is still held, and toggling here would produce a 1-frame open/close flicker.
+	if pressed && !suppressClicksUntilRelease && o.dv.instMenuRow >= 0 && o.dv.instMenuRow < len(o.dv.rowLabels) {
+		lblRect := o.dv.rowLabels[o.dv.instMenuRow].Rect()
+		if image.Pt(x, y).In(lblRect) {
+			if o.dv.instMenuComp != nil && o.dv.instMenuComp.IsOpen() {
+				o.dv.instMenuComp.Close()
+			}
+			o.Close()
+			return InputConsumed
+		}
+	}
+
 	// Return InputIgnored to let Update() delegate to component
 	return InputIgnored
 }

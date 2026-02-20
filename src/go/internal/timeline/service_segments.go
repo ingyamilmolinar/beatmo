@@ -1,8 +1,9 @@
 package timeline
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
+
 // UpdateRowSegments refreshes the cached present/future slices for a row using
 // the provided window and steps. The callback executes while holding the
 // service lock; callers must avoid re-entering the service from within fn.
@@ -99,4 +100,3 @@ func (s *Service) CommittedRange(row int) (int, int, bool) {
 	end := r.base + r.size - 1
 	return start, end, true
 }
-

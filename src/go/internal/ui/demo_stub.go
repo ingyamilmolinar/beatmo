@@ -6,8 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func expandHome(p string) string {
@@ -30,16 +31,16 @@ func expandHome(p string) string {
 	return p
 }
 
-// buildDemo imports a demo config from TUNKUL_DEMO_CONFIG (or TUNKUL_CONFIG)
+// buildDemo imports a demo config from BEATMO_DEMO_CONFIG (or BEATMO_CONFIG)
 // during tests so we can validate the env-based demo path without building the
 // full programmatic demo.
 func (g *Game) buildDemo() {
 	if g.demoBuilt || g.drum == nil || g.graph == nil {
 		return
 	}
-	cfg := os.Getenv("TUNKUL_DEMO_CONFIG")
+	cfg := os.Getenv("BEATMO_DEMO_CONFIG")
 	if cfg == "" {
-		cfg = os.Getenv("TUNKUL_CONFIG")
+		cfg = os.Getenv("BEATMO_CONFIG")
 	}
 	if cfg == "" {
 		return
@@ -82,3 +83,10 @@ func (g *Game) buildDemo() {
 
 // RunDemo is a no-op stub in test builds.
 func (g *Game) RunDemo() {}
+
+// RunBenchmark stores benchmark configuration. Functional under tests so the
+// benchmark lifecycle can be exercised via direct Update() calls.
+func (g *Game) RunBenchmark(bpm int, dur time.Duration) {
+	g.benchBPM = bpm
+	g.benchDuration = dur
+}

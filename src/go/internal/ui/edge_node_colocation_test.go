@@ -31,7 +31,7 @@ func TestEdgeNodeColocationOnPanAndZoom(t *testing.T) {
 		// Helper to project world→screen like DrawLineCam(cam).
 		proj := func(wx, wy float64) (sx, sy float64) {
 			sx = wx*camScale + offX
-			sy = wy*camScale + offY + float64(topOffset)
+			sy = wy*camScale + offY + float64(gridTopOffset())
 			return
 		}
 

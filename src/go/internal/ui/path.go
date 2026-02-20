@@ -2,7 +2,8 @@ package ui
 
 import (
 	"fmt"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // BuildPath validates orthogonal connectivity for pts and then creates nodes
@@ -15,7 +16,7 @@ func (g *Game) BuildPath(row int, pts [][2]int) error {
 	for i := 0; i+1 < len(pts); i++ {
 		ax, ay := pts[i][0], pts[i][1]
 		bx, by := pts[i+1][0], pts[i+1][1]
-		if !(ax == bx || ay == by) {
+		if ax != bx && ay != by {
 			return fmt.Errorf("invalid segment %d-%d: not orthogonal (%d,%d)->(%d,%d)", i, i+1, ax, ay, bx, by)
 		}
 	}

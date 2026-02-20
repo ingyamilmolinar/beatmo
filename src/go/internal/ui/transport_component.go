@@ -43,7 +43,6 @@ type TransportState struct {
 	uploadAnim   float64
 	bpmErrorAnim float64
 
-	bpmPrev  int // previous BPM before editing
 	bpmDelta int // accumulated BPM adjustments from +/- buttons
 }
 

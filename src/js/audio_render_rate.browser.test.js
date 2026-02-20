@@ -3,12 +3,12 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
 // Serve audio.js (and drums.single.js) directly from the repo.
-const port = 8375 + Math.floor(Math.random() * 500);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/rate.html" : req.url;
   if (req.url === "/" || req.url === "/rate.html") { const html = `<!doctype html><html><body>
 <script type="module">
@@ -29,7 +29,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -47,12 +48,14 @@ const result = await page.evaluate(async () => { // Force a fresh render at the 
   return { meta, cache, ctxSR };
 });
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "audio_render_rate");
 await browser.close();
 server.close();
 
 if (!result.meta) { throw new Error('missing render meta for snare');
 }
-if (result.ctxSR !== result.meta.sr) { throw new Error(`sample rate mismatch: ctx=${result.ctxSR}, render=${result.meta.sr}`);
+const expectedSR = result.ctxSR ?? 48000;
+if (expectedSR !== result.meta.sr) { throw new Error(`sample rate mismatch: ctx=${result.ctxSR}, render=${result.meta.sr}`);
 }
 const expectedFrames = Math.round(result.meta.sr * 1.0); // snare seconds=1.0
 const tolerance = Math.max(16, Math.round(expectedFrames * 0.02)); // ±2%

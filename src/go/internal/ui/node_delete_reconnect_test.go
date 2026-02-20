@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Deleting a linear in-between node should reconnect its predecessor to its successor

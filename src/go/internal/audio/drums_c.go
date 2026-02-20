@@ -125,12 +125,102 @@ func renderSubBass(buf []float32, sampleRate, samples int) {
 	C.render_sub_bass((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
 }
 
+func renderSnareRimshot(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderSnareRimshot: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_snare_rimshot((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderSnareSidestick(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderSnareSidestick: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_snare_sidestick((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderKickDeep(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderKickDeep: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_kick_deep((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderKickPunchy(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderKickPunchy: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_kick_punchy((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderKickLofi(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderKickLofi: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_kick_lofi((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderKickTight(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderKickTight: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_kick_tight((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderShaker(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderShaker: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_shaker((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderRide(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderRide: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_ride((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
+func renderCrash(buf []float32, sampleRate, samples int) {
+	if samples > len(buf) {
+		panic("renderCrash: samples exceeds buffer length")
+	}
+	if len(buf) == 0 || samples == 0 {
+		return
+	}
+	C.render_crash((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
+}
+
 func loadAudio(path string) ([]float32, int, error) {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	var ptr *C.float
 	var sr C.int
-	frames := C.load_audio(cpath, &ptr, &sr)
+	frames := C.load_audio(cpath, C.int(sampleRate), &ptr, &sr) //nolint:gocritic // dupSubExpr false positive in CGo
 	if frames < 0 {
 		msg := C.GoString(C.result_description(C.int(frames)))
 		return nil, 0, fmt.Errorf("load_audio: %s", msg)
@@ -165,4 +255,22 @@ func (v *cVoice) Sample() (float64, bool) {
 	f := float64(v.buf[v.i])
 	v.i++
 	return f, false
+}
+
+// SampleBlock performs bulk float32→float64 conversion, avoiding per-sample
+// function call overhead. Implements the BlockVoice interface.
+func (v *cVoice) SampleBlock(dst []float64) (int, bool) {
+	remaining := len(v.buf) - v.i
+	if remaining <= 0 {
+		return 0, true
+	}
+	n := len(dst)
+	if n > remaining {
+		n = remaining
+	}
+	for j := 0; j < n; j++ {
+		dst[j] = float64(v.buf[v.i+j])
+	}
+	v.i += n
+	return n, v.i >= len(v.buf)
 }

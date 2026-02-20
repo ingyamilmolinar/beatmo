@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/engine"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/gamestate"
-	"github.com/ingyamilmolinar/tunkul/internal/graphruntime"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/engine"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/internal/graphruntime"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 type Game struct {
@@ -22,18 +22,18 @@ type Game struct {
 	split           *Splitter
 	drum            *DrumView
 	inputDispatcher *InputDispatcher
-	graph          *model.Graph
-	graphRuntime   *graphruntime.Runtime
-	state          *gamestate.State
-	engine         *engine.Engine
-	engineProgress func() float64
-	logger         *game_log.Logger
-	grid           *Grid
-	audioCh        chan soundReq
-	audioGen       atomic.Uint64
-	bpmCh          chan int
-	bpmAck         chan int
-	playFn         func(string, float64, ...float64)
+	graph           *model.Graph
+	graphRuntime    *graphruntime.Runtime
+	state           *gamestate.State
+	engine          *engine.Engine
+	engineProgress  func() float64
+	logger          *game_log.Logger
+	grid            *Grid
+	audioCh         chan soundReq
+	audioGen        atomic.Uint64
+	bpmCh           chan int
+	bpmAck          chan int
+	playFn          func(string, float64, ...float64)
 
 	/* graph data */
 	nodes           []*uiNode
@@ -67,10 +67,39 @@ type Game struct {
 	clickI, clickJ int
 	clickNode      *uiNode
 
+	// Move node mode: MOVE button sets moveMode, next grid click places node
+	moveMode        bool    // MOVE mode active, next click places node
+	movingNode      *uiNode // node being moved
+	moveConfirm     bool    // confirmation dialog showing
+	moveConfirmI    int     // target coordinates for pending move
+	moveConfirmJ    int
+	moveEdgeLoss    int  // number of edges that would be dropped
+	moveSkipRelease bool // skip the first mouse release after entering move mode
+
+	// Long-press quick-action popup (mobile)
+	longPressPopup          bool
+	longPressPopupNode      *uiNode
+	longPressPopupRect      image.Rectangle
+	longPressPopupMove      image.Rectangle
+	longPressPopupConn      image.Rectangle
+	longPressPopupDel       image.Rectangle
+	longPressPopupHover     string // "move", "connect", "delete", or ""
+	longPressPopupLastHover string // hover from previous frame (for release detection)
+
+	// Connect mode: next node tap creates edge from connectFromNode → target
+	connectMode     bool
+	connectFromNode *uiNode
+
+	// Coordinate badge above selected/created node
+	coordBadgeNode  *uiNode // node to show badge for
+	coordBadgeFrame int64   // frame when badge was set
+
+	pinchBaseScale        float64 // camera scale when pinch started
+	pinchBaseGestureScale float64 // gesture scale value on first pinch event
+
 	/* game state */
 	bpm                int
-	currentStep        int // Current step in the sequence
-	lastBeatFrame      int64
+	currentStep        int                // Current step in the sequence
 	beatInfos          []model.BeatInfo   // Full traversal path for primary start
 	drumBeatInfos      []model.BeatInfo   // BeatInfos sized to drum view
 	beatInfosByRow     [][]model.BeatInfo // Per-row traversal paths
@@ -89,11 +118,21 @@ type Game struct {
 	nodeCache          map[model.NodeID]model.Node
 
 	/* misc */
-	winW, winH    int
-	start         *uiNode // explicit “root/start” node (⇧S to set)
-	centered      bool    // camera centered on first layout
-	demoBuilt     bool    // demo circuit built once
-	demoScheduled bool    // build demo on next update
+	winW, winH      int
+	start           *uiNode // explicit “root/start” node (⇧S to set)
+	centered        bool    // camera centered on first layout
+	lastHorizontal  *bool   // track previous orientation for change detection
+	lastSmallScreen *bool   // track previous isSmallScreen() for mode transition detection
+	demoBuilt       bool    // demo circuit built once
+	demoScheduled   bool    // build demo on next update
+	// Benchmark mode fields (set via RunBenchmark)
+	benchBPM      int
+	benchDuration time.Duration
+	benchStarted  bool
+	benchStart    time.Time
+	// Screenshot mode: capture screen after N draws and exit
+	screenshotPath  string
+	screenshotDraws int
 	// animBeatPrev was used for time-based advancement; unused now
 	highlightHook func(row, idx int)
 
@@ -138,14 +177,8 @@ type Game struct {
 	// Per-row trigger counters for NodeLogic callbacks (separate from built-in logic).
 	nodeLogicTriggerCountsByRow map[int]map[model.NodeID]int
 
-	// Node property popup menu
-	nodeMenuOpen   bool
-	nodeMenuNode   *uiNode
-	nodeMenuRects  map[string]image.Rectangle // control id -> rect (screen coords)
-	nodeMenuAnim   map[string]float64         // control id -> click animation 0..1
-	nodeMenuBtns   map[string]*Button         // popup controls as Buttons (unified handling)
-	nodeLogicOpen  bool
-	nodeGrooveOpen bool
+	// Node property sidebar (left-anchored panel)
+	sidebar *NodeSidebar
 
 	// Last trigger state for each node per row: true if the last evaluation
 	// for that node resulted in an audible trigger. Used by advanced logic
@@ -161,7 +194,6 @@ type Game struct {
 	// callback from drum.Update() sets this; game.Update() processes it after
 	// seqMu.Unlock() to avoid recursive locking.
 	pendingImportData []byte
-	pendingImportCB   func(error) // callback to notify DrumView of import result
 
 	// Per-node trigger animation in [0..1], decays each frame. Set only when
 	// an audible trigger occurs (after applying node logic and mute/solo).
@@ -188,13 +220,12 @@ type Game struct {
 	// particular (row, idx). Not used in production.
 	scheduleHook func(row, idx int)
 
-	// Hash of node parameters to detect logic/param edits.
-	_lastParamsHash uint64
 	// Params dirty flag to avoid per-frame hashing in Update.
 	paramsDirty bool
 
 	// perf metrics (opt-in logging via PERF_LOG=1)
 	perf          perfCounters
+	schedMetrics  scheduleMetrics
 	perfMode      PerfMode
 	perfDrawMuted bool
 
@@ -229,8 +260,8 @@ type Game struct {
 
 	// simplified rendering toggle for web builds
 	simpleDraw                  bool
-	simpleDrawSavedFollow       bool
-	simpleDrawSavedFollowValid  bool
+	simpleDrawSavedFollow       bool //nolint:unused // used in WASM js_exports
+	simpleDrawSavedFollowValid  bool //nolint:unused // used in WASM js_exports
 	simpleDrawAutoDisableFrames int
 	predictorBackgroundStopped  bool
 	sequencerStopped            bool
@@ -274,6 +305,9 @@ type Game struct {
 	frameBufferW       int
 	frameBufferH       int
 	drawThrottleCopies int
+
+	// Per-frame pre-computed node radii (avoids O(n²) neighbor checks in draw loop)
+	nodeRadiiCache []float64
 
 	// node sprite cache (screen-space) keyed by radius px + colors
 	nodeSpriteCache map[spriteKey]*ebiten.Image

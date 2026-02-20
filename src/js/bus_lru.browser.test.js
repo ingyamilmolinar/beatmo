@@ -3,11 +3,11 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 
-const port = 8360 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/bus.html" : req.url;
   if (req.url === "/" || req.url === "/bus.html") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
@@ -26,7 +26,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -48,6 +49,7 @@ await page.evaluate(async () => { await window.playSound('snare', 0.33);
 });
 
 const perId = await page.evaluate(() => window.__audioBusCountById('snare'));
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "bus_lru");
 await browser.close();
 server.close();
 

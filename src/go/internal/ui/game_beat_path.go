@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func makeBeatKey(row, idx int) int { return (row << 16) | (idx & 0xFFFF) }

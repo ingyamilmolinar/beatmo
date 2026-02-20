@@ -4,6 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -13,7 +14,6 @@ const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright",
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8140 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { try { console.log('[SRV]', req.url); } catch(_) {}
   // Lightweight page with a stubbed playSound; avoids running the full game.
   if (req.url === "/" || req.url === "/audio.html") { const html = `<!DOCTYPE html><html><body>
@@ -37,7 +37,8 @@ const server = http.createServer((req, res) => { try { console.log('[SRV]', req.
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -83,7 +84,7 @@ const diag0 = await page.evaluate(() => ({ hasPS: typeof window.playSound, hasSa
 console.log('diag0', diag0);
 // Wrap playSound to mirror a synthetic signal into __samples so tests
 // don't depend on destination hooking.
-await page.evaluate(() => { if (!window.__playWrapped) { window.playSound = async (id, vol, when) => { const v = Math.max(0, Math.min(1, Number.isFinite(vol) ? vol : 1.0));
+await page.evaluate(() => { if (!window.__playWrapped) { window.playSound = async (id, vol, _when) => { const v = Math.max(0, Math.min(1, Number.isFinite(vol) ? vol : 1.0));
       const frames = 4096;
       try { if (Array.isArray(window.__samples)) { for (let i = 0; i < frames; i++) window.__samples.push((Math.random()*2-1) * v * 0.1);
         }
@@ -118,6 +119,7 @@ console.log('lenAfterHigh', lenAfterHigh);
 await page.waitForFunction(() => window.__samples.length > 1024, {}, { timeout: 15000 });
 samples = await page.evaluate(() => window.__samples.slice());
 const highAvg = tailAvg(samples);
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "volume");
 await browser.close();
 server.close();
 

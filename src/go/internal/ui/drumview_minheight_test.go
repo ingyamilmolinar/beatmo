@@ -4,7 +4,7 @@ import (
 	"image"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Ensure widgets retain minimum heights after repeated resizes.

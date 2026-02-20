@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"image"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestNodeLogicLayout_NoOverlap ensures logic selector and +/- buttons never overlap
@@ -23,28 +23,21 @@ func TestNodeLogicLayout_NoOverlap(t *testing.T) {
 	}
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
+	g.sidebar.Open(n)
+	g.sidebar.layout()
 
-	rLogic := g.nodeMenuRects["logic"]
-	rLnMinus := g.nodeMenuRects["ln-"]
-	rLnPlus := g.nodeMenuRects["ln+"]
-	rVolMinus := g.nodeMenuRects["vol-"]
-	rVolPlus := g.nodeMenuRects["vol+"]
+	rLogic := g.sidebar.rects["logic"]
+	rLnMinus := g.sidebar.rects["ln-"]
+	rLnPlus := g.sidebar.rects["ln+"]
+	rVolMinus := g.sidebar.rects["vol-"]
+	rVolPlus := g.sidebar.rects["vol+"]
 
 	if rLogic.Overlaps(rLnMinus) || rLogic.Overlaps(rLnPlus) {
 		t.Fatalf("logic button overlaps +/- controls: logic=%v ln-=%v ln+=%v", rLogic, rLnMinus, rLnPlus)
 	}
-	// Label rect should not overlap the logic button
-	panel := g.nodeMenuRects["panel"]
-	labelW := debugCharW * len("LOGIC")
-	labelH := debugCharH
-	labelRect := image.Rect(panel.Min.X+8, rLogic.Min.Y, panel.Min.X+8+labelW, rLogic.Min.Y+labelH)
-	if labelRect.Overlaps(rLogic) {
-		t.Fatalf("LOGIC label overlaps logic button: label=%v logic=%v", labelRect, rLogic)
-	}
-	// Align +/- x positions with volume +/- for consistent grid
+	// Logic button is full-width within the panel; label is rendered
+	// inside the button, so no separate overlap check is needed.
+	// +/- x positions should still align with volume +/- for consistent grid
 	if rLnMinus.Min.X != rVolMinus.Min.X || rLnPlus.Min.X != rVolPlus.Min.X {
 		t.Fatalf("logic +/- not aligned with other rows: ln-=%v vol-=%v ln+=%v vol+=%v", rLnMinus, rVolMinus, rLnPlus, rVolPlus)
 	}
@@ -65,15 +58,14 @@ func TestNodeLogicLayout_ProbabilityButtonsAligned(t *testing.T) {
 	}
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
+	g.sidebar.Open(n)
+	g.sidebar.layout()
 
-	rLogic := g.nodeMenuRects["logic"]
-	rLpMinus := g.nodeMenuRects["lp-"]
-	rLpPlus := g.nodeMenuRects["lp+"]
-	rVolMinus := g.nodeMenuRects["vol-"]
-	rVolPlus := g.nodeMenuRects["vol+"]
+	rLogic := g.sidebar.rects["logic"]
+	rLpMinus := g.sidebar.rects["lp-"]
+	rLpPlus := g.sidebar.rects["lp+"]
+	rVolMinus := g.sidebar.rects["vol-"]
+	rVolPlus := g.sidebar.rects["vol+"]
 	// No overlap with logic selector
 	if rLogic.Overlaps(rLpMinus) || rLogic.Overlaps(rLpPlus) {
 		t.Fatalf("logic button overlaps probability +/- controls: logic=%v lp-=%v lp+=%v", rLogic, rLpMinus, rLpPlus)

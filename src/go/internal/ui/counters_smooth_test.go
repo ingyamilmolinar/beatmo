@@ -7,24 +7,20 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // parseMS extracts the current time in milliseconds from a timelineInfo string.
+// New format: "Beat X/Y | M:SS" — only has second-level precision.
 func parseMS(info string) int {
-	p := strings.Index(info, "Time ")
+	p := strings.Index(info, "| ")
 	if p < 0 {
 		return -1
 	}
-	part := info[p+5:]
-	slash := strings.Index(part, "/")
-	if slash < 0 {
-		return -1
-	}
-	left := part[:slash]
-	var s, ms int
-	fmt.Sscanf(left, "%ds %dms", &s, &ms)
-	return s*1000 + ms
+	part := strings.TrimSpace(info[p+2:])
+	var m, s int
+	fmt.Sscanf(part, "%d:%d", &m, &s)
+	return (m*60 + s) * 1000
 }
 
 // Verify that the displayed beat counter advances smoothly (strictly
@@ -89,12 +85,13 @@ func TestCountersAdvanceSmoothly(t *testing.T) {
 			t.Fatalf("beat delta out of range: %.6f", d)
 		}
 	}
+	// With the simplified "M:SS" format, displayed time only has second-level
+	// precision — multiple samples may map to the same second. Verify that the
+	// displayed time is monotonically non-decreasing and reaches at least the
+	// last sample's second boundary.
 	for i := 1; i < len(mss); i++ {
-		if !(mss[i] > mss[i-1]) {
-			t.Fatalf("ms not increasing: %d -> %d", mss[i-1], mss[i])
-		}
-		if d := mss[i] - mss[i-1]; d < 1 || d > 100 {
-			t.Fatalf("ms delta out of range: %d", d)
+		if mss[i] < mss[i-1] {
+			t.Fatalf("ms went backwards: %d -> %d", mss[i-1], mss[i])
 		}
 	}
 }

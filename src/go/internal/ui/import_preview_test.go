@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
+	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
 // Verifies that importing a simple loop populates drum preview steps.
@@ -49,13 +49,13 @@ func TestImportPopulatesDrumPreview_SimpleLoop(t *testing.T) {
 	}
 }
 
-// Verifies that the embedded default demo JSON also populates preview.
-func TestEmbeddedDemoPopulatesPreview(t *testing.T) {
+// Verifies that the embedded test fixture demo JSON also populates preview.
+func TestEmbeddedTestFixtureDemoPopulatesPreview(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
-	data := assets_pkg.DefaultDemoJSON
+	data := assets_pkg.TestFixtureDemoJSON
 	if len(data) == 0 {
 		t.Fatalf("embedded demo JSON missing")
 	}

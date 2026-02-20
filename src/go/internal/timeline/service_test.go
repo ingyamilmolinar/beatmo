@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func TestRecordCommitKindStoresProvenance(t *testing.T) {
@@ -420,6 +420,136 @@ func TestSnapshotIsDeepCopy(t *testing.T) {
 	}
 	if !snap2.Future[0] {
 		t.Fatalf("expected service future[0] preserved after snapshot mutation")
+	}
+}
+
+func TestRecordCommitNegativeRow(t *testing.T) {
+	s := NewService()
+	// Should not panic — negative row is silently ignored.
+	s.RecordCommitKind(-1, 0, true, model.NodeTypeRegular, CommitKindPlayback, 8, 8)
+	if len(s.rows) != 0 {
+		t.Fatalf("expected no rows created for negative row, got %d", len(s.rows))
+	}
+}
+
+func TestRecordCommitNegativeWindowLen(t *testing.T) {
+	s := NewService()
+	s.RecordCommitKind(0, 0, true, model.NodeTypeRegular, CommitKindSeeded, -5, 8)
+	// windowLen is clamped to 0, but commit should still be stored.
+	_, _, _, ok := s.CommittedKind(0, 0)
+	if !ok {
+		t.Fatal("expected commit present despite negative windowLen")
+	}
+}
+
+func TestRecordCommitCapacityLessThanWindowLen(t *testing.T) {
+	s := NewService()
+	// capacity (2) < windowLen (8) → capacity should be clamped up to windowLen.
+	s.RecordCommitKind(0, 0, true, model.NodeTypeRegular, CommitKindSeeded, 8, 2)
+	val, _, _, ok := s.CommittedKind(0, 0)
+	if !ok || !val {
+		t.Fatalf("expected commit present: ok=%v val=%v", ok, val)
+	}
+}
+
+func TestUpdateRowSegmentsNilCallback(t *testing.T) {
+	s := NewService()
+	s.RecordCommitKind(0, 0, true, model.NodeTypeRegular, CommitKindSeeded, 4, 4)
+	// fn=nil should trigger early return, no panic.
+	s.UpdateRowSegments(0, 0, 4, 4, []bool{true, false, true, false}, nil)
+}
+
+func TestCommittedNegativeRow(t *testing.T) {
+	s := NewService()
+	val, typ, ok := s.Committed(-1, 0)
+	if ok {
+		t.Fatal("expected ok=false for negative row")
+	}
+	if val {
+		t.Fatal("expected val=false for negative row")
+	}
+	if typ != model.NodeTypeInvisible {
+		t.Fatalf("expected NodeTypeInvisible for negative row, got %v", typ)
+	}
+}
+
+func TestCommittedKindBeyondRows(t *testing.T) {
+	s := NewService()
+	val, typ, kind, ok := s.CommittedKind(999, 0)
+	if ok {
+		t.Fatal("expected ok=false for row beyond bounds")
+	}
+	if val {
+		t.Fatal("expected val=false")
+	}
+	if typ != model.NodeTypeInvisible {
+		t.Fatalf("expected NodeTypeInvisible, got %v", typ)
+	}
+	if kind != CommitKindPlayback {
+		t.Fatalf("expected default CommitKindPlayback, got %v", kind)
+	}
+}
+
+func TestCommittedRangeNegativeRow(t *testing.T) {
+	s := NewService()
+	start, end, ok := s.CommittedRange(-1)
+	if ok {
+		t.Fatal("expected ok=false for negative row")
+	}
+	if start != 0 || end != 0 {
+		t.Fatalf("expected (0,0) for negative row, got (%d,%d)", start, end)
+	}
+}
+
+func TestSeedFromWindowInvertedRange(t *testing.T) {
+	s := NewService()
+	// pastEnd (2) < offset (5) → should return early without creating anything.
+	s.SeedFromWindow(0, 5, 2, []bool{true}, []model.NodeType{model.NodeTypeRegular}, CommitKindSeeded, 8, 8)
+	// No commits should exist because pastEnd < offset.
+	if _, _, _, ok := s.CommittedKind(0, 5); ok {
+		t.Fatal("expected no commit when pastEnd < offset")
+	}
+}
+
+func TestTrimAfterPathChangeNegativeRow(t *testing.T) {
+	s := NewService()
+	report := s.TrimAfterPathChange(-1, 4, -1)
+	if report.MaxKeep != -1 {
+		t.Fatalf("expected MaxKeep=-1 for negative row, got %d", report.MaxKeep)
+	}
+	if report.LastImmutable != -1 {
+		t.Fatalf("expected LastImmutable=-1 for negative row, got %d", report.LastImmutable)
+	}
+}
+
+func TestEnsureRowBufferMismatch(t *testing.T) {
+	s := NewService()
+	// First, create a row with windowLen=4.
+	s.RecordCommitKind(0, 0, true, model.NodeTypeRegular, CommitKindSeeded, 4, 4)
+
+	// Directly manipulate the internal state to simulate a buffer mismatch:
+	// windowLen stays the same, but past slice has wrong length.
+	s.mu.Lock()
+	s.rows[0].past = make([]bool, 2) // wrong size vs windowLen=4
+	s.mu.Unlock()
+
+	// Recording again with same windowLen should trigger the reallocation path
+	// in ensureRow (the `else` branch where len(seg.past) != windowLen).
+	s.RecordCommitKind(0, 1, true, model.NodeTypeRegular, CommitKindSeeded, 4, 4)
+
+	// Verify commit stored successfully.
+	val, _, _, ok := s.CommittedKind(0, 1)
+	if !ok || !val {
+		t.Fatalf("expected commit present after buffer fix: ok=%v val=%v", ok, val)
+	}
+}
+
+func TestSnapshotBeyondRows(t *testing.T) {
+	s := NewService()
+	snap := s.Snapshot(999)
+	if len(snap.Past) != 0 || len(snap.Present) != 0 || len(snap.Future) != 0 {
+		t.Fatalf("expected empty snapshot for row beyond bounds, got past=%d present=%d future=%d",
+			len(snap.Past), len(snap.Present), len(snap.Future))
 	}
 }
 

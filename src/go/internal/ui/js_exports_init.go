@@ -6,11 +6,16 @@ import "syscall/js"
 
 // initJS exposes helper functions for browser-based tests.
 func (g *Game) initJS() {
+	softKeyboardInit()
+	filePickerInit()
 	g.initJSPlaybackPerf()
 	g.initJSEqWidgets()
 	g.initJSTimelinePredictor()
 	g.initJSHarness()
 	g.initJSGraphUI()
+	g.initJSTouchDebug()
+	g.initJSInsertEffects()
+	g.initMediaSessionExports()
 }
 
 // reportStateJS publishes the current beat for tests.

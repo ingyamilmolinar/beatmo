@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/gamestate"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // stubGameForHighlightDuration creates a minimal Game for highlight duration testing.

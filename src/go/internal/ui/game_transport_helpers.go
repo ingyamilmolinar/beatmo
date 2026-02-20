@@ -96,32 +96,8 @@ func (g *Game) ClearJustResumed() { g.state.ClearJustResumed() }
 func (g *Game) ClearJustPaused() { g.state.ClearJustPaused() }
 
 // CloseForTest stops background goroutines and closes channels to avoid leaks
-// during focused unit tests. Safe to call multiple times.
+// during focused unit tests. Safe to call multiple times. Delegates to Close()
+// which also releases the audio device on desktop.
 func (g *Game) CloseForTest() {
-	if g == nil || g.closed {
-		return
-	}
-	g.StopBackgroundPredictorForTest()
-	g.StopSequencerForTest()
-	if g.engine != nil {
-		g.engine.Close()
-	}
-	safeClose := func(ch interface{}) {
-		defer func() { _ = recover() }()
-		switch c := ch.(type) {
-		case chan soundReq:
-			close(c)
-		case chan int:
-			close(c)
-		case chan struct{}:
-			close(c)
-		}
-	}
-	if g.audioCh != nil {
-		safeClose(g.audioCh)
-	}
-	if g.bpmCh != nil {
-		safeClose(g.bpmCh)
-	}
-	g.closed = true
+	g.Close()
 }

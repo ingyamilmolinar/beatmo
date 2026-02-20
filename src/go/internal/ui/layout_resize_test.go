@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func setTestInput(t *testing.T, pos func() (int, int), mouse func(ebiten.MouseButton) bool, key func(ebiten.Key) bool, runes func() []rune, wheel func() (float64, float64), size func() (int, int)) {
@@ -15,13 +15,13 @@ func setTestInput(t *testing.T, pos func() (int, int), mouse func(ebiten.MouseBu
 	t.Cleanup(restore)
 }
 
-// Verify the wave/timeline divider is hoverable and draggable.
+// Verify the wave/EQ divider is hoverable and draggable via the legacy path.
+// The row 1/2 boundary is detectable for EQ resizing even though no line is drawn.
 func TestWaveDividerHoverAndResize(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), nil, logger)
 
-	// Position cursor on the boundary between timeline row (index 1) and wave row (index 2).
 	rowPos := dv.widgets.rowPos
 	if len(rowPos) < 3 {
 		t.Fatalf("expected at least 3 row boundaries, got %d", len(rowPos))
@@ -39,7 +39,7 @@ func TestWaveDividerHoverAndResize(t *testing.T) {
 
 	dv.handleLayoutResize()
 	if dv.layoutHoverAxis != "row" || dv.layoutHoverIdx != 1 {
-		t.Fatalf("hover should detect wave divider: axis=%s idx=%d", dv.layoutHoverAxis, dv.layoutHoverIdx)
+		t.Fatalf("EQ divider should be hoverable: axis=%s idx=%d", dv.layoutHoverAxis, dv.layoutHoverIdx)
 	}
 
 	// Drag the divider downward to shrink the wave widget.
@@ -54,7 +54,6 @@ func TestWaveDividerHoverAndResize(t *testing.T) {
 		func() (int, int) { return 0, 0 },
 	)
 	dv.handleLayoutResize() // start drag
-	// Move cursor down
 	setTestInput(t,
 		func() (int, int) { return dv.Bounds.Max.X / 2, yBoundary + 40 },
 		func(btn ebiten.MouseButton) bool { return leftDown },
@@ -69,7 +68,7 @@ func TestWaveDividerHoverAndResize(t *testing.T) {
 
 	dv.refreshWidgetLayout()
 	newWave := dv.widgetRects[WidgetWave].Dy()
-	if !(newWave < initialWave) {
+	if newWave >= initialWave {
 		t.Fatalf("wave height should shrink after dragging divider: before=%d after=%d", initialWave, newWave)
 	}
 }
@@ -130,13 +129,14 @@ func TestColumnDividerHover(t *testing.T) {
 	dv.handleLayoutResize()
 	left = false
 	dv.handleLayoutResize()
-	if !(dv.widgetRects[WidgetRack].Dx() > before) {
+	if dv.widgetRects[WidgetRack].Dx() <= before {
 		t.Fatalf("rack width did not grow after column drag: before=%d after=%d", before, dv.widgetRects[WidgetRack].Dx())
 	}
 }
 
-// Drag the boundary below the transport to ensure it is draggable and visible.
-func TestTransportBottomDividerDraggable(t *testing.T) {
+// Verify the boundary below the transport is NOT draggable — the Timeline
+// widget spans rows 0-1, so the row 0 divider is fully suppressed.
+func TestTransportBottomDividerSuppressed(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), nil, logger)
@@ -145,7 +145,6 @@ func TestTransportBottomDividerDraggable(t *testing.T) {
 		t.Fatalf("not enough rows for transport divider")
 	}
 	y := rowPos[1] // boundary under transport
-	beforeTop := rowPos[1] - rowPos[0]
 	restore := SetInputForTest(
 		func() (int, int) { return dv.Bounds.Max.X / 2, y },
 		func(ebiten.MouseButton) bool { return false },
@@ -155,35 +154,10 @@ func TestTransportBottomDividerDraggable(t *testing.T) {
 		func() (int, int) { return 0, 0 },
 	)
 	defer restore()
-	dv.handleLayoutResize() // hover
-	if dv.layoutHoverAxis != "row" || dv.layoutHoverIdx != 0 {
-		t.Fatalf("expected hover on transport divider, got axis=%s idx=%d", dv.layoutHoverAxis, dv.layoutHoverIdx)
-	}
-	left := true
-	setTestInput(t,
-		func() (int, int) { return dv.Bounds.Max.X / 2, y },
-		func(ebiten.MouseButton) bool { return left },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize() // start drag
-	setTestInput(t,
-		func() (int, int) { return dv.Bounds.Max.X / 2, y + 40 },
-		func(ebiten.MouseButton) bool { return left },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize() // apply delta
-	left = false
-	dv.handleLayoutResize() // release
-	dv.refreshWidgetLayout()
-	afterTop := dv.widgets.rowPos[1] - dv.widgets.rowPos[0]
-	if !(afterTop > beforeTop) {
-		t.Fatalf("transport height did not grow after drag: before=%d after=%d", beforeTop, afterTop)
+	dv.handleLayoutResize()
+	// Row 0 divider should NOT be detected (Timeline spans rows 0-1).
+	if dv.layoutHoverAxis == "row" && dv.layoutHoverIdx == 0 {
+		t.Fatalf("transport divider should NOT be hoverable: axis=%s idx=%d", dv.layoutHoverAxis, dv.layoutHoverIdx)
 	}
 }
 
@@ -217,75 +191,18 @@ func TestWidgetBoundariesVisibleAfterResize(t *testing.T) {
 	}
 }
 
-// Reproduce scenario: drag wave divider, resize overall panel, drag other dividers; wave line stays visible.
+// Verify that after mixed resizes, the wave/EQ boundary still functions:
+// no divider LINE is drawn (suppressed), but the EQ pill remains accessible
+// for resizing via the LayoutResizeHandler.
 func TestWaveDividerStaysVisibleAfterMixedResizes(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), nil, logger)
-	// 1) Drag wave divider
-	yWave := dv.widgets.rowPos[2]
-	setTestInput(t,
-		func() (int, int) { return dv.Bounds.Max.X / 2, yWave },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize()
-	setTestInput(t,
-		func() (int, int) { return dv.Bounds.Max.X / 2, yWave - 30 },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize()
-	setTestInput(t,
-		func() (int, int) { return dv.Bounds.Max.X / 2, yWave - 30 },
-		func(ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize()
 
-	// 2) Shrink overall bottom panel (simulate splitter) by reducing Bounds height.
+	// Shrink overall bottom panel (simulate splitter) by reducing Bounds height.
 	dv.SetBounds(image.Rect(0, 300, 1280, 900))
 
-	// 3) Drag column divider
-	x := dv.widgets.colPos[1]
-	setTestInput(t,
-		func() (int, int) { return x, dv.Bounds.Min.Y + 20 },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize()
-	setTestInput(t,
-		func() (int, int) { return x + 30, dv.Bounds.Min.Y + 20 },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize()
-	setTestInput(t,
-		func() (int, int) { return x + 30, dv.Bounds.Min.Y + 20 },
-		func(ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	dv.handleLayoutResize()
-
-	// After all interactions the wave divider should still have thickness and positive height.
+	// After interactions, the wave row should still have positive height.
 	if len(dv.widgets.rowPos) < 3 {
 		t.Fatalf("missing wave row after resizes")
 	}
@@ -293,8 +210,17 @@ func TestWaveDividerStaysVisibleAfterMixedResizes(t *testing.T) {
 	if waveHeight <= 0 {
 		t.Fatalf("wave height collapsed after mixed resizes: %d", waveHeight)
 	}
-	// Draw guides and confirm divider line passes through the expected sample point
-	// without requiring GPU readback (real Ebiten forbids At before a game loop).
+
+	// The EQ pill should exist (non-empty handle rect).
+	if dv.layoutHandler != nil {
+		hr := dv.layoutHandler.rowHandleRect(1)
+		if hr.Empty() {
+			t.Fatal("EQ boundary pill should exist after resizes")
+		}
+	}
+
+	// Draw guides and confirm the wave divider LINE is NOT drawn (suppressed
+	// because WidgetWave is full-width below the row 1/2 boundary).
 	xSample := dv.Bounds.Min.X + dv.Bounds.Dx()/2
 	ySample := dv.widgets.rowPos[2]
 	hit := false
@@ -309,7 +235,7 @@ func TestWaveDividerStaysVisibleAfterMixedResizes(t *testing.T) {
 	img := ebiten.NewImage(dv.Bounds.Dx(), dv.Bounds.Dy())
 	dv.drawLayoutGuides(img)
 	drawRect = orig
-	if !hit {
-		t.Fatalf("wave divider line not visible after mixed resizes")
+	if hit {
+		t.Fatalf("wave divider line should NOT be drawn (full-width widget suppression)")
 	}
 }

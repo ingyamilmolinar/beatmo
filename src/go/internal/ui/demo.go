@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // expandHome expands a leading ~ in a path to the user's home directory.
@@ -43,11 +43,11 @@ func (g *Game) buildDemo() {
 		return
 	}
 
-	// Optional override: when TUNKUL_DEMO_CONFIG (or TUNKUL_CONFIG) is set,
+	// Optional override: when BEATMO_DEMO_CONFIG (or BEATMO_CONFIG) is set,
 	// load that JSON as the initial circuit.
-	cfg := os.Getenv("TUNKUL_DEMO_CONFIG")
+	cfg := os.Getenv("BEATMO_DEMO_CONFIG")
 	if cfg == "" {
-		cfg = os.Getenv("TUNKUL_CONFIG")
+		cfg = os.Getenv("BEATMO_CONFIG")
 	}
 	if cfg != "" {
 		path := expandHome(cfg)
@@ -102,10 +102,8 @@ func (g *Game) buildDemo() {
 		}
 	}
 
-	// Primary startup demo: evolving rock kit built from the embedded
-	// startup_demo.json. If this fails, fall back to the legacy default
-	// JSON (kept for tests) and finally the programmatic construction
-	// below to guarantee a usable demo.
+	// Primary startup demo: rock kit built from the embedded startup_demo.json.
+	// If this fails, fall back to the programmatic construction below.
 	if len(assets_pkg.StartupDemoJSON) > 0 {
 		if err := g.Import(assets_pkg.StartupDemoJSON); err == nil {
 			g.logger.Infof("[DEMO] Using embedded startup rock demo (rows=%d)", len(g.drum.Rows))
@@ -113,13 +111,6 @@ func (g *Game) buildDemo() {
 			return
 		} else {
 			g.logger.Infof("[DEMO] Failed to import startup demo JSON: %v (falling back)", err)
-		}
-	}
-	if len(assets_pkg.DefaultDemoJSON) > 0 {
-		if err := g.Import(assets_pkg.DefaultDemoJSON); err == nil {
-			g.logger.Infof("[DEMO] Using legacy default demo JSON")
-			g.demoBuilt = true
-			return
 		}
 	}
 
@@ -246,4 +237,12 @@ func (g *Game) RunDemo() {
 		g.logger.Infof("[DEMO] Finished demo run")
 		os.Exit(0)
 	}()
+}
+
+// RunBenchmark configures the game to auto-play the demo circuit at the given
+// BPM for the specified duration, then exit cleanly via ebiten.Termination.
+func (g *Game) RunBenchmark(bpm int, dur time.Duration) {
+	g.benchBPM = bpm
+	g.benchDuration = dur
+	g.demoScheduled = true
 }

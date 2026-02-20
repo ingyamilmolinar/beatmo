@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 type spyComponent struct {
@@ -140,6 +140,6 @@ func TestDrumViewBuiltinFallbackWithoutRegistry(t *testing.T) {
 	dv.simpleDraw = false
 
 	dst := ebiten.NewImage(800, 400)
-	dv.Draw(dst, map[int]int64{}, 0, nil, 0)
+	dv.Draw(dst, nil, 0, nil, 0)
 	// No assertion other than ensuring no panic; Draw should succeed with builtin phases.
 }

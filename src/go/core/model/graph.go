@@ -1,6 +1,6 @@
 package model
 
-import game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+import game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 
 type Graph struct {
 	Nodes           map[NodeID]Node
@@ -64,6 +64,22 @@ func (g *Graph) ToggleStep(i int) {
 func (g *Graph) GetNodeByID(id NodeID) (Node, bool) {
 	n, ok := g.Nodes[id]
 	return n, ok
+}
+
+// MoveNode changes the grid coordinates of a node, preserving its NodeID,
+// type, and parameters. Returns false if the node does not exist.
+func (g *Graph) MoveNode(id NodeID, newI, newJ int) bool {
+	n, ok := g.Nodes[id]
+	if !ok {
+		return false
+	}
+	n.I = newI
+	n.J = newJ
+	g.Nodes[id] = n
+	if g.onNodeChanged != nil {
+		g.onNodeChanged(id)
+	}
+	return true
 }
 
 func (g *Graph) SetBeatLength(length int) {

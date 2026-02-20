@@ -1,0 +1,66 @@
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.23"
+
+linters:
+  default: standard
+  enable:
+    - revive
+    - gocritic
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - revive
+          - gocritic
+          - unused
+      - path: instrument_ids_gen\.go
+        linters:
+          - all
+      - path: gen_instrument_ids\.go
+        linters:
+          - all
+      - path: ebitestub/
+        linters:
+          - revive
+          - gocritic
+      - path: insert_fx_c\.go
+        linters:
+          - gocritic
+      - path: send_effects\.go
+        linters:
+          - gocritic
+      - path: drums_c\.go
+        linters:
+          - gocritic
+      - path: fmsynth_c\.go
+        linters:
+          - gocritic
+      - path: synth_params\.go
+        linters:
+          - gocritic
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - instrument_ids_gen\.go

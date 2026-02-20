@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Regression: muting (or solo-gating) a row in the instrument panel suppresses

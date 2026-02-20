@@ -4,13 +4,14 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   [
@@ -24,8 +25,8 @@ const build = spawnSync(
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
-const port = 8340 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
@@ -37,7 +38,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((resolve) => server.listen(port, resolve));
+await new Promise((resolve) => server.listen(0, resolve));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -45,6 +47,23 @@ await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof startPlay === "function");
 await assertSimpleDrawMode(page, false, "pan stress");
 await clearSchedulerMismatches(page);
+
+// Verify single panBy produces correct pixel shift (from pan_camera suite)
+await page.waitForFunction(() => typeof camOffset === "function");
+{
+  const c0 = await page.evaluate(() => camOffset());
+  const dx = 42, dy = 18;
+  await page.evaluate(({dx,dy}) => panBy?.(dx, dy), { dx, dy });
+  await page.waitForTimeout(50);
+  const c1 = await page.evaluate(() => camOffset());
+  const tol = 3;
+  if (Math.abs((c1.x - c0.x) - dx) > tol || Math.abs((c1.y - c0.y) - dy) > tol) {
+    throw new Error(`panBy pixel-shift mismatch: moved=(${c1.x-c0.x},${c1.y-c0.y}) want~=(${dx},${dy})`);
+  }
+  console.log("panBy pixel-shift verified");
+  // Reset camera for stress test
+  await page.evaluate(({dx,dy}) => panBy?.(-dx, -dy), { dx, dy });
+}
 
 await page.evaluate(() => {
   resetAudioScheduleMetrics?.();
@@ -80,6 +99,7 @@ await page.waitForTimeout(2500);
 const after = await page.evaluate(() => perfStats?.());
 
 await assertNoSchedulerMismatches(page, "pan stress: scheduler mismatches");
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "pan_stress");
 await browser.close();
 server.close();
 
@@ -88,8 +108,11 @@ if (!after) { throw new Error("perfStats unavailable");
 
 const fps = after.fpsAvg;
 const drawAvg = after.drawAvgMS;
-const minFps = Number(process.env.PAN_STRESS_FPS_MIN ?? "2.0");
-const maxDrawAvg = Number(process.env.PAN_STRESS_DRAW_MAX_MS ?? "90");
+const jobs = Number(process.env.BROWSER_JOBS ?? "1");
+const baseMinFps = Number(process.env.PAN_STRESS_FPS_MIN ?? "2.0");
+const baseMaxDrawAvg = Number(process.env.PAN_STRESS_DRAW_MAX_MS ?? "90");
+const minFps = baseMinFps / Math.max(1, jobs);
+const maxDrawAvg = baseMaxDrawAvg * Math.max(1, jobs) ** 1.5;
 
 console.log("pan_stress perf:", { fps, drawAvg, before, after });
 

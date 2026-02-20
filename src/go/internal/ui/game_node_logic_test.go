@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func ensureNode(g *Game, i, j int, nodeType model.NodeType) *uiNode {

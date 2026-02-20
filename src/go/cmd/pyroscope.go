@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/grafana/pyroscope-go"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func startPyroscope(logger *game_log.Logger) func() {
@@ -17,7 +17,7 @@ func startPyroscope(logger *game_log.Logger) func() {
 	}
 	app := strings.TrimSpace(os.Getenv("PYROSCOPE_APP"))
 	if app == "" {
-		app = "tunkul"
+		app = "beatmo"
 	}
 	prof, err := pyroscope.Start(pyroscope.Config{
 		ApplicationName: app,

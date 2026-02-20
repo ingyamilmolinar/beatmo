@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Regression: importing a project with sample-backed instruments (IDs prefixed
@@ -15,7 +15,7 @@ func TestImportRegistersSampleInstruments(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	withAudioCatalog(t, nil)
 
-	// Minimal import payload mirroring tunkul.json sample ids.
+	// Minimal import payload mirroring beatmo.json sample ids.
 	f := importFile{
 		Version: 1,
 		Subdiv:  8,

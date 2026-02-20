@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Ensure a 1-subdivision bidirectional pair triggers both nodes at subdiv=8
@@ -66,9 +66,10 @@ func TestBiDirImmediateStepsTriggersBothNodes_AcrossSubdiv(t *testing.T) {
 				t.Fatalf("expected audible regular node at abs=%d (node=%d)", abs, bi.NodeID)
 			}
 			total++
-			if bi.NodeID == a.ID {
+			switch bi.NodeID {
+			case a.ID:
 				countA++
-			} else if bi.NodeID == b.ID {
+			case b.ID:
 				countB++
 			}
 		}

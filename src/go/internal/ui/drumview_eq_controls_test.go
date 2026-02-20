@@ -4,8 +4,8 @@ import (
 	"image"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestEQControlSlidersApplyGains(t *testing.T) {

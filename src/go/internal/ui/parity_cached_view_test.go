@@ -5,7 +5,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func TestParityScanUsesCachedViewState(t *testing.T) {
@@ -59,11 +59,11 @@ func TestParityScanUsesCachedViewState(t *testing.T) {
 	if len(g.drum.rowFullDirty) > 0 {
 		g.drum.rowFullDirty[0] = false
 	}
-	if v, ok := g.drum.cachedRowValue(0, 0); !ok {
-		t.Fatalf("expected cached row value to be readable (rowDirty=%v rowFullDirty=%v cacheW=%d cacheH=%d cacheLen=%d cacheOff=%v)",
+	if v, ok := g.drum.cachedRowState(0, 0); !ok {
+		t.Fatalf("expected cached row state to be readable (rowDirty=%v rowFullDirty=%v cacheW=%d cacheH=%d cacheLen=%d cacheOff=%v)",
 			g.drum.rowDirty, g.drum.rowFullDirty, g.drum.rowCacheW, g.drum.rowCacheH, g.drum.rowCacheLen, g.drum.rowCacheOff)
 	} else if !v {
-		t.Fatalf("expected cached row value to remain on")
+		t.Fatalf("expected cached row state to remain on")
 	}
 	g.nextBeatIdxs = []int{0}
 	g.seqNextIdxs = []int{0}

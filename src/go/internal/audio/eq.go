@@ -17,11 +17,40 @@ func (e *eqProcessor) ProcessSample(x float64) float64 {
 	return y
 }
 
+// ProcessBlockBuf implements BlockProcessor for eqProcessor. Chains biquads
+// block-by-block with ping-pong buffers.
+func (e *eqProcessor) ProcessBlockBuf(in, out []float32, samples int) {
+	if len(e.filters) == 0 {
+		copy(out[:samples], in[:samples])
+		return
+	}
+	e.filters[0].ProcessBlockBuf(in, out, samples)
+	if len(e.filters) > 1 {
+		tmp := blockBufPool.get(samples)
+		defer blockBufPool.put(tmp)
+		src, dst := out, tmp
+		for _, f := range e.filters[1:] {
+			f.ProcessBlockBuf(src, dst, samples)
+			src, dst = dst, src
+		}
+		if &src[0] != &out[0] {
+			copy(out[:samples], src[:samples])
+		}
+	}
+}
+
 // silenceProcessor outputs zero for all samples. Used when all bands are muted.
 type silenceProcessor struct{}
 
 func (s *silenceProcessor) ProcessSample(x float64) float64 {
 	return 0
+}
+
+// ProcessBlockBuf implements BlockProcessor for silenceProcessor.
+func (s *silenceProcessor) ProcessBlockBuf(in, out []float32, samples int) {
+	for i := 0; i < samples; i++ {
+		out[i] = 0
+	}
 }
 
 // multibandBandDef defines frequency boundaries for a single band in the multiband processor.
@@ -30,18 +59,18 @@ type multibandBandDef struct {
 	hiHz float64
 }
 
-// defaultBandDefs matches the 10-band EQ definitions used in the UI.
+// defaultBandDefs matches the 10-band ISO standard EQ definitions used in the UI.
 var defaultBandDefs = []multibandBandDef{
-	{loHz: 20, hiHz: 40},
-	{loHz: 40, hiHz: 80},
-	{loHz: 80, hiHz: 160},
-	{loHz: 160, hiHz: 315},
-	{loHz: 315, hiHz: 630},
-	{loHz: 630, hiHz: 1250},
-	{loHz: 1250, hiHz: 2500},
-	{loHz: 2500, hiHz: 5000},
-	{loHz: 5000, hiHz: 10000},
-	{loHz: 10000, hiHz: 20000},
+	{loHz: 22, hiHz: 44},       // 31 Hz
+	{loHz: 44, hiHz: 88},       // 62 Hz
+	{loHz: 88, hiHz: 177},      // 125 Hz
+	{loHz: 177, hiHz: 354},     // 250 Hz
+	{loHz: 354, hiHz: 707},     // 500 Hz
+	{loHz: 707, hiHz: 1414},    // 1 kHz
+	{loHz: 1414, hiHz: 2828},   // 2 kHz
+	{loHz: 2828, hiHz: 5657},   // 4 kHz
+	{loHz: 5657, hiHz: 11314},  // 8 kHz
+	{loHz: 11314, hiHz: 20000}, // 16 kHz
 }
 
 // bandProcessor handles one frequency band in the parallel multiband processor.
@@ -88,6 +117,36 @@ func (m *multibandProcessor) ProcessSample(x float64) float64 {
 		sum += y * b.gain
 	}
 	return sum
+}
+
+// ProcessBlockBuf implements BlockProcessor for multibandProcessor. Processes
+// each band's full block then accumulates, using ping-pong buffers.
+func (m *multibandProcessor) ProcessBlockBuf(in, out []float32, samples int) {
+	for i := 0; i < samples; i++ {
+		out[i] = 0
+	}
+	bandBuf := blockBufPool.get(samples)
+	filterBuf := blockBufPool.get(samples)
+	defer blockBufPool.put(bandBuf)
+	defer blockBufPool.put(filterBuf)
+	for i := range m.bands {
+		b := &m.bands[i]
+		if b.muted {
+			continue
+		}
+		copy(bandBuf[:samples], in[:samples])
+		// Apply cascaded HP/LP biquads with ping-pong.
+		for _, filt := range []*biquad{b.lowCut1, b.lowCut2, b.highCut1, b.highCut2} {
+			if filt != nil {
+				filt.ProcessBlockBuf(bandBuf, filterBuf, samples)
+				bandBuf, filterBuf = filterBuf, bandBuf
+			}
+		}
+		gain := float32(b.gain)
+		for j := 0; j < samples; j++ {
+			out[j] += bandBuf[j] * gain
+		}
+	}
 }
 
 // newMultibandProcessor creates a parallel multiband processor for the given bands.
@@ -205,95 +264,16 @@ func NewShelfEQ(sampleRate int, low bool, freq, q, gainDB float64) Processor {
 	return NewEQProcessor(sampleRate, EQBand{Kind: kind, Freq: freq, Q: q, GainDB: gainDB})
 }
 
-// SetChannelEQ replaces the processor chain on a channel with the given EQ bands.
+// SetChannelEQ replaces the EQ on a channel, preserving insert effects.
 func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
-	SetChannelProcessors(id, NewEQProcessor(sampleRate, bands...))
 	lastSetEQ = eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)}
+	RebuildChannelWithEQ(id, NewEQProcessor(sampleRate, bands...))
 }
 
-// ClearChannelProcessors removes all processors from the channel.
+// ClearChannelProcessors removes EQ from the channel, preserving insert effects.
 func ClearChannelProcessors(id string) {
-	SetChannelProcessors(id)
+	lastSetEQ = eqRecord{}
+	RebuildChannelWithEQ(id, nil)
 }
 
-// biquad implements Direct Form I processing.
-type biquad struct {
-	b0, b1, b2 float64
-	a1, a2     float64
-	x1, x2     float64
-	y1, y2     float64
-}
-
-func (b *biquad) ProcessSample(x float64) float64 {
-	y := b.b0*x + b.b1*b.x1 + b.b2*b.x2 - b.a1*b.y1 - b.a2*b.y2
-	b.x2, b.x1 = b.x1, x
-	b.y2, b.y1 = b.y1, y
-	return y
-}
-
-func makeBiquad(kind EQKind, sr int, freq, q, gainDB float64) *biquad {
-	if sr <= 0 || freq <= 0 || q <= 0 {
-		return nil
-	}
-	if freq > float64(sr)/2 {
-		freq = float64(sr) / 2
-	}
-	w0 := 2 * math.Pi * freq / float64(sr)
-	cosw := math.Cos(w0)
-	sinw := math.Sin(w0)
-	alpha := sinw / (2 * q)
-	A := math.Pow(10, gainDB/40) // amplitude for shelves/peaks
-
-	var b0, b1, b2, a0, a1, a2 float64
-	switch kind {
-	case EQPeaking:
-		b0 = 1 + alpha*A
-		b1 = -2 * cosw
-		b2 = 1 - alpha*A
-		a0 = 1 + alpha/A
-		a1 = -2 * cosw
-		a2 = 1 - alpha/A
-	case EQLowShelf:
-		sqrtA := math.Sqrt(A)
-		b0 = A * ((A + 1) - (A-1)*cosw + 2*sqrtA*alpha)
-		b1 = 2 * A * ((A - 1) - (A+1)*cosw)
-		b2 = A * ((A + 1) - (A-1)*cosw - 2*sqrtA*alpha)
-		a0 = (A + 1) + (A-1)*cosw + 2*sqrtA*alpha
-		a1 = -2 * ((A - 1) + (A+1)*cosw)
-		a2 = (A + 1) + (A-1)*cosw - 2*sqrtA*alpha
-	case EQHighShelf:
-		sqrtA := math.Sqrt(A)
-		b0 = A * ((A + 1) + (A-1)*cosw + 2*sqrtA*alpha)
-		b1 = -2 * A * ((A - 1) + (A+1)*cosw)
-		b2 = A * ((A + 1) + (A-1)*cosw - 2*sqrtA*alpha)
-		a0 = (A + 1) - (A-1)*cosw + 2*sqrtA*alpha
-		a1 = 2 * ((A - 1) - (A+1)*cosw)
-		a2 = (A + 1) - (A-1)*cosw - 2*sqrtA*alpha
-	case EQLowpass:
-		// Butterworth lowpass (Q=0.707 for flat passband)
-		b0 = (1 - cosw) / 2
-		b1 = 1 - cosw
-		b2 = (1 - cosw) / 2
-		a0 = 1 + alpha
-		a1 = -2 * cosw
-		a2 = 1 - alpha
-	case EQHighpass:
-		// Butterworth highpass (Q=0.707 for flat passband)
-		b0 = (1 + cosw) / 2
-		b1 = -(1 + cosw)
-		b2 = (1 + cosw) / 2
-		a0 = 1 + alpha
-		a1 = -2 * cosw
-		a2 = 1 - alpha
-	default:
-		return nil
-	}
-
-	return &biquad{
-		b0: b0 / a0,
-		b1: b1 / a0,
-		b2: b2 / a0,
-		a1: a1 / a0,
-		a2: a2 / a0,
-	}
-}
+// biquad and makeBiquad are defined in biquad.go (shared across all build tags).

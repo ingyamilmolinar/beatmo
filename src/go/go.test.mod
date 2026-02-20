@@ -1,4 +1,4 @@
-module github.com/ingyamilmolinar/tunkul
+module github.com/ingyamilmolinar/beatmo
 
 go 1.23
 

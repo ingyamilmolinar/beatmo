@@ -6,17 +6,16 @@ import (
 	"syscall/js"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // main hooks a mousedown event to trigger audio after the context resumes.
 func main() {
 	js.Global().Set("__wasmReady", false)
-	perf := js.Global().Get("performance")
 	js.Global().Get("document").Call("addEventListener", "mousedown", js.FuncOf(func(js.Value, []js.Value) interface{} {
 		audio.Resume()
 		js.Global().Call("setTimeout", js.FuncOf(func(js.Value, []js.Value) interface{} {
-			js.Global().Set("__playTime", perf.Call("now"))
+			js.Global().Set("__playTime", js.Global().Get("__audioCtx").Get("currentTime"))
 			audio.Play("snare")
 			go func() {
 				time.Sleep(250 * time.Millisecond)

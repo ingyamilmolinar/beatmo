@@ -1,5 +1,19 @@
 package ui
 
+// ─── Parity Verification Defaults ───────────────────────────────────────────
+//
+// Parity checks ensure the UI slate matches predictor/scheduler state.
+//
+// Platform defaults:
+//   WASM:    parity stays log-only unless PARITY_WASM_FATAL=1|true|panic
+//   Desktop: honors PARITY_WATCH (log|panic) and PARITY_FATAL (0|false to disable)
+//
+// During imports: g.importing disables parity scans and clears buffers to
+// prevent false positives while the graph is being rebuilt.
+//
+// Grace periods prevent false positives during tight loops where the scheduler
+// has committed a beat but the UI hasn't refreshed yet.
+
 import (
 	"fmt"
 	"os"
@@ -7,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // ParityMismatchSnapshot returns a copy of recent scheduler-vs-UI mismatches.
@@ -200,21 +214,21 @@ func (g *Game) emitParityFatal(e mismatchEntry) {
 	}
 	builder := &strings.Builder{}
 	builder.WriteString("[PARITY] scheduler vs DrumView mismatch\n")
-	builder.WriteString(fmt.Sprintf(" row=%d abs=%d source=%s kind=%s scheduled=%v slate=%v expected=%v actual=%v nodeType=%v missingInst=%v rowMuted=%v anySolo=%v when=%.6f detail=%s\n",
-		e.Row, e.Abs, e.Source, e.Kind, e.Scheduled, e.Slate, e.Expected, e.Actual, e.NodeType, e.Missing, e.RowMuted, e.AnySolo, e.When, e.Detail))
-	builder.WriteString(fmt.Sprintf(" inWindow=%v offset=%d length=%d\n", e.InWindow, e.Offset, e.Length))
+	fmt.Fprintf(builder, " row=%d abs=%d source=%s kind=%s scheduled=%v slate=%v expected=%v actual=%v nodeType=%v missingInst=%v rowMuted=%v anySolo=%v when=%.6f detail=%s\n",
+		e.Row, e.Abs, e.Source, e.Kind, e.Scheduled, e.Slate, e.Expected, e.Actual, e.NodeType, e.Missing, e.RowMuted, e.AnySolo, e.When, e.Detail)
+	fmt.Fprintf(builder, " inWindow=%v offset=%d length=%d\n", e.InWindow, e.Offset, e.Length)
 	// Transport snapshot
 	ts := g.transportSnapshot()
-	builder.WriteString(fmt.Sprintf(" transport: playing=%v paused=%v bpm=%d beatBase=%.3f lastBeat=%.3f lastStep=%d pausedBeats=%d seekFreeze=%d\n",
-		ts.Playing, ts.Paused, ts.AppliedBPM, ts.BeatBase, ts.LastBeat, ts.LastStep, ts.PausedBeats, ts.SeekFreezeFrames))
+	fmt.Fprintf(builder, " transport: playing=%v paused=%v bpm=%d beatBase=%.3f lastBeat=%.3f lastStep=%d pausedBeats=%d seekFreeze=%d\n",
+		ts.Playing, ts.Paused, ts.AppliedBPM, ts.BeatBase, ts.LastBeat, ts.LastStep, ts.PausedBeats, ts.SeekFreezeFrames)
 	// Scheduler indices
-	builder.WriteString(fmt.Sprintf(" elapsedBeats=%d offset=%d length=%d seqNextIdxs=%v nextBeatIdxs=%v\n",
-		g.elapsedBeats, g.drum.Offset, g.drum.Length, g.seqNextIdxs, g.nextBeatIdxs))
+	fmt.Fprintf(builder, " elapsedBeats=%d offset=%d length=%d seqNextIdxs=%v nextBeatIdxs=%v\n",
+		g.elapsedBeats, g.drum.Offset, g.drum.Length, g.seqNextIdxs, g.nextBeatIdxs)
 	// Row window snapshot
 	if e.Row >= 0 && e.Row < len(g.drum.Rows) {
 		r := g.drum.Rows[e.Row]
-		builder.WriteString(fmt.Sprintf(" row steps=%v\n", boolSliceDebug(r.Steps)))
-		builder.WriteString(fmt.Sprintf(" row types=%v\n", r.CellTypes))
+		fmt.Fprintf(builder, " row steps=%v\n", boolSliceDebug(r.Steps))
+		fmt.Fprintf(builder, " row types=%v\n", r.CellTypes)
 	}
 	// Predictor values at abs
 	vis, trig := false, false
@@ -223,17 +237,17 @@ func (g *Game) emitParityFatal(e mismatchEntry) {
 		vis = g.engine.Predictor.VisibleAt(e.Row, e.Abs)
 		trig = g.engine.Predictor.TriggeredAt(e.Row, e.Abs)
 	}
-	builder.WriteString(fmt.Sprintf(" predictor visible=%v triggered=%v\n", vis, trig))
+	fmt.Fprintf(builder, " predictor visible=%v triggered=%v\n", vis, trig)
 	// Timeline snapshot
 	seg := g.TimelineSegments(e.Row)
-	builder.WriteString(fmt.Sprintf(" timeline offset=%d past=%v pastMask=%v present=%v future=%v\n",
-		seg.Offset, boolSliceDebug(seg.Past), boolSliceDebug(seg.PastMask), boolSliceDebug(seg.Present), boolSliceDebug(seg.Future)))
+	fmt.Fprintf(builder, " timeline offset=%d past=%v pastMask=%v present=%v future=%v\n",
+		seg.Offset, boolSliceDebug(seg.Past), boolSliceDebug(seg.PastMask), boolSliceDebug(seg.Present), boolSliceDebug(seg.Future))
 	// Graph summary
-	builder.WriteString(fmt.Sprintf(" graph start=%d nodes=%d edges=%d\n", g.graph.StartNodeID, len(g.graph.Nodes), len(g.graph.Edges)))
+	fmt.Fprintf(builder, " graph start=%d nodes=%d edges=%d\n", g.graph.StartNodeID, len(g.graph.Nodes), len(g.graph.Edges))
 	// Dump recent mismatches ring
 	builder.WriteString(" recent mismatches:\n")
 	for _, m := range g.parityRing.snapshot() {
-		builder.WriteString(fmt.Sprintf("  row=%d abs=%d src=%s sched=%v slate=%v nodeType=%v\n", m.Row, m.Abs, m.Source, m.Scheduled, m.Slate, m.NodeType))
+		fmt.Fprintf(builder, "  row=%d abs=%d src=%s sched=%v slate=%v nodeType=%v\n", m.Row, m.Abs, m.Source, m.Scheduled, m.Slate, m.NodeType)
 	}
 	// Highlight state at abs
 	if e.Row >= 0 {
@@ -241,7 +255,7 @@ func (g *Game) emitParityFatal(e mismatchEntry) {
 		g.highlightMu.RLock()
 		until, hl := g.highlightedBeats[key]
 		g.highlightMu.RUnlock()
-		builder.WriteString(fmt.Sprintf(" highlight key=%d present=%v until=%d frame=%d\n", key, hl, until, g.frame))
+		fmt.Fprintf(builder, " highlight key=%d present=%v until=%d frame=%d\n", key, hl, until, g.frame)
 	}
 	msg := builder.String()
 	if g.logger != nil {

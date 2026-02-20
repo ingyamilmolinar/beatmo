@@ -4,6 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -13,7 +14,6 @@ const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright",
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8160 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { try { console.log('[SRV]', req.url); } catch(_) {}
   const file = req.url === "/" ? "/consistency.html" : req.url;
   if (req.url === "/" || req.url === "/consistency.html") { const html = `<!DOCTYPE html><html><body>
@@ -37,7 +37,8 @@ const server = http.createServer((req, res) => { try { console.log('[SRV]', req.
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -64,6 +65,14 @@ await page.addInitScript(() => { window.__samples = [];
 });
 
 await page.goto(`http://localhost:${port}/`);
+
+// Wait for audio.js to load and initialize synth samples.
+await page.waitForFunction(() => typeof window.playSound === 'function', {}, { timeout: 15000 });
+await page.evaluate(() => window.audioReady);
+
+// Trigger user gesture to create the AudioContext (audio.js defers creation until a gesture).
+await page.evaluate(() => document.dispatchEvent(new Event('pointerdown')));
+await page.waitForFunction(() => window.__audioCtx && window.__audioCtx.state === 'running', {}, { timeout: 5000 });
 
 // Now play via the high-level API and capture its buffer.
 await page.evaluate(() => { window.__samples = []; window.__done = false; window.__captureSamples = true; });
@@ -157,5 +166,6 @@ await (async () => {
   console.log('drums.js consistency verified (kick)', { corr: ck.toFixed(4) });
 })();
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "drums_consistency");
 await browser.close();
 server.close();

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestCameraPanDrag moves the camera by dragging and verifies that node and
@@ -56,7 +56,7 @@ func TestCameraPanDrag(t *testing.T) {
 	camScale := unitPx / g.grid.Unit()
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
-	ex, ey := n0.X*camScale+offX, n0.Y*camScale+offY+float64(topOffset)
+	ex, ey := n0.X*camScale+offX, n0.Y*camScale+offY+float64(gridTopOffset())
 	if math.Abs(ex-ncx) > 0.6 || math.Abs(ey-ncy) > 0.6 {
 		t.Fatalf("edge/node diverged after pan: edge(%.2f,%.2f) node(%.2f,%.2f)", ex, ey, ncx, ncy)
 	}

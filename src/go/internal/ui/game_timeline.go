@@ -1,8 +1,8 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 func (g *Game) timelineWindowLen() int {
@@ -38,10 +38,6 @@ func (g *Game) timelineTrimAfter(row, maxAbs int) {
 
 func (g *Game) timelineTrimAfterMutable(row, maxAbs int) {
 	g.timelineService().TrimAfterMutable(row, maxAbs)
-}
-
-func (g *Game) timelineTrimBefore(row, minAbs int) {
-	g.timelineService().TrimBefore(row, minAbs)
 }
 
 func (g *Game) timelineClearRow(row int) {

@@ -5,10 +5,11 @@ import (
 	"image/color"
 	"slices"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // When a circuit that feeds a particular drum row changes during playback,
@@ -53,12 +54,10 @@ func TestRowCacheLiveUpdate_PerRowInvalidation(t *testing.T) {
 
 	// Build initial caches.
 	dst := ebiten.NewImage(800, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCache) < 2 || g.drum.rowCache[0] == nil || g.drum.rowCache[1] == nil {
 		t.Fatalf("expected two built row caches")
 	}
-	r0 := g.drum.rowCache[0]
-	r1 := g.drum.rowCache[1]
 	gen0 := g.drum.rowCacheGen[0]
 	gen1 := g.drum.rowCacheGen[1]
 
@@ -72,14 +71,14 @@ func TestRowCacheLiveUpdate_PerRowInvalidation(t *testing.T) {
 	g.updateBeatInfos()
 	g.refreshDrumRow()
 
-	// Draw again — only row 0 should be rebuilt.
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	// Draw again — only row 0 should be rebuilt (gen incremented).
+	g.drum.Draw(dst, nil, 0, nil, 0)
 
-	if g.drum.rowCache[0] == r0 || g.drum.rowCacheGen[0] == gen0 {
-		t.Fatalf("row 0 cache not invalidated after circuit change")
+	if g.drum.rowCacheGen[0] <= gen0 {
+		t.Fatalf("row 0 cache not invalidated after circuit change; gen %d unchanged", g.drum.rowCacheGen[0])
 	}
-	if g.drum.rowCache[1] != r1 || g.drum.rowCacheGen[1] != gen1 {
-		t.Fatalf("row 1 cache changed unnecessarily on unrelated edit")
+	if g.drum.rowCacheGen[1] != gen1 {
+		t.Fatalf("row 1 cache changed unnecessarily on unrelated edit; gen %d -> %d", gen1, g.drum.rowCacheGen[1])
 	}
 }
 
@@ -125,12 +124,10 @@ func TestRowCacheLiveUpdate_CellTypeChangeInvalidatesRowCache(t *testing.T) {
 
 	// Build initial caches.
 	dst := ebiten.NewImage(800, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCache) < 2 || g.drum.rowCache[0] == nil || g.drum.rowCache[1] == nil {
 		t.Fatalf("expected two built row caches")
 	}
-	r0 := g.drum.rowCache[0]
-	r1 := g.drum.rowCache[1]
 	gen0 := g.drum.rowCacheGen[0]
 	gen1 := g.drum.rowCacheGen[1]
 	beforeSteps := append([]bool(nil), g.drum.Rows[0].Steps...)
@@ -158,13 +155,13 @@ func TestRowCacheLiveUpdate_CellTypeChangeInvalidatesRowCache(t *testing.T) {
 		t.Fatalf("expected cell types to change after type-only edit; before=%v after=%v", beforeTypes, afterTypes)
 	}
 
-	// Draw again — only row 0 should be rebuilt.
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
-	if g.drum.rowCache[0] == r0 || g.drum.rowCacheGen[0] == gen0 {
-		t.Fatalf("row 0 cache not invalidated after cell type change")
+	// Draw again — only row 0 should be rebuilt (gen incremented).
+	g.drum.Draw(dst, nil, 0, nil, 0)
+	if g.drum.rowCacheGen[0] <= gen0 {
+		t.Fatalf("row 0 cache not invalidated after cell type change; gen %d unchanged", g.drum.rowCacheGen[0])
 	}
-	if g.drum.rowCache[1] != r1 || g.drum.rowCacheGen[1] != gen1 {
-		t.Fatalf("row 1 cache changed unnecessarily on unrelated edit")
+	if g.drum.rowCacheGen[1] != gen1 {
+		t.Fatalf("row 1 cache changed unnecessarily on unrelated edit; gen %d -> %d", gen1, g.drum.rowCacheGen[1])
 	}
 }
 
@@ -182,7 +179,7 @@ func TestRowCacheLiveUpdate_ShiftDuringContentChange(t *testing.T) {
 	dv.Rows[0].Steps[10] = true
 	dv.SetRowColor(0, color.RGBA{255, 0, 0, 255})
 	dst := ebiten.NewImage(480, 240)
-	dv.Draw(dst, map[int]int64{}, 0, nil, 0)
+	dv.Draw(dst, nil, 0, nil, 0)
 	if len(dv.rowCacheGen) == 0 {
 		t.Fatalf("expected row cache generation tracking")
 	}
@@ -194,7 +191,7 @@ func TestRowCacheLiveUpdate_ShiftDuringContentChange(t *testing.T) {
 	dv.markRowsShiftDirty()
 	dv.Rows[0].Steps = make([]bool, dv.Length)
 	dv.markRowDirty(0)
-	dv.Draw(dst, map[int]int64{}, 0, nil, 0)
+	dv.Draw(dst, nil, 0, nil, 0)
 	if dv.rowCacheGen[0] == gen0 {
 		t.Fatalf("row cache reused sprite after content change during shift; gen %d", gen0)
 	}

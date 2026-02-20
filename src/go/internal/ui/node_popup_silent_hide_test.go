@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Ensure that when a node is toggled to Silent or Mute, the popup hides the
@@ -19,52 +19,53 @@ func TestNodePopupHidesForSilentAndMute_ThenRestores(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
 	// Sanity: rows visible
-	if g.nodeMenuRects["vol-"].Empty() || g.nodeMenuRects["logic"].Empty() {
+	if g.sidebar.rects["vol-"].Empty() || g.sidebar.rects["logic"].Empty() {
 		t.Fatalf("expected initial rows visible: vol/logic missing")
 	}
 	// Remember values to verify state persists across toggles
 	before := g.graph.Nodes[n.ID].Params
 
 	// Click AUD to cycle to Silent (invoke handler directly)
-	if g.nodeMenuBtns == nil || g.nodeMenuBtns["aud"] == nil {
+	if g.sidebar.btns == nil || g.sidebar.btns["aud"] == nil {
 		t.Fatalf("aud button missing")
 	}
-	g.nodeMenuBtns["aud"].OnClick()
+	g.sidebar.btns["aud"].OnClick()
 	_ = g.Update()
+	g.sidebar.layout() // recompute rects after type change
 	// After Silent: all rows hidden except AUD
-	if !g.nodeMenuRects["vol-"].Empty() || !g.nodeMenuRects["logic"].Empty() || !g.nodeMenuRects["dur-"].Empty() || !g.nodeMenuRects["grv"].Empty() {
+	if !g.sidebar.rects["vol-"].Empty() || !g.sidebar.rects["logic"].Empty() || !g.sidebar.rects["dur-"].Empty() || !g.sidebar.rects["grv"].Empty() {
 		t.Fatalf("expected rows hidden for Silent")
 	}
 	// Click AUD again -> Mute (show only non-audible rows such as logic)
-	if g.nodeMenuBtns["aud"] == nil {
+	if g.sidebar.btns["aud"] == nil {
 		t.Fatalf("aud button missing (silent)")
 	}
-	g.nodeMenuBtns["aud"].OnClick()
+	g.sidebar.btns["aud"].OnClick()
 	_ = g.Update()
-	g.updateNodeMenuRects()
-	if !g.nodeMenuRects["vol-"].Empty() || !g.nodeMenuRects["pit-"].Empty() {
+	g.sidebar.layout()
+	if !g.sidebar.rects["vol-"].Empty() || !g.sidebar.rects["pit-"].Empty() {
 		t.Fatalf("volume or pitch still visible for Mute")
 	}
-	if g.nodeMenuRects["logic"].Empty() {
+	if g.sidebar.rects["logic"].Empty() {
 		t.Fatalf("logic should remain visible for Mute")
 	}
-	if !g.nodeMenuRects["dur-"].Empty() || !g.nodeMenuRects["dur+"].Empty() {
+	if !g.sidebar.rects["dur-"].Empty() || !g.sidebar.rects["dur+"].Empty() {
 		t.Fatalf("duration should be hidden for Mute")
 	}
 	// Click third time -> Regular (recompute rect again)
-	if g.nodeMenuBtns["aud"] == nil {
+	if g.sidebar.btns["aud"] == nil {
 		t.Fatalf("aud button missing (mute)")
 	}
-	g.nodeMenuBtns["aud"].OnClick()
+	g.sidebar.btns["aud"].OnClick()
 	_ = g.Update()
-	g.updateNodeMenuRects()
+	g.sidebar.layout()
 	// Rows restored
-	t.Logf("final types: type=%v vol-=%v logic=%v dur-=%v aud=%v", g.graph.Nodes[n.ID].Type, g.nodeMenuRects["vol-"], g.nodeMenuRects["logic"], g.nodeMenuRects["dur-"], g.nodeMenuRects["aud"])
-	if g.nodeMenuRects["vol-"].Empty() || g.nodeMenuRects["logic"].Empty() || g.nodeMenuRects["dur-"].Empty() {
+	t.Logf("final types: type=%v vol-=%v logic=%v dur-=%v aud=%v", g.graph.Nodes[n.ID].Type, g.sidebar.rects["vol-"], g.sidebar.rects["logic"], g.sidebar.rects["dur-"], g.sidebar.rects["aud"])
+	if g.sidebar.rects["vol-"].Empty() || g.sidebar.rects["logic"].Empty() || g.sidebar.rects["dur-"].Empty() {
 		t.Fatalf("rows not restored after returning to Regular")
 	}
 	// Parameters unchanged

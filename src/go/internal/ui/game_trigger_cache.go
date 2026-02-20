@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func (g *Game) setLastTriggered(row int, id model.NodeID, val bool) {
@@ -79,40 +79,6 @@ func (g *Game) lastTriggered(row int, id model.NodeID) (bool, bool) {
 	return false, false
 }
 
-func (g *Game) copyLastTriggeredRow(row int, dst map[model.NodeID]bool) map[model.NodeID]bool {
-	g.triggerMu.RLock()
-	defer g.triggerMu.RUnlock()
-	if g.lastTriggeredByRow == nil {
-		if dst != nil {
-			clear(dst)
-		}
-		return dst
-	}
-	if m := g.lastTriggeredByRow[row]; m != nil {
-		if dst == nil {
-			dst = make(map[model.NodeID]bool, len(m))
-		} else {
-			clear(dst)
-		}
-		for id, v := range m {
-			dst[id] = v
-		}
-		return dst
-	}
-	if dst != nil {
-		clear(dst)
-	}
-	return dst
-}
-
-func (g *Game) clearLastTriggeredRow(row int) {
-	g.triggerMu.Lock()
-	if g.lastTriggeredByRow != nil {
-		delete(g.lastTriggeredByRow, row)
-	}
-	g.triggerMu.Unlock()
-}
-
 // Test-only helpers to interact with lastTriggeredByRow without racing the
 // sequencer goroutines. They simply wrap the locked versions above.
 func (g *Game) setLastTriggeredForTest(row int, id model.NodeID, v bool) {
@@ -121,8 +87,4 @@ func (g *Game) setLastTriggeredForTest(row int, id model.NodeID, v bool) {
 
 func (g *Game) lastTriggeredForTest(row int, id model.NodeID) (bool, bool) {
 	return g.lastTriggered(row, id)
-}
-
-func (g *Game) lastTriggeredRowSnapshotForTest(row int) map[model.NodeID]bool {
-	return g.copyLastTriggeredRow(row, nil)
 }

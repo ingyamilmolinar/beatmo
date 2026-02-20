@@ -4,9 +4,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 func ensureRowInstrumentsAvailable(t *testing.T, g *Game) {
@@ -240,7 +240,7 @@ func TestTimelinePlaybackCommitInFutureDemotedWhenPaused(t *testing.T) {
 
 	// Simulate playback state with a future immutable commit.
 	g.SetPlaying(true)
-	g.nextBeatIdxs = []int{8} // playhead around beat 8
+	g.nextBeatIdxs = []int{8}     // playhead around beat 8
 	g.frozenUpToByRow = []int{64} // freeze far ahead
 	targetAbs := 20               // lies in the future relative to playhead
 
@@ -284,17 +284,17 @@ func TestTimelinePlaybackCommitInFutureDemotedWhenPaused(t *testing.T) {
 	}
 }
 
-// Repro using the real ./tunkul.json project: during playback, deleting and
+// Repro using the real ./beatmo.json project: during playback, deleting and
 // re‑adding a node on row 4 should not leave DrumView masked by an old commit.
 // The user observed TIMELINE_TRACE mismatches in /tmp/llm.log for this flow.
-func TestImportPlaybackReaddTunkulProject(t *testing.T) {
+func TestImportPlaybackReaddBeatmoProject(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
 
-	if err := g.Import([]byte(tunkulProjectJSON)); err != nil {
-		t.Fatalf("import tunkul project: %v", err)
+	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
+		t.Fatalf("import beatmo project: %v", err)
 	}
 	ensureRowInstrumentsAvailable(t, g)
 	g.updateBeatInfos()
@@ -415,8 +415,8 @@ func TestImportPlaybackAddRemoveReaddParityWatch(t *testing.T) {
 	g.parityWatch = parityWatchLog
 	g.Layout(1024, 720)
 
-	if err := g.Import([]byte(tunkulProjectJSON)); err != nil {
-		t.Fatalf("import tunkul project: %v", err)
+	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
+		t.Fatalf("import beatmo project: %v", err)
 	}
 	ensureRowInstrumentsAvailable(t, g)
 	g.updateBeatInfos()
@@ -475,8 +475,8 @@ func TestImportPlaybackDeleteReaddSameNodeKeepsPredictorParity(t *testing.T) {
 	g.Layout(1024, 720)
 	g.parityWatch = parityWatchLog
 
-	if err := g.Import([]byte(tunkulProjectJSON)); err != nil {
-		t.Fatalf("import tunkul project: %v", err)
+	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
+		t.Fatalf("import beatmo project: %v", err)
 	}
 	ensureRowInstrumentsAvailable(t, g)
 	g.updateBeatInfos()
@@ -590,8 +590,8 @@ func TestImportPlaybackDeleteReaddReschedulesNode(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
 
-	if err := g.Import([]byte(tunkulProjectJSON)); err != nil {
-		t.Fatalf("import tunkul project: %v", err)
+	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
+		t.Fatalf("import beatmo project: %v", err)
 	}
 	ensureRowInstrumentsAvailable(t, g)
 	g.updateBeatInfos()
@@ -667,8 +667,8 @@ func TestImportPlaybackStaleHighlightAfterReaddMasksPredictor(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
 
-	if err := g.Import([]byte(tunkulProjectJSON)); err != nil {
-		t.Fatalf("import tunkul project: %v", err)
+	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
+		t.Fatalf("import beatmo project: %v", err)
 	}
 	ensureRowInstrumentsAvailable(t, g)
 	g.updateBeatInfos()
@@ -756,8 +756,8 @@ func TestImportPlaybackStaleHighlightCurrentBeatAfterReadd(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1024, 720)
 
-	if err := g.Import([]byte(tunkulProjectJSON)); err != nil {
-		t.Fatalf("import tunkul project: %v", err)
+	if err := g.Import([]byte(beatmoProjectJSON)); err != nil {
+		t.Fatalf("import beatmo project: %v", err)
 	}
 	ensureRowInstrumentsAvailable(t, g)
 	g.updateBeatInfos()
@@ -835,7 +835,7 @@ func TestImportPlaybackStaleHighlightCurrentBeatAfterReadd(t *testing.T) {
 	}
 }
 
-const tunkulProjectJSON = `{
+const beatmoProjectJSON = `{
   "version": 1,
   "subdiv": 8,
   "bpm": 120,

@@ -4,7 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { resolveGoBinary } from "./browser_test_helpers.js";
+import { resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -14,6 +14,7 @@ const AUDIO_START_DELAY_THRESHOLD_MS = 250;
 
 // Build the tiny harness that invokes audio.Play("snare").
 const GO = resolveGoBinary();
+if (!shouldSkipWasmBuild("playtest.wasm")) {
 const build = spawnSync(
   GO,
   [
@@ -29,13 +30,13 @@ const build = spawnSync(
 );
 if (build.status !== 0) { throw new Error("go build failed");
 }
+}
 
 // Ensure Playwright's Chromium is installed only if missing to speed up runs.
 const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright", "chromium");
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8123 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { if (req.url === "/play.html") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
 <script src="wasm_exec.js"></script>
@@ -60,7 +61,8 @@ const server = http.createServer((req, res) => { if (req.url === "/play.html") {
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"],
 });
@@ -73,12 +75,13 @@ await page.addInitScript(() => { const RealAC = window.AudioContext || window.we
   // audio, sufficient to capture playback and analyze output.
   const SAMPLE_TARGET = 40000;
   class TestAC extends RealAC { constructor(opts) { super(opts);
+      window.__audioCtx = this;
       const dest = super.destination;
       const sp = this.createScriptProcessor(256, 1, 1);
       window.__samples = [];
       window.__firstSampleTime = undefined;
       sp.addEventListener("audioprocess", (e) => { const data = e.inputBuffer.getChannelData(0);
-        if (window.__firstSampleTime === undefined) { for (let i = 0; i < data.length; i++) { if (data[i] !== 0) { window.__firstSampleTime = performance.now();
+        if (window.__firstSampleTime === undefined) { for (let i = 0; i < data.length; i++) { if (data[i] !== 0) { window.__firstSampleTime = e.playbackTime;
               break;
             }
           }
@@ -104,6 +107,7 @@ await page.waitForFunction(() => window.__done === true, {}, { timeout: 5000 });
 const samples = await page.evaluate(() => window.__samples);
 const playTime = await page.evaluate(() => window.__playTime);
 const firstSampleTime = await page.evaluate(() => window.__firstSampleTime);
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "audio");
 await browser.close();
 server.close();
 
@@ -113,7 +117,7 @@ const second = samples.findIndex((v, i) => i >= sr / 4 && v !== 0);
 if (first < 0 || second < 0) { throw new Error("missing audio data for multiple beats");
 }
 
-const delay = firstSampleTime - playTime;
+const delay = (firstSampleTime - playTime) * 1000;
 if (delay > AUDIO_START_DELAY_THRESHOLD_MS) { throw new Error(
     `audio start delay ${delay}ms exceeds ${AUDIO_START_DELAY_THRESHOLD_MS}ms`,
   );

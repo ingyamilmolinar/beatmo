@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestGlobalCameraPixelSnap verifies that the actually drawn node center
@@ -17,7 +17,7 @@ import (
 // with rounded world→screen projections used for edges/pulses.
 func TestGlobalCameraPixelSnap(t *testing.T) {
 	assertDefaultParityState(t)
-	// Use the embedded default demo
+	// Use the embedded test fixture demo
 	out := io.Discard
 	if testing.Verbose() {
 		out = os.Stdout
@@ -26,7 +26,7 @@ func TestGlobalCameraPixelSnap(t *testing.T) {
 
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+	if err := g.Import(assets_pkg.TestFixtureDemoJSON); err != nil {
 		t.Fatalf("import demo: %v", err)
 	}
 	g.Layout(1280, 720)
@@ -49,10 +49,10 @@ func TestGlobalCameraPixelSnap(t *testing.T) {
 			dcy := math.Round(cy)
 			// Grid lattice integer pixels
 			gx := offX + math.Round(float64(n.I)*float64(stepPx)/float64(maxDiv))
-			gy := offY + float64(topOffset) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
+			gy := offY + float64(gridTopOffset()) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
 			// Edge/pulse projection rounding
 			ex := math.Round(n.X*camScale + offX)
-			ey := math.Round(n.Y*camScale + offY + float64(topOffset))
+			ey := math.Round(n.Y*camScale + offY + float64(gridTopOffset()))
 			if testing.Verbose() {
 				fmt.Fprintf(out, "[PIX] %s id=%d grid=(%d,%d) dc=(%.0f,%.0f) grid=(%.0f,%.0f) edge=(%.0f,%.0f)\n", note, n.ID, n.I, n.J, dcx, dcy, gx, gy, ex, ey)
 			}

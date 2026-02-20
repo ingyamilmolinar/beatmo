@@ -52,6 +52,14 @@ func (g *Graph) SetNodeParams(id NodeID, p NodeParams) {
 	n.Params.LogicP = p.LogicP
 	n.Params.GrooveKind = p.GrooveKind
 	n.Params.GroovePct = p.GroovePct
+	n.Params.SynthDecay = p.SynthDecay
+	n.Params.SynthTone = p.SynthTone
+	n.Params.SynthAttack = p.SynthAttack
+	n.Params.SynthDrive = p.SynthDrive
+	n.Params.SynthBody = p.SynthBody
+	n.Params.SynthColor = p.SynthColor
+	n.Params.SynthBrightness = p.SynthBrightness
+	n.Params.EffectOverrides = p.EffectOverrides
 	g.Nodes[id] = n
 	if g.onNodeChanged != nil {
 		g.onNodeChanged(id)

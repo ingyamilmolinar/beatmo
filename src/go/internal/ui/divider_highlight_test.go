@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestDividerThickDefaultAndHover(t *testing.T) {

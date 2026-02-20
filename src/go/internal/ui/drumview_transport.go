@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (dv *DrumView) PlayPressed() bool {
@@ -77,18 +77,33 @@ func (dv *DrumView) FollowPlayback() bool { return dv.follow }
 func (dv *DrumView) SetFollow(f bool) {
 	changed := dv.follow != f
 	dv.follow = f
-	if dv.trackBtn != nil {
-		if dv.follow {
-			dv.trackBtn.Text = "Track"
-		} else {
-			dv.trackBtn.Text = "Free"
-		}
-	}
+	// Update track button icon and style to reflect state.
+	dv.syncTrackBtnVisual()
 	if changed {
 		if dv.follow {
 			dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Track")
 		} else {
 			dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Free")
+		}
+	}
+}
+
+// syncTrackBtnVisual updates the track button icon and style to match follow state.
+func (dv *DrumView) syncTrackBtnVisual() {
+	if dv.trackBtn == nil {
+		return
+	}
+	if dv.follow {
+		dv.trackBtn.Icon = "track"
+		if isSmallScreen() {
+			dv.trackBtn.Style = TransportFollowOnStyle
+			dv.trackBtn.IconColor = colFollowActive
+		}
+	} else {
+		dv.trackBtn.Icon = "track-off"
+		if isSmallScreen() {
+			dv.trackBtn.Style = TransportMiscStyle
+			dv.trackBtn.IconColor = colIncDecIcon
 		}
 	}
 }
@@ -174,6 +189,29 @@ func (dv *DrumView) SetLength(length int) {
 	dv.bgDirty = true
 }
 
+// SetLengthClamped sets the visible drum view length, clamping to
+// screen-aware limits so cells remain readable. The unclamped value is
+// stored as the graph/timeline beat length so the full circuit stays
+// scrollable.
+func (dv *DrumView) SetLengthClamped(length int) {
+	if length < 1 {
+		length = 1
+	}
+	// Store the unclamped value so the full circuit is scrollable.
+	dv.SetBeatLength(length)
+	// Clamp the visible window.
+	length = dv.clampLength(length)
+	if length != dv.Length {
+		dv.logger.Infof("[DRUMVIEW] Length set (clamped): %d -> %d", dv.Length, length)
+	}
+	dv.Length = length
+	for _, r := range dv.Rows {
+		r.Steps = make([]bool, dv.Length)
+		r.CellTypes = make([]model.NodeType, dv.Length)
+	}
+	dv.bgDirty = true
+}
+
 func (dv *DrumView) SetInstrument(id string) {
 	if len(dv.Rows) == 0 {
 		return
@@ -216,6 +254,8 @@ func (dv *DrumView) SetInstrument(id string) {
 	// visible window updates immediately during playback (not only as the window
 	// scrolls and the incremental strip redraws).
 	dv.markRowDirty(dv.selRow)
+	// Also invalidate the row controls cache so the label button text is redrawn.
+	dv.markRowControlsDirty()
 	dv.bgDirty = true
 }
 

@@ -115,7 +115,7 @@ func InitCatalogFromDir(root string) error {
 }
 
 func defaultAssetsRootStub() string {
-	if env := os.Getenv("TUNKUL_ASSETS"); env != "" {
+	if env := os.Getenv("BEATMO_ASSETS"); env != "" {
 		if info, err := os.Stat(env); err == nil && info.IsDir() {
 			return env
 		}
@@ -264,6 +264,8 @@ func wavCategoryStub(cat string) string {
 func synthCategoryStub(id string) string {
 	lower := strings.ToLower(id)
 	switch {
+	case strings.HasPrefix(lower, "rimshot"), strings.HasPrefix(lower, "sidestick"):
+		return "Snares (Synth)"
 	case strings.HasPrefix(lower, "snare"):
 		return "Snares (Synth)"
 	case strings.HasPrefix(lower, "kick"):
@@ -276,6 +278,10 @@ func synthCategoryStub(id string) string {
 		return "Claps (Synth)"
 	case strings.HasPrefix(lower, "cowbell"):
 		return "Cowbells (Synth)"
+	case strings.HasPrefix(lower, "ride"), strings.HasPrefix(lower, "crash"):
+		return "Cymbals (Synth)"
+	case strings.HasPrefix(lower, "shaker"):
+		return "Percussion (Synth)"
 	case strings.HasPrefix(lower, "bass"):
 		return "Bass (Synth)"
 	default:

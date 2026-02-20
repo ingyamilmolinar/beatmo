@@ -49,6 +49,11 @@ func (dv *DrumView) rowsStripesMaybeRebuild() bool {
 	if rowWidth <= 0 || dv.Length <= 0 {
 		return false
 	}
+	// On narrow timelines, stripes add overhead with no benefit.
+	// Fall through to the single-layer path which is simpler.
+	if rowWidth < wasmStripeTargetPx {
+		return false
+	}
 
 	targetCount := dv.rowsStripeCount
 	if dv.rowsStripeAuto || targetCount < 2 {

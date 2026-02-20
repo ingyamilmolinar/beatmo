@@ -1,8 +1,8 @@
 package preview
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 type BeatInfoAtFunc func(abs int) model.BeatInfo
@@ -103,7 +103,7 @@ func BuildRowWindow(cfg Config, beatInfoAt BeatInfoAtFunc, wantAt WantAtFunc, co
 				if canPreserveSteps && abs <= preserveLimit && i < len(cfg.PrevSteps) {
 					// Released commits are bookkeeping and should follow predictor to avoid
 					// stale masks after edits.
-					if abs < cfg.ElapsedBeats && !(ok && kind == timeline.CommitKindReleased) {
+					if abs < cfg.ElapsedBeats && (!ok || kind != timeline.CommitKindReleased) {
 						finalStep = cfg.PrevSteps[i]
 					}
 				}

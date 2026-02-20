@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Ensure no horizontal baseline is drawn that would visually split a row into
@@ -41,7 +41,7 @@ func TestDrumViewRows_NoBaselineSplit(t *testing.T) {
 	}
 	defer func() { drawRect = orig }()
 
-	dv.Draw(dst, map[int]int64{}, 0, nil, 0)
+	dv.Draw(dst, nil, 0, nil, 0)
 	if baseline != 0 {
 		t.Fatalf("expected no row baseline lines, got %d", baseline)
 	}

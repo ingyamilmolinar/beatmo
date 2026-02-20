@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Build a small loop: s0 -> a -> s1 -> b -> s2 -> s0

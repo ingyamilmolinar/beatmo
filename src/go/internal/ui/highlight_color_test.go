@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func TestNodeHighlightUsesRowColor(t *testing.T) {
@@ -37,7 +37,7 @@ func TestNodeHighlightUsesRowColor(t *testing.T) {
 	screen := ebiten.NewImage(g.winW, g.winH)
 	g.Draw(screen)
 
-	if g.nodeSpriteCache == nil || len(g.nodeSpriteCache) == 0 {
+	if len(g.nodeSpriteCache) == 0 {
 		t.Fatalf("expected node sprite cache to be populated")
 	}
 	sx1, _, sx2, _ := g.nodeScreenRect(n)
@@ -66,7 +66,7 @@ func TestTimelineHighlightUsesRowColor(t *testing.T) {
 	g.drum.Rows[0].Steps[0] = true
 	g.drum.Offset = 0
 
-	highlighted := map[int]int64{makeBeatKey(0, 0): encodeHighlight(10, false)}
+	highlighted := [][]highlightEntry{{{idx: 0, val: encodeHighlight(10, false)}}}
 
 	var captured []color.RGBA
 	orig := drawRect

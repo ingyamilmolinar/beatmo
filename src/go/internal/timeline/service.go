@@ -1,9 +1,8 @@
 package timeline
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
-
 
 // NewService constructs an empty timeline service.
 func NewService() *Service {
@@ -76,4 +75,3 @@ func (s *Service) RecordCommitKind(row, abs int, val bool, typ model.NodeType, k
 		rowMap[abs] = commitEntry{val: val, typ: typ, kind: kind}
 	}
 }
-

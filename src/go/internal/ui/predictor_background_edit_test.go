@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // buildComplexGraph creates a loop with multiple probability nodes and mixed logic rules.

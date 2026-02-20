@@ -1,6 +1,6 @@
 package engine
 
-import "github.com/ingyamilmolinar/tunkul/core/model"
+import "github.com/ingyamilmolinar/beatmo/core/model"
 
 // UpdateNode refreshes the cached node parameters for the given ID.
 func (p *Predictor) UpdateNode(id model.NodeID, node model.Node) {

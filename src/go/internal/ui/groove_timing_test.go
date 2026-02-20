@@ -3,8 +3,8 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // Build a simple 1-beat edge with two nodes: 0 -> 32.
@@ -22,6 +22,7 @@ func buildEdge(g *Game) (a, b *uiNode) {
 func captureScheduledWhen(t *testing.T, g *Game) float64 {
 	t.Helper()
 	whenCh := make(chan float64, 1)
+	baseCh := make(chan float64, 1)
 	g.playFn = func(id string, vol float64, when ...float64) {
 		if len(when) > 0 {
 			whenCh <- when[0]
@@ -29,14 +30,23 @@ func captureScheduledWhen(t *testing.T, g *Game) float64 {
 		}
 		whenCh <- -1
 	}
-	g.scheduleHook = func(row, idx int) {}
+	g.scheduleHook = func(row, idx int) {
+		select {
+		case baseCh <- audio.Now():
+		default:
+		}
+	}
 	g.SetPlaying(true)
 	setPlayStartForAbs(g, 0)
-	start := audio.Now()
 	_ = g.Update()
 	w := waitForChan(t, whenCh, 10000)
 	if w < 0 {
 		return w
+	}
+	var start float64
+	select {
+	case start = <-baseCh:
+	default:
 	}
 	return w - start
 }

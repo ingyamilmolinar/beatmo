@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"math"
 
-	"github.com/ingyamilmolinar/tunkul/internal/utils"
+	"github.com/ingyamilmolinar/beatmo/internal/utils"
 )
 
 const DefaultGridStep = 60 // world-space px between vertices
@@ -112,8 +112,13 @@ func (g *Grid) NodeRadius(scale float64) float64 {
 	// subdivision never overlap (<= 0.8*Unit apart).
 	base := 0.4 * g.Unit()
 	// Apply min/max on-screen sizes for readability while zoomed in/out.
-	const minPx = 8.0
-	const maxPx = 16.0
+	// Mobile uses larger minimums for tap targets and visibility.
+	minPx := 8.0
+	maxPx := 16.0
+	if isSmallScreen() {
+		minPx = 12.0
+		maxPx = 20.0
+	}
 	r := base
 	scr := r * scale
 	if scr < minPx {
@@ -156,6 +161,10 @@ func (g *Grid) SignalRadius(scale float64) float64 {
 func (g *Grid) EdgeThickness(scale float64) float64 {
 	if scale <= 0 {
 		return 1
+	}
+	// Mobile: 2px edges for visibility on small screens.
+	if isSmallScreen() {
+		return 2 / scale
 	}
 	return 1 / scale
 }

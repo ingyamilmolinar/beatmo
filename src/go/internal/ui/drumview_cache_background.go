@@ -4,7 +4,7 @@ import (
 	"image"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
@@ -38,7 +38,8 @@ func (dv *DrumView) updateRowRects() {
 		len(dv.rowMuteBtns) != len(dv.Rows) ||
 		len(dv.rowSoloBtns) != len(dv.Rows) ||
 		len(dv.rowOriginBtns) != len(dv.Rows) ||
-		len(dv.rowDeleteBtns) != len(dv.Rows) {
+		len(dv.rowDeleteBtns) != len(dv.Rows) ||
+		len(dv.rowMenuBtns) != len(dv.Rows) {
 		// Full rebuild on mismatch to guarantee integrity.
 		dv.calcLayout()
 		return
@@ -50,10 +51,6 @@ func (dv *DrumView) updateRowRects() {
 	if w <= 0 {
 		w = dv.Bounds.Dx() - dv.labelW - dv.controlsW
 	}
-	avail := dv.Bounds.Dx() - dv.labelW - dv.controlsW
-	if avail > 0 && (w <= 0 || w > avail) {
-		w = avail
-	}
 	dv.cell = w / len(dv.Rows[0].Steps)
 	vis := dv.visibleRows()
 	rowsTop := dv.Bounds.Min.Y + dv.headerH
@@ -61,70 +58,15 @@ func (dv *DrumView) updateRowRects() {
 	if panelRect.Empty() {
 		panelRect = image.Rect(dv.Bounds.Min.X, rowsTop, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Max.Y-dv.eqH)
 	}
+	// Clamp rack top to match capped headerH (widget board may allocate more).
+	if panelRect.Min.Y < rowsTop {
+		panelRect.Min.Y = rowsTop
+	}
 	for i := range dv.Rows {
-		y := rowsTop + (i-dv.rowOffset)*dv.rowHeight()
-		rowRect := image.Rect(panelRect.Min.X, y, panelRect.Max.X, y+dv.rowHeight())
-		if i < dv.rowOffset || i >= dv.rowOffset+vis {
-			// Move rects off-screen to avoid accidental interactions if any draw slips through.
-			rowRect = image.Rect(-1, -1, -1, -1)
-		}
-		g := NewGridLayout(rowRect, []float64{6, 2, 2, 5, 2, 2, 2, 2}, []float64{1})
-		if i < len(dv.rowLabels) {
-			dv.rowLabels[i].SetRect(insetRect(g.Cell(0, 0), buttonPad))
-		}
-		if i < len(dv.rowEditBtns) {
-			editCell := g.Cell(1, 0)
-			editRect, saveRect := splitRectHoriz(editCell)
-			splitPad := buttonPad
-			if splitPad > 1 {
-				splitPad--
-			}
-			dv.rowEditBtns[i].SetRect(insetRectSafe(editRect, splitPad))
-			if i < len(dv.rowSaveBtns) {
-				dv.rowSaveBtns[i].SetRect(insetRectSafe(saveRect, splitPad))
-			}
-		}
-		if i < len(dv.rowSaveBtns) && i >= len(dv.rowEditBtns) {
-			editCell := g.Cell(1, 0)
-			_, saveRect := splitRectHoriz(editCell)
-			splitPad := buttonPad
-			if splitPad > 1 {
-				splitPad--
-			}
-			dv.rowSaveBtns[i].SetRect(insetRectSafe(saveRect, splitPad))
-		}
-		if i < len(dv.rowColorBtns) {
-			dv.rowColorBtns[i].SetRect(insetRect(g.Cell(2, 0), buttonPad))
-		}
-		if i < len(dv.rowVolSliders) {
-			dv.rowVolSliders[i].SetRect(insetRect(g.Cell(3, 0), buttonPad))
-		}
-		if i < len(dv.rowMuteBtns) {
-			dv.rowMuteBtns[i].SetRect(insetRect(g.Cell(4, 0), buttonPad))
-		}
-		if i < len(dv.rowSoloBtns) {
-			dv.rowSoloBtns[i].SetRect(insetRect(g.Cell(5, 0), buttonPad))
-		}
-		if i < len(dv.rowOriginBtns) {
-			dv.rowOriginBtns[i].SetRect(insetRect(g.Cell(6, 0), buttonPad))
-		}
-		if i < len(dv.rowDeleteBtns) {
-			dv.rowDeleteBtns[i].SetRect(insetRect(g.Cell(7, 0), buttonPad))
-		}
+		rowRect := dv.rowRectForIndex(i, rowsTop, vis, panelRect)
+		dv.positionRowWidgets(i, rowRect)
 	}
-	// Update trailing "+" button position
-	rowsVisible := vis
-	slot := len(dv.Rows) - dv.rowOffset
-	if slot < 0 {
-		slot = 0
-	}
-	if rowsVisible > 0 {
-		if slot >= rowsVisible {
-			slot = rowsVisible - 1
-		}
-	}
-	y := rowsTop + slot*dv.rowHeight()
-	dv.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, y, panelRect.Max.X, y+dv.rowHeight()), buttonPad))
+	dv.positionAddRowBtn(rowsTop, panelRect, vis)
 }
 
 // --- Row cache helpers ---
@@ -132,6 +74,7 @@ func (dv *DrumView) updateRowRects() {
 func (dv *DrumView) ensureRowCache() {
 	if len(dv.rowCache) != len(dv.Rows) {
 		dv.rowCache = make([]*ebiten.Image, len(dv.Rows))
+		dv.rowCacheScratch = make([]*ebiten.Image, len(dv.Rows))
 		dv.rowDirty = make([]bool, len(dv.Rows))
 		dv.rowFullDirty = make([]bool, len(dv.Rows))
 		for i := range dv.rowDirty {
@@ -148,6 +91,11 @@ func (dv *DrumView) ensureRowCache() {
 		for i := range dv.rowCacheOff {
 			dv.rowCacheOff[i] = dv.Offset
 		}
+	}
+	if len(dv.rowCacheScratch) != len(dv.Rows) {
+		scratch := make([]*ebiten.Image, len(dv.Rows))
+		copy(scratch, dv.rowCacheScratch)
+		dv.rowCacheScratch = scratch
 	}
 	if len(dv.rowCacheSig) != len(dv.Rows) {
 		sig := make([]uint64, len(dv.Rows))

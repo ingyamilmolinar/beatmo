@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Ensure Probability logic +/- buttons are clickable and adjust P within [0,1].
@@ -16,35 +16,35 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
 	// Select Probability rule via dropdown using direct button handles
-	g.updateNodeMenuRects()
-	if b := g.nodeMenuBtns["logic"]; b == nil {
+	g.sidebar.layout()
+	if b := g.sidebar.btns["logic"]; b == nil {
 		t.Fatalf("missing logic button")
 	} else {
-		b.Handle((g.nodeMenuRects["logic"].Min.X+g.nodeMenuRects["logic"].Max.X)/2, (g.nodeMenuRects["logic"].Min.Y+g.nodeMenuRects["logic"].Max.Y)/2, true)
+		b.Handle((g.sidebar.rects["logic"].Min.X+g.sidebar.rects["logic"].Max.X)/2, (g.sidebar.rects["logic"].Min.Y+g.sidebar.rects["logic"].Max.Y)/2, true)
 	}
 	_ = g.Update()
-	g.updateNodeMenuRects()
-	if b := g.nodeMenuBtns["logic:probability"]; b == nil {
+	g.sidebar.layout()
+	if b := g.sidebar.btns["logic:probability"]; b == nil {
 		t.Fatalf("missing probability item")
 	} else {
-		r := g.nodeMenuRects["logic:probability"]
+		r := g.sidebar.rects["logic:probability"]
 		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
 	// Now adjust P via +/-
-	g.updateNodeMenuRects()
+	g.sidebar.layout()
 	before := 0.0
 	if mn, ok := g.graph.GetNodeByID(n.ID); ok {
 		before = mn.Params.LogicP
 	}
 	// Click lp+
-	if b := g.nodeMenuBtns["lp+"]; b == nil {
+	if b := g.sidebar.btns["lp+"]; b == nil {
 		t.Fatalf("missing lp+ button")
 	} else {
-		r := g.nodeMenuRects["lp+"]
+		r := g.sidebar.rects["lp+"]
 		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
@@ -56,10 +56,10 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		t.Fatalf("expected LogicP to increase: before=%.2f after=%.2f", before, after)
 	}
 	// Click lp- and ensure it decreases
-	if b := g.nodeMenuBtns["lp-"]; b == nil {
+	if b := g.sidebar.btns["lp-"]; b == nil {
 		t.Fatalf("missing lp- button")
 	} else {
-		r := g.nodeMenuRects["lp-"]
+		r := g.sidebar.rects["lp-"]
 		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()

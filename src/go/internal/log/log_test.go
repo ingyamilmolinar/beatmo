@@ -16,8 +16,8 @@ func TestNewDefaultsSilentInTests(t *testing.T) {
 	oldInTests := inTests
 	inTests = true
 	defer func() { inTests = oldInTests }()
-	withEnvUnset(t, "TUNKUL_TEST_LOG")
-	withEnvUnset(t, "TUNKUL_TEST_LOG_LEVEL")
+	withEnvUnset(t, "BEATMO_TEST_LOG")
+	withEnvUnset(t, "BEATMO_TEST_LOG_LEVEL")
 	oldArgs := os.Args
 	os.Args = []string{"cmd.test"}
 	defer func() { os.Args = oldArgs }()
@@ -41,8 +41,8 @@ func TestNewEnablesLogsWhenOptedIn(t *testing.T) {
 	oldInTests := inTests
 	inTests = true
 	defer func() { inTests = oldInTests }()
-	withEnv(t, "TUNKUL_TEST_LOG", "1")
-	withEnv(t, "TUNKUL_TEST_LOG_LEVEL", "TRACE")
+	withEnv(t, "BEATMO_TEST_LOG", "1")
+	withEnv(t, "BEATMO_TEST_LOG_LEVEL", "TRACE")
 
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -96,8 +96,8 @@ func TestNewEnablesLogsWhenTestVFlag(t *testing.T) {
 	oldInTests := inTests
 	inTests = true
 	defer func() { inTests = oldInTests }()
-	withEnvUnset(t, "TUNKUL_TEST_LOG")
-	withEnvUnset(t, "TUNKUL_TEST_LOG_LEVEL")
+	withEnvUnset(t, "BEATMO_TEST_LOG")
+	withEnvUnset(t, "BEATMO_TEST_LOG_LEVEL")
 	oldArgs := os.Args
 	os.Args = []string{"cmd.test", "-test.v"}
 	defer func() { os.Args = oldArgs }()
@@ -130,11 +130,11 @@ func assertDefaultTestState(t *testing.T) {
 	if !inTests {
 		t.Fatalf("inTests=%v want true by default", inTests)
 	}
-	if _, ok := os.LookupEnv("TUNKUL_TEST_LOG"); ok {
-		t.Fatalf("TUNKUL_TEST_LOG should be unset by default for tests")
+	if _, ok := os.LookupEnv("BEATMO_TEST_LOG"); ok {
+		t.Fatalf("BEATMO_TEST_LOG should be unset by default for tests")
 	}
-	if _, ok := os.LookupEnv("TUNKUL_TEST_LOG_LEVEL"); ok {
-		t.Fatalf("TUNKUL_TEST_LOG_LEVEL should be unset by default for tests")
+	if _, ok := os.LookupEnv("BEATMO_TEST_LOG_LEVEL"); ok {
+		t.Fatalf("BEATMO_TEST_LOG_LEVEL should be unset by default for tests")
 	}
 }
 

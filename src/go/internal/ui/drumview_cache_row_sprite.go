@@ -2,22 +2,29 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 const rowCachePatchMax = 12
 
-func (dv *DrumView) buildRowSprite(i int) {
+// buildRowSprite rebuild kinds returned to callers.
+const (
+	rowRebuildFull  = 0 // full rebuild or shift (layer must recomposite)
+	rowRebuildPatch = 1 // in-place cell patch (layer can overdraw)
+)
+
+func (dv *DrumView) buildRowSprite(i int) int {
 	if i < 0 || i >= len(dv.Rows) {
-		return
+		return rowRebuildFull
 	}
 	w := dv.timelineRect.Dx()
 	h := dv.rowHeight()
 	if w <= 0 || h <= 0 {
-		return
+		return rowRebuildFull
 	}
 	n := len(dv.Rows[i].Steps)
 	if n < 1 {
@@ -29,7 +36,7 @@ func (dv *DrumView) buildRowSprite(i int) {
 			dv.rowCacheSig[i] = rowRenderSignature(dv.Rows[i].Steps, dv.Rows[i].CellTypes)
 		}
 		dv.cacheRowSteps(i)
-		return
+		return rowRebuildFull
 	}
 	fullRebuild := false
 	if i >= 0 && i < len(dv.rowFullDirty) {
@@ -43,8 +50,18 @@ func (dv *DrumView) buildRowSprite(i int) {
 		// Pixel shift for the new offset relative to the cached one.
 		dxPx := int(math.Round(float64(dv.Offset-dv.rowCacheOff[i]) * float64(w) / float64(n)))
 		if dxPx != 0 && abs(dxPx) <= max1(dv.rowCachePadPx) {
-			// Shift existing content and redraw only the uncovered strip.
-			newImg := ebiten.NewImage(w, h)
+			// Shift existing content into scratch buffer, then swap.
+			if i >= len(dv.rowCacheScratch) {
+				scratch := make([]*ebiten.Image, len(dv.Rows))
+				copy(scratch, dv.rowCacheScratch)
+				dv.rowCacheScratch = scratch
+			}
+			if dv.rowCacheScratch[i] == nil || dv.rowCacheScratch[i].Bounds().Dx() != w || dv.rowCacheScratch[i].Bounds().Dy() != h {
+				dv.rowCacheScratch[i] = ebiten.NewImage(w, h)
+			} else {
+				dv.rowCacheScratch[i].Clear()
+			}
+			newImg := dv.rowCacheScratch[i]
 			var op ebiten.DrawImageOptions
 			op.GeoM.Translate(float64(-dxPx), 0)
 			newImg.DrawImage(dv.rowCache[i], &op)
@@ -91,7 +108,7 @@ func (dv *DrumView) buildRowSprite(i int) {
 				}
 				DrumCellUI.Draw(newImg, rect, on, false, fillCol)
 			}
-			dv.rowCache[i] = newImg
+			dv.rowCache[i], dv.rowCacheScratch[i] = newImg, dv.rowCache[i]
 			dv.rowCacheLen = dv.Length
 			dv.rowCacheW, dv.rowCacheH = w, h
 			dv.rowCacheOff[i] = dv.Offset
@@ -101,7 +118,7 @@ func (dv *DrumView) buildRowSprite(i int) {
 			dv.cacheRowSteps(i)
 			dv.rowCacheShift++
 			// Generation unchanged on incremental update.
-			return
+			return rowRebuildFull
 		}
 	}
 	// Patch a handful of changed cells when the cache is otherwise valid.
@@ -156,12 +173,24 @@ func (dv *DrumView) buildRowSprite(i int) {
 					}
 					dv.cacheRowSteps(i)
 					dv.rowCachePatch++
-					return
+					return rowRebuildPatch
 				}
 			}
 		}
 	}
-	img := ebiten.NewImage(w, h)
+	var img *ebiten.Image
+	if dv.rowCache[i] != nil && dv.rowCacheW == w && dv.rowCacheH == h {
+		img = dv.rowCache[i]
+		img.Clear()
+	} else {
+		img = ebiten.NewImage(w, h)
+	}
+	// Alternating row stripe background for subtle visual grouping.
+	if i%2 == 0 {
+		drawRect(img, image.Rect(0, 0, w, h), color.RGBA{24, 24, 30, 255}, true)
+	} else {
+		drawRect(img, image.Rect(0, 0, w, h), color.RGBA{18, 18, 22, 255}, true)
+	}
 	if n <= w {
 		// Full-resolution cells.
 		onCol := dv.Rows[i].Color
@@ -220,6 +249,7 @@ func (dv *DrumView) buildRowSprite(i int) {
 		dv.rowRepaint[i]++
 	}
 	dv.rowCacheFull++
+	return rowRebuildFull
 }
 
 // rowHasContent samples the composed rows image (stripes or single layer)

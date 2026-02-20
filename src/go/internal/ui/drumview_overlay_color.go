@@ -12,27 +12,45 @@ type ColorWheelOverlay struct {
 func (o *ColorWheelOverlay) ID() string { return "color-wheel" }
 
 func (o *ColorWheelOverlay) IsOpen() bool {
-	return o.dv.colorMenuOpen
+	return o.dv.isColorMenuOpen()
 }
 
 func (o *ColorWheelOverlay) ZIndex() int { return 210 }
 
 func (o *ColorWheelOverlay) InputBounds() image.Rectangle {
+	if o.dv.colorWheelComp != nil && o.dv.colorWheelComp.IsOpen() {
+		return o.dv.colorWheelComp.InputBounds()
+	}
 	return o.dv.colorWheelRect
 }
 
 func (o *ColorWheelOverlay) Capturing() bool {
+	if o.dv.colorWheelComp != nil && o.dv.colorWheelComp.IsOpen() {
+		return o.dv.colorWheelComp.Capturing()
+	}
 	return o.dv.colorHold
 }
 
 func (o *ColorWheelOverlay) Close() {
+	if o.dv.colorWheelComp != nil {
+		o.dv.colorWheelComp.Close()
+	}
 	o.dv.colorMenuOpen = false
 	o.dv.colorHold = false
 	SuppressClicksUntilMouseUp()
 }
 
 func (o *ColorWheelOverlay) HandleInput(x, y int, pressed bool) InputResult {
-	// If colorHold is active (just opened), capture until release
+	// Delegate to the component for proper color picking
+	if o.dv.colorWheelComp != nil && o.dv.colorWheelComp.IsOpen() {
+		result := o.dv.colorWheelComp.HandleInput(x, y, pressed)
+		// Sync legacy state
+		o.dv.colorMenuOpen = o.dv.colorWheelComp.IsOpen()
+		o.dv.colorHold = o.dv.colorWheelComp.Capturing()
+		return result
+	}
+
+	// Legacy fallback
 	if o.dv.colorHold {
 		if !pressed {
 			o.dv.colorHold = false
@@ -40,7 +58,6 @@ func (o *ColorWheelOverlay) HandleInput(x, y int, pressed bool) InputResult {
 		return InputCaptured
 	}
 
-	// Point is within color wheel bounds - consume
 	if pressed && image.Pt(x, y).In(o.dv.colorWheelRect) {
 		return InputConsumed
 	}

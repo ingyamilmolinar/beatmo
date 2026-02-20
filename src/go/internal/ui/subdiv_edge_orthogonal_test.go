@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
 // edgeInfo captures edge state for comparison before/after subdivision changes.
@@ -216,8 +216,8 @@ func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
 	g.updateBeatInfos()
 
 	// Verify edge is orthogonal before change
-	nA, _ := g.graph.Nodes[nodeA.ID]
-	nB, _ := g.graph.Nodes[nodeB.ID]
+	nA := g.graph.Nodes[nodeA.ID]
+	nB := g.graph.Nodes[nodeB.ID]
 	t.Logf("Before change: A(%d,%d) -> B(%d,%d)", nA.I, nA.J, nB.I, nB.J)
 
 	if nA.J != nB.J {
@@ -231,8 +231,8 @@ func TestSubdivisionResizeGrooveNodesSpecific(t *testing.T) {
 	}
 
 	// Check edge after change
-	nA, _ = g.graph.Nodes[nodeA.ID]
-	nB, _ = g.graph.Nodes[nodeB.ID]
+	nA = g.graph.Nodes[nodeA.ID]
+	nB = g.graph.Nodes[nodeB.ID]
 	t.Logf("After change: A(%d,%d) -> B(%d,%d)", nA.I, nA.J, nB.I, nB.J)
 
 	// The edge should remain orthogonal (both nodes should have same J)

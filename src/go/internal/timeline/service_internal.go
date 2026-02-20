@@ -1,8 +1,9 @@
 package timeline
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
+
 func (s *Service) valueLocked(row, abs int) (bool, model.NodeType, CommitKind, bool) {
 	if m := s.immutables[row]; m != nil {
 		if ce, ok := m[abs]; ok {

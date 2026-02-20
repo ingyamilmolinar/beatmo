@@ -12,7 +12,7 @@ type Voice interface{}
 type Instrument interface{}
 
 var (
-	instruments   = []string{"snare", "kick", "hihat", "tom", "clap", "cowbell"}
+	instruments   = append([]string(nil), BuiltinInstrumentIDs...)
 	instrumentsMu sync.RWMutex
 )
 
@@ -108,13 +108,10 @@ func Stop(id string) {
 // ResetInstruments restores the default instrument ID list.
 func ResetInstruments() {
 	instrumentsMu.Lock()
-	instruments = []string{
-		"snare", "kick", "hihat", "tom", "clap", "cowbell",
-		"snare-1", "kick-1", "hihat-1", "tom-1", "clap-1", "cowbell-1",
-		"snare-2", "kick-2", "hihat-2", "tom-2", "clap-2", "cowbell-2",
-	}
+	instruments = append([]string(nil), BuiltinInstrumentIDs...)
 	instrumentsMu.Unlock()
 	bumpInstrumentsVersion()
+	ClearAllInsertEffects()
 	resetInstrumentChannels(instruments)
 }
 
@@ -129,11 +126,17 @@ func Now() float64 {
 		return 0
 	}
 	v := fn.Invoke()
-	if v.Truthy() {
+	// Use Type() check instead of Truthy() because Truthy() returns false
+	// for 0.0, which is a valid AudioContext.currentTime when the context
+	// is newly created or suspended.
+	if v.Type() == js.TypeNumber {
 		return v.Float()
 	}
 	return 0
 }
+
+// Close is a no-op on WASM (browser handles its own audio cleanup via pagehide).
+func Close() {}
 
 func Reset() { resetChannels() }
 
@@ -145,6 +148,16 @@ func Resume() {
 }
 
 func SetBPM(b int) {}
+
+// SampleRate returns the WebAudio context sample rate.
+// Returns 48000 as fallback (common browser default).
+func SampleRate() int {
+	sr := js.Global().Get("__audioCtxSR")
+	if sr.Truthy() {
+		return int(sr.Float())
+	}
+	return 48000
+}
 
 func Instruments() []string {
 	instrumentsMu.RLock()

@@ -78,11 +78,11 @@ func NewComponentAdapter(id string, handler InputHandler) *ComponentAdapter {
 	return &ComponentAdapter{id: id, handler: handler}
 }
 
-func (a *ComponentAdapter) ID() string                     { return a.id }
-func (a *ComponentAdapter) Mount(ctx MountContext)         { a.mounted = true }
-func (a *ComponentAdapter) Unmount()                       { a.mounted = false }
-func (a *ComponentAdapter) Bounds() image.Rectangle        { return a.handler.InputBounds() }
-func (a *ComponentAdapter) SetBounds(r image.Rectangle)    {} // No-op; handler manages its own bounds
+func (a *ComponentAdapter) ID() string                  { return a.id }
+func (a *ComponentAdapter) Mount(ctx MountContext)      { a.mounted = true }
+func (a *ComponentAdapter) Unmount()                    { a.mounted = false }
+func (a *ComponentAdapter) Bounds() image.Rectangle     { return a.handler.InputBounds() }
+func (a *ComponentAdapter) SetBounds(r image.Rectangle) {} // No-op; handler manages its own bounds
 func (a *ComponentAdapter) HandleInput(x, y int, p bool) InputResult {
 	return a.handler.HandleInput(x, y, p)
 }

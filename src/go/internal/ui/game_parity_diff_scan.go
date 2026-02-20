@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/engine"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/engine"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 // diffPredictorTimeline reports positions where timeline commits disagree with
@@ -175,7 +175,7 @@ func (g *Game) parityScan(reason string) {
 		stride = 1
 	}
 	start := time.Now()
-	defer g.recordParityScan(time.Since(start))
+	defer func() { g.recordParityScan(time.Since(start)) }()
 	viewOffset := g.renderOffset
 	viewLength := g.renderLength
 	if viewLength <= 0 {
@@ -462,7 +462,7 @@ func (g *Game) parityScan(reason string) {
 						// Use dec.Visible (view truth) for seq_vs_view comparison,
 						// not dec.Audible (audio truth). Mute gates make nodes
 						// inaudible but still visible in the UI.
-						if !(!fatalNow && dec.Visible && !slate && row >= 0 && row < len(g.seqNextIdxs) && abs == g.seqNextIdxs[row]-1) {
+						if fatalNow || !dec.Visible || slate || row < 0 || row >= len(g.seqNextIdxs) || abs != g.seqNextIdxs[row]-1 {
 							if dec.Visible != slate {
 								g.parityReport(mismatchEntry{
 									Row:       row,

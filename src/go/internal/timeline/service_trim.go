@@ -1,8 +1,9 @@
 package timeline
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
+
 // TrimBefore drops committed entries older than minAbs.
 func (s *Service) TrimBefore(row, minAbs int) {
 	if row < 0 {
@@ -170,4 +171,3 @@ func (s *Service) LastImmutableAbs(row int) int {
 	}
 	return max
 }
-

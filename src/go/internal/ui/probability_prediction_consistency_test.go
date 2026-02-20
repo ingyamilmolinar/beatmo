@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"math"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // buildProbChain builds a 2-node loop A->S->A with A regular and S silent.

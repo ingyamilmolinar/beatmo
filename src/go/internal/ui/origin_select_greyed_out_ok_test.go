@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Ensure that when playback is active but a different circuit is greyed out (muted or
@@ -74,7 +74,7 @@ func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
 	if g.drum.Rows[1].Origin != a0.ID {
 		t.Fatalf("row1 origin not switched to a0; got %d", g.drum.Rows[1].Origin)
 	}
-	if g.nodeMenuOpen {
+	if g.sidebar.IsOpen() {
 		t.Fatalf("node popup opened but origin selection should take precedence")
 	}
 }

@@ -4,7 +4,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // Ensure that between successive UI updates, the highlighted subdivision does
@@ -34,17 +35,31 @@ func TestNeverJumpSubdivPerFrame(t *testing.T) {
 	g.drum.SetBPM(60)
 	g.SetAppliedBPMForTest(60)
 	pressPlay(t, g.drum)
+
+	// Use deterministic audio clock so syncUIToTime doesn't depend on
+	// wall-clock jitter (which causes flaky jumps under CPU load).
+	div := g.grid.MaxDiv()
+	bpm := 60
+	const audioStart = 1000.0
+	var audioNow float64
+	restoreNow := audio.SetNowForTest(func() float64 { return audioNow })
+	defer restoreNow()
+
 	// Step deterministically; delta of elapsedBeats must be <= 1.
 	last := g.elapsedBeats
 	for abs := 0; abs < g.grid.MaxDiv()*2; abs++ {
-		setPlayStartForAbs(g, abs)
+		dtBeats := (float64(abs) + 0.01) / float64(div)
+		dtSec := dtBeats * 60.0 / float64(bpm)
+		audioNow = audioStart + dtSec
+		g.SetBeatBaseForTest(0)
+		g.SetAudioStartForTest(audioStart)
 		_ = g.Update()
 		cur := g.elapsedBeats
 		if cur < last {
 			t.Fatalf("elapsedBeats moved backwards: %d -> %d", last, cur)
 		}
 		if cur-last > 1 {
-			t.Fatalf("elapsedBeats jumped by >1: %d -> %d", last, cur)
+			t.Fatalf("elapsedBeats jumped by >1: %d -> %d (abs=%d)", last, cur, abs)
 		}
 		last = cur
 	}

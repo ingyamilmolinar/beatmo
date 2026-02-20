@@ -1,8 +1,9 @@
 package ui
 
 import (
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 	"testing"
+
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // The node popup panel should be fully visible within the grid view (top pane),
@@ -15,10 +16,9 @@ func TestNodePopupClampedInsideTopPane(t *testing.T) {
 	// Create a node near the right edge of the grid area
 	// Position in grid units: use a high I so its screen X is near winW
 	n := g.tryAddNode(g.grid.MaxDiv()-1, 0, 0)
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = g.nodeByID(n.ID)
-	g.updateNodeMenuRects()
-	panel, ok := g.nodeMenuRects["panel"]
+	g.sidebar.Open(g.nodeByID(n.ID))
+	g.sidebar.layout()
+	panel, ok := g.sidebar.rects["panel"]
 	if !ok || panel.Empty() {
 		t.Fatalf("panel rect missing")
 	}

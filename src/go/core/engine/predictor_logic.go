@@ -3,7 +3,7 @@ package engine
 import (
 	"strings"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func muteHoldStepsFromNode(n model.Node) int {
@@ -23,7 +23,7 @@ func incrementTriggerCount(counts map[model.NodeID]int, id model.NodeID) int {
 	if counts == nil {
 		return 0
 	}
-	counts[id] = counts[id] + 1
+	counts[id]++
 	return counts[id]
 }
 
@@ -47,7 +47,7 @@ func (p *Predictor) shouldTriggerNode(row, idx int, bi model.BeatInfo, n model.N
 					return false
 				}
 			} else {
-				counts[bi.NodeID] = counts[bi.NodeID] + 1
+				counts[bi.NodeID]++
 				if counts[bi.NodeID]%n.Params.LogicN != 0 {
 					return false
 				}
@@ -55,7 +55,7 @@ func (p *Predictor) shouldTriggerNode(row, idx int, bi model.BeatInfo, n model.N
 		}
 	case "skip_every_n":
 		if n.Params.LogicN > 0 {
-			counts[bi.NodeID] = counts[bi.NodeID] + 1
+			counts[bi.NodeID]++
 			if counts[bi.NodeID]%n.Params.LogicN == 0 {
 				return false
 			}

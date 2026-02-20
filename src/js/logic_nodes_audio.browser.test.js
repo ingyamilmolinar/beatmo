@@ -4,7 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -14,14 +14,15 @@ const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright",
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8280 + Math.floor(Math.random() * 1000);
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
+if (!shouldSkipWasmBuild("play_ui.wasm")) {
 const build = spawnSync(
   GO, ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
+}
 
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/ui.html" : req.url;
   if (req.url === "/" || req.url === "/ui.html") { const html = `<!DOCTYPE html><html><body>
@@ -48,37 +49,70 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
+const pageErrors = [];
+page.on('pageerror', (err) => pageErrors.push(err.message));
 
-// Inject capture AudioContext
-await page.addInitScript(() => { const RealAC = window.AudioContext || window.webkitAudioContext;
-  const SAMPLE_TARGET = 48000; // ~1s at 48kHz
-  class TestAC extends RealAC { constructor(opts) { super(opts);
-      const dest = super.destination;
-      const sp = this.createScriptProcessor(256, 1, 1);
-      window.__samples = [];
-      sp.addEventListener("audioprocess", (e) => { const data = e.inputBuffer.getChannelData(0);
-        window.__samples.push(...data);
-        if (window.__samples.length >= SAMPLE_TARGET) window.__done = true;
-      });
-      sp.connect(dest);
-      Object.defineProperty(this, "destination", { value: sp });
-    }
+const goto = async () => {
+  pageErrors.length = 0;
+  await page.goto(`http://localhost:${port}/`, { timeout: 60000 });
+};
+const waitReady = async () => {
+  // Single combined wait for both WASM exports and audio.js globals.
+  // Under parallel execution, page initialization can be slow.
+  await page.waitForFunction(() =>
+    typeof ensureDefaultPath === 'function' &&
+    typeof startOutputCapture === 'function' &&
+    typeof stopOutputCapture === 'function',
+    {},
+    { timeout: 60000 }
+  );
+  if (pageErrors.length > 0) {
+    throw new Error(`Page errors during init: ${pageErrors.join('; ')}`);
   }
-  window.AudioContext = TestAC;
-  window.webkitAudioContext = TestAC;
-});
-
-const goto = async () => { await page.goto(`http://localhost:${port}/`); };
-const waitReady = async () => { await page.waitForFunction(() => typeof ensureDefaultPath === 'function');
+  // Unlock AudioContext with user gesture.
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event("pointerdown"));
+    resumeAudio?.();
+  });
+  await page.waitForTimeout(100);
+  // Wait for AudioContext to reach "running" state.
+  await page.waitForFunction(
+    () => window.__audioCtx && window.__audioCtx.state === "running",
+    {},
+    { timeout: 15000 }
+  );
+  // Wait for synth sample rendering to complete.
+  await page.evaluate(() => window.audioReady);
 };
 
 const rms = (arr) => { let s = 0; for (let i=0;i<arr.length;i++){ const v=arr[i]; s += v*v; }
   return Math.sqrt(s / Math.max(1, arr.length));
 };
+
+// Poll getOutputCapture() for non-zero samples. Returns when signal detected or deadline expires.
+async function waitForAudioSignal(page, deadlineMs = 5000, pollMs = 100, tailMs = 300) {
+  const start = Date.now();
+  while (Date.now() - start < deadlineMs) {
+    const hasSignal = await page.evaluate(() => {
+      const snap = typeof getOutputCapture === "function" ? getOutputCapture() : null;
+      if (!snap || snap.length === 0) return false;
+      for (let i = 0; i < snap.length; i++) {
+        if (Math.abs(snap[i]) > 1e-6) return true;
+      }
+      return false;
+    });
+    if (hasSignal) {
+      await new Promise((r) => setTimeout(r, tailMs));
+      return;
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+}
 
 // Scenario helper: build path with node type and optional logic, run, capture RMS
 async function scenario({ type, logicKind, logicP }) { await goto();
@@ -99,9 +133,19 @@ async function scenario({ type, logicKind, logicP }) { await goto();
   }
   await page.waitForFunction(() => typeof startPlay === 'function');
   await clearSchedulerMismatches(page);
-  await page.evaluate(() => { window.__samples = []; window.__done = false; startPlay(); });
-  await page.waitForFunction(() => window.__done === true, {}, { timeout: 5000 });
-  const samples = await page.evaluate(() => window.__samples);
+
+  // Use audio.js's built-in output capture instead of ScriptProcessorNode override.
+  await page.evaluate(() => { startOutputCapture(); startPlay(); });
+
+  if (type === 'regular') {
+    // For regular nodes, poll for non-zero audio signal.
+    await waitForAudioSignal(page);
+  } else {
+    // For silent/mute nodes, wait a fixed duration since no audio will appear.
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  const samples = await page.evaluate(() => Array.from(stopOutputCapture()));
   await assertNoSchedulerMismatches(page, `logic nodes audio (${type}): scheduler mismatches`);
   return rms(samples);
 }
@@ -120,6 +164,7 @@ if (rRegular < 1e-3) throw new Error(`regular path produced no audio: rms=${rReg
 
 // Probability is covered deterministically in probability_nodes.browser.test.js
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "logic_nodes_audio");
 await browser.close();
 server.close();
 console.log('node logic audio scenarios verified', { rSilent, rMute, rRegular });

@@ -1,5 +1,21 @@
 package ui
 
+// ─── E2E Test Utilities ─────────────────────────────────────────────────────
+//
+// Essential test patterns for Go E2E/functional tests:
+//
+//   1. Always call assertDefaultParityState(t) at the start of every test to
+//      reset parity globals and verify clean state.
+//   2. After any circuit change (addNode, addEdge, etc.), MUST call
+//      g.updateBeatInfos() + g.refreshDrumRow() to sync predictor and UI.
+//   3. Use stopPlaybackForTest(g) for clean stop — it resets all sequencer
+//      state (indices, pulses, highlights, parity).
+//   4. Never access lastTriggeredByRow directly — use thread-safe helpers:
+//      setLastTriggeredForTest, lastTriggeredForTest, lastTriggeredRowSnapshotForTest.
+//   5. Use advanceFrames(g, N) to tick the game loop N times (~N/60 seconds).
+//   6. Use withDefaultStart(t, false) to disable default start node for clean slate.
+//   7. Use withDefaultAudio(t) to reset audio channels/instruments at test start.
+
 import (
 	"bytes"
 	"encoding/binary"
@@ -11,7 +27,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // click simulates a mouse click at (x,y) and releases it on the next frame.
@@ -167,6 +183,18 @@ func withForceAutoSize(t *testing.T, enabled bool) {
 	forceAutoSize = enabled
 	t.Cleanup(func() {
 		forceAutoSize = prev
+	})
+}
+
+func withSmallScreen(t *testing.T, enabled bool) {
+	t.Helper()
+	prev := forceSmallScreenForTest
+	if prev != false {
+		t.Fatalf("forceSmallScreenForTest=%v want false (default) before override", prev)
+	}
+	forceSmallScreenForTest = enabled
+	t.Cleanup(func() {
+		forceSmallScreenForTest = prev
 	})
 }
 
@@ -431,6 +459,9 @@ func assertDefaultParityState(t *testing.T) {
 	}
 	if forceAutoSize != false {
 		t.Fatalf("forceAutoSize=%v want false (default)", forceAutoSize)
+	}
+	if forceSmallScreenForTest != false {
+		t.Fatalf("forceSmallScreenForTest=%v want false (default)", forceSmallScreenForTest)
 	}
 	if defaultPerfFastPath {
 		t.Fatalf("defaultPerfFastPath=%v want false (default)", defaultPerfFastPath)

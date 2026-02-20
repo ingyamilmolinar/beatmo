@@ -6,7 +6,6 @@ import (
 
 /* ─────────────── math helpers ─────────────────────────────────────────── */
 
-func atan2(y, x float64) float64 { return math.Atan2(y, x) }
 func hypot(a, b float64) float64 { return math.Hypot(a, b) }
 func abs(i int) int {
 	if i < 0 {
@@ -16,4 +15,8 @@ func abs(i int) int {
 }
 
 // PerfSnapshot returns a copy of the current perf stats for tests and JS.
-func (g *Game) PerfSnapshot() PerfStats { return g.perf.snapshot() }
+func (g *Game) PerfSnapshot() PerfStats {
+	s := g.perf.snapshot()
+	s.SchedMetrics = g.schedMetrics.Snapshot()
+	return s
+}

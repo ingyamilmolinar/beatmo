@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Clicking inside the popup panel (not on a button) must not create grid nodes.
@@ -15,10 +16,10 @@ func TestNodePopupBlocksGridClicks(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
-	panel := g.nodeMenuRects["panel"]
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
+	panel := g.sidebar.rects["panel"]
 	// Pick a coordinate inside the panel but outside known buttons.
 	// Use a point slightly to the left of the right-aligned +/- buttons.
 	x := panel.Min.X + 40
@@ -59,12 +60,14 @@ func TestNodePopupButtonsClickableNoGrid(t *testing.T) {
 	}
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
+	g.sidebar.Open(n)
+	// Only expand the logic section (not all) so the ln+/- buttons stay
+	// within the visible panel height on a 640x480 layout.
+	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.layout()
 	beforeNodes := len(g.nodes)
 	// Click ln+ button
-	r := g.nodeMenuRects["ln+"]
+	r := g.sidebar.rects["ln+"]
 	x2 := (r.Min.X + r.Max.X) / 2
 	y2 := (r.Min.Y + r.Max.Y) / 2
 	left2 := false

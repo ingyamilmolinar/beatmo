@@ -5,7 +5,7 @@ package ui
 import (
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestRegisterInstrumentNewDoesNotChangeSelection(t *testing.T) {

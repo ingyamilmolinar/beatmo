@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestGlobalCameraAlignment_Subdivisions verifies that after changing grid
@@ -17,7 +17,7 @@ import (
 // user's perspective across a few zoom/pan states.
 func TestGlobalCameraAlignment_Subdivisions(t *testing.T) {
 	assertDefaultParityState(t)
-	// Use embedded default demo which is aligned on multiples of 16 so we can
+	// Use embedded test fixture demo which is aligned on multiples of 16 so we can
 	// safely reduce subdivisions.
 	out := io.Discard
 	if testing.Verbose() {
@@ -27,7 +27,7 @@ func TestGlobalCameraAlignment_Subdivisions(t *testing.T) {
 
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+	if err := g.Import(assets_pkg.TestFixtureDemoJSON); err != nil {
 		t.Fatalf("import demo: %v", err)
 	}
 	g.Layout(1280, 720)
@@ -52,11 +52,11 @@ func TestGlobalCameraAlignment_Subdivisions(t *testing.T) {
 			x1, y1, x2, y2 := g.nodeScreenRect(n)
 			cx, cy := (x1+x2)*0.5, (y1+y2)*0.5
 			expX := offX + math.Round(float64(n.I)*float64(stepPx)/float64(maxDiv))
-			expY := offY + float64(topOffset) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
+			expY := offY + float64(gridTopOffset()) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
 			if math.Abs(cx-expX) > tol || math.Abs(cy-expY) > tol {
 				t.Fatalf("%s: node/grid mismatch id=%d got(%.2f,%.2f) exp(%.0f,%.0f)", note, n.ID, cx, cy, expX, expY)
 			}
-			ex, ey := n.X*camScale+offX, n.Y*camScale+offY+float64(topOffset)
+			ex, ey := n.X*camScale+offX, n.Y*camScale+offY+float64(gridTopOffset())
 			if math.Abs(ex-cx) > tol || math.Abs(ey-cy) > tol {
 				t.Fatalf("%s: node/proj mismatch id=%d proj(%.2f,%.2f) ctr(%.2f,%.2f)", note, n.ID, ex, ey, cx, cy)
 			}
@@ -68,8 +68,8 @@ func TestGlobalCameraAlignment_Subdivisions(t *testing.T) {
 			acx, acy := (ax1+ax2)*0.5, (ay1+ay2)*0.5
 			bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
 			bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
-			ex0, ey0 := e.A.X*camScale+offX, e.A.Y*camScale+offY+float64(topOffset)
-			ex1, ey1 := e.B.X*camScale+offX, e.B.Y*camScale+offY+float64(topOffset)
+			ex0, ey0 := e.A.X*camScale+offX, e.A.Y*camScale+offY+float64(gridTopOffset())
+			ex1, ey1 := e.B.X*camScale+offX, e.B.Y*camScale+offY+float64(gridTopOffset())
 			if math.Abs(ex0-acx) > tol || math.Abs(ey0-acy) > tol {
 				t.Fatalf("%s: edge start mismatch idA=%d", note, e.A.ID)
 			}

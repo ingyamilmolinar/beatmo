@@ -1,8 +1,9 @@
 package timeline
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
+
 // SeedFromWindow writes commits for the range [offset, pastEnd] using the
 // provided rendered window values. It is intended for path-change reconciliation
 // so already-rendered history remains stable even when the beat path shape
@@ -135,4 +136,3 @@ func (s *Service) HasImmutable(row int) bool {
 	m := s.immutables[row]
 	return len(m) > 0
 }
-

@@ -6,8 +6,8 @@ import (
 	"image"
 	"syscall/js"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
 )
 
 func boolSliceToJS(arr []bool) js.Value {

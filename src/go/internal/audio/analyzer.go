@@ -17,14 +17,14 @@ type Analyzer struct {
 	fftBuf   []complex128 // Pre-allocated FFT buffer
 
 	// Atomic state for lock-free hot path
-	write  atomic.Int32
-	filled atomic.Bool
-	rmsBits atomic.Uint64  // Store float64 bits atomically
+	write    atomic.Int32
+	filled   atomic.Bool
+	rmsBits  atomic.Uint64 // Store float64 bits atomically
 	peakBits atomic.Uint64 // Store float64 bits atomically
+	enabled  atomic.Bool   // When false, compute() is skipped (saves FFT CPU)
 
 	// Snapshot copy for lock-free reads
-	specSnap    []float64
-	specSnapIdx atomic.Int32 // 0 or 1 for double-buffering
+	specSnap []float64
 }
 
 // AnalyzerSnapshot exposes the latest computed metrics.
@@ -45,7 +45,7 @@ func NewAnalyzer(window int) *Analyzer {
 		window = 8192
 	}
 	window = nearestPow2(window)
-	return &Analyzer{
+	a := &Analyzer{
 		window: make([]float64, window),
 		// spectrum holds N/2 bins (positive frequencies).
 		spectrum: make([]float64, window/2),
@@ -54,6 +54,8 @@ func NewAnalyzer(window int) *Analyzer {
 		// Double-buffered spectrum snapshot for lock-free reads.
 		specSnap: make([]float64, window/2),
 	}
+	a.enabled.Store(true)
+	return a
 }
 
 // ProcessSample taps the stream and forwards the input unchanged.
@@ -74,6 +76,37 @@ func (a *Analyzer) ProcessSample(x float64) float64 {
 		a.compute() // Lock only during compute
 	}
 	return x
+}
+
+// ProcessBlock batches circular buffer writes with minimal atomics. Only stores
+// the write index atomically at window boundaries and at the end of the block.
+func (a *Analyzer) ProcessBlock(samples []float32, n int) {
+	ws := len(a.window)
+	if ws == 0 || n <= 0 {
+		return
+	}
+	idx := int(a.write.Load())
+	for i := 0; i < n; i++ {
+		if idx >= ws {
+			idx = 0
+		}
+		a.window[idx] = float64(samples[i])
+		idx++
+		if idx == ws {
+			a.filled.Store(true)
+			a.write.Store(int32(idx))
+			a.compute()
+			idx = 0
+		}
+	}
+	a.write.Store(int32(idx % ws))
+}
+
+// ProcessBlockBuf implements BlockProcessor for Analyzer.
+// Copies input to output (pass-through) and feeds samples to the analyzer.
+func (a *Analyzer) ProcessBlockBuf(in, out []float32, samples int) {
+	copy(out[:samples], in[:samples])
+	a.ProcessBlock(in, samples)
 }
 
 // Snapshot returns the latest measurements.
@@ -108,8 +141,18 @@ func (a *Analyzer) Snapshot() AnalyzerSnapshot {
 	}
 }
 
+// SetEnabled controls whether compute() runs. When disabled, audio still passes
+// through but FFT/RMS/peak analysis is skipped, saving ~4.65% CPU.
+func (a *Analyzer) SetEnabled(on bool) { a.enabled.Store(on) }
+
+// Enabled returns whether the analyzer's compute path is active.
+func (a *Analyzer) Enabled() bool { return a.enabled.Load() }
+
 // compute performs FFT analysis. Locks only during spectrum write.
 func (a *Analyzer) compute() {
+	if !a.enabled.Load() {
+		return
+	}
 	n := len(a.window)
 
 	// Use pre-allocated FFT buffer
@@ -226,8 +269,58 @@ func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
 	return an.Snapshot()
 }
 
+// EnablePreEQAnalyzer creates an analyzer on the channel that taps the signal
+// after volume but before the EQ processor chain. Returns the analyzer.
+func EnablePreEQAnalyzer(id string, window int) *Analyzer {
+	an := NewAnalyzer(window)
+	ch := chanMgr.ensureChannel(id)
+	ch.mu.Lock()
+	ch.preEQAnalyzer = an
+	ch.mu.Unlock()
+	preEQAnalyzerRegistry.Lock()
+	preEQAnalyzerRegistry.m[id] = an
+	preEQAnalyzerRegistry.Unlock()
+	return an
+}
+
+// PreEQAnalyzerSnapshot returns the latest pre-EQ snapshot for the channel.
+func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
+	preEQAnalyzerRegistry.RLock()
+	an := preEQAnalyzerRegistry.m[id]
+	preEQAnalyzerRegistry.RUnlock()
+	if an == nil {
+		return AnalyzerSnapshot{}
+	}
+	return an.Snapshot()
+}
+
+var preEQAnalyzerRegistry = struct {
+	sync.RWMutex
+	m map[string]*Analyzer
+}{m: map[string]*Analyzer{}}
+
+// SetAnalyzerEnabled enables or disables FFT compute for a channel's analyzers.
+// Audio pass-through is never affected; only the FFT/RMS/peak computation is gated.
+func SetAnalyzerEnabled(id string, on bool) {
+	analyzerRegistry.RLock()
+	an := analyzerRegistry.m[id]
+	analyzerRegistry.RUnlock()
+	if an != nil {
+		an.SetEnabled(on)
+	}
+	preEQAnalyzerRegistry.RLock()
+	pre := preEQAnalyzerRegistry.m[id]
+	preEQAnalyzerRegistry.RUnlock()
+	if pre != nil {
+		pre.SetEnabled(on)
+	}
+}
+
 func resetAnalyzers() {
 	analyzerRegistry.Lock()
 	analyzerRegistry.m = map[string]*Analyzer{}
 	analyzerRegistry.Unlock()
+	preEQAnalyzerRegistry.Lock()
+	preEQAnalyzerRegistry.m = map[string]*Analyzer{}
+	preEQAnalyzerRegistry.Unlock()
 }

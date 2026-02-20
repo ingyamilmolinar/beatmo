@@ -19,7 +19,7 @@ func Play(id string, when ...float64) {
 	if len(when) > 0 {
 		d := when[0] - Now()
 		if d > 0 {
-			delay = int(d * sampleRate)
+			delay = int(d * float64(sampleRate))
 		}
 	}
 	mix.Schedule(id, inst.NewVoice(bpm, sampleRate), delay)
@@ -43,7 +43,7 @@ func PlayVol(id string, vol float64, when ...float64) {
 	if len(when) > 0 {
 		d := when[0] - Now()
 		if d > 0 {
-			delay = int(d * sampleRate)
+			delay = int(d * float64(sampleRate))
 		}
 	}
 	mix.Schedule(id, &scaledVoice{v: inst.NewVoice(bpm, sampleRate), gain: vol}, delay)
@@ -69,22 +69,26 @@ func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
 	if len(when) > 0 {
 		d := when[0] - Now()
 		if d > 0 {
-			delay = int(d * sampleRate)
+			delay = int(d * float64(sampleRate))
 		}
 	}
 	v := inst.NewVoice(bpm, sampleRate)
 	// Compute playback rate from semitones and requested duration multiplier.
 	// r > 1 speeds up (higher pitch, shorter time). r < 1 slows down.
-	rate := 1.0
 	if dur <= 0 {
 		dur = 1
 	}
 	// 2^(semitones/12)
-	rate = pow2(pitch/12.0) / dur
+	rate := pow2(pitch/12.0) / dur
 	if rate <= 0 {
 		rate = 1
 	}
 	rv := &resampleVoice{src: v, step: rate}
+	// Pre-allocate buffer capacity from known source length to avoid
+	// repeated slice growth during Sample() calls.
+	if cv, ok := v.(*cVoice); ok && len(cv.buf) > 0 {
+		rv.buf = make([]float64, 0, len(cv.buf)+2)
+	}
 	mix.Schedule(id, &scaledVoice{v: rv, gain: vol}, delay)
 }
 
@@ -160,4 +164,3 @@ func SetStopHook(fn func(string)) {
 	stopHook = fn
 	stopHookMu.Unlock()
 }
-

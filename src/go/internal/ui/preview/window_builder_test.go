@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 func TestBuildRowWindow_ImmutablePlaybackOverridesPredictorInPast(t *testing.T) {

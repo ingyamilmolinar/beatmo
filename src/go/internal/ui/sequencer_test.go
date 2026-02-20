@@ -29,7 +29,7 @@ func TestSequencerSchedulesOnBeatsIndependently(t *testing.T) {
 	g.SetPlaying(true)
 	// Trigger one beat and verify the time-based sequencer advanced.
 	scheduleAbsForMuteTest(g, 0)
-	if g.seqNextIdxs == nil || len(g.seqNextIdxs) == 0 {
+	if len(g.seqNextIdxs) == 0 {
 		t.Fatalf("missing sequencer counters")
 	}
 	if g.seqNextIdxs[0] < 1 {

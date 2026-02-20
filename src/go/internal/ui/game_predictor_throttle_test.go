@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestPredictorBackgroundThrottle(t *testing.T) {

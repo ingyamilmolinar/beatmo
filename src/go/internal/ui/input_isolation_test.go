@@ -6,8 +6,10 @@ import (
 	"image"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestInputIsolation_EQPanelDoesNotTriggerSplitter(t *testing.T) {
@@ -56,6 +58,10 @@ func TestInputIsolation_DrumViewBlocksAtSpatialCheck(t *testing.T) {
 }
 
 func TestInputIsolation_SplitterRespectsGrabZone(t *testing.T) {
+	// This test exercises the Splitter struct in isolation from any DrumView.
+	// Reset the package-level click-suppress global so prior tests that open
+	// menus/panels (which call SuppressClicksUntilMouseUp) don't interfere.
+	suppressClicksUntilRelease = false
 	s := NewSplitter(600)
 	s.Y = 300
 	s.winW = 800
@@ -222,13 +228,112 @@ func TestInputIsolation_ColumnDividerValidInRackArea(t *testing.T) {
 		t.Errorf("Column divider SHOULD be detected in Rack area: got axis=%q idx=%d, expected axis=\"col\" idx=0", axis, idx)
 	}
 
-	// Also verify via HandleInput starts a drag
-	result := h.HandleInput(colX, rackY, true)
+	// Also verify via HandleInput starts a drag when clicking on the pill handle
+	hr := h.columnHandleRect(idx)
+	hcx := (hr.Min.X + hr.Max.X) / 2
+	hcy := (hr.Min.Y + hr.Max.Y) / 2
+	result := h.HandleInput(hcx, hcy, true)
 	if result != InputConsumed {
-		t.Errorf("HandleInput should return InputConsumed when starting drag in Rack area, got %v", result)
+		t.Errorf("HandleInput should return InputConsumed when starting drag on handle, got %v", result)
 	}
 	if !h.Capturing() {
-		t.Error("LayoutResizeHandler should be capturing after click on divider in Rack area")
+		t.Error("LayoutResizeHandler should be capturing after click on handle")
+	}
+}
+
+// TestPopupBlocksBPMFocus verifies that clicking at the BPM box location
+// while the instrument category selector popup is open does NOT focus the
+// BPM text input. Popups must fully block input to elements beneath them.
+func TestPopupBlocksBPMFocus(t *testing.T) {
+	assertDefaultParityState(t)
+	audio.ClearAllInsertEffects()
+	audio.InitInsertChains(44100)
+	t.Cleanup(func() { audio.ClearAllInsertEffects() })
+
+	dv := NewDrumView(image.Rect(0, 0, 800, 300), nil, game_log.New(nil, game_log.LevelError))
+	dv.recalcButtons()
+	dv.calcLayout()
+
+	if dv.bpmBox == nil {
+		t.Fatal("bpmBox not initialised after calcLayout")
+	}
+
+	// Open instrument menu
+	dv.instMenuOpen = true
+
+	// Simulate a click at the BPM box center
+	r := dv.bpmBox.Rect
+	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 300 },
+	)
+	t.Cleanup(restore)
+	dv.Update()
+	restore()
+
+	if dv.bpmBox.Focused() {
+		t.Fatal("BPM box gained focus while instrument menu was open — popup failed to block input")
+	}
+}
+
+// TestPopupBlocksBPMFocus_AllPopups tests that every popup type blocks
+// the BPM text input from gaining focus when clicked through.
+func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
+	popups := []struct {
+		name  string
+		setup func(dv *DrumView)
+	}{
+		{"instMenu", func(dv *DrumView) { dv.instMenuOpen = true }},
+		{"colorMenu", func(dv *DrumView) { dv.colorMenuOpen = true }},
+		{"subdivMenu", func(dv *DrumView) { dv.subdivMenuOpen = true }},
+		{"fxPanel", func(dv *DrumView) { dv.fxPanelOpen = true }},
+		{"eqChannel", func(dv *DrumView) { dv.eqChannelOpen = true }},
+		{"contextMenu", func(dv *DrumView) { dv.contextMenuOpen = true }},
+		{"overflowMenu", func(dv *DrumView) { dv.overflowMenuOpen = true }},
+	}
+
+	for _, tc := range popups {
+		t.Run(tc.name, func(t *testing.T) {
+			assertDefaultParityState(t)
+			audio.ClearAllInsertEffects()
+			audio.InitInsertChains(44100)
+			t.Cleanup(func() { audio.ClearAllInsertEffects() })
+
+			dv := NewDrumView(image.Rect(0, 0, 800, 300), nil, game_log.New(nil, game_log.LevelError))
+			dv.recalcButtons()
+			dv.calcLayout()
+
+			if dv.bpmBox == nil {
+				t.Fatal("bpmBox not initialised")
+			}
+
+			// Open the popup
+			tc.setup(dv)
+
+			// Simulate click at BPM box center
+			r := dv.bpmBox.Rect
+			cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
+			restore := SetInputForTest(
+				func() (int, int) { return cx, cy },
+				func(ebiten.MouseButton) bool { return true },
+				func(ebiten.Key) bool { return false },
+				func() []rune { return nil },
+				func() (float64, float64) { return 0, 0 },
+				func() (int, int) { return 800, 300 },
+			)
+			t.Cleanup(restore)
+			dv.Update()
+			restore()
+
+			if dv.bpmBox.Focused() {
+				t.Fatalf("BPM box gained focus while %s was open", tc.name)
+			}
+		})
 	}
 }
 
@@ -242,14 +347,21 @@ func TestInputIsolation_LayoutHandlerCapture(t *testing.T) {
 
 	h := dv.layoutHandler
 
-	// Get the column divider position in row 1 (valid area)
+	// Get the column divider and use handle center to initiate drag
 	colX := dv.widgets.colPos[1] + dv.widgets.offset.X
 	rackY := dv.widgets.rowPos[1] + dv.widgets.offset.Y + 10
+	_, idx := h.detectColumnDivider(colX, rackY)
+	if idx < 0 {
+		t.Fatal("column divider not detected")
+	}
+	hr := h.columnHandleRect(idx)
+	hcx := (hr.Min.X + hr.Max.X) / 2
+	hcy := (hr.Min.Y + hr.Max.Y) / 2
 
-	// Start drag
-	result := h.HandleInput(colX, rackY, true)
+	// Start drag on handle
+	result := h.HandleInput(hcx, hcy, true)
 	if result != InputConsumed {
-		t.Fatalf("Expected InputConsumed when starting drag, got %v", result)
+		t.Fatalf("Expected InputConsumed when starting drag on handle, got %v", result)
 	}
 	if !h.Capturing() {
 		t.Fatal("Expected Capturing() to be true after starting drag")
@@ -277,5 +389,266 @@ func TestInputIsolation_LayoutHandlerCapture(t *testing.T) {
 	result = h.HandleInput(colX, outsideY, true)
 	if result != InputIgnored {
 		t.Errorf("After drag ends, click outside bounds should be InputIgnored, got %v", result)
+	}
+}
+
+// TestSliderCrossGroupIsolation_MainVolToEQ verifies that while dragging the
+// main volume slider, moving the cursor over an EQ slider does not change EQ.
+func TestSliderCrossGroupIsolation_MainVolToEQ(t *testing.T) {
+	assertDefaultParityState(t)
+	audio.ClearAllInsertEffects()
+	audio.InitInsertChains(44100)
+	t.Cleanup(func() { audio.ClearAllInsertEffects() })
+
+	const W, H = 800, 600
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{{
+		Name:       "Kick",
+		Instrument: "kick",
+		Steps:      make([]bool, 8),
+		Volume:     1.0,
+	}}
+	dv.Length = 8
+
+	// Warm-up for layout.
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+
+	if dv.mainVolSlider == nil || dv.mainVolSlider.Rect().Empty() {
+		t.Skip("main vol slider not visible")
+	}
+
+	// Find an EQ slider that is visible.
+	eqSliderIdx := -1
+	for i, s := range dv.eqSliders {
+		if s != nil && !s.Rect().Empty() {
+			eqSliderIdx = i
+			break
+		}
+	}
+	if eqSliderIdx < 0 {
+		t.Skip("no EQ sliders visible")
+	}
+
+	// Record initial EQ gain.
+	origGain := dv.eqBandGainsDB[eqSliderIdx]
+	origMainVol := dv.mainVolSlider.Value
+
+	// Frame 1: Press on main vol slider center.
+	mvr := dv.mainVolSlider.Rect()
+	mvCx, mvCy := (mvr.Min.X+mvr.Max.X)/2, (mvr.Min.Y+mvr.Max.Y)/2
+
+	r := SetInputForTest(
+		func() (int, int) { return mvCx, mvCy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	r()
+
+	if dv.activeSliderKind != sliderKindMainVol {
+		t.Fatalf("expected activeSliderKind=sliderKindMainVol, got %d", dv.activeSliderKind)
+	}
+
+	// Frame 2: Drag to the EQ slider's position (still holding mouse).
+	eqR := dv.eqSliders[eqSliderIdx].Rect()
+	eqCx, eqCy := eqR.Max.X-1, (eqR.Min.Y+eqR.Max.Y)/2
+
+	r = SetInputForTest(
+		func() (int, int) { return eqCx, eqCy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	r()
+
+	// Main vol should have changed (dragged to a new position).
+	if dv.activeSliderKind != sliderKindMainVol {
+		t.Fatalf("activeSliderKind should still be sliderKindMainVol, got %d", dv.activeSliderKind)
+	}
+
+	// EQ gain should NOT have changed.
+	if dv.eqBandGainsDB[eqSliderIdx] != origGain {
+		t.Fatalf("EQ gain changed from %.2f to %.2f while main vol slider was active", origGain, dv.eqBandGainsDB[eqSliderIdx])
+	}
+
+	_ = origMainVol // used for documentation clarity
+}
+
+// TestSliderCrossGroupIsolation_RowVolToMainVol verifies that while dragging a
+// row volume slider, the main volume slider is not affected.
+func TestSliderCrossGroupIsolation_RowVolToMainVol(t *testing.T) {
+	assertDefaultParityState(t)
+	audio.ClearAllInsertEffects()
+	audio.InitInsertChains(44100)
+	t.Cleanup(func() { audio.ClearAllInsertEffects() })
+
+	const W, H = 800, 600
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{{
+		Name:       "Kick",
+		Instrument: "kick",
+		Steps:      make([]bool, 8),
+		Volume:     0.5,
+	}}
+	dv.Length = 8
+
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+
+	if len(dv.rowVolSliders) == 0 || dv.rowVolSliders[0].Rect().Empty() {
+		t.Skip("row vol slider not visible")
+	}
+	if dv.mainVolSlider == nil || dv.mainVolSlider.Rect().Empty() {
+		t.Skip("main vol slider not visible")
+	}
+
+	origMainVol := dv.mainVolSlider.Value
+
+	// Frame 1: Press on row vol slider.
+	rvr := dv.rowVolSliders[0].Rect()
+	rvCx, rvCy := (rvr.Min.X+rvr.Max.X)/2, (rvr.Min.Y+rvr.Max.Y)/2
+
+	r := SetInputForTest(
+		func() (int, int) { return rvCx, rvCy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	r()
+
+	if dv.activeSliderKind != sliderKindRowVol {
+		t.Fatalf("expected activeSliderKind=sliderKindRowVol, got %d", dv.activeSliderKind)
+	}
+
+	// Frame 2: Drag to main vol slider position.
+	mvr := dv.mainVolSlider.Rect()
+	mvCx, mvCy := mvr.Max.X-1, (mvr.Min.Y+mvr.Max.Y)/2
+
+	r = SetInputForTest(
+		func() (int, int) { return mvCx, mvCy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	r()
+
+	if dv.mainVolSlider.Value != origMainVol {
+		t.Fatalf("main vol changed from %.2f to %.2f while row vol slider was active", origMainVol, dv.mainVolSlider.Value)
+	}
+}
+
+// TestMainVolSliderReturnsAfterHandling verifies that clicking on the main
+// volume slider does not also activate EQ sliders (the old fall-through bug).
+func TestMainVolSliderReturnsAfterHandling(t *testing.T) {
+	assertDefaultParityState(t)
+	audio.ClearAllInsertEffects()
+	audio.InitInsertChains(44100)
+	t.Cleanup(func() { audio.ClearAllInsertEffects() })
+
+	const W, H = 800, 600
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{{
+		Name:       "Kick",
+		Instrument: "kick",
+		Steps:      make([]bool, 8),
+		Volume:     1.0,
+	}}
+	dv.Length = 8
+
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+
+	if dv.mainVolSlider == nil || dv.mainVolSlider.Rect().Empty() {
+		t.Skip("main vol slider not visible")
+	}
+
+	// Record all EQ gains before the click.
+	origGains := make([]float64, len(dv.eqBandGainsDB))
+	copy(origGains, dv.eqBandGainsDB)
+
+	// Click at main vol slider center.
+	mvr := dv.mainVolSlider.Rect()
+	mvCx, mvCy := (mvr.Min.X+mvr.Max.X)/2, (mvr.Min.Y+mvr.Max.Y)/2
+
+	r := SetInputForTest(
+		func() (int, int) { return mvCx, mvCy },
+		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	r()
+
+	// Verify no EQ gain changed.
+	for i, g := range dv.eqBandGainsDB {
+		if g != origGains[i] {
+			t.Fatalf("EQ band %d gain changed from %.2f to %.2f after main vol click", i, origGains[i], g)
+		}
+	}
+}
+
+// TestAnyDragActive_IncludesMainVolSlider verifies that anyDragActive returns
+// true when the main volume slider is being dragged.
+func TestAnyDragActive_IncludesMainVolSlider(t *testing.T) {
+	dv := &DrumView{
+		rowScroll:    NewScrollBehavior(DefaultScrollbarStyle, 24),
+		activeSlider: -1,
+	}
+	dv.mainVolSlider = NewSlider(1.0)
+
+	if dv.anyDragActive() {
+		t.Fatal("anyDragActive should be false initially")
+	}
+
+	// Simulate main vol slider dragging.
+	dv.mainVolSlider.dragging = true
+	if !dv.anyDragActive() {
+		t.Fatal("anyDragActive should be true when mainVolSlider is dragging")
+	}
+
+	// Also test via activeSliderKind.
+	dv.mainVolSlider.dragging = false
+	dv.activeSliderKind = sliderKindMainVol
+	if !dv.anyDragActive() {
+		t.Fatal("anyDragActive should be true when activeSliderKind is set")
 	}
 }

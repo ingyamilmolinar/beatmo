@@ -23,7 +23,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertSimpleDrawMode, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -34,17 +34,18 @@ if (!fs.existsSync(chromiumPath)) {
   spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8600 + Math.floor(Math.random() * 1000);
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
 // Build WASM
+if (!shouldSkipWasmBuild("play_ui.wasm")) {
 const build = spawnSync(GO, ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"], {
   cwd: goDir,
   env: { ...process.env, GOOS: "js", GOARCH: "wasm" },
   stdio: "inherit"
 });
 if (build.status !== 0) throw new Error("go build play_ui failed");
+}
 
 // Start server
 const server = http.createServer((req, res) => {
@@ -60,7 +61,8 @@ const server = http.createServer((req, res) => {
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -104,7 +106,7 @@ console.log('[TEST] incrementBPM works! (' + bpmBefore + ' -> ' + bpmAfter + ')'
 console.log('[TEST] Testing playback functions...');
 await page.waitForFunction(() => typeof startPlay === 'function' && typeof stopPlay === 'function' && typeof transportSnapshot === 'function');
 
-const playBefore = await page.evaluate(() => transportSnapshot().playing);
+await page.evaluate(() => transportSnapshot().playing);
 await page.evaluate(() => startPlay());
 await page.waitForTimeout(200);
 const playAfter = await page.evaluate(() => transportSnapshot().playing);
@@ -135,6 +137,7 @@ console.log('[TEST] panBy works! (x: ' + camBefore.x + ' -> ' + camAfter.x + ')'
 
 console.log('[TEST] All JS bridge sanity checks passed!');
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "wasm_input_sanity");
 await browser.close();
 server.close();
 console.log('WASM JS bridge sanity test PASSED');

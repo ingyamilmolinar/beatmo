@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "subdiv": 8,
+  "bpm": 120,
+  "instruments": [
+    {
+      "name": "Kick",
+      "id": "kick",
+      "kind": "builtin",
+      "volume": 1.0,
+      "origin": 0,
+      "color": "#50C878FF"
+    },
+    {
+      "name": "Snare",
+      "id": "snare",
+      "kind": "builtin",
+      "volume": 1.0,
+      "origin": 4,
+      "color": "#C87850FF"
+    },
+    {
+      "name": "Hi-Hat",
+      "id": "hihat",
+      "kind": "builtin",
+      "volume": 1.0,
+      "origin": 8,
+      "color": "#FFF610FF"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "inputs": [3],
+      "outputs": [1]
+    },
+    {
+      "id": 1,
+      "i": 4,
+      "j": 0,
+      "type": "regular",
+      "inputs": [0],
+      "outputs": [2]
+    },
+    {
+      "id": 2,
+      "i": 4,
+      "j": -4,
+      "type": "regular",
+      "inputs": [1],
+      "outputs": [3]
+    },
+    {
+      "id": 3,
+      "i": 0,
+      "j": -4,
+      "type": "regular",
+      "inputs": [2],
+      "outputs": [0]
+    },
+    {
+      "id": 4,
+      "i": 8,
+      "j": 0,
+      "type": "regular",
+      "inputs": [7],
+      "outputs": [5]
+    },
+    {
+      "id": 5,
+      "i": 12,
+      "j": 0,
+      "type": "regular",
+      "inputs": [4],
+      "outputs": [6]
+    },
+    {
+      "id": 6,
+      "i": 12,
+      "j": -4,
+      "type": "regular",
+      "inputs": [5],
+      "outputs": [7]
+    },
+    {
+      "id": 7,
+      "i": 8,
+      "j": -4,
+      "type": "regular",
+      "inputs": [6],
+      "outputs": [4]
+    },
+    {
+      "id": 8,
+      "i": 16,
+      "j": 0,
+      "type": "regular",
+      "inputs": [9],
+      "outputs": [9]
+    },
+    {
+      "id": 9,
+      "i": 18,
+      "j": 0,
+      "type": "regular",
+      "inputs": [8],
+      "outputs": [8]
+    }
+  ]
+}

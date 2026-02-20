@@ -4,7 +4,7 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertSimpleDrawMode, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -13,12 +13,14 @@ const GO = resolveGoBinary();
 const CHANGE_TIMEOUT_MS = Number(process.env.DRUM_EDIT_TIMEOUT_MS ?? "350");
 const CYCLE_WAIT_MS = Number(process.env.DRUM_EDIT_CYCLE_MS ?? "220");
 
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
 const fixture = JSON.stringify({
   version: 1,
@@ -35,7 +37,6 @@ const fixture = JSON.stringify({
   ]
 });
 
-const port = 8450 + Math.floor(Math.random() * 500);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
@@ -47,33 +48,17 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((resolve) => server.listen(port, resolve));
+await new Promise((resolve) => server.listen(0, resolve));
+const port = server.address().port;
 
 async function waitForCondition(page, predicate, args, timeoutMs, label) { const start = Date.now();
   while (true) { const ok = await page.evaluate(predicate, args);
-    if (ok) { const elapsed = Date.now() - start;
-      if (elapsed > timeoutMs) { throw new Error(`${label} exceeded ${timeoutMs}ms`);
-      }
-      return elapsed;
+    if (ok) { return Date.now() - start;
     }
     if (Date.now() - start > timeoutMs) { throw new Error(`${label} not met within ${timeoutMs}ms`);
     }
     await page.waitForTimeout(16);
   }
-}
-
-function pickFutureIndex(offset, window, nextAbs) { const start = Math.max(0, nextAbs - offset);
-  for (let i = start; i < window.length; i++) { if (window[i]) return { rel: i, abs: offset + i };
-  }
-  return { rel: -1, abs: -1 };
-}
-
-function findNeighbor(row, startAbs, dir) { let abs = startAbs + dir;
-  for (let iter = 0; iter < 256; iter++, abs += dir) { const info = beatInfoAt?.(row, abs);
-    if (!info) break;
-    if (info.type === "regular") return { abs, info };
-  }
-  return null;
 }
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -82,7 +67,12 @@ try { const page = await browser.newPage();
   await page.waitForFunction(() => typeof startPlay === "function");
   await assertSimpleDrawMode(page, false, "drum future refresh");
 
-  await page.evaluate((json) => { setFollow?.(true);
+  await page.evaluate((json) => {
+    // Unlock AudioContext — page.evaluate() doesn't trigger user gesture events.
+    document.dispatchEvent(new Event('pointerdown'));
+    resumeAudio?.();
+
+    setFollow?.(true);
     importJSON?.(json);
     updateBeatInfosJS?.();
     forceDraw?.();
@@ -136,9 +126,7 @@ const scenario = await page.evaluate(() => { const total = typeof totalRows === 
   if (!scenario) { throw new Error("could not locate tom row future target");
   }
 
-  const metricsBefore = scenario.metrics || { count: 0 };
-
-  await page.evaluate(({ rowIndex, target }) => { deleteNodeGrid?.(target.i, target.j);
+  await page.evaluate(({ target }) => { deleteNodeGrid?.(target.i, target.j);
     updateBeatInfosJS?.();
   }, scenario);
 
@@ -192,6 +180,8 @@ if (relAbs >= 0 && relAbs < stateAfter.timelinePastMask.length && stateAfter.tim
 const metricsAfter = await page.evaluate(() => getAudioScheduleMetrics?.());
 if (!metricsAfter) { throw new Error("audio schedule metrics unavailable after edits");
 }
-} finally { await browser.close();
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "drum_future_refresh");
+} finally { 
+ await browser.close();
   server.close();
 }

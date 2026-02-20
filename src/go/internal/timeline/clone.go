@@ -1,6 +1,6 @@
 package timeline
 
-import "github.com/ingyamilmolinar/tunkul/core/model"
+import "github.com/ingyamilmolinar/beatmo/core/model"
 
 func cloneBoolSlice(src []bool) []bool {
 	if len(src) == 0 {

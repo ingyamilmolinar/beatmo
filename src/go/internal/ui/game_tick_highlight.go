@@ -3,7 +3,7 @@ package ui
 import (
 	"math"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func encodeHighlight(until int64, isMute bool) int64 {
@@ -88,7 +88,7 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 	}
 	g.highlightSet(makeBeatKey(row, idx), encodeHighlight(g.frame+duration, isMute))
 	if g.highlightHook != nil && (info.NodeType == model.NodeTypeRegular || isMute) {
-		if !(g.timingTestMode && info.NodeType == model.NodeTypeRegular) {
+		if !g.timingTestMode || info.NodeType != model.NodeTypeRegular {
 			// Fire hook only once per row/index across frames.
 			if row >= len(g.lastHLIdxByRow) {
 				g.lastHLIdxByRow = make([]int, len(g.drum.Rows))

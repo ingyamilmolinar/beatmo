@@ -1,10 +1,9 @@
 package engine
 
 import (
-	"fmt"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Ensure grows prediction buffers to at least horizon.
@@ -13,17 +12,17 @@ func (p *Predictor) Ensure(horizon int) {
 		horizon = 0
 	}
 	var ensureStart time.Time
-	logLargeHorizon := horizon > 500
+	logLargeHorizon := horizon > 500 && p.logger != nil
 	if logLargeHorizon {
 		ensureStart = time.Now()
-		fmt.Printf("[PREDICTOR] Ensure called with large horizon=%d predDirty=%v currentHorizon=%d rows=%d\n",
+		p.logger.Debugf("[PREDICTOR] Ensure called with large horizon=%d predDirty=%v currentHorizon=%d rows=%d",
 			horizon, p.predDirty, p.horizon, len(p.beatInfosByRow))
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.predDirty && horizon <= p.horizon {
 		if logLargeHorizon {
-			fmt.Printf("[PREDICTOR] Ensure early-exit (not dirty, horizon satisfied) elapsed=%v\n", time.Since(ensureStart))
+			p.logger.Debugf("[PREDICTOR] Ensure early-exit (not dirty, horizon satisfied) elapsed=%v", time.Since(ensureStart))
 		}
 		return
 	}
@@ -117,14 +116,15 @@ func (p *Predictor) Ensure(horizon int) {
 						visGate = i + 1
 					}
 				}
-				if bi.NodeType == model.NodeTypeRegular {
+				switch bi.NodeType {
+				case model.NodeTypeRegular:
 					if triggered {
 						lastFired = bi.NodeID
 						lastTrig[bi.NodeID] = true
 					} else {
 						lastTrig[bi.NodeID] = false
 					}
-				} else if bi.NodeType == model.NodeTypeMute {
+				case model.NodeTypeMute:
 					lastTrig[bi.NodeID] = triggered
 				}
 			}
@@ -153,14 +153,15 @@ func (p *Predictor) Ensure(horizon int) {
 				}
 			}
 			p.visibleByRow[row][idx] = vis
-			if bi.NodeType == model.NodeTypeRegular {
+			switch bi.NodeType {
+			case model.NodeTypeRegular:
 				if audible {
 					lastFired = bi.NodeID
 					lastTrig[bi.NodeID] = true
 				} else {
 					lastTrig[bi.NodeID] = false
 				}
-			} else if bi.NodeType == model.NodeTypeMute {
+			case model.NodeTypeMute:
 				lastTrig[bi.NodeID] = triggered
 			}
 		}
@@ -182,7 +183,7 @@ func (p *Predictor) Ensure(horizon int) {
 	// calls at the same horizon should be O(1) unless inputs change again.
 	p.predDirty = false
 	if logLargeHorizon {
-		fmt.Printf("[PREDICTOR] Ensure completed horizon=%d elapsed=%v\n", horizon, time.Since(ensureStart))
+		p.logger.Debugf("[PREDICTOR] Ensure completed horizon=%d elapsed=%v", horizon, time.Since(ensureStart))
 	}
 }
 
@@ -301,14 +302,15 @@ func (p *Predictor) RebaseAt(idx int) {
 			if i < len(p.visibleByRow[row]) {
 				p.visibleByRow[row][i] = vis
 			}
-			if bi.NodeType == model.NodeTypeRegular {
+			switch bi.NodeType {
+			case model.NodeTypeRegular:
 				if audible {
 					lastFired = bi.NodeID
 					lastTrig[bi.NodeID] = true
 				} else {
 					lastTrig[bi.NodeID] = false
 				}
-			} else if bi.NodeType == model.NodeTypeMute {
+			case model.NodeTypeMute:
 				lastTrig[bi.NodeID] = triggered
 			}
 		}

@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestNodeMenuVolumePercentAdjustsAudio opens the popup, clicks VOL- once
@@ -23,13 +23,13 @@ func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 	// Open node menu on n1
 	g.sel = n1
 	n1.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n1
-	g.updateNodeMenuRects()
-	if r := g.nodeMenuRects["vol-"]; r.Empty() {
+	g.sidebar.Open(n1)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
+	if r := g.sidebar.rects["vol-"]; r.Empty() {
 		t.Fatalf("vol- rect missing")
 	}
-	btn := g.nodeMenuBtns["vol-"]
+	btn := g.sidebar.btns["vol-"]
 	if btn == nil {
 		t.Fatalf("vol- button missing")
 	}

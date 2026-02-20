@@ -4,8 +4,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestPredictorDeleteNodeClearsAudible(t *testing.T) {
@@ -17,7 +17,7 @@ func TestPredictorDeleteNodeClearsAudible(t *testing.T) {
 	path := []model.BeatInfo{{NodeID: n0, NodeType: model.NodeTypeRegular}}
 	nodes := map[model.NodeID]model.Node{n0: graph.Nodes[n0]}
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	pred.SetPaths([][]model.BeatInfo{path}, []bool{true}, []int{0}, nodes)
 	pred.Ensure(4)
 	if !pred.AudibleAt(0, 0) {
@@ -39,7 +39,7 @@ func TestPredictorOutOfRangeReturnsFalse(t *testing.T) {
 	path := []model.BeatInfo{{NodeID: n0, NodeType: model.NodeTypeRegular}}
 	nodes := map[model.NodeID]model.Node{n0: graph.Nodes[n0]}
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	pred.SetPaths([][]model.BeatInfo{path}, []bool{true}, []int{0}, nodes)
 	pred.Ensure(2)
 

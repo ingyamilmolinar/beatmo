@@ -3,8 +3,8 @@ package engine
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // buildSingleRow makes a short single-row path with a loop so Ensure()
@@ -33,7 +33,7 @@ func buildSingleRow(n int) (*model.Graph, [][]model.BeatInfo, []bool, []int, map
 
 func TestPredictorEnsureClearsDirtyFlag(t *testing.T) {
 	g, paths, loops, starts, nodes := buildSingleRow(16)
-	p := NewPredictor(g)
+	p := NewPredictor(g, nil)
 	p.SetPaths(paths, loops, starts, nodes)
 
 	// Initial prediction to a horizon.
@@ -58,7 +58,7 @@ func TestPredictorEnsureClearsDirtyFlag(t *testing.T) {
 
 func TestPredictorDirtyRebuildsExistingHorizon(t *testing.T) {
 	g, paths, loops, starts, nodes := buildSingleRow(4)
-	p := NewPredictor(g)
+	p := NewPredictor(g, nil)
 	p.SetPaths(paths, loops, starts, nodes)
 
 	path := paths[0]

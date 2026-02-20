@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/ingyamilmolinar/tunkul/core/model"
+import "github.com/ingyamilmolinar/beatmo/core/model"
 
 // RowWindow captures a snapshot of the visible portion of a drum row.
 type RowWindow struct {

@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 func (g *Game) updateBeatInfos() {
@@ -138,9 +138,9 @@ func (g *Game) updateBeatInfos() {
 		maxLen = 1
 	}
 	if !g.Playing() && maxLen > g.drum.Length {
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] calling drum.SetLength maxLen=%d", maxLen)
-		g.drum.SetLength(maxLen)
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] drum.SetLength done")
+		g.logger.Debugf("[UPDATE_BEAT_INFOS] calling drum.SetLengthClamped maxLen=%d", maxLen)
+		g.drum.SetLengthClamped(maxLen)
+		g.logger.Debugf("[UPDATE_BEAT_INFOS] drum.SetLengthClamped done")
 	} else {
 		// While playing, avoid changing DrumView.Length to prevent window
 		// clamping jumps; update only the underlying graph beat length.
@@ -205,7 +205,9 @@ func (g *Game) updateBeatInfos() {
 	nPaths := len(g.beatInfosByRow)
 	g.logger.Debugf("[UPDATE_BEAT_INFOS] computing path signatures nPaths=%d", nPaths)
 	if len(g.pathSigByRow) != nPaths {
+		old := g.pathSigByRow
 		g.pathSigByRow = make([]uint64, nPaths)
+		copy(g.pathSigByRow, old)
 	}
 	if len(g.rowsPathChanged) != nPaths {
 		g.rowsPathChanged = make([]bool, nPaths)

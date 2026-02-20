@@ -1,20 +1,22 @@
-module github.com/ingyamilmolinar/tunkul
+module github.com/ingyamilmolinar/beatmo
 
 go 1.23
 
 require (
 	github.com/ebitengine/oto/v3 v3.3.3
+	github.com/grafana/pyroscope-go v1.2.7
 	github.com/hajimehoshi/ebiten/v2 v2.8.8
+	golang.org/x/image v0.20.0
 )
 
 require (
 	github.com/ebitengine/gomobile v0.0.0-20240911145611-4856209ac325 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/purego v0.8.0 // indirect
-	github.com/grafana/pyroscope-go v1.2.7 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect
 	github.com/jezek/xgb v1.1.1 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
+	golang.org/x/text v0.18.0 // indirect
 )

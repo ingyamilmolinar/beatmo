@@ -4,21 +4,22 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertSimpleDrawMode, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
+if (!shouldSkipWasmBuild("play_ui.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
+}
 
-const port = 8450 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/ui.html" : req.url;
   if (req.url === "/" || req.url === "/ui.html") { const html = `<!doctype html><body>
 <script type="module" src="audio.js"></script>
@@ -45,7 +46,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 let browser;
 try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -54,6 +56,10 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   await page.waitForFunction(() => window.__ready);
   await assertSimpleDrawMode(page, true, "wav bus");
   await page.evaluate(() => { if (typeof resumeAudio === 'function') resumeAudio(); });
+
+  // Trigger audio context creation via unlockAudio gesture listener
+  await page.evaluate(() => document.dispatchEvent(new Event('mousedown')));
+  await page.waitForTimeout(200);
 
   // Register a fake sample id mapping so playSound can resolve without fetch; reusing DSP renders is fine for bus.
   await page.evaluate(() => { window.registerWav('snare', 'data:audio/wav;base64,'); // ignored; render path used
@@ -67,6 +73,8 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   console.log('wav_bus: buses', buses);
   if (buses < 8 || buses > 32) { throw new Error('unexpected number of volume buses: ' + buses);
   }
-} finally { if (browser) await browser.close();
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "wav_bus");
+} finally { 
+ if (browser) await browser.close();
   server.close();
 }

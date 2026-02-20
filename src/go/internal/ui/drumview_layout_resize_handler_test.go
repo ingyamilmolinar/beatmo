@@ -6,8 +6,8 @@ import (
 	"image"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestWidgetSpansColumn(t *testing.T) {
@@ -105,12 +105,20 @@ func TestLayoutResizeHandler_CaptureSemanticsOutsideBounds(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Get the column divider position in row 1 (valid area)
+	// Detect the column divider to get its index
 	colX := dv.widgets.colPos[1] + dv.widgets.offset.X
 	rackY := dv.widgets.rowPos[1] + dv.widgets.offset.Y + 10
+	_, idx := h.detectColumnDivider(colX, rackY)
+	if idx < 0 {
+		t.Fatal("column divider not detected")
+	}
+	// Click on the pill handle center to initiate drag
+	hr := h.columnHandleRect(idx)
+	hcx := (hr.Min.X + hr.Max.X) / 2
+	hcy := (hr.Min.Y + hr.Max.Y) / 2
 
-	// Start drag
-	result := h.HandleInput(colX, rackY, true)
+	// Start drag on handle
+	result := h.HandleInput(hcx, hcy, true)
 	if result != InputConsumed {
 		t.Errorf("Starting drag should return InputConsumed, got %v", result)
 	}
@@ -136,24 +144,31 @@ func TestLayoutResizeHandler_CaptureSemanticsOutsideBounds(t *testing.T) {
 }
 
 func TestLayoutResizeHandler_ResizeApplied(t *testing.T) {
-	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
+	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 1200, 600))
 	h := dv.layoutHandler
 
 	// Record initial column width
 	initialColWidth := dv.widgets.ColWidth(0)
 
-	// Get the column divider position in row 1 (valid area)
+	// Detect column divider to get handle position
 	colX := dv.widgets.colPos[1] + dv.widgets.offset.X
 	rackY := dv.widgets.rowPos[1] + dv.widgets.offset.Y + 10
+	_, idx := h.detectColumnDivider(colX, rackY)
+	if idx < 0 {
+		t.Fatal("column divider not detected")
+	}
+	hr := h.columnHandleRect(idx)
+	hcx := (hr.Min.X + hr.Max.X) / 2
+	hcy := (hr.Min.Y + hr.Max.Y) / 2
 
-	// Start drag
-	h.HandleInput(colX, rackY, true)
+	// Start drag on handle
+	h.HandleInput(hcx, hcy, true)
 
 	// Drag right by 20 pixels
-	h.HandleInput(colX+20, rackY, true)
+	h.HandleInput(hcx+20, hcy, true)
 
 	// Release
-	h.HandleInput(colX+20, rackY, false)
+	h.HandleInput(hcx+20, hcy, false)
 
 	// Check that column was resized
 	newColWidth := dv.widgets.ColWidth(0)
@@ -184,13 +199,118 @@ func TestLayoutResizeHandler_RowDividerDetection(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// Get row divider position (between row 0 and row 1)
+	// Row 0 divider (between row 0 and row 1) is suppressed because the
+	// Timeline widget spans rows 0-1 (anyWidgetSpansRow returns true).
 	rowY := dv.widgets.rowPos[1] + dv.widgets.offset.Y
-	midX := dv.Bounds.Min.X + dv.Bounds.Dx()/2
+	midX := dv.widgets.colPos[0] + dv.widgets.offset.X + dv.widgets.ColWidth(0)/2
 
 	axis, idx := h.detectRowDivider(midX, rowY)
-	if axis != "row" || idx != 0 {
-		t.Errorf("Row divider should be detected: got axis=%q idx=%d, expected axis=\"row\" idx=0", axis, idx)
+	if axis != "" || idx != -1 {
+		t.Errorf("Row 0 divider should NOT be detected (Timeline spans rows 0-1): got axis=%q idx=%d", axis, idx)
+	}
+
+	// Row 1 divider (between row 1 and row 2) IS detectable via the EQ
+	// pill-only path (fullWidthWidgetBelow).
+	rowY2 := dv.widgets.rowPos[2] + dv.widgets.offset.Y
+	axis2, idx2 := h.detectRowDivider(midX, rowY2)
+	if axis2 != "row" || idx2 != 1 {
+		t.Errorf("Row 1 divider should be detected (EQ pill): got axis=%q idx=%d, expected axis=\"row\" idx=1", axis2, idx2)
+	}
+}
+
+func TestFullWidthWidgetBelow(t *testing.T) {
+	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
+	h := dv.layoutHandler
+
+	// Row 2 has WidgetWave with ColSpan=2 (full width).
+	// fullWidthWidgetBelow(1) should be true (row 2 is below row 1).
+	if !h.fullWidthWidgetBelow(1) {
+		t.Error("fullWidthWidgetBelow(1) should be true — WidgetWave at row 2 spans full width")
+	}
+
+	// fullWidthWidgetBelow(0) should be false (row 1 has Rack col=0 + Timeline col=1).
+	if h.fullWidthWidgetBelow(0) {
+		t.Error("fullWidthWidgetBelow(0) should be false — row 1 has separate widgets per column")
+	}
+}
+
+func TestRowDividerSuppressedWhenFullWidthBelow(t *testing.T) {
+	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
+	h := dv.layoutHandler
+
+	// Row divider at index 1 (between rows 1 and 2) should be suppressed
+	// because WidgetWave at row 2 spans full width.
+	segments := h.rowDividerSegments(1)
+	if segments != nil {
+		t.Errorf("rowDividerSegments(1) should return nil when full-width widget is below, got %d segments", len(segments))
+	}
+}
+
+func TestRowDividerSuppressedForRow0(t *testing.T) {
+	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
+	h := dv.layoutHandler
+
+	// Row divider at index 0 (between rows 0 and 1) should be suppressed
+	// because the Timeline widget spans rows 0-1 (anyWidgetSpansRow).
+	segments := h.rowDividerSegments(0)
+	if segments != nil {
+		t.Errorf("rowDividerSegments(0) should return nil — Timeline spans rows 0-1, got %d segments", len(segments))
+	}
+}
+
+func TestColumnHandleRect_CenteredOnSegments(t *testing.T) {
+	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
+	h := dv.layoutHandler
+
+	hr := h.columnHandleRect(0)
+	if hr.Empty() {
+		t.Fatal("columnHandleRect(0) should not be empty")
+	}
+	hcy := (hr.Min.Y + hr.Max.Y) / 2
+
+	// The pill Y-center should fall within the rows 0-1 range, NOT at
+	// the full bounds center (which would include the EQ row).
+	row0Y := dv.widgets.rowPos[0] + dv.widgets.offset.Y
+	row2Y := dv.widgets.rowPos[2] + dv.widgets.offset.Y
+	fullCY := (dv.Bounds.Min.Y + dv.Bounds.Max.Y) / 2
+
+	if hcy < row0Y || hcy > row2Y {
+		t.Errorf("pill center Y=%d should be within rows 0-1 range [%d, %d]", hcy, row0Y, row2Y)
+	}
+	if hcy == fullCY {
+		t.Errorf("pill center Y=%d should differ from full bounds center %d", hcy, fullCY)
+	}
+}
+
+func TestRowHandleRect_EQBoundaryHasPill(t *testing.T) {
+	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
+	h := dv.layoutHandler
+
+	// Row 1 divider (EQ boundary) should have a pill even though line
+	// segments are suppressed, because fullWidthWidgetBelow is true.
+	hr := h.rowHandleRect(1)
+	if hr.Empty() {
+		t.Error("rowHandleRect(1) should NOT be empty — EQ boundary pill")
+	}
+
+	// Row 0 divider should be fully suppressed (no pill, no line).
+	hr0 := h.rowHandleRect(0)
+	if !hr0.Empty() {
+		t.Errorf("rowHandleRect(0) should be empty — anyWidgetSpansRow, got %v", hr0)
+	}
+}
+
+func TestRow1_2DividerDetectableViaPill(t *testing.T) {
+	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
+	h := dv.layoutHandler
+
+	// The row 1/2 divider should be detectable (EQ resize pill).
+	rowY := dv.widgets.rowPos[2] + dv.widgets.offset.Y
+	midX := dv.widgets.colPos[0] + dv.widgets.offset.X + dv.widgets.ColWidth(0)/2
+
+	axis, idx := h.detectRowDivider(midX, rowY)
+	if axis != "row" || idx != 1 {
+		t.Errorf("Row 1/2 divider should be detectable via EQ pill, got axis=%q idx=%d", axis, idx)
 	}
 }
 

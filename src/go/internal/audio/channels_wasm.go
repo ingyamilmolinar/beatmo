@@ -11,4 +11,10 @@ func init() {
 			fn.Invoke(id, vol)
 		}
 	}
+	platformChannelPanChanged = func(id string, pan float64) {
+		fn := js.Global().Get("setChannelPan")
+		if fn.Truthy() {
+			fn.Invoke(id, pan)
+		}
+	}
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestRowsLayerCacheRebuild verifies the rows composite layer is reused across
@@ -48,7 +48,7 @@ func TestRowsLayerCacheRebuild(t *testing.T) {
 
 	dst := ebiten.NewImage(800, 600)
 	// First draw builds caches
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	gen1 := g.drum.rowsLayerGen
 	if gen1 == 0 {
 		t.Fatalf("expected rowsLayer to be built")
@@ -58,7 +58,7 @@ func TestRowsLayerCacheRebuild(t *testing.T) {
 		t.Fatalf("expected initial rowsLayerBytes to be > 0")
 	}
 	// Second draw with no changes should reuse
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	if g.drum.rowsLayerGen != gen1 {
 		t.Fatalf("rowsLayer should be reused; got gen %d -> %d", gen1, g.drum.rowsLayerGen)
 	}
@@ -68,7 +68,7 @@ func TestRowsLayerCacheRebuild(t *testing.T) {
 	// Change offset -> should rebuild layer (but reuse row sprites via shift)
 	g.drum.Offset += shiftSteps
 	g.drum.markRowsShiftDirty()
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	gen2 := g.drum.rowsLayerGen
 	if gen2 == gen1 {
 		t.Fatalf("expected rowsLayer rebuild on offset shift")
@@ -97,7 +97,7 @@ func TestRowsLayerCacheRebuild(t *testing.T) {
 	// Change row content -> should rebuild row sprite and layer
 	g.drum.Rows[0].Steps[1] = true
 	g.drum.markRowDirty(0)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	if g.drum.rowsLayerGen == gen2 {
 		t.Fatalf("expected rowsLayer rebuild after row content change")
 	}

@@ -21,7 +21,7 @@ func (g *Game) nodeScreenRect(n *uiNode) (x1, y1, x2, y2 float64) {
 	}
 
 	sx := offX + unitPx*float64(n.I)
-	sy := offY + unitPx*float64(n.J) + topOffset
+	sy := offY + unitPx*float64(n.J) + float64(gridTopOffset())
 	// Use baseline grid radius for screen-rect math to keep alignment tests
 	// stable; draw path applies animation/hover scaling visually.
 	r := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale

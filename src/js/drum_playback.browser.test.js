@@ -4,7 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -14,15 +14,16 @@ const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright",
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8240 + Math.floor(Math.random() * 1000);
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
+if (!shouldSkipWasmBuild("play_ui.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
+}
 
 const server = http.createServer((req, res) => { if (req.url === "/") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
@@ -47,7 +48,8 @@ const server = http.createServer((req, res) => { if (req.url === "/") { const ht
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -82,16 +84,24 @@ await page.evaluate(() => ensureDefaultPath());
 await page.waitForFunction(() => typeof startPlay === 'function');
 await assertSimpleDrawMode(page, true, "drum playback");
 await clearSchedulerMismatches(page);
+
+// Force AudioContext creation via user gesture — audio.js defers context
+// creation to unlockAudio() which only runs on user gesture events.
+// Without this, no context exists and all audio events stay queued forever.
+await page.click('body');
+await page.waitForFunction(() => window.__audioCtx && window.__audioCtx.state === 'running', {}, { timeout: 5000 });
+
 await page.evaluate(() => startPlay());
 
 // Try to resume audio context, then wait for sample capture
 await page.evaluate(() => window.resumeAudio && window.resumeAudio());
-await page.waitForFunction(() => window.__samples && window.__samples.length > 0, {}, { timeout: 5000 });
-await page.waitForFunction(() => window.__done === true, {}, { timeout: 5000 });
+await page.waitForFunction(() => window.__samples && window.__samples.length > 0, {}, { timeout: 15000 });
+await page.waitForFunction(() => window.__done === true, {}, { timeout: 15000 });
 const first = await page.evaluate(() => window.__samples.findIndex((v) => v !== 0));
 const count = await page.evaluate(() => window.__samples.length);
 
 await assertNoSchedulerMismatches(page, "drum playback: scheduler mismatches");
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "drum_playback");
 await browser.close();
 server.close();
 

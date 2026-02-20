@@ -1,13 +1,13 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // addEdgeNoRefresh records an orthogonal edge without triggering expensive
 // rebuilds. It returns true when a new edge was added.
 func (g *Game) addEdgeNoRefresh(a, b *uiNode) bool {
-	if !(a.I == b.I || a.J == b.J) { // only orthogonal
+	if a.I != b.I && a.J != b.J { // only orthogonal
 		return false
 	}
 	for _, e := range g.edges { // avoid exact duplicate in same direction; allow opposite direction

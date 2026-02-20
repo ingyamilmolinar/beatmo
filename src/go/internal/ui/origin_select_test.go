@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // helper to click at screen coordinates over multiple updates
@@ -84,21 +84,21 @@ func TestDrumAutoHeightMatchesRows(t *testing.T) {
 	w, h := 800, 600
 	withForceAutoSize(t, true)
 	g.Layout(w, h)
-	want := timelineHeight + (len(g.drum.Rows)+1)*g.drum.rowHeight()
+	want := desktopHeaderH + (len(g.drum.Rows)+1)*g.drum.rowHeight()
 	have := g.winH - g.split.Y
 	// Allow clamping at both ends: minimum drum height (120) and maximum (h-120).
 	if have != want {
-		if !(want < 120 && have == 120) && !(want > h-120 && have == 120) && !(want > h-120 && have == h-120) {
+		if (want >= 120 || have != 120) && (want <= h-120 || have != 120) && (want <= h-120 || have != h-120) {
 			t.Fatalf("initial drum height=%d want %d", have, want)
 		}
 	}
 	// Add a row and re-layout; height should grow by one rowHeight
 	g.drum.AddRow()
 	g.Layout(w, h)
-	want2 := timelineHeight + (len(g.drum.Rows)+1)*g.drum.rowHeight()
+	want2 := desktopHeaderH + (len(g.drum.Rows)+1)*g.drum.rowHeight()
 	have2 := g.winH - g.split.Y
 	if have2 != want2 {
-		if !(want2 < 120 && have2 == 120) && !(want2 > h-120 && have2 == 120) && !(want2 > h-120 && have2 == h-120) {
+		if (want2 >= 120 || have2 != 120) && (want2 <= h-120 || have2 != 120) && (want2 <= h-120 || have2 != h-120) {
 			t.Fatalf("after add drum height=%d want %d", have2, want2)
 		}
 	}

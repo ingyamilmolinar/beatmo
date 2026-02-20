@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertSimpleDrawMode, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -13,15 +13,16 @@ const goDir = path.resolve(repoRoot, "src/go");
 const GO = resolveGoBinary();
 
 // Build the full WASM so we exercise the real DrumView layout.
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
 // Minimal static server.
-const port = 8395 + Math.floor(Math.random() * 400);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
@@ -33,7 +34,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -45,6 +47,13 @@ await page.waitForFunction(() =>
   typeof forceDraw === 'function'
 );
 await assertSimpleDrawMode(page, false, "eq panel columns");
+
+// Reset EQ gains to 0 dB — the startup demo may have non-zero EQ values.
+await page.evaluate(() => {
+  importJSON?.(JSON.stringify({ version: 1, eq: { gains_db: [] } }));
+  forceDraw?.();
+});
+await page.waitForTimeout(200);
 
 // Override analyzer snapshot with a synthetic spectrum so bands are predictable.
 const snap = await page.evaluate(() => { const spec = new Array(512).fill(0);
@@ -64,6 +73,7 @@ const snap = await page.evaluate(() => { const spec = new Array(512).fill(0);
   };
 });
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "eq_panel_columns");
 await browser.close();
 server.close();
 

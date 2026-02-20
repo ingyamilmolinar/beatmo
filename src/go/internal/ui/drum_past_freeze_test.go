@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // The past must never change: once playback has advanced past a subdivision,
@@ -35,7 +35,7 @@ func TestDrumView_PastNeverChanges(t *testing.T) {
 
 	// Build caches and start playback.
 	dst := ebiten.NewImage(800, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	g.drum.SetBPM(120)
 	g.SetAppliedBPMForTest(120)
 	g.SetPlaying(true)
@@ -59,7 +59,7 @@ func TestDrumView_PastNeverChanges(t *testing.T) {
 	}
 	g.updateBeatInfos()
 	g.refreshDrumRow()
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	afterState := g.dumpRowState(0)
 	after := append([]bool(nil), g.drum.Rows[0].Steps...)
 
@@ -112,7 +112,7 @@ func TestDrumView_PastCellTypesStayFrozenOnMuteToggle(t *testing.T) {
 	g.refreshDrumRow()
 
 	dst := ebiten.NewImage(800, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	g.drum.SetBPM(120)
 	g.SetAppliedBPMForTest(120)
 	g.SetPlaying(true)
@@ -134,7 +134,7 @@ func TestDrumView_PastCellTypesStayFrozenOnMuteToggle(t *testing.T) {
 	}
 	g.updateBeatInfos()
 	g.refreshDrumRow()
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	afterTypes := append([]model.NodeType(nil), g.drum.Rows[0].CellTypes...)
 
 	for i := 0; i < len(afterTypes) && i < len(beforeTypes); i++ {
@@ -169,7 +169,7 @@ func TestDrumView_FutureUpdatesImmediatelyOnEdit(t *testing.T) {
 	g.refreshDrumRow()
 
 	dst := ebiten.NewImage(640, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	g.drum.SetBPM(60)
 	g.SetAppliedBPMForTest(60)
 	g.SetPlaying(true)
@@ -268,7 +268,7 @@ func TestDrumView_PastCellsImmutableDuringPlayback(t *testing.T) {
 	g.refreshDrumRow()
 
 	dst := ebiten.NewImage(1024, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 
 	g.drum.SetBPM(120)
 	advancePlayback(g, 80*time.Millisecond)
@@ -294,7 +294,7 @@ func TestDrumView_PastCellsImmutableDuringPlayback(t *testing.T) {
 	// Let the game loop run for a while.
 	advanceFrames(g, 12)
 	g.refreshDrumRow()
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 
 	stateAfter := g.dumpRowState(0)
 	stepsAfter := append([]bool(nil), g.drum.Rows[0].Steps...)

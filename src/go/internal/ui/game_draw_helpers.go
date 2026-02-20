@@ -7,18 +7,23 @@ import (
 	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/internal/utils"
+	"github.com/ingyamilmolinar/beatmo/internal/utils"
 )
 
 // drawDivider renders a thicker horizontal divider between top and bottom panes,
 // highlighting on hover to make it discoverable as draggable.
 func (g *Game) drawDivider(screen *ebiten.Image) {
-	_, mY := cursorPosition()
+	mX, mY := cursorPosition()
 	grab := 6
-	hover := utils.Abs(mY-g.split.Y) <= grab
 	baseCol := color.RGBA{180, 180, 180, 255}
 	hovCol := color.RGBA{255, 255, 255, 255}
 	thick := 2.0
+	var hover bool
+	if g.split.horizontal {
+		hover = utils.Abs(mY-g.split.Y) <= grab
+	} else {
+		hover = utils.Abs(mX-g.split.X) <= grab
+	}
 	col := baseCol
 	if hover {
 		thick = 3.0
@@ -26,10 +31,30 @@ func (g *Game) drawDivider(screen *ebiten.Image) {
 	}
 	g.dividerHover = hover
 	g.dividerThick = thick
-	DrawLineCam(screen,
-		0, float64(g.split.Y),
-		float64(g.winW), float64(g.split.Y),
-		&ebiten.GeoM{}, col, thick)
+	mobile := isSmallScreen()
+	shadowCol := color.RGBA{8, 8, 10, 255}
+	highCol := color.RGBA{50, 50, 58, 255}
+	if g.split.horizontal {
+		y := g.split.Y
+		if mobile {
+			drawRect(screen, image.Rect(0, y, g.winW, y+1), color.NRGBA{255, 255, 255, 20}, true)
+		} else {
+			drawRect(screen, image.Rect(0, y-1, g.winW, y), shadowCol, true)
+			drawRect(screen, image.Rect(0, y, g.winW, y+1), col, true)
+			drawRect(screen, image.Rect(0, y+1, g.winW, y+2), highCol, true)
+		}
+		DrawSplitterHandle(screen, g.winW/2, y, true, hover)
+	} else {
+		x := g.split.X
+		if mobile {
+			drawRect(screen, image.Rect(x, 0, x+1, g.winH), color.NRGBA{255, 255, 255, 20}, true)
+		} else {
+			drawRect(screen, image.Rect(x-1, 0, x, g.winH), shadowCol, true)
+			drawRect(screen, image.Rect(x, 0, x+1, g.winH), col, true)
+			drawRect(screen, image.Rect(x+1, 0, x+2, g.winH), highCol, true)
+		}
+		DrawSplitterHandle(screen, x, g.winH/2, false, hover)
+	}
 }
 
 // drawCrossScreen paints a simple cross at (x,y) in screen pixels for diagnostics.
@@ -133,7 +158,7 @@ func (g *Game) drawDrumPane(dst *ebiten.Image) {
 	// quantized via internal counters.
 	g.drum.simpleDraw = g.simpleDraw
 	g.drum.perfDrawLite = false // EQ visualizer always enabled - already optimized with early exits
-	g.drum.Draw(dst, g.highlightSnapshot(), g.frame, g.drumBeatInfos, g.displayBeat())
+	g.drum.Draw(dst, g.highlightSnapshotByRow(len(g.drum.Rows)), g.frame, g.drumBeatInfos, g.displayBeat())
 }
 
 func (g *Game) maybeYield() {

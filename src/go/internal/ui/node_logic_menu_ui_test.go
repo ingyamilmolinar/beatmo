@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestNodeLogicDropdown_OpenSelectAndAdjust mirrors the instrument dropdown UX:
@@ -25,9 +25,9 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 	// Open popup on r1 and open logic dropdown
 	g.sel = r1
 	r1.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = r1
-	g.updateNodeMenuRects()
+	g.sidebar.Open(r1)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
 	click := func(id string, b *Button, x, y int) {
 		if b == nil {
 			t.Fatalf("button %s missing", id)
@@ -38,59 +38,59 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 		b.Handle(x, y, false)
 	}
 	// Click logic button
-	bl := g.nodeMenuRects["logic"]
+	bl := g.sidebar.rects["logic"]
 	mx, my := (bl.Min.X+bl.Max.X)/2, (bl.Min.Y+bl.Max.Y)/2
-	if g.nodeMenuBtns == nil {
+	if g.sidebar.btns == nil {
 		t.Fatalf("node menu buttons not initialized")
 	}
-	click("logic", g.nodeMenuBtns["logic"], mx, my)
+	click("logic", g.sidebar.btns["logic"], mx, my)
 	// Apply queued UI change
 	_ = g.Update()
-	if !g.nodeLogicOpen {
+	if !g.sidebar.logicDropdownOpen {
 		t.Fatalf("logic menu did not open")
 	}
 	// Select Probability rule
-	g.updateNodeMenuRects()
-	prob := g.nodeMenuRects["logic:probability"]
+	g.sidebar.layout()
+	prob := g.sidebar.rects["logic:probability"]
 	mx, my = (prob.Min.X+prob.Max.X)/2, (prob.Min.Y+prob.Max.Y)/2
-	click("logic:probability", g.nodeMenuBtns["logic:probability"], mx, my)
+	click("logic:probability", g.sidebar.btns["logic:probability"], mx, my)
 	_ = g.Update()
 	// Adjust probability down then up
-	g.updateNodeMenuRects()
-	if b := g.nodeMenuBtns["lp-"]; b == nil {
+	g.sidebar.layout()
+	if b := g.sidebar.btns["lp-"]; b == nil {
 		t.Fatalf("missing lp- button")
 	} else {
 		click("lp-", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)
 	}
-	if b := g.nodeMenuBtns["lp+"]; b == nil {
+	if b := g.sidebar.btns["lp+"]; b == nil {
 		t.Fatalf("missing lp+ button")
 	} else {
 		click("lp+", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)
 	}
 
 	// Now choose Trigger Every N and ensure N adjusters exist and affect params
-	if b := g.nodeMenuBtns["logic"]; b == nil {
+	if b := g.sidebar.btns["logic"]; b == nil {
 		t.Fatalf("logic button missing on reopen")
 	} else {
 		click("logic", b, (bl.Min.X+bl.Max.X)/2, (bl.Min.Y+bl.Max.Y)/2)
 	}
 	_ = g.Update()
-	g.nodeLogicOpen = true
-	g.updateNodeMenuRects()
-	trig := g.nodeMenuRects["logic:every_n_triggers"]
-	if b := g.nodeMenuBtns["logic:every_n_triggers"]; b == nil {
+	g.sidebar.logicDropdownOpen = true
+	g.sidebar.layout()
+	trig := g.sidebar.rects["logic:every_n_triggers"]
+	if b := g.sidebar.btns["logic:every_n_triggers"]; b == nil {
 		t.Fatalf("missing every_n_triggers item")
 	} else {
 		click("logic:every_n_triggers", b, (trig.Min.X+trig.Max.X)/2, (trig.Min.Y+trig.Max.Y)/2)
 	}
 	_ = g.Update()
-	g.updateNodeMenuRects()
-	if b := g.nodeMenuBtns["ln+"]; b == nil {
+	g.sidebar.layout()
+	if b := g.sidebar.btns["ln+"]; b == nil {
 		t.Fatalf("missing ln+ button")
 	} else {
 		click("ln+", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)
 	}
-	if b := g.nodeMenuBtns["ln-"]; b == nil {
+	if b := g.sidebar.btns["ln-"]; b == nil {
 		t.Fatalf("missing ln- button")
 	} else {
 		click("ln-", b, b.Rect().Min.X+1, b.Rect().Min.Y+1)

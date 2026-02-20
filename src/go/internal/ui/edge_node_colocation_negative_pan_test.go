@@ -31,7 +31,7 @@ func TestEdgeNodeColocationNegativePan(t *testing.T) {
 		offY := math.Round(g.cam.OffsetY)
 		proj := func(wx, wy float64) (sx, sy float64) {
 			sx = wx*camScale + offX
-			sy = wy*camScale + offY + float64(topOffset)
+			sy = wy*camScale + offY + float64(gridTopOffset())
 			return
 		}
 		// Node centers

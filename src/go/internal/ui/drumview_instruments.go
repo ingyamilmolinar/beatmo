@@ -5,7 +5,7 @@ import (
 	"os"
 	"slices"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (dv *DrumView) refreshInstruments() {
@@ -139,7 +139,7 @@ func (dv *DrumView) refreshInstruments() {
 				break
 			}
 		}
-		if os.Getenv("TUNKUL_DEBUG_INST") == "1" {
+		if os.Getenv("BEATMO_DEBUG_INST") == "1" {
 			fmt.Printf("[instMenu/refresh] changed=true lastAdded=%s opts=%d->%d\n", dv.instMenuLastAdded, len(dv.instOptions), len(combined))
 		}
 		// Invalidate label caches since instrument list or metadata changed.

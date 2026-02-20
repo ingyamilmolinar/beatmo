@@ -67,17 +67,44 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 	smallShift := canReuse && dxPx != 0 && abs(dxPx) <= padPx && rowWidth > 0 && dv.Length > 0
 	// If any row needs rebuild, ensure we rebuild row sprites first and mark layer dirty.
 	vis := dv.visibleRows()
+	anyRebuilt := false
+	allPatches := true // true if every rebuilt row used the patch (in-place) path
 	for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
 		if dv.needsRowRebuild(i) {
-			dv.buildRowSprite(i)
+			kind := dv.buildRowSprite(i)
 			if i < len(dv.rowDirty) {
 				dv.rowDirty[i] = false
 			}
 			if i < len(dv.rowFullDirty) {
 				dv.rowFullDirty[i] = false
 			}
-			needFull = true
+			anyRebuilt = true
+			if kind != rowRebuildPatch {
+				allPatches = false
+			}
 		}
+	}
+	// When all rebuilt rows only patched cells in-place, overdraw them onto
+	// the existing layer instead of a full recomposite. Row sprites are fully
+	// opaque (background fill first), so overdraw replaces old pixels correctly.
+	if anyRebuilt && allPatches && !needFull && !smallShift && dv.rowsLayer != nil {
+		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
+			if i < 0 || i >= len(dv.rowCache) || dv.rowCache[i] == nil {
+				continue
+			}
+			y := rowBase + (i-dv.rowOffset)*dv.rowHeight()
+			var op ebiten.DrawImageOptions
+			op.GeoM.Translate(float64(baseX), float64(y))
+			dv.rowsLayer.DrawImage(dv.rowCache[i], &op)
+		}
+		dv.rowsLayerOffset = dv.Offset
+		dv.rowsLayerGen++
+		dv.rowsLayerDirty = false
+		dv.rowsLayerFrame = dv.frame
+		return
+	}
+	if anyRebuilt && !allPatches {
+		needFull = true
 	}
 	if !needFull && !smallShift {
 		if offsetDelta != 0 {
@@ -87,7 +114,12 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		return
 	}
 	if smallShift {
-		img := ebiten.NewImage(w, h)
+		if dv.rowsLayerScratch == nil || dv.rowsLayerScratch.Bounds().Dx() != w || dv.rowsLayerScratch.Bounds().Dy() != h {
+			dv.rowsLayerScratch = ebiten.NewImage(w, h)
+		} else {
+			dv.rowsLayerScratch.Clear()
+		}
+		img := dv.rowsLayerScratch
 		var op ebiten.DrawImageOptions
 		op.GeoM.Translate(float64(-dxPx), 0)
 		img.DrawImage(dv.rowsLayer, &op)
@@ -154,7 +186,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 				}
 			}
 		}
-		dv.rowsLayer = img
+		dv.rowsLayer, dv.rowsLayerScratch = img, dv.rowsLayer
 		dv.rowsLayerW, dv.rowsLayerH = w, h
 		dv.rowsLayerOffset = dv.Offset
 		dv.rowsLayerRowOff = dv.rowOffset
@@ -164,7 +196,13 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		dv.rowsLayerFrame = dv.frame
 		return
 	}
-	img := ebiten.NewImage(w, h)
+	var img *ebiten.Image
+	if dv.rowsLayer != nil && dv.rowsLayerW == w && dv.rowsLayerH == h {
+		img = dv.rowsLayer
+		img.Clear()
+	} else {
+		img = ebiten.NewImage(w, h)
+	}
 	// Draw each visible row sprite at its position inside dv.Bounds.
 	for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
 		if i < 0 || i >= len(dv.rowCache) || dv.rowCache[i] == nil {

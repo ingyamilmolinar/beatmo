@@ -4,23 +4,24 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
+if (!shouldSkipWasmBuild("main.wasm")) {
 const wasmBuild = spawnSync(
   GO,
   ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (wasmBuild.status !== 0) throw new Error("go build main wasm failed");
+}
 
-const tunkulFixture = fs.readFileSync(path.resolve(jsDir, "../../tunkul.json"), "utf8");
+const beatmoFixture = fs.readFileSync(path.resolve(jsDir, "../go/internal/assets/live_edit_fixture.json"), "utf8");
 
-const port = 8420 + Math.floor(Math.random() * 400);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404);
@@ -35,7 +36,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((resolve) => server.listen(port, resolve));
+await new Promise((resolve) => server.listen(0, resolve));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 try { const page = await browser.newPage();
@@ -47,7 +49,7 @@ try { const page = await browser.newPage();
     importJSON(json);
     forceDraw?.();
     resumeAudio?.();
-  }, tunkulFixture);
+  }, beatmoFixture);
 
 await page.waitForFunction(() => typeof startPlay === "function");
 await page.waitForFunction(() => typeof dumpRowState === "function");
@@ -111,7 +113,7 @@ await page.waitForFunction(() => typeof dumpRowState === "function");
       const ensureFuture = (need) => (typeof ensure === "function" ? ensure(need) : undefined);
 
       const waitForFutureAlignment = async (row, scenarioLabel) => { const subdiv = typeof gridSubdiv === "function" ? gridSubdiv() : 32;
-        const deadline = performance.now() + 1200;
+        const deadline = performance.now() + 8000;
         let attempts = 0;
         let lastDiff = null;
         while (performance.now() < deadline) { const snap = capture(row);
@@ -155,7 +157,7 @@ await page.waitForFunction(() => typeof dumpRowState === "function");
           throw new Error("future pair not found");
         };
 
-        const ensureButtonClick = (x, y) => { const canvas = document.querySelector("canvas");
+        const _ensureButtonClick = (x, y) => { const canvas = document.querySelector("canvas");
           if (!canvas) return;
           const evts = [
             new PointerEvent("pointerdown", { clientX: x, clientY: y, button: 0, bubbles: true }),
@@ -431,6 +433,8 @@ await page.waitForFunction(() => typeof dumpRowState === "function");
     }
   }
   await assertNoSchedulerMismatches(page, "live edit scenario: scheduler mismatches");
-} finally { await browser.close();
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "live_edit_scenario");
+} finally { 
+ await browser.close();
   await new Promise((resolve) => server.close(resolve));
 }

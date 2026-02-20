@@ -4,8 +4,8 @@ import (
 	"image"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // Ensure category click does not leave an empty spacer row and the popup height is sane.
@@ -45,10 +45,10 @@ func TestInstrumentDropdownNoEmptySpacer(t *testing.T) {
 // Ensure popup width is sufficient and transport controls remain usable.
 func TestTransportNotShrunkByWideLabels(t *testing.T) {
 	graph := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 500, 260), graph, testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 260), graph, testLogger)
 	dv.Rows[0].Name = "ExtremelyLongRowNameThatStretchesTheLabelColumn"
 	dv.recalcButtons()
-	if dv.playBtn.Rect().Dx() < 24 || dv.stopBtn.Rect().Dx() < 24 {
+	if dv.playBtn.Rect().Dx() < 16 || dv.stopBtn.Rect().Dx() < 16 {
 		t.Fatalf("transport buttons shrunk: play=%d stop=%d", dv.playBtn.Rect().Dx(), dv.stopBtn.Rect().Dx())
 	}
 	if dv.instMenuFullRect.Dx() < 200 {

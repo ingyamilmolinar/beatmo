@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // Clicking within the on-screen rect of a node should select it and open the popup,
@@ -38,7 +39,7 @@ func TestClickNodeByScreenRectOpensPopup(t *testing.T) {
 	if g.sel != n {
 		t.Fatalf("expected node selected via screen rect click")
 	}
-	if !g.nodeMenuOpen || g.nodeMenuNode != n {
+	if !g.sidebar.IsOpen() || g.sidebar.Node() != n {
 		t.Fatalf("expected popup open for clicked node")
 	}
 }

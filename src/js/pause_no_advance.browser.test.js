@@ -4,7 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -14,14 +14,15 @@ const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright",
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8250 + Math.floor(Math.random() * 1000);
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
+if (!shouldSkipWasmBuild("play_ui.wasm")) {
 const build = spawnSync(
   GO, ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
+}
 
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/ui.html" : req.url;
   if (req.url === "/" || req.url === "/ui.html") { const html = `<!DOCTYPE html><html><body>
@@ -48,7 +49,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -65,7 +67,7 @@ await page.waitForTimeout(200);
 
 // Capture paused reference index using predictor visibility
 await page.waitForFunction(() => typeof currentBeat === 'function' && typeof gridSubdiv === 'function' && typeof visibleAt === 'function');
-const before = await page.evaluate(() => { const beat = currentBeat();
+const _before = await page.evaluate(() => { const beat = currentBeat();
   const div = gridSubdiv();
   const abs = Math.floor(beat * div);
   // Find a nearby visible index to treat as the frozen marker.
@@ -95,6 +97,7 @@ for (let i = 0; i < 6; i++) { const snap = await page.evaluate(() => { const bea
   await page.waitForTimeout(50);
 }
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "pause_no_advance");
 await browser.close();
 server.close();
 

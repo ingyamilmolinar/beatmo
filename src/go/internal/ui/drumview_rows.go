@@ -4,7 +4,7 @@ import (
 	"image"
 	"strings"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // SetBounds is called from Game whenever the splitter moves or the window
@@ -19,8 +19,33 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 			dv.recalcButtons()
 			dv.calcLayout()
 		}
+		// Re-clamp Length after bounds change so cells stay readable.
+		// Use the graph's authoritative beat length as the target so that
+		// Length can expand back when rotating to a wider orientation.
+		targetLen := dv.Length
+		if dv.Graph != nil {
+			if gl := dv.Graph.BeatLength(); gl > targetLen {
+				targetLen = gl
+			}
+		}
+		if clamped := dv.clampLength(targetLen); clamped != dv.Length {
+			oldLen := dv.Length
+			dv.Length = clamped
+			for _, r := range dv.Rows {
+				newSteps := make([]bool, dv.Length)
+				newTypes := make([]model.NodeType, dv.Length)
+				n := oldLen
+				if dv.Length < n {
+					n = dv.Length
+				}
+				copy(newSteps[:n], r.Steps[:n])
+				copy(newTypes[:n], r.CellTypes[:n])
+				r.Steps = newSteps
+				r.CellTypes = newTypes
+			}
+			dv.markAllRowsDirty()
+		}
 		dv.bgDirty = true
-		dv.bgDirty = false
 		// Invalidate row caches when bounds change (timeline width/height).
 		dv.invalidateRowCaches()
 		// Invalidate row controls cache when bounds change.
@@ -48,7 +73,7 @@ func (dv *DrumView) AddRow() {
 	dv.invalidateLabelCaches()
 	dv.activeSlider = -1
 	dv.calcLayout()
-	maxOff := len(dv.Rows) + 1 - dv.visibleRows()
+	maxOff := len(dv.Rows) - dv.visibleRows()
 	if maxOff < 0 {
 		maxOff = 0
 	}
@@ -98,7 +123,7 @@ func (dv *DrumView) DeleteRow(i int) {
 		dv.selRow = len(dv.Rows) - 1
 	}
 	dv.calcLayout()
-	maxOff := len(dv.Rows) + 1 - dv.visibleRows()
+	maxOff := len(dv.Rows) - dv.visibleRows()
 	if maxOff < 0 {
 		maxOff = 0
 	}

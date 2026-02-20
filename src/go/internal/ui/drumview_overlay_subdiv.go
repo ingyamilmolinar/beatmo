@@ -12,7 +12,7 @@ type SubdivMenuOverlay struct {
 func (o *SubdivMenuOverlay) ID() string { return "subdiv-menu" }
 
 func (o *SubdivMenuOverlay) IsOpen() bool {
-	return o.dv.subdivMenuOpen
+	return o.dv.isSubdivMenuOpen()
 }
 
 func (o *SubdivMenuOverlay) ZIndex() int { return 200 }

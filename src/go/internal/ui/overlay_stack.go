@@ -58,7 +58,17 @@ func (s *OverlayStack) HandleInput(x, y int, pressed bool) InputResult {
 				return result
 			}
 		} else if pressed {
-			// Click outside an open overlay closes it
+			// Click outside an open overlay — but NOT during the suppression
+			// window set by the action that opened it. Without this guard,
+			// the press that opens a popup (e.g., tapping a row label to open
+			// the context menu) is also seen by the overlay stack on the very
+			// next frame as "click outside", immediately closing the popup and
+			// producing a 1-frame flicker. The DeferredTap.Begin check already
+			// honors this guard; the overlay-stack close path must too.
+			if suppressClicksUntilRelease {
+				// Consume without closing — opening press still active.
+				return InputConsumed
+			}
 			o.Close()
 			SuppressClicksUntilMouseUp()
 			return InputConsumed
@@ -76,6 +86,18 @@ func (s *OverlayStack) Capturing() bool {
 func (s *OverlayStack) HasOpen() bool {
 	for _, o := range s.overlays {
 		if o.IsOpen() {
+			return true
+		}
+	}
+	return false
+}
+
+// HasOpenExcept returns true if any open overlay has a different ID than id.
+// Used to gate keyboard-input sections without per-component awareness of
+// which other overlays exist.
+func (s *OverlayStack) HasOpenExcept(id string) bool {
+	for _, o := range s.overlays {
+		if o.ID() != id && o.IsOpen() {
 			return true
 		}
 	}

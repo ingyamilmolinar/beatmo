@@ -20,7 +20,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertSimpleDrawMode, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -30,13 +30,14 @@ const chromiumPath = path.join(jsDir, "node_modules", ".cache", "ms-playwright",
 if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "chromium"], { cwd: jsDir, stdio: "inherit" });
 }
 
-const port = 8150 + Math.floor(Math.random() * 1000);
 // Build lightweight UI WASM that exposes JS helpers.
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
+if (!shouldSkipWasmBuild("play_ui.wasm")) {
 const build = spawnSync(GO, ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"], { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit"
 });
 if (build.status !== 0) throw new Error("go build play_ui failed");
+}
 
 const server = http.createServer((req, res) => { try { console.log('[SRV]', req.url); } catch(_) {}
   const file = req.url === "/" ? "/play_ui.html" : req.url;
@@ -50,7 +51,8 @@ const server = http.createServer((req, res) => { try { console.log('[SRV]', req.
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -64,6 +66,7 @@ await page.evaluate(() => window.ensureDefaultPath());
 // Open node menu for (0,0)
 await page.waitForFunction(() => !!window.openNodeMenu);
 await page.evaluate(() => window.openNodeMenu(0, 0));
+await page.evaluate(() => window.sidebarExpandAllSections?.());
 
 // Read initial params
 const before = await page.evaluate(() => window.nodeParams(0,0));
@@ -129,5 +132,6 @@ if (!(afterType === 0 || afterType === 2)) {
   }
 }
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "popup_node");
 await browser.close();
 server.close();

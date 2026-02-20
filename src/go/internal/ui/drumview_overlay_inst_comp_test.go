@@ -147,13 +147,19 @@ func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
 	btn := comp.instBtns[0]
 	btnRect := btn.Rect()
 
-	// Button.Handle triggers OnClick on first press (held==1)
+	// Press: with deferred tap, this starts touch tracking but doesn't fire yet
 	result := comp.HandleInput(btnRect.Min.X+5, btnRect.Min.Y+5, true)
 	if result == InputIgnored {
 		t.Error("expected input to be consumed on button press")
 	}
 
-	// Button callback is fired on press, so menu should be closed
+	// Release: deferred tap fires the button on release
+	result = comp.HandleInput(btnRect.Min.X+5, btnRect.Min.Y+5, false)
+	if result == InputIgnored {
+		t.Error("expected input to be consumed on button release")
+	}
+
+	// Button callback is fired on release, so menu should be closed
 	if comp.IsOpen() {
 		t.Error("expected menu to be closed after selection")
 	}
@@ -204,6 +210,7 @@ func TestInstrumentMenuComponent_HoldCapture(t *testing.T) {
 }
 
 func TestInstrumentMenuComponent_ClickOutsideCloses(t *testing.T) {
+	clearClickSuppressionInst(t)
 	comp := NewInstrumentMenuComponent("test-inst")
 
 	var closeCalled bool
@@ -220,6 +227,9 @@ func TestInstrumentMenuComponent_ClickOutsideCloses(t *testing.T) {
 		},
 	})
 	comp.Open()
+
+	// Clear suppression state (simulates user releasing mouse after opening)
+	suppressClicksUntilRelease = false
 
 	// Click far outside the menu bounds
 	result := comp.HandleInput(500, 500, true)
@@ -389,6 +399,94 @@ func TestInstrumentMenuComponent_ScrollState(t *testing.T) {
 	}
 	if !scroll.HasScroll() {
 		t.Error("expected scrolling to be enabled")
+	}
+}
+
+func TestInstrumentMenuComponent_AnchorRectConsumed(t *testing.T) {
+	clearClickSuppressionInst(t)
+	comp := NewInstrumentMenuComponent("test-inst")
+
+	// Use a layout where the anchor rect does NOT overlap the scroll view
+	// (desktop-like: menu opens downward, anchor is above the menu).
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 50, 100, 74),
+		VertBounds: image.Rect(0, 0, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: "snare", Label: "Snare", Category: ""},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+	// Clear suppression for this test to isolate the anchor rect behavior.
+	suppressClicksUntilRelease = false
+
+	if !comp.IsOpen() {
+		t.Fatal("menu should be open")
+	}
+
+	// The anchor rect should NOT overlap with the scroll view.
+	ax := comp.props.AnchorRect.Min.X + 5
+	ay := comp.props.AnchorRect.Min.Y + 5
+
+	// Verify the anchor point is outside the fullRect/scrollView.
+	pt := image.Pt(ax, ay)
+	if pt.In(comp.fullRect) {
+		t.Skipf("anchor overlaps fullRect in this layout — test not applicable")
+	}
+
+	// Press at the anchor rect. The "click outside" check at line 771
+	// explicitly excludes AnchorRect. Without a consuming guard, this would
+	// return InputIgnored and fall through to the row label.
+	// With the suppression guard: when suppression is active, it is consumed.
+	// Without suppression: it returns InputIgnored (allowing toggle on deliberate click).
+	result := comp.HandleInput(ax, ay, true)
+	// Without suppression, anchor rect press should be InputIgnored (allows toggle).
+	if result != InputIgnored {
+		t.Errorf("expected InputIgnored for anchor rect press without suppression, got %v", result)
+	}
+
+	// Now test with suppression active (simulates the post-Open window).
+	suppressClicksUntilRelease = true
+	result = comp.HandleInput(ax, ay, true)
+	if result != InputConsumed {
+		t.Errorf("expected InputConsumed for anchor rect press during suppression, got %v", result)
+	}
+	if !comp.IsOpen() {
+		t.Error("menu should still be open during suppression")
+	}
+}
+
+func TestInstrumentMenuComponent_SuppressedPressConsumed(t *testing.T) {
+	clearClickSuppressionInst(t)
+	comp := NewInstrumentMenuComponent("test-inst")
+	comp.SetProps(InstrumentMenuProps{
+		AnchorRect: image.Rect(10, 100, 100, 124),
+		VertBounds: image.Rect(0, 50, 300, 500),
+		Categories: []string{},
+		Instruments: []InstrumentOption{
+			{ID: "kick", Label: "Kick", Category: ""},
+			{ID: "snare", Label: "Snare", Category: ""},
+		},
+		RowHeight: 24,
+	})
+	comp.Open()
+
+	// Open() calls SuppressClicksUntilMouseUp, so suppression should be active.
+	if !suppressClicksUntilRelease {
+		t.Fatal("expected suppressClicksUntilRelease to be true after Open()")
+	}
+
+	// Press at a point outside both fullRect and anchorRect.
+	// With suppression active, this must still be consumed (not ignored)
+	// to prevent fall-through to other handlers during geometry transitions.
+	result := comp.HandleInput(500, 500, true)
+	if result != InputConsumed {
+		t.Errorf("expected InputConsumed for suppressed press outside menu, got %v", result)
+	}
+	if !comp.IsOpen() {
+		t.Error("menu should still be open during suppressed press")
 	}
 }
 

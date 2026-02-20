@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"slices"
 	"strings"
 
@@ -82,19 +81,24 @@ type InstrumentMenuComponent struct {
 	props InstrumentMenuProps
 	state InstrumentMenuState
 
-	scroll       VerticalScroller
+	scroll       *ScrollBehavior
 	categoryBtns []*Button
 	instBtns     []*Button
 	searchBox    *TextInput
 	backBtn      *Button
+	closeBtn     *Button
 	fullRect     image.Rectangle
 	searchRect   image.Rectangle
+
+	// Deferred tap: position stored on touch begin, fired on touch end if no scroll committed.
+	deferredTap DeferredTap
 }
 
 // NewInstrumentMenuComponent creates a new instrument menu component.
 func NewInstrumentMenuComponent(id string) *InstrumentMenuComponent {
 	return &InstrumentMenuComponent{
 		BaseComponent: *NewBaseComponent(id),
+		scroll:        NewScrollBehavior(DropdownScrollbarStyle, 24),
 	}
 }
 
@@ -129,10 +133,19 @@ func (m *InstrumentMenuComponent) rebuildMaps() {
 	}
 }
 
+// ensureScroll lazily initializes the scroll behavior.
+func (m *InstrumentMenuComponent) ensureScroll() {
+	if m.scroll == nil {
+		m.scroll = NewScrollBehavior(DropdownScrollbarStyle, 24)
+	}
+}
+
 // Open opens the menu.
 func (m *InstrumentMenuComponent) Open() {
+	m.ensureScroll()
 	m.state.open = true
 	m.state.hold = false
+	m.deferredTap.Cancel()
 	m.state.userScrolled = false
 	m.state.searchText = ""
 	m.state.lastAdded = ""
@@ -162,7 +175,10 @@ func (m *InstrumentMenuComponent) Open() {
 func (m *InstrumentMenuComponent) Close() {
 	m.state.open = false
 	m.state.hold = true // Set hold to capture until mouse release
-	m.scroll.EndDrag()
+	m.deferredTap.Cancel()
+	m.ensureScroll()
+	m.scroll.HandleDragEnd()
+	m.scroll.ResetTouch()
 	if m.props.OnClose != nil {
 		m.props.OnClose()
 	}
@@ -183,6 +199,22 @@ func (m *InstrumentMenuComponent) InstBtns() []*Button {
 	return m.instBtns
 }
 
+// VisibleInstIDs returns the instrument IDs for the currently visible instrument buttons.
+func (m *InstrumentMenuComponent) VisibleInstIDs() []string {
+	if m == nil {
+		return nil
+	}
+	first, _, _ := m.ScrollState()
+	var ids []string
+	for i := range m.instBtns {
+		idx := first + i
+		if idx < len(m.state.filteredInsts) {
+			ids = append(ids, m.state.filteredInsts[idx])
+		}
+	}
+	return ids
+}
+
 // CategoryBtns returns the current category buttons.
 func (m *InstrumentMenuComponent) CategoryBtns() []*Button {
 	return m.categoryBtns
@@ -195,21 +227,24 @@ func (m *InstrumentMenuComponent) BackBtn() *Button {
 
 // ScrollView returns the scroll view rectangle (for legacy state sync).
 func (m *InstrumentMenuComponent) ScrollView() image.Rectangle {
-	return m.scroll.View
+	m.ensureScroll()
+	return m.scroll.VS.View
 }
 
 // ScrollState returns (First, Visible, Total) for legacy state sync.
 func (m *InstrumentMenuComponent) ScrollState() (first, visible, total int) {
-	return m.scroll.First, m.scroll.Visible, m.scroll.Total
+	m.ensureScroll()
+	return m.scroll.VS.First, m.scroll.VS.Visible, m.scroll.VS.Total
 }
 
 // rebuildMenu rebuilds the menu buttons and layout.
 func (m *InstrumentMenuComponent) rebuildMenu() {
+	m.ensureScroll()
 	m.categoryBtns = m.categoryBtns[:0]
 	m.instBtns = m.instBtns[:0]
 
 	if m.props.AnchorRect.Empty() {
-		m.scroll.View = image.Rectangle{}
+		m.scroll.VS.View = image.Rectangle{}
 		return
 	}
 
@@ -223,11 +258,21 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 	if rowH < 1 {
 		rowH = 24
 	}
+	m.scroll.ItemHeight = rowH
+
+	// On mobile, use full width and always open upward (bottom sheet).
+	if isSmallScreen() {
+		base = image.Rect(vertBounds.Min.X, base.Min.Y, vertBounds.Max.X, base.Max.Y)
+	}
 
 	// Widen popup to fit long labels
 	minMenuW := m.props.LabelWidth + m.props.ControlsWidth/2
 	if minMenuW < 260 {
 		minMenuW = 260
+	}
+	if isSmallScreen() {
+		// Use full width on mobile.
+		minMenuW = vertBounds.Dx()
 	}
 	if minMenuW > vertBounds.Dx() {
 		minMenuW = vertBounds.Dx()
@@ -240,6 +285,9 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 	spaceDown := vertBounds.Max.Y - base.Max.Y
 	spaceUp := base.Min.Y - vertBounds.Min.Y
 	openUp := spaceDown < spaceUp
+	if isSmallScreen() {
+		openUp = true // always bottom sheet on mobile
+	}
 
 	if m.state.mode == InstMenuModeCategories {
 		m.buildCategoriesMode(base, vertBounds, rowH, openUp)
@@ -256,6 +304,13 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rectangle, rowH int, openUp bool) {
 	catCount := len(m.props.Categories)
 	vis := instMenuMaxVisibleRowsComp
+	if isSmallScreen() {
+		// On mobile, show more rows to fill the screen.
+		mobileVis := (vertBounds.Dy() - rowH*2) / rowH
+		if mobileVis > vis {
+			vis = mobileVis
+		}
+	}
 	if vis > catCount {
 		vis = catCount
 	}
@@ -283,10 +338,10 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 		startY = vertBounds.Max.Y - totalH
 	}
 
-	m.scroll.Total = catCount
-	m.scroll.Visible = vis
-	m.scroll.View = image.Rect(base.Min.X, startY, base.Max.X, startY+totalH)
-	m.fullRect = m.scroll.View
+	m.scroll.VS.Total = catCount
+	m.scroll.VS.Visible = vis
+	m.scroll.VS.View = image.Rect(base.Min.X, startY, base.Max.X, startY+totalH)
+	m.fullRect = m.scroll.VS.View
 
 	// Bias to active category
 	if !m.state.userScrolled && m.state.activeCat != "" {
@@ -295,13 +350,13 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 			if first < 0 {
 				first = 0
 			}
-			m.scroll.First = first
+			m.scroll.VS.First = first
 		}
 	}
-	m.scroll.Clamp()
+	m.scroll.VS.Clamp()
 
 	// Build category buttons
-	start := m.scroll.First
+	start := m.scroll.VS.First
 	for i := 0; i < vis && start+i < len(m.props.Categories); i++ {
 		cat := m.props.Categories[start+i]
 		r := image.Rect(base.Min.X, startY+i*rowH, base.Max.X, startY+(i+1)*rowH)
@@ -309,7 +364,7 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 		btn := NewButton(btnCat, DropdownStyle, func() {
 			m.state.activeCat = btnCat
 			m.state.mode = InstMenuModeInstruments
-			m.scroll.First = 0
+			m.scroll.VS.First = 0
 			m.state.cameFromCats = true
 			m.state.userScrolled = false
 			m.rebuildMenu()
@@ -322,6 +377,7 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 		m.categoryBtns = append(m.categoryBtns, btn)
 	}
 
+	m.buildCloseBtn()
 	m.SetBounds(m.fullRect)
 }
 
@@ -348,6 +404,13 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	}
 
 	vis := instMenuMaxVisibleRowsComp
+	if isSmallScreen() {
+		// On mobile, fill the screen with instrument rows.
+		mobileVis := (vertBounds.Dy() - rowH*2) / rowH
+		if mobileVis > vis {
+			vis = mobileVis
+		}
+	}
 	maxVisHost := vertBounds.Dy()/rowH - extraRows
 	if maxVisHost < 1 {
 		maxVisHost = 1
@@ -362,8 +425,12 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	if vis < wantMinVis && maxVisHost >= wantMinVis && len(m.state.filteredInsts) >= wantMinVis {
 		vis = wantMinVis
 	}
-	if vis > instMenuMaxVisibleRowsComp {
-		vis = instMenuMaxVisibleRowsComp
+	maxVis := instMenuMaxVisibleRowsComp
+	if isSmallScreen() {
+		maxVis = maxVisHost
+	}
+	if vis > maxVis {
+		vis = maxVis
 	}
 	if vis < 1 {
 		vis = 1
@@ -398,12 +465,12 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 
 	listStartY := searchY + rowH
 
-	m.scroll.Total = len(m.state.filteredInsts)
-	m.scroll.Visible = vis
+	m.scroll.VS.Total = len(m.state.filteredInsts)
+	m.scroll.VS.Visible = vis
 
 	if len(m.state.filteredInsts) == 0 {
 		emptyView := image.Rect(base.Min.X, listStartY, base.Max.X, listStartY+rowH)
-		m.scroll.View = emptyView
+		m.scroll.VS.View = emptyView
 		m.fullRect = image.Rect(base.Min.X, startY, base.Max.X, startY+rowH*2)
 		placeholder := NewButton("No matches", DisabledButtonStyle, nil)
 		placeholder.SetRect(insetRect(emptyView, buttonPad))
@@ -412,7 +479,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		return
 	}
 
-	m.scroll.View = image.Rect(base.Min.X, listStartY, base.Max.X, listStartY+vis*rowH)
+	m.scroll.VS.View = image.Rect(base.Min.X, listStartY, base.Max.X, listStartY+vis*rowH)
 	m.fullRect = image.Rect(base.Min.X, startY, base.Max.X, listStartY+vis*rowH)
 
 	// Clamp and shift if needed
@@ -425,7 +492,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		}
 		if shiftY != 0 {
 			m.fullRect = m.fullRect.Add(image.Pt(0, shiftY))
-			m.scroll.View = m.scroll.View.Add(image.Pt(0, shiftY))
+			m.scroll.VS.View = m.scroll.VS.View.Add(image.Pt(0, shiftY))
 			m.searchRect = m.searchRect.Add(image.Pt(0, shiftY))
 		}
 	}
@@ -437,7 +504,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 			if first < 0 {
 				first = 0
 			}
-			m.scroll.First = first
+			m.scroll.VS.First = first
 		}
 	}
 
@@ -448,12 +515,12 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 			if first < 0 {
 				first = 0
 			}
-			m.scroll.First = first
+			m.scroll.VS.First = first
 		}
 	}
 
 	m.state.lastAdded = ""
-	m.scroll.Clamp()
+	m.scroll.VS.Clamp()
 
 	hasScroll := m.scroll.HasScroll()
 	buttonMaxX := base.Max.X
@@ -469,7 +536,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		backRect := image.Rect(base.Min.X, startY, base.Max.X, startY+rowH)
 		m.backBtn = NewButton("Back", DropdownStyle, func() {
 			m.state.mode = InstMenuModeCategories
-			m.scroll.First = 0
+			m.scroll.VS.First = 0
 			m.state.cameFromCats = false
 			m.state.userScrolled = false
 			m.rebuildMenu()
@@ -482,8 +549,8 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 
 	// Instrument buttons
 	instStartY := listStartY
-	for i := 0; i < vis && m.scroll.First+i < len(m.state.filteredInsts); i++ {
-		id := m.state.filteredInsts[m.scroll.First+i]
+	for i := 0; i < vis && m.scroll.VS.First+i < len(m.state.filteredInsts); i++ {
+		id := m.state.filteredInsts[m.scroll.VS.First+i]
 		r := image.Rect(base.Min.X, instStartY+i*rowH, buttonMaxX, instStartY+(i+1)*rowH)
 		if r.Min.Y < vertBounds.Min.Y {
 			r = image.Rect(r.Min.X, vertBounds.Min.Y, r.Max.X, vertBounds.Min.Y+rowH)
@@ -507,6 +574,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		m.instBtns = append(m.instBtns, btn)
 	}
 
+	m.buildCloseBtn()
 	m.SetBounds(m.fullRect)
 }
 
@@ -521,10 +589,58 @@ func (m *InstrumentMenuComponent) matchSearch(id string) bool {
 		return true
 	}
 	label := strings.ToLower(m.state.displayLabelByID[id])
-	if strings.Contains(label, q) {
-		return true
+	return strings.Contains(label, q)
+}
+
+// buildCloseBtn creates the close button at the top-right of the menu.
+func (m *InstrumentMenuComponent) buildCloseBtn() {
+	if m.fullRect.Empty() {
+		m.closeBtn = nil
+		return
 	}
-	return false
+	r := closeButtonRect(m.fullRect, buttonPad)
+	m.closeBtn = NewButton("", PopupButtonStyle, func() { m.Close() })
+	m.closeBtn.Icon = "close"
+	m.closeBtn.IconColor = colButtonBorder
+	m.closeBtn.SetRect(r)
+	m.closeBtn.ConsumeOnPress = true
+}
+
+// CloseBtn returns the close button (for testing).
+func (m *InstrumentMenuComponent) CloseBtn() *Button { return m.closeBtn }
+
+// fireTapAt finds the button at (x, y) and calls its OnClick directly,
+// bypassing Button.Handle's press-to-fire mechanism. This is used for
+// deferred taps where the touch has ended and we know it was a tap.
+func (m *InstrumentMenuComponent) fireTapAt(x, y int) {
+	pt := image.Pt(x, y)
+	// Close button has highest z-order — check first.
+	if m.closeBtn != nil && pt.In(m.closeBtn.Rect()) && m.closeBtn.OnClick != nil {
+		m.closeBtn.OnClick()
+		return
+	}
+	if m.state.mode == InstMenuModeInstruments && m.backBtn != nil {
+		if pt.In(m.backBtn.Rect()) && m.backBtn.OnClick != nil {
+			m.backBtn.OnClick()
+			return
+		}
+	}
+	if m.state.mode == InstMenuModeCategories {
+		for _, btn := range m.categoryBtns {
+			if pt.In(btn.Rect()) && btn.OnClick != nil {
+				btn.OnClick()
+				return
+			}
+		}
+	}
+	if m.state.mode == InstMenuModeInstruments {
+		for _, btn := range m.instBtns {
+			if pt.In(btn.Rect()) && btn.OnClick != nil {
+				btn.OnClick()
+				return
+			}
+		}
+	}
 }
 
 // HandleInput processes mouse input for the instrument menu.
@@ -540,25 +656,91 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 		return InputIgnored
 	}
 
+	m.ensureScroll()
+
+	// ESC closes
+	if isKeyPressed(ebiten.KeyEscape) {
+		m.Close()
+		return InputConsumed
+	}
+
 	// Handle scrollbar drag
-	if m.scroll.dragging {
-		rowH := m.props.RowHeight
-		if rowH < 1 {
-			rowH = 24
-		}
-		if m.scroll.DragTo(y, instMenuScrollBarWidthComp, rowH/2) {
+	if m.scroll.Dragging() {
+		if m.scroll.HandleDragTo(y) {
 			m.state.userScrolled = true
 			m.rebuildMenu()
 		}
 		if !pressed {
-			m.scroll.EndDrag()
+			m.scroll.HandleDragEnd()
+		}
+		return InputCaptured
+	}
+
+	// Handle touch scroll (suppresses button taps while scrolling)
+	if m.scroll.ScrollingCommitted() {
+		if pressed {
+			m.scroll.HandleTouchMove(x, y)
+		} else {
+			// Scroll was committed — this is not a tap.
+			m.deferredTap.Cancel()
+			m.scroll.HandleTouchEnd()
+		}
+		if m.scroll.Dirty() {
+			m.state.userScrolled = true
+			m.scroll.ClearDirty()
+			m.rebuildMenu()
+		}
+		return InputCaptured
+	}
+
+	// While a touch is active but not yet committed (in dead zone),
+	// process moves. On release, check if it was a tap.
+	if m.scroll.TouchActive() {
+		if pressed {
+			if m.scroll.HandleTouchMove(x, y) {
+				m.state.userScrolled = true
+				m.rebuildMenu()
+			}
+		} else {
+			wasTap := !m.scroll.ScrollingCommitted()
+			m.scroll.HandleTouchEnd()
+			if wasTap {
+				m.deferredTap.End(m.fireTapAt)
+			} else {
+				m.deferredTap.Cancel()
+			}
 		}
 		return InputCaptured
 	}
 
 	pt := image.Pt(x, y)
 
-	// Handle search box input in instruments mode
+	// Handle scrollbar click BEFORE touch begin — the scrollbar thumb is
+	// inside VS.View so we must check it first to avoid intercepting it
+	// as a touch scroll.
+	if m.scroll.HasScroll() {
+		thumbRect := m.scroll.ThumbRect()
+		if pressed && pt.In(thumbRect) {
+			m.scroll.HandleDragStart(y)
+			return InputCaptured
+		}
+	}
+
+	// Touch begin in scroll area: suppress ALL buttons on initial contact.
+	// The deferred tap will fire on release if no scroll was committed.
+	if pressed && pt.In(m.scroll.VS.View) && !m.scroll.TouchActive() && !m.scroll.Dragging() {
+		if m.deferredTap.Begin(x, y) {
+			m.scroll.HandleTouchBegin(x, y)
+			return InputCaptured
+		}
+	}
+
+	// Close button (highest z-order, outside scroll area)
+	if m.closeBtn != nil && m.closeBtn.Handle(x, y, pressed) {
+		return InputConsumed
+	}
+
+	// Handle search box input in instruments mode (outside scroll area)
 	if m.state.mode == InstMenuModeInstruments && m.searchBox != nil {
 		if pt.In(m.searchRect) {
 			if m.searchBox.Update() {
@@ -572,15 +754,18 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 		}
 	}
 
-	// Handle back button
-	if m.state.mode == InstMenuModeInstruments && m.backBtn != nil {
+	// Gate button handlers: suppress while touch is active or deferred tap pending.
+	touchSuppressButtons := m.scroll.TouchActive() || m.deferredTap.Active()
+
+	// Handle back button (suppress during touch scroll)
+	if m.state.mode == InstMenuModeInstruments && m.backBtn != nil && !touchSuppressButtons {
 		if m.backBtn.Handle(x, y, pressed) {
 			return InputConsumed
 		}
 	}
 
-	// Handle category buttons
-	if m.state.mode == InstMenuModeCategories {
+	// Handle category buttons (suppress during touch scroll)
+	if m.state.mode == InstMenuModeCategories && !touchSuppressButtons {
 		for _, btn := range m.categoryBtns {
 			if btn.Handle(x, y, pressed) {
 				return InputConsumed
@@ -588,8 +773,8 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 		}
 	}
 
-	// Handle instrument buttons
-	if m.state.mode == InstMenuModeInstruments && !m.scroll.dragging {
+	// Handle instrument buttons (suppress during drag or touch scroll)
+	if m.state.mode == InstMenuModeInstruments && !m.scroll.Dragging() && !touchSuppressButtons {
 		for _, btn := range m.instBtns {
 			if btn.Handle(x, y, pressed) {
 				return InputConsumed
@@ -597,17 +782,10 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 		}
 	}
 
-	// Handle scrollbar click
-	if m.scroll.HasScroll() {
-		thumbRect := m.scroll.ThumbRect(instMenuScrollBarWidthComp, m.props.RowHeight/2)
-		if pressed && pt.In(thumbRect) {
-			m.scroll.StartDrag(y, instMenuScrollBarWidthComp, m.props.RowHeight/2)
-			return InputCaptured
-		}
-	}
-
 	// If pressed outside menu bounds, close it
-	if pressed && !pt.In(m.fullRect) && !pt.In(m.props.AnchorRect) {
+	// Skip this check while suppressClicksUntilRelease is active to prevent
+	// closing on category switch (geometry changes between modes)
+	if pressed && !suppressClicksUntilRelease && !pt.In(m.fullRect) && !pt.In(m.props.AnchorRect) {
 		m.Close()
 		SuppressClicksUntilMouseUp()
 		return InputConsumed
@@ -615,6 +793,12 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 
 	// If within bounds, consume to prevent click-through
 	if pt.In(m.fullRect) {
+		return InputConsumed
+	}
+
+	// Consume any press while click suppression is active to prevent
+	// fall-through during geometry transitions.
+	if pressed && suppressClicksUntilRelease {
 		return InputConsumed
 	}
 
@@ -629,27 +813,34 @@ func (m *InstrumentMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	if !image.Pt(x, y).In(m.fullRect) {
 		return InputIgnored
 	}
-	if m.scroll.ScrollBy(-steps) {
+	m.ensureScroll()
+	if m.scroll.HandleWheel(steps) {
 		m.state.userScrolled = true
 		m.rebuildMenu()
 	}
 	return InputConsumed // Always consume when menu is open and cursor is over it
 }
 
-// drawScrollbar renders the scrollbar if scrolling is needed.
-func (m *InstrumentMenuComponent) drawScrollbar(dst *ebiten.Image) {
-	if !m.scroll.HasScroll() {
+// Update processes per-frame updates (momentum decay only).
+// Touch move/end is handled entirely in HandleInput to avoid
+// interfering with deferred tap detection.
+func (m *InstrumentMenuComponent) Update() {
+	if !m.state.open {
 		return
 	}
-	rowH := m.props.RowHeight
-	if rowH < 1 {
-		rowH = 24
+	m.ensureScroll()
+	if m.scroll.HasMomentum() {
+		if m.scroll.UpdateMomentum() {
+			m.state.userScrolled = true
+			m.rebuildMenu()
+		}
 	}
-	barRect := m.scroll.BarRect(instMenuScrollBarWidthComp)
-	drawRect(dst, barRect, color.RGBA{70, 70, 70, 255}, true)
+}
 
-	thumbRect := m.scroll.ThumbRect(instMenuScrollBarWidthComp, rowH/2)
-	drawRect(dst, thumbRect, color.RGBA{200, 200, 200, 255}, true)
+// drawScrollbar renders the scrollbar if scrolling is needed.
+func (m *InstrumentMenuComponent) drawScrollbar(dst *ebiten.Image) {
+	m.ensureScroll()
+	m.scroll.Draw(dst)
 }
 
 // Draw renders the instrument menu.
@@ -675,11 +866,16 @@ func (m *InstrumentMenuComponent) Draw(dst *ebiten.Image) {
 		}
 		m.drawScrollbar(dst)
 	}
+	// Close button on top
+	if m.closeBtn != nil {
+		m.closeBtn.Draw(dst)
+	}
 }
 
 // Capturing returns whether the component is capturing input.
 func (m *InstrumentMenuComponent) Capturing() bool {
-	return m.scroll.dragging || m.state.hold
+	m.ensureScroll()
+	return m.scroll.Dragging() || m.scroll.ScrollingCommitted() || m.state.hold
 }
 
 // InputBounds returns the menu bounds for overlay compatibility.
@@ -702,6 +898,13 @@ func (m *InstrumentMenuComponent) ActiveCategory() string {
 
 // Scroll returns the scroll state for testing.
 func (m *InstrumentMenuComponent) Scroll() VerticalScroller {
+	m.ensureScroll()
+	return m.scroll.VS
+}
+
+// ScrollBehaviorRef returns the scroll behavior for testing.
+func (m *InstrumentMenuComponent) ScrollBehaviorRef() *ScrollBehavior {
+	m.ensureScroll()
 	return m.scroll
 }
 
@@ -726,8 +929,9 @@ func (m *InstrumentMenuComponent) SetScrollFirst(first int) {
 	if !m.state.open {
 		return
 	}
-	m.scroll.First = first
-	m.scroll.Clamp()
+	m.ensureScroll()
+	m.scroll.VS.First = first
+	m.scroll.VS.Clamp()
 	m.state.userScrolled = true
 	m.rebuildMenu()
 }

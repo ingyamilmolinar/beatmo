@@ -6,21 +6,30 @@ import (
 )
 
 func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
-	totalBeats := math.Max(float64(dv.timelineBeats), elapsedBeats)
+	// Use pattern length (not scroll extent) as denominator
+	units := float64(max1(dv.timelineUnitsPerBeat))
+	patternBeats := math.Ceil(float64(dv.Length) / units)
+	totalBeats := patternBeats
+	if dv.isPlaying {
+		totalBeats = math.Max(patternBeats, elapsedBeats)
+	}
 
-	// Convert to seconds and milliseconds with rounding, carrying overflows.
 	curMS := int(math.Round(elapsedBeats * dv.secPerBeat * 1000.0))
-	totMS := int(math.Round(totalBeats * dv.secPerBeat * 1000.0))
-	curS, curMs := curMS/1000, curMS%1000
-	totS, totMs := totMS/1000, totMS%1000
+	curS := curMS / 1000
 
-	return fmt.Sprintf("Beat %.3f/%.3f Time %ds %dms/%ds %dms", elapsedBeats, totalBeats, curS, curMs, totS, totMs)
+	return fmt.Sprintf("Beat %d/%d | %d:%02d", int(elapsedBeats), int(totalBeats), curS/60, curS%60)
 }
 
 // timelineInfoCached caches the last formatted timeline info string and only
 // re-renders when milliseconds change. This avoids per-frame allocations.
 func (dv *DrumView) timelineInfoCached(elapsedBeats float64) string {
-	totalBeats := math.Max(float64(dv.timelineBeats), elapsedBeats)
+	// Use pattern length (not scroll extent) as denominator
+	units := float64(max1(dv.timelineUnitsPerBeat))
+	patternBeats := math.Ceil(float64(dv.Length) / units)
+	totalBeats := patternBeats
+	if dv.isPlaying {
+		totalBeats = math.Max(patternBeats, elapsedBeats)
+	}
 	curMS := int(math.Round(elapsedBeats * dv.secPerBeat * 1000.0))
 	totMS := int(math.Round(totalBeats * dv.secPerBeat * 1000.0))
 	// Optional throttling on web builds to reduce per-frame text churn.
@@ -29,16 +38,13 @@ func (dv *DrumView) timelineInfoCached(elapsedBeats float64) string {
 		if (curMS/thr) == (dv.lastInfoCurMS/thr) && (totMS/thr) == (dv.lastInfoTotMS/thr) && dv.lastInfoText != "" {
 			return dv.lastInfoText
 		}
-	} else {
-		if curMS == dv.lastInfoCurMS && totMS == dv.lastInfoTotMS && dv.lastInfoText != "" {
-			return dv.lastInfoText
-		}
+	} else if curMS == dv.lastInfoCurMS && totMS == dv.lastInfoTotMS && dv.lastInfoText != "" {
+		return dv.lastInfoText
 	}
-	curS, curMs := curMS/1000, curMS%1000
-	totS, totMs := totMS/1000, totMS%1000
+	curS := curMS / 1000
 	dv.lastInfoCurMS = curMS
 	dv.lastInfoTotMS = totMS
-	dv.lastInfoText = fmt.Sprintf("Beat %.3f/%.3f Time %ds %dms/%ds %dms", elapsedBeats, totalBeats, curS, curMs, totS, totMs)
+	dv.lastInfoText = fmt.Sprintf("Beat %d/%d | %d:%02d", int(elapsedBeats), int(totalBeats), curS/60, curS%60)
 	return dv.lastInfoText
 }
 

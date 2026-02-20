@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestStepPixelsAlignment(t *testing.T) {

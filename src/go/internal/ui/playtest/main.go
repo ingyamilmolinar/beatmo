@@ -3,8 +3,8 @@
 package main
 
 import (
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
-	ui "github.com/ingyamilmolinar/tunkul/internal/ui"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
+	ui "github.com/ingyamilmolinar/beatmo/internal/ui"
 	"syscall/js"
 	"time"
 )
@@ -15,7 +15,7 @@ func main() {
 	// the state explicitly via exported JS helpers.
 	ui.SetDefaultStartForTest(false)
 	g := ui.New(logger)
-	g.Layout(800, 600)
+	g.Layout(1280, 720)
 	// Drive the UI Update loop at ~60Hz so JS helpers (startPlay,
 	// incrementBPM, currentBeat) reflect live behavior without running the
 	// full Ebiten game.

@@ -10,6 +10,11 @@ type Instrument interface{ NewVoice(int, int) Voice }
 
 var insts = []string{"snare", "kick", "hihat", "tom", "clap"}
 
+// SampleRate returns the audio output sample rate (stub returns 44100 for tests).
+func SampleRate() int {
+	return 44100
+}
+
 func registerStub(id string) {
 	for _, existing := range insts {
 		if existing == id {
@@ -62,11 +67,30 @@ func Stop(id string) {
 
 func SetStopHook(fn func(string)) { stopHook = fn }
 
-// Now returns 0 during tests.
-func Now() float64 { return 0 }
+// nowOverride allows tests to inject a deterministic audio clock.
+var nowOverride func() float64
+
+// Now returns 0 during tests unless overridden via SetNowForTest.
+func Now() float64 {
+	if nowOverride != nil {
+		return nowOverride()
+	}
+	return 0
+}
+
+// SetNowForTest overrides audio.Now() to return values from fn.
+// Returns a restore function.
+func SetNowForTest(fn func() float64) func() {
+	old := nowOverride
+	nowOverride = fn
+	return func() { nowOverride = old }
+}
 
 // Resume is a no-op in tests.
 func Resume() {}
+
+// Close is a no-op in tests (no audio device to release).
+func Close() {}
 
 // Reset is a stub used during tests.
 func Reset() { resetChannels() }
@@ -79,13 +103,10 @@ func SetBPM(bpm int) { SetBPMFunc(bpm) }
 func Instruments() []string { return insts }
 
 func ResetInstruments() {
-	insts = []string{
-		"snare", "kick", "hihat", "tom", "clap", "cowbell",
-		"snare-1", "kick-1", "hihat-1", "tom-1", "clap-1", "cowbell-1",
-		"snare-2", "kick-2", "hihat-2", "tom-2", "clap-2", "cowbell-2",
-	}
+	insts = append([]string(nil), BuiltinInstrumentIDs...)
 	bumpInstrumentsVersion()
 	ResetCatalogForTest(nil)
+	ClearAllInsertEffects()
 	resetInstrumentChannels(insts)
 }
 
@@ -100,13 +121,49 @@ func RenameInstrument(oldID, newID string) {
 	renameInstrumentChannel(oldID, newID)
 }
 
+// Send effect stubs for tests.
+var stubSendLevels = map[string][2]float64{} // [delay, reverb]
+
+func SetDelaySend(id string, amount float64) {
+	if amount < 0 {
+		amount = 0
+	}
+	if amount > 1 {
+		amount = 1
+	}
+	v := stubSendLevels[id]
+	v[0] = amount
+	stubSendLevels[id] = v
+}
+
+func DelaySend(id string) float64 {
+	return stubSendLevels[id][0]
+}
+
+func SetReverbSend(id string, amount float64) {
+	if amount < 0 {
+		amount = 0
+	}
+	if amount > 1 {
+		amount = 1
+	}
+	v := stubSendLevels[id]
+	v[1] = amount
+	stubSendLevels[id] = v
+}
+
+func ReverbSend(id string) float64 {
+	return stubSendLevels[id][1]
+}
+
 // EQ / analyzer stubs for tests.
 type Analyzer struct {
-	window []float64
-	write  int
-	filled bool
-	rms    float64
-	peak   float64
+	window  []float64
+	write   int
+	filled  bool
+	rms     float64
+	peak    float64
+	enabled bool
 }
 type AnalyzerSnapshot struct {
 	RMS      float64
@@ -125,7 +182,7 @@ func NewAnalyzer(window int) *Analyzer {
 		window = 8192
 	}
 	window = nearestPow2(window)
-	return &Analyzer{window: make([]float64, window)}
+	return &Analyzer{window: make([]float64, window), enabled: true}
 }
 
 func (a *Analyzer) ProcessSample(x float64) float64 {
@@ -142,9 +199,47 @@ func (a *Analyzer) ProcessSample(x float64) float64 {
 	return x
 }
 
+// ProcessBlock batches circular buffer writes with minimal overhead.
+func (a *Analyzer) ProcessBlock(samples []float32, n int) {
+	ws := len(a.window)
+	if ws == 0 || n <= 0 {
+		return
+	}
+	idx := a.write
+	for i := 0; i < n; i++ {
+		if idx >= ws {
+			idx = 0
+		}
+		a.window[idx] = float64(samples[i])
+		idx++
+		if idx == ws {
+			a.filled = true
+			a.write = idx
+			a.compute()
+			idx = 0
+		}
+	}
+	a.write = idx % ws
+}
+
+// ProcessBlockBuf implements BlockProcessor for Analyzer (stub).
+func (a *Analyzer) ProcessBlockBuf(in, out []float32, samples int) {
+	copy(out[:samples], in[:samples])
+	a.ProcessBlock(in, samples)
+}
+
 func (a *Analyzer) Snapshot() AnalyzerSnapshot { return a.snapshot() }
 
+// SetEnabled controls whether compute() runs (stub).
+func (a *Analyzer) SetEnabled(on bool) { a.enabled = on }
+
+// Enabled returns whether the analyzer's compute path is active (stub).
+func (a *Analyzer) Enabled() bool { return a.enabled }
+
 func (a *Analyzer) compute() {
+	if !a.enabled {
+		return
+	}
 	n := len(a.window)
 	var sum float64
 	var peak float64
@@ -198,10 +293,25 @@ type gainProcessor struct{ gain float64 }
 
 func (g *gainProcessor) ProcessSample(x float64) float64 { return x * g.gain }
 
+// ProcessBlockBuf implements BlockProcessor for gainProcessor.
+func (g *gainProcessor) ProcessBlockBuf(in, out []float32, samples int) {
+	gain := float32(g.gain)
+	for i := 0; i < samples; i++ {
+		out[i] = in[i] * gain
+	}
+}
+
 // silenceProcessor outputs zero for all samples. Used when all bands are muted.
 type silenceProcessor struct{}
 
 func (s *silenceProcessor) ProcessSample(x float64) float64 { return 0 }
+
+// ProcessBlockBuf implements BlockProcessor for silenceProcessor.
+func (s *silenceProcessor) ProcessBlockBuf(in, out []float32, samples int) {
+	for i := 0; i < samples; i++ {
+		out[i] = 0
+	}
+}
 
 // multibandBandDef defines frequency boundaries for a single band in the multiband processor.
 type multibandBandDef struct {
@@ -209,75 +319,21 @@ type multibandBandDef struct {
 	hiHz float64
 }
 
-// defaultBandDefs matches the 10-band EQ definitions used in the UI.
+// defaultBandDefs matches the 10-band ISO standard EQ definitions used in the UI.
 var defaultBandDefs = []multibandBandDef{
-	{loHz: 20, hiHz: 40},
-	{loHz: 40, hiHz: 80},
-	{loHz: 80, hiHz: 160},
-	{loHz: 160, hiHz: 315},
-	{loHz: 315, hiHz: 630},
-	{loHz: 630, hiHz: 1250},
-	{loHz: 1250, hiHz: 2500},
-	{loHz: 2500, hiHz: 5000},
-	{loHz: 5000, hiHz: 10000},
-	{loHz: 10000, hiHz: 20000},
+	{loHz: 22, hiHz: 44},      // 31 Hz
+	{loHz: 44, hiHz: 88},      // 62 Hz
+	{loHz: 88, hiHz: 177},     // 125 Hz
+	{loHz: 177, hiHz: 354},    // 250 Hz
+	{loHz: 354, hiHz: 707},    // 500 Hz
+	{loHz: 707, hiHz: 1414},   // 1 kHz
+	{loHz: 1414, hiHz: 2828},  // 2 kHz
+	{loHz: 2828, hiHz: 5657},  // 4 kHz
+	{loHz: 5657, hiHz: 11314}, // 8 kHz
+	{loHz: 11314, hiHz: 20000}, // 16 kHz
 }
 
-// biquad implements Direct Form I processing for crossover filters.
-type biquad struct {
-	b0, b1, b2 float64
-	a1, a2     float64
-	x1, x2     float64
-	y1, y2     float64
-}
-
-func (b *biquad) ProcessSample(x float64) float64 {
-	y := b.b0*x + b.b1*b.x1 + b.b2*b.x2 - b.a1*b.y1 - b.a2*b.y2
-	b.x2, b.x1 = b.x1, x
-	b.y2, b.y1 = b.y1, y
-	return y
-}
-
-func makeBiquad(kind EQKind, sr int, freq, q, gainDB float64) *biquad {
-	if sr <= 0 || freq <= 0 || q <= 0 {
-		return nil
-	}
-	if freq > float64(sr)/2 {
-		freq = float64(sr) / 2
-	}
-	w0 := 2 * math.Pi * freq / float64(sr)
-	cosw := math.Cos(w0)
-	sinw := math.Sin(w0)
-	alpha := sinw / (2 * q)
-
-	var b0, b1, b2, a0, a1, a2 float64
-	switch kind {
-	case EQLowpass:
-		b0 = (1 - cosw) / 2
-		b1 = 1 - cosw
-		b2 = (1 - cosw) / 2
-		a0 = 1 + alpha
-		a1 = -2 * cosw
-		a2 = 1 - alpha
-	case EQHighpass:
-		b0 = (1 + cosw) / 2
-		b1 = -(1 + cosw)
-		b2 = (1 + cosw) / 2
-		a0 = 1 + alpha
-		a1 = -2 * cosw
-		a2 = 1 - alpha
-	default:
-		return nil
-	}
-
-	return &biquad{
-		b0: b0 / a0,
-		b1: b1 / a0,
-		b2: b2 / a0,
-		a1: a1 / a0,
-		a2: a2 / a0,
-	}
-}
+// biquad and makeBiquad are defined in biquad.go (shared across all build tags).
 
 // bandProcessor handles one frequency band in the parallel multiband processor.
 // Uses 4th-order Linkwitz-Riley crossovers (two cascaded Butterworth stages)
@@ -322,6 +378,34 @@ func (m *multibandProcessor) ProcessSample(x float64) float64 {
 		sum += y * b.gain
 	}
 	return sum
+}
+
+// ProcessBlockBuf implements BlockProcessor for multibandProcessor (stub).
+func (m *multibandProcessor) ProcessBlockBuf(in, out []float32, samples int) {
+	for i := 0; i < samples; i++ {
+		out[i] = 0
+	}
+	bandBuf := blockBufPool.get(samples)
+	filterBuf := blockBufPool.get(samples)
+	defer blockBufPool.put(bandBuf)
+	defer blockBufPool.put(filterBuf)
+	for i := range m.bands {
+		b := &m.bands[i]
+		if b.muted {
+			continue
+		}
+		copy(bandBuf[:samples], in[:samples])
+		for _, filt := range []*biquad{b.lowCut1, b.lowCut2, b.highCut1, b.highCut2} {
+			if filt != nil {
+				filt.ProcessBlockBuf(bandBuf, filterBuf, samples)
+				bandBuf, filterBuf = filterBuf, bandBuf
+			}
+		}
+		gain := float32(b.gain)
+		for j := 0; j < samples; j++ {
+			out[j] += bandBuf[j] * gain
+		}
+	}
 }
 
 // newMultibandProcessor creates a parallel multiband processor for the given bands.
@@ -386,6 +470,15 @@ func newMultibandProcessor(sampleRate int, bands []EQBand) *multibandProcessor {
 	return &multibandProcessor{bands: procs}
 }
 
+// NewEQProcessor creates an EQ processor for the given bands.
+//
+// WARNING (test stub behavior): Under the `test` build tag, this returns a
+// gainProcessor (simple amplitude scaling) or silenceProcessor, NOT real biquad
+// filters. Tests that need actual frequency filtering must use makeBiquad()
+// directly and pass it to SetChannelProcessors() — the *biquad type satisfies
+// the Processor interface. The multibandProcessor and silenceProcessor DO work
+// in stub mode (for band muting tests). Desktop-only mixer tests (!test build
+// tag) get the real eqProcessor with biquad chains.
 func NewEQProcessor(sampleRate int, bands ...EQBand) Processor {
 	// Check if all bands are muted - if so, output complete silence
 	allMuted := len(bands) > 0
@@ -430,11 +523,14 @@ func NewShelfEQ(sampleRate int, low bool, freq, q, gainDB float64) Processor {
 }
 
 func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
-	SetChannelProcessors(id, NewEQProcessor(sampleRate, bands...))
 	lastSetEQ = eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)}
+	RebuildChannelWithEQ(id, NewEQProcessor(sampleRate, bands...))
 }
 
-func ClearChannelProcessors(id string) { SetChannelProcessors(id) }
+func ClearChannelProcessors(id string) {
+	lastSetEQ = eqRecord{}
+	RebuildChannelWithEQ(id, nil)
+}
 
 var analyzerRegistryStub = map[string]*Analyzer{}
 
@@ -461,7 +557,41 @@ func ChannelAnalyzerSnapshot(id string) AnalyzerSnapshot {
 	return AnalyzerSnapshot{}
 }
 
-func resetAnalyzers() { analyzerRegistryStub = map[string]*Analyzer{} }
+var preEQAnalyzerRegistryStub = map[string]*Analyzer{}
+
+// EnablePreEQAnalyzer creates a pre-EQ analyzer on the channel (stub version).
+func EnablePreEQAnalyzer(id string, window int) *Analyzer {
+	an := NewAnalyzer(window)
+	ch := chanMgr.ensureChannel(id)
+	ch.mu.Lock()
+	ch.preEQAnalyzer = an
+	ch.mu.Unlock()
+	preEQAnalyzerRegistryStub[id] = an
+	return an
+}
+
+// PreEQAnalyzerSnapshot returns the latest pre-EQ snapshot (stub version).
+func PreEQAnalyzerSnapshot(id string) AnalyzerSnapshot {
+	if an, ok := preEQAnalyzerRegistryStub[id]; ok {
+		return an.snapshot()
+	}
+	return AnalyzerSnapshot{}
+}
+
+// SetAnalyzerEnabled enables or disables FFT compute for a channel's analyzers (stub).
+func SetAnalyzerEnabled(id string, on bool) {
+	if an, ok := analyzerRegistryStub[id]; ok {
+		an.SetEnabled(on)
+	}
+	if pre, ok := preEQAnalyzerRegistryStub[id]; ok {
+		pre.SetEnabled(on)
+	}
+}
+
+func resetAnalyzers() {
+	analyzerRegistryStub = map[string]*Analyzer{}
+	preEQAnalyzerRegistryStub = map[string]*Analyzer{}
+}
 
 // nearestPow2 rounds v to the nearest power-of-two (preferring the larger on ties).
 func nearestPow2(v int) int {

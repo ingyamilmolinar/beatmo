@@ -4,17 +4,18 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(GO, ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."], { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" });
 if (build.status !== 0) throw new Error("go build wasm failed");
+}
 
-const port = 8450 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const f = req.url === "/" ? "/index.html" : req.url;
   const fp = path.join(jsDir, f.replace(/^\//, ""));
   if (!fs.existsSync(fp)) { res.writeHead(404); res.end(); return; }
@@ -22,7 +23,8 @@ const server = http.createServer((req, res) => { const f = req.url === "/" ? "/i
   res.writeHead(200, { "Content-Type": ct });
   res.end(fs.readFileSync(fp));
 });
-await new Promise(r => server.listen(port, r));
+await new Promise(r => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -62,5 +64,6 @@ await page.evaluate(async (subdiv) => { function sleep(ms){ return new Promise(r
 }, subdiv);
 
 await assertNoSchedulerMismatches(page, "prob edit sync: scheduler mismatches");
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "prob_edit_sync");
 await browser.close();
 server.close();

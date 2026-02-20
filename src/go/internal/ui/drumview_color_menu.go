@@ -13,6 +13,9 @@ func (dv *DrumView) buildColorMenu() {
 		return
 	}
 	base := dv.rowColorBtns[dv.colorMenuRow].Rect()
+	if base.Empty() && dv.colorMenuRow < len(dv.rowLabels) {
+		base = dv.rowLabels[dv.colorMenuRow].Rect()
+	}
 	// Determine wheel size and placement; always keep fully within dv.Bounds.
 	// Start from a target diameter based on row height, clamp to bounds.
 	target := dv.rowHeight() * 6

@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func (dv *DrumView) setTimelineSegments(row, offset int, past []bool, pastTypes []model.NodeType, present, future []bool) {
@@ -32,6 +32,17 @@ func (dv *DrumView) markAllRowsDirty() {
 func (dv *DrumView) markRowsShiftDirty() {
 	dv.ensureRowCache()
 	for i := range dv.rowDirty {
+		dv.rowDirty[i] = true
+	}
+	dv.rowsLayerDirty = true
+}
+
+// markRowCellsDirty marks a row as needing rebuild but allows the cheap
+// cell-patch path (does NOT set rowFullDirty). Use for small content changes
+// like playback beat advances where only a few cells changed.
+func (dv *DrumView) markRowCellsDirty(i int) {
+	dv.ensureRowCache()
+	if i >= 0 && i < len(dv.rowDirty) {
 		dv.rowDirty[i] = true
 	}
 	dv.rowsLayerDirty = true

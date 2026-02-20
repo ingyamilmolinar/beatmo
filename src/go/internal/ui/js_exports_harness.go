@@ -7,7 +7,8 @@ import (
 	"syscall/js"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (g *Game) initJSHarness() {
@@ -21,7 +22,7 @@ func (g *Game) initJSHarness() {
 		delta := args[2].Float()
 		wx := (x - g.cam.OffsetX) / g.cam.Scale
 		// Account for the transport bar offset in screen space
-		wy := (y - float64(topOffset) - g.cam.OffsetY) / g.cam.Scale
+		wy := (y - float64(gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
 		constZoomFactor := 1.05
 		constSens := 0.1
 		newScale := g.cam.Scale * math.Pow(constZoomFactor, delta*constSens)
@@ -31,7 +32,7 @@ func (g *Game) initJSHarness() {
 			newScale = 10.0
 		}
 		g.cam.OffsetX = x - wx*newScale
-		g.cam.OffsetY = y - float64(topOffset) - wy*newScale
+		g.cam.OffsetY = y - float64(gridTopOffset()) - wy*newScale
 		g.cam.Scale = newScale
 		return nil
 	}))
@@ -80,7 +81,10 @@ func (g *Game) initJSHarness() {
 			ok = false
 		}
 		// Require at least one drawable rows representation.
-		if g.drum.rowsStripingEnabled && g.drum.rowsStripeCount > 1 {
+		// On small screens, the direct draw path bypasses rowsLayer/stripes.
+		if isSmallScreen() && g.drum.directDrawCount > 0 {
+			// Direct draw path is active — no layer/stripe needed.
+		} else if g.drum.rowsStripingEnabled && g.drum.rowsStripeCount > 1 {
 			if len(g.drum.rowsStripes) == 0 {
 				ok = false
 			}
@@ -235,6 +239,27 @@ func (g *Game) initJSHarness() {
 		return obj
 	}))
 
+	// setCamScale(s) – set camera scale directly.
+	js.Global().Set("setCamScale", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 {
+			return nil
+		}
+		g.cam.Scale = args[0].Float()
+		g.cam.Snap()
+		return nil
+	}))
+
+	// setCamOffset(x, y) – set camera offset directly and snap to pixels.
+	js.Global().Set("setCamOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 2 {
+			return nil
+		}
+		g.cam.OffsetX = args[0].Float()
+		g.cam.OffsetY = args[1].Float()
+		g.cam.Snap()
+		return nil
+	}))
+
 	// panBy(dx, dy) – adjust camera offset directly and snap to pixels.
 	js.Global().Set("panBy", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if len(args) < 2 {
@@ -246,6 +271,25 @@ func (g *Game) initJSHarness() {
 		g.cam.OffsetY += dy
 		g.cam.Snap()
 		return nil
+	}))
+
+	// gridToScreen(i,j) -> {x,y} screen coordinates for a grid position,
+	// even if no node exists there. Useful for clicking empty grid cells.
+	js.Global().Set("gridToScreen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 2 {
+			return nil
+		}
+		i := args[0].Int()
+		j := args[1].Int()
+		unitPx := g.grid.UnitPixels(g.cam.Scale)
+		offX := math.Round(g.cam.OffsetX)
+		offY := math.Round(g.cam.OffsetY)
+		sx := offX + unitPx*float64(i)
+		sy := offY + unitPx*float64(j) + float64(gridTopOffset())
+		obj := js.Global().Get("Object").New()
+		obj.Set("x", int(sx))
+		obj.Set("y", int(sy))
+		return obj
 	}))
 
 	// nodeRect(i,j) -> {x,y,w,h} for a node at grid coordinates. nil if none.
@@ -309,8 +353,16 @@ func (g *Game) initJSHarness() {
 		}
 		g.sel = n
 		n.Selected = true
-		g.nodeMenuOpen = true
-		g.nodeMenuNode = n
+		g.sidebar.Open(n)
+		return nil
+	}))
+
+	// centerCamera() resets the centered flag and re-runs Layout so the camera
+	// re-centers on the current splitY. Useful after the demo circuit changes
+	// splitY post-init.
+	js.Global().Set("centerCamera", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		g.centered = false
+		g.Layout(g.winW, g.winH)
 		return nil
 	}))
 
@@ -318,5 +370,112 @@ func (g *Game) initJSHarness() {
 	// are disabled in this UI. Return an empty object to satisfy callers.
 	js.Global().Set("zoomBtnRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		return js.Global().Get("Object").New()
+	}))
+
+	// instrumentsList() -> string[] : returns the Go-side instrument ID list.
+	js.Global().Set("instrumentsList", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		ids := audio.Instruments()
+		arr := js.Global().Get("Array").New(len(ids))
+		for i, id := range ids {
+			arr.SetIndex(i, id)
+		}
+		return arr
+	}))
+
+	// debugDrumLayout() -> object with all critical rendering state for mobile diagnosis.
+	js.Global().Set("debugDrumLayout", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return js.ValueOf(nil)
+		}
+		dv := g.drum
+		obj := js.Global().Get("Object").New()
+		obj.Set("bounds", rectToJS(dv.Bounds))
+		obj.Set("headerH", dv.headerH)
+		obj.Set("eqH", dv.eqH)
+		obj.Set("rowsAreaHeight", dv.rowsAreaHeight())
+		obj.Set("visibleRows", dv.visibleRows())
+		obj.Set("timelineRect", rectToJS(dv.timelineRect))
+		obj.Set("rowHeight", dv.rowHeight())
+		obj.Set("rowOffset", dv.rowOffset)
+		obj.Set("rowsStripingEnabled", dv.rowsStripingEnabled)
+		obj.Set("isSmallScreen", isSmallScreen())
+		obj.Set("touchScreenWidth", touchScreenWidth)
+		obj.Set("touchScreenHeight", touchScreenHeight)
+		obj.Set("numRows", len(dv.Rows))
+		obj.Set("numRowCache", len(dv.rowCache))
+		obj.Set("rowsLayerExists", dv.rowsLayer != nil)
+		if dv.rowsLayer != nil {
+			obj.Set("rowsLayerW", dv.rowsLayerW)
+			obj.Set("rowsLayerH", dv.rowsLayerH)
+		}
+		obj.Set("rowsLayerDirty", dv.rowsLayerDirty)
+		obj.Set("rowCacheW", dv.rowCacheW)
+		obj.Set("rowCacheH", dv.rowCacheH)
+		obj.Set("rowsStripeCount", dv.rowsStripeCount)
+		obj.Set("numRowsStripes", len(dv.rowsStripes))
+		obj.Set("directDrawCount", int(dv.directDrawCount))
+		obj.Set("directDrawCells", dv.directDrawCells)
+
+		// Per-row detail
+		rowsArr := js.Global().Get("Array").New(len(dv.Rows))
+		for i := range dv.Rows {
+			r := js.Global().Get("Object").New()
+			if i < len(dv.rowDirty) {
+				r.Set("dirty", dv.rowDirty[i])
+			}
+			if i < len(dv.rowFullDirty) {
+				r.Set("fullDirty", dv.rowFullDirty[i])
+			}
+			r.Set("cacheExists", i < len(dv.rowCache) && dv.rowCache[i] != nil)
+			r.Set("numSteps", len(dv.Rows[i].Steps))
+			onCount := 0
+			for _, s := range dv.Rows[i].Steps {
+				if s {
+					onCount++
+				}
+			}
+			r.Set("stepsOn", onCount)
+			if i < len(dv.rowsDrawnMask) {
+				r.Set("drawn", dv.rowsDrawnMask[i])
+			}
+			rowsArr.SetIndex(i, r)
+		}
+		obj.Set("rows", rowsArr)
+		return obj
+	}))
+
+	// debugDrumRender() -> object with per-frame render decision trace.
+	// Call forceDraw() first, then immediately call debugDrumRender() to
+	// inspect what happened in the most recent Draw().
+	js.Global().Set("debugDrumRender", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return js.ValueOf(nil)
+		}
+		dv := g.drum
+		obj := js.Global().Get("Object").New()
+		obj.Set("frame", int(dv.frame))
+		obj.Set("rowsLayerFrame", int(dv.rowsLayerFrame))
+		obj.Set("rowsLayerDirty", dv.rowsLayerDirty)
+		obj.Set("rowsLayerExists", dv.rowsLayer != nil)
+		obj.Set("rowsStripingEnabled", dv.rowsStripingEnabled)
+		obj.Set("rowsStripeCount", dv.rowsStripeCount)
+		obj.Set("numRowsStripes", len(dv.rowsStripes))
+		obj.Set("rowsRepaints", dv.rowsRepaints)
+		obj.Set("rowsLayerBytes", dv.rowsLayerBytes)
+		obj.Set("visibleRows", dv.visibleRows())
+		obj.Set("rowsAreaHeight", dv.rowsAreaHeight())
+		obj.Set("directDrawCount", int(dv.directDrawCount))
+		obj.Set("directDrawCells", dv.directDrawCells)
+
+		// Check how many visible rows were drawn
+		vis := dv.visibleRows()
+		drawn := 0
+		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
+			if i >= 0 && i < len(dv.rowsDrawnMask) && dv.rowsDrawnMask[i] {
+				drawn++
+			}
+		}
+		obj.Set("drawnRows", drawn)
+		return obj
 	}))
 }

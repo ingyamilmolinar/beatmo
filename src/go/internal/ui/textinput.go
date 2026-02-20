@@ -6,7 +6,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 // TextInput is a reusable editable text box with cursor support.
@@ -24,6 +23,15 @@ type TextInput struct {
 	Accept func(rune) bool
 	// MaxLen, when >0, caps the number of runes permitted in Text.
 	MaxLen int
+	// Soft keyboard integration (mobile WASM)
+	OnFocusGained func() // called when focus is acquired
+	OnFocusLost   func() // called when focus is lost
+	InputMode     string // "numeric", "text", etc. — passed to soft keyboard
+	prevFocused   bool   // tracks focus transitions
+	// MobileInputID, when set, causes Draw() to skip rendering when the
+	// corresponding mobile native input is active (the native HTML <input>
+	// is visible instead).
+	MobileInputID string
 }
 
 // NewTextInput constructs a text input with the given rectangle and style.
@@ -68,22 +76,45 @@ func (t *TextInput) Update() bool {
 		if image.Pt(mx, my).In(t.Rect) {
 			t.focused = true
 			t.anim = 1
-			txt, start := t.visibleText()
+			_, start := t.visibleText()
 			rel := mx - (t.Rect.Min.X + 4)
-			idx := rel/debugCharW + start
+			// Walk runes from start, accumulating TextWidth, to find
+			// which character position the click falls on.
+			rs := []rune(t.Text)
+			idx := start
+			accW := 0
+			for i := start; i < len(rs); i++ {
+				cw := TextWidth(string(rs[i]))
+				if accW+cw/2 > rel {
+					break
+				}
+				accW += cw
+				idx = i + 1
+			}
 			if idx < 0 {
 				idx = 0
 			}
-			if idx > utf8.RuneCountInString(t.Text) {
-				idx = utf8.RuneCountInString(t.Text)
+			if idx > len(rs) {
+				idx = len(rs)
 			}
 			t.cursor = idx
-			_ = txt
 			consumed = true
 		} else {
 			t.focused = false
 		}
 	}
+
+	// Detect focus transitions for soft keyboard callbacks
+	if t.focused && !t.prevFocused {
+		if t.OnFocusGained != nil {
+			t.OnFocusGained()
+		}
+	} else if !t.focused && t.prevFocused {
+		if t.OnFocusLost != nil {
+			t.OnFocusLost()
+		}
+	}
+	t.prevFocused = t.focused
 
 	if !t.focused {
 		t.blink = 0
@@ -99,7 +130,30 @@ func (t *TextInput) Update() bool {
 		t.blink = 0
 	}
 
-	if chars := inputChars(); len(chars) > 0 {
+	// Gather input characters: prefer soft keyboard when active (mobile),
+	// fall back to Ebiten's InputChars() (desktop/hardware keyboard).
+	var chars []rune
+	if softKeyboardActive() {
+		skChars := softKeyboardDrainChars()
+		for _, r := range skChars {
+			if r == '\b' {
+				// Handle backspace from soft keyboard
+				if t.cursor > 0 {
+					bi := byteIndex(t.Text, t.cursor)
+					prev := byteIndex(t.Text, t.cursor-1)
+					t.Text = t.Text[:prev] + t.Text[bi:]
+					t.cursor--
+				}
+				consumed = true
+			} else {
+				chars = append(chars, r)
+			}
+		}
+	} else {
+		chars = inputChars()
+	}
+
+	if len(chars) > 0 {
 		for _, r := range chars {
 			if r == '\n' || r == '\r' {
 				t.focused = false
@@ -131,7 +185,6 @@ func (t *TextInput) Update() bool {
 	// Treat Enter as commit even when it is not part of InputChars().
 	if t.focused && isKeyPressed(ebiten.KeyEnter) {
 		t.focused = false
-		consumed = true
 		return true
 	}
 
@@ -196,21 +249,41 @@ func byteIndex(s string, i int) int {
 // visibleText returns substring that fits in the box and the index of the first rune shown.
 func (t *TextInput) visibleText() (string, int) {
 	pad := 4
-	maxRunes := (t.Rect.Dx() - pad*2) / debugCharW
+	maxW := t.Rect.Dx() - pad*2
 	total := utf8.RuneCountInString(t.Text)
+	rs := []rune(t.Text)
+
+	// Find how many runes fit from a given start position.
+	fitFrom := func(start int) int {
+		w := 0
+		for i := start; i < total; i++ {
+			cw := TextWidth(string(rs[i]))
+			if w+cw > maxW {
+				return i - start
+			}
+			w += cw
+		}
+		return total - start
+	}
+
 	start := 0
+	maxRunes := fitFrom(0)
 	if total > maxRunes {
 		switch {
 		case t.cursor <= maxRunes:
 			start = 0
 		case t.cursor >= total-maxRunes:
-			start = total - maxRunes
+			start = total - fitFrom(total-maxRunes)
+			if start < 0 {
+				start = 0
+			}
 		default:
 			start = t.cursor - maxRunes + 1
 			if start < 0 {
 				start = 0
 			}
 		}
+		maxRunes = fitFrom(start)
 	}
 	bi := byteIndex(t.Text, start)
 	end := byteIndex(t.Text, min(start+maxRunes, total))
@@ -219,12 +292,23 @@ func (t *TextInput) visibleText() (string, int) {
 
 // Draw renders the input.
 func (t *TextInput) Draw(dst *ebiten.Image) {
+	// Skip drawing when native mobile input is active for this TextInput
+	if isSmallScreen() && t.MobileInputID != "" && mobileInputActive(t.MobileInputID) {
+		return
+	}
 	t.Style.DrawAnimated(dst, t.Rect, t.focused, t.anim)
 	txt, start := t.visibleText()
-	ebitenutil.DebugPrintAt(dst, txt, t.Rect.Min.X+4, t.Rect.Min.Y+4)
+	th := TextHeight()
+	ty := t.Rect.Min.Y + (t.Rect.Dy()-th)/2
+	DrawTextAt(dst, txt, t.Rect.Min.X+4, ty)
 	if t.focused && t.blink < 30 {
-		cx := t.Rect.Min.X + 4 + debugCharW*(t.cursor-start)
-		cy := t.Rect.Min.Y + 4
+		// Cursor x from the width of text before cursor position.
+		rs := []rune(t.Text)
+		bi := byteIndex(t.Text, start)
+		ci := byteIndex(t.Text, min(t.cursor, len(rs)))
+		prefix := t.Text[bi:ci]
+		cx := t.Rect.Min.X + 4 + TextWidth(prefix)
+		cy := ty
 		col := t.Style.Cursor
 		if col == nil {
 			if t.Style.Border != nil {
@@ -233,7 +317,8 @@ func (t *TextInput) Draw(dst *ebiten.Image) {
 				col = color.White
 			}
 		}
-		r := image.Rect(cx, cy, cx+debugCharW, cy+debugCharH)
+		cw := debugCharW // cursor width stays thin
+		r := image.Rect(cx, cy, cx+cw, cy+th)
 		drawCursor(dst, r, col)
 	}
 }

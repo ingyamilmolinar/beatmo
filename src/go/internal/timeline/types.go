@@ -1,9 +1,19 @@
+// Package timeline manages per-row drum timeline history with immutable past.
+//
+// Once a beat is played, its rendered state is FROZEN:
+//   - CommitKindPlayback / CommitKindImport represent true past and are immutable.
+//   - Past cells never change; edits only affect future predictions.
+//   - preview.BuildRowWindow follows a single precedence table to merge past,
+//     present, and future into the final display.
+//
+// The Service uses a commit ring per row for bounded memory, with an immutables
+// sidecar map to preserve playback/import entries even after ring trimming.
 package timeline
 
 import (
 	"sync"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // SegmentsView exposes live timeline slices while the caller-provided callback

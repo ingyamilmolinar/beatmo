@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/ingyamilmolinar/tunkul/internal/gamestate"
+import "github.com/ingyamilmolinar/beatmo/internal/gamestate"
 
 // RowStateDump captures per-row cached state for instrumentation.
 type RowStateDump struct {
@@ -61,10 +61,6 @@ func (g *Game) rowStateSnapshot(rowIdx int) RowStateDump {
 
 func (g *Game) dumpRowState(rowIdx int) RowStateDump {
 	return g.rowStateSnapshot(rowIdx)
-}
-
-func (g *Game) dumpTimelineSegments(row int) TimelineSegments {
-	return g.TimelineSegments(row)
 }
 
 func (g *Game) transportSnapshot() gamestate.Snapshot {

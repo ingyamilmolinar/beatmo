@@ -4,13 +4,14 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   [
@@ -24,8 +25,8 @@ const build = spawnSync(
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
-const port = 8390 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404);
@@ -40,7 +41,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((resolve) => server.listen(port, resolve));
+await new Promise((resolve) => server.listen(0, resolve));
+const port = server.address().port;
 
 let browser;
 try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -50,24 +52,24 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   await assertSimpleDrawMode(page, false, "circuit sync");
   await clearSchedulerMismatches(page);
 
-  await page.evaluate(() => { const ensureNode = (i, j, type) => { const existing = nodeIdAt?.(i, j);
-      if (existing == null || existing < 0) { addNode?.(i, j, type);
-      }
-    };
-    ensureNode(0, 0, "regular");
-    ensureNode(1, 0, "regular");
-    ensureNode(2, 0, "regular");
-    deleteEdgeGrid?.(0, 0, 1, 0);
-    deleteEdgeGrid?.(1, 0, 2, 0);
-    deleteEdgeGrid?.(2, 0, 0, 0);
-    addEdgeGrid?.(0, 0, 1, 0);
-    addEdgeGrid?.(1, 0, 2, 0);
-    addEdgeGrid?.(2, 0, 0, 0);
-    setOrigin?.(0, 0, 0);
-    updateBeatInfosJS?.();
+  // Import a clean 3-node circuit to isolate from the startup demo.
+  // Without this, the demo's node at (0,0) retains existing edges that
+  // cause the beat path traversal to follow the demo circuit instead of
+  // the test's loop — especially under CPU pressure from parallel tests.
+  await page.evaluate(() => {
+    importJSON?.(JSON.stringify({
+      version: 1, subdiv: 8, bpm: 120,
+      instruments: [{ name: "Kick", id: "kick", kind: "builtin", volume: 1, origin: 0, color: "#C87850FF" }],
+      nodes: [
+        { id: 0, i: 0, j: 0, type: "regular", inputs: [2], outputs: [1] },
+        { id: 1, i: 1, j: 0, type: "regular", inputs: [0], outputs: [2] },
+        { id: 2, i: 2, j: 0, type: "regular", inputs: [1], outputs: [0] }
+      ]
+    }));
     forceDraw?.();
     forceDraw?.();
   });
+  await page.waitForTimeout(200);
 
   const snapshot = async (gridI, gridJ) => { return await page.evaluate(({ gridI, gridJ }) => { const targetId = nodeIdAt?.(gridI, gridJ);
       const state = dumpRowState?.(0);
@@ -121,6 +123,8 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   }
   await assertNoSchedulerMismatches(page, "circuit sync: scheduler mismatches");
   console.log("circuit_sync.browser.test: PASS", { before: before.hits.length, after: afterReadd.hits.length });
-} finally { if (browser) await browser.close();
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "circuit_sync");
+} finally { 
+ if (browser) await browser.close();
   server.close();
 }

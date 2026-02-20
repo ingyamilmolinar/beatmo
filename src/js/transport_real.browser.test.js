@@ -11,13 +11,14 @@ import {
   rectCenter,
   assertValidRect,
 } from "./real_input_test_helpers.js";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 let cleanup;
+let page;
 
 try {
   console.log("transport_real: Setting up full WASM environment...");
-  const { page, cleanup: cleanupFn } = await setupFullWasm();
-  cleanup = cleanupFn;
+  ({ page, cleanup } = await setupFullWasm());
 
   // Ensure we have a default path for playback
   await page.evaluate(() => {
@@ -129,6 +130,7 @@ try {
   console.error("transport_real: FAIL -", error.message);
   process.exitCode = 1;
 } finally {
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "transport_real");
   if (cleanup) {
     await cleanup();
   }

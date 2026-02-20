@@ -17,10 +17,11 @@ func (dv *DrumView) buildEQChannelMenu() {
 	if btnH < 1 {
 		btnH = 24
 	}
+	dv.eqChannelScroll.ItemHeight = btnH
 
 	// Total items: 1 Master + len(Rows)
 	total := 1 + len(dv.Rows)
-	dv.eqChannelScroll.Total = total
+	dv.eqChannelScroll.VS.Total = total
 
 	// Calculate available vertical space from button to screen bottom
 	spaceDown := dv.Bounds.Max.Y - base.Max.Y
@@ -40,12 +41,12 @@ func (dv *DrumView) buildEQChannelMenu() {
 	if visible < 1 {
 		visible = 1
 	}
-	dv.eqChannelScroll.Visible = visible
-	dv.eqChannelScroll.Clamp()
+	dv.eqChannelScroll.VS.Visible = visible
+	dv.eqChannelScroll.VS.Clamp()
 
 	// Set up the view rectangle
 	menuH := visible * btnH
-	dv.eqChannelScroll.View = image.Rect(base.Min.X, base.Max.Y, base.Max.X, base.Max.Y+menuH)
+	dv.eqChannelScroll.VS.View = image.Rect(base.Min.X, base.Max.Y, base.Max.X, base.Max.Y+menuH)
 
 	// Determine button width (narrower when scrollbar is visible)
 	buttonMaxX := base.Max.X
@@ -56,7 +57,7 @@ func (dv *DrumView) buildEQChannelMenu() {
 		}
 	}
 
-	first := dv.eqChannelScroll.First
+	first := dv.eqChannelScroll.VS.First
 	for i := 0; i < visible && first+i < total; i++ {
 		idx := first + i
 		var label string
@@ -68,8 +69,8 @@ func (dv *DrumView) buildEQChannelMenu() {
 			onClick = func() {
 				dv.setEQActiveChannel("main")
 				dv.eqChannelOpen = false
-				dv.eqChannelScroll.EndDrag()
-				dv.eqChannelScroll.First = 0
+				dv.eqChannelScroll.HandleDragEnd()
+				dv.eqChannelScroll.VS.First = 0
 			}
 		} else {
 			// Instrument row (idx-1 because idx=0 is Master)
@@ -86,8 +87,8 @@ func (dv *DrumView) buildEQChannelMenu() {
 			onClick = func() {
 				dv.setEQActiveChannel(instID)
 				dv.eqChannelOpen = false
-				dv.eqChannelScroll.EndDrag()
-				dv.eqChannelScroll.First = 0
+				dv.eqChannelScroll.HandleDragEnd()
+				dv.eqChannelScroll.VS.First = 0
 			}
 		}
 
@@ -104,8 +105,8 @@ func (dv *DrumView) eqChannelMenuRect() image.Rectangle {
 	if dv.eqChannelBtn == nil {
 		return image.Rectangle{}
 	}
-	if !dv.eqChannelScroll.View.Empty() {
-		return dv.eqChannelScroll.View
+	if !dv.eqChannelScroll.VS.View.Empty() {
+		return dv.eqChannelScroll.VS.View
 	}
 	// Fallback for when scroll hasn't been set up yet
 	base := dv.eqChannelBtn.Rect()
@@ -148,13 +149,13 @@ func (o *EQChannelMenuOverlay) InputBounds() image.Rectangle {
 }
 
 func (o *EQChannelMenuOverlay) Capturing() bool {
-	return o.dv.eqChannelScroll.dragging
+	return o.dv.eqChannelScroll.Dragging()
 }
 
 func (o *EQChannelMenuOverlay) Close() {
 	o.dv.eqChannelOpen = false
-	o.dv.eqChannelScroll.EndDrag()
-	o.dv.eqChannelScroll.First = 0
+	o.dv.eqChannelScroll.HandleDragEnd()
+	o.dv.eqChannelScroll.VS.First = 0
 	SuppressClicksUntilMouseUp()
 }
 
@@ -172,7 +173,7 @@ func (o *EQChannelMenuOverlay) HandleWheel(x, y, steps int) InputResult {
 		return InputIgnored
 	}
 
-	if o.dv.eqChannelScroll.ScrollBy(-steps) {
+	if o.dv.eqChannelScroll.HandleWheel(steps) {
 		o.dv.buildEQChannelMenu()
 	}
 	return InputConsumed // Always consume when menu is open and cursor is over it

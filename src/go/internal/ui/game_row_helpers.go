@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func (g *Game) rowIndexForNode(id model.NodeID) int {
@@ -18,13 +18,6 @@ func (g *Game) rowIndexForNode(id model.NodeID) int {
 		}
 	}
 	return -1
-}
-
-func (g *Game) resetLogicStateForNode(id model.NodeID) {
-	row := g.rowIndexForNode(id)
-	if row >= 0 {
-		g.resetLogicStateForRow(row)
-	}
 }
 
 func (g *Game) resetLogicStateForRow(row int) {

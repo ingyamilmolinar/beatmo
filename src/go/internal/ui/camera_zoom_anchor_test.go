@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestZoomAnchorsAtCursor exercises the full Game.Update input path to ensure
@@ -60,7 +60,7 @@ func TestZoomAnchorsAtCursor(t *testing.T) {
 	offX := math.Round(g.cam.OffsetX)
 	offY := math.Round(g.cam.OffsetY)
 	camScale := unitPx / g.grid.Unit()
-	ex, ey := a.X*camScale+offX, a.Y*camScale+offY+float64(topOffset)
+	ex, ey := a.X*camScale+offX, a.Y*camScale+offY+float64(gridTopOffset())
 	if math.Abs(ex-ncx) > tol || math.Abs(ey-ncy) > tol {
 		t.Fatalf("edge/node diverged after zoom: edge(%.2f,%.2f) node(%.2f,%.2f)", ex, ey, ncx, ncy)
 	}

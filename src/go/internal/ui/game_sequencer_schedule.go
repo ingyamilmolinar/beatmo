@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // seqScheduleTime schedules audio for all rows based on wall-clock time,
@@ -15,7 +15,10 @@ func (g *Game) seqScheduleTime() {
 		return
 	}
 	g.logger.Tracef("[SEQSCHEDULE] entering, about to acquire seqMu")
-	g.seqMu.Lock()
+	if !g.seqMu.TryLock() {
+		g.logger.Tracef("[SEQSCHEDULE] seqMu held by Update(); skipping tick")
+		return // Update() holds the lock; retry next 1ms tick
+	}
 	g.logger.Tracef("[SEQSCHEDULE] acquired seqMu")
 	defer func() {
 		g.logger.Tracef("[SEQSCHEDULE] releasing seqMu")
@@ -293,7 +296,7 @@ func (g *Game) seqScheduleTime() {
 						}
 					}
 					if runningUnderGoTest() && g.playFn != nil && g.scheduleHook == nil {
-						g.seqNextIdxs[row] = g.seqNextIdxs[row] + 1
+						g.seqNextIdxs[row]++
 						incAtEnd = false
 						g.playFn(inst, vol)
 						// The test-only direct-play path bypasses audioLoop; still record

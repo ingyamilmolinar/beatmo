@@ -57,6 +57,26 @@ type NodeParams struct {
 	// Groove parameters (per-node): one of none|delay|rush with percentage 0..1
 	GrooveKind string  // ""|"delay"|"rush"
 	GroovePct  float64 // 0..1 fraction of one subdivision length
+
+	// Synth parameters for parameterized C instrument rendering.
+	// All zero values produce the default instrument behavior.
+	SynthDecay      float64 // Decay multiplier (0 = default/1.0, 0.5 = half, 2.0 = double)
+	SynthTone       float64 // Tone/brightness: -1 = dark, 0 = default, 1 = bright
+	SynthAttack     float64 // Attack multiplier (0 = default/1.0, smaller = sharper)
+	SynthDrive      float64 // Saturation amount (0 = none, 1 = heavy)
+	SynthBody       float64 // Body/resonance emphasis (0 = default, 1 = max)
+	SynthColor      float64 // Timbral character shift: -1..1
+	SynthBrightness float64 // High-frequency content: 0 = default, 1 = max shimmer
+
+	// Per-node effect overrides (model-only, no UI in V1).
+	EffectOverrides []EffectOverride
+}
+
+// EffectOverride modulates a single parameter on an insert effect for a specific node.
+type EffectOverride struct {
+	Type  string  `json:"type"`  // effect type name (e.g. "distortion")
+	Param string  `json:"param"` // parameter name (e.g. "drive")
+	Value float64 `json:"value"` // override value
 }
 
 // NodeLogic computes per‑trigger behavior for a node.

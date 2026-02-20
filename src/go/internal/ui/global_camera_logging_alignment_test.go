@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestGlobalCameraLogging_DefaultStart spawns the default single-node circuit
@@ -55,9 +55,9 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 			x1, y1, x2, y2 := g.nodeScreenRect(n)
 			cx, cy := (x1+x2)*0.5, (y1+y2)*0.5
 			expX := offXR + math.Round(float64(n.I)*float64(stepPx)/float64(maxDiv))
-			expY := offYR + float64(topOffset) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
+			expY := offYR + float64(gridTopOffset()) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
 			// Project via DrawLineCam math as a cross-check
-			ex, ey := n.X*camScale+offXR, n.Y*camScale+offYR+float64(topOffset)
+			ex, ey := n.X*camScale+offXR, n.Y*camScale+offYR+float64(gridTopOffset())
 			if testing.Verbose() {
 				fmt.Fprintf(out, "[GLOBAL] node id=%d grid=(%d,%d) rect=(%.2f,%.2f)-(%.2f,%.2f) center=(%.2f,%.2f) expGrid=(%.0f,%.0f) proj=(%.2f,%.2f)\n",
 					n.ID, n.I, n.J, x1, y1, x2, y2, cx, cy, expX, expY, ex, ey)
@@ -78,8 +78,8 @@ func TestGlobalCameraLogging_DefaultStart(t *testing.T) {
 			acx, acy := (ax1+ax2)*0.5, (ay1+ay2)*0.5
 			bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
 			bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
-			ex0, ey0 := e.A.X*camScale+offXR, e.A.Y*camScale+offYR+float64(topOffset)
-			ex1, ey1 := e.B.X*camScale+offXR, e.B.Y*camScale+offYR+float64(topOffset)
+			ex0, ey0 := e.A.X*camScale+offXR, e.A.Y*camScale+offYR+float64(gridTopOffset())
+			ex1, ey1 := e.B.X*camScale+offXR, e.B.Y*camScale+offYR+float64(gridTopOffset())
 			if testing.Verbose() {
 				fmt.Fprintf(out, "[GLOBAL] edge A=%d B=%d projA=(%.2f,%.2f) nodeA=(%.2f,%.2f) projB=(%.2f,%.2f) nodeB=(%.2f,%.2f)\n", e.A.ID, e.B.ID, ex0, ey0, acx, acy, ex1, ey1, bcx, bcy)
 			}
@@ -109,7 +109,7 @@ func TestGlobalCameraLogging_DemoWithPulse(t *testing.T) {
 
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+	if err := g.Import(assets_pkg.TestFixtureDemoJSON); err != nil {
 		t.Fatalf("import demo: %v", err)
 	}
 	g.Layout(1280, 720)
@@ -138,7 +138,7 @@ func TestGlobalCameraLogging_DemoWithPulse(t *testing.T) {
 			n := g.nodes[0]
 			x1, y1, x2, y2 := g.nodeScreenRect(n)
 			cx, cy := (x1+x2)*0.5, (y1+y2)*0.5
-			ex, ey := n.X*camScale+offXR, n.Y*camScale+offYR+float64(topOffset)
+			ex, ey := n.X*camScale+offXR, n.Y*camScale+offYR+float64(gridTopOffset())
 			if testing.Verbose() {
 				fmt.Fprintf(out, "[GLOBAL] zoom=%.2f node0 center=(%.2f,%.2f) proj=(%.2f,%.2f)\n", s, cx, cy, ex, ey)
 			}
@@ -152,7 +152,7 @@ func TestGlobalCameraLogging_DemoWithPulse(t *testing.T) {
 			px := p.x1 + (p.x2-p.x1)*p.t
 			py := p.y1 + (p.y2-p.y1)*p.t
 			sx := px*camScale + offXR
-			sy := py*camScale + offYR + float64(topOffset)
+			sy := py*camScale + offYR + float64(gridTopOffset())
 			if testing.Verbose() {
 				fmt.Fprintf(out, "[GLOBAL] zoom=%.2f pulse t=%.2f world=(%.2f,%.2f) screen=(%.2f,%.2f)\n", s, p.t, px, py, sx, sy)
 			}

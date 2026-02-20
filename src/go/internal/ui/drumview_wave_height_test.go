@@ -4,7 +4,7 @@ import (
 	"image"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Ensure the Wave/EQ widget starts near one-third of the drum view height.

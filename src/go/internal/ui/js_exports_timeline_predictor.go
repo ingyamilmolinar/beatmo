@@ -5,8 +5,8 @@ package ui
 import (
 	"syscall/js"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (g *Game) initJSTimelinePredictor() {
@@ -315,6 +315,15 @@ func (g *Game) initJSTimelinePredictor() {
 		row := args[0].Int()
 		abs := args[1].Int()
 		return js.ValueOf(g.hasHighlight(row, abs))
+	}))
+
+	// hasAnyRowHighlight(row) -> bool — true if any highlight exists for the row.
+	js.Global().Set("hasAnyRowHighlight", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 {
+			return js.ValueOf(false)
+		}
+		row := args[0].Int()
+		return js.ValueOf(g.hasAnyRowHighlight(row))
 	}))
 
 	// ensure(need)

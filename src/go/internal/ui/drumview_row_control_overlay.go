@@ -1,27 +1,26 @@
 package ui
 
 import (
-	"image"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func (dv *DrumView) renderRowControlOverlay(dst *ebiten.Image) {
-	dv.drawRowControls(dst)
-	// Draw rename via component if available
-	if dv.renameComp != nil && dv.renameComp.IsOpen() {
-		dv.renameComp.Draw(dst)
-	} else if dv.renameBox != nil {
-		dv.renameBox.Draw(dst)
-	}
-	dv.addRowBtn.Draw(dst)
-	vis := dv.visibleRows()
-	if len(dv.Rows)+1 > vis {
-		bar := dv.scrollBarRect()
-		drawRect(dst, bar, color.RGBA{80, 80, 80, 255}, true)
-		thumb := dv.scrollThumbRect()
-		drawRect(dst, thumb, color.RGBA{200, 200, 200, 255}, true)
+	mobileEQActive := isSmallScreen() && dv.mobileEQMode
+	if !mobileEQActive {
+		dv.drawRowControls(dst)
+		// Draw rename via component if available
+		if dv.renameComp != nil && dv.renameComp.IsOpen() {
+			dv.renameComp.Draw(dst)
+		} else if dv.renameBox != nil {
+			dv.renameBox.Draw(dst)
+		}
+		dv.addRowBtn.Draw(dst)
+		if len(dv.Rows) > dv.visibleRows() {
+			dv.syncRowScroll()
+			dv.rowScroll.Draw(dst)
+		}
 	}
 	// Draw instrument menu via component if available
 	if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() {
@@ -37,8 +36,7 @@ func (dv *DrumView) renderRowControlOverlay(dst *ebiten.Image) {
 			menuBg.Max.X += instMenuScrollBarWidth
 		}
 		if !menuBg.Empty() {
-			drawRect(dst, menuBg, colDropdown, true)
-			drawRect(dst, menuBg, colButtonBorder, false)
+			drawPanel(dst, menuBg)
 		}
 
 		if dv.instMenuMode == instMenuModeCategories {
@@ -105,16 +103,10 @@ func (dv *DrumView) renderRowControlOverlay(dst *ebiten.Image) {
 			btn.Draw(dst)
 		}
 		// Draw scrollbar if needed
-		if dv.eqChannelScroll.HasScroll() {
-			rowH := dv.rowHeight()
-			barRect := dv.eqChannelScroll.BarRect(eqChannelMenuScrollBarWidth)
-			drawRect(dst, barRect, color.RGBA{70, 70, 70, 255}, true)
-			thumbRect := dv.eqChannelScroll.ThumbRect(eqChannelMenuScrollBarWidth, rowH/2)
-			drawRect(dst, thumbRect, color.RGBA{200, 200, 200, 255}, true)
-		}
+		dv.eqChannelScroll.Draw(dst)
 	}
 	if dv.naming {
-		box := image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
+		box := dv.nameBoxRect()
 		if dv.nameBox == nil {
 			dv.nameBox = NewTextInput(box, BPMBoxStyle)
 			dv.nameBox.MaxLen = 32

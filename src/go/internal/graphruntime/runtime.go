@@ -3,7 +3,7 @@ package graphruntime
 import (
 	"fmt"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // NodeSnapshot captures an immutable view of a graph node.

@@ -21,6 +21,19 @@ func (g *Game) initJSPlaybackPerf() {
 		return nil
 	}))
 
+	// syncHighlights() – drain pending highlight events and decay animations.
+	// Used by tests to process highlight state when Ebiten's Update() is starved.
+	// When playing, drives scheduling from the caller's thread so highlights
+	// stay current even if the sequencer goroutine's timer is delayed under
+	// CPU contention (e.g. parallel test runs).
+	js.Global().Set("syncHighlights", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.Playing() {
+			g.seqScheduleTime()
+		}
+		g.drainAndDecayHighlights()
+		return nil
+	}))
+
 	// setSimpleDraw(bool) – reduce rendering complexity for perf (web).
 	js.Global().Set("setSimpleDraw", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if len(args) < 1 {
@@ -91,7 +104,17 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 
 	// forceDraw() – render one frame into an offscreen image to build caches.
+	// Also reads current window.innerWidth/innerHeight and calls Layout() so
+	// that a preceding setViewportSize (Playwright) is reflected immediately.
 	js.Global().Set("forceDraw", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		win := js.Global().Get("window")
+		if !win.IsUndefined() {
+			iw := win.Get("innerWidth").Int()
+			ih := win.Get("innerHeight").Int()
+			if iw > 0 && ih > 0 {
+				g.Layout(iw, ih)
+			}
+		}
 		w, h := g.winW, g.winH
 		if w <= 0 {
 			w = 800
@@ -103,6 +126,7 @@ func (g *Game) initJSPlaybackPerf() {
 		start := time.Now()
 		wasMuted := g.perfDrawMuted
 		g.perfDrawMuted = true
+		g.lastDrawAt = time.Time{} // bypass draw throttle so drawGridPane runs
 		g.Draw(img)
 		g.perfDrawMuted = wasMuted
 		if !wasMuted && !g.perf.started.IsZero() {
@@ -227,6 +251,32 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 	js.Global().Set("resetPerfStats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		g.perf.reset()
+		return nil
+	}))
+
+	// forceGameTick(x, y) — Force one Update() tick with mouse at (x, y).
+	// Used by the agent test infrastructure to reliably process button clicks
+	// in headless Chromium where requestAnimationFrame fires infrequently.
+	// Without arguments, runs Update() with mouse unpressed at (0, 0).
+	js.Global().Set("forceGameTick", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		mx, my := 0, 0
+		mouseLeft := false
+		if len(args) >= 2 && !args[0].IsUndefined() {
+			mx = args[0].Int()
+			my = args[1].Int()
+			mouseLeft = true
+		}
+		oldCur := cursorPosition
+		oldBtn := isMouseButtonPressed
+		cursorPosition = func() (int, int) { return mx, my }
+		isMouseButtonPressed = func(b ebiten.MouseButton) bool {
+			return mouseLeft && b == ebiten.MouseButtonLeft
+		}
+		defer func() {
+			cursorPosition = oldCur
+			isMouseButtonPressed = oldBtn
+		}()
+		g.Update()
 		return nil
 	}))
 }

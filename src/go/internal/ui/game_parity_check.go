@@ -1,8 +1,7 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // parityExpected returns the scheduler's predicted truth at (row, idx).
@@ -113,41 +112,3 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 }
 
 // parityHighlightCheck disabled; highlight parity handled in parityScan with timing guards.
-
-// parityTruth returns the expected audible/visible truth at (row, abs) using
-// predictor + timeline without mutating timeline state. ok=false when the row
-// is out of range.
-func (g *Game) parityTruth(row, abs int, freezeLimit int) (val bool, typ model.NodeType, ok bool) {
-	if g == nil || g.drum == nil || row < 0 || row >= len(g.drum.Rows) || abs < 0 {
-		return false, model.NodeTypeInvisible, false
-	}
-	bi := g.beatInfoAtRow(row, abs)
-	val = false
-	typ = bi.NodeType
-	v, ctyp, kind, hasCommit := g.timelineCommittedWithKind(row, abs)
-	pastExclusive := g.rowPastExclusive(row)
-	inPast := abs < pastExclusive
-	if hasCommit && (kind == timeline.CommitKindPlayback || kind == timeline.CommitKindImport) && inPast {
-		return v, ctyp, true
-	}
-	if g.engine == nil || g.engine.Predictor == nil {
-		return false, typ, true
-	}
-	g.engine.Predictor.Ensure(abs + 1)
-	switch bi.NodeType {
-	case model.NodeTypeRegular:
-		val = g.engine.Predictor.AudibleAt(row, abs)
-	case model.NodeTypeMute:
-		val = g.engine.Predictor.TriggeredAt(row, abs)
-	}
-	if hasCommit && freezeLimit >= 0 && abs <= freezeLimit {
-		// Playback/import already handled; for soft commits just prefer predictor truth.
-		if kind == timeline.CommitKindSeeded || kind == timeline.CommitKindGapPad || kind == timeline.CommitKindReleased {
-			return val, ctyp, true
-		}
-	}
-	if hasCommit && ctyp != model.NodeTypeInvisible {
-		typ = ctyp
-	}
-	return val, typ, true
-}

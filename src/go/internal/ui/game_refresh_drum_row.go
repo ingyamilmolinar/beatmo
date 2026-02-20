@@ -3,8 +3,8 @@ package ui
 import (
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 func (g *Game) refreshDrumRow() {
@@ -327,6 +327,15 @@ func (g *Game) refreshDrumRow() {
 				}
 				if softDirty {
 					g.drum.markRowShiftDirty(rowIdx)
+				} else if g.Playing() && len(r.Steps) == len(prevSteps) {
+					// Playback with stationary window: count cell diffs to allow
+					// the cheap cell-patch path instead of full row rebuilds.
+					diff := countCellDiffs(prevSteps, prevTypes, r.Steps, r.CellTypes)
+					if diff > 0 && diff <= rowCachePatchMax {
+						g.drum.markRowCellsDirty(rowIdx)
+					} else {
+						g.drum.markRowDirty(rowIdx)
+					}
 				} else {
 					g.drum.markRowDirty(rowIdx)
 				}
@@ -364,6 +373,23 @@ type rowWindowConfig struct {
 	predictAt       func(int, model.BeatInfo) bool
 	reuseSteps      []bool
 	reuseTypes      []model.NodeType
+}
+
+// countCellDiffs returns the number of cell positions where Steps or CellTypes
+// differ between prev and next. Assumes equal-length slices.
+func countCellDiffs(prevSteps []bool, prevTypes []model.NodeType, nextSteps []bool, nextTypes []model.NodeType) int {
+	n := len(nextSteps)
+	diff := 0
+	for j := 0; j < n; j++ {
+		if nextSteps[j] != prevSteps[j] {
+			diff++
+			continue
+		}
+		if j < len(nextTypes) && j < len(prevTypes) && nextTypes[j] != prevTypes[j] {
+			diff++
+		}
+	}
+	return diff
 }
 
 func rowShiftCompatible(prevSteps []bool, prevTypes []model.NodeType, nextSteps []bool, nextTypes []model.NodeType, delta int) bool {

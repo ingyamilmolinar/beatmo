@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ingyamilmolinar/tunkul/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
 var (
@@ -43,7 +43,7 @@ func AssetsRoot() string {
 // current working directory. This supports running from repo root (`make run`)
 // as well as from module subdirs (e.g. `cd src/go && go run ...`).
 func defaultAssetsRoot() string {
-	if env := os.Getenv("TUNKUL_ASSETS"); env != "" {
+	if env := os.Getenv("BEATMO_ASSETS"); env != "" {
 		if info, err := os.Stat(env); err == nil && info.IsDir() {
 			return env
 		}
@@ -105,7 +105,7 @@ func InitCatalogFromDir(root string) error {
 
 	// 2) On-disk WAVs grouped by top-level folder (exclude assets/wav to
 	// avoid huge copies; that folder already mirrors a curated subset).
-	filepath.WalkDir(root, func(p string, d os.DirEntry, _ error) error {
+	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, _ error) error {
 		if d == nil {
 			return nil
 		}
@@ -276,7 +276,7 @@ func embeddedTempPath(meta SoundMeta) (string, error) {
 	if p, ok := embedTemp[meta.ID]; ok && p != "" {
 		return p, nil
 	}
-	tmp, err := os.CreateTemp("", "tunkul-"+meta.ID+"-*.wav")
+	tmp, err := os.CreateTemp("", "beatmo-"+meta.ID+"-*.wav")
 	if err != nil {
 		return "", err
 	}
@@ -395,6 +395,8 @@ func wavCategory(cat string, rel string) string {
 func synthCategory(id string) string {
 	lower := strings.ToLower(id)
 	switch {
+	case strings.HasPrefix(lower, "rimshot"), strings.HasPrefix(lower, "sidestick"):
+		return "Snares (Synth)"
 	case strings.HasPrefix(lower, "snare"):
 		return "Snares (Synth)"
 	case strings.HasPrefix(lower, "kick"):
@@ -407,12 +409,20 @@ func synthCategory(id string) string {
 		return "Claps (Synth)"
 	case strings.HasPrefix(lower, "cowbell"):
 		return "Cowbells (Synth)"
+	case strings.HasPrefix(lower, "ride"), strings.HasPrefix(lower, "crash"):
+		return "Cymbals (Synth)"
+	case strings.HasPrefix(lower, "shaker"):
+		return "Percussion (Synth)"
 	case strings.HasPrefix(lower, "bass"):
 		return "Bass (Synth)"
 	default:
 		return "Synth (Other)"
 	}
 }
+
+// slugReplacer is hoisted to package level to avoid re-creating it on every
+// slugPath call. The replacer is immutable and safe for concurrent use.
+var slugReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", "+", "-", ".", "-", "(", "-", ")", "-", "[", "-", "]", "-", "{", "-", "}", "-", ",", "-", "'", "-", "\"", "-", "#", "-", "$", "-", "%", "-", "@", "-", "!", "-", "^", "-", "&", "-", "*", "-", "?", "-", "|", "-", "<", "-", ">", "-", "~", "-", "`", "-")
 
 // slugPath converts a path-like string into a stable, ascii-only identifier.
 // It preserves folder structure by replacing separators with dashes.
@@ -421,8 +431,7 @@ func slugPath(rel string) string {
 	lower = strings.ReplaceAll(lower, "\\", "/")
 	lower = strings.TrimSuffix(lower, "/")
 	lower = strings.TrimPrefix(lower, "/")
-	repl := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", "+", "-", ".", "-", "(", "-", ")", "-", "[", "-", "]", "-", "{", "-", "}", "-", ",", "-", "'", "-", "\"", "-", "#", "-", "$", "-", "%", "-", "@", "-", "!", "-", "^", "-", "&", "-", "*", "-", "?", "-", "|", "-", "<", "-", ">", "-", "~", "-", "`", "-")
-	slug := repl.Replace(lower)
+	slug := slugReplacer.Replace(lower)
 	// collapse repeated dashes
 	slug = strings.ReplaceAll(slug, "--", "-")
 	for strings.Contains(slug, "--") {
@@ -435,9 +444,11 @@ func slugPath(rel string) string {
 	return slug
 }
 
+var prettyNameReplacer = strings.NewReplacer("_", " ", "-", " ")
+
 // prettyName converts a file base into Title Case without separators.
 func prettyName(base string) string {
-	base = strings.NewReplacer("_", " ", "-", " ").Replace(base)
+	base = prettyNameReplacer.Replace(base)
 	words := strings.Fields(base)
 	for i, w := range words {
 		if len(w) == 0 {

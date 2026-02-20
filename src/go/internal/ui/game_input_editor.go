@@ -2,10 +2,9 @@ package ui
 
 import (
 	"image"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 /* ─────────────── input handling ───────────────────────────────────────── */
@@ -21,30 +20,112 @@ func (g *Game) handleEditor() {
 		return
 	}
 
+	// Cancel editor state when multi-touch is active (pinch/pan).
+	// A prior single-finger touch may have set pendingClick via the
+	// touch-to-mouse override; transitioning to two fingers must not
+	// be treated as a mouse release that completes the click.
+	if globalTouchState.ActiveTouchCount() >= 2 {
+		g.pendingClick = false
+		g.leftPrev = left
+		return
+	}
+
+	// ESC closes node sidebar
+	if g.sidebar.IsOpen() && isKeyPressed(ebiten.KeyEscape) {
+		g.sidebar.Close()
+		g.leftPrev = left
+		return
+	}
+
+	// ESC cancels connect mode
+	if g.connectMode && isKeyPressed(ebiten.KeyEscape) {
+		g.cancelConnectMode()
+		g.leftPrev = left
+		return
+	}
+
+	// Move mode: handle placement and ESC
+	if g.moveMode && g.movingNode != nil {
+		x, y := cursorPosition()
+		if g.moveConfirm {
+			// Confirmation dialog: check for clicks on confirm/cancel buttons
+			if left && !g.leftPrev {
+				dw, dh := 280, 60
+				dx := (g.split.GridW(g.winW) - dw) / 2
+				dy := (g.split.GridH(g.winH) - dh) / 2
+				confirmRect := image.Rect(dx+40, dy+30, dx+120, dy+50)
+				cancelRect := image.Rect(dx+160, dy+30, dx+240, dy+50)
+				pt := image.Pt(x, y)
+				if pt.In(confirmRect) {
+					g.moveNode(g.movingNode, g.moveConfirmI, g.moveConfirmJ)
+					g.cancelMoveMode()
+				} else if pt.In(cancelRect) {
+					g.cancelMoveMode()
+				}
+			}
+			g.leftPrev = left
+			return
+		}
+		// ESC cancels move mode
+		if isKeyPressed(ebiten.KeyEscape) {
+			g.cancelMoveMode()
+			g.leftPrev = left
+			return
+		}
+		// Skip the mouse release that corresponds to the MOVE button press
+		if g.moveSkipRelease {
+			if !left {
+				g.moveSkipRelease = false
+			}
+			g.leftPrev = left
+			return
+		}
+		// Click release in grid places the node
+		if !left && g.leftPrev && g.split.InGridPane(x, y) && y >= gridTopOffset() {
+			wx := (float64(x) - g.cam.OffsetX) / g.cam.Scale
+			wy := (float64(y-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
+			_, _, ni, nj := g.grid.Snap(wx, wy)
+			// Check if destination is occupied by another node
+			if existing := g.nodeAt(ni, nj); existing != nil && existing.ID != g.movingNode.ID {
+				g.cancelMoveMode()
+				g.leftPrev = left
+				return
+			}
+			loss := g.moveNodeEdgeLoss(g.movingNode, ni, nj)
+			if loss > 0 {
+				g.moveConfirm = true
+				g.moveConfirmI = ni
+				g.moveConfirmJ = nj
+				g.moveEdgeLoss = loss
+			} else {
+				g.moveNode(g.movingNode, ni, nj)
+				g.cancelMoveMode()
+			}
+		}
+		g.leftPrev = left
+		return
+	}
+
 	// coords -> world
 	x, y := cursorPosition()
-	if y < topOffset || y >= g.split.Y {
+
+	// Guard: a popup was closed recently (e.g., by handleTapInGrid processing
+	// a gesture tap on the previous frame). The press/release state from the
+	// same touch is stale — don't create nodes or set pendingClick.
+	if g.sidebar.ClosedGuard() > 0 {
+		g.pendingClick = false
+		g.leftPrev = left
+		return
+	}
+
+	if y < gridTopOffset() || !g.split.InGridPane(x, y) {
 		g.pendingClick = false
 		g.leftPrev = left
 		return
 	}
 	wx := (float64(x) - g.cam.OffsetX) / g.cam.Scale
-	wy := (float64(y-topOffset) - g.cam.OffsetY) / g.cam.Scale
+	wy := (float64(y-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
 	gx, gy, i, j := g.grid.Snap(wx, wy)
-
-	// Node popup buttons: unified handling via Button components
-	if g.nodeMenuOpen && g.nodeMenuNode != nil {
-		if g.handleNodeMenuButtons(x, y, left) {
-			g.leftPrev = left
-			return
-		}
-		// If the click is inside the popup panel but not on a button, swallow
-		// the event to avoid creating grid nodes underneath.
-		if g.menuHit(x, y) {
-			g.leftPrev = left
-			return
-		}
-	}
 
 	// ---------------- delete node (right-click) ----------------
 	if right && !shift && !left {
@@ -140,9 +221,10 @@ func (g *Game) handleEditor() {
 				}
 				g.sel = n
 				n.Selected = true
-				g.nodeMenuOpen = true
-				g.nodeMenuNode = n
+				g.sidebar.Open(n)
 				g.computeSelNeighbors()
+				g.coordBadgeNode = n
+				g.coordBadgeFrame = g.frame
 			} else {
 				// Empty intersection → add/select regular node and close menu
 				g.logger.Tracef("[INPUT/NODE] add/select grid=(%d,%d)", g.clickI, g.clickJ)
@@ -157,8 +239,7 @@ func (g *Game) handleEditor() {
 					n.Selected = true
 					g.computeSelNeighbors()
 				}
-				g.nodeMenuOpen = false
-				g.nodeMenuNode = nil
+				g.sidebar.Close()
 			}
 		}
 		g.pendingClick = false
@@ -178,89 +259,12 @@ func (g *Game) handleEditor() {
 	g.leftPrev = left
 }
 
-// handleNodeMenuButtons processes clicks on node popup controls with a
-// deterministic z-ordered hit test so visually topmost controls receive input.
+// handleNodeMenuButtons is retained as a compatibility shim for touch input.
+// It delegates to the sidebar's HandleInput method.
 func (g *Game) handleNodeMenuButtons(x, y int, left bool) bool {
-	g.updateNodeMenuRects()
-	if g.nodeMenuBtns == nil {
+	if !g.sidebar.IsOpen() || g.sidebar.Node() == nil {
 		return false
 	}
-	// Build an ordered list of control ids with menu-open items at higher z.
-	order := make([]string, 0, len(g.nodeMenuRects))
-	if g.nodeGrooveOpen {
-		// Groove dropdown items first (topmost)
-		for id := range g.nodeMenuRects {
-			if strings.HasPrefix(id, "groove:") {
-				order = append(order, id)
-			}
-		}
-	}
-	if g.nodeLogicOpen {
-		// Dropdown items first (topmost)
-		for id := range g.nodeMenuRects {
-			if strings.HasPrefix(id, "logic:") {
-				order = append(order, id)
-			}
-		}
-	}
-	// Parameter +/- next (always interactive when visible)
-	order = append(order, "ln-", "ln+", "lp-", "lp+", "gp-", "gp+")
-	// Then the logic button itself
-	order = append(order, "logic", "grv")
-	// Other controls beneath
-	order = append(order, "vol-", "vol+", "pit-", "pit+", "dur-", "dur+", "aud")
-
-	// Close logic dropdown when open and clicking outside dropdown and logic
-	if g.nodeLogicOpen && left && !g.leftPrev {
-		inside := false
-		if r, ok := g.nodeMenuRects["logic"]; ok && image.Pt(x, y).In(r) {
-			inside = true
-		}
-		for id, r := range g.nodeMenuRects {
-			if strings.HasPrefix(id, "logic:") && image.Pt(x, y).In(r) {
-				inside = true
-				break
-			}
-		}
-		if !inside {
-			g.nodeLogicOpen = false
-		}
-	}
-	// Close groove dropdown similarly
-	if g.nodeGrooveOpen && left && !g.leftPrev {
-		inside := false
-		if r, ok := g.nodeMenuRects["grv"]; ok && image.Pt(x, y).In(r) {
-			inside = true
-		}
-		for id, r := range g.nodeMenuRects {
-			if strings.HasPrefix(id, "groove:") && image.Pt(x, y).In(r) {
-				inside = true
-				break
-			}
-		}
-		if !inside {
-			g.nodeGrooveOpen = false
-		}
-	}
-
-	// Hit test in order
-	for _, id := range order {
-		btn, ok := g.nodeMenuBtns[id]
-		if !ok {
-			continue
-		}
-		r, ok := g.nodeMenuRects[id]
-		if !ok {
-			continue
-		}
-		btn.SetRect(r)
-		if btn.Handle(x, y, left) {
-			return true
-		}
-	}
-	return false
+	result := g.sidebar.HandleInput(x, y, left)
+	return result != InputIgnored
 }
-
-// handleNodeMenuClick processes a click on the property popup controls if
-// present. Returns true when the click was consumed.
-// handleNodeMenuClick removed in favor of unified Button handling.

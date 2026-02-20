@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -47,12 +48,7 @@ func TestTextInputEditing(t *testing.T) {
 	restore = SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool {
-			if k == ebiten.KeyLeft {
-				return true
-			}
-			return false
-		},
+		func(k ebiten.Key) bool { return k == ebiten.KeyLeft },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
@@ -64,12 +60,7 @@ func TestTextInputEditing(t *testing.T) {
 	restore = SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool {
-			if k == ebiten.KeyBackspace {
-				return true
-			}
-			return false
-		},
+		func(k ebiten.Key) bool { return k == ebiten.KeyBackspace },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
@@ -216,8 +207,10 @@ func TestTextInputClickMovesCursor(t *testing.T) {
 	assertDefaultParityState(t)
 	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
 	ti.SetText("abcd")
+	// Click just past the second character — use TextWidth for font-independent positioning.
+	clickX := ti.Rect.Min.X + 4 + TextWidth("ab") + 1
 	restore := SetInputForTest(
-		func() (int, int) { return ti.Rect.Min.X + 4 + debugCharW*2 + 1, ti.Rect.Min.Y + 5 },
+		func() (int, int) { return clickX, ti.Rect.Min.Y + 5 },
 		func(ebiten.MouseButton) bool { return true },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
@@ -245,7 +238,14 @@ func TestTextInputCursorPosition(t *testing.T) {
 	defer func() { drawCursor = old }()
 	ti.focused = true
 	ti.Draw(ebiten.NewImage(40, 20))
-	wantX := ti.Rect.Min.X + 4 + debugCharW*4
+	// Compute expected cursor X the same way Draw() does: measure the visible
+	// prefix before the cursor using TextWidth (works for both debug and TrueType).
+	_, start := ti.visibleText()
+	rs := []rune(ti.Text)
+	bi := byteIndex(ti.Text, start)
+	ci := byteIndex(ti.Text, min(ti.cursor, len(rs)))
+	prefix := ti.Text[bi:ci]
+	wantX := ti.Rect.Min.X + 4 + TextWidth(prefix)
 	if cur.Min.X != wantX {
 		t.Fatalf("cursor x=%d want %d", cur.Min.X, wantX)
 	}
@@ -267,7 +267,12 @@ func TestTextInputCursorAlignment(t *testing.T) {
 
 	ti.Draw(ebiten.NewImage(80, 20))
 
-	want := ti.Rect.Min.X + 4 + 6*2 // two glyphs at 6px each
+	// Compute expected cursor X using TextWidth for the visible prefix.
+	_, start := ti.visibleText()
+	bi := byteIndex(ti.Text, start)
+	ci := byteIndex(ti.Text, min(ti.cursor, len([]rune(ti.Text))))
+	prefix := ti.Text[bi:ci]
+	want := ti.Rect.Min.X + 4 + TextWidth(prefix)
 	if cur.Min.X != want {
 		t.Fatalf("cursor x=%d want %d", cur.Min.X, want)
 	}
@@ -278,11 +283,21 @@ func TestTextInputOverflow(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	vis, start := ti.visibleText()
-	if utf8.RuneCountInString(vis) > 5 {
-		t.Fatalf("visible too long: %q", vis)
+	total := utf8.RuneCountInString(ti.Text)
+	visLen := utf8.RuneCountInString(vis)
+	// Visible text must fit within the box.
+	pad := 4
+	maxW := ti.Rect.Dx() - pad*2
+	if TextWidth(vis) > maxW {
+		t.Fatalf("visible text too wide: %q (%dpx > %dpx)", vis, TextWidth(vis), maxW)
 	}
-	if start != 5 {
-		t.Fatalf("start=%d", start)
+	// Cursor is at end (SetText moves it there), so start+visLen must equal total.
+	if start+visLen != total {
+		t.Fatalf("expected start+visLen==total, got %d+%d!=%d", start, visLen, total)
+	}
+	// Must actually overflow (not all chars visible).
+	if visLen >= total {
+		t.Fatalf("expected overflow, all %d chars visible", total)
 	}
 }
 
@@ -292,8 +307,19 @@ func TestTextInputVisibleTextStart(t *testing.T) {
 	ti.SetText("abcdefghij")
 	ti.cursor = 0
 	vis, start := ti.visibleText()
-	if vis != "abcde" || start != 0 {
-		t.Fatalf("vis=%q start=%d", vis, start)
+	// With cursor at 0, start must be 0.
+	if start != 0 {
+		t.Fatalf("start=%d want 0", start)
+	}
+	// Visible text must fit within the box.
+	pad := 4
+	maxW := ti.Rect.Dx() - pad*2
+	if TextWidth(vis) > maxW {
+		t.Fatalf("visible text too wide: %q (%dpx > %dpx)", vis, TextWidth(vis), maxW)
+	}
+	// Visible text must be a prefix of the full text.
+	if len(vis) == 0 || !strings.HasPrefix(ti.Text, vis) {
+		t.Fatalf("vis=%q is not a prefix of %q", vis, ti.Text)
 	}
 }
 
@@ -302,9 +328,14 @@ func TestTextInputMidCursorWindow(t *testing.T) {
 	ti := NewTextInput(image.Rect(0, 0, 40, 20), BPMBoxStyle)
 	ti.SetText("abcdefghij")
 	ti.cursor = 5
-	_, start := ti.visibleText()
-	if start != 0 {
-		t.Fatalf("start=%d", start)
+	vis, start := ti.visibleText()
+	visLen := utf8.RuneCountInString(vis)
+	// Cursor must be within visible window.
+	if start > ti.cursor {
+		t.Fatalf("start=%d > cursor=%d", start, ti.cursor)
+	}
+	if ti.cursor > start+visLen {
+		t.Fatalf("cursor=%d not visible (start=%d visLen=%d)", ti.cursor, start, visLen)
 	}
 	var cur image.Rectangle
 	old := drawCursor
@@ -314,7 +345,12 @@ func TestTextInputMidCursorWindow(t *testing.T) {
 	defer func() { drawCursor = old }()
 	ti.focused = true
 	ti.Draw(ebiten.NewImage(40, 20))
-	wantX := ti.Rect.Min.X + 4 + debugCharW*(ti.cursor-start)
+	// Compute expected cursor X using TextWidth for the visible prefix.
+	rs := []rune(ti.Text)
+	bi := byteIndex(ti.Text, start)
+	ci := byteIndex(ti.Text, min(ti.cursor, len(rs)))
+	prefix := ti.Text[bi:ci]
+	wantX := ti.Rect.Min.X + 4 + TextWidth(prefix)
 	if cur.Min.X != wantX {
 		t.Fatalf("cursor x=%d want %d", cur.Min.X, wantX)
 	}

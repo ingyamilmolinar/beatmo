@@ -2,8 +2,6 @@
 
 package audio
 
-import ()
-
 // AutoLoadEmbeddedWAVs registers all embedded WAVs as instruments.
 // On desktop, we write each asset to a temporary file and decode via miniaudio.
 func AutoLoadEmbeddedWAVs() {

@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 type Scheduler struct {
@@ -44,7 +44,7 @@ func (s *Scheduler) SetBPM(bpm int) {
 		elapsed := now.Sub(s.last)
 		// Fraction of the current beat with old BPM; keep it within [0,1).
 		frac := float64(elapsed) / float64(oldSpb)
-		frac = frac - math.Floor(frac)
+		frac -= math.Floor(frac)
 		// Rebase last so that now - last corresponds to the same fraction of new beat.
 		adj := time.Duration(frac * float64(newSpb))
 		s.last = now.Add(-adj)

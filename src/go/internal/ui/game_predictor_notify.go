@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 func (g *Game) notifyPredictorNode(id model.NodeID) {
@@ -18,12 +18,5 @@ func (g *Game) notifyPredictorNode(id model.NodeID) {
 		return
 	}
 	g.engine.Predictor.DeleteNode(id)
-	g.removeNodeCache(id)
-}
-
-func (g *Game) notifyPredictorDelete(id model.NodeID) {
-	if g.engine != nil && g.engine.Predictor != nil {
-		g.engine.Predictor.DeleteNode(id)
-	}
 	g.removeNodeCache(id)
 }

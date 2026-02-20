@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Regression: when the UI playhead (nextBeatIdxs) advances via syncUIToTime but
@@ -36,15 +36,6 @@ func TestSequencerSkipsSchedulingBeatsBehindPlayhead(t *testing.T) {
 
 	g.SetPlaying(true)
 	g.SetPlayFunc(func(string, float64, ...float64) {})
-
-	div := g.grid.MaxDiv()
-	if div <= 0 {
-		div = 1
-	}
-	bpm := g.AppliedBPM()
-	if bpm <= 0 {
-		bpm = 120
-	}
 
 	// Simulate the wall-clock being at abs=10 (so UI playhead would be 11) but the
 	// sequencer counter being far behind.

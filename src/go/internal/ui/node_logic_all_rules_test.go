@@ -2,8 +2,9 @@ package ui
 
 import (
 	"encoding/json"
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Ensure removed skip_* rules are mapped to canonical trigger_* rules on import
@@ -65,16 +66,16 @@ func TestImportMapsRemovedSkipRulesAndNoneClearsLegacy(t *testing.T) {
 	}
 	g.sel = u4
 	u4.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = u4
-	g.updateNodeMenuRects()
+	g.sidebar.Open(u4)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
 	// Open logic dropdown and pick None
-	if b := g.nodeMenuBtns["logic"]; b == nil || !b.Handle((g.nodeMenuRects["logic"].Min.X+g.nodeMenuRects["logic"].Max.X)/2, (g.nodeMenuRects["logic"].Min.Y+g.nodeMenuRects["logic"].Max.Y)/2, true) {
+	if b := g.sidebar.btns["logic"]; b == nil || !b.Handle((g.sidebar.rects["logic"].Min.X+g.sidebar.rects["logic"].Max.X)/2, (g.sidebar.rects["logic"].Min.Y+g.sidebar.rects["logic"].Max.Y)/2, true) {
 		t.Fatalf("logic button click failed")
 	}
 	_ = g.Update()
-	g.updateNodeMenuRects()
-	if b := g.nodeMenuBtns["logic:"]; b == nil || !b.Handle((g.nodeMenuRects["logic:"].Min.X+g.nodeMenuRects["logic:"].Max.X)/2, (g.nodeMenuRects["logic:"].Min.Y+g.nodeMenuRects["logic:"].Max.Y)/2, true) {
+	g.sidebar.layout()
+	if b := g.sidebar.btns["logic:"]; b == nil || !b.Handle((g.sidebar.rects["logic:"].Min.X+g.sidebar.rects["logic:"].Max.X)/2, (g.sidebar.rects["logic:"].Min.Y+g.sidebar.rects["logic:"].Max.Y)/2, true) {
 		t.Fatalf("none item click failed")
 	}
 	_ = g.Update()

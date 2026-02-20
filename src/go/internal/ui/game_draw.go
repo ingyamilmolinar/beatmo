@@ -23,9 +23,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			if useFrameBuf && g.frameBuffer != nil {
 				screen.DrawImage(g.frameBuffer, nil)
 				g.drawThrottleCopies++
+				g.maybeYield()
+				return // only skip when we have a valid cached frame
 			}
-			g.maybeYield()
-			return
+			// frameBuffer invalidated by resize — fall through to full draw
 		}
 		g.lastDrawAt = now
 	}
@@ -57,5 +58,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	if target != screen {
 		screen.DrawImage(target, nil)
+	}
+	// Screenshot mode: count draws and capture when ready.
+	if g.screenshotPath != "" {
+		g.screenshotDraws++
+		if g.screenshotDraws == 90 {
+			if err := g.captureScreen(screen); err != nil {
+				g.logger.Infof("[SCREENSHOT] Error: %v", err)
+			} else {
+				g.logger.Infof("[SCREENSHOT] Saved to %s", g.screenshotPath)
+			}
+		}
 	}
 }

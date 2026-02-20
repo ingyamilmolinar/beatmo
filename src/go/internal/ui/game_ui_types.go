@@ -3,7 +3,7 @@ package ui
 import (
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 /* ───────────────────────── data types ───────────────────────── */
@@ -14,7 +14,6 @@ type uiNode struct {
 	X, Y     float64 // cached world coords (grid.Unit()*I, grid.Unit()*J)
 	Selected bool
 	Start    bool
-	path     []model.NodeID // Path taken by the pulse to reach this node
 }
 
 func (n *uiNode) Bounds(scale float64) (x1, y1, x2, y2 float64) {

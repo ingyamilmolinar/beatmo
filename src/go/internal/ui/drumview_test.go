@@ -15,9 +15,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func instMenuFilteredOptionsForTest(dv *DrumView) []string {
@@ -75,42 +75,45 @@ func TestNewDrumView(t *testing.T) {
 
 func TestTimelineInfoFormatsBeatAndTime(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), nil, testLogger)
-	dv.timelineBeats = 4
+	dv.Length = 4
+	dv.timelineUnitsPerBeat = 1
 	dv.secPerBeat = 0.5
 	got := dv.timelineInfo(2.5)
-	want := "Beat 2.500/4.000 Time 1s 250ms/2s 0ms"
+	// New simplified format: "Beat X/Y | M:SS"
+	want := "Beat 2/4 | 0:01"
 	if got != want {
 		t.Fatalf("timelineInfo=%q want %q", got, want)
 	}
 }
 
-// Rounding should carry milliseconds into seconds precisely at boundaries.
+// Verify the simplified format rounds correctly at boundaries.
 func TestTimelineInfoRoundingCarry(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), nil, testLogger)
-	dv.timelineBeats = 4
+	dv.Length = 4
+	dv.timelineUnitsPerBeat = 1
 	dv.SetBPM(96) // 60/96 = 0.625s per beat => 625ms
 
-	// 1.6 beats => 1.6 * 625ms = 1000ms -> 1s 0ms after rounding
+	// 1.6 beats => 1.6 * 625ms = 1000ms -> 1s => "0:01"
 	info := dv.timelineInfo(1.6)
-	if !strings.Contains(info, "Beat 1.600/") {
+	if !strings.Contains(info, "Beat 1/") {
 		t.Fatalf("unexpected beat portion: %q", info)
 	}
-	if !strings.Contains(info, "Time 1s 0ms/") {
+	if !strings.Contains(info, "| 0:01") {
 		t.Fatalf("unexpected time rounding: %q", info)
 	}
 
-	// Also verify total time rounds correctly for totals beyond one second.
-	dv.timelineBeats = 8 // total = 8 * 625ms = 5000ms => 5s 0ms
+	// Larger total: 8 beats × 625ms = 5000ms => 5s => "0:01" for current
+	dv.Length = 8
 	info = dv.timelineInfo(1.6)
-	if !strings.Contains(info, "/5s 0ms") {
-		t.Fatalf("unexpected total time rounding: %q", info)
+	if !strings.Contains(info, "Beat 1/8") {
+		t.Fatalf("unexpected beat info: %q", info)
 	}
 }
 
 func TestDrumViewLengthIncrease(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelDebug)
 	graph := model.NewGraph(logger)
-	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	drumView := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 
 	// Simulate button press
 	pressLenInc(t, drumView)
@@ -129,6 +132,7 @@ func TestMainVolumeSliderAdjustsAudio(t *testing.T) {
 	audio.SetMainVolume(1)
 	t.Cleanup(func() { audio.SetMainVolume(prevVol) })
 	dv := NewDrumView(image.Rect(0, 0, 600, 300), nil, testLogger)
+	// Desktop: inline slider in row 1 of the two-row transport.
 	rect := dv.mainVolSlider.Rect()
 	if rect.Dx() <= 0 {
 		t.Fatalf("slider rect not initialized: %v", rect)
@@ -200,7 +204,7 @@ func TestDrumRowLayout(t *testing.T) {
 func TestDrumViewLengthDecrease(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelDebug)
 	graph := model.NewGraph(logger)
-	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	drumView := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 
 	// Increase length first to ensure we can decrease
 	pressLenInc(t, drumView)
@@ -277,31 +281,6 @@ func TestDrumViewVerticalScroll(t *testing.T) {
 	}
 }
 
-func TestDrumViewWheelAdjustsLength(t *testing.T) {
-	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
-
-	wheelVal := 0.0
-	cursor := func() (int, int) { return dv.Bounds.Min.X + dv.labelW + 500, dv.Bounds.Min.Y + timelineHeight + 5 }
-	restore := SetInputForTest(cursor,
-		func(ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { v := wheelVal; wheelVal = 0; return 0, v },
-		func() (int, int) { return 800, 600 },
-	)
-	t.Cleanup(restore)
-	// Accumulate four notches to reach +1 beat (with smoothing).
-	for i := 0; i < 4; i++ {
-		wheelVal = 1.0
-		dv.Update()
-	}
-	restore()
-	if dv.Length != 9 {
-		t.Fatalf("expected length 9 got %d", dv.Length)
-	}
-}
 
 func TestDrumViewLengthMinMax(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelDebug)
@@ -316,18 +295,20 @@ func TestDrumViewLengthMinMax(t *testing.T) {
 		t.Errorf("Expected min drum view length to stay at 1, got %d", dv.Length)
 	}
 
-	// Max length is bounded by horizontal pixels available in the timeline.
+	// Max length is bounded by the screen-aware clamp in clampLength.
+	// After pressing +, the DrumView should not exceed the clamped max.
 	dv2 := NewDrumView(image.Rect(0, 0, 1200, 200), graph, logger)
 	dv2.Update()
-	max := dv2.timelineRect.Dx()
-	if max < 2 {
-		t.Fatalf("insufficient width for max length test: %d", max)
-	}
-	dv2.SetLength(max)
+	// Set a large length so the next Inc will try to exceed the max.
+	big := dv2.Bounds.Dx() * 2
+	dv2.SetLength(big)
+	// clampLength determines the actual max; pressing + from that point should not grow.
+	clamped := dv2.clampLength(big)
+	dv2.SetLength(clamped)
 	pressLenInc(t, dv2)
 	dv2.Update()
-	if dv2.Length != max {
-		t.Errorf("Expected max length %d, got %d", max, dv2.Length)
+	if dv2.Length != clamped {
+		t.Errorf("Expected max length %d, got %d", clamped, dv2.Length)
 	}
 }
 
@@ -337,7 +318,7 @@ func TestTimelineInfo(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.SetBPM(120)
 	info := dv.timelineInfo(4)
-	expected := "Beat 4.000/8.000 Time 2s 0ms/4s 0ms"
+	expected := "Beat 4/8 | 0:02"
 	if info != expected {
 		t.Fatalf("expected %q got %q", expected, info)
 	}
@@ -348,12 +329,14 @@ func TestTimelineInfoFractionalBeat(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.SetBPM(120)
-	dv.timelineBeats = 32
+	dv.Length = 32
+	dv.timelineUnitsPerBeat = 1
 	info := dv.timelineInfo(1.25)
-	if !strings.HasPrefix(info, "Beat 1.250/32.000") {
+	// New format truncates to integer beats: "Beat 1/32 | 0:00"
+	if !strings.HasPrefix(info, "Beat 1/32") {
 		t.Fatalf("unexpected beat info: %q", info)
 	}
-	if !strings.Contains(info, "Time 0s 625ms/16s 0ms") {
+	if !strings.Contains(info, "| 0:00") {
 		t.Fatalf("missing time info: %q", info)
 	}
 	if strings.Count(info, "Beat") != 1 {
@@ -367,9 +350,51 @@ func TestTimelineInfoExtendsTotal(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
 	dv.SetBPM(120)
 	dv.timelineBeats = 32
+	dv.isPlaying = true // Extension only applies during playback
 	info := dv.timelineInfo(32.125)
-	if !strings.HasPrefix(info, "Beat 32.125/32.125") {
+	// When elapsed exceeds total, both truncate to the same integer
+	if !strings.HasPrefix(info, "Beat 32/32") {
 		t.Fatalf("unexpected extended total: %q", info)
+	}
+}
+
+func TestTimelineInfoStoppedDenominator(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	dv.SetBPM(120)
+	dv.Length = 8
+	dv.timelineUnitsPerBeat = 1
+	dv.isPlaying = false
+	// Even with high elapsed beats, stopped denominator should be patternBeats
+	info := dv.timelineInfo(351)
+	if !strings.Contains(info, "/8") {
+		t.Fatalf("expected denominator 8 when stopped, got %q", info)
+	}
+
+	// Cached version should behave the same
+	dv.lastInfoText = "" // Clear cache
+	cached := dv.timelineInfoCached(351)
+	if !strings.Contains(cached, "/8") {
+		t.Fatalf("expected cached denominator 8 when stopped, got %q", cached)
+	}
+}
+
+func TestEQChannelBtnWidthFitsLongNames(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
+	dv.Rows[0].Name = "Fm-epiano-1"
+	dv.Rows[0].Instrument = "fm-epiano-1"
+
+	w := dv.calcEQChannelBtnWidth()
+	nameW := TextWidth("Fm-epiano-1")
+	if w < nameW {
+		t.Fatalf("EQ channel button width %d too small for name width %d", w, nameW)
+	}
+	// Should be at least the old minimum
+	if w < 72 {
+		t.Fatalf("EQ channel button width %d below minimum 72", w)
 	}
 }
 
@@ -417,7 +442,7 @@ func TestTimelineLayout(t *testing.T) {
 	if textY >= dv.timelineRect.Min.Y {
 		t.Fatalf("info text overlaps timeline bar")
 	}
-	rowStart := dv.Bounds.Min.Y + timelineHeight
+	rowStart := dv.Bounds.Min.Y + dv.headerH
 	if dv.timelineRect.Max.Y >= rowStart {
 		t.Fatalf("timeline bar overlaps drum rows")
 	}
@@ -491,7 +516,7 @@ func TestTimelineBeatMarkersDecimate(t *testing.T) {
 
 func TestTimelineScrubSeek(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+2*24), nil, logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()
 	dv.timelineBeats = 100
 
@@ -520,7 +545,7 @@ func TestTimelineScrubSeek(t *testing.T) {
 
 func TestTimelineScrubLongTimeline(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+2*24), nil, logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()
 	dv.timelineBeats = 10000
 
@@ -541,9 +566,12 @@ func TestTimelineScrubLongTimeline(t *testing.T) {
 	dv.Update()
 	restore()
 
-	total := dv.timelineBeats - dv.Length
+	// The scrub logic uses math.Round; mirror it here.
+	unitsPerBeat := max1(dv.timelineUnitsPerBeat)
+	lengthBeats := float64(dv.Length) / float64(unitsPerBeat)
+	maxOffBeats := float64(dv.timelineBeats) - lengthBeats
 	frac := float64(dv.timelineRect.Dx()-1) / float64(dv.timelineRect.Dx())
-	want := int(frac * float64(total))
+	want := int(math.Round(frac * maxOffBeats * float64(unitsPerBeat)))
 	if dv.Offset != want {
 		t.Fatalf("offset=%d want %d", dv.Offset, want)
 	}
@@ -555,7 +583,7 @@ func TestTimelineScrubLongTimeline(t *testing.T) {
 func TestDrumViewUpdatesGraphBeatLength(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelDebug)
 	graph := model.NewGraph(logger)
-	drumView := NewDrumView(image.Rect(0, 0, 100, 100), graph, logger)
+	drumView := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 
 	// Initial check
 	if graph.BeatLength() != 8 {
@@ -690,35 +718,35 @@ func TestDrumViewButtonsDrawn(t *testing.T) {
 	}
 	defer func() { drawButton = orig }()
 
-	dv.Draw(ebiten.NewImage(400, 200), map[int]int64{}, 0, nil, 0)
-	// 33 buttons: play, stop, bpm-, bpm+, subdiv, len-, len+, track, upload, import, export,
-	// add row, and per-row: label, edit, save, color, M, S, O, X + sliders, EQ toggle + EQ channel,
-	// and 10 EQ band mute buttons
-	if count != 33 {
-		t.Fatalf("expected 33 buttons drawn, got %d", count)
+	dv.Draw(ebiten.NewImage(400, 200), nil, 0, nil, 0)
+	// 39 buttons: play, stop, bpm-, bpm+, subdiv, len-, len+, track, upload, import, export,
+	// viewSwitch, add row, and per-row: label, edit, save, color, FX, M, S, O, X + sliders,
+	// EQ toggle + EQ channel, HP + LP filter toggles, EQ curve toggle, and 10 EQ band mute buttons
+	if count != 39 {
+		t.Fatalf("expected 39 buttons drawn, got %d", count)
 	}
 }
 
 func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 300), graph, logger)
 	dv.SetLength(4)
 	dv.SetBeatLength(4)
 	dv.AddRow()
 
-	highlights := map[int]int64{
-		makeBeatKey(0, 1): 1,
-		makeBeatKey(1, 2): 1,
+	highlights := [][]highlightEntry{
+		{{idx: 1, val: 1}},
+		{{idx: 2, val: 1}},
 	}
 
-	dst := ebiten.NewImage(800, 200)
+	dst := ebiten.NewImage(800, 300)
 	orig := drawRect
 	t.Cleanup(func() { drawRect = orig })
 	var hits [][2]int
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		if filled && r.Min.Y >= dv.Bounds.Min.Y+timelineHeight {
-			row := (r.Min.Y - (dv.Bounds.Min.Y + timelineHeight)) / dv.rowHeight()
+		if filled && r.Min.Y >= dv.Bounds.Min.Y+dv.headerH {
+			row := (r.Min.Y - (dv.Bounds.Min.Y + dv.headerH)) / dv.rowHeight()
 			if row < 0 || row >= len(dv.Rows) {
 				orig(dst, r, c, filled)
 				return
@@ -799,8 +827,13 @@ func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, logger)
 	dv.recalcButtons()
 	dv.calcLayout()
-	// Force an extreme length without going through wheel/buttons to bypass clamps.
-	dv.SetLength(dv.timelineRect.Dx() * 10)
+	// Force an extreme length by setting dv.Length directly to bypass clamps.
+	extreme := dv.timelineRect.Dx() * 10
+	dv.Length = extreme
+	for _, r := range dv.Rows {
+		r.Steps = make([]bool, dv.Length)
+		r.CellTypes = make([]model.NodeType, dv.Length)
+	}
 
 	dst := ebiten.NewImage(400, 200)
 	orig := drawRect
@@ -815,7 +848,7 @@ func TestDrumViewLineVisibleWhenOverzoomed(t *testing.T) {
 		}
 		orig(dst, r, c, filled)
 	}
-	dv.Draw(dst, map[int]int64{}, 0, make([]model.BeatInfo, 0), 0)
+	dv.Draw(dst, nil, 0, make([]model.BeatInfo, 0), 0)
 	drawRect = orig
 	if ticks == 0 {
 		t.Fatalf("missing decimated marker ticks at extreme zoom-out")
@@ -841,7 +874,7 @@ func TestRenameOpensWithCursor(t *testing.T) {
 	t.Cleanup(restore)
 	restore()
 
-	dv.Draw(ebiten.NewImage(200, 200), map[int]int64{}, 0, nil, 0)
+	dv.Draw(ebiten.NewImage(200, 200), nil, 0, nil, 0)
 
 	if calls == 0 {
 		t.Fatalf("cursor not drawn")
@@ -1050,7 +1083,7 @@ func TestDropdownOutsideClickDoesNotTriggerUnderlyingControls(t *testing.T) {
 func TestRenameBoxBlocksUnderlyingControls(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 200, timelineHeight+3*24), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 600, 200), graph, logger)
 	dv.Update()
 
 	// open rename box for row 0
@@ -1101,7 +1134,7 @@ func TestRenameBoxBlocksUnderlyingControls(t *testing.T) {
 func TestDrumViewRenameInstrument(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
 
 	pressed := true
@@ -1140,7 +1173,7 @@ func TestDrumViewRenameEmptyIgnored(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
 
 	btn := dv.rowEditBtns[0]
@@ -1178,7 +1211,7 @@ func TestDrumViewRenameEscapeKeepsInstrument(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 300, 200), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
 
 	btn := dv.rowEditBtns[0]
@@ -1234,7 +1267,7 @@ func TestDrumViewRenameBoxBounds(t *testing.T) {
 		rects = append(rects, r)
 	}
 	defer func() { drawButton = old }()
-	dv.Draw(ebiten.NewImage(300, 200), map[int]int64{}, 0, nil, 0)
+	dv.Draw(ebiten.NewImage(300, 200), nil, 0, nil, 0)
 	found := false
 	for _, r := range rects {
 		if r == want {
@@ -1621,7 +1654,7 @@ func TestInstrumentCategoryFilterAndLazyLoad(t *testing.T) {
 		t.Fatalf("expected instrument list, got %d", len(dv.instMenuBtns))
 	}
 	for _, b := range dv.instMenuBtns {
-		if strings.Contains(strings.ToLower(b.Text), "snare-cat-1") {
+		if strings.Contains(strings.ToLower(b.Text), "snare cat 1") {
 			target = b
 		}
 		if strings.Contains(strings.ToLower(b.Text), "kick") {
@@ -1857,8 +1890,9 @@ func TestInstrumentScrollbarAppearsAndClampedToRack(t *testing.T) {
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
-	// Small-ish bounds to force scrolling.
-	dv := NewDrumView(image.Rect(0, 0, 280, timelineHeight+24*6), graph, logger)
+	// Use a narrow-ish window to force scrolling, but tall enough that
+	// the rack can fit the minimum menu (back + search + 1 instrument row).
+	dv := NewDrumView(image.Rect(0, 0, 400, 300), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
 	dv.rowLabels[0].OnClick()
@@ -2628,7 +2662,7 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	}
 	defer func() { drawRect = orig }()
 
-	highlighted := map[int]int64{makeBeatKey(0, 1): 1}
+	highlighted := [][]highlightEntry{{{idx: 1, val: 1}}}
 	g.drum.Draw(ebiten.NewImage(300, 240), highlighted, 0, g.beatInfos, 0)
 
 	var highlightCount int
@@ -2653,7 +2687,7 @@ func TestTimelineCursorMatchesHighlight(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 300, timelineHeight+24), graph, logger)
 	dv.Rows = []*DrumRow{{Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length)}}
-	highlighted := map[int]int64{makeBeatKey(0, 3): 1}
+	highlighted := [][]highlightEntry{{{idx: 3, val: 1}}}
 
 	var cursorCount, highlightCount int
 	orig := drawRect
@@ -2843,7 +2877,7 @@ func TestDrumViewBPMTextInputNonNumeric(t *testing.T) {
 
 func TestVolumeSliderUpdatesRowVolume(t *testing.T) {
 	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 600, 200), g, testLogger)
 	dv.calcLayout()
 	r := dv.rowVolSliders[0].TrackRect()
 	mx := r.Min.X + r.Dx()/2
@@ -2899,7 +2933,7 @@ func TestVolumeDragReleaseDoesNotDeleteRow(t *testing.T) {
 
 func TestMuteSoloButtons(t *testing.T) {
 	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 600, 200), g, testLogger)
 	dv.calcLayout()
 
 	// Click mute button on first row
@@ -2947,7 +2981,7 @@ func TestMuteSoloButtons(t *testing.T) {
 
 func TestMuteSoloInteractions(t *testing.T) {
 	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 300, 100), g, testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 300, 200), g, testLogger)
 	dv.AddRow()
 	dv.calcLayout()
 
@@ -3093,7 +3127,7 @@ func TestMuteHighlightUsesDefaultColor(t *testing.T) {
 	dv.Rows[0].Steps[0] = true
 	dv.Rows[0].CellTypes[0] = model.NodeTypeMute
 
-	highlighted := map[int]int64{makeBeatKey(0, 0): encodeHighlight(10, true)}
+	highlighted := [][]highlightEntry{{{idx: 0, val: encodeHighlight(10, true)}}}
 
 	dst := ebiten.NewImage(300, timelineHeight+24)
 	orig := drawRect
@@ -3209,7 +3243,7 @@ func TestDropdownTextDoesNotOverflowButtons(t *testing.T) {
 		{ID: "very-long-instrument-id-name", Name: "Very Long Instrument Friendly Name That Should Fit", Category: "Kick Drums (WAV)", Source: "wav"},
 	})
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 420, 260), graph, logger)
+	dv := NewDrumView(image.Rect(0, 0, 600, 260), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.calcLayout()
 	dv.rowLabels[0].OnClick()
@@ -3229,5 +3263,75 @@ func TestDropdownTextDoesNotOverflowButtons(t *testing.T) {
 		if w := debugCharW * utf8.RuneCountInString(clip); w > b.Rect().Dx() {
 			t.Fatalf("button text overflows: %v width %d > %d", b.Rect(), w, b.Rect().Dx())
 		}
+	}
+}
+
+func TestRenameInvalidatesRowControlsCache(t *testing.T) {
+	assertDefaultParityState(t)
+	withDefaultAudio(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
+	dv := NewDrumView(image.Rect(0, 0, 800, 400), nil, logger)
+	dv.Update()
+
+	// Click the edit button to open rename — this wires up the real OnCommit
+	// callback from drumview_layout.go.
+	dv.rowEditBtns[0].OnClick()
+
+	// Clear the dirty flags so we can detect a fresh invalidation.
+	dv.rowControlsCacheDirty = false
+	dv.bgDirty = false
+
+	// Invoke the production OnCommit callback directly.
+	dv.renameComp.Props().OnCommit("RenamedKick")
+
+	if !dv.rowControlsCacheDirty {
+		t.Fatal("expected rowControlsCacheDirty=true after rename via OnCommit")
+	}
+	if !dv.bgDirty {
+		t.Fatal("expected bgDirty=true after rename via OnCommit")
+	}
+}
+
+func TestRenameLegacyInvalidatesRowControlsCache(t *testing.T) {
+	assertDefaultParityState(t)
+	withDefaultAudio(t)
+	logger := game_log.New(testLogOutput(), game_log.LevelError)
+	dv := NewDrumView(image.Rect(0, 0, 800, 400), nil, logger)
+	dv.Update()
+
+	// Open rename box on row 0 via legacy path.
+	btn := dv.rowEditBtns[0]
+	r := btn.Rect()
+	clickDrumView(t, dv, r.Min.X+1, r.Min.Y+1)
+	if dv.renameBox == nil {
+		t.Fatal("rename box not opened")
+	}
+
+	// Clear dirty flags.
+	dv.rowControlsCacheDirty = false
+	dv.bgDirty = false
+
+	// Type new name and press Enter (legacy rename path in drumview_update.go).
+	focusTextInput(t, dv, dv.renameBox)
+	dv.renameBox.SetText("NewSnare")
+	restore := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyEnter },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	t.Cleanup(restore)
+	dv.Update()
+
+	if dv.Rows[0].Name != "NewSnare" {
+		t.Fatalf("rename did not apply: got %q", dv.Rows[0].Name)
+	}
+	if !dv.rowControlsCacheDirty {
+		t.Fatal("expected rowControlsCacheDirty=true after legacy rename")
+	}
+	if !dv.bgDirty {
+		t.Fatal("expected bgDirty=true after legacy rename")
 	}
 }

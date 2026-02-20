@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 const (
@@ -58,6 +58,12 @@ func (g *Game) runtimeAudioLookahead() float64 {
 			return 0.12
 		}
 		return look
+	}
+	// When audioLookaheadSec is explicitly 0, respect it without adding
+	// performance-based extras. Tests use setAudioLookahead(0) to get
+	// immediate highlight visibility in syncAndFindHighlights().
+	if look == 0 {
+		return 0
 	}
 	s := g.perf.snapshot()
 	extra := 0.0

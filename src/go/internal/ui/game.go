@@ -6,18 +6,21 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
 )
 
-const (
-	topOffset = 40 // transport-bar height in px
-)
+const desktopTopOffset = 40
+
+// gridTopOffset returns the transport-bar offset for the grid pane.
+// On mobile (small screen), the transport bar lives in the drum pane,
+// so no offset is needed. On desktop, reserves 40px at the top.
+func gridTopOffset() int {
+	if isSmallScreen() {
+		return 0
+	}
+	return desktopTopOffset
+}
 
 const ebitenTPS = 60 // Ticks per second for Ebiten (stubbed for tests)
-
-// playSound plays a synthesized sound with volume. Overridden in tests.
-var playSound = audio.PlayVol
 
 var enableDefaultStart = true
 

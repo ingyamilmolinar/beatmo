@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	assets_pkg "github.com/ingyamilmolinar/tunkul/internal/assets"
+	assets_pkg "github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
 // TestGlobalCameraAlignment_DefaultDemo loads the embedded default demo and
@@ -17,7 +17,7 @@ func TestGlobalCameraAlignment_DefaultDemo(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	if err := g.Import(assets_pkg.DefaultDemoJSON); err != nil {
+	if err := g.Import(assets_pkg.TestFixtureDemoJSON); err != nil {
 		t.Fatalf("import demo: %v", err)
 	}
 	g.Layout(1280, 720)
@@ -35,7 +35,7 @@ func TestGlobalCameraAlignment_DefaultDemo(t *testing.T) {
 		tol := 0.75
 		proj := func(wx, wy float64) (sx, sy float64) {
 			sx = wx*camScale + offX
-			sy = wy*camScale + offY + float64(topOffset)
+			sy = wy*camScale + offY + float64(gridTopOffset())
 			return
 		}
 		for _, n := range g.nodes {
@@ -46,7 +46,7 @@ func TestGlobalCameraAlignment_DefaultDemo(t *testing.T) {
 			x1, y1, x2, y2 := g.nodeScreenRect(n)
 			cx, cy := (x1+x2)*0.5, (y1+y2)*0.5
 			expX := offX + math.Round(float64(n.I)*float64(stepPx)/float64(maxDiv))
-			expY := offY + float64(topOffset) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
+			expY := offY + float64(gridTopOffset()) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
 			if math.Abs(cx-expX) > tol || math.Abs(cy-expY) > tol {
 				t.Fatalf("node/grid phase mismatch at id=%d grid=(%d,%d): got(%.2f,%.2f) exp(%.0f,%.0f)", n.ID, n.I, n.J, cx, cy, expX, expY)
 			}

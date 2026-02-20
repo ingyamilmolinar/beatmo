@@ -5,9 +5,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 // syncUIToTime aligns UI pulses and counters to the current engine timeline
@@ -91,27 +91,25 @@ func (g *Game) syncUIToTime() {
 			if row == 0 && g.activePulse == nil {
 				g.activePulse = p
 			}
-		} else {
+		} else if p.lastIdx != target {
 			// Re-anchor to target if we fell behind.
-			if p.lastIdx != target {
-				infoFrom := g.beatInfoAtRow(row, target)
-				infoTo := g.beatInfoAtRow(row, target+1)
-				unit := g.grid.Unit()
-				p.x1 = float64(infoFrom.I) * unit
-				p.y1 = float64(infoFrom.J) * unit
-				p.x2 = float64(infoTo.I) * unit
-				p.y2 = float64(infoTo.J) * unit
-				p.fromBeatInfo = infoFrom
-				p.toBeatInfo = infoTo
-				p.pathIdx = g.wrapBeatIndexRow(row, target+1)
-				p.lastIdx = target
-				dist := hypot(p.x2-p.x1, p.y2-p.y1)
-				seg := dist / g.grid.Step
-				if seg <= 0 {
-					seg = 1
-				}
-				p.segBeats = seg
+			infoFrom := g.beatInfoAtRow(row, target)
+			infoTo := g.beatInfoAtRow(row, target+1)
+			unit := g.grid.Unit()
+			p.x1 = float64(infoFrom.I) * unit
+			p.y1 = float64(infoFrom.J) * unit
+			p.x2 = float64(infoTo.I) * unit
+			p.y2 = float64(infoTo.J) * unit
+			p.fromBeatInfo = infoFrom
+			p.toBeatInfo = infoTo
+			p.pathIdx = g.wrapBeatIndexRow(row, target+1)
+			p.lastIdx = target
+			dist := hypot(p.x2-p.x1, p.y2-p.y1)
+			seg := dist / g.grid.Step
+			if seg <= 0 {
+				seg = 1
 			}
+			p.segBeats = seg
 		}
 		// Freeze newly passed indices so past never changes.
 		if len(g.frozenUpToByRow) != len(g.drum.Rows) {

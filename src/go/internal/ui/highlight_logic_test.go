@@ -4,9 +4,9 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/gamestate"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func stubGameForHighlight(nodeType model.NodeType, triggered bool) *Game {

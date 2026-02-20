@@ -59,6 +59,28 @@ func (d *InputDispatcher) Dispatch(x, y int, pressed bool) bool {
 	return false
 }
 
+// DispatchWheel sends a wheel event to handlers in z-order. If a handler
+// has captured input, the wheel is routed to it. Otherwise, dispatch to the
+// first handler whose InputBounds contains the point. Returns true if any
+// handler consumed the wheel.
+func (d *InputDispatcher) DispatchWheel(x, y, steps int) bool {
+	if d.capture != nil {
+		result := d.capture.HandleWheel(x, y, steps)
+		return result != InputIgnored
+	}
+	pt := image.Pt(x, y)
+	for _, h := range d.handlers {
+		if !pt.In(h.InputBounds()) {
+			continue
+		}
+		result := h.HandleWheel(x, y, steps)
+		if result == InputConsumed || result == InputCaptured {
+			return true
+		}
+	}
+	return false
+}
+
 // Clear removes all registered handlers but preserves capture state.
 // Use ClearAll to also release capture.
 func (d *InputDispatcher) Clear() {
@@ -70,4 +92,11 @@ func (d *InputDispatcher) Clear() {
 func (d *InputDispatcher) ClearAll() {
 	d.handlers = nil
 	d.capture = nil
+}
+
+// HasCaptureOtherThan reports whether a handler other than h currently holds
+// the dispatcher's capture. This lets components avoid starting new
+// interactions when another component owns the input.
+func (d *InputDispatcher) HasCaptureOtherThan(h InputHandler) bool {
+	return d.capture != nil && d.capture != h
 }

@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestInstMenuScrollbarBackgroundExtended verifies the menu background
@@ -142,7 +142,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	dv.eqChannelOpen = true
 	dv.buildEQChannelMenu()
 
-	eqScrollBefore := dv.eqChannelScroll.First
+	eqScrollBefore := dv.eqChannelScroll.VS.First
 
 	// EQ scroll should be independent (still at 0)
 	if eqScrollBefore != 0 {
@@ -151,7 +151,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 
 	// Scroll EQ menu
 	if dv.eqChannelScroll.HasScroll() {
-		dv.eqChannelScroll.First = 2
+		dv.eqChannelScroll.VS.First = 2
 	}
 
 	// Reopen instrument menu - its scroll should be preserved
@@ -161,11 +161,13 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 		dv.instCategoryBtns[0].OnClick()
 	}
 
-	// Note: The scroll position resets when rebuilding the menu,
-	// but the key point is the two scrollers use independent state
-	if &dv.instMenuScroll == &dv.eqChannelScroll {
+	// The two scrollers use independent state (different types/instances).
+	// Verify by checking that setting one doesn't affect the other.
+	dv.instMenuScroll.First = 5
+	if dv.eqChannelScroll.VS.First == 5 {
 		t.Errorf("instrument and EQ scrollers should be independent instances")
 	}
+	dv.instMenuScroll.First = 0 // reset
 }
 
 // TestInstMenuScrollDoesNotAffectRowOffset verifies wheel scrolling
@@ -272,7 +274,7 @@ func TestEQMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	}
 
 	startRowOff := dv.rowOffset
-	startEQScroll := dv.eqChannelScroll.First
+	startEQScroll := dv.eqChannelScroll.VS.First
 
 	// Simulate wheel scroll over the EQ channel menu
 	menuRect := dv.eqChannelMenuRect()

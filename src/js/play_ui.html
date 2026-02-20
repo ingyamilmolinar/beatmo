@@ -2,15 +2,19 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Tunkul UI Playtest</title>
+    <title>Beatmo UI Playtest</title>
   </head>
   <body>
     <script type="module" src="audio.js"></script>
     <script src="wasm_exec.js"></script>
     <script>
       const go = new Go();
-      WebAssembly.instantiateStreaming(fetch('play_ui.wasm'), go.importObject)
-        .then(result => go.run(result.instance))
+      const wasmReady = WebAssembly.instantiateStreaming(fetch('play_ui.wasm'), go.importObject);
+      Promise.all([wasmReady, window.audioReady || Promise.resolve()])
+        .then(([result]) => {
+          go.run(result.instance);
+          console.log("Beatmo play_ui started (audio pre-warmed)");
+        })
         .catch(err => console.error(err));
     </script>
   </body>

@@ -2,9 +2,8 @@ package ui
 
 import (
 	"math"
-	"strings"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // nodeAtScreen returns the topmost visible node whose on-screen rect contains (x,y).
@@ -138,12 +137,4 @@ func (g *Game) muteHoldSteps(row, idx int, info model.BeatInfo) int {
 	// Mute nodes no longer enforce a sustained gate; returning zero limits
 	// suppression to the scheduling index itself.
 	return 0
-}
-
-func shouldGateMuteNode(n model.Node) bool {
-	if n.Type != model.NodeTypeMute {
-		return false
-	}
-	kind := strings.ToLower(strings.TrimSpace(n.Params.LogicKind))
-	return kind != "" && kind != "none"
 }

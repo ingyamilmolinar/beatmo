@@ -4,8 +4,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestPredictorMuteEveryNTriggers(t *testing.T) {
@@ -28,7 +28,7 @@ func TestPredictorMuteEveryNTriggers(t *testing.T) {
 		t.Fatalf("missing mute node")
 	}
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	path, isLoop, loopStart := graph.CalculateBeatRow()
 	nodes := make(map[model.NodeID]model.Node, len(graph.Nodes))
 	for id, node := range graph.Nodes {
@@ -122,7 +122,7 @@ func TestPredictorProbabilityLogicDeterministic(t *testing.T) {
 	path := []model.BeatInfo{{NodeID: start, NodeType: model.NodeTypeRegular}}
 	nodes := map[model.NodeID]model.Node{start: graph.Nodes[start]}
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	pred.SetPaths([][]model.BeatInfo{path}, []bool{true}, []int{0}, nodes)
 
 	node := nodes[start]
@@ -191,7 +191,7 @@ func TestPredictorPrevTriggerLogic(t *testing.T) {
 	graph.SetNodeParams(b, nodeB.Params)
 	nodes[b] = nodeB
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	pred.SetPaths([][]model.BeatInfo{path}, []bool{true}, []int{0}, nodes)
 	pred.UpdateNode(a, nodeA)
 	pred.UpdateNode(b, nodeB)
@@ -251,7 +251,7 @@ func TestPredictorMuteNodeLogicCallback(t *testing.T) {
 		t.Fatalf("expected mute node logic present in nodes snapshot (ok=%v)", ok)
 	}
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	pred.SetPaths([][]model.BeatInfo{path}, []bool{isLoop}, []int{loopStart}, nodes)
 	if node, ok := pred.nodes[mute]; !ok || node.Params.Logic == nil {
 		t.Fatalf("expected predictor to retain mute node logic (ok=%v)", ok)
@@ -335,7 +335,7 @@ func TestPredictorRegularNodeLogicCallback(t *testing.T) {
 		t.Fatalf("expected node logic present in nodes snapshot (ok=%v)", ok)
 	}
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	pred.SetPaths([][]model.BeatInfo{path}, []bool{isLoop}, []int{loopStart}, nodes)
 	if node, ok := pred.nodes[start]; !ok || node.Params.Logic == nil {
 		t.Fatalf("expected predictor to retain regular node logic (ok=%v)", ok)

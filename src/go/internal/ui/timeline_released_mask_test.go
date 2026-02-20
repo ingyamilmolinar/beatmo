@@ -3,8 +3,8 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 // Regression: released timeline commits should not suppress predictor values
@@ -23,7 +23,7 @@ func TestBuildRowWindowReleasedCommitUsesPredictor(t *testing.T) {
 		g.beatInfosByRow[0][i] = model.BeatInfo{NodeID: model.NodeID(i + 1), NodeType: model.NodeTypeRegular}
 	}
 	g.isLoopByRow = []bool{false}
-	g.nextBeatIdxs = []int{6} // playhead is ahead of window start
+	g.nextBeatIdxs = []int{6}    // playhead is ahead of window start
 	g.frozenUpToByRow = []int{7} // freeze a bit past the index
 	g.drumBeatInfos = make([]model.BeatInfo, g.drum.Length)
 

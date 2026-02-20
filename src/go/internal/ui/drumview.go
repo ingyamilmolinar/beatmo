@@ -6,20 +6,24 @@ import (
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 const (
-	asciiPrintableMin = 32
-	asciiPrintableMax = 126
 	// timelineHeight reserves vertical space for the transport controls and
 	// the thin timeline bar above the instrument rows. Keep this as small as
 	// possible so the bottom panel wastes no vertical space. Two rows of
 	// controls (2×rowHeight) + a 10px bar + a small margin is sufficient.
-	timelineHeight              = 64
-	timelineBarHeight           = 10
+	timelineHeight = 36
+	// desktopHeaderH is the target header height for the two-row desktop transport bar.
+	desktopHeaderH = 72
+	// mobileHeaderH is the target header height for the two-row mobile transport bar.
+	mobileHeaderH               = 72
+	mobileHeaderMaxH            = 72
+	timelineBarHeightDesktop    = 12
+	timelineBarHeightMobile     = 14
 	buttonPad                   = 2
 	defaultRowCachePadPx        = 32
 	defaultRowsLayerPadPx       = 96
@@ -32,6 +36,14 @@ const (
 	fallbackInstCategory        = "Registered"
 )
 
+// tlBarHeight returns the timeline bar height, larger on mobile for touch targets.
+func tlBarHeight() int {
+	if isSmallScreen() {
+		return timelineBarHeightMobile
+	}
+	return timelineBarHeightDesktop
+}
+
 // instMenuMode is an enum describing the instrument dropdown view.
 type instMenuMode string
 
@@ -41,6 +53,25 @@ const (
 	instMenuModeInstruments instMenuMode = "instruments"
 )
 
+// sliderKind identifies which slider group is currently capturing input.
+type sliderKind int
+
+const (
+	sliderKindNone    sliderKind = iota
+	sliderKindRowVol             // per-row volume slider
+	sliderKindMainVol            // master volume slider
+	sliderKindEQ                 // EQ band gain slider
+	sliderKindEQCurve            // EQ curve drag (band handle or filter drag)
+)
+
+// viewMode describes which pane is visible in the mobile drum view.
+type viewMode int
+
+const (
+	viewModeRows  viewMode = iota // drum rows visible
+	viewModeAudio                 // EQ/Wave panel visible (has its own EQ↔Wave toggle)
+)
+
 var eqPanelHeight = 180
 
 type eqBandDef struct {
@@ -48,23 +79,20 @@ type eqBandDef struct {
 	hiHz float64
 }
 
-// 10-band layout spanning 20 Hz–20 kHz (log-ish steps).
+// 10-band ISO standard 1-octave center frequencies (31–16k Hz).
+// Edges: lo = center/sqrt(2), hi = center*sqrt(2), last band capped at 20 kHz.
 var eqBandDefs = []eqBandDef{
-	{loHz: 20, hiHz: 40},
-	{loHz: 40, hiHz: 80},
-	{loHz: 80, hiHz: 160},
-	{loHz: 160, hiHz: 315},
-	{loHz: 315, hiHz: 630},
-	{loHz: 630, hiHz: 1250},
-	{loHz: 1250, hiHz: 2500},
-	{loHz: 2500, hiHz: 5000},
-	{loHz: 5000, hiHz: 10000},
-	{loHz: 10000, hiHz: 20000},
+	{loHz: 22, hiHz: 44},       // 31 Hz
+	{loHz: 44, hiHz: 88},       // 62 Hz
+	{loHz: 88, hiHz: 177},      // 125 Hz
+	{loHz: 177, hiHz: 354},     // 250 Hz
+	{loHz: 354, hiHz: 707},     // 500 Hz
+	{loHz: 707, hiHz: 1414},    // 1 kHz
+	{loHz: 1414, hiHz: 2828},   // 2 kHz
+	{loHz: 2828, hiHz: 5657},   // 4 kHz
+	{loHz: 5657, hiHz: 11314},  // 8 kHz
+	{loHz: 11314, hiHz: 20000}, // 16 kHz
 }
-
-// Number of auto-generated color swatches offered in the color menu.
-// Reduced to keep selection concise.
-const generatedColorCount = 6
 
 /* ───────────────────────────────────────────────────────────── */
 
@@ -79,8 +107,16 @@ type DrumRow struct {
 	Volume      float64
 	Muted       bool
 	Solo        bool
-	EQGainsDB   []float64 // Per-instrument EQ gains (10 bands, range ±24dB)
-	EQBandMuted []bool    // Per-band mute state (10 bands)
+	EQGainsDB   []float64          // Per-instrument EQ gains (10 bands, range ±24dB)
+	EQBandMuted []bool             // Per-band mute state (10 bands)
+	HPFEnabled  bool               // Per-row high-pass filter on/off
+	HPFCutoffHz float64            // Per-row HPF cutoff frequency (20–2000 Hz)
+	LPFEnabled  bool               // Per-row low-pass filter on/off
+	LPFCutoffHz float64            // Per-row LPF cutoff frequency (1000–20000 Hz)
+	Effects     []audio.EffectSlot // Ordered insert effect chain
+	Pan         float64            // Stereo pan: -1 (left) to +1 (right), 0 = center
+	DelaySend   float64            // Delay send amount (0-1)
+	ReverbSend  float64            // Reverb send amount (0-1)
 }
 
 func instColor(id string) color.Color {
@@ -120,11 +156,16 @@ type DrumView struct {
 	components *ComponentRegistry
 	overlays   *OverlayStack
 
+	// Overlay adapters for direct dispatch (context/overflow menus)
+	contextMenuOverlay  *ContextMenuOverlay
+	overflowMenuOverlay *OverflowMenuOverlay
+	fxPanelOverlay      *FXPanelOverlay
+
 	// Overlay components (Phase 5 integration)
-	subdivMenuComp  *SubdivMenuComponent
-	renameComp      *RenameComponent
-	colorWheelComp  *ColorWheelComponent
-	instMenuComp    *InstrumentMenuComponent
+	subdivMenuComp *SubdivMenuComponent
+	renameComp     *RenameComponent
+	colorWheelComp *ColorWheelComponent
+	instMenuComp   *InstrumentMenuComponent
 
 	// widget layout (bottom pane is divided into movable widgets)
 	widgets         *WidgetBoard
@@ -142,36 +183,44 @@ type DrumView struct {
 	labelW    int
 	controlsW int // width reserved for control buttons
 
+	// Persistent layout group for transport controls.
+	transportGroup *LayoutGroup
+
 	// control-panel components
-	playBtn       *Button
-	stopBtn       *Button
-	bpmDecBtn     *Button // decrease BPM
-	bpmBox        *TextInput
-	bpmIncBtn     *Button // increase BPM
-	subdivBtn     *Button // subdivisions-per-beat dropdown
-	lenDecBtn     *Button // decrease length
-	lenIncBtn     *Button // increase length
-	trackBtn      *Button // toggle follow playback
-	uploadBtn     *Button
-	importBtn     *Button
-	exportBtn     *Button
-	saveBtn       *Button
-	mainVolSlider *Slider
-	mainVolRect   image.Rectangle
+	playBtn         *Button
+	stopBtn         *Button
+	bpmDecBtn       *Button // decrease BPM
+	bpmBox          *TextInput
+	bpmIncBtn       *Button // increase BPM
+	subdivBtn       *Button // subdivisions-per-beat dropdown
+	lenDecBtn       *Button // decrease length
+	lenIncBtn       *Button // increase length
+	trackBtn        *Button // toggle follow playback
+	uploadBtn       *Button
+	importBtn       *Button
+	exportBtn       *Button
+	saveBtn         *Button
+	mainVolSlider   *Slider
+	mainVolRect     image.Rectangle
+	mainVolIconRect image.Rectangle
 
 	// per-row components
-	addRowBtn     *Button
-	rowLabels     []*Button
-	rowEditBtns   []*Button
-	rowSaveBtns   []*Button
-	rowColorBtns  []*Button
-	rowDeleteBtns []*Button
-	rowVolSliders []*Slider
-	rowOriginBtns []*Button
-	rowMuteBtns   []*Button
-	rowSoloBtns   []*Button
-	selRow        int
-	activeSlider  int // index of slider capturing mouse events, -1 if none
+	addRowBtn        *Button
+	rowLabels        []*Button
+	rowEditBtns      []*Button
+	rowSaveBtns      []*Button
+	rowColorBtns     []*Button
+	rowDeleteBtns    []*Button
+	rowVolSliders    []*Slider
+	rowOriginBtns    []*Button
+	rowMuteBtns      []*Button
+	rowSoloBtns      []*Button
+	rowMenuBtns      []*Button // per-row kebab menu button (mobile only)
+	rowFXBtns        []*Button // per-row FX button for insert effects
+	rowGroups        []RowButtonGroup
+	selRow           int
+	activeSlider     int        // index of row-volume slider capturing mouse events, -1 if none
+	activeSliderKind sliderKind // which slider group is currently capturing, sliderKindNone if idle
 
 	// instrument selection dropdown
 	instMenuOpen               bool
@@ -182,7 +231,6 @@ type DrumView struct {
 	instMenuLastAdded          string
 	instMenuUserScrolled       bool
 	instCategories             []string
-	instFilter                 string
 	instCategoryBtns           []*Button
 	instMenuFullRect           image.Rectangle
 	instMenuMode               instMenuMode
@@ -211,24 +259,45 @@ type DrumView struct {
 	wheelCacheH    int
 	colorHold      bool
 
+	// FX panel
+	fxPanelOpen      bool
+	fxPanelRow       int
+	fxPanelOpenSeq   int // updateSeq when panel opened (for click debounce)
+	fxPanelRect      image.Rectangle
+	fxPanelBtns      []*Button         // add/remove/toggle/reorder buttons within the panel
+	fxPanelSliders   []*Slider         // param sliders within the panel
+	fxSliderBindings []fxSliderBinding // maps slider index to effect param
+	fxSliderDragging bool              // active slider drag in FX panel
+	fxSliderDragIdx  int               // index into fxPanelSliders being dragged
+	fxAddMenuOpen    bool
+	fxExpandedSlots  map[int]bool    // which effect slots are expanded (mobile only)
+	fxScrollOffsetPx int             // pixel scroll offset for FX panel content area
+	fxScrollTS       TouchScroller   // touch scroll tracking for FX panel
+	fxScrollMaxPx    int             // max scroll offset (contentH - viewportH), 0 = no scroll
+	fxSliderLeft     int             // computed label area width for FX param rows (desktop)
+	fxViewportRect   image.Rectangle // scrollable content area (between header and footer)
+
 	// subdiv dropdown
 	subdivMenuOpen bool
 	subdivMenuBtns []*Button
 
-	deleted    []deletedRow
-	added      []int
-	originReq  []int
-	renameRow  int
-	renameBox  *TextInput
-	renameHold bool
+	deleted            []deletedRow
+	added              []int
+	originReq          []int
+	deleteConfirmRow   int   // row pending delete confirmation, -1 = none
+	deleteConfirmFrame int64 // frame when first click happened
+	renameRow          int
+	renameBox          *TextInput
+	renameHold         bool
 
 	// import handler
 	onImport            func([]byte) error
 	onImportDialogStart func()
 	onImportDialogEnd   func()
 
-	bgDirty bool
-	bgCache []*ebiten.Image
+	bgDirty          bool
+	layoutSuppressed bool
+	bgCache          []*ebiten.Image
 
 	instOptions []string
 	instAvail   map[string]bool
@@ -271,21 +340,22 @@ type DrumView struct {
 	// per-row cached sprites for the steps area (no highlights). Each sprite
 	// covers the full timeline width and one row height. Rebuilt when length,
 	// row color, or timeline width/height change.
-	rowCache      []*ebiten.Image
-	rowDirty      []bool
-	rowFullDirty  []bool
-	rowCacheW     int
-	rowCacheH     int
-	rowCacheLen   int
-	rowCacheOff   []int
-	rowCacheGen   []int
-	rowCacheSig   []uint64
-	rowCacheSteps [][]bool
-	rowCacheTypes [][]model.NodeType
-	rowCachePadPx int
-	rowCacheShift int
-	rowCachePatch int
-	rowCacheFull  int
+	rowCache        []*ebiten.Image
+	rowDirty        []bool
+	rowFullDirty    []bool
+	rowCacheW       int
+	rowCacheH       int
+	rowCacheLen     int
+	rowCacheOff     []int
+	rowCacheGen     []int
+	rowCacheSig     []uint64
+	rowCacheSteps   [][]bool
+	rowCacheTypes   [][]model.NodeType
+	rowCachePadPx   int
+	rowCacheShift   int
+	rowCachePatch   int
+	rowCacheFull    int
+	rowCacheScratch []*ebiten.Image // double-buffer scratch for row sprite shifts
 
 	// Segmented timeline slices populated each refresh; mirrors TimelineSegments.
 	timelineOffset    []int
@@ -296,17 +366,18 @@ type DrumView struct {
 
 	// rowsLayer caches the composition of all visible row sprites (rowCache)
 	// for the current offset and scroll. Highlights are drawn on top separately.
-	rowsLayer       *ebiten.Image
-	rowsLayerW      int
-	rowsLayerH      int
-	rowsLayerOffset int
-	rowsLayerRowOff int
-	rowsLayerBaseX  int
-	rowsLayerGen    int
-	rowsLayerDirty  bool
-	rowsLayerPadPx  int
-	rowsLayerBytes  int64
-	rowsLayerFrame  int64
+	rowsLayer        *ebiten.Image
+	rowsLayerW       int
+	rowsLayerH       int
+	rowsLayerOffset  int
+	rowsLayerRowOff  int
+	rowsLayerBaseX   int
+	rowsLayerGen     int
+	rowsLayerDirty   bool
+	rowsLayerPadPx   int
+	rowsLayerScratch *ebiten.Image // double-buffer scratch for layer shifts
+	rowsLayerBytes   int64
+	rowsLayerFrame   int64
 	// WASM-only adaptive pad helpers: expand pad when frequent full rebuilds
 	// happen due to horizontal pans; decay toward default when stationary.
 	rowsPadFullRebuilds int
@@ -329,32 +400,99 @@ type DrumView struct {
 	rowsStripeCachedH   []int // cached stripe heights to avoid img.Size() calls
 	rowsStripeLastFrame int64 // frame counter for skip optimization
 	// Last-frame row draw mask for visibility assertions (set during Draw)
-	rowsDrawnMask []bool
-	rowsRepaints  int
-	rowFrame      []int64
-	rowRepaint    []int
-	panelMaskRect image.Rectangle
+	rowsDrawnMask   []bool
+	rowsRepaints    int
+	directDrawCount int64 // frames where drawRowsDirect was used (mobile fallback)
+	directDrawCells int   // cells drawn in last directDraw call
+	rowFrame        []int64
+	rowRepaint      []int
+	panelMaskRect   image.Rectangle
+
+	// Mobile EQ collapse: hides the Wave/EQ panel by default on mobile.
+	mobileEQCollapsed bool
+	mobileEQInited    bool    // true once the mobile-default has been applied
+	eqToggleMobile    *Button // "EQ" button in transport to toggle panel (legacy, hidden)
+	mobileEQMode      bool    // true = EQ panel replaces rows on mobile
+
+	// Mobile view switching (Rows → EQ → Wave cycle)
+	currentViewMode viewMode
+	viewSwitchBtn   *Button
+
+	// Mobile overflow menu for Upload/Import/Export
+	overflowMenuOpen bool
+	overflowBtn      *Button
+	overflowScroll   *ScrollBehavior // scroll when items overflow
+
+	// Mobile beat counter rect (inside transport row, 7th column on mobile)
+	beatCounterRect image.Rectangle
+
+	// Mobile per-row volume popup
+	volPopup        *SliderPopup
+	volPopupRow     int // which row's volume is being edited
+	volPopupOverlay *SliderPopupOverlay
+
+	// Master volume popup (desktop icon-click opens vertical slider)
+	masterVolPopup        *SliderPopup
+	masterVolPopupOverlay *SliderPopupOverlay
+
+	// Mobile EQ band popup
+	eqPopup        *SliderPopup
+	eqPopupBand    int // which band (0-9)
+	eqPopupOverlay *SliderPopupOverlay
+
+	// Mobile context menu for row controls (long-press on row label)
+	contextMenuOpen       bool
+	contextMenuRow        int
+	contextMenuRect       image.Rectangle
+	contextMenuBtns       []*Button
+	contextMenuHeaderRect image.Rectangle // mobile bottom sheet header area
+	contextMenuScroll     *ScrollBehavior // scroll when items overflow
 
 	// EQ visualization (supports master and per-instrument channels)
 	eqRect          image.Rectangle
-	eqBars          []float64
-	eqBinsCount     int
 	eqWaveformMode  bool
 	eqToggleBtn     *Button
 	eqBandVals      []float64
 	eqLastBands     []float64
 	eqSliders       []*Slider
-	eqMuteBtns      []*Button   // Per-band mute buttons
+	eqBandBtns      []*Button // Mobile: tappable band buttons that open popup
+	eqMuteBtns      []*Button // Per-band mute buttons
 	eqBandGainsDB   []float64
-	eqBandMuted     []bool      // Per-band mute state for master channel
+	eqBandMuted     []bool // Per-band mute state for master channel
 	eqApplied       []audio.EQBand
-	eqActiveChannel string           // "main" or instrument ID; empty defaults to "main"
-	eqChannelBtn    *Button          // Button showing current channel selection
-	eqChannelOpen   bool             // Dropdown open state
-	eqChannelBtns   []*Button        // Dropdown menu buttons
-	eqChannelScroll VerticalScroller // Scroll state for EQ channel dropdown
+	eqActiveChannel string          // "main" or instrument ID; empty defaults to "main"
+	eqChannelBtn    *Button         // Button showing current channel selection
+	eqChannelOpen   bool            // Dropdown open state
+	eqChannelBtns   []*Button       // Dropdown menu buttons
+	eqChannelScroll *ScrollBehavior // Scroll state for EQ channel dropdown
+	// Deferred taps: two-phase mobile tap pattern (position stored on press,
+	// fired on release if no scroll committed). Replaces 15 individual fields.
+	eqChDeferredTap        DeferredTap
+	instMenuDeferredTap    DeferredTap
+	contextMenuDeferredTap DeferredTap
+	overflowDeferredTap    DeferredTap
+	fxPanelDeferredTap     DeferredTap
+	subdivDeferredTap      DeferredTap
+
+	// Touch scroll behavior for legacy instrument menu (deferred tap + momentum).
+	instMenuTouchScroll *ScrollBehavior
+	// EQ frequency response curve
+	eqCurveDragBand   int                       // -1 when not dragging, else band index
+	eqCurveDragFilter string                    // "" when not dragging, "hpf" or "lpf" when dragging a filter handle
+	eqCurveDirty      bool                      // true when EQ settings changed
+	eqCurveCache      []audio.FreqResponsePoint // cached response curve
+
+	// High-pass and low-pass filter state (master channel)
+	hpfEnabled  bool    // high-pass filter on/off
+	hpfCutoffHz float64 // cutoff frequency (20–2000 Hz range)
+	lpfEnabled  bool    // low-pass filter on/off
+	lpfCutoffHz float64 // cutoff frequency (1000–20000 Hz range)
+	hpfBtn      *Button // toggle button for HPF
+	lpfBtn      *Button // toggle button for LPF
+
 	// eqTestSnapshot lets tests inject a deterministic analyzer reading.
-	eqTestSnapshot *audio.AnalyzerSnapshot
+	eqTestSnapshot      *audio.AnalyzerSnapshot
+	eqTestPreEQSnapshot *audio.AnalyzerSnapshot
 
 	frame int64
 
@@ -374,12 +512,8 @@ type DrumView struct {
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
 	follow        bool // auto-scroll with playback
-	// smooth wheel zoom accumulator (in beats). Each notch contributes a
-	// fraction; when |accum| >= 1, we apply whole-beat length changes.
-	zoomAccum float64
-
-	bpmPrev  int // previous BPM before editing
-	bpmDelta int // accumulated BPM adjustments from +/- buttons
+	bpmPrev       int  // previous BPM before editing
+	bpmDelta      int  // accumulated BPM adjustments from +/- buttons
 
 	// button animations
 	playAnim     float64
@@ -401,12 +535,18 @@ type DrumView struct {
 	startOffset   int
 	offsetChanged bool
 
-	rowOffset      int
-	scrollDrag     bool
-	scrollStartY   int
-	scrollStartOff int
+	rowOffset int
+	rowScroll *ScrollBehavior
 
 	scrubbing bool
+
+	// mouseDownInBounds is true while mouse is pressed and press started in drum view.
+	// Prevents splitter (or other handlers) from stealing mid-drag.
+	mouseDownInBounds bool
+	// inputCapturedExternally is set by Game when another handler holds dispatcher capture.
+	// Prevents drum view from starting new interactions when another component owns input.
+	inputCapturedExternally bool
+
 	// Local cache of custom instrument WAV paths by instrument ID. Used for
 	// export so imported projects can auto-register custom samples.
 	samplePath map[string]string
@@ -445,14 +585,17 @@ type DrumView struct {
 	labelCacheInstLen  int
 	labelCacheRowNames []string // cached row names to detect direct modifications
 
+	// Toolbar caching: renders transport buttons/sliders to a cached image
+	// to avoid ~130 DrawImage calls every frame (1 blit on cache hit).
+	toolbarCache     *ebiten.Image
+	toolbarCacheHash uint64
+	toolbarCacheRect image.Rectangle
+
 	// Row controls caching: renders per-row buttons/sliders to a cached image
 	// to avoid excessive DrawImage calls every frame.
-	rowControlsCache      *ebiten.Image
-	rowControlsCacheDirty bool
-	rowControlsCacheRowOff int   // cached rowOffset for invalidation
-	rowControlsCacheVis   int    // cached visible rows count
-	rowControlsCacheRect  image.Rectangle // cached bounds
-	// Per-row hover tracking to invalidate cache on hover changes
-	rowControlsHoverRow   int
-	rowControlsHoverBtn   int // index of hovered button within row (or -1)
+	rowControlsCache       *ebiten.Image
+	rowControlsCacheDirty  bool
+	rowControlsCacheRowOff int             // cached rowOffset for invalidation
+	rowControlsCacheVis    int             // cached visible rows count
+	rowControlsCacheRect   image.Rectangle // cached bounds
 }

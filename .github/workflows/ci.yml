@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: src/go/go.sum
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
+            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxi-dev libxxf86vm-dev
+      - name: Build C library
+        run: make build/libdrums.a
+      - name: Build Go (desktop)
+        run: cd src/go && CGO_ENABLED=1 go build ./...
+      - name: Build Go (WASM)
+        run: cd src/go && GOOS=js GOARCH=wasm go build -o /dev/null ./cmd/...
+
+  lint:
+    name: Lint
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: src/go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: src/js/package-lock.json
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
+            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxi-dev libxxf86vm-dev cppcheck
+      - run: cd src/js && npm ci
+      - run: make lint
+
+  test-go:
+    name: Test Go
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: src/go/go.sum
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
+            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxi-dev libxxf86vm-dev xvfb
+      - name: Build C library
+        run: make build/libdrums.a
+      - name: Run Go tests with coverage
+        run: |
+          mkdir -p coverage
+          cd src/go && go test -tags test -modfile=go.test.mod \
+            -coverprofile=../../coverage/go.out -covermode=atomic \
+            -timeout 120s ./... 2>&1 | tee ../../coverage/test-output.txt
+      - name: Run Go tests (real Ebiten + xvfb)
+        run: cd src/go && BPM_TIMING_TEST=1 xvfb-run -a go test ./...
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo "## Go Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Coverage |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|----------|" >> $GITHUB_STEP_SUMMARY
+          grep -E '^ok\s' coverage/test-output.txt | \
+            sed 's|github.com/ingyamilmolinar/beatmo/||' | \
+            awk '{ pkg=$2; for(i=1;i<=NF;i++) if($i=="coverage:") { printf "| `%s` | %s |\n", pkg, $(i+1); break } }' \
+            >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/go.out ]; then
+            total=$(cd src/go && go tool cover -func=../../coverage/go.out | tail -1 | awk '{print $NF}')
+            echo "**Total: ${total}**" >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage/go.out
+          retention-days: 30
+
+  test-browser-matrix:
+    name: Prepare browser test matrix
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate test matrix
+        id: set-matrix
+        run: |
+          matrix=$(./scripts/browser-test-matrix.sh --batch-size ${{ vars.BROWSER_BATCH_SIZE || '4' }})
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  test-browser:
+    name: "Browser tests (batch ${{ matrix.index }})"
+    needs: [test-browser-matrix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix: ${{ fromJson(needs.test-browser-matrix.outputs.matrix) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: src/go/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: src/js/package-lock.json
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
+            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxi-dev libxxf86vm-dev xvfb libgtk-3-dev
+      - name: Install JS dependencies & Playwright
+        run: cd src/js && npm ci && npx playwright install --with-deps chromium
+      - name: Build WASM
+        run: make wasm-all
+      - name: Run browser tests
+        run: |
+          GO=$(pwd)/.tools/go/bin/go ./scripts/run-browser-tests.sh \
+            --no-fail-fast --tests "${{ matrix.tests }}"

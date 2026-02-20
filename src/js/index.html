@@ -2,20 +2,605 @@
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>Tunkul - Ebitengine WASM</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Beatmo - Ebitengine WASM</title>
   <style>
-    body, html { margin:0; padding:0; background:#222; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #222;
+      overflow: hidden;
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+    }
+    canvas {
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #loading-indicator {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-family: sans-serif;
+      font-size: 14px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #loading-indicator.hidden { display: none; }
   </style>
 </head>
 <body>
+  <div id="loading-indicator">Loading...</div>
+  <!-- Hidden proxy input for mobile soft keyboard activation -->
+  <input id="beatmo-kb-proxy"
+         style="position:fixed;left:-9999px;top:50%;opacity:0;width:1px;height:1px;border:none;padding:0"
+         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+         inputmode="text">
+  <script>
+    // Soft keyboard proxy bridge
+    (function() {
+      const proxy = document.getElementById('beatmo-kb-proxy');
+      let charBuf = [];
+
+      proxy.addEventListener('beforeinput', function(e) {
+        if (e.inputType === 'deleteContentBackward') {
+          charBuf.push('\b');
+        }
+      });
+      proxy.addEventListener('input', function(e) {
+        // 'beforeinput' already captured backspace; skip if last char was backspace
+        if (charBuf.length > 0 && charBuf[charBuf.length - 1] === '\b') {
+          return;
+        }
+        const data = e.data;
+        if (data) {
+          for (let i = 0; i < data.length; i++) {
+            charBuf.push(data[i]);
+          }
+        }
+      });
+      proxy.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          charBuf.push('\n');
+          e.preventDefault();
+        }
+      });
+
+      window._kbProxyFocus = function(inputmode) {
+        proxy.setAttribute('inputmode', inputmode || 'text');
+        proxy.value = '';
+        charBuf = [];
+        proxy.focus();
+      };
+      window._kbProxyBlur = function() {
+        proxy.blur();
+        charBuf = [];
+      };
+      window._kbProxyDrain = function() {
+        const out = charBuf.slice();
+        charBuf = [];
+        return out;
+      };
+      window._kbProxySetValue = function(text) {
+        proxy.value = text || '';
+      };
+    })();
+  </script>
+  <script>
+    // Focus-rect system: registers canvas regions that should trigger soft keyboard
+    // focus on touchend. Mobile browsers require input.focus() inside a trusted
+    // gesture handler; Go's game loop calls focus() 1-2 frames late, so the browser
+    // silently ignores it. This listener runs synchronously on touchend.
+    (function() {
+      const proxy = document.getElementById('beatmo-kb-proxy');
+      const rects = new Map(); // id -> {x, y, w, h, inputmode}
+
+      window._kbRegisterFocusRect = function(id, x, y, w, h, inputmode) {
+        rects.set(id, { x: x, y: y, w: w, h: h, inputmode: inputmode || 'text' });
+      };
+      window._kbClearFocusRects = function() {
+        rects.clear();
+      };
+      window._kbUnregisterFocusRect = function(id) {
+        rects.delete(id);
+      };
+
+      function onCanvasTouchEnd(e) {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        const touch = e.changedTouches[0];
+        const canvas = e.currentTarget;
+        const cr = canvas.getBoundingClientRect();
+        // Convert client coords to canvas logical coords (game coordinates = CSS pixels)
+        const cx = touch.clientX - cr.left;
+        const cy = touch.clientY - cr.top;
+
+        for (const rect of rects.values()) {
+          if (cx >= rect.x && cx <= rect.x + rect.w &&
+              cy >= rect.y && cy <= rect.y + rect.h) {
+            proxy.setAttribute('inputmode', rect.inputmode);
+            proxy.value = '';
+            proxy.focus();
+            return;
+          }
+        }
+      }
+
+      // Attach listener when canvas is available
+      function attachFocusRectListener() {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) {
+          requestAnimationFrame(attachFocusRectListener);
+          return;
+        }
+        canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: true });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachFocusRectListener);
+      } else {
+        attachFocusRectListener();
+      }
+    })();
+  </script>
+  <script>
+    // Mobile native input system: creates real HTML <input> overlays on canvas for
+    // text entry on mobile. Mobile browsers silently ignore input.focus() calls
+    // outside trusted gesture handlers (touchend, click). This system creates the
+    // native input WITHIN the touchend gesture context so the soft keyboard appears
+    // automatically. Desktop behavior is unchanged (uses Ebiten TextInput).
+    (function() {
+      const registrations = new Map(); // id -> {x, y, w, h, text, maxLen, inputMode}
+      const triggers = new Map();      // id -> {trigX, trigY, trigW, trigH, inputX, inputY, inputW, inputH, text, maxLen, inputMode}
+      let activeInput = null;          // {id, element, result}
+      let touchStartPos = null;        // {x, y} for drag detection
+
+      // --- Registration functions (called each layout pass from Go) ---
+
+      window._mobileInputRegister = function(id, x, y, w, h, text, maxLen, inputMode) {
+        registrations.set(id, { x, y, w, h, text: text || '', maxLen: maxLen || 64, inputMode: inputMode || 'text' });
+      };
+
+      window._mobileInputRegisterTrigger = function(id, trigX, trigY, trigW, trigH, inputX, inputY, inputW, inputH, text, maxLen, inputMode) {
+        triggers.set(id, {
+          trigX, trigY, trigW, trigH,
+          inputX, inputY, inputW, inputH,
+          text: text || '', maxLen: maxLen || 64, inputMode: inputMode || 'text',
+        });
+      };
+
+      window._mobileInputClear = function() {
+        registrations.clear();
+        triggers.clear();
+      };
+
+      // --- Lifecycle functions (polled from Go each frame) ---
+
+      window._mobileInputActive = function(id) {
+        return activeInput !== null && activeInput.id === id &&
+               (activeInput.element !== null || activeInput.result !== null);
+      };
+
+      window._mobileInputAnyActive = function() {
+        return activeInput !== null &&
+               (activeInput.element !== null || activeInput.result !== null);
+      };
+
+      window._mobileInputPollResult = function(id) {
+        if (!activeInput || activeInput.id !== id || !activeInput.result) return null;
+        const r = activeInput.result;
+        activeInput = null;
+        return r;
+      };
+
+      window._mobileInputGetValue = function(id) {
+        if (!activeInput || activeInput.id !== id || !activeInput.element) return null;
+        return activeInput.element.value;
+      };
+
+      window._mobileInputClose = function(id) {
+        if (activeInput && activeInput.id === id) {
+          closeActiveInput();
+        }
+      };
+
+      window._mobileInputCloseAll = function() {
+        closeActiveInput();
+      };
+
+      // --- Internal helpers ---
+
+      function closeActiveInput() {
+        if (!activeInput) return;
+        if (activeInput.element && activeInput.element.parentNode) {
+          activeInput.element.remove();
+        }
+        activeInput = null;
+      }
+
+      function createNativeInput(id, x, y, w, h, text, maxLen, inputMode) {
+        // Close any existing native input
+        closeActiveInput();
+
+        const canvas = document.querySelector('canvas');
+        if (!canvas) return;
+        const cr = canvas.getBoundingClientRect();
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.setAttribute('inputmode', inputMode || 'text');
+        input.setAttribute('autocomplete', 'off');
+        input.setAttribute('autocorrect', 'off');
+        input.setAttribute('autocapitalize', 'off');
+        input.setAttribute('spellcheck', 'false');
+        if (maxLen > 0) input.setAttribute('maxlength', String(maxLen));
+        input.value = text || '';
+
+        // Style: fixed position over the canvas, dark theme
+        input.style.cssText = [
+          'position:fixed',
+          'z-index:10000',
+          'left:' + (cr.left + x) + 'px',
+          'top:' + (cr.top + y) + 'px',
+          'width:' + w + 'px',
+          'height:' + h + 'px',
+          'background:#1a1a2e',
+          'color:white',
+          'border:2px solid #4a90d9',
+          'font-size:16px',
+          'border-radius:3px',
+          'padding:0 4px',
+          'box-sizing:border-box',
+          'outline:none',
+          'font-family:monospace',
+        ].join(';');
+
+        const entry = { id: id, element: input, result: null };
+        activeInput = entry;
+
+        // Commit on Enter
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            entry.result = { value: input.value, committed: true };
+            if (input.parentNode) input.remove();
+            entry.element = null;
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            entry.result = { value: '', committed: false };
+            if (input.parentNode) input.remove();
+            entry.element = null;
+          }
+        });
+
+        // Commit on blur
+        input.addEventListener('blur', function() {
+          // Only commit if not already committed via Enter/Escape
+          if (entry.element !== null) {
+            entry.result = { value: input.value, committed: true };
+            if (input.parentNode) input.remove();
+            entry.element = null;
+          }
+        });
+
+        document.body.appendChild(input);
+        // Auto-focus and select text (within gesture context)
+        input.focus();
+        input.select();
+      }
+
+      function hitTest(cx, cy, rect) {
+        return cx >= rect.x && cx <= rect.x + rect.w &&
+               cy >= rect.y && cy <= rect.y + rect.h;
+      }
+
+      function hitTestTrigger(cx, cy, trig) {
+        return cx >= trig.trigX && cx <= trig.trigX + trig.trigW &&
+               cy >= trig.trigY && cy <= trig.trigY + trig.trigH;
+      }
+
+      // --- Gesture handler ---
+
+      function onCanvasTouchStart(e) {
+        if (!e.touches || e.touches.length === 0) return;
+        const t = e.touches[0];
+        touchStartPos = { x: t.clientX, y: t.clientY };
+      }
+
+      function onCanvasTouchEnd(e) {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        const touch = e.changedTouches[0];
+
+        // Check movement from touchstart — ignore if > 10px (drag, not tap)
+        if (touchStartPos) {
+          const dx = touch.clientX - touchStartPos.x;
+          const dy = touch.clientY - touchStartPos.y;
+          if (dx * dx + dy * dy > 100) {
+            touchStartPos = null;
+            return;
+          }
+        }
+        touchStartPos = null;
+
+        const canvas = e.currentTarget;
+        const cr = canvas.getBoundingClientRect();
+        const cx = touch.clientX - cr.left;
+        const cy = touch.clientY - cr.top;
+
+        // Check trigger rects first (pencil buttons)
+        for (const [id, trig] of triggers.entries()) {
+          if (hitTestTrigger(cx, cy, trig)) {
+            createNativeInput(id, trig.inputX, trig.inputY, trig.inputW, trig.inputH,
+                              trig.text, trig.maxLen, trig.inputMode);
+            return;
+          }
+        }
+
+        // Check direct rects
+        for (const [id, rect] of registrations.entries()) {
+          if (hitTest(cx, cy, rect)) {
+            createNativeInput(id, rect.x, rect.y, rect.w, rect.h,
+                              rect.text, rect.maxLen, rect.inputMode);
+            return;
+          }
+        }
+      }
+
+      // Attach listeners when canvas is available
+      function attachMobileInputListeners() {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) {
+          requestAnimationFrame(attachMobileInputListeners);
+          return;
+        }
+        canvas.addEventListener('touchstart', onCanvasTouchStart, { passive: true });
+        canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: true });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachMobileInputListeners);
+      } else {
+        attachMobileInputListeners();
+      }
+    })();
+  </script>
+  <script>
+    // File picker rect system: registers canvas regions that should trigger a file
+    // picker on touchend. Mobile browsers require input.click() inside a trusted
+    // gesture handler; Go's game loop fires 1-2 frames late, so the browser silently
+    // ignores the click. This listener runs synchronously on touchend, preserving
+    // the gesture context.
+    (function() {
+      const rects = new Map(); // id -> {x, y, w, h, accept}
+      const pending = new Map(); // id -> Promise<{data, name} | null>
+
+      window._fpRegisterRect = function(id, x, y, w, h, accept) {
+        rects.set(id, { x: x, y: y, w: w, h: h, accept: accept || '' });
+      };
+      window._fpClearRects = function() {
+        rects.clear();
+      };
+
+      // Consume a pending file pick result. Returns a Promise or null.
+      window._fpConsumePending = function(id) {
+        const p = pending.get(id);
+        if (p) {
+          pending.delete(id);
+          return p;
+        }
+        return null;
+      };
+
+      function onCanvasTouchEnd(e) {
+        if (!e.changedTouches || e.changedTouches.length === 0) return;
+        const touch = e.changedTouches[0];
+        const canvas = e.currentTarget;
+        const cr = canvas.getBoundingClientRect();
+        const cx = touch.clientX - cr.left;
+        const cy = touch.clientY - cr.top;
+
+        for (const [id, rect] of rects.entries()) {
+          if (cx >= rect.x && cx <= rect.x + rect.w &&
+              cy >= rect.y && cy <= rect.y + rect.h) {
+            // Create file input and click synchronously within gesture handler.
+            const input = document.createElement('input');
+            input.type = 'file';
+            if (rect.accept) input.accept = rect.accept;
+            const p = new Promise((resolve) => {
+              let settled = false;
+              const settle = (val) => { if (!settled) { settled = true; resolve(val); } };
+              input.onchange = () => {
+                const file = input.files && input.files[0];
+                if (!file) { settle(null); input.remove(); return; }
+                // JSON files: read as text (with 5MB guard)
+                if (rect.accept && rect.accept.indexOf('.json') >= 0) {
+                  const MAX = 5 * 1024 * 1024;
+                  if (typeof file.size === 'number' && file.size > MAX) {
+                    console.warn('[FilePicker] file too large:', file.size);
+                    settle(null); input.remove(); return;
+                  }
+                  file.text().then((text) => {
+                    settle({ data: text, name: file.name });
+                    input.remove();
+                  }).catch(() => { settle(null); input.remove(); });
+                } else {
+                  // WAV/other files: create object URL
+                  try {
+                    const url = URL.createObjectURL(file);
+                    settle({ data: url, name: file.name });
+                  } catch (_) { settle(null); }
+                  input.remove();
+                }
+              };
+              // Fallback: if user cancels and 'change' does not fire.
+              setTimeout(() => { settle(null); try { input.remove(); } catch(_){} }, 5000);
+            });
+            pending.set(id, p);
+            document.body.appendChild(input);
+            input.click();
+            return;
+          }
+        }
+      }
+
+      function attachFilePickerListener() {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) {
+          requestAnimationFrame(attachFilePickerListener);
+          return;
+        }
+        canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: true });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachFilePickerListener);
+      } else {
+        attachFilePickerListener();
+      }
+    })();
+  </script>
+  <script>
+    // Touch debug mode: enable via ?touchDebug=1 or window.BEATMO_TOUCH_DEBUG = true
+    (function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const debugParam = urlParams.get('touchDebug');
+      window.BEATMO_TOUCH_DEBUG = debugParam === '1' || debugParam === 'true';
+
+      if (window.BEATMO_TOUCH_DEBUG) {
+        console.log('[Beatmo Touch Debug] Enabled via URL parameter');
+        console.log('[Beatmo Touch Debug] DPR:', window.devicePixelRatio);
+        console.log('[Beatmo Touch Debug] Screen:', screen.width, 'x', screen.height);
+        console.log('[Beatmo Touch Debug] Window:', window.innerWidth, 'x', window.innerHeight);
+      }
+
+      // Debug logging function
+      function logTouchEvent(type, event) {
+        if (!window.BEATMO_TOUCH_DEBUG) return;
+
+        const canvas = document.querySelector('canvas');
+        const rect = canvas ? canvas.getBoundingClientRect() : null;
+
+        const touches = Array.from(event.touches || []).map(t => ({
+          id: t.identifier,
+          clientX: t.clientX,
+          clientY: t.clientY,
+          pageX: t.pageX,
+          pageY: t.pageY,
+          canvasX: rect ? Math.round(t.clientX - rect.left) : null,
+          canvasY: rect ? Math.round(t.clientY - rect.top) : null,
+        }));
+
+        const changedTouches = Array.from(event.changedTouches || []).map(t => ({
+          id: t.identifier,
+          clientX: t.clientX,
+          clientY: t.clientY,
+          canvasX: rect ? Math.round(t.clientX - rect.left) : null,
+          canvasY: rect ? Math.round(t.clientY - rect.top) : null,
+        }));
+
+        console.log(`[Touch ${type}]`, {
+          touches,
+          changedTouches,
+          canvasRect: rect ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height } : null,
+          dpr: window.devicePixelRatio,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Debug logging for pointer events (modern mobile browsers)
+      function logPointerEvent(type, event) {
+        if (!window.BEATMO_TOUCH_DEBUG) return;
+        if (event.pointerType !== 'touch') return; // Only log touch pointers
+
+        const canvas = document.querySelector('canvas');
+        const rect = canvas ? canvas.getBoundingClientRect() : null;
+
+        console.log(`[Pointer ${type}]`, {
+          pointerId: event.pointerId,
+          pointerType: event.pointerType,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          canvasX: rect ? Math.round(event.clientX - rect.left) : null,
+          canvasY: rect ? Math.round(event.clientY - rect.top) : null,
+          isPrimary: event.isPrimary,
+          pressure: event.pressure,
+          width: event.width,
+          height: event.height,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Attach debug listeners when canvas is available
+      function attachDebugListeners() {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) {
+          requestAnimationFrame(attachDebugListeners);
+          return;
+        }
+
+        if (window.BEATMO_TOUCH_DEBUG) {
+          console.log('[Beatmo Touch Debug] Canvas found, attaching listeners');
+          console.log('[Beatmo Touch Debug] Canvas size:', canvas.width, 'x', canvas.height);
+          console.log('[Beatmo Touch Debug] Canvas rect:', canvas.getBoundingClientRect());
+
+          // Touch events
+          canvas.addEventListener('touchstart', e => logTouchEvent('start', e), { passive: true });
+          canvas.addEventListener('touchmove', e => logTouchEvent('move', e), { passive: true });
+          canvas.addEventListener('touchend', e => logTouchEvent('end', e), { passive: true });
+          canvas.addEventListener('touchcancel', e => logTouchEvent('cancel', e), { passive: true });
+
+          // Pointer events (for comparison)
+          canvas.addEventListener('pointerdown', e => logPointerEvent('down', e), { passive: true });
+          canvas.addEventListener('pointermove', e => logPointerEvent('move', e), { passive: true });
+          canvas.addEventListener('pointerup', e => logPointerEvent('up', e), { passive: true });
+          canvas.addEventListener('pointercancel', e => logPointerEvent('cancel', e), { passive: true });
+        }
+      }
+
+      // Start looking for canvas
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachDebugListeners);
+      } else {
+        attachDebugListeners();
+      }
+
+      // Helper to enable debug mode from console
+      window.enableTouchDebug = function() {
+        window.BEATMO_TOUCH_DEBUG = true;
+        if (typeof setTouchDebug === 'function') {
+          setTouchDebug(true);
+        }
+        console.log('[Beatmo Touch Debug] Enabled from console');
+        console.log('[Beatmo Touch Debug] Use touchDebugState() to see Go-side state');
+        console.log('[Beatmo Touch Debug] Use touchEventLog() to see recent events');
+      };
+    })();
+
+    // Prevent default touch behaviors on canvas
+    ['touchstart', 'touchmove'].forEach(evt => {
+      document.addEventListener(evt, e => {
+        if (e.target.tagName === 'CANVAS') e.preventDefault();
+      }, { passive: false });
+    });
+  </script>
   <script type="module" src="audio.js"></script>
   <script src="wasm_exec.js"></script>
-  <script>
+  <script type="module">
     const go = new Go(); // from wasm_exec.js
-    WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
-      .then(result => {
+    const wasmReady = WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject);
+    Promise.all([wasmReady, window.audioReady || Promise.resolve()])
+      .then(([result]) => {
         go.run(result.instance);
-        console.log("Tunkul WASM game started");
+        console.log("Beatmo WASM game started (audio pre-warmed)");
+        // Hide loading indicator once the game starts
+        const el = document.getElementById('loading-indicator');
+        if (el) el.classList.add('hidden');
         // Disable simpleDraw mode once WASM is loaded to show full UI
         const disableSimpleDraw = () => {
           if (typeof setSimpleDraw === "function") {

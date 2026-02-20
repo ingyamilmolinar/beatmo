@@ -3,7 +3,7 @@ package ui
 import (
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // SetPlayFunc overrides the audio playback function used by this game instance.

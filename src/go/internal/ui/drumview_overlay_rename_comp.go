@@ -18,12 +18,17 @@ type RenameProps struct {
 	OnCommit func(newName string)
 	// OnCancel is called when the rename is cancelled (Escape or click outside).
 	OnCancel func()
+	// MobileInputID is the mobile native input ID for this rename (e.g., "rename-0").
+	// When set on mobile, Open() will use the native HTML input instead of TextInput.
+	MobileInputID string
 }
 
 // RenameState contains the internal state for the rename component.
 type RenameState struct {
-	open bool
-	hold bool // Capture flag (set when opened, released on mouse-up)
+	open     bool
+	hold     bool   // Capture flag (set when opened, released on mouse-up)
+	mobile   bool   // Mobile mode: native HTML input handles text entry
+	mobileID string // Active mobile native input ID
 }
 
 // RenameComponent is a self-contained text input for renaming.
@@ -55,29 +60,56 @@ func (r *RenameComponent) Open() {
 	if rect.Empty() {
 		return
 	}
+
+	// Mobile mode: if a native mobile input is active for this rename ID,
+	// use it instead of creating a TextInput.
+	if isSmallScreen() && r.props.MobileInputID != "" && mobileInputActive(r.props.MobileInputID) {
+		r.state.open = true
+		r.state.hold = true
+		r.state.mobile = true
+		r.state.mobileID = r.props.MobileInputID
+		r.textBox = nil // No TextInput in mobile mode
+		r.SetBounds(rect)
+		return
+	}
+
 	r.textBox = NewTextInput(rect, BPMBoxStyle)
 	r.textBox.MaxLen = r.props.MaxLen
 	if r.textBox.MaxLen == 0 {
 		r.textBox.MaxLen = 32 // default
 	}
+	r.textBox.InputMode = "text"
+	r.textBox.OnFocusGained = func() { softKeyboardShow("text") }
+	r.textBox.OnFocusLost = func() { softKeyboardHide() }
 	r.textBox.SetText(r.props.InitialText)
 	r.textBox.focused = true
 	r.textBox.anim = 1
 	r.state.open = true
 	r.state.hold = true
+	r.state.mobile = false
+	r.state.mobileID = ""
 	r.SetBounds(rect)
 }
 
 // Close closes the rename dialog.
 func (r *RenameComponent) Close() {
+	if r.state.mobile && r.state.mobileID != "" {
+		mobileInputClose(r.state.mobileID)
+	}
 	r.state.open = false
 	r.state.hold = false
+	r.state.mobile = false
+	r.state.mobileID = ""
 	r.textBox = nil
 	r.SetBounds(image.Rectangle{})
+	softKeyboardHide()
 }
 
 // IsOpen returns whether the rename dialog is currently open.
 func (r *RenameComponent) IsOpen() bool {
+	if r.state.mobile {
+		return r.state.open
+	}
 	return r.state.open && r.textBox != nil
 }
 
@@ -89,10 +121,64 @@ func (r *RenameComponent) Value() string {
 	return r.textBox.Value()
 }
 
+// TextBox returns the internal TextInput, or nil in mobile mode.
+// Callers may use this to share the same TextInput for legacy compatibility.
+func (r *RenameComponent) TextBox() *TextInput {
+	return r.textBox
+}
+
 // HandleInput processes mouse and keyboard input for the rename dialog.
 func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
-	if !r.state.open || r.textBox == nil {
+	if !r.state.open {
 		return InputIgnored
+	}
+
+	// Mobile mode: poll native input for result
+	if r.state.mobile {
+		// If hold is active (just opened), capture until release
+		if r.state.hold {
+			if !pressed {
+				r.state.hold = false
+			}
+			return InputCaptured
+		}
+
+		if val, committed, ok := mobileInputPollResult(r.state.mobileID); ok {
+			if committed && val != "" {
+				if r.props.OnCommit != nil {
+					r.props.OnCommit(val)
+				}
+			} else {
+				if r.props.OnCancel != nil {
+					r.props.OnCancel()
+				}
+			}
+			r.Close()
+			return InputConsumed
+		}
+		// While mobile input is active, consume all input
+		return InputConsumed
+	}
+
+	if r.textBox == nil {
+		return InputIgnored
+	}
+
+	// Check for Enter/Escape BEFORE the hold phase so keyboard commits work
+	// even immediately after opening (e.g., in tests that open programmatically).
+	if isKeyPressed(ebiten.KeyEnter) {
+		if r.props.OnCommit != nil {
+			r.props.OnCommit(r.textBox.Value())
+		}
+		r.Close()
+		return InputConsumed
+	}
+	if isKeyPressed(ebiten.KeyEscape) {
+		if r.props.OnCancel != nil {
+			r.props.OnCancel()
+		}
+		r.Close()
+		return InputConsumed
 	}
 
 	// If hold is active (just opened), capture until release
@@ -103,25 +189,25 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 		return InputCaptured
 	}
 
+	// On small screens, also poll mobile input even if Open() started in
+	// desktop mode (native HTML input may not have been active yet).
+	if isSmallScreen() && r.props.MobileInputID != "" {
+		if val, committed, ok := mobileInputPollResult(r.props.MobileInputID); ok {
+			if committed && val != "" {
+				if r.props.OnCommit != nil {
+					r.props.OnCommit(val)
+				}
+			} else {
+				if r.props.OnCancel != nil {
+					r.props.OnCancel()
+				}
+			}
+			r.Close()
+			return InputConsumed
+		}
+	}
+
 	pt := image.Pt(x, y)
-
-	// Check for Enter to commit BEFORE textBox.Update() consumes the key
-	if isKeyPressed(ebiten.KeyEnter) {
-		if r.props.OnCommit != nil {
-			r.props.OnCommit(r.textBox.Value())
-		}
-		r.Close()
-		return InputConsumed
-	}
-
-	// Check for Escape to cancel
-	if isKeyPressed(ebiten.KeyEscape) {
-		if r.props.OnCancel != nil {
-			r.props.OnCancel()
-		}
-		r.Close()
-		return InputConsumed
-	}
 
 	// Handle keyboard input via TextInput.Update()
 	// Note: TextInput.Update() checks ebiten keyboard state internally
@@ -149,7 +235,7 @@ func (r *RenameComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 // Draw renders the rename text input.
 func (r *RenameComponent) Draw(dst *ebiten.Image) {
-	if !r.state.open || r.textBox == nil {
+	if !r.state.open || r.state.mobile || r.textBox == nil {
 		return
 	}
 	r.textBox.Draw(dst)
@@ -162,7 +248,13 @@ func (r *RenameComponent) Capturing() bool {
 
 // InputBounds returns the text box bounds for overlay compatibility.
 func (r *RenameComponent) InputBounds() image.Rectangle {
-	if !r.state.open || r.textBox == nil {
+	if !r.state.open {
+		return image.Rectangle{}
+	}
+	if r.state.mobile {
+		return r.props.AnchorRect
+	}
+	if r.textBox == nil {
 		return image.Rectangle{}
 	}
 	return r.textBox.Rect

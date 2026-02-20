@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func TestRefreshInstrumentsSkipsWhenUnchanged(t *testing.T) {

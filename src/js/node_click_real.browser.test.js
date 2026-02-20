@@ -3,158 +3,175 @@
  *
  * Tests that grid node clicks work via real canvas events in WASM.
  *
- * BUG: Grid node clicks don't work in WASM because `fastPath` is enabled by
- * default, which SKIPS the grid input handler (handleEditor).
+ * The game's click state machine in handleEditor() (game_input_editor.go)
+ * requires two separate game-loop ticks:
+ *   Tick N   (mouse down): left=true, leftPrev=false  → pendingClick=true
+ *   Tick N+1 (mouse up):   left=false, leftPrev=true  → nodeMenuOpen=true
  *
- * Location: src/go/internal/ui/game_update.go:129-133
- *   if !fastPath && !g.blocksAt(mx, my) {
- *       g.handleEditor()   // THIS IS SKIPPED ON WASM
- *   } else {
- *       g.leftPrev = left  // Only updates state tracking, no click processing
- *   }
+ * Under CPU contention (parallel browser tests), requestAnimationFrame ticks
+ * can be delayed beyond short hold times, so we use generous hold durations
+ * and poll for the expected state change with retries.
  *
- * This test demonstrates the bug by:
- * 1. Showing that fastPath=true (default on WASM) causes node clicks to fail
- * 2. Showing that fastPath=false makes node clicks work
+ * IMPORTANT: The target node must be well above the splitter's grab zone,
+ * otherwise the splitter captures the mouse-down event. After importing
+ * a demo, pan the camera so the target node sits near the grid pane center.
  */
 
 import {
   setupFullWasm,
-  clickAndHold,
   rectCenter,
   assertValidRect,
 } from "./real_input_test_helpers.js";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
+
+/**
+ * Pan the camera so the node at grid (i, j) is centered vertically in the
+ * grid pane (between gridTopOffset=40 and splitY). Re-draws and returns
+ * the updated node rect.
+ */
+async function centerNodeInGridPane(page, i, j) {
+  const splitYVal = await page.evaluate(() => splitY?.()) ?? 360;
+  const gridTop = 40; // desktopTopOffset constant
+  const targetY = Math.round((gridTop + splitYVal) / 2);
+
+  const nr = await page.evaluate(([gi, gj]) => nodeRect?.(gi, gj), [i, j]);
+  if (!nr) throw new Error(`No node at (${i}, ${j})`);
+  const currentCenter = nr.y + nr.h / 2;
+  const dy = currentCenter - targetY;
+
+  if (Math.abs(dy) > 5) {
+    await page.evaluate(([pdx, pdy]) => {
+      panBy?.(pdx, pdy);
+      forceDraw?.();
+    }, [0, -dy]);
+    await page.waitForTimeout(200);
+  }
+
+  const updated = await page.evaluate(([gi, gj]) => nodeRect?.(gi, gj), [i, j]);
+  if (!updated) throw new Error(`Node at (${i}, ${j}) not visible after pan`);
+  return updated;
+}
+
+/**
+ * Click a node and wait for the node menu to open.
+ * Uses hold-and-poll: holds mouse down until the game loop registers
+ * pendingClick, then releases and waits for nodeMenuOpen. Retries the
+ * full cycle up to maxRetries times.
+ */
+async function clickNodeAndWaitForMenu(page, x, y, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Close any existing menu before each attempt
+    await page.evaluate(() => closeNodeMenu?.());
+    await page.waitForTimeout(100);
+
+    // Hold mouse down with generous duration (≥200ms recommended)
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+
+    // Poll for pendingClick (set on the tick that sees mousedown)
+    let sawPending = false;
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(50);
+      const st = await page.evaluate(() => debugGridInputState?.());
+      if (st?.pendingClick) {
+        sawPending = true;
+        break;
+      }
+      // If splitter captured instead, abort this attempt
+      if (st?.splitDragging) {
+        console.log(`  [attempt ${attempt + 1}] splitter captured the click, aborting`);
+        break;
+      }
+    }
+
+    // Release
+    await page.mouse.up();
+
+    if (!sawPending) {
+      await page.waitForTimeout(200);
+      continue;
+    }
+
+    // Poll for nodeMenuOpen (set on the tick after mouse-up)
+    try {
+      await page.waitForFunction(
+        () => debugGridInputState?.()?.nodeMenuOpen === true,
+        { timeout: 2000 },
+      );
+      return; // Success
+    } catch {
+      console.log(`  [attempt ${attempt + 1}] nodeMenuOpen did not become true`);
+    }
+  }
+  throw new Error(
+    `Node menu did not open after ${maxRetries} click attempts at (${x}, ${y})`,
+  );
+}
 
 let cleanup;
+let page;
 
 try {
   console.log("node_click_real: Setting up full WASM environment...");
-  const { page, cleanup: cleanupFn } = await setupFullWasm();
-  cleanup = cleanupFn;
+  ({ page, cleanup } = await setupFullWasm());
 
-  // Ensure we have a default path with nodes to click
+  // Ensure demo circuit with nodes
   await page.evaluate(() => {
     ensureDefaultPath?.();
     forceDraw?.();
   });
   await page.waitForTimeout(300);
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Log initial state
-  // ─────────────────────────────────────────────────────────────────────
-  const initialState = await page.evaluate(() => debugGridInputState?.());
-  console.log("node_click_real: Initial state:");
-  console.log("  - fastPath:", initialState?.fastPath);
-  console.log("  - nodeMenuOpen:", initialState?.nodeMenuOpen);
-  console.log("  - pendingClick:", initialState?.pendingClick);
-  console.log("  - clickNodeId:", initialState?.clickNodeId);
+  // Pan the target node to the center of the grid pane so it's well
+  // above the splitter's grab zone.
+  const nodeR = await centerNodeInGridPane(page, 0, 0);
+  assertValidRect(nodeR, "nodeRect(0,0)");
+  const center = rectCenter(nodeR);
+  console.log(`node_click_real: Node at (0,0) screen rect: ${JSON.stringify(nodeR)}, center: (${center.x}, ${center.y})`);
 
-  // Verify fastPath is enabled (this is the bug condition)
-  if (!initialState?.fastPath) {
-    console.log("node_click_real: WARNING - fastPath is unexpectedly false.");
-    console.log("node_click_real: This test expects fastPath=true to demonstrate the bug.");
+  const sy = await page.evaluate(() => splitY?.());
+  console.log(`node_click_real: splitY=${sy}, node center y=${center.y}`);
+  if (center.y >= (sy - 10)) {
+    throw new Error(`Node center (y=${center.y}) too close to splitter (y=${sy})`);
   }
 
-  // Get the node rect for node at (0, 0)
-  const nodeRect = await page.evaluate(() => nodeRect?.(0, 0));
-  if (!nodeRect) {
-    throw new Error("No node found at (0, 0) - ensureDefaultPath may have failed");
-  }
-  assertValidRect(nodeRect, "nodeRect(0,0)");
-  console.log("node_click_real: Node rect at (0,0):", nodeRect);
-
-  const center = rectCenter(nodeRect);
-  console.log("node_click_real: Node center:", center);
-
-  // Close any open menu first
-  await page.evaluate(() => closeNodeMenu?.());
-  await page.waitForTimeout(100);
-
   // ─────────────────────────────────────────────────────────────────────
-  // Test 1: Verify bug exists (fastPath=true, click fails)
+  // Test 1: Click with fastPath=true (default WASM)
   // ─────────────────────────────────────────────────────────────────────
-  console.log("\n--- Test 1: Click with fastPath=true (default WASM) ---");
-
-  // Ensure fastPath is enabled (should already be true on WASM)
+  console.log("\n--- Test 1: Click with fastPath=true ---");
   await page.evaluate(() => setFastPath?.(true));
-  await page.waitForTimeout(50);
 
-  const fastPathBefore = await page.evaluate(() => getFastPath?.());
-  console.log("node_click_real: fastPath before click:", fastPathBefore);
+  await clickNodeAndWaitForMenu(page, center.x, center.y);
 
-  // Click on the node
-  console.log("node_click_real: Clicking at", center.x, center.y);
-  await clickAndHold(page, center.x, center.y, 100);
-
-  // Wait for WASM to process the click
-  await page.waitForTimeout(200);
-
-  // Check state after click
-  const stateAfterClick1 = await page.evaluate(() => debugGridInputState?.());
-  console.log("node_click_real: Post-click state (fastPath=true):");
-  console.log("  - fastPath:", stateAfterClick1?.fastPath);
-  console.log("  - nodeMenuOpen:", stateAfterClick1?.nodeMenuOpen);
-  console.log("  - pendingClick:", stateAfterClick1?.pendingClick);
-  console.log("  - clickNodeId:", stateAfterClick1?.clickNodeId);
-  console.log("  - leftPrev:", stateAfterClick1?.leftPrev);
-  console.log("  - selectedNodeId:", stateAfterClick1?.selectedNodeId);
-
+  const st1 = await page.evaluate(() => debugGridInputState?.());
+  if (!st1?.nodeMenuOpen) {
+    throw new Error(`Test 1 failed: nodeMenuOpen=${st1?.nodeMenuOpen}`);
+  }
+  console.log("node_click_real: Test 1 PASS (fastPath=true, nodeMenuOpen=true)");
 
   // ─────────────────────────────────────────────────────────────────────
-  // Test 2: Verify fix works (fastPath=false, click works)
+  // Test 2: Click with fastPath=false
   // ─────────────────────────────────────────────────────────────────────
   console.log("\n--- Test 2: Click with fastPath=false ---");
-
-  // Close any menu from previous test
-  await page.evaluate(() => closeNodeMenu?.());
+  await page.evaluate(() => {
+    closeNodeMenu?.();
+    setFastPath?.(false);
+  });
   await page.waitForTimeout(100);
 
-  // Disable fastPath
-  await page.evaluate(() => setFastPath?.(false));
-  await page.waitForTimeout(50);
+  await clickNodeAndWaitForMenu(page, center.x, center.y);
 
-  const fastPathAfterDisable = await page.evaluate(() => getFastPath?.());
-  console.log("node_click_real: fastPath after disable:", fastPathAfterDisable);
-
-  // Click on the node again
-  console.log("node_click_real: Clicking at", center.x, center.y);
-  await clickAndHold(page, center.x, center.y, 100);
-
-  // Wait for WASM to process the click
-  await page.waitForTimeout(200);
-
-  // Check state after click
-  const stateAfterClick2 = await page.evaluate(() => debugGridInputState?.());
-  console.log("node_click_real: Post-click state (fastPath=false):");
-  console.log("  - fastPath:", stateAfterClick2?.fastPath);
-  console.log("  - nodeMenuOpen:", stateAfterClick2?.nodeMenuOpen);
-  console.log("  - pendingClick:", stateAfterClick2?.pendingClick);
-  console.log("  - clickNodeId:", stateAfterClick2?.clickNodeId);
-  console.log("  - leftPrev:", stateAfterClick2?.leftPrev);
-  console.log("  - selectedNodeId:", stateAfterClick2?.selectedNodeId);
-
-  // Verify results
-  const bugExists = !stateAfterClick1?.nodeMenuOpen;
-  const fixWorks = stateAfterClick2?.nodeMenuOpen === true;
-
-  if (bugExists) {
-    throw new Error(
-      `Grid node click failed with fastPath=true: nodeMenuOpen=${stateAfterClick1?.nodeMenuOpen}`
-    );
+  const st2 = await page.evaluate(() => debugGridInputState?.());
+  if (!st2?.nodeMenuOpen) {
+    throw new Error(`Test 2 failed: nodeMenuOpen=${st2?.nodeMenuOpen}`);
   }
+  console.log("node_click_real: Test 2 PASS (fastPath=false, nodeMenuOpen=true)");
 
-  if (!fixWorks) {
-    throw new Error(
-      `Grid node click failed with fastPath=false: nodeMenuOpen=${stateAfterClick2?.nodeMenuOpen}`
-    );
-  }
-
-  console.log("node_click_real: PASS - Grid node clicks work correctly");
+  console.log("\nnode_click_real: PASS - Grid node clicks work correctly");
 } catch (error) {
   console.error("node_click_real: FAIL -", error.message);
   process.exitCode = 1;
 } finally {
-  if (cleanup) {
-    await cleanup();
-  }
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "node_click_real");
+  if (cleanup) await cleanup();
 }

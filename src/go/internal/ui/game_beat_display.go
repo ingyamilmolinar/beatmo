@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (g *Game) currentBeat() float64 {
@@ -125,31 +125,6 @@ func (g *Game) displayBeat() float64 {
 	}
 	g.state.SetLastDisplayBeat(v)
 	return v
-}
-
-func (g *Game) rootNode() *uiNode {
-	if g.start != nil {
-		return g.start
-	}
-	var root *uiNode
-	for _, n := range g.nodes {
-		if n.J != 0 {
-			continue
-		}
-		inbound := false
-		for _, e := range g.edges {
-			if e.B == n {
-				inbound = true
-				break
-			}
-		}
-		if !inbound {
-			if root == nil || n.I < root.I {
-				root = n
-			}
-		}
-	}
-	return root
 }
 
 func (g *Game) pulseForRow(row int) *pulse {

@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func TestSaveInstrumentCopiesWavToSavedDir(t *testing.T) {
 	assertDefaultParityState(t)
 	root := t.TempDir()
-	t.Setenv("TUNKUL_ASSETS", root)
+	t.Setenv("BEATMO_ASSETS", root)
 
 	src := writeTempWAV(t, "hit.wav")
 	data, err := os.ReadFile(src)
@@ -78,7 +78,7 @@ func TestSaveInstrumentCopiesWavToSavedDir(t *testing.T) {
 func TestSaveInstrumentUsesSamplePathWhenMissingMeta(t *testing.T) {
 	assertDefaultParityState(t)
 	root := t.TempDir()
-	t.Setenv("TUNKUL_ASSETS", root)
+	t.Setenv("BEATMO_ASSETS", root)
 
 	src := writeTempWAV(t, "custom.wav")
 
@@ -108,7 +108,7 @@ func TestSaveInstrumentUsesSamplePathWhenMissingMeta(t *testing.T) {
 func TestSaveInstrumentRejectsSynth(t *testing.T) {
 	assertDefaultParityState(t)
 	root := t.TempDir()
-	t.Setenv("TUNKUL_ASSETS", root)
+	t.Setenv("BEATMO_ASSETS", root)
 	withAudioCatalog(t, []audio.SoundMeta{{ID: "snare", Name: "Snare", Category: "Snares (Synth)", Source: "synth"}})
 
 	dv := newTestDrumView(t, 800, 600)
@@ -130,7 +130,7 @@ func TestSaveInstrumentRejectsSynth(t *testing.T) {
 func TestSaveInstrumentRejectsMissingPath(t *testing.T) {
 	assertDefaultParityState(t)
 	root := t.TempDir()
-	t.Setenv("TUNKUL_ASSETS", root)
+	t.Setenv("BEATMO_ASSETS", root)
 	withAudioCatalog(t, []audio.SoundMeta{{ID: "kick-a", Name: "Kick A", Category: "Kick Drums (WAV)", Source: "wav"}})
 
 	dv := newTestDrumView(t, 800, 600)
@@ -149,7 +149,7 @@ func TestSaveInstrumentRejectsMissingPath(t *testing.T) {
 func TestSaveInstrumentButtonWorksDuringPlayback(t *testing.T) {
 	assertDefaultParityState(t)
 	root := t.TempDir()
-	t.Setenv("TUNKUL_ASSETS", root)
+	t.Setenv("BEATMO_ASSETS", root)
 
 	src := writeTempWAV(t, "hit.wav")
 	data, err := os.ReadFile(src)

@@ -86,11 +86,11 @@ func New(out io.Writer, level Level) *Logger {
 		out = io.Discard
 	}
 	// In tests, default to silent to keep suites quiet. Opt-in via
-	// TUNKUL_TEST_LOG=1 or -test.v. Level can be overridden via env.
+	// BEATMO_TEST_LOG=1 or -test.v. Level can be overridden via env.
 	if inTests {
-		verbose := os.Getenv("TUNKUL_TEST_LOG") == "1" || testVerboseFlag()
+		verbose := os.Getenv("BEATMO_TEST_LOG") == "1" || testVerboseFlag()
 		if verbose {
-			if lvl := strings.TrimSpace(os.Getenv("TUNKUL_TEST_LOG_LEVEL")); lvl != "" {
+			if lvl := strings.TrimSpace(os.Getenv("BEATMO_TEST_LOG_LEVEL")); lvl != "" {
 				level = LevelFromString(lvl)
 			} else if level > LevelDebug {
 				level = LevelDebug

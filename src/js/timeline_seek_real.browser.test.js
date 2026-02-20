@@ -10,13 +10,14 @@ import {
   clickAndHold,
   assertValidRect,
 } from "./real_input_test_helpers.js";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 let cleanup;
+let page;
 
 try {
   console.log("timeline_seek_real: Setting up full WASM environment...");
-  const { page, cleanup: cleanupFn } = await setupFullWasm();
-  cleanup = cleanupFn;
+  ({ page, cleanup } = await setupFullWasm());
 
   // Ensure we have a default path
   await page.evaluate(() => {
@@ -80,6 +81,7 @@ try {
   console.error("timeline_seek_real: FAIL -", error.message);
   process.exitCode = 1;
 } finally {
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "timeline_seek_real");
   if (cleanup) {
     await cleanup();
   }

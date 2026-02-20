@@ -26,6 +26,7 @@ type ColorWheelProps struct {
 type ColorWheelState struct {
 	open     bool
 	hold     bool // Capture flag (set when opened, released on mouse-up)
+	picked   bool // Set when a color is picked; defers Close() until mouse release
 	wheelImg *ebiten.Image
 	cacheW   int
 	cacheH   int
@@ -34,8 +35,9 @@ type ColorWheelState struct {
 // ColorWheelComponent is a self-contained HSV color picker wheel.
 type ColorWheelComponent struct {
 	BaseComponent
-	props ColorWheelProps
-	state ColorWheelState
+	props    ColorWheelProps
+	state    ColorWheelState
+	closeBtn *Button
 }
 
 // NewColorWheelComponent creates a new color wheel component.
@@ -64,6 +66,7 @@ func (c *ColorWheelComponent) Open() {
 func (c *ColorWheelComponent) Close() {
 	c.state.open = false
 	c.state.hold = false
+	c.state.picked = false
 	if c.props.OnClose != nil {
 		c.props.OnClose()
 	}
@@ -140,6 +143,14 @@ func (c *ColorWheelComponent) rebuildWheel() {
 	rect := image.Rect(wantX, wantY, wantX+wheel, wantY+wheel)
 	c.SetBounds(rect)
 	c.rebuildImage()
+
+	// Close button at top-right of wheel
+	cr := closeButtonRect(rect, 2)
+	c.closeBtn = NewButton("", PopupButtonStyle, func() { c.Close() })
+	c.closeBtn.Icon = "close"
+	c.closeBtn.IconColor = colButtonBorder
+	c.closeBtn.SetRect(cr)
+	c.closeBtn.ConsumeOnPress = true
 }
 
 // rebuildImage regenerates the cached wheel image.
@@ -258,17 +269,31 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 		return InputCaptured
 	}
 
+	// Deferred close after color pick: stay open until mouse release
+	if c.state.picked {
+		if !pressed {
+			c.Close()
+			SuppressClicksUntilMouseUp()
+			return InputConsumed
+		}
+		return InputCaptured
+	}
+
+	// Close button (highest z-order)
+	if c.closeBtn != nil && c.closeBtn.Handle(x, y, pressed) {
+		return InputConsumed
+	}
+
 	pt := image.Pt(x, y)
 
-	// If pressed inside wheel, pick color
+	// If pressed inside wheel, pick color and defer close until release
 	if pressed && pt.In(c.bounds) {
 		col := c.pickColorAt(x, y)
 		if c.props.OnColorPick != nil {
 			c.props.OnColorPick(col)
 		}
-		c.Close()
-		SuppressClicksUntilMouseUp()
-		return InputConsumed
+		c.state.picked = true
+		return InputCaptured
 	}
 
 	// If pressed outside wheel, close
@@ -310,11 +335,18 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 
 	// Draw border
 	drawRect(dst, r, colButtonBorder, false)
+	// Close button on top
+	if c.closeBtn != nil {
+		c.closeBtn.Draw(dst)
+	}
 }
+
+// CloseBtn returns the close button (for testing).
+func (c *ColorWheelComponent) CloseBtn() *Button { return c.closeBtn }
 
 // Capturing returns whether the component is capturing input.
 func (c *ColorWheelComponent) Capturing() bool {
-	return c.state.hold
+	return c.state.hold || c.state.picked
 }
 
 // InputBounds returns the wheel bounds for overlay compatibility.

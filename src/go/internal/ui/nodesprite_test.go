@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestNodeSpriteCacheReusedAcrossFrames(t *testing.T) {
@@ -22,7 +22,7 @@ func TestNodeSpriteCacheReusedAcrossFrames(t *testing.T) {
 	g.updateBeatInfos()
 	img := ebiten.NewImage(800, g.split.Y)
 	g.drawGridPane(img)
-	if g.nodeSpriteCache == nil || len(g.nodeSpriteCache) == 0 {
+	if len(g.nodeSpriteCache) == 0 {
 		t.Fatalf("expected node sprite cache entries")
 	}
 	before := len(g.nodeSpriteCache)

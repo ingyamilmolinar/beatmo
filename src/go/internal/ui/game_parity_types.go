@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // mismatchEntry captures a single scheduler-vs-UI discrepancy for diagnostics.
@@ -94,8 +94,8 @@ type parityAudioEvent struct {
 type paritySeqDecision struct {
 	Row        int
 	Abs        int
-	Audible    bool           // audio truth (AudibleAt)
-	Visible    bool           // view truth (VisibleAt)
+	Audible    bool // audio truth (AudibleAt)
+	Visible    bool // view truth (VisibleAt)
 	NodeType   model.NodeType
 	Missing    bool
 	RecordedAt time.Time

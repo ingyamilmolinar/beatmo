@@ -4,7 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertSimpleDrawMode, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -17,16 +17,17 @@ const MIN_HIGHLIGHT_MS = 50;
 const TOLERANCE_MS = 30; // Allow some timing variance
 
 function buildPlaytest() {
-  const build = spawnSync(
+  if (!shouldSkipWasmBuild("play_ui.wasm")) {
+const build = spawnSync(
     GO,
     ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
     { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
   );
   if (build.status !== 0) throw new Error("go build play_ui failed");
 }
+}
 
 function serve() {
-  const port = 8510 + Math.floor(Math.random() * 1000);
   const server = http.createServer((req, res) => {
     const file = req.url === "/" ? "/ui.html" : req.url;
     if (req.url === "/" || req.url === "/ui.html") {
@@ -56,7 +57,7 @@ function serve() {
       res.end(data);
     });
   });
-  return new Promise((resolve) => server.listen(port, () => resolve({ port, server })));
+  return new Promise((resolve) => server.listen(0, () => resolve({ port: server.address().port, server })));
 }
 
 async function measureNodeHighlightDuration(page) {
@@ -230,6 +231,7 @@ try {
   console.log(`  SKIP: ${err.message}`);
 }
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "highlight_duration");
 await browser.close();
 server.close();
 

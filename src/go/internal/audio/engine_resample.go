@@ -5,6 +5,7 @@ package audio
 import (
 	"math"
 )
+
 // pow2 computes 2^x.
 func pow2(x float64) float64 { return math.Pow(2, x) }
 
@@ -16,6 +17,24 @@ type resampleVoice struct {
 	pos  float64
 	buf  []float64
 	done bool
+}
+
+// SampleBlock implements BlockVoice for resampleVoice using per-sample
+// interpolation (resampling inherently needs per-sample position tracking).
+func (r *resampleVoice) SampleBlock(dst []float64) (int, bool) {
+	for i := range dst {
+		val, done := r.Sample()
+		if done {
+			return i, true
+		}
+		dst[i] = val
+	}
+	// Probe: voice may be exactly exhausted at block boundary.
+	if _, done := r.Sample(); done {
+		r.done = true
+		return len(dst), true
+	}
+	return len(dst), false
 }
 
 func (r *resampleVoice) Sample() (float64, bool) {
@@ -62,4 +81,3 @@ func (r *resampleVoice) Sample() (float64, bool) {
 	r.pos += r.step
 	return out, false
 }
-

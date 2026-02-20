@@ -4,7 +4,7 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -12,6 +12,7 @@ const goDir = path.resolve(jsDir, "../go");
 const repoRoot = path.resolve(jsDir, "..", "..");
 const GO = resolveGoBinary();
 
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   [
@@ -25,8 +26,8 @@ const build = spawnSync(
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
-const port = 8360 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
@@ -38,7 +39,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((resolve) => server.listen(port, resolve));
+await new Promise((resolve) => server.listen(0, resolve));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -47,10 +49,39 @@ await page.waitForFunction(() => typeof startPlay === "function");
 await assertSimpleDrawMode(page, false, "stress complex");
 await clearSchedulerMismatches(page);
 
-const projectJson = fs.readFileSync(path.join(repoRoot, "tunkul.json"), "utf8");
+const projectJson = fs.readFileSync(path.join(repoRoot, "src", "go", "internal", "assets", "beatmo_project_fixture.json"), "utf8");
 const project = JSON.parse(projectJson);
 
-const assetDir = path.join(repoRoot, "assets", "wav");
+const instrumentData = {};
+if (project) {
+  const assetDir = path.join(repoRoot, "assets", "wav");
+  let wavFiles = new Map();
+  try {
+    wavFiles = collectWavFiles(assetDir);
+  } catch (_) {
+    // assets/wav may not exist in CI; builtin synths suffice.
+  }
+
+  if (Array.isArray(project.instruments)) { for (const inst of project.instruments) { if (!inst || !inst.id) continue;
+      let candidate = null;
+      if (inst.path) { candidate = wavFiles.get(path.basename(inst.path).toLowerCase());
+      }
+      if (!candidate) { candidate = wavFiles.get(`${inst.id.toLowerCase()}.wav`);
+      }
+      if (!candidate && inst.name) { candidate = wavFiles.get(`${inst.name.toLowerCase()}.wav`);
+      }
+      if (!candidate && typeof inst.id === "string") { const base = inst.id.replace(/\s+/g, "_").toLowerCase();
+        candidate = wavFiles.get(`${base}.wav`);
+      }
+      if (!candidate) { const first = wavFiles.values().next().value;
+        if (first) { candidate = first;
+        }
+      }
+      if (candidate) { instrumentData[inst.id] = `data:audio/wav;base64,${candidate.toString("base64")}`;
+      }
+    }
+  }
+}
 
 function collectWavFiles(dir) { const entries = fs.readdirSync(dir, { withFileTypes: true });
   const map = new Map();
@@ -65,32 +96,11 @@ function collectWavFiles(dir) { const entries = fs.readdirSync(dir, { withFileTy
   return map;
 }
 
-const wavFiles = collectWavFiles(assetDir);
-
-const instrumentData = {};
-if (Array.isArray(project.instruments)) { for (const inst of project.instruments) { if (!inst || !inst.id) continue;
-    let candidate = null;
-    if (inst.path) { candidate = wavFiles.get(path.basename(inst.path).toLowerCase());
-    }
-    if (!candidate) { candidate = wavFiles.get(`${inst.id.toLowerCase()}.wav`);
-    }
-    if (!candidate && inst.name) { candidate = wavFiles.get(`${inst.name.toLowerCase()}.wav`);
-    }
-    if (!candidate && typeof inst.id === "string") { const base = inst.id.replace(/\s+/g, "_").toLowerCase();
-      candidate = wavFiles.get(`${base}.wav`);
-    }
-    if (!candidate) { // fall back to first wav as a generic sample so playback still happens
-      const first = wavFiles.values().next().value;
-      if (!first) { console.warn(`No wav file matched instrument ${inst.id} and asset dir empty; skipping sample`);
-        continue;
-      }
-      candidate = first;
-    }
-    instrumentData[inst.id] = `data:audio/wav;base64,${candidate.toString("base64")}`;
-  }
-}
-
 await page.evaluate(async ({ projectJson, instrumentData }) => {
+  // Unlock AudioContext — page.evaluate() doesn't trigger user gesture events.
+  document.dispatchEvent(new Event('pointerdown'));
+  resumeAudio?.();
+
   resetAudioScheduleMetrics?.();
   forceDraw?.();
 
@@ -131,6 +141,7 @@ for (let i = 0; i < SAMPLE_COUNT; i++) { await page.waitForTimeout(SAMPLE_INTERV
 }
 
 await assertNoSchedulerMismatches(page, "stress complex: scheduler mismatches");
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "stress_complex");
 await browser.close();
 server.close();
 

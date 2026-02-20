@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestNodeGridPhaseOnPanAndZoom verifies that node screen positions remain in
@@ -29,7 +29,7 @@ func TestNodeGridPhaseOnPanAndZoom(t *testing.T) {
 		offY := math.Round(g.cam.OffsetY)
 		// Node center predicted by grid rounding (same as grid tile lines):
 		expX := offX + math.Round(float64(n.I)*float64(stepPx)/float64(maxDiv))
-		expY := offY + float64(topOffset) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
+		expY := offY + float64(gridTopOffset()) + math.Round(float64(n.J)*float64(stepPx)/float64(maxDiv))
 		// Actual node screen center from nodeScreenRect
 		x1, y1, x2, y2 := g.nodeScreenRect(n)
 		cx := (x1 + x2) * 0.5

@@ -5,7 +5,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // TestBPMHoldUpdateLatency ensures that holding the BPM increment button

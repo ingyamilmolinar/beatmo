@@ -7,8 +7,8 @@ import (
 func visibleWorldRect(cam *Camera, screenW, screenH int) (minX, maxX, minY, maxY float64) {
 	minX = (-cam.OffsetX) / cam.Scale
 	maxX = (float64(screenW) - cam.OffsetX) / cam.Scale
-	minY = (-cam.OffsetY - float64(topOffset)) / cam.Scale
-	maxY = (float64(screenH) - cam.OffsetY - float64(topOffset)) / cam.Scale
+	minY = (-cam.OffsetY - float64(gridTopOffset())) / cam.Scale
+	maxY = (float64(screenH) - cam.OffsetY - float64(gridTopOffset())) / cam.Scale
 	return
 }
 

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 var (
@@ -80,11 +80,11 @@ func resetTestEnvAndGlobals() {
 		"SCREEN_EDGES",
 		"TIMELINE_TRACE",
 		"TIMELINE_TRACE_ROW",
-		"TUNKUL_ASSETS",
-		"TUNKUL_CONFIG",
-		"TUNKUL_DEBUG_INST",
-		"TUNKUL_DEMO_CONFIG",
-		"TUNKUL_ROW_SNAPSHOTS",
+		"BEATMO_ASSETS",
+		"BEATMO_CONFIG",
+		"BEATMO_DEBUG_INST",
+		"BEATMO_DEMO_CONFIG",
+		"BEATMO_ROW_SNAPSHOTS",
 	}
 	for _, key := range envKeys {
 		_ = os.Unsetenv(key)
@@ -93,6 +93,7 @@ func resetTestEnvAndGlobals() {
 	// Reset global flags derived from env so tests run with default behavior.
 	enableDefaultStart = true
 	forceAutoSize = false
+	forceSmallScreenForTest = false
 	defaultPerfFastPath = false
 	timelineTrace = false
 	timelineTraceRow = 0
@@ -121,4 +122,13 @@ func resetTestEnvAndGlobals() {
 	drawStopIcon = defaultDrawStopIcon
 	drawPencilIcon = defaultDrawPencil
 	drawSaveIcon = defaultDrawSave
+
+	// Reset cached env vars (in case tests overrode them directly)
+	envRenderSafe = false
+	envScreenEdges = false
+	envNoGridDraw = false
+	envNoGridTileCache = false
+	envNoPixelSnap = false
+	envNoEdgeCache = false
+	envNoSpriteNodes = false
 }

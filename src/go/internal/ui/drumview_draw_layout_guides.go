@@ -12,6 +12,9 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 	if dv.widgets == nil {
 		return
 	}
+	if isSmallScreen() {
+		return
+	}
 	// When drawing into a local buffer sized to the drum view (e.g., tests),
 	// use coordinates relative to the widget board. When drawing to the full
 	// screen, offset by the drum view's bounds.
@@ -42,26 +45,82 @@ func (dv *DrumView) drawLayoutGuides(dst *ebiten.Image) {
 		x := dv.widgets.colPos[i] + offX
 		th := 1
 		col := baseCol
-		if i > 0 && i < len(dv.widgets.colPos)-1 {
+		inner := i > 0 && i < len(dv.widgets.colPos)-1
+		if inner {
 			idx := i - 1
 			if (dv.layoutHoverAxis == "col" && dv.layoutHoverIdx == idx) || (dv.layoutDragAxis == "col" && dv.layoutDragIdx == idx) {
 				th = 3
 				col = hoverCol
 			}
 		}
-		drawLine(x-th/2, colMinY, x+th/2+1, colMaxY, th, col)
+		if inner && dv.layoutHandler != nil {
+			segments := dv.layoutHandler.columnDividerSegments(i - 1)
+			for _, seg := range segments {
+				drawLine(x-th/2, seg.Min.Y, x+th/2+1, seg.Max.Y, th, col)
+			}
+		} else {
+			drawLine(x-th/2, colMinY, x+th/2+1, colMaxY, th, col)
+		}
 	}
 	for i := 0; i < len(dv.widgets.rowPos); i++ {
 		y := dv.widgets.rowPos[i] + offY
 		th := 1
 		col := baseCol
-		if i > 0 && i < len(dv.widgets.rowPos)-1 {
+		inner := i > 0 && i < len(dv.widgets.rowPos)-1
+		if inner {
 			idx := i - 1
 			if (dv.layoutHoverAxis == "row" && dv.layoutHoverIdx == idx) || (dv.layoutDragAxis == "row" && dv.layoutDragIdx == idx) {
 				th = 3
 				col = hoverCol
 			}
 		}
-		drawLine(rowMinX, y-th/2, rowMaxX, y+th/2+1, th, col)
+		if inner && dv.layoutHandler != nil {
+			segments := dv.layoutHandler.rowDividerSegments(i - 1)
+			for _, seg := range segments {
+				drawLine(seg.Min.X, y-th/2, seg.Max.X, y+th/2+1, th, col)
+			}
+		} else {
+			drawLine(rowMinX, y-th/2, rowMaxX, y+th/2+1, th, col)
+		}
+	}
+}
+
+// drawLayoutPills renders pill handles on inner column/row dividers.
+// Called separately from drawLayoutGuides so pills draw on top of row
+// content and the rack panel mask, keeping them visible.
+func (dv *DrumView) drawLayoutPills(dst *ebiten.Image) {
+	if dv.widgets == nil {
+		return
+	}
+	if isSmallScreen() {
+		return
+	}
+	for i := 1; i < len(dv.widgets.colPos)-1; i++ {
+		idx := i - 1
+		hover := (dv.layoutHoverAxis == "col" && dv.layoutHoverIdx == idx) ||
+			(dv.layoutDragAxis == "col" && dv.layoutDragIdx == idx)
+		if dv.layoutHandler != nil {
+			hr := dv.layoutHandler.columnHandleRect(idx)
+			if hr.Empty() {
+				continue
+			}
+			hcx := (hr.Min.X + hr.Max.X) / 2
+			hcy := (hr.Min.Y + hr.Max.Y) / 2
+			DrawSplitterHandle(dst, hcx, hcy, false, hover)
+		}
+	}
+	for i := 1; i < len(dv.widgets.rowPos)-1; i++ {
+		idx := i - 1
+		hover := (dv.layoutHoverAxis == "row" && dv.layoutHoverIdx == idx) ||
+			(dv.layoutDragAxis == "row" && dv.layoutDragIdx == idx)
+		if dv.layoutHandler != nil {
+			hr := dv.layoutHandler.rowHandleRect(idx)
+			if hr.Empty() {
+				continue
+			}
+			hcx := (hr.Min.X + hr.Max.X) / 2
+			hcy := (hr.Min.Y + hr.Max.Y) / 2
+			DrawSplitterHandle(dst, hcx, hcy, true, hover)
+		}
 	}
 }

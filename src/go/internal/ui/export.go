@@ -7,29 +7,34 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // Export schema
 type exportFile struct {
-	Version     int                `json:"version"`
-	Subdiv      int                `json:"subdiv,omitempty"`
-	BPM         int                `json:"bpm"`
-	Instruments []exportInstrument `json:"instruments"`
-	Nodes       []exportNode       `json:"nodes"`
-	EQ          *exportEQ          `json:"eq,omitempty"`
+	Version      int                `json:"version"`
+	Subdiv       int                `json:"subdiv,omitempty"`
+	BPM          int                `json:"bpm"`
+	MasterVolume float64            `json:"master_volume,omitempty"` // 0-1, omitted when default (1.0)
+	Instruments  []exportInstrument `json:"instruments"`
+	Nodes        []exportNode       `json:"nodes"`
+	EQ           *exportEQ          `json:"eq,omitempty"`
 }
 
 type exportInstrument struct {
-	Name   string    `json:"name"`
-	ID     string    `json:"id"`
-	Kind   string    `json:"kind"` // builtin|sample
-	Volume float64   `json:"volume"`
-	Origin int       `json:"origin"`
-	Color  string    `json:"color"`          // #RRGGBBAA
-	Path   string    `json:"path,omitempty"` // local cache path or object URL for custom samples
-	EQ     *exportEQ `json:"eq,omitempty"`   // per-instrument EQ settings
+	Name       string             `json:"name"`
+	ID         string             `json:"id"`
+	Kind       string             `json:"kind"` // builtin|sample
+	Volume     float64            `json:"volume"`
+	Origin     int                `json:"origin"`
+	Color      string             `json:"color"`                 // #RRGGBBAA
+	Path       string             `json:"path,omitempty"`        // local cache path or object URL for custom samples
+	EQ         *exportEQ          `json:"eq,omitempty"`          // per-instrument EQ settings
+	Effects    []audio.EffectSlot `json:"effects,omitempty"`     // per-instrument insert effect chain
+	Pan        float64            `json:"pan,omitempty"`         // stereo pan: -1 (left) to +1 (right)
+	DelaySend  float64            `json:"delay_send,omitempty"`  // delay send amount (0-1)
+	ReverbSend float64            `json:"reverb_send,omitempty"` // reverb send amount (0-1)
 }
 
 type exportNode struct {
@@ -52,13 +57,27 @@ type exportNode struct {
 	// Groove: per-node rule (none|delay|rush) and percentage (0..1)
 	GrooveKind string  `json:"groove_kind,omitempty"`
 	GroovePct  float64 `json:"groove_pct,omitempty"`
+	// Per-node effect overrides (V1: model-only, no UI)
+	EffectOverrides []model.EffectOverride `json:"effect_overrides,omitempty"`
+	// Synth parameters for parameterized C instrument rendering
+	SynthDecay      float64 `json:"synth_decay,omitempty"`
+	SynthTone       float64 `json:"synth_tone,omitempty"`
+	SynthAttack     float64 `json:"synth_attack,omitempty"`
+	SynthDrive      float64 `json:"synth_drive,omitempty"`
+	SynthBody       float64 `json:"synth_body,omitempty"`
+	SynthColor      float64 `json:"synth_color,omitempty"`
+	SynthBrightness float64 `json:"synth_brightness,omitempty"`
 }
 
 // exportEQ encodes the master EQ settings. Optional; absent for legacy files.
 type exportEQ struct {
-	GainsDB   []float64    `json:"gains_db,omitempty"`   // per band gain in dB
-	BandsHz   [][2]float64 `json:"bands_hz,omitempty"`
-	BandMuted []bool       `json:"band_muted,omitempty"` // per band mute state
+	GainsDB     []float64    `json:"gains_db,omitempty"` // per band gain in dB
+	BandsHz     [][2]float64 `json:"bands_hz,omitempty"`
+	BandMuted   []bool       `json:"band_muted,omitempty"`    // per band mute state
+	HPFEnabled  bool         `json:"hpf_enabled,omitempty"`   // high-pass filter on/off
+	HPFCutoffHz float64      `json:"hpf_cutoff_hz,omitempty"` // HPF cutoff frequency
+	LPFEnabled  bool         `json:"lpf_enabled,omitempty"`   // low-pass filter on/off
+	LPFCutoffHz float64      `json:"lpf_cutoff_hz,omitempty"` // LPF cutoff frequency
 }
 
 // kindForID determines the instrument kind by checking catalog metadata.
@@ -91,7 +110,7 @@ func (dv *DrumView) Export() error {
 	if err != nil {
 		return err
 	}
-	name := "tunkul-export.json"
+	name := "beatmo-export.json"
 	if err := saveJSON(name, data); err != nil {
 		dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
 		return err
@@ -176,6 +195,30 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 			if p.GroovePct != 0 {
 				en.GroovePct = p.GroovePct
 			}
+			if len(p.EffectOverrides) > 0 {
+				en.EffectOverrides = p.EffectOverrides
+			}
+			if p.SynthDecay != 0 {
+				en.SynthDecay = p.SynthDecay
+			}
+			if p.SynthTone != 0 {
+				en.SynthTone = p.SynthTone
+			}
+			if p.SynthAttack != 0 {
+				en.SynthAttack = p.SynthAttack
+			}
+			if p.SynthDrive != 0 {
+				en.SynthDrive = p.SynthDrive
+			}
+			if p.SynthBody != 0 {
+				en.SynthBody = p.SynthBody
+			}
+			if p.SynthColor != 0 {
+				en.SynthColor = p.SynthColor
+			}
+			if p.SynthBrightness != 0 {
+				en.SynthBrightness = p.SynthBrightness
+			}
 		}
 		nodes = append(nodes, en)
 	}
@@ -204,61 +247,88 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 				ei.Path = meta.Path
 			}
 		}
-		// Export per-instrument EQ if any band is non-zero or muted
-		if len(r.EQGainsDB) > 0 || len(r.EQBandMuted) > 0 {
-			hasNonZeroGain := false
-			for _, g := range r.EQGainsDB {
-				if g != 0 {
-					hasNonZeroGain = true
-					break
-				}
+		// Export pan and send levels when non-default.
+		if r.Pan != 0 {
+			ei.Pan = r.Pan
+		}
+		if r.DelaySend != 0 {
+			ei.DelaySend = r.DelaySend
+		}
+		if r.ReverbSend != 0 {
+			ei.ReverbSend = r.ReverbSend
+		}
+		// Export per-instrument EQ if any band is non-zero, muted, or filters enabled
+		hasNonZeroGain := false
+		for _, g := range r.EQGainsDB {
+			if g != 0 {
+				hasNonZeroGain = true
+				break
 			}
-			hasMutedBand := false
-			for _, m := range r.EQBandMuted {
-				if m {
-					hasMutedBand = true
-					break
-				}
+		}
+		hasMutedBand := false
+		for _, m := range r.EQBandMuted {
+			if m {
+				hasMutedBand = true
+				break
 			}
-			if hasNonZeroGain || hasMutedBand {
-				eq := exportEQ{}
-				eq.GainsDB = append(eq.GainsDB, r.EQGainsDB...)
-				for _, b := range eqBandDefs {
-					eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
-				}
-				if hasMutedBand {
-					eq.BandMuted = append(eq.BandMuted, r.EQBandMuted...)
-				}
-				ei.EQ = &eq
+		}
+		hasFilters := r.HPFEnabled || r.LPFEnabled
+		// Export per-instrument insert effects if any
+		if len(r.Effects) > 0 {
+			ei.Effects = r.Effects
+		}
+		if hasNonZeroGain || hasMutedBand || hasFilters {
+			eq := exportEQ{}
+			eq.GainsDB = append(eq.GainsDB, r.EQGainsDB...)
+			for _, b := range eqBandDefs {
+				eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
 			}
+			if hasMutedBand {
+				eq.BandMuted = append(eq.BandMuted, r.EQBandMuted...)
+			}
+			eq.HPFEnabled = r.HPFEnabled
+			eq.HPFCutoffHz = r.HPFCutoffHz
+			eq.LPFEnabled = r.LPFEnabled
+			eq.LPFCutoffHz = r.LPFCutoffHz
+			ei.EQ = &eq
 		}
 		insts = append(insts, ei)
 	}
 	file := exportFile{Version: 1, Subdiv: currentMaxDiv(), BPM: dv.BPM(), Instruments: insts, Nodes: nodes}
-	// Export master EQ if any band has non-zero gain or is muted.
-	hasNonZeroGain := false
+	// Export master volume when not at default (1.0).
+	mv := audio.MainVolume()
+	if mv != 1 {
+		file.MasterVolume = mv
+	}
+	// Export master EQ if any band has non-zero gain, is muted, or filters enabled.
+	masterHasNonZeroGain := false
 	for _, g := range dv.eqBandGainsDB {
 		if g != 0 {
-			hasNonZeroGain = true
+			masterHasNonZeroGain = true
 			break
 		}
 	}
-	hasMutedBand := false
+	masterHasMutedBand := false
 	for _, m := range dv.eqBandMuted {
 		if m {
-			hasMutedBand = true
+			masterHasMutedBand = true
 			break
 		}
 	}
-	if hasNonZeroGain || hasMutedBand {
+	masterHasFilters := dv.hpfEnabled || dv.lpfEnabled
+	if masterHasNonZeroGain || masterHasMutedBand || masterHasFilters {
 		eq := exportEQ{}
 		eq.GainsDB = append(eq.GainsDB, dv.eqBandGainsDB...)
 		for _, b := range eqBandDefs {
 			eq.BandsHz = append(eq.BandsHz, [2]float64{b.loHz, b.hiHz})
 		}
-		if hasMutedBand {
+		if masterHasMutedBand {
 			eq.BandMuted = append(eq.BandMuted, dv.eqBandMuted...)
 		}
+		eq.HPFEnabled = dv.hpfEnabled
+		eq.HPFCutoffHz = dv.hpfCutoffHz
+		eq.LPFEnabled = dv.lpfEnabled
+		eq.LPFCutoffHz = dv.lpfCutoffHz
 		file.EQ = &eq
 	}
 	return json.MarshalIndent(file, "", "  ")

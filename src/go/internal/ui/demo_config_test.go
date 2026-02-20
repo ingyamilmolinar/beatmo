@@ -9,7 +9,7 @@ import (
 
 func TestDemoLoadsFromEnvConfig_WithInstruments(t *testing.T) {
 	assertDefaultParityState(t)
-	tmp, err := os.CreateTemp("", "tunkul-demo-*.json")
+	tmp, err := os.CreateTemp("", "beatmo-demo-*.json")
 	if err != nil {
 		t.Fatalf("tmp: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestDemoLoadsFromEnvConfig_WithInstruments(t *testing.T) {
 	}
 	tmp.Close()
 
-	t.Setenv("TUNKUL_DEMO_CONFIG", tmp.Name())
+	t.Setenv("BEATMO_DEMO_CONFIG", tmp.Name())
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -52,7 +52,7 @@ func TestDemoLoadsFromEnvConfig_WithInstruments(t *testing.T) {
 
 func TestDemoLoadsFromEnvConfig_NoInstruments_FallbackRowAndStart(t *testing.T) {
 	assertDefaultParityState(t)
-	tmp, err := os.CreateTemp("", "tunkul-demo-*.json")
+	tmp, err := os.CreateTemp("", "beatmo-demo-*.json")
 	if err != nil {
 		t.Fatalf("tmp: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestDemoLoadsFromEnvConfig_NoInstruments_FallbackRowAndStart(t *testing.T) 
 	}
 	tmp.Close()
 
-	t.Setenv("TUNKUL_DEMO_CONFIG", tmp.Name())
+	t.Setenv("BEATMO_DEMO_CONFIG", tmp.Name())
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -93,7 +93,7 @@ func TestDemoLoadsFromEnvConfig_TildePath(t *testing.T) {
 	assertDefaultParityState(t)
 	// Create a temp HOME and write the file under it to exercise ~ expansion.
 	dir := t.TempDir()
-	tmp := dir + "/tunkul-demo.json"
+	tmp := dir + "/beatmo-demo.json"
 	json := `{
         "version":1,
         "subdiv":32,
@@ -104,7 +104,7 @@ func TestDemoLoadsFromEnvConfig_TildePath(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	t.Setenv("HOME", dir)
-	t.Setenv("TUNKUL_DEMO_CONFIG", "~/tunkul-demo.json")
+	t.Setenv("BEATMO_DEMO_CONFIG", "~/beatmo-demo.json")
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

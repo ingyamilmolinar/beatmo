@@ -22,6 +22,10 @@ func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
 			obj.Set("type", "lowshelf")
 		case EQHighShelf:
 			obj.Set("type", "highshelf")
+		case EQLowpass:
+			obj.Set("type", "lowpass")
+		case EQHighpass:
+			obj.Set("type", "highpass")
 		default:
 			obj.Set("type", "peaking")
 		}
@@ -32,4 +36,9 @@ func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
 
 func ClearChannelProcessors(id string) {
 	SetChannelEQ(id, 0)
+}
+
+// NewEQProcessor is a no-op on WASM since EQ is handled by WebAudio.
+func NewEQProcessor(sampleRate int, bands ...EQBand) Processor {
+	return &passThrough{}
 }

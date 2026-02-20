@@ -1,26 +1,13 @@
 package ui
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Backward-compatible wrapper used by tests that expect (id, vol).
 func (g *Game) queueSound(id string, vol float64) { g.queueSoundParams(id, vol, 0, 1) }
-
-func (g *Game) incrementTriggerCount(row int, id model.NodeID) int {
-	if _, ok := g.nodeTriggerCountsByRow[row]; !ok {
-		g.nodeTriggerCountsByRow[row] = make(map[model.NodeID]int)
-	}
-	g.nodeTriggerCountsByRow[row][id] = g.nodeTriggerCountsByRow[row][id] + 1
-	if os.Getenv("PREVIEW_DEBUG") == "1" && runningUnderGoTest() {
-		fmt.Printf("INC row=%d id=%d -> %d\n", row, id, g.nodeTriggerCountsByRow[row][id])
-	}
-	return g.nodeTriggerCountsByRow[row][id]
-}
 
 func (g *Game) incrementLogicTriggerCount(row int, id model.NodeID) int {
 	if g.nodeLogicTriggerCountsByRow == nil {
@@ -29,7 +16,7 @@ func (g *Game) incrementLogicTriggerCount(row int, id model.NodeID) int {
 	if _, ok := g.nodeLogicTriggerCountsByRow[row]; !ok {
 		g.nodeLogicTriggerCountsByRow[row] = make(map[model.NodeID]int)
 	}
-	g.nodeLogicTriggerCountsByRow[row][id] = g.nodeLogicTriggerCountsByRow[row][id] + 1
+	g.nodeLogicTriggerCountsByRow[row][id]++
 	return g.nodeLogicTriggerCountsByRow[row][id]
 }
 
@@ -84,19 +71,17 @@ func (g *Game) seqShouldTriggerNode(row, idx int, info model.BeatInfo, n model.N
 				if (cycle+1)%n.Params.LogicN != 0 {
 					return false
 				}
-			} else {
-				if counts != nil {
-					counts[info.NodeID] = counts[info.NodeID] + 1
-					if counts[info.NodeID]%n.Params.LogicN != 0 {
-						return false
-					}
+			} else if counts != nil {
+				counts[info.NodeID]++
+				if counts[info.NodeID]%n.Params.LogicN != 0 {
+					return false
 				}
 			}
 		}
 	case "skip_every_n":
 		if n.Params.LogicN > 0 {
 			if counts != nil {
-				counts[info.NodeID] = counts[info.NodeID] + 1
+				counts[info.NodeID]++
 				if counts[info.NodeID]%n.Params.LogicN == 0 {
 					return false
 				}
@@ -140,62 +125,6 @@ func applyNodeDecision(vol, pitch, dur float64, dec model.NodeDecision) (float64
 	return vol, pitch, dur
 }
 
-func (g *Game) shouldTriggerNode(row, idx int, info model.BeatInfo, n model.Node) bool {
-	if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
-		return false
-	}
-	kind := strings.ToLower(strings.TrimSpace(n.Params.LogicKind))
-	switch kind {
-	case "", "none":
-		return true
-	case "every_n_triggers":
-		if n.Params.LogicN > 0 {
-			if info.NodeType == model.NodeTypeMute {
-				cycleLen := len(g.beatInfosByRow[row])
-				if cycleLen <= 0 {
-					cycleLen = 1
-				}
-				cycle := idx / cycleLen
-				if (cycle+1)%n.Params.LogicN != 0 {
-					return false
-				}
-			} else {
-				if g.incrementTriggerCount(row, info.NodeID)%n.Params.LogicN != 0 {
-					return false
-				}
-			}
-		}
-	case "skip_every_n":
-		if n.Params.LogicN > 0 {
-			if g.incrementTriggerCount(row, info.NodeID)%n.Params.LogicN == 0 {
-				return false
-			}
-		}
-	case "probability":
-		p := n.Params.LogicP
-		if p <= 0 {
-			return false
-		}
-		if p < 1 {
-			r := g.deterministicRoll(row, idx, info.NodeID)
-			if r > p {
-				return false
-			}
-		}
-	case "trigger_if_prev_skipped":
-		prevTrig, havePrev := g.prevTriggered(row, idx)
-		if !havePrev || prevTrig {
-			return false
-		}
-	case "trigger_if_prev_triggered":
-		prevTrig, havePrev := g.prevTriggered(row, idx)
-		if !havePrev || !prevTrig {
-			return false
-		}
-	}
-	return true
-}
-
 // evalNodeParamsOnly computes effective volume/pitch/duration from node
 // parameters without touching trigger counters or applying gating logic.
 func (g *Game) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, float64, float64) {
@@ -216,89 +145,6 @@ func (g *Game) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, f
 		// counters are handled elsewhere by predictions/sequencer.
 	}
 	return vol, pitch, dur
-}
-
-// hasPrevRegular reports whether there exists a regular node before idx on the row.
-func (g *Game) hasPrevRegular(row, idx int) bool {
-	j := idx - 1
-	for k := 0; k < 64; k++ {
-		bi := g.beatInfoAtRow(row, j)
-		if bi.NodeType == model.NodeTypeRegular {
-			return true
-		}
-		j--
-	}
-	return false
-}
-
-// isSeamSuppressed returns true when idx falls on a loop seam duplicate that
-// should be visually and audibly suppressed.
-func (g *Game) isSeamSuppressed(row, idx int) bool {
-	if row < 0 || row >= len(g.isLoopByRow) {
-		return false
-	}
-	if !g.isLoopByRow[row] {
-		return false
-	}
-	start := 0
-	if row < len(g.loopStartByRow) {
-		start = g.loopStartByRow[row]
-	}
-	seg := 0
-	if row < len(g.loopLenByRow) {
-		seg = g.loopLenByRow[row]
-	}
-	if seg <= 0 {
-		return false
-	}
-	// Suppress the first step inside each loop cycle to avoid a visual/audio
-	// double-hit across the seam (the returning step connecting to the loop start).
-	if idx >= start+1 {
-		if (idx-(start+1))%seg == 0 {
-			info := g.beatInfoAtRow(row, idx)
-			if info.NodeType == model.NodeTypeInvisible {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// prevTriggeredByPrediction determines if the nearest previous regular node
-// before idx fired audibly, using precomputed predictions. This avoids timing
-// dependencies on UI thread updates.
-// prevTriggered determines whether the nearest previous regular node fired.
-// It first consults the lastTriggeredByRow override (used by unit tests and UI
-// thread), and falls back to prediction-based lookup when no explicit state is
-// available. The second return value reports whether a previous regular exists.
-func (g *Game) prevTriggered(row, idx int) (bool, bool) {
-	// Find prev regular index and ID.
-	j := idx - 1
-	prevIdx := -1
-	var prevID model.NodeID = model.InvalidNodeID
-	for k := 0; k < 64; k++ {
-		bi := g.beatInfoAtRow(row, j)
-		if bi.NodeType == model.NodeTypeRegular {
-			prevIdx = j
-			prevID = bi.NodeID
-			break
-		}
-		j--
-	}
-	if prevIdx < 0 {
-		return false, false
-	}
-	// Prefer explicit lastTriggered state when present (tests/UI thread).
-	if v, ok := g.lastTriggered(row, prevID); ok {
-		return v, true
-	}
-	// Fallback to engine prediction-backed audible state.
-	need := prevIdx + 1
-	if g.engine == nil || g.engine.Predictor == nil {
-		return false, true
-	}
-	g.engine.Predictor.Ensure(need)
-	return g.engine.Predictor.AudibleAt(row, prevIdx), true
 }
 
 func (g *Game) nodeTriggered(row, idx int, info model.BeatInfo) bool {

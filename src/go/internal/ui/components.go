@@ -122,8 +122,8 @@ func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered
 	fill := s.Fill
 	border := s.Border
 	if hovered && !pressed {
-		fill = adjustColor(fill, 20)
-		border = adjustColor(border, 40)
+		fill = adjustColor(fill, 12)
+		border = adjustColor(border, 20)
 	}
 	drawButton(dst, r, fill, border, pressed)
 }
@@ -168,8 +168,7 @@ type TextInputStyle struct {
 	Cursor color.Color
 }
 
-// Draw renders the text box using drawButton for consistency. The pressed flag
-// represents focus; hovered is ignored.
+// Draw renders the text box background. The pressed flag represents focus.
 func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
 	drawButton(dst, r, s.Fill, s.Border, pressed)
 }
@@ -192,6 +191,10 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 		border = adjustColor(border, 80)
 	}
 	drawButton(dst, animRect, fill, border, false)
+	if focused {
+		accent := color.NRGBA{0, 185, 235, 180}
+		drawRect(dst, animRect.Inset(1), accent, false)
+	}
 }
 
 // DrumCellStyle styles individual drum machine cells.
@@ -220,6 +223,10 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 		}
 	}
 	drawRect(dst, r, fill, true)
+	if (on || highlighted) && r.Dy() > 4 {
+		topStrip := image.Rect(r.Min.X+1, r.Min.Y, r.Max.X-1, r.Min.Y+1)
+		drawRect(dst, topStrip, adjustColor(fill, 30), true)
+	}
 	drawRect(dst, r, s.Border, false)
 }
 

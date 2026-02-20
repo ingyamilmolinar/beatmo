@@ -74,7 +74,7 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 			mx, my := cursorPosition()
 			wx := (float64(mx) - c.OffsetX) / c.Scale
 			// Account for the transport bar offset in screen space
-			wy := (float64(my) - float64(topOffset) - c.OffsetY) / c.Scale
+			wy := (float64(my) - float64(gridTopOffset()) - c.OffsetY) / c.Scale
 			const (
 				zoomFactor      = 1.05
 				zoomSensitivity = 0.1
@@ -90,7 +90,7 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 				fmt.Printf("[CAM-ZOOM] before: scale=%.4f off=(%.2f,%.2f) cursor=(%d,%d) anchorWorld=(%.4f,%.4f)\n", c.Scale, c.OffsetX, c.OffsetY, mx, my, wx, wy)
 			}
 			c.OffsetX = float64(mx) - wx*newScale
-			c.OffsetY = float64(my) - float64(topOffset) - wy*newScale
+			c.OffsetY = float64(my) - float64(gridTopOffset()) - wy*newScale
 			c.Scale = newScale
 			if debugGeom {
 				fmt.Printf("[CAM-ZOOM] after:  scale=%.4f off=(%.2f,%.2f)\n", c.Scale, c.OffsetX, c.OffsetY)

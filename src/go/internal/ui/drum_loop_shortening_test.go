@@ -3,7 +3,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Shortening a loop by inserting a node in the middle (auto-stitch) should
@@ -38,7 +38,7 @@ func TestDrumRowLoopShorteningFillsSteps(t *testing.T) {
 	if len(initial) < 4 {
 		t.Fatalf("unexpected initial window length: %d", len(initial))
 	}
-	if !(initial[0] && !initial[1] && initial[2]) {
+	if !initial[0] || initial[1] || !initial[2] {
 		t.Fatalf("expected alternating baseline pattern, got %v", initial[:4])
 	}
 

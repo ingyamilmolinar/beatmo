@@ -4,6 +4,7 @@ package ui
 
 import (
 	"fmt"
+
 	"github.com/hajimehoshi/ebiten/v2"
 )
 

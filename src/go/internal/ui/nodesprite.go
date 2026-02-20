@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
 	"image/color"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 type spriteKey struct {

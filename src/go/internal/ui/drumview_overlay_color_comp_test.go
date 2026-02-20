@@ -94,19 +94,82 @@ func TestColorWheelComponent_OnColorPickCallback(t *testing.T) {
 	centerX := wheelRect.Min.X + wheelRect.Dx()/2
 	centerY := wheelRect.Min.Y + wheelRect.Dy()/2
 
-	// Click inside wheel
+	// Click inside wheel — pick is deferred until mouse release
 	result := comp.HandleInput(centerX, centerY, true)
-	if result != InputConsumed {
-		t.Errorf("expected InputConsumed on wheel click, got %v", result)
+	if result != InputCaptured {
+		t.Errorf("expected InputCaptured on wheel pick-press, got %v", result)
 	}
 
 	if pickedColor == nil {
 		t.Error("expected OnColorPick callback to be called")
 	}
 
-	// Menu should be closed after picking
+	// Wheel stays open while mouse is held (deferred close)
+	if !comp.IsOpen() {
+		t.Error("expected color wheel to remain open until mouse release")
+	}
+	if !comp.Capturing() {
+		t.Error("expected Capturing() to be true after pick-press")
+	}
+
+	// Release mouse — now the wheel closes
+	result = comp.HandleInput(centerX, centerY, false)
+	if result != InputConsumed {
+		t.Errorf("expected InputConsumed on deferred close release, got %v", result)
+	}
 	if comp.IsOpen() {
-		t.Error("expected color wheel to be closed after picking")
+		t.Error("expected color wheel to be closed after mouse release")
+	}
+}
+
+func TestColorWheelComponent_DeferredClose(t *testing.T) {
+	comp := NewColorWheelComponent("test-color")
+
+	var closeCalled bool
+	comp.SetProps(ColorWheelProps{
+		AnchorRect:  image.Rect(100, 200, 130, 220),
+		Bounds:      image.Rect(0, 0, 500, 500),
+		RowHeight:   24,
+		OnColorPick: func(c color.Color) {},
+		OnClose:     func() { closeCalled = true },
+	})
+	comp.Open()
+
+	// Release hold
+	comp.HandleInput(150, 150, false)
+
+	wheelRect := comp.WheelRect()
+	cx := wheelRect.Min.X + wheelRect.Dx()/2
+	cy := wheelRect.Min.Y + wheelRect.Dy()/2
+
+	// Press inside wheel — picks color but defers close
+	comp.HandleInput(cx, cy, true)
+	if !comp.IsOpen() {
+		t.Fatal("expected wheel to stay open after pick-press")
+	}
+	if !comp.Capturing() {
+		t.Fatal("expected Capturing after pick-press")
+	}
+	if closeCalled {
+		t.Fatal("OnClose should not fire until mouse release")
+	}
+
+	// Hold the mouse (still pressed) — should stay captured
+	result := comp.HandleInput(cx, cy, true)
+	if result != InputCaptured {
+		t.Errorf("expected InputCaptured while holding after pick, got %v", result)
+	}
+
+	// Release — now close fires
+	result = comp.HandleInput(cx, cy, false)
+	if result != InputConsumed {
+		t.Errorf("expected InputConsumed on release, got %v", result)
+	}
+	if comp.IsOpen() {
+		t.Fatal("expected wheel to be closed after release")
+	}
+	if !closeCalled {
+		t.Fatal("expected OnClose to fire on release")
 	}
 }
 

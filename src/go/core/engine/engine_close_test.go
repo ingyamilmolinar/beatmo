@@ -5,14 +5,14 @@ import (
 	"testing"
 	"time"
 
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestEngineCloseStopsPredictorBackground(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	e := New(logger)
 	if e.Predictor == nil {
-		e.Predictor = NewPredictor(e.Graph)
+		e.Predictor = NewPredictor(e.Graph, nil)
 	}
 
 	var calls int64

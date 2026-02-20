@@ -4,7 +4,7 @@ import (
 	"image"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 const (
@@ -53,17 +53,16 @@ func TestDrumViewButtonLayout(t *testing.T) {
 		if inc.Min.X != dec.Min.X || inc.Max.X != dec.Max.X {
 			t.Fatalf("w=%d: bpm +/- not in same column: inc=%v dec=%v", w, inc, dec)
 		}
-		if !(inc.Min.Y < dec.Min.Y) {
+		if inc.Min.Y >= dec.Min.Y {
 			t.Fatalf("w=%d: bpm + not above - (inc=%v, dec=%v)", w, inc, dec)
 		}
-		// Entire pair should live within the top half of the transport widget
+		// Entire pair should live within the transport widget (single row)
 		trans := dv.widgetRects[WidgetTransport]
-		topMaxY := trans.Min.Y + trans.Dy()/2
-		if inc.Min.Y < trans.Min.Y || dec.Max.Y > topMaxY {
-			t.Fatalf("w=%d: bpm +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, inc, dec, trans.Min.Y, topMaxY)
+		if inc.Min.Y < trans.Min.Y || dec.Max.Y > trans.Max.Y {
+			t.Fatalf("w=%d: bpm +/- out of transport bounds: inc=%v dec=%v trans=%v", w, inc, dec, trans)
 		}
 
-		// Verify Length +/- are vertically stacked in the same column
+		// Verify Length +/- are vertically stacked in the timeline area
 		linc := dv.lenIncBtn.Rect()
 		ldec := dv.lenDecBtn.Rect()
 		if linc.Empty() || ldec.Empty() {
@@ -72,21 +71,24 @@ func TestDrumViewButtonLayout(t *testing.T) {
 		if linc.Min.X != ldec.Min.X || linc.Max.X != ldec.Max.X {
 			t.Fatalf("w=%d: len +/- not in same column: inc=%v dec=%v", w, linc, ldec)
 		}
-		if !(linc.Min.Y < ldec.Min.Y) {
+		if linc.Min.Y >= ldec.Min.Y {
 			t.Fatalf("w=%d: len + not above - (inc=%v, dec=%v)", w, linc, ldec)
 		}
-		if linc.Min.Y < trans.Min.Y || ldec.Max.Y > topMaxY {
-			t.Fatalf("w=%d: len +/- out of top bounds: inc=%v dec=%v top=[%d,%d]", w, linc, ldec, trans.Min.Y, topMaxY)
+		// Len buttons should be in the timeline widget area, not the transport.
+		tl := dv.widgetRects[WidgetTimeline]
+		if !tl.Empty() {
+			if linc.Max.X > tl.Max.X || ldec.Max.X > tl.Max.X {
+				t.Fatalf("w=%d: len buttons extend beyond timeline widget: inc=%v dec=%v tl=%v", w, linc, ldec, tl)
+			}
 		}
 
-		// Bottom row sanity (Upload at least)
+		// Upload button is now icon-only in the single row
 		r := dv.uploadBtn.Rect()
 		if r.Empty() {
 			t.Fatalf("w=%d: upload rect empty", w)
 		}
-		tr := dv.uploadBtn.textRect()
-		if !tr.In(r) {
-			t.Fatalf("w=%d: upload text outside rect", w)
+		if dv.uploadBtn.Icon != "upload" {
+			t.Fatalf("w=%d: upload icon = %q want upload", w, dv.uploadBtn.Icon)
 		}
 	}
 }
@@ -96,18 +98,28 @@ func TestTopIconButtonsHaveGlyphs(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
-	if dv.playBtn.Text != "▶" {
-		t.Fatalf("play icon = %q want ▶", dv.playBtn.Text)
+	// Transport buttons are icon-only (no text).
+	if dv.playBtn.Text != "" {
+		t.Fatalf("play text = %q want empty", dv.playBtn.Text)
 	}
-	if dv.stopBtn.Text != "■" {
-		t.Fatalf("stop icon = %q want ■", dv.stopBtn.Text)
+	if dv.playBtn.Icon != "play" {
+		t.Fatalf("play icon = %q want play", dv.playBtn.Icon)
+	}
+	if dv.stopBtn.Text != "" {
+		t.Fatalf("stop text = %q want empty", dv.stopBtn.Text)
+	}
+	if dv.stopBtn.Icon != "stop" {
+		t.Fatalf("stop icon = %q want stop", dv.stopBtn.Icon)
 	}
 	dv.calcLayout()
 	if len(dv.rowEditBtns) == 0 {
 		t.Fatalf("no row edit buttons built")
 	}
-	if dv.rowEditBtns[0].Text != "✎" {
-		t.Fatalf("pencil icon = %q want ✎", dv.rowEditBtns[0].Text)
+	if dv.rowEditBtns[0].Text != "" {
+		t.Fatalf("edit text = %q want empty", dv.rowEditBtns[0].Text)
+	}
+	if dv.rowEditBtns[0].Icon != "pencil" {
+		t.Fatalf("edit icon = %q want pencil", dv.rowEditBtns[0].Icon)
 	}
 	if len(dv.rowSaveBtns) == 0 {
 		t.Fatalf("no row save buttons built")

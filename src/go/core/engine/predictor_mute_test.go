@@ -4,8 +4,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestPredictorMuteClearsAudioOnly(t *testing.T) {
@@ -25,10 +25,10 @@ func TestPredictorMuteClearsAudioOnly(t *testing.T) {
 	nodes := map[model.NodeID]model.Node{
 		startID: graph.Nodes[startID],
 		muteID:  graph.Nodes[muteID],
-		tailID: graph.Nodes[tailID],
+		tailID:  graph.Nodes[tailID],
 	}
 
-	pred := NewPredictor(graph)
+	pred := NewPredictor(graph, nil)
 	pred.SetPaths(paths, []bool{true}, []int{0}, nodes)
 	pred.Ensure(6)
 

@@ -4,7 +4,7 @@ import http from "http";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -17,15 +17,16 @@ if (!fs.existsSync(chromiumPath)) { spawnSync("npx", ["playwright", "install", "
 // Build the UI playtest WASM harness.
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
+if (!shouldSkipWasmBuild("play_ui.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-o", path.join(jsDir, "play_ui.wasm"), "./internal/ui/playtest"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build play_ui failed");
+}
 
 // Minimal server for the harness files.
-const port = 8210 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/ui.html" : req.url;
   if (req.url === "/" || req.url === "/ui.html") { const html = `<!DOCTYPE html><html><body>
 <script type="module" src="audio.js"></script>
@@ -57,7 +58,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 let browser;
 try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -99,7 +101,9 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   }
   if (stats.fpsAvg < minFps) { throw new Error(`fpsAvg ${stats.fpsAvg.toFixed(2)} below floor ${minFps}`);
   }
-} finally { if (browser) { await browser.close();
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "perf");
+} finally { if (browser) { 
+ await browser.close();
   }
   server.close();
 }

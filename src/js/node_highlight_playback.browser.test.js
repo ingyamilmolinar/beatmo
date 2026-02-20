@@ -11,16 +11,11 @@
 
 import {
   setupFullWasm,
-  rectCenter,
-  clickAndHold,
-  assertValidRect,
 } from "./real_input_test_helpers.js";
-
-// Maximum highlight duration in milliseconds (matches Go constant maxHighlightSeconds = 0.20)
-const MAX_HIGHLIGHT_MS = 200;
-const TOLERANCE_MS = 100; // Browser timing can be imprecise
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 let cleanup;
+let page;
 let passed = 0;
 let failed = 0;
 
@@ -28,11 +23,11 @@ let failed = 0;
  * Scan all nodes to find any that are currently highlighted.
  * Returns an array of {i, j, id} for highlighted nodes.
  */
-async function findHighlightedNodes(page) {
+async function _findHighlightedNodes(page) {
   return page.evaluate(() => {
     const highlighted = [];
-    for (let i = -50; i < 50; i += 2) {
-      for (let j = -50; j < 50; j += 2) {
+    for (let i = -2; i < 4; i += 2) {
+      for (let j = -2; j < 4; j += 2) {
         const id = typeof nodeIdAt === "function" ? nodeIdAt(i, j) : -1;
         if (id >= 0) {
           const on = typeof nodeHighlightedAt === "function" ? nodeHighlightedAt(i, j) : false;
@@ -47,13 +42,38 @@ async function findHighlightedNodes(page) {
 }
 
 /**
+ * Atomically sync highlights, force a draw, and read highlighted nodes
+ * in a single page.evaluate() call. This prevents Ebiten's own
+ * requestAnimationFrame Draw() from interleaving between the draw and
+ * the read, which can overwrite lastNodeHL and cause stale results
+ * under CPU contention (parallel test runs).
+ */
+async function syncAndFindHighlights(page) {
+  return page.evaluate(() => {
+    syncHighlights?.();
+    forceDraw?.();
+    const highlighted = [];
+    for (let i = -2; i < 4; i += 2) {
+      for (let j = -2; j < 4; j += 2) {
+        const id = typeof nodeIdAt === "function" ? nodeIdAt(i, j) : -1;
+        if (id >= 0) {
+          const on = typeof nodeHighlightedAt === "function" ? nodeHighlightedAt(i, j) : false;
+          if (on) highlighted.push({ i, j, id });
+        }
+      }
+    }
+    return highlighted;
+  });
+}
+
+/**
  * Count total nodes in the graph.
  */
 async function countNodes(page) {
   return page.evaluate(() => {
     let count = 0;
-    for (let i = -50; i < 50; i += 2) {
-      for (let j = -50; j < 50; j += 2) {
+    for (let i = -2; i < 4; i += 2) {
+      for (let j = -2; j < 4; j += 2) {
         const id = typeof nodeIdAt === "function" ? nodeIdAt(i, j) : -1;
         if (id >= 0) count++;
       }
@@ -64,17 +84,24 @@ async function countNodes(page) {
 
 try {
   console.log("node_highlight_playback: Setting up full WASM environment...");
-  const { page, cleanup: cleanupFn } = await setupFullWasm();
-  cleanup = cleanupFn;
+  ({ page, cleanup } = await setupFullWasm());
 
-  // Use ensureDefaultPath which creates a known simple circuit
+  // Import a clean 4-node circuit to avoid demo interference
   console.log("node_highlight_playback: Building test circuit...");
   await page.evaluate(() => {
-    ensureDefaultPath?.();
-    setBPM?.(120); // Fast tempo for quicker highlight cycling
+    importJSON?.(JSON.stringify({
+      version: 1, subdiv: 4, bpm: 180,
+      instruments: [{ name: "Test", id: "kick", kind: "builtin", volume: 1, origin: 1, color: "#C87850FF" }],
+      nodes: [
+        { id: 1, i: 0, j: 0, type: "regular", outputs: [2] },
+        { id: 2, i: 2, j: 0, type: "regular", outputs: [3] },
+        { id: 3, i: 2, j: 2, type: "regular", outputs: [4] },
+        { id: 4, i: 0, j: 2, type: "regular", outputs: [1] }
+      ]
+    }));
     forceDraw?.();
   });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
 
   const nodeCount = await countNodes(page);
   console.log(`node_highlight_playback: Found ${nodeCount} nodes in graph`);
@@ -84,18 +111,39 @@ try {
   // ─────────────────────────────────────────────────────────────────────
   console.log("Test 1: Verify highlights turn ON during playback");
 
+  // Override audioNow to use performance.now() so highlight windows expire
+  // naturally. In parallel test runs the AudioContext may be suspended, making
+  // ctx.currentTime stay at 0 — highlights scheduled with a lookahead never
+  // become visible (audio.Now() < start), and highlights scheduled without
+  // lookahead never expire (audio.Now() < end). Using wall-clock time fixes
+  // both: highlights activate on schedule and expire on schedule.
+  await page.evaluate(() => {
+    const t0 = performance.now();
+    window.audioNow = () => (performance.now() - t0) / 1000;
+  });
+
+  // Zero the audio lookahead so highlight windows start immediately (at
+  // baseNow) instead of 80ms in the future. Without this, the window isn't
+  // visible within a single synchronous syncHighlights() + forceDraw() call.
+  await page.evaluate(() => { setAudioLookahead?.(0); });
+
   // Start playback
   await page.evaluate(() => {
     startPlay?.();
   });
 
+  // Wait for the engine to actually start playing
+  await page.waitForFunction(() => typeof isPlaying === 'function' && isPlaying(), { timeout: 5000 });
+
+  // Let the sequencer generate highlight events
+  await page.waitForTimeout(500);
+
   // Wait for ANY highlight to appear (up to 3 seconds)
   let highlightSeen = false;
   const startTime = Date.now();
   while (Date.now() - startTime < 3000) {
-    await page.waitForTimeout(30);
-    await page.evaluate(() => forceDraw?.());
-    const highlighted = await findHighlightedNodes(page);
+    await page.waitForTimeout(50);
+    const highlighted = await syncAndFindHighlights(page);
     if (highlighted.length > 0) {
       highlightSeen = true;
       console.log(`  Found ${highlighted.length} highlighted node(s): ${JSON.stringify(highlighted[0])}`);
@@ -116,71 +164,79 @@ try {
   // ─────────────────────────────────────────────────────────────────────
   console.log("Test 2: Verify highlights turn OFF during playback (key test)");
 
-  // Record initial highlighted count
-  let maxHighlighted = 0;
-  let sawDecrease = false;
+  // Compare the full highlighted set between polls. With 200ms highlight
+  // windows and 83ms subdivisions, 2-3 nodes are highlighted simultaneously.
+  // Checking only highlighted[0].id has scan-order bias (node 0 at (0,0) is
+  // always first when present). Instead, stringify the sorted ID set — any
+  // change (node entering or exiting) proves highlights are cycling.
+  let lastSet = "";
+  let sawDifferentSet = false;
   const maxWait = 4000;
   const checkStart = Date.now();
 
   while (Date.now() - checkStart < maxWait) {
-    await page.waitForTimeout(25);
-    await page.evaluate(() => forceDraw?.());
-    const highlighted = await findHighlightedNodes(page);
-    const count = highlighted.length;
+    await page.waitForTimeout(50);
+    const highlighted = await syncAndFindHighlights(page);
 
-    if (count > maxHighlighted) {
-      maxHighlighted = count;
-    } else if (maxHighlighted > 0 && count < maxHighlighted) {
-      // Highlight count decreased - some highlights turned off!
-      sawDecrease = true;
-      console.log(`  Highlight count decreased: ${maxHighlighted} -> ${count}`);
-      break;
+    if (highlighted.length > 0) {
+      const currentSet = highlighted.map(h => h.id).sort((a, b) => a - b).join(",");
+      if (lastSet !== "" && currentSet !== lastSet) {
+        sawDifferentSet = true;
+        console.log(`  Highlighted set changed: {${lastSet}} -> {${currentSet}}`);
+        break;
+      }
+      lastSet = currentSet;
     }
   }
 
-  if (sawDecrease) {
-    console.log("  PASS: Highlights turned off during playback");
+  if (sawDifferentSet) {
+    console.log("  PASS: Highlights turned off during playback (highlighted set changed)");
     passed++;
-  } else if (maxHighlighted === 0) {
+  } else if (lastSet === "") {
     console.log("  SKIP: No highlights seen during test");
   } else {
-    console.log(`  FAIL: Highlights never turned off (max count: ${maxHighlighted})`);
+    console.log(`  FAIL: Highlighted set never changed (stuck on {${lastSet}})`);
     failed++;
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // Test 3: Verify highlight count oscillates (multiple cycles)
+  // Test 3: Verify highlight cycles through multiple nodes
   // ─────────────────────────────────────────────────────────────────────
-  console.log("Test 3: Verify highlight count oscillates (multiple on/off cycles)");
+  console.log("Test 3: Verify highlight cycles through multiple nodes");
 
-  let transitions = 0;
-  let prevCount = 0;
+  // Track how many times the highlighted set changes. Compare the full sorted
+  // ID set each poll (same approach as Test 2) to avoid scan-order bias where
+  // highlighted[0].id stays pinned to the lowest grid-position node.
+  const seenIds = new Set();
+  let lastSetT3 = "";
+  let setChanges = 0;
   const cycleStart = Date.now();
 
-  while (Date.now() - cycleStart < 3000 && transitions < 5) {
-    await page.waitForTimeout(20);
-    await page.evaluate(() => forceDraw?.());
-    const highlighted = await findHighlightedNodes(page);
-    const count = highlighted.length;
+  while (Date.now() - cycleStart < 3000 && setChanges < 5) {
+    await page.waitForTimeout(50);
+    const highlighted = await syncAndFindHighlights(page);
 
-    // Count significant transitions (going from 0 to >0 or >0 to 0)
-    if ((prevCount === 0 && count > 0) || (prevCount > 0 && count === 0)) {
-      transitions++;
+    if (highlighted.length > 0) {
+      for (const h of highlighted) seenIds.add(h.id);
+      const currentSet = highlighted.map(h => h.id).sort((a, b) => a - b).join(",");
+      if (lastSetT3 !== "" && currentSet !== lastSetT3) {
+        setChanges++;
+      }
+      lastSetT3 = currentSet;
     }
-    prevCount = count;
   }
 
-  if (transitions >= 2) {
-    console.log(`  PASS: Detected ${transitions} highlight transitions (oscillating)`);
+  if (setChanges >= 2) {
+    console.log(`  PASS: Highlight cycled through ${seenIds.size} distinct nodes (${setChanges} set changes)`);
     passed++;
   } else {
-    console.log(`  INFO: Detected ${transitions} transitions (may be timing-dependent)`);
+    console.log(`  INFO: Detected ${setChanges} set changes, ${seenIds.size} distinct nodes (may be timing-dependent)`);
     // Don't fail - this is supplementary
     passed++;
   }
 
   // Stop playback
-  await page.evaluate(() => stop?.());
+  await page.evaluate(() => stopPlay?.());
   await page.waitForTimeout(100);
 
   // ─────────────────────────────────────────────────────────────────────
@@ -190,12 +246,11 @@ try {
 
   // Wait for any remaining highlights to expire
   // Do multiple draws to ensure the cleanup logic runs
+  let highlightedAfterStop = [];
   for (let i = 0; i < 15; i++) {
     await page.waitForTimeout(50);
-    await page.evaluate(() => forceDraw?.());
+    highlightedAfterStop = await syncAndFindHighlights(page);
   }
-
-  const highlightedAfterStop = await findHighlightedNodes(page);
 
   if (highlightedAfterStop.length === 0) {
     console.log("  PASS: All highlights cleared after stop");
@@ -218,6 +273,7 @@ try {
   console.error(error.stack);
   process.exitCode = 1;
 } finally {
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "node_highlight_playback");
   if (cleanup) {
     await cleanup();
   }

@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/beat"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/beat"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Event represents a tick from the game engine.
@@ -53,7 +53,7 @@ func New(logger *game_log.Logger) *Engine {
 
 	// Engine predictor is the single source of truth for prediction buffers and
 	// contexts across desktop/WASM and tests.
-	e.Predictor = NewPredictor(graph)
+	e.Predictor = NewPredictor(graph, logger)
 	graph.SetNodeChangedHook(func(id model.NodeID) {
 		if node, ok := graph.GetNodeByID(id); ok {
 			e.Predictor.UpdateNode(id, node)

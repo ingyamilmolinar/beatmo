@@ -3,11 +3,26 @@ package engine
 import (
 	"sync"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Predictor centralizes prediction buffers and contexts. It is concurrency-safe
-// and owned by the engine so sequencing and UI can consult it without races.
+// Predictor is the AUTHORITATIVE SOURCE OF TRUTH for what notes fire. The UI
+// reads predictions via VisibleAt/TriggeredAt/AudibleAt; it never mutates
+// predictor state directly.
+//
+// Key behaviors:
+//   - Ensure(horizon): compute predictions up to an absolute index
+//   - Mute gate: only gates the mute subdivision (idx+hold+1); audio resumes
+//     immediately on the following beat. UI/audio mute tests depend on this.
+//   - Probability uses a deterministic hash on (row, idx, nodeID) for
+//     reproducible results. Skip/every-N uses per-node trigger counts.
+//     Previous-trigger logic checks lastFiredByRow.
+//   - predDirty flag: set by UI/game when node parameters change, triggers a
+//     full context rebuild (RebaseAt) before extending predictions.
+//
+// Concurrency: all public methods are protected by mu (RWMutex). Background
+// precompute runs in a separate goroutine controlled by bgQuit/bgDone.
 type Predictor struct {
 	mu sync.RWMutex
 
@@ -47,9 +62,11 @@ type Predictor struct {
 	// predDirty signals that contexts must be rebuilt from scratch before
 	// extending predictions. UI/game mark this flag when node parameters change.
 	predDirty bool
+
+	logger *game_log.Logger
 }
 
-func NewPredictor(graph *model.Graph) *Predictor {
+func NewPredictor(graph *model.Graph, logger *game_log.Logger) *Predictor {
 	return &Predictor{
 		graph:              graph,
 		nodes:              make(map[model.NodeID]model.Node),
@@ -57,5 +74,6 @@ func NewPredictor(graph *model.Graph) *Predictor {
 		triggerCountsByRow: make(map[int]map[model.NodeID]int),
 		lastTrigByRow:      make(map[int]map[model.NodeID]bool),
 		bgQuit:             make(chan struct{}),
+		logger:             logger,
 	}
 }

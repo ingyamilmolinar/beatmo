@@ -4,21 +4,22 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
-import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertNoSchedulerMismatches, assertSimpleDrawMode, clearSchedulerMismatches, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
 const goDir = path.resolve(jsDir, "../go");
 const GO = resolveGoBinary();
 
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
-const port = 8380 + Math.floor(Math.random() * 1000);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
@@ -30,7 +31,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
@@ -38,7 +40,7 @@ await page.goto(`http://localhost:${port}/`);
 await page.waitForFunction(() => typeof importJSON === "function" && typeof startPlay === "function" && typeof drumOffset === "function" && typeof nextBeatIdxs === "function");
 await assertSimpleDrawMode(page, false, "track follow project");
 
-const project = fs.readFileSync(path.resolve(__dirname, "../..", "tunkul.json"), "utf8");
+const project = fs.readFileSync(path.resolve(__dirname, "../go/internal/assets/beatmo_project_fixture.json"), "utf8");
 await page.evaluate((txt) => {
   setFollow?.(true);
   importJSON(txt);
@@ -67,11 +69,12 @@ for (let i = 0; i < 60; i++) {
 }
 
 await assertNoSchedulerMismatches(page, "track follow project: scheduler mismatches");
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "track_follow_project");
 await browser.close();
 server.close();
 
 if (!offsetIncreased) {
-  throw new Error("drumOffset never advanced after loading tunkul.json");
+  throw new Error("drumOffset never advanced after loading beatmo.json");
 }
 if (!centeredOK) {
   throw new Error("highlight did not remain near the center once tracking engaged");

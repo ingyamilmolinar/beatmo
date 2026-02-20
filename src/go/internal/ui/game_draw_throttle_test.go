@@ -1,3 +1,5 @@
+//go:build test
+
 package ui
 
 import (
@@ -6,7 +8,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestDrawThrottleKeepsLastFrame verifies that when draw throttling skips a
@@ -42,13 +44,14 @@ func TestDrawThrottleWASMNoFlicker(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
+	g.Layout(1600, 900)
 
-	// Simulate WASM config: throttling enabled
-	g.drawMinInterval = 40 * time.Millisecond
+	// Simulate WASM config: throttling enabled. Use a large interval to guarantee
+	// the second draw falls within the throttle window regardless of test timing.
+	g.drawMinInterval = time.Hour
 
 	// First draw initializes frame buffer
-	screen1 := ebitenImage(640, 480)
+	screen1 := ebitenImage(1600, 900)
 	g.Draw(screen1)
 	if g.frameBuffer == nil {
 		t.Fatalf("frame buffer must be initialized when throttling is enabled")
@@ -59,14 +62,49 @@ func TestDrawThrottleWASMNoFlicker(t *testing.T) {
 	g.drawThrottleCopies = 0
 
 	// Second draw within throttle interval should copy from frame buffer
-	screen2 := ebitenImage(640, 480)
+	screen2 := ebitenImage(1600, 900)
 	g.Draw(screen2)
 	if g.drawThrottleCopies != 1 {
 		t.Fatalf("throttled draw should copy frame buffer; copies=%d", g.drawThrottleCopies)
 	}
 }
 
-// ebitenImage is a tiny shim so this test stays build-tag agnostic.
+// TestDrawThrottleResizeForcesDraw verifies that when a resize invalidates the
+// frame buffer (sets it to nil), the next Draw call falls through to a full draw
+// even within the throttle window, instead of returning blank.
+func TestDrawThrottleResizeForcesDraw(t *testing.T) {
+	assertDefaultParityState(t)
+	logger := game_log.New(nil, game_log.LevelError)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	g.drawMinInterval = time.Hour
+
+	// First draw initializes frame buffer
+	screen1 := ebitenImage(640, 480)
+	g.Draw(screen1)
+	if g.frameBuffer == nil {
+		t.Fatalf("expected frame buffer initialized after first draw")
+	}
+
+	// Resize invalidates frame buffer (simulating orientation change)
+	g.Layout(800, 600)
+	if g.frameBuffer != nil {
+		t.Fatalf("expected frame buffer nil after resize")
+	}
+
+	// Draw again within throttle window — should do a full draw, not blank
+	screen2 := ebitenImage(800, 600)
+	g.Draw(screen2)
+	if g.frameBuffer == nil {
+		t.Fatalf("expected frame buffer re-created after draw with invalidated buffer")
+	}
+	if g.frameBufferW != 800 || g.frameBufferH != 600 {
+		t.Fatalf("frame buffer dimensions wrong: got %dx%d, want 800x600", g.frameBufferW, g.frameBufferH)
+	}
+}
+
+// ebitenImage is a tiny shim that creates a stubbed ebiten.Image for testing.
 func ebitenImage(w, h int) *ebiten.Image {
 	img := ebiten.NewImage(w, h)
 	img.Fill(color.RGBA{0, 0, 0, 0})

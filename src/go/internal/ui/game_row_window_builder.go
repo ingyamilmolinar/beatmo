@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/timeline"
-	"github.com/ingyamilmolinar/tunkul/internal/ui/preview"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/timeline"
+	"github.com/ingyamilmolinar/beatmo/internal/ui/preview"
 )
 
 // buildRowWindow merges predictor state, timeline commits, freezes, and past preservation

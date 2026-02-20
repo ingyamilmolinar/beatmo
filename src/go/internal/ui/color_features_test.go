@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestUniqueColorsAcrossRows(t *testing.T) {
@@ -56,7 +56,7 @@ func TestColorButtonLayoutAndMenu(t *testing.T) {
 	sv := dv.rowSaveBtns[0].Rect()
 	cr := dv.rowColorBtns[0].Rect()
 	sr := dv.rowVolSliders[0].Rect()
-	if !(er.Max.X <= sv.Min.X && sv.Max.X <= cr.Min.X && cr.Max.X <= sr.Min.X) {
+	if er.Max.X > sv.Min.X || sv.Max.X > cr.Min.X || cr.Max.X > sr.Min.X {
 		t.Fatalf("button order invalid: edit=%v save=%v color=%v slider=%v", er, sv, cr, sr)
 	}
 

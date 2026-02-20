@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/ingyamilmolinar/tunkul/core/model"
+import "github.com/ingyamilmolinar/beatmo/core/model"
 
 type seqPathSnapshot struct {
 	beatInfosByRow [][]model.BeatInfo
@@ -64,7 +64,7 @@ func seqBeatInfoAtRow(snap *seqPathSnapshot, row, idx int) model.BeatInfo {
 		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
 	}
 	rel := idx - start
-	rel = rel % loopLen
+	rel %= loopLen
 	if rel < 0 {
 		rel += loopLen
 	}

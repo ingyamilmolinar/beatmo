@@ -2,7 +2,7 @@ package ui
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // enqueueUI schedules a UI-side action to be applied after input handling in Update.
@@ -59,16 +59,9 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	}
 }
 
-// menuHit reports whether a screen-space point lies within the node popup panel.
+// menuHit reports whether a screen-space point lies within the node sidebar.
 func (g *Game) menuHit(x, y int) bool {
-	if !g.nodeMenuOpen || g.nodeMenuNode == nil {
-		return false
-	}
-	g.updateNodeMenuRects()
-	if r, ok := g.nodeMenuRects["panel"]; ok {
-		return x >= r.Min.X && x <= r.Max.X && y >= r.Min.Y && y <= r.Max.Y
-	}
-	return false
+	return g.sidebar.Hit(x, y)
 }
 
 func (g *Game) spawnPulseFromRow(row, start int) {

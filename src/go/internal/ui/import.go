@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // Import safety limits to avoid pathological inputs.
@@ -24,12 +24,13 @@ const (
 )
 
 type importFile struct {
-	Version     int                `json:"version"`
-	Subdiv      int                `json:"subdiv"`
-	BPM         int                `json:"bpm"`
-	Instruments []exportInstrument `json:"instruments"`
-	Nodes       []exportNode       `json:"nodes"`
-	EQ          *exportEQ          `json:"eq,omitempty"`
+	Version      int                `json:"version"`
+	Subdiv       int                `json:"subdiv"`
+	BPM          int                `json:"bpm"`
+	MasterVolume float64            `json:"master_volume,omitempty"`
+	Instruments  []exportInstrument `json:"instruments"`
+	Nodes        []exportNode       `json:"nodes"`
+	EQ           *exportEQ          `json:"eq,omitempty"`
 }
 
 func parseHexColor(s string) color.Color {
@@ -44,7 +45,7 @@ func parseHexColor(s string) color.Color {
 	}
 	for i := 0; i < 8; i++ {
 		c := s[i]
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return color.RGBA{255, 255, 255, 255}
 		}
 	}
@@ -83,6 +84,9 @@ func (g *Game) Import(data []byte) error {
 	// This provides an additional safety net against lock contention.
 	g.seqPathSnap.Store(nil)
 
+	g.dismissLongPressPopup()
+	g.cancelConnectMode()
+	g.cancelMoveMode()
 	g.importing = true
 	defer func() { g.importing = false }()
 	g.renderReady = false
@@ -178,6 +182,19 @@ func (g *Game) Import(data []byte) error {
 			}
 		}
 		g.drum.eqBandMuted = muted
+		// Import HPF/LPF for master channel
+		g.drum.hpfEnabled = f.EQ.HPFEnabled
+		if f.EQ.HPFCutoffHz > 0 {
+			g.drum.hpfCutoffHz = f.EQ.HPFCutoffHz
+		} else {
+			g.drum.hpfCutoffHz = 20
+		}
+		g.drum.lpfEnabled = f.EQ.LPFEnabled
+		if f.EQ.LPFCutoffHz > 0 {
+			g.drum.lpfCutoffHz = f.EQ.LPFCutoffHz
+		} else {
+			g.drum.lpfCutoffHz = 20000
+		}
 		g.drum.applyEQ()
 		// Sync UI sliders if master EQ is the active channel
 		if g.drum.activeEQChannel() == "main" {
@@ -296,6 +313,19 @@ func (g *Game) Import(data []byte) error {
 				}
 				p.SkipEveryN = 0
 			}
+			// Per-node effect overrides (model-only, no audio wiring in V1)
+			if len(n.EffectOverrides) > 0 {
+				p.EffectOverrides = make([]model.EffectOverride, len(n.EffectOverrides))
+				copy(p.EffectOverrides, n.EffectOverrides)
+			}
+			// Per-node synth parameters
+			p.SynthDecay = n.SynthDecay
+			p.SynthTone = clampF64(n.SynthTone, -10, 10)
+			p.SynthAttack = n.SynthAttack
+			p.SynthDrive = clampF64(n.SynthDrive, 0, 1)
+			p.SynthBody = clampF64(n.SynthBody, 0, 1)
+			p.SynthColor = clampF64(n.SynthColor, -1, 1)
+			p.SynthBrightness = clampF64(n.SynthBrightness, 0, 1)
 			g.graph.SetNodeParams(ui.ID, p)
 		}
 		idToNode[i] = ui
@@ -323,6 +353,7 @@ func (g *Game) Import(data []byte) error {
 	// Instruments -> rows
 	rowsStart := time.Now()
 	g.drum.Rows = nil
+	g.drum.SuppressLayout()
 	for i, inst := range f.Instruments {
 		g.drum.AddRow()
 		idx := len(g.drum.Rows) - 1
@@ -382,7 +413,7 @@ func (g *Game) Import(data []byte) error {
 			g.logger.Infof("[GAME] Import row %d: name=%q inst=%q origin(json)=%d not found; leaving origin unset", i, inst.Name, inst.ID, inst.Origin)
 		}
 		// Apply per-instrument EQ if present
-		if inst.EQ != nil && (len(inst.EQ.GainsDB) > 0 || len(inst.EQ.BandMuted) > 0) {
+		if inst.EQ != nil {
 			gains := make([]float64, len(eqBandDefs))
 			for j := range gains {
 				if j < len(inst.EQ.GainsDB) {
@@ -405,18 +436,58 @@ func (g *Game) Import(data []byte) error {
 				}
 			}
 			row.EQBandMuted = muted
+			// Import per-instrument HPF/LPF
+			row.HPFEnabled = inst.EQ.HPFEnabled
+			if inst.EQ.HPFCutoffHz > 0 {
+				row.HPFCutoffHz = inst.EQ.HPFCutoffHz
+			} else {
+				row.HPFCutoffHz = 20
+			}
+			row.LPFEnabled = inst.EQ.LPFEnabled
+			if inst.EQ.LPFCutoffHz > 0 {
+				row.LPFCutoffHz = inst.EQ.LPFCutoffHz
+			} else {
+				row.LPFCutoffHz = 20000
+			}
 			g.drum.applyRowEQ(idx)
 			// Sync UI sliders if this instrument is the active EQ channel
 			if g.drum.activeEQChannel() == row.Instrument {
 				g.drum.setEQActiveChannel(row.Instrument)
 			}
 		}
+		// Apply per-instrument insert effects if present
+		if len(inst.Effects) > 0 {
+			row.Effects = make([]audio.EffectSlot, len(inst.Effects))
+			copy(row.Effects, inst.Effects)
+			audio.SetInsertEffects(inst.ID, inst.Effects)
+		}
+		// Apply per-instrument pan and send levels
+		row.Pan = clampF64(inst.Pan, -1, 1)
+		row.DelaySend = clampF64(inst.DelaySend, 0, 1)
+		row.ReverbSend = clampF64(inst.ReverbSend, 0, 1)
+		audio.SetChannelPan(inst.ID, row.Pan)
+		audio.SetDelaySend(inst.ID, row.DelaySend)
+		audio.SetReverbSend(inst.ID, row.ReverbSend)
 	}
+	g.drum.ResumeLayout()
 	g.logger.Infof("[IMPORT] row creation elapsed=%v rows=%d", time.Since(rowsStart), len(g.drum.Rows))
 	// Ensure imported colors are unique across rows.
 	g.drum.EnsureUniqueRowColors()
 	if f.BPM > 0 {
 		g.drum.SetBPM(f.BPM)
+	}
+	// Restore master volume. Default to 1.0 for legacy files that omit it.
+	if f.MasterVolume > 0 {
+		mv := clampF64(f.MasterVolume, 0, 1)
+		audio.SetMainVolume(mv)
+		if g.drum.mainVolSlider != nil {
+			g.drum.mainVolSlider.Value = mv
+		}
+	} else {
+		audio.SetMainVolume(1)
+		if g.drum.mainVolSlider != nil {
+			g.drum.mainVolSlider.Value = 1
+		}
 	}
 	// Clear any pending UI-added rows state so origin selection does not remain
 	// armed after an import that already set each row's origin.
@@ -450,7 +521,7 @@ func resolveSamplePath(id string) string {
 		return ""
 	}
 	// Search env override first.
-	if env := os.Getenv("TUNKUL_ASSETS"); env != "" {
+	if env := os.Getenv("BEATMO_ASSETS"); env != "" {
 		for _, cand := range []string{
 			filepath.Join(env, base+".wav"),
 			filepath.Join(env, "wav", base+".wav"),
@@ -477,7 +548,7 @@ func resolveSamplePath(id string) string {
 	}
 	// Fall back to catalog metadata (if already initialized) to reuse known paths.
 	for _, meta := range audio.Catalog() {
-		if strings.ToLower(strings.TrimPrefix(meta.ID, "sample-")) == strings.ToLower(base) {
+		if strings.EqualFold(strings.TrimPrefix(meta.ID, "sample-"), base) {
 			if meta.Path != "" {
 				return meta.Path
 			}
@@ -490,4 +561,15 @@ func resolveSamplePath(id string) string {
 		}
 	}
 	return ""
+}
+
+// clampF64 constrains v to the range [lo, hi].
+func clampF64(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }

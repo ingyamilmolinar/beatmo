@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -172,29 +171,6 @@ func (dv *DrumView) ensureUniqueColor(base color.Color, idx int) color.Color {
 	}
 	// Fallback to white (unlikely)
 	return color.RGBA{255, 255, 255, 255}
-}
-
-// parseHexRGB parses #RRGGBB or #RGB and returns the color if valid.
-func (dv *DrumView) parseHexRGB(s string) (color.Color, bool) {
-	s = strings.TrimSpace(s)
-	s = strings.TrimPrefix(s, "#")
-	if len(s) == 6 {
-		var r, g, b uint8
-		if _, err := fmt.Sscanf(s, "%02X%02X%02X", &r, &g, &b); err == nil {
-			return color.RGBA{r, g, b, 255}, true
-		}
-	}
-	if len(s) == 3 {
-		var r, g, b uint8
-		if _, err := fmt.Sscanf(s, "%1X%1X%1X", &r, &g, &b); err == nil {
-			// expand 4-bit to 8-bit by duplication (e.g., A -> AA)
-			r = r * 17
-			g = g * 17
-			b = b * 17
-			return color.RGBA{r, g, b, 255}, true
-		}
-	}
-	return color.RGBA{255, 255, 255, 255}, false
 }
 
 // SetRowColor sets the color for a row ensuring uniqueness across rows.

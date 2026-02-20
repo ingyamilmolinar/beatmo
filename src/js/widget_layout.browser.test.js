@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { assertSimpleDrawMode, resolveGoBinary } from "./browser_test_helpers.js";
+import { assertSimpleDrawMode, resolveGoBinary, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -13,15 +13,16 @@ const goDir = path.resolve(repoRoot, "src/go");
 const GO = resolveGoBinary();
 
 // Build WASM target used by the in-browser UI.
+if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
   ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
+}
 
 // Minimal static server.
-const port = 8405 + Math.floor(Math.random() * 200);
 const server = http.createServer((req, res) => { const file = req.url === "/" ? "/index.html" : req.url;
   const filePath = path.join(jsDir, file.replace(/^\//, ""));
   fs.readFile(filePath, (err, data) => { if (err) { res.writeHead(404); res.end(); return; }
@@ -33,7 +34,8 @@ const server = http.createServer((req, res) => { const file = req.url === "/" ? 
     res.end(data);
   });
 });
-await new Promise((r) => server.listen(port, r));
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -83,8 +85,10 @@ if (!(resized.afterRackW > resized.beforeRackW)) { throw new Error(`expected rac
 if (!(resized.afterTimelineW < resized.beforeTimelineW)) { throw new Error(`timeline width not reduced after resize; before=${resized.beforeTimelineW} after=${resized.afterTimelineW}`);
 }
 
-// Compact viewport (tablet/phone) still keeps add button inside rack.
-await page.setViewportSize({ width: 720, height: 520 });
+// Compact viewport still keeps add button inside rack.
+// Use width >= 900 to stay above the small-screen threshold (900px) which
+// switches to a mobile FAB layout where addButton is intentionally outside the rack.
+await page.setViewportSize({ width: 960, height: 540 });
 const snapCompact = await snapshot();
 const insideRackCompact =
   snapCompact.addButton.x >= snapCompact.rack.x &&
@@ -92,5 +96,6 @@ const insideRackCompact =
 if (!insideRackCompact) { throw new Error("add button escaped rack after viewport shrink");
 }
 
+if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "widget_layout");
 await browser.close();
 server.close();

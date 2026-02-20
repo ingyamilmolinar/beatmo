@@ -93,12 +93,13 @@ func TestSplitter_InputBounds(t *testing.T) {
 	if bounds.Max.X != 800 {
 		t.Errorf("expected bounds.Max.X = 800, got %d", bounds.Max.X)
 	}
-	// Grab zone is ±5 pixels
+	// Above-divider extent is the full grab zone (5px on desktop).
 	if bounds.Min.Y != 295 {
 		t.Errorf("expected bounds.Min.Y = 295, got %d", bounds.Min.Y)
 	}
-	if bounds.Max.Y != 305 {
-		t.Errorf("expected bounds.Max.Y = 305, got %d", bounds.Max.Y)
+	// Below-divider extent is 4px (reduced to avoid stealing drum button taps).
+	if bounds.Max.Y != 304 {
+		t.Errorf("expected bounds.Max.Y = 304, got %d", bounds.Max.Y)
 	}
 }
 

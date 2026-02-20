@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
+	"github.com/ingyamilmolinar/beatmo/core/model"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Build a simple 1-beat edge for row 0.
@@ -67,7 +67,7 @@ func TestSubdivButtonDrawAndClickDoesNotStall(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 640, 200), nil, game_log.New(nil, game_log.LevelError))
 	dv.recalcButtons()
 	dst := ebiten.NewImage(640, 200)
-	dv.Draw(dst, map[int]int64{}, 0, nil, 0)
+	dv.Draw(dst, nil, 0, nil, 0)
 	r := dv.subdivBtn.Rect()
 	if r.Empty() {
 		t.Fatalf("subdiv button not laid out")

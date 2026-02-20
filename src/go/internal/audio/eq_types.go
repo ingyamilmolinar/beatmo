@@ -9,6 +9,7 @@ const (
 	EQHighShelf
 	EQLowpass  // Butterworth lowpass for crossover filters
 	EQHighpass // Butterworth highpass for crossover filters
+	EQBandpass // Bandpass filter for insert effect filter
 )
 
 // EQBand describes one filter stage.

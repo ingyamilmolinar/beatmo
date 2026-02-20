@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (g *Game) audioLoop() {
@@ -64,6 +64,7 @@ func (g *Game) audioLoop() {
 			}
 			qlat := time.Since(req.enqAt)
 			if req.hasWhen && audioNow > 0 {
+				g.schedMetrics.Observe(audioNow, req.when)
 				if lead := req.when - audioNow; lead > 0 {
 					leadDur := time.Duration(lead * float64(time.Second))
 					if qlat > leadDur {
@@ -111,7 +112,7 @@ func (g *Game) audioLoop() {
 		audio.PlayBatch(batch)
 		callDur := time.Since(t0)
 		if n := len(batch); n > 1 {
-			callDur = callDur / time.Duration(n)
+			callDur /= time.Duration(n)
 		}
 		g.perf.onAudioDeq(avgQLat, callDur)
 	}

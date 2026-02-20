@@ -29,6 +29,8 @@ type PerfStats struct {
 	HeapSysKB   uint64 // total heap obtained from OS in KB
 	HeapObjects uint64 // live heap objects
 	Goroutines  int    // number of live goroutines
+
+	SchedMetrics ScheduleMetricsSnapshot // per-event audio scheduling lead/lag
 }
 
 type perfCounters struct {

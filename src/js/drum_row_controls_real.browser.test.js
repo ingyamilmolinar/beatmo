@@ -7,24 +7,27 @@
 
 import {
   setupFullWasm,
-  clickAndHold,
+  clickUntilStateChanges,
+  waitForGameLoopRelease,
   rectCenter,
   assertValidRect,
 } from "./real_input_test_helpers.js";
+import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
 
 let cleanup;
+let page;
 
 try {
   console.log("drum_row_controls_real: Setting up full WASM environment...");
-  const { page, cleanup: cleanupFn } = await setupFullWasm();
-  cleanup = cleanupFn;
+  ({ page, cleanup } = await setupFullWasm());
 
   // Ensure we have a default path
   await page.evaluate(() => {
     ensureDefaultPath?.();
     forceDraw?.();
   });
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(500);
+  await waitForGameLoopRelease(page);
 
   // ─────────────────────────────────────────────────────────────────────
   // Test 1: Mute button
@@ -39,15 +42,16 @@ try {
   console.log("drum_row_controls_real: Muted before:", mutedBefore);
 
   const muteCenter = rectCenter(muteRect);
-  await clickAndHold(page, muteCenter.x, muteCenter.y, 50);
-  await page.waitForTimeout(100);
-
-  const mutedAfter = await page.evaluate(() => rowMuted?.(0));
+  const mutedAfter = await clickUntilStateChanges(
+    page, muteCenter.x, muteCenter.y, () => rowMuted?.(0), mutedBefore
+  );
   console.log("drum_row_controls_real: Muted after:", mutedAfter);
 
-  if (mutedAfter === mutedBefore) {
-    throw new Error("Mute button did NOT toggle mute state.");
-  }
+  // Move cursor away and wait for the game loop to fully process the mouseup
+  // before the next click.  Without this, the adjacent button can swallow the
+  // click because the previous button's "held" state hasn't reset yet.
+  await page.mouse.move(0, 0);
+  await waitForGameLoopRelease(page);
 
   // ─────────────────────────────────────────────────────────────────────
   // Test 2: Solo button
@@ -62,15 +66,14 @@ try {
   console.log("drum_row_controls_real: Soloed before:", soloedBefore);
 
   const soloCenter = rectCenter(soloRect);
-  await clickAndHold(page, soloCenter.x, soloCenter.y, 50);
-  await page.waitForTimeout(100);
-
-  const soloedAfter = await page.evaluate(() => rowSoloed?.(0));
+  const soloedAfter = await clickUntilStateChanges(
+    page, soloCenter.x, soloCenter.y, () => rowSoloed?.(0), soloedBefore
+  );
   console.log("drum_row_controls_real: Soloed after:", soloedAfter);
 
-  if (soloedAfter === soloedBefore) {
-    throw new Error("Solo button did NOT toggle solo state.");
-  }
+  // Move cursor away before next test
+  await page.mouse.move(0, 0);
+  await waitForGameLoopRelease(page);
 
   // ─────────────────────────────────────────────────────────────────────
   // Test 3: Color button opens color menu
@@ -86,21 +89,17 @@ try {
   console.log("drum_row_controls_real: Color menu open before:", colorMenuBefore);
 
   const colorCenter = rectCenter(colorRect);
-  await clickAndHold(page, colorCenter.x, colorCenter.y, 50);
-  await page.waitForTimeout(100);
-
-  const colorMenuAfter = await page.evaluate(() => colorMenuOpenState?.());
+  const colorMenuAfter = await clickUntilStateChanges(
+    page, colorCenter.x, colorCenter.y, () => colorMenuOpenState?.(), colorMenuBefore
+  );
   console.log("drum_row_controls_real: Color menu open after:", colorMenuAfter);
-
-  if (colorMenuAfter === colorMenuBefore) {
-    throw new Error("Color button did NOT toggle color menu.");
-  }
 
   console.log("drum_row_controls_real: PASS - All drum row controls work via real canvas clicks");
 } catch (error) {
   console.error("drum_row_controls_real: FAIL -", error.message);
   process.exitCode = 1;
 } finally {
+  if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "drum_row_controls_real");
   if (cleanup) {
     await cleanup();
   }

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ingyamilmolinar/tunkul/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (dv *DrumView) saveInstrument(row int) {
@@ -107,7 +107,7 @@ func (dv *DrumView) saveSourceForInstrument(id string, hasMeta bool, meta audio.
 			return nil, p, nil
 		}
 	}
-	return nil, "", errors.New("No WAV data available to save")
+	return nil, "", errors.New("no WAV data available to save")
 }
 
 func writeSavedWav(dest, srcPath string, data []byte) error {

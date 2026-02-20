@@ -69,7 +69,7 @@ func TestImportClampsColorLogicAndCoords(t *testing.T) {
 		t.Fatalf("expected at least one row after import")
 	}
 	r, gcol, b, a := g.drum.Rows[0].Color.RGBA()
-	if !(r == 0xFFFF && gcol == 0xFFFF && b == 0xFFFF && a == 0xFFFF) {
+	if r != 0xFFFF || gcol != 0xFFFF || b != 0xFFFF || a != 0xFFFF {
 		t.Fatalf("invalid color was not clamped to white, got %#v", g.drum.Rows[0].Color)
 	}
 

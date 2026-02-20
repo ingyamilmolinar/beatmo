@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // screenPosForGrid returns a screen-space coordinate that maps to the given
@@ -13,7 +14,7 @@ func screenPosForGrid(g *Game, i, j int) (x, y int) {
 	wx := float64(i) * unit
 	wy := float64(j) * unit
 	sx := int(g.cam.OffsetX + g.cam.Scale*wx)
-	sy := int(g.cam.OffsetY + float64(topOffset) + g.cam.Scale*wy)
+	sy := int(g.cam.OffsetY + float64(gridTopOffset()) + g.cam.Scale*wy)
 	return sx, sy
 }
 
@@ -57,6 +58,9 @@ func TestNodeAddRemoveAfterSubdivChange(t *testing.T) {
 	if n := g.nodeAt(4, 0); n == nil {
 		t.Fatalf("expected node added at (4,0) after subdiv change")
 	}
+	// Close the sidebar so it doesn't absorb the right-click.
+	g.sidebar.Close()
+	g.sidebar.closedGuard = 0 // clear guard so next click isn't blocked
 	// Now delete it via right-click (press-only is enough for delete path).
 	restore2 := SetInputForTest(
 		func() (int, int) { return tx, ty },

@@ -1,10 +1,11 @@
 package ui
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
-	game_log "github.com/ingyamilmolinar/tunkul/internal/log"
 	"image"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // Clicking a subdiv menu item should not trigger underlying controls.

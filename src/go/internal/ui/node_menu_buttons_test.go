@@ -7,11 +7,13 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// TestNodeMenuButtonsRespondOnPress verifies popup buttons trigger on press and
-// are decoupled from direct state changes (processed via queue within Update()).
+// TestNodeMenuButtonsRespondOnPress verifies popup buttons trigger on tap
+// (press+release) and are decoupled from direct state changes (processed via
+// queue within Update()). With the deferred-tap pattern, buttons fire on
+// release to prevent accidental triggers during touch scrolling.
 func TestNodeMenuButtonsRespondOnPress(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -21,20 +23,20 @@ func TestNodeMenuButtonsRespondOnPress(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
-	r, ok := g.nodeMenuRects["vol+"]
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
+	r, ok := g.sidebar.rects["vol+"]
 	if !ok {
 		t.Fatalf("vol+ rect missing")
 	}
 
-	// Place cursor in button and press; release not required for action.
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
+	left := false
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
-		func(ebiten.MouseButton) bool { return true },
+		func(btn ebiten.MouseButton) bool { return left && btn == ebiten.MouseButtonLeft },
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
@@ -42,14 +44,19 @@ func TestNodeMenuButtonsRespondOnPress(t *testing.T) {
 	)
 	defer restore()
 
-	// Capture initial volume and run one Update; should increase immediately.
+	// Capture initial volume and tap (press frame + release frame).
 	before := g.graph.Nodes[n.ID].Params.Volume
+	left = true
 	if err := g.Update(); err != nil {
-		t.Fatalf("update: %v", err)
+		t.Fatalf("update press: %v", err)
+	}
+	left = false
+	if err := g.Update(); err != nil {
+		t.Fatalf("update release: %v", err)
 	}
 	after := g.graph.Nodes[n.ID].Params.Volume
 	if !(after > before) {
-		t.Fatalf("volume did not increase on press: %f -> %f", before, after)
+		t.Fatalf("volume did not increase on tap: %f -> %f", before, after)
 	}
 }
 
@@ -161,9 +168,9 @@ func TestNodeMenuMuteCycle(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(ebiten.MouseButton) bool { return false },
@@ -174,7 +181,7 @@ func TestNodeMenuMuteCycle(t *testing.T) {
 	)
 	defer restore()
 
-	btn := g.nodeMenuBtns["aud"]
+	btn := g.sidebar.btns["aud"]
 	if btn == nil {
 		t.Fatalf("aud button missing")
 	}
@@ -188,8 +195,8 @@ func TestNodeMenuMuteCycle(t *testing.T) {
 		t.Fatalf("after first toggle want silent, got %+v", node)
 	}
 
-	g.updateNodeMenuRects()
-	if btn = g.nodeMenuBtns["aud"]; btn == nil {
+	g.sidebar.layout()
+	if btn = g.sidebar.btns["aud"]; btn == nil {
 		t.Fatalf("aud button missing after toggle")
 	}
 	btn.OnClick()
@@ -200,8 +207,8 @@ func TestNodeMenuMuteCycle(t *testing.T) {
 		t.Fatalf("after second toggle want mute, got %+v", node)
 	}
 
-	g.updateNodeMenuRects()
-	if btn = g.nodeMenuBtns["aud"]; btn == nil {
+	g.sidebar.layout()
+	if btn = g.sidebar.btns["aud"]; btn == nil {
 		t.Fatalf("aud button missing after mute")
 	}
 	btn.OnClick()
@@ -221,9 +228,9 @@ func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(ebiten.MouseButton) bool { return false },
@@ -234,7 +241,7 @@ func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
 	)
 	defer restore()
 
-	btn := g.nodeMenuBtns["aud"]
+	btn := g.sidebar.btns["aud"]
 	if btn == nil {
 		t.Fatalf("aud button missing")
 	}
@@ -243,8 +250,8 @@ func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	g.updateNodeMenuRects()
-	btn = g.nodeMenuBtns["aud"]
+	g.sidebar.layout()
+	btn = g.sidebar.btns["aud"]
 	if btn == nil {
 		t.Fatalf("aud button missing after silent")
 	}
@@ -258,21 +265,21 @@ func TestNodeMenuMuteHidesVolumeAndPitch(t *testing.T) {
 		t.Fatalf("node not mute after toggle: %+v", node)
 	}
 
-	g.updateNodeMenuRects()
+	g.sidebar.layout()
 
-	if !g.nodeMenuRects["vol-"].Empty() || !g.nodeMenuRects["pit-"].Empty() {
-		t.Fatalf("volume or pitch rect still visible for mute node: vol=%v pit=%v", g.nodeMenuRects["vol-"], g.nodeMenuRects["pit-"])
+	if !g.sidebar.rects["vol-"].Empty() || !g.sidebar.rects["pit-"].Empty() {
+		t.Fatalf("volume or pitch rect still visible for mute node: vol=%v pit=%v", g.sidebar.rects["vol-"], g.sidebar.rects["pit-"])
 	}
-	if _, ok := g.nodeMenuBtns["vol-"]; ok {
+	if _, ok := g.sidebar.btns["vol-"]; ok {
 		t.Fatalf("volume button still registered for mute node")
 	}
-	if _, ok := g.nodeMenuBtns["pit-"]; ok {
+	if _, ok := g.sidebar.btns["pit-"]; ok {
 		t.Fatalf("pitch button still registered for mute node")
 	}
-	if !g.nodeMenuRects["dur-"].Empty() || !g.nodeMenuRects["dur+"].Empty() {
+	if !g.sidebar.rects["dur-"].Empty() || !g.sidebar.rects["dur+"].Empty() {
 		t.Fatalf("duration controls should be hidden for mute node")
 	}
-	if g.nodeMenuRects["grv"].Empty() {
+	if g.sidebar.rects["grv"].Empty() {
 		t.Fatalf("groove controls missing for mute node")
 	}
 }
@@ -281,14 +288,14 @@ func TestNodeMenuMuteClickDoesNotTriggerLogic(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
+	g.Layout(640, 960)
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.sel = n
 	n.Selected = true
-	g.nodeMenuOpen = true
-	g.nodeMenuNode = n
-	g.updateNodeMenuRects()
-	audRect := g.nodeMenuRects["aud"]
+	g.sidebar.Open(n)
+	g.sidebar.ExpandAllSections()
+	g.sidebar.layout()
+	audRect := g.sidebar.rects["aud"]
 	if audRect.Empty() {
 		t.Fatalf("audible button rect missing")
 	}
@@ -321,33 +328,35 @@ func TestNodeMenuMuteClickDoesNotTriggerLogic(t *testing.T) {
 	if mn, ok := g.graph.GetNodeByID(n.ID); !ok || mn.Type != model.NodeTypeSilent {
 		t.Fatalf("node not silent after first toggle: %+v", mn)
 	}
-	g.updateNodeMenuRects()
-	audRect = g.nodeMenuRects["aud"]
+	g.sidebar.layout()
+	audRect = g.sidebar.rects["aud"]
 	if audRect.Empty() {
 		t.Fatalf("audible rect missing after silent toggle")
 	}
 	mx = (audRect.Min.X + audRect.Max.X) / 2
 	my = (audRect.Min.Y + audRect.Max.Y) / 2
-	if !g.nodeMenuRects["logic"].Empty() {
+	if !g.sidebar.rects["logic"].Empty() {
 		t.Fatalf("logic should be hidden for silent node")
 	}
 
+	// Second tap: press+release to toggle Silent→Mute (deferred tap fires on release)
 	left = true
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
 	}
+	left = false
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	g.updateNodeMenuRects()
-	logicRect := g.nodeMenuRects["logic"]
+	g.sidebar.layout()
+	logicRect := g.sidebar.rects["logic"]
 	if logicRect.Empty() {
 		t.Fatalf("logic rect missing after mute toggle")
 	}
 	if !image.Pt(mx, my).In(logicRect) {
 		t.Fatalf("cursor not over logic rect: cursor=(%d,%d) logic=%v", mx, my, logicRect)
 	}
-	if g.nodeLogicOpen {
+	if g.sidebar.logicDropdownOpen {
 		t.Fatalf("logic menu opened due to overlapping click")
 	}
 	left = false

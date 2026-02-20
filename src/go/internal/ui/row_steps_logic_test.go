@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/ingyamilmolinar/tunkul/core/model"
 	"testing"
+
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // helper to bootstrap a simple game with bounds and start node at (0,0)
@@ -32,7 +33,7 @@ func TestRowStepsExcludeSilentInvisible(t *testing.T) {
 	steps := g.drum.Rows[0].Steps
 	// Check first few positions based on constructed path with a seam:
 	// idx0:A=true, idx1:Silent=false, idx2:B=true, idx3:seam invisible=false, idx4:A=true
-	if !(steps[0] && !steps[1] && steps[2] && !steps[3] && steps[4]) {
+	if !steps[0] || steps[1] || !steps[2] || steps[3] || !steps[4] {
 		t.Fatalf("unexpected early steps: %v", steps[:5])
 	}
 }
@@ -76,7 +77,7 @@ func TestRowStepsSkipEveryN(t *testing.T) {
 	g.updateBeatInfos()
 	steps := g.drum.Rows[0].Steps
 	// B should be suppressed; A remains true
-	if !(steps[0] == true && steps[1] == false) {
+	if steps[0] != true || steps[1] != false {
 		t.Fatalf("skip_every_n unexpected early steps %v", steps[:3])
 	}
 }

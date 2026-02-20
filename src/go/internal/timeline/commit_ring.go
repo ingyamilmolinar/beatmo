@@ -1,6 +1,6 @@
 package timeline
 
-import "github.com/ingyamilmolinar/tunkul/core/model"
+import "github.com/ingyamilmolinar/beatmo/core/model"
 
 // commitRing keeps the most recent committed beats in-order. Entries are
 // addressed by absolute subdivision index; once written they are immutable.

@@ -6,3 +6,8 @@ src/js/drums.js
 src/js/drums.wasm
 build/
 .tools
+src/js/testdata/golden/*.png
+!src/js/testdata/golden/.gitkeep
+src/js/recordings/*/
+!src/js/recordings/.gitkeep
+coverage/

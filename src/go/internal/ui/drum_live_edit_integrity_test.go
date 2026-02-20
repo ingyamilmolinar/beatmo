@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/tunkul/core/model"
+	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // Live edits (add/remove nodes) must not alter the past part of the visible
@@ -48,7 +48,7 @@ func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 
 	// Build initial caches
 	dst := ebiten.NewImage(1024, 240)
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	if len(g.drum.rowCache) < 2 || g.drum.rowCache[0] == nil || g.drum.rowCache[1] == nil {
 		t.Fatalf("expected two row caches built")
 	}
@@ -81,7 +81,7 @@ func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 	g.refreshDrumRow()
 
 	// Draw again to rebuild caches
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	after := append([]bool(nil), g.drum.Rows[0].Steps...)
 
 	// Past cells in window must remain identical
@@ -116,7 +116,7 @@ func TestLiveEdit_AddRemove_NoPastChange(t *testing.T) {
 	g.deleteNode(nx2)
 	g.updateBeatInfos()
 	g.refreshDrumRow()
-	g.drum.Draw(dst, map[int]int64{}, 0, nil, 0)
+	g.drum.Draw(dst, nil, 0, nil, 0)
 	after2 := append([]bool(nil), g.drum.Rows[0].Steps...)
 	for j := 0; j < len(after2) && j < len(before); j++ {
 		abs := g.drum.Offset + j

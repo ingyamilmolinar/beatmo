@@ -1,6 +1,6 @@
 package engine
 
-import "github.com/ingyamilmolinar/tunkul/core/model"
+import "github.com/ingyamilmolinar/beatmo/core/model"
 
 // SetPaths replaces the per-row traversal info. Call when the graph or row
 // origins change. The optional nodes snapshot lets callers avoid touching the
@@ -77,12 +77,11 @@ func (p *Predictor) beatInfoAtRow(row, idx int) model.BeatInfo {
 	if row < len(p.isLoopByRow) && !p.isLoopByRow[row] {
 		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
 	}
-	loopLen := len(infos)
 	start := 0
 	if row < len(p.loopStartByRow) {
 		start = p.loopStartByRow[row]
 	}
-	loopLen = len(infos) - start
+	loopLen := len(infos) - start
 	if loopLen <= 0 {
 		if idx < 0 {
 			return infos[start]
@@ -90,7 +89,7 @@ func (p *Predictor) beatInfoAtRow(row, idx int) model.BeatInfo {
 		return infos[len(infos)-1]
 	}
 	rel := idx - start
-	rel = rel % loopLen
+	rel %= loopLen
 	if rel < 0 {
 		rel += loopLen
 	}
