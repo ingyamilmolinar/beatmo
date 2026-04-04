@@ -443,6 +443,13 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
+	// Push per-instrument buffers to analyzer (memcopy only, no computation).
+	if analyzerSvc != nil {
+		for _, slot := range m.activeSlots {
+			analyzerSvc.PushInstBuf(slot, m.instBufs[slot][:blockLen])
+		}
+	}
+
 	// === PHASE 2: Per-instrument channel processing → masterBuf ===
 	if !bypassChannelProc {
 		for _, slot := range m.activeSlots {
@@ -473,6 +480,11 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		for j := 0; j < blockLen; j++ {
 			m.workBuf[j] += m.masterBuf[j]
 		}
+	}
+
+	// Push master output to analyzer (memcopy only, no computation).
+	if analyzerSvc != nil {
+		analyzerSvc.PushMasterBuf(m.workBuf[:blockLen])
 	}
 
 	// Debug: log mixer workBuf stats

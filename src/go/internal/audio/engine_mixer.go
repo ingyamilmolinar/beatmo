@@ -73,6 +73,13 @@ func (m *mixer) Schedule(id string, v Voice, delaySamples int) {
 		v = newTestSineVoice()
 	}
 
+	// Notify analyzer of trigger with raw buffer before any wrapping.
+	if analyzerSvc != nil {
+		if cv, ok := v.(*cVoice); ok {
+			analyzerSvc.NotifyTrigger(id, cv.buf)
+		}
+	}
+
 	// Wrap in anti-pop envelope for click-free fade-in/out.
 	v = newAntiPopVoice(v, sampleRate)
 

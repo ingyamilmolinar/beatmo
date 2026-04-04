@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ebitengine/oto/v3"
+	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
 // sampleRate is the audio output sample rate.
@@ -41,6 +42,8 @@ var (
 
 	stopHookMu sync.RWMutex
 	stopHook   func(string)
+
+	analyzerSvc *analyzer.Service
 )
 
 // Voice generates PCM samples in the range [-1,1].
@@ -81,6 +84,10 @@ func Register(id string, inst Instrument) {
 	InstrumentChannel(id)
 }
 
+// AnalyzerService returns the global analyzer service, or nil if audio
+// has not been initialized (e.g. in test/WASM builds).
+func AnalyzerService() *analyzer.Service { return analyzerSvc }
+
 func init() {
 	ResetInstruments()
 }
@@ -98,6 +105,14 @@ func initContext() {
 	InitInsertChains(sampleRate)
 	// Install master compressor for automatic gain management.
 	SetupMasterCompressor(sampleRate)
+	// Start the analyzer service for real-time metering and FFT.
+	analyzerSvc = analyzer.NewService(analyzer.Config{
+		FFTSize:        1024,
+		WindowSize:     2048,
+		MaxInstruments: 32,
+		SampleRate:     sampleRate,
+	})
+	go analyzerSvc.Run()
 }
 
 // Close stops the audio player, clears all voices, and releases the audio
