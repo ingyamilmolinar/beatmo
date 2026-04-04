@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/ebitengine/oto/v3"
+	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 const blockSize = 64 // Process 64 samples at a time (~1.45ms at 44.1kHz)
@@ -77,6 +78,17 @@ func (m *mixer) Schedule(id string, v Voice, delaySamples int) {
 	if analyzerSvc != nil {
 		if cv, ok := v.(*cVoice); ok {
 			analyzerSvc.NotifyTrigger(id, cv.buf)
+		}
+	}
+
+	// Push raw synth buffer to scope service for A/B pipeline comparison.
+	if scopeSvc != nil {
+		if cv, ok := v.(*cVoice); ok && cv.buf != nil {
+			f64 := make([]float64, len(cv.buf))
+			for i, s := range cv.buf {
+				f64[i] = float64(s)
+			}
+			scopeSvc.PushSamples(scope.StageSynth, id, f64)
 		}
 	}
 

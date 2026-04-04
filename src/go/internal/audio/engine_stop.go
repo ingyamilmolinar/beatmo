@@ -42,6 +42,8 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+
+	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 // Audio clipping diagnostics - enable with AUDIO_CLIP_DEBUG=1
@@ -450,6 +452,14 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
+	// Scope tap: post-headroom per-instrument buffers (before EQ/inserts).
+	if scopeSvc != nil {
+		for _, slot := range m.activeSlots {
+			id := m.instSlotIDs[slot]
+			scopeSvc.PushSamples(scope.StageAntiPop, id, m.instBufs[slot][:blockLen])
+		}
+	}
+
 	// === PHASE 2: Per-instrument channel processing → masterBuf ===
 	if !bypassChannelProc {
 		for _, slot := range m.activeSlots {
@@ -467,9 +477,22 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
+	// Scope tap: post-EQ per-instrument buffers (after inserts+EQ processing).
+	if scopeSvc != nil {
+		for _, slot := range m.activeSlots {
+			id := m.instSlotIDs[slot]
+			scopeSvc.PushSamples(scope.StageEQ, id, m.instBufs[slot][:blockLen])
+		}
+	}
+
 	// === PHASE 2.5: Send effects (delay + reverb) → masterBuf ===
 	if sendFX != nil && sendFX.initialized && !bypassChannelProc {
 		sendFX.processSlotSends(m.instBufs, m.instSlotIDs, m.activeSlots, blockLen, m.masterBuf[:blockLen])
+	}
+
+	// Scope tap: post-sends master buffer (before master EQ).
+	if scopeSvc != nil {
+		scopeSvc.PushSamples(scope.StageSends, "master", m.masterBuf[:blockLen])
 	}
 
 	// === PHASE 3: Master channel processing → workBuf ===
@@ -485,6 +508,11 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// Push master output to analyzer (memcopy only, no computation).
 	if analyzerSvc != nil {
 		analyzerSvc.PushMasterBuf(m.workBuf[:blockLen])
+	}
+
+	// Scope tap: final master output (after master EQ/compressor).
+	if scopeSvc != nil {
+		scopeSvc.PushSamples(scope.StageMaster, "master", m.workBuf[:blockLen])
 	}
 
 	// Debug: log mixer workBuf stats

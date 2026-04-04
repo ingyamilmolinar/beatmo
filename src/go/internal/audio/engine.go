@@ -11,6 +11,7 @@ import (
 
 	"github.com/ebitengine/oto/v3"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 // sampleRate is the audio output sample rate.
@@ -44,6 +45,7 @@ var (
 	stopHook   func(string)
 
 	analyzerSvc *analyzer.Service
+	scopeSvc    *scope.Service
 )
 
 // Voice generates PCM samples in the range [-1,1].
@@ -88,6 +90,10 @@ func Register(id string, inst Instrument) {
 // has not been initialized (e.g. in test/WASM builds).
 func AnalyzerService() *analyzer.Service { return analyzerSvc }
 
+// ScopeService returns the global scope service, or nil if audio
+// has not been initialized (e.g. in test/WASM builds).
+func ScopeService() *scope.Service { return scopeSvc }
+
 func init() {
 	ResetInstruments()
 }
@@ -113,6 +119,12 @@ func initContext() {
 		SampleRate:     sampleRate,
 	})
 	go analyzerSvc.Run()
+	// Start the scope service for real-time A/B pipeline comparison.
+	scopeSvc = scope.NewService(scope.Config{
+		MaxWindowMs: 500,
+		SampleRate:  sampleRate,
+	})
+	go scopeSvc.Run()
 }
 
 // Close stops the audio player, clears all voices, and releases the audio

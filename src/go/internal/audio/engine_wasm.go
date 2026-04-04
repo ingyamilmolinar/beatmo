@@ -7,6 +7,7 @@ import (
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 type Voice interface{}
@@ -188,3 +189,6 @@ func RenameInstrument(oldID, newID string) {
 
 // AnalyzerService returns nil on WASM (analyzer runs via JS AudioWorklet, not Go).
 func AnalyzerService() *analyzer.Service { return nil }
+
+// ScopeService returns nil on WASM (scope runs via JS AudioWorklet, not Go).
+func ScopeService() *scope.Service { return nil }
