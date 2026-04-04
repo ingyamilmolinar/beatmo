@@ -160,8 +160,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.widgets.AddWidget(WidgetPlacement{ID: WidgetRack, Title: "Instruments", Col: 0, Row: 1, ColSpan: 1, RowSpan: 1, MinW: 200, MinH: dv.rowHeight() * 4, Editable: true})
 	dv.widgets.AddWidget(WidgetPlacement{ID: WidgetTimeline, Title: "Timeline", Col: 1, Row: 0, ColSpan: 1, RowSpan: 2, MinW: 320, MinH: dv.rowHeight() * 4, Editable: true})
 	dv.widgets.AddWidget(WidgetPlacement{ID: WidgetWave, Title: "Wave/EQ", Col: 0, Row: 2, ColSpan: 2, RowSpan: 1, MinW: 240, MinH: eqPanelHeight, Editable: true})
-	// Scope panel is not in the widget board grid — it's manually positioned
-	// below the EQ panel in calcLayout when scopeVisible is true.
 	// On mobile, hide the Wave/EQ widget by default.
 	if dv.mobileEQCollapsed {
 		dv.widgets.ToggleWidget(WidgetWave, false)
@@ -279,12 +277,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			svc.Freeze()
 			return true
 		},
-	})
-	dv.eqPanelZone.SetPortal(dv.tree.Portal())
-	dv.tree.RegisterZone(dv.eqPanelZone, 130)
-
-	// Scope panel zone — oscilloscope A/B pipeline comparison.
-	dv.scopePanelZone = NewScopePanelZone(ScopeCallbacks{
 		ScopeState: func() *scope.State {
 			svc := audio.ScopeService()
 			if svc == nil {
@@ -292,52 +284,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			}
 			return svc.State()
 		},
-		ActiveRows: func() []*DrumRow {
-			return dv.Rows
-		},
-		OnTapAChange: func(stage scope.Stage) {
-			if svc := audio.ScopeService(); svc != nil {
-				svc.SetTapA(stage)
-			}
-		},
-		OnTapBChange: func(stage scope.Stage) {
-			if svc := audio.ScopeService(); svc != nil {
-				svc.SetTapB(stage)
-			}
-		},
-		OnClearTapA: func() {
-			if svc := audio.ScopeService(); svc != nil {
-				svc.ClearTapA()
-			}
-		},
-		OnClearTapB: func() {
-			if svc := audio.ScopeService(); svc != nil {
-				svc.ClearTapB()
-			}
-		},
-		OnInstrChange: func(id string) {
-			if svc := audio.ScopeService(); svc != nil {
-				svc.SetInstrument(id)
-			}
-		},
-		OnFreezeToggle: func() bool {
-			svc := audio.ScopeService()
-			if svc == nil {
-				return false
-			}
-			if svc.IsFrozen() {
-				svc.Unfreeze()
-				return false
-			}
-			svc.Freeze()
-			return true
-		},
-		OnClose: func() {
-			dv.SetScopeVisible(false)
-		},
 	})
-	dv.scopePanelZone.SetPortal(dv.tree.Portal())
-	dv.tree.RegisterZone(dv.scopePanelZone, 135)
+	dv.eqPanelZone.SetPortal(dv.tree.Portal())
+	dv.tree.RegisterZone(dv.eqPanelZone, 130)
 
 	// EQ zone now owns all EQ sliders, buttons, and state. DrumView
 	// provides accessor methods (eqSliders(), eqBandGainsDB(), etc.)
@@ -408,12 +357,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			if err := dv.Export(); err != nil {
 				dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
 			}
-		},
-		OnScopeToggle: func() {
-			dv.SetScopeVisible(!dv.ScopeVisible())
-		},
-		IsScopeOpen: func() bool {
-			return dv.ScopeVisible()
 		},
 		OnViewCycle: func() {
 			dv.cycleViewMode()

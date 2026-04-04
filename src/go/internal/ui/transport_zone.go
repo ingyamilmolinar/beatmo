@@ -29,10 +29,6 @@ type TransportCallbacks struct {
 	SetMainVolume  func(v float64)   // set master volume
 	OnNotifyError  func(msg string)  // display error notification
 
-	// Scope panel callbacks.
-	OnScopeToggle func()     // scope panel toggle pressed
-	IsScopeOpen   func() bool // read current scope panel state
-
 	// Overlay callbacks: delegate to DrumView's overlay mechanisms.
 	OnSubdivClick    func() // delegates to DrumView's SubdivMenuComponent
 	OnOverflowOpen   func() // delegates to DrumView's overflow menu
@@ -61,7 +57,6 @@ type TransportZone struct {
 	uploadBtn      *Button
 	importBtn      *Button
 	exportBtn      *Button
-	scopeToggleBtn *Button
 	eqToggleMobile *Button
 	viewSwitchBtn  *Button
 	overflowBtn    *Button
@@ -226,12 +221,6 @@ func (z *TransportZone) initButtons() {
 		}
 	})
 	z.exportBtn.Icon = "export"
-
-	z.scopeToggleBtn = NewButton("Scope", p.SubdivBtnStyle, func() {
-		if z.callbacks.OnScopeToggle != nil {
-			z.callbacks.OnScopeToggle()
-		}
-	})
 
 	// Mobile EQ toggle button (legacy, hidden — replaced by viewSwitchBtn).
 	z.eqToggleMobile = NewButton("EQ", InstButtonStyle, func() {
@@ -565,9 +554,6 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int) {
 	z.uploadBtn.SetRect(image.Rectangle{})
 	z.importBtn.SetRect(image.Rectangle{})
 	z.exportBtn.SetRect(image.Rectangle{})
-	if z.scopeToggleBtn != nil {
-		z.scopeToggleBtn.SetRect(image.Rectangle{})
-	}
 	z.fileOpsGroupRect = image.Rectangle{} // no file-ops on mobile
 	if z.eqToggleMobile != nil {
 		z.eqToggleMobile.SetRect(image.Rectangle{})
@@ -575,8 +561,8 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int) {
 }
 
 func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int) {
-	// Single-row transport: Play | Stop | Record | BPM | ± | Subdiv | spacer | Vol | Upload | Import | Export | Scope
-	rowWeights := []float64{1.3, 1.3, 1.0, 2.2, 0.7, 1.0, 0.3, 1.0, 0.8, 0.8, 0.8, 0.8}
+	// Single-row transport: Play | Stop | Record | BPM | ± | Subdiv | spacer | Vol | Upload | Import | Export
+	rowWeights := []float64{1.3, 1.3, 1.0, 2.2, 0.7, 1.0, 0.3, 1.0, 0.8, 0.8, 0.8}
 	if z.transportGroup == nil || len(z.transportGroup.grid.colWeights) != len(rowWeights) {
 		z.transportGroup = NewLayoutGroup("transport", topBounds, rowWeights, []float64{1})
 	}
@@ -622,10 +608,6 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int) {
 	z.importBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(9, 0), pad))
 	z.exportBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(10, 0), pad))
 
-	if z.scopeToggleBtn != nil {
-		z.scopeToggleBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(11, 0), pad))
-	}
-
 	// Compute file-ops group container rect (covers upload + import + export).
 	z.fileOpsGroupRect = computeGroupRect([]image.Rectangle{
 		z.uploadBtn.Rect(), z.importBtn.Rect(), z.exportBtn.Rect(),
@@ -666,7 +648,6 @@ func (z *TransportZone) rebuildHitAreas() {
 		{z.uploadBtn, "transport-upload", true},
 		{z.importBtn, "transport-import", true},
 		{z.exportBtn, "transport-export", true},
-		{z.scopeToggleBtn, "transport-scope-toggle", true},
 		{z.eqToggleMobile, "transport-eq-toggle", false},
 		{z.viewSwitchBtn, "transport-view-switch", true},
 		{z.overflowBtn, "transport-overflow", true},
@@ -995,12 +976,6 @@ func (z *TransportZone) toolbarStateHash() uint64 {
 		mix(boolBit(z.viewSwitchBtn.hovered))
 		mix(boolBit(z.viewSwitchBtn.pressed))
 	}
-	if z.scopeToggleBtn != nil {
-		scopeOpen := z.callbacks.IsScopeOpen != nil && z.callbacks.IsScopeOpen()
-		mix(boolBit(scopeOpen))
-		mix(boolBit(z.scopeToggleBtn.hovered))
-		mix(boolBit(z.scopeToggleBtn.pressed))
-	}
 	// Group container rects.
 	mix(uint64(z.bpmGroupRect.Min.X))
 	mix(uint64(z.bpmGroupRect.Min.Y))
@@ -1061,9 +1036,6 @@ func (z *TransportZone) toolbarBounds() image.Rectangle {
 	}
 	if z.viewSwitchBtn != nil {
 		expand(z.viewSwitchBtn.Rect())
-	}
-	if z.scopeToggleBtn != nil {
-		expand(z.scopeToggleBtn.Rect())
 	}
 	if z.mainVolSlider != nil {
 		expand(z.mainVolSlider.Rect())
@@ -1132,17 +1104,6 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 	drawBtnOff(cache, z.uploadBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.importBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.exportBtn, offsetX, offsetY)
-	if z.scopeToggleBtn != nil && !z.scopeToggleBtn.Rect().Empty() {
-		scopeActive := z.callbacks.IsScopeOpen != nil && z.callbacks.IsScopeOpen()
-		if scopeActive {
-			origStyle := z.scopeToggleBtn.Style
-			z.scopeToggleBtn.Style = FXActiveStyle
-			drawBtnOff(cache, z.scopeToggleBtn, offsetX, offsetY)
-			z.scopeToggleBtn.Style = origStyle
-		} else {
-			drawBtnOff(cache, z.scopeToggleBtn, offsetX, offsetY)
-		}
-	}
 	if z.eqToggleMobile != nil {
 		drawBtnOff(cache, z.eqToggleMobile, offsetX, offsetY)
 	}
@@ -1190,9 +1151,6 @@ func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
 	z.uploadBtn.Draw(dst)
 	z.importBtn.Draw(dst)
 	z.exportBtn.Draw(dst)
-	if z.scopeToggleBtn != nil {
-		z.scopeToggleBtn.Draw(dst)
-	}
 	if z.eqToggleMobile != nil {
 		z.eqToggleMobile.Draw(dst)
 	}

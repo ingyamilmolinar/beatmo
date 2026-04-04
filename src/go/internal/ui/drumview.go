@@ -139,7 +139,6 @@ type DrumView struct {
 	logger           *game_log.Logger
 	tree             *DrumViewTree     // zone-based component tree (Phase 1+)
 	eqPanelZone      *EQPanelZone      // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
-	scopePanelZone   *ScopePanelZone   // Scope panel zone (oscilloscope A/B pipeline comparison)
 	scopeVisible     bool
 	transportZone    *TransportZone    // Phase 3: transport zone (owns transport buttons/state)
 	rowRackZone      *RowRackZone      // Phase 4: row rack zone (owns per-row buttons/sliders/scroll)
@@ -517,10 +516,17 @@ func (dv *DrumView) lpfBtn() *Button          { return dv.eqPanelZone.lpfBtn }
 
 // --- Scope panel accessors ---
 
-func (dv *DrumView) ScopeVisible() bool { return dv.scopeVisible }
+func (dv *DrumView) ScopeVisible() bool {
+	if dv.eqPanelZone != nil {
+		return dv.eqPanelZone.tabState.ActiveTab() == TabScope
+	}
+	return false
+}
 func (dv *DrumView) SetScopeVisible(v bool) {
 	dv.scopeVisible = v
-	dv.calcLayout()
+	if dv.eqPanelZone != nil && v {
+		dv.eqPanelZone.tabState.SetActiveTab(TabScope)
+	}
 }
 
 // --- RowRack zone accessor methods (delegate to rowRackZone) ---

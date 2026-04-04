@@ -86,8 +86,8 @@ func TestPanelTabLabels(t *testing.T) {
 	assertDefaultParityState(t)
 
 	tabs := AllPanelTabs()
-	if len(tabs) != 4 {
-		t.Fatalf("expected 4 tabs, got %d", len(tabs))
+	if len(tabs) != 5 {
+		t.Fatalf("expected 5 tabs, got %d", len(tabs))
 	}
 
 	expected := map[PanelTab]string{
@@ -95,6 +95,7 @@ func TestPanelTabLabels(t *testing.T) {
 		TabSpectrum: "Spectrum",
 		TabMeters:   "Meters",
 		TabEQ:       "EQ",
+		TabScope:    "Scope",
 	}
 	for _, tab := range tabs {
 		label := PanelTabLabel(tab)

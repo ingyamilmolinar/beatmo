@@ -10,6 +10,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 // EQCallbacks contains callbacks for the EQPanelZone to communicate with
@@ -49,6 +50,9 @@ type EQCallbacks struct {
 	// OnFreezeToggle toggles the analyzer capture freeze state and returns
 	// the new frozen state.
 	OnFreezeToggle func() bool
+
+	// ScopeState returns the latest scope snapshot for the Scope tab.
+	ScopeState func() *scope.State
 }
 
 // EQPanelZone implements the Zone interface for the EQ/Waveform panel.
@@ -63,7 +67,7 @@ type EQPanelZone struct {
 	// UI elements
 	eqMuteBtns   []*Button // per-band mute
 	eqChannelBtn *Button   // channel selector
-	tabButtons   [4]*Button // one per tab in AllPanelTabs() order
+	tabButtons   [5]*Button // one per tab in AllPanelTabs() order
 	freezeBtn    *Button   // pause/play for analyzer capture
 	hpfBtn       *Button
 	lpfBtn       *Button
@@ -85,6 +89,9 @@ type EQPanelZone struct {
 
 	// Spectrum tab peak-hold state
 	spectrumPeaks SpectrumPeakState
+
+	// Scope tab zoom level (ms)
+	scopeWindowMs float64
 
 	// Master channel EQ state (per-row stays in DrumRow)
 	bandGainsDB []float64
@@ -114,6 +121,7 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 		curveDragBand:  -1,
 		dbInputFocused: -1,
 		activeChannel:  "main",
+		scopeWindowMs:  20,
 		bandGainsDB:    make([]float64, len(eqBandDefs)),
 		bandMuted:      make([]bool, len(eqBandDefs)),
 		eqBandVals:     make([]float64, len(eqBandDefs)),
@@ -254,6 +262,10 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 		}
 	case TabMeters:
 		drawMeterBridge(screen, z.contentRect(), z.getAnalyzerState())
+	case TabScope:
+		if z.callbacks.ScopeState != nil {
+			drawScopeTraces(screen, z.contentRect(), z.callbacks.ScopeState(), z.scopeWindowMs)
+		}
 	case TabEQ:
 		// Draw spectrum bars and EQ curve below buttons.
 		if z.rect.Dy() >= 40 {

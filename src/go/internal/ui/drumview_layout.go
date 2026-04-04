@@ -413,30 +413,6 @@ func (dv *DrumView) recalcButtons() {
 		dv.tree.HitIndexRef().Update("eq-panel", dv.eqPanelZone.HitAreas())
 	}
 
-	// Scope panel zone — manually positioned below the EQ panel when visible.
-	// Takes scopePanelH pixels from the bottom of the EQ rect.
-	if dv.scopePanelZone != nil && dv.tree != nil && dv.scopeVisible {
-		sh := scopePanelH
-		if sh > dv.eqRect.Dy()/2 {
-			sh = dv.eqRect.Dy() / 2 // never take more than half the EQ area
-		}
-		scopeRect := image.Rect(dv.eqRect.Min.X, dv.eqRect.Max.Y-sh, dv.eqRect.Max.X, dv.eqRect.Max.Y)
-		// Shrink the EQ panel to make room.
-		eqShrunk := image.Rect(dv.eqRect.Min.X, dv.eqRect.Min.Y, dv.eqRect.Max.X, dv.eqRect.Max.Y-sh)
-		dv.eqRect = eqShrunk
-		if dv.eqPanelZone != nil {
-			dv.tree.SetZoneRect("eq-panel", eqShrunk)
-			dv.eqPanelZone.Layout(eqShrunk)
-			dv.tree.HitIndexRef().Update("eq-panel", dv.eqPanelZone.HitAreas())
-		}
-		dv.tree.SetZoneRect("scope-panel", scopeRect)
-		dv.scopePanelZone.Layout(scopeRect)
-		dv.tree.HitIndexRef().Update("scope-panel", dv.scopePanelZone.HitAreas())
-	} else if dv.scopePanelZone != nil && dv.tree != nil {
-		// Scope hidden — clear its rect.
-		dv.tree.SetZoneRect("scope-panel", image.Rectangle{})
-	}
-
 	// Layout resize zone — refresh hit areas so column/row divider pills
 	// stay clickable after bounds changes and widget board resizes.
 	if dv.layoutResizeZone != nil && dv.tree != nil {
