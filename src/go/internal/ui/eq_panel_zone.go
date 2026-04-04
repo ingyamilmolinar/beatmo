@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
@@ -37,7 +38,13 @@ type EQCallbacks struct {
 	OnChannelDropdownClose func()
 
 	// DrawWaveform renders the waveform/spectrum display when waveformMode is active.
+	// Kept as a fallback; the new analyzer-based renderers are preferred when
+	// AnalyzerState is available.
 	DrawWaveform func(dst *ebiten.Image)
+
+	// AnalyzerState returns the latest analyzer snapshot. Used by the new
+	// tab renderers (Wave, Spectrum, Meters) that consume analyzer.State.
+	AnalyzerState func() *analyzer.State
 }
 
 // EQPanelZone implements the Zone interface for the EQ/Waveform panel.
@@ -212,11 +219,18 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	}
 	drawRect(screen, z.rect, colEQBg, true)
 
-	if z.tabState.ActiveTab() == TabWave {
-		if z.callbacks.DrawWaveform != nil {
+	switch z.tabState.ActiveTab() {
+	case TabWave:
+		if state := z.getAnalyzerState(); state != nil {
+			drawAnalyzerWaveform(screen, z.rect, state)
+		} else if z.callbacks.DrawWaveform != nil {
 			z.callbacks.DrawWaveform(screen)
 		}
-	} else {
+	case TabSpectrum:
+		drawAnalyzerSpectrum(screen, z.rect, z.getAnalyzerState())
+	case TabMeters:
+		drawMeterBridge(screen, z.rect, z.getAnalyzerState())
+	case TabEQ:
 		// Draw spectrum bars and EQ curve below buttons.
 		if z.rect.Dy() >= 40 {
 			z.drawSpectrumBars(screen)
@@ -1243,6 +1257,14 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 			}
 		}
 	}
+}
+
+// getAnalyzerState returns the latest analyzer.State via the callback, or nil.
+func (z *EQPanelZone) getAnalyzerState() *analyzer.State {
+	if z.callbacks.AnalyzerState != nil {
+		return z.callbacks.AnalyzerState()
+	}
+	return nil
 }
 
 func (z *EQPanelZone) analyzerSnapshot() audio.AnalyzerSnapshot {

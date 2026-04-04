@@ -2,7 +2,11 @@
 
 package audio
 
-import "math"
+import (
+	"math"
+
+	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+)
 
 type Voice interface{}
 
@@ -531,6 +535,9 @@ func ClearChannelProcessors(id string) {
 	lastSetEQ = eqRecord{}
 	RebuildChannelWithEQ(id, nil)
 }
+
+// AnalyzerService returns nil in test builds (no real audio engine).
+func AnalyzerService() *analyzer.Service { return nil }
 
 var analyzerRegistryStub = map[string]*Analyzer{}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
@@ -245,6 +246,13 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		DrawWaveform: func(dst *ebiten.Image) {
 			snap := dv.analyzerSnapshot()
 			dv.drawWaveform(dst, snap)
+		},
+		AnalyzerState: func() *analyzer.State {
+			svc := audio.AnalyzerService()
+			if svc == nil {
+				return nil
+			}
+			return svc.State()
 		},
 	})
 	dv.eqPanelZone.SetPortal(dv.tree.Portal())

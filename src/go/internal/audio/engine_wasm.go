@@ -5,6 +5,8 @@ package audio
 import (
 	"sync"
 	"syscall/js"
+
+	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
 type Voice interface{}
@@ -183,3 +185,6 @@ func RenameInstrument(oldID, newID string) {
 	}
 	renameInstrumentChannel(oldID, newID)
 }
+
+// AnalyzerService returns nil on WASM (analyzer runs via JS AudioWorklet, not Go).
+func AnalyzerService() *analyzer.Service { return nil }
