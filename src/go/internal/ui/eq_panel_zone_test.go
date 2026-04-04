@@ -154,10 +154,10 @@ func TestEQPanelZoneTreeLifecycle(t *testing.T) {
 	if len(areas) == 0 {
 		t.Fatal("zone should have hit areas after layout")
 	}
-	// Pick the toggle button — should always be present.
-	toggleArea := findHitAreaByTagPrefix(areas, "eq-toggle-btn")
+	// Pick the first tab button — should always be present.
+	toggleArea := findHitAreaByTagPrefix(areas, "eq-tab-0")
 	if toggleArea == nil {
-		t.Fatal("expected eq-toggle-btn hit area")
+		t.Fatal("expected eq-tab-0 hit area")
 	}
 	cx := (toggleArea.Rect.Min.X + toggleArea.Rect.Max.X) / 2
 	cy := (toggleArea.Rect.Min.Y + toggleArea.Rect.Max.Y) / 2
@@ -272,25 +272,25 @@ func TestEQPanelZoneToggleButton(t *testing.T) {
 	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
 	tree.Update()
 
-	// Find toggle button.
-	toggleArea := findHitAreaByTagPrefix(z.HitAreas(), "eq-toggle-btn")
-	if toggleArea == nil {
-		t.Fatal("expected 'eq-toggle-btn' hit area")
+	// Find Wave tab button (eq-tab-1, since AllPanelTabs = [EQ, Wave, Spectrum, Meters]).
+	waveTabArea := findHitAreaByTagPrefix(z.HitAreas(), "eq-tab-1")
+	if waveTabArea == nil {
+		t.Fatal("expected 'eq-tab-1' hit area")
 	}
 
 	if z.WaveformMode() {
 		t.Fatal("should start in EQ mode (not waveform)")
 	}
 
-	// Click toggle.
-	mx, my = (toggleArea.Rect.Min.X+toggleArea.Rect.Max.X)/2, (toggleArea.Rect.Min.Y+toggleArea.Rect.Max.Y)/2
+	// Click Wave tab.
+	mx, my = (waveTabArea.Rect.Min.X+waveTabArea.Rect.Max.X)/2, (waveTabArea.Rect.Min.Y+waveTabArea.Rect.Max.Y)/2
 	pressed = true
 	tree.Update()
 	pressed = false
 	tree.Update()
 
 	if !z.WaveformMode() {
-		t.Error("expected waveform mode after toggle click")
+		t.Error("expected waveform mode after clicking Wave tab")
 	}
 }
 

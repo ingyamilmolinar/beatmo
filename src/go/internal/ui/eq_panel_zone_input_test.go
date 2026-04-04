@@ -303,16 +303,16 @@ func TestSetWaveformMode(t *testing.T) {
 	if !z.WaveformMode() {
 		t.Fatal("expected waveform mode after SetWaveformMode(true)")
 	}
-	if z.eqToggleBtn.Text != "Wave" {
-		t.Errorf("button text should be 'Wave' (current tab), got %q", z.eqToggleBtn.Text)
+	if z.tabState.ActiveTab() != TabWave {
+		t.Errorf("expected TabWave, got %v", z.tabState.ActiveTab())
 	}
 
 	z.SetWaveformMode(false)
 	if z.WaveformMode() {
 		t.Fatal("expected EQ mode after SetWaveformMode(false)")
 	}
-	if z.eqToggleBtn.Text != "EQ" {
-		t.Errorf("button text should be 'EQ' (current tab), got %q", z.eqToggleBtn.Text)
+	if z.tabState.ActiveTab() != TabEQ {
+		t.Errorf("expected TabEQ, got %v", z.tabState.ActiveTab())
 	}
 }
 

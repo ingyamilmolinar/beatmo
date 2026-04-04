@@ -9,7 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestEQToggleZoneSyncsDrumViewState verifies that clicking the EQ toggle
+// TestEQToggleZoneSyncsDrumViewState verifies that clicking the Wave tab
 // button in the zone tree syncs waveformMode to DrumView.eqWaveformMode.
 func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 	assertDefaultParityState(t)
@@ -25,7 +25,7 @@ func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 		t.Skip("tree not initialized")
 	}
 
-	// Both should start in the same state.
+	// Both should start in the same state (EQ mode, not waveform).
 	if dv.eqWaveformMode != dv.eqPanelZone.WaveformMode() {
 		t.Fatalf("initial desync: dv.eqWaveformMode=%v zone=%v",
 			dv.eqWaveformMode, dv.eqPanelZone.WaveformMode())
@@ -33,15 +33,19 @@ func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 
 	initialMode := dv.eqWaveformMode
 
-	// Find the toggle button rect via the zone.
-	toggleRect := dv.eqPanelZone.eqToggleBtn.Rect()
-	if toggleRect.Empty() {
-		t.Skip("toggle button has empty rect")
+	// Click the Wave tab button (index 1 since AllPanelTabs = [EQ, Wave, Spectrum, Meters]).
+	waveBtn := dv.eqPanelZone.tabButtons[1]
+	if waveBtn == nil {
+		t.Skip("wave tab button is nil")
 	}
-	cx := (toggleRect.Min.X + toggleRect.Max.X) / 2
-	cy := (toggleRect.Min.Y + toggleRect.Max.Y) / 2
+	waveRect := waveBtn.Rect()
+	if waveRect.Empty() {
+		t.Skip("wave tab button has empty rect")
+	}
+	cx := (waveRect.Min.X + waveRect.Max.X) / 2
+	cy := (waveRect.Min.Y + waveRect.Max.Y) / 2
 
-	// Simulate click on the toggle button: press frame, then release frame.
+	// Simulate click on the wave tab button: press frame, then release frame.
 	restore := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -64,9 +68,9 @@ func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 	dv.Update()
 	restore()
 
-	// The zone's waveformMode should have toggled.
+	// The zone's waveformMode should have toggled (from EQ to Wave).
 	if dv.eqPanelZone.WaveformMode() == initialMode {
-		t.Fatal("zone waveformMode did not toggle after button click")
+		t.Fatal("zone waveformMode did not change after clicking Wave tab")
 	}
 
 	// DrumView's field should be synced.
@@ -76,7 +80,7 @@ func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 	}
 }
 
-// TestEQToggleRoundTrip toggles on and off, verifying sync both ways.
+// TestEQToggleRoundTrip switches to Wave then back to EQ, verifying sync both ways.
 func TestEQToggleRoundTrip(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -91,14 +95,10 @@ func TestEQToggleRoundTrip(t *testing.T) {
 		t.Skip("tree not initialized")
 	}
 
-	toggleRect := dv.eqPanelZone.eqToggleBtn.Rect()
-	if toggleRect.Empty() {
-		t.Skip("toggle button has empty rect")
-	}
-	cx := (toggleRect.Min.X + toggleRect.Max.X) / 2
-	cy := (toggleRect.Min.Y + toggleRect.Max.Y) / 2
-
-	clickToggle := func() {
+	clickBtn := func(btn *Button) {
+		r := btn.Rect()
+		cx := (r.Min.X + r.Max.X) / 2
+		cy := (r.Min.Y + r.Max.Y) / 2
 		restore := SetInputForTest(
 			func() (int, int) { return cx, cy },
 			func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -121,23 +121,29 @@ func TestEQToggleRoundTrip(t *testing.T) {
 		restore()
 	}
 
+	eqBtn := dv.eqPanelZone.tabButtons[0]
+	waveBtn := dv.eqPanelZone.tabButtons[1]
+	if eqBtn.Rect().Empty() || waveBtn.Rect().Empty() {
+		t.Skip("tab button rects are empty")
+	}
+
 	initial := dv.eqWaveformMode
 
-	// Toggle on.
-	clickToggle()
+	// Switch to Wave.
+	clickBtn(waveBtn)
 	if dv.eqWaveformMode == initial {
-		t.Fatal("first toggle did not change eqWaveformMode")
+		t.Fatal("clicking Wave tab did not change eqWaveformMode")
 	}
 	if dv.eqWaveformMode != dv.eqPanelZone.WaveformMode() {
-		t.Fatal("desync after first toggle")
+		t.Fatal("desync after switching to Wave")
 	}
 
-	// Toggle off (back to initial).
-	clickToggle()
+	// Switch back to EQ.
+	clickBtn(eqBtn)
 	if dv.eqWaveformMode != initial {
-		t.Fatalf("second toggle should restore initial=%v, got %v", initial, dv.eqWaveformMode)
+		t.Fatalf("clicking EQ tab should restore initial=%v, got %v", initial, dv.eqWaveformMode)
 	}
 	if dv.eqWaveformMode != dv.eqPanelZone.WaveformMode() {
-		t.Fatal("desync after second toggle")
+		t.Fatal("desync after switching back to EQ")
 	}
 }

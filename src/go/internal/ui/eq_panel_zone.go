@@ -45,6 +45,10 @@ type EQCallbacks struct {
 	// AnalyzerState returns the latest analyzer snapshot. Used by the new
 	// tab renderers (Wave, Spectrum, Meters) that consume analyzer.State.
 	AnalyzerState func() *analyzer.State
+
+	// OnFreezeToggle toggles the analyzer capture freeze state and returns
+	// the new frozen state.
+	OnFreezeToggle func() bool
 }
 
 // EQPanelZone implements the Zone interface for the EQ/Waveform panel.
@@ -59,7 +63,8 @@ type EQPanelZone struct {
 	// UI elements
 	eqMuteBtns   []*Button // per-band mute
 	eqChannelBtn *Button   // channel selector
-	eqToggleBtn  *Button   // EQ/Wave toggle
+	tabButtons   [4]*Button // one per tab in AllPanelTabs() order
+	freezeBtn    *Button   // pause/play for analyzer capture
 	hpfBtn       *Button
 	lpfBtn       *Button
 
@@ -77,6 +82,9 @@ type EQPanelZone struct {
 	curveDragDBText string // e.g., "+6.0 dB" or "" when not dragging
 	curveDragLabelX int
 	curveDragLabelY int
+
+	// Spectrum tab peak-hold state
+	spectrumPeaks SpectrumPeakState
 
 	// Master channel EQ state (per-row stays in DrumRow)
 	bandGainsDB []float64
@@ -116,13 +124,23 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 }
 
 func (z *EQPanelZone) initButtons() {
-	z.eqToggleBtn = NewButton("EQ", InstButtonStyle, func() {
-		// Cycle through all tabs: EQ → Wave → Spectrum → Meters → EQ → ...
-		tabs := AllPanelTabs()
-		cur := z.tabState.ActiveTab()
-		next := tabs[(int(cur)+1)%len(tabs)]
-		z.tabState.SetActiveTab(next)
-		z.eqToggleBtn.Text = PanelTabLabel(next)
+	tabs := AllPanelTabs()
+	for i, tab := range tabs {
+		t := tab // capture
+		z.tabButtons[i] = NewButton(PanelTabLabel(t), InstButtonStyle, func() {
+			z.tabState.SetActiveTab(t)
+		})
+	}
+
+	z.freezeBtn = NewButton("||", InstButtonStyle, func() {
+		if z.callbacks.OnFreezeToggle != nil {
+			frozen := z.callbacks.OnFreezeToggle()
+			if frozen {
+				z.freezeBtn.Text = ">"
+			} else {
+				z.freezeBtn.Text = "||"
+			}
+		}
 	})
 
 	z.eqChannelBtn = NewButton("Master", InstButtonStyle, func() {
@@ -220,15 +238,22 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 
 	switch z.tabState.ActiveTab() {
 	case TabWave:
+		cr := z.contentRect()
 		if state := z.getAnalyzerState(); state != nil {
-			drawAnalyzerWaveform(screen, z.rect, state)
+			ch, cap := z.resolveChannel(state)
+			drawAnalyzerWaveform(screen, cr, ch, cap)
 		} else if z.callbacks.DrawWaveform != nil {
 			z.callbacks.DrawWaveform(screen)
 		}
 	case TabSpectrum:
-		drawAnalyzerSpectrum(screen, z.rect, z.getAnalyzerState())
+		if state := z.getAnalyzerState(); state != nil {
+			ch, _ := z.resolveChannel(state)
+			drawAnalyzerSpectrum(screen, z.contentRect(), ch, &z.spectrumPeaks)
+		} else {
+			drawAnalyzerSpectrum(screen, z.contentRect(), nil, &z.spectrumPeaks)
+		}
 	case TabMeters:
-		drawMeterBridge(screen, z.rect, z.getAnalyzerState())
+		drawMeterBridge(screen, z.contentRect(), z.getAnalyzerState())
 	case TabEQ:
 		// Draw spectrum bars and EQ curve below buttons.
 		if z.rect.Dy() >= 40 {
@@ -241,16 +266,33 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	if z.eqChannelBtn != nil {
 		z.drawPillTab(screen, z.eqChannelBtn, true, "")
 	}
-	if z.hpfBtn != nil {
-		hpfActive := z.callbacks.HPFEnabled != nil && z.callbacks.HPFEnabled()
-		z.drawPillTab(screen, z.hpfBtn, hpfActive, "")
+	if z.tabState.ActiveTab() == TabEQ {
+		if z.hpfBtn != nil {
+			hpfActive := z.callbacks.HPFEnabled != nil && z.callbacks.HPFEnabled()
+			z.drawPillTab(screen, z.hpfBtn, hpfActive, "")
+		}
+		if z.lpfBtn != nil {
+			lpfActive := z.callbacks.LPFEnabled != nil && z.callbacks.LPFEnabled()
+			z.drawPillTab(screen, z.lpfBtn, lpfActive, "")
+		}
+	} else {
+		// Freeze button on analysis tabs.
+		if z.freezeBtn != nil {
+			// Sync button text from analyzer state each frame.
+			if state := z.getAnalyzerState(); state != nil && state.Capture != nil && state.Capture.Frozen {
+				z.freezeBtn.Text = ">"
+			} else {
+				z.freezeBtn.Text = "||"
+			}
+			frozen := z.freezeBtn.Text == ">"
+			z.drawPillTab(screen, z.freezeBtn, frozen, "")
+		}
 	}
-	if z.lpfBtn != nil {
-		lpfActive := z.callbacks.LPFEnabled != nil && z.callbacks.LPFEnabled()
-		z.drawPillTab(screen, z.lpfBtn, lpfActive, "")
-	}
-	if z.eqToggleBtn != nil {
-		z.drawPillTab(screen, z.eqToggleBtn, z.tabState.ActiveTab() != TabEQ, "")
+	tabs := AllPanelTabs()
+	for i, btn := range z.tabButtons {
+		if btn != nil {
+			z.drawPillTab(screen, btn, z.tabState.ActiveTab() == tabs[i], "")
+		}
 	}
 
 	drawRect(screen, z.rect, colButtonBorder, false)
@@ -315,19 +357,22 @@ func (z *EQPanelZone) WaveformMode() bool { return z.tabState.ActiveTab() == Tab
 
 // toggleButtonLabel returns the display text for the EQ/Wave toggle button.
 func (z *EQPanelZone) toggleButtonLabel() string {
-	return z.eqToggleBtn.Text
+	return PanelTabLabel(z.tabState.ActiveTab())
 }
 
-// SetWaveformMode sets the toggle state and updates the button text (compatibility shim).
+// SetWaveformMode sets the toggle state (compatibility shim).
 func (z *EQPanelZone) SetWaveformMode(v bool) {
 	if v {
 		z.tabState.SetActiveTab(TabWave)
 	} else {
 		z.tabState.SetActiveTab(TabEQ)
 	}
-	if z.eqToggleBtn != nil {
-		z.eqToggleBtn.Text = PanelTabLabel(z.tabState.ActiveTab())
-	}
+}
+
+// contentRect returns the drawable area below the header buttons.
+func (z *EQPanelZone) contentRect() image.Rectangle {
+	headerH := 26 // 4px top pad + 18px button + 4px bottom pad
+	return image.Rect(z.rect.Min.X, z.rect.Min.Y+headerH, z.rect.Max.X, z.rect.Max.Y)
 }
 
 // SetPortal sets the portal reference for opening overlays.
@@ -387,16 +432,32 @@ func (z *EQPanelZone) layoutButtons() {
 	channelBtnRect := image.Rect(r.Min.X+6, r.Min.Y+4, r.Min.X+6+channelBtnW, r.Min.Y+4+btnH)
 	z.eqChannelBtn.SetRect(channelBtnRect)
 
-	// Toggle button (right).
-	toggleRect := image.Rect(r.Max.X-btnW-6, r.Min.Y+4, r.Max.X-6, r.Min.Y+4+btnH)
-	z.eqToggleBtn.SetRect(toggleRect)
+	// Tab buttons (right-aligned, from right to left).
+	const tabGap = 2
+	tabBtnH := btnH
+	rightEdge := r.Max.X - 6
+	for i := len(z.tabButtons) - 1; i >= 0; i-- {
+		label := z.tabButtons[i].Text
+		tw := TextWidth(label) + 12 // 6px padding each side
+		if tw < 28 {
+			tw = 28
+		}
+		tabRect := image.Rect(rightEdge-tw, r.Min.Y+4, rightEdge, r.Min.Y+4+tabBtnH)
+		z.tabButtons[i].SetRect(tabRect)
+		rightEdge = tabRect.Min.X - tabGap
+	}
 
-	// HPF/LPF buttons between channel and toggle.
+	// HPF/LPF buttons between channel and tab bar (shown on EQ tab).
 	filterBtnW := 28
 	hpfX := channelBtnRect.Max.X + 4
 	z.hpfBtn.SetRect(image.Rect(hpfX, r.Min.Y+4, hpfX+filterBtnW, r.Min.Y+4+btnH))
 	lpfX := hpfX + filterBtnW + 2
 	z.lpfBtn.SetRect(image.Rect(lpfX, r.Min.Y+4, lpfX+filterBtnW, r.Min.Y+4+btnH))
+
+	// Freeze button between channel and tab bar (shown on non-EQ tabs).
+	freezeW := 24
+	freezeX := channelBtnRect.Max.X + 4
+	z.freezeBtn.SetRect(image.Rect(freezeX, r.Min.Y+4, freezeX+freezeW, r.Min.Y+4+btnH))
 }
 
 func (z *EQPanelZone) layoutMuteAndDBInputs() {
@@ -502,34 +563,51 @@ func (z *EQPanelZone) rebuildHitAreas() {
 		})
 	}
 
-	// Toggle button.
-	if tr := z.eqToggleBtn.Rect(); !tr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    tr,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.eqToggleBtn},
-			Tag:     "eq-toggle-btn",
-		})
+	// Tab buttons.
+	for i, btn := range z.tabButtons {
+		if btn == nil {
+			continue
+		}
+		if tr := btn.Rect(); !tr.Empty() {
+			z.hitAreas = append(z.hitAreas, HitArea{
+				Rect:    tr,
+				ZIndex:  zIdx + 1,
+				Handler: &buttonHitAdapter{btn: btn},
+				Tag:     fmt.Sprintf("eq-tab-%d", i),
+			})
+		}
 	}
 
-	// HPF button.
-	if hr := z.hpfBtn.Rect(); !hr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    hr,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.hpfBtn},
-			Tag:     "eq-hpf-btn",
-		})
-	}
+	if z.tabState.ActiveTab() == TabEQ {
+		// HPF button.
+		if hr := z.hpfBtn.Rect(); !hr.Empty() {
+			z.hitAreas = append(z.hitAreas, HitArea{
+				Rect:    hr,
+				ZIndex:  zIdx + 1,
+				Handler: &buttonHitAdapter{btn: z.hpfBtn},
+				Tag:     "eq-hpf-btn",
+			})
+		}
 
-	// LPF button.
-	if lr := z.lpfBtn.Rect(); !lr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    lr,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.lpfBtn},
-			Tag:     "eq-lpf-btn",
-		})
+		// LPF button.
+		if lr := z.lpfBtn.Rect(); !lr.Empty() {
+			z.hitAreas = append(z.hitAreas, HitArea{
+				Rect:    lr,
+				ZIndex:  zIdx + 1,
+				Handler: &buttonHitAdapter{btn: z.lpfBtn},
+				Tag:     "eq-lpf-btn",
+			})
+		}
+	} else {
+		// Freeze button (analysis tabs only).
+		if fr := z.freezeBtn.Rect(); !fr.Empty() {
+			z.hitAreas = append(z.hitAreas, HitArea{
+				Rect:    fr,
+				ZIndex:  zIdx + 1,
+				Handler: &buttonHitAdapter{btn: z.freezeBtn},
+				Tag:     "eq-freeze-btn",
+			})
+		}
 	}
 
 	// Per-band dB text inputs.
@@ -1260,6 +1338,16 @@ func (z *EQPanelZone) getAnalyzerState() *analyzer.State {
 		return z.callbacks.AnalyzerState()
 	}
 	return nil
+}
+
+// resolveChannel returns the ChannelMetrics and CaptureBuffer to display based
+// on the current channel selection. If a non-master channel is selected and the
+// analyzer provides detail data, that is used; otherwise falls back to master.
+func (z *EQPanelZone) resolveChannel(state *analyzer.State) (*analyzer.ChannelMetrics, *analyzer.CaptureBuffer) {
+	if z.activeChannel != "" && z.activeChannel != "main" && state.Detail != nil {
+		return state.Detail, state.Capture
+	}
+	return &state.Master, state.Capture
 }
 
 func (z *EQPanelZone) analyzerSnapshot() audio.AnalyzerSnapshot {

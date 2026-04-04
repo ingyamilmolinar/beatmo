@@ -18,17 +18,12 @@ func (g *Game) initJSEqWidgets() {
 		}
 		mode := strings.ToLower(args[0].String())
 		g.drum.eqWaveformMode = mode != "eq"
-		if g.drum.eqToggleBtn() != nil {
-			if g.drum.eqWaveformMode {
-				g.drum.eqToggleBtn().Text = "Wave"
-			} else {
-				g.drum.eqToggleBtn().Text = "EQ"
-			}
-		}
-		// Keep zone state in sync — the zone is the canonical owner
-		// during normal (non-JS) operation; JS overrides both.
 		if g.drum.eqPanelZone != nil {
-			g.drum.eqPanelZone.SetWaveformMode(g.drum.eqWaveformMode)
+			if mode != "eq" {
+				g.drum.eqPanelZone.tabState.SetActiveTab(TabWave)
+			} else {
+				g.drum.eqPanelZone.tabState.SetActiveTab(TabEQ)
+			}
 		}
 		return nil
 	}))

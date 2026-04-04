@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 
@@ -28,6 +29,7 @@ const (
 	meterYellowDB   = -6.0
 	meterRedDB      = -1.0
 	meterRMSOpacity = 128 // 50% of 255
+	meterHeaderH    = 12  // px reserved for dB scale header
 )
 
 // drawMeterBridge draws a vertical stack of horizontal meter bars for all
@@ -50,7 +52,8 @@ func drawMeterBridge(dst *ebiten.Image, rect image.Rectangle, state *analyzer.St
 
 	// Calculate row height: divide available height among instruments + master.
 	numRows := len(active) + 1 // +1 for master
-	rowH := rect.Dy() / numRows
+	availH := rect.Dy() - 2 - meterHeaderH
+	rowH := availH / numRows
 	if rowH < meterMinRowH {
 		rowH = meterMinRowH
 	}
@@ -60,7 +63,28 @@ func drawMeterBridge(dst *ebiten.Image, rect image.Rectangle, state *analyzer.St
 
 	x := rect.Min.X + 1 // inside border
 	w := rect.Dx() - 2  // inside border
-	y := rect.Min.Y + 1
+
+	// Draw dB scale header.
+	scaleY := rect.Min.Y + 1
+	barStartX := x + meterLabelW
+	barEndX := x + w - meterClipW
+	barW := barEndX - barStartX
+	if barW > 0 {
+		dbTicks := []float64{-48, -24, -12, -6, 0}
+		captionScale := FontSizeCaption / FontSizeBody
+		for _, db := range dbTicks {
+			frac := dbToFrac(db)
+			tickX := barStartX + int(frac*float64(barW))
+			// Vertical reference line through all rows.
+			drawRect(dst, image.Rect(tickX, scaleY+meterHeaderH, tickX+1, rect.Max.Y-1), color.NRGBA{255, 255, 255, 20}, true)
+			// Label.
+			label := fmt.Sprintf("%.0f", db)
+			lw := int(float64(TextWidth(label)) * captionScale)
+			DrawTextColorAtScale(dst, label, tickX-lw/2, scaleY, colTextSecondary, captionScale)
+		}
+	}
+
+	y := rect.Min.Y + 1 + meterHeaderH
 
 	// Draw each instrument meter.
 	for _, inst := range active {
@@ -85,10 +109,14 @@ func drawMeterBridge(dst *ebiten.Image, rect image.Rectangle, state *analyzer.St
 // drawMeterRow draws a single horizontal meter bar with peak, RMS overlay,
 // and clip indicator.
 func drawMeterRow(dst *ebiten.Image, x, y, width, height, labelW int, name string, peakDB, rmsDB float64, clips int) {
-	_ = name // text rendering deferred — space is reserved by labelW
-
 	// Background.
 	drawRect(dst, image.Rect(x, y, x+width, y+height), meterBg, true)
+
+	// Instrument name label.
+	captionScale := FontSizeCaption / FontSizeBody
+	truncated := truncateName(name, labelW-6, captionScale)
+	textY := y + (height-int(float64(TextHeight())*captionScale))/2
+	DrawTextColorAtScale(dst, truncated, x+4, textY, colTextSecondary, captionScale)
 
 	// Bar area: after label, before clip indicator.
 	barX := x + labelW
@@ -118,7 +146,7 @@ func drawMeterRow(dst *ebiten.Image, x, y, width, height, labelW int, name strin
 		drawRect(dst, image.Rect(barX, rmsY, barX+rmsPx, rmsY+rmsH), rmsCol, true)
 	}
 
-	// Clip indicator.
+	// Clip indicator / peak dB readout.
 	if clips > 0 {
 		clipX := x + width - meterClipW + (meterClipW-meterClipBoxW)/2
 		clipY := y + (height-meterClipBoxW)/2
@@ -128,6 +156,12 @@ func drawMeterRow(dst *ebiten.Image, x, y, width, height, labelW int, name strin
 			clipY = y
 		}
 		drawRect(dst, image.Rect(clipX, clipY, clipX+meterClipBoxW, clipY+clipH), meterClip, true)
+	} else if peakDB > meterDBFloor {
+		dbText := fmt.Sprintf("%.0f", peakDB)
+		textCol := meterColor(peakDB)
+		textX := x + width - meterClipW + 2
+		dbTextY := y + (height-int(float64(TextHeight())*captionScale))/2
+		DrawTextColorAtScale(dst, dbText, textX, dbTextY, textCol, captionScale)
 	}
 }
 
@@ -157,4 +191,18 @@ func meterColor(db float64) color.RGBA {
 func meterColorAlpha(db float64, alpha uint8) color.NRGBA {
 	c := meterColor(db)
 	return color.NRGBA{R: c.R, G: c.G, B: c.B, A: alpha}
+}
+
+// truncateName shortens name so it fits within maxPx at the given scale.
+func truncateName(name string, maxPx int, scale float64) string {
+	if int(float64(TextWidth(name))*scale) <= maxPx {
+		return name
+	}
+	for i := len(name) - 1; i > 0; i-- {
+		candidate := name[:i]
+		if int(float64(TextWidth(candidate))*scale) <= maxPx {
+			return candidate
+		}
+	}
+	return name[:1]
 }

@@ -13,6 +13,7 @@ const (
 	WidgetRack      WidgetKind = "rack"
 	WidgetTimeline  WidgetKind = "timeline"
 	WidgetWave      WidgetKind = "wave"
+	WidgetScope     WidgetKind = "scope"
 	WidgetCustom    WidgetKind = "custom"
 )
 

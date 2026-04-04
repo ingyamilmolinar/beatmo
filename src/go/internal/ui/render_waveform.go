@@ -8,22 +8,27 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// drawAnalyzerWaveform renders a waveform from the analyzer State into the
-// given rectangle. It picks frozen capture data when available, otherwise
-// falls back to the master channel's rolling waveform.
-func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State) {
-	if state == nil {
+// drawAnalyzerWaveform renders a waveform from the given channel metrics into
+// the rectangle. It picks frozen capture data when available, otherwise
+// falls back to the channel's rolling waveform.
+func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer) {
+	if ch == nil {
 		drawRect(dst, rect, colButtonBorder, false)
 		return
 	}
 
-	// Choose waveform source.
+	// Choose waveform source and channel name.
 	var wave []float64
+	frozen := capture != nil && capture.Frozen
+	channelName := ch.Name
+	if channelName == "" {
+		channelName = "Master"
+	}
 	switch {
-	case state.Capture != nil && state.Capture.Frozen:
-		wave = state.Capture.Wave.Samples
-	case state.Master.Active:
-		wave = state.Master.Waveform
+	case frozen:
+		wave = capture.Wave.Samples
+	case ch.Active:
+		wave = ch.Waveform
 	}
 
 	if len(wave) == 0 {
@@ -31,16 +36,53 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		return
 	}
 
-	// Draw midline at vertical center.
-	midY := rect.Min.Y + rect.Dy()/2
-	drawRect(dst, image.Rect(rect.Min.X, midY, rect.Max.X, midY+1), colWaveMid, true)
+	// Reserve left margin for amplitude labels.
+	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y)
 
-	width := rect.Dx()
+	// Label scale.
+	captionScale := FontSizeCaption / FontSizeBody
+	lh := int(float64(TextHeight()) * captionScale)
+
+	// Draw amplitude labels in the left margin.
+	DrawTextColorAtScale(dst, "+1", rect.Min.X+2, waveRect.Min.Y+2, colTextSecondary, captionScale)
+	DrawTextColorAtScale(dst, "0", rect.Min.X+2, waveRect.Min.Y+waveRect.Dy()/2-lh/2, colTextSecondary, captionScale)
+	DrawTextColorAtScale(dst, "-1", rect.Min.X+2, waveRect.Max.Y-lh-2, colTextSecondary, captionScale)
+
+	// Draw midline at vertical center.
+	midY := waveRect.Min.Y + waveRect.Dy()/2
+	drawRect(dst, image.Rect(waveRect.Min.X, midY, waveRect.Max.X, midY+1), colWaveMid, true)
+
+	// Draw dashed grid lines at +0.5 and -0.5.
+	halfH := float64(waveRect.Dy()) * 0.48
+	gridCol := color.NRGBA{255, 255, 255, 20}
+	for _, yOff := range []int{
+		midY - int(0.5*halfH),
+		midY + int(0.5*halfH),
+	} {
+		for x := waveRect.Min.X; x < waveRect.Max.X; x += 6 {
+			endX := x + 3
+			if endX > waveRect.Max.X {
+				endX = waveRect.Max.X
+			}
+			drawRect(dst, image.Rect(x, yOff, endX, yOff+1), gridCol, true)
+		}
+	}
+
+	width := waveRect.Dx()
 	if width <= 0 {
 		return
 	}
 
-	drawWaveTrace(dst, wave, rect, midY, width, colWaveTrace)
+	drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace)
+
+	// Channel name at top-left of waveform area.
+	DrawTextColorAtScale(dst, channelName, waveRect.Min.X+4, waveRect.Min.Y+2, colTextSecondary, captionScale)
+
+	// Frozen indicator at top-right.
+	if frozen {
+		frozenW := int(float64(TextWidth("FROZEN")) * captionScale)
+		DrawTextColorAtScale(dst, "FROZEN", waveRect.Max.X-frozenW-4, waveRect.Min.Y+2, colAccentBright, captionScale)
+	}
 }
 
 // drawWaveTrace draws a single waveform trace using the min/max-per-pixel-column

@@ -140,6 +140,10 @@ func (z *ScopePanelZone) Invalidate() { z.needLayout = true }
 func (z *ScopePanelZone) Layout(rect image.Rectangle) {
 	z.rect = rect
 	z.needLayout = false
+	if rect.Dx() < 8 || rect.Dy() < 8 {
+		z.hitAreas = z.hitAreas[:0]
+		return
+	}
 	z.layoutButtons()
 	z.rebuildHitAreas()
 }

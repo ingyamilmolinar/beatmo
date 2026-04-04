@@ -12,7 +12,7 @@ const (
 
 // AllPanelTabs returns all tabs in display order.
 func AllPanelTabs() []PanelTab {
-	return []PanelTab{TabWave, TabSpectrum, TabMeters, TabEQ}
+	return []PanelTab{TabEQ, TabWave, TabSpectrum, TabMeters}
 }
 
 // PanelTabLabel returns the human-readable label for a tab.
