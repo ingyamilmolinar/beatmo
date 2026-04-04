@@ -141,15 +141,12 @@ type cChorus struct {
 
 func newChorus(sr int, params map[string]float64) *cChorus {
 	c := &cChorus{}
-	depthMs := params["depth"]
-	if depthMs <= 0 {
-		depthMs = 5
-	}
 	srF := float64(sr)
 	if srF <= 0 {
 		srF = 44100
 	}
-	bufLen := int(depthMs*0.001*srF*2) + 64
+	// Pre-allocate for max depth (20ms) to avoid reallocation on depth change.
+	bufLen := int(20.0*0.001*srF*2) + 64
 	c.bufPtr = C.malloc(C.size_t(bufLen) * C.size_t(unsafe.Sizeof(C.float(0))))
 	C.ifx_chorus_init(&c.c, C.int(sr), (*C.float)(c.bufPtr), C.int(bufLen),
 		C.float(params["rate"]), C.float(params["depth"]), C.float(params["mix"]))

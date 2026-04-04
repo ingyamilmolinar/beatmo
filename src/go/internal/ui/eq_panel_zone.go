@@ -116,14 +116,13 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 }
 
 func (z *EQPanelZone) initButtons() {
-	z.eqToggleBtn = NewButton("Wave", InstButtonStyle, func() {
-		if z.tabState.ActiveTab() == TabEQ {
-			z.tabState.SetActiveTab(TabWave)
-			z.eqToggleBtn.Text = "EQ"
-		} else {
-			z.tabState.SetActiveTab(TabEQ)
-			z.eqToggleBtn.Text = "Wave"
-		}
+	z.eqToggleBtn = NewButton("EQ", InstButtonStyle, func() {
+		// Cycle through all tabs: EQ → Wave → Spectrum → Meters → EQ → ...
+		tabs := AllPanelTabs()
+		cur := z.tabState.ActiveTab()
+		next := tabs[(int(cur)+1)%len(tabs)]
+		z.tabState.SetActiveTab(next)
+		z.eqToggleBtn.Text = PanelTabLabel(next)
 	})
 
 	z.eqChannelBtn = NewButton("Master", InstButtonStyle, func() {
@@ -251,7 +250,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 		z.drawPillTab(screen, z.lpfBtn, lpfActive, "")
 	}
 	if z.eqToggleBtn != nil {
-		z.drawPillTab(screen, z.eqToggleBtn, z.tabState.ActiveTab() == TabWave, "")
+		z.drawPillTab(screen, z.eqToggleBtn, z.tabState.ActiveTab() != TabEQ, "")
 	}
 
 	drawRect(screen, z.rect, colButtonBorder, false)
@@ -327,11 +326,7 @@ func (z *EQPanelZone) SetWaveformMode(v bool) {
 		z.tabState.SetActiveTab(TabEQ)
 	}
 	if z.eqToggleBtn != nil {
-		if z.tabState.ActiveTab() == TabWave {
-			z.eqToggleBtn.Text = "EQ"
-		} else {
-			z.eqToggleBtn.Text = "Wave"
-		}
+		z.eqToggleBtn.Text = PanelTabLabel(z.tabState.ActiveTab())
 	}
 }
 

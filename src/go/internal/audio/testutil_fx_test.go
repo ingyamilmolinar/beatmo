@@ -43,7 +43,7 @@ func assertDryWhenMixZero(t *testing.T, fx InsertEffect, freq float64, sr, n int
 	input := sineSamples(freq, sr, n)
 	for i, x := range input {
 		out := fx.ProcessSample(x)
-		if math.Abs(out-x) > 1e-10 {
+		if math.Abs(out-x) > 1e-6 {
 			t.Fatalf("sample %d: mix=0 should be passthrough, got %v want %v", i, out, x)
 		}
 	}

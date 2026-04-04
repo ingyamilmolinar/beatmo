@@ -12,41 +12,40 @@ import (
 )
 
 // TestEQWaveButtonRendersWithoutTilde verifies that the EQ/Wave toggle button
-// displays "Wave" without a tilde prefix when in default EQ mode, and "EQ"
-// without a tilde prefix when in waveform mode.
+// displays the current tab name without a tilde prefix.
 func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	assertDefaultParityState(t)
 
 	z := NewEQPanelZone(EQCallbacks{})
 
-	// Default state: EQ mode (waveformMode = false), button should show "Wave".
+	// Default state: EQ mode, button shows "EQ" (current tab).
 	if z.WaveformMode() {
-		t.Fatal("expected default EQ mode (waveformMode=false)")
+		t.Fatal("expected default EQ mode")
 	}
 
 	got := z.toggleButtonLabel()
 	if strings.Contains(got, "~") {
 		t.Fatalf("toggle button label in EQ mode should not contain tilde, got %q", got)
 	}
-	if got != "Wave" {
-		t.Fatalf("expected display text 'Wave' in EQ mode, got %q", got)
+	if got != "EQ" {
+		t.Fatalf("expected display text 'EQ' in EQ mode, got %q", got)
 	}
 
-	// Switch to waveform mode — button should show "EQ".
+	// Switch to waveform mode — button shows "Wave" (current tab).
 	z.SetWaveformMode(true)
 	got = z.toggleButtonLabel()
 	if strings.Contains(got, "~") {
 		t.Fatalf("toggle button label in waveform mode should not contain tilde, got %q", got)
 	}
-	if got != "EQ" {
-		t.Fatalf("expected display text 'EQ' in waveform mode, got %q", got)
+	if got != "Wave" {
+		t.Fatalf("expected display text 'Wave' in waveform mode, got %q", got)
 	}
 
-	// Toggle back to EQ mode — should still be clean "Wave".
+	// Toggle back to EQ mode — shows "EQ".
 	z.SetWaveformMode(false)
 	got = z.toggleButtonLabel()
-	if got != "Wave" {
-		t.Fatalf("expected display text 'Wave' after toggling back, got %q", got)
+	if got != "EQ" {
+		t.Fatalf("expected display text 'EQ' after toggling back, got %q", got)
 	}
 }
 

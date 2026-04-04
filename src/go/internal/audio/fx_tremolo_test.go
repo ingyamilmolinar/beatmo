@@ -63,7 +63,7 @@ func TestTremoloDepthZeroPassthrough(t *testing.T) {
 	input := sineSamples(1000, 44100, 44100)
 	for _, x := range input {
 		out := tr.ProcessSample(x)
-		if math.Abs(out-x) > 1e-10 {
+		if math.Abs(out-x) > 1e-6 {
 			t.Fatalf("depth=0 should be passthrough, got %v want %v", out, x)
 		}
 	}

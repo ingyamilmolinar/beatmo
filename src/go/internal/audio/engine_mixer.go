@@ -107,6 +107,10 @@ func (m *mixer) instrumentSlot(id string) int {
 	m.instSlots[id] = idx
 	m.instSlotIDs = append(m.instSlotIDs, id)
 	m.instBufs = append(m.instBufs, make([]float64, blockSize))
+	// Register with the analyzer service so meter bridge can display this instrument.
+	if analyzerSvc != nil {
+		analyzerSvc.RegisterInstrument(idx, id, id)
+	}
 	return idx
 }
 

@@ -11,12 +11,19 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+/* ---- Parameter smoothing (one-pole exponential, 5ms) ---- */
+#define IFX_SMOOTH_TIME_MS 5.0f
+
 /* ---- Distortion (tanh soft-clip + one-pole LP tone filter) ---- */
 
 typedef struct {
-    float drive;     /* 1-20: gain before tanh */
-    float tone;      /* LP filter cutoff Hz */
-    float mix;       /* 0=dry, 1=full wet */
+    float drive;      /* current smoothed value, 1-20 */
+    float drive_tgt;  /* target */
+    float tone;       /* current smoothed cutoff Hz */
+    float tone_tgt;
+    float mix;        /* current smoothed 0-1 */
+    float mix_tgt;
+    float smooth_coeff;
     int   sr;
     float lp_y1;     /* one-pole LP state */
     float lp_a;      /* one-pole coefficient: exp(-2π*fc/sr) */
@@ -33,16 +40,22 @@ void ifx_distortion_set_param(ifx_distortion_t *d,
 /* ---- Delay (mono delay line with LP-filtered feedback) ---- */
 
 typedef struct {
-    float  time_ms;       /* delay time in ms */
-    float  feedback;      /* feedback amount 0-0.95 */
-    float  mix;           /* wet/dry 0-1 */
+    float  time_ms;           /* delay time in ms */
+    float  feedback;          /* current smoothed feedback 0-0.95 */
+    float  feedback_tgt;
+    float  mix;               /* current smoothed wet/dry 0-1 */
+    float  mix_tgt;
+    float  smooth_coeff;
     int    sr;
-    float *buf;           /* circular buffer (caller-owned) */
-    int    buf_len;       /* buffer length */
-    int    pos;           /* write position */
-    int    delay_samples; /* current delay in samples */
-    float  lp_y1;         /* one-pole LP state for feedback damping */
-    float  lp_a;          /* LP coefficient */
+    float *buf;               /* circular buffer (caller-owned) */
+    int    buf_len;           /* buffer length */
+    int    pos;               /* write position */
+    int    delay_samples;     /* current delay in samples */
+    int    old_delay_samples; /* previous delay (crossfade source) */
+    int    xfade_pos;         /* current crossfade position */
+    int    xfade_len;         /* crossfade length in samples */
+    float  lp_y1;             /* one-pole LP state for feedback damping */
+    float  lp_a;              /* LP coefficient */
 } ifx_delay_t;
 
 /* buf must be at least max_delay_samples floats. */
@@ -72,9 +85,13 @@ typedef struct {
 } ifx_allpass_t;
 
 typedef struct {
-    float       room;      /* 0-1: scales comb feedback */
-    float       damping;   /* 0-1: LP damping in combs */
-    float       mix;       /* wet/dry 0-1 */
+    float       room;          /* current smoothed 0-1 */
+    float       room_tgt;
+    float       damping;       /* current smoothed 0-1 */
+    float       damping_tgt;
+    float       mix;           /* current smoothed 0-1 */
+    float       mix_tgt;
+    float       smooth_coeff;
     int         sr;
     ifx_comb_t    combs[4];
     ifx_allpass_t aps[2];
@@ -93,16 +110,20 @@ void ifx_reverb_set_param(ifx_reverb_t *r, const char *name, float value);
 /* ---- Chorus (LFO-modulated interpolated delay) ---- */
 
 typedef struct {
-    float  rate;          /* LFO Hz */
-    float  depth;         /* modulation depth in ms */
-    float  mix;           /* wet/dry 0-1 */
+    float  rate;          /* current smoothed LFO Hz */
+    float  rate_tgt;
+    float  depth;         /* current smoothed modulation depth in ms */
+    float  depth_tgt;
+    float  mix;           /* current smoothed wet/dry 0-1 */
+    float  mix_tgt;
+    float  smooth_coeff;
     int    sr;
     float *buf;           /* delay buffer (caller-owned) */
     int    buf_len;
     int    pos;
     float  phase;         /* LFO phase 0..2π */
-    float  depth_samples; /* depth in samples */
-    float  phase_inc;     /* per-sample phase increment */
+    float  depth_samples; /* depth in samples (derived) */
+    float  phase_inc;     /* per-sample phase increment (derived) */
 } ifx_chorus_t;
 
 void ifx_chorus_init(ifx_chorus_t *c, int sr, float *buf, int buf_len,

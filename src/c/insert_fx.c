@@ -17,6 +17,13 @@ static inline float clampf(float v, float lo, float hi) {
     return v;
 }
 
+/* One-pole smoothing coefficient for the given sample rate. */
+static inline float ifx_smooth_coeff(int sr) {
+    if (sr <= 0) sr = 44100;
+    float samples = (float)sr * IFX_SMOOTH_TIME_MS * 0.001f;
+    return 1.0f - expf(-1.0f / samples);
+}
+
 /* ==== Distortion ==== */
 
 static void distortion_recalc_lp(ifx_distortion_t *d) {
@@ -30,9 +37,10 @@ static void distortion_recalc_lp(ifx_distortion_t *d) {
 EXPORT void ifx_distortion_init(ifx_distortion_t *d, int sr,
                                  float drive, float tone, float mix) {
     d->sr    = sr;
-    d->drive = clampf(drive, 1, 20);
-    d->tone  = clampf(tone, 200, 8000);
-    d->mix   = clampf(mix, 0, 1);
+    d->drive = d->drive_tgt = clampf(drive, 1, 20);
+    d->tone  = d->tone_tgt  = clampf(tone, 200, 8000);
+    d->mix   = d->mix_tgt   = clampf(mix, 0, 1);
+    d->smooth_coeff = ifx_smooth_coeff(sr);
     d->lp_y1 = 0;
     distortion_recalc_lp(d);
 }
@@ -40,11 +48,20 @@ EXPORT void ifx_distortion_init(ifx_distortion_t *d, int sr,
 EXPORT void ifx_distortion_process(ifx_distortion_t *d,
                                     const float *in, float *out, int samples) {
     float drive = d->drive;
+    float tone  = d->tone;
     float mix   = d->mix;
-    float lp_a  = d->lp_a;
     float lp_y1 = d->lp_y1;
+    float coeff = d->smooth_coeff;
+    float sr_f  = (float)d->sr;
+    if (sr_f <= 0) sr_f = 44100;
 
     for (int i = 0; i < samples; i++) {
+        /* Tick smoothers */
+        drive += (d->drive_tgt - drive) * coeff;
+        tone  += (d->tone_tgt  - tone)  * coeff;
+        mix   += (d->mix_tgt   - mix)   * coeff;
+        float lp_a = expf(-2.0f * (float)M_PI * tone / sr_f);
+
         float x   = in[i];
         float wet = tanhf(drive * x);
         /* One-pole LP tone filter on wet signal */
@@ -52,6 +69,9 @@ EXPORT void ifx_distortion_process(ifx_distortion_t *d,
         wet   = lp_y1;
         out[i] = x * (1 - mix) + wet * mix;
     }
+    d->drive = drive;
+    d->tone  = tone;
+    d->mix   = mix;
     d->lp_y1 = lp_y1;
 }
 
@@ -62,12 +82,11 @@ EXPORT void ifx_distortion_reset(ifx_distortion_t *d) {
 EXPORT void ifx_distortion_set_param(ifx_distortion_t *d,
                                       const char *name, float value) {
     if (strcmp(name, "drive") == 0) {
-        d->drive = clampf(value, 1, 20);
+        d->drive_tgt = clampf(value, 1, 20);
     } else if (strcmp(name, "tone") == 0) {
-        d->tone = clampf(value, 200, 8000);
-        distortion_recalc_lp(d);
+        d->tone_tgt = clampf(value, 200, 8000);
     } else if (strcmp(name, "mix") == 0) {
-        d->mix = clampf(value, 0, 1);
+        d->mix_tgt = clampf(value, 0, 1);
     }
 }
 
@@ -81,6 +100,9 @@ static void delay_recalc(ifx_delay_t *d) {
     if (d->delay_samples >= d->buf_len) d->delay_samples = d->buf_len - 1;
     /* LP for feedback darkening: cutoff at 3 kHz */
     d->lp_a = expf(-2.0f * (float)M_PI * 3000.0f / sr);
+    /* Crossfade duration: ~5ms */
+    d->xfade_len = (int)(sr * IFX_SMOOTH_TIME_MS * 0.001f + 0.5f);
+    if (d->xfade_len < 1) d->xfade_len = 1;
 }
 
 EXPORT void ifx_delay_init(ifx_delay_t *d, int sr, float *buf, int buf_len,
@@ -90,13 +112,23 @@ EXPORT void ifx_delay_init(ifx_delay_t *d, int sr, float *buf, int buf_len,
     d->buf_len  = buf_len;
     d->pos      = 0;
     d->time_ms  = clampf(time_ms, 10, 1000);
-    d->feedback = clampf(feedback, 0, 0.95f);
-    d->mix      = clampf(mix, 0, 1);
+    d->feedback = d->feedback_tgt = clampf(feedback, 0, 0.95f);
+    d->mix      = d->mix_tgt      = clampf(mix, 0, 1);
+    d->smooth_coeff = ifx_smooth_coeff(sr);
+    d->old_delay_samples = 0;
+    d->xfade_pos = 0;
     d->lp_y1    = 0;
     if (buf && buf_len > 0) {
         memset(buf, 0, (size_t)buf_len * sizeof(float));
     }
     delay_recalc(d);
+}
+
+static inline float delay_read_at(ifx_delay_t *d, int pos, int dly_samples) {
+    int read_pos = pos - dly_samples;
+    if (read_pos < 0) read_pos += d->buf_len;
+    if (read_pos >= d->buf_len) read_pos = 0;
+    return d->buf[read_pos];
 }
 
 EXPORT void ifx_delay_process(ifx_delay_t *d,
@@ -109,6 +141,7 @@ EXPORT void ifx_delay_process(ifx_delay_t *d,
     float lp_y1     = d->lp_y1;
     int   pos       = d->pos;
     float *buf      = d->buf;
+    float coeff     = d->smooth_coeff;
 
     if (!buf || buf_len <= 0) {
         /* Passthrough */
@@ -117,11 +150,28 @@ EXPORT void ifx_delay_process(ifx_delay_t *d,
     }
 
     for (int i = 0; i < samples; i++) {
+        /* Tick smoothers */
+        feedback += (d->feedback_tgt - feedback) * coeff;
+        mix      += (d->mix_tgt      - mix)      * coeff;
+
         float x = in[i];
-        /* Read from delay line */
-        int read_pos = pos - dly;
-        if (read_pos < 0) read_pos += buf_len;
-        float delayed = buf[read_pos];
+
+        /* Read from delay line, crossfading if time was recently changed */
+        float delayed;
+        if (d->xfade_pos < d->xfade_len && d->old_delay_samples > 0) {
+            float t = (float)d->xfade_pos / (float)d->xfade_len;
+            float old_val = delay_read_at(d, pos, d->old_delay_samples);
+            float new_val = delay_read_at(d, pos, dly);
+            delayed = old_val * (1 - t) + new_val * t;
+            d->xfade_pos++;
+            if (d->xfade_pos >= d->xfade_len) {
+                d->old_delay_samples = 0;
+            }
+        } else {
+            int read_pos = pos - dly;
+            if (read_pos < 0) read_pos += buf_len;
+            delayed = buf[read_pos];
+        }
 
         /* LP filter on feedback */
         lp_y1 = delayed * (1 - lp_a) + lp_y1 * lp_a;
@@ -135,8 +185,10 @@ EXPORT void ifx_delay_process(ifx_delay_t *d,
 
         out[i] = x * (1 - mix) + delayed * mix;
     }
-    d->pos   = pos;
-    d->lp_y1 = lp_y1;
+    d->pos      = pos;
+    d->lp_y1    = lp_y1;
+    d->feedback = feedback;
+    d->mix      = mix;
 }
 
 EXPORT void ifx_delay_reset(ifx_delay_t *d) {
@@ -145,16 +197,28 @@ EXPORT void ifx_delay_reset(ifx_delay_t *d) {
     }
     d->pos   = 0;
     d->lp_y1 = 0;
+    d->old_delay_samples = 0;
+    d->xfade_pos = 0;
 }
 
 EXPORT void ifx_delay_set_param(ifx_delay_t *d, const char *name, float value) {
     if (strcmp(name, "time") == 0) {
-        d->time_ms = clampf(value, 10, 1000);
-        delay_recalc(d);
+        float new_time = clampf(value, 10, 1000);
+        float sr = (float)d->sr;
+        if (sr <= 0) sr = 44100;
+        int new_dly = (int)(new_time * 0.001f * sr + 0.5f);
+        if (new_dly < 1) new_dly = 1;
+        if (new_dly >= d->buf_len) new_dly = d->buf_len - 1;
+        if (new_dly != d->delay_samples) {
+            d->old_delay_samples = d->delay_samples;
+            d->delay_samples = new_dly;
+            d->xfade_pos = 0;
+        }
+        d->time_ms = new_time;
     } else if (strcmp(name, "feedback") == 0) {
-        d->feedback = clampf(value, 0, 0.95f);
+        d->feedback_tgt = clampf(value, 0, 0.95f);
     } else if (strcmp(name, "mix") == 0) {
-        d->mix = clampf(value, 0, 1);
+        d->mix_tgt = clampf(value, 0, 1);
     }
 }
 
@@ -179,9 +243,10 @@ EXPORT int ifx_reverb_mem_size(int sr) {
 EXPORT void ifx_reverb_init(ifx_reverb_t *r, int sr, float *mem,
                               float room, float damping, float mix) {
     r->sr      = sr;
-    r->room    = clampf(room, 0, 1);
-    r->damping = clampf(damping, 0, 1);
-    r->mix     = clampf(mix, 0, 1);
+    r->room    = r->room_tgt    = clampf(room, 0, 1);
+    r->damping = r->damping_tgt = clampf(damping, 0, 1);
+    r->mix     = r->mix_tgt     = clampf(mix, 0, 1);
+    r->smooth_coeff = ifx_smooth_coeff(sr);
     r->mem     = mem;
 
     float *ptr = mem;
@@ -228,8 +293,24 @@ static inline float allpass_tick(ifx_allpass_t *a, float input) {
 
 EXPORT void ifx_reverb_process(ifx_reverb_t *r,
                                 const float *in, float *out, int samples) {
-    float mix = r->mix;
+    float room    = r->room;
+    float damping = r->damping;
+    float mix     = r->mix;
+    float coeff   = r->smooth_coeff;
+
     for (int i = 0; i < samples; i++) {
+        /* Tick smoothers */
+        room    += (r->room_tgt    - room)    * coeff;
+        damping += (r->damping_tgt - damping) * coeff;
+        mix     += (r->mix_tgt     - mix)     * coeff;
+
+        /* Update comb parameters per sample */
+        float fb = 0.7f + 0.28f * room;
+        for (int c = 0; c < 4; c++) {
+            r->combs[c].feedback = fb;
+            r->combs[c].damping  = damping;
+        }
+
         float x = in[i];
         float wet = 0;
         for (int c = 0; c < 4; c++) {
@@ -241,6 +322,9 @@ EXPORT void ifx_reverb_process(ifx_reverb_t *r,
         }
         out[i] = x * (1 - mix) + wet * mix;
     }
+    r->room    = room;
+    r->damping = damping;
+    r->mix     = mix;
 }
 
 EXPORT void ifx_reverb_reset(ifx_reverb_t *r) {
@@ -262,18 +346,11 @@ EXPORT void ifx_reverb_reset(ifx_reverb_t *r) {
 EXPORT void ifx_reverb_set_param(ifx_reverb_t *r,
                                   const char *name, float value) {
     if (strcmp(name, "room") == 0) {
-        r->room = clampf(value, 0, 1);
-        float fb = 0.7f + 0.28f * r->room;
-        for (int i = 0; i < 4; i++) {
-            r->combs[i].feedback = fb;
-        }
+        r->room_tgt = clampf(value, 0, 1);
     } else if (strcmp(name, "damping") == 0) {
-        r->damping = clampf(value, 0, 1);
-        for (int i = 0; i < 4; i++) {
-            r->combs[i].damping = r->damping;
-        }
+        r->damping_tgt = clampf(value, 0, 1);
     } else if (strcmp(name, "mix") == 0) {
-        r->mix = clampf(value, 0, 1);
+        r->mix_tgt = clampf(value, 0, 1);
     }
 }
 
@@ -293,9 +370,10 @@ EXPORT void ifx_chorus_init(ifx_chorus_t *c, int sr, float *buf, int buf_len,
     c->buf_len = buf_len;
     c->pos     = 0;
     c->phase   = 0;
-    c->rate    = clampf(rate, 0.1f, 10);
-    c->depth   = clampf(depth, 0, 20);
-    c->mix     = clampf(mix, 0, 1);
+    c->rate    = c->rate_tgt  = clampf(rate, 0.1f, 10);
+    c->depth   = c->depth_tgt = clampf(depth, 0, 20);
+    c->mix     = c->mix_tgt   = clampf(mix, 0, 1);
+    c->smooth_coeff = ifx_smooth_coeff(sr);
     if (buf && buf_len > 0) {
         memset(buf, 0, (size_t)buf_len * sizeof(float));
     }
@@ -304,13 +382,16 @@ EXPORT void ifx_chorus_init(ifx_chorus_t *c, int sr, float *buf, int buf_len,
 
 EXPORT void ifx_chorus_process(ifx_chorus_t *c,
                                 const float *in, float *out, int samples) {
-    int    buf_len       = c->buf_len;
-    float  mix           = c->mix;
-    float  depth_samples = c->depth_samples;
-    float  phase_inc     = c->phase_inc;
-    float  phase         = c->phase;
-    int    pos           = c->pos;
-    float *buf           = c->buf;
+    int    buf_len = c->buf_len;
+    float  rate    = c->rate;
+    float  depth   = c->depth;
+    float  mix     = c->mix;
+    float  phase   = c->phase;
+    int    pos     = c->pos;
+    float *buf     = c->buf;
+    float  coeff   = c->smooth_coeff;
+    float  sr_f    = (float)c->sr;
+    if (sr_f <= 0) sr_f = 44100;
 
     if (!buf || buf_len <= 0) {
         if (in != out) memcpy(out, in, (size_t)samples * sizeof(float));
@@ -318,6 +399,14 @@ EXPORT void ifx_chorus_process(ifx_chorus_t *c,
     }
 
     for (int i = 0; i < samples; i++) {
+        /* Tick smoothers */
+        rate  += (c->rate_tgt  - rate)  * coeff;
+        depth += (c->depth_tgt - depth) * coeff;
+        mix   += (c->mix_tgt   - mix)   * coeff;
+
+        float depth_samples = depth * 0.001f * sr_f;
+        float phase_inc = 2.0f * (float)M_PI * rate / sr_f;
+
         float x = in[i];
         buf[pos] = x;
 
@@ -344,6 +433,9 @@ EXPORT void ifx_chorus_process(ifx_chorus_t *c,
 
         out[i] = x * (1 - mix) + wet * mix;
     }
+    c->rate  = rate;
+    c->depth = depth;
+    c->mix   = mix;
     c->phase = phase;
     c->pos   = pos;
 }
@@ -359,13 +451,11 @@ EXPORT void ifx_chorus_reset(ifx_chorus_t *c) {
 EXPORT void ifx_chorus_set_param(ifx_chorus_t *c,
                                   const char *name, float value) {
     if (strcmp(name, "rate") == 0) {
-        c->rate = clampf(value, 0.1f, 10);
-        chorus_recalc(c);
+        c->rate_tgt = clampf(value, 0.1f, 10);
     } else if (strcmp(name, "depth") == 0) {
-        c->depth = clampf(value, 0, 20);
-        chorus_recalc(c);
+        c->depth_tgt = clampf(value, 0, 20);
     } else if (strcmp(name, "mix") == 0) {
-        c->mix = clampf(value, 0, 1);
+        c->mix_tgt = clampf(value, 0, 1);
     }
 }
 
