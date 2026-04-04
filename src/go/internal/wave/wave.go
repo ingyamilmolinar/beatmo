@@ -105,10 +105,11 @@ type Observation struct {
 	ClipCount int // Samples exceeding +/-1.0.
 
 	// FFT fields.
-	Bins      []float64 // Magnitude bins.
+	Bins      []float64 // Magnitude bins (dB).
+	FreqBins  []float64 // Hz label for each bin.
 	BinHz     float64   // Frequency resolution per bin.
 	PeakFreq  float64   // Dominant frequency.
-	PeakMag   float64   // Magnitude at dominant frequency.
+	PeakMag   float64   // Magnitude at dominant frequency (dB).
 
 	// Envelope fields.
 	Envelope []float64 // Amplitude envelope samples.
