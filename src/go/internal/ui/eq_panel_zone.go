@@ -57,8 +57,8 @@ type EQPanelZone struct {
 	lpfBtn       *Button
 
 	// Visual state
-	eqBandVals   []float64
-	waveformMode bool
+	eqBandVals []float64
+	tabState   *PanelTabState
 
 	// EQ curve state
 	curveDragBand   int
@@ -95,6 +95,7 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 	z := &EQPanelZone{
 		needLayout:     true,
 		callbacks:      cb,
+		tabState:       NewPanelTabState(),
 		curveDragBand:  -1,
 		dbInputFocused: -1,
 		activeChannel:  "main",
@@ -109,10 +110,11 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 
 func (z *EQPanelZone) initButtons() {
 	z.eqToggleBtn = NewButton("Wave", InstButtonStyle, func() {
-		z.waveformMode = !z.waveformMode
-		if z.waveformMode {
+		if z.tabState.ActiveTab() == TabEQ {
+			z.tabState.SetActiveTab(TabWave)
 			z.eqToggleBtn.Text = "EQ"
 		} else {
+			z.tabState.SetActiveTab(TabEQ)
 			z.eqToggleBtn.Text = "Wave"
 		}
 	})
@@ -210,7 +212,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	}
 	drawRect(screen, z.rect, colEQBg, true)
 
-	if z.waveformMode {
+	if z.tabState.ActiveTab() == TabWave {
 		if z.callbacks.DrawWaveform != nil {
 			z.callbacks.DrawWaveform(screen)
 		}
@@ -235,7 +237,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 		z.drawPillTab(screen, z.lpfBtn, lpfActive, "")
 	}
 	if z.eqToggleBtn != nil {
-		z.drawPillTab(screen, z.eqToggleBtn, z.waveformMode, "")
+		z.drawPillTab(screen, z.eqToggleBtn, z.tabState.ActiveTab() == TabWave, "")
 	}
 
 	drawRect(screen, z.rect, colButtonBorder, false)
@@ -295,19 +297,23 @@ func (z *EQPanelZone) HandleChars(_ []rune) InputResult {
 	return InputIgnored
 }
 
-// WaveformMode returns the current toggle state.
-func (z *EQPanelZone) WaveformMode() bool { return z.waveformMode }
+// WaveformMode returns the current toggle state (compatibility shim).
+func (z *EQPanelZone) WaveformMode() bool { return z.tabState.ActiveTab() == TabWave }
 
 // toggleButtonLabel returns the display text for the EQ/Wave toggle button.
 func (z *EQPanelZone) toggleButtonLabel() string {
 	return z.eqToggleBtn.Text
 }
 
-// SetWaveformMode sets the toggle state and updates the button text.
+// SetWaveformMode sets the toggle state and updates the button text (compatibility shim).
 func (z *EQPanelZone) SetWaveformMode(v bool) {
-	z.waveformMode = v
+	if v {
+		z.tabState.SetActiveTab(TabWave)
+	} else {
+		z.tabState.SetActiveTab(TabEQ)
+	}
 	if z.eqToggleBtn != nil {
-		if z.waveformMode {
+		if z.tabState.ActiveTab() == TabWave {
 			z.eqToggleBtn.Text = "EQ"
 		} else {
 			z.eqToggleBtn.Text = "Wave"
@@ -598,7 +604,7 @@ type curveHandleHitAdapter struct {
 func (h *curveHandleHitAdapter) OnPress(x, y int) InputResult {
 	z := h.zone
 	r := z.rect
-	if r.Empty() || z.waveformMode {
+	if r.Empty() || z.tabState.ActiveTab() == TabWave {
 		return InputIgnored
 	}
 

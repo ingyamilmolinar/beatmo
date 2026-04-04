@@ -20,7 +20,7 @@ func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	z := NewEQPanelZone(EQCallbacks{})
 
 	// Default state: EQ mode (waveformMode = false), button should show "Wave".
-	if z.waveformMode {
+	if z.WaveformMode() {
 		t.Fatal("expected default EQ mode (waveformMode=false)")
 	}
 
