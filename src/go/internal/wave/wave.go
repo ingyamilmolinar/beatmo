@@ -95,9 +95,14 @@ const (
 type Observation struct {
 	Kind ObsKind
 
-	// Peak/RMS fields.
+	// Peak/RMS fields (linear).
 	Peak float64
 	RMS  float64
+
+	// Peak/RMS fields (dB).
+	PeakDB    float64
+	RMSDB     float64
+	ClipCount int // Samples exceeding +/-1.0.
 
 	// FFT fields.
 	Bins      []float64 // Magnitude bins.
