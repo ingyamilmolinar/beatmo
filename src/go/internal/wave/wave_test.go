@@ -377,6 +377,97 @@ func TestPipeline(t *testing.T) {
 	}
 }
 
+// --- Integration: Chain / Observe / Pipeline with real transforms & observers ---
+
+func TestChainSourceThroughTransforms(t *testing.T) {
+	// Sine at 440 Hz, amplitude 1.0, 1 second, 44100 SR.
+	src := &WaveSource{W: Sine(440, 1.0, 1.0, sr44100)}
+
+	// Trim to [0, 50) ms then normalize to -6 dB.
+	result := Chain(src, TrimTransform(0, 50), NormalizeTransform(-6))
+
+	// 50 ms at 44100 SR => 2205 samples.
+	if result.Len() != 2205 {
+		t.Fatalf("trimmed length: want 2205, got %d", result.Len())
+	}
+
+	// -6 dB => peak amplitude = 10^(-6/20) ≈ 0.5012.
+	wantPeak := math.Pow(10, -6.0/20.0)
+	gotPeak := result.PeakSample()
+	if math.Abs(gotPeak-wantPeak) > 0.001 {
+		t.Fatalf("peak after normalize(-6 dB): want ~%f, got %f", wantPeak, gotPeak)
+	}
+}
+
+func TestObserveMultiple(t *testing.T) {
+	w := Sine(440, 1.0, 0.1, sr44100)
+
+	results := Observe(w, NewPeakRMSObserver(), NewZeroCrossingObserver())
+
+	if len(results) != 2 {
+		t.Fatalf("Observe: want 2 results, got %d", len(results))
+	}
+	if results[0].Kind != ObsPeakRMS {
+		t.Fatalf("results[0].Kind: want ObsPeakRMS (%d), got %d", ObsPeakRMS, results[0].Kind)
+	}
+	if results[1].Kind != ObsZeroCrossing {
+		t.Fatalf("results[1].Kind: want ObsZeroCrossing (%d), got %d", ObsZeroCrossing, results[1].Kind)
+	}
+}
+
+func TestPipelineEndToEnd(t *testing.T) {
+	// Sine 440 Hz, amplitude 0.5, 1 second.
+	src := &WaveSource{W: Sine(440, 0.5, 1.0, sr44100)}
+
+	transforms := []Transform{NormalizeTransform(0)} // normalize to 0 dB => peak = 1.0
+	observers := []Observer{NewPeakRMSObserver(), NewFFTObserver(1024)}
+
+	result, obs := Pipeline(src, transforms, observers)
+
+	// Peak should be ~1.0 after normalizing to 0 dB.
+	gotPeak := result.PeakSample()
+	if math.Abs(gotPeak-1.0) > 0.001 {
+		t.Fatalf("peak after normalize(0 dB): want ~1.0, got %f", gotPeak)
+	}
+
+	if len(obs) != 2 {
+		t.Fatalf("Pipeline observations: want 2, got %d", len(obs))
+	}
+
+	// PeakRMS observer: PeakDB should be ~0 dB.
+	peakObs := obs[0]
+	if peakObs.Kind != ObsPeakRMS {
+		t.Fatalf("obs[0].Kind: want ObsPeakRMS, got %d", peakObs.Kind)
+	}
+	if math.Abs(peakObs.PeakDB) > 0.1 {
+		t.Fatalf("PeakDB: want ~0.0, got %f", peakObs.PeakDB)
+	}
+
+	// FFT observer: 1024-point FFT => N/2+1 = 513 bins.
+	fftObs := obs[1]
+	if fftObs.Kind != ObsFFT {
+		t.Fatalf("obs[1].Kind: want ObsFFT, got %d", fftObs.Kind)
+	}
+	if len(fftObs.Bins) != 513 {
+		t.Fatalf("FFT bins: want 513, got %d", len(fftObs.Bins))
+	}
+}
+
+func TestChainPreservesLabel(t *testing.T) {
+	src := &WaveSource{W: Wave{
+		Samples:    []float64{0.5, -0.5, 0.3, -0.3},
+		SampleRate: sr44100,
+		Label:      "test",
+	}}
+
+	result := Chain(src, NormalizeTransform(0))
+
+	// NormalizeTransform preserves the input label.
+	if result.Label != "test" {
+		t.Fatalf("label: want %q, got %q", "test", result.Label)
+	}
+}
+
 // --- WaveSource ---
 
 func TestWaveSource_Render(t *testing.T) {
