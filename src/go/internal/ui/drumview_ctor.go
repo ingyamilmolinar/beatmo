@@ -409,6 +409,12 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 				dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
 			}
 		},
+		OnScopeToggle: func() {
+			dv.SetScopeVisible(!dv.ScopeVisible())
+		},
+		IsScopeOpen: func() bool {
+			return dv.ScopeVisible()
+		},
 		OnViewCycle: func() {
 			dv.cycleViewMode()
 		},
