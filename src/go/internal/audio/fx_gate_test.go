@@ -1,3 +1,5 @@
+//go:build test || js
+
 package audio
 
 import (
