@@ -136,6 +136,9 @@ type Game struct {
 	// Screenshot mode: capture screen after N draws and exit
 	screenshotPath  string
 	screenshotDraws int
+	// Scope panel: open scope on first Update after flag is set
+	scopeOpen    bool
+	scopeApplied bool
 	// animBeatPrev was used for time-based advancement; unused now
 	highlightHook func(row, idx int)
 
@@ -385,3 +388,9 @@ var predictorPerfThrottleEnabled = (runtime.GOARCH == "wasm")
 // forceAutoSize can be toggled by tests to exercise Layout's auto-sizing logic
 // even when running under "go test". Default is false.
 var forceAutoSize bool
+
+// SetScopeVisible marks the scope panel to be made visible on the next Update
+// after the DrumView is ready. This is the entry point for the -scope CLI flag.
+func (g *Game) SetScopeVisible(v bool) {
+	g.scopeOpen = v
+}

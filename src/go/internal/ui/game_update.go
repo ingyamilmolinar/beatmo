@@ -181,6 +181,11 @@ eventsDone:
 		g.buildDemo()
 		g.demoScheduled = false
 	}
+	// Apply scope visibility once the DrumView is ready.
+	if g.scopeOpen && g.drum != nil && !g.scopeApplied {
+		g.drum.SetScopeVisible(true)
+		g.scopeApplied = true
+	}
 	// Kick off sample autoload once the game is live so built-in demo picks
 	// are not overshadowed by sample IDs and startup remains snappy.
 	if !g.samplesScheduled {

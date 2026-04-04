@@ -26,6 +26,7 @@ func main() {
 	benchSecs := flag.Float64("bench-secs", 10, "benchmark mode: duration in seconds")
 	benchProf := flag.String("bench-prof", "", "benchmark mode: write CPU profile to this path")
 	screenshot := flag.String("screenshot", "", "capture a screenshot to this path and exit")
+	scopeOpen := flag.Bool("scope", false, "open with scope panel visible")
 	flag.Parse()
 
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
@@ -66,6 +67,9 @@ func main() {
 		g.RunBenchmark(*benchBPM, time.Duration(*benchSecs*float64(time.Second)))
 	} else if *demo {
 		g.RunDemo()
+	}
+	if *scopeOpen {
+		g.SetScopeVisible(true)
 	}
 
 	// Trap OS signals for graceful audio shutdown.
