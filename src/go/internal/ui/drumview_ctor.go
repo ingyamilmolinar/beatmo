@@ -277,6 +277,13 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			svc.Freeze()
 			return true
 		},
+	})
+	dv.eqPanelZone.SetPortal(dv.tree.Portal())
+	dv.tree.RegisterZone(dv.eqPanelZone, 130)
+
+	// Scope zone — owns the pipeline strip, tap selection, and trace rendering.
+	// Hosted inside the EQ panel's Scope tab (not a standalone zone).
+	scopeZ := NewScopePanelZone(ScopeCallbacks{
 		ScopeState: func() *scope.State {
 			svc := audio.ScopeService()
 			if svc == nil {
@@ -284,9 +291,52 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			}
 			return svc.State()
 		},
+		ActiveRows: func() []*DrumRow {
+			return dv.Rows
+		},
+		OnTapAChange: func(stage scope.Stage) {
+			if svc := audio.ScopeService(); svc != nil {
+				svc.SetTapA(stage)
+			}
+		},
+		OnTapBChange: func(stage scope.Stage) {
+			if svc := audio.ScopeService(); svc != nil {
+				svc.SetTapB(stage)
+			}
+		},
+		OnClearTapA: func() {
+			if svc := audio.ScopeService(); svc != nil {
+				svc.ClearTapA()
+			}
+		},
+		OnClearTapB: func() {
+			if svc := audio.ScopeService(); svc != nil {
+				svc.ClearTapB()
+			}
+		},
+		OnInstrChange: func(id string) {
+			if svc := audio.ScopeService(); svc != nil {
+				svc.SetInstrument(id)
+			}
+		},
+		OnFreezeToggle: func() bool {
+			svc := audio.ScopeService()
+			if svc == nil {
+				return false
+			}
+			if svc.IsFrozen() {
+				svc.Unfreeze()
+				return false
+			}
+			svc.Freeze()
+			return true
+		},
+		OnClose: func() {
+			// Switch back to EQ tab when scope is closed.
+			dv.eqPanelZone.tabState.SetActiveTab(TabEQ)
+		},
 	})
-	dv.eqPanelZone.SetPortal(dv.tree.Portal())
-	dv.tree.RegisterZone(dv.eqPanelZone, 130)
+	dv.eqPanelZone.SetScopeZone(scopeZ)
 
 	// EQ zone now owns all EQ sliders, buttons, and state. DrumView
 	// provides accessor methods (eqSliders(), eqBandGainsDB(), etc.)

@@ -10,7 +10,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
-	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 // EQCallbacks contains callbacks for the EQPanelZone to communicate with
@@ -50,9 +49,6 @@ type EQCallbacks struct {
 	// OnFreezeToggle toggles the analyzer capture freeze state and returns
 	// the new frozen state.
 	OnFreezeToggle func() bool
-
-	// ScopeState returns the latest scope snapshot for the Scope tab.
-	ScopeState func() *scope.State
 }
 
 // EQPanelZone implements the Zone interface for the EQ/Waveform panel.
@@ -90,8 +86,8 @@ type EQPanelZone struct {
 	// Spectrum tab peak-hold state
 	spectrumPeaks SpectrumPeakState
 
-	// Scope tab zoom level (ms)
-	scopeWindowMs float64
+	// Scope tab: delegated to its own zone for layout/draw/hit areas.
+	scopeZone *ScopePanelZone
 
 	// Master channel EQ state (per-row stays in DrumRow)
 	bandGainsDB []float64
@@ -121,7 +117,6 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 		curveDragBand:  -1,
 		dbInputFocused: -1,
 		activeChannel:  "main",
-		scopeWindowMs:  20,
 		bandGainsDB:    make([]float64, len(eqBandDefs)),
 		bandMuted:      make([]bool, len(eqBandDefs)),
 		eqBandVals:     make([]float64, len(eqBandDefs)),
@@ -213,8 +208,15 @@ func (z *EQPanelZone) Layout(rect image.Rectangle) {
 	z.needLayout = false
 	z.layoutButtons()
 	z.layoutMuteAndDBInputs()
+	// Delegate layout to scope zone when Scope tab is active.
+	if z.scopeZone != nil && z.tabState.ActiveTab() == TabScope {
+		z.scopeZone.Layout(z.contentRect())
+	}
 	z.rebuildHitAreas()
 }
+
+// SetScopeZone sets the scope panel zone that owns the scope tab UI.
+func (z *EQPanelZone) SetScopeZone(sz *ScopePanelZone) { z.scopeZone = sz }
 
 func (z *EQPanelZone) Update() {
 	if z.dbInputFocused < 0 {
@@ -235,6 +237,9 @@ func (z *EQPanelZone) Update() {
 }
 
 func (z *EQPanelZone) HitAreas() []HitArea {
+	if z.scopeZone != nil && z.tabState.ActiveTab() == TabScope {
+		return append(z.hitAreas, z.scopeZone.HitAreas()...)
+	}
 	return z.hitAreas
 }
 
@@ -263,8 +268,8 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	case TabMeters:
 		drawMeterBridge(screen, z.contentRect(), z.getAnalyzerState())
 	case TabScope:
-		if z.callbacks.ScopeState != nil {
-			drawScopeTraces(screen, z.contentRect(), z.callbacks.ScopeState(), z.scopeWindowMs)
+		if z.scopeZone != nil {
+			z.scopeZone.Draw(screen)
 		}
 	case TabEQ:
 		// Draw spectrum bars and EQ curve below buttons.
