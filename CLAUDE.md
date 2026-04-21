@@ -260,6 +260,9 @@ GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js
 | `PARITY_WASM_FATAL=1\|true\|panic` | Enable parity panics on WASM |
 | `TEST_LOG=1` | Enable test logging |
 | `DEBUG_GEOM=1` | Verbose geometry logs |
+| `SCOPE_EXPORT=1` | Enable scope export flight recorder (JSONL) |
+| `SCOPE_EXPORT_PATH=<path>` | Output file (default `scope_export.jsonl`) |
+| `SCOPE_EXPORT_INTERVAL=<secs>` | Snapshot interval (default `2`) |
 
 ### JS Exports (WASM)
 

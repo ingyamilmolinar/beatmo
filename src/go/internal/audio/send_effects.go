@@ -39,6 +39,14 @@ type sendEffects struct {
 
 	sr          int
 	initialized bool
+
+	// Stored configuration for export/query.
+	delayTimeMs    float64
+	delayFeedback  float64
+	delayDampingHz float64
+	reverbRoom     float64
+	reverbDamping  float64
+	reverbWet      float64
 }
 
 // Per-instrument send levels stored atomically for lock-free reads.
@@ -131,6 +139,14 @@ func initSendEffects(sr int) {
 	fx.delayOutBuf = make([]float32, blockSize)
 	fx.reverbInBuf = make([]float32, blockSize)
 	fx.reverbOutBuf = make([]float32, blockSize)
+
+	// Store default configuration for export/query.
+	fx.delayTimeMs = 300
+	fx.delayFeedback = 0.3
+	fx.delayDampingHz = 3000
+	fx.reverbRoom = 0.7
+	fx.reverbDamping = 0.4
+	fx.reverbWet = 0.3
 
 	fx.initialized = true
 	sendFX = fx
@@ -256,6 +272,100 @@ func (fx *sendEffects) processSends(instBufs map[string][]float64, activeInsts [
 	for i := 0; i < blockLen; i++ {
 		masterBuf[i] += float64(fx.reverbOutBuf[i])
 	}
+}
+
+// ConfigureSendDelay reconfigures the global send delay with new parameters.
+// timeMs is the delay time in milliseconds, feedback is 0-1, dampingHz is the
+// LP damping cutoff frequency. Safe to call at any time; acquires the send mutex.
+func ConfigureSendDelay(timeMs, feedback, dampingHz float64) {
+	if sendFX == nil || !sendFX.initialized {
+		return
+	}
+	sendFX.mu.Lock()
+	defer sendFX.mu.Unlock()
+
+	sr := sendFX.sr
+	delaySamples := int(float64(sr) * timeMs / 1000)
+	if delaySamples < 1 {
+		delaySamples = 1
+	}
+
+	// Reallocate delay buffer if new size differs.
+	if delaySamples != int(sendFX.delay.length) {
+		C.free(sendFX.delayBuf)
+		sendFX.delayBuf = C.malloc(C.size_t(delaySamples) * C.size_t(unsafe.Sizeof(C.float(0))))
+	}
+
+	fb := feedback
+	if fb < 0 {
+		fb = 0
+	} else if fb > 1 {
+		fb = 1
+	}
+
+	C.delay_init(&sendFX.delay, (*C.float)(sendFX.delayBuf), C.int(delaySamples),
+		C.float(fb), C.float(dampingHz), C.int(sr))
+
+	sendFX.delayTimeMs = timeMs
+	sendFX.delayFeedback = fb
+	sendFX.delayDampingHz = dampingHz
+}
+
+// ConfigureSendReverb reconfigures the global send reverb with new parameters.
+// room is room size (0-1), damping is damping amount (0-1), wet is wet mix (0-1).
+// Safe to call at any time; acquires the send mutex.
+func ConfigureSendReverb(room, damping, wet float64) {
+	if sendFX == nil || !sendFX.initialized {
+		return
+	}
+	sendFX.mu.Lock()
+	defer sendFX.mu.Unlock()
+
+	sr := sendFX.sr
+	r := clampSend(room, 0, 1)
+	d := clampSend(damping, 0, 1)
+	w := clampSend(wet, 0, 1)
+
+	// Reverb buffer size depends only on sample rate, not parameters, so we
+	// can reuse the existing buffer.
+	C.reverb_init(&sendFX.reverb, (*C.float)(sendFX.reverbBuf), C.int(sr),
+		C.float(r), C.float(d), C.float(w))
+
+	sendFX.reverbRoom = r
+	sendFX.reverbDamping = d
+	sendFX.reverbWet = w
+}
+
+// SendDelayParams returns the current delay send configuration.
+// Returns (timeMs, feedback, dampingHz).
+func SendDelayParams() (float64, float64, float64) {
+	if sendFX == nil || !sendFX.initialized {
+		return 300, 0.3, 3000 // defaults
+	}
+	sendFX.mu.Lock()
+	defer sendFX.mu.Unlock()
+	return sendFX.delayTimeMs, sendFX.delayFeedback, sendFX.delayDampingHz
+}
+
+// SendReverbParams returns the current reverb send configuration.
+// Returns (room, damping, wet).
+func SendReverbParams() (float64, float64, float64) {
+	if sendFX == nil || !sendFX.initialized {
+		return 0.7, 0.4, 0.3 // defaults
+	}
+	sendFX.mu.Lock()
+	defer sendFX.mu.Unlock()
+	return sendFX.reverbRoom, sendFX.reverbDamping, sendFX.reverbWet
+}
+
+func clampSend(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // resetSendEffects resets both effects to silence (e.g., on stop).

@@ -5,9 +5,11 @@ package audio
 import (
 	"sync"
 	"syscall/js"
+	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
+	"github.com/ingyamilmolinar/beatmo/internal/scopeexport"
 )
 
 type Voice interface{}
@@ -192,3 +194,76 @@ func AnalyzerService() *analyzer.Service { return nil }
 
 // ScopeService returns nil on WASM (scope runs via JS AudioWorklet, not Go).
 func ScopeService() *scope.Service { return nil }
+
+var (
+	wasmExportSvc  *scopeexport.Service
+	wasmExportMu   sync.Mutex
+	wasmExportStop chan struct{}
+)
+
+// ExportService returns the WASM flight-recorder service once it has been
+// started via EnableScopeExport; otherwise nil (matching the desktop contract).
+func ExportService() *scopeexport.Service {
+	wasmExportMu.Lock()
+	defer wasmExportMu.Unlock()
+	return wasmExportSvc
+}
+
+// EnableScopeExport starts the WASM flight recorder. It periodically polls the
+// JS AudioWorklet analyzers (pre-EQ and post-EQ snapshots), pushes their rolling
+// waveforms into scopeexport.Service ring buffers, and invokes BufferSnapshot
+// so downloadScopeExport() can flush the accumulated JSONL. Idempotent.
+func EnableScopeExport() {
+	wasmExportMu.Lock()
+	if wasmExportSvc != nil {
+		wasmExportMu.Unlock()
+		return
+	}
+	sr := SampleRate()
+	wasmExportSvc = scopeexport.NewService(scopeexport.Config{
+		SampleRate:      sr,
+		Interval:        2 * time.Second,
+		InstrumentsFunc: func() []string { return Instruments() },
+	})
+	wasmExportStop = make(chan struct{})
+	stop := wasmExportStop
+	svc := wasmExportSvc
+	wasmExportMu.Unlock()
+
+	// Poll the analyzers ~10x per second to keep the ring buffers fed with
+	// rolling-window samples, and take a full snapshot every 2s to mirror the
+	// desktop cadence. A single goroutine owns both timers.
+	go func() {
+		pollTicker := time.NewTicker(100 * time.Millisecond)
+		defer pollTicker.Stop()
+		snapTicker := time.NewTicker(2 * time.Second)
+		defer snapTicker.Stop()
+		pushSamples := func(id string) {
+			pre := PreEQAnalyzerSnapshot(id)
+			if len(pre.Waveform) > 0 {
+				svc.PushSamples(scope.StageSynth, id, pre.Waveform)
+			}
+			post := ChannelAnalyzerSnapshot(id)
+			if len(post.Waveform) > 0 {
+				svc.PushSamples(scope.StageEQ, id, post.Waveform)
+			}
+		}
+		for {
+			select {
+			case <-stop:
+				return
+			case <-pollTicker.C:
+				for _, id := range Instruments() {
+					pushSamples(id)
+				}
+				// Master bus at the post-EQ (= pre-sends) point.
+				master := ChannelAnalyzerSnapshot("main")
+				if len(master.Waveform) > 0 {
+					svc.PushSamples(scope.StageMaster, "master", master.Waveform)
+				}
+			case <-snapTicker.C:
+				svc.BufferSnapshot()
+			}
+		}
+	}()
+}

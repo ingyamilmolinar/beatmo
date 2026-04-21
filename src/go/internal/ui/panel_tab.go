@@ -61,9 +61,9 @@ func (p *PanelTabState) Expanded() bool { return p.expanded }
 func (p *PanelTabState) ToggleExpanded() { p.expanded = !p.expanded }
 
 // PanelHeight returns the panel height in pixels.
-// Collapsed: eqPanelHeight. Expanded: 2 * eqPanelHeight.
+// Collapsed: eqPanelHeight. Expanded or Scope tab: 2 * eqPanelHeight.
 func (p *PanelTabState) PanelHeight() int {
-	if p.expanded {
+	if p.expanded || p.activeTab == TabScope {
 		return eqPanelHeight * 2
 	}
 	return eqPanelHeight

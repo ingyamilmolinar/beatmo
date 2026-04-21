@@ -9,7 +9,13 @@ import (
 
 func TestVoiceStartsWithin50ms(t *testing.T) {
 	sr := SampleRate()
-	m := &mixer{}
+	m := &mixer{
+		workBuf:   make([]float64, blockSize),
+		voiceTemp: make([]float64, blockSize),
+		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
+		instSlots: make(map[string]int),
+	}
 	m.Schedule("snare", Snare{}.NewVoice(120, sr), 0)
 	buf := make([]byte, sr/10*2) // 0.1s of 16-bit mono
 	m.Read(buf)

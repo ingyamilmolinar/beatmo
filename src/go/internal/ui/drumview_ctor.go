@@ -258,24 +258,37 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.drawWaveform(dst, snap)
 		},
 		AnalyzerState: func() *analyzer.State {
-			svc := audio.AnalyzerService()
-			if svc == nil {
-				return nil
+			if svc := audio.AnalyzerService(); svc != nil {
+				return svc.State()
 			}
-			return svc.State()
+			// WASM fallback: synthesize from JS-exposed analyzer snapshots,
+			// honouring a zone-local freeze cache when present.
+			if cached := dv.eqPanelZone.frozenAnalyzer; cached != nil {
+				return cached
+			}
+			return BuildAnalyzerStateFromSnapshots(dv.activeEQChannel(), dv.Rows, audio.SampleRate())
 		},
 		OnFreezeToggle: func() bool {
-			svc := audio.AnalyzerService()
-			if svc == nil {
+			if svc := audio.AnalyzerService(); svc != nil {
+				state := svc.State()
+				if state != nil && state.Capture != nil && state.Capture.Frozen {
+					svc.Unfreeze()
+					return false
+				}
+				svc.Freeze()
+				return true
+			}
+			// WASM: toggle the zone-local cache.
+			if dv.eqPanelZone.frozenAnalyzer != nil {
+				dv.eqPanelZone.frozenAnalyzer = nil
 				return false
 			}
-			state := svc.State()
-			if state != nil && state.Capture != nil && state.Capture.Frozen {
-				svc.Unfreeze()
-				return false
-			}
-			svc.Freeze()
-			return true
+			dv.eqPanelZone.frozenAnalyzer = BuildAnalyzerStateFromSnapshots(dv.activeEQChannel(), dv.Rows, audio.SampleRate())
+			return dv.eqPanelZone.frozenAnalyzer != nil
+		},
+		OnTabChange: func(tab PanelTab) {
+			// Scope tab auto-expands the panel; trigger layout recalc.
+			dv.bgDirty = true
 		},
 	})
 	dv.eqPanelZone.SetPortal(dv.tree.Portal())
@@ -285,11 +298,19 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Hosted inside the EQ panel's Scope tab (not a standalone zone).
 	scopeZ := NewScopePanelZone(ScopeCallbacks{
 		ScopeState: func() *scope.State {
-			svc := audio.ScopeService()
-			if svc == nil {
+			if svc := audio.ScopeService(); svc != nil {
+				return svc.State()
+			}
+			// WASM: return cached frozen snapshot, else synthesize fresh from
+			// pre-EQ + post-EQ JS analyzers using zone-local tap selection.
+			z := dv.eqPanelZone.scopeZone
+			if z == nil {
 				return nil
 			}
-			return svc.State()
+			if z.frozenState != nil {
+				return z.frozenState
+			}
+			return BuildScopeStateFromSnapshots(z.instrumentID, z.tapA, z.tapB)
 		},
 		ActiveRows: func() []*DrumRow {
 			return dv.Rows
@@ -297,43 +318,63 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		OnTapAChange: func(stage scope.Stage) {
 			if svc := audio.ScopeService(); svc != nil {
 				svc.SetTapA(stage)
+				return
 			}
+			// WASM: zone already updated its own tapA field before calling this.
+			// Nothing else to do — the next ScopeState() read picks it up.
 		},
 		OnTapBChange: func(stage scope.Stage) {
 			if svc := audio.ScopeService(); svc != nil {
 				svc.SetTapB(stage)
+				return
 			}
 		},
 		OnClearTapA: func() {
 			if svc := audio.ScopeService(); svc != nil {
 				svc.ClearTapA()
+				return
 			}
 		},
 		OnClearTapB: func() {
 			if svc := audio.ScopeService(); svc != nil {
 				svc.ClearTapB()
+				return
 			}
 		},
 		OnInstrChange: func(id string) {
 			if svc := audio.ScopeService(); svc != nil {
 				svc.SetInstrument(id)
+				return
+			}
+			if z := dv.eqPanelZone.scopeZone; z != nil {
+				z.instrumentID = id
 			}
 		},
 		OnFreezeToggle: func() bool {
-			svc := audio.ScopeService()
-			if svc == nil {
+			if svc := audio.ScopeService(); svc != nil {
+				if svc.IsFrozen() {
+					svc.Unfreeze()
+					return false
+				}
+				svc.Freeze()
+				return true
+			}
+			// WASM: toggle zone-local freeze cache.
+			z := dv.eqPanelZone.scopeZone
+			if z == nil {
 				return false
 			}
-			if svc.IsFrozen() {
-				svc.Unfreeze()
+			if z.frozenState != nil {
+				z.frozenState = nil
 				return false
 			}
-			svc.Freeze()
-			return true
+			z.frozenState = BuildScopeStateFromSnapshots(z.instrumentID, z.tapA, z.tapB)
+			return z.frozenState != nil
 		},
 		OnClose: func() {
 			// Switch back to EQ tab when scope is closed.
 			dv.eqPanelZone.tabState.SetActiveTab(TabEQ)
+			dv.bgDirty = true // trigger layout recalc for panel resize
 		},
 	})
 	dv.eqPanelZone.SetScopeZone(scopeZ)

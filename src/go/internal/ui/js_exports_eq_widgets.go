@@ -8,6 +8,7 @@ import (
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 func (g *Game) initJSEqWidgets() {
@@ -26,6 +27,162 @@ func (g *Game) initJSEqWidgets() {
 			}
 		}
 		return nil
+	}))
+
+	// setEQTab(name) – switch the EQ panel's tab by name. Accepts "eq",
+	// "wave", "spectrum", "meters", "scope". Used for browser-test automation.
+	js.Global().Set("setEQTab", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.eqPanelZone == nil || len(args) == 0 {
+			return nil
+		}
+		switch strings.ToLower(args[0].String()) {
+		case "eq":
+			g.drum.eqPanelZone.tabState.SetActiveTab(TabEQ)
+		case "wave":
+			g.drum.eqPanelZone.tabState.SetActiveTab(TabWave)
+		case "spectrum":
+			g.drum.eqPanelZone.tabState.SetActiveTab(TabSpectrum)
+		case "meters":
+			g.drum.eqPanelZone.tabState.SetActiveTab(TabMeters)
+		case "scope":
+			g.drum.eqPanelZone.tabState.SetActiveTab(TabScope)
+			g.drum.bgDirty = true
+		}
+		return nil
+	}))
+
+	// enableScopeExport() – starts the WASM flight recorder. Matches the
+	// desktop SCOPE_EXPORT=1 behaviour so browser tests can opt in at runtime.
+	js.Global().Set("enableScopeExport", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		audio.EnableScopeExport()
+		return nil
+	}))
+
+	// downloadScopeExport() – flushes the in-memory JSONL buffer and triggers
+	// a file download via the existing downloadJSON helper. Returns the byte
+	// length of the dumped buffer (0 if export wasn't enabled or buffer empty).
+	js.Global().Set("downloadScopeExport", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		svc := audio.ExportService()
+		if svc == nil {
+			return 0
+		}
+		data := svc.DumpBuffer()
+		if len(data) == 0 {
+			return 0
+		}
+		fn := js.Global().Get("downloadJSON")
+		if fn.Truthy() {
+			fn.Invoke("scope_export.jsonl", string(data))
+		}
+		return len(data)
+	}))
+
+	// scopeExportBufferLen() – returns the current JSONL buffer byte count
+	// without draining it. Lets browser tests detect snapshot activity.
+	js.Global().Set("scopeExportBufferLen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		svc := audio.ExportService()
+		if svc == nil {
+			return 0
+		}
+		return svc.BufferLen()
+	}))
+
+	// forceScopeExportSnapshot() – immediately builds and buffers one snapshot,
+	// bypassing the 2-second timer. Browser tests use this to avoid racing.
+	js.Global().Set("forceScopeExportSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		svc := audio.ExportService()
+		if svc == nil {
+			return false
+		}
+		svc.BufferSnapshot()
+		return true
+	}))
+
+	// probeAnalyzerState() – returns a small diagnostic object describing what
+	// the current EQ-panel AnalyzerState callback produces. Used by browser
+	// tests to verify the WASM synthesis path without pixel sampling.
+	js.Global().Set("probeAnalyzerState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.callbacks.AnalyzerState == nil {
+			obj.Set("available", false)
+			return obj
+		}
+		state := g.drum.eqPanelZone.callbacks.AnalyzerState()
+		obj.Set("available", state != nil)
+		if state == nil {
+			return obj
+		}
+		obj.Set("instruments", len(state.Instruments))
+		obj.Set("masterPeakDB", state.Master.PeakDB)
+		obj.Set("masterRMSDB", state.Master.RMSDB)
+		obj.Set("masterActive", state.Master.Active)
+		obj.Set("masterFFTBins", len(state.Master.FFTBins))
+		obj.Set("masterWaveformLen", len(state.Master.Waveform))
+		obj.Set("hasDetail", state.Detail != nil)
+		return obj
+	}))
+
+	// setScopeTaps(stageA, stageB) – set TapA/TapB stage selection by name for
+	// browser tests. Names: "synth","antipop","insertfx","eq","sends","master".
+	// Pass "" (or omit) to clear a tap (stage = -1).
+	js.Global().Set("setScopeTaps", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.scopeZone == nil {
+			return false
+		}
+		nameToStage := func(s string) scope.Stage {
+			switch strings.ToLower(s) {
+			case "synth":
+				return scope.StageSynth
+			case "antipop":
+				return scope.StageAntiPop
+			case "insertfx":
+				return scope.StageInsertFX
+			case "eq":
+				return scope.StageEQ
+			case "sends":
+				return scope.StageSends
+			case "master":
+				return scope.StageMaster
+			default:
+				return scope.Stage(-1)
+			}
+		}
+		sz := g.drum.eqPanelZone.scopeZone
+		if len(args) > 0 {
+			sz.SetTapA(nameToStage(args[0].String()))
+		}
+		if len(args) > 1 {
+			sz.SetTapB(nameToStage(args[1].String()))
+		}
+		g.drum.bgDirty = true
+		return true
+	}))
+
+	// probeScopeState() – returns a small diagnostic object describing what
+	// the current ScopeState callback produces.
+	js.Global().Set("probeScopeState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.scopeZone == nil {
+			obj.Set("available", false)
+			return obj
+		}
+		sz := g.drum.eqPanelZone.scopeZone
+		if sz.callbacks.ScopeState == nil {
+			obj.Set("available", false)
+			return obj
+		}
+		state := sz.callbacks.ScopeState()
+		obj.Set("available", state != nil)
+		if state == nil {
+			return obj
+		}
+		obj.Set("tapAActive", state.TapA.Active)
+		obj.Set("tapASamples", len(state.TapA.Samples))
+		obj.Set("tapAPeakDB", state.TapA.PeakDB)
+		obj.Set("tapBActive", state.TapB.Active)
+		obj.Set("tapBSamples", len(state.TapB.Samples))
+		obj.Set("tapBPeakDB", state.TapB.PeakDB)
+		return obj
 	}))
 
 	// eqBandsSnapshot() -> { names: [], values: [] } from the last draw.

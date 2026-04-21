@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	"github.com/ingyamilmolinar/beatmo/internal/ui"
 )
@@ -27,6 +28,7 @@ func main() {
 	benchProf := flag.String("bench-prof", "", "benchmark mode: write CPU profile to this path")
 	screenshot := flag.String("screenshot", "", "capture a screenshot to this path and exit")
 	scopeOpen := flag.Bool("scope", false, "open with scope panel visible")
+	scopeExport := flag.Bool("scope-export", false, "enable continuous scope data export to JSONL")
 	flag.Parse()
 
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
@@ -57,6 +59,10 @@ func main() {
 			pprof.StopCPUProfile()
 			f.Close()
 		}()
+	}
+
+	if *scopeExport || os.Getenv("SCOPE_EXPORT") == "1" {
+		audio.EnableScopeExport()
 	}
 
 	// Create an instance of our game

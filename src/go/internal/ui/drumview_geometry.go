@@ -103,6 +103,14 @@ func (dv *DrumView) refreshWidgetLayout() {
 	} else {
 		dv.eqH = eqPanelHeight
 	}
+	// Auto-expand when Scope tab is active (needs more vertical space
+	// for the oscilloscope waveform + scope header + pipeline strip).
+	if dv.eqPanelZone != nil && dv.eqPanelZone.tabState.ActiveTab() == TabScope {
+		minScope := eqPanelHeight * 2
+		if dv.eqH < minScope {
+			dv.eqH = minScope
+		}
+	}
 	if runningUnderGoTest() && eqPanelHeight == 0 {
 		dv.eqH = 0
 	}

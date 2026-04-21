@@ -31,6 +31,7 @@ type importFile struct {
 	Instruments  []exportInstrument `json:"instruments"`
 	Nodes        []exportNode       `json:"nodes"`
 	EQ           *exportEQ          `json:"eq,omitempty"`
+	SendEffects  *SendEffectsConfig `json:"send_effects,omitempty"`
 }
 
 func parseHexColor(s string) color.Color {
@@ -489,6 +490,15 @@ func (g *Game) Import(data []byte) error {
 		audio.SetMainVolume(1)
 		if g.drum.mainVolSlider() != nil {
 			g.drum.mainVolSlider().Value = 1
+		}
+	}
+	// Apply send effects configuration if present.
+	if f.SendEffects != nil {
+		if d := f.SendEffects.Delay; d != nil {
+			audio.ConfigureSendDelay(d.TimeMs, d.Feedback, d.DampingHz)
+		}
+		if r := f.SendEffects.Reverb; r != nil {
+			audio.ConfigureSendReverb(r.Room, r.Damping, r.Wet)
 		}
 	}
 	// Clear any pending UI-added rows state so origin selection does not remain

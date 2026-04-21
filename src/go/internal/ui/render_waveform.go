@@ -73,7 +73,7 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		return
 	}
 
-	drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace)
+	drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, 1.0, nil)
 
 	// Channel name at top-left of waveform area.
 	DrawTextColorAtScale(dst, channelName, waveRect.Min.X+4, waveRect.Min.Y+2, colTextSecondary, captionScale)
@@ -88,8 +88,10 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 // drawWaveTrace draws a single waveform trace using the min/max-per-pixel-column
 // technique. For each pixel column it finds the minimum and maximum sample values
 // that map to that column and draws a vertical line spanning the range.
-func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY, width int, col color.Color) {
-	halfHeight := float64(rect.Dy()) * 0.48
+// yGain scales the amplitude display (1.0 = normal, >1 = zoomed in).
+// fillCol, if non-nil, draws a semi-transparent fill from the trace to the centerline.
+func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY, width int, col color.Color, yGain float64, fillCol color.Color) {
+	halfHeight := float64(rect.Dy()) * 0.48 * yGain
 	step := float64(len(wave)) / float64(width)
 
 	for x := 0; x < width; x++ {
@@ -129,6 +131,17 @@ func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY
 		}
 		if y0 == y1 {
 			y1 = y0 + 1
+		}
+
+		// Fill from trace to centerline.
+		if fillCol != nil {
+			px := rect.Min.X + x
+			if y0 < midY {
+				drawRect(dst, image.Rect(px, y0, px+1, midY), fillCol, true)
+			}
+			if y1 > midY {
+				drawRect(dst, image.Rect(px, midY, px+1, y1), fillCol, true)
+			}
 		}
 
 		drawRect(dst, image.Rect(rect.Min.X+x, y0, rect.Min.X+x+1, y1), col, true)

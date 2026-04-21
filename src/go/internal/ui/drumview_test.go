@@ -731,8 +731,8 @@ func TestDrumViewHighlightsMultipleRows(t *testing.T) {
 					break
 				}
 			}
-			expected := color.RGBAModel.Convert(dv.Rows[row].Color).(color.RGBA)
-			if color.RGBAModel.Convert(c).(color.RGBA) == expected {
+			hlExpected := color.RGBAModel.Convert(colHighlight).(color.RGBA)
+			if color.RGBAModel.Convert(c).(color.RGBA) == hlExpected {
 				hits = append(hits, [2]int{row, col})
 			}
 		}
@@ -2596,20 +2596,21 @@ func TestDrumViewDrawHighlightsInvisibleCells(t *testing.T) {
 	highlighted := [][]highlightEntry{{{idx: 1, val: 1}}}
 	g.drum.Draw(ebiten.NewImage(300, 240), highlighted, 0, g.beatInfos, 0)
 
+	// Invisible cells should use grey highlight (colMuteHighlight), not white.
 	var highlightCount int
+	hlExpected := color.RGBAModel.Convert(colMuteHighlight).(color.RGBA)
 	for _, call := range calls {
 		if call.r.Min.Y < timelineHeight {
 			continue
 		}
 		if clr, ok := call.c.(color.RGBA); ok {
-			expected := color.RGBAModel.Convert(g.drum.Rows[0].Color).(color.RGBA)
-			if clr == expected {
+			if clr == hlExpected {
 				highlightCount++
 			}
 		}
 	}
 	if highlightCount == 0 {
-		t.Fatalf("expected highlight draw, got %d", highlightCount)
+		t.Fatalf("expected grey highlight draw for invisible cell, got %d", highlightCount)
 	}
 }
 

@@ -94,8 +94,6 @@ type TimelineZone struct {
 	hlSpriteReg    *ebiten.Image
 	hlSpriteMute   *ebiten.Image
 	hlSpriteH      int
-	hlColorSprites map[uint32]*ebiten.Image // per-row-color highlight sprites
-
 	// --- Per-row sprite cache (owned by zone, aliased to DrumView) ---
 
 	// Timeline base cache (background + beat markers)
@@ -434,30 +432,12 @@ func (z *TimelineZone) ensureHighlightSprites() {
 	z.hlSpriteReg = reg
 	z.hlSpriteMute = mute
 	z.hlSpriteH = h
-	// Invalidate color-specific sprite cache when row height changes.
-	z.hlColorSprites = nil
 }
 
-// highlightColorSprite returns a cached 1px-wide highlight sprite for the
-// given row color. The sprite has a bright top edge to match the DrumCellUI
-// visual style while using only 1 DrawImage call when blitted (vs 6 for
-// DrumCellUI.Draw).
-func (z *TimelineZone) highlightColorSprite(c color.Color, h int) *ebiten.Image {
-	k := packRGBA(c)
-	if z.hlColorSprites == nil {
-		z.hlColorSprites = make(map[uint32]*ebiten.Image)
-	}
-	if spr, ok := z.hlColorSprites[k]; ok {
-		return spr
-	}
-	spr := ebiten.NewImage(1, h)
-	drawRect(spr, image.Rect(0, 0, 1, h), c, true)
-	// Bright top-edge highlight (same as DrumCellUI).
-	if h > 4 {
-		drawRect(spr, image.Rect(0, 0, 1, 1), adjustColor(c, 30), true)
-	}
-	z.hlColorSprites[k] = spr
-	return spr
+// isNonAudibleCellType returns true for node types that don't produce sound.
+// These get a subdued grey highlight instead of the bright white flash.
+func isNonAudibleCellType(t model.NodeType) bool {
+	return t != model.NodeTypeRegular
 }
 
 // drawHighlights renders per-row highlight overlays for active beats.
@@ -505,7 +485,7 @@ func (z *TimelineZone) drawHighlights(dst *ebiten.Image, simpleDraw bool) {
 				// so fall back to the drawRect path under test.
 				if runningUnderGoTest() && !simpleDraw {
 					rect := image.Rect(x0, y, x1, y+rh)
-					if isMuteHighlight(val) {
+					if isMuteHighlight(val) || isNonAudibleCellType(r.CellTypes[j]) {
 						drawRect(dst, rect, colMuteHighlight, true)
 						drawRect(dst, rect, DrumCellUI.Border, false)
 					} else {
@@ -515,12 +495,10 @@ func (z *TimelineZone) drawHighlights(dst *ebiten.Image, simpleDraw bool) {
 					// Sprite-based path: 1 DrawImage per highlight
 					// instead of 6 via DrumCellUI.Draw.
 					var spr *ebiten.Image
-					if isMuteHighlight(val) {
+					if isMuteHighlight(val) || isNonAudibleCellType(r.CellTypes[j]) {
 						spr = z.hlSpriteMute
-					} else if simpleDraw {
-						spr = z.hlSpriteReg
 					} else {
-						spr = z.highlightColorSprite(r.Color, rh)
+						spr = z.hlSpriteReg
 					}
 					if spr != nil {
 						var hop ebiten.DrawImageOptions

@@ -7,6 +7,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
+	"github.com/ingyamilmolinar/beatmo/internal/scopeexport"
 )
 
 type Voice interface{}
@@ -159,6 +160,32 @@ func SetReverbSend(id string, amount float64) {
 
 func ReverbSend(id string) float64 {
 	return stubSendLevels[id][1]
+}
+
+// ConfigureSendDelay is a no-op in test builds.
+func ConfigureSendDelay(timeMs, feedback, dampingHz float64) {
+	stubSendDelayParams = [3]float64{timeMs, feedback, dampingHz}
+}
+
+// ConfigureSendReverb is a no-op in test builds.
+func ConfigureSendReverb(room, damping, wet float64) {
+	stubSendReverbParams = [3]float64{room, damping, wet}
+}
+
+// stubSendDelayParams stores the last configured delay parameters for test queries.
+var stubSendDelayParams = [3]float64{300, 0.3, 3000}
+
+// stubSendReverbParams stores the last configured reverb parameters for test queries.
+var stubSendReverbParams = [3]float64{0.7, 0.4, 0.3}
+
+// SendDelayParams returns the current delay send configuration (test stub).
+func SendDelayParams() (float64, float64, float64) {
+	return stubSendDelayParams[0], stubSendDelayParams[1], stubSendDelayParams[2]
+}
+
+// SendReverbParams returns the current reverb send configuration (test stub).
+func SendReverbParams() (float64, float64, float64) {
+	return stubSendReverbParams[0], stubSendReverbParams[1], stubSendReverbParams[2]
 }
 
 // EQ / analyzer stubs for tests.
@@ -326,15 +353,15 @@ type multibandBandDef struct {
 
 // defaultBandDefs matches the 10-band ISO standard EQ definitions used in the UI.
 var defaultBandDefs = []multibandBandDef{
-	{loHz: 22, hiHz: 44},      // 31 Hz
-	{loHz: 44, hiHz: 88},      // 62 Hz
-	{loHz: 88, hiHz: 177},     // 125 Hz
-	{loHz: 177, hiHz: 354},    // 250 Hz
-	{loHz: 354, hiHz: 707},    // 500 Hz
-	{loHz: 707, hiHz: 1414},   // 1 kHz
-	{loHz: 1414, hiHz: 2828},  // 2 kHz
-	{loHz: 2828, hiHz: 5657},  // 4 kHz
-	{loHz: 5657, hiHz: 11314}, // 8 kHz
+	{loHz: 22, hiHz: 44},       // 31 Hz
+	{loHz: 44, hiHz: 88},       // 62 Hz
+	{loHz: 88, hiHz: 177},      // 125 Hz
+	{loHz: 177, hiHz: 354},     // 250 Hz
+	{loHz: 354, hiHz: 707},     // 500 Hz
+	{loHz: 707, hiHz: 1414},    // 1 kHz
+	{loHz: 1414, hiHz: 2828},   // 2 kHz
+	{loHz: 2828, hiHz: 5657},   // 4 kHz
+	{loHz: 5657, hiHz: 11314},  // 8 kHz
 	{loHz: 11314, hiHz: 20000}, // 16 kHz
 }
 
@@ -542,6 +569,12 @@ func AnalyzerService() *analyzer.Service { return nil }
 
 // ScopeService returns nil in test builds (no real audio engine).
 func ScopeService() *scope.Service { return nil }
+
+// ExportService returns nil in test builds (no export service).
+func ExportService() *scopeexport.Service { return nil }
+
+// EnableScopeExport is a no-op in test builds.
+func EnableScopeExport() {}
 
 var analyzerRegistryStub = map[string]*Analyzer{}
 

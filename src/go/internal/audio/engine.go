@@ -12,6 +12,7 @@ import (
 	"github.com/ebitengine/oto/v3"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
+	"github.com/ingyamilmolinar/beatmo/internal/scopeexport"
 )
 
 // sampleRate is the audio output sample rate.
@@ -46,6 +47,9 @@ var (
 
 	analyzerSvc *analyzer.Service
 	scopeSvc    *scope.Service
+
+	exportSvc       *scopeexport.Service
+	scopeExportFlag bool
 )
 
 // Voice generates PCM samples in the range [-1,1].
@@ -94,6 +98,13 @@ func AnalyzerService() *analyzer.Service { return analyzerSvc }
 // has not been initialized (e.g. in test/WASM builds).
 func ScopeService() *scope.Service { return scopeSvc }
 
+// ExportService returns the global scope export service, or nil if
+// export is not enabled.
+func ExportService() *scopeexport.Service { return exportSvc }
+
+// EnableScopeExport enables scope export on the next audio init.
+func EnableScopeExport() { scopeExportFlag = true }
+
 func init() {
 	ResetInstruments()
 }
@@ -125,6 +136,42 @@ func initContext() {
 		SampleRate:  sampleRate,
 	})
 	go scopeSvc.Run()
+
+	// Optionally start the scope export flight recorder.
+	if scopeExportFlag || os.Getenv("SCOPE_EXPORT") == "1" {
+		interval := 2 * time.Second
+		if v := os.Getenv("SCOPE_EXPORT_INTERVAL"); v != "" {
+			if secs, err := strconv.ParseFloat(v, 64); err == nil && secs > 0 {
+				interval = time.Duration(secs * float64(time.Second))
+			}
+		}
+		path := "scope_export.jsonl"
+		if v := os.Getenv("SCOPE_EXPORT_PATH"); v != "" {
+			path = v
+		}
+		exportSvc = scopeexport.NewService(scopeexport.Config{
+			SampleRate: sampleRate,
+			Interval:   interval,
+			OutputPath: path,
+			BPMFunc:    func() int { return bpm },
+			InstrumentsFunc: func() []string {
+				instMu.RLock()
+				defer instMu.RUnlock()
+				return append([]string{}, instOrder...)
+			},
+			LookupMeta: func(id string) (string, string, bool) {
+				m, ok := CatalogLookup(id)
+				if !ok {
+					return "", "", false
+				}
+				return m.Name, m.Source, ok
+			},
+			ChannelVolume: ChannelVolume,
+			ChannelPan:    ChannelPan,
+			MainVolume:    MainVolume,
+		})
+		go exportSvc.Run()
+	}
 }
 
 // Close stops the audio player, clears all voices, and releases the audio

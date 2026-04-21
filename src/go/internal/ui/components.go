@@ -220,11 +220,7 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 		}
 	}
 	if highlighted {
-		if onCol != nil {
-			fill = onCol
-		} else {
-			fill = s.Highlight
-		}
+		fill = s.Highlight
 	}
 
 	narrow := r.Dx() <= narrowCellThreshold

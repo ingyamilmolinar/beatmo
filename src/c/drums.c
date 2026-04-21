@@ -115,6 +115,9 @@ EXPORT void render_snare(float *out, int sampleRate, int samples) {
   double x1_bp2 = 0.0, x2_bp2 = 0.0, y1_bp2 = 0.0, y2_bp2 = 0.0;
   double x1_bp3 = 0.0, x2_bp3 = 0.0, y1_bp3 = 0.0, y2_bp3 = 0.0;
 
+  // Per-hit randomized wire LFO rate (11-15 Hz range based on seed).
+  double lfoRate = 13.0 + 2.0 * (double)seed;
+
   for (int i = 0; i < samples; ++i) {
     double sec = (double)i / (double)sampleRate;
     double tNorm = (double)i / (double)samples;
@@ -158,7 +161,7 @@ EXPORT void render_snare(float *out, int sampleRate, int samples) {
     y2_bp3 = y1_bp3; y1_bp3 = ybp3;
 
     // Slight time-varying modulation of wires for organic complexity.
-    double lfo = 1.0 + 0.10 * sin(2.0 * M_PI * 13.0 * sec);
+    double lfo = 1.0 + 0.10 * sin(2.0 * M_PI * lfoRate * sec);
     double wiresBand = (ybp1 * 0.9 + ybp2 * 0.6 + ybp3 * 0.2) * lfo;
 
     // Envelopes: head noise provides sustained thud/weight; wires with a strong
@@ -673,18 +676,48 @@ EXPORT void render_clap(float *out, int sampleRate, int samples) {
   if (ma_noise_init(&nc, NULL, &noise) != MA_SUCCESS) {
     return;
   }
+
+  // RBJ bandpass at 1800 Hz, Q=1.5
+  double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
+  {
+    double fc = 1800.0;
+    double Q = 1.5;
+    double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+    double cosw = cos(w0);
+    double alpha = sin(w0) / (2.0 * Q);
+    double b0 = sin(w0) * 0.5;
+    double b1 = 0.0;
+    double b2 = -b0;
+    double a0 = 1.0 + alpha;
+    double a1 = -2.0 * cosw;
+    double a2 = 1.0 - alpha;
+    b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0;
+    a1_bp = a1/a0; a2_bp = a2/a0;
+  }
+  double x1_bp = 0.0, x2_bp = 0.0, y1_bp = 0.0, y2_bp = 0.0;
+
   for (int i = 0; i < samples; ++i) {
     double t = (double)i / (double)sampleRate;
     float n;
     ma_noise_read_pcm_frames(&noise, &n, 1, NULL);
-    // Clustered bursts to approximate palms plus a short room tail.
+
+    // Bandpass filter the noise
+    double ybp = b0_bp * (double)n + b1_bp * x1_bp + b2_bp * x2_bp - a1_bp * y1_bp - a2_bp * y2_bp;
+    x2_bp = x1_bp; x1_bp = (double)n;
+    y2_bp = y1_bp; y1_bp = ybp;
+
+    // Tighter clustered bursts to approximate palms.
     double burst =
         exp(-110.0 * fabs(t - 0.000)) +
-        exp(-110.0 * fabs(t - 0.020)) +
-        exp(-110.0 * fabs(t - 0.040)) +
-        0.7 * exp(-80.0 * fabs(t - 0.075));
+        exp(-110.0 * fabs(t - 0.015)) +
+        exp(-110.0 * fabs(t - 0.030)) +
+        0.7 * exp(-80.0 * fabs(t - 0.060));
     double env = exp(-7.0 * t);
-    out[i] = softsat((float)(n * burst * env));
+
+    // Room tail: low-amplitude noise decay for depth.
+    double roomTail = (double)n * exp(-4.0 * t) * 0.15;
+
+    out[i] = softsat((float)(ybp * burst * env + roomTail));
   }
   ma_noise_uninit(&noise, NULL);
 }
@@ -713,6 +746,26 @@ EXPORT void render_cowbell(float *out, int sampleRate, int samples) {
   double phase[4] = {0, 0, 0, 0};
 
   double lpNoise = 0.0;
+
+  // RBJ bandpass at 1200 Hz for focused impact
+  double b0_cb, b1_cb, b2_cb, a1_cb, a2_cb;
+  {
+    double fc = 1200.0;
+    double Q = 2.0;
+    double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+    double cosw = cos(w0);
+    double alpha = sin(w0) / (2.0 * Q);
+    double b0 = sin(w0) * 0.5;
+    double b1 = 0.0;
+    double b2 = -b0;
+    double a0 = 1.0 + alpha;
+    double a1 = -2.0 * cosw;
+    double a2 = 1.0 - alpha;
+    b0_cb = b0/a0; b1_cb = b1/a0; b2_cb = b2/a0;
+    a1_cb = a1/a0; a2_cb = a2/a0;
+  }
+  double x1_cb = 0.0, x2_cb = 0.0, y1_cb = 0.0, y2_cb = 0.0;
+
   for (int i = 0; i < samples; ++i) {
     double sec = (double)i / (double)sampleRate;
     double tNorm = (double)i / (double)samples;
@@ -729,14 +782,18 @@ EXPORT void render_cowbell(float *out, int sampleRate, int samples) {
     // (not voice truncation) to stop the sound.
     double envTone = exp(-sec * 9.0);
 
-    // Short, mid-focused noise impact at the front and a faint metallic rasp.
+    // LP noise state still needed for HP metal rasp.
     lpNoise = lpNoise * 0.9 + n * 0.1;
+    // Bandpass-filtered impact for a focused transient.
+    double ycb = b0_cb * (double)n + b1_cb * x1_cb + b2_cb * x2_cb - a1_cb * y1_cb - a2_cb * y2_cb;
+    x2_cb = x1_cb; x1_cb = (double)n;
+    y2_cb = y1_cb; y1_cb = ycb;
     double impactEnv = exp(-sec * 260.0);
-    double impact = (double)lpNoise * impactEnv * 0.55;
+    double impact = ycb * impactEnv * 0.55;
     // Subtle high-passed noise tail for extra metal, kept low to avoid hiss.
     double hpMetal = (double)n - lpNoise;
     double metalEnv = exp(-sec * 60.0);
-    double metal = hpMetal * metalEnv * 0.25;
+    double metal = hpMetal * metalEnv * 0.30;
 
     // Gentle additional fade so we don't abruptly cut a very loud tail.
     double global = 1.0 - 0.06 * tNorm;
@@ -882,6 +939,9 @@ EXPORT void render_kick_deep(float *out, int sampleRate, int samples) {
 
   double f0 = 42.0;       // deep fundamental (lower than standard kick's 55)
   double f1 = f0 * 2.0;   // subtle 2nd harmonic
+  double f2 = f0 * 3.0;   // 126 Hz — 3rd harmonic for speaker presence
+  double phase2 = M_PI * 0.5;
+  double lpClick = 0.0;
 
   for (int i = 0; i < samples; ++i) {
     double tSec  = (double)i / (double)sampleRate;
@@ -893,31 +953,39 @@ EXPORT void render_kick_deep(float *out, int sampleRate, int samples) {
     double noiseEnv = exp(-20.0 * tSec);
     double noiseThud = lpNoise * noiseEnv * 0.10;
 
+    // Soft beater click: HP-filtered noise burst, gentler than standard kick.
+    lpClick = lpClick * 0.85 + (double)n * 0.15;
+    double click = ((double)n - lpClick) * exp(-180.0 * tSec) * 0.20;
+
     // Wider pitch sweep, slower decay than standard kick.
     double pitchEnv = exp(-15.0 * tSec);
     double freqMul  = 1.0 + 0.15 * pitchEnv;
 
     double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
     double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+    double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
 
     phase0 += step0;
     phase1 += step1;
+    phase2 += step2;
 
     double s0 = sin(phase0);
     double s1 = sin(phase1);
+    double s2 = sin(phase2);
 
     // Much longer decay for the sub tail.
     double env0 = exp(-3.5 * tSec);
     double env1 = exp(-7.0 * tSec);
+    double env2 = exp(-12.0 * tSec);
 
-    double tonal = s0 * env0 * 0.95 + s1 * env1 * 0.15;
+    double tonal = s0 * env0 * 0.95 + s1 * env1 * 0.15 + s2 * env2 * 0.10;
 
     // Gentler attack boost.
     double attackShape = 1.0 + 0.15 * exp(-50.0 * tSec);
     tonal *= attackShape;
 
     double g = exp(-3.0 * tNorm);
-    double mixed = (tonal + noiseThud) * g;
+    double mixed = (tonal + noiseThud + click) * g;
 
     // Clean sub with mild warmth.
     float y = (float)(tanh(mixed * 1.2) * 0.95);

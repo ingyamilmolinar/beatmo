@@ -178,15 +178,16 @@ func TestNarrowCellHighlighted(t *testing.T) {
 		style.Draw(dst, r, false, true, onCol)
 	})
 
-	// Fill should use onCol.
+	// Fill should use colHighlight (white flash), not instrument color.
+	hlExpected := color.RGBAModel.Convert(colHighlight).(color.RGBA)
 	var fillCol color.RGBA
 	for _, c := range rec.calls {
 		if c.Kind == drawCallRect && c.Filled && c.Rect == r {
 			fillCol = c.Color
 		}
 	}
-	if fillCol != onCol {
-		t.Fatalf("highlighted narrow cell fill = %v, want %v", fillCol, onCol)
+	if fillCol != hlExpected {
+		t.Fatalf("highlighted narrow cell fill = %v, want colHighlight %v", fillCol, hlExpected)
 	}
 
 	// Should have right-edge separator, no full border, no top strip.

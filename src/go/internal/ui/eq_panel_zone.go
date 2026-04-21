@@ -49,6 +49,10 @@ type EQCallbacks struct {
 	// OnFreezeToggle toggles the analyzer capture freeze state and returns
 	// the new frozen state.
 	OnFreezeToggle func() bool
+
+	// OnTabChange is called after the active tab changes. Used to trigger
+	// layout recalc when switching to/from the Scope tab (which auto-expands).
+	OnTabChange func(tab PanelTab)
 }
 
 // EQPanelZone implements the Zone interface for the EQ/Waveform panel.
@@ -104,6 +108,10 @@ type EQPanelZone struct {
 	dbInputSyncing bool    // guard flag: true when sync is updating text
 	dbInputPrev    float64 // saved dB before editing (for Escape revert)
 
+	// WASM-only cached state held while the analyzer tab is frozen. On desktop
+	// stays nil — the analyzer.Service owns freeze and sets state.Capture.Frozen.
+	frozenAnalyzer *analyzer.State
+
 	// Hit areas cache (rebuilt on Layout)
 	hitAreas []HitArea
 }
@@ -132,6 +140,9 @@ func (z *EQPanelZone) initButtons() {
 		t := tab // capture
 		z.tabButtons[i] = NewButton(PanelTabLabel(t), InstButtonStyle, func() {
 			z.tabState.SetActiveTab(t)
+			if z.callbacks.OnTabChange != nil {
+				z.callbacks.OnTabChange(t)
+			}
 		})
 	}
 

@@ -54,7 +54,13 @@ func TestMixerMultiVoiceSameInstrumentWithEQ(t *testing.T) {
 	// Set kick channel with lowpass EQ.
 	SetChannelEQ("kick", sampleRate, EQBand{Kind: EQLowpass, Freq: 1000, Q: 0.707})
 
-	m := &mixer{}
+	m := &mixer{
+		workBuf:   make([]float64, blockSize),
+		voiceTemp: make([]float64, blockSize),
+		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
+		instSlots: make(map[string]int),
+	}
 	const voiceSamples = 4096
 
 	// Schedule 3 overlapping kick voices all starting at sample 0.
@@ -97,7 +103,13 @@ func TestMixerMultiInstrumentWithEQ(t *testing.T) {
 	SetChannelEQ("snare", sampleRate, EQBand{Kind: EQLowpass, Freq: 5000, Q: 0.707})
 	// Master: no EQ (pass-through).
 
-	m := &mixer{}
+	m := &mixer{
+		workBuf:   make([]float64, blockSize),
+		voiceTemp: make([]float64, blockSize),
+		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
+		instSlots: make(map[string]int),
+	}
 	const voiceSamples = 4096
 
 	m.Schedule("kick", newSineVoice(200, sampleRate, voiceSamples), 0)
@@ -131,7 +143,13 @@ func TestMixerOutputCaptureMatchesWorkBuf(t *testing.T) {
 	// Set a lowpass EQ so we exercise the full pipeline.
 	SetChannelEQ("kick", sampleRate, EQBand{Kind: EQLowpass, Freq: 2000, Q: 0.707})
 
-	m := &mixer{}
+	m := &mixer{
+		workBuf:   make([]float64, blockSize),
+		voiceTemp: make([]float64, blockSize),
+		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
+		instSlots: make(map[string]int),
+	}
 	const voiceSamples = 4096
 
 	StartOutputCapture()

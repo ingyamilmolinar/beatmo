@@ -82,6 +82,31 @@ func TestPanelTabExpandedHeight(t *testing.T) {
 	}
 }
 
+func TestPanelTabScopeAutoExpand(t *testing.T) {
+	assertDefaultParityState(t)
+
+	prev := eqPanelHeight
+	eqPanelHeight = 190
+	t.Cleanup(func() { eqPanelHeight = prev })
+
+	s := NewPanelTabState()
+	if h := s.PanelHeight(); h != 190 {
+		t.Fatalf("collapsed EQ height: expected 190, got %d", h)
+	}
+
+	// Switching to Scope should auto-expand.
+	s.SetActiveTab(TabScope)
+	if h := s.PanelHeight(); h != 380 {
+		t.Fatalf("scope tab height: expected 380, got %d", h)
+	}
+
+	// Switching back to EQ should collapse.
+	s.SetActiveTab(TabEQ)
+	if h := s.PanelHeight(); h != 190 {
+		t.Fatalf("back to EQ height: expected 190, got %d", h)
+	}
+}
+
 func TestPanelTabLabels(t *testing.T) {
 	assertDefaultParityState(t)
 

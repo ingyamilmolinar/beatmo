@@ -2,21 +2,22 @@
   "version": 1,
   "subdiv": 8,
   "bpm": 120,
+  "master_volume": 0.81,
   "instruments": [
     {
-      "name": "Kick-deep",
-      "id": "kick-deep",
+      "name": "Kick-1",
+      "id": "kick-1",
       "kind": "builtin",
-      "volume": 0.85,
+      "volume": 1,
       "origin": 0,
-      "color": "#50C8C8FF",
+      "color": "#44A8A8FF",
       "eq": {
         "gains_db": [
           1.1,
           1.7,
-          0.9,
-          1.3,
-          1.1,
+          -2.4,
+          -11.6,
+          -12,
           0,
           -0.8,
           0,
@@ -67,16 +68,18 @@
         ],
         "hpf_cutoff_hz": 20,
         "lpf_enabled": true,
-        "lpf_cutoff_hz": 1483.6876977115996
+        "lpf_cutoff_hz": 1000
       },
       "effects": [
         {
-          "type": "distortion",
+          "type": "tape",
           "enabled": true,
           "params": {
-            "drive": 1.4,
-            "mix": 0.5,
-            "tone": 3000
+            "drive": 8.189349112426036,
+            "flutter": 0.23076923076923078,
+            "mix": 0.47928994082840237,
+            "warmth": 0.5857988165680473,
+            "wow": 0.5976331360946746
           }
         }
       ]
@@ -85,21 +88,21 @@
       "name": "Snare",
       "id": "snare",
       "kind": "builtin",
-      "volume": 0.75,
+      "volume": 0.6,
       "origin": 3,
       "color": "#C87850FF",
       "eq": {
         "gains_db": [
           -6,
           -6,
-          -3,
+          -1,
           -1,
           -1.8,
           1.7,
-          4.7,
+          3.5,
           3.9,
           1.3,
-          -4.0
+          -4
         ],
         "bands_hz": [
           [
@@ -144,7 +147,7 @@
           ]
         ],
         "hpf_enabled": true,
-        "hpf_cutoff_hz": 642.7783576848318,
+        "hpf_cutoff_hz": 180,
         "lpf_enabled": true,
         "lpf_cutoff_hz": 8998.186611481351
       },
@@ -153,31 +156,32 @@
           "type": "distortion",
           "enabled": true,
           "params": {
-            "drive": 1.5,
+            "drive": 1.3,
             "mix": 0.4,
             "tone": 5000
           }
         }
-      ]
+      ],
+      "reverb_send": 0.15
     },
     {
       "name": "Hi-Hat",
       "id": "hihat",
       "kind": "builtin",
-      "volume": 0.65,
+      "volume": 1,
       "origin": 6,
       "color": "#FFF610FF",
       "eq": {
         "gains_db": [
-          -8,
-          -8,
+          -6,
+          -6,
           -6,
           -3,
           -1.6,
           -3,
           -0.9,
           1.6,
-          5.0,
+          5,
           -0.2
         ],
         "bands_hz": [
@@ -231,18 +235,19 @@
           "type": "delay",
           "enabled": true,
           "params": {
-            "feedback": 0.4,
-            "mix": 0.2,
+            "feedback": 0.3,
+            "mix": 0.25,
             "time": 250
           }
         }
-      ]
+      ],
+      "pan": 0.35
     },
     {
       "name": "Clap",
       "id": "clap",
       "kind": "builtin",
-      "volume": 0.45,
+      "volume": 0.69,
       "origin": 13,
       "color": "#D74BC8FF",
       "eq": {
@@ -307,98 +312,37 @@
       },
       "effects": [
         {
-          "type": "bitcrusher",
+          "type": "phaser",
           "enabled": true,
           "params": {
-            "bits": 10,
-            "mix": 0.5,
-            "rate": 0.5
+            "depth": 0.4873417721518987,
+            "feedback": 0.4569620253164557,
+            "mix": 0.3924050632911392,
+            "rate": 1.0838509316770186,
+            "stages": 2.538922155688623
           }
         }
-      ]
-    },
-    {
-      "name": "Tom",
-      "id": "tom",
-      "kind": "builtin",
-      "volume": 0.55,
-      "origin": 15,
-      "color": "#4B6EEBFF",
-      "eq": {
-        "gains_db": [
-          -3,
-          0,
-          2,
-          1,
-          1,
-          2,
-          3,
-          0,
-          -3,
-          -6
-        ],
-        "bands_hz": [
-          [
-            22,
-            44
-          ],
-          [
-            44,
-            88
-          ],
-          [
-            88,
-            177
-          ],
-          [
-            177,
-            354
-          ],
-          [
-            354,
-            707
-          ],
-          [
-            707,
-            1414
-          ],
-          [
-            1414,
-            2828
-          ],
-          [
-            2828,
-            5657
-          ],
-          [
-            5657,
-            11314
-          ],
-          [
-            11314,
-            20000
-          ]
-        ],
-        "hpf_cutoff_hz": 20,
-        "lpf_cutoff_hz": 20000
-      }
+      ],
+      "pan": -0.15,
+      "delay_send": 0.1,
+      "reverb_send": 0.25
     },
     {
       "name": "Cowbell",
       "id": "cowbell",
       "kind": "builtin",
-      "volume": 0.30,
-      "origin": 25,
+      "volume": 0.06,
+      "origin": 20,
       "color": "#DC8C64FF",
       "eq": {
         "gains_db": [
-          -8,
-          -6,
-          -4,
+          0,
+          0,
+          0,
           -2,
-          5,
-          3.6,
-          4.0,
+          3,
+          2.5,
+          3,
           -0.7,
           -0.3,
           -0.1
@@ -448,33 +392,35 @@
         "hpf_enabled": true,
         "hpf_cutoff_hz": 341.855440295777,
         "lpf_enabled": true,
-        "lpf_cutoff_hz": 2614.7865698590995
+        "lpf_cutoff_hz": 4000
       },
       "effects": [
         {
           "type": "distortion",
           "enabled": true,
           "params": {
-            "drive": 1.6,
+            "drive": 1.3,
             "mix": 0.3,
-            "tone": 3500
+            "tone": 4000
           }
         }
-      ]
+      ],
+      "pan": 0.45,
+      "reverb_send": 0.2
     },
     {
       "name": "Fm-epiano-1",
       "id": "fm-epiano-1",
       "kind": "builtin",
-      "volume": 0.35,
-      "origin": 52,
+      "volume": 0.12,
+      "origin": 46,
       "color": "#C85078FF",
       "eq": {
         "gains_db": [
           -1.6,
           0,
-          -2.0,
-          3.0,
+          -2,
+          3,
           3.5,
           -0.1,
           0,
@@ -526,7 +472,10 @@
         ],
         "hpf_cutoff_hz": 20,
         "lpf_cutoff_hz": 20000
-      }
+      },
+      "pan": -0.2,
+      "delay_send": 0.15,
+      "reverb_send": 0.3
     }
   ],
   "nodes": [
@@ -536,10 +485,10 @@
       "j": -8,
       "type": "regular",
       "inputs": [
-        23
+        18
       ],
       "outputs": [
-        21
+        16
       ]
     },
     {
@@ -563,9 +512,9 @@
         1
       ],
       "outputs": [
-        23
+        18
       ],
-      "volume": 1.5
+      "volume": 1.2
     },
     {
       "id": 3,
@@ -573,12 +522,12 @@
       "j": -16,
       "type": "regular",
       "inputs": [
-        32
+        26
       ],
       "outputs": [
-        24
+        19
       ],
-      "volume": 1.5
+      "volume": 1.2
     },
     {
       "id": 4,
@@ -586,12 +535,12 @@
       "j": -16,
       "type": "regular",
       "inputs": [
-        22
+        17
       ],
       "outputs": [
-        34
+        28
       ],
-      "volume": 2
+      "volume": 1.5
     },
     {
       "id": 5,
@@ -599,12 +548,12 @@
       "j": 0,
       "type": "regular",
       "inputs": [
-        33
+        27
       ],
       "outputs": [
-        30
+        24
       ],
-      "volume": 2
+      "volume": 1.5
     },
     {
       "id": 6,
@@ -612,10 +561,10 @@
       "j": 8,
       "type": "regular",
       "inputs": [
-        43
+        37
       ],
       "outputs": [
-        58
+        52
       ]
     },
     {
@@ -624,10 +573,10 @@
       "j": 8,
       "type": "regular",
       "inputs": [
-        45
+        39
       ],
       "outputs": [
-        46
+        40
       ]
     },
     {
@@ -636,10 +585,10 @@
       "j": 24,
       "type": "regular",
       "inputs": [
-        37
+        31
       ],
       "outputs": [
-        35
+        29
       ]
     },
     {
@@ -648,12 +597,12 @@
       "j": -8,
       "type": "regular",
       "inputs": [
-        20
+        15
       ],
       "outputs": [
         1
       ],
-      "volume": 2,
+      "volume": 1.5,
       "pitch": 15,
       "duration": 2.45
     },
@@ -663,12 +612,12 @@
       "j": 0,
       "type": "regular",
       "inputs": [
-        29
+        23
       ],
       "outputs": [
-        31
+        25
       ],
-      "volume": 2
+      "volume": 1.5
     },
     {
       "id": 11,
@@ -676,10 +625,10 @@
       "j": 8,
       "type": "regular",
       "inputs": [
-        58
+        52
       ],
       "outputs": [
-        42
+        36
       ],
       "volume": 0.9999999999999992,
       "groove_kind": "rush"
@@ -690,10 +639,10 @@
       "j": 12,
       "type": "regular",
       "inputs": [
-        57
+        51
       ],
       "outputs": [
-        43
+        37
       ],
       "groove_kind": "delay",
       "groove_pct": 1.3877787807814457e-17
@@ -704,10 +653,10 @@
       "j": 8,
       "type": "regular",
       "inputs": [
-        27
+        21
       ],
       "outputs": [
-        45
+        39
       ]
     },
     {
@@ -716,105 +665,27 @@
       "j": 24,
       "type": "regular",
       "inputs": [
-        38
+        32
       ],
       "outputs": [
-        44
+        38
       ]
     },
     {
       "id": 15,
-      "i": -32,
-      "j": 8,
-      "type": "regular",
-      "inputs": [
-        19
-      ],
-      "outputs": [
-        18
-      ],
-      "volume": 2,
-      "duration": 1.45
-    },
-    {
-      "id": 16,
-      "i": -32,
-      "j": 12,
-      "type": "regular",
-      "inputs": [
-        17
-      ],
-      "outputs": [
-        19
-      ],
-      "logic_kind": "skip_every_n",
-      "logic_n": 2
-    },
-    {
-      "id": 17,
-      "i": -36,
-      "j": 12,
-      "type": "regular",
-      "inputs": [
-        26
-      ],
-      "outputs": [
-        16
-      ],
-      "volume": 1.5,
-      "pitch": -2,
-      "duration": 1.5,
-      "logic_kind": "skip_every_n",
-      "logic_n": 2,
-      "groove_kind": "delay",
-      "groove_pct": 0.25
-    },
-    {
-      "id": 18,
-      "i": -36,
-      "j": 8,
-      "type": "regular",
-      "inputs": [
-        15
-      ],
-      "outputs": [
-        26
-      ],
-      "volume": 1.5,
-      "pitch": -2,
-      "duration": 1.8
-    },
-    {
-      "id": 19,
-      "i": -32,
-      "j": 10,
-      "type": "regular",
-      "inputs": [
-        16
-      ],
-      "outputs": [
-        15
-      ],
-      "pitch": -6,
-      "duration": 0.7,
-      "logic_kind": "skip_every_n",
-      "logic_n": 2
-    },
-    {
-      "id": 20,
       "i": -10,
       "j": -8,
       "type": "regular",
       "inputs": [
-        21
+        16
       ],
       "outputs": [
         9
       ],
-      "volume": 1.5
+      "volume": 1.2
     },
     {
-      "id": 21,
+      "id": 16,
       "i": -12,
       "j": -8,
       "type": "regular",
@@ -822,27 +693,27 @@
         0
       ],
       "outputs": [
-        20
+        15
       ],
-      "volume": 1.5,
+      "volume": 1.2,
       "pitch": 6,
       "duration": 0.8
     },
     {
-      "id": 22,
+      "id": 17,
       "i": 14,
       "j": -16,
       "type": "regular",
       "inputs": [
-        28
+        22
       ],
       "outputs": [
         4
       ],
-      "volume": 1.5
+      "volume": 1.2
     },
     {
-      "id": 23,
+      "id": 18,
       "i": -16,
       "j": -2,
       "type": "regular",
@@ -852,12 +723,12 @@
       "outputs": [
         0
       ],
-      "volume": 1.5,
+      "volume": 1.2,
       "pitch": -2,
       "duration": 0.8
     },
     {
-      "id": 24,
+      "id": 19,
       "i": 2,
       "j": -16,
       "type": "regular",
@@ -865,20 +736,20 @@
         3
       ],
       "outputs": [
-        28
+        22
       ],
-      "volume": 1.5
+      "volume": 1.2
     },
     {
-      "id": 25,
+      "id": 20,
       "i": -33,
       "j": -1,
       "type": "regular",
       "inputs": [
-        54
+        48
       ],
       "outputs": [
-        54
+        48
       ],
       "pitch": -6,
       "duration": 0.7000000000000001,
@@ -888,58 +759,43 @@
       "groove_kind": "rush"
     },
     {
-      "id": 26,
-      "i": -36,
-      "j": 10,
-      "type": "regular",
-      "inputs": [
-        18
-      ],
-      "outputs": [
-        17
-      ],
-      "volume": 2,
-      "groove_kind": "delay",
-      "groove_pct": 0.49999999999999994
-    },
-    {
-      "id": 27,
+      "id": 21,
       "i": -24,
       "j": 10,
       "type": "regular",
       "inputs": [
-        36
+        30
       ],
       "outputs": [
         13
       ]
     },
     {
-      "id": 28,
+      "id": 22,
       "i": 8,
       "j": -16,
       "type": "regular",
       "inputs": [
-        24
+        19
       ],
       "outputs": [
-        22
+        17
       ]
     },
     {
-      "id": 29,
+      "id": 23,
       "i": 8,
       "j": 0,
       "type": "regular",
       "inputs": [
-        30
+        24
       ],
       "outputs": [
         10
       ]
     },
     {
-      "id": 30,
+      "id": 24,
       "i": 14,
       "j": 0,
       "type": "regular",
@@ -947,11 +803,11 @@
         5
       ],
       "outputs": [
-        29
+        23
       ]
     },
     {
-      "id": 31,
+      "id": 25,
       "i": 0,
       "j": -4,
       "type": "regular",
@@ -959,38 +815,38 @@
         10
       ],
       "outputs": [
-        32
+        26
       ],
       "volume": 0.3,
       "logic_kind": "probability",
       "logic_p": 0.3
     },
     {
-      "id": 32,
+      "id": 26,
       "i": 0,
       "j": -6,
       "type": "regular",
       "inputs": [
-        31
+        25
       ],
       "outputs": [
         3
       ]
     },
     {
-      "id": 33,
+      "id": 27,
       "i": 16,
       "j": -4,
       "type": "regular",
       "inputs": [
-        34
+        28
       ],
       "outputs": [
         5
       ]
     },
     {
-      "id": 34,
+      "id": 28,
       "i": 16,
       "j": -10,
       "type": "regular",
@@ -998,52 +854,52 @@
         4
       ],
       "outputs": [
-        33
-      ]
-    },
-    {
-      "id": 35,
-      "i": -24,
-      "j": 20,
-      "type": "regular",
-      "inputs": [
-        8
-      ],
-      "outputs": [
-        36
-      ]
-    },
-    {
-      "id": 36,
-      "i": -24,
-      "j": 18,
-      "type": "regular",
-      "inputs": [
-        35
-      ],
-      "outputs": [
         27
       ]
     },
     {
-      "id": 37,
+      "id": 29,
+      "i": -24,
+      "j": 20,
+      "type": "regular",
+      "inputs": [
+        8
+      ],
+      "outputs": [
+        30
+      ]
+    },
+    {
+      "id": 30,
+      "i": -24,
+      "j": 18,
+      "type": "regular",
+      "inputs": [
+        29
+      ],
+      "outputs": [
+        21
+      ]
+    },
+    {
+      "id": 31,
       "i": -22,
       "j": 24,
       "type": "regular",
       "inputs": [
-        48
+        42
       ],
       "outputs": [
         8
       ]
     },
     {
-      "id": 38,
+      "id": 32,
       "i": -8,
       "j": 20,
       "type": "regular",
       "inputs": [
-        39
+        33
       ],
       "outputs": [
         14
@@ -1052,43 +908,43 @@
       "logic_n": 2
     },
     {
-      "id": 39,
+      "id": 33,
       "i": -8,
       "j": 16,
-      "type": "regular",
-      "inputs": [
-        46
-      ],
-      "outputs": [
-        38
-      ]
-    },
-    {
-      "id": 40,
-      "i": 12,
-      "j": 12,
-      "type": "regular",
-      "inputs": [
-        42
-      ],
-      "outputs": [
-        41
-      ]
-    },
-    {
-      "id": 41,
-      "i": 10,
-      "j": 12,
       "type": "regular",
       "inputs": [
         40
       ],
       "outputs": [
-        57
+        32
       ]
     },
     {
-      "id": 42,
+      "id": 34,
+      "i": 12,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        36
+      ],
+      "outputs": [
+        35
+      ]
+    },
+    {
+      "id": 35,
+      "i": 10,
+      "j": 12,
+      "type": "regular",
+      "inputs": [
+        34
+      ],
+      "outputs": [
+        51
+      ]
+    },
+    {
+      "id": 36,
       "i": 12,
       "j": 10,
       "type": "regular",
@@ -1096,12 +952,12 @@
         11
       ],
       "outputs": [
-        40
+        34
       ],
       "groove_kind": "delay"
     },
     {
-      "id": 43,
+      "id": 37,
       "i": 8,
       "j": 10,
       "type": "regular",
@@ -1117,7 +973,7 @@
       "groove_pct": 0.25
     },
     {
-      "id": 44,
+      "id": 38,
       "i": -12,
       "j": 24,
       "type": "regular",
@@ -1125,13 +981,13 @@
         14
       ],
       "outputs": [
-        47
+        41
       ],
       "logic_kind": "every_n_triggers",
       "logic_n": 2
     },
     {
-      "id": 45,
+      "id": 39,
       "i": -10,
       "j": 8,
       "type": "regular",
@@ -1143,7 +999,7 @@
       ]
     },
     {
-      "id": 46,
+      "id": 40,
       "i": -8,
       "j": 12,
       "type": "regular",
@@ -1151,113 +1007,113 @@
         7
       ],
       "outputs": [
-        39
+        33
       ]
     },
     {
-      "id": 47,
+      "id": 41,
       "i": -14,
       "j": 24,
       "type": "regular",
       "inputs": [
-        44
+        38
       ],
       "outputs": [
-        48
+        42
       ],
       "logic_kind": "every_n_triggers",
       "logic_n": 2
     },
     {
-      "id": 48,
+      "id": 42,
       "i": -18,
       "j": 24,
       "type": "regular",
       "inputs": [
-        47
+        41
       ],
       "outputs": [
-        37
+        31
       ],
       "logic_kind": "skip_every_n",
       "logic_n": 2
     },
     {
-      "id": 49,
+      "id": 43,
       "i": -40,
       "j": -8,
       "type": "regular",
       "inputs": [
-        55
+        49
       ],
       "outputs": [
-        56
+        50
       ],
       "pitch": -2,
       "duration": 0.40000000000000013
     },
     {
-      "id": 50,
+      "id": 44,
       "i": -32,
       "j": -8,
       "type": "regular",
       "inputs": [
-        53
+        47
       ],
       "outputs": [
-        55
+        49
       ],
       "duration": 0.5000000000000001
     },
     {
-      "id": 51,
+      "id": 45,
       "i": -32,
       "j": -16,
       "type": "regular",
       "inputs": [
-        52
+        46
       ],
       "outputs": [
-        53
+        47
       ],
       "pitch": 5,
       "duration": 0.8
     },
     {
-      "id": 52,
+      "id": 46,
       "i": -40,
       "j": -16,
       "type": "regular",
       "inputs": [
-        56
+        50
       ],
       "outputs": [
-        51
+        45
       ]
     },
     {
-      "id": 53,
+      "id": 47,
       "i": -32,
       "j": -14,
       "type": "regular",
       "inputs": [
-        51
+        45
       ],
       "outputs": [
-        50
+        44
       ],
       "duration": 0.40000000000000013
     },
     {
-      "id": 54,
+      "id": 48,
       "i": -31,
       "j": -1,
       "type": "regular",
       "inputs": [
-        25
+        20
       ],
       "outputs": [
-        25
+        20
       ],
       "logic_kind": "skip_every_n",
       "logic_n": 4,
@@ -1265,38 +1121,38 @@
       "groove_pct": 0.7000000000000001
     },
     {
-      "id": 55,
+      "id": 49,
       "i": -36,
       "j": -8,
       "type": "regular",
       "inputs": [
-        50
+        44
       ],
       "outputs": [
-        49
+        43
       ],
       "duration": 1.5000000000000004
     },
     {
-      "id": 56,
+      "id": 50,
       "i": -40,
       "j": -12,
       "type": "regular",
       "inputs": [
-        49
+        43
       ],
       "outputs": [
-        52
+        46
       ],
       "duration": 0.9
     },
     {
-      "id": 57,
+      "id": 51,
       "i": 9,
       "j": 12,
       "type": "regular",
       "inputs": [
-        41
+        35
       ],
       "outputs": [
         12
@@ -1305,7 +1161,7 @@
       "groove_pct": 0.25
     },
     {
-      "id": 58,
+      "id": 52,
       "i": 10,
       "j": 8,
       "type": "regular",
@@ -1321,16 +1177,16 @@
   ],
   "eq": {
     "gains_db": [
-      0.5,
-      0.0,
-      0.0,
-      1.0,
-      0.5,
-      1.5,
-      -1.0,
-      -0.5,
-      1.5,
-      -2.0
+      -6,
+      -6,
+      -6,
+      -3,
+      -1.6,
+      -3,
+      -0.9,
+      1.6,
+      5,
+      -0.2
     ],
     "bands_hz": [
       [
@@ -1376,5 +1232,17 @@
     ],
     "hpf_cutoff_hz": 20,
     "lpf_cutoff_hz": 20000
+  },
+  "send_effects": {
+    "delay": {
+      "time_ms": 300,
+      "feedback": 0.3,
+      "damping_hz": 3000
+    },
+    "reverb": {
+      "room": 0.7,
+      "damping": 0.4,
+      "wet": 0.3
+    }
   }
 }

@@ -166,6 +166,12 @@ func (s *Service) maxSamples() int {
 	return s.cfg.SampleRate * s.cfg.MaxWindowMs / 1000
 }
 
+// isMasterStage returns true for stages that carry the composite mix
+// rather than per-instrument signals (Sends, Master).
+func isMasterStage(s Stage) bool {
+	return s == StageSends || s == StageMaster
+}
+
 // tick runs one processing cycle.
 func (s *Service) tick() {
 	max := s.maxSamples()
@@ -174,6 +180,9 @@ func (s *Service) tick() {
 	tapBStage := Stage(s.tapB.Load())
 
 	instID := s.Instrument()
+
+	// Load previous state for carry-forward when a tap has no new data.
+	prev := s.state.Load()
 
 	// If frozen, drain all rings to prevent unbounded growth but
 	// don't update published state.
@@ -190,7 +199,9 @@ func (s *Service) tick() {
 	// Process tap A.
 	if tapAStage >= 0 && int(tapAStage) < int(stageCount) {
 		samples, id := s.rings[tapAStage].drain(max)
-		if len(samples) > 0 && (instID == "" || id == instID) {
+		// Master-path stages always pass the instrument filter because
+		// they contain the composite mix, not per-instrument signals.
+		if len(samples) > 0 && (isMasterStage(tapAStage) || instID == "" || id == instID) {
 			td := buildTapData(tapAStage, id, samples)
 			tapA = &td
 		}
@@ -199,7 +210,7 @@ func (s *Service) tick() {
 	// Process tap B.
 	if tapBStage >= 0 && int(tapBStage) < int(stageCount) {
 		samples, id := s.rings[tapBStage].drain(max)
-		if len(samples) > 0 && (instID == "" || id == instID) {
+		if len(samples) > 0 && (isMasterStage(tapBStage) || instID == "" || id == instID) {
 			td := buildTapData(tapBStage, id, samples)
 			tapB = &td
 		}
@@ -214,16 +225,22 @@ func (s *Service) tick() {
 		s.rings[i].drain(max)
 	}
 
-	// Publish new state if either tap has data.
-	if tapA != nil || tapB != nil {
+	// Publish new state, carrying forward previous tap data when no
+	// new samples arrived for a tap this tick. The stage-match guard
+	// prevents carrying stale data when the user switches tap points.
+	if tapAStage >= 0 || tapBStage >= 0 {
 		st := &State{
 			Timestamp: time.Now().UnixNano(),
 		}
 		if tapA != nil {
 			st.TapA = *tapA
+		} else if prev != nil && prev.TapA.Active && prev.TapA.Stage == tapAStage {
+			st.TapA = prev.TapA
 		}
 		if tapB != nil {
 			st.TapB = *tapB
+		} else if prev != nil && prev.TapB.Active && prev.TapB.Stage == tapBStage {
+			st.TapB = prev.TapB
 		}
 		s.state.Store(st)
 	}

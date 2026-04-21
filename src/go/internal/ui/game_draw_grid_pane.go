@@ -568,13 +568,14 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				continue
 			}
 			isMute := nodeInfo.Type == model.NodeTypeMute
+			isSilent := nodeInfo.Type == model.NodeTypeSilent
 			rowIdx, rowOK := g.nodeRows[n.ID]
 			if !rowOK || rowIdx < 0 || rowIdx >= len(g.drum.Rows) {
 				rowOK = false
 				rowIdx = -1
 			}
 			var highlightCol color.Color = colHighlight
-			if isMute {
+			if isMute || isSilent {
 				highlightCol = colMuteHighlight
 			} else if rowOK {
 				highlightCol = g.drum.Rows[rowIdx].Color
@@ -712,6 +713,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		}
 
 		isMute := nodeInfo.Type == model.NodeTypeMute
+		isSilent := nodeInfo.Type == model.NodeTypeSilent
 		rowIdx, rowOK := g.nodeRows[n.ID]
 		if !rowOK || rowIdx < 0 || rowIdx >= len(g.drum.Rows) {
 			rowOK = false
@@ -719,7 +721,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		}
 
 		var highlightCol color.Color = colHighlight
-		if isMute {
+		if isMute || isSilent {
 			highlightCol = colMuteHighlight
 		} else if rowOK {
 			highlightCol = g.drum.Rows[rowIdx].Color

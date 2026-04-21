@@ -243,6 +243,137 @@ func TestServiceInstrumentFilter(t *testing.T) {
 	t.Fatal("timed out waiting for matching instrument state")
 }
 
+func TestServiceTapCarryForward(t *testing.T) {
+	svc := NewService(Config{
+		MaxWindowMs: 100,
+		SampleRate:  44100,
+	})
+
+	svc.SetTapA(StageSynth)
+	svc.SetTapB(StageMaster)
+
+	go svc.Run()
+	defer svc.Stop()
+
+	buf := make([]float64, 256)
+	for i := range buf {
+		buf[i] = 0.5
+	}
+
+	// Push to both taps to establish initial state.
+	svc.PushSamples(StageSynth, "kick", buf)
+	svc.PushSamples(StageMaster, "master", buf)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		st := svc.State()
+		if st != nil && st.TapA.Active && st.TapB.Active {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	st := svc.State()
+	if st == nil || !st.TapA.Active || !st.TapB.Active {
+		t.Fatal("expected both taps active initially")
+	}
+
+	// Now push ONLY to TapB for several ticks. TapA should carry forward.
+	for i := 0; i < 5; i++ {
+		svc.PushSamples(StageMaster, "master", buf)
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	st = svc.State()
+	if st == nil {
+		t.Fatal("state is nil after carry-forward period")
+	}
+	if !st.TapA.Active {
+		t.Fatal("TapA should remain active via carry-forward")
+	}
+	if st.TapA.Stage != StageSynth {
+		t.Fatalf("TapA stage: got %v, want StageSynth", st.TapA.Stage)
+	}
+	if !st.TapB.Active {
+		t.Fatal("TapB should remain active")
+	}
+}
+
+func TestServiceTapStageChangeDropsStale(t *testing.T) {
+	svc := NewService(Config{
+		MaxWindowMs: 100,
+		SampleRate:  44100,
+	})
+
+	svc.SetTapA(StageSynth)
+
+	go svc.Run()
+	defer svc.Stop()
+
+	buf := make([]float64, 256)
+	for i := range buf {
+		buf[i] = 0.5
+	}
+
+	// Push to establish TapA at StageSynth.
+	svc.PushSamples(StageSynth, "kick", buf)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		st := svc.State()
+		if st != nil && st.TapA.Active && st.TapA.Stage == StageSynth {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Switch TapA to a different stage without pushing data to it.
+	svc.SetTapA(StageEQ)
+	time.Sleep(100 * time.Millisecond)
+
+	st := svc.State()
+	if st != nil && st.TapA.Active && st.TapA.Stage == StageSynth {
+		t.Fatal("stale StageSynth data should not carry forward after switching to StageEQ")
+	}
+}
+
+func TestServiceMasterStageBypassesFilter(t *testing.T) {
+	svc := NewService(Config{
+		MaxWindowMs: 100,
+		SampleRate:  44100,
+	})
+
+	svc.SetTapA(StageMaster)
+	svc.SetTapB(StageSends)
+	svc.SetInstrument("kick")
+
+	go svc.Run()
+	defer svc.Stop()
+
+	buf := make([]float64, 256)
+	for i := range buf {
+		buf[i] = 0.7
+	}
+	// Push with "master" id — should bypass instrument filter for master stages.
+	svc.PushSamples(StageMaster, "master", buf)
+	svc.PushSamples(StageSends, "master", buf)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		st := svc.State()
+		if st != nil && st.TapA.Active && st.TapB.Active {
+			if st.TapA.Stage != StageMaster {
+				t.Fatalf("TapA stage: got %v, want StageMaster", st.TapA.Stage)
+			}
+			if st.TapB.Stage != StageSends {
+				t.Fatalf("TapB stage: got %v, want StageSends", st.TapB.Stage)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out: master stages should bypass instrument filter")
+}
+
 func TestBuildTapData(t *testing.T) {
 	samples := []float64{0.0, 0.5, -1.0, 0.25}
 	td := buildTapData(StageInsertFX, "hihat", samples)

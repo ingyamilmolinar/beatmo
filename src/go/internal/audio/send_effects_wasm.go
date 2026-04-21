@@ -49,3 +49,43 @@ func ReverbSend(id string) float64 {
 	}
 	return 0
 }
+
+// ConfigureSendDelay reconfigures the global send delay (WASM).
+// Delegates to JS configureSendDelay(timeMs, feedback, dampingHz) if available.
+func ConfigureSendDelay(timeMs, feedback, dampingHz float64) {
+	fn := js.Global().Get("configureSendDelay")
+	if fn.Truthy() {
+		fn.Invoke(timeMs, feedback, dampingHz)
+	}
+}
+
+// ConfigureSendReverb reconfigures the global send reverb (WASM).
+// Delegates to JS configureSendReverb(room, damping, wet) if available.
+func ConfigureSendReverb(room, damping, wet float64) {
+	fn := js.Global().Get("configureSendReverb")
+	if fn.Truthy() {
+		fn.Invoke(room, damping, wet)
+	}
+}
+
+// SendDelayParams returns the current delay send configuration (WASM).
+// Delegates to JS sendDelayParams() if available; returns defaults otherwise.
+func SendDelayParams() (float64, float64, float64) {
+	fn := js.Global().Get("sendDelayParams")
+	if fn.Truthy() {
+		res := fn.Invoke()
+		return res.Index(0).Float(), res.Index(1).Float(), res.Index(2).Float()
+	}
+	return 300, 0.3, 3000
+}
+
+// SendReverbParams returns the current reverb send configuration (WASM).
+// Delegates to JS sendReverbParams() if available; returns defaults otherwise.
+func SendReverbParams() (float64, float64, float64) {
+	fn := js.Global().Get("sendReverbParams")
+	if fn.Truthy() {
+		res := fn.Invoke()
+		return res.Index(0).Float(), res.Index(1).Float(), res.Index(2).Float()
+	}
+	return 0.7, 0.4, 0.3
+}

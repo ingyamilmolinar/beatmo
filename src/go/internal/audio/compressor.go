@@ -9,10 +9,10 @@ import "math"
 // moderate release avoids pumping.
 //
 // Parameters:
-//   - ThresholdDB: level above which compression starts (default -6 dB)
-//   - Ratio: compression ratio above threshold (default 4:1)
-//   - AttackMs: attack time in milliseconds (default 1 ms, fast for drums)
-//   - ReleaseMs: release time in milliseconds (default 50 ms)
+//   - ThresholdDB: level above which compression starts (default -3 dB)
+//   - Ratio: compression ratio above threshold (default 2.5:1)
+//   - AttackMs: attack time in milliseconds (default 5 ms, lets transients punch through)
+//   - ReleaseMs: release time in milliseconds (default 80 ms)
 //   - MakeupDB: post-compression gain boost (default 0 dB, auto-calculated if < 0)
 //   - KneeDB: soft knee width in dB (default 0 = hard knee)
 type Compressor struct {
@@ -35,10 +35,10 @@ type Compressor struct {
 // NewCompressor creates a compressor with drum-optimized defaults.
 func NewCompressor(sampleRate int) *Compressor {
 	c := &Compressor{
-		ThresholdDB: -6,
-		Ratio:       4,
-		AttackMs:    1,
-		ReleaseMs:   50,
+		ThresholdDB: -3,
+		Ratio:       2.5,
+		AttackMs:    5,
+		ReleaseMs:   80,
 		MakeupDB:    0,
 		KneeDB:      3,
 		sampleRate:  sampleRate,

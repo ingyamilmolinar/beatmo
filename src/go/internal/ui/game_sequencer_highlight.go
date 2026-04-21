@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
@@ -32,6 +33,12 @@ func (g *Game) applySequencerHighlight(row, idx int, info model.BeatInfo) {
 	g.highlightVisual(row, idx, info, beatDuration)
 	if g.rowIsAudible(row) {
 		g.nodeAnimSet(info.NodeID, 1)
+		// Sync grid node highlight duration with drum view.
+		beatSec := 60.0 / float64(max1(g.state.AppliedBPM()))
+		now := audio.Now()
+		if now > 0 {
+			g.setNodeHighlightUntil(info.NodeID, now, now+beatSec)
+		}
 	} else {
 		g.nodeAnimSet(info.NodeID, 0)
 	}

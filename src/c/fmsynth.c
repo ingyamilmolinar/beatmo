@@ -274,7 +274,7 @@ static const fm_preset PRESET_FM_EPIANO = {
     .base_freq = 261.63f,  /* C4 (middle C) */
     .mod_matrix = {
         {0.0f, 0.0f, 0.0f, 0.0f},
-        {1.8f, 0.0f, 0.0f, 0.0f},  /* op1 modulates op0 */
+        {2.2f, 0.0f, 0.0f, 0.0f},  /* op1 modulates op0 */
         {0.0f, 0.0f, 0.0f, 0.0f},  /* op2 is independent carrier */
         {0}
     },
@@ -284,11 +284,11 @@ static const fm_preset PRESET_FM_EPIANO = {
           .attack_sec = 0.002f, .decay_sec = 0.8f,
           .sustain_level = 0.3f, .release_sec = 0.4f, .is_carrier = 1 },
         /* op1: modulator (tine character) */
-        { .freq_ratio = 1.0f, .freq_offset = 0.0f, .amplitude = 0.6f,
-          .attack_sec = 0.001f, .decay_sec = 0.3f,
+        { .freq_ratio = 1.0f, .freq_offset = 7.0f, .amplitude = 0.6f,
+          .attack_sec = 0.001f, .decay_sec = 0.2f,
           .sustain_level = 0.1f, .release_sec = 0.2f, .is_carrier = 0 },
         /* op2: carrier (octave harmonic for shimmer) */
-        { .freq_ratio = 2.0f, .freq_offset = 0.0f, .amplitude = 0.25f,
+        { .freq_ratio = 2.0f, .freq_offset = 0.5f, .amplitude = 0.30f,
           .attack_sec = 0.001f, .decay_sec = 0.5f,
           .sustain_level = 0.05f, .release_sec = 0.3f, .is_carrier = 1 },
     },

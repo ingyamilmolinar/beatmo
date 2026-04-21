@@ -6,7 +6,7 @@
 // biquad EQ state corruption.
 //
 //	Phase 1: Render voices → per-instrument buffers (NO EQ)
-//	         Each voice: voice.Sample() → voiceTemp, apply mixHeadroom (0.25×),
+//	         Each voice: voice.Sample() → voiceTemp, apply mixHeadroom (0.18×),
 //	         accumulate into instBufs[instrumentID].
 //
 //	Phase 2: Per-instrument channel EQ → masterBuf
@@ -15,7 +15,7 @@
 //
 //	Phase 2.5: Send effects (delay + reverb) → masterBuf
 //
-//	Phase 3: Master channel EQ → workBuf → output capture → hard clamp [-1,1] → int16 (×32767)
+//	Phase 3: Master channel EQ → workBuf → output capture → soft-clip + clamp [-1,1] → int16 (×32767)
 //
 // WHY 3 PHASES: each biquad filter is stateful (x1, x2, y1, y2) and expects a
 // continuous signal stream. The old code processed individual voices through
@@ -315,6 +315,7 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		m.workBuf = make([]float64, blockSize)
 		m.voiceTemp = make([]float64, blockSize)
 		m.masterBuf = make([]float64, blockSize)
+		m.postEQBuf = make([]float64, blockSize)
 		if m.instSlots == nil {
 			m.instSlots = make(map[string]int)
 		}
@@ -459,13 +460,34 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 			scopeSvc.PushSamples(scope.StageAntiPop, id, m.instBufs[slot][:blockLen])
 		}
 	}
+	if exportSvc != nil {
+		for _, slot := range m.activeSlots {
+			exportSvc.PushSamples(scope.StageAntiPop, m.instSlotIDs[slot], m.instBufs[slot][:blockLen])
+		}
+	}
 
 	// === PHASE 2: Per-instrument channel processing → masterBuf ===
 	if !bypassChannelProc {
 		for _, slot := range m.activeSlots {
 			id := m.instSlotIDs[slot]
 			ch := channelForInstrument(id)
-			ch.ProcessBlockLocal(m.instBufs[slot][:blockLen], m.masterBuf[:blockLen])
+			// Zero the scratch buffer for this instrument.
+			for k := 0; k < blockLen; k++ {
+				m.postEQBuf[k] = 0
+			}
+			// Process into scratch buffer (not directly into masterBuf).
+			ch.ProcessBlockLocal(m.instBufs[slot][:blockLen], m.postEQBuf[:blockLen])
+			// Tap the post-EQ per-instrument signal.
+			if scopeSvc != nil {
+				scopeSvc.PushSamples(scope.StageEQ, id, m.postEQBuf[:blockLen])
+			}
+			if exportSvc != nil {
+				exportSvc.PushSamples(scope.StageEQ, id, m.postEQBuf[:blockLen])
+			}
+			// Accumulate into masterBuf.
+			for k := 0; k < blockLen; k++ {
+				m.masterBuf[k] += m.postEQBuf[k]
+			}
 		}
 	} else {
 		// Bypass: direct sum from instrument buffers
@@ -477,14 +499,6 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
-	// Scope tap: post-EQ per-instrument buffers (after inserts+EQ processing).
-	if scopeSvc != nil {
-		for _, slot := range m.activeSlots {
-			id := m.instSlotIDs[slot]
-			scopeSvc.PushSamples(scope.StageEQ, id, m.instBufs[slot][:blockLen])
-		}
-	}
-
 	// === PHASE 2.5: Send effects (delay + reverb) → masterBuf ===
 	if sendFX != nil && sendFX.initialized && !bypassChannelProc {
 		sendFX.processSlotSends(m.instBufs, m.instSlotIDs, m.activeSlots, blockLen, m.masterBuf[:blockLen])
@@ -493,6 +507,9 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// Scope tap: post-sends master buffer (before master EQ).
 	if scopeSvc != nil {
 		scopeSvc.PushSamples(scope.StageSends, "master", m.masterBuf[:blockLen])
+	}
+	if exportSvc != nil {
+		exportSvc.PushSamples(scope.StageSends, "master", m.masterBuf[:blockLen])
 	}
 
 	// === PHASE 3: Master channel processing → workBuf ===
@@ -513,6 +530,9 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// Scope tap: final master output (after master EQ/compressor).
 	if scopeSvc != nil {
 		scopeSvc.PushSamples(scope.StageMaster, "master", m.workBuf[:blockLen])
+	}
+	if exportSvc != nil {
+		exportSvc.PushSamples(scope.StageMaster, "master", m.workBuf[:blockLen])
 	}
 
 	// Debug: log mixer workBuf stats
@@ -570,11 +590,17 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		}
 	}
 
-	// Convert to int16 output with simple hard clamp (safety net).
+	// Convert to int16 output with soft-clip + safety clamp.
 	// Use math.Round instead of truncation to reduce quantization noise.
 	for i := 0; i < blockLen; i++ {
 		sum := m.workBuf[i]
-		// Hard clamp to [-1, 1] - rarely triggers after headroom attenuation.
+		// Soft-clip: gently saturate peaks above 0.9 instead of hard clipping
+		if sum > 0.9 {
+			sum = 0.9 * math.Tanh(sum/0.9)
+		} else if sum < -0.9 {
+			sum = -0.9 * math.Tanh(sum/-0.9)
+		}
+		// Safety clamp (should rarely trigger after soft-clip)
 		if sum > 1 {
 			sum = 1
 		} else if sum < -1 {
@@ -593,8 +619,9 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 var debugVoiceCount int64
 
 // mixHeadroom is applied per-voice BEFORE accumulation to prevent clipping.
-// -12dB headroom (0.25) allows ~4 simultaneous voices at full amplitude.
-const mixHeadroom = 0.25
+// -14.9dB headroom (0.18) provides ~3dB more margin than the previous 0.25
+// for dense mixes (7+ instruments) while the master compressor normalizes.
+const mixHeadroom = 0.18
 
 // ensureInstBuf returns the per-instrument buffer for the given slot, zeroing
 // it on first use within the current block. Uses O(1) slice indexing.

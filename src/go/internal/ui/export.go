@@ -20,6 +20,7 @@ type exportFile struct {
 	Instruments  []exportInstrument `json:"instruments"`
 	Nodes        []exportNode       `json:"nodes"`
 	EQ           *exportEQ          `json:"eq,omitempty"`
+	SendEffects  *SendEffectsConfig `json:"send_effects,omitempty"`
 }
 
 type exportInstrument struct {
@@ -67,6 +68,26 @@ type exportNode struct {
 	SynthBody       float64 `json:"synth_body,omitempty"`
 	SynthColor      float64 `json:"synth_color,omitempty"`
 	SynthBrightness float64 `json:"synth_brightness,omitempty"`
+}
+
+// SendEffectsConfig encodes global send effect parameters. Optional; absent for legacy files.
+type SendEffectsConfig struct {
+	Delay  *SendDelayConfig  `json:"delay,omitempty"`
+	Reverb *SendReverbConfig `json:"reverb,omitempty"`
+}
+
+// SendDelayConfig encodes delay send bus parameters.
+type SendDelayConfig struct {
+	TimeMs    float64 `json:"time_ms"`
+	Feedback  float64 `json:"feedback"`
+	DampingHz float64 `json:"damping_hz"`
+}
+
+// SendReverbConfig encodes reverb send bus parameters.
+type SendReverbConfig struct {
+	Room    float64 `json:"room"`
+	Damping float64 `json:"damping"`
+	Wet     float64 `json:"wet"`
 }
 
 // exportEQ encodes the master EQ settings. Optional; absent for legacy files.
@@ -330,6 +351,21 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		eq.LPFEnabled = dv.lpfEnabled
 		eq.LPFCutoffHz = dv.lpfCutoffHz
 		file.EQ = &eq
+	}
+	// Export send effects configuration.
+	dlyTime, dlyFb, dlyDamp := audio.SendDelayParams()
+	revRoom, revDamp, revWet := audio.SendReverbParams()
+	file.SendEffects = &SendEffectsConfig{
+		Delay: &SendDelayConfig{
+			TimeMs:    dlyTime,
+			Feedback:  dlyFb,
+			DampingHz: dlyDamp,
+		},
+		Reverb: &SendReverbConfig{
+			Room:    revRoom,
+			Damping: revDamp,
+			Wet:     revWet,
+		},
 	}
 	return json.MarshalIndent(file, "", "  ")
 }

@@ -27,6 +27,7 @@ type mixer struct {
 	workBuf   []float64 // Final mixed output (after master EQ)
 	voiceTemp []float64 // Single voice render buffer
 	masterBuf []float64 // Pre-master-EQ accumulation buffer
+	postEQBuf []float64 // Per-instrument post-EQ scratch (for scope taps)
 
 	// Per-instrument accumulation buffers indexed by instrument slot.
 	instBufs [][]float64
@@ -56,6 +57,7 @@ func newMixer(c *oto.Context) *mixer {
 		workBuf:   make([]float64, blockSize),
 		voiceTemp: make([]float64, blockSize),
 		masterBuf: make([]float64, blockSize),
+		postEQBuf: make([]float64, blockSize),
 		instSlots: make(map[string]int),
 	}
 	p := c.NewPlayer(m)
@@ -63,6 +65,26 @@ func newMixer(c *oto.Context) *mixer {
 	p.Play()
 	m.player = p
 	return m
+}
+
+// unwrapCVoice traverses voice wrapper layers (scaledVoice, resampleVoice,
+// antiPopVoice) to find the underlying *cVoice. Returns nil if no cVoice
+// is found in the chain.
+func unwrapCVoice(v Voice) *cVoice {
+	for {
+		switch w := v.(type) {
+		case *cVoice:
+			return w
+		case *scaledVoice:
+			v = w.v
+		case *resampleVoice:
+			v = w.src
+		case *antiPopVoice:
+			v = w.inner
+		default:
+			return nil
+		}
+	}
 }
 
 // Schedule adds a voice to start after delaySamples have elapsed.
@@ -74,21 +96,26 @@ func (m *mixer) Schedule(id string, v Voice, delaySamples int) {
 		v = newTestSineVoice()
 	}
 
+	// Unwrap voice wrappers (scaledVoice→resampleVoice→cVoice) to find the
+	// underlying cVoice and its raw synth buffer.
+	cv := unwrapCVoice(v)
+
 	// Notify analyzer of trigger with raw buffer before any wrapping.
-	if analyzerSvc != nil {
-		if cv, ok := v.(*cVoice); ok {
-			analyzerSvc.NotifyTrigger(id, cv.buf)
-		}
+	if analyzerSvc != nil && cv != nil {
+		analyzerSvc.NotifyTrigger(id, cv.buf)
 	}
 
-	// Push raw synth buffer to scope service for A/B pipeline comparison.
-	if scopeSvc != nil {
-		if cv, ok := v.(*cVoice); ok && cv.buf != nil {
-			f64 := make([]float64, len(cv.buf))
-			for i, s := range cv.buf {
-				f64[i] = float64(s)
-			}
+	// Push raw synth buffer to scope and export services for A/B pipeline comparison.
+	if cv != nil && cv.buf != nil && (scopeSvc != nil || exportSvc != nil) {
+		f64 := make([]float64, len(cv.buf))
+		for i, s := range cv.buf {
+			f64[i] = float64(s)
+		}
+		if scopeSvc != nil {
 			scopeSvc.PushSamples(scope.StageSynth, id, f64)
+		}
+		if exportSvc != nil {
+			exportSvc.PushSamples(scope.StageSynth, id, f64)
 		}
 	}
 
