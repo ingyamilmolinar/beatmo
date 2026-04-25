@@ -23,6 +23,8 @@
 | Single browser test | `GO=$(pwd)/.tools/go/bin/go node src/js/<name>.browser.test.js` |
 | Build WASM | `make wasm` |
 | Sync WAV embeds | `make sync-wav` |
+| Capture UI screenshots | `make screenshot` (desktop + browser; output → `screenshots/`) |
+| Capture all UI scenes | `make screenshots-all` (all scenes; `SCENES=name` to filter, `MOBILE=1` for mobile pass) |
 
 **Bundled Go**: `.tools/go/bin/go` — always use this to avoid version drift.
 
