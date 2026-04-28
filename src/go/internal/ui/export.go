@@ -13,14 +13,19 @@ import (
 
 // Export schema
 type exportFile struct {
-	Version      int                `json:"version"`
-	Subdiv       int                `json:"subdiv,omitempty"`
-	BPM          int                `json:"bpm"`
-	MasterVolume float64            `json:"master_volume,omitempty"` // 0-1, omitted when default (1.0)
-	Instruments  []exportInstrument `json:"instruments"`
-	Nodes        []exportNode       `json:"nodes"`
-	EQ           *exportEQ          `json:"eq,omitempty"`
-	SendEffects  *SendEffectsConfig `json:"send_effects,omitempty"`
+	Version           int                `json:"version"`
+	Subdiv            int                `json:"subdiv,omitempty"`
+	BPM               int                `json:"bpm"`
+	MasterVolume      float64            `json:"master_volume,omitempty"` // 0-1, omitted when default (1.0)
+	Instruments       []exportInstrument `json:"instruments"`
+	Nodes             []exportNode       `json:"nodes"`
+	EQ                *exportEQ          `json:"eq,omitempty"`
+	SendEffects       *SendEffectsConfig `json:"send_effects,omitempty"`
+	// PinnedInstruments holds project-scope instrument pins (tier 0 in the
+	// menu's PinSource). Distinct from per-user favorites which live in
+	// userprefs and never touch this file. omitempty keeps v1 projects with
+	// no pins byte-identical to pre-PR exports; old loaders ignore the field.
+	PinnedInstruments []string `json:"pinned_instruments,omitempty"`
 }
 
 type exportInstrument struct {
@@ -126,17 +131,17 @@ func hexColor(c color.Color) string {
 
 // Export builds the export JSON and triggers a download/save.
 func (dv *DrumView) Export() error {
-	dv.logger.Infof("[DRUMVIEW] Export requested")
+	dv.logger.Debugf("[drumview] export requested")
 	data, err := dv.exportBytes()
 	if err != nil {
 		return err
 	}
 	name := "beatmo-export.json"
 	if err := saveJSON(name, data); err != nil {
-		dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
+		dv.logger.Errorf("[drumview] export failed: %v", err)
 		return err
 	}
-	dv.logger.Infof("[DRUMVIEW] Export completed: %s (%d bytes)", name, len(data))
+	dv.logger.Debugf("[drumview] export completed: %s (%d bytes)", name, len(data))
 	return nil
 }
 
@@ -316,6 +321,9 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		insts = append(insts, ei)
 	}
 	file := exportFile{Version: 1, Subdiv: currentMaxDiv(), BPM: dv.BPM(), Instruments: insts, Nodes: nodes}
+	if pins := dv.exportPinnedInstrumentIDs(); len(pins) > 0 {
+		file.PinnedInstruments = pins
+	}
 	// Export master volume when not at default (1.0).
 	mv := audio.MainVolume()
 	if mv != 1 {

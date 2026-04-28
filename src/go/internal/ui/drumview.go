@@ -21,14 +21,8 @@ const (
 	desktopHeaderH = 72
 	// mobileHeaderH is the target header height for the two-row mobile transport bar.
 	mobileHeaderH               = 72
-	mobileHeaderMaxH            = 72
-	timelineBarHeightDesktop    = 12
-	timelineBarHeightMobile     = 14
-	buttonPad                   = 2
 	defaultRowCachePadPx        = 32
 	defaultRowsLayerPadPx       = 96
-	wasmStripeTargetPx          = 440
-	wasmStripeMaxCount          = 12
 	instMenuMaxVisibleRows      = 8
 	instMenuScrollBarWidth      = 10
 	eqChannelMenuMaxVisibleRows = 8
@@ -112,7 +106,7 @@ func instColor(id string) color.Color {
 	}
 	if len(customPalette) == 0 {
 		// Graceful fallback when palette is empty (e.g., in tests).
-		return color.RGBA{200, 200, 200, 255}
+		return genColorRowRackColorFallback
 	}
 	c := customPalette[nextCustomColor%len(customPalette)]
 	nextCustomColor++
@@ -132,10 +126,76 @@ type importResult struct {
 	err  error
 }
 
+// ProjectPins returns a snapshot copy of the currently loaded project's pin
+// set. Callers (the instrument menu's PinSource builder) treat the result as
+// read-only — mutating the returned map does not affect DrumView state. Nil
+// is fine; callers handle empty maps the same as a nil map.
+func (dv *DrumView) ProjectPins() map[string]struct{} {
+	if dv == nil || len(dv.projectPins) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(dv.projectPins))
+	for k := range dv.projectPins {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+// SetProjectPins replaces the per-project pin set. Called from Game.Import
+// after parsing the project JSON's pinned_instruments field; tests may also
+// drive it directly. Empty / nil clears the set.
+func (dv *DrumView) SetProjectPins(ids []string) {
+	if dv == nil {
+		return
+	}
+	if len(ids) == 0 {
+		dv.projectPins = nil
+		return
+	}
+	m := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		m[id] = struct{}{}
+	}
+	if len(m) == 0 {
+		dv.projectPins = nil
+		return
+	}
+	dv.projectPins = m
+}
+
+// exportPinnedInstrumentIDs returns the pin set as a deterministic
+// (alphabetical) slice for JSON serialisation. Empty result → caller emits
+// an absent field (omitempty keeps v1 projects byte-identical when no pins
+// are set).
+func (dv *DrumView) exportPinnedInstrumentIDs() []string {
+	if dv == nil || len(dv.projectPins) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(dv.projectPins))
+	for k := range dv.projectPins {
+		out = append(out, k)
+	}
+	sortStrings(out)
+	return out
+}
+
 type DrumView struct {
 	Rows             []*DrumRow
 	Bounds           image.Rectangle
 	Graph            *model.Graph
+	// projectPins is the per-project instrument pin set, populated from the
+	// project JSON's pinned_instruments field on import and serialised back on
+	// export. It feeds the instrument menu's tier-0 pin source (see
+	// PinSource.ProjectPins). No UI to mutate the set ships in this PR — that
+	// affordance lands in a follow-up; the storage and read path are wired
+	// now so the JSON schema doesn't need to bump later.
+	projectPins      map[string]struct{}
+	// instMenuShowFavoritesCategory wires the production builder's
+	// ShowFavoritesCategory prop. See ctor comment.
+	instMenuShowFavoritesCategory bool
 	logger           *game_log.Logger
 	tree             *DrumViewTree     // zone-based component tree (Phase 1+)
 	eqPanelZone      *EQPanelZone      // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
@@ -179,7 +239,6 @@ type DrumView struct {
 
 	// instrument selection dropdown
 	instMenuRow                int
-	instMenuBtns               []*Button
 	instMenuScroll             VerticalScroller
 	instMenuLastAdded          string
 	instMenuUserScrolled       bool
@@ -240,6 +299,15 @@ type DrumView struct {
 	onImportDialogStart func()
 	onImportDialogEnd   func()
 
+	// onStructuralMutation is invoked for every runtime mutation that changes
+	// state observable by parity (instrument id, BPM, length, row count,
+	// effect chain, EQ, mute/solo, send levels, etc.). Game injects this in
+	// New() to bump the parity generation, grant a grace window, and clear
+	// parity buffers. Must NOT call back into Game paths that re-acquire
+	// seqMu — DrumView methods are reachable from Game.Update under that
+	// lock and a re-acquire would deadlock.
+	onStructuralMutation func(reason string)
+
 	bgDirty          bool
 	layoutSuppressed bool
 	bgCache          []*ebiten.Image
@@ -262,13 +330,6 @@ type DrumView struct {
 
 	// callback to change subdivisions per beat
 	onChangeSubdiv func(int) error
-
-	// sample loading status (WASM): show a transient message while embedded
-	// samples are being registered and another once finished.
-	samplesTotal  int
-	samplesLoaded int
-	showLoading   bool
-	doneMsgTimer  int // frames to show "Finished loading samples"
 
 	// per-row cached sprites for the steps area (no highlights). Each sprite
 	// covers the full timeline width and one row height. Rebuilt when length,
@@ -311,27 +372,34 @@ type DrumView struct {
 	rowsLayerScratch *ebiten.Image // double-buffer scratch for layer shifts
 	rowsLayerBytes   int64
 	rowsLayerFrame   int64
+
+	// Row-stripes path: a horizontal split of the rows layer into multiple
+	// sprites so a wide layer can stream as separate textures. These
+	// fields are kept as no-op zero-value stubs while the stripes path is
+	// being refactored — production callers (js_exports_*.go,
+	// image_metrics.go, drumview_cache_row_sprite.go) read but never
+	// initialise them, so the layer-based path runs unchanged.
+	rowsStripingEnabled bool
+	rowsStripeCount     int
+	rowsStripes         []*ebiten.Image
+	rowsStripeStarts    []int
+	rowsStripeWidths    []int
+	rowsStripeLastFrame int64
+	rowsStripeOffset    int
+	rowsStripeRowOff    int
+	rowsStripeCachedW   []int
+	rowsStripeCachedH   []int
+	rowsStripeAuto      bool
+	rowsStripeScratch   []*ebiten.Image
+
+	// follow mirrors TransportZone.followPlayback for backward-compatible
+	// access on test paths that build a DrumView without a TransportZone.
+	follow bool
 	// WASM-only adaptive pad helpers: expand pad when frequent full rebuilds
 	// happen due to horizontal pans; decay toward default when stationary.
 	rowsPadFullRebuilds int
 	rowsPadLastDecay    int64
 
-	// Prototype: stripe-based rows layer (WASM-only gated via JS export).
-	rowsStripingEnabled bool
-	rowsStripeCount     int
-	rowsStripeAuto      bool
-	rowsStripeAutoLarge int
-	rowsStripeAutoCalm  int
-	rowsStripes         []*ebiten.Image
-	rowsStripeStarts    []int // local X starts inside timelineRect
-	rowsStripeWidths    []int // widths per stripe
-	rowsStripeRowOff    int
-	rowsStripeOffset    int
-	rowsStripeGen       int
-	rowsStripeScratch   []*ebiten.Image
-	rowsStripeCachedW   []int // cached stripe widths to avoid img.Size() calls
-	rowsStripeCachedH   []int // cached stripe heights to avoid img.Size() calls
-	rowsStripeLastFrame int64 // frame counter for skip optimization
 	// Last-frame row draw mask for visibility assertions (set during Draw)
 	rowsDrawnMask   []bool
 	rowsRepaints    int
@@ -426,7 +494,6 @@ type DrumView struct {
 	Length        int  // Length of the drum view, independent of graph
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
-	follow        bool // auto-scroll with playback
 	bpmPrev       int  // previous BPM before editing
 	bpmDelta      int  // accumulated BPM adjustments from +/- buttons
 

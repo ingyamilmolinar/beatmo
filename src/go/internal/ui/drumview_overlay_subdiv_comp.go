@@ -114,7 +114,7 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 			s.Close()
 		})
 		btn.ConsumeOnPress = true
-		btn.SetRect(insetRect(r, buttonPad))
+		btn.SetRect(insetRect(r, SpaceXS))
 		s.buttons = append(s.buttons, btn)
 	}
 

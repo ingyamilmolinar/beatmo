@@ -47,9 +47,18 @@ func InitCatalogFromDir(root string) error {
 		}
 		relSlash := filepath.ToSlash(rel)
 		relTrim := strings.TrimSuffix(relSlash, filepath.Ext(relSlash))
-		cat := "Samples (WAV)"
-		if parts := strings.Split(relSlash, "/"); len(parts) > 0 && parts[0] != "" {
-			cat = wavCategoryStub(parts[0])
+		// Skip the legacy assets/Saved/ folder (see catalog_desktop.go for context).
+		parts := strings.Split(relSlash, "/")
+		if len(parts) > 0 && strings.EqualFold(parts[0], "Saved") {
+			return nil
+		}
+		// Files at the asset root (no category folder) are not surfaced.
+		if len(parts) < 2 || parts[0] == "" {
+			return nil
+		}
+		cat := wavCategoryStub(parts[0])
+		if cat == "" {
+			return nil
 		}
 		id := slugPathStub(relTrim)
 		if _, exists := m[id]; exists {
@@ -62,12 +71,13 @@ func InitCatalogFromDir(root string) error {
 		absPath, _ := filepath.Abs(p)
 		meta := SoundMeta{
 			ID:       id,
-			Name:     prettyNameStub(filepath.Base(relTrim)),
+			Name:     PrettyName(strings.TrimSuffix(filepath.Base(relTrim), filepath.Ext(relTrim))),
 			Category: cat,
 			RelPath:  relTrim,
 			Path:     filepath.ToSlash(absPath),
 			Size:     info.Size(),
 			Source:   "wav",
+			Scope:    "shipped",
 		}
 		m[id] = meta
 		out = append(out, meta)
@@ -81,10 +91,11 @@ func InitCatalogFromDir(root string) error {
 		}
 		meta := SoundMeta{
 			ID:       id,
-			Name:     prettyNameStub(id),
+			Name:     PrettyName(id),
 			Category: synthCategoryStub(id),
 			RelPath:  "synth/" + id,
 			Source:   "synth",
+			Scope:    "builtin",
 		}
 		m[id] = meta
 		out = append(out, meta)
@@ -199,15 +210,24 @@ func EnsureInstrumentLoaded(id string) error {
 	return nil
 }
 
-// ResetCatalogForTest allows tests to inject a synthetic catalog.
+// ResetCatalogForTest allows tests to inject a synthetic catalog. When
+// entries are provided, catalogOnce is left consumed so a subsequent
+// InitDefaultCatalog call is a no-op and does not clobber the injection.
+// When entries == nil, catalogOnce resets so the next InitDefaultCatalog
+// performs a fresh disk scan.
 func ResetCatalogForTest(entries []SoundMeta) {
-	catalogOnce = sync.Once{}
 	catalogMu.Lock()
 	catalog = entries
 	catalogByID = map[string]SoundMeta{}
 	catalogReg = map[string]bool{}
 	for _, m := range entries {
 		catalogByID[m.ID] = m
+	}
+	if entries == nil {
+		catalogOnce = sync.Once{}
+	} else {
+		catalogOnce = sync.Once{}
+		catalogOnce.Do(func() {})
 	}
 	catalogMu.Unlock()
 	bumpCatalogVersion()
@@ -233,13 +253,9 @@ func slugPathStub(rel string) string {
 	return rel
 }
 
-func prettyNameStub(base string) string {
-	base = strings.TrimSuffix(base, filepath.Ext(base))
-	base = strings.ReplaceAll(base, "_", " ")
-	base = strings.ReplaceAll(base, "-", " ")
-	return strings.Title(base)
-}
-
+// wavCategoryStub maps recognised top-level folder names to user-facing
+// category labels. Returns "" for unknown folders so callers can skip them
+// rather than surfacing a catch-all "Samples" bucket.
 func wavCategoryStub(cat string) string {
 	switch strings.ToLower(cat) {
 	case "snare":
@@ -254,10 +270,10 @@ func wavCategoryStub(cat string) string {
 		return "Toms (WAV)"
 	case "percussion":
 		return "Percussion (WAV)"
-	case "saved":
-		return "Saved (WAV)"
+	case "drum machines":
+		return "Drum Machines (WAV)"
 	default:
-		return "Samples (WAV)"
+		return PrettyName(cat) + " (WAV)"
 	}
 }
 

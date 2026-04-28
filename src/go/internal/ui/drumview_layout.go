@@ -84,10 +84,17 @@ func (dv *DrumView) recalcButtons() {
 		if rackRect.Min.Y < rowsTop {
 			rackRect.Min.Y = rowsTop
 		}
-		// Override the zone's visible rows to match DrumView's visibleRows().
-		// The widget board may assign a smaller height to WidgetRack than the
-		// full rows area, causing the zone's VisibleRows() to be too low.
-		dv.rowRackZone.SetVisibleRowsOverride(dv.visibleRows())
+		// Override the zone's visible rows to the row count that actually
+		// fits inside the rack widget rect (rackVisibleRows) — never the
+		// bounds-derived dv.visibleRows() which can over-estimate when
+		// the widget board allocates space below the rack to the wave
+		// widget. Over-estimating placed per-row widgets at Y bands
+		// outside the rack rect, producing the screenshot's "phantom
+		// row + addRowBtn-in-the-middle" layout glitch. The complementary
+		// invariant (rack + timeline span the full rows-area when EQ is
+		// collapsed) is enforced in refreshWidgetLayout, so for the
+		// EQ-visible case rackVisibleRows == dv.visibleRows() in practice.
+		dv.rowRackZone.SetVisibleRowsOverride(dv.rackVisibleRows())
 		dv.tree.SetZoneRect("row-rack", rackRect)
 		dv.rowRackZone.SetScreenBounds(dv.Bounds)
 		// Bidirectional sync: if RowRackZone's scroll updated its own
@@ -299,30 +306,37 @@ func (dv *DrumView) recalcButtons() {
 	}
 	// Compute track button width — positioned in timeline area on desktop only.
 	trackBtnW := 0
+	const trackBtnGap = 4 // breathing room between track button and timeline
 	if !p.IsMobile() {
 		trackBtnW = dv.playBtn().Rect().Dx()
 		if trackBtnW <= 0 {
 			trackBtnW = 44
 		}
 	}
-	// timelineRect spans the full timeline widget width so drum cells
-	// fill the available space without a gap from the track button offset.
+	// timelineRect starts AFTER the track button on desktop so the button
+	// never paints over the leftmost portion of the timeline progress bar
+	// (initial seconds were invisible when the two shared the same X range).
+	// On mobile trackBtnW=0, so the timeline keeps the full widget width.
+	tlLeftReserved := 0
+	if trackBtnW > 0 {
+		tlLeftReserved = trackBtnW + trackBtnGap
+	}
 	dv.timelineRect = image.Rect(
-		tlWidget.Min.X,
+		tlWidget.Min.X+tlLeftReserved,
 		top,
 		tlWidget.Max.X,
 		top+tlBarHeight(),
 	)
 
-	// Beat counter rect: above the timeline bar, offset by trackBtnW
-	// so text doesn't overlap the track button on desktop.
+	// Beat counter rect: above the timeline bar. Aligned to timelineRect's
+	// left edge — that edge already accounts for the track button reservation.
 	infoH := debugCharH + 4
 	bcTop := dv.timelineRect.Min.Y - infoH - 2
 	if bcTop < tlWidget.Min.Y {
 		bcTop = tlWidget.Min.Y
 	}
 	dv.beatCounterRect = image.Rect(
-		dv.timelineRect.Min.X+trackBtnW, bcTop,
+		dv.timelineRect.Min.X, bcTop,
 		dv.timelineRect.Max.X, bcTop+infoH,
 	)
 
@@ -565,9 +579,9 @@ func (dv *DrumView) changeLength(newLen int) {
 	}
 	dv.lengthChanging = true
 	if newLen > dv.Length {
-		dv.logger.Infof("[DRUMVIEW] Length increased to: %d", newLen)
+		dv.logger.Debugf("[drumview] length increased to: %d", newLen)
 	} else {
-		dv.logger.Infof("[DRUMVIEW] Length decreased to: %d", newLen)
+		dv.logger.Debugf("[drumview] length decreased to: %d", newLen)
 	}
 	oldLen := dv.Length
 	dv.Length = newLen
@@ -726,7 +740,7 @@ func (dv *DrumView) calcLabelWidth() {
 			maxPx = w
 		}
 	}
-	pad := buttonPad*2 + 12
+	pad := SpaceXS*2 + 12
 	target := maxPx + pad
 	if target < 80 {
 		target = 80

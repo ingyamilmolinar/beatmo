@@ -16,7 +16,11 @@ func (g *Game) bpmLoop() {
 		// Drain any pending updates so only the latest BPM is applied.
 		for {
 			select {
-			case b = <-g.bpmCh:
+			case nb, ok := <-g.bpmCh:
+				if !ok {
+					return
+				}
+				b = nb
 				// keep draining
 			default:
 				start := time.Now()

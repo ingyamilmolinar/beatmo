@@ -77,7 +77,7 @@ type LayoutProfile struct {
 	SplitterHandleColor  color.Color
 	DrawSplitterGrip     bool // desktop: grip lines inside pill
 	PopupCornerRadius    int
-	CloseButtonSize      int // mobile: BtnHeightSM, desktop: desktopPopupBtnH
+	CloseButtonSize      int // mobile: BtnHeightSM, desktop: 16
 
 	// ── Sizing: EQ ─────────────────────────────────────────
 	EQSliderH      int // desktop: 14, mobile: 28
@@ -90,13 +90,20 @@ type LayoutProfile struct {
 	SliderThumbW     int  // desktop: 8, mobile: 10
 	SliderLabelAbove bool // desktop: false, mobile: true
 
+	// ── Sizing: FX toggle pill (per-slot enable/disable switch) ────
+	FXToggleTrackW int // desktop: 32, mobile: 40
+	FXToggleTrackH int // desktop: 18, mobile: 22
+	FXToggleThumbD int // desktop: 14, mobile: 18
+
 	// ── Sizing: Grid ───────────────────────────────────────
 	NodeMinPx    int // desktop: 8, mobile: 12
 	NodeMaxPx    int // desktop: 16, mobile: 20
 	EdgeThickMul int // desktop: 1, mobile: 2
 
 	// ── Sizing: Layout ─────────────────────────────────────
-	ControlPadding   int // desktop: buttonPad+2 (4), mobile: buttonPad+1 (3)
+	ControlPadding   int // desktop: SpaceXS+2 (4), mobile: SpaceXS+1 (3)
+	ControlGap       int // gap between adjacent transport buttons (desktop: 2, mobile: 4)
+	ControlGroupPad  int // outline pad around a control group (BPM, transport, file-ops): desktop 3, mobile 4
 	ControlLeftInset int // desktop: 12, mobile: 4
 
 	// ── Splitter ────────────────────────────────────────────
@@ -161,38 +168,49 @@ func (p *LayoutProfile) IsMobile() bool { return p.Class == ScreenMobile }
 // ── Builders ────────────────────────────────────────────────────────────────
 
 func desktopProfile() *LayoutProfile {
+	// Phase 5a (extended): all dimensional fields come from
+	// design_profile.gen.go (DESIGN.md `profileOverrides.desktop`).
+	// Hand-coded fields are now limited to:
+	//   - float scales (PopupTextScale family — fractional)
+	//   - color references (PlayIconColor family — needs the iconColor
+	//     emit + variant system from B3)
+	//   - bool feature flags (DrawTopEdgeHighlight, DrawSplitterGrip,
+	//     etc. — covered by future schema extensions)
+	//   - ButtonVisual style references (PlayBtnStyle family — pending
+	//     M2 migration to Spec(ID))
+	g := genDesktopProfile
 	return &LayoutProfile{
 		Class: ScreenDesktop,
 
-		// Sizing
-		RowHeight:         desktopRowHeightPx,
-		GrabZone:          desktopGrabZonePx,
-		MinTarget:         0,
-		MinCellWidth:      desktopMinCellWidthPx,
-		SplitterHandleLen: desktopSplitterHandleLen,
-		SplitterHandleThk: desktopSplitterHandleThick,
+		// Sizing — generated
+		RowHeight:         g.RowHeight,
+		GrabZone:          g.GrabZone,
+		MinTarget:         g.MinTarget,
+		MinCellWidth:      g.MinCellWidth,
+		SplitterHandleLen: g.SplitterHandleLen,
+		SplitterHandleThk: g.SplitterHandleThk,
 
-		// Popup
-		PopupPanelW:     desktopPopupPanelW,
-		PopupBtnW:       desktopPopupBtnW,
-		PopupBtnH:       desktopPopupBtnH,
-		PopupGap:        desktopPopupGap,
-		PopupPad:        desktopPopupPad,
+		// Popup — generated for sizing primitives, hand-coded for scales
+		PopupPanelW:     g.PopupPanelW,
+		PopupBtnW:       g.PopupBtnW,
+		PopupBtnH:       g.PopupBtnH,
+		PopupGap:        g.PopupGap,
+		PopupPad:        g.PopupPad,
 		PopupTextScale:  1.0,
 		PopupLabelScale: 1.0,
 		PopupValueScale: 1.0,
 		PopupTitleScale: 1.0,
-		PopupSectionGap: SpaceSM,
-		PopupRowH:       desktopPopupBtnH,
+		PopupSectionGap: g.PopupSectionGap,
+		PopupRowH:       g.PopupBtnH,
 
-		// Button sizing
-		TransportBtnSize:  0,
-		RowControlBtnSize: 0,
+		// Button sizing — generated
+		TransportBtnSize:  g.TransportBtnSize,
+		RowControlBtnSize: g.RowControlBtnSize,
 
-		// Header
-		HeaderMinH:   desktopHeaderH,
-		HeaderMaxH:   desktopHeaderH,
-		TimelineBarH: timelineBarHeightDesktop,
+		// Header — generated
+		HeaderMinH:   g.HeaderMinH,
+		HeaderMaxH:   g.HeaderMaxH,
+		TimelineBarH: g.TimelineBarH,
 
 		// Widget weights
 		ColWeights: []float64{1, 3},
@@ -201,53 +219,68 @@ func desktopProfile() *LayoutProfile {
 		// Scrollbar
 		ScrollbarStyle: DefaultScrollbarStyle,
 
-		// Button styles
-		PlayBtnStyle:    PlayButtonStyle,
-		PlayIconColor:   nil,
-		StopBtnStyle:    StopButtonStyle,
-		StopIconColor:   nil,
-		BPMDecBtnStyle:  BPMDecStyle,
-		BPMIncBtnStyle:  BPMIncStyle,
-		BPMIconColor:    colIncDecIconHi,
+		// Button styles — unified neutral transport look. Play/stop/record
+		// used to be stoplight green/red; they're now Surface2 with subtle
+		// borders like every other button, with the icon carrying the
+		// semantics (red for record, neutral for play/stop).
+		PlayBtnStyle:    TransportPlayStyle,
+		PlayIconColor:   colTextPrimary,
+		StopBtnStyle:    TransportStopStyle,
+		StopIconColor:   colTextPrimary,
+		BPMDecBtnStyle:  TransportDecStyle,
+		BPMIncBtnStyle:  TransportIncStyle,
+		BPMIconColor:    colTextSecondary,
 		SubdivBtnStyle:  InstButtonStyle,
-		TrackBtnStyle:   InstButtonStyle,
+		// TrackBtnStyle uses TransportMiscStyle on both profiles so the
+		// track button shares the play/stop chrome (ComponentButtonSecondary).
+		// State is expressed via icon glyph + IconColor (see syncTrackBtnVisual),
+		// not a fill-style swap — mirroring how SetPlaying flips the play
+		// button's icon and tint while keeping its frame fixed.
+		TrackBtnStyle:   TransportMiscStyle,
 		ViewSwitchStyle: InstButtonStyle,
 		OverflowStyle:   DropdownStyle,
 		TransportMisc:   TransportMiscStyle,
 		RowLabelStyle:   InstButtonStyle,
 
-		// Drawing
+		// Drawing — generated for dimensional, hand-coded for bool flags
 		DrawTopEdgeHighlight: true,
-		AccentStripeWidth:    3,
-		AccentStripeInsetY:   0,
+		AccentStripeWidth:    g.AccentStripeWidth,
+		AccentStripeInsetY:   g.AccentStripeInsetY,
 		SplitterHandleColor:  colSplitterHandle,
 		DrawSplitterGrip:     true,
-		PopupCornerRadius:    RadiusLG,
-		CloseButtonSize:      desktopPopupBtnH,
+		PopupCornerRadius:    g.PopupCornerRadius,
+		CloseButtonSize:      g.CloseButtonSize,
 
-		// EQ sizing
-		EQSliderH:      14,
-		EQHandleRadius: 16, // hit area for desktop EQ curve handles
-		EQDBInputH:     14,
+		// EQ sizing — generated
+		EQSliderH:      g.EqSliderH,
+		EQHandleRadius: g.EqHandleRadius,
+		EQDBInputH:     g.EqDBInputH,
 
-		// Slider sizing
-		SliderTrackH:     4,
-		SliderThumbH:     18,
-		SliderThumbW:     12,
+		// Slider sizing — generated
+		SliderTrackH:     g.SliderTrackH,
+		SliderThumbH:     g.SliderThumbH,
+		SliderThumbW:     g.SliderThumbW,
 		SliderLabelAbove: false,
 
-		// Grid sizing
-		NodeMinPx:    8,
-		NodeMaxPx:    16,
-		EdgeThickMul: 1,
+		// FX toggle pill — generated
+		FXToggleTrackW: g.FxToggleTrackW,
+		FXToggleTrackH: g.FxToggleTrackH,
+		FXToggleThumbD: g.FxToggleThumbD,
 
-		// Layout sizing
-		ControlPadding:   4, // buttonPad(2) + 2
-		ControlLeftInset: 12,
+		// Grid sizing — generated
+		NodeMinPx:    g.NodeMinPx,
+		NodeMaxPx:    g.NodeMaxPx,
+		EdgeThickMul: g.EdgeThickMul,
 
-		// Splitter
+		// Layout sizing — generated
+		ControlPadding:   g.ControlPadding,
+		ControlGap:       g.ControlGap,
+		ControlGroupPad:  g.ControlGroupPad,
+		ControlLeftInset: g.ControlLeftInset,
+
+		// Splitter — generated
 		SplitterMinFraction:   0,
-		SplitterGrabThreshold: 0,
+		SplitterGrabThreshold: g.SplitterGrabThreshold,
 
 		// Feature flags
 		ShowLayoutGuides:   true,
@@ -260,8 +293,8 @@ func desktopProfile() *LayoutProfile {
 		DrawToolbarSep:     false,
 		DrawMasterVolIcon:  true,
 
-		// Timeline defaults
-		DefaultTimelineBeats: 0, // no cap: auto-grow to full circuit
+		// Timeline defaults — generated
+		DefaultTimelineBeats: g.DefaultTimelineBeats,
 
 		// Behavior
 		ReserveAddRowSpace: true,
@@ -269,38 +302,43 @@ func desktopProfile() *LayoutProfile {
 }
 
 func mobileProfile() *LayoutProfile {
+	// Phase 5a (extended): all dimensional fields come from
+	// design_profile.gen.go (DESIGN.md `profileOverrides.mobile`).
+	// See desktopProfile() for the list of fields still hand-coded
+	// (color refs, bool flags, ButtonVisual style refs).
+	g := genMobileProfile
 	return &LayoutProfile{
 		Class: ScreenMobile,
 
-		// Sizing
-		RowHeight:         touchRowHeightPx,
-		GrabZone:          touchGrabZonePx,
-		MinTarget:         touchMinTargetPx,
-		MinCellWidth:      touchMinCellWidthPx,
-		SplitterHandleLen: touchSplitterHandleLen,
-		SplitterHandleThk: touchSplitterHandleThick,
+		// Sizing — generated
+		RowHeight:         g.RowHeight,
+		GrabZone:          g.GrabZone,
+		MinTarget:         g.MinTarget,
+		MinCellWidth:      g.MinCellWidth,
+		SplitterHandleLen: g.SplitterHandleLen,
+		SplitterHandleThk: g.SplitterHandleThk,
 
-		// Popup
-		PopupPanelW:     touchPopupPanelW,
-		PopupBtnW:       touchPopupBtnW,
-		PopupBtnH:       touchPopupBtnH,
-		PopupGap:        touchPopupGap,
-		PopupPad:        touchPopupPad,
+		// Popup — generated for sizing primitives, hand-coded for scales
+		PopupPanelW:     g.PopupPanelW,
+		PopupBtnW:       g.PopupBtnW,
+		PopupBtnH:       g.PopupBtnH,
+		PopupGap:        g.PopupGap,
+		PopupPad:        g.PopupPad,
 		PopupTextScale:  popupTextScale,
 		PopupLabelScale: 1.3,
 		PopupValueScale: 1.5,
 		PopupTitleScale: 1.7,
-		PopupSectionGap: SpaceMD,
+		PopupSectionGap: g.PopupSectionGap,
 		PopupRowH:       BtnHeightMD,
 
-		// Button sizing
-		TransportBtnSize:  BtnHeightLG,
-		RowControlBtnSize: BtnHeightMD,
+		// Button sizing — generated
+		TransportBtnSize:  g.TransportBtnSize,
+		RowControlBtnSize: g.RowControlBtnSize,
 
-		// Header
-		HeaderMinH:   mobileHeaderH,
-		HeaderMaxH:   mobileHeaderMaxH,
-		TimelineBarH: timelineBarHeightMobile,
+		// Header — generated
+		HeaderMinH:   g.HeaderMinH,
+		HeaderMaxH:   g.HeaderMaxH,
+		TimelineBarH: g.TimelineBarH,
 
 		// Widget weights
 		ColWeights: []float64{1.5, 1.5},
@@ -324,38 +362,45 @@ func mobileProfile() *LayoutProfile {
 		TransportMisc:   TransportMiscStyle,
 		RowLabelStyle:   MobileRowLabelStyle,
 
-		// Drawing
+		// Drawing — generated for dimensional, hand-coded for bool flags
 		DrawTopEdgeHighlight: false,
-		AccentStripeWidth:    5,
-		AccentStripeInsetY:   2,
+		AccentStripeWidth:    g.AccentStripeWidth,
+		AccentStripeInsetY:   g.AccentStripeInsetY,
 		SplitterHandleColor:  colSplitterHandleMobile,
 		DrawSplitterGrip:     false,
-		PopupCornerRadius:    RadiusXL,
-		CloseButtonSize:      BtnHeightSM,
+		PopupCornerRadius:    g.PopupCornerRadius,
+		CloseButtonSize:      g.CloseButtonSize,
 
-		// EQ sizing
-		EQSliderH:      28,
-		EQHandleRadius: touchMinTargetPx/2 + 4, // 26
-		EQDBInputH:     20,
+		// EQ sizing — generated
+		EQSliderH:      g.EqSliderH,
+		EQHandleRadius: g.EqHandleRadius,
+		EQDBInputH:     g.EqDBInputH,
 
-		// Slider sizing
-		SliderTrackH:     6,
-		SliderThumbH:     24,
-		SliderThumbW:     14,
+		// Slider sizing — generated
+		SliderTrackH:     g.SliderTrackH,
+		SliderThumbH:     g.SliderThumbH,
+		SliderThumbW:     g.SliderThumbW,
 		SliderLabelAbove: true,
 
-		// Grid sizing
-		NodeMinPx:    12,
-		NodeMaxPx:    20,
-		EdgeThickMul: 2,
+		// FX toggle pill — generated
+		FXToggleTrackW: g.FxToggleTrackW,
+		FXToggleTrackH: g.FxToggleTrackH,
+		FXToggleThumbD: g.FxToggleThumbD,
 
-		// Layout sizing
-		ControlPadding:   3, // buttonPad(2) + 1
-		ControlLeftInset: 4,
+		// Grid sizing — generated
+		NodeMinPx:    g.NodeMinPx,
+		NodeMaxPx:    g.NodeMaxPx,
+		EdgeThickMul: g.EdgeThickMul,
 
-		// Splitter
+		// Layout sizing — generated
+		ControlPadding:   g.ControlPadding,
+		ControlGap:       g.ControlGap,
+		ControlGroupPad:  g.ControlGroupPad,
+		ControlLeftInset: g.ControlLeftInset,
+
+		// Splitter — generated
 		SplitterMinFraction:   0.25,
-		SplitterGrabThreshold: 8,
+		SplitterGrabThreshold: g.SplitterGrabThreshold,
 
 		// Feature flags
 		ShowLayoutGuides:   false,
@@ -368,8 +413,8 @@ func mobileProfile() *LayoutProfile {
 		DrawToolbarSep:     true,
 		DrawMasterVolIcon:  true,
 
-		// Timeline defaults
-		DefaultTimelineBeats: 8, // mobile: show 8 beats by default
+		// Timeline defaults — generated
+		DefaultTimelineBeats: g.DefaultTimelineBeats,
 
 		// Behavior
 		ReserveAddRowSpace: false,

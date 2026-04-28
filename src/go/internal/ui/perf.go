@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"sync/atomic"
 	"time"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // perfLogEnabled caches os.Getenv("PERF_LOG") == "1" at init time to avoid
@@ -35,6 +37,13 @@ type PerfStats struct {
 	HeapSysKB   uint64 // total heap obtained from OS in KB
 	HeapObjects uint64 // live heap objects
 	Goroutines  int    // number of live goroutines
+
+	// Recording pipeline counters. Zero when not recording.
+	RecordingActive       bool  // pipeline is attached to the audio thread
+	RecordingDrops        int64 // capture blocks dropped due to backpressure
+	RecordingMasterQDepth int   // current master-channel queue depth
+	RecordingPoolFree     int   // free pre-allocated capture blocks
+	RecordingBytesUsed    int64 // total encoded bytes across all channels (worker-side, WASM only)
 
 	SchedMetrics ScheduleMetricsSnapshot // per-event audio scheduling lead/lag
 }
@@ -247,5 +256,12 @@ func (p *perfCounters) snapshot() PerfStats {
 	s.HeapSysKB = ms.HeapSys / 1024
 	s.HeapObjects = ms.HeapObjects
 	s.Goroutines = runtime.NumGoroutine()
+
+	recStats := audio.CurrentPipelineStats()
+	s.RecordingActive = recStats.Active
+	s.RecordingDrops = recStats.Drops
+	s.RecordingMasterQDepth = recStats.MasterQueued
+	s.RecordingPoolFree = recStats.BlockPoolFree
+	s.RecordingBytesUsed = recStats.BytesUsed
 	return s
 }

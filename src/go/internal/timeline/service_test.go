@@ -553,6 +553,138 @@ func TestSnapshotBeyondRows(t *testing.T) {
 	}
 }
 
+func TestLastCommittedNegativeRow(t *testing.T) {
+	s := NewService()
+	if got := s.LastCommitted(-1); got != -1 {
+		t.Fatalf("LastCommitted(-1) = %d, want -1", got)
+	}
+}
+
+func TestLastCommittedBeyondRows(t *testing.T) {
+	s := NewService()
+	if got := s.LastCommitted(99); got != -1 {
+		t.Fatalf("LastCommitted(beyond) = %d, want -1", got)
+	}
+}
+
+func TestLastCommittedEmptyRow(t *testing.T) {
+	s := NewService()
+	// Force creation of row 0 via UpdateRowSegments, then leave it empty.
+	s.UpdateRowSegments(0, 0, 4, 4, []bool{false, false, false, false}, func(SegmentsView) {})
+	if got := s.LastCommitted(0); got != -1 {
+		t.Fatalf("LastCommitted(empty row) = %d, want -1", got)
+	}
+}
+
+func TestLastImmutableAbsNegativeAndEmpty(t *testing.T) {
+	s := NewService()
+	if got := s.LastImmutableAbs(-1); got != -1 {
+		t.Fatalf("LastImmutableAbs(-1) = %d, want -1", got)
+	}
+	if got := s.LastImmutableAbs(0); got != -1 {
+		t.Fatalf("LastImmutableAbs(empty) = %d, want -1", got)
+	}
+}
+
+func TestClearRowNegativeAndOutOfBounds(t *testing.T) {
+	s := NewService()
+	s.RecordCommitKind(0, 0, true, model.NodeTypeRegular, CommitKindPlayback, 4, 4)
+	s.ClearRow(-1)  // no-op
+	s.ClearRow(99)  // no-op
+	// Row 0 still intact.
+	if _, _, ok := s.Committed(0, 0); !ok {
+		t.Fatal("clearing -1/99 should not touch row 0")
+	}
+	s.ClearRow(0)
+	if _, _, ok := s.Committed(0, 0); ok {
+		t.Fatal("ClearRow(0) did not remove commit")
+	}
+	if s.HasImmutable(0) {
+		t.Fatal("ClearRow(0) did not clear sidecar")
+	}
+}
+
+// TestRecordCommitKindAppendPlaybackCreatesSidecar covers the lazy-init
+// branches in RecordCommitKind's append path (s.immutables == nil and the
+// per-row map allocation).
+func TestRecordCommitKindAppendPlaybackCreatesSidecar(t *testing.T) {
+	s := NewService()
+	s.RecordCommitKind(0, 5, true, model.NodeTypeRegular, CommitKindPlayback, 8, 8)
+	if got := s.LastImmutableAbs(0); got != 5 {
+		t.Fatalf("LastImmutableAbs = %d, want 5", got)
+	}
+	if !s.HasImmutable(0) {
+		t.Fatal("expected HasImmutable=true after Playback record")
+	}
+}
+
+// TestRecordCommitKindMutableReplacementPromotesToImmutable covers the
+// branch where an existing mutable commit is overwritten by a Playback
+// kind in RecordCommitKind, including the sidecar creation inside the
+// replace path.
+func TestRecordCommitKindMutableReplacementPromotesToImmutable(t *testing.T) {
+	s := NewService()
+	s.RecordCommitKind(0, 3, false, model.NodeTypeInvisible, CommitKindSeeded, 8, 8)
+	// Same abs, now Playback — must replace AND create sidecar.
+	s.RecordCommitKind(0, 3, true, model.NodeTypeRegular, CommitKindPlayback, 8, 8)
+	val, typ, kind, ok := s.CommittedKind(0, 3)
+	if !ok {
+		t.Fatal("expected commit present")
+	}
+	if !val || typ != model.NodeTypeRegular {
+		t.Fatalf("payload not replaced: val=%v typ=%v", val, typ)
+	}
+	if kind != CommitKindPlayback {
+		t.Fatalf("kind = %v, want Playback", kind)
+	}
+	if got := s.LastImmutableAbs(0); got != 3 {
+		t.Fatalf("LastImmutableAbs after promote = %d, want 3", got)
+	}
+}
+
+// TestSeedFromWindowSingleCellPlayback exercises SeedFromWindow with a
+// 1-cell window and Playback kind: covers append path + sidecar lazy init.
+func TestSeedFromWindowSingleCellPlayback(t *testing.T) {
+	s := NewService()
+	s.SeedFromWindow(0, 7, 7, []bool{true}, []model.NodeType{model.NodeTypeRegular},
+		CommitKindPlayback, 1, 1)
+	val, _, kind, ok := s.CommittedKind(0, 7)
+	if !ok || !val {
+		t.Fatalf("expected seeded commit ok=%v val=%v", ok, val)
+	}
+	if kind != CommitKindPlayback {
+		t.Fatalf("kind = %v, want Playback", kind)
+	}
+	if !s.HasImmutable(0) {
+		t.Fatal("expected sidecar populated")
+	}
+}
+
+// TestSeedFromWindowInvertedNoOp covers the early-return when pastEnd<offset.
+func TestSeedFromWindowInvertedNoOp(t *testing.T) {
+	s := NewService()
+	s.SeedFromWindow(0, 5, 1, []bool{true}, nil, CommitKindSeeded, 4, 4)
+	if got := s.LastCommitted(0); got != -1 {
+		t.Fatalf("expected no commits, got LastCommitted=%d", got)
+	}
+}
+
+// TestUpdateRowSegmentsClampsNegativeWindow exercises the windowLen<0
+// clamp branch.
+func TestUpdateRowSegmentsClampsNegativeWindow(t *testing.T) {
+	s := NewService()
+	called := false
+	s.UpdateRowSegments(0, 0, -3, 4, []bool{true}, func(v SegmentsView) {
+		called = true
+		if len(v.Past) != 0 {
+			t.Errorf("expected 0-length view after clamp, got %d", len(v.Past))
+		}
+	})
+	if !called {
+		t.Fatal("callback not invoked")
+	}
+}
+
 func TestServiceConcurrentAccessDoesNotPanic(t *testing.T) {
 	s := NewService()
 	windowLen := 16

@@ -12,11 +12,14 @@ import (
 // connection is complete (t >= 1).
 func TestScreenEdgesDrawArrows(t *testing.T) {
 	assertDefaultParityState(t)
-	if screenEdgesDefault {
-		t.Fatalf("screenEdgesDefault=true; test assumes SCREEN_EDGES is required to enable screen-space edges")
+	if RuntimeProf().IsBrowser {
+		t.Skip("simpleDrawDefault is intentionally true on browser; SCREEN_EDGES preconditions only hold on desktop")
 	}
-	if simpleDrawDefault {
-		t.Fatalf("simpleDrawDefault=true; test assumes SCREEN_EDGES is the sole trigger for screen-space edges")
+	if RuntimeProf().ScreenEdgesDefault {
+		t.Fatalf("RuntimeProf().ScreenEdgesDefault=true; test assumes SCREEN_EDGES is required to enable screen-space edges")
+	}
+	if RuntimeProf().SimpleDrawDefault {
+		t.Fatalf("RuntimeProf().SimpleDrawDefault=true; test assumes SCREEN_EDGES is the sole trigger for screen-space edges")
 	}
 	if v := os.Getenv("SCREEN_EDGES"); v != "" {
 		t.Fatalf("SCREEN_EDGES=%q; test requires default unset env", v)

@@ -981,9 +981,14 @@ func TestRowRack_DeleteConfirmVisualTiming(t *testing.T) {
 	z.MarkDirty()
 	z.Draw(screen)
 
-	// After the confirm window expires, the button should revert.
-	if delBtns[1].Text != "X" {
-		t.Errorf("expected delete button text 'X' after confirm expires, got %q", delBtns[1].Text)
+	// After the confirm window expires, the button reverts to the close
+	// icon (text-label "X" was migrated to IconClose in the icon-system
+	// overhaul).
+	if delBtns[1].Text != "" {
+		t.Errorf("expected delete button text empty after confirm expires, got %q", delBtns[1].Text)
+	}
+	if delBtns[1].Icon != string(IconClose) {
+		t.Errorf("expected delete button icon %q after confirm expires, got %q", IconClose, delBtns[1].Icon)
 	}
 	if delBtns[1].Style == DeleteConfirmButtonStyle {
 		t.Error("expected non-DeleteConfirmButtonStyle after confirm window expires")

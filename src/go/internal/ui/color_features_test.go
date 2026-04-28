@@ -122,7 +122,7 @@ func TestRowColorSwatchPerRowAndUpdate(t *testing.T) {
 	type call struct{ fill color.Color }
 	var fills []call
 	orig := drawButton
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed bool) {
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed, topEdgeHighlight bool) {
 		fills = append(fills, call{fill: fill})
 	}
 	defer func() { drawButton = orig }()

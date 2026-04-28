@@ -1,13 +1,9 @@
 package ui
 
-import "runtime"
-
-// Touch-friendly size constants (Apple HIG recommends 44px minimum)
-const (
-	touchMinTargetPx = 44 // minimum touch target size
-	touchGrabZonePx  = 16 // grab zone for splitter/resize handles
-	touchRowHeightPx = 44 // row height for drum view on touch (Apple HIG minimum)
-)
+// touchMinTargetPx is the minimum touch target size per Apple HIG (44px).
+// Used directly by code paths that need a compile-time constant; runtime
+// callers should prefer Profile().MinTarget which returns 0 on desktop.
+const touchMinTargetPx = 44
 
 // Splitter handle sizing (pill indicator on divider lines)
 const (
@@ -23,17 +19,14 @@ func SplitterHandleLen() int { return Profile().SplitterHandleLen }
 // SplitterHandleThick returns the pill thickness for the current platform.
 func SplitterHandleThick() int { return Profile().SplitterHandleThk }
 
-// Desktop defaults
-const (
-	desktopGrabZonePx  = 5
-	desktopRowHeightPx = 28
-)
+// desktopRowHeightPx is the desktop row height (matches Profile().RowHeight).
+// Retained as a compile-time constant for font_size_test.go which asserts
+// font fits within this height.
+const desktopRowHeightPx = 28
 
-// Minimum cell width (in pixels) so drum-view cells remain visually readable.
-const (
-	desktopMinCellWidthPx = 2 // allows high cell counts on wide timelines
-	touchMinCellWidthPx   = 2 // matches desktop; users zoom via +/- buttons or pinch
-)
+// touchMinCellWidthPx is the mobile minimum cell width (matches
+// Profile().MinCellWidth). Retained for adaptive_cell_count_test.go.
+const touchMinCellWidthPx = 2
 
 // Threshold for considering a screen "small" (phone/tablet in landscape)
 const smallScreenWidthPx = 900
@@ -60,8 +53,10 @@ func detectSmallScreen() bool {
 	if forceSmallScreenForTest {
 		return true
 	}
-	// Only consider touch mode on WASM (browser) builds
-	if runtime.GOARCH != "wasm" {
+	// Only consider touch mode when the runtime profile enables small-screen
+	// detection (browser builds by default; tests can opt in by overriding
+	// the profile).
+	if !RuntimeProf().EnableTouchSmallScreen {
 		return false
 	}
 	// On WASM, use touch mode only for genuinely small screens
@@ -99,54 +94,58 @@ func MinCellWidth() int { return Profile().MinCellWidth }
 
 // ─── Design Token System ───────────────────────────────────
 // Standardized spacing and sizing scale used throughout the UI.
+//
+// All values below are aliased from design_tokens.gen.go, which is
+// generated from DESIGN.md's `spacing:` and `rounded:` blocks. To change
+// a value, edit DESIGN.md and run `make gen-design-tokens`.
 
 // Spacing scale (px)
 const (
-	SpaceXS  = 2
-	SpaceSM  = 4
-	SpaceMD  = 8
-	SpaceLG  = 12
-	SpaceXL  = 16
-	SpaceXXL = 24
+	SpaceXS      = genSpacingXs
+	SpaceSM      = genSpacingSm
+	SpaceMD      = genSpacingMd
+	SpaceLG      = genSpacingLg
+	SpaceXL      = genSpacingXl
+	SpaceXXL     = genSpacingXxl
+	SpaceCluster = genSpacingCluster // inter-cluster gap on the transport bar
 )
 
 // Standard button heights (px)
 const (
-	BtnHeightSM = 28
-	BtnHeightMD = 36
-	BtnHeightLG = 44
+	BtnHeightSM = genSpacingBtnSm
+	BtnHeightMD = genSpacingBtnMd
+	BtnHeightLG = genSpacingBtnLg
 )
 
 // Standard icon sizes (px)
 const (
-	IconSizeSM = 16
-	IconSizeMD = 20
-	IconSizeLG = 24
+	IconSizeSM = genSpacingIconSm
+	IconSizeMD = genSpacingIconMd
+	IconSizeLG = genSpacingIconLg
 )
+
+// Icon-system primitives (logical 24-unit grid). Every IconID renders onto
+// this canvas; pixel sizes are derived per-call from the bounding rect.
+// IconStrokeWeight is a fractional logical-unit width (Lucide-style 1.75)
+// converted to pixels at render time as `weight * (size / grid)`.
+const (
+	IconGrid         = genIconGrid    // logical units per icon canvas side
+	IconPadding      = genIconPadding // empty band inside the canvas
+	IconCornerRadius = genIconRadius  // default radius for rectangular elements
+)
+
+// IconStrokeWeight is float32 to preserve the 1.75 fraction at small
+// rendered sizes. var (not const) so future profile overrides can swap it
+// without touching every call site.
+var IconStrokeWeight float32 = genIconStroke
 
 // Unified corner radii for all interactive elements
 const (
-	RadiusSM = 6  // compact buttons, context menu groups (desktop)
-	RadiusMD = 8  // standard buttons (transport, row controls, popup items)
-	RadiusLG = 12 // panels, bottom sheets, popups (mobile)
-	RadiusXL = 16 // emphasized panels (mobile bottom sheet)
-)
-
-// Node popup menu sizing constants.
-const (
-	// Desktop (matches existing hardcoded values)
-	desktopPopupPanelW = 220
-	desktopPopupBtnW   = 18
-	desktopPopupBtnH   = 16
-	desktopPopupGap    = 4
-	desktopPopupPad    = 6
-
-	// Mobile (touch-friendly)
-	touchPopupPanelW = 300
-	touchPopupBtnW   = 44
-	touchPopupBtnH   = 36
-	touchPopupGap    = 6
-	touchPopupPad    = 10
+	RadiusSM   = genRoundedSm   // compact buttons, context menu groups (desktop)
+	RadiusMD   = genRoundedMd   // standard buttons (transport, row controls, popup items)
+	RadiusLG   = genRoundedLg   // panels, bottom sheets, popups (mobile)
+	RadiusXL   = genRoundedXl   // emphasized panels (mobile bottom sheet)
+	RadiusFull = genRoundedFull // pill buttons (transport group bg, EQ/Scope tabs)
 )
 
 // PopupPanelW returns the popup panel width.
@@ -190,3 +189,12 @@ func TransportBtnSize() int { return Profile().TransportBtnSize }
 
 // RowControlBtnSize returns the unified row control button size.
 func RowControlBtnSize() int { return Profile().RowControlBtnSize }
+
+// FXToggleTrackW returns the FX panel toggle pill track width.
+func FXToggleTrackW() int { return Profile().FXToggleTrackW }
+
+// FXToggleTrackH returns the FX panel toggle pill track height.
+func FXToggleTrackH() int { return Profile().FXToggleTrackH }
+
+// FXToggleThumbD returns the FX panel toggle pill thumb diameter.
+func FXToggleThumbD() int { return Profile().FXToggleThumbD }

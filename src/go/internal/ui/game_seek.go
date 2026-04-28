@@ -5,12 +5,14 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 func (g *Game) Seek(beats int) {
 	if beats < 0 {
 		beats = 0
 	}
+	emitSeek(beats)
 	g.resetHighlights()
 	g.activePulses = nil
 	g.activePulse = nil
@@ -131,7 +133,7 @@ func (g *Game) handlePlaybackTransition(prevPlaying bool) {
 	if curr == prevPlaying {
 		return
 	}
-	g.logger.Infof("[GAME] Playing state changed: %t -> %t", prevPlaying, curr)
+	g.logger.Debugf("[game] playing state changed: %t -> %t", prevPlaying, curr)
 	if curr {
 		if !g.Paused() && len(g.activePulses) == 0 {
 			for row := range g.drum.Rows {
@@ -143,10 +145,10 @@ func (g *Game) handlePlaybackTransition(prevPlaying bool) {
 		}
 		g.engine.Start()
 		g.state.SetPaused(false)
-		g.logger.Infof("[GAME] Engine started.")
+		g.logger.Debugf("[game] engine started")
 	} else {
 		g.engine.Stop()
-		g.logger.Infof("[GAME] Engine stopped.")
+		g.logger.Debugf("[game] engine stopped")
 		for len(g.audioCh) > 0 {
 			<-g.audioCh
 		}
@@ -160,4 +162,9 @@ func (g *Game) handlePlaybackTransition(prevPlaying bool) {
 	}
 	g.drum.SetPlaying(curr)
 	notifyMediaSessionState()
+	if curr {
+		hooks.PublishKind(hooks.EventPlayStart, nil)
+	} else {
+		hooks.PublishKind(hooks.EventPlayStop, nil)
+	}
 }

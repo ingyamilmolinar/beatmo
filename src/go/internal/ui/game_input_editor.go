@@ -253,7 +253,7 @@ func (g *Game) handleEditor() {
 		g.start = g.sel
 		g.start.Start = true
 		g.graph.StartNodeID = g.sel.ID
-		g.logger.Infof("[GAME] Setting start node: %d,%d", g.start.I, g.start.J)
+		g.logger.Debugf("[game] setting start node: %d,%d", g.start.I, g.start.J)
 		g.updateBeatInfos()
 	}
 	g.leftPrev = left

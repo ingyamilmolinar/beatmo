@@ -57,10 +57,6 @@ func (g *Graph) RemoveNode(id NodeID) {
 	}
 }
 
-func (g *Graph) ToggleStep(i int) {
-	// This function will be re-evaluated later based on graph traversal
-}
-
 func (g *Graph) GetNodeByID(id NodeID) (Node, bool) {
 	n, ok := g.Nodes[id]
 	return n, ok

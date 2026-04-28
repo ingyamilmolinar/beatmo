@@ -11,6 +11,9 @@ func (g *Game) Close() {
 	}
 	g.StopBackgroundPredictorForTest()
 	g.StopSequencerForTest()
+	if g.audioScheduler != nil {
+		_ = g.audioScheduler.Close()
+	}
 	if g.engine != nil {
 		g.engine.Close()
 	}

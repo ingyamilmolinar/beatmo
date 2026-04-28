@@ -87,15 +87,11 @@ func (g *Game) initJSEqWidgets() {
 		return svc.BufferLen()
 	}))
 
-	// forceScopeExportSnapshot() – immediately builds and buffers one snapshot,
-	// bypassing the 2-second timer. Browser tests use this to avoid racing.
+	// forceScopeExportSnapshot() – immediately polls analyzers, pushes samples,
+	// and buffers one snapshot, bypassing the 2-second timer. Browser tests use
+	// this to avoid racing against the background goroutine's 100ms poll cycle.
 	js.Global().Set("forceScopeExportSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		svc := audio.ExportService()
-		if svc == nil {
-			return false
-		}
-		svc.BufferSnapshot()
-		return true
+		return audio.ForceScopeExportSnapshot()
 	}))
 
 	// probeAnalyzerState() – returns a small diagnostic object describing what

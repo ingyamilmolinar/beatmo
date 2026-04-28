@@ -159,7 +159,7 @@ func (dv *DrumView) refreshInstruments() {
 		}
 	}
 	if changed && dv.IsInstMenuOpen() {
-		dv.buildInstMenu()
+		dv.refreshInstMenuComponent()
 	}
 }
 
@@ -200,8 +200,44 @@ func (dv *DrumView) EnsureInstrumentKnown(id string) {
 func (dv *DrumView) SetInstrumentSearch(q string) {
 	dv.instSearch = q
 	if dv.IsInstMenuOpen() {
-		dv.buildInstMenu()
+		dv.refreshInstMenuComponent()
 	}
+}
+
+// refreshInstMenuComponent rebuilds the open instrument menu after a
+// catalog mutation (rename, registration, search filter, refresh).
+// No-op when the menu is closed or the component isn't constructed.
+func (dv *DrumView) refreshInstMenuComponent() {
+	if dv == nil || dv.instMenuComp == nil {
+		return
+	}
+	if !dv.instMenuComp.IsOpen() {
+		return
+	}
+	var instOpts []InstrumentOption
+	for _, id := range dv.instOptions {
+		label := id
+		if dv.instLabelCache != nil {
+			if l, ok := dv.instLabelCache[id]; ok {
+				label = l
+			}
+		}
+		cat := ""
+		if dv.instCatByID != nil {
+			cat = dv.instCatByID[id]
+		}
+		instOpts = append(instOpts, InstrumentOption{
+			ID:       id,
+			Label:    label,
+			Category: cat,
+		})
+	}
+	props := dv.instMenuComp.Props()
+	props.Instruments = instOpts
+	props.Categories = dv.instCategories
+	dv.instMenuComp.SetProps(props)
+	dv.instMenuComp.Refresh()
+	dv.syncInstMenuScrollFromComp()
 }
 
 // SetInstrumentOrder allows callers to impose a custom ordering for instruments.

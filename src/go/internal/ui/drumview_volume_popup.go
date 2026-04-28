@@ -46,3 +46,15 @@ func (dv *DrumView) closeMasterVolumePopup() {
 	dv.masterVolPopup.Close()
 	dv.closeMasterVolPopupPortal()
 }
+
+// OpenVolumePopup opens the per-row volume slider popup (mobile).
+func (dv *DrumView) OpenVolumePopup(rowIdx int) { dv.openVolumePopup(rowIdx) }
+
+// CloseVolumePopup closes the per-row volume slider popup.
+func (dv *DrumView) CloseVolumePopup() { dv.closeVolumePopup() }
+
+// OpenMasterVolumePopup opens the master volume slider popup (desktop).
+func (dv *DrumView) OpenMasterVolumePopup() { dv.openMasterVolumePopup() }
+
+// CloseMasterVolumePopup closes the master volume slider popup.
+func (dv *DrumView) CloseMasterVolumePopup() { dv.closeMasterVolumePopup() }

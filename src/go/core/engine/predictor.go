@@ -2,6 +2,7 @@ package engine
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
@@ -52,10 +53,13 @@ type Predictor struct {
 	gateUntilByRow     []int
 	visGateUntilByRow  []int
 
-	// Background precompute
+	// Background precompute. bgRunning gates StartBackground so concurrent
+	// or repeat calls don't leak goroutines. Cleared by StopBackground after
+	// the worker exits, allowing a clean restart.
 	bgQuit    chan struct{}
 	bgDone    chan struct{}
 	bgStopped bool
+	bgRunning atomic.Bool
 	// Function returning target horizon to aim for in background
 	targetFn func() int
 

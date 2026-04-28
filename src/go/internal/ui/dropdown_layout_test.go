@@ -28,10 +28,10 @@ func TestInstrumentDropdownNoEmptySpacer(t *testing.T) {
 	if dv.instMenuMode != "instruments" {
 		t.Fatalf("not in instruments mode after category click")
 	}
-	if len(dv.instMenuBtns) < 2 {
-		t.Fatalf("expected back + at least one option, got %d", len(dv.instMenuBtns))
+	if len(dv.instMenuBtns()) < 2 {
+		t.Fatalf("expected back + at least one option, got %d", len(dv.instMenuBtns()))
 	}
-	if dv.instMenuBtns[1].Text == "" {
+	if dv.instMenuBtns()[1].Text == "" {
 		t.Fatalf("first instrument button empty (spacer detected)")
 	}
 	if dv.instMenuScroll.Visible < 1 {

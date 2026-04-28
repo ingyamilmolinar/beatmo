@@ -176,20 +176,30 @@ func (t *DrumViewTree) Update() {
 }
 
 // Draw renders all zones in z-order (ascending), then portal overlays on top.
-// When tree bounds are set, each zone receives a clipped sub-image so that
-// zones cannot render outside the tree's bounds.
+// Two clipping constraints are enforced together: the tree bounds (outer
+// envelope) and each zone's own widget rectangle (e.rect, populated by
+// Layout). The intersection ensures zones cannot escape their WidgetBoard
+// cell or the tree's overall bounds. Falls back gracefully when either
+// rectangle is unset.
 func (t *DrumViewTree) Draw(screen *ebiten.Image) {
 	// Draw zones in registration order (assumed ascending z-index).
 	for i := range t.zones {
+		e := &t.zones[i]
+		clip := screen.Bounds()
 		if !t.bounds.Empty() {
-			clip := screen.Bounds().Intersect(t.bounds)
-			if clip.Empty() {
-				continue
-			}
-			sub := screen.SubImage(clip).(*ebiten.Image)
-			t.zones[i].zone.Draw(sub)
+			clip = clip.Intersect(t.bounds)
+		}
+		if !e.rect.Empty() {
+			clip = clip.Intersect(e.rect)
+		}
+		if clip.Empty() {
+			continue
+		}
+		if clip == screen.Bounds() {
+			e.zone.Draw(screen)
 		} else {
-			t.zones[i].zone.Draw(screen)
+			sub := screen.SubImage(clip).(*ebiten.Image)
+			e.zone.Draw(sub)
 		}
 	}
 	// Portal overlays on top.

@@ -188,12 +188,12 @@ func NewRowRackZone(cb RowRackCallbacks) *RowRackZone {
 		callbacks:          cb,
 		controlsCacheDirty: true,
 	}
-	z.addRowBtn = NewButton("+", addRowButtonStyle{}, func() {
+	z.addRowBtn = NewButton("", addRowButtonStyle{}, func() {
 		if z.callbacks.OnAddRow != nil {
 			z.callbacks.OnAddRow()
 		}
 	})
-	z.addRowBtn.TextColor = colTextSecondary
+	z.addRowBtn.Icon = string(IconPlus)
 	z.addRowBtn.ConsumeOnPress = true
 	z.rowVolGroup = NewSliderGroup(nil, func(idx int, val float64) {
 		if z.callbacks.OnVolPopupOpen != nil {
@@ -506,29 +506,32 @@ func (z *RowRackZone) rebuildEntries() {
 
 		slider := NewSlider(r.Volume)
 
-		mute := NewButton("M", InstButtonStyle, nil)
+		mute := NewButton("", InstButtonStyle, nil)
+		mute.Icon = string(IconMute)
 		mute.OnClick = func() {
 			if z.callbacks.OnMuteToggle != nil {
 				z.callbacks.OnMuteToggle(idx)
 			}
 		}
 
-		solo := NewButton("S", InstButtonStyle, nil)
+		solo := NewButton("", InstButtonStyle, nil)
+		solo.Icon = string(IconSolo)
 		solo.OnClick = func() {
 			if z.callbacks.OnSoloToggle != nil {
 				z.callbacks.OnSoloToggle(idx)
 			}
 		}
 
-		origin := NewButton("O", InstButtonStyle, nil)
+		origin := NewButton("", InstButtonStyle, nil)
+		origin.Icon = string(IconTarget)
 		origin.OnClick = func() {
 			if z.callbacks.OnOriginReq != nil {
 				z.callbacks.OnOriginReq(idx)
 			}
 		}
 
-		del := NewButton("X", InstButtonStyle, nil)
-		del.ConsumeOnPress = true
+		del := NewButton("", DeleteButtonStyle, nil)
+		del.Icon = string(IconClose)
 		if len(rows) > 1 {
 			del.OnClick = func() {
 				if z.callbacks.OnDeleteRow != nil {
@@ -548,7 +551,8 @@ func (z *RowRackZone) rebuildEntries() {
 			}
 		}
 
-		fx := NewButton("FX", InstButtonStyle, nil)
+		fx := NewButton("", InstButtonStyle, nil)
+		fx.Icon = string(IconFx)
 		fx.OnClick = func() {
 			if z.callbacks.OnFXPanelToggle != nil {
 				z.callbacks.OnFXPanelToggle(idx)
@@ -636,7 +640,7 @@ func (z *RowRackZone) makeColorButton(idx int) *Button {
 		if idx >= 0 && idx < len(rows) {
 			return rows[idx].Color
 		}
-		return color.RGBA{200, 200, 200, 255}
+		return genColorRowRackColorFallback
 	}
 	b := NewButton("", ColorSwatchStyle{Color: colorFn, Border: colButtonBorder}, nil)
 	b.OnClick = func() {
@@ -664,14 +668,14 @@ func (z *RowRackZone) positionRowWidgets(i int, rowRect image.Rectangle) {
 	}
 	e := &z.entries[i]
 	g := NewGridLayout(rowRect, rowControlWeights(), []float64{1})
-	e.label.SetRect(insetRect(g.Cell(0, 0), buttonPad))
+	e.label.SetRect(insetRect(g.Cell(0, 0), SpaceXS))
 	if Profile().IsMobile() {
 		// Mobile: only label + volume icon; other controls live in context menu.
 		e.menuBtn.SetRect(image.Rectangle{})
 		e.editBtn.SetRect(image.Rectangle{})
 		e.saveBtn.SetRect(image.Rectangle{})
 		e.colorBtn.SetRect(image.Rectangle{})
-		e.volSlider.SetRect(insetRect(g.Cell(3, 0), buttonPad))
+		e.volSlider.SetRect(insetRect(g.Cell(3, 0), SpaceXS))
 		e.muteBtn.SetRect(image.Rectangle{})
 		e.soloBtn.SetRect(image.Rectangle{})
 		e.fxBtn.SetRect(image.Rectangle{})
@@ -683,13 +687,13 @@ func (z *RowRackZone) positionRowWidgets(i int, rowRect image.Rectangle) {
 		e.editBtn.SetRect(image.Rectangle{})
 		e.saveBtn.SetRect(image.Rectangle{})
 		e.colorBtn.SetRect(image.Rectangle{})
-		e.volSlider.SetRect(insetRect(g.Cell(1, 0), buttonPad))
-		e.muteBtn.SetRect(insetRect(g.Cell(2, 0), buttonPad))
-		e.soloBtn.SetRect(insetRect(g.Cell(3, 0), buttonPad))
-		e.fxBtn.SetRect(insetRect(g.Cell(4, 0), buttonPad))
+		e.volSlider.SetRect(insetRect(g.Cell(1, 0), SpaceXS))
+		e.muteBtn.SetRect(insetRect(g.Cell(2, 0), SpaceXS))
+		e.soloBtn.SetRect(insetRect(g.Cell(3, 0), SpaceXS))
+		e.fxBtn.SetRect(insetRect(g.Cell(4, 0), SpaceXS))
 		e.originBtn.SetRect(image.Rectangle{})
 		e.deleteBtn.SetRect(image.Rectangle{})
-		e.menuBtn.SetRect(insetRect(g.Cell(5, 0), buttonPad))
+		e.menuBtn.SetRect(insetRect(g.Cell(5, 0), SpaceXS))
 	}
 }
 
@@ -718,8 +722,8 @@ func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle, 
 				z.addRowBtn.SetRect(image.Rectangle{})
 				return
 			}
-			z.addRowBtn.Text = "+"
-			z.addRowBtn.Icon = ""
+			z.addRowBtn.Text = ""
+			z.addRowBtn.Icon = string(IconPlus)
 			btnW := 28
 			btnH := 24
 			// Use screen bounds for FAB X position (not the narrow rack panel).
@@ -749,7 +753,7 @@ func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle, 
 			z.addRowBtn.SetRect(image.Rectangle{})
 			return
 		}
-		z.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, addY, panelRect.Max.X, addY+rh), buttonPad))
+		z.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, addY, panelRect.Max.X, addY+rh), SpaceXS))
 	}
 }
 
@@ -1105,7 +1109,7 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 			lblR := e.label.Rect()
 			if !lblR.Empty() {
 				zebraR := lblR.Sub(image.Pt(offsetX, offsetY))
-				drawRect(cache, zebraR, color.NRGBA{255, 255, 255, 10}, true)
+				drawRect(cache, zebraR, WithAlpha(genColorBorder, genAlphaRowRackZebra), true)
 			}
 		}
 		// Draw accent stripe for all platforms (mobile and desktop).
@@ -1127,25 +1131,25 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 		drawBtnOff(cache, e.colorBtn, offsetX, offsetY)
 		drawVolCellOff(cache, e.volSlider, rows[i].Volume, offsetX, offsetY, rows[i].Color, rows[i].Muted)
 		if !e.muteBtn.Rect().Empty() {
-			e.muteBtn.pressed = rows[i].Muted
-			if rows[i].Muted {
-				e.muteBtn.Style = MuteActiveStyle
-			} else {
-				e.muteBtn.Style = InstButtonStyle
-			}
+			syncToggleVisual(e.muteBtn, rows[i].Muted,
+				MuteActiveStyle, InstButtonStyle,
+				"", "", nil, nil)
 			drawBtnOff(cache, e.muteBtn, offsetX, offsetY)
 		}
 		if !e.soloBtn.Rect().Empty() {
-			e.soloBtn.pressed = rows[i].Solo
-			if rows[i].Solo {
-				e.soloBtn.Style = SoloActiveStyle
-			} else {
-				e.soloBtn.Style = InstButtonStyle
-			}
+			syncToggleVisual(e.soloBtn, rows[i].Solo,
+				SoloActiveStyle, InstButtonStyle,
+				"", "", nil, nil)
 			drawBtnOff(cache, e.soloBtn, offsetX, offsetY)
 		}
 		if !e.fxBtn.Rect().Empty() {
-			if len(rows[i].Effects) > 0 {
+			// Note: do NOT swap fxBtn.pressed here — the existing controls-cache
+			// hash only checks Mute and Solo; introducing pressed-flips on FX
+			// would invalidate the cache every frame Effects changes between
+			// empty and non-empty. Pass the same style for both predicates so
+			// the helper only swaps the Style field.
+			active := len(rows[i].Effects) > 0
+			if active {
 				e.fxBtn.Style = FXActiveStyle
 			} else {
 				e.fxBtn.Style = InstButtonStyle
@@ -1154,12 +1158,16 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 		}
 		drawBtnOff(cache, e.originBtn, offsetX, offsetY)
 		if deleteConfirmRow == i && (frame-deleteConfirmFrame) < 120 {
+			// Stateful confirm: show "!!" as a warning glyph (text) so it
+			// reads as distinct from the resting close-icon state.
 			e.deleteBtn.Text = "!!"
+			e.deleteBtn.Icon = ""
 			e.deleteBtn.Style = DeleteConfirmButtonStyle
 		} else {
-			e.deleteBtn.Text = "X"
+			e.deleteBtn.Text = ""
+			e.deleteBtn.Icon = string(IconClose)
 			if len(rows) > 1 {
-				e.deleteBtn.Style = InstButtonStyle
+				e.deleteBtn.Style = DeleteButtonStyle
 			}
 		}
 		drawBtnOff(cache, e.deleteBtn, offsetX, offsetY)
@@ -1168,7 +1176,7 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 			if !lblR.Empty() {
 				sepY := lblR.Max.Y - offsetY
 				sepR := image.Rect(lblR.Min.X-offsetX, sepY, lblR.Max.X-offsetX, sepY+1)
-				drawRect(cache, sepR, color.NRGBA{255, 255, 255, 16}, true)
+				drawRect(cache, sepR, WithAlpha(genColorBorder, genAlphaRowRackSeparator), true)
 			}
 		}
 	}
@@ -1200,7 +1208,7 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 		if mobile && i%2 == 1 {
 			lblR := e.label.Rect()
 			if !lblR.Empty() {
-				drawRect(dst, lblR, color.NRGBA{255, 255, 255, 6}, true)
+				drawRect(dst, lblR, WithAlpha(genColorBorder, genAlphaRowRackDim), true)
 			}
 		}
 		// Draw accent stripe for all platforms (mobile and desktop).
@@ -1242,12 +1250,16 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 		}
 		e.originBtn.Draw(dst)
 		if deleteConfirmRow == i && (frame-deleteConfirmFrame) < 120 {
+			// Stateful confirm: show "!!" as a warning glyph (text) so it
+			// reads as distinct from the resting close-icon state.
 			e.deleteBtn.Text = "!!"
+			e.deleteBtn.Icon = ""
 			e.deleteBtn.Style = DeleteConfirmButtonStyle
 		} else {
-			e.deleteBtn.Text = "X"
+			e.deleteBtn.Text = ""
+			e.deleteBtn.Icon = string(IconClose)
 			if len(rows) > 1 {
-				e.deleteBtn.Style = InstButtonStyle
+				e.deleteBtn.Style = DeleteButtonStyle
 			}
 		}
 		e.deleteBtn.Draw(dst)
@@ -1263,22 +1275,22 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 			lblR := e.label.Rect()
 			if !lblR.Empty() {
 				sepY := lblR.Max.Y
-				drawRect(dst, image.Rect(lblR.Min.X, sepY, lblR.Max.X, sepY+1), color.NRGBA{255, 255, 255, 16}, true)
+				drawRect(dst, image.Rect(lblR.Min.X, sepY, lblR.Max.X, sepY+1), WithAlpha(genColorBorder, genAlphaRowRackSeparator), true)
 			}
 		}
 	}
 }
 
-// drawVolIcon draws a small speaker icon in the slider's rect (mobile).
+// drawVolIcon draws a speaker icon in the slider's rect (mobile). Uses the
+// canonical IconSpeaker / IconSpeakerOff vector glyphs so the visual
+// language matches the rest of the chrome.
 func drawVolIcon(dst *ebiten.Image, s *Slider, vol float64, muted bool, rowColor color.Color) {
 	r := s.Rect()
 	if r.Empty() {
 		return
 	}
-	// Determine icon color: instrument color tint when active, disabled when muted/zero.
 	iconCol := volIconColor(vol, muted, rowColor)
 	cellH := r.Dy()
-	// On mobile, use IconSizeMD (20px) as the target icon height.
 	iconH := cellH * 60 / 100
 	if Profile().IsMobile() && iconH < IconSizeMD {
 		iconH = IconSizeMD
@@ -1286,39 +1298,14 @@ func drawVolIcon(dst *ebiten.Image, s *Slider, vol float64, muted bool, rowColor
 	if iconH < 8 {
 		iconH = 8
 	}
-	iconW := iconH * 3 / 4
-	if iconW < 6 {
-		iconW = 6
-	}
 	cx := r.Min.X + r.Dx()/2
 	cy := r.Min.Y + r.Dy()/2
-	bodyW := iconW / 3
-	if bodyW < 2 {
-		bodyW = 2
+	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
+	id := IconSpeaker
+	if vol == 0 || muted {
+		id = IconSpeakerOff
 	}
-	bodyH := iconH / 3
-	if bodyH < 2 {
-		bodyH = 2
-	}
-	drawRect(dst, image.Rect(cx-bodyW/2, cy-bodyH/2, cx-bodyW/2+bodyW, cy-bodyH/2+bodyH), iconCol, true)
-	coneW := iconW / 3
-	if coneW < 2 {
-		coneW = 2
-	}
-	coneH := iconH * 2 / 3
-	if coneH < 3 {
-		coneH = 3
-	}
-	coneX := cx - bodyW/2 + bodyW
-	drawRect(dst, image.Rect(coneX, cy-coneH/2, coneX+coneW, cy+coneH/2), iconCol, true)
-	if vol > 0 {
-		barH := int(float64(iconH) * vol * 0.8)
-		if barH < 2 {
-			barH = 2
-		}
-		barX := coneX + coneW + 2
-		drawRect(dst, image.Rect(barX, cy-barH/2, barX+2, cy+barH/2), iconCol, true)
-	}
+	DrawIcon(dst, id, iconR, iconCol)
 }
 
 // drawVolIconOff draws a speaker icon into a cache image with coordinate offset.
@@ -1328,10 +1315,8 @@ func drawVolIconOff(cache *ebiten.Image, s *Slider, vol float64, offsetX, offset
 		return
 	}
 	r = r.Sub(image.Pt(offsetX, offsetY))
-	// Determine icon color: instrument color tint when active, disabled when muted/zero.
 	iconCol := volIconColor(vol, muted, rowColor)
 	cellH := r.Dy()
-	// On mobile, use IconSizeMD (20px) as the target icon height.
 	iconH := cellH * 60 / 100
 	if Profile().IsMobile() && iconH < IconSizeMD {
 		iconH = IconSizeMD
@@ -1339,39 +1324,14 @@ func drawVolIconOff(cache *ebiten.Image, s *Slider, vol float64, offsetX, offset
 	if iconH < 8 {
 		iconH = 8
 	}
-	iconW := iconH * 3 / 4
-	if iconW < 6 {
-		iconW = 6
-	}
 	cx := r.Min.X + r.Dx()/2
 	cy := r.Min.Y + r.Dy()/2
-	bodyW := iconW / 3
-	if bodyW < 2 {
-		bodyW = 2
+	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
+	id := IconSpeaker
+	if vol == 0 || muted {
+		id = IconSpeakerOff
 	}
-	bodyH := iconH / 3
-	if bodyH < 2 {
-		bodyH = 2
-	}
-	drawRect(cache, image.Rect(cx-bodyW/2, cy-bodyH/2, cx-bodyW/2+bodyW, cy-bodyH/2+bodyH), iconCol, true)
-	coneW := iconW / 3
-	if coneW < 2 {
-		coneW = 2
-	}
-	coneH := iconH * 2 / 3
-	if coneH < 3 {
-		coneH = 3
-	}
-	coneX := cx - bodyW/2 + bodyW
-	drawRect(cache, image.Rect(coneX, cy-coneH/2, coneX+coneW, cy+coneH/2), iconCol, true)
-	if vol > 0 {
-		barH := int(float64(iconH) * vol * 0.8)
-		if barH < 2 {
-			barH = 2
-		}
-		barX := coneX + coneW + 2
-		drawRect(cache, image.Rect(barX, cy-barH/2, barX+2, cy+barH/2), iconCol, true)
-	}
+	DrawIcon(cache, id, iconR, iconCol)
 }
 
 // volIconColor returns the appropriate color for a volume icon.
@@ -1381,8 +1341,7 @@ func volIconColor(vol float64, muted bool, rowColor color.Color) color.Color {
 		return colTextDisabled
 	}
 	if rowColor != nil {
-		cr, cg, cb, _ := rowColor.RGBA()
-		return color.NRGBA{uint8(cr >> 8), uint8(cg >> 8), uint8(cb >> 8), 220}
+		return WithAlphaFromColor(rowColor, AlphaOverlay)
 	}
 	return colVolumeIconOn
 }
@@ -1430,11 +1389,10 @@ func drawVolBar(dst *ebiten.Image, r image.Rectangle, vol float64, rowColor colo
 	trackRect := image.Rect(barX, cy-trackH/2, barX+barW, cy-trackH/2+trackH)
 	drawRect(dst, trackRect, colSurface1, true)
 
-	// Fill proportional to volume with instrument color at 60% alpha.
+	// Fill proportional to volume with instrument color at the row-active alpha.
 	fillW := int(math.Round(float64(barW) * vol))
 	if fillW > 0 {
-		cr, cg, cb, _ := rowColor.RGBA()
-		fillCol := color.NRGBA{uint8(cr >> 8), uint8(cg >> 8), uint8(cb >> 8), 153} // 60% of 255
+		fillCol := WithAlphaFromColor(rowColor, AlphaRowActive)
 		fillRect := image.Rect(barX, cy-trackH/2, barX+fillW, cy-trackH/2+trackH)
 		drawRect(dst, fillRect, fillCol, true)
 	}

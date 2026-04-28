@@ -46,7 +46,7 @@ func newSmallDrumView(t *testing.T, w, h int) *DrumView {
 // on a small screen (height=300) results in a scrollable state.
 func TestContextMenuScrollStateOnOverflow(t *testing.T) {
 	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll == nil {
@@ -66,7 +66,7 @@ func TestContextMenuScrollStateOnOverflow(t *testing.T) {
 // starts below the header on mobile, not at the menu top.
 func TestContextMenuScrollViewExcludesHeader(t *testing.T) {
 	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll == nil {
@@ -84,7 +84,7 @@ func TestContextMenuScrollViewExcludesHeader(t *testing.T) {
 // TestContextMenuWheelScroll verifies that wheel events change the scroll offset.
 func TestContextMenuWheelScroll(t *testing.T) {
 	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll == nil || !scroll.HasScroll() {
@@ -105,7 +105,7 @@ func TestContextMenuWheelScroll(t *testing.T) {
 // repositions buttons via rebuildContextMenuButtons.
 func TestContextMenuTouchScroll(t *testing.T) {
 	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll == nil || !scroll.HasScroll() {
@@ -141,7 +141,7 @@ func TestContextMenuTouchScroll(t *testing.T) {
 // dead zone cancels the deferred tap, so releasing doesn't fire a button.
 func TestContextMenuTouchScrollCancelsDeferredTap(t *testing.T) {
 	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll == nil || !scroll.HasScroll() {
@@ -177,7 +177,7 @@ func TestContextMenuTouchScrollCancelsDeferredTap(t *testing.T) {
 // same position) on a visible button fires its action.
 func TestContextMenuTapStillWorks(t *testing.T) {
 	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	// openContextMenu sets suppressClicksUntilRelease. Simulate a release
 	// to clear the suppression, as would happen in a real touch flow.
@@ -189,20 +189,20 @@ func TestContextMenuTapStillWorks(t *testing.T) {
 		t.Fatal("no context menu buttons")
 	}
 
-	// Find "Mute" button.
-	var muteBtn *Button
+	// Find "Rename" button (present on all platforms).
+	var renameBtn *Button
 	for _, btn := range btns {
-		if btn.Text == "Mute" {
-			muteBtn = btn
+		if btn.Text == "Rename" {
+			renameBtn = btn
 			break
 		}
 	}
-	if muteBtn == nil {
-		t.Skip("Mute button not found")
+	if renameBtn == nil {
+		t.Skip("Rename button not found")
 	}
-	r := muteBtn.Rect()
+	r := renameBtn.Rect()
 	if r.Empty() {
-		t.Skip("Mute button rect empty")
+		t.Skip("Rename button rect empty")
 	}
 	tx := r.Min.X + r.Dx()/2
 	ty := r.Min.Y + r.Dy()/2
@@ -210,7 +210,7 @@ func TestContextMenuTapStillWorks(t *testing.T) {
 	// Ensure the button is inside the scroll viewport (visible).
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll != nil && !image.Pt(tx, ty).In(scroll.VS.View) {
-		t.Skip("Mute button not in viewport")
+		t.Skip("Rename button not in viewport")
 	}
 
 	// Press.
@@ -218,9 +218,9 @@ func TestContextMenuTapStillWorks(t *testing.T) {
 	// Release at same position — should fire the tap.
 	dv.handleContextMenuInput(tx, ty, false)
 
-	// Mute fires onClick which sets contextMenuOpen = false.
+	// Rename fires onClick which sets contextMenuOpen = false.
 	if dv.ContextMenuOpen() {
-		t.Error("expected context menu to close after tapping Mute button")
+		t.Error("expected context menu to close after tapping Rename button")
 	}
 }
 
@@ -228,7 +228,7 @@ func TestContextMenuTapStillWorks(t *testing.T) {
 // makes the "Delete" button visible within the menu rect.
 func TestContextMenuDeleteReachableViaScroll(t *testing.T) {
 	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll == nil || !scroll.HasScroll() {
@@ -268,8 +268,8 @@ func TestContextMenuDeleteReachableViaScroll(t *testing.T) {
 // TestContextMenuScrollMomentum verifies that releasing a fast swipe creates
 // momentum that continues scrolling.
 func TestContextMenuScrollMomentum(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
-	dv.OpenContextMenuForTest(0)
+	dv := newSmallDrumView(t, 390, 200)
+	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
 	if scroll == nil || !scroll.HasScroll() {

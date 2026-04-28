@@ -1,10 +1,13 @@
 package beat
 
 import (
+	"io"
 	"math"
 	"reflect"
 	"testing"
 	"time"
+
+	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 func TestSchedulerCatchUp(t *testing.T) {
@@ -351,4 +354,33 @@ func TestProgressBPMZero(t *testing.T) {
 	if got := s.Progress(); got != 0 {
 		t.Fatalf("progress with BPM=0: expected 0, got %v", got)
 	}
+}
+
+// TestSchedulerStartStopWithLogger covers the non-nil-logger branches in
+// Start()/Stop(). We don't assert log output: the log package silences
+// everything when running under `go test` (BEATMO_TEST_LOG opt-in only),
+// and routing capture through stdout would couple the beat tests to log's
+// internals. Just verify the branch runs without panic.
+func TestSchedulerStartStopWithLogger(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	s := NewScheduler(logger)
+	s.Start()
+	if !s.running {
+		t.Fatal("Start did not set running")
+	}
+	s.Stop()
+	if s.running {
+		t.Fatal("Stop did not clear running")
+	}
+}
+
+func TestSchedulerStartStopNilLoggerNoPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("panic with nil logger: %v", r)
+		}
+	}()
+	s := NewScheduler(nil)
+	s.Start()
+	s.Stop()
 }

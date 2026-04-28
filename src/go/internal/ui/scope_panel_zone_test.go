@@ -255,7 +255,6 @@ func TestScopeHitAreasIncludeAllButtons(t *testing.T) {
 
 	expected := []string{
 		"scope-zoom",
-		"scope-inst-btn",
 		"scope-split-btn",
 		"scope-freeze-btn",
 		"scope-close-btn",
@@ -264,6 +263,11 @@ func TestScopeHitAreasIncludeAllButtons(t *testing.T) {
 		if !tags[tag] {
 			t.Errorf("missing hit area with tag %q", tag)
 		}
+	}
+	// The Scope tab no longer owns its own instrument selector; the EQ panel's
+	// eqChannelBtn is the single shared selector for all Wave Analyzer tabs.
+	if tags["scope-inst-btn"] {
+		t.Error("Scope panel must not register a 'scope-inst-btn' hit area")
 	}
 
 	// Verify all 6 stage buttons have hit areas.
@@ -668,5 +672,143 @@ func TestScopeHiddenTraceNotDrawn(t *testing.T) {
 	z.showTapA = false
 	if z.showTapA {
 		t.Error("showTapA should be false")
+	}
+}
+
+// TestScopeSetTapAClearAndAssign exercises the public SetTapA/SetTapB API
+// (callback wiring + clear path) which handleStageClick alone does not hit.
+func TestScopeSetTapAClearAndAssign(t *testing.T) {
+	assertDefaultParityState(t)
+	var clearedA, clearedB bool
+	var lastA, lastB scope.Stage
+	z := NewScopePanelZone(ScopeCallbacks{
+		OnTapAChange: func(s scope.Stage) { lastA = s },
+		OnTapBChange: func(s scope.Stage) { lastB = s },
+		OnClearTapA:  func() { clearedA = true },
+		OnClearTapB:  func() { clearedB = true },
+	})
+	z.SetTapA(scope.StageEQ)
+	if z.tapA != scope.StageEQ || lastA != scope.StageEQ {
+		t.Fatalf("SetTapA: tapA=%d lastA=%d", z.tapA, lastA)
+	}
+	z.SetTapB(scope.StageSynth)
+	if z.tapB != scope.StageSynth || lastB != scope.StageSynth {
+		t.Fatalf("SetTapB: tapB=%d lastB=%d", z.tapB, lastB)
+	}
+	z.SetTapA(-1)
+	if z.tapA != -1 || !clearedA {
+		t.Fatalf("SetTapA(-1): tapA=%d cleared=%v", z.tapA, clearedA)
+	}
+	z.SetTapB(-1)
+	if z.tapB != -1 || !clearedB {
+		t.Fatalf("SetTapB(-1): tapB=%d cleared=%v", z.tapB, clearedB)
+	}
+}
+
+// TestScopeZoneLifecycleNoOps covers the trivial Zone-interface methods
+// and stub handler bodies that are otherwise zero-coverage.
+func TestScopeZoneLifecycleNoOps(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewScopePanelZone(ScopeCallbacks{})
+	if !z.NeedsLayout() {
+		t.Error("NeedsLayout should be true before first Layout")
+	}
+	z.Layout(image.Rect(0, 0, 800, 160))
+	if z.NeedsLayout() {
+		t.Error("NeedsLayout should be false after Layout")
+	}
+	z.Invalidate()
+	if !z.NeedsLayout() {
+		t.Error("Invalidate did not set needLayout")
+	}
+	z.Update() // no-op; must not panic
+	if got := z.HandleKey(ebiten.KeyEnter); got != InputIgnored {
+		t.Errorf("HandleKey returned %v, want InputIgnored", got)
+	}
+	if got := z.HandleChars([]rune{'x'}); got != InputIgnored {
+		t.Errorf("HandleChars returned %v, want InputIgnored", got)
+	}
+	z.SetPortal(nil) // setter; nil is a valid value
+}
+
+// TestScopeLayoutTooSmallClearsHitAreas covers the early-return branch in
+// Layout when the rect is below the minimum drawable size.
+func TestScopeLayoutTooSmallClearsHitAreas(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewScopePanelZone(ScopeCallbacks{})
+	z.Layout(image.Rect(0, 0, 400, 80))
+	if len(z.HitAreas()) == 0 {
+		t.Fatal("setup: expected hit areas after normal Layout")
+	}
+	z.Layout(image.Rect(0, 0, 4, 4)) // below the 8x8 floor
+	if len(z.HitAreas()) != 0 {
+		t.Fatalf("expected hit areas cleared, got %d", len(z.HitAreas()))
+	}
+}
+
+// TestScopeSwatchHandlersToggleVisibility is the "concrete dispatch
+// scenario" the plan calls for: hit-area lookup → handler invocation →
+// state transition, all without an Ebiten draw call.
+func TestScopeSwatchHandlersToggleVisibility(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewScopePanelZone(ScopeCallbacks{})
+	z.Layout(image.Rect(0, 0, 800, 160))
+
+	var swatchA, swatchB *scopeSwatchHandler
+	for _, ha := range z.HitAreas() {
+		switch ha.Tag {
+		case "scope-swatch-a":
+			swatchA = ha.Handler.(*scopeSwatchHandler)
+		case "scope-swatch-b":
+			swatchB = ha.Handler.(*scopeSwatchHandler)
+		}
+	}
+	if swatchA == nil || swatchB == nil {
+		t.Fatalf("missing swatch handlers (A=%v B=%v)", swatchA, swatchB)
+	}
+
+	if !z.showTapA || !z.showTapB {
+		t.Fatal("expected both traces visible by default")
+	}
+	if got := swatchA.OnPress(0, 0); got != InputConsumed {
+		t.Errorf("swatch A OnPress = %v, want InputConsumed", got)
+	}
+	if z.showTapA {
+		t.Error("swatch A press did not toggle showTapA off")
+	}
+	if got := swatchB.OnPress(0, 0); got != InputConsumed {
+		t.Errorf("swatch B OnPress = %v, want InputConsumed", got)
+	}
+	if z.showTapB {
+		t.Error("swatch B press did not toggle showTapB off")
+	}
+	swatchA.OnDrag(1, 2)
+	swatchA.OnRelease(3, 4)
+	if got := swatchA.OnWheel(0, 0, 1); got != InputIgnored {
+		t.Errorf("swatch OnWheel = %v, want InputIgnored", got)
+	}
+}
+
+// TestScopeZoomHandlerStubMethods covers the empty OnDrag/OnRelease bodies
+// on scopeZoomHandler that aren't reached by the existing wheel tests, plus
+// the steps==0 early-return in OnWheel.
+func TestScopeZoomHandlerStubMethods(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewScopePanelZone(ScopeCallbacks{})
+	z.Layout(image.Rect(0, 0, 800, 160))
+	var h *scopeZoomHandler
+	for _, ha := range z.HitAreas() {
+		if ha.Tag == "scope-zoom" {
+			h = ha.Handler.(*scopeZoomHandler)
+			break
+		}
+	}
+	if h == nil {
+		t.Fatal("scope-zoom hit area not found")
+	}
+	h.OnDrag(0, 0)
+	h.OnRelease(0, 0)
+	if got := h.OnWheel(0, 0, 0); got != InputIgnored {
+		t.Errorf("zero-step OnWheel = %v, want InputIgnored", got)
 	}
 }

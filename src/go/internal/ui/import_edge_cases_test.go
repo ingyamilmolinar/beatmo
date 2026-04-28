@@ -335,30 +335,6 @@ func TestImportLogicKindAliases(t *testing.T) {
 	}
 }
 
-// TestResolveSamplePathEmptyBase verifies that trimming "sample-" to empty yields empty string.
-func TestResolveSamplePathEmptyBase(t *testing.T) {
-	got := resolveSamplePath("sample-")
-	if got != "" {
-		t.Fatalf("expected empty string for 'sample-', got %q", got)
-	}
-}
-
-// TestResolveSamplePathCatalogDirect verifies that a nonexistent catalog ID returns empty string.
-func TestResolveSamplePathCatalogDirect(t *testing.T) {
-	got := resolveSamplePath("nonexistent-instrument-xyz")
-	if got != "" {
-		t.Fatalf("expected empty string for nonexistent catalog entry, got %q", got)
-	}
-}
-
-// TestResolveSamplePathNoMatch verifies that a sample- prefixed ID with no filesystem or catalog match returns empty.
-func TestResolveSamplePathNoMatch(t *testing.T) {
-	got := resolveSamplePath("sample-totally-fake-xyz-123")
-	if got != "" {
-		t.Fatalf("expected empty string for non-matching sample path, got %q", got)
-	}
-}
-
 // TestImportNodeTypeRoundTrip verifies that mute and silent node types survive import.
 func TestImportNodeTypeRoundTrip(t *testing.T) {
 	assertDefaultParityState(t)

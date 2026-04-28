@@ -9,13 +9,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// Meter bridge colors.
+// Meter bridge colors — sourced from DESIGN.md `viz-meter-*` tokens.
+// To change a hue, edit DESIGN.md and run `make gen-design-tokens`.
 var (
-	meterGreen  = color.RGBA{90, 180, 90, 255}
-	meterYellow = color.RGBA{200, 200, 60, 255}
-	meterRed    = color.RGBA{220, 60, 60, 255}
-	meterBg     = color.RGBA{34, 34, 50, 255}
-	meterClip   = color.RGBA{255, 40, 40, 255}
+	meterGreen  = genColorVizMeterGreen
+	meterYellow = genColorVizMeterYellow
+	meterRed    = genColorVizMeterRed
+	meterBg     = genColorVizMeterBg
+	meterClip   = genColorVizMeterClip
 )
 
 const (
@@ -76,7 +77,7 @@ func drawMeterBridge(dst *ebiten.Image, rect image.Rectangle, state *analyzer.St
 			frac := dbToFrac(db)
 			tickX := barStartX + int(frac*float64(barW))
 			// Vertical reference line through all rows.
-			drawRect(dst, image.Rect(tickX, scaleY+meterHeaderH, tickX+1, rect.Max.Y-1), color.NRGBA{255, 255, 255, 20}, true)
+			drawRect(dst, image.Rect(tickX, scaleY+meterHeaderH, tickX+1, rect.Max.Y-1), WithAlpha(genColorBorder, AlphaPanelBorder), true)
 			// Label.
 			label := fmt.Sprintf("%.0f", db)
 			lw := int(float64(TextWidth(label)) * captionScale)
@@ -165,17 +166,6 @@ func drawMeterRow(dst *ebiten.Image, x, y, width, height, labelW int, name strin
 	}
 }
 
-// dbToFrac converts a dB value to a [0,1] fraction, clamped.
-func dbToFrac(db float64) float64 {
-	if db <= meterDBFloor {
-		return 0
-	}
-	if db >= meterDBCeil {
-		return 1
-	}
-	return (db - meterDBFloor) / (meterDBCeil - meterDBFloor)
-}
-
 // meterColor returns the meter color for a given peak dB level.
 func meterColor(db float64) color.RGBA {
 	if db > meterRedDB {
@@ -189,20 +179,6 @@ func meterColor(db float64) color.RGBA {
 
 // meterColorAlpha returns the meter color with a custom alpha for overlays.
 func meterColorAlpha(db float64, alpha uint8) color.NRGBA {
-	c := meterColor(db)
-	return color.NRGBA{R: c.R, G: c.G, B: c.B, A: alpha}
+	return WithAlpha(meterColor(db), alpha)
 }
 
-// truncateName shortens name so it fits within maxPx at the given scale.
-func truncateName(name string, maxPx int, scale float64) string {
-	if int(float64(TextWidth(name))*scale) <= maxPx {
-		return name
-	}
-	for i := len(name) - 1; i > 0; i-- {
-		candidate := name[:i]
-		if int(float64(TextWidth(candidate))*scale) <= maxPx {
-			return candidate
-		}
-	}
-	return name[:1]
-}

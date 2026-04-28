@@ -43,6 +43,11 @@ func newCategoryDrumView(t *testing.T, w, h int) (*DrumView, int, int) {
 		"crash": "Cymbals",
 	}
 	dv.instMenuForceCategories = true
+	// Legacy tests built on this helper assume Categories[0] is the first
+	// caller-supplied category; opt out of the virtual "Favorites" entry so
+	// the index math in the test bodies stays correct. Tests that exercise
+	// the virtual category live in inst_menu_favorites_test.go.
+	dv.instMenuShowFavoritesCategory = false
 
 	dv.Rows = []*DrumRow{{
 		Name:       "Kick",
@@ -388,9 +393,11 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 	hr := hihatBtn.Rect()
 	clickDrumViewAt(t, dv, hr.Min.X+hr.Dx()/2, hr.Min.Y+hr.Dy()/2, W, H)
 
-	// Menu should close after selection.
-	if dv.IsInstMenuOpen() {
-		t.Fatal("menu should close after instrument selection")
+	// Audition contract: menu must STAY open after selection so the user
+	// can rapidly try multiple instruments. Dismissal is explicit (X / Esc
+	// / click-outside / row switch). See inst_menu_audition_test.go.
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("menu should stay open after instrument selection (audition contract)")
 	}
 
 	// Verify instrument was applied.
@@ -398,7 +405,7 @@ func TestInstMenuFullSelectionViaDrumViewUpdate(t *testing.T) {
 		t.Fatalf("expected instrument hihat, got %q", dv.Rows[0].Instrument)
 	}
 
-	t.Log("full selection via DrumView.Update() — PASS")
+	t.Log("full selection via DrumView.Update() — menu stayed open — PASS")
 }
 
 // TestInstMenuMobileTapPatternFullFlow tests the mobile-specific flow:

@@ -12,7 +12,7 @@ import (
 
 func (g *Game) updateBeatInfos() {
 	start := time.Now()
-	defer func() { g.logger.Infof("[UPDATE_BEAT_INFOS] total=%v", time.Since(start)) }()
+	defer func() { g.logger.Debugf("[update_beat_infos] total=%v", time.Since(start)) }()
 
 	g.rebuildNodeCache()
 	g.logger.Debugf("[UPDATE_BEAT_INFOS] rebuildNodeCache elapsed=%v", time.Since(start))
@@ -387,16 +387,16 @@ func (g *Game) updateBeatInfos() {
 		// Trace timeline trim for debugging live-edit staleness.
 		if timelineTrace && row == timelineTraceRow {
 			if beforeOK {
-				g.logger.Infof("[TIMELINE] row=%d before-trim committed=[%d,%d] freezeBefore=%d cutoff=%d maxKeep=%d", row, beforeStart, beforeEnd, freezeBefore, cutoff, maxKeep)
+				g.logger.Debugf("[timeline] row=%d before-trim committed=[%d,%d] freezeBefore=%d cutoff=%d maxKeep=%d", row, beforeStart, beforeEnd, freezeBefore, cutoff, maxKeep)
 			} else {
-				g.logger.Infof("[TIMELINE] row=%d before-trim committed=empty freezeBefore=%d cutoff=%d maxKeep=%d", row, freezeBefore, cutoff, maxKeep)
+				g.logger.Debugf("[timeline] row=%d before-trim committed=empty freezeBefore=%d cutoff=%d maxKeep=%d", row, freezeBefore, cutoff, maxKeep)
 			}
 		}
 		if timelineTrace && row == timelineTraceRow {
 			if start, end, ok := g.timelineCommittedRange(row); ok {
-				g.logger.Infof("[TIMELINE] row=%d after-trim committed=[%d,%d] freezeAfter=%d", row, start, end, freezeAfter)
+				g.logger.Debugf("[timeline] row=%d after-trim committed=[%d,%d] freezeAfter=%d", row, start, end, freezeAfter)
 			} else {
-				g.logger.Infof("[TIMELINE] row=%d after-trim committed=empty freezeAfter=%d", row, freezeAfter)
+				g.logger.Debugf("[timeline] row=%d after-trim committed=empty freezeAfter=%d", row, freezeAfter)
 			}
 		}
 	}
@@ -530,11 +530,11 @@ func (g *Game) updateBeatInfos() {
 	if horizon < g.drum.Length {
 		horizon = g.drum.Length
 	}
-	g.logger.Infof("[UPDATE_BEAT_INFOS] calling Ensure horizon=%d offset=%d length=%d lookahead=%d rows=%d",
+	g.logger.Debugf("[update_beat_infos] calling Ensure horizon=%d offset=%d length=%d lookahead=%d rows=%d",
 		horizon, g.drum.Offset, g.drum.Length, lookahead, len(g.beatInfosByRow))
 	ensureStart := time.Now()
 	g.engine.Predictor.Ensure(horizon)
-	g.logger.Infof("[UPDATE_BEAT_INFOS] Ensure elapsed=%v", time.Since(ensureStart))
+	g.logger.Debugf("[update_beat_infos] Ensure elapsed=%v", time.Since(ensureStart))
 	// When stopped/paused, rebuild DrumView immediately so callers (tests,
 	// import/export, edit flows) observe the updated window without waiting for
 	// the next Update(). While playing, defer refresh to the main Update path

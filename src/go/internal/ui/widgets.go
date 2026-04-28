@@ -18,8 +18,14 @@ const Tile = 40 // world-space pixels per grid step (before camera scale)
 var pixelCache = map[uint32]*ebiten.Image{}
 
 func packRGBA(c color.Color) uint32 {
+	// RGBA() returns premultiplied 16-bit channels. The old packing ORed
+	// those 16-bit values into 8-bit slots, overlapping adjacent channels
+	// and collapsing whole color families into one cache key — e.g.
+	// pixel(color.White) could return whichever color happened to be
+	// cached first for the same colliding bucket, tinting every icon
+	// sprite. Shift each channel down to 8 bits first.
 	r, g, b, a := color.RGBAModel.Convert(c).(color.RGBA).RGBA()
-	return uint32(r) | uint32(g)<<8 | uint32(b)<<16 | uint32(a)<<24
+	return uint32(r>>8) | uint32(g>>8)<<8 | uint32(b>>8)<<16 | uint32(a>>8)<<24
 }
 
 func pixel(c color.Color) *ebiten.Image {

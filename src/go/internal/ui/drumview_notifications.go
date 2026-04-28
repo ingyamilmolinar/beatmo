@@ -122,7 +122,7 @@ func (dv *DrumView) logCapturingState() {
 		isMouseButtonPressed(ebiten.MouseButtonLeft) && !isTouchTapInjecting() &&
 		!dv.mobileEQMode &&
 		pt(touchOverrideX, touchOverrideY, dv.rowsRect())
-	dv.logger.Infof("[PAN-DEBUG] Capturing breakdown: "+
+	dv.logger.Debugf("[pan] Capturing breakdown: "+
 		"mouseDown=%v anyDrag=%v touchActive=%v dropdown=%v rename=%v naming=%v layout=%v",
 		dv.mouseDownInBounds, dv.anyDragActive(),
 		dv.rowScroll().TouchActive(),
@@ -131,7 +131,7 @@ func (dv *DrumView) logCapturingState() {
 		dv.IsNamingOpen(),
 		dv.layoutHandler != nil && dv.layoutHandler.Capturing())
 	if dv.anyDragActive() {
-		dv.logger.Infof("[PAN-DEBUG] anyDragActive breakdown: "+
+		dv.logger.Debugf("[pan] anyDragActive breakdown: "+
 			"scrollDrag=%v dragging=%v scrubbing=%v "+
 			"tlDrag=%v tlScrub=%v "+
 			"rowVol=%v mainVol=%v "+
@@ -146,10 +146,10 @@ func (dv *DrumView) logCapturingState() {
 			dv.instMenuScroll.dragging)
 	}
 	if dv.anyDropdownOpen() && dv.tree != nil {
-		dv.logger.Infof("[PAN-DEBUG] portal stack size=%d", dv.tree.Portal().StackLen())
+		dv.logger.Debugf("[pan] portal stack size=%d", dv.tree.Portal().StackLen())
 		for i := 0; i < dv.tree.Portal().StackLen(); i++ {
 			if i < len(dv.tree.Portal().stack) {
-				dv.logger.Infof("[PAN-DEBUG]   portal[%d] id=%q", i, dv.tree.Portal().stack[i].ID)
+				dv.logger.Debugf("[pan]   portal[%d] id=%q", i, dv.tree.Portal().stack[i].ID)
 			}
 		}
 	}

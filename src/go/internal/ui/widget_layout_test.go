@@ -226,7 +226,7 @@ func TestAddRowButtonStaysAfterLastRow(t *testing.T) {
 	if rawAddY+dv.rowHeight() > rack.Max.Y {
 		rawAddY = rack.Max.Y - dv.rowHeight()
 	}
-	expected := rawAddY + buttonPad
+	expected := rawAddY + SpaceXS
 	got := dv.addRowBtn().Rect().Min.Y
 	if got != expected {
 		t.Fatalf("add row button should follow last row. got Y=%d expected=%d (rowsTop=%d rows=%d offset=%d visRows=%d)", got, expected, rowsTop, len(dv.Rows), dv.rowOffset, dv.visibleRows())
@@ -277,7 +277,7 @@ func TestAddRowButtonAutoScrollsIntoViewOnShrink(t *testing.T) {
 	if rawAddY+dv.rowHeight() > rack.Max.Y {
 		rawAddY = rack.Max.Y - dv.rowHeight()
 	}
-	wantY := rawAddY + buttonPad
+	wantY := rawAddY + SpaceXS
 	if btn.Min.Y != wantY {
 		t.Fatalf("add button Y mismatch after shrink: got=%d want=%d (rowOffset=%d vis=%d)", btn.Min.Y, wantY, dv.rowOffset, dv.visibleRows())
 	}

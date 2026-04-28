@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -34,7 +33,7 @@ func (z *layoutResizeZone) Invalidate()       { z.dirty = true }
 // hovering over divider pills. Skipped on WASM where the JS interop
 // cost of cursorPosition() outweighs the visual benefit.
 func (z *layoutResizeZone) Update() {
-	if z.handler == nil || z.handler.dragging || runtime.GOARCH == "wasm" {
+	if z.handler == nil || z.handler.dragging || RuntimeProf().SkipCursorHover {
 		return
 	}
 	mx, my := cursorPosition()

@@ -12,7 +12,7 @@ import path from "path";
  */
 const SAFE_EXPORTS = new Set([
   "startPlay", "stopPlay", "addNode", "addEdgeGrid", "deleteNodeGrid",
-  "importJSON", "exportJSON", "updateBeatInfosJS", "forceDraw",
+  "importJSON", "exportJSON", "updateBeatInfos", "forceDraw",
   "setOrigin", "setBPM", "setMainVolume", "addDrumRow", "toggleMute",
   "toggleSolo", "setRowInstrument", "setRowStep", "setNodeLogicGrid",
   "nodeActionAt", "closeNodeMenu", "closeAllPopups", "ensureDefaultPath",

@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -146,7 +145,7 @@ func (sp *SliderPopup) Draw(dst *ebiten.Image) {
 		thumbY+popupThumbSize/2,
 	)
 	drawRect(dst, thumbRect, colStep, true)
-	drawRect(dst, thumbRect, color.RGBA{255, 255, 255, 180}, false)
+	drawRect(dst, thumbRect, WithAlpha(genColorBorder, genAlphaStrong), false)
 }
 
 // HandleInput processes mouse/touch interaction with the popup.

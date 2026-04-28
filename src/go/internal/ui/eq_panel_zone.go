@@ -146,16 +146,22 @@ func (z *EQPanelZone) initButtons() {
 		})
 	}
 
+	// Freeze indicator uses single-character text per DESIGN.md §5d
+	// (permitted text-glyph exception): "||" frozen, ">" resume; tinted
+	// colTextSecondary inactive, colAccent when frozen.
 	z.freezeBtn = NewButton("||", InstButtonStyle, func() {
 		if z.callbacks.OnFreezeToggle != nil {
 			frozen := z.callbacks.OnFreezeToggle()
 			if frozen {
 				z.freezeBtn.Text = ">"
+				z.freezeBtn.TextColor = colAccent
 			} else {
 				z.freezeBtn.Text = "||"
+				z.freezeBtn.TextColor = colTextSecondary
 			}
 		}
 	})
+	z.freezeBtn.TextColor = colTextSecondary
 
 	z.eqChannelBtn = NewButton("Master", InstButtonStyle, func() {
 		if z.channelOpen {
@@ -304,13 +310,15 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			z.drawPillTab(screen, z.lpfBtn, lpfActive, "")
 		}
 	} else {
-		// Freeze button on analysis tabs.
+		// Freeze button on analysis tabs (DESIGN.md §5d text-glyph exception).
 		if z.freezeBtn != nil {
 			// Sync button text from analyzer state each frame.
 			if state := z.getAnalyzerState(); state != nil && state.Capture != nil && state.Capture.Frozen {
 				z.freezeBtn.Text = ">"
+				z.freezeBtn.TextColor = colAccent
 			} else {
 				z.freezeBtn.Text = "||"
+				z.freezeBtn.TextColor = colTextSecondary
 			}
 			frozen := z.freezeBtn.Text == ">"
 			z.drawPillTab(screen, z.freezeBtn, frozen, "")
@@ -537,7 +545,7 @@ func (z *EQPanelZone) calcChannelBtnWidth() int {
 			}
 		}
 	}
-	w := maxPx + buttonPad*2 + 4
+	w := maxPx + SpaceXS*2 + 4
 	if w < 72 {
 		w = 72
 	}
@@ -877,7 +885,7 @@ func (z *EQPanelZone) buildChannelDropdown() {
 	overlay := &eqChannelDropdownOverlay{
 		zone: z,
 	}
-	overlay.buildButtons()
+	overlay.buildCallbacks()
 	z.portal.Open(PortalEntry{
 		ID:      "eq-channel-dropdown",
 		Overlay: overlay,
@@ -902,15 +910,15 @@ type eqChannelDropdownOverlay struct {
 	deferredTap DeferredTap
 }
 
-func (o *eqChannelDropdownOverlay) buildButtons() {
+// buildCallbacks populates allOnClicks for the Master + per-row entries.
+// Geometry (visible-row count, view rect, button rects, hit rect) is set up
+// in layoutFor which runs from Layout(anchor, screenBounds) so the portal
+// can resize the menu when the viewport changes.
+func (o *eqChannelDropdownOverlay) buildCallbacks() {
 	o.buttons = nil
 	o.allOnClicks = nil
 	z := o.zone
-	anchor := z.eqChannelBtn.Rect()
-	btnH := 24
 
-	// Build onClick callbacks for all items.
-	// Master option.
 	o.allOnClicks = append(o.allOnClicks, func() {
 		if z.callbacks.OnChannelChange != nil {
 			z.callbacks.OnChannelChange("main")
@@ -923,7 +931,6 @@ func (o *eqChannelDropdownOverlay) buildButtons() {
 		}
 	})
 
-	// Per-row options.
 	if z.callbacks.ActiveRows != nil {
 		for _, row := range z.callbacks.ActiveRows() {
 			instID := row.Instrument
@@ -941,18 +948,35 @@ func (o *eqChannelDropdownOverlay) buildButtons() {
 			})
 		}
 	}
+}
 
-	// Set up scroll state on zone's channelScroll.
+// layoutFor computes the visible-row count and lays out the visible buttons.
+// visible = min(eqChannelMenuMaxVisibleRows, rowsThatFitBelowAnchor, total).
+// When screenBounds is empty the pixel cap is skipped (preserves old behaviour
+// for callers that haven't routed bounds in yet).
+func (o *eqChannelDropdownOverlay) layoutFor(anchor, screenBounds image.Rectangle) {
+	z := o.zone
+	btnH := 24
+
 	total := len(o.allOnClicks)
 	scroll := z.channelScroll
 	scroll.ItemHeight = btnH
 	scroll.Style = DropdownScrollbarStyle
 	scroll.VS.Total = total
 
-	// Calculate available space and visible count.
 	visible := total
 	if visible > eqChannelMenuMaxVisibleRows {
 		visible = eqChannelMenuMaxVisibleRows
+	}
+	if !screenBounds.Empty() {
+		availPx := screenBounds.Max.Y - anchor.Max.Y
+		if availPx < btnH {
+			availPx = btnH // never collapse to zero rows
+		}
+		availRows := availPx / btnH
+		if availRows < visible {
+			visible = availRows
+		}
 	}
 	if visible < 1 {
 		visible = 1
@@ -960,11 +984,9 @@ func (o *eqChannelDropdownOverlay) buildButtons() {
 	scroll.VS.Visible = visible
 	scroll.VS.Clamp()
 
-	// Set up view rectangle.
 	menuH := visible * btnH
 	scroll.VS.View = image.Rect(anchor.Min.X, anchor.Max.Y, anchor.Max.X, anchor.Max.Y+menuH)
 
-	// Determine button width (narrower when scrollbar is visible).
 	buttonMaxX := anchor.Max.X
 	if scroll.HasScroll() {
 		buttonMaxX -= eqChannelMenuScrollBarWidth
@@ -973,7 +995,7 @@ func (o *eqChannelDropdownOverlay) buildButtons() {
 		}
 	}
 
-	// Build visible buttons only.
+	o.buttons = o.buttons[:0]
 	first := scroll.VS.First
 	for i := 0; i < visible && first+i < total; i++ {
 		idx := first + i
@@ -994,20 +1016,29 @@ func (o *eqChannelDropdownOverlay) buildButtons() {
 		r := image.Rect(anchor.Min.X, anchor.Max.Y+i*btnH, buttonMaxX, anchor.Max.Y+(i+1)*btnH)
 		btn := NewButton(label, DropdownStyle, onClick)
 		btn.ConsumeOnPress = true
-		btn.SetRect(insetRect(r, buttonPad))
+		btn.SetRect(insetRect(r, SpaceXS))
 		o.buttons = append(o.buttons, btn)
 	}
 
-	// Hit rect covers menu + scrollbar.
-	hitMaxX := anchor.Max.X
-	if scroll.HasScroll() {
-		hitMaxX = anchor.Max.X
-	}
-	o.rect = image.Rect(anchor.Min.X, anchor.Max.Y, hitMaxX, anchor.Max.Y+menuH)
+	o.rect = image.Rect(anchor.Min.X, anchor.Max.Y, anchor.Max.X, anchor.Max.Y+menuH)
 }
 
 func (o *eqChannelDropdownOverlay) Layout(anchor, screenBounds image.Rectangle) {
-	// Already laid out in buildButtons; nothing to do.
+	o.layoutFor(anchor, screenBounds)
+}
+
+// buildButtons is a convenience entry point used by callers (mostly tests)
+// that construct an overlay outside the portal flow. It runs both passes —
+// callbacks then geometry — using the zone's eqChannelBtn anchor and the
+// portal-known screen bounds. Production code uses buildCallbacks + the
+// portal-driven Layout() instead.
+func (o *eqChannelDropdownOverlay) buildButtons() {
+	o.buildCallbacks()
+	var bounds image.Rectangle
+	if o.zone.portal != nil {
+		bounds = o.zone.portal.screenBounds
+	}
+	o.layoutFor(o.zone.eqChannelBtn.Rect(), bounds)
 }
 
 func (o *eqChannelDropdownOverlay) HitAreas() []HitArea {
@@ -1082,7 +1113,7 @@ func (o *eqChannelDropdownOverlay) rebuildVisibleButtons() {
 		r := image.Rect(anchor.Min.X, anchor.Max.Y+i*btnH, buttonMaxX, anchor.Max.Y+(i+1)*btnH)
 		btn := NewButton(label, DropdownStyle, onClick)
 		btn.ConsumeOnPress = true
-		btn.SetRect(insetRect(r, buttonPad))
+		btn.SetRect(insetRect(r, SpaceXS))
 		o.buttons = append(o.buttons, btn)
 	}
 }
@@ -1468,7 +1499,7 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 		if isDragging {
 			glowAlpha = 64 // ~25% of 255
 		}
-		glowCol := color.NRGBA{colAccent.R, colAccent.G, colAccent.B, glowAlpha}
+		glowCol := WithAlpha(genColorPrimary, glowAlpha)
 		glowRect := image.Rect(hx-glowR, hy-glowR, hx+glowR, hy+glowR)
 		drawRoundedRect(dst, glowRect, glowCol, glowR, true)
 		// Handle fill.
@@ -1533,8 +1564,8 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 			lx = r.Max.X - tw - 2
 		}
 		bgR := image.Rect(lx-3, ly-2, lx+tw+3, ly+th+2)
-		drawRect(dst, bgR, color.RGBA{30, 30, 40, 200}, true)
-		DrawTextColorAt(dst, lbl, lx, ly, color.RGBA{255, 255, 255, 255})
+		drawRect(dst, bgR, WithAlpha(genColorEqReadoutBg, genAlphaSidebarChip), true)
+		DrawTextColorAt(dst, lbl, lx, ly, genColorBorder)
 	}
 }
 

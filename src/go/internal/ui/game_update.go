@@ -10,6 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // benchFmtMS formats a seconds value as milliseconds for human-readable
@@ -57,8 +58,8 @@ func (g *Game) Update() error {
 					rowCachePatch = g.drum.rowCachePatch
 					rowsRepaints = g.drum.rowsRepaints
 				}
-				g.logger.Infof("[PERF] ui: fps=%.1f upd_avg=%.3fms upd_max=%.3fms refresh=%.3fms draw_grid=%.3fms draw_drum=%.3fms rows_repaint=%d row_cache(full=%d shift=%d patch=%d) a_enq=%d a_deq=%d qlat_avg=%.3fms qlat_max=%.3fms acall_avg=%.3fms acall_max=%.3fms par_avg=%.3fms par_max=%.3fms par_n=%d",
-					s.FPSAvg, s.UpdateAvgMS, s.UpdateMaxMS, g.lastRefreshMS, g.lastDrawGridMS, g.lastDrawDrumMS, rowsRepaints, rowCacheFull, rowCacheShift, rowCachePatch, s.AudioEnq, s.AudioDeq, s.AudioQLatAvg, s.AudioQLatMax, s.AudioCallAvg, s.AudioCallMax, parAvg, parMax, parCount)
+				g.logger.Debugf("[perf] ui: fps=%.1f upd_avg=%.3fms upd_max=%.3fms refresh=%.3fms draw_grid=%.3fms draw_drum=%.3fms rows_repaint=%d row_cache(full=%d shift=%d patch=%d) a_enq=%d a_deq=%d qlat_avg=%.3fms qlat_max=%.3fms acall_avg=%.3fms acall_max=%.3fms par_avg=%.3fms par_max=%.3fms par_n=%d live_images=%d images_alloc=%d images_by_tag=[%s]",
+					s.FPSAvg, s.UpdateAvgMS, s.UpdateMaxMS, g.lastRefreshMS, g.lastDrawGridMS, g.lastDrawDrumMS, rowsRepaints, rowCacheFull, rowCacheShift, rowCachePatch, s.AudioEnq, s.AudioDeq, s.AudioQLatAvg, s.AudioQLatMax, s.AudioCallAvg, s.AudioCallMax, parAvg, parMax, parCount, g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot())
 				g.perf.reset()
 				g.schedMetrics.Reset()
 				g.resetParityPerf()
@@ -82,7 +83,11 @@ func (g *Game) Update() error {
 			g.benchStart = time.Now()
 			g.perf.reset()
 			g.schedMetrics.Reset()
+			ResetImageMetrics()
 			g.logger.Infof("[BENCH] Started: bpm=%d duration=%s", g.benchBPM, g.benchDuration)
+			if g.benchRecord {
+				g.startBenchRecording()
+			}
 		} else if g.benchStarted && time.Since(g.benchStart) >= g.benchDuration {
 			// Duration elapsed → log stats, stop, exit cleanly
 			s := g.PerfSnapshot()
@@ -101,7 +106,7 @@ func (g *Game) Update() error {
 			// Machine-readable JSON line for scripts/bench-desktop.sh.
 			// Uses benchJsonMS() to emit "null" for NaN values (valid JSON).
 			jm := benchJsonMS
-			g.logger.Infof("[BENCH_JSON] {\"bpm\":%d,\"frames\":%d,\"fps\":%.2f,\"updateAvgMS\":%.3f,\"updateMaxMS\":%.3f,\"drawAvgMS\":%.3f,\"drawMaxMS\":%.3f,\"audioEnq\":%d,\"audioDeq\":%d,\"audioQLatAvgMS\":%.3f,\"audioQLatMaxMS\":%.3f,\"audioCallAvgMS\":%.3f,\"audioCallMaxMS\":%.3f,\"schedCount\":%d,\"schedOverdue\":%d,\"schedMinLeadMS\":%s,\"schedMaxLeadMS\":%s,\"schedAvgLeadMS\":%s,\"schedAvgLagMS\":%s,\"schedMaxLagMS\":%s,\"schedLagP90MS\":%s,\"schedLagP99MS\":%s,\"schedSmallLeadCount\":%d,\"heapAllocKB\":%d,\"heapSysKB\":%d,\"heapObjects\":%d,\"goroutines\":%d,\"parityScans\":%d,\"parityAvgMS\":%.3f,\"parityMaxMS\":%.3f}",
+			g.logger.Debugf("[bench_json] {\"bpm\":%d,\"frames\":%d,\"fps\":%.2f,\"updateAvgMS\":%.3f,\"updateMaxMS\":%.3f,\"drawAvgMS\":%.3f,\"drawMaxMS\":%.3f,\"audioEnq\":%d,\"audioDeq\":%d,\"audioQLatAvgMS\":%.3f,\"audioQLatMaxMS\":%.3f,\"audioCallAvgMS\":%.3f,\"audioCallMaxMS\":%.3f,\"schedCount\":%d,\"schedOverdue\":%d,\"schedMinLeadMS\":%s,\"schedMaxLeadMS\":%s,\"schedAvgLeadMS\":%s,\"schedAvgLagMS\":%s,\"schedMaxLagMS\":%s,\"schedLagP90MS\":%s,\"schedLagP99MS\":%s,\"schedSmallLeadCount\":%d,\"heapAllocKB\":%d,\"heapSysKB\":%d,\"heapObjects\":%d,\"goroutines\":%d,\"parityScans\":%d,\"parityAvgMS\":%.3f,\"parityMaxMS\":%.3f,\"liveImages\":%d,\"imagesAllocatedTotal\":%d,\"imagesByTag\":\"%s\"}",
 				g.benchBPM, s.Frames, s.FPSAvg,
 				s.UpdateAvgMS, s.UpdateMaxMS,
 				s.DrawAvgMS, s.DrawMaxMS,
@@ -114,9 +119,13 @@ func (g *Game) Update() error {
 				jm(sm.MaxLag), jm(sm.LagP90), jm(sm.LagP99),
 				sm.SmallLeadCount,
 				s.HeapAllocKB, s.HeapSysKB, s.HeapObjects, s.Goroutines,
-				pCount, pAvg, pMax)
+				pCount, pAvg, pMax,
+				g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot())
 			g.SetPlaying(false)
 			g.engine.Stop()
+			if g.benchRecord {
+				g.finishBenchRecording(s)
+			}
 			return ebiten.Termination
 		}
 	}
@@ -185,12 +194,6 @@ eventsDone:
 	if g.scopeOpen && g.drum != nil && !g.scopeApplied {
 		g.drum.SetScopeVisible(true)
 		g.scopeApplied = true
-	}
-	// Kick off sample autoload once the game is live so built-in demo picks
-	// are not overshadowed by sample IDs and startup remains snappy.
-	if !g.samplesScheduled {
-		g.samplesScheduled = true
-		go audio.AutoLoadEmbeddedWAVs()
 	}
 	// splitter (resize only - input handled via dispatcher)
 	g.split.UpdateResize(g.winH, g.winW)
@@ -432,6 +435,32 @@ eventsDone:
 	}
 	g.seqMu.Unlock()
 
+	// Drain notifications queued by hook subscribers running on the
+	// hooks fan-out pool (e.g., audio.RecordStopPayload). DrumView's
+	// notify funcs touch UI state, so we forward them on the game-thread
+	// goroutine, mirroring the pendingImportData pattern.
+	g.pendingNotifyMu.Lock()
+	infos := g.pendingNotifyInfo
+	errs := g.pendingNotifyError
+	g.pendingNotifyInfo = nil
+	g.pendingNotifyError = nil
+	g.pendingNotifyMu.Unlock()
+	for _, m := range infos {
+		if g.drum != nil {
+			g.drum.notifyInfo(m)
+		}
+	}
+	for _, m := range errs {
+		if g.drum != nil {
+			g.drum.notifyError(m)
+		}
+	}
+
+	// Drain externally queued actions (e.g. JS-driven openers via QueueAction).
+	// Runs after seqMu.Unlock so handlers that touch UI/predictor state cannot
+	// reenter the per-frame lock. Mirrors the pendingImportData pattern below.
+	g.drainPendingActions()
+
 	// Process pending import after seqMu is released to avoid recursive locking.
 	// The import callback from drum.Update() queues data here; we process it now
 	// that the lock is free.
@@ -447,6 +476,7 @@ eventsDone:
 			}
 		} else if g.drum != nil {
 			g.drum.notifyInfo("Imported project JSON")
+			hooks.PublishKind(hooks.EventImport, len(data))
 		}
 	}
 
@@ -485,7 +515,7 @@ eventsDone:
 	// Diagnostic: log why panOK is false for grid touches on mobile.
 	// Throttled to once per 60 frames to avoid log spam.
 	if !panOK && left && g.split.InGridPane(mx, my) && touchOverrideActive && g.frame%60 == 0 {
-		g.logger.Infof("[PAN-DEBUG] panOK=false grid touch at (%d,%d) "+
+		g.logger.Debugf("[pan] panOK=false grid touch at (%d,%d) "+
 			"linkDrag=%v splitDrag=%v shift=%v inDrum=%v capturing=%v menuHit=%v popup=%v",
 			mx, my, g.linkDrag.active, g.split.dragging, shift,
 			pt(mx, my, g.drum.Bounds), g.drum.Capturing(), g.menuHit(mx, my), g.longPressPopup)
@@ -505,7 +535,7 @@ eventsDone:
 	if panOK && !wheelHandled {
 		if dz := wheelZoomDelta(); dz != 0 {
 			mx, my := cursorPosition()
-			g.logger.Infof("[ZOOM] wheel dz=%.4f at (%d,%d) scale=%.3f", dz, mx, my, g.cam.Scale)
+			g.logger.Debugf("[zoom] wheel dz=%.4f at (%d,%d) scale=%.3f", dz, mx, my, g.cam.Scale)
 			// Apply a stronger, anchored zoom immediately.
 			g.zoomAtScreen(float64(mx), float64(my), dz*8.0)
 			// Prevent a second tiny zoom this frame but keep panning disabled
@@ -516,7 +546,7 @@ eventsDone:
 		}
 	} else if !panOK && !wheelHandled {
 		if dz := wheelZoomDelta(); dz != 0 {
-			g.logger.Infof("[ZOOM] ignored wheel (panOK=false)")
+			g.logger.Debugf("[zoom] ignored wheel (panOK=false)")
 		}
 		drag = g.cam.HandleMouse(panOK)
 	} else {
@@ -609,7 +639,7 @@ eventsDone:
 
 	if g.drum.PlayPressed() {
 		if g.Playing() {
-			g.logger.Infof("[GAME] Pause pressed")
+			g.logger.Debugf("[game] pause pressed")
 			div := max1(g.grid.MaxDiv())
 			g.nextBeatIdxs = append([]int(nil), startNext...)
 			g.state.Pause(gamestate.PauseInput{
@@ -629,7 +659,7 @@ eventsDone:
 		pauseDrained:
 			g.clearParityState()
 		} else if g.start != nil {
-			g.logger.Infof("[GAME] Play pressed")
+			g.logger.Debugf("[game] play pressed")
 			audio.Resume()
 			now := time.Now()
 			audioNow := audio.Now()
@@ -696,7 +726,7 @@ eventsDone:
 		}
 	}
 	if g.drum.StopPressed() {
-		g.logger.Infof("[GAME] Stop pressed")
+		g.logger.Debugf("[game] stop pressed")
 		g.state.Stop()
 		g.audioGen.Add(1)
 		g.setPrimaryStep(0)
@@ -714,6 +744,31 @@ eventsDone:
 		for row := range g.drum.Rows {
 			g.timelineClearRow(row)
 		}
+		// Reset playback-derived state so the next Play starts from a clean
+		// baseline. pathChangeBeatByRow stores elapsedBeats at the moment a
+		// mid-play edit happened; carrying that watermark across Stop makes
+		// refreshDrumRow's safety-net commit loop skip every freshly-played
+		// cell on replay (j < pathChangeBeat ⇒ continue), which leaves the
+		// drum row slate all-grey and hides highlight follow-through.
+		// lastTriggeredByRow holds per-row/per-node "did this fire last time"
+		// state used by highlightVisual; stale entries from the previous run
+		// can suppress the highlight fallback for nodes whose lastTriggered=false.
+		// lastFiredNodeByRow / lastHLIdxByRow are cheap dedupe caches that
+		// must also start fresh.
+		for i := range g.pathChangeBeatByRow {
+			g.pathChangeBeatByRow[i] = -1
+		}
+		g.triggerMu.Lock()
+		for k := range g.lastTriggeredByRow {
+			delete(g.lastTriggeredByRow, k)
+		}
+		g.triggerMu.Unlock()
+		for i := range g.lastFiredNodeByRow {
+			g.lastFiredNodeByRow[i] = model.InvalidNodeID
+		}
+		for i := range g.lastHLIdxByRow {
+			g.lastHLIdxByRow[i] = -1
+		}
 		g.clearParityState()
 		g.parityWatch = parityWatchDefault
 		parityFatalEnabled.Store(true)
@@ -721,24 +776,21 @@ eventsDone:
 	// Handle record toggle
 	if g.drum.RecordPressed() {
 		if audio.IsRecording() {
-			g.logger.Infof("[GAME] Record stop pressed")
+			g.logger.Debugf("[game] record stop pressed")
+			// StopRecording returns immediately; the actual file flush
+			// + close + session.json write happens on the recording
+			// lifecycle pool. The "Recording saved" toast fires from
+			// the EventRecordStop subscriber wired in game_new.go.
 			result, err := audio.StopRecording()
 			g.drum.SetRecording(false)
 			if err != nil {
-				g.logger.Infof("[GAME] Recording error: %v", err)
+				g.logger.Errorf("[game] recording error: %v", err)
 				g.drum.notifyError("Recording failed: " + err.Error())
 			} else if result != nil {
-				path, err := audio.SaveRecording(result)
-				if err != nil {
-					g.logger.Infof("[GAME] Save recording error: %v", err)
-					g.drum.notifyError("Recording save failed: " + err.Error())
-				} else {
-					g.logger.Infof("[GAME] Recording saved to %s", path)
-					g.drum.notifyInfo("Recording saved: " + path)
-				}
+				g.drum.notifyInfo("Saving recording to " + result.SessionDir)
 			}
 		} else {
-			g.logger.Infof("[GAME] Record start pressed")
+			g.logger.Debugf("[game] record start pressed")
 			instruments := make([]audio.InstrumentMeta, 0, len(g.drum.Rows))
 			for _, row := range g.drum.Rows {
 				if row.Instrument != "" {
@@ -754,7 +806,7 @@ eventsDone:
 				BPM:         g.drum.BPM(),
 			}
 			if err := audio.StartRecording(opts); err != nil {
-				g.logger.Infof("[GAME] Start recording error: %v", err)
+				g.logger.Errorf("[game] start recording error: %v", err)
 				g.drum.notifyError("Cannot start recording: " + err.Error())
 			} else {
 				g.drum.SetRecording(true)
@@ -772,7 +824,7 @@ eventsDone:
 	prevUI := g.bpm
 	newBPM := g.drum.BPM()
 	if newBPM != prevUI && g.Playing() {
-		g.logger.Infof("[GAME] BPM change requested: %d -> %d", prevUI, newBPM)
+		g.logger.Debugf("[game] BPM change requested: %d -> %d", prevUI, newBPM)
 		prev := prevUI
 		if prev > 0 {
 			// Compute elapsed seconds on the current timeline.
@@ -810,13 +862,13 @@ eventsDone:
 	}
 	g.bpm = newBPM
 	if g.bpm != g.state.AppliedBPM() {
-		g.logger.Infof("[GAME] Queue BPM %d", g.bpm)
+		g.logger.Debugf("[game] queue BPM %d", g.bpm)
 		sendLatestBPM(g.bpmCh, g.bpm)
 	}
 
 	select {
 	case applied := <-g.bpmAck:
-		g.logger.Infof("[GAME] BPM applied: %d", applied)
+		g.logger.Debugf("[game] BPM applied: %d", applied)
 		// Update pulse speeds to reflect new BPM for test expectations.
 		beatDuration := int64(60.0 / float64(applied) * ebitenTPS)
 		for _, p := range g.activePulses {
@@ -906,7 +958,6 @@ eventsDone:
 	if g.state.JustResumed() {
 		g.state.ClearJustResumed()
 	}
-	g.reportStateJS()
 	// Decay transient-visuals suppression after all state updates so the
 	// next frame resumes normal rendering.
 	if g.quietFrames > 0 {

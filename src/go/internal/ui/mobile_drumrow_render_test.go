@@ -144,11 +144,11 @@ func TestMobileDesktopLayoutUnchanged(t *testing.T) {
 	}
 }
 
-// TestMobileDrumRowCacheBuiltWithStriping verifies that when rowsStripingEnabled
-// is true (the WASM path), rows are rendered after Draw(). On small screens,
-// the direct draw path is used (bypassing intermediate textures); on desktop,
-// row caches and rows layer are built via rowsLayerMaybeRebuild().
-func TestMobileDrumRowCacheBuiltWithStriping(t *testing.T) {
+// TestMobileDrumRowCacheBuilt verifies that rows are rendered after Draw().
+// On small screens, the direct draw path is used (bypassing intermediate
+// textures); on desktop, row caches and rows layer are built via
+// rowsLayerMaybeRebuild().
+func TestMobileDrumRowCacheBuilt(t *testing.T) {
 	for _, vp := range mobileViewports {
 		t.Run(vp.name, func(t *testing.T) {
 			setupMobileTest(t, true)
@@ -159,8 +159,7 @@ func TestMobileDrumRowCacheBuiltWithStriping(t *testing.T) {
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
 
-			// Enable striping to simulate WASM path.
-			g.drum.rowsStripingEnabled = true
+
 			g.drum.markAllRowsDirty()
 
 			// Draw to trigger the rendering pipeline.
@@ -208,8 +207,7 @@ func TestMobileDrumRowHasContentWithStriping(t *testing.T) {
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
 
-			// Enable striping to simulate WASM path.
-			g.drum.rowsStripingEnabled = true
+
 			g.drum.markAllRowsDirty()
 
 			// Draw to trigger the rendering pipeline.
@@ -254,8 +252,7 @@ func TestMobileDrumRowsDrawnMaskWithStriping(t *testing.T) {
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
 
-			// Enable striping to simulate WASM path.
-			g.drum.rowsStripingEnabled = true
+
 			g.drum.markAllRowsDirty()
 
 			screen := ebiten.NewImage(vp.w, vp.h)
@@ -338,8 +335,7 @@ func TestMobileDrumRowCacheWithProductionEQ(t *testing.T) {
 			g.drum.refreshWidgetLayout()
 			g.drum.calcLayout()
 
-			// Enable striping and draw.
-			g.drum.rowsStripingEnabled = true
+
 			g.drum.markAllRowsDirty()
 
 			screen := ebiten.NewImage(vp.w, vp.h)
@@ -374,8 +370,7 @@ func TestMobileDirectDrawUsed(t *testing.T) {
 			g.Layout(vp.w, vp.h)
 			advanceFrames(g, 2)
 
-			// Enable striping to simulate WASM path.
-			g.drum.rowsStripingEnabled = true
+
 			g.drum.markAllRowsDirty()
 
 			// Reset counter before Draw.
@@ -418,7 +413,6 @@ func TestMobileDesktopNoDirectDraw(t *testing.T) {
 	g.Layout(1280, 720)
 	advanceFrames(g, 2)
 
-	g.drum.rowsStripingEnabled = true
 	g.drum.markAllRowsDirty()
 	g.drum.directDrawCount = 0
 
@@ -429,56 +423,6 @@ func TestMobileDesktopNoDirectDraw(t *testing.T) {
 		t.Fatalf("directDrawCount=%d on desktop, want 0 — direct draw should not be used on desktop",
 			g.drum.directDrawCount)
 	}
-}
-
-// TestMobileDrumStripeFallbackToLayer verifies that when rowsStripingEnabled
-// is true but the timeline is narrow (< wasmStripeTargetPx), the stripe path
-// returns false and the fallback rowsLayerMaybeRebuild() path produces content.
-func TestMobileDrumStripeFallbackToLayer(t *testing.T) {
-	setupMobileTest(t, true)
-	logger := log.New(testLogOutput(), log.LevelInfo)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-
-	// Use a narrow portrait viewport where timeline < 440px.
-	g.Layout(320, 568)
-	advanceFrames(g, 2)
-
-	dv := g.drum
-	dv.rowsStripingEnabled = true
-	dv.markAllRowsDirty()
-
-	tw := dv.timelineRect.Dx()
-	if tw >= wasmStripeTargetPx {
-		t.Skipf("timeline width %d >= %d, not a narrow-timeline scenario", tw, wasmStripeTargetPx)
-	}
-
-	// On non-WASM, rowsStripesMaybeRebuild always returns false (GOARCH check).
-	// This is the same behavior as WASM on narrow timelines (< 440px).
-	gotStripes := dv.rowsStripesMaybeRebuild()
-	if gotStripes {
-		t.Fatalf("expected stripes=false for narrow timeline (%dpx)", tw)
-	}
-
-	// Fallback path should produce a layer.
-	dv.rowsLayerMaybeRebuild()
-	if dv.rowsLayer == nil {
-		t.Fatalf("rowsLayer nil after fallback rowsLayerMaybeRebuild on narrow timeline")
-	}
-
-	// Verify the layer has content (not just transparent pixels).
-	// Note: rowHasContent calls At() → ReadPixels, which panics under
-	// real Ebiten before RunGame(). Skip in that case.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Skipf("skipping rowHasContent check: Ebiten ReadPixels unavailable before game start (%v)", r)
-			}
-		}()
-		if !dv.rowHasContent(0) {
-			t.Fatalf("rowHasContent(0)=false after fallback layer build — rows are blank")
-		}
-	}()
 }
 
 // TestMobileDirectDrawDecimatedMarkers verifies that drawRowsDirect draws
@@ -493,7 +437,6 @@ func TestMobileDirectDrawDecimatedMarkers(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	dv.rowsStripingEnabled = true
 
 	// Force extreme length so n > timelineWidth, triggering decimated markers.
 	extreme := dv.timelineRect.Dx() * 10

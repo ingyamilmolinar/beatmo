@@ -44,7 +44,10 @@ func (dv *DrumView) openInstMenuPortal() {
 		Overlay: &compPortalOverlay{
 			comp:     dv.instMenuComp,
 			tag:      "inst-menu",
-			updateFn: func() { dv.instMenuComp.Update() },
+			updateFn: func() {
+				dv.instMenuComp.Update()
+				dv.syncInstMenuScrollFromComp()
+			},
 		},
 		Modal:  false,
 		Anchor: anchor,
@@ -52,7 +55,6 @@ func (dv *DrumView) openInstMenuPortal() {
 			if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() {
 				dv.instMenuComp.Close()
 			}
-			dv.syncInstMenuBtnsFromComp()
 			// Upload button special case: if click-outside was on the
 			// upload button, trigger it now.
 			mx, my := cursorPosition()
@@ -440,7 +442,7 @@ func (dv *DrumView) openNamingPortal() {
 				dv.saveBtn.SetRect(image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+60, box.Max.Y))
 				dv.saveBtn.OnClick = func() {
 					id := strings.TrimSpace(dv.nameBox.Value())
-					dv.logger.Infof("[DRUMVIEW] Save instrument pressed id=%q", id)
+					dv.logger.Debugf("[drumview] save instrument pressed id=%q", id)
 					if id != "" {
 						dv.registerInstrument(id)
 					}

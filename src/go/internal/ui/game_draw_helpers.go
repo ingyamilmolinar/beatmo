@@ -15,8 +15,8 @@ import (
 func (g *Game) drawDivider(screen *ebiten.Image) {
 	mX, mY := cursorPosition()
 	grab := 6
-	baseCol := color.RGBA{180, 180, 180, 255}
-	hovCol := color.RGBA{255, 255, 255, 255}
+	baseCol := genColorDividerBase
+	hovCol := genColorBorder
 	thick := 2.0
 	var hover bool
 	if g.split.horizontal {
@@ -32,12 +32,12 @@ func (g *Game) drawDivider(screen *ebiten.Image) {
 	g.dividerHover = hover
 	g.dividerThick = thick
 	mobile := Profile().IsMobile()
-	shadowCol := color.RGBA{8, 8, 10, 255}
-	highCol := color.RGBA{50, 50, 58, 255}
+	shadowCol := genColorDividerShadow
+	highCol := genColorDividerHighlight
 	if g.split.horizontal {
 		y := g.split.Y
 		if mobile {
-			drawRect(screen, image.Rect(0, y, g.winW, y+1), color.NRGBA{255, 255, 255, 20}, true)
+			drawRect(screen, image.Rect(0, y, g.winW, y+1), WithAlpha(genColorBorder, genAlphaBorderPanel), true)
 		} else {
 			drawRect(screen, image.Rect(0, y-1, g.winW, y), shadowCol, true)
 			drawRect(screen, image.Rect(0, y, g.winW, y+1), col, true)
@@ -47,7 +47,7 @@ func (g *Game) drawDivider(screen *ebiten.Image) {
 	} else {
 		x := g.split.X
 		if mobile {
-			drawRect(screen, image.Rect(x, 0, x+1, g.winH), color.NRGBA{255, 255, 255, 20}, true)
+			drawRect(screen, image.Rect(x, 0, x+1, g.winH), WithAlpha(genColorBorder, genAlphaBorderPanel), true)
 		} else {
 			drawRect(screen, image.Rect(x-1, 0, x, g.winH), shadowCol, true)
 			drawRect(screen, image.Rect(x, 0, x+1, g.winH), col, true)
@@ -82,7 +82,7 @@ func (g *Game) buildGridTile(stepPx int) *ebiten.Image {
 	if stepPx <= 0 {
 		return nil
 	}
-	img := ebiten.NewImage(stepPx, stepPx)
+	img := newTrackedImage("gridTile", stepPx, stepPx)
 	if g.logDrawNodes {
 		g.logger.Tracef("[DRAW/GRID] buildGridTile: stepPx=%d subs=%d", stepPx, len(g.grid.Subs))
 	}
@@ -164,7 +164,7 @@ func (g *Game) maybeYield() {
 	if g == nil {
 		return
 	}
-	if runtime.GOOS != "js" {
+	if !RuntimeProf().YieldInDrawHelpers {
 		return
 	}
 	if !g.perfMode.FastPathEnabled() {

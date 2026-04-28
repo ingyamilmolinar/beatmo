@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
@@ -65,17 +64,19 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 
 // AddRow appends a new drum row with default settings.
 func (dv *DrumView) AddRow() {
+	if dv.onStructuralMutation != nil {
+		dv.onStructuralMutation("row-add")
+	}
 	inst := "snare"
-	name := "Snare"
 	if len(dv.instOptions) > 0 {
 		inst = dv.instOptions[0]
-		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
+	name := dv.computeInstLabel(inst)
 	idx := len(dv.Rows)
 	baseCol := instColor(inst)
 	uniq := dv.ensureUniqueColor(baseCol, idx)
 	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: uniq, Origin: model.InvalidNodeID, Node: nil, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))})
-	dv.logger.Infof("[DRUMVIEW] Row added index=%d instrument=%s name=%s", idx, inst, name)
+	dv.logger.Debugf("[drumview] row added index=%d instrument=%s name=%s", idx, inst, name)
 	dv.added = append(dv.added, idx)
 	dv.bgDirty = true
 	dv.markRowControlsDirty()
@@ -118,7 +119,10 @@ func (dv *DrumView) DeleteRow(i int) {
 	if i < 0 || i >= len(dv.Rows) || len(dv.Rows) <= 1 {
 		return
 	}
-	dv.logger.Infof("[DRUMVIEW] Row deleted index=%d name=%s instrument=%s", i, dv.Rows[i].Name, dv.Rows[i].Instrument)
+	if dv.onStructuralMutation != nil {
+		dv.onStructuralMutation("row-delete")
+	}
+	dv.logger.Debugf("[drumview] row deleted index=%d name=%s instrument=%s", i, dv.Rows[i].Name, dv.Rows[i].Instrument)
 	// If the deleted row's instrument is the active EQ channel, reset to master
 	if dv.eqActiveChannel == dv.Rows[i].Instrument {
 		dv.setEQActiveChannel("main")
@@ -169,6 +173,9 @@ func (dv *DrumView) toggleMute(idx int) {
 	if idx < 0 || idx >= len(dv.Rows) {
 		return
 	}
+	if dv.onStructuralMutation != nil {
+		dv.onStructuralMutation("row-mute-toggle")
+	}
 	r := dv.Rows[idx]
 	r.Muted = !r.Muted
 	if r.Muted {
@@ -180,6 +187,9 @@ func (dv *DrumView) toggleMute(idx int) {
 func (dv *DrumView) toggleSolo(idx int) {
 	if idx < 0 || idx >= len(dv.Rows) {
 		return
+	}
+	if dv.onStructuralMutation != nil {
+		dv.onStructuralMutation("row-solo-toggle")
 	}
 	r := dv.Rows[idx]
 	r.Solo = !r.Solo

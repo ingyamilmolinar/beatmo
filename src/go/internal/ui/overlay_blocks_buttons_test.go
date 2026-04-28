@@ -76,9 +76,9 @@ func TestEditButtonClosesContextMenu(t *testing.T) {
 	dv := setupOverlayTestDV(t, 390, 600)
 
 	// Open context menu first.
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should be open after OpenContextMenuForTest")
+		t.Fatal("context menu should be open after OpenContextMenu")
 	}
 
 	// Fire edit button — should close context menu and open rename.
@@ -143,7 +143,7 @@ func TestContextMenuRenameOpensCleanly(t *testing.T) {
 	dv := setupOverlayTestDV(t, 390, 600)
 
 	// Open context menu.
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}

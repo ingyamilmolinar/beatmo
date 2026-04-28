@@ -157,7 +157,7 @@ func TestSubdivMenuComponent_ButtonLayout(t *testing.T) {
 	for i := 1; i < len(comp.buttons); i++ {
 		prevBtn := comp.buttons[i-1].Rect()
 		currBtn := comp.buttons[i].Rect()
-		if currBtn.Min.Y < prevBtn.Max.Y-buttonPad*2 {
+		if currBtn.Min.Y < prevBtn.Max.Y-SpaceXS*2 {
 			t.Errorf("button %d top (%d) should be near or below button %d bottom (%d)",
 				i, currBtn.Min.Y, i-1, prevBtn.Max.Y)
 		}

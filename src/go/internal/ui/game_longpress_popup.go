@@ -147,7 +147,7 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 		moveBorder = adjustColor(moveBorder, 20)
 	}
 	drawRoundedButton(dst, g.longPressPopupMove, moveFill, moveBorder, popupButtonRadius(), false)
-	moveTxtCol := color.Color(color.RGBA{200, 200, 210, 255})
+	moveTxtCol := color.Color(genColorPopupTextSecondary)
 	if moveHover {
 		moveTxtCol = colPlayIconTint // green
 	}
@@ -163,7 +163,7 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 		connBorder = adjustColor(connBorder, 20)
 	}
 	drawRoundedButton(dst, g.longPressPopupConn, connFill, connBorder, popupButtonRadius(), false)
-	connTxtCol := color.Color(color.RGBA{200, 200, 210, 255})
+	connTxtCol := color.Color(genColorPopupTextSecondary)
 	if connHover {
 		connTxtCol = colStep // cyan
 	}

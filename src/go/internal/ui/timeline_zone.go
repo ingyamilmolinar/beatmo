@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -215,8 +214,11 @@ func (z *TimelineZone) Draw(screen *ebiten.Image) {
 		z.lenDecBtn.Draw(screen)
 	}
 
-	// --- Track button (mobile) ---
-	if Profile().IsMobile() && z.trackBtn != nil && !z.trackBtn.Rect().Empty() {
+	// --- Track button ---
+	// Visibility is rect-driven: drumview_layout.go sets the rect on desktop
+	// and leaves it empty on mobile (mobile surfaces the toggle via the
+	// overflow menu instead). One predicate, one source of truth.
+	if z.trackBtn != nil && !z.trackBtn.Rect().Empty() {
 		z.trackBtn.Draw(screen)
 	}
 
@@ -345,8 +347,8 @@ func (z *TimelineZone) timelineInfoCached(elapsedBeats float64) string {
 	}
 	curMS := int(math.Round(elapsedBeats * secPerBeat * 1000.0))
 	totMS := int(math.Round(totalBeats * secPerBeat * 1000.0))
-	if timelineInfoThrottleMS > 0 {
-		thr := timelineInfoThrottleMS
+	if thrCfg := RuntimeProf().TimelineInfoThrottleMS; thrCfg > 0 {
+		thr := thrCfg
 		if (curMS/thr) == (z.LastInfoCurMS/thr) && (totMS/thr) == (z.LastInfoTotMS/thr) && z.LastInfoText != "" {
 			return z.LastInfoText
 		}
@@ -380,7 +382,7 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 	pillX := beatCounterRect.Min.X
 	pillY := beatCounterRect.Min.Y + (beatCounterRect.Dy()-pillH)/2
 	pillR := image.Rect(pillX, pillY, pillX+pillW, pillY+pillH)
-	drawRoundedRect(dst, pillR, color.NRGBA{0, 185, 235, 25}, 4, true)
+	drawRoundedRect(dst, pillR, WithAlpha(genColorFocusRing, genAlphaFaint), 4, true)
 	infoY := pillY + pillPadY
 	DrawTextAt(dst, info, pillX+pillPadX, infoY)
 }
@@ -426,7 +428,7 @@ func (z *TimelineZone) ensureHighlightSprites() {
 		return
 	}
 	reg := ebiten.NewImage(1, h)
-	drawRect(reg, image.Rect(0, 0, 1, h), fadeColor(colHighlight, 0.85), true)
+	drawRect(reg, image.Rect(0, 0, 1, h), fadeColor(colHighlight, float64(genAnimPlayheadColumnFade)), true)
 	mute := ebiten.NewImage(1, h)
 	drawRect(mute, image.Rect(0, 0, 1, h), colMuteHighlight, true)
 	z.hlSpriteReg = reg
@@ -538,7 +540,7 @@ func (z *TimelineZone) drawMuteSoloDimming(dst *ebiten.Image) {
 		if shouldDim {
 			y := rowsTop + (i-rowOffset)*rh
 			dimRect := image.Rect(z.stepsRect.Min.X, y, z.stepsRect.Max.X, y+rh)
-			drawRect(dst, dimRect, color.NRGBA{0, 0, 0, 100}, true)
+			drawRect(dst, dimRect, WithAlpha(genColorDimBlack, genAlphaSidebarSection), true)
 		}
 	}
 }

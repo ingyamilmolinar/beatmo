@@ -70,6 +70,9 @@ func (dv *DrumView) refreshWidgetLayout() {
 		}
 	}
 
+	// Note: rack/timeline rect-extension when EQ collapses runs below,
+	// AFTER dv.eqH is computed (so we can detect "EQ collapsed" robustly).
+
 	// Row/column derived sizes
 	if h := dv.widgets.RowHeight(0); h > 0 {
 		dv.headerH = h
@@ -77,15 +80,18 @@ func (dv *DrumView) refreshWidgetLayout() {
 		dv.headerH = timelineHeight
 	}
 	p := Profile()
+	spec := ActiveTopBarSpec()
 	minH := timelineHeight
-	if p.HeaderMinH > minH {
-		minH = p.HeaderMinH
+	if spec.Height > minH {
+		minH = spec.Height
 	}
 	if dv.headerH < minH {
 		dv.headerH = minH
 	}
-	// Cap header height: desktop uses taller two-row transport, mobile stays compact.
-	maxH := p.HeaderMaxH
+	// Cap header height: locked-in via TopBarSpec.Height (sourced from
+	// DESIGN.md profileOverrides.headerMaxH; equal to MinH so the bar is
+	// fixed-height on both desktop and mobile).
+	maxH := spec.Height
 	if dv.headerH > maxH {
 		dv.headerH = maxH
 		// Adjust widget rects so the rack/timeline start at the capped headerH,
@@ -134,6 +140,29 @@ func (dv *DrumView) refreshWidgetLayout() {
 		dv.eqH -= needed
 		if dv.eqH < 0 {
 			dv.eqH = 0
+		}
+	}
+
+	// Invariant: when dv.eqH is forced to 0 (test-mode eqPanelHeight=0,
+	// mobile EQ collapsed, safety guard, or any other collapse path),
+	// the row rack should span the full available rows-area so per-row
+	// widgets don't end up positioned at Y bands past the rack's
+	// painted area (the screenshot bug's "phantom row + misplaced
+	// add-row button"). We extend only as far as the wave widget's top
+	// edge — when wave is non-empty it owns those pixels, even if
+	// dv.eqH is forced to 0 in tests; rack and wave must NOT overlap.
+	if dv.eqH == 0 {
+		desiredBottom := dv.Bounds.Max.Y
+		if waveR := dv.widgetRects[WidgetWave]; !waveR.Empty() {
+			desiredBottom = waveR.Min.Y
+		}
+		if r := dv.widgetRects[WidgetRack]; !r.Empty() && r.Max.Y < desiredBottom {
+			r.Max.Y = desiredBottom
+			dv.widgetRects[WidgetRack] = r
+		}
+		if r := dv.widgetRects[WidgetTimeline]; !r.Empty() && r.Max.Y < desiredBottom {
+			r.Max.Y = desiredBottom
+			dv.widgetRects[WidgetTimeline] = r
 		}
 	}
 	leftW := dv.widgets.ColWidth(0)
@@ -319,6 +348,36 @@ func (dv *DrumView) visibleRows() int {
 	// Guarantee at least 1 visible row when the area fits a full row,
 	// even if there isn't extra space for the "+" footer.
 	if n == 0 && dv.rowsAreaHeight() >= rh {
+		n = 1
+	}
+	return n
+}
+
+// rackVisibleRows returns the number of rows that fit inside the rack
+// widget rect (the actual region the row rack zone draws into), reserving
+// space for the "+" add-row button on desktop. This is the authoritative
+// row-count source for the row rack zone — it never over-estimates beyond
+// the panel's true height. Falls back to dv.visibleRows() when the rack
+// rect is empty (early init / tests without a realised widget board).
+func (dv *DrumView) rackVisibleRows() int {
+	rh := dv.rowHeight()
+	if rh <= 0 {
+		return 0
+	}
+	r := dv.widgetRects[WidgetRack]
+	if r.Empty() {
+		return dv.visibleRows()
+	}
+	rackH := r.Dy()
+	h := rackH
+	if Profile().ReserveAddRowSpace {
+		h -= rh
+	}
+	if h < 0 {
+		h = 0
+	}
+	n := h / rh
+	if n == 0 && rackH >= rh {
 		n = 1
 	}
 	return n

@@ -3,7 +3,6 @@ package ui
 import (
 	"math"
 	"os"
-	"runtime"
 	"strconv"
 	"time"
 )
@@ -11,10 +10,11 @@ import (
 // sequencerLoop listens to engine tick events and schedules audio playback
 // strictly on the engine timeline, decoupled from UI rendering.
 func (g *Game) sequencerLoop() {
-	tick := time.Millisecond
-	if runtime.GOOS == "js" {
-		// Reduce main-thread pressure on WASM; audio lookahead still keeps scheduling safe.
-		tick = 4 * time.Millisecond
+	// Browser uses a longer tick (~4ms) to reduce main-thread pressure;
+	// audio lookahead keeps scheduling safe. Desktop uses a tight 1ms tick.
+	tick := time.Duration(RuntimeProf().SequencerTickMS) * time.Millisecond
+	if tick <= 0 {
+		tick = time.Millisecond
 	}
 	if v := os.Getenv("SEQ_TICK_MS"); v != "" {
 		if ms, err := strconv.Atoi(v); err == nil && ms > 0 {

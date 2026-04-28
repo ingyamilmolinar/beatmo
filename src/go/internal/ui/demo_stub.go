@@ -90,3 +90,11 @@ func (g *Game) RunBenchmark(bpm int, dur time.Duration) {
 	g.benchBPM = bpm
 	g.benchDuration = dur
 }
+
+// RunRecordBenchmark is the test-build stub matching demo.go's signature.
+func (g *Game) RunRecordBenchmark(bpm int, dur time.Duration, outDir string) {
+	g.benchBPM = bpm
+	g.benchDuration = dur
+	g.benchRecord = true
+	g.benchOutDir = outDir
+}

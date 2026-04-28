@@ -246,3 +246,14 @@ func (g *Game) RunBenchmark(bpm int, dur time.Duration) {
 	g.benchDuration = dur
 	g.demoScheduled = true
 }
+
+// RunRecordBenchmark is RunBenchmark plus simultaneous audio recording.
+// Captured WAV files and a perf snapshot land in outDir; outDir must
+// already exist.
+func (g *Game) RunRecordBenchmark(bpm int, dur time.Duration, outDir string) {
+	g.benchBPM = bpm
+	g.benchDuration = dur
+	g.benchRecord = true
+	g.benchOutDir = outDir
+	g.demoScheduled = true
+}

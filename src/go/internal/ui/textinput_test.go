@@ -127,7 +127,7 @@ func TestTextInputHighlightAndCursor(t *testing.T) {
 	var cursorCol color.RGBA
 	oldBtn := drawButton
 	oldCur := drawCursor
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed, topEdgeHighlight bool) {
 		got = color.RGBAModel.Convert(f).(color.RGBA)
 	}
 	drawCursor = func(dst *ebiten.Image, r image.Rectangle, c color.Color) {
@@ -363,7 +363,7 @@ func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
 	ti.anim = 1
 	var got image.Rectangle
 	old := drawButton
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed bool) {
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, f, b color.Color, pressed, topEdgeHighlight bool) {
 		got = r
 	}
 	defer func() { drawButton = old }()

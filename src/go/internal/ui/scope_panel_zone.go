@@ -34,7 +34,6 @@ type ScopeCallbacks struct {
 	OnTapBChange   func(stage scope.Stage)
 	OnClearTapA    func()
 	OnClearTapB    func()
-	OnInstrChange  func(id string)
 	OnFreezeToggle func() bool
 	OnClose        func()
 }
@@ -49,7 +48,6 @@ type ScopePanelZone struct {
 
 	// UI elements
 	stageButtons [6]*Button // one per pipeline stage
-	instBtn      *Button    // instrument selector
 	splitBtn     *Button    // split/overlay toggle
 	autoGainBtn  *Button    // auto-gain toggle
 	freezeBtn    *Button    // freeze toggle
@@ -102,7 +100,6 @@ func (z *ScopePanelZone) initButtons() {
 		})
 	}
 
-	z.instBtn = NewButton("Kick", InstButtonStyle, nil)
 	z.autoGainBtn = NewButton("AG", InstButtonStyle, func() {
 		z.autoGain = !z.autoGain
 		if z.autoGain {
@@ -120,21 +117,30 @@ func (z *ScopePanelZone) initButtons() {
 			z.splitBtn.Text = "DIF"
 		}
 	})
+	// Freeze indicator uses single-character text per DESIGN.md §5d
+	// (permitted text-glyph exception): "||" frozen, ">" resume; tinted
+	// colTextSecondary inactive, colAccent when frozen.
 	z.freezeBtn = NewButton("||", InstButtonStyle, func() {
 		if z.callbacks.OnFreezeToggle != nil {
 			z.frozen = z.callbacks.OnFreezeToggle()
 			if z.frozen {
 				z.freezeBtn.Text = ">"
+				z.freezeBtn.TextColor = colAccent
 			} else {
 				z.freezeBtn.Text = "||"
+				z.freezeBtn.TextColor = colTextSecondary
 			}
 		}
 	})
-	z.closeBtn = NewButton("X", InstButtonStyle, func() {
+	z.freezeBtn.TextColor = colTextSecondary
+	// Close uses IconClose per DESIGN.md §5c (no raw "X" text in chrome).
+	z.closeBtn = NewButton("", InstButtonStyle, func() {
 		if z.callbacks.OnClose != nil {
 			z.callbacks.OnClose()
 		}
 	})
+	z.closeBtn.Icon = string(IconClose)
+	z.closeBtn.IconColor = colTextSecondary
 }
 
 // SetTapA programmatically sets the TapA stage (use -1 to clear). Fires
@@ -290,9 +296,6 @@ func (z *ScopePanelZone) SetPortal(p *OverlayPortal) { z.portal = p }
 func (z *ScopePanelZone) drawHeader(dst *ebiten.Image) {
 	captionScale := FontSizeCaption / FontSizeBody
 
-	// Draw instrument button pill.
-	z.drawPillButton(dst, z.instBtn, false, false)
-
 	// Draw stage buttons with arrows between them and A/B badges.
 	stages := scope.AllStages()
 	for i, btn := range z.stageButtons {
@@ -373,7 +376,7 @@ func (z *ScopePanelZone) drawPillButton(dst *ebiten.Image, btn *Button, active, 
 		textCol = colTextAccent
 	}
 	if disabled {
-		textCol = color.RGBA{60, 60, 65, 120} // dimmed
+		textCol = WithAlpha(genColorScopeLabelDim, genAlphaScopeLabelDim) // dimmed
 	}
 	DrawTextColorAtScale(dst, btn.Text, tx, ty, textCol, captionScale)
 }
@@ -403,14 +406,6 @@ func (z *ScopePanelZone) layoutButtons() {
 	x := r.Min.X + 6
 
 	captionScale := FontSizeCaption / FontSizeBody
-
-	// Instrument button (left-aligned).
-	instW := int(float64(TextWidth(z.instBtn.Text))*captionScale) + 12
-	if instW < 36 {
-		instW = 36
-	}
-	z.instBtn.SetRect(image.Rect(x, y, x+instW, y+btnH))
-	x += instW + 3
 
 	// Stage buttons in a row with 3px gaps; arrows between take ~8px.
 	arrowGap := int(float64(TextWidth(">"))*captionScale) + 2
@@ -490,16 +485,6 @@ func (z *ScopePanelZone) rebuildHitAreas() {
 				Tag:     fmt.Sprintf("scope-stage-%d", i),
 			})
 		}
-	}
-
-	// Instrument button.
-	if ir := z.instBtn.Rect(); !ir.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    ir,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.instBtn},
-			Tag:     "scope-inst-btn",
-		})
 	}
 
 	// Auto-gain button.

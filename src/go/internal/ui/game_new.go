@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"image"
 	"os"
-	"runtime"
 	"strings"
-	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/engine"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/async"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
 	"github.com/ingyamilmolinar/beatmo/internal/graphruntime"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
@@ -22,14 +22,14 @@ import (
 func New(logger *game_log.Logger) *Game {
 	// Reset global button press guard for new instances to avoid test leakage.
 	suppressClicksUntilRelease = false
-	if logger != nil && runtime.GOARCH == "wasm" && logger.Level() < game_log.LevelInfo {
+	if logger != nil && RuntimeProf().ForceInfoLog && logger.Level() < game_log.LevelInfo {
 		logger.SetLevel(game_log.LevelInfo)
 	}
 	eng := engine.New(logger)
 	g := &Game{
-		cam:             NewCamera(),
-		inputDispatcher: NewInputDispatcher(),
-		dispatcherDirty: true,
+		cam:                NewCamera(),
+		inputDispatcher:    NewInputDispatcher(),
+		dispatcherDirty:    true,
 		logger:             logger,
 		graph:              eng.Graph,
 		graphRuntime:       graphruntime.NewRuntime(eng.Graph),
@@ -129,6 +129,34 @@ func New(logger *game_log.Logger) *Game {
 	}
 	g.drum.onImportDialogStart = g.startImportDialog
 	g.drum.onImportDialogEnd = g.endImportDialog
+	// Parity coordination: DrumView mutations route through this hook so the
+	// parity generation, grace window, and buffer hygiene are kept in sync
+	// with state changes. The hook is reachable under seqMu (DrumView.Update
+	// runs while Game holds seqMu), so it must not re-acquire the lock.
+	g.drum.onStructuralMutation = func(reason string) {
+		g.bumpParityGen(reason, structuralMutationOptions{})
+	}
+
+	// Subscribe to recording lifecycle hook events. Subscribers run on
+	// the hooks fan-out pool (off the UI thread); we queue notifications
+	// to be drained by Update so DrumView state is only touched on the
+	// game-thread goroutine.
+	hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
+		p, ok := e.Payload.(audio.RecordStopPayload)
+		if !ok {
+			return
+		}
+		g.pendingNotifyMu.Lock()
+		defer g.pendingNotifyMu.Unlock()
+		if p.Err != nil {
+			g.pendingNotifyError = append(g.pendingNotifyError,
+				"Recording save failed: "+p.Err.Error())
+		} else {
+			g.pendingNotifyInfo = append(g.pendingNotifyInfo,
+				fmt.Sprintf("Recording saved (drops=%d): %s", p.Drops, p.Dir))
+		}
+	})
+
 	// provide current MaxDiv for export JSON
 	currentMaxDiv = func() int { return g.grid.MaxDiv() }
 	// allow DrumView to request subdivision changes
@@ -138,6 +166,19 @@ func New(logger *game_log.Logger) *Game {
 	}
 	g.state.SetAppliedBPM(g.drum.BPM())
 	g.prevBPM = g.state.AppliedBPM()
+	// Bounded scheduler for future-timestamped playFn calls. One worker is
+	// enough — the scheduler hands off to audio.PlayBatch via the override
+	// fn passed to SetPlayFunc, so the worker just dispatches; queue 64
+	// matches audioCh capacity (~64ms tolerance at 1kHz dispatch). Mirror
+	// hooks.fanout's pattern: prefer the global registry, fall back to a
+	// private pool if the budget is already claimed by other subsystems
+	// so the game still boots on resource-constrained CI.
+	timerOpts := async.Options{MaxConcurrent: 1, QueueSize: 64, Name: "audio.timers"}
+	timerPool, terr := async.DefaultRegistry().Get("audio.timers", timerOpts)
+	if terr != nil {
+		timerPool = async.NewPool(nil, timerOpts)
+	}
+	g.audioScheduler = async.NewScheduler(timerPool)
 	go g.audioLoop()
 	go g.bpmLoop()
 	// Subscribe to engine ticks for scheduler-driven audio sequencing.
@@ -208,29 +249,21 @@ func New(logger *game_log.Logger) *Game {
 	g.perf.reset()
 
 	// Default to simplified draw on web builds for better browser perf.
-	g.simpleDraw = simpleDrawDefault
-	g.simpleDrawAutoDisableFrames = simpleDrawAutoDisableFramesDefault
+	g.simpleDraw = RuntimeProf().SimpleDrawDefault
+	g.simpleDrawAutoDisableFrames = RuntimeProf().SimpleDrawAutoDisableFramesDefault
 
-	// Web-specific defaults: throttle Draw to ~30 FPS and schedule audio
-	// slightly in the future to avoid main-thread jank affecting starts.
-	if runtime.GOOS == "js" {
-		g.drawMinInterval = 40 * time.Millisecond
-		g.audioLookaheadSec = 0.04
-	} else {
-		// Desktop baseline lookahead: 20ms absorbs seqMu contention jitter.
-		// Less than WASM's 40ms because the dedicated 1ms sequencer goroutine
-		// needs less buffer. Combined with runtimeAudioLookahead() (+30ms
-		// dynamic, 60ms cap), this eliminates the zero-tolerance scheduling
-		// that caused overdue audio events.
-		g.audioLookaheadSec = 0.02
-	}
+	// Browser uses a longer audio lookahead (~40 ms) to absorb Go↔JS jitter;
+	// desktop's dedicated 1ms sequencer goroutine needs less buffer (20 ms).
+	// Combined with runtimeAudioLookahead() (+30ms dynamic, 60ms cap), this
+	// eliminates the zero-tolerance scheduling that caused overdue audio.
+	g.audioLookaheadSec = RuntimeProf().AudioLookaheadSec
 
 	// Defer demo construction to the first layout/update to avoid blocking
 	// constructor time. Layout will build it once when not under tests.
 
 	// default cache pads (pixels)
-	g.edgeCachePad = defaultEdgeCachePad
-	g.gridCachePad = defaultGridCachePad
+	g.edgeCachePad = RuntimeProf().EdgeCachePad
+	g.gridCachePad = RuntimeProf().GridCachePad
 	g.graph.SetNodeChangedHook(func(id model.NodeID) {
 		g.cacheNode(id)
 		g.paramsDirty = true

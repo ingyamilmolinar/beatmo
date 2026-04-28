@@ -169,6 +169,13 @@ const (
 	KeyEscape
 	KeyLeft
 	KeyRight
+	KeyUp
+	KeyDown
+	KeyHome
+	KeyEnd
+	KeyPageUp
+	KeyPageDown
+	KeySlash
 )
 
 // Window and run stubs
@@ -205,3 +212,63 @@ var mockCursorShape CursorShapeType
 
 func SetCursorShape(shape CursorShapeType) { mockCursorShape = shape }
 func CursorShape() CursorShapeType         { return mockCursorShape }
+
+// ─── Triangle / vector primitives (test stubs) ─────────────────────────
+//
+// The icon renderer (icon_renderer.go) uses Vertex / DrawTriangles to
+// rasterize antialiased paths. Under the test build none of this actually
+// renders — the stubs exist so the test build compiles. Field shapes
+// match real Ebiten v2.8.8 so call sites compile against either.
+
+// Vertex matches ebiten.Vertex's public fields.
+type Vertex struct {
+	DstX, DstY float32
+	SrcX, SrcY float32
+
+	ColorR, ColorG, ColorB, ColorA float32
+
+	Custom0, Custom1, Custom2, Custom3 float32
+}
+
+// FillRule mirrors the real enum.
+type FillRule int
+
+const (
+	FillRuleFillAll FillRule = iota
+	FillRuleNonZero
+	FillRuleEvenOdd
+)
+
+// ColorScaleMode mirrors the real enum.
+type ColorScaleMode int
+
+const (
+	ColorScaleModeStraightAlpha ColorScaleMode = iota
+	ColorScaleModePremultipliedAlpha
+)
+
+// ColorM is a placeholder for the deprecated color matrix.
+type ColorM struct{}
+
+// DrawTrianglesOptions matches the real shape (only the fields the icon
+// renderer actually sets are exercised; others kept for source-compat).
+type DrawTrianglesOptions struct {
+	ColorM         ColorM
+	ColorScaleMode ColorScaleMode
+	Address        Address
+	FillRule       FillRule
+	AntiAlias      bool
+}
+
+// Address mirrors the real enum.
+type Address int
+
+const (
+	AddressUnsafe Address = iota
+	AddressClampToZero
+	AddressRepeat
+)
+
+// DrawTriangles is a no-op stub — the test build cannot rasterize paths.
+func (i *Image) DrawTriangles(vertices []Vertex, indices []uint16, src *Image, options *DrawTrianglesOptions) {
+}

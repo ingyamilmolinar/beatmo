@@ -108,7 +108,7 @@ func TestDropdownBlocksEditorClick(t *testing.T) {
 	if !g.drum.IsInstMenuOpen() {
 		t.Fatalf("menu not open")
 	}
-	r := g.drum.instMenuBtns[0].Rect()
+	r := g.drum.instMenuBtns()[0].Rect()
 	restore := SetInputForTest(
 		func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -798,8 +798,8 @@ func TestPlayButtonTogglesPause(t *testing.T) {
 	if !g.Playing() {
 		t.Fatalf("expected playing")
 	}
-	if g.drum.playBtn().Text != "⏸" {
-		t.Fatalf("play button text = %q want ⏸", g.drum.playBtn().Text)
+	if g.drum.playBtn().Icon != string(IconPause) {
+		t.Fatalf("play button icon = %q want %q", g.drum.playBtn().Icon, string(IconPause))
 	}
 
 	g.elapsedBeats = 5
@@ -813,8 +813,8 @@ func TestPlayButtonTogglesPause(t *testing.T) {
 	if g.elapsedBeats != 5 {
 		t.Fatalf("elapsedBeats=%d want 5", g.elapsedBeats)
 	}
-	if g.drum.playBtn().Text != "▶" {
-		t.Fatalf("play button text = %q want ▶", g.drum.playBtn().Text)
+	if g.drum.playBtn().Icon != string(IconPlay) {
+		t.Fatalf("play button icon = %q want %q", g.drum.playBtn().Icon, string(IconPlay))
 	}
 
 	pressPlay(t, g.drum)

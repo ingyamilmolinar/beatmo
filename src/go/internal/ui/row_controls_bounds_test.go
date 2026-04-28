@@ -165,7 +165,12 @@ func TestRowControlsBoundsDesktopUnchanged(t *testing.T) {
 		t.Fatal("desktop computeRowControlsBounds returned empty rect for 3-row layout")
 	}
 
-	vis := g.drum.visibleRows()
+	// Use rackVisibleRows() — the row count the rack zone actually
+	// lays out widgets for, since the bounds are computed from those
+	// widgets. dv.visibleRows() (bounds-based) can over-estimate when
+	// the widget board allocates row 2 (wave) some pixels but the rack
+	// rect stops at the wave widget's top edge.
+	vis := g.drum.rackVisibleRows()
 	if vis > len(g.drum.Rows) {
 		vis = len(g.drum.Rows)
 	}

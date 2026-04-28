@@ -1691,3 +1691,126 @@ func TestContextMenuDesktopButtonIteration(t *testing.T) {
 		t.Fatal("expected click inside menu rect to be consumed")
 	}
 }
+
+// TestContextMenuItemsDesktopStructure documents the expected item set
+// for non-mobile builds: no Instrument, no Effects entries (those are
+// reachable via row controls on desktop). Spike outcome of P2.4: the
+// existing contextMenuItems builder is already isolated enough to test
+// directly — no refactor needed.
+func TestContextMenuItemsDesktopStructure(t *testing.T) {
+	assertDefaultParityState(t)
+	dv := NewDrumView(image.Rect(0, 0, 1024, 600), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{
+		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+	}
+	dv.Length = 8
+
+	items := dv.ContextMenuItemsForTest(0)
+	labels := nonDividerLabels(items)
+	want := []string{"Rename", "Color", "Origin", "Delete"}
+	if !equalStringSlices(labels, want) {
+		t.Fatalf("desktop labels=%v want=%v", labels, want)
+	}
+	for _, it := range items {
+		if it.label == "Delete" && it.style == DisabledButtonStyle {
+			t.Error("Delete should be enabled when row count > 1")
+		}
+	}
+}
+
+// TestContextMenuItemsMobileStructure documents the mobile variant which
+// adds Instrument (group 0) and Effects (group 2).
+func TestContextMenuItemsMobileStructure(t *testing.T) {
+	assertDefaultParityState(t)
+	withSmallScreen(t, true)
+	dv := NewDrumView(image.Rect(0, 0, 390, 844), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{
+		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+	}
+	dv.Length = 8
+
+	items := dv.ContextMenuItemsForTest(0)
+	labels := nonDividerLabels(items)
+	want := []string{"Instrument", "Rename", "Color", "Effects", "Origin", "Delete"}
+	if !equalStringSlices(labels, want) {
+		t.Fatalf("mobile labels=%v want=%v", labels, want)
+	}
+}
+
+// TestContextMenuItemsDeleteDisabledWhenSingleRow covers the destructive-
+// group enable-state branch.
+func TestContextMenuItemsDeleteDisabledWhenSingleRow(t *testing.T) {
+	assertDefaultParityState(t)
+	dv := NewDrumView(image.Rect(0, 0, 1024, 600), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{
+		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
+	}
+	dv.Length = 8
+
+	items := dv.ContextMenuItemsForTest(0)
+	var del *contextMenuItem
+	for i := range items {
+		if items[i].label == "Delete" {
+			del = &items[i]
+			break
+		}
+	}
+	if del == nil {
+		t.Fatal("Delete item not found")
+	}
+	if del.style != DisabledButtonStyle {
+		t.Errorf("Delete style = %v, want DisabledButtonStyle when only 1 row", del.style)
+	}
+	if del.textColor != colTextDisabled {
+		t.Errorf("Delete textColor = %v, want colTextDisabled", del.textColor)
+	}
+}
+
+// TestContextMenuItemsGroupOrdering verifies items appear in monotonically
+// non-decreasing group order, with dividers between groups.
+func TestContextMenuItemsGroupOrdering(t *testing.T) {
+	assertDefaultParityState(t)
+	dv := NewDrumView(image.Rect(0, 0, 1024, 600), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{
+		{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0},
+		{Name: "Snare", Instrument: "snare", Steps: make([]bool, 8), Volume: 1.0},
+	}
+	dv.Length = 8
+
+	items := dv.ContextMenuItemsForTest(0)
+	prevGroup := -1
+	for i, it := range items {
+		if it.divider {
+			continue
+		}
+		if it.group < prevGroup {
+			t.Errorf("item %d (%q) group=%d < prev=%d", i, it.label, it.group, prevGroup)
+		}
+		prevGroup = it.group
+	}
+}
+
+func nonDividerLabels(items []contextMenuItem) []string {
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		if it.divider {
+			continue
+		}
+		out = append(out, it.label)
+	}
+	return out
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

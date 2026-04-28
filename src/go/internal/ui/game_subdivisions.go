@@ -127,6 +127,7 @@ func (g *Game) SetSubdivisions(n int) error {
 	}
 	g.clearParityState()
 	g.updateBeatInfos()
+	emitSubdivChange(n)
 	return nil
 }
 

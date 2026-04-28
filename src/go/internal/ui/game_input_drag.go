@@ -71,7 +71,7 @@ func (g *Game) spawnPulseFromRow(row, start int) {
 	}
 	path := g.beatInfosByRow[row]
 	if len(path) == 0 {
-		g.logger.Infof("[GAME] Spawn pulse: No beat information available for row %d", row)
+		g.logger.Debugf("[game] spawn pulse: no beat information available for row %d", row)
 		return
 	}
 	curIdxWrapped := g.wrapBeatIndexRow(row, start)

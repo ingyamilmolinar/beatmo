@@ -182,11 +182,11 @@ hlDone:
 			}
 			continue
 		}
-		v *= 0.8
-		if v < 0.02 {
+		nv, alive := DecayStep(v, genAnimHighlightDecay)
+		if !alive {
 			delete(g.nodeAnim, id)
 		} else {
-			g.nodeAnim[id] = v
+			g.nodeAnim[id] = nv
 		}
 	}
 	g.nodeAnimMu.Unlock()

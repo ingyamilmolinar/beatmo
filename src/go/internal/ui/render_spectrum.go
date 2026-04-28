@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image"
-	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
@@ -93,7 +92,7 @@ func drawAnalyzerSpectrum(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 			if endX > barRect.Max.X {
 				endX = barRect.Max.X
 			}
-			drawRect(dst, image.Rect(x, y, endX, y+1), color.NRGBA{255, 255, 255, 30}, true)
+			drawRect(dst, image.Rect(x, y, endX, y+1), WithAlpha(genColorBorder, genAlphaWhiteDecoration), true)
 		}
 		// Label on left margin.
 		label := fmt.Sprintf("%.0f", db)
@@ -162,7 +161,7 @@ func drawAnalyzerSpectrum(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 			peakHeight := int(peaks.Peaks[b] * float64(barRect.Dy()))
 			if peakHeight > 0 {
 				py := barRect.Max.Y - peakHeight
-				drawRect(dst, image.Rect(x0, py, x1, py+1), color.NRGBA{200, 240, 255, 200}, true)
+				drawRect(dst, image.Rect(x0, py, x1, py+1), WithAlpha(genColorVizSpectrumPeakMarker, 200), true)
 			}
 		}
 	}

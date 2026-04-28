@@ -592,6 +592,7 @@ func TestTouchOverrideSingleTouch(t *testing.T) {
 	restore := SetTouchForTest(mock.TouchIDs, mock.TouchPosition)
 	defer restore()
 	defer resetTouchOverride()
+	t.Cleanup(globalTouchState.Reset)
 
 	// Touch down at (300, 250).
 	mock.addTouch(1, 300, 250)
@@ -620,6 +621,7 @@ func TestTouchOverrideMultiTouch(t *testing.T) {
 	restore := SetTouchForTest(mock.TouchIDs, mock.TouchPosition)
 	defer restore()
 	defer resetTouchOverride()
+	t.Cleanup(globalTouchState.Reset)
 
 	mock.addTouch(1, 100, 100)
 	mock.addTouch(2, 200, 200)
@@ -676,6 +678,7 @@ func TestTouchOverrideDisabledDuringTest(t *testing.T) {
 	restore := SetTouchForTest(mock.TouchIDs, mock.TouchPosition)
 	defer restore()
 	defer resetTouchOverride()
+	t.Cleanup(globalTouchState.Reset)
 
 	mock.addTouch(1, 300, 250)
 	ts.Update()

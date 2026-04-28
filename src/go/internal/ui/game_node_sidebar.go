@@ -1040,14 +1040,14 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	// Panel background with stronger shadow and elevated surface
 	drawPanelShadow(dst, panel, 6)
 	drawRoundedRect(dst, panel, colPanelBG, RadiusLG, true)
-	drawRoundedRect(dst, panel, color.NRGBA{90, 90, 90, 100}, RadiusLG, false)
+	drawRoundedRect(dst, panel, WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection), RadiusLG, false)
 
 	// Fixed header
 	sb.drawHeader(dst)
 
 	// Separator below header
 	sepY := sidebarPad + sidebarHeaderH
-	drawRect(dst, image.Rect(sidebarPad, sepY, panel.Max.X-sidebarPad, sepY+1), color.NRGBA{90, 90, 90, 100}, true)
+	drawRect(dst, image.Rect(sidebarPad, sepY, panel.Max.X-sidebarPad, sepY+1), WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection), true)
 
 	// Get node data
 	mn, haveNode := g.graph.GetNodeByID(sb.node.ID)
@@ -1067,7 +1067,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	_, _ = contentTop, gridH // used by inViewport via sb receiver
 
 	// Draw sections
-	sepColor := color.NRGBA{90, 90, 90, 100}
+	sepColor := WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection)
 	textOffY := (sidebarBtnH - int(float64(TextHeight())*sidebarTextScale)) / 2
 	if textOffY < 0 {
 		textOffY = 0
@@ -1254,8 +1254,8 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	if btn, ok := sb.btns["close"]; ok && btn != nil {
 		r := btn.Rect()
 		if !r.Empty() {
-			drawRect(dst, r, color.NRGBA{80, 80, 80, 200}, true)
-			drawRect(dst, r, color.NRGBA{120, 120, 120, 180}, false)
+			drawRect(dst, r, WithAlpha(genColorSidebarChipFill, genAlphaSidebarChip), true)
+			drawRect(dst, r, WithAlpha(genColorSidebarChipBorder, genAlphaStrong), false)
 			btn.Draw(dst)
 		}
 	}
@@ -1289,7 +1289,7 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	hy := headerRect.Min.Y + (sidebarHeaderH-int(float64(TextHeight())*sidebarTextScale))/2
 
 	// Instrument color swatch (12×12 rounded square) + name only (no coordinates).
-	swatchCol := color.Color(color.RGBA{180, 180, 180, 255}) // default grey
+	swatchCol := color.Color(genColorSidebarSwatchFallback)
 	label := "Node"
 
 	if row, ok := g.nodeRows[sb.node.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
@@ -1361,40 +1361,30 @@ func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID, label, secti
 }
 
 // drawFilledTriangleRight draws a right-pointing filled triangle (play icon shape).
+// Geometry lives in triangleRightRowSpan (sidebar_icons.go); this method is
+// the thin pixel-emit wrapper around it.
 func (sb *NodeSidebar) drawFilledTriangleRight(dst *ebiten.Image, x, y, w, h int, col color.Color) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	// x0 is left edge, x1 is rightmost tip, y0..y1 is top..bottom
 	for row := 0; row < h; row++ {
-		mid := float64(h-1) / 2
-		dist := math.Abs(float64(row) - mid)
-		t := 1 - dist/math.Max(mid, 1)
-		if t < 0 {
-			t = 0
-		}
-		xr := x + int(math.Round(t*float64(w)))
-		if xr > x {
-			drawRect(dst, image.Rect(x, y+row, xr, y+row+1), col, true)
+		xs, xe := triangleRightRowSpan(x, y, w, h, row)
+		if xe > xs {
+			drawRect(dst, image.Rect(xs, y+row, xe, y+row+1), col, true)
 		}
 	}
 }
 
-// drawFilledTriangleDown draws a down-pointing filled triangle.
+// drawFilledTriangleDown draws a down-pointing filled triangle. Geometry
+// lives in triangleDownRowSpan (sidebar_icons.go).
 func (sb *NodeSidebar) drawFilledTriangleDown(dst *ebiten.Image, x, y, w, h int, col color.Color) {
 	if w <= 0 || h <= 0 {
 		return
 	}
-	// Top row is full width, narrows to a point at bottom center.
 	for row := 0; row < h; row++ {
-		t := 1 - float64(row)/math.Max(float64(h-1), 1)
-		halfW := int(math.Round(t * float64(w) / 2))
-		cx := x + w/2
-		if halfW > 0 {
-			drawRect(dst, image.Rect(cx-halfW, y+row, cx+halfW, y+row+1), col, true)
-		} else {
-			// single pixel at tip
-			drawRect(dst, image.Rect(cx, y+row, cx+1, y+row+1), col, true)
+		xs, xe := triangleDownRowSpan(x, y, w, h, row)
+		if xe > xs {
+			drawRect(dst, image.Rect(xs, y+row, xe, y+row+1), col, true)
 		}
 	}
 }
@@ -1472,11 +1462,13 @@ func sidebarDrawTextColorAtScale(dst *ebiten.Image, s string, x, y int, col colo
 // drawExpandTab draws the collapsed sidebar expand tab.
 func (sb *NodeSidebar) drawExpandTab(dst *ebiten.Image) {
 	r := sb.expandTabRect()
-	drawRoundedRect(dst, r, color.NRGBA{40, 40, 40, 200}, 4, true)
-	// Draw >> icon
+	drawRoundedRect(dst, r, WithAlpha(genColorSidebarBadgeBg, genAlphaSidebarChip), 4, true)
+	// Chevron-right at the unified icon-system size.
+	dim := IconSizeMD
 	cx := r.Min.X + r.Dx()/2
 	cy := r.Min.Y + r.Dy()/2
-	DrawTextAt(dst, ">>", cx-TextWidth(">"), cy-TextHeight()/2)
+	iconR := image.Rect(cx-dim/2, cy-dim/2, cx+dim/2, cy+dim/2)
+	DrawIcon(dst, IconChevronRight, iconR, colTextSecondary)
 }
 
 // drawBtn draws a single button if it exists and is within the viewport.

@@ -182,6 +182,12 @@ func TestDrumView_LiveReaddNonPrimaryRowDuringPlaybackUpdatesFutureWindow(t *tes
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
+	// Bypass the bounded audioCh so seqScheduleTime is not throttled by
+	// audioChNearFull when the real-audio backend is slow to drain. Without
+	// this, applySequencerHighlight may not fire for every past beat under
+	// `make test-real`, leaving the timeline with mutable Released commits
+	// instead of immutable Playback commits and breaking past-immutability.
+	g.SetPlayFunc(func(string, float64, ...float64) {})
 	g.Layout(1024, 720)
 
 	// Row 0 circuit.

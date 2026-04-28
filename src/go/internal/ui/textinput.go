@@ -42,6 +42,19 @@ func NewTextInput(r image.Rectangle, style TextInputStyle) *TextInput {
 // Focused reports whether the input currently has focus.
 func (t *TextInput) Focused() bool { return t.focused }
 
+// SetFocus toggles focus programmatically. Used by the instrument
+// menu to hand focus to the search input on '/' and to release it
+// on Esc. OnFocusGained / OnFocusLost still fire on transitions in
+// the next Update() call so soft-keyboard wiring stays consistent.
+func (t *TextInput) SetFocus(focus bool) {
+	t.focused = focus
+}
+
+// FocusForTest is a test-only helper that sets focus directly without
+// going through Update's mouse/key handling. Production code should
+// rely on SetFocus or natural mouse/key events.
+func (t *TextInput) FocusForTest(focus bool) { t.focused = focus }
+
 // SetText sets the current text and resets the cursor to the end.
 func (t *TextInput) SetText(s string) {
 	// Enforce MaxLen when set; do not filter content here beyond length.

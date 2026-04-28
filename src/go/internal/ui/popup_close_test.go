@@ -208,7 +208,7 @@ func TestContextMenuCloseButton(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
 
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	if !dv.IsContextMenuOpen() {
 		t.Fatalf("context menu not open")
 	}
@@ -241,7 +241,7 @@ func TestContextMenuEscClose(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
 
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	if !dv.IsContextMenuOpen() {
 		t.Fatalf("context menu not open")
 	}

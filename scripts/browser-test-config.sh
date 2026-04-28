@@ -7,20 +7,20 @@
 declare -A TEST_ENV
 
 # Performance tests need specific thresholds
-TEST_ENV["perf.browser.test.js"]="PERF_BROWSER_UPDATE_MAX_MS=0.6 PERF_BROWSER_UPDATE_JITTER_MS=0.15 PERF_BROWSER_FPS_MIN=55"
-TEST_ENV["perf_e2e.browser.test.js"]=""
-TEST_ENV["pan_stress.browser.test.js"]=""
+TEST_ENV["webaudio_perf.browser.test.js"]="PERF_BROWSER_UPDATE_MAX_MS=0.6 PERF_BROWSER_UPDATE_JITTER_MS=0.15 PERF_BROWSER_FPS_MIN=55"
+TEST_ENV["webaudio_perf_e2e.browser.test.js"]=""
+TEST_ENV["webaudio_pan_stress.browser.test.js"]=""
 
 # Tests that must run sequentially: hardcoded ms-level timing thresholds with no
 # BROWSER_JOBS scaling, or benchmark data output. CPU contention from parallel
 # Playwright instances starves the WASM sequencer goroutine and invalidates results.
 SEQUENTIAL_TESTS=(
-    "audio_ready_gate.browser.test.js"
-    "audio_timing_stress.browser.test.js"
-    "bench_startup_demo.browser.test.js"
-    "bpm.browser.test.js"
-    "perf.browser.test.js"
-    "stress_complex.browser.test.js"
+    "webaudio_ready_gate.browser.test.js"
+    "webaudio_timing_stress.browser.test.js"
+    "webaudio_bench_startup.browser.test.js"
+    "webaudio_bpm_stress.browser.test.js"
+    "webaudio_perf.browser.test.js"
+    "webaudio_stress_complex.browser.test.js"
 )
 
 # Tests that are known to be flaky or run separately and should be skipped

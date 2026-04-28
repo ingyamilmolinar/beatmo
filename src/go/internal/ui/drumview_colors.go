@@ -14,7 +14,7 @@ import (
 func (dv *DrumView) pickColorFromWheel(x, y int) color.Color {
 	r := dv.colorWheelRect
 	if r.Empty() {
-		return color.RGBA{200, 200, 200, 255}
+		return genColorRowRackColorFallback
 	}
 	// Map point to [-1,1] range centered in rect
 	cx := float64(r.Min.X + r.Dx()/2)
@@ -23,7 +23,7 @@ func (dv *DrumView) pickColorFromWheel(x, y int) color.Color {
 	ry := float64(y) - cy
 	radius := float64(imin(r.Dx(), r.Dy())) / 2
 	if radius <= 0 {
-		return color.RGBA{200, 200, 200, 255}
+		return genColorRowRackColorFallback
 	}
 	// Normalize radius to [0,1]
 	rnorm := math.Hypot(rx, ry) / radius
@@ -170,7 +170,7 @@ func (dv *DrumView) ensureUniqueColor(base color.Color, idx int) color.Color {
 		}
 	}
 	// Fallback to white (unlikely)
-	return color.RGBA{255, 255, 255, 255}
+	return genColorBorder
 }
 
 // SetRowColor sets the color for a row ensuring uniqueness across rows.

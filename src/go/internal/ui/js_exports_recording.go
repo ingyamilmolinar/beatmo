@@ -4,8 +4,10 @@ package ui
 
 import (
 	"syscall/js"
+	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 func (g *Game) initJSRecording() {
@@ -18,8 +20,15 @@ func (g *Game) initJSRecording() {
 		return js.ValueOf(audio.IsRecording())
 	}))
 
-	// startRecording(format?) -> {error: string}
-	// format is optional; defaults to "wav24"
+	// startRecording(format?) -> Promise<{error: string}>
+	// format is optional; defaults to "wav24".
+	//
+	// Returns a Promise rather than a synchronous result because the
+	// off-thread pipeline blocks on awaitJSPromise to confirm the
+	// AudioWorklet + Web Worker are wired before returning. awaitJSPromise
+	// MUST run on a goroutine (not inside the JS callback) — otherwise the
+	// JS event loop is held by this callback and can never dispatch the
+	// Promise resolution, deadlocking the page.
 	js.Global().Set("startRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		format := audio.FormatWAV24
 		if len(args) > 0 && args[0].Type() == js.TypeString {
@@ -42,70 +51,210 @@ func (g *Game) initJSRecording() {
 			BPM:         g.drum.BPM(),
 		}
 
-		if err := audio.StartRecording(opts); err != nil {
-			return js.ValueOf(map[string]interface{}{"error": err.Error()})
-		}
-		lastResult = nil // clear stale cached result
-		g.drum.SetRecording(true)
-		return js.ValueOf(map[string]interface{}{"error": ""})
-	}))
-
-	// stopRecording() -> {error: string, channelCount: int, format: string, duration: float, channels: [{id, name, filename, size}]}
-	js.Global().Set("stopRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		result, err := audio.StopRecording()
-		g.drum.SetRecording(false)
-		if err != nil {
-			return js.ValueOf(map[string]interface{}{"error": err.Error()})
-		}
-
-		lastResult = result
-
-		channels := js.Global().Get("Array").New(len(result.Channels))
-		for i, ch := range result.Channels {
-			channels.SetIndex(i, js.ValueOf(map[string]interface{}{
-				"id":       ch.ID,
-				"name":     ch.Name,
-				"filename": ch.Filename,
-				"size":     len(ch.Data),
-			}))
-		}
-
-		return js.ValueOf(map[string]interface{}{
-			"error":        "",
-			"channelCount": len(result.Channels),
-			"format":       string(result.Metadata.Format),
-			"duration":     result.Metadata.Duration,
-			"bpm":          result.Metadata.BPM,
-			"sampleRate":   result.Metadata.SampleRate,
-			"channels":     channels,
+		promiseCtor := js.Global().Get("Promise")
+		executor := js.FuncOf(func(this js.Value, pargs []js.Value) interface{} {
+			resolve := pargs[0]
+			go func() {
+				if err := audio.StartRecording(opts); err != nil {
+					resolve.Invoke(js.ValueOf(map[string]interface{}{
+						"error": err.Error(),
+					}))
+					return
+				}
+				lastResult = nil // clear stale cached result
+				g.drum.SetRecording(true)
+				resolve.Invoke(js.ValueOf(map[string]interface{}{
+					"error": "",
+				}))
+			}()
+			return nil
 		})
+		return promiseCtor.New(executor)
 	}))
 
-	// saveRecording() -> {error: string, path: string}
-	// Triggers platform-specific save (filesystem on desktop, zip download on WASM).
-	// Can be called while recording (stops first) or after stopRecording().
-	js.Global().Set("saveRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		var result *audio.RecordingResult
+	// stopRecording() -> Promise<{error: string, channelCount: int, format: string,
+	//   duration: float, channels: [{id, name, filename, size}], autoStopped: bool,
+	//   filename: string}>
+	//
+	// On WASM the recording finalize runs off-thread (audio worklet → web
+	// worker), so this returns a Promise that resolves once the worker has
+	// emitted the final Blob and the EventRecordStop hook has fired. The
+	// returned `filename` is the zip name ready in Downloads. JS callers
+	// (browser tests, custom UIs) should `await` this.
+	js.Global().Set("stopRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		promiseCtor := js.Global().Get("Promise")
+		executor := js.FuncOf(func(this js.Value, pargs []js.Value) interface{} {
+			resolve := pargs[0]
+			// Kick the in-process stop, then wait on EventRecordStop to
+			// surface the finalized payload (filename, drops, etc).
+			doneCh := make(chan audio.RecordStopPayload, 1)
+			unsub := hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
+				p, ok := e.Payload.(audio.RecordStopPayload)
+				if !ok {
+					return
+				}
+				select {
+				case doneCh <- p:
+				default:
+				}
+			})
 
-		if audio.IsRecording() {
-			r, err := audio.StopRecording()
+			placeholder, err := audio.StopRecording()
 			g.drum.SetRecording(false)
 			if err != nil {
-				return js.ValueOf(map[string]interface{}{"error": err.Error(), "path": ""})
+				unsub()
+				resolve.Invoke(js.ValueOf(map[string]interface{}{
+					"error": err.Error(),
+				}))
+				return nil
 			}
-			result = r
-		} else if lastResult != nil {
-			result = lastResult
-		} else {
-			return js.ValueOf(map[string]interface{}{"error": "no recording available to save", "path": ""})
-		}
+			lastResult = placeholder
 
-		savePath, saveErr := audio.SaveRecording(result)
-		lastResult = nil // clear after save
-		if saveErr != nil {
-			return js.ValueOf(map[string]interface{}{"error": saveErr.Error(), "path": ""})
-		}
-		return js.ValueOf(map[string]interface{}{"error": "", "path": savePath})
+			go func() {
+				defer unsub()
+				timeout := time.NewTimer(30 * time.Second)
+				defer timeout.Stop()
+				var payload audio.RecordStopPayload
+				select {
+				case payload = <-doneCh:
+				case <-timeout.C:
+					resolve.Invoke(js.ValueOf(map[string]interface{}{
+						"error": "stopRecording timeout",
+					}))
+					return
+				}
+				if payload.Err != nil {
+					resolve.Invoke(js.ValueOf(map[string]interface{}{
+						"error": payload.Err.Error(),
+					}))
+					return
+				}
+				// lastResult was populated by the goroutine inside audio.StopRecording.
+				result := lastResult
+				channels := js.Global().Get("Array").New(0)
+				if result != nil {
+					channels = js.Global().Get("Array").New(len(result.Channels))
+					for i, ch := range result.Channels {
+						// Prefer ch.Bytes (set by streaming/worker pipelines)
+						// over len(ch.Data) (legacy in-memory). Either path
+						// reports the encoded payload size correctly.
+						size := len(ch.Data)
+						if size == 0 && ch.Bytes > 0 {
+							size = ch.Bytes
+						}
+						channels.SetIndex(i, js.ValueOf(map[string]interface{}{
+							"id":       ch.ID,
+							"name":     ch.Name,
+							"filename": ch.Filename,
+							"size":     size,
+						}))
+					}
+				}
+				out := map[string]interface{}{
+					"error":        "",
+					"channelCount": payload.Channels,
+					"duration":     payload.Duration,
+					"drops":        int(payload.Drops),
+					"filename":     payload.Dir,
+					"channels":     channels,
+				}
+				if result != nil {
+					out["format"] = string(result.Metadata.Format)
+					out["bpm"] = result.Metadata.BPM
+					out["sampleRate"] = result.Metadata.SampleRate
+					out["autoStopped"] = audio.RecordingAutoStopped()
+				}
+				resolve.Invoke(js.ValueOf(out))
+			}()
+			return nil
+		})
+		return promiseCtor.New(executor)
+	}))
+
+	// saveRecording() -> Promise<{error: string, path: string}>
+	//
+	// Triggers the browser zip download. On WASM the underlying
+	// audio.StopRecording auto-saves on completion (mirroring desktop's
+	// async finalize), so this is normally redundant — it's kept to
+	// support the "stop and save in one call" UX. Returns a Promise that
+	// resolves to the saved filename (the zip in Downloads).
+	//
+	// Behavior:
+	//   - If recording is active: stops it (which auto-saves), waits for
+	//     EventRecordStop, returns the resulting path.
+	//   - If not recording but a previous session is still pending the
+	//     download anchor click: triggers it and returns.
+	//   - Otherwise: returns {error: "no recording available to save"}.
+	js.Global().Set("saveRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		promiseCtor := js.Global().Get("Promise")
+		executor := js.FuncOf(func(this js.Value, pargs []js.Value) interface{} {
+			resolve := pargs[0]
+
+			if audio.IsRecording() {
+				doneCh := make(chan audio.RecordStopPayload, 1)
+				unsub := hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
+					p, ok := e.Payload.(audio.RecordStopPayload)
+					if !ok {
+						return
+					}
+					select {
+					case doneCh <- p:
+					default:
+					}
+				})
+				_, err := audio.StopRecording()
+				g.drum.SetRecording(false)
+				if err != nil {
+					unsub()
+					resolve.Invoke(js.ValueOf(map[string]interface{}{
+						"error": err.Error(), "path": "",
+					}))
+					return nil
+				}
+				go func() {
+					defer unsub()
+					timeout := time.NewTimer(30 * time.Second)
+					defer timeout.Stop()
+					var payload audio.RecordStopPayload
+					select {
+					case payload = <-doneCh:
+					case <-timeout.C:
+						resolve.Invoke(js.ValueOf(map[string]interface{}{
+							"error": "saveRecording timeout", "path": "",
+						}))
+						return
+					}
+					if payload.Err != nil {
+						resolve.Invoke(js.ValueOf(map[string]interface{}{
+							"error": payload.Err.Error(), "path": "",
+						}))
+						return
+					}
+					lastResult = nil
+					resolve.Invoke(js.ValueOf(map[string]interface{}{
+						"error": "", "path": payload.Dir,
+					}))
+				}()
+				return nil
+			}
+
+			// Not recording: the last session may have already auto-saved
+			// during its own stop. If lastResult exists, the save was
+			// already triggered. If not, surface a friendly error.
+			if lastResult != nil {
+				path := lastResult.SessionDir
+				lastResult = nil
+				resolve.Invoke(js.ValueOf(map[string]interface{}{
+					"error": "", "path": path,
+				}))
+				return nil
+			}
+			resolve.Invoke(js.ValueOf(map[string]interface{}{
+				"error": "no recording available to save", "path": "",
+			}))
+			return nil
+		})
+		return promiseCtor.New(executor)
 	}))
 
 	// recordingElapsedMs() -> float (milliseconds since recording start)

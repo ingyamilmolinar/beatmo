@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"image"
-	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -81,7 +80,7 @@ func (g *Game) drawConnectMode(dst *ebiten.Image) {
 
 	// Cyan outline around source node.
 	sx1, sy1, sx2, sy2 := g.nodeScreenRect(g.connectFromNode)
-	hlCol := color.NRGBA{0, 200, 255, 255}
+	hlCol := WithAlpha(TokenAccent(), 255)
 	var id ebiten.GeoM
 	DrawLineCam(dst, sx1-1, sy1-1, sx2+1, sy1-1, &id, hlCol, 2)
 	DrawLineCam(dst, sx2+1, sy1-1, sx2+1, sy2+1, &id, hlCol, 2)

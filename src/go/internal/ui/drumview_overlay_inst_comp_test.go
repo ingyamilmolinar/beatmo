@@ -161,9 +161,11 @@ func TestInstrumentMenuComponent_OnSelectCallback(t *testing.T) {
 		t.Error("expected input to be consumed on button release")
 	}
 
-	// Button callback is fired on release, so menu should be closed
-	if comp.IsOpen() {
-		t.Error("expected menu to be closed after selection")
+	// Audition contract: menu must STAY open after selection so the user can
+	// rapidly try multiple instruments. Dismissal is explicit (X / Esc /
+	// click-outside / row switch). See inst_menu_audition_test.go.
+	if !comp.IsOpen() {
+		t.Error("expected menu to stay open after selection (audition contract)")
 	}
 
 	// Verify callback was invoked

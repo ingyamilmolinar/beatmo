@@ -34,6 +34,7 @@ func TestInstMenuScrollbarBackgroundExtended(t *testing.T) {
 	// Small bounds to force scrolling
 	dv := NewDrumView(image.Rect(0, 0, 320, timelineHeight+24*6), graph, logger)
 	dv.instMenuForceCategories = true
+	dv.instMenuShowFavoritesCategory = false
 	dv.calcLayout()
 
 	// Open the instrument menu
@@ -116,6 +117,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	}
 	withAudioCatalog(t, entries)
 	dv.instMenuForceCategories = true
+	dv.instMenuShowFavoritesCategory = false
 	dv.calcLayout()
 
 	// Open instrument menu and scroll it
@@ -192,6 +194,7 @@ func TestInstMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 320, 400), graph, logger)
 	dv.instMenuForceCategories = true
+	dv.instMenuShowFavoritesCategory = false
 	dv.calcLayout()
 
 	// Add rows to make row scrolling possible
@@ -329,6 +332,7 @@ func TestInstMenuScrollbarClickKeepsMenuOpen(t *testing.T) {
 	// Small bounds to force scrolling
 	dv := NewDrumView(image.Rect(0, 0, 320, timelineHeight+24*6), graph, logger)
 	dv.instMenuForceCategories = true
+	dv.instMenuShowFavoritesCategory = false
 	dv.calcLayout()
 
 	// Open the instrument menu

@@ -30,47 +30,7 @@ func iconSprite(name string, w, h int) *ebiten.Image {
 		return img
 	}
 	img := ebiten.NewImage(w, h)
-	r := image.Rect(0, 0, w, h)
-	switch name {
-	case "play":
-		drawPlayIcon(img, r, color.White)
-	case "pause":
-		drawPauseIcon(img, r, color.White)
-	case "stop":
-		drawStopIcon(img, r, color.White)
-	case "record":
-		drawRecordIcon(img, r, color.White)
-	case "pencil":
-		drawPencilIcon(img, r, color.White)
-	case "save":
-		drawSaveIcon(img, r, color.White)
-	case "close":
-		drawCloseIcon(img, r, color.White)
-	case "overflow":
-		drawOverflowIcon(img, r, color.White)
-	case "plus":
-		drawPlusIcon(img, r, color.White)
-	case "minus":
-		drawMinusIcon(img, r, color.White)
-	case "rows":
-		drawRowsIcon(img, r, color.White)
-	case "audio":
-		drawAudioIcon(img, r, color.White)
-	case "chevron-up":
-		drawChevronUpIcon(img, r, color.White)
-	case "chevron-down":
-		drawChevronDownIcon(img, r, color.White)
-	case "track":
-		drawTrackIcon(img, r, color.White)
-	case "track-off":
-		drawTrackOffIcon(img, r, color.White)
-	case "upload":
-		drawUploadIcon(img, r, color.White)
-	case "import":
-		drawImportIcon(img, r, color.White)
-	case "export":
-		drawExportIcon(img, r, color.White)
-	default:
+	if !drawIconByID(img, IconID(name), image.Rect(0, 0, w, h), color.White) {
 		return nil
 	}
 	iconSpriteCache[k] = img

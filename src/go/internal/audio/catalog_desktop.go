@@ -3,17 +3,12 @@
 package audio
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
-
-	"github.com/ingyamilmolinar/beatmo/internal/assets"
 )
 
 var (
@@ -21,12 +16,10 @@ var (
 	catalogMu   sync.RWMutex
 	catalog     []SoundMeta
 	catalogByID map[string]SoundMeta
-	embedTemp   map[string]string
 )
 
 // InitDefaultCatalog scans the top-level assets directory for WAV files grouped
-// by their first-level folder (excluding assets/wav) and registers embedded
-// samples as lazy entries. It is safe to call multiple times; the scan runs
+// by their first-level folder. It is safe to call multiple times; the scan runs
 // once.
 func InitDefaultCatalog() {
 	catalogOnce.Do(func() {
@@ -75,46 +68,14 @@ func InitCatalogFromDir(root string) error {
 	if abs, err := filepath.Abs(root); err == nil {
 		rootAbs = abs
 	}
-	skipWavRoot := strings.EqualFold(filepath.Base(rootAbs), "assets") || strings.EqualFold(filepath.Base(root), "assets")
 
-	// 1) Embedded samples (kept lazy; only stored as metadata).
-	if wavs, err := assets.ListEmbeddedWAVs(); err == nil {
-		for _, w := range wavs {
-			if _, exists := m[w.ID]; exists {
-				continue
-			}
-			meta := SoundMeta{
-				ID:       w.ID,
-				Name:     w.Name,
-				Category: "Samples (WAV)",
-				RelPath:  "embedded/" + w.ID,
-				Size:     int64(len(w.Data)),
-				Embedded: true,
-				Data:     w.Data,
-				Source:   "embedded",
-			}
-			if dur, sr, ch := wavHeaderMeta(bytes.NewReader(w.Data)); sr > 0 {
-				meta.DurationMS = dur
-				meta.SampleRate = sr
-				meta.Channels = ch
-			}
-			m[w.ID] = meta
-			out = append(out, meta)
-		}
-	}
-
-	// 2) On-disk WAVs grouped by top-level folder (exclude assets/wav to
-	// avoid huge copies; that folder already mirrors a curated subset).
+	// On-disk WAVs grouped by top-level folder. Embedded samples are no longer
+	// surfaced — instruments come from filesystem references only.
 	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, _ error) error {
 		if d == nil {
 			return nil
 		}
 		if d.IsDir() {
-			if skipWavRoot {
-				if rel, err := filepath.Rel(root, p); err == nil && strings.EqualFold(rel, "wav") {
-					return filepath.SkipDir
-				}
-			}
 			return nil
 		}
 		if strings.ToLower(filepath.Ext(d.Name())) != ".wav" {
@@ -126,6 +87,12 @@ func InitCatalogFromDir(root string) error {
 		}
 		parts := strings.Split(rel, string(filepath.Separator))
 		if len(parts) < 2 { // require category folder
+			return nil
+		}
+		// Skip the legacy assets/Saved/ folder. It used to host the on-disk
+		// "Save Instrument" output and is being removed; any leftover files
+		// must not surface in the catalog (tests pin this invariant).
+		if strings.EqualFold(parts[0], "Saved") {
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
@@ -143,12 +110,13 @@ func InitCatalogFromDir(root string) error {
 		absPath := filepath.Join(rootAbs, rel)
 		meta := SoundMeta{
 			ID:       id,
-			Name:     prettyName(base),
+			Name:     PrettyName(base),
 			Category: wavCategory(cat, relTrim),
 			RelPath:  relTrim,
 			Path:     filepath.ToSlash(absPath),
 			Size:     info.Size(),
 			Source:   "wav",
+			Scope:    "shipped",
 		}
 		m[id] = meta
 		out = append(out, meta)
@@ -163,10 +131,11 @@ func InitCatalogFromDir(root string) error {
 		}
 		meta := SoundMeta{
 			ID:       id,
-			Name:     prettyName(id),
+			Name:     PrettyName(id),
 			Category: synthCategory(id),
 			RelPath:  "synth/" + id,
 			Source:   "synth",
+			Scope:    "builtin",
 		}
 		m[id] = meta
 		out = append(out, meta)
@@ -192,7 +161,6 @@ func InitCatalogFromDir(root string) error {
 	catalogMu.Lock()
 	catalog = out
 	catalogByID = m
-	embedTemp = map[string]string{}
 	catalogMu.Unlock()
 	bumpCatalogVersion()
 	return nil
@@ -254,112 +222,10 @@ func EnsureInstrumentLoaded(id string) error {
 	if !ok {
 		return errors.New("instrument not found in catalog")
 	}
-	if meta.Embedded {
-		path, err := embeddedTempPath(meta)
-		if err != nil {
-			return err
-		}
-		return RegisterAudio(meta.ID, path)
-	}
 	if meta.Path == "" {
 		return errors.New("catalog entry missing path")
 	}
 	return RegisterAudio(meta.ID, meta.Path)
-}
-
-func embeddedTempPath(meta SoundMeta) (string, error) {
-	catalogMu.Lock()
-	defer catalogMu.Unlock()
-	if embedTemp == nil {
-		embedTemp = map[string]string{}
-	}
-	if p, ok := embedTemp[meta.ID]; ok && p != "" {
-		return p, nil
-	}
-	tmp, err := os.CreateTemp("", "beatmo-"+meta.ID+"-*.wav")
-	if err != nil {
-		return "", err
-	}
-	if _, err := tmp.Write(meta.Data); err != nil {
-		_ = tmp.Close()
-		return "", err
-	}
-	_ = tmp.Close()
-	embedTemp[meta.ID] = tmp.Name()
-	return tmp.Name(), nil
-}
-
-func wavHeaderMeta(r io.ReadSeeker) (durationMS int, sampleRate int, channels int) {
-	defer func() { _, _ = r.Seek(0, io.SeekStart) }()
-	var hdr struct {
-		ChunkID   [4]byte
-		ChunkSize uint32
-		Format    [4]byte
-	}
-	if err := binary.Read(r, binary.LittleEndian, &hdr); err != nil {
-		return 0, 0, 0
-	}
-	if string(hdr.ChunkID[:]) != "RIFF" {
-		return 0, 0, 0
-	}
-	// Walk chunks until "fmt " then "data".
-	var fmtFound bool
-	var dataSize uint32
-	var byteRate uint32
-	for {
-		var chunkID [4]byte
-		var chunkSize uint32
-		if err := binary.Read(r, binary.LittleEndian, &chunkID); err != nil {
-			break
-		}
-		if err := binary.Read(r, binary.LittleEndian, &chunkSize); err != nil {
-			break
-		}
-		switch string(chunkID[:]) {
-		case "fmt ":
-			var audioFmt uint16
-			var numCh uint16
-			var sr uint32
-			var br uint32
-			if err := binary.Read(r, binary.LittleEndian, &audioFmt); err != nil {
-				return 0, 0, 0
-			}
-			if err := binary.Read(r, binary.LittleEndian, &numCh); err != nil {
-				return 0, 0, 0
-			}
-			if err := binary.Read(r, binary.LittleEndian, &sr); err != nil {
-				return 0, 0, 0
-			}
-			if err := binary.Read(r, binary.LittleEndian, &br); err != nil {
-				return 0, 0, 0
-			}
-			// skip rest of fmt chunk
-			if _, err := r.Seek(int64(chunkSize-10), io.SeekCurrent); err != nil {
-				return 0, 0, 0
-			}
-			fmtFound = true
-			sampleRate = int(sr)
-			channels = int(numCh)
-			byteRate = br
-		case "data":
-			dataSize = chunkSize
-			if _, err := r.Seek(int64(chunkSize), io.SeekCurrent); err != nil {
-				return 0, 0, 0
-			}
-		default:
-			if _, err := r.Seek(int64(chunkSize), io.SeekCurrent); err != nil {
-				return 0, 0, 0
-			}
-		}
-		if fmtFound && dataSize > 0 {
-			break
-		}
-	}
-	if !fmtFound || dataSize == 0 || byteRate == 0 {
-		return 0, sampleRate, channels
-	}
-	secs := float64(dataSize) / float64(byteRate)
-	return int(secs * 1000), sampleRate, channels
 }
 
 // wavCategory normalizes top-level folder names into user-facing categories,
@@ -381,11 +247,11 @@ func wavCategory(cat string, rel string) string {
 	case "drum machines":
 		return "Drum Machines (WAV)"
 	default:
-		name := prettyName(cat)
+		name := PrettyName(cat)
 		// If nested folders exist, append first subfolder for finer grouping.
 		parts := strings.Split(rel, "/")
 		if len(parts) > 1 {
-			name = prettyName(parts[0])
+			name = PrettyName(parts[0])
 		}
 		return name + " (WAV)"
 	}
@@ -444,17 +310,3 @@ func slugPath(rel string) string {
 	return slug
 }
 
-var prettyNameReplacer = strings.NewReplacer("_", " ", "-", " ")
-
-// prettyName converts a file base into Title Case without separators.
-func prettyName(base string) string {
-	base = prettyNameReplacer.Replace(base)
-	words := strings.Fields(base)
-	for i, w := range words {
-		if len(w) == 0 {
-			continue
-		}
-		words[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
-	}
-	return strings.Join(words, " ")
-}

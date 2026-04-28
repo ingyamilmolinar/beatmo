@@ -109,7 +109,7 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 	const h = 40
 	if t.barCache == nil || t.barW != w {
 		t.barCache = ebiten.NewImage(w, h)
-		t.barCache.Fill(color.RGBA{15, 15, 15, 255})
+		t.barCache.Fill(genColorTransportBarBg)
 		t.barW = w
 	}
 	dst.DrawImage(t.barCache, nil)
@@ -122,10 +122,10 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 		drawRect(dst, t.bpmBox.Rect, fadeColor(colError, t.bpmErrorAnim), false)
 	}
 
-	// play / stop squares
+	// play / stop squares — DESIGN.md §0/§5: never raw Unicode; use IconID.
 	drawRect(dst, t.playRect, color.White, t.Playing)
-	DrawTextAt(dst, "▶", t.playRect.Min.X+6, t.playRect.Min.Y+3)
+	DrawIcon(dst, IconPlay, t.playRect, colTextPrimary)
 
 	drawRect(dst, t.stopRect, color.White, !t.Playing)
-	DrawTextAt(dst, "■", t.stopRect.Min.X+6, t.stopRect.Min.Y+3)
+	DrawIcon(dst, IconStop, t.stopRect, colTextPrimary)
 }

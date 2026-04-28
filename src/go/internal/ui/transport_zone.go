@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"math"
 	"strconv"
 
@@ -124,7 +123,10 @@ func NewTransportZone(cb TransportCallbacks) *TransportZone {
 		needLayout: true,
 		callbacks:  cb,
 		bpm:        120,
-		follow:     true,
+		// follow defaults to true: timeline tracks the playhead until the
+		// user explicitly opts out. Single source of truth for the follow
+		// state on both desktop and mobile.
+		follow: true,
 	}
 	z.initButtons()
 	z.initSliders()
@@ -141,7 +143,7 @@ func (z *TransportZone) initButtons() {
 			z.callbacks.OnPlayToggle()
 		}
 	})
-	z.playBtn.Icon = "play"
+	z.playBtn.Icon = string(IconPlay)
 	z.playBtn.IconColor = p.PlayIconColor
 
 	z.stopBtn = NewButton("", p.StopBtnStyle, func() {
@@ -151,7 +153,7 @@ func (z *TransportZone) initButtons() {
 			z.callbacks.OnStop()
 		}
 	})
-	z.stopBtn.Icon = "stop"
+	z.stopBtn.Icon = string(IconStop)
 	z.stopBtn.IconColor = p.StopIconColor
 
 	z.recordBtn = NewButton("", p.StopBtnStyle, func() {
@@ -161,7 +163,7 @@ func (z *TransportZone) initButtons() {
 			z.callbacks.OnRecordToggle()
 		}
 	})
-	z.recordBtn.Icon = "record"
+	z.recordBtn.Icon = string(IconRecord)
 	z.recordBtn.IconColor = colRecordIdle
 
 	z.bpmDecBtn = NewButton("", p.BPMDecBtnStyle, func() {
@@ -169,7 +171,7 @@ func (z *TransportZone) initButtons() {
 		z.bpmDecAnim = 1
 	})
 	z.bpmDecBtn.Repeat = true
-	z.bpmDecBtn.Icon = "chevron-down"
+	z.bpmDecBtn.Icon = string(IconChevronDown)
 	z.bpmDecBtn.IconColor = p.BPMIconColor
 
 	z.bpmBox = NewTextInput(image.Rect(0, 0, 0, 0), BPMBoxStyle)
@@ -185,7 +187,7 @@ func (z *TransportZone) initButtons() {
 		z.bpmIncAnim = 1
 	})
 	z.bpmIncBtn.Repeat = true
-	z.bpmIncBtn.Icon = "chevron-up"
+	z.bpmIncBtn.Icon = string(IconChevronUp)
 	z.bpmIncBtn.IconColor = p.BPMIconColor
 
 	z.subdivBtn = NewButton("\u00f732", p.SubdivBtnStyle, func() {
@@ -197,33 +199,45 @@ func (z *TransportZone) initButtons() {
 	z.trackBtn = NewButton("", p.TrackBtnStyle, func() {
 		z.SetFollow(!z.follow)
 	})
-	z.trackBtn.Icon = "track"
+	// Icon + IconColor are authoritative-set by syncTrackBtnVisual below;
+	// no need to seed them here. The chrome (Style) stays as TrackBtnStyle
+	// (= TransportMiscStyle on both profiles after the layout-profile fix)
+	// for both states, mirroring how SetPlaying treats the play button.
 	z.syncTrackBtnVisual()
 
-	z.uploadBtn = NewButton("", UploadBtnStyle, func() {
+	// Phase 4 PR3 migration: file-ops buttons + mobile EQ toggle render via
+	// the generated `button-secondary` spec (Spec(ComponentButtonSecondary))
+	// — byte-equivalent to UploadBtnStyle / InstButtonStyle per
+	// TestComponentSpecsDrift, so this is a code-path swap, not a
+	// behavior change.
+	// IconColor for these three buttons flows from the generated
+	// ComponentButtonSecondary spec (DESIGN.md: iconColor: {colors.on-surface-muted}).
+	// SetSpec seeds b.IconColor at construction time; no explicit assignment
+	// here.
+	z.uploadBtn = NewSpecButton("", ComponentButtonSecondary, func() {
 		z.uploadAnim = 1
 		if z.callbacks.OnUploadClick != nil {
 			z.callbacks.OnUploadClick()
 		}
 	})
-	z.uploadBtn.Icon = "upload"
+	z.uploadBtn.Icon = string(IconUpload)
 
-	z.importBtn = NewButton("", UploadBtnStyle, func() {
+	z.importBtn = NewSpecButton("", ComponentButtonSecondary, func() {
 		if z.callbacks.OnImportClick != nil {
 			z.callbacks.OnImportClick()
 		}
 	})
-	z.importBtn.Icon = "import"
+	z.importBtn.Icon = string(IconImport)
 
-	z.exportBtn = NewButton("", UploadBtnStyle, func() {
+	z.exportBtn = NewSpecButton("", ComponentButtonSecondary, func() {
 		if z.callbacks.OnExportClick != nil {
 			z.callbacks.OnExportClick()
 		}
 	})
-	z.exportBtn.Icon = "export"
+	z.exportBtn.Icon = string(IconExport)
 
 	// Mobile EQ toggle button (legacy, hidden — replaced by viewSwitchBtn).
-	z.eqToggleMobile = NewButton("EQ", InstButtonStyle, func() {
+	z.eqToggleMobile = NewSpecButton("EQ", ComponentButtonSecondary, func() {
 		if z.callbacks.OnViewCycle != nil {
 			z.callbacks.OnViewCycle()
 		}
@@ -234,15 +248,16 @@ func (z *TransportZone) initButtons() {
 			z.callbacks.OnViewCycle()
 		}
 	})
-	z.viewSwitchBtn.Icon = "audio"
-	z.viewSwitchBtn.IconColor = colIncDecIcon
+	z.viewSwitchBtn.Icon = string(IconAudio)
+	z.viewSwitchBtn.IconColor = colTextSecondary
 
 	z.overflowBtn = NewButton("", p.OverflowStyle, func() {
 		if z.callbacks.OnOverflowOpen != nil {
 			z.callbacks.OnOverflowOpen()
 		}
 	})
-	z.overflowBtn.Icon = "overflow"
+	z.overflowBtn.Icon = string(IconOverflow)
+	z.overflowBtn.IconColor = colTextSecondary
 }
 
 func (z *TransportZone) initSliders() {
@@ -393,12 +408,16 @@ func (z *TransportZone) HandleChars(chars []rune) InputResult {
 // SetPlaying updates the play button icon to reflect playback state.
 func (z *TransportZone) SetPlaying(p bool) {
 	z.isPlaying = p
+	prof := Profile()
+	// DESIGN.md §0/§5: icon-only button — never raw Unicode in Text.
+	z.playBtn.Text = ""
 	if p {
-		z.playBtn.Text = "⏸"
-		z.playBtn.Icon = "pause"
+		z.playBtn.Icon = string(IconPause)
+		// Playing state uses the accent so the eye knows the transport is live.
+		z.playBtn.IconColor = colAccent
 	} else {
-		z.playBtn.Text = "▶"
-		z.playBtn.Icon = "play"
+		z.playBtn.Icon = string(IconPlay)
+		z.playBtn.IconColor = prof.PlayIconColor
 	}
 }
 
@@ -499,20 +518,21 @@ func (z *TransportZone) SetPortal(p *OverlayPortal) { z.portal = p }
 // --- Layout ---
 
 func (z *TransportZone) layoutButtons(topBounds image.Rectangle) {
-	pad := Profile().ControlPadding
+	spec := ActiveTopBarSpec()
+	pad := spec.Padding
 	if pad > topBounds.Dy()/4 {
 		pad = topBounds.Dy() / 4
 	}
 
 	if Profile().IsMobile() {
-		z.layoutMobile(topBounds, pad)
+		z.layoutMobile(topBounds, pad, spec)
 	} else {
-		z.layoutDesktop(topBounds, pad)
+		z.layoutDesktop(topBounds, pad, spec)
 	}
-	ensureGapBtns(z.playBtn, z.stopBtn)
+	ensureGapBtns(z.playBtn, z.stopBtn, spec.ControlGap)
 }
 
-func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int) {
+func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec TopBarSpec) {
 	outerGrid := NewGridLayout(topBounds, []float64{1}, []float64{1, 1})
 	row0Grid := outerGrid.SubGrid(0, 0,
 		[]float64{1.0, 1.0, 2.0, 1.0, 1.0}, []float64{1})
@@ -527,12 +547,12 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int) {
 	stackVerticalTransport(z.bpmIncBtn, z.bpmDecBtn, bpmCol, row0Bounds)
 
 	// Compute BPM group container rect (covers BPM box + inc/dec arrows).
-	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect())
+	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect(), spec.GroupOutlinePad)
 
 	// Compute transport group container rect (covers play + stop on mobile).
 	z.transportGroupRect = computeGroupRect([]image.Rectangle{
 		z.playBtn.Rect(), z.stopBtn.Rect(),
-	}, 3)
+	}, spec.GroupOutlinePad)
 
 	z.subdivBtn.SetRect(safeInsetTransport(row0Grid.Cell(4, 0), pad))
 
@@ -560,24 +580,25 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int) {
 	}
 }
 
-func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int) {
+func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec TopBarSpec) {
 	// Single-row transport: Play | Stop | Record | BPM | ± | Subdiv | spacer | Vol | Upload | Import | Export
-	rowWeights := []float64{1.3, 1.3, 1.0, 2.2, 0.7, 1.0, 0.3, 1.0, 0.8, 0.8, 0.8}
+	rowWeights := spec.ColumnWeights
 	if z.transportGroup == nil || len(z.transportGroup.grid.colWeights) != len(rowWeights) {
 		z.transportGroup = NewLayoutGroup("transport", topBounds, rowWeights, []float64{1})
 	}
 	z.transportGroup.SetBounds(topBounds)
 
+	minBtn := spec.BtnMinSize
 	playRect := safeInsetTransport(z.transportGroup.Cell(0, 0), pad)
-	playRect = enforceMinSize(playRect, 36, 36)
+	playRect = enforceMinSize(playRect, minBtn, minBtn)
 	z.playBtn.SetRect(playRect)
 
 	stopRect := safeInsetTransport(z.transportGroup.Cell(1, 0), pad)
-	stopRect = enforceMinSize(stopRect, 36, 36)
+	stopRect = enforceMinSize(stopRect, minBtn, minBtn)
 	z.stopBtn.SetRect(stopRect)
 
 	recordRect := safeInsetTransport(z.transportGroup.Cell(2, 0), pad)
-	recordRect = enforceMinSize(recordRect, 36, 36)
+	recordRect = enforceMinSize(recordRect, minBtn, minBtn)
 	z.recordBtn.SetRect(recordRect)
 
 	z.bpmBox.Rect = safeInsetTransport(z.transportGroup.Cell(3, 0), pad)
@@ -585,12 +606,12 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int) {
 	stackVerticalTransport(z.bpmIncBtn, z.bpmDecBtn, bpmCol, topBounds)
 
 	// Compute BPM group container rect (covers BPM box + inc/dec arrows).
-	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect())
+	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect(), spec.GroupOutlinePad)
 
 	// Compute transport group container rect (covers play + stop + record).
 	z.transportGroupRect = computeGroupRect([]image.Rectangle{
 		z.playBtn.Rect(), z.stopBtn.Rect(), z.recordBtn.Rect(),
-	}, 3)
+	}, spec.GroupOutlinePad)
 
 	z.subdivBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(5, 0), pad))
 
@@ -611,7 +632,7 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int) {
 	// Compute file-ops group container rect (covers upload + import + export).
 	z.fileOpsGroupRect = computeGroupRect([]image.Rectangle{
 		z.uploadBtn.Rect(), z.importBtn.Rect(), z.exportBtn.Rect(),
-	}, 3)
+	}, spec.GroupOutlinePad)
 
 	// Track button positioned in timeline area, not toolbar.
 	z.trackBtn.SetRect(image.Rectangle{})
@@ -814,7 +835,7 @@ func (z *TransportZone) decayAnims() {
 	if z.isRecording {
 		z.recordPulse += 0.05
 		alpha := 0.5 + 0.5*math.Sin(z.recordPulse*2)
-		z.recordBtn.IconColor = color.NRGBA{240, 40, 40, uint8(255 * alpha)}
+		z.recordBtn.IconColor = WithAlpha(genColorRecordActive, uint8(255*alpha))
 	} else {
 		z.recordPulse = 0
 		z.recordBtn.IconColor = colRecordIdle
@@ -873,23 +894,21 @@ func (z *TransportZone) forceBlurBPM() {
 
 // --- Track button visual ---
 
+// syncTrackBtnVisual mirrors the play/stop visual model: chrome (Style) stays
+// fixed across states; the icon glyph and icon color carry the active/inactive
+// signal. Active = bright cyan (colFollowActive, the same accent play uses
+// while playing); inactive = the platform-neutral BPM/secondary-control tint.
 func (z *TransportZone) syncTrackBtnVisual() {
 	if z.trackBtn == nil {
 		return
 	}
-	if z.follow {
-		z.trackBtn.Icon = "track"
-		if Profile().IsMobile() {
-			z.trackBtn.Style = TransportFollowOnStyle
-			z.trackBtn.IconColor = colFollowActive
-		}
-	} else {
-		z.trackBtn.Icon = "track-off"
-		if Profile().IsMobile() {
-			z.trackBtn.Style = TransportMiscStyle
-			z.trackBtn.IconColor = colIncDecIcon
-		}
-	}
+	prof := Profile()
+	syncToggleVisual(
+		z.trackBtn, z.follow,
+		prof.TrackBtnStyle, prof.TrackBtnStyle, // same chrome both states
+		IconTrack, IconTrackOff,
+		colFollowActive, prof.BPMIconColor,
+	)
 }
 
 // --- Toolbar caching ---
@@ -1179,7 +1198,7 @@ func (z *TransportZone) drawToolbarSeparators(cache *ebiten.Image, offsetX, offs
 	if !Profile().DrawToolbarSep {
 		return
 	}
-	sepCol := color.NRGBA{255, 255, 255, 12}
+	sepCol := WithAlpha(genColorBorder, genAlphaTransportSeparator)
 	var pairs [][2]image.Rectangle
 	pairs = [][2]image.Rectangle{
 		{z.stopBtn.Rect(), z.bpmBox.Rect},
@@ -1203,6 +1222,9 @@ func (z *TransportZone) drawToolbarSeparators(cache *ebiten.Image, offsetX, offs
 	}
 }
 
+// drawMasterVolIconOffset renders the speaker glyph plus a small volume-level
+// tick mark. The glyph itself lives in the unified icon system; this function
+// only picks the right variant (on/off) and overlays the live volume bar.
 func (z *TransportZone) drawMasterVolIconOffset(cache *ebiten.Image, offsetX, offsetY int) {
 	r := z.mainVolIconRect
 	if r.Empty() {
@@ -1215,57 +1237,19 @@ func (z *TransportZone) drawMasterVolIconOffset(cache *ebiten.Image, offsetX, of
 	}
 
 	iconCol := colVolumeIconOn
+	glyph := IconSpeaker
 	if vol <= 0 {
 		iconCol = colVolumeIconOff
+		glyph = IconSpeakerOff
 	}
 
-	cellH := r.Dy()
-	iconH := cellH * 60 / 100
-	if iconH < 8 {
-		iconH = 8
-	}
-	iconW := iconH * 3 / 4
-	if iconW < 6 {
-		iconW = 6
-	}
-
+	// Fit the glyph inside a square centered in r so the speaker proportions
+	// match the other toolbar icons regardless of cell aspect.
+	side := minI(r.Dx(), r.Dy())
 	cx := r.Min.X + r.Dx()/2
 	cy := r.Min.Y + r.Dy()/2
-
-	// Speaker body (small rectangle).
-	bodyW := iconW / 3
-	if bodyW < 2 {
-		bodyW = 2
-	}
-	bodyH := iconH / 3
-	if bodyH < 2 {
-		bodyH = 2
-	}
-	bodyRect := image.Rect(cx-bodyW/2, cy-bodyH/2, cx-bodyW/2+bodyW, cy-bodyH/2+bodyH)
-	drawRect(cache, bodyRect, iconCol, true)
-
-	// Cone (trapezoid approximated by a rectangle).
-	coneW := iconW / 3
-	if coneW < 2 {
-		coneW = 2
-	}
-	coneH := iconH * 2 / 3
-	if coneH < 3 {
-		coneH = 3
-	}
-	coneRect := image.Rect(bodyRect.Max.X, cy-coneH/2, bodyRect.Max.X+coneW, cy+coneH/2)
-	drawRect(cache, coneRect, iconCol, true)
-
-	// Volume level indicator: thin vertical bar to the right of the cone.
-	if vol > 0 {
-		barH := int(float64(iconH) * vol * 0.8)
-		if barH < 2 {
-			barH = 2
-		}
-		barX := coneRect.Max.X + 2
-		barRect := image.Rect(barX, cy-barH/2, barX+2, cy+barH/2)
-		drawRect(cache, barRect, iconCol, true)
-	}
+	box := image.Rect(cx-side/2, cy-side/2, cx-side/2+side, cy-side/2+side)
+	DrawIcon(cache, glyph, box, iconCol)
 }
 
 // drawBPMGroupOffset draws the BPM group visual container: a colSurface1
@@ -1502,19 +1486,21 @@ func computeGroupRect(rects []image.Rectangle, pad int) image.Rectangle {
 }
 
 // computeBPMGroupRect returns the bounding rect enclosing the BPM box and
-// inc/dec buttons, expanded by a small padding for the visual container.
-func computeBPMGroupRect(bpmBox, incBtn, decBtn image.Rectangle) image.Rectangle {
-	return computeGroupRect([]image.Rectangle{bpmBox, incBtn, decBtn}, 3)
+// inc/dec buttons, expanded by `pad` pixels for the visual container.
+// `pad` is the active TopBarSpec.GroupOutlinePad.
+func computeBPMGroupRect(bpmBox, incBtn, decBtn image.Rectangle, pad int) image.Rectangle {
+	return computeGroupRect([]image.Rectangle{bpmBox, incBtn, decBtn}, pad)
 }
 
-// ensureGapBtns ensures a gap between two adjacent buttons.
-func ensureGapBtns(left, right *Button) {
+// ensureGapBtns ensures at least `gap` pixels between two adjacent buttons.
+// `gap` is the active TopBarSpec.ControlGap.
+func ensureGapBtns(left, right *Button, gap int) {
 	if left == nil || right == nil {
 		return
 	}
 	lr, rr := left.Rect(), right.Rect()
 	if lr.Max.X >= rr.Min.X {
-		dx := lr.Max.X - rr.Min.X + 2
+		dx := lr.Max.X - rr.Min.X + gap
 		rr.Min.X += dx
 		rr.Max.X += dx
 		right.SetRect(rr)

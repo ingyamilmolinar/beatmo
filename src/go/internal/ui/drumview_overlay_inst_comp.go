@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"slices"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -42,8 +43,46 @@ type InstrumentMenuProps struct {
 	OnSelect func(instID string)
 	// OnClose is called when the menu should close.
 	OnClose func()
-	// OnRebuild is called after the menu is rebuilt (for legacy state sync).
-	OnRebuild func()
+	// OnStateChanged, if non-nil, fires after every internal mutation
+	// that affects publicly observable state (mode, active category,
+	// scroll position, button list). Hosts use this to mirror the
+	// component's state into their own bookkeeping fields without
+	// reaching through accessor methods on every read. Replaces the
+	// retired OnRebuild → syncInstMenuBtnsFromComp pair: now there
+	// is exactly one notifier and one canonical sync helper.
+	OnStateChanged func()
+
+	// Favorites, if non-nil, drives the per-row star toggle. The menu
+	// reads Get to render the icon variant and writes via OnFavorite
+	// (or directly on Set if OnFavorite is nil).
+	Favorites FavoritesStore
+	// OnFavorite, if non-nil, is invoked when the user toggles the
+	// star on the i'th row. Callers typically delegate to the
+	// FavoritesStore but can intercept for telemetry, logging, etc.
+	OnFavorite func(instID string, fav bool)
+
+	// ProjectPins are the per-project pinned instrument ids (tier 0 in
+	// the menu's PinSource). Independent from Favorites/UserStars (tier
+	// 1). When non-empty, project-pinned items sort above ★ items in
+	// every render path. No mutation hook today — the per-row "pin to
+	// project" affordance ships in a follow-up; this PR only consumes
+	// the set on the read path.
+	ProjectPins map[string]struct{}
+
+	// ShowFavoritesCategory makes the menu prepend a virtual "Favorites"
+	// category to the category list (when Favorites is also non-nil).
+	// Default is false so existing tests that drive the menu without
+	// setting this flag retain the pre-PR layout — `Categories[0]`
+	// stays at category-button index 0. Production wiring opts in via
+	// the props builder in drumview_instrument_helpers.go.
+	ShowFavoritesCategory bool
+
+	// Style overrides element dimensions for the menu chrome
+	// (breadcrumb / pagination chips / star column / jump-input).
+	// Zero-value falls back to design-system defaults via
+	// MenuStyle.resolved(). Set fields explicitly to pin a
+	// dimension regardless of the active layout profile.
+	Style MenuStyle
 }
 
 // InstMenuMode describes the view mode of the instrument menu.
@@ -57,6 +96,14 @@ const (
 const (
 	instMenuMaxVisibleRowsComp = 10
 	instMenuScrollBarWidthComp = 10
+	// pageChipsThreshold pins the boundary between numbered chips
+	// and the numeric jump-input. ≤ threshold pages → chips render;
+	// > threshold → "Page [N]/M" with a typed input.
+	pageChipsThreshold = 7
+	// breadcrumbSeparatorIcon is the glyph drawn between breadcrumb
+	// segments. The forbidden-glyph guard rejects literal U+2039 /
+	// U+203A; this constant is the canonical replacement.
+	breadcrumbSeparatorIcon = IconChevronRight
 )
 
 // InstrumentMenuState contains the internal state for the instrument menu component.
@@ -65,11 +112,19 @@ type InstrumentMenuState struct {
 	hold             bool // Capture flag after menu closes
 	mode             InstMenuMode
 	activeCat        string
+	// favoritesView, when true, makes buildInstrumentsMode filter to ★-favorited
+	// ids only and skip the activeCat check. Set by clicking the virtual
+	// "Favorites" category at the top of buildCategoriesMode; cleared by Back.
+	favoritesView    bool
 	userScrolled     bool
 	lastAdded        string
 	cameFromCats     bool
 	searchText       string
 	filteredInsts    []string
+	// fuzzyScores parallels filteredInsts when searchText is non-empty;
+	// used by StableTierBreaker to break score ties by tier without losing
+	// the score primary key. Empty when no search query is active.
+	fuzzyScores      map[string]int
 	categoryByID     map[string]string
 	displayLabelByID map[string]string
 	searchHighlights map[string][]int // Per-ID highlight positions from fuzzy search.
@@ -90,8 +145,40 @@ type InstrumentMenuComponent struct {
 	fullRect     image.Rectangle
 	searchRect   image.Rectangle
 
+	// Breadcrumb segment hit areas (drawn above search row). Rebuilt on
+	// every layout pass; clicking segment[i] pops to depth i.
+	breadcrumbRects []image.Rectangle
+	breadcrumbRect  image.Rectangle
+
+	// Pagination strip hit areas. pageChipRects covers numbered page
+	// chips when PageCount() ≤ pageChipsThreshold; jumpInputRect +
+	// prevPageRect/nextPageRect cover the >threshold variant.
+	pageChipRects  []image.Rectangle
+	prevPageRect   image.Rectangle
+	nextPageRect   image.Rectangle
+	jumpInput      *TextInput
+	jumpInputRect  image.Rectangle
+	paginationRect image.Rectangle
+
+	// Keyboard navigation state.
+	selectedIdx int
+	keyEdge     map[ebiten.Key]bool
+
+	// favRects and favIDs together define the per-row star hit areas
+	// when props.Favorites is non-nil. favRects[i] is screen-space and
+	// favIDs[i] is the corresponding instrument id. They are rebuilt
+	// on every rebuildMenu pass and read by HandleInput.
+	favRects []image.Rectangle
+	favIDs   []string
+
 	// Deferred tap: position stored on touch begin, fired on touch end if no scroll committed.
 	deferredTap DeferredTap
+
+	// style is the resolved MenuStyle (props.Style.resolved()) recomputed
+	// on every SetProps. Used by element-rect computations so element
+	// sizes flow from the design-system layer instead of being
+	// hard-coded inline.
+	style MenuStyle
 }
 
 // NewInstrumentMenuComponent creates a new instrument menu component.
@@ -99,6 +186,8 @@ func NewInstrumentMenuComponent() *InstrumentMenuComponent {
 	return &InstrumentMenuComponent{
 		overlayBase: newOverlayBase(),
 		scroll:      NewScrollBehavior(DropdownScrollbarStyle, 24),
+		keyEdge:     map[ebiten.Key]bool{},
+		style:       DefaultMenuStyle(),
 	}
 }
 
@@ -115,10 +204,16 @@ func (m *InstrumentMenuComponent) SetProps(p InstrumentMenuProps) {
 		}
 	}
 	m.props = p
+	m.style = p.Style.resolved()
 	if needsRebuild {
 		m.rebuildMaps()
 	}
 }
+
+// Style returns the resolved MenuStyle currently in use. Useful for
+// tests and callers that need to align surrounding chrome (e.g. the
+// portal close-button position) with the menu's element sizes.
+func (m *InstrumentMenuComponent) Style() MenuStyle { return m.style }
 
 // Props returns the current props.
 func (m *InstrumentMenuComponent) Props() InstrumentMenuProps { return m.props }
@@ -191,6 +286,17 @@ func (m *InstrumentMenuComponent) IsOpen() bool {
 // SetLastAdded sets the instrument ID to auto-bias to when opening.
 func (m *InstrumentMenuComponent) SetLastAdded(id string) {
 	m.state.lastAdded = id
+}
+
+// Refresh re-runs rebuildMenu so callers can flush new prop values
+// (instrument catalog updates, search-filter changes) without
+// re-opening the menu. Cheap when the menu is closed (early returns
+// inside rebuildMenu via empty AnchorRect / IsOpen guards).
+func (m *InstrumentMenuComponent) Refresh() {
+	if m == nil {
+		return
+	}
+	m.rebuildMenu()
 }
 
 // InstBtns returns the current instrument buttons (for test access and legacy sync).
@@ -293,15 +399,53 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 	} else {
 		m.buildInstrumentsMode(base, vertBounds, rowH, openUp)
 	}
-	// Notify for legacy state sync
-	if m.props.OnRebuild != nil {
-		m.props.OnRebuild()
+	if m.props.OnStateChanged != nil {
+		m.props.OnStateChanged()
 	}
+}
+
+// favoritesCategoryEnabled reports whether the virtual "Favorites" category
+// should be injected at the top of the category list. Both flags must be
+// set: ShowFavoritesCategory (caller opt-in) AND a non-nil Favorites store.
+// Tests that don't opt in keep the legacy layout where Categories[0] is the
+// first rendered category button.
+func (m *InstrumentMenuComponent) favoritesCategoryEnabled() bool {
+	return m != nil && m.props.ShowFavoritesCategory && m.props.Favorites != nil
+}
+
+// favoritesIDs returns the union of ★ keys (tier 1) for the favoritesView
+// filter. Project pins are NOT folded in here — they appear in their natural
+// categories (and sort to the top of every list via PinSource), but they are
+// not necessarily favorited and shouldn't be force-included in the
+// "Favorites" view if the user hasn't ★'d them.
+func (m *InstrumentMenuComponent) favoritesIDs() map[string]struct{} {
+	out := map[string]struct{}{}
+	if m == nil || m.props.Favorites == nil {
+		return out
+	}
+	for _, k := range m.props.Favorites.Keys() {
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+// pinSource builds a render-time PinSource snapshot from props. Cheap; the
+// underlying maps come straight from props.ProjectPins and Favorites().Keys().
+func (m *InstrumentMenuComponent) pinSource() PinSource {
+	src := PinSource{ProjectPins: m.props.ProjectPins, UserStars: m.favoritesIDs()}
+	return src
 }
 
 // buildCategoriesMode builds the menu in categories mode.
 func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rectangle, rowH int, openUp bool) {
-	catCount := len(m.props.Categories)
+	// Render list of categories: virtual "Favorites" prepended when a
+	// FavoritesStore is wired, then the caller-supplied categories.
+	categories := m.props.Categories
+	favPrefix := m.favoritesCategoryEnabled()
+	catCount := len(categories)
+	if favPrefix {
+		catCount++
+	}
 	vis := instMenuMaxVisibleRowsComp
 	if Profile().UseBottomSheet {
 		// On mobile, show more rows to fill the screen.
@@ -342,10 +486,15 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 	m.scroll.VS.View = image.Rect(base.Min.X, startY, base.Max.X, startY+totalH)
 	m.fullRect = m.scroll.VS.View
 
-	// Bias to active category
+	// Bias to active category. The Favorites virtual category is index 0 when
+	// favPrefix is true; the caller-supplied categories start at offset 1.
 	if !m.state.userScrolled && m.state.activeCat != "" {
-		if idx := slices.Index(m.props.Categories, m.state.activeCat); idx >= 0 {
-			first := idx - vis + 1
+		if idx := slices.Index(categories, m.state.activeCat); idx >= 0 {
+			absIdx := idx
+			if favPrefix {
+				absIdx++
+			}
+			first := absIdx - vis + 1
 			if first < 0 {
 				first = 0
 			}
@@ -354,13 +503,50 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 	}
 	m.scroll.VS.Clamp()
 
-	// Build category buttons
+	// Build category buttons. When favPrefix is true, the row at offset 0 is
+	// the virtual "Favorites" entry and the caller-supplied categories shift
+	// down by one. Selecting "Favorites" enters instruments mode with the
+	// favoritesView filter set; selecting any other category clears it.
 	start := m.scroll.VS.First
-	for i := 0; i < vis && start+i < len(m.props.Categories); i++ {
-		cat := m.props.Categories[start+i]
+	for i := 0; i < vis && start+i < catCount; i++ {
+		absIdx := start + i
 		r := image.Rect(base.Min.X, startY+i*rowH, base.Max.X, startY+(i+1)*rowH)
+
+		if favPrefix && absIdx == 0 {
+			favCount := len(m.favoritesIDs())
+			label := "Favorites"
+			if favCount > 0 {
+				label = "Favorites (" + pageChipLabel(favCount) + ")"
+			}
+			btn := NewButton(label, DropdownStyle, func() {
+				m.state.favoritesView = true
+				m.state.activeCat = ""
+				m.state.mode = InstMenuModeInstruments
+				m.scroll.VS.First = 0
+				m.state.cameFromCats = true
+				m.state.userScrolled = false
+				m.rebuildMenu()
+			})
+			if m.state.favoritesView {
+				btn.Style = PopupButtonStyle
+			}
+			btn.SetRect(insetRect(r, SpaceXS))
+			m.categoryBtns = append(m.categoryBtns, btn)
+			continue
+		}
+
+		// Caller-supplied categories. catIdx accounts for the virtual prefix.
+		catIdx := absIdx
+		if favPrefix {
+			catIdx--
+		}
+		if catIdx < 0 || catIdx >= len(categories) {
+			continue
+		}
+		cat := categories[catIdx]
 		btnCat := cat
 		btn := NewButton(btnCat, DropdownStyle, func() {
+			m.state.favoritesView = false
 			m.state.activeCat = btnCat
 			m.state.mode = InstMenuModeInstruments
 			m.scroll.VS.First = 0
@@ -368,10 +554,10 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 			m.state.userScrolled = false
 			m.rebuildMenu()
 		})
-		if btnCat == m.state.activeCat {
+		if !m.state.favoritesView && btnCat == m.state.activeCat {
 			btn.Style = PopupButtonStyle
 		}
-		btn.SetRect(insetRect(r, buttonPad))
+		btn.SetRect(insetRect(r, SpaceXS))
 		m.categoryBtns = append(m.categoryBtns, btn)
 	}
 
@@ -381,10 +567,20 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 
 // buildInstrumentsMode builds the menu in instruments mode.
 func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Rectangle, rowH int, openUp bool) {
-	// Filter instruments: category filter first, then fuzzy search.
+	// Filter instruments: favorites view OR category filter, then fuzzy
+	// search. favoritesView short-circuits the category filter so the user
+	// sees their full ★ set regardless of which category each item lives in.
+	var favIDs map[string]struct{}
+	if m.state.favoritesView {
+		favIDs = m.favoritesIDs()
+	}
 	var catItems []MenuSearchItem
 	for _, inst := range m.props.Instruments {
-		if m.state.activeCat != "" && m.state.categoryByID[inst.ID] != m.state.activeCat {
+		if m.state.favoritesView {
+			if _, ok := favIDs[inst.ID]; !ok {
+				continue
+			}
+		} else if m.state.activeCat != "" && m.state.categoryByID[inst.ID] != m.state.activeCat {
 			continue
 		}
 		label := m.state.displayLabelByID[inst.ID]
@@ -397,11 +593,51 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	searchResults := searcher.Search(m.state.searchText, catItems)
 	m.state.filteredInsts = m.state.filteredInsts[:0]
 	m.state.searchHighlights = make(map[string][]int, len(searchResults))
+	queryActive := strings.TrimSpace(m.state.searchText) != ""
+	if queryActive {
+		m.state.fuzzyScores = make(map[string]int, len(searchResults))
+	} else {
+		m.state.fuzzyScores = nil
+	}
 	for _, r := range searchResults {
 		m.state.filteredInsts = append(m.state.filteredInsts, r.Key)
 		if len(r.Highlights) > 0 {
 			m.state.searchHighlights[r.Key] = r.Highlights
 		}
+		if queryActive {
+			m.state.fuzzyScores[r.Key] = r.Score
+		}
+	}
+
+	// Tier sort. Favorites view is already filtered to the ★ set, so a tier
+	// sort there would just rearrange the alpha order — skip it (everything
+	// is favorited; sort alphabetically by label only).
+	if !m.state.favoritesView {
+		labelFor := func(id string) string {
+			lbl := m.state.displayLabelByID[id]
+			if lbl == "" {
+				lbl = id
+			}
+			return lbl
+		}
+		src := m.pinSource()
+		if queryActive {
+			src.StableTierBreaker(m.state.filteredInsts,
+				func(id string) int { return m.state.fuzzyScores[id] },
+				labelFor)
+		} else {
+			src.SortByTierAlpha(m.state.filteredInsts, labelFor)
+		}
+	} else if !queryActive {
+		// Favorites view, no query → alphabetical by label.
+		labelFor := func(id string) string {
+			lbl := m.state.displayLabelByID[id]
+			if lbl == "" {
+				lbl = id
+			}
+			return lbl
+		}
+		PinSource{}.SortByTierAlpha(m.state.filteredInsts, labelFor)
 	}
 
 	showBack := len(m.props.Categories) > 0
@@ -468,7 +704,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		m.searchBox.MaxLen = 40
 	}
 	m.searchBox.SetText(m.state.searchText)
-	m.searchBox.Rect = insetRect(m.searchRect, buttonPad)
+	m.searchBox.Rect = insetRect(m.searchRect, SpaceSM)
 
 	listStartY := searchY + rowH
 
@@ -476,11 +712,43 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	m.scroll.VS.Visible = vis
 
 	if len(m.state.filteredInsts) == 0 {
+		// Even with an empty result set we still render the Back button (when
+		// the menu has categories) so the user can always escape — without
+		// this, a Favorites view with no ★s and a query that produces no
+		// matches both leave the user stuck. Back rect lives at the original
+		// position above the search row.
+		extraTop := rowH                // search row
+		if showBack {
+			extraTop += rowH            // back row
+		}
 		emptyView := image.Rect(base.Min.X, listStartY, base.Max.X, listStartY+rowH)
 		m.scroll.VS.View = emptyView
-		m.fullRect = image.Rect(base.Min.X, startY, base.Max.X, startY+rowH*2)
-		placeholder := NewButton("No matches", DisabledButtonStyle, nil)
-		placeholder.SetRect(insetRect(emptyView, buttonPad))
+		m.fullRect = image.Rect(base.Min.X, startY, base.Max.X, startY+extraTop+rowH)
+		emptyText := "No matches"
+		if m.state.favoritesView && strings.TrimSpace(m.state.searchText) == "" {
+			emptyText = "No favorites yet — tap the star on any instrument"
+		}
+		if showBack {
+			bcH := m.style.BreadcrumbStripH
+			if bcH <= 0 || bcH > rowH {
+				bcH = rowH
+			}
+			backRect := image.Rect(base.Min.X, startY, base.Max.X, startY+bcH)
+			m.backBtn = NewButton("Back", DropdownStyle, func() {
+				m.state.mode = InstMenuModeCategories
+				m.state.favoritesView = false
+				m.scroll.VS.First = 0
+				m.state.cameFromCats = false
+				m.state.userScrolled = false
+				m.rebuildMenu()
+			})
+			m.backBtn.SetRect(insetRect(backRect, SpaceXS))
+			m.computeBreadcrumbStrip(backRect)
+		} else {
+			m.backBtn = nil
+		}
+		placeholder := NewButton(emptyText, DisabledButtonStyle, nil)
+		placeholder.SetRect(insetRect(emptyView, SpaceXS))
 		m.instBtns = append(m.instBtns, placeholder)
 		m.SetBounds(m.fullRect)
 		return
@@ -529,6 +797,17 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	m.state.lastAdded = ""
 	m.scroll.VS.Clamp()
 
+	// Pagination strip layout: bottom row of the menu, full width.
+	// Height comes from MenuStyle.PaginationStripH so the design
+	// system can shrink the strip independently of the row height.
+	pagH := m.style.PaginationStripH
+	if pagH <= 0 || pagH > rowH {
+		pagH = rowH
+	}
+	pagY := listStartY + vis*rowH
+	pagRect := image.Rect(base.Min.X, pagY, base.Max.X, pagY+pagH)
+	m.computePaginationStrip(pagRect)
+
 	hasScroll := m.scroll.HasScroll()
 	buttonMaxX := base.Max.X
 	if hasScroll {
@@ -537,20 +816,49 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 			buttonMaxX = base.Min.X + 1
 		}
 	}
+	// Star toggle column reserves a small fixed slot at the right edge
+	// when favorites are wired. Width comes from MenuStyle so the
+	// design system controls the column dimension.
+	favColWidth := m.style.StarColW
+	starsActive := m.props.Favorites != nil
+	if starsActive {
+		buttonMaxX -= favColWidth
+		if buttonMaxX <= base.Min.X {
+			buttonMaxX = base.Min.X + 1
+		}
+	}
+	m.favRects = m.favRects[:0]
+	m.favIDs = m.favIDs[:0]
 
-	// Back button
+	// Breadcrumb strip + back-button compat. The breadcrumb segments
+	// "Categories › <activeCat>" are clickable hit areas drawn at the
+	// top of the menu; clicking "Categories" pops back to the category
+	// list. The legacy back button is kept (rendered invisibly behind
+	// the breadcrumb strip) so existing tests that trigger BackBtn()
+	// continue to work.
 	if showBack {
-		backRect := image.Rect(base.Min.X, startY, base.Max.X, startY+rowH)
+		// Breadcrumb height defaults to row height for visual alignment
+		// with surrounding rows, but MenuStyle.BreadcrumbStripH may
+		// shrink it independently.
+		bcH := m.style.BreadcrumbStripH
+		if bcH <= 0 || bcH > rowH {
+			bcH = rowH
+		}
+		backRect := image.Rect(base.Min.X, startY, base.Max.X, startY+bcH)
 		m.backBtn = NewButton("Back", DropdownStyle, func() {
 			m.state.mode = InstMenuModeCategories
+			m.state.favoritesView = false
 			m.scroll.VS.First = 0
 			m.state.cameFromCats = false
 			m.state.userScrolled = false
 			m.rebuildMenu()
 		})
-		m.backBtn.SetRect(insetRect(backRect, buttonPad))
+		m.backBtn.SetRect(insetRect(backRect, SpaceXS))
+		m.computeBreadcrumbStrip(backRect)
 	} else {
 		m.backBtn = nil
+		m.breadcrumbRects = m.breadcrumbRects[:0]
+		m.breadcrumbRect = image.Rectangle{}
 	}
 
 	// Instrument buttons
@@ -574,11 +882,20 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 			if m.props.OnSelect != nil {
 				m.props.OnSelect(optID)
 			}
-			m.Close()
+			// Menu intentionally stays open after selection so the user can
+			// audition multiple instruments. Dismissal is explicit: X button,
+			// Escape, click-outside, or opening another row's menu.
 		})
 		btn.Highlights = m.state.searchHighlights[optID]
-		btn.SetRect(insetRect(r, buttonPad))
+		btn.SetRect(insetRect(r, SpaceXS))
 		m.instBtns = append(m.instBtns, btn)
+		if starsActive {
+			// Star hit area is the small rectangle to the right of the
+			// row button. Drawn in Draw, hit-tested in HandleInput.
+			starRect := image.Rect(buttonMaxX, r.Min.Y, buttonMaxX+favColWidth, r.Max.Y)
+			m.favRects = append(m.favRects, starRect)
+			m.favIDs = append(m.favIDs, optID)
+		}
 	}
 
 	m.buildCloseBtn()
@@ -591,7 +908,7 @@ func (m *InstrumentMenuComponent) buildCloseBtn() {
 		m.closeBtn = nil
 		return
 	}
-	r := closeButtonRect(m.fullRect, buttonPad)
+	r := closeButtonRect(m.fullRect, SpaceXS)
 	m.closeBtn = NewButton("", PopupButtonStyle, func() { m.Close() })
 	m.closeBtn.Icon = "close"
 	m.closeBtn.IconColor = colButtonBorder
@@ -627,12 +944,37 @@ func (m *InstrumentMenuComponent) fireTapAt(x, y int) {
 		}
 	}
 	if m.state.mode == InstMenuModeInstruments {
+		// Star hit area takes priority over the row button so a touch on
+		// the star toggles the favorite instead of selecting the row.
+		for i, rect := range m.favRects {
+			if pt.In(rect) {
+				m.toggleFavoriteAt(i)
+				return
+			}
+		}
 		for _, btn := range m.instBtns {
 			if pt.In(btn.Rect()) && btn.OnClick != nil {
 				btn.OnClick()
 				return
 			}
 		}
+	}
+}
+
+// toggleFavoriteAt flips the star for favIDs[i] and notifies the
+// caller. Bounds-safe so callers can pass hit-test results.
+func (m *InstrumentMenuComponent) toggleFavoriteAt(i int) {
+	if m.props.Favorites == nil {
+		return
+	}
+	if i < 0 || i >= len(m.favIDs) {
+		return
+	}
+	id := m.favIDs[i]
+	now := !m.props.Favorites.Get(id)
+	m.props.Favorites.Set(id, now)
+	if m.props.OnFavorite != nil {
+		m.props.OnFavorite(id, now)
 	}
 }
 
@@ -760,6 +1102,50 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 		}
 	}
 
+	// Breadcrumb segment click — pop to that depth. Pressed edge only.
+	if pressed && m.state.mode == InstMenuModeInstruments && !touchSuppressButtons && len(m.breadcrumbRects) > 0 {
+		if d := m.breadcrumbHitAt(x, y); d >= 0 && d < len(m.BreadcrumbPath())-1 {
+			m.popBreadcrumbTo(d)
+			return InputConsumed
+		}
+	}
+
+	// Pagination strip clicks: prev/next chevrons, numbered chips, and
+	// the jump-input field. Routed before row buttons so a click in the
+	// strip never selects an instrument.
+	if pressed && m.state.mode == InstMenuModeInstruments && !touchSuppressButtons {
+		if pt.In(m.prevPageRect) {
+			m.kbPageUp()
+			return InputConsumed
+		}
+		if pt.In(m.nextPageRect) {
+			m.kbPageDown()
+			return InputConsumed
+		}
+		for i, chip := range m.pageChipRects {
+			if pt.In(chip) {
+				m.jumpToPage(i + 1)
+				return InputConsumed
+			}
+		}
+		if pt.In(m.jumpInputRect) && m.jumpInput != nil {
+			m.jumpInput.SetFocus(true)
+			return InputConsumed
+		}
+	}
+
+	// Handle star (favorite) toggles ahead of the row buttons so a click
+	// on the star never selects the instrument. Only fires on the press
+	// edge to match Button.Handle semantics.
+	if pressed && m.state.mode == InstMenuModeInstruments && !m.scroll.Dragging() && !touchSuppressButtons && len(m.favRects) > 0 {
+		for i, rect := range m.favRects {
+			if pt.In(rect) {
+				m.toggleFavoriteAt(i)
+				return InputConsumed
+			}
+		}
+	}
+
 	// Handle instrument buttons (suppress during drag or touch scroll)
 	if m.state.mode == InstMenuModeInstruments && !m.scroll.Dragging() && !touchSuppressButtons {
 		for _, btn := range m.instBtns {
@@ -807,9 +1193,8 @@ func (m *InstrumentMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed // Always consume when menu is open and cursor is over it
 }
 
-// Update processes per-frame updates (search box polling + momentum decay).
-// Touch move/end is handled entirely in HandleInput to avoid
-// interfering with deferred tap detection.
+// Update processes per-frame updates (search box polling + momentum decay
+// + keyboard navigation).
 func (m *InstrumentMenuComponent) Update() {
 	if !m.state.open {
 		return
@@ -829,12 +1214,149 @@ func (m *InstrumentMenuComponent) Update() {
 		}
 	}
 
+	// Keyboard navigation polled on rising edges. Mobile (bottom sheet)
+	// skips keyboard handlers — touch is the input model there.
+	if !Profile().IsMobile() {
+		m.handleKeyboardNav()
+	}
+
 	if m.scroll.HasMomentum() {
 		if m.scroll.UpdateMomentum() {
 			m.state.userScrolled = true
 			m.rebuildMenu()
 		}
 	}
+}
+
+// handleKeyboardNav dispatches arrow keys, Enter, PgUp/PgDn, Home/End,
+// "/", and Esc to the appropriate scroll/selection action. Rising-edge
+// detection prevents key-repeat spam.
+func (m *InstrumentMenuComponent) handleKeyboardNav() {
+	m.handleKeyEdge(ebiten.KeyDown, m.kbMoveDown)
+	m.handleKeyEdge(ebiten.KeyUp, m.kbMoveUp)
+	m.handleKeyEdge(ebiten.KeyEnter, m.kbConfirm)
+	m.handleKeyEdge(ebiten.KeyPageDown, m.kbPageDown)
+	m.handleKeyEdge(ebiten.KeyPageUp, m.kbPageUp)
+	m.handleKeyEdge(ebiten.KeyHome, m.kbHome)
+	m.handleKeyEdge(ebiten.KeyEnd, m.kbEnd)
+	m.handleKeyEdge(ebiten.KeySlash, m.kbFocusSearch)
+}
+
+func (m *InstrumentMenuComponent) handleKeyEdge(k ebiten.Key, fn func()) {
+	now := isKeyPressed(k)
+	if now && !m.keyEdge[k] {
+		fn()
+	}
+	m.keyEdge[k] = now
+}
+
+func (m *InstrumentMenuComponent) kbMoveDown() {
+	if m.searchBox != nil && m.searchBox.Focused() {
+		return
+	}
+	if m.state.mode != InstMenuModeInstruments {
+		return
+	}
+	if len(m.state.filteredInsts) == 0 {
+		return
+	}
+	if m.selectedIdx < len(m.state.filteredInsts)-1 {
+		m.selectedIdx++
+	}
+	m.scrollToSelection()
+}
+
+func (m *InstrumentMenuComponent) kbMoveUp() {
+	if m.searchBox != nil && m.searchBox.Focused() {
+		return
+	}
+	if m.state.mode != InstMenuModeInstruments {
+		return
+	}
+	if m.selectedIdx > 0 {
+		m.selectedIdx--
+	}
+	m.scrollToSelection()
+}
+
+func (m *InstrumentMenuComponent) kbConfirm() {
+	if m.searchBox != nil && m.searchBox.Focused() {
+		return
+	}
+	if m.state.mode != InstMenuModeInstruments {
+		return
+	}
+	if m.selectedIdx < 0 || m.selectedIdx >= len(m.state.filteredInsts) {
+		return
+	}
+	id := m.state.filteredInsts[m.selectedIdx]
+	if m.props.OnSelect != nil {
+		m.props.OnSelect(id)
+	}
+	m.Close()
+}
+
+func (m *InstrumentMenuComponent) kbPageDown() {
+	if m.scroll.VS.Visible <= 0 {
+		return
+	}
+	m.scroll.VS.First += m.scroll.VS.Visible
+	m.scroll.VS.Clamp()
+	m.state.userScrolled = true
+	m.rebuildMenu()
+}
+
+func (m *InstrumentMenuComponent) kbPageUp() {
+	if m.scroll.VS.Visible <= 0 {
+		return
+	}
+	m.scroll.VS.First -= m.scroll.VS.Visible
+	m.scroll.VS.Clamp()
+	m.state.userScrolled = true
+	m.rebuildMenu()
+}
+
+func (m *InstrumentMenuComponent) kbHome() {
+	m.scroll.VS.First = 0
+	m.scroll.VS.Clamp()
+	m.selectedIdx = 0
+	m.state.userScrolled = true
+	m.rebuildMenu()
+}
+
+func (m *InstrumentMenuComponent) kbEnd() {
+	if m.scroll.VS.Total > 0 && m.scroll.VS.Visible > 0 {
+		m.scroll.VS.First = m.scroll.VS.Total - m.scroll.VS.Visible
+	}
+	m.scroll.VS.Clamp()
+	if len(m.state.filteredInsts) > 0 {
+		m.selectedIdx = len(m.state.filteredInsts) - 1
+	}
+	m.state.userScrolled = true
+	m.rebuildMenu()
+}
+
+func (m *InstrumentMenuComponent) kbFocusSearch() {
+	if m.searchBox == nil {
+		return
+	}
+	m.searchBox.SetFocus(true)
+}
+
+// scrollToSelection ensures the selected row is within the visible
+// page, advancing m.scroll.VS.First as needed.
+func (m *InstrumentMenuComponent) scrollToSelection() {
+	if m.scroll.VS.Visible <= 0 {
+		return
+	}
+	if m.selectedIdx < m.scroll.VS.First {
+		m.scroll.VS.First = m.selectedIdx
+	} else if m.selectedIdx >= m.scroll.VS.First+m.scroll.VS.Visible {
+		m.scroll.VS.First = m.selectedIdx - m.scroll.VS.Visible + 1
+	}
+	m.scroll.VS.Clamp()
+	m.state.userScrolled = true
+	m.rebuildMenu()
 }
 
 // drawScrollbar renders the scrollbar if scrolling is needed.
@@ -848,6 +1370,19 @@ func (m *InstrumentMenuComponent) Draw(dst *ebiten.Image) {
 	if !m.state.open {
 		return
 	}
+	if m.fullRect.Empty() {
+		return
+	}
+
+	drawScrim(dst)
+	if Profile().UseBottomSheet {
+		drawBottomSheetPanel(dst, m.fullRect)
+	} else {
+		drawPanel(dst, m.fullRect)
+	}
+	if Profile().IsMobile() {
+		m.drawBottomSheetHandle(dst)
+	}
 
 	if m.state.mode == InstMenuModeCategories {
 		for _, btn := range m.categoryBtns {
@@ -855,20 +1390,335 @@ func (m *InstrumentMenuComponent) Draw(dst *ebiten.Image) {
 		}
 		m.drawScrollbar(dst)
 	} else {
-		if m.backBtn != nil {
-			m.backBtn.Draw(dst)
-		}
+		// Breadcrumb strip replaces the back button visually; the
+		// back button remains for legacy click compat.
+		m.drawBreadcrumbStrip(dst)
 		if m.searchBox != nil {
-			m.searchBox.Draw(dst)
+			m.drawSearchRow(dst)
 		}
 		for _, btn := range m.instBtns {
 			btn.Draw(dst)
 		}
+		m.drawFavoriteStars(dst)
+		m.drawPaginationStrip(dst)
 		m.drawScrollbar(dst)
 	}
-	// Close button on top
 	if m.closeBtn != nil {
 		m.closeBtn.Draw(dst)
+	}
+}
+
+// computeBreadcrumbStrip lays out the breadcrumb segments inside r.
+// At depth 0 (categories mode) the strip is a single root segment;
+// at depth 1 (instruments mode in a category) it's two segments
+// separated by IconChevronRight. Hit areas land in m.breadcrumbRects
+// in left-to-right order.
+func (m *InstrumentMenuComponent) computeBreadcrumbStrip(r image.Rectangle) {
+	m.breadcrumbRect = r
+	m.breadcrumbRects = m.breadcrumbRects[:0]
+	labels := m.BreadcrumbPath()
+	if len(labels) == 0 {
+		return
+	}
+	// Equal-width slots with separator gutters between them. Separator
+	// gutter width is the icon size plus segment padding so the chevron
+	// has visual breathing room without overlapping segment text.
+	sepW := IconSizeMD + m.style.SegmentPaddingX
+	totalW := r.Dx()
+	if len(labels) == 1 {
+		m.breadcrumbRects = append(m.breadcrumbRects, r)
+		return
+	}
+	gaps := len(labels) - 1
+	segW := (totalW - gaps*sepW) / len(labels)
+	if segW < 1 {
+		segW = 1
+	}
+	x := r.Min.X
+	for range labels {
+		seg := image.Rect(x, r.Min.Y, x+segW, r.Max.Y)
+		m.breadcrumbRects = append(m.breadcrumbRects, seg)
+		x = seg.Max.X + sepW
+	}
+}
+
+// drawBreadcrumbStrip renders the segment labels with chevron-icon
+// separators. The active (last) segment uses the on-surface accent
+// color; previous segments use the secondary text color so the user
+// reads them as clickable.
+func (m *InstrumentMenuComponent) drawBreadcrumbStrip(dst *ebiten.Image) {
+	labels := m.BreadcrumbPath()
+	if len(labels) == 0 || len(m.breadcrumbRects) == 0 {
+		return
+	}
+	for i, seg := range m.breadcrumbRects {
+		if i >= len(labels) {
+			break
+		}
+		col := colTextSecondary
+		if i == len(labels)-1 {
+			col = colTextAccent
+		}
+		DrawTextColorAt(dst, labels[i], seg.Min.X+m.style.SegmentPaddingX, seg.Min.Y+seg.Dy()/2, col)
+		// Separator chevron between segments.
+		if i < len(labels)-1 && i < len(m.breadcrumbRects)-1 {
+			next := m.breadcrumbRects[i+1]
+			sepRect := image.Rect(seg.Max.X, seg.Min.Y, next.Min.X, seg.Max.Y)
+			DrawIcon(dst, breadcrumbSeparatorIcon, insetRect(sepRect, SpaceXS), colTextSecondary)
+		}
+	}
+}
+
+// jumpToPage navigates the underlying scroll state to the (1-based)
+// page n, clamped to [1, PageCount()].
+func (m *InstrumentMenuComponent) jumpToPage(n int) {
+	pc := m.PageCount()
+	if pc <= 0 {
+		return
+	}
+	if n < 1 {
+		n = 1
+	}
+	if n > pc {
+		n = pc
+	}
+	m.scroll.VS.First = (n - 1) * m.scroll.VS.Visible
+	m.scroll.VS.Clamp()
+	m.state.userScrolled = true
+	m.rebuildMenu()
+}
+
+// computePaginationStrip lays out the pagination chips or jump-input
+// inside r. ≤ pageChipsThreshold pages → numbered chips; otherwise a
+// numeric input plus prev/next chevrons. Hit areas land in
+// m.pageChipRects, m.prevPageRect, m.nextPageRect, m.jumpInputRect.
+func (m *InstrumentMenuComponent) computePaginationStrip(r image.Rectangle) {
+	m.paginationRect = r
+	m.pageChipRects = m.pageChipRects[:0]
+	m.prevPageRect = image.Rectangle{}
+	m.nextPageRect = image.Rectangle{}
+	m.jumpInputRect = image.Rectangle{}
+	pc := m.PageCount()
+	if pc <= 1 {
+		return
+	}
+	chevW := IconSizeLG
+	prev := image.Rect(r.Min.X, r.Min.Y, r.Min.X+chevW, r.Max.Y)
+	next := image.Rect(r.Max.X-chevW, r.Min.Y, r.Max.X, r.Max.Y)
+	m.prevPageRect = prev
+	m.nextPageRect = next
+	innerLeft := prev.Max.X + SpaceXS
+	innerRight := next.Min.X - SpaceXS
+	innerW := innerRight - innerLeft
+	if innerW <= 0 {
+		return
+	}
+	if pc <= pageChipsThreshold {
+		// Numbered chips, one per page. Width is innerW/pc but at
+		// least style.ChipMinW so chips remain tappable.
+		chipW := innerW / pc
+		if chipW < m.style.ChipMinW {
+			chipW = m.style.ChipMinW
+		}
+		x := innerLeft
+		for i := 0; i < pc; i++ {
+			chip := image.Rect(x, r.Min.Y, x+chipW, r.Max.Y)
+			m.pageChipRects = append(m.pageChipRects, chip)
+			x = chip.Max.X
+		}
+		return
+	}
+	// Jump-input variant: "Page [N]/M" with a numeric TextInput.
+	m.jumpInputRect = image.Rect(innerLeft, r.Min.Y, innerRight, r.Max.Y)
+	if m.jumpInput == nil {
+		m.jumpInput = NewTextInput(image.Rectangle{}, BPMBoxStyle)
+		m.jumpInput.MaxLen = 4
+		m.jumpInput.Accept = func(rn rune) bool { return rn >= '0' && rn <= '9' }
+		m.jumpInput.InputMode = "numeric"
+	}
+	m.jumpInput.Rect = insetRect(m.jumpInputRect, SpaceXS)
+}
+
+// drawPaginationStrip renders the pagination row at the bottom of the
+// menu. No-op when there's only one page.
+func (m *InstrumentMenuComponent) drawPaginationStrip(dst *ebiten.Image) {
+	pc := m.PageCount()
+	if pc <= 1 || m.paginationRect.Empty() {
+		return
+	}
+	if !m.prevPageRect.Empty() {
+		DrawIcon(dst, IconChevronLeft, insetRect(m.prevPageRect, SpaceXS), colTextSecondary)
+	}
+	if !m.nextPageRect.Empty() {
+		DrawIcon(dst, IconChevronRight, insetRect(m.nextPageRect, SpaceXS), colTextSecondary)
+	}
+	cur := m.Page()
+	if pc <= pageChipsThreshold {
+		for i, chip := range m.pageChipRects {
+			label := pageChipLabel(i + 1)
+			col := colTextSecondary
+			if i+1 == cur {
+				col = colTextAccent
+			}
+			DrawTextColorAt(dst, label, chip.Min.X+chip.Dx()/2, chip.Min.Y+chip.Dy()/2, col)
+		}
+		return
+	}
+	// Jump-input variant.
+	if m.jumpInput != nil {
+		m.jumpInput.Draw(dst)
+	}
+	DrawTextColorAt(dst, pageOfMLabel(cur, pc), m.jumpInputRect.Min.X+SpaceSM, m.jumpInputRect.Min.Y+m.jumpInputRect.Dy()/2, colTextSecondary)
+}
+
+// pageChipLabel formats a 1-based page number for chip display.
+func pageChipLabel(n int) string {
+	const digits = "0123456789"
+	if n <= 0 {
+		return "1"
+	}
+	if n < 10 {
+		return string(digits[n])
+	}
+	out := ""
+	for n > 0 {
+		out = string(digits[n%10]) + out
+		n /= 10
+	}
+	return out
+}
+
+// pageOfMLabel formats the "N / M" label for the jump-input variant.
+func pageOfMLabel(n, m int) string {
+	return pageChipLabel(n) + " / " + pageChipLabel(m)
+}
+
+// breadcrumbHitAt returns the depth (0-based) of the segment under
+// (x, y), or -1 if no breadcrumb segment is hit.
+func (m *InstrumentMenuComponent) breadcrumbHitAt(x, y int) int {
+	pt := image.Pt(x, y)
+	for idx, seg := range m.breadcrumbRects {
+		if pt.In(seg) {
+			return idx
+		}
+	}
+	return -1
+}
+
+// popBreadcrumbTo navigates to the breadcrumb segment at depth d.
+// d == 0 returns to categories mode; deeper depths are no-ops in the
+// current 2-level model (room for future deeper hierarchies).
+func (m *InstrumentMenuComponent) popBreadcrumbTo(d int) {
+	if d <= 0 {
+		m.state.mode = InstMenuModeCategories
+		m.state.activeCat = ""
+		m.state.favoritesView = false
+		m.scroll.VS.First = 0
+		m.state.cameFromCats = false
+		m.state.userScrolled = false
+		m.rebuildMenu()
+		return
+	}
+	// Future-proof: deeper levels become no-ops today.
+}
+
+// drawFavoriteStars renders the per-row star icons. Empty star (outline)
+// for unfavorited items; filled star for favorited. The hit areas live
+// in m.favRects with matching ids in m.favIDs.
+func (m *InstrumentMenuComponent) drawFavoriteStars(dst *ebiten.Image) {
+	if m.props.Favorites == nil {
+		return
+	}
+	for i, rect := range m.favRects {
+		id := m.favIDs[i]
+		fav := m.props.Favorites.Get(id)
+		icon := IconStar
+		col := colTextSecondary
+		if fav {
+			icon = IconStarFilled
+			col = genColorPrimary
+		}
+		// Inset slightly so the icon doesn't touch the row border.
+		DrawIcon(dst, icon, insetRect(rect, SpaceXS), col)
+	}
+}
+
+// BreadcrumbPath returns the current path as visible-segment labels.
+// Returns []string{} when closed; ["Categories"] at root; ["Categories",
+// <activeCat>] when drilled into a category. Used by the new
+// instMenuBreadcrumbPath JS export and by tests asserting on the
+// breadcrumb state without coupling to the legacy mode enum.
+func (m *InstrumentMenuComponent) BreadcrumbPath() []string {
+	if !m.state.open {
+		return []string{}
+	}
+	out := []string{"Categories"}
+	if m.state.mode == InstMenuModeInstruments {
+		if m.state.favoritesView {
+			out = append(out, "Favorites")
+		} else if m.state.activeCat != "" {
+			out = append(out, m.state.activeCat)
+		}
+	}
+	return out
+}
+
+// Page returns the 1-based current page index, derived from the
+// underlying scroll offset and visible row count. Empty list returns 1.
+func (m *InstrumentMenuComponent) Page() int {
+	m.ensureScroll()
+	if m.scroll.VS.Visible <= 0 || m.scroll.VS.Total == 0 {
+		return 1
+	}
+	return (m.scroll.VS.First / m.scroll.VS.Visible) + 1
+}
+
+// PageCount returns the total page count (1 when fewer items than the
+// visible window).
+func (m *InstrumentMenuComponent) PageCount() int {
+	m.ensureScroll()
+	total := m.scroll.VS.Total
+	vis := m.scroll.VS.Visible
+	if total == 0 || vis == 0 {
+		return 0
+	}
+	if total <= vis {
+		return 1
+	}
+	return (total + vis - 1) / vis
+}
+
+// PageSize returns the number of rows visible per page (== scroll.VS.Visible).
+func (m *InstrumentMenuComponent) PageSize() int {
+	m.ensureScroll()
+	if m.scroll.VS.Visible < 1 {
+		return 1
+	}
+	return m.scroll.VS.Visible
+}
+
+// drawBottomSheetHandle paints a small rounded pill at the top-center of the
+// bottom sheet to telegraph it as a draggable surface. Mirrors the recipe in
+// drumview_context_menu.go.
+func (m *InstrumentMenuComponent) drawBottomSheetHandle(dst *ebiten.Image) {
+	handleW := 36
+	handleH := 4
+	hx := m.fullRect.Min.X + m.fullRect.Dx()/2 - handleW/2
+	hy := m.fullRect.Min.Y + 8
+	drawRoundedRect(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
+		WithAlpha(genColorBorder, genAlphaScrollbarThumb), handleH/2, true)
+}
+
+// drawSearchRow renders the search input plus a muted "Search" hint when the
+// box is empty and unfocused. Hint placement matches TextInput.Draw's text
+// origin (4 px x-inset, vertically centered).
+func (m *InstrumentMenuComponent) drawSearchRow(dst *ebiten.Image) {
+	m.searchBox.Draw(dst)
+	if m.state.searchText == "" && !m.searchBox.Focused() {
+		r := m.searchBox.Rect
+		th := TextHeight()
+		ty := r.Min.Y + (r.Dy()-th)/2
+		DrawTextColorAt(dst, "Search", r.Min.X+4, ty, colTextSecondary)
 	}
 }
 

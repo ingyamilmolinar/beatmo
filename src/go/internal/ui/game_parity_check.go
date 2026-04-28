@@ -33,6 +33,13 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 	if g.state.JustResumed() {
 		return
 	}
+	// During the post-mutation grace window, skip parityCheck entirely. The
+	// audio thread may be firing notes scheduled before the mutation while the
+	// scheduler has already advanced to post-mutation state; their comparison
+	// is meaningless until grace expires.
+	if g.parityInGrace() {
+		return
+	}
 	if missing {
 		// If the row lacks an instrument/bus, the scheduler intentionally skips
 		// audio; don't flag parity for the visible slate in that case.

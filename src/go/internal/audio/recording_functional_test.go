@@ -43,6 +43,7 @@ func TestPlatformCapturePerInstrumentChannels(t *testing.T) {
 		BPM:         120,
 	}
 
+	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
 	if err := StartRecording(opts); err != nil {
 		t.Fatalf("StartRecording: %v", err)
 	}
@@ -125,18 +126,20 @@ func TestPlatformCaptureDoesNotOverrideGoCapture(t *testing.T) {
 		BPM:         120,
 	}
 
+	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
 	if err := StartRecording(opts); err != nil {
 		t.Fatalf("StartRecording: %v", err)
 	}
 
-	// Inject Go-side capture data (simulates desktop mixer running)
-	mc := multiCapturePtr.Load()
-	if mc == nil {
-		t.Fatal("multiCapturePtr should not be nil during recording")
+	// Inject Go-side capture data via the active pipeline (simulates the
+	// desktop mixer's Tap call on the audio thread).
+	pipe := pipelinePtr.Load()
+	if pipe == nil {
+		t.Fatal("pipelinePtr should not be nil during recording")
 	}
 	instBufs := [][]float64{{0.1, 0.2, 0.3, 0.4}}
 	workBuf := []float64{0.5, 0.6, 0.7, 0.8}
-	mc.appendBlock(instBufs, []string{"kick"}, []int{0}, workBuf, 4)
+	pipe.Tap([]string{"kick"}, []int{0}, instBufs, workBuf, 4)
 
 	result, err := StopRecording()
 	if err != nil {

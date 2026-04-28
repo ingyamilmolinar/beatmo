@@ -125,3 +125,99 @@ func TestBuildRowWindow_PreservesPastFromPrevWindowWhenNoImmutableCommit(t *test
 		}
 	}
 }
+
+func TestEnsureStepsBranches(t *testing.T) {
+	t.Run("nonpositive_returns_zero_length_keeping_capacity", func(t *testing.T) {
+		buf := make([]bool, 0, 8)
+		out := ensureSteps(buf, 0)
+		if len(out) != 0 {
+			t.Fatalf("len=%d want 0", len(out))
+		}
+		if cap(out) != 8 {
+			t.Fatalf("cap=%d want 8 (preserved)", cap(out))
+		}
+		out = ensureSteps(buf, -3)
+		if len(out) != 0 || cap(out) != 8 {
+			t.Fatalf("negative n: len=%d cap=%d want 0/8", len(out), cap(out))
+		}
+	})
+
+	t.Run("growth_allocates_new_backing_array", func(t *testing.T) {
+		buf := make([]bool, 2)
+		buf[0] = true
+		out := ensureSteps(buf, 5)
+		if len(out) != 5 {
+			t.Fatalf("len=%d want 5", len(out))
+		}
+		if cap(out) < 5 {
+			t.Fatalf("cap=%d want >=5", cap(out))
+		}
+		// Verify a fresh allocation: out should be all-zero, original mutation invisible.
+		for i, v := range out {
+			if v {
+				t.Fatalf("expected fresh zero slice, got out[%d]=true", i)
+			}
+		}
+	})
+
+	t.Run("reuse_reslices_underlying_array", func(t *testing.T) {
+		buf := make([]bool, 4, 16)
+		buf[0] = true
+		out := ensureSteps(buf, 3)
+		if len(out) != 3 || cap(out) != 16 {
+			t.Fatalf("reuse: len=%d cap=%d want 3/16", len(out), cap(out))
+		}
+		// Mutating buf[0] must be visible through out.
+		buf[0] = false
+		if out[0] {
+			t.Fatalf("expected out to share buf's backing array")
+		}
+	})
+}
+
+func TestEnsureTypesBranches(t *testing.T) {
+	t.Run("nonpositive_returns_zero_length_keeping_capacity", func(t *testing.T) {
+		buf := make([]model.NodeType, 0, 4)
+		out := ensureTypes(buf, 0)
+		if len(out) != 0 || cap(out) != 4 {
+			t.Fatalf("len=%d cap=%d want 0/4", len(out), cap(out))
+		}
+	})
+	t.Run("growth_allocates_new_backing_array", func(t *testing.T) {
+		buf := make([]model.NodeType, 1)
+		out := ensureTypes(buf, 4)
+		if len(out) != 4 {
+			t.Fatalf("len=%d want 4", len(out))
+		}
+		if cap(out) < 4 {
+			t.Fatalf("cap=%d want >=4", cap(out))
+		}
+	})
+	t.Run("reuse_reslices_underlying_array", func(t *testing.T) {
+		buf := make([]model.NodeType, 8, 16)
+		out := ensureTypes(buf, 5)
+		if len(out) != 5 || cap(out) != 16 {
+			t.Fatalf("reuse: len=%d cap=%d want 5/16", len(out), cap(out))
+		}
+	})
+}
+
+func TestBuildRowWindowEarlyReturns(t *testing.T) {
+	t.Run("zero_length_returns_zero_slices", func(t *testing.T) {
+		steps, types := BuildRowWindow(Config{Length: 0}, nil, nil, nil, nil, nil)
+		if len(steps) != 0 || len(types) != 0 {
+			t.Fatalf("len(steps)=%d len(types)=%d want 0/0", len(steps), len(types))
+		}
+	})
+	t.Run("nil_callbacks_return_sized_zero_slices", func(t *testing.T) {
+		steps, types := BuildRowWindow(Config{Length: 5}, nil, nil, nil, nil, nil)
+		if len(steps) != 5 || len(types) != 5 {
+			t.Fatalf("nil-cb: len(steps)=%d len(types)=%d want 5/5", len(steps), len(types))
+		}
+		for i, s := range steps {
+			if s {
+				t.Fatalf("expected zero steps; got steps[%d]=true", i)
+			}
+		}
+	})
+}

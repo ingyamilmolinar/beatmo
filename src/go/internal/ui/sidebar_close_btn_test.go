@@ -99,7 +99,7 @@ func TestOverflowCloseButtonNotOverlappingFilePickerRects(t *testing.T) {
 	if popupRect.Empty() {
 		t.Fatal("overflow popup rect is empty")
 	}
-	closeR := closeButtonRect(popupRect, buttonPad)
+	closeR := closeButtonRect(popupRect, SpaceXS)
 	if closeR.Empty() {
 		t.Fatal("close button rect is empty")
 	}

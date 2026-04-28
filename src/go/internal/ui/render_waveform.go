@@ -54,7 +54,7 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 
 	// Draw dashed grid lines at +0.5 and -0.5.
 	halfH := float64(waveRect.Dy()) * 0.48
-	gridCol := color.NRGBA{255, 255, 255, 20}
+	gridCol := WithAlpha(genColorBorder, genAlphaBorderPanel)
 	for _, yOff := range []int{
 		midY - int(0.5*halfH),
 		midY + int(0.5*halfH),

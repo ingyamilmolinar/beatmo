@@ -2,8 +2,6 @@
 
 package ui
 
-import "syscall/js"
-
 // initJS exposes helper functions for browser-based tests.
 func (g *Game) initJS() {
 	softKeyboardInit()
@@ -17,9 +15,5 @@ func (g *Game) initJS() {
 	g.initJSInsertEffects()
 	g.initJSRecording()
 	g.initMediaSessionExports()
-}
-
-// reportStateJS publishes the current beat for tests.
-func (g *Game) reportStateJS() {
-	js.Global().Set("__beat", js.ValueOf(g.currentBeat()))
+	g.initJSScenes()
 }

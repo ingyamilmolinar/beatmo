@@ -100,7 +100,7 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 
 	// Rounded track background.
 	trackRadius := trackH / 2
-	drawRoundedRect(dst, trackDraw, color.RGBA{45, 45, 55, 255}, trackRadius, true)
+	drawRoundedRect(dst, trackDraw, genColorSliderTrackFill, trackRadius, true)
 
 	// Filled portion (accent color from left to current value).
 	knobX := track.Min.X + int(s.Value*float64(track.Dx()-1))
@@ -111,19 +111,19 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 	}
 	fillRect := image.Rect(track.Min.X, trackY, knobX, trackY+trackH)
 	if fillRect.Dx() > 0 {
-		drawRoundedRect(dst, fillRect, color.RGBA{0, 150, 200, 220}, trackRadius, true)
+		drawRoundedRect(dst, fillRect, WithAlpha(genColorSliderFill, genAlphaOverlay), trackRadius, true)
 	}
 
 	// Thumb/handle — a visible rounded rectangle centered on the value position.
 	thumbRect := image.Rect(knobX-thumbW/2, midY-thumbH/2, knobX+thumbW/2, midY+thumbH/2)
 	thumbRadius := thumbW / 2
-	thumbCol := color.RGBA{230, 230, 235, 255}
+	var thumbCol color.Color = genColorSliderThumbFill
 	if s.dragging {
-		thumbCol = color.RGBA{255, 255, 255, 255}
+		thumbCol = genColorBorder // pure white when dragging — matches the existing brighter look
 	}
 	drawRoundedRect(dst, thumbRect, thumbCol, thumbRadius, true)
 	// Subtle border on thumb for definition.
-	drawRoundedRect(dst, thumbRect, color.NRGBA{0, 0, 0, 60}, thumbRadius, false)
+	drawRoundedRect(dst, thumbRect, WithAlpha(genColorSliderThumbShadow, genAlphaSubtle), thumbRadius, false)
 
 	// Label position: use per-slider override if set, otherwise Profile default.
 	labelAbove := p.SliderLabelAbove

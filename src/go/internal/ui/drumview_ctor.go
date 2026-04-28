@@ -1,16 +1,18 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
-	"runtime"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/async"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
@@ -20,11 +22,10 @@ import (
 func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *DrumView {
 	opts := audio.Instruments()
 	inst := "snare"
-	name := "Snare"
 	if len(opts) > 0 {
 		inst = opts[0]
-		name = strings.ToUpper(inst[:1]) + inst[1:]
 	}
+	name := audio.PrettyName(inst)
 	dv := &DrumView{
 		Bounds:               b,
 		labelW:               100,
@@ -47,8 +48,13 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		selRow:               0,
 		deleteConfirmRow:     -1,
 		renameRow:            -1,
-		follow:               true,
 		samplePath:           make(map[string]string),
+		// instMenuShowFavoritesCategory wires the production builder's
+		// ShowFavoritesCategory prop. Defaults true so a brand-new DrumView
+		// surfaces the virtual "Favorites" category at the top of the menu.
+		// Legacy tests that index into Categories[0] expecting the first
+		// caller-supplied category set this false at the start of the test.
+		instMenuShowFavoritesCategory: true,
 	}
 	dv.volPopup = NewSliderPopup(SliderPopupConfig{
 		ID:     "volume-popup",
@@ -108,7 +114,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Fields are aliased after zone creation below tree initialization.
 	// Non-transport buttons remain here.
 	dv.lenDecBtn = NewButton("", LenDecStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Length - button pressed")
+		dv.logger.Debugf("[drumview] length - button pressed")
 		dv.lenDecPressed = true
 		dv.lenDecAnim = 1
 	})
@@ -120,7 +126,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.lenDecBtn.IconColor = colIncDecIcon
 	}
 	dv.lenIncBtn = NewButton("", LenIncStyle, func() {
-		dv.logger.Infof("[DRUMVIEW] Length + button pressed")
+		dv.logger.Debugf("[drumview] length + button pressed")
 		dv.lenIncPressed = true
 		dv.lenIncAnim = 1
 	})
@@ -171,19 +177,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Calling recalcButtons() here would crash on nil button pointers.
 	dv.rowCachePadPx = defaultRowCachePadPx
 	dv.rowsLayerPadPx = defaultRowsLayerPadPx
-	if runtime.GOARCH == "wasm" {
-		dv.rowsStripingEnabled = true
-		dv.rowsStripeCount = 0
-		dv.rowsStripeAuto = true
-	} else {
-		dv.rowsStripingEnabled = false
-		dv.rowsStripeCount = 0
-		dv.rowsStripeAuto = false
-	}
 	dv.layoutDragIdx = -1
 	dv.layoutHoverIdx = -1
 	dv.layoutHandler = NewLayoutResizeHandler(dv)
-	dv.rowsStripeScratch = nil
 	// Initialize zone-based component tree (Phase 1 infrastructure).
 	dv.tree = NewDrumViewTree()
 	dv.tree.SetBounds(b)
@@ -221,6 +217,16 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 				} else {
 					svc.SetDetailChannel(id)
 				}
+			}
+			// Drive the Scope tab from the same shared selector. Desktop
+			// goes through the audio scope service; WASM (or stubbed test
+			// builds where ScopeService is nil) writes the zone-local
+			// instrumentID directly.
+			if svc := audio.ScopeService(); svc != nil {
+				svc.SetInstrument(id)
+			}
+			if z := dv.eqPanelZone.scopeZone; z != nil {
+				z.instrumentID = id
 			}
 		},
 		OnToggleHPF: func() {
@@ -341,15 +347,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 				return
 			}
 		},
-		OnInstrChange: func(id string) {
-			if svc := audio.ScopeService(); svc != nil {
-				svc.SetInstrument(id)
-				return
-			}
-			if z := dv.eqPanelZone.scopeZone; z != nil {
-				z.instrumentID = id
-			}
-		},
 		OnFreezeToggle: func() bool {
 			if svc := audio.ScopeService(); svc != nil {
 				if svc.IsFrozen() {
@@ -390,28 +387,29 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// animation. Callbacks delegate to DrumView's existing methods.
 	dv.transportZone = NewTransportZone(TransportCallbacks{
 		OnPlayToggle: func() {
-			dv.logger.Infof("[DRUMVIEW] Play button pressed")
+			dv.logger.Debugf("[drumview] play button pressed")
 		},
 		OnStop: func() {
-			dv.logger.Infof("[DRUMVIEW] Stop button pressed")
+			dv.logger.Debugf("[drumview] stop button pressed")
 		},
 		OnBPMChange: func(bpm int) {
 			dv.bpm = bpm
 			dv.secPerBeat = 60.0 / float64(bpm)
-			dv.logger.Infof("[DRUMVIEW] BPM set: -> %d", bpm)
+			dv.logger.Debugf("[drumview] BPM set: -> %d", bpm)
+			hooks.PublishKind(hooks.EventBPMChange, bpm)
 		},
 		OnNotifyError: func(msg string) {
 			dv.notifyError(msg)
 		},
 		OnFollowChange: func(follow bool) {
 			if follow {
-				dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Track")
+				dv.logger.Debugf("[drumview] track/free toggled: follow=Track")
 			} else {
-				dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Free")
+				dv.logger.Debugf("[drumview] track/free toggled: follow=Free")
 			}
 		},
 		OnUploadClick: func() {
-			dv.logger.Infof("[DRUMVIEW] Upload button pressed")
+			dv.logger.Debugf("[drumview] upload button pressed")
 			dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.IsNamingOpen(), dv.IsInstMenuOpen())
 			if dv.importing {
 				return
@@ -419,14 +417,17 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			if !dv.uploading && !dv.IsNamingOpen() {
 				dv.uploading = true
 				dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
-				go func() {
+				if err := async.Go("ui.dialog", func(_ context.Context) {
 					path, err := audio.SelectWAV()
 					dv.uploadCh <- uploadResult{path: path, err: err}
-				}()
+				}); err != nil {
+					// Pool saturated/closed — bail out gracefully.
+					dv.uploadCh <- uploadResult{path: "", err: err}
+				}
 			}
 		},
 		OnImportClick: func() {
-			dv.logger.Infof("[DRUMVIEW] Import button pressed")
+			dv.logger.Debugf("[drumview] import button pressed")
 			log := jsLog
 			log("Import button pressed; importing=%v, naming=%v, uploading=%v", dv.importing, dv.IsNamingOpen(), dv.uploading)
 			if dv.importing || dv.IsNamingOpen() || dv.uploading {
@@ -444,9 +445,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			})
 		},
 		OnExportClick: func() {
-			dv.logger.Infof("[DRUMVIEW] Export button pressed")
+			dv.logger.Debugf("[drumview] export button pressed")
 			if err := dv.Export(); err != nil {
-				dv.logger.Infof("[DRUMVIEW] Export failed: %v", err)
+				dv.logger.Errorf("[drumview] export failed: %v", err)
+			} else {
+				hooks.PublishKind(hooks.EventExport, nil)
 			}
 		},
 		OnViewCycle: func() {
@@ -458,6 +461,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		GetMainVolume: audio.MainVolume,
 		SetMainVolume: func(v float64) {
 			audio.SetMainVolume(v)
+			emitMasterVolumeChange(v)
 		},
 		OnSubdivClick: func() {
 			// Toggle: close if already open.
@@ -512,9 +516,10 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.transportZone.SetPortal(dv.tree.Portal())
 	dv.tree.RegisterZone(dv.transportZone, 100)
 
-	// Sync initial state from ctor-created values.
+	// Sync initial BPM into TransportZone. Follow state has its single source
+	// of truth on TransportZone (default true, set by the zone's ctor); no
+	// DrumView-side seed required.
 	dv.transportZone.SetBPM(dv.bpm)
-	dv.transportZone.SetFollow(dv.follow)
 
 	// Wire input blocking: BPM box is force-blurred when popups/overlays are open.
 	// Note: we don't check tree.Suppress() here — suppress is a transient flag
@@ -542,7 +547,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		},
 		OnOriginReq: func(row int) { dv.originReq = append(dv.originReq, row) },
 		OnAddRow: func() {
-			dv.logger.Infof("[DRUMVIEW] Add row button pressed")
+			dv.logger.Debugf("[drumview] add row button pressed")
 			dv.AddRow()
 			dv.selRow = len(dv.Rows) - 1
 		},
@@ -618,7 +623,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 							}
 							oldID := dv.Rows[dv.renameRow].Instrument
 							newID := strings.ToLower(name)
-							dv.logger.Infof("[DRUMVIEW] Rename instrument row=%d %q -> %q", dv.renameRow, oldID, newID)
+							dv.logger.Debugf("[drumview] rename instrument row=%d %q -> %q", dv.renameRow, oldID, newID)
 							audio.RenameInstrument(oldID, newID)
 							if dv.samplePath != nil {
 								if p, ok := dv.samplePath[oldID]; ok {
@@ -659,10 +664,14 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 				dv.renameBox.anim = 1
 			}
 		},
-		OnFXPanelToggle:   func(row int) { dv.toggleFXPanel(row) },
-		OnVolPopupOpen:    func(row int) { dv.openVolumePopup(row) },
-		VolumePopup:       dv.volPopup,
-		OnSaveInstrument: func(row int) { dv.saveInstrument(row) },
+		OnFXPanelToggle: func(row int) { dv.toggleFXPanel(row) },
+		OnVolPopupOpen:  func(row int) { dv.openVolumePopup(row) },
+		VolumePopup:     dv.volPopup,
+		// OnSaveInstrument intentionally unwired — the on-disk save flow
+		// (assets/Saved/) is removed; user-owned instruments will return via
+		// the future server-side instrument library, referenced by id rather
+		// than copied as bytes. The save button in row_rack_zone is a no-op
+		// until that lands and will be removed in a follow-up UI pass.
 		OnScrollChanged: func() {
 			dv.rowScrollFromZone = true
 		},
@@ -685,7 +694,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.timelineZone = NewTimelineZone(TimelineCallbacks{
 		Rows:                 func() []*DrumRow { return dv.Rows },
 		IsPlaying:            func() bool { return dv.isPlaying },
-		Follow:               func() bool { return dv.follow },
+		Follow:               func() bool { return dv.FollowPlayback() },
 		BPM:                  func() int { return dv.bpm },
 		SecPerBeat:           func() float64 { return dv.secPerBeat },
 		TimelineUnitsPerBeat: func() int { return dv.timelineUnitsPerBeat },

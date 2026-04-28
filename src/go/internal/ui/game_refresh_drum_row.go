@@ -136,7 +136,7 @@ func (g *Game) refreshDrumRow() {
 								g.clampRowFreeze(rowIdx, abs-1)
 								g.timelineTrimAfterMutable(rowIdx, abs-1)
 								if traceRow {
-									g.logger.Infof("[TIMELINE] release mutable past mask row=%d abs=%d masked=%v want=%v newFreeze=%d",
+									g.logger.Debugf("[timeline] release mutable past mask row=%d abs=%d masked=%v want=%v newFreeze=%d",
 										rowIdx, abs, v, want, g.frozenUpToByRow[rowIdx])
 								}
 								limit = g.frozenUpToByRow[rowIdx]
@@ -154,7 +154,7 @@ func (g *Game) refreshDrumRow() {
 							if !inPast {
 								g.clampRowFreeze(rowIdx, abs-1)
 								if traceRow {
-									g.logger.Infof("[TIMELINE] clamp future freeze after released row=%d abs=%d masked=%v want=%v newFreeze=%d",
+									g.logger.Debugf("[timeline] clamp future freeze after released row=%d abs=%d masked=%v want=%v newFreeze=%d",
 										rowIdx, abs, v, want, g.frozenUpToByRow[rowIdx])
 								}
 								limit = g.frozenUpToByRow[rowIdx]
@@ -166,7 +166,7 @@ func (g *Game) refreshDrumRow() {
 							g.clampRowFreeze(rowIdx, abs-1)
 							g.timelineTrimAfter(rowIdx, abs-1)
 							if traceRow {
-								g.logger.Infof("[TIMELINE] releasing future freeze row=%d abs=%d masked=%v want=%v newFreeze=%d",
+								g.logger.Debugf("[timeline] releasing future freeze row=%d abs=%d masked=%v want=%v newFreeze=%d",
 									rowIdx, abs, v, want, g.frozenUpToByRow[rowIdx])
 							}
 							limit = g.frozenUpToByRow[rowIdx]
@@ -182,7 +182,7 @@ func (g *Game) refreshDrumRow() {
 		reconcileFrozen()
 		reconcileElapsed := time.Since(reconcileStart)
 		if reconcileElapsed > 10*time.Millisecond {
-			g.logger.Infof("[REFRESH] row=%d reconcileFrozen slow elapsed=%v freezeLimit=%d futureReleaseStart=%d", rowIdx, reconcileElapsed, freezeLimit, futureReleaseStart)
+			g.logger.Warnf("[refresh] row=%d reconcileFrozen slow elapsed=%v freezeLimit=%d futureReleaseStart=%d", rowIdx, reconcileElapsed, freezeLimit, futureReleaseStart)
 		}
 		// If the sequencer advanced past this window before the timeline
 		// recorded commits (e.g., during short play bursts in tests), ensure
@@ -217,7 +217,14 @@ func (g *Game) refreshDrumRow() {
 						}
 						bi := g.beatInfoAtRow(rowIdx, j)
 						val := predictAt(j, bi)
-						g.recordTimelineCommitKind(rowIdx, j, val, bi.NodeType, timeline.CommitKindPlayback)
+						// CommitKindReleased — NOT Playback. The audio thread's
+						// applySequencerHighlight is the sole authoritative source
+						// of immutable playback commits. This safety-net loop only
+						// fills gaps for the slate builder; if it speculates wrong
+						// (transient predictor state during a runtime mutation),
+						// the next refresh's reconcile pass can correct it without
+						// the timeline immutability rule fighting the predictor.
+						g.recordTimelineCommitKind(rowIdx, j, val, bi.NodeType, timeline.CommitKindReleased)
 					}
 					g.frozenUpToByRow[rowIdx] = target
 					freezeLimit = target
@@ -262,7 +269,7 @@ func (g *Game) refreshDrumRow() {
 		})
 		buildElapsed := time.Since(buildStart)
 		if buildElapsed > 10*time.Millisecond {
-			g.logger.Infof("[REFRESH] row=%d buildRowWindow slow elapsed=%v length=%d", rowIdx, buildElapsed, g.drum.Length)
+			g.logger.Warnf("[refresh] row=%d buildRowWindow slow elapsed=%v length=%d", rowIdx, buildElapsed, g.drum.Length)
 		}
 		r.Steps = nextSteps
 		r.CellTypes = nextTypes
@@ -289,7 +296,7 @@ func (g *Game) refreshDrumRow() {
 					g.parityReport(m)
 				}
 				if traceRow || !timelineTrace {
-					g.logger.Infof("[TIMELINE] mismatches=%d row=%d abs=%v", len(mismatches), rowIdx, indices)
+					g.logger.Debugf("[timeline] mismatches=%d row=%d abs=%v", len(mismatches), rowIdx, indices)
 				} else {
 					g.logger.Tracef("[TIMELINE] mismatches=%d row=%d abs=%v", len(mismatches), rowIdx, indices)
 				}
@@ -342,7 +349,7 @@ func (g *Game) refreshDrumRow() {
 		}
 		rowElapsed := time.Since(rowStart)
 		if rowElapsed > 20*time.Millisecond {
-			g.logger.Infof("[REFRESH] row=%d total slow elapsed=%v", rowIdx, rowElapsed)
+			g.logger.Warnf("[refresh] row=%d total slow elapsed=%v", rowIdx, rowElapsed)
 		}
 	}
 	// Remember the offset for the next refresh so past cell types can be

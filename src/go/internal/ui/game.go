@@ -2,7 +2,6 @@ package ui
 
 import (
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -47,7 +46,7 @@ const perfFastPathRefreshModulo = 8
 var defaultPerfFastPath bool
 
 func init() {
-	if os.Getenv("PERF_BROWSER_UPDATE_MAX_MS") != "" || os.Getenv("PERF_FAST_PATH") == "1" || runtime.GOOS == "js" {
+	if os.Getenv("PERF_BROWSER_UPDATE_MAX_MS") != "" || os.Getenv("PERF_FAST_PATH") == "1" || RuntimeProf().DefaultPerfFastPath {
 		defaultPerfFastPath = true
 	}
 }
@@ -115,7 +114,7 @@ func init() {
 // parity mismatch does not terminate the Go runtime and break browser tests.
 // Opt back into fatal behaviour with PARITY_WASM_FATAL=1|true|panic.
 func init() {
-	if runtime.GOOS != "js" {
+	if !RuntimeProf().IsBrowser {
 		return
 	}
 	if v := strings.ToLower(strings.TrimSpace(os.Getenv("PARITY_WASM_FATAL"))); v == "1" || v == "true" || v == "panic" {

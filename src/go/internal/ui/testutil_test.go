@@ -499,8 +499,8 @@ func assertDefaultSimpleDraw(t *testing.T, g *Game) {
 	if g == nil {
 		t.Fatalf("nil game in assertDefaultSimpleDraw")
 	}
-	if g.simpleDraw != simpleDrawDefault {
-		t.Fatalf("simpleDraw default=%v want %v before override", g.simpleDraw, simpleDrawDefault)
+	if g.simpleDraw != RuntimeProf().SimpleDrawDefault {
+		t.Fatalf("simpleDraw default=%v want %v before override", g.simpleDraw, RuntimeProf().SimpleDrawDefault)
 	}
 }
 

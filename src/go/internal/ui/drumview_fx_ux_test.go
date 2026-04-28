@@ -257,10 +257,10 @@ func TestFXPanelRemoveEffectViaUI(t *testing.T) {
 	// Open FX panel.
 	dv.toggleFXPanel(0)
 
-	// Find remove button "✕".
+	// Find remove button (IconClose per DESIGN.md §5c).
 	var removeBtn *Button
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "✕" {
+		if btn.Icon == string(IconClose) {
 			removeBtn = btn
 			break
 		}
@@ -610,10 +610,10 @@ func TestContextMenuHasSevenItemsMobile(t *testing.T) {
 		t.Fatal("context menu did not open")
 	}
 
-	// 8 items + 1 close button = 9 total buttons.
-	want := 9
+	// Mobile items: Instrument, Rename, Color, Effects, Origin, Delete (6) + close = 7.
+	want := 7
 	if got := len(dv.contextMenuBtns); got != want {
-		t.Errorf("expected %d context menu buttons (8 items + close), got %d", want, got)
+		t.Errorf("expected %d context menu buttons (6 items + close), got %d", want, got)
 		for i, btn := range dv.contextMenuBtns {
 			t.Logf("  btn[%d]: text=%q icon=%q", i, btn.Text, btn.Icon)
 		}
@@ -1364,41 +1364,39 @@ func TestContextMenuButtonsFireOnMobile(t *testing.T) {
 	}
 	fxAdvanceFrames(t, dv, 2) // settle
 
-	// Find the "Mute" button (first non-divider action in group 2).
+	// Find the "Instrument" button (present in mobile context menu).
 	if len(dv.contextMenuBtns) == 0 {
 		t.Fatal("context menu has no buttons")
 	}
 
-	// Find a button whose click action changes row state.
-	// The "Mute" item toggles dv.Rows[0].Muted.
-	var muteBtn *Button
+	var instBtn *Button
 	for _, btn := range dv.contextMenuBtns {
-		if btn.Text == "Mute" || btn.Text == "Muted" {
-			muteBtn = btn
+		if btn.Text == "Instrument" {
+			instBtn = btn
 			break
 		}
 	}
-	if muteBtn == nil {
-		t.Fatal("could not find Mute button in context menu")
+	if instBtn == nil {
+		t.Fatal("could not find Instrument button in context menu")
 	}
-	r := muteBtn.Rect()
+	r := instBtn.Rect()
 	if r.Empty() {
-		t.Fatal("Mute button has empty rect")
+		t.Fatal("Instrument button has empty rect")
 	}
 
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
 
-	wasMuted := dv.Rows[0].Muted
+	wasInstMenuOpen := dv.IsInstMenuOpen()
 
-	// Click on the Mute button via the Game-loop path (HandleInput + Update).
+	// Click on the Instrument button via the Game-loop path (HandleInput + Update).
 	// Before fix: tree yields at popupActive → portal inputFn never fires → button dead.
-	// After fix: tree dispatches to portal overlay → inputFn → handleContextMenuInput → Mute fires.
+	// After fix: tree dispatches to portal overlay → inputFn → handleContextMenuInput → button fires.
 	fxGameFrame(dv, cx, cy, true, 800, 300)
 	fxGameFrame(dv, cx, cy, false, 800, 300)
 
-	if dv.Rows[0].Muted == wasMuted {
-		t.Error("Mute button did not fire — context menu buttons dead on mobile " +
+	if dv.IsInstMenuOpen() == wasInstMenuOpen && dv.IsContextMenuOpen() {
+		t.Error("Instrument button did not fire — context menu buttons dead on mobile " +
 			"(tree yields at popupActive before portal dispatch)")
 	}
 }
@@ -1464,7 +1462,7 @@ func TestRowButtonTextsNotTruncated(t *testing.T) {
 			if r.Empty() {
 				t.Skip("button has empty rect")
 			}
-			maxW := r.Dx() - 2*buttonPad
+			maxW := r.Dx() - 2*SpaceXS
 			clipped := clipTextToWidth(tc.btn.Text, maxW)
 			if clipped != tc.btn.Text {
 				t.Errorf("%s button text %q truncated to %q (width=%d, maxW=%d, textW=%d)",

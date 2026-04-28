@@ -306,6 +306,173 @@ func TestPredictorMuteNodeLogicCallback(t *testing.T) {
 	}
 }
 
+func TestShouldGateMuteTable(t *testing.T) {
+	cases := []struct {
+		name string
+		typ  model.NodeType
+		kind string
+		want bool
+	}{
+		{"regular_node_never_gates", model.NodeTypeRegular, "probability", false},
+		{"silent_node_never_gates", model.NodeTypeSilent, "probability", false},
+		{"invisible_node_never_gates", model.NodeTypeInvisible, "every_n_triggers", false},
+		{"mute_empty_kind_no_gate", model.NodeTypeMute, "", false},
+		{"mute_none_no_gate", model.NodeTypeMute, "none", false},
+		{"mute_none_case_and_whitespace", model.NodeTypeMute, "  None  ", false},
+		{"mute_with_kind_gates", model.NodeTypeMute, "probability", true},
+		{"mute_uppercase_kind_gates", model.NodeTypeMute, "PROBABILITY", true},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			n := model.Node{Type: tc.typ}
+			n.Params.LogicKind = tc.kind
+			if got := shouldGateMute(n); got != tc.want {
+				t.Fatalf("shouldGateMute(type=%v kind=%q)=%v want=%v", tc.typ, tc.kind, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIncrementTriggerCount(t *testing.T) {
+	if got := incrementTriggerCount(nil, model.NodeID(7)); got != 0 {
+		t.Fatalf("nil map should return 0, got %d", got)
+	}
+
+	counts := map[model.NodeID]int{}
+	if got := incrementTriggerCount(counts, model.NodeID(1)); got != 1 {
+		t.Fatalf("first increment expected 1, got %d", got)
+	}
+	if got := incrementTriggerCount(counts, model.NodeID(1)); got != 2 {
+		t.Fatalf("second increment expected 2, got %d", got)
+	}
+	if got := incrementTriggerCount(counts, model.NodeID(2)); got != 1 {
+		t.Fatalf("independent id expected 1, got %d", got)
+	}
+	if counts[model.NodeID(1)] != 2 || counts[model.NodeID(2)] != 1 {
+		t.Fatalf("map state mismatch: %v", counts)
+	}
+}
+
+// Covers shouldTriggerNode branches not exercised elsewhere:
+//   - non-Regular, non-Mute returns false
+//   - "every_n_triggers" with LogicN <= 0 falls through (returns true)
+//   - "skip_every_n" with LogicN <= 0 falls through (returns true)
+//   - "probability" with LogicP <= 0 returns false
+//   - trigger_if_prev_skipped/triggered with no prior Regular returns false
+func TestPredictorShouldTriggerNodeEdgeCases(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	id := graph.AddNode(0, 0, model.NodeTypeRegular)
+	graph.StartNodeID = id
+
+	silentID := graph.AddNode(1, 0, model.NodeTypeSilent)
+	pred := NewPredictor(graph, logger)
+	// Path of only Silent beats so trigger_if_prev_* cannot resolve a prior Regular.
+	pred.SetPaths(
+		[][]model.BeatInfo{{{NodeID: silentID, NodeType: model.NodeTypeSilent}}},
+		[]bool{true}, []int{0},
+		map[model.NodeID]model.Node{id: graph.Nodes[id], silentID: graph.Nodes[silentID]},
+	)
+
+	counts := map[model.NodeID]int{}
+	last := model.InvalidNodeID
+	lastTrig := map[model.NodeID]bool{}
+
+	silent := model.Node{Type: model.NodeTypeSilent}
+	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeSilent}, silent, counts, &last, lastTrig) {
+		t.Fatalf("silent node should not trigger")
+	}
+	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeInvisible}, silent, counts, &last, lastTrig) {
+		t.Fatalf("invisible node should not trigger")
+	}
+
+	// every_n_triggers with N=0 should pass through.
+	n := graph.Nodes[id]
+	n.Params.LogicKind = "every_n_triggers"
+	n.Params.LogicN = 0
+	if !pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
+		t.Fatalf("every_n_triggers with N=0 should trigger")
+	}
+
+	// skip_every_n with N=0 should pass through.
+	n.Params.LogicKind = "skip_every_n"
+	n.Params.LogicN = 0
+	if !pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
+		t.Fatalf("skip_every_n with N=0 should trigger")
+	}
+
+	// probability with p<=0 always false.
+	n.Params.LogicKind = "probability"
+	n.Params.LogicP = 0
+	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
+		t.Fatalf("probability=0 must not trigger")
+	}
+
+	// trigger_if_prev_* with no prior Regular returns false.
+	n.Params.LogicKind = "trigger_if_prev_triggered"
+	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
+		t.Fatalf("trigger_if_prev_triggered with no prior should be false")
+	}
+	n.Params.LogicKind = "trigger_if_prev_skipped"
+	if pred.shouldTriggerNode(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, n, counts, &last, lastTrig) {
+		t.Fatalf("trigger_if_prev_skipped with no prior should be false")
+	}
+}
+
+// Covers evalAudible branches not exercised elsewhere:
+//   - mute node referencing a missing predictor entry (audible=false, trigger=false)
+//   - regular node referencing a missing predictor entry
+//   - non-Regular non-Mute beat type
+//   - gate suppresses a regular node when idx < gate
+func TestPredictorEvalAudibleEdgeCases(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	id := graph.AddNode(0, 0, model.NodeTypeRegular)
+	graph.StartNodeID = id
+
+	pred := NewPredictor(graph, logger)
+	pred.SetPaths([][]model.BeatInfo{{{NodeID: id, NodeType: model.NodeTypeRegular}}}, []bool{true}, []int{0}, map[model.NodeID]model.Node{id: graph.Nodes[id]})
+
+	counts := map[model.NodeID]int{}
+	trigCounts := map[model.NodeID]int{}
+	last := model.InvalidNodeID
+	lastTrig := map[model.NodeID]bool{}
+
+	// Missing-node id for a Mute beat.
+	missing := model.NodeID(9999)
+	aud, trig := pred.evalAudible(0, 0, model.BeatInfo{NodeID: missing, NodeType: model.NodeTypeMute}, counts, trigCounts, &last, lastTrig, nil)
+	if aud || trig {
+		t.Fatalf("missing mute node: got aud=%v trig=%v", aud, trig)
+	}
+	if got, ok := lastTrig[missing]; !ok || got {
+		t.Fatalf("lastTrig should record false for missing mute, got ok=%v val=%v", ok, got)
+	}
+
+	// Missing-node id for a Regular beat.
+	delete(lastTrig, missing)
+	aud, trig = pred.evalAudible(0, 0, model.BeatInfo{NodeID: missing, NodeType: model.NodeTypeRegular}, counts, trigCounts, &last, lastTrig, nil)
+	if aud || trig {
+		t.Fatalf("missing regular node: got aud=%v trig=%v", aud, trig)
+	}
+
+	// Non-regular non-mute beat type.
+	aud, trig = pred.evalAudible(0, 0, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeInvisible}, counts, trigCounts, &last, lastTrig, nil)
+	if aud || trig {
+		t.Fatalf("invisible beat: got aud=%v trig=%v", aud, trig)
+	}
+
+	// Gate suppresses a regular node when idx < gate.
+	gate := 5
+	aud, trig = pred.evalAudible(0, 2, model.BeatInfo{NodeID: id, NodeType: model.NodeTypeRegular}, counts, trigCounts, &last, lastTrig, &gate)
+	if aud || trig {
+		t.Fatalf("gated regular node: got aud=%v trig=%v", aud, trig)
+	}
+	if v, ok := lastTrig[id]; !ok || v {
+		t.Fatalf("lastTrig should record false for gated, got ok=%v val=%v", ok, v)
+	}
+}
+
 func TestPredictorRegularNodeLogicCallback(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	graph := model.NewGraph(logger)

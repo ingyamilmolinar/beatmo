@@ -46,6 +46,11 @@ func TestParityDetectsMissingAudioJustBehindPlayhead(t *testing.T) {
 			Audible:    true,
 			NodeType:   model.NodeTypeRegular,
 			Missing:    false,
+			// Match the current parity generation so the scan's gen filter does
+			// not discard this directly-injected decision. Production code path
+			// is recordSeqDecision which captures gen; tests that bypass it must
+			// stamp gen explicitly.
+			ParityGen:  g.parityGen.Load(),
 			RecordedAt: time.Unix(0, 0).Add(-250 * time.Millisecond), // past the grace window
 		},
 	}

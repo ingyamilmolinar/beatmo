@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"runtime"
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
@@ -15,10 +14,7 @@ func (g *Game) audioLoop() {
 		}
 
 		// Gather a small batch to reduce Go→JS crossings on WASM.
-		maxBatch := 256
-		if runtime.GOOS == "js" {
-			maxBatch = 32
-		}
+		maxBatch := RuntimeProf().AudioBatchMax
 		reqCap := 32
 		if reqCap > maxBatch {
 			reqCap = maxBatch
@@ -29,7 +25,11 @@ func (g *Game) audioLoop() {
 		drain := true
 		for drain && len(reqs) < maxBatch {
 			select {
-			case req := <-g.audioCh:
+			case req, ok := <-g.audioCh:
+				if !ok {
+					drain = false
+					continue
+				}
 				if g.Paused() {
 					g.logger.Debugf("[AUDIO] drop id=%s vol=%.3f while paused", req.id, req.vol)
 					continue

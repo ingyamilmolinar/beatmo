@@ -27,6 +27,13 @@ type mismatchEntry struct {
 	When      float64
 	Force     bool
 	Detail    string
+	// GenAtRecord is the parity generation at which the contributing buffered
+	// event (audio event / seq decision / highlight) was recorded.
+	// GenAtScan is the generation at which the scan ran. They will agree on a
+	// real mismatch; divergence means the scan saw cross-generation state and
+	// the entry was already gen-filtered out.
+	GenAtRecord uint64
+	GenAtScan   uint64
 }
 
 // mismatchRing is a fixed-capacity ring buffer for recent mismatches.
@@ -87,17 +94,29 @@ type parityAudioEvent struct {
 	Vol        float64
 	Pitch      float64
 	Dur        float64
-	Gen        uint64
+	// Gen is the audio scheduler's replay generation (g.audioGen) — bumped on
+	// stop/replay to drop in-flight notes from the previous run.
+	Gen uint64
+	// ParityGen is the structural-mutation generation (g.parityGen) at the
+	// moment this event was recorded. parityScan ignores events whose
+	// ParityGen disagrees with the current generation — that protects against
+	// runtime mutations (instrument change, EQ edit, BPM, etc.) racing the
+	// audio thread.
+	ParityGen  uint64
 	RecordedAt time.Time
 }
 
 type paritySeqDecision struct {
-	Row        int
-	Abs        int
-	Audible    bool // audio truth (AudibleAt)
-	Visible    bool // view truth (VisibleAt)
-	NodeType   model.NodeType
-	Missing    bool
+	Row     int
+	Abs     int
+	Audible bool // audio truth (AudibleAt)
+	Visible bool // view truth (VisibleAt)
+	NodeType model.NodeType
+	Missing  bool
+	// ParityGen is the structural-mutation generation at the moment this seq
+	// decision was recorded. The scan filters by current ParityGen so prior-
+	// generation decisions never participate in comparisons.
+	ParityGen  uint64
 	RecordedAt time.Time
 }
 

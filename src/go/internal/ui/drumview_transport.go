@@ -30,12 +30,12 @@ func (dv *DrumView) SetPlaying(p bool) {
 		dv.transportZone.SetPlaying(p)
 		return
 	}
+	// DESIGN.md §0/§5: icon-only button — never raw Unicode in Text.
+	dv.playBtn().Text = ""
 	if p {
-		dv.playBtn().Text = "⏸"
-		dv.playBtn().Icon = "pause"
+		dv.playBtn().Icon = string(IconPause)
 	} else {
-		dv.playBtn().Text = "▶"
-		dv.playBtn().Icon = "play"
+		dv.playBtn().Icon = string(IconPlay)
 	}
 }
 
@@ -97,7 +97,10 @@ func (dv *DrumView) SetBPM(b int) {
 		dv.transportZone.bpmErrorAnim = dv.bpmErrorAnim
 		dv.secPerBeat = 60.0 / float64(dv.bpm)
 		if prev != dv.bpm {
-			dv.logger.Infof("[DRUMVIEW] BPM set: %d -> %d", prev, dv.bpm)
+			dv.logger.Debugf("[drumview] BPM set: %d -> %d", prev, dv.bpm)
+			if dv.onStructuralMutation != nil {
+				dv.onStructuralMutation("bpm-change")
+			}
 		}
 		return
 	}
@@ -112,11 +115,14 @@ func (dv *DrumView) SetBPM(b int) {
 		return
 	}
 	prev := dv.bpm
-	dv.logger.Infof("[DRUMVIEW] BPM set: %d -> %d", prev, b)
+	dv.logger.Debugf("[drumview] BPM set: %d -> %d", prev, b)
 	dv.bpm = b
 	dv.secPerBeat = 60.0 / float64(dv.bpm)
 	if dv.bpmBox() != nil && !dv.bpmBox().Focused() {
 		dv.bpmBox().SetText(strconv.Itoa(dv.bpm))
+	}
+	if prev != b && dv.onStructuralMutation != nil {
+		dv.onStructuralMutation("bpm-change")
 	}
 }
 
@@ -129,61 +135,39 @@ func (dv *DrumView) OffsetChanged() bool {
 }
 
 // FollowPlayback reports whether the drum view auto-scrolls with playback.
+// TransportZone is the single source of truth; this is a thin delegator.
+// When TransportZone is absent (test-only DrumViews built without one), the
+// historical default of true is preserved.
 func (dv *DrumView) FollowPlayback() bool {
 	if dv.transportZone != nil {
 		return dv.transportZone.FollowPlayback()
 	}
-	return dv.follow
+	return true
 }
 
-// SetFollow toggles whether the drum view auto-scrolls with playback. It keeps
-// the track button label in sync so UI indicators match the internal state.
+// SetFollow toggles whether the drum view auto-scrolls with playback. It
+// delegates to TransportZone, the single source of truth; TransportZone is
+// responsible for syncing the track button visual via OnFollowChange.
 func (dv *DrumView) SetFollow(f bool) {
 	if dv.transportZone != nil {
 		dv.transportZone.SetFollow(f)
-		dv.follow = f
 		return
 	}
-	changed := dv.follow != f
-	dv.follow = f
-	dv.syncTrackBtnVisual()
-	if changed {
-		if dv.follow {
-			dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Track")
-		} else {
-			dv.logger.Infof("[DRUMVIEW] Track/Free toggled: follow=Free")
-		}
-	}
+	// No TransportZone (rare test-only path) — log-only no-op.
 }
 
-// syncTrackBtnVisual updates the track button icon and style to match follow state.
+// syncTrackBtnVisual delegates to TransportZone, which owns the track button
+// and the follow state.
 func (dv *DrumView) syncTrackBtnVisual() {
 	if dv.transportZone != nil {
 		dv.transportZone.syncTrackBtnVisual()
-		return
-	}
-	if dv.trackBtn() == nil {
-		return
-	}
-	if dv.follow {
-		dv.trackBtn().Icon = "track"
-		if Profile().IsMobile() {
-			dv.trackBtn().Style = TransportFollowOnStyle
-			dv.trackBtn().IconColor = colFollowActive
-		}
-	} else {
-		dv.trackBtn().Icon = "track-off"
-		if Profile().IsMobile() {
-			dv.trackBtn().Style = TransportMiscStyle
-			dv.trackBtn().IconColor = colIncDecIcon
-		}
 	}
 }
 
 // TrackBeat adjusts the drum view offset to keep the given beat visible when
 // auto-tracking is enabled.
 func (dv *DrumView) TrackBeat(cur int) {
-	if !dv.follow {
+	if !dv.FollowPlayback() {
 		return
 	}
 	// Ensure timeline extends far enough ahead of the playhead (beats) for clamping.
@@ -249,8 +233,9 @@ func (dv *DrumView) SetLength(length int) {
 	if length < 1 {
 		length = 1
 	}
+	prev := dv.Length
 	if length != dv.Length {
-		dv.logger.Infof("[DRUMVIEW] Length set: %d -> %d", dv.Length, length)
+		dv.logger.Debugf("[drumview] length set: %d -> %d", dv.Length, length)
 	}
 	dv.Length = length
 	for _, r := range dv.Rows {
@@ -259,6 +244,12 @@ func (dv *DrumView) SetLength(length int) {
 	}
 	dv.SetBeatLength(dv.Length)
 	dv.bgDirty = true
+	if length != prev {
+		emitLengthChange(length)
+		if dv.onStructuralMutation != nil {
+			dv.onStructuralMutation("length-change")
+		}
+	}
 }
 
 // SetLengthClamped sets the visible drum view length, clamping to
@@ -273,8 +264,9 @@ func (dv *DrumView) SetLengthClamped(length int) {
 	dv.SetBeatLength(length)
 	// Clamp the visible window.
 	length = dv.clampLength(length)
+	prev := dv.Length
 	if length != dv.Length {
-		dv.logger.Infof("[DRUMVIEW] Length set (clamped): %d -> %d", dv.Length, length)
+		dv.logger.Debugf("[drumview] length set (clamped): %d -> %d", dv.Length, length)
 	}
 	dv.Length = length
 	for _, r := range dv.Rows {
@@ -282,6 +274,9 @@ func (dv *DrumView) SetLengthClamped(length int) {
 		r.CellTypes = make([]model.NodeType, dv.Length)
 	}
 	dv.bgDirty = true
+	if length != prev && dv.onStructuralMutation != nil {
+		dv.onStructuralMutation("length-change")
+	}
 }
 
 func (dv *DrumView) SetInstrument(id string) {
@@ -298,10 +293,14 @@ func (dv *DrumView) SetInstrument(id string) {
 		}
 		dv.selRow = len(dv.Rows) - 1
 	}
-	dv.logger.Infof("[DRUMVIEW] Instrument set row=%d id=%s", dv.selRow, id)
+	dv.logger.Debugf("[drumview] instrument set row=%d id=%s", dv.selRow, id)
+	oldID := dv.Rows[dv.selRow].Instrument
+	if oldID != id && dv.onStructuralMutation != nil {
+		dv.onStructuralMutation("instrument-change")
+	}
 	dv.Rows[dv.selRow].Instrument = id
 	if id != "" {
-		dv.Rows[dv.selRow].Name = strings.ToUpper(id[:1]) + id[1:]
+		dv.Rows[dv.selRow].Name = dv.computeInstLabel(id)
 	}
 	if dv.instCatByID != nil {
 		if cat, ok := dv.instCatByID[id]; ok {
@@ -329,6 +328,7 @@ func (dv *DrumView) SetInstrument(id string) {
 	// Also invalidate the row controls cache so the label button text is redrawn.
 	dv.markRowControlsDirty()
 	dv.bgDirty = true
+	dv.onRowInstrumentChanged(dv.selRow, oldID, id)
 }
 
 func (dv *DrumView) AddInstrument(id string) {
@@ -359,7 +359,7 @@ func (dv *DrumView) CycleInstrument() {
 
 func (dv *DrumView) registerInstrument(id string) {
 	if id == "" {
-		dv.logger.Infof("[DRUMVIEW] Ignored empty WAV name")
+		dv.logger.Debugf("[drumview] ignored empty WAV name")
 		dv.notifyError("Instrument name cannot be empty")
 		dv.pendingWAV = ""
 		dv.nameInput = ""
@@ -385,7 +385,7 @@ func (dv *DrumView) registerInstrument(id string) {
 		dv.samplePath[canonicalID] = dv.pendingWAV
 		dv.refreshInstruments()
 		if dv.IsInstMenuOpen() {
-			dv.buildInstMenu()
+			dv.refreshInstMenuComponent()
 		}
 		if existed {
 			for row := range dv.Rows {
@@ -398,9 +398,9 @@ func (dv *DrumView) registerInstrument(id string) {
 		} else {
 			dv.notifyInfo("Loaded WAV instrument: " + canonicalID)
 		}
-		dv.logger.Infof("[DRUMVIEW] Loaded user WAV %s (existing=%v)", canonicalID, existed)
+		dv.logger.Infof("[drumview] loaded user WAV %s (existing=%v)", canonicalID, existed)
 	} else {
-		dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", err)
+		dv.logger.Errorf("[drumview] failed to load WAV: %v", err)
 		dv.notifyError("Error loading WAV: " + err.Error())
 	}
 	dv.pendingWAV = ""

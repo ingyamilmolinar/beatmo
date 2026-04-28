@@ -34,15 +34,11 @@ func (addEffectButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, 
 }
 
 // drawFXTogglePill draws a pill-style toggle switch in the given rect.
-// enabled controls ON/OFF color scheme; mobile controls sizing.
-func drawFXTogglePill(dst *ebiten.Image, r image.Rectangle, enabled, mobile bool) {
-	// Track dimensions.
-	trackW, trackH := 32, 18
-	thumbD := 14
-	if mobile {
-		trackW, trackH = 40, 22
-		thumbD = 18
-	}
+// enabled controls the ON/OFF color scheme; sizing follows the active
+// LayoutProfile (FXToggle*() accessors).
+func drawFXTogglePill(dst *ebiten.Image, r image.Rectangle, enabled bool) {
+	trackW, trackH := FXToggleTrackW(), FXToggleTrackH()
+	thumbD := FXToggleThumbD()
 
 	// Center the track vertically and left-align within the rect.
 	cx := r.Min.X + (r.Dx()-trackW)/2
@@ -73,7 +69,7 @@ func drawFXTogglePill(dst *ebiten.Image, r image.Rectangle, enabled, mobile bool
 	// Thumb color: ON = white, OFF = colTextSecondary.
 	var thumbCol color.Color
 	if enabled {
-		thumbCol = color.RGBA{255, 255, 255, 255}
+		thumbCol = genColorBorder
 	} else {
 		thumbCol = colTextSecondary
 	}
@@ -127,6 +123,27 @@ func (dv *DrumView) closeFXPanel() {
 	dv.fxScrollTS.Reset()
 	dv.fxScrollMaxPx = 0
 	dv.fxPanelRect = image.Rectangle{}
+}
+
+// OpenFXPanel opens the per-row insert-effects panel programmatically.
+// Used by the screenshot harness, scene catalog, and tests.
+func (dv *DrumView) OpenFXPanel(row int) {
+	if dv.IsFXPanelOpen() && dv.fxPanelRow == row {
+		return
+	}
+	dv.CloseAllPopups()
+	dv.openFXPanel(row)
+}
+
+// CloseFXPanel closes the FX panel.
+func (dv *DrumView) CloseFXPanel() { dv.closeFXPanel() }
+
+// FXPanelRow returns the row index of the currently open FX panel, or -1.
+func (dv *DrumView) FXPanelRow() int {
+	if !dv.IsFXPanelOpen() {
+		return -1
+	}
+	return dv.fxPanelRow
 }
 
 // propagateFXSliderValue pushes the current slider value to the audio engine.
@@ -335,14 +352,13 @@ func (dv *DrumView) buildFXPanel() {
 		enabled := e.Enabled
 
 		// Button sizing: wider on mobile for touch targets.
-		// Toggle pill is 32×18 (desktop) / 40×22 (mobile), so toggleBtnW
-		// must accommodate the pill; other buttons keep their smaller size.
+		// toggleBtnW = pill track width + SpaceSM padding so the hit area
+		// extends slightly past the pill on either side.
+		toggleBtnW := FXToggleTrackW() + SpaceSM
 		btnW := 24
-		toggleBtnW := 36 // fits 32px pill + 4px padding
 		btnGap := 3
 		if mobile {
 			btnW = 36
-			toggleBtnW = 44 // fits 40px pill + 4px padding
 			btnGap = 4
 		}
 
@@ -367,13 +383,16 @@ func (dv *DrumView) buildFXPanel() {
 			}
 			dv.fxPanelBtns = append(dv.fxPanelBtns, toggle)
 
-			// Expand/collapse button on mobile (enabled effects only)
+			// Expand/collapse button on mobile (enabled effects only).
+			// Uses chevron icons per DESIGN.md §5c (no raw Unicode in chrome).
 			if mobile && enabled {
-				chevron := "▶"
+				expBtn := NewButton("", InstButtonStyle, nil)
 				if dv.fxExpandedSlots[si] {
-					chevron = "▼"
+					expBtn.Icon = string(IconChevronDown)
+				} else {
+					expBtn.Icon = string(IconChevronRight)
 				}
-				expBtn := NewButton(chevron, InstButtonStyle, nil)
+				expBtn.IconColor = colTextSecondary
 				expX := x + 4 + toggleBtnW + btnGap
 				expBtn.SetRect(image.Rect(expX, y+2, expX+btnW, y+lineH-2))
 				expBtn.OnClick = func() {
@@ -387,9 +406,11 @@ func (dv *DrumView) buildFXPanel() {
 				dv.fxPanelBtns = append(dv.fxPanelBtns, expBtn)
 			}
 
-			// Move up button
+			// Move up button — IconChevronUp per §5c.
 			if slotIdx > 0 {
-				up := NewButton("▲", InstButtonStyle, nil)
+				up := NewButton("", InstButtonStyle, nil)
+				up.Icon = string(IconChevronUp)
+				up.IconColor = colTextSecondary
 				upX := x + w - 3*(btnW+btnGap) - 4 + btnGap
 				up.SetRect(image.Rect(upX, y+2, upX+btnW, y+lineH-2))
 				up.OnClick = func() {
@@ -401,9 +422,11 @@ func (dv *DrumView) buildFXPanel() {
 				dv.fxPanelBtns = append(dv.fxPanelBtns, up)
 			}
 
-			// Move down button
+			// Move down button — IconChevronDown per §5c (icon economy: chevrons reused for reorder).
 			if slotIdx < len(effects)-1 {
-				down := NewButton("▼", InstButtonStyle, nil)
+				down := NewButton("", InstButtonStyle, nil)
+				down.Icon = string(IconChevronDown)
+				down.IconColor = colTextSecondary
 				downX := x + w - 2*(btnW+btnGap) - 4 + btnGap
 				down.SetRect(image.Rect(downX, y+2, downX+btnW, y+lineH-2))
 				down.OnClick = func() {
@@ -415,8 +438,10 @@ func (dv *DrumView) buildFXPanel() {
 				dv.fxPanelBtns = append(dv.fxPanelBtns, down)
 			}
 
-			// Remove button
-			remove := NewButton("✕", InstButtonStyle, nil)
+			// Remove button — IconClose per §5c (no raw "✕").
+			remove := NewButton("", InstButtonStyle, nil)
+			remove.Icon = string(IconClose)
+			remove.IconColor = colTextSecondary
 			removeX := x + w - btnW - 4
 			remove.SetRect(image.Rect(removeX, y+2, removeX+btnW, y+lineH-2))
 			remove.OnClick = func() {
@@ -527,7 +552,7 @@ func (dv *DrumView) buildFXPanel() {
 	}
 
 	// Close button at top-right (fixed, not scrolled)
-	closeR := closeButtonRect(dv.fxPanelRect, buttonPad)
+	closeR := closeButtonRect(dv.fxPanelRect, SpaceXS)
 	closeB := NewButton("", PopupButtonStyle, func() { dv.closeFXPanel() })
 	closeB.Icon = "close"
 	closeB.IconColor = colButtonBorder
@@ -585,7 +610,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 
 	// Header (fixed, not scrolled)
 	headerR := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+headerH)
-	drawRoundedRect(dst, headerR, color.RGBA{45, 45, 55, 255}, popupCornerRadius(), true)
+	drawRoundedRect(dst, headerR, genColorSliderTrackFill, popupCornerRadius(), true)
 	title := fmt.Sprintf("FX: %s", dv.Rows[row].Name)
 	if len(title) > 30 {
 		title = title[:30]
@@ -662,7 +687,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		if br.Max.Y > dv.fxViewportRect.Min.Y && br.Min.Y < dv.fxViewportRect.Max.Y {
 			// Render pill-style toggle for effect enable/disable buttons.
 			if isToggle, enabled := isFXToggleBtn(btn); isToggle {
-				drawFXTogglePill(dst, br, enabled, mobile)
+				drawFXTogglePill(dst, br, enabled)
 			} else {
 				btn.Draw(dst)
 			}
@@ -681,7 +706,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 	}
 
 	// Draw header on top of scrolled content to cover any overflow
-	drawRoundedRect(dst, headerR, color.RGBA{45, 45, 55, 255}, popupCornerRadius(), true)
+	drawRoundedRect(dst, headerR, genColorSliderTrackFill, popupCornerRadius(), true)
 	DrawTextAt(dst, title, headerR.Min.X+8, textY)
 	// Redraw close button on top of header
 	if len(dv.fxPanelBtns) > 0 {
@@ -912,8 +937,5 @@ func fxParamLabel(name string, val float64, unit string) string {
 }
 
 func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
+	return audio.PrettyName(s)
 }

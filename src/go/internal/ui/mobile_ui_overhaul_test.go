@@ -171,8 +171,7 @@ func TestMobileAddRowButtonFAB(t *testing.T) {
 }
 
 // TestMobileRowControlsSimplified verifies that on mobile, edit/color/
-// solo/origin/delete buttons have empty rects while label+volume+mute
-// remain.
+// mute/solo/origin/delete buttons have empty rects while label+volume remain.
 func TestMobileRowControlsSimplified(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -193,14 +192,14 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 	if lr.Empty() {
 		t.Error("label button has empty rect on mobile")
 	}
-	// Mute buttons should be hidden on mobile (in context menu)
+	// Mute buttons are hidden on mobile
 	if len(dv.rowMuteBtns()) > 0 {
 		mr := dv.rowMuteBtns()[0].Rect()
 		if !mr.Empty() {
 			t.Error("mute button should have empty rect on mobile")
 		}
 	}
-	// Solo buttons should be hidden on mobile (in context menu)
+	// Solo buttons are hidden on mobile
 	if len(dv.rowSoloBtns()) > 0 {
 		sr := dv.rowSoloBtns()[0].Rect()
 		if !sr.Empty() {
@@ -231,6 +230,7 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 
 // TestMobileContextMenuOpens verifies that openContextMenu creates a valid
 // context menu with 7 buttons (6 items + close) bounded within dv.Bounds.
+// Mobile items: Instrument, Rename, Color, Effects, Origin, Delete (+ close).
 func TestMobileContextMenuOpens(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -240,14 +240,14 @@ func TestMobileContextMenuOpens(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 
 	if !dv.ContextMenuOpen() {
 		t.Fatal("context menu not open")
 	}
 	btns := dv.ContextMenuBtns()
-	if len(btns) != 9 {
-		t.Fatalf("expected 9 context menu buttons (8 items + close), got %d", len(btns))
+	if len(btns) != 7 {
+		t.Fatalf("expected 7 context menu buttons (6 items + close), got %d", len(btns))
 	}
 	rect := dv.ContextMenuRectVal()
 	if rect.Empty() {
@@ -270,7 +270,7 @@ func TestMobileContextMenuBounds(t *testing.T) {
 
 	dv := g.drum
 	lastRow := len(dv.Rows) - 1
-	dv.OpenContextMenuForTest(lastRow)
+	dv.OpenContextMenu(lastRow)
 
 	if !dv.ContextMenuOpen() {
 		t.Fatal("context menu not open")
@@ -544,7 +544,7 @@ func TestMobileContextMenuAllViewports(t *testing.T) {
 			if len(dv.Rows) == 0 {
 				t.Skip("no rows")
 			}
-			dv.OpenContextMenuForTest(0)
+			dv.OpenContextMenu(0)
 			if !dv.ContextMenuOpen() {
 				t.Fatal("context menu not open")
 			}

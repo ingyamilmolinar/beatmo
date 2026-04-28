@@ -167,8 +167,9 @@ func (g *Grid) EdgeThickness(scale float64) float64 {
 func (g *Grid) EdgeArrowSize() float64 {
 	// Keep arrowheads at a fixed fraction of a beat in world-space so they
 	// remain visually consistent across subdivision changes. Using Step (px
-	// per beat in world units) decouples size from MaxDiv.
-	return 0.15 * g.Step
+	// per beat in world units) decouples size from MaxDiv. The fraction is
+	// sourced from DESIGN.md geometry.edge-arrow-step-fraction.
+	return genGeomEdgeArrowStepFraction * g.Step
 }
 
 // Snap world coords to nearest subdivision vertex.

@@ -107,21 +107,20 @@ func TestMobileBeatCounterAboveTimeline(t *testing.T) {
 	}
 }
 
-// TestDesktopAndMobileBothTwoRowHeaders verifies both platforms use a two-row
-// header that is taller than the old single-row timelineHeight.
-func TestDesktopAndMobileBothTwoRowHeaders(t *testing.T) {
+// TestTopBarHeightMatchesActiveSpec verifies both platforms lock the top
+// control bar to ActiveTopBarSpec().Height (sourced from DESIGN.md
+// `profileOverrides.headerMinH/headerMaxH`). Desktop is a compact single-row
+// bar; mobile keeps a two-row tools layout but at a tighter height than the
+// pre-compaction 72 px.
+func TestTopBarHeightMatchesActiveSpec(t *testing.T) {
 	assertDefaultParityState(t)
 	// Desktop
 	graph1 := model.NewGraph(testLogger)
 	dvD := NewDrumView(image.Rect(0, 0, 1280, 720), graph1, testLogger)
 	dvD.recalcButtons()
-	desktopH := dvD.headerH
-
-	if desktopH > desktopHeaderH {
-		t.Fatalf("desktop headerH=%d exceeds desktopHeaderH cap=%d", desktopH, desktopHeaderH)
-	}
-	if desktopH <= timelineHeight {
-		t.Fatalf("desktop headerH=%d should be > timelineHeight=%d for two-row layout", desktopH, timelineHeight)
+	desktopSpec := DesktopTopBarSpec()
+	if dvD.headerH != desktopSpec.Height {
+		t.Fatalf("desktop headerH=%d should equal DesktopTopBarSpec().Height=%d", dvD.headerH, desktopSpec.Height)
 	}
 
 	// Mobile
@@ -129,11 +128,9 @@ func TestDesktopAndMobileBothTwoRowHeaders(t *testing.T) {
 	graph2 := model.NewGraph(testLogger)
 	dvM := NewDrumView(image.Rect(0, 0, 390, 844), graph2, testLogger)
 	dvM.recalcButtons()
-	mobileH := dvM.headerH
-
-	// Two rows need at least 2x the single-row height.
-	if mobileH < 2*timelineHeight {
-		t.Fatalf("mobile headerH=%d should be >= 2*timelineHeight=%d for two-row layout", mobileH, 2*timelineHeight)
+	mobileSpec := MobileTopBarSpec()
+	if dvM.headerH != mobileSpec.Height {
+		t.Fatalf("mobile headerH=%d should equal MobileTopBarSpec().Height=%d", dvM.headerH, mobileSpec.Height)
 	}
 }
 

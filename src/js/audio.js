@@ -1551,11 +1551,6 @@ window.updateInsertEffects = (id, slotsJSON) => {
   catch (err) { dbg('insert.effect.error', { id, err: String(err) }); }
 };
 
-window.getInsertEffects = (id) => {
-  const chain = getChannelChain(id);
-  return chain?.insertFX || [];
-};
-
 function rewireChannel(chain, oldMultibandProc = null) {
   try { chain.ingress.disconnect(); } catch (_) {}
   // Disconnect insert FX outgoing connections only (preserve internal wiring).
@@ -2754,98 +2749,368 @@ window.resetOutputCaptureNode = () => {
   }
 };
 
-// ─── Multi-Channel Recording Capture ────────────────────────────────────────
-// Per-instrument + master capture for WASM recording. Creates a
-// ScriptProcessorNode tap on each instrument's channel gain output.
+// ─── Multi-Channel Recording Capture (off main thread) ─────────────────────
+//
+// The recording pipeline runs entirely on background threads:
+//
+//   ┌─────────────────────────────────────────────────────────┐
+//   │ Audio rendering thread (per-channel AudioWorkletNode)   │
+//   │   recording-capture-processor → posts batches via       │
+//   │   transferred MessagePort directly to encoder Worker    │
+//   └─────────────────────────────────────────────────────────┘
+//                            │ ZERO-COPY transferable
+//                            ▼
+//   ┌─────────────────────────────────────────────────────────┐
+//   │ Web Worker (recording_encoder_worker.js)                │
+//   │   WAV-encodes per channel, bundles into stored zip      │
+//   │   on finalize, posts Blob back here.                    │
+//   └─────────────────────────────────────────────────────────┘
+//                            │ postMessage({type:'blob', blob})
+//                            ▼
+//   ┌─────────────────────────────────────────────────────────┐
+//   │ Main thread (this module)                               │
+//   │   triggerRecordingDownload(blob, filename)              │
+//   │   — only invoked once per recording session.            │
+//   └─────────────────────────────────────────────────────────┘
+//
+// Once a session is wired (after startMultiChannelCapture resolves),
+// the main thread is idle in the data path. The audio thread does the
+// 128-frame copy + post; the worker does the encode + zip; the main
+// thread only relays the resulting Blob into a download anchor.
 
-let multiCaptureNodes = new Map();  // id → { node, buffer }
-let multiCaptureMaster = null;      // { node, buffer }
-let multiCaptureEnabled = false;
+let _captureWorkletReadyPromise = null;
+let _recordingState = null;  // { worker, nodes: Map(id, {node, msgChan, chain, isMaster}), format, sampleRate, lastStats, autoStopFired }
+let _recordingFinalizePromise = null;  // resolves with {blob, meta} on finalize
 
-// startMultiChannelCapture(instrumentIDs: string[])
-// Called by Go when recording starts. Creates per-channel capture nodes.
-window.startMultiChannelCapture = (instrumentIDs) => {
-  const c = hasCtx() ? ctx : null;
+async function _ensureCaptureWorklet() {
+  if (!_captureWorkletReadyPromise) {
+    // Force context creation if needed (idempotent).
+    getCtx();
+    if (!ctx || !ctx.audioWorklet) {
+      _captureWorkletReadyPromise = Promise.resolve(false);
+      return false;
+    }
+    _captureWorkletReadyPromise = (async () => {
+      try {
+        const url = new URL('./recording_capture_worklet.js', import.meta.url).href;
+        await ctx.audioWorklet.addModule(url);
+        dbg('recording.worklet.ready');
+        return true;
+      } catch (err) {
+        console.error('[RECORDING] failed to register capture worklet:', err);
+        return false;
+      }
+    })();
+  }
+  return _captureWorkletReadyPromise;
+}
+
+function _buildMasterTap(c) {
+  // The master tap reads what hits the destination — we tap the limiter
+  // (last node before destination) the same way startOutputCapture does.
+  // We do NOT splice the captureNode INTO the chain; we add a parallel
+  // path so the user-audible output is unaffected.
+  const limiter = ensureLimiter ? ensureLimiter() : null;
+  return limiter || c.destination;  // fallback shouldn't happen in prod
+}
+
+// startMultiChannelCapture(instrumentIDs: string[], optsJSON?: string) -> Promise<{ok: bool, error?: string}>
+// Called by Go when recording starts. Spins up the worker, registers the
+// worklet (if needed), creates per-channel AudioWorkletNodes, and wires
+// MessagePorts so the audio thread talks directly to the worker.
+//
+// Returns a Promise that resolves once the worker is ready and all
+// channels are configured. Caller should await before considering the
+// recording "started".
+window.startMultiChannelCapture = async (instrumentIDs, optsJSON) => {
+  const c = getCtx();
   if (!c) {
-    console.warn('[MULTI-CAPTURE] No AudioContext available');
-    return;
+    return { ok: false, error: 'AudioContext unavailable' };
+  }
+  if (_recordingState) {
+    // Tear down any leftover state defensively.
+    try { await window.stopMultiChannelCapture(); } catch (_) {}
   }
 
-  // Clean up any previous capture
-  window.stopMultiChannelCapture();
+  const ok = await _ensureCaptureWorklet();
+  if (!ok) {
+    return { ok: false, error: 'AudioWorklet not supported' };
+  }
 
-  // Capture each instrument channel
+  let opts = {};
+  if (optsJSON && typeof optsJSON === 'string') {
+    try { opts = JSON.parse(optsJSON); } catch (_) { opts = {}; }
+  }
+  const format = (opts.format || 'wav24');
+
+  // Spawn worker. The URL must resolve relative to this module so it
+  // works under both file:// and http:// loads.
+  let worker;
+  try {
+    worker = new Worker(new URL('./recording_encoder_worker.js', import.meta.url),
+      { type: 'classic' });
+  } catch (err) {
+    return { ok: false, error: 'Worker unavailable: ' + String(err) };
+  }
+
+  const state = {
+    worker,
+    nodes: new Map(),  // id → {node, chain, isMaster}
+    format,
+    sampleRate: c.sampleRate,
+    lastStats: { droppedSamples: 0, bytesUsed: 0, queuedBatches: 0, maxQueueDepth: 0, elapsedSec: 0, activeChannels: 0 },
+    autoStopFired: false,
+    autoStopReason: '',
+  };
+  _recordingState = state;
+  _recordingFinalizePromise = null;
+
+  // Wait for worker ready, then route follow-on messages to handlers.
+  await new Promise((resolve, reject) => {
+    let timer = setTimeout(() => reject(new Error('encoder worker init timeout')), 5000);
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m && m.type === 'ready') {
+        clearTimeout(timer);
+        worker.onmessage = (ev) => _handleWorkerMessage(state, ev.data);
+        resolve();
+      }
+    };
+    worker.onerror = (err) => {
+      clearTimeout(timer);
+      reject(err);
+    };
+    worker.postMessage({
+      type: 'init',
+      format,
+      sampleRate: c.sampleRate,
+      bytesPerChannelMax: opts.bytesPerChannelMax,
+      durationMaxSec: opts.durationMaxSec,
+    });
+  });
+
+  // Per-channel wiring: for each instrument id and the master, create:
+  //   - AudioWorkletNode (capture processor)
+  //   - MessageChannel (port1 → worklet, port2 → worker)
+  //   - source → captureNode → ctx.destination (parallel tap; output is
+  //     pass-through inside the worklet so it doesn't sink the audio)
+  const setups = [];
+  // Per-instrument first…
   for (const id of instrumentIDs) {
     const chain = channelNodes.get(id);
     if (!chain || !chain.gain) continue;
+    setups.push({ id, source: chain.gain, chain, isMaster: false, filename: id });
+  }
+  // …then master.
+  setups.push({ id: 'master', source: _buildMasterTap(c), chain: null, isMaster: true, filename: 'master' });
 
-    const captureNode = c.createScriptProcessor(256, 1, 1);
-    const buf = [];
+  for (const setup of setups) {
+    const node = new AudioWorkletNode(c, 'recording-capture-processor', {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+    });
+    const channel = new MessageChannel();
 
-    captureNode.onaudioprocess = (e) => {
-      if (!multiCaptureEnabled) return;
-      const input = e.inputBuffer.getChannelData(0);
-      for (let i = 0; i < input.length; i++) {
-        buf.push(input[i]);
-      }
-      // Pass through
-      const output = e.outputBuffer.getChannelData(0);
-      for (let i = 0; i < input.length; i++) {
-        output[i] = input[i];
-      }
-    };
+    // Attach the node listener BEFORE configuring so 'configured' isn't lost.
+    const configured = new Promise((resolve) => {
+      node.port.onmessage = (e) => {
+        const m = e.data;
+        if (m && m.type === 'configured') resolve();
+      };
+    });
+    // Hand the worker port to the worklet (transferred).
+    node.port.postMessage({
+      type: 'configure',
+      channelId: setup.id,
+      workerPort: channel.port1,
+    }, [channel.port1]);
 
-    // Tap from channel gain → captureNode → (silent destination)
-    // We connect to a silent destination so the node processes.
-    // The gain node is already connected to main; we add a parallel tap.
-    chain.gain.connect(captureNode);
-    captureNode.connect(c.destination);
+    // Hand the worklet's other port-end to the worker (transferred).
+    worker.postMessage({
+      type: 'addChannel',
+      id: setup.id,
+      name: setup.id,
+      filename: setup.filename + '.wav',
+      port: channel.port2,
+    }, [channel.port2]);
 
-    multiCaptureNodes.set(id, { node: captureNode, buffer: buf, chain });
+    await configured;
+
+    setup.source.connect(node);
+    node.connect(c.destination);  // parallel tap; pass-through
+    state.nodes.set(setup.id, { node, chain: setup.chain, isMaster: setup.isMaster, source: setup.source });
   }
 
-  // Master capture: reuse existing outputCapture infrastructure
-  window.startOutputCapture();
-
-  multiCaptureEnabled = true;
-  console.log(`[MULTI-CAPTURE] Started: ${instrumentIDs.length} instruments + master`);
+  dbg('recording.session.started', { channels: state.nodes.size, format });
+  return { ok: true };
 };
 
-// stopMultiChannelCapture() → { master: Float32Array, channels: { id: Float32Array } }
-// Called by Go when recording stops. Returns all captured data.
-window.stopMultiChannelCapture = () => {
-  multiCaptureEnabled = false;
+function _handleWorkerMessage(state, msg) {
+  if (!msg || typeof msg !== 'object') return;
+  switch (msg.type) {
+  case 'stats':
+    state.lastStats = msg.stats;
+    break;
+  case 'autoStop':
+    state.autoStopFired = true;
+    state.autoStopReason = msg.reason || '';
+    dbg('recording.autoStop', { reason: msg.reason });
+    // Best-effort auto-stop: tell each worklet to stop posting. The
+    // Go side will see the autoStop flag in the next stats poll.
+    for (const entry of state.nodes.values()) {
+      try { entry.node.port.postMessage({ type: 'flush' }); } catch (_) {}
+    }
+    break;
+  case 'blob':
+    if (state._finalizeResolve) {
+      state._finalizeResolve({
+        blob: msg.blob,
+        meta: msg.meta,
+        autoStopped: !!msg.autoStopped,
+        sessionStats: msg.sessionStats || null,
+      });
+      state._finalizeResolve = null;
+    }
+    break;
+  }
+}
 
-  const result = {
-    master: null,
-    channels: {},
-  };
-
-  // Collect master from existing outputCapture
-  if (outputCaptureEnabled || outputCaptureBuffer.length > 0) {
-    result.master = window.stopOutputCapture();
-  } else {
-    result.master = new Float32Array(0);
+// stopMultiChannelCapture(metaJSON?: string) -> Promise<{
+//   blobURL: string, filename: string, channels: [...], autoStopped: bool,
+//   stats: {...}, sampleRate: int
+// }>
+//
+// Called by Go when recording stops. Tells each worklet to flush and
+// post 'done' to the worker; tells the worker to finalize (build WAV
+// headers + zip); returns once the worker has emitted the Blob.
+//
+// Returns an object whose `blobURL` is a fresh object URL the caller can
+// drop into an <a download> click. Caller is responsible for revoking.
+window.stopMultiChannelCapture = async (metaJSON) => {
+  const state = _recordingState;
+  if (!state) {
+    return { error: 'not recording' };
+  }
+  let meta = {};
+  if (metaJSON && typeof metaJSON === 'string') {
+    try { meta = JSON.parse(metaJSON); } catch (_) { meta = {}; }
   }
 
-  // Collect per-instrument channels
-  for (const [id, entry] of multiCaptureNodes) {
-    result.channels[id] = new Float32Array(entry.buffer);
-
-    // Disconnect capture node
+  // Tell every worklet to stop accepting input and post their final 'done'
+  // to the worker. The worker tracks per-channel done state.
+  for (const [id, entry] of state.nodes) {
+    try { entry.node.port.postMessage({ type: 'stop' }); } catch (_) {}
     try {
-      if (entry.chain && entry.chain.gain) {
-        entry.chain.gain.disconnect(entry.node);
-      }
+      if (entry.source && entry.source.disconnect) entry.source.disconnect(entry.node);
     } catch (_) {}
     try { entry.node.disconnect(); } catch (_) {}
   }
-  multiCaptureNodes.clear();
 
-  console.log(`[MULTI-CAPTURE] Stopped: master=${result.master.length} samples, ` +
-    `channels=${Object.keys(result.channels).length}`);
+  // Set up finalize promise BEFORE posting finalize.
+  const finalizePromise = new Promise((resolve, reject) => {
+    state._finalizeResolve = resolve;
+    setTimeout(() => reject(new Error('finalize timeout')), 30000);
+  });
+  // Build channel metadata in the worker's expected shape.
+  const channelMeta = [];
+  for (const [id, entry] of state.nodes) {
+    channelMeta.push({
+      id,
+      name: id,
+      filename: id + '.wav',
+    });
+  }
+  state.worker.postMessage({
+    type: 'finalize',
+    channels: channelMeta,
+    bpm: meta.bpm || 0,
+    timestamp: meta.timestamp || '',
+    duration: meta.duration || 0,
+  });
 
-  return result;
+  let result;
+  try {
+    result = await finalizePromise;
+  } catch (err) {
+    _recordingState = null;
+    try { state.worker.terminate(); } catch (_) {}
+    return { error: String(err) };
+  }
+
+  // Build a download URL the Go side can pass into an anchor click.
+  const blobURL = URL.createObjectURL(result.blob);
+  const filename = (meta.filenamePrefix || 'beatmo-recording-') +
+    (meta.timestamp || new Date().toISOString().replace(/[:.]/g, '-')) + '.zip';
+
+  // Tear down worker; one-shot per session.
+  try { state.worker.terminate(); } catch (_) {}
+  _recordingState = null;
+
+  return {
+    blobURL,
+    filename,
+    size: result.blob.size,
+    sampleRate: state.sampleRate,
+    autoStopped: !!result.autoStopped,
+    stats: result.sessionStats || state.lastStats,
+    channels: result.meta || channelMeta,
+  };
+};
+
+// recordingStatsSnapshot() — non-blocking poll for perfStats() integration.
+// Returns the most recent stats the worker published. The worker only
+// publishes on demand (via {type:'stats'} request) but we periodically
+// request and cache; perfStats() reads the cached value cheaply.
+window.recordingStatsSnapshot = () => {
+  if (!_recordingState) {
+    return { active: false, droppedSamples: 0, bytesUsed: 0, queuedBatches: 0,
+             maxQueueDepth: 0, elapsedSec: 0, activeChannels: 0,
+             autoStopped: false, autoStopReason: '' };
+  }
+  const s = _recordingState.lastStats || {};
+  return {
+    active: true,
+    droppedSamples: s.droppedSamples || 0,
+    bytesUsed: s.bytesUsed || 0,
+    queuedBatches: s.queuedBatches || 0,
+    maxQueueDepth: s.maxQueueDepth || 0,
+    elapsedSec: s.elapsedSec || 0,
+    activeChannels: s.activeChannels || _recordingState.nodes.size,
+    autoStopped: !!_recordingState.autoStopFired,
+    autoStopReason: _recordingState.autoStopReason || '',
+  };
+};
+
+// recordingRequestStats() — send a stats request to the worker. Result
+// arrives asynchronously and updates the cache read by recordingStatsSnapshot.
+// Called periodically from the Go-side perf snapshot path.
+window.recordingRequestStats = () => {
+  if (_recordingState && _recordingState.worker) {
+    try { _recordingState.worker.postMessage({ type: 'stats' }); } catch (_) {}
+  }
+};
+
+// recordingTriggerDownload(blobURL, filename) — fires the anchor click
+// for the download. Kept separate so Go can call it explicitly within
+// the user-activation window of the stop button click.
+window.recordingTriggerDownload = (blobURL, filename) => {
+  if (!blobURL) return false;
+  try {
+    const a = document.createElement('a');
+    a.href = blobURL;
+    a.download = filename || 'beatmo-recording.zip';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      try { URL.revokeObjectURL(blobURL); } catch (_) {}
+      try { a.remove(); } catch (_) {}
+    }, 1000);
+    return true;
+  } catch (err) {
+    console.error('[RECORDING] download trigger failed:', err);
+    return false;
+  }
 };
 
 // Speaker routing diagnostics — used by mobile_speaker_routing tests.

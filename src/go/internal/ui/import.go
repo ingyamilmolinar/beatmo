@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"image/color"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,14 +22,15 @@ const (
 )
 
 type importFile struct {
-	Version      int                `json:"version"`
-	Subdiv       int                `json:"subdiv"`
-	BPM          int                `json:"bpm"`
-	MasterVolume float64            `json:"master_volume,omitempty"`
-	Instruments  []exportInstrument `json:"instruments"`
-	Nodes        []exportNode       `json:"nodes"`
-	EQ           *exportEQ          `json:"eq,omitempty"`
-	SendEffects  *SendEffectsConfig `json:"send_effects,omitempty"`
+	Version           int                `json:"version"`
+	Subdiv            int                `json:"subdiv"`
+	BPM               int                `json:"bpm"`
+	MasterVolume      float64            `json:"master_volume,omitempty"`
+	Instruments       []exportInstrument `json:"instruments"`
+	Nodes             []exportNode       `json:"nodes"`
+	EQ                *exportEQ          `json:"eq,omitempty"`
+	SendEffects       *SendEffectsConfig `json:"send_effects,omitempty"`
+	PinnedInstruments []string           `json:"pinned_instruments,omitempty"` // per-project pin tier; absent on legacy files
 }
 
 func parseHexColor(s string) color.Color {
@@ -63,8 +62,8 @@ func parseHexColor(s string) color.Color {
 // grid's MaxDiv. Missing subdiv defaults to 32.
 func (g *Game) Import(data []byte) error {
 	importStart := time.Now()
-	g.logger.Infof("[IMPORT] started (%d bytes)", len(data))
-	defer func() { g.logger.Infof("[IMPORT] total elapsed=%v", time.Since(importStart)) }()
+	g.logger.Debugf("[import] started (%d bytes)", len(data))
+	defer func() { g.logger.Debugf("[import] total elapsed=%v", time.Since(importStart)) }()
 
 	// Stop sequencer during import to prevent seqMu contention. The background
 	// sequencerLoop checks Playing() before calling seqScheduleTime(), so setting
@@ -120,6 +119,13 @@ func (g *Game) Import(data []byte) error {
 	case 4, 8, 16, 32:
 	default:
 		f.Subdiv = 32
+	}
+
+	// Apply per-project instrument pins. Always written, even when the field
+	// is absent from the JSON: an absent or empty list resets the set so an
+	// import never silently inherits pins from a previous project.
+	if g.drum != nil {
+		g.drum.SetProjectPins(f.PinnedInstruments)
 	}
 
 	// Reset graph and UI state without replacing the graph pointer. The engine
@@ -333,7 +339,7 @@ func (g *Game) Import(data []byte) error {
 		}
 		idToNode[i] = ui
 	}
-	g.logger.Infof("[IMPORT] node creation elapsed=%v nodes=%d", time.Since(nodesStart), len(idToNode))
+	g.logger.Debugf("[import] node creation elapsed=%v nodes=%d", time.Since(nodesStart), len(idToNode))
 	// Create edges from all non-invisible nodes. Silent nodes are valid
 	// routing points and must retain their connections.
 	edgesStart := time.Now()
@@ -352,7 +358,7 @@ func (g *Game) Import(data []byte) error {
 			}
 		}
 	}
-	g.logger.Infof("[IMPORT] edge creation elapsed=%v", time.Since(edgesStart))
+	g.logger.Debugf("[import] edge creation elapsed=%v", time.Since(edgesStart))
 	// Instruments -> rows
 	rowsStart := time.Now()
 	g.drum.Rows = nil
@@ -388,13 +394,10 @@ func (g *Game) Import(data []byte) error {
 			g.drum.refreshInstruments()
 		}
 
-		// Strategy 2: Try provided path or legacy "sample-" prefix resolution
+		// Strategy 2: use the explicit path provided in the import payload, if any.
+		// External references (filesystem, DB, future remote pack) are resolved
+		// upstream by whoever produced the JSON.
 		instPath := inst.Path
-		if instPath == "" && strings.HasPrefix(inst.ID, "sample-") {
-			instPath = resolveSamplePath(inst.ID)
-		}
-
-		// Strategy 3: Use provided or resolved path
 		if instPath != "" {
 			if g.drum.samplePath == nil {
 				g.drum.samplePath = map[string]string{}
@@ -413,7 +416,7 @@ func (g *Game) Import(data []byte) error {
 			}
 			g.logger.Debugf("[GAME] Import row %d: name=%q inst=%q origin(json)=%d -> nodeID=%d", i, inst.Name, inst.ID, inst.Origin, ui.ID)
 		} else {
-			g.logger.Infof("[GAME] Import row %d: name=%q inst=%q origin(json)=%d not found; leaving origin unset", i, inst.Name, inst.ID, inst.Origin)
+			g.logger.Warnf("[import] row %d: name=%q inst=%q origin(json)=%d not found; leaving origin unset", i, inst.Name, inst.ID, inst.Origin)
 		}
 		// Apply per-instrument EQ if present
 		if inst.EQ != nil {
@@ -473,7 +476,7 @@ func (g *Game) Import(data []byte) error {
 		audio.SetReverbSend(inst.ID, row.ReverbSend)
 	}
 	g.drum.ResumeLayout()
-	g.logger.Infof("[IMPORT] row creation elapsed=%v rows=%d", time.Since(rowsStart), len(g.drum.Rows))
+	g.logger.Debugf("[import] row creation elapsed=%v rows=%d", time.Since(rowsStart), len(g.drum.Rows))
 	// Ensure imported colors are unique across rows.
 	g.drum.EnsureUniqueRowColors()
 	if f.BPM > 0 {
@@ -505,74 +508,18 @@ func (g *Game) Import(data []byte) error {
 	// armed after an import that already set each row's origin.
 	g.drum.added = nil
 	g.pendingStartRow = -1
-	g.logger.Infof("[IMPORT] before updateBeatInfos elapsed=%v nodes=%d rows=%d offset=%d length=%d",
+	g.logger.Debugf("[import] before updateBeatInfos elapsed=%v nodes=%d rows=%d offset=%d length=%d",
 		time.Since(importStart), len(g.graph.Nodes), len(g.drum.Rows), g.drum.Offset, g.drum.Length)
 	beatInfoStart := time.Now()
 	g.updateBeatInfos()
-	g.logger.Infof("[IMPORT] updateBeatInfos elapsed=%v", time.Since(beatInfoStart))
+	g.logger.Debugf("[import] updateBeatInfos elapsed=%v", time.Since(beatInfoStart))
 	g.paramsDirty = false
 	g.perfMode.ForceRefresh()
 	if g.drum != nil {
 		g.drum.markAllRowsDirty()
 	}
-	g.logger.Infof("[GAME] Import completed: bpm=%d nodes=%d rows=%d subdiv=%d", f.BPM, len(f.Nodes), len(g.drum.Rows), f.Subdiv)
+	g.logger.Debugf("[import] completed: bpm=%d nodes=%d rows=%d subdiv=%d", f.BPM, len(f.Nodes), len(g.drum.Rows), f.Subdiv)
 	return nil
-}
-
-// resolveSamplePath attempts to locate a WAV file matching a sample-backed
-// instrument ID (e.g., "sample-kick-9-wonder") within the assets tree. It
-// returns an empty string when no candidate is found.
-func resolveSamplePath(id string) string {
-	// First, check catalog directly by ID (handles non-"sample-" prefixed WAVs)
-	if meta, ok := audio.CatalogLookup(id); ok && meta.Path != "" {
-		return meta.Path
-	}
-
-	base := strings.TrimPrefix(id, "sample-")
-	if base == "" {
-		return ""
-	}
-	// Search env override first.
-	if env := os.Getenv("BEATMO_ASSETS"); env != "" {
-		for _, cand := range []string{
-			filepath.Join(env, base+".wav"),
-			filepath.Join(env, "wav", base+".wav"),
-			filepath.Join(env, "assets", "wav", base+".wav"),
-		} {
-			if info, err := os.Stat(cand); err == nil && !info.IsDir() {
-				abs, _ := filepath.Abs(cand)
-				return abs
-			}
-		}
-	}
-	// Walk a few parent levels to cover running from repo root or src/go.
-	for up := 0; up <= 5; up++ {
-		parts := make([]string, 0, up+4)
-		for i := 0; i < up; i++ {
-			parts = append(parts, "..")
-		}
-		parts = append(parts, "assets", "wav", base+".wav")
-		cand := filepath.Join(parts...)
-		if info, err := os.Stat(cand); err == nil && !info.IsDir() {
-			abs, _ := filepath.Abs(cand)
-			return abs
-		}
-	}
-	// Fall back to catalog metadata (if already initialized) to reuse known paths.
-	for _, meta := range audio.Catalog() {
-		if strings.EqualFold(strings.TrimPrefix(meta.ID, "sample-"), base) {
-			if meta.Path != "" {
-				return meta.Path
-			}
-		}
-		if meta.Path != "" {
-			bn := strings.TrimSuffix(filepath.Base(meta.Path), filepath.Ext(meta.Path))
-			if strings.EqualFold(bn, base) {
-				return meta.Path
-			}
-		}
-	}
-	return ""
 }
 
 // clampF64 constrains v to the range [lo, hi].

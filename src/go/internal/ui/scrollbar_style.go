@@ -8,6 +8,11 @@ import (
 )
 
 // ScrollbarStyle defines visual properties for a scrollbar track and thumb.
+// Track + thumb colors are white-base composites at named alpha buckets:
+// `border-thin` for the track (8/255 — same hairline strength as section
+// dividers) and `scrollbar-thumb` / `scrollbar-thumb-mobile` for the
+// thumb (40 / 50 — distinct so the thumb pops above the track without
+// competing with primary controls).
 type ScrollbarStyle struct {
 	TrackColor color.Color
 	ThumbColor color.Color
@@ -17,20 +22,20 @@ type ScrollbarStyle struct {
 
 var (
 	DefaultScrollbarStyle = ScrollbarStyle{
-		TrackColor: color.NRGBA{255, 255, 255, 8},
-		ThumbColor: color.NRGBA{255, 255, 255, 40},
+		TrackColor: WithAlpha(genColorBorder, genAlphaBorderThin),
+		ThumbColor: WithAlpha(genColorBorder, genAlphaScrollbarThumb),
 		Width:      6,
 		MinThumbH:  10,
 	}
 	MobileScrollbarStyle = ScrollbarStyle{
-		TrackColor: color.NRGBA{255, 255, 255, 8},
-		ThumbColor: color.NRGBA{255, 255, 255, 50},
+		TrackColor: WithAlpha(genColorBorder, genAlphaBorderThin),
+		ThumbColor: WithAlpha(genColorBorder, genAlphaScrollbarThumbMobile),
 		Width:      16,
 		MinThumbH:  44,
 	}
 	DropdownScrollbarStyle = ScrollbarStyle{
-		TrackColor: color.NRGBA{255, 255, 255, 8},
-		ThumbColor: color.NRGBA{255, 255, 255, 40},
+		TrackColor: WithAlpha(genColorBorder, genAlphaBorderThin),
+		ThumbColor: WithAlpha(genColorBorder, genAlphaScrollbarThumb),
 		Width:      10,
 		MinThumbH:  12,
 	}

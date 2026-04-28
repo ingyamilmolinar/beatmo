@@ -188,7 +188,7 @@ try {
       typeof stopOutputCapture === "function" &&
       typeof addNode === "function" &&
       typeof addEdgeGrid === "function" &&
-      typeof updateBeatInfosJS === "function" &&
+      typeof updateBeatInfos === "function" &&
       typeof startPlay === "function" &&
       typeof stopPlay === "function" &&
       typeof __hasSilentAudioEl === "function"
@@ -207,7 +207,7 @@ try {
       addNode?.(4, 0, "regular");
       addEdgeGrid?.(0, 0, 4, 0);
       addEdgeGrid?.(4, 0, 0, 0);
-      updateBeatInfosJS?.();
+      updateBeatInfos?.();
       forceDraw?.();
     });
     await page.waitForTimeout(200);

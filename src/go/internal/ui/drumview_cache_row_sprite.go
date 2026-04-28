@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -28,7 +27,7 @@ func (dv *DrumView) buildRowSprite(i int) int {
 	}
 	n := len(dv.Rows[i].Steps)
 	if n < 1 {
-		dv.rowCache[i] = ebiten.NewImage(w, h)
+		dv.rowCache[i] = newTrackedImage("rowCache.empty", w, h)
 		dv.rowCacheLen = dv.Length
 		dv.rowCacheW, dv.rowCacheH = w, h
 		dv.rowCacheOff[i] = dv.Offset
@@ -57,7 +56,7 @@ func (dv *DrumView) buildRowSprite(i int) int {
 				dv.rowCacheScratch = scratch
 			}
 			if dv.rowCacheScratch[i] == nil || dv.rowCacheScratch[i].Bounds().Dx() != w || dv.rowCacheScratch[i].Bounds().Dy() != h {
-				dv.rowCacheScratch[i] = ebiten.NewImage(w, h)
+				dv.rowCacheScratch[i] = newTrackedImage("rowCacheScratch", w, h)
 			} else {
 				dv.rowCacheScratch[i].Clear()
 			}
@@ -180,13 +179,13 @@ func (dv *DrumView) buildRowSprite(i int) int {
 		img = dv.rowCache[i]
 		img.Clear()
 	} else {
-		img = ebiten.NewImage(w, h)
+		img = newTrackedImage("rowSprite", w, h)
 	}
 	// Alternating row stripe background for subtle visual grouping.
 	if i%2 == 0 {
-		drawRect(img, image.Rect(0, 0, w, h), color.RGBA{24, 24, 30, 255}, true)
+		drawRect(img, image.Rect(0, 0, w, h), genColorDrumStripeEven, true)
 	} else {
-		drawRect(img, image.Rect(0, 0, w, h), color.RGBA{18, 18, 22, 255}, true)
+		drawRect(img, image.Rect(0, 0, w, h), genColorDrumStripeOdd, true)
 	}
 	if n <= w {
 		// Full-resolution cells.
@@ -272,31 +271,8 @@ func (dv *DrumView) rowHasContent(row int) bool {
 	if samples < 1 {
 		samples = 1
 	}
-	// Helper to read alpha at absolute screen (x,y) from stripes or layer.
+	// Helper to read alpha at absolute screen (x,y) from the rows layer.
 	readAlpha := func(x int, y int) uint32 {
-		if dv.rowsStripingEnabled && len(dv.rowsStripes) > 0 {
-			localX := x - dv.timelineRect.Min.X
-			if localX < 0 {
-				return 0
-			}
-			for si := 0; si < len(dv.rowsStripes); si++ {
-				img := dv.rowsStripes[si]
-				if img == nil {
-					continue
-				}
-				sx := dv.rowsStripeStarts[si]
-				sw := dv.rowsStripeWidths[si]
-				if localX >= sx && localX < sx+sw {
-					lx := localX - sx
-					ly := y - dv.Bounds.Min.Y
-					if lx >= 0 && lx < sw && ly >= 0 && ly < dv.Bounds.Dy() {
-						_, _, _, a := img.At(lx, ly).RGBA()
-						return a
-					}
-				}
-			}
-			return 0
-		}
 		if dv.rowsLayer != nil {
 			lx := x - dv.Bounds.Min.X
 			ly := y - dv.Bounds.Min.Y

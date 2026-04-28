@@ -20,8 +20,8 @@ func TestTouchSizesDesktop(t *testing.T) {
 	if TouchMinTarget() != 0 {
 		t.Errorf("TouchMinTarget() = %d, want 0", TouchMinTarget())
 	}
-	if TransportBtnSize() != 0 {
-		t.Errorf("TransportBtnSize() = %d, want 0", TransportBtnSize())
+	if TransportBtnSize() != 32 {
+		t.Errorf("TransportBtnSize() = %d, want 32", TransportBtnSize())
 	}
 	if RowControlBtnSize() != 0 {
 		t.Errorf("RowControlBtnSize() = %d, want 0", RowControlBtnSize())
@@ -155,23 +155,25 @@ func TestPopupSizingMobile(t *testing.T) {
 }
 
 func TestDesignTokenConstants(t *testing.T) {
-	if SpaceXS != 2 {
-		t.Errorf("SpaceXS = %d, want 2", SpaceXS)
+	// Spacing scale bumped ~25% for the cushioned-dark theme — see
+	// DESIGN.md "Spacing scale" prose.
+	if SpaceXS != 3 {
+		t.Errorf("SpaceXS = %d, want 3", SpaceXS)
 	}
-	if SpaceSM != 4 {
-		t.Errorf("SpaceSM = %d, want 4", SpaceSM)
+	if SpaceSM != 6 {
+		t.Errorf("SpaceSM = %d, want 6", SpaceSM)
 	}
-	if SpaceMD != 8 {
-		t.Errorf("SpaceMD = %d, want 8", SpaceMD)
+	if SpaceMD != 10 {
+		t.Errorf("SpaceMD = %d, want 10", SpaceMD)
 	}
-	if SpaceLG != 12 {
-		t.Errorf("SpaceLG = %d, want 12", SpaceLG)
+	if SpaceLG != 14 {
+		t.Errorf("SpaceLG = %d, want 14", SpaceLG)
 	}
-	if SpaceXL != 16 {
-		t.Errorf("SpaceXL = %d, want 16", SpaceXL)
+	if SpaceXL != 20 {
+		t.Errorf("SpaceXL = %d, want 20", SpaceXL)
 	}
-	if SpaceXXL != 24 {
-		t.Errorf("SpaceXXL = %d, want 24", SpaceXXL)
+	if SpaceXXL != 28 {
+		t.Errorf("SpaceXXL = %d, want 28", SpaceXXL)
 	}
 	if BtnHeightSM != 28 {
 		t.Errorf("BtnHeightSM = %d, want 28", BtnHeightSM)

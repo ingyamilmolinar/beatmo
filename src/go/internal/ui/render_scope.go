@@ -10,35 +10,33 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// Scope trace colors for A/B comparison.
-// Semi-transparent so both traces remain visible when overlaid.
+// Scope colors are sourced from DESIGN.md `viz-scope-*` tokens. Trace
+// alpha values are scope-internal (180/150 for the line, 18/15 for the
+// fill, etc.) and stay as numeric arguments to WithAlpha; only the base
+// hex moves to DESIGN.md.
 var (
-	colScopeA = color.NRGBA{68, 136, 255, 180}  // blue (drawn second, "before")
-	colScopeB = color.NRGBA{255, 136, 68, 150}  // orange ("after", slightly more transparent)
+	colScopeA     = WithAlpha(genColorVizScopeTraceA, 180)
+	colScopeB     = WithAlpha(genColorVizScopeTraceB, 150)
+	colScopeAFill = WithAlpha(genColorVizScopeTraceA, 18)
+	colScopeBFill = WithAlpha(genColorVizScopeTraceB, 15)
 )
 
-// Scope trace fill colors — very low alpha so fill doesn't overwhelm the trace.
 var (
-	colScopeAFill = color.NRGBA{68, 136, 255, 18}  // blue, ~7% alpha
-	colScopeBFill = color.NRGBA{255, 136, 68, 15}   // orange, ~6% alpha
+	colScopeDiff     = WithAlpha(genColorVizScopeTraceDiff, 200)
+	colScopeDiffFill = WithAlpha(genColorVizScopeTraceDiff, 15)
 )
 
-// Diff trace color (green).
 var (
-	colScopeDiff     = color.NRGBA{160, 255, 100, 200}
-	colScopeDiffFill = color.NRGBA{160, 255, 100, 15}
+	colScopeBg      = genColorVizScopeBg
+	colScopeGrid    = WithAlpha(genColorBorder, 20)
+	colScopeGridMid = WithAlpha(genColorBorder, 35)
+	colScopeTrigger = genColorVizScopeTrigger
 )
 
-// Scope background and grid colors.
-var (
-	colScopeBg      = color.RGBA{10, 10, 22, 255}
-	colScopeGrid    = color.NRGBA{255, 255, 255, 20}
-	colScopeGridMid = color.NRGBA{255, 255, 255, 35}
-	colScopeTrigger = color.RGBA{200, 200, 80, 255}
-)
-
-// colScopeFrozenBorder is used to draw a visible border when frozen.
-var colScopeFrozenBorder = color.NRGBA{255, 80, 80, 160}
+// colScopeFrozenBorder reuses destructive-confirm-border (#FF5050) at the
+// scope-internal "frozen" alpha 160 — sits between AlphaStrong (180) and
+// AlphaMedium (90) so it reads as a clear-but-not-loud halt indicator.
+var colScopeFrozenBorder = WithAlpha(genColorDestructiveConfirmBorder, 160)
 
 const (
 	scopeLeftMargin   = 32
@@ -180,13 +178,13 @@ func drawScopeOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, sta
 		tw := int(float64(TextWidth(textA)) * captionScale)
 		// Semi-transparent background behind legend.
 		bgRect := image.Rect(legendX-tw-10, legendY-1, legendX+2, legendY+lh+1)
-		drawRect(dst, bgRect, color.NRGBA{10, 10, 22, 180}, true)
+		drawRect(dst, bgRect, WithAlpha(genColorVizScopeBg, 180), true)
 		// Color swatch.
 		swatchY := legendY + lh/2 - 1
 		drawRect(dst, image.Rect(legendX-tw-8, swatchY, legendX-tw-2, swatchY+2), colScopeA, true)
 		textCol := colScopeA
 		if !showA {
-			textCol = color.NRGBA{68, 136, 255, 60} // dimmed when hidden
+			textCol = WithAlpha(genColorVizScopeTraceA, 60) // dimmed when hidden
 		}
 		DrawTextColorAtScale(dst, textA, legendX-tw, legendY, textCol, captionScale)
 		legendY += lh + 2
@@ -198,12 +196,12 @@ func drawScopeOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, sta
 			clampDBDisplay(state.TapB.RMSDB))
 		tw := int(float64(TextWidth(textB)) * captionScale)
 		bgRect := image.Rect(legendX-tw-10, legendY-1, legendX+2, legendY+lh+1)
-		drawRect(dst, bgRect, color.NRGBA{10, 10, 22, 180}, true)
+		drawRect(dst, bgRect, WithAlpha(genColorVizScopeBg, 180), true)
 		swatchY := legendY + lh/2 - 1
 		drawRect(dst, image.Rect(legendX-tw-8, swatchY, legendX-tw-2, swatchY+2), colScopeB, true)
 		textCol := colScopeB
 		if !showB {
-			textCol = color.NRGBA{255, 136, 68, 60} // dimmed when hidden
+			textCol = WithAlpha(genColorVizScopeTraceB, 60) // dimmed when hidden
 		}
 		DrawTextColorAtScale(dst, textB, legendX-tw, legendY, textCol, captionScale)
 	}
@@ -239,7 +237,9 @@ func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *s
 	if tap.Active && len(tap.Samples) > 0 {
 		var fillCol color.Color
 		if nrgba, ok := col.(color.NRGBA); ok {
-			fillCol = color.NRGBA{nrgba.R, nrgba.G, nrgba.B, 18}
+			// 18 matches the per-trace fill alpha used by colScopeAFill /
+			// colScopeBFill at the top of this file (scope-internal pattern).
+			fillCol = WithAlphaNRGBA(nrgba, 18)
 		}
 		drawWaveTrace(dst, tap.Samples, halfRect, midY, w, col, yGain, fillCol)
 	}
@@ -302,7 +302,7 @@ func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state 
 
 	tw := int(float64(TextWidth(text)) * captionScale)
 	bgRect := image.Rect(legendX-tw-10, legendY-1, legendX+2, legendY+lh+1)
-	drawRect(dst, bgRect, color.NRGBA{10, 10, 22, 180}, true)
+	drawRect(dst, bgRect, WithAlpha(genColorVizScopeBg, 180), true)
 	swatchY := legendY + lh/2 - 1
 	drawRect(dst, image.Rect(legendX-tw-8, swatchY, legendX-tw-2, swatchY+2), colScopeDiff, true)
 	DrawTextColorAtScale(dst, text, legendX-tw, legendY, colScopeDiff, captionScale)
@@ -326,14 +326,6 @@ func scopeDiffSamples(a, b []float64) []float64 {
 	return diff
 }
 
-// dBFromLinear converts a linear amplitude to dB.
-func dBFromLinear(v float64) float64 {
-	if v <= 0 {
-		return -math.Inf(1)
-	}
-	return 20 * math.Log10(v)
-}
-
 // drawScopeTapLegend draws the A/B label with peak/RMS inside a half-rect (split mode).
 func drawScopeTapLegend(dst *ebiten.Image, halfRect image.Rectangle, tap *scope.TapData, col color.Color, prefix string, captionScale float64, lh int) {
 	if !tap.Active {
@@ -348,7 +340,7 @@ func drawScopeTapLegend(dst *ebiten.Image, halfRect image.Rectangle, tap *scope.
 	x := halfRect.Max.X - tw - 4
 	y := halfRect.Min.Y + 2
 	bgRect := image.Rect(x-4, y-1, halfRect.Max.X-2, y+lh+1)
-	drawRect(dst, bgRect, color.NRGBA{10, 10, 22, 180}, true)
+	drawRect(dst, bgRect, WithAlpha(genColorVizScopeBg, 180), true)
 	DrawTextColorAtScale(dst, text, x, y, col, captionScale)
 }
 
@@ -407,21 +399,3 @@ func scopePeakAmplitude(state *scope.State) float64 {
 	return peak
 }
 
-// clampDBDisplay clamps -Inf dB to -96 for display.
-func clampDBDisplay(db float64) float64 {
-	if math.IsInf(db, -1) {
-		return -96.0
-	}
-	return db
-}
-
-// formatWindowMs formats a time value for scope axis labels.
-func formatWindowMs(ms float64) string {
-	if ms >= 10 {
-		return fmt.Sprintf("%.0fms", ms)
-	}
-	if ms >= 1 {
-		return fmt.Sprintf("%.1fms", ms)
-	}
-	return fmt.Sprintf("%.2fms", ms)
-}

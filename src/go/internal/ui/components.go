@@ -41,10 +41,11 @@ func (s NodeStyle) Draw(dst *ebiten.Image, x, y float64, cam *ebiten.GeoM) {
 	op.GeoM.Translate(x-float64(s.Radius), y-float64(s.Radius))
 	op.GeoM.Concat(*cam)
 	dst.DrawImage(pixel(s.Fill), &op)
-	DrawLineCam(dst, x-float64(s.Radius), y-float64(s.Radius), x+float64(s.Radius), y-float64(s.Radius), cam, s.Border, 1)
-	DrawLineCam(dst, x+float64(s.Radius), y-float64(s.Radius), x+float64(s.Radius), y+float64(s.Radius), cam, s.Border, 1)
-	DrawLineCam(dst, x+float64(s.Radius), y+float64(s.Radius), x-float64(s.Radius), y+float64(s.Radius), cam, s.Border, 1)
-	DrawLineCam(dst, x-float64(s.Radius), y+float64(s.Radius), x-float64(s.Radius), y-float64(s.Radius), cam, s.Border, 1)
+	thk := float64(genGeomNodeBorderThickness)
+	DrawLineCam(dst, x-float64(s.Radius), y-float64(s.Radius), x+float64(s.Radius), y-float64(s.Radius), cam, s.Border, thk)
+	DrawLineCam(dst, x+float64(s.Radius), y-float64(s.Radius), x+float64(s.Radius), y+float64(s.Radius), cam, s.Border, thk)
+	DrawLineCam(dst, x+float64(s.Radius), y+float64(s.Radius), x-float64(s.Radius), y+float64(s.Radius), cam, s.Border, thk)
+	DrawLineCam(dst, x-float64(s.Radius), y+float64(s.Radius), x-float64(s.Radius), y-float64(s.Radius), cam, s.Border, thk)
 }
 
 // SignalStyle defines the appearance of travelling pulses between nodes.
@@ -56,13 +57,14 @@ type SignalStyle struct {
 // Draw renders the signal at world coordinates with the given camera transform.
 func (s SignalStyle) Draw(dst *ebiten.Image, x, y float64, cam *ebiten.GeoM) {
 	size := float64(s.Radius) * 2
-	// Outer glow
+	// Outer glow — radius multiplier sourced from DESIGN.md
+	// geometry.signal-glow-radius-multiplier.
 	var op ebiten.DrawImageOptions
-	glowSize := size * 1.5
+	glowSize := size * genGeomSignalGlowRadiusMultiplier
 	op.GeoM.Scale(glowSize, glowSize)
 	op.GeoM.Translate(x-glowSize/2, y-glowSize/2)
 	op.GeoM.Concat(*cam)
-	dst.DrawImage(pixel(fadeColor(s.Color, 0.3)), &op)
+	dst.DrawImage(pixel(fadeColor(s.Color, float64(genAnimSignalGlowOuter))), &op)
 
 	// Inner core
 	var op2 ebiten.DrawImageOptions
@@ -117,15 +119,32 @@ type ButtonStyle struct {
 	Border color.Color
 }
 
-// Draw renders the button rectangle using the global drawButton primitive.
+// ButtonStyleFromSpec builds a ButtonStyle from a generated ComponentSpec
+// looked up by ID. Used by theme.go to source the legacy *Style vars from
+// DESIGN.md instead of hand-coded color literals — every theme.go var that
+// has a corresponding ComponentID can flip its initialiser to this one
+// call. Behaviour stays byte-equivalent (TestComponentSpecsDrift verifies
+// the spec values match the original literals).
+//
+// Returning a value (not a pointer) preserves the historical struct-copy
+// semantics of theme.go assignments. The Border color flows through as
+// the BorderRef.Resolve() result — concrete NRGBA so existing call sites
+// receive the same type they did before.
+func ButtonStyleFromSpec(id ComponentID) ButtonStyle {
+	spec := Spec(id)
+	return ButtonStyle{Fill: spec.Fill, Border: spec.Border.Resolve()}
+}
+
+// Draw renders the button rectangle. Delegates to renderLegacy (the
+// chrome-rendering primitive in render.go) so all chrome flows through a
+// single path. Hover/press deltas mirror the historical hand-coded values
+// that Phase 2 captured byte-equivalent in DESIGN.md `button-secondary`
+// (verified by TestComponentSpecsDrift).
 func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-	fill := s.Fill
-	border := s.Border
-	if hovered && !pressed {
-		fill = adjustColor(fill, 12)
-		border = adjustColor(border, 20)
-	}
-	drawButton(dst, r, fill, border, pressed)
+	renderLegacy(dst, r, s.Fill, s.Border,
+		InteractionDelta{FillDelta: 12, BorderDelta: 20}, // hover
+		InteractionDelta{},                                 // focus (unused by buttons)
+		ComponentState{Pressed: pressed, Hovered: hovered})
 }
 
 // DrawAnimated draws the button with a shrink animation controlled by anim
@@ -136,7 +155,7 @@ func (s ButtonStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, pressed 
 	}
 	inset := int(anim * float64(r.Dx()) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
-	drawButton(dst, animRect, s.Fill, s.Border, pressed)
+	drawButton(dst, animRect, s.Fill, s.Border, pressed, Profile().DrawTopEdgeHighlight)
 }
 
 // ColorSwatchStyle draws a solid color swatch button whose fill is provided
@@ -148,17 +167,18 @@ type ColorSwatchStyle struct {
 }
 
 func (s ColorSwatchStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-	col := color.Color(color.RGBA{200, 200, 200, 255})
+	col := color.Color(genColorRowRackColorFallback)
 	if s.Color != nil {
 		if c := s.Color(); c != nil {
 			col = c
 		}
 	}
-	// Slight hover brighten for feedback.
-	if hovered && !pressed {
-		col = adjustColor(col, 20)
-	}
-	drawButton(dst, r, col, s.Border, pressed)
+	// Swatch hover delta is +20 (vs ButtonStyle's +12) — historical
+	// chrome decision preserved verbatim. Border has no hover delta.
+	renderLegacy(dst, r, col, s.Border,
+		InteractionDelta{FillDelta: 20},
+		InteractionDelta{},
+		ComponentState{Pressed: pressed, Hovered: hovered})
 }
 
 // TextInputStyle styles a text input box.
@@ -168,12 +188,33 @@ type TextInputStyle struct {
 	Cursor color.Color
 }
 
-// Draw renders the text box background. The pressed flag represents focus.
-func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
-	drawButton(dst, r, s.Fill, s.Border, pressed)
+// TextInputStyleFromSpec builds a TextInputStyle from a generated
+// ComponentSpec. Cursor color is hand-passed because cursor-color isn't
+// a per-component design token (it's universally white across inputs);
+// future generator support could add a `cursorColor:` schema field.
+func TextInputStyleFromSpec(id ComponentID, cursor color.Color) TextInputStyle {
+	spec := Spec(id)
+	return TextInputStyle{
+		Fill:   spec.Fill,
+		Border: spec.Border.Resolve(),
+		Cursor: cursor,
+	}
 }
 
-// DrawAnimated draws the text box with a subtle focus animation.
+// Draw renders the text box background. The pressed flag represents focus
+// in the legacy API; we map it to ComponentState.Pressed for the
+// renderLegacy primitive (same drawButton effect). No hover/focus deltas
+// are applied in the static path — only DrawAnimated handles those.
+func (s TextInputStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
+	renderLegacy(dst, r, s.Fill, s.Border,
+		InteractionDelta{}, InteractionDelta{},
+		ComponentState{Pressed: pressed, Hovered: hovered})
+}
+
+// DrawAnimated draws the text box with a subtle focus animation. The
+// focus delta (+30 fill / +80 border) and accent ring are produced by
+// renderLegacy; the inset animation rectangle is computed here and
+// passed through.
 func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focused bool, anim float64) {
 	if anim < 0 {
 		anim = 0
@@ -184,17 +225,10 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 	}
 	inset := int(anim * float64(minDim) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
-	fill := s.Fill
-	border := s.Border
-	if focused {
-		fill = adjustColor(fill, 30)
-		border = adjustColor(border, 80)
-	}
-	drawButton(dst, animRect, fill, border, false)
-	if focused {
-		accent := color.NRGBA{0, 185, 235, 180}
-		drawRect(dst, animRect.Inset(1), accent, false)
-	}
+	renderLegacy(dst, animRect, s.Fill, s.Border,
+		InteractionDelta{},                                 // hover (unused by inputs)
+		InteractionDelta{FillDelta: 30, BorderDelta: 80},   // focus
+		ComponentState{Focused: focused})
 }
 
 // DrumCellStyle styles individual drum machine cells.
@@ -243,3 +277,50 @@ func (s DrumCellStyle) Draw(dst *ebiten.Image, r image.Rectangle, on, highlighte
 
 // DrumRowStyle is reserved for future customisation of entire rows.
 type DrumRowStyle struct{}
+
+// syncToggleVisual updates a toggle button's chrome, icon, and icon-tint to
+// match an external boolean state, in one place, the same way for every
+// toggle. It supports both common patterns:
+//
+//   - play/stop pattern: pass the same style for on and off; only the icon
+//     glyph and icon color flip with state. Mirrors SetPlaying's behavior on
+//     the play button.
+//
+//   - row-control pattern: pass different styles for on and off (e.g.
+//     MuteActiveStyle vs InstButtonStyle); the fill/border flip while the
+//     icon stays the same. Pass IconID("") for both icon args to leave the
+//     icon untouched, and nil for both icon-color args to leave the tint
+//     untouched.
+//
+// nil button is a no-op.
+func syncToggleVisual(
+	btn *Button,
+	on bool,
+	onStyle, offStyle ButtonVisual,
+	onIcon, offIcon IconID,
+	onIconColor, offIconColor color.Color,
+) {
+	if btn == nil {
+		return
+	}
+	if on {
+		btn.Style = onStyle
+	} else {
+		btn.Style = offStyle
+	}
+	if onIcon != "" && offIcon != "" {
+		if on {
+			btn.Icon = string(onIcon)
+		} else {
+			btn.Icon = string(offIcon)
+		}
+	}
+	if onIconColor != nil && offIconColor != nil {
+		if on {
+			btn.IconColor = onIconColor
+		} else {
+			btn.IconColor = offIconColor
+		}
+	}
+	btn.pressed = on
+}

@@ -437,6 +437,96 @@ func TestEQChannelDropdownMomentumScroll(t *testing.T) {
 	}
 }
 
+// TestEQChannelDropdownVisibleRowsCappedByAvailablePixels exercises the
+// pixel-aware overflow rule: when the channel button is anchored near the
+// bottom of the viewport so that fewer than eqChannelMenuMaxVisibleRows of
+// 24px-tall items fit beneath it, the dropdown must shrink its visible-row
+// count to whatever fits AND show a scrollbar — even when total items is
+// well below the constant cap.
+//
+// Today buildButtons only honours eqChannelMenuMaxVisibleRows = 8 and has no
+// view of screenBounds; the menu runs off the bottom of the screen and the
+// scrollbar never appears in this regime.
+func TestEQChannelDropdownVisibleRowsCappedByAvailablePixels(t *testing.T) {
+	// 6 rows → 7 total items (Master + 6). Below the 8-item constant cap, so
+	// only the new pixel-aware rule can introduce a scrollbar.
+	rows := makeOverflowRows(6)
+	z, _ := newTestEQPanelZone(rows)
+
+	// Tight 800x300 viewport with the EQ panel hugging the bottom: anchor
+	// sits at panel.Min.Y, so only ~3 rows of 24px fit before bottom.
+	tree := NewDrumViewTree()
+	tree.SetBounds(image.Rect(0, 0, 800, 300))
+	z.SetPortal(tree.Portal())
+	tree.RegisterZone(z, 130)
+	tree.SetZoneRect("eq-panel", image.Rect(0, 200, 600, 300))
+
+	restore := noInputForTest()
+	tree.Update()
+	restore()
+
+	// Open the dropdown.
+	chArea := findHitAreaByTagPrefix(z.HitAreas(), "eq-channel-btn")
+	if chArea == nil {
+		t.Fatal("expected eq-channel-btn hit area")
+	}
+	cx, cy := (chArea.Rect.Min.X+chArea.Rect.Max.X)/2, (chArea.Rect.Min.Y+chArea.Rect.Max.Y)/2
+
+	var mx, my int
+	var pressed bool
+	restore = SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 300 },
+	)
+	defer restore()
+
+	clickAndRelease(t, tree, cx, cy,
+		restore,
+		func(v int) { mx = v }, func(v int) { my = v }, func(v bool) { pressed = v })
+
+	if !tree.Portal().Has("eq-channel-dropdown") {
+		t.Fatal("expected eq-channel-dropdown portal to be open")
+	}
+
+	scroll := z.channelScroll
+	anchor := z.eqChannelBtn.Rect()
+	availPx := 300 - anchor.Max.Y // viewport bottom minus button bottom
+	if availPx <= 0 {
+		t.Fatalf("setup: anchor.Max.Y=%d should leave space below in 0..300 viewport", anchor.Max.Y)
+	}
+	availRows := availPx / scroll.ItemHeight
+	if availRows >= 7 {
+		t.Fatalf("setup: viewport too tall — %d rows fit (need < total items=7) so the pixel cap can't engage; anchor.Max.Y=%d availPx=%d",
+			availRows, anchor.Max.Y, availPx)
+	}
+
+	// Total = 7 (1 Master + 6 rows). Visible must be the smaller of
+	// (eqChannelMenuMaxVisibleRows=8, availRows, total=7) → availRows.
+	if scroll.VS.Total != 7 {
+		t.Fatalf("scroll.VS.Total = %d, want 7", scroll.VS.Total)
+	}
+	if scroll.VS.Visible != availRows {
+		t.Fatalf("scroll.VS.Visible = %d, want %d (pixel-cap availRows)", scroll.VS.Visible, availRows)
+	}
+	if !scroll.HasScroll() {
+		t.Fatalf("HasScroll() = false; want true because Total(%d) > Visible(%d)", scroll.VS.Total, scroll.VS.Visible)
+	}
+	if scroll.BarRect().Empty() {
+		t.Error("scrollbar BarRect must be non-empty when HasScroll() is true")
+	}
+	if scroll.ThumbRect().Empty() {
+		t.Error("scrollbar ThumbRect must be non-empty when HasScroll() is true")
+	}
+	// View must fit inside the viewport (not overflow the bottom).
+	if scroll.VS.View.Max.Y > 300 {
+		t.Errorf("scroll.VS.View.Max.Y = %d overflows viewport bottom (300)", scroll.VS.View.Max.Y)
+	}
+}
+
 // TestEQChannelDropdownScrollbarPresent opens the dropdown with >8 items
 // and verifies HasScroll() is true and scrollbar geometry is non-empty.
 func TestEQChannelDropdownScrollbarPresent(t *testing.T) {

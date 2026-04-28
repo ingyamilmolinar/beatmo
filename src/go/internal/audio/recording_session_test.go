@@ -8,6 +8,7 @@ import (
 )
 
 func TestStartStopRecording(t *testing.T) {
+	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
 	instruments := []InstrumentMeta{
 		{ID: "kick", Name: "Kick"},
 		{ID: "snare", Name: "Snare"},
@@ -62,6 +63,7 @@ func TestStartStopRecording(t *testing.T) {
 }
 
 func TestStartRecordingDefaultFormat(t *testing.T) {
+	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
 	opts := RecordingOptions{
 		// No Format specified — should default to WAV24
 		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
@@ -79,6 +81,7 @@ func TestStartRecordingDefaultFormat(t *testing.T) {
 }
 
 func TestStartRecordingDuplicate(t *testing.T) {
+	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
 		Instruments: []InstrumentMeta{{ID: "kick", Name: "Kick"}},
@@ -173,6 +176,7 @@ func TestRecordingResultMetadataJSON(t *testing.T) {
 }
 
 func TestRecordingWithMaxDuration(t *testing.T) {
+	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
 	opts := RecordingOptions{
 		Format:      FormatWAV16,
 		MaxDuration: 100 * time.Millisecond,
@@ -224,6 +228,8 @@ func TestSaveRecordingNilResult(t *testing.T) {
 }
 
 func TestStopRecordingWithCapturedData(t *testing.T) {
+	t.Setenv("BEATMO_RECORDINGS_DIR", t.TempDir())
+
 	instruments := []InstrumentMeta{
 		{ID: "kick", Name: "Kick"},
 		{ID: "snare", Name: "Snare"},
@@ -238,19 +244,19 @@ func TestStopRecordingWithCapturedData(t *testing.T) {
 		t.Fatalf("StartRecording: %v", err)
 	}
 
-	// Simulate captured audio by injecting data into the capture
-	mc := multiCapturePtr.Load()
-	if mc == nil {
-		t.Fatal("multiCapturePtr should not be nil during recording")
+	// Simulate captured audio by tapping the active pipeline directly,
+	// matching what mixer.processBlock does on the audio thread.
+	pipe := pipelinePtr.Load()
+	if pipe == nil {
+		t.Fatal("pipelinePtr should not be nil during recording")
 	}
-
 	instBufs := [][]float64{
 		{0.1, 0.2, 0.3, 0.4},
 		{0.5, 0.6, 0.7, 0.8},
 	}
 	slotIDs := []string{"kick", "snare"}
 	workBuf := []float64{0.6, 0.8, 1.0, 0.5}
-	mc.appendBlock(instBufs, slotIDs, []int{0, 1}, workBuf, 4)
+	pipe.Tap(slotIDs, []int{0, 1}, instBufs, workBuf, 4)
 
 	result, err := StopRecording()
 	if err != nil {
@@ -262,10 +268,10 @@ func TestStopRecordingWithCapturedData(t *testing.T) {
 		t.Errorf("channels = %d, want 3 (master + kick + snare)", len(result.Channels))
 	}
 
-	// Each channel should have non-empty encoded data
+	// In streaming mode, each channel exposes a Path (file already on disk).
 	for _, ch := range result.Channels {
-		if len(ch.Data) == 0 {
-			t.Errorf("channel %s has empty data", ch.ID)
+		if ch.Path == "" {
+			t.Errorf("channel %s missing on-disk Path", ch.ID)
 		}
 		if ch.Filename == "" {
 			t.Errorf("channel %s has empty filename", ch.ID)

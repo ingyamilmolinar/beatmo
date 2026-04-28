@@ -10,8 +10,14 @@ func (g *Game) SetScreenshot(path string) {
 }
 
 func (g *Game) screenshotReady() bool {
-	return g.screenshotPath != "" && g.screenshotDraws >= 90
+	threshold := g.screenshotSettleFrames
+	if threshold <= 0 {
+		threshold = 90
+	}
+	return g.screenshotPath != "" && g.screenshotDraws >= threshold
 }
+
+func (g *Game) SetScreenshotSettleFrames(n int) { g.screenshotSettleFrames = n }
 
 func (g *Game) captureScreen(_ *ebiten.Image) error {
 	return nil

@@ -159,10 +159,10 @@ func TestFXPanelBuildWithEffects(t *testing.T) {
 		t.Errorf("expected at least 2 toggle buttons for 2 effects, got %d", toggleCount)
 	}
 
-	// Verify remove buttons exist.
+	// Verify remove buttons exist (IconClose per DESIGN.md §5c).
 	removeCount := 0
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "\u2715" { // "x"
+		if btn.Icon == string(IconClose) {
 			removeCount++
 		}
 	}
@@ -390,7 +390,7 @@ func TestCapitalize(t *testing.T) {
 		{"a", "A"},
 		{"drive", "Drive"},
 		{"mix", "Mix"},
-		{"cutoff_freq", "Cutoff_freq"},
+		{"cutoff_freq", "Cutoff Freq"},
 		{"A", "A"},
 	}
 	for _, tc := range cases {
@@ -618,14 +618,16 @@ func TestFXPanelMoveButtons(t *testing.T) {
 		t.Fatal("panel did not open")
 	}
 
-	// With 3 effects: should have up/down move buttons.
+	// With 3 effects: should have up/down move buttons (IconChevronUp/Down per §5c).
+	// Move buttons are distinguished from the FX-row remove (IconClose) and the
+	// panel-header close button by their icon being a chevron.
 	upCount := 0
 	downCount := 0
 	for _, btn := range dv.fxPanelBtns {
-		switch btn.Text {
-		case "\u25b2": // up arrow
+		switch btn.Icon {
+		case string(IconChevronUp):
 			upCount++
-		case "\u25bc": // down arrow
+		case string(IconChevronDown):
 			downCount++
 		}
 	}
@@ -646,7 +648,7 @@ func TestFXPanelMoveButtons(t *testing.T) {
 
 	// Find the first down button and click it.
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "\u25bc" {
+		if btn.Icon == string(IconChevronDown) {
 			btn.OnClick()
 			break
 		}

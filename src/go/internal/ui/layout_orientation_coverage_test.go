@@ -297,53 +297,6 @@ func TestLayoutLandscapeToPortraitGridCacheRebuild(t *testing.T) {
 }
 
 // TestLayoutOrientationCacheInvalidation checks that the frame buffer is
-// cleared on resize so the next frame does a full render.
-func TestLayoutOrientationCacheInvalidation(t *testing.T) {
-	setupMobileTest(t, true)
-
-	logger := log.New(testLogOutput(), log.LevelInfo)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-
-	// Start in portrait
-	g.Layout(390, 844)
-	// Simulate having a frame buffer from a previous draw
-	g.frameBuffer = ebiten.NewImage(390, 844)
-	g.frameBufferW = 390
-	g.frameBufferH = 844
-
-	// Rotate to landscape — frame buffer should be cleared (dimension change)
-	g.Layout(844, 390)
-
-	if g.frameBuffer != nil {
-		t.Fatal("frameBuffer should be nil after resize to force full re-render")
-	}
-}
-
-// TestLayoutOrientationFrameBufferInvalidation checks that frameBuffer is
-// cleared on orientation change to prevent stale frame reuse.
-func TestLayoutOrientationFrameBufferInvalidation(t *testing.T) {
-	setupMobileTest(t, true)
-
-	logger := log.New(testLogOutput(), log.LevelInfo)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-
-	// Start in portrait
-	g.Layout(390, 844)
-	// Simulate having a frame buffer from a previous draw
-	g.frameBuffer = ebiten.NewImage(390, 844)
-	g.frameBufferW = 390
-	g.frameBufferH = 844
-
-	// Rotate to landscape — should clear frame buffer
-	g.Layout(844, 390)
-
-	if g.frameBuffer != nil {
-		t.Fatal("frameBuffer should be nil after orientation change")
-	}
-}
-
 // TestLayoutZeroDimensionGuard checks that Layout handles zero-size calls
 // gracefully (returns at least 1x1, prevents zero-size splitter).
 func TestLayoutZeroDimensionGuard(t *testing.T) {

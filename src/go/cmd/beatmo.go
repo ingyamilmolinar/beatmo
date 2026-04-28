@@ -2,20 +2,36 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/pprof"
 	"syscall"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/async"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/eventlogger"
+	"github.com/ingyamilmolinar/beatmo/internal/eventstream"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	"github.com/ingyamilmolinar/beatmo/internal/ui"
+	"github.com/ingyamilmolinar/beatmo/internal/ui/uistate"
+	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
+
+// logRuntimeFinal logs the post-run snapshot so a bench output is
+// self-documenting about which scheduler/GC knobs were active.
+func logRuntimeFinal(logger *game_log.Logger, _ async.RuntimeSnapshot) {
+	final := async.Snapshot()
+	logger.Infof("[RUNTIME] final snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d goroutines=%d",
+		final.NumCPU, final.GOMAXPROCS, final.GCPercent, final.MemoryLimit, final.NumGoroutine)
+}
 
 // defaultLog is overridden via -ldflags "-X main.defaultLog=..." at build time.
 var defaultLog = "DEBUG"
@@ -26,12 +42,36 @@ func main() {
 	benchBPM := flag.Int("bench-bpm", 0, "benchmark mode: play demo at this BPM (0 = disabled)")
 	benchSecs := flag.Float64("bench-secs", 10, "benchmark mode: duration in seconds")
 	benchProf := flag.String("bench-prof", "", "benchmark mode: write CPU profile to this path")
+	recordBench := flag.Float64("record-bench", 0, "play demo + record audio for this many seconds, write profiles to bench-results/, then exit (0 = disabled)")
+	recordBenchBPM := flag.Int("record-bench-bpm", 120, "BPM to use during -record-bench")
+	hooksConfig := flag.String("hooks-config", "", "path to a JSON hooks config to load at startup")
+	eventLog := flag.String("event-log", "", "write all hooks events to this JSONL file (also honors BEATMO_EVENT_LOG)")
+	eventLogVerbose := flag.Bool("event-log-verbose", false, "include high-frequency Verbose* events in the event log")
 	screenshot := flag.String("screenshot", "", "capture a screenshot to this path and exit")
 	scopeOpen := flag.Bool("scope", false, "open with scope panel visible")
 	scopeExport := flag.Bool("scope-export", false, "enable continuous scope data export to JSONL")
+	sceneName := flag.String("scene", "", "name of catalog scene to apply at startup")
+	listScenes := flag.Bool("list-scenes", false, "print scene names and exit")
+	uiStatePath := flag.String("ui-state", "", "path to UI state JSON (camera, splitter, profile, view)")
+	importPath := flag.String("import", "", "path to a tunkul.json project to import at startup")
 	flag.Parse()
 
+	if *listScenes {
+		for _, name := range ui.SceneNames(true) {
+			fmt.Println(name)
+		}
+		return
+	}
+
 	logger := game_log.New(os.Stdout, game_log.LevelFromString(*logLevel))
+
+	// Apply runtime config (GC tuning, profile rates) before any
+	// goroutine spawns so settings take effect for the whole process.
+	rtSnap := async.ConfigureRuntime(async.RuntimeOptions{})
+	logger.Infof("[RUNTIME] startup snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d",
+		rtSnap.NumCPU, rtSnap.GOMAXPROCS, rtSnap.GCPercent, rtSnap.MemoryLimit)
+	defer logRuntimeFinal(logger, rtSnap)
+
 	if stop := startPyroscope(logger); stop != nil {
 		defer stop()
 	}
@@ -61,17 +101,117 @@ func main() {
 		}()
 	}
 
+	// Auto-record benchmark mode: orchestrates demo+recording+profile so a
+	// single CLI invocation produces a reproducible pre/post snapshot.
+	var recordBenchDir string
+	if *recordBench > 0 {
+		dir, stop, err := startRecordBench(logger)
+		if err != nil {
+			log.Printf("record-bench: %v", err)
+			return
+		}
+		recordBenchDir = dir
+		defer stop()
+	}
+
+	// Optional hooks config: bind events to built-in trigger actions.
+	if *hooksConfig != "" {
+		hookCleanup, err := loadHooksConfig(*hooksConfig, logger)
+		if err != nil {
+			log.Printf("hooks-config: %v", err)
+			return
+		}
+		defer hookCleanup()
+	}
+
+	// Open the event-stream JSONL sink if a path was provided. Also auto-
+	// open one inside the record-bench output dir so every bench run is
+	// self-documenting (events.jsonl alongside the profiles).
+	eventLogPath := *eventLog
+	if eventLogPath == "" {
+		eventLogPath = os.Getenv("BEATMO_EVENT_LOG")
+	}
+	verbose := *eventLogVerbose || os.Getenv("BEATMO_EVENT_LOG_VERBOSE") == "1"
+	if eventLogPath == "" && recordBenchDir != "" {
+		eventLogPath = filepath.Join(recordBenchDir, "events.jsonl")
+	}
+	if eventLogPath != "" {
+		sink, err := eventstream.Open(hooks.GlobalBus(), eventLogPath, eventstream.Options{
+			Verbose: verbose,
+		})
+		if err != nil {
+			log.Printf("event-log: %v", err)
+		} else {
+			logger.Infof("[eventlog] writing to %s (verbose=%v)", eventLogPath, verbose)
+			defer sink.Close()
+		}
+	}
+
+	// Wire the human-readable INFO narrative consumer of hooks.Bus. This is
+	// the canonical "what is the user doing / what is the engine doing" view;
+	// disable with BEATMO_INFO_LOG=off (default: on). Verbose kinds (camera
+	// pan/zoom, drag progress) are filtered unless BEATMO_EVENT_LOG_VERBOSE=1.
+	if os.Getenv("BEATMO_INFO_LOG") != "off" {
+		infoLog, err := eventlogger.Open(hooks.GlobalBus(), logger, eventlogger.Options{
+			Verbose: verbose,
+		})
+		if err != nil {
+			log.Printf("info-log: %v", err)
+		} else {
+			defer infoLog.Close()
+		}
+	}
+
 	if *scopeExport || os.Getenv("SCOPE_EXPORT") == "1" {
 		audio.EnableScopeExport()
 	}
 
+	// Wire user-preference persistence (favorites). Failures here are
+	// non-fatal; the UI degrades to in-memory favorites for the session.
+	prefsStore := userprefs.NewBackingStore(userprefs.Options{
+		Logger: func(format string, args ...any) { logger.Infof(format, args...) },
+	})
+	defer func() { _ = prefsStore.Close() }()
+	ui.SetFavoritesStore(ui.NewPersistedFavoritesStore(prefsStore))
+
 	// Create an instance of our game
 	g := ui.New(logger)
-	if *screenshot != "" {
+
+	// Boot order for the screenshot harness: import circuit first, then
+	// apply ui-state config, then run the named scene. Scene Setup runs last
+	// so menus/sidebar opened by scenes overlay the imported circuit cleanly.
+	if *importPath != "" {
+		data, err := os.ReadFile(*importPath)
+		if err != nil {
+			log.Printf("import: %v", err)
+			return
+		}
+		if err := g.Import(data); err != nil {
+			log.Printf("import: %v", err)
+			return
+		}
+	}
+	if *uiStatePath != "" {
+		if err := uistate.ApplyFile(g, *uiStatePath); err != nil {
+			log.Printf("ui-state: %v", err)
+			return
+		}
+	}
+	if *sceneName != "" {
+		if err := ui.RunScene(g, *sceneName); err != nil {
+			log.Printf("scene: %v", err)
+			return
+		}
+	}
+
+	switch {
+	case *screenshot != "":
 		g.SetScreenshot(*screenshot)
-	} else if *benchBPM > 0 {
+	case *recordBench > 0:
+		g.RunRecordBenchmark(*recordBenchBPM, time.Duration(*recordBench*float64(time.Second)), recordBenchDir)
+	case *benchBPM > 0:
 		g.RunBenchmark(*benchBPM, time.Duration(*benchSecs*float64(time.Second)))
-	} else if *demo {
+	case *demo:
 		g.RunDemo()
 	}
 	if *scopeOpen {

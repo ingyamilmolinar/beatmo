@@ -72,7 +72,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 					g.notifyPredictorNode(n.ID)
 				}
 				g.logger.Debugf("[GAME] Upgraded invisible node to regular at grid=(%d,%d)", i, j)
-				g.logger.Infof("[GAME] Node upgraded to regular id=%d grid=(%d,%d)", n.ID, i, j)
+				g.logger.Debugf("[game] node upgraded to regular id=%d grid=(%d,%d)", n.ID, i, j)
 				if g.start == nil {
 					g.start = n
 					n.Start = true
@@ -119,13 +119,13 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	g.nodesByID[n.ID] = n
 	switch nodeType {
 	case model.NodeTypeRegular:
-		g.logger.Infof("[GAME] Node created id=%d grid=(%d,%d)", n.ID, i, j)
+		g.logger.Debugf("[game] node created id=%d grid=(%d,%d)", n.ID, i, j)
 	case model.NodeTypeSilent:
-		g.logger.Infof("[GAME] Silent node created id=%d grid=(%d,%d)", n.ID, i, j)
+		g.logger.Debugf("[game] silent node created id=%d grid=(%d,%d)", n.ID, i, j)
 	case model.NodeTypeMute:
-		g.logger.Infof("[GAME] Mute node created id=%d grid=(%d,%d)", n.ID, i, j)
+		g.logger.Debugf("[game] mute node created id=%d grid=(%d,%d)", n.ID, i, j)
 	default:
-		g.logger.Infof("[GAME] Invisible node created id=%d grid=(%d,%d)", n.ID, i, j)
+		g.logger.Debugf("[game] invisible node created id=%d grid=(%d,%d)", n.ID, i, j)
 	}
 	// Select newly created regular nodes to match test expectations.
 	if nodeType == model.NodeTypeRegular && !importing {
@@ -152,6 +152,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	if !importing {
 		g.updateBeatInfos()
 	}
+	emitNodeAdded(n, nodeType)
 	return n
 }
 
@@ -255,7 +256,8 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	g.removeNodeCache(n.ID)
 	g.notifyPredictorNode(n.ID)
 	delete(g.nodesByID, n.ID)
-	g.logger.Infof("[GAME] Node deleted id=%d grid=(%d,%d)", n.ID, n.I, n.J)
+	g.logger.Debugf("[game] node deleted id=%d grid=(%d,%d)", n.ID, n.I, n.J)
+	emitNodeDeleted(n.ID, n.I, n.J)
 
 	// If this node was the global start, clear it.
 	if g.graph.StartNodeID == n.ID {

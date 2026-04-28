@@ -12,3 +12,7 @@ src/js/recordings/*/
 !src/js/recordings/.gitkeep
 coverage/
 .superpowers/
+src/go/recordings
+screenshots/
+!screenshots/.gitkeep
+src/go/bench-results

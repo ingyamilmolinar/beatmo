@@ -40,6 +40,19 @@ func TestNodeAddRemoveAfterSubdivChange(t *testing.T) {
 
 	// Compute screen coords for a new node at (4,0) in 8-sub grid.
 	tx, ty := screenPosForGrid(g, 4, 0)
+	// Run one frame with no button pressed so cam.HandleMouse calls clearMousePos(),
+	// preventing stale lastMouse from a previous test causing a spurious camera drag
+	// that would block the click handler.
+	primeRestore := SetInputForTest(
+		func() (int, int) { return tx, ty },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 600 },
+	)
+	_ = g.Update()
+	primeRestore()
 	// Simulate left click press and release to create node.
 	pressed := true
 	restore := SetInputForTest(

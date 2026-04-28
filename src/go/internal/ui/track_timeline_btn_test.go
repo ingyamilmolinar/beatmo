@@ -75,18 +75,43 @@ func TestTrackButtonToggle_Mobile(t *testing.T) {
 	}
 }
 
-// TestTrackButtonNotInOverflowMenu verifies that Track is removed from the
-// overflow menu items.
-func TestTrackButtonNotInOverflowMenu(t *testing.T) {
+// TestTrackButtonAppearsInOverflowMenu_Mobile verifies that the Track entry
+// is the mobile-platform surface for the follow toggle (since the inline
+// timeline track button is hidden on mobile by an empty rect). The entry
+// must carry IconTrack, must mirror dv.FollowPlayback() in its active flag,
+// and clicking it must flip the follow state.
+func TestTrackButtonAppearsInOverflowMenu_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
 	dv := newDrumViewForTrackTest(t, true)
 	items := dv.OverflowItemsForTest()
+	matches := 0
+	var trackItem overflowItem
 	for _, item := range items {
 		if item.label == "Track" {
-			t.Fatal("Track should not appear in overflow menu items")
+			matches++
+			trackItem = item
 		}
+	}
+	if matches != 1 {
+		t.Fatalf("expected exactly one 'Track' overflow entry, got %d", matches)
+	}
+	if trackItem.iconID != IconTrack {
+		t.Fatalf("expected iconID=%q on Track entry, got %q", IconTrack, trackItem.iconID)
+	}
+	if trackItem.active != dv.FollowPlayback() {
+		t.Fatalf("Track entry active=%v should mirror FollowPlayback=%v", trackItem.active, dv.FollowPlayback())
+	}
+	if trackItem.onClick == nil {
+		t.Fatal("Track entry must carry an onClick callback")
+	}
+
+	// Click flips follow state.
+	before := dv.FollowPlayback()
+	trackItem.onClick()
+	if got := dv.FollowPlayback(); got == before {
+		t.Fatalf("clicking Track entry did not flip FollowPlayback (still %v)", got)
 	}
 }
 

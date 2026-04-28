@@ -504,7 +504,7 @@ func (dv *DrumView) toggleEQBandMute(band int) {
 		if band >= 0 && band < len(dv.eqBandMuted()) {
 			dv.eqBandMuted()[band] = !dv.eqBandMuted()[band]
 			dv.applyMasterEQ()
-			dv.logger.Infof("[DRUMVIEW] EQ band %d mute toggled: %v", band, dv.eqBandMuted()[band])
+			dv.logger.Debugf("[drumview] EQ band %d mute toggled: %v", band, dv.eqBandMuted()[band])
 		}
 	} else {
 		// Per-instrument EQ
@@ -515,10 +515,33 @@ func (dv *DrumView) toggleEQBandMute(band int) {
 				if band >= 0 && band < len(r.EQBandMuted) {
 					r.EQBandMuted[band] = !r.EQBandMuted[band]
 					dv.applyRowEQ(j)
-					dv.logger.Infof("[DRUMVIEW] EQ band %d mute toggled for %s: %v", band, ch, r.EQBandMuted[band])
+					dv.logger.Debugf("[drumview] EQ band %d mute toggled for %s: %v", band, ch, r.EQBandMuted[band])
 				}
 				break
 			}
 		}
 	}
+}
+
+// onRowInstrumentChanged is the single notification point for "row[r]'s
+// instrument id changed from oldID to newID". Callers must invoke this
+// after the row's Instrument and Name fields are updated. It runs
+// synchronously on the UI goroutine, so the EQ panel observes the new
+// value before the next Draw. Subscribers added here must not re-acquire
+// seqMu (this is reachable from Game.Update under that lock).
+func (dv *DrumView) onRowInstrumentChanged(row int, oldID, newID string) {
+	if oldID == newID {
+		return
+	}
+	if dv.eqActiveChannel == oldID && oldID != "" {
+		dv.setEQActiveChannel(newID)
+		if dv.eqPanelZone != nil && dv.eqPanelZone.ChannelDropdownOpen() {
+			dv.eqPanelZone.CloseChannelDropdown()
+		}
+	}
+	name := ""
+	if row >= 0 && row < len(dv.Rows) {
+		name = dv.Rows[row].Name
+	}
+	emitRowInstrumentChange(row, oldID, newID, name)
 }

@@ -42,7 +42,7 @@ try {
     addEdgeGrid?.(44, 4, 40, 4);
     addEdgeGrid?.(40, 4, 40, 0);
     setOrigin?.(40, 0, 0);
-    updateBeatInfosJS?.();
+    updateBeatInfos?.();
     forceDraw?.();
   });
   await page.waitForTimeout(300);
@@ -63,7 +63,7 @@ try {
   await page.evaluate(() => {
     addNode?.(40, -4, "regular");
     addEdgeGrid?.(40, 0, 40, -4);
-    updateBeatInfosJS?.();
+    updateBeatInfos?.();
   });
   await page.waitForTimeout(200);
   await assertNodeExists(page, 40, -4, "New node during playback");
@@ -100,7 +100,7 @@ try {
   await page.evaluate((json) => importJSON?.(json), exported);
   await page.waitForTimeout(500);
   await page.evaluate(() => {
-    updateBeatInfosJS?.();
+    updateBeatInfos?.();
     forceDraw?.();
   });
   await page.waitForTimeout(200);
@@ -153,7 +153,7 @@ try {
     importJSON?.(fix);
   });
   await page.waitForTimeout(300);
-  await page.evaluate(() => { updateBeatInfosJS?.(); forceDraw?.(); });
+  await page.evaluate(() => { updateBeatInfos?.(); forceDraw?.(); });
   await page.waitForTimeout(200);
 
   // Start playback via API (Scenario 1 already tested real play button click)
@@ -216,7 +216,7 @@ try {
     importJSON?.(fix);
   });
   await page.waitForTimeout(300);
-  await page.evaluate(() => { updateBeatInfosJS?.(); forceDraw?.(); });
+  await page.evaluate(() => { updateBeatInfos?.(); forceDraw?.(); });
   await page.waitForTimeout(200);
 
   const rowsBefore = await page.evaluate(() => totalRows?.());

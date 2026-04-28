@@ -17,7 +17,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -46,6 +45,48 @@ func (g *Game) clearParityState() {
 	g.highlightedBeats = make(map[int]int64)
 	g.highlightMu.Unlock()
 	g.ClearParityMismatches()
+}
+
+// clearParityStateForGenBump drops only the parity comparator buffers whose
+// entries do NOT carry a generation stamp via natural production code paths
+// (highlightedBeats — a UI-rendering aid, not a parity input). It deliberately
+// leaves parityAudio, paritySeqDecisions, and highlightedBeats untouched:
+//
+//   - parityAudio entries carry ParityGen; the scan filters by current gen.
+//   - paritySeqDecisions entries carry ParityGen; same filter.
+//   - highlightedBeats is genuine past UI state (one expiration frame per
+//     beat key) — clearing it while the audio thread still has fresh events
+//     in flight creates spurious highlight_vs_audio mismatches.
+//
+// Called from bumpParityGen after the parity generation advances. The function
+// is currently a no-op for that reason; we keep it as a named seam so future
+// pruning policies have an obvious place to land.
+func (g *Game) clearParityStateForGenBump() {
+	// Intentionally empty. See doc comment above.
+}
+
+// parityInGrace reports whether the post-mutation grace window is active.
+// During grace, parityScan/parityCheck downgrade mismatches to log-only so
+// the predictor / timeline / scheduler / audio buffers can reach coherence
+// after a structural mutation without tripping the watchdog.
+//
+// The grace window protects against real-time races between the audio thread
+// and the UI thread on a live system. Fast-path Go tests serialize all state
+// synchronously and rely on strict immediate parity, so grace is bypassed
+// under `go test`. Tests that explicitly want to verify grace behavior can
+// inspect g.parityGraceUntilNS directly.
+func (g *Game) parityInGrace() bool {
+	if g == nil {
+		return false
+	}
+	if runningUnderGoTest() {
+		return false
+	}
+	until := g.parityGraceUntilNS.Load()
+	if until <= 0 {
+		return false
+	}
+	return time.Now().UnixNano() < until
 }
 
 // startImportDialog temporarily disables parity fatals/watch while the file
@@ -103,6 +144,7 @@ func (g *Game) recordParityAudio(row, abs int, when float64, inst string, vol, p
 		Pitch:      pitch,
 		Dur:        dur,
 		Gen:        gen,
+		ParityGen:  g.parityGen.Load(),
 		RecordedAt: time.Now(),
 	})
 	const parityAudioMax = 1024
@@ -143,6 +185,7 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 		Visible:    visible,
 		NodeType:   typ,
 		Missing:    missing,
+		ParityGen:  g.parityGen.Load(),
 		RecordedAt: time.Now(),
 	}
 }
@@ -183,6 +226,20 @@ func (g *Game) parityReport(entry mismatchEntry) {
 		return
 	}
 	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+		return
+	}
+	if entry.GenAtScan == 0 {
+		entry.GenAtScan = g.parityGen.Load()
+	}
+	// Within the post-mutation grace window, demote everything to log-only.
+	// Real bugs that survive across the window (typically 80ms) will keep
+	// firing after grace expires.
+	if g.parityInGrace() {
+		g.parityRing.add(entry)
+		if g.logger != nil {
+			g.logger.Debugf("[PARITY][grace][%s] row=%d abs=%d expected=%v actual=%v src=%s detail=%s",
+				entry.Kind, entry.Row, entry.Abs, entry.Expected, entry.Actual, entry.Source, entry.Detail)
+		}
 		return
 	}
 	g.parityRing.add(entry)
@@ -291,8 +348,8 @@ func (g *Game) parityScanSettings() (every, stride int) {
 		}
 	}
 	// WASM targets get a more conservative default to reduce main-thread load.
-	if runtime.GOOS == "js" && every < 8 {
-		every = 8
+	if min := RuntimeProf().ParityScanMinPeriod; every < min {
+		every = min
 	}
 	return every, stride
 }

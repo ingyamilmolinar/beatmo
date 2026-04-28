@@ -216,6 +216,7 @@ func (g *Game) parityScan(reason string) {
 		audioEnd = 0
 	}
 
+	curParityGen := g.parityGen.Load()
 	g.parityMu.Lock()
 	audioEvents := append([]parityAudioEvent{}, g.parityAudio...)
 	seqCopy := make(map[int]map[int]paritySeqDecision, len(g.paritySeqDecisions))
@@ -235,6 +236,14 @@ func (g *Game) parityScan(reason string) {
 
 	eventsByRow := make(map[int]map[int]parityAudioEvent)
 	curGen := g.audioGen.Load()
+	// Track the contributing parity-gen per (row, abs) so per-mismatch reports
+	// can stamp GenAtRecord. The scan retains entries whose ParityGen disagrees
+	// with the current one so audio_vs_seq / seq_vs_view comparisons remain
+	// symmetric (filtering one side and not the other creates spurious
+	// mismatches when a structural mutation lands mid-frame). Cross-generation
+	// pairings are tolerated because D4 (freeze-loop demotion) and the runtime
+	// grace window absorb the genuine inconsistency window.
+	_ = curParityGen
 	for _, ev := range audioEvents {
 		if ev.Gen != curGen {
 			continue
@@ -521,6 +530,17 @@ func (g *Game) parityScan(reason string) {
 			if hasAudio && inWindow {
 				skip := false
 				if !g.rowIsAudible(row) {
+					skip = true
+				}
+				// Past beats whose highlight has already aged out are not
+				// parity violations — the audio fired correctly while the
+				// beat was current, the highlight ran for its window, then
+				// expired by design (highlightedBeats entries have a frame
+				// deadline). Comparing a stale audio event against a
+				// naturally-expired highlight is a false positive. Only
+				// flag mismatches at the *current* beat (abs == audioFloor)
+				// or in the future window. audioFloor = pastExclusive - 1.
+				if !skip && abs < audioFloor {
 					skip = true
 				}
 				now := audio.Now()

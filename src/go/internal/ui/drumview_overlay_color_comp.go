@@ -165,7 +165,7 @@ func (c *ColorWheelComponent) rebuildImage() {
 func (c *ColorWheelComponent) pickColorAt(x, y int) color.Color {
 	r := c.bounds
 	if r.Empty() {
-		return color.RGBA{200, 200, 200, 255}
+		return genColorRowRackColorFallback
 	}
 
 	cx := float64(r.Min.X + r.Dx()/2)
@@ -174,7 +174,7 @@ func (c *ColorWheelComponent) pickColorAt(x, y int) color.Color {
 	ry := float64(y) - cy
 	radius := float64(imin(r.Dx(), r.Dy())) / 2
 	if radius <= 0 {
-		return color.RGBA{200, 200, 200, 255}
+		return genColorRowRackColorFallback
 	}
 
 	rnorm := math.Hypot(rx, ry) / radius

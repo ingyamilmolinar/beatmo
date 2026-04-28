@@ -81,7 +81,7 @@ func (dv *DrumView) drawNotifications(dst *ebiten.Image) {
 		if n.isErr {
 			fill = colError
 		}
-		drawButton(dst, r, fill, colButtonBorder, false)
+		drawButton(dst, r, fill, colButtonBorder, false, Profile().DrawTopEdgeHighlight)
 		DrawTextAt(dst, txt, r.Min.X+pad, r.Min.Y+(h-TextHeight())/2)
 		y += h + 4
 		maxShow--

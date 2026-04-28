@@ -25,7 +25,16 @@ func newDrumViewForOverflowTest(t *testing.T, bounds image.Rectangle) *DrumView 
 	// Set the transport widget rect to span the full width so that button
 	// layout has enough room. Without a widget board, the fallback uses
 	// labelW+controlsW which is too narrow for mobile button sizing.
+	// Pin headerH to the active TopBarSpec.Height so the transport widget
+	// is sized to the actual bar (the constructor's default of timelineHeight
+	// is stale once Profile() is mobile).
+	dv.headerH = ActiveTopBarSpec().Height
 	dv.widgetRects[WidgetTransport] = image.Rect(bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Min.Y+dv.headerH)
+	// Also pin the timeline widget below the bar so the timeline-scrub hit
+	// area doesn't overlap the transport row 1 (the fallback path in
+	// drumview_layout.go anchors timelineBarRect inside this widget rect; if
+	// it starts at y=0 the scrub band lands inside the bar).
+	dv.widgetRects[WidgetTimeline] = image.Rect(bounds.Min.X, bounds.Min.Y+dv.headerH, bounds.Max.X, bounds.Min.Y+dv.headerH+timelineHeight)
 	W, H := bounds.Dx(), bounds.Dy()
 	reset := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -123,7 +132,7 @@ func TestOverflowFilePickerRectsMatchUploadImportButtons(t *testing.T) {
 	}
 
 	// The expected Y for each rect is popup.Min.Y + itemIndex * rowH
-	// (with optional inset from buttonPad — we check the relative order and
+	// (with optional inset from SpaceXS — we check the relative order and
 	// that the Y is inside the correct item band, not the exact inset value).
 	expectedUploadBandY := popupRect.Min.Y + uploadItemIdx*rowH
 	expectedImportBandY := popupRect.Min.Y + importItemIdx*rowH

@@ -59,6 +59,31 @@ func TestBufferSnapshot_MultipleAppends(t *testing.T) {
 	}
 }
 
+func TestBufferLenTracksAppendsAndDrain(t *testing.T) {
+	s := NewService(Config{SampleRate: 48000})
+	if got := s.BufferLen(); got != 0 {
+		t.Fatalf("fresh service: BufferLen=%d want 0", got)
+	}
+	s.PushSamples(scope.StageSynth, "kick", make([]float64, 128))
+	s.BufferSnapshot()
+	first := s.BufferLen()
+	if first == 0 {
+		t.Fatal("expected BufferLen > 0 after BufferSnapshot")
+	}
+	s.PushSamples(scope.StageSynth, "kick", make([]float64, 128))
+	s.BufferSnapshot()
+	if got := s.BufferLen(); got <= first {
+		t.Fatalf("expected BufferLen to grow after second snapshot: got %d (was %d)", got, first)
+	}
+	out := s.DumpBuffer()
+	if len(out) == 0 {
+		t.Fatal("DumpBuffer returned empty")
+	}
+	if got := s.BufferLen(); got != 0 {
+		t.Fatalf("BufferLen after drain=%d want 0", got)
+	}
+}
+
 func TestBufferSnapshot_DumpClearsBuffer(t *testing.T) {
 	s := NewService(Config{SampleRate: 48000})
 	s.PushSamples(scope.StageSynth, "kick", make([]float64, 128))

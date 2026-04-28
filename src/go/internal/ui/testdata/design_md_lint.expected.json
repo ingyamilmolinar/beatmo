@@ -1,0 +1,21 @@
+{
+  "_doc": "Snapshot of expected warnings from `npx @google/design.md@0.1.1 lint DESIGN.md` AND from the local design_md_contrast_test.go. Each entry pairs a YAML path with the severity. Tests fail if any warning appears that is not on this list, OR if a listed warning disappears (so removed exceptions force a snapshot update). Errors are never allowed.",
+  "_rationale": "DESIGN.md §components and the design-token feedback memory document why each of these is intentional: button-record-idle and button-record-active are icon-only at runtime (the icon is the recording dot — text-on-bg metric does not reflect actual legibility); button-record-active text #FF4040 on surface-2 #262C3C lands at acceptable contrast because the bright red is intentionally pulse-y to telegraph an in-progress recording. The Phase 1 PR2 viz/focus/slider/sidebar color additions are intentionally orphan tokens until Phase 3 migrates the call sites — Stitch flags any color not referenced by a component, but these are added ahead of time so the codegen produces stable identifiers that Phase 3 can adopt without further DESIGN.md churn. `colors.border` and `colors.destructive-border` are similarly orphan from Stitch's point of view (it doesn't recognize our extended `border: { color, alpha }` block as a use) — but they are consumed at runtime by every component that declares a border, so the synthetic-component workarounds previously used to keep them non-orphaned have been removed in favor of an explicit allowlist entry here. button-destructive-confirm and button-missing-instrument are saturated semantic-state buttons whose recognizability comes from color, not text legibility — the cushioned-slate palette retains the hand-coded ButtonStyle defaults for these until a deliberate redesign rebalances the semantic-state palette. Many Phase 2 PR4 component additions are also flagged by Stitch lint as missing canonical fields (height/textColor on viz/synthetic components, unknown extension keys); listed below. NOTE (2026-04 cushioned-slate refresh): the upstream `@google/design.md@0.1.1` lint currently errors with 'raw.match is not a function' on the `instrumentSwatches:` extension block, so the snapshot test skips on lint failure. This entry will refresh when the upstream tool is fixed; the current warning set above is from the prior successful lint run and remains the normative target.",
+  "warnings": [
+    {"path": "colors.border",                         "severity": "warning"},
+    {"path": "colors.destructive-border",             "severity": "warning"},
+    {"path": "colors.focus-ring",                     "severity": "warning"},
+    {"path": "colors.sidebar-section-bg",             "severity": "warning"},
+    {"path": "colors.slider-thumb-fill",              "severity": "warning"},
+    {"path": "colors.viz-glow",                       "severity": "warning"},
+    {"path": "colors.viz-meter-bg",                   "severity": "warning"},
+    {"path": "colors.viz-meter-clip",                 "severity": "warning"},
+    {"path": "colors.viz-meter-green",                "severity": "warning"},
+    {"path": "colors.viz-meter-red",                  "severity": "warning"},
+    {"path": "colors.viz-meter-yellow",               "severity": "warning"},
+    {"path": "components.button-destructive-confirm",     "severity": "warning"},
+    {"path": "components.button-missing-instrument",      "severity": "warning"},
+    {"path": "components.button-record-active",           "severity": "warning"},
+    {"path": "components.button-record-idle",             "severity": "warning"}
+  ]
+}

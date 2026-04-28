@@ -81,17 +81,11 @@ func (g *Game) initJSHarness() {
 			ok = false
 		}
 		// Require at least one drawable rows representation.
-		// On small screens, the direct draw path bypasses rowsLayer/stripes.
+		// On small screens, the direct draw path bypasses rowsLayer.
 		if Profile().IsMobile() && g.drum.directDrawCount > 0 {
-			// Direct draw path is active — no layer/stripe needed.
-		} else if g.drum.rowsStripingEnabled && g.drum.rowsStripeCount > 1 {
-			if len(g.drum.rowsStripes) == 0 {
-				ok = false
-			}
-		} else {
-			if g.drum.rowsLayer == nil {
-				ok = false
-			}
+			// Direct draw path is active — no layer needed.
+		} else if g.drum.rowsLayer == nil {
+			ok = false
 		}
 		return js.ValueOf(ok)
 	}))
@@ -179,39 +173,6 @@ func (g *Game) initJSHarness() {
 		}
 		g.graph.SetNodeLogic(node.ID, logic)
 		return nil
-	}))
-
-	js.Global().Set("buildLine", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		targetRow := 0
-		if len(args) > 0 {
-			targetRow = args[0].Int()
-		}
-		length := 4
-		if len(args) > 1 && args[1].Int() > 1 {
-			length = args[1].Int()
-		}
-		start := g.grid.MaxDiv()
-		if len(args) > 2 {
-			start = args[2].Int()
-		}
-		step := g.grid.MaxDiv()
-		if step <= 0 {
-			step = 1
-		}
-		for len(g.drum.Rows) <= targetRow {
-			g.drum.AddRow()
-		}
-		g.pendingStartRow = targetRow
-		prev := g.tryAddNode(start, targetRow, model.NodeTypeRegular)
-		g.pendingStartRow = -1
-		last := prev
-		for i := 1; i < length; i++ {
-			next := g.tryAddNode(start+i*step, targetRow, model.NodeTypeRegular)
-			g.addEdge(last, next)
-			last = next
-		}
-		g.updateBeatInfos()
-		return js.ValueOf(step)
 	}))
 
 	js.Global().Set("incrementBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
@@ -397,7 +358,6 @@ func (g *Game) initJSHarness() {
 		obj.Set("timelineRect", rectToJS(dv.timelineRect))
 		obj.Set("rowHeight", dv.rowHeight())
 		obj.Set("rowOffset", dv.rowOffset)
-		obj.Set("rowsStripingEnabled", dv.rowsStripingEnabled)
 		obj.Set("isSmallScreen", Profile().IsMobile())
 		obj.Set("touchScreenWidth", touchScreenWidth)
 		obj.Set("touchScreenHeight", touchScreenHeight)
@@ -411,8 +371,6 @@ func (g *Game) initJSHarness() {
 		obj.Set("rowsLayerDirty", dv.rowsLayerDirty)
 		obj.Set("rowCacheW", dv.rowCacheW)
 		obj.Set("rowCacheH", dv.rowCacheH)
-		obj.Set("rowsStripeCount", dv.rowsStripeCount)
-		obj.Set("numRowsStripes", len(dv.rowsStripes))
 		obj.Set("directDrawCount", int(dv.directDrawCount))
 		obj.Set("directDrawCells", dv.directDrawCells)
 
@@ -457,9 +415,6 @@ func (g *Game) initJSHarness() {
 		obj.Set("rowsLayerFrame", int(dv.rowsLayerFrame))
 		obj.Set("rowsLayerDirty", dv.rowsLayerDirty)
 		obj.Set("rowsLayerExists", dv.rowsLayer != nil)
-		obj.Set("rowsStripingEnabled", dv.rowsStripingEnabled)
-		obj.Set("rowsStripeCount", dv.rowsStripeCount)
-		obj.Set("numRowsStripes", len(dv.rowsStripes))
 		obj.Set("rowsRepaints", dv.rowsRepaints)
 		obj.Set("rowsLayerBytes", dv.rowsLayerBytes)
 		obj.Set("visibleRows", dv.visibleRows())

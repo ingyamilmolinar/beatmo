@@ -360,6 +360,13 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 	selectInstrumentViaUI := func(buttonLabel, expectedID, expectedLabel string) {
 		t.Helper()
 
+		// Audition behavior: the menu now stays open after a selection. This
+		// test exercises the discrete "click row label → fresh open → pick"
+		// flow, so close any prior session first to mirror that intent.
+		if dv.IsInstMenuOpen() {
+			dv.closeInstMenuPortal()
+		}
+
 		// Get the row label button and simulate clicking it
 		// This triggers lbl.OnClick (from drumview_layout.go:387)
 		labelBtn := dv.rowLabels()[0]
@@ -386,7 +393,7 @@ func TestInstrumentMenuSecondSelectionViaRowLabelClick(t *testing.T) {
 				}
 			}
 		} else {
-			for _, btn := range dv.instMenuBtns {
+			for _, btn := range dv.instMenuBtns() {
 				if btn.Text == buttonLabel {
 					targetBtn = btn
 					break
@@ -481,6 +488,13 @@ func TestInstrumentMenuSelectionWithMultipleUpdateCycles(t *testing.T) {
 	// Helper to select an instrument
 	selectInstrument := func(buttonLabel, expectedID, expectedLabel string) {
 		t.Helper()
+
+		// Audition behavior: the menu now stays open after a selection. This
+		// test exercises the "click row label to open fresh" flow, so close
+		// any prior session first to mirror that intent.
+		if dv.IsInstMenuOpen() {
+			dv.closeInstMenuPortal()
+		}
 
 		// Open the menu via label click
 		labelBtn := dv.rowLabels()[0]

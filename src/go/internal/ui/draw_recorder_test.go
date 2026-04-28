@@ -70,7 +70,7 @@ func (rec *drawCallRecorder) record(t *testing.T, fn func()) {
 		rec.seq++
 		origRounded(dst, r, c, radius, filled)
 	}
-	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed bool) {
+	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed, topEdgeHighlight bool) {
 		rec.calls = append(rec.calls, drawCall{
 			Seq:   rec.seq,
 			Kind:  drawCallButton,
@@ -78,7 +78,7 @@ func (rec *drawCallRecorder) record(t *testing.T, fn func()) {
 			Color: color.RGBAModel.Convert(fill).(color.RGBA),
 		})
 		rec.seq++
-		origButton(dst, r, fill, border, pressed)
+		origButton(dst, r, fill, border, pressed, topEdgeHighlight)
 	}
 	drawRoundedButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, radius int, pressed bool) {
 		rec.calls = append(rec.calls, drawCall{

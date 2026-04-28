@@ -4,7 +4,6 @@ import (
 	"image"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 func (dv *DrumView) Update() {
@@ -80,17 +79,17 @@ func (dv *DrumView) Update() {
 				dv.onImportDialogEnd()
 			}
 			if res.err != nil {
-				dv.logger.Infof("[DRUMVIEW] Import failed: %v", res.err)
+				dv.logger.Errorf("[drumview] import failed: %v", res.err)
 				dv.notifyError("Error loading JSON: " + res.err.Error())
 			} else if len(res.data) == 0 {
-				dv.logger.Infof("[DRUMVIEW] Import canceled (no data)")
+				dv.logger.Debugf("[drumview] import canceled (no data)")
 			} else if dv.onImport != nil {
 				// When wired to Game, onImport queues data for deferred processing
 				// and returns nil; notifications are handled by game.Update().
 				// For standalone use (tests with mock handlers), onImport may
 				// return an error directly, which we handle here.
 				if err := dv.onImport(res.data); err != nil {
-					dv.logger.Infof("[DRUMVIEW] Import error: %v", err)
+					dv.logger.Errorf("[drumview] import error: %v", err)
 					dv.notifyError("Error loading JSON: " + err.Error())
 				}
 				// Note: success notifications are handled by Game.Update() after
@@ -109,28 +108,13 @@ func (dv *DrumView) Update() {
 		}
 	}
 
-	// Update sample loading status (WASM returns non-zero).
-	if loaded, total := audio.SampleLoadProgress(); total > 0 {
-		// When total becomes available, consider ourselves loading until done.
-		dv.samplesTotal = total
-		dv.samplesLoaded = loaded
-		if loaded < total {
-			dv.showLoading = true
-			dv.doneMsgTimer = 0
-		} else if dv.showLoading && loaded >= total {
-			// Just finished.
-			dv.showLoading = false
-			dv.doneMsgTimer = 180 // ~3 seconds at 60fps
-		}
-	}
-
 	if dv.uploading {
 		select {
 		case res := <-dv.uploadCh:
 			dv.uploading = false
 			dv.logger.Debugf("[DRUMVIEW] Upload result path=%s err=%v", res.path, res.err)
 			if res.err != nil {
-				dv.logger.Infof("[DRUMVIEW] Failed to load WAV: %v", res.err)
+				dv.logger.Errorf("[drumview] failed to load WAV: %v", res.err)
 				dv.notifyError("Error loading WAV: " + res.err.Error())
 			} else {
 				dv.CloseAllPopups() // close rename/menus before entering naming mode
@@ -230,7 +214,7 @@ func (dv *DrumView) Update() {
 			overBar := image.Pt(mx, my).In(dv.scrollBarRect())
 			overDrum := image.Pt(mx, my).In(dv.Bounds)
 			if !treeHandled && (overBar || overDrum) && wheelSteps != 0 {
-				dv.logger.Infof("[DRUMVIEW] row wheel steps=%d at (%d,%d) rowOffset=%d", wheelSteps, mx, my, dv.rowOffset)
+				dv.logger.Debugf("[drumview] row wheel steps=%d at (%d,%d) rowOffset=%d", wheelSteps, mx, my, dv.rowOffset)
 				if dv.rowScroll().HandleWheel(wheelSteps) {
 					dv.flushRowScroll()
 				}

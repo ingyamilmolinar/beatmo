@@ -238,32 +238,52 @@ func EnableScopeExport() {
 		defer pollTicker.Stop()
 		snapTicker := time.NewTicker(2 * time.Second)
 		defer snapTicker.Stop()
-		pushSamples := func(id string) {
-			pre := PreEQAnalyzerSnapshot(id)
-			if len(pre.Waveform) > 0 {
-				svc.PushSamples(scope.StageSynth, id, pre.Waveform)
-			}
-			post := ChannelAnalyzerSnapshot(id)
-			if len(post.Waveform) > 0 {
-				svc.PushSamples(scope.StageEQ, id, post.Waveform)
-			}
-		}
 		for {
 			select {
 			case <-stop:
 				return
 			case <-pollTicker.C:
-				for _, id := range Instruments() {
-					pushSamples(id)
-				}
-				// Master bus at the post-EQ (= pre-sends) point.
-				master := ChannelAnalyzerSnapshot("main")
-				if len(master.Waveform) > 0 {
-					svc.PushSamples(scope.StageMaster, "master", master.Waveform)
-				}
+				pollExportSamples(svc)
 			case <-snapTicker.C:
 				svc.BufferSnapshot()
 			}
 		}
 	}()
+}
+
+// pollExportSamples pushes the current JS analyzer snapshots for every
+// instrument into the export service ring buffers. Shared by the background
+// goroutine ticker and ForceScopeExportSnapshot.
+func pollExportSamples(svc *scopeexport.Service) {
+	for _, id := range Instruments() {
+		pre := PreEQAnalyzerSnapshot(id)
+		if len(pre.Waveform) > 0 {
+			svc.PushSamples(scope.StageSynth, id, pre.Waveform)
+		}
+		post := ChannelAnalyzerSnapshot(id)
+		if len(post.Waveform) > 0 {
+			svc.PushSamples(scope.StageEQ, id, post.Waveform)
+		}
+	}
+	master := ChannelAnalyzerSnapshot("main")
+	if len(master.Waveform) > 0 {
+		svc.PushSamples(scope.StageMaster, "master", master.Waveform)
+	}
+}
+
+// ForceScopeExportSnapshot immediately polls all instrument analyzers, pushes
+// the samples into the ring buffers, and buffers one snapshot. Used by the
+// browser test harness to produce a snapshot without waiting for the
+// background goroutine's 100ms poll cycle. Returns false if the export
+// service is not running.
+func ForceScopeExportSnapshot() bool {
+	wasmExportMu.Lock()
+	svc := wasmExportSvc
+	wasmExportMu.Unlock()
+	if svc == nil {
+		return false
+	}
+	pollExportSamples(svc)
+	svc.BufferSnapshot()
+	return true
 }

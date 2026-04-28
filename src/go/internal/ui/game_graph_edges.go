@@ -20,8 +20,9 @@ func (g *Game) addEdgeNoRefresh(a, b *uiNode) bool {
 	g.edges = append(g.edges, uiEdge{A: a, B: b, t: 0, pulse: -1})
 	g.graph.Edges[[2]model.NodeID{a.ID, b.ID}] = struct{}{}
 	g.logger.Debugf("[GAME] Added edge: %d,%d -> %d,%d", a.I, a.J, b.I, b.J)
-	g.logger.Infof("[GAME] Edge created from id=%d grid=(%d,%d) to id=%d grid=(%d,%d)", a.ID, a.I, a.J, b.ID, b.I, b.J)
+	g.logger.Debugf("[game] edge created from id=%d grid=(%d,%d) to id=%d grid=(%d,%d)", a.ID, a.I, a.J, b.ID, b.I, b.J)
 	g.edgesDirty = true
+	emitEdgeAdded(a.ID, b.ID, a.I, a.J, b.I, b.J)
 	return true
 }
 
@@ -55,8 +56,9 @@ func (g *Game) deleteEdgeNoRefresh(a, b *uiNode) bool {
 	if removed {
 		delete(g.graph.Edges, [2]model.NodeID{a.ID, b.ID})
 		g.logger.Debugf("[GAME] Deleted edge: %d,%d -> %d,%d", a.I, a.J, b.I, b.J)
-		g.logger.Infof("[GAME] Edge deleted from id=%d grid=(%d,%d) to id=%d grid=(%d,%d)", a.ID, a.I, a.J, b.ID, b.I, b.J)
+		g.logger.Debugf("[game] edge deleted from id=%d grid=(%d,%d) to id=%d grid=(%d,%d)", a.ID, a.I, a.J, b.ID, b.I, b.J)
 		g.edgesDirty = true
+		emitEdgeDeleted(a.ID, b.ID, a.I, a.J, b.I, b.J)
 	}
 	return removed
 }

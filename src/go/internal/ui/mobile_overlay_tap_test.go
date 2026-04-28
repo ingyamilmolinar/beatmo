@@ -63,7 +63,7 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 	dv := newMobileTestDV(t)
 
 	// Open context menu for row 0.
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
@@ -118,7 +118,7 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 func TestContextMenuDeferredTapCapture(t *testing.T) {
 	dv := newMobileTestDV(t)
 
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
@@ -205,7 +205,7 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 func TestTapOutsideOpenPopupClosesIt(t *testing.T) {
 	dv := newMobileTestDV(t)
 
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
 	}
@@ -237,7 +237,7 @@ func TestTapOutsideOpenPopupClosesIt(t *testing.T) {
 func TestLongPressCancelsDeferredTap(t *testing.T) {
 	dv := newMobileTestDV(t)
 
-	dv.OpenContextMenuForTest(0)
+	dv.OpenContextMenu(0)
 	suppressClicksUntilRelease = false
 
 	// Manually start a deferred tap (simulating a press inside the menu).

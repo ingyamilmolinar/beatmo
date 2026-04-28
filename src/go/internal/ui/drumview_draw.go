@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -68,7 +67,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 			drawRect(dst, r, fill, true)
 			if Profile().IsMobile() && kind == WidgetTransport {
 				drawRect(dst, image.Rect(r.Min.X, r.Max.Y-1, r.Max.X, r.Max.Y),
-					color.NRGBA{255, 255, 255, 10}, true)
+					WithAlpha(genColorBorder, genAlphaRowRackZebra), true)
 			}
 		}
 	}
@@ -84,7 +83,15 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 
 	// --- Transport zone ---
 	if !dv.simpleDraw {
-		dv.renderToolbarControls(dst)
+		if r := dv.widgetRects[WidgetTransport]; !r.Empty() {
+			clip := dst.Bounds().Intersect(r)
+			if !clip.Empty() {
+				sub := dst.SubImage(clip).(*ebiten.Image)
+				dv.renderToolbarControls(sub)
+			}
+		} else {
+			dv.renderToolbarControls(dst)
+		}
 		dv.drawNotifications(dst)
 	}
 
@@ -92,9 +99,8 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	if dv.isPlaying && dv.playBtn() != nil {
 		pr := dv.playBtn().Rect()
 		if !pr.Empty() {
-			pulse := 0.4 + 0.6*math.Abs(math.Sin(float64(dv.frame)*0.05))
-			alpha := uint8(pulse * 120)
-			glowCol := color.NRGBA{40, 200, 100, alpha}
+			alpha := SinPulseAlpha(dv.frame, genAnimPlayheadPulse)
+			glowCol := WithAlpha(genColorDrumGlow, alpha)
 			drawRect(dst, pr.Inset(-2), glowCol, false)
 		}
 	}
@@ -191,8 +197,8 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 	}
 	cells := 0
 	// Alternating row stripe colors for subtle visual grouping.
-	stripeEven := color.RGBA{24, 24, 30, 255}
-	stripeOdd := color.RGBA{18, 18, 22, 255}
+	stripeEven := genColorDrumStripeEven
+	stripeOdd := genColorDrumStripeOdd
 	for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
 		r := dv.Rows[i]
 		y := rowBase + (i-dv.rowOffset)*rh
@@ -251,11 +257,42 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 	dv.directDrawCells = cells
 }
 
-// drawZoneClipped renders a zone, clipping to dv.Bounds via SubImage.
-// This prevents zones from drawing outside the drum view's bounds.
+// zoneClipRect returns the widget rectangle a zone is permitted to draw
+// into. Each zone is clipped to its own WidgetBoard cell so it cannot bleed
+// into neighbouring widgets (e.g., timeline cells leaking into the rack
+// column behind instrument labels). Falls back to dv.Bounds when the
+// widget rect is unavailable (degenerate layouts in tests, unknown zones).
+func (dv *DrumView) zoneClipRect(z Zone) image.Rectangle {
+	if z == nil {
+		return dv.Bounds
+	}
+	var kind WidgetKind
+	switch z.ID() {
+	case "transport":
+		kind = WidgetTransport
+	case "row-rack":
+		kind = WidgetRack
+	case "timeline":
+		kind = WidgetTimeline
+	case "eq-panel":
+		kind = WidgetWave
+	default:
+		return dv.Bounds
+	}
+	if r, ok := dv.widgetRects[kind]; ok && !r.Empty() {
+		return r
+	}
+	return dv.Bounds
+}
+
+// drawZoneClipped renders a zone, clipping to its widget rectangle via
+// SubImage. This isolates each zone to its own WidgetBoard cell so the
+// timeline's cells, the rack's labels/controls, the transport's buttons,
+// and the EQ panel cannot overdraw one another.
 func (dv *DrumView) drawZoneClipped(dst *ebiten.Image, z Zone) {
-	if !dv.Bounds.Empty() {
-		clip := dst.Bounds().Intersect(dv.Bounds)
+	clip := dv.zoneClipRect(z)
+	if !clip.Empty() {
+		clip = dst.Bounds().Intersect(clip)
 		if clip.Empty() {
 			return
 		}
@@ -266,53 +303,33 @@ func (dv *DrumView) drawZoneClipped(dst *ebiten.Image, z Zone) {
 	}
 }
 
-// drawRowComposite renders the row composite layer (stripes/layer/direct).
+// drawRowComposite renders the row composite layer (layer/direct).
 // Called by TimelineZone.Draw() via the DrawRowComposite callback.
+//
+// On mobile (Profile().DirectDrawRows = true), bypass the rowsLayer indirection
+// and draw cells directly into dst. On desktop, build/blit the rowsLayer.
 func (dv *DrumView) drawRowComposite(dst *ebiten.Image) {
 	dv.ensureRowCache()
-	if dv.rowsStripingEnabled {
-		if dv.rowsStripesMaybeRebuild() && len(dv.rowsStripes) > 0 {
-			for i := 0; i < len(dv.rowsStripes); i++ {
-				img := dv.rowsStripes[i]
-				if img == nil {
-					continue
-				}
-				x := dv.timelineRect.Min.X + dv.rowsStripeStarts[i]
-				var op ebiten.DrawImageOptions
-				op.GeoM.Translate(float64(x), float64(dv.Bounds.Min.Y))
-				dst.DrawImage(img, &op)
-			}
-			vis := dv.visibleRows()
-			for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
-				if i >= 0 && i < len(dv.rowsDrawnMask) {
-					dv.rowsDrawnMask[i] = true
-				}
-			}
-		} else {
-			if Profile().DirectDrawRows {
-				dv.drawRowsDirect(dst)
-			} else {
-				dv.rowsLayerDirty = true
-				dv.rowsLayerMaybeRebuild()
-				if dv.rowsLayer != nil {
-					var op ebiten.DrawImageOptions
-					op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
-					dst.DrawImage(dv.rowsLayer, &op)
-					vis := dv.visibleRows()
-					for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
-						if i >= 0 && i < len(dv.rowsDrawnMask) {
-							dv.rowsDrawnMask[i] = true
-						}
-					}
-				}
+	if Profile().DirectDrawRows {
+		dv.drawRowsDirect(dst)
+		vis := dv.visibleRows()
+		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
+			if i >= 0 && i < len(dv.rowsDrawnMask) {
+				dv.rowsDrawnMask[i] = true
 			}
 		}
-	} else {
-		dv.rowsLayerMaybeRebuild()
-		if dv.rowsLayer != nil {
-			var op ebiten.DrawImageOptions
-			op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
-			dst.DrawImage(dv.rowsLayer, &op)
+		return
+	}
+	dv.rowsLayerMaybeRebuild()
+	if dv.rowsLayer != nil {
+		var op ebiten.DrawImageOptions
+		op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
+		dst.DrawImage(dv.rowsLayer, &op)
+		vis := dv.visibleRows()
+		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
+			if i >= 0 && i < len(dv.rowsDrawnMask) {
+				dv.rowsDrawnMask[i] = true
+			}
 		}
 	}
 }

@@ -2,5 +2,4 @@
 
 package ui
 
-func (g *Game) initJS()        {}
-func (g *Game) reportStateJS() {}
+func (g *Game) initJS() {}

@@ -10,7 +10,7 @@ import (
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
 	if dv.bgDirty || len(dv.bgCache) == 0 || !dv.bgCache[0].Bounds().Eq(image.Rect(0, 0, w, h)) {
 		dv.bgCache = make([]*ebiten.Image, 1)
-		img := ebiten.NewImage(w, h)
+		img := newTrackedImage("bgCache", w, h)
 		img.Fill(colBGBottom)
 		dv.bgCache[0] = img
 		dv.bgDirty = false

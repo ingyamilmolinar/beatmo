@@ -80,7 +80,7 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	js.Global().Set("updateBeatInfosJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("updateBeatInfos", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		g.updateBeatInfos()
 		return nil
 	}))
@@ -1071,6 +1071,7 @@ func (g *Game) initJSGraphUI() {
 			g.drum.refreshInstruments()
 			g.drum.markRowControlsDirty()
 			g.drum.bgDirty = true
+			g.drum.onRowInstrumentChanged(g.drum.renameRow, oldID, newID)
 		}
 		g.drum.closeRename()
 		return nil
@@ -1113,6 +1114,7 @@ func (g *Game) initJSGraphUI() {
 						g.drum.refreshInstruments()
 						g.drum.markRowControlsDirty()
 						g.drum.bgDirty = true
+						g.drum.onRowInstrumentChanged(g.drum.renameRow, oldID, newID)
 						g.drum.notifyInfo("Renamed instrument to: " + name)
 					}
 					g.drum.renameRow = -1
@@ -1466,11 +1468,147 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuModeState() -> string ("categories" | "instruments" | "")
+	// DEPRECATED: prefer instMenuBreadcrumbPath() — this export is
+	// maintained for the existing Playwright suite until Phase 7's
+	// legacy retirement.
 	js.Global().Set("instMenuModeState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.ValueOf("")
 		}
 		return js.ValueOf(string(g.drum.instMenuComp.Mode()))
+	}))
+
+	// instMenuBreadcrumbPath() -> [string] (visible-segment labels;
+	// empty when closed). The new accessor that replaces the legacy
+	// mode enum: tests can assert on len(path) >= 2 to know they're at
+	// the instruments level, etc. Phase 6 migrates Playwright tests to
+	// this name; the legacy instMenuModeState stays for now.
+	js.Global().Set("instMenuBreadcrumbPath", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			return arr
+		}
+		for _, seg := range g.drum.instMenuComp.BreadcrumbPath() {
+			arr.Call("push", js.ValueOf(seg))
+		}
+		return arr
+	}))
+
+	// instMenuPageState() -> {page, pageCount, pageSize}. Replaces the
+	// legacy instMenuScrollOffset / instMenuScrollBarRect / instMenuScrollThumbRect
+	// trio under the new pagination model. Phase 7 retires the old
+	// names; for now both coexist in the bridge.
+	js.Global().Set("instMenuPageState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			obj.Set("page", 1)
+			obj.Set("pageCount", 0)
+			obj.Set("pageSize", 1)
+			return obj
+		}
+		obj.Set("page", g.drum.instMenuComp.Page())
+		obj.Set("pageCount", g.drum.instMenuComp.PageCount())
+		obj.Set("pageSize", g.drum.instMenuComp.PageSize())
+		return obj
+	}))
+
+	// instrumentIsFavorite(id) -> boolean. Reads the Favorites() global
+	// store. Used by the localStorage round-trip browser test to assert
+	// star persistence across reloads without going through the menu UI.
+	js.Global().Set("instrumentIsFavorite", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 1 {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(Favorites().Get(args[0].String()))
+	}))
+
+	// instrumentSetFavorite(id, fav) -> bool. Programmatic setter that
+	// writes to the Favorites() global store. The persisted backend
+	// flushes to localStorage; subsequent page loads see the value.
+	js.Global().Set("instrumentSetFavorite", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 2 {
+			return js.ValueOf(false)
+		}
+		Favorites().Set(args[0].String(), args[1].Bool())
+		return js.ValueOf(true)
+	}))
+
+	// instrumentFavoriteKeys() -> [string]. Returns the sorted list of
+	// favorited instrument ids — convenient for snapshot assertions.
+	js.Global().Set("instrumentFavoriteKeys", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		arr := js.Global().Get("Array").New()
+		for _, k := range Favorites().Keys() {
+			arr.Call("push", js.ValueOf(k))
+		}
+		return arr
+	}))
+
+	// instMenuRenderedOrder() -> [string]. Returns the instrument ids in
+	// the order they're currently rendered (post fuzzy filter and tier
+	// sort). Used by the JS-side bridge tests to assert tier ordering at
+	// the bridge boundary; the Go side already pins tier order via
+	// TestInstMenu_FavoritesPinnedInInstrumentsMode and friends.
+	js.Global().Set("instMenuRenderedOrder", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			return arr
+		}
+		for _, id := range g.drum.instMenuComp.state.filteredInsts {
+			arr.Call("push", js.ValueOf(id))
+		}
+		return arr
+	}))
+
+	// instMenuFavoritesViewActive() -> boolean. Reports whether the menu
+	// is filtering to ★-favorited items only. Pairs with the virtual
+	// "Favorites" category at the top of the category list — clicking it
+	// flips this flag to true. Useful for bridge tests to confirm the
+	// click event reached the expected handler.
+	js.Global().Set("instMenuFavoritesViewActive", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.instMenuComp.state.favoritesView)
+	}))
+
+	// projectPinsList() -> [string]. Returns the per-project pinned
+	// instrument ids (sorted) that travel with the project JSON's
+	// pinned_instruments field. Empty when no pins are set. The list is
+	// architecture-only this PR — no UI to mutate it ships yet, so the
+	// list will be empty for any project authored before the follow-up
+	// PR adds the per-row "pin to project" affordance. The export pairs
+	// with setProjectPinsListForTest below for xplat parity round-trips.
+	js.Global().Set("projectPinsList", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil {
+			return arr
+		}
+		for _, id := range g.drum.exportPinnedInstrumentIDs() {
+			arr.Call("push", js.ValueOf(id))
+		}
+		return arr
+	}))
+
+	// setProjectPinsListForTest(ids) -> bool. Test-only setter (no UI
+	// today). Accepts a JS array of strings; replaces the pin set
+	// wholesale. Empty array clears it. Returns true on success. Useful
+	// for xplat parity browser tests that need to seed pins before
+	// exporting JSON.
+	js.Global().Set("setProjectPinsListForTest", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || len(args) < 1 {
+			return js.ValueOf(false)
+		}
+		arr := args[0]
+		if arr.Type() != js.TypeObject {
+			return js.ValueOf(false)
+		}
+		n := arr.Length()
+		ids := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			ids = append(ids, arr.Index(i).String())
+		}
+		g.drum.SetProjectPins(ids)
+		return js.ValueOf(true)
 	}))
 
 	// instMenuBackBtnRect() -> {x,y,w,h} | null
@@ -1804,16 +1942,16 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// contextMenuOpenJS() -> bool
-	js.Global().Set("contextMenuOpenJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// contextMenuOpen() -> bool
+	js.Global().Set("contextMenuOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
 		return js.ValueOf(g.drum.ContextMenuOpen())
 	}))
 
-	// contextMenuItemsJS() -> [{label, divider}]
-	js.Global().Set("contextMenuItemsJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// contextMenuItems() -> [{label, divider}]
+	js.Global().Set("contextMenuItems", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || !g.drum.ContextMenuOpen() {
 			return arr
@@ -1828,8 +1966,8 @@ func (g *Game) initJSGraphUI() {
 		return arr
 	}))
 
-	// contextMenuClickJS(label) — click a context menu item by label
-	js.Global().Set("contextMenuClickJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// contextMenuClick(label) — click a context menu item by label
+	js.Global().Set("contextMenuClick", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || !g.drum.ContextMenuOpen() || len(args) < 1 {
 			return js.ValueOf(false)
 		}
@@ -1843,16 +1981,16 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(false)
 	}))
 
-	// contextMenuRectJS() -> {x,y,w,h} or null
-	js.Global().Set("contextMenuRectJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// contextMenuRect() -> {x,y,w,h} or null
+	js.Global().Set("contextMenuRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || !g.drum.ContextMenuOpen() {
 			return nil
 		}
 		return rectToJS(g.drum.ContextMenuRectVal())
 	}))
 
-	// contextMenuRowJS() -> int (-1 if not open)
-	js.Global().Set("contextMenuRowJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// contextMenuRow() -> int (-1 if not open)
+	js.Global().Set("contextMenuRow", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || !g.drum.ContextMenuOpen() {
 			return js.ValueOf(-1)
 		}
@@ -1863,24 +2001,24 @@ func (g *Game) initJSGraphUI() {
 	// FX panel + portal state exports for testing
 	// ─────────────────────────────────────────────────────────────────────────
 
-	// fxPanelOpenJS() -> bool
-	js.Global().Set("fxPanelOpenJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// fxPanelOpen() -> bool
+	js.Global().Set("fxPanelOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
 		return js.ValueOf(g.drum.IsFXPanelOpen())
 	}))
 
-	// fxPanelRowJS() -> int (-1 if not open)
-	js.Global().Set("fxPanelRowJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// fxPanelRow() -> int (-1 if not open)
+	js.Global().Set("fxPanelRow", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || !g.drum.IsFXPanelOpen() {
 			return js.ValueOf(-1)
 		}
 		return js.ValueOf(g.drum.fxPanelRow)
 	}))
 
-	// fxPanelRectJS() -> {x,y,w,h} or null
-	js.Global().Set("fxPanelRectJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	// fxPanelRect() -> {x,y,w,h} or null
+	js.Global().Set("fxPanelRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || !g.drum.IsFXPanelOpen() {
 			return nil
 		}

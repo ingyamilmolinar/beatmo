@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"math"
 	"os"
-	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -35,7 +34,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	var phaseX, phaseY, tileW, tileH int
 	// Render mode flags
 	renderSafe := envRenderSafe
-	screenEdges := renderSafe || screenEdgesDefault || envScreenEdges || g.simpleDraw
+	screenEdges := renderSafe || RuntimeProf().ScreenEdgesDefault || envScreenEdges || g.simpleDraw
 
 	// Optionally disable grid drawing entirely for geometry debugging.
 	if envNoGridDraw {
@@ -82,8 +81,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				}
 			}
 			if !reuse {
-				// WASM adaptive grid pad: if reuse failed due to pad, enlarge pad.
-				if runtime.GOARCH == "wasm" && g.gridCache != nil && g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad && g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
+				// Adaptive grid pad: if reuse failed due to pad, enlarge pad.
+				if RuntimeProf().AdaptivePanPad && g.gridCache != nil && g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad && g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
 					dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
 					dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
 					if abs(dx) > g.gridCachePad || abs(dy) > g.gridCachePad {
@@ -99,7 +98,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				// Rebuild the full grid cache with an offscreen pad to sustain pans.
 				w := g.split.GridW(g.winW) + 2*g.gridCachePad
 				h := g.split.GridH(g.winH) + 2*g.gridCachePad
-				g.gridCache = ebiten.NewImage(w, h)
+				g.gridCache = newTrackedImage("gridCache", w, h)
 				g.gridCacheW, g.gridCacheH = w, h
 				g.gridCacheScale = g.cam.Scale
 				g.gridCacheOffX = g.cam.OffsetX
@@ -163,8 +162,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	var id ebiten.GeoM
 	_ = id
 
-	// Detect fast pan to gate expensive UI ensures on WASM.
-	if runtime.GOARCH == "wasm" {
+	// Detect fast pan to gate expensive UI ensures (browser only by default).
+	if RuntimeProf().FastPanDetect {
 		dx := math.Abs(offX - g.lastCamOffX)
 		dy := math.Abs(offY - g.lastCamOffY)
 		if dx+dy > 2 {
@@ -193,7 +192,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	sigStyle.Radius = float32(g.grid.SignalRadius(g.cam.Scale))
 	edgeThick := g.grid.EdgeThickness(g.cam.Scale)
 	arrow := g.grid.EdgeArrowSize()
-	if disableEdgeArrows {
+	if RuntimeProf().DisableEdgeArrows {
 		arrow = 0
 	}
 	// Skip tiny arrowheads at low zoom to save draw calls in web builds.
@@ -219,8 +218,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			}
 		}
 		if !reuseCache {
-			// WASM adaptive edge pad: if reuse failed due to pad, enlarge pad.
-			if runtime.GOARCH == "wasm" && g.edgeCache != nil && g.edgeCacheW == g.split.GridW(g.winW)+2*g.edgeCachePad && g.edgeCacheH == g.split.GridH(g.winH)+2*g.edgeCachePad && g.edgeCacheScale == camScale && !g.edgesDirty {
+			// Adaptive edge pad: if reuse failed due to pad, enlarge pad.
+			if RuntimeProf().AdaptivePanPad && g.edgeCache != nil && g.edgeCacheW == g.split.GridW(g.winW)+2*g.edgeCachePad && g.edgeCacheH == g.split.GridH(g.winH)+2*g.edgeCachePad && g.edgeCacheScale == camScale && !g.edgesDirty {
 				dx2 := int(math.Round(offX - g.edgeCacheOffX))
 				dy2 := int(math.Round(offY - g.edgeCacheOffY))
 				if abs(dx2) > g.edgeCachePad || abs(dy2) > g.edgeCachePad {
@@ -235,7 +234,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			// Rebuild cache centered at current camera offset with pad margin.
 			w := g.split.GridW(g.winW) + 2*g.edgeCachePad
 			h := g.split.GridH(g.winH) + 2*g.edgeCachePad
-			g.edgeCache = ebiten.NewImage(w, h)
+			g.edgeCache = newTrackedImage("edgeCache", w, h)
 			g.edgeCacheW, g.edgeCacheH = w, h
 			g.edgeCacheScale, g.edgeCacheOffX, g.edgeCacheOffY = camScale, offX, offY
 			g.edgeCacheColorSig = curColorSig
@@ -426,10 +425,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
 		bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
 		// Draw screen-space crosses for easy visual verification
-		drawCrossScreen(screen, int(math.Round(ex0)), int(math.Round(ey0)), 5, color.RGBA{255, 255, 0, 255}) // yellow: edge A
-		drawCrossScreen(screen, int(math.Round(ex1)), int(math.Round(ey1)), 5, color.RGBA{255, 255, 0, 255}) // yellow: edge B
-		drawCrossScreen(screen, int(math.Round(acx)), int(math.Round(acy)), 7, color.RGBA{0, 255, 255, 255}) // cyan: node A
-		drawCrossScreen(screen, int(math.Round(bcx)), int(math.Round(bcy)), 7, color.RGBA{0, 255, 255, 255}) // cyan: node B
+		drawCrossScreen(screen, int(math.Round(ex0)), int(math.Round(ey0)), 5, genColorVizDebugEdge) // yellow: edge A
+		drawCrossScreen(screen, int(math.Round(ex1)), int(math.Round(ey1)), 5, genColorVizDebugEdge) // yellow: edge B
+		drawCrossScreen(screen, int(math.Round(acx)), int(math.Round(acy)), 7, genColorVizDebugNode) // cyan: node A
+		drawCrossScreen(screen, int(math.Round(bcx)), int(math.Round(bcy)), 7, genColorVizDebugNode) // cyan: node B
 	}
 
 	// Focused, human-readable check for the first edge vs its nodes.
@@ -496,7 +495,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 		if needRebuild {
 			if g.nodeLayer == nil || g.nodeLayer.Bounds().Dx() != gridW || g.nodeLayer.Bounds().Dy() != gridH {
-				g.nodeLayer = ebiten.NewImage(gridW, gridH)
+				g.nodeLayer = newTrackedImage("nodeLayer", gridW, gridH)
 			} else {
 				g.nodeLayer.Clear()
 			}
@@ -626,9 +625,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 					borderCol = highlightCol
 				}
 				// Glow overlay for animated nodes.
-				if rPx >= 2 && !disableNodeGlow {
+				if rPx >= 2 && !RuntimeProf().DisableNodeGlow {
 					glowBase := 1.2
-					glowAmp := 0.35
+					glowAmp := float64(genAnimNodeTriggerGlow)
 					rpScr := float64(rPx) * (glowBase + glowAmp*aLevel)
 					maxGlow := float64(gridH) / 8
 					if rpScr > maxGlow {
@@ -645,7 +644,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 					glow.Draw(screen, nx, ny, &cam)
 				}
 				// Low-overhead highlight overlay for simpleDraw.
-				if g.simpleDraw || disableNodeGlow {
+				if g.simpleDraw || RuntimeProf().DisableNodeGlow {
 					icx := int(math.Round((sx1 + sx2) * 0.5))
 					icy := int(math.Round((sy1 + sy2) * 0.5))
 					ringScale := 1.12 + 0.28*aLevel
@@ -665,7 +664,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 					}
 					ix := icx - rp
 					iy := icy - rp
-					outer := color.RGBA{255, 255, 255, 255}
+					outer := genColorBorder
 					drawRect(dst, image.Rect(ix-2, iy-2, ix+2*rp+2, iy+2*rp+2), outer, false)
 					drawRect(dst, image.Rect(ix-1, iy-1, ix+2*rp+1, iy+2*rp+1), outer, false)
 					drawRect(dst, image.Rect(ix, iy, ix+2*rp, iy+2*rp), highlightCol, false)
@@ -692,16 +691,16 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			x1, y1, x2, y2 := sx1, sy1, sx2, sy2
 			var idm ebiten.GeoM
 			if isSelected {
-				DrawLineCam(dst, x1, y1, x2, y1, &idm, colStep, 2)
-				DrawLineCam(dst, x2, y1, x2, y2, &idm, colStep, 2)
-				DrawLineCam(dst, x2, y2, x1, y2, &idm, colStep, 2)
-				DrawLineCam(dst, x1, y2, x1, y1, &idm, colStep, 2)
+				DrawLineCam(dst, x1, y1, x2, y1, &idm, colStep, float64(genGeomHighlightBorderThickness))
+				DrawLineCam(dst, x2, y1, x2, y2, &idm, colStep, float64(genGeomHighlightBorderThickness))
+				DrawLineCam(dst, x2, y2, x1, y2, &idm, colStep, float64(genGeomHighlightBorderThickness))
+				DrawLineCam(dst, x1, y2, x1, y1, &idm, colStep, float64(genGeomHighlightBorderThickness))
 			} else if isNeighbor {
-				hl := fadeColor(colStep, 0.5)
-				DrawLineCam(dst, x1, y1, x2, y1, &idm, hl, 2)
-				DrawLineCam(dst, x2, y1, x2, y2, &idm, hl, 2)
-				DrawLineCam(dst, x2, y2, x1, y2, &idm, hl, 2)
-				DrawLineCam(dst, x1, y2, x1, y1, &idm, hl, 2)
+				hl := fadeColor(colStep, float64(genAnimHighlightFaded))
+				DrawLineCam(dst, x1, y1, x2, y1, &idm, hl, float64(genGeomHighlightBorderThickness))
+				DrawLineCam(dst, x2, y1, x2, y2, &idm, hl, float64(genGeomHighlightBorderThickness))
+				DrawLineCam(dst, x2, y2, x1, y2, &idm, hl, float64(genGeomHighlightBorderThickness))
+				DrawLineCam(dst, x1, y2, x1, y1, &idm, hl, float64(genGeomHighlightBorderThickness))
 			}
 		}
 	} else {
@@ -840,10 +839,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			}
 			// Optional glow overlay for animated nodes (drawn behind the sprite)
 			// Skip when the node is too small on screen to be visible to save draw calls.
-			if aLevel > 0 && rPx >= 2 && !disableNodeGlow {
+			if aLevel > 0 && rPx >= 2 && !RuntimeProf().DisableNodeGlow {
 				// Compute screen-space glow radius and clamp to a reasonable bound.
 				glowBase := 1.2
-				glowAmp := 0.35
+				glowAmp := float64(genAnimNodeTriggerGlow)
 				rpScr := float64(rPx) * (glowBase + glowAmp*aLevel)
 				maxGlow := float64(g.split.GridH(g.winH)) / 8
 				if rpScr > maxGlow {
@@ -860,7 +859,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				glow.Draw(screen, nx, ny, &cam)
 			}
 			// Extra low-overhead highlight overlay for simpleDraw: draw a 1px expanded border in highlight color.
-			if aLevel > 0 && (g.simpleDraw || disableNodeGlow) {
+			if aLevel > 0 && (g.simpleDraw || RuntimeProf().DisableNodeGlow) {
 				// High-contrast, thicker outline: two white rings + inner row-colored ring
 				cx := int(math.Round((sx1 + sx2) * 0.5))
 				cy := int(math.Round((sy1 + sy2) * 0.5))
@@ -882,7 +881,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				}
 				ix := cx - rp
 				iy := cy - rp
-				outer := color.RGBA{255, 255, 255, 255}
+				outer := genColorBorder
 				// Outer white ring (thickness 2 via two nested borders)
 				drawRect(dst, image.Rect(ix-2, iy-2, ix+2*rp+2, iy+2*rp+2), outer, false)
 				drawRect(dst, image.Rect(ix-1, iy-1, ix+2*rp+1, iy+2*rp+1), outer, false)
@@ -921,16 +920,16 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		x1, y1, x2, y2 := sx1, sy1, sx2, sy2
 		var id ebiten.GeoM
 		if g.sel == n && g.pendingStartRow < 0 {
-			DrawLineCam(dst, x1, y1, x2, y1, &id, colHighlight, 2)
-			DrawLineCam(dst, x2, y1, x2, y2, &id, colHighlight, 2)
-			DrawLineCam(dst, x2, y2, x1, y2, &id, colHighlight, 2)
-			DrawLineCam(dst, x1, y2, x1, y1, &id, colHighlight, 2)
+			DrawLineCam(dst, x1, y1, x2, y1, &id, colHighlight, float64(genGeomHighlightBorderThickness))
+			DrawLineCam(dst, x2, y1, x2, y2, &id, colHighlight, float64(genGeomHighlightBorderThickness))
+			DrawLineCam(dst, x2, y2, x1, y2, &id, colHighlight, float64(genGeomHighlightBorderThickness))
+			DrawLineCam(dst, x1, y2, x1, y1, &id, colHighlight, float64(genGeomHighlightBorderThickness))
 		} else if g.pendingStartRow < 0 && g.selNeighbors != nil && g.selNeighbors[n] {
-			hl := fadeColor(colHighlight, 0.5)
-			DrawLineCam(dst, x1, y1, x2, y1, &id, hl, 2)
-			DrawLineCam(dst, x2, y1, x2, y2, &id, hl, 2)
-			DrawLineCam(dst, x2, y2, x1, y2, &id, hl, 2)
-			DrawLineCam(dst, x1, y2, x1, y1, &id, hl, 2)
+			hl := fadeColor(colHighlight, float64(genAnimHighlightFaded))
+			DrawLineCam(dst, x1, y1, x2, y1, &id, hl, float64(genGeomHighlightBorderThickness))
+			DrawLineCam(dst, x2, y1, x2, y2, &id, hl, float64(genGeomHighlightBorderThickness))
+			DrawLineCam(dst, x2, y2, x1, y2, &id, hl, float64(genGeomHighlightBorderThickness))
+			DrawLineCam(dst, x1, y2, x1, y1, &id, hl, float64(genGeomHighlightBorderThickness))
 		}
 	}
 	} // end useNodeLayer else
@@ -946,10 +945,10 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		acx, acy := (ax1+ax2)*0.5, (ay1+ay2)*0.5
 		bx1, by1, bx2, by2 := g.nodeScreenRect(e.B)
 		bcx, bcy := (bx1+bx2)*0.5, (by1+by2)*0.5
-		drawCrossScreen(dst, int(math.Round(ex0)), int(math.Round(ey0)), 7, color.RGBA{255, 255, 0, 255})
-		drawCrossScreen(dst, int(math.Round(ex1)), int(math.Round(ey1)), 7, color.RGBA{255, 255, 0, 255})
-		drawCrossScreen(dst, int(math.Round(acx)), int(math.Round(acy)), 9, color.RGBA{0, 255, 255, 255})
-		drawCrossScreen(dst, int(math.Round(bcx)), int(math.Round(bcy)), 9, color.RGBA{0, 255, 255, 255})
+		drawCrossScreen(dst, int(math.Round(ex0)), int(math.Round(ey0)), 7, genColorVizDebugEdge)
+		drawCrossScreen(dst, int(math.Round(ex1)), int(math.Round(ey1)), 7, genColorVizDebugEdge)
+		drawCrossScreen(dst, int(math.Round(acx)), int(math.Round(acy)), 9, genColorVizDebugNode)
+		drawCrossScreen(dst, int(math.Round(bcx)), int(math.Round(bcy)), 9, genColorVizDebugNode)
 	}
 
 	// Node sidebar (draw in screen space)
@@ -974,7 +973,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			base := g.drum.Rows[p.row].Color
 			col = adjustColor(base, 80)
 		}
-		DrawLineCam(dst, p.x1, p.y1, px, py, &cam, fadeColor(col, 0.6), edgeThick)
+		DrawLineCam(dst, p.x1, p.y1, px, py, &cam, fadeColor(col, float64(genAnimEdgeFaded)), edgeThick)
 		sigStyle.Color = col
 		sigStyle.Draw(dst, px, py, &cam)
 		g.renderedPulsesCount++
@@ -1034,8 +1033,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			badgeText := fmt.Sprintf("(%d, %d)", g.coordBadgeNode.I, g.coordBadgeNode.J)
 			tw := len(badgeText)*7 + 8
 			pillRect := image.Rect(bcx-tw/2, bcy-1, bcx+tw/2, bcy+13)
-			drawRect(dst, pillRect, color.NRGBA{30, 30, 30, 200}, true)
-			drawRect(dst, pillRect, color.NRGBA{120, 120, 120, 255}, false)
+			drawRect(dst, pillRect, WithAlpha(genColorVizPillFill, genAlphaSidebarChip), true)
+			drawRect(dst, pillRect, genColorVizPillBorder, false)
 			DrawTextAt(dst, badgeText, pillRect.Min.X+4, pillRect.Min.Y+2)
 		}
 	}
@@ -1059,7 +1058,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 		// Highlight moving node with pulsing yellow outline
 		mx1, my1, mx2, my2 := g.nodeScreenRect(g.movingNode)
-		hlCol := color.NRGBA{255, 220, 50, 255}
+		hlCol := WithAlpha(genColorVizGlow, 255)
 		var idm ebiten.GeoM
 		DrawLineCam(dst, mx1-1, my1-1, mx2+1, my1-1, &idm, hlCol, 2)
 		DrawLineCam(dst, mx2+1, my1-1, mx2+1, my2+1, &idm, hlCol, 2)
@@ -1076,8 +1075,8 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			gsy := g.cam.OffsetY + unitPx*float64(gj) + float64(gridTopOffset())
 			gr := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
 			ghostRect := image.Rect(int(gsx-gr), int(gsy-gr), int(gsx+gr), int(gsy+gr))
-			drawRect(dst, ghostRect, color.NRGBA{255, 220, 50, 80}, true)
-			drawRect(dst, ghostRect, color.NRGBA{255, 220, 50, 180}, false)
+			drawRect(dst, ghostRect, WithAlpha(genColorVizGlow, genAlphaAccentOverlay), true)
+			drawRect(dst, ghostRect, WithAlpha(genColorVizGlow, genAlphaStrong), false)
 		}
 	}
 
@@ -1094,9 +1093,9 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		radius := popupCornerRadius()
 		confirmRect := image.Rect(dx+40, dy+30, dx+120, dy+50)
 		cancelRect := image.Rect(dx+160, dy+30, dx+240, dy+50)
-		drawRoundedRect(dst, confirmRect, color.NRGBA{60, 140, 60, 255}, radius, true)
+		drawRoundedRect(dst, confirmRect, WithAlpha(genColorVizConfirmGreen, 255), radius, true)
 		DrawTextAt(dst, "Move", confirmRect.Min.X+12, confirmRect.Min.Y+4)
-		drawRoundedRect(dst, cancelRect, color.NRGBA{140, 60, 60, 255}, radius, true)
+		drawRoundedRect(dst, cancelRect, WithAlpha(genColorVizCancelRed, 255), radius, true)
 		DrawTextAt(dst, "Cancel", cancelRect.Min.X+8, cancelRect.Min.Y+4)
 	}
 

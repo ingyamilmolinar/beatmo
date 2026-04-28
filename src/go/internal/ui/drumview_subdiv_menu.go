@@ -24,7 +24,7 @@ func (dv *DrumView) buildSubdivMenu() {
 			dv.closeSubdivMenuPortal()
 		})
 		btn.ConsumeOnPress = true
-		btn.SetRect(insetRect(r, buttonPad))
+		btn.SetRect(insetRect(r, SpaceXS))
 		dv.subdivMenuBtns = append(dv.subdivMenuBtns, btn)
 	}
 }

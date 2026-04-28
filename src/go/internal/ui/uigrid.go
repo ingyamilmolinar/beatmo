@@ -82,7 +82,35 @@ type Button struct {
 	// TextColor overrides the default white text color when non-nil.
 	// Used for semantic coloring (e.g. red text on delete menu items).
 	TextColor color.Color
+	// SpecID, when non-zero, selects a generated ComponentSpec from the
+	// design system as the button's chrome recipe. Phase 4 PR3+ migration:
+	// new code should set SpecID instead of Style; Draw() prefers SpecID
+	// over Style when both are set, allowing per-zone migration without
+	// breaking widgets that haven't been touched yet. Use HasSpecID()
+	// rather than testing zero, since ComponentID 0 is a valid spec.
+	SpecID    ComponentID
+	hasSpecID bool
 }
+
+// SetSpec assigns a generated ComponentSpec ID to this button. Subsequent
+// Draw() calls render via Spec(SpecID) → Render(spec, state) instead of
+// the legacy Style.Draw path. Pass ComponentID(0) only via this setter,
+// not by directly assigning the field, so the "set" flag is honored.
+//
+// If the spec declares an iconColor: in DESIGN.md, b.IconColor is seeded
+// from spec.IconColor at SetSpec time. The call site can subsequently
+// override b.IconColor for state-dependent variations (record-pulse,
+// follow-on highlight, etc.); the spec value is the resting default.
+func (b *Button) SetSpec(id ComponentID) {
+	b.SpecID = id
+	b.hasSpecID = true
+	if spec := Spec(id); spec.HasIconColor {
+		b.IconColor = spec.IconColor
+	}
+}
+
+// HasSpecID reports whether SetSpec has been called on this button.
+func (b *Button) HasSpecID() bool { return b.hasSpecID }
 
 // Global guard to prevent multiple buttons from firing while a mouse press is
 // held after a non-repeat click caused the UI to reflow under the cursor.
@@ -97,6 +125,15 @@ func NewButton(text string, style ButtonVisual, onClick func()) *Button {
 	return &Button{Text: text, Style: style, OnClick: onClick}
 }
 
+// NewSpecButton constructs a button whose chrome is rendered from a
+// generated ComponentSpec. Phase 4 PR3+ path: prefer this over NewButton
+// for new code.
+func NewSpecButton(text string, id ComponentID, onClick func()) *Button {
+	b := &Button{Text: text, OnClick: onClick}
+	b.SetSpec(id)
+	return b
+}
+
 // Rect returns the button's bounds.
 func (b *Button) Rect() image.Rectangle { return b.r }
 
@@ -105,7 +142,12 @@ func (b *Button) SetRect(r image.Rectangle) { b.r = r }
 
 // Draw renders the button and its label.
 func (b *Button) Draw(dst *ebiten.Image) {
-	if b.Style != nil {
+	switch {
+	case b.hasSpecID:
+		// Phase 4 PR3+ path: spec-driven render.
+		Render(dst, b.r, Spec(b.SpecID), ComponentState{Pressed: b.pressed, Hovered: b.hovered})
+	case b.Style != nil:
+		// Legacy path — *Style.Draw delegates to renderLegacy internally.
 		b.Style.Draw(dst, b.r, b.pressed, b.hovered)
 	}
 	// Skip text rendering when an icon is set — the icon is the visual
@@ -117,7 +159,7 @@ func (b *Button) Draw(dst *ebiten.Image) {
 			scale = 1.0
 		}
 		// Clip text to fit within the button rect.
-		clipped := clipTextToWidth(b.Text, b.r.Dx()-2*buttonPad)
+		clipped := clipTextToWidth(b.Text, b.r.Dx()-2*SpaceXS)
 		spr := TextSprite(clipped)
 		// Center the scaled text within the button.
 		w := int(float64(TextWidth(clipped)) * scale)
@@ -168,52 +210,14 @@ func (b *Button) Draw(dst *ebiten.Image) {
 			dst.DrawImage(spr, &op)
 			return
 		}
-		// Fallback: original per-pixel path (test builds / unknown icons).
-		switch b.Icon {
-		case "play":
-			drawPlayIcon(dst, box, col)
-		case "pause":
-			drawPauseIcon(dst, box, col)
-		case "stop":
-			drawStopIcon(dst, box, col)
-		case "record":
-			drawRecordIcon(dst, box, col)
-		case "pencil":
-			drawPencilIcon(dst, box, col)
-		case "save":
-			drawSaveIcon(dst, box, col)
-		case "close":
-			drawCloseIcon(dst, box, col)
-		case "overflow":
-			drawOverflowIcon(dst, box, col)
-		case "plus":
-			drawPlusIcon(dst, box, col)
-		case "minus":
-			drawMinusIcon(dst, box, col)
-		case "rows":
-			drawRowsIcon(dst, box, col)
-		case "audio":
-			drawAudioIcon(dst, box, col)
-		case "chevron-up":
-			drawChevronUpIcon(dst, box, col)
-		case "chevron-down":
-			drawChevronDownIcon(dst, box, col)
-		case "track":
-			drawTrackIcon(dst, box, col)
-		case "track-off":
-			drawTrackOffIcon(dst, box, col)
-		case "upload":
-			drawUploadIcon(dst, box, col)
-		case "import":
-			drawImportIcon(dst, box, col)
-		case "export":
-			drawExportIcon(dst, box, col)
-		}
+		// Fallback: call the icon's draw function directly. Used by test builds
+		// (sprite cache disabled) and any non-cached draw path.
+		drawIconByID(dst, IconID(b.Icon), box, col)
 	}
 }
 
 // colFuzzyHighlight is the background color for fuzzy-match highlighted chars.
-var colFuzzyHighlight = color.NRGBA{0, 200, 255, 60} // cyan accent, semi-transparent
+var colFuzzyHighlight = WithAlpha(genColorPrimary, genAlphaSubtle) // cyan accent, semi-transparent
 
 // drawButtonHighlights draws small colored rectangles behind characters at
 // the given rune indices. Used to visualize fuzzy search matches in buttons.
@@ -249,7 +253,7 @@ func (b *Button) textRect() image.Rectangle {
 	if scale <= 0 {
 		scale = 1.0
 	}
-	clipped := clipTextToWidth(b.Text, b.r.Dx()-2*buttonPad)
+	clipped := clipTextToWidth(b.Text, b.r.Dx()-2*SpaceXS)
 	w := int(float64(TextWidth(clipped)) * scale)
 	h := int(float64(TextHeight()) * scale)
 	x := b.r.Min.X + (b.r.Dx()-w)/2

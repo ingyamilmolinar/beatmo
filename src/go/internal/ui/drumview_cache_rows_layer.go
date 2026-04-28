@@ -3,7 +3,6 @@ package ui
 import (
 	"image"
 	"math"
-	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -27,9 +26,10 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		dxPx = int(math.Round(float64(offsetDelta) * float64(rowWidth) / float64(max1(dv.Length))))
 	}
 	// Lightweight adaptive pad: when under heavy horizontal pan (dx > pad),
-	// transiently widen the pad on WASM to turn full rebuilds into partial
-	// shifts + narrow fills. Decay back toward default when movement calms.
-	if runtime.GOARCH == "wasm" {
+	// transiently widen the pad to turn full rebuilds into partial shifts +
+	// narrow fills. Decay back toward default when movement calms. Browser
+	// only by default; gated by RuntimeProf().AdaptivePanPad.
+	if RuntimeProf().AdaptivePanPad {
 		if canReuse && rowWidth > 0 && dv.Length > 0 {
 			if abs(dxPx) > padPx {
 				dv.rowsPadFullRebuilds++
@@ -115,7 +115,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 	}
 	if smallShift {
 		if dv.rowsLayerScratch == nil || dv.rowsLayerScratch.Bounds().Dx() != w || dv.rowsLayerScratch.Bounds().Dy() != h {
-			dv.rowsLayerScratch = ebiten.NewImage(w, h)
+			dv.rowsLayerScratch = newTrackedImage("rowsLayerScratch", w, h)
 		} else {
 			dv.rowsLayerScratch.Clear()
 		}
@@ -201,7 +201,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		img = dv.rowsLayer
 		img.Clear()
 	} else {
-		img = ebiten.NewImage(w, h)
+		img = newTrackedImage("rowsLayer", w, h)
 	}
 	// Draw each visible row sprite at its position inside dv.Bounds.
 	for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {

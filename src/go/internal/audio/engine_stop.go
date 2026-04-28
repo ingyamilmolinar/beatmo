@@ -564,10 +564,11 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		outputCaptureMu.Unlock()
 	}
 
-	// Multi-channel capture: tap per-instrument + master for recording feature.
-	// The atomic pointer check is zero-cost when not recording.
-	if mc := multiCapturePtr.Load(); mc != nil {
-		mc.appendBlock(m.instBufs, m.instSlotIDs, m.activeSlots, m.workBuf[:], blockLen)
+	// Recording pipeline tap: stream per-instrument + master to disk on
+	// background workers. The atomic pointer check is zero-cost when not
+	// recording; Tap itself is non-blocking and allocation-free.
+	if pipe := pipelinePtr.Load(); pipe != nil {
+		pipe.Tap(m.instSlotIDs, m.activeSlots, m.instBufs, m.workBuf[:], blockLen)
 	}
 
 	// Diagnostic: count clipping events before hard clamp

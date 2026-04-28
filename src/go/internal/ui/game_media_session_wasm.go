@@ -27,7 +27,7 @@ func (g *Game) initMediaSessionExports() {
 		if !g.Playing() {
 			return nil
 		}
-		g.logger.Infof("[GAME] mediaSessionPause")
+		g.logger.Debugf("[game] mediaSessionPause")
 
 		// Bump audio generation so the sequencer drops stale events.
 		g.audioGen.Add(1)
@@ -61,7 +61,7 @@ func (g *Game) initMediaSessionExports() {
 		if g.Playing() || g.start == nil {
 			return nil
 		}
-		g.logger.Infof("[GAME] mediaSessionPlay")
+		g.logger.Debugf("[game] mediaSessionPlay")
 
 		audio.Resume()
 		now := time.Now()

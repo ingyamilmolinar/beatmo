@@ -112,6 +112,22 @@ for (const bpm of allBPMs) {
 
 both("");
 
+// ── Image metrics ──
+both("## Ebiten Image Metrics");
+both("");
+both("Live image count is a proxy for Ebiten's restorable.images map size — the map walked by `runtime.mapiternext` on every DrawTriangles call. `imagesAllocatedTotal` counts new sprite/layer images allocated during the bench window.");
+both("");
+both("| BPM | Live (D) | Live (B) | AllocTotal (D) | AllocTotal (B) |");
+both("|-----|----------|----------|----------------|----------------|");
+
+for (const bpm of allBPMs) {
+  const d = dMap[bpm] || {};
+  const b = bMap[bpm] || {};
+  both(`| ${bpm} | ${pad(d.liveImages ?? "N/A", 8)} | ${pad(b.liveImages ?? "N/A", 8)} | ${pad(d.imagesAllocatedTotal ?? "N/A", 14)} | ${pad(b.imagesAllocatedTotal ?? "N/A", 14)} |`);
+}
+
+both("");
+
 // ── Desktop-only metrics ──
 both("## Desktop-Only Metrics");
 both("");

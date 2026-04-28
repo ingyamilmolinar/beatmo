@@ -237,10 +237,10 @@ func TestFXPanelRemoveEffect(t *testing.T) {
 	}
 
 	// Should have toggle, remove, and add buttons.
-	// Find the remove button (text "✕").
+	// Find the remove button (icon IconClose per DESIGN.md §5c).
 	var removeBtn *Button
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "✕" {
+		if btn.Icon == string(IconClose) {
 			removeBtn = btn
 			break
 		}
@@ -603,10 +603,10 @@ func TestFXPanelCollapsedByDefaultMobile(t *testing.T) {
 		t.Errorf("expected 0 sliders when collapsed on mobile, got %d", len(dv.fxPanelSliders))
 	}
 
-	// Expand button (chevron) should exist.
+	// Expand button (IconChevronRight when collapsed) should exist.
 	var expandBtn *Button
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "▶" {
+		if btn.Icon == string(IconChevronRight) {
 			expandBtn = btn
 			break
 		}
@@ -675,8 +675,9 @@ func TestFXPanelDesktopAlwaysExpanded(t *testing.T) {
 	}
 
 	// No expand/collapse chevron button should exist on desktop.
+	// (Only 1 effect added so no move buttons either — chevron absence is unambiguous.)
 	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "▶" || btn.Text == "▼" {
+		if btn.Icon == string(IconChevronRight) || btn.Icon == string(IconChevronDown) {
 			t.Error("expand/collapse chevron should not exist on desktop")
 		}
 	}

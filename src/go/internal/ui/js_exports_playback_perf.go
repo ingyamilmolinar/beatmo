@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"strconv"
 	"syscall/js"
 	"time"
 
@@ -66,19 +65,6 @@ func (g *Game) initJSPlaybackPerf() {
 		return nil
 	}))
 
-	// setDrawThrottle(ms int) – minimum interval between Draws (web only).
-	js.Global().Set("setDrawThrottle", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
-			return nil
-		}
-		ms := args[0].Int()
-		if ms < 0 {
-			ms = 0
-		}
-		g.drawMinInterval = time.Duration(ms) * time.Millisecond
-		return nil
-	}))
-
 	// setAudioLookahead(sec float64) – scheduling lookahead for WebAudio.
 	js.Global().Set("setAudioLookahead", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if len(args) < 1 {
@@ -126,46 +112,11 @@ func (g *Game) initJSPlaybackPerf() {
 		start := time.Now()
 		wasMuted := g.perfDrawMuted
 		g.perfDrawMuted = true
-		g.lastDrawAt = time.Time{} // bypass draw throttle so drawGridPane runs
 		g.Draw(img)
 		g.perfDrawMuted = wasMuted
 		if !wasMuted && !g.perf.started.IsZero() {
 			g.perf.started = g.perf.started.Add(time.Since(start))
 		}
-		return nil
-	}))
-
-	// setRowsLayerStripes(count) – enable stripe-based rows-layer compositing (web-only prototype).
-	js.Global().Set("setRowsLayerStripes", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
-			return nil
-		}
-		n := args[0].Int()
-		if n < 0 {
-			// Auto mode: start at 2 stripes, allow tuner to adjust.
-			g.drum.rowsStripingEnabled = true
-			g.drum.rowsStripeAuto = true
-			g.drum.rowsStripeCount = 0
-		} else {
-			if n < 2 {
-				g.drum.rowsStripingEnabled = false
-				g.drum.rowsStripeAuto = false
-				g.drum.rowsStripeCount = 0
-			} else {
-				if n > wasmStripeMaxCount {
-					n = wasmStripeMaxCount
-				}
-				g.drum.rowsStripingEnabled = true
-				g.drum.rowsStripeAuto = false
-				g.drum.rowsStripeCount = n
-			}
-		}
-		g.drum.rowsStripes = nil
-		g.drum.rowsStripeStarts = nil
-		g.drum.rowsStripeWidths = nil
-		g.drum.rowsStripeGen = 0
-		g.drum.rowsStripeScratch = nil
-		g.drum.rowsLayerDirty = true
 		return nil
 	}))
 
@@ -177,9 +128,6 @@ func (g *Game) initJSPlaybackPerf() {
 		obj := js.Global().Get("Object").New()
 		obj.Set("layerOffset", g.drum.rowsLayerOffset)
 		obj.Set("layerGen", g.drum.rowsLayerGen)
-		obj.Set("stripeOffset", g.drum.rowsStripeOffset)
-		obj.Set("stripeGen", g.drum.rowsStripeGen)
-		obj.Set("striping", g.drum.rowsStripingEnabled && g.drum.rowsStripeCount > 1)
 		return obj
 	}))
 
@@ -193,25 +141,6 @@ func (g *Game) initJSPlaybackPerf() {
 			b = 1
 		}
 		g.drum.SetBPM(b)
-		return nil
-	}))
-
-	// commitBPM(n) simulates typing a number and pressing Enter in the BPM box.
-	js.Global().Set("commitBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.bpmBox() == nil {
-			return nil
-		}
-		if len(args) < 1 {
-			return nil
-		}
-		b := args[0].Int()
-		if b < 1 {
-			b = 1
-		}
-		g.drum.bpmBox().focused = true
-		g.drum.bpmBox().SetText(strconv.Itoa(b))
-		g.drum.SetBPM(b)
-		g.drum.bpmBox().focused = false
 		return nil
 	}))
 
@@ -232,6 +161,11 @@ func (g *Game) initJSPlaybackPerf() {
 		obj.Set("audioCallAvg", s.AudioCallAvg)
 		obj.Set("audioCallMax", s.AudioCallMax)
 		obj.Set("audioDrops", int(s.AudioDrops))
+		obj.Set("recordingActive", s.RecordingActive)
+		obj.Set("recordingDrops", int(s.RecordingDrops))
+		obj.Set("recordingMasterQDepth", s.RecordingMasterQDepth)
+		obj.Set("recordingPoolFree", s.RecordingPoolFree)
+		obj.Set("recordingBytesUsed", float64(s.RecordingBytesUsed))
 		obj.Set("heapAllocKB", int(s.HeapAllocKB))
 		obj.Set("heapSysKB", int(s.HeapSysKB))
 		obj.Set("heapObjects", int(s.HeapObjects))
@@ -240,8 +174,6 @@ func (g *Game) initJSPlaybackPerf() {
 		if g.drum != nil {
 			obj.Set("rowsLayerBytes", g.drum.rowsLayerBytes)
 			obj.Set("rowsRepaints", g.drum.rowsRepaints)
-			obj.Set("rowsStripeEnabled", g.drum.rowsStripingEnabled)
-			obj.Set("rowsStripeCount", g.drum.rowsStripeCount)
 			obj.Set("rowCacheShift", g.drum.rowCacheShift)
 			obj.Set("rowCachePatch", g.drum.rowCachePatch)
 			obj.Set("rowCacheFull", g.drum.rowCacheFull)
@@ -252,6 +184,9 @@ func (g *Game) initJSPlaybackPerf() {
 			obj.Set("updateMS", g.lastUpdateMS)
 			obj.Set("refreshMS", g.lastRefreshMS)
 		}
+		obj.Set("liveImages", g.snapshotLiveImages())
+		obj.Set("imagesAllocatedTotal", float64(MetricImagesAllocatedTotal()))
+		obj.Set("imagesByTag", imagesByTagSnapshot())
 		return obj
 	}))
 	js.Global().Set("resetPerfStats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {

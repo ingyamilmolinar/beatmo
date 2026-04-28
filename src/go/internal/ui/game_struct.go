@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/engine"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/async"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
 	"github.com/ingyamilmolinar/beatmo/internal/graphruntime"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
@@ -24,18 +24,23 @@ type Game struct {
 	inputDispatcher           *InputDispatcher
 	lastDispatcherSidebarOpen bool
 	dispatcherDirty           bool
-	graph           *model.Graph
-	graphRuntime    *graphruntime.Runtime
-	state           *gamestate.State
-	engine          *engine.Engine
-	engineProgress  func() float64
-	logger          *game_log.Logger
-	grid            *Grid
-	audioCh         chan soundReq
-	audioGen        atomic.Uint64
-	bpmCh           chan int
-	bpmAck          chan int
-	playFn          func(string, float64, ...float64)
+	graph                     *model.Graph
+	graphRuntime              *graphruntime.Runtime
+	state                     *gamestate.State
+	engine                    *engine.Engine
+	engineProgress            func() float64
+	logger                    *game_log.Logger
+	grid                      *Grid
+	audioCh                   chan soundReq
+	audioGen                  atomic.Uint64
+	bpmCh                     chan int
+	bpmAck                    chan int
+	playFn                    func(string, float64, ...float64)
+	// audioScheduler dispatches future-timestamped playFn calls onto a
+	// bounded pool instead of spawning a goroutine per scheduled note.
+	// Initialized by New(); tests that construct Game directly may leave
+	// it nil (SetPlayFunc falls back to immediate dispatch in that case).
+	audioScheduler *async.Scheduler
 
 	/* graph data */
 	nodes           []*uiNode
@@ -133,17 +138,21 @@ type Game struct {
 	benchDuration time.Duration
 	benchStarted  bool
 	benchStart    time.Time
+	// Record-bench mode: when true, also start recording when the bench
+	// playback begins and stop+save on shutdown. Output goes to benchOutDir.
+	benchRecord bool
+	benchOutDir string // directory for recordings + perf snapshots
 	// Screenshot mode: capture screen after N draws and exit
-	screenshotPath  string
-	screenshotDraws int
+	screenshotPath         string
+	screenshotDraws        int
+	screenshotSettleFrames int // override for the default 90-frame wait; 0 = use default
 	// Scope panel: open scope on first Update after flag is set
 	scopeOpen    bool
 	scopeApplied bool
 	// animBeatPrev was used for time-based advancement; unused now
 	highlightHook func(row, idx int)
 
-	lastFrame        time.Time
-	samplesScheduled bool
+	lastFrame time.Time
 	// prevBPM caches the last UI BPM applied so we can detect changes and
 	// re-anchor the timebase to avoid jumps when BPM changes mid-play.
 	prevBPM int
@@ -200,6 +209,22 @@ type Game struct {
 	// callback from drum.Update() sets this; game.Update() processes it after
 	// seqMu.Unlock() to avoid recursive locking.
 	pendingImportData []byte
+
+	// pendingActions are deferred UI mutations queued by external callers
+	// (e.g. JS exports invoked via page.evaluate between frames). Game.Update
+	// drains them after seqMu.Unlock(), mirroring pendingImportData so JS
+	// callers never collide with the per-frame seqMu held by drum.Update.
+	pendingActionsMu sync.Mutex
+	pendingActions   []func(*Game)
+
+	// pendingNotifyMu guards pendingNotifyInfo / pendingNotifyError. Hook
+	// subscribers (e.g., EventRecordStop) write here from a background pool
+	// goroutine; game.Update drains and dispatches via DrumView's
+	// notifyInfo/notifyError on the UI goroutine. Mirrors the pendingImportData
+	// pattern so we never call into UI code from off-thread.
+	pendingNotifyMu    sync.Mutex
+	pendingNotifyInfo  []string
+	pendingNotifyError []string
 
 	// Per-node trigger animation in [0..1], decays each frame. Set only when
 	// an audible trigger occurs (after applying node logic and mute/solo).
@@ -278,10 +303,6 @@ type Game struct {
 	renderLength                int
 	renderFrame                 int64
 
-	// Draw throttle (web): minimum wall-clock interval between Draw calls
-	drawMinInterval time.Duration
-	lastDrawAt      time.Time
-
 	// Audio scheduling lookahead in seconds (web)
 	audioLookaheadSec float64
 
@@ -304,13 +325,19 @@ type Game struct {
 	parityScanSumNS       int64
 	parityScanMaxNS       int64
 	parityScanCount       int64
-
-	// Cached frame buffer drawn into before copying to screen; reused when draw
-	// throttling skips a frame so the browser does not flash blank.
-	frameBuffer        *ebiten.Image
-	frameBufferW       int
-	frameBufferH       int
-	drawThrottleCopies int
+	// parityGen monotonically advances on every runtime structural mutation
+	// (instrument change, BPM, length, graph edit, row add/del, etc). All
+	// parity event records (audio, seq decisions, highlights) carry the gen at
+	// which they were recorded; parityScan discards entries whose gen disagrees
+	// with the current generation. This is the single coordination spine
+	// between the audio thread, the scheduler, and the parity comparator.
+	parityGen atomic.Uint64
+	// parityGraceUntilNS is a wall-clock deadline (UnixNano). Until this time,
+	// parityScan/parityCheck downgrade mismatches to log-only — gives parity
+	// buffers and the predictor/timeline state a window to reach coherence
+	// after a structural mutation. Stored as int64 (nanoseconds) under
+	// atomic.Int64 so concurrent writers from the audio thread don't race.
+	parityGraceUntilNS atomic.Int64
 
 	// Per-frame pre-computed node radii (avoids O(n²) neighbor checks in draw loop)
 	nodeRadiiCache []float64
@@ -382,8 +409,14 @@ type Game struct {
 var bpmOwner atomic.Pointer[Game]
 
 // predictorPerfThrottleEnabled gates draw-based background throttling so tests
-// can opt in without requiring a wasm build.
-var predictorPerfThrottleEnabled = (runtime.GOARCH == "wasm")
+// can opt in without requiring a wasm build. Snapshotted from the runtime
+// profile at init; tests may override via game_test_registry_test.go.
+var predictorPerfThrottleEnabled = browserProfileSnapshot()
+
+// browserProfileSnapshot returns the IsBrowser bit. Defined as a function (not
+// inline) so init order doesn't matter — RuntimeProf is safe to call before
+// or after this var is initialized.
+func browserProfileSnapshot() bool { return RuntimeProf().IsBrowser }
 
 // forceAutoSize can be toggled by tests to exercise Layout's auto-sizing logic
 // even when running under "go test". Default is false.

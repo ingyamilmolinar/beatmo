@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"time"
-
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
@@ -19,10 +17,6 @@ func (g *Game) Layout(w, h int) (int, int) {
 	// Update touch screen size for responsive UI sizing
 	SetTouchScreenSize(w, h)
 	UpdateProfile()
-	if g.frameBuffer != nil && (g.frameBufferW != w || g.frameBufferH != h) {
-		g.frameBuffer = nil
-		g.frameBufferW, g.frameBufferH = 0, 0
-	}
 
 	/* update splitter and drum bounds */
 	if g.split == nil {
@@ -45,11 +39,6 @@ func (g *Game) Layout(w, h int) (int, int) {
 		}
 		// Invalidate grid cache so it rebuilds at new dimensions.
 		g.gridCache = nil
-		// Reset draw throttle so next Draw does a full render.
-		g.lastDrawAt = time.Time{}
-		// Clear frame buffer to prevent stale frame reuse.
-		g.frameBuffer = nil
-		g.frameBufferW, g.frameBufferH = 0, 0
 	}
 	h2 := g.split.horizontal
 	g.lastHorizontal = &h2
@@ -64,9 +53,6 @@ func (g *Game) Layout(w, h int) (int, int) {
 			g.drum.resetOnScreenModeChange(small)
 		}
 		g.gridCache = nil
-		g.lastDrawAt = time.Time{}
-		g.frameBuffer = nil
-		g.frameBufferW, g.frameBufferH = 0, 0
 	}
 	g.lastSmallScreen = &small
 

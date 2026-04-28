@@ -44,10 +44,6 @@ clean:
 	rm -f $(C_LIB)
 	rm -f $(MA_JS)
 
-sync-wav:
-	mkdir -p src/go/internal/assets/wav
-	cp -a assets/wav/. src/go/internal/assets/wav/
-
 # Generate JavaScript config from Go audio config (single source of truth)
 .PHONY: audio-config
 audio-config: $(C_LIB)
@@ -58,26 +54,26 @@ audio-config: $(C_LIB)
 sync-audio: audio-config
 	cd src/go && CGO_ENABLED=1 $(GO) run ./cmd/export_audio > ../js/desktop_audio.json
 
-wasm: $(MA_JS) sync-wav
+wasm: $(MA_JS)
 	cd src/go && ($(GO) mod download || true)
-	cd src/go && GOOS=js GOARCH=wasm $(GO) build -ldflags "-X main.defaultLog=INFO" -o $(WASM_OUT) ./cmd/...
+	cd src/go && GOOS=js GOARCH=wasm $(GO) build -ldflags "-X main.defaultLog=INFO" -o $(WASM_OUT) ./cmd
 
-wasm-debug: $(MA_JS) sync-wav
+wasm-debug: $(MA_JS)
 	cd src/go && ($(GO) mod download || true)
-	cd src/go && GOOS=js GOARCH=wasm $(GO) build -ldflags "-X main.defaultLog=DEBUG" -o $(WASM_OUT) ./cmd/...
+	cd src/go && GOOS=js GOARCH=wasm $(GO) build -ldflags "-X main.defaultLog=DEBUG" -o $(WASM_OUT) ./cmd
 
-wasm-cover: $(MA_JS) sync-wav
+wasm-cover: $(MA_JS)
 	cd src/go && ($(GO) mod download || true)
 	cd src/go && GOOS=js GOARCH=wasm $(GO) build \
 		-cover -covermode=atomic \
 		-coverpkg=github.com/ingyamilmolinar/beatmo/... \
 		-ldflags "-X main.defaultLog=INFO" \
-		-o $(WASM_OUT) ./cmd/...
+		-o $(WASM_OUT) ./cmd
 
-wasm-playtest: sync-wav
+wasm-playtest:
 	cd src/go && GOOS=js GOARCH=wasm $(GO) build -o ../js/play_ui.wasm ./internal/ui/playtest
 
-wasm-audio-playtest: sync-wav
+wasm-audio-playtest:
 	cd src/go && GOOS=js GOARCH=wasm $(GO) build -o ../js/playtest.wasm ./internal/audio/playtest
 
 wasm-all: wasm wasm-playtest wasm-audio-playtest
@@ -85,8 +81,30 @@ wasm-all: wasm wasm-playtest wasm-audio-playtest
 serve:
 	cd src/js && python3 -m http.server 8080
 
-generate:
+generate: gen-design-tokens
 	cd src/go && $(GO) generate ./internal/audio/...
+
+# Regenerate UI design tokens from DESIGN.md (Phase 0: primitives only).
+# Source of truth: DESIGN.md YAML front matter.
+# Output: src/go/internal/ui/design_tokens.gen.go (committed).
+.PHONY: gen-design-tokens
+gen-design-tokens:
+	cd src/go && $(GO) run ./cmd/gen_design_tokens \
+		-design ../../DESIGN.md \
+		-out internal/ui/design_tokens.gen.go \
+		-out-components internal/ui/design_components.gen.go \
+		-out-profile internal/ui/design_profile.gen.go
+	cd src/go && $(GO) fmt ./internal/ui/design_tokens.gen.go ./internal/ui/design_components.gen.go ./internal/ui/design_profile.gen.go >/dev/null
+
+# Install local git hooks (currently: pre-commit runs gen-design-tokens
+# and rejects commits where the generated file is stale).
+.PHONY: install-hooks
+install-hooks:
+	@if [ ! -d .git ]; then echo "not a git repo"; exit 1; fi
+	@mkdir -p .git/hooks
+	@cp scripts/precommit/gen-design-tokens.sh .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "installed pre-commit hook (regenerates design tokens, rejects stale)"
 
 fmt:
 	cd src/go && $(GO) fmt ./...
@@ -156,42 +174,85 @@ lint-fix: lint-go-fix lint-js-fix
 screenshot: $(C_LIB) wasm
 	GO=$(GO) OUTDIR=$(or $(OUTDIR),screenshots) ./scripts/screenshot.sh
 
-run: $(C_LIB) sync-wav
+# Capture every UI surface in the scene catalog.
+# Output goes to screenshots/all/ (override with OUTDIR=).
+# Set MOBILE=1 to add a mobile-viewport browser pass.
+# Set SCENES=name1,name2 to filter to specific scenes.
+screenshots-all: $(C_LIB) wasm
+	GO=$(GO) OUTDIR=$(or $(OUTDIR),screenshots/all) MOBILE=$(or $(MOBILE),0) \
+		SCENES=$(or $(SCENES),) ./scripts/capture_all_ui.sh
+
+# Alias used by docs / future baseline workflows.
+screenshots-all-update: screenshots-all
+	@echo "screenshots refreshed"
+
+run: $(C_LIB)
 	cd src/go && CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd
 	/tmp/beatmo -log INFO $(RUN_ARGS)
 
-run-debug: $(C_LIB) sync-wav
+run-debug: $(C_LIB)
 	cd src/go && TIMELINE_TRACE=1 PERF_LOG=1 CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd
 	TIMELINE_TRACE=1 PERF_LOG=1 /tmp/beatmo -log DEBUG $(RUN_ARGS)
 
-bench: $(C_LIB) sync-wav
+bench: $(C_LIB)
 	cd src/go; PERF_LOG=1 CGO_ENABLED=1 $(GO) run ./cmd -log INFO -bench-bpm $(or $(BPM),200) -bench-secs $(or $(SECS),10) $(RUN_ARGS)
 
 # Self-contained desktop benchmark: 4 BPM levels (120/200/240/300), 15s each,
 # pprof CPU profile, structured JSON + ASCII table output.
 # Override: BPM_LEVELS="120 200" DURATION=5 make bench-desktop
-bench-desktop: $(C_LIB) sync-wav
+bench-desktop: $(C_LIB)
 	GO=$(GO) BPM_LEVELS="$(or $(BPM_LEVELS),120 200 240 300)" DURATION=$(or $(DURATION),15) ./scripts/bench-desktop.sh
 
 # Self-contained browser benchmark: same 4 BPM levels, startup demo circuit.
 # Produces bench-results/browser.json + ASCII table.
 bench-browser: wasm
 	@mkdir -p bench-results
-	GO=$(GO) node src/js/bench_startup_demo.browser.test.js
+	GO=$(GO) node src/js/webaudio_bench_startup.browser.test.js
 
 # Run perf_e2e with the realistic startup demo circuit (58 nodes, 7 instruments).
 bench-perf-e2e: wasm
-	BENCH_CIRCUIT=startup BENCH_DURATION=$(or $(DURATION),15000) BENCH_BPM=$(or $(BPM),200) GO=$(GO) node src/js/perf_e2e.browser.test.js
+	BENCH_CIRCUIT=startup BENCH_DURATION=$(or $(DURATION),15000) BENCH_BPM=$(or $(BPM),200) GO=$(GO) node src/js/webaudio_perf_e2e.browser.test.js
 
 # Run both desktop and browser benchmarks, then produce a comparison report.
 bench-all: bench-desktop bench-browser
 	node scripts/bench-compare.js
 
+# perf-record-bench: record-while-playing benchmark with profiling.
+# Drops + perf_stats land in bench-results/record-<timestamp>/. After
+# the run, scripts/compare-bench.sh validates against the baseline at
+# bench-results/REPORT.md (if present) and exits non-zero on regression.
+PERF_RECORD_SECS ?= 30
+PERF_RECORD_BPM  ?= 140
+perf-record-bench: $(C_LIB)
+	cd src/go; CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd
+	xvfb-run -a /tmp/beatmo -record-bench $(PERF_RECORD_SECS) -record-bench-bpm $(PERF_RECORD_BPM) -log INFO
+
+# perf-record-noisy: same as perf-record-bench but with stress-ng running
+# alongside to emulate noisy-neighbor CPU/IO/memory pressure. Requires
+# stress-ng installed; install with `apt-get install stress-ng` on Debian.
+perf-record-noisy: $(C_LIB)
+	@command -v stress-ng >/dev/null 2>&1 || { echo "stress-ng required: apt-get install stress-ng"; exit 1; }
+	cd src/go; CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd
+	stress-ng --cpu 2 --vm 1 --io 1 --timeout $(PERF_RECORD_SECS)s & \
+	xvfb-run -a /tmp/beatmo -record-bench $(PERF_RECORD_SECS) -record-bench-bpm $(PERF_RECORD_BPM) -log INFO; \
+	wait
+
+# perf-record-diagnose: record-while-playing with block + mutex profiles
+# enabled. Use this BEFORE believing any "fixed" claim — it tells us
+# where the audio thread is actually blocked.
+perf-record-diagnose: $(C_LIB)
+	cd src/go; CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd
+	BEATMO_BLOCK_PROFILE=1 BEATMO_MUTEX_PROFILE=1 \
+		xvfb-run -a /tmp/beatmo -record-bench $(PERF_RECORD_SECS) -record-bench-bpm $(PERF_RECORD_BPM) -log INFO
+	@echo "Inspect with:"
+	@echo "  go tool pprof -top -cum bench-results/record-<ts>/block.pprof"
+	@echo "  go tool pprof -top -cum bench-results/record-<ts>/mutex.pprof"
+
 # Run with camera/node/edge detailed logs enabled
-run-cam-logs: $(C_LIB) sync-wav
+run-cam-logs: $(C_LIB)
 	cd src/go; CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd && DEBUG_DRAW_NODES=1 DEBUG_GEOM=1 /tmp/beatmo -log DEBUG $(RUN_ARGS)
 
-test: $(C_LIB) sync-wav
+test: $(C_LIB)
 	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 60s ./...
 	cd src/go; $(LOG_ENV) $(GO) test -timeout 10s ./internal/audio
 
@@ -219,20 +280,20 @@ test-browser-matrix:
 # Alias for convenience; many developers instinctively run `make tests`.
 tests: test
 
-test-debug: $(C_LIB) sync-wav
+test-debug: $(C_LIB)
 	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 60s ./...
 	cd src/go; $(LOG_ENV) $(GO) test -timeout 10s ./internal/audio
 	$(MAKE) test-browser
 
 # Run all Go tests with real Ebiten (requires X11/xvfb) + all browser tests
-test-real: $(C_LIB) sync-wav
+test-real: $(C_LIB)
 	cd src/go && BPM_TIMING_TEST=1 xvfb-run -a $(GO) test ./...
 	$(MAKE) test-browser
 
 # Run cross-platform parity tests: Go golden files + browser comparison
-test-parity: $(C_LIB) sync-wav
+test-parity: $(C_LIB)
 	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -run TestCrossPlatformParity -timeout 30s ./internal/ui
-	$(MAKE) test-browser-filter FILTER=parity_cross_platform
+	$(MAKE) test-browser-filter FILTER=xplat_parity
 
 # Visual regression tests (screenshots + comparison)
 test-visual: wasm
@@ -409,12 +470,31 @@ deploy:
 # ─── Coverage ────────────────────────────────────────────────────────────────
 
 # Go test coverage (continues on test failures, warns instead of aborting)
-coverage-go: $(C_LIB) sync-wav
+coverage-go: $(C_LIB)
 	@mkdir -p coverage
 	@cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod \
 		-coverprofile=../../coverage/go.out -covermode=atomic -timeout 60s ./... \
 		|| echo "WARNING: Some Go tests failed — coverage data still collected"
 	@if [ -f coverage/go.out ]; then cd src/go && $(GO) tool cover -func=../../coverage/go.out | tail -1; fi
+
+# Coverage floor guard. Runs coverage-go, then fails CI if total Go coverage
+# drops below COVERAGE_GO_FLOOR (default 77). Bump the floor when adding a
+# significant batch of tests so future regressions are caught. Current
+# baseline after Round 3 (2026-04-28) is 78.1% — internal/ui (75.4%, 250
+# files) dominates the average, so further bumps require UI test work, not
+# just leaf-package additions. 77 leaves ~1.1pt headroom.
+COVERAGE_GO_FLOOR ?= 77
+coverage-go-check: coverage-go
+	@total=$$(cd src/go && $(GO) tool cover -func=../../coverage/go.out | awk '/^total:/ {gsub("%","",$$NF); print $$NF}'); \
+	floor=$(COVERAGE_GO_FLOOR); \
+	if [ -z "$$total" ]; then echo "coverage-go-check: could not parse total"; exit 1; fi; \
+	awk -v t="$$total" -v f="$$floor" 'BEGIN { exit (t+0 < f+0) }'; \
+	rc=$$?; \
+	if [ $$rc -ne 0 ]; then \
+		printf "coverage-go-check: FAIL — total %s%% < floor %s%%\n" "$$total" "$$floor"; \
+		exit 1; \
+	fi; \
+	printf "coverage-go-check: OK — total %s%% >= floor %s%%\n" "$$total" "$$floor"
 
 # Browser test coverage (builds coverage-instrumented WASM, runs all browser tests)
 coverage-browser: wasm-cover

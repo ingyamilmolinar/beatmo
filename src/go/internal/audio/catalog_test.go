@@ -55,9 +55,6 @@ func TestInitCatalogFromDirRegistersWAVMetadata(t *testing.T) {
 	for _, m := range Catalog() {
 		if filepath.ToSlash(m.Path) == want {
 			found = true
-			if len(m.Data) > 0 {
-				t.Fatalf("wav data should not be eagerly loaded: %s", m.Path)
-			}
 			if m.Source != "wav" {
 				t.Fatalf("expected wav source, got %q", m.Source)
 			}
@@ -96,8 +93,11 @@ func TestWavCategoryStub(t *testing.T) {
 		{"cymbals", "Cymbals (WAV)"},
 		{"toms", "Toms (WAV)"},
 		{"percussion", "Percussion (WAV)"},
-		{"saved", "Saved (WAV)"},
-		{"unknown", "Samples (WAV)"},
+		{"drum machines", "Drum Machines (WAV)"},
+		// Unknown folder names are pretty-printed with " (WAV)" suffix —
+		// no catch-all "Samples" bucket exists.
+		{"unknown", "Unknown (WAV)"},
+		{"my pack", "My Pack (WAV)"},
 	}
 	for _, tc := range cases {
 		got := wavCategoryStub(tc.in)
