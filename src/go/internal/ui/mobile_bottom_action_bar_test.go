@@ -6,6 +6,7 @@ import (
 	"image"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -151,5 +152,52 @@ func TestMobileTransport_AllShareSingleRow(t *testing.T) {
 		if absInt(mid(r)-baseMid) > 1 {
 			t.Errorf("%s mid-Y=%d differs from baseMid (%s)=%d (>1 px); rect=%v", names[i], mid(r), names[0], baseMid, r)
 		}
+	}
+}
+
+// TestBottomActionBar_DrawsSheetSurface verifies that on mobile the bottom
+// action bar paints a sheet surface (drawBottomSheetPanel) distinct from
+// the underlying background fill. Without the surface paint the bar host
+// reads back the bg color, which breaks the visual grouping of the
+// vol/view/overflow controls.
+func TestBottomActionBar_DrawsSheetSurface(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	bar := g.drum.bottomActionBarRect
+	if bar.Empty() {
+		t.Fatalf("precondition: bottomActionBarRect empty")
+	}
+
+	screen := ebiten.NewImage(360, 700)
+	g.Draw(screen)
+
+	// Sample a point inside the bar between the cell rects (in the
+	// horizontal padding gap so we don't read a button's fill). With the
+	// bar split into 3 cells of 120 px, the gap between cells 0 and 1
+	// (around x=120) lies in the inset region between mainVolIcon and
+	// viewSwitchBtn.
+	cellGapX := bar.Min.X + bar.Dx()/3 // boundary between cell 0 and cell 1
+	x := cellGapX
+	y := bar.Min.Y + bar.Dy()/2
+	r1, g1, b1, a1 := screen.At(x, y).RGBA()
+	if a1 == 0 {
+		t.Fatalf("expected bar surface painted at (%d, %d); got transparent", x, y)
+	}
+
+	// Compare against a sample just ABOVE the bar (rows area). If the
+	// surface paint is missing, both samples read back the same bg color.
+	// drawBottomSheetPanel paints colPanelBG which differs from colBGBottom.
+	yAbove := bar.Min.Y - 4
+	if yAbove < 0 {
+		t.Fatalf("test geometry: bar too high to sample above (bar.Min.Y=%d)", bar.Min.Y)
+	}
+	r2, g2, b2, _ := screen.At(x, yAbove).RGBA()
+	if r1 == r2 && g1 == g2 && b1 == b2 {
+		t.Fatalf("bar pixel (%d,%d)=RGBA(%d,%d,%d,%d) matches above-bar pixel (%d,%d)=RGBA(%d,%d,%d) — bar surface not drawn",
+			x, y, r1, g1, b1, a1, x, yAbove, r2, g2, b2)
 	}
 }

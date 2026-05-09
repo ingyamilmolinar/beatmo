@@ -81,6 +81,15 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	// --- Animations ---
 	dv.decayAnims()
 
+	// --- Mobile bottom action bar surface ---
+	// Paint the sheet surface before renderToolbarControls so the
+	// vol/view/overflow buttons hosted in the bar render on top of the
+	// surface rather than under it. The transport widget's clip rect at
+	// the top excludes this rect, so it must be painted directly here.
+	if !dv.bottomActionBarRect.Empty() {
+		drawBottomSheetPanel(dst, dv.bottomActionBarRect)
+	}
+
 	// --- Transport zone ---
 	if !dv.simpleDraw {
 		if r := dv.widgetRects[WidgetTransport]; !r.Empty() {
@@ -95,13 +104,43 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 		dv.drawNotifications(dst)
 	}
 
-	// --- Play button pulse glow ---
-	if dv.isPlaying && dv.playBtn() != nil {
+	// --- Play button pulse halo ---
+	// Multi-pass falloff so the glow reads as a soft halo rather than a
+	// hard rectangular outline (DESIGN.md §"Cushioned elevation"). Gated
+	// on the visible Pause icon — guards against state drift where
+	// isPlaying=true but the icon was left as Play.
+	if dv.isPlaying && dv.playBtn() != nil && dv.playBtn().Icon == string(IconPause) {
 		pr := dv.playBtn().Rect()
 		if !pr.Empty() {
-			alpha := SinPulseAlpha(dv.frame, genAnimPlayheadPulse)
-			glowCol := WithAlpha(genColorDrumGlow, alpha)
-			drawRect(dst, pr.Inset(-2), glowCol, false)
+			peak := SinPulseAlpha(dv.frame, genAnimPlayheadPulse)
+			for i := 1; i <= 3; i++ {
+				a := uint8(int(peak) * (4 - i) / 4)
+				if a == 0 {
+					continue
+				}
+				drawRect(dst, pr.Inset(-i), WithAlpha(genColorDrumGlow, a), false)
+			}
+		}
+	}
+
+	// --- Record button armed halo ---
+	// Same multi-pass falloff as the play halo, but in record-active red so
+	// the armed state is unmistakable across desktop and mobile. Drawn on
+	// top of the toolbar so it can pulse without invalidating the cached
+	// toolbar render. Mobile additionally renders a static destructive
+	// ring inside the cache (drawRecordArmedRingOffset) for the discrete
+	// "armed" affordance — the pulse here adds the "live & waiting" energy.
+	if dv.IsRecording() && dv.transportZone != nil {
+		rr := dv.transportZone.recordBtn.Rect()
+		if !rr.Empty() {
+			peak := SinPulseAlpha(dv.frame, genAnimPlayheadPulse)
+			for i := 1; i <= 3; i++ {
+				a := uint8(int(peak) * (4 - i) / 4)
+				if a == 0 {
+					continue
+				}
+				drawRect(dst, rr.Inset(-i), WithAlpha(genColorRecordActive, a), false)
+			}
 		}
 	}
 
@@ -208,6 +247,16 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 			stripCol = stripeOdd
 		}
 		drawRect(dst, image.Rect(startX, y, startX+totalW, y+rh), stripCol, true)
+		// Now-playing tint: when the row recently fired its audible step,
+		// wash the strip in a faint accent overlay that decays each frame.
+		// Drawn after the stripe so the cells render on top in their normal
+		// row colors.
+		if intensity := dv.RowFireIntensity(i); intensity > 0 {
+			alpha := uint8(float64(genAlphaFaint) * intensity)
+			if alpha > 0 {
+				drawRect(dst, image.Rect(startX, y, startX+totalW, y+rh), WithAlpha(TokenAccent(), alpha), true)
+			}
+		}
 		n := len(r.Steps)
 		if n < 1 {
 			continue
