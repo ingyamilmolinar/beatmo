@@ -88,9 +88,13 @@ func TestTimelineScrub_PinchDoesNotStartScrub(t *testing.T) {
 	adapter := &timelineScrubHitAdapter{zone: z}
 	scrubMid := image.Pt(z.timelineBarRect.Min.X+z.timelineBarRect.Dx()/2,
 		z.timelineBarRect.Min.Y+z.timelineBarRect.Dy()/2)
+
+	// Install the haptic spy BEFORE OnPress so the no-buzz assertion
+	// below is meaningful — installing it after the call would make
+	// len(*captured)==0 vacuously true.
+	captured := withCapturedHaptics(t)
 	res := adapter.OnPress(scrubMid.X, scrubMid.Y)
 
-	captured := withCapturedHaptics(t)
 	if z.scrubbing {
 		t.Fatalf("scrubbing should remain false during multi-touch cooldown")
 	}
