@@ -203,6 +203,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 					}
 				}
 			}
+			emitEQBandChange(ch, band, db)
 		},
 		OnMuteToggle: func(band int) {
 			dv.toggleEQBandMute(band)
@@ -396,7 +397,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.bpm = bpm
 			dv.secPerBeat = 60.0 / float64(bpm)
 			dv.logger.Debugf("[drumview] BPM set: -> %d", bpm)
-			hooks.PublishKind(hooks.EventBPMChange, bpm)
+			emitBPMChange(bpm)
 		},
 		OnNotifyError: func(msg string) {
 			dv.notifyError(msg)
@@ -625,6 +626,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 							newID := strings.ToLower(name)
 							dv.logger.Debugf("[drumview] rename instrument row=%d %q -> %q", dv.renameRow, oldID, newID)
 							audio.RenameInstrument(oldID, newID)
+							emitInstrumentRenamed(oldID, newID)
 							if dv.samplePath != nil {
 								if p, ok := dv.samplePath[oldID]; ok {
 									dv.samplePath[newID] = p
@@ -776,6 +778,24 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Layout resize zone — wraps LayoutResizeHandler for tree-based input.
 	dv.layoutResizeZone = newLayoutResizeZone(dv.layoutHandler)
 	dv.tree.RegisterZone(dv.layoutResizeZone, ZResize)
+
+	// B4: 3-segment view-switch (Pads/EQ/Wave) — mobile only.
+	// Constructed unconditionally so the field is valid; the rect is set
+	// (to non-empty) only on mobile in calcLayout / recalcButtons.
+	dv.viewSwitchSegmented = NewSegmentedControl(
+		[]string{"Pads", "EQ", "Wave"},
+		0, // Pads active by default
+		func(i int) {
+			switch i {
+			case 0:
+				dv.setViewMode(viewModeRows)
+			case 1:
+				dv.setViewMode(viewModeEQ)
+			case 2:
+				dv.setViewMode(viewModeWave)
+			}
+		},
+	)
 
 	// Now that all zones (EQ + Transport + RowRack + Timeline) are created
 	// and aliased, run the deferred layout initialization that was skipped

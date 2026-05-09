@@ -150,7 +150,15 @@ func (dv *DrumView) recalcButtons() {
 				return image.Rect(r.Min.X+pad, r.Min.Y, r.Max.X-pad, r.Max.Y)
 			}
 			dv.transportZone.mainVolIconRect = insetX(cells.Cell(0, 0))
-			if dv.transportZone.viewSwitchBtn != nil {
+			// Mobile: segmented control (Pads/EQ/Wave) replaces the binary
+			// view-switch button in col 1. Hide the legacy button.
+			if dv.viewSwitchSegmented != nil {
+				dv.viewSwitchSegmented.SetRect(cells.Cell(1, 0))
+				// Hide the binary button on mobile — segmented replaces it.
+				if dv.transportZone.viewSwitchBtn != nil {
+					dv.transportZone.viewSwitchBtn.SetRect(image.Rectangle{})
+				}
+			} else if dv.transportZone.viewSwitchBtn != nil {
 				dv.transportZone.viewSwitchBtn.SetRect(insetX(cells.Cell(1, 0)))
 			}
 			if dv.transportZone.overflowBtn != nil {
@@ -166,6 +174,19 @@ func (dv *DrumView) recalcButtons() {
 			// bar lies outside of — clicks would otherwise be culled).
 			dv.transportZone.rebuildHitAreas()
 			dv.transportZone.SetBarRect(bar)
+			// Register the segmented control as a hit area in the transport zone.
+			// ZIndex 140: above eq-curve-area (130), eq-mute buttons (131),
+			// timeline-grid-drag (110), and overflow (110) so the segmented
+			// wins over all overlapping areas when the EQ panel is visible.
+			if dv.viewSwitchSegmented != nil && !dv.viewSwitchSegmented.Rect().Empty() {
+				dv.transportZone.hitAreas = append(dv.transportZone.hitAreas, HitArea{
+					Rect:     dv.viewSwitchSegmented.Rect(),
+					ClipRect: bar,
+					ZIndex:   140,
+					Tag:      "transport-view-segmented",
+					Handler:  &segmentedHitAdapter{sc: dv.viewSwitchSegmented},
+				})
+			}
 			dv.tree.HitIndexRef().Update("transport", dv.transportZone.HitAreas())
 		}
 	}
@@ -929,3 +950,18 @@ func (h *eqPeekHitAdapter) OnPress(x, y int) InputResult {
 func (h *eqPeekHitAdapter) OnDrag(x, y int)                       {}
 func (h *eqPeekHitAdapter) OnRelease(x, y int)                    {}
 func (h *eqPeekHitAdapter) OnWheel(x, y, steps int) InputResult   { return InputIgnored }
+
+// segmentedHitAdapter routes taps on the mobile Pads/EQ/Wave segmented
+// control. HitTest dispatches the segment click (which calls setViewMode
+// via the onClick callback set at construction time in drumview_ctor.go).
+type segmentedHitAdapter struct{ sc *SegmentedControl }
+
+func (h *segmentedHitAdapter) OnPress(x, y int) InputResult {
+	if h.sc.HitTest(x, y) {
+		return InputCaptured
+	}
+	return InputIgnored
+}
+func (h *segmentedHitAdapter) OnDrag(x, y int)                     {}
+func (h *segmentedHitAdapter) OnRelease(x, y int)                  {}
+func (h *segmentedHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
