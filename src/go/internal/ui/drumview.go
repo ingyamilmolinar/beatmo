@@ -208,6 +208,10 @@ type DrumView struct {
 	eqPanelZone      *EQPanelZone      // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
 	scopeVisible     bool
 	transportZone    *TransportZone    // Phase 3: transport zone (owns transport buttons/state)
+	// viewSwitchSegmented is the mobile 3-segment view selector
+	// (Pads/EQ/Wave). Replaces the binary viewSwitchBtn on mobile; nil on
+	// desktop. See B4 in the mobile UX overhaul plan.
+	viewSwitchSegmented *SegmentedControl
 	rowRackZone      *RowRackZone      // Phase 4: row rack zone (owns per-row buttons/sliders/scroll)
 	timelineZone     *TimelineZone     // Phase 5: timeline zone (owns drag/scrub)
 	layoutResizeZone *layoutResizeZone // layout resize zone (column/row divider pills)

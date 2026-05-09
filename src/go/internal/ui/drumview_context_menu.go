@@ -991,10 +991,19 @@ func (dv *DrumView) setViewMode(target viewMode) {
 		return
 	}
 	dv.currentViewMode = target
-	if target == viewModeRows {
+	switch target {
+	case viewModeRows:
 		dv.mobileEQMode = false
-	} else {
+	case viewModeEQ:
 		dv.mobileEQMode = true
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.tabState.SetActiveTab(TabEQ)
+		}
+	case viewModeWave:
+		dv.mobileEQMode = true
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.tabState.SetActiveTab(TabWave)
+		}
 	}
 	dv.syncViewSwitchIcon()
 	if dv.mobileEQMode {
