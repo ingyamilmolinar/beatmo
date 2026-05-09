@@ -96,13 +96,16 @@ func (dv *DrumView) recalcButtons() {
 			bar := dv.bottomActionBarRect
 			cells := NewGridLayout(bar, []float64{1.0, 1.0, 1.0}, []float64{1})
 			barPad := ActiveTopBarSpec().Padding
+			minTarget := TouchMinTarget()
+			// Horizontal-only: bar height == TouchMinTarget; any vertical inset
+			// breaks the 44 px floor (see TestBottomActionBar_HostsVolViewOverflow).
 			insetX := func(r image.Rectangle) image.Rectangle {
 				if r.Empty() {
 					return r
 				}
 				pad := barPad
-				if pad*2 > r.Dx()-48 {
-					pad = (r.Dx() - 48) / 2
+				if pad*2 > r.Dx()-minTarget {
+					pad = (r.Dx() - minTarget) / 2
 				}
 				if pad < 0 {
 					pad = 0

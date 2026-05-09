@@ -158,15 +158,12 @@ func TestPopupSizingMobile(t *testing.T) {
 }
 
 // TestMobileTransportButtons_AtTouchMin is a 44 px touch-target ratchet
-// for every transport button placed by the mobile layout. It iterates
-// every button rect produced by `layoutMobile()` and asserts each one
-// satisfies the DESIGN.md touch-target floor. New buttons added to the
-// mobile transport must clear this bar; existing exceptions (notably
-// the BPM ± stepper, which currently inherits the 2-row toolbar's 28 px
-// row height pending B3 single-row collapse) live in `knownBelowMin`
-// so the regression guard surfaces *new* violations rather than stale
-// known ones. Remove an entry from `knownBelowMin` once its layout is
-// fixed — the test will then enforce the 44 px floor for that button.
+// for every transport button placed by the mobile layout. After B3
+// (single-row toolbar + bottom action bar) every mobile button meets
+// the DESIGN.md floor *except* recordBtn, which is intentionally
+// demoted (see body comment + recordDemoteInsetMobile). New
+// exceptions go into `knownBelowMin` with a citation; the dual-direction
+// assertion below also fails if a fixed button is left listed.
 func TestMobileTransportButtons_AtTouchMin(t *testing.T) {
 	withSmallScreen(t, true)
 	logger := testLogger
