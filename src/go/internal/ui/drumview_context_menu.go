@@ -785,37 +785,43 @@ type overflowItem struct {
 	label   string
 	iconID  IconID
 	active  bool
+	header  bool // true → renders as a non-clickable subgroup header
 	onClick func()
 }
 
 // overflowItems returns the full list of overflow menu entries.
+// Header items (header==true) are non-clickable subgroup labels; they are
+// rendered as dimmed section dividers and must NOT appear in the popup's
+// button hit list (see overflowPopupBtns).
 func (dv *DrumView) overflowItems() []overflowItem {
-	var items []overflowItem
-	// File operations (view mode toggle removed — viewSwitchBtn in toolbar handles it)
-	items = append(items,
-		overflowItem{label: "Upload", onClick: func() {
+	items := []overflowItem{
+		// File group
+		{label: "File", header: true},
+		{label: "Upload", onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.uploadBtn().OnClick != nil {
 				dv.uploadBtn().OnClick()
 			}
 		}},
-		overflowItem{label: "Import", onClick: func() {
+		{label: "Import", onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.importBtn().OnClick != nil {
 				dv.importBtn().OnClick()
 			}
 		}},
-		overflowItem{label: "Export", onClick: func() {
+		{label: "Export", onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.exportBtn().OnClick != nil {
 				dv.exportBtn().OnClick()
 			}
 		}},
+		// View group
+		{label: "View", header: true},
 		// Track/free follow toggle. Mobile entry point — desktop has the
 		// inline track button left of the timeline. Click flips
 		// TransportZone.follow, which is the single source of truth for
 		// the follow state on both platforms.
-		overflowItem{
+		{
 			label:  "Track",
 			iconID: IconTrack,
 			active: dv.FollowPlayback(),
@@ -826,7 +832,7 @@ func (dv *DrumView) overflowItems() []overflowItem {
 				}
 			},
 		},
-	)
+	}
 	// Window length controls live in the overflow on mobile (A7 in the
 	// screenshot critique). Desktop keeps the inline +/− pair next to the
 	// timeline so we suppress the duplicated entries there.
