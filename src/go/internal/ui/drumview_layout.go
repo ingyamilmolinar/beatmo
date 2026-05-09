@@ -921,11 +921,8 @@ func (h *eqPeekHitAdapter) OnPress(x, y int) InputResult {
 		return InputIgnored
 	}
 	h.dv.mobileEQCollapsed = false
-	h.dv.mobileEQMode = true
-	h.dv.currentViewMode = viewModeAudio
-	h.dv.syncViewSwitchIcon()
+	h.dv.setViewMode(viewModeAudio)
 	h.dv.bgDirty = true
-	h.dv.refreshWidgetLayout()
 	return InputCaptured
 }
 

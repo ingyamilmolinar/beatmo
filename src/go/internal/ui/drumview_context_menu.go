@@ -228,9 +228,10 @@ type contextMenuItem struct {
 }
 
 // contextMenuItems returns the grouped list of context menu entries for a row.
-// On mobile, Instrument and Effects are included (row controls are hidden there).
-// On desktop/non-mobile, only Rename, Color, Origin, and Delete appear (the
-// rest are accessible via dedicated row buttons or by clicking the label).
+// On mobile, Instrument is included (row controls are hidden there); Color and
+// Effects are intentionally omitted from the mobile menu.
+// On desktop/non-mobile, Rename, Color, Origin, and Delete appear (the rest are
+// accessible via dedicated row buttons or by clicking the label).
 // Mute and Solo are omitted on all platforms — they are exposed in the row controls.
 func (dv *DrumView) contextMenuItems(rowIdx int) []contextMenuItem {
 	itemStyle := ButtonVisual(ContextMenuItemStyle)
@@ -253,21 +254,17 @@ func (dv *DrumView) contextMenuItems(rowIdx int) []contextMenuItem {
 				dv.rowEditBtns()[rowIdx].OnClick()
 			}
 		}},
-		contextMenuItem{label: "Color", icon: "color", style: itemStyle, group: 0, onClick: func() {
+	)
+	if !Profile().IsMobile() {
+		// Color is desktop-only in this menu; mobile users access color via the row swatch.
+		items = append(items, contextMenuItem{label: "Color", icon: "color", style: itemStyle, group: 0, onClick: func() {
 			dv.closeContextMenuPortal()
 			dv.openColorPickerForRow(rowIdx)
-		}},
-		contextMenuItem{divider: true},
-	)
-
-	// Group 2: Routing
-	if Profile().IsMobile() {
-		// Effects only on mobile — on desktop, the FX button is visible in the row.
-		items = append(items, contextMenuItem{label: "Effects", icon: "fx", style: itemStyle, group: 2, onClick: func() {
-			dv.closeContextMenuPortal()
-			dv.toggleFXPanel(rowIdx)
 		}})
 	}
+	items = append(items, contextMenuItem{divider: true})
+
+	// Group 2: Routing
 	items = append(items,
 		contextMenuItem{label: "Origin", icon: "target", style: itemStyle, group: 2, onClick: func() {
 			dv.closeContextMenuPortal()
@@ -721,14 +718,32 @@ func (dv *DrumView) openColorPickerForRow(rowIdx int) {
 	dv.openColorWheelPortal()
 }
 
-// overflowPopupRect returns the rectangle for the overflow popup.
+// overflowPopupRect returns the rectangle for the overflow popup. On mobile
+// (when LayoutProfile.UseBottomSheet is true) the popup is rendered as a
+// full-width bottom sheet anchored to the bottom of the drum pane —
+// DESIGN.md §"Mobile bottom sheets" mandates this for full-width modal
+// menus. Desktop keeps the dropdown anchored to the kebab.
 func (dv *DrumView) overflowPopupRect() image.Rectangle {
 	if dv.overflowBtn() == nil {
 		return image.Rectangle{}
 	}
+	items := dv.overflowItems()
+	if Profile().UseBottomSheet {
+		// Bottom sheet: full-width, anchored to drum-pane bottom.
+		h := len(items) * touchMinTargetPx
+		// Cap to drum pane height to avoid overflow above the toolbar.
+		maxH := dv.Bounds.Dy() - touchMinTargetPx
+		if h > maxH {
+			h = maxH
+		}
+		if h < touchMinTargetPx {
+			h = touchMinTargetPx
+		}
+		return image.Rect(dv.Bounds.Min.X, dv.Bounds.Max.Y-h, dv.Bounds.Max.X, dv.Bounds.Max.Y)
+	}
+
 	anchor := dv.overflowBtn().Rect()
 	w := 160
-	items := dv.overflowItems()
 	h := len(items) * touchMinTargetPx
 	x := anchor.Max.X - w
 	y := anchor.Max.Y + 2
@@ -812,6 +827,25 @@ func (dv *DrumView) overflowItems() []overflowItem {
 			},
 		},
 	)
+	// Window length controls live in the overflow on mobile (A7 in the
+	// screenshot critique). Desktop keeps the inline +/− pair next to the
+	// timeline so we suppress the duplicated entries there.
+	if Profile().IsMobile() {
+		items = append(items,
+			overflowItem{label: "Window length +", onClick: func() {
+				dv.closeOverflowMenu()
+				if dv.lenIncBtn != nil && dv.lenIncBtn.OnClick != nil {
+					dv.lenIncBtn.OnClick()
+				}
+			}},
+			overflowItem{label: "Window length −", onClick: func() {
+				dv.closeOverflowMenu()
+				if dv.lenDecBtn != nil && dv.lenDecBtn.OnClick != nil {
+					dv.lenDecBtn.OnClick()
+				}
+			}},
+		)
+	}
 	return items
 }
 
@@ -948,25 +982,44 @@ func (dv *DrumView) registerFilePickerRects() {
 	}
 }
 
-// cycleViewMode toggles between Rows and Audio (EQ/Wave) views.
-func (dv *DrumView) cycleViewMode() {
-	if dv.currentViewMode == viewModeRows {
-		dv.currentViewMode = viewModeAudio
-		dv.mobileEQMode = true
-	} else {
-		dv.currentViewMode = viewModeRows
+// setViewMode transitions to target. Idempotent: a no-op if already in
+// target. Performs full mode-entry side effects (popup close, scroll
+// reset, layout invalidation) so any caller — toolbar button, segmented
+// control, EQ peek tap — sees identical state afterward.
+func (dv *DrumView) setViewMode(target viewMode) {
+	if dv.currentViewMode == target {
+		return
+	}
+	dv.currentViewMode = target
+	if target == viewModeRows {
 		dv.mobileEQMode = false
+	} else {
+		dv.mobileEQMode = true
 	}
 	dv.syncViewSwitchIcon()
 	if dv.mobileEQMode {
 		dv.CloseAllPopups()
-		dv.rowScroll().ResetTouch()
+		if rs := dv.rowScroll(); rs != nil {
+			rs.ResetTouch()
+		}
 	}
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
 	dv.calcLayout()
 	dv.markAllRowsDirty()
 	dv.rowsLayerDirty = true
+}
+
+// cycleViewMode toggles between Rows and Audio (legacy 2-state path).
+// Phase 3 (B4 segmented control) replaces direct cycleViewMode calls
+// with explicit setViewMode(target) — this stub remains as a
+// compatibility shim for tests that still call it.
+func (dv *DrumView) cycleViewMode() {
+	if dv.currentViewMode == viewModeRows {
+		dv.setViewMode(viewModeAudio)
+	} else {
+		dv.setViewMode(viewModeRows)
+	}
 }
 
 // syncViewSwitchIcon updates the view switch button icon to show the OTHER mode.
