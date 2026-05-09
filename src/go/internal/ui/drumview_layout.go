@@ -914,6 +914,9 @@ type eqPeekHitAdapter struct {
 }
 
 func (h *eqPeekHitAdapter) OnPress(x, y int) InputResult {
+	if globalTouchState != nil && globalTouchState.RecentMultiTouch() {
+		return InputIgnored
+	}
 	if h.dv == nil {
 		return InputIgnored
 	}

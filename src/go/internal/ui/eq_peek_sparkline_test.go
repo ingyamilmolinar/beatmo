@@ -162,6 +162,44 @@ func TestEQPeek_TapExpandsPanel(t *testing.T) {
 	}
 }
 
+// TestEQPeek_PinchDoesNotExpandPanel verifies that during the
+// multi-touch cooldown (set by globalTouchState after a pinch ends)
+// a tap on the EQ peek strip is suppressed. Without this gate, a
+// stray pinch-release fingertip could accidentally expand the EQ
+// panel and disrupt the user's view (parallel to the scrub gate
+// added in Task 3.2).
+func TestEQPeek_PinchDoesNotExpandPanel(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	if !g.drum.mobileEQCollapsed {
+		t.Fatalf("precondition: mobileEQCollapsed=true expected")
+	}
+	r := g.drum.eqPeekRect
+	if r.Empty() {
+		t.Fatalf("precondition: eqPeekRect non-empty expected")
+	}
+
+	// Pin the multi-touch cooldown.
+	prev := globalTouchState.multiTouchCooldown
+	globalTouchState.multiTouchCooldown = multiTouchCooldownFrames
+	t.Cleanup(func() { globalTouchState.multiTouchCooldown = prev })
+
+	adapter := &eqPeekHitAdapter{dv: g.drum}
+	mid := image.Pt(r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2)
+	res := adapter.OnPress(mid.X, mid.Y)
+
+	if !g.drum.mobileEQCollapsed {
+		t.Fatalf("EQ panel should NOT expand during multi-touch cooldown; mobileEQCollapsed flipped to false")
+	}
+	if res == InputCaptured || res == InputConsumed {
+		t.Fatalf("eqPeekHitAdapter.OnPress should ignore press during cooldown, got %v", res)
+	}
+}
+
 // pixelYSpread renders the game and returns the vertical span (in px)
 // of pixels in `r` that differ from the rect's surface background. Used
 // to detect a sparkline polyline's vertical extent without coupling to

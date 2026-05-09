@@ -32,9 +32,12 @@ func TestTimelineScrub_MobileHitAreaSpansFullTimelineRect(t *testing.T) {
 	}
 }
 
-// TestTimelineScrub_HitAreaExcludesLenButtons verifies the enlarged
-// scrub area does NOT swallow taps on the len ± buttons (when they
-// exist on a given layout).
+// TestTimelineScrub_HitAreaExcludesLenButtons verifies the mobile
+// scrub-area enlargement clamps around lenIncBtn / lenDecBtn rects
+// when those buttons are present. Today these buttons are hidden on
+// mobile (A7 critique), but the exclusion logic protects against
+// future configurations that re-enable them — without coverage the
+// safety net could silently break.
 func TestTimelineScrub_HitAreaExcludesLenButtons(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -46,19 +49,29 @@ func TestTimelineScrub_HitAreaExcludesLenButtons(t *testing.T) {
 	if z == nil {
 		t.Fatalf("timelineZone nil")
 	}
+	if z.lenIncBtn == nil || z.lenDecBtn == nil {
+		t.Fatalf("len buttons unexpectedly nil; cannot exercise exclusion")
+	}
+
+	// Force non-empty button rects on the right edge of the timeline
+	// rect so the exclusion code path actually runs.
+	rect := z.rect
+	lenInc := image.Rect(rect.Max.X-44, rect.Min.Y, rect.Max.X, rect.Min.Y+44)
+	lenDec := image.Rect(rect.Max.X-88, rect.Min.Y, rect.Max.X-44, rect.Min.Y+44)
+	z.lenIncBtn.SetRect(lenInc)
+	z.lenDecBtn.SetRect(lenDec)
+	// Re-run hit-area rebuild so the new rects influence the scrub clamp.
+	z.Layout(rect)
+
 	scrubArea := findHitAreaByTagPrefix(z.HitAreas(), "timeline-scrub")
 	if scrubArea == nil {
 		t.Fatalf("timeline-scrub hit area not found")
 	}
-	if z.lenIncBtn != nil {
-		if r := z.lenIncBtn.Rect(); !r.Empty() && !scrubArea.Rect.Intersect(r).Empty() {
-			t.Errorf("scrub hit area %v overlaps lenIncBtn %v", scrubArea.Rect, r)
-		}
+	if !scrubArea.Rect.Intersect(lenInc).Empty() {
+		t.Errorf("scrub hit area %v overlaps lenIncBtn %v — exclusion failed", scrubArea.Rect, lenInc)
 	}
-	if z.lenDecBtn != nil {
-		if r := z.lenDecBtn.Rect(); !r.Empty() && !scrubArea.Rect.Intersect(r).Empty() {
-			t.Errorf("scrub hit area %v overlaps lenDecBtn %v", scrubArea.Rect, r)
-		}
+	if !scrubArea.Rect.Intersect(lenDec).Empty() {
+		t.Errorf("scrub hit area %v overlaps lenDecBtn %v — exclusion failed", scrubArea.Rect, lenDec)
 	}
 }
 
