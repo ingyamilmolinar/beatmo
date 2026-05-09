@@ -107,3 +107,49 @@ func TestBottomActionBar_HostsVolViewOverflow(t *testing.T) {
 		}
 	}
 }
+
+// TestMobileTransport_AllShareSingleRow is a regression guard for Task 1.3:
+// after the transport zone collapsed to a single row on mobile, all of
+// play/stop/record/bpm/subdiv must share the same Y baseline (within 1 px
+// for safeInsetTransport rounding).
+func TestMobileTransport_AllShareSingleRow(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	z := g.drum.transportZone
+	if z == nil {
+		t.Fatalf("transportZone nil")
+	}
+	rects := []image.Rectangle{
+		z.playBtn.Rect(),
+		z.stopBtn.Rect(),
+		z.recordBtn.Rect(),
+		z.bpmBox.Rect,
+		z.subdivBtn.Rect(),
+	}
+
+	if len(rects) == 0 || rects[0].Empty() {
+		t.Fatalf("transport rects unexpectedly empty")
+	}
+	names := []string{"playBtn", "stopBtn", "recordBtn", "bpmBox", "subdivBtn"}
+	// Compare vertical midlines rather than Min.Y: recordBtn is intentionally
+	// shrunk symmetrically by recordDemoteInsetMobile (B12 critique — visual
+	// demotion of the record button), which shifts its Min.Y down and Max.Y up
+	// by the same amount. Midline alignment captures the single-row invariant
+	// without fighting that symmetric inset.
+	mid := func(r image.Rectangle) int { return (r.Min.Y + r.Max.Y) / 2 }
+	baseMid := mid(rects[0])
+	for i, r := range rects {
+		if r.Empty() {
+			t.Errorf("%s rect empty", names[i])
+			continue
+		}
+		// 1-px tolerance for safeInsetTransport rounding.
+		if absInt(mid(r)-baseMid) > 1 {
+			t.Errorf("%s mid-Y=%d differs from baseMid (%s)=%d (>1 px); rect=%v", names[i], mid(r), names[0], baseMid, r)
+		}
+	}
+}
