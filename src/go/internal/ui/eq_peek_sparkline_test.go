@@ -129,6 +129,39 @@ func TestEQPeek_PolylineFollowsGains(t *testing.T) {
 	}
 }
 
+// TestEQPeek_TapExpandsPanel verifies that tapping inside the EQ peek
+// strip toggles mobileEQCollapsed off, so the user can expand the EQ
+// panel with a single touch instead of hunting for an overflow menu.
+func TestEQPeek_TapExpandsPanel(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	if !g.drum.mobileEQCollapsed {
+		t.Fatalf("precondition: expected mobileEQCollapsed=true on default mobile layout")
+	}
+	r := g.drum.eqPeekRect
+	if r.Empty() {
+		t.Fatalf("precondition: expected eqPeekRect non-empty")
+	}
+
+	// Tap dead center of peek strip. injectTouchTap drives a 2-frame
+	// press+release cycle through updateTouchOverride; two g.Update()
+	// calls advance both frames so the press is dispatched and released.
+	mx := r.Min.X + r.Dx()/2
+	my := r.Min.Y + r.Dy()/2
+	t.Cleanup(resetTouchOverride)
+	injectTouchTap(mx, my)
+	g.Update()
+	g.Update()
+
+	if g.drum.mobileEQCollapsed {
+		t.Fatalf("expected EQ panel to expand on peek tap; mobileEQCollapsed still true")
+	}
+}
+
 // pixelYSpread renders the game and returns the vertical span (in px)
 // of pixels in `r` that differ from the rect's surface background. Used
 // to detect a sparkline polyline's vertical extent without coupling to

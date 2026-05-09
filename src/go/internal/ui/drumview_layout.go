@@ -532,6 +532,24 @@ func (dv *DrumView) recalcButtons() {
 		dv.tree.HitIndexRef().Update("layout-resize", dv.layoutResizeZone.HitAreas())
 	}
 
+	// EQ peek strip tap target (mobile, EQ-collapsed only). A single tap
+	// inside the 24-px sparkline strip expands the EQ panel — saving the
+	// user from hunting through the overflow menu. Registered as a
+	// drumview-owned hit area so the tree's input dispatcher routes taps
+	// here before they reach any zone below.
+	if dv.tree != nil {
+		var peekAreas []HitArea
+		if !dv.eqPeekRect.Empty() {
+			peekAreas = []HitArea{{
+				Rect:    dv.eqPeekRect,
+				ZIndex:  150, // above bottom action bar buttons
+				Handler: &eqPeekHitAdapter{dv: dv},
+				Tag:     "eq-peek-expand",
+			}}
+		}
+		dv.tree.HitIndexRef().Update("drumview-eq-peek", peekAreas)
+	}
+
 	// Register focusable rects for mobile soft keyboard gesture-based focus.
 	// On small screens, the mobile native input system handles text inputs
 	// directly (creating real HTML <input> overlays), so we skip focus-rect
@@ -886,3 +904,28 @@ func (dv *DrumView) calcLabelWidth() {
 	dv.labelW = target
 	dv.labelWidthDirty = false
 }
+
+// eqPeekHitAdapter routes a tap on the mobile EQ peek strip to expand
+// the EQ panel. Mirrors cycleViewMode's audio-view entry: clears the
+// collapsed flag and switches the mobile view mode to audio so the
+// next layout pass allocates the full-pane EQ rect.
+type eqPeekHitAdapter struct {
+	dv *DrumView
+}
+
+func (h *eqPeekHitAdapter) OnPress(x, y int) InputResult {
+	if h.dv == nil {
+		return InputIgnored
+	}
+	h.dv.mobileEQCollapsed = false
+	h.dv.mobileEQMode = true
+	h.dv.currentViewMode = viewModeAudio
+	h.dv.syncViewSwitchIcon()
+	h.dv.bgDirty = true
+	h.dv.refreshWidgetLayout()
+	return InputCaptured
+}
+
+func (h *eqPeekHitAdapter) OnDrag(x, y int)                       {}
+func (h *eqPeekHitAdapter) OnRelease(x, y int)                    {}
+func (h *eqPeekHitAdapter) OnWheel(x, y, steps int) InputResult   { return InputIgnored }
