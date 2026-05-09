@@ -46,9 +46,16 @@ const (
 type viewMode int
 
 const (
-	viewModeRows  viewMode = iota // drum rows visible
-	viewModeAudio                 // EQ/Wave panel visible (has its own EQ↔Wave toggle)
+	viewModeRows viewMode = iota // drum rows visible
+	viewModeEQ                   // mobile audio panel showing EQ tab
+	viewModeWave                 // mobile audio panel showing Wave tab
 )
+
+// viewModeAudio is a compatibility alias for code that doesn't yet
+// distinguish EQ from Wave at the top level. Resolves to viewModeEQ.
+// Phase 3 callers should use viewModeEQ or viewModeWave directly;
+// remove this alias once all references are migrated.
+const viewModeAudio = viewModeEQ
 
 var eqPanelHeight = 190
 
