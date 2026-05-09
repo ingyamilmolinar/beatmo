@@ -63,6 +63,11 @@ var allowedStyleBudget = map[string]int{
 	// anchor registry (review priority P4) lets this go through Spec(ID),
 	// so this stays at 1 until the registry lands.
 	"row_rack_zone.go": 1,
+	// RowKebabChipStyle is a token-derived chip style (WithAlpha fill, RadiusSM)
+	// with no equivalent ComponentSpec in DESIGN.md yet. Once a
+	// `row-kebab-chip` component spec is added to the design system, replace
+	// with ButtonStyleFromSpec(ComponentRowKebabChip) and remove this entry.
+	"button_styles.go": 1,
 }
 
 // styleConstructionRE matches `XxxStyle{` literal construction sites for

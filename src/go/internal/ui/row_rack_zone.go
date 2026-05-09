@@ -4,9 +4,62 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
+
+// hasActiveEffects reports whether the slot list contains any enabled effect.
+// The FX button highlights only when at least one slot is enabled — disabled
+// slots do not contribute to the audio chain and must not light the button.
+func hasActiveEffects(slots []audio.EffectSlot) bool {
+	for _, s := range slots {
+		if s.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+// activeEffectsCount returns the number of enabled effect slots.
+func activeEffectsCount(slots []audio.EffectSlot) int {
+	n := 0
+	for _, s := range slots {
+		if s.Enabled {
+			n++
+		}
+	}
+	return n
+}
+
+// drawFXBadge overlays a small accent badge on the top-right of the FX button
+// when one or more effects are enabled. Single-effect rows show only the dot;
+// multi-effect rows show a numeric count rendered in caption-size text. The
+// badge replaces the previous icon-swap convention so the FX button keeps a
+// consistent identity (IconFx) across states.
+func drawFXBadge(dst *ebiten.Image, btnRect image.Rectangle, count int) {
+	if count <= 0 || btnRect.Empty() {
+		return
+	}
+	radius := 5
+	if count > 1 {
+		radius = 7
+	}
+	cx := btnRect.Max.X - radius - 1
+	cy := btnRect.Min.Y + radius + 1
+	r := image.Rect(cx-radius, cy-radius, cx+radius, cy+radius)
+	drawRoundedRect(dst, r, colAccentBright, radius, true)
+	if count > 1 {
+		label := strconv.Itoa(count)
+		scale := FontSizeCaption / FontSizeBody
+		w := int(float64(TextWidth(label)) * scale)
+		h := int(float64(TextHeight()) * scale)
+		tx := cx - w/2
+		ty := cy - h/2
+		DrawTextColorAtScale(dst, label, tx, ty, colTextPrimary, scale)
+	}
+}
 
 // addRowButtonStyle is a ButtonVisual for the add-row "+" button.
 // It draws a rounded rect with colSurface1 fill and a dashed colBorderMedium border.
@@ -176,6 +229,28 @@ type RowRackZone struct {
 	controlsCacheRowOff int
 	controlsCacheVis    int
 	controlsCacheRect   image.Rectangle
+	// Test-only: counts how many times drawRowControlsToCache has been
+	// invoked. Each rebuild allocates many vector.Path objects via the icon
+	// renderer; a soak test asserts this stays close to zero during
+	// steady-state playback.
+	controlsCacheRebuilds int64
+	// Test-only invalidation reason counters. Each Draw that finds the
+	// cache invalid increments exactly one of these so a regression test
+	// can say *why* the cache rebuilt.
+	cacheInvalidNil       int64
+	cacheInvalidDirty     int64
+	cacheInvalidRowOff    int64
+	cacheInvalidVis       int64
+	cacheInvalidEmptyRect int64
+	cacheInvalidMuteDesync int64
+	cacheInvalidSoloDesync int64
+	// Test-only: invocation counters to localize per-frame churn.
+	layoutInvocations           int64
+	layoutFromNeedsLayout       int64
+	layoutFromRectChange        int64
+	repositionInvocations       int64
+	lastLayoutRect              image.Rectangle
+	lastLayoutRectInitialized   bool
 
 	// Hit areas cache (rebuilt on Layout).
 	hitAreas []HitArea
@@ -214,6 +289,14 @@ func (z *RowRackZone) NeedsLayout() bool { return z.needLayout }
 func (z *RowRackZone) Invalidate() { z.needLayout = true }
 
 func (z *RowRackZone) Layout(rect image.Rectangle) {
+	z.layoutInvocations++
+	if z.needLayout {
+		z.layoutFromNeedsLayout++
+	} else if z.lastLayoutRectInitialized && z.lastLayoutRect != rect {
+		z.layoutFromRectChange++
+	}
+	z.lastLayoutRect = rect
+	z.lastLayoutRectInitialized = true
 	z.rect = rect
 	z.needLayout = false
 	z.rebuildEntries()
@@ -470,6 +553,14 @@ func (z *RowRackZone) rebuildEntries() {
 		idx := i
 
 		lbl := NewButton(r.Name, style, nil)
+		if Profile().IsMobile() {
+			// Mobile typography upgrade: row names get a larger body-Lg-equivalent
+			// size and full-strength on-surface color so kits parse at a glance.
+			// Combined with the wider label cell weight (5/2/2/2/2) this also
+			// removes truncation for typical names like "FM Snare".
+			lbl.TextScale = FontSizeLabel / FontSizeBody
+			lbl.TextColor = colTextPrimary
+		}
 		lbl.OnClick = func() {
 			// Skip if rename is active for this row.
 			if z.callbacks.RenameRow != nil && z.callbacks.RenameRow() == idx {
@@ -543,7 +634,7 @@ func (z *RowRackZone) rebuildEntries() {
 			del.Style = DisabledButtonStyle
 		}
 
-		menu := NewButton("", InstButtonStyle, nil)
+		menu := NewButton("", RowKebabChipStyle, nil)
 		menu.Icon = "overflow"
 		menu.OnClick = func() {
 			if z.callbacks.OnContextMenuOpen != nil {
@@ -600,24 +691,58 @@ func (z *RowRackZone) rebuildEntries() {
 // repositionEntries updates widget rects for existing entries without
 // recreating button/slider instances. This preserves capture state
 // (e.g., active slider drags) across Layout() calls.
+//
+// Cache invalidation is *conditional*: a re-position with no observable
+// change (same rects, same label text/style, same volume) leaves the
+// controls cache valid. updateRowRects (drumview_cache_background.go) calls
+// us every Draw as a layout safety net; without conditional invalidation
+// the cache would rebuild every frame, allocating ~30 vector.Path objects
+// per visible row × len(rows) — the production WASM OOM hot path.
 func (z *RowRackZone) repositionEntries(rows []*DrumRow, vis int, panelRect image.Rectangle) {
+	z.repositionInvocations++
+	dirty := false
 	for i := range z.entries {
 		rowRect := z.rowRectForIndex(i, panelRect.Min.Y, vis, panelRect)
 
 		// Update label text/style in case name or availability changed.
 		if i < len(rows) {
 			e := &z.entries[i]
-			e.label.Text = rows[i].Name
+			if e.label.Text != rows[i].Name {
+				e.label.Text = rows[i].Name
+				dirty = true
+			}
 			style := Profile().RowLabelStyle
 			if z.callbacks.IsInstrumentAvail != nil && !z.callbacks.IsInstrumentAvail(rows[i].Instrument) {
 				style = MissingInstStyle
 			}
-			e.label.Style = style
-			e.volSlider.Value = rows[i].Volume
+			if e.label.Style != style {
+				e.label.Style = style
+				dirty = true
+			}
+			if e.volSlider.Value != rows[i].Volume {
+				e.volSlider.Value = rows[i].Volume
+				dirty = true
+			}
 		}
 
-		// Reposition all widgets.
+		// Snapshot the widget rects before repositioning so we can detect
+		// whether positionRowWidgets actually moved anything. The rect set
+		// here mirrors the rects positionRowWidgets writes.
+		e := &z.entries[i]
+		before := [10]image.Rectangle{
+			e.label.Rect(), e.muteBtn.Rect(), e.soloBtn.Rect(),
+			e.volSlider.Rect(), e.deleteBtn.Rect(), e.originBtn.Rect(),
+			e.editBtn.Rect(), e.colorBtn.Rect(), e.saveBtn.Rect(), e.menuBtn.Rect(),
+		}
 		z.positionRowWidgets(i, rowRect)
+		after := [10]image.Rectangle{
+			e.label.Rect(), e.muteBtn.Rect(), e.soloBtn.Rect(),
+			e.volSlider.Rect(), e.deleteBtn.Rect(), e.originBtn.Rect(),
+			e.editBtn.Rect(), e.colorBtn.Rect(), e.saveBtn.Rect(), e.menuBtn.Rect(),
+		}
+		if before != after {
+			dirty = true
+		}
 	}
 
 	// Sync slider group (preserves active index since count is unchanged).
@@ -630,8 +755,9 @@ func (z *RowRackZone) repositionEntries(rows []*DrumRow, vis int, panelRect imag
 	rowsBottom := panelRect.Min.Y + vis*z.rowHeight()
 	z.rowVolGroup.SetContainerBounds(image.Rect(panelRect.Min.X, panelRect.Min.Y, panelRect.Max.X, rowsBottom))
 
-	// Invalidate controls cache.
-	z.controlsCacheDirty = true
+	if dirty {
+		z.controlsCacheDirty = true
+	}
 }
 
 func (z *RowRackZone) makeColorButton(idx int) *Button {
@@ -670,15 +796,16 @@ func (z *RowRackZone) positionRowWidgets(i int, rowRect image.Rectangle) {
 	g := NewGridLayout(rowRect, rowControlWeights(), []float64{1})
 	e.label.SetRect(insetRect(g.Cell(0, 0), SpaceXS))
 	if Profile().IsMobile() {
-		// Mobile: only label + volume icon; other controls live in context menu.
+		// Mobile: Label | Vol | M | S | FX inline. Color/Rename/Origin/Delete
+		// stay in the bottom-sheet context menu (tap label to open).
 		e.menuBtn.SetRect(image.Rectangle{})
 		e.editBtn.SetRect(image.Rectangle{})
 		e.saveBtn.SetRect(image.Rectangle{})
 		e.colorBtn.SetRect(image.Rectangle{})
-		e.volSlider.SetRect(insetRect(g.Cell(3, 0), SpaceXS))
-		e.muteBtn.SetRect(image.Rectangle{})
-		e.soloBtn.SetRect(image.Rectangle{})
-		e.fxBtn.SetRect(image.Rectangle{})
+		e.volSlider.SetRect(insetRect(g.Cell(1, 0), SpaceXS))
+		e.muteBtn.SetRect(insetRect(g.Cell(2, 0), SpaceXS))
+		e.soloBtn.SetRect(insetRect(g.Cell(3, 0), SpaceXS))
+		e.fxBtn.SetRect(insetRect(g.Cell(4, 0), SpaceXS))
 		e.originBtn.SetRect(image.Rectangle{})
 		e.deleteBtn.SetRect(image.Rectangle{})
 	} else {
@@ -713,48 +840,20 @@ func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle, 
 	if addY < rowsTop {
 		addY = rowsTop
 	}
-	if Profile().IsMobile() {
-		if z.isMobileEQMode() {
-			z.addRowBtn.SetRect(image.Rectangle{})
-		} else {
-			// Guard: skip positioning if zone rect is empty (transient layout state).
-			if panelRect.Empty() {
-				z.addRowBtn.SetRect(image.Rectangle{})
-				return
-			}
-			z.addRowBtn.Text = ""
-			z.addRowBtn.Icon = string(IconPlus)
-			btnW := 28
-			btnH := 24
-			// Use screen bounds for FAB X position (not the narrow rack panel).
-			fabMaxX := panelRect.Max.X
-			if !z.screenBounds.Empty() {
-				fabMaxX = z.screenBounds.Max.X
-			}
-			fabX := fabMaxX - btnW - 20
-			fabY := panelRect.Max.Y - btnH - 8
-			if fabY < rowsTop {
-				fabY = rowsTop
-			}
-			fabRect := image.Rect(fabX, fabY, fabX+btnW, fabY+btnH)
-			// Clamp FAB rect to screenBounds to prevent rendering outside the drum view.
-			if !z.screenBounds.Empty() {
-				fabRect = fabRect.Intersect(z.screenBounds)
-				if fabRect.Empty() {
-					z.addRowBtn.SetRect(image.Rectangle{})
-					return
-				}
-			}
-			z.addRowBtn.SetRect(fabRect)
-		}
-	} else {
-		// Guard: skip positioning if zone rect is empty (transient layout state).
-		if panelRect.Empty() {
-			z.addRowBtn.SetRect(image.Rectangle{})
-			return
-		}
-		z.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, addY, panelRect.Max.X, addY+rh), SpaceXS))
+	// Mobile EQ mode hides the rack entirely; suppress the button so it does
+	// not render through the bottom sheet.
+	if Profile().IsMobile() && z.isMobileEQMode() {
+		z.addRowBtn.SetRect(image.Rectangle{})
+		return
 	}
+	// Guard: skip positioning if zone rect is empty (transient layout state).
+	if panelRect.Empty() {
+		z.addRowBtn.SetRect(image.Rectangle{})
+		return
+	}
+	z.addRowBtn.Text = ""
+	z.addRowBtn.Icon = string(IconPlus)
+	z.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, addY, panelRect.Max.X, addY+rh), SpaceXS))
 }
 
 // --- Scroll helpers ---
@@ -973,23 +1072,39 @@ func (h *rowRackScrollHitAdapter) OnWheel(x, y, steps int) InputResult {
 // --- Drawing ---
 
 func (z *RowRackZone) controlsCacheValid() bool {
-	if z.controlsCache == nil || z.controlsCacheDirty {
+	if z.controlsCache == nil {
+		z.cacheInvalidNil++
+		return false
+	}
+	if z.controlsCacheDirty {
+		z.cacheInvalidDirty++
 		return false
 	}
 	vis := z.VisibleRows()
-	if z.controlsCacheRowOff != z.rowOffset || z.controlsCacheVis != vis {
+	if z.controlsCacheRowOff != z.rowOffset {
+		z.cacheInvalidRowOff++
+		return false
+	}
+	if z.controlsCacheVis != vis {
+		z.cacheInvalidVis++
 		return false
 	}
 	if z.controlsCacheRect.Empty() {
+		z.cacheInvalidEmptyRect++
 		return false
 	}
 	rows := z.rows()
 	for i := z.rowOffset; i < z.rowOffset+vis && i < len(rows) && i < len(z.entries); i++ {
 		e := &z.entries[i]
 		if !e.muteBtn.Rect().Empty() && e.muteBtn.pressed != rows[i].Muted {
+			z.cacheInvalidMuteDesync++
 			return false
 		}
 		if !e.soloBtn.Rect().Empty() && e.soloBtn.pressed != rows[i].Solo {
+			z.cacheInvalidSoloDesync++
+			return false
+		}
+		if !e.fxBtn.Rect().Empty() && e.fxBtn.pressed != hasActiveEffects(rows[i].Effects) {
 			return false
 		}
 	}
@@ -1073,6 +1188,7 @@ func (z *RowRackZone) drawRowControls(dst *ebiten.Image) {
 		z.controlsCache.Clear()
 	}
 	z.drawRowControlsToCache(z.controlsCache, bounds.Min.X, bounds.Min.Y)
+	z.controlsCacheRebuilds++
 	z.controlsCacheDirty = false
 	z.controlsCacheRowOff = z.rowOffset
 	z.controlsCacheVis = z.VisibleRows()
@@ -1143,18 +1259,23 @@ func (z *RowRackZone) drawRowControlsToCache(cache *ebiten.Image, offsetX, offse
 			drawBtnOff(cache, e.soloBtn, offsetX, offsetY)
 		}
 		if !e.fxBtn.Rect().Empty() {
-			// Note: do NOT swap fxBtn.pressed here — the existing controls-cache
-			// hash only checks Mute and Solo; introducing pressed-flips on FX
-			// would invalidate the cache every frame Effects changes between
-			// empty and non-empty. Pass the same style for both predicates so
-			// the helper only swaps the Style field.
-			active := len(rows[i].Effects) > 0
+			// Highlight only when at least one effect is *enabled*; a slot list
+			// of all-disabled effects must render inactive. We tag pressed with
+			// the active flag so controlsCacheValid() can detect state flips and
+			// rebuild the cache in real time when the user toggles or removes
+			// effects.
+			active := hasActiveEffects(rows[i].Effects)
 			if active {
 				e.fxBtn.Style = FXActiveStyle
 			} else {
 				e.fxBtn.Style = InstButtonStyle
 			}
+			e.fxBtn.pressed = active
 			drawBtnOff(cache, e.fxBtn, offsetX, offsetY)
+			if active {
+				badgeR := e.fxBtn.Rect().Sub(image.Pt(offsetX, offsetY))
+				drawFXBadge(cache, badgeR, activeEffectsCount(rows[i].Effects))
+			}
 		}
 		drawBtnOff(cache, e.originBtn, offsetX, offsetY)
 		if deleteConfirmRow == i && (frame-deleteConfirmFrame) < 120 {
@@ -1264,12 +1385,17 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 		}
 		e.deleteBtn.Draw(dst)
 		if !e.fxBtn.Rect().Empty() {
-			if len(rows[i].Effects) > 0 {
+			active := hasActiveEffects(rows[i].Effects)
+			if active {
 				e.fxBtn.Style = FXActiveStyle
 			} else {
 				e.fxBtn.Style = InstButtonStyle
 			}
+			e.fxBtn.pressed = active
 			e.fxBtn.Draw(dst)
+			if active {
+				drawFXBadge(dst, e.fxBtn.Rect(), activeEffectsCount(rows[i].Effects))
+			}
 		}
 		if mobile {
 			lblR := e.label.Rect()

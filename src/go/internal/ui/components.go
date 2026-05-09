@@ -117,6 +117,12 @@ func (s EdgeStyle) DrawProgress(dst *ebiten.Image, x1, y1, x2, y2 float64, cam *
 type ButtonStyle struct {
 	Fill   color.Color
 	Border color.Color
+	// Radius, when > 0, draws the button as a rounded rectangle using
+	// drawRoundedButton instead of the square drawButton path. Use a
+	// RadiusSM / RadiusMD token from touch_sizes.go. Zero preserves the
+	// historical square chrome so all existing ButtonStyle values are
+	// unaffected by this field addition.
+	Radius int
 }
 
 // ButtonStyleFromSpec builds a ButtonStyle from a generated ComponentSpec
@@ -135,12 +141,17 @@ func ButtonStyleFromSpec(id ComponentID) ButtonStyle {
 	return ButtonStyle{Fill: spec.Fill, Border: spec.Border.Resolve()}
 }
 
-// Draw renders the button rectangle. Delegates to renderLegacy (the
-// chrome-rendering primitive in render.go) so all chrome flows through a
+// Draw renders the button rectangle. When Radius > 0 the button is drawn as a
+// rounded rectangle via drawRoundedButton; otherwise delegates to renderLegacy
+// (the chrome-rendering primitive in render.go) so all chrome flows through a
 // single path. Hover/press deltas mirror the historical hand-coded values
 // that Phase 2 captured byte-equivalent in DESIGN.md `button-secondary`
 // (verified by TestComponentSpecsDrift).
 func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered bool) {
+	if s.Radius > 0 {
+		drawRoundedButton(dst, r, s.Fill, s.Border, s.Radius, pressed)
+		return
+	}
 	renderLegacy(dst, r, s.Fill, s.Border,
 		InteractionDelta{FillDelta: 12, BorderDelta: 20}, // hover
 		InteractionDelta{},                                 // focus (unused by buttons)
