@@ -138,7 +138,7 @@ func (z *EQPanelZone) initButtons() {
 	tabs := AllPanelTabs()
 	for i, tab := range tabs {
 		t := tab // capture
-		z.tabButtons[i] = NewButton(PanelTabLabel(t), InstButtonStyle, func() {
+		z.tabButtons[i] = NewButton(PanelTabLabelForProfile(t), InstButtonStyle, func() {
 			z.tabState.SetActiveTab(t)
 			if z.callbacks.OnTabChange != nil {
 				z.callbacks.OnTabChange(t)
@@ -458,6 +458,14 @@ func (z *EQPanelZone) layoutButtons() {
 	btnH := 18
 	if btnW > r.Dx()/2 {
 		btnW = r.Dx() / 2
+	}
+
+	// Refresh tab labels in case the screen-class crossed mobile↔desktop since
+	// initButtons ran. Cheap (5 string assignments) and avoids stale labels.
+	for i, tab := range AllPanelTabs() {
+		if i < len(z.tabButtons) && z.tabButtons[i] != nil {
+			z.tabButtons[i].Text = PanelTabLabelForProfile(tab)
+		}
 	}
 
 	// Channel button (left).
@@ -1424,9 +1432,7 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 
 	// Ensure curve cache.
 	if z.curveDirty || len(z.curveCache) == 0 {
-		bands := z.buildCurrentBands()
-		z.curveCache = audio.ComputeFreqResponse(audio.SampleRate(), bands, eqCurvePoints, 20, 20000)
-		z.curveDirty = false
+		z.rebuildCurveCache()
 	}
 
 	if len(z.curveCache) == 0 {
@@ -1575,9 +1581,7 @@ func (z *EQPanelZone) curveYAtX(px int) int {
 	r := z.rect
 	// Ensure cache is fresh.
 	if z.curveDirty || len(z.curveCache) == 0 {
-		bands := z.buildCurrentBands()
-		z.curveCache = audio.ComputeFreqResponse(audio.SampleRate(), bands, eqCurvePoints, 20, 20000)
-		z.curveDirty = false
+		z.rebuildCurveCache()
 	}
 	best := gainDBToY(0, r)
 	bestDist := r.Dx() + 1
@@ -1599,6 +1603,48 @@ func (z *EQPanelZone) curveYAtX(px int) int {
 		best = r.Max.Y - eqHandleRadius
 	}
 	return best
+}
+
+// rebuildCurveCache recomputes the EQ frequency response cache from the
+// current band gains/mutes and clears the dirty flag. Single source of
+// truth for both Draw and SampleCurve.
+func (z *EQPanelZone) rebuildCurveCache() {
+	bands := z.buildCurrentBands()
+	z.curveCache = audio.ComputeFreqResponse(audio.SampleRate(), bands, eqCurvePoints, 20, 20000)
+	z.curveDirty = false
+}
+
+// SetBandGainDB updates the gain (in dB) for a single EQ band and marks
+// the curve cache dirty. Out-of-range band indices are silently ignored.
+func (z *EQPanelZone) SetBandGainDB(band int, db float64) {
+	if band < 0 || band >= len(z.bandGainsDB) {
+		return
+	}
+	z.bandGainsDB[band] = db
+	z.curveDirty = true
+	z.curveCache = nil
+}
+
+// SampleCurve returns the current EQ frequency response sampled at n
+// equally-spaced points (in dB). Used by the mobile peek sparkline.
+// Caller must not retain the returned slice across frames; the curve
+// cache is rebuilt on every gain change.
+func (z *EQPanelZone) SampleCurve(n int) []float64 {
+	if n < 2 {
+		n = 2
+	}
+	out := make([]float64, n)
+	if z.curveDirty || len(z.curveCache) == 0 {
+		z.rebuildCurveCache()
+	}
+	if len(z.curveCache) == 0 {
+		return out
+	}
+	for i := 0; i < n; i++ {
+		idx := i * (len(z.curveCache) - 1) / (n - 1)
+		out[i] = z.curveCache[idx].GainDB
+	}
+	return out
 }
 
 func (z *EQPanelZone) buildCurrentBands() []audio.EQBand {
