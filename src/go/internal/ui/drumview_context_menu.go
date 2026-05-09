@@ -856,17 +856,26 @@ func (dv *DrumView) overflowItems() []overflowItem {
 }
 
 // overflowPopupBtns builds the buttons for the overflow popup.
+// Header items (item.header==true) are rendered separately by drawOverflowMenu
+// as dimmed section labels; they are NOT included in the returned button list
+// so taps on them don't fire any action.
 func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
 	rowH := touchMinTargetPx
 	items := dv.overflowItems()
 	btns := make([]*Button, 0, len(items)+1)
 	itemStyle := ButtonVisual(DropdownStyle)
-	for i, item := range items {
-		y0 := popupRect.Min.Y + i*rowH
-		r := image.Rect(popupRect.Min.X, y0, popupRect.Max.X, y0+rowH)
+	curY := popupRect.Min.Y
+	for _, item := range items {
+		if item.header {
+			// Headers occupy vertical space but are not buttons.
+			curY += rowH
+			continue
+		}
+		r := image.Rect(popupRect.Min.X, curY, popupRect.Max.X, curY+rowH)
 		btn := NewButton(item.label, itemStyle, item.onClick)
 		btn.SetRect(insetRect(r, SpaceXS))
 		btns = append(btns, btn)
+		curY += rowH
 	}
 	// Close button at top-right
 	closeR := closeButtonRect(popupRect, SpaceXS)
@@ -881,6 +890,7 @@ func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
 
 // drawOverflowMenu renders the overflow popup.
 //
+// Header items are drawn as dimmed non-interactive section labels.
 // Stateful items (those carrying an iconID) get a small leading icon
 // overlay drawn after the button so it sits on top of the chrome. The icon
 // tint flips with item.active — bright cyan when active, neutral otherwise
@@ -892,13 +902,33 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	popupRect := dv.overflowPopupRect()
 	drawScrim(dst)
 	drawPanel(dst, popupRect)
+	// Build buttons (headers excluded) then close button.
 	btns := dv.overflowPopupBtns(popupRect)
+	// Draw header rows and action-button rows by iterating items in order,
+	// tracking which button corresponds to each non-header item.
 	items := dv.overflowItems()
-	for i, btn := range btns {
+	rowH := touchMinTargetPx
+	curY := popupRect.Min.Y
+	btnIdx := 0 // index into btns (excluding the trailing close button)
+	nActionBtns := len(btns) - 1 // last button is always the close button
+	for _, item := range items {
+		rowR := image.Rect(popupRect.Min.X, curY, popupRect.Max.X, curY+rowH)
+		curY += rowH
+		if item.header {
+			// Subgroup header: dimmed label, no background fill, no hit area.
+			col := WithAlpha(genColorOnSurface, genAlphaSubtle)
+			tx := rowR.Min.X + SpaceMD
+			ty := rowR.Min.Y + (rowR.Dy()-TextHeight())/2
+			DrawTextColorAt(dst, item.label, tx, ty, col)
+			continue
+		}
+		if btnIdx >= nActionBtns {
+			break
+		}
+		btn := btns[btnIdx]
+		btnIdx++
 		btn.Draw(dst)
-		// items[i] aligns with btns[i] for the menu rows; the trailing
-		// close button has no item peer, so guard the index.
-		if i < len(items) && items[i].iconID != "" {
+		if item.iconID != "" {
 			r := btn.Rect()
 			// Square icon at the leading edge, sized to the row height,
 			// inset to leave the label text room to the right of it.
@@ -913,11 +943,15 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 				r.Min.Y+(r.Dy()-side)/2+side,
 			)
 			tint := colIncDecIcon
-			if items[i].active {
+			if item.active {
 				tint = colFollowActive
 			}
-			DrawIcon(dst, items[i].iconID, iconR, tint)
+			DrawIcon(dst, item.iconID, iconR, tint)
 		}
+	}
+	// Draw the close button (always last in btns).
+	if len(btns) > 0 {
+		btns[len(btns)-1].Draw(dst)
 	}
 	if dv.overflowScroll != nil {
 		dv.overflowScroll.Draw(dst)

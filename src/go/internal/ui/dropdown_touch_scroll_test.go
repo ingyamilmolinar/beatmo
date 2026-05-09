@@ -282,7 +282,9 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 		t.Fatal("overflow popup rect is empty")
 	}
 	cx := popupRect.Min.X + 10
-	cy := popupRect.Min.Y + 10
+	// "File" header occupies the first touchMinTargetPx row; "Upload" is the
+	// next row. Tap mid-way through the Upload row to fire its action.
+	cy := popupRect.Min.Y + touchMinTargetPx + 10
 
 	// Touch down — should not fire immediately.
 	consumed := dv.handleOverflowMenuInput(cx, cy, true)
@@ -298,7 +300,7 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 
 	// Release — fires the deferred tap.
 	dv.handleOverflowMenuInput(cx, cy, false)
-	// The first button is "Upload" which closes overflow menu.
+	// The first action button is "Upload" which closes the overflow menu.
 	if dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu still open after tap release")
 	}
