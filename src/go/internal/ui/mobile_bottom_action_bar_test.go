@@ -126,9 +126,14 @@ func TestUltraShortViewport_VolViewOverflowReachable(t *testing.T) {
 	// header 56 + bar 44 + rowHeight 44 = 144), so bar collapses.
 	g.Layout(844, 390)
 
-	// Confirm precondition: bar IS collapsed (proves we're testing the
-	// ultra-short path; if bar happens to be allocated, the test still
-	// passes because that path keeps the buttons in the bar).
+	// Precondition assertion: bar IS collapsed on this viewport. If this
+	// fails the viewport math no longer triggers the bar-collapse path
+	// and the rest of the test stops being a regression guard for the
+	// orphaned-buttons bug — bump the dimensions until the bar collapses
+	// again.
+	if !g.drum.bottomActionBarRect.Empty() {
+		t.Fatalf("precondition: expected bar to collapse at 844x390 landscape; got %v — pick smaller dims", g.drum.bottomActionBarRect)
+	}
 	z := g.drum.transportZone
 	if z == nil {
 		t.Fatalf("transportZone nil")
