@@ -353,6 +353,12 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 
 	// Re-init buttons for mobile styles (constructor checks isSmallScreen).
 	zm, _ := newTestTransportZone()
+	// Standard mobile flow: DrumView allocates the bottom action bar
+	// and signals the zone via SetUseBottomBar(true). Without this the
+	// zone falls back to a two-row layout (used on ultra-short
+	// viewports where the bar collapses) which DOES register the
+	// view-switch / overflow hit areas inside the top toolbar.
+	zm.SetUseBottomBar(true)
 	mobileRect := image.Rect(0, 0, 400, 120)
 	zm.Layout(mobileRect)
 	mobileAreas := zm.HitAreas()

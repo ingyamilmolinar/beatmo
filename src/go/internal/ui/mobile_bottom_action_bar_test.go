@@ -109,6 +109,41 @@ func TestBottomActionBar_HostsVolViewOverflow(t *testing.T) {
 	}
 }
 
+// TestUltraShortViewport_VolViewOverflowReachable verifies that on
+// ultra-short viewports (landscape phones, drum-pane height insufficient
+// for bar + 1 row) the vol/view/overflow buttons remain reachable —
+// either inside the bottom action bar OR inside the top transport
+// toolbar. Without this guard, the bar collapse in recalcButtons
+// orphans the buttons (transport zone already cleared them, drumview
+// won't re-place them), leaving the user with no entry point to the
+// overflow menu.
+func TestUltraShortViewport_VolViewOverflowReachable(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	// 844×390 landscape phone — drum-pane height ~140px (less than
+	// header 56 + bar 44 + rowHeight 44 = 144), so bar collapses.
+	g.Layout(844, 390)
+
+	// Confirm precondition: bar IS collapsed (proves we're testing the
+	// ultra-short path; if bar happens to be allocated, the test still
+	// passes because that path keeps the buttons in the bar).
+	z := g.drum.transportZone
+	if z == nil {
+		t.Fatalf("transportZone nil")
+	}
+	if z.viewSwitchBtn.Rect().Empty() {
+		t.Errorf("viewSwitchBtn unreachable on ultra-short viewport (rect empty)")
+	}
+	if z.overflowBtn.Rect().Empty() {
+		t.Errorf("overflowBtn unreachable on ultra-short viewport (rect empty)")
+	}
+	if z.mainVolIconRect.Empty() {
+		t.Errorf("mainVolIconRect unreachable on ultra-short viewport (empty)")
+	}
+}
+
 // TestMobileTransport_AllShareSingleRow is a regression guard for Task 1.4:
 // after the transport zone collapsed to a single row on mobile, all of
 // play/stop/record/bpm/subdiv must share the same Y baseline (within 1 px

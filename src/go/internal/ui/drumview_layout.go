@@ -92,6 +92,12 @@ func (dv *DrumView) recalcButtons() {
 		}
 		topBounds := image.Rect(controlLeft, leftCol.Min.Y, leftCol.Max.X, leftCol.Max.Y)
 		dv.tree.SetZoneRect("transport", topBounds)
+		// Tell the zone whether DrumView's bottom action bar is hosting
+		// vol/view/overflow this frame. When the bar collapses on
+		// ultra-short viewports (see bar allocation block above), the
+		// zone falls back to the pre-Task-1.3 two-row layout so those
+		// three buttons remain reachable inside the top toolbar.
+		dv.transportZone.SetUseBottomBar(p.IsMobile() && !dv.bottomActionBarRect.Empty())
 		if dv.transportZone.NeedsLayout() || dv.transportZone.rect != topBounds {
 			dv.transportZone.Layout(topBounds)
 			dv.tree.HitIndexRef().Update("transport", dv.transportZone.HitAreas())

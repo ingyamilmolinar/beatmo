@@ -25,6 +25,12 @@ func TestMobileTransportPillRectsArePopulated(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	z, _ := newTestTransportZone()
+	// Simulate the standard mobile flow: DrumView allocates the bottom
+	// action bar and tells the zone via SetUseBottomBar(true) so row 1
+	// (vol/view/overflow) is suppressed inside the top toolbar. Without
+	// this, the zone correctly falls back to a two-row layout (used on
+	// ultra-short viewports where the bar collapses).
+	z.SetUseBottomBar(true)
 	z.Layout(image.Rect(0, 0, 390, 96))
 
 	// 1. Transport pill must contain play, stop, and record.

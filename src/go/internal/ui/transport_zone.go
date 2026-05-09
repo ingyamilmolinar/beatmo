@@ -125,6 +125,17 @@ type TransportZone struct {
 	// inputBlocked returns true when a popup/overlay is open and the BPM box
 	// should be force-blurred to prevent stale focus. Set by DrumView wiring.
 	inputBlocked func() bool
+
+	// useBottomBar tells layoutMobile that DrumView has allocated a
+	// bottom action bar (B3 redesign) and will host vol-icon /
+	// view-switch / overflow there — so layoutMobile should clear those
+	// rects in the top toolbar and let DrumView place them. When false
+	// (ultra-short viewports where the bar collapses, see
+	// drumview_layout.go:49-64), layoutMobile falls back to the
+	// pre-Task-1.3 two-row layout that keeps those buttons inside the
+	// top toolbar so they remain reachable. DrumView sets this via
+	// SetUseBottomBar before each Layout call.
+	useBottomBar bool
 }
 
 // NewTransportZone creates a TransportZone with the provided callbacks.
@@ -585,6 +596,20 @@ func (z *TransportZone) MainVolIconRect() image.Rectangle { return z.mainVolIcon
 // SetPortal sets the portal reference for opening overlays.
 func (z *TransportZone) SetPortal(p *OverlayPortal) { z.portal = p }
 
+// SetUseBottomBar declares whether DrumView is hosting the mobile
+// vol-icon / view-switch / overflow buttons inside its bottom action
+// bar. When true, layoutMobile clears those three rects in the top
+// toolbar (DrumView places them in the bar). When false — the bar
+// collapsed because the drum-pane is too short — layoutMobile falls
+// back to a two-row layout that keeps the buttons inside the top
+// toolbar so they remain reachable. Must be called before Layout.
+func (z *TransportZone) SetUseBottomBar(use bool) {
+	if z.useBottomBar != use {
+		z.useBottomBar = use
+		z.needLayout = true
+	}
+}
+
 // --- Layout ---
 
 func (z *TransportZone) layoutButtons(topBounds image.Rectangle) {
@@ -603,16 +628,39 @@ func (z *TransportZone) layoutButtons(topBounds image.Rectangle) {
 }
 
 func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec TopBarSpec) {
-	// Mobile transport collapses to a SINGLE row inside the top toolbar:
-	// Play | Stop | Record | [−|BPM|+] | Subdiv. The BPM stepper is
-	// rendered horizontally on mobile so each ± button keeps the full
-	// row height — DESIGN.md §"Touch sizing" mandates 44 px and the prior
-	// vertical stack halved the row to 22 px (B1 in the screenshot
-	// critique). The volume icon, view-switch, and overflow buttons that
-	// previously occupied row 1 have moved to DrumView.bottomActionBarRect
-	// (B3 critique); DrumView.recalcButtons re-positions them after
-	// transport layout completes.
-	row0Grid := NewGridLayout(topBounds,
+	// Mobile transport collapses to a SINGLE row inside the top toolbar
+	// when DrumView has allocated the bottom action bar (B3 redesign):
+	// Play | Stop | Record | [−|BPM|+] | Subdiv. The volume icon,
+	// view-switch, and overflow buttons live in DrumView.bottomActionBarRect.
+	//
+	// On ultra-short viewports (landscape phones where the drum-pane is
+	// too short for bar + 1 row) the bar collapses — useBottomBar is
+	// false, and we fall back to the pre-Task-1.3 two-row layout that
+	// keeps vol-icon / view-switch / overflow inside the top toolbar so
+	// they remain reachable.
+	row0Bounds := topBounds
+	if !z.useBottomBar {
+		// Two-row fallback: split topBounds vertically. Row 0 keeps the
+		// transport controls (same column weights as the single-row
+		// layout); row 1 hosts vol-icon / view-switch / overflow.
+		outerGrid := NewGridLayout(topBounds, []float64{1}, []float64{1, 1})
+		row0Bounds = outerGrid.Cell(0, 0)
+		row1Bounds := outerGrid.Cell(0, 1)
+		row1Grid := NewGridLayout(row1Bounds, []float64{1.0, 1.0, 1.0}, []float64{1})
+		z.mainVolIconRect = safeInsetTransport(row1Grid.Cell(0, 0), pad)
+		if z.mainVolSlider != nil {
+			z.mainVolSlider.SetRect(image.Rectangle{})
+			z.mainVolRect = image.Rectangle{}
+		}
+		if z.viewSwitchBtn != nil {
+			z.viewSwitchBtn.SetRect(safeInsetTransport(row1Grid.Cell(1, 0), pad))
+		}
+		if z.overflowBtn != nil {
+			z.overflowBtn.SetRect(safeInsetTransport(row1Grid.Cell(2, 0), pad))
+		}
+	}
+
+	row0Grid := NewGridLayout(row0Bounds,
 		[]float64{1.0, 1.0, 1.0, 3.0, 1.0}, []float64{1})
 
 	z.playBtn.SetRect(safeInsetTransport(row0Grid.Cell(0, 0), pad))
@@ -654,20 +702,23 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 
 	z.subdivBtn.SetRect(safeInsetTransport(row0Grid.Cell(4, 0), pad))
 
-	// Mobile row 1 controls (vol-icon / view-switch / overflow) are placed
-	// by DrumView.recalcButtons into bottomActionBarRect — emit empty here
-	// so any stale rect from the previous (two-row) layout doesn't bleed
-	// through if recalcButtons is skipped or runs out of order.
-	z.mainVolIconRect = image.Rectangle{}
-	if z.mainVolSlider != nil {
-		z.mainVolSlider.SetRect(image.Rectangle{})
-		z.mainVolRect = image.Rectangle{}
-	}
-	if z.viewSwitchBtn != nil {
-		z.viewSwitchBtn.SetRect(image.Rectangle{})
-	}
-	if z.overflowBtn != nil {
-		z.overflowBtn.SetRect(image.Rectangle{})
+	// When the bottom action bar is hosting vol/view/overflow, clear
+	// those rects here so DrumView.recalcButtons is the sole writer
+	// (and any stale two-row rect from a prior layout doesn't bleed
+	// through). When useBottomBar is false the two-row branch above
+	// already populated them — leave them alone.
+	if z.useBottomBar {
+		z.mainVolIconRect = image.Rectangle{}
+		if z.mainVolSlider != nil {
+			z.mainVolSlider.SetRect(image.Rectangle{})
+			z.mainVolRect = image.Rectangle{}
+		}
+		if z.viewSwitchBtn != nil {
+			z.viewSwitchBtn.SetRect(image.Rectangle{})
+		}
+		if z.overflowBtn != nil {
+			z.overflowBtn.SetRect(image.Rectangle{})
+		}
 	}
 	// Hide desktop-only buttons on mobile.
 	z.trackBtn.SetRect(image.Rectangle{})
