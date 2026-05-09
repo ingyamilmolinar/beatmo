@@ -995,7 +995,7 @@ func TestTransport_OverflowButtonMobile(t *testing.T) {
 	bar := image.Rect(0, 600, 400, 644) // 44 px tall (TouchMinTarget on mobile)
 	z.overflowBtn.SetRect(image.Rect(260, 600, 380, 644))
 	z.rebuildHitAreas()
-	z.SetBottomBarHostedHitClip(bar)
+	z.SetBarRect(bar)
 	tree.HitIndexRef().Update("transport", z.HitAreas())
 
 	overflowArea := findHitAreaByTagPrefix(z.HitAreas(), "transport-overflow")
@@ -1041,7 +1041,7 @@ func TestTransport_ViewSwitchButtonMobile(t *testing.T) {
 	bar := image.Rect(0, 600, 400, 644)
 	z.viewSwitchBtn.SetRect(image.Rect(140, 600, 250, 644))
 	z.rebuildHitAreas()
-	z.SetBottomBarHostedHitClip(bar)
+	z.SetBarRect(bar)
 	tree.HitIndexRef().Update("transport", z.HitAreas())
 
 	viewArea := findHitAreaByTagPrefix(z.HitAreas(), "transport-view-switch")

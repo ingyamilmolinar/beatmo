@@ -165,7 +165,7 @@ func (dv *DrumView) recalcButtons() {
 			// zone's default ClipRect is its top-toolbar rect, which the
 			// bar lies outside of — clicks would otherwise be culled).
 			dv.transportZone.rebuildHitAreas()
-			dv.transportZone.SetBottomBarHostedHitClip(bar)
+			dv.transportZone.SetBarRect(bar)
 			dv.tree.HitIndexRef().Update("transport", dv.transportZone.HitAreas())
 		}
 	}
