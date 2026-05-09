@@ -233,6 +233,10 @@ type DrumView struct {
 	saveBtn         *Button
 	mainVolRect     image.Rectangle
 	mainVolIconRect image.Rectangle
+	// bottomActionBarRect is the mobile-only bottom sheet host for the
+	// volume icon, view-switch, and overflow buttons. Empty on desktop.
+	// Set by recalcButtons when LayoutProfile.UseBottomSheet is true.
+	bottomActionBarRect image.Rectangle
 
 	// per-row components: owned by rowRackZone, accessed via accessor methods.
 	selRow int
@@ -408,6 +412,13 @@ type DrumView struct {
 	rowFrame        []int64
 	rowRepaint      []int
 	panelMaskRect   image.Rectangle
+
+	// rowFireDecay holds a per-row "now-playing" tint intensity in [0,1].
+	// MarkRowFired snaps the entry to 1.0 when the row's audible step fires;
+	// decayAnims attenuates it each frame so the tint fades out smoothly.
+	// Read at draw time on mobile (drawRowsDirect overlay) to wash the row
+	// strip in WithAlpha(genColorPrimary, AlphaFaint*intensity).
+	rowFireDecay []float64
 
 	// Mobile EQ collapse: hides the Wave/EQ panel by default on mobile.
 	mobileEQCollapsed bool

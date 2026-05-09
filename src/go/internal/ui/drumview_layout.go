@@ -35,6 +35,21 @@ func (dv *DrumView) recalcButtons() {
 	}
 	dv.calcLabelWidth()
 
+	// Allocate the mobile-only bottom action bar host. This is the bottom
+	// sheet that holds the volume icon, view-switch, and overflow controls
+	// in the mobile redesign (B3 critique). Desktop leaves the rect empty.
+	if p.UseBottomSheet {
+		barH := TouchMinTarget()
+		dv.bottomActionBarRect = image.Rect(
+			dv.Bounds.Min.X,
+			dv.Bounds.Max.Y-barH,
+			dv.Bounds.Max.X,
+			dv.Bounds.Max.Y,
+		)
+	} else {
+		dv.bottomActionBarRect = image.Rectangle{}
+	}
+
 	transport := dv.widgetRects[WidgetTransport]
 	if transport.Empty() {
 		transport = image.Rect(dv.Bounds.Min.X, dv.Bounds.Min.Y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+dv.headerH)
@@ -340,8 +355,12 @@ func (dv *DrumView) recalcButtons() {
 		dv.timelineRect.Max.X, bcTop+infoH,
 	)
 
-	// Position len +/- buttons at top-right of timeline widget area.
-	{
+	// Position len +/- buttons at top-right of timeline widget area on
+	// desktop only. On mobile (or in EQ/Wave audio view) the +/− pair
+	// next to the timeline is too narrow to discover on phone-class
+	// screens (A7 in the screenshot critique); the entries live behind
+	// the overflow menu instead.
+	if !p.IsMobile() && dv.currentViewMode != viewModeAudio {
 		btnW := 36
 		btnH := dv.beatCounterRect.Dy()
 		if btnH < 20 {
@@ -355,10 +374,7 @@ func (dv *DrumView) recalcButtons() {
 		// Shrink beat counter and timeline to avoid overlapping the buttons.
 		dv.beatCounterRect.Max.X = x - 4
 		dv.timelineRect.Max.X = x - 4
-	}
-
-	// Hide len +/- buttons when EQ/Wave panel is active (mobile view toggle).
-	if dv.currentViewMode == viewModeAudio {
+	} else {
 		dv.lenIncBtn.SetRect(image.Rectangle{})
 		dv.lenDecBtn.SetRect(image.Rectangle{})
 	}
@@ -604,12 +620,21 @@ func (dv *DrumView) changeLength(newLen int) {
 
 // rowControlWeights returns the grid column weights for per-row controls.
 // Desktop: Label, VolBar, Mute, Solo, FX, Overflow(⋯)
-// Mobile:  Label, (hidden), (hidden), VolumeIcon, (hidden), (hidden)
+// Mobile:  Label, VolBar, Mute, Solo, FX (Color/Rename/Origin/Delete in context menu)
 func rowControlWeights() []float64 {
 	if Profile().IsMobile() {
-		// Mobile: wider label + compact volume icon; other controls in context menu.
-		// Kept at 9 elements to match mobile positionRowWidgets indexing.
-		return []float64{7, 0, 0, 1.5, 0, 0, 0, 0, 0}
+		// Mobile: surface vol slider + mute/solo/FX inline so users can reach
+		// them without opening the context menu. Label cell is wider than
+		// the buttons so typical drum-kit names ("Hi-Hat", "Cowbell",
+		// "FM Snare") render in full without ellipsis truncation.
+		return []float64{
+			5, // Label
+			2, // Volume slider
+			2, // Mute
+			2, // Solo
+			2, // FX
+			0, 0, 0, 0,
+		}
 	}
 	return []float64{
 		6,   // Label
