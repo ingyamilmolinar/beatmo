@@ -201,3 +201,32 @@ func TestBottomActionBar_DrawsSheetSurface(t *testing.T) {
 			x, y, r1, g1, b1, a1, x, yAbove, r2, g2, b2)
 	}
 }
+
+// TestRowsRect_ExcludesBottomActionBar verifies the rowsRect() and
+// rowsAreaHeight() geometry helpers respect the mobile bottom action
+// bar — touches landing in the bar's vertical band must NOT count as
+// "in the rows area" (otherwise scroll dead-zone and row-tap dispatch
+// compete with bar-button taps).
+func TestRowsRect_ExcludesBottomActionBar(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	bar := g.drum.bottomActionBarRect
+	if bar.Empty() {
+		t.Fatalf("precondition: bottomActionBarRect empty")
+	}
+	rr := g.drum.rowsRect()
+	if rr.Max.Y > bar.Min.Y {
+		t.Errorf("rowsRect %v extends into bottom action bar (top=%d)", rr, bar.Min.Y)
+	}
+	expectedH := bar.Min.Y - (g.drum.Bounds.Min.Y + g.drum.headerH)
+	if expectedH < 0 {
+		expectedH = 0
+	}
+	if got := g.drum.rowsAreaHeight(); got > expectedH {
+		t.Errorf("rowsAreaHeight=%d exceeds bar-aware expectedH=%d", got, expectedH)
+	}
+}

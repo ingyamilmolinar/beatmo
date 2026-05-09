@@ -20,19 +20,22 @@ func (dv *DrumView) rowHeight() int { return TouchRowHeight() }
 func mobileTransportMinH() int { return Profile().HeaderMinH }
 
 // rowsRect returns the rectangle covering the row scroll area (between
-// the header and the EQ panel). Used to scope the mobile touch dead zone
-// so that only touches in this area are blocked during scroll disambiguation.
+// the header and the EQ panel / mobile bottom action bar). Used to scope
+// the mobile touch dead zone so that only touches in this area are
+// blocked during scroll disambiguation. Routes through dv.rowsBottom()
+// — the single source of truth for the rows-area floor — so the bar's
+// vertical band is correctly excluded on mobile.
 func (dv *DrumView) rowsRect() image.Rectangle {
 	return image.Rect(
 		dv.Bounds.Min.X,
 		dv.Bounds.Min.Y+dv.headerH,
 		dv.Bounds.Max.X,
-		dv.Bounds.Max.Y-dv.eqH,
+		dv.rowsBottom(),
 	)
 }
 
 func (dv *DrumView) rowsAreaHeight() int {
-	h := dv.Bounds.Dy() - dv.headerH - dv.eqH
+	h := dv.rowsBottom() - (dv.Bounds.Min.Y + dv.headerH)
 	if h < 0 {
 		return 0
 	}

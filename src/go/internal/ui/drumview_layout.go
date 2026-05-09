@@ -38,14 +38,27 @@ func (dv *DrumView) recalcButtons() {
 	// Allocate the mobile-only bottom action bar host. This is the bottom
 	// sheet that holds the volume icon, view-switch, and overflow controls
 	// in the mobile redesign (B3 critique). Desktop leaves the rect empty.
+	//
+	// Skip allocation when the drum-pane bounds are too tight to fit even
+	// one row above the bar (e.g. landscape phones at 140 px tall). The
+	// bar would otherwise consume TouchMinTarget px below the header and
+	// leave nothing for the rows themselves — visibleRows would collapse
+	// to 0 and the rack would not paint. Falling back to the pre-bar
+	// layout on these viewports keeps rows visible; vol/view/overflow
+	// remain reachable through the transport overflow menu.
 	if p.UseBottomSheet {
 		barH := TouchMinTarget()
-		dv.bottomActionBarRect = image.Rect(
-			dv.Bounds.Min.X,
-			dv.Bounds.Max.Y-barH,
-			dv.Bounds.Max.X,
-			dv.Bounds.Max.Y,
-		)
+		usable := dv.Bounds.Dy() - dv.headerH - barH
+		if usable >= dv.rowHeight() {
+			dv.bottomActionBarRect = image.Rect(
+				dv.Bounds.Min.X,
+				dv.Bounds.Max.Y-barH,
+				dv.Bounds.Max.X,
+				dv.Bounds.Max.Y,
+			)
+		} else {
+			dv.bottomActionBarRect = image.Rectangle{}
+		}
 	} else {
 		dv.bottomActionBarRect = image.Rectangle{}
 	}
