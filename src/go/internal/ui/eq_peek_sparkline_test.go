@@ -3,9 +3,11 @@
 package ui
 
 import (
+	"image"
 	"math"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -95,4 +97,68 @@ func TestEQPeek_HiddenOnDesktop(t *testing.T) {
 	if !g.drum.eqPeekRect.Empty() {
 		t.Fatalf("eqPeekRect should be empty on desktop")
 	}
+}
+
+// TestEQPeek_PolylineFollowsGains verifies the sparkline drawn into
+// eqPeekRect actually responds to band gain changes — flat EQ should
+// produce a tight Y-range polyline; boosting band 0 should widen it.
+func TestEQPeek_PolylineFollowsGains(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	if g.drum.eqPeekRect.Empty() {
+		t.Fatalf("precondition: eqPeekRect empty")
+	}
+
+	// Capture two screens — flat baseline vs. boosted band 0.
+	flatPx := pixelYSpread(t, g, g.drum.eqPeekRect)
+
+	// Boost band 0 by +24 dB to widen the sparkline.
+	if g.drum.eqPanelZone == nil {
+		t.Fatalf("eqPanelZone nil — cannot mutate band gains")
+	}
+	g.drum.eqPanelZone.SetBandGainDB(0, 24.0)
+	g.Layout(360, 700) // re-layout so any cached state refreshes
+	bumpPx := pixelYSpread(t, g, g.drum.eqPeekRect)
+
+	if bumpPx <= flatPx+2 {
+		t.Fatalf("expected boosted EQ to widen sparkline Y-spread: flat=%d boosted=%d", flatPx, bumpPx)
+	}
+}
+
+// pixelYSpread renders the game and returns the vertical span (in px)
+// of pixels in `r` that differ from the rect's surface background. Used
+// to detect a sparkline polyline's vertical extent without coupling to
+// any specific color.
+func pixelYSpread(t *testing.T, g *Game, r image.Rectangle) int {
+	t.Helper()
+	screen := ebiten.NewImage(360, 700)
+	g.Draw(screen)
+
+	// Sample the surface background at a known-quiet point — the very
+	// edge of the rect where the sparkline likely won't draw.
+	bgR, bgG, bgB, _ := screen.At(r.Min.X+1, r.Min.Y+1).RGBA()
+
+	minY, maxY := r.Max.Y, r.Min.Y
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			pr, pg, pb, _ := screen.At(x, y).RGBA()
+			if pr != bgR || pg != bgG || pb != bgB {
+				if y < minY {
+					minY = y
+				}
+				if y > maxY {
+					maxY = y
+				}
+				break // one differing pixel per Y is enough
+			}
+		}
+	}
+	if maxY < minY {
+		return 0
+	}
+	return maxY - minY
 }

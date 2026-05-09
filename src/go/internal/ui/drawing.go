@@ -397,6 +397,72 @@ func drawBottomSheetPanel(dst *ebiten.Image, r image.Rectangle) {
 	drawRoundedRect(dst, extended, colPanelBorder, radius, false)
 }
 
+// drawSparklineInRect renders dB samples (expected range ±24) as a connected
+// polyline within r, using col. Used by the mobile EQ peek strip
+// (drumview_draw.go) to expose the EQ shape at a glance — the polyline
+// midline corresponds to 0 dB and the rect's top/bottom edges to ±24 dB.
+//
+// Implementation rasterizes the polyline as a chain of 1×1 filled rects
+// via drawRect rather than vector.Path so it renders under the test
+// build's stubbed DrawTriangles (the icon vector pipeline is a no-op
+// there).
+func drawSparklineInRect(dst *ebiten.Image, r image.Rectangle, samples []float64, col color.Color) {
+	if len(samples) < 2 || r.Empty() {
+		return
+	}
+	const dBRange = 24.0
+	mid := r.Min.Y + r.Dy()/2
+	half := float64(r.Dy() / 2)
+	clampY := func(y int) int {
+		if y < r.Min.Y {
+			return r.Min.Y
+		}
+		if y >= r.Max.Y {
+			return r.Max.Y - 1
+		}
+		return y
+	}
+	prevX := r.Min.X
+	prevY := clampY(mid - int(samples[0]/dBRange*half))
+	for i := 1; i < len(samples); i++ {
+		x := r.Min.X + (r.Dx()*i)/(len(samples)-1)
+		y := clampY(mid - int(samples[i]/dBRange*half))
+		drawSparkLineSeg(dst, prevX, prevY, x, y, col)
+		prevX, prevY = x, y
+	}
+}
+
+// drawSparkLineSeg rasterizes a line from (x0,y0) to (x1,y1) as a chain
+// of 1×1 pixel rects using Bresenham's algorithm.
+func drawSparkLineSeg(dst *ebiten.Image, x0, y0, x1, y1 int, col color.Color) {
+	dx := absI(x1 - x0)
+	dy := absI(y1 - y0)
+	sx := 1
+	if x0 >= x1 {
+		sx = -1
+	}
+	sy := 1
+	if y0 >= y1 {
+		sy = -1
+	}
+	err := dx - dy
+	for {
+		drawRect(dst, image.Rect(x0, y0, x0+1, y0+1), col, true)
+		if x0 == x1 && y0 == y1 {
+			return
+		}
+		e2 := 2 * err
+		if e2 > -dy {
+			err -= dy
+			x0 += sx
+		}
+		if e2 < dx {
+			err += dx
+			y0 += sy
+		}
+	}
+}
+
 // closeButtonRect returns a rect at the top-right corner of panelRect.
 // Uses a smaller size on mobile for better proportioning.
 func closeButtonRect(panelRect image.Rectangle, pad int) image.Rectangle {

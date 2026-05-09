@@ -81,6 +81,26 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	// --- Animations ---
 	dv.decayAnims()
 
+	// --- Mobile EQ peek sparkline ---
+	// Drawn BEFORE the bottom action bar surface so the bar's drop shadow
+	// falls naturally onto the peek strip rather than being painted over.
+	// Repaints the strip's surface first so any earlier widget bg (e.g.
+	// WidgetWave / EQ panel bg) painted into this region is replaced —
+	// the peek strip is the canonical owner of these pixels.
+	if !dv.eqPeekRect.Empty() && dv.eqPanelZone != nil {
+		drawRect(dst, dv.eqPeekRect, colBGBottom, true)
+		// 1 sample per ~4 px width — balances detail vs CPU.
+		n := dv.eqPeekRect.Dx() / 4
+		if n < 8 {
+			n = 8
+		}
+		samples := dv.eqPanelZone.SampleCurve(n)
+		if len(samples) >= 2 {
+			drawSparklineInRect(dst, dv.eqPeekRect, samples,
+				WithAlpha(genColorPrimary, genAlphaSubtle))
+		}
+	}
+
 	// --- Mobile bottom action bar surface ---
 	// Paint the sheet surface before renderToolbarControls so the
 	// vol/view/overflow buttons hosted in the bar render on top of the
