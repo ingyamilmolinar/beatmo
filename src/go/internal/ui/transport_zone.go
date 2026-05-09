@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"math"
 	"strconv"
 
@@ -111,6 +112,16 @@ type TransportZone struct {
 	// Hit areas cache (rebuilt on Layout)
 	hitAreas []HitArea
 
+	// Previous layout dimensions — drives the blur-on-resize behavior so
+	// the BPM box never carries a stale focus ring across orientation
+	// changes or window resizes.
+	prevLayoutRect image.Rectangle
+
+	// Test-only flag set whenever drawSubdivChevronOffset actually emits
+	// the chevron glyph (i.e., not gated out). Used by tests to assert
+	// the chevron is omitted on mobile per A5 of the screenshot critique.
+	subdivChevronDrawn bool
+
 	// inputBlocked returns true when a popup/overlay is open and the BPM box
 	// should be force-blurred to prevent stale focus. Set by DrumView wiring.
 	inputBlocked func() bool
@@ -139,6 +150,7 @@ func (z *TransportZone) initButtons() {
 	z.playBtn = NewButton("", p.PlayBtnStyle, func() {
 		z.playPressed = true
 		z.playAnim = 1
+		hapticTransportTap()
 		if z.callbacks.OnPlayToggle != nil {
 			z.callbacks.OnPlayToggle()
 		}
@@ -149,6 +161,7 @@ func (z *TransportZone) initButtons() {
 	z.stopBtn = NewButton("", p.StopBtnStyle, func() {
 		z.stopPressed = true
 		z.stopAnim = 1
+		hapticTransportTap()
 		if z.callbacks.OnStop != nil {
 			z.callbacks.OnStop()
 		}
@@ -159,6 +172,7 @@ func (z *TransportZone) initButtons() {
 	z.recordBtn = NewButton("", p.StopBtnStyle, func() {
 		z.recordPressed = true
 		z.recordAnim = 1
+		hapticTransportRecord()
 		if z.callbacks.OnRecordToggle != nil {
 			z.callbacks.OnRecordToggle()
 		}
@@ -258,6 +272,17 @@ func (z *TransportZone) initButtons() {
 	})
 	z.overflowBtn.Icon = string(IconOverflow)
 	z.overflowBtn.IconColor = colTextSecondary
+
+	// Mobile second-row recede: secondary controls (view, overflow) sit on
+	// surface-1 fill so the eye reads them as ancillary to the row 0 primary
+	// cluster (play/stop/record/bpm/subdiv on surface-2). The mainVolIcon shares
+	// the same recede tint via the icon-color override at draw time.
+	if Profile().IsMobile() {
+		recede := ButtonStyleFromSpec(ComponentButtonSecondary)
+		recede.Fill = colSurface1
+		z.viewSwitchBtn.Style = recede
+		z.overflowBtn.Style = recede
+	}
 }
 
 func (z *TransportZone) initSliders() {
@@ -288,10 +313,25 @@ func (z *TransportZone) NeedsLayout() bool { return z.needLayout }
 func (z *TransportZone) Invalidate() { z.needLayout = true }
 
 func (z *TransportZone) Layout(rect image.Rectangle) {
+	if !z.prevLayoutRect.Empty() && rect.Size() != z.prevLayoutRect.Size() {
+		z.BlurInputs()
+	}
+	z.prevLayoutRect = rect
 	z.rect = rect
 	z.needLayout = false
 	z.layoutButtons(rect)
 	z.rebuildHitAreas()
+}
+
+// BlurInputs clears focus on every text input owned by the transport zone.
+// Called automatically when the layout rect's size changes (resize /
+// orientation flip) so a stale focus ring can't outlive a viewport
+// transition. Exposed so DrumView wiring can blur on overlay open or
+// other input-blocking transitions.
+func (z *TransportZone) BlurInputs() {
+	if z.bpmBox != nil {
+		z.bpmBox.focused = false
+	}
 }
 
 func (z *TransportZone) Update() {
@@ -365,6 +405,24 @@ func (z *TransportZone) HitAreas() []HitArea {
 	return z.hitAreas
 }
 
+// SetBottomBarHostedHitClip overrides the ClipRect on the hit areas for the
+// vol-icon / view-switch / overflow buttons so that taps inside the mobile
+// bottom action bar reach them. Without this, those hit areas inherit the
+// transport zone's top-toolbar rect (z.rect) as their clip — the bar is
+// outside that rect, so the click would be culled by the hit index. Called
+// by DrumView.recalcButtons after it relocates the buttons into the bar.
+func (z *TransportZone) SetBottomBarHostedHitClip(bar image.Rectangle) {
+	if bar.Empty() {
+		return
+	}
+	for i := range z.hitAreas {
+		switch z.hitAreas[i].Tag {
+		case "transport-view-switch", "transport-overflow", "transport-vol-icon":
+			z.hitAreas[i].ClipRect = bar
+		}
+	}
+}
+
 func (z *TransportZone) Draw(screen *ebiten.Image) {
 	if z.rect.Dy() < 8 || z.rect.Dx() < 8 {
 		return
@@ -406,6 +464,10 @@ func (z *TransportZone) HandleChars(chars []rune) InputResult {
 // --- Public accessors (for DrumView migration bridge) ---
 
 // SetPlaying updates the play button icon to reflect playback state.
+// On mobile, the button also swaps between PrimaryActionStyle (saturated
+// accent fill — calls the user to action) when stopped and the recede
+// PlayBtnStyle (surface fill, accent icon) when playing, so the resting
+// state is visually dominant and the playing state recedes.
 func (z *TransportZone) SetPlaying(p bool) {
 	z.isPlaying = p
 	prof := Profile()
@@ -415,9 +477,17 @@ func (z *TransportZone) SetPlaying(p bool) {
 		z.playBtn.Icon = string(IconPause)
 		// Playing state uses the accent so the eye knows the transport is live.
 		z.playBtn.IconColor = colAccent
+		if prof.IsMobile() {
+			z.playBtn.Style = prof.PlayBtnStyle
+		}
 	} else {
 		z.playBtn.Icon = string(IconPlay)
-		z.playBtn.IconColor = prof.PlayIconColor
+		if prof.IsMobile() {
+			z.playBtn.Style = PrimaryActionStyle
+			z.playBtn.IconColor = colTextPrimary
+		} else {
+			z.playBtn.IconColor = prof.PlayIconColor
+		}
 	}
 }
 
@@ -533,44 +603,74 @@ func (z *TransportZone) layoutButtons(topBounds image.Rectangle) {
 }
 
 func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec TopBarSpec) {
-	outerGrid := NewGridLayout(topBounds, []float64{1}, []float64{1, 1})
-	row0Grid := outerGrid.SubGrid(0, 0,
-		[]float64{1.0, 1.0, 2.0, 1.0, 1.0}, []float64{1})
-	row1Grid := outerGrid.SubGrid(0, 1,
-		[]float64{1.0, 1.0, 1.0}, []float64{1})
-	row0Bounds := outerGrid.Cell(0, 0)
+	// Mobile transport collapses to a SINGLE row inside the top toolbar:
+	// Play | Stop | Record | [−|BPM|+] | Subdiv. The BPM stepper is
+	// rendered horizontally on mobile so each ± button keeps the full
+	// row height — DESIGN.md §"Touch sizing" mandates 44 px and the prior
+	// vertical stack halved the row to 22 px (B1 in the screenshot
+	// critique). The volume icon, view-switch, and overflow buttons that
+	// previously occupied row 1 have moved to DrumView.bottomActionBarRect
+	// (B3 critique); DrumView.recalcButtons re-positions them after
+	// transport layout completes.
+	row0Grid := NewGridLayout(topBounds,
+		[]float64{1.0, 1.0, 1.0, 3.0, 1.0}, []float64{1})
 
 	z.playBtn.SetRect(safeInsetTransport(row0Grid.Cell(0, 0), pad))
 	z.stopBtn.SetRect(safeInsetTransport(row0Grid.Cell(1, 0), pad))
-	z.bpmBox.Rect = safeInsetTransport(row0Grid.Cell(2, 0), pad)
-	bpmCol := safeInsetTransport(row0Grid.Cell(3, 0), pad)
-	stackVerticalTransport(z.bpmIncBtn, z.bpmDecBtn, bpmCol, row0Bounds)
+	// Record is visually demoted on mobile (B12 in the screenshot
+	// critique): start from the play/stop rect, then shrink symmetrically
+	// by recordDemoteInsetMobile so the red dot doesn't sit at equal
+	// visual weight with play/stop and invite accidental record mid-jam.
+	// Hit-test still spans the full cell via the standard touch
+	// expansion (ExpandHitArea).
+	recordR := safeInsetTransport(row0Grid.Cell(2, 0), pad)
+	if recordR.Dx() > 2*recordDemoteInsetMobile && recordR.Dy() > 2*recordDemoteInsetMobile {
+		recordR = insetRect(recordR, recordDemoteInsetMobile)
+	}
+	z.recordBtn.SetRect(recordR)
+	bpmStepperBounds := row0Grid.Cell(3, 0)
+	stepperGrid := NewGridLayout(bpmStepperBounds, []float64{1.0, 2.0, 1.0}, []float64{1})
+	z.bpmDecBtn.SetRect(safeInsetTransport(stepperGrid.Cell(0, 0), pad))
+	z.bpmBox.Rect = safeInsetTransport(stepperGrid.Cell(1, 0), pad)
+	z.bpmIncBtn.SetRect(safeInsetTransport(stepperGrid.Cell(2, 0), pad))
 
 	// Compute BPM group container rect (covers BPM box + inc/dec arrows).
 	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect(), spec.GroupOutlinePad)
+	// Clamp to the stepper cell on mobile — the horizontal layout puts
+	// bpmIncBtn flush against the col 3 right edge, so the pill outline
+	// pad would otherwise spill into col 4 (subdiv) by `GroupOutlinePad`
+	// pixels.
+	if z.bpmGroupRect.Min.X < bpmStepperBounds.Min.X {
+		z.bpmGroupRect.Min.X = bpmStepperBounds.Min.X
+	}
+	if z.bpmGroupRect.Max.X > bpmStepperBounds.Max.X {
+		z.bpmGroupRect.Max.X = bpmStepperBounds.Max.X
+	}
 
-	// Compute transport group container rect (covers play + stop on mobile).
+	// Compute transport group container rect (covers play + stop + record on mobile).
 	z.transportGroupRect = computeGroupRect([]image.Rectangle{
-		z.playBtn.Rect(), z.stopBtn.Rect(),
+		z.playBtn.Rect(), z.stopBtn.Rect(), z.recordBtn.Rect(),
 	}, spec.GroupOutlinePad)
 
 	z.subdivBtn.SetRect(safeInsetTransport(row0Grid.Cell(4, 0), pad))
 
-	// Mobile: volume icon opens popup; no inline slider.
-	z.mainVolIconRect = safeInsetTransport(row1Grid.Cell(0, 0), pad)
+	// Mobile row 1 controls (vol-icon / view-switch / overflow) are placed
+	// by DrumView.recalcButtons into bottomActionBarRect — emit empty here
+	// so any stale rect from the previous (two-row) layout doesn't bleed
+	// through if recalcButtons is skipped or runs out of order.
+	z.mainVolIconRect = image.Rectangle{}
 	if z.mainVolSlider != nil {
 		z.mainVolSlider.SetRect(image.Rectangle{})
 		z.mainVolRect = image.Rectangle{}
 	}
 	if z.viewSwitchBtn != nil {
-		z.viewSwitchBtn.SetRect(safeInsetTransport(row1Grid.Cell(1, 0), pad))
+		z.viewSwitchBtn.SetRect(image.Rectangle{})
 	}
 	if z.overflowBtn != nil {
-		z.overflowBtn.SetRect(safeInsetTransport(row1Grid.Cell(2, 0), pad))
+		z.overflowBtn.SetRect(image.Rectangle{})
 	}
 	// Hide desktop-only buttons on mobile.
 	z.trackBtn.SetRect(image.Rectangle{})
-	z.recordBtn.SetRect(image.Rectangle{}) // TODO: add to mobile layout
 	z.uploadBtn.SetRect(image.Rectangle{})
 	z.importBtn.SetRect(image.Rectangle{})
 	z.exportBtn.SetRect(image.Rectangle{})
@@ -1103,14 +1203,24 @@ func (z *TransportZone) renderToolbarControls(dst *ebiten.Image) {
 }
 
 func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offsetY int) {
+	// Mobile surface hierarchy: toolbar sits on colSurface1 so the eye reads
+	// a clear vertical zone separation from the background and the rows zone
+	// (which uses the brighter alternating-stripe colors). Drawn first so all
+	// chrome (cluster pills, buttons, hairlines) renders on top.
+	if Profile().IsMobile() {
+		bounds := cache.Bounds()
+		drawRect(cache, bounds, colSurface1, true)
+	}
 	// Draw group container backgrounds (behind buttons).
 	z.drawTransportGroupOffset(cache, offsetX, offsetY)
 	z.drawBPMGroupOffset(cache, offsetX, offsetY)
 	z.drawFileOpsGroupOffset(cache, offsetX, offsetY)
 
+	z.drawPlayAccentOffset(cache, offsetX, offsetY)
 	drawBtnOff(cache, z.playBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.stopBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.recordBtn, offsetX, offsetY)
+	z.drawRecordArmedRingOffset(cache, offsetX, offsetY)
 	drawBtnOff(cache, z.bpmDecBtn, offsetX, offsetY)
 	drawTIOffset(cache, z.bpmBox, offsetX, offsetY)
 	if z.bpmErrorAnim > 0 {
@@ -1118,7 +1228,9 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 		drawRect(cache, r, fadeColor(colError, z.bpmErrorAnim), false)
 	}
 	drawBtnOff(cache, z.bpmIncBtn, offsetX, offsetY)
+	z.drawSubdivPillOffset(cache, offsetX, offsetY)
 	drawBtnOff(cache, z.subdivBtn, offsetX, offsetY)
+	z.drawSubdivChevronOffset(cache, offsetX, offsetY)
 	drawBtnOff(cache, z.trackBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.uploadBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.importBtn, offsetX, offsetY)
@@ -1142,30 +1254,33 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 		}
 	}
 
-	// Draw mobile second-row labels below icons.
-	if Profile().IsMobile() {
-		z.drawMobileRowLabelsOffset(cache, offsetX, offsetY)
-	}
-
 	z.drawToolbarSeparators(cache, offsetX, offsetY)
 }
 
 func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
+	// Mobile surface hierarchy: see renderToolbarToCache for rationale.
+	if Profile().IsMobile() && !z.rect.Empty() {
+		drawRect(dst, z.rect, colSurface1, true)
+	}
 	// Draw group container backgrounds.
 	z.drawTransportGroupOffset(dst, 0, 0)
 	z.drawBPMGroupOffset(dst, 0, 0)
 	z.drawFileOpsGroupOffset(dst, 0, 0)
 
+	z.drawPlayAccentOffset(dst, 0, 0)
 	z.playBtn.Draw(dst)
 	z.stopBtn.Draw(dst)
 	z.recordBtn.Draw(dst)
+	z.drawRecordArmedRingOffset(dst, 0, 0)
 	z.bpmDecBtn.Draw(dst)
 	z.bpmBox.Draw(dst)
 	if z.bpmErrorAnim > 0 {
 		drawRect(dst, z.bpmBox.Rect, fadeColor(colError, z.bpmErrorAnim), false)
 	}
 	z.bpmIncBtn.Draw(dst)
+	z.drawSubdivPillOffset(dst, 0, 0)
 	z.subdivBtn.Draw(dst)
+	z.drawSubdivChevronOffset(dst, 0, 0)
 	z.trackBtn.Draw(dst)
 	z.uploadBtn.Draw(dst)
 	z.importBtn.Draw(dst)
@@ -1187,11 +1302,6 @@ func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
 			z.mainVolSlider.Draw(dst)
 		}
 	}
-
-	// Draw mobile second-row labels.
-	if Profile().IsMobile() {
-		z.drawMobileRowLabelsOffset(dst, 0, 0)
-	}
 }
 
 func (z *TransportZone) drawToolbarSeparators(cache *ebiten.Image, offsetX, offsetY int) {
@@ -1199,6 +1309,23 @@ func (z *TransportZone) drawToolbarSeparators(cache *ebiten.Image, offsetX, offs
 		return
 	}
 	sepCol := WithAlpha(genColorBorder, genAlphaTransportSeparator)
+
+	// Mobile: draw a horizontal hairline between transport row 0 (play/stop/
+	// record/bpm/subdiv) and row 1 (vol/view/overflow) so the two-row layout
+	// reads as deliberate grouping rather than collision-packed controls.
+	if Profile().IsMobile() {
+		row0 := z.playBtn.Rect()
+		row1 := z.mainVolIconRect
+		if z.viewSwitchBtn != nil && row1.Empty() {
+			row1 = z.viewSwitchBtn.Rect()
+		}
+		if !row0.Empty() && !row1.Empty() && row0.Max.Y < row1.Min.Y {
+			y := (row0.Max.Y + row1.Min.Y) / 2
+			drawRect(cache, image.Rect(z.rect.Min.X-offsetX, y-offsetY,
+				z.rect.Max.X-offsetX, y-offsetY+1), sepCol, true)
+		}
+	}
+
 	var pairs [][2]image.Rectangle
 	pairs = [][2]image.Rectangle{
 		{z.stopBtn.Rect(), z.bpmBox.Rect},
@@ -1242,6 +1369,15 @@ func (z *TransportZone) drawMasterVolIconOffset(cache *ebiten.Image, offsetX, of
 		iconCol = colVolumeIconOff
 		glyph = IconSpeakerOff
 	}
+	// Mobile recede: vol icon shares row 1 with view/overflow buttons; tint to
+	// colTextSecondary on a surface-1 chip so it reads as ancillary to the
+	// row 0 primary cluster.
+	if Profile().IsMobile() {
+		drawRoundedRect(cache, r, colSurface1, RadiusMD, true)
+		if vol > 0 {
+			iconCol = colTextSecondary
+		}
+	}
 
 	// Fit the glyph inside a square centered in r so the speaker proportions
 	// match the other toolbar icons regardless of cell aspect.
@@ -1250,18 +1386,44 @@ func (z *TransportZone) drawMasterVolIconOffset(cache *ebiten.Image, offsetX, of
 	cy := r.Min.Y + r.Dy()/2
 	box := image.Rect(cx-side/2, cy-side/2, cx-side/2+side, cy-side/2+side)
 	DrawIcon(cache, glyph, box, iconCol)
+
+	// A9: 3 px proportional fill bar at the bottom of the icon rect so the
+	// current master level is readable at a glance without opening the
+	// popup. Skipped when muted (vol<=0) — the slashed/off icon already
+	// communicates the state.
+	if vol > 0 {
+		barH := 3
+		if r.Dy() <= 8 {
+			barH = 1
+		}
+		barTop := r.Max.Y - barH
+		barFullW := r.Dx()
+		fillW := int(float64(barFullW) * vol)
+		if fillW < 1 {
+			fillW = 1
+		}
+		if fillW > barFullW {
+			fillW = barFullW
+		}
+		track := image.Rect(r.Min.X, barTop, r.Max.X, r.Max.Y)
+		fill := image.Rect(r.Min.X, barTop, r.Min.X+fillW, r.Max.Y)
+		drawRect(cache, track, WithAlpha(colSurface3, genAlphaSubtle), true)
+		drawRect(cache, fill, WithAlpha(genColorPrimary, genAlphaMedium), true)
+	}
 }
 
-// drawBPMGroupOffset draws the BPM group visual container: a colSurface1
+// drawBPMGroupOffset draws the BPM group visual container: a colSurface2
 // rounded rect with colBorderSubtle border, plus a "BPM" caption label.
+// Uses colSurface2 (one step lighter than the surface-1 toolbar background)
+// so the pill is visually distinct from the surrounding chrome.
 func (z *TransportZone) drawBPMGroupOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	gr := z.bpmGroupRect
 	if gr.Empty() {
 		return
 	}
 	r := gr.Sub(image.Pt(offsetX, offsetY))
-	drawRoundedRect(dst, r, colSurface1, RadiusMD, true)
-	drawRoundedRect(dst, r, colBorderSubtle, RadiusMD, false)
+	drawRoundedRect(dst, r, colSurface2, RadiusMD, true)
+	drawRoundedRect(dst, r, colBorderMedium, RadiusMD, false)
 
 	// Draw "BPM" caption label to the left of the BPM value box.
 	captionScale := FontSizeCaption / FontSizeBody
@@ -1279,8 +1441,84 @@ func (z *TransportZone) drawBPMGroupOffset(dst *ebiten.Image, offsetX, offsetY i
 	DrawTextColorAtScale(dst, label, lx, ly, colTextSecondary, captionScale)
 }
 
+// drawPlayAccentOffset is a no-op; the play button's primary-action visual
+// is now driven by SetPlaying swapping playBtn.Style between
+// PrimaryActionStyle (stopped) and PlayBtnStyle (playing). Kept as a stub
+// so the call sites in renderToolbarToCache / renderToolbarDirect remain
+// stable.
+func (z *TransportZone) drawPlayAccentOffset(dst *ebiten.Image, offsetX, offsetY int) {
+}
+
+// drawRecordArmedRingOffset draws a 2px destructive ring outside the record
+// button when recording is armed (z.isRecording == true). Signals "armed —
+// next play will record". Drawn AFTER the button so the ring sits on top of
+// the button border. Mobile only — desktop already has a stronger pulsing
+// indicator on the icon.
+func (z *TransportZone) drawRecordArmedRingOffset(dst *ebiten.Image, offsetX, offsetY int) {
+	if !Profile().IsMobile() {
+		return
+	}
+	if !z.isRecording {
+		return
+	}
+	r := z.recordBtn.Rect()
+	if r.Empty() {
+		return
+	}
+	r = r.Sub(image.Pt(offsetX, offsetY))
+	const ringInset = -2
+	outer := image.Rect(r.Min.X+ringInset, r.Min.Y+ringInset, r.Max.X-ringInset, r.Max.Y-ringInset)
+	drawRoundedRect(dst, outer, genColorDestructive, RadiusMD+(-ringInset), false)
+	inner := image.Rect(outer.Min.X+1, outer.Min.Y+1, outer.Max.X-1, outer.Max.Y-1)
+	drawRoundedRect(dst, inner, genColorDestructive, RadiusMD+(-ringInset)-1, false)
+}
+
+// drawSubdivPillOffset draws a colSurface2 pill background behind the
+// subdivision button on mobile. Called BEFORE subdivBtn.Draw so the
+// button's own background renders on top — the button uses a
+// transparent style on mobile so the pill shows through.
+func (z *TransportZone) drawSubdivPillOffset(dst *ebiten.Image, offsetX, offsetY int) {
+	if !Profile().IsMobile() {
+		return
+	}
+	r := z.subdivBtn.Rect()
+	if r.Empty() {
+		return
+	}
+	r = r.Sub(image.Pt(offsetX, offsetY))
+	drawRoundedRect(dst, r, colSurface2, RadiusMD, true)
+	drawRoundedRect(dst, r, colBorderMedium, RadiusMD, false)
+}
+
+// drawSubdivChevronOffset draws a small chevron-down hint over the
+// subdivision button on desktop, signaling "click to cycle". Drawn AFTER
+// the button so it stays visible regardless of button background. On
+// mobile the button packs "÷32" + a chevron into a very narrow rect that
+// reads as a typo on small DPR, so the chevron is omitted (A5 in the
+// screenshot critique).
+func (z *TransportZone) drawSubdivChevronOffset(dst *ebiten.Image, offsetX, offsetY int) {
+	if Profile().IsMobile() {
+		return
+	}
+	r := z.subdivBtn.Rect()
+	if r.Empty() {
+		return
+	}
+	r = r.Sub(image.Pt(offsetX, offsetY))
+	chevSide := 9
+	chev := image.Rect(r.Max.X-chevSide-3,
+		r.Max.Y-chevSide-3,
+		r.Max.X-3,
+		r.Max.Y-3)
+	DrawIcon(dst, IconChevronDown, chev, colTextSecondary)
+	z.subdivChevronDrawn = true
+}
+
 // drawTransportGroupOffset draws the transport group pill container
-// (play+stop+record) as a rounded rect with subtle fill and border.
+// (play+stop+record) as a rounded rect. Uses colSurface2 fill on mobile
+// (one step lighter than the surface-1 toolbar) so the cluster reads as
+// a distinct grouping; desktop keeps the more subtle colTransportGroupBG
+// since the desktop toolbar already has stronger chrome cues.
 func (z *TransportZone) drawTransportGroupOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	gr := z.transportGroupRect
 	if gr.Empty() {
@@ -1288,11 +1526,15 @@ func (z *TransportZone) drawTransportGroupOffset(dst *ebiten.Image, offsetX, off
 	}
 	r := gr.Sub(image.Pt(offsetX, offsetY))
 	radius := RadiusMD
+	fill := color.Color(colTransportGroupBG)
+	border := color.Color(colTransportGroupBorder)
 	if Profile().IsMobile() {
 		radius = RadiusMD + 2 // 10px for mobile
+		fill = colSurface2
+		border = colBorderMedium
 	}
-	drawRoundedRect(dst, r, colTransportGroupBG, radius, true)
-	drawRoundedRect(dst, r, colTransportGroupBorder, radius, false)
+	drawRoundedRect(dst, r, fill, radius, true)
+	drawRoundedRect(dst, r, border, radius, false)
 }
 
 // drawFileOpsGroupOffset draws the file-ops group pill container
@@ -1305,37 +1547,6 @@ func (z *TransportZone) drawFileOpsGroupOffset(dst *ebiten.Image, offsetX, offse
 	r := gr.Sub(image.Pt(offsetX, offsetY))
 	drawRoundedRect(dst, r, colTransportGroupBG, RadiusMD, true)
 	drawRoundedRect(dst, r, colTransportGroupBorder, RadiusMD, false)
-}
-
-// drawMobileRowLabelsOffset draws "Vol", "View", "Menu" labels below the
-// mobile second-row icons (volume, view switch, overflow).
-func (z *TransportZone) drawMobileRowLabelsOffset(dst *ebiten.Image, offsetX, offsetY int) {
-	captionScale := FontSizeCaption / FontSizeBody
-	type iconLabel struct {
-		rect  image.Rectangle
-		label string
-	}
-	labels := []iconLabel{
-		{z.mainVolIconRect, "Vol"},
-	}
-	if z.viewSwitchBtn != nil {
-		labels = append(labels, iconLabel{z.viewSwitchBtn.Rect(), "View"})
-	}
-	if z.overflowBtn != nil {
-		labels = append(labels, iconLabel{z.overflowBtn.Rect(), "Menu"})
-	}
-	for _, il := range labels {
-		r := il.rect
-		if r.Empty() {
-			continue
-		}
-		r = r.Sub(image.Pt(offsetX, offsetY))
-		labelW := int(float64(TextWidth(il.label)) * captionScale)
-		lx := r.Min.X + (r.Dx()-labelW)/2
-		// Place just below the button rect, offset by 1px.
-		ly := r.Max.Y - int(float64(TextHeight())*captionScale) - 1
-		DrawTextColorAtScale(dst, il.label, lx, ly, colTextSecondary, captionScale)
-	}
 }
 
 // --- Offset drawing helpers (package-level to avoid DrumView dependency) ---
@@ -1397,6 +1608,12 @@ func safeInsetTransport(r image.Rectangle, pad int) image.Rectangle {
 	}
 	return insetRect(r, pad)
 }
+
+// recordDemoteInsetMobile is the extra inset (in px, applied on top of
+// the row pad) that shrinks the mobile record button visual relative to
+// play/stop. See B12 in the screenshot critique — the red dot at parity
+// invites accidental mid-jam record.
+const recordDemoteInsetMobile = 8
 
 // stackVerticalTransport stacks two buttons vertically in a column rect.
 func stackVerticalTransport(top, bot *Button, col image.Rectangle, bounds image.Rectangle) {

@@ -85,6 +85,49 @@ func (dv *DrumView) recalcButtons() {
 		}
 		dv.mainVolIconRect = dv.transportZone.mainVolIconRect
 		dv.mainVolRect = dv.transportZone.mainVolRect
+
+		// Mobile: place vol-icon / view-switch / overflow inside the
+		// bottom action bar (B3 critique). The transport zone's
+		// layoutMobile leaves these rects empty so this is the single
+		// authoritative placement on mobile. The bar is sized exactly
+		// to TouchMinTarget so we inset horizontally only — vertical
+		// padding would push each rect below the touch-target floor.
+		if p.IsMobile() && !dv.bottomActionBarRect.Empty() {
+			bar := dv.bottomActionBarRect
+			cells := NewGridLayout(bar, []float64{1.0, 1.0, 1.0}, []float64{1})
+			barPad := ActiveTopBarSpec().Padding
+			insetX := func(r image.Rectangle) image.Rectangle {
+				if r.Empty() {
+					return r
+				}
+				pad := barPad
+				if pad*2 > r.Dx()-48 {
+					pad = (r.Dx() - 48) / 2
+				}
+				if pad < 0 {
+					pad = 0
+				}
+				return image.Rect(r.Min.X+pad, r.Min.Y, r.Max.X-pad, r.Max.Y)
+			}
+			dv.transportZone.mainVolIconRect = insetX(cells.Cell(0, 0))
+			if dv.transportZone.viewSwitchBtn != nil {
+				dv.transportZone.viewSwitchBtn.SetRect(insetX(cells.Cell(1, 0)))
+			}
+			if dv.transportZone.overflowBtn != nil {
+				dv.transportZone.overflowBtn.SetRect(insetX(cells.Cell(2, 0)))
+			}
+			// Sync the DrumView alias.
+			dv.mainVolIconRect = dv.transportZone.mainVolIconRect
+			// Re-rebuild hit areas — the zone's Layout already ran with
+			// the (then-empty) bar rects; we just populated them, so the
+			// existing hit index would skip view-switch/overflow taps.
+			// Then widen the ClipRect on those three to the bar (the
+			// zone's default ClipRect is its top-toolbar rect, which the
+			// bar lies outside of — clicks would otherwise be culled).
+			dv.transportZone.rebuildHitAreas()
+			dv.transportZone.SetBottomBarHostedHitClip(bar)
+			dv.tree.HitIndexRef().Update("transport", dv.transportZone.HitAreas())
+		}
 	}
 
 	// Delegate row rack layout to RowRackZone when available.

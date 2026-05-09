@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/log"
@@ -63,5 +64,46 @@ func TestBottomActionBar_DrumPaneShrinks(t *testing.T) {
 	barTop := g.drum.bottomActionBarRect.Min.Y
 	if rowsBottom > barTop {
 		t.Fatalf("rows area extends into bottom action bar: rowsBottom=%d barTop=%d", rowsBottom, barTop)
+	}
+}
+
+// TestBottomActionBar_HostsVolViewOverflow verifies that on mobile the
+// volume icon, view-switch, and overflow-menu buttons are placed inside
+// the DrumView.bottomActionBarRect (not in the top transport toolbar)
+// and that each rect meets the minimum touch-target height.
+func TestBottomActionBar_HostsVolViewOverflow(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	bar := g.drum.bottomActionBarRect
+	if bar.Empty() {
+		t.Fatalf("bottom action bar rect empty on mobile")
+	}
+	z := g.drum.transportZone
+	if z == nil {
+		t.Fatalf("transportZone nil")
+	}
+	cases := []struct {
+		name string
+		rect image.Rectangle
+	}{
+		{"mainVolIcon", z.mainVolIconRect},
+		{"viewSwitchBtn", z.viewSwitchBtn.Rect()},
+		{"overflowBtn", z.overflowBtn.Rect()},
+	}
+	for _, c := range cases {
+		if c.rect.Empty() {
+			t.Errorf("%s rect empty on mobile; expected to live in bottom action bar", c.name)
+			continue
+		}
+		if !c.rect.In(bar) {
+			t.Errorf("%s rect %v not contained in bottom action bar %v", c.name, c.rect, bar)
+		}
+		if c.rect.Dy() < TouchMinTarget() {
+			t.Errorf("%s height %d below TouchMinTarget %d", c.name, c.rect.Dy(), TouchMinTarget())
+		}
 	}
 }

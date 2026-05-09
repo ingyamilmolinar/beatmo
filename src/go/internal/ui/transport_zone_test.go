@@ -343,7 +343,11 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 		t.Error("desktop layout should have 'transport-upload' hit area")
 	}
 
-	// Mobile layout: view switch and overflow should appear.
+	// Mobile layout: vol-icon / view-switch / overflow now live in
+	// DrumView.bottomActionBarRect (B3 critique). The transport zone
+	// alone does NOT register hit areas for them on mobile — DrumView
+	// places them after zone Layout completes and re-runs hit-area
+	// registration. Asserting the new contract here.
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
 
@@ -353,9 +357,11 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 	zm.Layout(mobileRect)
 	mobileAreas := zm.HitAreas()
 
-	overflowArea := findHitAreaByTagPrefix(mobileAreas, "transport-overflow")
-	if overflowArea == nil {
-		t.Error("mobile layout should have 'transport-overflow' hit area")
+	if a := findHitAreaByTagPrefix(mobileAreas, "transport-overflow"); a != nil {
+		t.Error("zone-only mobile layout should NOT register transport-overflow; DrumView places it in bottom action bar")
+	}
+	if a := findHitAreaByTagPrefix(mobileAreas, "transport-view-switch"); a != nil {
+		t.Error("zone-only mobile layout should NOT register transport-view-switch; DrumView places it in bottom action bar")
 	}
 
 	// Upload should be hidden on mobile.
@@ -953,8 +959,12 @@ func TestTransport_InputBlockedBlursBPM(t *testing.T) {
 	}
 }
 
-// TestTransport_OverflowButtonMobile verifies that on mobile layout the overflow
-// button is present and clicking it fires OnOverflowOpen.
+// TestTransport_OverflowButtonMobile verifies that on mobile, when DrumView
+// places the overflow button into the bottom action bar (simulated here by
+// directly setting its rect and re-registering hit areas with the bar as
+// ClipRect), clicking it fires OnOverflowOpen. The zone's mobile layout
+// alone leaves the button rect empty — DrumView is the sole authority that
+// positions it (B3 critique).
 func TestTransport_OverflowButtonMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -975,9 +985,16 @@ func TestTransport_OverflowButtonMobile(t *testing.T) {
 	tree := registerTransportZone(z, image.Rect(0, 0, 400, 120))
 	tree.Update()
 
+	// Simulate DrumView's bar placement.
+	bar := image.Rect(0, 600, 400, 644) // 44 px tall (TouchMinTarget on mobile)
+	z.overflowBtn.SetRect(image.Rect(260, 600, 380, 644))
+	z.rebuildHitAreas()
+	z.SetBottomBarHostedHitClip(bar)
+	tree.HitIndexRef().Update("transport", z.HitAreas())
+
 	overflowArea := findHitAreaByTagPrefix(z.HitAreas(), "transport-overflow")
 	if overflowArea == nil {
-		t.Fatal("expected 'transport-overflow' hit area on mobile layout")
+		t.Fatal("expected 'transport-overflow' hit area after DrumView bar placement")
 	}
 
 	mx, my = (overflowArea.Rect.Min.X+overflowArea.Rect.Max.X)/2, (overflowArea.Rect.Min.Y+overflowArea.Rect.Max.Y)/2
@@ -991,8 +1008,9 @@ func TestTransport_OverflowButtonMobile(t *testing.T) {
 	}
 }
 
-// TestTransport_ViewSwitchButtonMobile verifies that on mobile layout the view
-// switch button is present and clicking it fires OnViewCycle.
+// TestTransport_ViewSwitchButtonMobile verifies that on mobile, when DrumView
+// places the view-switch button into the bottom action bar, clicking it
+// fires OnViewCycle. See TestTransport_OverflowButtonMobile for the contract.
 func TestTransport_ViewSwitchButtonMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
@@ -1013,9 +1031,16 @@ func TestTransport_ViewSwitchButtonMobile(t *testing.T) {
 	tree := registerTransportZone(z, image.Rect(0, 0, 400, 120))
 	tree.Update()
 
+	// Simulate DrumView's bar placement.
+	bar := image.Rect(0, 600, 400, 644)
+	z.viewSwitchBtn.SetRect(image.Rect(140, 600, 250, 644))
+	z.rebuildHitAreas()
+	z.SetBottomBarHostedHitClip(bar)
+	tree.HitIndexRef().Update("transport", z.HitAreas())
+
 	viewArea := findHitAreaByTagPrefix(z.HitAreas(), "transport-view-switch")
 	if viewArea == nil {
-		t.Fatal("expected 'transport-view-switch' hit area on mobile layout")
+		t.Fatal("expected 'transport-view-switch' hit area after DrumView bar placement")
 	}
 
 	mx, my = (viewArea.Rect.Min.X+viewArea.Rect.Max.X)/2, (viewArea.Rect.Min.Y+viewArea.Rect.Max.Y)/2
