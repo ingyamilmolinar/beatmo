@@ -48,3 +48,20 @@ func TestBottomActionBar_EmptyOnDesktop(t *testing.T) {
 		t.Fatalf("expected empty bottom action bar rect on desktop, got %v", g.drum.bottomActionBarRect)
 	}
 }
+
+// TestBottomActionBar_DrumPaneShrinks verifies that on mobile the rows area
+// ends at or above the bottom action bar — rows must never paint beneath
+// the bar that hosts vol/view/overflow controls.
+func TestBottomActionBar_DrumPaneShrinks(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	rowsBottom := g.drum.rowsBottom()
+	barTop := g.drum.bottomActionBarRect.Min.Y
+	if rowsBottom > barTop {
+		t.Fatalf("rows area extends into bottom action bar: rowsBottom=%d barTop=%d", rowsBottom, barTop)
+	}
+}

@@ -92,7 +92,7 @@ func (dv *DrumView) recalcButtons() {
 		rackRect := dv.widgetRects[WidgetRack]
 		if rackRect.Empty() {
 			rowsTop := dv.Bounds.Min.Y + dv.headerH
-			rackRect = image.Rect(dv.Bounds.Min.X, rowsTop, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Max.Y-dv.eqH)
+			rackRect = image.Rect(dv.Bounds.Min.X, rowsTop, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.rowsBottom())
 		}
 		// Clamp rack top to match capped headerH.
 		rowsTop := dv.Bounds.Min.Y + dv.headerH
@@ -396,7 +396,7 @@ func (dv *DrumView) recalcButtons() {
 		// The timeline zone covers the timeline bar + the steps grid below it.
 		// timelineRect is positioned at the bottom of the header; the grid
 		// extends from there down to the bottom of the rows area.
-		rowsBottom := dv.Bounds.Max.Y - dv.eqH
+		rowsBottom := dv.rowsBottom()
 		if p.IsMobile() && dv.mobileEQMode {
 			rowsBottom = dv.Bounds.Max.Y
 		}
@@ -649,6 +649,17 @@ func rowControlWeights() []float64 {
 // rowRectForIndex, positionRowWidgets, and positionAddRowBtn are now
 // handled exclusively by RowRackZone.
 
+// rowsBottom returns the Y at which the rows area ends — above the EQ
+// panel and the mobile bottom action bar. Use this everywhere instead
+// of inlining the formula so layout invariants stay in one place.
+func (dv *DrumView) rowsBottom() int {
+	rb := dv.Bounds.Max.Y - dv.eqH
+	if !dv.bottomActionBarRect.Empty() {
+		rb -= dv.bottomActionBarRect.Dy()
+	}
+	return rb
+}
+
 // nameBoxRect returns the fixed rect for the WAV naming input box.
 func (dv *DrumView) nameBoxRect() image.Rectangle {
 	return image.Rect(dv.Bounds.Min.X+10, dv.Bounds.Min.Y+110, dv.Bounds.Min.X+300, dv.Bounds.Min.Y+150)
@@ -683,7 +694,7 @@ func (dv *DrumView) calcLayout() {
 	rowsTop := dv.Bounds.Min.Y + dv.headerH
 	panelRect := dv.widgetRects[WidgetRack]
 	if panelRect.Empty() {
-		panelRect = image.Rect(dv.Bounds.Min.X, rowsTop, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Max.Y-dv.eqH)
+		panelRect = image.Rect(dv.Bounds.Min.X, rowsTop, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.rowsBottom())
 	}
 	// Clamp rack top to match capped headerH (widget board may allocate more).
 	if panelRect.Min.Y < rowsTop {
