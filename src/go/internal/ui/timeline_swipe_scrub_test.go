@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/log"
@@ -58,5 +59,41 @@ func TestTimelineScrub_HitAreaExcludesLenButtons(t *testing.T) {
 		if r := z.lenDecBtn.Rect(); !r.Empty() && !scrubArea.Rect.Intersect(r).Empty() {
 			t.Errorf("scrub hit area %v overlaps lenDecBtn %v", scrubArea.Rect, r)
 		}
+	}
+}
+
+// TestTimelineScrub_PinchDoesNotStartScrub verifies that during the
+// multi-touch cooldown (set by the global TouchState after a pinch
+// gesture ends) a scrub press is suppressed. Without this gate the
+// enlarged mobile scrub area (Task 3.1) would let stray fingertips
+// from a pinch gesture fire false scrubs.
+func TestTimelineScrub_PinchDoesNotStartScrub(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	z := g.drum.timelineZone
+	if z == nil {
+		t.Fatalf("timelineZone nil")
+	}
+	// Simulate a recent multi-touch by pinning the global cooldown
+	// counter directly. RecentMultiTouch() will return true until the
+	// cooldown ticks down to zero.
+	prevCooldown := globalTouchState.multiTouchCooldown
+	globalTouchState.multiTouchCooldown = multiTouchCooldownFrames
+	t.Cleanup(func() { globalTouchState.multiTouchCooldown = prevCooldown })
+
+	adapter := &timelineScrubHitAdapter{zone: z}
+	scrubMid := image.Pt(z.timelineBarRect.Min.X+z.timelineBarRect.Dx()/2,
+		z.timelineBarRect.Min.Y+z.timelineBarRect.Dy()/2)
+	res := adapter.OnPress(scrubMid.X, scrubMid.Y)
+
+	if z.scrubbing {
+		t.Fatalf("scrubbing should remain false during multi-touch cooldown")
+	}
+	if res == InputCaptured || res == InputConsumed {
+		t.Fatalf("OnPress should ignore press during multi-touch cooldown, got %v", res)
 	}
 }

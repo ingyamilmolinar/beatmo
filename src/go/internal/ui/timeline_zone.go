@@ -1049,6 +1049,9 @@ type timelineScrubHitAdapter struct {
 }
 
 func (h *timelineScrubHitAdapter) OnPress(x, y int) InputResult {
+	if globalTouchState != nil && globalTouchState.RecentMultiTouch() {
+		return InputIgnored
+	}
 	z := h.zone
 	z.scrubbing = true
 	h.scrubTo(x)
