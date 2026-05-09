@@ -56,8 +56,8 @@ func TestEQPeekTap_FullyEntersAudioMode(t *testing.T) {
 	if dv.mobileEQCollapsed {
 		t.Errorf("expected mobileEQCollapsed=false after peek tap")
 	}
-	if dv.currentViewMode != viewModeAudio {
-		t.Errorf("expected currentViewMode=viewModeAudio, got %v", dv.currentViewMode)
+	if dv.currentViewMode != viewModeEQ {
+		t.Errorf("expected currentViewMode=viewModeEQ, got %v", dv.currentViewMode)
 	}
 	if dv.IsContextMenuOpen() {
 		t.Errorf("expected context menu CLOSED after peek tap (parity with toolbar button); still open")

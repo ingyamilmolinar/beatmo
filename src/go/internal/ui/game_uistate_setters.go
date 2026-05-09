@@ -66,7 +66,7 @@ func (g *Game) SetViewMode(audio bool) {
 	}
 	if audio {
 		g.drum.SetMobileEQMode(true)
-		g.drum.currentViewMode = viewModeAudio
+		g.drum.currentViewMode = viewModeEQ
 	} else {
 		g.drum.SetMobileEQMode(false)
 		g.drum.currentViewMode = viewModeRows

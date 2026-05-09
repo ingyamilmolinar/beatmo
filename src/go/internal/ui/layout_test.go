@@ -171,14 +171,14 @@ func TestLenButtonsHiddenInAudioViewMode(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 800, 200), nil, logger)
 
 	// In audio view mode, len +/- should be hidden.
-	dv.currentViewMode = viewModeAudio
+	dv.currentViewMode = viewModeEQ
 	dv.recalcButtons()
 	dv.calcLayout()
 	if !dv.lenIncBtn.Rect().Empty() {
-		t.Fatalf("lenIncBtn should be empty in viewModeAudio, got %v", dv.lenIncBtn.Rect())
+		t.Fatalf("lenIncBtn should be empty in viewModeEQ, got %v", dv.lenIncBtn.Rect())
 	}
 	if !dv.lenDecBtn.Rect().Empty() {
-		t.Fatalf("lenDecBtn should be empty in viewModeAudio, got %v", dv.lenDecBtn.Rect())
+		t.Fatalf("lenDecBtn should be empty in viewModeEQ, got %v", dv.lenDecBtn.Rect())
 	}
 
 	// Back to rows mode, buttons should be visible.

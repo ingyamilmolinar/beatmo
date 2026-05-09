@@ -1036,7 +1036,7 @@ func (dv *DrumView) setViewMode(target viewMode) {
 // compatibility shim for tests that still call it.
 func (dv *DrumView) cycleViewMode() {
 	if dv.currentViewMode == viewModeRows {
-		dv.setViewMode(viewModeAudio)
+		dv.setViewMode(viewModeEQ)
 	} else {
 		dv.setViewMode(viewModeRows)
 	}

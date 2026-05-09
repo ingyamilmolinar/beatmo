@@ -464,7 +464,7 @@ func (dv *DrumView) recalcButtons() {
 	// next to the timeline is too narrow to discover on phone-class
 	// screens (A7 in the screenshot critique); the entries live behind
 	// the overflow menu instead.
-	if !p.IsMobile() && dv.currentViewMode != viewModeAudio {
+	if !p.IsMobile() && dv.currentViewMode != viewModeEQ {
 		btnW := 36
 		btnH := dv.beatCounterRect.Dy()
 		if btnH < 20 {
@@ -942,7 +942,7 @@ func (h *eqPeekHitAdapter) OnPress(x, y int) InputResult {
 		return InputIgnored
 	}
 	h.dv.mobileEQCollapsed = false
-	h.dv.setViewMode(viewModeAudio)
+	h.dv.setViewMode(viewModeEQ)
 	h.dv.bgDirty = true
 	return InputCaptured
 }
