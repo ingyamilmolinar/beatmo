@@ -12,6 +12,9 @@ import (
 // Setup runs synchronously before the screenshot countdown starts.
 //
 // Mobile=true marks scenes that are also captured under MOBILE=1.
+// MobileSetup, if non-nil, replaces Setup on the mobile capture pass —
+// use it when a panel/overlay needs a different invocation path on
+// mobile (e.g. EQ panel only renders after SetMobileEQMode(true)).
 // SettleFrames overrides the default 90-frame screenshot wait when the
 // scene's overlays/caches need extra time to stabilize.
 type Scene struct {
@@ -20,6 +23,7 @@ type Scene struct {
 	Mobile       bool
 	SettleFrames int
 	Setup        func(*Game)
+	MobileSetup  func(*Game)
 }
 
 // sceneCatalog enumerates every UI surface the screenshots-all target captures.
@@ -33,18 +37,38 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) { sceneSetBPM(g, 240) }},
 
 	// ─── EQ tabs ──────────────────────────────────────────────────
-	{Name: "eq_tab_eq", Description: "EQ tab active",
-		Setup: func(g *Game) { _ = g.SetActiveEQTab("eq") }},
-	{Name: "eq_tab_wave", Description: "Wave tab active",
-		Setup: func(g *Game) { _ = g.SetActiveEQTab("wave") }},
-	{Name: "eq_tab_spectrum", Description: "Spectrum tab active",
-		Setup: func(g *Game) { _ = g.SetActiveEQTab("spectrum") }},
-	{Name: "eq_tab_meters", Description: "Meters tab active",
-		Setup: func(g *Game) { _ = g.SetActiveEQTab("meters") }},
-	{Name: "eq_tab_scope", Description: "Scope tab active", SettleFrames: 120,
-		Setup: func(g *Game) { _ = g.SetActiveEQTab("scope"); g.SetScopeVisible(true) }},
-	{Name: "eq_with_band_adjusted", Description: "two EQ bands tweaked",
+	// Mobile pass enters SetMobileEQMode so the panel is actually visible;
+	// without it the audio surface stays collapsed and the screenshot
+	// duplicates mobile_default.
+	{Name: "eq_tab_eq", Description: "EQ tab active", Mobile: true,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("eq") },
+		MobileSetup: mobileAudioPanelSetup("eq")},
+	{Name: "eq_tab_wave", Description: "Wave tab active", Mobile: true,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("wave") },
+		MobileSetup: mobileAudioPanelSetup("wave")},
+	{Name: "eq_tab_spectrum", Description: "Spectrum tab active", Mobile: true,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("spectrum") },
+		MobileSetup: mobileAudioPanelSetup("spectrum")},
+	{Name: "eq_tab_meters", Description: "Meters tab active", Mobile: true,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("meters") },
+		MobileSetup: mobileAudioPanelSetup("meters")},
+	{Name: "eq_tab_scope", Description: "Scope tab active", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) { _ = g.SetActiveEQTab("scope"); g.SetScopeVisible(true) },
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
+			_ = g.SetActiveEQTab("scope")
+			g.SetScopeVisible(true)
+		}},
+	{Name: "eq_with_band_adjusted", Description: "two EQ bands tweaked", Mobile: true,
 		Setup: func(g *Game) {
+			_ = g.SetActiveEQTab("eq")
+			g.SetEQBandGain("main", 2, -6)
+			g.SetEQBandGain("main", 5, 4)
+		},
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
 			_ = g.SetActiveEQTab("eq")
 			g.SetEQBandGain("main", 2, -6)
 			g.SetEQBandGain("main", 5, 4)
@@ -57,8 +81,12 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) { ensureRow(g, 0); g.drum.OpenInstrumentMenu(0) }},
 	{Name: "color_wheel_open", Description: "color wheel picker open", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) { ensureRow(g, 0); g.drum.OpenColorMenu(0) }},
-	{Name: "subdiv_menu_open", Description: "subdivision menu open", SettleFrames: 120,
-		Setup: func(g *Game) { g.drum.OpenSubdivMenu() }},
+	{Name: "subdiv_menu_open", Description: "subdivision menu open", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) { g.drum.OpenSubdivMenu() },
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.OpenSubdivMenu()
+		}},
 
 	// ─── FX panel ─────────────────────────────────────────────────
 	{Name: "fx_panel_open_empty", Description: "FX panel with no effects", Mobile: true, SettleFrames: 120,
@@ -74,8 +102,12 @@ var sceneCatalog = []Scene{
 		}},
 
 	// ─── volume popups ────────────────────────────────────────────
-	{Name: "master_vol_popup", Description: "master volume slider open",
-		Setup: func(g *Game) { g.drum.OpenMasterVolumePopup() }},
+	{Name: "master_vol_popup", Description: "master volume slider open", Mobile: true,
+		Setup: func(g *Game) { g.drum.OpenMasterVolumePopup() },
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.OpenMasterVolumePopup()
+		}},
 
 	// ─── graph / sidebar ──────────────────────────────────────────
 	{Name: "node_added", Description: "extra node placed at (2,2)",
@@ -118,8 +150,12 @@ var sceneCatalog = []Scene{
 		}},
 
 	// ─── recording ────────────────────────────────────────────────
-	{Name: "transport_recording", Description: "recording session active", SettleFrames: 120,
-		Setup: func(g *Game) { _ = g.StartRecording() }},
+	{Name: "transport_recording", Description: "recording session active", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) { _ = g.StartRecording() },
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			_ = g.StartRecording()
+		}},
 
 	// ─── mobile-only surfaces ─────────────────────────────────────
 	{Name: "mobile_default", Description: "mobile profile default boot", Mobile: true,
@@ -136,6 +172,28 @@ var sceneCatalog = []Scene{
 			g.SetForceMobileProfile(true)
 			ensureRow(g, 0)
 			g.drum.OpenVolumePopup(0)
+		}},
+	{Name: "mobile_row_inline_controls", Description: "mobile rows with vol/mute/solo/FX inline; row 0 muted, row 2 soloed", Mobile: true,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			ensureRow(g, 2)
+			if 0 < len(g.drum.Rows) {
+				g.drum.Rows[0].Muted = true
+			}
+			if 2 < len(g.drum.Rows) {
+				g.drum.Rows[2].Solo = true
+			}
+			g.drum.markRowControlsDirty()
+		}},
+	{Name: "mobile_transport_bottom_bar",
+		Description: "mobile bottom action bar with vol/segmented-view-switch/overflow + EQ peek sparkline + horizontal BPM stepper",
+		Mobile:      true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			// Default mobile boot already shows the new bottom bar + peek strip.
+			// Boost EQ band 0 by +12dB so the peek sparkline shows visible
+			// motion (otherwise it's a flat line).
+			g.SetForceMobileProfile(true)
+			g.SetEQBandGain("main", 0, 12.0)
 		}},
 
 	// ─── playback overlays ────────────────────────────────────────
@@ -224,18 +282,39 @@ var sceneCatalog = []Scene{
 		}},
 
 	// ─── EQ detail (filters, band mute, scope) ────────────────────
-	{Name: "eq_hpf_active", Description: "high-pass filter engaged",
+	{Name: "eq_hpf_active", Description: "high-pass filter engaged", Mobile: true,
 		Setup: func(g *Game) {
 			_ = g.SetActiveEQTab("eq")
 			g.drum.toggleHPF()
+		},
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
+			_ = g.SetActiveEQTab("eq")
+			g.drum.toggleHPF()
 		}},
-	{Name: "eq_lpf_active", Description: "low-pass filter engaged",
+	{Name: "eq_lpf_active", Description: "low-pass filter engaged", Mobile: true,
 		Setup: func(g *Game) {
 			_ = g.SetActiveEQTab("eq")
 			g.drum.toggleLPF()
+		},
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
+			_ = g.SetActiveEQTab("eq")
+			g.drum.toggleLPF()
 		}},
-	{Name: "eq_band_muted", Description: "single EQ band muted",
+	{Name: "eq_band_muted", Description: "single EQ band muted", Mobile: true,
 		Setup: func(g *Game) {
+			_ = g.SetActiveEQTab("eq")
+			muted := g.drum.eqBandMuted()
+			if len(muted) > 4 {
+				muted[4] = true
+			}
+		},
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
 			_ = g.SetActiveEQTab("eq")
 			muted := g.drum.eqBandMuted()
 			if len(muted) > 4 {
@@ -325,14 +404,25 @@ var sceneCatalog = []Scene{
 			ensureRow(g, 0)
 			g.drum.OpenVolumePopup(0)
 		}},
-	{Name: "recording_with_context_menu", Description: "recording armed + context menu open", SettleFrames: 150,
+	{Name: "recording_with_context_menu", Description: "recording armed + context menu open", Mobile: true, SettleFrames: 150,
 		Setup: func(g *Game) {
 			ensureRow(g, 0)
 			_ = g.StartRecording()
 			g.drum.OpenContextMenu(0)
+		},
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			ensureRow(g, 0)
+			_ = g.StartRecording()
+			g.drum.OpenContextMenu(0)
 		}},
-	{Name: "recording_during_playback_overlay", Description: "recording armed during playback", SettleFrames: 150,
+	{Name: "recording_during_playback_overlay", Description: "recording armed during playback", Mobile: true, SettleFrames: 150,
 		Setup: func(g *Game) {
+			_ = g.StartRecording()
+			g.SetPlaying(true)
+		},
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
 			_ = g.StartRecording()
 			g.SetPlaying(true)
 		}},
@@ -341,14 +431,30 @@ var sceneCatalog = []Scene{
 // RunScene applies the named scene's Setup to g. Returns an error if the
 // name is not in the catalog.
 func RunScene(g *Game, name string) error {
+	return runSceneInternal(g, name, false)
+}
+
+// RunSceneMobile applies the named scene's MobileSetup to g (or Setup if
+// MobileSetup is nil). Returns an error if the name is not in the
+// catalog or the scene is not marked Mobile.
+func RunSceneMobile(g *Game, name string) error {
+	return runSceneInternal(g, name, true)
+}
+
+func runSceneInternal(g *Game, name string, mobile bool) error {
 	for _, s := range sceneCatalog {
 		if s.Name == name {
-			if s.Setup != nil {
-				s.Setup(g)
+			setup := s.Setup
+			if mobile && s.MobileSetup != nil {
+				setup = s.MobileSetup
+			}
+			if setup != nil {
+				setup(g)
 			}
 			if s.SettleFrames > 0 {
 				g.SetScreenshotSettleFrames(s.SettleFrames)
 			}
+			emitSceneApplied(name)
 			return nil
 		}
 	}
@@ -398,6 +504,18 @@ func MobileSceneNames() []string {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────
+
+// mobileAudioPanelSetup returns a Setup that forces mobile profile,
+// expands the mobile audio (EQ/Wave/Spec/Meters/Scope) panel, and sets
+// the requested tab. Used as the MobileSetup for desktop EQ scenes so
+// their mobile capture exercises a real route to the panel.
+func mobileAudioPanelSetup(tab string) func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		_ = g.SetActiveEQTab(tab)
+	}
+}
 
 // ensureRow guarantees there is a row at index idx, adding rows as needed.
 func ensureRow(g *Game, idx int) {
