@@ -108,7 +108,7 @@ func TestBottomActionBar_HostsVolViewOverflow(t *testing.T) {
 	}
 }
 
-// TestMobileTransport_AllShareSingleRow is a regression guard for Task 1.3:
+// TestMobileTransport_AllShareSingleRow is a regression guard for Task 1.4:
 // after the transport zone collapsed to a single row on mobile, all of
 // play/stop/record/bpm/subdiv must share the same Y baseline (within 1 px
 // for safeInsetTransport rounding).
