@@ -136,6 +136,11 @@ type TransportZone struct {
 	// top toolbar so they remain reachable. DrumView sets this via
 	// SetUseBottomBar before each Layout call.
 	useBottomBar bool
+
+	// barRect is the mobile bottom-action-bar bounds. Set by DrumView.calcLayout
+	// after it positions the bar; consumed by hit-area clip overrides for the
+	// vol/view/overflow buttons AND by the segmented view-switch (Phase 3).
+	barRect image.Rectangle
 }
 
 // NewTransportZone creates a TransportZone with the provided callbacks.
@@ -416,13 +421,13 @@ func (z *TransportZone) HitAreas() []HitArea {
 	return z.hitAreas
 }
 
-// SetBottomBarHostedHitClip overrides the ClipRect on the hit areas for the
-// vol-icon / view-switch / overflow buttons so that taps inside the mobile
-// bottom action bar reach them. Without this, those hit areas inherit the
-// transport zone's top-toolbar rect (z.rect) as their clip — the bar is
-// outside that rect, so the click would be culled by the hit index. Called
-// by DrumView.recalcButtons after it relocates the buttons into the bar.
-func (z *TransportZone) SetBottomBarHostedHitClip(bar image.Rectangle) {
+// SetBarRect stores the mobile bottom-action-bar bounds and overrides the
+// ClipRect on the vol-icon / view-switch / overflow hit areas so taps
+// inside the bar reach them (the bar is outside z.rect, so without this
+// the hit index would cull the click). Empty rect resets the field but
+// does not clear existing clips.
+func (z *TransportZone) SetBarRect(bar image.Rectangle) {
+	z.barRect = bar
 	if bar.Empty() {
 		return
 	}
@@ -433,6 +438,10 @@ func (z *TransportZone) SetBottomBarHostedHitClip(bar image.Rectangle) {
 		}
 	}
 }
+
+// BarRect returns the stored mobile bottom-action-bar rect (or empty on
+// desktop / before Layout).
+func (z *TransportZone) BarRect() image.Rectangle { return z.barRect }
 
 func (z *TransportZone) Draw(screen *ebiten.Image) {
 	if z.rect.Dy() < 8 || z.rect.Dx() < 8 {
