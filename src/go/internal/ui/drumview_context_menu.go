@@ -1006,6 +1006,17 @@ func (dv *DrumView) setViewMode(target viewMode) {
 		}
 	}
 	dv.syncViewSwitchIcon()
+	// Sync segmented control's active index with the new mode.
+	if dv.viewSwitchSegmented != nil {
+		switch dv.currentViewMode {
+		case viewModeRows:
+			dv.viewSwitchSegmented.SetActive(0)
+		case viewModeEQ:
+			dv.viewSwitchSegmented.SetActive(1)
+		case viewModeWave:
+			dv.viewSwitchSegmented.SetActive(2)
+		}
+	}
 	if dv.mobileEQMode {
 		dv.CloseAllPopups()
 		if rs := dv.rowScroll(); rs != nil {

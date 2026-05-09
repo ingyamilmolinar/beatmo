@@ -87,12 +87,20 @@ func TestBottomActionBar_HostsVolViewOverflow(t *testing.T) {
 	if z == nil {
 		t.Fatalf("transportZone nil")
 	}
+	// On mobile the binary viewSwitchBtn is replaced by the 3-segment
+	// Pads/EQ/Wave control; check the segmented rect instead.
+	viewSwitchRect := image.Rectangle{}
+	if g.drum.viewSwitchSegmented != nil {
+		viewSwitchRect = g.drum.viewSwitchSegmented.Rect()
+	} else if z.viewSwitchBtn != nil {
+		viewSwitchRect = z.viewSwitchBtn.Rect()
+	}
 	cases := []struct {
 		name string
 		rect image.Rectangle
 	}{
 		{"mainVolIcon", z.mainVolIconRect},
-		{"viewSwitchBtn", z.viewSwitchBtn.Rect()},
+		{"viewSwitch", viewSwitchRect},
 		{"overflowBtn", z.overflowBtn.Rect()},
 	}
 	for _, c := range cases {

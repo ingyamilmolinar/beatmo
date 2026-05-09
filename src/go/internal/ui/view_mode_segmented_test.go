@@ -125,6 +125,30 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 		t.Fatalf("precondition: viewSwitchSegmented non-nil")
 	}
 
+	// Use SetInputForTest (cursor + mouse click) rather than injectTouchTap
+	// so the test is robust against stale inputForTestActive from prior tests
+	// that used SetInputForTest. injectTouchTap is suppressed when
+	// inputForTestActive=true; SetInputForTest always works since it resets
+	// inputForTestActive itself.
+	simulateTap := func(mx, my int) {
+		var px, py int
+		var pressed bool
+		restore := SetInputForTest(
+			func() (int, int) { return px, py },
+			func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
+			func(ebiten.Key) bool { return false },
+			func() []rune { return nil },
+			func() (float64, float64) { return 0, 0 },
+			func() (int, int) { return 360, 700 },
+		)
+		px, py = mx, my
+		pressed = true
+		g.Update()
+		pressed = false
+		g.Update()
+		restore()
+	}
+
 	cases := []struct {
 		seg  int
 		want viewMode
@@ -136,9 +160,7 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 	for _, c := range cases {
 		r := dv.viewSwitchSegmented.SegmentRect(c.seg)
 		mid := image.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
-		injectTouchTap(mid.X, mid.Y)
-		g.Update()
-		g.Update()
+		simulateTap(mid.X, mid.Y)
 		if dv.currentViewMode != c.want {
 			t.Errorf("seg=%d: currentViewMode=%v, want %v", c.seg, dv.currentViewMode, c.want)
 		}
@@ -146,7 +168,9 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 }
 
 // TestViewSwitchSegmented_DrawnAfterBottomBar pins the draw order so
-// the segmented control paints on top of the bar surface.
+// the segmented control paints on top of the bar surface. Uses the
+// drawCallRecorder to intercept drawRoundedRect calls (ebitenstub
+// does not write real pixels, so raw img.At reads would always return 0).
 func TestViewSwitchSegmented_DrawnAfterBottomBar(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -161,21 +185,20 @@ func TestViewSwitchSegmented_DrawnAfterBottomBar(t *testing.T) {
 	if dv.viewSwitchSegmented == nil {
 		t.Fatalf("precondition: viewSwitchSegmented non-nil on mobile")
 	}
-	r := dv.viewSwitchSegmented.SegmentRect(0)
-	if r.Empty() {
-		t.Skip("no segmented rect to sample")
+	scRect := dv.viewSwitchSegmented.Rect()
+	if scRect.Empty() {
+		t.Skip("no segmented rect to check")
 	}
 
-	// Check that the segmented control's center pixel is non-zero after Draw.
+	// Intercept drawRoundedRect calls during g.Draw and verify at least one
+	// call lands within the segmented control's rect region.
 	img := ebiten.NewImage(360, 700)
-	g.Draw(img)
-	cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
-	if cx < 0 || cx >= 360 || cy < 0 || cy >= 700 {
-		t.Skipf("segment center (%d,%d) out of bounds", cx, cy)
-	}
-	px := img.At(cx, cy)
-	rv, gv, bv, av := px.RGBA()
-	if rv == 0 && gv == 0 && bv == 0 && av == 0 {
-		t.Errorf("pixel at segmented center (%d,%d) is transparent/black — segmented not drawn", cx, cy)
+	var rec drawCallRecorder
+	rec.record(t, func() {
+		g.Draw(img)
+	})
+	hits := rec.inRegion(scRect)
+	if len(hits) == 0 {
+		t.Errorf("no drawRoundedRect/drawRect calls found in segmented rect %v — segmented not drawn", scRect)
 	}
 }

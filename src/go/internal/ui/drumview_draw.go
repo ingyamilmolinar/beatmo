@@ -124,6 +124,13 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 		dv.drawNotifications(dst)
 	}
 
+	// --- Mobile segmented view-switch (Pads/EQ/Wave) ---
+	// Drawn after the transport controls so it renders on top of the bar
+	// surface. Only visible on mobile; on desktop the rect is empty.
+	if Profile().IsMobile() && dv.viewSwitchSegmented != nil && !dv.viewSwitchSegmented.Rect().Empty() {
+		dv.viewSwitchSegmented.Draw(dst)
+	}
+
 	// --- Play button pulse halo ---
 	// Multi-pass falloff so the glow reads as a soft halo rather than a
 	// hard rectangular outline (DESIGN.md §"Cushioned elevation"). Gated

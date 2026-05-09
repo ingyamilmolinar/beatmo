@@ -89,38 +89,25 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 			t.Errorf("row0 button width %d differs from play width %d by %d (max 1px)", w, refW, diff)
 		}
 	}
-	// Row 1 buttons should have equal width within their row (±1px tolerance).
-	var row1Btns []*Button
-	if dv.viewSwitchBtn() != nil {
-		row1Btns = append(row1Btns, dv.viewSwitchBtn())
-	}
-	if dv.overflowBtn() != nil {
-		row1Btns = append(row1Btns, dv.overflowBtn())
-	}
-	if len(row1Btns) > 1 {
-		ref1W := row1Btns[0].Rect().Dx()
-		for _, b := range row1Btns[1:] {
-			w := b.Rect().Dx()
-			diff := w - ref1W
-			if diff < 0 {
-				diff = -diff
-			}
-			if diff > 1 {
-				t.Errorf("row1 button width %d differs from ref %d by %d (max 1px)", w, ref1W, diff)
-			}
-		}
+	// Row 1 on mobile now hosts the segmented Pads/EQ/Wave control (col 1)
+	// and the overflow button (col 2). The binary viewSwitchBtn is hidden on
+	// mobile (replaced by the segmented control in B4). The old 2-button
+	// uniform-width check becomes a 1-button no-op; skip it to avoid a false
+	// reference-width of 0 when the legacy button rect is empty.
+	//
+	// Instead, verify the overflow button has a non-empty rect on mobile
+	// (regression guard for the placement staying in the bottom bar).
+	if dv.overflowBtn() != nil && dv.overflowBtn().Rect().Empty() {
+		t.Errorf("overflowBtn rect empty on mobile — should be in bottom action bar")
 	}
 
-	// BPM +/- height should be approximately half of play button height (±2px).
+	// BPM ± buttons render at full row height (matching play) on the
+	// mobile horizontal stepper. Regression guard for B1: prior layout
+	// halved the row to 22 px via stackVerticalTransport.
 	playH := dv.playBtn().Rect().Dy()
 	bpmIncH := dv.bpmIncBtn().Rect().Dy()
-	halfH := playH / 2
-	diff := bpmIncH - halfH
-	if diff < 0 {
-		diff = -diff
-	}
-	if diff > 2 {
-		t.Errorf("bpmIncBtn height %d should be ~half of play height %d (half=%d, diff=%d)", bpmIncH, playH, halfH, diff)
+	if diff := bpmIncH - playH; diff < -2 || diff > 2 {
+		t.Errorf("bpmIncBtn height %d should match play height %d within 2 px on mobile horizontal stepper (B1)", bpmIncH, playH)
 	}
 
 	// Track button is hidden on mobile (desktop-only).
