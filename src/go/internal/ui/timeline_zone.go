@@ -1054,6 +1054,9 @@ func (h *timelineScrubHitAdapter) OnPress(x, y int) InputResult {
 	}
 	z := h.zone
 	z.scrubbing = true
+	// Engagement cue for the enlarged mobile scrub hit area (Task 3.1):
+	// fires after the multi-touch gate so suppressed presses don't buzz.
+	hapticEmit(8)
 	h.scrubTo(x)
 	return InputCaptured
 }

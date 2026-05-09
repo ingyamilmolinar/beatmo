@@ -90,10 +90,42 @@ func TestTimelineScrub_PinchDoesNotStartScrub(t *testing.T) {
 		z.timelineBarRect.Min.Y+z.timelineBarRect.Dy()/2)
 	res := adapter.OnPress(scrubMid.X, scrubMid.Y)
 
+	captured := withCapturedHaptics(t)
 	if z.scrubbing {
 		t.Fatalf("scrubbing should remain false during multi-touch cooldown")
 	}
 	if res == InputCaptured || res == InputConsumed {
 		t.Fatalf("OnPress should ignore press during multi-touch cooldown, got %v", res)
+	}
+	if len(*captured) != 0 {
+		t.Fatalf("expected no haptic when press is suppressed by multi-touch gate; got %v", *captured)
+	}
+}
+
+// TestTimelineScrub_OnPressFiresHaptic verifies an 8ms vibration
+// fires when scrub begins on mobile. The cue is critical for users to
+// know they've engaged the scrub gesture (the new enlarged hit area
+// from Task 3.1 makes the boundary less obvious without it). Fires
+// after the multi-touch gate so suppressed presses don't buzz.
+func TestTimelineScrub_OnPressFiresHaptic(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	captured := withCapturedHaptics(t)
+
+	z := g.drum.timelineZone
+	if z == nil {
+		t.Fatalf("timelineZone nil")
+	}
+	adapter := &timelineScrubHitAdapter{zone: z}
+	mid := image.Pt(z.timelineBarRect.Min.X+z.timelineBarRect.Dx()/2,
+		z.timelineBarRect.Min.Y+z.timelineBarRect.Dy()/2)
+	adapter.OnPress(mid.X, mid.Y)
+
+	if len(*captured) != 1 || (*captured)[0] != 8 {
+		t.Fatalf("expected one 8 ms haptic on scrub start; got %v", *captured)
 	}
 }
