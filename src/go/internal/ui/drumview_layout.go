@@ -63,6 +63,24 @@ func (dv *DrumView) recalcButtons() {
 		dv.bottomActionBarRect = image.Rectangle{}
 	}
 
+	// Allocate the 24-px EQ peek strip directly above the bottom action
+	// bar when the mobile EQ panel is collapsed. The peek hosts a
+	// sparkline preview of the EQ curve and acts as a tap target to
+	// expand the panel. When the bar collapses on ultra-short viewports,
+	// the peek collapses too — no orphaned 24-px strip.
+	const eqPeekHeight = 24
+	if p.IsMobile() && dv.mobileEQCollapsed && !dv.bottomActionBarRect.Empty() {
+		barTop := dv.bottomActionBarRect.Min.Y
+		dv.eqPeekRect = image.Rect(
+			dv.Bounds.Min.X,
+			barTop-eqPeekHeight,
+			dv.Bounds.Max.X,
+			barTop,
+		)
+	} else {
+		dv.eqPeekRect = image.Rectangle{}
+	}
+
 	transport := dv.widgetRects[WidgetTransport]
 	if transport.Empty() {
 		transport = image.Rect(dv.Bounds.Min.X, dv.Bounds.Min.Y, dv.Bounds.Min.X+dv.labelW+dv.controlsW, dv.Bounds.Min.Y+dv.headerH)
@@ -721,6 +739,9 @@ func (dv *DrumView) rowsBottom() int {
 	rb := dv.Bounds.Max.Y - dv.eqH
 	if !dv.bottomActionBarRect.Empty() {
 		rb -= dv.bottomActionBarRect.Dy()
+	}
+	if !dv.eqPeekRect.Empty() {
+		rb -= dv.eqPeekRect.Dy()
 	}
 	return rb
 }

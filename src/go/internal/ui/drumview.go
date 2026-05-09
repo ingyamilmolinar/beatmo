@@ -237,6 +237,10 @@ type DrumView struct {
 	// volume icon, view-switch, and overflow buttons. Empty on desktop.
 	// Set by recalcButtons when LayoutProfile.UseBottomSheet is true.
 	bottomActionBarRect image.Rectangle
+	// eqPeekRect is the 24-px sparkline strip directly above
+	// bottomActionBarRect, visible only when mobileEQCollapsed is true.
+	// Tap on this rect expands the EQ panel.
+	eqPeekRect image.Rectangle
 
 	// per-row components: owned by rowRackZone, accessed via accessor methods.
 	selRow int
