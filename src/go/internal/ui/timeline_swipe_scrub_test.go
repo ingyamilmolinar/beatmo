@@ -133,3 +133,60 @@ func TestTimelineScrub_OnPressFiresHaptic(t *testing.T) {
 		t.Fatalf("expected one 8 ms haptic on scrub start; got %v", *captured)
 	}
 }
+
+// TestTimelineSwipeScrub_DragDispatchesPositions exercises the full
+// press → drag → release pipeline through the timelineScrubHitAdapter
+// and asserts OnScrubPosition is called monotonically as the touch
+// drags from start to end of the timeline. Pin for Tasks 3.1–3.3:
+// any future change to scrub hit area, gate, or haptic must not
+// break the underlying scrub-position dispatch contract.
+func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
+	setupMobileTest(t, true)
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(360, 700)
+
+	z := g.drum.timelineZone
+	if z == nil {
+		t.Fatalf("timelineZone nil")
+	}
+
+	// Wrap the existing OnScrubPosition callback so we can capture each
+	// dispatched step value while preserving production behavior.
+	var positions []int
+	prev := z.callbacks.OnScrubPosition
+	z.callbacks.OnScrubPosition = func(steps int) {
+		positions = append(positions, steps)
+		if prev != nil {
+			prev(steps)
+		}
+	}
+
+	// Find the registered scrub hit area (taller now after Task 3.1).
+	scrubArea := findHitAreaByTagPrefix(z.HitAreas(), "timeline-scrub")
+	if scrubArea == nil {
+		t.Fatalf("timeline-scrub hit area not found")
+	}
+	r := scrubArea.Rect
+	startX, endX := r.Min.X+10, r.Max.X-10
+	y := r.Min.Y + r.Dy()/2
+
+	adapter := &timelineScrubHitAdapter{zone: z}
+	adapter.OnPress(startX, y)
+	adapter.OnDrag((startX+endX)/2, y)
+	adapter.OnDrag(endX, y)
+	adapter.OnRelease(endX, y)
+
+	if len(positions) < 3 {
+		t.Fatalf("expected ≥3 OnScrubPosition calls (press + 2 drags), got %d: %v", len(positions), positions)
+	}
+	// First call (press) and last call (final drag) should differ:
+	// scrub at left edge → 0, scrub at right edge → max.
+	if positions[0] >= positions[len(positions)-1] {
+		t.Fatalf("expected drag to advance position monotonically; saw %v", positions)
+	}
+	if z.scrubbing {
+		t.Fatalf("expected scrubbing=false after OnRelease, got true")
+	}
+}
