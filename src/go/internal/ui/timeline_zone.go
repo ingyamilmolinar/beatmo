@@ -323,10 +323,17 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	drawRect(dst, viewRect, colTimelineView, true)
 	drawRect(dst, viewRect, colTimelineViewHi, false)
 
-	// Current playback cursor
+	// Current playback cursor — 3px-wide accent-bright bar so the playhead
+	// remains easy to track during playback even on busy timelines.
 	cursorX := barRect.Min.X + int((elapsedBeats/float64(totalBeats))*float64(barRect.Dx()))
-	cursorRect := image.Rect(cursorX-1, barRect.Min.Y, cursorX+1, barRect.Max.Y)
-	drawRect(dst, cursorRect, colTimelineCursor, true)
+	cursorCol := colTimelineCursor
+	cursorThick := 1
+	if Profile().IsMobile() {
+		cursorCol = colAccentBright
+		cursorThick = 2
+	}
+	cursorRect := image.Rect(cursorX-cursorThick, barRect.Min.Y, cursorX+cursorThick, barRect.Max.Y)
+	drawRect(dst, cursorRect, cursorCol, true)
 
 	drawRect(dst, barRect, colButtonBorder, false)
 }
@@ -363,7 +370,10 @@ func (z *TimelineZone) timelineInfoCached(elapsedBeats float64) string {
 }
 
 // drawBeatCounter renders the beat/time counter above the timeline bar
-// inside a subtle pill-shaped container.
+// inside a surface-1 chip (rounded.md) so the readout reads as a real
+// container rather than floating debug chrome (A6 in the screenshot
+// critique). Right-aligned within the allotted rect so it doesn't
+// collide with row affordances on the left.
 func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) {
 	beatCounterRect := image.Rectangle{}
 	if z.callbacks.BeatCounterRect != nil {
@@ -375,14 +385,23 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 	info := z.timelineInfoCached(elapsedBeats)
 	tw := TextWidth(info)
 	th := TextHeight()
-	// Pill background behind text.
-	pillPadX, pillPadY := 6, 2
+	// Chip background behind text.
+	pillPadX, pillPadY := 8, 3
 	pillW := tw + pillPadX*2
 	pillH := th + pillPadY*2
-	pillX := beatCounterRect.Min.X
+	if pillW > beatCounterRect.Dx() {
+		pillW = beatCounterRect.Dx()
+	}
+	// Right-aligned: pillX = Max.X - pillW. Falls back to left-anchor if
+	// the rect is too narrow to host the chip.
+	pillX := beatCounterRect.Max.X - pillW
+	if pillX < beatCounterRect.Min.X {
+		pillX = beatCounterRect.Min.X
+	}
 	pillY := beatCounterRect.Min.Y + (beatCounterRect.Dy()-pillH)/2
 	pillR := image.Rect(pillX, pillY, pillX+pillW, pillY+pillH)
-	drawRoundedRect(dst, pillR, WithAlpha(genColorFocusRing, genAlphaFaint), 4, true)
+	drawRoundedRect(dst, pillR, colSurface1, RadiusMD, true)
+	drawRoundedRect(dst, pillR, colBorderSubtle, RadiusMD, false)
 	infoY := pillY + pillPadY
 	DrawTextAt(dst, info, pillX+pillPadX, infoY)
 }
@@ -839,9 +858,54 @@ func (z *TimelineZone) rebuildHitAreas() {
 	}
 
 	// Timeline bar scrub area (higher z-index).
-	if !z.timelineBarRect.Empty() {
+	scrubRect := z.timelineBarRect
+	if Profile().IsMobile() && !scrubRect.Empty() {
+		// Vertical-only enlargement: thumb-friendly hit surface that
+		// doesn't precisely require landing on the thin progress bar.
+		// We expand downward into the steps area; the steps grid drag
+		// adapter is z=110 vs. scrub z=111, so taps inside the expanded
+		// strip dispatch to scrub. Cap at TouchMinTarget total height
+		// and never spill past the zone rect.
+		minH := TouchMinTarget()
+		if scrubRect.Dy() < minH {
+			grow := minH - scrubRect.Dy()
+			// Expand only downward (timeline bar sits at top of zone).
+			scrubRect.Max.Y += grow
+			if !z.rect.Empty() && scrubRect.Max.Y > z.rect.Max.Y {
+				scrubRect.Max.Y = z.rect.Max.Y
+			}
+		}
+		// Exclude len ± / track button rects so taps on them aren't
+		// swallowed even if they overlap the enlarged scrub strip.
+		for _, btn := range []*Button{z.lenDecBtn, z.lenIncBtn, z.trackBtn} {
+			if btn == nil {
+				continue
+			}
+			r := btn.Rect()
+			if r.Empty() {
+				continue
+			}
+			if scrubRect.Intersect(r).Empty() {
+				continue
+			}
+			// Clamp horizontally: assume buttons sit at one of the rect
+			// edges. Whichever edge is closer wins.
+			leftDist := r.Min.X - scrubRect.Min.X
+			rightDist := scrubRect.Max.X - r.Max.X
+			if rightDist <= leftDist {
+				if r.Min.X < scrubRect.Max.X {
+					scrubRect.Max.X = r.Min.X
+				}
+			} else {
+				if r.Max.X > scrubRect.Min.X {
+					scrubRect.Min.X = r.Max.X
+				}
+			}
+		}
+	}
+	if !scrubRect.Empty() {
 		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    z.timelineBarRect,
+			Rect:    scrubRect,
 			ZIndex:  111,
 			Handler: &timelineScrubHitAdapter{zone: z},
 			Tag:     "timeline-scrub",
