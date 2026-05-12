@@ -193,6 +193,11 @@ func (b *AudioStickyBar) Draw(dst *ebiten.Image, activeTab PanelTab) {
 // HitAreas returns the cached chrome hit areas. Call Layout first.
 func (b *AudioStickyBar) HitAreas() []HitArea { return b.hitAreas }
 
+// Rect returns the chrome strip's screen-space rectangle as set by the last
+// Layout call. Exposed so the screenshot harness (SubjectAudioStickyBar)
+// can crop to the bar without reaching into its private fields.
+func (b *AudioStickyBar) Rect() image.Rectangle { return b.rect }
+
 // ChannelBtn returns the channel-selector pill button (persistent left chip).
 func (b *AudioStickyBar) ChannelBtn() *Button { return b.channelBtn }
 

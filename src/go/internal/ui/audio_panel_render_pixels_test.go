@@ -232,11 +232,11 @@ func TestAudioPanelTabsRenderNonBlankPixels(t *testing.T) {
 		// Meters: one peak bar + one RMS overlay per row, plus one
 		// pair for the master meter. With one row by default we
 		// expect ≥ 2 bar rects.
-		{"Meters", "crop_eq_tab_meters", SubjectEQTabMeters, TabMeters, 2},
+		{"Meters", "crop_eq_tab_levels", SubjectEQTabLevels, TabMeters, 2},
 		// Scope: drawWaveTrace emits per-column rects per visible
 		// trace. Two traces × ~hundreds of columns; floor at 20 to
 		// allow narrow render scenes.
-		{"Scope", "crop_scope_default", SubjectChain, TabScope, 20},
+		{"Scope", "crop_chain_default", SubjectChain, TabScope, 20},
 	}
 	for _, c := range cases {
 		c := c
@@ -275,7 +275,7 @@ func TestAudioPanelTabsBlankWithoutAudio(t *testing.T) {
 	}{
 		{"Wave", "crop_eq_tab_wave", SubjectEQTabWave, TabWave},
 		{"Spectrum", "crop_eq_tab_spectrum", SubjectEQTabSpectrum, TabSpectrum},
-		{"Meters", "crop_eq_tab_meters", SubjectEQTabMeters, TabMeters},
+		{"Meters", "crop_eq_tab_levels", SubjectEQTabLevels, TabMeters},
 	}
 	for _, c := range cases {
 		c := c
@@ -300,8 +300,8 @@ func TestSceneCropAudioPanelsCoverScreen(t *testing.T) {
 	requiredCropScenes := []string{
 		"crop_eq_tab_wave",
 		"crop_eq_tab_spectrum",
-		"crop_eq_tab_meters",
-		"crop_scope_default",
+		"crop_eq_tab_levels",
+		"crop_chain_default",
 	}
 	for _, name := range requiredCropScenes {
 		found := false

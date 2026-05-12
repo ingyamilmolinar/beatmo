@@ -57,7 +57,7 @@ func TestSubjectRectAlwaysVisible(t *testing.T) {
 		SubjectEQTabEQ,
 		SubjectEQTabWave,
 		SubjectEQTabSpectrum,
-		SubjectEQTabMeters,
+		SubjectEQTabLevels,
 		SubjectToolbar,
 	} {
 		r, ok := g.SubjectRect(s)

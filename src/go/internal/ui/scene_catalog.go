@@ -57,15 +57,15 @@ var sceneCatalog = []Scene{
 	{Name: "eq_tab_spectrum", Description: "Spectrum tab active", Mobile: true,
 		Setup:       func(g *Game) { _ = g.SetActiveEQTab("spectrum") },
 		MobileSetup: mobileAudioPanelSetup("spectrum")},
-	{Name: "eq_tab_meters", Description: "Meters tab active", Mobile: true,
-		Setup:       func(g *Game) { _ = g.SetActiveEQTab("meters") },
-		MobileSetup: mobileAudioPanelSetup("meters")},
-	{Name: "eq_tab_scope", Description: "Scope tab active", Mobile: true, SettleFrames: 120,
-		Setup: func(g *Game) { _ = g.SetActiveEQTab("scope"); g.SetChainVisible(true) },
+	{Name: "eq_tab_levels", Description: "Levels tab active", Mobile: true,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("levels") },
+		MobileSetup: mobileAudioPanelSetup("levels")},
+	{Name: "eq_tab_chain", Description: "Chain tab active", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) { _ = g.SetActiveEQTab("chain"); g.SetChainVisible(true) },
 		MobileSetup: func(g *Game) {
 			g.SetForceMobileProfile(true)
 			g.drum.SetMobileEQMode(true)
-			_ = g.SetActiveEQTab("scope")
+			_ = g.SetActiveEQTab("chain")
 			g.SetChainVisible(true)
 		}},
 	{Name: "eq_with_band_adjusted", Description: "two EQ bands tweaked", Mobile: true,
@@ -228,12 +228,12 @@ var sceneCatalog = []Scene{
 			g.SetForceMobileProfile(true)
 			g.drum.setViewMode(viewModeSpectrum)
 		}},
-	{Name: "mobile_bottom_nav_meters", Description: "mobile Meters tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+	{Name: "mobile_bottom_nav_levels", Description: "mobile Meters tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
 		Setup: func(g *Game) {
 			g.SetForceMobileProfile(true)
 			g.drum.setViewMode(viewModeMeters)
 		}},
-	{Name: "mobile_bottom_nav_scope", Description: "mobile Scope tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+	{Name: "mobile_bottom_nav_chain", Description: "mobile Chain tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
 		Setup: func(g *Game) {
 			g.SetForceMobileProfile(true)
 			g.drum.setViewMode(viewModeChain)
@@ -334,15 +334,15 @@ var sceneCatalog = []Scene{
 			g.SetPlaying(true)
 			g.drum.OpenFXPanel(0)
 		}},
-	{Name: "playback_eq_tab_meters", Description: "playback running + Meters tab", SettleFrames: 120,
+	{Name: "playback_eq_tab_levels", Description: "playback running + Meters tab", SettleFrames: 120,
 		Setup: func(g *Game) {
 			g.SetPlaying(true)
-			_ = g.SetActiveEQTab("meters")
+			_ = g.SetActiveEQTab("levels")
 		}},
-	{Name: "playback_eq_tab_scope", Description: "playback running + Scope tab", SettleFrames: 150,
+	{Name: "playback_eq_tab_chain", Description: "playback running + Chain tab", SettleFrames: 150,
 		Setup: func(g *Game) {
 			g.SetPlaying(true)
-			_ = g.SetActiveEQTab("scope")
+			_ = g.SetActiveEQTab("chain")
 			g.SetChainVisible(true)
 		}},
 
@@ -422,9 +422,9 @@ var sceneCatalog = []Scene{
 				muted[4] = true
 			}
 		}},
-	{Name: "eq_scope_custom_settings", Description: "Scope tab with two bands tweaked", SettleFrames: 150,
+	{Name: "eq_chain_custom_settings", Description: "Chain tab with two bands tweaked", SettleFrames: 150,
 		Setup: func(g *Game) {
-			_ = g.SetActiveEQTab("scope")
+			_ = g.SetActiveEQTab("chain")
 			g.SetChainVisible(true)
 			g.SetEQBandGain("main", 1, -8)
 			g.SetEQBandGain("main", 7, 6)
@@ -584,11 +584,27 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectEQTabSpectrum,
 		Setup:       func(g *Game) { _ = g.SetActiveEQTab("spectrum"); g.SetPlaying(true) },
 		MobileSetup: mobileAudioPanelPlaySetup("spectrum")},
-	{Name: "crop_eq_tab_meters", Description: "EQ panel cropped — Meters tab (playing for visible levels)", SettleFrames: 150,
-		Subject:     SubjectEQTabMeters,
-		Setup:       func(g *Game) { _ = g.SetActiveEQTab("meters"); g.SetPlaying(true) },
-		MobileSetup: mobileAudioPanelPlaySetup("meters")},
-	{Name: "crop_scope_default", Description: "Scope panel running, both traces, AG on", SettleFrames: 150,
+	{Name: "crop_eq_tab_levels", Description: "EQ panel cropped — Levels tab (playing for visible levels)", SettleFrames: 150,
+		Subject:     SubjectEQTabLevels,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("levels"); g.SetPlaying(true) },
+		MobileSetup: mobileAudioPanelPlaySetup("levels")},
+	{Name: "crop_audio_selector_bar", Description: "AudioStickyBar standalone crop", SettleFrames: 90,
+		Subject: SubjectAudioStickyBar,
+		Setup:   func(g *Game) { _ = g.SetActiveEQTab("eq") }},
+	{Name: "crop_levels_single_channel", Description: "Levels tab single-channel detail",
+		SettleFrames: 120, Subject: SubjectEQTabLevels,
+		Setup: func(g *Game) { _ = g.SetActiveEQTab("levels"); g.SetPlaying(true) }},
+	{Name: "crop_chain_with_two_stages", Description: "Chain panel with both Tap A and Tap B set",
+		SettleFrames: 150, Subject: SubjectChain,
+		Setup: func(g *Game) {
+			_ = g.SetActiveEQTab("chain")
+			g.SetChainVisible(true)
+			if cz := chainZoneOf(g); cz != nil {
+				cz.SetTapA(scope.StageSynth)
+				cz.SetTapB(scope.StageEQ)
+			}
+		}},
+	{Name: "crop_chain_default", Description: "Chain panel running, both traces, AG on", SettleFrames: 150,
 		Subject: SubjectChain,
 		Setup:   activateScopeTab,
 		MobileSetup: func(g *Game) {
@@ -596,7 +612,7 @@ var sceneCatalog = []Scene{
 			g.drum.SetMobileEQMode(true)
 			activateScopeTab(g)
 		}},
-	{Name: "crop_scope_frozen", Description: "Scope frozen via freeze button", SettleFrames: 150,
+	{Name: "crop_chain_frozen", Description: "Chain frozen via freeze button", SettleFrames: 150,
 		Subject: SubjectChain,
 		Setup: func(g *Game) {
 			activateScopeTab(g)
@@ -604,7 +620,7 @@ var sceneCatalog = []Scene{
 				z.SetFrozen(true)
 			}
 		}},
-	{Name: "crop_scope_auto_gain_on", Description: "Scope with auto-gain enabled (AG pill active)", SettleFrames: 150,
+	{Name: "crop_chain_auto_gain_on", Description: "Chain with auto-gain enabled (AG pill active)", SettleFrames: 150,
 		Subject: SubjectChain,
 		Setup: func(g *Game) {
 			activateScopeTab(g)
@@ -612,7 +628,7 @@ var sceneCatalog = []Scene{
 				z.SetAutoGain(true)
 			}
 		}},
-	{Name: "crop_scope_trace_a_only", Description: "Scope with trace B hidden", SettleFrames: 150,
+	{Name: "crop_chain_trace_a_only", Description: "Chain with trace B hidden", SettleFrames: 150,
 		Subject: SubjectChain,
 		Setup: func(g *Game) {
 			activateScopeTab(g)
@@ -620,7 +636,7 @@ var sceneCatalog = []Scene{
 				z.SetTraceVisible("B", false)
 			}
 		}},
-	{Name: "crop_scope_zoomed_in", Description: "Scope with X-window narrowed to 5ms", SettleFrames: 150,
+	{Name: "crop_chain_zoomed_in", Description: "Chain with X-window narrowed to 5ms", SettleFrames: 150,
 		Subject: SubjectChain,
 		Setup: func(g *Game) {
 			activateScopeTab(g)
@@ -738,7 +754,7 @@ func chainZoneOf(g *Game) *ChainPanelZone {
 // settle countdown. Without taps the trace area renders empty regardless
 // of toggle state, making variants visually indistinguishable.
 func activateScopeTab(g *Game) {
-	_ = g.SetActiveEQTab("scope")
+	_ = g.SetActiveEQTab("chain")
 	g.SetChainVisible(true)
 	if z := chainZoneOf(g); z != nil {
 		z.SetTapA(scope.StageMaster)

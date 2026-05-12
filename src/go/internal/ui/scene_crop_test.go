@@ -72,7 +72,7 @@ func TestSceneCropSubjectsResolveToVisibleRect(t *testing.T) {
 
 // TestSceneCropScopeVariantsProduceDistinctState — each crop_scope_*
 // scene must move the scope zone into a state visibly different from
-// crop_scope_default. Without this check the scope variants would all
+// crop_chain_default. Without this check the scope variants would all
 // render pixel-identically (which we observed during validation: 4 of 5
 // scope crops were byte-identical because the setters silently no-op'd).
 func TestSceneCropScopeVariantsProduceDistinctState(t *testing.T) {
@@ -81,25 +81,25 @@ func TestSceneCropScopeVariantsProduceDistinctState(t *testing.T) {
 		check func(*testing.T, *ChainPanelZone)
 	}
 	cases := []expect{
-		{"crop_scope_frozen", func(t *testing.T, z *ChainPanelZone) {
+		{"crop_chain_frozen", func(t *testing.T, z *ChainPanelZone) {
 			if !z.Frozen() {
-				t.Errorf("scope.Frozen()=false after crop_scope_frozen Setup")
+				t.Errorf("scope.Frozen()=false after crop_chain_frozen Setup")
 			}
 		}},
-		{"crop_scope_auto_gain_on", func(t *testing.T, z *ChainPanelZone) {
+		{"crop_chain_auto_gain_on", func(t *testing.T, z *ChainPanelZone) {
 			if !z.AutoGain() {
-				t.Errorf("scope.AutoGain()=false after crop_scope_auto_gain_on Setup")
+				t.Errorf("scope.AutoGain()=false after crop_chain_auto_gain_on Setup")
 			}
 		}},
-		{"crop_scope_trace_a_only", func(t *testing.T, z *ChainPanelZone) {
+		{"crop_chain_trace_a_only", func(t *testing.T, z *ChainPanelZone) {
 			if z.TraceVisible("B") {
-				t.Errorf("scope.TraceVisible(B)=true after crop_scope_trace_a_only Setup")
+				t.Errorf("scope.TraceVisible(B)=true after crop_chain_trace_a_only Setup")
 			}
 			if !z.TraceVisible("A") {
 				t.Errorf("scope.TraceVisible(A)=false; trace A should remain visible")
 			}
 		}},
-		{"crop_scope_zoomed_in", func(t *testing.T, z *ChainPanelZone) {
+		{"crop_chain_zoomed_in", func(t *testing.T, z *ChainPanelZone) {
 			if z.WindowMs() >= 20 {
 				t.Errorf("scope.WindowMs()=%v; want <20 (zoomed in)", z.WindowMs())
 			}

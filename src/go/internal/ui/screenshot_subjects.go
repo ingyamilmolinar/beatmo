@@ -26,8 +26,9 @@ const (
 	SubjectEQTabEQ        Subject = "eq_tab_eq"
 	SubjectEQTabWave      Subject = "eq_tab_wave"
 	SubjectEQTabSpectrum  Subject = "eq_tab_spectrum"
-	SubjectEQTabMeters    Subject = "eq_tab_meters"
-	SubjectChain          Subject = "scope"
+	SubjectEQTabLevels    Subject = "eq_tab_levels"
+	SubjectChain          Subject = "chain"
+	SubjectAudioStickyBar Subject = "audio_sticky_bar"
 	SubjectToolbar        Subject = "toolbar" // full top header strip (transport+BPM+vol+overflow)
 	SubjectFXPanel        Subject = "fx_panel"
 	SubjectContextMenu    Subject = "context_menu"
@@ -47,8 +48,9 @@ func AllSubjects() []Subject {
 		SubjectEQTabEQ,
 		SubjectEQTabWave,
 		SubjectEQTabSpectrum,
-		SubjectEQTabMeters,
+		SubjectEQTabLevels,
 		SubjectChain,
+		SubjectAudioStickyBar,
 		SubjectToolbar,
 		SubjectFXPanel,
 		SubjectContextMenu,
@@ -108,7 +110,7 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 			return image.Rectangle{}, false
 		}
 		return clamp(dv.eqRect)
-	case SubjectEQTabEQ, SubjectEQTabWave, SubjectEQTabSpectrum, SubjectEQTabMeters:
+	case SubjectEQTabEQ, SubjectEQTabWave, SubjectEQTabSpectrum, SubjectEQTabLevels:
 		if dv == nil || dv.eqPanelZone == nil {
 			return image.Rectangle{}, false
 		}
@@ -126,6 +128,11 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 			return image.Rectangle{}, false
 		}
 		return clamp(sz.Rect())
+	case SubjectAudioStickyBar:
+		if dv == nil || dv.eqPanelZone == nil || dv.eqPanelZone.stickyBar == nil {
+			return image.Rectangle{}, false
+		}
+		return clamp(dv.eqPanelZone.stickyBar.Rect())
 	case SubjectToolbar:
 		if dv == nil {
 			return image.Rectangle{}, false
