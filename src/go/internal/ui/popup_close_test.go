@@ -362,7 +362,7 @@ func TestEQChannelDropdownEscClose(t *testing.T) {
 	dv.calcLayout()
 
 	// Open via portal path so tree's ESC handler can close it.
-	dv.eqPanelZone.eqChannelBtn.OnClick()
+	dv.eqPanelZone.stickyBar.ChannelBtn().OnClick()
 
 	if !dv.tree.Portal().Has("eq-channel-dropdown") {
 		t.Fatalf("eq-channel-dropdown portal not open")
@@ -400,7 +400,7 @@ func TestCloseAllPopups(t *testing.T) {
 	g.drum.openInstMenuPortal()
 	g.drum.openColorWheelPortal()
 	g.drum.openSubdivMenuPortal()
-	g.drum.eqPanelZone.eqChannelBtn.OnClick()
+	g.drum.eqPanelZone.stickyBar.ChannelBtn().OnClick()
 	g.drum.openOverflowMenuPortal()
 	g.drum.openContextMenuPortal()
 

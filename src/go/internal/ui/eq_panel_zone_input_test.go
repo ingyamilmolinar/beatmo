@@ -212,7 +212,7 @@ func TestScrollableDropdownHandler_ThumbDrag(t *testing.T) {
 	restore()
 
 	// Open the dropdown — this creates a portal overlay.
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 
 	if !z.channelScroll.HasScroll() {
 		t.Fatal("expected scrollable dropdown with 11 items")
@@ -267,7 +267,7 @@ func TestCloseChannelDropdown_ClosesOpenDropdown(t *testing.T) {
 	restore()
 
 	// Open dropdown.
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 	if !z.ChannelDropdownOpen() {
 		t.Fatal("expected dropdown to be open")
 	}
@@ -556,7 +556,7 @@ func TestEQ_ChannelDropdownSelectSwitches(t *testing.T) {
 	restore()
 
 	// Open the channel dropdown.
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 	if !z.ChannelDropdownOpen() {
 		t.Fatal("expected channel dropdown to be open")
 	}
@@ -591,8 +591,8 @@ func TestEQ_ChannelDropdownSelectSwitches(t *testing.T) {
 	if z.activeChannel != "kick" {
 		t.Errorf("expected activeChannel='kick', got %q", z.activeChannel)
 	}
-	if z.eqChannelBtn.Text != "Kick" {
-		t.Errorf("expected channel button text 'Kick', got %q", z.eqChannelBtn.Text)
+	if z.stickyBar.ChannelBtn().Text != "Kick" {
+		t.Errorf("expected channel button text 'Kick', got %q", z.stickyBar.ChannelBtn().Text)
 	}
 	_ = tree
 }

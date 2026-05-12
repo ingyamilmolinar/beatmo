@@ -58,7 +58,7 @@ func TestEQWaveButtonAlwaysHasBorder(t *testing.T) {
 	// Give the zone a layout rect so the toggle button gets positioned.
 	z.Layout(image.Rect(0, 0, 400, 200))
 
-	toggleRect := z.tabButtons[0].Rect()
+	toggleRect := z.stickyBar.TabBtn(0).Rect()
 	if toggleRect.Empty() {
 		t.Fatal("toggle button rect is empty after layout")
 	}
@@ -110,8 +110,8 @@ func TestEQPillTabsDrawAboveSpectrumBands(t *testing.T) {
 
 	// Collect all button rects.
 	btnRects := map[string]image.Rectangle{
-		"channel": z.eqChannelBtn.Rect(),
-		"toggle":  z.tabButtons[0].Rect(),
+		"channel": z.stickyBar.ChannelBtn().Rect(),
+		"toggle":  z.stickyBar.TabBtn(0).Rect(),
 		"hpf":     z.hpfBtn.Rect(),
 		"lpf":     z.lpfBtn.Rect(),
 	}

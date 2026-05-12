@@ -267,7 +267,7 @@ func TestEQChannelMenuBuild(t *testing.T) {
 
 	// Open the dropdown via portal path.
 	z := g.drum.eqPanelZone
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 
 	// Total items should be Master + 3 rows = 4
 	scroll := z.channelScroll
@@ -281,8 +281,8 @@ func TestEQChannelMenuBuild(t *testing.T) {
 	}
 
 	// Channel button should show "Master" initially.
-	if z.eqChannelBtn.Text != "Master" {
-		t.Errorf("channel button should show 'Master', got %q", z.eqChannelBtn.Text)
+	if z.stickyBar.ChannelBtn().Text != "Master" {
+		t.Errorf("channel button should show 'Master', got %q", z.stickyBar.ChannelBtn().Text)
 	}
 
 	// If total > visible, scrollbar should be present
@@ -310,7 +310,7 @@ func TestEQChannelDropdownButtonsAreVisible(t *testing.T) {
 
 	// Open the dropdown via portal path
 	z := dv.eqPanelZone
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 
 	// Check that the trigger button is visible within the drum view bounds
 	if dv.eqChannelBtn() == nil {
@@ -563,7 +563,7 @@ func TestEQChannelDropdownBlocksLayoutHandler(t *testing.T) {
 	}
 
 	// Menu open via portal path - should be capturing and blocking
-	dv.eqPanelZone.eqChannelBtn.OnClick()
+	dv.eqPanelZone.stickyBar.ChannelBtn().OnClick()
 	if !dv.Capturing() {
 		t.Error("Capturing() should be true when EQ channel dropdown is open")
 	}

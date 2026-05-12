@@ -611,8 +611,8 @@ type DrumView struct {
 func (dv *DrumView) eqMuteBtns() []*Button    { return dv.eqPanelZone.eqMuteBtns }
 func (dv *DrumView) eqBandGainsDB() []float64 { return dv.eqPanelZone.bandGainsDB }
 func (dv *DrumView) eqBandMuted() []bool      { return dv.eqPanelZone.bandMuted }
-func (dv *DrumView) eqToggleBtn() *Button     { return dv.eqPanelZone.tabButtons[0] }
-func (dv *DrumView) eqChannelBtn() *Button    { return dv.eqPanelZone.eqChannelBtn }
+func (dv *DrumView) eqToggleBtn() *Button     { return dv.eqPanelZone.stickyBar.TabBtn(0) }
+func (dv *DrumView) eqChannelBtn() *Button    { return dv.eqPanelZone.stickyBar.ChannelBtn() }
 func (dv *DrumView) hpfBtn() *Button          { return dv.eqPanelZone.hpfBtn }
 func (dv *DrumView) lpfBtn() *Button          { return dv.eqPanelZone.lpfBtn }
 

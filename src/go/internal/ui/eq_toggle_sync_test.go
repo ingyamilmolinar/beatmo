@@ -34,7 +34,7 @@ func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 	initialMode := dv.eqWaveformMode
 
 	// Click the Wave tab button (index 1 since AllPanelTabs = [EQ, Wave, Spectrum, Meters]).
-	waveBtn := dv.eqPanelZone.tabButtons[1]
+	waveBtn := dv.eqPanelZone.stickyBar.TabBtn(1)
 	if waveBtn == nil {
 		t.Skip("wave tab button is nil")
 	}
@@ -121,8 +121,8 @@ func TestEQToggleRoundTrip(t *testing.T) {
 		restore()
 	}
 
-	eqBtn := dv.eqPanelZone.tabButtons[0]
-	waveBtn := dv.eqPanelZone.tabButtons[1]
+	eqBtn := dv.eqPanelZone.stickyBar.TabBtn(0)
+	waveBtn := dv.eqPanelZone.stickyBar.TabBtn(1)
 	if eqBtn.Rect().Empty() || waveBtn.Rect().Empty() {
 		t.Skip("tab button rects are empty")
 	}

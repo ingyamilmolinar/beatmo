@@ -111,7 +111,7 @@ func TestInputIsolation_AnyDropdownOpen(t *testing.T) {
 	}{
 		{"subdiv menu", func() { dv.subdivBtn().OnClick() }, func() { dv.CloseAllPopups() }},
 		{"instrument menu", func() { dv.openInstMenuForRow(0) }, func() { dv.CloseAllPopups() }},
-		{"eq channel menu", func() { dv.eqPanelZone.eqChannelBtn.OnClick() }, func() { dv.CloseAllPopups() }},
+		{"eq channel menu", func() { dv.eqPanelZone.stickyBar.ChannelBtn().OnClick() }, func() { dv.CloseAllPopups() }},
 		{"overflow menu", func() { dv.openOverflowMenuPortal() }, func() { dv.CloseAllPopups() }},
 	}
 
@@ -142,7 +142,7 @@ func TestInputIsolation_OverlayBlocksInput(t *testing.T) {
 		{"no overlay", func() {}, func() {}, false},
 		{"instrument menu", func() { dv.openInstMenuForRow(0) }, func() { dv.CloseAllPopups() }, true},
 		{"subdiv menu", func() { dv.subdivBtn().OnClick() }, func() { dv.CloseAllPopups() }, true},
-		{"eq channel menu", func() { dv.eqPanelZone.eqChannelBtn.OnClick() }, func() { dv.CloseAllPopups() }, true},
+		{"eq channel menu", func() { dv.eqPanelZone.stickyBar.ChannelBtn().OnClick() }, func() { dv.CloseAllPopups() }, true},
 		{"rename box", func() {
 			dv.renameComp.SetProps(RenameProps{AnchorRect: image.Rect(0, 0, 80, 20), InitialText: "test", MaxLen: 32})
 			dv.renameComp.Open()
@@ -288,7 +288,7 @@ func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 		{"colorMenu", func(dv *DrumView) { dv.rowColorBtns()[0].OnClick() }},
 		{"subdivMenu", func(dv *DrumView) { dv.subdivBtn().OnClick() }},
 		{"fxPanel", func(dv *DrumView) { dv.openFXPanelPortal() }},
-		{"eqChannel", func(dv *DrumView) { dv.eqPanelZone.eqChannelBtn.OnClick() }},
+		{"eqChannel", func(dv *DrumView) { dv.eqPanelZone.stickyBar.ChannelBtn().OnClick() }},
 		{"contextMenu", func(dv *DrumView) { dv.openContextMenuPortal() }},
 		{"overflowMenu", func(dv *DrumView) { dv.openOverflowMenuPortal() }},
 	}

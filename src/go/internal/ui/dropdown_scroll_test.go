@@ -142,7 +142,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 
 	// Open EQ channel menu via portal path
 	z := dv.eqPanelZone
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 	eqScroll := z.channelScroll
 
 	eqScrollBefore := eqScroll.VS.First
@@ -158,7 +158,7 @@ func TestInstMenuAndEQMenuScrollersAreIndependent(t *testing.T) {
 	}
 
 	// Close EQ channel menu and reopen instrument menu
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 	dv.rowLabels()[0].OnClick()
 	if len(dv.instCategoryBtns) > 0 {
 		dv.instCategoryBtns[0].OnClick()
@@ -271,7 +271,7 @@ func TestEQMenuScrollDoesNotAffectRowOffset(t *testing.T) {
 
 	// Open EQ channel menu via portal path
 	z := dv.eqPanelZone
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 	eqScroll := z.channelScroll
 
 	if !eqScroll.HasScroll() {

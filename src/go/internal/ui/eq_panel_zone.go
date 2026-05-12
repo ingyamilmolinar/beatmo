@@ -60,6 +60,12 @@ type EQCallbacks struct {
 	// the Scope auto-expand path was retired (every tab defaults to tall).
 	OnTabChange func(tab PanelTab)
 
+	// OnClose is invoked when the user clicks the close pill on the sticky
+	// bar. May be nil; the close button silently no-ops when unset. Owners
+	// (DrumView) typically wire this to "hide the panel" / "switch back to
+	// rows view" depending on platform.
+	OnClose func()
+
 	// BeatGridFrac returns fractional X positions in [0,1) where vertical
 	// beat markers should be drawn on the Wave tab. Nil disables the overlay
 	// (the wave still renders cleanly). Wired to DrumView.beatGridFractions
@@ -77,12 +83,10 @@ type EQPanelZone struct {
 	portal     *OverlayPortal // set by tree wiring
 
 	// UI elements
-	eqMuteBtns   []*Button  // per-band mute
-	eqChannelBtn *Button    // channel selector
-	tabButtons   [5]*Button // one per tab in AllPanelTabs() order
-	freezeBtn    *Button    // pause/play for analyzer capture
-	hpfBtn       *Button
-	lpfBtn       *Button
+	eqMuteBtns []*Button       // per-band mute
+	stickyBar  *AudioStickyBar // chrome strip: channel, tabs, freeze, close
+	hpfBtn     *Button         // EQ-tab content item (sub-strip above curve)
+	lpfBtn     *Button         // EQ-tab content item (sub-strip above curve)
 
 	// Visual state
 	eqBandVals []float64
@@ -170,35 +174,7 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 }
 
 func (z *EQPanelZone) initButtons() {
-	tabs := AllPanelTabs()
-	for i, tab := range tabs {
-		t := tab // capture
-		z.tabButtons[i] = NewButton(PanelTabLabelForProfile(t), InstButtonStyle, func() {
-			z.tabState.SetActiveTab(t)
-			if z.callbacks.OnTabChange != nil {
-				z.callbacks.OnTabChange(t)
-			}
-		})
-	}
-
-	// Freeze indicator uses single-character text per DESIGN.md §5d
-	// (permitted text-glyph exception): "||" frozen, ">" resume; tinted
-	// colTextSecondary inactive, colAccent when frozen.
-	z.freezeBtn = NewButton("||", InstButtonStyle, func() {
-		if z.callbacks.OnFreezeToggle != nil {
-			frozen := z.callbacks.OnFreezeToggle()
-			if frozen {
-				z.freezeBtn.Text = ">"
-				z.freezeBtn.TextColor = colAccent
-			} else {
-				z.freezeBtn.Text = "||"
-				z.freezeBtn.TextColor = colTextSecondary
-			}
-		}
-	})
-	z.freezeBtn.TextColor = colTextSecondary
-
-	z.eqChannelBtn = NewButton("Master", InstButtonStyle, func() {
+	onChannel := func() {
 		if z.channelOpen {
 			z.channelOpen = false
 			if z.portal != nil {
@@ -208,7 +184,36 @@ func (z *EQPanelZone) initButtons() {
 			z.channelOpen = true
 			z.buildChannelDropdown()
 		}
-	})
+	}
+	onFreeze := func() {
+		if z.callbacks.OnFreezeToggle == nil {
+			return
+		}
+		frozen := z.callbacks.OnFreezeToggle()
+		freeze := z.stickyBar.FreezeBtn()
+		if freeze == nil {
+			return
+		}
+		if frozen {
+			freeze.Text = ">"
+			freeze.TextColor = colAccent
+		} else {
+			freeze.Text = "||"
+			freeze.TextColor = colTextSecondary
+		}
+	}
+	onClose := func() {
+		if z.callbacks.OnClose != nil {
+			z.callbacks.OnClose()
+		}
+	}
+	onTab := func(tab PanelTab) {
+		z.tabState.SetActiveTab(tab)
+		if z.callbacks.OnTabChange != nil {
+			z.callbacks.OnTabChange(tab)
+		}
+	}
+	z.stickyBar = NewAudioStickyBar(130, onChannel, onFreeze, onClose, onTab)
 
 	z.hpfBtn = NewButton("HP", InstButtonStyle, func() {
 		if z.callbacks.OnToggleHPF != nil {
@@ -375,10 +380,23 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 		z.drawEQCurve(screen)
 	}
 
-	// Pill tab buttons drawn last so they are never occluded by band overlays.
-	if z.eqChannelBtn != nil {
-		z.drawPillTab(screen, z.eqChannelBtn, true, "")
+	// Sync the freeze pill's text/color from analyzer state before the
+	// sticky bar renders (the bar reads the pill's current Text to decide
+	// whether to render the active/inactive variant).
+	if z.stickyBar != nil {
+		if freeze := z.stickyBar.FreezeBtn(); freeze != nil {
+			if state := z.getAnalyzerStateForTab(activeTab); state != nil && state.Capture != nil && state.Capture.Frozen {
+				freeze.Text = ">"
+				freeze.TextColor = colAccent
+			} else {
+				freeze.Text = "||"
+				freeze.TextColor = colTextSecondary
+			}
+		}
 	}
+
+	// HPF/LPF live inside the content rect on TabEQ only — drawn before the
+	// sticky bar (the bar is chrome and should always sit on top).
 	if z.tabState.ActiveTab() == TabEQ {
 		if z.hpfBtn != nil {
 			hpfActive := z.callbacks.HPFEnabled != nil && z.callbacks.HPFEnabled()
@@ -388,32 +406,11 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			lpfActive := z.callbacks.LPFEnabled != nil && z.callbacks.LPFEnabled()
 			z.drawPillTab(screen, z.lpfBtn, lpfActive, "")
 		}
-	} else {
-		// Freeze button on analysis tabs (DESIGN.md §5d text-glyph exception).
-		if z.freezeBtn != nil {
-			// Sync button text from analyzer state each frame. Routes
-			// through the per-Draw memo so we don't double-call the
-			// builder (the tab-content draw above already populated it).
-			if state := z.getAnalyzerStateForTab(activeTab); state != nil && state.Capture != nil && state.Capture.Frozen {
-				z.freezeBtn.Text = ">"
-				z.freezeBtn.TextColor = colAccent
-			} else {
-				z.freezeBtn.Text = "||"
-				z.freezeBtn.TextColor = colTextSecondary
-			}
-			frozen := z.freezeBtn.Text == ">"
-			z.drawPillTab(screen, z.freezeBtn, frozen, "")
-		}
 	}
-	// Mobile: right-side tab strip is suppressed (Theme 1 — bottom bar
-	// owns the switcher). Skip drawing the in-panel tab buttons.
-	if !Profile().IsMobile() {
-		tabs := AllPanelTabs()
-		for i, btn := range z.tabButtons {
-			if btn != nil {
-				z.drawPillTab(screen, btn, z.tabState.ActiveTab() == tabs[i], "")
-			}
-		}
+
+	// Sticky bar drawn last so chrome is never occluded by band overlays.
+	if z.stickyBar != nil {
+		z.stickyBar.Draw(screen, activeTab)
 	}
 
 	drawRect(screen, z.rect, colButtonBorder, false)
@@ -490,10 +487,25 @@ func (z *EQPanelZone) SetWaveformMode(v bool) {
 	}
 }
 
-// contentRect returns the drawable area below the header buttons.
+// contentRect returns the drawable area below the sticky-bar chrome strip.
+// The strip occupies stickyBarH (=26) pixels at the top of z.rect.
 func (z *EQPanelZone) contentRect() image.Rectangle {
-	headerH := 26 // 4px top pad + 18px button + 4px bottom pad
-	return image.Rect(z.rect.Min.X, z.rect.Min.Y+headerH, z.rect.Max.X, z.rect.Max.Y)
+	return image.Rect(z.rect.Min.X, z.rect.Min.Y+stickyBarH, z.rect.Max.X, z.rect.Max.Y)
+}
+
+// hpfLPFSubStripH is the height of the HPF/LPF button row drawn at the top
+// of the EQ-tab content rect (above the EQ curve / spectrum bars).
+const hpfLPFSubStripH = 22
+
+// eqCurveRect returns the rectangle inside contentRect() that holds the EQ
+// curve / spectrum visualization on TabEQ — i.e. content rect minus the
+// HPF/LPF sub-strip at the top.
+func (z *EQPanelZone) eqCurveRect() image.Rectangle {
+	cr := z.contentRect()
+	if z.tabState != nil && z.tabState.ActiveTab() == TabEQ {
+		return image.Rect(cr.Min.X, cr.Min.Y+hpfLPFSubStripH, cr.Max.X, cr.Max.Y)
+	}
+	return cr
 }
 
 // SetPortal sets the portal reference for opening overlays.
@@ -539,65 +551,27 @@ func (z *EQPanelZone) ChannelDropdownOpen() bool {
 
 func (z *EQPanelZone) layoutButtons() {
 	r := z.rect
-	btnW := 56
+
+	// Sticky bar owns channel pill + tab pills + freeze + close. Its own
+	// Layout() handles right-aligned tab packing and the close/freeze
+	// cluster. The channel-pill width is driven by the channel button's
+	// current Text (set by setEQActiveChannel when the user picks an
+	// instrument), so the cluster expands cleanly without an extra hook.
+	if z.stickyBar != nil {
+		z.stickyBar.Layout(image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+stickyBarH))
+	}
+
+	// HPF/LPF live inside the content rect on TabEQ — at the top, above the
+	// EQ curve. They participate in layout regardless of active tab (so the
+	// rects are stable) but are only drawn / hit-tested when TabEQ is active.
+	cr := z.contentRect()
 	btnH := 18
-	if btnW > r.Dx()/2 {
-		btnW = r.Dx() / 2
-	}
-
-	// Refresh tab labels in case the screen-class crossed mobile↔desktop since
-	// initButtons ran. Cheap (5 string assignments) and avoids stale labels.
-	for i, tab := range AllPanelTabs() {
-		if i < len(z.tabButtons) && z.tabButtons[i] != nil {
-			z.tabButtons[i].Text = PanelTabLabelForProfile(tab)
-		}
-	}
-
-	// Channel button (left).
-	channelBtnW := z.calcChannelBtnWidth()
-	if channelBtnW > r.Dx()/3 {
-		channelBtnW = r.Dx() / 3
-	}
-	channelBtnRect := image.Rect(r.Min.X+6, r.Min.Y+4, r.Min.X+6+channelBtnW, r.Min.Y+4+btnH)
-	z.eqChannelBtn.SetRect(channelBtnRect)
-
-	// Tab buttons (right-aligned, from right to left).
-	// Mobile (Theme 1): the 6-segment bottom-bar nav owns the tab switcher,
-	// so suppress the panel's internal right-side tab strip. Zero out the
-	// rects so stale hit areas don't fire.
-	if Profile().IsMobile() {
-		for i := range z.tabButtons {
-			if z.tabButtons[i] != nil {
-				z.tabButtons[i].SetRect(image.Rectangle{})
-			}
-		}
-	} else {
-		const tabGap = 2
-		tabBtnH := btnH
-		rightEdge := r.Max.X - 6
-		for i := len(z.tabButtons) - 1; i >= 0; i-- {
-			label := z.tabButtons[i].Text
-			tw := TextWidth(label) + 12 // 6px padding each side
-			if tw < 28 {
-				tw = 28
-			}
-			tabRect := image.Rect(rightEdge-tw, r.Min.Y+4, rightEdge, r.Min.Y+4+tabBtnH)
-			z.tabButtons[i].SetRect(tabRect)
-			rightEdge = tabRect.Min.X - tabGap
-		}
-	}
-
-	// HPF/LPF buttons between channel and tab bar (shown on EQ tab).
 	filterBtnW := 28
-	hpfX := channelBtnRect.Max.X + 4
-	z.hpfBtn.SetRect(image.Rect(hpfX, r.Min.Y+4, hpfX+filterBtnW, r.Min.Y+4+btnH))
+	subY := cr.Min.Y + 2
+	hpfX := cr.Min.X + 6
+	z.hpfBtn.SetRect(image.Rect(hpfX, subY, hpfX+filterBtnW, subY+btnH))
 	lpfX := hpfX + filterBtnW + 2
-	z.lpfBtn.SetRect(image.Rect(lpfX, r.Min.Y+4, lpfX+filterBtnW, r.Min.Y+4+btnH))
-
-	// Freeze button between channel and tab bar (shown on non-EQ tabs).
-	freezeW := 24
-	freezeX := channelBtnRect.Max.X + 4
-	z.freezeBtn.SetRect(image.Rect(freezeX, r.Min.Y+4, freezeX+freezeW, r.Min.Y+4+btnH))
+	z.lpfBtn.SetRect(image.Rect(lpfX, subY, lpfX+filterBtnW, subY+btnH))
 }
 
 func (z *EQPanelZone) layoutMuteAndDBInputs() {
@@ -693,36 +667,15 @@ func (z *EQPanelZone) rebuildHitAreas() {
 		})
 	}
 
-	// Channel button.
-	if cr := z.eqChannelBtn.Rect(); !cr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    cr,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.eqChannelBtn},
-			Tag:     "eq-channel-btn",
-		})
+	// Sticky bar owns chrome hits (channel pill, tab pills, freeze, close).
+	// The bar already z-indexes them at parentZIndex+1 to match the legacy
+	// in-line build.
+	if z.stickyBar != nil {
+		z.hitAreas = append(z.hitAreas, z.stickyBar.HitAreas()...)
 	}
 
-	// Tab buttons. Mobile: skipped — bottom bar segmented switcher owns
-	// these (Theme 1).
-	if !Profile().IsMobile() {
-		for i, btn := range z.tabButtons {
-			if btn == nil {
-				continue
-			}
-			if tr := btn.Rect(); !tr.Empty() {
-				z.hitAreas = append(z.hitAreas, HitArea{
-					Rect:    tr,
-					ZIndex:  zIdx + 1,
-					Handler: &buttonHitAdapter{btn: btn},
-					Tag:     fmt.Sprintf("eq-tab-%d", i),
-				})
-			}
-		}
-	}
-
+	// HPF/LPF are content-rect items on TabEQ only.
 	if z.tabState.ActiveTab() == TabEQ {
-		// HPF button.
 		if hr := z.hpfBtn.Rect(); !hr.Empty() {
 			z.hitAreas = append(z.hitAreas, HitArea{
 				Rect:    hr,
@@ -731,24 +684,12 @@ func (z *EQPanelZone) rebuildHitAreas() {
 				Tag:     "eq-hpf-btn",
 			})
 		}
-
-		// LPF button.
 		if lr := z.lpfBtn.Rect(); !lr.Empty() {
 			z.hitAreas = append(z.hitAreas, HitArea{
 				Rect:    lr,
 				ZIndex:  zIdx + 1,
 				Handler: &buttonHitAdapter{btn: z.lpfBtn},
 				Tag:     "eq-lpf-btn",
-			})
-		}
-	} else {
-		// Freeze button (analysis tabs only).
-		if fr := z.freezeBtn.Rect(); !fr.Empty() {
-			z.hitAreas = append(z.hitAreas, HitArea{
-				Rect:    fr,
-				ZIndex:  zIdx + 1,
-				Handler: &buttonHitAdapter{btn: z.freezeBtn},
-				Tag:     "eq-freeze-btn",
 			})
 		}
 	}
@@ -997,7 +938,7 @@ func (z *EQPanelZone) buildChannelDropdown() {
 		ID:      "eq-channel-dropdown",
 		Overlay: overlay,
 		Modal:   false,
-		Anchor:  z.eqChannelBtn.Rect(),
+		Anchor:  z.stickyBar.ChannelBtn().Rect(),
 		OnClose: func() {
 			z.channelOpen = false
 			if z.callbacks.OnChannelDropdownClose != nil {
@@ -1032,7 +973,7 @@ func (o *eqChannelDropdownOverlay) buildCallbacks() {
 		}
 		z.channelOpen = false
 		z.activeChannel = "main"
-		z.eqChannelBtn.Text = "Master"
+		z.stickyBar.ChannelBtn().Text = "Master"
 		if z.portal != nil {
 			z.portal.Close("eq-channel-dropdown")
 		}
@@ -1048,7 +989,7 @@ func (o *eqChannelDropdownOverlay) buildCallbacks() {
 				}
 				z.channelOpen = false
 				z.activeChannel = instID
-				z.eqChannelBtn.Text = name
+				z.stickyBar.ChannelBtn().Text = name
 				if z.portal != nil {
 					z.portal.Close("eq-channel-dropdown")
 				}
@@ -1145,7 +1086,7 @@ func (o *eqChannelDropdownOverlay) buildButtons() {
 	if o.zone.portal != nil {
 		bounds = o.zone.portal.screenBounds
 	}
-	o.layoutFor(o.zone.eqChannelBtn.Rect(), bounds)
+	o.layoutFor(o.zone.stickyBar.ChannelBtn().Rect(), bounds)
 }
 
 func (o *eqChannelDropdownOverlay) HitAreas() []HitArea {
@@ -1181,7 +1122,7 @@ func (o *eqChannelDropdownOverlay) Update() {
 // scroll position without changing the scroll state or allOnClicks.
 func (o *eqChannelDropdownOverlay) rebuildVisibleButtons() {
 	z := o.zone
-	anchor := z.eqChannelBtn.Rect()
+	anchor := z.stickyBar.ChannelBtn().Rect()
 	scroll := z.channelScroll
 	btnH := scroll.ItemHeight
 	if btnH < 1 {

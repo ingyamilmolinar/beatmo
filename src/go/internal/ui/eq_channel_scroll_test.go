@@ -38,7 +38,7 @@ func TestEQChannelMenuWheelScroll(t *testing.T) {
 	dv.calcLayout()
 
 	// Open the EQ channel menu via the zone's channel button (creates portal entry).
-	dv.eqPanelZone.eqChannelBtn.OnClick()
+	dv.eqPanelZone.stickyBar.ChannelBtn().OnClick()
 
 	// Use the zone's channelScroll (portal path).
 	scroll := dv.eqPanelZone.channelScroll
@@ -296,7 +296,7 @@ func TestEQChannelDropdownPortalDeferredTap(t *testing.T) {
 
 	// Quick tap on the second button (first row instrument).
 	// The dropdown buttons are positioned below the channel button anchor.
-	anchor := z.eqChannelBtn.Rect()
+	anchor := z.stickyBar.ChannelBtn().Rect()
 	btnH := 24                           // default dropdown button height
 	tapY := anchor.Max.Y + btnH + btnH/2 // center of second button
 	tapX := (anchor.Min.X + anchor.Max.X) / 2
@@ -493,7 +493,7 @@ func TestEQChannelDropdownVisibleRowsCappedByAvailablePixels(t *testing.T) {
 	}
 
 	scroll := z.channelScroll
-	anchor := z.eqChannelBtn.Rect()
+	anchor := z.stickyBar.ChannelBtn().Rect()
 	availPx := 300 - anchor.Max.Y // viewport bottom minus button bottom
 	if availPx <= 0 {
 		t.Fatalf("setup: anchor.Max.Y=%d should leave space below in 0..300 viewport", anchor.Max.Y)

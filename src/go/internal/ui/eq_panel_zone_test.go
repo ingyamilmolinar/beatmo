@@ -785,7 +785,7 @@ func TestEQPanelZone_ChannelDropdownWheelScroll(t *testing.T) {
 	tree.Update()
 	restore()
 
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 
 	if !z.channelScroll.HasScroll() {
 		t.Skip("dropdown does not overflow with 11 items in this layout")
@@ -821,7 +821,7 @@ func TestEQPanelZone_ChannelDropdownScrollbarDrag(t *testing.T) {
 	tree.Update()
 	restore()
 
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 
 	overlay := &eqChannelDropdownOverlay{zone: z}
 	overlay.buildButtons()
@@ -861,7 +861,7 @@ func TestEQPanelZone_ChannelDropdownTouchScrollCancelsTap(t *testing.T) {
 	tree.Update()
 	restore()
 
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 
 	overlay := &eqChannelDropdownOverlay{zone: z}
 	overlay.buildButtons()
@@ -908,7 +908,7 @@ func TestEQPanelZone_ChannelDropdownDeferredTap(t *testing.T) {
 	tree.Update()
 	restore()
 
-	z.eqChannelBtn.OnClick()
+	z.stickyBar.ChannelBtn().OnClick()
 
 	overlay := &eqChannelDropdownOverlay{zone: z}
 	overlay.buildButtons()
@@ -949,9 +949,9 @@ func TestEQPanelZone_ChannelDropdownSelectMaster(t *testing.T) {
 
 	// Switch to a non-master channel first.
 	z.activeChannel = "kick"
-	z.eqChannelBtn.Text = "Kick"
+	z.stickyBar.ChannelBtn().Text = "Kick"
 
-	z.eqChannelBtn.OnClick() // open dropdown
+	z.stickyBar.ChannelBtn().OnClick() // open dropdown
 
 	overlay := &eqChannelDropdownOverlay{zone: z}
 	overlay.buildButtons()
