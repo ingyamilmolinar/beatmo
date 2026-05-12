@@ -153,6 +153,83 @@ func TestStickyBarCloseClickInvokesCallback(t *testing.T) {
 	}
 }
 
+// TestStickyBarHasFreqScaleChip verifies the bar exposes a non-nil
+// freq-scale chip whose default state is the log axis, with the label
+// "log".
+func TestStickyBarHasFreqScaleChip(t *testing.T) {
+	assertDefaultParityState(t)
+
+	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
+	if bar.FreqScaleBtn() == nil {
+		t.Fatal("FreqScaleBtn() returned nil; want non-nil button")
+	}
+	if !bar.FreqScaleLog() {
+		t.Errorf("FreqScaleLog() = false at construction; want true (log default)")
+	}
+	if got := bar.FreqScaleBtn().Text; got != "log" {
+		t.Errorf("FreqScaleBtn().Text = %q at construction; want \"log\"", got)
+	}
+}
+
+// TestStickyBarFreqScaleClickToggles verifies that clicking the freq-scale
+// chip flips between log and lin and updates the button label in lockstep.
+func TestStickyBarFreqScaleClickToggles(t *testing.T) {
+	assertDefaultParityState(t)
+
+	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
+	btn := bar.FreqScaleBtn()
+	if btn == nil || btn.OnClick == nil {
+		t.Fatal("freq-scale chip should have OnClick set")
+	}
+
+	btn.OnClick()
+	if bar.FreqScaleLog() {
+		t.Errorf("after 1 click: FreqScaleLog()=true; want false")
+	}
+	if got := btn.Text; got != "lin" {
+		t.Errorf("after 1 click: Text=%q; want \"lin\"", got)
+	}
+
+	btn.OnClick()
+	if !bar.FreqScaleLog() {
+		t.Errorf("after 2 clicks: FreqScaleLog()=false; want true (toggled back)")
+	}
+	if got := btn.Text; got != "log" {
+		t.Errorf("after 2 clicks: Text=%q; want \"log\"", got)
+	}
+}
+
+// TestStickyBarFreqScaleChipFitsInRect verifies the freq-scale chip lays out
+// inside the sticky bar after Layout. Guards against the chip overflowing the
+// bar or being assigned an empty rect (which would skip the hit-area build).
+func TestStickyBarFreqScaleChipFitsInRect(t *testing.T) {
+	assertDefaultParityState(t)
+
+	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
+	r := bar.FreqScaleBtn().Rect()
+	if r.Empty() {
+		t.Fatal("freq-scale chip rect should be non-empty after Layout")
+	}
+	if r.Min.X < 0 || r.Max.X > 800 {
+		t.Errorf("freq-scale chip rect %v overflows bar width 800", r)
+	}
+	if r.Min.Y < 0 || r.Max.Y > stickyBarH {
+		t.Errorf("freq-scale chip rect %v overflows bar height %d", r, stickyBarH)
+	}
+
+	// Confirm the chip's hit area is registered.
+	foundTag := false
+	for _, a := range bar.HitAreas() {
+		if a.Tag == "eq-freqscale-btn" {
+			foundTag = true
+			break
+		}
+	}
+	if !foundTag {
+		t.Error("eq-freqscale-btn hit area missing from sticky bar HitAreas()")
+	}
+}
+
 // --- Task B2: integration with EQPanelZone ---
 
 // TestEQStickyBarOwnsAllChromeHits verifies that every chrome-prefixed hit

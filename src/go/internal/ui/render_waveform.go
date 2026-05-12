@@ -1,29 +1,35 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // drawAnalyzerWaveform renders a waveform from the given channel metrics into
 // the rectangle. It picks frozen capture data when available, otherwise
 // falls back to the channel's rolling waveform.
-func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer) {
+//
+// beatGrid is an optional slice of fractional X positions (in [0,1)) where
+// vertical beat markers should be drawn; nil disables the overlay. Fed by
+// dv.beatGridFractions() via EQCallbacks.BeatGridFrac.
+//
+// The channel name is no longer drawn inside the waveform — the sticky bar
+// above the panel owns channel identity (see audio_sticky_bar.go). Restating
+// it here was redundant chrome.
+func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, beatGrid []float64) {
 	if ch == nil {
 		drawRect(dst, rect, colButtonBorder, false)
 		return
 	}
 
-	// Choose waveform source and channel name.
+	// Choose waveform source.
 	var wave []float64
 	frozen := capture != nil && capture.Frozen
-	channelName := ch.Name
-	if channelName == "" {
-		channelName = "Master"
-	}
 	switch {
 	case frozen:
 		wave = capture.Wave.Samples
@@ -73,10 +79,20 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		return
 	}
 
-	drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, 1.0, nil)
+	// Beat-grid overlay: 1-px vertical ticks at fractional positions (AlphaSubtle).
+	// Drawn before the trace so the wave stays visually on top.
+	if len(beatGrid) > 0 {
+		beatCol := WithAlpha(genColorBorder, AlphaSubtle)
+		for _, frac := range beatGrid {
+			if frac < 0 || frac >= 1 {
+				continue
+			}
+			x := waveRect.Min.X + int(frac*float64(width))
+			drawRect(dst, image.Rect(x, waveRect.Min.Y, x+1, waveRect.Max.Y), beatCol, true)
+		}
+	}
 
-	// Channel name at top-left of waveform area.
-	DrawTextColorAtScale(dst, channelName, waveRect.Min.X+4, waveRect.Min.Y+2, colTextSecondary, captionScale)
+	drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, 1.0, nil)
 
 	// Frozen indicator at top-right.
 	if frozen {
@@ -146,4 +162,70 @@ func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY
 
 		drawRect(dst, image.Rect(rect.Min.X+x, y0, rect.Min.X+x+1, y1), col, true)
 	}
+}
+
+// drawWaveformCursor renders a vertical crosshair at cursorX inside the
+// waveform area, plus an "amplitude · ms-in-window" readout label anchored
+// above. cursorX is in screen pixels; nothing renders if cursorX falls
+// outside the waveform rect.
+//
+// Sample lookup uses the same fractional offset the waveform renderer uses
+// to map pixels → samples, so the readout reflects what the user sees on
+// screen. When the capture buffer is frozen we read from the frozen copy;
+// otherwise we read the rolling channel waveform.
+func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, cursorX int) {
+	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y)
+	if cursorX < waveRect.Min.X || cursorX >= waveRect.Max.X {
+		return
+	}
+	if waveRect.Dx() <= 0 || waveRect.Dy() <= 0 {
+		return
+	}
+
+	// Vertical line.
+	drawRect(dst, image.Rect(cursorX, waveRect.Min.Y, cursorX+1, waveRect.Max.Y), colTextSecondary, true)
+
+	// Resolve sample source (frozen wins).
+	var wave []float64
+	if capture != nil && capture.Frozen {
+		wave = capture.Wave.Samples
+	}
+	if wave == nil && ch != nil {
+		wave = ch.Waveform
+	}
+	if len(wave) == 0 {
+		return
+	}
+
+	// Map cursorX → sample index → amplitude.
+	frac := float64(cursorX-waveRect.Min.X) / float64(waveRect.Dx())
+	idx := int(frac * float64(len(wave)))
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(wave) {
+		idx = len(wave) - 1
+	}
+	amp := wave[idx]
+	sr := audio.SampleRate()
+	if sr <= 0 {
+		sr = 44100
+	}
+	msInWindow := float64(idx) * 1000.0 / float64(sr)
+
+	label := fmt.Sprintf("%.2f · %.1f ms", amp, msInWindow)
+	captionScale := FontSizeCaption / FontSizeBody
+	tw := int(float64(TextWidth(label)) * captionScale)
+	th := int(float64(TextHeight()) * captionScale)
+	lx := cursorX + 4
+	if lx+tw+4 > waveRect.Max.X {
+		lx = cursorX - tw - 4
+	}
+	if lx < waveRect.Min.X {
+		lx = waveRect.Min.X
+	}
+	ly := waveRect.Min.Y + 2
+	bg := image.Rect(lx-2, ly-1, lx+tw+2, ly+th+2)
+	drawRect(dst, bg, WithAlpha(colSurface2, AlphaStrong), true)
+	DrawTextColorAtScale(dst, label, lx, ly, colTextSecondary, captionScale)
 }

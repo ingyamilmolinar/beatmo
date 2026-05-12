@@ -13,16 +13,18 @@ import (
 const stickyBarH = 26
 
 // AudioStickyBar owns the chrome strip at the top of EQPanelZone: channel
-// dropdown trigger, five tab pills, freeze toggle, close button. The bar is
-// fully self-contained; its constructor receives callbacks for each action,
-// so the bar never reaches back into its parent zone.
+// dropdown trigger, five tab pills, freeze toggle, freq-scale chip (log/lin),
+// close button. The bar is fully self-contained; its constructor receives
+// callbacks for each action, so the bar never reaches back into its parent
+// zone.
 type AudioStickyBar struct {
 	rect         image.Rectangle
 	channelBtn   *Button
 	tabBtns      [5]*Button
 	freezeBtn    *Button
 	closeBtn     *Button
-	freqScaleBtn *Button // log/lin chip (Phase D); nil until then
+	freqScaleBtn *Button // log/lin chip — toggles the Spectrum tab's frequency axis
+	freqScaleLog bool    // true = log axis (default), false = linear axis
 	hitAreas     []HitArea
 	parentZIndex int
 }
@@ -47,6 +49,20 @@ func NewAudioStickyBar(parentZIndex int, onChannel, onFreeze, onClose func(), on
 	// (permitted text-glyph exception): "||" when capturing, ">" when frozen.
 	b.freezeBtn = NewButton("||", InstButtonStyle, onFreeze)
 	b.freezeBtn.TextColor = colTextSecondary
+	// Frequency-scale chip: toggles between log (default, 10 ISO bands) and
+	// linear (10 equal-Hz bands across [20, 22000]) on the Spectrum tab.
+	// Per-session sticky — no persistence across launches.
+	b.freqScaleLog = true
+	b.freqScaleBtn = NewButton("log", InstButtonStyle, nil)
+	b.freqScaleBtn.OnClick = func() {
+		b.freqScaleLog = !b.freqScaleLog
+		if b.freqScaleLog {
+			b.freqScaleBtn.Text = "log"
+		} else {
+			b.freqScaleBtn.Text = "lin"
+		}
+	}
+	b.freqScaleBtn.TextColor = colTextSecondary
 	// Close button: drawn as a glyph via Button.Icon; the empty Text keeps
 	// the pill compact while still routing through the standard hit-area
 	// adapter for click delivery.
@@ -83,6 +99,15 @@ func (b *AudioStickyBar) Layout(rect image.Rectangle) {
 	freezeW := 24
 	b.freezeBtn.SetRect(image.Rect(rightEdge-freezeW, y, rightEdge, y+btnH))
 	rightEdge -= freezeW + 3
+
+	// Frequency-scale chip (28px wide, "log"/"lin"). Sits between the freeze
+	// button and the tab pills so it stays visible on the Spectrum tab where
+	// it's relevant; on other tabs it's still drawn but inert.
+	if b.freqScaleBtn != nil {
+		freqW := 28
+		b.freqScaleBtn.SetRect(image.Rect(rightEdge-freqW, y, rightEdge, y+btnH))
+		rightEdge -= freqW + 3
+	}
 
 	if Profile().IsMobile() {
 		// Hide tab pills on mobile (Theme 1: bottom-bar switcher owns tabs).
@@ -134,6 +159,7 @@ func (b *AudioStickyBar) rebuildHitAreas() {
 		addBtn(tb, fmt.Sprintf("eq-tab-%d", i))
 	}
 	addBtn(b.freezeBtn, "eq-freeze-btn")
+	addBtn(b.freqScaleBtn, "eq-freqscale-btn")
 	addBtn(b.closeBtn, "eq-close-btn")
 }
 
@@ -156,6 +182,11 @@ func (b *AudioStickyBar) Draw(dst *ebiten.Image, activeTab PanelTab) {
 	// analyzer state); the bar just draws whatever the pill currently shows.
 	frozen := b.freezeBtn != nil && b.freezeBtn.Text == ">"
 	drawPillTabAt(dst, b.freezeBtn, frozen)
+	// Freq-scale chip: drawn "active" when in linear mode so the chip stands
+	// out from the default log layout. Click toggles between log <-> lin.
+	if b.freqScaleBtn != nil {
+		drawPillTabAt(dst, b.freqScaleBtn, !b.freqScaleLog)
+	}
 	drawPillTabAt(dst, b.closeBtn, false)
 }
 
@@ -178,6 +209,16 @@ func (b *AudioStickyBar) FreezeBtn() *Button { return b.freezeBtn }
 
 // CloseBtn returns the close-the-panel chip.
 func (b *AudioStickyBar) CloseBtn() *Button { return b.closeBtn }
+
+// FreqScaleBtn returns the log/lin frequency-scale chip. The button toggles
+// the chip's internal log/lin state on click; consumers read FreqScaleLog()
+// for the current value when rendering the spectrum.
+func (b *AudioStickyBar) FreqScaleBtn() *Button { return b.freqScaleBtn }
+
+// FreqScaleLog reports whether the spectrum panel should use the default
+// log axis (true, ISO 1/3-octave bands) or the linear axis (false, 10
+// equal-Hz bands across [20, 22000]).
+func (b *AudioStickyBar) FreqScaleLog() bool { return b.freqScaleLog }
 
 // drawPillTabAt is the file-scope free-function version of the legacy
 // EQPanelZone.drawPillTab method. Copied here so AudioStickyBar can render

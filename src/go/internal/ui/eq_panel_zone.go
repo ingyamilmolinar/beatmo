@@ -149,6 +149,21 @@ type EQPanelZone struct {
 	frameAnalyzerState *analyzer.State
 	frameAnalyzerTab   PanelTab
 	frameAnalyzerValid bool
+
+	// Cursor readout state for the Wave / Spectrum tabs.
+	//
+	// cursorX is the cursor position in zone-local screen pixels. On desktop
+	// it tracks the mouse hover position while the cursor is inside
+	// contentRect(); on mobile it tracks the active touch and latches in
+	// place after release until the next press lands elsewhere.
+	//
+	// cursorActive gates whether the crosshair / readout is drawn. It is
+	// reset whenever the active tab is not Wave/Spectrum. cursorPinned only
+	// matters on mobile — it keeps a stale-but-meaningful cursor visible
+	// after the user lifts their finger.
+	cursorX      int
+	cursorActive bool
+	cursorPinned bool
 }
 
 // DrawCallsForTest returns the running count of Draw invocations.
@@ -295,6 +310,10 @@ func (z *EQPanelZone) ActiveTab() PanelTab {
 }
 
 func (z *EQPanelZone) Update() {
+	// Refresh cursor readout state first — desktop reads hover, mobile is
+	// driven by the scrub hit-area but still wants the tab-changed gate.
+	z.updateAudioPanelCursor()
+
 	if z.dbInputFocused < 0 {
 		// Quick scan: detect if any input gained focus externally (via hit adapter).
 		for i, ti := range z.eqDBInputs {
@@ -344,15 +363,26 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 				beatGrid = z.callbacks.BeatGridFrac()
 			}
 			drawAnalyzerWaveform(screen, cr, ch, cap, beatGrid)
+			if z.cursorActive || z.cursorPinned {
+				drawWaveformCursor(screen, cr, ch, cap, z.cursorX)
+			}
 		} else if z.callbacks.DrawWaveform != nil {
 			z.callbacks.DrawWaveform(screen)
 		}
 	case TabSpectrum:
+		cr := z.contentRect()
+		scale := freqScaleLog
+		if z.stickyBar != nil && !z.stickyBar.FreqScaleLog() {
+			scale = freqScaleLinear
+		}
 		if state := z.getAnalyzerStateForTab(activeTab); state != nil {
 			ch, _ := z.resolveChannel(state)
-			drawAnalyzerSpectrum(screen, z.contentRect(), ch, &z.spectrumPeaks)
+			drawAnalyzerSpectrumWithScale(screen, cr, ch, &z.spectrumPeaks, scale)
+			if z.cursorActive || z.cursorPinned {
+				drawSpectrumCursor(screen, cr, ch, z.cursorX)
+			}
 		} else {
-			drawAnalyzerSpectrum(screen, z.contentRect(), nil, &z.spectrumPeaks)
+			drawAnalyzerSpectrumWithScale(screen, cr, nil, &z.spectrumPeaks, scale)
 		}
 	case TabMeters:
 		// Levels tab: single-channel detail (Peak + RMS bars + readout).
@@ -672,6 +702,24 @@ func (z *EQPanelZone) rebuildHitAreas() {
 	// in-line build.
 	if z.stickyBar != nil {
 		z.hitAreas = append(z.hitAreas, z.stickyBar.HitAreas()...)
+	}
+
+	// Mobile cursor scrub: when the active tab is Wave or Spectrum, register
+	// a low-z hit area covering the content rect so a finger press/drag is
+	// dispatched to cursorScrubHandler. Desktop reads hover directly inside
+	// updateAudioPanelCursor and needs no hit area.
+	if Profile().IsMobile() {
+		t := z.tabState.ActiveTab()
+		if t == TabWave || t == TabSpectrum {
+			if cr := z.contentRect(); !cr.Empty() {
+				z.hitAreas = append(z.hitAreas, HitArea{
+					Rect:    cr,
+					ZIndex:  zIdx, // below chrome (zIdx+1) so the chrome wins
+					Handler: &cursorScrubHandler{zone: z},
+					Tag:     "eq-audio-cursor-scrub",
+				})
+			}
+		}
 	}
 
 	// HPF/LPF are content-rect items on TabEQ only.
