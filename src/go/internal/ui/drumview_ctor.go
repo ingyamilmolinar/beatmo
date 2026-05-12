@@ -305,6 +305,41 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			// Scope tab auto-expands the panel; trigger layout recalc.
 			dv.bgDirty = true
 		},
+		BeatGridFrac: func() []float64 {
+			if dv == nil || dv.game == nil {
+				return nil
+			}
+			// Resolve channel → row. The active channel id lives on
+			// eqPanelZone.ActiveChannel(); map it to a row index by
+			// matching dv.Rows[i].Instrument. "main"/Master selections
+			// or unmatched ids fall back to the first audible row so
+			// the wave panel never renders a beat grid with no anchor.
+			chID := dv.eqPanelZone.ActiveChannel()
+			rowIdx := -1
+			for i, r := range dv.Rows {
+				if r != nil && r.Instrument == chID {
+					rowIdx = i
+					break
+				}
+			}
+			if rowIdx < 0 {
+				for i := range dv.Rows {
+					if dv.game.rowIsAudible(i) {
+						rowIdx = i
+						break
+					}
+				}
+			}
+			if rowIdx < 0 {
+				return nil
+			}
+			// 2200 samples ≈ 46 ms at the 48 kHz capture rate the
+			// analyzer waveform window targets; matches the trace
+			// width drawAnalyzerWaveform renders into. Drift if the
+			// analyzer ever exposes a CaptureBufferSamples const.
+			const windowSamples = 2200
+			return dv.game.beatGridFractions(rowIdx, windowSamples)
+		},
 	})
 	dv.eqPanelZone.SetPortal(dv.tree.Portal())
 	// Visibility is owned by the tab system: on mobile, the bottom-bar

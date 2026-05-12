@@ -108,6 +108,10 @@ func New(logger *game_log.Logger) *Game {
 	// bottom drum-machine view
 	audio.InitDefaultCatalog()
 	g.drum = NewDrumView(image.Rect(0, 600, 1280, 720), g.graph, logger)
+	// Weak back-reference so EQCallbacks closures (e.g. BeatGridFrac) can
+	// reach Game state. Must be set before any Draw that resolves the
+	// callback — every call site in drumview_ctor.go guards on nil.
+	g.drum.game = g
 	// Ensure the timeline header interprets offsets/length in beats while we
 	// track them internally in subdivision steps. Make the initial drum
 	// window span at least four full beats so the default view shows a

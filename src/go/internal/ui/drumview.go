@@ -324,6 +324,12 @@ type DrumView struct {
 	// lock and a re-acquire would deadlock.
 	onStructuralMutation func(reason string)
 
+	// game is a weak back-reference to the owning Game, set by game_new.go
+	// after NewDrumView() returns. Used exclusively by callback closures
+	// (e.g. EQCallbacks.BeatGridFrac) that must read transient Game state
+	// like beatInfosByRow / playheadFloor at render time. May be nil during
+	// the brief window before Game wires it; closures must guard.
+	game *Game
 
 	bgDirty          bool
 	layoutSuppressed bool
