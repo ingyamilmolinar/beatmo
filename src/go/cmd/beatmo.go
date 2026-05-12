@@ -51,7 +51,10 @@ func main() {
 	scopeOpen := flag.Bool("scope", false, "open with scope panel visible")
 	scopeExport := flag.Bool("scope-export", false, "enable continuous scope data export to JSONL")
 	sceneName := flag.String("scene", "", "name of catalog scene to apply at startup")
+	scenePass := flag.String("scene-pass", "desktop", "scene capture pass: 'desktop' uses Setup, 'mobile' uses MobileSetup")
 	listScenes := flag.Bool("list-scenes", false, "print scene names and exit")
+	listMobileScenes := flag.Bool("list-mobile-scenes", false, "print mobile-eligible scene names and exit")
+	listSceneSubjects := flag.Bool("list-scene-subjects", false, "print 'name<TAB>subject' per line and exit (subject is empty for full-screen scenes)")
 	uiStatePath := flag.String("ui-state", "", "path to UI state JSON (camera, splitter, profile, view)")
 	importPath := flag.String("import", "", "path to a tunkul.json project to import at startup")
 	flag.Parse()
@@ -59,6 +62,18 @@ func main() {
 	if *listScenes {
 		for _, name := range ui.SceneNames(true) {
 			fmt.Println(name)
+		}
+		return
+	}
+	if *listMobileScenes {
+		for _, name := range ui.MobileSceneNames() {
+			fmt.Println(name)
+		}
+		return
+	}
+	if *listSceneSubjects {
+		for _, s := range ui.ListScenes() {
+			fmt.Printf("%s\t%s\n", s.Name, s.Subject)
 		}
 		return
 	}
@@ -196,9 +211,17 @@ func main() {
 			log.Printf("ui-state: %v", err)
 			return
 		}
+		hooks.PublishWithSource(hooks.EventUIStateApplied,
+			hooks.UIStatePayload{Path: *uiStatePath}, hooks.CaptureSource(0))
 	}
 	if *sceneName != "" {
-		if err := ui.RunScene(g, *sceneName); err != nil {
+		var err error
+		if *scenePass == "mobile" {
+			err = ui.RunSceneMobile(g, *sceneName)
+		} else {
+			err = ui.RunScene(g, *sceneName)
+		}
+		if err != nil {
 			log.Printf("scene: %v", err)
 			return
 		}
@@ -215,7 +238,7 @@ func main() {
 		g.RunDemo()
 	}
 	if *scopeOpen {
-		g.SetScopeVisible(true)
+		g.SetChainVisible(true)
 	}
 
 	// Trap OS signals for graceful audio shutdown.

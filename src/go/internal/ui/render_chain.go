@@ -43,10 +43,10 @@ const (
 	scopeBottomMargin = 14
 )
 
-// drawScopeTraces renders overlaid or split A/B waveform traces with grid,
+// drawChainTraces renders overlaid or split A/B waveform traces with grid,
 // labels, trigger marker, and peak/RMS legend.
 // yGain scales the amplitude display (1.0 = normal, >1 = zoomed in).
-func drawScopeTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State, windowMs float64, displayMode scopeDisplayMode, frozen bool, yGain float64, showA, showB bool) {
+func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State, windowMs float64, displayMode chainDisplayMode, frozen bool, yGain float64, showA, showB bool) {
 	if rect.Dx() < 20 || rect.Dy() < 20 {
 		return
 	}
@@ -82,7 +82,7 @@ func drawScopeTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 	}
 
 	switch {
-	case displayMode == scopeSplit && state != nil && state.TapA.Active && state.TapB.Active:
+	case displayMode == chainSplit && state != nil && state.TapA.Active && state.TapB.Active:
 		// --- Split mode: A in top half, B in bottom half ---
 		sepY := waveRect.Min.Y + waveRect.Dy()/2
 		topRect := image.Rect(waveRect.Min.X, waveRect.Min.Y, waveRect.Max.X, sepY)
@@ -104,13 +104,13 @@ func drawScopeTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 
 		drawScopeBorder(dst, waveRect)
 
-	case displayMode == scopeDiff && state != nil && state.TapA.Active && state.TapB.Active && showA && showB:
+	case displayMode == chainDiff && state != nil && state.TapA.Active && state.TapB.Active && showA && showB:
 		// --- Difference mode: render A-B (requires both traces visible) ---
 		drawScopeDiff(dst, rect, waveRect, state, windowMs, captionScale, lh, yGain)
 
 	default:
 		// --- Overlay mode ---
-		drawScopeOverlay(dst, rect, waveRect, state, windowMs, captionScale, lh, yGain, showA, showB)
+		drawChainOverlay(dst, rect, waveRect, state, windowMs, captionScale, lh, yGain, showA, showB)
 	}
 
 	// --- Frozen indicator ---
@@ -127,8 +127,8 @@ func drawScopeTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 	}
 }
 
-// drawScopeOverlay renders both traces overlaid on the same waveRect.
-func drawScopeOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, captionScale float64, lh int, yGain float64, showA, showB bool) {
+// drawChainOverlay renders both traces overlaid on the same waveRect.
+func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, captionScale float64, lh int, yGain float64, showA, showB bool) {
 	midY := waveRect.Min.Y + waveRect.Dy()/2
 	w := waveRect.Dx()
 	h := waveRect.Dy()
@@ -269,7 +269,7 @@ func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state 
 	DrawTextColorAtScale(dst, botLabel, fullRect.Min.X+2, waveRect.Max.Y-lh-2, colTextPrimary, captionScale)
 
 	// Compute difference waveform.
-	diff := scopeDiffSamples(state.TapA.Samples, state.TapB.Samples)
+	diff := chainDiffSamples(state.TapA.Samples, state.TapB.Samples)
 	if len(diff) > 0 {
 		drawWaveTrace(dst, diff, waveRect, midY, w, colScopeDiff, yGain, colScopeDiffFill)
 	}
@@ -310,8 +310,8 @@ func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state 
 	drawScopeBorder(dst, waveRect)
 }
 
-// scopeDiffSamples computes element-wise A-B from two sample slices.
-func scopeDiffSamples(a, b []float64) []float64 {
+// chainDiffSamples computes element-wise A-B from two sample slices.
+func chainDiffSamples(a, b []float64) []float64 {
 	n := len(a)
 	if len(b) < n {
 		n = len(b)
@@ -380,8 +380,8 @@ func drawScopeBorder(dst *ebiten.Image, r image.Rectangle) {
 	drawRect(dst, image.Rect(r.Max.X-1, r.Min.Y, r.Max.X, r.Max.Y), colButtonBorder, true)
 }
 
-// scopePeakAmplitude returns the maximum absolute sample value across both taps.
-func scopePeakAmplitude(state *scope.State) float64 {
+// chainPeakAmplitude returns the maximum absolute sample value across both taps.
+func chainPeakAmplitude(state *scope.State) float64 {
 	var peak float64
 	for _, tap := range []*scope.TapData{&state.TapA, &state.TapB} {
 		if !tap.Active {

@@ -10,7 +10,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
-	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // benchFmtMS formats a seconds value as milliseconds for human-readable
@@ -39,6 +38,7 @@ func (g *Game) Update() error {
 		dur := time.Since(t0)
 		g.lastUpdateMS = float64(dur) / 1e6
 		g.perf.onUpdate(dur)
+		g.heapProbeTick()
 		// Periodic perf log (opt-in: PERF_LOG=1)
 		if perfLogEnabled {
 			now := time.Now()
@@ -192,7 +192,7 @@ eventsDone:
 	}
 	// Apply scope visibility once the DrumView is ready.
 	if g.scopeOpen && g.drum != nil && !g.scopeApplied {
-		g.drum.SetScopeVisible(true)
+		g.drum.SetChainVisible(true)
 		g.scopeApplied = true
 	}
 	// splitter (resize only - input handled via dispatcher)
@@ -350,6 +350,7 @@ eventsDone:
 
 	// Run drum view logic before evaluating panning so it can capture drags.
 	prevPlaying := g.Playing()
+	prevPaused := g.Paused()
 	prevLen := g.drum.Length
 	pendingSubdiv := 0
 	// ── Concurrency: seqMu protects structural edits ──
@@ -476,7 +477,7 @@ eventsDone:
 			}
 		} else if g.drum != nil {
 			g.drum.notifyInfo("Imported project JSON")
-			hooks.PublishKind(hooks.EventImport, len(data))
+			emitImport(len(data), len(g.graph.Nodes), len(g.drum.Rows))
 		}
 	}
 
@@ -740,6 +741,7 @@ eventsDone:
 		g.seqNextIdxs = make([]int, len(g.drum.Rows))
 		g.muteUntilByRow = make([]int, len(g.drum.Rows))
 		g.frozenUpToByRow = nil
+		g.reconciledUpToByRow = nil
 		// Clear timeline entries so stale data doesn't persist across Stop → Play.
 		for row := range g.drum.Rows {
 			g.timelineClearRow(row)
@@ -878,7 +880,7 @@ eventsDone:
 	default:
 	}
 
-	g.handlePlaybackTransition(prevPlaying)
+	g.handlePlaybackTransition(prevPlaying, prevPaused)
 	// Defensive cleanup: certain UI operations/tests can leave pulses allocated
 	// while transport is fully stopped. Clear them without touching transport.
 	if !g.Playing() && !g.Paused() && (len(g.activePulses) > 0 || g.activePulse != nil) {

@@ -9,8 +9,8 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-func TestScopePanelZone_FreezeCacheDefaultNil(t *testing.T) {
-	z := NewScopePanelZone(ScopeCallbacks{})
+func TestChainPanelZone_FreezeCacheDefaultNil(t *testing.T) {
+	z := NewChainPanelZone(ChainCallbacks{})
 	if z.frozenState != nil {
 		t.Fatal("freshly constructed zone should have frozenState=nil")
 	}
@@ -19,8 +19,8 @@ func TestScopePanelZone_FreezeCacheDefaultNil(t *testing.T) {
 	}
 }
 
-func TestScopePanelZone_FreezeCacheHoldsState(t *testing.T) {
-	z := NewScopePanelZone(ScopeCallbacks{})
+func TestChainPanelZone_FreezeCacheHoldsState(t *testing.T) {
+	z := NewChainPanelZone(ChainCallbacks{})
 	want := &scope.State{TapA: scope.TapData{Active: true, Samples: []float64{0.1, 0.2}}}
 	z.frozenState = want
 	if z.frozenState != want {
@@ -32,8 +32,8 @@ func TestScopePanelZone_FreezeCacheHoldsState(t *testing.T) {
 	}
 }
 
-func TestScopePanelZone_InstrumentIDSettable(t *testing.T) {
-	z := NewScopePanelZone(ScopeCallbacks{})
+func TestChainPanelZone_InstrumentIDSettable(t *testing.T) {
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.instrumentID = "snare"
 	if z.instrumentID != "snare" {
 		t.Fatalf("expected instrumentID=snare, got %q", z.instrumentID)

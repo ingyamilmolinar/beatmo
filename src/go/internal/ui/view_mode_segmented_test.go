@@ -10,13 +10,20 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestViewMode_HasThreeStates is a compile-time guard. Phase 3 promotes
-// viewMode from 2 to 3 states (Pads/EQ/Wave). If any of the three
-// constants is missing this file fails to compile.
-func TestViewMode_HasThreeStates(t *testing.T) {
-	modes := []viewMode{viewModeRows, viewModeEQ, viewModeWave}
-	if len(modes) != 3 {
-		t.Fatalf("expected 3 view modes, got %d", len(modes))
+// TestViewMode_HasSixStates is a compile-time guard. The mobile redesign
+// promotes viewMode to six states (Pads/EQ/Wave/Spec/Mtr/Scope). If any
+// constant is missing this file fails to compile.
+func TestViewMode_HasSixStates(t *testing.T) {
+	modes := []viewMode{
+		viewModeRows,
+		viewModeEQ,
+		viewModeWave,
+		viewModeSpectrum,
+		viewModeMeters,
+		viewModeChain,
+	}
+	if len(modes) != 6 {
+		t.Fatalf("expected 6 view modes, got %d", len(modes))
 	}
 	// Ensure all distinct.
 	for i := 0; i < len(modes); i++ {
@@ -50,16 +57,28 @@ func TestSetViewMode_SyncsAudioPanelTabState(t *testing.T) {
 	if got := dv.eqPanelZone.tabState.ActiveTab(); got != TabWave {
 		t.Errorf("after setViewMode(Wave): tabState=%v, want TabWave", got)
 	}
+	dv.setViewMode(viewModeSpectrum)
+	if got := dv.eqPanelZone.tabState.ActiveTab(); got != TabSpectrum {
+		t.Errorf("after setViewMode(Spectrum): tabState=%v, want TabSpectrum", got)
+	}
+	dv.setViewMode(viewModeMeters)
+	if got := dv.eqPanelZone.tabState.ActiveTab(); got != TabMeters {
+		t.Errorf("after setViewMode(Meters): tabState=%v, want TabMeters", got)
+	}
+	dv.setViewMode(viewModeChain)
+	if got := dv.eqPanelZone.tabState.ActiveTab(); got != TabScope {
+		t.Errorf("after setViewMode(Scope): tabState=%v, want TabScope", got)
+	}
 	dv.setViewMode(viewModeRows)
 	// Rows mode doesn't touch tabState; verify it preserves the prior tab.
-	if got := dv.eqPanelZone.tabState.ActiveTab(); got != TabWave {
-		t.Errorf("setViewMode(Rows) should preserve tabState=TabWave, got %v", got)
+	if got := dv.eqPanelZone.tabState.ActiveTab(); got != TabScope {
+		t.Errorf("setViewMode(Rows) should preserve tabState=TabScope, got %v", got)
 	}
 }
 
 // TestViewSwitchSegmented_RenderedInBottomBarOnMobile verifies the new
-// SegmentedControl replaces the binary view-switch button on mobile.
-// Lives in the middle column of the bottom action bar (col 1 of 3).
+// 6-segment SegmentedControl replaces the binary view-switch button on
+// mobile and spans the full bottom action bar width.
 func TestViewSwitchSegmented_RenderedInBottomBarOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	setupMobileTest(t, true)
@@ -85,8 +104,13 @@ func TestViewSwitchSegmented_RenderedInBottomBarOnMobile(t *testing.T) {
 	if sc.Rect().Dy() < TouchMinTarget() {
 		t.Fatalf("segmented height %d below TouchMinTarget %d", sc.Rect().Dy(), TouchMinTarget())
 	}
-	// Three segments, each >= TouchMinTarget() / 3 wide (loose lower bound).
-	for i := 0; i < 3; i++ {
+	// Bar is now segmented-only (Theme 1) — control should span ≥ 80 % of
+	// the bar's interior, leaving only horizontal padding on the sides.
+	if sc.Rect().Dx() < bar.Dx()*4/5 {
+		t.Errorf("segmented width %d should span most of bar width %d", sc.Rect().Dx(), bar.Dx())
+	}
+	// Six segments, all non-empty.
+	for i := 0; i < 6; i++ {
 		if sc.SegmentRect(i).Empty() {
 			t.Errorf("segment %d rect empty", i)
 		}
@@ -156,6 +180,9 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 		{0, viewModeRows},
 		{1, viewModeEQ},
 		{2, viewModeWave},
+		{3, viewModeSpectrum},
+		{4, viewModeMeters},
+		{5, viewModeChain},
 	}
 	for _, c := range cases {
 		r := dv.viewSwitchSegmented.SegmentRect(c.seg)

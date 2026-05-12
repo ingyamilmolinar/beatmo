@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-// TestScopePanelZoneHasNoInstrumentButton enforces that the Scope tab does
+// TestChainPanelZoneHasNoInstrumentButton enforces that the Scope tab does
 // not own its own instrument selector — the Wave Analyzer panel must expose a
 // single shared instrument pill (eqChannelBtn) for every tab. The duplicate
 // "Kick" button and "scope-inst-btn" hit area must not exist.
-func TestScopePanelZoneHasNoInstrumentButton(t *testing.T) {
+func TestChainPanelZoneHasNoInstrumentButton(t *testing.T) {
 	assertDefaultParityState(t)
 
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 1000, 300))
 	for _, a := range z.HitAreas() {
 		if a.Tag == "scope-inst-btn" {
@@ -39,8 +39,8 @@ func TestEQChannelChangeUpdatesScopeInstrument(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	if dv.eqPanelZone == nil || dv.eqPanelZone.scopeZone == nil {
-		t.Fatal("DrumView must construct both eqPanelZone and scopeZone")
+	if dv.eqPanelZone == nil || dv.eqPanelZone.chainZone == nil {
+		t.Fatal("DrumView must construct both eqPanelZone and chainZone")
 	}
 	if dv.eqPanelZone.callbacks.OnChannelChange == nil {
 		t.Fatal("EQPanelZone OnChannelChange callback should be wired by NewDrumView")
@@ -57,13 +57,13 @@ func TestEQChannelChangeUpdatesScopeInstrument(t *testing.T) {
 	// Drive the production callback as if the user picked the Snare entry.
 	dv.eqPanelZone.callbacks.OnChannelChange("snare")
 
-	if got := dv.eqPanelZone.scopeZone.instrumentID; got != "snare" {
-		t.Fatalf("scopeZone.instrumentID = %q after EQ channel change; want %q", got, "snare")
+	if got := dv.eqPanelZone.chainZone.instrumentID; got != "snare" {
+		t.Fatalf("chainZone.instrumentID = %q after EQ channel change; want %q", got, "snare")
 	}
 
 	// Switching back to master must propagate too.
 	dv.eqPanelZone.callbacks.OnChannelChange("main")
-	if got := dv.eqPanelZone.scopeZone.instrumentID; got != "main" {
-		t.Fatalf("scopeZone.instrumentID = %q after switch to master; want %q", got, "main")
+	if got := dv.eqPanelZone.chainZone.instrumentID; got != "main" {
+		t.Fatalf("chainZone.instrumentID = %q after switch to master; want %q", got, "main")
 	}
 }

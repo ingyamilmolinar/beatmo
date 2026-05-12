@@ -46,13 +46,25 @@ type EQCallbacks struct {
 	// tab renderers (Wave, Spectrum, Meters) that consume analyzer.State.
 	AnalyzerState func() *analyzer.State
 
+	// AnalyzerMetricsOnly returns a scalar-only analyzer.State (no
+	// Spectrum/Waveform/Detail). Used exclusively by the Meters tab on
+	// WASM to avoid the per-frame slice allocation churn that drove the
+	// long-session OOM. May be nil; callers fall back to AnalyzerState.
+	AnalyzerMetricsOnly func() *analyzer.State
+
 	// OnFreezeToggle toggles the analyzer capture freeze state and returns
 	// the new frozen state.
 	OnFreezeToggle func() bool
 
-	// OnTabChange is called after the active tab changes. Used to trigger
-	// layout recalc when switching to/from the Scope tab (which auto-expands).
+	// OnTabChange is called after the active tab changes. Now telemetry-only —
+	// the Scope auto-expand path was retired (every tab defaults to tall).
 	OnTabChange func(tab PanelTab)
+
+	// BeatGridFrac returns fractional X positions in [0,1) where vertical
+	// beat markers should be drawn on the Wave tab. Nil disables the overlay
+	// (the wave still renders cleanly). Wired to DrumView.beatGridFractions
+	// in drumview_ctor.go.
+	BeatGridFrac func() []float64
 }
 
 // EQPanelZone implements the Zone interface for the EQ/Waveform panel.
@@ -65,10 +77,10 @@ type EQPanelZone struct {
 	portal     *OverlayPortal // set by tree wiring
 
 	// UI elements
-	eqMuteBtns   []*Button // per-band mute
-	eqChannelBtn *Button   // channel selector
+	eqMuteBtns   []*Button  // per-band mute
+	eqChannelBtn *Button    // channel selector
 	tabButtons   [5]*Button // one per tab in AllPanelTabs() order
-	freezeBtn    *Button   // pause/play for analyzer capture
+	freezeBtn    *Button    // pause/play for analyzer capture
 	hpfBtn       *Button
 	lpfBtn       *Button
 
@@ -90,8 +102,12 @@ type EQPanelZone struct {
 	// Spectrum tab peak-hold state
 	spectrumPeaks SpectrumPeakState
 
+	// Levels tab clip-latch: holds the clip readout in error color for ~1s
+	// after each new clip event (see render_meters.go's LevelsLatch).
+	levelsLatch LevelsLatch
+
 	// Scope tab: delegated to its own zone for layout/draw/hit areas.
-	scopeZone *ScopePanelZone
+	chainZone *ChainPanelZone
 
 	// Master channel EQ state (per-row stays in DrumRow)
 	bandGainsDB []float64
@@ -114,7 +130,26 @@ type EQPanelZone struct {
 
 	// Hit areas cache (rebuilt on Layout)
 	hitAreas []HitArea
+
+	// drawCalls counts every entry into Draw — used by view-mode-ownership
+	// tests to verify the tree's visibility gate is short-circuiting the
+	// zone in viewModeRows on mobile (no parallel state).
+	drawCalls int
+
+	// frameAnalyzerState is a per-Draw memo so the analyzer-state callback
+	// runs at most once per frame. Cleared at the top of Draw().
+	// frameAnalyzerTab records which builder produced the memo
+	// (TabMeters routes through the lightweight metrics path; other tabs
+	// use the full state). Eliminates the duplicate per-frame call the
+	// freezeBtn block historically triggered.
+	frameAnalyzerState *analyzer.State
+	frameAnalyzerTab   PanelTab
+	frameAnalyzerValid bool
 }
+
+// DrawCallsForTest returns the running count of Draw invocations.
+// Tests reset by reading-then-comparing across phases.
+func (z *EQPanelZone) DrawCallsForTest() int { return z.drawCalls }
 
 // NewEQPanelZone creates a new EQPanelZone with the provided callbacks.
 func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
@@ -226,14 +261,33 @@ func (z *EQPanelZone) Layout(rect image.Rectangle) {
 	z.layoutButtons()
 	z.layoutMuteAndDBInputs()
 	// Delegate layout to scope zone when Scope tab is active.
-	if z.scopeZone != nil && z.tabState.ActiveTab() == TabScope {
-		z.scopeZone.Layout(z.contentRect())
+	if z.chainZone != nil && z.tabState.ActiveTab() == TabScope {
+		z.chainZone.Layout(z.contentRect())
 	}
 	z.rebuildHitAreas()
 }
 
-// SetScopeZone sets the scope panel zone that owns the scope tab UI.
-func (z *EQPanelZone) SetScopeZone(sz *ScopePanelZone) { z.scopeZone = sz }
+// SetChainZone sets the scope panel zone that owns the scope tab UI.
+func (z *EQPanelZone) SetChainZone(sz *ChainPanelZone) { z.chainZone = sz }
+
+// ChainZone returns the bound scope panel zone (may be nil if not wired).
+func (z *EQPanelZone) ChainZone() *ChainPanelZone { return z.chainZone }
+
+// PanelRect returns the full EQ panel rectangle including the tab header.
+func (z *EQPanelZone) PanelRect() image.Rectangle { return z.rect }
+
+// ContentRect returns the drawable area below the tab header buttons —
+// the region where the active tab's content (waveform, spectrum, scope, …)
+// is rendered.
+func (z *EQPanelZone) ContentRect() image.Rectangle { return z.contentRect() }
+
+// ActiveTab returns the tab currently selected on the panel.
+func (z *EQPanelZone) ActiveTab() PanelTab {
+	if z.tabState == nil {
+		return TabEQ
+	}
+	return z.tabState.ActiveTab()
+}
 
 func (z *EQPanelZone) Update() {
 	if z.dbInputFocused < 0 {
@@ -254,39 +308,64 @@ func (z *EQPanelZone) Update() {
 }
 
 func (z *EQPanelZone) HitAreas() []HitArea {
-	if z.scopeZone != nil && z.tabState.ActiveTab() == TabScope {
-		return append(z.hitAreas, z.scopeZone.HitAreas()...)
+	if z.chainZone != nil && z.tabState.ActiveTab() == TabScope {
+		return append(z.hitAreas, z.chainZone.HitAreas()...)
 	}
 	return z.hitAreas
 }
 
 func (z *EQPanelZone) Draw(screen *ebiten.Image) {
+	z.drawCalls++
 	if z.rect.Dy() < 8 || z.rect.Dx() < 8 {
 		return
 	}
+	// Reset per-Draw memo so subsequent reads re-fetch state. The memo
+	// halves the analyzer-state callback rate on every tab (the freeze
+	// button block also reads it) and unlocks the metrics-only routing
+	// for TabMeters.
+	z.frameAnalyzerValid = false
+	z.frameAnalyzerState = nil
+
 	drawRect(screen, z.rect, colEQBg, true)
 
-	switch z.tabState.ActiveTab() {
+	activeTab := z.tabState.ActiveTab()
+	switch activeTab {
 	case TabWave:
 		cr := z.contentRect()
-		if state := z.getAnalyzerState(); state != nil {
+		if state := z.getAnalyzerStateForTab(activeTab); state != nil {
 			ch, cap := z.resolveChannel(state)
-			drawAnalyzerWaveform(screen, cr, ch, cap)
+			var beatGrid []float64
+			if z.callbacks.BeatGridFrac != nil {
+				beatGrid = z.callbacks.BeatGridFrac()
+			}
+			drawAnalyzerWaveform(screen, cr, ch, cap, beatGrid)
 		} else if z.callbacks.DrawWaveform != nil {
 			z.callbacks.DrawWaveform(screen)
 		}
 	case TabSpectrum:
-		if state := z.getAnalyzerState(); state != nil {
+		if state := z.getAnalyzerStateForTab(activeTab); state != nil {
 			ch, _ := z.resolveChannel(state)
 			drawAnalyzerSpectrum(screen, z.contentRect(), ch, &z.spectrumPeaks)
 		} else {
 			drawAnalyzerSpectrum(screen, z.contentRect(), nil, &z.spectrumPeaks)
 		}
 	case TabMeters:
-		drawMeterBridge(screen, z.contentRect(), z.getAnalyzerState())
+		// Levels tab: single-channel detail (Peak + RMS bars + readout).
+		// The latch ticks once per draw — passes the current ClipCount and
+		// shows the readout in error color for ~1s after each new clip.
+		if state := z.getAnalyzerStateForTab(activeTab); state != nil {
+			ch, _ := z.resolveChannel(state)
+			if ch == nil {
+				ch = &state.Master
+			}
+			z.levelsLatch.Update(ch.ClipCount)
+			drawLevelsDetail(screen, z.contentRect(), ch, &z.levelsLatch)
+		} else {
+			drawLevelsDetail(screen, z.contentRect(), nil, nil)
+		}
 	case TabScope:
-		if z.scopeZone != nil {
-			z.scopeZone.Draw(screen)
+		if z.chainZone != nil {
+			z.chainZone.Draw(screen)
 		}
 	case TabEQ:
 		// Draw spectrum bars and EQ curve below buttons.
@@ -312,8 +391,10 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	} else {
 		// Freeze button on analysis tabs (DESIGN.md §5d text-glyph exception).
 		if z.freezeBtn != nil {
-			// Sync button text from analyzer state each frame.
-			if state := z.getAnalyzerState(); state != nil && state.Capture != nil && state.Capture.Frozen {
+			// Sync button text from analyzer state each frame. Routes
+			// through the per-Draw memo so we don't double-call the
+			// builder (the tab-content draw above already populated it).
+			if state := z.getAnalyzerStateForTab(activeTab); state != nil && state.Capture != nil && state.Capture.Frozen {
 				z.freezeBtn.Text = ">"
 				z.freezeBtn.TextColor = colAccent
 			} else {
@@ -324,10 +405,14 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			z.drawPillTab(screen, z.freezeBtn, frozen, "")
 		}
 	}
-	tabs := AllPanelTabs()
-	for i, btn := range z.tabButtons {
-		if btn != nil {
-			z.drawPillTab(screen, btn, z.tabState.ActiveTab() == tabs[i], "")
+	// Mobile: right-side tab strip is suppressed (Theme 1 — bottom bar
+	// owns the switcher). Skip drawing the in-panel tab buttons.
+	if !Profile().IsMobile() {
+		tabs := AllPanelTabs()
+		for i, btn := range z.tabButtons {
+			if btn != nil {
+				z.drawPillTab(screen, btn, z.tabState.ActiveTab() == tabs[i], "")
+			}
 		}
 	}
 
@@ -477,18 +562,29 @@ func (z *EQPanelZone) layoutButtons() {
 	z.eqChannelBtn.SetRect(channelBtnRect)
 
 	// Tab buttons (right-aligned, from right to left).
-	const tabGap = 2
-	tabBtnH := btnH
-	rightEdge := r.Max.X - 6
-	for i := len(z.tabButtons) - 1; i >= 0; i-- {
-		label := z.tabButtons[i].Text
-		tw := TextWidth(label) + 12 // 6px padding each side
-		if tw < 28 {
-			tw = 28
+	// Mobile (Theme 1): the 6-segment bottom-bar nav owns the tab switcher,
+	// so suppress the panel's internal right-side tab strip. Zero out the
+	// rects so stale hit areas don't fire.
+	if Profile().IsMobile() {
+		for i := range z.tabButtons {
+			if z.tabButtons[i] != nil {
+				z.tabButtons[i].SetRect(image.Rectangle{})
+			}
 		}
-		tabRect := image.Rect(rightEdge-tw, r.Min.Y+4, rightEdge, r.Min.Y+4+tabBtnH)
-		z.tabButtons[i].SetRect(tabRect)
-		rightEdge = tabRect.Min.X - tabGap
+	} else {
+		const tabGap = 2
+		tabBtnH := btnH
+		rightEdge := r.Max.X - 6
+		for i := len(z.tabButtons) - 1; i >= 0; i-- {
+			label := z.tabButtons[i].Text
+			tw := TextWidth(label) + 12 // 6px padding each side
+			if tw < 28 {
+				tw = 28
+			}
+			tabRect := image.Rect(rightEdge-tw, r.Min.Y+4, rightEdge, r.Min.Y+4+tabBtnH)
+			z.tabButtons[i].SetRect(tabRect)
+			rightEdge = tabRect.Min.X - tabGap
+		}
 	}
 
 	// HPF/LPF buttons between channel and tab bar (shown on EQ tab).
@@ -607,18 +703,21 @@ func (z *EQPanelZone) rebuildHitAreas() {
 		})
 	}
 
-	// Tab buttons.
-	for i, btn := range z.tabButtons {
-		if btn == nil {
-			continue
-		}
-		if tr := btn.Rect(); !tr.Empty() {
-			z.hitAreas = append(z.hitAreas, HitArea{
-				Rect:    tr,
-				ZIndex:  zIdx + 1,
-				Handler: &buttonHitAdapter{btn: btn},
-				Tag:     fmt.Sprintf("eq-tab-%d", i),
-			})
+	// Tab buttons. Mobile: skipped — bottom bar segmented switcher owns
+	// these (Theme 1).
+	if !Profile().IsMobile() {
+		for i, btn := range z.tabButtons {
+			if btn == nil {
+				continue
+			}
+			if tr := btn.Rect(); !tr.Empty() {
+				z.hitAreas = append(z.hitAreas, HitArea{
+					Rect:    tr,
+					ZIndex:  zIdx + 1,
+					Handler: &buttonHitAdapter{btn: btn},
+					Tag:     fmt.Sprintf("eq-tab-%d", i),
+				})
+			}
 		}
 	}
 
@@ -1400,11 +1499,43 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 }
 
 // getAnalyzerState returns the latest analyzer.State via the callback, or nil.
+//
+// DEPRECATED for in-Draw use: prefer getAnalyzerStateForTab(activeTab) so
+// the per-frame memo can route TabMeters through the lightweight
+// metrics-only path. Direct callers (tests, freezeBtn check before
+// memo wiring) bypass the memo and may produce duplicate per-frame
+// calls.
 func (z *EQPanelZone) getAnalyzerState() *analyzer.State {
 	if z.callbacks.AnalyzerState != nil {
 		return z.callbacks.AnalyzerState()
 	}
 	return nil
+}
+
+// getAnalyzerStateForTab is the per-Draw memoised resolver. Routes
+// TabMeters through AnalyzerMetricsOnly when available — the
+// scalar-only builder skips Spectrum/Waveform allocation and (on WASM)
+// the per-element js.Value loop that drove the long-session OOM.
+// All other tabs use the full AnalyzerState callback.
+//
+// The memo is keyed by (frameAnalyzerValid, frameAnalyzerTab); a tab
+// switch within one Draw call would invalidate it, but Draw never
+// changes tab mid-call so a single bool gate is sufficient. Cleared at
+// the top of Draw().
+func (z *EQPanelZone) getAnalyzerStateForTab(tab PanelTab) *analyzer.State {
+	if z.frameAnalyzerValid && z.frameAnalyzerTab == tab {
+		return z.frameAnalyzerState
+	}
+	var state *analyzer.State
+	if tab == TabMeters && z.callbacks.AnalyzerMetricsOnly != nil {
+		state = z.callbacks.AnalyzerMetricsOnly()
+	} else if z.callbacks.AnalyzerState != nil {
+		state = z.callbacks.AnalyzerState()
+	}
+	z.frameAnalyzerState = state
+	z.frameAnalyzerTab = tab
+	z.frameAnalyzerValid = true
+	return state
 }
 
 // resolveChannel returns the ChannelMetrics and CaptureBuffer to display based

@@ -46,11 +46,13 @@ const (
 type viewMode int
 
 const (
-	viewModeRows viewMode = iota // drum rows visible
-	viewModeEQ                   // mobile audio panel showing EQ tab
-	viewModeWave                 // mobile audio panel showing Wave tab
+	viewModeRows     viewMode = iota // drum rows visible
+	viewModeEQ                       // mobile audio panel showing EQ tab
+	viewModeWave                     // mobile audio panel showing Wave tab
+	viewModeSpectrum                 // mobile audio panel showing Spectrum tab
+	viewModeMeters                   // mobile audio panel showing Meters tab
+	viewModeChain                    // mobile audio panel showing Scope tab
 )
-
 
 var eqPanelHeight = 190
 
@@ -185,31 +187,31 @@ func (dv *DrumView) exportPinnedInstrumentIDs() []string {
 }
 
 type DrumView struct {
-	Rows             []*DrumRow
-	Bounds           image.Rectangle
-	Graph            *model.Graph
+	Rows   []*DrumRow
+	Bounds image.Rectangle
+	Graph  *model.Graph
 	// projectPins is the per-project instrument pin set, populated from the
 	// project JSON's pinned_instruments field on import and serialised back on
 	// export. It feeds the instrument menu's tier-0 pin source (see
 	// PinSource.ProjectPins). No UI to mutate the set ships in this PR — that
 	// affordance lands in a follow-up; the storage and read path are wired
 	// now so the JSON schema doesn't need to bump later.
-	projectPins      map[string]struct{}
+	projectPins map[string]struct{}
 	// instMenuShowFavoritesCategory wires the production builder's
 	// ShowFavoritesCategory prop. See ctor comment.
 	instMenuShowFavoritesCategory bool
-	logger           *game_log.Logger
-	tree             *DrumViewTree     // zone-based component tree (Phase 1+)
-	eqPanelZone      *EQPanelZone      // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
-	scopeVisible     bool
-	transportZone    *TransportZone    // Phase 3: transport zone (owns transport buttons/state)
+	logger                        *game_log.Logger
+	tree                          *DrumViewTree // zone-based component tree (Phase 1+)
+	eqPanelZone                   *EQPanelZone  // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
+	scopeVisible                  bool
+	transportZone                 *TransportZone // Phase 3: transport zone (owns transport buttons/state)
 	// viewSwitchSegmented is the mobile 3-segment view selector
 	// (Pads/EQ/Wave). Replaces the binary viewSwitchBtn on mobile; nil on
 	// desktop. See B4 in the mobile UX overhaul plan.
 	viewSwitchSegmented *SegmentedControl
-	rowRackZone      *RowRackZone      // Phase 4: row rack zone (owns per-row buttons/sliders/scroll)
-	timelineZone     *TimelineZone     // Phase 5: timeline zone (owns drag/scrub)
-	layoutResizeZone *layoutResizeZone // layout resize zone (column/row divider pills)
+	rowRackZone         *RowRackZone      // Phase 4: row rack zone (owns per-row buttons/sliders/scroll)
+	timelineZone        *TimelineZone     // Phase 5: timeline zone (owns drag/scrub)
+	layoutResizeZone    *layoutResizeZone // layout resize zone (column/row divider pills)
 
 	// Overlay components (Phase 5 integration)
 	subdivMenuComp *SubdivMenuComponent
@@ -322,6 +324,7 @@ type DrumView struct {
 	// lock and a re-acquire would deadlock.
 	onStructuralMutation func(reason string)
 
+
 	bgDirty          bool
 	layoutSuppressed bool
 	bgCache          []*ebiten.Image
@@ -433,7 +436,9 @@ type DrumView struct {
 	// Mobile EQ collapse: hides the Wave/EQ panel by default on mobile.
 	mobileEQCollapsed bool
 	mobileEQInited    bool // true once the mobile-default has been applied
-	mobileEQMode      bool // true = EQ panel replaces rows on mobile
+	// NOTE: previously held a parallel `mobileEQMode bool` — now derived
+	// from currentViewMode via dv.MobileEQMode() to keep the mobile tab
+	// swap on a single source of truth (see drumview_context_menu.go).
 
 	// userAdjustedLength is set when the user manually changes the timeline
 	// length via +/- buttons. When false, the mobile default cap is applied
@@ -442,6 +447,15 @@ type DrumView struct {
 
 	// Mobile view switching (Rows → EQ → Wave cycle)
 	currentViewMode viewMode
+
+	// rowZoom* host the +/− chip pair inline with the addRow button on
+	// mobile. The chips resize the *entire drum-view pane* (not per-row
+	// dimensions) — see `Game.adjustDrumViewHeight` and the ctor where
+	// the OnClick callbacks dispatch into it. The historical row-height
+	// scaling has been retired; per-row dimensions are now fixed.
+	rowZoomChipRect image.Rectangle
+	rowZoomIncBtn   *Button
+	rowZoomDecBtn   *Button
 
 	// Mobile overflow menu for Upload/Import/Export
 	overflowScroll *ScrollBehavior // scroll when items overflow
@@ -460,7 +474,7 @@ type DrumView struct {
 	contextMenuRow        int
 	contextMenuRect       image.Rectangle
 	contextMenuBtns       []*Button
-	contextMenuIcons      []string         // icon name per button (parallel to contextMenuBtns, excluding close btn)
+	contextMenuIcons      []string        // icon name per button (parallel to contextMenuBtns, excluding close btn)
 	contextMenuHeaderRect image.Rectangle // mobile bottom sheet header area
 	contextMenuScroll     *ScrollBehavior // scroll when items overflow
 
@@ -610,7 +624,7 @@ func (dv *DrumView) ScopeVisible() bool {
 	}
 	return false
 }
-func (dv *DrumView) SetScopeVisible(v bool) {
+func (dv *DrumView) SetChainVisible(v bool) {
 	dv.scopeVisible = v
 	if dv.eqPanelZone != nil && v {
 		dv.eqPanelZone.tabState.SetActiveTab(TabScope)

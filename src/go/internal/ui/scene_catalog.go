@@ -6,6 +6,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 // Scene captures a reproducible UI state for the screenshot harness.
@@ -24,6 +25,13 @@ type Scene struct {
 	SettleFrames int
 	Setup        func(*Game)
 	MobileSetup  func(*Game)
+
+	// Subject, when non-empty, instructs the screenshot harness to crop
+	// the captured PNG to that surface's on-screen bounds (resolved via
+	// (*Game).SubjectRect after Setup + settle). The empty value preserves
+	// the legacy full-screen behavior — every existing scene leaves this
+	// unset and is unchanged.
+	Subject Subject
 }
 
 // sceneCatalog enumerates every UI surface the screenshots-all target captures.
@@ -53,12 +61,12 @@ var sceneCatalog = []Scene{
 		Setup:       func(g *Game) { _ = g.SetActiveEQTab("meters") },
 		MobileSetup: mobileAudioPanelSetup("meters")},
 	{Name: "eq_tab_scope", Description: "Scope tab active", Mobile: true, SettleFrames: 120,
-		Setup: func(g *Game) { _ = g.SetActiveEQTab("scope"); g.SetScopeVisible(true) },
+		Setup: func(g *Game) { _ = g.SetActiveEQTab("scope"); g.SetChainVisible(true) },
 		MobileSetup: func(g *Game) {
 			g.SetForceMobileProfile(true)
 			g.drum.SetMobileEQMode(true)
 			_ = g.SetActiveEQTab("scope")
-			g.SetScopeVisible(true)
+			g.SetChainVisible(true)
 		}},
 	{Name: "eq_with_band_adjusted", Description: "two EQ bands tweaked", Mobile: true,
 		Setup: func(g *Game) {
@@ -196,6 +204,99 @@ var sceneCatalog = []Scene{
 			g.SetEQBandGain("main", 0, 12.0)
 		}},
 
+	// ─── mobile UI consistency pass (Themes 1–5) ──────────────────
+	// One scene per audio sub-view so visual regression catches the
+	// bottom-nav-driven panel state for every tab. Bottom bar must
+	// be visible and the segmented selection must match the tab.
+	{Name: "mobile_bottom_nav_pads", Description: "mobile Pads (rows) with bottom-nav strip visible", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeRows)
+		}},
+	{Name: "mobile_bottom_nav_eq", Description: "mobile EQ tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeEQ)
+		}},
+	{Name: "mobile_bottom_nav_wave", Description: "mobile Wave tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeWave)
+		}},
+	{Name: "mobile_bottom_nav_spectrum", Description: "mobile Spectrum tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeSpectrum)
+		}},
+	{Name: "mobile_bottom_nav_meters", Description: "mobile Meters tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeMeters)
+		}},
+	{Name: "mobile_bottom_nav_scope", Description: "mobile Scope tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeChain)
+		}},
+	// Regression scene for the Pads-after-EQ leak (screenshot.png 2026-05-10):
+	// after a visit to the EQ tab, the EQ panel's Master/HP/LP pill strip
+	// must NOT be visible above the bottom nav in Pads view. Locks in the
+	// tab-system-owns-visibility invariant.
+	{Name: "mobile_pads_after_eq", Description: "mobile Pads tab after a visit to EQ — EQ pills must not leak", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeEQ)
+			g.drum.setViewMode(viewModeRows)
+		}},
+	// Track / follow chip on the timeline ruler header (Theme 2).
+	{Name: "mobile_track_chip_following", Description: "mobile Track chip in following state (primary border)", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			if g.drum != nil && g.drum.transportZone != nil {
+				g.drum.transportZone.SetFollow(true)
+			}
+		}},
+	{Name: "mobile_track_chip_free", Description: "mobile Track chip in free-scroll state (neutral icon)", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			if g.drum != nil && g.drum.transportZone != nil {
+				g.drum.transportZone.SetFollow(false)
+			}
+		}},
+	// Timeline-length chips — extreme states show the visible-beat range.
+	// The +/− chips at the bottom of the row rack grow / shrink the
+	// active drum view's beat span (mirrors the desktop length +/− pair).
+	{Name: "mobile_length_max", Description: "mobile timeline expanded to its maximum visible beat span via repeated + chip taps", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			if g.drum == nil {
+				return
+			}
+			// Drive the chip handler enough times to saturate against the
+			// `clampLength` cell-width-derived max.
+			for i := 0; i < 64; i++ {
+				g.drum.rowZoomIncBtn.OnClick()
+				g.Update()
+			}
+		}},
+	{Name: "mobile_length_min", Description: "mobile timeline shrunk to its minimum visible beat span via repeated − chip taps", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			if g.drum == nil {
+				return
+			}
+			for i := 0; i < 64; i++ {
+				g.drum.rowZoomDecBtn.OnClick()
+				g.Update()
+			}
+		}},
+	// Overflow menu (Theme 5) — every entry now carries an icon.
+	{Name: "mobile_overflow_menu_redesigned", Description: "mobile overflow menu with iconography on every entry", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.OpenOverflowMenu()
+		}},
+
 	// ─── playback overlays ────────────────────────────────────────
 	// Capture menus/popups while playback is running so visual diffs
 	// surface any beat-highlight or transport-state regressions that
@@ -242,7 +343,7 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) {
 			g.SetPlaying(true)
 			_ = g.SetActiveEQTab("scope")
-			g.SetScopeVisible(true)
+			g.SetChainVisible(true)
 		}},
 
 	// ─── FX panel detail (per-effect, knob drawer) ────────────────
@@ -324,7 +425,7 @@ var sceneCatalog = []Scene{
 	{Name: "eq_scope_custom_settings", Description: "Scope tab with two bands tweaked", SettleFrames: 150,
 		Setup: func(g *Game) {
 			_ = g.SetActiveEQTab("scope")
-			g.SetScopeVisible(true)
+			g.SetChainVisible(true)
 			g.SetEQBandGain("main", 1, -8)
 			g.SetEQBandGain("main", 7, 6)
 		}},
@@ -426,6 +527,120 @@ var sceneCatalog = []Scene{
 			_ = g.StartRecording()
 			g.SetPlaying(true)
 		}},
+
+	// ─── subject-cropped variants (Phase 5) ──────────────────────
+	// Each crop_* scene declares a Subject so the screenshot harness
+	// emits a PNG cropped to that surface's bounds. Setup is reused
+	// from the matching full-screen scene wherever possible — the
+	// only difference is the Subject field.
+	{Name: "crop_main_grid_default", Description: "main grid pane, default circuit",
+		Subject: SubjectMainGrid,
+		Setup:   func(g *Game) {}},
+	{Name: "crop_main_grid_with_3_nodes", Description: "main grid pane with a 3-node graph",
+		Subject: SubjectMainGrid,
+		Setup: func(g *Game) {
+			a := g.tryAddNode(2, 0, model.NodeTypeRegular)
+			b := g.tryAddNode(2, 2, model.NodeTypeRegular)
+			c := g.tryAddNode(4, 2, model.NodeTypeRegular)
+			if a != nil && b != nil {
+				g.addEdge(a, b)
+			}
+			if b != nil && c != nil {
+				g.addEdge(b, c)
+			}
+			if a != nil && c != nil {
+				g.addEdge(a, c)
+			}
+			g.updateBeatInfos()
+		}},
+	{Name: "crop_drum_view_default", Description: "drum pane (header + rows + EQ panel), default rows",
+		Subject: SubjectDrumView,
+		Setup:   func(g *Game) {}},
+	{Name: "crop_drum_view_multi_row", Description: "drum pane (header + rows + EQ panel), four rows",
+		Subject: SubjectDrumView,
+		Setup: func(g *Game) {
+			for i := 0; i < 4; i++ {
+				g.drum.AddRow()
+			}
+		}},
+	{Name: "crop_drum_rows_default", Description: "drum row scroll area only (no header, no EQ)",
+		Subject: SubjectDrumRows,
+		Setup:   func(g *Game) {}},
+	{Name: "crop_drum_rows_multi_row", Description: "drum row scroll area only, four rows",
+		Subject: SubjectDrumRows,
+		Setup: func(g *Game) {
+			for i := 0; i < 4; i++ {
+				g.drum.AddRow()
+			}
+		}},
+	{Name: "crop_eq_tab_eq", Description: "EQ panel cropped — EQ tab",
+		Subject: SubjectEQTabEQ,
+		Setup:   func(g *Game) { _ = g.SetActiveEQTab("eq") }},
+	{Name: "crop_eq_tab_wave", Description: "EQ panel cropped — Wave tab (playing for visible waveform)", SettleFrames: 150,
+		Subject:     SubjectEQTabWave,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("wave"); g.SetPlaying(true) },
+		MobileSetup: mobileAudioPanelPlaySetup("wave")},
+	{Name: "crop_eq_tab_spectrum", Description: "EQ panel cropped — Spectrum tab (playing for visible bars)", SettleFrames: 150,
+		Subject:     SubjectEQTabSpectrum,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("spectrum"); g.SetPlaying(true) },
+		MobileSetup: mobileAudioPanelPlaySetup("spectrum")},
+	{Name: "crop_eq_tab_meters", Description: "EQ panel cropped — Meters tab (playing for visible levels)", SettleFrames: 150,
+		Subject:     SubjectEQTabMeters,
+		Setup:       func(g *Game) { _ = g.SetActiveEQTab("meters"); g.SetPlaying(true) },
+		MobileSetup: mobileAudioPanelPlaySetup("meters")},
+	{Name: "crop_scope_default", Description: "Scope panel running, both traces, AG on", SettleFrames: 150,
+		Subject: SubjectChain,
+		Setup:   activateScopeTab,
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
+			activateScopeTab(g)
+		}},
+	{Name: "crop_scope_frozen", Description: "Scope frozen via freeze button", SettleFrames: 150,
+		Subject: SubjectChain,
+		Setup: func(g *Game) {
+			activateScopeTab(g)
+			if z := chainZoneOf(g); z != nil {
+				z.SetFrozen(true)
+			}
+		}},
+	{Name: "crop_scope_auto_gain_on", Description: "Scope with auto-gain enabled (AG pill active)", SettleFrames: 150,
+		Subject: SubjectChain,
+		Setup: func(g *Game) {
+			activateScopeTab(g)
+			if z := chainZoneOf(g); z != nil {
+				z.SetAutoGain(true)
+			}
+		}},
+	{Name: "crop_scope_trace_a_only", Description: "Scope with trace B hidden", SettleFrames: 150,
+		Subject: SubjectChain,
+		Setup: func(g *Game) {
+			activateScopeTab(g)
+			if z := chainZoneOf(g); z != nil {
+				z.SetTraceVisible("B", false)
+			}
+		}},
+	{Name: "crop_scope_zoomed_in", Description: "Scope with X-window narrowed to 5ms", SettleFrames: 150,
+		Subject: SubjectChain,
+		Setup: func(g *Game) {
+			activateScopeTab(g)
+			if z := chainZoneOf(g); z != nil {
+				z.SetWindowMs(5)
+			}
+		}},
+	{Name: "crop_fx_panel_with_3_effects", Description: "FX panel cropped (delay+reverb+distortion)", SettleFrames: 150,
+		Subject: SubjectFXPanel,
+		Setup: func(g *Game) {
+			ensureRow(g, 0)
+			instID := g.drum.Rows[0].Instrument
+			audio.AddInsertEffect(instID, audio.EffectDelay, nil)
+			audio.AddInsertEffect(instID, audio.EffectReverb, nil)
+			audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
+			g.drum.OpenFXPanel(0)
+		}},
+	{Name: "crop_toolbar_playing", Description: "Top toolbar/transport while playing",
+		Subject: SubjectToolbar,
+		Setup:   func(g *Game) { g.SetPlaying(true) }},
 }
 
 // RunScene applies the named scene's Setup to g. Returns an error if the
@@ -454,6 +669,7 @@ func runSceneInternal(g *Game, name string, mobile bool) error {
 			if s.SettleFrames > 0 {
 				g.SetScreenshotSettleFrames(s.SettleFrames)
 			}
+			g.SetScreenshotSubject(s.Subject)
 			emitSceneApplied(name)
 			return nil
 		}
@@ -505,6 +721,32 @@ func MobileSceneNames() []string {
 
 // ─── helpers ──────────────────────────────────────────────────────
 
+// chainZoneOf returns the scope panel zone reachable from the EQ panel zone,
+// or nil if either is not yet wired. Used by crop_scope_* setups to drive
+// the same state the AG/freeze/swatch buttons toggle, without synthesizing
+// click events.
+func chainZoneOf(g *Game) *ChainPanelZone {
+	if g == nil || g.drum == nil || g.drum.eqPanelZone == nil {
+		return nil
+	}
+	return g.drum.eqPanelZone.ChainZone()
+}
+
+// activateScopeTab applies the canonical Scope-tab visibility setup (tab +
+// service visible), assigns default A/B taps so traces actually draw, and
+// starts playback so the scope ring buffers fill during the screenshot
+// settle countdown. Without taps the trace area renders empty regardless
+// of toggle state, making variants visually indistinguishable.
+func activateScopeTab(g *Game) {
+	_ = g.SetActiveEQTab("scope")
+	g.SetChainVisible(true)
+	if z := chainZoneOf(g); z != nil {
+		z.SetTapA(scope.StageMaster)
+		z.SetTapB(scope.StageEQ)
+	}
+	g.SetPlaying(true)
+}
+
 // mobileAudioPanelSetup returns a Setup that forces mobile profile,
 // expands the mobile audio (EQ/Wave/Spec/Meters/Scope) panel, and sets
 // the requested tab. Used as the MobileSetup for desktop EQ scenes so
@@ -514,6 +756,18 @@ func mobileAudioPanelSetup(tab string) func(*Game) {
 		g.SetForceMobileProfile(true)
 		g.drum.SetMobileEQMode(true)
 		_ = g.SetActiveEQTab(tab)
+	}
+}
+
+// mobileAudioPanelPlaySetup is mobileAudioPanelSetup + SetPlaying(true),
+// for crop_* scenes that need both the panel exposed AND playback running
+// so the analyzer ring buffers fill before the screenshot fires.
+func mobileAudioPanelPlaySetup(tab string) func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		_ = g.SetActiveEQTab(tab)
+		g.SetPlaying(true)
 	}
 }
 

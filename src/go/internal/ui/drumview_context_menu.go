@@ -718,6 +718,11 @@ func (dv *DrumView) openColorPickerForRow(rowIdx int) {
 	dv.openColorWheelPortal()
 }
 
+// OverflowPopupRect returns the on-screen rectangle for the overflow popup
+// (mobile bottom-sheet style or desktop dropdown). The result is only
+// meaningful while IsOverflowMenuOpen() is true.
+func (dv *DrumView) OverflowPopupRect() image.Rectangle { return dv.overflowPopupRect() }
+
 // overflowPopupRect returns the rectangle for the overflow popup. On mobile
 // (when LayoutProfile.UseBottomSheet is true) the popup is rendered as a
 // full-width bottom sheet anchored to the bottom of the drum pane —
@@ -795,63 +800,39 @@ type overflowItem struct {
 // button hit list (see overflowPopupBtns).
 func (dv *DrumView) overflowItems() []overflowItem {
 	items := []overflowItem{
-		// File group
+		// File group — every action carries a semantic IconID so the
+		// menu communicates meaning through iconography (Theme 5 of the
+		// mobile UI consistency pass; DESIGN.md single-chrome-accent
+		// invariant forbids per-item accent colors).
 		{label: "File", header: true},
-		{label: "Upload", onClick: func() {
+		{label: "Upload", iconID: IconUpload, onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.uploadBtn().OnClick != nil {
 				dv.uploadBtn().OnClick()
 			}
 		}},
-		{label: "Import", onClick: func() {
+		{label: "Import", iconID: IconImport, onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.importBtn().OnClick != nil {
 				dv.importBtn().OnClick()
 			}
 		}},
-		{label: "Export", onClick: func() {
+		{label: "Export", iconID: IconExport, onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.exportBtn().OnClick != nil {
 				dv.exportBtn().OnClick()
 			}
 		}},
-		// View group
-		{label: "View", header: true},
-		// Track/free follow toggle. Mobile entry point — desktop has the
-		// inline track button left of the timeline. Click flips
-		// TransportZone.follow, which is the single source of truth for
-		// the follow state on both platforms.
-		{
-			label:  "Track",
-			iconID: IconTrack,
-			active: dv.FollowPlayback(),
-			onClick: func() {
-				dv.closeOverflowMenu()
-				if dv.transportZone != nil {
-					dv.transportZone.SetFollow(!dv.transportZone.FollowPlayback())
-				}
-			},
-		},
 	}
-	// Window length controls live in the overflow on mobile (A7 in the
-	// screenshot critique). Desktop keeps the inline +/− pair next to the
-	// timeline so we suppress the duplicated entries there.
-	if Profile().IsMobile() {
-		items = append(items,
-			overflowItem{label: "Window length +", onClick: func() {
-				dv.closeOverflowMenu()
-				if dv.lenIncBtn != nil && dv.lenIncBtn.OnClick != nil {
-					dv.lenIncBtn.OnClick()
-				}
-			}},
-			overflowItem{label: "Window length −", onClick: func() {
-				dv.closeOverflowMenu()
-				if dv.lenDecBtn != nil && dv.lenDecBtn.OnClick != nil {
-					dv.lenDecBtn.OnClick()
-				}
-			}},
-		)
-	}
+	// Track/free follow toggle is exposed inline on both platforms:
+	// desktop has the vertical strip left of the timeline; mobile has a
+	// chip on the right edge of the timeline ruler header (Theme 2 of
+	// the mobile UI consistency pass). No overflow entry needed.
+	//
+	// Window length +/− is exposed via inline timeline controls; the
+	// previous mobile-only overflow duplicate was removed as redundant.
+	// With both view-related entries gone, the empty "View" subgroup
+	// header was removed as well.
 	return items
 }
 
@@ -909,7 +890,7 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	items := dv.overflowItems()
 	rowH := touchMinTargetPx
 	curY := popupRect.Min.Y
-	btnIdx := 0 // index into btns (excluding the trailing close button)
+	btnIdx := 0                  // index into btns (excluding the trailing close button)
 	nActionBtns := len(btns) - 1 // last button is always the close button
 	for _, item := range items {
 		rowR := image.Rect(popupRect.Min.X, curY, popupRect.Max.X, curY+rowH)
@@ -1031,18 +1012,32 @@ func (dv *DrumView) setViewMode(target viewMode) {
 		return
 	}
 	dv.currentViewMode = target
+	// EQPanelZone visibility is owned by the tree gate in drumview_ctor.go,
+	// which derives from currentViewMode. We only need to sync the active
+	// audio sub-tab here; viewModeRows preserves the prior tabState (covered
+	// by view_mode_segmented_test.go).
 	switch target {
 	case viewModeRows:
-		dv.mobileEQMode = false
+		// no audio sub-tab change
 	case viewModeEQ:
-		dv.mobileEQMode = true
 		if dv.eqPanelZone != nil {
 			dv.eqPanelZone.tabState.SetActiveTab(TabEQ)
 		}
 	case viewModeWave:
-		dv.mobileEQMode = true
 		if dv.eqPanelZone != nil {
 			dv.eqPanelZone.tabState.SetActiveTab(TabWave)
+		}
+	case viewModeSpectrum:
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.tabState.SetActiveTab(TabSpectrum)
+		}
+	case viewModeMeters:
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.tabState.SetActiveTab(TabMeters)
+		}
+	case viewModeChain:
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.tabState.SetActiveTab(TabScope)
 		}
 	}
 	dv.syncViewSwitchIcon()
@@ -1055,9 +1050,15 @@ func (dv *DrumView) setViewMode(target viewMode) {
 			dv.viewSwitchSegmented.SetActive(1)
 		case viewModeWave:
 			dv.viewSwitchSegmented.SetActive(2)
+		case viewModeSpectrum:
+			dv.viewSwitchSegmented.SetActive(3)
+		case viewModeMeters:
+			dv.viewSwitchSegmented.SetActive(4)
+		case viewModeChain:
+			dv.viewSwitchSegmented.SetActive(5)
 		}
 	}
-	if dv.mobileEQMode {
+	if dv.MobileEQMode() {
 		dv.CloseAllPopups()
 		if rs := dv.rowScroll(); rs != nil {
 			rs.ResetTouch()
@@ -1096,7 +1097,7 @@ func (dv *DrumView) syncViewSwitchIcon() {
 	}
 	// Keep legacy button in sync.
 	if dv.eqToggleMobile() != nil {
-		if dv.mobileEQMode {
+		if dv.MobileEQMode() {
 			dv.eqToggleMobile().Text = "Rows"
 		} else {
 			dv.eqToggleMobile().Text = "EQ"
@@ -1113,11 +1114,26 @@ func (dv *DrumView) MobileEQCollapsed() bool { return dv.mobileEQCollapsed }
 // SetMobileEQCollapsed sets the mobile EQ collapsed state for testing.
 func (dv *DrumView) SetMobileEQCollapsed(v bool) { dv.mobileEQCollapsed = v }
 
-// MobileEQMode returns whether the mobile EQ mode is active (for testing).
-func (dv *DrumView) MobileEQMode() bool { return dv.mobileEQMode }
+// MobileEQMode reports whether the mobile audio panel currently owns the
+// drum view (i.e. the user is on EQ/Wave/Spec/Mtr/Scope rather than Pads).
+// Derived from currentViewMode + the mobile profile so there is exactly
+// one source of truth for the mobile tab swap.
+func (dv *DrumView) MobileEQMode() bool {
+	return Profile().IsMobile() && dv.currentViewMode != viewModeRows
+}
 
-// SetMobileEQMode sets the mobile EQ mode (for testing).
-func (dv *DrumView) SetMobileEQMode(v bool) { dv.mobileEQMode = v }
+// SetMobileEQMode is the legacy entry point used by tests, screenshot
+// scenes, and the Game-level uistate setter. It now routes through the
+// canonical setViewMode so the segmented control, tab state, and tree
+// visibility gate update in lockstep — avoiding the parallel-state bug
+// where SetMobileEQMode flipped a flag without telling the tab system.
+func (dv *DrumView) SetMobileEQMode(v bool) {
+	if v {
+		dv.setViewMode(viewModeEQ)
+	} else {
+		dv.setViewMode(viewModeRows)
+	}
+}
 
 // ContextMenuOpen returns whether the context menu is open (for testing).
 func (dv *DrumView) ContextMenuOpen() bool { return dv.IsContextMenuOpen() }

@@ -145,7 +145,8 @@ type Game struct {
 	// Screenshot mode: capture screen after N draws and exit
 	screenshotPath         string
 	screenshotDraws        int
-	screenshotSettleFrames int // override for the default 90-frame wait; 0 = use default
+	screenshotSettleFrames int     // override for the default 90-frame wait; 0 = use default
+	screenshotSubject      Subject // when non-empty, captureScreen crops to this subject's bounds
 	// Scope panel: open scope on first Update after flag is set
 	scopeOpen    bool
 	scopeApplied bool
@@ -275,6 +276,16 @@ type Game struct {
 	gridCacheStepPx int
 	gridCacheSubSig uint64
 
+	// Cached SubImage wrapper for the grid pane region of the screen.
+	// Reused across frames when the parent screen pointer and grid rect are
+	// unchanged. Without this, drawGridPane's `screen.SubImage(...)` call
+	// allocated a fresh *ebiten.Image wrapper every frame — at 60 FPS that
+	// was the dominant non-zone allocation source behind a fast WASM OOM
+	// (see playback_alloc_throughput_test.go).
+	gridPaneSubParent *ebiten.Image
+	gridPaneSubRect   image.Rectangle
+	gridPaneSub       *ebiten.Image
+
 	// draw stats (for tests and diagnostics)
 	lastDrawEdges  int
 	lastDrawNodes  int
@@ -325,6 +336,11 @@ type Game struct {
 	parityScanSumNS       int64
 	parityScanMaxNS       int64
 	parityScanCount       int64
+	// Test-only diagnostic counters for parityPrune invocations.
+	parityPruneCallsForTest      int64
+	parityPruneMaxMinAbsForTest  int
+	parityScanCallsForTest       int64
+	parityScanReturnsForTest     [10]int64 // by early-return slot
 	// parityGen monotonically advances on every runtime structural mutation
 	// (instrument change, BPM, length, graph edit, row add/del, etc). All
 	// parity event records (audio, seq decisions, highlights) carry the gen at
@@ -389,6 +405,14 @@ type Game struct {
 	// at -1; grows monotonically while playing. Reset on Stop.
 	frozenUpToByRow []int
 
+	// Highest absolute subdivision index already validated by reconcileFrozen
+	// per row (inclusive). reconcileFrozen's per-refresh scan resumes from
+	// reconciledUpToByRow[r]+1 instead of futureReleaseStart, bounding scan
+	// cost to O(newly frozen abs since last refresh) instead of O(freezeLimit).
+	// -1 means "not yet reconciled". Invalidated on SetPaths, Stop reset, row
+	// count change, and inside reconcileFrozen on clamp/trim.
+	reconciledUpToByRow []int
+
 	// Path signatures per row to detect circuit shape changes. Used to avoid
 	// recomputing stable rows during active playback.
 	pathSigByRow        []uint64
@@ -422,8 +446,8 @@ func browserProfileSnapshot() bool { return RuntimeProf().IsBrowser }
 // even when running under "go test". Default is false.
 var forceAutoSize bool
 
-// SetScopeVisible marks the scope panel to be made visible on the next Update
+// SetChainVisible marks the scope panel to be made visible on the next Update
 // after the DrumView is ready. This is the entry point for the -scope CLI flag.
-func (g *Game) SetScopeVisible(v bool) {
+func (g *Game) SetChainVisible(v bool) {
 	g.scopeOpen = v
 }

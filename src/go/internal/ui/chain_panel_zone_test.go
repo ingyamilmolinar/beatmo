@@ -12,10 +12,10 @@ import (
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-func TestScopePanelZoneLayout(t *testing.T) {
+func TestChainPanelZoneLayout(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
-	if z.ID() != "scope-panel" {
+	z := NewChainPanelZone(ChainCallbacks{})
+	if z.ID() != "chain-panel" {
 		t.Errorf("expected ID 'scope-panel', got %q", z.ID())
 	}
 	r := image.Rect(0, 0, 800, 160)
@@ -35,9 +35,9 @@ func TestScopePanelZoneLayout(t *testing.T) {
 	}
 }
 
-func TestScopeTapSelection(t *testing.T) {
+func TestChainTapSelection(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	// Initially no taps.
 	if z.tapA >= 0 || z.tapB >= 0 {
 		t.Error("expected no taps initially")
@@ -59,14 +59,14 @@ func TestScopeTapSelection(t *testing.T) {
 	}
 }
 
-// TestScopeTapAllStages verifies every stage (including InsertFX) can be
+// TestChainTapAllStages verifies every stage (including InsertFX) can be
 // selected as a tap point.
-func TestScopeTapAllStages(t *testing.T) {
+func TestChainTapAllStages(t *testing.T) {
 	assertDefaultParityState(t)
 
 	stages := scope.AllStages()
 	for _, stage := range stages {
-		z := NewScopePanelZone(ScopeCallbacks{})
+		z := NewChainPanelZone(ChainCallbacks{})
 		z.handleStageClick(stage)
 		if z.tapA != stage {
 			t.Errorf("stage %s: expected tapA=%d, got %d", scope.StageLabel(stage), stage, z.tapA)
@@ -77,10 +77,10 @@ func TestScopeTapAllStages(t *testing.T) {
 	}
 }
 
-// TestScopeTapClearB verifies clicking tapB's stage clears it.
-func TestScopeTapClearB(t *testing.T) {
+// TestChainTapClearB verifies clicking tapB's stage clears it.
+func TestChainTapClearB(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
 	z.handleStageClick(scope.StageSynth)  // → tapA
 	z.handleStageClick(scope.StageMaster) // → tapB
@@ -98,10 +98,10 @@ func TestScopeTapClearB(t *testing.T) {
 	}
 }
 
-// TestScopeTapReplaceB verifies that clicking a third stage replaces tapB.
-func TestScopeTapReplaceB(t *testing.T) {
+// TestChainTapReplaceB verifies that clicking a third stage replaces tapB.
+func TestChainTapReplaceB(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
 	z.handleStageClick(scope.StageSynth)    // → tapA
 	z.handleStageClick(scope.StageAntiPop)  // → tapB
@@ -115,15 +115,15 @@ func TestScopeTapReplaceB(t *testing.T) {
 	}
 }
 
-// TestScopeTapCallbacks verifies that all tap change callbacks fire correctly.
-func TestScopeTapCallbacks(t *testing.T) {
+// TestChainTapCallbacks verifies that all tap change callbacks fire correctly.
+func TestChainTapCallbacks(t *testing.T) {
 	assertDefaultParityState(t)
 
 	var tapACalls []scope.Stage
 	var tapBCalls []scope.Stage
 	var clearACalls, clearBCalls int
 
-	z := NewScopePanelZone(ScopeCallbacks{
+	z := NewChainPanelZone(ChainCallbacks{
 		OnTapAChange: func(s scope.Stage) { tapACalls = append(tapACalls, s) },
 		OnTapBChange: func(s scope.Stage) { tapBCalls = append(tapBCalls, s) },
 		OnClearTapA:  func() { clearACalls++ },
@@ -161,11 +161,11 @@ func TestScopeTapCallbacks(t *testing.T) {
 	}
 }
 
-// TestScopeTapAfterClearA verifies that after clearing tapA, clicking a new
+// TestChainTapAfterClearA verifies that after clearing tapA, clicking a new
 // stage assigns to tapA (not tapB).
-func TestScopeTapAfterClearA(t *testing.T) {
+func TestChainTapAfterClearA(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
 	z.handleStageClick(scope.StageSynth)   // → tapA
 	z.handleStageClick(scope.StageAntiPop) // → tapB
@@ -180,48 +180,48 @@ func TestScopeTapAfterClearA(t *testing.T) {
 	}
 }
 
-// TestScopeDisplayModeCycle verifies OVR -> SPL -> DIF -> OVR cycling.
-func TestScopeDisplayModeCycle(t *testing.T) {
+// TestChainDisplayModePillsDirect verifies each of the three separate mode
+// pills sets the displayMode directly (replacing the legacy OVR→SPL→DIF
+// cycle button). Each pill keeps its own static label and is sticky on
+// repeated clicks.
+func TestChainDisplayModePillsDirect(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
-	if z.displayMode != scopeOverlay {
+	if z.displayMode != chainOverlay {
 		t.Fatal("expected overlay mode by default")
 	}
 
-	// Click 1: OVR -> SPL
 	z.splitBtn.OnClick()
-	if z.displayMode != scopeSplit {
-		t.Fatalf("expected split mode, got %d", z.displayMode)
+	if z.displayMode != chainSplit {
+		t.Fatalf("after splitBtn click: displayMode=%d want chainSplit=%d", z.displayMode, chainSplit)
 	}
 	if z.splitBtn.Text != "SPL" {
-		t.Errorf("expected button text 'SPL', got %q", z.splitBtn.Text)
+		t.Errorf("splitBtn text = %q; want %q (label is static, no cycle)", z.splitBtn.Text, "SPL")
 	}
 
-	// Click 2: SPL -> DIF
-	z.splitBtn.OnClick()
-	if z.displayMode != scopeDiff {
-		t.Fatalf("expected diff mode, got %d", z.displayMode)
+	z.diffBtn.OnClick()
+	if z.displayMode != chainDiff {
+		t.Fatalf("after diffBtn click: displayMode=%d want chainDiff=%d", z.displayMode, chainDiff)
 	}
-	if z.splitBtn.Text != "DIF" {
-		t.Errorf("expected button text 'DIF', got %q", z.splitBtn.Text)
+	if z.diffBtn.Text != "DIF" {
+		t.Errorf("diffBtn text = %q; want %q", z.diffBtn.Text, "DIF")
 	}
 
-	// Click 3: DIF -> OVR
-	z.splitBtn.OnClick()
-	if z.displayMode != scopeOverlay {
-		t.Fatalf("expected overlay mode, got %d", z.displayMode)
+	z.overlayBtn.OnClick()
+	if z.displayMode != chainOverlay {
+		t.Fatalf("after overlayBtn click: displayMode=%d want chainOverlay=%d", z.displayMode, chainOverlay)
 	}
-	if z.splitBtn.Text != "OVR" {
-		t.Errorf("expected button text 'OVR', got %q", z.splitBtn.Text)
+	if z.overlayBtn.Text != "OVR" {
+		t.Errorf("overlayBtn text = %q; want %q", z.overlayBtn.Text, "OVR")
 	}
 }
 
-// TestScopeFreezeToggle verifies the freeze button updates state and text.
-func TestScopeFreezeToggle(t *testing.T) {
+// TestChainFreezeToggle verifies the freeze button updates state and text.
+func TestChainFreezeToggle(t *testing.T) {
 	assertDefaultParityState(t)
 
-	z := NewScopePanelZone(ScopeCallbacks{
+	z := NewChainPanelZone(ChainCallbacks{
 		OnFreezeToggle: func() bool {
 			return true // simulate freezing
 		},
@@ -240,11 +240,11 @@ func TestScopeFreezeToggle(t *testing.T) {
 	}
 }
 
-// TestScopeHitAreasIncludeAllButtons verifies hit areas are generated for
+// TestChainHitAreasIncludeAllButtons verifies hit areas are generated for
 // every interactive element.
-func TestScopeHitAreasIncludeAllButtons(t *testing.T) {
+func TestChainHitAreasIncludeAllButtons(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 1000, 300))
 
 	areas := z.HitAreas()
@@ -279,19 +279,19 @@ func TestScopeHitAreasIncludeAllButtons(t *testing.T) {
 	}
 }
 
-// TestScopeYGainDefault verifies yGain is 1.0 on construction.
-func TestScopeYGainDefault(t *testing.T) {
+// TestChainYGainDefault verifies yGain is 1.0 on construction.
+func TestChainYGainDefault(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	if z.yGain != 1.0 {
 		t.Errorf("expected yGain=1.0, got %f", z.yGain)
 	}
 }
 
-// TestScopeYGainShiftWheel verifies Shift+Scroll changes yGain.
-func TestScopeYGainShiftWheel(t *testing.T) {
+// TestChainYGainShiftWheel verifies Shift+Scroll changes yGain.
+func TestChainYGainShiftWheel(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 800, 160))
 
 	// Override key press to simulate shift held.
@@ -307,7 +307,7 @@ func TestScopeYGainShiftWheel(t *testing.T) {
 	)
 	defer restore()
 
-	handler := &scopeZoomHandler{zone: z}
+	handler := &chainZoomHandler{zone: z}
 	origWindow := z.windowMs
 
 	// Shift+scroll up should increase yGain.
@@ -328,10 +328,10 @@ func TestScopeYGainShiftWheel(t *testing.T) {
 	}
 }
 
-// TestScopeYGainClamp verifies yGain is clamped to [0.25, 16.0].
-func TestScopeYGainClamp(t *testing.T) {
+// TestChainYGainClamp verifies yGain is clamped to [0.25, 16.0].
+func TestChainYGainClamp(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -343,7 +343,7 @@ func TestScopeYGainClamp(t *testing.T) {
 	)
 	defer restore()
 
-	handler := &scopeZoomHandler{zone: z}
+	handler := &chainZoomHandler{zone: z}
 
 	// Scroll up a lot — should clamp at 16.0.
 	for i := 0; i < 100; i++ {
@@ -362,10 +362,10 @@ func TestScopeYGainClamp(t *testing.T) {
 	}
 }
 
-// TestScopeYGainNoShiftUnchanged verifies scroll without shift only changes windowMs.
-func TestScopeYGainNoShiftUnchanged(t *testing.T) {
+// TestChainYGainNoShiftUnchanged verifies scroll without shift only changes windowMs.
+func TestChainYGainNoShiftUnchanged(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
 	// No keys pressed.
 	restore := SetInputForTest(
@@ -378,7 +378,7 @@ func TestScopeYGainNoShiftUnchanged(t *testing.T) {
 	)
 	defer restore()
 
-	handler := &scopeZoomHandler{zone: z}
+	handler := &chainZoomHandler{zone: z}
 	origGain := z.yGain
 
 	handler.OnWheel(0, 0, 3)
@@ -390,14 +390,14 @@ func TestScopeYGainNoShiftUnchanged(t *testing.T) {
 	}
 }
 
-// TestScopeDoubleClickReset verifies double-click resets both axes.
-func TestScopeDoubleClickReset(t *testing.T) {
+// TestChainDoubleClickReset verifies double-click resets both axes.
+func TestChainDoubleClickReset(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.windowMs = 100
 	z.yGain = 4.0
 
-	handler := &scopeZoomHandler{zone: z}
+	handler := &chainZoomHandler{zone: z}
 
 	// First press.
 	handler.OnPress(400, 100)
@@ -414,10 +414,10 @@ func TestScopeDoubleClickReset(t *testing.T) {
 	}
 }
 
-// TestScopeAutoGainToggle verifies the AG button toggles autoGain and resets yGain.
-func TestScopeAutoGainToggle(t *testing.T) {
+// TestChainAutoGainToggle verifies the AG button toggles autoGain and resets yGain.
+func TestChainAutoGainToggle(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
 	if z.autoGain {
 		t.Fatal("expected autoGain=false by default")
@@ -438,10 +438,10 @@ func TestScopeAutoGainToggle(t *testing.T) {
 	}
 }
 
-// TestScopeAutoGainDisabledByManualZoom verifies Shift+Scroll disables auto-gain.
-func TestScopeAutoGainDisabledByManualZoom(t *testing.T) {
+// TestChainAutoGainDisabledByManualZoom verifies Shift+Scroll disables auto-gain.
+func TestChainAutoGainDisabledByManualZoom(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.autoGain = true
 
 	restore := SetInputForTest(
@@ -454,36 +454,36 @@ func TestScopeAutoGainDisabledByManualZoom(t *testing.T) {
 	)
 	defer restore()
 
-	handler := &scopeZoomHandler{zone: z}
+	handler := &chainZoomHandler{zone: z}
 	handler.OnWheel(0, 0, 1)
 	if z.autoGain {
 		t.Fatal("expected autoGain=false after manual shift+scroll")
 	}
 }
 
-// TestScopePeakAmplitude verifies peak amplitude computation.
-func TestScopePeakAmplitude(t *testing.T) {
+// TestChainPeakAmplitude verifies peak amplitude computation.
+func TestChainPeakAmplitude(t *testing.T) {
 	assertDefaultParityState(t)
 
 	state := &scope.State{
 		TapA: scope.TapData{Active: true, Samples: []float64{0.1, -0.3, 0.2}},
 		TapB: scope.TapData{Active: true, Samples: []float64{0.05, 0.4, -0.1}},
 	}
-	peak := scopePeakAmplitude(state)
+	peak := chainPeakAmplitude(state)
 	if peak != 0.4 {
 		t.Errorf("expected peak=0.4, got %f", peak)
 	}
 
 	// Only one tap active.
 	state.TapB.Active = false
-	peak = scopePeakAmplitude(state)
+	peak = chainPeakAmplitude(state)
 	if peak != 0.3 {
 		t.Errorf("expected peak=0.3 with only tapA, got %f", peak)
 	}
 }
 
-// TestScopeTraceFillDrawsCalls verifies fill rects appear when fillCol is set.
-func TestScopeTraceFillDrawsCalls(t *testing.T) {
+// TestChainTraceFillDrawsCalls verifies fill rects appear when fillCol is set.
+func TestChainTraceFillDrawsCalls(t *testing.T) {
 	assertDefaultParityState(t)
 
 	wave := []float64{0.5, 0.5, 0.5, 0.5}
@@ -509,8 +509,8 @@ func TestScopeTraceFillDrawsCalls(t *testing.T) {
 	}
 }
 
-// TestScopeTraceFillNilNoExtra verifies no fill rects appear when fillCol is nil.
-func TestScopeTraceFillNilNoExtra(t *testing.T) {
+// TestChainTraceFillNilNoExtra verifies no fill rects appear when fillCol is nil.
+func TestChainTraceFillNilNoExtra(t *testing.T) {
 	assertDefaultParityState(t)
 
 	wave := []float64{0.5, 0.5, 0.5, 0.5}
@@ -531,10 +531,10 @@ func TestScopeTraceFillNilNoExtra(t *testing.T) {
 	}
 }
 
-// TestScopeHitAreasIncludeAGButton verifies the AG button has a hit area.
-func TestScopeHitAreasIncludeAGButton(t *testing.T) {
+// TestChainHitAreasIncludeAGButton verifies the AG button has a hit area.
+func TestChainHitAreasIncludeAGButton(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 1000, 300))
 
 	areas := z.HitAreas()
@@ -550,13 +550,13 @@ func TestScopeHitAreasIncludeAGButton(t *testing.T) {
 	}
 }
 
-// TestScopeDiffComputation verifies element-wise A-B difference.
-func TestScopeDiffComputation(t *testing.T) {
+// TestChainDiffComputation verifies element-wise A-B difference.
+func TestChainDiffComputation(t *testing.T) {
 	assertDefaultParityState(t)
 
 	a := []float64{1.0, 0.5, 0.0, -0.5}
 	b := []float64{0.5, 0.5, 0.5, 0.5}
-	diff := scopeDiffSamples(a, b)
+	diff := chainDiffSamples(a, b)
 
 	expected := []float64{0.5, 0.0, -0.5, -1.0}
 	if len(diff) != len(expected) {
@@ -569,13 +569,13 @@ func TestScopeDiffComputation(t *testing.T) {
 	}
 }
 
-// TestScopeDiffLengthMismatch verifies diff uses min length without panic.
-func TestScopeDiffLengthMismatch(t *testing.T) {
+// TestChainDiffLengthMismatch verifies diff uses min length without panic.
+func TestChainDiffLengthMismatch(t *testing.T) {
 	assertDefaultParityState(t)
 
 	a := []float64{1.0, 0.5, 0.0, -0.5, -1.0}
 	b := []float64{0.5, 0.5, 0.5}
-	diff := scopeDiffSamples(a, b)
+	diff := chainDiffSamples(a, b)
 
 	if len(diff) != 3 {
 		t.Fatalf("expected 3 samples (min length), got %d", len(diff))
@@ -585,22 +585,22 @@ func TestScopeDiffLengthMismatch(t *testing.T) {
 	}
 }
 
-// TestScopeTraceVisibilityDefault verifies both traces visible by default.
-func TestScopeTraceVisibilityDefault(t *testing.T) {
+// TestChainTraceVisibilityDefault verifies both traces visible by default.
+func TestChainTraceVisibilityDefault(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	if !z.showTapA || !z.showTapB {
 		t.Error("expected both traces visible by default")
 	}
 }
 
-// TestScopeTraceToggleA verifies swatch click toggles trace A visibility.
-func TestScopeTraceToggleA(t *testing.T) {
+// TestChainTraceToggleA verifies swatch click toggles trace A visibility.
+func TestChainTraceToggleA(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 800, 160))
 
-	handler := &scopeSwatchHandler{zone: z, tap: "A"}
+	handler := &chainSwatchHandler{zone: z, tap: "A"}
 	handler.OnPress(0, 0)
 	if z.showTapA {
 		t.Error("expected showTapA=false after toggle")
@@ -611,22 +611,22 @@ func TestScopeTraceToggleA(t *testing.T) {
 	}
 }
 
-// TestScopeTraceToggleB verifies swatch click toggles trace B visibility.
-func TestScopeTraceToggleB(t *testing.T) {
+// TestChainTraceToggleB verifies swatch click toggles trace B visibility.
+func TestChainTraceToggleB(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 
-	handler := &scopeSwatchHandler{zone: z, tap: "B"}
+	handler := &chainSwatchHandler{zone: z, tap: "B"}
 	handler.OnPress(0, 0)
 	if z.showTapB {
 		t.Error("expected showTapB=false after toggle")
 	}
 }
 
-// TestScopeSwatchHitAreas verifies swatch hit areas are registered.
-func TestScopeSwatchHitAreas(t *testing.T) {
+// TestChainSwatchHitAreas verifies swatch hit areas are registered.
+func TestChainSwatchHitAreas(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 1000, 300))
 
 	areas := z.HitAreas()
@@ -642,8 +642,8 @@ func TestScopeSwatchHitAreas(t *testing.T) {
 	}
 }
 
-// TestScopeHiddenTraceNotDrawn verifies hidden trace produces no colored rects.
-func TestScopeHiddenTraceNotDrawn(t *testing.T) {
+// TestChainHiddenTraceNotDrawn verifies hidden trace produces no colored rects.
+func TestChainHiddenTraceNotDrawn(t *testing.T) {
 	assertDefaultParityState(t)
 
 	wave := []float64{0.5, 0.5, 0.5, 0.5}
@@ -666,22 +666,22 @@ func TestScopeHiddenTraceNotDrawn(t *testing.T) {
 		t.Fatal("expected blue trace rects when visible")
 	}
 
-	// When showA=false, drawScopeOverlay skips the call entirely,
+	// When showA=false, drawChainOverlay skips the call entirely,
 	// so we verify by checking that the toggle state works.
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.showTapA = false
 	if z.showTapA {
 		t.Error("showTapA should be false")
 	}
 }
 
-// TestScopeSetTapAClearAndAssign exercises the public SetTapA/SetTapB API
+// TestChainSetTapAClearAndAssign exercises the public SetTapA/SetTapB API
 // (callback wiring + clear path) which handleStageClick alone does not hit.
-func TestScopeSetTapAClearAndAssign(t *testing.T) {
+func TestChainSetTapAClearAndAssign(t *testing.T) {
 	assertDefaultParityState(t)
 	var clearedA, clearedB bool
 	var lastA, lastB scope.Stage
-	z := NewScopePanelZone(ScopeCallbacks{
+	z := NewChainPanelZone(ChainCallbacks{
 		OnTapAChange: func(s scope.Stage) { lastA = s },
 		OnTapBChange: func(s scope.Stage) { lastB = s },
 		OnClearTapA:  func() { clearedA = true },
@@ -705,11 +705,11 @@ func TestScopeSetTapAClearAndAssign(t *testing.T) {
 	}
 }
 
-// TestScopeZoneLifecycleNoOps covers the trivial Zone-interface methods
+// TestChainZoneLifecycleNoOps covers the trivial Zone-interface methods
 // and stub handler bodies that are otherwise zero-coverage.
-func TestScopeZoneLifecycleNoOps(t *testing.T) {
+func TestChainZoneLifecycleNoOps(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	if !z.NeedsLayout() {
 		t.Error("NeedsLayout should be true before first Layout")
 	}
@@ -731,11 +731,11 @@ func TestScopeZoneLifecycleNoOps(t *testing.T) {
 	z.SetPortal(nil) // setter; nil is a valid value
 }
 
-// TestScopeLayoutTooSmallClearsHitAreas covers the early-return branch in
+// TestChainLayoutTooSmallClearsHitAreas covers the early-return branch in
 // Layout when the rect is below the minimum drawable size.
-func TestScopeLayoutTooSmallClearsHitAreas(t *testing.T) {
+func TestChainLayoutTooSmallClearsHitAreas(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 400, 80))
 	if len(z.HitAreas()) == 0 {
 		t.Fatal("setup: expected hit areas after normal Layout")
@@ -746,21 +746,21 @@ func TestScopeLayoutTooSmallClearsHitAreas(t *testing.T) {
 	}
 }
 
-// TestScopeSwatchHandlersToggleVisibility is the "concrete dispatch
+// TestChainSwatchHandlersToggleVisibility is the "concrete dispatch
 // scenario" the plan calls for: hit-area lookup → handler invocation →
 // state transition, all without an Ebiten draw call.
-func TestScopeSwatchHandlersToggleVisibility(t *testing.T) {
+func TestChainSwatchHandlersToggleVisibility(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 800, 160))
 
-	var swatchA, swatchB *scopeSwatchHandler
+	var swatchA, swatchB *chainSwatchHandler
 	for _, ha := range z.HitAreas() {
 		switch ha.Tag {
 		case "scope-swatch-a":
-			swatchA = ha.Handler.(*scopeSwatchHandler)
+			swatchA = ha.Handler.(*chainSwatchHandler)
 		case "scope-swatch-b":
-			swatchB = ha.Handler.(*scopeSwatchHandler)
+			swatchB = ha.Handler.(*chainSwatchHandler)
 		}
 	}
 	if swatchA == nil || swatchB == nil {
@@ -789,17 +789,17 @@ func TestScopeSwatchHandlersToggleVisibility(t *testing.T) {
 	}
 }
 
-// TestScopeZoomHandlerStubMethods covers the empty OnDrag/OnRelease bodies
-// on scopeZoomHandler that aren't reached by the existing wheel tests, plus
+// TestChainZoomHandlerStubMethods covers the empty OnDrag/OnRelease bodies
+// on chainZoomHandler that aren't reached by the existing wheel tests, plus
 // the steps==0 early-return in OnWheel.
-func TestScopeZoomHandlerStubMethods(t *testing.T) {
+func TestChainZoomHandlerStubMethods(t *testing.T) {
 	assertDefaultParityState(t)
-	z := NewScopePanelZone(ScopeCallbacks{})
+	z := NewChainPanelZone(ChainCallbacks{})
 	z.Layout(image.Rect(0, 0, 800, 160))
-	var h *scopeZoomHandler
+	var h *chainZoomHandler
 	for _, ha := range z.HitAreas() {
 		if ha.Tag == "scope-zoom" {
-			h = ha.Handler.(*scopeZoomHandler)
+			h = ha.Handler.(*chainZoomHandler)
 			break
 		}
 	}
@@ -810,5 +810,200 @@ func TestScopeZoomHandlerStubMethods(t *testing.T) {
 	h.OnRelease(0, 0)
 	if got := h.OnWheel(0, 0, 0); got != InputIgnored {
 		t.Errorf("zero-step OnWheel = %v, want InputIgnored", got)
+	}
+}
+
+// --- Task A3 tests: vertical stage thumbnails + 3 separate mode pills ---
+
+// TestChainStageThumbnailsVertical verifies the new stage column lays the 6
+// stage thumbnails out vertically: every Min.X is approximately the same and
+// Y values strictly increase down the column.
+func TestChainStageThumbnailsVertical(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewChainPanelZone(ChainCallbacks{})
+	z.Layout(image.Rect(0, 0, 400, 300))
+
+	var firstX int
+	var prevY int
+	for i, btn := range z.stageButtons {
+		if btn == nil {
+			t.Fatalf("stage button %d nil", i)
+		}
+		r := btn.Rect()
+		if r.Empty() {
+			t.Fatalf("stage button %d empty rect", i)
+		}
+		if i == 0 {
+			firstX = r.Min.X
+			prevY = r.Min.Y - 1
+		}
+		if absInt(r.Min.X-firstX) > 2 {
+			t.Errorf("stage button %d Min.X=%d differs from first %d (>2px)", i, r.Min.X, firstX)
+		}
+		if r.Min.Y <= prevY {
+			t.Errorf("stage button %d Min.Y=%d not strictly greater than previous %d", i, r.Min.Y, prevY)
+		}
+		prevY = r.Min.Y
+	}
+}
+
+// TestChainModeButtonsAreThree verifies the new 3 separate mode pills exist
+// and clicking each sets displayMode directly (no cycle).
+func TestChainModeButtonsAreThree(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewChainPanelZone(ChainCallbacks{})
+
+	if z.overlayBtn == nil {
+		t.Fatal("overlayBtn nil")
+	}
+	if z.splitBtn == nil {
+		t.Fatal("splitBtn nil")
+	}
+	if z.diffBtn == nil {
+		t.Fatal("diffBtn nil")
+	}
+
+	// Start by setting displayMode away from default to verify direct assignment.
+	z.displayMode = chainDiff
+	z.overlayBtn.OnClick()
+	if z.displayMode != chainOverlay {
+		t.Errorf("overlayBtn click: displayMode=%d want chainOverlay=%d", z.displayMode, chainOverlay)
+	}
+	z.splitBtn.OnClick()
+	if z.displayMode != chainSplit {
+		t.Errorf("splitBtn click: displayMode=%d want chainSplit=%d", z.displayMode, chainSplit)
+	}
+	z.diffBtn.OnClick()
+	if z.displayMode != chainDiff {
+		t.Errorf("diffBtn click: displayMode=%d want chainDiff=%d", z.displayMode, chainDiff)
+	}
+}
+
+// TestChainModeOnlyOneActive verifies the displayMode is exactly chainSplit
+// after clicking splitBtn (i.e. there is no implicit cycle).
+func TestChainModeOnlyOneActive(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewChainPanelZone(ChainCallbacks{})
+
+	// From any starting state, clicking splitBtn must land on chainSplit
+	// — no matter how many times.
+	z.splitBtn.OnClick()
+	if z.displayMode != chainSplit {
+		t.Fatalf("after splitBtn click: displayMode=%d want chainSplit=%d", z.displayMode, chainSplit)
+	}
+	z.splitBtn.OnClick()
+	if z.displayMode != chainSplit {
+		t.Errorf("second splitBtn click changed displayMode to %d (expected sticky chainSplit)", z.displayMode)
+	}
+}
+
+// TestChainCloseButtonStillFires verifies the existing close button still
+// invokes the OnClose callback after the layout refactor.
+func TestChainCloseButtonStillFires(t *testing.T) {
+	assertDefaultParityState(t)
+	var closed bool
+	z := NewChainPanelZone(ChainCallbacks{
+		OnClose: func() { closed = true },
+	})
+	z.closeBtn.OnClick()
+	if !closed {
+		t.Error("OnClose callback did not fire on closeBtn click")
+	}
+}
+
+// --- Task A4 tests: hover tooltips ---
+
+// TestChainTooltipOpensOnDwell verifies that with the cursor sitting over a
+// stage button for at least 300ms the portal receives an entry with id
+// "chain-tt" carrying the StageDescription.
+func TestChainTooltipOpensOnDwell(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewChainPanelZone(ChainCallbacks{})
+	z.Layout(image.Rect(0, 0, 400, 300))
+
+	idx := &HitIndex{}
+	portal := NewOverlayPortal(idx)
+	portal.SetScreenBounds(image.Rect(0, 0, 1024, 768))
+	z.SetPortal(portal)
+
+	stageBtn := z.stageButtons[0]
+	stageR := stageBtn.Rect()
+	if stageR.Empty() {
+		t.Fatal("stage button rect empty after Layout")
+	}
+	cx := stageR.Min.X + stageR.Dx()/2
+	cy := stageR.Min.Y + stageR.Dy()/2
+
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 1024, 768 },
+	)
+	defer restore()
+
+	// First Update arms the dwell timer.
+	z.Update()
+	if portal.Has("chain-tt") {
+		t.Fatal("tooltip opened immediately on first Update; want 300ms dwell")
+	}
+
+	// Backdate the dwell-start so the next Update crosses the threshold.
+	z.hoverStartMs -= 400
+
+	z.Update()
+	if !portal.Has("chain-tt") {
+		t.Fatal("tooltip not opened after 300ms+ dwell")
+	}
+}
+
+// TestChainTooltipClosesOnExit verifies that moving the cursor outside the
+// hovered button removes the tooltip portal entry.
+func TestChainTooltipClosesOnExit(t *testing.T) {
+	assertDefaultParityState(t)
+	z := NewChainPanelZone(ChainCallbacks{})
+	z.Layout(image.Rect(0, 0, 400, 300))
+
+	idx := &HitIndex{}
+	portal := NewOverlayPortal(idx)
+	portal.SetScreenBounds(image.Rect(0, 0, 1024, 768))
+	z.SetPortal(portal)
+
+	stageBtn := z.stageButtons[0]
+	stageR := stageBtn.Rect()
+	if stageR.Empty() {
+		t.Fatal("stage button rect empty after Layout")
+	}
+	cx := stageR.Min.X + stageR.Dx()/2
+	cy := stageR.Min.Y + stageR.Dy()/2
+
+	cursorX := cx
+	cursorY := cy
+	restore := SetInputForTest(
+		func() (int, int) { return cursorX, cursorY },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 1024, 768 },
+	)
+	defer restore()
+
+	// Open the tooltip (arm + cross threshold).
+	z.Update()
+	z.hoverStartMs -= 400
+	z.Update()
+	if !portal.Has("chain-tt") {
+		t.Fatal("setup: tooltip should be open before exit")
+	}
+
+	// Move cursor outside the panel entirely.
+	cursorX = 1000
+	cursorY = 700
+	z.Update()
+	if portal.Has("chain-tt") {
+		t.Error("tooltip still open after cursor exited the button")
 	}
 }

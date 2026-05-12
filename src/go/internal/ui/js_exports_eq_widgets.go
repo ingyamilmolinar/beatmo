@@ -122,7 +122,7 @@ func (g *Game) initJSEqWidgets() {
 	// browser tests. Names: "synth","antipop","insertfx","eq","sends","master".
 	// Pass "" (or omit) to clear a tap (stage = -1).
 	js.Global().Set("setScopeTaps", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.scopeZone == nil {
+		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.chainZone == nil {
 			return false
 		}
 		nameToStage := func(s string) scope.Stage {
@@ -143,7 +143,7 @@ func (g *Game) initJSEqWidgets() {
 				return scope.Stage(-1)
 			}
 		}
-		sz := g.drum.eqPanelZone.scopeZone
+		sz := g.drum.eqPanelZone.chainZone
 		if len(args) > 0 {
 			sz.SetTapA(nameToStage(args[0].String()))
 		}
@@ -158,11 +158,11 @@ func (g *Game) initJSEqWidgets() {
 	// the current ScopeState callback produces.
 	js.Global().Set("probeScopeState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		obj := js.Global().Get("Object").New()
-		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.scopeZone == nil {
+		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.chainZone == nil {
 			obj.Set("available", false)
 			return obj
 		}
-		sz := g.drum.eqPanelZone.scopeZone
+		sz := g.drum.eqPanelZone.chainZone
 		if sz.callbacks.ScopeState == nil {
 			obj.Set("available", false)
 			return obj
