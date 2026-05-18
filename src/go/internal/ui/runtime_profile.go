@@ -1,5 +1,7 @@
 package ui
 
+import "time"
+
 // runtime_profile.go — Phase 5b of the design-system refactor.
 //
 // LayoutProfile (layout_profile.go) historically mixed two distinct
@@ -109,6 +111,41 @@ type RuntimeProfile struct {
 
 	// Identity. Snapshotted at profile construction from runtime.GOOS == "js".
 	IsBrowser bool
+
+	// PredictorWindowCap bounds the predictor's per-row sliding-window size
+	// (in subdivisions). Reads at idx outside the window return false; the
+	// timeline cold archive answers historical queries beyond it. Default
+	// 4096 (≈8 visible windows of 512). Identical for browser and desktop;
+	// reserved as a knob in case WASM later needs a tighter ceiling under
+	// memory pressure.
+	PredictorWindowCap int
+
+	// RibbonBeatsPerPixel fixes the timeline ribbon's horizontal scale so
+	// long sessions no longer compress the ticks into a forest. The visible
+	// window is `barRect.Dx() * RibbonBeatsPerPixel` beats wide, slid so
+	// the playhead sits at RibbonPlayheadFrac of the bar width. Visual-
+	// readability target (DESIGN.md ribbon spec); not bench-derived. Lower
+	// values = denser bars; 0.25 = 4 px/beat default.
+	RibbonBeatsPerPixel float64
+	// RibbonPlayheadFrac is the playhead's horizontal position inside the
+	// visible ribbon window, expressed as a fraction of bar width. 0.70 =
+	// 70% from the left, leaving ~30% of the bar for lookahead context.
+	RibbonPlayheadFrac float64
+
+	// ForceGCInterval triggers runtime.GC() at most once per interval in
+	// heapProbeTick (wall-clock based, NOT frame-count based — under
+	// sustained load the browser frame rate drops to ~7-13 fps so a
+	// frame-count interval would fire too rarely; the 2026-05-17 soak
+	// reached only frame=310 after 36 s wall-clock). Browser default
+	// 30s: single-threaded WASM Go GC starves under sustained audio +
+	// parameter-dispatch load — the 75 s synth-tab soak grew HeapAlloc
+	// 26.7 MB → 493 MB with gcCount=0 across 300 s. Forcing GC at the
+	// heap-probe yield point reclaims the cycle every interval;
+	// HeapAlloc oscillates around the live-data baseline (~50 MB)
+	// instead of growing linearly to the 2 GB WASM ceiling. Desktop
+	// default 0 (off): the desktop Go runtime has a real GC scheduler
+	// thread and does not need cooperative help.
+	ForceGCInterval time.Duration
 }
 
 var activeRuntimeProfile *RuntimeProfile
@@ -160,6 +197,10 @@ func browserRuntimeProfile() *RuntimeProfile {
 		ParityFatalDefault:                 false, // browser: log-only by default (PARITY_WASM_FATAL=1 to opt in)
 		ParityWatchDefault:                 parityWatchLog,
 		IsBrowser:                          true,
+		PredictorWindowCap:                 4096,
+		RibbonBeatsPerPixel:                0.20, // mobile/touch: slightly wider beats (5 px/beat) for finger scrub precision
+		RibbonPlayheadFrac:                 0.70,
+		ForceGCInterval:                    30 * time.Second, // counters single-threaded WASM GC starvation (see field doc)
 	}
 }
 
@@ -190,5 +231,9 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		ParityFatalDefault:                 true,
 		ParityWatchDefault:                 parityWatchOff,
 		IsBrowser:                          false,
+		PredictorWindowCap:                 4096,
+		RibbonBeatsPerPixel:                0.25, // desktop: 4 px/beat — major (16), medium (4), minor (1) all readable
+		RibbonPlayheadFrac:                 0.70,
+		ForceGCInterval:                    0, // off: desktop GC has its own scheduler thread
 	}
 }
