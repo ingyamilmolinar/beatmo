@@ -22,6 +22,7 @@ type Game struct {
 	cam                       *Camera
 	split                     *Splitter
 	drum                      *DrumView
+	undoManager               *UndoManager
 	inputDispatcher           *InputDispatcher
 	lastDispatcherSidebarOpen bool
 	dispatcherDirty           bool
@@ -342,6 +343,11 @@ type Game struct {
 
 	// Audio scheduling lookahead in seconds (web)
 	audioLookaheadSec float64
+
+	// schedulerHorizonSec is how far ahead of `now` seqScheduleTime commits
+	// beats to the audio engine, decoupling audio timing from main-thread
+	// scheduling jitter. See RuntimeProfile.SchedulerHorizonSec.
+	schedulerHorizonSec float64
 
 	// Parity diagnostics between scheduler (audio) and DrumView slate.
 	parityRing            mismatchRing

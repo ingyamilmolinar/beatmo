@@ -114,6 +114,8 @@ func New(logger *game_log.Logger) *Game {
 	// reach Game state. Must be set before any Draw that resolves the
 	// callback — every call site in drumview_ctor.go guards on nil.
 	g.drum.game = g
+	g.undoManager = NewUndoManager(g.undoCapture, g.undoRestore)
+	registerUndoObserver(g.undoManager)
 	// Ensure the timeline header interprets offsets/length in beats while we
 	// track them internally in subdivision steps. Make the initial drum
 	// window span at least four full beats so the default view shows a
@@ -264,6 +266,7 @@ func New(logger *game_log.Logger) *Game {
 	// Combined with runtimeAudioLookahead() (+30ms dynamic, 60ms cap), this
 	// eliminates the zero-tolerance scheduling that caused overdue audio.
 	g.audioLookaheadSec = RuntimeProf().AudioLookaheadSec
+	g.schedulerHorizonSec = RuntimeProf().SchedulerHorizonSec
 
 	// Defer demo construction to the first layout/update to avoid blocking
 	// constructor time. Layout will build it once when not under tests.

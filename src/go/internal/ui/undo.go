@@ -101,3 +101,13 @@ func (m *UndoManager) OnExternalLoad() {
 	m.redo = m.redo[:0]
 	m.committed = m.capture()
 }
+
+// undoObserver is the process-wide sink for committed-mutation taps. One Game
+// per process, so a package global is safe (mirrors input.go's var pattern).
+var undoObserver interface{ recordKind(label string) }
+
+func registerUndoObserver(m *UndoManager) { undoObserver = undoManagerObserver{m} }
+
+type undoManagerObserver struct{ m *UndoManager }
+
+func (o undoManagerObserver) recordKind(label string) { o.m.record(label) }
