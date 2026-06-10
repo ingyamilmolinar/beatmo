@@ -643,6 +643,22 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.openMasterVolPopupPortal()
 		},
 		MasterVolPopup: dv.masterVolPopup,
+		OnUndo: func() {
+			if dv.game != nil && dv.game.undoManager != nil {
+				dv.game.undoManager.Undo()
+			}
+		},
+		OnRedo: func() {
+			if dv.game != nil && dv.game.undoManager != nil {
+				dv.game.undoManager.Redo()
+			}
+		},
+		CanUndo: func() bool {
+			return dv.game != nil && dv.game.undoManager != nil && dv.game.undoManager.CanUndo()
+		},
+		CanRedo: func() bool {
+			return dv.game != nil && dv.game.undoManager != nil && dv.game.undoManager.CanRedo()
+		},
 	})
 	dv.transportZone.SetPortal(dv.tree.Portal())
 	dv.tree.RegisterZoneVisible(dv.transportZone, ZTransport, func() bool { return !dv.simpleDraw })

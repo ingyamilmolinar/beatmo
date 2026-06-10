@@ -52,11 +52,12 @@ type TopBarSpec struct {
 	ColumnWeights []float64
 }
 
-// Desktop layout: single row, 11 cells in this order:
+// Desktop layout: single row, 13 cells in this order:
 //
 //	0: Play  | 1: Stop  | 2: Record | 3: BPM box | 4: BPM ±
 //	5: Subdiv | 6: spacer | 7: Volume | 8: Upload | 9: Import | 10: Export
-var desktopTopBarColumnWeights = []float64{1.3, 1.3, 1.0, 2.2, 0.7, 1.0, 0.3, 1.0, 0.8, 0.8, 0.8}
+//	11: Undo | 12: Redo
+var desktopTopBarColumnWeights = []float64{1.3, 1.3, 1.0, 2.2, 0.7, 1.0, 0.3, 1.0, 0.8, 0.8, 0.8, 0.9, 0.9}
 
 // Mobile uses a structurally different two-row toolbar (transport + tools),
 // so it carries its own per-row weights inline in transport_zone.go's

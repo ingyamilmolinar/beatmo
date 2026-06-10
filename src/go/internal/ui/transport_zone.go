@@ -23,6 +23,10 @@ type TransportCallbacks struct {
 	OnExportClick  func()            // delegates to DrumView's export
 	OnViewCycle    func()            // mobile view mode toggle
 	OnRecordToggle func()            // record button pressed
+	OnUndo         func()            // undo button pressed
+	OnRedo         func()            // redo button pressed
+	CanUndo        func() bool       // whether the undo stack is non-empty (drives dim)
+	CanRedo        func() bool       // whether the redo stack is non-empty (drives dim)
 	IsPlaying      func() bool       // read current playback state
 	IsRecording    func() bool       // read current recording state
 	GetMainVolume  func() float64    // read master volume
@@ -50,6 +54,8 @@ type TransportZone struct {
 	playBtn        *Button
 	stopBtn        *Button
 	recordBtn      *Button
+	undoBtn        *Button
+	redoBtn        *Button
 	bpmDecBtn      *Button
 	bpmBox         *TextInput
 	bpmIncBtn      *Button
@@ -197,6 +203,23 @@ func (z *TransportZone) initButtons() {
 	})
 	z.recordBtn.Icon = string(IconRecord)
 	z.recordBtn.IconColor = colRecordIdle
+
+	// Undo / Redo use short text labels: there are no IconUndo / IconRedo
+	// glyphs in icons.go, and the forbidden-glyph discipline test bans raw
+	// chrome glyphs. TextColor is retinted each frame (dim when the stack is
+	// empty) in syncUndoRedoVisual, called from decayAnims/Update.
+	z.undoBtn = NewSpecButton("Undo", ComponentButtonSecondary, func() {
+		hapticTransportTap()
+		if z.callbacks.OnUndo != nil {
+			z.callbacks.OnUndo()
+		}
+	})
+	z.redoBtn = NewSpecButton("Redo", ComponentButtonSecondary, func() {
+		hapticTransportTap()
+		if z.callbacks.OnRedo != nil {
+			z.callbacks.OnRedo()
+		}
+	})
 
 	z.bpmDecBtn = NewButton("", nil, func() {
 		z.bpmDelta--
@@ -405,6 +428,7 @@ func (z *TransportZone) BlurInputs() {
 
 func (z *TransportZone) Update() {
 	z.decayAnims()
+	z.syncUndoRedoVisual()
 	// Apply accumulated BPM delta from +/- buttons.
 	if z.bpmDelta != 0 {
 		z.SetBPM(z.bpm + z.bpmDelta)
@@ -723,10 +747,17 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 		}
 	}
 
-	// Row 0 column weights — extend by [vol, overflow] when single-row.
-	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0}
+	// Row 0 column weights. Trailing two cells are always Undo / Redo so they
+	// stay on the primary toolbar on mobile. Single-row mode additionally
+	// hosts vol + overflow before undo/redo.
+	//   two-row:    play stop record [bpm] subdiv | undo redo   (cells 5,6)
+	//   single-row: play stop record [bpm] subdiv vol overflow undo redo
+	var undoCell, redoCell int
+	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0}
+	undoCell, redoCell = 5, 6
 	if !useTwoRow {
-		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0}
+		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0, 1.0}
+		undoCell, redoCell = 7, 8
 	}
 	row0Grid := NewGridLayout(row0Bounds, weights, []float64{1})
 
@@ -779,6 +810,14 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 		if z.overflowBtn != nil {
 			z.overflowBtn.SetRect(safeInsetTransport(row0Grid.Cell(6, 0), pad))
 		}
+	}
+
+	// Undo / Redo on the primary toolbar (row 0 trailing cells) — mobile.
+	if z.undoBtn != nil {
+		z.undoBtn.SetRect(safeInsetTransport(row0Grid.Cell(undoCell, 0), pad))
+	}
+	if z.redoBtn != nil {
+		z.redoBtn.SetRect(safeInsetTransport(row0Grid.Cell(redoCell, 0), pad))
 	}
 
 	// Hide desktop-only buttons on mobile.
@@ -841,6 +880,14 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec T
 	z.importBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(9, 0), pad))
 	z.exportBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(10, 0), pad))
 
+	// Undo / Redo on the primary toolbar (cells 11, 12) — present on desktop.
+	if z.undoBtn != nil {
+		z.undoBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(11, 0), pad))
+	}
+	if z.redoBtn != nil {
+		z.redoBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(12, 0), pad))
+	}
+
 	// Compute file-ops group container rect (covers upload + import + export).
 	z.fileOpsGroupRect = computeGroupRect([]image.Rectangle{
 		z.uploadBtn.Rect(), z.importBtn.Rect(), z.exportBtn.Rect(),
@@ -876,6 +923,8 @@ func (z *TransportZone) rebuildHitAreas() {
 		{z.playBtn, "transport-play", true},
 		{z.stopBtn, "transport-stop", true},
 		{z.recordBtn, "transport-record", true},
+		{z.undoBtn, "transport-undo", true},
+		{z.redoBtn, "transport-redo", true},
 		{z.subdivBtn, "transport-subdiv", true},
 		{z.trackBtn, "transport-track", true},
 		{z.uploadBtn, "transport-upload", true},
@@ -1128,6 +1177,27 @@ func (z *TransportZone) syncTrackBtnVisual() {
 	)
 }
 
+// syncUndoRedoVisual dims the undo/redo button labels when their respective
+// stack is empty (CanUndo/CanRedo == false), matching the play/stop visual
+// model where the icon/text color carries the active/inactive signal while
+// chrome stays fixed. Uses existing theme tokens only (colTextPrimary /
+// colTextDisabled) — no new color literals.
+func (z *TransportZone) syncUndoRedoVisual() {
+	dim := func(btn *Button, can func() bool) {
+		if btn == nil {
+			return
+		}
+		enabled := can == nil || can()
+		if enabled {
+			btn.TextColor = colTextPrimary
+		} else {
+			btn.TextColor = colTextDisabled
+		}
+	}
+	dim(z.undoBtn, z.callbacks.CanUndo)
+	dim(z.redoBtn, z.callbacks.CanRedo)
+}
+
 // --- Toolbar caching ---
 
 func (z *TransportZone) toolbarStateHash() uint64 {
@@ -1212,6 +1282,18 @@ func (z *TransportZone) toolbarStateHash() uint64 {
 		mix(boolBit(z.viewSwitchBtn.hovered))
 		mix(boolBit(z.viewSwitchBtn.pressed))
 	}
+	// Undo / Redo: hover/press + dim state (CanUndo/CanRedo drive the label
+	// tint, so the toolbar cache must invalidate when a stack empties/fills).
+	if z.undoBtn != nil {
+		mix(boolBit(z.undoBtn.hovered))
+		mix(boolBit(z.undoBtn.pressed))
+		mix(boolBit(z.callbacks.CanUndo != nil && z.callbacks.CanUndo()))
+	}
+	if z.redoBtn != nil {
+		mix(boolBit(z.redoBtn.hovered))
+		mix(boolBit(z.redoBtn.pressed))
+		mix(boolBit(z.callbacks.CanRedo != nil && z.callbacks.CanRedo()))
+	}
 	// Group container rects.
 	mix(uint64(z.bpmGroupRect.Min.X))
 	mix(uint64(z.bpmGroupRect.Min.Y))
@@ -1264,6 +1346,12 @@ func (z *TransportZone) toolbarBounds() image.Rectangle {
 	expand(z.uploadBtn.Rect())
 	expand(z.importBtn.Rect())
 	expand(z.exportBtn.Rect())
+	if z.undoBtn != nil {
+		expand(z.undoBtn.Rect())
+	}
+	if z.redoBtn != nil {
+		expand(z.redoBtn.Rect())
+	}
 	if z.eqToggleMobile != nil {
 		expand(z.eqToggleMobile.Rect())
 	}
@@ -1353,6 +1441,12 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 	drawBtnOff(cache, z.uploadBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.importBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.exportBtn, offsetX, offsetY)
+	if z.undoBtn != nil {
+		drawBtnOff(cache, z.undoBtn, offsetX, offsetY)
+	}
+	if z.redoBtn != nil {
+		drawBtnOff(cache, z.redoBtn, offsetX, offsetY)
+	}
 	if z.eqToggleMobile != nil {
 		drawBtnOff(cache, z.eqToggleMobile, offsetX, offsetY)
 	}
@@ -1403,6 +1497,12 @@ func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
 	z.uploadBtn.Draw(dst)
 	z.importBtn.Draw(dst)
 	z.exportBtn.Draw(dst)
+	if z.undoBtn != nil {
+		z.undoBtn.Draw(dst)
+	}
+	if z.redoBtn != nil {
+		z.redoBtn.Draw(dst)
+	}
 	if z.eqToggleMobile != nil {
 		z.eqToggleMobile.Draw(dst)
 	}
