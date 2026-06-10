@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/hajimehoshi/ebiten/v2"
+import (
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+)
 
 // ─── Input System Architecture ──────────────────────────────────────────────
 //
@@ -51,8 +54,9 @@ var (
 		}
 		return _ebIsMouseButtonPressed(b)
 	}
-	isKeyPressed       = ebiten.IsKeyPressed
-	inputChars         = ebiten.InputChars //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
+	isKeyPressed     = ebiten.IsKeyPressed
+	isKeyJustPressed = inpututil.IsKeyJustPressed
+	inputChars       = ebiten.InputChars //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
 	wheel              = ebiten.Wheel
 	screenSize         = ebiten.ScreenSizeInFullscreen //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
 	touchIDs           = ebiten.TouchIDs               //nolint:staticcheck // deprecated Ebiten API, migration tracked separately

@@ -9,7 +9,39 @@ import (
 
 /* ─────────────── input handling ───────────────────────────────────────── */
 
+// handleUndoRedoKeys dispatches global undo/redo keyboard shortcuts:
+// Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y = redo. It is
+// edge-triggered (just-pressed) so a held chord fires once. Returns true if a
+// key was consumed. Works on desktop (Control) and browser/macOS (Meta/Cmd).
+func (g *Game) handleUndoRedoKeys() bool {
+	if g.undoManager == nil {
+		return false
+	}
+	ctrl := isKeyPressed(ebiten.KeyControlLeft) || isKeyPressed(ebiten.KeyControlRight) ||
+		isKeyPressed(ebiten.KeyMetaLeft) || isKeyPressed(ebiten.KeyMetaRight)
+	if !ctrl {
+		return false
+	}
+	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
+	if isKeyJustPressed(ebiten.KeyZ) {
+		if shift {
+			g.undoManager.Redo()
+		} else {
+			g.undoManager.Undo()
+		}
+		return true
+	}
+	if isKeyJustPressed(ebiten.KeyY) {
+		g.undoManager.Redo()
+		return true
+	}
+	return false
+}
+
 func (g *Game) handleEditor() {
+	if g.handleUndoRedoKeys() {
+		return
+	}
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 	right := isMouseButtonPressed(ebiten.MouseButtonRight)
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)

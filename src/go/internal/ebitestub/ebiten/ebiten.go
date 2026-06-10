@@ -188,6 +188,12 @@ const (
 	KeyPageUp
 	KeyPageDown
 	KeySlash
+	KeyControlLeft
+	KeyControlRight
+	KeyMetaLeft
+	KeyMetaRight
+	KeyZ
+	KeyY
 )
 
 // Window and run stubs
