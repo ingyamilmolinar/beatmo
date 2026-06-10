@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
@@ -74,6 +75,46 @@ func TestReleaseCommit_RowVolumeFiresOnceOnRelease(t *testing.T) {
 	time.Sleep(40 * time.Millisecond)
 	if c := atomic.LoadInt32(&count); c != 1 {
 		t.Fatalf("commitRowVolume fired %d times, want 1", c)
+	}
+}
+
+func TestReleaseCommit_FXSliderFiresOnceOnRelease(t *testing.T) {
+	var count int32
+	unsub := hooks.Subscribe(hooks.EventInsertEffectParam, func(e hooks.Event) { atomic.AddInt32(&count, 1) })
+	t.Cleanup(unsub)
+
+	g := newTestGameForUndo(t)
+	instID := g.drum.Rows[0].Instrument
+	order := audio.EffectTypeOrder()
+	if len(order) == 0 {
+		t.Skip("no insert-effect types registered")
+	}
+	audio.AddInsertEffect(instID, order[0], nil)
+	t.Cleanup(func() { audio.RemoveInsertEffect(instID, 0) })
+
+	// Open the FX panel and build bindings (mobile-agnostic: enabled effect
+	// always shows params on desktop; force the expanded slot so the param
+	// sliders are built regardless of profile).
+	g.drum.OpenFXPanel(0)
+	g.drum.fxExpandedSlots = map[int]bool{0: true}
+	g.drum.buildFXPanel()
+	if len(g.drum.fxSliderBindings) == 0 {
+		t.Skip("no FX param sliders built under this profile")
+	}
+
+	before := g.undoManager.CanUndo()
+	g.drum.commitFXSlider(0)
+	waitForRelease(t, func() bool { return atomic.LoadInt32(&count) == 1 })
+	if !g.undoManager.CanUndo() && before == g.undoManager.CanUndo() {
+		// commitFXSlider must record at least one undo step.
+		t.Fatal("commitFXSlider should record an undo step")
+	}
+
+	// Out-of-range index → no emit.
+	g.drum.commitFXSlider(999)
+	time.Sleep(40 * time.Millisecond)
+	if c := atomic.LoadInt32(&count); c != 1 {
+		t.Fatalf("commitFXSlider fired %d times, want 1", c)
 	}
 }
 

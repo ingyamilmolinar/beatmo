@@ -183,7 +183,19 @@ func (dv *DrumView) propagateFXSliderValue(idx int) {
 	actual := b.def.Min + sl.Value*(b.def.Max-b.def.Min)
 	instID := dv.Rows[dv.fxPanelRow].Instrument
 	audio.SetInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
+}
+
+// commitFXSlider emits + records an insert-FX param change once, at release.
+func (dv *DrumView) commitFXSlider(idx int) {
+	if idx < 0 || idx >= len(dv.fxSliderBindings) {
+		return
+	}
+	b := dv.fxSliderBindings[idx]
+	sl := dv.fxPanelSliders[idx]
+	actual := b.def.Min + sl.Value*(b.def.Max-b.def.Min)
+	instID := dv.Rows[dv.fxPanelRow].Instrument
 	emitInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
+	dv.recordUndoStep(hooks.EventInsertEffectParam)
 }
 
 // effectTypeName returns the display name for an effect type from the registry.
@@ -847,6 +859,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		}
 		if !left {
 			dv.fxSliderDragging = false
+			dv.commitFXSlider(idx)
 		}
 		return true
 	}
@@ -997,6 +1010,7 @@ func (dv *DrumView) fireFXPanelTapAt(x, y int) {
 				instID := dv.Rows[dv.fxPanelRow].Instrument
 				audio.SetInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
 				emitInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
+				dv.recordUndoStep(hooks.EventInsertEffectParam)
 			}
 			return
 		}

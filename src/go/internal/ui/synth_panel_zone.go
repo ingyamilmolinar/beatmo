@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // Synth-tab implementation — the canonical per-instrument pipeline
@@ -2617,6 +2618,9 @@ func (h *synthKnobHitAdapter) OnRelease(x, y int) {
 	if k != nil {
 		k.HandleInputResult(x, y, false)
 		h.propagateIfStable()
+		recipe := audio.RecipeForInstrument(h.instID)
+		emitInstrumentParamsCommitted(h.instID, recipe)
+		h.dv.recordUndoStep(hooks.EventInstrumentParamsCommitted)
 	}
 	h.active = false
 	h.mode = knobDragUndecided

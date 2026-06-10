@@ -127,6 +127,8 @@ func resetRecipeForInstrument(instID string) string {
 	}
 	audio.ResetRecipeToShipped(recipeID)
 	audio.ResetInstrumentParams(instID)
+	emitInstrumentParamsReset(instID, recipeID)
+	recordUndo(hooks.EventInstrumentParamsReset)
 	return recipeID
 }
 
