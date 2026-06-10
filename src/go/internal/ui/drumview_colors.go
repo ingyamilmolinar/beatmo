@@ -7,6 +7,8 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // pickColorFromWheel maps a screen coordinate to a color in the wheel rectangle.
@@ -187,6 +189,9 @@ func (dv *DrumView) SetRowColor(idx int, c color.Color) {
 		}
 	}
 	emitRowColorChanged(idx, packRGBA(dv.Rows[idx].Color))
+	// Color picks are a single commit per gesture (the wheel latches picked
+	// after the first pick), so record one undo step here beside the emit.
+	dv.recordUndoStep(hooks.EventRowColorChanged)
 }
 
 // EnsureUniqueRowColors scans all rows and adjusts any duplicates to unique variants.

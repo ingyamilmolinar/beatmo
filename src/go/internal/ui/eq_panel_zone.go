@@ -16,6 +16,11 @@ import (
 // the DrumView and audio engine. Zones don't reference Game or each other.
 type EQCallbacks struct {
 	OnGainChange     func(band int, db float64)
+	// OnEQBandCommit fires once when an EQ band-gain edit settles (curve-handle
+	// drag release or dB text-input commit). DrumView uses it to emit the
+	// EQ-band event + record one undo step (the live audio update stays
+	// per-frame via OnGainChange).
+	OnEQBandCommit   func()
 	OnMuteToggle     func(band int)
 	OnChannelChange  func(channelID string)
 	OnToggleHPF      func()
@@ -1418,6 +1423,9 @@ func (h *curveHandleHitAdapter) OnRelease(x, y int) {
 	if z.callbacks.OnApplyEQ != nil {
 		z.callbacks.OnApplyEQ()
 	}
+	if z.callbacks.OnEQBandCommit != nil {
+		z.callbacks.OnEQBandCommit()
+	}
 }
 
 // setDragLabel positions the dB/Hz label 16px above the handle, flipping
@@ -2376,6 +2384,9 @@ func (z *EQPanelZone) commitDBText(band int) {
 	}
 	if z.callbacks.OnApplyEQ != nil {
 		z.callbacks.OnApplyEQ()
+	}
+	if z.callbacks.OnEQBandCommit != nil {
+		z.callbacks.OnEQBandCommit()
 	}
 }
 

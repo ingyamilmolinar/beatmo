@@ -77,6 +77,8 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 				dv.markRowControlsDirty()
 			}
 		},
+		// Emit + undo record once at drag release (live SetValue stays per-frame).
+		OnRelease: func() { dv.commitRowVolume(dv.volPopupRow) },
 	})
 	dv.masterVolPopup = NewSliderPopup(SliderPopupConfig{
 		ID:     "master-volume-popup",
@@ -92,7 +94,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 				dv.mainVolSlider().Value = v
 			}
 			audio.SetMainVolume(v)
+			// Live audio stays per-frame; stash for the release commit below.
+			dv.mainVolPending, dv.mainVolPendingDirty = v, true
 		},
+		// Emit + undo record once at drag release.
+		OnRelease: func() { dv.commitMainVolume() },
 	})
 	// Initialize overlay components (Phase 5)
 	dv.subdivMenuComp = NewSubdivMenuComponent()
@@ -205,8 +211,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 					}
 				}
 			}
-			emitEQBandChange(ch, band, db)
+			// Live audio update stays per-frame; emit + undo record fire once at
+			// slider/curve release via commitEQBand. Stash the pending value.
+			dv.eqPendingChannel, dv.eqPendingBand, dv.eqPendingGainDB, dv.eqPendingDirty = ch, band, db, true
 		},
+		OnEQBandCommit: func() { dv.commitEQBand() },
 		OnMuteToggle: func(band int) {
 			dv.toggleEQBandMute(band)
 		},
@@ -580,8 +589,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		GetMainVolume: audio.MainVolume,
 		SetMainVolume: func(v float64) {
 			audio.SetMainVolume(v)
-			emitMasterVolumeChange(v)
+			// Live audio update stays per-frame; emit + undo record fire once at
+			// slider release via commitMainVolume. Stash the pending value.
+			dv.mainVolPending, dv.mainVolPendingDirty = v, true
 		},
+		OnMainVolCommit: func() { dv.commitMainVolume() },
 		OnSubdivClick: func() {
 			// Toggle: close if already open.
 			if dv.subdivMenuComp != nil && dv.subdivMenuComp.IsOpen() {

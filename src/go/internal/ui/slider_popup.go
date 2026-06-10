@@ -19,6 +19,10 @@ type SliderPopupConfig struct {
 	SetValue func(float64)
 	Label    func() string // optional label above percentage (e.g. frequency); nil = no label
 	OnClose  func()        // optional callback on close
+	// OnRelease fires once when a drag gesture ends (pointer/touch up after at
+	// least one SetValue). The live SetValue stays per-frame; OnRelease is the
+	// deterministic commit point for emit + undo-record.
+	OnRelease func()
 }
 
 // SliderPopup is a reusable vertical slider popup panel.
@@ -191,6 +195,9 @@ func (sp *SliderPopup) HandleInput(mx, my int, pressed bool) bool {
 		return true
 	}
 	if !pressed {
+		if sp.dragging && sp.config.OnRelease != nil {
+			sp.config.OnRelease()
+		}
 		sp.dragging = false
 	}
 	return false

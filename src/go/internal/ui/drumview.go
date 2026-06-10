@@ -626,6 +626,16 @@ type DrumView struct {
 	overflowDeferredTap    DeferredTap
 	fxPanelDeferredTap     DeferredTap
 
+	// Deferred release-commit state for continuous controls. The live
+	// audio.Set* calls stay per-frame; the emit + undo record fire ONCE at
+	// drag release via commitEQBand / commitMainVolume / commitRowVolume.
+	eqPendingChannel    string
+	eqPendingBand       int
+	eqPendingGainDB     float64
+	eqPendingDirty      bool
+	mainVolPending      float64
+	mainVolPendingDirty bool
+
 	// EQ frequency response curve
 	eqCurveDragBand   int                       // -1 when not dragging, else band index
 	eqCurveDragFilter string                    // "" when not dragging, "hpf" or "lpf" when dragging a filter handle

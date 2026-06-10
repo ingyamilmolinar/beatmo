@@ -26,7 +26,8 @@ type TransportCallbacks struct {
 	IsPlaying      func() bool       // read current playback state
 	IsRecording    func() bool       // read current recording state
 	GetMainVolume  func() float64    // read master volume
-	SetMainVolume  func(v float64)   // set master volume
+	SetMainVolume  func(v float64)   // set master volume (per-frame, live)
+	OnMainVolCommit func()           // fires once at master-vol drag release (emit + undo)
 	OnNotifyError  func(msg string)  // display error notification
 
 	// Overlay callbacks: delegate to DrumView's overlay mechanisms.
@@ -949,7 +950,11 @@ func (z *TransportZone) rebuildHitAreas() {
 			z.hitAreas = append(z.hitAreas, HitArea{
 				Rect:     groupBounds,
 				ZIndex:   zIdx + 1,
-				Handler:  &sliderGroupHitAdapter{group: z.mainVolGroup},
+				Handler: &sliderGroupHitAdapter{group: z.mainVolGroup, onRelease: func() {
+					if z.callbacks.OnMainVolCommit != nil {
+						z.callbacks.OnMainVolCommit()
+					}
+				}},
 				Tag:      "transport-vol-slider",
 				Touch:    true,
 				ClipRect: z.rect,
