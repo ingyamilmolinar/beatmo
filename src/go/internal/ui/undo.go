@@ -1,6 +1,10 @@
 package ui
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+)
 
 // undoEntry is one history step: a label for the UI + the document snapshot
 // to restore to (the BEFORE state of the transition this entry represents).
@@ -111,3 +115,57 @@ func registerUndoObserver(m *UndoManager) { undoObserver = undoManagerObserver{m
 type undoManagerObserver struct{ m *UndoManager }
 
 func (o undoManagerObserver) recordKind(label string) { o.m.record(label) }
+
+// documentScopeKinds is the recorded-set: committed document-state kinds that
+// produce an undo step. Transport, import/scene, app prefs, library ops, and
+// verbose kinds are intentionally absent. Pinned by undo_coverage_test.go.
+var documentScopeKinds = map[hooks.Kind]string{
+	hooks.EventNodeAdded:                 "add node",
+	hooks.EventNodeDeleted:               "delete node",
+	hooks.EventNodeMoved:                 "move node",
+	hooks.EventNodeTypeChanged:           "change node type",
+	hooks.EventNodeParamsChanged:         "edit node",
+	hooks.EventStartNodeChanged:          "set start node",
+	hooks.EventEdgeAdded:                 "add edge",
+	hooks.EventEdgeDeleted:               "delete edge",
+	hooks.EventRowAdded:                  "add row",
+	hooks.EventRowDeleted:                "delete row",
+	hooks.EventRowInstrumentChange:       "change instrument",
+	hooks.EventRowMute:                   "mute row",
+	hooks.EventRowSolo:                   "solo row",
+	hooks.EventRowColorChanged:           "recolor row",
+	hooks.EventRowVolume:                 "set row volume",
+	hooks.EventRowPan:                    "set row pan",
+	hooks.EventInstrumentRenamed:         "rename instrument",
+	hooks.EventBPMChange:                 "change BPM",
+	hooks.EventSubdivChange:              "change subdivision",
+	hooks.EventLengthChange:              "change length",
+	hooks.EventMasterVolumeChange:        "set master volume",
+	hooks.EventEQBandChange:              "adjust EQ",
+	hooks.EventInsertEffectAdded:         "add effect",
+	hooks.EventInsertEffectRemoved:       "remove effect",
+	hooks.EventInsertEffectParam:         "adjust effect",
+	hooks.EventInsertEffectMoved:         "reorder effect",
+	hooks.EventInsertEffectToggled:       "toggle effect",
+	hooks.EventSendChanged:               "set send",
+	hooks.EventInstrumentParamsCommitted: "edit synth",
+	hooks.EventInstrumentParamsReset:     "reset synth",
+	hooks.EventSampleEditChanged:         "edit sample",
+}
+
+// undoLabelFor returns the UI label for a recorded kind ("" if not recorded).
+func undoLabelFor(k hooks.Kind) string { return documentScopeKinds[k] }
+
+// recordUndo is the synchronous tap. Free-function form so emit helpers can
+// call it without a *Game. No-op when kind is out of the recorded-set.
+func recordUndo(k hooks.Kind) {
+	label, ok := documentScopeKinds[k]
+	if !ok || undoObserver == nil {
+		return
+	}
+	undoObserver.recordKind(label)
+}
+
+// recordUndoStep is the DrumView-scoped convenience wrapper used at UI commit
+// sites that already hold a *DrumView.
+func (dv *DrumView) recordUndoStep(k hooks.Kind) { recordUndo(k) }

@@ -27,6 +27,7 @@ func emitNodeAdded(n *uiNode, t model.NodeType) {
 		J:    n.J,
 		Type: nodeTypeName(t),
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventNodeAdded)
 }
 
 // emitNodeDeleted publishes EventNodeDeleted with the deleted node's
@@ -36,6 +37,7 @@ func emitNodeDeleted(id model.NodeID, i, j int) {
 	hooks.PublishWithSource(hooks.EventNodeDeleted, hooks.NodeEdit{
 		ID: int(id), I: i, J: j,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventNodeDeleted)
 }
 
 // emitNodeMoved publishes EventNodeMoved on drag-end.
@@ -43,6 +45,7 @@ func emitNodeMoved(id model.NodeID, i, j int) {
 	hooks.PublishWithSource(hooks.EventNodeMoved, hooks.NodeEdit{
 		ID: int(id), I: i, J: j,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventNodeMoved)
 }
 
 // emitNodeTypeChanged publishes EventNodeTypeChanged when a node's type
@@ -53,6 +56,7 @@ func emitNodeTypeChanged(id model.NodeID, oldT, newT model.NodeType) {
 		OldType: nodeTypeName(oldT),
 		NewType: nodeTypeName(newT),
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventNodeTypeChanged)
 }
 
 // emitNodeParamsChanged publishes EventNodeParamsChanged with the full
@@ -70,6 +74,7 @@ func emitNodeParamsChanged(id model.NodeID, p model.NodeParams) {
 		GrooveKind: p.GrooveKind,
 		GroovePct:  p.GroovePct,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventNodeParamsChanged)
 }
 
 // emitStartNodeChanged publishes EventStartNodeChanged when a row's
@@ -78,6 +83,7 @@ func emitStartNodeChanged(row int, id model.NodeID) {
 	hooks.PublishWithSource(hooks.EventStartNodeChanged, hooks.StartNodePayload{
 		Row: row, ID: int(id),
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventStartNodeChanged)
 }
 
 // emitEdgeAdded publishes EventEdgeAdded with both endpoints.
@@ -86,6 +92,7 @@ func emitEdgeAdded(fromID, toID model.NodeID, fromI, fromJ, toI, toJ int) {
 		FromID: int(fromID), ToID: int(toID),
 		FromI: fromI, FromJ: fromJ, ToI: toI, ToJ: toJ,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventEdgeAdded)
 }
 
 // emitEdgeDeleted publishes EventEdgeDeleted with both endpoints.
@@ -94,6 +101,7 @@ func emitEdgeDeleted(fromID, toID model.NodeID, fromI, fromJ, toI, toJ int) {
 		FromID: int(fromID), ToID: int(toID),
 		FromI: fromI, FromJ: fromJ, ToI: toI, ToJ: toJ,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventEdgeDeleted)
 }
 
 // emitSeek publishes EventSeek with the destination beat index.
@@ -104,11 +112,13 @@ func emitSeek(beats int) {
 // emitSubdivChange publishes EventSubdivChange.
 func emitSubdivChange(subdiv int) {
 	hooks.PublishWithSource(hooks.EventSubdivChange, hooks.SubdivPayload{Subdiv: subdiv}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventSubdivChange)
 }
 
 // emitLengthChange publishes EventLengthChange.
 func emitLengthChange(length int) {
 	hooks.PublishWithSource(hooks.EventLengthChange, hooks.LengthPayload{Length: length}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventLengthChange)
 }
 
 // emitRowAdded publishes EventRowAdded.
@@ -116,11 +126,13 @@ func emitRowAdded(row int, instrument, name string) {
 	hooks.PublishWithSource(hooks.EventRowAdded, hooks.RowChangePayload{
 		Row: row, Instrument: instrument, Name: name,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventRowAdded)
 }
 
 // emitRowDeleted publishes EventRowDeleted.
 func emitRowDeleted(row int) {
 	hooks.PublishWithSource(hooks.EventRowDeleted, hooks.RowChangePayload{Row: row}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventRowDeleted)
 }
 
 // emitRowInstrumentChange publishes EventRowInstrumentChange. oldInstrument
@@ -132,16 +144,19 @@ func emitRowInstrumentChange(row int, oldInstrument, instrument, name string) {
 		Instrument:    instrument,
 		Name:          name,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventRowInstrumentChange)
 }
 
 // emitRowMute publishes EventRowMute.
 func emitRowMute(row int, mute bool) {
 	hooks.PublishWithSource(hooks.EventRowMute, hooks.RowChangePayload{Row: row, Mute: mute}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventRowMute)
 }
 
 // emitRowSolo publishes EventRowSolo.
 func emitRowSolo(row int, solo bool) {
 	hooks.PublishWithSource(hooks.EventRowSolo, hooks.RowChangePayload{Row: row, Solo: solo}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventRowSolo)
 }
 
 // emitMasterVolumeChange publishes EventMasterVolumeChange. Called from
@@ -154,6 +169,7 @@ func emitMasterVolumeChange(v float64) {
 // inline hooks.PublishKind(EventBPMChange, bpm) calls that used a raw int.
 func emitBPMChange(bpm int) {
 	hooks.PublishWithSource(hooks.EventBPMChange, hooks.BPMPayload{BPM: bpm}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventBPMChange)
 }
 
 // emitImport publishes EventImport with the typed payload (byte count + node
@@ -187,6 +203,7 @@ func emitInstrumentRenamed(oldID, newID string) {
 	hooks.PublishWithSource(hooks.EventInstrumentRenamed, hooks.InstrumentRenamePayload{
 		OldID: oldID, NewID: newID,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventInstrumentRenamed)
 }
 
 // emitSceneApplied publishes EventSceneApplied at the end of a successful
@@ -225,6 +242,7 @@ func emitInsertEffectAdded(channel string, slot int, effectType string) {
 	hooks.PublishWithSource(hooks.EventInsertEffectAdded, hooks.InsertEffectPayload{
 		Channel: channel, Slot: slot, Type: effectType,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventInsertEffectAdded)
 }
 
 // emitInsertEffectRemoved publishes EventInsertEffectRemoved when an insert
@@ -233,6 +251,7 @@ func emitInsertEffectRemoved(channel string, slot int) {
 	hooks.PublishWithSource(hooks.EventInsertEffectRemoved, hooks.InsertEffectPayload{
 		Channel: channel, Slot: slot,
 	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventInsertEffectRemoved)
 }
 
 // emitInsertEffectParam publishes EventInsertEffectParam when an insert
