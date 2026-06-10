@@ -180,6 +180,42 @@ var formatters = map[hooks.Kind]formatter{
 		e, _ := p.(hooks.InsertEffectPayload)
 		return formatted{tag: "audio", msg: fmt.Sprintf("insert FX %s slot=%d %s = %.2f", e.Channel, e.Slot, e.Param, e.Value)}
 	},
+	hooks.EventRowVolume: func(p any) formatted {
+		r, _ := p.(hooks.RowChangePayload)
+		return formatted{tag: "row", msg: fmt.Sprintf("row %d volume = %.2f", r.Row, r.Volume)}
+	},
+	hooks.EventRowPan: func(p any) formatted {
+		r, _ := p.(hooks.RowChangePayload)
+		return formatted{tag: "row", msg: fmt.Sprintf("row %d pan = %+.2f", r.Row, r.Pan)}
+	},
+	hooks.EventInsertEffectMoved: func(p any) formatted {
+		e, _ := p.(hooks.InsertEffectPayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("insert FX %s moved %d → %d", e.Channel, e.FromSlot, e.ToSlot)}
+	},
+	hooks.EventInsertEffectToggled: func(p any) formatted {
+		e, _ := p.(hooks.InsertEffectPayload)
+		state := "off"
+		if e.Enabled {
+			state = "on"
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("insert FX %s slot=%d %s", e.Channel, e.Slot, state)}
+	},
+	hooks.EventSendChanged: func(p any) formatted {
+		s, _ := p.(hooks.SendPayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("%s send %s = %.2f", s.Kind, s.Channel, s.Value)}
+	},
+	hooks.EventInstrumentParamsCommitted: func(p any) formatted {
+		e, _ := p.(hooks.InstrumentParamPayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("synth params committed %s (recipe=%s)", e.Channel, fallback(e.Recipe, "?"))}
+	},
+	hooks.EventInstrumentParamsReset: func(p any) formatted {
+		e, _ := p.(hooks.InstrumentParamPayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("synth params reset %s", e.Channel)}
+	},
+	hooks.EventAudioPanelStateChanged: func(p any) formatted {
+		s, _ := p.(hooks.AudioPanelStatePayload)
+		return formatted{tag: "uistate", msg: fmt.Sprintf("audio panel %s changed", s.Field)}
+	},
 	hooks.EventInstrumentParamChanged: func(p any) formatted {
 		e, _ := p.(hooks.InstrumentParamPayload)
 		recipe := e.Recipe
