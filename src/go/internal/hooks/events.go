@@ -56,6 +56,20 @@ const (
 	EventInsertEffectRemoved Kind = "audio.insert_removed"
 	EventInsertEffectParam   Kind = "audio.insert_param"
 
+	// Audio settings — release-committed (added for full event coverage +
+	// undo). These fire once per gesture at drag-release, never per-frame.
+	EventRowVolume           Kind = "row.volume"
+	EventRowPan              Kind = "row.pan"
+	EventInsertEffectMoved   Kind = "audio.insert_moved"
+	EventInsertEffectToggled Kind = "audio.insert_toggled"
+	EventSendChanged         Kind = "audio.send"
+	// Synth params committed once at knob-release (the per-frame edit stays
+	// the verbose EventInstrumentParamChanged below). Reset clears overrides.
+	EventInstrumentParamsCommitted Kind = "audio.synth_committed"
+	EventInstrumentParamsReset     Kind = "audio.synth_reset"
+	// Userpref coverage only (NOT undoable): audio-panel state persisted.
+	EventAudioPanelStateChanged Kind = "uistate.audio_panel"
+
 	// Synth recipe / instrument synthesis parameters. Fires when a user
 	// edits an instrument's synth params via the instrument editor (or
 	// any other path that mutates instrumentParamsMgr in internal/audio).
@@ -128,6 +142,10 @@ var KindAll = []Kind{
 	EventRowAdded, EventRowDeleted, EventRowInstrumentChange, EventRowMute, EventRowSolo,
 	EventMasterVolumeChange, EventEQBandChange,
 	EventInsertEffectAdded, EventInsertEffectRemoved, EventInsertEffectParam,
+	EventRowVolume, EventRowPan,
+	EventInsertEffectMoved, EventInsertEffectToggled, EventSendChanged,
+	EventInstrumentParamsCommitted, EventInstrumentParamsReset,
+	EventAudioPanelStateChanged,
 	EventRowColorChanged, EventCustomWAVLoaded, EventInstrumentRenamed,
 	EventSceneApplied, EventUIStateApplied, EventFavoriteToggled,
 	EventRecipeSaved, EventRecipeCreated, EventRecipeDeleted, EventKitApplied,
@@ -143,8 +161,10 @@ var KindAll = []Kind{
 // match KindAll: 37 + 4 = 41. The Sampler tab added 2 more
 // (sample saved/created): 41 + 2 = 43. The factory Reset added 1
 // (sample reset): 43 + 1 = 44. The non-destructive sample-edit descriptor
-// added 1 (sample edit changed): 44 + 1 = 45.
-const NumNonVerbose = 45
+// added 1 (sample edit changed): 44 + 1 = 45. The event-coverage + undo
+// pass added 8 (row volume/pan, insert moved/toggled, send, synth
+// committed/reset, audio-panel state): 45 + 8 = 53.
+const NumNonVerbose = 53
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
 // kinds that the default sink filters out.
@@ -274,8 +294,10 @@ type RowChangePayload struct {
 	Instrument    string `json:"instrument,omitempty"`
 	OldInstrument string `json:"old_instrument,omitempty"`
 	Name          string `json:"name,omitempty"`
-	Mute          bool   `json:"mute,omitempty"`
-	Solo          bool   `json:"solo,omitempty"`
+	Mute          bool    `json:"mute,omitempty"`
+	Solo          bool    `json:"solo,omitempty"`
+	Volume        float64 `json:"volume,omitempty"`
+	Pan           float64 `json:"pan,omitempty"`
 }
 
 // SeekPayload describes a transport seek to a particular beat.
@@ -327,8 +349,11 @@ type InsertEffectPayload struct {
 	Channel string  `json:"channel"`
 	Slot    int     `json:"slot"`
 	Type    string  `json:"type,omitempty"`
-	Param   string  `json:"param,omitempty"`
-	Value   float64 `json:"value,omitempty"`
+	Param    string  `json:"param,omitempty"`
+	Value    float64 `json:"value,omitempty"`
+	Enabled  bool    `json:"enabled,omitempty"`
+	FromSlot int     `json:"from_slot,omitempty"`
+	ToSlot   int     `json:"to_slot,omitempty"`
 }
 
 // InstrumentParamPayload describes a per-instrument synth-recipe parameter
@@ -429,4 +454,17 @@ type KitPayload struct {
 	KitID       string            `json:"kit_id"`
 	DisplayName string            `json:"display_name,omitempty"`
 	Members     map[string]string `json:"members,omitempty"`
+}
+
+// SendPayload describes a delay/reverb send change. Kind is "delay" or "reverb".
+type SendPayload struct {
+	Channel string  `json:"channel"`
+	Kind    string  `json:"kind"`
+	Value   float64 `json:"value"`
+}
+
+// AudioPanelStatePayload describes an audio-panel preference change (spectrum
+// slope, Pre overlay, K-20 view, chain A/B taps). Userpref coverage only.
+type AudioPanelStatePayload struct {
+	Field string `json:"field"`
 }
