@@ -10,6 +10,12 @@ type cRenderer func(buf []float32, sampleRate, samples int)
 // CVariantInstrument is a generic wrapper around a C-rendered buffer plus
 // optional post-processing. It allows us to scale to multiple instrument
 // "flavours" (kick-1, snare-2, etc.) without duplicating wiring.
+//
+// RecipeID, when non-empty, points at the SynthRecipe in synth_registry.go
+// this instrument resolves through. Phase 1 only records the link (the
+// trigger path still uses Render / RenderParam directly); Phase 2 makes
+// the recipe path canonical so user-edited synth params actually flow
+// from the manager to the rendered buffer.
 type CVariantInstrument struct {
 	Render      cRenderer
 	RenderParam cParamRenderer                      // optional: parameterized renderer
@@ -17,6 +23,7 @@ type CVariantInstrument struct {
 	Post        func(buf []float32, sampleRate int) // optional in-place DSP (e.g. gateTail)
 	DefaultFX   []EffectSlot                        // declarative insert effect chain
 	Name        string                              // debug label
+	RecipeID    string                              // SynthRecipe id (synth_registry.go), empty = no recipe binding
 }
 
 // NewVoice generates a voice by asking the C renderer to fill a buffer, then
@@ -85,7 +92,7 @@ func (v CVariantInstrument) NewVoiceWithParams(bpm, sampleRate int, params Synth
 	if v.Beats <= 0 {
 		v.Beats = 0.5
 	}
-	key := voiceCacheKey{instrumentID: v.Name, bpm: bpm, sampleRate: sampleRate, synthParams: params}
+	key := voiceCacheKey{instrumentID: v.Name, bpm: bpm, sampleRate: sampleRate, paramsHash: hashRecipeParams(params.ToRecipeParams())}
 	if buf, ok := globalVoiceCache.Get(key); ok {
 		if !globalVoiceCache.IsFull(key) {
 			v.renderParamAndCache(key, bpm, sampleRate, params)
@@ -135,4 +142,3 @@ func gateTail(buf []float32, cutoffFrac float64) {
 		buf[i] = 0
 	}
 }
-

@@ -34,7 +34,7 @@ func TestProcessBlockLocalAllBlockProcessors(t *testing.T) {
 	withDefaultAudio(t)
 	ch := newChannel("bp-all-block", nil)
 	ch.SetVolume(1.0)
-	ch.replaceProcessors([]Processor{
+	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.5},
 		&mockBlockProcessor{gain: 0.8},
 	})
@@ -59,7 +59,7 @@ func TestProcessBlockLocalMixedProcessors(t *testing.T) {
 	withDefaultAudio(t)
 	ch := newChannel("bp-mixed", nil)
 	ch.SetVolume(1.0)
-	ch.replaceProcessors([]Processor{
+	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.5},
 		&mockSampleOnlyProcessor{gain: 0.8}, // forces per-sample fallback
 	})
@@ -84,7 +84,7 @@ func TestProcessBlockLocalNoProcessors(t *testing.T) {
 	withDefaultAudio(t)
 	ch := newChannel("bp-none", nil)
 	ch.SetVolume(0.75)
-	ch.replaceProcessors(nil)
+	ch.replaceProcessors(nil, nil)
 
 	input := make([]float64, 32)
 	output := make([]float64, 32)
@@ -162,7 +162,7 @@ func TestProcessBlockLocalPingPongCorrectness(t *testing.T) {
 	// Block path: all BlockProcessors
 	chBlock := newChannel("pp-block", nil)
 	chBlock.SetVolume(1.0)
-	chBlock.replaceProcessors([]Processor{
+	chBlock.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.6},
 		&mockBlockProcessor{gain: 0.4},
 	})
@@ -172,7 +172,7 @@ func TestProcessBlockLocalPingPongCorrectness(t *testing.T) {
 	// Per-sample path: all sample-only processors with same gains
 	chSample := newChannel("pp-sample", nil)
 	chSample.SetVolume(1.0)
-	chSample.replaceProcessors([]Processor{
+	chSample.replaceProcessors(nil, []Processor{
 		&mockSampleOnlyProcessor{gain: 0.6},
 		&mockSampleOnlyProcessor{gain: 0.4},
 	})
@@ -192,7 +192,7 @@ func TestPassThroughImplementsBlockProcessor(t *testing.T) {
 	ch := newChannel("bp-passthrough", nil)
 	ch.SetVolume(1.0)
 	pt := &passThrough{}
-	ch.replaceProcessors([]Processor{
+	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.5},
 		pt,
 	})
@@ -227,7 +227,7 @@ func TestAnalyzerImplementsBlockProcessor(t *testing.T) {
 
 	// Add a block-capable processor alongside the analyzer.
 	ch := chanMgr.ensureChannel(id)
-	ch.replaceProcessors([]Processor{
+	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 0.5},
 		an,
 	})
@@ -276,7 +276,7 @@ func TestAnalyzerDisabledSkipsCompute(t *testing.T) {
 
 	ch := chanMgr.ensureChannel(id)
 	ch.SetVolume(1.0)
-	ch.replaceProcessors([]Processor{an})
+	ch.replaceProcessors(nil, []Processor{an})
 
 	// Feed signal through — audio should still pass.
 	input := make([]float64, 128)
@@ -338,7 +338,7 @@ func TestProcessBlockLocalOddBlockSize(t *testing.T) {
 	withDefaultAudio(t)
 	ch := newChannel("bp-odd", nil)
 	ch.SetVolume(1.0)
-	ch.replaceProcessors([]Processor{
+	ch.replaceProcessors(nil, []Processor{
 		&mockBlockProcessor{gain: 2.0},
 	})
 

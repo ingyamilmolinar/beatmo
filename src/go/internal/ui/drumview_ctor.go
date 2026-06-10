@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -110,6 +111,13 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.lpfEnabled = false
 	dv.lpfCutoffHz = 20000
 	_ = audio.EnableChannelAnalyzer("main", 512)
+	// Chain panel taps: enable the per-stage analysers that feed scope.StageSynth /
+	// scope.StageAntiPop (pre-FX channel ingress) and scope.StageSends (summed
+	// delay+reverb returns). Pre-EQ and post-EQ analysers are enabled per-channel
+	// below in applyMainEQ/applyRowEQ. No-op on desktop where audio.ScopeService
+	// produces real per-stage data instead.
+	_ = audio.EnableSynthAnalyzer("main", 512)
+	_ = audio.EnableSendBusAnalyzer(512)
 	// Transport buttons are now created by TransportZone (Phase 3).
 	// Fields are aliased after zone creation below tree initialization.
 	// Non-transport buttons remain here.
@@ -203,26 +211,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.toggleEQBandMute(band)
 		},
 		OnChannelChange: func(id string) {
-			dv.setEQActiveChannel(id)
-			// Also set the analyzer detail channel so Wave/Spectrum tabs
-			// show the selected instrument's data.
-			if svc := audio.AnalyzerService(); svc != nil {
-				if id == "main" || id == "" {
-					svc.SetDetailChannel("")
-				} else {
-					svc.SetDetailChannel(id)
-				}
-			}
-			// Drive the Scope tab from the same shared selector. Desktop
-			// goes through the audio scope service; WASM (or stubbed test
-			// builds where ScopeService is nil) writes the zone-local
-			// instrumentID directly.
-			if svc := audio.ScopeService(); svc != nil {
-				svc.SetInstrument(id)
-			}
-			if z := dv.eqPanelZone.chainZone; z != nil {
-				z.instrumentID = id
-			}
+			// Single chokepoint: updates the EQ/zone channel, analyzer detail
+			// channel (Wave/Spectrum), scope instrument and chain zone (Chain).
+			dv.selectAudioChannel(id)
 		},
 		OnToggleHPF: func() {
 			dv.toggleHPF()
@@ -340,6 +331,44 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			const windowSamples = 2200
 			return dv.game.beatGridFractions(rowIdx, windowSamples)
 		},
+		// Phase 4 — Synth tab bridge: EQPanelZone delegates the layout,
+		// draw, and hit-area construction to DrumView so the SynthRecipe
+		// state stays anchored to the row that owns the synth pipeline.
+		OnSynthTabLayout: func(r image.Rectangle) {
+			dv.buildSynthTab(r, dv.synthTabActiveInstrument())
+		},
+		DrawSynthTab: func(dst *ebiten.Image, r image.Rectangle) {
+			dv.drawSynthTab(dst, r, dv.synthTabActiveInstrument())
+		},
+		SynthTabHitAreas: func() []HitArea {
+			return dv.synthTabHitAreas()
+		},
+		SynthTabUpdate: func() bool {
+			return dv.synthTabUpdate()
+		},
+		OnSamplerTabLayout: func(r image.Rectangle) {
+			dv.buildSamplerTab(r, dv.samplerActiveInstrument())
+		},
+		DrawSamplerTab: func(dst *ebiten.Image, r image.Rectangle) {
+			dv.drawSamplerTab(dst, r)
+		},
+		SamplerTabHitAreas: func() []HitArea {
+			return dv.samplerTabHitAreas()
+		},
+		IsHiddenForInput: func() bool {
+			// Mirrors the visibility predicate registered with the
+			// tree below. When perfDrawLite is on OR mobile is on
+			// viewMode=Rows, the panel is hidden — and must publish
+			// zero hit areas so the row rack at z=120 (and any other
+			// lower-z sibling under the panel rect) receives input.
+			if dv.perfDrawLite {
+				return true
+			}
+			if Profile().IsMobile() {
+				return !dv.MobileEQMode()
+			}
+			return false
+		},
 	})
 	dv.eqPanelZone.SetPortal(dv.tree.Portal())
 	// Visibility is owned by the tab system: on mobile, the bottom-bar
@@ -434,6 +463,31 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.eqPanelZone.tabState.SetActiveTab(TabEQ)
 			dv.bgDirty = true // trigger layout recalc for panel resize
 		},
+		// StagePeak wiring — Phase 3 per-stage signal-flow display.
+		// Desktop reads directly off the scope service's per-stage stats
+		// (lock-free atomic), so every stage gets a live meter, not just
+		// the two currently-tapped stages. WASM has no equivalent feed
+		// yet — returning -Inf keeps the meter dark on browser.
+		StagePeak: func(stage scope.Stage) (float64, float64) {
+			if svc := audio.ScopeService(); svc != nil {
+				return svc.LatestPeak(stage)
+			}
+			return math.Inf(-1), math.Inf(-1)
+		},
+		IsHiddenForInput: func() bool {
+			// Hidden whenever the host EQ panel is hidden — chain is
+			// delegated through the EQ panel today but a future
+			// refactor mounting it as a standalone tree node should
+			// still see correct isolation. Single source: the same
+			// predicate the tree consults.
+			if dv.perfDrawLite {
+				return true
+			}
+			if Profile().IsMobile() {
+				return !dv.MobileEQMode()
+			}
+			return false
+		},
 	})
 	dv.eqPanelZone.SetChainZone(chainZ)
 
@@ -514,7 +568,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			}
 		},
 		OnViewCycle: func() {
-			dv.cycleViewMode()
+			if dv.currentViewMode == viewModeRows {
+				dv.setViewMode(viewModeEQ)
+			} else {
+				dv.setViewMode(viewModeRows)
+			}
 		},
 		IsPlaying: func() bool {
 			return dv.isPlaying
@@ -854,14 +912,15 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.tree.RegisterLayer(newLayoutPillsLayer(dv))
 	dv.tree.RegisterLayer(newLayoutGuidesLayer(dv))
 
-	// 6-segment view-switch (Pads/EQ/Wave/Spec/Lvl/Chn) — mobile only,
+	// 7-segment view-switch (Pads/EQ/Wave/Spec/Lvl/Chn/Syn) — mobile only,
 	// spans full bottom action bar width (Theme 1). Labels match the
 	// canonical PanelTabLabelForProfile output: Lvl = Levels (was Mtr),
-	// Chn = Chain (was Scope; surfaces the 6 audio pipeline stages).
-	// Constructed unconditionally so the field is valid; the rect is set
-	// (to non-empty) only on mobile in calcLayout / recalcButtons.
+	// Chn = Chain (was Scope), Syn = Synth (Phase 4: per-row SynthRecipe
+	// parameter editor). Constructed unconditionally so the field is valid;
+	// the rect is set (to non-empty) only on mobile in calcLayout /
+	// recalcButtons.
 	dv.viewSwitchSegmented = NewSegmentedControl(
-		[]string{"Pads", "EQ", "Wave", "Spec", "Lvl", "Chn"},
+		[]string{"Pads", "EQ", "Wave", "Spec", "Lvl", "Chn", "Syn", "Smpl"},
 		0, // Pads active by default
 		func(i int) {
 			modes := []viewMode{
@@ -871,6 +930,8 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 				viewModeSpectrum,
 				viewModeMeters,
 				viewModeChain,
+				viewModeSynth,
+				viewModeSampler,
 			}
 			if i >= 0 && i < len(modes) {
 				dv.setViewMode(modes[i])

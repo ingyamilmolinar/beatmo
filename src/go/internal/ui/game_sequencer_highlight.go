@@ -39,6 +39,9 @@ func (g *Game) applySequencerHighlight(row, idx int, info model.BeatInfo) {
 		if now > 0 {
 			g.setNodeHighlightUntil(info.NodeID, now, now+beatSec)
 		}
+		if g.drum != nil {
+			g.drum.MarkRowFired(row)
+		}
 	} else {
 		g.nodeAnimSet(info.NodeID, 0)
 	}

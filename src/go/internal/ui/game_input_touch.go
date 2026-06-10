@@ -152,6 +152,13 @@ func (g *Game) handleTapInGrid(x, y int) {
 // In the grid pane, deletes the node under the touch point.
 // In the drum pane, opens the mobile context menu for the row label.
 func (g *Game) handleTouchLongPress(x, y int) {
+	// Audio panel: Levels icon-row long-press → tooltip with the
+	// unabbreviated readout value (Phase 4 audio-panel redesign).
+	if g.drum != nil && g.drum.eqPanelZone != nil {
+		if g.drum.eqPanelZone.HandleLevelsAggregateLongPress(x, y) {
+			return
+		}
+	}
 	// Check if long-press is in the drum pane on a row label (mobile context menu).
 	if Profile().IsMobile() && g.drum != nil && image.Pt(x, y).In(g.drum.Bounds) {
 		for i, lbl := range g.drum.rowLabels() {
@@ -174,7 +181,24 @@ func (g *Game) handleTouchLongPress(x, y int) {
 
 // handleTouchPinch handles a pinch zoom gesture.
 // Uses direct 1:1 scale mapping: camera scale tracks finger distance ratio.
+//
+// Three regions can absorb a pinch, decided by the gesture center:
+//   - Inside the drum rows zone on mobile (Theme 3): scales dv.rowZoom.
+//   - Inside the grid pane: scales the camera (the original behavior).
+//   - Anywhere else: ignored.
 func (g *Game) handleTouchPinch(centerX, centerY int, scale float64) {
+	// Drum rows zone has priority on mobile so two-finger pinches over
+	// the rack are absorbed (do not bleed into camera zoom). The legacy
+	// "pinch to scale row height" behavior was retired alongside the
+	// row-zoom chip refactor — per-row dimensions are fixed, and the
+	// chips now resize the drum-view pane instead.
+	if Profile().IsMobile() && g.drum != nil {
+		rr := g.drum.rowsRect()
+		if !rr.Empty() && image.Pt(centerX, centerY).In(rr) {
+			return
+		}
+	}
+
 	if centerY < gridTopOffset() || !g.split.InGridPane(centerX, centerY) {
 		return
 	}

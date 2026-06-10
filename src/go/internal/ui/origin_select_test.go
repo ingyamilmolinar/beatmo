@@ -52,8 +52,8 @@ func TestOriginSelectOnExistingNode(t *testing.T) {
 	btn := g.drum.rowOriginBtns()[1]
 	r := btn.Rect()
 	// Use Button.Handle directly to enqueue request
-	_ = btn.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
-	_ = btn.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, false)
+	_ = btn.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
+	_ = btn.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, false)
 	// Process request in Game.Update
 	_ = g.Update()
 	if g.pendingStartRow != 1 {

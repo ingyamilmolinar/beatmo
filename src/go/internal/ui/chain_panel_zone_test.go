@@ -38,16 +38,14 @@ func TestChainPanelZoneLayout(t *testing.T) {
 func TestChainTapSelection(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
-	// Initially no taps.
-	if z.tapA >= 0 || z.tapB >= 0 {
-		t.Error("expected no taps initially")
-	}
-	// Click Synth -> A.
-	z.handleStageClick(scope.StageSynth)
+	// Tap A defaults to Synth so the Chain tab is never blank on open.
 	if z.tapA != scope.StageSynth {
-		t.Errorf("expected tapA=StageSynth, got %d", z.tapA)
+		t.Errorf("expected tapA=StageSynth by default, got %d", z.tapA)
 	}
-	// Click EQ -> B.
+	if z.tapB >= 0 {
+		t.Errorf("expected tapB unset by default, got %d", z.tapB)
+	}
+	// Click EQ -> B (A already has Synth).
 	z.handleStageClick(scope.StageEQ)
 	if z.tapB != scope.StageEQ {
 		t.Errorf("expected tapB=StageEQ, got %d", z.tapB)
@@ -59,14 +57,37 @@ func TestChainTapSelection(t *testing.T) {
 	}
 }
 
+// TestNewChainPanelZoneDefaultsTapASynth pins the UX default that the Chain
+// tab opens with Synth selected as Tap A — and verifies the OnTapAChange
+// callback fires once during construction so the audio scope service mirrors
+// the UI state.
+func TestNewChainPanelZoneDefaultsTapASynth(t *testing.T) {
+	assertDefaultParityState(t)
+	var tapACalls []scope.Stage
+	z := NewChainPanelZone(ChainCallbacks{
+		OnTapAChange: func(s scope.Stage) { tapACalls = append(tapACalls, s) },
+	})
+	if z.tapA != scope.StageSynth {
+		t.Errorf("default tapA: got %d want StageSynth(%d)", z.tapA, scope.StageSynth)
+	}
+	if z.tapB >= 0 {
+		t.Errorf("default tapB should be unset, got %d", z.tapB)
+	}
+	if len(tapACalls) != 1 || tapACalls[0] != scope.StageSynth {
+		t.Fatalf("expected one OnTapAChange(StageSynth) during ctor, got %v", tapACalls)
+	}
+}
+
 // TestChainTapAllStages verifies every stage (including InsertFX) can be
-// selected as a tap point.
+// selected as a tap point. NewChainPanelZone defaults tapA to StageSynth,
+// so we clear it first to exercise the "fresh assign to tapA" path.
 func TestChainTapAllStages(t *testing.T) {
 	assertDefaultParityState(t)
 
 	stages := scope.AllStages()
 	for _, stage := range stages {
 		z := NewChainPanelZone(ChainCallbacks{})
+		z.tapA = -1 // clear default so the next click lands on tapA
 		z.handleStageClick(stage)
 		if z.tapA != stage {
 			t.Errorf("stage %s: expected tapA=%d, got %d", scope.StageLabel(stage), stage, z.tapA)
@@ -81,6 +102,7 @@ func TestChainTapAllStages(t *testing.T) {
 func TestChainTapClearB(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
+	z.tapA = -1 // start blank; ctor default (Synth) would intercept the first click
 
 	z.handleStageClick(scope.StageSynth)  // → tapA
 	z.handleStageClick(scope.StageMaster) // → tapB
@@ -102,6 +124,7 @@ func TestChainTapClearB(t *testing.T) {
 func TestChainTapReplaceB(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
+	z.tapA = -1 // start blank for the "Synth → tapA" assertion below
 
 	z.handleStageClick(scope.StageSynth)    // → tapA
 	z.handleStageClick(scope.StageAntiPop)  // → tapB
@@ -129,6 +152,13 @@ func TestChainTapCallbacks(t *testing.T) {
 		OnClearTapA:  func() { clearACalls++ },
 		OnClearTapB:  func() { clearBCalls++ },
 	})
+	// NewChainPanelZone fires OnTapAChange(Synth) once for the default tapA.
+	// Drain that and reset tapA so the click-flow assertions below start clean.
+	if len(tapACalls) != 1 || tapACalls[0] != scope.StageSynth {
+		t.Fatalf("ctor should have fired OnTapAChange(Synth) once, got %v", tapACalls)
+	}
+	tapACalls = tapACalls[:0]
+	z.tapA = -1
 
 	// Click Synth → tapA callback.
 	z.handleStageClick(scope.StageSynth)
@@ -166,6 +196,7 @@ func TestChainTapCallbacks(t *testing.T) {
 func TestChainTapAfterClearA(t *testing.T) {
 	assertDefaultParityState(t)
 	z := NewChainPanelZone(ChainCallbacks{})
+	z.tapA = -1 // start blank to test the "first click → tapA" path
 
 	z.handleStageClick(scope.StageSynth)   // → tapA
 	z.handleStageClick(scope.StageAntiPop) // → tapB

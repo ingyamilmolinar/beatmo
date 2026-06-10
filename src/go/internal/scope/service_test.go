@@ -401,6 +401,57 @@ func TestBuildTapData(t *testing.T) {
 	}
 }
 
+// TestServicePushAllStages verifies that every Stage in the pipeline can be
+// pushed through the scope service and surface as an active TapData with the
+// correct stage, instrument id, and non-empty samples. Previously only
+// StageSynth/StageEQ/StageSends/StageMaster were exercised; this pins the
+// full six-stage contract that the Chain panel relies on after the
+// StageInsertFX desktop tap was added (engine_stop.go) and the WASM bridge
+// was extended to cover AntiPop/InsertFX/Sends.
+func TestServicePushAllStages(t *testing.T) {
+	for _, stage := range AllStages() {
+		stage := stage // capture
+		t.Run(StageLabel(stage), func(t *testing.T) {
+			svc := NewService(Config{MaxWindowMs: 100, SampleRate: 44100})
+			svc.SetTapA(stage)
+			go svc.Run()
+			defer svc.Stop()
+
+			id := "kick"
+			if stage == StageSends || stage == StageMaster {
+				// Master-path stages carry the composite mix; the service
+				// records its inst id as "master" (see engine_stop.go).
+				id = "master"
+			}
+
+			buf := make([]float64, 256)
+			for i := range buf {
+				buf[i] = math.Sin(2 * math.Pi * float64(i) / 32)
+			}
+			svc.PushSamples(stage, id, buf)
+
+			deadline := time.Now().Add(2 * time.Second)
+			for time.Now().Before(deadline) {
+				st := svc.State()
+				if st != nil && st.TapA.Active {
+					if st.TapA.Stage != stage {
+						t.Fatalf("stage: got %v want %v", st.TapA.Stage, stage)
+					}
+					if st.TapA.InstID != id {
+						t.Fatalf("instID: got %q want %q", st.TapA.InstID, id)
+					}
+					if len(st.TapA.Samples) == 0 {
+						t.Fatal("samples: got empty, want non-empty")
+					}
+					return
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			t.Fatalf("timed out waiting for active TapA for stage %s", StageLabel(stage))
+		})
+	}
+}
+
 func TestRingBufDrain(t *testing.T) {
 	r := &ringBuf{}
 

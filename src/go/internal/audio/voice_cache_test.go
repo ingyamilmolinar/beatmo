@@ -46,32 +46,95 @@ func TestVoiceCachePutAndGet(t *testing.T) {
 	}
 }
 
-func TestVoiceCacheGetReturnsClone(t *testing.T) {
+// TestVoiceCacheGetSharesBackingArray pins the post-OOM-fix contract:
+// Get returns the cached backing array directly (no clone). cVoice
+// playback never writes to v.buf (drums_c.go: Sample/SampleBlock only
+// READ and advance v.i), so concurrent voices can share the slice
+// safely. Removing the ~80 KB clone-on-get was a key step in cutting the
+// PlayParams cumulative allocation rate observed in the synth-tab
+// profile.
+//
+// CONTRACT REGRESSION GUARD: if a future change reintroduces a clone in
+// Get, the test fails because &got[0] and &refetched[0] would differ.
+// Equally, if a caller mutates the returned slice (violating the contract
+// the new API documents), every concurrent voice would observe the
+// mutation — this test would still pass, but the synth-tab soak test
+// would surface the corruption as audio glitches.
+func TestVoiceCacheGetSharesBackingArray(t *testing.T) {
 	vc := newTestCache()
 	key := testKey("kick")
 	vc.Put(key, []float32{1, 2, 3})
 
-	got, _ := vc.Get(key)
-	got[0] = 999 // mutate the returned slice
-
-	got2, _ := vc.Get(key)
-	if got2[0] == 999 {
-		t.Error("mutating Get result corrupted cache")
+	got, ok := vc.Get(key)
+	if !ok {
+		t.Fatal("Get returned false for stored key")
+	}
+	got2, ok := vc.Get(key)
+	if !ok {
+		t.Fatal("second Get returned false")
+	}
+	if len(got) == 0 || len(got2) == 0 {
+		t.Fatalf("empty buffers: |got|=%d |got2|=%d", len(got), len(got2))
+	}
+	if &got[0] != &got2[0] {
+		t.Errorf("Get must return the SAME backing array across calls; "+
+			"got &[0]=%p, got2 &[0]=%p — a clone has snuck back into Get",
+			&got[0], &got2[0])
 	}
 }
 
-func TestVoiceCachePutStoresCopy(t *testing.T) {
+// TestVoiceCachePutSharesBackingArray pins the post-OOM-fix contract:
+// Put stores the caller-provided slice directly (no clone). Callers
+// (tryRecipeVoice and the CVariantInstrument render paths) must not
+// mutate the buffer after calling Put; the cache and any concurrent Get
+// reader share the backing array. Removing the ~80 KB clone-on-put was
+// the second leg of the per-trigger cache allocation reduction.
+func TestVoiceCachePutSharesBackingArray(t *testing.T) {
 	vc := newTestCache()
 	key := testKey("hihat")
 	buf := []float32{1, 2, 3}
 	vc.Put(key, buf)
 
-	buf[0] = 999 // mutate original
-
-	got, _ := vc.Get(key)
-	if got[0] == 999 {
-		t.Error("mutating original after Put corrupted cache")
+	got, ok := vc.Get(key)
+	if !ok {
+		t.Fatal("Get returned false for stored key")
 	}
+	if len(got) == 0 || len(buf) == 0 {
+		t.Fatalf("empty buffers: |got|=%d |buf|=%d", len(got), len(buf))
+	}
+	if &got[0] != &buf[0] {
+		t.Errorf("Put must store the SAME backing array the caller supplied; "+
+			"got &[0]=%p, buf &[0]=%p — a clone has snuck back into Put",
+			&got[0], &buf[0])
+	}
+}
+
+// TestVoiceCacheGetPutAllocBudget pins the per-call allocation count for
+// the cache hot path. Pre-fix this was ~2 allocs per Get (the clone +
+// its slice header) and ~2 allocs per Put. After the fix Get is zero-
+// alloc on cache-hit and Put is bounded by map-growth amortized cost.
+func TestVoiceCacheGetPutAllocBudget(t *testing.T) {
+	vc := newTestCache()
+	key := testKey("budget")
+	buf := make([]float32, 22050) // realistic snare-sized buffer
+	vc.Put(key, buf)
+
+	// Warm up.
+	for i := 0; i < 5; i++ {
+		_, _ = vc.Get(key)
+	}
+
+	const getBudget = 0.0
+	getAllocs := testing.AllocsPerRun(1000, func() {
+		_, _ = vc.Get(key)
+	})
+	if getAllocs > getBudget {
+		t.Errorf("Get allocs/call = %.1f exceeds budget %.0f — a clone or other "+
+			"alloc has re-entered the cache hit path", getAllocs, getBudget)
+	}
+	t.Logf("Get allocs/call = %.1f (budget %.0f, %d-sample buffer) — "+
+		"pre-fix was ~2 allocs/call (clone + slice header)",
+		getAllocs, getBudget, len(buf))
 }
 
 func TestVoiceCacheRoundRobin(t *testing.T) {
@@ -201,8 +264,8 @@ func TestVoiceCacheClear(t *testing.T) {
 
 func TestVoiceCacheDifferentSynthParamsKey(t *testing.T) {
 	vc := newTestCache()
-	key1 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, synthParams: SynthParams{}}
-	key2 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, synthParams: SynthParams{Pitch: 2.0}}
+	key1 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, paramsHash: hashRecipeParams(SynthParams{}.ToRecipeParams())}
+	key2 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, paramsHash: hashRecipeParams(SynthParams{Pitch: 2.0}.ToRecipeParams())}
 
 	vc.Put(key1, []float32{1})
 	vc.Put(key2, []float32{2})

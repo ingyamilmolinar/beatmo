@@ -13,7 +13,9 @@ func (g *Game) initJS() {
 	g.initJSGraphUI()
 	g.initJSTouchDebug()
 	g.initJSInsertEffects()
+	g.initJSSynthRecipe()
 	g.initJSRecording()
 	g.initMediaSessionExports()
 	g.initJSScenes()
+	g.initJSDiag()
 }

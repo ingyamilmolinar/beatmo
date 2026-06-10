@@ -48,4 +48,6 @@ var BuiltinInstrumentIDs = []string{
 	"fm-lead-1",
 	"fm-epiano-1",
 	"fm-pluck-1",
+	"modular",
+	"modular-pad",
 }

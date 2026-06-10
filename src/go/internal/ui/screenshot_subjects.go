@@ -27,6 +27,8 @@ const (
 	SubjectEQTabWave      Subject = "eq_tab_wave"
 	SubjectEQTabSpectrum  Subject = "eq_tab_spectrum"
 	SubjectEQTabLevels    Subject = "eq_tab_levels"
+	SubjectSynthPanel     Subject = "synth_panel"   // audio panel content rect when TabSynth active
+	SubjectSampler        Subject = "sampler_panel" // audio panel content rect when TabSampler active
 	SubjectChain          Subject = "chain"
 	SubjectAudioStickyBar Subject = "audio_sticky_bar"
 	SubjectToolbar        Subject = "toolbar" // full top header strip (transport+BPM+vol+overflow)
@@ -49,6 +51,8 @@ func AllSubjects() []Subject {
 		SubjectEQTabWave,
 		SubjectEQTabSpectrum,
 		SubjectEQTabLevels,
+		SubjectSynthPanel,
+		SubjectSampler,
 		SubjectChain,
 		SubjectAudioStickyBar,
 		SubjectToolbar,
@@ -110,14 +114,16 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 			return image.Rectangle{}, false
 		}
 		return clamp(dv.eqRect)
-	case SubjectEQTabEQ, SubjectEQTabWave, SubjectEQTabSpectrum, SubjectEQTabLevels:
+	case SubjectEQTabEQ, SubjectEQTabWave, SubjectEQTabSpectrum, SubjectEQTabLevels, SubjectSynthPanel, SubjectSampler:
 		if dv == nil || dv.eqPanelZone == nil {
 			return image.Rectangle{}, false
 		}
 		// Each EQ tab paints into the panel's content rect; the visual
 		// difference is which renderer runs. We crop to the full panel
 		// (including the tab header strip) so the captured PNG shows the
-		// active-tab affordance, then clamp to the screen.
+		// active-tab affordance, then clamp to the screen. SubjectSynthPanel
+		// and SubjectSampler share this rect — both the Synth and Sampler
+		// tabs are peer tabs of the audio panel.
 		return clamp(dv.eqRect)
 	case SubjectChain:
 		if dv == nil || dv.eqPanelZone == nil {

@@ -76,20 +76,28 @@ await page.waitForFunction(() => window.__audioCtx && window.__audioCtx.state ==
 
 // Now play via the high-level API and capture its buffer.
 await page.evaluate(() => { window.__samples = []; window.__done = false; window.__captureSamples = true; });
-await page.evaluate(() => window.playSound('snare', 1.0));
+// EVERY legacy family migrated to the modular engine — kick/tom/snare/cymbal/bass
+// through Phase-6, and FM in Phase-7 (the LAST). render_hihat / render_fm_bass etc.
+// are all deleted; those WebAudio paths now flow through render_modular (their
+// param-block parity is covered by the xplat audio-compare suite). The ONLY
+// remaining bespoke C renderer is render_modular itself, so the base `modular`
+// instrument takes both direct-render JS↔C consistency slots: a default render
+// here and a second modular render below. This still exercises the playSound →
+// renderToCache → WebAudio path against a direct C render reference.
+await page.evaluate(() => window.playSound('modular', 1.0));
 await page.waitForFunction(() => window.__done === true, {}, { timeout: 10000 });
-await page.waitForFunction(() => window.__renderMeta && window.__renderMeta.snare, {}, { timeout: 5000 });
+await page.waitForFunction(() => window.__renderMeta && window.__renderMeta['modular'], {}, { timeout: 5000 });
 const { out, meta } = await page.evaluate(() => ({
   out: window.__samples.slice(),
-  meta: window.__renderMeta?.snare ?? null
+  meta: window.__renderMeta?.['modular'] ?? null
 }));
-if (!meta) throw new Error('missing render meta for snare');
+if (!meta) throw new Error('missing render meta for modular');
 const ref = await page.evaluate(async ({ frames, sr }) => {
   const factory = window.__drumsFactory;
   if (!factory) throw new Error('no drumsFactory');
   const m = await factory();
   const ptr = m._malloc(frames * 4);
-  m.ccall('render_snare', null, ['number','number','number'], [ptr, sr, frames]);
+  m.ccall('render_modular', null, ['number','number','number'], [ptr, sr, frames]);
   const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
   m._free(ptr);
   let peak = 0;
@@ -124,29 +132,34 @@ const alignOutput = (refArr, outArr, label) => { const trimmed = trimLeadingSile
   return trimmed.slice(0, refArr.length);
 };
 
-const outAligned = alignOutput(ref, out, 'snare');
+const outAligned = alignOutput(ref, out, 'modular');
 const c = corr(ref, outAligned);
-if (c < 0.98) { throw new Error(`miniaudio JS render mismatch (snare): corr=${c.toFixed(4)}`);
+if (c < 0.98) { throw new Error(`miniaudio JS render mismatch (modular): corr=${c.toFixed(4)}`);
 }
-console.log('drums.js consistency verified (snare)', { corr: c.toFixed(4) });
+console.log('drums.js consistency verified (modular)', { corr: c.toFixed(4) });
 
-// Repeat for kick to cover a tonal/decaying instrument.
+// Repeat with a second modular render to keep two direct-render JS↔C consistency
+// checks. EVERY legacy family (incl. FM, Phase-7) migrated to the modular engine;
+// their render_X C exports were deleted — those WebAudio paths now flow through
+// render_modular, whose seeded param blocks are covered by the xplat audio-compare
+// suite. render_modular is the only remaining bespoke C renderer, so it serves
+// both consistency slots (deterministic, so the second render correlates too).
 await (async () => {
   await page.evaluate(() => { window.__samples = []; window.__done = false; window.__captureSamples = true; });
-  await page.evaluate(() => window.playSound('kick', 1.0));
+  await page.evaluate(() => window.playSound('modular', 1.0));
   await page.waitForFunction(() => window.__done === true, {}, { timeout: 10000 });
-  await page.waitForFunction(() => window.__renderMeta && window.__renderMeta.kick, {}, { timeout: 5000 });
-  const { out: kickOut, meta: kickMeta } = await page.evaluate(() => ({
+  await page.waitForFunction(() => window.__renderMeta && window.__renderMeta['modular'], {}, { timeout: 5000 });
+  const { out: cowOut, meta: cowMeta } = await page.evaluate(() => ({
     out: window.__samples.slice(),
-    meta: window.__renderMeta?.kick ?? null
+    meta: window.__renderMeta?.['modular'] ?? null
   }));
-  if (!kickMeta) throw new Error('missing render meta for kick');
-  const kickRef = await page.evaluate(async ({ frames, sr }) => {
+  if (!cowMeta) throw new Error('missing render meta for modular (second check)');
+  const cowRef = await page.evaluate(async ({ frames, sr }) => {
     const factory = window.__drumsFactory;
     if (typeof factory !== 'function') throw new Error('no drumsFactory');
     const m = await factory();
     const ptr = m._malloc(frames * 4);
-    m.ccall('render_kick', null, ['number','number','number'], [ptr, sr, frames]);
+    m.ccall('render_modular', null, ['number','number','number'], [ptr, sr, frames]);
     const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
     m._free(ptr);
     let peak = 0;
@@ -159,11 +172,11 @@ await (async () => {
       for (let i = 0; i < data.length; i++) data[i] *= inv;
     }
     return Array.from(data);
-  }, { frames: kickMeta.frames, sr: kickMeta.sr });
-  const kickAligned = alignOutput(kickRef, kickOut, 'kick');
-  const ck = corr(kickRef, kickAligned);
-  if (ck < 0.98) throw new Error(`miniaudio JS render mismatch (kick): corr=${ck.toFixed(4)}`);
-  console.log('drums.js consistency verified (kick)', { corr: ck.toFixed(4) });
+  }, { frames: cowMeta.frames, sr: cowMeta.sr });
+  const cowAligned = alignOutput(cowRef, cowOut, 'modular#2');
+  const cc = corr(cowRef, cowAligned);
+  if (cc < 0.98) throw new Error(`miniaudio JS render mismatch (modular#2): corr=${cc.toFixed(4)}`);
+  console.log('drums.js consistency verified (modular#2)', { corr: cc.toFixed(4) });
 })();
 
 if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "drums_consistency");

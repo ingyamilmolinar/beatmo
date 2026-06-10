@@ -89,19 +89,20 @@ func TestStickyBarHitAreasUseParentZIndex(t *testing.T) {
 	}
 }
 
-// TestStickyBarTabButtonsAreCount5 verifies TabBtn(0..4) are non-nil and
-// TabBtn(5) is nil.
-func TestStickyBarTabButtonsAreCount5(t *testing.T) {
+// TestStickyBarTabButtonsAreCount6 verifies TabBtn(0..5) are non-nil
+// (EQ, Wave, Spectrum, Levels, Chain, Synth) and TabBtn(6) is nil.
+func TestStickyBarTabButtonsMatchAllPanelTabs(t *testing.T) {
 	assertDefaultParityState(t)
 
 	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
-	for i := 0; i < 5; i++ {
+	n := len(AllPanelTabs())
+	for i := 0; i < n; i++ {
 		if bar.TabBtn(i) == nil {
-			t.Errorf("TabBtn(%d) should be non-nil", i)
+			t.Errorf("TabBtn(%d) should be non-nil (%d tabs)", i, n)
 		}
 	}
-	if bar.TabBtn(5) != nil {
-		t.Error("TabBtn(5) should be nil")
+	if bar.TabBtn(n) != nil {
+		t.Errorf("TabBtn(%d) should be nil (only %d tabs)", n, n)
 	}
 	if bar.TabBtn(-1) != nil {
 		t.Error("TabBtn(-1) should be nil")
@@ -206,6 +207,11 @@ func TestStickyBarFreqScaleChipFitsInRect(t *testing.T) {
 	assertDefaultParityState(t)
 
 	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
+	// The freq-scale chip ("log" / "lin") is now Spectrum-only chrome
+	// (mobile-usability pass: hidden on tabs that don't need it). Flip
+	// to Spectrum + relayout so the chip claims its rect.
+	bar.SetActiveTab(TabSpectrum)
+	bar.Layout(image.Rect(0, 0, 800, stickyBarH))
 	r := bar.FreqScaleBtn().Rect()
 	if r.Empty() {
 		t.Fatal("freq-scale chip rect should be non-empty after Layout")
@@ -227,6 +233,25 @@ func TestStickyBarFreqScaleChipFitsInRect(t *testing.T) {
 	}
 	if !foundTag {
 		t.Error("eq-freqscale-btn hit area missing from sticky bar HitAreas()")
+	}
+}
+
+// TestStickyBarRectMatchesLastLayout exercises (*AudioStickyBar).Rect(),
+// the public bounds accessor used by the screenshot harness (subject
+// SubjectAudioStickyBar) to crop captures without reaching into private
+// fields. Layout() must persist the rect verbatim; Rect() must return it.
+func TestStickyBarRectMatchesLastLayout(t *testing.T) {
+	assertDefaultParityState(t)
+
+	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
+	if got := bar.Rect(); got != (image.Rectangle{Min: image.Point{0, 0}, Max: image.Point{800, stickyBarH}}) {
+		t.Errorf("Rect()=%v after first Layout, want (0,0)-(800,%d)", got, stickyBarH)
+	}
+
+	// A second Layout overwrites the stored rect.
+	bar.Layout(image.Rect(120, 40, 920, 40+stickyBarH))
+	if got := bar.Rect(); got != (image.Rectangle{Min: image.Point{120, 40}, Max: image.Point{920, 40 + stickyBarH}}) {
+		t.Errorf("Rect()=%v after second Layout, want (120,40)-(920,%d)", got, 40+stickyBarH)
 	}
 }
 

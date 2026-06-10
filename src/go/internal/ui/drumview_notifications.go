@@ -45,6 +45,16 @@ func (dv *DrumView) IsInstMenuOpen() bool {
 	return dv.tree != nil && dv.tree.Portal().Has("inst-menu")
 }
 
+// InstrumentMenuRect returns the on-screen rectangle of the open instrument
+// menu (full-list bounds). Returns the zero rect when the menu is closed
+// or its bounds have not been populated yet.
+func (dv *DrumView) InstrumentMenuRect() image.Rectangle {
+	if !dv.IsInstMenuOpen() {
+		return image.Rectangle{}
+	}
+	return dv.instMenuFullRect
+}
+
 // IsColorMenuOpen returns whether the color wheel is open.
 func (dv *DrumView) IsColorMenuOpen() bool {
 	return dv.tree != nil && dv.tree.Portal().Has("color-wheel")
@@ -85,7 +95,7 @@ func (dv *DrumView) anyDragActive() bool {
 	// are not blocked, allowing slider and button interaction.
 	touchDeadZone := Profile().IsMobile() && touchOverrideActive &&
 		isMouseButtonPressed(ebiten.MouseButtonLeft) && !isTouchTapInjecting() &&
-		!dv.mobileEQMode &&
+		!dv.MobileEQMode() &&
 		pt(touchOverrideX, touchOverrideY, dv.rowsRect())
 
 	return dv.rowScroll().Dragging() || dv.dragging || dv.scrubbing ||
@@ -120,7 +130,7 @@ func (dv *DrumView) Capturing() bool {
 func (dv *DrumView) logCapturingState() {
 	touchDZ := Profile().IsMobile() && touchOverrideActive &&
 		isMouseButtonPressed(ebiten.MouseButtonLeft) && !isTouchTapInjecting() &&
-		!dv.mobileEQMode &&
+		!dv.MobileEQMode() &&
 		pt(touchOverrideX, touchOverrideY, dv.rowsRect())
 	dv.logger.Debugf("[pan] Capturing breakdown: "+
 		"mouseDown=%v anyDrag=%v touchActive=%v dropdown=%v rename=%v naming=%v layout=%v",

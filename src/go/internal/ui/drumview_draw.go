@@ -8,14 +8,26 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
+// Draw renders the drum pane via the DrumViewTree. Every pixel emitted
+// inside dv.Bounds originates from a Zone or Layer registered with the
+// tree (see drumview_tree.go and layer.go); this function itself only
+// performs per-frame bookkeeping (counter resets, mask resync, lazy
+// layout, animation decay, sync of test-observable state) and then
+// hands dst to dv.tree.Draw().
+//
+// The render-pipeline discipline test (render_pipeline_discipline_test.go)
+// forbids draw primitives in this file — adding any drawRect, DrawImage,
+// or similar call here will fail CI.
 func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, frame int64, beatInfos []model.BeatInfo, elapsedBeats float64) {
 	dv.frame++
+	// Publish the frame counter for button cushion animations (toggle-pulse
+	// glow) so widgets don't need a frame argument threaded through Draw.
+	uiAnimFrame = dv.frame
 	dv.rowsLayerBytes = 0
 	dv.rowsRepaints = 0
 	dv.rowCacheShift = 0
 	dv.rowCachePatch = 0
 	dv.rowCacheFull = 0
-	// reset per-frame row-drawn mask
 	if len(dv.rowsDrawnMask) != len(dv.Rows) {
 		dv.rowsDrawnMask = make([]bool, len(dv.Rows))
 	} else {
@@ -34,175 +46,51 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 		dv.rowFrame = rf
 	}
 
-	// Ensure zone layout is current before drawing. Normally tree.Update()
-	// runs Layout() in the frame loop, but some tests call Draw() directly
-	// without a preceding Update().
+	// Lazy layout. Normally tree.Update() runs Layout() in the frame
+	// loop, but some tests call Draw() directly without a preceding
+	// Update(), and a scroll flushed after the Update-phase pass (wheel
+	// adapter, momentum, legacy touch/step-drag) leaves needLayout set
+	// here. EnsureLayouts re-runs the tree's layout+publish pass so the
+	// HitIndex always follows what this frame renders — a bare Layout
+	// loop here used to consume needLayout WITHOUT republishing, leaving
+	// input permanently dispatched to pre-scroll row positions.
 	if dv.tree != nil {
-		for i := range dv.tree.zones {
-			e := &dv.tree.zones[i]
-			if e.zone.NeedsLayout() || e.rect != e.lastRect {
-				e.zone.Layout(e.rect)
-				e.lastRect = e.rect
-			}
-		}
+		dv.tree.EnsureLayouts()
 	}
 
-	lite := dv.perfDrawLite
 	dv.logger.Tracef("[DRUMVIEW] Draw called. beatInfos: %v, highlightsByRow: %v", beatInfos, highlightsByRow)
 
-	// --- Background ---
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(dv.Bounds.Min.X), float64(dv.Bounds.Min.Y))
-	dst.DrawImage(dv.bg(dv.Bounds.Dx(), dv.Bounds.Dy()), op)
-	for _, kind := range []WidgetKind{WidgetTransport, WidgetRack, WidgetTimeline} {
-		if r := dv.widgetRects[kind]; !r.Empty() {
-			fill := colBGBottom
-			if Profile().IsMobile() {
-				if kind == WidgetTransport {
-					fill = colTransportSurface
-				} else if kind == WidgetRack {
-					fill = colRackSurface
-				}
-			}
-			drawRect(dst, r, fill, true)
-			if Profile().IsMobile() && kind == WidgetTransport {
-				drawRect(dst, image.Rect(r.Min.X, r.Max.Y-1, r.Max.X, r.Max.Y),
-					WithAlpha(genColorBorder, genAlphaRowRackZebra), true)
-			}
-		}
-	}
-	if r := dv.widgetRects[WidgetWave]; !r.Empty() {
-		drawRect(dst, r, colEQBg, true)
-	}
-	if !lite {
-		dv.drawLayoutGuides(dst)
-	}
-
-	// --- Animations ---
+	// Animations — state-only, not drawing.
 	dv.decayAnims()
 
-	// --- Mobile EQ peek sparkline ---
-	// Drawn BEFORE the bottom action bar surface so the bar's drop shadow
-	// falls naturally onto the peek strip rather than being painted over.
-	// Repaints the strip's surface first so any earlier widget bg (e.g.
-	// WidgetWave / EQ panel bg) painted into this region is replaced —
-	// the peek strip is the canonical owner of these pixels.
-	if !dv.eqPeekRect.Empty() && dv.eqPanelZone != nil {
-		drawRect(dst, dv.eqPeekRect, colBGBottom, true)
-		// 1 sample per ~4 px width — balances detail vs CPU.
-		n := dv.eqPeekRect.Dx() / 4
-		if n < 8 {
-			n = 8
-		}
-		samples := dv.eqPanelZone.SampleCurve(n)
-		if len(samples) >= 2 {
-			drawSparklineInRect(dst, dv.eqPeekRect, samples,
-				WithAlpha(genColorPrimary, genAlphaSubtle))
-		}
+	// Refresh per-row widget rects (vol slider, mute/solo/fx button rects)
+	// before zones consume them. Previously called from
+	// renderToolbarControls; pulled up here so the per-frame work happens
+	// regardless of which zone draws first.
+	dv.updateRowRects()
+
+	// Hand timeline draw parameters to the zone before dispatching the
+	// tree's draw walk; TimelineZone reads these in its Draw method.
+	if dv.timelineZone != nil {
+		dv.timelineZone.SetDrawParams(elapsedBeats, highlightsByRow)
 	}
 
-	// --- Mobile bottom action bar surface ---
-	// Paint the sheet surface before renderToolbarControls so the
-	// vol/view/overflow buttons hosted in the bar render on top of the
-	// surface rather than under it. The transport widget's clip rect at
-	// the top excludes this rect, so it must be painted directly here.
-	if !dv.bottomActionBarRect.Empty() {
-		drawBottomSheetPanel(dst, dv.bottomActionBarRect)
+	// Single dispatch — every pixel in dv.Bounds originates here.
+	// Mobile audio mode hides the rack mask layer at the tree level
+	// (see layer_rack_mask.go Visible()), so the mask never paints into
+	// dv.panelMaskRect — the rect naturally stays at whatever the layer
+	// last wrote (or empty) without a post-Draw fixup here.
+	if dv.tree != nil {
+		dv.tree.SetBounds(dv.Bounds)
+		dv.tree.Draw(dst)
 	}
 
-	// --- Transport zone ---
-	if !dv.simpleDraw {
-		if r := dv.widgetRects[WidgetTransport]; !r.Empty() {
-			clip := dst.Bounds().Intersect(r)
-			if !clip.Empty() {
-				sub := dst.SubImage(clip).(*ebiten.Image)
-				dv.renderToolbarControls(sub)
-			}
-		} else {
-			dv.renderToolbarControls(dst)
-		}
-		dv.drawNotifications(dst)
-	}
-
-	// --- Mobile segmented view-switch (Pads/EQ/Wave) ---
-	// Drawn after the transport controls so it renders on top of the bar
-	// surface. Only visible on mobile; on desktop the rect is empty.
-	if Profile().IsMobile() && dv.viewSwitchSegmented != nil && !dv.viewSwitchSegmented.Rect().Empty() {
-		dv.viewSwitchSegmented.Draw(dst)
-	}
-
-	// --- Play button pulse halo ---
-	// Multi-pass falloff so the glow reads as a soft halo rather than a
-	// hard rectangular outline (DESIGN.md §"Cushioned elevation"). Gated
-	// on the visible Pause icon — guards against state drift where
-	// isPlaying=true but the icon was left as Play.
-	if dv.isPlaying && dv.playBtn() != nil && dv.playBtn().Icon == string(IconPause) {
-		pr := dv.playBtn().Rect()
-		if !pr.Empty() {
-			peak := SinPulseAlpha(dv.frame, genAnimPlayheadPulse)
-			for i := 1; i <= 3; i++ {
-				a := uint8(int(peak) * (4 - i) / 4)
-				if a == 0 {
-					continue
-				}
-				drawRect(dst, pr.Inset(-i), WithAlpha(genColorDrumGlow, a), false)
-			}
-		}
-	}
-
-	// --- Record button armed halo ---
-	// Same multi-pass falloff as the play halo, but in record-active red so
-	// the armed state is unmistakable across desktop and mobile. Drawn on
-	// top of the toolbar so it can pulse without invalidating the cached
-	// toolbar render. Mobile additionally renders a static destructive
-	// ring inside the cache (drawRecordArmedRingOffset) for the discrete
-	// "armed" affordance — the pulse here adds the "live & waiting" energy.
-	if dv.IsRecording() && dv.transportZone != nil {
-		rr := dv.transportZone.recordBtn.Rect()
-		if !rr.Empty() {
-			peak := SinPulseAlpha(dv.frame, genAnimPlayheadPulse)
-			for i := 1; i <= 3; i++ {
-				a := uint8(int(peak) * (4 - i) / 4)
-				if a == 0 {
-					continue
-				}
-				drawRect(dst, rr.Inset(-i), WithAlpha(genColorRecordActive, a), false)
-			}
-		}
-	}
-
-	// --- Timeline zone (bar + rows + highlights + dimming) ---
-	dv.timelineZone.SetDrawParams(elapsedBeats, highlightsByRow)
-	dv.drawZoneClipped(dst, dv.timelineZone)
-
-	// --- Instrument panel mask ---
-	mobileEQActive := Profile().IsMobile() && dv.mobileEQMode
-	if !mobileEQActive {
-		dv.drawInstrumentPanelMask(dst)
-	} else {
-		dv.panelMaskRect = image.Rectangle{}
-	}
-
-	// --- EQ panel zone ---
-	if !lite {
-		dv.drawZoneClipped(dst, dv.eqPanelZone)
-		// Sync zone band values back to DrumView for JS export access (eqBandsSnapshot).
+	// Post-draw test/JS-export sync.
+	if dv.eqPanelZone != nil {
 		dv.eqLastBands = append(dv.eqLastBands[:0], dv.eqPanelZone.eqBandVals...)
 	}
-
-	// --- Row rack zone ---
-	dv.drawZoneClipped(dst, dv.rowRackZone)
-	// Sync zone cache rect to DrumView for backward-compat test access.
-	dv.rowControlsCacheRect = dv.rowRackZone.controlsCacheRect
-
-	// --- Layout pills ---
-	if !lite {
-		dv.drawLayoutPills(dst)
-	}
-
-	// --- Portal overlays (topmost layer) ---
-	if dv.tree != nil {
-		dv.tree.Portal().Draw(dst)
+	if dv.rowRackZone != nil {
+		dv.rowControlsCacheRect = dv.rowRackZone.controlsCacheRect
 	}
 
 	if dv.logger != nil && dv.rowsLayerFrame == dv.frame {
@@ -211,47 +99,10 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	}
 }
 
-// drawInstrumentPanelMask renders the opaque rack surface mask that keeps
-// row controls visually grouped.
-func (dv *DrumView) drawInstrumentPanelMask(dst *ebiten.Image) {
-	panelRect := dv.widgetRects[WidgetRack]
-	if panelRect.Empty() {
-		panelLeft := dv.Bounds.Min.X
-		panelRight := dv.timelineRect.Min.X
-		if panelRight > panelLeft {
-			top := dv.Bounds.Min.Y + dv.headerH
-			bot := dv.Bounds.Max.Y
-			panelRect = image.Rect(panelLeft, top, panelRight, bot)
-		}
-	}
-	if runningUnderGoTest() {
-		panelRect.Max.Y = dv.Bounds.Max.Y
-	}
-	expectedTop := dv.Bounds.Min.Y + dv.headerH
-	if panelRect.Min.Y != expectedTop {
-		panelRect.Min.Y = expectedTop
-		if panelRect.Max.Y < panelRect.Min.Y {
-			panelRect.Max.Y = panelRect.Min.Y
-		}
-		if panelRect.Max.Y > dv.Bounds.Max.Y {
-			panelRect.Max.Y = dv.Bounds.Max.Y
-		}
-	}
-	maskRight := dv.Bounds.Min.X + dv.labelW + dv.controlsW
-	if panelRect.Max.X > maskRight {
-		panelRect.Max.X = maskRight
-	}
-	if !panelRect.Empty() && Profile().ShowRackSurface {
-		drawRect(dst, panelRect, colRackSurface, true)
-	}
-	dv.panelMaskRect = panelRect
-}
-
 // drawRowsDirect draws visible row cells directly to dst without intermediate
-// textures. This bypasses the multi-level compositing chain (rowCache →
-// rowsLayer → dst) that fails on mobile WebGL. Uses the same cell layout math
-// as buildRowSprite and draws via DrumCellUI.Draw → drawRect → direct pixel
-// writes, which is the same proven path used by row controls and EQ.
+// textures. Bypasses the multi-level compositing chain (rowCache → rowsLayer
+// → dst) that fails on mobile WebGL. Called by drawRowComposite via the
+// TimelineZone DrawRowComposite callback — not from DrumView.Draw.
 func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 	vis := dv.visibleRows()
 	rowBase := dv.Bounds.Min.Y + dv.headerH
@@ -262,22 +113,16 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 		return
 	}
 	cells := 0
-	// Alternating row stripe colors for subtle visual grouping.
 	stripeEven := genColorDrumStripeEven
 	stripeOdd := genColorDrumStripeOdd
 	for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
 		r := dv.Rows[i]
 		y := rowBase + (i-dv.rowOffset)*rh
-		// Draw alternating row stripe background.
 		stripCol := stripeEven
 		if i%2 != 0 {
 			stripCol = stripeOdd
 		}
 		drawRect(dst, image.Rect(startX, y, startX+totalW, y+rh), stripCol, true)
-		// Now-playing tint: when the row recently fired its audible step,
-		// wash the strip in a faint accent overlay that decays each frame.
-		// Drawn after the stripe so the cells render on top in their normal
-		// row colors.
 		if intensity := dv.RowFireIntensity(i); intensity > 0 {
 			alpha := uint8(float64(genAlphaFaint) * intensity)
 			if alpha > 0 {
@@ -289,7 +134,6 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 			continue
 		}
 		if n <= totalW {
-			// Full-resolution cells.
 			for j := 0; j < n; j++ {
 				x0 := startX + (j*totalW)/n
 				x1 := startX + ((j+1)*totalW)/n
@@ -310,7 +154,6 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 				cells++
 			}
 		} else {
-			// Zoomed out: draw decimated marker ticks only (same as buildRowSprite).
 			step := int(math.Ceil(float64(n) / float64(totalW)))
 			if step < 1 {
 				step = 1
@@ -335,9 +178,8 @@ func (dv *DrumView) drawRowsDirect(dst *ebiten.Image) {
 
 // zoneClipRect returns the widget rectangle a zone is permitted to draw
 // into. Each zone is clipped to its own WidgetBoard cell so it cannot bleed
-// into neighbouring widgets (e.g., timeline cells leaking into the rack
-// column behind instrument labels). Falls back to dv.Bounds when the
-// widget rect is unavailable (degenerate layouts in tests, unknown zones).
+// into neighbouring widgets. Falls back to dv.Bounds when the widget rect
+// is unavailable. Used by drumview_zone_clip_test.go.
 func (dv *DrumView) zoneClipRect(z Zone) image.Rectangle {
 	if z == nil {
 		return dv.Bounds
@@ -361,29 +203,12 @@ func (dv *DrumView) zoneClipRect(z Zone) image.Rectangle {
 	return dv.Bounds
 }
 
-// drawZoneClipped renders a zone, clipping to its widget rectangle via
-// SubImage. This isolates each zone to its own WidgetBoard cell so the
-// timeline's cells, the rack's labels/controls, the transport's buttons,
-// and the EQ panel cannot overdraw one another.
-func (dv *DrumView) drawZoneClipped(dst *ebiten.Image, z Zone) {
-	clip := dv.zoneClipRect(z)
-	if !clip.Empty() {
-		clip = dst.Bounds().Intersect(clip)
-		if clip.Empty() {
-			return
-		}
-		sub := dst.SubImage(clip).(*ebiten.Image)
-		z.Draw(sub)
-	} else {
-		z.Draw(dst)
-	}
-}
-
 // drawRowComposite renders the row composite layer (layer/direct).
 // Called by TimelineZone.Draw() via the DrawRowComposite callback.
 //
-// On mobile (Profile().DirectDrawRows = true), bypass the rowsLayer indirection
-// and draw cells directly into dst. On desktop, build/blit the rowsLayer.
+// On mobile (Profile().DirectDrawRows = true), bypass the rowsLayer
+// indirection and draw cells directly into dst. On desktop, build/blit
+// the rowsLayer.
 func (dv *DrumView) drawRowComposite(dst *ebiten.Image) {
 	dv.ensureRowCache()
 	if Profile().DirectDrawRows {

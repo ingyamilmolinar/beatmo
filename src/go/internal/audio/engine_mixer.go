@@ -27,7 +27,8 @@ type mixer struct {
 	workBuf   []float64 // Final mixed output (after master EQ)
 	voiceTemp []float64 // Single voice render buffer
 	masterBuf []float64 // Pre-master-EQ accumulation buffer
-	postEQBuf []float64 // Per-instrument post-EQ scratch (for scope taps)
+	postFXBuf []float64 // Per-instrument post-inserts/pre-EQ scratch (StageInsertFX tap)
+	postEQBuf []float64 // Per-instrument post-EQ scratch (StageEQ tap)
 
 	// Per-instrument accumulation buffers indexed by instrument slot.
 	instBufs [][]float64
@@ -57,6 +58,7 @@ func newMixer(c *oto.Context) *mixer {
 		workBuf:   make([]float64, blockSize),
 		voiceTemp: make([]float64, blockSize),
 		masterBuf: make([]float64, blockSize),
+		postFXBuf: make([]float64, blockSize),
 		postEQBuf: make([]float64, blockSize),
 		instSlots: make(map[string]int),
 	}
@@ -106,8 +108,12 @@ func (m *mixer) Schedule(id string, v Voice, delaySamples int) {
 	}
 
 	// Push raw synth buffer to scope and export services for A/B pipeline comparison.
+	// Per-trigger float32→float64 conversion uses a pooled buffer; both consumers
+	// copy the contents into their own rings (scope.ringBuf.push appends), so the
+	// slice is unreachable as soon as we putF64Buf below. Saves ~80 KB per trigger
+	// — the dominant per-Schedule alloc when the synth tab is active.
 	if cv != nil && cv.buf != nil && (scopeSvc != nil || exportSvc != nil) {
-		f64 := make([]float64, len(cv.buf))
+		f64 := getF64Buf(len(cv.buf))
 		for i, s := range cv.buf {
 			f64[i] = float64(s)
 		}
@@ -117,6 +123,7 @@ func (m *mixer) Schedule(id string, v Voice, delaySamples int) {
 		if exportSvc != nil {
 			exportSvc.PushSamples(scope.StageSynth, id, f64)
 		}
+		putF64Buf(f64)
 	}
 
 	// Wrap in anti-pop envelope for click-free fade-in/out.

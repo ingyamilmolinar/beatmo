@@ -278,7 +278,7 @@ func TestEQPanelZoneToggleButton(t *testing.T) {
 		t.Fatal("expected 'eq-tab-1' hit area")
 	}
 
-	if z.WaveformMode() {
+	if (z.ActiveTab() == TabWave) {
 		t.Fatal("should start in EQ mode (not waveform)")
 	}
 
@@ -289,7 +289,7 @@ func TestEQPanelZoneToggleButton(t *testing.T) {
 	pressed = false
 	tree.Update()
 
-	if !z.WaveformMode() {
+	if !(z.ActiveTab() == TabWave) {
 		t.Error("expected waveform mode after clicking Wave tab")
 	}
 }

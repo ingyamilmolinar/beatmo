@@ -29,8 +29,8 @@ type streamWavWriter struct {
 	buf        *bufio.Writer
 	format     AudioFormat
 	sampleRate int
-	bps        int  // bits per sample
-	isFloat    bool // true → IEEE float WAV (audio format tag 3)
+	bps        int    // bits per sample
+	isFloat    bool   // true → IEEE float WAV (audio format tag 3)
 	written    uint32 // bytes written to the data chunk so far
 	closed     bool
 

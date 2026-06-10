@@ -363,11 +363,14 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 	zm.Layout(mobileRect)
 	mobileAreas := zm.HitAreas()
 
-	if a := findHitAreaByTagPrefix(mobileAreas, "transport-overflow"); a != nil {
-		t.Error("zone-only mobile layout should NOT register transport-overflow; DrumView places it in bottom action bar")
+	// Theme 4: overflow now lives in the top toolbar (bar is for the
+	// 6-segment switcher only). Hit area must be registered.
+	if a := findHitAreaByTagPrefix(mobileAreas, "transport-overflow"); a == nil {
+		t.Error("mobile layout should register transport-overflow in top toolbar (Theme 4)")
 	}
+	// Legacy view-switch is suppressed (segmented replaces it).
 	if a := findHitAreaByTagPrefix(mobileAreas, "transport-view-switch"); a != nil {
-		t.Error("zone-only mobile layout should NOT register transport-view-switch; DrumView places it in bottom action bar")
+		t.Error("mobile layout should NOT register transport-view-switch (segmented control replaces it)")
 	}
 
 	// Upload should be hidden on mobile.
@@ -991,16 +994,15 @@ func TestTransport_OverflowButtonMobile(t *testing.T) {
 	tree := registerTransportZone(z, image.Rect(0, 0, 400, 120))
 	tree.Update()
 
-	// Simulate DrumView's bar placement.
-	bar := image.Rect(0, 600, 400, 644) // 44 px tall (TouchMinTarget on mobile)
-	z.overflowBtn.SetRect(image.Rect(260, 600, 380, 644))
-	z.rebuildHitAreas()
-	z.SetBarRect(bar)
+	// Theme 4: overflow lives in the top toolbar. Layout the zone over a
+	// 2-row mobile bar (height >= 2*TouchMinTarget) so overflow lands on
+	// row 1 inside z.rect.
+	z.Layout(image.Rect(0, 0, 400, 120))
 	tree.HitIndexRef().Update("transport", z.HitAreas())
 
 	overflowArea := findHitAreaByTagPrefix(z.HitAreas(), "transport-overflow")
 	if overflowArea == nil {
-		t.Fatal("expected 'transport-overflow' hit area after DrumView bar placement")
+		t.Fatal("expected 'transport-overflow' hit area in top toolbar after Theme 4")
 	}
 
 	mx, my = (overflowArea.Rect.Min.X+overflowArea.Rect.Max.X)/2, (overflowArea.Rect.Min.Y+overflowArea.Rect.Max.Y)/2
@@ -1014,49 +1016,22 @@ func TestTransport_OverflowButtonMobile(t *testing.T) {
 	}
 }
 
-// TestTransport_ViewSwitchButtonMobile verifies that on mobile, when DrumView
-// places the view-switch button into the bottom action bar, clicking it
-// fires OnViewCycle. See TestTransport_OverflowButtonMobile for the contract.
+// TestTransport_ViewSwitchButtonMobile verifies that on mobile (Theme 1)
+// the legacy binary view-switch button is suppressed — the 6-segment
+// SegmentedControl in DrumView's bottom action bar replaces it. The
+// transport zone must not register a hit area for it.
 func TestTransport_ViewSwitchButtonMobile(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
 
-	var mx, my int
-	var pressed bool
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(ebiten.MouseButton) bool { return pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 400, 800 },
-	)
-	defer restore()
+	z, _ := newTestTransportZone()
+	z.Layout(image.Rect(0, 0, 400, 120))
 
-	z, log := newTestTransportZone()
-	tree := registerTransportZone(z, image.Rect(0, 0, 400, 120))
-	tree.Update()
-
-	// Simulate DrumView's bar placement.
-	bar := image.Rect(0, 600, 400, 644)
-	z.viewSwitchBtn.SetRect(image.Rect(140, 600, 250, 644))
-	z.rebuildHitAreas()
-	z.SetBarRect(bar)
-	tree.HitIndexRef().Update("transport", z.HitAreas())
-
-	viewArea := findHitAreaByTagPrefix(z.HitAreas(), "transport-view-switch")
-	if viewArea == nil {
-		t.Fatal("expected 'transport-view-switch' hit area after DrumView bar placement")
+	if !z.viewSwitchBtn.Rect().Empty() {
+		t.Errorf("viewSwitchBtn rect should be empty on mobile (segmented replaces it); got %v", z.viewSwitchBtn.Rect())
 	}
-
-	mx, my = (viewArea.Rect.Min.X+viewArea.Rect.Max.X)/2, (viewArea.Rect.Min.Y+viewArea.Rect.Max.Y)/2
-	pressed = true
-	tree.Update()
-	pressed = false
-	tree.Update()
-
-	if log.viewCycles == 0 {
-		t.Error("expected OnViewCycle callback after clicking view switch button")
+	if findHitAreaByTagPrefix(z.HitAreas(), "transport-view-switch") != nil {
+		t.Error("transport-view-switch hit area should NOT be registered on mobile")
 	}
 }
 

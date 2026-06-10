@@ -188,15 +188,24 @@ func TestTransportZoneDesktopLayoutColumnCount(t *testing.T) {
 	}
 }
 
-// TestTransportZoneRecordButtonMobileLayout verifies mobile layout doesn't panic
-// and record button is hidden.
+// TestTransportZoneRecordButtonMobileLayout verifies that the mobile
+// layout exposes the record button. Previously the mobile layout hid
+// the record button entirely (`recordBtn.SetRect({})`), which left
+// recording state invisible on touch devices. The button now sits in
+// the row-0 transport cluster (Play | Stop | Record | BPM | …) so the
+// pulsing red record icon is reachable on mobile.
 func TestTransportZoneRecordButtonMobileLayout(t *testing.T) {
-	// Mobile layout runs through layoutMobile which hides record button.
-	// We verify by checking that the mobile code path sets an empty rect.
 	z, _ := newTestTransportZone()
 	z.layoutMobile(image.Rect(0, 0, 400, 80), 2, MobileTopBarSpec())
-	if !z.recordBtn.Rect().Empty() {
-		t.Error("recordBtn should have empty rect in mobile layout")
+	if z.recordBtn.Rect().Empty() {
+		t.Error("recordBtn rect must not be empty on mobile (was hidden in the legacy layout)")
+	}
+	// Record sits between Stop and BPM in the transport row.
+	if z.recordBtn.Rect().Min.X <= z.stopBtn.Rect().Min.X {
+		t.Error("record button should be to the right of stop button on mobile")
+	}
+	if z.bpmBox.Rect.Min.X <= z.recordBtn.Rect().Min.X {
+		t.Error("BPM box should be to the right of record button on mobile")
 	}
 }
 

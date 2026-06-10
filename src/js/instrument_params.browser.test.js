@@ -152,10 +152,44 @@ console.log("[TEST] All synth-recipe exports present.");
   if (ds.category !== "drum") {
     throw new Error(`drum-snare category=${ds.category}, want drum`);
   }
-  if (!Array.isArray(ds.params) || ds.params.length < 8) {
+  // ParamSchema is filtered to the recipe's wired params (the knobs whose
+  // values the C renderer actually reads). drum-snare's wired set is
+  // {pitch, decay, tone, drive} — see src/go/internal/audio/synth_recipe_wired.go.
+  // The generic 8-knob set is no longer surfaced verbatim because rendering a
+  // slider that has no audible effect was the most-cited Synth-tab UX bug
+  // (see project_synth_pipeline_architecture memory).
+  // The native-deprecation migration adds the snare family knobs (the
+  // engine's own DSP constants exposed as knobs — body freqs, noise bands,
+  // envelope rates, mixes; see snareFamilyParamDefs in
+  // src/go/internal/audio/synth_recipe_wired.go). The gen_type Generator
+  // selector is gone — re-voicing is the Modular recipe's job.
+  //
+  // The modular unification (Phase-8A/8C) additionally appends the shared
+  // pipeline stage params (osc/env/filter/drive + PITCH/LFO/BURST enables and
+  // knobs) to EVERY family recipe, so the exact entry count is Go-owned and
+  // intentionally NOT pinned here. COVERED-BY-GO:
+  // TestStageParams_SchemaDisciplineNoCollisions (stage_params_test.go),
+  // TestBuiltinDrumRecipes_DeclareOnlyWiredGenericKnobs
+  // (synth_registry_entries_test.go). This test asserts the bridge shape:
+  // every snare-family knob must be surfaced through the catalog.
+  const wantSnareParams = [
+    "pitch", "decay", "tone", "drive",
+    "snare_wave", "fundamental", "snare_tone2_freq", "snare_noise_tune",
+    "snare_tone_decay", "snare_noise_decay", "snare_tail_decay",
+    "snare_tone_mix", "snare_noise_mix", "snare_wire_mix", "snare_attack",
+  ];
+  if (!Array.isArray(ds.params) || ds.params.length < wantSnareParams.length) {
     throw new Error(
-      `drum-snare ParamSchema has ${ds.params?.length} entries; want >= 8`,
+      `drum-snare ParamSchema has ${ds.params?.length} entries; want >= ${wantSnareParams.length}`,
     );
+  }
+  const gotSnareParamNames = new Set(ds.params.map((p) => p.name));
+  for (const name of wantSnareParams) {
+    if (!gotSnareParamNames.has(name)) {
+      throw new Error(
+        `drum-snare ParamSchema missing ${name}; got [${[...gotSnareParamNames].join(",")}]`,
+      );
+    }
   }
   // Spot-check a generic ParamDef shape.
   const decayDef = ds.params.find((p) => p.name === "decay");
@@ -226,17 +260,27 @@ console.log("[TEST] All synth-recipe exports present.");
   console.log("[TEST] resetInstrumentParams OK.");
 }
 
-// Test 5: recipeDefaultParams returns the recipe's declared defaults.
+// Test 5: recipeDefaultParams returns the recipe's declared defaults. drum-snare's
+// wired params are {pitch, decay, tone, drive} — `attack` is filtered out
+// because render_snare_p() never reads it.
 {
   const got = await page.evaluate(() => recipeDefaultParams("drum-snare"));
   if (got.decay !== 1) {
     throw new Error(`drum-snare default.decay=${got.decay}, want 1`);
   }
-  if (got.attack !== 1) {
-    throw new Error(`drum-snare default.attack=${got.attack}, want 1`);
-  }
   if (got.pitch !== 0) {
     throw new Error(`drum-snare default.pitch=${got.pitch}, want 0`);
+  }
+  if (got.tone !== 0) {
+    throw new Error(`drum-snare default.tone=${got.tone}, want 0`);
+  }
+  if (got.drive !== 0) {
+    throw new Error(`drum-snare default.drive=${got.drive}, want 0`);
+  }
+  if ("attack" in got) {
+    throw new Error(
+      `drum-snare defaults must not include 'attack' (wired params are {pitch,decay,tone,drive}); got ${JSON.stringify(got)}`,
+    );
   }
   console.log("[TEST] recipeDefaultParams OK.");
 }

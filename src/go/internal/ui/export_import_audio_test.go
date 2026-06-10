@@ -253,17 +253,22 @@ func TestExportIncludesSynthParams(t *testing.T) {
 		t.Fatal("no nodes")
 	}
 	n := f.Nodes[0]
-	if n.SynthDecay != 0.5 {
-		t.Errorf("SynthDecay: got %f want 0.5", n.SynthDecay)
+	// Synth params flow through the synth_overrides map; the map carries
+	// the expected values.
+	if n.SynthOverrides == nil {
+		t.Fatalf("expected synth_overrides map; got nil")
 	}
-	if n.SynthTone != -0.3 {
-		t.Errorf("SynthTone: got %f want -0.3", n.SynthTone)
+	if got := n.SynthOverrides["decay"]; got != 0.5 {
+		t.Errorf("SynthOverrides[decay]: got %f want 0.5", got)
 	}
-	if n.SynthDrive != 0.6 {
-		t.Errorf("SynthDrive: got %f want 0.6", n.SynthDrive)
+	if got := n.SynthOverrides["tone"]; got != -0.3 {
+		t.Errorf("SynthOverrides[tone]: got %f want -0.3", got)
 	}
-	if n.SynthBrightness != 0.9 {
-		t.Errorf("SynthBrightness: got %f want 0.9", n.SynthBrightness)
+	if got := n.SynthOverrides["drive"]; got != 0.6 {
+		t.Errorf("SynthOverrides[drive]: got %f want 0.6", got)
+	}
+	if got := n.SynthOverrides["brightness"]; got != 0.9 {
+		t.Errorf("SynthOverrides[brightness]: got %f want 0.9", got)
 	}
 }
 
@@ -305,9 +310,11 @@ func TestImportAppliesSynthParams(t *testing.T) {
 		}},
 		Nodes: []exportNode{{
 			ID: 1, I: 0, J: 0, Type: "regular",
-			SynthDecay: 0.5, SynthTone: -0.3, SynthAttack: 0.1,
-			SynthDrive: 0.6, SynthBody: 0.4, SynthColor: -0.5,
-			SynthBrightness: 0.9,
+			SynthOverrides: map[string]float64{
+				"decay": 0.5, "tone": -0.3, "attack": 0.1,
+				"drive": 0.6, "body": 0.4, "color": -0.5,
+				"brightness": 0.9,
+			},
 		}},
 	}
 	data, _ := json.Marshal(file)
@@ -353,8 +360,10 @@ func TestImportClampsSynthParams(t *testing.T) {
 		}},
 		Nodes: []exportNode{{
 			ID: 1, I: 0, J: 0, Type: "regular",
-			SynthTone: 99, SynthDrive: -5, SynthBody: 10,
-			SynthColor: -99, SynthBrightness: 50,
+			SynthOverrides: map[string]float64{
+				"tone": 99, "drive": -5, "body": 10,
+				"color": -99, "brightness": 50,
+			},
 		}},
 	}
 	data, _ := json.Marshal(file)
@@ -399,10 +408,13 @@ func TestExportIncludesInsertEffects(t *testing.T) {
 	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.drum.Rows[0].Origin = ui.ID
 	g.drum.Rows[0].Node = ui
-	g.drum.Rows[0].Effects = []audio.EffectSlot{
+	// Install through the audio layer — the single source of truth export
+	// reads (r.Effects is only the UI mirror and can lag slider edits).
+	audio.SetInsertEffects(g.drum.Rows[0].Instrument, []audio.EffectSlot{
 		{Type: "distortion", Enabled: true, Params: map[string]float64{"drive": 0.5}},
 		{Type: "delay", Enabled: false, Params: map[string]float64{"time": 0.3, "feedback": 0.4}},
-	}
+	})
+	t.Cleanup(audio.ClearAllInsertEffects)
 
 	data, err := g.drum.exportBytes()
 	if err != nil {
@@ -473,10 +485,12 @@ func TestExportImportInsertEffectsRoundTrip(t *testing.T) {
 	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.drum.Rows[0].Origin = ui.ID
 	g.drum.Rows[0].Node = ui
-	g.drum.Rows[0].Effects = []audio.EffectSlot{
+	// Install through the audio layer — the single source of truth export reads.
+	audio.SetInsertEffects(g.drum.Rows[0].Instrument, []audio.EffectSlot{
 		{Type: "chorus", Enabled: true, Params: map[string]float64{"rate": 0.5, "depth": 0.3}},
 		{Type: "bitcrusher", Enabled: true, Params: map[string]float64{"bits": 8}},
-	}
+	})
+	t.Cleanup(audio.ClearAllInsertEffects)
 
 	data, err := g.drum.exportBytes()
 	if err != nil {

@@ -63,6 +63,32 @@ EXPORT void delay_reset(delay_t *d) {
     d->lpState  = 0.0f;
 }
 
+EXPORT void delay_set_time_smooth(delay_t *d, int newDelaySamples) {
+    /* Just update the readback offset. The existing buffer content stays;
+     * a new write head position is not needed because we don't reset
+     * writePos, so the wet tail continues to play out of the old buffer
+     * until it's overwritten by fresh input. */
+    if (newDelaySamples < 1) newDelaySamples = 1;
+    d->length = newDelaySamples;
+    if (d->writePos >= d->length) d->writePos %= d->length;
+}
+
+EXPORT void delay_set_feedback_smooth(delay_t *d, float feedback) {
+    if (feedback < 0) feedback = 0;
+    else if (feedback > 1) feedback = 1;
+    d->feedback = feedback;
+}
+
+EXPORT void delay_set_damping_smooth(delay_t *d, float dampingHz, int sampleRate) {
+    if (dampingHz > 0 && sampleRate > 0) {
+        double rc = 1.0 / (2.0 * M_PI * dampingHz);
+        double dt = 1.0 / (double)sampleRate;
+        d->lpCoeff = (float)(dt / (rc + dt));
+    } else {
+        d->lpCoeff = 1.0f;
+    }
+}
+
 /* ==== Schroeder Reverb ==== */
 
 /* Prime-spaced comb delays (in milliseconds at 44100 Hz reference).
@@ -156,6 +182,16 @@ EXPORT void reverb_process(reverb_t *r, const float *in, float *out,
 
         out[i] = input * r->dry + wet * r->wet;
     }
+}
+
+EXPORT void reverb_set_params_smooth(reverb_t *r, float roomSize, float damping, float wet) {
+    /* Update only the per-comb feedback/damp and the wet/dry mix. Buffer
+     * contents are preserved so the existing reverb tail keeps playing. */
+    for (int i = 0; i < 4; i++) {
+        r->combs[i].feedback = roomSize;
+        r->combs[i].damp     = damping;
+    }
+    r->wet = wet;
 }
 
 EXPORT void reverb_reset(reverb_t *r) {

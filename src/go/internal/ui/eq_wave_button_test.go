@@ -19,7 +19,7 @@ func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	z := NewEQPanelZone(EQCallbacks{})
 
 	// Default state: EQ mode, button shows "EQ" (current tab).
-	if z.WaveformMode() {
+	if z.ActiveTab() == TabWave {
 		t.Fatal("expected default EQ mode")
 	}
 
@@ -32,7 +32,7 @@ func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	}
 
 	// Switch to waveform mode — button shows "Wave" (current tab).
-	z.SetWaveformMode(true)
+	z.tabState.SetActiveTab(TabWave)
 	got = z.toggleButtonLabel()
 	if strings.Contains(got, "~") {
 		t.Fatalf("toggle button label in waveform mode should not contain tilde, got %q", got)
@@ -42,7 +42,7 @@ func TestEQWaveButtonRendersWithoutTilde(t *testing.T) {
 	}
 
 	// Toggle back to EQ mode — shows "EQ".
-	z.SetWaveformMode(false)
+	z.tabState.SetActiveTab(TabEQ)
 	got = z.toggleButtonLabel()
 	if got != "EQ" {
 		t.Fatalf("expected display text 'EQ' after toggling back, got %q", got)
@@ -75,7 +75,7 @@ func TestEQWaveButtonAlwaysHasBorder(t *testing.T) {
 	}
 
 	// Active state (waveformMode=true, shows "EQ") — should have border.
-	z.SetWaveformMode(true)
+	z.tabState.SetActiveTab(TabWave)
 	var rec drawCallRecorder
 	rec.record(t, func() { z.Draw(screen) })
 	if !hasBorderStroke(&rec) {
@@ -83,7 +83,7 @@ func TestEQWaveButtonAlwaysHasBorder(t *testing.T) {
 	}
 
 	// Inactive state (waveformMode=false, shows "Wave") — should also have border.
-	z.SetWaveformMode(false)
+	z.tabState.SetActiveTab(TabEQ)
 	rec.record(t, func() { z.Draw(screen) })
 	if !hasBorderStroke(&rec) {
 		t.Fatal("inactive toggle button (Wave) missing rounded-rect border stroke")

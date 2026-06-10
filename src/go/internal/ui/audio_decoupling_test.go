@@ -23,7 +23,7 @@ func TestAudioDecoupledDuringHeavyUIOperations(t *testing.T) {
 
 	// Queue sounds while hammering Update with layout churn.
 	for i := 0; i < total; i++ {
-		g.queueSound("snare", 1)
+		g.queueSoundParams("snare", 1, 0, 1)
 		pressLenInc(t, g.drum)
 		_ = g.Update()
 		pressLenDec(t, g.drum)

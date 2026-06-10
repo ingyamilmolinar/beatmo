@@ -12,15 +12,21 @@ import (
 )
 
 // TestEveryCRenderHasPVariant asserts that every render_X() prototype in
-// src/c/drums.h and src/c/fmsynth.h has a matching render_X_p() prototype.
-// This is the v1 freezing-surface guard from the Phase 2 plan: it forbids
-// a future contributor from adding a new C renderer without a
-// parameterized variant, which would silently fail to surface in the
-// SynthRecipe registry. WAV-loader helpers and result_description are
-// exempt because they aren't part of the synthesis dispatch.
+// src/c/drums.h, src/c/fmsynth.h and src/c/modular.h has a matching
+// render_X_p() prototype. This is the v1 freezing-surface guard from the
+// Phase 2 plan: it forbids a future contributor from adding a new C
+// renderer without a parameterized variant, which would silently fail to
+// surface in the SynthRecipe registry. WAV-loader helpers and
+// result_description are exempt because they aren't part of the synthesis
+// dispatch.
+//
+// The _p() detection is signature-agnostic (a substring check for
+// `render_X_p(`), so it tolerates the modular voice's wider
+// `const modular_params *` argument just as it does the drum/FM
+// `const synth_params *` argument.
 func TestEveryCRenderHasPVariant(t *testing.T) {
 	root := repoRootForC(t)
-	for _, header := range []string{"src/c/drums.h", "src/c/fmsynth.h"} {
+	for _, header := range []string{"src/c/drums.h", "src/c/fmsynth.h", "src/c/modular.h"} {
 		path := filepath.Join(root, header)
 		bytes, err := os.ReadFile(path)
 		if err != nil {
@@ -33,6 +39,17 @@ func TestEveryCRenderHasPVariant(t *testing.T) {
 		renderRE := regexp.MustCompile(`(?m)^\s*void\s+(render_[a-z_]+)\s*\(float \*out, int sampleRate, int samples\)\s*;`)
 		matches := renderRE.FindAllStringSubmatch(text, -1)
 		if len(matches) == 0 {
+			// drums.h and fmsynth.h legitimately have NO unparameterized render_X
+			// prototypes after the Phase-2..7 modular-synth-unification cutover:
+			// every drum family (bass/kick/tom/snare/clap/cymbal) AND the five FM
+			// presets migrated to render_modular_p, so their bespoke render_X /
+			// render_X_p declarations were deleted (fmsynth.h keeps only the
+			// shared fm_render core, which is not a render_X-shaped entry point).
+			// modular.h must still declare renderers — a zero match there is a
+			// regex drift.
+			if header == "src/c/drums.h" || header == "src/c/fmsynth.h" {
+				continue
+			}
 			t.Errorf("no render_X prototypes found in %s — regex drift?", header)
 			continue
 		}

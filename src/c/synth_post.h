@@ -28,4 +28,12 @@ typedef struct {
 void apply_post_params(float *out, int sampleRate, int samples,
                        const synth_params *params, const post_config *cfg);
 
+/* osc_wave + softsat are the legacy family-engine generator/saturation
+ * primitives, shared so the modular engine's analytic voice sources render
+ * BYTE-IDENTICALLY to the legacy renderers (the function bodies are the single
+ * compiled copy in drums.c). 0=Sine 1=Saw 2=Square 3=Triangle. Phase in radians
+ * (saw/triangle wrap via floor). See drums.c for the byte-parity contract. */
+double osc_wave_shared(int wave, double phase);
+float  softsat_shared(float x);
+
 #endif

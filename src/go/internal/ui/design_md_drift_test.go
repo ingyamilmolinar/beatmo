@@ -59,6 +59,10 @@ func TestDesignMDDrift(t *testing.T) {
 		"viz-bar":             colEQBar,
 		"viz-bar-peak":        colEQBarPeak,
 		"viz-wave-a":          colWaveTrace,
+		// Spectrum frequency-group tinting tokens (Phase 5 audio-panel polish).
+		"viz-bass":   colVizBass,
+		"viz-mids":   colVizMids,
+		"viz-treble": colVizTreble,
 		// ── Phase 3 PR1: graph pane / timeline / drum-mute / EQ overlay ──
 		// Each pinned to the runtime alias declared in theme.go. RGB-only
 		// comparison; tokens that pick up a non-255 alpha at runtime are
@@ -282,7 +286,8 @@ func TestDesignMDDrift(t *testing.T) {
 	// sin-pulse → SinPulseAnim struct; fade → FadeFactor.
 	anims := parseAnimationsBlock(front)
 	wantExpDecay := map[string]ExpDecayAnim{
-		"highlight-decay": genAnimHighlightDecay,
+		"highlight-decay":    genAnimHighlightDecay,
+		"button-press-decay": genAnimButtonPressDecay,
 	}
 	for name, want := range wantExpDecay {
 		fields, ok := anims[name]
@@ -301,7 +306,8 @@ func TestDesignMDDrift(t *testing.T) {
 		}
 	}
 	wantSinPulse := map[string]SinPulseAnim{
-		"playhead-pulse": genAnimPlayheadPulse,
+		"playhead-pulse":      genAnimPlayheadPulse,
+		"button-toggle-pulse": genAnimButtonTogglePulse,
 	}
 	for name, want := range wantSinPulse {
 		fields, ok := anims[name]
@@ -328,6 +334,7 @@ func TestDesignMDDrift(t *testing.T) {
 		"playhead-column-fade": genAnimPlayheadColumnFade,
 		"edge-faded":           genAnimEdgeFaded,
 		"highlight-faded":      genAnimHighlightFaded,
+		"button-glow-rest":     genAnimButtonGlowRest,
 	}
 	for name, want := range wantFade {
 		fields, ok := anims[name]
@@ -354,6 +361,10 @@ func TestDesignMDDrift(t *testing.T) {
 		"edge-arrow-step-fraction":      genGeomEdgeArrowStepFraction,
 		"node-border-thickness":         genGeomNodeBorderThickness,
 		"highlight-border-thickness":    genGeomHighlightBorderThickness,
+		"button-glow-radius-px":         genGeomButtonGlowRadiusPx,
+		"button-inner-shadow-px":        genGeomButtonInnerShadowPx,
+		"button-press-scale":            genGeomButtonPressScale,
+		"button-release-overshoot":      genGeomButtonReleaseOvershoot,
 	}
 	for key, want := range wantGeometry {
 		raw, ok := gotGeometry[key]

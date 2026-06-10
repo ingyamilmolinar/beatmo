@@ -148,21 +148,21 @@ func TestSliderHandleInputResult_BackwardCompat(t *testing.T) {
 	s := NewSlider(0)
 	s.SetRect(image.Rect(0, 0, 100, 20))
 
-	// Press inside → true (starts drag)
-	if !s.Handle(50, 10, true) {
-		t.Fatal("Handle should return true on press inside")
+	// Press inside → consumed (starts drag)
+	if s.HandleInputResult(50, 10, true) == InputIgnored {
+		t.Fatal("Handle should consume press inside")
 	}
-	// Continue drag → true
-	if !s.Handle(80, 10, true) {
-		t.Fatal("Handle should return true during drag")
+	// Continue drag → consumed
+	if s.HandleInputResult(80, 10, true) == InputIgnored {
+		t.Fatal("Handle should consume during drag")
 	}
-	// Release → true (ends drag)
-	if !s.Handle(80, 10, false) {
-		t.Fatal("Handle should return true on drag release")
+	// Release → consumed (ends drag)
+	if s.HandleInputResult(80, 10, false) == InputIgnored {
+		t.Fatal("Handle should consume on drag release")
 	}
-	// Press outside → false
-	if s.Handle(200, 200, true) {
-		t.Fatal("Handle should return false on press outside")
+	// Press outside → ignored
+	if s.HandleInputResult(200, 200, true) != InputIgnored {
+		t.Fatal("Handle should ignore press outside")
 	}
 }
 

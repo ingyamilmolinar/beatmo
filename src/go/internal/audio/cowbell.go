@@ -15,7 +15,7 @@ func (Cowbell) NewVoice(bpm, sampleRate int) Voice {
 	cfg := ConfigForInstrument("cowbell")
 	samples := int(float64(sampleRate) * cfg.DurationSec)
 	buf := make([]float32, samples)
-	renderCowbell(buf, sampleRate, samples)
+	renderCowbellVoice(buf, sampleRate, samples) // modular fast path (Phase-6 cutover)
 	normalizeAndScale(buf, "cowbell")
 	globalVoiceCache.Put(key, buf)
 	return &cVoice{buf: buf}

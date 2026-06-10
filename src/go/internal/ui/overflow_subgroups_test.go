@@ -8,11 +8,11 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestOverflowSubgroups_HasFileAndViewHeaders verifies the overflow
-// menu groups items under labelled headers ("File", "View"). Original
-// critique B11. Plan promised this in the bottom-sheet PR but it never
-// landed; this test pins the contract.
-func TestOverflowSubgroups_HasFileAndViewHeaders(t *testing.T) {
+// TestOverflowSubgroups_HasFileHeader verifies the overflow menu groups
+// File-group items under a labelled "File" header. The "View" subgroup
+// was removed when its only entries (Window length +/−) were retired in
+// favour of the inline timeline controls.
+func TestOverflowSubgroups_HasFileHeader(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -28,19 +28,17 @@ func TestOverflowSubgroups_HasFileAndViewHeaders(t *testing.T) {
 			headers = append(headers, it.label)
 		}
 	}
-	wantContains := func(s string) bool {
-		for _, h := range headers {
-			if h == s {
-				return true
-			}
+	hasFile := false
+	for _, h := range headers {
+		if h == "File" {
+			hasFile = true
 		}
-		return false
+		if h == "View" {
+			t.Errorf("overflowItems should no longer contain 'View' header; got headers=%v", headers)
+		}
 	}
-	if !wantContains("File") {
+	if !hasFile {
 		t.Errorf("overflowItems missing 'File' header; got headers=%v", headers)
-	}
-	if !wantContains("View") {
-		t.Errorf("overflowItems missing 'View' header; got headers=%v", headers)
 	}
 
 	// File header precedes Upload/Import/Export.

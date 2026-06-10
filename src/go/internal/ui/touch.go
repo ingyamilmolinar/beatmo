@@ -398,6 +398,18 @@ var (
 	touchOverrideY      int
 	touchOverrideLeft   bool
 
+	// Last seen single-touch position while the override was active. Held
+	// across the frame the touch ends so updateTouchOverride can publish one
+	// final override frame at the lift coords with touchOverrideLeft=false.
+	// Without this hold, the dispatcher's release branch reads (0,0) from
+	// the underlying Ebiten cursor on the same frame globalTouchState removes
+	// the ended touch, and any OnRelease handler that uses the coords
+	// (notably Knob.updateFromDrag) snaps to an extreme.
+	lastSingleTouchX    int
+	lastSingleTouchY    int
+	lastSingleTouchHeld bool // true when the next frame should publish the held lift coords
+	pendingTouchRelease bool // true *during* the held release frame; cleared on the frame after
+
 	// Tap injection: when a tap gesture fires (touch already ended),
 	// we inject a 2-frame press-then-release cycle so mouse handlers
 	// see a click.
@@ -414,6 +426,8 @@ func updateTouchOverride() {
 	// Never interfere with test mocks.
 	if inputForTestActive {
 		touchOverrideActive = false
+		lastSingleTouchHeld = false
+		pendingTouchRelease = false
 		return
 	}
 
@@ -432,6 +446,9 @@ func updateTouchOverride() {
 			touchOverrideLeft = false
 			touchTapInjected = false
 		}
+		// A tap injection supersedes any pending release-frame hold.
+		lastSingleTouchHeld = false
+		pendingTouchRelease = false
 		return
 	}
 
@@ -444,11 +461,30 @@ func updateTouchOverride() {
 			touchOverrideX = pt.X
 			touchOverrideY = pt.Y
 			touchOverrideLeft = true
+			lastSingleTouchX = pt.X
+			lastSingleTouchY = pt.Y
+			lastSingleTouchHeld = true
+			pendingTouchRelease = false
 			return
 		}
 	}
 
-	// No override.
+	// One-frame release hold: the previous frame had a single touch active
+	// and this frame has zero. Publish the last lift coords with the button
+	// reported as released so the dispatcher's release branch (drumview_tree
+	// handleInput) hands the correct coords to OnRelease.
+	if lastSingleTouchHeld {
+		touchOverrideActive = true
+		touchOverrideX = lastSingleTouchX
+		touchOverrideY = lastSingleTouchY
+		touchOverrideLeft = false
+		lastSingleTouchHeld = false
+		pendingTouchRelease = true
+		return
+	}
+
+	// No override (post-release frame and beyond).
+	pendingTouchRelease = false
 	touchOverrideActive = false
 }
 
@@ -496,6 +532,10 @@ func resetTouchOverride() {
 	touchOverrideX = 0
 	touchOverrideY = 0
 	touchOverrideLeft = false
+	lastSingleTouchX = 0
+	lastSingleTouchY = 0
+	lastSingleTouchHeld = false
+	pendingTouchRelease = false
 	touchTapInjected = false
 	touchTapFrame = 0
 	touchTapX = 0

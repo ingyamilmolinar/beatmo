@@ -8,6 +8,14 @@ import (
 
 // TestRowControlsBoundsCoverAllRowsMobile verifies that in portrait orientation
 // with 3+ rows, the computed bounds height covers all visible rows.
+//
+// Uses a 1280-px tall viewport so the rack column has room for 3 rows
+// PLUS the addRowBtn footer ABOVE the bottom action bar / EQ peek strip
+// (which together reserve ~68 px below the rack). With the smaller
+// 844-px viewport that this test originally used, the rack zone (after
+// the rowsBottom() clamp in drumview_layout.go) only had room for ≈1
+// row above the bar — causing the test to flake against the legacy
+// behavior where the rack erroneously overlapped the bar.
 func TestRowControlsBoundsCoverAllRowsMobile(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -19,7 +27,7 @@ func TestRowControlsBoundsCoverAllRowsMobile(t *testing.T) {
 	g.drum.AddRow()
 	g.drum.AddRow()
 
-	g.Layout(390, 844)
+	g.Layout(390, 1280)
 	advanceFrames(g, 2)
 
 	bounds := g.drum.computeRowControlsBounds()
@@ -108,8 +116,8 @@ func TestMobileRowLabelRectsNonEmpty(t *testing.T) {
 
 		if i < len(g.drum.rowMuteBtns()) {
 			r := g.drum.rowMuteBtns()[i].Rect()
-			if !r.Empty() {
-				t.Errorf("row %d mute button should have empty rect on mobile, got %v", i, r)
+			if r.Empty() {
+				t.Errorf("row %d mute button should be visible inline on mobile, got empty rect", i)
 			}
 		} else {
 			t.Errorf("row %d has no mute button (rowMuteBtns len=%d)", i, len(g.drum.rowMuteBtns()))

@@ -68,9 +68,9 @@ func TestButtonHoldRepeat(t *testing.T) {
 	b.OnClick = func() { calls = append(calls, frame) }
 
 	for frame = 0; frame < 100; frame++ {
-		b.Handle(5, 5, true)
+		b.HandleInputResult(5, 5, true)
 	}
-	b.Handle(5, 5, false)
+	b.HandleInputResult(5, 5, false)
 
 	want := []int{0, 65, 71, 77, 83, 89, 94, 99}
 	if len(calls) != len(want) {

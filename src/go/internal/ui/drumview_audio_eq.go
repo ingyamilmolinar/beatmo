@@ -65,6 +65,7 @@ func (dv *DrumView) applyMasterEQ() {
 	// Ensure analyzers stay in the chain so waveform/spectrum remain live.
 	_ = audio.EnableChannelAnalyzer("main", 512)
 	_ = audio.EnablePreEQAnalyzer("main", 512)
+	_ = audio.EnableSynthAnalyzer("main", 512)
 	dv.eqCurveDirty = true
 	if dv.eqPanelZone != nil {
 		dv.eqPanelZone.curveDirty = true
@@ -93,6 +94,7 @@ func (dv *DrumView) applyRowEQ(row int) {
 	audio.SetChannelEQ(channelID, audio.SampleRate(), bands...)
 	_ = audio.EnableChannelAnalyzer(channelID, 512)
 	_ = audio.EnablePreEQAnalyzer(channelID, 512)
+	_ = audio.EnableSynthAnalyzer(channelID, 512)
 	dv.eqCurveDirty = true
 	if dv.eqPanelZone != nil {
 		dv.eqPanelZone.curveDirty = true
@@ -164,6 +166,18 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 
 	dv.eqActiveChannel = id
 
+	// Keep the panel zone's channel in lockstep so Wave/Spectrum (resolveChannel)
+	// and the Synth tab (synthTabActiveInstrument reads ActiveChannel()) follow
+	// every programmatic channel change, not just dropdown clicks. Normalize the
+	// empty id to "main" to match the dropdown click handler.
+	if dv.eqPanelZone != nil {
+		norm := id
+		if norm == "" {
+			norm = "main"
+		}
+		dv.eqPanelZone.activeChannel = norm
+	}
+
 	// Update button text
 	if dv.eqChannelBtn() != nil {
 		if id == "" || id == "main" {
@@ -232,12 +246,49 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 	// Sync HPF/LPF button styles for the selected channel
 	dv.syncFilterButtonStyles()
 
-	// Enable analyzers for the selected channel.
+	// Enable analyzers for the selected channel. SynthAnalyzer is required
+	// for the Chn tab's Synth/AntiPop traces to render — without it the
+	// per-instrument scope state's TapA goes inactive on WASM. See
+	// chain_tab_per_instrument_test.go.
 	active := dv.activeEQChannel()
 	_ = audio.EnableChannelAnalyzer(active, 512)
 	_ = audio.EnablePreEQAnalyzer(active, 512)
+	_ = audio.EnableSynthAnalyzer(active, 512)
 	audio.SetAnalyzerEnabled(active, true)
 	dv.eqCurveDirty = true
+}
+
+// selectAudioChannel is the single chokepoint for "select this channel across
+// every audio-panel tab". It updates the EQ/zone channel state
+// (setEQActiveChannel, which also syncs eqPanelZone.activeChannel for the
+// Wave/Spectrum/Synth tabs), the analyzer detail channel (Wave/Spectrum data),
+// the scope instrument (Chain tab on desktop), and the chain zone's instrument
+// id (Chain tab on WASM/test where ScopeService is nil). The channel dropdown's
+// OnChannelChange callback, the WASM setEQChannel bridge, and the solo/mute
+// auto-select all route through here so the dropdown stays the single source of
+// truth. Pass "main" (or "") for Master or an instrument id for a per-row channel.
+func (dv *DrumView) selectAudioChannel(id string) {
+	dv.setEQActiveChannel(id)
+	// Set the analyzer detail channel so Wave/Spectrum tabs show the selected
+	// instrument's data (nil under -tags test / WASM).
+	if svc := audio.AnalyzerService(); svc != nil {
+		if id == "main" || id == "" {
+			svc.SetDetailChannel("")
+		} else {
+			svc.SetDetailChannel(id)
+		}
+	}
+	// Drive the Chain (Scope) tab from the same selector. Desktop goes through
+	// the audio scope service; WASM and stubbed test builds (ScopeService nil)
+	// rely on the zone-local instrumentID written below.
+	if svc := audio.ScopeService(); svc != nil {
+		svc.SetInstrument(id)
+	}
+	if dv.eqPanelZone != nil {
+		if z := dv.eqPanelZone.chainZone; z != nil {
+			z.instrumentID = id
+		}
+	}
 }
 
 // saveZoneBandState copies the zone's current working bandGainsDB/bandMuted

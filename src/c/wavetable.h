@@ -54,6 +54,12 @@ void wt_osc_init(wt_osc_t *osc, const wavetable_t *wt,
 /* Phase-preserving frequency change. */
 void wt_osc_set_freq(wt_osc_t *osc, double freq, int sampleRate);
 
+/* Set the normalized phase accumulator. phase01 in [0,1) maps to [0,length);
+ * values outside [0,1) are wrapped. Used by the modular gen bank for
+ * fixed/seeded slot start phases. Default init (phase 0) is unaffected — call
+ * this only when a non-zero start phase is requested. */
+void wt_osc_set_phase(wt_osc_t *osc, double phase01);
+
 /* Block render with linear interpolation. */
 void wt_osc_process(wt_osc_t *osc, float *out, int samples);
 

@@ -565,10 +565,10 @@ func TestContextMenuCloseButtonDoesNotFireInstrument(t *testing.T) {
 	}
 }
 
-// TestContextMenuColorOpensPickerOnMobile verifies that the Color context
-// menu item opens the color picker even when the swatch button has an empty
-// rect (mobile layout with zero-weight color column).
-func TestContextMenuColorOpensPickerOnMobile(t *testing.T) {
+// TestContextMenuMobileOmitsColorAndEffects verifies that the mobile context
+// menu intentionally omits the Color and Effects entries — mobile users
+// access color via the row swatch and have no in-app FX entry point here.
+func TestContextMenuMobileOmitsColorAndEffects(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -582,47 +582,11 @@ func TestContextMenuColorOpensPickerOnMobile(t *testing.T) {
 	}}
 	dv.Length = 8
 
-	// Warm-up frame for layout init.
-	warmUp := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	warmUp()
-
-	// Precondition: the color swatch button has an empty rect on mobile.
-	if len(dv.rowColorBtns()) > 0 && !dv.rowColorBtns()[0].Rect().Empty() {
-		t.Skip("color swatch button has a non-empty rect; mobile zero-weight layout not active")
-	}
-
-	// Open context menu and fire the Color item.
-	dv.openContextMenu(0)
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should be open")
-	}
-
-	// Find the "Color" button (index 2 in the items list).
-	if len(dv.contextMenuBtns) < 3 {
-		t.Fatal("expected at least 3 context menu buttons")
-	}
-	colorBtn := dv.contextMenuBtns[2]
-	if colorBtn.OnClick == nil {
-		t.Fatal("Color button has nil OnClick")
-	}
-	colorBtn.OnClick()
-
-	// Color menu should be open.
-	if !dv.IsColorMenuOpen() {
-		t.Fatal("color menu should be open after tapping Color in context menu")
-	}
-
-	// The color wheel rect should be non-empty (fallback anchor worked).
-	if dv.colorWheelRect.Empty() {
-		t.Fatal("color wheel rect should be non-empty (row label fallback anchor should have been used)")
+	items := dv.ContextMenuItemsForTest(0)
+	for _, it := range items {
+		if it.label == "Color" || it.label == "Effects" {
+			t.Errorf("mobile context menu should not contain %q, got items=%v", it.label, nonDividerLabels(items))
+		}
 	}
 }
 
@@ -704,10 +668,12 @@ func TestOverflowMenuCloseButtonDoesNotFireUpload(t *testing.T) {
 	dv.transportZone.uploadBtn = origUpload
 }
 
-// TestContextMenuColorPickerCloseUnblocksButtons verifies that closing the
-// color picker (opened via context menu "Color") does not leave
-// anyDragActive() stuck, and allows row buttons to work again.
-func TestContextMenuColorPickerCloseUnblocksButtons(t *testing.T) {
+// TestColorPickerCloseUnblocksButtons verifies that closing the color picker
+// portal does not leave anyDragActive() stuck, and allows row buttons to
+// work again. Previously this exercised the mobile context-menu "Color"
+// entry; now that mobile omits Color from the menu, the picker is opened
+// directly via the portal — the close-and-unblock invariant is unchanged.
+func TestColorPickerCloseUnblocksButtons(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -733,15 +699,9 @@ func TestContextMenuColorPickerCloseUnblocksButtons(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	// Open context menu and fire the Color item.
-	dv.openContextMenu(0)
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should be open")
-	}
-	if len(dv.contextMenuBtns) < 3 {
-		t.Fatal("expected at least 3 context menu buttons")
-	}
-	dv.contextMenuBtns[2].OnClick() // "Color" item
+	// Open the color wheel portal directly (the mobile context menu no
+	// longer contains a Color entry).
+	dv.openColorPickerForRow(0)
 
 	// Color wheel should be open and anyDragActive should NOT be true
 	// (hold flags no longer feed into anyDragActive).
@@ -1720,7 +1680,9 @@ func TestContextMenuItemsDesktopStructure(t *testing.T) {
 }
 
 // TestContextMenuItemsMobileStructure documents the mobile variant which
-// adds Instrument (group 0) and Effects (group 2).
+// adds Instrument (group 0) but intentionally omits Color and Effects —
+// mobile users access color via the row swatch, and the FX entry point is
+// not exposed in this menu on mobile.
 func TestContextMenuItemsMobileStructure(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -1733,7 +1695,7 @@ func TestContextMenuItemsMobileStructure(t *testing.T) {
 
 	items := dv.ContextMenuItemsForTest(0)
 	labels := nonDividerLabels(items)
-	want := []string{"Instrument", "Rename", "Color", "Effects", "Origin", "Delete"}
+	want := []string{"Instrument", "Rename", "Origin", "Delete"}
 	if !equalStringSlices(labels, want) {
 		t.Fatalf("mobile labels=%v want=%v", labels, want)
 	}

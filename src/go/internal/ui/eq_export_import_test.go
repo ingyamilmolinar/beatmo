@@ -67,7 +67,7 @@ func TestImportAppliesEQ(t *testing.T) {
 	if len(g.drum.eqBandGainsDB()) == 0 || g.drum.eqBandGainsDB()[0] != 6 {
 		t.Fatalf("eq gains not applied: %+v", g.drum.eqBandGainsDB())
 	}
-	rec := audio.LastSetEQ()
+	rec := audio.ChannelEQSnapshot("main")
 	if rec.ID != "main" {
 		t.Fatalf("expected main EQ applied")
 	}

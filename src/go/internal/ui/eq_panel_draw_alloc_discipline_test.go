@@ -21,28 +21,43 @@ import (
 )
 
 // perTabAllocBudget caps allocations per Draw call. Numbers calibrated
-// against the post-Phase-2A baseline + ~30% headroom so the test passes
+// against the measured baseline + ~30% headroom so the test passes
 // today AND catches a 2× regression. Tightening below baseline requires
-// reducing real allocations first, NOT lowering the cap.
-//
-// Baseline measurements (post-Phase-2A wiring, 3 rows × 4 nodes scene,
-// 1280x720 viewport):
-//
-//	Meters    82 allocs/Draw   — metrics-only path; mostly text glyphs + dB labels
-//	Wave     893 allocs/Draw   — Waveform polyline draw + axis text
-//	Spectrum 1763 allocs/Draw  — 10-band tick labels + peak-hold + bar text
-//	EQ      1038 allocs/Draw   — 10 band sliders + dB readout text
-//	Scope     50 allocs/Draw   — delegated to ChainPanelZone (mostly empty under stub)
-//
-// Budget = baseline × 1.3 (tight) for Meters, ×1.4 for the heavy tabs,
-// rounded up. The tight Meters cap is intentional — that path was the
-// OOM hotspot and any regression there is load-bearing.
+// reducing real allocations first, NOT lowering the cap. Per-baseline
+// history lives in the comments inside the map.
 var perTabAllocBudget = map[PanelTab]float64{
-	TabMeters:   110,  // baseline 82 → cap 110 (35% headroom; OOM-affected path)
-	TabWave:     1300, // baseline 893 → cap 1300
-	TabSpectrum: 2400, // baseline 1763 → cap 2400
-	TabEQ:       1400, // baseline 1038 → cap 1400
-	TabScope:    100,  // baseline 50 → cap 100
+	// Re-baselined twice: (1) after the gap audit fixed the harness to
+	// re-Layout per active tab (tab-built content — Synth knob grid, Chain
+	// stage cards — was previously never constructed, so Synth/Chain/Sampler
+	// measured an EMPTY ~79-alloc draw and their caps were fiction); and
+	// (2) after the draw-primitive alloc pass (packRGBA no longer boxes via
+	// color.RGBAModel.Convert, drawRect reuses a shared DrawImageOptions,
+	// and the Spectrum solid dB gridlines collapsed from per-pixel rects to
+	// one full-width rect each — see drawrect_zero_alloc_test.go). That pass
+	// roughly halved every tab and cut Spectrum 7010 → 1012. Baselines below
+	// are the honest post-pass numbers (3 rows × 4 nodes soak scene,
+	// 1280×720, 9-section Synth tab incl. the Phase-8C PITCH/LFO/BURST
+	// cards). Caps = baseline × 1.3, rounded up.
+	TabMeters: 95,  // honest baseline 73 (was 142 pre-pass). Still the tightest cap — the long-session OOM path.
+	TabWave:   630, // baseline 481 (was 893 pre-pass)
+	// The high-resolution FFT curve underlay (drawSpectrumCurve in
+	// render_spectrum.go) batches adjacent equal-y columns into wide rects
+	// and reuses spectrumCurveColScratch; with the per-pixel solid dB
+	// gridlines fixed and drawRect alloc-free, the whole tab sits near the
+	// other heavy tabs instead of 4× above them.
+	TabSpectrum: 1320, // baseline 1012 (was 1763 → 7010 after Phase 1 curve → 1012 post-pass)
+	TabEQ:       180,  // baseline 136 (was 213 pre-pass)
+	// TabScope (Chain): 6 stage cards + meters + A/B trace.
+	TabScope: 740, // baseline 566 (was 1087 pre-pass)
+	// TabSynth: header + pipeline chip strip (9 chips + connector wires) +
+	// ONE expanded detail pane (title/subtitle/pill + the selected stage's
+	// knob captions).
+	TabSynth: 315, // baseline 239 (was 407 pre-pass)
+	// TabSampler: honest NO-SAMPLE baseline 100 (header + banner). The
+	// loaded-sample waveform trace (per-column rects, like Wave) is not
+	// exercised by this stubbed harness; keep Wave-magnitude headroom for it
+	// rather than capping at the empty path.
+	TabSampler: 800,
 }
 
 func TestEQPanelDrawAllocDiscipline(t *testing.T) {
@@ -108,6 +123,13 @@ func TestEQPanelDrawAllocDiscipline(t *testing.T) {
 		}
 		t.Run(PanelTabLabel(tab), func(t *testing.T) {
 			g.drum.eqPanelZone.tabState.SetActiveTab(tab)
+			// Re-layout for the now-active tab. Without this, tab-built
+			// content (the Synth tab's section cards + knob grid, the
+			// Sampler trace) is never constructed and the measurement
+			// covers an EMPTY draw (~79 allocs) instead of the real
+			// render path — which is how the TabSynth budget sat at a
+			// meaningless "generous initial cap" until the gap audit.
+			g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 			// Warm up so the first call's lazy init doesn't pollute
 			// the measurement.
 			for i := 0; i < 5; i++ {

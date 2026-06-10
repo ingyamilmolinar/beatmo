@@ -15,14 +15,15 @@ import (
 // synth_panel_zone.go can drive either widget interchangeably.
 //
 // Interaction model: press anywhere inside the knob's rect → drag
-// captures. Motion drives the value: up = increase, down = decrease,
-// AND right = increase, left = decrease (whichever axis travels more
-// from the press point). Most users instinctively try both; supporting
-// either avoids the "I clicked and dragged but nothing happens" gripe
-// when the user moves sideways. Default sensitivity is one full 0..1
-// sweep per knobDragPixelsCoarse pixels of travel; FineDrag (used by the
-// Synth-tab Shift-drag modifier) uses knobDragPixelsFine. The press
-// point + initial value are latched so a single uninterrupted drag never
+// captures. Motion drives the value HORIZONTALLY ONLY: right = increase,
+// left = decrease. Vertical motion is intentionally ignored so a knob
+// drag never competes with the panel's up/down scroll — left/right tweaks
+// the value, up/down is free for scrolling (the synth panel hands a
+// vertical drag that starts on a knob to its section scroll; see
+// synthKnobHitAdapter). Default sensitivity is one full 0..1 sweep per
+// knobDragPixelsCoarse pixels of horizontal travel; FineDrag (used by the
+// Synth-tab Shift-drag modifier) uses knobDragPixelsFine. The press point
+// + initial value are latched so a single uninterrupted drag never
 // accumulates drift from frame jitter.
 //
 // Visual model: a circular arc occupies the upper portion of the rect with a
@@ -46,7 +47,7 @@ type Knob struct {
 }
 
 const (
-	// knobDragPixelsCoarse is the vertical-pixel distance required to sweep
+	// knobDragPixelsCoarse is the horizontal-pixel distance required to sweep
 	// the value from 0 to 1 (or 1 to 0) in normal drag mode. Chosen so a
 	// typical drag (~120 px) covers the full range without requiring the
 	// user to leave the panel.
@@ -93,6 +94,15 @@ func (k *Knob) Capturing() bool { return k.dragging }
 // HandleInputResult dispatches a pointer event. Returns InputCaptured during
 // an active drag, InputConsumed on release after a drag, and InputIgnored
 // when the knob is not involved.
+//
+// Release semantics: release is a *commit* of the drag-end value, not a
+// re-evaluation. OnDrag has already published the latest value every captured
+// frame, so Value already reflects the drag-end position. Re-running
+// updateFromDrag on release coords would only add noise on desktop — and on
+// mobile it is the failure mode: the dispatcher can hand stale coords (e.g.,
+// (0,0) on the touch-end frame, see the corresponding hold in
+// updateTouchOverride) which would push Value to an extreme. This matches
+// Slider/SliderPopup, which also treat release as a flag-clear only.
 func (k *Knob) HandleInputResult(mx, my int, pressed bool) InputResult {
 	if suppressClicksUntilRelease {
 		if !pressed {
@@ -116,16 +126,32 @@ func (k *Knob) HandleInputResult(mx, my int, pressed bool) InputResult {
 		return InputCaptured
 	}
 	if k.dragging {
-		k.updateFromDrag(mx, my)
+		// Release: commit the existing Value; do NOT recompute from (mx, my).
 		k.dragging = false
 		return InputConsumed
 	}
 	return InputIgnored
 }
 
-// Handle is the boolean-returning wrapper kept for parity with Slider.Handle.
-func (k *Knob) Handle(mx, my int, pressed bool) bool {
-	return k.HandleInputResult(mx, my, pressed) != InputIgnored
+// dragPixels is the pixels-per-full-sweep distance for the current drag mode,
+// scaled by knob radius so larger knobs (mobile/Spacious density:
+// KnobIdeal≈88, radius≈44) get a proportionally longer sweep — roughly 2x
+// finer than the fixed-constant default. The minimum is the original constant
+// so small (Compact-density) knobs feel identical to before. The multiplier
+// of 4 was chosen so radius≈44 yields ≈176 px sweep — about 2x the original
+// 88 px diameter, giving room for nuanced finger travel without forcing the
+// user to leave the panel.
+func (k *Knob) dragPixels() int {
+	base := knobDragPixelsCoarse
+	if k.FineDrag {
+		base = knobDragPixelsFine
+	}
+	_, _, radius := k.geom()
+	radiusScaled := int(radius * 4)
+	if radiusScaled > base {
+		return radiusScaled
+	}
+	return base
 }
 
 // HandleWheel adjusts the value by `steps` wheel notches. Each notch
@@ -154,27 +180,12 @@ func (k *Knob) HandleWheel(mx, my, steps int) InputResult {
 }
 
 func (k *Knob) updateFromDrag(mx, my int) {
-	pixels := knobDragPixelsCoarse
-	if k.FineDrag {
-		pixels = knobDragPixelsFine
-	}
-	// Drive value from whichever axis has travelled more from press.
-	// Up + Right = increase, Down + Left = decrease. This matches user
-	// expectation across DAWs (Vital uses vertical, FL uses both).
-	dyPixels := k.pressY - my // up = positive
+	pixels := k.dragPixels()
+	// Horizontal-only: right = increase, left = decrease. Vertical motion is
+	// deliberately ignored so dragging a knob never fights the panel's up/down
+	// scroll — the two gestures are on orthogonal axes. (my is unused.)
 	dxPixels := mx - k.pressX // right = positive
-	absDx := dxPixels
-	if absDx < 0 {
-		absDx = -absDx
-	}
-	absDy := dyPixels
-	if absDy < 0 {
-		absDy = -absDy
-	}
-	delta := float64(dyPixels) / float64(pixels)
-	if absDx > absDy {
-		delta = float64(dxPixels) / float64(pixels)
-	}
+	delta := float64(dxPixels) / float64(pixels)
 	v := k.pressVal + delta
 	if v < 0 {
 		v = 0
@@ -183,7 +194,6 @@ func (k *Knob) updateFromDrag(mx, my int) {
 	}
 	k.Value = v
 }
-
 
 // Draw renders the knob — background ring, value arc, indicator line, centre
 // dot. The caption (`name  value unit`) is drawn separately by the calling

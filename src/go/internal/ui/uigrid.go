@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -12,6 +13,11 @@ const (
 	debugCharW = 6  // width of a character drawn by DebugPrintAt
 	debugCharH = 16 // height of a character drawn by DebugPrintAt
 )
+
+// uiAnimFrame is the shared UI animation frame counter, published once per
+// frame by (*DrumView).Draw so button cushion animations (toggle-pulse glow)
+// advance without threading a frame argument through every Draw call.
+var uiAnimFrame int64
 
 // insetRect returns r shrunk by pad pixels on all sides.
 func insetRect(r image.Rectangle, pad int) image.Rectangle {
@@ -59,6 +65,17 @@ type Button struct {
 	hovered bool
 	Repeat  bool
 	held    int
+	// pressAnim is the springy press/release scale factor (1.0 = rest). On
+	// press it jumps to genGeomButtonPressScale (0.92); on release it jumps
+	// to genGeomButtonReleaseOvershoot (1.03) and relaxes back toward 1.0 via
+	// AdvancePressAnim (genAnimButtonPressDecay). Stored on the struct so the
+	// cushion animation allocates nothing per frame. Zero is treated as 1.0
+	// so zero-valued buttons render at rest scale.
+	pressAnim float64
+	// toggled marks a latched/active button (e.g. an active pill tab). When
+	// set, the cushion glow becomes a persistent pulsing accent ring driven
+	// by genAnimButtonTogglePulse. Set via SetToggled.
+	toggled bool
 	// ConsumeOnPress: when true, after the first press triggers OnClick, suppress
 	// any further button clicks across the UI until the mouse is released. Use
 	// this for destructive actions to avoid cascading operations when the layout
@@ -142,13 +159,28 @@ func (b *Button) SetRect(r image.Rectangle) { b.r = r }
 
 // Draw renders the button and its label.
 func (b *Button) Draw(dst *ebiten.Image) {
+	// Advance the springy press scale once per visible frame. Draw is the
+	// per-frame tick site for buttons; a settled button no-ops here.
+	b.AdvancePressAnim()
+	sr := scaleRectAboutCenter(b.r, b.PressScale())
+	rad := RadiusSM
+	// Cushion depth: neutral drop shadow at rest, azure accent-glow ring on
+	// hover/active, inner pressed-in shadow on press. Accent appears only on
+	// interaction so the single-chrome-accent invariant holds.
+	if !b.pressed {
+		drawButtonDropShadow(dst, sr, rad)
+	}
+	drawButtonGlowRing(dst, sr, rad, buttonGlowAlpha(b.hovered, b.toggled, uiAnimFrame))
 	switch {
 	case b.hasSpecID:
 		// Phase 4 PR3+ path: spec-driven render.
-		Render(dst, b.r, Spec(b.SpecID), ComponentState{Pressed: b.pressed, Hovered: b.hovered})
+		Render(dst, sr, Spec(b.SpecID), ComponentState{Pressed: b.pressed, Hovered: b.hovered})
 	case b.Style != nil:
 		// Legacy path — *Style.Draw delegates to renderLegacy internally.
-		b.Style.Draw(dst, b.r, b.pressed, b.hovered)
+		b.Style.Draw(dst, sr, b.pressed, b.hovered)
+	}
+	if b.pressed {
+		drawButtonInnerShadow(dst, sr)
 	}
 	// Skip text rendering when an icon is set — the icon is the visual
 	// representation and the debug font can't render Unicode icon glyphs
@@ -295,6 +327,8 @@ func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
 	if pressed && inside {
 		b.held++
 		if b.held == 1 {
+			// Press edge: kick the springy scale down to the press floor.
+			b.pressAnim = genGeomButtonPressScale
 			if b.OnClick != nil {
 				b.OnClick()
 			}
@@ -309,17 +343,46 @@ func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
 		b.pressed = true
 		return InputConsumed
 	}
+	if b.pressed {
+		// Release edge: spring past rest before settling back to 1.0.
+		b.pressAnim = genGeomButtonReleaseOvershoot
+	}
 	b.pressed = false
 	b.held = 0
 	return InputIgnored
 }
 
-// Handle processes a mouse click at (mx,my). It triggers OnClick when pressed inside.
-// On touch devices, the hit area is expanded to meet minimum touch target size.
-// Backward-compatible wrapper around HandleInputResult.
-func (b *Button) Handle(mx, my int, pressed bool) bool {
-	return b.HandleInputResult(mx, my, pressed) != InputIgnored
+// PressScale returns the current springy press/release scale factor for the
+// button (1.0 at rest). Zero is normalised to 1.0 so a freshly-constructed
+// button renders at rest size.
+func (b *Button) PressScale() float64 {
+	if b.pressAnim == 0 {
+		return 1
+	}
+	return b.pressAnim
 }
+
+// AdvancePressAnim relaxes the press scale one tick toward 1.0 via the
+// genAnimButtonPressDecay spring. Call once per frame from the owning
+// container's update. Allocation-free; a no-op once settled.
+func (b *Button) AdvancePressAnim() {
+	cur := b.PressScale()
+	if cur == 1 {
+		return
+	}
+	cur = 1 + (cur-1)*genAnimButtonPressDecay.Rate
+	if math.Abs(cur-1) < genAnimButtonPressDecay.Threshold {
+		cur = 1
+	}
+	b.pressAnim = cur
+}
+
+// SetToggled marks the button as latched/active so its cushion glow becomes a
+// persistent pulsing accent ring. Idempotent.
+func (b *Button) SetToggled(on bool) { b.toggled = on }
+
+// Toggled reports whether the button is in the latched/active state.
+func (b *Button) Toggled() bool { return b.toggled }
 
 func (b *Button) repeatTick() bool {
 	d := b.held

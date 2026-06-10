@@ -14,7 +14,7 @@ func (Crash) NewVoice(bpm, sampleRate int) Voice {
 	cfg := ConfigForInstrument("crash")
 	samples := int(float64(sampleRate) * cfg.DurationSec)
 	buf := make([]float32, samples)
-	renderCrash(buf, sampleRate, samples)
+	renderCrashVoice(buf, sampleRate, samples) // modular fast path (Phase-6 cutover)
 	normalizeAndScale(buf, "crash")
 	globalVoiceCache.Put(key, buf)
 	return &cVoice{buf: buf}

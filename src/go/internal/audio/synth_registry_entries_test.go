@@ -58,9 +58,25 @@ func TestBuiltinDrumRecipes_DeclareOnlyWiredGenericKnobs(t *testing.T) {
 				t.Errorf("recipe %q missing wired param %q", id, name)
 			}
 		}
+		// Phase-3 per-recipe extras are NOT in recipeWiredParams (which only
+		// tracks the generic-knob subset). Allow a declared param if it's
+		// either in recipeWiredParams OR in recipeExtraParams[id].
+		extras := map[string]bool{}
+		for _, ex := range recipeExtraParams[id] {
+			extras[ex.Name] = true
+		}
 		for name := range have {
-			if !wantWired[name] {
-				t.Errorf("recipe %q declares %q which is not in recipeWiredParams (silent no-op slider)", id, name)
+			// Phase-8A: migrated recipes additionally expose the unified modular
+			// pipeline stage params (osc/env/filter + gain + per-stage toggles +
+			// post_enabled), appended by WiredParamsForRecipe — NOT silent no-ops:
+			// the binding/push read them (proven by stage_params_test.go +
+			// family_push_binding_parity_test.go). They are not in the generic
+			// wired/extras tables, so allow them explicitly.
+			if isAppendedStageName(id, name) {
+				continue
+			}
+			if !wantWired[name] && !extras[name] {
+				t.Errorf("recipe %q declares %q which is not in recipeWiredParams or recipeExtraParams (silent no-op slider)", id, name)
 			}
 		}
 	}

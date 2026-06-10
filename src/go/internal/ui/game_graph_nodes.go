@@ -73,6 +73,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 				}
 				g.logger.Debugf("[GAME] Upgraded invisible node to regular at grid=(%d,%d)", i, j)
 				g.logger.Debugf("[game] node upgraded to regular id=%d grid=(%d,%d)", n.ID, i, j)
+				emitNodeTypeChanged(n.ID, model.NodeTypeInvisible, model.NodeTypeRegular)
 				if g.start == nil {
 					g.start = n
 					n.Start = true
@@ -381,6 +382,7 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 	g.coordBadgeNode = n
 	g.coordBadgeFrame = g.frame
 
+	emitNodeMoved(n.ID, newI, newJ)
 	return true
 }
 

@@ -393,7 +393,7 @@ func (dv *DrumView) handleContextMenuInput(mx, my int, left bool) bool {
 		}
 		// Desktop: immediate button handling.
 		for _, btn := range dv.contextMenuBtns {
-			if btn.Handle(mx, my, left) {
+			if btn.HandleInputResult(mx, my, left) != InputIgnored {
 				return true
 			}
 		}
@@ -641,7 +641,7 @@ func (dv *DrumView) handleOverflowMenuInput(mx, my int, left bool) bool {
 		// Desktop: immediate button handling.
 		popupBtns := dv.overflowPopupBtns(popupRect)
 		for _, btn := range popupBtns {
-			if btn.Handle(mx, my, left) {
+			if btn.HandleInputResult(mx, my, left) != InputIgnored {
 				return true
 			}
 		}
@@ -1012,6 +1012,11 @@ func (dv *DrumView) setViewMode(target viewMode) {
 		return
 	}
 	dv.currentViewMode = target
+	// Tear down transient per-tab state on every switch (open Save-As
+	// modal, in-flight pointer capture) so no departing tab can swallow
+	// input destined for the new view. Single chokepoint — see
+	// resetTransientTabState.
+	dv.resetTransientTabState()
 	// EQPanelZone visibility is owned by the tree gate in drumview_ctor.go,
 	// which derives from currentViewMode. We only need to sync the active
 	// audio sub-tab here; viewModeRows preserves the prior tabState (covered
@@ -1039,6 +1044,14 @@ func (dv *DrumView) setViewMode(target viewMode) {
 		if dv.eqPanelZone != nil {
 			dv.eqPanelZone.tabState.SetActiveTab(TabScope)
 		}
+	case viewModeSynth:
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.tabState.SetActiveTab(TabSynth)
+		}
+	case viewModeSampler:
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.tabState.SetActiveTab(TabSampler)
+		}
 	}
 	dv.syncViewSwitchIcon()
 	// Sync segmented control's active index with the new mode.
@@ -1056,31 +1069,41 @@ func (dv *DrumView) setViewMode(target viewMode) {
 			dv.viewSwitchSegmented.SetActive(4)
 		case viewModeChain:
 			dv.viewSwitchSegmented.SetActive(5)
+		case viewModeSynth:
+			dv.viewSwitchSegmented.SetActive(6)
+		case viewModeSampler:
+			dv.viewSwitchSegmented.SetActive(7)
 		}
 	}
+	// All popups/portals are now torn down unconditionally by
+	// resetTransientTabState above (the single chokepoint), so no departing
+	// tab can leak an overlay into the new view — including when entering
+	// Pads, where MobileEQMode() is false. Only the mobile-EQ scroll reset
+	// stays gated to this branch.
 	if dv.MobileEQMode() {
-		dv.CloseAllPopups()
 		if rs := dv.rowScroll(); rs != nil {
 			rs.ResetTouch()
 		}
+	}
+	// The row rack's hit-area *content* depends on MobileEQMode(): while a
+	// panel tab owns the mobile screen the rack is hidden (vis=0) and
+	// publishes only its `row-rack-scroll` catch-all. recalcButtons' republish
+	// gate only fires on NeedsLayout()/rect change, but the rack rect is
+	// identical across the mobile panel↔Pads transition and nothing else marks
+	// the zone dirty — so without forcing a relayout here the tree keeps
+	// serving the stale scroll-only snapshot and the mute/solo/FX/label
+	// controls are unreachable after returning to Pads. This mirrors the
+	// "RegisterZoneVisible gates BOTH Draw AND HitAreas" discipline: the rack's
+	// HitArea content depends on a predicate, so the predicate flip must
+	// invalidate it. Regression: row_rack_input_alive_after_panel_test.go.
+	if dv.rowRackZone != nil {
+		dv.rowRackZone.Invalidate()
 	}
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
 	dv.calcLayout()
 	dv.markAllRowsDirty()
 	dv.rowsLayerDirty = true
-}
-
-// cycleViewMode toggles between Rows and Audio (legacy 2-state path).
-// Phase 3 (B4 segmented control) replaces direct cycleViewMode calls
-// with explicit setViewMode(target) — this stub remains as a
-// compatibility shim for tests that still call it.
-func (dv *DrumView) cycleViewMode() {
-	if dv.currentViewMode == viewModeRows {
-		dv.setViewMode(viewModeEQ)
-	} else {
-		dv.setViewMode(viewModeRows)
-	}
 }
 
 // syncViewSwitchIcon updates the view switch button icon to show the OTHER mode.

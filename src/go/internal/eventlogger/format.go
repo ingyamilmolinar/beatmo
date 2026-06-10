@@ -56,10 +56,12 @@ var formatters = map[hooks.Kind]formatter{
 
 	// ── Transport / time ────────────────────────────────────────────────
 	hooks.EventBPMChange: func(p any) formatted {
-		// Payload may be a float64 BPM (the convention used in
-		// internal/ui/event_helpers.go). Print one decimal so 90.5 BPM
-		// values aren't truncated.
+		// Canonical payload is hooks.BPMPayload; we keep float64/int
+		// fallbacks so legacy raw-int callers (none in production after
+		// the round-2 cleanup, but useful for tests) still render.
 		switch v := p.(type) {
+		case hooks.BPMPayload:
+			return formatted{tag: "bpm", msg: fmt.Sprintf("BPM = %d", v.BPM)}
 		case float64:
 			return formatted{tag: "bpm", msg: fmt.Sprintf("BPM = %.1f", v)}
 		case int:
@@ -77,7 +79,12 @@ var formatters = map[hooks.Kind]formatter{
 	},
 
 	// ── Project I/O ─────────────────────────────────────────────────────
-	hooks.EventImport: func(_ any) formatted {
+	hooks.EventImport: func(p any) formatted {
+		if v, ok := p.(hooks.ImportPayload); ok {
+			if v.Nodes > 0 || v.Rows > 0 {
+				return formatted{tag: "import", msg: fmt.Sprintf("import completed (%d nodes, %d rows, %d bytes)", v.Nodes, v.Rows, v.Bytes)}
+			}
+		}
 		return formatted{tag: "import", msg: "import completed"}
 	},
 	hooks.EventExport: func(_ any) formatted {
@@ -172,6 +179,110 @@ var formatters = map[hooks.Kind]formatter{
 	hooks.EventInsertEffectParam: func(p any) formatted {
 		e, _ := p.(hooks.InsertEffectPayload)
 		return formatted{tag: "audio", msg: fmt.Sprintf("insert FX %s slot=%d %s = %.2f", e.Channel, e.Slot, e.Param, e.Value)}
+	},
+	hooks.EventInstrumentParamChanged: func(p any) formatted {
+		e, _ := p.(hooks.InstrumentParamPayload)
+		recipe := e.Recipe
+		if recipe == "" {
+			recipe = "?"
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("synth param %s (recipe=%s) %s = %.3f", e.Channel, recipe, e.Param, e.Value)}
+	},
+
+	// ── Round 2 additions ───────────────────────────────────────────────
+	hooks.EventRowColorChanged: func(p any) formatted {
+		c, _ := p.(hooks.RowColorPayload)
+		return formatted{tag: "row", msg: fmt.Sprintf("row %d color = #%08X", c.Row, c.Color)}
+	},
+	hooks.EventCustomWAVLoaded: func(p any) formatted {
+		w, _ := p.(hooks.CustomWAVPayload)
+		verb := "loaded"
+		if w.IsUpdate {
+			verb = "updated"
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("custom WAV %s id=%s", verb, w.InstrumentID)}
+	},
+	hooks.EventInstrumentRenamed: func(p any) formatted {
+		r, _ := p.(hooks.InstrumentRenamePayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("instrument renamed %s → %s", r.OldID, r.NewID)}
+	},
+	hooks.EventSceneApplied: func(p any) formatted {
+		s, _ := p.(hooks.ScenePayload)
+		return formatted{tag: "scene", msg: fmt.Sprintf("scene applied: %s", s.Name)}
+	},
+	hooks.EventUIStateApplied: func(p any) formatted {
+		s, _ := p.(hooks.UIStatePayload)
+		return formatted{tag: "uistate", msg: fmt.Sprintf("UI state applied: %s", s.Path)}
+	},
+	hooks.EventFavoriteToggled: func(p any) formatted {
+		f, _ := p.(hooks.FavoritePayload)
+		state := "unfavorited"
+		if f.IsFavorite {
+			state = "favorited"
+		}
+		return formatted{tag: "favorite", msg: fmt.Sprintf("%s instrument %s", state, f.InstrumentID)}
+	},
+
+	// ── Phase 4 synth-recipe lifecycle ──────────────────────────────────
+	hooks.EventRecipeSaved: func(p any) formatted {
+		r, _ := p.(hooks.RecipePayload)
+		inst := r.InstrumentID
+		if inst == "" {
+			inst = "?"
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("recipe saved %s (from %s)", r.RecipeID, inst)}
+	},
+	hooks.EventRecipeCreated: func(p any) formatted {
+		r, _ := p.(hooks.RecipePayload)
+		base := r.BaseRecipe
+		if base == "" {
+			base = "?"
+		}
+		name := r.DisplayName
+		if name == "" {
+			name = r.RecipeID
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("recipe created %s (clone of %s)", name, base)}
+	},
+	hooks.EventRecipeDeleted: func(p any) formatted {
+		r, _ := p.(hooks.RecipePayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("recipe deleted %s", r.RecipeID)}
+	},
+	hooks.EventKitApplied: func(p any) formatted {
+		k, _ := p.(hooks.KitPayload)
+		name := k.DisplayName
+		if name == "" {
+			name = k.KitID
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("kit applied %s (%d members)", name, len(k.Members))}
+	},
+	hooks.EventSampleSaved: func(p any) formatted {
+		s, _ := p.(hooks.SamplePayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("sample saved %s (%d frames)", s.SampleID, s.Frames)}
+	},
+	hooks.EventSampleCreated: func(p any) formatted {
+		s, _ := p.(hooks.SamplePayload)
+		name := s.DisplayName
+		if name == "" {
+			name = s.SampleID
+		}
+		src := s.SourceID
+		if src == "" {
+			src = "WAV"
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("sample created %s (from %s)", name, src)}
+	},
+	hooks.EventSampleReset: func(p any) formatted {
+		s, _ := p.(hooks.SamplePayload)
+		dst := s.SourceID
+		if dst == "" {
+			dst = "original sample"
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("sample reset %s (→ %s)", s.SampleID, dst)}
+	},
+	hooks.EventSampleEditChanged: func(p any) formatted {
+		s, _ := p.(hooks.SamplePayload)
+		return formatted{tag: "audio", msg: fmt.Sprintf("sample edit changed %s (synth stays source of truth)", s.SampleID)}
 	},
 
 	// ── Verbose (only emitted when Options.Verbose is true) ─────────────

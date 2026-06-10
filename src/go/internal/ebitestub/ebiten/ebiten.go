@@ -89,6 +89,18 @@ func (i *Image) Clear() {
 		i.pix[idx] = color.RGBA{}
 	}
 }
+
+// Deallocate releases the image's internal storage. The Image object
+// remains valid; ebiten lazily reallocates on next use. Mirrors the
+// ebiten v2.8.8 API so production code that calls Deallocate to
+// reclaim atlas slots compiles under the test stub as well.
+func (i *Image) Deallocate() {
+	if i == nil {
+		return
+	}
+	i.pix = nil
+}
+
 func (i *Image) Bounds() image.Rectangle { return image.Rect(0, 0, i.w, i.h) }
 func (i *Image) SubImage(r image.Rectangle) image.Image {
 	return &Image{w: r.Dx(), h: r.Dy(), pix: make([]color.RGBA, r.Dx()*r.Dy())}
@@ -247,13 +259,9 @@ const (
 	ColorScaleModePremultipliedAlpha
 )
 
-// ColorM is a placeholder for the deprecated color matrix.
-type ColorM struct{}
-
 // DrawTrianglesOptions matches the real shape (only the fields the icon
 // renderer actually sets are exercised; others kept for source-compat).
 type DrawTrianglesOptions struct {
-	ColorM         ColorM
 	ColorScaleMode ColorScaleMode
 	Address        Address
 	FillRule       FillRule

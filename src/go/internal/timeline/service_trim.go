@@ -22,6 +22,9 @@ func (s *Service) TrimBefore(row, minAbs int) {
 			}
 		}
 	}
+	if a := s.archives[row]; a != nil {
+		a.trimBefore(minAbs)
+	}
 }
 
 // TrimAfter trims committed entries newer than maxAbs.
@@ -41,6 +44,9 @@ func (s *Service) TrimAfter(row, maxAbs int) {
 				delete(m, k)
 			}
 		}
+	}
+	if a := s.archives[row]; a != nil {
+		a.trimAfter(maxAbs)
 	}
 }
 
@@ -132,6 +138,7 @@ func (s *Service) ClearRow(row int) {
 	}
 	s.rows[row].commits.clear()
 	delete(s.immutables, row)
+	delete(s.archives, row)
 }
 
 // LastCommitted returns the newest absolute index stored for the row, or -1 if

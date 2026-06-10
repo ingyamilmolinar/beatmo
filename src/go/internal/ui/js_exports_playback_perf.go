@@ -20,6 +20,54 @@ func (g *Game) initJSPlaybackPerf() {
 		return nil
 	}))
 
+	// __navSegRect(i) – DIAGNOSTIC: bottom-nav segmented-control segment rect.
+	js.Global().Set("__navSegRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.viewSwitchSegmented == nil || len(args) == 0 {
+			return js.Null()
+		}
+		r := g.drum.viewSwitchSegmented.SegmentRect(args[0].Int())
+		obj.Set("x", r.Min.X)
+		obj.Set("y", r.Min.Y)
+		obj.Set("w", r.Dx())
+		obj.Set("h", r.Dy())
+		return obj
+	}))
+	// __viewMode() – DIAGNOSTIC: current mobile view mode (int).
+	js.Global().Set("__viewMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return js.ValueOf(-1)
+		}
+		return js.ValueOf(int(g.drum.currentViewMode))
+	}))
+	// __samplerHitAreas() – DIAGNOSTIC: sampler-tab hit-area rects+tags.
+	js.Global().Set("__samplerHitAreas", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		arr := js.Global().Get("Array").New()
+		if g.drum == nil {
+			return arr
+		}
+		for _, ha := range g.drum.samplerTabHitAreas() {
+			o := js.Global().Get("Object").New()
+			o.Set("tag", ha.Tag)
+			o.Set("x", ha.Rect.Min.X)
+			o.Set("y", ha.Rect.Min.Y)
+			o.Set("w", ha.Rect.Dx())
+			o.Set("h", ha.Rect.Dy())
+			arr.Call("push", o)
+		}
+		return arr
+	}))
+	// __treeCapturing() – DIAGNOSTIC: {capturing, tag} of the tree's drag capture.
+	js.Global().Set("__treeCapturing", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		o := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.tree == nil {
+			return o
+		}
+		o.Set("capturing", g.drum.tree.Capturing())
+		o.Set("tag", g.drum.tree.CapturedTag())
+		return o
+	}))
+
 	// syncHighlights() – drain pending highlight events and decay animations.
 	// Used by tests to process highlight state when Ebiten's Update() is starved.
 	// When playing, drives scheduling from the caller's thread so highlights
@@ -30,6 +78,19 @@ func (g *Game) initJSPlaybackPerf() {
 			g.seqScheduleTime()
 		}
 		g.drainAndDecayHighlights()
+		return nil
+	}))
+
+	// tickSequencer() — sub-frame sequencer drive. Called from a JS
+	// setInterval at the audio rate so the sequencer fires even when the
+	// Go goroutine ticker is starved by long RAF/Update spans. JS timers
+	// are queued onto the macro-task queue and run independently of the
+	// WASM Go runtime's cooperative scheduler, so this is the only drive
+	// that can fire sub-frame in WASM. No-op when not playing.
+	js.Global().Set("tickSequencer", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.Playing() {
+			g.seqScheduleTime()
+		}
 		return nil
 	}))
 
@@ -86,6 +147,34 @@ func (g *Game) initJSPlaybackPerf() {
 		obj.Set("tileReady", g.gridTile != nil)
 		obj.Set("cacheReady", g.gridCache != nil && g.gridCacheW > 0)
 		obj.Set("simpleDraw", g.simpleDraw)
+		return obj
+	}))
+
+	// dumpHeapProbe() returns a CSV string of the heap-growth probe ring
+	// (one row per ~1-second sample for the past minute). Empty when the
+	// probe is disabled (set BEATMO_HEAP_PROBE=1 to enable).
+	js.Global().Set("dumpHeapProbe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		return HeapProbeSnapshot()
+	}))
+
+	// dumpLevelsLatch() returns the Levels-tab peak/RMS-hold state for
+	// debugging Phase 0a of the audio-panel redesign. Stays callable
+	// after the redesign lands; helps validate the bar-fills-between-
+	// hits invariant by exposing the latch fields the renderer reads.
+	js.Global().Set("dumpLevelsLatch", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		obj := js.Global().Get("Object").New()
+		if g.drum == nil || g.drum.eqPanelZone == nil {
+			obj.Set("ready", false)
+			return obj
+		}
+		z := g.drum.eqPanelZone
+		obj.Set("ready", true)
+		obj.Set("peakHoldDB", z.levelsLatch.PeakHoldDB)
+		obj.Set("rmsHoldDB", z.levelsLatch.RMSHoldDB)
+		obj.Set("peakHoldSeeded", z.levelsLatch.peakHoldSeeded)
+		obj.Set("rmsHoldSeeded", z.levelsLatch.rmsHoldSeeded)
+		obj.Set("latched", z.levelsLatch.Latched())
+		obj.Set("activeTab", int(z.ActiveTab()))
 		return obj
 	}))
 
@@ -187,10 +276,25 @@ func (g *Game) initJSPlaybackPerf() {
 		obj.Set("liveImages", g.snapshotLiveImages())
 		obj.Set("imagesAllocatedTotal", float64(MetricImagesAllocatedTotal()))
 		obj.Set("imagesByTag", imagesByTagSnapshot())
+		// Three-stage latency: nested object so callers reading only the
+		// existing flat fields don't conflict with the new keys.
+		obj.Set("threeStage", threeStageLatencyJSObject(s.SchedMetrics))
 		return obj
 	}))
 	js.Global().Set("resetPerfStats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		g.perf.reset()
+		return nil
+	}))
+	// getThreeStageLatency() — returns Go-side schedule metrics covering
+	// all three stages of the real → scheduler → audio pipeline. This is
+	// orthogonal to the JS-side audio.js scheduleMetrics (which only sees
+	// Stage C). Returns null before any data is observed (count==0).
+	js.Global().Set("getThreeStageLatency", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		s := g.PerfSnapshot()
+		return threeStageLatencyJSObject(s.SchedMetrics)
+	}))
+	js.Global().Set("resetThreeStageLatency", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		g.schedMetrics.Reset()
 		return nil
 	}))
 
@@ -216,6 +320,52 @@ func (g *Game) initJSPlaybackPerf() {
 			cursorPosition = oldCur
 			isMouseButtonPressed = oldBtn
 		}()
+		g.Update()
+		return nil
+	}))
+
+	// forceDrag(x0,y0,x1,y1[,steps]) drives a REAL left-button drag through
+	// Update() with overridden input — press at (x0,y0), hold across interpolated
+	// points to (x1,y1), then release. Mirrors forceGameTick but for drags, which
+	// otherwise don't register in headless (rAF-throttled) because no equivalent
+	// forced-tick exists. Used by the agent's drag tool to move EQ band handles,
+	// synth knobs, and sliders deterministically.
+	js.Global().Set("forceDrag", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if len(args) < 4 {
+			return nil
+		}
+		x0, y0 := args[0].Int(), args[1].Int()
+		x1, y1 := args[2].Int(), args[3].Int()
+		steps := 8
+		if len(args) >= 5 && !args[4].IsUndefined() {
+			steps = args[4].Int()
+		}
+		if steps < 1 {
+			steps = 1
+		}
+		curX, curY, pressed := x0, y0, true
+		oldCur := cursorPosition
+		oldBtn := isMouseButtonPressed
+		cursorPosition = func() (int, int) { return curX, curY }
+		isMouseButtonPressed = func(b ebiten.MouseButton) bool {
+			return pressed && b == ebiten.MouseButtonLeft
+		}
+		defer func() {
+			cursorPosition = oldCur
+			isMouseButtonPressed = oldBtn
+		}()
+		// Press at the start point.
+		g.Update()
+		// Hold the button across interpolated points (the drag motion).
+		for i := 1; i <= steps; i++ {
+			t := float64(i) / float64(steps)
+			curX = x0 + int(float64(x1-x0)*t)
+			curY = y0 + int(float64(y1-y0)*t)
+			g.Update()
+		}
+		// Release at the end point.
+		curX, curY = x1, y1
+		pressed = false
 		g.Update()
 		return nil
 	}))

@@ -3,10 +3,25 @@ package ui
 import (
 	"fmt"
 	"image"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
+
+// spectrumSlope expresses the post-display tilt applied to the spectrum
+// curve so different reference signals (pink vs white noise) look
+// horizontal. 3 dB/oct is the broadcast / mastering convention — pink
+// noise plots flat. 4.5 dB/oct biases the eye toward treble (matches
+// some FabFilter Pro-Q presets); 0 dB/oct shows raw magnitude.
+var spectrumSlopeDBPerOct float64
+
+// SetSpectrumSlope updates the slope tilt; safe to call from the UI
+// thread. The renderer reads the value on the next Draw.
+func SetSpectrumSlope(dbPerOct float64) { spectrumSlopeDBPerOct = dbPerOct }
+
+// SpectrumSlope returns the current slope tilt in dB/octave.
+func SpectrumSlope() float64 { return spectrumSlopeDBPerOct }
 
 // isoLabels are the center-frequency labels for the 10 ISO bands.
 var isoLabels = [10]string{"31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"}
@@ -24,9 +39,9 @@ var isoLabels = [10]string{"31", "62", "125", "250", "500", "1k", "2k", "4k", "8
 // live in Treble. The brackets are a kid-friendly orientation aid;
 // the underlying ISO band data is unchanged.
 var bandGroups = [3]struct {
-	label      string
-	startBand  int
-	endBand    int // exclusive
+	label     string
+	startBand int
+	endBand   int // exclusive
 }{
 	{"Bass", 0, 4},
 	{"Mids", 4, 7},
@@ -66,10 +81,34 @@ func findISOBand(hz float64) int {
 }
 
 // SpectrumPeakState tracks peak-hold values for the 10-band spectrum display.
+// Two separate tracks: Peaks/Ages is the transient ~500ms decay marker (live
+// "hot spot" feedback), MaxPeaks is the never-decay watermark (call ResetMax
+// to clear). DAW convention: the transient gives you motion, the watermark
+// gives you "what did this signal actually peak at over the whole session."
 type SpectrumPeakState struct {
-	Peaks  [10]float64 // normalized 0-1 peak values
-	Ages   [10]int     // frames since peak was set
-	MaxAge int         // frames before peak decays (default 30 ≈ 500ms)
+	Peaks    [10]float64 // normalized 0-1 peak values (decays via Ages)
+	Ages     [10]int     // frames since peak was set
+	MaxAge   int         // frames before peak decays (default 30 ≈ 500ms)
+	MaxPeaks [10]float64 // normalized 0-1 ALL-TIME peak values (never decay)
+}
+
+// UpdateMax raises each MaxPeak[i] to the higher of (live[i], MaxPeak[i]).
+// Once raised, MaxPeak stays at that value until ResetMax is called.
+func (s *SpectrumPeakState) UpdateMax(live [10]float64) {
+	for i, v := range live {
+		if v > s.MaxPeaks[i] {
+			s.MaxPeaks[i] = v
+		}
+	}
+}
+
+// ResetMax clears every band's MAX watermark back to zero. Wired to a UI
+// click handler so the user can ask "what's the peak from this point
+// forward?" at any time.
+func (s *SpectrumPeakState) ResetMax() {
+	for i := range s.MaxPeaks {
+		s.MaxPeaks[i] = 0
+	}
 }
 
 // isoBands defines the 10 ISO frequency bands used for the spectrum display.
@@ -181,7 +220,10 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 	// Reserve 28px left for dB scale, 14px bottom for freq labels, plus
 	// 8px above that for the Bass/Mids/Treble bracket strip.
 	const freqLabelH = 14
-	const bracketStripH = 8
+	bracketStripH := Profile().DensityValues().SpectrumBracketH
+	if bracketStripH < 6 {
+		bracketStripH = 6
+	}
 	barRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-freqLabelH-bracketStripH)
 
 	// Group FFT bins into 10 bands and compute average dB for each.
@@ -205,23 +247,50 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 
 	// Draw dB reference lines and labels.
 	captionScale := FontSizeCaption / FontSizeBody
-	dbRefs := []float64{0, -20, -40, -60}
+	dbRefs := []float64{0, -12, -24, -36, -48, -60}
 	for _, db := range dbRefs {
 		norm := (db - spectrumMinDB) / (spectrumMaxDB - spectrumMinDB)
 		y := barRect.Max.Y - int(norm*float64(barRect.Dy()))
-		// Dashed line (3px on, 3px off).
-		for x := barRect.Min.X; x < barRect.Max.X; x += 6 {
-			endX := x + 3
-			if endX > barRect.Max.X {
-				endX = barRect.Max.X
+		// Dashed line (3px on, 3px off). The 0 dB and -12 dB lines
+		// render solid + brighter so the headroom envelope is
+		// immediately visible. Solid lines are a single full-width
+		// rect — the old step=1 loop issued one 1-px drawRect per
+		// pixel column (~2×panel-width calls/frame), the largest
+		// avoidable share of the Spectrum tab's alloc budget.
+		gridCol := WithAlpha(genColorBorder, genAlphaWhiteDecoration)
+		solid := false
+		if db == 0 {
+			gridCol = WithAlpha(genColorError, genAlphaMedium)
+			solid = true
+		} else if db == -12 {
+			gridCol = WithAlpha(genColorBorder, genAlphaMedium)
+			solid = true
+		}
+		if solid {
+			drawRect(dst, image.Rect(barRect.Min.X, y, barRect.Max.X, y+1), gridCol, true)
+		} else {
+			for x := barRect.Min.X; x < barRect.Max.X; x += 6 {
+				endX := x + 3
+				if endX > barRect.Max.X {
+					endX = barRect.Max.X
+				}
+				drawRect(dst, image.Rect(x, y, endX, y+1), gridCol, true)
 			}
-			drawRect(dst, image.Rect(x, y, endX, y+1), WithAlpha(genColorBorder, genAlphaWhiteDecoration), true)
 		}
 		// Label on left margin.
 		label := fmt.Sprintf("%.0f", db)
 		lh := int(float64(TextHeight()) * captionScale)
 		DrawTextColorAtScale(dst, label, rect.Min.X+2, y-lh/2, colTextSecondary, captionScale)
 	}
+
+	// High-resolution FFT curve underlay. Maps every FFT bin to its
+	// pixel column on the log-frequency axis (linear scale uses the
+	// same routine but with a linear x-axis) and paints a slope-tilted
+	// magnitude trace. The 10 ISO bars layer over the top so the
+	// musician-friendly aggregation stays the primary read while the
+	// underlying detail tells the user where exactly the energy lives
+	// — kicks at 60 Hz vs 90 Hz, snare body vs zing, etc.
+	drawSpectrumCurve(dst, barRect, ch, scale)
 
 	// Draw bars.
 	numBands := len(bands)
@@ -251,21 +320,10 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 		}
 		norm := (db - spectrumMinDB) / (spectrumMaxDB - spectrumMinDB)
 
-		barHeight := int(norm * float64(totalHeight))
-		if barHeight < 1 && norm > 0 {
-			barHeight = 1
-		}
-
-		x0 := barRect.Min.X + b*(barWidth+1)
-		x1 := x0 + barWidth
-		y1 := barRect.Max.Y
-		y0 := y1 - barHeight
-
-		if barHeight > 0 {
-			drawRect(dst, image.Rect(x0, y0, x1, y1), colWaveTrace, true)
-		}
-
-		// Peak hold.
+		// Phase 0a: peak-hold tick first so the bar can fall back to
+		// peaks.Peaks[b] when norm is zero between hits (typical between
+		// drum transients — the analyser's 512-sample window captures
+		// silence and the bar would otherwise disappear).
 		if peaks != nil {
 			if peaks.MaxAge == 0 {
 				peaks.MaxAge = 30
@@ -280,11 +338,43 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 					peaks.Ages[b] = 0
 				}
 			}
-			// Draw peak marker.
+		}
+
+		drawNorm := norm
+		if peaks != nil && peaks.Peaks[b] > drawNorm {
+			drawNorm = peaks.Peaks[b]
+		}
+		barHeight := int(drawNorm * float64(totalHeight))
+		if barHeight < 1 && drawNorm > 0 {
+			barHeight = 1
+		}
+
+		x0 := barRect.Min.X + b*(barWidth+1)
+		x1 := x0 + barWidth
+		y1 := barRect.Max.Y
+		y0 := y1 - barHeight
+
+		if barHeight > 0 {
+			drawRect(dst, image.Rect(x0, y0, x1, y1), colWaveTrace, true)
+		}
+
+		// Peak-hold marker overlay (transient + watermark).
+		if peaks != nil {
 			peakHeight := int(peaks.Peaks[b] * float64(barRect.Dy()))
 			if peakHeight > 0 {
 				py := barRect.Max.Y - peakHeight
 				drawRect(dst, image.Rect(x0, py, x1, py+1), WithAlpha(genColorVizSpectrumPeakMarker, 200), true)
+			}
+			// Persistent MAX watermark: raise the all-time max and paint
+			// a 2px-tall solid tick at its position. Stays put until
+			// ResetMax is called from the UI.
+			if norm > peaks.MaxPeaks[b] {
+				peaks.MaxPeaks[b] = norm
+			}
+			maxHeight := int(peaks.MaxPeaks[b] * float64(barRect.Dy()))
+			if maxHeight > 0 {
+				my := barRect.Max.Y - maxHeight
+				drawRect(dst, image.Rect(x0, my-1, x1, my+1), genColorVizSpectrumPeakMarker, true)
 			}
 		}
 	}
@@ -350,6 +440,232 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 	}
 }
 
+// spectrumCurveColScratch is the reusable per-column buffer used by
+// drawSpectrumCurve. Single-threaded — the renderer runs on the UI
+// goroutine and the slice is never aliased across calls. Pre-sized at
+// 2048 (covers any plausible monitor width including 2× DPI tablets);
+// drawSpectrumCurve clamps to whatever the active bar rect needs.
+var spectrumCurveColScratch [2048]float64
+
+// drawSpectrumCurve paints a high-resolution magnitude curve through the
+// supplied FFT bins. Each pixel column is rendered as a thin vertical
+// strip whose top edge sits at the dB-mapped y for that column's
+// frequency, providing far more detail than the 10 ISO band bars on
+// their own. Frequencies are mapped to x via:
+//   - log axis  → `log10(hz / minHz) / log10(maxHz / minHz)`  (default)
+//   - linear axis → `(hz - minHz) / (maxHz - minHz)`
+//
+// The optional slope tilt (spectrumSlopeDBPerOct) is added to each
+// bin's dB before the y-mapping so pink-noise displays flat at 3 dB/oct
+// (the broadcast convention). The curve uses the spectrum trace token
+// at reduced alpha so it reads as a secondary layer beneath the 10
+// musician-friendly band bars.
+func drawSpectrumCurve(dst *ebiten.Image, barRect image.Rectangle, ch *analyzer.ChannelMetrics, scale freqScaleMode) {
+	if ch == nil || len(ch.FFTBins) == 0 || len(ch.FreqBins) != len(ch.FFTBins) {
+		return
+	}
+	if barRect.Dx() <= 1 || barRect.Dy() <= 1 {
+		return
+	}
+
+	const minHz = 20.0
+	const maxHz = 22000.0
+	width := barRect.Dx()
+	if width > len(spectrumCurveColScratch) {
+		width = len(spectrumCurveColScratch)
+	}
+	height := float64(barRect.Dy())
+	// Per-column maximum dB so the curve aggregates multiple bins
+	// falling into the same column (high-frequency bins compress
+	// densely under the log map). Re-use a package-level scratch
+	// buffer so the renderer doesn't allocate a new slice every
+	// frame — the per-tab alloc budget is tight.
+	colDB := spectrumCurveColScratch[:width]
+	for i := range colDB {
+		colDB[i] = spectrumMinDB
+	}
+
+	logMin := math.Log10(minHz)
+	logMax := math.Log10(maxHz)
+	for i, hz := range ch.FreqBins {
+		if hz < minHz || hz > maxHz {
+			continue
+		}
+		var frac float64
+		if scale == freqScaleLinear {
+			frac = (hz - minHz) / (maxHz - minHz)
+		} else {
+			frac = (math.Log10(hz) - logMin) / (logMax - logMin)
+		}
+		col := int(frac * float64(width))
+		if col < 0 {
+			col = 0
+		} else if col >= width {
+			col = width - 1
+		}
+		dbVal := ch.FFTBins[i]
+		// Apply slope tilt: pink noise (-3 dB/oct natural roll-off)
+		// becomes flat at 3 dB/oct so the eye reads tonal balance
+		// without compensating mentally.
+		if spectrumSlopeDBPerOct != 0 && hz > 0 {
+			dbVal += spectrumSlopeDBPerOct * math.Log2(hz/1000.0)
+		}
+		if dbVal > colDB[col] {
+			colDB[col] = dbVal
+		}
+	}
+
+	curveCol := WithAlpha(colWaveTrace, AlphaSubtle)
+	// Batch adjacent columns that share the same y so the renderer
+	// produces a small number of wide rects rather than thousands of
+	// 1-pixel rects (the per-tab alloc budget is tight — see the
+	// discipline test). 2-pixel-tall single-rect-per-column "crown"
+	// only (area-fill skipped to keep alloc count under budget).
+	startC := -1
+	startY := 0
+	flush := func(endC int) {
+		if startC < 0 {
+			return
+		}
+		x0 := barRect.Min.X + startC
+		x1 := barRect.Min.X + endC
+		drawRect(dst, image.Rect(x0, startY, x1, startY+2), curveCol, true)
+		startC = -1
+	}
+	for c := 0; c < width; c++ {
+		db := colDB[c]
+		if db <= spectrumMinDB {
+			flush(c)
+			continue
+		}
+		if db > spectrumMaxDB {
+			db = spectrumMaxDB
+		}
+		norm := (db - spectrumMinDB) / (spectrumMaxDB - spectrumMinDB)
+		h := int(norm * height)
+		if h < 1 {
+			h = 1
+		}
+		y := barRect.Max.Y - h
+		if startC < 0 || y != startY {
+			flush(c)
+			startC = c
+			startY = y
+		}
+	}
+	flush(width)
+}
+
+// drawPreEQOverlayFromSnapshot paints a thin pre-EQ magnitude trace
+// across the spectrum bar area at reduced alpha. Source is the raw
+// FFT bin magnitudes returned by audio.PreEQAnalyzerSnapshot(...);
+// since they're linear-magnitude (not dB), we apply 20·log10 inside
+// the loop. The curve uses TokenVizCurve so it reads as a distinct
+// "pre" layer beneath the post-EQ bars without competing for the
+// musician-friendly bar fill (which uses TokenVizBar's cyan family).
+//
+// `spec` must have length >= 4 and is interpreted as bins [0, len)
+// covering [0, sampleRate/2). When spec is empty the overlay is a
+// no-op. scale picks the same log/linear mapping the bar renderer
+// uses so the pre/post traces align.
+func drawPreEQOverlayFromSnapshot(dst *ebiten.Image, rect image.Rectangle, spec []float64, sampleRate float64, scale freqScaleMode) {
+	if len(spec) < 4 || sampleRate <= 0 {
+		return
+	}
+	const freqLabelH = 14
+	bracketStripH := Profile().DensityValues().SpectrumBracketH
+	if bracketStripH < 6 {
+		bracketStripH = 6
+	}
+	barRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-freqLabelH-bracketStripH)
+	if barRect.Dx() <= 1 || barRect.Dy() <= 1 {
+		return
+	}
+
+	const minHz = 20.0
+	const maxHz = 22000.0
+	width := barRect.Dx()
+	if width > len(spectrumCurveColScratch) {
+		width = len(spectrumCurveColScratch)
+	}
+	colDB := spectrumCurveColScratch[:width]
+	for i := range colDB {
+		colDB[i] = spectrumMinDB
+	}
+
+	logMin := math.Log10(minHz)
+	logMax := math.Log10(maxHz)
+	binHz := sampleRate / float64(2*len(spec))
+	for i, m := range spec {
+		hz := float64(i) * binHz
+		if hz < minHz || hz > maxHz {
+			continue
+		}
+		if m <= 0 {
+			continue
+		}
+		// Convert linear magnitude → dB. The +20 offset compensates for
+		// the FFT scaling so a full-scale sine reads near 0 dBFS, in
+		// line with the post-EQ bin dB values produced by the FFT
+		// observer.
+		db := 20*math.Log10(m) + 20
+		if spectrumSlopeDBPerOct != 0 && hz > 0 {
+			db += spectrumSlopeDBPerOct * math.Log2(hz/1000.0)
+		}
+		var frac float64
+		if scale == freqScaleLinear {
+			frac = (hz - minHz) / (maxHz - minHz)
+		} else {
+			frac = (math.Log10(hz) - logMin) / (logMax - logMin)
+		}
+		col := int(frac * float64(width))
+		if col < 0 {
+			col = 0
+		} else if col >= width {
+			col = width - 1
+		}
+		if db > colDB[col] {
+			colDB[col] = db
+		}
+	}
+
+	overlayCol := WithAlpha(genColorVizCurve, AlphaFaint)
+	startC := -1
+	startY := 0
+	flush := func(endC int) {
+		if startC < 0 {
+			return
+		}
+		x0 := barRect.Min.X + startC
+		x1 := barRect.Min.X + endC
+		drawRect(dst, image.Rect(x0, startY, x1, startY+1), overlayCol, true)
+		startC = -1
+	}
+	height := float64(barRect.Dy())
+	for c := 0; c < width; c++ {
+		db := colDB[c]
+		if db <= spectrumMinDB {
+			flush(c)
+			continue
+		}
+		if db > spectrumMaxDB {
+			db = spectrumMaxDB
+		}
+		norm := (db - spectrumMinDB) / (spectrumMaxDB - spectrumMinDB)
+		h := int(norm * height)
+		if h < 1 {
+			h = 1
+		}
+		y := barRect.Max.Y - h
+		if startC < 0 || y != startY {
+			flush(c)
+			startC = c
+			startY = y
+		}
+	}
+	flush(width)
+}
+
 // drawSpectrumCursor renders a vertical crosshair at cursorX inside the
 // spectrum bar area, plus a "Hz · dB" readout label anchored above. cursorX
 // is in screen pixels; nothing renders if cursorX falls outside the bar rect.
@@ -360,7 +676,10 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 // layout falls back to "Hz · dB" computed off linearBands().
 func drawSpectrumCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, cursorX int) {
 	const freqLabelH = 14
-	const bracketStripH = 8
+	bracketStripH := Profile().DensityValues().SpectrumBracketH
+	if bracketStripH < 6 {
+		bracketStripH = 6
+	}
 	barRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-freqLabelH-bracketStripH)
 	if cursorX < barRect.Min.X || cursorX >= barRect.Max.X {
 		return
@@ -370,7 +689,13 @@ func drawSpectrumCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 	}
 
 	// Vertical line.
-	drawRect(dst, image.Rect(cursorX, barRect.Min.Y, cursorX+1, barRect.Max.Y), colTextSecondary, true)
+	// Phase 6 audio-panel redesign: density-driven stroke so the
+	// cursor stays visible at mobile portrait sizes.
+	cursorW := Profile().DensityValues().SpectrumCursorStroke
+	if cursorW < 1 {
+		cursorW = 1
+	}
+	drawRect(dst, image.Rect(cursorX, barRect.Min.Y, cursorX+cursorW, barRect.Max.Y), colTextSecondary, true)
 
 	// Map cursorX → ISO band (same arithmetic as the bar renderer).
 	bands := isoBands
@@ -403,8 +728,19 @@ func drawSpectrumCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 		}
 	}
 
-	// Label: "1.2 kHz · -32 dB"
-	label := formatHzShort(centerHz) + " · " + formatMeterDB(db) + " dB"
+	// Label: "1.2 kHz · C5 · -32 dB" — the note name is the pedagogical
+	// add (Phase 1): kids can correlate a spectral peak with a key on a
+	// piano without doing the conversion in their head. Skip the note
+	// segment when hzToNote returns "" (sub-audible cursor positions).
+	parts := []string{formatHzShort(centerHz)}
+	if note := hzToNote(centerHz); note != "" {
+		parts = append(parts, note)
+	}
+	parts = append(parts, formatMeterDB(db)+" dB")
+	label := parts[0]
+	for i := 1; i < len(parts); i++ {
+		label += " · " + parts[i]
+	}
 	captionScale := FontSizeCaption / FontSizeBody
 	tw := int(float64(TextWidth(label)) * captionScale)
 	th := int(float64(TextHeight()) * captionScale)
@@ -427,4 +763,40 @@ func formatHzShort(hz float64) string {
 		return fmt.Sprintf("%.1f kHz", hz/1000)
 	}
 	return fmt.Sprintf("%.0f Hz", hz)
+}
+
+// noteNames maps the 12 semitones of an octave to their (sharp-free)
+// name. We pick the natural name when ambiguous; sharps are rendered
+// with a trailing "#". Kid-readable mapping — no flat notation.
+var noteNames = [12]string{
+	"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+}
+
+// hzToNote returns the closest equal-temperament note name + octave
+// for the given frequency (A4 = 440 Hz reference). Returns "" for
+// frequencies below the audible piano range (< 16 Hz) so cursor chips
+// don't render garbage at the lower bound of the spectrum.
+//
+// Used by drawSpectrumCursor to compose the "Hz · note · dB" readout
+// chip; the original cursor only displayed Hz + dB which made it hard
+// for kids to correlate a peak in the spectrum with a musical note.
+func hzToNote(hz float64) string {
+	if hz < 16 {
+		return ""
+	}
+	// MIDI note number n: hz = 440 * 2^((n-69)/12)
+	// → n = 12 * log2(hz/440) + 69
+	n := 12*math.Log2(hz/440.0) + 69
+	// Round to nearest integer; clamp to a plausible piano range so
+	// rounding edges don't produce note names below A0 (MIDI 21) or
+	// above C8 (MIDI 108).
+	ni := int(math.Round(n))
+	if ni < 21 {
+		ni = 21
+	} else if ni > 108 {
+		ni = 108
+	}
+	octave := (ni / 12) - 1
+	idx := ni % 12
+	return fmt.Sprintf("%s%d", noteNames[idx], octave)
 }

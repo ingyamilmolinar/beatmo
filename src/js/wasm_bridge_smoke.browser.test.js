@@ -142,10 +142,40 @@ const CATALOGUE = {
     { name: "probeAnalyzerState", args: [], returns: "any" },
     { name: "probeScopeState", args: [], returns: "any" },
     { name: "scopeExportBufferLen", args: [], returns: "number" },
+    { name: "setEQChannel", skipCall: true }, // mutating; covered by chain_per_instrument_traces.browser.test.js
     { name: "setEQHPF", skipCall: true },
     { name: "setEQLPF", skipCall: true },
     { name: "setEQTab", args: [0], returns: "any" },
     { name: "setEQView", args: [0], returns: "any" },
+    // setViewMode(slug): mobile bottom-nav / view-mode switch used by the LLM
+    // agent sanity tests. "pads" = the default Rows view (safe to call).
+    { name: "setViewMode", args: ["pads"], returns: "any" },
+    // setSubdivisions(n): direct deterministic subdiv setter (agent set_subdiv tool).
+    { name: "setSubdivisions", args: [8], returns: "boolean" },
+    // Audio-panel chrome read-back getters (agent sanity-test checkpoints).
+    { name: "spectrumSlope", args: [], returns: "any" },
+    { name: "preOverlay", args: [], returns: "any" },
+    { name: "k20View", args: [], returns: "any" },
+    { name: "freqScaleLog", args: [], returns: "any" },
+    { name: "chainDisplayMode", args: [], returns: "any" },
+    { name: "autoGain", args: [], returns: "any" },
+    { name: "scopeFrozen", args: [], returns: "any" },
+    // Synth-tab redesign exports (per hey-please-review-the-vectorized-rocket.md).
+    // synthKnobRects returns one entry per wired knob, but collapsed (non-
+    // selected) stages have zero-size rects (w=0,h=0) — only the selected
+    // stage's knobs are drag-targetable in the chip-strip layout.
+    { name: "synthKnobRects", args: [], returns: "any" },
+    // Pipeline chip strip: synthChipRects lists one chip per stage in pipeline
+    // order; selectSynthSection opens a stage by chip label (next frame).
+    { name: "synthChipRects", args: [], returns: "any" },
+    { name: "selectSynthSection", args: ["OSC"], returns: "any" },
+    // Synth footer + Save As dialog (added in the synth-footer fix; see
+    // src/js/synth_panel_footer.browser.test.js for the end-to-end flow).
+    { name: "synthFooterButtonRects", args: [], returns: "any" },
+    { name: "synthSaveAsDialogState", args: [], returns: "any" },
+    { name: "synthSaveAsDialogSetValue", skipCall: true }, // mutating
+    { name: "synthSaveAsDialogConfirm", skipCall: true },  // mutating; closes dialog if open
+    { name: "synthSaveAsDialogCancel", skipCall: true },   // mutating; closes dialog if open
     { name: "setScopeTaps", skipCall: true },
     { name: "toggleWidget", skipCall: true },
     { name: "widgetLayoutSnapshot", args: [], returns: "any" },
@@ -202,7 +232,6 @@ const CATALOGUE = {
     { name: "instMenuFavoritesViewActive", args: [], returns: "boolean" },
     { name: "instMenuHasScroll", args: [], returns: "boolean" },
     { name: "instMenuItemRects", args: [], returns: "any" },
-    { name: "instMenuModeState", args: [], returns: "any" },
     { name: "instMenuOpenState", args: [], returns: "any" },
     { name: "instMenuPageState", args: [], returns: "any" },
     { name: "instMenuRenderedOrder", args: [], returns: "any" },
@@ -329,7 +358,6 @@ const CATALOGUE = {
     { name: "uiLayoutOk", args: [], returns: "boolean" },
     { name: "visibleRows", args: [], returns: "number" },
     { name: "zoomAt", skipCall: true },
-    { name: "zoomBtnRects", args: [], returns: "any" },
   ],
 
   // ───────── init (js_exports_init.go) ─────────
@@ -350,10 +378,70 @@ const CATALOGUE = {
     { name: "toggleInsertEffect", skipCall: true },
   ],
 
+  // ───────── synth recipe (js_exports_synth_recipe.go, Phase 5) ─────────
+  // Per-instrument SynthRecipe params + recipe registry. Mirrors the
+  // insert-effect surface so browser tests can drive the registry
+  // identically. setInstrumentParam mutates audio state; we skip the
+  // call here and let instrument_params.browser.test.js exercise it.
+  synth_recipe: [
+    { name: "setInstrumentParam", skipCall: true },
+    { name: "setInstrumentParams", skipCall: true },
+    // Mutates the active audio-panel tab — existence-only.
+    { name: "setActiveEQTab", skipCall: true },
+    { name: "getInstrumentParams", args: ["kick"], returns: "object" },
+    { name: "resetInstrumentParams", skipCall: true },
+    // Mirror the Synth-tab Save / Reset buttons for an explicit instrument id.
+    // They mutate the recipe registry; behavior is covered by
+    // webaudio_synth_save_persist.browser.test.js, so skipCall here.
+    { name: "saveActiveRecipe", skipCall: true },
+    { name: "resetActiveRecipe", skipCall: true },
+    { name: "recipeForInstrument", args: ["kick"], returns: "string" },
+    // Returns a native JS object: { recipeID: { displayName, category, params } }.
+    { name: "synthRecipeCatalog", args: [], returns: "object" },
+    { name: "recipeDefaultParams", args: ["drum-kick"], returns: "object" },
+    // Phase 5: user-recipe lifecycle (save / clone / delete / list /
+    // export / import). The write paths mutate persistent storage
+    // (localStorage) — skipCall here keeps the smoke test idempotent.
+    // existence-only assertion catches "Go forgot to register the
+    // export" regressions; semantic coverage lives in dedicated tests.
+    { name: "saveUserRecipe", skipCall: true },
+    { name: "createUserRecipe", skipCall: true },
+    { name: "deleteUserRecipe", skipCall: true },
+    { name: "listUserRecipes", args: [], returns: "object" },
+    { name: "exportUserRecipe", args: ["drum-snare"], returns: "string" },
+    { name: "importUserRecipe", skipCall: true },
+    // Phase 6: kit (instrument-set / drum-kit) infra. No UI in this
+    // round; the exports exist for browser tests + future picker UI.
+    // applyKit / createKit mutate process state — skipCall keeps the
+    // smoke test idempotent. listKits is read-only.
+    { name: "applyKit", skipCall: true },
+    { name: "listKits", args: [], returns: "object" },
+    { name: "createKit", skipCall: true },
+    { name: "setKitMember", skipCall: true },
+    { name: "deleteKit", skipCall: true },
+  ],
+
+  // ───────── sampler tab (sampler_panel_zone.go + audio.js bridge) ─────────
+  // The Go↔WebAudio seam for the Sampler tab. registerSamplePCM installs a
+  // baked PCM buffer as a playable instrument; captureInstrumentPCM returns a
+  // rendered one-shot for "From Synth"; decodeWavToPCM decodes a picked WAV for
+  // "Load WAV". All take typed-array / URL args or mutate audio state, so
+  // skipCall — semantic coverage lives in sampler_register_pcm.browser.test.js.
+  sampler: [
+    { name: "registerSamplePCM", skipCall: true },
+    { name: "captureInstrumentPCM", skipCall: true },
+    { name: "decodeWavToPCM", skipCall: true },
+    // Cross-session sample persistence (IndexedDB) — wasm SampleStore backend.
+    { name: "idbGetAllSamples", skipCall: true },
+    { name: "idbPutSample", skipCall: true },
+    { name: "idbDeleteSample", skipCall: true },
+  ],
+
   // ───────── playback + perf (js_exports_playback_perf.go) ─────────
   playback_perf: [
     { name: "forceDraw", args: [], returns: "any" },
     { name: "forceGameTick", args: [], returns: "any" },
+    { name: "forceDrag", args: [10, 10, 20, 20, 2], returns: "any" },
     {
       name: "gridCacheInfo",
       args: [],
@@ -369,6 +457,27 @@ const CATALOGUE = {
     { name: "startPlay", skipCall: true },
     { name: "stopPlay", skipCall: true },
     { name: "syncHighlights", args: [], returns: "any" },
+    // Diagnostics + perf probes (read-only; safe to call).
+    { name: "dumpHeapProbe", args: [], returns: "any" },
+    { name: "dumpLevelsLatch", args: [], returns: "any" },
+    { name: "getThreeStageLatency", args: [], returns: "any" },
+    // Mutating perf/sequencer controls — existence-only.
+    { name: "resetThreeStageLatency", skipCall: true },
+    { name: "tickSequencer", skipCall: true },
+  ],
+
+  // ───────── diagnostics (js_exports_diag.go) ─────────
+  diag: [
+    { name: "analyzerBridgeStats", args: [], returns: "any" },
+    { name: "memSizes", args: [], returns: "any" },
+    { name: "resetAnalyzerBridgeStats", skipCall: true },
+  ],
+
+  // ───────── media session (game_media_session_wasm.go) ─────────
+  // Start/stop playback as side effects — existence-only.
+  media_session: [
+    { name: "mediaSessionPlay", skipCall: true },
+    { name: "mediaSessionPause", skipCall: true },
   ],
 
   // ───────── recording (js_exports_recording.go) ─────────
@@ -394,6 +503,7 @@ const CATALOGUE = {
     { name: "closeSubdivMenu", args: [], returns: "any" },
     { name: "closeVolumePopup", args: [], returns: "any" },
     { name: "listScenes", args: [], returns: "any" },
+    { name: "listSubjects", args: [], returns: "any" },
     { name: "openColorMenu", skipCall: true },
     { name: "openContextMenu", skipCall: true },
     { name: "openFXPanel", skipCall: true },
@@ -403,8 +513,10 @@ const CATALOGUE = {
     { name: "openSubdivMenu", skipCall: true },
     { name: "openVolumePopup", skipCall: true },
     { name: "runScene", skipCall: true },
+    { name: "runSceneMobile", skipCall: true },
     { name: "setEQBandGain", skipCall: true },
     { name: "setMasterVolume", skipCall: true },
+    { name: "subjectRectJS", args: [""], returns: "any" },
   ],
 
   // ───────── timeline + predictor (js_exports_timeline_predictor.go) ─────────
@@ -505,6 +617,116 @@ if (missingFromCatalogue.length > 0) {
   console.error(
     `[bridge-smoke] catalogued names not exposed as functions: ${JSON.stringify(missingFromCatalogue)}`,
   );
+}
+
+// ─── fullLayoutSnapshot enriched-fields check (LLM agent sanity-test deps) ──
+// The agent harness drives the new audio-panel tabs / mobile bottom-nav and
+// verifies objective state via these fields. Assert their shape + plumbing.
+{
+  const snapCheck = await page.evaluate(() => {
+    const out = { errs: [] };
+    const snap = typeof fullLayoutSnapshot === "function" ? fullLayoutSnapshot() : null;
+    if (!snap) { out.errs.push("fullLayoutSnapshot returned null"); return out; }
+    const st = snap.state || {};
+    if (typeof st.subdiv !== "number") out.errs.push(`state.subdiv not number: ${st.subdiv}`);
+    if (typeof st.activeTab !== "string") out.errs.push(`state.activeTab not string: ${st.activeTab}`);
+    if (typeof st.viewMode !== "string") out.errs.push(`state.viewMode not string: ${st.viewMode}`);
+    if (typeof st.channel !== "string") out.errs.push(`state.channel not string: ${st.channel}`);
+    if (!snap.tabs || typeof snap.tabs !== "object") out.errs.push("snap.tabs missing");
+    else if (!snap.tabs.eq) out.errs.push("snap.tabs.eq missing");
+    if (!snap.bottomNav || typeof snap.bottomNav !== "object") out.errs.push("snap.bottomNav missing");
+    if (!snap.chrome || typeof snap.chrome !== "object") out.errs.push("snap.chrome missing");
+    // Chrome read-back getters must be callable and return bool/number/null (not throw).
+    for (const g of ["spectrumSlope", "preOverlay", "k20View", "freqScaleLog", "chainDisplayMode", "autoGain", "scopeFrozen"]) {
+      if (typeof globalThis[g] !== "function") { out.errs.push(`${g} not a function`); continue; }
+      try {
+        const v = globalThis[g]();
+        if (v !== null && typeof v !== "boolean" && typeof v !== "number") out.errs.push(`${g}() returned ${typeof v}`);
+      } catch (e) { out.errs.push(`${g}() threw: ${e.message}`); }
+    }
+    if (typeof forceDrag !== "function") out.errs.push("forceDrag not a function");
+
+    // activeTab plumbing via setEQTab (incl. new canonical slugs).
+    if (typeof setEQTab === "function") {
+      setEQTab("wave");
+      const a = fullLayoutSnapshot().state.activeTab;
+      if (a !== "wave") out.errs.push(`setEQTab(wave) → activeTab=${a}`);
+      setEQTab("sampler");
+      const b = fullLayoutSnapshot().state.activeTab;
+      if (b !== "sampler") out.errs.push(`setEQTab(sampler) → activeTab=${b}`);
+      setEQTab("eq");
+    }
+    // viewMode plumbing via setViewMode.
+    if (typeof setViewMode === "function") {
+      setViewMode("eq");
+      const v = fullLayoutSnapshot().state.viewMode;
+      if (v !== "eq") out.errs.push(`setViewMode(eq) → viewMode=${v}`);
+      setViewMode("pads");
+      const p = fullLayoutSnapshot().state.viewMode;
+      if (p !== "pads") out.errs.push(`setViewMode(pads) → viewMode=${p}`);
+    }
+    // Deterministic BPM/subdiv setters used by the agent's set_bpm/set_subdiv tools.
+    // Subdivision can only change while STOPPED (validateSubdivisions guards on
+    // g.Playing()), which mirrors the test flow (Phase 2 stops before Phase 3).
+    if (typeof stopPlay === "function") stopPlay();
+    if (typeof setBPM === "function") {
+      setBPM(90);
+      const b = fullLayoutSnapshot().state.bpm;
+      if (b !== 90) out.errs.push(`setBPM(90) → state.bpm=${b}`);
+    }
+    // New state fields used by the agentic build/edit/gesture tests.
+    if (typeof st.totalNodes !== "number") out.errs.push(`state.totalNodes not number: ${st.totalNodes}`);
+    if (typeof st.camScale !== "number") out.errs.push(`state.camScale not number: ${st.camScale}`);
+    if (typeof st.camOffsetX !== "number") out.errs.push(`state.camOffsetX not number: ${st.camOffsetX}`);
+    if (typeof st.camOffsetY !== "number") out.errs.push(`state.camOffsetY not number: ${st.camOffsetY}`);
+
+    // Camera setters must drive the state the gesture tests checkpoint.
+    if (typeof setCamScale === "function") {
+      setCamScale(2);
+      const cs = fullLayoutSnapshot().state.camScale;
+      if (cs !== 2) out.errs.push(`setCamScale(2) → state.camScale=${cs}`);
+      setCamScale(1);
+    }
+    if (typeof setCamOffset === "function") {
+      setCamOffset(123, -45);
+      const s2 = fullLayoutSnapshot().state;
+      if (s2.camOffsetX !== 123 || s2.camOffsetY !== -45) out.errs.push(`setCamOffset(123,-45) → (${s2.camOffsetX},${s2.camOffsetY})`);
+    }
+
+    // export/import roundtrip via the engine path (export_import_roundtrip test).
+    if (typeof exportJSON === "function" && typeof importJSON === "function") {
+      const before = fullLayoutSnapshot().state.totalRows;
+      const saved = exportJSON();
+      try {
+        const doc = JSON.parse(saved);
+        if (!Array.isArray(doc.instruments) || !Array.isArray(doc.nodes)) out.errs.push("exportJSON missing instruments/nodes arrays");
+      } catch (e) {
+        out.errs.push("exportJSON did not return valid JSON");
+      }
+      importJSON(saved);
+      const after = fullLayoutSnapshot().state.totalRows;
+      if (after !== before) out.errs.push(`export→import roundtrip changed totalRows ${before}→${after}`);
+    }
+
+    // setSubdivisions plumbing: a no-op set to the CURRENT value must succeed
+    // (returns true, value unchanged). We can't assert a *change* here because
+    // the catalogue leaves an unpredictable subdiv and the engine legitimately
+    // rejects lowering that would orphan misaligned demo nodes. The real 8→16
+    // raise is asserted by the agent sanity test's subdiv_16 checkpoint.
+    if (typeof setSubdivisions === "function") {
+      const cur = fullLayoutSnapshot().state.subdiv;
+      const r = setSubdivisions(cur);
+      const sd = fullLayoutSnapshot().state.subdiv;
+      if (r !== true || sd !== cur) out.errs.push(`setSubdivisions(${cur}) no-op: ret=${r} subdiv=${sd}`);
+    }
+    return out;
+  });
+  if (snapCheck.errs.length > 0) {
+    for (const e of snapCheck.errs) failures.push({ group: "fullLayoutSnapshot-fields", name: e, error: e });
+    console.error(`[bridge-smoke] fullLayoutSnapshot field check FAILED:`, snapCheck.errs);
+  } else {
+    console.log("[bridge-smoke] fullLayoutSnapshot enriched fields OK (state/tabs/bottomNav + setEQTab/setViewMode plumbing)");
+  }
 }
 
 if (isCoverageEnabled()) {

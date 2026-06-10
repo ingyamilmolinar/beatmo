@@ -20,7 +20,7 @@ func TestImportMapsRemovedSkipRulesAndNoneClearsLegacy(t *testing.T) {
 			{ID: 1, I: 0, J: 0, Type: "regular"},
 			{ID: 2, I: 1, J: 0, Type: "regular", LogicKind: "skip_if_prev_triggered"},
 			{ID: 3, I: 2, J: 0, Type: "regular", LogicKind: "skip_if_prev_skipped"},
-			{ID: 4, I: 3, J: 0, Type: "regular", SkipEvery: 2},
+			{ID: 4, I: 3, J: 0, Type: "regular", LogicKind: "skip_every_n", LogicN: 2},
 		},
 	}
 	data, _ := json.Marshal(file)
@@ -70,12 +70,12 @@ func TestImportMapsRemovedSkipRulesAndNoneClearsLegacy(t *testing.T) {
 	g.sidebar.ExpandAllSections()
 	g.sidebar.layout()
 	// Open logic dropdown and pick None
-	if b := g.sidebar.btns["logic"]; b == nil || !b.Handle((g.sidebar.rects["logic"].Min.X+g.sidebar.rects["logic"].Max.X)/2, (g.sidebar.rects["logic"].Min.Y+g.sidebar.rects["logic"].Max.Y)/2, true) {
+	if b := g.sidebar.btns["logic"]; b == nil || b.HandleInputResult((g.sidebar.rects["logic"].Min.X+g.sidebar.rects["logic"].Max.X)/2, (g.sidebar.rects["logic"].Min.Y+g.sidebar.rects["logic"].Max.Y)/2, true) == InputIgnored {
 		t.Fatalf("logic button click failed")
 	}
 	_ = g.Update()
 	g.sidebar.layout()
-	if b := g.sidebar.btns["logic:"]; b == nil || !b.Handle((g.sidebar.rects["logic:"].Min.X+g.sidebar.rects["logic:"].Max.X)/2, (g.sidebar.rects["logic:"].Min.Y+g.sidebar.rects["logic:"].Max.Y)/2, true) {
+	if b := g.sidebar.btns["logic:"]; b == nil || b.HandleInputResult((g.sidebar.rects["logic:"].Min.X+g.sidebar.rects["logic:"].Max.X)/2, (g.sidebar.rects["logic:"].Min.Y+g.sidebar.rects["logic:"].Max.Y)/2, true) == InputIgnored {
 		t.Fatalf("none item click failed")
 	}
 	_ = g.Update()

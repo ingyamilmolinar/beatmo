@@ -19,7 +19,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 	baseX := dv.timelineRect.Min.X - dv.Bounds.Min.X
 	rowWidth := dv.timelineRect.Dx()
 	padPx := max1(dv.rowsLayerPadPx)
-	canReuse := dv.rowsLayer != nil && dv.rowsLayerW == w && dv.rowsLayerH == h && dv.rowsLayerRowOff == dv.rowOffset && dv.rowsLayerBaseX == baseX
+	canReuse := dv.rowsLayer != nil && dv.rowsLayerW == w && dv.rowsLayerH == h && dv.rowsLayerRowOff == dv.rowOffset && dv.rowsLayerBaseX == baseX && dv.rowsLayerRowWidth == rowWidth && dv.rowsLayerLength == dv.Length
 	offsetDelta := dv.Offset - dv.rowsLayerOffset
 	dxPx := 0
 	if rowWidth > 0 && dv.Length > 0 {
@@ -62,8 +62,13 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		}
 	}
 
-	// Invalidate on size changes, scroll changes, base alignment, or explicit dirty flag.
-	needFull := dv.rowsLayer == nil || dv.rowsLayerW != w || dv.rowsLayerH != h || dv.rowsLayerRowOff != dv.rowOffset || dv.rowsLayerDirty || dv.rowsLayerBaseX != baseX
+	// Invalidate on size changes, scroll changes, base alignment, timeline-rect
+	// width changes (right-side controls resize), step-count changes (Length
+	// mutation), or explicit dirty flag. The rowWidth/Length checks are
+	// load-bearing for the shift-and-fill path: without them the leftmost
+	// pixels survive across cell-pitch changes and produce the mixed-pitch
+	// artifact users see after long sessions.
+	needFull := dv.rowsLayer == nil || dv.rowsLayerW != w || dv.rowsLayerH != h || dv.rowsLayerRowOff != dv.rowOffset || dv.rowsLayerDirty || dv.rowsLayerBaseX != baseX || dv.rowsLayerRowWidth != rowWidth || dv.rowsLayerLength != dv.Length
 	smallShift := canReuse && dxPx != 0 && abs(dxPx) <= padPx && rowWidth > 0 && dv.Length > 0
 	// If any row needs rebuild, ensure we rebuild row sprites first and mark layer dirty.
 	vis := dv.visibleRows()
@@ -115,6 +120,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 	}
 	if smallShift {
 		if dv.rowsLayerScratch == nil || dv.rowsLayerScratch.Bounds().Dx() != w || dv.rowsLayerScratch.Bounds().Dy() != h {
+			releaseImage(dv.rowsLayerScratch)
 			dv.rowsLayerScratch = newTrackedImage("rowsLayerScratch", w, h)
 		} else {
 			dv.rowsLayerScratch.Clear()
@@ -191,6 +197,8 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		dv.rowsLayerOffset = dv.Offset
 		dv.rowsLayerRowOff = dv.rowOffset
 		dv.rowsLayerBaseX = baseX
+		dv.rowsLayerRowWidth = rowWidth
+		dv.rowsLayerLength = dv.Length
 		dv.rowsLayerGen++
 		dv.rowsLayerDirty = false
 		dv.rowsLayerFrame = dv.frame
@@ -201,6 +209,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		img = dv.rowsLayer
 		img.Clear()
 	} else {
+		releaseImage(dv.rowsLayer)
 		img = newTrackedImage("rowsLayer", w, h)
 	}
 	// Draw each visible row sprite at its position inside dv.Bounds.
@@ -236,6 +245,8 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 	dv.rowsLayerOffset = dv.Offset
 	dv.rowsLayerRowOff = dv.rowOffset
 	dv.rowsLayerBaseX = baseX
+	dv.rowsLayerRowWidth = rowWidth
+	dv.rowsLayerLength = dv.Length
 	dv.rowsLayerGen++
 	dv.rowsLayerDirty = false
 	dv.rowsLayerFrame = dv.frame

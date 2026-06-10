@@ -9,6 +9,9 @@ import (
 
 func (dv *DrumView) bg(w, h int) *ebiten.Image {
 	if dv.bgDirty || len(dv.bgCache) == 0 || !dv.bgCache[0].Bounds().Eq(image.Rect(0, 0, w, h)) {
+		for _, old := range dv.bgCache {
+			releaseImage(old)
+		}
 		dv.bgCache = make([]*ebiten.Image, 1)
 		img := newTrackedImage("bgCache", w, h)
 		img.Fill(colBGBottom)
@@ -43,8 +46,10 @@ func (dv *DrumView) updateRowRects() {
 		w = dv.Bounds.Dx() - dv.labelW - dv.controlsW
 	}
 	dv.cell = w / len(dv.Rows[0].Steps)
-	// Delegate repositioning to the RowRackZone.
-	dv.rowRackZone.Layout(dv.rowRackZone.rect)
+	// Delegate repositioning to the RowRackZone — via the tree so the
+	// HitIndex republish can never be skipped (this runs every Draw and
+	// used to silently consume the zone's needLayout republish signal).
+	dv.tree.LayoutZoneNow("row-rack")
 }
 
 // --- Row cache helpers ---

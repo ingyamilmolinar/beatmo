@@ -70,6 +70,13 @@ type Service struct {
 	// immutables keeps a copy of playback/import commits keyed by row+abs so
 	// they remain available even if the ring buffer is trimmed or resized.
 	immutables map[int]map[int]commitEntry
+	// archives holds per-row cold-store entries that pruneImmutablesRow has
+	// migrated out of the live sidecar. Reads tier through immutables → ring
+	// → archive in valueLocked, so historical scroll-back resolves to the
+	// archive after entries age past immutablesPerRowMax.
+	archives map[int]*rowArchive
+	// archiveMaxEntries bounds each row's archive size. <= 0 means unbounded.
+	archiveMaxEntries int
 }
 
 type rowState struct {

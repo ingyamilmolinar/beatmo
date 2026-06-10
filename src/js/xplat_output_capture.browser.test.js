@@ -63,18 +63,66 @@ function computeRMS(data) {
   return Math.sqrt(sum / data.length);
 }
 
-function correlation(x, y) {
-  const n = Math.min(x.length, y.length);
-  if (n === 0) return 0;
+// Signed Pearson correlation between `ref` and `cap` where `cap` is shifted by
+// `lag` samples: ref[i] is compared with cap[i + lag]. Only the overlapping region
+// (optionally restricted to [from, to) in ref index space) is scored. Returns the
+// signed correlation; a negative result means the two are inverted/decorrelated,
+// NOT merely time-shifted. Returns -2 (sentinel below any real correlation) when
+// the overlap is too small to score.
+function correlationAtLag(ref, cap, lag, from = 0, to = Infinity) {
+  const start = Math.max(from, -lag);
+  const end = Math.min(to, ref.length, cap.length - lag);
+  const n = end - start;
+  if (n < 100) return -2;
   let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
-  for (let i = 0; i < n; i++) {
-    sx += x[i]; sy += y[i];
-    sxx += x[i] * x[i]; syy += y[i] * y[i];
-    sxy += x[i] * y[i];
+  for (let i = start; i < end; i++) {
+    const a = ref[i];
+    const b = cap[i + lag];
+    sx += a; sy += b;
+    sxx += a * a; syy += b * b;
+    sxy += a * b;
   }
   const num = n * sxy - sx * sy;
   const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy)) || 1;
   return num / den;
+}
+
+// Windowed-RMS energy envelope: one RMS value per `win` consecutive samples. This
+// collapses the raw waveform to its energy-over-time shape, which is robust to the
+// sub-sample phase jitter the ScriptProcessorNode capture introduces (broadband
+// noise instruments lose raw-sample phase across 256-sample blocks, but their
+// energy envelope is preserved). Inversion-blind by construction (RMS uses |x|),
+// so it is paired with a signed raw-correlation inversion guard at the call site.
+function rmsEnvelope(arr, win) {
+  const nb = Math.floor(arr.length / win);
+  const out = new Float32Array(nb);
+  for (let b = 0; b < nb; b++) {
+    let s = 0;
+    const base = b * win;
+    for (let i = 0; i < win; i++) {
+      const v = arr[base + i];
+      s += v * v;
+    }
+    out[b] = Math.sqrt(s / win);
+  }
+  return out;
+}
+
+// Cross-correlation lag search: slide `cap` against `ref` over [-maxLag, +maxLag]
+// and return the lag that maximizes signed correlation, plus that correlation.
+// A negative best correlation indicates the captured waveform is inverted or
+// uncorrelated with the reference (not a benign time shift) and must fail.
+function bestLagCorrelation(ref, cap, maxLag, from = 0, to = Infinity) {
+  let bestLag = 0;
+  let bestCorr = -Infinity;
+  for (let lag = -maxLag; lag <= maxLag; lag++) {
+    const c = correlationAtLag(ref, cap, lag, from, to);
+    if (c > bestCorr) {
+      bestCorr = c;
+      bestLag = lag;
+    }
+  }
+  return { bestLag, bestCorr };
 }
 
 // Trim leading silence from a buffer
@@ -264,80 +312,162 @@ for (const instName of instrumentsToTest) {
     };
   }, { instName });
 
-  // Trim silence from both buffers
-  const capturedTrimmed = trimSilence(testResult.captured, 1e-4);
-  const referenceTrimmed = trimSilence(testResult.reference, 1e-4);
+  // Trim leading silence so both buffers start near their onset. The output tap is
+  // a ScriptProcessorNode (256-sample blocks) sitting AFTER the master limiter, and
+  // playSound schedules with a small variable lead, so the captured stream is
+  // time-shifted vs the pre-limiter cached-render reference by an unknown amount and
+  // is captured on 256-sample block phase. A lag-0 raw correlation therefore wildly
+  // under-reports the true match (hihat reads ~0.1, snare ~0.3, even with correct
+  // audio) and is unstable run-to-run for noise instruments. We recover the real
+  // match with two complementary, alignment-robust measures below.
+  const captured = trimLeadingSilence(testResult.captured, 1e-3);
+  const reference = trimLeadingSilence(testResult.reference, 1e-3);
 
-  // Compute metrics
-  const capturedPeak = computePeak(capturedTrimmed);
-  const capturedRMS = computeRMS(capturedTrimmed);
-  const refPeak = computePeak(referenceTrimmed);
-  const refRMS = computeRMS(referenceTrimmed);
+  // Compute metrics on the (longer) trailing-silence-trimmed buffers for reporting.
+  const capturedPeak = computePeak(captured);
+  const capturedRMS = computeRMS(captured);
+  const refPeak = computePeak(reference);
+  const refRMS = computeRMS(reference);
 
-  // For correlation, use the shorter length
-  const compareLen = Math.min(capturedTrimmed.length, referenceTrimmed.length);
-  if (compareLen < 100) {
-    const msg = `${instName}: Buffer too short for comparison (captured=${capturedTrimmed.length}, ref=${referenceTrimmed.length})`;
+  if (reference.length < 1000 || captured.length < 1000) {
+    const msg = `${instName}: Buffer too short for comparison (captured=${captured.length}, ref=${reference.length})`;
     console.log(`FAIL: ${msg}`);
     failures.push(msg);
     anyFailed = true;
     continue;
   }
 
-  const capturedSlice = capturedTrimmed.slice(0, compareLen);
-  const refSlice = referenceTrimmed.slice(0, compareLen);
+  // ----- PRIMARY: energy-envelope cross-correlation (the real content match) -----
+  // The windowed-RMS envelope is the audio's energy-over-time shape. The same C
+  // synthesis + same cached render flows through both paths, so the envelopes must
+  // be near-identical once aligned. This is the metric that actually proves the
+  // captured waveform IS the reference: it survives the sub-sample phase jitter that
+  // destroys raw correlation for broadband noise, yet it COLLAPSES (towards 0 or
+  // negative) if the captured audio is reversed, the wrong instrument, or silence.
+  // (Teeth-proven below at the call site / in the teeth-check run.)
+  const ENV_WIN = 64; // ~1.3ms @ 48kHz — fine enough to resolve transients
+  const ENV_MAX_LAG = Math.ceil(3072 / ENV_WIN); // search +/- ~3072 samples (~64ms)
+  const envRef = rmsEnvelope(reference, ENV_WIN);
+  const envCap = rmsEnvelope(captured, ENV_WIN);
+  const { bestLag: envBestLag, bestCorr: envCorr } =
+    bestLagCorrelation(envRef, envCap, ENV_MAX_LAG);
+  const envLagSamples = envBestLag * ENV_WIN;
 
-  // Normalize both for shape comparison (removes amplitude differences)
-  const capturedNorm = capturedSlice.map(s => s / (capturedPeak || 1));
-  const refNorm = refSlice.map(s => s / (refPeak || 1));
+  // ----- INVERSION GUARD: signed raw correlation at the content-aligned lag -----
+  // The envelope is sign-blind (RMS uses |x|), so a NEGATED capture passes the envelope
+  // check. We catch inversion/decorrelation with the SIGNED raw-sample correlation, but
+  // raw correlation on broadband noise is delicate:
+  //   * A FREE raw-lag search is unusable: pure-noise instruments are self-similar, so
+  //     their autocorrelation has POSITIVE side-lobes as strong as the main lobe in both
+  //     polarities -- a free search finds an equal-magnitude positive lobe even for an
+  //     inverted capture (hihat is the worst case), defeating the guard.
+  //   * Pinning to a single coarse-envelope lag is too brittle: the 64-sample envelope
+  //     quantisation occasionally lands one block off the true onset, where the raw
+  //     correlation of a GENUINE capture can read negative -- a false inversion FAIL.
+  // Robust resolution: evaluate raw correlation only at the three lags anchored to the
+  // envelope peak {coarse-WIN, coarse, coarse+WIN}, pick the one with the largest
+  // ABSOLUTE correlation (= the true onset alignment, polarity-agnostic), and take its
+  // SIGNED value. This consistently reads POSITIVE for a genuine capture (kick ~0.95;
+  // broadband snare ~0.10-0.25, hihat ~0.27 -- low but reliably positive because their
+  // fine phase only partially survives the 256-sample-block, post-limiter capture) and
+  // the EXACT NEGATIVE for an inverted capture. Requiring the value > 0 therefore
+  // catches inversion for every instrument. (Teeth-proven: negating the reference makes
+  // all three FAIL.)
+  const rawWinEnd = Math.min(4000, reference.length);
+  let rawAbsBest = -1;
+  let rawCorrAligned = -2;
+  let rawLagAligned = envLagSamples;
+  for (const lag of [envLagSamples - ENV_WIN, envLagSamples, envLagSamples + ENV_WIN]) {
+    const c = correlationAtLag(reference, captured, lag, 0, rawWinEnd);
+    if (Math.abs(c) > rawAbsBest) {
+      rawAbsBest = Math.abs(c);
+      rawCorrAligned = c;
+      rawLagAligned = lag;
+    }
+  }
 
-  const corr = correlation(capturedNorm, refNorm);
-
-  // Also check peak amplitude matches (should be close)
+  // Amplitude corroborators (secondary, never a substitute for the gates above).
   const peakDiff = Math.abs(capturedPeak - refPeak);
+  const rmsRatio = Math.min(capturedRMS, refRMS) / Math.max(capturedRMS, refRMS);
+  const peakRatio = Math.min(capturedPeak, refPeak) / Math.max(capturedPeak, refPeak);
 
   results[instName] = {
-    capturedSamples: capturedTrimmed.length,
-    refSamples: referenceTrimmed.length,
-    compareLen,
+    capturedSamples: captured.length,
+    refSamples: reference.length,
     capturedPeak,
     refPeak,
     peakDiff,
     capturedRMS,
     refRMS,
-    correlation: corr,
+    envCorr,
+    envLagSamples,
+    rawCorrAligned,
+    rawLagAligned,
+    rmsRatio,
+    peakRatio,
     sampleRate: testResult.sampleRate,
   };
 
   console.log(`  Sample rate: ${testResult.sampleRate} Hz`);
-  console.log(`  Captured: ${capturedTrimmed.length} samples, peak=${capturedPeak.toFixed(4)}, rms=${capturedRMS.toFixed(4)}`);
-  console.log(`  Reference: ${referenceTrimmed.length} samples, peak=${refPeak.toFixed(4)}, rms=${refRMS.toFixed(4)}`);
+  console.log(`  Captured: ${captured.length} samples, peak=${capturedPeak.toFixed(4)}, rms=${capturedRMS.toFixed(4)}`);
+  console.log(`  Reference: ${reference.length} samples, peak=${refPeak.toFixed(4)}, rms=${refRMS.toFixed(4)}`);
   console.log(`  Peak diff: ${peakDiff.toFixed(6)}`);
-  console.log(`  Correlation: ${corr.toFixed(6)}`);
+  console.log(`  Envelope best-lag correlation: ${envCorr.toFixed(6)} (lag=${envLagSamples} samples, ${(envLagSamples / testResult.sampleRate * 1000).toFixed(2)} ms)`);
+  console.log(`  Raw signed correlation @aligned lag: ${rawCorrAligned.toFixed(6)} (lag=${rawLagAligned})`);
 
-  // Waveform shape should correlate highly (> 0.95) since both use same C synthesis
-  // with same post-processing, just going through different audio routing.
-  // Exception: the ScriptProcessorNode capture can introduce block-alignment timing
-  // shifts that decorrelate noise-heavy instruments. Also, multi-iteration capture
-  // sessions may pick up residual energy from previous sounds. For these cases,
-  // fall back to RMS/peak ratio comparison to verify the audio pipeline works.
-  if (corr < 0.95) {
-    const rmsRatio = Math.min(capturedRMS, refRMS) / Math.max(capturedRMS, refRMS);
-    const peakRatio = Math.min(capturedPeak, refPeak) / Math.max(capturedPeak, refPeak);
-    if (rmsRatio > 0.75 && peakRatio > 0.75) {
-      console.log(`  OK: Waveform correlation low (${corr.toFixed(4)}) but metrics match (rmsRatio=${rmsRatio.toFixed(3)}, peakRatio=${peakRatio.toFixed(3)})`);
-    } else {
-      const msg = `${instName}: Waveform mismatch - corr=${corr.toFixed(4)}, rmsRatio=${rmsRatio.toFixed(3)}, peakRatio=${peakRatio.toFixed(3)}`;
-      console.log(`FAIL: ${msg}`);
-      failures.push(msg);
-      anyFailed = true;
-    }
-  } else {
-    console.log(`  OK: Waveform matches reference`);
+  // PRIMARY ASSERTION: the energy envelope must genuinely match the reference.
+  // Threshold 0.93: kick/hihat clear 0.96-0.99, snare floats 0.951-0.956 (broadband
+  // noise; tighter margin). 0.93 keeps a ~2pt cushion on snare so the gate is strict
+  // but not flaky, while still rejecting reversed/wrong/silent audio (which read <0.2
+  // or negative). This is the strictest defensible bar given the post-limiter,
+  // block-phase capture tap; the raw kick correlation (~0.97) independently proves
+  // the capture path is sample-faithful, so the lower envelope bar is a noise-phase
+  // concession, not a correctness concession.
+  const ENV_THRESHOLD = 0.93;
+  let instOk = true;
+
+  if (!(envCorr >= ENV_THRESHOLD)) {
+    const msg = `${instName}: Waveform content mismatch - envelope corr=${envCorr.toFixed(4)} (lag=${envLagSamples}) < ${ENV_THRESHOLD}`;
+    console.log(`FAIL: ${msg}`);
+    failures.push(msg);
+    anyFailed = true;
+    instOk = false;
   }
 
-  // Peak should be very close (within 5%)
-  const peakTolerance = refPeak * 0.05;
+  // INVERSION GUARD: a negative aligned raw correlation means the captured waveform
+  // is inverted or decorrelated vs the reference (NOT a benign time shift) and must
+  // fail outright. Require a small positive margin to reject pure decorrelation.
+  if (!(rawCorrAligned > 0.02)) {
+    const msg = `${instName}: Inverted/decorrelated capture - raw signed corr=${rawCorrAligned.toFixed(4)} at aligned lag must be > 0`;
+    console.log(`FAIL: ${msg}`);
+    failures.push(msg);
+    anyFailed = true;
+    instOk = false;
+  }
+
+  // For tonal instruments that align at the sample level, additionally require a high
+  // raw correlation as the strictest possible check. Kick consistently clears 0.95;
+  // broadband noise instruments legitimately cannot (block-phase capture), so this is
+  // gated to instruments whose raw correlation is expected to be high.
+  const RAW_TONAL_THRESHOLD = 0.90;
+  const tonalInstruments = new Set(['kick']);
+  if (tonalInstruments.has(instName) && !(rawCorrAligned >= RAW_TONAL_THRESHOLD)) {
+    const msg = `${instName}: Tonal raw waveform mismatch - raw corr=${rawCorrAligned.toFixed(4)} < ${RAW_TONAL_THRESHOLD}`;
+    console.log(`FAIL: ${msg}`);
+    failures.push(msg);
+    anyFailed = true;
+    instOk = false;
+  }
+
+  if (instOk) {
+    console.log(`  OK: Waveform matches reference (envCorr=${envCorr.toFixed(4)} >= ${ENV_THRESHOLD}, raw signed=${rawCorrAligned.toFixed(4)} > 0)`);
+    if (rmsRatio < 0.85 || peakRatio < 0.85) {
+      console.log(`  WARN: amplitude ratios looser than expected (rmsRatio=${rmsRatio.toFixed(3)}, peakRatio=${peakRatio.toFixed(3)})`);
+    }
+  }
+
+  // Peak should be reasonably close (within 15%) -- reported as a warning only.
+  const peakTolerance = refPeak * 0.15;
   if (peakDiff > peakTolerance) {
     console.log(`  WARN: Peak differs by ${(peakDiff / refPeak * 100).toFixed(1)}%`);
   }
@@ -481,7 +611,7 @@ if (anyFailed) {
   console.log('============================================================');
   console.log('\nResults summary:');
   for (const [inst, r] of Object.entries(results)) {
-    console.log(`  ${inst}: correlation=${r.correlation.toFixed(4)}, peak=${r.capturedPeak.toFixed(4)}`);
+    console.log(`  ${inst}: envCorr=${r.envCorr.toFixed(4)} (lag=${r.envLagSamples}), raw signed=${r.rawCorrAligned.toFixed(4)} (lag=${r.rawLagAligned}), peak=${r.capturedPeak.toFixed(4)}`);
   }
   process.exit(0);
 }

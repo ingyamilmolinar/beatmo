@@ -51,34 +51,46 @@ func TestEventLoggerGoldenSession(t *testing.T) {
 
 	// Publish a deterministic sequence covering every non-verbose Kind that
 	// is NOT coalesced, in user-recognizable narrative order.
-	bus.PublishKind(hooks.EventPlayStart, nil)
-	bus.PublishKind(hooks.EventNodeAdded, hooks.NodeEdit{ID: 1, I: 0, J: 0, Type: "regular"})
-	bus.PublishKind(hooks.EventNodeAdded, hooks.NodeEdit{ID: 2, I: 1, J: 0, Type: "regular"})
-	bus.PublishKind(hooks.EventEdgeAdded, hooks.EdgeEdit{FromID: 1, ToID: 2, FromI: 0, FromJ: 0, ToI: 1, ToJ: 0})
-	bus.PublishKind(hooks.EventStartNodeChanged, hooks.StartNodePayload{Row: 0, ID: 1})
-	bus.PublishKind(hooks.EventRowAdded, hooks.RowChangePayload{Row: 0, Name: "kick", Instrument: "kick"})
-	bus.PublishKind(hooks.EventRowInstrumentChange, hooks.RowChangePayload{Row: 0, OldInstrument: "kick", Instrument: "snare"})
-	bus.PublishKind(hooks.EventInsertEffectAdded, hooks.InsertEffectPayload{Channel: "snare", Slot: 0, Type: "reverb"})
-	bus.PublishKind(hooks.EventInsertEffectRemoved, hooks.InsertEffectPayload{Channel: "snare", Slot: 0})
-	bus.PublishKind(hooks.EventNodeTypeChanged, hooks.NodeTypePayload{ID: 2, OldType: "regular", NewType: "mute"})
-	bus.PublishKind(hooks.EventNodeParamsChanged, hooks.NodeParamsPayload{ID: 1, Volume: 0.7})
-	bus.PublishKind(hooks.EventEdgeDeleted, hooks.EdgeEdit{FromI: 0, FromJ: 0, ToI: 1, ToJ: 0})
-	bus.PublishKind(hooks.EventNodeDeleted, hooks.NodeEdit{ID: 2, I: 1, J: 0})
-	bus.PublishKind(hooks.EventRowMute, hooks.RowChangePayload{Row: 0, Mute: true})
-	bus.PublishKind(hooks.EventRowSolo, hooks.RowChangePayload{Row: 0, Solo: false})
-	bus.PublishKind(hooks.EventSubdivChange, hooks.SubdivPayload{Subdiv: 16})
-	bus.PublishKind(hooks.EventLengthChange, hooks.LengthPayload{Length: 64})
-	bus.PublishKind(hooks.EventRecordStart, nil)
-	bus.PublishKind(hooks.EventRecordStop, nil)
-	bus.PublishKind(hooks.EventImport, nil)
-	bus.PublishKind(hooks.EventExport, nil)
-	bus.PublishKind(hooks.EventSeek, hooks.SeekPayload{Beats: 8})
-	bus.PublishKind(hooks.EventRowDeleted, hooks.RowChangePayload{Row: 0})
-	bus.PublishKind(hooks.EventPaused, nil)
-	bus.PublishKind(hooks.EventResumed, nil)
-	bus.PublishKind(hooks.EventPlayStop, nil)
+	pubFixed(bus, hooks.EventPlayStart, nil)
+	pubFixed(bus, hooks.EventNodeAdded, hooks.NodeEdit{ID: 1, I: 0, J: 0, Type: "regular"})
+	pubFixed(bus, hooks.EventNodeAdded, hooks.NodeEdit{ID: 2, I: 1, J: 0, Type: "regular"})
+	pubFixed(bus, hooks.EventEdgeAdded, hooks.EdgeEdit{FromID: 1, ToID: 2, FromI: 0, FromJ: 0, ToI: 1, ToJ: 0})
+	pubFixed(bus, hooks.EventStartNodeChanged, hooks.StartNodePayload{Row: 0, ID: 1})
+	pubFixed(bus, hooks.EventRowAdded, hooks.RowChangePayload{Row: 0, Name: "kick", Instrument: "kick"})
+	pubFixed(bus, hooks.EventRowInstrumentChange, hooks.RowChangePayload{Row: 0, OldInstrument: "kick", Instrument: "snare"})
+	pubFixed(bus, hooks.EventInsertEffectAdded, hooks.InsertEffectPayload{Channel: "snare", Slot: 0, Type: "reverb"})
+	pubFixed(bus, hooks.EventInsertEffectRemoved, hooks.InsertEffectPayload{Channel: "snare", Slot: 0})
+	pubFixed(bus, hooks.EventNodeTypeChanged, hooks.NodeTypePayload{ID: 2, OldType: "regular", NewType: "mute"})
+	pubFixed(bus, hooks.EventNodeParamsChanged, hooks.NodeParamsPayload{ID: 1, Volume: 0.7})
+	pubFixed(bus, hooks.EventEdgeDeleted, hooks.EdgeEdit{FromI: 0, FromJ: 0, ToI: 1, ToJ: 0})
+	pubFixed(bus, hooks.EventNodeDeleted, hooks.NodeEdit{ID: 2, I: 1, J: 0})
+	pubFixed(bus, hooks.EventRowMute, hooks.RowChangePayload{Row: 0, Mute: true})
+	pubFixed(bus, hooks.EventRowSolo, hooks.RowChangePayload{Row: 0, Solo: false})
+	pubFixed(bus, hooks.EventSubdivChange, hooks.SubdivPayload{Subdiv: 16})
+	pubFixed(bus, hooks.EventLengthChange, hooks.LengthPayload{Length: 64})
+	pubFixed(bus, hooks.EventRecordStart, nil)
+	pubFixed(bus, hooks.EventRecordStop, nil)
+	pubFixed(bus, hooks.EventImport, nil)
+	pubFixed(bus, hooks.EventExport, nil)
+	pubFixed(bus, hooks.EventSeek, hooks.SeekPayload{Beats: 8})
+	pubFixed(bus, hooks.EventRowDeleted, hooks.RowChangePayload{Row: 0})
+	pubFixed(bus, hooks.EventPaused, nil)
+	pubFixed(bus, hooks.EventResumed, nil)
+	pubFixed(bus, hooks.EventPlayStop, nil)
+	// Round 2 additions exercised in golden:
+	pubFixed(bus, hooks.EventCustomWAVLoaded, hooks.CustomWAVPayload{InstrumentID: "snare2", IsUpdate: false})
+	pubFixed(bus, hooks.EventInstrumentRenamed, hooks.InstrumentRenamePayload{OldID: "kick", NewID: "kick_v2"})
+	pubFixed(bus, hooks.EventSceneApplied, hooks.ScenePayload{Name: "transport_idle"})
+	pubFixed(bus, hooks.EventUIStateApplied, hooks.UIStatePayload{Path: "/tmp/ui.json"})
+	pubFixed(bus, hooks.EventFavoriteToggled, hooks.FavoritePayload{InstrumentID: "kick", IsFavorite: true})
+	// EventRowColorChanged is coalesced; FlushNow below drains it.
+	pubFixed(bus, hooks.EventRowColorChanged, hooks.RowColorPayload{Row: 0, Color: 0xFF8040FF})
 
-	const wantWritten = 26
+	const wantWritten = 32
+	// Wait for the non-coalesced events first.
+	waitFor(t, func() bool { return logger.Stats().Written >= wantWritten-1 }, 2*time.Second)
+	// Drain coalesced (row color) so the golden contains it deterministically.
+	logger.FlushNow()
 	waitFor(t, func() bool { return logger.Stats().Written >= wantWritten }, 2*time.Second)
 
 	got := buf.String()
@@ -118,10 +130,10 @@ func TestEventLoggerVerboseFiltersByDefault(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Close() })
 
-	bus.PublishKind(hooks.EventCameraPan, hooks.CameraPanPayload{DX: 1, DY: 2})
-	bus.PublishKind(hooks.EventCameraZoom, hooks.CameraZoomPayload{Factor: 1.1})
-	bus.PublishKind(hooks.EventDragProgress, hooks.DragProgressPayload{NodeID: 1, I: 0, J: 0})
-	bus.PublishKind(hooks.EventPlayStart, nil) // sentinel: must appear
+	pubFixed(bus, hooks.EventCameraPan, hooks.CameraPanPayload{DX: 1, DY: 2})
+	pubFixed(bus, hooks.EventCameraZoom, hooks.CameraZoomPayload{Factor: 1.1})
+	pubFixed(bus, hooks.EventDragProgress, hooks.DragProgressPayload{NodeID: 1, I: 0, J: 0})
+	pubFixed(bus, hooks.EventPlayStart, nil) // sentinel: must appear
 
 	waitFor(t, func() bool { return logger.Stats().Written >= 1 }, 2*time.Second)
 	logger.FlushNow()
@@ -152,7 +164,7 @@ func TestEventLoggerVerboseEmitsWhenOptedIn(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = logger.Close() })
 
-	bus.PublishKind(hooks.EventCameraZoom, hooks.CameraZoomPayload{Factor: 1.5})
+	pubFixed(bus, hooks.EventCameraZoom, hooks.CameraZoomPayload{Factor: 1.5})
 	// Force coalesce window to elapse.
 	time.Sleep(50 * time.Millisecond)
 	logger.FlushNow()
@@ -180,7 +192,7 @@ func TestEventLoggerCoalescesRapidBPM(t *testing.T) {
 	t.Cleanup(func() { _ = logger.Close() })
 
 	for i := 1; i <= 20; i++ {
-		bus.PublishKind(hooks.EventBPMChange, float64(100+i))
+		pubFixed(bus, hooks.EventBPMChange, float64(100+i))
 	}
 	// Wait past the coalesce window then flush any stragglers.
 	time.Sleep(100 * time.Millisecond)
@@ -194,6 +206,20 @@ func TestEventLoggerCoalescesRapidBPM(t *testing.T) {
 	if !strings.Contains(matches[0], "120.0") {
 		t.Fatalf("expected trailing BPM = 120.0, got %q", matches[0])
 	}
+}
+
+// fixedSource is the deterministic Source attached to every event published
+// via pubFixed. Pinning the source keeps the golden file stable across edits
+// to this test file (real runtime.Caller-derived sources would shift on
+// every refactor and produce noisy goldens).
+var fixedSource = hooks.Source{Pkg: "internal/test", File: "fixture.go", Line: 1}
+
+// pubFixed publishes via the source-aware API with a stable injected Source
+// so the golden output is deterministic. Production callers go through
+// emit helpers in internal/ui/event_helpers.go that use real runtime.Caller
+// capture; this fixture trades that fidelity for golden stability.
+func pubFixed(bus *hooks.Bus, k hooks.Kind, payload any) {
+	bus.PublishWithSource(k, payload, fixedSource)
 }
 
 // waitFor polls cond every 2ms until it returns true or the timeout elapses.

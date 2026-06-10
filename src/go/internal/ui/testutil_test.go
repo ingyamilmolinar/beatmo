@@ -492,6 +492,31 @@ func assertDefaultParityState(t *testing.T) {
 	if !parityFatalEnabled.Load() {
 		t.Fatalf("parityFatalEnabled=%v want true for tests (PARITY_FATAL should be unset)", parityFatalEnabled.Load())
 	}
+
+	// Auto-reset every package global this function asserts on. Production
+	// helpers like (*Game).SetForceMobileProfile mutate these (used by 31
+	// scene Setups in scene_catalog.go for the screenshot harness's mobile
+	// pass), and tests exercising those scenes via RunSceneMobile rarely
+	// register their own t.Cleanup. Without this defense the very first
+	// mobile-scene test poisons every subsequent test that calls
+	// assertDefaultParityState — a 100+-test cascade.
+	//
+	// The entry-time assertions above still catch NEW state-leak bugs
+	// originating outside the test runner (e.g. init() functions, env
+	// vars set in test bootstrap). The cleanup is purely defensive against
+	// in-test mutations the test forgot to undo.
+	t.Cleanup(func() {
+		forceSmallScreenForTest = false
+		forceAutoSize = false
+		enableDefaultStart = true
+		defaultPerfFastPath = false
+		timelineTrace = false
+		timelineTraceRow = 0
+		debugGeom = false
+		parityWatchDefault = parityWatchOff
+		parityFatalEnabled.Store(true)
+		UpdateProfile()
+	})
 }
 
 func assertDefaultSimpleDraw(t *testing.T, g *Game) {

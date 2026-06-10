@@ -32,15 +32,17 @@ type Compressor struct {
 	sampleRate  int
 }
 
-// NewCompressor creates a compressor with drum-optimized defaults.
+// NewCompressor creates a compressor with drum-optimized defaults. The
+// parameters come from chain_spec.go (CanonicalChainSpec) so desktop and
+// browser stay in lockstep — see chain_spec.go for why this matters.
 func NewCompressor(sampleRate int) *Compressor {
 	c := &Compressor{
-		ThresholdDB: -3,
-		Ratio:       2.5,
-		AttackMs:    5,
-		ReleaseMs:   80,
+		ThresholdDB: CompressorThresholdDB,
+		Ratio:       CompressorRatio,
+		AttackMs:    CompressorAttackMs,
+		ReleaseMs:   CompressorReleaseMs,
 		MakeupDB:    0,
-		KneeDB:      3,
+		KneeDB:      CompressorKneeDB,
 		sampleRate:  sampleRate,
 	}
 	c.recalc()

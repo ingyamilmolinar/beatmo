@@ -82,7 +82,11 @@ func main() {
 
 	// Apply runtime config (GC tuning, profile rates) before any
 	// goroutine spawns so settings take effect for the whole process.
-	rtSnap := async.ConfigureRuntime(async.RuntimeOptions{})
+	// On WASM we set aggressive defaults: a 1500 MB soft heap cap and
+	// GOGC=50 so the runtime collects garbage well before the ~2 GB
+	// linear-memory ceiling that crashes the browser tab. Both can be
+	// overridden via BEATMO_MEMORY_LIMIT_MB / BEATMO_GC_PERCENT envs.
+	rtSnap := async.ConfigureRuntime(wasmFriendlyRuntimeOpts())
 	logger.Infof("[RUNTIME] startup snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d",
 		rtSnap.NumCPU, rtSnap.GOMAXPROCS, rtSnap.GCPercent, rtSnap.MemoryLimit)
 	defer logRuntimeFinal(logger, rtSnap)
@@ -188,6 +192,38 @@ func main() {
 	})
 	defer func() { _ = prefsStore.Close() }()
 	ui.SetFavoritesStore(ui.NewPersistedFavoritesStore(prefsStore))
+
+	// Phase 3: apply user-saved recipe overrides + register user
+	// recipes from disk. The parity gate is flipped on here (production
+	// bootstrap only) so test binaries / parity goldens keep shipped
+	// defaults exactly.
+	if rs, ok := prefsStore.(userprefs.RecipeStore); ok {
+		audio.SetUseUserRecipeOverrides(true)
+		_ = audio.ApplyUserRecipeOverrides(rs)
+		// Phase 4: wire the Synth-tab Save / Save-As persistence sink
+		// to the same backing store. userprefs.RecipeStore directly
+		// satisfies ui.RecipeSaveSink (subset of methods).
+		ui.SetRecipeSink(rs)
+	}
+
+	// Sampler tab: cross-session user-sample persistence (per-file under the
+	// prefs dir on desktop). Mirrors the recipe wiring above; ApplySavedSamples
+	// re-registers persisted samples for playback before the UI starts.
+	if ss, ok := prefsStore.(userprefs.SampleStore); ok {
+		adapter := ui.NewSamplePersistAdapter(ss)
+		audio.SetSampleSink(adapter)
+		audio.SetUseSampleStore(true)
+		audio.ApplySavedSamples(adapter)
+	}
+
+	// Non-destructive sample-edit descriptors (Sampler Save on a synth
+	// source): tiny float maps in prefs.json, rehydrated through
+	// audio.SetSampleEdit so the next trigger renders through the saved edit.
+	// Save / Reset write back through the same store.
+	if se, ok := prefsStore.(userprefs.SampleEditStore); ok {
+		ui.SetSampleEditSink(se)
+		audio.ApplySavedSampleEdits(se)
+	}
 
 	// Create an instance of our game
 	g := ui.New(logger)

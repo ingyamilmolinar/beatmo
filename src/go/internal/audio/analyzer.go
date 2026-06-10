@@ -29,10 +29,11 @@ type Analyzer struct {
 
 // AnalyzerSnapshot exposes the latest computed metrics.
 type AnalyzerSnapshot struct {
-	RMS      float64
-	Peak     float64
-	Spectrum []float64
-	Waveform []float64
+	RMS       float64
+	Peak      float64
+	ClipCount int // running count of samples >|1.0|; surfaced for meter-bridge clip indicators
+	Spectrum  []float64
+	Waveform  []float64
 }
 
 // NewAnalyzer creates an analyzer with the requested window size. The size is
@@ -299,6 +300,26 @@ var preEQAnalyzerRegistry = struct {
 	m map[string]*Analyzer
 }{m: map[string]*Analyzer{}}
 
+// EnableSynthAnalyzer is a no-op on desktop — per-stage scope data flows
+// through the real scope.Service (engine_stop.go) rather than JS-side
+// AnalyserNode taps. Returns nil so the WASM/desktop call shapes match.
+//
+// WASM has a real implementation in analyzer_wasm.go that wires an
+// AudioContext AnalyserNode at the channel ingress.
+func EnableSynthAnalyzer(id string, window int) *Analyzer { return nil }
+
+// SynthAnalyzerSnapshot is a no-op on desktop — see EnableSynthAnalyzer.
+// WASM uses the JS AnalyserNode; the UI bridge in
+// internal/ui/wasm_analyzer_bridge.go is the only caller and it's only
+// compiled for WASM.
+func SynthAnalyzerSnapshot(id string) AnalyzerSnapshot { return AnalyzerSnapshot{} }
+
+// EnableSendBusAnalyzer is a no-op on desktop — see EnableSynthAnalyzer.
+func EnableSendBusAnalyzer(window int) *Analyzer { return nil }
+
+// SendBusAnalyzerSnapshot is a no-op on desktop — see EnableSynthAnalyzer.
+func SendBusAnalyzerSnapshot() AnalyzerSnapshot { return AnalyzerSnapshot{} }
+
 // SetAnalyzerEnabled enables or disables FFT compute for a channel's analyzers.
 // Audio pass-through is never affected; only the FFT/RMS/peak computation is gated.
 func SetAnalyzerEnabled(id string, on bool) {
@@ -323,4 +344,21 @@ func resetAnalyzers() {
 	preEQAnalyzerRegistry.Lock()
 	preEQAnalyzerRegistry.m = map[string]*Analyzer{}
 	preEQAnalyzerRegistry.Unlock()
+}
+
+// AnalyzerBridgeStats returns zero counters on desktop; the JS↔Go bridge
+// counters only exist in the WASM build.
+func AnalyzerBridgeStats() (calls, elementReads uint64) { return 0, 0 }
+
+// ResetAnalyzerBridgeStats is a no-op on desktop.
+func ResetAnalyzerBridgeStats() {}
+
+// ChannelAnalyzerMetrics returns scalar metrics for the channel,
+// derived from the existing analyzer snapshot. Desktop has no JS bridge
+// to short-circuit, so this is just a scalar projection.
+func ChannelAnalyzerMetrics(id string) (peak, rms float64, clips int, active bool) {
+	s := ChannelAnalyzerSnapshot(id)
+	clips = s.ClipCount
+	active = s.Peak > 0 || s.RMS > 0 || clips > 0
+	return s.Peak, s.RMS, clips, active
 }

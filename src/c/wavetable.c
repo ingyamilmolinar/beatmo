@@ -96,6 +96,15 @@ EXPORT void wt_osc_set_freq(wt_osc_t *osc, double freq, int sampleRate) {
     }
 }
 
+EXPORT void wt_osc_set_phase(wt_osc_t *osc, double phase01) {
+    if (!osc->wt) return;
+    double len = (double)osc->wt->length;
+    double p = phase01 - floor(phase01); /* wrap into [0,1) */
+    osc->phase = p * len;
+    if (osc->phase >= len) osc->phase -= len; /* guard floating edge */
+    if (osc->phase < 0.0) osc->phase = 0.0;
+}
+
 EXPORT void wt_osc_process(wt_osc_t *osc, float *out, int samples) {
     const float  *table = osc->wt->table;
     int           len   = osc->wt->length;

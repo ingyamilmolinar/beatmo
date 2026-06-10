@@ -9,15 +9,28 @@ func TestStageLabel(t *testing.T) {
 	}{
 		{StageSynth, "Synth"},
 		{StageAntiPop, "AntiPop"},
-		{StageInsertFX, "InsertFX"},
+		{StageInsertFX, "FX"},
 		{StageEQ, "EQ"},
-		{StageSends, "Sends"},
+		{StageSends, "Bus"},
 		{StageMaster, "Master"},
 	}
 	for _, c := range cases {
 		if got := StageLabel(c.stage); got != c.want {
 			t.Errorf("StageLabel(%d)=%q, want %q", c.stage, got, c.want)
 		}
+	}
+}
+
+func TestStageDescription(t *testing.T) {
+	// Each stage must have a non-empty description for the Chain tab tooltip.
+	for _, s := range AllStages() {
+		if got := StageDescription(s); got == "" {
+			t.Errorf("StageDescription(%d) empty for stage %s", s, StageLabel(s))
+		}
+	}
+	// Unknown stages return empty.
+	if got := StageDescription(Stage(-1)); got != "" {
+		t.Errorf("StageDescription(-1)=%q, want empty", got)
 	}
 }
 

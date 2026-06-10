@@ -43,6 +43,24 @@ const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
 let failed = false;
 const errors = [];
 
+// Gate readiness on REAL exports that only register after Game.New() finishes
+// installing the full JS bridge. Go's init() (js_bootstrap_wasm.go) installs a
+// no-op placeholder `startPlay` BEFORE Game.New() runs, so gating on
+// `typeof startPlay === "function"` races ahead of full init and leaves
+// resetPerfStats / buildPerfRect undefined. These two are registered in the
+// post-init export pass (js_exports_harness.go / js_exports_playback_perf.go),
+// so they are a reliable "fully initialized" signal.
+async function waitForFullInit(page) {
+  await page.waitForFunction(
+    () =>
+      typeof resetPerfStats === "function" &&
+      typeof buildPerfRect === "function" &&
+      typeof startPlay === "function" &&
+      typeof getAudioScheduleMetrics === "function" &&
+      typeof resetAudioScheduleMetrics === "function"
+  );
+}
+
 function softAssert(cond, msg) {
   if (!cond) {
     console.warn(`  WARN: ${msg}`);
@@ -62,8 +80,15 @@ function fmtMs(sec) {
 }
 
 function printAudioMetrics(label, m) {
-  console.log(`  ${label}: count=${m.count} overdue=${m.overdue} minLead=${fmtMs(m.minLead)} avgLag=${fmtMs(m.avgLag)} lagP90=${fmtMs(m.lagP90)} lagP99=${fmtMs(m.lagP99)} maxLag=${fmtMs(m.maxLag)}`);
+  console.log(`  ${label}: count=${m.count} overdue=${m.overdue} smallLead=${m.smallLeadCount} minLead=${fmtMs(m.minLead)} avgLag=${fmtMs(m.avgLag)} lagP90=${fmtMs(m.lagP90)} lagP99=${fmtMs(m.lagP99)} maxLag=${fmtMs(m.maxLag)}`);
 }
+
+// Minimum scheduler events we require to have observed before judging timing.
+// Each scenario runs 8-10s of playback at >=260 BPM across >=1 row, so a
+// healthy scheduler emits hundreds of events. A sane floor proves the
+// scheduler actually ran rather than stalling silently. Kept conservative so
+// it gates on "did real work happen" without being brittle to machine speed.
+const MIN_EVENTS = 50;
 
 // ---------------------------------------------------------------------------
 // Scenario A: Single-row extreme BPM
@@ -72,7 +97,7 @@ console.log("\n=== Scenario A: Single-row extreme (BPM=300, 1 row, 10s) ===");
 {
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof startPlay === "function");
+  await waitForFullInit(page);
   await clearSchedulerMismatches(page);
 
   await page.evaluate(() => {
@@ -97,11 +122,15 @@ console.log("\n=== Scenario A: Single-row extreme (BPM=300, 1 row, 10s) ===");
   console.log("  perfStats:", stats);
   printAudioMetrics("audio", m);
 
-  hardAssert(m && m.count > 0, "A: no audio events");
-  softAssert(m.overdue === 0, `A: ${m.overdue} overdue events`);
+  // Hard gates on metrics that POPULATE on a healthy run.
+  hardAssert(m && m.count >= MIN_EVENTS, `A: count ${m?.count} < ${MIN_EVENTS} (scheduler stalled?)`);
+  hardAssert(m.overdue === 0, `A: ${m.overdue} overdue events (lead<0 — scheduler firing late)`);
+  hardAssert(m.smallLeadCount === 0, `A: ${m.smallLeadCount} events with <3ms lead (scheduler cushion too thin)`);
+  hardAssert(m.minLead != null && m.minLead * 1000 >= 3, `A: minLead ${fmtMs(m.minLead)} < 3ms`);
+  // lagP90/lagP99 are null on a healthy scheduler (no overdue events ⇒ empty
+  // lag samples). Keep as WARN-only; they only carry signal when overdue>0.
   softAssert(m.lagP90 == null || m.lagP90 <= 0.008, `A: lagP90 ${fmtMs(m.lagP90)} > 8ms`);
   softAssert(m.lagP99 == null || m.lagP99 <= 0.015, `A: lagP99 ${fmtMs(m.lagP99)} > 15ms`);
-  softAssert(m.minLead == null || m.minLead * 1000 >= 3, `A: minLead ${fmtMs(m.minLead)} < 3ms`);
 
   await page.close();
 }
@@ -113,7 +142,7 @@ console.log("\n=== Scenario B: Multi-row stress (BPM=280, 6 rows, 10s) ===");
 {
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof startPlay === "function");
+  await waitForFullInit(page);
   await clearSchedulerMismatches(page);
 
   await page.evaluate(() => {
@@ -137,7 +166,12 @@ console.log("\n=== Scenario B: Multi-row stress (BPM=280, 6 rows, 10s) ===");
   console.log("  perfStats:", stats);
   printAudioMetrics("audio", m);
 
-  hardAssert(m && m.count > 0, "B: no audio events");
+  // Hard gates on metrics that POPULATE on a healthy run.
+  hardAssert(m && m.count >= MIN_EVENTS, `B: count ${m?.count} < ${MIN_EVENTS} (scheduler stalled?)`);
+  hardAssert(m.overdue === 0, `B: ${m.overdue} overdue events (lead<0 — scheduler firing late)`);
+  hardAssert(m.smallLeadCount === 0, `B: ${m.smallLeadCount} events with <3ms lead (scheduler cushion too thin)`);
+  hardAssert(m.minLead != null && m.minLead * 1000 >= 3, `B: minLead ${fmtMs(m.minLead)} < 3ms`);
+  // null-on-healthy lag percentiles: WARN-only.
   softAssert(m.lagP90 == null || m.lagP90 <= 0.010, `B: lagP90 ${fmtMs(m.lagP90)} > 10ms`);
   softAssert(m.lagP99 == null || m.lagP99 <= 0.020, `B: lagP99 ${fmtMs(m.lagP99)} > 20ms`);
   softAssert(m.avgLag == null || m.avgLag <= 0.005, `B: avgLag ${fmtMs(m.avgLag)} > 5ms`);
@@ -152,7 +186,7 @@ console.log("\n=== Scenario C: Real project extreme (BPM=260, beatmo.json, 8s) =
 {
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof startPlay === "function");
+  await waitForFullInit(page);
   await clearSchedulerMismatches(page);
 
   const projectJson = fs.readFileSync(path.join(repoRoot, "src", "go", "internal", "assets", "beatmo_project_fixture.json"), "utf8");
@@ -185,7 +219,12 @@ console.log("\n=== Scenario C: Real project extreme (BPM=260, beatmo.json, 8s) =
   console.log("  perfStats:", stats);
   printAudioMetrics("audio", m);
 
-  hardAssert(m && m.count > 0, "C: no audio events");
+  // Hard gates on metrics that POPULATE on a healthy run.
+  hardAssert(m && m.count >= MIN_EVENTS, `C: count ${m?.count} < ${MIN_EVENTS} (scheduler stalled?)`);
+  hardAssert(m.overdue === 0, `C: ${m.overdue} overdue events (lead<0 — scheduler firing late)`);
+  hardAssert(m.smallLeadCount === 0, `C: ${m.smallLeadCount} events with <3ms lead (scheduler cushion too thin)`);
+  hardAssert(m.minLead != null && m.minLead * 1000 >= 3, `C: minLead ${fmtMs(m.minLead)} < 3ms`);
+  // null-on-healthy lag percentiles: WARN-only.
   softAssert(m.lagP90 == null || m.lagP90 <= 0.010, `C: lagP90 ${fmtMs(m.lagP90)} > 10ms`);
   softAssert(m.lagP99 == null || m.lagP99 <= 0.020, `C: lagP99 ${fmtMs(m.lagP99)} > 20ms`);
 
@@ -199,7 +238,7 @@ console.log("\n=== Scenario D: BPM ramp (120 -> 320, 4 rows, 2s/step) ===");
 {
   const page = await browser.newPage();
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof startPlay === "function");
+  await waitForFullInit(page);
   await clearSchedulerMismatches(page);
 
   await page.evaluate(() => {
@@ -234,6 +273,7 @@ console.log("\n=== Scenario D: BPM ramp (120 -> 320, 4 rows, 2s/step) ===");
       bpm,
       count: m?.count ?? 0,
       overdue: m?.overdue ?? 0,
+      smallLeadCount: m?.smallLeadCount ?? 0,
       lagP90: m?.lagP90,
       lagP99: m?.lagP99,
       avgLag: m?.avgLag,
@@ -266,9 +306,24 @@ console.log("\n=== Scenario D: BPM ramp (120 -> 320, 4 rows, 2s/step) ===");
     console.log("\n  No breakpoint found up to BPM=320");
   }
 
-  // Assert timing holds at BPM <= 280
+  // Each ramp step runs only 2s with a 0.5s scheduler warmup, so far fewer
+  // events accrue per step than the long single-BPM scenarios. Use a lower
+  // per-step floor that still proves the scheduler ran at each BPM.
+  const MIN_EVENTS_PER_STEP = 10;
+
+  // Hard gates: timing must hold across the whole sweep up to BPM=280.
+  // Gate on metrics that POPULATE on a healthy scheduler.
   for (const r of rampResults) {
     if (r.bpm > 280) continue;
+    hardAssert(r.count >= MIN_EVENTS_PER_STEP,
+      `D: count ${r.count} < ${MIN_EVENTS_PER_STEP} at BPM=${r.bpm} (scheduler stalled?)`);
+    hardAssert(r.overdue === 0,
+      `D: ${r.overdue} overdue events at BPM=${r.bpm} (lead<0 — scheduler firing late)`);
+    hardAssert(r.smallLeadCount === 0,
+      `D: ${r.smallLeadCount} events with <3ms lead at BPM=${r.bpm} (cushion too thin)`);
+    hardAssert(r.minLead != null && r.minLead * 1000 >= 3,
+      `D: minLead ${fmtMs(r.minLead)} < 3ms at BPM=${r.bpm}`);
+    // null-on-healthy lag percentiles: WARN-only.
     softAssert(r.lagP90 == null || r.lagP90 <= 0.010,
       `D: lagP90 at BPM=${r.bpm} is ${fmtMs(r.lagP90)} > 10ms`);
     softAssert(r.lagP99 == null || r.lagP99 <= 0.020,

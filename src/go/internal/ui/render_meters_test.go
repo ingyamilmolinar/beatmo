@@ -134,7 +134,7 @@ func TestLevelsLatch_TriggersOnClipIncrease(t *testing.T) {
 		t.Fatalf("fresh latch should not be active")
 	}
 
-	if !l.Update(1) {
+	if !l.Update(1, -6, -12) {
 		t.Fatalf("latch must activate on clip increase (0 → 1)")
 	}
 	if l.LatchFramesLeft != clipLatchFrames {
@@ -143,14 +143,14 @@ func TestLevelsLatch_TriggersOnClipIncrease(t *testing.T) {
 
 	// No new clip — counter decays.
 	for i := 0; i < 10; i++ {
-		l.Update(1)
+		l.Update(1, -6, -12)
 	}
 	if l.LatchFramesLeft != clipLatchFrames-10 {
 		t.Errorf("latch decay after 10 frames: got %d, want %d", l.LatchFramesLeft, clipLatchFrames-10)
 	}
 
 	// New clip resets the latch.
-	if !l.Update(2) {
+	if !l.Update(2, -6, -12) {
 		t.Fatalf("latch must re-activate on clip increase (1 → 2)")
 	}
 	if l.LatchFramesLeft != clipLatchFrames {
@@ -159,7 +159,7 @@ func TestLevelsLatch_TriggersOnClipIncrease(t *testing.T) {
 
 	// Drain the latch.
 	for i := 0; i < clipLatchFrames+5; i++ {
-		l.Update(2)
+		l.Update(2, -6, -12)
 	}
 	if l.Latched() {
 		t.Errorf("latch should expire after %d frames of no new clips", clipLatchFrames)

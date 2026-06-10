@@ -34,13 +34,15 @@ func TestDesignTokensFreshness(t *testing.T) {
 	tmpTokens := filepath.Join(tmpDir, "design_tokens.gen.go")
 	tmpComponents := filepath.Join(tmpDir, "design_components.gen.go")
 	tmpProfile := filepath.Join(tmpDir, "design_profile.gen.go")
+	tmpDensity := filepath.Join(tmpDir, "design_density.gen.go")
 
 	goBin := goExecutable()
 	cmd := exec.Command(goBin, "run", "./cmd/gen_design_tokens",
 		"-design", "../../DESIGN.md",
 		"-out", tmpTokens,
 		"-out-components", tmpComponents,
-		"-out-profile", tmpProfile)
+		"-out-profile", tmpProfile,
+		"-out-density", tmpDensity)
 	cmd.Dir = srcDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -55,6 +57,7 @@ func TestDesignTokensFreshness(t *testing.T) {
 		{"design_tokens.gen.go", filepath.Join(uiDir, "design_tokens.gen.go"), tmpTokens},
 		{"design_components.gen.go", filepath.Join(uiDir, "design_components.gen.go"), tmpComponents},
 		{"design_profile.gen.go", filepath.Join(uiDir, "design_profile.gen.go"), tmpProfile},
+		{"design_density.gen.go", filepath.Join(uiDir, "design_density.gen.go"), tmpDensity},
 	} {
 		committed, err := os.ReadFile(pair.committed)
 		if err != nil {
@@ -86,7 +89,10 @@ func repoSubdir(t *testing.T, sub string) string {
 	dir := cwd
 	for i := 0; i < 8; i++ {
 		try := filepath.Join(dir, sub)
-		if _, err := os.Stat(try); err == nil {
+		// Require a go.mod sentinel so a stray nested directory (e.g. a
+		// leftover src/go/src/go from a misdirected generator run) cannot
+		// shadow the real repo src/go in the upward walk.
+		if _, err := os.Stat(filepath.Join(try, "go.mod")); err == nil {
 			return try
 		}
 		parent := filepath.Dir(dir)

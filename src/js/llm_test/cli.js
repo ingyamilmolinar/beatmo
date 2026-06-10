@@ -28,12 +28,14 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { chromium, devices } from "playwright";
 import { buildMainWasm, createServer } from "../real_input_test_helpers.js";
+import { launchBrowser } from "../platform/launch.js";
 import { createRecorder } from "./recorder.js";
 import { loadRecording, createReplayer } from "./replayer.js";
 import { createEvaluator, PROMPT_TEMPLATES } from "./evaluator.js";
 import { createAgent } from "./agent.js";
 import { generateReport } from "./reporter.js";
 import { loadTest, listTests, loadFixture } from "./test_loader.js";
+import { evaluateGate } from "./checkpoints.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = path.resolve(__dirname, "..");
@@ -528,11 +530,12 @@ function resolveAgentParams(opts) {
   let fixtureJson = null;
   let deviceName = null;
   let testMeta = null;
+  let requiredCheckpoints = [];
   const model = opts.model ?? "claude-haiku-4-5-20251001";
   const enableVideo = opts.enableVideo ?? true;
 
   if (opts.test) {
-    const testCase = loadTest(opts.test);
+    const testCase = loadTest(opts.test, opts.platform);
     if (!testCase) {
       throw new Error(`Test case not found: ${opts.test}. Run 'list-tests' to see available tests.`);
     }
@@ -543,6 +546,9 @@ function resolveAgentParams(opts) {
     viewportStr = opts.viewport ?? testCase.meta.viewport ?? "1280x720";
     name = opts.name ?? testCase.meta.name;
     deviceName = testCase.meta.device;
+    if (Array.isArray(testCase.meta.required_checkpoints)) {
+      requiredCheckpoints = testCase.meta.required_checkpoints;
+    }
 
     if (testCase.meta.fixture && testCase.fixturePath) {
       fixtureJson = fs.readFileSync(testCase.fixturePath, "utf-8");
@@ -562,7 +568,7 @@ function resolveAgentParams(opts) {
 
   return {
     taskPrompt, platform, maxIterations, name, model, enableVideo,
-    vw, vh, fixtureJson, deviceName, testMeta,
+    vw, vh, fixtureJson, deviceName, testMeta, requiredCheckpoints,
   };
 }
 
@@ -577,7 +583,7 @@ function resolveAgentParams(opts) {
 async function runAgentTest(params, shared) {
   const {
     taskPrompt, platform, maxIterations, name, model, enableVideo,
-    vw, vh, fixtureJson, deviceName, testMeta,
+    vw, vh, fixtureJson, deviceName, testMeta, requiredCheckpoints = [],
   } = params;
 
   const savePath = path.join(recordingsDir, name);
@@ -595,14 +601,24 @@ async function runAgentTest(params, shared) {
     server = await createServer();
     port = server.address().port;
     console.log(`[agent] Server started on port ${port}`);
-    browser = await chromium.launch({
+    // Honor TEST_PLATFORM so `make agent-tests TAGS=sanity PLATFORM_DEVICE=browserstack:iphone15-safari`
+    // (set via env or wrapper) can drive the agent against a real device. For the
+    // default chromium-local platform, keep the headless GPU args so WebGL renders.
+    const launch = await launchBrowser({
       headless: true,
-      args: HEADLESS_GPU_ARGS,
+      extraArgs: HEADLESS_GPU_ARGS.filter((a) => a !== "--autoplay-policy=no-user-gesture-required"),
     });
+    browser = launch.browser;
+    // Stash cleanup so the agent's existing browser.close() path tears down
+    // both the local browser and any BrowserStack tunnel.
+    if (launch.cleanup && browser && !browser.__beatmoCleanup) {
+      browser.__beatmoCleanup = launch.cleanup;
+    }
   }
 
-  // Build browser context — mobile gets device emulation
-  const contextOpts = {};
+  // Build browser context — mobile gets device emulation.
+  // acceptDownloads enables the measure_audio tool to capture the recording zip.
+  const contextOpts = { acceptDownloads: true };
 
   if (platform === "mobile") {
     const resolvedDevice = deviceName ?? "iPhone 12 landscape";
@@ -695,6 +711,52 @@ async function runAgentTest(params, shared) {
     await page.waitForTimeout(500);
   }
 
+  // Runtime ground truth: read the LIVE demo state (instrument rows + node count)
+  // from the running app and prepend it to the task prompt. This keeps the .md
+  // tests from hardcoding "7 rows: Kick-deep…"; they reference the live state and
+  // stay correct when the default demo circuit changes.
+  let finalTaskPrompt = taskPrompt;
+  try {
+    const live = await page.evaluate(() => {
+      const out = { rows: [], totalRows: 0, totalNodes: 0, bpm: null, subdiv: null };
+      if (typeof fullLayoutSnapshot === "function") {
+        const s = fullLayoutSnapshot();
+        if (s && s.state) {
+          out.totalRows = s.state.totalRows;
+          out.bpm = s.state.bpm;
+          out.subdiv = s.state.subdiv;
+        }
+      }
+      if (typeof exportJSON === "function") {
+        try {
+          const doc = JSON.parse(exportJSON());
+          if (Array.isArray(doc.instruments)) {
+            out.rows = doc.instruments.map((ins, i) => ({ row: i, name: ins.name, id: ins.id, volume: ins.volume }));
+            if (!out.totalRows) out.totalRows = doc.instruments.length;
+          }
+          if (Array.isArray(doc.nodes)) out.totalNodes = doc.nodes.length;
+        } catch (_) {}
+      }
+      return out;
+    });
+    const rowLines = (live.rows || [])
+      .map((r) => `  - row ${r.row}: ${r.name} (id=${r.id}, volume=${r.volume})`)
+      .join("\n");
+    const liveStateBlock =
+      `## LIVE DEMO STATE (authoritative — read from the running app at test start)\n` +
+      `- Total rows: ${live.totalRows}\n` +
+      `- Total nodes: ${live.totalNodes}\n` +
+      (live.bpm != null ? `- BPM: ${live.bpm}\n` : "") +
+      (live.subdiv != null ? `- Subdiv: ${live.subdiv}\n` : "") +
+      (rowLines ? `- Instrument rows (0-indexed):\n${rowLines}\n` : "") +
+      `\nUse THESE values as ground truth. Where a step says "row N" or names an ` +
+      `instrument, map it to this list. Do NOT assume a fixed row count or names.\n\n`;
+    finalTaskPrompt = liveStateBlock + taskPrompt;
+    console.log(`[agent] Live demo state: ${live.totalRows} rows, ${live.totalNodes} nodes`);
+  } catch (err) {
+    console.warn(`[agent] Could not read live demo state: ${err.message}`);
+  }
+
   const effectiveVP = contextOpts.viewport ?? { width: vw, height: vh };
 
   // Start in-browser canvas+audio recording (replaces Playwright's silent video)
@@ -724,15 +786,21 @@ async function runAgentTest(params, shared) {
 
   let result;
   try {
-    result = await agent.run(taskPrompt);
+    result = await agent.run(finalTaskPrompt);
   } catch (err) {
     console.error(`[agent] Agent error: ${err.message}`);
     result = {
       task: taskPrompt, model, platform, error: err.message,
       iterations: 0, durationMs: 0, inputTokens: 0, outputTokens: 0,
-      estimatedCost: 0, issues: [], agentLog: [], summary: "",
+      estimatedCost: 0, issues: [], checkpoints: [], agentLog: [], summary: "",
     };
   }
+
+  // Objective gate: turn the checkpoint ledger + phase results into a pass/fail
+  // verdict (computed before save so it lands in agent_log.json).
+  const gate = evaluateGate(result, requiredCheckpoints);
+  result.gate = gate;
+  result.requiredCheckpoints = requiredCheckpoints;
 
   // Stop recording and save
   await recorder.stop();
@@ -771,6 +839,17 @@ async function runAgentTest(params, shared) {
   if (result.issues?.length > 0) {
     console.log(`[agent]   ${result.issues.length} issues found`);
   }
+  // Objective gate summary (unique checkpoint names; retries collapse to final).
+  console.log(
+    `[agent]   checkpoints: ${gate.checkpointsPassed}/${gate.checkpointsTotal} passed` +
+    (requiredCheckpoints.length ? ` (${requiredCheckpoints.length} required)` : "")
+  );
+  if (gate.ok) {
+    console.log(`[agent]   GATE: PASS ✓`);
+  } else {
+    console.log(`[agent]   GATE: FAIL ✗`);
+    for (const r of gate.reasons) console.log(`[agent]     - ${r}`);
+  }
   // Auto-generate HTML report
   try {
     const reportPath = path.join(savePath, "report.html");
@@ -781,9 +860,14 @@ async function runAgentTest(params, shared) {
     console.log(`[agent] Manual: node src/js/llm_test/cli.js report --name ${name}`);
   }
 
-  // Clean up owned resources
+  // Clean up owned resources. When TEST_PLATFORM=browserstack:*, the launch
+  // wrapper attached a cleanup that also tears down the tunnel.
   if (ownsResources) {
-    try { await browser.close(); } catch (_) {}
+    if (browser && typeof browser.__beatmoCleanup === "function") {
+      try { await browser.__beatmoCleanup(); } catch (_) {}
+    } else {
+      try { await browser.close(); } catch (_) {}
+    }
     server.close();
   }
 
@@ -819,7 +903,12 @@ async function cmdAgent(args) {
     enableVideo: !values["no-video"],
   });
 
-  await runAgentTest(params);
+  const result = await runAgentTest(params);
+  // Non-zero exit on gate failure so CI / make agent reflects a real regression.
+  if (result?.gate && !result.gate.ok) {
+    console.error(`[agent] TEST FAILED — see GATE reasons above.`);
+    process.exitCode = 1;
+  }
 }
 
 // --- Report Command ---
@@ -959,14 +1048,17 @@ async function cmdRunTests(args) {
     try {
       const params = resolveAgentParams({
         test: t.name,
+        platform: t.platform,
         model: values.model,
-        name: `batch_${t.name}_${Date.now()}`,
+        name: `batch_${t.name}_${t.platform}_${Date.now()}`,
       });
-      await runAgentTest(params, shared);
+      const res = await runAgentTest(params, shared);
+      const gateOk = !res?.gate || res.gate.ok;
       batchResults.push({
         name: t.name,
         platform: t.platform,
-        status: "completed",
+        status: gateOk ? "completed" : "failed",
+        gateReasons: gateOk ? [] : (res.gate?.reasons ?? []),
         durationMs: Date.now() - testStart,
       });
     } catch (err) {
@@ -1005,8 +1097,15 @@ async function cmdRunTests(args) {
   }
 
   const completed = batchResults.filter((r) => r.status === "completed").length;
+  const failed = batchResults.filter((r) => r.status === "failed").length;
   const errors = batchResults.filter((r) => r.status === "error").length;
-  console.log(`\nTotal: ${batchResults.length} | Completed: ${completed} | Errors: ${errors} | ${(totalDuration / 1000).toFixed(1)}s`);
+  console.log(`\nTotal: ${batchResults.length} | Completed: ${completed} | Failed: ${failed} | Errors: ${errors} | ${(totalDuration / 1000).toFixed(1)}s`);
+  for (const r of batchResults.filter((r) => r.status === "failed")) {
+    console.log(`  FAILED ${r.name} (${r.platform}):`);
+    for (const reason of r.gateReasons) console.log(`    - ${reason}`);
+  }
+  // Non-zero exit if any test failed its gate or errored, so CI reflects it.
+  if (failed > 0 || errors > 0) process.exitCode = 1;
 
   // Save batch results
   if (values.save) {

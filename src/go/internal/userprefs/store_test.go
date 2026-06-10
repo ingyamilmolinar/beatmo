@@ -4,7 +4,6 @@ package userprefs
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
@@ -170,28 +169,6 @@ func TestStoreLoadCorruptedJSONReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestStoreLoadVersionMismatchReturnsEmpty(t *testing.T) {
-	s, path := newTestStore(t)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	doc := map[string]any{"version": 99, "favorites": []string{"future-id"}}
-	data, _ := json.Marshal(doc)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	favs, err := s.LoadFavorites()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(favs) != 0 {
-		t.Fatalf("expected empty map for unsupported version, got %v", favs)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("file should be left intact for forward-compat recovery: %v", err)
-	}
-}
-
 func TestStoreAtomicWriteUsesTempFile(t *testing.T) {
 	// We can't easily fault-inject a crash mid-write in pure Go, but we
 	// can verify the write goes through a `.tmp` companion file that is
@@ -245,39 +222,14 @@ func TestStorePoolLazyAcquired(t *testing.T) {
 	}
 }
 
-func TestStoreSerializesSorted(t *testing.T) {
-	// Stable on-disk diff: marshalFavorites sorts ids alphabetically.
-	favs := map[string]bool{"zeta": true, "alpha": true, "mike": true}
-	data, err := marshalFavorites(favs)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+func TestStoreParsePrefsEmptyData(t *testing.T) {
+	favs, overrides, recipes := parsePrefs(nil, nil)
+	if len(favs) != 0 || len(overrides) != 0 || len(recipes) != 0 {
+		t.Fatalf("expected empty state for nil data, got favs=%v overrides=%v recipes=%v", favs, overrides, recipes)
 	}
-	var parsed favoritesV1
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if parsed.Version != SchemaVersion {
-		t.Fatalf("version=%d want %d", parsed.Version, SchemaVersion)
-	}
-	want := []string{"alpha", "mike", "zeta"}
-	if len(parsed.Favorites) != len(want) {
-		t.Fatalf("favorites len=%d want %d", len(parsed.Favorites), len(want))
-	}
-	for i, id := range want {
-		if parsed.Favorites[i] != id {
-			t.Fatalf("favorites[%d]=%q want %q (full=%v)", i, parsed.Favorites[i], id, parsed.Favorites)
-		}
-	}
-}
-
-func TestStoreParseFavoritesEmptyData(t *testing.T) {
-	out := parseFavorites(nil, nil)
-	if len(out) != 0 {
-		t.Fatalf("expected empty map for nil data, got %v", out)
-	}
-	out = parseFavorites([]byte{}, nil)
-	if len(out) != 0 {
-		t.Fatalf("expected empty map for empty slice, got %v", out)
+	favs, overrides, recipes = parsePrefs([]byte{}, nil)
+	if len(favs) != 0 || len(overrides) != 0 || len(recipes) != 0 {
+		t.Fatalf("expected empty state for empty slice, got favs=%v overrides=%v recipes=%v", favs, overrides, recipes)
 	}
 }
 

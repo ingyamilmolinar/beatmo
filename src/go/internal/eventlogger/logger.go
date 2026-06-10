@@ -184,7 +184,11 @@ func (l *Logger) dispatch(e hooks.Event) {
 	l.writeEvent(e)
 }
 
-// writeEvent runs the per-Kind formatter and emits one INFO line.
+// writeEvent runs the per-Kind formatter and emits one INFO line. When the
+// event carries a non-zero Source (captured at the user-action call site by
+// the emit helper), it is appended as a trailing "src=pkg/file.go:line"
+// column so the reader can grep directly to the source. The middleware
+// layer (helper, bus, this formatter) is intentionally NOT what gets logged.
 func (l *Logger) writeEvent(e hooks.Event) {
 	f, ok := lookupFormatter(e.Kind)
 	if !ok {
@@ -195,10 +199,14 @@ func (l *Logger) writeEvent(e hooks.Event) {
 		return
 	}
 	l.written.Add(1)
+	srcSuffix := ""
+	if s := e.Source.String(); s != "" {
+		srcSuffix = "  src=" + s
+	}
 	if out.tag == "" {
-		l.log.Infof("%s", out.msg)
+		l.log.Infof("%s%s", out.msg, srcSuffix)
 	} else {
-		l.log.Infof("[%s] %s", out.tag, out.msg)
+		l.log.Infof("[%s] %s%s", out.tag, out.msg, srcSuffix)
 	}
 }
 

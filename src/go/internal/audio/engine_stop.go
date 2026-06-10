@@ -310,15 +310,26 @@ func (m *mixer) Read(p []byte) (int, error) {
 //
 // Caller must hold m.mu.
 func (m *mixer) processBlock(offset, blockLen int, p []byte) {
-	// Lazily initialize work buffers (needed for tests that create mixer{} directly)
+	// Lazily initialize work buffers (needed for tests that create mixer{} directly).
+	// Each buffer is checked individually so older test fixtures that pre-allocate
+	// some but not all buffers still get the missing ones filled in.
 	if m.workBuf == nil {
 		m.workBuf = make([]float64, blockSize)
+	}
+	if m.voiceTemp == nil {
 		m.voiceTemp = make([]float64, blockSize)
+	}
+	if m.masterBuf == nil {
 		m.masterBuf = make([]float64, blockSize)
+	}
+	if m.postFXBuf == nil {
+		m.postFXBuf = make([]float64, blockSize)
+	}
+	if m.postEQBuf == nil {
 		m.postEQBuf = make([]float64, blockSize)
-		if m.instSlots == nil {
-			m.instSlots = make(map[string]int)
-		}
+	}
+	if m.instSlots == nil {
+		m.instSlots = make(map[string]int)
 	}
 
 	// TEST_TONE mode: output pure 440Hz sine wave, bypassing all synth
@@ -467,16 +478,32 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	}
 
 	// === PHASE 2: Per-instrument channel processing → masterBuf ===
+	//
+	// Split into two sub-passes so the scope panel can compare the signal
+	// between insert FX and EQ (scope.StageInsertFX vs scope.StageEQ).
+	//   Phase 2a: instBuf → ProcessInsertsBlockLocal → postFXBuf (tap StageInsertFX)
+	//   Phase 2b: postFXBuf → ProcessEQBlockLocal → postEQBuf (tap StageEQ)
 	if !bypassChannelProc {
 		for _, slot := range m.activeSlots {
 			id := m.instSlotIDs[slot]
 			ch := channelForInstrument(id)
-			// Zero the scratch buffer for this instrument.
+			// Zero the post-inserts scratch buffer for this instrument.
+			for k := 0; k < blockLen; k++ {
+				m.postFXBuf[k] = 0
+			}
+			ch.ProcessInsertsBlockLocal(m.instBufs[slot][:blockLen], m.postFXBuf[:blockLen])
+			// Tap the post-inserts / pre-EQ per-instrument signal.
+			if scopeSvc != nil {
+				scopeSvc.PushSamples(scope.StageInsertFX, id, m.postFXBuf[:blockLen])
+			}
+			if exportSvc != nil {
+				exportSvc.PushSamples(scope.StageInsertFX, id, m.postFXBuf[:blockLen])
+			}
+			// Zero the post-EQ scratch buffer.
 			for k := 0; k < blockLen; k++ {
 				m.postEQBuf[k] = 0
 			}
-			// Process into scratch buffer (not directly into masterBuf).
-			ch.ProcessBlockLocal(m.instBufs[slot][:blockLen], m.postEQBuf[:blockLen])
+			ch.ProcessEQBlockLocal(m.postFXBuf[:blockLen], m.postEQBuf[:blockLen])
 			// Tap the post-EQ per-instrument signal.
 			if scopeSvc != nil {
 				scopeSvc.PushSamples(scope.StageEQ, id, m.postEQBuf[:blockLen])
@@ -526,6 +553,9 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	if analyzerSvc != nil {
 		analyzerSvc.PushMasterBuf(m.workBuf[:blockLen])
 	}
+	// Phase 2: feed the same block through the K-weighted LUFS
+	// integrator so the Levels tab's LUFS-S readout follows the master.
+	FeedMasterLUFS(m.workBuf[:blockLen])
 
 	// Scope tap: final master output (after master EQ/compressor).
 	if scopeSvc != nil {
@@ -595,11 +625,13 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// Use math.Round instead of truncation to reduce quantization noise.
 	for i := 0; i < blockLen; i++ {
 		sum := m.workBuf[i]
-		// Soft-clip: gently saturate peaks above 0.9 instead of hard clipping
-		if sum > 0.9 {
-			sum = 0.9 * math.Tanh(sum/0.9)
-		} else if sum < -0.9 {
-			sum = -0.9 * math.Tanh(sum/-0.9)
+		// Soft-clip: gently saturate peaks above SoftClipThreshold instead of
+		// hard clipping. Threshold lives in chain_spec.go so the browser's
+		// WaveShaper limiter curve uses the identical knee.
+		if sum > SoftClipThreshold {
+			sum = SoftClipThreshold * math.Tanh(sum/SoftClipThreshold)
+		} else if sum < -SoftClipThreshold {
+			sum = -SoftClipThreshold * math.Tanh(sum/-SoftClipThreshold)
 		}
 		// Safety clamp (should rarely trigger after soft-clip)
 		if sum > 1 {
@@ -622,7 +654,9 @@ var debugVoiceCount int64
 // mixHeadroom is applied per-voice BEFORE accumulation to prevent clipping.
 // -14.9dB headroom (0.18) provides ~3dB more margin than the previous 0.25
 // for dense mixes (7+ instruments) while the master compressor normalizes.
-const mixHeadroom = 0.18
+// Value lives in chain_spec.go (VoiceHeadroom) as the single source of truth
+// shared with the cross-platform parity surface.
+const mixHeadroom = VoiceHeadroom
 
 // ensureInstBuf returns the per-instrument buffer for the given slot, zeroing
 // it on first use within the current block. Uses O(1) slice indexing.

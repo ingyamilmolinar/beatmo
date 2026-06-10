@@ -22,9 +22,12 @@ func mobileAddRowFooterCommonSetup(t *testing.T) *Game {
 }
 
 // TestMobileAddRowButton_VisibleAndFullWidth_NoRows verifies the add-row
-// footer button is rendered (non-empty rect) and spans the rack panel
-// width even when there are no extra rows beyond the default. This is the
-// "always usable, regardless of row count" guarantee for a sparse layout.
+// footer button is rendered (non-empty rect) and spans most of the rack
+// panel width even when there are no extra rows beyond the default. The
+// add-row "+" now owns the bottom rack strip on its own — the row-zoom
+// +/- chips have moved to the timeline header band (next to the ruler).
+// We assert separately that the chips live inside the timeline widget
+// rect (not the rack rect).
 func TestMobileAddRowButton_VisibleAndFullWidth_NoRows(t *testing.T) {
 	g := mobileAddRowFooterCommonSetup(t)
 	dv := g.drum
@@ -37,14 +40,43 @@ func TestMobileAddRowButton_VisibleAndFullWidth_NoRows(t *testing.T) {
 	if rackRect.Empty() {
 		t.Fatal("rack rect is empty; layout did not run")
 	}
+	// The add-row button alone must span ≥ half the rack now that the
+	// zoom chips no longer share the strip.
 	if btnRect.Dx() < rackRect.Dx()/2 {
-		t.Errorf("expected full-width footer; got width=%d (rack width=%d)",
+		t.Errorf("expected add-row button to span ≥ half of rack; got width=%d (rack width=%d)",
 			btnRect.Dx(), rackRect.Dx())
 	}
-	// Footer should be horizontally inside the rack panel.
+	// Add-row stays inside the rack panel horizontally.
 	if btnRect.Min.X < rackRect.Min.X || btnRect.Max.X > rackRect.Max.X {
-		t.Errorf("footer X range [%d,%d] exceeds rack X range [%d,%d]",
+		t.Errorf("add-row button X range [%d,%d] exceeds rack X range [%d,%d]",
 			btnRect.Min.X, btnRect.Max.X, rackRect.Min.X, rackRect.Max.X)
+	}
+	// The row-zoom chips live in the timeline widget area now.
+	tlRect := dv.widgetRects[WidgetTimeline]
+	if tlRect.Empty() {
+		t.Fatal("timeline widget rect empty; preconditions not met")
+	}
+	chipUnion := image.Rectangle{}
+	if dv.rowZoomDecBtn != nil {
+		if r := dv.rowZoomDecBtn.Rect(); !r.Empty() {
+			chipUnion = r
+		}
+	}
+	if dv.rowZoomIncBtn != nil {
+		if r := dv.rowZoomIncBtn.Rect(); !r.Empty() {
+			if chipUnion.Empty() {
+				chipUnion = r
+			} else {
+				chipUnion = chipUnion.Union(r)
+			}
+		}
+	}
+	if chipUnion.Empty() {
+		t.Fatalf("row-zoom chips empty on mobile default layout")
+	}
+	if chipUnion.Min.X < tlRect.Min.X || chipUnion.Max.X > tlRect.Max.X {
+		t.Errorf("row-zoom chip union X range [%d,%d] escapes timeline rect X range [%d,%d]",
+			chipUnion.Min.X, chipUnion.Max.X, tlRect.Min.X, tlRect.Max.X)
 	}
 }
 
@@ -159,9 +191,12 @@ func TestMobileAddRowButton_BelowRowsArea(t *testing.T) {
 			btnRect.Min.Y, rowsBottom)
 	}
 
-	// Sanity: rect should be within the bottom rowHeight strip of the rack.
-	footerStripTop := rackRect.Max.Y - rh
-	footerStrip := image.Rect(rackRect.Min.X, footerStripTop, rackRect.Max.X, rackRect.Max.Y)
+	// Sanity: rect should be within the bottom rowHeight strip of the
+	// USABLE rack region (rowsBottom-rh ↘ rowsBottom). The footer strip
+	// is anchored to rowsBottom() — NOT to rackRect.Max.Y — so it stays
+	// above the mobile bottom action bar (Pads/EQ/Wave/...).
+	footerStripTop := dv.rowsBottom() - rh
+	footerStrip := image.Rect(rackRect.Min.X, footerStripTop, rackRect.Max.X, dv.rowsBottom())
 	if !btnRect.Overlaps(footerStrip) {
 		t.Errorf("add-row button %v does not overlap footer strip %v", btnRect, footerStrip)
 	}

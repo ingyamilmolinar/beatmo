@@ -27,6 +27,7 @@ func (dv *DrumView) buildRowSprite(i int) int {
 	}
 	n := len(dv.Rows[i].Steps)
 	if n < 1 {
+		releaseImage(dv.rowCache[i])
 		dv.rowCache[i] = newTrackedImage("rowCache.empty", w, h)
 		dv.rowCacheLen = dv.Length
 		dv.rowCacheW, dv.rowCacheH = w, h
@@ -56,6 +57,7 @@ func (dv *DrumView) buildRowSprite(i int) int {
 				dv.rowCacheScratch = scratch
 			}
 			if dv.rowCacheScratch[i] == nil || dv.rowCacheScratch[i].Bounds().Dx() != w || dv.rowCacheScratch[i].Bounds().Dy() != h {
+				releaseImage(dv.rowCacheScratch[i])
 				dv.rowCacheScratch[i] = newTrackedImage("rowCacheScratch", w, h)
 			} else {
 				dv.rowCacheScratch[i].Clear()
@@ -179,6 +181,7 @@ func (dv *DrumView) buildRowSprite(i int) int {
 		img = dv.rowCache[i]
 		img.Clear()
 	} else {
+		releaseImage(dv.rowCache[i])
 		img = newTrackedImage("rowSprite", w, h)
 	}
 	// Alternating row stripe background for subtle visual grouping.

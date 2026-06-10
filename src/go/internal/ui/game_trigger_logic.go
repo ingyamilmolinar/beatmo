@@ -6,9 +6,6 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-// Backward-compatible wrapper used by tests that expect (id, vol).
-func (g *Game) queueSound(id string, vol float64) { g.queueSoundParams(id, vol, 0, 1) }
-
 func (g *Game) incrementLogicTriggerCount(row int, id model.NodeID) int {
 	if g.nodeLogicTriggerCountsByRow == nil {
 		g.nodeLogicTriggerCountsByRow = make(map[int]map[model.NodeID]int)

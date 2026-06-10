@@ -96,8 +96,14 @@ function parseFrontmatter(content) {
  * @param {string} name - Test name (without .test.md extension)
  * @returns {{ meta: Object, body: string, filePath: string } | null}
  */
-export function loadTest(name) {
-  const subdirs = ["desktop", "mobile"];
+export function loadTest(name, platform) {
+  // When a platform is requested, search its directory FIRST so that a test
+  // name shared by both platforms (e.g. comprehensive_sanity) resolves to the
+  // right variant. Without this, desktop always wins and the mobile variant is
+  // unreachable via `--platform mobile`.
+  const subdirs = platform
+    ? [platform, ...["desktop", "mobile"].filter((d) => d !== platform)]
+    : ["desktop", "mobile"];
 
   for (const subdir of subdirs) {
     const filePath = path.join(testsDir, subdir, `${name}.test.md`);

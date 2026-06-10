@@ -22,6 +22,14 @@ func TestPhase2Native_ParamRenderFuncsCoversEveryDrumRecipe(t *testing.T) {
 		if d.Category != "drum" {
 			continue
 		}
+		if IsModularMigratedRecipe(d.ID) {
+			// Migrated families render through the modular binding
+			// (builtinFamilyRenderers, rebound in bass_modular_binding.go), NOT a
+			// bespoke render_<id>_p cParamRenderer — their legacy C/Go paths were
+			// deleted in the Phase-2 cutover. They are exempt from ParamRenderFuncs
+			// for the same reason the modular category is.
+			continue
+		}
 		base := strings.TrimPrefix(d.ID, "drum-")
 		if _, ok := ParamRenderFuncs[base]; !ok {
 			t.Errorf("ParamRenderFuncs missing entry for drum recipe %q (base name %q)", d.ID, base)
@@ -35,6 +43,19 @@ func TestPhase2Native_BuiltinRecipeRenderersCoverEveryRegisteredRecipe(t *testin
 	// init() would register a recipe whose Render dereferences a nil
 	// function pointer.
 	for _, d := range builtinRecipeDescriptors {
+		if d.Category == modularRecipeCategory {
+			// The modular voice is rendered by nativeModularRecipe (which
+			// calls render_modular_p directly), not via a builtinRecipeRenderers
+			// cParamRenderer, so it is intentionally absent from that map.
+			continue
+		}
+		if IsModularMigratedRecipe(d.ID) {
+			// Migrated families render through builtinFamilyRenderers (the modular
+			// binding), not a builtinRecipeRenderers cParamRenderer — the legacy
+			// renderBassGuitarP / renderSubBassP wrappers were deleted in the
+			// Phase-2 cutover. Same exemption rationale as the modular voice.
+			continue
+		}
 		if _, ok := builtinRecipeRenderers[d.ID]; !ok {
 			t.Errorf("builtinRecipeRenderers missing entry for %q", d.ID)
 		}
@@ -95,7 +116,18 @@ func TestPhase2Native_RecipeRenderHonorsParamMutations(t *testing.T) {
 		r.Render(bufA, 44100, samples, 0, defaults)
 
 		mutated := cloneRecipeParams(defaults)
-		mutated["decay"] = 0.3 // shorter than identity (1.0)
+		// The modular voice has no generic "decay" multiplier. Mutate its
+		// post-stage "gain" instead of an envelope time: gain scales every
+		// rendered sample, so the effect is independent of how the preset's
+		// envelope timing happens to fall inside this short test buffer (a
+		// long-attack pad preset can otherwise outlast a decay-only change).
+		// Per-modular-param coverage lives in
+		// TestRenderModularP_EveryParamMutatesInContext.
+		if _, ok := defaults["gain"]; ok {
+			mutated["gain"] = 0.5
+		} else {
+			mutated["decay"] = 0.3 // shorter than identity (1.0)
+		}
 		r.Render(bufB, 44100, samples, 0, mutated)
 
 		same := true

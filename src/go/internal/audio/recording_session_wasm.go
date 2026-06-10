@@ -54,11 +54,11 @@ func StartRecording(opts RecordingOptions) error {
 		startTime: time.Now(),
 		stats:     startStatsPoller(),
 	}
-	hooks.PublishKind(hooks.EventRecordStart, RecordStartPayload{
+	hooks.PublishWithSource(hooks.EventRecordStart, RecordStartPayload{
 		Format:      opts.Format,
 		BPM:         opts.BPM,
 		Instruments: len(opts.Instruments),
-	})
+	}, hooks.CaptureSource(0))
 	log.Printf("[RECORDING/wasm] Started: format=%s instruments=%d",
 		opts.Format, len(opts.Instruments))
 	return nil
@@ -149,10 +149,10 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 	})
 	if err != nil {
 		log.Printf("[RECORDING/wasm] finalize failed: %v", err)
-		hooks.PublishKind(hooks.EventRecordStop, RecordStopPayload{
+		hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 			Duration: duration,
 			Err:      err,
-		})
+		}, hooks.CaptureSource(0))
 		return
 	}
 
@@ -202,30 +202,30 @@ func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, 
 		log.Printf("[RECORDING/wasm] auto-stopped: reason=%s", finRes.AutoStopRsn)
 	}
 	if finRes.Stats.DroppedSamples > 0 {
-		hooks.PublishKind(hooks.EventRecordDropped, finRes.Stats.DroppedSamples)
+		hooks.PublishWithSource(hooks.EventRecordDropped, finRes.Stats.DroppedSamples, hooks.CaptureSource(0))
 	}
 
 	zipName, saveErr := SaveRecording(result)
 	if saveErr != nil {
 		log.Printf("[RECORDING/wasm] auto-save failed: %v", saveErr)
-		hooks.PublishKind(hooks.EventRecordStop, RecordStopPayload{
+		hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 			Dir:      result.SessionDir,
 			Duration: duration,
 			Channels: len(result.Channels),
 			Err:      saveErr,
-		})
+		}, hooks.CaptureSource(0))
 		return
 	}
 	result.SessionDir = zipName
 
 	log.Printf("[RECORDING/wasm] Stopped: duration=%.2fs channels=%d size=%d zip=%s",
 		duration, len(result.Channels), finRes.Size, result.SessionDir)
-	hooks.PublishKind(hooks.EventRecordStop, RecordStopPayload{
+	hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 		Dir:      result.SessionDir,
 		Drops:    finRes.Stats.DroppedSamples,
 		Duration: duration,
 		Channels: len(result.Channels),
-	})
+	}, hooks.CaptureSource(0))
 }
 
 // IsRecording reports whether a session is active.

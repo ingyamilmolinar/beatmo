@@ -119,7 +119,7 @@ func TestInstMenuCloseButton(t *testing.T) {
 	r := btn.Rect()
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
-	btn.Handle(cx, cy, true)
+	btn.HandleInputResult(cx, cy, true)
 
 	if comp.IsOpen() {
 		t.Fatalf("instrument menu still open after clicking close button")
@@ -192,7 +192,7 @@ func TestColorWheelCloseButton(t *testing.T) {
 	r := btn.Rect()
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
-	btn.Handle(cx, cy, true)
+	btn.HandleInputResult(cx, cy, true)
 
 	if comp.IsOpen() {
 		t.Fatalf("color wheel still open after clicking close button")
@@ -228,7 +228,7 @@ func TestContextMenuCloseButton(t *testing.T) {
 	cy := (r.Min.Y + r.Max.Y) / 2
 	// Clear suppress so click fires
 	suppressClicksUntilRelease = false
-	closeBtn.Handle(cx, cy, true)
+	closeBtn.HandleInputResult(cx, cy, true)
 
 	if dv.IsContextMenuOpen() {
 		t.Fatalf("context menu still open after clicking close button")
@@ -292,7 +292,7 @@ func TestOverflowMenuCloseButton(t *testing.T) {
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
 	suppressClicksUntilRelease = false
-	closeBtn.Handle(cx, cy, true)
+	closeBtn.HandleInputResult(cx, cy, true)
 
 	if dv.OverflowMenuOpen() {
 		t.Fatalf("overflow menu still open after clicking close button")

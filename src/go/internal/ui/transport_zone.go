@@ -161,9 +161,12 @@ func NewTransportZone(cb TransportCallbacks) *TransportZone {
 }
 
 func (z *TransportZone) initButtons() {
-	p := Profile()
-
-	z.playBtn = NewButton("", p.PlayBtnStyle, func() {
+	// Construct each button with a placeholder style; refreshProfileStyles
+	// (called at the end of this method and from Layout()) is the single
+	// authority for Style + IconColor, so a mobile\u2194desktop transition
+	// retints these buttons in real time without relying on construction-
+	// time profile sampling.
+	z.playBtn = NewButton("", nil, func() {
 		z.playPressed = true
 		z.playAnim = 1
 		hapticTransportTap()
@@ -172,9 +175,8 @@ func (z *TransportZone) initButtons() {
 		}
 	})
 	z.playBtn.Icon = string(IconPlay)
-	z.playBtn.IconColor = p.PlayIconColor
 
-	z.stopBtn = NewButton("", p.StopBtnStyle, func() {
+	z.stopBtn = NewButton("", nil, func() {
 		z.stopPressed = true
 		z.stopAnim = 1
 		hapticTransportTap()
@@ -183,9 +185,8 @@ func (z *TransportZone) initButtons() {
 		}
 	})
 	z.stopBtn.Icon = string(IconStop)
-	z.stopBtn.IconColor = p.StopIconColor
 
-	z.recordBtn = NewButton("", p.StopBtnStyle, func() {
+	z.recordBtn = NewButton("", nil, func() {
 		z.recordPressed = true
 		z.recordAnim = 1
 		hapticTransportRecord()
@@ -196,13 +197,12 @@ func (z *TransportZone) initButtons() {
 	z.recordBtn.Icon = string(IconRecord)
 	z.recordBtn.IconColor = colRecordIdle
 
-	z.bpmDecBtn = NewButton("", p.BPMDecBtnStyle, func() {
+	z.bpmDecBtn = NewButton("", nil, func() {
 		z.bpmDelta--
 		z.bpmDecAnim = 1
 	})
 	z.bpmDecBtn.Repeat = true
 	z.bpmDecBtn.Icon = string(IconChevronDown)
-	z.bpmDecBtn.IconColor = p.BPMIconColor
 
 	z.bpmBox = NewTextInput(image.Rect(0, 0, 0, 0), BPMBoxStyle)
 	z.bpmBox.MaxLen = 4
@@ -212,27 +212,23 @@ func (z *TransportZone) initButtons() {
 	z.bpmBox.OnFocusGained = func() { softKeyboardShow("numeric") }
 	z.bpmBox.OnFocusLost = func() { softKeyboardHide() }
 
-	z.bpmIncBtn = NewButton("", p.BPMIncBtnStyle, func() {
+	z.bpmIncBtn = NewButton("", nil, func() {
 		z.bpmDelta++
 		z.bpmIncAnim = 1
 	})
 	z.bpmIncBtn.Repeat = true
 	z.bpmIncBtn.Icon = string(IconChevronUp)
-	z.bpmIncBtn.IconColor = p.BPMIconColor
 
-	z.subdivBtn = NewButton("\u00f732", p.SubdivBtnStyle, func() {
+	z.subdivBtn = NewButton("\u00f732", nil, func() {
 		if z.callbacks.OnSubdivClick != nil {
 			z.callbacks.OnSubdivClick()
 		}
 	})
 
-	z.trackBtn = NewButton("", p.TrackBtnStyle, func() {
+	z.trackBtn = NewButton("", nil, func() {
 		z.SetFollow(!z.follow)
 	})
-	// Icon + IconColor are authoritative-set by syncTrackBtnVisual below;
-	// no need to seed them here. The chrome (Style) stays as TrackBtnStyle
-	// (= TransportMiscStyle on both profiles after the layout-profile fix)
-	// for both states, mirroring how SetPlaying treats the play button.
+	// Icon + IconColor are authoritative-set by syncTrackBtnVisual below.
 	z.syncTrackBtnVisual()
 
 	// Phase 4 PR3 migration: file-ops buttons + mobile EQ toggle render via
@@ -273,7 +269,7 @@ func (z *TransportZone) initButtons() {
 		}
 	})
 
-	z.viewSwitchBtn = NewButton("", p.ViewSwitchStyle, func() {
+	z.viewSwitchBtn = NewButton("", nil, func() {
 		if z.callbacks.OnViewCycle != nil {
 			z.callbacks.OnViewCycle()
 		}
@@ -281,7 +277,7 @@ func (z *TransportZone) initButtons() {
 	z.viewSwitchBtn.Icon = string(IconAudio)
 	z.viewSwitchBtn.IconColor = colTextSecondary
 
-	z.overflowBtn = NewButton("", p.OverflowStyle, func() {
+	z.overflowBtn = NewButton("", nil, func() {
 		if z.callbacks.OnOverflowOpen != nil {
 			z.callbacks.OnOverflowOpen()
 		}
@@ -289,15 +285,67 @@ func (z *TransportZone) initButtons() {
 	z.overflowBtn.Icon = string(IconOverflow)
 	z.overflowBtn.IconColor = colTextSecondary
 
-	// Mobile second-row recede: secondary controls (view, overflow) sit on
-	// surface-1 fill so the eye reads them as ancillary to the row 0 primary
-	// cluster (play/stop/record/bpm/subdiv on surface-2). The mainVolIcon shares
-	// the same recede tint via the icon-color override at draw time.
-	if Profile().IsMobile() {
+	// Single authority for every profile-dependent Style and IconColor.
+	// Called once here so the buttons are visually valid before Layout(),
+	// and re-called from Layout() so a mobile↔desktop viewport transition
+	// retints in real time (no construction-time sampling survives the
+	// transition).
+	z.refreshProfileStyles()
+}
+
+// refreshProfileStyles re-derives every Button Style + IconColor in this
+// zone from the current LayoutProfile. Called from initButtons() at
+// construction and from Layout() every relayout. Idempotent — safe to
+// call every frame; runs in O(buttons).
+func (z *TransportZone) refreshProfileStyles() {
+	p := Profile()
+	if z.playBtn != nil {
+		z.playBtn.Style = p.PlayBtnStyle
+		z.playBtn.IconColor = p.PlayIconColor
+	}
+	if z.stopBtn != nil {
+		z.stopBtn.Style = p.StopBtnStyle
+		z.stopBtn.IconColor = p.StopIconColor
+	}
+	if z.recordBtn != nil {
+		z.recordBtn.Style = p.StopBtnStyle
+		// recordBtn.IconColor is dynamic (idle / armed) and managed
+		// elsewhere — do not overwrite it here.
+	}
+	if z.bpmDecBtn != nil {
+		z.bpmDecBtn.Style = p.BPMDecBtnStyle
+		z.bpmDecBtn.IconColor = p.BPMIconColor
+	}
+	if z.bpmIncBtn != nil {
+		z.bpmIncBtn.Style = p.BPMIncBtnStyle
+		z.bpmIncBtn.IconColor = p.BPMIconColor
+	}
+	if z.subdivBtn != nil {
+		z.subdivBtn.Style = p.SubdivBtnStyle
+	}
+	if z.trackBtn != nil {
+		z.trackBtn.Style = p.TrackBtnStyle
+	}
+	// Mobile second-row recede: secondary controls (view, overflow) sit
+	// on surface-1 fill so the eye reads them as ancillary to the row 0
+	// primary cluster (play/stop/record/bpm/subdiv on surface-2). Desktop
+	// uses the profile's ViewSwitchStyle / OverflowStyle directly.
+	if p.IsMobile() {
 		recede := ButtonStyleFromSpec(ComponentButtonSecondary)
 		recede.Fill = colSurface1
-		z.viewSwitchBtn.Style = recede
-		z.overflowBtn.Style = recede
+		if z.viewSwitchBtn != nil {
+			z.viewSwitchBtn.Style = recede
+		}
+		if z.overflowBtn != nil {
+			z.overflowBtn.Style = recede
+		}
+	} else {
+		if z.viewSwitchBtn != nil {
+			z.viewSwitchBtn.Style = p.ViewSwitchStyle
+		}
+		if z.overflowBtn != nil {
+			z.overflowBtn.Style = p.OverflowStyle
+		}
 	}
 }
 
@@ -335,6 +383,10 @@ func (z *TransportZone) Layout(rect image.Rectangle) {
 	z.prevLayoutRect = rect
 	z.rect = rect
 	z.needLayout = false
+	// Re-derive profile-dependent button styles before laying out so a
+	// mobile↔desktop transition that occurred between frames is fully
+	// reflected in this Layout pass.
+	z.refreshProfileStyles()
 	z.layoutButtons(rect)
 	z.rebuildHitAreas()
 }
@@ -421,22 +473,14 @@ func (z *TransportZone) HitAreas() []HitArea {
 	return z.hitAreas
 }
 
-// SetBarRect stores the mobile bottom-action-bar bounds and overrides the
-// ClipRect on the vol-icon / view-switch / overflow hit areas so taps
-// inside the bar reach them (the bar is outside z.rect, so without this
-// the hit index would cull the click). Empty rect resets the field but
-// does not clear existing clips.
+// SetBarRect stores the mobile bottom-action-bar bounds. Theme 1+4: the
+// bar hosts ONLY the 6-segment view switcher (DrumView registers that
+// hit area separately). Vol icon and overflow live in the top toolbar
+// now, so we no longer override their ClipRect to the bar — leave them
+// pointing at z.rect (the top toolbar rect) so taps in the toolbar
+// reach them.
 func (z *TransportZone) SetBarRect(bar image.Rectangle) {
 	z.barRect = bar
-	if bar.Empty() {
-		return
-	}
-	for i := range z.hitAreas {
-		switch z.hitAreas[i].Tag {
-		case "transport-view-switch", "transport-overflow", "transport-vol-icon":
-			z.hitAreas[i].ClipRect = bar
-		}
-	}
 }
 
 // BarRect returns the stored mobile bottom-action-bar rect (or empty on
@@ -637,40 +681,53 @@ func (z *TransportZone) layoutButtons(topBounds image.Rectangle) {
 }
 
 func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec TopBarSpec) {
-	// Mobile transport collapses to a SINGLE row inside the top toolbar
-	// when DrumView has allocated the bottom action bar (B3 redesign):
-	// Play | Stop | Record | [−|BPM|+] | Subdiv. The volume icon,
-	// view-switch, and overflow buttons live in DrumView.bottomActionBarRect.
+	// Mobile transport (Theme 4): the top toolbar holds the transport
+	// controls + vol icon + overflow kebab. The bottom action bar hosts
+	// the 6-segment view switcher (Pads/EQ/Wave/Spec/Mtr/Scope) at full
+	// width — placed by DrumView, not here.
 	//
-	// On ultra-short viewports (landscape phones where the drum-pane is
-	// too short for bar + 1 row) the bar collapses — useBottomBar is
-	// false, and we fall back to the pre-Task-1.3 two-row layout that
-	// keeps vol-icon / view-switch / overflow inside the top toolbar so
-	// they remain reachable.
+	// Single-row layout (preferred — when topBounds height fits one row):
+	//   Play | Stop | Record | [−|BPM|+] | Subdiv | Vol | Overflow
+	// Two-row fallback (when topBounds is tall enough to split):
+	//   Row 0: Play | Stop | Record | [−|BPM|+] | Subdiv
+	//   Row 1:                                       Vol .... Overflow
+	//
+	// We prefer single row whenever it would land each cell at >=
+	// TouchMinTarget; otherwise fall back to 2-row to preserve touch
+	// height. The legacy binary view-switch button is suppressed on
+	// mobile in both layouts (segmented replaces it).
+	if z.viewSwitchBtn != nil {
+		z.viewSwitchBtn.SetRect(image.Rectangle{})
+	}
+
 	row0Bounds := topBounds
-	if !z.useBottomBar {
-		// Two-row fallback: split topBounds vertically. Row 0 keeps the
-		// transport controls (same column weights as the single-row
-		// layout); row 1 hosts vol-icon / view-switch / overflow.
+	useTwoRow := topBounds.Dy() >= 2*TouchMinTarget()
+	var row1Bounds image.Rectangle
+	if useTwoRow {
 		outerGrid := NewGridLayout(topBounds, []float64{1}, []float64{1, 1})
 		row0Bounds = outerGrid.Cell(0, 0)
-		row1Bounds := outerGrid.Cell(0, 1)
+		row1Bounds = outerGrid.Cell(0, 1)
+	}
+
+	if useTwoRow {
+		// Row 1: vol-icon left, empty middle, overflow right (3-cell grid).
 		row1Grid := NewGridLayout(row1Bounds, []float64{1.0, 1.0, 1.0}, []float64{1})
 		z.mainVolIconRect = safeInsetTransport(row1Grid.Cell(0, 0), pad)
 		if z.mainVolSlider != nil {
 			z.mainVolSlider.SetRect(image.Rectangle{})
 			z.mainVolRect = image.Rectangle{}
 		}
-		if z.viewSwitchBtn != nil {
-			z.viewSwitchBtn.SetRect(safeInsetTransport(row1Grid.Cell(1, 0), pad))
-		}
 		if z.overflowBtn != nil {
 			z.overflowBtn.SetRect(safeInsetTransport(row1Grid.Cell(2, 0), pad))
 		}
 	}
 
-	row0Grid := NewGridLayout(row0Bounds,
-		[]float64{1.0, 1.0, 1.0, 3.0, 1.0}, []float64{1})
+	// Row 0 column weights — extend by [vol, overflow] when single-row.
+	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0}
+	if !useTwoRow {
+		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0}
+	}
+	row0Grid := NewGridLayout(row0Bounds, weights, []float64{1})
 
 	z.playBtn.SetRect(safeInsetTransport(row0Grid.Cell(0, 0), pad))
 	z.stopBtn.SetRect(safeInsetTransport(row0Grid.Cell(1, 0), pad))
@@ -711,24 +768,18 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 
 	z.subdivBtn.SetRect(safeInsetTransport(row0Grid.Cell(4, 0), pad))
 
-	// When the bottom action bar is hosting vol/view/overflow, clear
-	// those rects here so DrumView.recalcButtons is the sole writer
-	// (and any stale two-row rect from a prior layout doesn't bleed
-	// through). When useBottomBar is false the two-row branch above
-	// already populated them — leave them alone.
-	if z.useBottomBar {
-		z.mainVolIconRect = image.Rectangle{}
+	// Single-row mode: append vol icon + overflow on row 0 (cells 5, 6).
+	if !useTwoRow {
+		z.mainVolIconRect = safeInsetTransport(row0Grid.Cell(5, 0), pad)
 		if z.mainVolSlider != nil {
 			z.mainVolSlider.SetRect(image.Rectangle{})
 			z.mainVolRect = image.Rectangle{}
 		}
-		if z.viewSwitchBtn != nil {
-			z.viewSwitchBtn.SetRect(image.Rectangle{})
-		}
 		if z.overflowBtn != nil {
-			z.overflowBtn.SetRect(image.Rectangle{})
+			z.overflowBtn.SetRect(safeInsetTransport(row0Grid.Cell(6, 0), pad))
 		}
 	}
+
 	// Hide desktop-only buttons on mobile.
 	z.trackBtn.SetRect(image.Rectangle{})
 	z.uploadBtn.SetRect(image.Rectangle{})
@@ -932,16 +983,16 @@ type repeatButtonHitAdapter struct {
 }
 
 func (h *repeatButtonHitAdapter) OnPress(x, y int) InputResult {
-	h.btn.Handle(x, y, true)
+	h.btn.HandleInputResult(x, y, true)
 	return InputCaptured
 }
 
 func (h *repeatButtonHitAdapter) OnDrag(x, y int) {
-	h.btn.Handle(x, y, true)
+	h.btn.HandleInputResult(x, y, true)
 }
 
 func (h *repeatButtonHitAdapter) OnRelease(x, y int) {
-	h.btn.Handle(x, y, false)
+	h.btn.HandleInputResult(x, y, false)
 }
 
 func (h *repeatButtonHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
@@ -1056,8 +1107,9 @@ func (z *TransportZone) forceBlurBPM() {
 
 // syncTrackBtnVisual mirrors the play/stop visual model: chrome (Style) stays
 // fixed across states; the icon glyph and icon color carry the active/inactive
-// signal. Active = bright cyan (colFollowActive, the same accent play uses
-// while playing); inactive = the platform-neutral BPM/secondary-control tint.
+// signal. Active = primary-bright coral (colFollowActive, the single chrome
+// accent per DESIGN.md); inactive = the platform-neutral BPM/secondary-control
+// tint.
 func (z *TransportZone) syncTrackBtnVisual() {
 	if z.trackBtn == nil {
 		return
@@ -1248,7 +1300,8 @@ func (z *TransportZone) renderToolbarControls(dst *ebiten.Image) {
 	// Cache miss: rebuild.
 	w, h := rect.Dx(), rect.Dy()
 	if z.toolbarCache == nil || z.toolbarCache.Bounds().Dx() != w || z.toolbarCache.Bounds().Dy() != h {
-		z.toolbarCache = ebiten.NewImage(w, h)
+		releaseImage(z.toolbarCache)
+		z.toolbarCache = newTrackedImage("transportZone.toolbarCache", w, h)
 	} else {
 		z.toolbarCache.Clear()
 	}
@@ -1409,67 +1462,20 @@ func (z *TransportZone) drawToolbarSeparators(cache *ebiten.Image, offsetX, offs
 	}
 }
 
-// drawMasterVolIconOffset renders the speaker glyph plus a small volume-level
-// tick mark. The glyph itself lives in the unified icon system; this function
-// only picks the right variant (on/off) and overlays the live volume bar.
+// drawMasterVolIconOffset renders the master volume button by delegating to
+// the shared drawVolumeButton component (the same one used by per-row
+// volume cells). Master differs only in channel wiring: it reads from
+// mainVolSlider, has no row tint, and is never user-mutable as "muted".
 func (z *TransportZone) drawMasterVolIconOffset(cache *ebiten.Image, offsetX, offsetY int) {
 	r := z.mainVolIconRect
 	if r.Empty() {
 		return
 	}
-	r = r.Sub(image.Pt(offsetX, offsetY))
 	vol := 0.0
 	if z.mainVolSlider != nil {
 		vol = z.mainVolSlider.Value
 	}
-
-	iconCol := colVolumeIconOn
-	glyph := IconSpeaker
-	if vol <= 0 {
-		iconCol = colVolumeIconOff
-		glyph = IconSpeakerOff
-	}
-	// Mobile recede: vol icon shares row 1 with view/overflow buttons; tint to
-	// colTextSecondary on a surface-1 chip so it reads as ancillary to the
-	// row 0 primary cluster.
-	if Profile().IsMobile() {
-		drawRoundedRect(cache, r, colSurface1, RadiusMD, true)
-		if vol > 0 {
-			iconCol = colTextSecondary
-		}
-	}
-
-	// Fit the glyph inside a square centered in r so the speaker proportions
-	// match the other toolbar icons regardless of cell aspect.
-	side := minI(r.Dx(), r.Dy())
-	cx := r.Min.X + r.Dx()/2
-	cy := r.Min.Y + r.Dy()/2
-	box := image.Rect(cx-side/2, cy-side/2, cx-side/2+side, cy-side/2+side)
-	DrawIcon(cache, glyph, box, iconCol)
-
-	// A9: 3 px proportional fill bar at the bottom of the icon rect so the
-	// current master level is readable at a glance without opening the
-	// popup. Skipped when muted (vol<=0) — the slashed/off icon already
-	// communicates the state.
-	if vol > 0 {
-		barH := 3
-		if r.Dy() <= 8 {
-			barH = 1
-		}
-		barTop := r.Max.Y - barH
-		barFullW := r.Dx()
-		fillW := int(float64(barFullW) * vol)
-		if fillW < 1 {
-			fillW = 1
-		}
-		if fillW > barFullW {
-			fillW = barFullW
-		}
-		track := image.Rect(r.Min.X, barTop, r.Max.X, r.Max.Y)
-		fill := image.Rect(r.Min.X, barTop, r.Min.X+fillW, r.Max.Y)
-		drawRect(cache, track, WithAlpha(colSurface3, genAlphaSubtle), true)
-		drawRect(cache, fill, WithAlpha(genColorPrimary, genAlphaMedium), true)
-	}
+	drawVolumeButton(cache, r.Sub(image.Pt(offsetX, offsetY)), vol, false, nil)
 }
 
 // drawBPMGroupOffset draws the BPM group visual container: a colSurface2

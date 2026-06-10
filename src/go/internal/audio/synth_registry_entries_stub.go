@@ -16,9 +16,9 @@ type stubDrumRecipe struct {
 	params   []ParamDef
 }
 
-func (r *stubDrumRecipe) ID() string             { return r.id }
-func (r *stubDrumRecipe) DisplayName() string    { return r.display }
-func (r *stubDrumRecipe) Category() string       { return r.category }
+func (r *stubDrumRecipe) ID() string              { return r.id }
+func (r *stubDrumRecipe) DisplayName() string     { return r.display }
+func (r *stubDrumRecipe) Category() string        { return r.category }
 func (r *stubDrumRecipe) ParamSchema() []ParamDef { return r.params }
 
 func (r *stubDrumRecipe) Render(buf []float32, sampleRate, samples, variant int, p RecipeParams) {
@@ -31,7 +31,8 @@ func (r *stubDrumRecipe) Render(buf []float32, sampleRate, samples, variant int,
 }
 
 func init() {
-	registerBuiltinRecipes(func(id, display, category string, params []ParamDef) func() SynthRecipe {
+	registerBuiltinRecipes(func(doc RecipeDoc) func() SynthRecipe {
+		id, display, category, params := doc.ID, doc.DisplayName, doc.Category, doc.ParamDefs
 		return func() SynthRecipe {
 			return &stubDrumRecipe{
 				id:       id,

@@ -164,17 +164,39 @@ page.on('console', (msg) => {
 await page.goto(`http://localhost:${port}/test.html`);
 await page.waitForFunction(() => window.__ready === true, { timeout: 10000 });
 
+// Instantiate the WASM module ONCE and share it across every render below.
+// The bespoke drum renderers carry advancing ma_noise state; the desktop
+// reference (export_audio) renders its whole sequence in one process, so the
+// browser must replay the same sequence on one module instance to keep the
+// noise components aligned (fresh-instance-per-render decorrelates the tails).
+await page.evaluate(async () => {
+  window.__drumsModule = await window.__drumsFactory();
+});
+
 // ============================================================================
 // Render WASM audio and compare with desktop
 // ============================================================================
 
 const RENDER_FUNCS = {
-  snare: 'render_snare',
-  kick: 'render_kick',
-  hihat: 'render_hihat',
-  tom: 'render_tom',
-  clap: 'render_clap',
-  cowbell: 'render_cowbell',
+  // snare / clap migrated to the modular engine (Phase-5): render_snare /
+  // render_clap deleted, and snare/clap are no longer in the export_audio
+  // instruments list (their parity is covered by the snare-* paramCases via
+  // render_modular_p).
+  // kick migrated to the modular engine (Phase-3): render_kick deleted, and kick
+  // is no longer in the export_audio instruments list (its parity is covered by
+  // the kick-* paramCases via render_modular_p).
+  // tom migrated to the modular engine (Phase-4): render_tom deleted (tom-*
+  // paramCases via render_modular_p).
+  // cymbal family migrated to the modular engine (Phase-6): render_hihat /
+  // render_cowbell etc. deleted (parity via the hihat-* / cowbell-* paramCases).
+  // FM family migrated to the modular engine (Phase-7, the LAST): render_fm_bass /
+  // render_fm_bell etc. deleted, and fm-* are no longer in the export_audio
+  // raw-render list (their parity is covered by the fm-* paramCases via
+  // render_modular_p). EVERY legacy family has now migrated — the ONLY remaining
+  // raw-render instrument is the unified modular voice.
+  // Unified modular voice (base preset): native render_modular vs WASM
+  // render_modular, both at C built-in defaults, must agree within epsilon.
+  modular: 'render_modular',
 };
 
 const SAMPLE_RATE = 48000; // Match desktop and production WASM (AudioContext.sampleRate)
@@ -204,9 +226,8 @@ for (const desktopInst of desktopData.instruments) {
 
   // Render raw C output in browser via WASM with the SAME frame count as desktop
   const rawWasmData = await page.evaluate(async ({ renderFunc, sr, frames }) => {
-    const factory = window.__drumsFactory;
-    if (!factory) throw new Error('no drumsFactory');
-    const m = await factory();
+    const m = window.__drumsModule;
+    if (!m) throw new Error('no shared drums module');
     const ptr = m._malloc(frames * 4);
     m.ccall(renderFunc, null, ['number', 'number', 'number'], [ptr, sr, frames]);
     const data = new Float32Array(m.HEAPF32.buffer, ptr, frames).slice();
@@ -304,6 +325,173 @@ for (const desktopInst of desktopData.instruments) {
 }
 
 // ============================================================================
+// Parameterized render comparison (knobs, stage enables, re-voicing)
+// ============================================================================
+// Desktop reference: renderParamCases() in cmd/export_audio — the production
+// recipe path (MergeRecipeDefaults → SynthRecipe.Render, variant 0, RAW).
+// Browser side: the production audio.js semantics — the case's params written
+// into the schema-keyed param block with ABI-identity fallback (PARAM_INDEX /
+// PARAM_IDENTITY from synth_param_abi.gen.js), then render_X_p /
+// render_modular_p on the SAME shared module.
+// A divergence here means the two platforms construct the param block (or
+// dispatch the renderer) differently for the same user edit — exactly the
+// "knob/stage/save changes don't take effect on WASM" bug class.
+
+console.log('\n--- PARAMETERIZED RENDER COMPARISON ---');
+
+const ABI = await import('./synth_param_abi.gen.js');
+const PARAM_ABI = {
+  synthCount: ABI.SYNTH_PARAM_COUNT,
+  synthIndex: ABI.SYNTH_PARAM_INDEX,
+  synthIdentity: ABI.SYNTH_PARAM_IDENTITY,
+  modularCount: ABI.MODULAR_PARAM_COUNT,
+  modularIndex: ABI.MODULAR_PARAM_INDEX,
+  modularIdentity: ABI.MODULAR_PARAM_IDENTITY,
+  // Family blocks: NONE remain after Phase-7 — EVERY legacy family migrated to the
+  // modular block. fm family migrated (Phase-7, the LAST): no FM_PARAM_* ABI.
+  // kick family migrated to the modular block (Phase-3): no KICK_PARAM_* ABI.
+  // tom family migrated to the modular block (Phase-4): no TOM_PARAM_* ABI.
+  // snare family migrated to the modular block (Phase-5): no SNARE_PARAM_* ABI.
+  // cymbal family migrated to the modular block (Phase-6): no CYMBAL_PARAM_* ABI.
+  // bass family migrated to the modular block (Phase-2): no BASS_PARAM_* ABI.
+};
+
+// Recipe → family param block (mirrors audio.js FAMILY_PARAM_BLOCKS by
+// RENDER_INFO paramBlock; here keyed by recipe prefix).
+function familyForRecipe(recipe) {
+  if (recipe.startsWith('fm-')) return 'fm';
+  // drum-kick* (Phase-3), drum-tom* (Phase-4), drum-snare* / drum-clap (Phase-5),
+  // drum-hihat* / drum-cowbell / drum-shaker / drum-ride / drum-crash (Phase-6),
+  // and bass (Phase-2) all migrated to the modular engine: export_audio sets
+  // paramBlock:'modular' for those cases, so familyForRecipe is never consulted
+  // for them. Only the FM family is still bespoke.
+  return null;
+}
+
+// Bespoke recipe → base C render function (the `_p` suffix is appended).
+// EMPTY after Phase-7: EVERY family migrated to render_modular_p — drum-snare* /
+// drum-clap (Phase-5), drum-tom* (Phase-4), drum-kick* (Phase-3), drum-bass*
+// (Phase-2), the cymbals (Phase-6), and fm-* (Phase-7, the LAST) — so every
+// paramCase carries paramBlock:'modular' and is dispatched via render_modular_p,
+// never consulting this map. Kept (empty) so the familyForRecipe fallback below
+// stays valid; no recipe resolves to a bespoke render_X_p any more.
+const RECIPE_RENDER_BASE = {};
+
+// IMPORTANT (desktop parity): the Go dispatch elides params that exactly
+// equal the recipe's ParamDef defaults (elideRecipeDefaults) so the C engine
+// keeps its exact double literals. The desktop reference was rendered through
+// that path; the browser only writes the case's explicit params (everything
+// else NaN identity), which is the same elision by construction — paramCases
+// carry only off-default values.
+
+for (const pc of desktopData.paramCases || []) {
+  // paramBlock:'modular' (set by export_audio for migrated families like bass)
+  // forces the modular path: the desktop reference rendered through the modular
+  // binding, and pc.params is already the modular-named block. Otherwise infer
+  // from the recipe prefix as before.
+  const isModular = pc.paramBlock === 'modular' || pc.recipe.startsWith('synth-modular');
+  const family = pc.paramBlock ? null : familyForRecipe(pc.recipe);
+  const useModular = isModular;
+  const useFamily = family && !useModular ? family : null;
+  const renderFnP = useModular
+    ? 'render_modular_p'
+    : RECIPE_RENDER_BASE[pc.recipe] + '_p';
+
+  const rawWasmData = await page.evaluate(async ({ pc, abi, useModular, useFamily, renderFnP }) => {
+    const m = window.__drumsModule;
+    if (!m) throw new Error('no shared drums module');
+    // EVERY legacy family (kick/tom/snare/cymbal/bass/FM) migrated to the modular
+    // block — no family FAM branch remains (the FM block was the last, removed in
+    // Phase-7). useFamily is always null now; FAM stays null.
+    const FAM = null;
+    void useFamily;
+    const COUNT = useModular ? abi.modularCount : (FAM ? FAM.count : abi.synthCount);
+    const INDEX = useModular ? abi.modularIndex : (FAM ? FAM.index : abi.synthIndex);
+    const IDENTITY = useModular ? abi.modularIdentity : (FAM ? FAM.identity : abi.synthIdentity);
+    // Mirror audio.js ensureRenderedSample: zeroed block with a safety floor,
+    // schema-keyed writes, identity fallback for unset knobs.
+    const allocCount = useModular ? Math.max(COUNT, 64) : COUNT;
+    const paramsPtr = m._malloc(allocCount * 4);
+    const pheap = m.HEAPF32.subarray(paramsPtr >> 2, (paramsPtr >> 2) + allocCount);
+    pheap.fill(0);
+    for (const [name, idx] of Object.entries(INDEX)) {
+      const v = pc.params[name];
+      pheap[idx] = (typeof v === 'number' && Number.isFinite(v)) ? v : IDENTITY[name];
+    }
+    const ptr = m._malloc(pc.frames * 4);
+    m.ccall(renderFnP, null, ['number', 'number', 'number', 'number'], [ptr, pc.sampleRate, pc.frames, paramsPtr]);
+    const data = new Float32Array(m.HEAPF32.buffer, ptr, pc.frames).slice();
+    m._free(ptr);
+    m._free(paramsPtr);
+    return Array.from(data);
+  }, { pc: { ...pc, samples: undefined }, abi: PARAM_ABI, useModular, useFamily, renderFnP });
+
+  const wasmPeak = computePeak(rawWasmData);
+  const wasmRMS = computeRMS(rawWasmData);
+  const corr = correlation(rawWasmData, pc.samples);
+  const { maxDiff, maxIdx } = maxAbsDiff(rawWasmData, pc.samples);
+  console.log(
+    `  ${pc.name} [${renderFnP}]: corr=${corr.toFixed(6)} ` +
+    `peak wasm=${wasmPeak.toFixed(4)} desk=${pc.peak.toFixed(4)} ` +
+    `rms wasm=${wasmRMS.toFixed(5)} desk=${pc.rms.toFixed(5)} maxDiff=${maxDiff.toExponential(2)}@${maxIdx}`,
+  );
+
+  results['param:' + pc.name] = {
+    renderFnP, frames: pc.frames,
+    wasm: { peak: wasmPeak, rms: wasmRMS },
+    desktop: { peak: pc.peak, rms: pc.rms },
+    comparison: { correlation: corr, maxSampleDiff: maxDiff },
+  };
+
+  if (pc.peak === 0) {
+    // Silence case (e.g. osc disabled) must be silent on BOTH platforms.
+    if (wasmPeak !== 0) {
+      const msg = `param ${pc.name}: desktop is silent but WASM rendered peak=${wasmPeak}`;
+      console.log(`FAIL: ${msg}`);
+      failures.push(msg);
+      anyFailed = true;
+    }
+    continue;
+  }
+  if (wasmPeak === 0) {
+    const msg = `param ${pc.name}: WASM rendered SILENCE (desktop peak=${pc.peak.toFixed(4)}) — ` +
+      `the parameterized render path lost the voice (stale ABI / wrong dispatch / dead generator).`;
+    console.log(`FAIL: ${msg}`);
+    failures.push(msg);
+    anyFailed = true;
+    continue;
+  }
+  if (corr < 0.999) {
+    const msg = `param ${pc.name}: correlation ${corr.toFixed(6)} < 0.999 — platforms render the same edit differently`;
+    console.log(`FAIL: ${msg}`);
+    failures.push(msg);
+    anyFailed = true;
+  }
+  if (Math.abs(wasmPeak - pc.peak) > 0.01 || Math.abs(wasmRMS - pc.rms) > 0.01) {
+    const msg = `param ${pc.name}: level mismatch (peak Δ${Math.abs(wasmPeak - pc.peak).toFixed(4)}, rms Δ${Math.abs(wasmRMS - pc.rms).toFixed(4)})`;
+    console.log(`FAIL: ${msg}`);
+    failures.push(msg);
+    anyFailed = true;
+  }
+  // Hard per-sample bound (promoted from a warning by the 2026-06-06 gap
+  // audit). Calibration: the inherent native↔WASM seam is ~1 float32 ULP at
+  // the push ABI (NaN-sentinel double literal vs spelled float32 literal —
+  // see family_push_binding_parity_test.go); observed ceiling across the full
+  // param-case table on this tree was 2.09e-7, and the worst KNOWN
+  // ULP-amplification (growing post-decay tail, tom-low decay=max) reaches
+  // ~1.5e-5 absolute. 1e-4 sits ~6× above that amplified floor and ≥10×
+  // below any real literal/dispatch drift (~1e-3+), so it cannot flake on
+  // float noise but catches genuine divergence.
+  if (maxDiff > 1e-4) {
+    const msg = `param ${pc.name}: maxDiff ${maxDiff.toExponential(2)} at ${maxIdx} exceeds 1e-4 — ` +
+      `beyond the float32-ULP seam; the platforms genuinely diverge on this edit`;
+    console.log(`FAIL: ${msg}`);
+    failures.push(msg);
+    anyFailed = true;
+  }
+}
+
+// ============================================================================
 // Polyphonic Mixing Test
 // ============================================================================
 // This test verifies that multiple simultaneous voices mix correctly without
@@ -313,16 +501,20 @@ for (const desktopInst of desktopData.instruments) {
 console.log('\n--- POLYPHONIC MIXING TEST ---');
 
 const polyResult = await page.evaluate(async ({ AMPLITUDES, SAMPLE_RATE }) => {
-  const factory = window.__drumsFactory;
-  if (!factory) throw new Error('no drumsFactory');
-  const m = await factory();
+  const m = window.__drumsModule;
+  if (!m) throw new Error('no shared drums module');
 
-  // Render individual instruments
-  const instruments = ['kick', 'snare', 'hihat'];
+  // Render individual instruments. EVERY legacy family migrated to the modular
+  // engine — render_kick / render_snare / render_hihat / render_fm_bass etc. are
+  // ALL deleted (FM in Phase-7, the LAST). render_modular is the only remaining
+  // bespoke C renderer, so it stands in for all three voices of this self-contained
+  // polyphonic headroom/clipping check (summing three render_modular voices still
+  // exercises the per-voice normalize → amplitude-scale → sum headroom path).
+  const instruments = ['modular-a', 'modular-b', 'modular-c'];
   const renderFuncs = {
-    kick: 'render_kick',
-    snare: 'render_snare',
-    hihat: 'render_hihat',
+    'modular-a': 'render_modular',
+    'modular-b': 'render_modular',
+    'modular-c': 'render_modular',
   };
 
   // Use a common frame count (shortest typical duration)
@@ -440,8 +632,9 @@ console.log(`  Sample Rate: ${SAMPLE_RATE} Hz`);
 console.log(`  Instruments Tested: ${Object.keys(results).join(', ')}\n`);
 
 for (const [inst, r] of Object.entries(results)) {
-  // Skip polyphonic_mix - it has a different structure and was already printed
-  if (inst === 'polyphonic_mix') continue;
+  // Skip polyphonic_mix and the parameterized cases - they have a different
+  // structure and were already printed in their own sections above.
+  if (inst === 'polyphonic_mix' || inst.startsWith('param:')) continue;
 
   console.log(`--- ${inst.toUpperCase()} ---`);
   console.log(`  Frames: ${r.frames} (${(r.frames / SAMPLE_RATE).toFixed(3)}s)`);

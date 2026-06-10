@@ -7,8 +7,32 @@ import (
 )
 
 // Z-index conventions for the component tree.
+//
+// Every drawable participant — Zone or Layer — registers at one of these
+// constants. The merged slice in (*DrumViewTree).Draw walks them in
+// ascending order, so a layer with a higher Z always renders on top of
+// any layer with a lower Z. Adding a new layer requires:
+//  1. picking the correct Z constant here (or adding a new one),
+//  2. registering it in drumview_ctor.go next to the existing
+//     RegisterZone calls, and
+//  3. extending the expected list in drumview_layer_zorder_test.go.
 const (
-	ZBaseMin    = 100 // base zone range start
+	ZBackground     = 50  // widget surface fills + bottom-sheet surface
+	ZRackMask       = 55  // rack-column surface elevation (below row content)
+	ZEQPeek         = 60  // mobile EQ peek sparkline
+	ZBaseMin        = 100 // base zone range start
+	ZTransport      = 100 // transport zone
+	ZTimeline       = 110 // timeline zone (cells, playhead, highlights)
+	ZRowRack        = 120 // row controls (label, vol, mute, fx, …)
+	ZEQPanel        = 130 // EQ / wave / spectrum / meters / scope panel
+	ZTransportPulse = 140 // play + record halos pulsing on top of toolbar
+	ZViewSwitch     = 150 // mobile segmented EQ/Pads/Wave switch
+	ZRowZoomChips   = 160 // mobile row-zoom +/− chips
+	ZNotifications  = 170 // toast notifications (top-right of pane)
+	ZLayoutGuides   = 180 // column/row dividers (debug-gated, default off)
+	ZLayoutPills    = 185 // splitter pills draw ON TOP of guides so the
+	//                       interactive pill remains visible/clickable
+	//                       when the debug overlay is on.
 	ZBaseMax    = 199 // base zone range end
 	ZResize     = 200 // layout resize handler
 	ZOverlayMin = 300 // portal overlays start at 300 + stack index
@@ -20,8 +44,21 @@ const (
 // (inputHandled=true), it propagates suppress to the global flag to
 // prevent legacy code from double-dispatching.
 type DrumViewTree struct {
-	zones   []zoneEntry
+	// zones holds POINTERS, not values. zoneMap aliases the same
+	// *zoneEntry objects, and SetZoneRect mutates them in place. Storing
+	// values here (with zoneMap holding &zones[i]) was a latent bug: every
+	// RegisterZone append could reallocate the backing array, orphaning the
+	// zoneMap pointers so SetZoneRect updates were silently lost for every
+	// zone except the last-registered. See
+	// TestDrumViewTree_SetZoneRectSurvivesLaterRegistrations.
+	zones   []*zoneEntry
 	zoneMap map[string]*zoneEntry
+
+	// layers is the ordered draw slice (zones + decorative layers, sorted
+	// ascending by ZIndex). Built lazily on first Draw and re-sorted when
+	// RegisterZone or RegisterLayer mutates it. Every pixel in the drum
+	// pane originates from one of these entries — see layer.go.
+	layers []Layer
 
 	hitIndex *HitIndex
 	portal   *OverlayPortal
@@ -62,6 +99,30 @@ type zoneEntry struct {
 	rect     image.Rectangle
 	zIndex   int
 	lastRect image.Rectangle // detect rect changes for re-layout
+	// visible is the optional gate registered via RegisterZoneVisible.
+	// When non-nil and returns false, the zone is:
+	//   1. not drawn (the existing zoneAsLayer.Visible() path), and
+	//   2. NOT included in the input HitIndex (the Update() Layout phase
+	//      clears the zone's areas instead of publishing them).
+	// Half-wiring the gate (the pre-fix state — Draw gated, HitAreas not)
+	// caused the "Pads tab unresponsive" regression: a hidden audio panel
+	// still published its full-bounds catch-all `eq-panel-capture` hit
+	// area, swallowing taps that should reach the row rack at z=120.
+	visible func() bool
+	// lastVisible memoises the previous visible() result so the Layout
+	// phase can detect transitions (visible→invisible) and clear the
+	// HitIndex once instead of re-publishing empty areas every frame.
+	lastVisible bool
+
+	// Cached SubImage wrapper for the most recent (screen, clip) pair seen
+	// during Draw. Reused across frames when the parent screen pointer and
+	// clip rectangle are unchanged. Without this, every Draw call allocates
+	// a fresh *ebiten.Image wrapper per zone — at 60 FPS × ~10 zones that
+	// was ~600 allocations/sec, the dominant per-frame allocator behind a
+	// fast WASM OOM (see playback_alloc_throughput_test.go).
+	subParent *ebiten.Image
+	subClip   image.Rectangle
+	sub       *ebiten.Image
 }
 
 // NewDrumViewTree creates a new tree with a fresh HitIndex and OverlayPortal.
@@ -74,11 +135,62 @@ func NewDrumViewTree() *DrumViewTree {
 	}
 }
 
-// RegisterZone adds a zone to the tree at a given z-index.
+// RegisterZone adds a zone to the tree at a given z-index. The zone is
+// also wrapped in a Layer adapter and inserted into the merged draw slice
+// so a single ordered walk in Draw() handles both zones and decorative
+// layers.
 func (t *DrumViewTree) RegisterZone(z Zone, zIndex int) {
-	e := zoneEntry{zone: z, zIndex: zIndex}
+	t.RegisterZoneVisible(z, zIndex, nil)
+}
+
+// RegisterZoneVisible is RegisterZone with an optional visibility callback
+// that the tree consults each frame before dispatching Draw. Useful for
+// the historical perfDrawLite/simpleDraw flags that previously gated
+// zone draws in DrumView.Draw — the tree now owns that decision.
+func (t *DrumViewTree) RegisterZoneVisible(z Zone, zIndex int, visible func() bool) {
+	// The visible predicate is stored on BOTH the layer (which gates
+	// Draw via zoneAsLayer.Visible()) AND the zoneEntry (which gates
+	// HitAreas via Update's Layout phase). Single source of truth at
+	// the call site, two consumers internally — see zoneEntry.visible.
+	e := &zoneEntry{zone: z, zIndex: zIndex, visible: visible, lastVisible: true}
 	t.zones = append(t.zones, e)
-	t.zoneMap[z.ID()] = &t.zones[len(t.zones)-1]
+	t.zoneMap[z.ID()] = e
+	t.insertLayer(zoneAsLayer{zone: z, zIndex: zIndex, visible: visible})
+}
+
+// RegisterLayer adds a draw-only layer to the tree. Layers are interleaved
+// with zones in the merged draw slice, sorted ascending by ZIndex().
+// Decorative chrome (background fills, halos, notifications, debug
+// overlays) lives here.
+func (t *DrumViewTree) RegisterLayer(l Layer) {
+	t.insertLayer(l)
+}
+
+// insertLayer inserts l into t.layers maintaining ascending ZIndex order.
+// Stable: equal ZIndex values keep insertion order.
+func (t *DrumViewTree) insertLayer(l Layer) {
+	z := l.ZIndex()
+	idx := len(t.layers)
+	for i, existing := range t.layers {
+		if existing.ZIndex() > z {
+			idx = i
+			break
+		}
+	}
+	t.layers = append(t.layers, nil)
+	copy(t.layers[idx+1:], t.layers[idx:])
+	t.layers[idx] = l
+}
+
+// LayersForTest returns a snapshot of the merged draw slice in render
+// order. Used by drumview_layer_zorder_test.go to assert the z-index
+// table is stable. Production code MUST NOT call this — iterating the
+// real slice from outside the tree breaks the encapsulation that the
+// pipeline-discipline test enforces.
+func (t *DrumViewTree) LayersForTest() []Layer {
+	out := make([]Layer, len(t.layers))
+	copy(out, t.layers)
+	return out
 }
 
 // SetZoneRect sets the layout rectangle for a zone, triggering re-layout
@@ -121,14 +233,7 @@ func (t *DrumViewTree) Update() {
 	t.wheelHandled = false
 
 	// Phase 1: Layout — only for zones that need it or whose rect changed.
-	for i := range t.zones {
-		e := &t.zones[i]
-		if e.zone.NeedsLayout() || e.rect != e.lastRect {
-			e.zone.Layout(e.rect)
-			e.lastRect = e.rect
-			t.hitIndex.Update(e.zone.ID(), e.zone.HitAreas())
-		}
-	}
+	t.layoutPass()
 
 	// Phase 2: Update — every zone, every frame.
 	for i := range t.zones {
@@ -175,34 +280,147 @@ func (t *DrumViewTree) Update() {
 	suppressClicksUntilRelease = t.suppress
 }
 
-// Draw renders all zones in z-order (ascending), then portal overlays on top.
-// Two clipping constraints are enforced together: the tree bounds (outer
-// envelope) and each zone's own widget rectangle (e.rect, populated by
-// Layout). The intersection ensures zones cannot escape their WidgetBoard
-// cell or the tree's overall bounds. Falls back gracefully when either
-// rectangle is unset.
-func (t *DrumViewTree) Draw(screen *ebiten.Image) {
-	// Draw zones in registration order (assumed ascending z-index).
+// layoutPass lays out zones that need it (NeedsLayout, rect change, or a
+// visibility transition) and republishes their hit areas. This is the ONLY
+// place layout and HitIndex publication may happen together — zone.Layout
+// clears the zone's needLayout flag, so a Layout call that skips the
+// publish strands the HitIndex on stale geometry forever (the "scrolled
+// rack dispatches mute/solo to the wrong row" bug: a scroll landing after
+// this pass — wheel adapter in the input phase, momentum in zone Update,
+// legacy touch/step-drag after tree.Update — had its needLayout consumed by
+// a Draw-time Layout that never republished).
+//
+// Visibility gate covers HitAreas in addition to Draw: when a zone's
+// visible() returns false, the tree publishes an EMPTY hit-area
+// slice for it. The pre-fix state half-wired the gate (Draw only),
+// which let a hidden audio panel's `eq-panel-capture` catch-all
+// swallow input destined for the row rack beneath when the user
+// switched mobile bottom-nav from EQ back to Pads.
+func (t *DrumViewTree) layoutPass() {
 	for i := range t.zones {
-		e := &t.zones[i]
+		e := t.zones[i]
+		nowVisible := e.visible == nil || e.visible()
+		layoutChanged := e.zone.NeedsLayout() || e.rect != e.lastRect
+		visibilityChanged := nowVisible != e.lastVisible
+		switch {
+		case !nowVisible:
+			// Invisible: clear any previously-published hit areas for
+			// this zone. We don't call Layout because (a) the zone has
+			// no reason to recompute geometry while hidden and (b)
+			// some zones (eq-panel) have side effects in Layout we
+			// shouldn't trigger when hidden. Clearing once per
+			// transition (visibilityChanged) is sufficient — the hit
+			// index keeps the empty owner entry once removed.
+			if visibilityChanged {
+				t.hitIndex.Update(e.zone.ID(), nil)
+			}
+		case layoutChanged || visibilityChanged:
+			// Visible AND (rect changed OR became visible this frame):
+			// re-layout + re-publish.
+			e.zone.Layout(e.rect)
+			e.lastRect = e.rect
+			t.hitIndex.Update(e.zone.ID(), e.zone.HitAreas())
+		}
+		e.lastVisible = nowVisible
+	}
+}
+
+// EnsureLayouts runs the same layout+publish pass as Update's Phase 1.
+// Draw paths call this instead of zone.Layout directly so a layout that
+// happens at draw time (e.g. a scroll flushed after the Update-phase pass)
+// can never strand the HitIndex on stale geometry. Idempotent — a clean
+// tree makes this a no-op scan.
+func (t *DrumViewTree) EnsureLayouts() {
+	t.layoutPass()
+}
+
+// LayoutZoneNow forces an immediate Layout for one zone at its current
+// tree rect and republishes its hit areas, keeping lastRect and the
+// HitIndex coherent. This is the ONLY sanctioned way to force a zone
+// layout outside the tree's own frame loop (discipline test:
+// TestZoneLayoutRoutesThroughTreeDiscipline). Unlike layoutPass, the
+// Layout runs even when the zone is currently hidden — callers use this
+// to keep widget rects warm for an imminent reveal — but hidden zones
+// publish an empty hit-area set so invisible controls can never take
+// input. No-op when the id is not registered.
+func (t *DrumViewTree) LayoutZoneNow(id string) {
+	e, ok := t.zoneMap[id]
+	if !ok {
+		return
+	}
+	e.zone.Layout(e.rect)
+	e.lastRect = e.rect
+	nowVisible := e.visible == nil || e.visible()
+	if nowVisible {
+		t.hitIndex.Update(e.zone.ID(), e.zone.HitAreas())
+	} else {
+		t.hitIndex.Update(e.zone.ID(), nil)
+	}
+	e.lastVisible = nowVisible
+}
+
+// Draw renders the merged Layer/Zone slice in ascending z-order, then
+// portal overlays on top.
+//
+// Clipping policy (mirrors the pre-refactor behaviour the legacy
+// drumview_draw.go path implemented by hand):
+//   - **Zones** (entries wrapping an underlying Zone via zoneAsLayer) are
+//     hard-clipped to the intersection of the tree bounds and their
+//     widget rectangle via screen.SubImage. This isolates each zone to
+//     its own WidgetBoard cell so the timeline cannot bleed into the
+//     rack column, etc.
+//   - **Plain Layers** (decorative chrome — background, halos,
+//     notifications, debug overlays) receive the unclipped screen image.
+//     They are responsible for confining themselves via their own rect
+//     math (Visible() + the rects they pass to drawRect/DrawImage). This
+//     matches the legacy direct-draw path and — crucially — keeps the
+//     ebitestub test backend (where SubImage allocates an independent
+//     buffer that is not blitted back to the parent) able to verify
+//     pixels via screen.At() in pixel-regression tests.
+//
+// This is the SINGLE pixel-emission path for the drum pane. The
+// render-pipeline discipline test forbids draw primitives in
+// drumview_draw.go and drumview_toolbar.go, so any byte that lands on
+// screen here originated from a registered Layer or Zone.
+func (t *DrumViewTree) Draw(screen *ebiten.Image) {
+	for _, layer := range t.layers {
+		if !layer.Visible() {
+			continue
+		}
+		zl, isZone := layer.(zoneAsLayer)
+		if !isZone {
+			layer.Draw(screen)
+			continue
+		}
 		clip := screen.Bounds()
 		if !t.bounds.Empty() {
 			clip = clip.Intersect(t.bounds)
 		}
-		if !e.rect.Empty() {
+		if e, ok := t.zoneMap[zl.zone.ID()]; ok && !e.rect.Empty() {
 			clip = clip.Intersect(e.rect)
 		}
 		if clip.Empty() {
 			continue
 		}
 		if clip == screen.Bounds() {
-			e.zone.Draw(screen)
+			layer.Draw(screen)
 		} else {
-			sub := screen.SubImage(clip).(*ebiten.Image)
-			e.zone.Draw(sub)
+			e := t.zoneMap[zl.zone.ID()]
+			var sub *ebiten.Image
+			if e != nil && e.subParent == screen && e.subClip == clip && e.sub != nil {
+				sub = e.sub
+			} else {
+				sub = screen.SubImage(clip).(*ebiten.Image)
+				if e != nil {
+					e.subParent = screen
+					e.subClip = clip
+					e.sub = sub
+				}
+			}
+			layer.Draw(sub)
 		}
 	}
-	// Portal overlays on top.
+	// Portal overlays on top (Z >= ZOverlayMin).
 	t.portal.Draw(screen)
 }
 
@@ -391,6 +609,17 @@ func (t *DrumViewTree) CapturedTag() string {
 // Capturing returns true if a handler is currently captured.
 func (t *DrumViewTree) Capturing() bool {
 	return t.capturedHandler != nil
+}
+
+// ClearCapture drops any in-flight pointer capture without synthesizing a
+// release. Used by setViewMode's transient-state reset so a drag that was
+// live when the user switched tabs (e.g. holding a Sampler knob) cannot
+// strand the dispatcher on a handler whose zone is now hidden. Clear only —
+// the next press starts a fresh dispatch.
+func (t *DrumViewTree) ClearCapture() {
+	t.capturedHandler = nil
+	t.capturedTag = ""
+	t.suppress = false
 }
 
 // InputHandled returns true if the tree dispatched to a handler this frame.

@@ -104,23 +104,13 @@ func (g *Game) updateDrumTracking() {
 			g.state.DecSeekFreezeFrames()
 			return
 		}
-		cur := g.elapsedBeats
-		if div := g.grid.MaxDiv(); div > 0 {
-			display := int(math.Round(g.state.LastDisplayBeat() * float64(div)))
-			if display > cur {
-				cur = display
-			}
-		}
-		if len(g.nextBeatIdxs) > 0 {
-			nb := g.nextBeatIdxs[0] - 1
-			if nb < 0 {
-				nb = 0
-			}
-			if nb > cur {
-				cur = nb
-			}
-		}
-		g.drum.TrackBeat(cur)
+		// Single source of truth: feed TrackBeat the same canonical
+		// playhead the mini-timeline cursor renders. Sampling separate
+		// clocks here (g.elapsedBeats, LastDisplayBeat, nextBeatIdxs[0])
+		// and MAX-ing them produced the symptom in screenshot.png — the
+		// drum-view window drifted behind the cursor whenever wall-clock
+		// interpolation got ahead of (or behind) the sequencer fires.
+		g.drum.TrackBeat(g.playheadAbsSubdiv())
 		return
 	}
 	if g.Paused() {
@@ -128,7 +118,25 @@ func (g *Game) updateDrumTracking() {
 	}
 }
 
-func (g *Game) handlePlaybackTransition(prevPlaying bool) {
+// playheadAbsSubdiv is the canonical "current absolute subdivision being
+// played" — the single source of truth shared by the mini-timeline cursor
+// (which renders g.displayBeat()) and the drum-view auto-scroll (which
+// consumes this integer). Both must derive from the same clock or the
+// orange viewRect and the cursor visibly desync, exactly the bug the user
+// reported in screenshot.png.
+//
+// Derivation: round(displayBeat() * div). displayBeat() is monotonic and
+// already combines sequencer-tick progress with smooth wall/audio-clock
+// interpolation, so the conversion to subdivisions inherits all of those
+// invariants. The ±0.5-cell quantisation gap between the smooth cursor and
+// this integer is the irreducible cost of drum.Offset being an int, and
+// is well below TrackBeat's ±1-cell recenter dead-zone.
+func (g *Game) playheadAbsSubdiv() int {
+	div := max1(g.grid.MaxDiv())
+	return int(math.Round(g.displayBeat() * float64(div)))
+}
+
+func (g *Game) handlePlaybackTransition(prevPlaying, prevPaused bool) {
 	curr := g.Playing()
 	if curr == prevPlaying {
 		return
@@ -162,9 +170,19 @@ func (g *Game) handlePlaybackTransition(prevPlaying bool) {
 	}
 	g.drum.SetPlaying(curr)
 	notifyMediaSessionState()
-	if curr {
-		hooks.PublishKind(hooks.EventPlayStart, nil)
-	} else {
-		hooks.PublishKind(hooks.EventPlayStop, nil)
+	// Distinguish four narrative transitions so INFO reads naturally:
+	//   prevPaused=true,  curr=true  → "resumed" (was paused, now playing)
+	//   prevPaused=false, curr=true  → "play started" (fresh start)
+	//   curr=false, currently paused → "paused" (suspended, not stopped)
+	//   curr=false, not paused        → "play stopped"
+	switch {
+	case curr && prevPaused:
+		hooks.PublishWithSource(hooks.EventResumed, nil, hooks.CaptureSource(0))
+	case curr:
+		hooks.PublishWithSource(hooks.EventPlayStart, nil, hooks.CaptureSource(0))
+	case !curr && g.Paused():
+		hooks.PublishWithSource(hooks.EventPaused, nil, hooks.CaptureSource(0))
+	default:
+		hooks.PublishWithSource(hooks.EventPlayStop, nil, hooks.CaptureSource(0))
 	}
 }

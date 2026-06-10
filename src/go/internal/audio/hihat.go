@@ -16,7 +16,7 @@ func (HiHat) NewVoice(bpm, sampleRate int) Voice {
 	cfg := ConfigForInstrument("hihat")
 	samples := int(float64(sampleRate) * cfg.DurationSec)
 	buf := make([]float32, samples)
-	renderHiHat(buf, sampleRate, samples)
+	renderHiHatVoice(buf, sampleRate, samples) // modular fast path (Phase-6 cutover)
 	normalizeAndScale(buf, "hihat")
 	globalVoiceCache.Put(key, buf)
 	return &cVoice{buf: buf}

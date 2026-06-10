@@ -27,8 +27,9 @@ type sendEffects struct {
 	reverb C.reverb_t
 
 	// Owned C buffers (freed on cleanup).
-	delayBuf  unsafe.Pointer
-	reverbBuf unsafe.Pointer
+	delayBuf        unsafe.Pointer
+	delayCapSamples int // capacity of delayBuf in floats; max supported delay time.
+	reverbBuf       unsafe.Pointer
 
 	// Go-side processing buffers.
 	delaySendBuf  []float64 // accumulated send to delay
@@ -114,18 +115,31 @@ func ReverbSend(id string) float64 {
 	return math.Float64frombits(atomic.LoadUint64(&sl.reverb))
 }
 
+// maxSendDelayMs caps the delay-buffer allocation. The send delay UI clamps
+// to this; ConfigureSendDelay will silently clamp larger requests. Living
+// with a fixed capacity means delay_set_time_smooth never has to reallocate
+// the C buffer, so time changes are click-free (Phase 7).
+const maxSendDelayMs = 2000
+
 // initSendEffects creates and initializes the global send effects.
 func initSendEffects(sr int) {
 	fx := &sendEffects{sr: sr}
 
-	// Delay: 300ms delay line, 0.3 feedback, 3kHz LP damping.
-	delaySamples := sr * 300 / 1000 // 300ms
-	if delaySamples < 1 {
-		delaySamples = 1
+	// Delay: allocate at the *maximum* supported time so ConfigureSendDelay
+	// only ever updates the read offset, never reallocates the buffer. The
+	// initial active length is 300ms (matches prior default behavior).
+	maxDelaySamples := sr * maxSendDelayMs / 1000
+	if maxDelaySamples < 1 {
+		maxDelaySamples = 1
 	}
-	fx.delayBuf = C.malloc(C.size_t(delaySamples) * C.size_t(unsafe.Sizeof(C.float(0))))
-	C.delay_init(&fx.delay, (*C.float)(fx.delayBuf), C.int(delaySamples),
+	initialDelaySamples := sr * 300 / 1000
+	if initialDelaySamples < 1 {
+		initialDelaySamples = 1
+	}
+	fx.delayBuf = C.malloc(C.size_t(maxDelaySamples) * C.size_t(unsafe.Sizeof(C.float(0))))
+	C.delay_init(&fx.delay, (*C.float)(fx.delayBuf), C.int(initialDelaySamples),
 		C.float(0.3), C.float(3000), C.int(sr))
+	fx.delayCapSamples = maxDelaySamples
 
 	// Reverb: medium room, moderate damping.
 	reverbSize := int(C.reverb_buffer_size(C.int(sr)))
@@ -275,8 +289,13 @@ func (fx *sendEffects) processSends(instBufs map[string][]float64, activeInsts [
 }
 
 // ConfigureSendDelay reconfigures the global send delay with new parameters.
-// timeMs is the delay time in milliseconds, feedback is 0-1, dampingHz is the
-// LP damping cutoff frequency. Safe to call at any time; acquires the send mutex.
+// timeMs is the delay time in milliseconds (clamped to (0, maxSendDelayMs]
+// because the C buffer is sized to maxSendDelayMs at init time and never
+// reallocates — that's what makes the time update click-free). feedback
+// is 0-1, dampingHz is the LP damping cutoff frequency. Safe to call at
+// any time; acquires the send mutex. The smooth setters do not zero the
+// delay buffer, so the existing wet tail keeps playing as the read offset
+// shifts to the new time.
 func ConfigureSendDelay(timeMs, feedback, dampingHz float64) {
 	if sendFX == nil || !sendFX.initialized {
 		return
@@ -285,15 +304,15 @@ func ConfigureSendDelay(timeMs, feedback, dampingHz float64) {
 	defer sendFX.mu.Unlock()
 
 	sr := sendFX.sr
+	if timeMs > maxSendDelayMs {
+		timeMs = maxSendDelayMs
+	}
 	delaySamples := int(float64(sr) * timeMs / 1000)
 	if delaySamples < 1 {
 		delaySamples = 1
 	}
-
-	// Reallocate delay buffer if new size differs.
-	if delaySamples != int(sendFX.delay.length) {
-		C.free(sendFX.delayBuf)
-		sendFX.delayBuf = C.malloc(C.size_t(delaySamples) * C.size_t(unsafe.Sizeof(C.float(0))))
+	if delaySamples > sendFX.delayCapSamples {
+		delaySamples = sendFX.delayCapSamples
 	}
 
 	fb := feedback
@@ -303,8 +322,9 @@ func ConfigureSendDelay(timeMs, feedback, dampingHz float64) {
 		fb = 1
 	}
 
-	C.delay_init(&sendFX.delay, (*C.float)(sendFX.delayBuf), C.int(delaySamples),
-		C.float(fb), C.float(dampingHz), C.int(sr))
+	C.delay_set_time_smooth(&sendFX.delay, C.int(delaySamples))
+	C.delay_set_feedback_smooth(&sendFX.delay, C.float(fb))
+	C.delay_set_damping_smooth(&sendFX.delay, C.float(dampingHz), C.int(sr))
 
 	sendFX.delayTimeMs = timeMs
 	sendFX.delayFeedback = fb
@@ -325,11 +345,12 @@ func ConfigureSendReverb(room, damping, wet float64) {
 	r := clampSend(room, 0, 1)
 	d := clampSend(damping, 0, 1)
 	w := clampSend(wet, 0, 1)
+	_ = sr // sr unused after switching to smooth setter; kept for symmetry with sendFX access
 
-	// Reverb buffer size depends only on sample rate, not parameters, so we
-	// can reuse the existing buffer.
-	C.reverb_init(&sendFX.reverb, (*C.float)(sendFX.reverbBuf), C.int(sr),
-		C.float(r), C.float(d), C.float(w))
+	// Smooth update: only mutates coefficients in place, the existing reverb
+	// tail keeps playing instead of getting zeroed (which is what
+	// reverb_init does and why the prior code clicked).
+	C.reverb_set_params_smooth(&sendFX.reverb, C.float(r), C.float(d), C.float(w))
 
 	sendFX.reverbRoom = r
 	sendFX.reverbDamping = d

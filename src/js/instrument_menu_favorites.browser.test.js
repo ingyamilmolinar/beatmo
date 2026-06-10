@@ -90,7 +90,8 @@ page.on("console", (msg) => {
 });
 
 const FAV_ID = "test-favorite-instrument-id";
-const STORAGE_KEY = "beatmo.favorites.v1";
+// Single canonical localStorage key — userprefs.LocalStorageKey in Go.
+const STORAGE_KEY = "beatmo.prefs";
 
 // ─── First load: seed a favorite via the JS bridge ─────────────────────
 await page.goto(`http://localhost:${port}/`);
@@ -99,7 +100,7 @@ await page.waitForFunction(() => typeof instrumentSetFavorite === "function", nu
 });
 
 // Clear any prior state from previous test runs in this storage origin.
-await page.evaluate(() => localStorage.removeItem("beatmo.favorites.v1"));
+await page.evaluate((key) => localStorage.removeItem(key), STORAGE_KEY);
 
 const setOK = await page.evaluate((id) => instrumentSetFavorite(id, true), FAV_ID);
 if (setOK !== true) {
@@ -121,7 +122,7 @@ await page.waitForFunction(
     if (!raw) return false;
     try {
       const doc = JSON.parse(raw);
-      return doc.version === 1 && Array.isArray(doc.favorites) && doc.favorites.includes(id);
+      return Array.isArray(doc.favorites) && doc.favorites.includes(id);
     } catch (_) {
       return false;
     }

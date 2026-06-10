@@ -75,9 +75,9 @@ func TestSoundQueueNonBlocking(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		g.queueSound("snare", 1)
-		g.queueSound("kick", 1)
-		g.queueSound("hat", 1)
+		g.queueSoundParams("snare", 1, 0, 1)
+		g.queueSoundParams("kick", 1, 0, 1)
+		g.queueSoundParams("hat", 1, 0, 1)
 		close(done)
 	}()
 	waitForChan(t, done, 10000)
@@ -101,7 +101,7 @@ func assertNotPanics(t *testing.T, f func()) {
 func TestDropdownBlocksEditorClick(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
-	g.Layout(200, 200)
+	g.Layout(400, 400)
 
 	before := len(g.graph.Nodes)
 	g.drum.rowLabels()[0].OnClick()
@@ -3423,6 +3423,12 @@ func TestAutoTrackFollowsBeat(t *testing.T) {
 	g.refreshDrumRow()
 	g.SetPlaying(true)
 	g.elapsedBeats = 5
+	// Anchor the wall clock so displayBeat() reports the canonical
+	// playhead (1.25 beats at div=4). updateDrumTracking now consumes
+	// playheadAbsSubdiv() = round(displayBeat() * div), so callers
+	// driving auto-track must initialise the play state the same way
+	// the production play handler does.
+	setPlayStartForAbs(g, 5)
 	g.updateDrumTracking()
 	if g.drum.Offset <= 0 {
 		t.Fatalf("expected tracking offset to advance, got %d", g.drum.Offset)

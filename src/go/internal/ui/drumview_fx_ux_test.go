@@ -542,9 +542,12 @@ func TestFXPanelAddEffectPickerSurvivesHeldMouse(t *testing.T) {
 	}
 }
 
-// ---------- Mobile Context Menu → Effects Tests ----------
+// ---------- Mobile Context Menu Structure Tests ----------
 
-func TestContextMenuEffectsEntryMobile(t *testing.T) {
+// TestContextMenuEffectsAbsentOnMobile verifies that the mobile context
+// menu intentionally omits the "Effects" entry. Mobile users do not have
+// an FX entry point in this menu.
+func TestContextMenuEffectsAbsentOnMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
@@ -561,38 +564,21 @@ func TestContextMenuEffectsEntryMobile(t *testing.T) {
 		t.Skip("no rows")
 	}
 
-	// Open context menu for row 0.
 	dv.openContextMenu(0)
 	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu did not open")
 	}
 
-	// Find the "Effects" button.
-	var effectsBtn *Button
 	for _, btn := range dv.contextMenuBtns {
-		if btn.Text == "Effects" {
-			effectsBtn = btn
-			break
+		if btn.Text == "Effects" || btn.Text == "Color" {
+			t.Errorf("mobile context menu should not contain %q", btn.Text)
 		}
-	}
-	if effectsBtn == nil {
-		t.Fatal("Effects button not found in context menu")
-	}
-
-	// Click the Effects button — should close context menu and open FX panel.
-	effectsBtn.OnClick()
-	if dv.IsContextMenuOpen() {
-		t.Error("context menu should close after clicking Effects")
-	}
-	if !dv.IsFXPanelOpen() {
-		t.Fatal("FX panel did not open after clicking Effects in context menu")
-	}
-	if dv.fxPanelRow != 0 {
-		t.Errorf("expected fxPanelRow=0, got %d", dv.fxPanelRow)
 	}
 }
 
-func TestContextMenuHasSevenItemsMobile(t *testing.T) {
+// TestContextMenuHasFiveItemsMobile pins the mobile button count: four
+// items (Instrument, Rename, Origin, Delete) plus the close button = 5.
+func TestContextMenuHasFiveItemsMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
@@ -610,10 +596,10 @@ func TestContextMenuHasSevenItemsMobile(t *testing.T) {
 		t.Fatal("context menu did not open")
 	}
 
-	// Mobile items: Instrument, Rename, Color, Effects, Origin, Delete (6) + close = 7.
-	want := 7
+	// Mobile items: Instrument, Rename, Origin, Delete (4) + close = 5.
+	want := 5
 	if got := len(dv.contextMenuBtns); got != want {
-		t.Errorf("expected %d context menu buttons (6 items + close), got %d", want, got)
+		t.Errorf("expected %d context menu buttons (4 items + close), got %d", want, got)
 		for i, btn := range dv.contextMenuBtns {
 			t.Logf("  btn[%d]: text=%q icon=%q", i, btn.Text, btn.Icon)
 		}

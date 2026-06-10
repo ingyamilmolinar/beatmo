@@ -309,8 +309,8 @@ func TestSliderPopupPortalOverlay_HitAreasOpenHasTag(t *testing.T) {
 
 	overlay := &sliderPopupPortalOverlay{popup: sp, tag: "my-tag"}
 	areas := overlay.HitAreas()
-	if len(areas) != 1 {
-		t.Fatalf("expected 1 hit area, got %d", len(areas))
+	if len(areas) != 2 {
+		t.Fatalf("expected 2 hit areas (popup + anchor tap-to-close), got %d", len(areas))
 	}
 	if areas[0].Tag != "my-tag" {
 		t.Errorf("expected tag 'my-tag', got %q", areas[0].Tag)
@@ -318,9 +318,17 @@ func TestSliderPopupPortalOverlay_HitAreasOpenHasTag(t *testing.T) {
 	if areas[0].Rect != sp.Rect() {
 		t.Errorf("hit area rect %v != popup rect %v", areas[0].Rect, sp.Rect())
 	}
-	// Verify the handler is a *sliderPopupHitHandler.
 	if _, ok := areas[0].Handler.(*sliderPopupHitHandler); !ok {
 		t.Fatalf("expected handler to be *sliderPopupHitHandler, got %T", areas[0].Handler)
+	}
+	if areas[1].Tag != "my-tag-anchor-close" {
+		t.Errorf("expected anchor-close tag 'my-tag-anchor-close', got %q", areas[1].Tag)
+	}
+	if areas[1].Rect != sp.Anchor() {
+		t.Errorf("anchor-close rect %v != popup anchor %v", areas[1].Rect, sp.Anchor())
+	}
+	if _, ok := areas[1].Handler.(*sliderPopupAnchorCloseHandler); !ok {
+		t.Fatalf("expected anchor-close handler to be *sliderPopupAnchorCloseHandler, got %T", areas[1].Handler)
 	}
 }
 
@@ -417,11 +425,16 @@ func TestSliderPopupPortalOverlay_HitAreasTouchFlag(t *testing.T) {
 
 	overlay := &sliderPopupPortalOverlay{popup: sp, tag: "touch-flag-test"}
 	areas := overlay.HitAreas()
-	if len(areas) != 1 {
-		t.Fatalf("expected 1 hit area, got %d", len(areas))
+	if len(areas) != 2 {
+		t.Fatalf("expected 2 hit areas (popup + anchor), got %d", len(areas))
 	}
 	if !areas[0].Touch {
-		t.Fatal("slider popup portal overlay HitArea must have Touch == true for mobile touch expansion")
+		t.Fatal("slider popup portal overlay popup HitArea must have Touch == true for mobile touch expansion")
+	}
+	// Anchor-close must NOT be touch-expanded — that would make it eat
+	// clicks far outside the icon and inappropriately close the popup.
+	if areas[1].Touch {
+		t.Fatal("anchor-close HitArea must have Touch == false (exact rect only)")
 	}
 }
 
@@ -447,8 +460,8 @@ func TestSliderPopupPortalOverlay_TouchExpandedHit(t *testing.T) {
 
 	overlay := &sliderPopupPortalOverlay{popup: sp, tag: "touch-expand-test"}
 	areas := overlay.HitAreas()
-	if len(areas) != 1 {
-		t.Fatalf("expected 1 hit area, got %d", len(areas))
+	if len(areas) != 2 {
+		t.Fatalf("expected 2 hit areas (popup + anchor), got %d", len(areas))
 	}
 
 	expand := TouchMinTarget()

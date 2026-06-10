@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "subdiv": 8,
+  "bpm": 120,
+  "instruments": [
+    {"name": "Kick", "id": "kick", "kind": "builtin", "volume": 1.0, "origin": 0, "color": "#80C850FF"}
+  ],
+  "nodes": []
+}

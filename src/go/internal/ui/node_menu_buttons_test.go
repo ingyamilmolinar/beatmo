@@ -82,14 +82,14 @@ func TestMuteSoloNoAutoRepeat(t *testing.T) {
 	base := dv.Rows[0].Muted
 	prev := base
 	for i := 0; i < 120; i++ {
-		_ = btn.Handle(mx, my, true)
+		_ = btn.HandleInputResult(mx, my, true)
 		if dv.Rows[0].Muted != prev {
 			toggles++
 			prev = dv.Rows[0].Muted
 		}
 	}
 	// Release
-	_ = btn.Handle(mx, my, false)
+	_ = btn.HandleInputResult(mx, my, false)
 	if toggles != 1 {
 		t.Fatalf("expected exactly 1 toggle, got %d", toggles)
 	}

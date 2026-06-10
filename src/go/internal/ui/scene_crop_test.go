@@ -70,6 +70,56 @@ func TestSceneCropSubjectsResolveToVisibleRect(t *testing.T) {
 	}
 }
 
+// TestSynthChipSceneSelectsIntendedStage — the synth chip-strip scenes drive
+// SelectSynthSectionByLabel through synthTabStageSetup, whose forced layouts go
+// through the tree (LayoutZoneNow), NOT a direct eqPanelZone.Layout (that would
+// trip TestZoneLayoutRoutesThroughTreeDiscipline). TestSceneCropSubjectsResolve
+// only checks the Subject *bounds*, so a silently-failed selection (chip strip
+// not built when SelectSynthSectionByLabel ran → default-stage fallback) would
+// pass it. This pins the actual selected stage for each chip scene.
+func TestSynthChipSceneSelectsIntendedStage(t *testing.T) {
+	cases := []struct {
+		scene     string
+		wantLabel string
+	}{
+		{"crop_synth_tab_chips_collapsed", "OSC"},
+		{"crop_synth_tab_detail_envelope", "ENVELOPE"},
+		{"crop_synth_tab_ghost_chip", "FILTER"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.scene, func(t *testing.T) {
+			assertDefaultParityState(t)
+			g := New(testLogger)
+			t.Cleanup(g.CloseForTest)
+			g.Layout(1280, 720)
+
+			if err := RunScene(g, tc.scene); err != nil {
+				t.Fatalf("RunScene(%q): %v", tc.scene, err)
+			}
+			for i := 0; i < 8; i++ {
+				_ = g.Update()
+			}
+
+			var selLabel string
+			selCount := 0
+			for _, c := range g.drum.instEditorChips {
+				if c.selected {
+					selLabel = sectionLabel(c.id)
+					selCount++
+				}
+			}
+			if selCount != 1 {
+				t.Fatalf("scene %q: %d chips selected, want exactly 1", tc.scene, selCount)
+			}
+			if selLabel != tc.wantLabel {
+				t.Errorf("scene %q: selected stage %q, want %q — SelectSynthSectionByLabel did not take (silent fallback to default)",
+					tc.scene, selLabel, tc.wantLabel)
+			}
+		})
+	}
+}
+
 // TestSceneCropScopeVariantsProduceDistinctState — each crop_scope_*
 // scene must move the scope zone into a state visibly different from
 // crop_chain_default. Without this check the scope variants would all

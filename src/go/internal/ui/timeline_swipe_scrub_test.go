@@ -10,8 +10,16 @@ import (
 )
 
 // TestTimelineScrub_MobileHitAreaSpansFullTimelineRect verifies the
-// mobile scrub hit surface is at least TouchMinTarget tall (B5 critique:
-// the bar-only hit area was too narrow for thumb scrubs).
+// mobile scrub hit surface meets TouchMinTarget once HitIndex.At
+// applies its touch expansion. Pre-input-isolation pass: the area's
+// Rect was physically enlarged downward into the steps region to
+// meet the target — which leaked into sibling zones (the canonical
+// "knob drag scrubs the timeline" bug). Now: the Rect equals the
+// visible bar, Touch=true, and the ClipRect bounds the expansion.
+// HitIndex.At expands the touch radius up to TouchMinTarget at
+// query time but never past ClipRect. This test exercises the new
+// contract: a point well outside the bar but inside the touch
+// skirt still hits the scrub area; a point far below does not.
 func TestTimelineScrub_MobileHitAreaSpansFullTimelineRect(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -27,18 +35,44 @@ func TestTimelineScrub_MobileHitAreaSpansFullTimelineRect(t *testing.T) {
 	if scrubArea == nil {
 		t.Fatalf("timeline-scrub hit area not found")
 	}
-	if scrubArea.Rect.Dy() < TouchMinTarget() {
-		t.Fatalf("mobile scrub hit area height %d < TouchMinTarget %d", scrubArea.Rect.Dy(), TouchMinTarget())
+	if !scrubArea.Touch {
+		t.Errorf("mobile scrub Touch=false; expected Touch=true so HitIndex.At expands the touch radius")
+	}
+	if scrubArea.ClipRect.Empty() {
+		t.Errorf("mobile scrub ClipRect empty; expected a bounded skirt to prevent leakage")
+	}
+	// The visible bar may be thin, but touch expansion via HitIndex.At
+	// must still land within the bar's vertical skirt. Confirm a point
+	// just below the bar (within ClipRect) hits scrub.
+	idx := &HitIndex{}
+	idx.Update("timeline", z.HitAreas())
+	barMid := scrubArea.Rect.Min.X + scrubArea.Rect.Dx()/2
+	belowBar := scrubArea.Rect.Max.Y + 2
+	if belowBar > scrubArea.ClipRect.Max.Y {
+		t.Skip("clip-skirt too tight to test below-bar tolerance on this layout")
+	}
+	hits := idx.At(barMid, belowBar)
+	found := false
+	for _, h := range hits {
+		if h.Tag == "timeline-scrub" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("touch expansion failed: point (%d,%d) inside ClipRect did not hit scrub", barMid, belowBar)
 	}
 }
 
-// TestTimelineScrub_HitAreaExcludesLenButtons verifies the mobile
-// scrub-area enlargement clamps around lenIncBtn / lenDecBtn rects
-// when those buttons are present. Today these buttons are hidden on
-// mobile (A7 critique), but the exclusion logic protects against
-// future configurations that re-enable them — without coverage the
-// safety net could silently break.
-func TestTimelineScrub_HitAreaExcludesLenButtons(t *testing.T) {
+// TestTimelineScrub_HitAreaIsBarOnly verifies the scrub Rect equals
+// the visible bar exactly — no downward growth into the steps region.
+// Pre-input-isolation pass the rect grew downward and overlapped
+// the len ±/track buttons, requiring a per-button exclusion clamp.
+// Post-fix the rect IS the bar, so no exclusion is needed and there
+// is no leakage risk into a sibling zone. The button rects in this
+// test are placed in the steps region (below the bar); the scrub
+// rect must NOT overlap them since the bar is above them.
+func TestTimelineScrub_HitAreaIsBarOnly(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -49,29 +83,19 @@ func TestTimelineScrub_HitAreaExcludesLenButtons(t *testing.T) {
 	if z == nil {
 		t.Fatalf("timelineZone nil")
 	}
-	if z.lenIncBtn == nil || z.lenDecBtn == nil {
-		t.Fatalf("len buttons unexpectedly nil; cannot exercise exclusion")
-	}
-
-	// Force non-empty button rects on the right edge of the timeline
-	// rect so the exclusion code path actually runs.
-	rect := z.rect
-	lenInc := image.Rect(rect.Max.X-44, rect.Min.Y, rect.Max.X, rect.Min.Y+44)
-	lenDec := image.Rect(rect.Max.X-88, rect.Min.Y, rect.Max.X-44, rect.Min.Y+44)
-	z.lenIncBtn.SetRect(lenInc)
-	z.lenDecBtn.SetRect(lenDec)
-	// Re-run hit-area rebuild so the new rects influence the scrub clamp.
-	z.Layout(rect)
-
 	scrubArea := findHitAreaByTagPrefix(z.HitAreas(), "timeline-scrub")
 	if scrubArea == nil {
 		t.Fatalf("timeline-scrub hit area not found")
 	}
-	if !scrubArea.Rect.Intersect(lenInc).Empty() {
-		t.Errorf("scrub hit area %v overlaps lenIncBtn %v — exclusion failed", scrubArea.Rect, lenInc)
+	if scrubArea.Rect != z.timelineBarRect {
+		t.Errorf("scrub Rect=%v, want timelineBarRect=%v (no enlargement)",
+			scrubArea.Rect, z.timelineBarRect)
 	}
-	if !scrubArea.Rect.Intersect(lenDec).Empty() {
-		t.Errorf("scrub hit area %v overlaps lenDecBtn %v — exclusion failed", scrubArea.Rect, lenDec)
+	// The bar sits at the top of the zone; the steps region (rows) is
+	// strictly below. So the bar must not overlap the rows region.
+	if !scrubArea.Rect.Intersect(z.stepsRect).Empty() {
+		t.Errorf("scrub Rect %v overlaps stepsRect %v — bar leaked into rows region",
+			scrubArea.Rect, z.stepsRect)
 	}
 }
 

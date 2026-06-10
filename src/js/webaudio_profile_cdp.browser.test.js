@@ -45,6 +45,43 @@ const port = server.address().port;
 // ---------------------------------------------------------------------------
 const DURATION_SEC = 15;
 
+// ---------------------------------------------------------------------------
+// CI gate configuration
+//
+// By DEFAULT this profiler is a hard gate: a regression in audio-scheduler
+// health or CPU/WASM overhead exits non-zero and fails CI. Set PROFILE_SOFT=1
+// to downgrade every hard failure to an informational WARN (recovers the old
+// flight-recorder behavior for ad-hoc profiling runs).
+//
+// IMPORTANT: lagP90/lagP99 are ONLY populated when an event is OVERDUE
+// (lead < 0). On a healthy run they are null/0, so they are NOT gated here —
+// they are printed for diagnostics only. We gate on the metrics that ARE
+// populated on a healthy run: overdue, minLead, smallLeadCount, and the
+// CPU/WASM-overhead figures from the CDP profile.
+// ---------------------------------------------------------------------------
+const PROFILE_SOFT = process.env.PROFILE_SOFT === "1";
+
+const GATES = {
+  // Audio scheduler health (populated on every run). These are the load-bearing
+  // real-time-safety gates: a regression here means audible glitches.
+  overdueMax: 0,            // no event may be scheduled in the past
+  minLeadMinMs: 3,          // every event must be enqueued >=3ms ahead of its play time
+  smallLeadMax: 0,          // no event may have <3ms lead (Go-side smallLeadCount)
+  // CPU / WASM overhead caps (from the CDP CPU profile). These are regression
+  // gates, not the aspirational 5%/15% design targets: the current healthy WASM
+  // build self-samples audio-flush ~0-2% and WASM/Go runtime ~16-19% (with
+  // CDP-sampling-interval jitter of a couple points). Caps carry headroom above
+  // the observed healthy baseline so they catch a genuine regression (e.g. a new
+  // per-event allocation or a doubling of runtime overhead) without flapping on
+  // the green build. Tighten these as the build improves toward the design
+  // targets noted in the informational tables above.
+  audioFlushPctMax: 8,      // healthy ~0-2%; trips on a real audio-flush hot path
+  wasmOverheadPctMax: 25,   // healthy ~16-19%; trips on a real runtime-overhead regression
+};
+
+// Accumulates hard-failure descriptions across all scenarios.
+const hardFailures = [];
+
 const scenarios = [
   {
     name: "Synthetic 4x1 @ BPM=280",
@@ -67,6 +104,11 @@ const scenarios = [
   },
 ];
 
+// PROFILE_SCENARIOS=<n> limits the run to the first N scenarios (for fast
+// verification / CI smoke). Default: run all scenarios.
+const scenarioLimit = process.env.PROFILE_SCENARIOS ? parseInt(process.env.PROFILE_SCENARIOS, 10) : scenarios.length;
+const activeScenarios = scenarios.slice(0, Math.max(1, scenarioLimit || scenarios.length));
+
 const allResults = [];
 const traceDir = path.join(repoRoot, "trace");
 if (!fs.existsSync(traceDir)) fs.mkdirSync(traceDir);
@@ -75,7 +117,7 @@ function fmtMs(sec) {
   return sec == null ? "null" : (sec * 1000).toFixed(2) + "ms";
 }
 
-for (const scenario of scenarios) {
+for (const scenario of activeScenarios) {
   console.log(`\n${"=".repeat(72)}`);
   console.log(`Scenario: ${scenario.name} (${DURATION_SEC}s)`);
   console.log(`${"=".repeat(72)}\n`);
@@ -95,39 +137,36 @@ for (const scenario of scenarios) {
   const beforeMap = new Map(metricsBefore.metrics.map(m => [m.name, m.value]));
 
   // ---------------------------------------------------------------------------
-  // 1b. Inject JS-side flush instrumentation
+  // 1b. Inject JS-side crossing instrumentation
+  //
+  // We wrap the Go→JS batch entry points (playSoundsBatch / playSoundsBatchFlat)
+  // to measure the time spent enqueuing each batch on the JS side. This is the
+  // only instrumentation that actually produces data; the previously-present
+  // __flushSampler / _origFlush / _origProcess hooks were dead (flushAudioQueue
+  // and processAudioEvent are module-scoped and never exposed on window), so
+  // they have been removed.
   // ---------------------------------------------------------------------------
   await page.evaluate(() => {
     window.__flushProfile = {
-      flushTimings: [],       // { start, end, eventsProcessed, budgetExceeded, deferredToTimeout }
-      eventTimings: [],       // { id, enqueueTime, processTime, startCallTime, lead }
       batchArrivals: [],      // { timestamp, batchSize, source }
       crossingTimings: [],    // { jsEntryTime, enqueueDuration, batchSize }
-      flushDeferCount: 0,
-      totalEventsProcessed: 0,
-      totalFlushCalls: 0,
     };
     const fp = window.__flushProfile;
 
-    // Monkey-patch flushAudioQueue
-    const _origFlush = window.__origFlushAudioQueue || null;
-    // We need to wrap at the module level; intercept via the scheduleAudioFlush mechanism
-    // Since flushAudioQueue is module-scoped, we intercept processAudioEvent instead
-    const _origProcess = window.__origProcessAudioEvent || null;
-
-    // Wrap processAudioEvent by intercepting at the enqueue level
-    // We'll patch playSoundsBatch and playSoundsBatchFlat to capture crossing timings
+    // Wrap the Go→JS batch entry points to capture crossing timings.
     const origBatch = window.playSoundsBatch;
     const origBatchFlat = window.playSoundsBatchFlat;
 
-    window.playSoundsBatch = (arr) => {
-      const t0 = performance.now();
-      const size = Array.isArray(arr) ? arr.length : 1;
-      origBatch(arr);
-      const t1 = performance.now();
-      fp.batchArrivals.push({ timestamp: t0, batchSize: size, source: "batch" });
-      fp.crossingTimings.push({ jsEntryTime: t0, enqueueDuration: t1 - t0, batchSize: size });
-    };
+    if (origBatch) {
+      window.playSoundsBatch = (arr) => {
+        const t0 = performance.now();
+        const size = Array.isArray(arr) ? arr.length : 1;
+        origBatch(arr);
+        const t1 = performance.now();
+        fp.batchArrivals.push({ timestamp: t0, batchSize: size, source: "batch" });
+        fp.crossingTimings.push({ jsEntryTime: t0, enqueueDuration: t1 - t0, batchSize: size });
+      };
+    }
 
     if (origBatchFlat) {
       window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen) => {
@@ -139,17 +178,6 @@ for (const scenario of scenarios) {
         fp.crossingTimings.push({ jsEntryTime: t0, enqueueDuration: t1 - t0, batchSize: size });
       };
     }
-
-    // Intercept observeScheduleTiming to capture per-event lead times
-    const origObserve = window.resetAudioScheduleMetrics ? true : false;
-    // We can capture lead distribution via getAudioScheduleMetrics at the end
-
-    // Track flush behavior via a MutationObserver on the queue size
-    // Instead, use a polling approach - sample queue state periodically
-    window.__flushSampler = setInterval(() => {
-      // Access via the global audioQueue if available
-      // Since audioQueue is module-scoped, we'll rely on post-hoc analysis
-    }, 100);
   });
 
   // ---------------------------------------------------------------------------
@@ -192,10 +220,7 @@ for (const scenario of scenarios) {
   const audioMetrics = await page.evaluate(() => getAudioScheduleMetrics?.());
   const perfStatsResult = await page.evaluate(() => perfStats?.());
   const rowCount = await page.evaluate(() => totalRows?.());
-  const flushProfile = await page.evaluate(() => {
-    clearInterval(window.__flushSampler);
-    return window.__flushProfile;
-  });
+  const flushProfile = await page.evaluate(() => window.__flushProfile);
 
   // 1a. CDP Performance.getMetrics AFTER
   const metricsAfter = await client.send("Performance.getMetrics");
@@ -458,31 +483,55 @@ for (const scenario of scenarios) {
   }
 
   // ---------------------------------------------------------------------------
-  // Soft assertions
+  // Gate checks (hard by default) + informational warnings
   // ---------------------------------------------------------------------------
-  console.log("\n=== Soft Assertions ===\n");
-  const warnings = [];
+  console.log("\n=== Gate Checks ===\n");
+  const warnings = [];   // informational only — never affects exit code
+  const failures = [];   // hard failures — set non-zero exit unless PROFILE_SOFT
 
-  if (audioFlushPct > 5) {
-    warnings.push(`Audio flush CPU usage ${audioFlushPct.toFixed(1)}% exceeds 5% target`);
+  // --- Hard gates: audio scheduler health (populated on a healthy run) ---
+  if (audioMetrics) {
+    if (audioMetrics.overdue > GATES.overdueMax) {
+      failures.push(`${audioMetrics.overdue} overdue audio events detected (cap=${GATES.overdueMax})`);
+    }
+    // minLead is in seconds; a healthy run keeps every event >=3ms ahead.
+    const minLeadMs = audioMetrics.minLead != null ? audioMetrics.minLead * 1000 : null;
+    if (minLeadMs != null && minLeadMs < GATES.minLeadMinMs) {
+      failures.push(`minLead ${minLeadMs.toFixed(2)}ms below ${GATES.minLeadMinMs}ms floor`);
+    }
+    if (audioMetrics.smallLeadCount != null && audioMetrics.smallLeadCount > GATES.smallLeadMax) {
+      const pct = audioMetrics.count > 0 ? ((audioMetrics.smallLeadCount / audioMetrics.count) * 100).toFixed(1) : "?";
+      failures.push(`${audioMetrics.smallLeadCount} events with <3ms lead (${pct}%, cap=${GATES.smallLeadMax})`);
+    }
+  } else {
+    failures.push("no audio schedule metrics collected (getAudioScheduleMetrics returned nothing)");
   }
-  if (wasmOverheadPct > 15) {
-    warnings.push(`WASM/Go overhead ${wasmOverheadPct.toFixed(1)}% exceeds 15% target`);
+
+  // --- Hard gates: CPU / WASM overhead caps (from the CDP CPU profile) ---
+  if (audioFlushPct > GATES.audioFlushPctMax) {
+    failures.push(`audio-flush CPU ${audioFlushPct.toFixed(1)}% exceeds ${GATES.audioFlushPctMax}% cap`);
   }
+  if (wasmOverheadPct > GATES.wasmOverheadPctMax) {
+    failures.push(`WASM/Go overhead ${wasmOverheadPct.toFixed(1)}% exceeds ${GATES.wasmOverheadPctMax}% cap`);
+  }
+
+  // --- Informational only: lagP99 is null/0 on a healthy run (lead>=0), so
+  //     this is surfaced as a WARN, never a hard failure. ---
   if (audioMetrics && audioMetrics.lagP99 != null && audioMetrics.lagP99 > 0.020) {
-    warnings.push(`lagP99 ${(audioMetrics.lagP99 * 1000).toFixed(2)}ms exceeds 20ms during profiling`);
-  }
-  if (audioMetrics && audioMetrics.overdue > 0) {
-    warnings.push(`${audioMetrics.overdue} overdue events detected`);
-  }
-  if (audioMetrics && audioMetrics.smallLeadCount > audioMetrics.count * 0.1) {
-    warnings.push(`${audioMetrics.smallLeadCount} events with <3ms lead (${((audioMetrics.smallLeadCount / audioMetrics.count) * 100).toFixed(1)}%)`);
+    warnings.push(`lagP99 ${(audioMetrics.lagP99 * 1000).toFixed(2)}ms exceeds 20ms during profiling (diagnostic only)`);
   }
 
+  if (failures.length > 0) {
+    const tag = PROFILE_SOFT ? "WARN (soft mode)" : "FAIL";
+    for (const f of failures) console.log(`  ${tag}: ${f}`);
+    if (!PROFILE_SOFT) {
+      for (const f of failures) hardFailures.push(`[${scenario.name}] ${f}`);
+    }
+  } else {
+    console.log("  All hard gates passed");
+  }
   if (warnings.length > 0) {
     for (const w of warnings) console.log(`  WARN: ${w}`);
-  } else {
-    console.log("  All soft assertions passed");
   }
 
   // Store results for summary
@@ -518,6 +567,7 @@ for (const scenario of scenarios) {
       };
     })() : null,
     warnings,
+    failures,
   });
 
   if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "audio_profile_cdp");
@@ -565,6 +615,19 @@ console.log("╚═════════════════════�
 fs.writeFileSync(path.join(traceDir, "cdp_profile_results.json"), JSON.stringify(allResults, null, 2));
 
 console.log(`\nProfiles saved to: ${traceDir}/`);
-console.log("\naudio_profile_cdp: complete");
 
+// ---------------------------------------------------------------------------
+// Final verdict — set non-zero exit on any hard gate failure (default ON).
+// ---------------------------------------------------------------------------
 server.close();
+
+if (hardFailures.length > 0) {
+  console.error(`\n${"!".repeat(72)}`);
+  console.error(`audio_profile_cdp: FAILED — ${hardFailures.length} hard gate violation(s):`);
+  for (const f of hardFailures) console.error(`  - ${f}`);
+  console.error(`(set PROFILE_SOFT=1 to downgrade these to warnings)`);
+  console.error(`${"!".repeat(72)}`);
+  process.exit(1);
+}
+
+console.log("\naudio_profile_cdp: complete (all hard gates passed)");

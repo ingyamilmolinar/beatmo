@@ -31,6 +31,8 @@ var InstrumentConfigs = map[string]InstrumentConfig{
 	"fm-lead":   {ID: "fm-lead", DurationSec: 1.0, Amplitude: 0.8, RenderFunc: "render_fm_lead"},
 	"fm-epiano": {ID: "fm-epiano", DurationSec: 2.0, Amplitude: 0.8, RenderFunc: "render_fm_epiano"},
 	"fm-pluck":  {ID: "fm-pluck", DurationSec: 0.5, Amplitude: 0.8, RenderFunc: "render_fm_pluck"},
+	"modular":     {ID: "modular", DurationSec: 1.0, Amplitude: 0.8, RenderFunc: "render_modular"},
+	"modular-pad": {ID: "modular-pad", DurationSec: 1.0, Amplitude: 0.8, RenderFunc: "render_modular"},
 }
 
 // DefaultDurationSec is the fallback duration for unknown instruments.

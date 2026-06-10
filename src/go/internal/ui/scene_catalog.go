@@ -60,6 +60,10 @@ var sceneCatalog = []Scene{
 	{Name: "eq_tab_levels", Description: "Levels tab active", Mobile: true,
 		Setup:       func(g *Game) { _ = g.SetActiveEQTab("levels") },
 		MobileSetup: mobileAudioPanelSetup("levels")},
+	{Name: "eq_tab_synth", Description: "Synth tab active (recipe knob editor)", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			_ = g.SetActiveEQTab("synth")
+		}},
 	{Name: "eq_tab_chain", Description: "Chain tab active", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) { _ = g.SetActiveEQTab("chain"); g.SetChainVisible(true) },
 		MobileSetup: func(g *Game) {
@@ -238,6 +242,16 @@ var sceneCatalog = []Scene{
 			g.SetForceMobileProfile(true)
 			g.drum.setViewMode(viewModeChain)
 		}},
+	{Name: "mobile_bottom_nav_synth", Description: "mobile Synth tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeSynth)
+		}},
+	{Name: "mobile_bottom_nav_sampler", Description: "mobile Sampler tab via bottom-nav strip", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.setViewMode(viewModeSampler)
+		}},
 	// Regression scene for the Pads-after-EQ leak (screenshot.png 2026-05-10):
 	// after a visit to the EQ tab, the EQ panel's Master/HP/LP pill strip
 	// must NOT be visible above the bottom nav in Pads view. Locks in the
@@ -344,6 +358,16 @@ var sceneCatalog = []Scene{
 			g.SetPlaying(true)
 			_ = g.SetActiveEQTab("chain")
 			g.SetChainVisible(true)
+		}},
+	{Name: "playback_eq_tab_spectrum", Description: "playback running + Spectrum tab", SettleFrames: 150,
+		Setup: func(g *Game) {
+			g.SetPlaying(true)
+			_ = g.SetActiveEQTab("spectrum")
+		}},
+	{Name: "playback_eq_tab_synth", Description: "playback running + Synth tab", SettleFrames: 150,
+		Setup: func(g *Game) {
+			g.SetPlaying(true)
+			_ = g.SetActiveEQTab("synth")
 		}},
 
 	// ─── FX panel detail (per-effect, knob drawer) ────────────────
@@ -588,6 +612,76 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectEQTabLevels,
 		Setup:       func(g *Game) { _ = g.SetActiveEQTab("levels"); g.SetPlaying(true) },
 		MobileSetup: mobileAudioPanelPlaySetup("levels")},
+	// Synth-tab redesign scenes — each opens the per-instrument pipeline
+	// panel on a different recipe so the unified section layout (VOICE/OSC/
+	// FM/ENVELOPE/FILTER/POST, empty sections pruned) renders realistic
+	// mixes. Hihat exercises a pruned-section case; FM exercises the
+	// FM-voice (FM stage collision-pruned) row.
+	{Name: "crop_synth_tab_drum", Description: "Synth tab cropped — drum-snare recipe (VOICE+stage sections, unified layout)",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabSceneSetup(""),
+		MobileSetup: mobileSynthTabSetup("")},
+	{Name: "crop_synth_tab_fm", Description: "Synth tab cropped — fm-bell recipe (brightness wired, no tone/body)",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabSceneSetup("fm-bell"),
+		MobileSetup: mobileSynthTabSetup("fm-bell")},
+	{Name: "crop_synth_tab_hihat_collapsed", Description: "Synth tab cropped — drum-hihat (pruned-empty sections, brightness wired)",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabSceneSetup("hihat"),
+		MobileSetup: mobileSynthTabSetup("hihat")},
+	{Name: "crop_synth_tab_master_chooser", Description: "Synth tab cropped — Master channel selected, header resolves to first row",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabSceneSetup(""),
+		MobileSetup: mobileSynthTabSetup("")},
+	{Name: "crop_synth_tab_modular", Description: "Synth tab cropped — modular voice (OSC+FM+ENVELOPE+FILTER+POST sections, enum knobs)",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabSceneSetup("modular"),
+		MobileSetup: mobileSynthTabSetup("modular")},
+	{Name: "crop_synth_tab_drum_generator", Description: "Synth tab — bespoke drum (snare) showing the Generator selector (Native) alongside its wired knobs",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabSceneSetup("snare"),
+		MobileSetup: mobileSynthTabSetup("snare")},
+	{Name: "crop_synth_tab_drum_revoiced", Description: "Synth tab — a drum re-voiced onto a Saw waveform: full modular pipeline + per-stage enable pills",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabDrumRevoicedSetup(),
+		MobileSetup: mobileSynthTabDrumRevoicedSetup()},
+	{Name: "crop_synth_tab_modular_play", Description: "Synth tab — modular voice during playback (per-stage enable pills + generator step, trigger pulse)",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabModularPlaySetup(),
+		MobileSetup: mobileSynthTabModularPlaySetup()},
+	{Name: "crop_synth_tab_modular_noise", Description: "Synth tab — modular voice with Noise Pink generator + Filter stage bypassed (dimmed) during playback",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabModularNoiseSetup(),
+		MobileSetup: mobileSynthTabModularNoiseSetup()},
+	{Name: "crop_synth_tab_wav", Description: "Synth tab cropped — WAV-sample instrument (no recipe): single 'does not use the synth' banner",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabNoSynthSceneSetup(),
+		MobileSetup: mobileSynthTabNoSynthSetup()},
+	{Name: "crop_synth_tab_chips_collapsed", Description: "Synth tab pipeline chip strip hero: full modular pipeline (VOICE/OSC/FM/PITCH/LFO/BURST/ENVELOPE/FILTER/POST) with the leftmost OSC stage expanded into the detail pane",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabStageSetup("modular", "OSC", ""),
+		MobileSetup: mobileSynthTabStageSetup("modular", "OSC", "")},
+	{Name: "crop_synth_tab_detail_envelope", Description: "Synth tab — chip strip with the ENVELOPE stage expanded into the detail pane (full-size knobs, untruncated captions)",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabStageSetup("snare", "ENVELOPE", ""),
+		MobileSetup: mobileSynthTabStageSetup("snare", "ENVELOPE", "")},
+	{Name: "crop_synth_tab_ghost_chip", Description: "Synth tab — modular voice with FILTER disabled AND selected: ghost chip in the strip + bypass scrim + bright enable pill in the detail header",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabStageSetup("modular", "FILTER", "filter_enabled"),
+		MobileSetup: mobileSynthTabStageSetup("modular", "FILTER", "filter_enabled")},
+	// Sampler-tab scenes — the sample editor (trim/pitch/gain a synth capture
+	// or loaded WAV, then Save / Save As). The "captured" scene populates the
+	// working buffer so the waveform, trim handles, and trimmed-region shading
+	// render; the "empty" scene exercises the no-buffer placeholder + disabled
+	// affordances.
+	{Name: "crop_sampler_tab_captured", Description: "Sampler tab cropped — synth one-shot captured, trimmed to middle 70%, Normalize on",
+		Subject:     SubjectSampler,
+		Setup:       samplerTabSceneSetup(true),
+		MobileSetup: mobileSamplerTabSetup(true)},
+	{Name: "crop_sampler_tab_empty", Description: "Sampler tab cropped — no buffer loaded (capture/load placeholder state)",
+		Subject:     SubjectSampler,
+		Setup:       samplerTabSceneSetup(false),
+		MobileSetup: mobileSamplerTabSetup(false)},
 	{Name: "crop_audio_selector_bar", Description: "AudioStickyBar standalone crop", SettleFrames: 90,
 		Subject: SubjectAudioStickyBar,
 		Setup:   func(g *Game) { _ = g.SetActiveEQTab("eq") }},
@@ -643,6 +737,38 @@ var sceneCatalog = []Scene{
 			if z := chainZoneOf(g); z != nil {
 				z.SetWindowMs(5)
 			}
+		}},
+	{Name: "crop_chain_autofit_off", Description: "Chain with auto-fit off + manual 40ms window (FIT toggle inactive)",
+		SettleFrames: 150, Subject: SubjectChain,
+		Setup: func(g *Game) {
+			activateScopeTab(g)
+			if z := chainZoneOf(g); z != nil {
+				z.SetWindowMs(40) // disables auto-fit; FIT pill renders inactive
+			}
+		}},
+	{Name: "crop_chain_split", Description: "Chain in split A/B display mode (legend strip)",
+		SettleFrames: 150, Subject: SubjectChain,
+		Setup: func(g *Game) {
+			activateScopeTab(g)
+			if z := chainZoneOf(g); z != nil {
+				z.SetDisplayMode("split")
+			}
+		}},
+	{Name: "crop_chain_diff", Description: "Chain in A-B difference display mode (legend strip)",
+		SettleFrames: 150, Subject: SubjectChain,
+		Setup: func(g *Game) {
+			activateScopeTab(g)
+			if z := chainZoneOf(g); z != nil {
+				z.SetDisplayMode("diff")
+			}
+		}},
+	{Name: "crop_chain_segmented_mobile", Description: "Chain mobile segmented OVR/SPL/DIF control",
+		SettleFrames: 150, Subject: SubjectChain,
+		Setup: activateScopeTab,
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
+			activateScopeTab(g)
 		}},
 	{Name: "crop_fx_panel_with_3_effects", Description: "FX panel cropped (delay+reverb+distortion)", SettleFrames: 150,
 		Subject: SubjectFXPanel,
@@ -761,6 +887,209 @@ func activateScopeTab(g *Game) {
 		z.SetTapB(scope.StageEQ)
 	}
 	g.SetPlaying(true)
+}
+
+// synthTabSceneSetup returns a Setup function for the synth-tab crop
+// scenes. The optional override forces row 0's instrument to a specific
+// builtin id (e.g. "fm-bell", "hihat") so the section layout exercises a
+// recipe other than the embedded startup-demo's row 0 default. Empty
+// override uses whatever the demo's row 0 carries (snare in the embedded
+// demo).
+//
+// The demo is built synchronously via g.buildDemo() before the row
+// rewrite. Without that, the scene Setup runs against an empty Rows[]
+// because buildDemo is normally deferred to the first Update() — the
+// scene Setup runs BEFORE the first Update(), so without forcing the
+// demo here the row rewrite is a no-op and the captured PNG shows the
+// embedded demo's row 0 instead of the requested override.
+func synthTabSceneSetup(instrumentOverride string) func(*Game) {
+	return func(g *Game) {
+		g.buildDemo()
+		if instrumentOverride != "" && len(g.drum.Rows) > 0 {
+			g.drum.Rows[0].Instrument = instrumentOverride
+		}
+		_ = g.SetActiveEQTab("synth")
+		if g.drum != nil && g.drum.eqPanelZone != nil {
+			// Reset EQ to Master so synthTabActiveInstrument falls back
+			// to Rows[0] (which we may have just overridden).
+			g.drum.eqPanelZone.SetActiveChannel("main")
+		}
+	}
+}
+
+// synthTabNoSynthSceneSetup points the active row at a WAV-sample
+// instrument with no synth recipe so the synth tab renders its single
+// "this instrument does not use the synth" banner instead of the section
+// grid. Mirrors the user-reported state for a loaded WAV.
+func synthTabNoSynthSceneSetup() func(*Game) {
+	return func(g *Game) {
+		g.buildDemo()
+		if len(g.drum.Rows) > 0 {
+			g.drum.Rows[0].Instrument = "wav-sample"
+			g.drum.Rows[0].Name = "Kick-1"
+		}
+		// Ensure no synth recipe is bound (a fresh id has none, but be
+		// explicit so the scene is robust against demo seeding changes).
+		audio.BindInstrumentToRecipe("wav-sample", "")
+		_ = g.SetActiveEQTab("synth")
+		if g.drum != nil && g.drum.eqPanelZone != nil {
+			g.drum.eqPanelZone.SetActiveChannel("main")
+		}
+	}
+}
+
+// mobileSynthTabNoSynthSetup is the mobile counterpart of
+// synthTabNoSynthSceneSetup.
+func mobileSynthTabNoSynthSetup() func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabNoSynthSceneSetup()(g)
+	}
+}
+
+// mobileSynthTabSetup is the mobile counterpart. Forces mobile profile,
+// expands the mobile audio panel, then applies the synth-tab setup.
+func mobileSynthTabSetup(instrumentOverride string) func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabSceneSetup(instrumentOverride)(g)
+	}
+}
+
+// synthTabStageSetup is synthTabSceneSetup + opening a specific stage in the
+// chip strip's detail pane. disableParam (optional) toggles a stage off
+// first so the scene shows a ghost chip — and, when the disabled stage is
+// also the selected one, the bypass scrim. Drives SelectSynthSectionByLabel,
+// the same path a real chip tap takes.
+func synthTabStageSetup(instrumentOverride, stageLabel, disableParam string) func(*Game) {
+	return func(g *Game) {
+		synthTabSceneSetup(instrumentOverride)(g)
+		if disableParam != "" && len(g.drum.Rows) > 0 {
+			inst := g.drum.resolveSynthInstrument(g.drum.Rows[0].Instrument)
+			if inst != "" {
+				audio.SetInstrumentParam(inst, disableParam, 0)
+			}
+		}
+		// Layout once so the chip strip exists, then select + re-layout. Route
+		// the forced layouts through the tree (LayoutZoneNow) — a direct
+		// eqPanelZone.Layout bypasses the hit-area republish and trips the
+		// chokepoint discipline guard (TestZoneLayoutRoutesThroughTreeDiscipline).
+		if g.drum != nil && g.drum.tree != nil {
+			g.drum.tree.LayoutZoneNow("eq-panel")
+			g.drum.SelectSynthSectionByLabel(stageLabel)
+			g.drum.tree.LayoutZoneNow("eq-panel")
+		}
+	}
+}
+
+// mobileSynthTabStageSetup is the mobile counterpart of synthTabStageSetup.
+func mobileSynthTabStageSetup(instrumentOverride, stageLabel, disableParam string) func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabStageSetup(instrumentOverride, stageLabel, disableParam)(g)
+	}
+}
+
+// synthTabDrumRevoicedSetup points row 0 at the snare drum, switches its
+// generator to a Saw waveform (Modular recipe, osc_type=1), and plays — so
+// the capture shows a drum row re-voiced through the full modular pipeline
+// (post gen_type-deprecation, re-voicing = rebinding to the Modular recipe).
+func synthTabDrumRevoicedSetup() func(*Game) {
+	return func(g *Game) {
+		synthTabSceneSetup("snare")(g)
+		audio.BindInstrumentToRecipe("snare", "synth-modular")
+		audio.SetInstrumentParam("snare", "osc_type", 1) // Saw
+		g.SetPlaying(true)
+	}
+}
+
+func mobileSynthTabDrumRevoicedSetup() func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabDrumRevoicedSetup()(g)
+	}
+}
+
+// synthTabModularPlaySetup opens the modular voice's Synth tab during playback
+// so the capture shows the per-stage enable pills + generator step with the
+// live trigger-pulse borders. Mirrors mobileAudioPanelPlaySetup's SetPlaying.
+func synthTabModularPlaySetup() func(*Game) {
+	return func(g *Game) {
+		synthTabSceneSetup("modular")(g)
+		g.SetPlaying(true)
+	}
+}
+
+func mobileSynthTabModularPlaySetup() func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabModularPlaySetup()(g)
+	}
+}
+
+// synthTabModularNoiseSetup additionally selects the Noise Pink generator and
+// bypasses the Filter stage so the capture exercises the new noise oscillator
+// and a dimmed/bypassed section card + preview plot.
+func synthTabModularNoiseSetup() func(*Game) {
+	return func(g *Game) {
+		synthTabSceneSetup("modular")(g)
+		audio.SetInstrumentParam("modular", "osc_type", 6) // Noise Pink
+		audio.SetInstrumentParam("modular", "filter_enabled", 0)
+		g.SetPlaying(true)
+	}
+}
+
+func mobileSynthTabModularNoiseSetup() func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabModularNoiseSetup()(g)
+	}
+}
+
+// samplerTabSceneSetup returns a Setup function for the sampler-tab crop
+// scenes. It builds the demo synchronously (the scene Setup runs before the
+// first Update), activates the Sampler tab, and captures the active
+// instrument's one-shot into the working buffer so the waveform card renders
+// a real trace instead of the empty placeholder. The optional capture flags
+// drive trim + a toggle so the trimmed-region shading and active-toggle
+// chrome are exercised by the screenshot.
+func samplerTabSceneSetup(captured bool) func(*Game) {
+	return func(g *Game) {
+		g.buildDemo()
+		_ = g.SetActiveEQTab("sampler")
+		dv := g.drum
+		if dv == nil {
+			return
+		}
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.SetActiveChannel("main")
+		}
+		if !captured {
+			return
+		}
+		dv.sampler.captureFromSynth(dv.samplerActiveInstrument())
+		// Trim to the middle 70% and enable Normalize so the scene shows the
+		// trimmed-away shading, both drag handles, and an active toggle.
+		dv.sampler.startFrac = 0.15
+		dv.sampler.endFrac = 0.85
+		dv.sampler.normalize = true
+	}
+}
+
+// mobileSamplerTabSetup is the mobile counterpart. Forces mobile profile,
+// expands the mobile audio panel, then applies the sampler-tab setup.
+func mobileSamplerTabSetup(captured bool) func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		samplerTabSceneSetup(captured)(g)
+	}
 }
 
 // mobileAudioPanelSetup returns a Setup that forces mobile profile,

@@ -138,9 +138,12 @@ func TestMobileTransportNoOverlap(t *testing.T) {
 	}
 }
 
-// TestMobileAddRowButtonFAB checks that the add-row button is positioned
-// as a FAB and doesn't overlap row labels or timeline cells.
-func TestMobileAddRowButtonFAB(t *testing.T) {
+// TestMobileAddRowButtonFooter checks that the add-row button is rendered
+// as a full-width footer below the rows on mobile (mirroring the desktop
+// layout) and never overlaps a row label. Row-zoom +/- chips now live in
+// the timeline header band (see TestRowZoomChipsInTimelineHeader); the
+// add-row "+" owns the bottom rack strip on its own.
+func TestMobileAddRowButtonFooter(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -149,29 +152,49 @@ func TestMobileAddRowButtonFAB(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	fab := dv.addRowBtn().Rect()
-	if fab.Empty() {
-		t.Fatal("addRowBtn rect is empty")
+	btn := dv.addRowBtn().Rect()
+	if btn.Empty() {
+		t.Fatal("addRowBtn rect is empty; expected a footer button on mobile")
 	}
-	// FAB should be on the right side of the screen
-	midX := dv.Bounds.Min.X + dv.Bounds.Dx()/2
-	if fab.Min.X < midX {
-		t.Errorf("FAB should be on right side, got Min.X=%d, midpoint=%d", fab.Min.X, midX)
+	rackRect := dv.widgetRects[WidgetRack]
+	if rackRect.Empty() {
+		t.Fatal("rack rect is empty")
 	}
-	// Shouldn't overlap row labels
+	if btn.Dx() < rackRect.Dx()/2 {
+		t.Errorf("expected add-row button width ≥ rack/2; got width=%d (rack width=%d)",
+			btn.Dx(), rackRect.Dx())
+	}
+	// Shouldn't overlap any row label.
 	for i, lbl := range dv.rowLabels() {
 		lr := lbl.Rect()
 		if lr.Empty() {
 			continue
 		}
-		if fab.Overlaps(lr) {
-			t.Errorf("FAB overlaps row label %d: fab=%v label=%v", i, fab, lr)
+		if btn.Overlaps(lr) {
+			t.Errorf("add-row button overlaps row label %d: btn=%v label=%v", i, btn, lr)
+		}
+	}
+	// Row-zoom chips must NOT share the bottom rack strip with addRow —
+	// they live in the timeline header band now.
+	for _, chip := range []*Button{dv.rowZoomDecBtn, dv.rowZoomIncBtn} {
+		if chip == nil {
+			continue
+		}
+		r := chip.Rect()
+		if r.Empty() {
+			continue
+		}
+		if r.Overlaps(btn) {
+			t.Errorf("row-zoom chip %v overlaps add-row button %v — chips must live in the timeline header band",
+				r, btn)
 		}
 	}
 }
 
-// TestMobileRowControlsSimplified verifies that on mobile, edit/color/
-// mute/solo/origin/delete buttons have empty rects while label+volume remain.
+// TestMobileRowControlsSimplified verifies that on mobile, edit/color/origin/
+// delete remain hidden in the row strip (they live in the bottom-sheet context
+// menu), while label + volume slider + mute + solo + FX are inline so users
+// can reach them without opening a menu.
 func TestMobileRowControlsSimplified(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -192,19 +215,13 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 	if lr.Empty() {
 		t.Error("label button has empty rect on mobile")
 	}
-	// Mute buttons are hidden on mobile
-	if len(dv.rowMuteBtns()) > 0 {
-		mr := dv.rowMuteBtns()[0].Rect()
-		if !mr.Empty() {
-			t.Error("mute button should have empty rect on mobile")
-		}
+	// Mute / Solo buttons must be visible inline on mobile (regression guard
+	// against the old "overflow-only" mobile layout).
+	if len(dv.rowMuteBtns()) == 0 || dv.rowMuteBtns()[0].Rect().Empty() {
+		t.Error("mute button should be visible inline on mobile")
 	}
-	// Solo buttons are hidden on mobile
-	if len(dv.rowSoloBtns()) > 0 {
-		sr := dv.rowSoloBtns()[0].Rect()
-		if !sr.Empty() {
-			t.Error("solo button should have empty rect on mobile")
-		}
+	if len(dv.rowSoloBtns()) == 0 || dv.rowSoloBtns()[0].Rect().Empty() {
+		t.Error("solo button should be visible inline on mobile")
 	}
 	// Hidden buttons should be functionally invisible (≤ 5px in one dimension).
 	// Grid layout rounding may give the last zero-weight column a few pixels.
@@ -246,8 +263,8 @@ func TestMobileContextMenuOpens(t *testing.T) {
 		t.Fatal("context menu not open")
 	}
 	btns := dv.ContextMenuBtns()
-	if len(btns) != 7 {
-		t.Fatalf("expected 7 context menu buttons (6 items + close), got %d", len(btns))
+	if len(btns) != 5 {
+		t.Fatalf("expected 5 context menu buttons (4 items + close), got %d", len(btns))
 	}
 	rect := dv.ContextMenuRectVal()
 	if rect.Empty() {
@@ -336,17 +353,18 @@ func TestMobileBeatInfoVisible(t *testing.T) {
 	advanceFrames(g, 2)
 
 	dv := g.drum
-	// Length +/- buttons are positioned in the timeline widget area.
+	// Length +/− buttons live in the overflow menu on mobile (A7 in the
+	// screenshot critique) — see TestLenButtons_HiddenOnMobile and
+	// TestLenButtons_ReachableViaOverflowOnMobile. The inline button rects
+	// must be empty here so the timeline / counter occupy the full width.
 	if dv.lenDecBtn == nil || dv.lenIncBtn == nil {
 		t.Fatal("length buttons nil")
 	}
-	ldr := dv.lenDecBtn.Rect()
-	lir := dv.lenIncBtn.Rect()
-	if ldr.Empty() {
-		t.Error("lenDecBtn should be visible on mobile (in timeline area)")
+	if r := dv.lenDecBtn.Rect(); !r.Empty() {
+		t.Errorf("lenDecBtn should be hidden on mobile (A7); got %v", r)
 	}
-	if lir.Empty() {
-		t.Error("lenIncBtn should be visible on mobile (in timeline area)")
+	if r := dv.lenIncBtn.Rect(); !r.Empty() {
+		t.Errorf("lenIncBtn should be hidden on mobile (A7); got %v", r)
 	}
 	// Overflow button should be visible
 	if dv.overflowBtn() == nil {

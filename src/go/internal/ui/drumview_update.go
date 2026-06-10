@@ -11,6 +11,11 @@ func (dv *DrumView) Update() {
 		return
 	}
 
+	// Synth-tab Save As dialog poll. Runs ahead of the tree so the
+	// TextInput can claim Enter/Escape before the tree's portal-close
+	// shortcut sees them.
+	dv.updateSaveAsDialog()
+
 	dv.updateSeq++
 	dv.refreshInstruments()
 
@@ -47,7 +52,7 @@ func (dv *DrumView) Update() {
 		// Sync zone → DrumView state that the tree may have changed:
 		// EQ toggle: sync zone state → DrumView.
 		if dv.eqPanelZone != nil {
-			dv.eqWaveformMode = dv.eqPanelZone.WaveformMode()
+			dv.eqWaveformMode = dv.eqPanelZone.ActiveTab() == TabWave
 		}
 		// BPM state: TransportZone is the single authority.
 		if dv.transportZone != nil {
@@ -193,7 +198,7 @@ func (dv *DrumView) Update() {
 		return
 	}
 
-	mobileEQActive := Profile().IsMobile() && dv.mobileEQMode
+	mobileEQActive := dv.MobileEQMode()
 
 	// ─── ROW SCROLLING (after popups) ───
 	// When RowRackZone exists, sync rowOffset/selRow from zone state.
@@ -215,22 +220,26 @@ func (dv *DrumView) Update() {
 			overDrum := image.Pt(mx, my).In(dv.Bounds)
 			if !treeHandled && (overBar || overDrum) && wheelSteps != 0 {
 				dv.logger.Debugf("[drumview] row wheel steps=%d at (%d,%d) rowOffset=%d", wheelSteps, mx, my, dv.rowOffset)
-				if dv.rowScroll().HandleWheel(wheelSteps) {
+				// Step-by-step: one row per notch, cooldown-throttled (the
+				// cooldown is ticked once per frame in RowRackZone.Update).
+				if dv.rowScroll().WheelStep(wheelSteps, controlGridScrollCooldownFrames) {
 					dv.flushRowScroll()
 				}
 			}
 
-			// Scrollbar drag
-			if dv.rowScroll().Dragging() {
+			// Scrollbar thumb drag — stepped: one row per controlGridDragStepPx
+			// of pointer travel, anchored at the grab point (matches the synth
+			// section scrollbars) so it never flies through the list.
+			if dv.rowScroll().StepDragging() {
 				if left {
-					if dv.rowScroll().HandleDragTo(my) {
+					if dv.rowScroll().StepDragTo(my, controlGridDragStepPx) {
 						dv.flushRowScroll()
 					}
 				} else {
-					dv.rowScroll().HandleDragEnd()
+					dv.rowScroll().EndStepDrag()
 				}
 			} else if left && !dv.inputCapturedExternally && image.Pt(mx, my).In(dv.scrollThumbRect()) {
-				dv.rowScroll().HandleDragStart(my)
+				dv.rowScroll().BeginStepDrag(my)
 			}
 
 			// ─── TOUCH SCROLL ───

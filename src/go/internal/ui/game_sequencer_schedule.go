@@ -169,6 +169,12 @@ func (g *Game) seqScheduleTime() {
 			}
 		}
 		burst := 0
+		// Per-beat ideal audio time replaces the prior per-burst baseNow
+		// (audio.Now() snapped once per row). Using the beat's ideal moment
+		// as the schedule base means scheduler lateness (Stage A) does
+		// NOT propagate into audio lateness — it just reduces Stage C
+		// lead. Without this, a 24ms scheduler stall pushed audio to
+		// ideal+64ms instead of ideal+40ms.
 		baseNow := -1.0
 		if pred != nil && !ensured && g.seqNextIdxs[row] <= target {
 			pred.Ensure(ensureHorizon)
@@ -178,10 +184,26 @@ func (g *Game) seqScheduleTime() {
 			if row >= len(g.drum.Rows) {
 				break
 			}
-			if burst >= 8 {
+			// Burst limit. Originally 8; raised to 32 so a single tick can
+			// fully catch up after a goroutine starvation stall of up to
+			// ~750ms at 320 BPM. The lower limit forced multi-tick catchup
+			// walks that left Stage A P99 stuck at 100-200ms even with the
+			// per-frame sync drive in Update().
+			if burst >= 32 {
 				break
 			}
 			idx := g.seqNextIdxs[row]
+			// Stage A — observe how late the scheduler is firing this
+			// beat relative to its ideal wall-clock moment. The ideal
+			// moment expressed in dtSec terms is
+			//   beatDtSec = (idx/div - baseBeats) * 60 / bpm
+			// dtSec is the current elapsed-since-playStart; subtract.
+			if g.Playing() {
+				beatDtSec := (float64(idx)/float64(div) - baseBeats) * 60.0 / float64(bpm)
+				if late := dtSec - beatDtSec; late >= 0 {
+					g.schedMetrics.ObserveSeqFireLate(late)
+				}
+			}
 			info := seqBeatInfoAtRow(snap, row, idx)
 			inst := g.drum.Rows[row].Instrument
 			missing := (row >= 0 && row < len(g.drum.Rows) && !g.drum.IsInstrumentAvailable(inst) && g.playFn == nil && g.scheduleHook == nil)
@@ -313,10 +335,18 @@ func (g *Game) seqScheduleTime() {
 						// what was dispatched.
 						g.recordParityAudio(row, idx, audio.Now(), inst, vol, pitch, dur, g.audioGen.Load())
 					} else {
-						if baseNow < 0 {
-							baseNow = audio.Now()
+						// Ideal audio time for this beat: anchored to
+						// audioStart + beat's position on the timeline.
+						// Falls back to audio.Now() if no audioStart is
+						// available (very early playback, edge case).
+						beatIdealAudio := audioStart + (float64(idx)/float64(div)-baseBeats)*60.0/float64(bpm)
+						if !(beatIdealAudio > 0) {
+							if baseNow < 0 {
+								baseNow = audio.Now()
+							}
+							beatIdealAudio = baseNow
 						}
-						g.scheduleSound(row, idx, info, inst, vol, pitch, dur, baseNow, true)
+						g.scheduleSound(row, idx, info, inst, vol, pitch, dur, beatIdealAudio, true)
 					}
 					if g.scheduleHook != nil {
 						g.scheduleHook(row, idx)

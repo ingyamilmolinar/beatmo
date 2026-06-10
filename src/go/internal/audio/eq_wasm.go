@@ -9,7 +9,7 @@ func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
 	if !fn.Truthy() {
 		return
 	}
-	lastSetEQ = eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)}
+	recordChannelEQ(id, eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)})
 	arr := js.Global().Get("Array").New()
 	for _, b := range bands {
 		obj := js.Global().Get("Object").New()

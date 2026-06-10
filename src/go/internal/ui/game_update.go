@@ -966,6 +966,25 @@ eventsDone:
 		g.quietFrames--
 	}
 	g.updateCursorShape()
+	// Synchronously drive the sequencer once per frame. The background
+	// sequencer goroutine cannot run while Update() executes (WASM is
+	// single-threaded cooperative), so the goroutine-driven 4ms ticker is
+	// starved across long frames and Stage A latency spikes into the
+	// hundreds of milliseconds (see webaudio_three_stage_latency).
+	// Driving here caps the worst-case sequencer-fire latency at one
+	// frame. The 4ms ticker still runs and catches sub-frame slots
+	// whenever goroutines actually get scheduled.
+	//
+	// Production-only: under go test the background sequencer goroutine is
+	// never started and scheduling is driven deterministically by the
+	// earlier in-frame drive (see the runningUnderGoTest() block above),
+	// which runs BEFORE drainAndDecayHighlights so seqNextIdxs and the UI
+	// highlight indices stay in lockstep. A second drive here would advance
+	// seqNextIdxs past the highlights already drained this frame, breaking
+	// that parity (TestHighlightAudioSync25ms).
+	if g.Playing() && !runningUnderGoTest() {
+		g.seqScheduleTime()
+	}
 	return nil
 }
 

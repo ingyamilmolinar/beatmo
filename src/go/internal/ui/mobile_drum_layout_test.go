@@ -11,10 +11,11 @@ import (
 
 // ──────────────────────── Fix 2: visibleRows footer ──────────────────────────
 
-// TestMobileVisibleRowsNoFooterWaste verifies that on mobile, visibleRows()
-// uses the full rowsAreaHeight without subtracting one rowHeight for the "+"
-// footer (since the "+" is a FAB overlay, not a full-width row).
-func TestMobileVisibleRowsNoFooterWaste(t *testing.T) {
+// TestMobileVisibleRowsReservesFooter verifies that on mobile, visibleRows()
+// subtracts one rowHeight for the "+" add-row footer — the add-row button is
+// rendered as a full-width footer row (matching desktop), so its space must
+// be reserved regardless of how many rows are present.
+func TestMobileVisibleRowsReservesFooter(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -25,8 +26,14 @@ func TestMobileVisibleRowsNoFooterWaste(t *testing.T) {
 	rh := dv.rowHeight()
 	area := dv.rowsAreaHeight()
 	vis := dv.visibleRows()
-	// On mobile, visibleRows should equal area/rh (no footer subtraction).
-	want := area / rh
+	want := (area - rh) / rh
+	if want < 0 {
+		want = 0
+	}
+	// Guarantee-at-least-1 rule applies on mobile too.
+	if want == 0 && area >= rh {
+		want = 1
+	}
 	if vis != want {
 		t.Fatalf("mobile visibleRows()=%d, want %d (rowsAreaHeight=%d, rowHeight=%d)", vis, want, area, rh)
 	}
@@ -150,10 +157,10 @@ func TestMobileScrollbarCoversRowsOnly(t *testing.T) {
 	}
 }
 
-// TestMobileFABDoesNotOverlapScrollTrack verifies that the add-row FAB's
-// bottom edge is at or below the scrollbar track bottom (i.e., the FAB is in
-// the leftover area, not overlapping the scrollbar track).
-func TestMobileFABDoesNotOverlapScrollTrack(t *testing.T) {
+// TestMobileAddRowBtnDoesNotOverlapScrollTrack verifies that the full-width
+// add-row footer button on mobile sits below the scrollable rows area, so it
+// never overlaps the scrollbar track or any visible row.
+func TestMobileAddRowBtnDoesNotOverlapScrollTrack(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -169,19 +176,17 @@ func TestMobileFABDoesNotOverlapScrollTrack(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	fabRect := dv.addRowBtn().Rect()
-	if fabRect.Empty() {
-		t.Skip("FAB rect is empty (possibly EQ mode)")
+	btnRect := dv.addRowBtn().Rect()
+	if btnRect.Empty() {
+		t.Fatalf("mobile add-row button rect is empty; expected a visible footer button")
 	}
 	barRect := dv.scrollBarRect()
 	if barRect.Empty() {
 		t.Skip("scrollbar rect is empty")
 	}
-	// The FAB's top edge should be at or below the scrollbar track's bottom,
-	// OR the FAB should be off to the side (non-overlapping X). We just check
-	// that the FAB doesn't start inside the scrollbar track vertically.
-	if fabRect.Min.Y < barRect.Max.Y && fabRect.Max.Y > barRect.Min.Y &&
-		fabRect.Min.X < barRect.Max.X && fabRect.Max.X > barRect.Min.X {
-		t.Fatalf("FAB %v overlaps scrollbar track %v", fabRect, barRect)
+	// The button is full-width below the scrollable rows; it must not
+	// vertically overlap the scrollbar track.
+	if btnRect.Min.Y < barRect.Max.Y && btnRect.Max.Y > barRect.Min.Y {
+		t.Fatalf("add-row button %v vertically overlaps scrollbar track %v", btnRect, barRect)
 	}
 }

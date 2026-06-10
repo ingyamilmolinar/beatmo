@@ -1,26 +1,32 @@
-00:00:00.000 INFO  [play] play started
-00:00:00.000 INFO  [node] node added id=1 at (0,0) type=regular
-00:00:00.000 INFO  [node] node added id=2 at (1,0) type=regular
-00:00:00.000 INFO  [edge] edge added (0,0) → (1,0)
-00:00:00.000 INFO  [node] row 0 start node = 1
-00:00:00.000 INFO  [row] row 0 added (kick)
-00:00:00.000 INFO  [row] row 0 instrument kick → snare
-00:00:00.000 INFO  [audio] insert FX added snare slot=0 type=reverb
-00:00:00.000 INFO  [audio] insert FX removed snare slot=0
-00:00:00.000 INFO  [node] node id=2 type regular → mute
-00:00:00.000 INFO  [node] node id=1 params updated
-00:00:00.000 INFO  [edge] edge deleted (0,0) → (1,0)
-00:00:00.000 INFO  [node] node deleted id=2 at (1,0)
-00:00:00.000 INFO  [row] row 0 muted
-00:00:00.000 INFO  [row] row 0 solo off
-00:00:00.000 INFO  [subdiv] subdiv = 16
-00:00:00.000 INFO  [length] length = 64
-00:00:00.000 INFO  [record] recording started
-00:00:00.000 INFO  [record] recording stopped
-00:00:00.000 INFO  [import] import completed
-00:00:00.000 INFO  [export] export completed
-00:00:00.000 INFO  [seek] seek beats=8
-00:00:00.000 INFO  [row] row 0 deleted
-00:00:00.000 INFO  [play] paused
-00:00:00.000 INFO  [play] resumed
-00:00:00.000 INFO  [play] play stopped
+00:00:00.000 INFO  [play] play started  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [node] node added id=1 at (0,0) type=regular  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [node] node added id=2 at (1,0) type=regular  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [edge] edge added (0,0) → (1,0)  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [node] row 0 start node = 1  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [row] row 0 added (kick)  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [row] row 0 instrument kick → snare  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [audio] insert FX added snare slot=0 type=reverb  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [audio] insert FX removed snare slot=0  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [node] node id=2 type regular → mute  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [node] node id=1 params updated  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [edge] edge deleted (0,0) → (1,0)  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [node] node deleted id=2 at (1,0)  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [row] row 0 muted  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [row] row 0 solo off  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [subdiv] subdiv = 16  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [length] length = 64  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [record] recording started  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [record] recording stopped  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [import] import completed  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [export] export completed  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [seek] seek beats=8  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [row] row 0 deleted  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [play] paused  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [play] resumed  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [play] play stopped  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [audio] custom WAV loaded id=snare2  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [audio] instrument renamed kick → kick_v2  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [scene] scene applied: transport_idle  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [uistate] UI state applied: /tmp/ui.json  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [favorite] favorited instrument kick  src=internal/test/fixture.go:1
+00:00:00.000 INFO  [row] row 0 color = #FF8040FF  src=internal/test/fixture.go:1

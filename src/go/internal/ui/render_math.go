@@ -34,6 +34,47 @@ func formatWindowMs(ms float64) string {
 	return fmt.Sprintf("%.2fms", ms)
 }
 
+// WaveAxisLabel describes one tick position along the Wave-tab time axis.
+// Frac is the position as a [0,1] fraction of the wave width; Text is the
+// formatted label (e.g. "0.00ms", "5.0ms", "20ms").
+type WaveAxisLabel struct {
+	Frac float64
+	Text string
+}
+
+// waveAxisLabels returns the five canonical tick positions for the Wave
+// tab time axis: 0%, 25%, 50%, 75%, 100% of the current window length.
+// The leftmost label is always rendered as "0.00ms" to anchor the axis
+// origin distinctly from other ticks (mirrors Chain's convention).
+func waveAxisLabels(windowMs float64) []WaveAxisLabel {
+	out := make([]WaveAxisLabel, 5)
+	for i := 0; i < 5; i++ {
+		f := float64(i) / 4.0
+		t := f * windowMs
+		txt := formatWindowMs(t)
+		if i == 0 {
+			txt = "0.00ms"
+		}
+		out[i] = WaveAxisLabel{Frac: f, Text: txt}
+	}
+	return out
+}
+
+// waveWindowMs derives the wave tab's time window length from the
+// number of samples and the active sample rate. Falls back to 44100
+// Hz when the audio engine reports an unusable sample rate (test mode,
+// pre-init). Returns 0 for empty buffers.
+func waveWindowMs(numSamples int, sampleRate int) float64 {
+	if numSamples <= 0 {
+		return 0
+	}
+	sr := sampleRate
+	if sr <= 0 {
+		sr = 44100
+	}
+	return float64(numSamples) * 1000.0 / float64(sr)
+}
+
 // dbToFrac converts a dB value to a [0,1] fraction, clamped against the
 // package-level meter floor/ceil constants.
 func dbToFrac(db float64) float64 {

@@ -55,55 +55,27 @@ func TestPanelTabExpand(t *testing.T) {
 	}
 }
 
-func TestPanelTabCollapsedHeight(t *testing.T) {
+func TestPanelTabAlwaysTallHeight(t *testing.T) {
 	assertDefaultParityState(t)
 
 	prev := eqPanelHeight
 	eqPanelHeight = 190
 	t.Cleanup(func() { eqPanelHeight = prev })
 
-	s := NewPanelTabState()
-	if h := s.PanelHeight(); h != 190 {
-		t.Fatalf("collapsed height: expected 190, got %d", h)
-	}
-}
-
-func TestPanelTabExpandedHeight(t *testing.T) {
-	assertDefaultParityState(t)
-
-	prev := eqPanelHeight
-	eqPanelHeight = 190
-	t.Cleanup(func() { eqPanelHeight = prev })
-
-	s := NewPanelTabState()
-	s.ToggleExpanded()
-	if h := s.PanelHeight(); h != 380 {
-		t.Fatalf("expanded height: expected 380, got %d", h)
-	}
-}
-
-func TestPanelTabScopeAutoExpand(t *testing.T) {
-	assertDefaultParityState(t)
-
-	prev := eqPanelHeight
-	eqPanelHeight = 190
-	t.Cleanup(func() { eqPanelHeight = prev })
-
-	s := NewPanelTabState()
-	if h := s.PanelHeight(); h != 190 {
-		t.Fatalf("collapsed EQ height: expected 190, got %d", h)
-	}
-
-	// Switching to Scope should auto-expand.
-	s.SetActiveTab(TabScope)
-	if h := s.PanelHeight(); h != 380 {
-		t.Fatalf("scope tab height: expected 380, got %d", h)
-	}
-
-	// Switching back to EQ should collapse.
-	s.SetActiveTab(TabEQ)
-	if h := s.PanelHeight(); h != 190 {
-		t.Fatalf("back to EQ height: expected 190, got %d", h)
+	// Every tab returns the tall height regardless of expanded state —
+	// the kid-friendly redesign defaults every audio tab to the same
+	// readable size. Drag-resize via DrumView.eqH overrides downstream.
+	for _, tab := range AllPanelTabs() {
+		s := NewPanelTabState()
+		s.SetActiveTab(tab)
+		want := eqPanelHeight * RuntimeProf().AudioPanelHeightMultiplier
+		if h := s.PanelHeight(); h != want {
+			t.Errorf("tab %d height: expected %d, got %d", tab, want, h)
+		}
+		s.ToggleExpanded()
+		if h := s.PanelHeight(); h != want {
+			t.Errorf("tab %d expanded height: expected %d, got %d", tab, want, h)
+		}
 	}
 }
 
@@ -111,16 +83,22 @@ func TestPanelTabLabels(t *testing.T) {
 	assertDefaultParityState(t)
 
 	tabs := AllPanelTabs()
-	if len(tabs) != 5 {
-		t.Fatalf("expected 5 tabs, got %d", len(tabs))
+	if len(tabs) != 7 {
+		t.Fatalf("expected 7 tabs (EQ + Wave + Spectrum + Levels + Chain + Synth + Sampler), got %d", len(tabs))
 	}
 
+	// "Levels" replaces "Meters" (every consumer DAW uses Levels);
+	// "Chain" replaces "Scope" (communicates pipeline-stage view);
+	// "Synth" surfaces SynthRecipe params; "Sampler" is the WAV/synth-capture
+	// sample editor.
 	expected := map[PanelTab]string{
 		TabWave:     "Wave",
 		TabSpectrum: "Spectrum",
-		TabMeters:   "Meters",
+		TabMeters:   "Levels",
 		TabEQ:       "EQ",
-		TabScope:    "Scope",
+		TabScope:    "Chain",
+		TabSynth:    "Synth",
+		TabSampler:  "Sampler",
 	}
 	for _, tab := range tabs {
 		label := PanelTabLabel(tab)
@@ -131,5 +109,37 @@ func TestPanelTabLabels(t *testing.T) {
 		if label != want {
 			t.Errorf("PanelTabLabel(%d) = %q, want %q", tab, label, want)
 		}
+	}
+}
+
+func TestPanelTabSlugCanonical(t *testing.T) {
+	assertDefaultParityState(t)
+
+	expected := map[PanelTab]string{
+		TabWave:     "wave",
+		TabSpectrum: "spectrum",
+		TabMeters:   "levels",
+		TabEQ:       "eq",
+		TabScope:    "chain",
+		TabSampler:  "sampler",
+	}
+	for tab, want := range expected {
+		if got := PanelTabSlug(tab); got != want {
+			t.Errorf("PanelTabSlug(%d) = %q, want %q", tab, got, want)
+		}
+	}
+}
+
+func TestPanelTabSamplerMobileLabel(t *testing.T) {
+	assertDefaultParityState(t)
+
+	// setupMobileTest forces the small-screen profile with proper cleanup so
+	// Profile() resolves to mobile even though detectSmallScreen() would
+	// otherwise report desktop in the test harness. (The desktop "Sampler"
+	// label is covered by TestPanelTabLabels under the default profile.)
+	setupMobileTest(t, true)
+	UpdateProfile()
+	if got := PanelTabLabelForProfile(TabSampler); got != "Smpl" {
+		t.Errorf("mobile Sampler label = %q, want %q", got, "Smpl")
 	}
 }

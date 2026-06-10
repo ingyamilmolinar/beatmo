@@ -27,7 +27,6 @@
  *     use CDP trusted touch events via cdpTap() from touch_cdp_helpers.js.
  */
 
-import { chromium } from "playwright";
 import http from "http";
 import { spawnSync } from "child_process";
 import fs from "fs";
@@ -35,6 +34,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, shouldSkipWasmBuild } from "./browser_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
+import { launchBrowser } from "./platform/launch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -200,13 +200,45 @@ export async function wheelAt(page, x, y, deltaY) {
  * @returns {boolean} - true if build succeeded
  */
 export function buildMainWasm(options = {}) {
+  const GO = resolveGoBinary();
+
+  // Regenerate the synth-param ABI bridge (src/js/synth_param_abi.gen.js) from
+  // the canonical Go schema BEFORE building, mirroring `make wasm`'s phony
+  // `gen-synth-abi` prerequisite. The browser tests serve this file verbatim, so
+  // without this a schema edit landed without a fresh gen file would ship a STALE
+  // ABI to the Playwright env: a re-voiced instrument's modular block is mis-sized
+  // and its oscillator reads an uninitialised enable flag → SILENCE, while the
+  // test builds a *current* wasm and passes for the wrong ABI. Regenerating here
+  // keeps the env 100% production-faithful (the Go drift test
+  // synth_param_schema_test.go is the commit-time guard; this is the build-time
+  // one). Runs unconditionally — even under WASM_PREBUILT — because the gen file
+  // is consumed at runtime independently of main.wasm. It is a native host tool
+  // (//go:build !test && !js), so GOOS/GOARCH must be unset.
+  {
+    const hostEnv = { ...process.env };
+    delete hostEnv.GOOS;
+    delete hostEnv.GOARCH;
+    const abi = spawnSync(GO, ["run", "./cmd/gen-synth-abi"], {
+      cwd: goDir,
+      env: hostEnv,
+      encoding: "utf8",
+    });
+    if (abi.status !== 0) {
+      console.error("[buildMainWasm] gen-synth-abi failed:", abi.stderr || abi.error || "");
+      return false;
+    }
+    fs.writeFileSync(path.join(jsDir, "synth_param_abi.gen.js"), abi.stdout);
+  }
+
   if (shouldSkipWasmBuild("main.wasm")) {
     return true;
   }
 
   const logLevel = options.logLevel ?? "INFO";
-  const GO = resolveGoBinary();
 
+  // Build the root cmd package only; ./cmd/... would match sibling tool
+  // binaries (export_audio, gen_design_tokens, …) and fail the single -o
+  // output. This matches the Makefile's `wasm` target.
   const build = spawnSync(
     GO,
     [
@@ -215,7 +247,7 @@ export function buildMainWasm(options = {}) {
       `-X main.defaultLog=${logLevel}`,
       "-o",
       path.join(jsDir, "main.wasm"),
-      "./cmd/...",
+      "./cmd",
     ],
     {
       cwd: goDir,
@@ -231,11 +263,44 @@ export function buildMainWasm(options = {}) {
  * Create an HTTP server that serves the WASM files with correct MIME types.
  * Uses OS-assigned port (port 0) to avoid EADDRINUSE collisions.
  *
+ * When BEATMO_LAN_SERVE=1, binds on 0.0.0.0 so devices on the same network
+ * (e.g. your phone over WiFi) can reach the LAN URL printed by serve-lan.sh.
+ * Default remains localhost-only.
+ *
+ * The "?probe=audio" query string is mapped to sanity_audio_probe_page.html
+ * so the same root URL can be opened by humans for the in-page audio check.
+ *
  * @returns {Promise<http.Server>} - HTTP server instance (call server.address().port for assigned port)
  */
 export function createServer() {
   const server = http.createServer((req, res) => {
-    const file = req.url === "/" ? "/index.html" : req.url;
+    // "?run=tests" is special: the runner is NOT a separate page. We serve
+    // production index.html *verbatim* with one <script> injected before
+    // </body>, so every inline script (focus-rect listeners, mobile native
+    // input, file picker, the canvas touchstart preventDefault, _kbProxy /
+    // _mobileInput / _fp globals WASM calls into) runs exactly as on
+    // beatmo.io. Anything else is a strict 100% production reproduction.
+    const url = new URL(req.url, "http://placeholder");
+    const noCache = {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
+
+    if (url.pathname === "/" && url.searchParams.get("run") === "tests") {
+      fs.readFile(path.join(jsDir, "index.html"), "utf8", (err, html) => {
+        if (err) { res.writeHead(404); res.end(); return; }
+        const inject = '<script type="module" src="test_runner_overlay.js"></script>\n';
+        const out = html.includes("</body>")
+          ? html.replace("</body>", inject + "</body>")
+          : html + inject;
+        res.writeHead(200, { "Content-Type": "text/html", ...noCache });
+        res.end(out);
+      });
+      return;
+    }
+
+    let file = url.pathname === "/" ? "/index.html" : url.pathname;
     const filePath = path.join(jsDir, file.replace(/^\//, ""));
 
     fs.readFile(filePath, (err, data) => {
@@ -250,13 +315,18 @@ export function createServer() {
       else if (filePath.endsWith(".js")) ct = "application/javascript";
       else if (filePath.endsWith(".wasm")) ct = "application/wasm";
 
-      res.writeHead(200, { "Content-Type": ct });
+      res.writeHead(200, { "Content-Type": ct, ...noCache });
       res.end(data);
     });
   });
 
+  const host = process.env.BEATMO_LAN_SERVE === "1" ? "0.0.0.0" : "127.0.0.1";
+  const port = process.env.BEATMO_LAN_PORT
+    ? parseInt(process.env.BEATMO_LAN_PORT, 10)
+    : 0;
+
   return new Promise((resolve) => {
-    server.listen(0, () => resolve(server));
+    server.listen(port, host, () => resolve(server));
   });
 }
 
@@ -287,11 +357,11 @@ export async function setupFullWasm(options = {}) {
   const server = await createServer();
   const port = server.address().port;
 
-  // Launch browser
-  const browser = await chromium.launch({
-    headless,
-    args: ["--autoplay-policy=no-user-gesture-required"],
-  });
+  // Launch browser. Defaults to chromium-local but honors TEST_PLATFORM
+  // (e.g. webkit-local, browserstack:iphone15-safari) without test changes.
+  const launch = await launchBrowser({ headless });
+  const browser = launch.browser;
+  const browserCleanup = launch.cleanup;
 
   const page = await browser.newPage();
   page.on("console", (msg) => {
@@ -352,11 +422,11 @@ export async function setupFullWasm(options = {}) {
       } catch (e) {
         console.warn(`[llm_record] Failed to save recording: ${e.message}`);
       }
-      await browser.close();
+      await browserCleanup();
       server.close();
     };
 
-    return { page: wrappedPage, browser, server, cleanup, port, recorder };
+    return { page: wrappedPage, browser, server, cleanup, port, recorder, platform: launch.platform };
   }
 
   const cleanup = async () => {
@@ -369,11 +439,11 @@ export async function setupFullWasm(options = {}) {
     } catch (e) {
       console.warn(`[coverage] flush error: ${e.message}`);
     }
-    await browser.close();
+    await browserCleanup();
     server.close();
   };
 
-  return { page, browser, server, cleanup, port };
+  return { page, browser, server, cleanup, port, platform: launch.platform };
 }
 
 /**

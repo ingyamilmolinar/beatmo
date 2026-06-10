@@ -22,7 +22,7 @@ func SplitterHandleThick() int { return Profile().SplitterHandleThk }
 // desktopRowHeightPx is the desktop row height (matches Profile().RowHeight).
 // Retained as a compile-time constant for font_size_test.go which asserts
 // font fits within this height.
-const desktopRowHeightPx = 28
+const desktopRowHeightPx = 36
 
 // touchMinCellWidthPx is the mobile minimum cell width (matches
 // Profile().MinCellWidth). Retained for adaptive_cell_count_test.go.
@@ -116,6 +116,14 @@ const (
 	BtnHeightMD = genSpacingBtnMd
 	BtnHeightLG = genSpacingBtnLg
 )
+
+// labelButtonWidth sizes a text button to comfortably fit its label
+// (label width + a SpaceMD pad on each side). Shared by the audio-panel
+// header rows (Synth, Sampler) so no button truncates its label and the
+// width tracks the font rather than a hand-tuned magic number.
+func labelButtonWidth(label string) int {
+	return TextWidth(label) + 2*SpaceMD
+}
 
 // Standard icon sizes (px)
 const (

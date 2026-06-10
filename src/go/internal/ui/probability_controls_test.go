@@ -23,7 +23,7 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 	if b := g.sidebar.btns["logic"]; b == nil {
 		t.Fatalf("missing logic button")
 	} else {
-		b.Handle((g.sidebar.rects["logic"].Min.X+g.sidebar.rects["logic"].Max.X)/2, (g.sidebar.rects["logic"].Min.Y+g.sidebar.rects["logic"].Max.Y)/2, true)
+		b.HandleInputResult((g.sidebar.rects["logic"].Min.X+g.sidebar.rects["logic"].Max.X)/2, (g.sidebar.rects["logic"].Min.Y+g.sidebar.rects["logic"].Max.Y)/2, true)
 	}
 	_ = g.Update()
 	g.sidebar.layout()
@@ -31,7 +31,7 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		t.Fatalf("missing probability item")
 	} else {
 		r := g.sidebar.rects["logic:probability"]
-		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
+		b.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
 	// Now adjust P via +/-
@@ -45,7 +45,7 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		t.Fatalf("missing lp+ button")
 	} else {
 		r := g.sidebar.rects["lp+"]
-		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
+		b.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
 	after := 0.0
@@ -60,7 +60,7 @@ func TestProbabilityControlsAdjustP(t *testing.T) {
 		t.Fatalf("missing lp- button")
 	} else {
 		r := g.sidebar.rects["lp-"]
-		b.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
+		b.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
 	}
 	_ = g.Update()
 	after2 := 0.0

@@ -488,6 +488,110 @@ func TestMobileDirectDrawDecimatedMarkers(t *testing.T) {
 	t.Logf("decimated ticks=%d vis=%d timelineW=%d n=%d", ticks, vis, dv.timelineRect.Dx(), extreme)
 }
 
+// TestMobileRowInlineControlsVisible verifies that mute/solo/FX buttons and
+// the volume slider all have non-empty rects in the row strip on mobile —
+// they used to be hidden behind a context menu (overflow-only). Failing this
+// regresses the "controls reachable in main UI" requirement.
+func TestMobileRowInlineControlsVisible(t *testing.T) {
+	for _, vp := range []mobileViewport{
+		{"iPhone14_portrait", 390, 844},
+		{"iPhone8_portrait", 375, 667},
+		{"iPhoneSE_portrait", 320, 568},
+	} {
+		t.Run(vp.name, func(t *testing.T) {
+			setupMobileTest(t, true)
+			logger := log.New(testLogOutput(), log.LevelInfo)
+			g := New(logger)
+			t.Cleanup(g.CloseForTest)
+
+			g.Layout(vp.w, vp.h)
+			advanceFrames(g, 2)
+
+			if g.drum.rowRackZone == nil {
+				t.Fatal("rowRackZone is nil")
+			}
+			if len(g.drum.Rows) == 0 {
+				t.Fatal("no drum rows after Layout")
+			}
+
+			vols := g.drum.rowRackZone.RowVolSliders()
+			mutes := g.drum.rowRackZone.RowMuteBtns()
+			solos := g.drum.rowRackZone.RowSoloBtns()
+			fxs := g.drum.rowRackZone.RowFXBtns()
+
+			// Row 0 must be fully laid out.
+			if len(vols) == 0 || vols[0].Rect().Empty() {
+				t.Fatalf("vol slider rect empty on %dx%d (got %v)", vp.w, vp.h, vols)
+			}
+			if len(mutes) == 0 || mutes[0].Rect().Empty() {
+				t.Fatalf("mute button rect empty on %dx%d", vp.w, vp.h)
+			}
+			if len(solos) == 0 || solos[0].Rect().Empty() {
+				t.Fatalf("solo button rect empty on %dx%d", vp.w, vp.h)
+			}
+			if len(fxs) == 0 || fxs[0].Rect().Empty() {
+				t.Fatalf("fx button rect empty on %dx%d", vp.w, vp.h)
+			}
+
+			// Buttons must not overlap each other (left → right order).
+			vr := vols[0].Rect()
+			mr := mutes[0].Rect()
+			sr := solos[0].Rect()
+			fr := fxs[0].Rect()
+			if !(vr.Max.X <= mr.Min.X && mr.Max.X <= sr.Min.X && sr.Max.X <= fr.Min.X) {
+				t.Fatalf("controls overlap on %dx%d: vol=%v mute=%v solo=%v fx=%v",
+					vp.w, vp.h, vr, mr, sr, fr)
+			}
+
+			// Visual minimum: 18px wide chip on the smallest phones (iPhone SE
+			// 320px viewport). The label column was widened from weight 3 to
+			// weight 5 so typical drum-kit names ("Hi-Hat", "Cowbell",
+			// "FM Snare") fit without truncation; buttons compensate by going
+			// from weight-2-of-11 to weight-2-of-13. Hit areas span the full
+			// 44px row height, so taps remain reliable even when chips are
+			// narrower than the design target (32px from DESIGN.md
+			// profileOverrides.mobile.rowControlBtnSize).
+			for _, b := range []struct {
+				name string
+				r    image.Rectangle
+			}{{"mute", mr}, {"solo", sr}, {"fx", fr}} {
+				if b.r.Dx() < 18 {
+					t.Fatalf("%s button width=%d < 18px on %dx%d", b.name, b.r.Dx(), vp.w, vp.h)
+				}
+			}
+		})
+	}
+}
+
+// TestDesktopRowControlsUnchanged verifies that the desktop row strip still
+// shows label + vol + M + S + FX + ⋯ — the mobile change should not regress
+// desktop layout.
+func TestDesktopRowControlsUnchanged(t *testing.T) {
+	setupMobileTest(t, false) // desktop path
+	logger := log.New(testLogOutput(), log.LevelInfo)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+
+	g.Layout(1280, 720)
+	advanceFrames(g, 2)
+
+	if len(g.drum.Rows) == 0 {
+		t.Fatal("no drum rows after Layout")
+	}
+
+	vols := g.drum.rowRackZone.RowVolSliders()
+	mutes := g.drum.rowRackZone.RowMuteBtns()
+	solos := g.drum.rowRackZone.RowSoloBtns()
+	fxs := g.drum.rowRackZone.RowFXBtns()
+	menus := g.drum.rowRackZone.RowMenuBtns()
+
+	if vols[0].Rect().Empty() || mutes[0].Rect().Empty() || solos[0].Rect().Empty() ||
+		fxs[0].Rect().Empty() || menus[0].Rect().Empty() {
+		t.Fatalf("desktop control missing: vol=%v mute=%v solo=%v fx=%v menu=%v",
+			vols[0].Rect(), mutes[0].Rect(), solos[0].Rect(), fxs[0].Rect(), menus[0].Rect())
+	}
+}
+
 // TestDirectDrawMatchesBuildRowSprite verifies that for the normal (n <= w)
 // case, drawRowsDirect produces the same cell draw calls as buildRowSprite.
 func TestDirectDrawMatchesBuildRowSprite(t *testing.T) {

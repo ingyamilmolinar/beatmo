@@ -67,18 +67,24 @@ func snapshotIsActive(s audio.AnalyzerSnapshot) bool {
 // SnapshotToChannelMetrics converts a raw WASM AnalyzerSnapshot into the
 // analyzer.ChannelMetrics struct the UI renderers consume. RMS/Peak come in
 // as linear amplitudes on WASM and must be converted to dB to match desktop.
+//
+// SAFETY: the returned Waveform slice shares its backing array with
+// s.Waveform. The audio.AnalyzerSnapshot owner is the per-channel cache
+// in internal/audio/analyzer_snapshot_cache.go, which mutates the slice
+// only on TTL-driven refresh; the upstream BuildAnalyzerStateFromSnapshots
+// State cache pins the snapshot for the same TTL window, so within one
+// State lifetime no mutation can occur. Consumers must not retain or
+// modify the returned slice past the State's TTL. Removing the previous
+// `append([]float64(nil), s.Waveform...)` copy eliminated ~4 KB per
+// channel-per-state-rebuild on the WASM hot path.
 func SnapshotToChannelMetrics(id, name string, s audio.AnalyzerSnapshot, sr int) analyzer.ChannelMetrics {
 	fft, freq := SpectrumLinearToDBBins(s.Spectrum, sr)
-	var wave []float64
-	if len(s.Waveform) > 0 {
-		wave = append([]float64(nil), s.Waveform...)
-	}
 	return analyzer.ChannelMetrics{
 		ID:       id,
 		Name:     name,
 		PeakDB:   LinearToDBSafe(s.Peak),
 		RMSDB:    LinearToDBSafe(s.RMS),
-		Waveform: wave,
+		Waveform: s.Waveform,
 		FFTBins:  fft,
 		FreqBins: freq,
 		Active:   snapshotIsActive(s),
@@ -134,27 +140,57 @@ func SynthesizeAnalyzerState(
 	}
 }
 
-// scopeTapFromSnapshot builds a TapData for a given stage. Only StageSynth and
-// StageEQ are bridged on WASM (pre-EQ and post-EQ taps); other stages return an
-// inactive tap so the renderer shows a blank trace.
-func scopeTapFromSnapshot(stage scope.Stage, instID string, preSnap, postSnap audio.AnalyzerSnapshot) scope.TapData {
+// ScopeStageSnapshots groups the four per-stage WASM analyzer snapshots used
+// by scopeTapFromSnapshot. Two helpers (synth + master) plus the existing
+// preEQ/postEQ pair give us coverage for all six scope.Stage values.
+//
+//   - Synth   → channel ingress, before any inserts. Also reused for AntiPop:
+//     the per-source anti-pop GainNode envelope is applied at the source
+//     before the bus, so by the time the signal arrives at ingress it has
+//     already passed through anti-pop. Tapping ingress is therefore the
+//     correct WASM representation for both StageSynth and StageAntiPop.
+//   - PreEQ   → channel preEQAnalyser (post-inserts, pre-EQ). Feeds
+//     StageInsertFX.
+//   - PostEQ  → channel main analyser (post-EQ). Feeds StageEQ.
+//   - Sends   → shared send-bus analyser (delay + reverb returns summed).
+//     Feeds StageSends.
+//   - Master  → main channel analyser. Feeds StageMaster.
+type ScopeStageSnapshots struct {
+	Synth  audio.AnalyzerSnapshot
+	PreEQ  audio.AnalyzerSnapshot
+	PostEQ audio.AnalyzerSnapshot
+	Sends  audio.AnalyzerSnapshot
+	Master audio.AnalyzerSnapshot
+}
+
+// scopeTapFromSnapshot builds a TapData for a given stage using the per-stage
+// snapshots. Returns an inactive tap (Active=false, no Samples) when the
+// chosen stage's snapshot has no signal — that's how the renderer detects
+// "JS bridge hasn't enabled this analyser yet" and skips drawing a trace.
+func scopeTapFromSnapshot(stage scope.Stage, instID string, snaps ScopeStageSnapshots) scope.TapData {
 	var snap audio.AnalyzerSnapshot
 	switch stage {
-	case scope.StageSynth:
-		snap = preSnap
+	case scope.StageSynth, scope.StageAntiPop:
+		snap = snaps.Synth
+	case scope.StageInsertFX:
+		snap = snaps.PreEQ
 	case scope.StageEQ:
-		snap = postSnap
+		snap = snaps.PostEQ
+	case scope.StageSends:
+		snap = snaps.Sends
+	case scope.StageMaster:
+		snap = snaps.Master
 	default:
 		return scope.TapData{Stage: stage, InstID: instID, Active: false}
 	}
-	var samples []float64
-	if len(snap.Waveform) > 0 {
-		samples = append([]float64(nil), snap.Waveform...)
-	}
+	// Same shared-slice contract as SnapshotToChannelMetrics: snap.Waveform
+	// is owned by the per-channel snapshot cache and stable for the State
+	// cache's TTL window. Removing the previous fresh-slice copy eliminated
+	// ~4 KB per tap-per-state-rebuild.
 	return scope.TapData{
 		Stage:   stage,
 		InstID:  instID,
-		Samples: samples,
+		Samples: snap.Waveform,
 		PeakDB:  LinearToDBSafe(snap.Peak),
 		RMSDB:   LinearToDBSafe(snap.RMS),
 		Active:  snapshotIsActive(snap),
@@ -162,16 +198,15 @@ func scopeTapFromSnapshot(stage scope.Stage, instID string, preSnap, postSnap au
 }
 
 // SynthesizeScopeState builds a scope.State with two taps fed from WASM
-// pre/post-EQ snapshots. The caller supplies the zone-local tapA/tapB stage
-// selection, so stage buttons in the UI still drive which data source lands
-// in which tap (Synth→pre-EQ, EQ→post-EQ; other stages render inactive).
+// per-stage snapshots. The caller supplies the zone-local tapA/tapB stage
+// selection and the four+1 per-stage snapshots (see ScopeStageSnapshots).
 func SynthesizeScopeState(
 	instID string,
 	tapA, tapB scope.Stage,
-	preSnap, postSnap audio.AnalyzerSnapshot,
+	snaps ScopeStageSnapshots,
 ) *scope.State {
 	return &scope.State{
-		TapA: scopeTapFromSnapshot(tapA, instID, preSnap, postSnap),
-		TapB: scopeTapFromSnapshot(tapB, instID, preSnap, postSnap),
+		TapA: scopeTapFromSnapshot(tapA, instID, snaps),
+		TapB: scopeTapFromSnapshot(tapB, instID, snaps),
 	}
 }

@@ -20,54 +20,92 @@ import {
   cdpPinch,
   cdpDrag,
   cdpTwoFingerPan,
+  getCanvasInfo,
 } from "../touch_cdp_helpers.js";
+import fs from "fs";
+import { compareCheckpoint, matchesExpectation } from "./checkpoints.js";
+import { normCoord, normalizeComputerAction } from "./action_normalize.js";
+import { parseZip, decodeWav, rms } from "./recording_decode.js";
 
 const SYSTEM_PROMPT = `You are testing a drum machine web app called Beatmo.
 
 The screen is split into two panes:
 - GRID PANE (top ~40%): 2D grid of colored square nodes connected by edges with directional arrows. Nodes glow when "fired" during playback.
-- DRUM PANE (bottom ~60%): Contains the transport bar, instrument rows, and EQ panel.
+- DRUM PANE (bottom ~60%): Contains the transport bar, instrument rows, and a tabbed AUDIO PANEL.
 
 DRUM PANE layout (top to bottom):
 - TRANSPORT BAR (single row at top of drum pane):
-  Left to right: Play (green triangle), Stop (square), BPM input (text box), BPM +/- (stacked arrows), Subdiv button, Length +/-, Track/Follow, Upload, Import, Export, Master volume slider (far right)
-- INSTRUMENT ROWS: Each row has: instrument label, edit (pencil) button, color swatch, volume slider, M (mute), S (solo), FX, O (origin), X (delete). To the right is the step timeline grid.
-- ADD ROW (+) button below the last row
-- EQ PANEL (bottom ~180px): Channel selector (top-left), HP/LP buttons, EQ/Wave toggle (top-right), 10 vertical band sliders
+  Left to right: Play (triangle), Stop (square), Rec (record dot), BPM input (text box), BPM +/- (stacked arrows), volume icon, Subdiv button, Length +/-, Track/Follow, Upload, Import/Export (share), a lock icon, and a "Beat N · time" readout. Master volume is a small slider/icon on desktop.
+- INSTRUMENT ROWS: each row shows, left to right: instrument LABEL, a VOLUME slider (small speaker icon + track), M (mute), S (solo), FX, and a "⋯" KEBAB (overflow) button.
+  IMPORTANT: color, rename/edit, origin, and delete are NOT inline buttons anymore — they live inside the row's ⋯ overflow menu. Use the open_row_menu + menu_click tools to reach them (see TOOLS).
+- ADD ROW (+) button below the last row.
+- AUDIO PANEL (bottom): a tabbed analysis panel with SEVEN tabs — EQ, Wave, Spectrum, Levels, Chain, Synth, Sampler. The left chip is the CHANNEL selector ("Master" or an instrument); HP/LP filter buttons sit next to it. The EQ tab has 10 draggable band handles; other tabs show waveform / spectrum / meters / signal-chain / synth-knob / sampler views. Switch tabs with the switch_tab tool.
 
-IMPORTANT: The Play button is a small GREEN TRIANGLE in the transport bar, directly below the grid pane. The Stop button is a small SQUARE immediately to its right. Do NOT confuse them with the EQ controls at the very bottom or with instrument labels in the drum rows.
+IMPORTANT: Play is a small triangle in the transport bar, directly below the grid pane; Stop is the square immediately to its right. Do NOT confuse them with the audio-panel controls at the very bottom or with instrument labels in the drum rows.
 
-You can click grid cells to add/remove nodes, shift-drag to create edges. Right-click nodes to open parameter popups or context menus.
+You can click grid cells to add/remove nodes, shift-drag to create edges. Click a node to open its sidebar (parameters + logic).
 
 IMPORTANT — COORDINATE HINTS:
 After every screenshot, you receive text with exact center coordinates for ALL buttons, per-row controls, EQ controls, scrollbar, and UI state. These are pixel-perfect. ALWAYS use these coordinates instead of guessing from the screenshot.
 
 Format: "Buttons: play=(33,337) | stop=(77,337) | ..."
-Per-row: "Row0: label=(50,400) | mute=(100,400) | solo=(130,400) | ..."
+Per-row: "Row0: label=(50,400) | mute=(100,400) | menu=(300,400) | ..."
 EQ: "EQ: channelBtn=(x,y) | hpfBtn=(x,y) | band0=(x,y) | ..."
-State: "State: playing=true bpm=120 rows=4"
+State: "State: playing=true bpm=120 rows=6"
 
-You can also call the query_ui tool to get the full layout snapshot as JSON (includes rects with {x, y, w, h} for every element).
+You can also call the query_ui tool to get the full layout snapshot as JSON (rects {x,y,w,h} for every element, plus snap.tabs, snap.bottomNav, and snap.state with bpm/subdiv/activeTab/viewMode/channel and per-row muted/soloed).
 
 CONSTRAINTS:
 - The BPM field is an Ebiten-rendered text input. Click it to focus, select all (Ctrl+A), type a new value, and press Enter. This is faster than clicking +/- repeatedly.
-- Volume sliders respond to mouse drag, not click.
-- EQ band sliders are vertical — drag up/down.
+- Volume / master sliders respond to mouse drag, not click.
+- EQ band handles are draggable; drag up/down to change gain.
 
-RELIABLE BUTTON CLICKING:
-- Use the click_ui tool for ALL button clicks. It finds the exact pixel coordinates
-  from the layout engine and performs a real mouse click, so it works regardless of
-  screen layout or resolution.
-- For per-row buttons (mute, solo, fx, etc.), pass the "row" parameter (0-based).
-- Use the computer tool for non-button interactions: grid clicks, drag operations,
-  shift-drag edges, right-click context menus, slider drags, scroll.
+TOOLS — prefer these deterministic tools over pixel-clicking:
+- click_ui {button, row?}: click a named button at exact pixel coords. Global: play, stop, bpmInc, bpmDec, subdiv, lenInc, lenDec, track, addRow, upload, import, export, mainVol, eqToggle. EQ: eqChannel, hpf, lpf. Per-row (pass row, 0-based): label, mute, solo, fx, volume, menu. Tabs/nav fallbacks: "tab:wave", "nav:eq".
+- repeat_click_ui {button, count, row?}: click N times in one round-trip (BPM +/-, etc.).
+- open_row_menu {row}: open a row's ⋯ overflow menu and get its item labels. THIS is how you reach color/rename/origin/delete.
+- menu_click {label}: click an item in the open row menu by exact label.
+- set_bpm {value}: set BPM to an exact value DETERMINISTICALLY. ALWAYS use this for BPM — do NOT type into the BPM field (keyboard entry does not reliably commit headless).
+- set_subdiv {value}: set the subdivision (4/8/16/32) DETERMINISTICALLY. ALWAYS use this — do NOT tap the subdiv dropdown items.
+- switch_tab {slug}: switch the audio panel to eq | wave | spectrum | levels | chain | synth | sampler.
+- export_circuit / import_circuit: capture the circuit (returns totalRows/totalNodes/bpm/subdiv) and re-import it later — for export/import roundtrip checks.
+- drag {x0,y0,x1,y1}: DESKTOP real force-ticked drag for EQ band handles / synth knobs / sliders (read the handle rect from query_ui first).
+- read_export {export, args?, path?}: read a WASM getter value (record a baseline before an interaction).
+- call_export {export, args?}: invoke a WASM SETTER through its real handler + apply it. Use for continuous controls a pixel-drag can't move headless (EQ band gain via setEQBandGain, synth/sampler params via setInstrumentParam), then verify with checkpoint_export.
+- checkpoint_export {name, export, args?, path?, expect}: assert a WASM getter value (exact or relational) and record a checkpoint — THIS is how you verify per-tab interactions resiliently (e.g. an EQ band drag changed eqControlsSnapshot().gainsDB[i]).
+- measure_audio {name?}: record real playback + hard-verify the captured audio RMS > floor (audio-capture gate).
+- checkpoint {name, expect}: assert objective state and get an immediate PASS/FAIL. USE THIS to prove every state change (see CHECKPOINTS).
+
+AUDIO-PANEL CHROME: tab-chrome pills are clickable by name with click_ui — "chrome:slope", "chrome:pre",
+"chrome:k20", "chrome:clearClips", "chrome:logFreq", "chrome:resetHold" (sticky bar) and
+"chrome:overlay"/"chrome:split"/"chrome:diff"/"chrome:ag"/"chrome:freeze" (Chain). Verify the effect with
+checkpoint_export against the matching getter (spectrumSlope/preOverlay/k20View/freqScaleLog/chainDisplayMode/autoGain/scopeFrozen).
+- query_ui: full layout JSON. computer: grid clicks, drags, slider drags, scroll (only where no deterministic tool exists).
+
+The State hint line each turn reports: playing, bpm, rows, nodes, subdiv, camScale, camOffset.
+checkpoint expectations may be an exact value OR a relational object — {gt|lt|gte|lte|ne: N} —
+for results that are directional, not exact (e.g. a pinch must change camScale, a delete must
+drop nodes): read the current value from the State hint, perform the action, then assert e.g.
+checkpoint {name:"zoomed_in", expect:{camScale:{gt: <value you read>}}}.
+
+EFFICIENCY RULES (avoid wasting iterations/money):
+- Prefer the deterministic tools (click_ui, set_bpm, set_subdiv, switch_tab/switch_view, open_row_menu/menu_click) over the raw computer tool. The computer tool is only for grid/canvas interactions, slider drags, and the color wheel.
+- If an action does not take effect after 2 attempts, record an ISSUE and MOVE ON — never loop retrying the same action.
+- When the checklist is complete, output the Final Summary and STOP (end your turn). Do NOT keep exploring or taking extra screenshots once the required steps are done.
+
+CHECKPOINTS (how you prove the app works):
+After any action that should change state, call checkpoint with the expected values. Examples:
+- after Play: checkpoint {name:"playing", expect:{isPlaying:true}}
+- after setting BPM 90: checkpoint {name:"bpm_90", expect:{bpm:90}}
+- after subdiv→16: checkpoint {name:"subdiv_16", expect:{subdiv:16}}
+- after muting row 1: checkpoint {name:"row1_muted", expect:{row:1, muted:true}}
+- after switch_tab wave: checkpoint {name:"tab_wave", expect:{activeTab:"wave"}}
+The test gate requires every named checkpoint the task asks for to PASS. If a checkpoint FAILs, the verdict text tells you the actual value — retry the action or report an ISSUE.
 
 NODE SIDEBAR:
-- Left-click a grid node (desktop) or tap a grid node (mobile) to select it and open the sidebar panel.
-- The sidebar has collapsible sections. Click section headers ("> Volume", "> Logic", etc.) to expand.
-- The Logic section has a dropdown that opens when clicked, showing logic kind options.
-- After changing logic, the drum row's predicted step pattern updates automatically.
-- Use the coordinate hints (sidebar section and button rects appear in nodeMenuRect output via query_ui) to find sidebar controls.
+- Click a grid node to select it and open the sidebar panel.
+- The sidebar has collapsible sections (Volume, Pitch, Duration, Logic, Groove, Audible). Click a section header to expand.
+- The Logic section has a dropdown showing logic-kind options. After changing logic, the drum row's predicted step pattern updates automatically.
 
 Always report any visual bugs you notice: misaligned elements, overlapping text,
 broken rendering, unresponsive buttons, missing visual feedback, etc.
@@ -93,51 +131,58 @@ const MOBILE_SYSTEM_PROMPT_SUFFIX = `
 
 This is a MOBILE test running on a touchscreen device.
 - The layout is stacked (grid on top, drums on bottom).
-- Your mouse clicks will be translated to touch taps automatically.
+- Your mouse clicks are translated to touch taps automatically.
 - For MULTI-TOUCH gestures (pinch zoom, two-finger pan), use the touch_gesture tool.
-- Available gestures: tap, long_press, pinch_in, pinch_out, two_finger_pan, swipe
+- Available gestures: tap, long_press, pinch_in, pinch_out, two_finger_pan, swipe.
 - Touch targets are larger than desktop (44px row height, 44px min target).
-- Long press (600-700ms) opens context menus instead of right-click.
 
 MOBILE TRANSPORT (compact, single row):
-  Play | Stop | BPM input | BPM ± | Subdiv | Len ± | ViewSwitch | Overflow
-  No master volume slider on mobile — it is hidden.
+  Play | Stop | BPM input | BPM ± | volume | Subdiv | Len ± | Overflow (⋯)
+  No master volume slider on mobile.
 
-MOBILE ROW CONTROLS (minimal):
-  Each row shows ONLY: instrument Label + Speaker icon (volume button).
-  Inline M/S/FX/O/X buttons are NOT visible on mobile — their rects are zero-sized.
-  WARNING: click_ui button="mute/solo/fx/color/edit/delete/origin" will FAIL on mobile (zero rects).
+MOBILE BOTTOM-NAV (this replaced the old binary ViewSwitch):
+  A segmented control across the very bottom with these segments:
+    Pads | EQ | Wave | Spec | Lvl | Chn | Syn | Smpl
+  "Pads" shows the drum rows; the others show the audio panel on that tab.
+  Switch views with the switch_view tool, e.g. switch_view {slug:"eq"} or {slug:"pads"}.
+  Valid slugs: pads, eq, wave, spectrum, levels, chain, synth, sampler.
+  Verify with checkpoint {expect:{viewMode:"<slug>"}}.
+  WARNING: there is no "viewSwitch" toggle anymore — do not rely on it.
 
-MOBILE CONTEXT MENU (bottom sheet):
-  Tap the instrument label to open a bottom-sheet context menu with items:
-  Identity group: Instrument, Rename, Color
-  Playback group: Mute, Solo
-  Effects group: Effects (FX panel)
-  Destructive group: Origin, Delete
-  Use the computer tool to click items inside the context menu.
+MOBILE ROW CONTROLS:
+  Each row shows Label | Vol | M | S | FX inline (same as desktop).
+  - Mute / Solo / FX are INLINE buttons → use click_ui button="mute"/"solo"/"fx" row=N.
+  - Instrument / Rename / Origin / Delete are in the row CONTEXT MENU → open_row_menu {row}, then menu_click {label}.
+  The context menu does NOT contain Mute/Solo/Color/Effects — do not look for them there.
+  Color is not exposed on the mobile row (no swatch); treat it as unavailable on mobile.
+
+MOBILE CONTEXT MENU (bottom sheet) — items are ONLY:
+  Instrument, Rename, Origin, Delete.
+  Always call open_row_menu first to read the EXACT labels, then menu_click.
 
 MOBILE VOLUME POPUP:
-  Tap the speaker icon (volume button) to open a vertical slider popup (52×160px).
-  Drag the slider vertically to adjust volume. Tap outside to close.
+  click_ui button="volume" row=N opens a vertical slider popup.
+  Drag the slider vertically (computer tool) to adjust volume. Tap outside to close.
+
+MOBILE NODE DELETE (long-press popup):
+  Long-pressing a grid node opens a Move | Connect | Delete popup; you slide to a button and
+  release. Use the delete_node_longpress {x,y} tool (x,y = a node's on-canvas pixel) to perform
+  that whole gesture, then checkpoint {totalNodes:{lt:<before>}}.
+
+MOBILE CAMERA GESTURES:
+  pinch_out/pinch_in change zoom (camScale); swipe / two_finger_pan move the camera (camOffset).
+  Read camScale / camOffset from the State hint BEFORE the gesture, then checkpoint the change
+  relationally, e.g. {camScale:{gt:<S0>}} or {camOffsetX:{ne:<X0>}}.
 
 MOBILE NODE SIDEBAR:
-  Tap a grid node to open a left-anchored sidebar panel (260px wide) showing:
-  - Instrument name header
-  - Collapsible sections: Volume, Pitch, Duration, Logic, Groove, Audible
-  - Each section has +/- buttons and value displays
-  - Logic section has a dropdown for logic kind (probability, skip_every_n, etc.)
-  After changing logic kind, check the drum row timeline — the step pattern should visibly change.
-  Logic dropdown items: None, Trigger Every N, Skip Every N, Probability, If Prev Skipped, If Prev Triggered.
-  "Skip Every N" defaults to N=2, "Probability" defaults to P=0.5.
-  Tap outside or tap the node again to close.
-
-MOBILE EQ / VIEW SWITCH:
-  click_ui button="viewSwitch" toggles between Rows view and Audio (EQ) view.
-  The viewSwitch button is in the transport bar.
+  Tap a grid node to open a left-anchored sidebar (Instrument header; collapsible
+  Volume/Pitch/Duration/Logic/Groove/Audible sections). The Logic section has a
+  dropdown: None, Trigger Every N, Skip Every N, Probability, If Prev Skipped,
+  If Prev Triggered ("Skip Every N" defaults N=2). After changing logic, the drum
+  row's step pattern should visibly change. Tap outside to close.
 
 MOBILE OVERFLOW MENU:
-  click_ui button="overflow" opens a menu with: Upload, Import, Export.
-  These buttons are hidden from the transport bar on mobile and moved here.`;
+  click_ui button="overflow" opens a menu with Upload, Import, Export.`;
 
 const TOUCH_GESTURE_TOOL = {
   name: "touch_gesture",
@@ -219,6 +264,245 @@ const REPEAT_CLICK_UI_TOOL = {
   },
 };
 
+// Deterministic surface-navigation tools. These wrap stable WASM JS exports
+// (openContextMenuJS / contextMenuClick / setEQTab / setViewMode) so the agent
+// reaches the row overflow menu, the 7-tab audio panel, and the mobile bottom-
+// nav by NAME instead of fragile pixel math. The old UI had inline row buttons
+// and a binary viewSwitch; both are gone (see the system prompt).
+
+const OPEN_ROW_MENU_TOOL = {
+  name: "open_row_menu",
+  description:
+    "Open a drum row's overflow (⋯ kebab) context menu and return its item labels. " +
+    "On desktop, color/rename/edit/origin/delete live ONLY in this menu (no inline buttons). " +
+    "On mobile, every per-row action lives here too. After this, call menu_click with one of the returned labels.",
+  input_schema: {
+    type: "object",
+    properties: { row: { type: "number", description: "Row index (0-based)." } },
+    required: ["row"],
+  },
+};
+
+const MENU_CLICK_TOOL = {
+  name: "menu_click",
+  description:
+    "Click an item in the currently-open row context menu by its EXACT label " +
+    '(as returned by open_row_menu), e.g. "Mute", "Solo", "Color", "Rename", "Effects", "Origin", "Delete", "Instrument".',
+  input_schema: {
+    type: "object",
+    properties: { label: { type: "string", description: "Exact menu item label." } },
+    required: ["label"],
+  },
+};
+
+const SWITCH_TAB_TOOL = {
+  name: "switch_tab",
+  description:
+    "DESKTOP: switch the audio panel tab by slug — one of: eq, wave, spectrum, levels, chain, synth, sampler. " +
+    "Use this (not pixel clicks) to navigate the 7-tab audio panel.",
+  input_schema: {
+    type: "object",
+    properties: { slug: { type: "string", description: "Tab slug." } },
+    required: ["slug"],
+  },
+};
+
+const SWITCH_VIEW_TOOL = {
+  name: "switch_view",
+  description:
+    "MOBILE: switch the bottom-nav view by slug — one of: pads, eq, wave, spectrum, levels, chain, synth, sampler. " +
+    "'pads' shows the drum rows; the others show the matching audio panel. This replaces the old viewSwitch toggle.",
+  input_schema: {
+    type: "object",
+    properties: { slug: { type: "string", description: "View-mode slug." } },
+    required: ["slug"],
+  },
+};
+
+const DRAG_TOOL = {
+  name: "drag",
+  description:
+    "DESKTOP: perform a REAL left-button drag from (x0,y0) to (x1,y1) that reliably registers " +
+    "in headless (force-ticked through the game loop). Use this to move EQ band handles, synth " +
+    "knobs, and volume sliders — read the handle rect from query_ui, then drag from its center to " +
+    "the target. Verify the effect with read_export/checkpoint_export.",
+  input_schema: {
+    type: "object",
+    properties: {
+      x0: { type: "number" }, y0: { type: "number" },
+      x1: { type: "number" }, y1: { type: "number" },
+      steps: { type: "number", description: "Interpolation steps (default 8)." },
+    },
+    required: ["x0", "y0", "x1", "y1"],
+  },
+};
+
+const READ_EXPORT_TOOL = {
+  name: "read_export",
+  description:
+    "Read a value from a WASM JS export (a getter) so you can record a baseline before an " +
+    "interaction. Calls globalThis[export](...args) and drills an optional dot/bracket path. " +
+    'Examples: {export:"eqControlsSnapshot", path:"gainsDB.3"}, {export:"getInstrumentParams", ' +
+    'args:["kick-1"], path:"osc_tune"}, {export:"spectrumSlope"}, {export:"rowVolume", args:[0]}.',
+  input_schema: {
+    type: "object",
+    properties: {
+      export: { type: "string", description: "Exported getter name." },
+      args: { type: "array", description: "Arguments to pass.", items: {} },
+      path: { type: "string", description: "Optional dot/bracket path into the returned value." },
+    },
+    required: ["export"],
+  },
+};
+
+const CALL_EXPORT_TOOL = {
+  name: "call_export",
+  description:
+    "Invoke a WASM SETTER export with args, then apply it (force-ticks the game loop). Use to " +
+    "deterministically drive a continuous control through its REAL handler when a pixel-drag won't " +
+    "register headless — e.g. EQ band gain or a synth/sampler param — then verify with checkpoint_export. " +
+    'Examples: {export:"setEQBandGain", args:["main",3,6]}, {export:"setInstrumentParam", args:["kick-1","osc_tune",0.5]}.',
+  input_schema: {
+    type: "object",
+    properties: {
+      export: { type: "string", description: "Exported setter name." },
+      args: { type: "array", description: "Arguments to pass.", items: {} },
+    },
+    required: ["export"],
+  },
+};
+
+const CHECKPOINT_EXPORT_TOOL = {
+  name: "checkpoint_export",
+  description:
+    "Assert a value read from a WASM getter and record a PASS/FAIL checkpoint. Same read as " +
+    "read_export, then compares with `expect` (exact OR relational {gt|lt|gte|lte|ne|eq}). " +
+    "This is how you objectively verify a per-tab interaction changed real state, resiliently. " +
+    'Example: {name:"eq_band_changed", export:"eqControlsSnapshot", path:"gainsDB.3", expect:{ne:<baseline>}}.',
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Unique checkpoint name." },
+      export: { type: "string", description: "Exported getter name." },
+      args: { type: "array", description: "Arguments to pass.", items: {} },
+      path: { type: "string", description: "Optional dot/bracket path into the returned value." },
+      expect: { description: "Expected value (literal) or relational object {gt|lt|gte|lte|ne|eq:N}." },
+    },
+    required: ["name", "export", "expect"],
+  },
+};
+
+const DELETE_NODE_LONGPRESS_TOOL = {
+  name: "delete_node_longpress",
+  description:
+    "MOBILE: delete a grid node via the real long-press popup. Pass the on-canvas pixel (x,y) " +
+    "of a visible node (read it from the screenshot). The tool press-holds to open the " +
+    "Move/Connect/Delete popup, slides to the Delete button, and releases. Then verify with " +
+    "checkpoint {expect:{totalNodes:{lt:<count before>}}}. If totalNodes didn't drop, the press " +
+    "likely missed the node — retry on a clearer node pixel.",
+  input_schema: {
+    type: "object",
+    properties: {
+      x: { type: "number", description: "Canvas X of the node to delete." },
+      y: { type: "number", description: "Canvas Y of the node to delete." },
+    },
+    required: ["x", "y"],
+  },
+};
+
+const MEASURE_AUDIO_TOOL = {
+  name: "measure_audio",
+  description:
+    "Record real playback and HARD-VERIFY audio is captured end-to-end: starts the recorder, plays the " +
+    "circuit AND fires explicit hits on every instrument for ~2.3s, stops, decodes the captured " +
+    "master.wav, and records a checkpoint that its RMS exceeds the silence floor. Robust to circuit " +
+    "state. Call once per test; it manages its own play/stop.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Checkpoint name (default audio_audible)." },
+      floor: { type: "number", description: "RMS silence floor (default 0.001)." },
+    },
+    required: [],
+  },
+};
+
+const CHECKPOINT_TOOL = {
+  name: "checkpoint",
+  description:
+    "Record an OBJECTIVE assertion against the live engine state and get an immediate PASS/FAIL verdict. " +
+    "Call this after an action that should change state, with a unique name and the expected values. " +
+    "Supported expect keys: bpm, subdiv, totalRows, isPlaying, activeTab, viewMode, channel (scalars), " +
+    "and per-row {row, muted, soloed}. The verdict is returned so you can self-correct, and the test gate " +
+    "requires every named checkpoint to PASS — so checkpoints are how you PROVE a step worked.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: 'Unique checkpoint name, e.g. "bpm_90".' },
+      expect: {
+        type: "object",
+        description: "Expected state values to assert.",
+        properties: {
+          bpm: { type: "number" },
+          subdiv: { type: "number" },
+          totalRows: { type: "number" },
+          isPlaying: { type: "boolean" },
+          activeTab: { type: "string" },
+          viewMode: { type: "string" },
+          channel: { type: "string" },
+          row: { type: "number" },
+          muted: { type: "boolean" },
+          soloed: { type: "boolean" },
+        },
+      },
+    },
+    required: ["name", "expect"],
+  },
+};
+
+const SET_BPM_TOOL = {
+  name: "set_bpm",
+  description:
+    "Set the BPM to an EXACT value deterministically (goes through the real SetBPM handler). " +
+    "Use this instead of typing into the BPM field — keyboard text entry does not reliably commit " +
+    "in this headless build. After it, verify with checkpoint {expect:{bpm:<value>}}.",
+  input_schema: {
+    type: "object",
+    properties: { value: { type: "number", description: "Target BPM, e.g. 90." } },
+    required: ["value"],
+  },
+};
+
+const SET_SUBDIV_TOOL = {
+  name: "set_subdiv",
+  description:
+    "Set the subdivision to one of 4/8/16/32 deterministically (clicks the real subdiv menu item handler). " +
+    "Use this instead of tapping the dropdown. After it, verify with checkpoint {expect:{subdiv:<value>}}.",
+  input_schema: {
+    type: "object",
+    properties: { value: { type: "number", description: "Target subdivision: 4, 8, 16, or 32." } },
+    required: ["value"],
+  },
+};
+
+const EXPORT_CIRCUIT_TOOL = {
+  name: "export_circuit",
+  description:
+    "Capture the current circuit via exportJSON() and stash it in the harness. Returns " +
+    "{totalRows,totalNodes,bpm,subdiv} so you can checkpoint those exact values after a later " +
+    "import_circuit. Use this for the export/import roundtrip test.",
+  input_schema: { type: "object", properties: {}, required: [] },
+};
+
+const IMPORT_CIRCUIT_TOOL = {
+  name: "import_circuit",
+  description:
+    "Re-import the circuit previously stashed by export_circuit (via importJSON()). Use after " +
+    "mutating the circuit to confirm the roundtrip restores it, then checkpoint totalRows/" +
+    "totalNodes/bpm/subdiv against the values export_circuit returned.",
+  input_schema: { type: "object", properties: {}, required: [] },
+};
+
 /**
  * Query fullLayoutSnapshot() and build a compact coordinate hint string.
  * Returns null if the function is not available.
@@ -268,6 +552,11 @@ async function buildUIHints(page) {
           const c = center(r);
           if (c) eqParts.push(`band${j}=${c}`);
         });
+      } else if (name === "bands" && Array.isArray(val)) {
+        // EQ band handle centres ({x,y}) — drag targets for changing band gain.
+        val.forEach((p, j) => {
+          if (p && typeof p.x === "number") eqParts.push(`band${j}=(${p.x}, ${p.y})`);
+        });
       } else if (name === "muteBtns" && Array.isArray(val)) {
         val.forEach((r, j) => {
           const c = center(r);
@@ -288,10 +577,11 @@ async function buildUIHints(page) {
     if (sc || st)
       lines.push(`Scroll: bar=${sc || "n/a"} thumb=${st || "n/a"}`);
 
-    // State
+    // State (incl. node count + camera, for build/edit/gesture checkpoints)
     const s = snap.state || {};
     lines.push(
-      `State: playing=${s.isPlaying} bpm=${s.bpm} rows=${s.totalRows}`
+      `State: playing=${s.isPlaying} bpm=${s.bpm} rows=${s.totalRows} nodes=${s.totalNodes}` +
+      ` subdiv=${s.subdiv} camScale=${s.camScale} camOffset=(${s.camOffsetX},${s.camOffsetY})`
     );
 
     return lines.join("\n");
@@ -324,6 +614,18 @@ function resolveButtonRect(snap, button, row) {
     const eqMap = { eqChannel: "channelBtn", hpf: "hpfBtn", lpf: "lpfBtn" };
     const eqKey = eqMap[button];
     if (eqKey && snap.eq[eqKey]) return snap.eq[eqKey];
+  }
+  // Audio-panel tabs (desktop): "tab:wave" → snap.tabs.wave
+  if (button.startsWith("tab:") && snap.tabs) {
+    return snap.tabs[button.slice(4)] || null;
+  }
+  // Mobile bottom-nav: "nav:eq" → snap.bottomNav.eq
+  if (button.startsWith("nav:") && snap.bottomNav) {
+    return snap.bottomNav[button.slice(4)] || null;
+  }
+  // Audio-panel chrome pills: "chrome:slope" → snap.chrome.slope
+  if (button.startsWith("chrome:") && snap.chrome) {
+    return snap.chrome[button.slice(7)] || null;
   }
   return null;
 }
@@ -416,7 +718,9 @@ async function captureCanvas(pg) {
  * @returns {Promise<Buffer|null>} Screenshot buffer if action was "screenshot", null otherwise
  */
 async function executeAction(page, action, verbose, platform) {
-  const { action: actionType, coordinate, text, key, start_coordinate, duration } = action;
+  const { action: actionType, text, key, duration } = action;
+  const coordinate = normCoord(action.coordinate);
+  const start_coordinate = normCoord(action.start_coordinate);
 
   if (verbose) {
     const coords = coordinate ? ` (${coordinate[0]}, ${coordinate[1]})` : "";
@@ -596,10 +900,18 @@ async function executeAction(page, action, verbose, platform) {
 
     case "left_click_drag":
       if (start_coordinate && coordinate) {
-        await page.mouse.move(start_coordinate[0], start_coordinate[1]);
-        await page.mouse.down();
-        await page.mouse.move(coordinate[0], coordinate[1], { steps: 10 });
-        await page.mouse.up();
+        // Prefer the force-ticked forceDrag (reliable headless); fall back to a
+        // real mouse drag if the export isn't present.
+        const usedForceDrag = await page.evaluate(([a, b, c, d]) => {
+          if (typeof forceDrag === "function") { forceDrag(a, b, c, d, 10); return true; }
+          return false;
+        }, [start_coordinate[0], start_coordinate[1], coordinate[0], coordinate[1]]);
+        if (!usedForceDrag) {
+          await page.mouse.move(start_coordinate[0], start_coordinate[1]);
+          await page.mouse.down();
+          await page.mouse.move(coordinate[0], coordinate[1], { steps: 10 });
+          await page.mouse.up();
+        }
       }
       break;
 
@@ -686,9 +998,31 @@ export function createAgent(page, options = {}) {
     QUERY_UI_TOOL,
     CLICK_UI_TOOL,
     REPEAT_CLICK_UI_TOOL,
+    OPEN_ROW_MENU_TOOL,
+    MENU_CLICK_TOOL,
+    SET_BPM_TOOL,
+    SET_SUBDIV_TOOL,
+    EXPORT_CIRCUIT_TOOL,
+    IMPORT_CIRCUIT_TOOL,
+    READ_EXPORT_TOOL,
+    CALL_EXPORT_TOOL,
+    CHECKPOINT_EXPORT_TOOL,
+    MEASURE_AUDIO_TOOL,
+    CHECKPOINT_TOOL,
   ];
+  if (platform !== "mobile") {
+    // Desktop real handle/knob/slider drags (force-ticked).
+    tools.push(DRAG_TOOL);
+  }
   if (platform === "mobile") {
     tools.push(TOUCH_GESTURE_TOOL);
+    // Mobile navigates the bottom-nav segmented control by view-mode slug.
+    tools.push(SWITCH_VIEW_TOOL);
+    // Mobile node deletion via the long-press popup.
+    tools.push(DELETE_NODE_LONGPRESS_TOOL);
+  } else {
+    // Desktop navigates the 7-tab audio panel by tab slug.
+    tools.push(SWITCH_TAB_TOOL);
   }
 
   /**
@@ -791,8 +1125,10 @@ export function createAgent(page, options = {}) {
      */
     async run(taskPrompt) {
       const startTime = Date.now();
-      const agentLog = []; // Full message log for debugging
-      const issues = [];   // Issues reported by Claude
+      const agentLog = [];    // Full message log for debugging
+      const issues = [];      // Issues reported by Claude
+      const checkpoints = []; // Objective state assertions (see checkpoint tool)
+      let stashedCircuit = null; // export_circuit stashes exportJSON() here for import_circuit
       let iterations = 0;
       let totalInputTokens = 0;
       let totalOutputTokens = 0;
@@ -809,7 +1145,7 @@ export function createAgent(page, options = {}) {
         return {
           task: taskPrompt, model, platform, iterations: 0, durationMs: Date.now() - startTime,
           inputTokens: 0, outputTokens: 0, estimatedCost: 0,
-          issues: [], agentLog: [], summary: "",
+          issues: [], checkpoints: [], agentLog: [], summary: "",
           error: "Failed to take initial screenshot — page may be unresponsive",
         };
       }
@@ -1146,6 +1482,359 @@ export function createAgent(page, options = {}) {
                     consecutiveScreenshotFailures++;
                   }
                 }
+              } else if (block.name === "open_row_menu") {
+                // Open the row's overflow context menu and return its labels.
+                const { row } = block.input;
+                const items = await page.evaluate((r) => {
+                  if (typeof openContextMenuJS !== "function") return null;
+                  openContextMenuJS(r);
+                  if (typeof forceDraw === "function") forceDraw();
+                  return typeof contextMenuItems === "function" ? contextMenuItems() : [];
+                }, row);
+                await page.waitForTimeout(200);
+                const png = await safeScreenshot();
+                const content = [];
+                if (items) {
+                  const labels = items.filter((it) => it && !it.divider).map((it) => it.label);
+                  content.push({ type: "text", text: `Row ${row} menu items: ${JSON.stringify(labels)}. Use menu_click with one of these exact labels.` });
+                } else {
+                  content.push({ type: "text", text: "open_row_menu failed — openContextMenuJS not available." });
+                }
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !items });
+              } else if (block.name === "menu_click") {
+                // Click a context-menu item by exact label.
+                const { label } = block.input;
+                const ok = await page.evaluate((l) => {
+                  if (typeof contextMenuClick !== "function") return false;
+                  const r = contextMenuClick(l);
+                  if (typeof forceDraw === "function") forceDraw();
+                  return r;
+                }, label);
+                await page.waitForTimeout(250);
+                const png = await safeScreenshot();
+                const content = [{ type: "text", text: ok ? `Clicked menu item "${label}".` : `Menu item "${label}" not found or menu not open. Call open_row_menu first and use an exact label.` }];
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
+              } else if (block.name === "set_bpm") {
+                // Deterministic BPM set via the real SetBPM handler.
+                const v = Math.round(Number(block.input.value));
+                const ok = await page.evaluate((n) => {
+                  if (typeof setBPM !== "function") return false;
+                  setBPM(n);
+                  if (typeof forceDraw === "function") forceDraw();
+                  return true;
+                }, v);
+                await page.waitForTimeout(150);
+                const png = await safeScreenshot();
+                const content = [{ type: "text", text: ok ? `Set BPM to ${v}. Verify with checkpoint {bpm:${v}}.` : "set_bpm failed — setBPM unavailable." }];
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
+              } else if (block.name === "set_subdiv") {
+                // Deterministic subdivision set via the canonical SetSubdivisions
+                // handler (setSubdivisions), which doesn't depend on the dropdown
+                // menu being built/open. Falls back to the menu path if absent.
+                const v = Math.round(Number(block.input.value));
+                const ok = await page.evaluate((n) => {
+                  if (typeof setSubdivisions === "function") {
+                    const r = setSubdivisions(n);
+                    if (typeof forceDraw === "function") forceDraw();
+                    return r;
+                  }
+                  if (typeof applySubdivValue === "function") {
+                    if (typeof openSubdivMenu === "function") openSubdivMenu();
+                    applySubdivValue(n);
+                    if (typeof closeSubdivMenu === "function") closeSubdivMenu();
+                    if (typeof forceDraw === "function") forceDraw();
+                    return true;
+                  }
+                  return false;
+                }, v);
+                await page.waitForTimeout(150);
+                const png = await safeScreenshot();
+                const content = [{ type: "text", text: ok ? `Set subdivision to ${v}. Verify with checkpoint {subdiv:${v}}.` : "set_subdiv failed — applySubdivValue unavailable." }];
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
+              } else if (block.name === "switch_tab") {
+                // Desktop: switch the audio panel tab by slug via setEQTab.
+                const { slug } = block.input;
+                const ok = await page.evaluate((s) => {
+                  if (typeof setEQTab !== "function") return false;
+                  setEQTab(s);
+                  if (typeof forceDraw === "function") forceDraw();
+                  return true;
+                }, slug);
+                await page.waitForTimeout(250);
+                const png = await safeScreenshot();
+                const content = [{ type: "text", text: ok ? `Switched audio tab to "${slug}". Verify with a checkpoint {activeTab:"${slug}"}.` : "switch_tab failed — setEQTab not available." }];
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
+              } else if (block.name === "switch_view") {
+                // Mobile: switch the bottom-nav view by slug via setViewMode.
+                const { slug } = block.input;
+                const ok = await page.evaluate((s) => {
+                  if (typeof setViewMode !== "function") return false;
+                  const r = setViewMode(s);
+                  if (typeof forceDraw === "function") forceDraw();
+                  return r;
+                }, slug);
+                await page.waitForTimeout(250);
+                const png = await safeScreenshot();
+                const content = [{ type: "text", text: ok ? `Switched view to "${slug}". Verify with a checkpoint {viewMode:"${slug}"}.` : `switch_view failed for "${slug}" — unknown slug or setViewMode unavailable.` }];
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
+              } else if (block.name === "export_circuit") {
+                // Capture + stash the circuit JSON; return a summary of its shape.
+                const info = await page.evaluate(() => {
+                  if (typeof exportJSON !== "function") return null;
+                  const json = exportJSON();
+                  let doc = {};
+                  try { doc = JSON.parse(json); } catch (_) {}
+                  return {
+                    json,
+                    totalRows: Array.isArray(doc.instruments) ? doc.instruments.length : null,
+                    totalNodes: Array.isArray(doc.nodes) ? doc.nodes.length : null,
+                    bpm: doc.bpm, subdiv: doc.subdiv,
+                  };
+                });
+                if (info && info.json) stashedCircuit = info.json;
+                const text = info
+                  ? `Exported & stashed circuit: totalRows=${info.totalRows}, totalNodes=${info.totalNodes}, bpm=${info.bpm}, subdiv=${info.subdiv}. After mutating, call import_circuit then checkpoint these values.`
+                  : "export_circuit failed — exportJSON unavailable.";
+                if (verbose) console.log(`  [export_circuit] ${text}`);
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text }], is_error: !info });
+              } else if (block.name === "import_circuit") {
+                // Re-import the stashed circuit JSON.
+                if (!stashedCircuit) {
+                  toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text: "import_circuit: nothing stashed — call export_circuit first." }], is_error: true });
+                } else {
+                  const ok = await page.evaluate((j) => {
+                    if (typeof importJSON !== "function") return false;
+                    importJSON(j);
+                    if (typeof forceDraw === "function") forceDraw();
+                    return true;
+                  }, stashedCircuit);
+                  await page.waitForTimeout(300);
+                  const png = await safeScreenshot();
+                  const content = [{ type: "text", text: ok ? "Re-imported the stashed circuit. Now checkpoint totalRows/totalNodes/bpm/subdiv against the export_circuit values." : "import_circuit failed — importJSON unavailable." }];
+                  if (png) {
+                    content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                    const uiHints = await buildUIHints(page);
+                    if (uiHints) content.push({ type: "text", text: uiHints });
+                  }
+                  toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
+                }
+              } else if (block.name === "drag") {
+                // Real force-ticked drag (EQ band / knob / slider).
+                const { x0, y0, x1, y1, steps } = block.input;
+                const ok = await page.evaluate(([a, b, c, d, s]) => {
+                  if (typeof forceDrag !== "function") return false;
+                  forceDrag(a, b, c, d, s || 8);
+                  if (typeof forceDraw === "function") forceDraw();
+                  return true;
+                }, [x0, y0, x1, y1, steps]);
+                await page.waitForTimeout(150);
+                const png = await safeScreenshot();
+                const content = [{ type: "text", text: ok ? `Dragged (${x0},${y0})→(${x1},${y1}). Verify with checkpoint_export.` : "drag failed — forceDrag unavailable." }];
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content, is_error: !ok });
+              } else if (block.name === "call_export") {
+                // Invoke a setter export, then apply queued UI actions.
+                const res = await page.evaluate(({ exp, args }) => {
+                  const fn = globalThis[exp];
+                  if (typeof fn !== "function") return { err: `no export "${exp}"` };
+                  let ret;
+                  try { ret = fn(...(Array.isArray(args) ? args : [])); } catch (e) { return { err: String(e.message || e) }; }
+                  try {
+                    if (typeof forceGameTick === "function") { forceGameTick(); forceGameTick(); }
+                    if (typeof forceDraw === "function") forceDraw();
+                  } catch (_) {}
+                  return { ret: typeof ret === "object" ? "(object)" : ret };
+                }, { exp: block.input.export, args: block.input.args || [] });
+                await page.waitForTimeout(120);
+                const text = res.err
+                  ? `call_export error: ${res.err}`
+                  : `called ${block.input.export}(${JSON.stringify(block.input.args || [])}) → ${JSON.stringify(res.ret)}. Verify with checkpoint_export.`;
+                if (verbose) console.log(`  [call_export] ${text}`);
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text }], is_error: !!res.err });
+              } else if (block.name === "read_export" || block.name === "checkpoint_export") {
+                // Read a value from a WASM getter (+ optional dot/bracket path).
+                const inp = block.input;
+                const res = await page.evaluate(({ exp, args, path }) => {
+                  const fn = globalThis[exp];
+                  if (typeof fn !== "function") return { err: `no export "${exp}"` };
+                  let v;
+                  try { v = fn(...(Array.isArray(args) ? args : [])); } catch (e) { return { err: String(e.message || e) }; }
+                  if (path) {
+                    for (const k of String(path).split(/[.[\]]+/).filter(Boolean)) {
+                      if (v == null) break;
+                      v = v[k];
+                    }
+                  }
+                  return { value: v };
+                }, { exp: inp.export, args: inp.args || [], path: inp.path || null });
+                const key = `${inp.export}${inp.path ? "." + inp.path : ""}`;
+                if (block.name === "read_export") {
+                  const text = res.err ? `read_export error: ${res.err}` : `${key} = ${JSON.stringify(res.value)}`;
+                  toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text }], is_error: !!res.err });
+                } else {
+                  const pass = !res.err && matchesExpectation(res.value, inp.expect);
+                  checkpoints.push({
+                    name: inp.name,
+                    pass,
+                    expected: inp.expect,
+                    mismatches: pass ? [] : [{ key, expected: inp.expect, actual: res.err ? "error:" + res.err : res.value }],
+                    t: Date.now() - startTime,
+                  });
+                  const text = res.err
+                    ? `CHECKPOINT_EXPORT "${inp.name}" FAIL — ${res.err}`
+                    : `CHECKPOINT_EXPORT "${inp.name}" ${pass ? "PASS" : "FAIL"} — ${key}=${JSON.stringify(res.value)} vs ${JSON.stringify(inp.expect)}`;
+                  if (verbose) console.log(`  [checkpoint_export] ${text}`);
+                  toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text }] });
+                }
+              } else if (block.name === "measure_audio") {
+                // Hard-gate audio: record real playback → decode WAV → assert RMS > floor.
+                const cpName = block.input.name || "audio_audible";
+                const floor = typeof block.input.floor === "number" ? block.input.floor : 0.001;
+                let rmsVal = null;
+                let err = null;
+                try {
+                  await page.evaluate(() => {
+                    try { if (typeof resumeAudio === "function") resumeAudio(); } catch (_) {}
+                    if (typeof stopPlay === "function") stopPlay();
+                  });
+                  const downloadPromise = page.waitForEvent("download", { timeout: 20000 });
+                  // Instrument ids to trigger directly (robust signal source,
+                  // independent of whether the current circuit's sequencer is
+                  // triggering loudly — playSound bypasses the sequencer).
+                  const instIds = await page.evaluate(() => {
+                    try { return (JSON.parse(exportJSON()).instruments || []).map((i) => i.id); } catch (_) { return []; }
+                  });
+                  await page.evaluate(async () => {
+                    if (typeof startRecording === "function") await startRecording("wav24");
+                    if (typeof startPlay === "function") startPlay();
+                  });
+                  // Fire explicit hits on every instrument across the window so the
+                  // captured master has guaranteed loud transients.
+                  for (let round = 0; round < 8; round++) {
+                    await page.evaluate((ids) => {
+                      for (const id of ids) { try { if (window.playSound) window.playSound(id, 1.0); } catch (_) {} }
+                    }, instIds);
+                    await page.waitForTimeout(280);
+                  }
+                  await page.evaluate(async () => {
+                    if (typeof stopPlay === "function") stopPlay();
+                    if (typeof stopRecording === "function") await stopRecording();
+                  });
+                  const download = await downloadPromise;
+                  const dp = await download.path();
+                  const bytes = fs.readFileSync(dp);
+                  const entries = parseZip(bytes);
+                  const wav = entries["master.wav"];
+                  if (!wav) err = "no master.wav in recording zip";
+                  else rmsVal = rms(decodeWav(wav).samples);
+                } catch (e) {
+                  err = String(e.message || e);
+                }
+                const pass = !err && rmsVal != null && rmsVal > floor;
+                checkpoints.push({
+                  name: cpName,
+                  pass,
+                  expected: { rmsGt: floor },
+                  mismatches: pass ? [] : [{ key: "master.wav RMS", expected: `>${floor}`, actual: err ? "error:" + err : rmsVal }],
+                  t: Date.now() - startTime,
+                });
+                const text = err
+                  ? `MEASURE_AUDIO "${cpName}" FAIL — ${err}`
+                  : `MEASURE_AUDIO "${cpName}" ${pass ? "PASS" : "FAIL"} — master RMS=${rmsVal.toFixed(5)} (floor ${floor})`;
+                if (verbose) console.log(`  [measure_audio] ${text}`);
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text }] });
+              } else if (block.name === "checkpoint") {
+                // Record an objective assertion against the live engine state.
+                const { name: cpName, expect } = block.input;
+                const snap = await page.evaluate(() =>
+                  typeof fullLayoutSnapshot === "function" ? fullLayoutSnapshot() : null
+                );
+                const verdict = compareCheckpoint(snap, expect || {});
+                checkpoints.push({
+                  name: cpName,
+                  pass: verdict.pass,
+                  expected: expect,
+                  mismatches: verdict.mismatches,
+                  t: Date.now() - startTime,
+                });
+                const detail = verdict.pass
+                  ? ""
+                  : " — " + verdict.mismatches.map((m) => `${m.key}: expected ${JSON.stringify(m.expected)}, got ${JSON.stringify(m.actual)}`).join("; ");
+                const text = `CHECKPOINT "${cpName}" ${verdict.pass ? "PASS" : "FAIL"}${detail}`;
+                if (verbose) console.log(`  [checkpoint] ${text}`);
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content: [{ type: "text", text }] });
+              } else if (block.name === "delete_node_longpress") {
+                // Faithful long-press → slide-to-Delete → release on a grid node.
+                // Reads the live longPressDeleteRect mid-hold (popup is open) so the
+                // slide targets the real Delete button. (See cdpLongPressAndSlide.)
+                const { x, y } = block.input;
+                let detail = "delete_node_longpress: ";
+                try {
+                  const info = await getCanvasInfo(page);
+                  const cdp = await page.context().newCDPSession(page);
+                  try {
+                    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: info.left + x, y: info.top + y, id: 1 }] });
+                    await page.waitForTimeout(700); // hold → popup opens
+                    const del = await page.evaluate(() => (typeof longPressDeleteRect === "function" ? longPressDeleteRect() : null));
+                    if (del && del.w > 0 && del.h > 0) {
+                      const tx = info.left + del.x + del.w / 2;
+                      const ty = info.top + del.y + del.h / 2;
+                      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: tx, y: ty, id: 1 }] });
+                      await page.waitForTimeout(120);
+                      detail += "slid to Delete button and released.";
+                    } else {
+                      detail += "long-press popup did not open (Delete rect empty) — the press may have missed a node.";
+                    }
+                    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+                  } finally {
+                    await cdp.detach();
+                  }
+                } catch (e) {
+                  detail += `error: ${e.message}`;
+                }
+                await page.waitForTimeout(250);
+                const png = await safeScreenshot();
+                const content = [{ type: "text", text: detail + " Verify with checkpoint {totalNodes:{lt:<before>}}." }];
+                if (png) {
+                  content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } });
+                  const uiHints = await buildUIHints(page);
+                  if (uiHints) content.push({ type: "text", text: uiHints });
+                }
+                toolResults.push({ type: "tool_result", tool_use_id: block.id, content });
               } else if (block.name === "touch_gesture") {
                 // Handle custom touch_gesture tool
                 await executeTouchGesture(page, block.input, verbose);
@@ -1153,17 +1842,28 @@ export function createAgent(page, options = {}) {
                 // Delay for gesture to take effect
                 await page.waitForTimeout(500);
               } else {
-                // Handle computer tool actions
-                screenshotResult = await executeAction(page, block.input, verbose, platform);
+                // Handle computer tool actions. Weaker models sometimes call a
+                // BARE action verb as the tool name (e.g. name="left_click")
+                // instead of the canonical computer tool with input.action, and
+                // sometimes pass a stringified coordinate. normalizeComputerAction
+                // coerces both so the tap actually executes (see action_normalize.js).
+                const actionInput = normalizeComputerAction(block.name, block.input);
+                screenshotResult = await executeAction(page, actionInput, verbose, platform);
 
                 // Small delay after actions to let the UI update
-                if (block.input.action !== "screenshot" && block.input.action !== "wait") {
+                if (actionInput.action !== "screenshot" && actionInput.action !== "wait") {
                   await page.waitForTimeout(300);
                 }
               }
 
-              // Take screenshot for tool result (skip for query_ui/click_ui which handle their own results)
-              if (block.name !== "query_ui" && block.name !== "click_ui" && block.name !== "repeat_click_ui") {
+              // Take screenshot for tool result (skip for tools that handle their own results)
+              const selfHandledTools = new Set([
+                "query_ui", "click_ui", "repeat_click_ui",
+                "open_row_menu", "menu_click", "switch_tab", "switch_view", "checkpoint",
+                "set_bpm", "set_subdiv", "export_circuit", "import_circuit", "delete_node_longpress",
+                "drag", "read_export", "call_export", "checkpoint_export", "measure_audio",
+              ]);
+              if (!selfHandledTools.has(block.name)) {
                 const png = screenshotResult ?? await safeScreenshot();
 
                 if (png) {
@@ -1284,6 +1984,7 @@ export function createAgent(page, options = {}) {
         outputTokens: totalOutputTokens,
         estimatedCost,
         issues: [...new Set(issues)], // Deduplicate
+        checkpoints,
         agentLog,
         summary: extractSummary(agentLog),
       };

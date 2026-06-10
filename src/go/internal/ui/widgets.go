@@ -24,7 +24,15 @@ func packRGBA(c color.Color) uint32 {
 	// pixel(color.White) could return whichever color happened to be
 	// cached first for the same colliding bucket, tinting every icon
 	// sprite. Shift each channel down to 8 bits first.
-	r, g, b, a := color.RGBAModel.Convert(c).(color.RGBA).RGBA()
+	//
+	// Call c.RGBA() directly instead of routing through
+	// color.RGBAModel.Convert: Convert boxes its color.RGBA result into a
+	// color.Color interface, costing one heap allocation on EVERY
+	// pixel()/drawRect call (the dominant per-frame alloc source on the
+	// audio-panel tabs). Convert(c).RGBA()>>8 is bit-identical to
+	// c.RGBA()>>8 — Convert truncates the same 16-bit channels to 8 bits
+	// and RGBA() re-expands them by ×0x101, which >>8 undoes exactly.
+	r, g, b, a := c.RGBA()
 	return uint32(r>>8) | uint32(g>>8)<<8 | uint32(b>>8)<<16 | uint32(a>>8)<<24
 }
 

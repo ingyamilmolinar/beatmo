@@ -22,6 +22,16 @@ void delay_process(delay_t *d, float *buf, int samples);
 /* Reset delay line to silence. */
 void delay_reset(delay_t *d);
 
+/* Click-free param updates. delay_set_time_smooth changes the read-back
+ * distance without zeroing the buffer (so the existing wet tail keeps
+ * playing). newDelaySamples must be <= the capacity passed to delay_init;
+ * the caller is responsible for sizing the buffer to the maximum time it
+ * intends to support. delay_set_feedback_smooth / delay_set_damping_smooth
+ * are stateless and trivially safe to call mid-render. */
+void delay_set_time_smooth(delay_t *d, int newDelaySamples);
+void delay_set_feedback_smooth(delay_t *d, float feedback);
+void delay_set_damping_smooth(delay_t *d, float dampingHz, int sampleRate);
+
 /* ---- Schroeder reverb (4 comb + 2 allpass) ---- */
 
 typedef struct {
@@ -58,5 +68,11 @@ void reverb_process(reverb_t *r, const float *in, float *out, int samples);
 
 /* Reset reverb to silence. */
 void reverb_reset(reverb_t *r);
+
+/* Click-free reverb param updates. Mutates the comb feedback, comb damping,
+ * and wet/dry coefficients in place; existing delay-line content keeps
+ * playing so the tail decays naturally instead of being zeroed by a
+ * fresh reverb_init. */
+void reverb_set_params_smooth(reverb_t *r, float roomSize, float damping, float wet);
 
 #endif

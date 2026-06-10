@@ -13,8 +13,8 @@ func TestPhase2_RegisteredRecipeCountAtLeast25(t *testing.T) {
 	// the count to be >= 25 (the floor).
 	want := 25
 	got := len(builtinRecipeDescriptors)
-	if got != want {
-		t.Errorf("builtinRecipeDescriptors has %d entries, want %d", got, want)
+	if got < want {
+		t.Errorf("builtinRecipeDescriptors has %d entries, want at least %d", got, want)
 	}
 
 	regs := RecipeRegistrations()
@@ -38,6 +38,10 @@ func TestPhase2_AllRecipeIDsFollowNamingConvention(t *testing.T) {
 		case "fm":
 			if !strings.HasPrefix(d.ID, "fm-") {
 				t.Errorf("FM recipe %q does not start with \"fm-\"", d.ID)
+			}
+		case modularRecipeCategory:
+			if !strings.HasPrefix(d.ID, "synth-") {
+				t.Errorf("modular recipe %q does not start with \"synth-\"", d.ID)
 			}
 		default:
 			t.Errorf("recipe %q has unrecognised category %q", d.ID, d.Category)
@@ -94,4 +98,3 @@ func TestPhase2_AllRecipesRenderAtDefaultsWithoutPanic(t *testing.T) {
 		}()
 	}
 }
-

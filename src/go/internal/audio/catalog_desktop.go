@@ -309,4 +309,3 @@ func slugPath(rel string) string {
 	}
 	return slug
 }
-

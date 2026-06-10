@@ -135,3 +135,32 @@ func intAbs2(x int) int {
 	}
 	return x
 }
+
+// TestImportRejectsVersionlessDoc pins the guard against the silent
+// project-wipe: a doc that parses as JSON but carries no "version" (an empty
+// {} or some unrelated app's JSON picked in the file dialog) must be rejected
+// with an error and must NOT touch the current project — import is
+// replace-not-merge, so letting it through replaced everything with an empty
+// project while returning success. Found by
+// src/js/wasm_bridge_error_paths.browser.test.js.
+func TestImportRejectsVersionlessDoc(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	rowsBefore := len(g.drum.Rows)
+	for _, doc := range []string{
+		`{}`,
+		`{"subdiv": 8, "bpm": 120}`,
+		`{"version": 0, "instruments": [], "nodes": []}`,
+		`{"version": -3}`,
+	} {
+		if err := g.Import([]byte(doc)); err == nil {
+			t.Errorf("Import(%s) succeeded; want version-guard error", doc)
+		}
+		if got := len(g.drum.Rows); got != rowsBefore {
+			t.Fatalf("Import(%s) mutated rows: %d -> %d (project wiped on rejected import)", doc, rowsBefore, got)
+		}
+	}
+}

@@ -19,11 +19,14 @@
  *   Scenario A — Solo + play + synth tab + param drag
  *     1. Build a 4-beat kick pattern.
  *     2. Switch the EQ panel to the Synth tab so the production Draw stack
- *        is active.
+ *        is active. CHIP-STRIP: the Synth tab now renders a pipeline chip
+ *        strip with one stage expanded; the soak also churns the selected
+ *        stage (selectSynthSection cycling VOICE↔ENVELOPE) so the expand/
+ *        collapse + per-stage knob layout path is exercised under load.
  *     3. Solo row 1 (mirrors the user's log line).
  *     4. Start playback.
  *     5. For 90 s, cycle audio.SetInstrumentParam('kick', 'pitch', ...) at
- *        ~10 Hz to mimic a synth-knob drag.
+ *        ~10 Hz to mimic a synth-knob drag, while cycling the expanded chip.
  *     6. Read memSizes() and analyzerBridgeStats() periodically. Assert:
  *          - Final Go heapAlloc growth < 512 MB.
  *          - usedJSHeapSize stays below 1.5 GB (production crashed at 2.13 GB;
@@ -234,11 +237,16 @@ for (it = 0; it < totalIterations; it++) {
   const decay = 0.25 + 0.75 * Math.sin(t / 41);
   // page.evaluate per iteration is slower than batching, but the goal is
   // to provoke the same Go-side per-Set work the user's drag triggers —
-  // batching would let WASM coalesce and hide the regression.
-  await page.evaluate(({ p, d }) => {
+  // batching would let WASM coalesce and hide the regression. CHIP-STRIP:
+  // also churn the expanded stage (VOICE↔ENVELOPE) every ~20 iterations so
+  // the chip expand/collapse + per-stage knob (re)layout path runs under the
+  // OOM Draw stack. Guarded so older builds without the export still run.
+  const stage = (it % 40) < 20 ? "VOICE" : "ENVELOPE";
+  await page.evaluate(({ p, d, s }) => {
     setInstrumentParam("kick", "pitch", p);
     setInstrumentParam("kick", "decay", d);
-  }, { p: pitch, d: decay });
+    if (typeof selectSynthSection === "function") selectSynthSection(s);
+  }, { p: pitch, d: decay, s: stage });
   if (it > 0 && it % samplesEveryIter === 0) {
     await sample(`t+${Math.floor((Date.now() - startTs) / 1000)}s`);
     // Catch a runaway before the browser actually OOMs.

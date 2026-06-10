@@ -23,6 +23,11 @@ type Slider struct {
 	// Optional overrides (0/nil = use Profile() defaults).
 	TrackH     int   // track height override; 0 = Profile().SliderTrackH
 	LabelAbove *bool // label position override; nil = Profile().SliderLabelAbove
+	// SuppressLabel, when true, skips rendering the percent label and
+	// reserves no horizontal space for it. Use when the surrounding
+	// component already shows the value (e.g. FX-panel parameter rows
+	// render `Drive: 8.19` next to the slider, making "80%" duplicate).
+	SuppressLabel bool
 }
 
 func NewSlider(v float64) *Slider { return &Slider{Value: v} }
@@ -57,12 +62,6 @@ func (s *Slider) HandleInputResult(mx, my int, pressed bool) InputResult {
 
 // Capturing returns whether the slider is in an active drag.
 func (s *Slider) Capturing() bool { return s.dragging }
-
-// Handle processes mouse interaction.
-// Backward-compatible wrapper around HandleInputResult.
-func (s *Slider) Handle(mx, my int, pressed bool) bool {
-	return s.HandleInputResult(mx, my, pressed) != InputIgnored
-}
 
 func (s *Slider) setFromX(mx int) {
 	track, _ := s.trackRect()
@@ -131,6 +130,10 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 		labelAbove = *s.LabelAbove
 	}
 
+	if s.SuppressLabel {
+		return
+	}
+
 	// Label: above the track when labelAbove is set, to the left otherwise.
 	pct := int(math.Round(s.Value * 100))
 	if pct != s.lastPct {
@@ -164,6 +167,9 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 }
 
 func (s *Slider) trackRect() (image.Rectangle, *ebiten.Image) {
+	if s.SuppressLabel {
+		return s.r, nil
+	}
 	label := fmt.Sprintf("%d%%", int(math.Round(s.Value*100)))
 	spr := TextSprite(label)
 	labelW := spr.Bounds().Dx() + sliderLabelPad

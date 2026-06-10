@@ -196,7 +196,7 @@ func TestSliderLevelIndicator_StaysInsideBtnRect(t *testing.T) {
 	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
 
 	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicatorBounded(dst, btnR, iconR, 0.5, colTextPrimary, false)
+		drawSliderLevelIndicator(dst, btnR, iconR, 0.5, colTextPrimary, false)
 	})
 	if len(rects) == 0 {
 		t.Fatal("indicator should still render inside a tight button rect")

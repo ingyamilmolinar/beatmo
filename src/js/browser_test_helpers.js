@@ -6,17 +6,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");
 
 /**
- * @deprecated Use server.listen(0) + server.address().port instead.
- * All browser tests now use OS-assigned ports to avoid EADDRINUSE collisions.
- */
-export function getTestPort(defaultBase = 8500, randomRange = 1000) {
-  if (process.env.BROWSER_TEST_PORT_BASE) {
-    return parseInt(process.env.BROWSER_TEST_PORT_BASE, 10);
-  }
-  return defaultBase + Math.floor(Math.random() * randomRange);
-}
-
-/**
  * Check if WASM was pre-built. Returns true if build should be skipped.
  * Throws if WASM_PREBUILT=1 but the target file is missing.
  */

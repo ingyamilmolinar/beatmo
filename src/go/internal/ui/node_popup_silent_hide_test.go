@@ -71,7 +71,7 @@ func TestNodePopupHidesForSilentAndMute_ThenRestores(t *testing.T) {
 	// Parameters unchanged
 	after := g.graph.Nodes[n.ID].Params
 	// Compare scalar fields (Logic function may be non-comparable)
-	if before.Volume != after.Volume || before.Pitch != after.Pitch || before.Duration != after.Duration || before.LogicKind != after.LogicKind || before.LogicN != after.LogicN || before.LogicP != after.LogicP || before.GrooveKind != after.GrooveKind || before.GroovePct != after.GroovePct || before.SkipEveryN != after.SkipEveryN {
+	if before.Volume != after.Volume || before.Pitch != after.Pitch || before.Duration != after.Duration || before.LogicKind != after.LogicKind || before.LogicN != after.LogicN || before.LogicP != after.LogicP || before.GrooveKind != after.GrooveKind || before.GroovePct != after.GroovePct {
 		t.Fatalf("node params changed across mute/silent toggles: before=%+v after=%+v", before, after)
 	}
 }

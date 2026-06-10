@@ -61,11 +61,16 @@ try { browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gestur
   await assertSimpleDrawMode(page, true, "batch audio");
   await clearSchedulerMismatches(page);
 
-  // Wrap bridge calls to count invocations.
+  // Wrap bridge calls to count invocations. Go's PlayBatch prefers
+  // playSoundsBatchFlat over playSoundsBatch when both exist (see
+  // src/go/internal/audio/batch_wasm.go), so both paths count as "batch".
   await page.evaluate(() => { window.__counts = { batch: 0, params: 0 };
     const ob = window.playSoundsBatch;
+    const obf = window.playSoundsBatchFlat;
     const op = window.playSoundParams;
     if (typeof window.playSoundsBatch === 'function') { window.playSoundsBatch = (arr) => { window.__counts.batch++; return ob.call(window, arr); };
+    }
+    if (typeof window.playSoundsBatchFlat === 'function') { window.playSoundsBatchFlat = (ids, vols, pitches, durs, whens, hasWhen) => { window.__counts.batch++; return obf.call(window, ids, vols, pitches, durs, whens, hasWhen); };
     }
     if (typeof window.playSoundParams === 'function') { window.playSoundParams = (id, vol, pitch, dur, when) => { window.__counts.params++; return op.call(window, id, vol, pitch, dur, when); };
     }

@@ -67,6 +67,7 @@ type designSpec struct {
 	Alpha                     yaml.Node `yaml:"alpha"`
 	Components                yaml.Node `yaml:"components"`
 	ProfileOverrides          yaml.Node `yaml:"profileOverrides"`
+	Densities                 yaml.Node `yaml:"densities"`
 	InstrumentSwatches        yaml.Node `yaml:"instrumentSwatches"`
 	InstrumentDefaults        yaml.Node `yaml:"instrumentDefaults"`
 	InstrumentFallbackPalette yaml.Node `yaml:"instrumentFallbackPalette"`
@@ -86,6 +87,7 @@ func main() {
 	outPath := flag.String("out", "src/go/internal/ui/design_tokens.gen.go", "output for primitive tokens")
 	outComponentsPath := flag.String("out-components", "src/go/internal/ui/design_components.gen.go", "output for component specs")
 	outProfilePath := flag.String("out-profile", "src/go/internal/ui/design_profile.gen.go", "output for profile overrides")
+	outDensityPath := flag.String("out-density", "src/go/internal/ui/design_density.gen.go", "output for density values")
 	flag.Parse()
 
 	resolved, err := resolveDesignPath(*designPath)
@@ -208,6 +210,22 @@ func main() {
 	}
 	if err := writeIfChanged(*outProfilePath, profileOut); err != nil {
 		fail("write %s: %v", *outProfilePath, err)
+	}
+
+	// Audio-panel density tier → design_density.gen.go. Orthogonal to
+	// profile overrides — see densities.go for the design rationale.
+	densities, err := parseDensities(&spec.Densities)
+	if err != nil {
+		fail("densities: %v", err)
+	}
+	if len(densities) > 0 {
+		densityOut, err := emitDensities(densities)
+		if err != nil {
+			fail("emit densities: %v", err)
+		}
+		if err := writeIfChanged(*outDensityPath, densityOut); err != nil {
+			fail("write %s: %v", *outDensityPath, err)
+		}
 	}
 }
 

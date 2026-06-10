@@ -29,8 +29,8 @@ func TestOriginSelectDoesNotStitchOtherCircuits(t *testing.T) {
 	g.drum.calcLayout()
 	btn := g.drum.rowOriginBtns()[1]
 	r := btn.Rect()
-	_ = btn.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
-	_ = btn.Handle((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, false)
+	_ = btn.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, true)
+	_ = btn.HandleInputResult((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2, false)
 	_ = g.Update()
 	// Directly create node at grid to avoid screen coord math.
 	n := g.tryAddNode(3, 0, model.NodeTypeRegular)

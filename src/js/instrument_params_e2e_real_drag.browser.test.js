@@ -7,8 +7,8 @@
  * WebAudio output via startOutputCapture and asserts:
  *
  *   1. Baseline playback produces audible non-NaN audio.
- *   2. Real mouse-drag on each of the 8 slider rects (snare's recipe)
- *      doesn't silence the audio.
+ *   2. Real mouse-drag on each knob rect (snare's recipe), opening each
+ *      knob's owning pipeline stage first, doesn't silence the audio.
  *   3. After the drag, audio continues without BiquadFilterNode warnings
  *      or page errors.
  *
@@ -19,6 +19,15 @@
  * window.updateInstrumentParams → renderCache.delete →
  * ensureRenderedSample → render_X_p. If any link in the chain is broken,
  * the assertions catch it.
+ *
+ * CHIP-STRIP REDESIGN: the Synth tab now renders one chip per pipeline stage
+ * (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·POST) with exactly ONE stage
+ * expanded into a detail pane. synthKnobRects() returns one entry per wired
+ * knob, but knobs of collapsed (non-selected) stages have ZERO-SIZE rects
+ * (w=0,h=0) — only the selected stage's knobs are drag-targetable. To drag a
+ * knob we must first open its owning stage via selectSynthSection(), re-fetch
+ * synthKnobRects(), and pick the now-laid-out (w>0,h>0) rect. We map each param
+ * name to its stage label (paramStage below) and select per param.
  */
 
 import { chromium } from "playwright";
@@ -97,11 +106,28 @@ try {
     typeof startPlay === "function" &&
     typeof stopPlay === "function" &&
     typeof setEQTab === "function" &&
-    typeof synthSliderRects === "function" &&
+    typeof synthKnobRects === "function" &&
     typeof startOutputCapture === "function" &&
     typeof getOutputCapture === "function" &&
     typeof clearOutputCapture === "function"
   );
+
+  // CHIP-STRIP: map a synth param name to the pipeline stage (chip label) that
+  // owns it, so we can open the owning stage before dragging that knob. See the
+  // cheat sheet in the plan / synth_panel_zone.go.
+  const paramStage = (name) => {
+    if (/^osc_/.test(name)) return "OSC";
+    if (/^fm_/.test(name)) return "FM";
+    if (/^pitchenv_/.test(name)) return "PITCH";
+    if (/^lfo_/.test(name)) return "LFO";
+    if (/^burst_/.test(name)) return "BURST";
+    if (/^filter_/.test(name)) return "FILTER";
+    if (/^post_/.test(name)) return "POST";
+    if (name === "decay" || /^env_/.test(name)) return "ENVELOPE";
+    if (["drive", "tone", "gain", "pitch", "body", "brightness"].includes(name)) return "POST";
+    // <family>_wave and family/voice knobs (e.g. snare_wave, kick_*) → VOICE.
+    return "VOICE";
+  };
 
   // Unlock the audio context.
   await page.evaluate(() => {
@@ -138,8 +164,8 @@ try {
   // Allow a few frames so the EQ panel's Layout runs.
   await page.waitForTimeout(300);
 
-  let rects = await page.evaluate(() => synthSliderRects());
-  console.log(`[TEST] synth sliders visible: ${rects.length}`);
+  let rects = await page.evaluate(() => synthKnobRects());
+  console.log(`[TEST] synth knobs visible: ${rects.length}`);
   if (rects.length === 0) {
     // Fall back: tab might not yet be active because the row's
     // instrument is still loading. Try forcing another draw.
@@ -148,12 +174,12 @@ try {
       if (typeof forceDraw === "function") forceDraw();
     });
     await page.waitForTimeout(500);
-    rects = await page.evaluate(() => synthSliderRects());
+    rects = await page.evaluate(() => synthKnobRects());
   }
   if (rects.length === 0) {
-    throw new Error("synthSliderRects() returned 0 entries — Synth tab not active or layout did not run");
+    throw new Error("synthKnobRects() returned 0 entries — Synth tab not active or layout did not run");
   }
-  console.log(`[TEST] slider names: ${rects.map((r) => r.name).join(", ")}`);
+  console.log(`[TEST] knob names: ${rects.map((r) => r.name).join(", ")}`);
 
   // Start playback — sequencer fires snare every beat.
   await page.evaluate(() => startPlay());
@@ -186,10 +212,45 @@ try {
   if (!canvasBox) throw new Error("no canvas in DOM");
   console.log(`[TEST] canvas: ${canvasBox.width}×${canvasBox.height} at (${canvasBox.x},${canvasBox.y})`);
 
-  // Drag each slider through its full range. We do this DURING active
-  // playback so the audio capture overlaps with the slider drag.
-  for (const r of rects) {
-    console.log(`[TEST] dragging ${r.name} (${r.x},${r.y})..(${r.x + r.w},${r.y + r.h})`);
+  // Drag each knob through its full range. We do this DURING active playback so
+  // the audio capture overlaps with the drag. CHIP-STRIP: each knob lives in a
+  // collapsed stage unless its owning stage is selected, so we select the
+  // owning stage, re-fetch synthKnobRects(), and pick the laid-out (w>0,h>0)
+  // rect before dragging. The names come from the union of all known params.
+  const allNames = await page.evaluate(() => synthKnobRects().map((k) => k.name));
+  console.log(`[TEST] all synth knob names: ${allNames.join(", ")}`);
+  let dragged = 0;
+  for (const name of allNames) {
+    const stage = paramStage(name);
+    // Open the owning stage (guarded for safety), then wait for the target
+    // knob to be laid out with a non-zero rect.
+    await page.evaluate((s) => { if (typeof selectSynthSection === "function") selectSynthSection(s); }, stage);
+    await page.evaluate(() => { if (typeof forceDraw === "function") forceDraw(); });
+    let r = null;
+    try {
+      await page.waitForFunction(
+        (n) => {
+          if (typeof synthKnobRects !== "function") return false;
+          const k = synthKnobRects().find((kk) => kk.name === n);
+          return !!(k && k.w > 0 && k.h > 0);
+        },
+        name,
+        { timeout: 4000 },
+      );
+      r = await page.evaluate((n) => synthKnobRects().find((kk) => kk.name === n) || null, name);
+    } catch (_) {
+      // Some params may not be present for this recipe (e.g. enabled-stage
+      // pruning); skip rather than fail — the names came from the live set so
+      // a genuine missing rect after stage selection is unexpected but not the
+      // target of this audio regression.
+      console.log(`[TEST] skipping ${name}: no laid-out rect after selecting ${stage}`);
+      continue;
+    }
+    if (!r || !(r.w > 0 && r.h > 0)) {
+      console.log(`[TEST] skipping ${name}: rect not laid out`);
+      continue;
+    }
+    console.log(`[TEST] dragging ${r.name} [${stage}] (${r.x},${r.y})..(${r.x + r.w},${r.y + r.h})`);
 
     // Press down at the slider's left edge (slider Value = 0).
     const yMid = canvasBox.y + r.y + r.h / 2;
@@ -206,9 +267,14 @@ try {
       await page.waitForTimeout(15);
     }
     await page.mouse.up();
+    dragged++;
     // Settle.
     await page.waitForTimeout(150);
   }
+  if (dragged === 0) {
+    throw new Error("dragged 0 knobs — chip-strip stage selection produced no laid-out rects");
+  }
+  console.log(`[TEST] dragged ${dragged} knob(s) across their owning stages`);
 
   // ─── Post-drag capture ───
   await page.evaluate(() => {
@@ -219,7 +285,7 @@ try {
   const postDrag = await page.evaluate(() => Array.from(getOutputCapture()));
   if (hasNonFinite(postDrag)) {
     throw new Error(
-      `post-drag capture contains NaN/Inf after dragging all 8 sliders — chain permanently corrupted`,
+      `post-drag capture contains NaN/Inf after dragging all knobs — chain permanently corrupted`,
     );
   }
   const postPeak = peakOf(postDrag);

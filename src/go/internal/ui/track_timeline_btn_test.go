@@ -26,8 +26,11 @@ func newDrumViewForTrackTest(t *testing.T, mobile bool) *DrumView {
 	return dv
 }
 
-// TestTrackButtonHidden_Mobile verifies the Track button is hidden on mobile.
-func TestTrackButtonHidden_Mobile(t *testing.T) {
+// TestTrackButtonInline_Mobile verifies the Track button is rendered as an
+// inline chip on the right edge of the timeline ruler header on mobile
+// (Theme 2 of the mobile UI consistency pass). Previously the button was
+// hidden and the toggle was only reachable through the overflow menu.
+func TestTrackButtonInline_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -35,8 +38,11 @@ func TestTrackButtonHidden_Mobile(t *testing.T) {
 	btn := dv.TrackBtnForTest()
 	r := btn.Rect()
 
-	if !r.Empty() {
-		t.Fatalf("Track button should be hidden on mobile, got %v", r)
+	if r.Empty() {
+		t.Fatalf("Track button rect should be non-empty on mobile (inline chip)")
+	}
+	if r.Dx() < TouchMinTarget() || r.Dy() < TouchMinTarget() {
+		t.Fatalf("Track chip %v below touch target %d", r, TouchMinTarget())
 	}
 }
 
@@ -75,49 +81,27 @@ func TestTrackButtonToggle_Mobile(t *testing.T) {
 	}
 }
 
-// TestTrackButtonAppearsInOverflowMenu_Mobile verifies that the Track entry
-// is the mobile-platform surface for the follow toggle (since the inline
-// timeline track button is hidden on mobile by an empty rect). The entry
-// must carry IconTrack, must mirror dv.FollowPlayback() in its active flag,
-// and clicking it must flip the follow state.
-func TestTrackButtonAppearsInOverflowMenu_Mobile(t *testing.T) {
+// TestTrackButtonNotInOverflowMenu_Mobile verifies the Track entry was
+// removed from the overflow kebab now that the toggle lives inline on
+// the timeline ruler header (Theme 2). Single source of truth for the
+// follow control on mobile.
+func TestTrackButtonNotInOverflowMenu_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
 	dv := newDrumViewForTrackTest(t, true)
-	items := dv.OverflowItemsForTest()
-	matches := 0
-	var trackItem overflowItem
-	for _, item := range items {
+	for _, item := range dv.OverflowItemsForTest() {
 		if item.label == "Track" {
-			matches++
-			trackItem = item
+			t.Fatalf("overflow menu should NOT contain Track entry; chip is inline")
 		}
-	}
-	if matches != 1 {
-		t.Fatalf("expected exactly one 'Track' overflow entry, got %d", matches)
-	}
-	if trackItem.iconID != IconTrack {
-		t.Fatalf("expected iconID=%q on Track entry, got %q", IconTrack, trackItem.iconID)
-	}
-	if trackItem.active != dv.FollowPlayback() {
-		t.Fatalf("Track entry active=%v should mirror FollowPlayback=%v", trackItem.active, dv.FollowPlayback())
-	}
-	if trackItem.onClick == nil {
-		t.Fatal("Track entry must carry an onClick callback")
-	}
-
-	// Click flips follow state.
-	before := dv.FollowPlayback()
-	trackItem.onClick()
-	if got := dv.FollowPlayback(); got == before {
-		t.Fatalf("clicking Track entry did not flip FollowPlayback (still %v)", got)
 	}
 }
 
-// TestTrackButtonHiddenNotInTransportRow_Mobile verifies the Track button is
-// hidden on mobile (not in any transport row).
-func TestTrackButtonHiddenNotInTransportRow_Mobile(t *testing.T) {
+// TestTrackButtonNotInTransportRow_Mobile verifies the Track button does
+// not paint inside the top toolbar — it lives inline on the timeline
+// ruler header (Theme 2). Catches regressions that would put the toggle
+// back into the transport row on mobile.
+func TestTrackButtonNotInTransportRow_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -125,8 +109,14 @@ func TestTrackButtonHiddenNotInTransportRow_Mobile(t *testing.T) {
 	btn := dv.TrackBtnForTest()
 	r := btn.Rect()
 
-	if !r.Empty() {
-		t.Fatalf("Track button should be hidden on mobile, got %v", r)
+	if r.Empty() {
+		t.Fatalf("Track chip should be non-empty on mobile; lives inline on timeline header")
+	}
+	if dv.transportZone == nil {
+		return
+	}
+	if r.Overlaps(dv.transportZone.rect) && r.In(dv.transportZone.rect) {
+		t.Fatalf("Track chip %v should NOT live inside transport zone %v", r, dv.transportZone.rect)
 	}
 }
 

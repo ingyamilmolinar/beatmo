@@ -186,6 +186,7 @@ func (dv *DrumView) SetRowColor(idx int, c color.Color) {
 			dv.rowFullDirty[idx] = true
 		}
 	}
+	emitRowColorChanged(idx, packRGBA(dv.Rows[idx].Color))
 }
 
 // EnsureUniqueRowColors scans all rows and adjusts any duplicates to unique variants.

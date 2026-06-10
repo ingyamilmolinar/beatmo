@@ -439,7 +439,7 @@ func TestOverflowMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 
 // TestOverflowBtnTapDoesNotTriggerAdjacentButton verifies that tapping the
 // overflow button on mobile opens the overflow menu WITHOUT also activating
-// the adjacent viewSwitchBtn. The root cause was that Button.Handle() expands
+// the adjacent viewSwitchBtn. The root cause was that Button.HandleInputResult() expands
 // hit areas to touchMinTargetPx (44px) for touch targets. With 8 buttons in a
 // narrow transport column (~18px each), expanded areas overlap. The button loop
 // checks left-to-right: viewSwitchBtn is checked before overflowBtn, so its

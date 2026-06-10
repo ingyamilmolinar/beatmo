@@ -179,7 +179,7 @@ function extractPhaseResults(summary) {
  */
 function extractAgentMeta(agentLog) {
   if (!agentLog) {
-    return { task: "", model: "", iterations: 0, cost: 0, issues: [], structuredIssues: [], phaseResults: [], summary: "", error: "", actions: [] };
+    return { task: "", model: "", iterations: 0, cost: 0, issues: [], structuredIssues: [], phaseResults: [], checkpoints: [], gate: null, summary: "", error: "", actions: [] };
   }
 
   // Extract actions from the conversation log entries
@@ -203,6 +203,8 @@ function extractAgentMeta(agentLog) {
     issues: rawIssues,
     structuredIssues,
     phaseResults,
+    checkpoints: agentLog.checkpoints ?? [],
+    gate: agentLog.gate ?? null,
     summary,
     error: agentLog.error ?? "",
     actions,
@@ -308,6 +310,29 @@ function buildHTML(data) {
       return `<tr><td>Phase ${p.phase}</td><td><span class="phase-badge ${badgeClass}">${p.result}</span></td><td>${escapeHtml(p.note)}</td></tr>`;
     }).join("");
     phaseHTML = `<table class="phase-table"><thead><tr><th>Phase</th><th>Result</th><th>Notes</th></tr></thead><tbody>${phaseRows}</tbody></table>`;
+  }
+
+  // Build checkpoint ledger + gate banner (objective pass/fail).
+  const checkpoints = agentMeta.checkpoints ?? [];
+  const gate = agentMeta.gate ?? null;
+  let gateHTML = "";
+  if (gate) {
+    const cls = gate.ok ? "phase-badge-pass" : "phase-badge-fail";
+    const reasons = (gate.reasons ?? []).map((r) => `<li>${escapeHtml(r)}</li>`).join("");
+    gateHTML = `<p><span class="phase-badge ${cls}">GATE ${gate.ok ? "PASS" : "FAIL"}</span> ` +
+      `${gate.checkpointsPassed}/${checkpoints.length} checkpoints passed</p>` +
+      (reasons ? `<ul>${reasons}</ul>` : "");
+  }
+  let checkpointsHTML = "";
+  if (checkpoints.length > 0) {
+    const rows = checkpoints.map((c) => {
+      const badge = c.pass ? "phase-badge-pass" : "phase-badge-fail";
+      const detail = c.pass
+        ? escapeHtml(JSON.stringify(c.expected ?? {}))
+        : escapeHtml((c.mismatches ?? []).map((m) => `${m.key}: want ${JSON.stringify(m.expected)}, got ${JSON.stringify(m.actual)}`).join("; "));
+      return `<tr><td>${escapeHtml(c.name)}</td><td><span class="phase-badge ${badge}">${c.pass ? "PASS" : "FAIL"}</span></td><td>${detail}</td></tr>`;
+    }).join("");
+    checkpointsHTML = `<table class="phase-table"><thead><tr><th>Checkpoint</th><th>Result</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   // Build structured issues table
@@ -436,6 +461,8 @@ ${isAgent && agentMeta.task ? `<h2>Task</h2><div class="task-prompt">${escapeHtm
 
 ${summary ? `<div class="summary-text">${escapeHtml(summary)}</div>` : ""}
 
+${gateHTML ? `<h2>Gate</h2>\n<div class="gate">\n  ${gateHTML}\n</div>` : ""}
+${checkpointsHTML ? `<h2>Checkpoints (${checkpoints.length})</h2>\n<div class="checkpoints">\n  ${checkpointsHTML}\n</div>` : ""}
 ${phaseHTML ? `<h2>Phase Results</h2>\n<div class="phases">\n  ${phaseHTML}\n</div>` : ""}
 
 <h2>Issues Found (${bugs.length})</h2>

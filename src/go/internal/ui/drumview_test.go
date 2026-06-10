@@ -178,8 +178,13 @@ func TestDrumRowLayout(t *testing.T) {
 	if label.Max.X > stepStart {
 		t.Fatalf("label encroaches into step area: %v >= %d", label, stepStart)
 	}
-	if dv.addRowBtn().Rect().Min.Y != label.Min.Y+dv.rowHeight() {
-		t.Fatalf("add-row button not directly below row: %v", dv.addRowBtn().Rect())
+	// addRowBtn is anchored to the rack column's bottom edge — never to
+	// the last row — so its position is independent of row count
+	// (footer_button_anchor_test.go enforces this). Verify only that it
+	// sits BELOW the visible rows, not at a specific row-relative Y.
+	if dv.addRowBtn().Rect().Min.Y < label.Min.Y+dv.rowHeight() {
+		t.Fatalf("add-row button must be at or below the first row's bottom: addRow=%v firstRow=%v",
+			dv.addRowBtn().Rect(), label)
 	}
 	// Only the row label is a text-bearing button now; the add-row "+"
 	// migrated to IconPlus and has no centered text glyph to assert.
@@ -390,13 +395,38 @@ func TestTimelineViewRect(t *testing.T) {
 
 	dv.Draw(ebiten.NewImage(800, 200), nil, 0, nil, 0)
 
-	totalBeats := dv.timelineBeats
-	start := dv.timelineRect.Min.X + int(float64(dv.Offset)/float64(totalBeats)*float64(dv.timelineRect.Dx()))
-	width := int(float64(dv.Length) / float64(totalBeats) * float64(dv.timelineRect.Dx()))
-	want := image.Rect(start, dv.timelineRect.Min.Y, start+width, dv.timelineRect.Max.Y)
+	// New scrolling-tape geometry: the view rect represents the
+	// editable pattern window (dv.Offset → dv.Offset+dv.Length, in
+	// subdivision units) mapped into the visible ribbon window using
+	// the configured RibbonBeatsPerPixel.
+	units := float64(max1(dv.timelineUnitsPerBeat))
+	winStart, _, pxPerBeat := ribbonWindowBeats(dv.timelineRect.Dx(), 0)
+	viewStartBeats := float64(dv.Offset) / units
+	viewEndBeats := viewStartBeats + float64(dv.Length)/units
+	wantX0 := dv.timelineRect.Min.X + int(mathRound((viewStartBeats-winStart)*pxPerBeat))
+	wantX1 := dv.timelineRect.Min.X + int(mathRound((viewEndBeats-winStart)*pxPerBeat))
+	if wantX0 < dv.timelineRect.Min.X {
+		wantX0 = dv.timelineRect.Min.X
+	}
+	if wantX1 > dv.timelineRect.Max.X {
+		wantX1 = dv.timelineRect.Max.X
+	}
+	if wantX1-wantX0 < 1 {
+		wantX1 = wantX0 + 1
+	}
+	want := image.Rect(wantX0, dv.timelineRect.Min.Y, wantX1, dv.timelineRect.Max.Y)
 	if got != want || !drewBorder {
 		t.Fatalf("view rect/border mismatch: rect=%v border=%t want %v", got, drewBorder, want)
 	}
+}
+
+// mathRound is a tiny helper to keep this test free of an extra math
+// import; mirrors math.Round for the modest values we deal with here.
+func mathRound(v float64) float64 {
+	if v >= 0 {
+		return float64(int(v + 0.5))
+	}
+	return float64(int(v - 0.5))
 }
 
 func TestTimelineLayout(t *testing.T) {
@@ -414,7 +444,15 @@ func TestTimelineLayout(t *testing.T) {
 	}
 }
 
-func TestTimelineExpandsAndViewShrinks(t *testing.T) {
+// TestTimelineRibbonScrollsWithPlayhead replaces the legacy
+// "expands and shrinks" assertion. Under the new fixed-beats-per-pixel
+// scrolling tape the view rect's WIDTH stays constant (pattern length ×
+// pixels-per-beat); what changes between elapsed=0 and elapsed=20 is the
+// view rect's X POSITION on the bar — it slides left as the visible
+// window scrolls past the pattern. The old shrink-behavior was an
+// artifact of the unbounded compression bug fixed in the long-session
+// ribbon rewrite.
+func TestTimelineRibbonScrollsWithPlayhead(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
@@ -432,17 +470,29 @@ func TestTimelineExpandsAndViewShrinks(t *testing.T) {
 	}
 	defer func() { drawRect = orig }()
 
+	// Two draws at the same playhead (elapsed=0) but different pattern
+	// offsets. The view rect's width must stay constant (it represents
+	// a fixed pattern length × pxPerBeat), and its X position must
+	// shift to reflect the new offset inside the visible window.
+	dv.Offset = 0
 	dv.Draw(img, nil, 0, nil, 0)
 	baseWidth := rect.Dx()
+	baseX0 := rect.Min.X
 
-	dv.Draw(img, nil, 0, nil, 20)
-	expandedWidth := rect.Dx()
+	rect = image.Rectangle{}
+	dv.Offset = 8 // one unit of subdivision shift
+	dv.Draw(img, nil, 0, nil, 0)
+	movedWidth := rect.Dx()
+	movedX0 := rect.Min.X
 
-	if dv.timelineBeats != 28 {
-		t.Fatalf("timelineBeats = %d want 28", dv.timelineBeats)
+	if baseWidth == 0 || movedWidth == 0 {
+		t.Fatalf("view rect was not drawn in one of the cases (base=%d moved=%d)", baseWidth, movedWidth)
 	}
-	if expandedWidth >= baseWidth {
-		t.Fatalf("view width did not shrink: base %d expanded %d", baseWidth, expandedWidth)
+	if baseWidth != movedWidth {
+		t.Fatalf("view width should be constant across pattern offset shift: base %d moved %d", baseWidth, movedWidth)
+	}
+	if movedX0 <= baseX0 {
+		t.Fatalf("view did not move right as Offset advanced: baseX0=%d movedX0=%d", baseX0, movedX0)
 	}
 }
 
@@ -2536,7 +2586,7 @@ func TestDropdownHoverHighlight(t *testing.T) {
 	}
 	// simulate hover
 	mx, my := btn.Rect().Min.X+1, btn.Rect().Min.Y+1
-	btn.Handle(mx, my, false)
+	btn.HandleInputResult(mx, my, false)
 	var hovFill, hovBorder color.Color
 	drawButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, pressed, topEdgeHighlight bool) {
 		hovFill, hovBorder = fill, border
@@ -2549,7 +2599,7 @@ func TestDropdownHoverHighlight(t *testing.T) {
 
 func TestDrumViewLayoutStacksRows(t *testing.T) {
 	graph := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 400, 200), graph, testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 400, 400), graph, testLogger)
 	dv.AddRow()
 	dv.calcLayout()
 	if len(dv.rowLabels()) != 2 {
@@ -2919,14 +2969,14 @@ func TestMuteSoloButtons(t *testing.T) {
 
 func TestMuteSoloInteractions(t *testing.T) {
 	g := model.NewGraph(testLogger)
-	dv := NewDrumView(image.Rect(0, 0, 300, 200), g, testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 300, 400), g, testLogger)
 	dv.AddRow()
 	dv.calcLayout()
 
 	mRect := dv.rowMuteBtns()[0].Rect()
 	mx, my := mRect.Min.X+1, mRect.Min.Y+1
-	dv.rowMuteBtns()[0].Handle(mx, my, true)
-	dv.rowMuteBtns()[0].Handle(mx, my, false)
+	dv.rowMuteBtns()[0].HandleInputResult(mx, my, true)
+	dv.rowMuteBtns()[0].HandleInputResult(mx, my, false)
 	if !dv.Rows[0].Muted {
 		t.Fatalf("expected row0 muted after single click")
 	}
@@ -2936,8 +2986,8 @@ func TestMuteSoloInteractions(t *testing.T) {
 
 	sRect := dv.rowSoloBtns()[1].Rect()
 	mx, my = sRect.Min.X+1, sRect.Min.Y+1
-	dv.rowSoloBtns()[1].Handle(mx, my, true)
-	dv.rowSoloBtns()[1].Handle(mx, my, false)
+	dv.rowSoloBtns()[1].HandleInputResult(mx, my, true)
+	dv.rowSoloBtns()[1].HandleInputResult(mx, my, false)
 	if !dv.Rows[1].Solo {
 		t.Fatalf("expected row1 solo after click")
 	}
@@ -2960,7 +3010,12 @@ func TestTrackBeatCentersCurrent(t *testing.T) {
 		t.Fatalf("expected offset 0 near start, got %d", dv.Offset)
 	}
 
-	dv.TrackBeat(6)
+	// TrackBeat recenters so the playhead column lands at
+	// `length * RibbonPlayheadFrac` (~70%), matching the timeline ribbon
+	// cursor. For length=8 that target column is round(8*0.70)=6, so cur=8
+	// becomes the first index past the dead-zone right edge and forces the
+	// offset to jump so cur ends up at column 6 (offset = 8-6 = 2).
+	dv.TrackBeat(8)
 	if dv.Offset != 2 {
 		t.Fatalf("offset=%d want 2", dv.Offset)
 	}

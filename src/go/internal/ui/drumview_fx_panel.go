@@ -146,6 +146,19 @@ func (dv *DrumView) FXPanelRow() int {
 	return dv.fxPanelRow
 }
 
+// FXPanelRect returns the screen-space rectangle of the currently open FX
+// panel and ok=true. Returns the zero rectangle and ok=false when no FX
+// panel is open.
+func (dv *DrumView) FXPanelRect() (image.Rectangle, bool) {
+	if !dv.IsFXPanelOpen() {
+		return image.Rectangle{}, false
+	}
+	if dv.fxPanelRect.Empty() {
+		return image.Rectangle{}, false
+	}
+	return dv.fxPanelRect, true
+}
+
 // propagateFXSliderValue pushes the current slider value to the audio engine.
 func (dv *DrumView) propagateFXSliderValue(idx int) {
 	if idx >= len(dv.fxPanelSliders) || idx >= len(dv.fxSliderBindings) {
@@ -156,6 +169,7 @@ func (dv *DrumView) propagateFXSliderValue(idx int) {
 	actual := b.def.Min + sl.Value*(b.def.Max-b.def.Min)
 	instID := dv.Rows[dv.fxPanelRow].Instrument
 	audio.SetInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
+	emitInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
 }
 
 // effectTypeName returns the display name for an effect type from the registry.
@@ -446,6 +460,7 @@ func (dv *DrumView) buildFXPanel() {
 			remove.SetRect(image.Rect(removeX, y+2, removeX+btnW, y+lineH-2))
 			remove.OnClick = func() {
 				audio.RemoveInsertEffect(instID, si)
+				emitInsertEffectRemoved(instID, si)
 				dv.syncFXToRow(row)
 				dv.buildFXPanel()
 				dv.refreshFXPortalHitAreas()
@@ -481,10 +496,12 @@ func (dv *DrumView) buildFXPanel() {
 							sliderLeft = x + paramIndent + 100
 						}
 						sl.SetRect(image.Rect(sliderLeft, y+2, x+w-4, y+paramH-2))
-						// FX panel sliders: label-above on all platforms, thicker track.
-						labelAbove := true
-						sl.LabelAbove = &labelAbove
+						// FX panel sliders: thicker track. The percent label is
+						// suppressed because the param row already shows the
+						// raw value via fxParamLabel ("Drive: 8.19"); the
+						// previous "80%" duplicate was redundant.
 						sl.TrackH = 6
+						sl.SuppressLabel = true
 						dv.fxPanelSliders = append(dv.fxPanelSliders, sl)
 						dv.fxSliderBindings = append(dv.fxSliderBindings, fxSliderBinding{
 							slotIndex: si,
@@ -510,7 +527,8 @@ func (dv *DrumView) buildFXPanel() {
 				btn := NewButton(name, InstButtonStyle, nil)
 				btn.SetRect(image.Rect(x+4, y+2, x+w-4, y+lineH-2))
 				btn.OnClick = func() {
-					audio.AddInsertEffect(instID, etCopy, nil)
+					slot := audio.AddInsertEffect(instID, etCopy, nil)
+					emitInsertEffectAdded(instID, slot, string(etCopy))
 					dv.syncFXToRow(row)
 					dv.fxAddMenuOpen = false
 					dv.buildFXPanel()
@@ -757,7 +775,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		idx := dv.fxSliderDragIdx
 		if idx < len(dv.fxPanelSliders) {
 			sl := dv.fxPanelSliders[idx]
-			sl.Handle(mx, my, left)
+			sl.HandleInputResult(mx, my, left)
 			dv.propagateFXSliderValue(idx)
 		}
 		if !left {
@@ -825,7 +843,7 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 		if left && !dv.fxPanelDeferredTap.Active() {
 			for i, sl := range dv.fxPanelSliders {
 				if sl != nil && p.In(sl.Rect()) {
-					sl.Handle(mx, my, left)
+					sl.HandleInputResult(mx, my, left)
 					dv.fxSliderDragging = true
 					dv.fxSliderDragIdx = i
 					dv.propagateFXSliderValue(i)
@@ -857,14 +875,14 @@ func (dv *DrumView) handleFXPanelInput(mx, my int, left bool) bool {
 
 	// Phase 2: Desktop button handling.
 	for _, btn := range dv.fxPanelBtns {
-		if btn != nil && btn.Handle(mx, my, left) {
+		if btn != nil && btn.HandleInputResult(mx, my, left) != InputIgnored {
 			return true
 		}
 	}
 
 	// Phase 3: Desktop slider handling (enhanced with drag tracking).
 	for i, sl := range dv.fxPanelSliders {
-		if sl != nil && sl.Handle(mx, my, left) {
+		if sl != nil && sl.HandleInputResult(mx, my, left) != InputIgnored {
 			if sl.dragging {
 				dv.fxSliderDragging = true
 				dv.fxSliderDragIdx = i
@@ -911,6 +929,7 @@ func (dv *DrumView) fireFXPanelTapAt(x, y int) {
 				actual := b.def.Min + sl.Value*(b.def.Max-b.def.Min)
 				instID := dv.Rows[dv.fxPanelRow].Instrument
 				audio.SetInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
+				emitInsertEffectParam(instID, b.slotIndex, b.paramName, actual)
 			}
 			return
 		}

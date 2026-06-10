@@ -1,3 +1,5 @@
+//go:build test
+
 package ui
 
 import (
@@ -19,13 +21,13 @@ func TestTransportZone_SetBarRectStoresField(t *testing.T) {
 	}
 }
 
-// TestTransportZone_SetBarRectClipsHostedHitAreas verifies the rename
-// preserved the prior behavior: vol/view/overflow hit areas have ClipRect
-// set to the bar.
-func TestTransportZone_SetBarRectClipsHostedHitAreas(t *testing.T) {
+// TestTransportZone_SetBarRectDoesNotMutateHitAreas (Theme 4) verifies
+// SetBarRect now only stores the bar geometry — vol/view/overflow live
+// in the top toolbar with ClipRect = z.rect, NOT the bar. Mutating their
+// clip to the bar (the prior behavior) would cull top-toolbar taps.
+func TestTransportZone_SetBarRectDoesNotMutateHitAreas(t *testing.T) {
 	z, _ := newTestTransportZone()
 	bar := image.Rect(0, 600, 360, 644)
-	// Seed hit areas with the tags that SetBarRect should clip.
 	z.hitAreas = append(z.hitAreas,
 		HitArea{Tag: "transport-vol-icon"},
 		HitArea{Tag: "transport-view-switch"},
@@ -33,16 +35,9 @@ func TestTransportZone_SetBarRectClipsHostedHitAreas(t *testing.T) {
 		HitArea{Tag: "transport-other"},
 	)
 	z.SetBarRect(bar)
-	wantClip := bar
-	for i, a := range z.hitAreas {
-		if a.Tag == "transport-other" {
-			if a.ClipRect != (image.Rectangle{}) {
-				t.Errorf("non-bar tag clip mutated: %v", a)
-			}
-			continue
-		}
-		if z.hitAreas[i].ClipRect != wantClip {
-			t.Errorf("tag=%q ClipRect=%v want %v", a.Tag, z.hitAreas[i].ClipRect, wantClip)
+	for _, a := range z.hitAreas {
+		if a.ClipRect != (image.Rectangle{}) {
+			t.Errorf("tag=%q ClipRect=%v should remain zero — Theme 4 keeps vol/overflow on the top toolbar", a.Tag, a.ClipRect)
 		}
 	}
 }

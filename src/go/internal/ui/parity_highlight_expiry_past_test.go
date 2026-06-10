@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // TestParityIgnoresExpiredHighlightInPast reproduces the second-form crash:
@@ -44,6 +45,16 @@ func TestParityIgnoresExpiredHighlightInPast(t *testing.T) {
 	g.nextBeatIdxs = []int{140}
 	g.seqNextIdxs = []int{141}
 
+	// Pin the audio clock just past the injected event's When so the
+	// scheduled-in-the-future and clock-uninitialized skips in parityScan
+	// cannot mask the highlight check. Without this the test races
+	// time-since-binary-start under the real (non-test-tag) build: it
+	// passed in isolation (Now()≈0 → event looks 12s in the future) and
+	// panicked in a full `make test-real` run (Now()>12.5s).
+	const eventWhen = 12.578088
+	restoreNow := audio.SetNowForTest(func() float64 { return eventWhen + 0.1 })
+	t.Cleanup(restoreNow)
+
 	// Inject a recorded audio event AND matching seq decision for the past
 	// beat — exactly the state the field crash captured: scheduler scheduled
 	// the beat correctly, audio fired correctly, the highlight ran while the
@@ -53,7 +64,7 @@ func TestParityIgnoresExpiredHighlightInPast(t *testing.T) {
 	g.parityAudio = append(g.parityAudio, parityAudioEvent{
 		Row:       0,
 		Abs:       139,
-		When:      12.578088,
+		When:      eventWhen,
 		Inst:      "kick",
 		Vol:       1.0,
 		Dur:       1.0,

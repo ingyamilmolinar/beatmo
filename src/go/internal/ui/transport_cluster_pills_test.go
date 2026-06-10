@@ -68,18 +68,20 @@ func TestMobileTransportPillRectsArePopulated(t *testing.T) {
 		t.Errorf("subdiv button %v should start to the right of BPM pill %v", subdiv, z.bpmGroupRect)
 	}
 
-	// 4. After B3 the mobile transport collapses to a single row: vol /
-	//    view-switch / overflow have moved to DrumView.bottomActionBarRect
-	//    and are NOT placed by the zone's mobile layout. Assert they are
-	//    explicitly empty here so the new contract stays enforced — any
-	//    regression that re-adds row 1 inside the top bar will trip this.
-	if !z.mainVolIconRect.Empty() {
-		t.Errorf("mainVolIconRect should be empty after zone.Layout on mobile (DrumView places it in bottom action bar); got %v", z.mainVolIconRect)
+	// 4. Theme 4: the mobile top toolbar hosts vol icon + overflow now
+	//    (the bottom action bar is reserved for the 6-segment view
+	//    switcher, placed by DrumView). Assert vol + overflow are
+	//    NON-empty here — the contract flipped from "empty" (B3 era) to
+	//    "non-empty" (Theme 4). The legacy binary view-switch button is
+	//    suppressed everywhere on mobile in favor of the segmented
+	//    control, so its rect must remain empty.
+	if z.mainVolIconRect.Empty() {
+		t.Errorf("mainVolIconRect should be non-empty after zone.Layout on mobile (Theme 4 places it in top toolbar)")
 	}
 	if z.viewSwitchBtn != nil && !z.viewSwitchBtn.Rect().Empty() {
-		t.Errorf("viewSwitchBtn rect should be empty after zone.Layout on mobile (DrumView places it in bottom action bar); got %v", z.viewSwitchBtn.Rect())
+		t.Errorf("viewSwitchBtn rect should be empty on mobile (segmented replaces it); got %v", z.viewSwitchBtn.Rect())
 	}
-	if z.overflowBtn != nil && !z.overflowBtn.Rect().Empty() {
-		t.Errorf("overflowBtn rect should be empty after zone.Layout on mobile (DrumView places it in bottom action bar); got %v", z.overflowBtn.Rect())
+	if z.overflowBtn != nil && z.overflowBtn.Rect().Empty() {
+		t.Errorf("overflowBtn rect should be non-empty after zone.Layout on mobile (Theme 4 places it in top toolbar)")
 	}
 }

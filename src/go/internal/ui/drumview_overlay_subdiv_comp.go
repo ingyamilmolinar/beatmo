@@ -143,7 +143,7 @@ func (s *SubdivMenuComponent) HandleInput(x, y int, pressed bool) InputResult {
 
 	// Handle button clicks
 	for _, btn := range s.buttons {
-		if btn.Handle(x, y, pressed) {
+		if btn.HandleInputResult(x, y, pressed) != InputIgnored {
 			return InputConsumed
 		}
 	}

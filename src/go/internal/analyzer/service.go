@@ -15,10 +15,16 @@ type instSlot struct {
 	ring *RingBuffer
 }
 
-// pendingCap holds a trigger notification waiting to be processed.
+// pendingCap holds a trigger notification waiting to be processed. The
+// buffer is kept as []float32 — the same shared, immutable reference to
+// the cached recipe voice buffer the audio thread already holds. The
+// audio thread does NOT allocate or convert here; conversion to
+// []float64 happens lazily in processTick, and only for triggers that
+// are actually consumed (dropped triggers — overwritten before the next
+// tick — never pay the conversion cost).
 type pendingCap struct {
 	instID string
-	buf    []float64
+	bufF32 []float32
 }
 
 // Service is the analyzer goroutine that ingests audio data from ring
@@ -115,18 +121,21 @@ func (s *Service) PushMasterBuf(buf []float64) {
 }
 
 // NotifyTrigger notifies the service of a capture trigger from the audio
-// thread. The rawBuf is converted from float32 to float64 and stored as
-// a pending capture via atomic pointer swap.
+// thread. rawBuf is captured BY REFERENCE — it points at the cached,
+// immutable recipe-rendered voice buffer (see tryRecipeVoice; the same
+// []float32 is shared with cVoice.buf via the same read-only contract).
+// Conversion to []float64 is deferred until processTick consumes the
+// trigger, so dropped triggers (overwritten before the next tick) skip
+// the conversion entirely.
+//
+// Previously this allocated a ~80 KB []float64 per call; the synth-tab
+// profile attributed 252 MB of cumulative allocations to this single
+// function over 60 seconds.
 func (s *Service) NotifyTrigger(instID string, rawBuf []float32) {
-	// Convert float32 -> float64.
-	samples := make([]float64, len(rawBuf))
-	for i, v := range rawBuf {
-		samples[i] = float64(v)
-	}
 	idx := s.triggerIdx.Add(1)
 	cap := &pendingCap{
 		instID: instID,
-		buf:    samples,
+		bufF32: rawBuf,
 	}
 	_ = idx
 	s.pending.Store(cap)
@@ -231,8 +240,16 @@ func (s *Service) processTick(
 		prObs := peakRMS.Observe(masterW)
 		master.PeakDB = prObs.PeakDB
 		master.RMSDB = prObs.RMSDB
+		master.TruePeakDB = prObs.PeakDB // equals PeakDB until ISP lands
+		master.HeadroomDB = -prObs.PeakDB
 		master.ClipCount = prObs.ClipCount
 		master.Active = true
+		// Phase 2 audio-panel redesign: pull LUFS-S from the audio
+		// package's K-weighted integrator (audio/loudness.go) via the
+		// Config getter callback. Nil-safe.
+		if s.cfg.MasterLUFSGetter != nil {
+			master.LUFSShortTermDB = s.cfg.MasterLUFSGetter()
+		}
 
 		// Copy waveform.
 		master.Waveform = make([]float64, masterN)
@@ -290,13 +307,19 @@ func (s *Service) processTick(
 
 			// If this is the detail channel, compute full analysis.
 			if sl.id == detailID {
+				// Derived fields. TruePeakDB equals PeakDB until ISP
+				// oversampling lands; HeadroomDB = 0 - PeakDB (so a -3 dB
+				// peak yields 3 dB of headroom; negative on clip).
+				headroom := -im.PeakDB
 				dm := &ChannelMetrics{
-					ID:        sl.id,
-					Name:      sl.name,
-					PeakDB:    im.PeakDB,
+					ID:         sl.id,
+					Name:       sl.name,
+					PeakDB:     im.PeakDB,
 					RMSDB:     im.RMSDB,
-					ClipCount: im.ClipCount,
-					Active:    true,
+					TruePeakDB: im.PeakDB,
+					HeadroomDB: headroom,
+					ClipCount:  im.ClipCount,
+					Active:     true,
 				}
 				dm.Waveform = make([]float64, n)
 				copy(dm.Waveform, samples)
@@ -318,12 +341,20 @@ func (s *Service) processTick(
 	// --- Capture ---
 	var capture *CaptureBuffer
 
-	// Check for pending trigger (atomic swap to nil).
+	// Check for pending trigger (atomic swap to nil). Convert the cached
+	// float32 buffer to float64 lazily here — this is the first point in
+	// the trigger pipeline where the conversion is unavoidable (wave.Wave
+	// holds []float64). Allocation rate is bounded by the processTick rate
+	// rather than the trigger rate; dropped triggers never pay this cost.
 	if pc := s.pending.Swap(nil); pc != nil && !s.frozen.Load() {
+		samples := make([]float64, len(pc.bufF32))
+		for i, v := range pc.bufF32 {
+			samples[i] = float64(v)
+		}
 		capture = &CaptureBuffer{
 			InstID: pc.instID,
 			Wave: wave.Wave{
-				Samples:    pc.buf,
+				Samples:    samples,
 				SampleRate: sr,
 			},
 			TriggerIdx: s.triggerIdx.Load(),
@@ -335,11 +366,16 @@ func (s *Service) processTick(
 		capture = lastCapture
 	}
 
+	var clipsLastWindow int
+	if s.cfg.ClipsLastWindowGetter != nil {
+		clipsLastWindow = s.cfg.ClipsLastWindowGetter()
+	}
 	return &State{
-		Instruments: instruments,
-		Master:      master,
-		Detail:      detail,
-		Capture:     capture,
-		Timestamp:   now,
+		Instruments:     instruments,
+		Master:          master,
+		Detail:          detail,
+		Capture:         capture,
+		Timestamp:       now,
+		ClipsLastWindow: clipsLastWindow,
 	}
 }

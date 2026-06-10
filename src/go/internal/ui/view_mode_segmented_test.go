@@ -183,6 +183,8 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 		{3, viewModeSpectrum},
 		{4, viewModeMeters},
 		{5, viewModeChain},
+		{6, viewModeSynth},
+		{7, viewModeSampler},
 	}
 	for _, c := range cases {
 		r := dv.viewSwitchSegmented.SegmentRect(c.seg)

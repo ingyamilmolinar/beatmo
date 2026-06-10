@@ -73,7 +73,7 @@ func TestTestFixtureDemoIncludesLogicNodes(t *testing.T) {
 	}
 	hasLogic := false
 	for _, n := range f.Nodes {
-		if n.LogicKind != "" || n.SkipEvery != 0 || n.Pitch != 0 || n.Duration != 0 {
+		if n.LogicKind != "" || n.Pitch != 0 || n.Duration != 0 {
 			hasLogic = true
 			break
 		}

@@ -166,8 +166,18 @@ func (b *Bus) Publish(e Event) {
 }
 
 // PublishKind is a convenience for Publish(Event{Kind: k, Payload: payload}).
+// The resulting Event carries no Source; use PublishWithSource from the emit
+// helpers in internal/ui/event_helpers.go when source attribution is wanted.
 func (b *Bus) PublishKind(k Kind, payload any) {
 	b.Publish(Event{Kind: k, Payload: payload})
+}
+
+// PublishWithSource is the source-aware variant of PublishKind. The src
+// argument is typically captured at the call site of an emit helper via
+// captureSource (see internal/hooks/source.go); the resulting Event carries
+// the originating user-code file:line through the bus to subscribers.
+func (b *Bus) PublishWithSource(k Kind, payload any, src Source) {
+	b.Publish(Event{Kind: k, Payload: payload, Source: src})
 }
 
 // Stats returns publish/drop counters and a snapshot of the underlying
@@ -219,6 +229,11 @@ func Publish(e Event) { GlobalBus().Publish(e) }
 
 // PublishKind is shorthand for GlobalBus().PublishKind(k, payload).
 func PublishKind(k Kind, payload any) { GlobalBus().PublishKind(k, payload) }
+
+// PublishWithSource is shorthand for GlobalBus().PublishWithSource(k, payload, src).
+func PublishWithSource(k Kind, payload any, src Source) {
+	GlobalBus().PublishWithSource(k, payload, src)
+}
 
 // Subscribe is shorthand for GlobalBus().Subscribe(k, fn).
 func Subscribe(k Kind, fn func(Event)) func() {

@@ -3,36 +3,36 @@
 
 #include "synth_params.h"
 
-void render_snare(float *out, int sampleRate, int samples);
-void render_kick(float *out, int sampleRate, int samples);
-void render_hihat(float *out, int sampleRate, int samples);
-void render_open_hihat(float *out, int sampleRate, int samples);
-void render_tom(float *out, int sampleRate, int samples);
-void render_tom_high(float *out, int sampleRate, int samples);
-void render_tom_low(float *out, int sampleRate, int samples);
-void render_clap(float *out, int sampleRate, int samples);
-void render_cowbell(float *out, int sampleRate, int samples);
-void render_bass_guitar(float *out, int sampleRate, int samples);
-void render_sub_bass(float *out, int sampleRate, int samples);
-void render_snare_rimshot(float *out, int sampleRate, int samples);
-void render_snare_sidestick(float *out, int sampleRate, int samples);
-void render_kick_deep(float *out, int sampleRate, int samples);
-void render_kick_punchy(float *out, int sampleRate, int samples);
-void render_kick_lofi(float *out, int sampleRate, int samples);
-void render_kick_tight(float *out, int sampleRate, int samples);
-void render_shaker(float *out, int sampleRate, int samples);
-void render_ride(float *out, int sampleRate, int samples);
-void render_crash(float *out, int sampleRate, int samples);
+/* snare family migrated to the modular engine (Phase-5): no bespoke
+ * render_snare / render_snare_rimshot / render_snare_sidestick / render_clap
+ * declarations. */
+/* kick family migrated to the modular engine (Phase-3): no bespoke
+ * render_kick / render_kick_deep / render_kick_punchy / render_kick_lofi /
+ * render_kick_tight declarations. */
+/* cymbal family migrated to the modular engine (Phase-6): no bespoke
+ * render_hihat / render_open_hihat / render_cowbell / render_shaker /
+ * render_ride / render_crash declarations. */
+/* tom family migrated to the modular engine (Phase-4): no bespoke
+ * render_tom / render_tom_high / render_tom_low declarations. */
+/* bass-guitar / sub-bass migrated to the modular engine (Phase-2): no bespoke
+ * render_bass_guitar / render_sub_bass declarations. */
 int load_audio(const char *path, int targetSampleRate, float **buffer, int *outSampleRate);
-int load_wav(const char *path, int targetSampleRate, float **buffer, int *outSampleRate);
 const char *result_description(int code);
 
 /* Parameterized render variants. Pass NULL params for default behavior. */
-void render_snare_p(float *out, int sampleRate, int samples, const synth_params *params);
-void render_kick_p(float *out, int sampleRate, int samples, const synth_params *params);
-void render_hihat_p(float *out, int sampleRate, int samples, const synth_params *params);
-void render_clap_p(float *out, int sampleRate, int samples, const synth_params *params);
-void render_tom_p(float *out, int sampleRate, int samples, const synth_params *params);
-void render_cowbell_p(float *out, int sampleRate, int samples, const synth_params *params);
+/* render_snare_p / render_clap_p deleted — snare/clap render via render_modular_p
+ * (Phase-5). */
+/* render_kick_p deleted — kick renders via render_modular_p (Phase-3). */
+/* render_hihat_p / render_open_hihat_p / render_cowbell_p / render_shaker_p /
+ * render_ride_p / render_crash_p deleted — cymbal renders via render_modular_p
+ * (Phase-6). */
+/* render_tom_p / render_tom_high_p / render_tom_low_p deleted — tom renders via
+ * render_modular_p (Phase-4). */
+/* render_bass_guitar_p / render_sub_bass_p deleted — bass renders via
+ * render_modular_p (Phase-2 modular-synth-unification). */
+/* render_snare_rimshot_p / render_snare_sidestick_p deleted — snare family
+ * renders via render_modular_p (Phase-5). */
+/* render_kick_deep_p / render_kick_punchy_p / render_kick_lofi_p /
+ * render_kick_tight_p deleted — kick renders via render_modular_p (Phase-3). */
 
 #endif

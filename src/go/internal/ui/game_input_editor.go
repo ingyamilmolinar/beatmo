@@ -259,8 +259,9 @@ func (g *Game) handleEditor() {
 	g.leftPrev = left
 }
 
-// handleNodeMenuButtons is retained as a compatibility shim for touch input.
-// It delegates to the sidebar's HandleInput method.
+// handleNodeMenuButtons dispatches a touch-input press/release to the open
+// node sidebar, guarding on the sidebar being open with a node selected.
+// Returns true if the sidebar consumed the input.
 func (g *Game) handleNodeMenuButtons(x, y int, left bool) bool {
 	if !g.sidebar.IsOpen() || g.sidebar.Node() == nil {
 		return false

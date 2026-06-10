@@ -26,6 +26,7 @@ type SliderPopup struct {
 	config   SliderPopupConfig
 	open     bool
 	rect     image.Rectangle
+	anchor   image.Rectangle // anchor icon rect; used for tap-to-close
 	dragging bool
 }
 
@@ -52,9 +53,16 @@ func (sp *SliderPopup) Open(anchor, bounds image.Rectangle, headerH int) {
 	}
 
 	sp.rect = image.Rect(x, y, x+popupW, y+popupH)
+	sp.anchor = anchor
 	sp.dragging = false
 	sp.open = true
 }
+
+// Anchor returns the anchor icon rect captured at Open() time. Used by the
+// portal overlay to register a tap-to-close hit area at the icon, so a
+// second press on the icon toggles the popup closed (bypassing the
+// touch-expanded popup hit area that would otherwise swallow it on mobile).
+func (sp *SliderPopup) Anchor() image.Rectangle { return sp.anchor }
 
 // Close closes the popup.
 func (sp *SliderPopup) Close() {

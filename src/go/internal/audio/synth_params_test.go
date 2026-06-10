@@ -15,14 +15,14 @@ func TestSynthParamsIsDefaultAllZero(t *testing.T) {
 }
 
 func TestSynthParamsIsDefaultNonZero(t *testing.T) {
+	// Synth-tab redesign dropped Attack and Color (no C readers). Each
+	// wired field still flips IsDefault → false.
 	fields := []SynthParams{
 		{Pitch: 1},
 		{Decay: 0.5},
 		{Tone: -0.3},
-		{Attack: 0.1},
 		{Drive: 0.8},
 		{Body: 0.2},
-		{Color: -0.5},
 		{Brightness: 0.7},
 	}
 	for i, p := range fields {
@@ -60,8 +60,8 @@ func TestSynthParamsToCParamsNonNil(t *testing.T) {
 
 func TestSynthParamsVoiceCacheKeyDifferentiation(t *testing.T) {
 	vc := newTestCache()
-	k1 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, synthParams: SynthParams{}}
-	k2 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, synthParams: SynthParams{Pitch: 3}}
+	k1 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, paramsHash: hashRecipeParams(SynthParams{}.ToRecipeParams())}
+	k2 := voiceCacheKey{instrumentID: "snare", sampleRate: 44100, paramsHash: hashRecipeParams(SynthParams{Pitch: 3}.ToRecipeParams())}
 
 	vc.Put(k1, []float32{100})
 	vc.Put(k2, []float32{200})
@@ -74,11 +74,14 @@ func TestSynthParamsVoiceCacheKeyDifferentiation(t *testing.T) {
 }
 
 func TestParamRenderFuncsMapCompleteness(t *testing.T) {
-	expected := []string{"snare", "kick", "hihat", "clap", "tom", "cowbell"}
-	for _, name := range expected {
-		if _, ok := ParamRenderFuncs[name]; !ok {
-			t.Errorf("ParamRenderFuncs missing entry for %q", name)
-		}
+	// EVERY legacy family migrated to the modular engine (bass Phase-2, kick
+	// Phase-3, tom Phase-4, snare/clap Phase-5, cymbal Phase-6, FM Phase-7 — the
+	// LAST). Their params reach C through the modular binding (builtinFamilyRenderers
+	// → render_modular_p), NOT through ParamRenderFuncs. The legacy _p() render-
+	// wrapper path is fully retired, so ParamRenderFuncs is now EMPTY — this test
+	// pins that no stale bespoke-renderer entry was left behind.
+	if len(ParamRenderFuncs) != 0 {
+		t.Errorf("ParamRenderFuncs has %d entries, want 0 — every family migrated to the modular binding; no legacy _p renderer should remain: %v", len(ParamRenderFuncs), ParamRenderFuncs)
 	}
 }
 

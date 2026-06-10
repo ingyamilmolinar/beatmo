@@ -33,9 +33,19 @@ func (g *Game) refreshDrumRow() {
 	if g.engine != nil && g.engine.Predictor != nil && g.pathsDirty {
 		g.engine.Predictor.SetPaths(g.beatInfosByRow, g.isLoopByRow, g.loopStartByRow, g.graph.Nodes)
 		g.pathsDirty = false
+		// Predictor reset invalidates every row's reconciliation watermark —
+		// the freeze-vs-predictor consistency check must rerun after a path
+		// change, even for previously reconciled abs.
+		g.invalidateReconciledAll()
 	}
 	// Ensure horizon covers the rendered window (must run after SetPaths since it resets buffers).
 	if g.engine != nil && g.engine.Predictor != nil {
+		// Anchor the retained window's lower edge to the currently visible
+		// region BEFORE Ensure so the slide clamp inside Ensure can honor it.
+		// Without this the long-playback grey-grid bug reappears: after
+		// pause/resume the predictor's windowStart may already have advanced
+		// past drum.Offset, and Ensure would only ever extend forward.
+		g.engine.Predictor.SetVisibleMinAbs(g.drum.Offset)
 		g.engine.Predictor.Ensure(horizon)
 	}
 	prevStepsOffset := g.lastStepsOffset
@@ -112,7 +122,20 @@ func (g *Game) refreshDrumRow() {
 			if limit < futureReleaseStart {
 				return
 			}
-			for abs := futureReleaseStart; abs <= limit; abs++ {
+			// Resume from one past the last reconciled abs for this row.
+			// reconciledUpToByRow caps each refresh's scan to the count of
+			// newly frozen abs since the last refresh — typically 0–4 during
+			// playback, vs. O(freezeLimit) under the original full-range scan.
+			start := futureReleaseStart
+			if rowIdx < len(g.reconciledUpToByRow) {
+				if r := g.reconciledUpToByRow[rowIdx]; r >= start {
+					start = r + 1
+				}
+			}
+			if start > limit {
+				return
+			}
+			for abs := start; abs <= limit; abs++ {
 				if v, _, kind, ok := g.timelineCommittedWithKind(rowIdx, abs); ok {
 					bi := g.beatInfoAtRow(rowIdx, abs)
 					if g.Playing() && (bi.NodeType == model.NodeTypeRegular || bi.NodeType == model.NodeTypeSilent) &&
@@ -178,6 +201,20 @@ func (g *Game) refreshDrumRow() {
 				}
 			}
 			syncFreezeLimit()
+			// Record the reconciliation high-water mark so the next refresh
+			// resumes from limit+1 (skipping the just-validated range). limit
+			// reflects post-clamp value if the loop broke early; either way
+			// every abs in [start, limit] was inspected and is consistent.
+			if rowIdx >= len(g.reconciledUpToByRow) {
+				oldLen := len(g.reconciledUpToByRow)
+				g.reconciledUpToByRow = append(g.reconciledUpToByRow, make([]int, rowIdx+1-oldLen)...)
+				for i := oldLen; i <= rowIdx; i++ {
+					g.reconciledUpToByRow[i] = -1
+				}
+			}
+			if limit > g.reconciledUpToByRow[rowIdx] {
+				g.reconciledUpToByRow[rowIdx] = limit
+			}
 		}
 		reconcileFrozen()
 		reconcileElapsed := time.Since(reconcileStart)
@@ -195,6 +232,12 @@ func (g *Game) refreshDrumRow() {
 					g.frozenUpToByRow = make([]int, len(g.drum.Rows))
 					for i := range g.frozenUpToByRow {
 						g.frozenUpToByRow[i] = -1
+					}
+				}
+				if len(g.reconciledUpToByRow) != len(g.drum.Rows) {
+					g.reconciledUpToByRow = make([]int, len(g.drum.Rows))
+					for i := range g.reconciledUpToByRow {
+						g.reconciledUpToByRow[i] = -1
 					}
 				}
 				upTo := g.frozenUpToByRow[rowIdx]

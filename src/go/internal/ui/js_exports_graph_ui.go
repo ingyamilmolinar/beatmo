@@ -107,6 +107,7 @@ func (g *Game) initJSGraphUI() {
 			g.graph.StartNodeID = n.ID
 		}
 		g.updateBeatInfos()
+		emitStartNodeChanged(row, n.ID)
 		return nil
 	}))
 
@@ -140,6 +141,7 @@ func (g *Game) initJSGraphUI() {
 				ps.LogicP = p
 			}
 			g.graph.SetNodeParams(node.ID, ps)
+			emitNodeParamsChanged(node.ID, ps)
 		}
 		return nil
 	}))
@@ -473,8 +475,13 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		txt := args[0].String()
-		_ = g.Import([]byte(txt))
-		return nil
+		// Surface the error to JS instead of silently discarding it: a failed
+		// import that returns nothing reads as "nothing happened" with no clue.
+		// Returns "" on success, the error string otherwise.
+		if err := g.Import([]byte(txt)); err != nil {
+			return err.Error()
+		}
+		return ""
 	}))
 
 	// sliderRect(row) -> {x, y, w, h}
@@ -921,42 +928,12 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	// openColorMenu(row)
-	js.Global().Set("openColorMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
-			return nil
-		}
-		i := args[0].Int()
-		if i < 0 || i >= len(g.drum.Rows) {
-			return nil
-		}
-		g.drum.selRow = i
-		g.drum.colorMenuRow = i
-		if g.drum.colorWheelComp != nil {
-			rackBounds := g.drum.widgetRects[WidgetRack]
-			if rackBounds.Empty() {
-				rackBounds = g.drum.Bounds
-			}
-			anchor := g.drum.rowColorBtns()[i].Rect()
-			if anchor.Empty() && i < len(g.drum.rowLabels()) {
-				anchor = g.drum.rowLabels()[i].Rect()
-			}
-			g.drum.colorWheelComp.SetProps(ColorWheelProps{
-				AnchorRect: anchor,
-				Bounds:     rackBounds,
-				RowHeight:  g.drum.rowHeight(),
-				OnColorPick: func(c color.Color) {
-					g.drum.SetRowColor(g.drum.colorMenuRow, c)
-				},
-				OnClose: func() {},
-			})
-			g.drum.colorWheelComp.Open()
-			g.drum.colorWheelComp.ClearHold()
-		}
-		g.drum.buildColorMenu()
-		g.drum.openColorWheelPortal()
-		return nil
-	}))
+	// NOTE: openColorMenu / openSubdivMenu are registered in
+	// js_exports_scenes.go (initJSScenes runs after initJSGraphUI, so its
+	// registrations win). This file used to register richer duplicates that
+	// were silently shadowed — the live behavior has always been the queued
+	// DrumView.OpenColorMenu / OpenSubdivMenu path. Don't re-add them here;
+	// TestJSExportCatalogueDrift keeps the catalogue honest.
 
 	// subdivBtnRect() -> {x,y,w,h}
 	js.Global().Set("subdivBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
@@ -964,16 +941,6 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		return rectToJS(g.drum.subdivBtn().Rect())
-	}))
-
-	// openSubdivMenu()
-	js.Global().Set("openSubdivMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil {
-			return nil
-		}
-		g.drum.buildSubdivMenu()
-		g.drum.openSubdivMenuPortal()
-		return nil
 	}))
 
 	// subdivMenuItemRects() -> [{val,x,y,w,h}]
@@ -1467,22 +1434,9 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(g.drum.IsInstMenuOpen())
 	}))
 
-	// instMenuModeState() -> string ("categories" | "instruments" | "")
-	// DEPRECATED: prefer instMenuBreadcrumbPath() — this export is
-	// maintained for the existing Playwright suite until Phase 7's
-	// legacy retirement.
-	js.Global().Set("instMenuModeState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
-			return js.ValueOf("")
-		}
-		return js.ValueOf(string(g.drum.instMenuComp.Mode()))
-	}))
-
 	// instMenuBreadcrumbPath() -> [string] (visible-segment labels;
-	// empty when closed). The new accessor that replaces the legacy
-	// mode enum: tests can assert on len(path) >= 2 to know they're at
-	// the instruments level, etc. Phase 6 migrates Playwright tests to
-	// this name; the legacy instMenuModeState stays for now.
+	// empty when closed). Tests can assert on len(path) >= 2 to know
+	// they're at the instruments level, etc.
 	js.Global().Set("instMenuBreadcrumbPath", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {

@@ -163,10 +163,12 @@ func drawWithSnapshot(t *testing.T, g *Game, subject Subject, snap audio.Analyze
 	st := SynthesizeAnalyzerState("main", "Master", snap, rowSnaps, nil, "", "", audio.SampleRate())
 	testAnalyzerStateOverride = st
 
-	// Scope path: synthesize with both taps fed from the same snapshot
-	// so the rendered traces are visible. Tap stages are arbitrary
-	// (StageSynth/StageEQ) — the renderer just needs Active=true.
-	testScopeStateOverride = SynthesizeScopeState("main", scope.StageSynth, scope.StageEQ, snap, snap)
+	// Scope path: synthesize with both taps fed from the same snapshot so
+	// the rendered traces are visible. Same snap goes into every per-stage
+	// slot — the renderer just needs Active=true for whichever (TapA,TapB)
+	// stage pair is exercised.
+	testScopeStateOverride = SynthesizeScopeState("main", scope.StageSynth, scope.StageEQ,
+		ScopeStageSnapshots{Synth: snap, PreEQ: snap, PostEQ: snap, Sends: snap, Master: snap})
 
 	t.Cleanup(func() {
 		testAnalyzerStateOverride = nil

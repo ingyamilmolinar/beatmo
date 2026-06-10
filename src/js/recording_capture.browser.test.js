@@ -11,6 +11,7 @@ import {
   flushCoverage,
   isCoverageEnabled,
 } from "./coverage_helpers.js";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -27,6 +28,150 @@ function assert(cond, msg) {
     throw new Error(msg);
   }
   passed++;
+}
+
+// ─── Audio-content decode helpers ────────────────────────────────────────
+// Ported from recording_lifecycle.browser.test.js so the capture scenarios
+// can decode the actual encoded WAV bytes (via the auto-downloaded zip) and
+// assert REAL signal — not just size>0. A silent (all-zero PCM) but
+// valid-header WAV would pass size>0; these helpers give the assertions
+// teeth by proving non-zero RMS energy + a sane onset/peak count.
+
+// Minimal stored-only PKZIP reader. Returns map { name → Uint8Array }.
+function parseZip(buf) {
+  const u8 = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= 0; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  assert(eocd > 0, "ZIP: EOCD not found");
+  const cdEntries = dv.getUint16(eocd + 10, true);
+  const cdOff = dv.getUint32(eocd + 16, true);
+  const out = {};
+  let p = cdOff;
+  for (let i = 0; i < cdEntries; i++) {
+    assert(dv.getUint32(p, true) === 0x02014b50, "ZIP: bad central dir signature");
+    const uncompSize = dv.getUint32(p + 24, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const commentLen = dv.getUint16(p + 32, true);
+    const localOff = dv.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    assert(dv.getUint32(localOff, true) === 0x04034b50, "ZIP: bad local header signature");
+    const lNameLen = dv.getUint16(localOff + 26, true);
+    const lExtraLen = dv.getUint16(localOff + 28, true);
+    const dataStart = localOff + 30 + lNameLen + lExtraLen;
+    out[name] = u8.subarray(dataStart, dataStart + uncompSize);
+  }
+  return out;
+}
+
+// WAV decoder (PCM 16/24, IEEE float 32) → { sampleRate, channels, bitDepth, fmtCode, samples:Float32Array }
+function decodeWav(buf) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  assert(dv.getUint32(0, false) === 0x52494646, "WAV: missing RIFF");
+  assert(dv.getUint32(8, false) === 0x57415645, "WAV: missing WAVE");
+  const fmtCode = dv.getUint16(20, true);
+  const channels = dv.getUint16(22, true);
+  const sampleRate = dv.getUint32(24, true);
+  const bitDepth = dv.getUint16(34, true);
+  let p = 36;
+  while (p < buf.length) {
+    const id = dv.getUint32(p, false);
+    const size = dv.getUint32(p + 4, true);
+    p += 8;
+    if (id === 0x64617461) { // "data"
+      const samples = decodePCM(buf, p, size, fmtCode, bitDepth);
+      return { sampleRate, channels, bitDepth, fmtCode, samples };
+    }
+    p += size;
+  }
+  assert(false, "WAV: no data chunk");
+}
+
+function decodePCM(buf, off, size, fmtCode, bitDepth) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  if (fmtCode === 3 && bitDepth === 32) {
+    const n = size / 4;
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = dv.getFloat32(off + i * 4, true);
+    return out;
+  }
+  if (fmtCode === 1 && bitDepth === 16) {
+    const n = size / 2;
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) out[i] = dv.getInt16(off + i * 2, true) / 32768;
+    return out;
+  }
+  if (fmtCode === 1 && bitDepth === 24) {
+    const n = size / 3;
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const b0 = buf[off + i * 3];
+      const b1 = buf[off + i * 3 + 1];
+      const b2 = buf[off + i * 3 + 2];
+      let v = b0 | (b1 << 8) | (b2 << 16);
+      if (v & 0x800000) v -= 0x1000000;
+      out[i] = v / 8388608;
+    }
+    return out;
+  }
+  assert(false, `WAV: unsupported format code=${fmtCode} bits=${bitDepth}`);
+}
+
+function rms(samples) {
+  if (samples.length === 0) return 0;
+  let s = 0;
+  for (let i = 0; i < samples.length; i++) s += samples[i] * samples[i];
+  return Math.sqrt(s / samples.length);
+}
+
+// Count peaks above threshold separated by at least minSepSamples (onset count).
+function countPeaks(samples, threshold, minSepSamples) {
+  let n = 0;
+  let lastIdx = -minSepSamples - 1;
+  for (let i = 0; i < samples.length; i++) {
+    if (Math.abs(samples[i]) >= threshold && (i - lastIdx) >= minSepSamples) {
+      n++;
+      lastIdx = i;
+    }
+  }
+  return n;
+}
+
+// Minimum RMS floor for "real audio" — matches recording_lifecycle's threshold.
+// A silent (all-zero PCM) WAV has RMS exactly 0, so anything > this floor
+// proves real captured signal. 0.001 is permissive (volume normalization may
+// scale the signal) but orders of magnitude above numeric noise.
+const RMS_FLOOR = 0.001;
+
+// Await the auto-triggered zip download that fires when stopRecording()
+// finalizes, read its bytes, and return them. Retries the wait once with a
+// longer timeout to absorb first-run encoder-worker warmup flake. Returns
+// null if no download fired (then the caller skips the decode teeth).
+async function awaitDownloadedZipBytes(downloadPromise) {
+  let download = await downloadPromise;
+  if (!download) return null;
+  const downloadPath = await download.path();
+  if (!downloadPath) return null;
+  const bytes = fs.readFileSync(downloadPath);
+  await download.delete().catch(() => {});
+  return bytes;
+}
+
+// Decode the captured zip and return decoded WAV channels keyed by entry name.
+// Asserts the zip is a valid PKZIP archive with master.wav + session.json.
+function decodeCapturedZip(zipBytes) {
+  const entries = parseZip(zipBytes);
+  assert("master.wav" in entries, `zip should contain master.wav, got ${Object.keys(entries)}`);
+  assert("session.json" in entries, "zip should contain session.json");
+  const wavs = {};
+  for (const name of Object.keys(entries)) {
+    if (name.endsWith(".wav")) wavs[name] = decodeWav(entries[name]);
+  }
+  return { entries, wavs };
 }
 
 try {
@@ -133,9 +278,16 @@ try {
 
     // Start playback
     await page.evaluate(() => startPlay?.());
-    // Let it play for a bit
+    // Let it play for a bit (≥ a couple beats so onsets are captured).
     await page.waitForTimeout(1500);
     await page.evaluate(() => stopPlay?.());
+
+    // stopRecording() finalizes asynchronously and auto-triggers the zip
+    // download; arm the listener BEFORE stopping so we can decode the real
+    // encoded bytes and prove the capture contains audio (not just size>0).
+    const downloadPromise = page
+      .waitForEvent("download", { timeout: 20000 })
+      .catch(() => null);
 
     const result = await page.evaluate(() => stopRecording());
     assert(result.error === "", `stop error: ${result.error}`);
@@ -157,7 +309,29 @@ try {
     for (const ch of channels) {
       console.log(`    - ${ch.id} (${ch.filename}): ${ch.size} bytes`);
     }
-    console.log("  PASS: Recording session with playback captures audio");
+
+    // ── Audio-content teeth: decode the captured master WAV and assert
+    //    real signal. size>0 alone passes for an all-zero (silent) WAV.
+    const zipBytes = await awaitDownloadedZipBytes(downloadPromise);
+    assert(zipBytes !== null, "master capture: auto-download zip should fire on stop");
+    assert(zipBytes.length > 1024, `master capture: zip too small (${zipBytes.length} bytes)`);
+    const { wavs } = decodeCapturedZip(zipBytes);
+    const masterWav = wavs["master.wav"];
+    assert(masterWav, "master capture: master.wav should decode");
+    assert(masterWav.samples.length > 0, "master capture: master.wav should have samples");
+    const masterRMS = rms(masterWav.samples);
+    const minSep = Math.floor(0.1 * masterWav.sampleRate);
+    const peakCount = countPeaks(masterWav.samples, Math.max(masterRMS * 1.5, RMS_FLOOR), minSep);
+    console.log(`  master.wav: ${masterWav.samples.length} samples @ ${masterWav.sampleRate}Hz, RMS=${masterRMS.toFixed(5)}, peaks=${peakCount}`);
+    assert(
+      masterRMS > RMS_FLOOR,
+      `master capture: WAV is silent (RMS=${masterRMS} <= ${RMS_FLOOR}) — captured no real audio`
+    );
+    assert(
+      peakCount >= 1 && peakCount <= 20,
+      `master capture: onset/peak count out of sane range: ${peakCount}`
+    );
+    console.log(`  PASS: Recording captures REAL audio (master RMS=${masterRMS.toFixed(5)}, ${peakCount} onsets)`);
   }
 
   // ─── Test 7: FLAC Format Session ──────────────────────────────────
@@ -369,6 +543,12 @@ try {
     await page.waitForTimeout(2000);
     await page.evaluate(() => stopPlay?.());
 
+    // Arm the auto-download listener BEFORE stop so we can decode the
+    // per-instrument WAV bytes and prove they carry real signal.
+    const downloadPromise = page
+      .waitForEvent("download", { timeout: 20000 })
+      .catch(() => null);
+
     const result = await page.evaluate(() => stopRecording());
     assert(result.error === "", `stop error: ${result.error}`);
     assert(result.channelCount > 1, `expected >1 channel (master + instruments), got ${result.channelCount}`);
@@ -388,7 +568,51 @@ try {
     }
 
     console.log(`  Total channels: ${result.channelCount} (master + ${instruments.length} instruments)`);
-    console.log("  PASS: Per-instrument channels captured in WASM recording");
+
+    // ── Audio-content teeth: decode the captured zip and assert the master
+    //    plus at least one per-instrument channel carry REAL signal.
+    const zipBytes = await awaitDownloadedZipBytes(downloadPromise);
+    assert(zipBytes !== null, "per-instrument capture: auto-download zip should fire on stop");
+    const { wavs } = decodeCapturedZip(zipBytes);
+
+    const masterWav = wavs["master.wav"];
+    assert(masterWav, "per-instrument capture: master.wav should decode");
+    const masterRMS = rms(masterWav.samples);
+    console.log(`  master.wav: ${masterWav.samples.length} samples @ ${masterWav.sampleRate}Hz, RMS=${masterRMS.toFixed(5)}`);
+    assert(
+      masterRMS > RMS_FLOOR,
+      `per-instrument capture: master is silent (RMS=${masterRMS} <= ${RMS_FLOOR})`
+    );
+
+    // Per-instrument WAVs: each must have a valid header + matching SR, and
+    // AT LEAST ONE must carry real signal (the instrument(s) that played).
+    let loudestInstRMS = 0;
+    let loudestInstName = "";
+    let instWithSignal = 0;
+    for (const name of Object.keys(wavs)) {
+      if (name === "master.wav") continue;
+      const ch = wavs[name];
+      assert(ch.sampleRate === masterWav.sampleRate, `per-instrument capture: ${name} SR mismatch`);
+      assert(ch.bitDepth === masterWav.bitDepth, `per-instrument capture: ${name} bitDepth mismatch`);
+      const r = rms(ch.samples);
+      if (r > RMS_FLOOR) instWithSignal++;
+      if (r > loudestInstRMS) { loudestInstRMS = r; loudestInstName = name; }
+      console.log(`    ${name}: ${ch.samples.length} samples, RMS=${r.toFixed(5)}`);
+    }
+    assert(
+      instWithSignal > 0,
+      `per-instrument capture: no per-instrument channel carried real audio (all RMS <= ${RMS_FLOOR})`
+    );
+    const loudestPeaks = countPeaks(
+      wavs[loudestInstName].samples,
+      Math.max(loudestInstRMS * 1.5, RMS_FLOOR),
+      Math.floor(0.1 * masterWav.sampleRate)
+    );
+    assert(
+      loudestPeaks >= 1 && loudestPeaks <= 30,
+      `per-instrument capture: loudest channel ${loudestInstName} onset count out of range: ${loudestPeaks}`
+    );
+    console.log(`  PASS: Per-instrument channels carry REAL audio (${instWithSignal} with signal; loudest=${loudestInstName} RMS=${loudestInstRMS.toFixed(5)}, ${loudestPeaks} onsets)`);
   }
 
   // ─── Test 16: Save ZIP Contains Per-Instrument Files ──────────────────

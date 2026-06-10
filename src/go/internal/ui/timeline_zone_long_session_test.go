@@ -5,6 +5,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"math"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -114,12 +115,20 @@ func TestTimelineRibbon_DoesNotClutterAtHighAbs(t *testing.T) {
 	}
 }
 
-// TestTimelineRibbon_PlayheadStaysAt70Percent asserts the cursor stays at
-// roughly 70% of the bar width regardless of session length. Pre-fix the
-// cursor X is computed as elapsedBeats/totalBeats × width, which compresses
-// toward the right edge as the session grows.
+// TestTimelineRibbon_PlayheadStaysAt70Percent asserts the cursor is rendered at
+// its correct horizontal position regardless of session length. Once the ribbon
+// window slides (winStart > 0) the cursor pins at frac (~70%) of the bar so it
+// never compresses toward the right edge as the session grows — the original
+// long-session symptom. While the window is still pinned at zero (early
+// session) the cursor must instead float at its TRUE position, otherwise it
+// would be drawn ahead of where playback actually is (and outside the
+// view-rect — the BPM-change desync this guards against). The float/pin
+// boundary is elapsedBeats == frac*barWidth/pxPerBeat, matching drawTimelineBar.
 func TestTimelineRibbon_PlayheadStaysAt70Percent(t *testing.T) {
 	const tolerancePx = 4
+	rp := RuntimeProf()
+	frac := rp.RibbonPlayheadFrac
+	pxPerBeat := 1.0 / rp.RibbonBeatsPerPixel
 	for _, elapsedBeats := range []float64{100, 1000, 8552, 20000} {
 		t.Run("", func(t *testing.T) {
 			z, barRect := ribbonZoneForTest(t, elapsedBeats)
@@ -134,7 +143,7 @@ func TestTimelineRibbon_PlayheadStaysAt70Percent(t *testing.T) {
 			// The cursor draws as a filled rect colTimelineCursor (or
 			// colAccentBright on mobile) with 2*cursorThick width centered
 			// on cursorX. We find the only such rect and compare its
-			// midpoint to the expected 70%-of-width target.
+			// midpoint to the expected position for this regime.
 			cursorRGBA := color.RGBAModel.Convert(colTimelineCursor).(color.RGBA)
 			accentRGBA := color.RGBAModel.Convert(colAccentBright).(color.RGBA)
 			var cursorRect image.Rectangle
@@ -150,14 +159,21 @@ func TestTimelineRibbon_PlayheadStaysAt70Percent(t *testing.T) {
 				t.Fatalf("playback cursor rect not located at elapsedBeats=%v", elapsedBeats)
 			}
 			cursorMid := (cursorRect.Min.X + cursorRect.Max.X) / 2
-			expectedMid := barRect.Min.X + int(0.70*float64(barRect.Dx()))
+
+			pinBoundaryBeats := frac * float64(barRect.Dx()) / pxPerBeat
+			expectedMid := barRect.Min.X + int(math.Round(frac*float64(barRect.Dx())))
+			if elapsedBeats < pinBoundaryBeats {
+				// Early session: window pinned at zero, cursor floats at the
+				// true beat position rather than the frac pin.
+				expectedMid = barRect.Min.X + int(math.Round(elapsedBeats*pxPerBeat))
+			}
 			diff := cursorMid - expectedMid
 			if diff < 0 {
 				diff = -diff
 			}
 			if diff > tolerancePx {
-				t.Fatalf("playhead drifted: cursorMid=%d, expectedMid=%d (diff %d > %d) at elapsedBeats=%v",
-					cursorMid, expectedMid, diff, tolerancePx, elapsedBeats)
+				t.Fatalf("playhead misplaced: cursorMid=%d, expectedMid=%d (diff %d > %d) at elapsedBeats=%v (pinBoundary=%.1f)",
+					cursorMid, expectedMid, diff, tolerancePx, elapsedBeats, pinBoundaryBeats)
 			}
 		})
 	}

@@ -42,8 +42,11 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		return
 	}
 
-	// Reserve left margin for amplitude labels.
-	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y)
+	// Reserve left margin for amplitude labels + bottom strip for the ms
+	// axis (tick marks + labels), matching the Chain tab's convention so
+	// time-correlation reads the same way across both signal views.
+	const waveMSAxisH = 12
+	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-waveMSAxisH)
 
 	// Label scale.
 	captionScale := FontSizeCaption / FontSizeBody
@@ -92,12 +95,113 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		}
 	}
 
-	drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, 1.0, nil)
+	// Phase 5: when stereo data is present, paint L in the top half and
+	// R in the bottom half so the user sees per-channel content. Mono
+	// signals continue to render as a single trace down the centerline.
+	if ch.HasStereo() && len(ch.WaveformL) > 0 && len(ch.WaveformR) > 0 {
+		topRect := image.Rect(waveRect.Min.X, waveRect.Min.Y, waveRect.Max.X, midY)
+		botRect := image.Rect(waveRect.Min.X, midY, waveRect.Max.X, waveRect.Max.Y)
+		topMid := topRect.Min.Y + topRect.Dy()/2
+		botMid := botRect.Min.Y + botRect.Dy()/2
+		drawWaveTrace(dst, ch.WaveformL, topRect, topMid, width, colWaveTrace, 1.0, nil)
+		drawWaveTrace(dst, ch.WaveformR, botRect, botMid, width, colWaveTrace, 1.0, nil)
+		// Small L / R labels along the left margin so the split reads
+		// clearly without relying on context.
+		DrawTextColorAtScale(dst, "L", rect.Min.X+2, topRect.Min.Y+2, colTextSecondary, captionScale)
+		DrawTextColorAtScale(dst, "R", rect.Min.X+2, botRect.Min.Y+2, colTextSecondary, captionScale)
+		overdrawWaveClips(dst, ch.WaveformL, topRect, width, meterClip)
+		overdrawWaveClips(dst, ch.WaveformR, botRect, width, meterClip)
+	} else {
+		drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, 1.0, nil)
+		// Clip flash: overdraw any column whose samples saturate (|v| > 1.0)
+		// with meterClip, full waveRect height. Gives instant DAW-style
+		// headroom warning that's impossible to miss against the steady
+		// trace color.
+		overdrawWaveClips(dst, wave, waveRect, width, meterClip)
+	}
+
+	// Time-axis: tick marks + ms labels along the reserved bottom strip.
+	axisRect := image.Rect(waveRect.Min.X, waveRect.Max.Y, waveRect.Max.X, waveRect.Max.Y+waveMSAxisH)
+	drawWaveTimeAxis(dst, axisRect, waveWindowMs(len(wave), audio.SampleRate()), captionScale)
 
 	// Frozen indicator at top-right.
 	if frozen {
 		frozenW := int(float64(TextWidth("FROZEN")) * captionScale)
 		DrawTextColorAtScale(dst, "FROZEN", waveRect.Max.X-frozenW-4, waveRect.Min.Y+2, colAccentBright, captionScale)
+	}
+}
+
+// waveClipThreshold is the |v| level at which a waveform sample counts
+// as clipped for the DAW-style red overlay. Aligns with the audio
+// engine's hard-clip point at ±1.0; samples that reach this magnitude
+// have already saturated the int16 output stage.
+const waveClipThreshold = 1.0
+
+// overdrawWaveClips paints columns whose source samples saturate
+// (|v| ≥ waveClipThreshold) in clipCol, full rect height. Same
+// min/max-per-pixel column math as drawWaveTrace so the painted column
+// lines up exactly with the offending trace span.
+func overdrawWaveClips(dst *ebiten.Image, wave []float64, rect image.Rectangle, width int, clipCol color.Color) {
+	if width <= 0 || len(wave) == 0 || clipCol == nil {
+		return
+	}
+	step := float64(len(wave)) / float64(width)
+	for x := 0; x < width; x++ {
+		start := int(float64(x) * step)
+		end := int(float64(x+1) * step)
+		if start >= len(wave) {
+			start = len(wave) - 1
+		}
+		if end <= start {
+			end = start + 1
+		}
+		if end > len(wave) {
+			end = len(wave)
+		}
+		clipped := false
+		for i := start; i < end; i++ {
+			v := wave[i]
+			if v > waveClipThreshold || v < -waveClipThreshold {
+				clipped = true
+				break
+			}
+		}
+		if clipped {
+			px := rect.Min.X + x
+			drawRect(dst, image.Rect(px, rect.Min.Y, px+1, rect.Max.Y), clipCol, true)
+		}
+	}
+}
+
+// drawWaveTimeAxis paints tick marks + ms labels across the bottom
+// strip of the wave panel. Mirrors the Chain tab's bottom-axis style
+// so time correlation reads identically across both signal surfaces.
+func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs float64, captionScale float64) {
+	if axisRect.Empty() || windowMs <= 0 {
+		return
+	}
+	w := axisRect.Dx()
+	for _, lbl := range waveAxisLabels(windowMs) {
+		x := axisRect.Min.X + int(lbl.Frac*float64(w))
+		if x >= axisRect.Max.X {
+			x = axisRect.Max.X - 1
+		}
+		// 1px wide × 3px tall tick mark at the top of the axis strip.
+		drawRect(dst, image.Rect(x, axisRect.Min.Y, x+1, axisRect.Min.Y+3), colTextSecondary, true)
+		// Label below the tick. Anchor first label to the left edge to
+		// avoid clipping; centre the rest under their tick.
+		lw := int(float64(TextWidth(lbl.Text)) * captionScale)
+		lx := x - lw/2
+		if lbl.Frac == 0 {
+			lx = axisRect.Min.X
+		}
+		if lx+lw > axisRect.Max.X {
+			lx = axisRect.Max.X - lw
+		}
+		if lx < axisRect.Min.X {
+			lx = axisRect.Min.X
+		}
+		DrawTextColorAtScale(dst, lbl.Text, lx, axisRect.Min.Y+3, colTextSecondary, captionScale)
 	}
 }
 
@@ -174,7 +278,11 @@ func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY
 // screen. When the capture buffer is frozen we read from the frozen copy;
 // otherwise we read the rolling channel waveform.
 func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, cursorX int) {
-	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y)
+	// Mirror drawAnalyzerWaveform's waveRect derivation (reserve 12px
+	// bottom strip for the ms axis) so the cursor crosshair stops at
+	// the wave area, not the axis labels below it.
+	const waveMSAxisH = 12
+	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-waveMSAxisH)
 	if cursorX < waveRect.Min.X || cursorX >= waveRect.Max.X {
 		return
 	}
@@ -182,8 +290,15 @@ func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 		return
 	}
 
-	// Vertical line.
-	drawRect(dst, image.Rect(cursorX, waveRect.Min.Y, cursorX+1, waveRect.Max.Y), colTextSecondary, true)
+	// Vertical line. Phase 6 audio-panel redesign: density-driven
+	// stroke (Compact 1 / Comfortable 2 / Spacious 3) so the cursor
+	// stays visible on a 360-px portrait phone where a 1-px stroke
+	// disappears against the trace.
+	cursorW := Profile().DensityValues().WaveCursorStroke
+	if cursorW < 1 {
+		cursorW = 1
+	}
+	drawRect(dst, image.Rect(cursorX, waveRect.Min.Y, cursorX+cursorW, waveRect.Max.Y), colTextSecondary, true)
 
 	// Resolve sample source (frozen wins).
 	var wave []float64

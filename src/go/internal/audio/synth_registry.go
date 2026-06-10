@@ -12,7 +12,23 @@ var (
 	recipeRegMu  sync.RWMutex
 	recipeRegMap = map[string]*RecipeRegistration{}
 	recipeOrder  []string
+	// recipeShipped snapshots each recipe's ParamDef defaults as captured at
+	// registration time — the "original" configuration a recipe shipped with.
+	// updateRecipeDefaults (Synth-tab Save, disk reload) deliberately does NOT
+	// touch this map, so RecipeDefaultsCustomized / ResetRecipeToShipped can
+	// tell "customized" from "as-shipped" and restore the original.
+	recipeShipped = map[string]RecipeParams{}
 )
+
+// paramDefaultsSnapshot builds a fresh RecipeParams from a ParamDef slice's
+// Default values. Used to capture the shipped defaults at registration.
+func paramDefaultsSnapshot(params []ParamDef) RecipeParams {
+	out := make(RecipeParams, len(params))
+	for _, d := range params {
+		out[d.Name] = d.Default
+	}
+	return out
+}
 
 // RegisterRecipe adds (or updates) a recipe registration. Call from an init()
 // function in a synth_registry_entries_*.go file. Panics on invalid input
@@ -32,6 +48,10 @@ func RegisterRecipe(reg RecipeRegistration) {
 	}
 	recipeRegMu.Lock()
 	defer recipeRegMu.Unlock()
+	// Capture the shipped defaults on every (re-)registration: a re-register
+	// (platform override) is a fresh "ship", whereas updateRecipeDefaults
+	// (Save / reload) is a user customization and must not move this baseline.
+	recipeShipped[reg.ID] = paramDefaultsSnapshot(reg.Params)
 	if existing, ok := recipeRegMap[reg.ID]; ok {
 		existing.DisplayName = reg.DisplayName
 		existing.Category = reg.Category
@@ -78,6 +98,23 @@ func RecipeDefaultParams(id string) RecipeParams {
 	out := make(RecipeParams, len(reg.Params))
 	for _, d := range reg.Params {
 		out[d.Name] = d.Default
+	}
+	return out
+}
+
+// RecipeShippedDefaults returns a fresh map of the defaults the recipe was
+// registered with (its original/as-shipped configuration), independent of any
+// later Save or disk-reload customization. Unknown IDs return an empty map.
+func RecipeShippedDefaults(id string) RecipeParams {
+	recipeRegMu.RLock()
+	src, ok := recipeShipped[id]
+	recipeRegMu.RUnlock()
+	if !ok {
+		return RecipeParams{}
+	}
+	out := make(RecipeParams, len(src))
+	for k, v := range src {
+		out[k] = v
 	}
 	return out
 }

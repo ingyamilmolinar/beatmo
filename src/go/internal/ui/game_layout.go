@@ -155,18 +155,31 @@ func (g *Game) Layout(w, h int) (int, int) {
 }
 
 // adaptiveMobilePortraitSplitY computes a content-based split Y for portrait
-// mobile layout. The drum pane is sized to fit the transport header plus rows,
-// capped at 50% of h so the grid always gets at least half the screen.
+// mobile layout. The drum pane is the primary editing surface so it gets up
+// to 65% of screen height; the graph stays readable as a 35% reference. When
+// fewer rows are present the pane shrinks to fit (floor 30%) so the graph
+// reclaims space.
+//
+// `needed` accounts for *every* surface in the drum pane so the default
+// boot has zero rack-modulo slack: header + N row slots + 1 addRow slot +
+// the bottom action bar. Without the +1 row slot the addRow button used
+// to render either over the bar or with an orphan rack-bg strip beside
+// it (screenshot review 2026-05-10); without the bar's height the bar
+// rendered over the last row.
 func adaptiveMobilePortraitSplitY(h int, g *Game) int {
-	rh := TouchRowHeight() // 52px
+	rh := TouchRowHeight() // mobile row height (44 px on iPhone-class portraits)
 	numRows := 0
 	if g.drum != nil {
 		numRows = len(g.drum.Rows)
 	}
-	const padding = 24 // FAB + spacing
-	needed := mobileHeaderH + numRows*rh + padding
-	maxDrum := h * 50 / 100 // cap drum at 50%
-	minDrum := h * 25 / 100 // floor drum at 25%
+	headerH := Profile().HeaderMaxH // capped header height (refreshWidgetLayout enforces this)
+	if headerH <= 0 {
+		headerH = mobileHeaderH
+	}
+	barH := TouchMinTarget() // bottom action bar height
+	needed := headerH + (numRows+1)*rh + barH
+	maxDrum := h * 65 / 100 // cap drum at 65% — drum is the primary edit surface
+	minDrum := h * 30 / 100 // floor drum at 30%
 	drumH := needed
 	if drumH > maxDrum {
 		drumH = maxDrum
@@ -174,5 +187,5 @@ func adaptiveMobilePortraitSplitY(h int, g *Game) int {
 	if drumH < minDrum {
 		drumH = minDrum
 	}
-	return h - drumH // grid gets the rest (always ≥50%)
+	return h - drumH
 }

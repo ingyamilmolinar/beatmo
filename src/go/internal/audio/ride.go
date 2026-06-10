@@ -14,7 +14,7 @@ func (Ride) NewVoice(bpm, sampleRate int) Voice {
 	cfg := ConfigForInstrument("ride")
 	samples := int(float64(sampleRate) * cfg.DurationSec)
 	buf := make([]float32, samples)
-	renderRide(buf, sampleRate, samples)
+	renderRideVoice(buf, sampleRate, samples) // modular fast path (Phase-6 cutover)
 	normalizeAndScale(buf, "ride")
 	globalVoiceCache.Put(key, buf)
 	return &cVoice{buf: buf}

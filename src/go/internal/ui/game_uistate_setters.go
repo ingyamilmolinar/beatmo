@@ -59,23 +59,15 @@ func (g *Game) SetSplitterFrac(frac float64) {
 }
 
 // SetViewMode toggles between Rows and Audio (mobile EQ/Wave) view.
-// audio=true switches to the audio view.
+// audio=true switches to the audio view. Routes through SetMobileEQMode
+// (which itself routes through setViewMode) so the segmented control,
+// tab state, tree visibility gate, and layout invalidation all happen
+// in the canonical entry point — never set currentViewMode directly here.
 func (g *Game) SetViewMode(audio bool) {
 	if g.drum == nil {
 		return
 	}
-	if audio {
-		g.drum.SetMobileEQMode(true)
-		g.drum.currentViewMode = viewModeEQ
-	} else {
-		g.drum.SetMobileEQMode(false)
-		g.drum.currentViewMode = viewModeRows
-	}
-	g.drum.refreshWidgetLayout()
-	g.drum.recalcButtons()
-	g.drum.calcLayout()
-	g.drum.markAllRowsDirty()
-	g.drum.rowsLayerDirty = true
+	g.drum.SetMobileEQMode(audio)
 }
 
 // SetMobileEQCollapsed wraps DrumView.SetMobileEQCollapsed.

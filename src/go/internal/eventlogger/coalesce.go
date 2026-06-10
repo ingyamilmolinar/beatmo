@@ -17,6 +17,7 @@ var coalesceKinds = map[hooks.Kind]struct{}{
 	hooks.EventNodeMoved:          {},
 	hooks.EventInsertEffectParam:  {},
 	hooks.EventRecordDropped:      {}, // drops in a burst → one line
+	hooks.EventRowColorChanged:    {}, // color-wheel drag emits per-frame; coalesce
 	// Verbose kinds are coalesced when delivered.
 	hooks.EventCameraPan:    {},
 	hooks.EventCameraZoom:   {},

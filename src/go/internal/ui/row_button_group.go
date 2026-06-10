@@ -20,7 +20,7 @@ type RowButtonGroup struct {
 func (g *RowButtonGroup) HandleInput(mx, my int, left bool) bool {
 	btns := []*Button{g.Mute, g.Solo, g.FX, g.Origin, g.Delete, g.Edit, g.Save, g.Menu, g.Label}
 	for _, btn := range btns {
-		if btn != nil && btn.Handle(mx, my, left) {
+		if btn != nil && btn.HandleInputResult(mx, my, left) != InputIgnored {
 			return true
 		}
 	}

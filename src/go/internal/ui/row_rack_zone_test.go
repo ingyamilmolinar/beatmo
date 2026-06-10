@@ -467,8 +467,8 @@ func TestRowRackZoneResponsiveLayout(t *testing.T) {
 	zm.Layout(mobileRect)
 
 	muteMobile := findHitAreaByTagPrefix(zm.HitAreas(), "row-rack-mute")
-	if muteMobile != nil {
-		t.Error("mobile layout should NOT have 'row-rack-mute' hit area (hidden)")
+	if muteMobile == nil {
+		t.Error("mobile layout should have 'row-rack-mute' hit area inline (was overflow-only)")
 	}
 }
 
@@ -643,16 +643,19 @@ func TestRowRackZoneVisibleRowsOverride(t *testing.T) {
 	z, _ := newTestRowRackZone(rows)
 	z.Layout(image.Rect(0, 0, 400, 300))
 
-	// Set override.
-	z.SetVisibleRowsOverride(7)
-	if vis := z.VisibleRows(); vis != 7 {
-		t.Errorf("expected VisibleRows()=7 with override, got %d", vis)
+	// Set override to a value that the natural row-height calculation would
+	// never produce for the viewport height (3 vs the natural ~7-10 for a
+	// 300 px tall rack). Keeps the test stable when the desktop row height
+	// token is tuned.
+	z.SetVisibleRowsOverride(3)
+	if vis := z.VisibleRows(); vis != 3 {
+		t.Errorf("expected VisibleRows()=3 with override, got %d", vis)
 	}
 
-	// Clear override.
+	// Clear override — natural value should differ from 3.
 	z.SetVisibleRowsOverride(0)
-	if vis := z.VisibleRows(); vis == 7 {
-		t.Error("expected VisibleRows() to not be 7 after clearing override")
+	if vis := z.VisibleRows(); vis == 3 {
+		t.Error("expected VisibleRows() to not be 3 after clearing override")
 	}
 }
 
@@ -1086,17 +1089,17 @@ func TestRowRack_MobileLayoutHidesControls(t *testing.T) {
 	z, _ := newTestRowRackZone(rows)
 	z.Layout(image.Rect(0, 0, 400, 300))
 
-	// On mobile, mute/solo/FX/origin/delete/edit/save/color buttons should
-	// all have empty rects (hidden behind context menu).
+	// On mobile the row strip surfaces vol slider + mute/solo/FX inline; only
+	// origin/delete/edit/save/color stay hidden (context menu opens via tap).
 	for i, e := range z.entries {
-		if !e.muteBtn.Rect().Empty() {
-			t.Errorf("row %d: mute button should have empty rect on mobile", i)
+		if e.muteBtn.Rect().Empty() {
+			t.Errorf("row %d: mute button should be visible inline on mobile", i)
 		}
-		if !e.soloBtn.Rect().Empty() {
-			t.Errorf("row %d: solo button should have empty rect on mobile", i)
+		if e.soloBtn.Rect().Empty() {
+			t.Errorf("row %d: solo button should be visible inline on mobile", i)
 		}
-		if !e.fxBtn.Rect().Empty() {
-			t.Errorf("row %d: FX button should have empty rect on mobile", i)
+		if e.fxBtn.Rect().Empty() {
+			t.Errorf("row %d: FX button should be visible inline on mobile", i)
 		}
 		if !e.originBtn.Rect().Empty() {
 			t.Errorf("row %d: origin button should have empty rect on mobile", i)
@@ -1204,18 +1207,21 @@ func TestRowRack_EditSaveButtonCallbacks(t *testing.T) {
 	}
 }
 
-func TestRowRack_AddRowFABMobilePosition(t *testing.T) {
+// TestRowRack_AddRowMobileFullWidthFooter verifies that on mobile the add-row
+// button is laid out as a full-width footer constrained to the rack panel
+// (not a corner FAB extending beyond it).
+func TestRowRack_AddRowMobileFullWidthFooter(t *testing.T) {
 	forceSmallScreenForTest = true
 	defer func() { forceSmallScreenForTest = false }()
 
 	rows := makeTestRows(2)
 	z, _ := newTestRowRackZone(rows)
 
-	// Set screen bounds wider than the rack panel.
+	// Screen bounds wider than the rack panel; the button should still
+	// be constrained to the rack panel because it is a footer row.
 	screenBounds := image.Rect(0, 0, 1024, 768)
 	z.SetScreenBounds(screenBounds)
 
-	// Layout with a narrower rack panel.
 	rackRect := image.Rect(0, 0, 200, 400)
 	z.Layout(rackRect)
 
@@ -1227,25 +1233,18 @@ func TestRowRack_AddRowFABMobilePosition(t *testing.T) {
 	if addRect.Empty() {
 		t.Fatal("expected non-empty add button rect on mobile")
 	}
-
-	// On mobile, the FAB should use screenBounds.Max.X for positioning.
-	// The FAB X position should be: screenBounds.Max.X - btnW - 20.
-	// It should NOT be constrained to the narrow rackRect.Max.X.
-	if addRect.Max.X <= rackRect.Max.X {
-		t.Errorf("expected FAB to extend beyond rack panel (using screen bounds); "+
-			"addRect.Max.X=%d, rackRect.Max.X=%d, screenBounds.Max.X=%d",
-			addRect.Max.X, rackRect.Max.X, screenBounds.Max.X)
+	if addRect.Max.X > rackRect.Max.X {
+		t.Errorf("expected footer button to stay within rack panel; "+
+			"addRect.Max.X=%d, rackRect.Max.X=%d", addRect.Max.X, rackRect.Max.X)
 	}
-
-	// Verify FAB is positioned relative to the screen bounds, not the panel.
-	expectedFabMaxX := screenBounds.Max.X
-	if addRect.Max.X > expectedFabMaxX {
-		t.Errorf("expected FAB max X <= screenBounds.Max.X=%d, got %d",
-			expectedFabMaxX, addRect.Max.X)
+	// Footer should occupy most of the rack width (after SpaceXS inset).
+	if addRect.Dx() < rackRect.Dx()/2 {
+		t.Errorf("expected full-width footer; got width=%d (rack width=%d)",
+			addRect.Dx(), rackRect.Dx())
 	}
 }
 
-// --- FAB bounds tests ---
+// --- Add-row button bounds tests ---
 
 func TestAddRowBtnStaysInBoundsAfterScroll(t *testing.T) {
 	forceSmallScreenForTest = true
@@ -1275,10 +1274,10 @@ func TestAddRowBtnStaysInBoundsAfterScroll(t *testing.T) {
 		t.Fatal("expected non-empty add button rect after scroll")
 	}
 	if !addRect.In(screenBounds) {
-		t.Errorf("FAB rect %v is outside screenBounds %v after scroll", addRect, screenBounds)
+		t.Errorf("add-row button rect %v is outside screenBounds %v after scroll", addRect, screenBounds)
 	}
 	if addRect.Min.Y < rackRect.Min.Y+z.rowHeight() {
-		t.Errorf("FAB Y=%d jumped to top area (below rowsTop=%d expected)", addRect.Min.Y, rackRect.Min.Y+z.rowHeight())
+		t.Errorf("add-row button Y=%d jumped to top area (below rowsTop=%d expected)", addRect.Min.Y, rackRect.Min.Y+z.rowHeight())
 	}
 }
 
@@ -1301,7 +1300,7 @@ func TestAddRowBtnClampedToScreenBounds(t *testing.T) {
 	addRect := z.AddRowButton().Rect()
 	// When panelRect is empty, the button should be empty (not positioned at top-right).
 	if !addRect.Empty() {
-		t.Errorf("FAB rect should be empty when panelRect is empty, got %v", addRect)
+		t.Errorf("add-row button rect should be empty when panelRect is empty, got %v", addRect)
 	}
 }
 
@@ -1334,7 +1333,7 @@ func TestAddRowBtnWithinBoundsAfterMomentumScroll(t *testing.T) {
 			continue // acceptable during transient states
 		}
 		if !addRect.In(screenBounds) {
-			t.Errorf("offset=%d: FAB rect %v is outside screenBounds %v", off, addRect, screenBounds)
+			t.Errorf("offset=%d: add-row button rect %v is outside screenBounds %v", off, addRect, screenBounds)
 		}
 	}
 }

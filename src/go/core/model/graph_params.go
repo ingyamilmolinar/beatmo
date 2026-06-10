@@ -17,19 +17,6 @@ func normalizeNodeParams(p NodeParams) NodeParams {
 		kind = "trigger_if_prev_skipped"
 	}
 	p.LogicKind = kind
-
-	// Back-compat: deprecated skip-every-N field. Normalize to the canonical
-	// built-in logic kind and clear the legacy value so runtime behavior is
-	// driven by a single representation.
-	if p.SkipEveryN > 0 {
-		if p.LogicKind == "" {
-			p.LogicKind = "skip_every_n"
-			p.LogicN = p.SkipEveryN
-		} else if p.LogicKind == "skip_every_n" && p.LogicN <= 0 {
-			p.LogicN = p.SkipEveryN
-		}
-		p.SkipEveryN = 0
-	}
 	return p
 }
 
@@ -46,7 +33,6 @@ func (g *Graph) SetNodeParams(id NodeID, p NodeParams) {
 	n.Params.Pitch = p.Pitch
 	n.Params.Duration = p.Duration
 	n.Params.Logic = p.Logic
-	n.Params.SkipEveryN = p.SkipEveryN
 	n.Params.LogicKind = p.LogicKind
 	n.Params.LogicN = p.LogicN
 	n.Params.LogicP = p.LogicP

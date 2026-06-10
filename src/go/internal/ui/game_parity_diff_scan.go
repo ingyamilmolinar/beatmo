@@ -126,42 +126,62 @@ func (g *Game) parityScan(reason string) {
 	if g == nil {
 		return
 	}
+	g.parityScanCallsForTest++
 	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+		g.parityScanReturnsForTest[0]++
 		return
 	}
+	// Retention runs regardless of the comparator early-returns below: the
+	// comparator can be silenced for legitimate UI-state reasons (origin
+	// selection mask, import in progress, render not yet ready) without
+	// stopping unbounded growth of paritySeqDecisions / parityAudio. Without
+	// this, programmatic origin assignments (import, scene-build flows that
+	// don't go through click-to-set-origin) leave pendingStartRow >= 0
+	// indefinitely, the comparator skips, and the maps fill until WASM OOMs
+	// (production crash stack: RowRackZone.drawRowControlsToCache → vector
+	// path tessellation can no longer allocate at the 2 GB ceiling).
+	defer g.parityPruneAroundPlayhead()
 	if g.importDialog || g.importing || (g.drum != nil && (g.drum.importing || g.drum.lengthChanging)) {
+		g.parityScanReturnsForTest[1]++
 		return
 	}
 	// During origin selection the UI intentionally greys/overlays circuits; skip parity
 	// to avoid flagging those transient masks.
 	if g.pendingStartRow >= 0 {
+		g.parityScanReturnsForTest[2]++
 		return
 	}
 	if !g.Playing() && !g.state.Paused() {
 		// If parity is effectively disabled, skip scans entirely when stopped.
 		if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+			g.parityScanReturnsForTest[3]++
 			return
 		}
 		// Allow scans in tests only when an explicit watcher is enabled.
 		if g.parityWatch == parityWatchOff && runningUnderGoTest() {
+			g.parityScanReturnsForTest[4]++
 			return
 		}
 		// In runtime, skip when stopped.
 		if !runningUnderGoTest() {
+			g.parityScanReturnsForTest[5]++
 			return
 		}
 	}
 	if g.drum == nil || !g.renderReady {
+		g.parityScanReturnsForTest[6]++
 		return
 	}
 	// When not playing, skip highlight parity; only the playing path is relevant.
 	if !g.Playing() && reason == "refresh" {
+		g.parityScanReturnsForTest[7]++
 		return
 	}
 	every, stride := g.parityScanSettings()
 	phase := 0
 	if reason == "refresh" {
 		if !g.parityScanDue(every) {
+			g.parityScanReturnsForTest[8]++
 			return
 		}
 		if stride > 1 {
@@ -179,6 +199,7 @@ func (g *Game) parityScan(reason string) {
 	viewOffset := g.renderOffset
 	viewLength := g.renderLength
 	if viewLength <= 0 {
+		g.parityScanReturnsForTest[9]++
 		return
 	}
 	look := g.grid.MaxDiv()
@@ -532,15 +553,31 @@ func (g *Game) parityScan(reason string) {
 				if !g.rowIsAudible(row) {
 					skip = true
 				}
-				// Past beats whose highlight has already aged out are not
-				// parity violations — the audio fired correctly while the
-				// beat was current, the highlight ran for its window, then
-				// expired by design (highlightedBeats entries have a frame
-				// deadline). Comparing a stale audio event against a
-				// naturally-expired highlight is a false positive. Only
-				// flag mismatches at the *current* beat (abs == audioFloor)
-				// or in the future window. audioFloor = pastExclusive - 1.
-				if !skip && abs < audioFloor {
+				// Beats the UI playhead has already advanced past are not
+				// highlight-parity violations — applySequencerHighlight (and
+				// the syncUIToTime catch-up / seek paths) set
+				// nextBeatIdxs[row] = abs+1 when they process beat abs, and
+				// the highlight then expires by design (highlightedBeats
+				// entries carry a frame deadline). Comparing a recorded audio
+				// event against a naturally-expired highlight is a false
+				// positive; this can happen even at abs == audioFloor (the
+				// "current" beat per the global wall-clock clamp) when the
+				// beat outlasts the highlight window. A genuine violation —
+				// audio fired but the UI never highlighted the beat — leaves
+				// nextBeatIdxs[row] <= abs and is still reported below.
+				if !skip && row < len(g.nextBeatIdxs) && g.nextBeatIdxs[row] > abs {
+					skip = true
+				}
+				// Freshly-recorded audio events get a grace window before the
+				// highlight is required: the sequencer goroutine records the
+				// event and emits the matching highlight to hlCh, but the UI
+				// only applies it on the next Update drain. A scan landing in
+				// that gap is a pipeline-latency artifact, not a violation —
+				// mirrors the audio_missing RecordedAt grace above. The
+				// When-now > 0.5 future skip below does not cover this:
+				// tight-lead scheduling (fast-forward drives, small lookahead)
+				// records When ≈ now.
+				if !skip && time.Since(ev.RecordedAt) < 120*time.Millisecond {
 					skip = true
 				}
 				now := audio.Now()
@@ -596,7 +633,30 @@ func (g *Game) parityScan(reason string) {
 			}
 		}
 	}
-	// Prune parity buffers around the playhead so audio mismatch detection stays
-	// stable even when DrumView is panned away.
+	// Prune handled by deferred parityPruneAroundPlayhead at function entry.
+}
+
+// parityPruneAroundPlayhead computes the playhead-relative window used by
+// parityScan and calls parityPrune to bound paritySeqDecisions / parityAudio.
+// It is called as a deferred function from parityScan so retention runs even
+// when the comparator early-returns (origin selection, import in progress,
+// renderReady=false, etc).
+func (g *Game) parityPruneAroundPlayhead() {
+	if g == nil || g.grid == nil {
+		return
+	}
+	look := g.grid.MaxDiv()
+	if look <= 0 {
+		look = 1
+	}
+	lookahead := look * 4
+	playhead := g.globalPastExclusive() - 1
+	if playhead < 0 {
+		playhead = 0
+	}
+	audioStart := playhead - lookahead
+	if audioStart < 0 {
+		audioStart = 0
+	}
 	g.parityPrune(audioStart)
 }

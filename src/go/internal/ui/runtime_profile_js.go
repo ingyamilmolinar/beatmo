@@ -44,6 +44,9 @@ func applyJSProfileOverride(p *RuntimeProfile, ov js.Value) {
 	if v := ov.Get("audioLookaheadSec"); v.Type() == js.TypeNumber {
 		p.AudioLookaheadSec = v.Float()
 	}
+	if v := ov.Get("minDispatchLeadSec"); v.Type() == js.TypeNumber {
+		p.MinDispatchLeadSec = v.Float()
+	}
 	if v := ov.Get("audioBatchMax"); v.Type() == js.TypeNumber {
 		p.AudioBatchMax = v.Int()
 	}

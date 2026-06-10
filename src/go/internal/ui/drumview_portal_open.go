@@ -59,7 +59,7 @@ func (dv *DrumView) openInstMenuPortal() {
 			// upload button, trigger it now.
 			mx, my := cursorPosition()
 			if isMouseButtonPressed(ebiten.MouseButtonLeft) && dv.uploadBtn() != nil && image.Pt(mx, my).In(dv.uploadBtn().Rect()) {
-				_ = dv.uploadBtn().Handle(mx, my, true)
+				dv.uploadBtn().HandleInputResult(mx, my, true)
 			}
 		},
 	})
@@ -314,6 +314,7 @@ func (dv *DrumView) closeFXPanelPortal() {
 	}
 }
 
+
 // openVolPopupPortal opens the row volume popup through the portal.
 func (dv *DrumView) openVolPopupPortal() {
 	if dv.tree == nil || dv.volPopup == nil {
@@ -370,7 +371,7 @@ func (dv *DrumView) openNamingPortal() {
 			isOpenFn: func() bool { return dv.IsNamingOpen() },
 			rectFn:   func() image.Rectangle { return dv.Bounds },
 			inputFn: func(x, y int, pressed bool) InputResult {
-				if dv.saveBtn != nil && dv.saveBtn.Handle(x, y, pressed) {
+				if dv.saveBtn != nil && dv.saveBtn.HandleInputResult(x, y, pressed) != InputIgnored {
 					dv.saveAnim = 1
 					return InputConsumed
 				}

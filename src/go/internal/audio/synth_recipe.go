@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
@@ -23,6 +24,12 @@ type ParamDef struct {
 	Unit    string  `json:"unit,omitempty"` // "", "ms", "Hz", "dB", "%", "st"
 	Curve   string  `json:"curve,omitempty"`
 	Group   string  `json:"group,omitempty"`
+	// Enum (v2, additive + omitempty) carries display labels for a DISCRETE
+	// param. The param stays float-valued (Min:0, Max:len-1, Default:idx) so all
+	// clamp/hash/merge/persist machinery is unchanged; Enum only tells the UI to
+	// render a selector instead of a knob. A ParamDef without an enum serializes
+	// exactly as v1 (no "enum" key), so existing recipe goldens are unaffected.
+	Enum []string `json:"enum,omitempty"`
 }
 
 // RecipeParams is the IPC-shaped parameter payload. Keys are ParamDef.Name.
@@ -48,6 +55,71 @@ type RecipeRegistration struct {
 	Category    string
 	Params      []ParamDef
 	New         func() SynthRecipe
+}
+
+// RecipeDoc is the unified declarative shape every instrument (builtin or
+// user-saved) serializes to. Phase 1 introduces it as the single source of
+// truth that both shipped builtins and the user-recipe persistence path
+// emit; long-term the builtin descriptor table goes away and every recipe
+// is a RecipeDoc.
+//
+// BaseRecipe distinguishes the two flavours:
+//   - empty: a shipped builtin whose renderer is owned by the platform
+//     entries file (`builtinRecipeRenderers` natively, stub otherwise).
+//   - non-empty: a user-cloned recipe whose audio is produced by delegating
+//     to BaseRecipe's renderer with ParamSeed overlaid on the merged
+//     default-then-user params at trigger time.
+//
+// ParamDefs is the full ParamDef set the UI renders (already filtered to
+// wired + extras via WiredParamsForRecipe for builtins). ParamSeed carries
+// the Save-As snapshot for user clones; it overlays ParamDefs[i].Default
+// before registration so the new recipe ships with the saved tone.
+type RecipeDoc struct {
+	ID          string       `json:"id"`
+	DisplayName string       `json:"display_name"`
+	Category    string       `json:"category"`
+	BaseRecipe  string       `json:"base_recipe,omitempty"`
+	ParamDefs   []ParamDef   `json:"param_defs"`
+	ParamSeed   RecipeParams `json:"param_seed,omitempty"`
+	Origin      string       `json:"origin"`
+}
+
+// OriginBuiltin / OriginUser are the only two scopes Phase 1-3 ship. Future
+// scopes (`project`, `remote`) slot in here without a code change at the
+// callsites that read Origin for telemetry.
+const (
+	OriginBuiltin = "builtin"
+	OriginUser    = "user"
+)
+
+// ToRegistration materializes a RecipeRegistration from the doc. The
+// factory closure is supplied by the caller because builtin and user
+// recipes resolve their renderer differently (platform-specific map vs.
+// plugin provider); the doc itself stays renderer-agnostic. ParamSeed (if
+// non-empty) is overlaid onto a copy of ParamDefs so the registration's
+// declared Defaults reflect the seed without mutating the doc in place.
+func (d RecipeDoc) ToRegistration(factory func() SynthRecipe) RecipeRegistration {
+	params := make([]ParamDef, len(d.ParamDefs))
+	copy(params, d.ParamDefs)
+	if len(d.ParamSeed) > 0 {
+		for i := range params {
+			if v, ok := d.ParamSeed[params[i].Name]; ok {
+				if v < params[i].Min {
+					v = params[i].Min
+				} else if v > params[i].Max {
+					v = params[i].Max
+				}
+				params[i].Default = v
+			}
+		}
+	}
+	return RecipeRegistration{
+		ID:          d.ID,
+		DisplayName: d.DisplayName,
+		Category:    d.Category,
+		Params:      params,
+		New:         factory,
+	}
 }
 
 // validateParamDef enforces invariants the UI and JSON layers rely on.
@@ -124,19 +196,33 @@ var voiceCacheInvalidate = func(instrumentID string) {}
 // all under the manager's lock-free path (the lock is only held during the
 // map update).
 func SetInstrumentParam(instrumentID, name string, value float64) {
+	start := time.Now()
 	def := lookupParamDef(instrumentID, name)
 	stored, ok := sanitizeParamValue(def, value)
 	if !ok {
 		// Non-finite input — refuse to store. Hook + platform callback are
 		// skipped so observers don't see a phantom edit that didn't happen.
+		recordParamRejected()
 		return
 	}
 	m := instrumentParamsMgr
 	m.mu.Lock()
-	cur, ok := m.params[instrumentID]
-	if !ok {
+	cur, hadEntry := m.params[instrumentID]
+	if !hadEntry {
 		cur = RecipeParams{}
 		m.params[instrumentID] = cur
+	}
+	// Phase-8 no-op skip: if the value we're about to write equals the value
+	// already there, the rest of the dispatch (cache invalidate, hook publish,
+	// platform/WASM callback) is pure waste. Stationary drag bursts produce
+	// many same-value writes per second; collapsing them at the audio layer
+	// covers every caller (UI, JS bridge, JSON import) with one guard.
+	if hadEntry {
+		if prev, present := cur[name]; present && prev == stored {
+			m.mu.Unlock()
+			recordParamCoalesced()
+			return
+		}
 	}
 	cur[name] = stored
 	snapshot := cloneRecipeParams(cur)
@@ -151,6 +237,7 @@ func SetInstrumentParam(instrumentID, name string, value float64) {
 		Value:   stored,
 	})
 	platformInstrumentParamsChanged(instrumentID, snapshot)
+	recordParamDispatch(time.Since(start))
 }
 
 // SetInstrumentParams replaces the entire param set for an instrument. Used
@@ -228,15 +315,20 @@ func ResetInstrumentParams(instrumentID string) {
 // to. Used to populate the Recipe field on hooks payloads and as the
 // fallback when MergeRecipeDefaults is called without an explicit id.
 // Empty recipeID clears the binding.
+//
+// Fires platformInstrumentRecipeChanged (outside the lock) so the WASM
+// bridge can repoint the JS renderer at the new recipe — see
+// synth_recipe_binding_hook.go.
 func BindInstrumentToRecipe(instrumentID, recipeID string) {
 	m := instrumentParamsMgr
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if recipeID == "" {
 		delete(m.bindings, instrumentID)
-		return
+	} else {
+		m.bindings[instrumentID] = recipeID
 	}
-	m.bindings[instrumentID] = recipeID
+	m.mu.Unlock()
+	platformInstrumentRecipeChanged(instrumentID, recipeID, recipeExemplarInstrument(recipeID))
 }
 
 // RecipeForInstrument returns the SynthRecipe id bound to an instrument id
@@ -279,6 +371,13 @@ type builtinRecipeDescriptor struct {
 	ID       string
 	Display  string
 	Category string // "drum" | "fm" | future plugin categories
+	// Seed optionally diverges this recipe's default ParamDefs from the
+	// schema identity (used by preset variants that share a renderer but
+	// ship different default values, e.g. synth-modular-pad). Overlaid onto
+	// ParamDefs via RecipeDoc.ParamSeed in BuildBuiltinRecipeDocs. A
+	// non-empty Seed marks the recipe as needing a browser bootstrap push
+	// of its defaults (see SeedInstrumentDefaultsToPlatform).
+	Seed RecipeParams
 }
 
 // builtinRecipeDescriptors is the single source of truth for which recipes
@@ -315,6 +414,11 @@ var builtinRecipeDescriptors = []builtinRecipeDescriptor{
 	{ID: "fm-lead", Display: "FM Lead", Category: "fm"},
 	{ID: "fm-epiano", Display: "FM E-Piano", Category: "fm"},
 	{ID: "fm-pluck", Display: "FM Pluck", Category: "fm"},
+	// Unified modular synth voice — exposes the ENTIRE pipeline (osc/FM/ADSR/
+	// filter/post) via ModularSynthParamDefs instead of the wired generic set.
+	{ID: "synth-modular", Display: "Modular", Category: modularRecipeCategory},
+	// Second shipped modular preset: same schema, pad defaults via Seed.
+	{ID: "synth-modular-pad", Display: "Modular Pad", Category: modularRecipeCategory, Seed: modularPadSeed},
 }
 
 // builtinInstrumentRecipeBindings maps every shipped instrument id (base
@@ -371,7 +475,21 @@ var builtinInstrumentRecipeBindings = map[string]string{
 	"fm-bell-1":   "fm-bell",
 	"fm-lead-1":   "fm-lead",
 	"fm-epiano-1": "fm-epiano",
-	"fm-pluck-1": "fm-pluck",
+	"fm-pluck-1":  "fm-pluck",
+	// Unified modular synth voice.
+	"modular":     "synth-modular",
+	"modular-pad": "synth-modular-pad",
+}
+
+// factoryRecipeForInstrument returns the shipped SynthRecipe id for a built-in
+// instrument id, straight from builtinInstrumentRecipeBindings. Unlike
+// RecipeForInstrument (which reads the live, mutable binding table that the
+// Sampler's Save clears) this is the authoritative, restart-safe factory
+// identity — a factory Reset uses it to recognise a built-in even after its
+// live binding was cleared or the app was restarted. Returns "" for non-built-in
+// ids (user samples / Save-As clones).
+func factoryRecipeForInstrument(instID string) string {
+	return builtinInstrumentRecipeBindings[instID]
 }
 
 // bindBuiltinInstrumentRecipes wires each built-in instrument id to its
@@ -395,24 +513,71 @@ func init() {
 	bindBuiltinInstrumentRecipes()
 }
 
-// registerBuiltinRecipes calls RegisterRecipe for every entry in
-// builtinRecipeDescriptors, delegating the factory closure to the
-// build-specific entries file. The factoryFor closure receives
-// (id, display, category, params) and returns the New func; native
-// builds wrap a C renderer, stub builds return a no-op recipe.
-func registerBuiltinRecipes(factoryFor func(id, display, category string, params []ParamDef) func() SynthRecipe) {
+// BuildBuiltinRecipeDocs projects builtinRecipeDescriptors into the
+// unified RecipeDoc shape every recipe (builtin + user-saved) is registered
+// through after Phase 1. ParamDefs are filled in from WiredParamsForRecipe
+// so each doc carries the same per-recipe knob set the registry currently
+// uses; Origin is fixed to OriginBuiltin; BaseRecipe is empty (builtins own
+// their renderer in the platform entries file).
+//
+// Returns a fresh slice (with fresh ParamDef slices) so callers can mutate
+// without affecting the canonical source. Order follows builtinRecipeDescriptors.
+func BuildBuiltinRecipeDocs() []RecipeDoc {
+	out := make([]RecipeDoc, 0, len(builtinRecipeDescriptors))
 	for _, d := range builtinRecipeDescriptors {
-		params := WiredParamsForRecipe(d.ID)
-		if params == nil {
-			params = GenericSynthParamDefs()
+		var params []ParamDef
+		if d.Category == modularRecipeCategory {
+			// The modular voice exposes its own full param set, not the
+			// wired-generic subset; it reads modular_params, not sp_*. Its
+			// generator selector is osc_type (no Native option).
+			params = ModularSynthParamDefs()
+		} else {
+			params = WiredParamsForRecipe(d.ID)
+			if params == nil {
+				params = GenericSynthParamDefs()
+			}
 		}
-		RegisterRecipe(RecipeRegistration{
+		// WiredParamsForRecipe returns a fresh slice already; defensively
+		// copy so test mutations on one doc can't leak to others through
+		// any future caching layer.
+		paramsCopy := make([]ParamDef, len(params))
+		copy(paramsCopy, params)
+		// Preset variants (e.g. synth-modular-pad) bake their divergent
+		// defaults straight into ParamDefs — builtins carry their final
+		// defaults in ParamDefs and leave ParamSeed empty (the invariant
+		// TestRecipeDocRoundtripAllRecipes enforces). Values are clamped to
+		// each param's [Min,Max].
+		if len(d.Seed) > 0 {
+			for i := range paramsCopy {
+				if v, ok := d.Seed[paramsCopy[i].Name]; ok {
+					if v < paramsCopy[i].Min {
+						v = paramsCopy[i].Min
+					} else if v > paramsCopy[i].Max {
+						v = paramsCopy[i].Max
+					}
+					paramsCopy[i].Default = v
+				}
+			}
+		}
+		out = append(out, RecipeDoc{
 			ID:          d.ID,
 			DisplayName: d.Display,
 			Category:    d.Category,
-			Params:      params,
-			New:         factoryFor(d.ID, d.Display, d.Category, params),
+			ParamDefs:   paramsCopy,
+			Origin:      OriginBuiltin,
 		})
+	}
+	return out
+}
+
+// registerBuiltinRecipes calls RegisterRecipe for every builtin RecipeDoc,
+// delegating the factory closure to the build-specific entries file. The
+// factoryFor closure receives the full RecipeDoc and returns the New func;
+// native builds wrap a C renderer (looked up by doc.ID), stub builds return
+// a no-op recipe.
+func registerBuiltinRecipes(factoryFor func(doc RecipeDoc) func() SynthRecipe) {
+	for _, doc := range BuildBuiltinRecipeDocs() {
+		RegisterRecipe(doc.ToRegistration(factoryFor(doc)))
 	}
 }
 

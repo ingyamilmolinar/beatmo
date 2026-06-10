@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -31,6 +32,11 @@ type importFile struct {
 	EQ                *exportEQ          `json:"eq,omitempty"`
 	SendEffects       *SendEffectsConfig `json:"send_effects,omitempty"`
 	PinnedInstruments []string           `json:"pinned_instruments,omitempty"` // per-project pin tier; absent on legacy files
+	// Kits mirrors exportFile.Kits so a project that carried authored kits
+	// re-registers them on import instead of silently dropping the field
+	// (kit-bus audio routing is still future work, but the definitions survive
+	// the round-trip). Additive — absent on files with no kits.
+	Kits []audio.Kit `json:"kits,omitempty"`
 }
 
 func parseHexColor(s string) color.Color {
@@ -60,10 +66,19 @@ func parseHexColor(s string) color.Color {
 // Import rebuilds the graph and drum rows from exported JSON data. It accepts
 // coordinates in the JSON's subdivision units and scales them to the current
 // grid's MaxDiv. Missing subdiv defaults to 32.
-func (g *Game) Import(data []byte) error {
+func (g *Game) Import(data []byte) (retErr error) {
 	importStart := time.Now()
 	g.logger.Debugf("[import] started (%d bytes)", len(data))
 	defer func() { g.logger.Debugf("[import] total elapsed=%v", time.Since(importStart)) }()
+	// Convert any panic into a returned error. On WASM an unrecovered panic
+	// kills the Update() goroutine and freezes the canvas with no message; a
+	// returned error surfaces a toast (game_update.go) and keeps the app alive.
+	defer func() {
+		if r := recover(); r != nil {
+			retErr = fmt.Errorf("import panic: %v", r)
+			g.logger.Errorf("[import] PANIC recovered: %v\n%s", r, debug.Stack())
+		}
+	}()
 
 	// Stop sequencer during import to prevent seqMu contention. The background
 	// sequencerLoop checks Playing() before calling seqScheduleTime(), so setting
@@ -103,12 +118,27 @@ func (g *Game) Import(data []byte) error {
 	if err := json.Unmarshal(data, &f); err != nil {
 		return err
 	}
+	// Reject documents that parse as JSON but are not beatmo project files.
+	// Every exporter since v1 writes "version": 1; a doc without it (e.g. an
+	// arbitrary {} or some other app's JSON picked in the file dialog) used to
+	// sail through as an all-zero importFile and silently REPLACE the current
+	// project with an empty one — import is replace-not-merge, so this was a
+	// data-wipe with a success return.
+	if f.Version < 1 {
+		return fmt.Errorf("not a beatmo project file: missing or unsupported \"version\" (got %d, want >= 1)", f.Version)
+	}
 	// Size guards to avoid pathological inputs.
 	if len(f.Instruments) > maxImportInstruments {
 		return fmt.Errorf("too many instruments in import: %d > %d", len(f.Instruments), maxImportInstruments)
 	}
 	if len(f.Nodes) > maxImportNodes {
 		return fmt.Errorf("too many nodes in import: %d > %d", len(f.Nodes), maxImportNodes)
+	}
+	// Re-register any kits the project carried so authored kit definitions
+	// survive the round-trip (exportFile writes them; previously the import
+	// struct lacked the field and dropped them). Additive registry write.
+	for _, k := range f.Kits {
+		audio.RegisterKit(k)
 	}
 	// Normalize and apply imported subdivision before constructing nodes so
 	// coordinates in the JSON map 1:1 to the new grid.
@@ -278,7 +308,7 @@ func (g *Game) Import(data []byte) error {
 					// ignore invalid groove kinds
 				}
 			}
-			// Logic fields (new). If present, take precedence over SkipEvery.
+			// Logic fields.
 			if n.LogicKind != "" {
 				if n.LogicKind == "prev_fired" {
 					n.LogicKind = "trigger_if_prev_triggered"
@@ -310,31 +340,33 @@ func (g *Game) Import(data []byte) error {
 					}
 					p.LogicP = n.LogicP
 				}
-				// Do not copy SkipEvery into params when logic is explicit to avoid double gating.
-			} else if n.SkipEvery > 0 {
-				// Back-compat import upgrade: map legacy SkipEvery to logic_kind=skip_every_n so
-				// the UI reflects the rule and parameter controls work via the logic dropdown.
-				p.LogicKind = "skip_every_n"
-				if n.SkipEvery > maxLogicN {
-					p.LogicN = maxLogicN
-				} else if n.SkipEvery > 0 {
-					p.LogicN = n.SkipEvery
-				}
-				p.SkipEveryN = 0
 			}
 			// Per-node effect overrides (model-only, no audio wiring in V1)
 			if len(n.EffectOverrides) > 0 {
 				p.EffectOverrides = make([]model.EffectOverride, len(n.EffectOverrides))
 				copy(p.EffectOverrides, n.EffectOverrides)
 			}
-			// Per-node synth parameters
-			p.SynthDecay = n.SynthDecay
-			p.SynthTone = clampF64(n.SynthTone, -10, 10)
-			p.SynthAttack = n.SynthAttack
-			p.SynthDrive = clampF64(n.SynthDrive, 0, 1)
-			p.SynthBody = clampF64(n.SynthBody, 0, 1)
-			p.SynthColor = clampF64(n.SynthColor, -1, 1)
-			p.SynthBrightness = clampF64(n.SynthBrightness, 0, 1)
+			// Per-node synth parameters. The canonical v1+synth shape is the
+			// synth_overrides map; legacy v1 files carry 7 individual synth_*
+			// fields. Both fold into the same NodeParams slots, with the
+			// canonical map winning on key conflict.
+			over := n.legacySynthOverrides()
+			if len(n.SynthOverrides) > 0 {
+				if over == nil {
+					over = make(map[string]float64, len(n.SynthOverrides))
+				}
+				for k, v := range n.SynthOverrides {
+					over[k] = v
+				}
+			}
+			if len(over) > 0 {
+				applySynthOverridesToNodeParams(&p, over)
+				p.SynthTone = clampF64(p.SynthTone, -10, 10)
+				p.SynthDrive = clampF64(p.SynthDrive, 0, 1)
+				p.SynthBody = clampF64(p.SynthBody, 0, 1)
+				p.SynthColor = clampF64(p.SynthColor, -1, 1)
+				p.SynthBrightness = clampF64(p.SynthBrightness, 0, 1)
+			}
 			g.graph.SetNodeParams(ui.ID, p)
 		}
 		idToNode[i] = ui
@@ -363,12 +395,20 @@ func (g *Game) Import(data []byte) error {
 	rowsStart := time.Now()
 	g.drum.Rows = nil
 	g.drum.SuppressLayout()
+	// Replace-not-merge for insert effect chains: drop every chain the
+	// previous project installed (Go mixer + JS WebAudio via the per-id
+	// notify) before applying the file's chains below. Without this, a
+	// project without effects kept the old project's chain processing audio
+	// — invisible in the UI because rows are rebuilt with empty Effects.
+	audio.ClearAllInsertEffectsAndNotify()
 	for i, inst := range f.Instruments {
 		g.drum.AddRow()
 		idx := len(g.drum.Rows) - 1
 		row := g.drum.Rows[idx]
 		row.Name = inst.Name
 		row.Instrument = inst.ID
+		// Explicit kit-role tag (export.go writes it; previously never applied).
+		row.Role = inst.Role
 		// Clamp row volume for consistency across platforms (0..4)
 		rv := inst.Volume
 		if rv < 0 {
@@ -382,30 +422,41 @@ func (g *Game) Import(data []byte) error {
 		// load it later by the same name.
 		g.drum.EnsureInstrumentKnown(inst.ID)
 
+		// Strategy 0: embedded PCM (Sampler-created user sample) supersedes the
+		// catalog/path strategies — the sound travels inside the project file.
+		embeddedPCM := false
+		if pcm, sr, ok := decodeSamplePCM(inst.PCM); ok {
+			audio.PutUserSample(inst.ID, pcm, sr)
+			g.drum.refreshInstruments()
+			embeddedPCM = true
+		}
+
 		// Strategy 1: Try catalog lookup by ID (handles WAV instruments regardless of prefix)
-		if err := audio.EnsureInstrumentLoaded(inst.ID); err == nil {
-			// Instrument loaded from catalog - update samplePath if catalog has path
-			if meta, ok := audio.CatalogLookup(inst.ID); ok && meta.Path != "" {
+		if !embeddedPCM {
+			if err := audio.EnsureInstrumentLoaded(inst.ID); err == nil {
+				// Instrument loaded from catalog - update samplePath if catalog has path
+				if meta, ok := audio.CatalogLookup(inst.ID); ok && meta.Path != "" {
+					if g.drum.samplePath == nil {
+						g.drum.samplePath = map[string]string{}
+					}
+					g.drum.samplePath[inst.ID] = meta.Path
+				}
+				g.drum.refreshInstruments()
+			}
+
+			// Strategy 2: use the explicit path provided in the import payload, if any.
+			// External references (filesystem, DB, future remote pack) are resolved
+			// upstream by whoever produced the JSON.
+			instPath := inst.Path
+			if instPath != "" {
 				if g.drum.samplePath == nil {
 					g.drum.samplePath = map[string]string{}
 				}
-				g.drum.samplePath[inst.ID] = meta.Path
+				g.drum.samplePath[inst.ID] = instPath
+				// Attempt to register; on stub/wasm this makes it available immediately.
+				_ = audio.RegisterWAV(inst.ID, instPath)
+				g.drum.refreshInstruments()
 			}
-			g.drum.refreshInstruments()
-		}
-
-		// Strategy 2: use the explicit path provided in the import payload, if any.
-		// External references (filesystem, DB, future remote pack) are resolved
-		// upstream by whoever produced the JSON.
-		instPath := inst.Path
-		if instPath != "" {
-			if g.drum.samplePath == nil {
-				g.drum.samplePath = map[string]string{}
-			}
-			g.drum.samplePath[inst.ID] = instPath
-			// Attempt to register; on stub/wasm this makes it available immediately.
-			_ = audio.RegisterWAV(inst.ID, instPath)
-			g.drum.refreshInstruments()
 		}
 		if ui := idToNode[int(inst.Origin)]; ui != nil {
 			row.Origin = ui.ID
@@ -474,6 +525,55 @@ func (g *Game) Import(data []byte) error {
 		audio.SetChannelPan(inst.ID, row.Pan)
 		audio.SetDelaySend(inst.ID, row.DelaySend)
 		audio.SetReverbSend(inst.ID, row.ReverbSend)
+		// Phase 3: apply per-instrument synth-recipe metadata. Recipe is
+		// optional — when absent we keep whatever binding was already
+		// established by ResetInstruments. SynthParams replaces whatever
+		// the manager held (bulk set, not merge) so projects load to a
+		// clean state.
+		// gen_type-era migration: projects saved before the native-engine
+		// deprecation could persist a re-voiced generator (gen_type >= 1).
+		// MigrateGenType rebinds those to the Modular recipe with the
+		// matching osc_type and drops the dead key (Native/absent is a
+		// no-op). See internal/audio/migrate_gen_type.go.
+		recipeID, synthParams := audio.MigrateGenType(inst.Recipe, audio.RecipeParams(inst.SynthParams))
+		if recipeID != "" {
+			audio.BindInstrumentToRecipe(inst.ID, recipeID)
+			// The file's synth_params is a delta vs the recipe's SHIPPED
+			// defaults (export.go), but the trigger render merges the overlay
+			// over the CURRENT registered defaults — which a Synth-tab Save
+			// (or a userprefs RecipeOverrides reload) may have customized in
+			// this session. Pin the file's full effective tone (shipped ⊕
+			// delta) as the overlay so every key elided at export resolves to
+			// SHIPPED, never to the session's customized default. Re-export
+			// stays byte-identical: the delta recomputed vs shipped is the
+			// original delta. When the file carries no delta AND the session's
+			// defaults are as-shipped, reset instead — that keeps the cheap
+			// legacy dispatch path (and parity goldens) for default projects.
+			if len(synthParams) > 0 || audio.RecipeDefaultsCustomized(recipeID) {
+				pinned := audio.RecipeShippedDefaults(recipeID)
+				for k, v := range synthParams {
+					pinned[k] = v
+				}
+				audio.SetInstrumentParams(inst.ID, pinned)
+			} else {
+				audio.ResetInstrumentParams(inst.ID)
+			}
+		} else if len(synthParams) > 0 {
+			// Legacy file without a recipe binding: the params are a raw
+			// overlay (export's no-recipe fallback), apply them as-is.
+			audio.SetInstrumentParams(inst.ID, synthParams)
+		} else {
+			// No user params in the JSON → make sure no stale values from
+			// a previous project are still in the manager.
+			audio.ResetInstrumentParams(inst.ID)
+		}
+		// Non-destructive Sampler edit descriptor: same replace-not-merge
+		// semantics as SynthParams so a previous project's edit can't leak.
+		if len(inst.SampleEdit) > 0 {
+			audio.SetSampleEdit(inst.ID, audio.SampleEditFromFields(inst.SampleEdit))
+		} else {
+			audio.ClearSampleEdit(inst.ID)
+		}
 	}
 	g.drum.ResumeLayout()
 	g.logger.Debugf("[import] row creation elapsed=%v rows=%d", time.Since(rowsStart), len(g.drum.Rows))

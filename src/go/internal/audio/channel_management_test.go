@@ -95,7 +95,7 @@ func TestRenameInstrumentChannel(t *testing.T) {
 
 	ch := InstrumentChannel(oldID)
 	ch.SetVolume(0.42)
-	ch.replaceProcessors([]Processor{&mockSampleOnlyProcessor{gain: 0.5}})
+	ch.replaceProcessors(nil, []Processor{&mockSampleOnlyProcessor{gain: 0.5}})
 
 	renameInstrumentChannel(oldID, newID)
 

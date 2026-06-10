@@ -175,10 +175,12 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 	}
 	g.parityMu.Lock()
 	defer g.parityMu.Unlock()
-	if g.paritySeqDecisions[row] == nil {
-		g.paritySeqDecisions[row] = make(map[int]paritySeqDecision)
+	m := g.paritySeqDecisions[row]
+	if m == nil {
+		m = make(map[int]paritySeqDecision)
+		g.paritySeqDecisions[row] = m
 	}
-	g.paritySeqDecisions[row][abs] = paritySeqDecision{
+	m[abs] = paritySeqDecision{
 		Row:        row,
 		Abs:        abs,
 		Audible:    audible,
@@ -188,7 +190,26 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 		ParityGen:  g.parityGen.Load(),
 		RecordedAt: time.Now(),
 	}
+	// Defense-in-depth: parityPruneAroundPlayhead runs deferred inside
+	// parityScan, but the sequencer goroutine writes here independently. If
+	// the UI thread stalls (slow draw) or parityScan stops being called, the
+	// map could grow unbounded between prunes. Mirror parityAudioMax (line 150)
+	// with a per-row sliding window keyed by abs.
+	if len(m) > paritySeqDecisionsPerRowMax {
+		minKeep := abs - paritySeqDecisionsPerRowMax + 1
+		for k := range m {
+			if k < minKeep {
+				delete(m, k)
+			}
+		}
+	}
 }
+
+// paritySeqDecisionsPerRowMax mirrors parityAudioMax (1024) at the parity-
+// seq-decisions side. Both maps are keyed by absolute beat index and grow
+// monotonically during playback; this constant is the per-row retention
+// ceiling enforced inline in recordSeqDecision.
+const paritySeqDecisionsPerRowMax = 1024
 
 func (g *Game) parityPrune(minAbs int) {
 	if g == nil {
@@ -196,6 +217,10 @@ func (g *Game) parityPrune(minAbs int) {
 	}
 	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
 		return
+	}
+	g.parityPruneCallsForTest++
+	if minAbs > g.parityPruneMaxMinAbsForTest {
+		g.parityPruneMaxMinAbsForTest = minAbs
 	}
 	g.parityMu.Lock()
 	defer g.parityMu.Unlock()

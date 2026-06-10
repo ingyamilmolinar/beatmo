@@ -56,6 +56,55 @@ const (
 	EventInsertEffectRemoved Kind = "audio.insert_removed"
 	EventInsertEffectParam   Kind = "audio.insert_param"
 
+	// Synth recipe / instrument synthesis parameters. Fires when a user
+	// edits an instrument's synth params via the instrument editor (or
+	// any other path that mutates instrumentParamsMgr in internal/audio).
+	//
+	// Slider drag publishes this on every frame the slider value moves
+	// (60Hz typical), matching the pattern of EventCameraPan / Zoom /
+	// DragProgress below. The narrative INFO consumer filters it out
+	// via IsVerbose so console-log throughput stays bounded; the JSONL
+	// eventstream still records every event when verbose mode is on.
+	EventInstrumentParamChanged Kind = "verbose.instrument_param"
+
+	// Round 2 additions: user-narrative events with no prior home.
+	EventRowColorChanged   Kind = "row.color"
+	EventCustomWAVLoaded   Kind = "audio.wav_loaded"
+	EventInstrumentRenamed Kind = "audio.instrument_renamed"
+	EventSceneApplied      Kind = "scene.applied"
+	EventUIStateApplied    Kind = "uistate.applied"
+	EventFavoriteToggled   Kind = "favorite.toggled"
+
+	// Phase 4 (synth-recipe refactor): user-narrative events for recipe
+	// save / clone / delete and kit apply. RecipePayload carries the
+	// recipe id + base recipe id (for clones) + the instrument id the
+	// action originated from. EventKitApplied uses KitPayload; the kit
+	// data model lands in Phase 6 (audio.Kit) but the event kind is
+	// reserved now so eventlogger coverage and NumNonVerbose stay stable
+	// across the rollout.
+	EventRecipeSaved   Kind = "audio.recipe_saved"
+	EventRecipeCreated Kind = "audio.recipe_created"
+	EventRecipeDeleted Kind = "audio.recipe_deleted"
+	EventKitApplied    Kind = "audio.kit_applied"
+
+	// Sampler-tab lifecycle: SampleSaved fires when a baked sample overrides
+	// its source instrument in place; SampleCreated fires on Save As (a new
+	// embedded instrument). Both carry SamplePayload.
+	EventSampleSaved   Kind = "audio.sample_saved"
+	EventSampleCreated Kind = "audio.sample_created"
+	// EventSampleReset fires when an instrument is reverted to its factory
+	// state via the Sampler/Synth Reset. SamplePayload carries SampleID (the
+	// instrument) and SourceID (the recipe it reverted to, or "" for a user
+	// WAV restored to its original buffer) — enough to invert in a future
+	// undo/redo journal.
+	EventSampleReset Kind = "audio.sample_reset"
+	// EventSampleEditChanged fires when an instrument's non-destructive
+	// sample-edit descriptor is set or cleared (Sampler-tab Save on a synth
+	// source, Reset, import, or startup rehydration). SamplePayload carries
+	// SampleID (the instrument). The instrument stays a synth — the edit is
+	// applied to the freshly-rendered recipe buffer at trigger time.
+	EventSampleEditChanged Kind = "audio.sample_edit"
+
 	// Verbose / opt-in (only delivered when verbose mode is enabled on the
 	// bus or the eventstream sink). These fire many times per frame; the
 	// default sink filters them out.
@@ -79,29 +128,94 @@ var KindAll = []Kind{
 	EventRowAdded, EventRowDeleted, EventRowInstrumentChange, EventRowMute, EventRowSolo,
 	EventMasterVolumeChange, EventEQBandChange,
 	EventInsertEffectAdded, EventInsertEffectRemoved, EventInsertEffectParam,
-	EventCameraPan, EventCameraZoom, EventDragProgress,
+	EventRowColorChanged, EventCustomWAVLoaded, EventInstrumentRenamed,
+	EventSceneApplied, EventUIStateApplied, EventFavoriteToggled,
+	EventRecipeSaved, EventRecipeCreated, EventRecipeDeleted, EventKitApplied,
+	EventSampleSaved, EventSampleCreated, EventSampleReset, EventSampleEditChanged,
+	EventCameraPan, EventCameraZoom, EventDragProgress, EventInstrumentParamChanged,
 }
 
 // numNonVerbose is the count of non-verbose kinds in KindAll.
 // KindAll[:NumNonVerbose] excludes the high-frequency verbose events.
-const NumNonVerbose = 30
+// Pre-Phase-4 the constant was 36 but the actual non-verbose tail was
+// already 37 (off-by-one drift across earlier bumps). Phase 4 added 4
+// (recipe save/create/delete + kit apply) and corrected the count to
+// match KindAll: 37 + 4 = 41. The Sampler tab added 2 more
+// (sample saved/created): 41 + 2 = 43. The factory Reset added 1
+// (sample reset): 43 + 1 = 44. The non-destructive sample-edit descriptor
+// added 1 (sample edit changed): 44 + 1 = 45.
+const NumNonVerbose = 45
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
 // kinds that the default sink filters out.
 func IsVerbose(k Kind) bool {
 	switch k {
-	case EventCameraPan, EventCameraZoom, EventDragProgress:
+	case EventCameraPan, EventCameraZoom, EventDragProgress, EventInstrumentParamChanged:
 		return true
 	}
 	return false
 }
 
+// Source identifies the user-action call site that emitted an Event. It is
+// captured at publish time inside the emit helpers (see internal/hooks/source.go
+// and internal/ui/event_helpers.go) via runtime.Caller; the goal is for INFO
+// log lines and the JSONL eventstream to point at the original user-code
+// site, never the middleware (helper / bus / formatter). Zero value means
+// "no source captured" — callers using PublishKind directly get this; the
+// renderer omits the src= column in that case.
+type Source struct {
+	Pkg  string `json:"pkg,omitempty"`  // e.g. "internal/ui"
+	File string `json:"file,omitempty"` // base file name, e.g. "game_graph_nodes.go"
+	Line int    `json:"line,omitempty"`
+}
+
+// IsZero reports whether s carries no captured source information.
+func (s Source) IsZero() bool { return s.File == "" && s.Pkg == "" && s.Line == 0 }
+
+// String renders the source as "pkg/file.go:line" for log output. Returns
+// empty string for the zero value (callers can test cheaply via String()=="").
+func (s Source) String() string {
+	if s.IsZero() {
+		return ""
+	}
+	if s.Pkg == "" {
+		return s.File + ":" + itoa(s.Line)
+	}
+	return s.Pkg + "/" + s.File + ":" + itoa(s.Line)
+}
+
+// itoa is a small allocation-free replacement for strconv.Itoa; keeps the
+// hooks package free of strconv (one less stdlib import for a hot path).
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
+}
+
 // Event is the value delivered to subscribers. Payload is a typed struct
-// per Kind (see the *Payload types below).
+// per Kind (see the *Payload types below). Source identifies the user-code
+// site that triggered the publish (zero value when unknown).
 type Event struct {
 	Kind    Kind
 	Payload any
 	At      time.Time
+	Source  Source
 }
 
 // ─── Payload types (one per Kind that carries data) ──────────────────
@@ -124,14 +238,14 @@ type NodeTypePayload struct {
 // NodeParamsPayload describes a node-parameter mutation. Only the
 // changed field is non-zero in the typical case.
 type NodeParamsPayload struct {
-	ID        int     `json:"id"`
-	Volume    float64 `json:"volume,omitempty"`
-	Pitch     float64 `json:"pitch,omitempty"`
-	Duration  float64 `json:"duration,omitempty"`
-	LogicKind string  `json:"logic_kind,omitempty"`
-	LogicN    int     `json:"logic_n,omitempty"`
-	LogicP    float64 `json:"logic_p,omitempty"`
-	GrooveKind string `json:"groove_kind,omitempty"`
+	ID         int     `json:"id"`
+	Volume     float64 `json:"volume,omitempty"`
+	Pitch      float64 `json:"pitch,omitempty"`
+	Duration   float64 `json:"duration,omitempty"`
+	LogicKind  string  `json:"logic_kind,omitempty"`
+	LogicN     int     `json:"logic_n,omitempty"`
+	LogicP     float64 `json:"logic_p,omitempty"`
+	GrooveKind string  `json:"groove_kind,omitempty"`
 	GroovePct  float64 `json:"groove_pct,omitempty"`
 }
 
@@ -179,6 +293,23 @@ type LengthPayload struct {
 	Length int `json:"length"`
 }
 
+// BPMPayload describes a BPM change. Replaces the legacy raw-int payload
+// to give the JSONL stream and formatters a consistent typed shape.
+type BPMPayload struct {
+	BPM int `json:"bpm"`
+}
+
+// ImportPayload describes a project-import completion. Bytes is the raw
+// payload size; Nodes/Rows are the node and drum-row counts in the imported
+// graph (post-validation). The formatter renders all three so the INFO
+// line ("import completed (12 nodes, 3 rows, 4521 bytes)") gives the user
+// enough context to recognize the imported project.
+type ImportPayload struct {
+	Bytes int `json:"bytes,omitempty"`
+	Nodes int `json:"nodes,omitempty"`
+	Rows  int `json:"rows,omitempty"`
+}
+
 // MasterVolumePayload describes a master volume slider commit.
 type MasterVolumePayload struct {
 	Volume float64 `json:"volume"`
@@ -200,6 +331,55 @@ type InsertEffectPayload struct {
 	Value   float64 `json:"value,omitempty"`
 }
 
+// InstrumentParamPayload describes a per-instrument synth-recipe parameter
+// edit. Channel is the instrument id (e.g. "snare"), Recipe is the
+// SynthRecipe ID it resolves through (e.g. "drum-snare"), Param is the
+// ParamDef.Name, and Value is the new scalar.
+type InstrumentParamPayload struct {
+	Channel string  `json:"channel"`
+	Recipe  string  `json:"recipe,omitempty"`
+	Param   string  `json:"param"`
+	Value   float64 `json:"value"`
+}
+
+// RowColorPayload describes a drum-row color pick.
+type RowColorPayload struct {
+	Row   int    `json:"row"`
+	Color uint32 `json:"color"` // 0xRRGGBBAA
+}
+
+// CustomWAVPayload describes a user-loaded WAV becoming available as an
+// instrument. IsUpdate is true when the same instrument id was already loaded
+// (the new bytes replace the old).
+type CustomWAVPayload struct {
+	InstrumentID string `json:"instrument_id"`
+	IsUpdate     bool   `json:"is_update,omitempty"`
+}
+
+// InstrumentRenamePayload describes an instrument id rename.
+type InstrumentRenamePayload struct {
+	OldID string `json:"old_id"`
+	NewID string `json:"new_id"`
+}
+
+// ScenePayload describes a scene preset being applied.
+type ScenePayload struct {
+	Name string `json:"name"`
+}
+
+// UIStatePayload describes a UI-state JSON file being applied (camera +
+// splitter + sidebar layout, distinct from project import).
+type UIStatePayload struct {
+	Path string `json:"path"`
+}
+
+// FavoritePayload describes an instrument being added to or removed from
+// the user's favorites set.
+type FavoritePayload struct {
+	InstrumentID string `json:"instrument_id"`
+	IsFavorite   bool   `json:"is_favorite"`
+}
+
 // CameraPanPayload (verbose) describes a camera pan delta.
 type CameraPanPayload struct {
 	DX float64 `json:"dx"`
@@ -216,4 +396,37 @@ type DragProgressPayload struct {
 	NodeID int `json:"node_id"`
 	I      int `json:"i"`
 	J      int `json:"j"`
+}
+
+// RecipePayload describes a user-recipe lifecycle event (saved /
+// created / deleted). BaseRecipe is empty for a save-in-place; populated
+// when the action was a clone of an existing recipe. InstrumentID is
+// the row instrument the action originated from, when applicable.
+type RecipePayload struct {
+	RecipeID     string `json:"recipe_id"`
+	BaseRecipe   string `json:"base_recipe,omitempty"`
+	InstrumentID string `json:"instrument_id,omitempty"`
+	DisplayName  string `json:"display_name,omitempty"`
+}
+
+// SamplePayload describes a Sampler-tab lifecycle event (saved / created).
+// SampleID is the instrument id of the baked sample. SourceID is the
+// instrument the sample was captured/saved from (empty for a WAV load).
+// DisplayName is the user-entered name on Save As; Frames is the baked
+// length so sinks can report sample size without the PCM bytes.
+type SamplePayload struct {
+	SampleID    string `json:"sample_id"`
+	SourceID    string `json:"source_id,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	Frames      int    `json:"frames,omitempty"`
+}
+
+// KitPayload describes a kit-apply event. Members carries the
+// role→instrumentID map snapshot the kit just rebound. UI for kits lands
+// in a later phase; the payload is reserved now so the eventlogger
+// coverage test stays satisfied across the rollout.
+type KitPayload struct {
+	KitID       string            `json:"kit_id"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Members     map[string]string `json:"members,omitempty"`
 }

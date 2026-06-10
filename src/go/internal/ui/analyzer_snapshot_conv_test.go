@@ -136,9 +136,10 @@ func TestSynthesizeAnalyzerState_DetailPopulated(t *testing.T) {
 }
 
 func TestSynthesizeScopeState_StageMapping(t *testing.T) {
-	pre := audio.AnalyzerSnapshot{Peak: 0.5, RMS: 0.2, Waveform: []float64{0.1, 0.2, 0.3}}
+	synth := audio.AnalyzerSnapshot{Peak: 0.5, RMS: 0.2, Waveform: []float64{0.1, 0.2, 0.3}}
 	post := audio.AnalyzerSnapshot{Peak: 0.4, RMS: 0.15, Waveform: []float64{0.05, 0.1, 0.15}}
-	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageEQ, pre, post)
+	snaps := ScopeStageSnapshots{Synth: synth, PostEQ: post}
+	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageEQ, snaps)
 	if st == nil {
 		t.Fatal("expected non-nil scope state")
 	}
@@ -156,23 +157,102 @@ func TestSynthesizeScopeState_StageMapping(t *testing.T) {
 	}
 }
 
-func TestSynthesizeScopeState_UnmappedStageInactive(t *testing.T) {
-	pre := audio.AnalyzerSnapshot{Peak: 0.5, Waveform: []float64{0.1, 0.2}}
-	post := audio.AnalyzerSnapshot{Peak: 0.4, Waveform: []float64{0.05, 0.1}}
-	// InsertFX / Master aren't bridged on WASM — should be inactive.
-	st := SynthesizeScopeState("kick", scope.StageInsertFX, scope.StageMaster, pre, post)
-	if st.TapA.Active {
-		t.Fatal("TapA (StageInsertFX) should be inactive on WASM bridge")
+// TestSynthesizeScopeState_AllSixStagesBridged pins the new contract: every
+// scope.Stage has a real source in ScopeStageSnapshots. AntiPop deliberately
+// shares the Synth snapshot (per the WASM AntiPop design decision); the
+// other five stages each have their own dedicated source.
+func TestSynthesizeScopeState_AllSixStagesBridged(t *testing.T) {
+	mkSnap := func(tag string) audio.AnalyzerSnapshot {
+		// Make each snapshot trivially distinguishable by its waveform contents.
+		return audio.AnalyzerSnapshot{
+			Peak:     0.5,
+			Waveform: []float64{float64(len(tag)), 1.0, -1.0},
+		}
 	}
-	if st.TapB.Active {
-		t.Fatal("TapB (StageMaster) should be inactive on WASM bridge")
+	snaps := ScopeStageSnapshots{
+		Synth:  mkSnap("synth"),
+		PreEQ:  mkSnap("preeq"),
+		PostEQ: mkSnap("posteq"),
+		Sends:  mkSnap("sends"),
+		Master: mkSnap("master"),
+	}
+
+	cases := []struct {
+		stage        scope.Stage
+		expectPeakAt float64 // first sample value identifies which snapshot was selected
+	}{
+		{scope.StageSynth, float64(len("synth"))},
+		{scope.StageAntiPop, float64(len("synth"))}, // shares Synth
+		{scope.StageInsertFX, float64(len("preeq"))},
+		{scope.StageEQ, float64(len("posteq"))},
+		{scope.StageSends, float64(len("sends"))},
+		{scope.StageMaster, float64(len("master"))},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(scope.StageLabel(tc.stage), func(t *testing.T) {
+			st := SynthesizeScopeState("kick", tc.stage, tc.stage, snaps)
+			if !st.TapA.Active {
+				t.Fatalf("stage %s: TapA should be Active when its snapshot has non-empty waveform", scope.StageLabel(tc.stage))
+			}
+			if len(st.TapA.Samples) != 3 {
+				t.Fatalf("stage %s: expected 3 samples, got %d", scope.StageLabel(tc.stage), len(st.TapA.Samples))
+			}
+			if st.TapA.Samples[0] != tc.expectPeakAt {
+				t.Fatalf("stage %s: routed to wrong snapshot (samples[0]=%v want %v)",
+					scope.StageLabel(tc.stage), st.TapA.Samples[0], tc.expectPeakAt)
+			}
+		})
 	}
 }
 
 func TestSynthesizeScopeState_InactiveOnEmpty(t *testing.T) {
-	empty := audio.AnalyzerSnapshot{}
-	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageEQ, empty, empty)
+	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageEQ, ScopeStageSnapshots{})
 	if st.TapA.Active || st.TapB.Active {
 		t.Fatalf("expected inactive taps on empty snapshots: A=%v B=%v", st.TapA.Active, st.TapB.Active)
+	}
+}
+
+// TestSynthesizeScopeState_PerInstrumentSplitActive pins the contract the
+// original Chn-tab bug violated: when the WASM bridge returns a non-empty
+// Synth snapshot AND a non-empty PreEQ snapshot for the same per-instrument
+// id, both TapA (Synth) and TapB (InsertFX) must surface as Active so the
+// renderer draws both traces. The bug was that EnableSynthAnalyzer was
+// never called for per-instrument ids, so Synth came back empty; this test
+// is the floor the WASM bridge has to clear once the analyser is wired.
+func TestSynthesizeScopeState_PerInstrumentSplitActive(t *testing.T) {
+	synth := audio.AnalyzerSnapshot{
+		Peak: 0.6, RMS: 0.42,
+		Waveform: []float64{0.1, 0.2, 0.3, 0.4},
+	}
+	preEQ := audio.AnalyzerSnapshot{
+		Peak: 0.3, RMS: 0.21,
+		Waveform: []float64{0.05, 0.1, 0.15, 0.2},
+	}
+	st := SynthesizeScopeState("kick", scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
+		Synth: synth,
+		PreEQ: preEQ,
+	})
+	if !st.TapA.Active {
+		t.Fatalf("TapA(Synth) should be Active with non-empty Synth snapshot: %+v", st.TapA)
+	}
+	if !st.TapB.Active {
+		t.Fatalf("TapB(InsertFX) should be Active with non-empty PreEQ snapshot: %+v", st.TapB)
+	}
+	if st.TapA.InstID != "kick" || st.TapB.InstID != "kick" {
+		t.Fatalf("InstID lost in synthesise: A=%q B=%q", st.TapA.InstID, st.TapB.InstID)
+	}
+	// Pin the bug-shaped failure mode too: with an empty Synth slot the
+	// renderer drops trace A (active=false) and the Chn legend loses its
+	// "A:" line — exactly the screenshot symptom.
+	stBroken := SynthesizeScopeState("kick", scope.StageSynth, scope.StageInsertFX, ScopeStageSnapshots{
+		Synth: audio.AnalyzerSnapshot{},
+		PreEQ: preEQ,
+	})
+	if stBroken.TapA.Active {
+		t.Fatal("TapA should be inactive when the Synth snapshot is empty (simulates un-wired analyser)")
+	}
+	if !stBroken.TapB.Active {
+		t.Fatal("TapB should still be active when only Synth is empty — drop is isolated to A")
 	}
 }

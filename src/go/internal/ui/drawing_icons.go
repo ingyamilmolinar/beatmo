@@ -395,3 +395,54 @@ var drawCircleIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	c := newIconCanvas(r)
 	iconFillCircle(dst, c, 12, 12, 8, col)
 }
+
+// Chevron + stem — a downward chevron with a vertical stem dropping into the
+// trace area. Used on the Chain tab to mark the trigger sample at Spacious.
+var drawTriggerMarkerIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeLine(dst, c, 6, 6, 12, 12, col)
+	iconStrokeLine(dst, c, 18, 6, 12, 12, col)
+	iconStrokeLine(dst, c, 12, 12, 12, 20, col)
+}
+
+// Headroom — a horizontal ceiling bar with a downward arrow indicating the
+// space below the limit. Used in the Levels icon-row cascade.
+var drawHeadroomIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeLine(dst, c, 4, 5, 20, 5, col)
+	iconStrokeLine(dst, c, 12, 8, 12, 20, col)
+	iconStrokeLine(dst, c, 8, 16, 12, 20, col)
+	iconStrokeLine(dst, c, 16, 16, 12, 20, col)
+}
+
+// Clip count — triangle with an exclamation bang. Signals clipping events.
+var drawClipCountIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeLine(dst, c, 12, 4, 21, 20, col)
+	iconStrokeLine(dst, c, 21, 20, 3, 20, col)
+	iconStrokeLine(dst, c, 3, 20, 12, 4, col)
+	iconStrokeLine(dst, c, 12, 10, 12, 15, col)
+	iconFillCircle(dst, c, 12, 18, 1, col)
+}
+
+// Loudest — a peak indicator: rising bars topped by a horizontal peak-hold
+// line. Used to mark the loudest channel readout in the icon-row cascade.
+var drawLoudestIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconFillRoundedRect(dst, c, 5, 16, 3, 4, 0.5, col)
+	iconFillRoundedRect(dst, c, 10, 12, 3, 8, 0.5, col)
+	iconFillRoundedRect(dst, c, 15, 7, 3, 13, 0.5, col)
+	iconStrokeLine(dst, c, 3, 5, 20, 5, col)
+}

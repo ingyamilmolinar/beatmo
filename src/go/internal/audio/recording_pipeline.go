@@ -29,13 +29,13 @@ import (
 // in-flight Taps drain (tracked via inflight counter), then channels are
 // closed and writers flushed/closed.
 type pipeline struct {
-	outputDir   string
-	sampleRate  int
-	format      AudioFormat
-	startTime   time.Time
-	maxSamples  int64
-	totalCount  atomic.Int64 // total master samples observed
-	done        atomic.Bool
+	outputDir  string
+	sampleRate int
+	format     AudioFormat
+	startTime  time.Time
+	maxSamples int64
+	totalCount atomic.Int64 // total master samples observed
+	done       atomic.Bool
 
 	// Shutdown coordination.
 	stopping atomic.Bool
@@ -49,8 +49,8 @@ type pipeline struct {
 	blockPool chan *captureBlock
 
 	// Per-channel state, indexed by instrument ID. Read-only after start.
-	channels   map[string]*channelState
-	masterCh   *channelState
+	channels map[string]*channelState
+	masterCh *channelState
 
 	// Worker shutdown.
 	workerWg sync.WaitGroup
@@ -480,10 +480,30 @@ func (p *pipeline) Channels() []EncodedChannel {
 	return out
 }
 
+// maxMIDIEventsPerSession bounds the per-session MIDI events buffer. Recording
+// is already 1800 s capped via pipelineConfig.MaxDuration; ~110 ev/s is well
+// above any human-realistic drumming density. The cap exists to guard against
+// runaway accumulation if the session somehow generates events at an
+// unbounded rate.
+const maxMIDIEventsPerSession = 200_000
+
+// midiDropChunk amortizes the cost of dropping over-cap events.
+const midiDropChunk = 1024
+
 // AppendMIDIEvent records a MIDI event captured during the session. Safe
-// to call from any goroutine.
+// to call from any goroutine. Drops the oldest midiDropChunk events if the
+// hard cap is reached so callers never block and the buffer never grows
+// without bound.
 func (p *pipeline) AppendMIDIEvent(evt MIDIEvent) {
 	p.midiMu.Lock()
+	if len(p.midiEvents) >= maxMIDIEventsPerSession {
+		// Drop oldest in chunks to amortize the slice copy.
+		drop := midiDropChunk
+		if drop > len(p.midiEvents) {
+			drop = len(p.midiEvents)
+		}
+		p.midiEvents = append(p.midiEvents[:0], p.midiEvents[drop:]...)
+	}
 	p.midiEvents = append(p.midiEvents, evt)
 	p.midiMu.Unlock()
 }

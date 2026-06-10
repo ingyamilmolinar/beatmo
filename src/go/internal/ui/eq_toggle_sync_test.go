@@ -26,9 +26,9 @@ func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 	}
 
 	// Both should start in the same state (EQ mode, not waveform).
-	if dv.eqWaveformMode != dv.eqPanelZone.WaveformMode() {
+	if dv.eqWaveformMode != (dv.eqPanelZone.ActiveTab() == TabWave) {
 		t.Fatalf("initial desync: dv.eqWaveformMode=%v zone=%v",
-			dv.eqWaveformMode, dv.eqPanelZone.WaveformMode())
+			dv.eqWaveformMode, (dv.eqPanelZone.ActiveTab() == TabWave))
 	}
 
 	initialMode := dv.eqWaveformMode
@@ -69,14 +69,14 @@ func TestEQToggleZoneSyncsDrumViewState(t *testing.T) {
 	restore()
 
 	// The zone's waveformMode should have toggled (from EQ to Wave).
-	if dv.eqPanelZone.WaveformMode() == initialMode {
+	if (dv.eqPanelZone.ActiveTab() == TabWave) == initialMode {
 		t.Fatal("zone waveformMode did not change after clicking Wave tab")
 	}
 
 	// DrumView's field should be synced.
-	if dv.eqWaveformMode != dv.eqPanelZone.WaveformMode() {
+	if dv.eqWaveformMode != (dv.eqPanelZone.ActiveTab() == TabWave) {
 		t.Fatalf("desync after toggle: dv.eqWaveformMode=%v zone=%v",
-			dv.eqWaveformMode, dv.eqPanelZone.WaveformMode())
+			dv.eqWaveformMode, (dv.eqPanelZone.ActiveTab() == TabWave))
 	}
 }
 
@@ -134,7 +134,7 @@ func TestEQToggleRoundTrip(t *testing.T) {
 	if dv.eqWaveformMode == initial {
 		t.Fatal("clicking Wave tab did not change eqWaveformMode")
 	}
-	if dv.eqWaveformMode != dv.eqPanelZone.WaveformMode() {
+	if dv.eqWaveformMode != (dv.eqPanelZone.ActiveTab() == TabWave) {
 		t.Fatal("desync after switching to Wave")
 	}
 
@@ -143,7 +143,7 @@ func TestEQToggleRoundTrip(t *testing.T) {
 	if dv.eqWaveformMode != initial {
 		t.Fatalf("clicking EQ tab should restore initial=%v, got %v", initial, dv.eqWaveformMode)
 	}
-	if dv.eqWaveformMode != dv.eqPanelZone.WaveformMode() {
+	if dv.eqWaveformMode != (dv.eqPanelZone.ActiveTab() == TabWave) {
 		t.Fatal("desync after switching back to EQ")
 	}
 }

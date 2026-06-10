@@ -150,6 +150,14 @@ var (
 	colEQFilterHandleActive = genColorVizBarPeak                                     // active state reuses viz-bar-peak
 	colEQFilterLine         = WithAlpha(genColorVizBar, genAlphaSubtle)              // filter line @ alpha.subtle (60)
 
+	// Spectrum frequency-group tinting (warm = bass, neutral = mids, cool
+	// = treble). Sourced from DESIGN.md `viz-bass` / `viz-mids` /
+	// `viz-treble`. Used by the Spectrum tab's Bass/Mids/Treble bracket
+	// strip + group highlight fills.
+	colVizBass   = genColorVizBass
+	colVizMids   = genColorVizMids
+	colVizTreble = genColorVizTreble
+
 	// Graph-pane node / signal / edge — colors + geometry both sourced
 	// from DESIGN.md (Phase 1 colors + Phase 4 geometry now extended).
 	NodeUI   = NodeStyle{Radius: float32(genGeomNodeRadius), Fill: genColorNodeFill, Border: genColorNodeBorder}
@@ -182,7 +190,7 @@ var (
 	colIncDecIconHi  = genColorIncdecIconHi             // amber for +/- icons (desktop), DESIGN.md incdec-icon-hi
 	colVolumeIconOn  = colTextPrimary                   // primary when volume > 0
 	colVolumeIconOff = colTextDisabled                  // disabled when muted/zero
-	colFollowActive  = colAccentBright                  // bright cyan for follow-on
+	colFollowActive  = colAccentBright                  // primary-bright coral for follow-on (DESIGN.md single-chrome-accent)
 	colRecordIdle    = genColorRecordIdle                // red circle for record button (DESIGN.md record-idle, opaque)
 	colRecordActive  = genColorRecordActive              // bright red when recording (DESIGN.md record-active, opaque)
 

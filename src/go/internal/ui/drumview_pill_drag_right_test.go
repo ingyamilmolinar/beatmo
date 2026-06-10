@@ -165,9 +165,11 @@ func newTestDrumViewBottomHalf(t *testing.T, screenW, screenH int) *DrumView {
 // post-drag layout is coherent for every row simultaneously.
 func TestPillDragRightWithSixRowsKeepsLayoutCoherent(t *testing.T) {
 	assertDefaultParityState(t)
-	// Use realistic "bottom half" bounds: drum view is ~360px tall, which
-	// — combined with the EQ panel's height — leaves only ~6 visible rows.
-	dv := newTestDrumViewBottomHalf(t, 1280, 720)
+	// Use a viewport that comfortably fits all 6 rows after the desktop
+	// row-height bump (28→36): 1280x900 gives ~450 px of bottom-half drum
+	// view, leaving the rack rect tall enough for 6 rows of 36 px plus the
+	// "+" footer plus EQ chrome.
+	dv := newTestDrumViewBottomHalf(t, 1280, 900)
 	addRowsForLayoutTest(t, dv, 5) // 1 default + 5 = 6 rows
 
 	dv.refreshWidgetLayout()

@@ -102,13 +102,31 @@ func TestSoakHeapBounded_PlayingWithGraphEdits(t *testing.T) {
 // leak that this catches but the individual scenarios miss is in the
 // interaction between mutation paths (e.g. graph edit during FX churn
 // leaving parity prune racing the rebuild).
+//
+// Frame counts: 8 400 in -short mode (the historical baseline, ~10× the
+// production OOM observation), 50 000 in the long mode (~6× longer; drives
+// playing abs to ~800 k, well past the windowCap=4096 plateau and into
+// archive territory). The long mode catches regressions in the sliding
+// window + cold archive interaction that the short window misses.
 func TestSoakHeapBounded_PlayingProductionLike(t *testing.T) {
+	frames := 50_000
+	editEvery := 3000
+	fxChurnEvery := 1000
+	fxParamChurnEvery := 25
+	graphEditEvery := 3000
+	if testing.Short() {
+		frames = 8400
+		editEvery = 600
+		fxChurnEvery = 200
+		fxParamChurnEvery = 5
+		graphEditEvery = 600
+	}
 	runSoakHeapBound(t, soakScenario{
 		name:              "playing-production-like",
 		playing:           true,
-		editEvery:         600,
-		fxChurnEvery:      200,
-		fxParamChurnEvery: 5,
-		graphEditEvery:    600,
-	}, 8400, 300, 4, 1.5, 1.3)
+		editEvery:         editEvery,
+		fxChurnEvery:      fxChurnEvery,
+		fxParamChurnEvery: fxParamChurnEvery,
+		graphEditEvery:    graphEditEvery,
+	}, frames, 1500, 4, 1.5, 1.3)
 }

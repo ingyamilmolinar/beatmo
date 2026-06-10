@@ -121,8 +121,9 @@ func (r *RenameComponent) Value() string {
 	return r.textBox.Value()
 }
 
-// TextBox returns the internal TextInput, or nil in mobile mode.
-// Callers may use this to share the same TextInput for legacy compatibility.
+// TextBox returns the internal desktop TextInput, or nil in mobile mode
+// (where native text entry is used instead). The ctor wires the returned
+// box to dv.renameBox so the rename portal shares one input widget.
 func (r *RenameComponent) TextBox() *TextInput {
 	return r.textBox
 }

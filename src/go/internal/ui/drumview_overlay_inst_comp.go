@@ -973,6 +973,7 @@ func (m *InstrumentMenuComponent) toggleFavoriteAt(i int) {
 	id := m.favIDs[i]
 	now := !m.props.Favorites.Get(id)
 	m.props.Favorites.Set(id, now)
+	emitFavoriteToggled(id, now)
 	if m.props.OnFavorite != nil {
 		m.props.OnFavorite(id, now)
 	}
@@ -1071,7 +1072,7 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 	}
 
 	// Close button (highest z-order, outside scroll area)
-	if m.closeBtn != nil && m.closeBtn.Handle(x, y, pressed) {
+	if m.closeBtn != nil && m.closeBtn.HandleInputResult(x, y, pressed) != InputIgnored {
 		return InputConsumed
 	}
 
@@ -1088,7 +1089,7 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 
 	// Handle back button (suppress during touch scroll)
 	if m.state.mode == InstMenuModeInstruments && m.backBtn != nil && !touchSuppressButtons {
-		if m.backBtn.Handle(x, y, pressed) {
+		if m.backBtn.HandleInputResult(x, y, pressed) != InputIgnored {
 			return InputConsumed
 		}
 	}
@@ -1096,7 +1097,7 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 	// Handle category buttons (suppress during touch scroll)
 	if m.state.mode == InstMenuModeCategories && !touchSuppressButtons {
 		for _, btn := range m.categoryBtns {
-			if btn.Handle(x, y, pressed) {
+			if btn.HandleInputResult(x, y, pressed) != InputIgnored {
 				return InputConsumed
 			}
 		}
@@ -1149,7 +1150,7 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 	// Handle instrument buttons (suppress during drag or touch scroll)
 	if m.state.mode == InstMenuModeInstruments && !m.scroll.Dragging() && !touchSuppressButtons {
 		for _, btn := range m.instBtns {
-			if btn.Handle(x, y, pressed) {
+			if btn.HandleInputResult(x, y, pressed) != InputIgnored {
 				return InputConsumed
 			}
 		}

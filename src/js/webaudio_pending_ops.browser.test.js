@@ -279,6 +279,71 @@ try {
   console.log("  PASS");
   await page4.close();
 
+  // ========================================================================
+  // Scenario 5: Pending insert effects are applied after context unlock.
+  //
+  // Reproduces the bug where the WASM startup demo imports per-instrument
+  // insert effects (e.g. distortion on Snare) before the AudioContext is
+  // unlocked. updateInsertEffects() used to silently early-return on
+  // !hasCtx(), so the slot config was lost; the user would only hear the
+  // effect after toggling it off/on (which fires updateInsertEffects again
+  // with a live context).
+  // ========================================================================
+  console.log("--- Scenario 5: Pending insert effects ---");
+
+  const page5 = await browser.newPage();
+  await page5.goto(`http://localhost:${port}/pending.html`);
+  await page5.waitForFunction(() =>
+    typeof window.updateInsertEffects === "function" &&
+    typeof window.__channelInsertFXCount === "function"
+  );
+
+  const s5 = await page5.evaluate(async () => {
+    const hasCtxBefore = !!window.__audioCtx;
+    const fxBefore = window.__channelInsertFXCount("snare");
+
+    // Queue an insert effect chain before any AudioContext exists. This is
+    // exactly what happens during demo Import() at startup on mobile, where
+    // the AudioContext is suspended pending a user gesture.
+    const slots = [
+      { type: "distortion", enabled: true, params: { drive: 8, tone: 4000, mix: 1 } },
+    ];
+    window.updateInsertEffects("snare", JSON.stringify(slots));
+
+    // Trigger user-gesture unlock.
+    document.dispatchEvent(new Event("pointerdown"));
+    if (typeof window.resumeAudio === "function") window.resumeAudio();
+
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      if (window.__audioCtx && window.__audioCtx.state === "running") break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Allow applyPendingOps + rewireChannel to settle.
+    await new Promise((r) => setTimeout(r, 200));
+
+    const hasCtxAfter = !!window.__audioCtx;
+    const ctxState = window.__audioCtx ? window.__audioCtx.state : "none";
+    const fxAfter = window.__channelInsertFXCount("snare");
+
+    // Clean up
+    try { window.updateInsertEffects("snare", "[]"); } catch (_) {}
+
+    return { hasCtxBefore, fxBefore, hasCtxAfter, ctxState, fxAfter };
+  });
+
+  console.log(`  Ctx before: ${s5.hasCtxBefore}, FX before: ${s5.fxBefore}, Ctx after: ${s5.hasCtxAfter} (${s5.ctxState}), FX after: ${s5.fxAfter}`);
+  if (s5.hasCtxBefore) throw new Error(`Scenario 5 FAIL: AudioContext should not exist before unlock`);
+  if (s5.fxBefore !== 0) throw new Error(`Scenario 5 FAIL: insert FX count before context should be 0, got ${s5.fxBefore}`);
+  if (!s5.hasCtxAfter || s5.ctxState !== "running") {
+    throw new Error(`Scenario 5 FAIL: AudioContext did not reach running state after unlock (state=${s5.ctxState})`);
+  }
+  if (s5.fxAfter !== 1) {
+    throw new Error(`Scenario 5 FAIL: pending insert effect was dropped — expected 1 FX subgraph after unlock, got ${s5.fxAfter}. This means updateInsertEffects() did not queue while the context was suspended.`);
+  }
+  console.log("  PASS");
+  await page5.close();
+
   console.log("\nAll pending ops tests passed.");
   if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "audio_pending_ops");
 } catch (err) {

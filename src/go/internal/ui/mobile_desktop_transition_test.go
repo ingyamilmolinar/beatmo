@@ -157,14 +157,14 @@ func TestSmallScreenTransitionClearsEQMode(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 	g.Layout(390, 844)
-	g.drum.mobileEQMode = true
+	g.drum.SetMobileEQMode(true)
 
 	// Go desktop
 	forceSmallScreenForTest = false
 	g.Layout(1200, 800)
 
-	if g.drum.mobileEQMode {
-		t.Fatal("expected mobileEQMode=false after desktop transition")
+	if g.drum.MobileEQMode() {
+		t.Fatal("expected MobileEQMode()=false after desktop transition")
 	}
 	if g.drum.currentViewMode != viewModeRows {
 		t.Fatalf("expected currentViewMode=viewModeRows after desktop transition, got %v", g.drum.currentViewMode)

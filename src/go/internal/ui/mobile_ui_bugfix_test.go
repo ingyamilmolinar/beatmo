@@ -55,16 +55,18 @@ func TestSidebarResizeHandlePillOrientation(t *testing.T) {
 	}
 }
 
-// TestMobileTrackButtonHidden verifies the Track button is hidden on mobile.
-func TestMobileTrackButtonHidden(t *testing.T) {
+// TestMobileTrackButtonInline verifies the Track button is rendered as an
+// inline chip on the timeline ruler header on mobile (Theme 2 — was
+// previously hidden).
+func TestMobileTrackButtonInline(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
 	dv := newDrumViewForTrackTest(t, true)
 	trackR := dv.TrackBtnForTest().Rect()
 
-	if !trackR.Empty() {
-		t.Fatalf("Track button should be hidden on mobile, got %v", trackR)
+	if trackR.Empty() {
+		t.Fatalf("Track chip should be visible on mobile (inline on timeline header)")
 	}
 }
 
@@ -110,9 +112,13 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 		t.Errorf("bpmIncBtn height %d should match play height %d within 2 px on mobile horizontal stepper (B1)", bpmIncH, playH)
 	}
 
-	// Track button is hidden on mobile (desktop-only).
+	// Track button now lives inline as a chip on the timeline ruler
+	// header on mobile (Theme 2). Verify it's non-empty and meets the
+	// touch-target floor.
 	trackR := dv.trackBtn().Rect()
-	if !trackR.Empty() {
-		t.Errorf("track button should be hidden on mobile, got %v", trackR)
+	if trackR.Empty() {
+		t.Errorf("track chip should be visible on mobile (inline on timeline)")
+	} else if trackR.Dx() < TouchMinTarget() || trackR.Dy() < TouchMinTarget() {
+		t.Errorf("track chip %v below touch target %d", trackR, TouchMinTarget())
 	}
 }

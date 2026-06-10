@@ -14,7 +14,7 @@ func (Shaker) NewVoice(bpm, sampleRate int) Voice {
 	cfg := ConfigForInstrument("shaker")
 	samples := int(float64(sampleRate) * cfg.DurationSec)
 	buf := make([]float32, samples)
-	renderShaker(buf, sampleRate, samples)
+	renderShakerVoice(buf, sampleRate, samples) // modular fast path (Phase-6 cutover)
 	normalizeAndScale(buf, "shaker")
 	globalVoiceCache.Put(key, buf)
 	return &cVoice{buf: buf}

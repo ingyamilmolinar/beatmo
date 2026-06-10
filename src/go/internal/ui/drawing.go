@@ -8,6 +8,26 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// drawRectOp is the reusable DrawImageOptions for drawRect's pixel blits.
+// Update + Draw run on a single UI goroutine (same reuse contract as the
+// drawArcVS/drawArcIS scratch buffers in knob.go), and ebiten's DrawImage
+// copies the options before returning, so a package-level scratch is safe.
+// Pre-fix every drawRect call heap-allocated its options struct via the
+// escaping &op — drawRect is the universal fill primitive (thousands of
+// calls per frame on the audio-panel tabs), making it the single largest
+// avoidable per-frame allocation source on WASM where GC starvation is the
+// binding constraint.
+var drawRectOp ebiten.DrawImageOptions
+
+// drawRectBlit blits the 1x1 pixel px scaled to (sx, sy) at (tx, ty) using
+// the shared drawRectOp scratch.
+func drawRectBlit(dst *ebiten.Image, px *ebiten.Image, sx, sy, tx, ty float64) {
+	drawRectOp.GeoM.Reset()
+	drawRectOp.GeoM.Scale(sx, sy)
+	drawRectOp.GeoM.Translate(tx, ty)
+	dst.DrawImage(px, &drawRectOp)
+}
+
 // drawRect draws a rectangle. It is defined as a variable so tests can
 // override it to capture draw calls.
 var drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
@@ -18,33 +38,14 @@ var drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled 
 	// This avoids vector path overhead and is significantly faster in WASM.
 	px := pixel(c)
 	if filled {
-		var op ebiten.DrawImageOptions
-		op.GeoM.Scale(float64(r.Dx()), float64(r.Dy()))
-		op.GeoM.Translate(float64(r.Min.X), float64(r.Min.Y))
-		dst.DrawImage(px, &op)
+		drawRectBlit(dst, px, float64(r.Dx()), float64(r.Dy()), float64(r.Min.X), float64(r.Min.Y))
 		return
 	}
-	// 1px stroke on each side.
-	// Top
-	var top ebiten.DrawImageOptions
-	top.GeoM.Scale(float64(r.Dx()), 1)
-	top.GeoM.Translate(float64(r.Min.X), float64(r.Min.Y))
-	dst.DrawImage(px, &top)
-	// Bottom
-	var bot ebiten.DrawImageOptions
-	bot.GeoM.Scale(float64(r.Dx()), 1)
-	bot.GeoM.Translate(float64(r.Min.X), float64(r.Max.Y-1))
-	dst.DrawImage(px, &bot)
-	// Left
-	var left ebiten.DrawImageOptions
-	left.GeoM.Scale(1, float64(r.Dy()))
-	left.GeoM.Translate(float64(r.Min.X), float64(r.Min.Y))
-	dst.DrawImage(px, &left)
-	// Right
-	var right ebiten.DrawImageOptions
-	right.GeoM.Scale(1, float64(r.Dy()))
-	right.GeoM.Translate(float64(r.Max.X-1), float64(r.Min.Y))
-	dst.DrawImage(px, &right)
+	// 1px stroke on each side: top, bottom, left, right.
+	drawRectBlit(dst, px, float64(r.Dx()), 1, float64(r.Min.X), float64(r.Min.Y))
+	drawRectBlit(dst, px, float64(r.Dx()), 1, float64(r.Min.X), float64(r.Max.Y-1))
+	drawRectBlit(dst, px, 1, float64(r.Dy()), float64(r.Min.X), float64(r.Min.Y))
+	drawRectBlit(dst, px, 1, float64(r.Dy()), float64(r.Max.X-1), float64(r.Min.Y))
 }
 
 // drawButton renders a filled rectangle with a border. It can be overridden in tests.

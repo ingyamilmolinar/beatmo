@@ -184,6 +184,9 @@ var tokenBackedColorNames = map[string]bool{
 	"colEQBar":         true,
 	"colEQBarPeak":     true,
 	"colWaveTrace":     true,
+	"colVizBass":       true, // viz-bass (Phase 5 audio-panel spectrum tinting)
+	"colVizMids":       true, // viz-mids
+	"colVizTreble":     true, // viz-treble
 	"colPanelBG":       true, // surface-overlay
 	"colEQBg":          true, // viz-bg
 	"colEQCurve":       true, // viz-curve

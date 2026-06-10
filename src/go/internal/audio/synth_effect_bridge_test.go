@@ -4,15 +4,17 @@ import "testing"
 
 var synthParamSupportedIDs = []string{"snare", "kick", "hihat", "clap", "tom", "cowbell"}
 
+// Synth-tab redesign (2026-05-16) dropped attack + color; the API now
+// returns the 6-knob superset matching synth_params.h.
 var synthParamExpectedNames = []string{
-	"pitch", "decay", "tone", "attack", "drive", "body", "color", "brightness",
+	"pitch", "decay", "tone", "drive", "body", "brightness",
 }
 
 func TestSynthParamDefsSupportedInstruments(t *testing.T) {
 	for _, id := range synthParamSupportedIDs {
 		params := SynthParamDefs(id)
-		if len(params) != 8 {
-			t.Errorf("SynthParamDefs(%q) length=%d, want 8", id, len(params))
+		if len(params) != 6 {
+			t.Errorf("SynthParamDefs(%q) length=%d, want 6", id, len(params))
 			continue
 		}
 		for i, name := range synthParamExpectedNames {

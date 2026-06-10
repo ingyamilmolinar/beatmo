@@ -46,6 +46,7 @@ func (g *Game) initJSInsertEffects() {
 		et := audio.EffectType(args[1].String())
 		g.bumpParityGen("insert-fx-add", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		idx := audio.AddInsertEffect(id, et, nil)
+		emitInsertEffectAdded(id, idx, string(et))
 		return idx
 	}))
 
@@ -58,6 +59,7 @@ func (g *Game) initJSInsertEffects() {
 		slot := args[1].Int()
 		g.bumpParityGen("insert-fx-remove", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		audio.RemoveInsertEffect(id, slot)
+		emitInsertEffectRemoved(id, slot)
 		return nil
 	}))
 
@@ -89,6 +91,7 @@ func (g *Game) initJSInsertEffects() {
 		// changing, only an audio knob value, so no parity coordination is
 		// needed.
 		audio.SetInsertEffectParam(id, slot, param, value)
+		emitInsertEffectParam(id, slot, param, value)
 		return nil
 	}))
 

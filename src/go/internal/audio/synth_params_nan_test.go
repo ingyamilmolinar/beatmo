@@ -19,7 +19,9 @@ import (
 // the underlying NaN is still a real defect.
 //
 // The canonical failure mode is decay=0: the envelope formula
-//   exp(-t * decay_rate * (1.0/decayMul - 1.0))
+//
+//	exp(-t * decay_rate * (1.0/decayMul - 1.0))
+//
 // computes 1/0 = +Inf at decayMul=0, then at t=0 the product
 // 0 * decay_rate * +Inf = NaN, and exp(NaN) = NaN, blanking the buffer.
 // Both apply_post_params (drums.c:1709) and the six hand-written _p()

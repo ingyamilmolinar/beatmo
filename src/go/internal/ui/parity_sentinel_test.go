@@ -2,6 +2,7 @@ package ui
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
@@ -90,6 +91,13 @@ func TestParityHighlightRequiredWhenAudioNow(t *testing.T) {
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
 	// Audio is "now" (when=0) so highlight should exist; we leave highlight map empty to trigger mismatch.
 	g.recordParityAudio(0, abs, 0, "kick", 1, 0, 1, g.audioGen.Load())
+	// Age the event past the in-flight grace window: a freshly-recorded event
+	// is allowed one Update drain for its highlight to land (see the
+	// RecordedAt grace in parityScan); the genuine violation this sentinel
+	// guards is an event whose highlight never arrived.
+	g.parityMu.Lock()
+	g.parityAudio[len(g.parityAudio)-1].RecordedAt = time.Now().Add(-500 * time.Millisecond)
+	g.parityMu.Unlock()
 
 	g.parityScan("test-audio-now")
 

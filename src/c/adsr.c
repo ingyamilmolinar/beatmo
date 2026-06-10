@@ -25,13 +25,18 @@ EXPORT void adsr_init(adsr_t *env, int sr,
 
 EXPORT void adsr_trigger(adsr_t *env) {
     env->stage = ADSR_ATTACK;
-    env->target = 1.0f;
     float attack_samples = env->attack_sec * (float)env->sr;
     if (env->exponential) {
-        /* Exponential attack: rate controls convergence speed */
+        /* Exponential attack: aim ABOVE 1.0 so the asymptotic curve actually
+         * crosses the value>=1.0 threshold and transitions to DECAY. Aiming at
+         * exactly 1.0 would approach it asymptotically and never transition,
+         * leaving the envelope stuck in ATTACK forever. The attack-stage tick
+         * clamps value to 1.0 on transition. */
+        env->target = 1.2f;
         env->rate = (attack_samples > 0) ? 3.0f / attack_samples : 1.0f;
     } else {
         /* Linear attack: fixed increment per sample */
+        env->target = 1.0f;
         env->rate = (attack_samples > 0) ? (1.0f - env->value) / attack_samples : 1.0f;
     }
 }

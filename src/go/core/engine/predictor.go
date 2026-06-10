@@ -39,11 +39,28 @@ type Predictor struct {
 	loopStartByRow []int
 	loopLenByRow   []int
 
-	// Prediction buffers
+	// Prediction buffers — sliding window per session. The three slices share a
+	// single windowStart (abs of slot 0) and windowEnd (exclusive abs upper
+	// bound). Once windowEnd-windowStart reaches windowCap, further Ensure
+	// calls slide the window forward in place rather than growing — bounding
+	// retained memory at O(rows × 3 × windowCap) regardless of session length.
+	// Reads at idx < windowStart return false (evicted; the timeline cold
+	// archive at internal/timeline/archive.go owns historical playback).
 	audibleByRow   [][]bool
 	visibleByRow   [][]bool
 	triggeredByRow [][]bool
-	horizon        int
+	windowStart    int // abs of slot 0 in every per-row buffer
+	windowEnd      int // exclusive abs upper bound (== windowStart + buffer length when extended)
+	windowCap      int // max retained subdivisions; 0 → defaultPredictorWindowCap on first Ensure
+	// visibleMinAbs anchors the lower edge of the retained window to the UI's
+	// currently-displayed region: Ensure never slides windowStart past this
+	// value, and re-extends backward when visibleMinAbs falls below windowStart
+	// (the scroll-back case). The sentinel -1 means "no anchor declared";
+	// in that state the predictor falls back to its standalone cap-only
+	// eviction policy so engine-only tests and headless callers behave as
+	// before. Reset to -1 by resetBuffersLocked because a path change
+	// invalidates whatever the UI declared previously.
+	visibleMinAbs int
 
 	// Incremental contexts at current horizon
 	countsByRow        map[int]map[model.NodeID]int
@@ -70,6 +87,12 @@ type Predictor struct {
 	logger *game_log.Logger
 }
 
+// defaultPredictorWindowCap is the per-row sliding-window ceiling when
+// SetWindowCap has not been called. ~8 visible windows of 512 subdivisions
+// gives reconcileFrozen + parity scan + visible-window draw all the lookback
+// they need; older abs queries are answered by the timeline cold archive.
+const defaultPredictorWindowCap = 4096
+
 func NewPredictor(graph *model.Graph, logger *game_log.Logger) *Predictor {
 	return &Predictor{
 		graph:              graph,
@@ -79,5 +102,33 @@ func NewPredictor(graph *model.Graph, logger *game_log.Logger) *Predictor {
 		lastTrigByRow:      make(map[int]map[model.NodeID]bool),
 		bgQuit:             make(chan struct{}),
 		logger:             logger,
+		windowCap:          defaultPredictorWindowCap,
+		visibleMinAbs:      -1, // no UI anchor declared yet
 	}
+}
+
+// SetWindowCap overrides the per-row sliding-window ceiling. Values <= 0 are
+// ignored. Idempotent. Internal/UI calls this after engine.New to thread the
+// RuntimeProfile.PredictorWindowCap value; tests call it directly to exercise
+// small caps without driving abs into the millions.
+func (p *Predictor) SetWindowCap(n int) {
+	if n <= 0 {
+		return
+	}
+	p.mu.Lock()
+	p.windowCap = n
+	p.mu.Unlock()
+}
+
+// SetVisibleMinAbs anchors the retained window's lower edge: Ensure will not
+// slide windowStart past this abs. UI calls this each refreshDrumRow with the
+// current scroll origin so the displayed range is never evicted. Negative
+// values are clamped to 0.
+func (p *Predictor) SetVisibleMinAbs(abs int) {
+	if abs < 0 {
+		abs = 0
+	}
+	p.mu.Lock()
+	p.visibleMinAbs = abs
+	p.mu.Unlock()
 }

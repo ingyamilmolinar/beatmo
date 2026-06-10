@@ -49,7 +49,7 @@ func finalizeRecording(session *recordingSession, result *RecordingResult, logge
 		Channels: len(result.Channels),
 		Err:      err,
 	}
-	hooks.PublishKind(hooks.EventRecordStop, payload)
+	hooks.PublishWithSource(hooks.EventRecordStop, payload, hooks.CaptureSource(0))
 	logger("[RECORDING] finalize complete dir=%s drops=%d", session.dir, payload.Drops)
 }
 

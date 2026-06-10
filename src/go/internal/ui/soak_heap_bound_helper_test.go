@@ -39,6 +39,20 @@ type soakScenario struct {
 	// deletes it every N frames during play. Catches leaks in graph mutation
 	// + predDirty rebuild + parity-gen churn paths that pure playback misses.
 	graphEditEvery int
+	// synthTabOpen, when true, switches EQPanelZone to TabSynth before the
+	// play loop and re-applies the Synth-tab layout each Draw so the helper
+	// exercises the production OOM stack — EQPanelZone.Draw → drawSynthTab →
+	// drawSynthSectionCard → Knob.Draw → drawArc. Without this the helper
+	// draws the row rack and never enters the synth-panel code path the
+	// user crashed in.
+	synthTabOpen bool
+	// paramChurnEvery, when > 0, calls audio.SetInstrumentParam on row 0's
+	// instrument every N frames so hashRecipeParams flips and the voice
+	// cache key rotates. Drives the SetInstrumentParam → voiceCacheInvalidate
+	// → platformInstrumentParamsChanged path and the JS bridge marshal on
+	// WASM. Requires synthTabOpen or an instrument id assignment so the
+	// param sets land on a recipe-bound channel.
+	paramChurnEvery int
 }
 
 // wasmHeapCeilingBytes is the WASM linear-memory effective ceiling we project
@@ -153,6 +167,33 @@ func runSoakHeapBound(
 	// Draws reuse it.
 	screen := ebiten.NewImage(1280, 720)
 
+	// Switch the EQPanelZone to the Synth tab before play starts so the
+	// soak loop's Draw goes through the same EQPanelZone.Draw → drawSynthTab
+	// → drawSynthSectionCard → Knob.Draw stack the production crash landed
+	// in. Without this, draw exercises drawDrumPane → RowRackZone instead
+	// and the regression hides.
+	if sc.synthTabOpen {
+		// Anchor a recipe binding for row 0 + row 1 so the synth tab has a
+		// non-empty ParamDef set to render. ResetInstrumentParams is wired
+		// to the manager in synth_recipe.go and cleanly drops the entries
+		// at test teardown.
+		if len(g.drum.Rows) > 0 && g.drum.Rows[0].Instrument != "" {
+			audio.BindInstrumentToRecipe(g.drum.Rows[0].Instrument, "drum-snare")
+			t.Cleanup(func() { audio.ResetInstrumentParams(g.drum.Rows[0].Instrument) })
+		}
+		if len(g.drum.Rows) > 1 && g.drum.Rows[1].Instrument != "" {
+			audio.BindInstrumentToRecipe(g.drum.Rows[1].Instrument, "drum-kick")
+			t.Cleanup(func() { audio.ResetInstrumentParams(g.drum.Rows[1].Instrument) })
+		}
+		g.drum.eqPanelZone.SetActiveTab(TabSynth)
+		g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+		// Drive one Update so the tree picks up the new hit areas and
+		// buildSynthTab populates instEditorKnobs; without this the very
+		// first Draw inside the loop sees zero knobs and the regression
+		// hides until the natural layout-dirty heuristic re-fires.
+		_ = g.Update()
+	}
+
 	if sc.playing {
 		g.SetPlaying(true)
 		// Let playback actually transition to running before sampling.
@@ -192,6 +233,9 @@ func runSoakHeapBound(
 		}
 		if sc.playing && sc.graphEditEvery > 0 && f > 0 && f%sc.graphEditEvery == 0 {
 			toggleSoakGraphEdit(g, &graphChurn)
+		}
+		if sc.synthTabOpen && sc.paramChurnEvery > 0 && f > 0 && f%sc.paramChurnEvery == 0 {
+			toggleSoakSynthParamChurn(g, f)
 		}
 		if f%sampleEvery == 0 {
 			samples = append(samples, sampleHeap(f))
@@ -425,6 +469,34 @@ func toggleSoakFXParamChurn(g *Game, f int) {
 	audio.SetInsertEffectParam(id, 0, "drive", val)
 }
 
+// toggleSoakSynthParamChurn cycles synth recipe params on row 0 + row 1
+// every tick so hashRecipeParams flips. Each call invalidates the voice
+// cache for that instrument (via voiceCacheInvalidate inside
+// SetInstrumentParam) AND publishes a hooks event AND calls
+// platformInstrumentParamsChanged. Mirrors a user dragging a synth-tab
+// knob during sustained playback — the exact UX the production OOM trace
+// landed inside.
+//
+// Two params are touched so the manager.params map for each instrument
+// holds more than a single key (a one-key map is degenerate and would
+// underexercise the manager's lock-bound path).
+func toggleSoakSynthParamChurn(g *Game, f int) {
+	if g == nil || g.drum == nil || len(g.drum.Rows) == 0 {
+		return
+	}
+	pitch := -12 + 24*math.Sin(float64(f)/73.0)
+	decay := 0.25 + 0.75*math.Sin(float64(f)/41.0)
+	if id := g.drum.Rows[0].Instrument; id != "" {
+		audio.SetInstrumentParam(id, "pitch", pitch)
+		audio.SetInstrumentParam(id, "decay", decay)
+	}
+	if len(g.drum.Rows) > 1 {
+		if id := g.drum.Rows[1].Instrument; id != "" {
+			audio.SetInstrumentParam(id, "pitch", pitch*0.5)
+		}
+	}
+}
+
 // graphChurnState retains the most recently added churn node so the next
 // invocation can delete it. Reset between runs by runSoakHeapBound.
 type graphChurnState struct {
@@ -507,47 +579,90 @@ func checkComponentBounds(g *Game, sc soakScenario, frames int) []string {
 				"predictor horizon=%d exceeds bound=%d (frames=%d) — Ensure() is being called with horizons growing past elapsed wall-clock",
 				h, horizonMaxBound, frames))
 		}
-		// Predictor slice growth pattern. Production OOM at 10:20 of playback
-		// (~14 835-element horizon) was caused by Ensure reallocating per step:
-		// `make([]bool, len, horizon)` set cap=horizon exactly, so every
-		// single-step horizon advance reallocated the slice. Total allocations
-		// across N steps were O(N^2) bytes — at production rate ~24 abs/s for
-		// 600 s, ~1.9 GB of garbage that WASM's single-threaded GC could not
-		// reclaim before the 2 GB ceiling. Fix is geometric growth in
-		// engine/predictor_compute.go::growBoolBuf.
-		//
-		// We check the pattern indirectly: after many single-step Ensure calls,
-		// a geometric grower will have cap ≥ ~next power of two ≥ horizon, so
-		// (cap - len) > 0 typically. A per-step grower has cap == len exactly.
-		// Sample 10 evenly-spaced post-warmup horizons and assert the cap-to-len
-		// relationship demonstrates amortized growth rather than per-call
-		// reallocation. If horizon advanced in single steps and cap == len for
-		// every sample, regression is confirmed.
+		// Predictor slice growth pattern. Two healthy regimes are accepted:
+		//   1) Geometric growth ramp (early in playback, before windowCap is
+		//      reached): cap > len for at least one row × buffer, indicating
+		//      growBoolBuf is doubling cap rather than reallocating per step.
+		//   2) Sliding-window plateau (after windowCap subdivisions have been
+		//      retained): len == windowCap for every row × buffer, with future
+		//      Ensure calls sliding in place rather than allocating.
+		// The regression condition is cap == len AND len < windowCap — that
+		// would mean Ensure is reallocating per step inside the growth ramp.
+		// Production OOM at 10:20 of playback (~14 835-element horizon) was
+		// this exact regression; fix is in growBoolBuf + slideAllRowsLocked.
 		if h := g.engine.Predictor.Horizon(); h > 256 && sc.playing {
 			perRowCaps := g.engine.Predictor.BufferCapsForTest()
-			anyGrown := false
+			_, _, windowCap := g.engine.Predictor.WindowBoundsForTest()
+			healthy := false
 			for _, perBufCaps := range perRowCaps {
 				for _, capLen := range perBufCaps {
-					// capLen is [cap, len]. With per-step regression cap == len.
-					// With geometric growth cap > len for at least some buffers
-					// once horizon advances past the initial doubling.
+					// capLen is [cap, len]. Either regime above is healthy.
 					if capLen[0] > capLen[1] && capLen[1] > 0 {
-						anyGrown = true
+						healthy = true
+						break
+					}
+					if windowCap > 0 && capLen[1] == windowCap {
+						healthy = true
 						break
 					}
 				}
-				if anyGrown {
+				if healthy {
 					break
 				}
 			}
-			if !anyGrown && len(perRowCaps) > 0 {
+			if !healthy && len(perRowCaps) > 0 {
 				fails = append(fails, fmt.Sprintf(
-					"predictor slice growth is per-step (cap==len for every row × buffer), horizon=%d — "+
-						"Ensure must grow geometrically or single-step horizon advances reallocate per call. "+
-						"Production OOM at 10:20 of playback was this exact pattern; fix is in growBoolBuf.",
-					h))
+					"predictor slice growth is per-step (cap==len<windowCap for every row × buffer), horizon=%d windowCap=%d — "+
+						"Ensure must grow geometrically up to windowCap then slide in place; per-step reallocation is the OOM regression.",
+					h, windowCap))
 			}
 		}
+	}
+
+	// Voice cache entries. Native cap is 256 (voice_cache.go:49); under
+	// `-tags test` the stub returns 0/0 because globalVoiceCache only
+	// compiles under !test && !js. The bound applies to whichever number
+	// the build returns — a regression that surfaces under `make test-real`
+	// (Ebiten + native audio) will trip here. We do NOT skip on stub
+	// because checking the field on stub still validates the test hook
+	// path, just against zero values.
+	entries, totalBytes := audio.VoiceCacheStatsForTest()
+	const voiceCacheEntriesBound = 256
+	if entries > voiceCacheEntriesBound {
+		fails = append(fails, fmt.Sprintf(
+			"voice_cache entries=%d (bound=%d) totalBytes=%dKB — "+
+				"voiceCacheKey churn from SetInstrumentParam outraced the cap; "+
+				"see voice_cache.go:78 (silent drop on overflow)",
+			entries, voiceCacheEntriesBound, totalBytes/1024))
+	}
+
+	// Instrument params manager size. Every Set/SetInstrumentParam adds
+	// an entry for a new instrument id; only ResetInstrumentParams drops
+	// one. The shipped catalog has ~25 ids — anything above 64 means
+	// SetInstrumentParam is being called with synthesized or stale ids
+	// faster than ResetInstrumentParams catches up.
+	const paramsMgrBound = 64
+	if n := audio.InstrumentParamsMgrLenForTest(); n > paramsMgrBound {
+		fails = append(fails, fmt.Sprintf(
+			"instrumentParamsMgr.params size=%d (bound=%d) — "+
+				"SetInstrumentParam ids are accumulating; ResetInstrumentParams "+
+				"is not draining them",
+			n, paramsMgrBound))
+	}
+
+	// Analyzer bridge churn. WASM allocates a fresh []float64 inside
+	// ChannelAnalyzerSnapshot every call (analyzer_wasm.go:96/104). The
+	// stub build keeps the counter at zero. Anything above 20 reads/frame
+	// averaged across the soak is per-Draw allocation pressure even though
+	// the slice itself is short-lived — WASM single-threaded GC cannot
+	// keep up with that rate at production scale. AnalyzerBridgeStats
+	// returns cumulative counters; divide by frame count for the rate.
+	calls, reads := audio.AnalyzerBridgeStats()
+	if frames > 0 && reads/uint64(frames) > 20 {
+		fails = append(fails, fmt.Sprintf(
+			"analyzer bridge reads/frame=%d (calls=%d reads=%d frames=%d) — "+
+				"per-frame []float64 allocation churn from ChannelAnalyzerSnapshot",
+			reads/uint64(frames), calls, reads, frames))
 	}
 
 	// Insert effects per instrument. Add/Remove churn should keep this
@@ -667,6 +782,16 @@ func dumpSoakDiagnostics(
 		if g.engine != nil && g.engine.Predictor != nil {
 			t.Logf("predictor horizon=%d", g.engine.Predictor.Horizon())
 		}
+		// New diagnostic counters for the synth-recipe regression vector.
+		// Voice cache (entries+bytes), params manager size, analyzer bridge
+		// reads — read once at end-of-run so the dump shows the post-soak
+		// state that drove the per-component bound decisions above.
+		vcEntries, vcBytes := audio.VoiceCacheStatsForTest()
+		t.Logf("voice_cache entries=%d totalBytes=%dKB", vcEntries, vcBytes/1024)
+		t.Logf("instrumentParamsMgr.params=%d", audio.InstrumentParamsMgrLenForTest())
+		bridgeCalls, bridgeReads := audio.AnalyzerBridgeStats()
+		t.Logf("analyzer bridge calls=%d reads=%d", bridgeCalls, bridgeReads)
+
 		// Insert effect chain length per row's instrument. Add/Remove churn
 		// on row 0 should keep this oscillating between 0 and 1; a steady
 		// climb means RemoveInsertEffect leaked a slot.

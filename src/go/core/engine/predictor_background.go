@@ -45,7 +45,7 @@ func (p *Predictor) runBackground(quit, done chan struct{}) {
 			p.mu.RLock()
 			stopped := p.bgStopped
 			tf := p.targetFn
-			cur := p.horizon
+			cur := p.windowEnd
 			p.mu.RUnlock()
 			if stopped {
 				return

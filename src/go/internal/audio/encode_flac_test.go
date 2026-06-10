@@ -26,7 +26,7 @@ func TestFLACEncodeBasic(t *testing.T) {
 	// Simple sine-like samples
 	samples := make([]float64, 4096)
 	for i := range samples {
-		samples[i] = float64(i%100) / 100.0 * 2.0 - 1.0
+		samples[i] = float64(i%100)/100.0*2.0 - 1.0
 	}
 
 	var buf bytes.Buffer
@@ -122,9 +122,9 @@ func TestFlacBlockSizeCode(t *testing.T) {
 		{8192, 13},
 		{16384, 14},
 		{32768, 15},
-		{100, 6},   // 8-bit block size (<=256)
-		{500, 7},   // 16-bit block size (>256, non-standard)
-		{3000, 7},  // 16-bit block size
+		{100, 6},  // 8-bit block size (<=256)
+		{500, 7},  // 16-bit block size (>256, non-standard)
+		{3000, 7}, // 16-bit block size
 	}
 	for _, tt := range tests {
 		got := flacBlockSizeCode(tt.n)

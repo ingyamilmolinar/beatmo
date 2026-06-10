@@ -85,12 +85,6 @@ func drawSliderLevelIndicator(dst *ebiten.Image, btnR, iconR image.Rectangle, va
 	drawRect(dst, fillR, fgCol, true)
 }
 
-// drawSliderLevelIndicatorBounded is an alias retained for tests that name
-// the bounded behavior explicitly. Forwards to drawSliderLevelIndicator.
-func drawSliderLevelIndicatorBounded(dst *ebiten.Image, btnR, iconR image.Rectangle, value float64, fgCol color.Color, off bool) {
-	drawSliderLevelIndicator(dst, btnR, iconR, value, fgCol, off)
-}
-
 // drawVolumeButton renders the canonical volume control: a centered speaker
 // glyph (on/off variant by mute or zero level) plus the at-a-glance level
 // indicator beneath it. This is the SINGLE source of truth for both the

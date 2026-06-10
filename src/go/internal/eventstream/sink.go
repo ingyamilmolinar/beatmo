@@ -25,11 +25,12 @@ import (
 
 // Record is the JSON shape written per line.
 type Record struct {
-	Seq     int64     `json:"seq"`
-	At      time.Time `json:"at"`
-	MonoNs  int64     `json:"mono_ns"`
-	Kind    string    `json:"kind"`
-	Payload any       `json:"payload,omitempty"`
+	Seq     int64        `json:"seq"`
+	At      time.Time    `json:"at"`
+	MonoNs  int64        `json:"mono_ns"`
+	Kind    string       `json:"kind"`
+	Source  hooks.Source `json:"src,omitempty"`
+	Payload any          `json:"payload,omitempty"`
 }
 
 // Options configures a Sink.
@@ -159,6 +160,7 @@ func (s *Sink) enqueue(e hooks.Event) {
 		At:      e.At,
 		MonoNs:  monotonicNow() - s.startMono,
 		Kind:    string(e.Kind),
+		Source:  e.Source,
 		Payload: e.Payload,
 	}
 	if rec.At.IsZero() {

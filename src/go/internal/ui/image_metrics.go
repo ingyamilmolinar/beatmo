@@ -46,6 +46,24 @@ func newTrackedImage(tag string, w, h int) *ebiten.Image {
 	return ebiten.NewImage(w, h)
 }
 
+// releaseImage releases the GPU atlas slot held by img. Use before
+// overwriting a cache field with a freshly-allocated image so the old
+// atlas slot is returned to Ebiten's packer immediately. Without this,
+// orphaned images sit in the BSP packing tree until GC finalizers fire
+// — on WASM that's bursty and unreliable, and a per-frame reassignment
+// pattern (e.g. timeline_zone.go's TlCache before the fix) can leak
+// hundreds of MB into the atlas before the heap exhausts.
+//
+// Safe to call on nil. After release the *ebiten.Image object is still
+// valid (ebiten allocates a fresh internal slot on next use) — callers
+// nil the field for clarity.
+func releaseImage(img *ebiten.Image) {
+	if img == nil {
+		return
+	}
+	img.Deallocate()
+}
+
 // imagesByTagSnapshot returns a copy of the per-tag allocation counters
 // formatted as "tag:count|tag:count|..." sorted by tag for stable output.
 func imagesByTagSnapshot() string {

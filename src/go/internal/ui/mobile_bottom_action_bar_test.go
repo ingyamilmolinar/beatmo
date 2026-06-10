@@ -68,11 +68,10 @@ func TestBottomActionBar_DrumPaneShrinks(t *testing.T) {
 	}
 }
 
-// TestBottomActionBar_HostsVolViewOverflow verifies that on mobile the
-// volume icon, view-switch, and overflow-menu buttons are placed inside
-// the DrumView.bottomActionBarRect (not in the top transport toolbar)
-// and that each rect meets the minimum touch-target height.
-func TestBottomActionBar_HostsVolViewOverflow(t *testing.T) {
+// TestBottomActionBar_HostsSegmentedControlOnly (Theme 1) verifies that
+// on mobile the bottom action bar hosts ONLY the 6-segment view switcher.
+// Vol icon and overflow now live in the top transport toolbar (Theme 4).
+func TestBottomActionBar_HostsSegmentedControlOnly(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
@@ -87,33 +86,31 @@ func TestBottomActionBar_HostsVolViewOverflow(t *testing.T) {
 	if z == nil {
 		t.Fatalf("transportZone nil")
 	}
-	// On mobile the binary viewSwitchBtn is replaced by the 3-segment
-	// Pads/EQ/Wave control; check the segmented rect instead.
-	viewSwitchRect := image.Rectangle{}
-	if g.drum.viewSwitchSegmented != nil {
-		viewSwitchRect = g.drum.viewSwitchSegmented.Rect()
-	} else if z.viewSwitchBtn != nil {
-		viewSwitchRect = z.viewSwitchBtn.Rect()
+	// Segmented spans bar (minus padding).
+	sc := g.drum.viewSwitchSegmented
+	if sc == nil || sc.Rect().Empty() {
+		t.Fatalf("segmented should be visible in bar")
 	}
-	cases := []struct {
-		name string
-		rect image.Rectangle
-	}{
-		{"mainVolIcon", z.mainVolIconRect},
-		{"viewSwitch", viewSwitchRect},
-		{"overflowBtn", z.overflowBtn.Rect()},
+	if !sc.Rect().In(bar) {
+		t.Errorf("segmented %v not contained in bar %v", sc.Rect(), bar)
 	}
-	for _, c := range cases {
-		if c.rect.Empty() {
-			t.Errorf("%s rect empty on mobile; expected to live in bottom action bar", c.name)
-			continue
-		}
-		if !c.rect.In(bar) {
-			t.Errorf("%s rect %v not contained in bottom action bar %v", c.name, c.rect, bar)
-		}
-		if c.rect.Dy() < TouchMinTarget() {
-			t.Errorf("%s height %d below TouchMinTarget %d", c.name, c.rect.Dy(), TouchMinTarget())
-		}
+	if sc.Rect().Dy() < TouchMinTarget() {
+		t.Errorf("segmented height %d below TouchMinTarget %d", sc.Rect().Dy(), TouchMinTarget())
+	}
+	// Vol icon is NOT in the bar — it lives in the top toolbar now.
+	if !z.mainVolIconRect.Empty() && z.mainVolIconRect.In(bar) {
+		t.Errorf("mainVolIcon %v should NOT be inside bar %v (Theme 4 moved it to top toolbar)", z.mainVolIconRect, bar)
+	}
+	// Overflow is NOT in the bar — it lives in the top toolbar now.
+	if !z.overflowBtn.Rect().Empty() && z.overflowBtn.Rect().In(bar) {
+		t.Errorf("overflowBtn %v should NOT be inside bar %v (Theme 4 moved it to top toolbar)", z.overflowBtn.Rect(), bar)
+	}
+	// And both must still be reachable somewhere on screen (top toolbar).
+	if z.mainVolIconRect.Empty() {
+		t.Errorf("mainVolIconRect should be non-empty (placed in top toolbar)")
+	}
+	if z.overflowBtn.Rect().Empty() {
+		t.Errorf("overflowBtn rect should be non-empty (placed in top toolbar)")
 	}
 }
 
@@ -130,9 +127,15 @@ func TestUltraShortViewport_VolViewOverflowReachable(t *testing.T) {
 	logger := log.New(testLogOutput(), log.LevelInfo)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	// 844×390 landscape phone — drum-pane height ~140px (less than
-	// header 56 + bar 44 + rowHeight 44 = 144), so bar collapses.
-	g.Layout(844, 390)
+	// Ultra-short viewport (480×200 — landscape watch / split-screen
+	// landscape phone). With the 2026-05-10 adaptive-portrait split
+	// fix, drum-pane height = max(needed, h*0.30) but clamped at
+	// `maxDrum = h*0.65`; at h=200 the cap forces drum pane ≤ 130 px,
+	// less than `headerH (56) + barH (44) + rowHeight (44) = 144`, so
+	// recalcButtons takes the bar-collapse branch. If this precondition
+	// stops triggering after future layout work, bump dims until the
+	// bar collapses again.
+	g.Layout(480, 200)
 
 	// Precondition assertion: bar IS collapsed on this viewport. If this
 	// fails the viewport math no longer triggers the bar-collapse path
@@ -146,9 +149,11 @@ func TestUltraShortViewport_VolViewOverflowReachable(t *testing.T) {
 	if z == nil {
 		t.Fatalf("transportZone nil")
 	}
-	if z.viewSwitchBtn.Rect().Empty() {
-		t.Errorf("viewSwitchBtn unreachable on ultra-short viewport (rect empty)")
-	}
+	// Theme 1: legacy viewSwitchBtn is always suppressed on mobile in
+	// favor of the segmented control; the segmented lives only in the
+	// bottom action bar (which is collapsed here). When neither is
+	// reachable, the overflow menu remains the user's escape hatch — so
+	// we only require overflowBtn to be reachable at minimum.
 	if z.overflowBtn.Rect().Empty() {
 		t.Errorf("overflowBtn unreachable on ultra-short viewport (rect empty)")
 	}
@@ -223,13 +228,11 @@ func TestBottomActionBar_DrawsSheetSurface(t *testing.T) {
 	screen := ebiten.NewImage(360, 700)
 	g.Draw(screen)
 
-	// Sample a point inside the bar between the cell rects (in the
-	// horizontal padding gap so we don't read a button's fill). With the
-	// bar split into 3 cells of 120 px, the gap between cells 0 and 1
-	// (around x=120) lies in the inset region between mainVolIcon and
-	// viewSwitchBtn.
-	cellGapX := bar.Min.X + bar.Dx()/3 // boundary between cell 0 and cell 1
-	x := cellGapX
+	// Theme 1: the bar hosts the 6-segment switcher with horizontal
+	// padding only. Sample at the bar edge (1 px in from Min.X) which
+	// sits inside the bar's surface paint but outside the segmented
+	// control's rect.
+	x := bar.Min.X + 1
 	y := bar.Min.Y + bar.Dy()/2
 	r1, g1, b1, a1 := screen.At(x, y).RGBA()
 	if a1 == 0 {

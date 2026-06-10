@@ -42,9 +42,6 @@ type NodeParams struct {
 	Pitch    float64   // semitone offset (default 0)
 	Duration float64   // time multiplier (default 1)
 	Logic    NodeLogic // optional user logic
-	// SkipEveryN is deprecated (back-compat only). SetNodeParams normalizes it
-	// into LogicKind="skip_every_n" + LogicN and then clears it.
-	SkipEveryN int
 	// LogicKind selects a built-in logic rule. Empty means none. Supported:
 	//  "every_n_triggers"  – fire on every Nth trigger (complement of skip)
 	//  "skip_every_n"      – skip on every Nth trigger

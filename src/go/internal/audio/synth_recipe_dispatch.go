@@ -23,13 +23,13 @@ var debugSynthDispatch = os.Getenv("BEATMO_SYNTH_DISPATCH_DEBUG") != ""
 // inst.NewVoice(bpm, sampleRate) call.
 //
 // The recipe path:
-//   1. Resolves the recipe id via builtinInstrumentRecipeBindings.
-//   2. Merges user params over recipe defaults.
-//   3. Looks up the cache key keyed on (instrumentID, bpm, sr, paramsHash).
-//   4. On miss, allocates a buffer of the instrument's natural length
-//      (CVariantInstrument: Beats × spb; legacy types: ConfigForInstrument
-//      DurationSec), calls recipe.Render, normalizes, and caches.
-//   5. Returns a *cVoice wrapping a clone of the cached buffer.
+//  1. Resolves the recipe id via builtinInstrumentRecipeBindings.
+//  2. Merges user params over recipe defaults.
+//  3. Looks up the cache key keyed on (instrumentID, bpm, sr, paramsHash).
+//  4. On miss, allocates a buffer of the instrument's natural length
+//     (CVariantInstrument: Beats × spb; legacy types: ConfigForInstrument
+//     DurationSec), calls recipe.Render, normalizes, and caches.
+//  5. Returns a *cVoice wrapping a clone of the cached buffer.
 //
 // Fallback to the legacy path happens whenever any precondition is missing
 // (no user params, no binding, no recipe, no instrument).
@@ -50,12 +50,32 @@ func newRecipeAwareVoice(id string, bpm, sampleRate int) Voice {
 // (nil, false). Split out from newRecipeAwareVoice so the legacy path
 // stays a single function call deep in the common (no-user-params) case.
 func tryRecipeVoice(id string, bpm, sampleRate int) (Voice, bool) {
+	return tryRecipeVoiceOpts(id, bpm, sampleRate, false)
+}
+
+// tryRecipeVoiceOpts is tryRecipeVoice with an ignoreEdit escape hatch used
+// by RenderInstrumentOneShotRaw: the Sampler editor needs the UN-edited
+// source render so it can overlay the saved trim/pitch itself.
+func tryRecipeVoiceOpts(id string, bpm, sampleRate int, ignoreEdit bool) (Voice, bool) {
 	params := GetInstrumentParams(id)
-	if len(params) == 0 {
-		return nil, false
-	}
 	recipeID := RecipeForInstrument(id)
 	if recipeID == "" {
+		return nil, false
+	}
+	edit, hasEdit := SampleEditFor(id)
+	if ignoreEdit {
+		hasEdit = false
+	}
+	// Take the recipe-aware render path when the user has live per-instrument
+	// overrides OR the recipe's registered defaults have been customized away
+	// from what it shipped with (Synth-tab Save, or a saved override reloaded
+	// from disk at startup) OR a non-destructive Sampler edit descriptor exists
+	// (the instrument stays a synth; the edit is applied to the fresh render
+	// below). Without the customized-defaults check, a Save that clears the
+	// overlay — or any restart — would drop to the legacy path and silently
+	// ignore the saved tone, reverting the sound. The fast legacy path is kept
+	// for unedited, as-shipped recipes so parity goldens stay byte-identical.
+	if len(params) == 0 && !RecipeDefaultsCustomized(recipeID) && !hasEdit {
 		return nil, false
 	}
 	recipe := NewRecipe(recipeID)
@@ -67,11 +87,18 @@ func tryRecipeVoice(id string, bpm, sampleRate int) (Voice, bool) {
 		return nil, false
 	}
 	merged := MergeRecipeDefaults(recipeID, params)
+	ph := hashRecipeParams(merged)
+	if hasEdit {
+		// Fold the descriptor into the key so an edit change misses the cache
+		// exactly like a param change (SetSampleEdit also invalidates, belt-
+		// and-suspenders for in-flight keys).
+		ph ^= hashSampleEdit(edit)
+	}
 	key := voiceCacheKey{
 		instrumentID: id,
 		bpm:          bpmKey,
 		sampleRate:   sampleRate,
-		paramsHash:   hashRecipeParams(merged),
+		paramsHash:   ph,
 	}
 	if buf, ok := globalVoiceCache.Get(key); ok {
 		// cVoice only READS from buf (drums_c.go:251-275 — Sample/SampleBlock
@@ -82,6 +109,12 @@ func tryRecipeVoice(id string, bpm, sampleRate int) (Voice, bool) {
 	buf := make([]float32, samples)
 	recipe.Render(buf, sampleRate, samples, 0, merged)
 	normalizeAndScale(buf, baseInstrumentID(id))
+	if hasEdit {
+		// Non-destructive Sampler edit: same transform as the Sampler tab's
+		// bake (BakeSample), applied to the fresh recipe render. BakeSample
+		// allocates its output, so the cached buffer stays exclusively owned.
+		buf = ApplySampleEditToBuffer(buf, sampleRate, edit)
+	}
 	globalVoiceCache.Put(key, buf)
 	// Same read-only invariant on the freshly-rendered buffer — no clone needed.
 	return &cVoice{buf: buf}, true

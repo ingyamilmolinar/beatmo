@@ -108,7 +108,8 @@ func (t *Transport) Draw(dst *ebiten.Image) {
 	w := dst.Bounds().Dx()
 	const h = 40
 	if t.barCache == nil || t.barW != w {
-		t.barCache = ebiten.NewImage(w, h)
+		releaseImage(t.barCache)
+		t.barCache = newTrackedImage("transport.barCache", w, h)
 		t.barCache.Fill(genColorTransportBarBg)
 		t.barW = w
 	}

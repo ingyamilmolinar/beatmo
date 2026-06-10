@@ -30,7 +30,7 @@ const GO = resolveGoBinary();
 if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
-  ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
+  ["build", "-ldflags", "-X main.defaultLog=INFO", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
@@ -53,6 +53,22 @@ const port = server.address().port;
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const page = await browser.newPage();
+// Optional runtime-profile override for knob sweeps (same contract as
+// webaudio_bench_startup.browser.test.js): BEATMO_PROFILE_OVERRIDE is a JSON
+// object injected as window.__beatmoProfileOverride before WASM init so
+// newRuntimeProfile() merges it. Example:
+//   BEATMO_PROFILE_OVERRIDE='{"audioLookaheadSec":0.06}' node src/js/webaudio_perf_e2e.browser.test.js
+if (process.env.BEATMO_PROFILE_OVERRIDE) {
+  try {
+    const profileOverride = JSON.parse(process.env.BEATMO_PROFILE_OVERRIDE);
+    console.log(`[perf.e2e] runtime profile override: ${JSON.stringify(profileOverride)}`);
+    await page.addInitScript((cfg) => {
+      window.__beatmoProfileOverride = cfg;
+    }, profileOverride);
+  } catch (e) {
+    console.warn(`[perf.e2e] invalid BEATMO_PROFILE_OVERRIDE JSON: ${e.message}`);
+  }
+}
 await page.goto(`http://localhost:${port}/`);
 // Wait for wasm runtime to be ready (either exported hook or a while for game to start).
 await page.waitForFunction(() => typeof startPlay === 'function');
@@ -118,20 +134,28 @@ const overdueLimit = useStartupDemo
 if (audioMetrics.overdue > overdueLimit) {
   throw new Error(`observed ${audioMetrics.overdue} overdue audio events (limit ${overdueLimit})`);
 }
-const minLeadThreshold = useStartupDemo ? 2.0 : 3.5;
+// Lead floor: the audio-side observer (audio.js scheduleMetrics) sees
+// when - ctx.currentTime AT .start() TIME, by which the Go→JS batch
+// dispatch has consumed ~8ms of the dispatch-time clamp on a 32-event
+// batch (per-event drift ~0.25ms × 32). The Go-side clamp is 12ms; the
+// JS-observable floor is ~4ms after batch drift. 3ms keeps a small
+// margin above the smallLead (3ms) band.
+const minLeadThreshold = useStartupDemo ? 3.0 : 3.0;
 const minLeadMs = audioMetrics.minLead == null ? null : (audioMetrics.minLead * 1000);
 if (minLeadMs == null || minLeadMs < minLeadThreshold) {
   throw new Error(`audio min lead ${minLeadMs == null ? 'null' : minLeadMs.toFixed(2)}ms below ${minLeadThreshold}ms threshold`);
 }
-const maxSmallLead = Number(process.env.PERF_E2E_SMALL_LEAD_MAX ?? (useStartupDemo ? "10" : "2"));
+// Tightened: zero events should ship with <3ms lead. Was 2 (synth)/10 (startup).
+const maxSmallLead = Number(process.env.PERF_E2E_SMALL_LEAD_MAX ?? (useStartupDemo ? "0" : "0"));
 if (audioMetrics.smallLeadCount > maxSmallLead) {
-  throw new Error(`observed ${audioMetrics.smallLeadCount} audio events scheduled with <4ms lead (max ${maxSmallLead})`);
+  throw new Error(`observed ${audioMetrics.smallLeadCount} audio events scheduled with <3ms lead (max ${maxSmallLead})`);
 }
-const lagP90Limit = useStartupDemo ? 0.02 : 0.01;
+// Tightened lag percentiles. Was 10ms/20ms (synth)/20ms/40ms (startup).
+const lagP90Limit = useStartupDemo ? 0.008 : 0.004;
 if (audioMetrics.lagP90 != null && audioMetrics.lagP90 > lagP90Limit) {
   throw new Error(`audio lagP90 ${(audioMetrics.lagP90 * 1000).toFixed(2)}ms exceeded ${(lagP90Limit * 1000).toFixed(0)}ms`);
 }
-const lagP99Limit = useStartupDemo ? 0.04 : 0.02;
+const lagP99Limit = useStartupDemo ? 0.015 : 0.008;
 if (audioMetrics.lagP99 != null && audioMetrics.lagP99 > lagP99Limit) {
   throw new Error(`audio lagP99 ${(audioMetrics.lagP99 * 1000).toFixed(2)}ms exceeded ${(lagP99Limit * 1000).toFixed(0)}ms`);
 }
@@ -152,8 +176,10 @@ const baseMaxDrawAvg = Number(process.env.PERF_E2E_DRAW_MAX_MS ?? (useStartupDem
 const minFps = baseMinFps / Math.max(1, jobs);
 const maxDrawAvg = baseMaxDrawAvg * Math.max(1, jobs);
 const maxUpdateAvg = Number(process.env.PERF_E2E_UPDATE_MAX_MS ?? (useStartupDemo ? "8" : "4.5")) * Math.max(1, jobs);
-const maxAudioCallAvg = Number(process.env.PERF_E2E_AUDIO_CALL_MAX_MS ?? (useStartupDemo ? "1.0" : "0.45")) * Math.max(1, jobs);
-const maxAudioQLatMax = Number(process.env.PERF_E2E_AUDIO_QLAT_MAX_MS ?? (useStartupDemo ? "20" : "10")) * Math.max(1, jobs);
+// Tightened: audioCallAvg was 0.45ms/1.0ms; baseline measured 0.046ms.
+// Tightened: audioQLatMax was 10ms/20ms; expect <3ms in healthy WASM run.
+const maxAudioCallAvg = Number(process.env.PERF_E2E_AUDIO_CALL_MAX_MS ?? (useStartupDemo ? "0.4" : "0.15")) * Math.max(1, jobs);
+const maxAudioQLatMax = Number(process.env.PERF_E2E_AUDIO_QLAT_MAX_MS ?? (useStartupDemo ? "8" : "3")) * Math.max(1, jobs);
 
 if (stats.fpsAvg < minFps) { throw new Error(`fpsAvg ${stats.fpsAvg.toFixed(2)} below floor ${minFps}`);
 }
@@ -164,6 +190,20 @@ if (stats.drawAvgMS > maxDrawAvg) { throw new Error(`drawAvgMS ${stats.drawAvgMS
 if (stats.audioCallAvg > maxAudioCallAvg) { throw new Error(`audioCallAvg ${stats.audioCallAvg.toFixed(3)}ms exceeded limit ${maxAudioCallAvg}ms`);
 }
 if (stats.audioQLatMax > maxAudioQLatMax) { throw new Error(`audioQLatMax ${stats.audioQLatMax.toFixed(3)}ms exceeded limit ${maxAudioQLatMax}ms`);
+}
+
+// Jitter gate: audioCallMax / audioCallAvg ratio. A healthy steady-state
+// pipeline keeps batches within ~5× of the mean; outliers above that
+// suggest GC pauses or goroutine starvation that the user will hear.
+if (stats.audioCallAvg > 0 && stats.audioCallMax > 0) {
+  const ratio = stats.audioCallMax / stats.audioCallAvg;
+  // Ratio (max/avg) is high when avg is very small (e.g. 20μs) because
+  // a single 200μs outlier dominates. The absolute max (audioCallMax) is
+  // already gated above; this ratio catches sustained jitter only.
+  const ratioLimit = Number(process.env.PERF_E2E_AUDIO_CALL_RATIO_MAX ?? (useStartupDemo ? "20" : "20"));
+  if (ratio > ratioLimit) {
+    throw new Error(`audioCall jitter ratio ${ratio.toFixed(2)}× exceeded ${ratioLimit}× (avg=${stats.audioCallAvg.toFixed(3)}ms max=${stats.audioCallMax.toFixed(3)}ms)`);
+  }
 }
 
 console.log(`perf_e2e (${mode}): PASSED`);

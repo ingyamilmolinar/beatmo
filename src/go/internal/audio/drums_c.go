@@ -15,205 +15,44 @@ import (
 	"unsafe"
 )
 
-func renderSnare(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderSnare: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_snare((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderSnare deleted — the snare family migrated to the modular engine
+// (Phase-5). The no-edit native fast path is renderSnareVoice
+// (snare_modular_native.go), which renders the baked recipe-default
+// ModularParams through render_modular_p.
 
-func renderKick(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderKick: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_kick((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderKick deleted — the base kick migrated to the modular engine (Phase-3).
+// The no-edit native fast path is renderKickVoice (kick_modular_native.go),
+// which renders the baked recipe-default ModularParams through render_modular_p.
 
-func renderHiHat(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderHiHat: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_hihat((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderHiHat / renderOpenHiHat / renderCowbell / renderShaker / renderRide /
+// renderCrash deleted — the cymbal family migrated to the modular engine
+// (Phase-6). The no-edit native fast paths are renderHiHatVoice /
+// renderOpenHiHatVoice / renderCowbellVoice / renderShakerVoice / renderRideVoice
+// / renderCrashVoice (cymbal_modular_native.go), which render the baked
+// recipe-default ModularParams through render_modular_p; the recipe/edit path
+// renders through the modular binding (cymbalRecipeToModular).
 
-func renderOpenHiHat(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderOpenHiHat: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_open_hihat((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderTom / renderTomHigh / renderTomLow deleted — the tom family migrated to
+// the modular engine (Phase-4). The no-edit fast path is renderTomVoice /
+// renderTomHighVoice / renderTomLowVoice (tom_modular_native.go); the recipe/edit
+// path renders through the modular binding (tomRecipeToModular).
 
-func renderTom(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderTom: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_tom((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderClap deleted — the clap migrated to the modular engine (Phase-5). The
+// no-edit native fast path is renderClapVoice (snare_modular_native.go).
 
-func renderTomHigh(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderTomHigh: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_tom_high((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderBassGuitar / renderSubBass deleted — the bass family migrated to the
+// modular engine (Phase-2). The no-edit native fast path is renderBassGuitarVoice
+// / renderSubBassVoice (bass_modular_native.go), which renders the baked
+// recipe-default ModularParams through render_modular_p.
 
-func renderTomLow(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderTomLow: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_tom_low((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderSnareRimshot / renderSnareSidestick deleted — the snare family migrated
+// to the modular engine (Phase-5). The no-edit native fast paths are
+// renderSnareRimshotVoice / renderSnareSidestickVoice (snare_modular_native.go).
 
-func renderClap(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderClap: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_clap((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderCowbell(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderCowbell: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_cowbell((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderBassGuitar(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderBassGuitar: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_bass_guitar((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderSubBass(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderSubBass: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_sub_bass((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderSnareRimshot(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderSnareRimshot: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_snare_rimshot((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderSnareSidestick(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderSnareSidestick: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_snare_sidestick((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderKickDeep(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderKickDeep: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_kick_deep((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderKickPunchy(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderKickPunchy: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_kick_punchy((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderKickLofi(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderKickLofi: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_kick_lofi((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderKickTight(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderKickTight: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_kick_tight((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderShaker(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderShaker: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_shaker((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderRide(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderRide: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_ride((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
-
-func renderCrash(buf []float32, sampleRate, samples int) {
-	if samples > len(buf) {
-		panic("renderCrash: samples exceeds buffer length")
-	}
-	if len(buf) == 0 || samples == 0 {
-		return
-	}
-	C.render_crash((*C.float)(unsafe.Pointer(&buf[0])), C.int(sampleRate), C.int(samples))
-}
+// renderKickDeep / renderKickPunchy / renderKickLofi / renderKickTight deleted —
+// the kick family migrated to the modular engine (Phase-3). The no-edit native
+// fast paths are renderKickDeepVoice / renderKickPunchyVoice /
+// renderKickLofiVoice / renderKickTightVoice (kick_modular_native.go).
 
 func loadAudio(path string) ([]float32, int, error) {
 	cpath := C.CString(path)
@@ -236,11 +75,6 @@ func loadAudio(path string) ([]float32, int, error) {
 	copy(buf, tmp)
 	C.free(unsafe.Pointer(ptr))
 	return buf, int(sr), nil
-}
-
-// Backward-compatible alias for callers expecting a WAV-specific name.
-func loadWav(path string) ([]float32, int, error) {
-	return loadAudio(path)
 }
 
 type cVoice struct {

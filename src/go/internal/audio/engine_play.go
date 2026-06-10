@@ -5,11 +5,12 @@ package audio
 // Play schedules an instrument by ID at an optional future time.
 func Play(id string, when ...float64) {
 	instMu.RLock()
-	inst, ok := instruments[id]
+	_, ok := instruments[id]
 	instMu.RUnlock()
 	if !ok {
 		return
 	}
+	RecordVoiceTrigger(id)
 	once.Do(initContext)
 	if ctx == nil {
 		return
@@ -22,18 +23,23 @@ func Play(id string, when ...float64) {
 			delay = int(d * float64(sampleRate))
 		}
 	}
-	mix.Schedule(id, inst.NewVoice(bpm, sampleRate), delay)
+	v := newRecipeAwareVoice(id, bpm, sampleRate)
+	if v == nil {
+		return
+	}
+	mix.Schedule(id, v, delay)
 }
 
 // PlayVol schedules an instrument by ID at the given volume (0..1) and
 // optional future time.
 func PlayVol(id string, vol float64, when ...float64) {
 	instMu.RLock()
-	inst, ok := instruments[id]
+	_, ok := instruments[id]
 	instMu.RUnlock()
 	if !ok {
 		return
 	}
+	RecordVoiceTrigger(id)
 	once.Do(initContext)
 	if ctx == nil {
 		return
@@ -46,7 +52,11 @@ func PlayVol(id string, vol float64, when ...float64) {
 			delay = int(d * float64(sampleRate))
 		}
 	}
-	mix.Schedule(id, &scaledVoice{v: inst.NewVoice(bpm, sampleRate), gain: vol}, delay)
+	inner := newRecipeAwareVoice(id, bpm, sampleRate)
+	if inner == nil {
+		return
+	}
+	mix.Schedule(id, &scaledVoice{v: inner, gain: vol}, delay)
 }
 
 // PlayParams schedules an instrument with volume, pitch (in semitones), and
@@ -55,11 +65,12 @@ func PlayVol(id string, vol float64, when ...float64) {
 // duration (time-stretch not implemented), but allows practical control.
 func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
 	instMu.RLock()
-	inst, ok := instruments[id]
+	_, ok := instruments[id]
 	instMu.RUnlock()
 	if !ok {
 		return
 	}
+	RecordVoiceTrigger(id)
 	once.Do(initContext)
 	if ctx == nil {
 		return
@@ -72,7 +83,10 @@ func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
 			delay = int(d * float64(sampleRate))
 		}
 	}
-	v := inst.NewVoice(bpm, sampleRate)
+	v := newRecipeAwareVoice(id, bpm, sampleRate)
+	if v == nil {
+		return
+	}
 	// Compute playback rate from semitones and requested duration multiplier.
 	// r > 1 speeds up (higher pitch, shorter time). r < 1 slows down.
 	if dur <= 0 {

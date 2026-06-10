@@ -32,10 +32,10 @@ func TestNodeLogicDropdown_OpenSelectAndAdjust(t *testing.T) {
 		if b == nil {
 			t.Fatalf("button %s missing", id)
 		}
-		if !b.Handle(x, y, true) {
+		if b.HandleInputResult(x, y, true) == InputIgnored {
 			t.Fatalf("button %s did not handle click", id)
 		}
-		b.Handle(x, y, false)
+		b.HandleInputResult(x, y, false)
 	}
 	// Click logic button
 	bl := g.sidebar.rects["logic"]

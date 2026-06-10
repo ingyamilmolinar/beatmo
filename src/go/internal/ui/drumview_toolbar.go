@@ -1,11 +1,7 @@
 package ui
 
-import (
-	"image"
-
-	"github.com/hajimehoshi/ebiten/v2"
-)
-
+// decayAnims drives the per-frame decay of all DrumView animation
+// counters. State-only — no drawing. Called from (*DrumView).Draw.
 func (dv *DrumView) decayAnims() {
 	decay := func(v *float64) {
 		*v *= 0.85
@@ -37,53 +33,12 @@ func (dv *DrumView) decayAnims() {
 	decay(&dv.lenDecAnim)
 	decay(&dv.lenIncAnim)
 	decay(&dv.saveAnim)
+	for i := range dv.rowFireDecay {
+		decay(&dv.rowFireDecay[i])
+	}
 	// Reset delete confirmation after ~2s timeout
 	if dv.deleteConfirmRow >= 0 && (dv.frame-dv.deleteConfirmFrame) >= 120 {
 		dv.deleteConfirmRow = -1
 		dv.markRowControlsDirty()
-	}
-}
-
-func (dv *DrumView) renderToolbarControls(dst *ebiten.Image) {
-	// Update only the rectangles/positions for existing per-row controls.
-	dv.updateRowRects()
-	// Delegate to TransportZone — it owns the toolbar cache.
-	dv.transportZone.Draw(dst)
-}
-
-// drawNotifications renders up to 2 active notifications at the top-right of
-// the drum view panel. Messages fade out as ttl decays.
-func (dv *DrumView) drawNotifications(dst *ebiten.Image) {
-	// Decay and prune
-	out := dv.notifs[:0]
-	for i := range dv.notifs {
-		n := dv.notifs[i]
-		if n.ttl <= 0 {
-			continue
-		}
-		n.ttl--
-		out = append(out, n)
-	}
-	dv.notifs = out
-	// Draw last two (most recent at top)
-	maxShow := 2
-	pad := 6
-	y := dv.Bounds.Min.Y + 6
-	for i := len(dv.notifs) - 1; i >= 0 && maxShow > 0; i-- {
-		n := dv.notifs[i]
-		txt := n.msg
-		w := TextWidth(txt)
-		h := TextHeight() + pad
-		boxW := w + pad*2
-		x := dv.Bounds.Max.X - boxW - 10
-		r := image.Rect(x, y, x+boxW, y+h)
-		fill := colBPMBox
-		if n.isErr {
-			fill = colError
-		}
-		drawButton(dst, r, fill, colButtonBorder, false, Profile().DrawTopEdgeHighlight)
-		DrawTextAt(dst, txt, r.Min.X+pad, r.Min.Y+(h-TextHeight())/2)
-		y += h + 4
-		maxShow--
 	}
 }

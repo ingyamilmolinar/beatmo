@@ -48,13 +48,20 @@ func (g *Game) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, when
 	sendLatest(g.audioCh, req, &g.perf.aDrops)
 }
 
+// audioChNearFull returns true if the audio channel is above 75% capacity.
+// Used by seqScheduleTime to skip the entire tick when the audioLoop
+// goroutine hasn't drained the channel yet.
+func (g *Game) audioChNearFull() bool {
+	return len(g.audioCh) >= cap(g.audioCh)*3/4
+}
+
 func (g *Game) runtimeAudioLookahead() float64 {
 	look := g.audioLookaheadSec
 	if look < 0 {
 		look = 0
 	}
 	if !g.Playing() {
-		if look > 0.06 {
+		if look > 0.15 {
 			return 0.06
 		}
 		return look
@@ -80,18 +87,10 @@ func (g *Game) runtimeAudioLookahead() float64 {
 		extra = math.Max(extra, 0.01)
 	}
 	look += extra
-	if look > 0.06 {
-		look = 0.06
+	if look > 0.15 {
+		look = 0.15
 	}
 	return look
-}
-
-// audioChNearFull returns true if the audio channel is above 75% capacity.
-// Used by seqScheduleTime to skip the entire tick when the audioLoop
-// goroutine hasn't drained the channel yet. The tick retries in 4ms
-// without advancing any seqNextIdxs, so no beats are lost.
-func (g *Game) audioChNearFull() bool {
-	return len(g.audioCh) >= cap(g.audioCh)*3/4
 }
 
 // scheduleSound applies groove (swing and micro-delay) and enqueues the sound.
@@ -122,6 +121,11 @@ func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol
 	if look := g.runtimeAudioLookahead(); look > 0 {
 		when += look
 	}
+	// NOTE: the dispatch-time clamp lives in audioLoop, not here, because
+	// audio.Now() advances between scheduleSound and audioLoop dispatch by
+	// the Stage B (bridge) latency (~1-30ms in WASM). Clamping here would
+	// still let overdue events sneak through when bridge latency exceeds
+	// the safety margin.
 	parityRow, parityAbs := -1, -1
 	if sequencer {
 		parityRow, parityAbs = row, idx

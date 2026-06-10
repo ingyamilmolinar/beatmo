@@ -74,7 +74,12 @@ func StartRecording(opts RecordingOptions) error {
 
 	log.Printf("[RECORDING] Started: format=%s instruments=%d dir=%s maxDuration=%v",
 		opts.Format, len(opts.Instruments), dir, opts.MaxDuration)
-	hooks.PublishKind(hooks.EventRecordStart, dir)
+	hooks.PublishWithSource(hooks.EventRecordStart, RecordStartPayload{
+		Dir:         dir,
+		Format:      opts.Format,
+		BPM:         opts.BPM,
+		Instruments: len(opts.Instruments),
+	}, hooks.CaptureSource(0))
 	return nil
 }
 
@@ -151,14 +156,14 @@ func StopRecording() (*RecordingResult, error) {
 		_, _ = session.pipe.CloseWriters()
 		log.Printf("[RECORDING] Stopped (in-memory fallback): duration=%.2fs channels=%d",
 			duration, len(result.Channels))
-		hooks.PublishKind(hooks.EventRecordStop, RecordStopPayload{
+		hooks.PublishWithSource(hooks.EventRecordStop, RecordStopPayload{
 			Dir: session.dir, Duration: duration, Channels: len(result.Channels),
-		})
+		}, hooks.CaptureSource(0))
 		return result, nil
 	}
 
 	if drops := session.pipe.Drops(); drops > 0 {
-		hooks.PublishKind(hooks.EventRecordDropped, drops)
+		hooks.PublishWithSource(hooks.EventRecordDropped, drops, hooks.CaptureSource(0))
 	}
 	log.Printf("[RECORDING] Detached: duration=%.2fs channels=%d drops=%d dir=%s — finalizing async",
 		duration, len(result.Channels), session.pipe.Drops(), session.dir)

@@ -10,7 +10,15 @@ func (s *Service) valueLocked(row, abs int) (bool, model.NodeType, CommitKind, b
 			return ce.val, ce.typ, ce.kind, true
 		}
 	}
-	return s.rows[row].commits.value(abs)
+	if row >= 0 && row < len(s.rows) {
+		if v, t, k, ok := s.rows[row].commits.value(abs); ok {
+			return v, t, k, true
+		}
+	}
+	if a := s.archives[row]; a != nil {
+		return a.lookup(abs)
+	}
+	return false, model.NodeTypeInvisible, CommitKindPlayback, false
 }
 
 // Snapshot returns a deep copy of the current segments for the row.

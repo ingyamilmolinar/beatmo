@@ -49,6 +49,17 @@ func TokenDeleteFill() color.RGBA { return colDeleteFill }
 // TokenSoloActiveFill is the fill for an active solo button.
 func TokenSoloActiveFill() color.RGBA { return colSoloActive }
 
+// ── Visualization (spectrum frequency-group tinting) ─────────────────────
+//
+// TokenVizBass / TokenVizMids / TokenVizTreble are warm / neutral / cool
+// hues used by the Spectrum tab's Bass/Mids/Treble bracket strip and
+// group-fill highlights. Always pair with WithAlpha + AlphaSubtle when
+// painting behind data; opaque draws would compete with the spectrum bars.
+
+func TokenVizBass() color.RGBA   { return colVizBass }
+func TokenVizMids() color.RGBA   { return colVizMids }
+func TokenVizTreble() color.RGBA { return colVizTreble }
+
 // ── Borders ───────────────────────────────────────────────────────────────
 
 func TokenBorderSubtle() color.NRGBA {

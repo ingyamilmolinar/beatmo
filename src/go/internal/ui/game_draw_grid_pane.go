@@ -25,7 +25,16 @@ var (
 )
 
 func (g *Game) drawGridPane(screen *ebiten.Image) {
-	top := screen.SubImage(g.split.GridRect(g.winW, g.winH)).(*ebiten.Image)
+	gridRect := g.split.GridRect(g.winW, g.winH)
+	var top *ebiten.Image
+	if g.gridPaneSubParent == screen && g.gridPaneSubRect == gridRect && g.gridPaneSub != nil {
+		top = g.gridPaneSub
+	} else {
+		top = screen.SubImage(gridRect).(*ebiten.Image)
+		g.gridPaneSubParent = screen
+		g.gridPaneSubRect = gridRect
+		g.gridPaneSub = top
+	}
 	top.Fill(colBGTop)
 	// Always draw top‑pane content into the same subimage to avoid any
 	// compositor/target disparities between cached and direct draws.
@@ -46,6 +55,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		// for small pans. This reduces per-frame tiling draw calls dramatically.
 		stepPx := g.grid.StepPixels(g.cam.Scale)
 		if envNoGridTileCache {
+			releaseImage(g.gridTile)
 			g.gridTile = nil
 		}
 		// Ensure the base tile exists for this scale/subdiv.
@@ -53,6 +63,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			if g.logDrawNodes {
 				g.logger.Tracef("[DRAW/GRID] rebuild tile: stepPx=%d maxDiv=%d unitPx=%.2f subSig=%d", stepPx, g.grid.MaxDiv(), g.grid.UnitPixels(g.cam.Scale), g.grid.subSig)
 			}
+			releaseImage(g.gridTile)
 			g.gridTile = g.buildGridTile(stepPx)
 			g.gridTileStepPx = stepPx
 			g.gridTileSubSig = g.grid.subSig
@@ -98,6 +109,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 				// Rebuild the full grid cache with an offscreen pad to sustain pans.
 				w := g.split.GridW(g.winW) + 2*g.gridCachePad
 				h := g.split.GridH(g.winH) + 2*g.gridCachePad
+				releaseImage(g.gridCache)
 				g.gridCache = newTrackedImage("gridCache", w, h)
 				g.gridCacheW, g.gridCacheH = w, h
 				g.gridCacheScale = g.cam.Scale
@@ -234,6 +246,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 			// Rebuild cache centered at current camera offset with pad margin.
 			w := g.split.GridW(g.winW) + 2*g.edgeCachePad
 			h := g.split.GridH(g.winH) + 2*g.edgeCachePad
+			releaseImage(g.edgeCache)
 			g.edgeCache = newTrackedImage("edgeCache", w, h)
 			g.edgeCacheW, g.edgeCacheH = w, h
 			g.edgeCacheScale, g.edgeCacheOffX, g.edgeCacheOffY = camScale, offX, offY
@@ -495,6 +508,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 
 		if needRebuild {
 			if g.nodeLayer == nil || g.nodeLayer.Bounds().Dx() != gridW || g.nodeLayer.Bounds().Dy() != gridH {
+				releaseImage(g.nodeLayer)
 				g.nodeLayer = newTrackedImage("nodeLayer", gridW, gridH)
 			} else {
 				g.nodeLayer.Clear()

@@ -17,8 +17,8 @@ func TestTouchSizesDesktop(t *testing.T) {
 	if TouchGrabZone() != 5 {
 		t.Errorf("TouchGrabZone() = %d, want 5", TouchGrabZone())
 	}
-	if TouchRowHeight() != 28 {
-		t.Errorf("TouchRowHeight() = %d, want 28", TouchRowHeight())
+	if TouchRowHeight() != 36 {
+		t.Errorf("TouchRowHeight() = %d, want 36", TouchRowHeight())
 	}
 	if TouchMinTarget() != 0 {
 		t.Errorf("TouchMinTarget() = %d, want 0", TouchMinTarget())
@@ -26,8 +26,8 @@ func TestTouchSizesDesktop(t *testing.T) {
 	if TransportBtnSize() != 32 {
 		t.Errorf("TransportBtnSize() = %d, want 32", TransportBtnSize())
 	}
-	if RowControlBtnSize() != 0 {
-		t.Errorf("RowControlBtnSize() = %d, want 0", RowControlBtnSize())
+	if RowControlBtnSize() != 28 {
+		t.Errorf("RowControlBtnSize() = %d, want 28", RowControlBtnSize())
 	}
 	if MinCellWidth() != 2 {
 		t.Errorf("MinCellWidth() = %d, want 2", MinCellWidth())

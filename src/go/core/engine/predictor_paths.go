@@ -43,6 +43,24 @@ func (p *Predictor) SetPaths(paths [][]model.BeatInfo, isLoop []bool, loopStart 
 		p.nodes = make(map[model.NodeID]model.Node)
 	}
 	p.resetBuffersLocked(n)
+	// Drop per-row context entries for rows that no longer exist; otherwise the
+	// maps grow unboundedly across long sessions where rows are added and
+	// removed (the maps are keyed by row index).
+	for r := range p.countsByRow {
+		if r >= n {
+			delete(p.countsByRow, r)
+		}
+	}
+	for r := range p.triggerCountsByRow {
+		if r >= n {
+			delete(p.triggerCountsByRow, r)
+		}
+	}
+	for r := range p.lastTrigByRow {
+		if r >= n {
+			delete(p.lastTrigByRow, r)
+		}
+	}
 }
 
 // resetBuffersLocked clears predictions and contexts. Caller must hold p.mu.
@@ -50,7 +68,11 @@ func (p *Predictor) resetBuffersLocked(n int) {
 	p.audibleByRow = make([][]bool, n)
 	p.visibleByRow = make([][]bool, n)
 	p.triggeredByRow = make([][]bool, n)
-	p.horizon = 0
+	p.windowStart = 0
+	p.windowEnd = 0
+	// Stale anchor from before a path change would prevent the new circuit
+	// from windowing at all; the UI will set this again on the next refresh.
+	p.visibleMinAbs = -1
 	p.countsByRow = make(map[int]map[model.NodeID]int)
 	p.triggerCountsByRow = make(map[int]map[model.NodeID]int)
 	p.lastTrigByRow = make(map[int]map[model.NodeID]bool)

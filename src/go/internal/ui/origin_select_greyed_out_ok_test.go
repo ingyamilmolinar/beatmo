@@ -28,8 +28,8 @@ func TestOriginSelectAllowsMutedOtherCircuit(t *testing.T) {
 	g.drum.calcLayout()
 	ob := g.drum.rowOriginBtns()[1]
 	or := ob.Rect()
-	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, true)
-	_ = ob.Handle((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, false)
+	_ = ob.HandleInputResult((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, true)
+	_ = ob.HandleInputResult((or.Min.X+or.Max.X)/2, (or.Min.Y+or.Max.Y)/2, false)
 	_ = g.Update()
 	if g.pendingStartRow != 1 {
 		t.Fatalf("pendingStartRow=%d want 1", g.pendingStartRow)

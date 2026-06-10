@@ -84,6 +84,34 @@ jobs:
             -timeout 120s ./... 2>&1 | tee ../../coverage/test-output.txt
       - name: Run Go tests (real Ebiten + xvfb)
         run: cd src/go && BPM_TIMING_TEST=1 xvfb-run -a go test ./...
+      # gcov line coverage of our own C DSP sources (miniaudio excluded) via
+      # the native CGo test run. Also captures coverage/go-native.out — the
+      # bridge files (drums_c.go, insert_fx_c.go, ...) that the -tags test
+      # coverage above never compiles. Floor enforced at the recorded
+      # baseline (see coverage-c-check in the Makefile). Runs after the
+      # other test steps because the script transiently swaps in an
+      # instrumented build/libdrums.a (restored/cleaned via trap on exit).
+      - name: C coverage (gcov, own DSP sources)
+        run: COVERAGE_C_XVFB=1 make coverage-c-check
+      - name: C coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/c-summary.txt ]; then
+            echo "## C Coverage (own DSP sources, miniaudio excluded)" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat coverage/c-summary.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Upload C coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c-coverage
+          path: |
+            coverage/c-summary.txt
+            coverage/c/
+            coverage/go-native.out
+          retention-days: 30
       - name: Coverage summary
         if: always()
         run: |

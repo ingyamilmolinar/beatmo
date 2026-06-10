@@ -65,4 +65,29 @@ func (g *Game) clampRowFreeze(row int, limit int) {
 	if g.frozenUpToByRow[row] > limit {
 		g.frozenUpToByRow[row] = limit
 	}
+	// Any clamp invalidates that row's reconciliation watermark — entries
+	// strictly above the new clamp are no longer frozen, and entries at or
+	// below the clamp may have been mutated by the trim/release path that
+	// triggered this clamp. Force a re-scan from futureReleaseStart next
+	// refresh.
+	g.invalidateReconciledRow(row)
+}
+
+// invalidateReconciledRow resets row r's reconciliation watermark so the next
+// refresh's reconcileFrozen scan starts from futureReleaseStart. Out-of-range
+// row values are silently ignored.
+func (g *Game) invalidateReconciledRow(row int) {
+	if row < 0 || row >= len(g.reconciledUpToByRow) {
+		return
+	}
+	g.reconciledUpToByRow[row] = -1
+}
+
+// invalidateReconciledAll resets every row's reconciliation watermark. Used
+// when an event affects all rows globally (predictor SetPaths, Stop reset,
+// row count grow).
+func (g *Game) invalidateReconciledAll() {
+	for i := range g.reconciledUpToByRow {
+		g.reconciledUpToByRow[i] = -1
+	}
 }

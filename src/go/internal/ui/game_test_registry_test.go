@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"sync"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"go.uber.org/goleak"
 )
 
 var (
@@ -49,8 +51,61 @@ func closeTestGames() {
 
 func TestMain(m *testing.M) {
 	resetTestEnvAndGlobals()
+	// Pre-warm the standing async pools so they're part of the baseline.
+	// internal/ui shares pools with internal/audio (recording.lifecycle),
+	// internal/eventstream (eventstream.persist), internal/hooks (hooks.fanout),
+	// and the audio scheduler/dialog pools — all spawned lazily on first
+	// game construction. Constructing one game here forces them to start
+	// before goleak.IgnoreCurrent captures the baseline; otherwise every
+	// test that builds a Game appears to leak the shared workers.
+	prewarm := New(testLogger)
+	prewarm.CloseForTest()
+	// Capture the baseline goroutines before m.Run so post-test goleak.Find
+	// reports only test-introduced leaks. Mirrors the discipline in the
+	// seven sibling packages (async, hooks, eventstream, audio, engine,
+	// eventlogger, userprefs) per CLAUDE.md.
+	baseline := goleak.IgnoreCurrent()
 	code := m.Run()
 	closeTestGames()
+	if code == 0 {
+		if err := goleak.Find(
+			baseline,
+			goleak.IgnoreTopFunction("github.com/hajimehoshi/ebiten/v2/internal/ui.(*UserInterface).runSingleThread"),
+			goleak.IgnoreTopFunction("github.com/hajimehoshi/ebiten/v2/internal/ui.(*UserInterface).loopGame"),
+			// async.Pool workers are shared across the package via
+			// DefaultRegistry; CloseForTest releases registry refs but a
+			// production-pool worker may still be parked in chan receive.
+			goleak.IgnoreTopFunction("github.com/ingyamilmolinar/beatmo/internal/async.(*Pool).run"),
+			goleak.IgnoreTopFunction("github.com/ingyamilmolinar/beatmo/internal/async.(*Scheduler).run"),
+			// audio.initContext singletons. These are spawned lazily on the
+			// first PlayParams call (NOT during prewarm), so they aren't in
+			// the goleak baseline; once spawned they live for the rest of
+			// the process by design (single audio output mux per process).
+			// Previously masked by the cascade-of-failures abort path —
+			// surfaced once the cascade was fixed.
+			//
+			// Use IgnoreAnyFunction (matches any frame) since these
+			// goroutines are usually parked in `sync.Mutex.Lock` /
+			// `sync.Cond.Wait` / cgo syscalls — the actual top frame is
+			// `runtime.semacquire` etc., not the package's Run/loop func.
+			goleak.IgnoreAnyFunction("github.com/ingyamilmolinar/beatmo/internal/analyzer.(*Service).Run"),
+			goleak.IgnoreAnyFunction("github.com/ingyamilmolinar/beatmo/internal/scope.(*Service).Run"),
+			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3.(*context).readAndWrite"),
+			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3.(*context).readAndWrite.func1"),
+			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3/internal/mux.(*Mux).loop"),
+			goleak.IgnoreAnyFunction("github.com/ebitengine/oto/v3/internal/mux.(*Mux).wait"),
+			// NB: Game.audioLoop and Game.bpmLoop are now joined by
+			// Game.Close() via g.bgWG.Wait(), and Engine.run() is joined by
+			// Engine.Close() via runDone. They no longer need explicit
+			// IgnoreAnyFunction entries — if they show up here it's a real
+			// leak (a test built a Game without registering it for
+			// CloseForTest, or Close was called concurrently with a still
+			// blocked goroutine).
+		); err != nil {
+			fmt.Fprintf(os.Stderr, "goleak: %v\n", err)
+			code = 1
+		}
+	}
 	os.Exit(code)
 }
 

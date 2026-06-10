@@ -18,13 +18,14 @@ func TestCurveDragExclusiveDesktop(t *testing.T) {
 	z, log := newTestEQPanelZone(nil)
 	r := image.Rect(0, 400, 600, 580)
 	z.Layout(r)
+	pr := z.eqPlotRect() // handles map into the plot region, not the full panel
 
 	// Find a band handle center (band 5 = 1 kHz).
 	band := 5
 	def := eqBandDefs[band]
 	center := math.Sqrt(def.loHz * def.hiHz)
-	hx := freqToX(center, r)
-	hy := gainDBToY(0, r) // starts at 0 dB
+	hx := freqToX(center, pr)
+	hy := gainDBToY(0, pr) // starts at 0 dB
 
 	// Find the curve area handler.
 	var handler HitHandler
@@ -45,7 +46,7 @@ func TestCurveDragExclusiveDesktop(t *testing.T) {
 	}
 
 	// Drag upward (boost).
-	targetY := gainDBToY(6.0, r)
+	targetY := gainDBToY(6.0, pr)
 	handler.OnDrag(hx, targetY)
 
 	// Verify gain was updated.
@@ -77,13 +78,14 @@ func TestCurveDragExclusiveMobile(t *testing.T) {
 	z, log := newTestEQPanelZone(nil)
 	r := image.Rect(0, 200, 400, 500)
 	z.Layout(r)
+	pr := z.eqPlotRect()
 
 	// Same flow as desktop.
 	band := 3
 	def := eqBandDefs[band]
 	center := math.Sqrt(def.loHz * def.hiHz)
-	hx := freqToX(center, r)
-	hy := gainDBToY(0, r)
+	hx := freqToX(center, pr)
+	hy := gainDBToY(0, pr)
 
 	var handler HitHandler
 	for _, a := range z.HitAreas() {
@@ -101,7 +103,7 @@ func TestCurveDragExclusiveMobile(t *testing.T) {
 		t.Fatal("expected press on handle to capture input on mobile")
 	}
 
-	targetY := gainDBToY(-4.0, r)
+	targetY := gainDBToY(-4.0, pr)
 	handler.OnDrag(hx, targetY)
 
 	gain := z.bandGainsDB[band]
@@ -282,6 +284,7 @@ func TestDBLabelFlipsBelowNearTop(t *testing.T) {
 	z, _ := newTestEQPanelZone(nil)
 	r := image.Rect(0, 400, 600, 580)
 	z.Layout(r)
+	pr := z.eqPlotRect()
 
 	// Set band to max gain so handle is near the top.
 	band := 5
@@ -289,8 +292,8 @@ func TestDBLabelFlipsBelowNearTop(t *testing.T) {
 
 	def := eqBandDefs[band]
 	center := math.Sqrt(def.loHz * def.hiHz)
-	hx := freqToX(center, r)
-	hy := gainDBToY(12.0, r) // near top
+	hx := freqToX(center, pr)
+	hy := z.eqHandleY(12.0) // near top (clamped within plot)
 
 	var handler HitHandler
 	for _, a := range z.HitAreas() {
@@ -320,11 +323,12 @@ func TestDBLabelAccuracyExtremes(t *testing.T) {
 	z, _ := newTestEQPanelZone(nil)
 	r := image.Rect(0, 400, 600, 580)
 	z.Layout(r)
+	pr := z.eqPlotRect()
 
 	band := 5
 	def := eqBandDefs[band]
 	center := math.Sqrt(def.loHz * def.hiHz)
-	hx := freqToX(center, r)
+	hx := freqToX(center, pr)
 
 	var handler HitHandler
 	for _, a := range z.HitAreas() {
@@ -338,22 +342,22 @@ func TestDBLabelAccuracyExtremes(t *testing.T) {
 	}
 
 	// Drag to top = +12 dB.
-	handler.OnPress(hx, gainDBToY(0, r))
-	handler.OnDrag(hx, gainDBToY(12.0, r))
+	handler.OnPress(hx, gainDBToY(0, pr))
+	handler.OnDrag(hx, gainDBToY(12.0, pr))
 	if z.curveDragDBText != "+12.0 dB" {
 		t.Errorf("expected '+12.0 dB', got %q", z.curveDragDBText)
 	}
 
-	handler.OnRelease(hx, gainDBToY(12.0, r))
+	handler.OnRelease(hx, gainDBToY(12.0, pr))
 
 	// Drag to bottom = -12 dB.
-	handler.OnPress(hx, gainDBToY(12.0, r)) // handle is now at +12
-	handler.OnDrag(hx, gainDBToY(-12.0, r))
+	handler.OnPress(hx, z.eqHandleY(12.0)) // handle is now at +12 (clamped)
+	handler.OnDrag(hx, gainDBToY(-12.0, pr))
 	if z.curveDragDBText != "-12.0 dB" {
 		t.Errorf("expected '-12.0 dB', got %q", z.curveDragDBText)
 	}
 
-	handler.OnRelease(hx, gainDBToY(-12.0, r))
+	handler.OnRelease(hx, gainDBToY(-12.0, pr))
 }
 
 func TestFilterDragShowsHz(t *testing.T) {

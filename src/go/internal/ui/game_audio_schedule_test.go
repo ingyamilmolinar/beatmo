@@ -14,7 +14,11 @@ import (
 func TestRuntimeAudioLookaheadMaxCap(t *testing.T) {
 	assertDefaultParityState(t)
 	g := buildTestGame(t)
-	g.audioLookaheadSec = 0.04
+	// Base high enough that base + the 30ms pressure extra crosses the
+	// 150ms ceiling in runtimeAudioLookahead (game_audio_schedule.go) —
+	// the cap, not the extra, must win. (This test used to assert a 60ms
+	// cap that the implementation no longer has.)
+	g.audioLookaheadSec = 0.14
 	g.SetPlayingForTest(true)
 
 	// Simulate high draw times to trigger max extra.
@@ -25,9 +29,12 @@ func TestRuntimeAudioLookaheadMaxCap(t *testing.T) {
 	atomic.StoreInt64(&g.perf.drawSumNS, 250_000_000) // 25ms avg
 
 	got := g.runtimeAudioLookahead()
-	// With 40ms base + 30ms extra (DrawAvg > 18) = 70ms, but cap is 60ms
-	if got > 0.061 {
-		t.Errorf("expected max cap of 60ms, got %.3f", got)
+	// 140ms base + 30ms extra (DrawAvg > 18) = 170ms, clamped to the 150ms cap.
+	if got > 0.151 {
+		t.Errorf("expected max cap of 150ms, got %.3f", got)
+	}
+	if math.Abs(got-0.15) > 1e-9 {
+		t.Errorf("expected cap to clamp to exactly 0.15, got %.3f", got)
 	}
 }
 
@@ -178,28 +185,8 @@ func TestScheduleSoundMuteNodeStopsAudio(t *testing.T) {
 	}
 }
 
-func TestAudioChNearFull(t *testing.T) {
-	assertDefaultParityState(t)
-	g := buildTestGame(t)
-
-	// Fill audioCh to >75% capacity (128 * 0.75 = 96)
-	for i := 0; i < 100; i++ {
-		select {
-		case g.audioCh <- soundReq{id: "fill"}:
-		default:
-		}
-	}
-
-	if !g.audioChNearFull() {
-		t.Fatal("expected audioChNearFull() to return true")
-	}
-
-	// Drain channel
-	for len(g.audioCh) > 0 {
-		<-g.audioCh
-	}
-
-	if g.audioChNearFull() {
-		t.Fatal("expected audioChNearFull() to return false after drain")
-	}
-}
+// TestAudioChNearFull was removed alongside the audioChNearFull() source
+// method ("R2.3 — removed the audioChNearFull skip-tick", see
+// game_sequencer_schedule.go). Kept intentionally blank to make the removal
+// auditable in git history; the deleted test body referenced
+// g.audioChNearFull() which no longer exists.

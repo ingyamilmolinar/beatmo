@@ -52,7 +52,60 @@ const (
 	viewModeSpectrum                 // mobile audio panel showing Spectrum tab
 	viewModeMeters                   // mobile audio panel showing Meters tab
 	viewModeChain                    // mobile audio panel showing Scope tab
+	viewModeSynth                    // mobile audio panel showing Synth tab (Phase 4)
+	viewModeSampler                  // mobile audio panel showing Sampler tab
 )
+
+// viewModeSlug returns the canonical lowercase slug for a view mode, matching
+// the bottomNav segment slugs exposed in fullLayoutSnapshot. "pads" is the
+// Rows view (desktop is always "pads"); the rest mirror the audio-panel tabs.
+func viewModeSlug(m viewMode) string {
+	switch m {
+	case viewModeRows:
+		return "pads"
+	case viewModeEQ:
+		return "eq"
+	case viewModeWave:
+		return "wave"
+	case viewModeSpectrum:
+		return "spectrum"
+	case viewModeMeters:
+		return "levels"
+	case viewModeChain:
+		return "chain"
+	case viewModeSynth:
+		return "synth"
+	case viewModeSampler:
+		return "sampler"
+	default:
+		return ""
+	}
+}
+
+// viewModeFromSlug is the inverse of viewModeSlug. Returns (mode, true) for a
+// recognized slug, or (viewModeRows, false) otherwise.
+func viewModeFromSlug(slug string) (viewMode, bool) {
+	switch slug {
+	case "pads", "rows":
+		return viewModeRows, true
+	case "eq":
+		return viewModeEQ, true
+	case "wave":
+		return viewModeWave, true
+	case "spectrum":
+		return viewModeSpectrum, true
+	case "levels", "meters":
+		return viewModeMeters, true
+	case "chain", "scope":
+		return viewModeChain, true
+	case "synth":
+		return viewModeSynth, true
+	case "sampler":
+		return viewModeSampler, true
+	default:
+		return viewModeRows, false
+	}
+}
 
 var eqPanelHeight = 190
 
@@ -99,6 +152,7 @@ type DrumRow struct {
 	Pan         float64            // Stereo pan: -1 (left) to +1 (right), 0 = center
 	DelaySend   float64            // Delay send amount (0-1)
 	ReverbSend  float64            // Reverb send amount (0-1)
+	Role        string             // Phase 6: explicit kit role tag (kick/snare/hat/…); empty = audio.RoleForInstrument heuristic
 }
 
 func instColor(id string) color.Color {
@@ -299,6 +353,67 @@ type DrumView struct {
 	fxSliderLeft     int             // computed label area width for FX param rows (desktop)
 	fxViewportRect   image.Rectangle // scrollable content area (between header and footer)
 
+	// Instrument-editor (Phase 4 → redesigned per
+	// hey-please-review-the-vectorized-rocket.md) state. The editor lives
+	// as a Synth tab alongside EQ/Wave/Spectrum/Levels/Chain (see
+	// synth_panel_zone.go). State is carried on DrumView so per-row scroll
+	// position survives tab switches and the EQ-panel routing can reach the
+	// widget lists.
+	//
+	// Slider/Knob duality: each wired ParamDef gets a (Slider, Knob) pair.
+	// Knob is the visual + interaction widget rendered inside the section
+	// card; Slider is a value-store that the legacy hit-adapter / coalesce
+	// path continues to read. Drag handlers
+	// keep the two values in sync so either widget can drive playback. The
+	// Slider's rect is set equal to the Knob's bounds so hit-test paths
+	// that still consult slider rects land on the knob area.
+	instEditorSliders  []*Slider
+	instEditorKnobs    []*Knob
+	instEditorBindings []instParamBinding // maps widget index → ParamDef
+	instEditorBtns     []*Button          // footer buttons: Reset, Save, Save-As (close lives on the sticky bar)
+	instEditorSections []synthSection     // PITCH | ENVELOPE | TONE | DRIVE cards
+	// instEditorPreviewRect holds the geometry of the right-half
+	// preview pane (osc + ADSR + filter plots). Empty when the panel
+	// is too narrow for a horizontal split (mobile) or when the
+	// content area is below the minimum width for the pane to fit.
+	// Phase 4 of the audio-panel redesign.
+	instEditorPreviewRect image.Rectangle
+	// instEditorNoSynth is set when the active row's instrument has no
+	// synth recipe (it plays a loaded WAV sample). In that state the synth
+	// tab replaces its grid of section cards with a single explanatory
+	// banner (instEditorBannerRect) instead of a grid of empty section
+	// cards plus their distracting trigger-pulse borders.
+	instEditorNoSynth     bool
+	instEditorBannerRect  image.Rectangle
+	instEditorHeader      synthHeaderLayout  // header strip rects
+	instEditorHeaderBtns  []*Button          // header retrigger + vol buttons (shared *Button chrome)
+	saveAsDialog          *synthSaveAsDialog // active Save-As name dialog (nil = closed)
+	instEditorDragging    bool
+	instEditorDragIdx     int
+	instEditorScrollPx    int
+	instEditorScrollMax   int
+	instEditorScrollTS    TouchScroller
+	instEditorDeferredTap DeferredTap
+	// instEditorSectionGrids holds the per-section adaptive control grid +
+	// scroll state, keyed by section id so the scroll position survives both
+	// the per-frame re-layout and a recipe switch. Lazily created by
+	// sectionGrid. See control_grid.go.
+	instEditorSectionGrids map[synthSectionID]*ControlGrid
+	// Pipeline chip strip + expand-one detail pane (synth-tab redesign).
+	// Exactly one stage is expanded at a time; the rest collapse to chips in
+	// audio-pipeline order. Selection is per-session, per-instrument (no
+	// userprefs) and survives re-Layout per
+	// [[feedback_runtime_profile_derivation]] — geometry is re-derived every
+	// Layout from instEditorSelectedSection.
+	instEditorSelectedSection map[string]synthSectionID // resolved instID → open stage
+	instEditorChips           []synthChip               // rebuilt (reused [:0]) every Layout
+	instEditorDetailR         image.Rectangle           // detail pane rect (selected stage's knobs)
+	instEditorDetailHeaderH   int                       // effective detail header height (token, shrunk on short panels)
+
+	// sampler holds the Sampler tab's working buffer + edit params + widgets.
+	sampler        samplerState
+	samplerButtons []samplerButton // header + control-row buttons, rebuilt each Layout
+
 	// subdiv dropdown
 	subdivMenuBtns []*Button
 
@@ -383,18 +498,27 @@ type DrumView struct {
 
 	// rowsLayer caches the composition of all visible row sprites (rowCache)
 	// for the current offset and scroll. Highlights are drawn on top separately.
-	rowsLayer        *ebiten.Image
-	rowsLayerW       int
-	rowsLayerH       int
-	rowsLayerOffset  int
-	rowsLayerRowOff  int
-	rowsLayerBaseX   int
-	rowsLayerGen     int
-	rowsLayerDirty   bool
-	rowsLayerPadPx   int
-	rowsLayerScratch *ebiten.Image // double-buffer scratch for layer shifts
-	rowsLayerBytes   int64
-	rowsLayerFrame   int64
+	rowsLayer       *ebiten.Image
+	rowsLayerW      int
+	rowsLayerH      int
+	rowsLayerOffset int
+	rowsLayerRowOff int
+	rowsLayerBaseX  int
+	// rowsLayerRowWidth and rowsLayerLength snapshot the timeline-rect width
+	// and step count the composite was built with. The shift-and-fill reuse
+	// path copies stale pixels left and only refills a small right strip, so
+	// if either dimension changes without the caller setting rowsLayerDirty,
+	// the leftmost pixels keep an old cell pitch while the right strip is
+	// painted at the new pitch — producing the mixed-pitch artifact users
+	// see after long sessions.
+	rowsLayerRowWidth int
+	rowsLayerLength   int
+	rowsLayerGen      int
+	rowsLayerDirty    bool
+	rowsLayerPadPx    int
+	rowsLayerScratch  *ebiten.Image // double-buffer scratch for layer shifts
+	rowsLayerBytes    int64
+	rowsLayerFrame    int64
 
 	// Row-stripes path: a horizontal split of the rows layer into multiple
 	// sprites so a wide layer can stream as separate textures. These

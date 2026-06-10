@@ -154,64 +154,16 @@ try {
       typeof playSound === "function"
     , { timeout: 30000 });
 
-    // Queue a channel volume change BEFORE triggering context creation.
-    // This verifies that the pending ops queue replays correctly.
-    await page.evaluate(() => {
-      // At this point, context may or may not exist depending on autoplay policy.
-      // Queue a volume change — if context exists, it applies immediately;
-      // if not, it goes into pendingChannelOps.
-      setChannelVolume?.("kick", 0.5);
+    // Delegate to the shared scenario module so test_runner.html on a real
+    // phone can run the same assertions.
+    const r2 = await page.evaluate(async () => {
+      const m = await import("/scenarios/mobile_audio_unlock.js");
+      return await m.scenarioQueuedChannelOpsAppliedAfterUnlock();
     });
-
-    // Now trigger context creation (via gesture + resumeAudio) and wait for it.
-    await page.evaluate(() => {
-      document.dispatchEvent(new Event("pointerdown"));
-      resumeAudio?.();
-    });
-    await page.waitForTimeout(300);
-
-    // Verify channel volume was applied after context creation.
-    const result = await page.evaluate(() => {
-      const vol = channelVolume?.("kick");
-      return { vol };
-    });
-
-    console.log(`  Kick channel volume: ${result.vol}`);
-    if (Math.abs(result.vol - 0.5) > 0.01) {
-      throw new Error(`Scenario 2 FAIL: channel volume not applied (expected 0.5, got ${result.vol})`);
+    console.log(`  ${JSON.stringify(r2)}`);
+    if (!r2.pass) {
+      throw new Error(`Scenario 2 FAIL: ${r2.reason || "unknown"}`);
     }
-
-    // Verify audio still works with the volume applied.
-    // Ensure C synth warmup is complete so kick sample is in the render cache.
-    // Without this, under CPU contention from parallel tests, the async render +
-    // re-enqueue latency can exceed the capture window, resulting in silence.
-    await page.evaluate(async () => {
-      await window.audioReady;
-      await ensureSynthSample?.("kick");
-    });
-
-    // Use recordSamples capture (window.__samples / __captureSamples) instead
-    // of ScriptProcessorNode-based output capture. ScriptProcessorNode.onaudioprocess
-    // runs on the main thread and receives zero-filled buffers under CPU contention
-    // from parallel Chromium instances. recordSamples fires synchronously inside
-    // processAudioEvent during the microtask flush, so it is immune to this issue.
-    const audioResult = await page.evaluate(async () => {
-      window.__samples = [];
-      window.__captureSamples = true;
-      await playSound("kick", 1.0);
-      const captured = window.__samples.slice();
-      window.__captureSamples = false;
-      let peak = 0;
-      for (let i = 0; i < captured.length; i++) {
-        const a = Math.abs(captured[i]);
-        if (a > peak) peak = a;
-      }
-      return { samples: captured.length, peak };
-    });
-
-    console.log(`  Audio: ${audioResult.samples} samples, peak=${audioResult.peak.toFixed(6)}`);
-    if (audioResult.samples === 0) throw new Error("Scenario 2 FAIL: no samples captured");
-    if (audioResult.peak < 0.001) throw new Error("Scenario 2 FAIL: no audio energy");
     console.log("  PASS");
     await context.close();
   }
@@ -312,53 +264,16 @@ try {
       typeof stopOutputCapture === "function"
     , { timeout: 30000 });
 
-    // Unlock audio context via gesture.
-    await page.evaluate(() => {
-      document.dispatchEvent(new Event("pointerdown"));
-      resumeAudio?.();
-    });
-    await page.waitForTimeout(200);
-
-    // Build a simple circuit: two nodes in a loop.
-    await page.evaluate(() => {
-      addNode?.(0, 0, "regular");
-      addNode?.(4, 0, "regular");
-      addEdgeGrid?.(0, 0, 4, 0);
-      addEdgeGrid?.(4, 0, 0, 0);
-      updateBeatInfos?.();
-      forceDraw?.();
-    });
-    await page.waitForTimeout(200);
-
-    // Enable output capture, start playback, verify audio.
+    // Delegate to the shared scenario module — same assertions are run on
+    // a real phone via test_runner.html.
     const s4 = await page.evaluate(async () => {
-      enableOutputCapture?.();
-      startOutputCapture?.();
-      startPlay?.();
-      await new Promise((r) => setTimeout(r, 1500));
-      stopPlay?.();
-      await new Promise((r) => setTimeout(r, 200));
-      const captured = Array.from(stopOutputCapture?.() || []);
-
-      let peak = 0;
-      let sum = 0;
-      for (let i = 0; i < captured.length; i++) {
-        const a = Math.abs(captured[i]);
-        if (a > peak) peak = a;
-        sum += captured[i] * captured[i];
-      }
-      const rms = captured.length > 0 ? Math.sqrt(sum / captured.length) : 0;
-      const ctxState = window.__audioCtx?.state || 'no-context';
-      const ctxTime = window.__audioCtx?.currentTime || 0;
-      return { samples: captured.length, peak, rms, ctxState, ctxTime };
+      const m = await import("/scenarios/mobile_audio_unlock.js");
+      return await m.scenarioPlaybackAfterUnlock();
     });
-
-    console.log(`  Samples: ${s4.samples}, Peak: ${s4.peak.toFixed(6)}, RMS: ${s4.rms.toFixed(6)}`);
-    console.log(`  Context: state=${s4.ctxState}, currentTime=${s4.ctxTime.toFixed(3)}`);
-
-    if (s4.samples === 0) throw new Error("Scenario 4 FAIL: no samples captured");
-    if (s4.rms < 0.0001) throw new Error(`Scenario 4 FAIL: no audio energy on mobile (RMS=${s4.rms})`);
-    if (s4.peak > 10) throw new Error(`Scenario 4 FAIL: extreme peak detected (peak=${s4.peak})`);
+    console.log(`  ${JSON.stringify(s4)}`);
+    if (!s4.pass) {
+      throw new Error(`Scenario 4 FAIL: ${s4.reason || "unknown"}`);
+    }
     console.log("  PASS");
 
     if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "mobile_audio_unlock");

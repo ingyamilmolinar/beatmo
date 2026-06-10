@@ -11,8 +11,8 @@ import (
 )
 
 // newSmallDrumView creates a DrumView with a single row and a small screen
-// (height=300) to force context menu overflow. Returns the DrumView after
-// a warm-up frame.
+// (callers pass small heights, e.g. 180px) to force context menu overflow.
+// Returns the DrumView after a warm-up frame.
 func newSmallDrumView(t *testing.T, w, h int) *DrumView {
 	t.Helper()
 	assertDefaultParityState(t)
@@ -43,9 +43,10 @@ func newSmallDrumView(t *testing.T, w, h int) *DrumView {
 }
 
 // TestContextMenuScrollStateOnOverflow verifies that opening the context menu
-// on a small screen (height=300) results in a scrollable state.
+// on a small screen results in a scrollable state. Height is sized to force
+// at least one hidden item with the current 4-item mobile menu.
 func TestContextMenuScrollStateOnOverflow(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
+	dv := newSmallDrumView(t, 390, 180)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
@@ -65,7 +66,7 @@ func TestContextMenuScrollStateOnOverflow(t *testing.T) {
 // TestContextMenuScrollViewExcludesHeader verifies that the scroll viewport
 // starts below the header on mobile, not at the menu top.
 func TestContextMenuScrollViewExcludesHeader(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
+	dv := newSmallDrumView(t, 390, 180)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
@@ -83,7 +84,7 @@ func TestContextMenuScrollViewExcludesHeader(t *testing.T) {
 
 // TestContextMenuWheelScroll verifies that wheel events change the scroll offset.
 func TestContextMenuWheelScroll(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
+	dv := newSmallDrumView(t, 390, 180)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
@@ -104,7 +105,7 @@ func TestContextMenuWheelScroll(t *testing.T) {
 // TestContextMenuTouchScroll verifies that touch drag scrolling works and
 // repositions buttons via rebuildContextMenuButtons.
 func TestContextMenuTouchScroll(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
+	dv := newSmallDrumView(t, 390, 180)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
@@ -140,7 +141,7 @@ func TestContextMenuTouchScroll(t *testing.T) {
 // TestContextMenuTouchScrollCancelsDeferredTap verifies that dragging past the
 // dead zone cancels the deferred tap, so releasing doesn't fire a button.
 func TestContextMenuTouchScrollCancelsDeferredTap(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
+	dv := newSmallDrumView(t, 390, 180)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
@@ -176,7 +177,7 @@ func TestContextMenuTouchScrollCancelsDeferredTap(t *testing.T) {
 // TestContextMenuTapStillWorks verifies that a simple tap (press+release at
 // same position) on a visible button fires its action.
 func TestContextMenuTapStillWorks(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
+	dv := newSmallDrumView(t, 390, 180)
 	dv.OpenContextMenu(0)
 
 	// openContextMenu sets suppressClicksUntilRelease. Simulate a release
@@ -227,7 +228,7 @@ func TestContextMenuTapStillWorks(t *testing.T) {
 // TestContextMenuDeleteReachableViaScroll verifies that scrolling to the bottom
 // makes the "Delete" button visible within the menu rect.
 func TestContextMenuDeleteReachableViaScroll(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 300)
+	dv := newSmallDrumView(t, 390, 180)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()
@@ -268,7 +269,9 @@ func TestContextMenuDeleteReachableViaScroll(t *testing.T) {
 // TestContextMenuScrollMomentum verifies that releasing a fast swipe creates
 // momentum that continues scrolling.
 func TestContextMenuScrollMomentum(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 200)
+	// 130px keeps Visible=1 with 4 mobile items, leaving room for momentum
+	// to advance VS.First by more than one step.
+	dv := newSmallDrumView(t, 390, 130)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()

@@ -3,6 +3,7 @@
 package audio
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -31,6 +32,18 @@ func TestPipelineStatsBytesUsed(t *testing.T) {
 	t.Cleanup(func() {
 		if IsRecording() {
 			_, _ = StopRecording()
+		}
+		// StopRecording detaches and finalizes the file writers
+		// asynchronously on the lifecycle pool (the desktop fast-return
+		// contract). Wait for that tail to flush + close the WAV files
+		// before t.TempDir()'s RemoveAll runs — otherwise finalize writes
+		// .wav/session.json into the dir concurrently with RemoveAll and
+		// trips "directory not empty". This cleanup runs before the
+		// TempDir cleanup by LIFO ordering.
+		wctx, wcancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer wcancel()
+		if err := WaitRecordingFinalized(wctx); err != nil {
+			t.Errorf("WaitRecordingFinalized: %v", err)
 		}
 	})
 

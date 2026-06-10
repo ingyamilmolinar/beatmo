@@ -26,6 +26,7 @@ func New(logger *game_log.Logger) *Game {
 		logger.SetLevel(game_log.LevelInfo)
 	}
 	eng := engine.New(logger)
+	eng.Predictor.SetWindowCap(RuntimeProf().PredictorWindowCap)
 	g := &Game{
 		cam:                NewCamera(),
 		inputDispatcher:    NewInputDispatcher(),
@@ -55,6 +56,7 @@ func New(logger *game_log.Logger) *Game {
 		pendingStartRow:    -1,
 		grid:               NewGrid(DefaultGridStep),
 		audioCh:            make(chan soundReq, 128),
+		audioQuit:          make(chan struct{}),
 		bpmCh:              make(chan int, 1),
 		bpmAck:             make(chan int, 1),
 		playFn:             nil,
@@ -183,6 +185,7 @@ func New(logger *game_log.Logger) *Game {
 		timerPool = async.NewPool(nil, timerOpts)
 	}
 	g.audioScheduler = async.NewScheduler(timerPool)
+	g.bgWG.Add(2)
 	go g.audioLoop()
 	go g.bpmLoop()
 	// Subscribe to engine ticks for scheduler-driven audio sequencing.

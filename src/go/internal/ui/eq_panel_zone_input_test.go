@@ -290,29 +290,23 @@ func TestCloseChannelDropdown_NilPortalDoesNotPanic(t *testing.T) {
 	}
 }
 
-// --- SetWaveformMode ---
+// --- waveform tab toggle ---
 
-func TestSetWaveformMode(t *testing.T) {
+func TestWaveformTabToggle(t *testing.T) {
 	z, _ := newTestEQPanelZone(nil)
 
-	if z.WaveformMode() {
+	if z.ActiveTab() == TabWave {
 		t.Fatal("should start in EQ mode")
 	}
 
-	z.SetWaveformMode(true)
-	if !z.WaveformMode() {
-		t.Fatal("expected waveform mode after SetWaveformMode(true)")
-	}
-	if z.tabState.ActiveTab() != TabWave {
-		t.Errorf("expected TabWave, got %v", z.tabState.ActiveTab())
+	z.tabState.SetActiveTab(TabWave)
+	if z.ActiveTab() != TabWave {
+		t.Fatal("expected waveform tab after SetActiveTab(TabWave)")
 	}
 
-	z.SetWaveformMode(false)
-	if z.WaveformMode() {
-		t.Fatal("expected EQ mode after SetWaveformMode(false)")
-	}
-	if z.tabState.ActiveTab() != TabEQ {
-		t.Errorf("expected TabEQ, got %v", z.tabState.ActiveTab())
+	z.tabState.SetActiveTab(TabEQ)
+	if z.ActiveTab() != TabEQ {
+		t.Fatal("expected EQ tab after SetActiveTab(TabEQ)")
 	}
 }
 

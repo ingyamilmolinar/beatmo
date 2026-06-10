@@ -117,16 +117,16 @@ func TestButtonHandleInputResult_BackwardCompat(t *testing.T) {
 	b := NewButton("ok", ButtonStyle{}, nil)
 	b.SetRect(image.Rect(10, 10, 60, 30))
 
-	// Press inside → true
-	if !b.Handle(35, 20, true) {
-		t.Fatal("Handle should return true on press inside")
+	// Press inside → consumed
+	if b.HandleInputResult(35, 20, true) == InputIgnored {
+		t.Fatal("Handle should consume press inside")
 	}
 	// Release resets held state.
-	b.Handle(35, 20, false)
+	b.HandleInputResult(35, 20, false)
 
-	// Press outside → false
-	if b.Handle(0, 0, true) {
-		t.Fatal("Handle should return false on press outside")
+	// Press outside → ignored
+	if b.HandleInputResult(0, 0, true) != InputIgnored {
+		t.Fatal("Handle should ignore press outside")
 	}
 }
 
@@ -239,7 +239,7 @@ func TestRepeatButtonHitAdapter_OnPressDoesNotManageSuppress(t *testing.T) {
 }
 
 // TestRepeatButtonHitAdapter_OnDragDelegates verifies that OnDrag calls
-// Button.Handle(x, y, true).
+// Button.HandleInputResult(x, y, true).
 func TestRepeatButtonHitAdapter_OnDragDelegates(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false
@@ -254,7 +254,7 @@ func TestRepeatButtonHitAdapter_OnDragDelegates(t *testing.T) {
 
 	// Drag continues the press.
 	h.OnDrag(20, 10)
-	// Button.Handle(x, y, true) with held > 0 increments held counter;
+	// Button.HandleInputResult(x, y, true) with held > 0 increments held counter;
 	// no panic is the primary assertion.
 }
 
@@ -277,7 +277,7 @@ func TestRepeatButtonHitAdapter_OnDragDoesNotManageSuppress(t *testing.T) {
 }
 
 // TestRepeatButtonHitAdapter_OnReleaseCallsFalse verifies that OnRelease
-// calls Button.Handle(x, y, false).
+// calls Button.HandleInputResult(x, y, false).
 func TestRepeatButtonHitAdapter_OnReleaseCallsFalse(t *testing.T) {
 	assertDefaultParityState(t)
 	suppressClicksUntilRelease = false

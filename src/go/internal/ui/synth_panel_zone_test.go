@@ -59,11 +59,12 @@ func TestSynthTab_LayoutPopulatesSliders(t *testing.T) {
 	sliders := g.drum.SynthTabSliders()
 	bindings := g.drum.SynthTabBindings()
 	// Synth-tab redesign: per-recipe wired params only. drum-snare wires
-	// pitch + decay + tone + drive (4); attack/color/body/brightness are
-	// no-ops on this recipe and intentionally not rendered.
+	// pitch + decay + tone + drive (4) plus the snare family knobs;
+	// attack/color/body/brightness are no-ops on this recipe and
+	// intentionally not rendered.
 	want := len(audio.WiredParamsForRecipe("drum-snare"))
-	if want != 4 {
-		t.Fatalf("test invariant broken: drum-snare wired param count = %d, expected 4", want)
+	if want < 4 {
+		t.Fatalf("test invariant broken: drum-snare wired param count = %d, expected >= 4", want)
 	}
 	if len(sliders) != want {
 		t.Errorf("got %d sliders, want %d (wired params for drum-snare)", len(sliders), want)
@@ -128,12 +129,18 @@ func TestSynthTab_ResetButtonClearsParams(t *testing.T) {
 	if len(btns) < 1 {
 		t.Fatalf("expected at least 1 button (reset); got %d", len(btns))
 	}
-	resetBtn := btns[0]
-	if resetBtn.Text != synthResetButtonTag {
-		t.Fatalf("expected reset tag, got %q", resetBtn.Text)
+	var resetBtn *Button
+	for _, b := range btns {
+		if b != nil && b.Text == synthResetButtonTag {
+			resetBtn = b
+			break
+		}
+	}
+	if resetBtn == nil {
+		t.Fatalf("reset button not present among %d header buttons", len(btns))
 	}
 	// Reset via the hit adapter (the same path real input uses).
-	adapter := &synthResetHitAdapter{instID: "snare"}
+	adapter := &synthResetHitAdapter{dv: g.drum}
 	cx := (resetBtn.Rect().Min.X + resetBtn.Rect().Max.X) / 2
 	cy := (resetBtn.Rect().Min.Y + resetBtn.Rect().Max.Y) / 2
 	adapter.OnPress(cx, cy)
@@ -191,9 +198,13 @@ func TestSynthTab_HitAreasFlowFromEQPanelWhenActive(t *testing.T) {
 			t.Error("synth hit areas leaked into TabEQ HitAreas")
 		}
 	}
-	// Synth tab: synth hit areas appended.
-	g.drum.eqPanelZone.SetActiveTab(TabSynth)
-	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	// Synth tab: synth hit areas appended. Under the chip-strip +
+	// expand-one-detail-pane layout only the SELECTED stage's knobs publish
+	// hit areas, so open the stage that owns knob index 0 (and force the panel
+	// to its expanded synth height) before asserting synth-slider-0 flows
+	// through the EQ panel zone.
+	expandSynthPanelForTest(t, g)
+	selectSectionForKnobIdx(t, g, "snare", 0)
 	synthAreas := g.drum.eqPanelZone.HitAreas()
 	hasSlider := false
 	for _, a := range synthAreas {
@@ -208,24 +219,51 @@ func TestSynthTab_HitAreasFlowFromEQPanelWhenActive(t *testing.T) {
 }
 
 func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
-	// Synth-tab redesign replaces inline group dividers with section
-	// cards (PITCH | ENVELOPE | TONE | DRIVE | OUT). drum-snare wires
-	// pitch + decay + tone + drive, so each of the 4 knob sections has
-	// exactly one knob assigned (PITCH=1, ENVELOPE=1, TONE=1 [tone],
-	// DRIVE=1) and no section collapses to a placeholder.
+	// Phase 8B unified Synth tab (+ Phase-8C modulator stages): every synth
+	// instrument shows the standardized
+	// VOICE · OSC · FM · PITCH · LFO · BURST · ENVELOPE · FILTER · POST
+	// sequence. For drum-snare:
+	//   VOICE  = the 11 snare family/voice knobs (generator + fundamental + the
+	//            tone/noise/tail decays + mixes + attack — the knobs that ARE
+	//            the snare sound),
+	//   OSC    = the 3 standardized oscillator knobs (osc_type/detune/octave),
+	//   FM     = the 13 standardized FM operator knobs,
+	//   PITCH  = the 2 pitch-env knobs (pitchenv_amt/decay),
+	//   LFO    = the 2 LFO knobs (lfo_rate/depth),
+	//   BURST  = sharpness + 4×(off, amp) = 9,
+	//   ENV    = decay (generic) + the 5 amp ADSR knobs = 6,
+	//   FILTER = the 3 standardized filter knobs,
+	//   POST   = pitch + tone + drive (generic post) + gain = 4.
+	// Each stage section also carries its enable pill; VOICE carries none.
 	g := newSynthTabGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	sections := g.drum.SynthTabSections()
-	if len(sections) != 4 {
-		t.Fatalf("got %d sections, want 4 (PITCH/ENVELOPE/TONE/DRIVE)", len(sections))
+	if len(sections) != 9 {
+		t.Fatalf("got %d sections, want 9 (VOICE/OSC/FM/PITCH/LFO/BURST/ENVELOPE/FILTER/POST)", len(sections))
 	}
 	wantBySection := map[synthSectionID]int{
-		synthSectionPitch:    1,
-		synthSectionEnvelope: 1,
-		synthSectionTone:     1, // drum-snare has tone but not body/brightness
-		synthSectionDrive:    1,
+		synthSectionVoice:    11,
+		synthSectionOsc:      3,
+		synthSectionFM:       13,
+		synthSectionPitch:    2,
+		synthSectionLFO:      2,
+		synthSectionBurst:    9,
+		synthSectionEnvelope: 6,
+		synthSectionFilter:   3,
+		synthSectionPost:     4,
+	}
+	wantEnable := map[synthSectionID]string{
+		synthSectionVoice:    "",
+		synthSectionOsc:      "osc_enabled",
+		synthSectionFM:       "fm_enabled",
+		synthSectionPitch:    "pitchenv_enabled",
+		synthSectionLFO:      "lfo_enabled",
+		synthSectionBurst:    "burst_enabled",
+		synthSectionEnvelope: "env_enabled",
+		synthSectionFilter:   "filter_enabled",
+		synthSectionPost:     "post_enabled",
 	}
 	for _, s := range sections {
 		want, ok := wantBySection[s.id]
@@ -236,111 +274,161 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 		if s.KnobCount() != want {
 			t.Errorf("section %q (drum-snare): got %d knobs, want %d", s.Label(), s.KnobCount(), want)
 		}
-		if s.Rect().Empty() {
-			t.Errorf("section %q has empty rect", s.Label())
+		if s.EnableParam() != wantEnable[s.id] {
+			t.Errorf("section %q (drum-snare): enableParam=%q want %q", s.Label(), s.EnableParam(), wantEnable[s.id])
 		}
+	}
+
+	// Synth-tab redesign: sections are no longer laid out side-by-side. Every
+	// section instead appears as a chip in the pipeline strip; exactly one
+	// section (the selected stage) is expanded into the detail pane and is the
+	// only one with a non-empty rect. The equivalent per-recipe layout claim
+	// is therefore: one chip per section (in order), and exactly one non-empty
+	// section rect equal to the detail pane.
+	chips := g.drum.instEditorChips
+	if len(chips) != len(sections) {
+		t.Fatalf("got %d chips, want one per section (%d)", len(chips), len(sections))
+	}
+	for i, c := range chips {
+		if c.id != sections[i].id {
+			t.Errorf("chip[%d] id=%v, want section order %v", i, c.id, sections[i].id)
+		}
+		if c.rect.Empty() {
+			t.Errorf("section %q chip has empty rect — every stage must stay visible in the strip", sectionLabel(c.id))
+		}
+	}
+	nonEmpty := 0
+	for _, s := range sections {
+		if s.Rect().Empty() {
+			continue
+		}
+		nonEmpty++
+		if s.Rect() != g.drum.instEditorDetailR {
+			t.Errorf("non-empty section %q rect %v != detail pane %v", s.Label(), s.Rect(), g.drum.instEditorDetailR)
+		}
+	}
+	if nonEmpty != 1 {
+		t.Errorf("got %d sections with non-empty rects, want exactly 1 (the selected/detail stage)", nonEmpty)
 	}
 }
 
-func TestSynthTab_SectionCardCollapsesForUnwiredSection(t *testing.T) {
-	// drum-hihat wires only decay + drive + brightness — no pitch and no
-	// tone knob in the TONE section (only brightness lives there). PITCH
-	// should collapse to a placeholder (zero knobs); TONE should have
-	// exactly 1 (brightness).
+func TestSynthTab_EmptySectionsArePruned(t *testing.T) {
+	// Phase 8B unification: empty standardized sections are PRUNED (not shown as
+	// collapsed "not used" placeholders). A minimal plugin recipe that wires
+	// only decay + brightness + drive produces just the ENVELOPE (decay) and
+	// POST (brightness + drive) sections — no VOICE/OSC/FM/FILTER cards at all,
+	// since the recipe contributes no content to them.
+	registerCollapsedSectionTestRecipe(t)
 	g := newSynthTabGame(t)
 	g.drum.Rows[0].Instrument = "hihat"
-	audio.BindInstrumentToRecipe("hihat", "drum-hihat")
-	t.Cleanup(func() { audio.ResetInstrumentParams("hihat") })
+	audio.BindInstrumentToRecipe("hihat", collapsedTestRecipeID)
+	t.Cleanup(func() {
+		audio.BindInstrumentToRecipe("hihat", "drum-hihat")
+		audio.ResetInstrumentParams("hihat")
+	})
 
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	wantBySection := map[synthSectionID]int{
-		synthSectionPitch:    0, // collapsed placeholder
 		synthSectionEnvelope: 1, // decay
-		synthSectionTone:     1, // brightness
-		synthSectionDrive:    1, // drive
+		synthSectionPost:     2, // brightness + drive
 	}
+	got := map[synthSectionID]int{}
 	for _, s := range g.drum.SynthTabSections() {
-		if got, want := s.KnobCount(), wantBySection[s.id]; got != want {
-			t.Errorf("section %q (drum-hihat): got %d knobs, want %d", s.Label(), got, want)
+		got[s.id] = s.KnobCount()
+		if _, ok := wantBySection[s.id]; !ok {
+			t.Errorf("unexpected (non-pruned) section %q with %d knobs", s.Label(), s.KnobCount())
+		}
+	}
+	for id, want := range wantBySection {
+		if got[id] != want {
+			t.Errorf("section %q: got %d knobs, want %d", sectionLabel(id), got[id], want)
 		}
 	}
 }
 
-func TestSynthTab_OutColumnHasSendLaunchersOnly(t *testing.T) {
-	// User feedback: FX + EQ entries on the Synth tab were redundant with
-	// the per-row FX overlay and the EQ tab. The OUT column now exposes
-	// only the two surfaces nothing else does: Delay send + Reverb send.
-	g := newSynthTabGame(t)
-	g.drum.eqPanelZone.SetActiveTab(TabSynth)
-	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+// collapsedTestRecipeID is a runtime-registered recipe whose schema leaves
+// the PITCH section empty, standing in for the user/plugin recipes that can
+// still produce collapsed section cards.
+const collapsedTestRecipeID = "test-collapsed-section"
 
-	links := g.drum.SynthTabOutLinks()
-	if len(links) != 2 {
-		t.Fatalf("got %d OUT launchers, want 2 (Delay, Reverb only)", len(links))
-	}
-	gotKinds := map[synthOutLinkKind]bool{}
-	for _, l := range links {
-		gotKinds[l.Kind()] = true
-		if l.Rect().Empty() {
-			t.Errorf("OUT launcher %q has empty rect", l.DisplayLabel())
-		}
-	}
-	for _, kind := range []synthOutLinkKind{synthOutDelay, synthOutReverb} {
-		if !gotKinds[kind] {
-			t.Errorf("OUT-column missing send launcher kind %v", kind)
-		}
+type collapsedTestProvider struct{}
+
+func (collapsedTestProvider) Render(buf []float32, sampleRate, samples, variant int, p audio.RecipeParams) {
+	for i := 0; i < samples && i < len(buf); i++ {
+		buf[i] = 0.1
 	}
 }
 
-func TestSynthTab_OutColumnDelayOpensSendPopover(t *testing.T) {
-	g := newSynthTabGame(t)
-	g.drum.eqPanelZone.SetActiveTab(TabSynth)
-	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-
-	// Find the Delay launcher and dispatch a press to its centre.
-	var delay synthOutLink
-	for _, l := range g.drum.SynthTabOutLinks() {
-		if l.Kind() == synthOutDelay {
-			delay = l
-			break
-		}
-	}
-	if delay.Rect().Empty() {
-		t.Fatal("Delay launcher not laid out")
-	}
-	cx := (delay.Rect().Min.X + delay.Rect().Max.X) / 2
-	cy := (delay.Rect().Min.Y + delay.Rect().Max.Y) / 2
-	if !g.drum.handleSynthTabInput(cx, cy, true, "snare") {
-		t.Fatal("Delay launcher press not consumed")
-	}
-	pop := g.drum.SynthTabSendPopover()
-	if pop == nil {
-		t.Fatal("send popover did not open after Delay launcher press")
-	}
-	if pop.Kind() != synthSendDelay {
-		t.Errorf("popover kind = %v, want synthSendDelay", pop.Kind())
-	}
-	if !pop.PopoverRect().Overlaps(delay.Rect().Inset(-50)) {
-		// popover should be anchored adjacent to the launcher.
-		t.Errorf("popover rect %v not anchored adjacent to launcher rect %v", pop.PopoverRect(), delay.Rect())
+func registerCollapsedSectionTestRecipe(t *testing.T) {
+	t.Helper()
+	err := audio.RegisterPluginRecipe(audio.PluginRecipeOptions{
+		ID:          collapsedTestRecipeID,
+		DisplayName: "Collapsed Section Test",
+		Category:    "drum",
+		ParamDefs: []audio.ParamDef{
+			{Name: "decay", Label: "Decay", Min: 0, Max: 4, Default: 1},
+			{Name: "brightness", Label: "Brightness", Min: 0, Max: 1, Default: 0},
+			{Name: "drive", Label: "Drive", Min: 0, Max: 1, Default: 0},
+		},
+		Provider: collapsedTestProvider{},
+	})
+	if err != nil && !strings.Contains(err.Error(), "already registered") {
+		t.Fatalf("RegisterPluginRecipe: %v", err)
 	}
 }
 
-func TestSynthTab_OutColumnExcludesFXAndEQ(t *testing.T) {
-	// Regression guard: per user request, the Synth-tab OUT column never
-	// surfaces FX or EQ launchers (those have dedicated routes elsewhere).
-	// If a future change reintroduces them, this test fails.
+// TestSynthTab_NoSynthInstrumentShowsBanner verifies that when the active
+// row's instrument has no synth recipe (it plays a loaded WAV sample), the
+// synth tab abandons its grid of empty section
+// cards and instead enters the single-banner no-synth state: no sections,
+// no wired knobs, and a non-empty banner rect. Removing the section cards
+// also removes the distracting trigger-pulse borders that used to blink
+// around cards that the sample doesn't use.
+func TestSynthTab_NoSynthInstrumentShowsBanner(t *testing.T) {
+	g := newSynthTabGame(t)
+	g.drum.Rows[0].Name = "Kick"
+	g.drum.Rows[0].Instrument = "kick-wav"
+	// No recipe binding → this instrument plays a sample, not the synth.
+	audio.BindInstrumentToRecipe("kick-wav", "")
+	if audio.RecipeForInstrument("kick-wav") != "" {
+		t.Fatalf("test invariant broken: kick-wav must have no recipe binding")
+	}
+
+	g.drum.eqPanelZone.SetActiveTab(TabSynth)
+	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+
+	if !g.drum.SynthTabNoSynth() {
+		t.Fatal("expected SynthTabNoSynth()==true for a sample (no-recipe) instrument")
+	}
+	if n := len(g.drum.SynthTabSections()); n != 0 {
+		t.Errorf("no-synth instrument must render no section cards; got %d sections", n)
+	}
+	if n := len(g.drum.SynthTabBindings()); n != 0 {
+		t.Errorf("no-synth instrument must wire no knobs; got %d bindings", n)
+	}
+	if g.drum.SynthTabBannerRect().Empty() {
+		t.Error("no-synth banner rect must be non-empty so the banner has somewhere to draw")
+	}
+}
+
+// TestSynthTab_RecipeInstrumentDoesNotShowBanner is the negative control:
+// a real synth instrument (snare → drum-snare) must NOT enter the no-synth
+// banner state and must still render its section cards.
+func TestSynthTab_RecipeInstrumentDoesNotShowBanner(t *testing.T) {
 	g := newSynthTabGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
-	for _, l := range g.drum.SynthTabOutLinks() {
-		label := l.DisplayLabel()
-		if strings.HasPrefix(label, "FX") || label == "EQ" {
-			t.Errorf("OUT column contains a launcher labelled %q; FX and EQ must not appear", label)
-		}
+	if g.drum.SynthTabNoSynth() {
+		t.Error("synth instrument (drum-snare) must not enter the no-synth banner state")
+	}
+	if !g.drum.SynthTabBannerRect().Empty() {
+		t.Error("synth instrument must not reserve a no-synth banner rect")
+	}
+	if len(g.drum.SynthTabSections()) == 0 {
+		t.Error("synth instrument must still render section cards")
 	}
 }
 
@@ -410,39 +498,6 @@ func TestSynthTab_SliderDragCoalescesIdenticalValues(t *testing.T) {
 	g.drum.propagateSynthSliderValue(idx, "snare")
 	if fired != 2 {
 		t.Errorf("after slider move: fired=%d, want 2", fired)
-	}
-}
-
-func TestSynthTab_NoGroupHeadersForUngroupedParams(t *testing.T) {
-	// Register a fake recipe whose ParamDefs have empty Group; assert
-	// no headers are emitted. Locks in the "Group empty → no divider"
-	// behavior so a future ParamDef rename can't silently add chrome.
-	const recipeID = "test-no-group-recipe"
-	t.Cleanup(func() { audio.UnregisterRecipeForTest(recipeID) })
-	audio.RegisterRecipe(audio.RecipeRegistration{
-		ID:          recipeID,
-		DisplayName: "test",
-		Category:    "test",
-		Params: []audio.ParamDef{
-			{Name: "x", Min: 0, Max: 1, Default: 0.5},
-			{Name: "y", Min: 0, Max: 1, Default: 0.5},
-		},
-		New: func() audio.SynthRecipe { return audio.NewRecipe("drum-snare") },
-	})
-
-	const instID = "test-no-group-inst"
-	t.Cleanup(func() { audio.BindInstrumentToRecipe(instID, "") })
-	audio.BindInstrumentToRecipe(instID, recipeID)
-
-	g := newSynthTabGame(t)
-	g.drum.Rows[0].Instrument = instID
-
-	g.drum.eqPanelZone.SetActiveTab(TabSynth)
-	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-
-	headers := g.drum.SynthTabGroupHeaders()
-	if len(headers) != 0 {
-		t.Errorf("got %d headers for ungrouped recipe; want 0 (labels: %v)", len(headers), headers)
 	}
 }
 

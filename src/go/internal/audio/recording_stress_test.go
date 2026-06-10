@@ -55,7 +55,8 @@ func pipelineUnderLoad(t *testing.T, ctx context.Context, instruments []Instrume
 	}
 
 	// Real audio: 44.1 kHz / 480 samples = 91.875 blocks/sec ≈ 10.9 ms.
-	tickDur := time.Duration(float64(blockLen) / 44.1)
+	// time.Duration is nanoseconds, so convert seconds→ns via time.Second.
+	tickDur := time.Duration(float64(blockLen) * float64(time.Second) / 44100.0)
 	if tickDur < time.Millisecond {
 		tickDur = time.Millisecond
 	}

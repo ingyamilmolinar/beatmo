@@ -14,10 +14,16 @@ import (
 // TestColumnPillVisibleOnDesktop verifies that the column divider pill handle
 // between the rack (instrument controls) and timeline (cell grid) is visible
 // on desktop — i.e., it is the last thing drawn at its position, not covered
-// by an opaque background fill.
+// by an opaque background fill — when the BEATMO_DEBUG_LAYOUT debug overlay
+// is enabled. (Layout pills are hidden by default in production; see
+// layout_guides_default_off_test.go.)
 func TestColumnPillVisibleOnDesktop(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
+
+	t.Setenv("BEATMO_DEBUG_LAYOUT", "1")
+	UpdateProfile()
+	t.Cleanup(UpdateProfile)
 
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)

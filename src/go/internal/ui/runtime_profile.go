@@ -90,6 +90,18 @@ type RuntimeProfile struct {
 	TimelineInfoThrottleMS int
 	AudioLookaheadSec      float64 // base audio lookahead at profile init
 
+	// MinDispatchLeadSec is the dispatch-time floor applied to
+	// sequencer-scheduled events (row >= 0) in audioLoop: req.when is bumped
+	// up to audioNow+MinDispatchLeadSec when it would otherwise slip into the
+	// past or the small-lead danger zone. It exists ONLY to survive the
+	// Go→JS PlayBatch crossing on WASM (the JS observer reads lead at
+	// .start() after the bridge delay, so the floor must exceed the bridge
+	// max to keep audioMetrics.minLead positive). 0 disables the clamp
+	// entirely — on desktop audio.Now() is the engine clock with no bridge,
+	// so scheduleSound's lookahead already provides lead and groove "rush"
+	// can legitimately schedule before the grid boundary.
+	MinDispatchLeadSec float64
+
 	// Loop tuning.
 	AudioBatchMax       int // max events per audio loop iteration
 	SequencerTickMS     int // sequencer goroutine cooperative tick
@@ -131,6 +143,19 @@ type RuntimeProfile struct {
 	// visible ribbon window, expressed as a fraction of bar width. 0.70 =
 	// 70% from the left, leaving ~30% of the bar for lookahead context.
 	RibbonPlayheadFrac float64
+
+	// AudioPanelHeightMultiplier scales the base eqPanelHeight to size
+	// the audio analysis panel. Spectrum / Levels / Chain / Synth all
+	// need substantial vertical real estate to be legible (the Synth
+	// tab clips knobs at 2×; spectrum bars need ~480 px for dB ticks
+	// to render). 3× gives ~360 px on a 720 px viewport (~50% of the
+	// screen) and lets every audio tab claim the same headroom — a
+	// user-draggable handle on the row strip still overrides.
+	// AudioPanelHeightScreenFrac is the hard upper bound expressed as
+	// a fraction of the framebuffer height; PanelHeight clamps to
+	// floor(screenH * frac) so the panel never crowds the grid.
+	AudioPanelHeightMultiplier int
+	AudioPanelHeightScreenFrac float64
 
 	// ForceGCInterval triggers runtime.GC() at most once per interval in
 	// heapProbeTick (wall-clock based, NOT frame-count based — under
@@ -181,10 +206,11 @@ func browserRuntimeProfile() *RuntimeProfile {
 		SimpleDrawDefault:                  true,  // Phase F: keep — auto-disables on first input
 		SimpleDrawAutoDisableFramesDefault: 0,
 		ScreenEdgesDefault:                 false,
-		TimelineInfoThrottleMS:             0,    // unified with desktop after Phase F sweep
-		AudioLookaheadSec:                  0.04, // Go↔JS audio jitter — keep until audio-jitter bench available
-		AudioBatchMax:                      32,   // Phase F: 256 regressed drawAvg 25% — keep
-		SequencerTickMS:                    4,    // Phase F: 1ms tick regressed fps 19% — keep
+		TimelineInfoThrottleMS:             0,     // unified with desktop after Phase F sweep
+		AudioLookaheadSec:                  0.06,  // 60ms cushion; 2026-06 re-sweep showed overdue=0/smallLead=0 at 0.06 over 60s incl. forced-GC cycles, with adaptive +0.05 headroom and the dispatch floor absorbing Stage-B tails (bench-results/audio_lookahead_resweep_2026-06.md)
+		MinDispatchLeadSec:                 0.012, // 8ms Go-side clamp + ~4ms Go→JS PlayBatch crossing — keeps JS-observed minLead positive
+		AudioBatchMax:                      32,    // Phase F: 256 regressed drawAvg 25% — keep
+		SequencerTickMS:                    4,     // Phase F: 1ms tick regressed fps 19% — keep
 		ParityScanMinPeriod:                8,
 		AdaptivePanPad:                     true, // Phase F: disabling regressed drawAvg 23%
 		FastPanDetect:                      true, // Phase F: same — load-bearing
@@ -192,14 +218,16 @@ func browserRuntimeProfile() *RuntimeProfile {
 		PredictorBackoffOnSlowDraw:         true, // Phase F: disabling regressed drawMax 35%
 		ForceInfoLog:                       true,
 		DefaultPerfFastPath:                true,
-		EnableTouchSmallScreen:             true, // platform-API: small-screen detection only meaningful in browser viewport
-		YieldInDrawHelpers:                 true, // platform-API: runtime.Gosched() semantics differ
+		EnableTouchSmallScreen:             true,  // platform-API: small-screen detection only meaningful in browser viewport
+		YieldInDrawHelpers:                 true,  // platform-API: runtime.Gosched() semantics differ
 		ParityFatalDefault:                 false, // browser: log-only by default (PARITY_WASM_FATAL=1 to opt in)
 		ParityWatchDefault:                 parityWatchLog,
 		IsBrowser:                          true,
 		PredictorWindowCap:                 4096,
 		RibbonBeatsPerPixel:                0.20, // mobile/touch: slightly wider beats (5 px/beat) for finger scrub precision
 		RibbonPlayheadFrac:                 0.70,
+		AudioPanelHeightMultiplier:         3,
+		AudioPanelHeightScreenFrac:         0.60,
 		ForceGCInterval:                    30 * time.Second, // counters single-threaded WASM GC starvation (see field doc)
 	}
 }
@@ -217,6 +245,7 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		ScreenEdgesDefault:                 false,
 		TimelineInfoThrottleMS:             0,
 		AudioLookaheadSec:                  0.02,
+		MinDispatchLeadSec:                 0,   // no Go→JS bridge on desktop; audio.Now() is the engine clock, so no dispatch-time floor is needed
 		AudioBatchMax:                      256, // desktop default
 		SequencerTickMS:                    1,   // dedicated 1ms goroutine
 		ParityScanMinPeriod:                1,
@@ -234,6 +263,8 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		PredictorWindowCap:                 4096,
 		RibbonBeatsPerPixel:                0.25, // desktop: 4 px/beat — major (16), medium (4), minor (1) all readable
 		RibbonPlayheadFrac:                 0.70,
+		AudioPanelHeightMultiplier:         3,
+		AudioPanelHeightScreenFrac:         0.60,
 		ForceGCInterval:                    0, // off: desktop GC has its own scheduler thread
 	}
 }

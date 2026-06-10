@@ -210,9 +210,11 @@ func TestDesktopTwoRowNoOverlap(t *testing.T) {
 	}
 }
 
-// TestMobileTwoRowTransport verifies the mobile transport is a two-row layout
-// — play is in row 0 and vol icon / overflow are in row 1.
-func TestMobileTwoRowTransport(t *testing.T) {
+// TestMobileTransportLayout (Theme 4) verifies mobile transport places
+// vol icon and overflow either on the same row as play (single-row mode,
+// preferred when topBounds height fits one row) or on row 1 below play
+// (two-row fallback). Both layouts must keep them reachable.
+func TestMobileTransportLayout(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 	graph := model.NewGraph(testLogger)
@@ -223,20 +225,20 @@ func TestMobileTwoRowTransport(t *testing.T) {
 	if playR.Empty() {
 		t.Fatal("mobile play button has empty rect")
 	}
-	// Volume icon should be in row 1 (below play).
 	volR := dv.mainVolIconRect
 	if volR.Empty() {
 		t.Fatal("mobile mainVolIconRect is empty")
 	}
-	if volR.Min.Y < playR.Max.Y {
-		t.Fatalf("mobile volIcon %v should be below play %v in two-row layout", volR, playR)
+	// Either single-row (volR overlaps playR's row) or two-row (volR is
+	// strictly below playR). Both are accepted.
+	overlap := volR.Min.Y < playR.Max.Y && volR.Max.Y > playR.Min.Y
+	below := volR.Min.Y >= playR.Max.Y
+	if !overlap && !below {
+		t.Fatalf("mobile volIcon %v should overlap or sit below play %v", volR, playR)
 	}
-	// Overflow button should also be in row 1.
-	if dv.overflowBtn() != nil {
-		oR := dv.overflowBtn().Rect()
-		if !oR.Empty() && oR.Min.Y < playR.Max.Y {
-			t.Fatalf("mobile overflow %v should be below play %v in two-row layout", oR, playR)
-		}
+	// Overflow must also be reachable.
+	if dv.overflowBtn() != nil && dv.overflowBtn().Rect().Empty() {
+		t.Fatal("mobile overflow button rect empty")
 	}
 }
 
@@ -336,25 +338,22 @@ func TestLenButtonsInTimelineArea(t *testing.T) {
 	}
 }
 
-// TestLenButtonsInTimelineArea_Mobile verifies the same on mobile.
-func TestLenButtonsInTimelineArea_Mobile(t *testing.T) {
+// TestLenButtonsHiddenOnMobile verifies the inline timeline length +/−
+// pair is suppressed on mobile (A7 in the screenshot critique). The
+// controls live behind the overflow menu instead — see
+// TestLenButtons_ReachableViaOverflowOnMobile.
+func TestLenButtonsHiddenOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 390, 844), graph, testLogger)
 	dv.recalcButtons()
 
-	tl := dv.widgetRects[WidgetTimeline]
-	incR := dv.lenIncBtn.Rect()
-	decR := dv.lenDecBtn.Rect()
-	if incR.Empty() || decR.Empty() {
-		t.Fatal("mobile len buttons have empty rects")
+	if r := dv.lenIncBtn.Rect(); !r.Empty() {
+		t.Fatalf("expected lenIncBtn empty on mobile (A7); got %v", r)
 	}
-	if !incR.In(tl) {
-		t.Fatalf("mobile lenIncBtn %v not inside timeline widget %v", incR, tl)
-	}
-	if !decR.In(tl) {
-		t.Fatalf("mobile lenDecBtn %v not inside timeline widget %v", decR, tl)
+	if r := dv.lenDecBtn.Rect(); !r.Empty() {
+		t.Fatalf("expected lenDecBtn empty on mobile (A7); got %v", r)
 	}
 }
 

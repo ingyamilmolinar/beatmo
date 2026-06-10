@@ -77,6 +77,7 @@ func (dv *DrumView) AddRow() {
 	uniq := dv.ensureUniqueColor(baseCol, idx)
 	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: uniq, Origin: model.InvalidNodeID, Node: nil, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))})
 	dv.logger.Debugf("[drumview] row added index=%d instrument=%s name=%s", idx, inst, name)
+	emitRowAdded(idx, inst, name)
 	dv.added = append(dv.added, idx)
 	dv.bgDirty = true
 	dv.markRowControlsDirty()
@@ -123,6 +124,7 @@ func (dv *DrumView) DeleteRow(i int) {
 		dv.onStructuralMutation("row-delete")
 	}
 	dv.logger.Debugf("[drumview] row deleted index=%d name=%s instrument=%s", i, dv.Rows[i].Name, dv.Rows[i].Instrument)
+	emitRowDeleted(i)
 	// If the deleted row's instrument is the active EQ channel, reset to master
 	if dv.eqActiveChannel == dv.Rows[i].Instrument {
 		dv.setEQActiveChannel("main")
@@ -182,6 +184,8 @@ func (dv *DrumView) toggleMute(idx int) {
 		r.Solo = false
 	}
 	dv.markRowControlsDirty()
+	emitRowMute(idx, r.Muted)
+	dv.autoSelectSoleAudibleChannel()
 }
 
 func (dv *DrumView) toggleSolo(idx int) {
@@ -217,6 +221,45 @@ func (dv *DrumView) toggleSolo(idx int) {
 		}
 	}
 	dv.markRowControlsDirty()
+	emitRowSolo(idx, r.Solo)
+	dv.autoSelectSoleAudibleChannel()
+}
+
+// autoSelectSoleAudibleChannel switches the audio-panel channel dropdown to the
+// only audible instrument when a solo/mute toggle leaves exactly one row audible.
+// A row is audible iff !Muted && (!anySolo || Solo) -- the same predicate the
+// timeline uses to dim rows. Both QoL triggers reduce to this single state:
+// soloing one instrument, or muting all but one, each leave exactly one audible
+// row.
+//
+// It only fires toward a sole-audible instrument and never reverts: when two or
+// more rows are audible the current selection is left untouched. It is a no-op
+// for single-row projects (nothing to disambiguate) and when the sole-audible
+// row has no instrument id. Routes through selectAudioChannel so every tab
+// follows the dropdown.
+func (dv *DrumView) autoSelectSoleAudibleChannel() {
+	if len(dv.Rows) < 2 {
+		return
+	}
+	anySolo := false
+	for _, r := range dv.Rows {
+		if r.Solo {
+			anySolo = true
+			break
+		}
+	}
+	count := 0
+	var sole *DrumRow
+	for _, r := range dv.Rows {
+		if !r.Muted && (!anySolo || r.Solo) {
+			count++
+			sole = r
+		}
+	}
+	if count != 1 || sole == nil || sole.Instrument == "" {
+		return
+	}
+	dv.selectAudioChannel(sole.Instrument)
 }
 
 // ConsumeDeletedRows returns and clears the recently deleted rows info.
@@ -238,4 +281,28 @@ func (dv *DrumView) ConsumeOriginRequests() []int {
 	rows := dv.originReq
 	dv.originReq = nil
 	return rows
+}
+
+// MarkRowFired snaps the row's now-playing tint intensity to 1.0. The
+// intensity decays each frame in decayAnims so the row glows briefly when
+// the sequencer fires its audible step. Out-of-range rows are ignored.
+func (dv *DrumView) MarkRowFired(row int) {
+	if row < 0 {
+		return
+	}
+	if row >= len(dv.rowFireDecay) {
+		grown := make([]float64, row+1)
+		copy(grown, dv.rowFireDecay)
+		dv.rowFireDecay = grown
+	}
+	dv.rowFireDecay[row] = 1.0
+}
+
+// RowFireIntensity returns the current decayed tint intensity in [0,1] for the
+// given row. Test-only / draw-time accessor.
+func (dv *DrumView) RowFireIntensity(row int) float64 {
+	if row < 0 || row >= len(dv.rowFireDecay) {
+		return 0
+	}
+	return dv.rowFireDecay[row]
 }

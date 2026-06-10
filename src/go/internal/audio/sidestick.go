@@ -2,10 +2,10 @@
 
 package audio
 
-// Sidestick renders a dry cross-stick click via the C renderer.
+// Sidestick renders a dry cross-stick click through the modular engine (Phase-5).
 type Sidestick struct{}
 
-// NewVoice generates a sidestick hit via the C renderer.
+// NewVoice generates a sidestick hit via the modular no-edit fast path.
 func (Sidestick) NewVoice(bpm, sampleRate int) Voice {
 	key := voiceCacheKey{instrumentID: "sidestick", sampleRate: sampleRate}
 	if buf, ok := globalVoiceCache.Get(key); ok {
@@ -14,7 +14,7 @@ func (Sidestick) NewVoice(bpm, sampleRate int) Voice {
 	cfg := ConfigForInstrument("sidestick")
 	samples := int(float64(sampleRate) * cfg.DurationSec)
 	buf := make([]float32, samples)
-	renderSnareSidestick(buf, sampleRate, samples)
+	renderSnareSidestickVoice(buf, sampleRate, samples) // modular fast path (Phase-5 cutover)
 	normalizeAndScale(buf, "sidestick")
 	globalVoiceCache.Put(key, buf)
 	return &cVoice{buf: buf}

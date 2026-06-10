@@ -42,11 +42,11 @@ func newTestEQPanelZoneWithFilters(rows []*DrumRow) (*EQPanelZone, *eqTestCallba
 		AnalyzerSnapshot: func(ch string) audio.AnalyzerSnapshot {
 			return audio.AnalyzerSnapshot{}
 		},
-		ActiveRows:     func() []*DrumRow { return rows },
-		HPFEnabled:     func() bool { return fs.hpfEnabled },
-		HPFCutoffHz:    func() float64 { return fs.hpfCutoff },
-		LPFEnabled:     func() bool { return fs.lpfEnabled },
-		LPFCutoffHz:    func() float64 { return fs.lpfCutoff },
+		ActiveRows:  func() []*DrumRow { return rows },
+		HPFEnabled:  func() bool { return fs.hpfEnabled },
+		HPFCutoffHz: func() float64 { return fs.hpfCutoff },
+		LPFEnabled:  func() bool { return fs.lpfEnabled },
+		LPFCutoffHz: func() float64 { return fs.lpfCutoff },
 		OnHPFCutoffChange: func(hz float64) {
 			fs.hpfCutoff = hz
 			log.hpfCutoffChanges = append(log.hpfCutoffChanges, hz)
@@ -373,7 +373,7 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 	dv.Length = 8
 
 	// Toggle to mobile EQ mode (hides rows, shows EQ full-screen).
-	dv.mobileEQMode = true
+	dv.SetMobileEQMode(true)
 
 	// Warm-up frame to initialize layout.
 	warmUp := SetInputForTest(
@@ -406,10 +406,9 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 		t.Fatal("expected 'eq-curve-area' hit area in EQ panel zone")
 	}
 
-	// Compute the center of band 5 handle in the curve area.
-	center := math.Sqrt(eqBandDefs[5].loHz * eqBandDefs[5].hiHz)
-	hx := freqToX(center, dv.eqPanelZone.rect)
-	hy := gainDBToY(0, dv.eqPanelZone.rect)
+	// Compute the center of band 5 handle in the curve area (handles map into
+	// the plot region, not the full panel).
+	hx, hy := dv.eqPanelZone.eqBandHandlePos(5)
 
 	// Simulate a real mobile touch press on the EQ band handle.
 	// SetInputForTest resets touchOverride, so set it AFTER.
@@ -472,7 +471,7 @@ func TestMobileEQDragTouchDeadZoneStillBlocksRows(t *testing.T) {
 	dv.Length = 8
 
 	// mobileEQMode is false (default) — normal row view.
-	dv.mobileEQMode = false
+	dv.SetMobileEQMode(false)
 
 	// Warm-up frame.
 	warmUp := SetInputForTest(
@@ -511,4 +510,3 @@ func TestMobileEQDragTouchDeadZoneStillBlocksRows(t *testing.T) {
 
 	r()
 }
-

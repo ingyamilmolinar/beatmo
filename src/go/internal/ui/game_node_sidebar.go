@@ -810,7 +810,7 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 				continue
 			}
 			btn.SetRect(r)
-			if btn.Handle(x, y, pressed) {
+			if btn.HandleInputResult(x, y, pressed) != InputIgnored {
 				return InputConsumed
 			}
 		}

@@ -690,12 +690,8 @@ EXPORT void ifx_tremolo_set_param(ifx_tremolo_t *t,
 }
 
 /* ==== Gate ==== */
-
-static void gate_recalc(ifx_gate_t *g) {
-    float sr = (float)g->sr;
-    if (sr <= 0) sr = 44100;
-    /* Coefficients will be recomputed from dB/ms in set_param */
-}
+/* (Coefficients are computed inline in init/set_param; there is no separate
+ * recalc step — a vestigial empty gate_recalc helper was removed.) */
 
 EXPORT void ifx_gate_init(ifx_gate_t *g, int sr,
                             float threshold_db, float attack_ms,
@@ -1036,13 +1032,21 @@ EXPORT void ifx_autowah_process(ifx_autowah_t *a,
         float env_mod = env * sensitivity * 5000.0f;
         float lfo_mod = lfo * depth * 3000.0f;
         float fc = 200.0f + env_mod + lfo_mod;
-        if (fc > sr * 0.45f) fc = sr * 0.45f;
+        /* Chamberlin SVF stability bound: keep fc below ~sr/6 so
+         * f_coef = 2*sin(pi*fc/sr) stays under 1.0. The previous 0.45*sr
+         * clamp allowed f_coef ~ 1.97, which diverges. */
+        if (fc > sr * 0.16f) fc = sr * 0.16f;
         if (fc < 50.0f) fc = 50.0f;
 
-        /* State-variable filter (bandpass) */
+        /* State-variable filter (bandpass). The damping term is 1/Q —
+         * feeding Q in directly (the original code) over-damps past the
+         * stable (0,2) region and explodes within a few blocks on hot
+         * input (caught by TestInsertFXProcessBlockBufAllEffects). */
         float f_coef = 2.0f * sinf((float)M_PI * fc / sr);
         float q = 0.5f + depth * 4.5f; /* Q from 0.5 to 5 */
-        float hp = x - lp_state - q * bp;
+        float damp = 1.0f / q;
+        if (damp > 1.9f) damp = 1.9f;
+        float hp = x - lp_state - damp * bp;
         bp += f_coef * hp;
         lp_state += f_coef * bp;
         /* Flush denormals */
@@ -1086,8 +1090,6 @@ EXPORT void ifx_autowah_set_param(ifx_autowah_t *a,
 /* ==== Compressor ==== */
 
 static void compressor_recalc(ifx_compressor_t *c) {
-    float sr = (float)c->sr;
-    if (sr <= 0) sr = 44100;
     c->threshold_lin = powf(10.0f, c->threshold_db / 20.0f);
     c->makeup_lin    = powf(10.0f, c->makeup_db / 20.0f);
 }

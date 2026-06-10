@@ -1,6 +1,22 @@
 package ui
 
-import "image/color"
+import (
+	"image/color"
+	"os"
+)
+
+// debugLayoutGuidesEnabled reports whether BEATMO_DEBUG_LAYOUT is set to a
+// truthy value. Layout guides (column/row dividers + splitter pills) are
+// developer-only chrome — enabled by default would leak 1-px ticks into the
+// gaps between widget surfaces (visible as "garbage" at the top edge of the
+// drum pane). Production builds keep them off.
+func debugLayoutGuidesEnabled() bool {
+	switch os.Getenv("BEATMO_DEBUG_LAYOUT") {
+	case "1", "true", "TRUE", "yes", "on":
+		return true
+	}
+	return false
+}
 
 // ScreenSizeClass distinguishes desktop from mobile layout modes.
 type ScreenSizeClass int
@@ -101,7 +117,7 @@ type LayoutProfile struct {
 	EdgeThickMul int // desktop: 1, mobile: 2
 
 	// ── Sizing: Layout ─────────────────────────────────────
-	ControlPadding   int // desktop: SpaceXS+2 (4), mobile: SpaceXS+1 (3)
+	ControlPadding   int // desktop: SpaceXS+2 (4), mobile: SpaceXS+2 (4) — both on the 4pt grid
 	ControlGap       int // gap between adjacent transport buttons (desktop: 2, mobile: 4)
 	ControlGroupPad  int // outline pad around a control group (BPM, transport, file-ops): desktop 3, mobile 4
 	ControlLeftInset int // desktop: 12, mobile: 4
@@ -120,6 +136,16 @@ type LayoutProfile struct {
 	UseBottomSheet     bool // desktop: false, mobile: true
 	DrawToolbarSep     bool // desktop: false, mobile: true
 	DrawMasterVolIcon  bool // desktop: false, mobile: true
+
+	// ChainModeSegmented renders the Chain tab's three display modes
+	// (OVR / SPL / DIF) as one always-visible contiguous segmented control
+	// on its own row below the chrome strip, instead of three separate
+	// pills in the chrome row. Used on narrow viewports so all three modes
+	// stay visible and touch-min without a hidden dropdown. The canonical
+	// example of the layout vs density split — pill width is density-tied,
+	// but the segmented-vs-separate choice is layout-tied (a tablet at
+	// desktop layout keeps three separate pills even at Spacious density).
+	ChainModeSegmented bool // desktop: false, mobile: true
 
 	// ── Timeline defaults ──────────────────────────────────
 	// DefaultTimelineBeats caps the initial visible drum-view window
@@ -143,6 +169,12 @@ func Profile() *LayoutProfile {
 	if activeProfile == nil ||
 		(want && activeProfile.Class != ScreenMobile) ||
 		(!want && activeProfile.Class != ScreenDesktop) {
+		// Phase 0 audio-panel redesign: density is derived from class
+		// at rebuild time via densityForClass() — no global mutation.
+		// SetDensityForTest's override (densityOverride pointer) wins
+		// when set, otherwise defaultDensityFor(class). The non-
+		// mutating contract is load-bearing: it prevents class flips
+		// in one test from leaking a stale density into the next.
 		if want {
 			activeProfile = mobileProfile()
 		} else {
@@ -168,49 +200,48 @@ func (p *LayoutProfile) IsMobile() bool { return p.Class == ScreenMobile }
 // ── Builders ────────────────────────────────────────────────────────────────
 
 func desktopProfile() *LayoutProfile {
-	// Phase 5a (extended): all dimensional fields come from
-	// design_profile.gen.go (DESIGN.md `profileOverrides.desktop`).
-	// Hand-coded fields are now limited to:
+	// Phase 5a + audio-panel Phase 0: layout-arrangement fields come
+	// from design_profile.gen.go (DESIGN.md `profileOverrides.desktop`).
+	// **Density-tied** fields come from densityValuesFor(activeDensity)
+	// — see design_density.gen.go. Hand-coded fields are now limited to:
 	//   - float scales (PopupTextScale family — fractional)
-	//   - color references (PlayIconColor family — needs the iconColor
-	//     emit + variant system from B3)
-	//   - bool feature flags (DrawTopEdgeHighlight, DrawSplitterGrip,
-	//     etc. — covered by future schema extensions)
-	//   - ButtonVisual style references (PlayBtnStyle family — pending
-	//     M2 migration to Spec(ID))
+	//   - color references (PlayIconColor family)
+	//   - bool feature flags (DrawTopEdgeHighlight, DrawSplitterGrip, …)
+	//   - ButtonVisual style references (PlayBtnStyle family)
 	g := genDesktopProfile
+	dv := densityValuesFor(densityForClass(ScreenDesktop))
 	return &LayoutProfile{
 		Class: ScreenDesktop,
 
-		// Sizing — generated
-		RowHeight:         g.RowHeight,
-		GrabZone:          g.GrabZone,
-		MinTarget:         g.MinTarget,
-		MinCellWidth:      g.MinCellWidth,
-		SplitterHandleLen: g.SplitterHandleLen,
-		SplitterHandleThk: g.SplitterHandleThk,
+		// Sizing — density-tied
+		RowHeight:         dv.RowHeight,
+		GrabZone:          dv.GrabZone,
+		MinTarget:         dv.MinTarget,
+		MinCellWidth:      g.MinCellWidth, // layout-tied
+		SplitterHandleLen: dv.SplitterHandleLen,
+		SplitterHandleThk: dv.SplitterHandleThk,
 
-		// Popup — generated for sizing primitives, hand-coded for scales
-		PopupPanelW:     g.PopupPanelW,
-		PopupBtnW:       g.PopupBtnW,
-		PopupBtnH:       g.PopupBtnH,
-		PopupGap:        g.PopupGap,
-		PopupPad:        g.PopupPad,
+		// Popup — layout-tied for panel width + corner, density-tied for buttons
+		PopupPanelW:     g.PopupPanelW, // layout-tied
+		PopupBtnW:       dv.PopupBtnW,
+		PopupBtnH:       dv.PopupBtnH,
+		PopupGap:        dv.PopupGap,
+		PopupPad:        dv.PopupPad,
 		PopupTextScale:  1.0,
 		PopupLabelScale: 1.0,
 		PopupValueScale: 1.0,
 		PopupTitleScale: 1.0,
-		PopupSectionGap: g.PopupSectionGap,
-		PopupRowH:       g.PopupBtnH,
+		PopupSectionGap: dv.PopupSectionGap,
+		PopupRowH:       dv.PopupBtnH,
 
-		// Button sizing — generated
-		TransportBtnSize:  g.TransportBtnSize,
-		RowControlBtnSize: g.RowControlBtnSize,
+		// Button sizing — density-tied
+		TransportBtnSize:  dv.TransportBtnSize,
+		RowControlBtnSize: dv.RowControlBtnSize,
 
-		// Header — generated
-		HeaderMinH:   g.HeaderMinH,
-		HeaderMaxH:   g.HeaderMaxH,
-		TimelineBarH: g.TimelineBarH,
+		// Header — density-tied
+		HeaderMinH:   dv.HeaderMinH,
+		HeaderMaxH:   dv.HeaderMaxH,
+		TimelineBarH: dv.TimelineBarH,
 
 		// Widget weights
 		ColWeights: []float64{1, 3},
@@ -223,14 +254,14 @@ func desktopProfile() *LayoutProfile {
 		// used to be stoplight green/red; they're now Surface2 with subtle
 		// borders like every other button, with the icon carrying the
 		// semantics (red for record, neutral for play/stop).
-		PlayBtnStyle:    TransportPlayStyle,
-		PlayIconColor:   colTextPrimary,
-		StopBtnStyle:    TransportStopStyle,
-		StopIconColor:   colTextPrimary,
-		BPMDecBtnStyle:  TransportDecStyle,
-		BPMIncBtnStyle:  TransportIncStyle,
-		BPMIconColor:    colTextSecondary,
-		SubdivBtnStyle:  InstButtonStyle,
+		PlayBtnStyle:   TransportPlayStyle,
+		PlayIconColor:  colTextPrimary,
+		StopBtnStyle:   TransportStopStyle,
+		StopIconColor:  colTextPrimary,
+		BPMDecBtnStyle: TransportDecStyle,
+		BPMIncBtnStyle: TransportIncStyle,
+		BPMIconColor:   colTextSecondary,
+		SubdivBtnStyle: InstButtonStyle,
 		// TrackBtnStyle uses TransportMiscStyle on both profiles so the
 		// track button shares the play/stop chrome (ComponentButtonSecondary).
 		// State is expressed via icon glyph + IconColor (see syncTrackBtnVisual),
@@ -242,48 +273,48 @@ func desktopProfile() *LayoutProfile {
 		TransportMisc:   TransportMiscStyle,
 		RowLabelStyle:   InstButtonStyle,
 
-		// Drawing — generated for dimensional, hand-coded for bool flags
+		// Drawing — density-tied stripe + close, layout-tied corner radius
 		DrawTopEdgeHighlight: true,
-		AccentStripeWidth:    g.AccentStripeWidth,
-		AccentStripeInsetY:   g.AccentStripeInsetY,
+		AccentStripeWidth:    dv.AccentStripeWidth,
+		AccentStripeInsetY:   dv.AccentStripeInsetY,
 		SplitterHandleColor:  colSplitterHandle,
 		DrawSplitterGrip:     true,
-		PopupCornerRadius:    g.PopupCornerRadius,
-		CloseButtonSize:      g.CloseButtonSize,
+		PopupCornerRadius:    g.PopupCornerRadius, // layout-tied
+		CloseButtonSize:      dv.CloseButtonSize,
 
-		// EQ sizing — generated
-		EQSliderH:      g.EqSliderH,
-		EQHandleRadius: g.EqHandleRadius,
-		EQDBInputH:     g.EqDBInputH,
+		// EQ sizing — density-tied
+		EQSliderH:      dv.EqSliderH,
+		EQHandleRadius: dv.EqHandleRadius,
+		EQDBInputH:     dv.EqDBInputH,
 
-		// Slider sizing — generated
-		SliderTrackH:     g.SliderTrackH,
-		SliderThumbH:     g.SliderThumbH,
-		SliderThumbW:     g.SliderThumbW,
+		// Slider sizing — density-tied
+		SliderTrackH:     dv.SliderTrackH,
+		SliderThumbH:     dv.SliderThumbH,
+		SliderThumbW:     dv.SliderThumbW,
 		SliderLabelAbove: false,
 
-		// FX toggle pill — generated
-		FXToggleTrackW: g.FxToggleTrackW,
-		FXToggleTrackH: g.FxToggleTrackH,
-		FXToggleThumbD: g.FxToggleThumbD,
+		// FX toggle pill — density-tied
+		FXToggleTrackW: dv.FxToggleTrackW,
+		FXToggleTrackH: dv.FxToggleTrackH,
+		FXToggleThumbD: dv.FxToggleThumbD,
 
-		// Grid sizing — generated
-		NodeMinPx:    g.NodeMinPx,
-		NodeMaxPx:    g.NodeMaxPx,
-		EdgeThickMul: g.EdgeThickMul,
+		// Grid sizing — density-tied
+		NodeMinPx:    dv.NodeMinPx,
+		NodeMaxPx:    dv.NodeMaxPx,
+		EdgeThickMul: dv.EdgeThickMul,
 
-		// Layout sizing — generated
-		ControlPadding:   g.ControlPadding,
-		ControlGap:       g.ControlGap,
-		ControlGroupPad:  g.ControlGroupPad,
-		ControlLeftInset: g.ControlLeftInset,
+		// Layout sizing — density-tied gaps, layout-tied inset
+		ControlPadding:   dv.ControlPadding,
+		ControlGap:       dv.ControlGap,
+		ControlGroupPad:  dv.ControlGroupPad,
+		ControlLeftInset: g.ControlLeftInset, // layout-tied
 
-		// Splitter — generated
+		// Splitter — density-tied
 		SplitterMinFraction:   0,
-		SplitterGrabThreshold: g.SplitterGrabThreshold,
+		SplitterGrabThreshold: dv.SplitterGrabThreshold,
 
 		// Feature flags
-		ShowLayoutGuides:   true,
+		ShowLayoutGuides:   debugLayoutGuidesEnabled(),
 		ShowCursorLabel:    true,
 		ShowEscHint:        true,
 		EnableLayoutResize: true,
@@ -292,6 +323,8 @@ func desktopProfile() *LayoutProfile {
 		UseBottomSheet:     false,
 		DrawToolbarSep:     false,
 		DrawMasterVolIcon:  true,
+
+		ChainModeSegmented: false,
 
 		// Timeline defaults — generated
 		DefaultTimelineBeats: g.DefaultTimelineBeats,
@@ -307,38 +340,39 @@ func mobileProfile() *LayoutProfile {
 	// See desktopProfile() for the list of fields still hand-coded
 	// (color refs, bool flags, ButtonVisual style refs).
 	g := genMobileProfile
+	dv := densityValuesFor(densityForClass(ScreenMobile))
 	return &LayoutProfile{
 		Class: ScreenMobile,
 
-		// Sizing — generated
-		RowHeight:         g.RowHeight,
-		GrabZone:          g.GrabZone,
-		MinTarget:         g.MinTarget,
-		MinCellWidth:      g.MinCellWidth,
-		SplitterHandleLen: g.SplitterHandleLen,
-		SplitterHandleThk: g.SplitterHandleThk,
+		// Sizing — density-tied
+		RowHeight:         dv.RowHeight,
+		GrabZone:          dv.GrabZone,
+		MinTarget:         dv.MinTarget,
+		MinCellWidth:      g.MinCellWidth, // layout-tied
+		SplitterHandleLen: dv.SplitterHandleLen,
+		SplitterHandleThk: dv.SplitterHandleThk,
 
-		// Popup — generated for sizing primitives, hand-coded for scales
-		PopupPanelW:     g.PopupPanelW,
-		PopupBtnW:       g.PopupBtnW,
-		PopupBtnH:       g.PopupBtnH,
-		PopupGap:        g.PopupGap,
-		PopupPad:        g.PopupPad,
+		// Popup — layout-tied panel width, density-tied buttons
+		PopupPanelW:     g.PopupPanelW, // layout-tied
+		PopupBtnW:       dv.PopupBtnW,
+		PopupBtnH:       dv.PopupBtnH,
+		PopupGap:        dv.PopupGap,
+		PopupPad:        dv.PopupPad,
 		PopupTextScale:  popupTextScale,
 		PopupLabelScale: 1.3,
 		PopupValueScale: 1.5,
 		PopupTitleScale: 1.7,
-		PopupSectionGap: g.PopupSectionGap,
+		PopupSectionGap: dv.PopupSectionGap,
 		PopupRowH:       BtnHeightMD,
 
-		// Button sizing — generated
-		TransportBtnSize:  g.TransportBtnSize,
-		RowControlBtnSize: g.RowControlBtnSize,
+		// Button sizing — density-tied
+		TransportBtnSize:  dv.TransportBtnSize,
+		RowControlBtnSize: dv.RowControlBtnSize,
 
-		// Header — generated
-		HeaderMinH:   g.HeaderMinH,
-		HeaderMaxH:   g.HeaderMaxH,
-		TimelineBarH: g.TimelineBarH,
+		// Header — density-tied
+		HeaderMinH:   dv.HeaderMinH,
+		HeaderMaxH:   dv.HeaderMaxH,
+		TimelineBarH: dv.TimelineBarH,
 
 		// Widget weights
 		ColWeights: []float64{1.5, 1.5},
@@ -362,45 +396,45 @@ func mobileProfile() *LayoutProfile {
 		TransportMisc:   TransportMiscStyle,
 		RowLabelStyle:   MobileRowLabelStyle,
 
-		// Drawing — generated for dimensional, hand-coded for bool flags
+		// Drawing — density-tied stripe + close, layout-tied corner radius
 		DrawTopEdgeHighlight: false,
-		AccentStripeWidth:    g.AccentStripeWidth,
-		AccentStripeInsetY:   g.AccentStripeInsetY,
+		AccentStripeWidth:    dv.AccentStripeWidth,
+		AccentStripeInsetY:   dv.AccentStripeInsetY,
 		SplitterHandleColor:  colSplitterHandleMobile,
 		DrawSplitterGrip:     false,
-		PopupCornerRadius:    g.PopupCornerRadius,
-		CloseButtonSize:      g.CloseButtonSize,
+		PopupCornerRadius:    g.PopupCornerRadius, // layout-tied
+		CloseButtonSize:      dv.CloseButtonSize,
 
-		// EQ sizing — generated
-		EQSliderH:      g.EqSliderH,
-		EQHandleRadius: g.EqHandleRadius,
-		EQDBInputH:     g.EqDBInputH,
+		// EQ sizing — density-tied
+		EQSliderH:      dv.EqSliderH,
+		EQHandleRadius: dv.EqHandleRadius,
+		EQDBInputH:     dv.EqDBInputH,
 
-		// Slider sizing — generated
-		SliderTrackH:     g.SliderTrackH,
-		SliderThumbH:     g.SliderThumbH,
-		SliderThumbW:     g.SliderThumbW,
+		// Slider sizing — density-tied
+		SliderTrackH:     dv.SliderTrackH,
+		SliderThumbH:     dv.SliderThumbH,
+		SliderThumbW:     dv.SliderThumbW,
 		SliderLabelAbove: true,
 
-		// FX toggle pill — generated
-		FXToggleTrackW: g.FxToggleTrackW,
-		FXToggleTrackH: g.FxToggleTrackH,
-		FXToggleThumbD: g.FxToggleThumbD,
+		// FX toggle pill — density-tied
+		FXToggleTrackW: dv.FxToggleTrackW,
+		FXToggleTrackH: dv.FxToggleTrackH,
+		FXToggleThumbD: dv.FxToggleThumbD,
 
-		// Grid sizing — generated
-		NodeMinPx:    g.NodeMinPx,
-		NodeMaxPx:    g.NodeMaxPx,
-		EdgeThickMul: g.EdgeThickMul,
+		// Grid sizing — density-tied
+		NodeMinPx:    dv.NodeMinPx,
+		NodeMaxPx:    dv.NodeMaxPx,
+		EdgeThickMul: dv.EdgeThickMul,
 
-		// Layout sizing — generated
-		ControlPadding:   g.ControlPadding,
-		ControlGap:       g.ControlGap,
-		ControlGroupPad:  g.ControlGroupPad,
-		ControlLeftInset: g.ControlLeftInset,
+		// Layout sizing — density-tied gaps, layout-tied inset
+		ControlPadding:   dv.ControlPadding,
+		ControlGap:       dv.ControlGap,
+		ControlGroupPad:  dv.ControlGroupPad,
+		ControlLeftInset: g.ControlLeftInset, // layout-tied
 
-		// Splitter — generated
+		// Splitter — density-tied
 		SplitterMinFraction:   0.25,
-		SplitterGrabThreshold: g.SplitterGrabThreshold,
+		SplitterGrabThreshold: dv.SplitterGrabThreshold,
 
 		// Feature flags
 		ShowLayoutGuides:   false,
@@ -413,10 +447,12 @@ func mobileProfile() *LayoutProfile {
 		DrawToolbarSep:     true,
 		DrawMasterVolIcon:  true,
 
+		ChainModeSegmented: true,
+
 		// Timeline defaults — generated
 		DefaultTimelineBeats: g.DefaultTimelineBeats,
 
 		// Behavior
-		ReserveAddRowSpace: false,
+		ReserveAddRowSpace: true,
 	}
 }

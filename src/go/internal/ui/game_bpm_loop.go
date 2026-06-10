@@ -7,6 +7,7 @@ import (
 )
 
 func (g *Game) bpmLoop() {
+	defer g.bgWG.Done()
 	for {
 		// Wait for at least one update.
 		b, ok := <-g.bpmCh

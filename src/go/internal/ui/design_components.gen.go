@@ -55,7 +55,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonPrimary: {
 		ID:       ComponentButtonPrimary,
 		Category: CategoryButton,
-		Fill:     color.RGBA{255, 140, 90, 255},
+		Fill:     color.RGBA{79, 180, 255, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaWhiteDecoration,
@@ -115,9 +115,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonRowControlSoloActive: {
 		ID:       ComponentButtonRowControlSoloActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{255, 180, 152, 255},
+		Fill:     color.RGBA{130, 203, 255, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{255, 180, 152, 255},
+			BaseColor: color.RGBA{130, 203, 255, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -128,7 +128,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 		Category: CategoryButton,
 		Fill:     color.RGBA{20, 42, 80, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{255, 140, 90, 255},
+			BaseColor: color.RGBA{79, 180, 255, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -208,7 +208,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	},
 	ComponentSplitterHandleMobile: {
 		ID:     ComponentSplitterHandleMobile,
-		Fill:   color.RGBA{197, 100, 72, 255},
+		Fill:   color.RGBA{58, 134, 200, 255},
 		Radius: 8,
 	},
 	ComponentRowRack: {
@@ -297,7 +297,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 		Category: CategoryButton,
 		Fill:     color.RGBA{38, 44, 60, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{255, 140, 90, 255},
+			BaseColor: color.RGBA{79, 180, 255, 255},
 			Alpha:     genAlphaAccentTint,
 		},
 		Radius: 12,
@@ -338,9 +338,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonEqFilterActive: {
 		ID:       ComponentButtonEqFilterActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{197, 100, 72, 255},
+		Fill:     color.RGBA{58, 134, 200, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{255, 140, 90, 255},
+			BaseColor: color.RGBA{79, 180, 255, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -351,7 +351,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 		Category: CategoryButton,
 		Fill:     color.RGBA{38, 44, 60, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{255, 166, 140, 255},
+			BaseColor: color.RGBA{124, 192, 255, 255},
 			Alpha:     genAlphaAccentOverlay,
 		},
 		Radius: 12,

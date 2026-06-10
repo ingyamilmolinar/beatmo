@@ -122,12 +122,19 @@ func initContext() {
 	InitInsertChains(sampleRate)
 	// Install master compressor for automatic gain management.
 	SetupMasterCompressor(sampleRate)
+	// Phase 2 audio-panel redesign: stand up the master LUFS integrator
+	// before the analyzer service so MasterLUFSGetter has something to
+	// read on the first tick. The integrator is fed from the mixer
+	// master push site (engine_stop.go) via FeedMasterLUFS.
+	EnsureMasterLUFS(float64(sampleRate))
 	// Start the analyzer service for real-time metering and FFT.
 	analyzerSvc = analyzer.NewService(analyzer.Config{
-		FFTSize:        1024,
-		WindowSize:     2048,
-		MaxInstruments: 32,
-		SampleRate:     sampleRate,
+		FFTSize:               1024,
+		WindowSize:            2048,
+		MaxInstruments:        32,
+		SampleRate:            sampleRate,
+		MasterLUFSGetter:      MasterLUFSShortTerm,
+		ClipsLastWindowGetter: ClipsLastWindow,
 	})
 	go analyzerSvc.Run()
 	// Start the scope service for real-time A/B pipeline comparison.

@@ -327,12 +327,6 @@ func (g *Game) initJSHarness() {
 		return nil
 	}))
 
-	// zoomBtnRects() retained for backward compatibility; grid zoom buttons
-	// are disabled in this UI. Return an empty object to satisfy callers.
-	js.Global().Set("zoomBtnRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		return js.Global().Get("Object").New()
-	}))
-
 	// instrumentsList() -> string[] : returns the Go-side instrument ID list.
 	js.Global().Set("instrumentsList", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		ids := audio.Instruments()

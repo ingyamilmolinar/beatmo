@@ -44,6 +44,11 @@ const (
 	IconTarget      IconID = "target"
 	IconTrash       IconID = "trash"
 	IconCircle      IconID = "circle"
+
+	IconTriggerMarker IconID = "trigger-marker"
+	IconHeadroom      IconID = "headroom"
+	IconClipCount     IconID = "clip-count"
+	IconLoudest       IconID = "loudest"
 )
 
 // drawIconByID dispatches to the glyph's draw function. Returns true if the
@@ -116,6 +121,14 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawTrashIcon(dst, r, col)
 	case IconCircle:
 		drawCircleIcon(dst, r, col)
+	case IconTriggerMarker:
+		drawTriggerMarkerIcon(dst, r, col)
+	case IconHeadroom:
+		drawHeadroomIcon(dst, r, col)
+	case IconClipCount:
+		drawClipCountIcon(dst, r, col)
+	case IconLoudest:
+		drawLoudestIcon(dst, r, col)
 	default:
 		return false
 	}

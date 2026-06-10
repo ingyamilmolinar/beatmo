@@ -266,13 +266,13 @@ func NewShelfEQ(sampleRate int, low bool, freq, q, gainDB float64) Processor {
 
 // SetChannelEQ replaces the EQ on a channel, preserving insert effects.
 func SetChannelEQ(id string, sampleRate int, bands ...EQBand) {
-	lastSetEQ = eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)}
+	recordChannelEQ(id, eqRecord{ID: id, SampleRate: sampleRate, Bands: append([]EQBand(nil), bands...)})
 	RebuildChannelWithEQ(id, NewEQProcessor(sampleRate, bands...))
 }
 
 // ClearChannelProcessors removes EQ from the channel, preserving insert effects.
 func ClearChannelProcessors(id string) {
-	lastSetEQ = eqRecord{}
+	recordChannelEQ(id, eqRecord{})
 	RebuildChannelWithEQ(id, nil)
 }
 

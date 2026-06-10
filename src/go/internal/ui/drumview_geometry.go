@@ -9,15 +9,38 @@ import (
 
 /* ─── geometry helpers ─────────────────────────────────────── */
 
-// rowHeight returns the fixed pixel height for each drum row and for the
-// trailing "+" button row. Keeping this constant avoids oversized buttons when
-// only a few rows are present, yielding a minimal and consistent layout.
-// On touch devices, returns a larger height for easier interaction.
-func (dv *DrumView) rowHeight() int { return TouchRowHeight() }
+// rowHeight returns the per-row pixel height — the fixed profile value
+// on both desktop and mobile. The row size is *not* scaled by any
+// per-instance zoom factor: per-row dimensions are the user's contract
+// for stable touch targets, and the historical row-zoom chip / pinch
+// gesture have been repurposed to resize the entire drum-view pane
+// (see `Game.adjustDrumViewHeight`). Per-row scaling would also break
+// the "tight layout" invariant — the splitter Y is computed assuming
+// `rh = TouchRowHeight()`.
+func (dv *DrumView) rowHeight() int {
+	return TouchRowHeight()
+}
 
 // mobileTransportMinH returns the minimum transport header height.
 // On mobile it targets the compact bar; on desktop a two-row transport.
 func mobileTransportMinH() int { return Profile().HeaderMinH }
+
+// HeaderRect returns the rectangle covering the top header strip of the
+// drum pane (from `dv.Bounds.Min.Y` to `dv.Bounds.Min.Y+dv.headerH`),
+// spanning the full pane width. This is the "toolbar" the user sees:
+// transport cluster + BPM + length controls + master volume + overflow
+// + lock — all the chrome above the row labels.
+func (dv *DrumView) HeaderRect() image.Rectangle {
+	return image.Rect(
+		dv.Bounds.Min.X,
+		dv.Bounds.Min.Y,
+		dv.Bounds.Max.X,
+		dv.Bounds.Min.Y+dv.headerH,
+	)
+}
+
+// RowsRect is the public alias for the rows scroll area; see rowsRect.
+func (dv *DrumView) RowsRect() image.Rectangle { return dv.rowsRect() }
 
 // rowsRect returns the rectangle covering the row scroll area (between
 // the header and the EQ panel / mobile bottom action bar). Used to scope
@@ -110,14 +133,26 @@ func (dv *DrumView) refreshWidgetLayout() {
 	if h := dv.widgets.RowHeight(2); h > 0 {
 		dv.eqH = h
 	} else {
-		dv.eqH = eqPanelHeight
+		dv.eqH = eqPanelHeight * 2
 	}
-	// Auto-expand when Scope tab is active (needs more vertical space
-	// for the oscilloscope waveform + scope header + pipeline strip).
-	if dv.eqPanelZone != nil && dv.eqPanelZone.tabState.ActiveTab() == TabScope {
-		minScope := eqPanelHeight * 2
-		if dv.eqH < minScope {
-			dv.eqH = minScope
+	// Phase 0a of audio-panel redesign: enforce a tall default for every
+	// analysis tab. RuntimeProfile.AudioPanelHeightMultiplier (default 3×
+	// eqPanelHeight ≈ 570 px) clamped by AudioPanelHeightScreenFrac of
+	// the framebuffer so the panel never crowds the grid. The widget-
+	// board row weights compute too short by default for analysis-tab
+	// chrome (Spectrum dB grid, Levels segmented strips, Chain stage
+	// cards, Synth knob cards), so we lift the floor here.
+	//
+	// A user drag-resize is still respected when it asks for MORE — the
+	// floor never shrinks an explicitly-enlarged panel — but it cannot
+	// shrink the panel below the analysis-tab minimum. (Earlier
+	// behaviour where the widget-board could collapse the panel to
+	// ~130 px is what produced the "panel mostly empty during playback"
+	// screenshots that drove this redesign.)
+	if dv.eqPanelZone != nil && dv.eqPanelZone.tabState != nil {
+		desired := dv.eqPanelZone.tabState.PanelHeightAt(dv.Bounds.Dy())
+		if dv.eqH < desired {
+			dv.eqH = desired
 		}
 	}
 	if runningUnderGoTest() && eqPanelHeight == 0 {
@@ -362,6 +397,15 @@ func (dv *DrumView) visibleRows() int {
 // row-count source for the row rack zone — it never over-estimates beyond
 // the panel's true height. Falls back to dv.visibleRows() when the rack
 // rect is empty (early init / tests without a realised widget board).
+//
+// Clamps the rack height to rowsBottom() so the count does NOT include
+// rows that would draw on top of the mobile bottom action bar / EQ peek
+// strip — the WidgetBoard's rect extends to dv.Bounds.Max.Y by default
+// but the addRowBtn is anchored to rowsBottom() (which excludes those
+// surfaces). Without this clamp, with many rows the over-counted
+// "visible" rows would render UNDER the anchored addRowBtn band
+// (regression caught by TestMobileAddRowButton_AlwaysVisible_ManyRows
+// after the rack-bottom anchor fix).
 func (dv *DrumView) rackVisibleRows() int {
 	rh := dv.rowHeight()
 	if rh <= 0 {
@@ -371,7 +415,14 @@ func (dv *DrumView) rackVisibleRows() int {
 	if r.Empty() {
 		return dv.visibleRows()
 	}
-	rackH := r.Dy()
+	maxY := r.Max.Y
+	if rb := dv.rowsBottom(); rb < maxY {
+		maxY = rb
+	}
+	rackH := maxY - r.Min.Y
+	if rackH < 0 {
+		rackH = 0
+	}
 	h := rackH
 	if Profile().ReserveAddRowSpace {
 		h -= rh

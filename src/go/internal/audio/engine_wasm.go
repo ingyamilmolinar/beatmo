@@ -41,6 +41,11 @@ func Play(id string, when ...float64) {
 	if !fn.Truthy() {
 		return
 	}
+	// Stamp the trigger clock so the UI's time-since-trigger reads (synth-tab
+	// pulse glow, sampler preview playhead) work in the browser, mirroring the
+	// desktop Play path. Without this, audio.SinceLastTrigger never advances on
+	// WASM and those signals stay invisible.
+	RecordVoiceTrigger(id)
 	if len(when) > 0 {
 		fn.Invoke(id, 1.0, when[0])
 		return
@@ -57,6 +62,7 @@ func PlayVol(id string, vol float64, when ...float64) {
 	if !fn.Truthy() {
 		return
 	}
+	RecordVoiceTrigger(id)
 	if len(when) > 0 {
 		fn.Invoke(id, vol, when[0])
 		return
@@ -69,10 +75,12 @@ func PlayVol(id string, vol float64, when ...float64) {
 func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
 	fn := js.Global().Get("playSoundParams")
 	if !fn.Truthy() {
-		// Fallback to volume-only if extended bridge is not present.
+		// Fallback to volume-only if extended bridge is not present
+		// (PlayVol stamps the trigger clock itself).
 		PlayVol(id, vol, when...)
 		return
 	}
+	RecordVoiceTrigger(id)
 	if len(when) > 0 {
 		fn.Invoke(id, vol, pitch, dur, when[0])
 		return
@@ -118,6 +126,10 @@ func ResetInstruments() {
 	bumpInstrumentsVersion()
 	ClearAllInsertEffects()
 	resetInstrumentChannels(instruments)
+	// Phase 5: wire each shipped instrument id to its SynthRecipe so the
+	// browser audio pipeline can pick up user-edited params at render time
+	// (mirrors the desktop + stub build paths).
+	bindBuiltinInstrumentRecipes()
 }
 
 // Now returns the current WebAudio time in seconds as reported by
@@ -254,16 +266,33 @@ func EnableScopeExport() {
 // pollExportSamples pushes the current JS analyzer snapshots for every
 // instrument into the export service ring buffers. Shared by the background
 // goroutine ticker and ForceScopeExportSnapshot.
+//
+// All six pipeline stages are bridged via the matching JS analyser nodes:
+//   - StageSynth / StageAntiPop  → channel-ingress (pre-FX) analyser
+//   - StageInsertFX              → pre-EQ analyser (post-inserts, pre-EQ)
+//   - StageEQ                    → channel analyser (post-EQ)
+//   - StageSends                 → send-bus analyser (delay + reverb returns)
+//   - StageMaster                → main-channel analyser
 func pollExportSamples(svc *scopeexport.Service) {
 	for _, id := range Instruments() {
+		synth := SynthAnalyzerSnapshot(id)
+		if len(synth.Waveform) > 0 {
+			svc.PushSamples(scope.StageSynth, id, synth.Waveform)
+			// AntiPop shares the synth ingress in WASM — see ScopeStageSnapshots.
+			svc.PushSamples(scope.StageAntiPop, id, synth.Waveform)
+		}
 		pre := PreEQAnalyzerSnapshot(id)
 		if len(pre.Waveform) > 0 {
-			svc.PushSamples(scope.StageSynth, id, pre.Waveform)
+			svc.PushSamples(scope.StageInsertFX, id, pre.Waveform)
 		}
 		post := ChannelAnalyzerSnapshot(id)
 		if len(post.Waveform) > 0 {
 			svc.PushSamples(scope.StageEQ, id, post.Waveform)
 		}
+	}
+	sends := SendBusAnalyzerSnapshot()
+	if len(sends.Waveform) > 0 {
+		svc.PushSamples(scope.StageSends, "master", sends.Waveform)
 	}
 	master := ChannelAnalyzerSnapshot("main")
 	if len(master.Waveform) > 0 {

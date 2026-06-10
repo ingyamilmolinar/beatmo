@@ -36,7 +36,7 @@ func TestAudioDecoupledDuringHeavyDraw(t *testing.T) {
 	// Hammer Draw while queueing sounds.
 	img := ebiten.NewImage(w, h)
 	for i := 0; i < total; i++ {
-		g.queueSound("snare", 1)
+		g.queueSoundParams("snare", 1, 0, 1)
 		g.drawDrumPane(img)
 	}
 

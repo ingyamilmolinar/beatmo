@@ -219,6 +219,13 @@ type RowRackZone struct {
 	rowVolGroup *SliderGroup
 	rowScroll   *ScrollBehavior
 
+	// addRowRightReserve is the width (px) the addRowBtn must leave
+	// unoccupied on its right edge — used by drumview_layout.go to host
+	// the row-zoom +/- chips inline with the addRowBtn at the bottom of
+	// the rack column. Set via SetAddRowRightReserve before Layout runs.
+	// Zero means full-width addRowBtn (legacy behavior).
+	addRowRightReserve int
+
 	rowOffset       int
 	selRow          int
 	visRowsOverride int // if > 0, overrides VisibleRows() calculation
@@ -299,8 +306,75 @@ func (z *RowRackZone) Layout(rect image.Rectangle) {
 	z.lastLayoutRectInitialized = true
 	z.rect = rect
 	z.needLayout = false
+	// Profile-driven scrollbar appearance: re-derive every Layout so a
+	// mobile↔desktop transition correctly retheme the row scrollbar (mobile
+	// uses a wider thumb / larger min-thumb height for touch ergonomics).
+	if z.rowScroll != nil {
+		want := ScrollbarStyleForPlatform()
+		if z.rowScroll.Style != want {
+			z.rowScroll.Style = want
+		}
+	}
 	z.rebuildEntries()
 	z.rebuildHitAreas()
+}
+
+// applyRowLabelTypography unconditionally writes the profile-correct
+// TextScale and TextColor onto a row label button. Idempotent. Called from
+// rebuildEntries (cold path) and indirectly via applyRowLabelTypographyIfChanged
+// from repositionEntries (hot path).
+func applyRowLabelTypography(b *Button) {
+	if b == nil {
+		return
+	}
+	if Profile().IsMobile() {
+		b.TextScale = FontSizeLabel / FontSizeBody
+		b.TextColor = colTextPrimary
+	} else {
+		b.TextScale = 0
+		b.TextColor = nil
+	}
+}
+
+// applyRowLabelTypographyIfChanged updates the label typography to match
+// the current profile and returns true iff anything actually changed. Used
+// by repositionEntries to gate cache invalidation — re-applying identical
+// values must NOT trigger a controls-cache rebuild (the WASM OOM hot path).
+func applyRowLabelTypographyIfChanged(b *Button) bool {
+	if b == nil {
+		return false
+	}
+	wantScale := float64(0)
+	var wantColor color.Color
+	if Profile().IsMobile() {
+		wantScale = FontSizeLabel / FontSizeBody
+		wantColor = colTextPrimary
+	}
+	changed := false
+	if b.TextScale != wantScale {
+		b.TextScale = wantScale
+		changed = true
+	}
+	if !colorEqualOrBothNil(b.TextColor, wantColor) {
+		b.TextColor = wantColor
+		changed = true
+	}
+	return changed
+}
+
+// colorEqualOrBothNil handles nil-vs-concrete interface comparison for
+// color.Color. Used by applyRowLabelTypographyIfChanged to avoid spurious
+// cache invalidation when the typography is unchanged.
+func colorEqualOrBothNil(a, b color.Color) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	ar, ag, ab, aa := a.RGBA()
+	br, bg, bb, ba := b.RGBA()
+	return ar == br && ag == bg && ab == bb && aa == ba
 }
 
 func (z *RowRackZone) Update() {
@@ -309,6 +383,9 @@ func (z *RowRackZone) Update() {
 	if len(rows) != len(z.entries) {
 		z.needLayout = true
 	}
+	// Tick the wheel/step cooldown once per frame so the stepped scrollbar
+	// re-arms (see WheelStep). Cheap no-op when nothing is pending.
+	z.rowScroll.TickStep()
 	// Scroll momentum.
 	if z.rowScroll.HasMomentum() {
 		z.syncScroll()
@@ -553,14 +630,11 @@ func (z *RowRackZone) rebuildEntries() {
 		idx := i
 
 		lbl := NewButton(r.Name, style, nil)
-		if Profile().IsMobile() {
-			// Mobile typography upgrade: row names get a larger body-Lg-equivalent
-			// size and full-strength on-surface color so kits parse at a glance.
-			// Combined with the wider label cell weight (5/2/2/2/2) this also
-			// removes truncation for typical names like "FM Snare".
-			lbl.TextScale = FontSizeLabel / FontSizeBody
-			lbl.TextColor = colTextPrimary
-		}
+		// Mobile typography upgrade (larger TextScale + on-surface TextColor)
+		// is applied unconditionally every Layout via applyRowLabelTypography,
+		// so a mobile↔desktop transition retints in real time without relying
+		// on construction-time profile sampling.
+		applyRowLabelTypography(lbl)
 		lbl.OnClick = func() {
 			// Skip if rename is active for this row.
 			if z.callbacks.RenameRow != nil && z.callbacks.RenameRow() == idx {
@@ -678,7 +752,7 @@ func (z *RowRackZone) rebuildEntries() {
 	z.rowVolGroup.SetSliders(z.volSliderSlice())
 
 	// Position the "+" button.
-	z.positionAddRowBtn(panelRect.Min.Y, panelRect, vis)
+	z.positionAddRowBtn(panelRect.Min.Y, panelRect)
 
 	// Set container bounds for slider group.
 	rowsBottom := panelRect.Min.Y + vis*z.rowHeight()
@@ -719,6 +793,13 @@ func (z *RowRackZone) repositionEntries(rows []*DrumRow, vis int, panelRect imag
 				e.label.Style = style
 				dirty = true
 			}
+			// Profile-driven typography: mobile labels bump TextScale and
+			// override TextColor so kits parse at glance; desktop uses the
+			// Button defaults. Re-applied every reposition so a viewport
+			// transition retints in real time.
+			if applyRowLabelTypographyIfChanged(e.label) {
+				dirty = true
+			}
 			if e.volSlider.Value != rows[i].Volume {
 				e.volSlider.Value = rows[i].Volume
 				dirty = true
@@ -749,7 +830,7 @@ func (z *RowRackZone) repositionEntries(rows []*DrumRow, vis int, panelRect imag
 	z.rowVolGroup.SetSliders(z.volSliderSlice())
 
 	// Position the "+" button.
-	z.positionAddRowBtn(panelRect.Min.Y, panelRect, vis)
+	z.positionAddRowBtn(panelRect.Min.Y, panelRect)
 
 	// Set container bounds for slider group.
 	rowsBottom := panelRect.Min.Y + vis*z.rowHeight()
@@ -825,18 +906,20 @@ func (z *RowRackZone) positionRowWidgets(i int, rowRect image.Rectangle) {
 }
 
 // positionAddRowBtn sets the "+" button rect.
-func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle, vis int) {
-	rows := z.rows()
-	nBelow := len(rows) - z.rowOffset
-	if nBelow > vis {
-		nBelow = vis
-	}
+//
+// **Anchoring contract:** the addRowBtn is always pinned to the bottom
+// of the rack column (`panelRect.Max.Y - rh`) — predictable click
+// targets matter more than tracking the row count.
+//
+// Tight-layout invariant: the rack rect itself is contracted in
+// `drumview_layout.go` to fit `rendered_rows + 1` slots exactly, with
+// any modulo slack absorbed by the bottom action bar growing upward
+// (mobile only). That means `panelRect.Max.Y - rh` is always flush
+// with the last rendered row's bottom AND the bar's top — no orphan
+// rack-background strip can appear above OR below the button.
+func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle) {
 	rh := z.rowHeight()
-	addY := rowsTop + nBelow*rh
-	rackBottom := panelRect.Max.Y
-	if addY+rh > rackBottom {
-		addY = rackBottom - rh
-	}
+	addY := panelRect.Max.Y - rh
 	if addY < rowsTop {
 		addY = rowsTop
 	}
@@ -853,7 +936,34 @@ func (z *RowRackZone) positionAddRowBtn(rowsTop int, panelRect image.Rectangle, 
 	}
 	z.addRowBtn.Text = ""
 	z.addRowBtn.Icon = string(IconPlus)
-	z.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, addY, panelRect.Max.X, addY+rh), SpaceXS))
+	addMaxX := panelRect.Max.X
+	if z.addRowRightReserve > 0 && addMaxX-z.addRowRightReserve > panelRect.Min.X {
+		addMaxX -= z.addRowRightReserve
+	}
+	z.addRowBtn.SetRect(insetRect(image.Rect(panelRect.Min.X, addY, addMaxX, addY+rh), SpaceXS))
+}
+
+// SetAddRowRightReserve declares how many pixels the addRow button must
+// leave free on its right edge. Drumview_layout.go uses this to inline
+// the row-zoom +/- chips beside the addRow button so they stop
+// overlapping the FX cells of the topmost rows. Pass 0 to disable.
+func (z *RowRackZone) SetAddRowRightReserve(px int) {
+	if z.addRowRightReserve == px {
+		return
+	}
+	z.addRowRightReserve = px
+	z.needLayout = true
+}
+
+// AddRowBtnRect returns the current rect of the add-row button. Used by
+// drumview_layout.go to position the row-zoom +/- chips inline with the
+// addRow button on mobile (Theme 3 fix — row-zoom chips no longer
+// overlap the FX cells of rows 0/1).
+func (z *RowRackZone) AddRowBtnRect() image.Rectangle {
+	if z.addRowBtn == nil {
+		return image.Rectangle{}
+	}
+	return z.addRowBtn.Rect()
 }
 
 // --- Scroll helpers ---
@@ -1058,15 +1168,17 @@ func (h *rowRackScrollHitAdapter) OnWheel(x, y, steps int) InputResult {
 	if steps == 0 {
 		return InputIgnored
 	}
+	// Step-by-step: one row per notch, throttled by the cooldown so a spun
+	// wheel can't fly through the list. Consume regardless so the wheel never
+	// leaks past the rack while the cursor is over it.
 	h.zone.syncScroll()
-	if h.zone.rowScroll.HandleWheel(steps) {
+	if h.zone.rowScroll.WheelStep(steps, controlGridScrollCooldownFrames) {
 		h.zone.flushScroll()
 		if h.zone.callbacks.OnScrollChanged != nil {
 			h.zone.callbacks.OnScrollChanged()
 		}
-		return InputConsumed
 	}
-	return InputIgnored
+	return InputConsumed
 }
 
 // --- Drawing ---
@@ -1183,7 +1295,8 @@ func (z *RowRackZone) drawRowControls(dst *ebiten.Image) {
 	}
 	w, h := bounds.Dx(), bounds.Dy()
 	if z.controlsCache == nil || z.controlsCache.Bounds().Dx() != w || z.controlsCache.Bounds().Dy() != h {
-		z.controlsCache = ebiten.NewImage(w, h)
+		releaseImage(z.controlsCache)
+		z.controlsCache = newTrackedImage("rowRackZone.controlsCache", w, h)
 	} else {
 		z.controlsCache.Clear()
 	}
@@ -1407,57 +1520,22 @@ func (z *RowRackZone) drawRowControlsDirect(dst *ebiten.Image) {
 	}
 }
 
-// drawVolIcon draws a speaker icon in the slider's rect (mobile). Uses the
-// canonical IconSpeaker / IconSpeakerOff vector glyphs so the visual
-// language matches the rest of the chrome.
+// drawVolIcon renders a per-row volume button into dst. Thin wrapper around
+// drawVolumeButton — the canonical, shared volume-button component used by
+// both per-row volume cells AND the master volume button. Differences from
+// master are limited to channel wiring (the slider's value source) and the
+// optional row-color tint.
 func drawVolIcon(dst *ebiten.Image, s *Slider, vol float64, muted bool, rowColor color.Color) {
-	r := s.Rect()
-	if r.Empty() {
-		return
-	}
-	iconCol := volIconColor(vol, muted, rowColor)
-	cellH := r.Dy()
-	iconH := cellH * 60 / 100
-	if Profile().IsMobile() && iconH < IconSizeMD {
-		iconH = IconSizeMD
-	}
-	if iconH < 8 {
-		iconH = 8
-	}
-	cx := r.Min.X + r.Dx()/2
-	cy := r.Min.Y + r.Dy()/2
-	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
-	id := IconSpeaker
-	if vol == 0 || muted {
-		id = IconSpeakerOff
-	}
-	DrawIcon(dst, id, iconR, iconCol)
+	drawVolumeButton(dst, s.Rect(), vol, muted, rowColor)
 }
 
-// drawVolIconOff draws a speaker icon into a cache image with coordinate offset.
+// drawVolIconOff is the offset-cache counterpart of drawVolIcon.
 func drawVolIconOff(cache *ebiten.Image, s *Slider, vol float64, offsetX, offsetY int, muted bool, rowColor color.Color) {
 	r := s.Rect()
 	if r.Empty() {
 		return
 	}
-	r = r.Sub(image.Pt(offsetX, offsetY))
-	iconCol := volIconColor(vol, muted, rowColor)
-	cellH := r.Dy()
-	iconH := cellH * 60 / 100
-	if Profile().IsMobile() && iconH < IconSizeMD {
-		iconH = IconSizeMD
-	}
-	if iconH < 8 {
-		iconH = 8
-	}
-	cx := r.Min.X + r.Dx()/2
-	cy := r.Min.Y + r.Dy()/2
-	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
-	id := IconSpeaker
-	if vol == 0 || muted {
-		id = IconSpeakerOff
-	}
-	DrawIcon(cache, id, iconR, iconCol)
+	drawVolumeButton(cache, r.Sub(image.Pt(offsetX, offsetY)), vol, muted, rowColor)
 }
 
 // volIconColor returns the appropriate color for a volume icon.
@@ -1472,56 +1550,17 @@ func volIconColor(vol float64, muted bool, rowColor color.Color) color.Color {
 	return colVolumeIconOn
 }
 
-// drawVolCell draws a speaker icon + mini volume bar in the slider's rect.
-// On mobile the cell is too narrow for the bar, so only the icon is drawn.
+// drawVolCell draws the volume cell: speaker glyph + thin level underline.
+// The underline is drawn by drawVolIcon via drawSliderLevelIndicator, so the
+// at-a-glance level reading is consistent across mobile and desktop and
+// across per-row and master volume controls.
 func drawVolCell(dst *ebiten.Image, s *Slider, vol float64, rowColor color.Color, muted bool) {
 	drawVolIcon(dst, s, vol, muted, rowColor)
-	if Profile().IsMobile() {
-		return
-	}
-	r := s.Rect()
-	if r.Empty() {
-		return
-	}
-	drawVolBar(dst, r, vol, rowColor)
 }
 
-// drawVolCellOff draws icon + mini volume bar into a cache image with offset.
+// drawVolCellOff is the offset-cache counterpart of drawVolCell.
 func drawVolCellOff(cache *ebiten.Image, s *Slider, vol float64, offsetX, offsetY int, rowColor color.Color, muted bool) {
 	drawVolIconOff(cache, s, vol, offsetX, offsetY, muted, rowColor)
-	if Profile().IsMobile() {
-		return
-	}
-	r := s.Rect()
-	if r.Empty() {
-		return
-	}
-	r = r.Sub(image.Pt(offsetX, offsetY))
-	drawVolBar(cache, r, vol, rowColor)
-}
-
-// drawVolBar draws a mini horizontal volume bar inside rect r.
-// Track: 4px tall, colSurface1 background, full width of cell.
-// Fill: instrument color at 60% opacity, width proportional to volume.
-func drawVolBar(dst *ebiten.Image, r image.Rectangle, vol float64, rowColor color.Color) {
-	const trackH = 4
-	// Position the bar to the right of center (leaving room for the speaker icon).
-	barX := r.Min.X + r.Dx()/2 + 2
-	barW := r.Max.X - barX - 2
-	if barW < 4 {
-		return
-	}
-	cy := r.Min.Y + r.Dy()/2
-	trackRect := image.Rect(barX, cy-trackH/2, barX+barW, cy-trackH/2+trackH)
-	drawRect(dst, trackRect, colSurface1, true)
-
-	// Fill proportional to volume with instrument color at the row-active alpha.
-	fillW := int(math.Round(float64(barW) * vol))
-	if fillW > 0 {
-		fillCol := WithAlphaFromColor(rowColor, AlphaRowActive)
-		fillRect := image.Rect(barX, cy-trackH/2, barX+fillW, cy-trackH/2+trackH)
-		drawRect(dst, fillRect, fillCol, true)
-	}
 }
 
 // Verify interface at compile time.

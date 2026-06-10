@@ -10,6 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/engine"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/async"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
 	"github.com/ingyamilmolinar/beatmo/internal/graphruntime"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
@@ -32,10 +33,29 @@ type Game struct {
 	logger                    *game_log.Logger
 	grid                      *Grid
 	audioCh                   chan soundReq
-	audioGen                  atomic.Uint64
-	bpmCh                     chan int
-	bpmAck                    chan int
-	playFn                    func(string, float64, ...float64)
+	// audioLoopReqs and audioLoopBatch are reusable scratch buffers held
+	// across audioLoop iterations so steady-state playback does not
+	// allocate ~3 KB of soundReq slice + a BatchParam slice every drain
+	// cycle. On WASM, where linear memory only grows, eliminating this
+	// per-iteration churn keeps the allocator's peak working set low
+	// enough that GC reclamation keeps up. Owned exclusively by the
+	// audioLoop goroutine; no cross-goroutine access.
+	audioLoopReqs  []soundReq
+	audioLoopBatch []audio.BatchParam
+	audioGen       atomic.Uint64
+	// audioQuit terminates audioLoop. audioLoop both reads from and (via the
+	// opportunistic seqScheduleTime drive) writes back into audioCh, so
+	// audioCh must never be closed — closing the channel a goroutine still
+	// sends to panics with "send on closed channel". Close() signals exit by
+	// closing audioQuit instead; audioCh is left open and GC'd.
+	audioQuit chan struct{}
+	// closing is set at the start of Close() so audioLoop stops its
+	// opportunistic seqScheduleTime refills, guaranteeing audioCh drains and
+	// the audioQuit select wins promptly during teardown.
+	closing atomic.Bool
+	bpmCh   chan int
+	bpmAck  chan int
+	playFn  func(string, float64, ...float64)
 	// audioScheduler dispatches future-timestamped playFn calls onto a
 	// bounded pool instead of spawning a goroutine per scheduled note.
 	// Initialized by New(); tests that construct Game directly may leave
@@ -309,10 +329,16 @@ type Game struct {
 	sequencerStopped            bool
 	sequencerRunning            bool
 	closed                      bool
-	renderReady                 bool
-	renderOffset                int
-	renderLength                int
-	renderFrame                 int64
+	// bgWG tracks the background goroutines launched by New (audioLoop +
+	// bpmLoop) so Close() can join them deterministically. Without this,
+	// Close() returns before the goroutines unpark from their channel
+	// receives, causing goleak.VerifyTestMain to panic on leftover
+	// goroutines and the 60s -timeout to kick in mid-teardown.
+	bgWG         sync.WaitGroup
+	renderReady  bool
+	renderOffset int
+	renderLength int
+	renderFrame  int64
 
 	// Audio scheduling lookahead in seconds (web)
 	audioLookaheadSec float64
@@ -337,10 +363,10 @@ type Game struct {
 	parityScanMaxNS       int64
 	parityScanCount       int64
 	// Test-only diagnostic counters for parityPrune invocations.
-	parityPruneCallsForTest      int64
-	parityPruneMaxMinAbsForTest  int
-	parityScanCallsForTest       int64
-	parityScanReturnsForTest     [10]int64 // by early-return slot
+	parityPruneCallsForTest     int64
+	parityPruneMaxMinAbsForTest int
+	parityScanCallsForTest      int64
+	parityScanReturnsForTest    [10]int64 // by early-return slot
 	// parityGen monotonically advances on every runtime structural mutation
 	// (instrument change, BPM, length, graph edit, row add/del, etc). All
 	// parity event records (audio, seq decisions, highlights) carry the gen at

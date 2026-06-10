@@ -15,9 +15,9 @@ type fakeRecipe struct {
 	render   func(buf []float32, sampleRate, samples, variant int, p RecipeParams)
 }
 
-func (r *fakeRecipe) ID() string             { return r.id }
-func (r *fakeRecipe) DisplayName() string    { return r.display }
-func (r *fakeRecipe) Category() string       { return r.category }
+func (r *fakeRecipe) ID() string              { return r.id }
+func (r *fakeRecipe) DisplayName() string     { return r.display }
+func (r *fakeRecipe) Category() string        { return r.category }
 func (r *fakeRecipe) ParamSchema() []ParamDef { return r.params }
 func (r *fakeRecipe) Render(buf []float32, sampleRate, samples, variant int, p RecipeParams) {
 	if r.render != nil {

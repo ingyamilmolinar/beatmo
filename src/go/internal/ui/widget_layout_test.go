@@ -207,43 +207,49 @@ func TestControlsStayBoundedAfterWaveGrow(t *testing.T) {
 	}
 }
 
-func TestAddRowButtonStaysAfterLastRow(t *testing.T) {
+// TestAddRowButtonAnchoredToRackBottom asserts the addRow button is
+// anchored to the bottom of the rack column — independent of row count
+// or scroll offset. (Previously this test asserted "follows last row",
+// which made the button a moving target; see footer_button_anchor_test.go
+// for the cross-row-count invariant.)
+func TestAddRowButtonAnchoredToRackBottom(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1100, 520)
-	// Force rack height to be tight to reproduce floating issue.
 	dv.widgets.ResizeAxis("row", 1, -260)
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
 	dv.calcLayout()
 
-	rowsTop := dv.Bounds.Min.Y + dv.headerH
 	rack := dv.widgetRects[WidgetRack]
-	nBelow := len(dv.Rows) - dv.rowOffset
-	if nBelow > dv.visibleRows() {
-		nBelow = dv.visibleRows()
-	}
-	rawAddY := rowsTop + nBelow*dv.rowHeight()
-	if rawAddY+dv.rowHeight() > rack.Max.Y {
-		rawAddY = rack.Max.Y - dv.rowHeight()
-	}
-	expected := rawAddY + SpaceXS
-	got := dv.addRowBtn().Rect().Min.Y
-	if got != expected {
-		t.Fatalf("add row button should follow last row. got Y=%d expected=%d (rowsTop=%d rows=%d offset=%d visRows=%d)", got, expected, rowsTop, len(dv.Rows), dv.rowOffset, dv.visibleRows())
-	}
-	// Ensure it still sits inside rack horizontally.
 	if rack.Empty() {
 		t.Fatalf("rack rect empty")
+	}
+	rh := dv.rowHeight()
+	// Anchor reference is the rack ZONE rect (z.rect after the
+	// rowsBottom() clamp in drumview_layout.go) — NOT the raw
+	// widgetRects[WidgetRack] which extends to dv.Bounds.Max.Y. The
+	// addRow's top edge sits at `zoneRect.Max.Y - rh + SpaceXS`.
+	zoneRect := dv.rowRackZone.rect
+	expected := zoneRect.Max.Y - rh + SpaceXS
+	got := dv.addRowBtn().Rect().Min.Y
+	if got != expected {
+		t.Fatalf("addRowBtn must be anchored to rack zone bottom: got Y=%d expected=%d (zoneRect.Max.Y=%d rh=%d)",
+			got, expected, zoneRect.Max.Y, rh)
 	}
 	if dv.addRowBtn().Rect().Min.X < rack.Min.X || dv.addRowBtn().Rect().Max.X > rack.Max.X {
 		t.Fatalf("add button must stay within rack width: btn=%v rack=%v", dv.addRowBtn().Rect(), rack)
 	}
 }
 
-func TestAddRowButtonAutoScrollsIntoViewOnShrink(t *testing.T) {
+// TestAddRowButtonStaysAnchoredAfterShrink asserts the addRow button
+// stays anchored to the rack column's bottom edge after a layout
+// shrink, even when scroll has been forced to the end. The button's
+// screen position must be the same as before/after the shrink — the
+// scroll offset only changes which ROWS are visible, not the button's
+// anchor.
+func TestAddRowButtonStaysAnchoredAfterShrink(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := newTestDrumView(t, 1100, 420)
-	// Add extra rows to force scrolling.
 	for i := 0; i < 6; i++ {
 		dv.AddRow()
 	}
@@ -267,19 +273,21 @@ func TestAddRowButtonAutoScrollsIntoViewOnShrink(t *testing.T) {
 	if btn.Max.Y > rack.Max.Y || btn.Min.Y < rack.Min.Y {
 		t.Fatalf("add button not within rack after shrink: btn=%v rack=%v", btn, rack)
 	}
-	// Ensure the button is positioned immediately after the last visible row.
-	rowsTop := dv.Bounds.Min.Y + dv.headerH
-	nBelow := len(dv.Rows) - dv.rowOffset
-	if nBelow > dv.visibleRows() {
-		nBelow = dv.visibleRows()
-	}
-	rawAddY := rowsTop + nBelow*dv.rowHeight()
-	if rawAddY+dv.rowHeight() > rack.Max.Y {
-		rawAddY = rack.Max.Y - dv.rowHeight()
-	}
-	wantY := rawAddY + SpaceXS
-	if btn.Min.Y != wantY {
-		t.Fatalf("add button Y mismatch after shrink: got=%d want=%d (rowOffset=%d vis=%d)", btn.Min.Y, wantY, dv.rowOffset, dv.visibleRows())
+	// After the 2026-05-10 tight-layout fix, addRow lives in the band
+	// `[rowsTop + rendered*rh, zoneRect.Max.Y - rh]` where `rendered` is
+	// the number of rows actually painted (≤ capacity). When the rack
+	// is heavily oversubscribed (this test adds 6 rows then shrinks),
+	// `rendered == capacity` and `flushY == zoneRect.Max.Y - rh - slack`
+	// where slack is the rack-height modulo (< rh). Either anchor (flush
+	// or bottom-pinned) is acceptable; both keep the button inside the
+	// rack and within one rh of the rack bottom.
+	rh := dv.rowHeight()
+	zoneRect := dv.rowRackZone.rect
+	bottomAnchor := zoneRect.Max.Y - rh + SpaceXS
+	maxOffsetFromBottom := rh
+	if delta := bottomAnchor - btn.Min.Y; delta < 0 || delta > maxOffsetFromBottom {
+		t.Fatalf("addRowBtn out of allowed band after shrink: got=%d expected within [%d, %d] (zoneRect.Max.Y=%d rh=%d rowOffset=%d)",
+			btn.Min.Y, bottomAnchor-maxOffsetFromBottom, bottomAnchor, zoneRect.Max.Y, rh, dv.rowOffset)
 	}
 }
 
@@ -312,6 +320,19 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 
 func TestAddRowButtonNeverOverlapsEQPanel(t *testing.T) {
 	assertDefaultParityState(t)
+
+	// Phase 0a audio-panel redesign raised the default panel height
+	// multiplier to 3×; this test exercises the legacy 180-px layout
+	// where the rows area is sized for many rows. Pin the multiplier
+	// back to 1× for the duration of this test (and re-derive the
+	// active runtime profile so the change takes effect).
+	restoreProfile := SetRuntimeProfileForTest(func() *RuntimeProfile {
+		p := *RuntimeProf()
+		p.AudioPanelHeightMultiplier = 1
+		p.AudioPanelHeightScreenFrac = 0.0
+		return &p
+	}())
+	t.Cleanup(restoreProfile)
 
 	dv := newTestDrumView(t, 1280, 720)
 

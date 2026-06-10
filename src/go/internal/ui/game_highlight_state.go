@@ -105,21 +105,38 @@ func (g *Game) nodeAnimGet(id model.NodeID) float64 {
 	return val
 }
 
+// highlightAbsRetentionSlack is the lookback below drum.Offset that
+// clearExpiredHighlights still keeps. Anything strictly below
+// (drum.Offset - highlightAbsRetentionSlack) cannot be displayed and is
+// unconditionally evictable; the highlight animation is a transient visual
+// effect, so historical scroll-back does not replay it (timeline cold archive
+// owns playback history). 64 ≈ 8 visible windows of 8 — generous slack.
+const highlightAbsRetentionSlack = 64
+
 func (g *Game) clearExpiredHighlights() {
 	g.highlightMu.Lock()
+	defer g.highlightMu.Unlock()
 	if len(g.highlightedBeats) == 0 {
-		g.highlightMu.Unlock()
 		return
+	}
+	var minAbs int
+	var haveBound bool
+	if g.drum != nil && g.drum.Length > 0 {
+		minAbs = g.drum.Offset - highlightAbsRetentionSlack
+		haveBound = true
 	}
 	for key, val := range g.highlightedBeats {
 		until := highlightUntil(val)
+		row, idx := splitBeatKey(key)
 		if g.frame > until {
 			delete(g.highlightedBeats, key)
-			row, idx := splitBeatKey(key)
 			g.logger.Debugf("[GAME] Cleared expired highlight for beat %d row %d. highlightedBeats: %v", idx, row, g.highlightedBeats)
+			continue
+		}
+		if haveBound && idx < minAbs {
+			delete(g.highlightedBeats, key)
 		}
 	}
-	g.highlightMu.Unlock()
 }
 
 // clearRowHighlights removes all highlight entries for the given row.
@@ -194,51 +211,81 @@ hlDone:
 
 // highlightVisual mirrors highlightBeat but never queues audio. It only
 // updates the highlight map and optional test hook.
-
+//
+// All in-tree callers (sequencer/audio schedule/sync-UI/pause-replay)
+// know the beat is firing at call time, so the call itself is the
+// authoritative trigger signal. The internal triggered/predictor
+// cascade exists only as defense for indirect callers that aren't
+// scheduler-driven — see highlightVisualUntrusted. Long-session
+// failure mode pre-fix: once the predictor's 4096-cap sliding window
+// passed `idx`, nodeTriggeredState returned (false, stateKnown=true)
+// via predictor fallback, which bypassed the regular-node rescue
+// branch and silently dropped the highlight write.
 func (g *Game) highlightVisual(row, idx int, info model.BeatInfo, duration int64) {
+	g.highlightVisualImpl(row, idx, info, duration, true /*trusted: caller is firing the beat*/)
+}
+
+// highlightVisualUntrusted is for callers that don't have first-hand
+// knowledge that the beat is firing (e.g. exploratory probes from
+// tests). Reserved for future use; no in-tree callers today. The
+// fallback cascade lives here, isolated from the hot scheduler path.
+//
+//nolint:unused // reserved for future indirect callers
+func (g *Game) highlightVisualUntrusted(row, idx int, info model.BeatInfo, duration int64) {
+	g.highlightVisualImpl(row, idx, info, duration, false)
+}
+
+func (g *Game) highlightVisualImpl(row, idx int, info model.BeatInfo, duration int64, trusted bool) {
 	key := makeBeatKey(row, idx)
-	triggered, stateKnown := g.nodeTriggeredState(row, idx, info)
-	if !triggered {
-		if v, _, ok := g.timelineCommitted(row, idx); ok && v {
-			triggered = true
-		}
-		if !triggered && row >= 0 && row < len(g.drum.Rows) {
-			j := idx - g.drum.Offset
-			if j >= 0 && j < len(g.drum.Rows[row].Steps) && g.drum.Rows[row].Steps[j] {
-				triggered = true
-			}
-		}
-	}
-	// Predictor fallback: if lastTriggered was stale (returned false but predictor
-	// says visible), trust the predictor — it's the authoritative source of truth.
-	if !triggered && info.NodeType == model.NodeTypeRegular {
-		if g.engine != nil && g.engine.Predictor != nil {
-			g.engine.Predictor.Ensure(idx + 1)
-			if g.engine.Predictor.VisibleAt(row, idx) {
-				triggered = true
-			}
-		}
-	}
-	hasState := stateKnown
-	if row >= 0 && row < len(g.drum.Rows) {
-		if v, ok := g.lastTriggered(row, info.NodeID); ok {
-			hasState = true
-			if v {
-				triggered = true
-			}
-		}
-	}
-	shouldHighlight := triggered
-	switch info.NodeType {
-	case model.NodeTypeInvisible, model.NodeTypeSilent:
+	shouldHighlight := false
+	if trusted {
+		// Scheduler/audio/sync path: trust the caller. Regular and mute
+		// beats have already been decided to fire; invisible/silent
+		// always show their highlight; the only state we still consult
+		// is mute-isMute (encoded in the highlight value) below.
 		shouldHighlight = true
-	case model.NodeTypeMute:
-		// mute highlights only when triggered
-	default:
-		// other node types rely on triggered state
-	}
-	if !shouldHighlight && info.NodeType == model.NodeTypeRegular && !hasState {
-		shouldHighlight = true
+	} else {
+		triggered, stateKnown := g.nodeTriggeredState(row, idx, info)
+		if !triggered {
+			if v, _, ok := g.timelineCommitted(row, idx); ok && v {
+				triggered = true
+			}
+			if !triggered && row >= 0 && row < len(g.drum.Rows) {
+				j := idx - g.drum.Offset
+				if j >= 0 && j < len(g.drum.Rows[row].Steps) && g.drum.Rows[row].Steps[j] {
+					triggered = true
+				}
+			}
+		}
+		if !triggered && info.NodeType == model.NodeTypeRegular {
+			if g.engine != nil && g.engine.Predictor != nil {
+				g.engine.Predictor.Ensure(idx + 1)
+				if g.engine.Predictor.VisibleAt(row, idx) {
+					triggered = true
+				}
+			}
+		}
+		hasState := stateKnown
+		if row >= 0 && row < len(g.drum.Rows) {
+			if v, ok := g.lastTriggered(row, info.NodeID); ok {
+				hasState = true
+				if v {
+					triggered = true
+				}
+			}
+		}
+		shouldHighlight = triggered
+		switch info.NodeType {
+		case model.NodeTypeInvisible, model.NodeTypeSilent:
+			shouldHighlight = true
+		case model.NodeTypeMute:
+			// mute highlights only when triggered
+		default:
+			// other node types rely on triggered state
+		}
+		if !shouldHighlight && info.NodeType == model.NodeTypeRegular && !hasState {
+			shouldHighlight = true
+		}
 	}
 	if !shouldHighlight {
 		return

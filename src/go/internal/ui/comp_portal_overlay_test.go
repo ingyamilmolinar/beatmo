@@ -167,11 +167,15 @@ func TestSliderPopupPortalOverlay(t *testing.T) {
 	}
 
 	areas = overlay.HitAreas()
-	if len(areas) != 1 {
-		t.Fatalf("expected 1 hit area when open, got %d", len(areas))
+	// 2 hit areas: the popup body (slider handler) and the anchor tap-to-close.
+	if len(areas) != 2 {
+		t.Fatalf("expected 2 hit areas when open (popup + anchor), got %d", len(areas))
 	}
 	if areas[0].Tag != "vol-popup" {
-		t.Errorf("expected tag 'vol-popup', got %q", areas[0].Tag)
+		t.Errorf("expected first tag 'vol-popup', got %q", areas[0].Tag)
+	}
+	if areas[1].Tag != "vol-popup-anchor-close" {
+		t.Errorf("expected second tag 'vol-popup-anchor-close', got %q", areas[1].Tag)
 	}
 }
 

@@ -11,14 +11,18 @@ import (
 // synchronous, single-threaded, and small (typically 5MB cap), so the
 // implementation is intentionally minimal — no async pool, no
 // double-buffering, no atomic-rename. Reads and writes go straight to
-// localStorage.getItem / setItem under the LocalStorageKey.
+// localStorage.getItem / setItem.
 type localStorageStore struct {
 	key  string
 	logf func(format string, args ...any)
 
-	mu     sync.RWMutex
-	cache  map[string]bool
-	loaded bool
+	mu          sync.RWMutex
+	favorites   map[string]bool
+	overrides   map[string]map[string]float64
+	userRecipes map[string][]byte
+	audioPanel  AudioPanelStateDoc
+	sampleEdits map[string]map[string]float64
+	loaded      bool
 }
 
 func newBackingStore(opts Options) Store {
@@ -44,43 +48,44 @@ func localStorageOrNil() js.Value {
 	return ls
 }
 
-func (s *localStorageStore) LoadFavorites() (map[string]bool, error) {
-	s.mu.RLock()
+// ensureLoadedLocked populates the cache exactly once. Caller must hold
+// the write lock.
+func (s *localStorageStore) ensureLoadedLocked() {
 	if s.loaded {
-		out := make(map[string]bool, len(s.cache))
-		for k, v := range s.cache {
-			out[k] = v
-		}
-		s.mu.RUnlock()
-		return out, nil
-	}
-	s.mu.RUnlock()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.loaded {
-		out := make(map[string]bool, len(s.cache))
-		for k, v := range s.cache {
-			out[k] = v
-		}
-		return out, nil
+		return
 	}
 	ls := localStorageOrNil()
 	if ls.IsUndefined() {
-		s.cache = map[string]bool{}
+		s.favorites = map[string]bool{}
+		s.overrides = map[string]map[string]float64{}
+		s.userRecipes = map[string][]byte{}
+		s.sampleEdits = map[string]map[string]float64{}
 		s.loaded = true
-		return map[string]bool{}, nil
+		return
 	}
-	val := ls.Call("getItem", s.key)
-	var data []byte
-	if !val.IsNull() && !val.IsUndefined() {
-		data = []byte(val.String())
+	if val := ls.Call("getItem", s.key); !val.IsNull() && !val.IsUndefined() {
+		data := []byte(val.String())
+		s.favorites, s.overrides, s.userRecipes, s.audioPanel = parsePrefsV3(data, s.logf)
+		s.sampleEdits = parseSampleEdits(data)
+		s.loaded = true
+		return
 	}
-	s.cache = parseFavorites(data, s.logf)
+	s.favorites = map[string]bool{}
+	s.overrides = map[string]map[string]float64{}
+	s.userRecipes = map[string][]byte{}
+	s.sampleEdits = map[string]map[string]float64{}
 	s.loaded = true
-	out := make(map[string]bool, len(s.cache))
-	for k, v := range s.cache {
-		out[k] = v
+}
+
+func (s *localStorageStore) LoadFavorites() (map[string]bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	out := make(map[string]bool, len(s.favorites))
+	for k, v := range s.favorites {
+		if v {
+			out[k] = true
+		}
 	}
 	return out, nil
 }
@@ -93,25 +98,195 @@ func (s *localStorageStore) SaveFavorites(favs map[string]bool) error {
 		}
 	}
 	s.mu.Lock()
-	s.cache = snap
-	s.loaded = true
-	s.mu.Unlock()
+	s.ensureLoadedLocked()
+	s.favorites = snap
+	return s.persistLocked()
+}
 
-	data, err := marshalFavorites(snap)
+func (s *localStorageStore) SaveRecipeOverride(recipeID string, params map[string]float64) error {
+	if recipeID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	if len(params) == 0 {
+		delete(s.overrides, recipeID)
+	} else {
+		cp := make(map[string]float64, len(params))
+		for k, v := range params {
+			if !isFiniteFloat(v) {
+				continue
+			}
+			cp[k] = v
+		}
+		if len(cp) == 0 {
+			delete(s.overrides, recipeID)
+		} else {
+			s.overrides[recipeID] = cp
+		}
+	}
+	return s.persistLocked()
+}
+
+func (s *localStorageStore) DeleteRecipeOverride(recipeID string) error {
+	if recipeID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	if _, ok := s.overrides[recipeID]; !ok {
+		s.mu.Unlock()
+		return nil
+	}
+	delete(s.overrides, recipeID)
+	return s.persistLocked()
+}
+
+func (s *localStorageStore) LoadRecipeOverrides() (map[string]map[string]float64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	out := make(map[string]map[string]float64, len(s.overrides))
+	for id, params := range s.overrides {
+		cp := make(map[string]float64, len(params))
+		for k, v := range params {
+			cp[k] = v
+		}
+		out[id] = cp
+	}
+	return out, nil
+}
+
+// SaveSampleEdit upserts the non-destructive sample-edit descriptor fields
+// for an instrument. Empty fields delete (parity with SaveRecipeOverride).
+func (s *localStorageStore) SaveSampleEdit(instID string, fields map[string]float64) error {
+	if instID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	if len(fields) == 0 {
+		delete(s.sampleEdits, instID)
+	} else {
+		cp := make(map[string]float64, len(fields))
+		for k, v := range fields {
+			if !isFiniteFloat(v) {
+				continue
+			}
+			cp[k] = v
+		}
+		if len(cp) == 0 {
+			delete(s.sampleEdits, instID)
+		} else {
+			s.sampleEdits[instID] = cp
+		}
+	}
+	return s.persistLocked()
+}
+
+func (s *localStorageStore) DeleteSampleEdit(instID string) error {
+	if instID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	if _, ok := s.sampleEdits[instID]; !ok {
+		s.mu.Unlock()
+		return nil
+	}
+	delete(s.sampleEdits, instID)
+	return s.persistLocked()
+}
+
+func (s *localStorageStore) LoadSampleEdits() (map[string]map[string]float64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	out := make(map[string]map[string]float64, len(s.sampleEdits))
+	for id, fields := range s.sampleEdits {
+		cp := make(map[string]float64, len(fields))
+		for k, v := range fields {
+			cp[k] = v
+		}
+		out[id] = cp
+	}
+	return out, nil
+}
+
+func (s *localStorageStore) SaveUserRecipe(recipeID string, doc []byte) error {
+	if recipeID == "" || len(doc) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	cp := make([]byte, len(doc))
+	copy(cp, doc)
+	s.userRecipes[recipeID] = cp
+	return s.persistLocked()
+}
+
+func (s *localStorageStore) DeleteUserRecipe(recipeID string) error {
+	if recipeID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	if _, ok := s.userRecipes[recipeID]; !ok {
+		s.mu.Unlock()
+		return nil
+	}
+	delete(s.userRecipes, recipeID)
+	return s.persistLocked()
+}
+
+func (s *localStorageStore) LoadUserRecipes() (map[string][]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	out := make(map[string][]byte, len(s.userRecipes))
+	for id, raw := range s.userRecipes {
+		cp := make([]byte, len(raw))
+		copy(cp, raw)
+		out[id] = cp
+	}
+	return out, nil
+}
+
+// LoadAudioPanelState returns the persisted Phase-5 audio-panel state.
+func (s *localStorageStore) LoadAudioPanelState() (AudioPanelStateDoc, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	return s.audioPanel, nil
+}
+
+// SaveAudioPanelState upserts the audio-panel section.
+func (s *localStorageStore) SaveAudioPanelState(state AudioPanelStateDoc) error {
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	s.audioPanel = state
+	return s.persistLocked()
+}
+
+// persistLocked marshals the current cache to localStorage. Caller must
+// hold s.mu; the lock is released before the JS call so any recover'd
+// panic from setItem doesn't strand the mutex.
+func (s *localStorageStore) persistLocked() error {
+	data, err := marshalPrefsV4(s.favorites, s.overrides, s.userRecipes, s.audioPanel, s.sampleEdits)
+	s.mu.Unlock()
 	if err != nil {
 		return err
 	}
 	ls := localStorageOrNil()
 	if ls.IsUndefined() {
-		// In-memory only; no error. The session keeps working.
 		if s.logf != nil {
-			s.logf("[USERPREFS] favorites: localStorage unavailable, in-memory only")
+			s.logf("[USERPREFS] prefs: localStorage unavailable, in-memory only")
 		}
 		return nil
 	}
 	defer func() {
 		if r := recover(); r != nil && s.logf != nil {
-			s.logf("[USERPREFS] favorites: setItem failed: %v", r)
+			s.logf("[USERPREFS] prefs: setItem failed: %v", r)
 		}
 	}()
 	ls.Call("setItem", s.key, string(data))

@@ -166,9 +166,19 @@ func (dv *DrumView) syncTrackBtnVisual() {
 
 // TrackBeat adjusts the drum view offset to keep the given beat visible when
 // auto-tracking is enabled.
+//
+// The recenter target is `length * RibbonPlayheadFrac` from the LEFT of the
+// visible window, matching the timeline ribbon's playhead cursor (pinned at
+// the same fraction of the bar width). Using 0.5 here would put the cell
+// flash at the drum-view midpoint while the ribbon cursor sits at ~0.70,
+// visibly desyncing the two playheads once the ribbon window starts sliding.
 func (dv *DrumView) TrackBeat(cur int) {
 	if !dv.FollowPlayback() {
 		return
+	}
+	frac := RuntimeProf().RibbonPlayheadFrac
+	if frac <= 0 || frac >= 1 {
+		frac = 0.70
 	}
 	// Ensure timeline extends far enough ahead of the playhead (beats) for clamping.
 	units := float64(max1(dv.timelineUnitsPerBeat))
@@ -178,21 +188,24 @@ func (dv *DrumView) TrackBeat(cur int) {
 	if tb > dv.timelineBeats {
 		dv.timelineBeats = tb
 	}
-	// Dead-zone: avoid shifting the window every tick. Only re-center when the
-	// playhead approaches the window edges.
+	// Dead-zone centered on the same column the ribbon cursor pins to. Kept
+	// tight (±1 cell) so the cell-highlight column stays visually locked to
+	// the ribbon cursor; the wider band the old code used produced a
+	// recenter every length/4 ticks during playback, and between recenters
+	// the cell highlight drifted several cells away from the cursor.
+	// Incremental row-sprite shifting (see drumview_cache_row_sprite.go)
+	// makes per-tick offset updates cheap.
 	if dv.Length > 0 {
-		margin := dv.Length / 4
-		if margin < 4 {
-			margin = 4
+		const recenterDeadZone = 1
+		targetCol := int(math.Round(float64(dv.Length) * frac))
+		left := dv.Offset + targetCol - recenterDeadZone
+		right := dv.Offset + targetCol + recenterDeadZone
+		if left < dv.Offset {
+			left = dv.Offset
 		}
-		if margin*2 >= dv.Length {
-			margin = dv.Length / 2
+		if right > dv.Offset+dv.Length-1 {
+			right = dv.Offset + dv.Length - 1
 		}
-		if margin < 1 {
-			margin = 1
-		}
-		left := dv.Offset + margin
-		right := dv.Offset + dv.Length - margin - 1
 		if left <= right && cur >= left && cur <= right {
 			if runningUnderGoTest() {
 				// In tests, force a cache refresh to satisfy visibility assertions even
@@ -202,9 +215,8 @@ func (dv *DrumView) TrackBeat(cur int) {
 			return
 		}
 	}
-	half := length / 2
 	floatCur := float64(cur)
-	desiredF := floatCur - half
+	desiredF := floatCur - length*frac
 	if desiredF < 0 {
 		desiredF = 0
 	}
@@ -243,6 +255,14 @@ func (dv *DrumView) SetLength(length int) {
 		r.CellTypes = make([]model.NodeType, dv.Length)
 	}
 	dv.SetBeatLength(dv.Length)
+	if length != prev {
+		// Cell pitch is (w/Length); a Length change resizes every cell. The
+		// row sprite cache and rows-layer composite must be fully invalidated
+		// so the shift-and-fill path doesn't blend old-pitch and new-pitch
+		// pixels across the row.
+		dv.invalidateRowCaches()
+		dv.markAllRowsDirty()
+	}
 	dv.bgDirty = true
 	if length != prev {
 		emitLengthChange(length)
@@ -272,6 +292,13 @@ func (dv *DrumView) SetLengthClamped(length int) {
 	for _, r := range dv.Rows {
 		r.Steps = make([]bool, dv.Length)
 		r.CellTypes = make([]model.NodeType, dv.Length)
+	}
+	if length != prev {
+		// Same rationale as SetLength: Length change resizes every cell, so
+		// the row sprite + composite caches must fully invalidate to avoid
+		// the shift-and-fill path blending pitches.
+		dv.invalidateRowCaches()
+		dv.markAllRowsDirty()
 	}
 	dv.bgDirty = true
 	if length != prev && dv.onStructuralMutation != nil {
@@ -398,7 +425,8 @@ func (dv *DrumView) registerInstrument(id string) {
 		} else {
 			dv.notifyInfo("Loaded WAV instrument: " + canonicalID)
 		}
-		dv.logger.Infof("[drumview] loaded user WAV %s (existing=%v)", canonicalID, existed)
+		dv.logger.Debugf("[drumview] loaded user WAV %s (existing=%v)", canonicalID, existed)
+		emitCustomWAVLoaded(canonicalID, existed)
 	} else {
 		dv.logger.Errorf("[drumview] failed to load WAV: %v", err)
 		dv.notifyError("Error loading WAV: " + err.Error())

@@ -261,7 +261,7 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 	}
 
 	// Close button (highest z-order)
-	if c.closeBtn != nil && c.closeBtn.Handle(x, y, pressed) {
+	if c.closeBtn != nil && c.closeBtn.HandleInputResult(x, y, pressed) != InputIgnored {
 		return InputConsumed
 	}
 

@@ -15,10 +15,10 @@ type phaser struct {
 	mix      float64 // wet/dry 0-1
 
 	sr       int
-	phase    float64    // LFO phase 0..2π
+	phase    float64     // LFO phase 0..2π
 	x1       [12]float64 // allpass input state per stage
 	y1       [12]float64 // allpass output state per stage
-	fbSample float64    // feedback sample from last stage
+	fbSample float64     // feedback sample from last stage
 }
 
 func newPhaser(sr int, params map[string]float64) *phaser {

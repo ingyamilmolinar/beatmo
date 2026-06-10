@@ -17,6 +17,16 @@ type ScrollBehavior struct {
 	ItemHeight int     // px per item (for pixel→item conversion)
 	pixelAccum float64 // sub-item precision accumulator
 	dirty      bool    // true when VS.First changed since last ClearDirty
+
+	// Opt-in "step-by-step" state (used by the synth ControlGrid and the row
+	// rack). These power WheelStep / StepDragTo and are independent of the
+	// continuous HandleWheel / HandleDragTo / HandleTouch* paths, so scrollbars
+	// that don't call the step methods (dropdowns, context menu, sidebar) keep
+	// their original feel.
+	stepCooldown   int  // frames until the next wheel/step move is allowed
+	stepDragging   bool // a stepped thumb drag is in progress
+	stepDragStartY int  // pointer Y at the start of the stepped drag
+	stepFirst      int  // VS.First at the start of the stepped drag
 }
 
 // NewScrollBehavior creates a ScrollBehavior with the given style and item height.
@@ -61,6 +71,92 @@ func (sb *ScrollBehavior) HandleDragTo(y int) bool {
 func (sb *ScrollBehavior) HandleDragEnd() {
 	sb.VS.EndDrag()
 }
+
+// --- Step-by-step input (opt-in; see the stepCooldown/stepDragging fields) ---
+
+// WheelStep advances the scroll by exactly ONE item in the wheel's direction,
+// then refuses further steps until cooldownFrames frames have elapsed (see
+// TickStep). The magnitude of steps is ignored on purpose — one notch (or one
+// fast flick / hi-res-wheel burst) is one item — so the wheel can't fly through
+// the list. steps > 0 is a wheel-up (toward lower indices), matching ScrollBy.
+// Returns true when VS.First changed.
+func (sb *ScrollBehavior) WheelStep(steps, cooldownFrames int) bool {
+	if steps == 0 || sb.stepCooldown > 0 {
+		return false
+	}
+	dir := 1
+	if steps > 0 {
+		dir = -1
+	}
+	prev := sb.VS.First
+	sb.VS.First += dir
+	sb.VS.Clamp()
+	if sb.VS.First == prev {
+		return false
+	}
+	sb.stepCooldown = cooldownFrames
+	sb.dirty = true
+	return true
+}
+
+// TickStep advances the per-frame cooldown clock. Call once per frame. Cheap
+// no-op when no cooldown is pending.
+func (sb *ScrollBehavior) TickStep() {
+	if sb.stepCooldown > 0 {
+		sb.stepCooldown--
+	}
+}
+
+// BeginStepDrag starts a stepped thumb drag anchored at y. The caller decides
+// when to start it (e.g. on a press inside the thumb). Also raises VS.dragging
+// so Dragging()/capture logic sees the drag. Returns false (no capture) when
+// the content does not scroll.
+func (sb *ScrollBehavior) BeginStepDrag(y int) bool {
+	if !sb.HasScroll() {
+		return false
+	}
+	sb.stepDragging = true
+	sb.VS.dragging = true
+	sb.stepDragStartY = y
+	sb.stepFirst = sb.VS.First
+	return true
+}
+
+// StepDragTo advances the scroll one item per stepPx of pointer travel from the
+// grab point, anchored so the drag is fully reversible and never jumps more
+// items than the distance dragged warrants. Returns true when VS.First changed.
+func (sb *ScrollBehavior) StepDragTo(y, stepPx int) bool {
+	if !sb.stepDragging || stepPx <= 0 {
+		return false
+	}
+	rows := (y - sb.stepDragStartY) / stepPx
+	newFirst := sb.stepFirst + rows
+	maxFirst := sb.VS.Total - sb.VS.Visible
+	if maxFirst < 0 {
+		maxFirst = 0
+	}
+	if newFirst < 0 {
+		newFirst = 0
+	}
+	if newFirst > maxFirst {
+		newFirst = maxFirst
+	}
+	if newFirst == sb.VS.First {
+		return false
+	}
+	sb.VS.First = newFirst
+	sb.dirty = true
+	return true
+}
+
+// EndStepDrag releases a stepped thumb drag.
+func (sb *ScrollBehavior) EndStepDrag() {
+	sb.stepDragging = false
+	sb.VS.dragging = false
+}
+
+// StepDragging reports whether a stepped thumb drag is in progress.
+func (sb *ScrollBehavior) StepDragging() bool { return sb.stepDragging }
 
 // HandleTouchBegin starts tracking a touch at the given coordinates.
 func (sb *ScrollBehavior) HandleTouchBegin(x, y int) {

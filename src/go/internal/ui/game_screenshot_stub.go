@@ -19,6 +19,8 @@ func (g *Game) screenshotReady() bool {
 
 func (g *Game) SetScreenshotSettleFrames(n int) { g.screenshotSettleFrames = n }
 
+func (g *Game) SetScreenshotSubject(s Subject) { g.screenshotSubject = s }
+
 func (g *Game) captureScreen(_ *ebiten.Image) error {
 	return nil
 }

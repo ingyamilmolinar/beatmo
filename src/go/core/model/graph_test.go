@@ -243,30 +243,24 @@ func TestSetNodeParamsNormalizesLogic(t *testing.T) {
 	n0 := g.AddNode(0, 0, NodeTypeRegular)
 	n1 := g.AddNode(1, 0, NodeTypeRegular)
 
-	// SkipEveryN with no explicit logic kind should normalize to skip_every_n.
-	g.SetNodeParams(n0, NodeParams{SkipEveryN: 3})
+	// skip_every_n with explicit N is applied as-is.
+	g.SetNodeParams(n0, NodeParams{LogicKind: "skip_every_n", LogicN: 3})
 	n, _ := g.GetNodeByID(n0)
 	if n.Params.LogicKind != "skip_every_n" {
 		t.Fatalf("expected skip_every_n, got %q", n.Params.LogicKind)
 	}
 	if n.Params.LogicN != 3 {
-		t.Fatalf("expected logic N=3 from skipEveryN, got %d", n.Params.LogicN)
-	}
-	if n.Params.SkipEveryN != 0 {
-		t.Fatalf("expected SkipEveryN cleared, got %d", n.Params.SkipEveryN)
+		t.Fatalf("expected logic N=3, got %d", n.Params.LogicN)
 	}
 
-	// Aliases should normalize without applying SkipEveryN.
-	g.SetNodeParams(n1, NodeParams{LogicKind: " Prev_Fired ", SkipEveryN: 2})
+	// Aliases should normalize to their canonical kind.
+	g.SetNodeParams(n1, NodeParams{LogicKind: " Prev_Fired "})
 	n, _ = g.GetNodeByID(n1)
 	if n.Params.LogicKind != "trigger_if_prev_triggered" {
 		t.Fatalf("expected normalized logic kind, got %q", n.Params.LogicKind)
 	}
 	if n.Params.LogicN != 0 {
 		t.Fatalf("expected logic N unchanged, got %d", n.Params.LogicN)
-	}
-	if n.Params.SkipEveryN != 0 {
-		t.Fatalf("expected SkipEveryN cleared, got %d", n.Params.SkipEveryN)
 	}
 }
 
