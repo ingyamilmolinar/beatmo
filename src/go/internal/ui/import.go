@@ -80,6 +80,14 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 	}()
 
+	// Drop undo history on a real project load — you cannot undo across a
+	// document swap. Deferred so it runs after all in-import mutations (which
+	// fire hooks that would otherwise push undo steps). No-op while an
+	// undo-restore is re-importing (guarded by the manager's restoring flag).
+	if g.undoManager != nil {
+		defer g.undoManager.OnExternalLoad()
+	}
+
 	// Stop sequencer during import to prevent seqMu contention. The background
 	// sequencerLoop checks Playing() before calling seqScheduleTime(), so setting
 	// playing=false will cause it to skip scheduling until import completes.

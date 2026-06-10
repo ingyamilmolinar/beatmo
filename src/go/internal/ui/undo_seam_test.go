@@ -22,6 +22,23 @@ func TestUndoSeam_RoundTripPreservesDocument(t *testing.T) {
 	}
 }
 
+func TestImportClearsUndoHistory(t *testing.T) {
+	g := newTestGameForUndo(t)
+	g.drum.AddRow()
+	g.updateBeatInfos()
+	g.undoManager.record("add-row")
+	if !g.undoManager.CanUndo() {
+		t.Fatal("precondition: expected undo available")
+	}
+	snap := g.undoCapture()
+	if err := g.Import(snap); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if g.undoManager.CanUndo() || g.undoManager.CanRedo() {
+		t.Fatal("real Import must clear undo history")
+	}
+}
+
 func newTestGameForUndo(t *testing.T) *Game {
 	t.Helper()
 	assertDefaultParityState(t)
