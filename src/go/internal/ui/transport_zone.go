@@ -747,17 +747,14 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 		}
 	}
 
-	// Row 0 column weights. Trailing two cells are always Undo / Redo so they
-	// stay on the primary toolbar on mobile. Single-row mode additionally
-	// hosts vol + overflow before undo/redo.
-	//   two-row:    play stop record [bpm] subdiv | undo redo   (cells 5,6)
-	//   single-row: play stop record [bpm] subdiv vol overflow undo redo
-	var undoCell, redoCell int
-	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0}
-	undoCell, redoCell = 5, 6
+	// Row 0 column weights — extend by [vol, overflow] when single-row.
+	// Undo / Redo are NOT placed on the mobile primary row: at <=480px the
+	// extra cells shrink the record button below the 44px touch-min (see
+	// TestMobileRecordButtonNeverSliver). On mobile they live in the overflow
+	// menu (TODO) + keyboard; desktop keeps them on the toolbar.
+	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0}
 	if !useTwoRow {
-		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0, 1.0}
-		undoCell, redoCell = 7, 8
+		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0}
 	}
 	row0Grid := NewGridLayout(row0Bounds, weights, []float64{1})
 
@@ -812,12 +809,14 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 		}
 	}
 
-	// Undo / Redo on the primary toolbar (row 0 trailing cells) — mobile.
+	// Undo / Redo are hidden on the mobile primary row (no room at the 44px
+	// touch-min). Zero their rects so they are not drawn or hit-registered on
+	// mobile; they remain available via keyboard and (TODO) the overflow menu.
 	if z.undoBtn != nil {
-		z.undoBtn.SetRect(safeInsetTransport(row0Grid.Cell(undoCell, 0), pad))
+		z.undoBtn.SetRect(image.Rectangle{})
 	}
 	if z.redoBtn != nil {
-		z.redoBtn.SetRect(safeInsetTransport(row0Grid.Cell(redoCell, 0), pad))
+		z.redoBtn.SetRect(image.Rectangle{})
 	}
 
 	// Hide desktop-only buttons on mobile.
