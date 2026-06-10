@@ -243,6 +243,49 @@ func emitInsertEffectParam(channel string, slot int, param string, value float64
 	}, hooks.CaptureSource(1))
 }
 
+// emitRowVolume publishes EventRowVolume once at slider release.
+func emitRowVolume(row int, vol float64) {
+	hooks.PublishWithSource(hooks.EventRowVolume, hooks.RowChangePayload{Row: row, Volume: vol}, hooks.CaptureSource(1))
+}
+
+// emitRowPan publishes EventRowPan once at slider release.
+func emitRowPan(row int, pan float64) {
+	hooks.PublishWithSource(hooks.EventRowPan, hooks.RowChangePayload{Row: row, Pan: pan}, hooks.CaptureSource(1))
+}
+
+// emitInsertEffectMoved publishes EventInsertEffectMoved on reorder.
+func emitInsertEffectMoved(channel string, from, to int) {
+	hooks.PublishWithSource(hooks.EventInsertEffectMoved, hooks.InsertEffectPayload{Channel: channel, FromSlot: from, ToSlot: to}, hooks.CaptureSource(1))
+}
+
+// emitInsertEffectToggled publishes EventInsertEffectToggled on enable/disable.
+func emitInsertEffectToggled(channel string, slot int, enabled bool) {
+	hooks.PublishWithSource(hooks.EventInsertEffectToggled, hooks.InsertEffectPayload{Channel: channel, Slot: slot, Enabled: enabled}, hooks.CaptureSource(1))
+}
+
+// emitSendChanged publishes EventSendChanged once at slider release. kind is
+// "delay" or "reverb".
+func emitSendChanged(channel, kind string, value float64) {
+	hooks.PublishWithSource(hooks.EventSendChanged, hooks.SendPayload{Channel: channel, Kind: kind, Value: value}, hooks.CaptureSource(1))
+}
+
+// emitInstrumentParamsCommitted publishes EventInstrumentParamsCommitted once
+// at knob release (the per-frame edit stays EventInstrumentParamChanged).
+func emitInstrumentParamsCommitted(channel, recipe string) {
+	hooks.PublishWithSource(hooks.EventInstrumentParamsCommitted, hooks.InstrumentParamPayload{Channel: channel, Recipe: recipe}, hooks.CaptureSource(1))
+}
+
+// emitInstrumentParamsReset publishes EventInstrumentParamsReset.
+func emitInstrumentParamsReset(channel, recipe string) {
+	hooks.PublishWithSource(hooks.EventInstrumentParamsReset, hooks.InstrumentParamPayload{Channel: channel, Recipe: recipe}, hooks.CaptureSource(1))
+}
+
+// emitAudioPanelStateChanged publishes EventAudioPanelStateChanged (userpref
+// coverage only — not undoable).
+func emitAudioPanelStateChanged(field string) {
+	hooks.PublishWithSource(hooks.EventAudioPanelStateChanged, hooks.AudioPanelStatePayload{Field: field}, hooks.CaptureSource(1))
+}
+
 // nodeTypeName converts a model.NodeType to its lowercase string label
 // matching the JSON schema in CLAUDE.md.
 func nodeTypeName(t model.NodeType) string {
