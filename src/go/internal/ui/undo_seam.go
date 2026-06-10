@@ -1,11 +1,21 @@
 package ui
 
 // undoCapture returns a deterministic byte snapshot of the whole document via
-// the goldens-tested export serializer.
-func (g *Game) undoCapture() []byte {
+// the goldens-tested export serializer. It is panic-safe: the undo tap runs
+// synchronously inside emit helpers (e.g. SetLength → emitLengthChange →
+// recordUndo → undoCapture), so a malformed or partially-initialised document
+// (a row with no color, a half-built test fixture) must never crash the app
+// through a user action. On any failure it returns nil, which record() treats
+// as "no snapshot available" and skips.
+func (g *Game) undoCapture() (snapshot []byte) {
 	if g.drum == nil {
 		return nil
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			snapshot = nil
+		}
+	}()
 	b, err := g.drum.exportBytes()
 	if err != nil {
 		return nil

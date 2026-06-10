@@ -46,6 +46,18 @@ func (m *UndoManager) record(label string) {
 		return
 	}
 	snap := m.capture()
+	if len(snap) == 0 {
+		// Capture failed (e.g. exportBytes errored/panicked on a transient or
+		// partially-built document). Never record a bogus step or corrupt the
+		// baseline — just skip this commit.
+		return
+	}
+	if len(m.committed) == 0 {
+		// No valid baseline yet (a prior capture failed). Adopt this snapshot
+		// as the baseline without recording a step to undo "to nothing".
+		m.committed = snap
+		return
+	}
 	if bytes.Equal(snap, m.committed) {
 		return
 	}
