@@ -6,6 +6,7 @@ import (
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // effectSlotToJS converts a single audio.EffectSlot into a plain JS object so
@@ -73,6 +74,8 @@ func (g *Game) initJSInsertEffects() {
 		to := args[2].Int()
 		g.bumpParityGen("insert-fx-move", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		audio.MoveInsertEffect(id, from, to)
+		emitInsertEffectMoved(id, from, to)
+		g.drum.recordUndoStep(hooks.EventInsertEffectMoved)
 		return nil
 	}))
 
@@ -105,6 +108,8 @@ func (g *Game) initJSInsertEffects() {
 		enabled := args[2].Bool()
 		g.bumpParityGen("insert-fx-toggle", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		audio.ToggleInsertEffect(id, slot, enabled)
+		emitInsertEffectToggled(id, slot, enabled)
+		g.drum.recordUndoStep(hooks.EventInsertEffectToggled)
 		return nil
 	}))
 

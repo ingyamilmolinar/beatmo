@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
 // fxToggleTag is the prefix used to identify toggle buttons in the FX panel.
@@ -36,7 +37,20 @@ func (addEffectButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, 
 // drawFXTogglePill draws a pill-style toggle switch in the given rect.
 // enabled controls the ON/OFF color scheme; sizing follows the active
 // LayoutProfile (FXToggle*() accessors).
+//
+// This shared helper is also used by the Synth stage-enable pills
+// (synth_panel_zone.go), so its default ON tint is left unchanged. The per-row
+// insert-FX panel calls drawFXTogglePillCol with colAccent so the FX enable
+// toggle obeys the single-accent rule (azure, not iOS-green).
 func drawFXTogglePill(dst *ebiten.Image, r image.Rectangle, enabled bool) {
+	drawFXTogglePillCol(dst, r, enabled, colPlayGreen)
+}
+
+// drawFXTogglePillCol is drawFXTogglePill with an explicit ON-track color so
+// individual call sites can pick a role-correct tint without recoloring the
+// shared widget for every caller. onCol is used for the track fill when
+// enabled; the OFF track stays colSurface3.
+func drawFXTogglePillCol(dst *ebiten.Image, r image.Rectangle, enabled bool, onCol color.Color) {
 	trackW, trackH := FXToggleTrackW(), FXToggleTrackH()
 	thumbD := FXToggleThumbD()
 
@@ -46,10 +60,10 @@ func drawFXTogglePill(dst *ebiten.Image, r image.Rectangle, enabled bool) {
 	trackR := image.Rect(cx, cy, cx+trackW, cy+trackH)
 	trackRadius := trackH / 2
 
-	// Track color: ON = colPlayGreen, OFF = colSurface3.
+	// Track color: ON = onCol, OFF = colSurface3.
 	var trackCol color.Color
 	if enabled {
-		trackCol = colPlayGreen
+		trackCol = onCol
 	} else {
 		trackCol = colSurface3
 	}
@@ -376,6 +390,15 @@ func (dv *DrumView) buildFXPanel() {
 			btnGap = 4
 		}
 
+		// Right-cluster inset: when a scrollbar is present it occupies the
+		// right edge, so the reorder/remove controls are inset by its width
+		// (plus a small gap) to keep the × off the scrollbar. Bug: previously
+		// the remove × sat at x+w-btnW-4 and overlapped the scrollbar thumb.
+		rightInset := 4
+		if dv.fxScrollMaxPx > 0 {
+			rightInset += ScrollbarStyleForPlatform().Width + SpaceXS
+		}
+
 		// Skip creating buttons for rows entirely outside viewport.
 		rowTop := y
 		rowBot := y + lineH
@@ -391,6 +414,8 @@ func (dv *DrumView) buildFXPanel() {
 			toggle.SetRect(image.Rect(x+4, y+2, x+4+toggleBtnW, y+lineH-2))
 			toggle.OnClick = func() {
 				audio.ToggleInsertEffect(instID, si, !enabled)
+				emitInsertEffectToggled(instID, si, !enabled)
+				dv.recordUndoStep(hooks.EventInsertEffectToggled)
 				dv.syncFXToRow(row)
 				dv.buildFXPanel()
 				dv.refreshFXPortalHitAreas()
@@ -425,10 +450,12 @@ func (dv *DrumView) buildFXPanel() {
 				up := NewButton("", InstButtonStyle, nil)
 				up.Icon = string(IconChevronUp)
 				up.IconColor = colTextSecondary
-				upX := x + w - 3*(btnW+btnGap) - 4 + btnGap
+				upX := x + w - 3*(btnW+btnGap) - rightInset + btnGap
 				up.SetRect(image.Rect(upX, y+2, upX+btnW, y+lineH-2))
 				up.OnClick = func() {
 					audio.MoveInsertEffect(instID, si, si-1)
+					emitInsertEffectMoved(instID, si, si-1)
+					dv.recordUndoStep(hooks.EventInsertEffectMoved)
 					dv.syncFXToRow(row)
 					dv.buildFXPanel()
 					dv.refreshFXPortalHitAreas()
@@ -441,10 +468,12 @@ func (dv *DrumView) buildFXPanel() {
 				down := NewButton("", InstButtonStyle, nil)
 				down.Icon = string(IconChevronDown)
 				down.IconColor = colTextSecondary
-				downX := x + w - 2*(btnW+btnGap) - 4 + btnGap
+				downX := x + w - 2*(btnW+btnGap) - rightInset + btnGap
 				down.SetRect(image.Rect(downX, y+2, downX+btnW, y+lineH-2))
 				down.OnClick = func() {
 					audio.MoveInsertEffect(instID, si, si+1)
+					emitInsertEffectMoved(instID, si, si+1)
+					dv.recordUndoStep(hooks.EventInsertEffectMoved)
 					dv.syncFXToRow(row)
 					dv.buildFXPanel()
 					dv.refreshFXPortalHitAreas()
@@ -455,8 +484,10 @@ func (dv *DrumView) buildFXPanel() {
 			// Remove button — IconClose per §5c (no raw "✕").
 			remove := NewButton("", InstButtonStyle, nil)
 			remove.Icon = string(IconClose)
-			remove.IconColor = colTextSecondary
-			removeX := x + w - btnW - 4
+			// Destructive tint (colError) distinguishes the remove control
+			// from the neutral collapse/reorder chevrons (colTextSecondary).
+			remove.IconColor = colError
+			removeX := x + w - btnW - rightInset
 			remove.SetRect(image.Rect(removeX, y+2, removeX+btnW, y+lineH-2))
 			remove.OnClick = func() {
 				audio.RemoveInsertEffect(instID, si)
@@ -642,12 +673,31 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 
 	paramIndent := SpaceXL // 16px indent for param labels
 
+	// Right edge of the bounded effect card: leave room for the right-cluster
+	// controls + scrollbar so the card never runs edge-to-edge under the
+	// reorder/remove buttons (bug: controls stretched the full panel width).
+	cardRight := r.Max.X - 4
+	if dv.fxScrollMaxPx > 0 {
+		cardRight -= ScrollbarStyleForPlatform().Width + SpaceXS
+	}
+
 	for slotIdx, e := range effects {
 		rowTop := y
 		rowBot := y + lineH
 		inView := rowBot > dv.fxViewportRect.Min.Y && rowTop < dv.fxViewportRect.Max.Y
 
+		// Whether this effect's params are shown inline (expanded) or summarized.
+		paramsShown := dv.fxShowParams(slotIdx, e.Enabled)
+
 		if inView {
+			// Bounded card behind the header row groups the per-effect controls
+			// (toggle · name · reorder · remove) so they read as one unit
+			// instead of stretching the full panel width.
+			cardR := image.Rect(r.Min.X+4, y+1, cardRight, y+lineH-1)
+			if cardR.Dx() > 0 {
+				drawRoundedRect(dst, cardR, colSurface2, RadiusSM, true)
+			}
+
 			name := effectTypeName(e.Type)
 			if name == "" {
 				name = string(e.Type)
@@ -664,10 +714,25 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 				}
 			}
 			DrawTextAt(dst, name, nameX, y+(lineH-12)/2)
+
+			// Collapsed info scent: when params are not shown inline, render a
+			// one-line summary ("Drive 8.2 · Warmth 0.6") in on-surface-muted at
+			// caption scale so a collapsed effect still communicates its state.
+			if !paramsShown {
+				if summary := fxParamSummary(e); summary != "" {
+					nameW := TextWidth(name)
+					sumX := nameX + nameW + SpaceSM
+					maxSumW := cardRight - sumX - 4
+					if maxSumW > 24 {
+						summary = clipTextToWidth(summary, maxSumW)
+						DrawTextColorAtScale(dst, summary, sumX, y+(lineH-9)/2, colTextSecondary, fxSummaryScale)
+					}
+				}
+			}
 		}
 		y += lineH
 
-		if dv.fxShowParams(slotIdx, e.Enabled) {
+		if paramsShown {
 			cat := audio.InsertEffectCatalog()
 			if defs, ok := cat[e.Type]; ok {
 				for _, def := range defs {
@@ -705,7 +770,9 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		if br.Max.Y > dv.fxViewportRect.Min.Y && br.Min.Y < dv.fxViewportRect.Max.Y {
 			// Render pill-style toggle for effect enable/disable buttons.
 			if isToggle, enabled := isFXToggleBtn(btn); isToggle {
-				drawFXTogglePill(dst, br, enabled)
+				// FX enable toggle uses azure accent (single-accent rule),
+				// NOT the shared green default used by the synth stage pills.
+				drawFXTogglePillCol(dst, br, enabled, colAccent)
 			} else {
 				btn.Draw(dst)
 			}
@@ -957,4 +1024,49 @@ func fxParamLabel(name string, val float64, unit string) string {
 
 func capitalize(s string) string {
 	return audio.PrettyName(s)
+}
+
+// fxSummaryScale is the text scale for the collapsed-row param summary —
+// caption-sized so it reads as secondary info under the effect name.
+const fxSummaryScale = 0.8
+
+// fxParamSummary builds a compact one-line summary of an effect's current
+// parameter values for display on a collapsed row, e.g. "Drive 8.2 · Warmth
+// 0.6". Values are read live from the slot's Params (falling back to the
+// catalog default when absent) so the summary always reflects the CURRENT
+// chain state. Returns "" when the effect has no catalog params.
+func fxParamSummary(e audio.EffectSlot) string {
+	defs, ok := audio.InsertEffectCatalog()[e.Type]
+	if !ok || len(defs) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, def := range defs {
+		val, has := e.Params[def.Name]
+		if !has {
+			val = def.Default
+		}
+		if i > 0 {
+			b.WriteString(" · ") // middle dot separator
+		}
+		b.WriteString(capitalize(def.Name))
+		b.WriteByte(' ')
+		b.WriteString(fxFormatVal(val))
+	}
+	return b.String()
+}
+
+// fxFormatVal renders a parameter value compactly (matches fxParamLabel's
+// number formatting but without the name/unit).
+func fxFormatVal(val float64) string {
+	switch {
+	case val >= 1000:
+		return fmt.Sprintf("%.0f", val)
+	case val >= 10:
+		return fmt.Sprintf("%.1f", val)
+	case val == float64(int(val)):
+		return fmt.Sprintf("%.0f", val)
+	default:
+		return fmt.Sprintf("%.1f", val)
+	}
 }
