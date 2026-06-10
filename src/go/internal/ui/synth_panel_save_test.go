@@ -402,8 +402,8 @@ func TestSynthSave_NoSinkIsNoOp(t *testing.T) {
 // truncate the four new recipe / kit kinds and the eventlogger coverage
 // path would emit them anyway — confusing log output.
 func TestHooks_NumNonVerboseUpdated(t *testing.T) {
-	if hooks.NumNonVerbose != 45 {
-		t.Errorf("hooks.NumNonVerbose = %d, want 45 (Phase 4 added 4 recipe/kit kinds; Sampler added 2 sample kinds; factory Reset added 1; the non-destructive sample-edit descriptor added 1)", hooks.NumNonVerbose)
+	if hooks.NumNonVerbose != 53 {
+		t.Errorf("hooks.NumNonVerbose = %d, want 53 (Phase 4 added 4 recipe/kit kinds; Sampler added 2 sample kinds; factory Reset added 1; the non-destructive sample-edit descriptor added 1; the event-coverage + undo pass added 8: row volume/pan, insert moved/toggled, send, synth committed/reset, audio-panel state)", hooks.NumNonVerbose)
 	}
 	// Sanity check: the recipe/kit + sampler kinds are present in KindAll and
 	// within the non-verbose prefix.
