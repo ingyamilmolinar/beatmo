@@ -307,6 +307,10 @@ type Game struct {
 	gridPaneSubRect   image.Rectangle
 	gridPaneSub       *ebiten.Image
 
+	// gridTree owns the top grid pane's z-ordered draw + input tree
+	// (sibling to drum.tree which owns the bottom pane). See grid_tree.go.
+	gridTree *GridTree
+
 	// draw stats (for tests and diagnostics)
 	lastDrawEdges  int
 	lastDrawNodes  int
@@ -343,11 +347,6 @@ type Game struct {
 
 	// Audio scheduling lookahead in seconds (web)
 	audioLookaheadSec float64
-
-	// schedulerHorizonSec is how far ahead of `now` seqScheduleTime commits
-	// beats to the audio engine, decoupling audio timing from main-thread
-	// scheduling jitter. See RuntimeProfile.SchedulerHorizonSec.
-	schedulerHorizonSec float64
 
 	// Parity diagnostics between scheduler (audio) and DrumView slate.
 	parityRing            mismatchRing

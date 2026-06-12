@@ -266,7 +266,6 @@ func New(logger *game_log.Logger) *Game {
 	// Combined with runtimeAudioLookahead() (+30ms dynamic, 60ms cap), this
 	// eliminates the zero-tolerance scheduling that caused overdue audio.
 	g.audioLookaheadSec = RuntimeProf().AudioLookaheadSec
-	g.schedulerHorizonSec = RuntimeProf().SchedulerHorizonSec
 
 	// Defer demo construction to the first layout/update to avoid blocking
 	// constructor time. Layout will build it once when not under tests.
@@ -307,5 +306,7 @@ func New(logger *game_log.Logger) *Game {
 	if runningUnderGoTest() {
 		registerGameForTest(g)
 	}
+	g.gridTree = NewGridTree()
+	g.registerGridTree()
 	return g
 }
