@@ -60,20 +60,36 @@ This effort extracts **Wave, Spectrum, Levels**. EQ/Chain/Synth/Sampler are
 unchanged (Chain/Synth already self-contained; EQ's controls already live inside
 its content area, not on the shared bar, so slimming the bar leaves EQ untouched).
 
-| Tab | New owner | Controls it renders itself | Content render fn it calls |
+| Tab | New owner (controls component) | Controls it owns | Content (dispatcher draws into body) |
 |---|---|---|---|
-| Wave | `waveTabZone` | freeze | `drawAnalyzerWaveform` |
-| Spectrum | `spectrumTabZone` | freeze, freq-scale (log/lin), slope (0/3/4.5 dB/oct), pre overlay, reset-hold | `drawAnalyzerSpectrumWithScale` |
-| Levels | `levelsTabZone` | freeze, Clear-Clips, K-20 | `drawLevelsMultiChannel` |
+| Wave | `waveControls` | freeze | `drawAnalyzerWaveform` |
+| Spectrum | `spectrumControls` | freeze, freq-scale (log/lin), slope (0/3/4.5 dB/oct), pre overlay, reset-hold | `drawAnalyzerSpectrumWithScale` |
+| Levels | `levelsControls` | freeze, Clear-Clips, K-20 | `drawLevelsMultiChannel` |
 | EQ | *(unchanged — dispatcher, fast-follow)* | HPF/LPF, band mutes, dB inputs, curve drag | `drawSpectrumBars` + `drawEQCurve` |
 | Chain | `ChainPanelZone` *(unchanged)* | OVR/SPL/DIF, AG, FIT, freeze, close | `drawChainTraces` |
 | Synth / Sampler | DrumView header *(unchanged)* | Save/Save As/Reset/Preview | `DrawSynthTab` |
 
-Each tab zone receives the full rect below the switcher row and arranges its own
-header strip of buttons + content however it likes. There is **no shared "control
-sub-row height" abstraction** — each tab owns its own window geometry. The existing
-`drawAnalyzer*` / `drawLevels*` render functions are unchanged and are simply called
-by their owning tab zone, so this moves *ownership*, not render logic.
+The `tabControls` components are implemented in a new `audio_tab_controls.go`.
+Each owns its own freeze `*Button` instance (no shared widget); the dispatcher
+calls `SyncFreeze(frozen)` on the active component each Draw so the icon reflects
+the global analyzer freeze state.
+
+Each tab's component **owns its controls outright**: the button widgets, their
+toggle state (slope index, pre overlay, freq-scale log, K-20), layout, draw, and
+hit areas. There is no shared button bar and no per-tab visibility-gating inside a
+shared component — a tab's chrome exists only inside that tab's own component.
+
+The component renders its controls in a **header row directly below the
+tab-switcher row** (the geometric strip is not "shared chrome" — only the active
+tab's own component ever draws into it). The dispatcher renders that tab's
+**content** (`drawAnalyzer*` / `drawLevels*`, unchanged free functions) into the
+**body region below the header**, reading any needed toggle state from the owning
+component via accessors (`SlopeDBPerOct()`, `PreOverlay()`, `FreqScaleLog()`,
+`K20View()`). This removes the shared button bar (the actual coupling) without
+relocating the deeply-entangled content/render state (levels latches, spectrum
+peak-hold, cursor) that currently lives on the dispatcher — keeping the diff
+low-risk. Relocating that render state into the components is a later refinement,
+not required to decouple the buttons.
 
 ### Freeze button
 
@@ -85,45 +101,45 @@ stays coherent.
 
 ## Dispatcher (`EQPanelZone`)
 
-Becomes thin for the extracted tabs:
-
 - Owns the slimmed `AudioStickyBar`, the channel dropdown portal, and the legend
   popover.
-- Holds a `PanelTab → tabZone` registry for the extracted tabs (Wave/Spectrum/Levels).
-- Routes `Layout / Draw / Update / HitAreas` to the active tab zone with
-  `contentRect = area below the switcher row`. For EQ/Chain/Synth/Sampler the
-  existing dispatch paths remain.
-- `contentRect()` is unchanged (`panel top + stickyBarHeight()` … bottom): each tab
-  zone now lays out its own header *inside* that rect rather than the bar reserving
-  a strip. (The shared bar shrinks because its per-tab buttons leave, but
-  `stickyBarHeight()` stays 26 — the row still holds tabs/channel/?/expander.)
+- Holds the three `tabControls` components (`waveControls`, `spectrumControls`,
+  `levelsControls`) and an `activeTabControls() tabControls` selector returning the
+  active tab's component (nil for EQ/Chain/Synth/Sampler).
+- Reserves a **control-header strip** at the top of `contentRect()` whose height is
+  `activeTabControls().HeaderH()` (0 when nil). The active component lays out/draws
+  its buttons there; the dispatcher draws the tab's **content** into the **body
+  region** below (`bodyRect()` = `contentRect()` inset by the header height).
+- Routes the active component's `HitAreas()` into `HitAreas()`; inactive components
+  publish none (they aren't asked).
+- `contentRect()` and `stickyBarHeight()` are unchanged (the switcher row stays 26
+  and still holds channel/tabs/?/expander). The body shrinks by the header height.
 
-### `tabZone` interface
+### `tabControls` interface (new file `audio_tab_controls.go`)
 
 ```go
-type tabZone interface {
-    Layout(content image.Rectangle) // full area below the switcher row
-    Draw(dst *ebiten.Image)
-    HitAreas() []HitArea            // empty when this zone is not the active tab
-    Update()                        // optional per-frame (button anim, hover)
-    Buttons() []*Button             // for wiring/tests
+type tabControls interface {
+    HeaderH() int                    // control-header height (0 = none)
+    Layout(header image.Rectangle)   // position buttons in the reserved strip
+    Draw(dst *ebiten.Image)          // render the buttons
+    HitAreas() []HitArea             // buttons' hit areas (z above the body)
+    SyncFreeze(frozen bool)          // update freeze icon from analyzer state
 }
 ```
 
-Inactive tab zones publish **no** hit areas (reusing the existing
-`TestZoneInvisibleEqualsNoInput` discipline), and are not drawn.
-
 ## State-accessor redirects
 
-Renderers currently read tab state from the sticky bar; redirect them to the owning
-tab zone (keep accessor names where JS exports/tests depend on them, delegating
-through `EQPanelZone`):
+The dispatcher's content draw reads toggle state from the active component instead
+of the sticky bar:
 
-- `render_spectrum.go` — `SlopeDBPerOct()`, `PreOverlay()`, `freqScaleLog` → `spectrumTabZone`.
-- `render_meters.go` — `K20View()` → `levelsTabZone`.
-- `eq_panel_zone.go initButtons` — slope/pre/reset/freq/clear/K20 OnClick wiring
-  moves into the owning tab zones' constructors (callbacks passed from the
-  dispatcher); legend/expander/channel wiring stays in the dispatcher.
+- `eq_panel_zone.go Draw` TabSpectrum case — `FreqScaleLog()`, `SlopeDBPerOct()`,
+  `PreOverlay()` → `z.spectrumControls`.
+- `eq_panel_zone.go Draw` TabMeters case — `K20View()` → `z.levelsControls`.
+- slope/pre/freq-scale/K-20 toggles are self-contained in their component
+  constructors; reset-hold (`spectrumPeaks.ResetMax`) and clear-clips
+  (`levelsLatches.Clear` + `audio.ResetClipsWindow`) are passed in as callbacks
+  from the dispatcher. Legend/expander/channel wiring stays on the sticky bar +
+  dispatcher.
 
 ## Mobile
 
@@ -145,29 +161,39 @@ absent on mobile; freeze present on mobile for Wave/Spectrum/Levels).
 
 ## Phasing (each phase TDD'd, independently shippable)
 
-1. **Seam + Wave.** Introduce the `tabZone` interface + dispatcher registry; extract
-   `waveTabZone` (only the freeze button). Wave's freeze button leaves the bar.
-2. **Levels.** Extract `levelsTabZone` (freeze, Clear-Clips, K-20). Those buttons
-   leave the bar.
-3. **Spectrum.** Extract `spectrumTabZone` (freeze, freq-scale, slope, pre,
-   reset-hold). Those buttons leave the bar.
-4. **Slim the bar + remove X.** With all per-tab buttons relocated, delete
-   `closeBtn`, `freezeBtn`, `freqScaleBtn`, `slopeBtn`, `preBtn`, `resetHoldBtn`,
-   `clearClipsBtn`, `k20Btn` and their layout/draw/hit/accessor code from
+During phases 1–3 the sticky bar keeps its old per-tab buttons but **suppresses**
+them for already-migrated tabs (a temporary `SetMigratedTabs(...)` scaffold), so no
+tab ever shows a control twice. Phase 4 deletes the now-dead bar buttons + the
+scaffold.
+
+0. **Seam.** New `audio_tab_controls.go` with the `tabControls` interface and
+   dispatcher plumbing: `waveControls/spectrumControls/levelsControls` fields,
+   `activeTabControls()`, `headerRect()/bodyRect()`. All three components return
+   `HeaderH()==0` initially → zero behavior change. Body == content.
+1. **Wave.** `waveControls` owns its own freeze button; dispatcher draws its header
+   on TabWave + insets the body; bar suppresses freeze on TabWave.
+2. **Levels.** `levelsControls` owns freeze + Clear-Clips + K-20; content K-20 read
+   redirects to it; bar suppresses freeze/clear/K-20 on TabMeters.
+3. **Spectrum.** `spectrumControls` owns freeze + freq-scale + slope + pre + reset;
+   content slope/pre/freq-scale reads redirect to it; bar suppresses these on
+   TabSpectrum.
+4. **Slim the bar + remove X.** Delete `closeBtn`, `freezeBtn`, `freqScaleBtn`,
+   `slopeBtn`, `preBtn`, `resetHoldBtn`, `clearClipsBtn`, `k20Btn`, the
+   `SetMigratedTabs` scaffold, and all their layout/draw/hit/accessor code from
    `AudioStickyBar`. Remove `EQCallbacks.OnClose` + its `initButtons` wiring.
 
 (EQ extraction is a documented fast-follow, same pattern, not in this effort.)
 
 ## TDD (tests first, red→green, per phase)
 
-Per extracted tab zone:
-- `Test<Tab>TabZoneButtons` — the zone owns exactly its expected buttons; their
-  rects sit inside the content rect (below the switcher row).
+Per controls component:
+- `Test<Tab>ControlsButtons` — the component owns exactly its expected buttons; on
+  its tab their rects sit in the header strip (Y ≥ switcher-row bottom, < body top).
 - `Test<Tab>ControlsWired` — clicking each button has the right effect: slope cycles
   0→3→4.5→0, K-20 toggles, Clear-Clips invokes its callback + `audio.ResetClipsWindow`,
   freq-scale toggles log/lin, freeze invokes `OnFreezeToggle`.
-- `Test<Tab>ZoneInactiveNoHitAreas` — when another tab is active, this zone
-  publishes no hit areas.
+- `Test<Tab>ControlsInactiveNoHitAreas` — when another tab is active, the dispatcher
+  publishes none of this component's hit areas.
 
 Cross-cutting:
 - `TestMainTabBarOnlyHasTabsChannelLegendExpander` — on every tab, `AudioStickyBar`
@@ -175,8 +201,8 @@ Cross-cutting:
   slope/pre/reset/freq/clear/K20.
 - `TestCloseButtonGone` — no `eq-close-btn` hit area on any tab; `EQCallbacks` has no
   `OnClose`.
-- `TestContentDispatchedToActiveTabZone` — the dispatcher routes layout/draw/hit to
-  the active tab zone.
+- `TestBodyRectBelowControlHeader` — on tabs with a header, `bodyRect().Min.Y ==
+  contentRect().Min.Y + activeTabControls().HeaderH()`.
 - `TestMobileControlVisibilityPreserved` — on mobile, desktop-only pills
   (slope/pre/reset/freq-scale/clear-clips/K-20) are absent; the freeze button is
   still present on Wave/Spectrum/Levels (no mobile freeze regression).
@@ -186,11 +212,11 @@ Cross-cutting:
 ## Guards to honor
 
 - `eq_panel_draw_alloc_discipline_test.go` — Levels has the tightest per-frame draw
-  budget. Moving its pills into `levelsTabZone` should be draw-neutral; if the draw
+  budget. Moving its pills into `levelsControls` should be draw-neutral; if the draw
   count shifts, update `perTabAllocBudget[TabMeters]` with a one-line rationale.
-- `zone_input_isolation_discipline_test.go` (`TestZoneInvisibleEqualsNoInput`) — each
-  tab zone's controls sit inside the panel bounds, so the EQ-panel catch-all still
-  covers them; inactive zones must publish nil hit areas.
+- `zone_input_isolation_discipline_test.go` (`TestZoneInvisibleEqualsNoInput`) — the
+  control header sits inside the panel bounds, so the EQ-panel catch-all still
+  covers it; inactive components publish no hit areas.
 - Scene/pixel tests reading sticky-bar button rects (e.g. `audio_panel_render_pixels_test.go`,
   scene crops, `wasm_bridge_smoke`) — redirect to the new owners or update.
 - `js_exports_catalogue_drift_test.go` — if any removed accessor backed a JS export,
