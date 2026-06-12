@@ -169,6 +169,116 @@ func (t *GridTree) LayoutZoneNow(id string) {
 	}
 }
 
+// Update runs Layout → Update → Input. Draw is separate via Draw().
+func (t *GridTree) Update() {
+	t.inputHandled = false
+	t.wheelHandled = false
+	t.layoutPass()
+	for i := range t.zones {
+		t.zones[i].zone.Update()
+	}
+	t.handleInput()
+}
+
+func (t *GridTree) handleInput() {
+	mx, my := cursorPosition()
+	pressed := isMouseButtonPressed(ebiten.MouseButtonLeft)
+
+	if t.suppress && !t.wasPressed {
+		t.suppress = false
+	}
+
+	// Release.
+	if !pressed && t.wasPressed {
+		if t.capturedHandler != nil {
+			t.capturedHandler.OnRelease(mx, my)
+			t.capturedHandler = nil
+			t.capturedTag = ""
+		}
+		t.suppress = false
+		t.wasPressed = false
+		return
+	}
+
+	// Ongoing capture (drag).
+	if pressed && t.capturedHandler != nil {
+		t.capturedHandler.OnDrag(mx, my)
+		t.wasPressed = true
+		return
+	}
+
+	// New press.
+	if pressed && !t.wasPressed {
+		t.wasPressed = true
+		if t.suppress {
+			return
+		}
+		t.dispatchPress(mx, my)
+		return
+	}
+
+	// Wheel (dispatched unconditionally).
+	wx, wy := wheel()
+	steps := int(wy)
+	if wx != 0 && steps == 0 {
+		steps = int(wx)
+	}
+	if steps != 0 {
+		for _, h := range t.hitIndex.At(mx, my) {
+			if h.Handler == nil {
+				continue
+			}
+			if h.Handler.OnWheel(mx, my, steps) != InputIgnored {
+				t.wheelHandled = true
+				break
+			}
+		}
+	}
+}
+
+// dispatchPress walks hits z-descending; stops on Captured/Consumed.
+func (t *GridTree) dispatchPress(mx, my int) {
+	dragBlocked := t.dragActive != nil && t.dragActive()
+	hits := t.hitIndex.At(mx, my)
+	for _, hit := range hits {
+		if hit.Handler == nil {
+			continue
+		}
+		if dragBlocked {
+			return
+		}
+		switch hit.Handler.OnPress(mx, my) {
+		case InputCaptured:
+			t.capturedHandler = hit.Handler
+			t.capturedTag = hit.Tag
+			t.suppress = true
+			t.inputHandled = true
+			return
+		case InputConsumed:
+			t.suppress = true
+			t.inputHandled = true
+			return
+		case InputIgnored:
+			continue
+		}
+	}
+}
+
+// dispatchPressForTest exposes dispatchPress for unit tests without the
+// Ebiten input globals.
+func (t *GridTree) dispatchPressForTest(mx, my int) { t.dispatchPress(mx, my) }
+
+func (t *GridTree) Suppress() bool      { return t.suppress }
+func (t *GridTree) Capturing() bool     { return t.capturedHandler != nil }
+func (t *GridTree) CapturedTag() string { return t.capturedTag }
+func (t *GridTree) InputHandled() bool  { return t.inputHandled }
+func (t *GridTree) WheelHandled() bool  { return t.wheelHandled }
+func (t *GridTree) ClearCapture() {
+	t.capturedHandler = nil
+	t.capturedTag = ""
+	t.suppress = false
+}
+
 // Draw renders the merged slice in ascending z. Zones are clipped to the
 // intersection of tree bounds and their rect; plain layers receive the
 // unclipped screen and self-clip (mirrors DrumViewTree.Draw).
