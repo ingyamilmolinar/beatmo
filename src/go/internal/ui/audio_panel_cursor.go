@@ -28,7 +28,7 @@ func (z *EQPanelZone) updateAudioPanelCursor() {
 		z.cursorPinned = false
 		return
 	}
-	cr := z.contentRect()
+	cr := z.bodyRect()
 	if cr.Empty() {
 		z.cursorActive = false
 		return

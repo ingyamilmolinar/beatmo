@@ -527,7 +527,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	activeTab := z.tabState.ActiveTab()
 	switch activeTab {
 	case TabWave:
-		cr := z.contentRect()
+		cr := z.bodyRect()
 		if state := z.getAnalyzerStateForTab(activeTab); state != nil {
 			ch, cap := z.resolveChannel(state)
 			var beatGrid []float64
@@ -542,7 +542,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			z.callbacks.DrawWaveform(screen)
 		}
 	case TabSpectrum:
-		cr := z.contentRect()
+		cr := z.bodyRect()
 		scale := freqScaleLog
 		if z.stickyBar != nil && !z.stickyBar.FreqScaleLog() {
 			scale = freqScaleLinear
@@ -601,10 +601,10 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			// Keep the legacy single-channel latch in sync so the
 			// fallback path (zero instruments) still works.
 			z.levelsLatch.Update(state.Master.ClipCount, state.Master.PeakDB, state.Master.RMSDB)
-			drawLevelsMultiChannel(screen, z.contentRect(), state, z.levelsLatches)
+			drawLevelsMultiChannel(screen, z.bodyRect(), state, z.levelsLatches)
 			z.snapshotLevelsIconRow(state)
 		} else {
-			drawLevelsDetail(screen, z.contentRect(), nil, nil)
+			drawLevelsDetail(screen, z.bodyRect(), nil, nil)
 		}
 	case TabScope:
 		if z.chainZone != nil {
@@ -735,6 +735,35 @@ func (z *EQPanelZone) toggleButtonLabel() string {
 // The strip occupies stickyBarH (=26) pixels at the top of z.rect.
 func (z *EQPanelZone) contentRect() image.Rectangle {
 	return image.Rect(z.rect.Min.X, z.rect.Min.Y+stickyBarHeight(), z.rect.Max.X, z.rect.Max.Y)
+}
+
+// activeTabControls returns the control component owning the active tab's
+// chrome, or nil for tabs that own their controls elsewhere (EQ inline, Chain
+// via ChainPanelZone, Synth/Sampler via DrumView header). Phase 0 stub — no
+// components are built yet, so this always returns nil. Later phases replace
+// the body with a per-tab switch.
+func (z *EQPanelZone) activeTabControls() tabControls { return nil }
+
+// controlHeaderH is the height the active tab's control header needs (0 none).
+func (z *EQPanelZone) controlHeaderH() int {
+	if c := z.activeTabControls(); c != nil {
+		return c.HeaderH()
+	}
+	return 0
+}
+
+// headerRect is the control-header strip at the top of contentRect().
+func (z *EQPanelZone) headerRect() image.Rectangle {
+	cr := z.contentRect()
+	return image.Rect(cr.Min.X, cr.Min.Y, cr.Max.X, cr.Min.Y+z.controlHeaderH())
+}
+
+// bodyRect is the drawable area below the control header — where the active
+// tab's content (waveform / spectrum / meters) is rendered. Equals
+// contentRect() when the active tab has no control header.
+func (z *EQPanelZone) bodyRect() image.Rectangle {
+	cr := z.contentRect()
+	return image.Rect(cr.Min.X, cr.Min.Y+z.controlHeaderH(), cr.Max.X, cr.Max.Y)
 }
 
 // hpfLPFSubStripH is the desktop height of the HPF/LPF button row drawn at the
@@ -1119,7 +1148,7 @@ func (z *EQPanelZone) rebuildHitAreas() {
 	if Profile().IsMobile() {
 		t := z.tabState.ActiveTab()
 		if t == TabWave || t == TabSpectrum {
-			if cr := z.contentRect(); !cr.Empty() {
+			if cr := z.bodyRect(); !cr.Empty() {
 				z.hitAreas = append(z.hitAreas, HitArea{
 					Rect:    cr,
 					ZIndex:  zIdx, // below chrome (zIdx+1) so the chrome wins

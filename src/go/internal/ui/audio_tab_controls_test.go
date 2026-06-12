@@ -1,6 +1,9 @@
 package ui
 
-import "testing"
+import (
+	"image"
+	"testing"
+)
 
 // controlHeaderHeight mirrors stickyBarHeight: 26 desktop, 36 mobile.
 func TestControlHeaderHeight(t *testing.T) {
@@ -28,5 +31,22 @@ func TestNewFreezePillTogglesVisual(t *testing.T) {
 	b.OnClick()
 	if b.Text != "||" {
 		t.Fatalf("after second toggle text = %q, want ||", b.Text)
+	}
+}
+
+// With no components built, the active controls are nil on every tab, the
+// header height is 0, and bodyRect equals contentRect (zero behavior change).
+func TestPhase0NoControlHeader(t *testing.T) {
+	z := NewEQPanelZone(EQCallbacks{})
+	z.Layout(image.Rect(0, 400, 600, 600))
+	for _, tab := range AllPanelTabs() {
+		z.SetActiveTab(tab)
+		z.Layout(image.Rect(0, 400, 600, 600))
+		if z.controlHeaderH() != 0 {
+			t.Fatalf("tab %v: controlHeaderH = %d, want 0", tab, z.controlHeaderH())
+		}
+		if z.bodyRect() != z.contentRect() {
+			t.Fatalf("tab %v: bodyRect %v != contentRect %v", tab, z.bodyRect(), z.contentRect())
+		}
 	}
 }
