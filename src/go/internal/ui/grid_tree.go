@@ -124,6 +124,51 @@ func (t *GridTree) HitIndexRef() *HitIndex { return t.hitIndex }
 
 func (t *GridTree) SetDragActive(fn func() bool) { t.dragActive = fn }
 
+// layoutPass lays out zones that need it and (re)publishes their hit
+// areas. Visibility gate covers HitAreas AND Draw: a hidden zone
+// publishes an empty hit-area set so invisible chrome can't take input
+// (mirrors DrumViewTree.layoutPass — the "hidden panel swallows taps"
+// regression guard).
+func (t *GridTree) layoutPass() {
+	for i := range t.zones {
+		e := t.zones[i]
+		nowVisible := e.visible == nil || e.visible()
+		layoutChanged := e.zone.NeedsLayout() || e.rect != e.lastRect
+		visibilityChanged := nowVisible != e.lastVisible
+		switch {
+		case !nowVisible:
+			if visibilityChanged {
+				t.hitIndex.Update(e.zone.ID(), nil)
+			}
+		case layoutChanged || visibilityChanged:
+			e.zone.Layout(e.rect)
+			e.lastRect = e.rect
+			t.hitIndex.Update(e.zone.ID(), e.zone.HitAreas())
+		}
+		e.lastVisible = nowVisible
+	}
+}
+
+// EnsureLayouts re-runs the layout+publish pass (idempotent).
+func (t *GridTree) EnsureLayouts() { t.layoutPass() }
+
+// LayoutZoneNow forces an immediate layout + republish for one zone.
+func (t *GridTree) LayoutZoneNow(id string) {
+	e, ok := t.zoneMap[id]
+	if !ok {
+		return
+	}
+	e.zone.Layout(e.rect)
+	e.lastRect = e.rect
+	if e.visible == nil || e.visible() {
+		t.hitIndex.Update(e.zone.ID(), e.zone.HitAreas())
+		e.lastVisible = true
+	} else {
+		t.hitIndex.Update(e.zone.ID(), nil)
+		e.lastVisible = false
+	}
+}
+
 // Draw renders the merged slice in ascending z. Zones are clipped to the
 // intersection of tree bounds and their rect; plain layers receive the
 // unclipped screen and self-clip (mirrors DrumViewTree.Draw).
