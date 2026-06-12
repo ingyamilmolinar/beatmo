@@ -44,6 +44,9 @@ type GridTree struct {
 	inputHandled    bool
 	wheelHandled    bool
 
+	// dragActive is reserved scaffolding for the later input-dispatch task
+	// (mirrors the capture/suppress fields above); set via SetDragActive,
+	// it will gate hit-testing while a drag is in flight.
 	dragActive func() bool
 
 	bounds image.Rectangle
@@ -56,6 +59,15 @@ type gridZoneEntry struct {
 	lastRect    image.Rectangle
 	visible     func() bool
 	lastVisible bool
+
+	// Cached SubImage wrapper for the most recent (screen, clip) pair seen
+	// during Draw. Reused across frames when the parent screen pointer and
+	// clip rectangle are unchanged. Without this, every Draw call allocates
+	// a fresh *ebiten.Image wrapper per zone — a documented per-frame
+	// allocator behind fast WASM OOM (mirrors DrumViewTree.zoneEntry).
+	subParent *ebiten.Image
+	subClip   image.Rectangle
+	sub       *ebiten.Image
 }
 
 // NewGridTree creates a tree with a fresh HitIndex (no portal).
@@ -92,6 +104,8 @@ func (t *GridTree) insertLayer(l Layer) {
 }
 
 // LayersForTest returns a snapshot of the merged draw slice in render order.
+// Production code MUST NOT call this — iterating the real slice from outside
+// the tree breaks the render-pipeline encapsulation the discipline test enforces.
 func (t *GridTree) LayersForTest() []Layer {
 	out := make([]Layer, len(t.layers))
 	copy(out, t.layers)
@@ -136,7 +150,19 @@ func (t *GridTree) Draw(screen *ebiten.Image) {
 		if clip == screen.Bounds() {
 			layer.Draw(screen)
 		} else {
-			layer.Draw(screen.SubImage(clip).(*ebiten.Image))
+			e := t.zoneMap[zl.zone.ID()]
+			var sub *ebiten.Image
+			if e != nil && e.subParent == screen && e.subClip == clip && e.sub != nil {
+				sub = e.sub
+			} else {
+				sub = screen.SubImage(clip).(*ebiten.Image)
+				if e != nil {
+					e.subParent = screen
+					e.subClip = clip
+					e.sub = sub
+				}
+			}
+			layer.Draw(sub)
 		}
 	}
 }
