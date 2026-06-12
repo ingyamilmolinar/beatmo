@@ -129,40 +129,18 @@ type undoManagerObserver struct{ m *UndoManager }
 func (o undoManagerObserver) recordKind(label string) { o.m.record(label) }
 
 // documentScopeKinds is the recorded-set: committed document-state kinds that
-// produce an undo step. Transport, import/scene, app prefs, library ops, and
-// verbose kinds are intentionally absent. Pinned by undo_coverage_test.go.
-var documentScopeKinds = map[hooks.Kind]string{
-	hooks.EventNodeAdded:                 "add node",
-	hooks.EventNodeDeleted:               "delete node",
-	hooks.EventNodeMoved:                 "move node",
-	hooks.EventNodeTypeChanged:           "change node type",
-	hooks.EventNodeParamsChanged:         "edit node",
-	hooks.EventStartNodeChanged:          "set start node",
-	hooks.EventEdgeAdded:                 "add edge",
-	hooks.EventEdgeDeleted:               "delete edge",
-	hooks.EventRowAdded:                  "add row",
-	hooks.EventRowDeleted:                "delete row",
-	hooks.EventRowInstrumentChange:       "change instrument",
-	hooks.EventRowMute:                   "mute row",
-	hooks.EventRowSolo:                   "solo row",
-	hooks.EventRowColorChanged:           "recolor row",
-	hooks.EventRowVolume:                 "set row volume",
-	hooks.EventRowPan:                    "set row pan",
-	hooks.EventInstrumentRenamed:         "rename instrument",
-	hooks.EventBPMChange:                 "change BPM",
-	hooks.EventSubdivChange:              "change subdivision",
-	hooks.EventLengthChange:              "change length",
-	hooks.EventMasterVolumeChange:        "set master volume",
-	hooks.EventEQBandChange:              "adjust EQ",
-	hooks.EventInsertEffectAdded:         "add effect",
-	hooks.EventInsertEffectRemoved:       "remove effect",
-	hooks.EventInsertEffectParam:         "adjust effect",
-	hooks.EventInsertEffectMoved:         "reorder effect",
-	hooks.EventInsertEffectToggled:       "toggle effect",
-	hooks.EventSendChanged:               "set send",
-	hooks.EventInstrumentParamsCommitted: "edit synth",
-	hooks.EventInstrumentParamsReset:     "reset synth",
-	hooks.EventSampleEditChanged:         "edit sample",
+// produce an undo step. It is DERIVED from hooks.ActionRegistry (the single
+// source of truth) — do not hand-edit. Pinned by TestUndoableSetMatchesRegistry.
+var documentScopeKinds = buildDocumentScopeKinds()
+
+func buildDocumentScopeKinds() map[hooks.Kind]string {
+	m := make(map[hooks.Kind]string)
+	for _, a := range hooks.AllActions() {
+		if hooks.Undoable(a.Kind) {
+			m[a.Kind] = a.Label
+		}
+	}
+	return m
 }
 
 // undoLabelFor returns the UI label for a recorded kind ("" if not recorded).
