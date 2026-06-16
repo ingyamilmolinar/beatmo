@@ -51,54 +51,36 @@ func TestGridTreeSkipsInvisibleLayers(t *testing.T) {
 	}
 }
 
-// fakeGridZone implements Zone with controllable hit areas + visibility.
-type fakeGridZone struct {
-	id        string
-	areas     []HitArea
-	needs     bool
-	layoutHit int
+// boundsRecordingLayer records the Bounds() of the dst image it was drawn into.
+type boundsRecordingLayer struct {
+	id      string
+	z       int
+	clip    bool
+	gotRect *image.Rectangle
 }
 
-func (z *fakeGridZone) ID() string                       { return z.id }
-func (z *fakeGridZone) Layout(image.Rectangle)           { z.layoutHit++; z.needs = false }
-func (z *fakeGridZone) Update()                          {}
-func (z *fakeGridZone) HitAreas() []HitArea              { return z.areas }
-func (z *fakeGridZone) Draw(*ebiten.Image)               {}
-func (z *fakeGridZone) NeedsLayout() bool                { return z.needs }
-func (z *fakeGridZone) Invalidate()                      { z.needs = true }
-func (z *fakeGridZone) HandleKey(ebiten.Key) InputResult { return InputIgnored }
-func (z *fakeGridZone) HandleChars([]rune) InputResult   { return InputIgnored }
+func (l *boundsRecordingLayer) ID() string             { return l.id }
+func (l *boundsRecordingLayer) ZIndex() int            { return l.z }
+func (l *boundsRecordingLayer) Visible() bool          { return true }
+func (l *boundsRecordingLayer) ClipToBounds() bool     { return l.clip }
+func (l *boundsRecordingLayer) Draw(dst *ebiten.Image) { *l.gotRect = dst.Bounds() }
 
-func TestGridTreePublishesHitAreasOnLayout(t *testing.T) {
+func TestGridTreeClipsBoundsOptInLayers(t *testing.T) {
 	tr := NewGridTree()
-	z := &fakeGridZone{id: "z1", needs: true, areas: []HitArea{
-		{Rect: image.Rect(10, 10, 30, 30), ZIndex: GZCanvas, Tag: "a"},
-	}}
-	tr.RegisterZone(z, GZCanvas)
-	tr.SetZoneRect("z1", image.Rect(0, 0, 100, 100))
-	tr.layoutPass()
+	screen := ebiten.NewImage(200, 200)
+	bounds := image.Rect(0, 0, 200, 100) // grid pane = top half
+	tr.SetBounds(bounds)
 
-	hits := tr.HitIndexRef().At(20, 20)
-	if len(hits) != 1 || hits[0].Tag != "a" {
-		t.Fatalf("expected hit 'a' at (20,20), got %+v", hits)
-	}
-}
+	var clipped, unclipped image.Rectangle
+	tr.RegisterLayer(&boundsRecordingLayer{id: "content", z: 10, clip: true, gotRect: &clipped})
+	tr.RegisterLayer(&boundsRecordingLayer{id: "overlay", z: 20, clip: false, gotRect: &unclipped})
 
-func TestGridTreeInvisibleZoneClearsHitAreas(t *testing.T) {
-	tr := NewGridTree()
-	vis := true
-	z := &fakeGridZone{id: "z1", needs: true, areas: []HitArea{
-		{Rect: image.Rect(0, 0, 50, 50), ZIndex: GZSidebar, Tag: "panel"},
-	}}
-	tr.RegisterZoneVisible(z, GZSidebar, func() bool { return vis })
-	tr.SetZoneRect("z1", image.Rect(0, 0, 50, 50))
-	tr.layoutPass()
-	if len(tr.HitIndexRef().At(10, 10)) != 1 {
-		t.Fatal("expected hit area while visible")
+	tr.Draw(screen)
+
+	if clipped != bounds {
+		t.Errorf("clip-opt-in layer should receive bounds-clipped image: got %v want %v", clipped, bounds)
 	}
-	vis = false
-	tr.layoutPass()
-	if got := tr.HitIndexRef().At(10, 10); len(got) != 0 {
-		t.Fatalf("hidden zone must publish no hit areas, got %+v", got)
+	if unclipped != screen.Bounds() {
+		t.Errorf("clip-opt-out layer should receive full screen: got %v want %v", unclipped, screen.Bounds())
 	}
 }

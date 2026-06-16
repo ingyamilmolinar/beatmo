@@ -73,6 +73,7 @@ func TestDesignMDDrift(t *testing.T) {
 		"grid-eighth":             colGridEighth,
 		"grid-sixteenth":          colGridSixteenth,
 		"grid-thirty-second":      colGridThirtySecond,
+		"grid-horizon":            colGridHorizon,
 		"node-fill":               genColorNodeFill,
 		"node-border":             genColorNodeBorder,
 		"timeline-total-bg":       colTimelineTotal,
@@ -118,9 +119,6 @@ func TestDesignMDDrift(t *testing.T) {
 		// ── Phase 3 PR1: tokens whose runtime form picks up a non-255 alpha ──
 		"edge-color":               {EdgeUI.Color.(color.NRGBA).R, EdgeUI.Color.(color.NRGBA).G, EdgeUI.Color.(color.NRGBA).B},
 		"splitter-handle":          {colSplitterHandle.R, colSplitterHandle.G, colSplitterHandle.B},
-		"splitter-handle-mobile":   {colSplitterHandleMobile.R, colSplitterHandleMobile.G, colSplitterHandleMobile.B},
-		"splitter-grip-line":       {colSplitterGripLine.R, colSplitterGripLine.G, colSplitterGripLine.B},
-		"splitter-grip-line-hover": {colSplitterGripLineHover.R, colSplitterGripLineHover.G, colSplitterGripLineHover.B},
 		"timeline-view":            {colTimelineView.R, colTimelineView.G, colTimelineView.B},
 		"drum-mute-highlight":      {colMuteHighlight.R, colMuteHighlight.G, colMuteHighlight.B},
 		"wave-trace-dry":           {colWaveTraceDry.R, colWaveTraceDry.G, colWaveTraceDry.B},
@@ -176,7 +174,9 @@ func TestDesignMDDrift(t *testing.T) {
 	}
 
 	wantRounded := map[string]int{
-		"sm": RadiusSM,
+		"xxs": RadiusXXS,
+		"xs":  RadiusXS,
+		"sm":  RadiusSM,
 		"md": RadiusMD,
 		"lg": RadiusLG,
 		"xl": RadiusXL,
@@ -361,8 +361,8 @@ func TestDesignMDDrift(t *testing.T) {
 		"edge-arrow-step-fraction":      genGeomEdgeArrowStepFraction,
 		"node-border-thickness":         genGeomNodeBorderThickness,
 		"highlight-border-thickness":    genGeomHighlightBorderThickness,
-		"button-glow-radius-px":         genGeomButtonGlowRadiusPx,
 		"button-inner-shadow-px":        genGeomButtonInnerShadowPx,
+		"transport-min-btn-w":           genGeomTransportMinBtnW,
 		"button-press-scale":            genGeomButtonPressScale,
 		"button-release-overshoot":      genGeomButtonReleaseOvershoot,
 	}

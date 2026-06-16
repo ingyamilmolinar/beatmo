@@ -128,25 +128,25 @@ var recipeExtraParams = map[string][]ParamDef{
 	// Snare family: semantic union (tone2/noise-tune/decays/mixes/attack);
 	// each variant exposes only the stages it synthesizes. NaN = omitted.
 	"drum-snare": snareFamilyParamDefs(snareFamilySpec{
-		wave: 0,
+		wave:        0,
 		fundamental: 200, tone2: 330, tune: 1,
 		toneDecay: 28, noiseDecay: 12, tailDecay: 18,
 		toneMix: 0.40, noiseMix: 1.1, wireMix: 0.9, attack: 0.3, attackMax: 3,
 	}),
 	"drum-snare-rimshot": snareFamilyParamDefs(snareFamilySpec{
-		wave: 0,
+		wave:        0,
 		fundamental: 500, tone2: 1050, tune: 1,
 		toneDecay: 40, noiseDecay: 200, tailDecay: nan,
 		toneMix: 1.0, noiseMix: 0.7, wireMix: nan, attack: 2.0, attackMax: 6,
 	}),
 	"drum-snare-sidestick": snareFamilyParamDefs(snareFamilySpec{
-		wave: 0,
+		wave:        0,
 		fundamental: 500, tone2: 1200, tune: 1,
 		toneDecay: 100, noiseDecay: 150, tailDecay: nan,
 		toneMix: 0.5, noiseMix: 0.5, wireMix: nan, attack: 1.0, attackMax: 6,
 	}),
 	"drum-clap": snareFamilyParamDefs(snareFamilySpec{
-		wave: nan,
+		wave:        nan,
 		fundamental: nan, tone2: nan, tune: 1,
 		toneDecay: nan, noiseDecay: 7, tailDecay: 4,
 		toneMix: nan, noiseMix: 0.15, wireMix: nan,

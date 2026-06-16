@@ -7,6 +7,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // synthSaveAsDialog is the inline modal that prompts the user for a custom
@@ -77,8 +78,8 @@ func (dv *DrumView) openSaveAsDialog() {
 	dlg.textInput.InputMode = "text"
 	dlg.textInput.SetText(suggestion)
 	dlg.textInput.SetFocus(true)
-	dlg.okBtn = NewSpecButton("OK", ComponentButtonPrimary, nil)
-	dlg.cancelBtn = NewSpecButton("Cancel", ComponentButtonSecondary, nil)
+	dlg.okBtn = NewButtonKey(i18n.KeyOK, ComponentButtonPrimary, nil)
+	dlg.cancelBtn = NewButtonKey(i18n.KeyCancel, ComponentButtonSecondary, nil)
 	dlg.okBtn.SetRect(dlg.okBtnRect())
 	dlg.cancelBtn.SetRect(dlg.cancelBtnRect())
 	dv.saveAsDialog = dlg
@@ -109,6 +110,23 @@ func (dv *DrumView) CancelSaveAsDialog() {
 	dv.saveAsDialog = nil
 }
 
+// CancelActiveTextDialog cancels + closes any open inline text-input dialog
+// (Synth/Sampler "Save As"), discarding the typed value. Returns true if a
+// dialog was open. This is the seam the universal Esc handler uses so Esc
+// cancels the dialog instead of falling through to Stop. Portal-hosted text
+// inputs (rename, instrument-menu search, WAV naming) are handled by the portal
+// Esc path, not here.
+func (dv *DrumView) CancelActiveTextDialog() bool {
+	if dv == nil {
+		return false
+	}
+	if dv.saveAsDialog != nil {
+		dv.CancelSaveAsDialog()
+		return true
+	}
+	return false
+}
+
 // updateSaveAsDialog polls the dialog's TextInput each frame and checks for
 // Enter (confirm) / Escape (cancel). Called from DrumView.Update.
 func (dv *DrumView) updateSaveAsDialog() {
@@ -128,10 +146,9 @@ func (dv *DrumView) updateSaveAsDialog() {
 		dv.ConfirmSaveAsDialog()
 		return
 	}
-	if isKeyPressed(ebiten.KeyEscape) {
-		dv.CancelSaveAsDialog()
-		return
-	}
+	// Esc cancel is owned by the universal handler (Game.handleEscape →
+	// CancelActiveTextDialog), so it can take priority over the Stop fallback and
+	// stay the single Esc authority. Do not re-handle Esc here.
 }
 
 // drawSaveAsDialog renders the dialog above the synth tab. Background
@@ -145,8 +162,8 @@ func (dv *DrumView) drawSaveAsDialog(dst *ebiten.Image) {
 	if title == "" {
 		title = "Save preset as…"
 	}
-	drawRoundedRect(dst, dlg.rect, TokenSurface2(), 10, true)
-	drawRoundedRect(dst, dlg.rect, TokenBorderMedium(), 10, false)
+	drawRoundedRect(dst, dlg.rect, TokenSurface2(), RadiusMD, true)
+	drawRoundedRect(dst, dlg.rect, TokenBorderMedium(), RadiusMD, false)
 	DrawTextColorAt(dst, title,
 		dlg.rect.Min.X+SpaceMD, dlg.rect.Min.Y+SpaceMD, TokenTextPrimary())
 	dlg.textInput.Draw(dst)
@@ -161,6 +178,14 @@ func (d *synthSaveAsDialog) Focused() bool {
 		return false
 	}
 	return d.textInput.Focused()
+}
+
+// ClaimsKeyboard reports whether the Save As dialog currently owns the
+// keyboard. While its text input is focused, caret/typed keys belong to it, so
+// the grid must not act on them. Part of the keyboard-ownership contract
+// (keyboard_focus.go).
+func (d *synthSaveAsDialog) ClaimsKeyboard() bool {
+	return d != nil && d.textInput != nil && d.textInput.Focused()
 }
 
 // Value returns the current text. Test-friendly mirror of TextInput.Value.
@@ -229,8 +254,8 @@ func (dv *DrumView) openSamplerSaveAsDialog() {
 	dlg.textInput.InputMode = "text"
 	dlg.textInput.SetText(suggestion)
 	dlg.textInput.SetFocus(true)
-	dlg.okBtn = NewSpecButton("OK", ComponentButtonPrimary, nil)
-	dlg.cancelBtn = NewSpecButton("Cancel", ComponentButtonSecondary, nil)
+	dlg.okBtn = NewButtonKey(i18n.KeyOK, ComponentButtonPrimary, nil)
+	dlg.cancelBtn = NewButtonKey(i18n.KeyCancel, ComponentButtonSecondary, nil)
 	dlg.okBtn.SetRect(dlg.okBtnRect())
 	dlg.cancelBtn.SetRect(dlg.cancelBtnRect())
 	dv.saveAsDialog = dlg

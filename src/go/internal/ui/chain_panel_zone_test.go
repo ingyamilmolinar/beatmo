@@ -248,7 +248,7 @@ func TestChainDisplayModePillsDirect(t *testing.T) {
 	}
 }
 
-// TestChainFreezeToggle verifies the freeze button updates state and text.
+// TestChainFreezeToggle verifies the freeze button updates state and icon.
 func TestChainFreezeToggle(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -266,8 +266,11 @@ func TestChainFreezeToggle(t *testing.T) {
 	if !z.frozen {
 		t.Fatal("expected frozen after toggle")
 	}
-	if z.freezeBtn.Text != ">" {
-		t.Errorf("expected button text '>', got %q", z.freezeBtn.Text)
+	if z.freezeBtn.Icon != string(IconPlay) {
+		t.Errorf("expected play icon when frozen, got Icon=%q", z.freezeBtn.Icon)
+	}
+	if z.freezeBtn.Text != "" {
+		t.Errorf("expected empty text (icon-only), got %q", z.freezeBtn.Text)
 	}
 }
 
@@ -288,7 +291,6 @@ func TestChainHitAreasIncludeAllButtons(t *testing.T) {
 		"scope-zoom",
 		"scope-split-btn",
 		"scope-freeze-btn",
-		"scope-close-btn",
 	}
 	for _, tag := range expected {
 		if !tags[tag] {
@@ -925,20 +927,6 @@ func TestChainModeOnlyOneActive(t *testing.T) {
 	z.splitBtn.OnClick()
 	if z.displayMode != chainSplit {
 		t.Errorf("second splitBtn click changed displayMode to %d (expected sticky chainSplit)", z.displayMode)
-	}
-}
-
-// TestChainCloseButtonStillFires verifies the existing close button still
-// invokes the OnClose callback after the layout refactor.
-func TestChainCloseButtonStillFires(t *testing.T) {
-	assertDefaultParityState(t)
-	var closed bool
-	z := NewChainPanelZone(ChainCallbacks{
-		OnClose: func() { closed = true },
-	})
-	z.closeBtn.OnClick()
-	if !closed {
-		t.Error("OnClose callback did not fire on closeBtn click")
 	}
 }
 

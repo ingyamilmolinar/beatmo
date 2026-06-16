@@ -74,6 +74,83 @@ func (s SignalStyle) Draw(dst *ebiten.Image, x, y float64, cam *ebiten.GeoM) {
 	dst.DrawImage(pixel(s.Color), &op2)
 }
 
+// drawNodeBloom paints a soft, multi-ring "Vice-City" neon bloom in the node's
+// own instrument color, centered on (cx,cy) screen pixels, sized off the node's
+// screen radius rPx. The bloom is three concentric *filled* rounded rects drawn
+// back-to-front — widest/faintest first, tightest/brightest last — so the
+// alpha-blended falloff reads as a radial halo rather than a hard box. Each
+// ring uses an EXISTING alpha bucket via WithAlphaFromColor: AlphaFaint /
+// AlphaMedium / AlphaStrong. Even the pink/magenta instrument family reads
+// because the innermost ring lands at AlphaStrong (180).
+//
+// intensity (0..1) is the live node-fire animation level; it scales each ring's
+// alpha so the bloom decays naturally as the firing animation decays, and it
+// scales the outer-ring spread so a freshly-fired node blooms wider than a
+// fading one. The most-recently-fired node therefore carries the brightest,
+// widest bloom automatically (latest-hit emphasis).
+//
+// The two wider outer rings are gated on rPx >= 8 so tiny zoomed-out nodes
+// don't over-bloom — at small radii only the tight inner ring draws, preserving
+// a visible firing cue without a runaway box. The spread is capped so the
+// widest ring never extends more than ~7px past the node radius, keeping the
+// bloom inside the bound asserted by TestDesktopNodeHighlightReasonableSize
+// (<= 2*rPx+16 near the node).
+func drawNodeBloom(dst *ebiten.Image, cx, cy, rPx int, nodeColor color.Color, intensity float64) {
+	if dst == nil || nodeColor == nil {
+		return
+	}
+	if intensity < 0 {
+		intensity = 0
+	}
+	if intensity > 1 {
+		intensity = 1
+	}
+	if rPx < 1 {
+		rPx = 1
+	}
+	// Ring insets past the node radius (px). The widest ring (idx 0) spreads
+	// with intensity so a fresh hit blooms further than a fading one, capped at
+	// +7px (so width <= 2*rPx+14 < 2*rPx+16, inside the highlight-size bound).
+	spread := int(math.Round(4 + 3*intensity)) // 4..7
+	insets := [3]int{spread, spread - 3, 1}
+	alphas := [3]uint8{
+		scaleAlpha(AlphaFaint, intensity),
+		scaleAlpha(AlphaMedium, intensity),
+		scaleAlpha(AlphaStrong, intensity),
+	}
+	// Inner (brightest) ring always draws; the two wider halo rings are gated
+	// on a comfortable on-screen radius so tiny nodes don't over-bloom.
+	start := 2
+	if rPx >= 8 {
+		start = 0
+	}
+	for i := start; i < 3; i++ {
+		ins := insets[i]
+		if ins < 1 {
+			ins = 1
+		}
+		ext := rPx + ins
+		col := WithAlphaFromColor(nodeColor, alphas[i])
+		if col.A == 0 {
+			continue
+		}
+		r := image.Rect(cx-ext, cy-ext, cx+ext, cy+ext)
+		// Corner radius ~half the half-extent gives a rounded, blob-like ring.
+		drawRoundedRect(dst, r, col, ext/2, true)
+	}
+}
+
+// scaleAlpha multiplies an alpha bucket value by t (0..1), clamped.
+func scaleAlpha(a uint8, t float64) uint8 {
+	if t <= 0 {
+		return 0
+	}
+	if t >= 1 {
+		return a
+	}
+	return uint8(math.Round(float64(a) * t))
+}
+
 // EdgeStyle draws directional edges between nodes.
 type EdgeStyle struct {
 	Color     color.Color

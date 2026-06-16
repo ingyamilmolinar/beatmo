@@ -56,6 +56,26 @@ func (o *compPortalOverlay) ShouldClose() bool {
 	return !o.comp.IsOpen()
 }
 
+// HandleEscape forwards Esc to the wrapped component if it implements
+// portalEscapeHandler, so the universal Esc handler can let the component
+// clear/cancel before the portal is closed.
+func (o *compPortalOverlay) HandleEscape() bool {
+	if h, ok := o.comp.(portalEscapeHandler); ok {
+		return h.HandleEscape()
+	}
+	return false
+}
+
+// ClaimsKeyboard forwards to the wrapped component if it owns the keyboard while
+// open (rename, instrument menu). Mirrors HandleEscape forwarding. Part of the
+// keyboard-ownership contract (keyboard_focus.go).
+func (o *compPortalOverlay) ClaimsKeyboard() bool {
+	if c, ok := o.comp.(KeyboardClaimant); ok {
+		return c.ClaimsKeyboard()
+	}
+	return false
+}
+
 // compHitHandler routes HitHandler events to a compOverlayable.
 type compHitHandler struct {
 	comp compOverlayable

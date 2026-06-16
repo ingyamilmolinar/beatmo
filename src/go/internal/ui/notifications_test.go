@@ -7,7 +7,6 @@ import (
 	"image"
 	"testing"
 
-	"github.com/hajimehoshi/ebiten/v2"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -29,10 +28,10 @@ func TestNotificationOnImportSuccess(t *testing.T) {
 	startImportForTest(t, dv)
 	dv.importCh <- importResult{data: []byte("{}"), err: nil}
 	dv.Update()
-	if len(dv.notifs) == 0 {
+	if dv.notifStore.Len() == 0 {
 		t.Fatalf("expected a notification after import success")
 	}
-	if dv.notifs[len(dv.notifs)-1].isErr {
+	if dv.notifStore.Latest().isErr {
 		t.Fatalf("expected info notification, got error")
 	}
 }
@@ -48,7 +47,7 @@ func TestNotificationOnImportError(t *testing.T) {
 	startImportForTest(t, dv)
 	dv.importCh <- importResult{data: []byte("{"), err: nil}
 	dv.Update()
-	if len(dv.notifs) == 0 || !dv.notifs[len(dv.notifs)-1].isErr {
+	if dv.notifStore.Len() == 0 || !dv.notifStore.Latest().isErr {
 		t.Fatalf("expected error notification after import error")
 	}
 }
@@ -61,7 +60,7 @@ func TestNotificationOnUploadError(t *testing.T) {
 	_ = waitForUploadResult(t, dv)
 	dv.uploadCh <- uploadResult{path: "", err: errors.New("select failed")}
 	dv.Update()
-	if len(dv.notifs) == 0 || !dv.notifs[len(dv.notifs)-1].isErr {
+	if dv.notifStore.Len() == 0 || !dv.notifStore.Latest().isErr {
 		t.Fatalf("expected error notification for upload failure")
 	}
 }
@@ -71,23 +70,16 @@ func TestNotificationOnInvalidBPM(t *testing.T) {
 	g := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, g)
 	dv.calcLayout()
-	focusTextInput(t, dv, dv.bpmBox())
-	dv.bpmBox().SetText("abc")
-	// Simulate Enter to commit invalid BPM
-	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return k == ebiten.KeyEnter },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 400, 200 },
-	)
-	defer restore()
-	dv.Update()
-	if dv.bpmErrorAnim == 0 {
-		t.Fatalf("expected bpm error animation on invalid entry")
+	// Open the shared editor, type an invalid value, then commit.
+	dv.transportZone.openBPMEditor()
+	ed := dv.transportZone.paramEditor
+	ed.ti.SetText("abc")
+	ed.commit()
+
+	if ed.errorAnim == 0 {
+		t.Fatalf("expected editor error animation on invalid entry")
 	}
-	if len(dv.notifs) == 0 || !dv.notifs[len(dv.notifs)-1].isErr {
+	if dv.notifStore.Len() == 0 || !dv.notifStore.Latest().isErr {
 		t.Fatalf("expected error notification on invalid BPM")
 	}
 }

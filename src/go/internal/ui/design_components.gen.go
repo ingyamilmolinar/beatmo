@@ -55,7 +55,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonPrimary: {
 		ID:       ComponentButtonPrimary,
 		Category: CategoryButton,
-		Fill:     color.RGBA{79, 180, 255, 255},
+		Fill:     color.RGBA{0, 200, 224, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaWhiteDecoration,
@@ -66,14 +66,14 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonSecondary: {
 		ID:       ComponentButtonSecondary,
 		Category: CategoryButton,
-		Fill:     color.RGBA{38, 44, 60, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderThin,
 		},
 		Radius:           12,
 		Height:           36,
-		IconColor:        color.RGBA{160, 176, 200, 255},
+		IconColor:        color.RGBA{201, 184, 214, 255},
 		HasIconColor:     true,
 		TopEdgeHighlight: true,
 		Interaction: Interaction{
@@ -84,12 +84,12 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonSecondaryActive: {
 		ID:       ComponentButtonSecondaryActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{52, 59, 78, 255},
+		Fill:     color.RGBA{56, 35, 84, 255},
 	},
 	ComponentButtonRowControl: {
 		ID:       ComponentButtonRowControl,
 		Category: CategoryButton,
-		Fill:     color.RGBA{38, 44, 60, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderThin,
@@ -104,9 +104,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonRowControlMuteActive: {
 		ID:       ComponentButtonRowControlMuteActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{160, 72, 48, 255},
+		Fill:     color.RGBA{196, 0, 181, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{216, 120, 72, 255},
+			BaseColor: color.RGBA{255, 106, 213, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -115,9 +115,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonRowControlSoloActive: {
 		ID:       ComponentButtonRowControlSoloActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{130, 203, 255, 255},
+		Fill:     color.RGBA{63, 224, 232, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{130, 203, 255, 255},
+			BaseColor: color.RGBA{63, 224, 232, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -126,9 +126,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonRowControlFxActive: {
 		ID:       ComponentButtonRowControlFxActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{20, 42, 80, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{79, 180, 255, 255},
+			BaseColor: color.RGBA{0, 200, 224, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -137,9 +137,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonDestructive: {
 		ID:       ComponentButtonDestructive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{72, 20, 20, 255},
+		Fill:     color.RGBA{232, 74, 31, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{160, 56, 48, 255},
+			BaseColor: color.RGBA{255, 92, 42, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -148,9 +148,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonDestructiveConfirm: {
 		ID:       ComponentButtonDestructiveConfirm,
 		Category: CategoryButton,
-		Fill:     color.RGBA{208, 48, 48, 255},
+		Fill:     color.RGBA{232, 74, 31, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{255, 96, 96, 255},
+			BaseColor: color.RGBA{255, 92, 42, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -159,7 +159,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonDisabled: {
 		ID:       ComponentButtonDisabled,
 		Category: CategoryButton,
-		Fill:     color.RGBA{45, 56, 72, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderThin,
@@ -168,38 +168,38 @@ var componentSpecs = [componentCount]ComponentSpec{
 	},
 	ComponentPanel: {
 		ID:     ComponentPanel,
-		Fill:   color.RGBA{31, 37, 51, 255},
+		Fill:   color.RGBA{31, 20, 56, 255},
 		Radius: 12,
 	},
 	ComponentBottomSheet: {
 		ID:     ComponentBottomSheet,
-		Fill:   color.RGBA{31, 37, 51, 255},
+		Fill:   color.RGBA{31, 20, 56, 255},
 		Radius: 20,
 	},
 	ComponentContextMenuItem: {
 		ID:     ComponentContextMenuItem,
-		Fill:   color.RGBA{31, 37, 51, 255},
+		Fill:   color.RGBA{31, 20, 56, 255},
 		Height: 36,
 	},
 	ComponentContextMenuItemDestructive: {
 		ID:   ComponentContextMenuItemDestructive,
-		Fill: color.RGBA{31, 37, 51, 255},
+		Fill: color.RGBA{31, 20, 56, 255},
 	},
 	ComponentButtonRecordIdle: {
 		ID:     ComponentButtonRecordIdle,
-		Fill:   color.RGBA{38, 44, 60, 255},
+		Fill:   color.RGBA{40, 26, 64, 255},
 		Radius: 12,
 		Height: 36,
 	},
 	ComponentButtonRecordActive: {
 		ID:     ComponentButtonRecordActive,
-		Fill:   color.RGBA{38, 44, 60, 255},
+		Fill:   color.RGBA{40, 26, 64, 255},
 		Radius: 12,
 		Height: 36,
 	},
 	ComponentButtonPlayActive: {
 		ID:     ComponentButtonPlayActive,
-		Fill:   color.RGBA{38, 44, 60, 255},
+		Fill:   color.RGBA{40, 26, 64, 255},
 		Radius: 12,
 		Height: 36,
 	},
@@ -208,25 +208,25 @@ var componentSpecs = [componentCount]ComponentSpec{
 	},
 	ComponentSplitterHandleMobile: {
 		ID:     ComponentSplitterHandleMobile,
-		Fill:   color.RGBA{58, 134, 200, 255},
+		Fill:   color.RGBA{0, 168, 201, 255},
 		Radius: 8,
 	},
 	ComponentRowRack: {
 		ID:   ComponentRowRack,
-		Fill: color.RGBA{26, 31, 44, 255},
+		Fill: color.RGBA{28, 18, 48, 255},
 	},
 	ComponentVizCanvas: {
 		ID:     ComponentVizCanvas,
-		Fill:   color.RGBA{19, 23, 31, 255},
+		Fill:   color.RGBA{18, 10, 28, 255},
 		Radius: 8,
 	},
 	ComponentVizSpectrumBar: {
 		ID:   ComponentVizSpectrumBar,
-		Fill: color.RGBA{90, 200, 224, 255},
+		Fill: color.RGBA{0, 200, 224, 255},
 	},
 	ComponentVizSpectrumBarPeak: {
 		ID:   ComponentVizSpectrumBarPeak,
-		Fill: color.RGBA{160, 224, 255, 255},
+		Fill: color.RGBA{154, 240, 255, 255},
 	},
 	ComponentVizEqCurve: {
 		ID: ComponentVizEqCurve,
@@ -240,7 +240,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentInputField: {
 		ID:       ComponentInputField,
 		Category: CategoryInput,
-		Fill:     color.RGBA{38, 44, 60, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderDefault,
@@ -253,7 +253,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentInputFieldFocused: {
 		ID:       ComponentInputFieldFocused,
 		Category: CategoryInput,
-		Fill:     color.RGBA{38, 44, 60, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderEmphasis,
@@ -262,20 +262,27 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonStepper: {
 		ID:       ComponentButtonStepper,
 		Category: CategoryButton,
-		Fill:     color.RGBA{28, 48, 80, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{64, 128, 192, 255},
-			Alpha:     255,
+			BaseColor: color.RGBA{255, 255, 255, 255},
+			Alpha:     genAlphaBorderThin,
 		},
-		Radius: 12,
-		Height: 36,
+		Radius:           12,
+		Height:           36,
+		IconColor:        color.RGBA{201, 184, 214, 255},
+		HasIconColor:     true,
+		TopEdgeHighlight: true,
+		Interaction: Interaction{
+			Hover: InteractionDelta{FillDelta: 12, BorderDelta: 20, HighlightDelta: 0},
+			Press: InteractionDelta{FillDelta: -20, BorderDelta: 0, HighlightDelta: 10},
+		},
 	},
 	ComponentButtonPlayDesktop: {
 		ID:       ComponentButtonPlayDesktop,
 		Category: CategoryButton,
-		Fill:     color.RGBA{64, 160, 96, 255},
+		Fill:     color.RGBA{43, 200, 92, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{96, 208, 128, 255},
+			BaseColor: color.RGBA{63, 214, 122, 255},
 			Alpha:     255,
 		},
 		Radius: 12,
@@ -284,9 +291,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonStopDesktop: {
 		ID:       ComponentButtonStopDesktop,
 		Category: CategoryButton,
-		Fill:     color.RGBA{184, 44, 44, 255},
+		Fill:     color.RGBA{232, 74, 31, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{224, 72, 72, 255},
+			BaseColor: color.RGBA{255, 92, 42, 255},
 			Alpha:     255,
 		},
 		Radius: 12,
@@ -295,9 +302,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonDropdown: {
 		ID:       ComponentButtonDropdown,
 		Category: CategoryButton,
-		Fill:     color.RGBA{38, 44, 60, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{79, 180, 255, 255},
+			BaseColor: color.RGBA{0, 200, 224, 255},
 			Alpha:     genAlphaAccentTint,
 		},
 		Radius: 12,
@@ -306,7 +313,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonMissingInstrument: {
 		ID:       ComponentButtonMissingInstrument,
 		Category: CategoryButton,
-		Fill:     color.RGBA{255, 88, 72, 255},
+		Fill:     color.RGBA{255, 92, 42, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderDefault,
@@ -316,7 +323,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonEqMute: {
 		ID:       ComponentButtonEqMute,
 		Category: CategoryButton,
-		Fill:     color.RGBA{52, 59, 78, 255},
+		Fill:     color.RGBA{56, 35, 84, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderDefault,
@@ -327,7 +334,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonEqMuteActive: {
 		ID:       ComponentButtonEqMuteActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{184, 44, 44, 255},
+		Fill:     color.RGBA{232, 74, 31, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderDefault,
@@ -338,9 +345,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonEqFilterActive: {
 		ID:       ComponentButtonEqFilterActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{58, 134, 200, 255},
+		Fill:     color.RGBA{0, 168, 201, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{79, 180, 255, 255},
+			BaseColor: color.RGBA{0, 200, 224, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -349,9 +356,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonTransportFollowOn: {
 		ID:       ComponentButtonTransportFollowOn,
 		Category: CategoryButton,
-		Fill:     color.RGBA{38, 44, 60, 255},
+		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{124, 192, 255, 255},
+			BaseColor: color.RGBA{63, 224, 232, 255},
 			Alpha:     genAlphaAccentOverlay,
 		},
 		Radius: 12,
@@ -360,7 +367,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonRowLabelMobile: {
 		ID:       ComponentButtonRowLabelMobile,
 		Category: CategoryButton,
-		Fill:     color.RGBA{26, 31, 44, 255},
+		Fill:     color.RGBA{28, 18, 48, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaBorderThin,

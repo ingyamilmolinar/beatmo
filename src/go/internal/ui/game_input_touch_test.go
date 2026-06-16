@@ -501,7 +501,9 @@ func TestHandleTouchTwoFingerPan(t *testing.T) {
 	origX := g.cam.OffsetX
 	origY := g.cam.OffsetY
 
-	g.handleTouchTwoFingerPan(10, -5)
+	// Center over the graph pane (not the drum cell grid) so the pan pans the
+	// camera rather than moving the timeline.
+	g.handleTouchTwoFingerPan(10, -5, g.winW/2, gridTopOffset()+20)
 
 	// OffsetX and OffsetY are snapped to integer pixels.
 	wantX := math.Round(origX + 10)
@@ -524,8 +526,9 @@ func TestHandleTouchTwoFingerPan_Accumulates(t *testing.T) {
 	origX := g.cam.OffsetX
 	origY := g.cam.OffsetY
 
-	g.handleTouchTwoFingerPan(5, 3)
-	g.handleTouchTwoFingerPan(5, 3)
+	cx, cy := g.winW/2, gridTopOffset()+20
+	g.handleTouchTwoFingerPan(5, 3, cx, cy)
+	g.handleTouchTwoFingerPan(5, 3, cx, cy)
 
 	wantX := math.Round(origX + 10)
 	wantY := math.Round(origY + 6)

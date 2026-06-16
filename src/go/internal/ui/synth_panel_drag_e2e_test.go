@@ -98,35 +98,37 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 		t.Fatal("knob not capturing after press — drag will be a no-op")
 	}
 
-	// Knobs are horizontal-only: drag RIGHT by half the knob's full sweep
-	// → +0.5 value delta. (Distance derived from the knob's own
-	// pixels-per-sweep so the assertion is robust to radius-scaled sensitivity.)
-	half := knob.dragPixels() / 2
-	const steps = 6
+	// Drag RIGHT — for an endless knob each pixel accumulates real units
+	// incrementally rather than mapping absolute position to 0..1. We drive
+	// enough pixels to produce a measurable positive delta and assert
+	// direction-of-change rather than a specific magnitude, so the test
+	// stays correct across StepMul changes (Task 10: endless is the model).
+	const dragPx = 80 // 80 px at knobEndlessPxPerNotch=8 → 10 notches
+	const steps = 8
 	for s := 1; s <= steps; s++ {
-		pressHit.Handler.OnDrag(cx+half*s/steps, cy)
+		pressHit.Handler.OnDrag(cx+dragPx*s/steps, cy)
 	}
-	wantValue := initialValue + 0.5
-	if knob.Value < wantValue-0.05 || knob.Value > wantValue+0.05 {
-		t.Errorf("after right drag: knob.Value=%v, want ~%v (initial %v + 0.5)", knob.Value, wantValue, initialValue)
+	if knob.Value <= initialValue {
+		t.Errorf("after right drag: knob.Value=%v did not increase from initial %v", knob.Value, initialValue)
 	}
+	afterDrag := knob.Value
 
 	// Release.
-	pressHit.Handler.OnRelease(cx+half, cy)
+	pressHit.Handler.OnRelease(cx+dragPx, cy)
 	if knob.Capturing() {
 		t.Error("knob still capturing after release")
 	}
 
-	// Verify audio engine received the new param.
+	// Verify audio engine received the value change.
 	got := audio.GetInstrumentParams("snare")
 	val, ok := got["decay"]
 	if !ok {
 		t.Fatalf("decay param was not set after drag: %v", got)
 	}
-	// decay range [0,4] → 0.75 slider ≈ 3.0.
-	wantParam := 4.0 * wantValue
-	if val < wantParam-0.3 || val > wantParam+0.3 {
-		t.Errorf("after drag: audio.GetInstrumentParams[\"decay\"]=%v, want ~%v (rescaled from slider value %v)", val, wantParam, wantValue)
+	// The real param should be above the initial default (1.0).
+	wantParamMin := knob.Scale.Min + afterDrag*(knob.Scale.Max-knob.Scale.Min) - 0.01
+	if val < wantParamMin {
+		t.Errorf("after drag: audio.GetInstrumentParams[\"decay\"]=%v, want > %v (scaled from knob.Value=%v)", val, wantParamMin, afterDrag)
 	}
 }
 

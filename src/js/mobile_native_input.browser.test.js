@@ -17,7 +17,7 @@ const GO = resolveGoBinary();
 if (!shouldSkipWasmBuild("main.wasm")) {
 const build = spawnSync(
   GO,
-  ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
+  ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
   { cwd: goDir, env: { ...process.env, GOOS: "js", GOARCH: "wasm" }, stdio: "inherit" }
 );
 if (build.status !== 0) throw new Error("go build main wasm failed");
@@ -66,6 +66,49 @@ async function setupMobilePage() {
   return { context, page };
 }
 
+// nativeInputPresent reports whether the mobile native <input> (z-index:10000)
+// is currently in the DOM.
+async function nativeInputPresent(page) {
+  return await page.evaluate(() => {
+    const inputs = document.querySelectorAll('input[style*="z-index"]');
+    for (const inp of inputs) {
+      if (inp.style.zIndex === '10000') return true;
+    }
+    return false;
+  });
+}
+
+// tapBPMAwaitInput taps the BPM box and waits for the native input to appear,
+// re-tapping a few times if needed. The "bpm" rect is (re)registered every
+// Update() frame (recalcButtons), but under headless software-GL the rAF Update
+// loop is throttled — so the first tap's touchend can fire before any Update has
+// registered "bpm", and the JS gesture handler then creates no input. Re-tapping
+// after a short window lets the natural loop tick and register "bpm"; once
+// registered it stays registered. We deliberately do NOT force manual Update
+// ticks (forceGameTick), which can stall the WASM run loop. Returns true if the
+// input appeared. Mirrors the retry discipline used for other headless tap tests.
+async function tapBPMAwaitInput(page, rect) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await cdpTap(page, cx, cy);
+    try {
+      await page.waitForFunction(() => {
+        const inputs = document.querySelectorAll('input[style*="z-index"]');
+        for (const inp of inputs) {
+          if (inp.style.zIndex === '10000') return true;
+        }
+        return false;
+      }, { timeout: 500 });
+      return true;
+    } catch (_) {
+      // Registration not ready yet — let the rAF loop tick, then re-tap.
+      await page.waitForTimeout(150);
+    }
+  }
+  return false;
+}
+
 // Test 1: Tap BPM box → native <input> element appears
 console.log("Test 1: Tap BPM box → native input appears");
 {
@@ -74,24 +117,13 @@ console.log("Test 1: Tap BPM box → native input appears");
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    // Tap the BPM box
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    await cdpTap(page, cx, cy);
-    await page.waitForTimeout(300);
-
-    // Check for native input element in DOM (created by mobile native input system)
-    const inputExists = await page.evaluate(() => {
-      const inputs = document.querySelectorAll('input[style*="z-index"]');
-      for (const inp of inputs) {
-        if (inp.style.zIndex === '10000') return true;
-      }
-      return false;
-    });
+    // Tap the BPM box → native input element should appear in the DOM.
+    const inputExists = await tapBPMAwaitInput(page, rect);
     assert(inputExists, "Expected native input element with z-index:10000 after tap");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -106,8 +138,7 @@ console.log("Test 2: Native input is auto-focused");
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(300);
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
 
     const isFocused = await page.evaluate(() => {
       const active = document.activeElement;
@@ -117,6 +148,7 @@ console.log("Test 2: Native input is auto-focused");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -131,26 +163,24 @@ console.log("Test 3: Type BPM + Enter → BPM updated");
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(300);
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
 
     // Clear the native input and type new BPM
     await page.keyboard.press("Control+a");
     await page.keyboard.type("140");
     await page.keyboard.press("Enter");
-    await page.waitForTimeout(300);
 
-    // Let frames process the result
-    for (let i = 0; i < 10; i++) {
-      await page.evaluate(() => forceDraw?.());
-      await page.waitForTimeout(50);
-    }
+    // Enter commits the JS native input synchronously, but Go applies the result
+    // on its next Update poll (mobileInputPollResult → SetBPM). Poll getBPM until
+    // the natural rAF Update loop has processed it rather than racing a fixed wait.
+    await page.waitForFunction(() => typeof getBPM === "function" && getBPM() === 140, { timeout: 4000 });
 
     const bpm = await page.evaluate(() => getBPM?.());
     assert(bpm === 140, `Expected BPM=140, got ${bpm}`);
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -165,8 +195,7 @@ console.log("Test 4: BPM native input has inputmode=numeric");
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(300);
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
 
     const mode = await page.evaluate(() => {
       const active = document.activeElement;
@@ -176,6 +205,7 @@ console.log("Test 4: BPM native input has inputmode=numeric");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -217,6 +247,7 @@ console.log("Test 5: Desktop viewport → no native inputs");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -266,6 +297,7 @@ console.log("Test 6: Drag across rect does not trigger native input");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -280,35 +312,26 @@ console.log("Test 7: Escape cancels native input");
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(300);
-
-    // Verify input exists
-    let inputExists = await page.evaluate(() => {
-      const inputs = document.querySelectorAll('input[style*="z-index"]');
-      for (const inp of inputs) {
-        if (inp.style.zIndex === '10000') return true;
-      }
-      return false;
-    });
-    assert(inputExists, "Expected native input before Escape");
+    // Verify input exists (retry-aware)
+    assert(await tapBPMAwaitInput(page, rect), "Expected native input before Escape");
 
     // Press Escape
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(200);
-
-    // Input should be removed
-    inputExists = await page.evaluate(() => {
+    await page.waitForFunction(() => {
       const inputs = document.querySelectorAll('input[style*="z-index"]');
       for (const inp of inputs) {
-        if (inp.style.zIndex === '10000') return true;
+        if (inp.style.zIndex === '10000') return false;
       }
-      return false;
-    });
+      return true;
+    }, { timeout: 2000 });
+
+    // Input should be removed
+    const inputExists = await nativeInputPresent(page);
     assert(!inputExists, "Expected native input removed after Escape");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -338,6 +361,7 @@ console.log("Test 8: JS mobile input system functions exist");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     await context.close();
@@ -356,8 +380,7 @@ console.log("Test 9: Go-side mobileInputActive JS export");
     // Tap BPM box to create native input
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(300);
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
 
     // Now mobileInputActive should be true
     const activeAfter = await page.evaluate(() => _mobileInputActive?.("bpm"));
@@ -365,6 +388,7 @@ console.log("Test 9: Go-side mobileInputActive JS export");
 
     console.log("  PASS");
   } catch (e) {
+    allPassed = false;
     console.log(`  FAIL: ${e.message}`);
   } finally {
     if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "mobile_native_input");

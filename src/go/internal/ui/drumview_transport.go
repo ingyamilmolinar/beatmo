@@ -7,6 +7,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 func (dv *DrumView) PlayPressed() bool {
@@ -52,6 +53,14 @@ func (dv *DrumView) StopPressed() bool {
 	}
 	return false
 }
+
+// TriggerPlayPause sets the one-frame play/pause pulse, exactly as the
+// on-screen Play button does. Consumed by Game.Update via PlayPressed().
+func (dv *DrumView) TriggerPlayPause() { dv.playPressed = true }
+
+// TriggerStop sets the one-frame stop pulse, exactly as the Stop button does.
+// Consumed by Game.Update via StopPressed().
+func (dv *DrumView) TriggerStop() { dv.stopPressed = true }
 
 // RecordPressed returns true (once) if the record button was pressed.
 func (dv *DrumView) RecordPressed() bool {
@@ -207,9 +216,11 @@ func (dv *DrumView) TrackBeat(cur int) {
 			right = dv.Offset + dv.Length - 1
 		}
 		if left <= right && cur >= left && cur <= right {
-			if runningUnderGoTest() {
+			if runningUnderGoTest() && trackBeatForceRefreshUnderTest {
 				// In tests, force a cache refresh to satisfy visibility assertions even
-				// when the offset stays within the current window.
+				// when the offset stays within the current window. Perf tests that
+				// measure the PRODUCTION recomposite cadence disable this via
+				// SetTrackBeatForceRefreshForTest(false).
 				dv.offsetChanged = true
 			}
 			return
@@ -234,11 +245,26 @@ func (dv *DrumView) TrackBeat(cur int) {
 		dv.Offset = desired
 		dv.offsetChanged = true
 		dv.logger.Tracef("[DRUMVIEW/TRACK] cur=%d offset->%d", cur, dv.Offset)
-	} else if runningUnderGoTest() {
+	} else if runningUnderGoTest() && trackBeatForceRefreshUnderTest {
 		// In tests, force a cache refresh to satisfy visibility assertions even
 		// when the offset stays within the current window.
 		dv.offsetChanged = true
 	}
+}
+
+// trackBeatForceRefreshUnderTest gates the test-only "force a cache refresh
+// every TrackBeat" behavior. It defaults true so existing visibility tests are
+// unaffected; perf tests that measure the real production recomposite cadence
+// flip it false via SetTrackBeatForceRefreshForTest so the dead-zone short-
+// circuit behaves exactly as it does in the browser/desktop binary.
+var trackBeatForceRefreshUnderTest = true
+
+// SetTrackBeatForceRefreshForTest toggles the test-only TrackBeat force-refresh
+// and returns a restore func. Test seam only — see trackBeatForceRefreshUnderTest.
+func SetTrackBeatForceRefreshForTest(v bool) func() {
+	prev := trackBeatForceRefreshUnderTest
+	trackBeatForceRefreshUnderTest = v
+	return func() { trackBeatForceRefreshUnderTest = prev }
 }
 
 func (dv *DrumView) SetLength(length int) {
@@ -338,7 +364,9 @@ func (dv *DrumView) SetInstrument(id string) {
 			dv.instMenuActiveByRow[dv.selRow] = cat
 		}
 	}
-	dv.Rows[dv.selRow].Color = dv.ensureUniqueColor(instColor(id), dv.selRow)
+	// Color is bound to the row INDEX (pure sequential series), not the
+	// instrument id — changing the instrument keeps the row's color. A manual
+	// pick via SetRowColor is the only way to change it.
 	// Update label text and style immediately; also mark layout dirty so full rebuild
 	if dv.selRow < len(dv.rowLabels()) {
 		dv.rowLabels()[dv.selRow].Text = dv.Rows[dv.selRow].Name
@@ -387,7 +415,7 @@ func (dv *DrumView) CycleInstrument() {
 func (dv *DrumView) registerInstrument(id string) {
 	if id == "" {
 		dv.logger.Debugf("[drumview] ignored empty WAV name")
-		dv.notifyError("Instrument name cannot be empty")
+		dv.notifyError(i18n.T(i18n.KeyNotifInstNameEmpty))
 		dv.pendingWAV = ""
 		dv.nameInput = ""
 		dv.nameBox = nil
@@ -418,18 +446,19 @@ func (dv *DrumView) registerInstrument(id string) {
 			for row := range dv.Rows {
 				if strings.EqualFold(dv.Rows[row].Instrument, canonicalID) {
 					dv.Rows[row].Instrument = canonicalID
-					dv.Rows[row].Color = dv.ensureUniqueColor(instColor(canonicalID), row)
+					// Color stays index-bound (pure sequential series); reloading a
+					// WAV onto an existing row does not re-tint it.
 				}
 			}
-			dv.notifyInfo("Updated WAV instrument: " + canonicalID)
+			dv.notifyInfo(i18n.Tf(i18n.KeyNotifUpdatedWAVInst, canonicalID))
 		} else {
-			dv.notifyInfo("Loaded WAV instrument: " + canonicalID)
+			dv.notifyInfo(i18n.Tf(i18n.KeyNotifLoadedWAVInst, canonicalID))
 		}
 		dv.logger.Debugf("[drumview] loaded user WAV %s (existing=%v)", canonicalID, existed)
 		emitCustomWAVLoaded(canonicalID, existed)
 	} else {
 		dv.logger.Errorf("[drumview] failed to load WAV: %v", err)
-		dv.notifyError("Error loading WAV: " + err.Error())
+		dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadWAV, err.Error()))
 	}
 	dv.pendingWAV = ""
 	dv.nameInput = ""

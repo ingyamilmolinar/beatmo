@@ -426,7 +426,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 	// registers.
 	activateSlotFM := func(rp RecipeParams, k int) {
 		p := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
-		rp[p("source")] = 10 // 4-op FM preset voice
+		rp[p("source")] = 10    // 4-op FM preset voice
 		rp[p("fm_variant")] = 2 // lead (3 ops; reads op1/op2/op3)
 		rp[p("wave")] = 0       // sine (preset default)
 		rp[p("fm_base")] = 220.0

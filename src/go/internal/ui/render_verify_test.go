@@ -176,7 +176,16 @@ func TestDeletedNodeNotRendered(t *testing.T) {
 	}
 	pt := image.Pt(cx, cy)
 	bg := color.RGBAModel.Convert(colBGTop).(color.RGBA)
+	bandThreshold := screen2.Bounds().Dx() / 2
 	for _, r := range rects2 {
+		// The grid pane background is a vertical sunset gradient painted as
+		// full-width horizontal bands (colBGTop → colGridHorizon). Those bands
+		// legitimately cover every point and are NOT node remnants — a leftover
+		// node would be a small node-sized rect. Skip anything spanning most of
+		// the screen width.
+		if r.Rect.Dx() >= bandThreshold {
+			continue
+		}
 		if pt.In(r.Rect) && r.Color != bg && !gridColors[r.Color] {
 			t.Errorf("deleted node still has non-bg drawRect at (%d,%d): color=%v rect=%v", cx, cy, r.Color, r.Rect)
 		}

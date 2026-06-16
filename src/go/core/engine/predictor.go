@@ -84,7 +84,21 @@ type Predictor struct {
 	// extending predictions. UI/game mark this flag when node parameters change.
 	predDirty bool
 
+	// forceFullRebuild disables the bounded dirty-rebuild optimization (always
+	// re-walk [0, windowStart) instead of the last few loops). Test-only seam
+	// used by the equivalence test to prove the bounded path is byte-identical
+	// to the full walk.
+	forceFullRebuild bool
+
 	logger *game_log.Logger
+}
+
+// SetForceFullRebuildForTest forces the dirty rebuild to re-walk the entire
+// history (the pre-optimization path). Test-only.
+func (p *Predictor) SetForceFullRebuildForTest(v bool) {
+	p.mu.Lock()
+	p.forceFullRebuild = v
+	p.mu.Unlock()
 }
 
 // defaultPredictorWindowCap is the per-row sliding-window ceiling when

@@ -82,13 +82,18 @@ func TestDrumViewButtonLayout(t *testing.T) {
 			}
 		}
 
-		// Upload button is now icon-only in the single row
-		r := dv.uploadBtn().Rect()
+		// File ops moved behind the overflow "..." menu on desktop; the overflow
+		// button is the icon-only inline control that opens them.
+		r := dv.overflowBtn().Rect()
 		if r.Empty() {
-			t.Fatalf("w=%d: upload rect empty", w)
+			t.Fatalf("w=%d: overflow rect empty", w)
 		}
-		if dv.uploadBtn().Icon != "upload" {
-			t.Fatalf("w=%d: upload icon = %q want upload", w, dv.uploadBtn().Icon)
+		if dv.overflowBtn().Icon != "overflow" {
+			t.Fatalf("w=%d: overflow icon = %q want overflow", w, dv.overflowBtn().Icon)
+		}
+		// Upload/Import/Export are hidden inline (reachable via the overflow menu).
+		if ur := dv.uploadBtn().Rect(); !ur.Empty() {
+			t.Fatalf("w=%d: upload rect = %v want empty (behind overflow menu)", w, ur)
 		}
 	}
 }

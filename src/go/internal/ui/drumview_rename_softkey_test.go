@@ -174,13 +174,13 @@ func TestMobileSoftKeyboardRenameCommits(t *testing.T) {
 
 	// Verify notification was shown.
 	found := false
-	for _, n := range dv.notifs {
-		if strings.Contains(n.msg, "NewKick") {
+	for _, n := range dv.notifStore.History() {
+		if strings.Contains(n.text, "NewKick") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected info notification containing 'NewKick', got %v", dv.notifs)
+		t.Errorf("expected info notification containing 'NewKick', got %v", dv.notifStore.History())
 	}
 }

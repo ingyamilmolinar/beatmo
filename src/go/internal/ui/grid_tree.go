@@ -6,90 +6,61 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Grid-local z-index conventions for the GridTree component tree. These
-// are independent of the drum-pane Z* constants in drumview_tree.go —
-// the two trees own disjoint screen rects. Ascending z = drawn later =
-// composites on top. The coordinate badge sits BELOW every popup/sidebar
-// so it can never overpaint them (the bug this tree fixes structurally).
+// Grid-local z-index conventions for the GridTree draw stack. These are
+// independent of the drum-pane Z* constants in drumview_tree.go — the two
+// trees own disjoint screen rects. Ascending z = drawn later = composites on
+// top. The coordinate badge sits BELOW every popup/sidebar so it can never
+// overpaint them (the bug this stack fixes structurally).
 const (
-	GZBackground  = 0
-	GZEdges       = 10
-	GZCanvas      = 20
-	GZPulses      = 30
-	GZCoordBadge  = 40
-	GZMoveMode    = 42
-	GZConnectMode = 44
-	GZLongPress   = 50
-	GZMoveConfirm = 52
-	GZSidebar     = 60
-	GZCursorLabel = 70
+	GZBackground     = 0
+	GZEdges          = 10
+	GZCanvas         = 20
+	GZPulses         = 30
+	GZCoordBadge     = 40
+	GZMoveMode       = 42
+	GZConnectMode    = 44
+	GZLongPress      = 50
+	GZMoveConfirm    = 52
+	GZSidebar        = 60
+	GZCursorLabel    = 70
+	GZGridHelpButton = 80
 )
 
-// GridTree orchestrates the grid pane's Zone/Layer tree. It mirrors
-// DrumViewTree's 4-phase loop (Layout → Update → Input → Draw) and its
-// capture/suppress lifecycle, but drops the drum-pane specifics
-// (OverlayPortal, transport/eq keyboard auto-focus). It reuses the shared
-// primitives Zone/Layer/HitArea/HitHandler/HitIndex/zoneAsLayer.
+// GridTree is the grid pane's draw-ordered Layer stack — a slim sibling to
+// DrumViewTree that owns ONLY z-ordered compositing for the top grid pane.
+//
+// It deliberately does NOT carry the drum pane's input machinery
+// (HitIndex/Zone dispatch, capture/suppress lifecycle, OverlayPortal, keyboard
+// focus). Grid pointer input still runs through the legacy path in
+// Game.Update, which already has working z-prioritization (inputDispatcher +
+// handleTapInGrid + cam.HandleMouse). The single job here is "draw the grid
+// participants in ascending z so overlays composite OVER the badge" — the
+// structural fix for the coordinate-badge-over-popup bug.
+//
+// If grid input is ever migrated into a tree (the deferred Phase 3 in
+// docs/superpowers/plans/2026-06-12-grid-tree-zaxis.md), the Zone/HitIndex
+// half is reintroduced deliberately — it is intentionally absent here rather
+// than carried dormant, so there is no tested-but-unwired input code to rot.
 type GridTree struct {
-	zones   []*gridZoneEntry
-	zoneMap map[string]*gridZoneEntry
-	layers  []Layer
-
-	hitIndex *HitIndex
-
-	capturedHandler HitHandler
-	capturedTag     string
-	suppress        bool
-	wasPressed      bool
-	inputHandled    bool
-	wheelHandled    bool
-
-	// dragActive is reserved scaffolding for the later input-dispatch task
-	// (mirrors the capture/suppress fields above); set via SetDragActive,
-	// it will gate hit-testing while a drag is in flight.
-	dragActive func() bool
+	layers []Layer
 
 	bounds image.Rectangle
+
+	// Cached sub-image for ClipToBounds layers — one shared wrapper for the
+	// whole bounds rect, reused across frames to avoid per-frame SubImage
+	// allocation (WASM-OOM concern). Mirrors the original drawGridPane's
+	// cached `top` subimage.
+	boundsSubParent *ebiten.Image
+	boundsSubClip   image.Rectangle
+	boundsSub       *ebiten.Image
 }
 
-type gridZoneEntry struct {
-	zone        Zone
-	rect        image.Rectangle
-	zIndex      int
-	lastRect    image.Rectangle
-	visible     func() bool
-	lastVisible bool
+// NewGridTree creates an empty draw stack.
+func NewGridTree() *GridTree { return &GridTree{} }
 
-	// Cached SubImage wrapper for the most recent (screen, clip) pair seen
-	// during Draw. Reused across frames when the parent screen pointer and
-	// clip rectangle are unchanged. Without this, every Draw call allocates
-	// a fresh *ebiten.Image wrapper per zone — a documented per-frame
-	// allocator behind fast WASM OOM (mirrors DrumViewTree.zoneEntry).
-	subParent *ebiten.Image
-	subClip   image.Rectangle
-	sub       *ebiten.Image
-}
-
-// NewGridTree creates a tree with a fresh HitIndex (no portal).
-func NewGridTree() *GridTree {
-	return &GridTree{
-		zoneMap:  make(map[string]*gridZoneEntry),
-		hitIndex: &HitIndex{},
-	}
-}
-
-func (t *GridTree) RegisterZone(z Zone, zIndex int) { t.RegisterZoneVisible(z, zIndex, nil) }
-
-func (t *GridTree) RegisterZoneVisible(z Zone, zIndex int, visible func() bool) {
-	e := &gridZoneEntry{zone: z, zIndex: zIndex, visible: visible, lastVisible: true}
-	t.zones = append(t.zones, e)
-	t.zoneMap[z.ID()] = e
-	t.insertLayer(zoneAsLayer{zone: z, zIndex: zIndex, visible: visible})
-}
-
-func (t *GridTree) RegisterLayer(l Layer) { t.insertLayer(l) }
-
-func (t *GridTree) insertLayer(l Layer) {
+// RegisterLayer inserts a draw-only Layer, keeping t.layers sorted ascending
+// by ZIndex (stable for equal z by insertion order).
+func (t *GridTree) RegisterLayer(l Layer) {
 	z := l.ZIndex()
 	idx := len(t.layers)
 	for i, existing := range t.layers {
@@ -103,7 +74,7 @@ func (t *GridTree) insertLayer(l Layer) {
 	t.layers[idx] = l
 }
 
-// LayersForTest returns a snapshot of the merged draw slice in render order.
+// LayersForTest returns a snapshot of the draw slice in render order.
 // Production code MUST NOT call this — iterating the real slice from outside
 // the tree breaks the render-pipeline encapsulation the discipline test enforces.
 func (t *GridTree) LayersForTest() []Layer {
@@ -112,212 +83,43 @@ func (t *GridTree) LayersForTest() []Layer {
 	return out
 }
 
-func (t *GridTree) SetZoneRect(id string, r image.Rectangle) {
-	if e, ok := t.zoneMap[id]; ok {
-		e.rect = r
-	}
-}
-
 func (t *GridTree) SetBounds(r image.Rectangle) { t.bounds = r }
 
-func (t *GridTree) HitIndexRef() *HitIndex { return t.hitIndex }
-
-func (t *GridTree) SetDragActive(fn func() bool) { t.dragActive = fn }
-
-// layoutPass lays out zones that need it and (re)publishes their hit
-// areas. Visibility gate covers HitAreas AND Draw: a hidden zone
-// publishes an empty hit-area set so invisible chrome can't take input
-// (mirrors DrumViewTree.layoutPass — the "hidden panel swallows taps"
-// regression guard).
-func (t *GridTree) layoutPass() {
-	for i := range t.zones {
-		e := t.zones[i]
-		nowVisible := e.visible == nil || e.visible()
-		layoutChanged := e.zone.NeedsLayout() || e.rect != e.lastRect
-		visibilityChanged := nowVisible != e.lastVisible
-		switch {
-		case !nowVisible:
-			if visibilityChanged {
-				t.hitIndex.Update(e.zone.ID(), nil)
-			}
-		case layoutChanged || visibilityChanged:
-			e.zone.Layout(e.rect)
-			e.lastRect = e.rect
-			t.hitIndex.Update(e.zone.ID(), e.zone.HitAreas())
-		}
-		e.lastVisible = nowVisible
-	}
-}
-
-// EnsureLayouts re-runs the layout+publish pass (idempotent).
-func (t *GridTree) EnsureLayouts() { t.layoutPass() }
-
-// LayoutZoneNow forces an immediate layout + republish for one zone.
-func (t *GridTree) LayoutZoneNow(id string) {
-	e, ok := t.zoneMap[id]
-	if !ok {
-		return
-	}
-	e.zone.Layout(e.rect)
-	e.lastRect = e.rect
-	if e.visible == nil || e.visible() {
-		t.hitIndex.Update(e.zone.ID(), e.zone.HitAreas())
-		e.lastVisible = true
-	} else {
-		t.hitIndex.Update(e.zone.ID(), nil)
-		e.lastVisible = false
-	}
-}
-
-// Update runs Layout → Update → Input. Draw is separate via Draw().
-func (t *GridTree) Update() {
-	t.inputHandled = false
-	t.wheelHandled = false
-	t.layoutPass()
-	for i := range t.zones {
-		t.zones[i].zone.Update()
-	}
-	t.handleInput()
-}
-
-func (t *GridTree) handleInput() {
-	mx, my := cursorPosition()
-	pressed := isMouseButtonPressed(ebiten.MouseButtonLeft)
-
-	if t.suppress && !t.wasPressed {
-		t.suppress = false
-	}
-
-	// Release.
-	if !pressed && t.wasPressed {
-		if t.capturedHandler != nil {
-			t.capturedHandler.OnRelease(mx, my)
-			t.capturedHandler = nil
-			t.capturedTag = ""
-		}
-		t.suppress = false
-		t.wasPressed = false
-		return
-	}
-
-	// Ongoing capture (drag).
-	if pressed && t.capturedHandler != nil {
-		t.capturedHandler.OnDrag(mx, my)
-		t.wasPressed = true
-		return
-	}
-
-	// New press.
-	if pressed && !t.wasPressed {
-		t.wasPressed = true
-		if t.suppress {
-			return
-		}
-		t.dispatchPress(mx, my)
-		return
-	}
-
-	// Wheel (dispatched unconditionally).
-	wx, wy := wheel()
-	steps := int(wy)
-	if wx != 0 && steps == 0 {
-		steps = int(wx)
-	}
-	if steps != 0 {
-		for _, h := range t.hitIndex.At(mx, my) {
-			if h.Handler == nil {
-				continue
-			}
-			if h.Handler.OnWheel(mx, my, steps) != InputIgnored {
-				t.wheelHandled = true
-				break
-			}
-		}
-	}
-}
-
-// dispatchPress walks hits z-descending; stops on Captured/Consumed.
-func (t *GridTree) dispatchPress(mx, my int) {
-	dragBlocked := t.dragActive != nil && t.dragActive()
-	hits := t.hitIndex.At(mx, my)
-	for _, hit := range hits {
-		if hit.Handler == nil {
-			continue
-		}
-		if dragBlocked {
-			return
-		}
-		switch hit.Handler.OnPress(mx, my) {
-		case InputCaptured:
-			t.capturedHandler = hit.Handler
-			t.capturedTag = hit.Tag
-			t.suppress = true
-			t.inputHandled = true
-			return
-		case InputConsumed:
-			t.suppress = true
-			t.inputHandled = true
-			return
-		case InputIgnored:
-			continue
-		}
-	}
-}
-
-// dispatchPressForTest exposes dispatchPress for unit tests without the
-// Ebiten input globals.
-func (t *GridTree) dispatchPressForTest(mx, my int) { t.dispatchPress(mx, my) }
-
-func (t *GridTree) Suppress() bool      { return t.suppress }
-func (t *GridTree) Capturing() bool     { return t.capturedHandler != nil }
-func (t *GridTree) CapturedTag() string { return t.capturedTag }
-func (t *GridTree) InputHandled() bool  { return t.inputHandled }
-func (t *GridTree) WheelHandled() bool  { return t.wheelHandled }
-func (t *GridTree) ClearCapture() {
-	t.capturedHandler = nil
-	t.capturedTag = ""
-	t.suppress = false
-}
-
-// Draw renders the merged slice in ascending z. Zones are clipped to the
-// intersection of tree bounds and their rect; plain layers receive the
-// unclipped screen and self-clip (mirrors DrumViewTree.Draw).
+// Draw renders the registered layers in ascending z. A layer that reports
+// ClipToBounds()==true is drawn into a cached bounds-clipped subimage (== the
+// original `top = screen.SubImage(gridRect)`); every other layer draws to the
+// unclipped screen and self-clips (sidebar, cursor label).
 func (t *GridTree) Draw(screen *ebiten.Image) {
 	for _, layer := range t.layers {
 		if !layer.Visible() {
 			continue
 		}
-		zl, isZone := layer.(zoneAsLayer)
-		if !isZone {
-			layer.Draw(screen)
-			continue
-		}
-		clip := screen.Bounds()
-		if !t.bounds.Empty() {
-			clip = clip.Intersect(t.bounds)
-		}
-		if e, ok := t.zoneMap[zl.zone.ID()]; ok && !e.rect.Empty() {
-			clip = clip.Intersect(e.rect)
-		}
-		if clip.Empty() {
-			continue
-		}
-		if clip == screen.Bounds() {
-			layer.Draw(screen)
-		} else {
-			e := t.zoneMap[zl.zone.ID()]
-			var sub *ebiten.Image
-			if e != nil && e.subParent == screen && e.subClip == clip && e.sub != nil {
-				sub = e.sub
-			} else {
-				sub = screen.SubImage(clip).(*ebiten.Image)
-				if e != nil {
-					e.subParent = screen
-					e.subClip = clip
-					e.sub = sub
-				}
+		if cl, ok := layer.(interface{ ClipToBounds() bool }); ok && cl.ClipToBounds() && !t.bounds.Empty() {
+			clip := screen.Bounds().Intersect(t.bounds)
+			if clip.Empty() {
+				continue
 			}
-			layer.Draw(sub)
+			if clip == screen.Bounds() {
+				layer.Draw(screen)
+			} else {
+				layer.Draw(t.boundsSubImage(screen, clip))
+			}
+			continue
 		}
+		layer.Draw(screen)
 	}
+}
+
+// boundsSubImage returns a cached SubImage of screen clipped to clip, reused
+// while (screen, clip) are unchanged. Shared by all ClipToBounds layers so the
+// whole grid-content set allocates at most one wrapper/frame.
+func (t *GridTree) boundsSubImage(screen *ebiten.Image, clip image.Rectangle) *ebiten.Image {
+	if t.boundsSubParent == screen && t.boundsSubClip == clip && t.boundsSub != nil {
+		return t.boundsSub
+	}
+	sub := screen.SubImage(clip).(*ebiten.Image)
+	t.boundsSubParent = screen
+	t.boundsSubClip = clip
+	t.boundsSub = sub
+	return sub
 }

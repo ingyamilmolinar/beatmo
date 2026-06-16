@@ -51,8 +51,22 @@ var perTabAllocBudget = map[PanelTab]float64{
 	TabScope: 740, // baseline 566 (was 1087 pre-pass)
 	// TabSynth: header + pipeline chip strip (9 chips + connector wires) +
 	// ONE expanded detail pane (title/subtitle/pill + the selected stage's
-	// knob captions).
-	TabSynth: 315, // baseline 239 (was 407 pre-pass)
+	// knob captions). Re-baselined to 536 after the caption-readability pass:
+	// every knob now resolves a human display name (prefix-strip + Title-case
+	// prettifier) and formats its value through formatParamValue (SI-Hz,
+	// signed units) every frame, replacing the old raw-id/bare-number labels.
+	// Those per-knob string builds are the bulk of the new allocs. FOLLOW-UP:
+	// cache the formatted caption per (paramID,value) so an idle editor tab
+	// stops re-formatting unchanged labels — that would return this toward the
+	// old ~239 baseline. Cap = baseline × 1.3.
+	//
+	// Re-baselined 536 -> 921 after the synthwave preview fills: the OSC and
+	// ADSR mini-graphs now paint a per-column "outrun" wash beneath each curve
+	// (one fill drawRect per plot column; drawRect boxes its color arg, so each
+	// adds one alloc). The fill colors are fixed package vars served from
+	// pixelCache (no per-column COLOR alloc), but the extra rects themselves
+	// are the cost. Cap = baseline 921 x 1.3 ~= 1198.
+	TabSynth: 1198, // baseline 921 (was 536 pre-synthwave-fill; 239 pre-caption-pass)
 	// TabSampler: honest NO-SAMPLE baseline 100 (header + banner). The
 	// loaded-sample waveform trace (per-column rects, like Wave) is not
 	// exercised by this stubbed harness; keep Wave-magnitude headroom for it

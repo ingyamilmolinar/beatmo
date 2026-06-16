@@ -19,6 +19,63 @@ func shouldGateMute(n model.Node) bool {
 	return kind != "" && kind != "none"
 }
 
+// boundedRewalkStart returns the lower bound for the dirty-rebuild re-walk for
+// `row`, seeding `counts` analytically for the skipped prefix [0, ret). It
+// returns 0 (i.e. a full walk) unless every condition for a provably-identical
+// shortcut holds: the row loops, only built-in logic is in play, and the window
+// has slid far enough that a full walk is actually expensive. windowStart ==
+// startIdx in the dirty path. The retained margin (2 loops) settles last-loop
+// state (lastTrig/lastFired/gate); `counts` (== appearances) is exact.
+func (p *Predictor) boundedRewalkStart(row, windowStart int, loop bool, loopStart, loopLen int, hasCustomLogic bool, counts map[model.NodeID]int) int {
+	if hasCustomLogic || !loop || loopLen <= 0 {
+		return 0
+	}
+	// Below this the full walk is cheap; not worth the geometry.
+	if windowStart <= loopStart+3*loopLen {
+		return 0
+	}
+	walkLoops := (windowStart-loopStart)/loopLen - 2 // keep last 2 loops to settle state
+	if walkLoops < 1 {
+		return 0
+	}
+	walkStart := loopStart + walkLoops*loopLen
+	// Seed counts = appearances in [0, walkStart). Pre-loop cells [0, loopStart)
+	// occur once; each loop cell [loopStart, loopStart+loopLen) occurs walkLoops
+	// times. Only every_n_triggers(regular)/skip_every_n nodes increment counts.
+	for i := 0; i < loopStart; i++ {
+		p.seedCountForCell(row, i, 1, counts)
+	}
+	for c := loopStart; c < loopStart+loopLen; c++ {
+		p.seedCountForCell(row, c, walkLoops, counts)
+	}
+	return walkStart
+}
+
+// seedCountForCell adds `mult` to counts[id] iff the node at (row, idx) would
+// have hit the `counts[id]++` line in shouldTriggerNode `mult` times — i.e. it
+// carries every_n_triggers (regular only) or skip_every_n with LogicN>0. This
+// mirrors shouldTriggerNode exactly so the seed is byte-identical to walking.
+func (p *Predictor) seedCountForCell(row, idx, mult int, counts map[model.NodeID]int) {
+	bi := p.beatInfoAtRow(row, idx)
+	if bi.NodeType != model.NodeTypeRegular && bi.NodeType != model.NodeTypeMute {
+		return
+	}
+	n, ok := p.nodes[bi.NodeID]
+	if !ok {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(n.Params.LogicKind)) {
+	case "every_n_triggers":
+		if bi.NodeType == model.NodeTypeRegular && n.Params.LogicN > 0 {
+			counts[bi.NodeID] += mult
+		}
+	case "skip_every_n":
+		if n.Params.LogicN > 0 {
+			counts[bi.NodeID] += mult
+		}
+	}
+}
+
 func incrementTriggerCount(counts map[model.NodeID]int, id model.NodeID) int {
 	if counts == nil {
 		return 0

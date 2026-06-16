@@ -69,53 +69,6 @@ func TestSidebar_DeferredTapVsScroll(t *testing.T) {
 	}
 }
 
-// TestSidebar_ResizeDrag opens the sidebar, presses on the resize handle rect,
-// drags right 50px, and verifies that sb.width increases by ~50px. On release,
-// resizing should be false.
-func TestSidebar_ResizeDrag(t *testing.T) {
-	assertDefaultParityState(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
-	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.sidebar.Open(n)
-	g.sidebar.layout()
-
-	initialWidth := g.sidebar.width
-
-	handleR := g.sidebar.resizeHandleRect()
-	if handleR.Empty() {
-		t.Fatal("resize handle rect should not be empty")
-	}
-
-	hx := (handleR.Min.X + handleR.Max.X) / 2
-	hy := (handleR.Min.Y + handleR.Max.Y) / 2
-
-	// Press on resize handle.
-	result := g.sidebar.HandleInput(hx, hy, true)
-	if result != InputCaptured {
-		t.Fatalf("expected InputCaptured on resize handle, got %v", result)
-	}
-	if !g.sidebar.resizing {
-		t.Fatal("expected resizing=true after handle press")
-	}
-
-	// Drag right 50px.
-	g.sidebar.HandleInput(hx+50, hy, true)
-
-	expectedWidth := initialWidth + 50
-	if g.sidebar.width != expectedWidth {
-		t.Errorf("expected width=%d after +50px drag, got %d", expectedWidth, g.sidebar.width)
-	}
-
-	// Release.
-	g.sidebar.HandleInput(hx+50, hy, false)
-	if g.sidebar.resizing {
-		t.Fatal("expected resizing=false after release")
-	}
-}
-
 // TestSidebar_DropdownCloseOnOutsideClick opens the sidebar, opens the logic
 // dropdown, then clicks outside the dropdown but inside the panel. The dropdown
 // should close but the sidebar should stay open.

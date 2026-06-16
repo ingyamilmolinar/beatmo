@@ -45,6 +45,15 @@ type HitHandler interface {
 	OnWheel(x, y, steps int) InputResult
 }
 
+// wheel2DHandler is an optional HitHandler extension for handlers that need the
+// raw two-axis wheel delta (a two-finger trackpad drag). Knobs use it so a
+// LEFT/RIGHT scroll changes the value while an UP/DOWN scroll is reserved for
+// moving between overflow rows. The tree prefers OnWheel2D over OnWheel when a
+// handler implements it; dx>0 = scroll right, dy>0 = scroll down.
+type wheel2DHandler interface {
+	OnWheel2D(x, y, dx, dy int) InputResult
+}
+
 // DrumViewState provides read-only access to shared mutable state.
 // Function fields (not direct pointers) so zones always read current values.
 type DrumViewState struct {

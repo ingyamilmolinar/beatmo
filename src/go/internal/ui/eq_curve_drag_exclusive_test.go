@@ -436,12 +436,16 @@ func TestCurveAreaZIndex(t *testing.T) {
 	z, _ := newTestEQPanelZone(nil)
 	z.Layout(image.Rect(0, 400, 600, 580))
 
-	var curveZ, muteZ int
-	curveFound, muteFound := false, false
+	var curveZ, muteZ, captureZ int
+	curveFound, muteFound, captureFound := false, false, false
 	for _, a := range z.HitAreas() {
 		if a.Tag == "eq-curve-area" {
 			curveZ = a.ZIndex
 			curveFound = true
+		}
+		if a.Tag == "eq-panel-capture" {
+			captureZ = a.ZIndex
+			captureFound = true
 		}
 		if strings.HasPrefix(a.Tag, "eq-mute-") && !muteFound {
 			muteZ = a.ZIndex
@@ -454,12 +458,30 @@ func TestCurveAreaZIndex(t *testing.T) {
 	if !muteFound {
 		t.Fatal("eq-mute button not found")
 	}
-
-	if curveZ != 130 {
-		t.Errorf("expected curve z-index 130, got %d", curveZ)
+	if !captureFound {
+		t.Fatal("eq-panel-capture catch-all not found")
 	}
-	if muteZ != 131 {
-		t.Errorf("expected mute z-index 131, got %d", muteZ)
+
+	// The full-panel curve overlay MUST sit strictly above the opaque catch-all,
+	// or the catch-all's InputConsumed swallows every handle press first (the
+	// "EQ/HP-LP handles don't respond" bug). The mute hit area in turn sits ABOVE
+	// the curve overlay AND above the dB readout (zIdx+3): in short panels the mute
+	// button's centre falls inside the taller dB readout cell, so the mute must win
+	// the overlap arbitration (zIdx+4) or the dB editor opens on a mute press.
+	if captureZ != 130 {
+		t.Errorf("expected catch-all z-index 130, got %d", captureZ)
+	}
+	if curveZ != 131 {
+		t.Errorf("expected curve z-index 131, got %d", curveZ)
+	}
+	if muteZ != 134 {
+		t.Errorf("expected mute z-index 134, got %d", muteZ)
+	}
+	if !(curveZ > captureZ) {
+		t.Errorf("curve overlay (z=%d) must sit above the catch-all (z=%d) so handle presses are not swallowed", curveZ, captureZ)
+	}
+	if !(muteZ > curveZ) {
+		t.Errorf("mute buttons (z=%d) must sit above the curve overlay (z=%d)", muteZ, curveZ)
 	}
 }
 

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "subdiv": 8,
+  "bpm": 120,
+  "instruments": [
+    {"name": "Kick", "id": "kick", "kind": "builtin", "volume": 1.0, "origin": 1, "color": "#80C850FF"}
+  ],
+  "nodes": [
+    {"id": 1, "i": 0, "j": 0, "type": "regular", "outputs": [2]},
+    {"id": 2, "i": 0, "j": 2, "type": "regular", "outputs": [3], "logic_kind": "every_n_triggers", "logic_n": 2},
+    {"id": 3, "i": 0, "j": 4, "type": "regular", "outputs": [4]},
+    {"id": 4, "i": 0, "j": 6, "type": "regular", "outputs": [5], "logic_kind": "skip_every_n", "logic_n": 3},
+    {"id": 5, "i": 0, "j": 8, "type": "regular", "outputs": [6], "logic_kind": "probability", "logic_p": 0.5},
+    {"id": 6, "i": 0, "j": 10, "type": "regular", "outputs": [7], "logic_kind": "trigger_if_prev_triggered"},
+    {"id": 7, "i": 0, "j": 12, "type": "regular", "outputs": [8]},
+    {"id": 8, "i": 0, "j": 14, "type": "regular", "outputs": [1], "logic_kind": "trigger_if_prev_skipped"}
+  ]
+}

@@ -5,7 +5,9 @@ package ui
 // tap tracking.
 func (dv *DrumView) CancelAllDeferredTaps() {
 	dv.contextMenuDeferredTap.Cancel()
-	dv.overflowDeferredTap.Cancel()
+	if dv.overflowMenuScroll != nil {
+		dv.overflowMenuScroll.DeferredTap().Cancel()
+	}
 	dv.fxPanelDeferredTap.Cancel()
 	dv.fxScrollTS.Reset()
 	dv.instEditorDeferredTap.Cancel()
@@ -44,6 +46,13 @@ func (dv *DrumView) CloseAllPopups() {
 	if dv.tree != nil {
 		for dv.tree.Portal().IsOpen() {
 			dv.tree.Portal().CloseTop()
+		}
+	}
+	// The audio-panel subtree owns its own portal (channel dropdown,
+	// synth-overflow-sheet); drain it too.
+	if dv.audioTree != nil {
+		for dv.audioTree.Portal().IsOpen() {
+			dv.audioTree.Portal().CloseTop()
 		}
 	}
 	if dv.volPopup != nil && dv.volPopup.IsOpen() {
@@ -89,8 +98,13 @@ func (dv *DrumView) resetTransientTabState() {
 	if dv.eqPanelZone != nil {
 		dv.eqPanelZone.CloseChannelDropdown()
 	}
+	if dv.rootTree != nil {
+		dv.rootTree.ClearCapture()
+	}
 	if dv.tree != nil {
-		dv.tree.ClearCapture()
 		dv.tree.SetFocus("")
+	}
+	if dv.audioTree != nil {
+		dv.audioTree.SetFocus("")
 	}
 }

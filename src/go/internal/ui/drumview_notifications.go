@@ -8,28 +8,42 @@ import (
 )
 
 type notification struct {
-	msg   string
-	isErr bool
-	ttl   int // frames remaining
+	text   string
+	isErr  bool
+	unixMs int64 // unix millis when raised; 0 in pure-unit tests
+}
+
+// initNotifPersistence seeds the live ring from the persisted history (for
+// the popup) and wires the write-through sink. Seeding does NOT mark a
+// session entry, so the in-band area starts idle until the first new
+// notification this session. Gated by UseNotificationsHistory.
+func (dv *DrumView) initNotifPersistence() {
+	if dv.notifStore == nil {
+		dv.notifStore = newNotificationStore(notifHistoryCap)
+	}
+	if !UseNotificationsHistory {
+		return
+	}
+	dv.notifStore.seed(NotificationHistory().Load())
+	dv.notifStore.persist = func(snap []notification) {
+		NotificationHistory().Save(snap)
+	}
 }
 
 func (dv *DrumView) notifyInfo(msg string)  { dv.pushNotif(msg, false) }
 func (dv *DrumView) notifyError(msg string) { dv.pushNotif(msg, true) }
 func (dv *DrumView) pushNotif(msg string, isErr bool) {
-	ttl := 180
-	if isErr {
-		ttl = 240
+	if dv.notifStore == nil {
+		dv.notifStore = newNotificationStore(notifHistoryCap)
 	}
-	dv.notifs = append(dv.notifs, notification{msg: msg, isErr: isErr, ttl: ttl})
-	if len(dv.notifs) > 4 {
-		dv.notifs = dv.notifs[len(dv.notifs)-4:]
-	}
+	dv.notifStore.Push(notification{text: msg, isErr: isErr, unixMs: nowUnixMilli()})
 }
 
 // anyDropdownOpen returns true if any dropdown menu is currently open.
 // Delegates to the portal system which is the single source of truth.
 func (dv *DrumView) anyDropdownOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().IsOpen()
+	return (dv.tree != nil && dv.tree.Portal().IsOpen()) ||
+		(dv.audioTree != nil && dv.audioTree.Portal().IsOpen())
 }
 
 // Portal-based accessors: read-only queries backed by portal.Has().
@@ -77,7 +91,7 @@ func (dv *DrumView) IsFXPanelOpen() bool {
 
 // IsEQChannelOpen returns whether the EQ channel dropdown is open.
 func (dv *DrumView) IsEQChannelOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("eq-channel")
+	return dv.audioTree != nil && dv.audioTree.Portal().Has("eq-channel")
 }
 
 // IsNamingOpen returns whether the WAV-naming dialog is open.

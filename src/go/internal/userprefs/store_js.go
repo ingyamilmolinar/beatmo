@@ -16,13 +16,16 @@ type localStorageStore struct {
 	key  string
 	logf func(format string, args ...any)
 
-	mu          sync.RWMutex
-	favorites   map[string]bool
-	overrides   map[string]map[string]float64
-	userRecipes map[string][]byte
-	audioPanel  AudioPanelStateDoc
-	sampleEdits map[string]map[string]float64
-	loaded      bool
+	mu            sync.RWMutex
+	favorites     map[string]bool
+	overrides     map[string]map[string]float64
+	userRecipes   map[string][]byte
+	audioPanel    AudioPanelStateDoc
+	sampleEdits   map[string]map[string]float64
+	notifications []NotificationRecord
+	knobSteps     map[string]float64
+	language      string
+	loaded        bool
 }
 
 func newBackingStore(opts Options) Store {
@@ -60,6 +63,7 @@ func (s *localStorageStore) ensureLoadedLocked() {
 		s.overrides = map[string]map[string]float64{}
 		s.userRecipes = map[string][]byte{}
 		s.sampleEdits = map[string]map[string]float64{}
+		s.knobSteps = map[string]float64{}
 		s.loaded = true
 		return
 	}
@@ -67,6 +71,9 @@ func (s *localStorageStore) ensureLoadedLocked() {
 		data := []byte(val.String())
 		s.favorites, s.overrides, s.userRecipes, s.audioPanel = parsePrefsV3(data, s.logf)
 		s.sampleEdits = parseSampleEdits(data)
+		s.notifications = parseNotifications(data)
+		s.knobSteps, _ = parseKnobStepsFromPrefs(data)
+		s.language = parseLanguageFromPrefs(data)
 		s.loaded = true
 		return
 	}
@@ -74,6 +81,7 @@ func (s *localStorageStore) ensureLoadedLocked() {
 	s.overrides = map[string]map[string]float64{}
 	s.userRecipes = map[string][]byte{}
 	s.sampleEdits = map[string]map[string]float64{}
+	s.knobSteps = map[string]float64{}
 	s.loaded = true
 }
 
@@ -268,11 +276,72 @@ func (s *localStorageStore) SaveAudioPanelState(state AudioPanelStateDoc) error 
 	return s.persistLocked()
 }
 
+// LoadNotifications returns the persisted notification history (oldest..newest).
+func (s *localStorageStore) LoadNotifications() ([]NotificationRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	out := make([]NotificationRecord, len(s.notifications))
+	copy(out, s.notifications)
+	return out, nil
+}
+
+// SaveNotifications upserts the whole notification history, bounded to the
+// newest notifHistoryMax entries.
+func (s *localStorageStore) SaveNotifications(recs []NotificationRecord) error {
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	s.notifications = boundNotifications(recs)
+	return s.persistLocked()
+}
+
+// LoadKnobSteps returns the persisted per-param step-multiplier rungs.
+func (s *localStorageStore) LoadKnobSteps() map[string]float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	out := make(map[string]float64, len(s.knobSteps))
+	for k, v := range s.knobSteps {
+		out[k] = v
+	}
+	return out
+}
+
+// SaveKnobStep upserts the chosen step-multiplier for the named param.
+func (s *localStorageStore) SaveKnobStep(name string, step float64) error {
+	if name == "" || !isFiniteFloat(step) {
+		return nil
+	}
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	if s.knobSteps == nil {
+		s.knobSteps = map[string]float64{}
+	}
+	s.knobSteps[name] = step
+	return s.persistLocked()
+}
+
+// LoadLanguage returns the persisted UI locale ("" = default English).
+func (s *localStorageStore) LoadLanguage() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureLoadedLocked()
+	return s.language, nil
+}
+
+// SaveLanguage upserts the chosen UI locale.
+func (s *localStorageStore) SaveLanguage(lang string) error {
+	s.mu.Lock()
+	s.ensureLoadedLocked()
+	s.language = lang
+	return s.persistLocked()
+}
+
 // persistLocked marshals the current cache to localStorage. Caller must
 // hold s.mu; the lock is released before the JS call so any recover'd
 // panic from setItem doesn't strand the mutex.
 func (s *localStorageStore) persistLocked() error {
-	data, err := marshalPrefsV4(s.favorites, s.overrides, s.userRecipes, s.audioPanel, s.sampleEdits)
+	data, err := marshalPrefsV7(s.favorites, s.overrides, s.userRecipes, s.audioPanel, s.sampleEdits, s.notifications, s.knobSteps, s.language)
 	s.mu.Unlock()
 	if err != nil {
 		return err

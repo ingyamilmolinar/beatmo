@@ -9,26 +9,33 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // ─── Sidebar sizing constants ──────────────────────────────────────────────
 const (
-	sidebarDefaultW  = 260
-	sidebarMinW      = 200
-	sidebarMaxW      = 400
-	sidebarBtnH      = 28 // unified button/row height
-	sidebarIncBtnW   = 28 // inc/dec button width
-	sidebarIncBtnH   = 24 // inc/dec button height
-	sidebarGap       = 6
-	sidebarPad       = 10
-	sidebarHeaderH   = 36
-	sidebarSectionH  = 30 // collapsible section header height
-	sidebarTextScale = 1.2
-	sidebarResizeW   = 8  // resize grab zone on right edge
-	sidebarTabW      = 24 // collapsed expand-tab width
-	sidebarInnerPad  = 4  // inner padding for text within layout rects
-	sidebarSwatchSz  = 12 // instrument color swatch size in header
+	sidebarDefaultW = 260
+	sidebarMinW     = 200
+	sidebarMaxW     = 400
+	sidebarBtnH     = 28 // unified button/row height
+	sidebarIncBtnW  = 28 // inc/dec button width
+	sidebarIncBtnH  = 24 // inc/dec button height
+	sidebarGap      = 6
+	sidebarPad      = 10
+	sidebarHeaderH  = 36
+	sidebarSectionH = 30 // collapsible section header height
+	sidebarTabW     = 24 // collapsed expand-tab width
+	sidebarInnerPad = 4  // inner padding for text within layout rects
+	sidebarSwatchSz = 12 // instrument color swatch size in header
 )
+
+// sidebarLabelScale is the density-driven text-scale multiplier for sidebar
+// labels (was a hardcoded 1.2 const). Comfortable preserves the historical
+// 1.2; Compact tightens to 1.1, Spacious opens to 1.3. Read per-call so it
+// re-derives every Layout/Draw, matching the other density tokens.
+func sidebarLabelScale() float64 {
+	return float64(Profile().DensityValues().SidebarLabelScale) / 1000
+}
 
 // sidebarScaledTextWidth returns the pixel width of s rendered at the given
 // scale, using the same font metrics as DrawTextAtScale.
@@ -44,12 +51,8 @@ type NodeSidebar struct {
 	node *uiNode
 
 	// Geometry
-	width     int  // current width (resizable)
+	width     int  // current width (fixed; user-resize removed)
 	collapsed bool // fully hidden (show expand tab only)
-
-	// Resize
-	resizing    bool
-	resizeDragX int
 
 	// Sections — individually collapsible
 	sectionOpen map[string]bool
@@ -154,17 +157,6 @@ func (sb *NodeSidebar) expandTabRect() image.Rectangle {
 	return image.Rect(0, 0, sidebarTabW, gridH)
 }
 
-// resizeHandleRect returns the pill handle rect for the sidebar resize edge.
-func (sb *NodeSidebar) resizeHandleRect() image.Rectangle {
-	panel, ok := sb.rects["panel"]
-	if !ok || panel.Empty() {
-		return image.Rectangle{}
-	}
-	cx := panel.Max.X
-	cy := panel.Dy() / 2
-	return SplitterHandleRect(cx, cy, false) // vertical pill (sidebar is a vertical divider)
-}
-
 // ─── Layout ────────────────────────────────────────────────────────────────
 
 // layout recomputes all rects in screen space using fixed sizes.
@@ -227,15 +219,15 @@ func (sb *NodeSidebar) layout() {
 
 	// Section: Volume
 	if showVol {
-		y = sb.layoutSection(y, w, btnX, "vol", "Volume", true)
+		y = sb.layoutSection(y, w, btnX, "vol", i18n.T(i18n.KeyNodeSecVolume), true)
 	}
 	// Section: Pitch
 	if showPitch {
-		y = sb.layoutSection(y, w, btnX, "pit", "Pitch", true)
+		y = sb.layoutSection(y, w, btnX, "pit", i18n.T(i18n.KeyCapPitch), true)
 	}
 	// Section: Duration
 	if showDur {
-		y = sb.layoutSection(y, w, btnX, "dur", "Duration", true)
+		y = sb.layoutSection(y, w, btnX, "dur", i18n.T(i18n.KeyNodeSecDuration), true)
 	}
 	// Section: Logic
 	if showLogic {
@@ -288,7 +280,7 @@ func (sb *NodeSidebar) layoutSection(y, w, btnX int, id, _ string, hasButtons bo
 		// +button at the far right
 		plusX := w - sidebarPad - sidebarIncBtnW
 		// pill between buttons
-		pillW := 50
+		pillW := Profile().DensityValues().SidebarValuePillW
 		pillX := plusX - sidebarGap - pillW
 		// −button to the left of pill
 		minusX := pillX - sidebarGap - sidebarIncBtnW
@@ -327,7 +319,7 @@ func (sb *NodeSidebar) layoutLogicSection(y, w, btnX int, kind string) int {
 		kindHasP := kind == "probability"
 		if kindHasN {
 			plusX := w - sidebarPad - sidebarIncBtnW
-			pillW := 50
+			pillW := Profile().DensityValues().SidebarValuePillW
 			pillX := plusX - sidebarGap - pillW
 			minusX := pillX - sidebarGap - sidebarIncBtnW
 			btnY := y + (sidebarBtnH-sidebarIncBtnH)/2
@@ -337,7 +329,7 @@ func (sb *NodeSidebar) layoutLogicSection(y, w, btnX int, kind string) int {
 			y += sidebarBtnH + sidebarGap
 		} else if kindHasP {
 			plusX := w - sidebarPad - sidebarIncBtnW
-			pillW := 50
+			pillW := Profile().DensityValues().SidebarValuePillW
 			pillX := plusX - sidebarGap - pillW
 			minusX := pillX - sidebarGap - sidebarIncBtnW
 			btnY := y + (sidebarBtnH-sidebarIncBtnH)/2
@@ -371,7 +363,7 @@ func (sb *NodeSidebar) layoutGrooveSection(y, w, btnX int) int {
 	} else {
 		// Pct adjusters — same [−] [pill] [+] layout
 		plusX := w - sidebarPad - sidebarIncBtnW
-		pillW := 50
+		pillW := Profile().DensityValues().SidebarValuePillW
 		pillX := plusX - sidebarGap - pillW
 		minusX := pillX - sidebarGap - sidebarIncBtnW
 		btnY := y + (sidebarBtnH-sidebarIncBtnH)/2
@@ -412,7 +404,7 @@ func (sb *NodeSidebar) wireButtons() {
 		}
 		sb.btns[id].SetRect(r)
 		sb.btns[id].ConsumeOnPress = true
-		sb.btns[id].TextScale = sidebarTextScale
+		sb.btns[id].TextScale = sidebarLabelScale()
 	}
 
 	// Volume +/-
@@ -428,6 +420,7 @@ func (sb *NodeSidebar) wireButtons() {
 			}
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	mk("vol+", "+", func() {
@@ -439,6 +432,7 @@ func (sb *NodeSidebar) wireButtons() {
 			p.Volume += 0.10
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	// Pitch +/-
@@ -448,6 +442,7 @@ func (sb *NodeSidebar) wireButtons() {
 			p.Pitch -= 1
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	mk("pit+", "+", func() {
@@ -456,6 +451,7 @@ func (sb *NodeSidebar) wireButtons() {
 			p.Pitch += 1
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	// Duration +/-
@@ -465,6 +461,7 @@ func (sb *NodeSidebar) wireButtons() {
 			p.Duration -= 0.1
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	mk("dur+", "+", func() {
@@ -473,6 +470,7 @@ func (sb *NodeSidebar) wireButtons() {
 			p.Duration += 0.1
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	// Logic selector
@@ -485,12 +483,12 @@ func (sb *NodeSidebar) wireButtons() {
 	// Logic dropdown items
 	if sb.logicDropdownOpen {
 		opts := []struct{ label, kind string }{
-			{"None", ""},
-			{"Trigger Every N", "every_n_triggers"},
-			{"Skip Every N", "skip_every_n"},
-			{"Probability", "probability"},
-			{"If Prev Skipped", "trigger_if_prev_skipped"},
-			{"If Prev Triggered", "trigger_if_prev_triggered"},
+			{i18n.T(i18n.KeyLogicNone), ""},
+			{i18n.T(i18n.KeyLogicEveryN), "every_n_triggers"},
+			{i18n.T(i18n.KeyLogicSkipN), "skip_every_n"},
+			{i18n.T(i18n.KeyLogicProbability), "probability"},
+			{i18n.T(i18n.KeyLogicIfPrevSkipped), "trigger_if_prev_skipped"},
+			{i18n.T(i18n.KeyLogicIfPrevTriggered), "trigger_if_prev_triggered"},
 		}
 		for _, o := range opts {
 			kind := o.kind
@@ -510,6 +508,7 @@ func (sb *NodeSidebar) wireButtons() {
 					}
 					g.graph.SetNodeParams(node.ID, p)
 					g.notifyPredictorNode(node.ID)
+					emitNodeParamsChanged(node.ID, p)
 				}
 				sb.logicDropdownOpen = false
 				if g.engine != nil && g.engine.Predictor != nil {
@@ -525,6 +524,7 @@ func (sb *NodeSidebar) wireButtons() {
 			p.LogicN--
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 			if g.engine != nil && g.engine.Predictor != nil {
 				g.engine.Predictor.RebaseAt(g.elapsedBeats)
 			}
@@ -536,6 +536,7 @@ func (sb *NodeSidebar) wireButtons() {
 			p.LogicN++
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 			if g.engine != nil && g.engine.Predictor != nil {
 				g.engine.Predictor.RebaseAt(g.elapsedBeats)
 			}
@@ -551,6 +552,7 @@ func (sb *NodeSidebar) wireButtons() {
 			}
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 			if g.engine != nil && g.engine.Predictor != nil {
 				g.engine.Predictor.RebaseAt(g.elapsedBeats)
 			}
@@ -565,6 +567,7 @@ func (sb *NodeSidebar) wireButtons() {
 			}
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 			if g.engine != nil && g.engine.Predictor != nil {
 				g.engine.Predictor.RebaseAt(g.elapsedBeats)
 			}
@@ -580,7 +583,7 @@ func (sb *NodeSidebar) wireButtons() {
 	// Groove dropdown items
 	if sb.grooveDropdownOpen {
 		opts := []struct{ label, kind string }{
-			{"None", ""}, {"Delay", "delay"}, {"Rush", "rush"},
+			{i18n.T(i18n.KeyLogicNone), ""}, {i18n.T(i18n.KeyGrooveDelay), "delay"}, {i18n.T(i18n.KeyGrooveRush), "rush"},
 		}
 		for _, o := range opts {
 			kind := o.kind
@@ -596,6 +599,7 @@ func (sb *NodeSidebar) wireButtons() {
 					}
 					g.graph.SetNodeParams(node.ID, p)
 					g.notifyPredictorNode(node.ID)
+					emitNodeParamsChanged(node.ID, p)
 				}
 				sb.grooveDropdownOpen = false
 			})
@@ -611,6 +615,7 @@ func (sb *NodeSidebar) wireButtons() {
 			}
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	mk("gp+", "+", func() {
@@ -622,11 +627,13 @@ func (sb *NodeSidebar) wireButtons() {
 			}
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
+			emitNodeParamsChanged(node.ID, p)
 		}
 	})
 	// Audible toggle
-	mk("aud", "Audible", func() {
+	mk("aud", i18n.T(i18n.KeyNodeSecAudible), func() {
 		if n, ok := g.graph.GetNodeByID(node.ID); ok {
+			oldType := n.Type
 			switch n.Type {
 			case model.NodeTypeSilent:
 				n.Type = model.NodeTypeMute
@@ -639,10 +646,11 @@ func (sb *NodeSidebar) wireButtons() {
 			g.cacheNode(node.ID)
 			g.notifyPredictorNode(node.ID)
 			g.updateBeatInfos()
+			emitNodeTypeChanged(node.ID, oldType, n.Type)
 		}
 	})
 	// Move button
-	mk("move", "Move Node", func() {
+	mk("move", i18n.T(i18n.KeyCapMoveNode), func() {
 		g.moveMode = true
 		g.movingNode = node
 		sb.Close()
@@ -702,35 +710,7 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 
 	sb.layout()
 
-	// 1. Resize drag on right edge via pill handle
 	panelR := sb.rects["panel"]
-	rightEdge := panelR.Max.X
-	onScrollbar := sb.scroll.HasScroll() && image.Pt(x, y).In(sb.scroll.BarRect())
-	if !onScrollbar && x >= rightEdge-sidebarResizeW && x <= rightEdge+sidebarResizeW {
-		if pressed && !sb.resizing {
-			handleR := sb.resizeHandleRect()
-			if image.Pt(x, y).In(handleR.Inset(-SpaceSM)) {
-				sb.resizing = true
-				sb.resizeDragX = x
-				return InputCaptured
-			}
-		}
-	}
-	if sb.resizing {
-		if pressed {
-			sb.width += x - sb.resizeDragX
-			sb.resizeDragX = x
-			if sb.width < sidebarMinW {
-				sb.width = sidebarMinW
-			}
-			if sb.width > sidebarMaxW {
-				sb.width = sidebarMaxW
-			}
-			return InputCaptured
-		}
-		sb.resizing = false
-		return InputConsumed
-	}
 
 	// 2. Scrollbar drag in-progress
 	if sb.scroll.Dragging() {
@@ -987,7 +967,7 @@ func (sb *NodeSidebar) UpdateScroll() {
 
 // Capturing reports if the sidebar is in an active drag.
 func (sb *NodeSidebar) Capturing() bool {
-	return sb.resizing || sb.scroll.TouchActive() || sb.scroll.Dragging()
+	return sb.scroll.TouchActive() || sb.scroll.Dragging()
 }
 
 // buttonOrder returns button ids in z-order (highest first).
@@ -1066,16 +1046,11 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	gridH := g.split.GridH(g.winH)
 	_, _ = contentTop, gridH // used by inViewport via sb receiver
 
-	// Draw sections
+	// Draw sections. Section headers now self-compute their text baseline via
+	// StyledTextHeight; the legacy secTextOffY arg is retained for signature
+	// compatibility but ignored by drawSectionHeader.
 	sepColor := WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection)
-	textOffY := (sidebarBtnH - int(float64(TextHeight())*sidebarTextScale)) / 2
-	if textOffY < 0 {
-		textOffY = 0
-	}
-	secTextOffY := (sidebarSectionH - int(float64(TextHeight())*sidebarTextScale)) / 2
-	if secTextOffY < 0 {
-		secTextOffY = 0
-	}
+	const secTextOffY = 0
 
 	isSilent := nodeType == model.NodeTypeSilent
 	isMute := nodeType == model.NodeTypeMute
@@ -1089,11 +1064,11 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 
 	// Volume section
 	if showVol {
-		sb.drawSectionHeader(dst, "sec-vol", "Volume", "vol", sepColor, secTextOffY)
+		sb.drawSectionHeader(dst, "sec-vol", i18n.T(i18n.KeyNodeSecVolume), "vol", sepColor, secTextOffY)
 		if sb.sectionOpen["vol"] {
 			if r := sb.rects["vol-"]; !r.Empty() && sb.inViewport(r) {
-				y := r.Min.Y + textOffY
-				sidebarDrawTextColorAtScale(dst, "Vol", sidebarPad+2, y, colTextSecondary, sidebarTextScale)
+				y := r.Min.Y + (sidebarBtnH-StyledTextHeight(RoleCaption))/2
+				DrawTextStyled(dst, i18n.T(i18n.KeyCapVol), sidebarPad+2, y, RoleCaption, colTextSecondary)
 				pct := int(math.Round(volVal * 100))
 				sb.drawIncDecBtn(dst, "vol-", "\u2212") // −
 				sb.drawValuePill(dst, "volval", fmt.Sprintf("%d%%", pct))
@@ -1103,11 +1078,11 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	}
 	// Pitch section
 	if showPitch {
-		sb.drawSectionHeader(dst, "sec-pit", "Pitch", "pit", sepColor, secTextOffY)
+		sb.drawSectionHeader(dst, "sec-pit", i18n.T(i18n.KeyCapPitch), "pit", sepColor, secTextOffY)
 		if sb.sectionOpen["pit"] {
 			if r := sb.rects["pit-"]; !r.Empty() && sb.inViewport(r) {
-				y := r.Min.Y + textOffY
-				sidebarDrawTextColorAtScale(dst, "Pitch", sidebarPad+2, y, colTextSecondary, sidebarTextScale)
+				y := r.Min.Y + (sidebarBtnH-StyledTextHeight(RoleCaption))/2
+				DrawTextStyled(dst, i18n.T(i18n.KeyCapPitch), sidebarPad+2, y, RoleCaption, colTextSecondary)
 				sb.drawIncDecBtn(dst, "pit-", "\u2212") // −
 				sb.drawValuePill(dst, "pitval", fmt.Sprintf("%+d", int(pitVal)))
 				sb.drawIncDecBtn(dst, "pit+", "+")
@@ -1116,11 +1091,11 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	}
 	// Duration section
 	if showDur {
-		sb.drawSectionHeader(dst, "sec-dur", "Duration", "dur", sepColor, secTextOffY)
+		sb.drawSectionHeader(dst, "sec-dur", i18n.T(i18n.KeyNodeSecDuration), "dur", sepColor, secTextOffY)
 		if sb.sectionOpen["dur"] {
 			if r := sb.rects["dur-"]; !r.Empty() && sb.inViewport(r) {
-				y := r.Min.Y + textOffY
-				sidebarDrawTextColorAtScale(dst, "Dur", sidebarPad+2, y, colTextSecondary, sidebarTextScale)
+				y := r.Min.Y + (sidebarBtnH-StyledTextHeight(RoleCaption))/2
+				DrawTextStyled(dst, i18n.T(i18n.KeyCapDur), sidebarPad+2, y, RoleCaption, colTextSecondary)
 				sb.drawIncDecBtn(dst, "dur-", "\u2212") // −
 				sb.drawValuePill(dst, "durval", fmt.Sprintf("%.2fx", durVal))
 				sb.drawIncDecBtn(dst, "dur+", "+")
@@ -1129,37 +1104,41 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	}
 	// Logic section
 	if showLogic {
-		sb.drawSectionHeader(dst, "sec-logic", "Logic", "logic", sepColor, secTextOffY)
+		sb.drawSectionHeader(dst, "sec-logic", i18n.T(i18n.KeyNodeSecLogic), "logic", sepColor, secTextOffY)
 		if sb.sectionOpen["logic"] {
 			if logicRect := sb.rects["logic"]; !logicRect.Empty() && sb.inViewport(logicRect) {
 				sb.drawBtn(dst, "logic")
-				yLogic := logicRect.Min.Y + textOffY
-				DrawTextAtScale(dst, "Logic:", logicRect.Min.X+sidebarInnerPad, yLogic, sidebarTextScale)
+				yLogic := logicRect.Min.Y + (sidebarBtnH-StyledTextHeight(RoleBody))/2
+				DrawTextStyled(dst, i18n.T(i18n.KeyNodeLogic), logicRect.Min.X+sidebarInnerPad, yLogic, RoleBody, colTextPrimary)
 				// Current value
-				cur := "None"
+				cur := i18n.T(i18n.KeyLogicNone)
 				if haveNode {
 					switch mn.Params.LogicKind {
 					case "every_n_triggers":
-						cur = "Every N"
+						cur = i18n.T(i18n.KeyLogicShortEveryN)
 					case "skip_every_n":
-						cur = "Skip N"
+						cur = i18n.T(i18n.KeyLogicShortSkipN)
 					case "probability":
-						cur = "Prob"
+						cur = i18n.T(i18n.KeyLogicShortProb)
 					case "trigger_if_prev_skipped":
-						cur = "Prev Skip"
+						cur = i18n.T(i18n.KeyLogicShortPrevSkip)
 					case "trigger_if_prev_triggered":
-						cur = "Prev Trig"
+						cur = i18n.T(i18n.KeyLogicShortPrevTrig)
 					}
 				}
-				curW := sidebarScaledTextWidth(cur, sidebarTextScale)
+				curW := StyledTextWidth(cur, RoleBody)
 				curX := logicRect.Max.X - sidebarInnerPad - curW
-				DrawTextAtScale(dst, cur, curX, yLogic, sidebarTextScale)
+				DrawTextStyled(dst, cur, curX, yLogic, RoleBody, colTextPrimary)
 			}
 			// Dropdown items
 			if sb.logicDropdownOpen {
+				selID := ""
+				if haveNode {
+					selID = "logic:" + mn.Params.LogicKind
+				}
 				for id := range sb.rects {
 					if strings.HasPrefix(id, "logic:") {
-						sb.drawBtn(dst, id)
+						sb.drawDropdownItem(dst, id, id == selID)
 					}
 				}
 			} else if haveNode {
@@ -1167,14 +1146,14 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				switch mn.Params.LogicKind {
 				case "every_n_triggers", "skip_every_n":
 					if lnRect := sb.rects["ln-"]; !lnRect.Empty() && sb.inViewport(lnRect) {
-						sidebarDrawTextColorAtScale(dst, "N", sidebarPad+2, lnRect.Min.Y+textOffY, colTextSecondary, sidebarTextScale)
+						DrawTextStyled(dst, "N", sidebarPad+2, lnRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
 						sb.drawIncDecBtn(dst, "ln-", "\u2212")
 						sb.drawValuePill(dst, "lnval", fmt.Sprintf("%d", mn.Params.LogicN))
 						sb.drawIncDecBtn(dst, "ln+", "+")
 					}
 				case "probability":
 					if lpRect := sb.rects["lp-"]; !lpRect.Empty() && sb.inViewport(lpRect) {
-						sidebarDrawTextColorAtScale(dst, "P", sidebarPad+2, lpRect.Min.Y+textOffY, colTextSecondary, sidebarTextScale)
+						DrawTextStyled(dst, "P", sidebarPad+2, lpRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
 						sb.drawIncDecBtn(dst, "lp-", "\u2212")
 						sb.drawValuePill(dst, "lpval", fmt.Sprintf("%.0f%%", mn.Params.LogicP*100))
 						sb.drawIncDecBtn(dst, "lp+", "+")
@@ -1185,35 +1164,39 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	}
 	// Groove section
 	if showGroove {
-		sb.drawSectionHeader(dst, "sec-groove", "Groove", "groove", sepColor, secTextOffY)
+		sb.drawSectionHeader(dst, "sec-groove", i18n.T(i18n.KeyNodeSecGroove), "groove", sepColor, secTextOffY)
 		if sb.sectionOpen["groove"] {
 			if grvRect := sb.rects["grv"]; !grvRect.Empty() && sb.inViewport(grvRect) {
 				sb.drawBtn(dst, "grv")
-				yGroove := grvRect.Min.Y + textOffY
-				DrawTextAtScale(dst, "Groove:", grvRect.Min.X+sidebarInnerPad, yGroove, sidebarTextScale)
+				yGroove := grvRect.Min.Y + (sidebarBtnH-StyledTextHeight(RoleBody))/2
+				DrawTextStyled(dst, i18n.T(i18n.KeyNodeGroove), grvRect.Min.X+sidebarInnerPad, yGroove, RoleBody, colTextPrimary)
 				if haveNode {
-					curGroove := "None"
+					curGroove := i18n.T(i18n.KeyLogicNone)
 					switch strings.ToLower(mn.Params.GrooveKind) {
 					case "delay":
-						curGroove = "Delay"
+						curGroove = i18n.T(i18n.KeyGrooveDelay)
 					case "rush":
-						curGroove = "Rush"
+						curGroove = i18n.T(i18n.KeyGrooveRush)
 					}
-					grvW := sidebarScaledTextWidth(curGroove, sidebarTextScale)
+					grvW := StyledTextWidth(curGroove, RoleBody)
 					grvX := grvRect.Max.X - sidebarInnerPad - grvW
-					DrawTextAtScale(dst, curGroove, grvX, yGroove, sidebarTextScale)
+					DrawTextStyled(dst, curGroove, grvX, yGroove, RoleBody, colTextPrimary)
 				}
 			}
 			if sb.grooveDropdownOpen {
+				selID := ""
+				if haveNode {
+					selID = "groove:" + strings.ToLower(mn.Params.GrooveKind)
+				}
 				for id := range sb.rects {
 					if strings.HasPrefix(id, "groove:") {
-						sb.drawBtn(dst, id)
+						sb.drawDropdownItem(dst, id, id == selID)
 					}
 				}
 			} else {
 				if haveNode {
 					if gpRect := sb.rects["gp-"]; !gpRect.Empty() && sb.inViewport(gpRect) {
-						sidebarDrawTextColorAtScale(dst, "Pct", sidebarPad+2, gpRect.Min.Y+textOffY, colTextSecondary, sidebarTextScale)
+						DrawTextStyled(dst, i18n.T(i18n.KeyCapPct), sidebarPad+2, gpRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
 						sb.drawIncDecBtn(dst, "gp-", "\u2212")
 						sb.drawValuePill(dst, "gpval", fmt.Sprintf("%.0f%%", mn.Params.GroovePct*100))
 						sb.drawIncDecBtn(dst, "gp+", "+")
@@ -1224,44 +1207,47 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 	}
 	// Audible section
 	{
-		sb.drawSectionHeader(dst, "sec-aud", "Audible", "aud", sepColor, secTextOffY)
+		sb.drawSectionHeader(dst, "sec-aud", i18n.T(i18n.KeyNodeSecAudible), "aud", sepColor, secTextOffY)
 		if sb.sectionOpen["aud"] {
 			if audRect := sb.rects["aud"]; !audRect.Empty() && sb.inViewport(audRect) {
-				PopupButtonStyle.DrawAnimated(dst, audRect, false, sb.anim["aud"])
-				label := "Audible"
+				audStyle := PopupButtonStyle
+				audStyle.Border = sb.nodeAccent()
+				audStyle.DrawAnimated(dst, audRect, false, sb.anim["aud"])
+				label := i18n.T(i18n.KeyNodeSecAudible)
 				switch nodeType {
 				case model.NodeTypeSilent:
-					label = "Silent"
+					label = i18n.T(i18n.KeyAudSilent)
 				case model.NodeTypeMute:
-					label = "Muted"
+					label = i18n.T(i18n.KeyAudMuted)
 				}
-				DrawTextAtScale(dst, label, audRect.Min.X+sidebarInnerPad, audRect.Min.Y+textOffY, sidebarTextScale)
+				DrawTextStyled(dst, label, audRect.Min.X+sidebarInnerPad, audRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleBody))/2, RoleBody, colTextPrimary)
 			}
 		}
 	}
 	// Move section (desktop only)
 	if !Profile().IsMobile() {
-		sb.drawSectionHeader(dst, "sec-move", "Move", "move", sepColor, secTextOffY)
+		sb.drawSectionHeader(dst, "sec-move", i18n.T(i18n.KeyCapMove), "move", sepColor, secTextOffY)
 		if sb.sectionOpen["move"] {
 			if moveRect := sb.rects["move"]; !moveRect.Empty() && sb.inViewport(moveRect) {
-				PopupButtonStyle.DrawAnimated(dst, moveRect, false, sb.anim["move"])
-				DrawTextAtScale(dst, "Move Node", moveRect.Min.X+sidebarInnerPad, moveRect.Min.Y+textOffY, sidebarTextScale)
+				moveStyle := PopupButtonStyle
+				moveStyle.Border = sb.nodeAccent()
+				moveStyle.DrawAnimated(dst, moveRect, false, sb.anim["move"])
+				DrawTextStyled(dst, i18n.T(i18n.KeyCapMoveNode), moveRect.Min.X+sidebarInnerPad, moveRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleBody))/2, RoleBody, colTextPrimary)
 			}
 		}
 	}
 
-	// Close button — draw with visible background for discoverability
+	// Close button — draw with visible background for discoverability; its
+	// outline carries the node's instrument color like every other control.
 	if btn, ok := sb.btns["close"]; ok && btn != nil {
 		r := btn.Rect()
 		if !r.Empty() {
 			drawRect(dst, r, WithAlpha(genColorSidebarChipFill, genAlphaSidebarChip), true)
-			drawRect(dst, r, WithAlpha(genColorSidebarChipBorder, genAlphaStrong), false)
+			drawRect(dst, r, sb.nodeAccent(), false)
+			sb.tintBtnBorder(btn)
 			btn.Draw(dst)
 		}
 	}
-
-	// Resize pill handle on right edge
-	DrawSplitterHandle(dst, panel.Max.X, panel.Dy()/2, false, sb.resizing)
 
 	// Scrollbar via ScrollBehavior
 	sb.scroll.Draw(dst)
@@ -1279,18 +1265,34 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 }
 
 // drawHeader renders the fixed header with instrument name and color swatch.
+// nodeAccent returns the accent color for the node sidebar: the owning row's
+// instrument color so the sidebar's header underline, active section stripes,
+// and accent text all read as owned by the instrument the node belongs to.
+// Falls back to the azure chrome accent when the node has no resolvable row.
+func (sb *NodeSidebar) nodeAccent() color.Color {
+	if sb.node != nil && sb.game != nil {
+		if row, ok := sb.game.nodeRows[sb.node.ID]; ok && row >= 0 && row < len(sb.game.drum.Rows) {
+			if c := sb.game.drum.Rows[row].Color; c != nil {
+				return c
+			}
+		}
+	}
+	return colAccent
+}
+
 func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	g := sb.game
 	headerRect := sb.rects["header"]
 	if headerRect.Empty() {
 		return
 	}
-	hx := headerRect.Min.X
-	hy := headerRect.Min.Y + (sidebarHeaderH-int(float64(TextHeight())*sidebarTextScale))/2
+
+	// Shared "Neon Horizon" header band, tinted to the node's instrument color.
+	drawMenuHeaderBandAccent(dst, headerRect, sb.nodeAccent())
 
 	// Instrument color swatch (12×12 rounded square) + name only (no coordinates).
 	swatchCol := color.Color(genColorSidebarSwatchFallback)
-	label := "Node"
+	label := i18n.T(i18n.KeyNodeTitle)
 
 	if row, ok := g.nodeRows[sb.node.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
 		dr := g.drum.Rows[row]
@@ -1298,99 +1300,78 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 		label = dr.Name
 	}
 
-	swatchY := hy + (int(float64(TextHeight())*sidebarTextScale)-sidebarSwatchSz)/2
-	swatchRect := image.Rect(hx, swatchY, hx+sidebarSwatchSz, swatchY+sidebarSwatchSz)
-	drawRoundedRect(dst, swatchRect, swatchCol, 3, true)
-	textX := hx + sidebarSwatchSz + 6
+	th := StyledTextHeight(RolePanelTitle)
+	hy := headerRect.Min.Y + (sidebarHeaderH-th)/2
+	swatchY := headerRect.Min.Y + (sidebarHeaderH-sidebarSwatchSz)/2
+	swatchRect := image.Rect(headerRect.Min.X+2, swatchY, headerRect.Min.X+2+sidebarSwatchSz, swatchY+sidebarSwatchSz)
 
-	DrawTextAtScale(dst, label, textX, hy, sidebarTextScale)
+	// Soft glow: a faint enlarged swatch behind the crisp one.
+	glow := swatchRect.Inset(-3)
+	drawRoundedRect(dst, glow, WithAlphaFromColor(swatchCol, AlphaSubtle), RadiusXXS, true)
+	drawRoundedRect(dst, swatchRect, swatchCol, RadiusXXS, true)
+
+	textX := swatchRect.Max.X + sidebarGap
+	DrawTextStyled(dst, label, textX, hy, RolePanelTitle, colTextPrimary)
 }
 
-// drawSectionHeader draws a collapsible section header with filled triangle
-// chevron and optional collapsed-state summary badge.
-func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID, label, sectionID string, _ color.Color, textOffY int) {
+// drawSectionHeader draws a collapsible section header using the shared menu
+// chrome (icon chevron + item background + active stripe) and an optional
+// collapsed-state summary badge.
+func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID, label, sectionID string, _ color.Color, _ int) {
 	r, ok := sb.rects[rectID]
 	if !ok || r.Empty() || !sb.inViewport(r) {
 		return
 	}
-	// Subtle separator line above section
-	drawRect(dst, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+1), colBorderSubtle, true)
-
 	expanded := sb.sectionOpen[sectionID]
-
-	// Filled triangle chevron: proportional to text height
-	triH := int(float64(TextHeight()) * sidebarTextScale)
-	if triH < 6 {
-		triH = 6
-	}
-	triW := triH * 2 / 3 // slightly narrower than tall
-	triX := r.Min.X + 2
-	triCY := r.Min.Y + sidebarSectionH/2
-
+	state := menuItemRest
 	if expanded {
-		// Down-pointing filled triangle (▾) in accent color
-		sb.drawFilledTriangleDown(dst, triX, triCY-triH/2, triW, triH, colTextAccent)
-	} else {
-		// Right-pointing filled triangle (▸) in secondary color
-		sb.drawFilledTriangleRight(dst, triX, triCY-triH/2, triW, triH, colTextSecondary)
+		state = menuItemActive
 	}
+	accent := sb.nodeAccent()
+	drawMenuItemBackgroundAccent(dst, r, state, accent)
 
-	// Label text after triangle
-	labelX := triX + triW + 6
-	labelCol := colTextPrimary
+	chevR := image.Rect(r.Min.X+sidebarPad, r.Min.Y, r.Min.X+sidebarPad+IconSizeMD, r.Max.Y)
+	var chevCol color.Color = colTextSecondary
+	var labelCol color.Color = colTextPrimary
 	if expanded {
-		labelCol = colTextAccent
+		chevCol = accent
+		labelCol = accent
 	}
-	sidebarDrawTextColorAtScale(dst, label, labelX, r.Min.Y+textOffY, labelCol, sidebarTextScale)
+	drawMenuChevron(dst, chevR, expanded, chevCol)
 
-	// Collapsed summary badge (right-aligned pill with non-default value)
-	if !expanded {
-		badge := sb.sectionBadgeText(sectionID)
-		if badge != "" {
-			badgePadX := 6
-			badgePadY := 2
-			bw := sidebarScaledTextWidth(badge, sidebarTextScale) + 2*badgePadX
-			bh := int(float64(TextHeight())*sidebarTextScale) + 2*badgePadY
-			bx := r.Max.X - bw - 2
-			by := r.Min.Y + (sidebarSectionH-bh)/2
-			pillR := image.Rect(bx, by, bx+bw, by+bh)
-			drawRoundedRect(dst, pillR, colSurface2, RadiusMD/2, true)
-			sidebarDrawTextColorAtScale(dst, badge, bx+badgePadX, by+badgePadY, colTextSecondary, sidebarTextScale)
-		}
-	}
+	th := StyledTextHeight(RoleSectionHeader)
+	labelX := chevR.Max.X + sidebarGap
+	labelY := r.Min.Y + (r.Dy()-th)/2
+	DrawTextStyled(dst, label, labelX, labelY, RoleSectionHeader, labelCol)
+
+	sb.drawSectionBadge(dst, r, sectionID)
 }
 
-// drawFilledTriangleRight draws a right-pointing filled triangle (play icon shape).
-// Geometry lives in triangleRightRowSpan (sidebar_icons.go); this method is
-// the thin pixel-emit wrapper around it.
-func (sb *NodeSidebar) drawFilledTriangleRight(dst *ebiten.Image, x, y, w, h int, col color.Color) {
-	if w <= 0 || h <= 0 {
+// drawSectionBadge renders the collapsed-section summary badge (right-aligned,
+// square sharp corners) showing the section's current value (default or not).
+func (sb *NodeSidebar) drawSectionBadge(dst *ebiten.Image, r image.Rectangle, sectionID string) {
+	if sb.sectionOpen[sectionID] {
 		return
 	}
-	for row := 0; row < h; row++ {
-		xs, xe := triangleRightRowSpan(x, y, w, h, row)
-		if xe > xs {
-			drawRect(dst, image.Rect(xs, y+row, xe, y+row+1), col, true)
-		}
-	}
-}
-
-// drawFilledTriangleDown draws a down-pointing filled triangle. Geometry
-// lives in triangleDownRowSpan (sidebar_icons.go).
-func (sb *NodeSidebar) drawFilledTriangleDown(dst *ebiten.Image, x, y, w, h int, col color.Color) {
-	if w <= 0 || h <= 0 {
+	badge := sb.sectionBadgeText(sectionID)
+	if badge == "" {
 		return
 	}
-	for row := 0; row < h; row++ {
-		xs, xe := triangleDownRowSpan(x, y, w, h, row)
-		if xe > xs {
-			drawRect(dst, image.Rect(xs, y+row, xe, y+row+1), col, true)
-		}
-	}
+	badgePadX := 6
+	badgePadY := 2
+	bw := StyledTextWidth(badge, RoleCaption) + 2*badgePadX
+	bh := StyledTextHeight(RoleCaption) + 2*badgePadY
+	bx := r.Max.X - bw - 2
+	by := r.Min.Y + (sidebarSectionH-bh)/2
+	pillR := image.Rect(bx, by, bx+bw, by+bh)
+	drawRect(dst, pillR, colSurface2, true)
+	DrawTextStyled(dst, badge, bx+badgePadX, by+badgePadY, RoleCaption, colTextSecondary)
 }
 
-// sectionBadgeText returns a summary string for a collapsed section with
-// non-default values, or "" if the section has default values.
+// sectionBadgeText returns a summary string of a collapsed section's current
+// value. Every category surfaces its value — including when it is at the
+// default — using the same formatting as updated values, so a glance at the
+// collapsed sidebar shows each category's state (e.g. "100%", "+0", "None").
 func (sb *NodeSidebar) sectionBadgeText(sectionID string) string {
 	if sb.node == nil {
 		return ""
@@ -1403,18 +1384,11 @@ func (sb *NodeSidebar) sectionBadgeText(sectionID string) string {
 	switch sectionID {
 	case "vol":
 		pct := int(math.Round(mn.Params.Volume * 100))
-		if pct != 100 {
-			return fmt.Sprintf("%d%%", pct)
-		}
+		return fmt.Sprintf("%d%%", pct)
 	case "pit":
-		p := int(mn.Params.Pitch)
-		if p != 0 {
-			return fmt.Sprintf("%+d", p)
-		}
+		return fmt.Sprintf("%+d", int(mn.Params.Pitch))
 	case "dur":
-		if math.Abs(mn.Params.Duration-1.0) > 0.01 {
-			return fmt.Sprintf("%.2fx", mn.Params.Duration)
-		}
+		return fmt.Sprintf("%.2fx", mn.Params.Duration)
 	case "logic":
 		switch mn.Params.LogicKind {
 		case "every_n_triggers":
@@ -1424,45 +1398,34 @@ func (sb *NodeSidebar) sectionBadgeText(sectionID string) string {
 		case "probability":
 			return fmt.Sprintf("P %.0f%%", mn.Params.LogicP*100)
 		case "trigger_if_prev_skipped":
-			return "Prev Skip"
+			return i18n.T(i18n.KeyLogicShortPrevSkip)
 		case "trigger_if_prev_triggered":
-			return "Prev Trig"
+			return i18n.T(i18n.KeyLogicShortPrevTrig)
 		}
+		return i18n.T(i18n.KeyLogicNone)
 	case "groove":
 		kind := strings.ToLower(mn.Params.GrooveKind)
 		if kind == "delay" || kind == "rush" {
 			title := strings.ToUpper(kind[:1]) + kind[1:]
 			return fmt.Sprintf("%s %.0f%%", title, mn.Params.GroovePct*100)
 		}
+		return i18n.T(i18n.KeyLogicNone)
 	case "aud":
 		switch mn.Type {
 		case model.NodeTypeSilent:
-			return "Silent"
+			return i18n.T(i18n.KeyAudSilent)
 		case model.NodeTypeMute:
-			return "Muted"
+			return i18n.T(i18n.KeyAudMuted)
 		}
+		return i18n.T(i18n.KeyNodeSecAudible)
 	}
 	return ""
-}
-
-// sidebarDrawTextColorAtScale draws text at the given position with color and scale.
-func sidebarDrawTextColorAtScale(dst *ebiten.Image, s string, x, y int, col color.Color, scale float64) {
-	spr := TextSprite(s)
-	var op ebiten.DrawImageOptions
-	op.GeoM.Scale(scale, scale)
-	op.GeoM.Translate(float64(x), float64(y))
-	r, g, b, a := col.RGBA()
-	if a > 0 {
-		fa := float64(a) / 0xffff
-		op.ColorScale.Scale(float32(float64(r)/0xffff/fa), float32(float64(g)/0xffff/fa), float32(float64(b)/0xffff/fa), float32(fa))
-	}
-	dst.DrawImage(spr, &op)
 }
 
 // drawExpandTab draws the collapsed sidebar expand tab.
 func (sb *NodeSidebar) drawExpandTab(dst *ebiten.Image) {
 	r := sb.expandTabRect()
-	drawRoundedRect(dst, r, WithAlpha(genColorSidebarBadgeBg, genAlphaSidebarChip), 4, true)
+	drawRoundedRect(dst, r, WithAlpha(genColorSidebarBadgeBg, genAlphaSidebarChip), RadiusXXS, true)
 	// Chevron-right at the unified icon-system size.
 	dim := IconSizeMD
 	cx := r.Min.X + r.Dx()/2
@@ -1480,12 +1443,42 @@ func (sb *NodeSidebar) drawBtn(dst *ebiten.Image, id string) {
 	if r, ok := sb.rects[id]; ok && !sb.inViewport(r) {
 		return
 	}
+	sb.tintBtnBorder(b)
 	b.Draw(dst)
 }
 
-// drawIncDecBtn draws a 28x24 increment/decrement button as a rounded
-// rectangle: colSurface2 fill, colBorderMedium border, 6px radius.
-// Press state darkens fill by -20. Label in colTextSecondary, centered.
+// tintBtnBorder recolors a node-sidebar button's border to the node's
+// instrument accent so every interactive control in the sidebar carries the
+// instrument outline. Non-ButtonStyle visuals are left untouched.
+func (sb *NodeSidebar) tintBtnBorder(b *Button) {
+	if b == nil {
+		return
+	}
+	if bs, ok := b.Style.(ButtonStyle); ok {
+		bs.Border = sb.nodeAccent()
+		b.Style = bs
+	}
+}
+
+// drawDropdownItem draws a logic/groove dropdown option button and, when it is
+// the currently-selected option, overlays an instrument-color active highlight
+// (left stripe + tint) so the selection reads as owned by the node's
+// instrument. The option button fill is opaque, so the highlight is drawn AFTER
+// the button rather than behind it.
+func (sb *NodeSidebar) drawDropdownItem(dst *ebiten.Image, id string, selected bool) {
+	sb.drawBtn(dst, id)
+	if !selected {
+		return
+	}
+	if r, ok := sb.rects[id]; ok && !r.Empty() && sb.inViewport(r) {
+		drawMenuItemBackgroundAccent(dst, r, menuItemActive, sb.nodeAccent())
+	}
+}
+
+// drawIncDecBtn draws an increment/decrement button as a square (sharp-cornered)
+// rectangle matching the close button: colIncDec fill (darkened by -20 when
+// pressed) and a node-instrument-color stroke (sb.nodeAccent()). Label in the
+// instrument accent, centered via RoleBody metrics.
 func (sb *NodeSidebar) drawIncDecBtn(dst *ebiten.Image, key, label string) {
 	r, ok := sb.rects[key]
 	if !ok || r.Empty() || !sb.inViewport(r) {
@@ -1495,32 +1488,38 @@ func (sb *NodeSidebar) drawIncDecBtn(dst *ebiten.Image, key, label string) {
 	if b := sb.btns[key]; b != nil {
 		pressed = b.pressed
 	}
-	fill := color.Color(colSurface2)
+	fill := color.Color(colIncDec)
 	if pressed {
 		fill = adjustColor(fill, -20)
 	}
-	drawRoundedRect(dst, r, fill, 6, true)
-	drawRoundedRect(dst, r, colBorderMedium, 6, false)
+	drawRect(dst, r, fill, true)
+	// Stepper outline carries the node's instrument color (was the fixed
+	// light-blue stepper border).
+	drawRect(dst, r, sb.nodeAccent(), false)
 
-	tw := sidebarScaledTextWidth(label, sidebarTextScale)
-	th := int(float64(TextHeight()) * sidebarTextScale)
+	tw := StyledTextWidth(label, RoleBody)
+	th := StyledTextHeight(RoleBody)
 	tx := r.Min.X + (r.Dx()-tw)/2
 	ty := r.Min.Y + (r.Dy()-th)/2
-	sidebarDrawTextColorAtScale(dst, label, tx, ty, colTextSecondary, sidebarTextScale)
+	// The +/- glyph carries the instrument accent so the stepper matches the
+	// node's owning instrument color.
+	DrawTextStyled(dst, label, tx, ty, RoleBody, sb.nodeAccent())
 }
 
-// drawValuePill draws a centered value display pill between inc/dec buttons:
-// colSurface2 fill, 6px radius, colTextPrimary text centered.
+// drawValuePill draws a centered value display between inc/dec buttons as a
+// square (sharp-cornered) rectangle: colSurface2 fill, colBorderMedium stroke,
+// colTextPrimary text centered.
 func (sb *NodeSidebar) drawValuePill(dst *ebiten.Image, key, value string) {
 	r, ok := sb.rects[key]
 	if !ok || r.Empty() || !sb.inViewport(r) {
 		return
 	}
-	drawRoundedRect(dst, r, colSurface2, 6, true)
+	drawRect(dst, r, colSurface2, true)
+	drawRect(dst, r, colBorderMedium, false)
 
-	tw := sidebarScaledTextWidth(value, sidebarTextScale)
-	th := int(float64(TextHeight()) * sidebarTextScale)
+	tw := StyledTextWidth(value, RoleBody)
+	th := StyledTextHeight(RoleBody)
 	tx := r.Min.X + (r.Dx()-tw)/2
 	ty := r.Min.Y + (r.Dy()-th)/2
-	sidebarDrawTextColorAtScale(dst, value, tx, ty, colTextPrimary, sidebarTextScale)
+	DrawTextStyled(dst, value, tx, ty, RoleBody, colTextPrimary)
 }

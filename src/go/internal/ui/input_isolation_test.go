@@ -272,8 +272,8 @@ func TestPopupBlocksBPMFocus(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.bpmBox().Focused() {
-		t.Fatal("BPM box gained focus while instrument menu was open — popup failed to block input")
+	if dv.transportZone.paramEditor.Active() {
+		t.Fatal("BPM editor opened while instrument menu was open — popup failed to block input")
 	}
 }
 
@@ -326,8 +326,8 @@ func TestPopupBlocksBPMFocus_AllPopups(t *testing.T) {
 			dv.Update()
 			restore()
 
-			if dv.bpmBox().Focused() {
-				t.Fatalf("BPM box gained focus while %s was open", tc.name)
+			if dv.transportZone.paramEditor.Active() {
+				t.Fatalf("BPM editor opened while %s was open", tc.name)
 			}
 		})
 	}

@@ -5,8 +5,10 @@ import (
 	"image/color"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // audio import used indirectly via callbacks (GetMainVolume/SetMainVolume).
@@ -14,30 +16,30 @@ import (
 // TransportCallbacks contains callbacks for the TransportZone to communicate
 // with the DrumView and audio engine. Zones don't reference Game or each other.
 type TransportCallbacks struct {
-	OnPlayToggle   func()            // play/pause pressed
-	OnStop         func()            // stop pressed
-	OnBPMChange    func(bpm int)     // BPM committed (from text or +/-)
-	OnFollowChange func(follow bool) // track toggle
-	OnUploadClick  func()            // delegates to DrumView's upload goroutine
-	OnImportClick  func()            // delegates to DrumView's import picker
-	OnExportClick  func()            // delegates to DrumView's export
-	OnViewCycle    func()            // mobile view mode toggle
-	OnRecordToggle func()            // record button pressed
-	OnUndo         func()            // undo button pressed
-	OnRedo         func()            // redo button pressed
-	CanUndo        func() bool       // whether the undo stack is non-empty (drives dim)
-	CanRedo        func() bool       // whether the redo stack is non-empty (drives dim)
-	IsPlaying      func() bool       // read current playback state
-	IsRecording    func() bool       // read current recording state
-	GetMainVolume  func() float64    // read master volume
-	SetMainVolume  func(v float64)   // set master volume (per-frame, live)
-	OnMainVolCommit func()           // fires once at master-vol drag release (emit + undo)
-	OnNotifyError  func(msg string)  // display error notification
+	OnPlayToggle    func()            // play/pause pressed
+	OnStop          func()            // stop pressed
+	OnBPMChange     func(bpm int)     // BPM committed (from text or +/-)
+	OnFollowChange  func(follow bool) // track toggle
+	OnUploadClick   func()            // delegates to DrumView's upload goroutine
+	OnImportClick   func()            // delegates to DrumView's import picker
+	OnExportClick   func()            // delegates to DrumView's export
+	OnViewCycle     func()            // mobile view mode toggle
+	OnRecordToggle  func()            // record button pressed
+	OnUndo          func()            // undo button pressed
+	OnRedo          func()            // redo button pressed
+	CanUndo         func() bool       // whether the undo stack is non-empty (drives dim)
+	CanRedo         func() bool       // whether the redo stack is non-empty (drives dim)
+	IsPlaying       func() bool       // read current playback state
+	IsRecording     func() bool       // read current recording state
+	GetMainVolume   func() float64    // read master volume
+	SetMainVolume   func(v float64)   // set master volume (per-frame, live)
+	OnMainVolCommit func()            // fires once at master-vol drag release (emit + undo)
+	OnNotifyError   func(msg string)  // display error notification
 
 	// Overlay callbacks: delegate to DrumView's overlay mechanisms.
-	OnSubdivClick    func() // delegates to DrumView's SubdivMenuComponent
-	OnOverflowOpen   func() // delegates to DrumView's overflow menu
-	OnMasterVolClick func() // delegates to DrumView's master vol popup
+	OnSubdivClick    func()       // delegates to DrumView's SubdivMenuComponent
+	OnOverflowOpen   func()       // delegates to DrumView's overflow menu
+	OnMasterVolClick func()       // delegates to DrumView's master vol popup
 	MasterVolPopup   *SliderPopup // forwarded to transportVolIconHitAdapter for drag-through
 }
 
@@ -58,6 +60,7 @@ type TransportZone struct {
 	redoBtn        *Button
 	bpmDecBtn      *Button
 	bpmBox         *TextInput
+	paramEditor    *ParamValueEditor // shared numeric editor for BPM (tap-to-popup)
 	bpmIncBtn      *Button
 	subdivBtn      *Button
 	trackBtn       *Button
@@ -88,9 +91,9 @@ type TransportZone struct {
 	bpmErrorAnim float64
 
 	// BPM state
-	bpm      int
-	bpmPrev  int
-	bpmDelta int
+	bpm           int
+	bpmDelta      int
+	blockedAtTick bool // input-blocked snapshot taken at Tick (see Update)
 
 	// Follow/track state
 	follow bool
@@ -124,13 +127,9 @@ type TransportZone struct {
 	// changes or window resizes.
 	prevLayoutRect image.Rectangle
 
-	// Test-only flag set whenever drawSubdivChevronOffset actually emits
-	// the chevron glyph (i.e., not gated out). Used by tests to assert
-	// the chevron is omitted on mobile per A5 of the screenshot critique.
-	subdivChevronDrawn bool
-
-	// inputBlocked returns true when a popup/overlay is open and the BPM box
-	// should be force-blurred to prevent stale focus. Set by DrumView wiring.
+	// inputBlocked returns true when a popup/overlay is open; while blocked, an
+	// in-progress BPM edit is cancelled and a tap on the readout will not open
+	// the editor (see blockedAtTick). Set by DrumView wiring.
 	inputBlocked func() bool
 
 	// useBottomBar tells layoutMobile that DrumView has allocated a
@@ -204,22 +203,26 @@ func (z *TransportZone) initButtons() {
 	z.recordBtn.Icon = string(IconRecord)
 	z.recordBtn.IconColor = colRecordIdle
 
-	// Undo / Redo use short text labels: there are no IconUndo / IconRedo
-	// glyphs in icons.go, and the forbidden-glyph discipline test bans raw
-	// chrome glyphs. TextColor is retinted each frame (dim when the stack is
-	// empty) in syncUndoRedoVisual, called from decayAnims/Update.
-	z.undoBtn = NewSpecButton("Undo", ComponentButtonSecondary, func() {
+	// Undo / Redo render as vector icons (IconUndo / IconRedo) rather than
+	// text labels: the narrow desktop transport cell (~24px) clips a
+	// "Undo"/"Redo" text label down to the bare "..." ellipsis, which the
+	// user mistook for a broken overflow button. IconColor is retinted each
+	// frame (dim when the stack is empty) in syncUndoRedoVisual, called from
+	// decayAnims/Update.
+	z.undoBtn = NewSpecButton("", ComponentButtonSecondary, func() {
 		hapticTransportTap()
 		if z.callbacks.OnUndo != nil {
 			z.callbacks.OnUndo()
 		}
 	})
-	z.redoBtn = NewSpecButton("Redo", ComponentButtonSecondary, func() {
+	z.undoBtn.Icon = string(IconUndo)
+	z.redoBtn = NewSpecButton("", ComponentButtonSecondary, func() {
 		hapticTransportTap()
 		if z.callbacks.OnRedo != nil {
 			z.callbacks.OnRedo()
 		}
 	})
+	z.redoBtn.Icon = string(IconRedo)
 
 	z.bpmDecBtn = NewButton("", nil, func() {
 		z.bpmDelta--
@@ -235,6 +238,7 @@ func (z *TransportZone) initButtons() {
 	z.bpmBox.MobileInputID = "bpm"
 	z.bpmBox.OnFocusGained = func() { softKeyboardShow("numeric") }
 	z.bpmBox.OnFocusLost = func() { softKeyboardHide() }
+	z.paramEditor = NewParamValueEditor()
 
 	z.bpmIncBtn = NewButton("", nil, func() {
 		z.bpmDelta++
@@ -440,57 +444,27 @@ func (z *TransportZone) Update() {
 	if z.bpmBox == nil {
 		return
 	}
-
-	// Mobile native input for BPM box — poll result before normal handling.
-	mobileBPMActive := Profile().IsMobile() && mobileInputActive("bpm")
-	if mobileBPMActive {
-		if val, committed, ok := mobileInputPollResult("bpm"); ok {
-			if committed && val != "" {
-				if v, ok := parseBPM(val); ok {
-					z.SetBPM(v)
-				} else {
-					z.bpmErrorAnim = 1
-					if z.callbacks.OnNotifyError != nil {
-						z.callbacks.OnNotifyError("Invalid BPM")
-					}
-				}
-			}
-			z.bpmBox.SetText(strconv.Itoa(z.bpm))
-			z.bpmBox.focused = false
-		}
-		return
+	if z.paramEditor != nil {
+		z.paramEditor.Update()
 	}
 
-	// When input is blocked (popup/overlay open or tree suppressing),
-	// force-blur the BPM box to prevent stale focus.
+	// Latch the input-blocked state at Tick time (before the RootTree dispatches
+	// input this frame). A foreign-subtree dropdown that dismisses itself during
+	// this frame's dispatch would otherwise read as "not blocked" by the time
+	// bpmOpenAdapter.OnPress runs — so we snapshot it here, while the overlay is
+	// still open, and gate the tap on the snapshot.
 	blocked := z.inputBlocked != nil && z.inputBlocked()
+	z.blockedAtTick = blocked
+
+	// When input is blocked (a popup/overlay is open), cancel any in-progress
+	// BPM edit so it doesn't linger behind the overlay. The readout box is
+	// never focused now — editing happens entirely in the shared editor — so
+	// its text stays in sync via SetBPM's existing SetText.
 	if blocked {
-		if z.bpmBox.Focused() {
-			z.forceBlurBPM()
+		if z.paramEditor != nil && z.paramEditor.Active() {
+			z.paramEditor.cancel()
 		}
 		return
-	}
-
-	// Normal BPM text input handling.
-	prevFocus := z.bpmBox.Focused()
-	z.bpmBox.Update()
-
-	// Enter key: commit immediately and blur.
-	if z.bpmBox.Focused() && isKeyPressed(ebiten.KeyEnter) {
-		z.commitBPMText()
-		// commitBPMText already blurred the box; skip the blur handler below.
-		return
-	}
-
-	// Focus gained: save previous BPM, clear text for entry.
-	if !prevFocus && z.bpmBox.Focused() {
-		z.bpmPrev = z.bpm
-		z.bpmBox.SetText("")
-	}
-
-	// Focus lost (blur): commit the value.
-	if prevFocus && !z.bpmBox.Focused() {
-		z.commitBPMText()
 	}
 }
 
@@ -517,36 +491,26 @@ func (z *TransportZone) Draw(screen *ebiten.Image) {
 		return
 	}
 	z.renderToolbarControls(screen)
+	// Draw the shared BPM editor OVER the (possibly cached) toolbar, straight to
+	// screen — never into the toolbar cache. Its per-keystroke text/caret/flash
+	// would otherwise require hashing all of that into toolbarStateHash, and the
+	// cache-hit path would never invalidate while typing. Mirrors EQPanelZone.Draw.
+	if z.paramEditor != nil {
+		z.paramEditor.Draw(screen)
+	}
 }
 
+// HandleKey is a no-op for the transport zone. BPM editing now happens entirely
+// in the shared ParamValueEditor, whose own Update() handles Enter (commit) and
+// Escape (cancel); the readout box is never focused, so the tree never routes
+// keys here for BPM. Method retained to satisfy the Zone interface.
 func (z *TransportZone) HandleKey(key ebiten.Key) InputResult {
-	if z.bpmBox == nil || !z.bpmBox.Focused() {
-		return InputIgnored
-	}
-	if key == ebiten.KeyEnter {
-		z.commitBPMText()
-		return InputConsumed
-	}
-	if key == ebiten.KeyEscape {
-		// Revert to previous BPM on Escape.
-		prev := z.bpmPrev
-		if prev < 1 {
-			prev = z.bpm
-		}
-		z.SetBPM(prev)
-		z.bpmBox.SetText(strconv.Itoa(z.bpm))
-		z.bpmBox.focused = false
-		return InputConsumed
-	}
 	return InputIgnored
 }
 
+// HandleChars is a no-op for the transport zone. See HandleKey — text entry is
+// owned by the shared editor's TextInput, not the readout box.
 func (z *TransportZone) HandleChars(chars []rune) InputResult {
-	if z.bpmBox == nil || !z.bpmBox.Focused() {
-		return InputIgnored
-	}
-	// Characters are handled by bpmBox.Update() in TransportZone.Update().
-	// This handler exists for the tree's keyboard routing framework.
 	return InputIgnored
 }
 
@@ -752,6 +716,14 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 	// extra cells shrink the record button below the 44px touch-min (see
 	// TestMobileRecordButtonNeverSliver). On mobile they live in the overflow
 	// menu (TODO) + keyboard; desktop keeps them on the toolbar.
+	//
+	// NOTE: mobile buttons are intentionally NOT forced into equal squares
+	// (unlike desktop's layoutDesktop run). The mobile transport region is
+	// only ~188px wide, so seven controls at the 44px touch-min cannot be
+	// square — the layout instead fills the cell HEIGHT (≥ touch-min) at a
+	// narrow width and relies on ExpandHitArea for the 44px touch target.
+	// There is no "spacer void" on mobile to remove. Touch-min ratchet:
+	// TestMobileTransportButtons_AtTouchMin.
 	weights := []float64{1.0, 1.0, 1.0, 3.0, 1.0}
 	if !useTwoRow {
 		weights = []float64{1.0, 1.0, 1.0, 3.0, 1.0, 1.0, 1.0}
@@ -767,8 +739,17 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 	// Hit-test still spans the full cell via the standard touch
 	// expansion (ExpandHitArea).
 	recordR := safeInsetTransport(row0Grid.Cell(2, 0), pad)
-	if recordR.Dx() > 2*recordDemoteInsetMobile && recordR.Dy() > 2*recordDemoteInsetMobile {
-		recordR = insetRect(recordR, recordDemoteInsetMobile)
+	// B12: visually demote record below play/stop so the red dot doesn't sit
+	// at equal visual weight with the primary actions and invite accidental
+	// mid-jam record. Demote by HEIGHT only: the mobile transport cells are
+	// narrow (play is ~20 px wide), so insetting width too would collapse
+	// record to a sliver — that was the reported ~6 px bug. A shorter record
+	// button reads as lower visual weight while keeping the full cell width
+	// comfortably tappable. The floor guard skips the inset rather than ever
+	// shrinking the height below recordDemoteFloorPx; the hit-test still spans
+	// the full cell via the standard touch expansion (ExpandHitArea).
+	if dy := recordDemoteInsetMobile; recordR.Dy()-2*dy >= recordDemoteFloorPx {
+		recordR = image.Rect(recordR.Min.X, recordR.Min.Y+dy, recordR.Max.X, recordR.Max.Y-dy)
 	}
 	z.recordBtn.SetRect(recordR)
 	bpmStepperBounds := row0Grid.Cell(3, 0)
@@ -830,68 +811,85 @@ func (z *TransportZone) layoutMobile(topBounds image.Rectangle, pad int, spec To
 	}
 }
 
+// transportBPMBoxUnits is the BPM text box width in square-side units. Wide
+// enough to show up to 4 digits (maxBPM == 1000) — it is the only wide
+// exception in the run.
+const transportBPMBoxUnits = 2.0
+
+// transportBPMStepUnits is the desktop BPM ± stepper column width (stacked
+// inc/dec chevrons) in square-side units — narrower than a square, the second
+// intentional exception.
+const transportBPMStepUnits = 0.9
+
 func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec TopBarSpec) {
-	// Single-row transport: Play | Stop | Record | BPM | ± | Subdiv | spacer | Vol | Upload | Import | Export
-	rowWeights := spec.ColumnWeights
-	if z.transportGroup == nil || len(z.transportGroup.grid.colWeights) != len(rowWeights) {
-		z.transportGroup = NewLayoutGroup("transport", topBounds, rowWeights, []float64{1})
+	// Desktop transport is a single left-aligned run of equal-size SQUARE
+	// buttons with a uniform gap. Running order:
+	//
+	//   Play | Stop | Record | BPM box | BPM ± | Subdiv | Vol | Undo | Redo | Overflow
+	//
+	// The BPM box and BPM ± stepper are the only non-square exceptions. The
+	// run packs at the left of the transport column; any leftover width sits
+	// to the right, before the timeline begins. This replaces the former
+	// weighted grid whose weight-0.6 "spacer" cell left a black void between
+	// Subdiv and Vol and whose uneven weights made the buttons different
+	// sizes. Regression guards: TestDesktopTransportButtonsAreEqualSquares,
+	// TestDesktopTransportNoSpacerGap, TestDesktopTransportNoOverlap.
+	const nGaps = 9 // 10 controls in the run → 9 inter-control gaps
+	totalUnits := 8*1.0 + transportBPMBoxUnits + transportBPMStepUnits
+	sq, gap, top, bot := transportRunMetrics(topBounds, pad, spec, totalUnits, nGaps)
+
+	x := topBounds.Min.X
+	square := func(b *Button) {
+		if b == nil {
+			return
+		}
+		b.SetRect(image.Rect(x, top, x+sq, bot))
+		x += sq + gap
 	}
-	z.transportGroup.SetBounds(topBounds)
 
-	minBtn := spec.BtnMinSize
-	playRect := safeInsetTransport(z.transportGroup.Cell(0, 0), pad)
-	playRect = enforceMinSize(playRect, minBtn, minBtn)
-	z.playBtn.SetRect(playRect)
+	square(z.playBtn)
+	square(z.stopBtn)
+	square(z.recordBtn)
 
-	stopRect := safeInsetTransport(z.transportGroup.Cell(1, 0), pad)
-	stopRect = enforceMinSize(stopRect, minBtn, minBtn)
-	z.stopBtn.SetRect(stopRect)
+	bpmW := int(transportBPMBoxUnits * float64(sq))
+	z.bpmBox.Rect = image.Rect(x, top, x+bpmW, bot)
+	x += bpmW + gap
 
-	recordRect := safeInsetTransport(z.transportGroup.Cell(2, 0), pad)
-	recordRect = enforceMinSize(recordRect, minBtn, minBtn)
-	z.recordBtn.SetRect(recordRect)
+	stepW := int(transportBPMStepUnits * float64(sq))
+	if stepW < 1 {
+		stepW = 1
+	}
+	stackVerticalTransport(z.bpmIncBtn, z.bpmDecBtn, image.Rect(x, top, x+stepW, bot), topBounds)
+	x += stepW + gap
 
-	z.bpmBox.Rect = safeInsetTransport(z.transportGroup.Cell(3, 0), pad)
-	bpmCol := safeInsetTransport(z.transportGroup.Cell(4, 0), pad)
-	stackVerticalTransport(z.bpmIncBtn, z.bpmDecBtn, bpmCol, topBounds)
+	square(z.subdivBtn)
 
-	// Compute BPM group container rect (covers BPM box + inc/dec arrows).
-	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect(), spec.GroupOutlinePad)
-
-	// Compute transport group container rect (covers play + stop + record).
-	z.transportGroupRect = computeGroupRect([]image.Rectangle{
-		z.playBtn.Rect(), z.stopBtn.Rect(), z.recordBtn.Rect(),
-	}, spec.GroupOutlinePad)
-
-	z.subdivBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(5, 0), pad))
-
-	// col 6 is flexible spacer (empty)
-
-	// Desktop: icon-only volume (popup on click, matching mobile pattern).
-	volCell := safeInsetTransport(z.transportGroup.Cell(7, 0), pad)
-	z.mainVolIconRect = volCell
+	// Desktop: icon-only volume (popup on click) occupies a square slot.
+	z.mainVolIconRect = image.Rect(x, top, x+sq, bot)
+	x += sq + gap
 	if z.mainVolSlider != nil {
 		z.mainVolSlider.SetRect(image.Rectangle{})
 		z.mainVolRect = image.Rectangle{}
 	}
 
-	z.uploadBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(8, 0), pad))
-	z.importBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(9, 0), pad))
-	z.exportBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(10, 0), pad))
+	square(z.undoBtn)
+	square(z.redoBtn)
+	square(z.overflowBtn)
 
-	// Undo / Redo on the primary toolbar (cells 11, 12) — present on desktop.
-	if z.undoBtn != nil {
-		z.undoBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(11, 0), pad))
-	}
-	if z.redoBtn != nil {
-		z.redoBtn.SetRect(safeInsetTransport(z.transportGroup.Cell(12, 0), pad))
-	}
-
-	// Compute file-ops group container rect (covers upload + import + export).
-	z.fileOpsGroupRect = computeGroupRect([]image.Rectangle{
-		z.uploadBtn.Rect(), z.importBtn.Rect(), z.exportBtn.Rect(),
+	// Group container pills derive from the final button rects.
+	z.bpmGroupRect = computeBPMGroupRect(z.bpmBox.Rect, z.bpmIncBtn.Rect(), z.bpmDecBtn.Rect(), spec.GroupOutlinePad)
+	z.transportGroupRect = computeGroupRect([]image.Rectangle{
+		z.playBtn.Rect(), z.stopBtn.Rect(), z.recordBtn.Rect(),
 	}, spec.GroupOutlinePad)
+	// File-ops live behind the overflow menu; no inline group outline.
+	z.fileOpsGroupRect = image.Rectangle{}
 
+	// File ops (Upload / Import / Export) live behind the overflow "..." menu
+	// on desktop — keep their rects empty so they don't draw or claim hit
+	// areas inline. Their OnClick handlers fire from the overflow menu entries.
+	z.uploadBtn.SetRect(image.Rectangle{})
+	z.importBtn.SetRect(image.Rectangle{})
+	z.exportBtn.SetRect(image.Rectangle{})
 	// Track button positioned in timeline area, not toolbar.
 	z.trackBtn.SetRect(image.Rectangle{})
 	// Hide mobile-only buttons on desktop.
@@ -900,9 +898,6 @@ func (z *TransportZone) layoutDesktop(topBounds image.Rectangle, pad int, spec T
 	}
 	if z.viewSwitchBtn != nil {
 		z.viewSwitchBtn.SetRect(image.Rectangle{})
-	}
-	if z.overflowBtn != nil {
-		z.overflowBtn.SetRect(image.Rectangle{})
 	}
 }
 
@@ -982,9 +977,11 @@ func (z *TransportZone) rebuildHitAreas() {
 	// touch-expanded BPM +/- button rects.
 	if z.bpmBox != nil && !z.bpmBox.Rect.Empty() {
 		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    z.bpmBox.Rect,
-			ZIndex:  zIdx + 1,
-			Handler: &textInputHitAdapter{ti: z.bpmBox},
+			Rect:   z.bpmBox.Rect,
+			ZIndex: zIdx + 1,
+			// The readout is display-only; tapping it opens the shared numeric
+			// editor (tap-to-popup) rather than focusing the box in place.
+			Handler: &bpmOpenAdapter{z: z},
 			Tag:     "transport-bpm-box",
 		})
 	}
@@ -996,8 +993,8 @@ func (z *TransportZone) rebuildHitAreas() {
 		groupBounds := z.mainVolGroup.InputBounds()
 		if !groupBounds.Empty() {
 			z.hitAreas = append(z.hitAreas, HitArea{
-				Rect:     groupBounds,
-				ZIndex:   zIdx + 1,
+				Rect:   groupBounds,
+				ZIndex: zIdx + 1,
 				Handler: &sliderGroupHitAdapter{group: z.mainVolGroup, onRelease: func() {
 					if z.callbacks.OnMainVolCommit != nil {
 						z.callbacks.OnMainVolCommit()
@@ -1095,11 +1092,15 @@ func (z *TransportZone) decayAnims() {
 	decay(&z.uploadAnim)
 	decay(&z.bpmErrorAnim)
 
-	// Record button pulsing animation when recording.
+	// Record button pulsing animation when recording. The icon tint swaps
+	// from colRecordIdle (dim red dot) to a breathing colRecordActive so the
+	// armed/recording state is unmistakable. Cadence comes from the
+	// button-toggle-pulse animation token (no magic numbers); the monotonic
+	// frame counter drives the phase so the breath is wall-clock smooth.
 	if z.isRecording {
-		z.recordPulse += 0.05
-		alpha := 0.5 + 0.5*math.Sin(z.recordPulse*2)
-		z.recordBtn.IconColor = WithAlpha(genColorRecordActive, uint8(255*alpha))
+		z.recordPulse++
+		a := SinPulseAlpha(int64(z.recordPulse), genAnimButtonTogglePulse)
+		z.recordBtn.IconColor = WithAlpha(colRecordActive, a)
 	} else {
 		z.recordPulse = 0
 		z.recordBtn.IconColor = colRecordIdle
@@ -1111,50 +1112,67 @@ func (z *TransportZone) SetInputBlocked(fn func() bool) {
 	z.inputBlocked = fn
 }
 
-// BPMPrev returns the saved BPM value from before text editing began.
-func (z *TransportZone) BPMPrev() int { return z.bpmPrev }
-
-// SetBPMPrev sets the saved BPM value (used for test compatibility during migration).
-func (z *TransportZone) SetBPMPrev(v int) { z.bpmPrev = v }
-
 // BPMDelta returns the current accumulated BPM delta.
 func (z *TransportZone) BPMDelta() int { return z.bpmDelta }
 
 // SetBPMDelta sets the accumulated BPM delta (used for test compatibility during migration).
 func (z *TransportZone) SetBPMDelta(v int) { z.bpmDelta = v }
 
-// --- BPM text commit ---
-
-func (z *TransportZone) commitBPMText() {
-	txt := z.bpmBox.Value()
-	if txt == "" {
-		prev := z.bpmPrev
-		if prev < 1 {
-			prev = z.bpm
-		}
-		z.SetBPM(prev)
-	} else if v, ok := parseBPM(txt); ok {
-		z.SetBPM(v)
-	} else {
-		z.bpmErrorAnim = 1
-		if z.callbacks.OnNotifyError != nil {
-			z.callbacks.OnNotifyError("Invalid BPM")
-		}
-		prev := z.bpmPrev
-		if prev < 1 {
-			prev = z.bpm
-		}
-		z.SetBPM(prev)
+// bpmSpec drives the shared editor for the BPM value: integer in [1,maxBPM],
+// rejecting invalid input with the same "Invalid BPM" toast as the legacy path.
+func (z *TransportZone) bpmSpec() ValueSpec {
+	return ValueSpec{
+		Format: func(v float64) string { return strconv.Itoa(int(v)) },
+		Parse: func(s string) (float64, bool) {
+			if v, ok := parseBPM(strings.TrimSpace(s)); ok {
+				return float64(v), true
+			}
+			if z.callbacks.OnNotifyError != nil {
+				z.callbacks.OnNotifyError(i18n.T(i18n.KeyNotifInvalidBPM))
+			}
+			return 0, false
+		},
+		MinW:   60,
+		Style:  BPMBoxStyle,
+		MaxLen: 4,
 	}
-	z.bpmBox.SetText(strconv.Itoa(z.bpm))
-	z.bpmBox.focused = false
 }
 
-// forceBlurBPM commits the current BPM box value and blurs the box.
-// Used when an overlay or popup steals focus.
-func (z *TransportZone) forceBlurBPM() {
-	z.commitBPMText()
+// openBPMEditor opens the shared editor over the BPM readout, pre-filled with
+// the current tempo. Commit clamps via bpmSpec and writes through SetBPM.
+func (z *TransportZone) openBPMEditor() {
+	if z.paramEditor == nil {
+		z.paramEditor = NewParamValueEditor()
+	}
+	z.paramEditor.OpenValue(ValueOpen{
+		Spec:          z.bpmSpec(),
+		Anchor:        z.bpmBox.Rect,
+		Clamp:         z.rect,
+		MobileInputID: "bpm",
+		Get:           func() float64 { return float64(z.bpm) },
+		Set:           func(v float64) { z.SetBPM(int(v)) },
+	})
 }
+
+// bpmOpenAdapter opens the shared BPM editor on press.
+type bpmOpenAdapter struct{ z *TransportZone }
+
+func (a *bpmOpenAdapter) OnPress(x, y int) InputResult {
+	// Respect the input-blocked gate: when a popup/overlay (in either subtree)
+	// is open, a tap on the readout must NOT open the editor beneath it. We read
+	// the snapshot taken at Tick (blockedAtTick) rather than re-evaluating now,
+	// because a foreign dropdown can be dismissed earlier in this same dispatch
+	// frame. Still consume the press so it doesn't leak to a touch-expanded
+	// sibling control.
+	if a.z.blockedAtTick || (a.z.inputBlocked != nil && a.z.inputBlocked()) {
+		return InputConsumed
+	}
+	a.z.openBPMEditor()
+	return InputConsumed
+}
+func (a *bpmOpenAdapter) OnDrag(x, y int)                     {}
+func (a *bpmOpenAdapter) OnRelease(x, y int)                  {}
+func (a *bpmOpenAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
 // --- Track button visual ---
 
@@ -1187,11 +1205,14 @@ func (z *TransportZone) syncUndoRedoVisual() {
 			return
 		}
 		enabled := can == nil || can()
-		if enabled {
-			btn.TextColor = colTextPrimary
-		} else {
-			btn.TextColor = colTextDisabled
+		col := colTextPrimary
+		if !enabled {
+			col = colTextDisabled
 		}
+		// Undo/Redo are icon buttons: the icon carries the active/inactive
+		// signal. TextColor is kept in sync too in case a label is ever set.
+		btn.IconColor = col
+		btn.TextColor = col
 	}
 	dim(z.undoBtn, z.callbacks.CanUndo)
 	dim(z.redoBtn, z.callbacks.CanRedo)
@@ -1426,6 +1447,7 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 	drawBtnOff(cache, z.stopBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.recordBtn, offsetX, offsetY)
 	z.drawRecordArmedRingOffset(cache, offsetX, offsetY)
+	z.drawRecordIndicatorOffset(cache, offsetX, offsetY)
 	drawBtnOff(cache, z.bpmDecBtn, offsetX, offsetY)
 	drawTIOffset(cache, z.bpmBox, offsetX, offsetY)
 	if z.bpmErrorAnim > 0 {
@@ -1435,7 +1457,6 @@ func (z *TransportZone) renderToolbarToCache(cache *ebiten.Image, offsetX, offse
 	drawBtnOff(cache, z.bpmIncBtn, offsetX, offsetY)
 	z.drawSubdivPillOffset(cache, offsetX, offsetY)
 	drawBtnOff(cache, z.subdivBtn, offsetX, offsetY)
-	z.drawSubdivChevronOffset(cache, offsetX, offsetY)
 	drawBtnOff(cache, z.trackBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.uploadBtn, offsetX, offsetY)
 	drawBtnOff(cache, z.importBtn, offsetX, offsetY)
@@ -1483,15 +1504,17 @@ func (z *TransportZone) renderToolbarDirect(dst *ebiten.Image) {
 	z.stopBtn.Draw(dst)
 	z.recordBtn.Draw(dst)
 	z.drawRecordArmedRingOffset(dst, 0, 0)
+	z.drawRecordIndicatorOffset(dst, 0, 0)
 	z.bpmDecBtn.Draw(dst)
 	z.bpmBox.Draw(dst)
 	if z.bpmErrorAnim > 0 {
 		drawRect(dst, z.bpmBox.Rect, fadeColor(colError, z.bpmErrorAnim), false)
 	}
+	// NOTE: the shared BPM editor is drawn in (*TransportZone).Draw over the
+	// composited toolbar, NOT here — it must never live inside the toolbar cache.
 	z.bpmIncBtn.Draw(dst)
 	z.drawSubdivPillOffset(dst, 0, 0)
 	z.subdivBtn.Draw(dst)
-	z.drawSubdivChevronOffset(dst, 0, 0)
 	z.trackBtn.Draw(dst)
 	z.uploadBtn.Draw(dst)
 	z.importBtn.Draw(dst)
@@ -1643,6 +1666,44 @@ func (z *TransportZone) drawRecordArmedRingOffset(dst *ebiten.Image, offsetX, of
 	drawRoundedRect(dst, inner, genColorDestructive, RadiusMD+(-ringInset)-1, false)
 }
 
+// drawRecordIndicatorOffset paints a persistent "REC" caption in
+// colRecordActive over the record button while recording. Unlike the
+// breathing icon tint (which the cached toolbar can freeze between hash
+// changes) and the non-cached pulse halo, this label is gated on the
+// isRecording bool that participates in the toolbar cache hash — so the
+// recording state is guaranteed to differ pixel-wise from idle the moment
+// recording starts, on both desktop and mobile. The label hugs the record
+// button's bottom edge, clamped inside the toolbar rect so it never spills.
+func (z *TransportZone) drawRecordIndicatorOffset(dst *ebiten.Image, offsetX, offsetY int) {
+	if !z.isRecording {
+		return
+	}
+	rb := z.recordBtn.Rect()
+	if rb.Empty() {
+		return
+	}
+	const label = "REC"
+	captionScale := FontSizeCaption / FontSizeBody
+	labelW := int(float64(TextWidth(label)) * captionScale)
+	labelH := int(float64(TextHeight()) * captionScale)
+	// Center horizontally on the record button.
+	lx := rb.Min.X + (rb.Dx()-labelW)/2
+	// Sit the caption just below the button, clamped to the toolbar rect.
+	ly := rb.Max.Y - labelH
+	if !z.rect.Empty() {
+		if ly+labelH > z.rect.Max.Y {
+			ly = z.rect.Max.Y - labelH
+		}
+		if ly < z.rect.Min.Y {
+			ly = z.rect.Min.Y
+		}
+		if lx < z.rect.Min.X {
+			lx = z.rect.Min.X
+		}
+	}
+	DrawTextColorAtScale(dst, label, lx-offsetX, ly-offsetY, colRecordActive, captionScale)
+}
+
 // drawSubdivPillOffset draws a colSurface2 pill background behind the
 // subdivision button on mobile. Called BEFORE subdivBtn.Draw so the
 // button's own background renders on top — the button uses a
@@ -1658,30 +1719,6 @@ func (z *TransportZone) drawSubdivPillOffset(dst *ebiten.Image, offsetX, offsetY
 	r = r.Sub(image.Pt(offsetX, offsetY))
 	drawRoundedRect(dst, r, colSurface2, RadiusMD, true)
 	drawRoundedRect(dst, r, colBorderMedium, RadiusMD, false)
-}
-
-// drawSubdivChevronOffset draws a small chevron-down hint over the
-// subdivision button on desktop, signaling "click to cycle". Drawn AFTER
-// the button so it stays visible regardless of button background. On
-// mobile the button packs "÷32" + a chevron into a very narrow rect that
-// reads as a typo on small DPR, so the chevron is omitted (A5 in the
-// screenshot critique).
-func (z *TransportZone) drawSubdivChevronOffset(dst *ebiten.Image, offsetX, offsetY int) {
-	if Profile().IsMobile() {
-		return
-	}
-	r := z.subdivBtn.Rect()
-	if r.Empty() {
-		return
-	}
-	r = r.Sub(image.Pt(offsetX, offsetY))
-	chevSide := 9
-	chev := image.Rect(r.Max.X-chevSide-3,
-		r.Max.Y-chevSide-3,
-		r.Max.X-3,
-		r.Max.Y-3)
-	DrawIcon(dst, IconChevronDown, chev, colTextSecondary)
-	z.subdivChevronDrawn = true
 }
 
 // drawTransportGroupOffset draws the transport group pill container
@@ -1744,6 +1781,59 @@ func drawSliderOff(cache *ebiten.Image, slider *Slider, offsetX, offsetY int) {
 
 // --- Layout helpers (package-level) ---
 
+// transportRunMetrics computes the uniform square side, inter-control gap, and
+// vertical extent for a left-packed run of transport controls.
+//
+//   - totalUnits is the run width measured in multiples of the square side: a
+//     square button is 1 unit; wider exceptions (the BPM box, the ± stepper)
+//     contribute >1 / <1 units.
+//   - nGaps is the number of inter-control gaps in the run.
+//
+// The square side equals the bar's inner height, shrunk ONLY when the run
+// would otherwise overflow the available width. So a wide bar (desktop's left
+// column) yields a tight left-aligned cluster with slack to the right, while a
+// narrow bar (a phone) shrinks the squares to fit without ever overflowing.
+//
+// The gap is uniform and at least 2×GroupOutlinePad so adjacent group "pills"
+// (transport, BPM) never overlap.
+func transportRunMetrics(topBounds image.Rectangle, pad int, spec TopBarSpec, totalUnits float64, nGaps int) (sq, gap, top, bot int) {
+	innerTop := topBounds.Min.Y + pad
+	innerBot := topBounds.Max.Y - pad
+	if innerBot <= innerTop {
+		innerTop, innerBot = topBounds.Min.Y, topBounds.Max.Y
+	}
+	maxSq := innerBot - innerTop
+
+	gap = spec.ControlGap
+	if g2 := 2 * spec.GroupOutlinePad; gap < g2 {
+		gap = g2
+	}
+
+	usable := float64(topBounds.Dx() - nGaps*gap)
+	if usable < 1 {
+		usable = 1
+	}
+	if totalUnits < 1 {
+		totalUnits = 1
+	}
+	fit := int(usable / totalUnits)
+	sq = maxSq
+	if fit < sq {
+		sq = fit
+	}
+	if sq < 1 {
+		sq = 1
+	}
+
+	// Center the square band vertically inside the padded area so every
+	// control (squares and the wider/narrower BPM exceptions) shares one row
+	// height == sq, even when sq shrank below the bar's inner height to fit.
+	cy := (innerTop + innerBot) / 2
+	top = cy - sq/2
+	bot = top + sq
+	return sq, gap, top, bot
+}
+
 // safeInsetTransport insets a rect by pad, clamped to keep minimum usable size.
 func safeInsetTransport(r image.Rectangle, pad int) image.Rectangle {
 	if r.Empty() {
@@ -1757,7 +1847,7 @@ func safeInsetTransport(r image.Rectangle, pad int) image.Rectangle {
 	if maxPad < 0 {
 		maxPad = 0
 	}
-	minW := 48
+	minW := genGeomTransportMinBtnW
 	minH := debugCharH + 2
 	maxPadW := (r.Dx() - minW) / 2
 	if maxPadW < 0 {
@@ -1784,6 +1874,13 @@ func safeInsetTransport(r image.Rectangle, pad int) image.Rectangle {
 // play/stop. See B12 in the screenshot critique — the red dot at parity
 // invites accidental mid-jam record.
 const recordDemoteInsetMobile = 8
+
+// recordDemoteFloorPx is the minimum drawn size (px) of the demoted mobile
+// record button. It stays below the touch-min target (so the button reads as
+// deliberately smaller than play/stop per B12) but is large enough that a
+// narrow phone can never collapse the cell to a sliver — the reported ~6px
+// bug. The hit-test still expands to the full touch target via ExpandHitArea.
+const recordDemoteFloorPx = 36
 
 // stackVerticalTransport stacks two buttons vertically in a column rect.
 func stackVerticalTransport(top, bot *Button, col image.Rectangle, bounds image.Rectangle) {
@@ -1823,18 +1920,20 @@ func clampBtnTransport(btn *Button, bounds image.Rectangle) {
 	btn.SetRect(r)
 }
 
-// enforceMinSize expands a rect to at least minW x minH, centered within the
-// original bounds if possible.
-func enforceMinSize(r image.Rectangle, minW, minH int) image.Rectangle {
-	if r.Dx() < minW {
-		cx := (r.Min.X + r.Max.X) / 2
-		r.Min.X = cx - minW/2
-		r.Max.X = r.Min.X + minW
+// insetTransportCell converts a contiguous grid cell into its drawn button
+// rect: it applies the standard vertical/large-cell inset (safeInsetTransport)
+// and then guarantees a small horizontal gap so adjacent cells leave a visible
+// space instead of touching at narrow widths (where safeInsetTransport's
+// min-width guard otherwise refuses to inset). The gap is never taken if it
+// would collapse the button, so a button always stays clickable.
+func insetTransportCell(cell image.Rectangle, pad, gap int) image.Rectangle {
+	r := safeInsetTransport(cell, pad)
+	g := gap / 2
+	if g < 1 {
+		g = 1
 	}
-	if r.Dy() < minH {
-		cy := (r.Min.Y + r.Max.Y) / 2
-		r.Min.Y = cy - minH/2
-		r.Max.Y = r.Min.Y + minH
+	if r.Dx() > 2*g+6 {
+		r = image.Rect(r.Min.X+g, r.Min.Y, r.Max.X-g, r.Max.Y)
 	}
 	return r
 }
@@ -1886,7 +1985,12 @@ func ensureGapBtns(left, right *Button, gap int) {
 		return
 	}
 	lr, rr := left.Rect(), right.Rect()
-	if lr.Max.X >= rr.Min.X {
+	// Only nudge on a genuine overlap. Buttons that merely touch (left.Max ==
+	// right.Min — the normal case for contiguous grid cells with no inset at
+	// narrow widths) must NOT be shifted: pushing `right` rightward would wedge
+	// it into the *next* control and reintroduce the overlap this guards
+	// against (see TestDesktopTransportNoOverlap).
+	if lr.Max.X > rr.Min.X {
 		dx := lr.Max.X - rr.Min.X + gap
 		rr.Min.X += dx
 		rr.Max.X += dx
@@ -1894,15 +1998,37 @@ func ensureGapBtns(left, right *Button, gap int) {
 	}
 }
 
-// textInputHitAdapter returns InputIgnored so the legacy TextInput.Update()
-// path can handle focus/blur normally. Its higher z-index ensures it is
-// checked first; InputIgnored falls through to lower-z handlers via the
-// tree's fall-through loop, which is correct (no side effects to block).
+// textInputHitAdapter wraps a TextInput hit area. Focus/blur/caret are driven
+// by the legacy TextInput.Update() mouse poll, which runs in the tree's Phase-2
+// zone Update — BEFORE Phase-3 input dispatch — so the box is already focused by
+// the time OnPress fires.
+//
+// The `consume` flag decides what OnPress returns to the dispatcher:
+//
+//   - consume == false (default, EQ dB inputs): return InputIgnored so the
+//     press falls through to lower-z handlers. The EQ band dB input sits at
+//     zIdx+3 directly over its band's mute button (zIdx+2) and intentionally
+//     lets the press through so the mute toggle still fires (regression:
+//     TestEQBandMuteHoldNoMultipleToggles).
+//   - consume == true (transport BPM box): return InputConsumed so the press is
+//     NOT leaked into a neighbouring button's touch-EXPANDED hit rect. On mobile
+//     (MinTarget=44) the Record button's expanded rect reaches across the
+//     BPM-dec button into the BPM box; the old unconditional InputIgnored let a
+//     BPM box tap toggle recording (regression: transport_input_isolation_test.go).
+//
+// Both sites register EXACT, non-Touch hit areas, so OnPress only fires when the
+// cursor is inside the input's real rect — consuming there is always safe.
 type textInputHitAdapter struct {
-	ti *TextInput
+	ti      *TextInput
+	consume bool
 }
 
-func (h *textInputHitAdapter) OnPress(x, y int) InputResult        { return InputIgnored }
+func (h *textInputHitAdapter) OnPress(x, y int) InputResult {
+	if h.consume {
+		return InputConsumed
+	}
+	return InputIgnored
+}
 func (h *textInputHitAdapter) OnDrag(x, y int)                     {}
 func (h *textInputHitAdapter) OnRelease(x, y int)                  {}
 func (h *textInputHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }

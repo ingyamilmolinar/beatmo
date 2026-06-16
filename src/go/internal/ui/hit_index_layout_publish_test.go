@@ -253,6 +253,11 @@ func TestZoneLayoutRoutesThroughTreeDiscipline(t *testing.T) {
 	// file → allowed substrings for lines that may call <something>Zone.Layout(.
 	allowed := map[string][]string{
 		"drumview_tree.go": {""}, // the chokepoint itself — any use allowed
+		// grid_tree.go is the GridTree's own chokepoint (sibling tree owning
+		// the top grid pane). Its layoutPass/LayoutZoneNow call zone.Layout
+		// and immediately publish via hitIndex.Update — the same
+		// layout-and-publish-together discipline as drumview_tree.go.
+		"grid_tree.go": {""}, // sibling chokepoint — any use allowed
 		// ChainPanelZone is a nested composite inside EQPanelZone (not
 		// registered with the tree); its parent lays it out and owns its
 		// hit areas.

@@ -20,6 +20,10 @@ import (
 
 func TestChainPanelRendersBothTracesForPerInstrumentSnapshots(t *testing.T) {
 	assertDefaultParityState(t)
+	// This test counts trace rects at their on-screen position via the
+	// drawRect interceptor; the production trace cache renders them at a
+	// (0,0) origin before blitting, so exercise the direct render path.
+	defer SetChainTraceCacheForTest(false)()
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(1280, 720)
@@ -103,6 +107,16 @@ func TestChainPanelRendersBothTracesForPerInstrumentSnapshots(t *testing.T) {
 	}
 	if nB == 0 {
 		t.Errorf("trace B (colScopeB) drew %d rects inside chain SubjectRect %v — want > 0", nB, rect)
+	}
+
+	// Synthwave "outrun" fills must be painted beneath each trace (the
+	// per-lane trace color at sub-full AlphaSubtle), one fill rect per
+	// column from the trace to the zero-line — crisp line stays on top.
+	if fA := rectsWithColorInside(rects, rect, colScopeAFill); fA == 0 {
+		t.Errorf("trace A synthwave fill (colScopeAFill) drew %d rects in %v — want > 0", fA, rect)
+	}
+	if fB := rectsWithColorInside(rects, rect, colScopeBFill); fB == 0 {
+		t.Errorf("trace B synthwave fill (colScopeBFill) drew %d rects in %v — want > 0", fB, rect)
 	}
 	if testing.Verbose() {
 		t.Logf("chain rect=%v colScopeA=%d colScopeB=%d", rect, nA, nB)

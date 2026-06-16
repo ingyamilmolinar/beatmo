@@ -50,79 +50,52 @@ func newBeatCounterTestZone(rect image.Rectangle) *TimelineZone {
 	})
 }
 
+// beatCounterChipFill returns the first filled colSurface1 rect drawn inside
+// beatRect by drawBeatCounter — the square chip background. The chip is now a
+// plain drawRect (square corners), so this intercepts drawRect, not
+// drawRoundedRect. Squareness itself is pinned by TestBeatCounterChipIsSquare.
+func beatCounterChipFill(t *testing.T, z *TimelineZone, dst *ebiten.Image, beatRect image.Rectangle) (image.Rectangle, bool) {
+	t.Helper()
+	wantFill := color.RGBAModel.Convert(colSurface1).(color.RGBA)
+	fills := collectFilledRects(t, func() { z.drawBeatCounter(dst, 0) })
+	for _, f := range fills {
+		if f.Color == wantFill && f.Rect.In(beatRect) && !f.Rect.Empty() {
+			return f.Rect, true
+		}
+	}
+	return image.Rectangle{}, false
+}
+
 // TestBeatCounterChip_DrawsSurface1Fill verifies the chip is filled with
-// `colSurface1` (not the prior `colSurface2 @ AlphaMedium` pill) so it
-// reads as a real container in the toolbar surface ladder.
+// `colSurface1` so it reads as a real container in the toolbar surface ladder.
 func TestBeatCounterChip_DrawsSurface1Fill(t *testing.T) {
 	assertDefaultParityState(t)
 	beatRect := image.Rect(0, 0, 200, 24)
 	z := newBeatCounterTestZone(beatRect)
 	dst := ebiten.NewImage(beatRect.Max.X+16, beatRect.Max.Y+16)
 
-	calls := captureRoundedRectCalls(t, func() { z.drawBeatCounter(dst, 0) })
-
-	wantFill := color.RGBAModel.Convert(colSurface1).(color.RGBA)
-	found := false
-	for _, c := range calls {
-		if !c.Filled {
-			continue
-		}
-		got := color.RGBAModel.Convert(c.Color).(color.RGBA)
-		if got == wantFill && c.Rect.In(beatRect) && !c.Rect.Empty() {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("no filled drawRoundedRect with colSurface1 inside beatCounterRect %v; calls=%+v", beatRect, calls)
+	if _, ok := beatCounterChipFill(t, z, dst, beatRect); !ok {
+		t.Fatalf("no filled colSurface1 rect inside beatCounterRect %v", beatRect)
 	}
 }
 
-// TestBeatCounterChip_UsesRadiusMD verifies the chip uses RadiusMD (8 px)
-// rather than the prior RadiusSM (which read as a pill, not a chip).
-func TestBeatCounterChip_UsesRadiusMD(t *testing.T) {
+// TestBeatCounterChip_LeftAligned verifies the chip's left edge sits near
+// the allotted rect's left edge (within 1 px). The notification redesign
+// moved the counter to a left-anchored slot (next to the track/lock chip)
+// so the dedicated notification area can occupy the space to its right.
+func TestBeatCounterChip_LeftAligned(t *testing.T) {
 	assertDefaultParityState(t)
 	beatRect := image.Rect(0, 0, 200, 24)
 	z := newBeatCounterTestZone(beatRect)
 	dst := ebiten.NewImage(beatRect.Max.X+16, beatRect.Max.Y+16)
 
-	calls := captureRoundedRectCalls(t, func() { z.drawBeatCounter(dst, 0) })
-
-	for _, c := range calls {
-		if c.Filled && c.Rect.In(beatRect) && !c.Rect.Empty() {
-			if c.Radius != RadiusMD {
-				t.Fatalf("beat counter chip radius = %d; want RadiusMD = %d", c.Radius, RadiusMD)
-			}
-			return
-		}
-	}
-	t.Fatal("beat counter chip filled draw not found")
-}
-
-// TestBeatCounterChip_RightAligned verifies the chip's right edge sits
-// near the allotted rect's right edge (within 1 px), confirming the
-// right-alignment refactor.
-func TestBeatCounterChip_RightAligned(t *testing.T) {
-	assertDefaultParityState(t)
-	beatRect := image.Rect(0, 0, 200, 24)
-	z := newBeatCounterTestZone(beatRect)
-	dst := ebiten.NewImage(beatRect.Max.X+16, beatRect.Max.Y+16)
-
-	calls := captureRoundedRectCalls(t, func() { z.drawBeatCounter(dst, 0) })
-
-	var chip image.Rectangle
-	for _, c := range calls {
-		if c.Filled && c.Rect.In(beatRect) && !c.Rect.Empty() {
-			chip = c.Rect
-			break
-		}
-	}
-	if chip.Empty() {
+	chip, ok := beatCounterChipFill(t, z, dst, beatRect)
+	if !ok {
 		t.Fatal("no chip rect captured")
 	}
-	gap := beatRect.Max.X - chip.Max.X
+	gap := chip.Min.X - beatRect.Min.X
 	if gap < 0 || gap > 1 {
-		t.Fatalf("expected chip flush-right within 1 px of beatCounterRect.Max.X=%d; chip=%v gap=%d",
-			beatRect.Max.X, chip, gap)
+		t.Fatalf("expected chip flush-left within 1 px of beatCounterRect.Min.X=%d; chip=%v gap=%d",
+			beatRect.Min.X, chip, gap)
 	}
 }

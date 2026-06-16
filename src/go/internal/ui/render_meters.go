@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // Meter bridge colors — sourced from DESIGN.md `viz-meter-*` tokens.
@@ -64,6 +65,23 @@ func (m *MultiLevelsLatch) Clear() {
 		}
 		l.LatchFramesLeft = 0
 		l.LastClipCount = 0
+	}
+}
+
+// Reset clears the peak/RMS hold ballistics and clip latch of every
+// per-channel latch so the next Update re-seeds directly from the live
+// analyzer state. Used when the Levels tab is re-entered after being
+// hidden: the held values are frozen at whatever they were when the tab
+// was last drawn, so without this the meters decay down from a stale
+// (often loud) value instead of reflecting the current audio immediately.
+func (m *MultiLevelsLatch) Reset() {
+	if m == nil {
+		return
+	}
+	for _, l := range m.byID {
+		if l != nil {
+			l.Reset()
+		}
 	}
 }
 
@@ -151,6 +169,12 @@ func (l *LevelsLatch) Update(clipCount int, peakDB, rmsDB float64) bool {
 	return l.LatchFramesLeft > 0
 }
 
+// Reset returns the latch to its unseeded zero state so the next Update
+// seeds PeakHoldDB/RMSHoldDB directly from the live values (no decay) and
+// clears any active clip latch. See MultiLevelsLatch.Reset for why this is
+// needed on Levels-tab re-entry.
+func (l *LevelsLatch) Reset() { *l = LevelsLatch{} }
+
 // Latched reports the current latch state without advancing it. Useful when
 // the latch's owner ticked it elsewhere (e.g., in Update) and the renderer
 // only wants to read the visual state.
@@ -170,9 +194,9 @@ func drawLevelsDetail(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Chan
 		return
 	}
 
-	const headerH = 14 // px: dB scale ticks on top
-	const footerH = 18 // px: readout row (Pk / RMS / Hdr / Clips)
-	const gutterX = 28 // px: left margin for dB labels
+	const headerH = 14                                     // px: dB scale ticks on top
+	const footerH = 18                                     // px: readout row (Pk / RMS / Hdr / Clips)
+	gutterX := Profile().DensityValues().AudioLabelMarginW // left margin for dB labels
 
 	contentH := rect.Dy() - headerH - footerH
 	if contentH < 8 {
@@ -697,8 +721,8 @@ func drawLevelsAggregatesChevron(dst *ebiten.Image, r image.Rectangle) {
 	if r.Empty() {
 		return
 	}
-	drawRoundedRect(dst, r, WithAlpha(colSurface2, AlphaStrong), 4, true)
-	drawRoundedRect(dst, r, TokenBorderSubtle(), 4, false)
+	drawRoundedRect(dst, r, WithAlpha(colSurface2, AlphaStrong), RadiusXXS, true)
+	drawRoundedRect(dst, r, TokenBorderSubtle(), RadiusXXS, false)
 	// Chevron-down icon centered in the rect.
 	iconW := r.Dx() - 4
 	if iconW > r.Dy()-4 {
@@ -749,7 +773,10 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 	const headerH = 12
 	const footerH = 18
 
-	// Header label centered.
+	// Header label centered — truncated to the strip width so a long
+	// instrument name (e.g. "fm-epiano-1") never bleeds into the
+	// neighboring strip's label.
+	label = truncateName(label, rect.Dx()-2, captionScale)
 	lw := int(float64(TextWidth(label)) * captionScale)
 	lx := rect.Min.X + (rect.Dx()-lw)/2
 	if lx < rect.Min.X+1 {
@@ -840,10 +867,19 @@ func drawSegmentedLevelBar(dst *ebiten.Image, r image.Rectangle, db float64, isP
 	if db <= meterDBFloor {
 		return
 	}
-	const segDB = 1.5
+	segDB := 1.5
 	totalSegs := int((meterDBCeil - meterDBFloor) / segDB)
 	if totalSegs < 4 {
 		totalSegs = 4
+	}
+	// Height-robust LED ladder: in a short meter the fixed 1.5 dB/segment
+	// ladder makes every LED sub-2px and nothing draws. Cap the segment count
+	// so each LED is ≥2px tall (fewer, taller LEDs when short) and widen segDB
+	// to match so the lit-proportion stays correct. Tall meters (≥ ~80px) keep
+	// the full 40-segment ladder unchanged.
+	if maxSegs := r.Dy() / 2; maxSegs >= 4 && totalSegs > maxSegs {
+		totalSegs = maxSegs
+		segDB = (meterDBCeil - meterDBFloor) / float64(totalSegs)
 	}
 	litSegs := int((db - meterDBFloor) / segDB)
 	if litSegs > totalSegs {
@@ -880,18 +916,87 @@ func withColorAlpha(c color.RGBA, a uint8) color.RGBA {
 	return c
 }
 
+// Aggregate-column row indices, in render order top-to-bottom. Used to
+// index the slice returned by levelsAggregateColumnRows.
+const (
+	aggRowHeadroomLabel = iota
+	aggRowHeadroomValue
+	aggRowClipsLabel
+	aggRowClipsValue
+	aggRowLUFSLabel
+	aggRowLUFSValue
+	aggRowLoudestLabel
+	aggRowLoudestValue
+	aggRowCount
+)
+
+// levelsAggRow describes one text row in the Levels aggregate column:
+// its top y position and the text scale it renders at.
+type levelsAggRow struct {
+	Y     int
+	Scale float64
+}
+
+// levelsAggRowGap is the consistent vertical gap between consecutive
+// rows of the aggregate column.
+const levelsAggRowGap = 4
+
+// levelsAggregateColumnRows lays out the aggregate column as a
+// sequential flow: each row's y is a running cursor advanced by the
+// actual rendered text height (textH × the row's scale) plus a
+// consistent gap. Rows that would extend past rect.Max.Y are omitted —
+// the column truncates rather than overlapping. (The pre-fix layout
+// positioned rows with hardcoded absolute offsets from the CLIPS row,
+// which made the LUFS-S value row and the LOUDEST label physically
+// collide.) Pure function so the layout is unit-testable without an
+// Ebiten surface.
+func levelsAggregateColumnRows(rect image.Rectangle, textH int) []levelsAggRow {
+	captionScale := FontSizeCaption / FontSizeBody
+	const (
+		bodyScale     = 1.0
+		headlineScale = 2.0
+	)
+	scales := [aggRowCount]float64{
+		aggRowHeadroomLabel: captionScale,
+		aggRowHeadroomValue: headlineScale,
+		aggRowClipsLabel:    captionScale,
+		aggRowClipsValue:    bodyScale,
+		aggRowLUFSLabel:     captionScale,
+		aggRowLUFSValue:     bodyScale,
+		aggRowLoudestLabel:  captionScale,
+		aggRowLoudestValue:  bodyScale,
+	}
+	rows := make([]levelsAggRow, 0, aggRowCount)
+	y := rect.Min.Y
+	for _, s := range scales {
+		h := int(math.Ceil(float64(textH) * s))
+		if y+h > rect.Max.Y {
+			break
+		}
+		rows = append(rows, levelsAggRow{Y: y, Scale: s})
+		y += h + levelsAggRowGap
+	}
+	return rows
+}
+
 // drawLevelsAggregates renders the right-side readout column showing
-// Headroom (big, prominent), Clips-last-10s, and the currently-loudest
-// channel name. Pedagogical metadata that consumer DAWs put in a side
-// panel; kid-friendly because the headroom number answers "how much
-// room do I have left before it gets ugly?" in one glance.
+// Headroom (big, prominent), Clips-last-10s, LUFS-S, and the
+// currently-loudest channel name. Pedagogical metadata that consumer
+// DAWs put in a side panel; kid-friendly because the headroom number
+// answers "how much room do I have left before it gets ugly?" in one
+// glance. Row positions come from levelsAggregateColumnRows — a
+// sequential flow that never overlaps; rows that don't fit are dropped.
 func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch) {
 	if rect.Dx() < 60 || rect.Dy() < 60 {
 		return
 	}
-	captionScale := FontSizeCaption / FontSizeBody
-	bodyScale := 1.0
-	headlineScale := 2.0
+	rows := levelsAggregateColumnRows(rect, TextHeight())
+	rowAt := func(i int) (levelsAggRow, bool) {
+		if i < len(rows) {
+			return rows[i], true
+		}
+		return levelsAggRow{}, false
+	}
 
 	// Compute headroom: -peak of master (use held value if available).
 	masterPeak := state.Master.PeakDB
@@ -910,8 +1015,10 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	}
 
 	// "Headroom" label.
-	DrawTextColorAtScale(dst, "HEADROOM", rect.Min.X, rect.Min.Y, colTextSecondary, captionScale)
-	// Big number — render "CLIPPING!" when peak has exceeded 0 dBFS so
+	if r, ok := rowAt(aggRowHeadroomLabel); ok {
+		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapHeadroom), rect.Min.X, r.Y, colTextSecondary, r.Scale)
+	}
+	// Big number — render "CLIP!" when peak has exceeded 0 dBFS so
 	// the kid-friendly answer ("you're too loud right now") replaces
 	// the confusing "negative headroom" math. Phase 5 polish.
 	var bigNum string
@@ -924,13 +1031,9 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	default:
 		bigNum = fmt.Sprintf("%.0f dB", headroom)
 	}
-	bw := int(float64(TextWidth(bigNum)) * headlineScale)
-	bx := rect.Min.X
-	if bw < rect.Dx() {
-		bx = rect.Min.X
+	if r, ok := rowAt(aggRowHeadroomValue); ok {
+		DrawTextColorAtScale(dst, bigNum, rect.Min.X, r.Y, headroomCol, r.Scale)
 	}
-	by := rect.Min.Y + 14
-	DrawTextColorAtScale(dst, bigNum, bx, by, headroomCol, headlineScale)
 
 	// Rolling 10-second clip count — Phase 2 audio-panel redesign:
 	// state.ClipsLastWindow is owned by the audio package's clip-window
@@ -950,27 +1053,33 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		clipsDisplay = totalClips
 		clipsLabel = "CLIPS"
 	}
-	clipsY := by + int(float64(TextHeight())*headlineScale) + 8
-	DrawTextColorAtScale(dst, clipsLabel, rect.Min.X, clipsY, colTextSecondary, captionScale)
+	if r, ok := rowAt(aggRowClipsLabel); ok {
+		DrawTextColorAtScale(dst, clipsLabel, rect.Min.X, r.Y, colTextSecondary, r.Scale)
+	}
 	clipsTxt := fmt.Sprintf("%d", clipsDisplay)
 	clipsCol := colTextPrimary
 	if clipsDisplay > 0 {
 		clipsCol = colError
 	}
-	DrawTextColorAtScale(dst, clipsTxt, rect.Min.X, clipsY+12, clipsCol, bodyScale)
+	if r, ok := rowAt(aggRowClipsValue); ok {
+		DrawTextColorAtScale(dst, clipsTxt, rect.Min.X, r.Y, clipsCol, r.Scale)
+	}
 
 	// LUFS-S row — Phase 2: K-weighted short-term loudness from the
 	// audio package's integrator. Rendered just below CLIPS so the
 	// kid-readable "headroom" + the broadcast "LUFS-S" sit next to
 	// each other. Skipped (rendered as "—") when the integrator is
 	// silent.
-	lufsRowY := clipsY + 28
-	DrawTextColorAtScale(dst, "LUFS-S", rect.Min.X, lufsRowY, colTextSecondary, captionScale)
+	if r, ok := rowAt(aggRowLUFSLabel); ok {
+		DrawTextColorAtScale(dst, "LUFS-S", rect.Min.X, r.Y, colTextSecondary, r.Scale)
+	}
 	lufsTxt := "—"
 	if state.Master.LUFSShortTermDB > -120 {
 		lufsTxt = fmt.Sprintf("%.1f", state.Master.LUFSShortTermDB)
 	}
-	DrawTextColorAtScale(dst, lufsTxt, rect.Min.X, lufsRowY+12, colTextPrimary, bodyScale)
+	if r, ok := rowAt(aggRowLUFSValue); ok {
+		DrawTextColorAtScale(dst, lufsTxt, rect.Min.X, r.Y, colTextPrimary, r.Scale)
+	}
 
 	// Loudest channel (by peak).
 	loudestName := ""
@@ -990,8 +1099,14 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	if loudestName == "" {
 		return
 	}
-	loudY := clipsY + 36
-	DrawTextColorAtScale(dst, "LOUDEST", rect.Min.X, loudY, colTextSecondary, captionScale)
-	loudTxt := fmt.Sprintf("%s (%s)", loudestName, formatMeterDB(loudestPeak))
-	DrawTextColorAtScale(dst, loudTxt, rect.Min.X, loudY+12, colTextPrimary, bodyScale)
+	if r, ok := rowAt(aggRowLoudestLabel); ok {
+		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapLoudest), rect.Min.X, r.Y, colTextSecondary, r.Scale)
+	}
+	if r, ok := rowAt(aggRowLoudestValue); ok {
+		// "kick-1 · -3 dB" — name plus its peak in dB. The pre-fix
+		// "kick-1 (-3)" suffix was cryptic (an unlabeled number).
+		loudTxt := fmt.Sprintf("%s · %s dB", loudestName, formatMeterDB(loudestPeak))
+		loudTxt = truncateName(loudTxt, rect.Dx(), r.Scale)
+		DrawTextColorAtScale(dst, loudTxt, rect.Min.X, r.Y, colTextPrimary, r.Scale)
+	}
 }

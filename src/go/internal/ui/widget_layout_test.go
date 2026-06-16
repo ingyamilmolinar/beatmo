@@ -150,9 +150,10 @@ func TestTopLevelControlsBoundedByWidgets(t *testing.T) {
 		{"lenInc", dv.lenIncBtn.Rect(), tl},
 		{"lenDec", dv.lenDecBtn.Rect(), tl},
 		{"track", dv.trackBtn().Rect(), tl},
-		{"upload", dv.uploadBtn().Rect(), tr},
-		{"import", dv.importBtn().Rect(), tr},
-		{"export", dv.exportBtn().Rect(), tr},
+		// File ops (upload/import/export) moved behind the overflow "..." menu
+		// on desktop; the overflow button is the only inline file-ops control
+		// and must stay bounded by the transport widget.
+		{"overflow", dv.overflowBtn().Rect(), tr},
 		{"rowLabel0", dv.rowLabels()[0].Rect(), rack},
 		// rowEdit0 and rowSave0 are hidden on desktop (empty rects).
 		{"addRow", dv.addRowBtn().Rect(), rack},
@@ -166,6 +167,20 @@ func TestTopLevelControlsBoundedByWidgets(t *testing.T) {
 		}
 		if !inside(c.rect, c.box) {
 			t.Fatalf("%s must live inside widget: rect=%v widget=%v", c.name, c.rect, c.box)
+		}
+	}
+	// File ops are hidden inline on desktop (reachable via the overflow menu);
+	// guard against them leaking back into the toolbar.
+	for _, h := range []struct {
+		name string
+		rect image.Rectangle
+	}{
+		{"upload", dv.uploadBtn().Rect()},
+		{"import", dv.importBtn().Rect()},
+		{"export", dv.exportBtn().Rect()},
+	} {
+		if !h.rect.Empty() {
+			t.Fatalf("%s should be hidden inline (behind overflow menu), got %v", h.name, h.rect)
 		}
 	}
 }
@@ -297,9 +312,12 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 	dv.refreshWidgetLayout()
 	dv.recalcButtons()
 	basePlay := dv.playBtn().Rect()
-	baseUpload := dv.uploadBtn().Rect()
-	if basePlay.Dy() <= 0 || baseUpload.Dy() <= 0 {
-		t.Fatalf("base button heights invalid: play=%v upload=%v", basePlay, baseUpload)
+	// Upload is hidden inline on desktop (behind the overflow menu); use the
+	// overflow button — the rightmost inline control in the same row — as the
+	// representative right-edge button for the resize check.
+	baseOverflow := dv.overflowBtn().Rect()
+	if basePlay.Dy() <= 0 || baseOverflow.Dy() <= 0 {
+		t.Fatalf("base button heights invalid: play=%v overflow=%v", basePlay, baseOverflow)
 	}
 
 	// Grow height and ensure both rows expand together.
@@ -308,9 +326,9 @@ func TestTransportButtonsResizeWithWidgetHeight(t *testing.T) {
 	dv.recalcButtons()
 	dv.calcLayout()
 	largePlay := dv.playBtn().Rect()
-	largeUpload := dv.uploadBtn().Rect()
-	if diff := absInt(largePlay.Dy() - largeUpload.Dy()); diff > 10 {
-		t.Fatalf("grown heights should stay aligned: play=%d upload=%d diff=%d", largePlay.Dy(), largeUpload.Dy(), diff)
+	largeOverflow := dv.overflowBtn().Rect()
+	if diff := absInt(largePlay.Dy() - largeOverflow.Dy()); diff > 10 {
+		t.Fatalf("grown heights should stay aligned: play=%d overflow=%d diff=%d", largePlay.Dy(), largeOverflow.Dy(), diff)
 	}
 	// Padding: ensure gap between play and stop exists
 	if dv.stopBtn().Rect().Min.X-dv.playBtn().Rect().Max.X <= 1 {

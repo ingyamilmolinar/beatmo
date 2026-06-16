@@ -57,9 +57,9 @@ var permittedLiterals = map[string]string{
 	// chrome glyph. The full literal varies (÷4, ÷8, ÷16, ÷32) and is built
 	// at runtime, so we whitelist the prefix only.
 	"÷": "transport_zone.go subdivision label (DESIGN.md:1163)",
-	// Scope/EQ panel freeze indicators: > resume, || frozen.
-	">":  "scope_panel_zone.go / eq_panel_zone.go freeze button (DESIGN.md:1161-1162)",
-	"||": "scope_panel_zone.go / eq_panel_zone.go freeze button (DESIGN.md:1161-1162)",
+	// Freeze indicators (analyzer-tab freeze pill + Chain freeze button) now
+	// render IconPause (live) / IconPlay (frozen) via applyFreezeVisual — the
+	// old ">" / "||" text-glyph exception was retired.
 }
 
 // TestNoForbiddenChromeGlyphs walks every non-test, non-generated source

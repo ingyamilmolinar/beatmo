@@ -57,6 +57,23 @@ func TestTimelineGridWheelScrollsRows(t *testing.T) {
 		t.Fatalf("wheel down over grid should scroll rows down: before=%d after=%d", before, dv.rowOffset)
 	}
 
+	// Row scroll over the cell grid reuses the SAME behavior as scrolling over
+	// the instrument labels: one row per notch, throttled by a step cooldown.
+	// Let the cooldown elapse before reversing direction (a real user wheeling
+	// up after wheeling down clears it the same way).
+	idle := SetInputForTest(
+		func() (int, int) { return sx, sy },
+		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return dv.Bounds.Dx(), dv.Bounds.Dy() },
+	)
+	for i := 0; i < controlGridScrollCooldownFrames+1; i++ {
+		dv.Update()
+	}
+	idle()
+
 	// Now wheel up to scroll back.
 	restore = SetInputForTest(
 		func() (int, int) { return sx, sy },

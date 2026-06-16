@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"image"
 	"math"
 	"testing"
 
@@ -275,8 +276,9 @@ func TestEQChannelMenuBuild(t *testing.T) {
 		t.Errorf("expected 4 total channel items (Master + 3 rows), got %d", scroll.VS.Total)
 	}
 
-	// Portal should be open.
-	if !g.drum.tree.Portal().Has("eq-channel-dropdown") {
+	// Portal should be open (the EQ channel dropdown lives in the isolated
+	// audio-panel subtree's portal).
+	if !g.drum.audioTree.Portal().Has("eq-channel-dropdown") {
 		t.Error("expected eq-channel-dropdown portal to be open")
 	}
 
@@ -327,8 +329,8 @@ func TestEQChannelDropdownButtonsAreVisible(t *testing.T) {
 		t.Errorf("trigger button %v is not within EQ panel %v", triggerRect, dv.eqRect)
 	}
 
-	// Portal should be open with the dropdown
-	if !dv.tree.Portal().Has("eq-channel-dropdown") {
+	// Portal should be open with the dropdown (in the audio-panel subtree).
+	if !dv.audioTree.Portal().Has("eq-channel-dropdown") {
 		t.Error("expected eq-channel-dropdown portal to be open")
 	}
 
@@ -1135,5 +1137,72 @@ func TestEQMuteButtonStateSyncsOnChannelSwitch(t *testing.T) {
 	// Verify band 1 shows unmuted (Master band 1 is not muted)
 	if dv.eqMuteBtns()[1].Style != EQMuteButtonStyle {
 		t.Error("band 1 button should show normal style when back on Master (band 1 unmuted)")
+	}
+}
+
+// TestEQ_MutePressWinsOverDBReadoutOverlap presses INSIDE the short-panel
+// overlap region where a mute button's centre falls inside the taller dB
+// readout cell, and asserts the dispatcher routes the press to the mute toggle
+// (zIdx+4) rather than the dB editor (zIdx+3). Regression for the eqDBOpenAdapter
+// stealing mute presses.
+func TestEQ_MutePressWinsOverDBReadoutOverlap(t *testing.T) {
+	assertDefaultParityState(t)
+
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+	dv := g.drum
+	dv.recalcButtons()
+	dv.calcLayout()
+
+	z := dv.eqPanelZone
+	if z == nil {
+		t.Fatal("eqPanelZone nil")
+	}
+	// Find a band whose mute rect centre falls inside its dB readout rect
+	// (the short-panel overlap that makes arbitration matter).
+	band := -1
+	var cx, cy int
+	btns := dv.eqMuteBtns()
+	for i := range btns {
+		if btns[i] == nil {
+			continue
+		}
+		mr := btns[i].Rect()
+		dr := z.dbReadoutRect(i)
+		if mr.Empty() || dr.Empty() {
+			continue
+		}
+		c := image.Pt((mr.Min.X+mr.Max.X)/2, (mr.Min.Y+mr.Max.Y)/2)
+		if c.In(dr) {
+			band, cx, cy = i, c.X, c.Y
+			break
+		}
+	}
+	if band < 0 {
+		t.Skip("no mute/dB overlap in this layout")
+	}
+	if dv.eqBandMuted()[band] {
+		t.Fatalf("band %d should start unmuted", band)
+	}
+
+	rp := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(ebiten.MouseButton) bool { return true },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 640, 480 },
+	)
+	for i := 0; i < 5; i++ {
+		dv.Update()
+	}
+	rp()
+
+	if !dv.eqBandMuted()[band] {
+		t.Errorf("press in mute/dB overlap must toggle mute, not open the dB editor (band %d)", band)
+	}
+	if z.paramEditor != nil && z.paramEditor.Active() {
+		t.Errorf("dB editor must NOT open on a mute-button press in the overlap region")
 	}
 }

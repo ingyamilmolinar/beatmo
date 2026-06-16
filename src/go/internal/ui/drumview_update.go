@@ -4,6 +4,8 @@ import (
 	"image"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 func (dv *DrumView) Update() {
@@ -20,11 +22,11 @@ func (dv *DrumView) Update() {
 	dv.refreshInstruments()
 
 	// Sync DrumView → TransportZone state before tree runs.
-	// Tests may set dv.bpmPrev/dv.bpmDelta directly; push those to the zone.
+	// Tests may set dv.bpmDelta directly; push those to the zone. (The previous
+	// "prev BPM before editing" mirror is gone: BPM editing now happens in the
+	// shared editor, which keeps its own pre-edit value, so there is nothing to
+	// mirror through the zone.)
 	if dv.transportZone != nil {
-		if dv.bpmPrev != dv.transportZone.BPMPrev() {
-			dv.transportZone.SetBPMPrev(dv.bpmPrev)
-		}
 		if dv.bpmDelta != 0 {
 			dv.transportZone.SetBPMDelta(dv.transportZone.BPMDelta() + dv.bpmDelta)
 			dv.bpmDelta = 0
@@ -44,10 +46,10 @@ func (dv *DrumView) Update() {
 
 	// Run the zone-based component tree (runs in parallel with existing
 	// code during incremental migration; zones are added one at a time).
-	if dv.tree != nil {
-		dv.tree.SetBounds(dv.Bounds)
+	if dv.rootTree != nil {
+		dv.rootTree.SetBounds(dv.Bounds)
 
-		dv.tree.Update()
+		dv.rootTree.Update()
 
 		// Sync zone → DrumView state that the tree may have changed:
 		// EQ toggle: sync zone state → DrumView.
@@ -57,7 +59,6 @@ func (dv *DrumView) Update() {
 		// BPM state: TransportZone is the single authority.
 		if dv.transportZone != nil {
 			dv.bpm = dv.transportZone.BPM()
-			dv.bpmPrev = dv.transportZone.BPMPrev()
 			dv.bpmDelta = 0 // zone consumed it
 			dv.bpmErrorAnim = dv.transportZone.BPMErrorAnim()
 			dv.secPerBeat = 60.0 / float64(dv.bpm)
@@ -85,7 +86,7 @@ func (dv *DrumView) Update() {
 			}
 			if res.err != nil {
 				dv.logger.Errorf("[drumview] import failed: %v", res.err)
-				dv.notifyError("Error loading JSON: " + res.err.Error())
+				dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadJSON, res.err.Error()))
 			} else if len(res.data) == 0 {
 				dv.logger.Debugf("[drumview] import canceled (no data)")
 			} else if dv.onImport != nil {
@@ -95,7 +96,7 @@ func (dv *DrumView) Update() {
 				// return an error directly, which we handle here.
 				if err := dv.onImport(res.data); err != nil {
 					dv.logger.Errorf("[drumview] import error: %v", err)
-					dv.notifyError("Error loading JSON: " + err.Error())
+					dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadJSON, err.Error()))
 				}
 				// Note: success notifications are handled by Game.Update() after
 				// the deferred import completes, not here.
@@ -109,7 +110,7 @@ func (dv *DrumView) Update() {
 			if dv.onImportDialogEnd != nil {
 				dv.onImportDialogEnd()
 			}
-			dv.notifyError("Import canceled")
+			dv.notifyError(i18n.T(i18n.KeyNotifImportCanceled))
 		}
 	}
 
@@ -120,7 +121,7 @@ func (dv *DrumView) Update() {
 			dv.logger.Debugf("[DRUMVIEW] Upload result path=%s err=%v", res.path, res.err)
 			if res.err != nil {
 				dv.logger.Errorf("[drumview] failed to load WAV: %v", res.err)
-				dv.notifyError("Error loading WAV: " + res.err.Error())
+				dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadWAV, res.err.Error()))
 			} else {
 				dv.CloseAllPopups() // close rename/menus before entering naming mode
 				dv.pendingWAV = res.path
@@ -134,7 +135,7 @@ func (dv *DrumView) Update() {
 				dv.nameBox.OnFocusLost = func() { softKeyboardHide() }
 				dv.nameBox.SetText("")
 				dv.nameBox.focused = true
-				dv.notifyInfo("Selected WAV: " + res.path)
+				dv.notifyInfo(i18n.Tf(i18n.KeyNotifSelectedWAV, res.path))
 			}
 		drainUpload:
 			for {
@@ -184,7 +185,8 @@ func (dv *DrumView) Update() {
 	// ─── POPUP INPUT GUARD ───
 	// All popup/overlay input is now dispatched through the portal/tree system.
 	// Block remaining handlers when any portal overlay is open.
-	if dv.tree != nil && dv.tree.Portal().IsOpen() {
+	if (dv.tree != nil && dv.tree.Portal().IsOpen()) ||
+		(dv.audioTree != nil && dv.audioTree.Portal().IsOpen()) {
 		// Ensure touch scroll is cleaned up even when the portal blocks
 		// further processing. Without this, TouchActive() stays true if a
 		// portal opened while a touch scroll was active, causing
@@ -194,7 +196,8 @@ func (dv *DrumView) Update() {
 		}
 		return
 	}
-	if dv.tree != nil && dv.tree.Suppress() {
+	if (dv.tree != nil && dv.tree.Suppressing()) ||
+		(dv.audioTree != nil && dv.audioTree.Suppressing()) {
 		return
 	}
 
@@ -215,7 +218,8 @@ func (dv *DrumView) Update() {
 			// the drum pane (including the scrollbar). This prevents wheel
 			// events from being eaten while the cursor is over the grid pane.
 			// Skip if wheel was already consumed by the tree (zone hit handler).
-			treeHandled := dv.tree != nil && dv.tree.WheelHandled()
+			treeHandled := (dv.tree != nil && dv.tree.WheelHandled()) ||
+				(dv.audioTree != nil && dv.audioTree.WheelHandled())
 			overBar := image.Pt(mx, my).In(dv.scrollBarRect())
 			overDrum := image.Pt(mx, my).In(dv.Bounds)
 			if !treeHandled && (overBar || overDrum) && wheelSteps != 0 {

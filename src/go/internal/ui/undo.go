@@ -25,6 +25,15 @@ type UndoManager struct {
 	redo      []undoEntry
 	maxDepth  int
 	restoring bool
+
+	// Grouping: a compound user gesture (e.g. deleting a mid-circuit node, which
+	// removes the node, its edges, cascades a row, and reconnects neighbours)
+	// emits several recorded events but must collapse into a SINGLE atomic undo
+	// step. beginGroup/endGroup bracket such a gesture; record() calls in between
+	// are deferred and finalized as one step at the outermost endGroup.
+	groupDepth int
+	groupLabel string
+	groupDirty bool
 }
 
 // NewUndoManager constructs a manager. capture must return a deterministic
@@ -45,6 +54,22 @@ func (m *UndoManager) record(label string) {
 	if m.restoring {
 		return
 	}
+	if m.groupDepth > 0 {
+		// Inside a compound gesture: defer the snapshot to endGroup so the whole
+		// gesture is one atomic step. Remember the first label as a fallback.
+		m.groupDirty = true
+		if m.groupLabel == "" {
+			m.groupLabel = label
+		}
+		return
+	}
+	m.commitNow(label)
+}
+
+// commitNow captures the current document and, if it differs from the committed
+// baseline, pushes one undo step. Shared by record() (immediate, no group) and
+// endGroup() (deferred, end of a compound gesture).
+func (m *UndoManager) commitNow(label string) {
 	snap := m.capture()
 	if len(snap) == 0 {
 		// Capture failed (e.g. exportBytes errored/panicked on a transient or
@@ -67,6 +92,44 @@ func (m *UndoManager) record(label string) {
 	}
 	m.committed = snap
 	m.redo = m.redo[:0]
+}
+
+// beginGroup opens a coalescing scope. record() calls until the matching
+// endGroup are deferred into one atomic step. Nestable (depth-counted); only the
+// outermost endGroup finalizes. The step's label is the first non-empty label
+// seen — an explicit beginGroup label, else the first sub-action's label.
+func (m *UndoManager) beginGroup(label string) {
+	if m.groupDepth == 0 {
+		m.groupDirty = false
+		m.groupLabel = ""
+	}
+	m.groupDepth++
+	if label != "" && m.groupLabel == "" {
+		m.groupLabel = label
+	}
+}
+
+// endGroup closes a coalescing scope. On the outermost close it captures the
+// final document once (only when a record happened — empty frames stay cheap and
+// never call capture) and pushes a single step.
+func (m *UndoManager) endGroup() {
+	if m.groupDepth == 0 {
+		return
+	}
+	m.groupDepth--
+	if m.groupDepth > 0 {
+		return
+	}
+	if !m.groupDirty {
+		return
+	}
+	label := m.groupLabel
+	m.groupDirty = false
+	m.groupLabel = ""
+	if m.restoring {
+		return
+	}
+	m.commitNow(label)
 }
 
 func (m *UndoManager) CanUndo() bool { return len(m.undo) > 0 }
@@ -120,13 +183,37 @@ func (m *UndoManager) OnExternalLoad() {
 
 // undoObserver is the process-wide sink for committed-mutation taps. One Game
 // per process, so a package global is safe (mirrors input.go's var pattern).
-var undoObserver interface{ recordKind(label string) }
+var undoObserver interface {
+	recordKind(label string)
+	beginGroup(label string)
+	endGroup()
+}
 
 func registerUndoObserver(m *UndoManager) { undoObserver = undoManagerObserver{m} }
 
 type undoManagerObserver struct{ m *UndoManager }
 
 func (o undoManagerObserver) recordKind(label string) { o.m.record(label) }
+func (o undoManagerObserver) beginGroup(label string) { o.m.beginGroup(label) }
+func (o undoManagerObserver) endGroup()               { o.m.endGroup() }
+
+// beginUndoGroup / endUndoGroup are the free-function taps that wrap a compound
+// user gesture so all its recorded sub-mutations collapse into one atomic undo
+// step. No-ops when no observer is registered. Always pair them with defer:
+//
+//	beginUndoGroup("delete node")
+//	defer endUndoGroup()
+func beginUndoGroup(label string) {
+	if undoObserver != nil {
+		undoObserver.beginGroup(label)
+	}
+}
+
+func endUndoGroup() {
+	if undoObserver != nil {
+		undoObserver.endGroup()
+	}
+}
 
 // documentScopeKinds is the recorded-set: committed document-state kinds that
 // produce an undo step. It is DERIVED from hooks.ActionRegistry (the single

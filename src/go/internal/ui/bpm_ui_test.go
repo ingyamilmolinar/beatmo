@@ -156,27 +156,11 @@ func TestBPMEditorCommitTimeBased(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
-	// Focus editor and type 200, then enter.
+	// Open the shared editor, type 200, then commit.
 	_ = g.Update()
-	focusTextInput(t, g.drum, g.drum.bpmBox())
-	g.drum.bpmBox().SetText("")
-	chars := []rune{}
-	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { c := chars; chars = nil; return c },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 640, 480 },
-	)
-	defer restore()
-	chars = []rune{'2'}
-	_ = g.Update()
-	chars = []rune{'0'}
-	_ = g.Update()
-	chars = []rune{'0'}
-	_ = g.Update()
-	chars = []rune{'\r'}
+	g.drum.transportZone.openBPMEditor()
+	g.drum.transportZone.paramEditor.ti.SetText("200")
+	g.drum.transportZone.paramEditor.commit()
 	_ = g.Update()
 
 	if g.drum.BPM() != 200 {
@@ -197,50 +181,29 @@ func TestBPMEditorCommit(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(640, 480)
 
-	// Let layout settle so button/text rects are up to date, then directly
-	// set focus on the bpmBox (package-private access is allowed in tests).
+	// Let layout settle so button/text rects are up to date, then open the
+	// shared editor (package-private access is allowed in tests).
 	_ = g.Update()
-	focusTextInput(t, g.drum, g.drum.bpmBox())
-	g.drum.bpmBox().SetText("")
-	chars := []rune{}
-	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(ebiten.Key) bool { return false },
-		func() []rune { c := chars; chars = nil; return c },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 640, 480 },
-	)
-	defer restore()
+	g.drum.transportZone.openBPMEditor()
+	ed := g.drum.transportZone.paramEditor
 
-	// Type 2,0,0 then commit.
-	chars = []rune{'2'}
-	_ = g.Update()
-	if v := g.drum.bpmBox().Value(); v == "" {
-		t.Logf("after '2' text empty")
-	} else {
-		t.Logf("after '2' text=%q", v)
-	}
-	chars = []rune{'0'}
-	_ = g.Update()
-	t.Logf("after '20' text=%q", g.drum.bpmBox().Value())
-	chars = []rune{'0'}
-	_ = g.Update()
-	t.Logf("after '200' text=%q", g.drum.bpmBox().Value())
+	// Type the value into the editor's box (uncommitted).
+	ed.ti.SetText("200")
+	t.Logf("editor text=%q", ed.ti.Value())
 
-	// Still focused; BPM should not have changed yet until Enter.
+	// Editor open but not committed; BPM should not have changed yet.
 	if g.drum.BPM() != 120 {
 		t.Fatalf("BPM changed before commit: %d", g.drum.BPM())
 	}
 
-	// Press Enter to commit.
-	chars = []rune{'\r'}
+	// Commit (Enter equivalent).
+	ed.commit()
 	if err := g.Update(); err != nil {
 		t.Fatalf("update err: %v", err)
 	}
 
 	if g.drum.BPM() != 200 {
-		t.Fatalf("expected BPM 200 got %d (focused=%v, text=%q)", g.drum.BPM(), g.drum.bpmBox().Focused(), g.drum.bpmBox().Value())
+		t.Fatalf("expected BPM 200 got %d (text=%q)", g.drum.BPM(), ed.ti.Value())
 	}
 
 	// Wait for async engine/apply.

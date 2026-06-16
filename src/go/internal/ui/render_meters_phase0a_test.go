@@ -4,6 +4,7 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -130,26 +131,51 @@ func TestSpectrumPhase0a_BarFillsBetweenHits(t *testing.T) {
 		drawAnalyzerSpectrum(dst, rect, silentCh, peaks)
 	})
 
-	// Look for spectrum bar rects (colWaveTrace) above the bar area's
-	// bottom — proves the held value (peaks.Peaks=0.8) drove the fill
-	// instead of the silent FFT (norm=0).
+	// Look for spectrum bar gradient rects above the bar area's bottom —
+	// proves the held value (peaks.Peaks=0.8) drove the fill instead of the
+	// silent FFT (norm=0). drawSpectrumBarGradient splits each bar into three
+	// fixed synthwave bands (top/mid/base), so we track the UNION span of the
+	// gradient rects per X column and assert the combined bar is tall.
 	barBand := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-22)
-	found := 0
+	isBarColor := func(c color.RGBA) bool {
+		return c == color.RGBAModel.Convert(colSpectrumBarTop).(color.RGBA) ||
+			c == color.RGBAModel.Convert(colSpectrumBarMid).(color.RGBA) ||
+			c == color.RGBAModel.Convert(colSpectrumBarBase).(color.RGBA)
+	}
+	// Track per-column min-Y / max-Y of gradient rects to recover the full
+	// bar height across the three bands.
+	type span struct{ minY, maxY int }
+	cols := map[int]*span{}
 	for _, r := range rects {
-		if r.Color != colWaveTrace {
+		if !isBarColor(r.Color) {
 			continue
 		}
-		// Rect must be inside the bar band AND tall enough to be
-		// meaningful (held peak 0.8 → ≥ 60% of band height).
 		if r.Rect.Min.X < barBand.Min.X || r.Rect.Max.X > barBand.Max.X {
 			continue
 		}
-		if r.Rect.Min.Y >= barBand.Min.Y && r.Rect.Max.Y <= barBand.Max.Y && r.Rect.Dy() > barBand.Dy()/3 {
+		if r.Rect.Min.Y < barBand.Min.Y || r.Rect.Max.Y > barBand.Max.Y {
+			continue
+		}
+		s := cols[r.Rect.Min.X]
+		if s == nil {
+			cols[r.Rect.Min.X] = &span{minY: r.Rect.Min.Y, maxY: r.Rect.Max.Y}
+			continue
+		}
+		if r.Rect.Min.Y < s.minY {
+			s.minY = r.Rect.Min.Y
+		}
+		if r.Rect.Max.Y > s.maxY {
+			s.maxY = r.Rect.Max.Y
+		}
+	}
+	found := 0
+	for _, s := range cols {
+		if s.maxY-s.minY > barBand.Dy()/3 {
 			found++
 		}
 	}
 	if found == 0 {
-		t.Fatalf("expected ≥1 tall spectrum bar rect (held value 0.8 should drive fill ≥ %d px) in band %v, found 0",
+		t.Fatalf("expected ≥1 tall spectrum bar (held value 0.8 should drive a gradient fill ≥ %d px) in band %v, found 0",
 			barBand.Dy()/3, barBand)
 	}
 }

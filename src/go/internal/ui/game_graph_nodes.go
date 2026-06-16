@@ -23,6 +23,11 @@ func (g *Game) nodeByID(id model.NodeID) *uiNode {
 }
 
 func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
+	// One atomic undo step: a click that auto-stitches a node into an existing
+	// edge emits an edge-delete + two edge-adds + the node-add; they must
+	// collapse into a single "add node" step.
+	beginUndoGroup("add node")
+	defer endUndoGroup()
 	// Remember whether we're in origin-selection mode for this placement so
 	// we can avoid side effects (like auto-stitching other circuits).
 	selectingOrigin := (g.pendingStartRow >= 0)
@@ -219,6 +224,13 @@ func (g *Game) deleteNode(n *uiNode) {
 }
 
 func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
+	// One atomic undo step for the whole delete: node removal, dropped edges,
+	// cascaded row deletion, and neighbour reconnection all collapse into a
+	// single step (see UndoManager.beginGroup). Without this, deleting a
+	// mid-circuit node recorded several steps and a single Ctrl+Z left a
+	// partial graph (a node stranded in a different position).
+	beginUndoGroup("delete node")
+	defer endUndoGroup()
 	// Capture predecessors and successors before removal for potential reconnection.
 	preds := []*uiNode{}
 	succs := []*uiNode{}
@@ -300,11 +312,43 @@ func (g *Game) deleteNodeInternal(n *uiNode, updateBeatInfos bool) {
 	if g.coordBadgeNode == n {
 		g.coordBadgeNode = nil
 	}
+	if g.sidebar != nil && g.sidebar.Node() == n {
+		g.sidebar.Close()
+	}
 	if g.start == n {
 		g.start = nil
 	}
 	if updateBeatInfos {
 		g.updateBeatInfos()
+	}
+}
+
+// pruneDanglingNodeRefs ties transient node-scoped UI to the lifecycle of the
+// nodes themselves: any reference to a node that is no longer in the graph is
+// repointed to the live node with the same id, or dropped — and an open node
+// menu (sidebar) for a vanished node is closed.
+//
+// Per-node delete hooks (deleteNodeInternal) clear these refs by pointer, but a
+// graph REBUILD (Import, which the undo/redo restore rides) replaces every node
+// wholesale without running those hooks, so a deleted/undone node would
+// otherwise leave its coordinate badge drawing and its menu open against a node
+// that no longer exists. Called at the end of Import and once per frame, so the
+// invariant holds regardless of HOW a node left the graph.
+func (g *Game) pruneDanglingNodeRefs() {
+	if g.coordBadgeNode != nil {
+		if live, ok := g.nodesByID[g.coordBadgeNode.ID]; ok {
+			g.coordBadgeNode = live
+		} else {
+			g.coordBadgeNode = nil
+		}
+	}
+	if g.sidebar != nil && g.sidebar.IsOpen() {
+		n := g.sidebar.Node()
+		if n == nil {
+			g.sidebar.Close()
+		} else if _, ok := g.nodesByID[n.ID]; !ok {
+			g.sidebar.Close()
+		}
 	}
 }
 
@@ -335,6 +379,11 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 	if existing := g.nodeAt(newI, newJ); existing != nil && existing.ID != n.ID {
 		return false
 	}
+
+	// One atomic undo step: the edge teardown, the move, and the edge re-add all
+	// collapse into a single "move node" step.
+	beginUndoGroup("move node")
+	defer endUndoGroup()
 
 	// Collect edges touching this node (preserve direction)
 	type edgeRef struct {

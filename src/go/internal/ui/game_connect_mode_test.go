@@ -169,7 +169,7 @@ func TestHandleConnectModeTapNonPerpendicular(t *testing.T) {
 	diag := g.tryAddNode(3, 3, model.NodeTypeRegular)
 	g.enterConnectMode(from)
 	edgesBefore := len(g.edges)
-	notifsBefore := len(g.drum.notifs)
+	notifsBefore := g.drum.notifStore.Len()
 
 	sx1, sy1, sx2, sy2 := g.nodeScreenRect(diag)
 	cx := int((sx1 + sx2) * 0.5)
@@ -182,10 +182,10 @@ func TestHandleConnectModeTapNonPerpendicular(t *testing.T) {
 	if len(g.edges) != edgesBefore {
 		t.Fatalf("no edge should be created for diagonal; edges=%d want %d", len(g.edges), edgesBefore)
 	}
-	if len(g.drum.notifs) <= notifsBefore {
+	if g.drum.notifStore.Len() <= notifsBefore {
 		t.Fatal("expected an error notification for non-perpendicular connection")
 	}
-	last := g.drum.notifs[len(g.drum.notifs)-1]
+	last := g.drum.notifStore.Latest()
 	if !last.isErr {
 		t.Fatal("notification should be an error")
 	}

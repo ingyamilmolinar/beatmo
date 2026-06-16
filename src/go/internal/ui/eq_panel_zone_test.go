@@ -278,7 +278,7 @@ func TestEQPanelZoneToggleButton(t *testing.T) {
 		t.Fatal("expected 'eq-tab-1' hit area")
 	}
 
-	if (z.ActiveTab() == TabWave) {
+	if z.ActiveTab() == TabWave {
 		t.Fatal("should start in EQ mode (not waveform)")
 	}
 
@@ -475,32 +475,14 @@ func TestEQPanelZoneCurveHandleDragSyncsSlider(t *testing.T) {
 
 // --- dB text input tests ---
 
-// focusDBInput simulates clicking inside a dB TextInput to focus it, then
-// runs one frame of updateDBInputs to trigger the focus-gained path.
-func focusDBInput(t *testing.T, z *EQPanelZone, band int) func() {
+// openDBEditor opens the shared dB editor for band (the production path is a
+// press on the dB readout rect, which routes to eqDBOpenAdapter → openEQDBEditor).
+func openDBEditor(t *testing.T, z *EQPanelZone, band int) {
 	t.Helper()
-	ti := z.eqDBInputs[band]
-	if ti == nil {
-		t.Fatalf("eqDBInputs[%d] is nil", band)
+	z.openEQDBEditor(band)
+	if z.paramEditor == nil || !z.paramEditor.Active() {
+		t.Fatalf("editor did not open for band %d", band)
 	}
-	r := ti.Rect
-	if r.Empty() {
-		// Force a rect for testing.
-		r = image.Rect(10+band*50, 500, 50+band*50, 520)
-		ti.Rect = r
-	}
-	cx := (r.Min.X + r.Max.X) / 2
-	cy := (r.Min.Y + r.Max.Y) / 2
-	restore := SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 600 },
-	)
-	z.updateDBInputs() // ti.Update() sees click inside rect -> focused=true, then focus-gained runs
-	return restore
 }
 
 func TestEQPanelZone_DBInputFocusGainedClearsText(t *testing.T) {
@@ -513,23 +495,16 @@ func TestEQPanelZone_DBInputFocusGainedClearsText(t *testing.T) {
 	tree.Update()
 	restore()
 
-	// Set a non-zero gain so we can verify dbInputPrev is saved.
+	// Set a non-zero gain so we can verify the editor opens pre-filled with it.
 	z.bandGainsDB[3] = 4.5
-	z.syncDBInputText(3)
 
-	// Click inside band 3 dB input to trigger focus-gained.
-	restore = focusDBInput(t, z, 3)
-	restore()
+	openDBEditor(t, z, 3)
 
-	if z.dbInputPrev != 4.5 {
-		t.Errorf("expected dbInputPrev=4.5, got %v", z.dbInputPrev)
+	if got := z.paramEditor.ti.Value(); got != "+4.5" {
+		t.Errorf("expected editor pre-filled with '+4.5', got %q", got)
 	}
-	ti := z.eqDBInputs[3]
-	if ti.Value() != "" {
-		t.Errorf("expected text cleared on focus, got %q", ti.Value())
-	}
-	if z.dbInputFocused != 3 {
-		t.Errorf("expected dbInputFocused=3, got %d", z.dbInputFocused)
+	if !z.paramEditor.Active() {
+		t.Error("expected editor active after open")
 	}
 }
 
@@ -543,10 +518,9 @@ func TestEQPanelZone_DBInputCommitValid(t *testing.T) {
 	tree.Update()
 	restore()
 
-	// Direct test of commitDBText: set text, call commit.
-	ti := z.eqDBInputs[2]
-	ti.SetText("6.0")
-	z.commitDBText(2)
+	openDBEditor(t, z, 2)
+	z.paramEditor.ti.SetText("6.0")
+	z.paramEditor.commit()
 
 	if z.bandGainsDB[2] != 6.0 {
 		t.Errorf("expected gain=6.0, got %v", z.bandGainsDB[2])
@@ -571,14 +545,16 @@ func TestEQPanelZone_DBInputCommitInvalid(t *testing.T) {
 	restore()
 
 	z.bandGainsDB[0] = 3.0
-	z.dbInputPrev = 3.0 // simulate what focus-gained would save
-	ti := z.eqDBInputs[0]
-	ti.SetText("abc")
-	z.commitDBText(0)
+	openDBEditor(t, z, 0)
+	z.paramEditor.ti.SetText("abc")
+	z.paramEditor.commit()
 
-	// Should revert to formatted previous value.
-	if ti.Value() != "+3.0" {
-		t.Errorf("expected revert to '+3.0', got %q", ti.Value())
+	// Invalid: gain unchanged, readout still shows the prior value.
+	if z.bandGainsDB[0] != 3.0 {
+		t.Errorf("expected gain unchanged at 3.0, got %v", z.bandGainsDB[0])
+	}
+	if got := formatDB(z.bandGainsDB[0]); got != "+3.0" {
+		t.Errorf("expected readout '+3.0', got %q", got)
 	}
 	if len(log.gainChanges) != 0 {
 		t.Error("expected no OnGainChange for invalid input")
@@ -597,13 +573,15 @@ func TestEQPanelZone_DBInputCommitEmpty(t *testing.T) {
 	restore()
 
 	z.bandGainsDB[1] = -2.0
-	z.dbInputPrev = -2.0
-	ti := z.eqDBInputs[1]
-	ti.SetText("")
-	z.commitDBText(1)
+	openDBEditor(t, z, 1)
+	z.paramEditor.ti.SetText("")
+	z.paramEditor.commit()
 
-	if ti.Value() != "-2.0" {
-		t.Errorf("expected revert to '-2.0', got %q", ti.Value())
+	if z.bandGainsDB[1] != -2.0 {
+		t.Errorf("expected gain unchanged at -2.0, got %v", z.bandGainsDB[1])
+	}
+	if got := formatDB(z.bandGainsDB[1]); got != "-2.0" {
+		t.Errorf("expected readout '-2.0', got %q", got)
 	}
 	if len(log.gainChanges) != 0 {
 		t.Error("expected no OnGainChange for empty input")
@@ -621,9 +599,9 @@ func TestEQPanelZone_DBInputClamp(t *testing.T) {
 	tree.Update()
 	restore()
 
-	ti := z.eqDBInputs[4]
-	ti.SetText("20.0")
-	z.commitDBText(4)
+	openDBEditor(t, z, 4)
+	z.paramEditor.ti.SetText("20.0")
+	z.paramEditor.commit()
 
 	if z.bandGainsDB[4] != 12.0 {
 		t.Errorf("expected clamped to 12.0, got %v", z.bandGainsDB[4])
@@ -644,31 +622,27 @@ func TestEQPanelZone_DBInputOnlyOneFocused(t *testing.T) {
 	tree.Update()
 	restore()
 
-	// Focus band 3 via simulated click.
+	// One shared editor: opening band 3, then band 5, re-targets the editor at
+	// band 5. Committing writes band 5 only; band 3 is left untouched.
 	z.bandGainsDB[3] = 1.0
-	z.syncDBInputText(3)
-	restore = focusDBInput(t, z, 3)
-	restore()
+	openDBEditor(t, z, 3)
+	openDBEditor(t, z, 5)
 
-	// Set text while focused.
-	z.eqDBInputs[3].SetText("5.0")
+	z.paramEditor.ti.SetText("5.0")
+	z.paramEditor.commit()
 
-	// Now focus band 5 — band 3 should be committed and unfocused.
-	restore = focusDBInput(t, z, 5)
-	restore()
-
-	if z.eqDBInputs[3].Focused() {
-		t.Error("expected band 3 unfocused")
+	if z.paramEditor.Active() {
+		t.Error("expected editor closed after commit")
 	}
-	if z.dbInputFocused != 5 {
-		t.Errorf("expected dbInputFocused=5, got %d", z.dbInputFocused)
+	// Band 5 committed with 5.0; band 3 unchanged at its prior 1.0.
+	if z.bandGainsDB[5] != 5.0 {
+		t.Errorf("expected band 5 gain=5.0, got %v", z.bandGainsDB[5])
 	}
-	// Band 3 should have been committed with value 5.0.
-	if z.bandGainsDB[3] != 5.0 {
-		t.Errorf("expected band 3 gain=5.0, got %v", z.bandGainsDB[3])
+	if z.bandGainsDB[3] != 1.0 {
+		t.Errorf("expected band 3 gain unchanged at 1.0, got %v", z.bandGainsDB[3])
 	}
 	if len(log.gainChanges) == 0 {
-		t.Error("expected OnGainChange fired for committed band 3")
+		t.Error("expected OnGainChange fired for committed band 5")
 	}
 	_ = tree
 }
@@ -689,14 +663,15 @@ func TestEQPanelZone_SyncDBInputText(t *testing.T) {
 	gains[9] = 12.0
 	z.SyncBandState(gains, nil)
 
-	if z.eqDBInputs[0].Value() != "+3.5" {
-		t.Errorf("band 0: expected '+3.5', got %q", z.eqDBInputs[0].Value())
+	// Readouts derive live from bandGainsDB after SyncBandState.
+	if got := formatDB(z.bandGainsDB[0]); got != "+3.5" {
+		t.Errorf("band 0: expected '+3.5', got %q", got)
 	}
-	if z.eqDBInputs[4].Value() != "-6.0" {
-		t.Errorf("band 4: expected '-6.0', got %q", z.eqDBInputs[4].Value())
+	if got := formatDB(z.bandGainsDB[4]); got != "-6.0" {
+		t.Errorf("band 4: expected '-6.0', got %q", got)
 	}
-	if z.eqDBInputs[9].Value() != "+12.0" {
-		t.Errorf("band 9: expected '+12.0', got %q", z.eqDBInputs[9].Value())
+	if got := formatDB(z.bandGainsDB[9]); got != "+12.0" {
+		t.Errorf("band 9: expected '+12.0', got %q", got)
 	}
 	if !z.curveDirty {
 		t.Error("expected curveDirty after SyncBandState")
@@ -714,16 +689,14 @@ func TestEQPanelZone_HandleKeyEnterCommits(t *testing.T) {
 	tree.Update()
 	restore()
 
-	// Set up focused state directly (HandleKey doesn't call ti.Update).
-	ti := z.eqDBInputs[6]
-	ti.SetText("8.5")
-	ti.focused = true
-	z.dbInputFocused = 6
-
-	result := z.HandleKey(ebiten.KeyEnter)
-	if result != InputConsumed {
-		t.Errorf("expected InputConsumed, got %d", result)
+	// While the editor is open HandleKey consumes keys; the editor owns commit.
+	openDBEditor(t, z, 6)
+	if result := z.HandleKey(ebiten.KeyEnter); result != InputConsumed {
+		t.Errorf("expected InputConsumed while editor open, got %d", result)
 	}
+	z.paramEditor.ti.SetText("8.5")
+	z.paramEditor.commit()
+
 	if z.bandGainsDB[6] != 8.5 {
 		t.Errorf("expected gain=8.5, got %v", z.bandGainsDB[6])
 	}
@@ -744,24 +717,21 @@ func TestEQPanelZone_HandleKeyEscapeReverts(t *testing.T) {
 	restore()
 
 	z.bandGainsDB[7] = 2.5
-	z.dbInputPrev = 2.5 // simulate what focus-gained would save
-	ti := z.eqDBInputs[7]
-	ti.SetText("10.0")
-	ti.focused = true
-	z.dbInputFocused = 7
+	openDBEditor(t, z, 7)
+	if result := z.HandleKey(ebiten.KeyEscape); result != InputConsumed {
+		t.Errorf("expected InputConsumed while editor open, got %d", result)
+	}
+	z.paramEditor.ti.SetText("10.0")
+	z.paramEditor.cancel()
 
-	result := z.HandleKey(ebiten.KeyEscape)
-	if result != InputConsumed {
-		t.Errorf("expected InputConsumed, got %d", result)
+	if z.paramEditor.Active() {
+		t.Error("expected editor closed after Escape")
 	}
-	if ti.Value() != "+2.5" {
-		t.Errorf("expected revert to '+2.5', got %q", ti.Value())
+	if z.bandGainsDB[7] != 2.5 {
+		t.Errorf("expected gain unchanged at 2.5, got %v", z.bandGainsDB[7])
 	}
-	if ti.Focused() {
-		t.Error("expected unfocused after Escape")
-	}
-	if z.dbInputFocused != -1 {
-		t.Errorf("expected dbInputFocused=-1, got %d", z.dbInputFocused)
+	if got := formatDB(z.bandGainsDB[7]); got != "+2.5" {
+		t.Errorf("expected readout '+2.5', got %q", got)
 	}
 	// Escape should NOT fire OnGainChange or OnApplyEQ.
 	if len(log.gainChanges) != 0 {

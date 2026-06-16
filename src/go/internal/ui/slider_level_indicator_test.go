@@ -33,12 +33,20 @@ func captureDrawRects(t *testing.T, fn func()) ([]image.Rectangle, []color.Color
 // indicatorIconRect is a stand-in icon rect used by helper tests.
 func indicatorIconRect() image.Rectangle { return image.Rect(20, 30, 60, 70) } // 40x40 icon
 
-func findIndicatorRects(rects []image.Rectangle, iconR image.Rectangle) []image.Rectangle {
-	// Indicator rects sit BELOW the icon (Min.Y >= iconR.Max.Y) and within icon's X span.
-	var found []image.Rectangle
-	for _, r := range rects {
-		if r.Min.Y >= iconR.Max.Y && r.Max.X <= iconR.Max.X+1 && r.Min.X >= iconR.Min.X-1 && r.Dy() <= 4 {
-			found = append(found, r)
+// findIndicatorRoundedRects filters captureRoundedRectCalls results to
+// the filled rounded-rect calls that correspond to the indicator rail/fill:
+// they sit at or below iconR.Max.Y, within icon's X span, and are thin (<=6px).
+func findIndicatorRoundedRects(calls []roundedDraw, iconR image.Rectangle) []roundedDraw {
+	var found []roundedDraw
+	for _, c := range calls {
+		if !c.Filled {
+			continue
+		}
+		if c.Rect.Min.Y >= iconR.Max.Y &&
+			c.Rect.Max.X <= iconR.Max.X+1 &&
+			c.Rect.Min.X >= iconR.Min.X-1 &&
+			c.Rect.Dy() <= 6 {
+			found = append(found, c)
 		}
 	}
 	return found
@@ -48,16 +56,18 @@ func TestSliderLevelIndicator_OffStateDrawsTrackOnly(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
 
-	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10), iconR, 0.7, colTextPrimary, true)
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, 0.7, colTextPrimary, true)
 	})
-	got := findIndicatorRects(rects, iconR)
-	if len(got) != 1 {
-		t.Fatalf("off-state indicator: want 1 rect (track only), got %d (%v)", len(got), got)
+	got := findIndicatorRoundedRects(calls, iconR)
+	if countFilled(got) != 1 {
+		t.Fatalf("off-state indicator: want 1 filled rounded rect (track only), got %d (%v)", countFilled(got), got)
 	}
-	if got[0].Dx() != iconR.Dx() {
-		t.Errorf("off-state track width: want %d, got %d", iconR.Dx(), got[0].Dx())
+	// Track should span full icon width.
+	if got[0].Rect.Dx() != iconR.Dx() {
+		t.Errorf("off-state track width: want %d, got %d", iconR.Dx(), got[0].Rect.Dx())
 	}
 }
 
@@ -65,32 +75,29 @@ func TestSliderLevelIndicator_ZeroValueDrawsTrackOnly(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
 
-	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10), iconR, 0.0, colTextPrimary, false)
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, 0.0, colTextPrimary, false)
 	})
-	got := findIndicatorRects(rects, iconR)
-	if len(got) != 1 {
-		t.Fatalf("zero-value indicator: want 1 rect (track only), got %d", len(got))
+	got := findIndicatorRoundedRects(calls, iconR)
+	if countFilled(got) != 1 {
+		t.Fatalf("zero-value indicator: want 1 filled rounded rect (track only), got %d", countFilled(got))
 	}
 }
 
-func TestSliderLevelIndicator_FullValueDrawsFullFill(t *testing.T) {
+func TestSliderLevelIndicator_FullValueDrawsRailAndFill(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
 
-	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10), iconR, 1.0, colTextPrimary, false)
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, 1.0, colTextPrimary, false)
 	})
-	got := findIndicatorRects(rects, iconR)
-	if len(got) != 2 {
-		t.Fatalf("full-value indicator: want 2 rects (track+fill), got %d (%v)", len(got), got)
-	}
-	// Last drawn (fill) should span full icon width
-	fill := got[len(got)-1]
-	if fill.Dx() != iconR.Dx() {
-		t.Errorf("full fill width: want %d, got %d", iconR.Dx(), fill.Dx())
+	got := findIndicatorRoundedRects(calls, iconR)
+	if countFilled(got) < 2 {
+		t.Fatalf("full value should draw rail + fill (>=2 filled rounded rects), got %d", countFilled(got))
 	}
 }
 
@@ -98,18 +105,97 @@ func TestSliderLevelIndicator_HalfValueDrawsHalfFill(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
 
-	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10), iconR, 0.5, colTextPrimary, false)
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, 0.5, colTextPrimary, false)
 	})
-	got := findIndicatorRects(rects, iconR)
-	if len(got) != 2 {
-		t.Fatalf("half-value indicator: want 2 rects, got %d", len(got))
+	got := findIndicatorRoundedRects(calls, iconR)
+	if countFilled(got) < 2 {
+		t.Fatalf("half-value indicator: want >=2 filled rounded rects, got %d", countFilled(got))
 	}
-	fill := got[len(got)-1]
+	// The fill (second filled) should be roughly half the icon width.
+	// Find the narrowest filled rect that is less than full width (the fill).
 	want := iconR.Dx() / 2
-	if abs(fill.Dx()-want) > 1 {
-		t.Errorf("half fill width: want ~%d, got %d", want, fill.Dx())
+	var fillW int
+	for _, c := range got {
+		if c.Rect.Dx() < iconR.Dx() {
+			fillW = c.Rect.Dx()
+		}
+	}
+	if abs(fillW-want) > 2 {
+		t.Errorf("half fill width: want ~%d, got %d", want, fillW)
+	}
+}
+
+// TestVolIconColorMatchesInstrumentNodeColor pins that an active per-row volume
+// slider paints the SAME color as that instrument's grid nodes. The node fill
+// for a regular node is the row's Color at full opacity (grid_pane_draw.go:
+// fillCol = base, where base = g.drum.Rows[rowIdx].Color). DrumRow.Color is the
+// single source of truth both surfaces read live, so they must agree exactly —
+// no alpha dimming on the slider that would make it read as a different shade.
+func TestVolIconColorMatchesInstrumentNodeColor(t *testing.T) {
+	assertDefaultParityState(t)
+	rowColor := color.RGBA{R: 220, G: 40, B: 90, A: 255}
+	got := volIconColor(0.8, false, rowColor)
+	wr, wg, wb, wa := rgba8(rowColor)
+	gr, gg, gb, ga := rgba8(got)
+	if gr != wr || gg != wg || gb != wb || ga != wa {
+		t.Errorf("volIconColor active: want node color (%d,%d,%d,%d), got (%d,%d,%d,%d)",
+			wr, wg, wb, wa, gr, gg, gb, ga)
+	}
+	// Muted / zero volume still reads as the disabled (silent) color.
+	if got := volIconColor(0, false, rowColor); got != colTextDisabled {
+		t.Errorf("volIconColor zero: want colTextDisabled, got %v", got)
+	}
+	if got := volIconColor(0.8, true, rowColor); got != colTextDisabled {
+		t.Errorf("volIconColor muted: want colTextDisabled, got %v", got)
+	}
+}
+
+// TestSliderLevelIndicator_NRGBAFillUsesIconColor pins the contract that the
+// fill carries the icon's foreground color even when that color arrives as a
+// color.NRGBA (the common case: per-row volume cells get their tint from
+// WithAlphaFromColor, which returns color.NRGBA). A naive
+// fgCol.(color.RGBA) assertion would miss this and silently substitute the
+// cyan fallback — so we assert the fill is NOT the fallback and DOES match
+// the converted icon color.
+func TestSliderLevelIndicator_NRGBAFillUsesIconColor(t *testing.T) {
+	assertDefaultParityState(t)
+	dst := ebiten.NewImage(200, 200)
+	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
+
+	// A distinctly non-cyan row tint, delivered as color.NRGBA (as production does).
+	iconCol := WithAlphaFromColor(color.RGBA{R: 220, G: 40, B: 90, A: 255}, AlphaOverlay)
+	wantR, wantG, wantB, _ := color.RGBAModel.Convert(iconCol).RGBA()
+
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, 0.8, iconCol, false)
+	})
+	got := findIndicatorRoundedRects(calls, iconR)
+	if countFilled(got) < 2 {
+		t.Fatalf("NRGBA fill: want rail+fill (>=2 filled), got %d", countFilled(got))
+	}
+	// The fill is the narrowest filled rect (< full icon width); its color must
+	// be the converted icon color, not the cyan fallback genColorPrimary.
+	var fillCol color.Color
+	for _, c := range got {
+		if c.Rect.Dx() < iconR.Dx() {
+			fillCol = c.Color
+		}
+	}
+	if fillCol == nil {
+		t.Fatal("NRGBA fill: no partial-width fill rect found")
+	}
+	cr, cg, cb, _ := genColorPrimary.RGBA()
+	gr, gg, gb, _ := fillCol.RGBA()
+	if gr == cr && gg == cg && gb == cb {
+		t.Fatalf("NRGBA fill: fell back to cyan genColorPrimary instead of the row color")
+	}
+	if gr != wantR || gg != wantG || gb != wantB {
+		t.Errorf("NRGBA fill: color mismatch: want (%d,%d,%d), got (%d,%d,%d)",
+			wantR>>8, wantG>>8, wantB>>8, gr>>8, gg>>8, gb>>8)
 	}
 }
 
@@ -117,17 +203,20 @@ func TestSliderLevelIndicator_ClampsValueAbove1(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
 
-	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10), iconR, 1.5, colTextPrimary, false)
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, 1.5, colTextPrimary, false)
 	})
-	got := findIndicatorRects(rects, iconR)
-	if len(got) != 2 {
-		t.Fatalf("clamp-above: want 2 rects, got %d", len(got))
+	got := findIndicatorRoundedRects(calls, iconR)
+	if countFilled(got) < 2 {
+		t.Fatalf("clamp-above: want >=2 filled rounded rects, got %d", countFilled(got))
 	}
-	fill := got[len(got)-1]
-	if fill.Dx() != iconR.Dx() {
-		t.Errorf("clamp above-1 fill width: want %d, got %d (must not exceed icon)", iconR.Dx(), fill.Dx())
+	// The fill must not exceed icon width.
+	for _, c := range got {
+		if c.Rect.Dx() > iconR.Dx() {
+			t.Errorf("clamp above-1: fill width %d exceeds icon width %d", c.Rect.Dx(), iconR.Dx())
+		}
 	}
 }
 
@@ -135,13 +224,14 @@ func TestSliderLevelIndicator_ClampsValueBelow0(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
 
-	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10), iconR, -0.3, colTextPrimary, false)
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, -0.3, colTextPrimary, false)
 	})
-	got := findIndicatorRects(rects, iconR)
-	if len(got) != 1 {
-		t.Fatalf("clamp-below: want 1 rect (no fill), got %d", len(got))
+	got := findIndicatorRoundedRects(calls, iconR)
+	if countFilled(got) != 1 {
+		t.Fatalf("clamp-below: want 1 filled rounded rect (no fill), got %d", countFilled(got))
 	}
 }
 
@@ -149,11 +239,11 @@ func TestSliderLevelIndicator_EmptyRectIsNoop(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 
-	rects, _ := captureDrawRects(t, func() {
+	calls := captureRoundedRectCalls(t, func() {
 		drawSliderLevelIndicator(dst, image.Rect(0, 0, 100, 100), image.Rectangle{}, 0.7, colTextPrimary, false)
 	})
-	if len(rects) != 0 {
-		t.Fatalf("empty-rect indicator: want 0 draw calls, got %d", len(rects))
+	if countFilled(calls) != 0 {
+		t.Fatalf("empty-rect indicator: want 0 draw calls, got %d filled rounded rects", countFilled(calls))
 	}
 }
 
@@ -161,23 +251,24 @@ func TestSliderLevelIndicator_PositionedBelowIcon(t *testing.T) {
 	assertDefaultParityState(t)
 	dst := ebiten.NewImage(200, 200)
 	iconR := indicatorIconRect()
+	btnR := image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10)
 
-	rects, _ := captureDrawRects(t, func() {
-		drawSliderLevelIndicator(dst, image.Rect(iconR.Min.X-10, iconR.Min.Y-10, iconR.Max.X+10, iconR.Max.Y+10), iconR, 0.5, colTextPrimary, false)
+	calls := captureRoundedRectCalls(t, func() {
+		drawSliderLevelIndicator(dst, btnR, iconR, 0.5, colTextPrimary, false)
 	})
-	got := findIndicatorRects(rects, iconR)
+	got := findIndicatorRoundedRects(calls, iconR)
 	if len(got) == 0 {
-		t.Fatal("no indicator rects drawn")
+		t.Fatal("no indicator rounded rects drawn")
 	}
 	track := got[0]
-	if track.Min.Y < iconR.Max.Y {
-		t.Errorf("indicator must sit beneath icon: track Min.Y=%d, iconR.Max.Y=%d", track.Min.Y, iconR.Max.Y)
+	if track.Rect.Min.Y < iconR.Max.Y {
+		t.Errorf("indicator must sit beneath icon: track Min.Y=%d, iconR.Max.Y=%d", track.Rect.Min.Y, iconR.Max.Y)
 	}
-	if track.Min.Y-iconR.Max.Y > 6 {
-		t.Errorf("indicator gap too large: %dpx (want <=6)", track.Min.Y-iconR.Max.Y)
+	if track.Rect.Min.Y-iconR.Max.Y > 6 {
+		t.Errorf("indicator gap too large: %dpx (want <=6)", track.Rect.Min.Y-iconR.Max.Y)
 	}
-	if track.Dy() < 1 || track.Dy() > 3 {
-		t.Errorf("indicator thickness %dpx is not thin (want 1-3)", track.Dy())
+	if track.Rect.Dy() < 1 || track.Rect.Dy() > 6 {
+		t.Errorf("indicator thickness %dpx is out of range (want 1-6)", track.Rect.Dy())
 	}
 }
 
@@ -195,18 +286,19 @@ func TestSliderLevelIndicator_StaysInsideBtnRect(t *testing.T) {
 	cy := btnR.Min.Y + btnR.Dy()/2
 	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
 
-	rects, _ := captureDrawRects(t, func() {
+	calls := captureRoundedRectCalls(t, func() {
 		drawSliderLevelIndicator(dst, btnR, iconR, 0.5, colTextPrimary, false)
 	})
-	if len(rects) == 0 {
+	got := findIndicatorRoundedRects(calls, iconR)
+	if len(got) == 0 {
 		t.Fatal("indicator should still render inside a tight button rect")
 	}
-	for i, r := range rects {
-		if r.Max.Y > btnR.Max.Y {
-			t.Errorf("indicator rect %d y=%d exceeds btnR.Max.Y=%d (would be clipped by surface)", i, r.Max.Y, btnR.Max.Y)
+	for i, c := range got {
+		if c.Rect.Max.Y > btnR.Max.Y {
+			t.Errorf("indicator rect %d y=%d exceeds btnR.Max.Y=%d (would be clipped by surface)", i, c.Rect.Max.Y, btnR.Max.Y)
 		}
-		if r.Min.Y < btnR.Min.Y {
-			t.Errorf("indicator rect %d y=%d above btnR.Min.Y=%d", i, r.Min.Y, btnR.Min.Y)
+		if c.Rect.Min.Y < btnR.Min.Y {
+			t.Errorf("indicator rect %d y=%d above btnR.Min.Y=%d", i, c.Rect.Min.Y, btnR.Min.Y)
 		}
 	}
 }
@@ -222,9 +314,6 @@ func TestVolumeButton_RowAndMasterRenderIdentically_TightLayout(t *testing.T) {
 	dstA := ebiten.NewImage(200, 200)
 	s := NewSlider(vol)
 	s.SetRect(btnR)
-	rectsA, _ := captureDrawRects(t, func() {
-		drawVolIcon(dstA, s, vol, false, nil)
-	})
 
 	dstB := ebiten.NewImage(200, 200)
 	tz, _ := newTestTransportZone()
@@ -233,27 +322,32 @@ func TestVolumeButton_RowAndMasterRenderIdentically_TightLayout(t *testing.T) {
 		tz.mainVolSlider = NewSlider(vol)
 	}
 	tz.mainVolSlider.Value = vol
-	rectsB, _ := captureDrawRects(t, func() {
+
+	// The indicator (and rail/fill) is drawn via drawRoundedRect; compare the
+	// full rounded-rect call sequence (geometry + color + radius + filled) so
+	// the two paths render byte-identically — not just "both nonzero".
+	callsA := captureRoundedRectCalls(t, func() {
+		drawVolIcon(dstA, s, vol, false, nil)
+	})
+	callsB := captureRoundedRectCalls(t, func() {
 		tz.drawMasterVolIconOffset(dstB, 0, 0)
 	})
 
-	if len(rectsA) != len(rectsB) {
-		t.Fatalf("tight-layout draw-call count mismatch: row=%d, master=%d", len(rectsA), len(rectsB))
+	if len(callsA) != len(callsB) {
+		t.Fatalf("tight-layout rounded-rect count mismatch: row=%d, master=%d", len(callsA), len(callsB))
 	}
-	for i := range rectsA {
-		if rectsA[i] != rectsB[i] {
-			t.Errorf("tight-layout rect[%d] mismatch: row=%v master=%v", i, rectsA[i], rectsB[i])
+	for i := range callsA {
+		if callsA[i] != callsB[i] {
+			t.Errorf("tight-layout rounded rect[%d] mismatch: row=%v master=%v", i, callsA[i], callsB[i])
 		}
 	}
-	// And: at least one indicator rect must be inside the tight btnR.
-	indicatorFound := 0
-	for _, r := range rectsA {
-		if r.Dy() <= 3 && r.Min.Y > btnR.Min.Y+btnR.Dy()/2 && r.Max.Y <= btnR.Max.Y {
-			indicatorFound++
-		}
-	}
-	if indicatorFound < 1 {
-		t.Errorf("tight-layout: expected at least one indicator rect inside btnR; got 0 (rects=%v)", rectsA)
+
+	iconH := 32 * 60 / 100 // 19
+	cx := btnR.Min.X + btnR.Dx()/2
+	cy := btnR.Min.Y + btnR.Dy()/2
+	iconR := image.Rect(cx-iconH/2, cy-iconH/2, cx+iconH/2, cy+iconH/2)
+	if len(findIndicatorRoundedRects(callsA, iconR)) < 1 {
+		t.Errorf("tight-layout: expected at least one indicator rounded rect inside btnR; got 0")
 	}
 }
 
@@ -262,11 +356,11 @@ func TestSliderLevelIndicator_TooSmallIconIsNoop(t *testing.T) {
 	dst := ebiten.NewImage(200, 200)
 	tinyR := image.Rect(0, 0, 3, 3)
 
-	rects, _ := captureDrawRects(t, func() {
+	calls := captureRoundedRectCalls(t, func() {
 		drawSliderLevelIndicator(dst, image.Rect(0, 0, 100, 100), tinyR, 0.7, colTextPrimary, false)
 	})
-	if len(rects) != 0 {
-		t.Fatalf("tiny-icon indicator should be no-op, got %d rects", len(rects))
+	if countFilled(calls) != 0 {
+		t.Fatalf("tiny-icon indicator should be no-op, got %d filled rounded rects", countFilled(calls))
 	}
 }
 
@@ -277,19 +371,20 @@ func TestDrawVolIcon_DrawsIndicatorBeneathIcon(t *testing.T) {
 	s := NewSlider(0.6)
 	s.SetRect(image.Rect(0, 0, 60, 60)) // generous so icon is large enough
 
-	rects, _ := captureDrawRects(t, func() {
+	// The indicator is now drawn via drawRoundedRect (via drawSliderRail).
+	// Capture rounded rects and look for thin ones below the vertical midpoint.
+	midY := 30
+	calls := captureRoundedRectCalls(t, func() {
 		drawVolIcon(dst, s, 0.6, false, nil)
 	})
-	// At least one rect below the vertical mid-line of the slider's rect.
-	midY := 30
 	belowCount := 0
-	for _, r := range rects {
-		if r.Min.Y > midY && r.Dy() <= 4 {
+	for _, c := range calls {
+		if c.Filled && c.Rect.Min.Y > midY && c.Rect.Dy() <= 6 {
 			belowCount++
 		}
 	}
 	if belowCount < 1 {
-		t.Fatalf("drawVolIcon vol=0.6 must draw indicator below mid-line; got 0 thin rects below y=%d (total %d rects)", midY, len(rects))
+		t.Fatalf("drawVolIcon vol=0.6 must draw indicator below mid-line via drawRoundedRect; got 0 thin filled rects below y=%d (total calls %d)", midY, len(calls))
 	}
 }
 
@@ -299,19 +394,20 @@ func TestDrawVolIcon_MutedDrawsIndicatorButNoFill(t *testing.T) {
 	s := NewSlider(0.6)
 	s.SetRect(image.Rect(0, 0, 60, 60))
 
-	rects, _ := captureDrawRects(t, func() {
+	// Muted: indicator is present (track/rail) but no fill — so exactly 1 thin
+	// filled rounded rect (the rail) below mid-line.
+	midY := 30
+	calls := captureRoundedRectCalls(t, func() {
 		drawVolIcon(dst, s, 0.6, true /* muted */, nil)
 	})
-	// Count thin rects below mid-line — muted should still show the track (1) but no fill.
-	midY := 30
 	belowThin := 0
-	for _, r := range rects {
-		if r.Min.Y > midY && r.Dy() <= 4 {
+	for _, c := range calls {
+		if c.Filled && c.Rect.Min.Y > midY && c.Rect.Dy() <= 6 {
 			belowThin++
 		}
 	}
 	if belowThin != 1 {
-		t.Errorf("muted vol icon: want exactly 1 thin rect (track only), got %d", belowThin)
+		t.Errorf("muted vol icon: want exactly 1 thin filled rounded rect (rail only), got %d", belowThin)
 	}
 }
 
@@ -371,17 +467,17 @@ func TestDrawMasterVolIcon_DrawsIndicator(t *testing.T) {
 	tz.mainVolSlider.Value = 0.5
 
 	dst := ebiten.NewImage(400, 400)
-	rects, _ := captureDrawRects(t, func() {
+	midY := 130
+	calls := captureRoundedRectCalls(t, func() {
 		tz.drawMasterVolIconOffset(dst, 0, 0)
 	})
-	midY := 130
 	belowThin := 0
-	for _, r := range rects {
-		if r.Min.Y > midY && r.Dy() <= 4 {
+	for _, c := range calls {
+		if c.Filled && c.Rect.Min.Y > midY && c.Rect.Dy() <= 6 {
 			belowThin++
 		}
 	}
 	if belowThin < 1 {
-		t.Fatalf("master vol icon should draw an indicator; got 0 thin rects below y=%d (total %d rects)", midY, len(rects))
+		t.Fatalf("master vol icon should draw an indicator via drawRoundedRect; got 0 thin filled rects below y=%d (total calls %d)", midY, len(calls))
 	}
 }

@@ -28,10 +28,10 @@ import (
 
 // waveCase: one engine's wave-knob wiring for the direct-render sub-test.
 type waveCase struct {
-	recipe  string
-	param   string
-	def     float64                                       // engine's native waveform
-	render  func(buf []float32, sr, n int, wave float64)  // direct family render with ONLY wave set
+	recipe string
+	param  string
+	def    float64                                      // engine's native waveform
+	render func(buf []float32, sr, n int, wave float64) // direct family render with ONLY wave set
 }
 
 func waveCases() []waveCase {

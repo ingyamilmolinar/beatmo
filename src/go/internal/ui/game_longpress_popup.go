@@ -5,6 +5,8 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // showLongPressPopup opens the three-button quick-action popup above the given
@@ -24,12 +26,13 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	g.longPressPopupHover = ""
 	g.longPressPopupLastHover = ""
 
-	// Button dimensions.
+	// Button dimensions — sourced from density tokens and spacing constants.
 	btnW := 80
-	btnH := 44
-	gap := 8
-	panelW := 3*btnW + 2*gap + 16 // 16 for horizontal padding (8 each side)
-	panelH := btnH + 16           // 16 for vertical padding (8 each side)
+	btnH := Profile().DensityValues().PopupBtnH
+	gap := SpaceSM
+	pad := SpaceMD
+	panelW := 3*btnW + 2*gap + 2*pad
+	panelH := btnH + 2*pad
 
 	// Position: centered above the node by default.
 	sx1, sy1, sx2, _ := g.nodeScreenRect(node)
@@ -61,8 +64,8 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 
 	g.longPressPopupRect = image.Rect(px, py, px+panelW, py+panelH)
 	// Buttons inside the panel, with padding.
-	bx := px + 8
-	by := py + 8
+	bx := px + pad
+	by := py + pad
 	g.longPressPopupMove = image.Rect(bx, by, bx+btnW, by+btnH)
 	g.longPressPopupConn = image.Rect(bx+btnW+gap, by, bx+2*btnW+gap, by+btnH)
 	g.longPressPopupDel = image.Rect(bx+2*(btnW+gap), by, bx+3*btnW+2*gap, by+btnH)
@@ -129,17 +132,38 @@ func (g *Game) dismissLongPressPopup() {
 	g.longPressPopupLastHover = ""
 }
 
+// longPressConnectHoverColor returns the azure accent color used for the
+// Connect button hover text. Extracted as a function so tests can assert the
+// single-chrome-accent invariant (cyan is reserved for viz data only).
+func longPressConnectHoverColor() color.Color { return colAccent }
+
 // drawLongPressPopup renders the three-button quick-action popup.
+// longPressPopupAccent returns the accent color for the node long-press popup:
+// the owning row's instrument color so the popup's hover highlights match the
+// instrument the node belongs to. Falls back to the azure chrome accent when
+// the node has no resolvable row.
+func (g *Game) longPressPopupAccent() color.Color {
+	if g.longPressPopupNode != nil {
+		if row := g.rowIndexForNode(g.longPressPopupNode.ID); row >= 0 && row < len(g.drum.Rows) {
+			if c := g.drum.Rows[row].Color; c != nil {
+				return c
+			}
+		}
+	}
+	return colAccent
+}
+
 func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	if !g.longPressPopup {
 		return
 	}
+	accent := g.longPressPopupAccent()
 
 	// Panel background.
 	drawScrim(dst)
 	drawPanel(dst, g.longPressPopupRect)
 
-	// Move button — unified dark style, green text when hovered.
+	// Move button — unified dark style, azure text when hovered.
 	moveHover := g.longPressPopupHover == "move"
 	moveFill, moveBorder := color.Color(colDropdown), color.Color(colTransportBorder)
 	if moveHover {
@@ -149,13 +173,13 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	drawRoundedButton(dst, g.longPressPopupMove, moveFill, moveBorder, popupButtonRadius(), false)
 	moveTxtCol := color.Color(genColorPopupTextSecondary)
 	if moveHover {
-		moveTxtCol = colPlayIconTint // green
+		moveTxtCol = accent // instrument-color text when hovered
 	}
-	mtx := g.longPressPopupMove.Min.X + (g.longPressPopupMove.Dx()-TextWidth("Move"))/2
-	mty := g.longPressPopupMove.Min.Y + (g.longPressPopupMove.Dy()-TextHeight())/2
-	DrawTextColorAt(dst, "Move", mtx, mty, moveTxtCol)
+	mtx := g.longPressPopupMove.Min.X + (g.longPressPopupMove.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapMove), RoleBody))/2
+	mty := g.longPressPopupMove.Min.Y + (g.longPressPopupMove.Dy()-StyledTextHeight(RoleBody))/2
+	DrawTextStyled(dst, i18n.T(i18n.KeyCapMove), mtx, mty, RoleBody, moveTxtCol)
 
-	// Connect button — unified dark style, cyan text when hovered.
+	// Connect button — unified dark style, azure text when hovered.
 	connHover := g.longPressPopupHover == "connect"
 	connFill, connBorder := color.Color(colDropdown), color.Color(colTransportBorder)
 	if connHover {
@@ -165,11 +189,11 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	drawRoundedButton(dst, g.longPressPopupConn, connFill, connBorder, popupButtonRadius(), false)
 	connTxtCol := color.Color(genColorPopupTextSecondary)
 	if connHover {
-		connTxtCol = colStep // cyan
+		connTxtCol = accent // instrument-color text when hovered
 	}
-	ctx := g.longPressPopupConn.Min.X + (g.longPressPopupConn.Dx()-TextWidth("Connect"))/2
-	cty := g.longPressPopupConn.Min.Y + (g.longPressPopupConn.Dy()-TextHeight())/2
-	DrawTextColorAt(dst, "Connect", ctx, cty, connTxtCol)
+	ctx := g.longPressPopupConn.Min.X + (g.longPressPopupConn.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapConnect), RoleBody))/2
+	cty := g.longPressPopupConn.Min.Y + (g.longPressPopupConn.Dy()-StyledTextHeight(RoleBody))/2
+	DrawTextStyled(dst, i18n.T(i18n.KeyCapConnect), ctx, cty, RoleBody, connTxtCol)
 
 	// Delete button — destructive red style.
 	delHover := g.longPressPopupHover == "delete"
@@ -179,7 +203,7 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 		delBorder = adjustColor(delBorder, 20)
 	}
 	drawRoundedButton(dst, g.longPressPopupDel, delFill, delBorder, popupButtonRadius(), false)
-	dtx := g.longPressPopupDel.Min.X + (g.longPressPopupDel.Dx()-TextWidth("Delete"))/2
-	dty := g.longPressPopupDel.Min.Y + (g.longPressPopupDel.Dy()-TextHeight())/2
-	DrawTextAt(dst, "Delete", dtx, dty)
+	dtx := g.longPressPopupDel.Min.X + (g.longPressPopupDel.Dx()-StyledTextWidth(i18n.T(i18n.KeyMenuDelete), RoleBody))/2
+	dty := g.longPressPopupDel.Min.Y + (g.longPressPopupDel.Dy()-StyledTextHeight(RoleBody))/2
+	DrawTextStyled(dst, i18n.T(i18n.KeyMenuDelete), dtx, dty, RoleBody, colTextPrimary)
 }

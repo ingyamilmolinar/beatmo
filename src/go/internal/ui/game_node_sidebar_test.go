@@ -340,57 +340,6 @@ func TestSidebarHandleInputNotOpenReturnsIgnored(t *testing.T) {
 	}
 }
 
-// TestSidebarHandleInputResizeDrag verifies that dragging on the resize handle
-// changes the sidebar width.
-func TestSidebarHandleInputResizeDrag(t *testing.T) {
-	assertDefaultParityState(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
-	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.sidebar.Open(n)
-	g.sidebar.layout()
-
-	initialWidth := g.sidebar.width
-
-	// Get the resize handle rect (right edge of panel).
-	handleR := g.sidebar.resizeHandleRect()
-	if handleR.Empty() {
-		t.Fatal("resize handle rect should not be empty")
-	}
-
-	// Press on the resize handle center.
-	hx := (handleR.Min.X + handleR.Max.X) / 2
-	hy := (handleR.Min.Y + handleR.Max.Y) / 2
-
-	result := g.sidebar.HandleInput(hx, hy, true)
-	if result != InputCaptured {
-		t.Fatalf("press on resize handle should return InputCaptured, got %v", result)
-	}
-	if !g.sidebar.resizing {
-		t.Fatal("sidebar should be in resizing state after press on handle")
-	}
-
-	// Drag to the right by 50 pixels.
-	dragDelta := 50
-	result = g.sidebar.HandleInput(hx+dragDelta, hy, true)
-	if result != InputCaptured {
-		t.Fatalf("drag should return InputCaptured, got %v", result)
-	}
-
-	if g.sidebar.width != initialWidth+dragDelta {
-		t.Fatalf("width should change by %d: expected %d, got %d",
-			dragDelta, initialWidth+dragDelta, g.sidebar.width)
-	}
-
-	// Release.
-	g.sidebar.HandleInput(hx+dragDelta, hy, false)
-	if g.sidebar.resizing {
-		t.Fatal("sidebar should not be resizing after release")
-	}
-}
-
 // ─── Sections & Dropdowns ────────────────────────────────────────────────────
 
 // TestSidebarToggleSection verifies that toggling a section opens and closes it.
@@ -880,8 +829,8 @@ func TestSidebarInputBounds(t *testing.T) {
 	}
 }
 
-// TestSidebarCapturing verifies that Capturing returns true only when resizing
-// or scroll is active.
+// TestSidebarCapturing verifies that Capturing reflects active scroll state.
+// (The user-resize path was removed, so scroll is now the only capture source.)
 func TestSidebarCapturing(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -896,12 +845,15 @@ func TestSidebarCapturing(t *testing.T) {
 		t.Fatal("Capturing should be false when idle")
 	}
 
-	// Simulate resize start.
-	g.sidebar.resizing = true
+	// Simulate a touch-scroll in progress.
+	g.sidebar.scroll.HandleTouchBegin(10, 100)
 	if !g.sidebar.Capturing() {
-		t.Fatal("Capturing should be true when resizing")
+		t.Fatal("Capturing should be true while a touch-scroll is active")
 	}
-	g.sidebar.resizing = false
+	g.sidebar.scroll.HandleTouchEnd()
+	if g.sidebar.Capturing() {
+		t.Fatal("Capturing should be false after touch ends")
+	}
 }
 
 // TestSidebarHandleWheelWhenNotOpen verifies that HandleWheel returns
@@ -1133,53 +1085,6 @@ func TestSidebar_DropdownMutualExclusion(t *testing.T) {
 	}
 	if g.sidebar.logicDropdownOpen {
 		t.Error("expected logic dropdown closed (mutual exclusion)")
-	}
-}
-
-func TestSidebar_ResizeDragUpdatesWidth(t *testing.T) {
-	assertDefaultParityState(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
-	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.sel = n
-	n.Selected = true
-	g.sidebar.Open(n)
-	g.sidebar.layout()
-
-	panelR := g.sidebar.rects["panel"]
-	if panelR.Empty() {
-		t.Fatal("expected non-empty panel rect")
-	}
-
-	widthBefore := g.sidebar.width
-
-	// Press on the resize handle.
-	handleR := g.sidebar.resizeHandleRect()
-	hx := (handleR.Min.X + handleR.Max.X) / 2
-	hy := (handleR.Min.Y + handleR.Max.Y) / 2
-
-	result := g.sidebar.HandleInput(hx, hy, true)
-	if result != InputCaptured {
-		t.Fatalf("expected InputCaptured on resize handle press, got %d", result)
-	}
-	if !g.sidebar.resizing {
-		t.Fatal("expected resizing=true after handle press")
-	}
-
-	// Drag left (shrink sidebar).
-	g.sidebar.HandleInput(hx-30, hy, true)
-
-	widthAfter := g.sidebar.width
-	if widthAfter >= widthBefore {
-		t.Errorf("expected width to decrease, before=%d after=%d", widthBefore, widthAfter)
-	}
-
-	// Release.
-	g.sidebar.HandleInput(hx-30, hy, false)
-	if g.sidebar.resizing {
-		t.Error("expected resizing=false after release")
 	}
 }
 

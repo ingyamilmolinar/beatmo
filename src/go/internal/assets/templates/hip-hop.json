@@ -1,0 +1,458 @@
+{
+  "version": 1,
+  "subdiv": 16,
+  "bpm": 88,
+  "instruments": [
+    {
+      "name": "Kick-deep",
+      "id": "kick-deep",
+      "kind": "builtin",
+      "volume": 1,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "synth_params": {
+        "drive": 0.15
+      }
+    },
+    {
+      "name": "Snare",
+      "id": "snare",
+      "kind": "builtin",
+      "volume": 0.8,
+      "origin": 6,
+      "color": "#00C8E0FF",
+      "reverb_send": 0.1,
+      "synth_params": {
+        "tone": -0.1
+      },
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 180,
+            "mix": 1,
+            "mode": 1,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Clap",
+      "id": "clap",
+      "kind": "builtin",
+      "volume": 0.5,
+      "origin": 10,
+      "color": "#FFD319FF",
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 180,
+            "mix": 1,
+            "mode": 1,
+            "q": 0.707
+          }
+        },
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 9000,
+            "mix": 1,
+            "mode": 0,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hihat",
+      "id": "hihat",
+      "kind": "builtin",
+      "volume": 0.35,
+      "origin": 14,
+      "color": "#A030FFFF",
+      "synth_params": {
+        "tone": -0.1
+      },
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 400,
+            "mix": 1,
+            "mode": 1,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sub-bass",
+      "id": "sub-bass",
+      "kind": "builtin",
+      "volume": 0.7,
+      "origin": 30,
+      "color": "#3FD67AFF"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        1
+      ]
+    },
+    {
+      "id": 1,
+      "i": 16,
+      "j": 0,
+      "type": "silent",
+      "outputs": [
+        2
+      ]
+    },
+    {
+      "id": 2,
+      "i": 16,
+      "j": 8,
+      "type": "regular",
+      "outputs": [
+        3
+      ]
+    },
+    {
+      "id": 3,
+      "i": 16,
+      "j": 16,
+      "type": "silent",
+      "outputs": [
+        4
+      ]
+    },
+    {
+      "id": 4,
+      "i": 8,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        5
+      ]
+    },
+    {
+      "id": 5,
+      "i": 0,
+      "j": 16,
+      "type": "silent",
+      "outputs": [
+        0
+      ]
+    },
+    {
+      "id": 6,
+      "i": 0,
+      "j": 24,
+      "type": "silent",
+      "outputs": [
+        7
+      ]
+    },
+    {
+      "id": 7,
+      "i": 16,
+      "j": 24,
+      "type": "regular",
+      "outputs": [
+        8
+      ]
+    },
+    {
+      "id": 8,
+      "i": 16,
+      "j": 40,
+      "type": "silent",
+      "outputs": [
+        9
+      ]
+    },
+    {
+      "id": 9,
+      "i": 0,
+      "j": 40,
+      "type": "regular",
+      "outputs": [
+        6
+      ]
+    },
+    {
+      "id": 10,
+      "i": 0,
+      "j": 48,
+      "type": "silent",
+      "outputs": [
+        11
+      ]
+    },
+    {
+      "id": 11,
+      "i": 16,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        12
+      ]
+    },
+    {
+      "id": 12,
+      "i": 16,
+      "j": 64,
+      "type": "silent",
+      "outputs": [
+        13
+      ]
+    },
+    {
+      "id": 13,
+      "i": 0,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        10
+      ]
+    },
+    {
+      "id": 14,
+      "i": 0,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        15
+      ]
+    },
+    {
+      "id": 15,
+      "i": 4,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        16
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 16,
+      "i": 8,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        17
+      ]
+    },
+    {
+      "id": 17,
+      "i": 12,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        18
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 18,
+      "i": 16,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        19
+      ]
+    },
+    {
+      "id": 19,
+      "i": 16,
+      "j": 76,
+      "type": "regular",
+      "outputs": [
+        20
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 20,
+      "i": 16,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        21
+      ]
+    },
+    {
+      "id": 21,
+      "i": 16,
+      "j": 84,
+      "type": "regular",
+      "outputs": [
+        22
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 22,
+      "i": 16,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        23
+      ]
+    },
+    {
+      "id": 23,
+      "i": 12,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        24
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 24,
+      "i": 8,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        25
+      ]
+    },
+    {
+      "id": 25,
+      "i": 4,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        26
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 26,
+      "i": 0,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        27
+      ]
+    },
+    {
+      "id": 27,
+      "i": 0,
+      "j": 84,
+      "type": "regular",
+      "outputs": [
+        28
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 28,
+      "i": 0,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        29
+      ]
+    },
+    {
+      "id": 29,
+      "i": 0,
+      "j": 76,
+      "type": "regular",
+      "outputs": [
+        14
+      ],
+      "groove_kind": "delay",
+      "groove_pct": 0.55
+    },
+    {
+      "id": 30,
+      "i": 0,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        31
+      ]
+    },
+    {
+      "id": 31,
+      "i": 16,
+      "j": 96,
+      "type": "silent",
+      "outputs": [
+        32
+      ]
+    },
+    {
+      "id": 32,
+      "i": 16,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        33
+      ]
+    },
+    {
+      "id": 33,
+      "i": 16,
+      "j": 112,
+      "type": "silent",
+      "outputs": [
+        34
+      ]
+    },
+    {
+      "id": 34,
+      "i": 8,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        35
+      ],
+      "pitch": -5
+    },
+    {
+      "id": 35,
+      "i": 0,
+      "j": 112,
+      "type": "silent",
+      "outputs": [
+        30
+      ]
+    }
+  ],
+  "send_effects": {
+    "delay": {
+      "time_ms": 300,
+      "feedback": 0.3,
+      "damping_hz": 3000
+    },
+    "reverb": {
+      "room": 0.7,
+      "damping": 0.4,
+      "wet": 0.3
+    }
+  }
+}

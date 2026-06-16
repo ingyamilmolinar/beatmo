@@ -50,7 +50,7 @@ func TestCursorHoverDesktopUpdatesPosition(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	z := laidOutEQZoneForCursor(t, TabSpectrum)
-	cr := z.contentRect()
+	cr := z.bodyRect()
 	if cr.Empty() {
 		t.Fatal("content rect should be non-empty")
 	}
@@ -80,7 +80,7 @@ func TestCursorExitDesktopClears(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	z := laidOutEQZoneForCursor(t, TabWave)
-	cr := z.contentRect()
+	cr := z.bodyRect()
 	if cr.Empty() {
 		t.Fatal("content rect should be non-empty")
 	}
@@ -108,7 +108,7 @@ func TestCursorTouchDragUpdatesPosition(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	z := laidOutEQZoneForCursor(t, TabSpectrum)
-	cr := z.contentRect()
+	cr := z.bodyRect()
 	if cr.Empty() {
 		t.Fatal("content rect should be non-empty")
 	}
@@ -142,7 +142,7 @@ func TestCursorTouchReleasePersists(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	z := laidOutEQZoneForCursor(t, TabWave)
-	cr := z.contentRect()
+	cr := z.bodyRect()
 	if cr.Empty() {
 		t.Fatal("content rect should be non-empty")
 	}
@@ -170,7 +170,7 @@ func TestCursorActiveOnlyOnAnalysisTabs(t *testing.T) {
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 
 	z := laidOutEQZoneForCursor(t, TabSpectrum)
-	cr := z.contentRect()
+	cr := z.bodyRect()
 	if cr.Empty() {
 		t.Fatal("content rect should be non-empty")
 	}

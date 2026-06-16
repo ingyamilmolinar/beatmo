@@ -10,6 +10,9 @@ var (
 	kbProxyDrainFn   js.Value
 	kbRegisterRectFn js.Value
 	kbClearRectsFn   js.Value
+	kbEscFn          js.Func
+	kbArrowLeftFn    js.Func
+	kbArrowRightFn   js.Func
 	kbInitialized    bool
 )
 
@@ -23,6 +26,27 @@ func softKeyboardInit() {
 	kbRegisterRectFn = g.Get("_kbRegisterFocusRect")
 	kbClearRectsFn = g.Get("_kbClearFocusRects")
 	kbInitialized = kbProxyFocusFn.Truthy() && kbProxyBlurFn.Truthy() && kbProxyDrainFn.Truthy()
+	// Bridge the proxy's Escape key to the universal Esc handler. The hidden
+	// proxy input holds keyboard focus while a text field is active, so the
+	// canvas never sees Esc — the proxy's keydown handler calls this.
+	kbEscFn = js.FuncOf(func(js.Value, []js.Value) any {
+		SignalSoftKeyboardEscape()
+		return nil
+	})
+	g.Set("_kbProxyEscapeGo", kbEscFn)
+	// Bridge the proxy's caret-navigation keys (Arrow Left/Right) too: the proxy
+	// holds keyboard focus, so the canvas never sees them and caret movement was
+	// dead on WASM. The proxy's keydown handler forwards them via these funcs.
+	kbArrowLeftFn = js.FuncOf(func(js.Value, []js.Value) any {
+		SignalSoftKeyboardArrowLeft()
+		return nil
+	})
+	g.Set("_kbProxyArrowLeftGo", kbArrowLeftFn)
+	kbArrowRightFn = js.FuncOf(func(js.Value, []js.Value) any {
+		SignalSoftKeyboardArrowRight()
+		return nil
+	})
+	g.Set("_kbProxyArrowRightGo", kbArrowRightFn)
 	mobileInputInit()
 }
 

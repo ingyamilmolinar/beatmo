@@ -28,6 +28,10 @@ type Slider struct {
 	// component already shows the value (e.g. FX-panel parameter rows
 	// render `Drive: 8.19` next to the slider, making "80%" duplicate).
 	SuppressLabel bool
+	// FillCol overrides the neon rail fill color. Zero value (alpha 0) keeps
+	// the default genColorPrimary. Set per-instance to tie a slider to its
+	// owning instrument's color (e.g. FX-panel param sliders).
+	FillCol color.RGBA
 }
 
 func NewSlider(v float64) *Slider { return &Slider{Value: v} }
@@ -92,37 +96,29 @@ func (s *Slider) Draw(dst *ebiten.Image) {
 		trackH = s.TrackH
 	}
 	thumbH := p.SliderThumbH
-	thumbW := p.SliderThumbW
 	midY := track.Min.Y + track.Dy()/2
 	trackY := midY - trackH/2
-	trackDraw := image.Rect(track.Min.X, trackY, track.Max.X, trackY+trackH)
 
-	// Rounded track background.
-	trackRadius := trackH / 2
-	drawRoundedRect(dst, trackDraw, genColorSliderTrackFill, trackRadius, true)
+	// Neon rail: dim base + accent fill from left to the value. The fill color
+	// defaults to genColorPrimary but can be overridden per-instance (e.g. the
+	// FX-panel param sliders tint to their owning instrument's color).
+	fillCol := genColorPrimary
+	if s.FillCol.A != 0 {
+		fillCol = s.FillCol
+	}
+	rail := image.Rect(track.Min.X, trackY, track.Max.X, trackY+trackH)
+	drawSliderRail(dst, rail, s.Value, true /*horizontal*/, fillCol)
 
-	// Filled portion (accent color from left to current value).
+	// Round glowing thumb (calm: many param sliders may share a screen).
 	knobX := track.Min.X + int(s.Value*float64(track.Dx()-1))
-	// Ensure thumb is always visible — at least thumbW/2+1 from track start.
-	minKnobX := track.Min.X + thumbW/2 + 1
-	if knobX < minKnobX {
-		knobX = minKnobX
+	rad := thumbH / 2
+	if lo := track.Min.X + rad + 1; knobX < lo {
+		knobX = lo
 	}
-	fillRect := image.Rect(track.Min.X, trackY, knobX, trackY+trackH)
-	if fillRect.Dx() > 0 {
-		drawRoundedRect(dst, fillRect, WithAlpha(genColorSliderFill, genAlphaOverlay), trackRadius, true)
+	if hi := track.Max.X - rad - 1; knobX > hi {
+		knobX = hi
 	}
-
-	// Thumb/handle — a visible rounded rectangle centered on the value position.
-	thumbRect := image.Rect(knobX-thumbW/2, midY-thumbH/2, knobX+thumbW/2, midY+thumbH/2)
-	thumbRadius := thumbW / 2
-	var thumbCol color.Color = genColorSliderThumbFill
-	if s.dragging {
-		thumbCol = genColorBorder // pure white when dragging — matches the existing brighter look
-	}
-	drawRoundedRect(dst, thumbRect, thumbCol, thumbRadius, true)
-	// Subtle border on thumb for definition.
-	drawRoundedRect(dst, thumbRect, WithAlpha(genColorSliderThumbShadow, genAlphaSubtle), thumbRadius, false)
+	drawSliderThumb(dst, image.Pt(knobX, midY), thumbH, s.dragging, true /*calm*/)
 
 	// Label position: use per-slider override if set, otherwise Profile default.
 	labelAbove := p.SliderLabelAbove

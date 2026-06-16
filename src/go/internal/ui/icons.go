@@ -12,38 +12,41 @@ import (
 type IconID string
 
 const (
-	IconPlay        IconID = "play"
-	IconPause       IconID = "pause"
-	IconStop        IconID = "stop"
-	IconRecord      IconID = "record"
-	IconPencil      IconID = "pencil"
-	IconSave        IconID = "save"
-	IconClose       IconID = "close"
-	IconOverflow    IconID = "overflow"
-	IconPlus        IconID = "plus"
-	IconMinus       IconID = "minus"
-	IconRows        IconID = "rows"
-	IconAudio       IconID = "audio"
+	IconPlay         IconID = "play"
+	IconPause        IconID = "pause"
+	IconStop         IconID = "stop"
+	IconRecord       IconID = "record"
+	IconPencil       IconID = "pencil"
+	IconSave         IconID = "save"
+	IconClose        IconID = "close"
+	IconOverflow     IconID = "overflow"
+	IconPlus         IconID = "plus"
+	IconMinus        IconID = "minus"
+	IconRows         IconID = "rows"
+	IconAudio        IconID = "audio"
 	IconChevronUp    IconID = "chevron-up"
 	IconChevronDown  IconID = "chevron-down"
 	IconChevronRight IconID = "chevron-right"
 	IconChevronLeft  IconID = "chevron-left"
 	IconStar         IconID = "star"
 	IconStarFilled   IconID = "star-filled"
-	IconTrack       IconID = "track"
-	IconTrackOff    IconID = "track-off"
-	IconUpload      IconID = "upload"
-	IconImport      IconID = "import"
-	IconExport      IconID = "export"
-	IconSpeaker     IconID = "speaker"
-	IconSpeakerOff  IconID = "speaker-off"
-	IconNote        IconID = "note"
-	IconMute        IconID = "mute"
-	IconSolo        IconID = "solo"
-	IconFx          IconID = "fx"
-	IconTarget      IconID = "target"
-	IconTrash       IconID = "trash"
-	IconCircle      IconID = "circle"
+	IconTrack        IconID = "track"
+	IconTrackOff     IconID = "track-off"
+	IconUpload       IconID = "upload"
+	IconImport       IconID = "import"
+	IconExport       IconID = "export"
+	IconUndo         IconID = "undo"
+	IconRedo         IconID = "redo"
+	IconSpeaker      IconID = "speaker"
+	IconSpeakerOff   IconID = "speaker-off"
+	IconNote         IconID = "note"
+	IconMute         IconID = "mute"
+	IconSolo         IconID = "solo"
+	IconFx           IconID = "fx"
+	IconTarget       IconID = "target"
+	IconSettings     IconID = "settings"
+	IconTrash        IconID = "trash"
+	IconCircle       IconID = "circle"
 
 	IconTriggerMarker IconID = "trigger-marker"
 	IconHeadroom      IconID = "headroom"
@@ -103,6 +106,10 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawImportIcon(dst, r, col)
 	case IconExport:
 		drawExportIcon(dst, r, col)
+	case IconUndo:
+		drawUndoIcon(dst, r, col)
+	case IconRedo:
+		drawRedoIcon(dst, r, col)
 	case IconSpeaker:
 		drawSpeakerIcon(dst, r, col)
 	case IconSpeakerOff:
@@ -117,6 +124,8 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawFxIcon(dst, r, col)
 	case IconTarget:
 		drawTargetIcon(dst, r, col)
+	case IconSettings:
+		drawSettingsIcon(dst, r, col)
 	case IconTrash:
 		drawTrashIcon(dst, r, col)
 	case IconCircle:

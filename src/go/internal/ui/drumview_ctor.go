@@ -14,6 +14,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/async"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
@@ -37,6 +38,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		bgDirty:              true,
 		Graph:                g,
 		logger:               logger,
+		notifStore:           newNotificationStore(notifHistoryCap),
 		Length:               8, // Default length
 		Offset:               0,
 		instOptions:          opts,
@@ -57,6 +59,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		// caller-supplied category set this false at the start of the test.
 		instMenuShowFavoritesCategory: true,
 	}
+	dv.initNotifPersistence()
 	dv.volPopup = NewSliderPopup(SliderPopupConfig{
 		ID:     "volume-popup",
 		ZIndex: 225,
@@ -79,6 +82,16 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		},
 		// Emit + undo record once at drag release (live SetValue stays per-frame).
 		OnRelease: func() { dv.commitRowVolume(dv.volPopupRow) },
+		// Rail accent = the row's instrument color (DrumRow.Color), the same
+		// source the grid nodes draw from. Read live off volPopupRow so the
+		// slider matches its instrument and follows any color edit.
+		Accent: func() color.Color {
+			row := dv.volPopupRow
+			if row >= 0 && row < len(dv.Rows) {
+				return dv.Rows[row].Color
+			}
+			return nil
+		},
 	})
 	dv.masterVolPopup = NewSliderPopup(SliderPopupConfig{
 		ID:     "master-volume-popup",
@@ -145,7 +158,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// pass via refreshLenButtonsStyle (called from recalcButtons). Seed once
 	// here so the buttons are visually valid before the first recalcButtons.
 	dv.refreshLenButtonsStyle()
-	dv.saveBtn = NewButton("Save", InstButtonStyle, nil)
+	dv.saveBtn = NewButton(i18n.T(i18n.KeySave), InstButtonStyle, nil)
 	// Default: collapsed on mobile. For Go tests with forceSmallScreenForTest,
 	// Profile().IsMobile() is already true at construction. On WASM, it becomes true
 	// later when Layout() calls SetTouchScreenSize(); refreshWidgetLayout()
@@ -157,10 +170,10 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// addRowBtn is now created by RowRackZone (Phase 4).
 	// Field is aliased after zone creation below tree initialization.
 
-	baseCol := instColor(inst)
-	// use uniqueness even for first row to keep logic consistent
-	uniq := dv.ensureUniqueColor(baseCol, -1)
-	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: uniq, Origin: model.InvalidNodeID, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))}}
+	// Pure sequential by row index: the first row is index 0, so it takes the
+	// first color of the canonical instrument series (DESIGN.md instrumentSequence:).
+	firstColor := seriesColorAt(0)
+	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: firstColor, Origin: model.InvalidNodeID, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))}}
 	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
 	// Initialize instrument availability/options immediately so early
 	// highlight/audio paths (e.g., tests spawning pulses before the first
@@ -192,6 +205,22 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.tree = NewDrumViewTree()
 	dv.tree.SetBounds(b)
 	dv.tree.SetDragActive(func() bool { return dv.anyDragActive() })
+	// Defer tree dispatch to the legacy InputDispatcher when it owns the press
+	// (e.g. the splitter holds capture), so the two input systems never both
+	// act on a single press — the divider-pill-over-notification conflict.
+	dv.tree.SetExternalCapture(func() bool { return dv.inputCapturedExternally })
+
+	// Audio-panel subtree: the entire bottom tab (eq-panel zone + row↔EQ
+	// divider + mobile view-switch layer) lives in its OWN DrumViewTree so its
+	// HitIndex is isolated from the drum-view subtree. A wheel/press inside the
+	// panel region is dispatched ONLY by dv.audioTree; dv.tree's HitIndex has no
+	// hit areas there, so the row rack never sees it (the synth-knob-wheel fix).
+	dv.audioTree = NewDrumViewTree()
+	dv.audioTree.SetDragActive(func() bool { return dv.anyDragActive() })
+	dv.audioTree.SetExternalCapture(func() bool { return dv.inputCapturedExternally })
+	dv.rootTree = NewRootTree()
+	dv.rootTree.AddChild("drumview", dv.tree, 0)
+	dv.rootTree.AddChild("audio", dv.audioTree, 1)
 	// Phase 2: EQ panel zone — owns EQ sliders, buttons, and state.
 	// Callbacks delegate audio operations to DrumView's existing methods.
 	dv.eqPanelZone = NewEQPanelZone(EQCallbacks{
@@ -364,6 +393,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		SamplerTabHitAreas: func() []HitArea {
 			return dv.samplerTabHitAreas()
 		},
+		SamplerTabUpdate: func() bool {
+			return dv.samplerTabUpdate()
+		},
 		IsHiddenForInput: func() bool {
 			// Mirrors the visibility predicate registered with the
 			// tree below. When perfDrawLite is on OR mobile is on
@@ -379,13 +411,13 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			return false
 		},
 	})
-	dv.eqPanelZone.SetPortal(dv.tree.Portal())
+	dv.eqPanelZone.SetPortal(dv.audioTree.Portal())
 	// Visibility is owned by the tab system: on mobile, the bottom-bar
 	// segmented switcher's selection drives currentViewMode, and the EQ
 	// panel is hidden when the user is on the Pads tab (viewModeRows).
 	// This is the canonical entry point — no other code should be deciding
 	// "should the EQ panel paint right now?"; that decision lives here.
-	dv.tree.RegisterZoneVisible(dv.eqPanelZone, ZEQPanel, func() bool {
+	dv.audioTree.RegisterZoneVisible(dv.eqPanelZone, ZEQPanel, func() bool {
 		if dv.perfDrawLite {
 			return false
 		}
@@ -466,11 +498,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			}
 			z.frozenState = BuildScopeStateFromSnapshots(z.instrumentID, z.tapA, z.tapB)
 			return z.frozenState != nil
-		},
-		OnClose: func() {
-			// Switch back to EQ tab when scope is closed.
-			dv.eqPanelZone.tabState.SetActiveTab(TabEQ)
-			dv.bgDirty = true // trigger layout recalc for panel resize
 		},
 		// StagePeak wiring — Phase 3 per-stage signal-flow display.
 		// Desktop reads directly off the scope service's per-stage stats
@@ -643,14 +670,21 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.openMasterVolPopupPortal()
 		},
 		MasterVolPopup: dv.masterVolPopup,
+		// The transport buttons are dispatched from dv.tree.Update() while
+		// Game.Update holds seqMu (game_update.go:380). undoManager.Undo/Redo
+		// re-imports the snapshot, and Import → updateBeatInfos re-acquires
+		// seqMu — which would self-deadlock the non-reentrant mutex. Defer the
+		// restore through QueueAction so it runs after seqMu.Unlock, mirroring
+		// the pendingImportData / JS-action pattern. (The keyboard Ctrl+Z path
+		// is already dispatched before the lock, so it stays a direct call.)
 		OnUndo: func() {
 			if dv.game != nil && dv.game.undoManager != nil {
-				dv.game.undoManager.Undo()
+				dv.game.QueueAction(func(g *Game) { g.undoManager.Undo() })
 			}
 		},
 		OnRedo: func() {
 			if dv.game != nil && dv.game.undoManager != nil {
-				dv.game.undoManager.Redo()
+				dv.game.QueueAction(func(g *Game) { g.undoManager.Redo() })
 			}
 		},
 		CanUndo: func() bool {
@@ -738,7 +772,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 					Bounds:     rackBounds,
 					RowHeight:  dv.rowHeight(),
 					OnColorPick: func(c color.Color) {
-						dv.SetRowColor(dv.colorMenuRow, c)
+						dv.SetRowColorManual(dv.colorMenuRow, c)
 					},
 					OnClose: func() {},
 				})
@@ -763,7 +797,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 						name := strings.TrimSpace(newName)
 						if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
 							if strings.ContainsAny(name, "/\\<>\x00") {
-								dv.notifyError("Invalid characters in name")
+								dv.notifyError(i18n.T(i18n.KeyNotifInvalidName))
 								dv.renameBox = nil
 								dv.renameRow = -1
 								return
@@ -787,7 +821,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 							dv.refreshInstruments()
 							dv.markRowControlsDirty()
 							dv.bgDirty = true
-							dv.notifyInfo("Renamed instrument to: " + name)
+							dv.notifyInfo(i18n.Tf(i18n.KeyNotifRenamedInstrument, name))
 						}
 						dv.renameBox = nil
 						dv.renameRow = -1
@@ -806,6 +840,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			}
 			if dv.renameBox == nil {
 				dv.renameBox = NewTextInput(r, BPMBoxStyle)
+				dv.renameBox.Accept = AcceptTextRune
 				dv.renameBox.MaxLen = 32
 				dv.renameBox.SetText(dv.Rows[row].Name)
 				dv.renameBox.focused = true
@@ -882,17 +917,28 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		MobileEQActive:  func() bool { return Profile().IsMobile() && dv.MobileEQMode() },
 		BeatCounterRect: func() image.Rectangle { return dv.beatCounterRect },
 		RowsTopY:        func() int { return dv.Bounds.Min.Y + dv.headerH },
+		NotifRect:       func() image.Rectangle { return dv.notifRect },
+		NotifLatest: func() (string, bool, bool) {
+			if dv.notifStore == nil || !dv.notifStore.HasSessionEntry() {
+				return "", false, false
+			}
+			n := dv.notifStore.Latest()
+			if n == nil {
+				return "", false, false
+			}
+			return n.text, n.isErr, true
+		},
+		OnNotifClick: dv.openNotifHistoryPortal,
 		SetTimelineBeats: func(beats int) {
 			dv.timelineBeats = beats
 		},
 		OnRowScrollWheel: func(steps int) bool {
-			dv.rowRackZone.syncScroll()
-			if dv.rowRackZone.RowScroll().HandleWheel(steps) {
-				dv.rowRackZone.flushScroll()
-				dv.rowScrollFromZone = true
-				return true
-			}
-			return false
+			// Reuse the row rack's canonical wheel scroll so up/down over the
+			// cell grid behaves identically to scrolling over the instrument
+			// labels (one row per notch, cooldown-throttled). OnScrollChanged
+			// (fired inside ScrollByWheel) sets rowScrollFromZone for the dv
+			// sync, so no extra bookkeeping is needed here.
+			return dv.rowRackZone.ScrollByWheel(steps)
 		},
 		OnRowScrollDrag: func(targetRowOffset int) {
 			dv.rowRackZone.syncScroll()
@@ -922,8 +968,20 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.tree.RegisterZone(dv.timelineZone, ZTimeline)
 
 	// Layout resize zone — wraps LayoutResizeHandler for tree-based input.
+	// Registered in the AUDIO subtree (not the drumview subtree) so its
+	// divider-pill hit areas (z=ZResize=200) out-prioritize the eq-panel
+	// catch-all (z=ZEQPanel=130) within the SAME HitIndex. The EQ-boundary
+	// divider pill straddles the audio-panel top edge, so its grab rect
+	// overlaps the eq-panel catch-all; with the resize zone in the drumview
+	// subtree, the audio subtree (dispatched first by the RootTree) would
+	// consume the press via its catch-all and the divider became un-draggable.
+	// Co-locating the resize input with the divider draw (rowEQDividerLayer,
+	// also in audioTree) restores the pre-RootTree z-priority. Column-divider
+	// pills in the top region still work: the audio subtree only publishes the
+	// small pill rects, so non-divider presses fall through to the drumview
+	// subtree as before.
 	dv.layoutResizeZone = newLayoutResizeZone(dv.layoutHandler)
-	dv.tree.RegisterZone(dv.layoutResizeZone, ZResize)
+	dv.audioTree.RegisterZone(dv.layoutResizeZone, ZResize)
 
 	// Decorative draw layers — every pixel emitted in the drum pane goes
 	// through these (or through the zones above). Registered last so the
@@ -934,11 +992,15 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.tree.RegisterLayer(newEQPeekLayer(dv))
 	dv.tree.RegisterLayer(newRackMaskLayer(dv))
 	dv.tree.RegisterLayer(newTransportPulseLayer(dv))
-	dv.tree.RegisterLayer(newViewSwitchLayer(dv))
+	// Mobile view-switch layer (ZViewSwitch=150) is an audio-panel concern —
+	// it owns switching between Pads and the audio tabs; register on audioTree.
+	dv.audioTree.RegisterLayer(newViewSwitchLayer(dv))
 	dv.tree.RegisterLayer(newRowZoomChipsLayer(dv))
-	dv.tree.RegisterLayer(newNotificationsLayer(dv))
 	dv.tree.RegisterLayer(newLayoutPillsLayer(dv))
 	dv.tree.RegisterLayer(newLayoutGuidesLayer(dv))
+	// Row↔EQ divider (ZRowEQDivider=186) marks the panel boundary — audioTree.
+	dv.rowEQDivider = newRowEQDividerLayer(dv)
+	dv.audioTree.RegisterLayer(dv.rowEQDivider)
 
 	// 7-segment view-switch (Pads/EQ/Wave/Spec/Lvl/Chn/Syn) — mobile only,
 	// spans full bottom action bar width (Theme 1). Labels match the
@@ -948,7 +1010,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// the rect is set (to non-empty) only on mobile in calcLayout /
 	// recalcButtons.
 	dv.viewSwitchSegmented = NewSegmentedControl(
-		[]string{"Pads", "EQ", "Wave", "Spec", "Lvl", "Chn", "Syn", "Smpl"},
+		dv.bottomNavLabels(),
 		0, // Pads active by default
 		func(i int) {
 			modes := []viewMode{
@@ -975,11 +1037,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// `lenIncBtn` / `lenDecBtn` pair which lives next to the timeline
 	// header on desktop and behind the overflow menu on mobile.
 	// Rect set in drumview_layout.go on mobile; left empty on desktop.
-	dv.rowZoomIncBtn = IconOnlyButton(IconPlus, TransportIncStyle)
+	dv.rowZoomIncBtn = IconOnlyButton(IconPlus, LenIncStyle)
 	dv.rowZoomIncBtn.OnClick = func() {
 		dv.lenIncPressed = true
 	}
-	dv.rowZoomDecBtn = IconOnlyButton(IconMinus, TransportDecStyle)
+	dv.rowZoomDecBtn = IconOnlyButton(IconMinus, LenDecStyle)
 	dv.rowZoomDecBtn.OnClick = func() {
 		dv.lenDecPressed = true
 	}
@@ -999,4 +1061,20 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Reset global click suppression to ensure clean state for new views/tests.
 	suppressClicksUntilRelease = false
 	return dv
+}
+
+// bottomNavLabels returns the mobile bottom-nav segment labels resolved in the
+// active locale (Pads + the 7 short tab labels). Used at construction and again
+// on a locale switch (OnLocaleChanged) so the cached SegmentedControl relabels.
+func (dv *DrumView) bottomNavLabels() []string {
+	return []string{
+		i18n.T(i18n.KeyNavPads),
+		i18n.T(i18n.KeyTabEQShort),
+		i18n.T(i18n.KeyTabWaveShort),
+		i18n.T(i18n.KeyTabSpectrumShort),
+		i18n.T(i18n.KeyTabLevelsShort),
+		i18n.T(i18n.KeyTabChainShort),
+		i18n.T(i18n.KeyTabSynthShort),
+		i18n.T(i18n.KeyTabSamplerShort),
+	}
 }

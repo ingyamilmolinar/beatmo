@@ -64,6 +64,38 @@ async function setupMobilePage() {
   return { context, page };
 }
 
+// tapBPMAwaitInput taps the BPM box and waits for the mobile native <input>
+// (z-index:10000) to appear, re-tapping a few times if needed. The "bpm" rect is
+// (re)registered every Update() frame (recalcButtons), but under headless
+// software-GL — especially in the parallel test batch — the rAF Update loop is
+// throttled, so the first tap's touchend can fire before any Update has
+// registered "bpm", and the JS gesture handler then creates no input. Re-tapping
+// after a short window lets the natural loop tick and register "bpm"; once
+// registered it stays registered. We deliberately do NOT force manual Update
+// ticks (forceGameTick), which can stall the WASM run loop. Returns true if the
+// input appeared. Mirrors the retry discipline in mobile_native_input.browser.test.js.
+async function tapBPMAwaitInput(page, rect) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await cdpTap(page, cx, cy);
+    try {
+      await page.waitForFunction(() => {
+        const inputs = document.querySelectorAll('input[style*="z-index"]');
+        for (const inp of inputs) {
+          if (inp.style.zIndex === '10000') return true;
+        }
+        return false;
+      }, { timeout: 500 });
+      return true;
+    } catch (_) {
+      // Registration not ready yet — let the rAF loop tick, then re-tap.
+      await page.waitForTimeout(150);
+    }
+  }
+  return false;
+}
+
 // Test 1: BPM soft keyboard focus — native input appears with inputmode=numeric
 console.log("Test 1: BPM soft keyboard — native input focused with inputmode=numeric");
 {
@@ -72,13 +104,9 @@ console.log("Test 1: BPM soft keyboard — native input focused with inputmode=n
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    // Tap the BPM box
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    await cdpTap(page, cx, cy);
-    await page.waitForTimeout(200);
-    await page.evaluate(() => forceDraw?.());
-    await page.waitForTimeout(100);
+    // Tap the BPM box (retry-aware: native input creation races the throttled
+    // rAF Update loop that registers the "bpm" rect).
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
 
     // On mobile, the native input system creates a real <input> overlay
     // instead of focusing the hidden proxy. Check that the native input
@@ -110,10 +138,8 @@ console.log("Test 2: Keyboard dismiss on blur");
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    // Focus BPM box
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(200);
-    await page.evaluate(() => forceDraw?.());
+    // Focus BPM box (retry-aware native input creation).
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
 
     // Check that either native input or proxy is focused
     let focused = await page.evaluate(() => {
@@ -332,8 +358,8 @@ console.log("Test 8: Text input gesture system present");
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
     // Tap the BPM box — the native input system creates a real <input>
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(300);
+    // (retry-aware: creation races the throttled rAF Update loop).
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
 
     const nativeActive = await page.evaluate(() => {
       const active = document.activeElement;
@@ -391,8 +417,10 @@ console.log("Test 9: DPR coordinate correctness (DPR=3)");
 
     const tapX = rect.x + rect.w / 2;
     const tapY = rect.y + rect.h / 2;
-    await cdpTap(page, tapX, tapY);
-    await page.waitForTimeout(300);
+    // Retry-aware tap: native input creation races the throttled rAF Update loop
+    // that registers the "bpm" rect. The touchend listener above captures the
+    // coordinates of the (final) tap, which are identical on every attempt.
+    assert(await tapBPMAwaitInput(page, rect), `Expected native input after cdpTap at DPR=${dpr}`);
 
     // Verify the native input was created (hit test worked with CSS coords)
     const nativeActive = await page.evaluate(() => {
@@ -411,6 +439,53 @@ console.log("Test 9: DPR coordinate correctness (DPR=3)");
         `Touch cx=${coords.cx} should be ~${expectedCx} (CSS px), not ${expectedCx * dpr} (DPR-scaled)`
       );
     }
+
+    console.log("  PASS");
+  } catch (e) {
+    console.log(`  FAIL: ${e.message}`);
+  } finally {
+    if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "mobile_text_input");
+    await context.close();
+  }
+}
+
+// Test: Escape via the keyboard proxy forwards to Go and dismisses the keyboard.
+// Regression for the browser bug where Esc did nothing on text inputs: the
+// hidden proxy holds keyboard focus, so the canvas never saw Esc. The proxy now
+// forwards Escape to Go via window._kbProxyEscapeGo (registered in softKeyboardInit).
+console.log("Test: Escape via proxy forwards to Go and blurs the proxy");
+{
+  const { context, page } = await setupMobilePage();
+  try {
+    const registered = await page.evaluate(() => typeof window._kbProxyEscapeGo === "function");
+    assert(registered, "Go should register window._kbProxyEscapeGo in softKeyboardInit");
+
+    await page.evaluate(() => {
+      window.__escFwd = 0;
+      const orig = window._kbProxyEscapeGo;
+      window._kbProxyEscapeGo = function () {
+        window.__escFwd++;
+        if (typeof orig === "function") orig.apply(this, arguments);
+      };
+    });
+
+    // Focus the proxy (simulates a text input gaining focus on WASM).
+    await page.evaluate(() => window._kbProxyFocus("text"));
+    await page.waitForTimeout(80);
+    const focusedBefore = await page.evaluate(
+      () => document.activeElement && document.activeElement.id === "beatmo-kb-proxy"
+    );
+    assert(focusedBefore, "proxy should be focused before Escape");
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+
+    const r = await page.evaluate(() => ({
+      fwd: window.__escFwd,
+      stillFocused: document.activeElement && document.activeElement.id === "beatmo-kb-proxy",
+    }));
+    assert(r.fwd >= 1, "Escape should forward to Go via _kbProxyEscapeGo");
+    assert(!r.stillFocused, "Escape should blur the proxy (dismiss soft keyboard)");
 
     console.log("  PASS");
   } catch (e) {

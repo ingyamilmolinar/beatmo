@@ -8,7 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
-	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // Synth-tab implementation — the canonical per-instrument pipeline
@@ -379,6 +379,8 @@ func (dv *DrumView) toggleSynthStage(instID, paramName string) {
 		next = 1.0
 	}
 	audio.SetInstrumentParam(instID, paramName, next)
+	dv.requestSynthMirror(instID) // toggling a stage changes the sound
+	dv.commitInstrumentParams(instID)
 }
 
 // synthSection is one card in the section row. Empty knobIdxs means the
@@ -571,17 +573,12 @@ const (
 	// padding/title constants stay so the chrome geometry is
 	// pre-density-deterministic and tests don't need to re-snapshot
 	// per density tier.)
-	synthSectionPaddingX     = 8
-	synthSectionPaddingY     = 6
-	synthSectionTitleHeight  = 16
-	synthHeaderHeightDesktop = 48
-	// Mobile header trimmed from 52 → 38 in the audio-panel mobile-
-	// usability pass: on a 360 × 800 portrait phone the previous 52
-	// px header consumed too much of the available content area
-	// (after the bottom-nav strip's reserve), leaving section cards
-	// too short to fit even the hard floor + DRIVE got clipped. 38
-	// is one `BtnHeightMD` (36) + 2 px breathing room.
-	synthHeaderHeightMobile = 38
+	synthSectionPaddingX    = 8
+	synthSectionPaddingY    = 6
+	synthSectionTitleHeight = 16
+	// Header strip height is the profileOverride densities token SynthHeaderH
+	// (desktop 48 / mobile 38), read via Profile().SynthHeaderH so the synth
+	// tab header is re-styleable from DESIGN.md per screen class.
 )
 
 // buildSynthTab is the layout entry point invoked by EQPanelZone when
@@ -608,6 +605,7 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	if contentR.Empty() {
 		dv.instEditorKnobs = dv.instEditorKnobs[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
+		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
 		return
 	}
@@ -616,9 +614,15 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	if resolved == "" {
 		dv.instEditorKnobs = dv.instEditorKnobs[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
+		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
 		return
 	}
+	// Stage 4: ensure the right-pane mirror has content as soon as the Synth tab
+	// is built/activated. Coalesced by params hash, so re-building the same tab
+	// each Layout is a no-op after the first render.
+	dv.requestSynthMirror(resolved)
+
 	recipeID := audio.RecipeForInstrument(resolved)
 	var schema []audio.ParamDef
 	if recipeID != "" {
@@ -636,6 +640,7 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	if len(schema) == 0 {
 		dv.instEditorKnobs = dv.instEditorKnobs[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
+		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
 		dv.instEditorSections = dv.instEditorSections[:0]
 		dv.instEditorPreviewRect = image.Rectangle{}
@@ -670,10 +675,7 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 
 	p := Profile()
 	mobile := p.IsMobile()
-	headerH := synthHeaderHeightDesktop
-	if mobile {
-		headerH = synthHeaderHeightMobile
-	}
+	headerH := Profile().SynthHeaderH
 	// Adaptive shrink: when the panel is short, shrink the header so
 	// the section row keeps at least minSectionsH for the knobs. The
 	// Save / SaveAs / Reset buttons live inside the header now, so
@@ -714,8 +716,59 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 			sectionsRect.Max.X, sectionsRect.Max.Y,
 		)
 		sectionsRect.Max.X = dv.instEditorPreviewRect.Min.X - SpaceMD
-	} else {
+		dv.instEditorMobileFocusRect = image.Rectangle{}
+	} else if mobile {
 		dv.instEditorPreviewRect = image.Rectangle{}
+		// Mobile: no side pane. ALWAYS reserve a COMPACT stacked band at the top
+		// of the sections area for the focus graph (+ the "Your sound" mirror when
+		// the band is tall enough — splitSynthRightPane collapses the mirror
+		// gracefully on short bands, leaving the focus graph the whole band). The
+		// band is never empty on mobile so the selected knob is always explained;
+		// the chip strip + detail/knob grid consumes the shrunk sectionsRect below
+		// and SCROLLS so every knob stays reachable (selectSectionForKnobIdx /
+		// ControlGrid.ScrollToIndex bring an off-screen knob into view on select).
+		//
+		// Sizing: aim for the focus-graph token height, but never let the band
+		// exceed 45% of the sections area, and always leave the knob grid a
+		// usable floor (chip strip — which may wrap — + the detail header + one
+		// knob row). On a tiny panel the band shrinks to a still-legible minimum
+		// (splitSynthRightPane drops the mirror and gives the focus graph the
+		// whole band) rather than starving the grid.
+		const (
+			minBandH = 64  // focus graph alone stays legible (mirror collapses)
+			minGridH = 150 // wrapped chip strip + detail header + a knob row
+		)
+		sectionsDy := sectionsRect.Dy()
+		capBandH := sectionsDy * 45 / 100
+		bandH := Profile().DensityValues().SynthFocusGraphH
+		if bandH > capBandH {
+			bandH = capBandH
+		}
+		// Protect the grid floor: if reserving the band would push the grid below
+		// minGridH, shrink the band — but keep it at least minBandH so the focus
+		// graph never vanishes (only when the whole sections area is smaller than
+		// minBandH+minGridH does the band drop below minBandH).
+		if sectionsDy-bandH < minGridH {
+			bandH = sectionsDy - minGridH
+			if bandH < minBandH {
+				bandH = minBandH
+			}
+		}
+		if bandH > sectionsDy {
+			bandH = sectionsDy
+		}
+		if bandH < 1 {
+			bandH = 1
+		}
+		dv.instEditorMobileFocusRect = image.Rect(
+			sectionsRect.Min.X, sectionsRect.Min.Y,
+			sectionsRect.Max.X, sectionsRect.Min.Y+bandH,
+		)
+		sectionsRect.Min.Y = dv.instEditorMobileFocusRect.Max.Y + SpaceSM
+	} else {
+		// Narrow desktop panel with no preview pane: no mobile band either.
+		dv.instEditorPreviewRect = image.Rectangle{}
+		dv.instEditorMobileFocusRect = image.Rectangle{}
 	}
 
 	// Populate per-section knob index lists from the wired schema. Reuse
@@ -735,6 +788,7 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	if !reuseExisting {
 		dv.instEditorKnobs = dv.instEditorKnobs[:0]
 		dv.instEditorSliders = dv.instEditorSliders[:0]
+		dv.instEditorStepBadges = dv.instEditorStepBadges[:0]
 		dv.instEditorBindings = dv.instEditorBindings[:0]
 	}
 	for i, def := range schema {
@@ -777,6 +831,17 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 				initial = 1
 			}
 		}
+		// A param whose range straddles zero (gain ±dB, detune ±cents,
+		// octave/pitch ±st, pan) is bipolar: its knob arc should fill from
+		// the 12-o'clock centre so +0 reads as centred, not as a partial
+		// ring. Derived from the def every layout; safe to set mid-drag
+		// (rendering polarity only, not the value).
+		bipolar := def.Min < 0 && def.Max > 0
+		zeroFrac := 0.5
+		if bipolar && def.Max > def.Min {
+			zeroFrac = (0 - def.Min) / (def.Max - def.Min)
+		}
+		sc, discrete, endless := scaleFromParamDef(def)
 		if reuseExisting && i < len(dv.instEditorKnobs) {
 			// Keep the existing knob/slider — preserve drag state,
 			// pressY latch, captured-handler pointer. Only refresh the
@@ -786,14 +851,39 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 				dv.instEditorKnobs[i].Value = initial
 				dv.instEditorSliders[i].Value = initial
 			}
+			dv.instEditorKnobs[i].Bipolar = bipolar
+			dv.instEditorKnobs[i].ZeroFrac = zeroFrac
+			dv.instEditorKnobs[i].Scale = sc
+			dv.instEditorKnobs[i].Discrete = discrete
+			dv.instEditorKnobs[i].Endless = endless
+			// Refresh StepMul from the existing badge when present.
+			if endless && i < len(dv.instEditorStepBadges) && dv.instEditorStepBadges[i] != nil {
+				dv.instEditorKnobs[i].StepMul = dv.instEditorStepBadges[i].Step()
+			}
 			dv.instEditorBindings[i] = instParamBinding{def: def}
 			continue
 		}
 		dv.instEditorBindings = append(dv.instEditorBindings, instParamBinding{def: def})
-		dv.instEditorKnobs = append(dv.instEditorKnobs, NewKnob(initial))
+		k := NewKnob(initial)
+		k.Bipolar = bipolar
+		k.ZeroFrac = zeroFrac
+		k.Scale = sc
+		k.Discrete = discrete
+		k.Endless = endless
+		var badge *KnobStepBadge
+		if endless {
+			badge = NewKnobStepBadge(def)
+			if persisted, ok := dv.knobStepPref(def.Name); ok {
+				badge.SetStep(persisted)
+			}
+			k.StepMul = badge.Step()
+		}
+		dv.instEditorKnobs = append(dv.instEditorKnobs, k)
+		dv.instEditorStepBadges = append(dv.instEditorStepBadges, badge)
 		dv.instEditorSliders = append(dv.instEditorSliders, NewSlider(initial))
 	}
 
+	dv.instEditorSectionsRect = sectionsRect
 	dv.layoutSynthSections(sectionsRect, sections, mobile, resolved)
 	dv.instEditorSections = sections
 
@@ -873,10 +963,10 @@ func (dv *DrumView) layoutSynthHeader(contentR image.Rectangle, headerH int, ins
 	// the labels (no truncation) and the height is the density token so
 	// mobile (Spacious) buttons meet the 44-px touch-min. Height is clamped
 	// to the header's inner band so it never exceeds the strip.
-	previewW := labelButtonWidth("Preview")
-	saveW := labelButtonWidth("Save")
-	saveAsW := labelButtonWidth("Save As")
-	resetW := labelButtonWidth("Reset")
+	previewW := labelButtonWidth(i18n.T(i18n.KeyPreview))
+	saveW := labelButtonWidth(i18n.T(i18n.KeySave))
+	saveAsW := labelButtonWidth(i18n.T(i18n.KeySaveAs))
+	resetW := labelButtonWidth(i18n.T(i18n.KeyReset))
 	btnH := dv2.SynthHeaderButtonH
 	if innerH := innerY1 - innerY0; innerH > 0 && btnH > innerH {
 		btnH = innerH
@@ -1093,6 +1183,35 @@ func (dv *DrumView) layoutSynthSections(rowR image.Rectangle, sections []synthSe
 		// wrapping rows beat a horizontal scroll strip, which would hide
 		// pipeline stages off-screen and fight the detail pane's vertical
 		// scroll for gestures.
+		//
+		// Detail-pane floor: with the always-on focus band stealing the top of
+		// the sections area, a deep (multi-row) wrapped strip could otherwise
+		// consume the entire remaining grid and leave the detail/knob pane empty.
+		// Pre-count the wrap rows for the current chip metrics; if the strip
+		// would overflow `rowR.Dy() - minDetailH`, COMPACT the strip rows (and
+		// the chip within them) so every stage still wraps visibly while the
+		// detail pane keeps a usable floor. The knob grid inside detail scrolls.
+		const minDetailH = 72 // detail header + one knob row (knobs scroll)
+		if rows := synthChipWrapRows(sections, rowR, chipMinW, gap); rows > 1 {
+			avail := rowR.Dy() - minDetailH - SpaceSM
+			if avail < rows { // pathological tiny panel
+				avail = rows
+			}
+			// Height budget per strip row (band incl. its rowGap), fit `rows`.
+			if perRow := (avail - rowGap*(rows-1)) / rows; perRow < stripRowH {
+				stripRowH = perRow
+				if stripRowH < 12 {
+					stripRowH = 12
+				}
+				if chipH > stripRowH {
+					chipH = stripRowH
+				}
+				chipInset = (stripRowH - chipH) / 2
+				if chipInset < 0 {
+					chipInset = 0
+				}
+			}
+		}
 		for i := range sections {
 			w := synthChipIdealWidth(sections[i].id, chipMinW)
 			if w > rowR.Dx() {
@@ -1166,6 +1285,30 @@ func (dv *DrumView) appendSynthChip(s synthSection, r image.Rectangle, instID st
 	})
 }
 
+// synthChipWrapRows counts how many rows the greedy mobile wrap (the loop in
+// layoutSynthSections) would use for `sections` at the given chip metrics. Kept
+// in lock-step with that loop's x-advance/wrap rule so the detail-floor compaction
+// reserves the right amount of strip height.
+func synthChipWrapRows(sections []synthSection, rowR image.Rectangle, chipMinW, gap int) int {
+	if len(sections) == 0 {
+		return 0
+	}
+	rows := 1
+	x := rowR.Min.X
+	for i := range sections {
+		w := synthChipIdealWidth(sections[i].id, chipMinW)
+		if w > rowR.Dx() {
+			w = rowR.Dx()
+		}
+		if x+w > rowR.Max.X && x > rowR.Min.X {
+			x = rowR.Min.X
+			rows++
+		}
+		x += w + gap
+	}
+	return rows
+}
+
 // synthChipStateW reserves room inside a chip for the enabled/ghost state
 // affordance (dot / power ring) right of the label.
 const synthChipStateW = 12
@@ -1197,14 +1340,29 @@ func (dv *DrumView) sectionGrid(id synthSectionID) *ControlGrid {
 }
 
 // synthTabUpdate ticks the per-frame scroll cooldown clock for every section
-// grid (see ControlGrid.WheelStep / Tick). Ticking never changes the layout —
-// actual row changes invalidate the panel from the input adapter — so this
-// always returns false. Cheap no-op when no cooldown is pending.
+// grid (see ControlGrid.WheelStep / Tick). Also drives the shared numeric
+// editor (paramEditor) so blur-to-commit works in production (mirrors
+// TransportZone.Update pumping the BPM box every frame). Returns true when
+// the layout should be re-derived (e.g. editor opened/closed).
 func (dv *DrumView) synthTabUpdate() bool {
 	for _, g := range dv.instEditorSectionGrids {
 		if g != nil {
 			g.Tick()
 		}
+	}
+	if dv.paramEditor != nil {
+		wasActive := dv.paramEditor.Active()
+		dv.paramEditor.Update()
+		// If the editor just closed (commit on blur), request a re-layout so
+		// the knob caption refreshes with the new value.
+		if wasActive && !dv.paramEditor.Active() {
+			return true
+		}
+	}
+	// Stage 4: a completed async mirror render flips ready; consume it (one-shot)
+	// and request a redraw so the freshly rendered note is shown promptly.
+	if dv.synthMirror != nil && dv.synthMirror.consumeReady() {
+		return true
 	}
 	return false
 }
@@ -1218,6 +1376,14 @@ func (dv *DrumView) synthTabUpdate() bool {
 // diameter that fits the cell, clamped to [SynthKnobMin, SynthKnobIdeal]. The
 // slider's rect mirrors the knob's so legacy hit-tests + JS export rects keep
 // landing on the visible widget.
+// synthKnobCellHeight is the per-knob grid cell height: dial + caption + gap.
+// The old per-knob concept-viz band is gone (the focus graph explains the
+// selected knob in the right pane), so the cell no longer reserves SynthConceptVizH.
+func synthKnobCellHeight() int {
+	d := Profile().DensityValues()
+	return d.SynthKnobIdeal + d.SynthKnobCaptionH + SpaceXS
+}
+
 func (dv *DrumView) placeKnobsInSection(s synthSection, mobile bool) {
 	grid := dv.sectionGrid(s.id)
 	// Collapsed stage (empty section rect) or no knobs: clear every knob
@@ -1252,16 +1418,41 @@ func (dv *DrumView) placeKnobsInSection(s synthSection, mobile bool) {
 	dv2 := Profile().DensityValues()
 	hGap := SpaceSM
 	vGap := SpaceXS
-	// Cell height tracks the ideal knob + caption, but shrinks to the card
-	// when even one ideal row won't fit — so short cards degrade gracefully
-	// (knob scales down) instead of overflowing, matching the pre-grid sizing.
-	cellH := dv2.SynthKnobIdeal + dv2.SynthKnobCaptionH
+	// Cell height tracks the ideal knob + caption + a step-badge band below the
+	// caption (continuous knobs draw their resolution pill there; reserving the
+	// band uniformly keeps the grid even and stops the badge from being clamped
+	// up onto the caption text). Shrinks to the card when even one ideal row
+	// won't fit — so short cards degrade gracefully (knob scales down) instead
+	// of overflowing, matching the pre-grid sizing.
+	// Cell height = dial + caption band + concept-viz band (the abstract
+	// "what this knob does" picture drawn under the caption, see
+	// drawSynthDetailPane). The resolution badge is laid out INLINE on the
+	// caption row, so it needs no extra vertical space; the viz band is the
+	// only growth over the original sizing. The dial diameter is still capped
+	// to SynthKnobIdeal and placed at the TOP of the slot, so the taller cell
+	// does NOT enlarge the dial or change its hit geometry — it just frees the
+	// lower slot for the viz band, leaving left/right knob drag unaffected.
+	// Shrinks to the card when even one ideal row won't fit.
+	// The plain-English purpose gloss ("bright or dull", …) is drawn on the
+	// caption ROW beside the value (see drawSynthDetailPane / synthKnobPurpose) —
+	// the fewer-per-row cap makes cells wide enough for both — so it costs no
+	// vertical space here; the cell only reserves dial + caption + concept band.
+	cellH := synthKnobCellHeight()
 	if availH := innerR.Dy(); cellH > availH {
 		cellH = availH
 	}
 	if cellH < 1 {
 		cellH = 1
 	}
+	// Fewer, WIDER knobs per row so each cell has room for its purpose line +
+	// mini-visual: cap the grid to 2 columns on desktop, 1 on mobile (the cap
+	// overrides ControlGrid's 2-column floor). Overflow scrolls — the intended
+	// "show a few, scroll for more" behaviour.
+	maxCols := 2
+	if mobile {
+		maxCols = 1
+	}
+	grid.SetMaxCols(maxCols)
 	grid.Layout(innerR, len(s.knobIdxs), dv2.SynthKnobIdeal, cellH, hGap, vGap)
 
 	for i, kIdx := range s.knobIdxs {
@@ -1271,7 +1462,12 @@ func (dv *DrumView) placeKnobsInSection(s synthSection, mobile bool) {
 			dv.instEditorSliders[kIdx].SetRect(image.Rectangle{})
 			continue
 		}
-		// Largest knob that fits the cell, clamped to the density bounds.
+		// Largest knob that fits the cell, clamped to the density bounds. The fit
+		// reserves the caption row AND the concept-viz band below it, so the dial
+		// yields room for its mini-picture — but never below SynthKnobMin (a
+		// usability/touch invariant, guarded by TestSynthSection_*MinDiameter).
+		// The synth panel is sized tall enough (see PanelTabState.PanelHeightAt)
+		// that a full row of dial + caption + band fits without clamping.
 		d := slot.Dx()
 		if maxH := slot.Dy() - dv2.SynthKnobCaptionH; d > maxH {
 			d = maxH
@@ -1298,7 +1494,7 @@ func (dv *DrumView) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, in
 	resolved := dv.resolveSynthInstrument(instID)
 	if resolved == "" {
 		// No active row — draw a hint and return.
-		DrawTextColorAt(dst, "no row selected — add a node to begin", contentR.Min.X+SpaceMD, contentR.Min.Y+SpaceMD, TokenTextSecondary())
+		DrawTextColorAt(dst, i18n.T(i18n.KeyNoRowSelected), contentR.Min.X+SpaceMD, contentR.Min.Y+SpaceMD, TokenTextSecondary())
 		return
 	}
 
@@ -1312,17 +1508,38 @@ func (dv *DrumView) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, in
 	dv.drawSynthHeader(dst)
 	dv.drawSynthChipStrip(dst)
 	dv.drawSynthDetailPane(dst, resolved)
+	// Numeric editor overlay: floats above the detail pane, anchored over the
+	// tapped knob caption. Drawn before the preview pane / footer / save-as
+	// dialog so it sits above detail-pane content but below modal dialogs.
+	if dv.paramEditor != nil {
+		dv.paramEditor.Draw(dst)
+	}
 	// Phase 4 audio-panel redesign: right-half preview pane (osc +
 	// ADSR + filter) when the layout reserved space for it. Reads
 	// the row's decay knob value via the synth bindings.
 	if r := dv.instEditorPreviewRect; !r.Empty() {
-		decayMul := dv.synthDecayValueForPreview()
-		drawSynthPreviewPane(dst, r, resolved, decayMul)
-		// OUT row at the bottom of the preview pane: live mini-
-		// meters for Delay send / Reverb send / Channel volume so
-		// the user can see "did my knob change reach the master".
-		// Phase 4.
-		dv.drawSynthOutRow(dst, r, resolved)
+		// "Your sound": the live wave-shape mirror owns the whole right pane.
+		// It re-renders in real time as knobs move (updateSynthMirrorLive is
+		// hash-gated) and shows a short, legible window of the actual waveform.
+		// The old stacked OSC/ADSR/FILTER seed plots + OUT-row meters were
+		// removed — the per-knob concept pictures already teach those, and the
+		// extra strips just cluttered the pane.
+		dv.updateSynthMirrorLive(resolved)
+		mirrorR, focusR := splitSynthRightPane(r)
+		if !mirrorR.Empty() {
+			drawSynthMirror(dst, mirrorR, dv.synthMirror)
+		}
+		dv.drawSynthFocusGraph(dst, focusR, resolved)
+	}
+	// Mobile: no side pane — the "Your sound" mirror + focus graph live in a
+	// stacked band reserved at the top of the sections area instead.
+	if mb := dv.instEditorMobileFocusRect; !mb.Empty() {
+		dv.updateSynthMirrorLive(resolved)
+		mirrorR, focusR := splitSynthRightPane(mb)
+		if !mirrorR.Empty() {
+			drawSynthMirror(dst, mirrorR, dv.synthMirror)
+		}
+		dv.drawSynthFocusGraph(dst, focusR, resolved)
 	}
 	dv.drawSynthFooter(dst)
 	dv.drawSaveAsDialog(dst)
@@ -1406,8 +1623,8 @@ func (dv *DrumView) drawSynthHeader(dst *ebiten.Image) {
 		return
 	}
 	// Background card.
-	drawRoundedRect(dst, h.rect, TokenSurface1(), 8, true)
-	drawRoundedRect(dst, h.rect, TokenBorderSubtle(), 8, false)
+	drawRoundedRect(dst, h.rect, TokenSurface1(), RadiusSM, true)
+	drawRoundedRect(dst, h.rect, TokenBorderSubtle(), RadiusSM, false)
 
 	// Caption: "snare  —  drum-snare", truncated to its rect so it never
 	// runs under the Save/Save As/Reset buttons on a narrow (mobile) header.
@@ -1426,7 +1643,10 @@ func (dv *DrumView) drawSynthHeader(dst *ebiten.Image) {
 // (the mobile caption-overflow bug). Reuses the shared truncCaption helper.
 func synthHeaderCaptionText(h synthHeaderLayout) string {
 	caption := h.instLabel
-	if h.recipeID != "" {
+	// Suppress the recipe segment when it duplicates the instrument id (e.g.
+	// a user recipe whose id equals the instrument) so the header never reads
+	// "fm-bell — fm-bell".
+	if h.recipeID != "" && h.recipeID != h.instLabel {
 		caption = h.instLabel + "  —  " + h.recipeID
 	}
 	return truncCaption(caption, h.captionRect.Dx())
@@ -1454,8 +1674,8 @@ func drawSynthHeaderWaveform(dst *ebiten.Image, r image.Rectangle, instID string
 		return
 	}
 	// Background card.
-	drawRoundedRect(dst, r, TokenSurface2(), 6, true)
-	drawRoundedRect(dst, r, TokenBorderSubtle(), 6, false)
+	drawRoundedRect(dst, r, TokenSurface2(), RadiusXS, true)
+	drawRoundedRect(dst, r, TokenBorderSubtle(), RadiusXS, false)
 
 	var sample []float32
 	if testSynthHeaderSampleOverride != nil {
@@ -1512,8 +1732,8 @@ func drawSynthWaveformPlaceholder(dst *ebiten.Image, r image.Rectangle) {
 	if r.Empty() {
 		return
 	}
-	drawRoundedRect(dst, r, TokenSurface2(), 6, true)
-	drawRoundedRect(dst, r, TokenBorderSubtle(), 6, false)
+	drawRoundedRect(dst, r, TokenSurface2(), RadiusXS, true)
+	drawRoundedRect(dst, r, TokenBorderSubtle(), RadiusXS, false)
 	// Stroke a symmetric exponential decay envelope. The drum-bus
 	// inspirations (Drum Bus, Drum Synth) all show a similar gesture in
 	// their header.
@@ -1566,40 +1786,63 @@ func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
 		if c.rect.Empty() {
 			continue
 		}
-		// Connector wire from the previous chip on the same row.
+		// Connector: a continuous thin AlphaFaint line running the full gap
+		// between the previous chip's right edge and this chip's left edge,
+		// vertically centred. Drawn BEFORE the chip body so the pill always
+		// sits on top — the wire never glues to a label.
 		if i > 0 {
-			p := dv.instEditorChips[i-1]
+			p := dv.instEditorchipPrev(i)
 			if !p.rect.Empty() && p.rect.Min.Y == c.rect.Min.Y && p.rect.Max.X < c.rect.Min.X {
 				cy := (c.rect.Min.Y + c.rect.Max.Y) / 2
-				wire := image.Rect(p.rect.Max.X, cy-1, c.rect.Min.X, cy+1)
-				drawRect(dst, wire, WithAlpha(genColorBorder, AlphaMedium), true)
+				wire := image.Rect(p.rect.Max.X, cy, c.rect.Min.X, cy+1)
+				drawRect(dst, wire, WithAlpha(genColorBorder, AlphaFaint), true)
 			}
 		}
-		// Chip body.
-		var fill, labelCol, border color.Color = TokenSurface1(), TokenTextSecondary(), TokenBorderSubtle()
-		switch {
-		case c.selected:
-			fill = WithAlpha(colAccent, AlphaFaint)
-			labelCol = TokenTextPrimary()
-			border = colAccent
-		case !c.enabled:
-			fill = WithAlpha(TokenSurface1(), AlphaSubtle)
-			labelCol = WithAlpha(TokenTextSecondary(), AlphaMedium)
+		// Chip body. Every chip keeps a pill background and border so a
+		// disabled chip never reads as a floating bare label — disabled gets a
+		// dimmer fill + muted label, selected gets the accent treatment.
+		//
+		// Four visual states, three of which can combine:
+		//   enabled  + unselected → surface pill, secondary label
+		//   disabled + unselected → dimmer pill, disabled label
+		//   enabled  + selected   → accent fill + full accent ring, primary label
+		//   disabled + selected   → accent fill + HALF-alpha accent ring, DIMMED
+		//                            label (the ghost-but-open read).
+		var fill color.Color = TokenSurface1()
+		var labelCol color.Color = TokenTextSecondary()
+		var border color.Color = TokenBorderSubtle()
+		if !c.enabled {
+			fill = WithAlpha(TokenSurface2(), AlphaStrong)
+			labelCol = TokenTextDisabled()
 		}
-		drawRoundedRect(dst, c.rect, fill, 6, true)
-		drawRoundedRect(dst, c.rect, border, 6, false)
-		// State affordance right of the label: enabled = small accent dot,
-		// disabled = dim power ring (tap target is the whole chip).
-		const dotD = 6
-		dotR := image.Rect(
-			c.rect.Max.X-SpaceSM-dotD, (c.rect.Min.Y+c.rect.Max.Y)/2-dotD/2,
-			c.rect.Max.X-SpaceSM, (c.rect.Min.Y+c.rect.Max.Y)/2+dotD/2,
-		)
-		if c.enableParam != "" {
+		if c.selected {
+			fill = WithAlpha(colAccent, AlphaFaint)
 			if c.enabled {
-				DrawIcon(dst, IconCircle, dotR, WithAlpha(colAccent, AlphaStrong))
+				labelCol = TokenTextPrimary()
+				border = colAccent
 			} else {
-				DrawIcon(dst, IconCircle, dotR, WithAlpha(TokenTextSecondary(), AlphaMedium))
+				// Selected-but-disabled: the ring is half-strength and the
+				// label stays dimmed so it never reads as a fully-active chip.
+				labelCol = TokenTextDisabled()
+				border = WithAlpha(colAccent, AlphaMedium)
+			}
+		}
+		drawRoundedRect(dst, c.rect, fill, RadiusXS, true)
+		drawRoundedRect(dst, c.rect, border, RadiusXS, false)
+		// State dot right of the label (only for stages that carry an enable
+		// toggle). >= 6px, explicit on/off colors: accent when on, disabled
+		// surface-text when off.
+		if c.enableParam != "" {
+			const dotD = 7
+			cy := (c.rect.Min.Y + c.rect.Max.Y) / 2
+			dotR := image.Rect(
+				c.rect.Max.X-SpaceSM-dotD, cy-dotD/2,
+				c.rect.Max.X-SpaceSM, cy-dotD/2+dotD,
+			)
+			if c.enabled {
+				DrawIcon(dst, IconCircle, dotR, colAccent)
+			} else {
+				DrawIcon(dst, IconCircle, dotR, TokenTextDisabled())
 			}
 		}
 		// Label, truncated to the room left of the state affordance.
@@ -1614,6 +1857,12 @@ func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
 	}
 }
 
+// instEditorchipPrev returns the chip immediately before index i, used by the
+// chip-strip connector. Small helper so the connector logic reads clearly.
+func (dv *DrumView) instEditorchipPrev(i int) synthChip {
+	return dv.instEditorChips[i-1]
+}
+
 // drawSynthDetailPane paints the expanded stage: a header band (title +
 // plain-English subtitle + enable pill, now with room so nothing overlaps)
 // over the full-size knob grid. The bypass scrim dims the knob area when the
@@ -1626,28 +1875,69 @@ func (dv *DrumView) drawSynthDetailPane(dst *ebiten.Image, instID string) {
 	if detail.Empty() || sel == nil {
 		return
 	}
-	drawRoundedRect(dst, detail, TokenSurface1(), 8, true)
-	drawRoundedRect(dst, detail, TokenBorderSubtle(), 8, false)
+	drawRoundedRect(dst, detail, TokenSurface1(), RadiusSM, true)
+	drawRoundedRect(dst, detail, TokenBorderSubtle(), RadiusSM, false)
 
 	headerH := dv.instEditorDetailHeaderH
+	stageEnabled := true
+	if sel.enableParam != "" {
+		stageEnabled = synthStageEnabled(instID, sel.enableParam)
+	}
+
 	tx := detail.Min.X + synthSectionPaddingX
 	ty := detail.Min.Y + SpaceXS
-	DrawTextColorAt(dst, sectionLabel(sel.id), tx, ty, TokenTextPrimary())
+	// Title shares the body's dim state: when the stage is bypassed the title
+	// dims too (it stayed full-brightness before, contradicting the dimmed
+	// knobs) and gains a small "BYPASSED" tag so the off-state is unmistakable.
+	titleCol := TokenTextPrimary()
+	if !stageEnabled {
+		titleCol = TokenTextDisabled()
+	}
+	title := sectionLabel(sel.id)
+	DrawTextColorAt(dst, title, tx, ty, titleCol)
+	if !stageEnabled {
+		captionScale := FontSizeCaption / FontSizeBody
+		tagX := tx + TextWidth(title) + SpaceSM
+		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapBypassed), tagX, ty+2, TokenTextDisabled(), captionScale)
+	}
 	if sub := sectionSubtitle(sel.id); sub != "" {
 		captionScale := FontSizeCaption / FontSizeBody
 		subY := ty + TextHeight() + 1
 		if subY+int(float64(TextHeight())*captionScale) <= detail.Min.Y+headerH {
 			availW := detail.Dx() - 2*synthSectionPaddingX - FXToggleTrackW() - 2*SpaceXS
 			sub = truncCaption(sub, int(float64(availW)/captionScale))
-			DrawTextColorAtScale(dst, sub, tx, subY, WithAlpha(TokenTextSecondary(), AlphaMedium), captionScale)
+			subCol := WithAlpha(TokenTextSecondary(), AlphaMedium)
+			if !stageEnabled {
+				subCol = WithAlpha(TokenTextDisabled(), AlphaMedium)
+			}
+			DrawTextColorAtScale(dst, sub, tx, subY, subCol, captionScale)
 		}
 	}
-	stageEnabled := true
 	if sel.enableParam != "" {
-		stageEnabled = synthStageEnabled(instID, sel.enableParam)
 		if pillR := dv.synthDetailEnablePillRect(); !pillR.Empty() {
 			drawFXTogglePill(dst, pillR, stageEnabled)
 		}
+	}
+
+	// BUG 2 fix: clear all badge rects before drawing the selected section.
+	// Badges whose knobs are NOT in the currently-drawn section keep stale
+	// rects from the previous draw; those stale rects occupy the same pixel
+	// area the detail pane reuses for every section, so a tap on a B-section
+	// knob was stolen by an A-section badge's ghost rect. Clearing here
+	// guarantees only the currently-visible section's badges have non-empty
+	// rects, and the hit-test in handleSynthTabInput therefore only fires for
+	// the section that is actually on screen.
+	for _, b := range dv.instEditorStepBadges {
+		if b != nil {
+			b.SetRect(image.Rectangle{})
+		}
+	}
+	// Mirror the badge-rect clear for readout rects: stale rects from a
+	// previous section draw would let a readout tap misfire on an off-screen
+	// knob. Reset all to empty; the draw loop below re-populates only the
+	// knobs that are actually visible in this section.
+	for i := range dv.instEditorReadoutRects {
+		dv.instEditorReadoutRects[i] = image.Rectangle{}
 	}
 
 	grid := dv.sectionGrid(sel.id)
@@ -1660,37 +1950,121 @@ func (dv *DrumView) drawSynthDetailPane(dst *ebiten.Image, instID string) {
 			continue // scrolled out of the detail pane's visible window
 		}
 		k.Draw(dst)
-		// Caption under the knob: name + formatted value + unit. Falls back
-		// to the value-only form when the full caption would truncate. The
-		// caption gets the full GRID CELL width (the knob dial is centred in
-		// a wider cell), so detail-pane captions rarely truncate — the old
-		// per-card layout clipped them to the dial diameter.
+		if dv.synthSelectedKnobIdx(instID, sel) == kIdx {
+			drawRoundedRect(dst, k.Rect(), colConceptStroke, RadiusSM, false)
+		}
 		b := dv.instEditorBindings[kIdx]
 		actual := b.def.Min + k.Value*(b.def.Max-b.def.Min)
 		caption := synthKnobCaption(b.def, actual)
 		captionR := k.Rect()
-		if slot, vis := grid.CellRect(j); vis {
+		slot, slotVis := grid.CellRect(j)
+		if slotVis {
 			captionR = image.Rect(slot.Min.X, captionR.Min.Y, slot.Max.X, captionR.Max.Y)
 		}
-		availW := captionR.Dx() - SpaceXS*2
+		captionY := captionR.Min.Y + (k.Rect().Dy() - Profile().DensityValues().SynthKnobCaptionH) + SpaceXS
+
+		// Resolve the step badge (continuous knobs only) and decide its layout
+		// BEFORE drawing the caption, so the two never overlap. Preferred: a
+		// pill BELOW the caption text (needs vertical room in the cell). When
+		// the cell is too short, fall back to an INLINE pill at the right end
+		// of the caption row and give the caption the remaining left width.
+		var badge *KnobStepBadge
+		if kIdx < len(dv.instEditorStepBadges) && slotVis {
+			badge = dv.instEditorStepBadges[kIdx]
+		}
+		bw, bh := Profile().DensityValues().KnobStepBadgeW, Profile().DensityValues().KnobStepBadgeH
+		badgeBelow := badge != nil && captionY+TextHeight()+SpaceXS+bh <= slot.Max.Y
+		inlineBadge := badge != nil && !badgeBelow
+
+		// Caption area: full cell width, minus the inline pill's column.
+		capArea := captionR
+		if inlineBadge {
+			capArea.Max.X = captionR.Max.X - bw - SpaceXS
+			if capArea.Max.X < capArea.Min.X {
+				capArea.Max.X = capArea.Min.X
+			}
+		}
+		// Plain-English purpose gloss ("bright or dull") shares the caption ROW,
+		// right-aligned and dim, when the (now wide, fewer-per-row) cell can fit it
+		// beside the value caption. Reserving the right slice here shrinks capArea
+		// so the value caption + readout hit rect never overlap the gloss.
+		glossScale := FontSizeCaption / FontSizeBody
+		gloss := synthKnobPurpose(b.def)
+		glossArea := image.Rectangle{}
+		if gloss != "" {
+			glossW := int(float64(TextWidth(gloss))*glossScale) + SpaceSM
+			minCapW := TextWidth(synthKnobCaptionValueOnly(b.def, actual)) + SpaceXS*2
+			if capArea.Dx()-glossW >= minCapW {
+				glossArea = image.Rect(capArea.Max.X-glossW, captionY, capArea.Max.X, captionY+TextHeight())
+				capArea.Max.X -= glossW
+			}
+		}
+		availW := capArea.Dx() - SpaceXS*2
+		if availW < 1 {
+			availW = 1
+		}
 		if TextWidth(caption) > availW {
 			caption = synthKnobCaptionValueOnly(b.def, actual)
 		}
 		caption = truncCaption(caption, availW)
-		captionY := captionR.Min.Y + (k.Rect().Dy() - Profile().DensityValues().SynthKnobCaptionH) + SpaceXS
-		// Centre the caption under the dial.
-		cx := captionR.Min.X + (captionR.Dx()-TextWidth(caption))/2
-		if cx < captionR.Min.X+2 {
-			cx = captionR.Min.X + 2
+		// Centre the caption within its area.
+		cx := capArea.Min.X + (capArea.Dx()-TextWidth(caption))/2
+		if cx < capArea.Min.X+2 {
+			cx = capArea.Min.X + 2
 		}
 		DrawTextColorAt(dst, caption, cx, captionY, TokenTextSecondary())
+		// Record the caption area as the tappable readout (stale rects cleared
+		// above, so off-screen knobs keep an empty rect). In inline-badge mode
+		// this excludes the pill's column so the two hit areas never overlap.
+		if slotVis {
+			readoutR := image.Rect(capArea.Min.X, captionY, capArea.Max.X, captionY+TextHeight())
+			dv.setKnobReadoutRect(kIdx, readoutR)
+		}
+		// Purpose gloss on the caption row (right slice reserved above).
+		if !glossArea.Empty() {
+			gx := glossArea.Max.X - int(float64(TextWidth(gloss))*glossScale) - 2
+			if gx < glossArea.Min.X {
+				gx = glossArea.Min.X
+			}
+			glossCol := WithAlpha(TokenTextSecondary(), AlphaMedium)
+			if !stageEnabled {
+				glossCol = WithAlpha(TokenTextDisabled(), AlphaMedium)
+			}
+			DrawTextColorAtScale(dst, gloss, gx, captionY, glossCol, glossScale)
+		}
+		// Draw the step badge in its resolved position. Either way the rect
+		// stays inside the cell slot so it can never reach into a neighbouring
+		// cell and steal that knob's taps.
+		if badge != nil {
+			var br image.Rectangle
+			if badgeBelow {
+				by := captionY + TextHeight() + SpaceXS
+				bx := captionR.Min.X + (captionR.Dx()-bw)/2
+				br = image.Rect(bx, by, bx+bw, by+bh)
+			} else {
+				bx := captionR.Max.X - bw
+				by := captionY + (TextHeight()-bh)/2
+				if by < slot.Min.Y {
+					by = slot.Min.Y
+				}
+				if by+bh > slot.Max.Y {
+					by = slot.Max.Y - bh
+				}
+				br = image.Rect(bx, by, bx+bw, by+bh)
+			}
+			if !br.Empty() && br.In(slot) {
+				badge.SetRect(br)
+				badge.Draw(dst)
+			}
+		}
+
 	}
 	// Scrollbar when the stage's knobs overflow the pane.
 	dv.sectionGrid(sel.id).Draw(dst)
 	if sel.enableParam != "" && !stageEnabled {
 		scrim := image.Rect(detail.Min.X+1, detail.Min.Y+headerH, detail.Max.X-1, detail.Max.Y-1)
 		if !scrim.Empty() {
-			drawRoundedRect(dst, scrim, WithAlpha(TokenSurface1(), AlphaStrong), 6, true)
+			drawRoundedRect(dst, scrim, WithAlpha(TokenSurface1(), AlphaStrong), RadiusXS, true)
 		}
 	}
 }
@@ -1717,8 +2091,8 @@ func drawSynthNoSynthBanner(dst *ebiten.Image, contentR image.Rectangle) {
 	if cardR.Empty() {
 		cardR = contentR
 	}
-	drawRoundedRect(dst, cardR, TokenSurface1(), 8, true)
-	drawRoundedRect(dst, cardR, TokenBorderSubtle(), 8, false)
+	drawRoundedRect(dst, cardR, TokenSurface1(), RadiusSM, true)
+	drawRoundedRect(dst, cardR, TokenBorderSubtle(), RadiusSM, false)
 
 	cx := cardR.Min.X + cardR.Dx()/2
 	availW := cardR.Dx() - 2*SpaceMD
@@ -1789,13 +2163,13 @@ func (dv *DrumView) drawSynthFooter(dst *ebiten.Image) {
 func synthHeaderButtonLabel(tag string) string {
 	switch tag {
 	case synthPreviewButtonTag:
-		return "Preview"
+		return i18n.T(i18n.KeyPreview)
 	case synthSaveButtonTag:
-		return "Save"
+		return i18n.T(i18n.KeySave)
 	case synthSaveAsButtonTag:
-		return "Save As"
+		return i18n.T(i18n.KeySaveAs)
 	case synthResetButtonTag:
-		return "Reset"
+		return i18n.T(i18n.KeyReset)
 	}
 	return ""
 }
@@ -1819,27 +2193,24 @@ func enumLabelFor(def audio.ParamDef, value float64) string {
 }
 
 func synthKnobCaption(def audio.ParamDef, value float64) string {
+	// Discrete (Enum) params show only the selected label — the name lives in
+	// the stage title; the waveform/algorithm name IS the value.
 	if lbl := enumLabelFor(def, value); lbl != "" {
 		return lbl
 	}
-	switch def.Name {
-	case "pitch":
-		return fmt.Sprintf("tune  %+.0f st", value)
-	case "decay":
-		return fmt.Sprintf("decay  %.2f×", value)
-	case "tone":
-		return fmt.Sprintf("tone  %+.2f", value)
-	case "drive":
-		return fmt.Sprintf("drive  %d%%", int(value*100+0.5))
-	case "body":
-		return fmt.Sprintf("body  %d%%", int(value*100+0.5))
-	case "brightness":
-		return fmt.Sprintf("bright  %d%%", int(value*100+0.5))
+	return synthParamDisplayName(def.Name) + "  " + formatSynthParamValue(def, value)
+}
+
+// synthKnobPurpose returns the one-line, kid-readable gloss for a knob ("bright
+// or dull", "slight pitch shift", …) drawn under its caption. It prefers the
+// param's display Label, falling back to its raw Name, and returns "" when
+// neither maps (caller skips the line). Same PlainEnglish source the section
+// subtitles use, applied per knob.
+func synthKnobPurpose(def audio.ParamDef) string {
+	if p := PlainEnglish(def.Label); p != "" {
+		return p
 	}
-	if def.Unit == "" {
-		return fmt.Sprintf("%s  %.2f", def.Name, value)
-	}
-	return fmt.Sprintf("%s  %.2f %s", def.Name, value, def.Unit)
+	return PlainEnglish(def.Name)
 }
 
 // synthKnobCaptionValueOnly returns just the value portion of the
@@ -1851,20 +2222,78 @@ func synthKnobCaptionValueOnly(def audio.ParamDef, value float64) string {
 	if lbl := enumLabelFor(def, value); lbl != "" {
 		return lbl
 	}
-	switch def.Name {
-	case "pitch":
-		return fmt.Sprintf("%+.0f st", value)
-	case "decay":
-		return fmt.Sprintf("%.2f×", value)
-	case "tone":
-		return fmt.Sprintf("%+.2f", value)
-	case "drive", "body", "brightness":
-		return fmt.Sprintf("%d%%", int(value*100+0.5))
+	return formatSynthParamValue(def, value)
+}
+
+// scaleFromParamDef builds the Knob's KnobScale and behavior flags from a
+// ParamDef. Enum or Step>0 => discrete (clicky); otherwise endless.
+func scaleFromParamDef(def audio.ParamDef) (sc KnobScale, discrete, endless bool) {
+	sc = KnobScale{Min: def.Min, Max: def.Max, Unit: def.Unit, Enum: def.Enum, Step: def.Step}
+	discrete = len(def.Enum) > 0 || def.Step > 0
+	endless = !discrete
+	return
+}
+
+// knobStepPref returns a persisted step for a param name from the global
+// KnobStepSaveSink (registered via SetKnobStepSink at process start).
+// Returns (0, false) when no sink is registered or no value is persisted.
+func (dv *DrumView) knobStepPref(name string) (float64, bool) {
+	sink := activeKnobStepSink()
+	if sink == nil {
+		return 0, false
 	}
-	if def.Unit == "" {
-		return fmt.Sprintf("%.2f", value)
+	steps := sink.LoadKnobSteps()
+	v, ok := steps[name]
+	return v, ok
+}
+
+// persistKnobStep saves the badge's currently chosen step-multiplier through
+// the global KnobStepSaveSink. No-op when no sink is registered or b is nil.
+func (dv *DrumView) persistKnobStep(b *KnobStepBadge) {
+	if b == nil {
+		return
 	}
-	return fmt.Sprintf("%.2f %s", value, def.Unit)
+	sink := activeKnobStepSink()
+	if sink == nil {
+		return
+	}
+	_ = sink.SaveKnobStep(b.ParamName(), b.Step())
+}
+
+// cycleKnobStep advances the step badge for knob idx and syncs the knob's
+// StepMul, persisting the choice. Shared by the production hit adapter.
+func (dv *DrumView) cycleKnobStep(idx int) {
+	if idx < 0 || idx >= len(dv.instEditorStepBadges) {
+		return
+	}
+	badge := dv.instEditorStepBadges[idx]
+	if badge == nil {
+		return
+	}
+	badge.Cycle()
+	if idx < len(dv.instEditorKnobs) {
+		dv.instEditorKnobs[idx].StepMul = badge.Step()
+	}
+	dv.persistKnobStep(badge)
+}
+
+// stepSynthKnobResolution shifts knob idx's step-badge rung by `steps` (the
+// mouse-wheel delta; positive = scroll up = finer), syncing the knob's StepMul
+// and persisting the choice. Returns true if the rung moved. Used by the wheel
+// handler when the cursor is over the resolution badge.
+func (dv *DrumView) stepSynthKnobResolution(idx, steps int) bool {
+	if idx < 0 || idx >= len(dv.instEditorStepBadges) {
+		return false
+	}
+	badge := dv.instEditorStepBadges[idx]
+	if badge == nil || !badge.WheelResolution(steps) {
+		return false
+	}
+	if idx < len(dv.instEditorKnobs) {
+		dv.instEditorKnobs[idx].StepMul = badge.Step()
+	}
+	dv.persistKnobStep(badge)
+	return true
 }
 
 // handleSynthTabInput dispatches a single mouse/touch event into the
@@ -1963,6 +2392,63 @@ func (dv *DrumView) syncSliderFromKnob(idx int) {
 		return
 	}
 	dv.instEditorSliders[idx].Value = dv.instEditorKnobs[idx].Value
+}
+
+// ---- Readout-rect helpers + numeric editor ------------------------------
+
+// synthKnobReadoutRect returns the caption hit-rect for the given knob index.
+// Returns the zero rectangle when the index is out of range or the rect has
+// not been populated yet (no Draw pass has occurred).
+func (dv *DrumView) synthKnobReadoutRect(idx int) image.Rectangle {
+	if idx < 0 || idx >= len(dv.instEditorReadoutRects) {
+		return image.Rectangle{}
+	}
+	return dv.instEditorReadoutRects[idx]
+}
+
+// setKnobReadoutRect stores the caption hit-rect for the given knob index,
+// growing the slice as needed. Mirrors setKnobStepBadgeRect semantics from
+// Task 11.
+func (dv *DrumView) setKnobReadoutRect(idx int, r image.Rectangle) {
+	for len(dv.instEditorReadoutRects) <= idx {
+		dv.instEditorReadoutRects = append(dv.instEditorReadoutRects, image.Rectangle{})
+	}
+	dv.instEditorReadoutRects[idx] = r
+}
+
+// openSynthParamEditor opens the shared numeric editor anchored over the
+// caption (readout) of knob at idx. The editor's setValue callback writes
+// back through the knob + propagate path so every existing audio write stays
+// consistent.
+func (dv *DrumView) openSynthParamEditor(idx int, instID string) {
+	if idx < 0 || idx >= len(dv.instEditorBindings) || idx >= len(dv.instEditorKnobs) {
+		return
+	}
+	if dv.paramEditor == nil {
+		dv.paramEditor = NewParamValueEditor()
+	}
+	def := dv.instEditorBindings[idx].def
+	anchor := dv.synthKnobReadoutRect(idx)
+	dv.paramEditor.OpenValue(ValueOpen{
+		Spec:          paramSpec(def),
+		Anchor:        anchor,
+		MobileInputID: "synth-param",
+		Get: func() float64 {
+			return def.Min + dv.instEditorKnobs[idx].Value*(def.Max-def.Min)
+		},
+		Set: func(v float64) {
+			span := def.Max - def.Min
+			if span <= 0 {
+				span = 1
+			}
+			dv.instEditorKnobs[idx].Value = (v - def.Min) / span
+			dv.syncSliderFromKnob(idx)
+			dv.propagateSynthSliderValue(idx, instID)
+			dv.requestSynthMirror(instID) // one-shot typed commit → refresh preview
+			// A typed value is one discrete commit → one undo step.
+			dv.commitInstrumentParams(instID)
+		},
+	})
 }
 
 // ---- Hit areas + propagate ---------------------------------------------
@@ -2203,6 +2689,34 @@ func (dv *DrumView) synthTabHitAreas() []HitArea {
 			Touch:    true,
 			ClipRect: clip,
 		})
+		// Readout (caption) hit area — sits below the dial, outside k.Rect().
+		// OnPress checks for readout/badge before starting a drag, so tapping
+		// here opens the numeric editor rather than capturing a knob drag.
+		if rr := dv.synthKnobReadoutRect(i); !rr.Empty() {
+			out = append(out, HitArea{
+				Rect:     rr,
+				ZIndex:   z,
+				Handler:  &synthKnobHitAdapter{dv: dv, idx: i, instID: instID},
+				Tag:      fmt.Sprintf("synth-readout-%d", i),
+				Touch:    true,
+				ClipRect: clipFor(rr),
+			})
+		}
+		// Badge hit area — sits below the caption, outside k.Rect().
+		// OnPress handles the cycle; this HitArea makes the badge reachable
+		// via the real tree dispatch path.
+		if i < len(dv.instEditorStepBadges) {
+			if b := dv.instEditorStepBadges[i]; b != nil && !b.Rect().Empty() {
+				out = append(out, HitArea{
+					Rect:     b.Rect(),
+					ZIndex:   z + 1, // above readout so badge wins over readout on overlap
+					Handler:  &synthKnobHitAdapter{dv: dv, idx: i, instID: instID},
+					Tag:      fmt.Sprintf("synth-badge-%d", i),
+					Touch:    true,
+					ClipRect: clipFor(b.Rect()),
+				})
+			}
+		}
 	}
 	// Pipeline chips. z+1 so a chip wins over any underlying knob clip /
 	// scroll catch-all (chips never overlap knobs geometrically, but the
@@ -2532,6 +3046,23 @@ func (h *synthKnobHitAdapter) invalidatePanel() {
 }
 
 func (h *synthKnobHitAdapter) OnPress(x, y int) InputResult {
+	// Numeric editor open: swallow the tap so a knob drag doesn't start beneath it.
+	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
+		return InputConsumed
+	}
+	// Step-badge pill (lives inside the knob's hit rect, in the caption band):
+	// a tap cycles the resolution instead of dragging.
+	if h.idx < len(h.dv.instEditorStepBadges) {
+		if b := h.dv.instEditorStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
+			h.dv.cycleKnobStep(h.idx)
+			return InputConsumed
+		}
+	}
+	// Value readout (caption line): a tap opens the numeric editor.
+	if rr := h.dv.synthKnobReadoutRect(h.idx); !rr.Empty() && image.Pt(x, y).In(rr) {
+		h.dv.openSynthParamEditor(h.idx, h.instID)
+		return InputConsumed
+	}
 	k := h.currentKnob()
 	if k == nil {
 		return InputIgnored
@@ -2539,9 +3070,12 @@ func (h *synthKnobHitAdapter) OnPress(x, y int) InputResult {
 	result := k.HandleInputResult(x, y, true)
 	if result != InputIgnored {
 		h.active = true
+		h.dv.setSynthSelectedKnob(h.instID, h.idx)
 		h.mode = knobDragUndecided
 		h.pressX, h.pressY = x, y
 		h.captureParamName()
+		// Stage 5: snapshot the pre-drag params for the concept-overlay ghost.
+		h.dv.captureSynthGhost(h.idx, h.instID)
 		h.dv.sdbg("[synthdrag] OnPress idx=%d capturedParam=%q inst=%s", h.idx, h.capturedParam, h.instID)
 		h.propagateIfStable()
 		return InputCaptured
@@ -2618,9 +3152,14 @@ func (h *synthKnobHitAdapter) OnRelease(x, y int) {
 	if k != nil {
 		k.HandleInputResult(x, y, false)
 		h.propagateIfStable()
-		recipe := audio.RecipeForInstrument(h.instID)
-		emitInstrumentParamsCommitted(h.instID, recipe)
-		h.dv.recordUndoStep(hooks.EventInstrumentParamsCommitted)
+		// One undo step per gesture, committed here on release (the per-frame
+		// drag mutated live audio but recorded nothing).
+		h.dv.commitInstrumentParams(h.instID)
+		// Stage 4: re-render the real note for the right-pane mirror (debounced +
+		// cached by params hash, off the UI goroutine). Identical params coalesce.
+		h.dv.requestSynthMirror(h.instID)
+		// Stage 5: begin the concept-overlay ghost fade for this knob.
+		h.dv.fadeSynthGhost(h.idx)
 	}
 	h.active = false
 	h.mode = knobDragUndecided
@@ -2629,9 +3168,19 @@ func (h *synthKnobHitAdapter) OnRelease(x, y int) {
 }
 
 func (h *synthKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
-	// The wheel is a vertical gesture: scroll the knob's section, never turn
-	// the knob. Only horizontal drag adjusts a knob. If the section does not
-	// scroll there is nothing to do — fall through (no knob mutation).
+	// Scrolling while hovering the step-RESOLUTION badge shifts its rung
+	// (scroll up = finer, scroll down = coarser). This is the ONLY wheel
+	// behavior added — the knob itself is left untouched.
+	if h.idx >= 0 && h.idx < len(h.dv.instEditorStepBadges) {
+		if b := h.dv.instEditorStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
+			if h.dv.stepSynthKnobResolution(h.idx, steps) {
+				h.invalidatePanel()
+			}
+			return InputConsumed
+		}
+	}
+	// Anywhere else (the knob dial): ORIGINAL behavior — the wheel is a
+	// vertical gesture that scrolls the knob's section, never turns the knob.
 	g := h.sectionGridForKnob()
 	if g == nil {
 		return InputIgnored
@@ -2640,6 +3189,61 @@ func (h *synthKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
 		h.invalidatePanel()
 	}
 	return InputConsumed
+}
+
+// OnWheel2D handles a two-finger trackpad drag with the raw axes. Over the
+// step-resolution badge the scroll shifts the rung. Over the knob body a
+// LEFT/RIGHT (horizontal-dominant) scroll changes the value — mirroring a
+// left/right mouse drag — while an UP/DOWN scroll scrolls the section's
+// overflow rows and never turns the knob.
+func (h *synthKnobHitAdapter) OnWheel2D(x, y, dx, dy int) InputResult {
+	// Resolution badge: either axis shifts the rung (prefer the vertical
+	// component, matching the hover-the-label gesture).
+	if h.idx >= 0 && h.idx < len(h.dv.instEditorStepBadges) {
+		if b := h.dv.instEditorStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
+			steps := dy
+			if steps == 0 {
+				steps = dx
+			}
+			if h.dv.stepSynthKnobResolution(h.idx, steps) {
+				h.invalidatePanel()
+			}
+			return InputConsumed
+		}
+	}
+	// Horizontal-dominant: turn the knob (value), like a left/right mouse drag.
+	// Debounced + magnitude-insensitive so it moves slowly; the per-step amount
+	// is StepMul (the user's chosen resolution).
+	if wheelAxisHorizontal(dx, dy) {
+		if k := h.currentKnob(); k != nil && k.StepValueByWheel(dx) {
+			h.dv.syncSliderFromKnob(h.idx)
+			h.dv.propagateSynthSliderValue(h.idx, h.instID)
+		}
+		return InputConsumed
+	}
+	// Vertical (or no horizontal component): scroll the overflow rows.
+	g := h.sectionGridForKnob()
+	if g == nil {
+		return InputIgnored
+	}
+	if g.WheelStep(dy) {
+		h.invalidatePanel()
+	}
+	return InputConsumed
+}
+
+// wheelAxisHorizontal reports whether a two-axis wheel delta is horizontal-
+// dominant (|dx| > |dy|). Ties go to vertical (false), matching the knob-drag
+// axis lock, so a knob value only changes on a clearly sideways gesture.
+func wheelAxisHorizontal(dx, dy int) bool {
+	ax, ay := dx, dy
+	if ax < 0 {
+		ax = -ax
+	}
+	if ay < 0 {
+		ay = -ay
+	}
+	return ax > ay
 }
 
 // synthSectionScrollAdapter routes scroll input for one overflowing section

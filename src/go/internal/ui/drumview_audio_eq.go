@@ -214,12 +214,11 @@ func (dv *DrumView) setEQActiveChannel(id string) {
 			dv.eqPanelZone.SyncBandState(gains, muted)
 		}
 	} else if id == "" || id == "main" {
-		// Same master channel: the zone IS the authoritative store.
-		// Sync dB input texts in case bandGainsDB was modified externally
-		// (e.g., import writes directly into the shared backing array).
+		// Same master channel: the zone IS the authoritative store. The dB
+		// readouts derive live from bandGainsDB, so an external write into the
+		// shared backing array shows up on the next Draw with no sync needed.
 		if dv.eqPanelZone != nil {
 			muted = dv.eqPanelZone.bandMuted
-			dv.eqPanelZone.syncAllDBInputTexts()
 		}
 	} else {
 		// Same instrument channel: reload from the row (external code may
@@ -507,6 +506,7 @@ func (dv *DrumView) toggleHPF() {
 	dv.setActiveHPF(enabled, dv.activeHPFCutoffHz())
 	dv.applyEQ()
 	dv.eqCurveDirty = true
+	dv.commitEQFilter("hpf")
 }
 
 // toggleLPF toggles the low-pass filter for the active channel.
@@ -515,6 +515,7 @@ func (dv *DrumView) toggleLPF() {
 	dv.setActiveLPF(enabled, dv.activeLPFCutoffHz())
 	dv.applyEQ()
 	dv.eqCurveDirty = true
+	dv.commitEQFilter("lpf")
 }
 
 // buildFullEQBands constructs the full EQ band chain including HPF and LPF filters.
@@ -551,11 +552,13 @@ func (dv *DrumView) syncFilterButtonStyles() {
 // This is called via OnClick callback to ensure single-toggle behavior.
 func (dv *DrumView) toggleEQBandMute(band int) {
 	ch := dv.activeEQChannel()
+	changed := false
 	if ch == "main" {
 		if band >= 0 && band < len(dv.eqBandMuted()) {
 			dv.eqBandMuted()[band] = !dv.eqBandMuted()[band]
 			dv.applyMasterEQ()
 			dv.logger.Debugf("[drumview] EQ band %d mute toggled: %v", band, dv.eqBandMuted()[band])
+			changed = true
 		}
 	} else {
 		// Per-instrument EQ
@@ -567,10 +570,14 @@ func (dv *DrumView) toggleEQBandMute(band int) {
 					r.EQBandMuted[band] = !r.EQBandMuted[band]
 					dv.applyRowEQ(j)
 					dv.logger.Debugf("[drumview] EQ band %d mute toggled for %s: %v", band, ch, r.EQBandMuted[band])
+					changed = true
 				}
 				break
 			}
 		}
+	}
+	if changed {
+		dv.commitEQBandMute(band)
 	}
 }
 

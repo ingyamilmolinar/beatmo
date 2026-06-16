@@ -401,9 +401,18 @@ func TestSplitterInputBoundsHorizontal(t *testing.T) {
 	grab := TouchGrabZone()
 	r := s.InputBounds()
 
-	want := image.Rect(0, 300-grab, 800, 300+4)
-	if r != want {
-		t.Errorf("horizontal InputBounds: got %v, want %v", r, want)
+	// InputBounds covers the full-width grab strip AND the visible handle pill
+	// (which extends past s.Y±grab when the pill is taller than the grab zone).
+	gripStrip := image.Rect(0, 300-grab, 800, 300+4)
+	pill := s.HandleRect().Inset(-SpaceSM)
+	if r.Union(gripStrip) != r {
+		t.Errorf("horizontal InputBounds %v must contain grab strip %v", r, gripStrip)
+	}
+	if r.Union(pill) != r {
+		t.Errorf("horizontal InputBounds %v must contain handle pill %v", r, pill)
+	}
+	if r.Min.X != 0 || r.Max.X != 800 {
+		t.Errorf("horizontal InputBounds should span full width, got X %d..%d", r.Min.X, r.Max.X)
 	}
 }
 
@@ -417,9 +426,17 @@ func TestSplitterInputBoundsVertical(t *testing.T) {
 	grab := TouchGrabZone()
 	r := s.InputBounds()
 
-	want := image.Rect(400-grab, 0, 400+4, 600)
-	if r != want {
-		t.Errorf("vertical InputBounds: got %v, want %v", r, want)
+	// InputBounds covers the full-height grab strip AND the visible handle pill.
+	gripStrip := image.Rect(400-grab, 0, 400+4, 600)
+	pill := s.HandleRect().Inset(-SpaceSM)
+	if r.Union(gripStrip) != r {
+		t.Errorf("vertical InputBounds %v must contain grab strip %v", r, gripStrip)
+	}
+	if r.Union(pill) != r {
+		t.Errorf("vertical InputBounds %v must contain handle pill %v", r, pill)
+	}
+	if r.Min.Y != 0 || r.Max.Y != 600 {
+		t.Errorf("vertical InputBounds should span full height, got Y %d..%d", r.Min.Y, r.Max.Y)
 	}
 }
 

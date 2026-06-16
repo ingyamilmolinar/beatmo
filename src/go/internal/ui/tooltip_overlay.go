@@ -31,9 +31,8 @@ func (o *TooltipOverlay) Close() { o.closed = true }
 // Layout positions the tooltip just below the anchor, clamping to
 // screenBounds and flipping above when there is no room below.
 func (o *TooltipOverlay) Layout(anchor, screenBounds image.Rectangle) {
-	captionScale := FontSizeCaption / FontSizeBody
-	tw := int(float64(TextWidth(o.text))*captionScale) + 8
-	th := int(float64(TextHeight())*captionScale) + 6
+	tw := StyledTextWidth(o.text, RoleCaption) + 8
+	th := StyledTextHeight(RoleCaption) + 6
 	x0 := anchor.Min.X
 	y0 := anchor.Max.Y + 2
 	if x0+tw > screenBounds.Max.X {
@@ -63,8 +62,7 @@ func (o *TooltipOverlay) Draw(screen *ebiten.Image) {
 	}
 	drawRoundedRect(screen, o.rect, colSurface2, RadiusSM, true)
 	drawRoundedRect(screen, o.rect, colButtonBorder, RadiusSM, false)
-	captionScale := FontSizeCaption / FontSizeBody
-	DrawTextColorAtScale(screen, o.text, o.rect.Min.X+4, o.rect.Min.Y+3, colTextSecondary, captionScale)
+	DrawTextStyled(screen, o.text, o.rect.Min.X+4, o.rect.Min.Y+3, RoleCaption, colTextSecondary)
 }
 
 // ShouldClose reports whether Close() has been invoked. Polled by

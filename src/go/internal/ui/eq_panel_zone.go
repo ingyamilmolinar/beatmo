@@ -6,16 +6,18 @@ import (
 	"image/color"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // EQCallbacks contains callbacks for the EQPanelZone to communicate with
 // the DrumView and audio engine. Zones don't reference Game or each other.
 type EQCallbacks struct {
-	OnGainChange     func(band int, db float64)
+	OnGainChange func(band int, db float64)
 	// OnEQBandCommit fires once when an EQ band-gain edit settles (curve-handle
 	// drag release or dB text-input commit). DrumView uses it to emit the
 	// EQ-band event + record one undo step (the live audio update stays
@@ -65,12 +67,6 @@ type EQCallbacks struct {
 	// the Scope auto-expand path was retired (every tab defaults to tall).
 	OnTabChange func(tab PanelTab)
 
-	// OnClose is invoked when the user clicks the close pill on the sticky
-	// bar. May be nil; the close button silently no-ops when unset. Owners
-	// (DrumView) typically wire this to "hide the panel" / "switch back to
-	// rows view" depending on platform.
-	OnClose func()
-
 	// BeatGridFrac returns fractional X positions in [0,1) where vertical
 	// beat markers should be drawn on the Wave tab. Nil disables the overlay
 	// (the wave still renders cleanly). Wired to DrumView.beatGridFractions
@@ -108,6 +104,12 @@ type EQCallbacks struct {
 	DrawSamplerTab     func(dst *ebiten.Image, contentR image.Rectangle)
 	SamplerTabHitAreas func() []HitArea
 
+	// SamplerTabUpdate advances per-frame sampler-tab state (numeric editor
+	// blur-to-commit). Called from Update() when TabSampler is active;
+	// returns true when the editor just closed so the zone re-lays-out next
+	// frame (mirrors SynthTabUpdate).
+	SamplerTabUpdate func() bool
+
 	// IsHiddenForInput is the zone's self-defense input gate. When set
 	// and returning true, `HitAreas()` returns nil — guaranteeing no
 	// audio-panel hit areas reach the tree's HitIndex while the panel
@@ -131,8 +133,13 @@ type EQPanelZone struct {
 	// UI elements
 	eqMuteBtns []*Button       // per-band mute
 	stickyBar  *AudioStickyBar // chrome strip: channel, tabs, freeze, close
-	hpfBtn     *Button         // EQ-tab content item (sub-strip above curve)
-	lpfBtn     *Button         // EQ-tab content item (sub-strip above curve)
+	// Per-tab control components (audio_tab_controls.go) — each owns its own
+	// buttons. nil for tabs that own controls elsewhere.
+	waveControls     *waveControls
+	levelsControls   *levelsControls
+	spectrumControls *spectrumControls
+	hpfBtn           *Button // EQ-tab content item (sub-strip above curve)
+	lpfBtn           *Button // EQ-tab content item (sub-strip above curve)
 
 	// Visual state
 	eqBandVals []float64
@@ -159,6 +166,16 @@ type EQPanelZone struct {
 	// latches for the Phase 2 multi-channel strip layout.
 	levelsLatch   LevelsLatch
 	levelsLatches *MultiLevelsLatch
+	// levelsLastTickFrame records the uiAnimFrame value at which the
+	// Levels-tab latches were last advanced. uiAnimFrame ticks once per
+	// frame regardless of which tab/zone is visible, so when the gap to the
+	// current frame exceeds one the Levels tab was hidden (another tab
+	// shown, or the whole panel off-screen on mobile) since the latches
+	// last ticked — their held peak/RMS values are frozen from before the
+	// gap. Re-seeding on re-entry makes the meters reflect live audio
+	// immediately instead of decaying from the stale value. See
+	// levels_realtime_reentry_test.go.
+	levelsLastTickFrame int64
 	// lastClipCountsByID memoises the previous tick's per-channel
 	// ClipCount so we can compute per-channel deltas and push them
 	// into the audio package's rolling 10 s clip window. Phase 2
@@ -177,17 +194,23 @@ type EQPanelZone struct {
 	activeChannel string
 	channelScroll *ScrollBehavior
 
-	// Per-band dB text inputs
-	eqDBInputs     [10]*TextInput
-	dbInputFocused int     // index of focused dB input, -1 if none
-	dbInputSyncing bool    // guard flag: true when sync is updating text
-	dbInputPrev    float64 // saved dB before editing (for Escape revert)
-	dbRowH         int     // height of the per-band dB readout row (set in layout)
-	eqSelectedBand int     // band most recently grabbed (drives the drag highlight)
+	// Per-band dB readout row
+	dbRowH         int // height of the per-band dB readout row (set in layout)
+	eqSelectedBand int // band most recently grabbed (drives the drag highlight)
+
+	paramEditor    *ParamValueEditor   // shared dB editor (Task 4b: sole dB-entry path)
+	dbReadoutRects [10]image.Rectangle // per-band dB readout rects (drive the editor anchor + hit areas)
 
 	// WASM-only cached state held while the analyzer tab is frozen. On desktop
 	// stays nil — the analyzer.Service owns freeze and sets state.Capture.Frozen.
 	frozenAnalyzer *analyzer.State
+
+	// frozenByTab holds a per-tab frozen snapshot of the analyzer state for the
+	// signal tabs (Wave/Spectrum/Levels). An entry means that tab is paused and
+	// renders the held immutable snapshot; absent means live. Independent per
+	// tab — freezing one does not affect another, and the audio analyzer is
+	// never frozen. Mirrors the Chain tab's frozenState pattern.
+	frozenByTab map[PanelTab]*analyzer.State
 
 	// Hit areas cache (rebuilt on Layout)
 	hitAreas []HitArea
@@ -221,6 +244,34 @@ type EQPanelZone struct {
 	cursorX      int
 	cursorActive bool
 	cursorPinned bool
+
+	// Wave-tab trace cache. Same rationale as the Chain tab's trace cache
+	// (chain_trace_cache.go): drawAnalyzerWaveform is a ~3k-blit-per-frame
+	// renderer (one drawWaveTrace column per pixel), but the analyzer data
+	// only refreshes at ~30 Hz while Draw runs up to 60 fps. We render the
+	// waveform (including its 30-Hz beat grid) into an offscreen image keyed
+	// on the analyzer-state / channel pointer identity and blit it on
+	// unchanged frames, freeing the single WASM thread for the sequencer.
+	// The mouse cursor crosshair is drawn LIVE over the blit (not cached) so
+	// it still tracks the pointer every frame. See wave_trace_cache.go.
+	waveCache        *ebiten.Image
+	waveKeyW         int
+	waveKeyH         int
+	waveKeyState     *analyzer.State // held to keep ch/cap pointers valid + as freshness signal
+	waveKeyCh        *analyzer.ChannelMetrics
+	waveKeyCap       *analyzer.CaptureBuffer
+	waveKeyFrozen    bool
+	waveKeyTabFrozen bool // per-tab freeze flag folded into the cache key
+	waveKeyOK        bool
+	// Wave-tab adaptive Y-scale. waveAutoGain (default true) auto-fits the
+	// trace to the signal's smoothed peak; waveYGain is the manual scroll-wheel
+	// zoom used when auto is off. waveSmoothedPeak is the peak-hold accumulator,
+	// advanced once per analyzer-state refresh (deduped via waveSmoothState).
+	waveAutoGain     bool
+	waveYGain        float64
+	waveSmoothedPeak float64
+	waveSmoothState  *analyzer.State
+	waveKeyGain      float64 // quantized effective gain folded into the cache key
 	// Phase 5: legend popover state. Toggled by the ? chip OnClick.
 	// When true, drawAudioPanelLegend paints a 220-px kid-readable
 	// sheet anchored under the chip during Draw().
@@ -245,15 +296,14 @@ func (z *EQPanelZone) DrawCallsForTest() int { return z.drawCalls }
 // NewEQPanelZone creates a new EQPanelZone with the provided callbacks.
 func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 	z := &EQPanelZone{
-		needLayout:     true,
-		callbacks:      cb,
-		tabState:       NewPanelTabState(),
-		curveDragBand:  -1,
-		dbInputFocused: -1,
-		activeChannel:  "main",
-		bandGainsDB:    make([]float64, len(eqBandDefs)),
-		bandMuted:      make([]bool, len(eqBandDefs)),
-		eqBandVals:     make([]float64, len(eqBandDefs)),
+		needLayout:    true,
+		callbacks:     cb,
+		tabState:      NewPanelTabState(),
+		curveDragBand: -1,
+		activeChannel: "main",
+		bandGainsDB:   make([]float64, len(eqBandDefs)),
+		bandMuted:     make([]bool, len(eqBandDefs)),
+		eqBandVals:    make([]float64, len(eqBandDefs)),
 	}
 	z.initButtons()
 	z.channelScroll = newScrollBehavior()
@@ -261,7 +311,7 @@ func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 	// taps are enabled so the very first Draw has signal to render. The
 	// EQ tab is the default; switching elsewhere routes through the
 	// onTab closure which re-applies the rule.
-	EnsureAnalyzersForTab(z.tabState.ActiveTab(), z.activeChannel)
+	EnsureAnalyzersForTab(z.tabState.ActiveTab(), z.activeChannel, z.analyzerInstrumentIDs()...)
 	return z
 }
 
@@ -277,28 +327,6 @@ func (z *EQPanelZone) initButtons() {
 			z.buildChannelDropdown()
 		}
 	}
-	onFreeze := func() {
-		if z.callbacks.OnFreezeToggle == nil {
-			return
-		}
-		frozen := z.callbacks.OnFreezeToggle()
-		freeze := z.stickyBar.FreezeBtn()
-		if freeze == nil {
-			return
-		}
-		if frozen {
-			freeze.Text = ">"
-			freeze.TextColor = colAccent
-		} else {
-			freeze.Text = "||"
-			freeze.TextColor = colTextSecondary
-		}
-	}
-	onClose := func() {
-		if z.callbacks.OnClose != nil {
-			z.callbacks.OnClose()
-		}
-	}
 	onTab := func(tab PanelTab) {
 		z.tabState.SetActiveTab(tab)
 		// Phase 0 audio-panel dispatcher: every transition into a tab
@@ -307,32 +335,12 @@ func (z *EQPanelZone) initButtons() {
 		// or the panel renders flat output. Idempotent — calling this
 		// every transition is cheap. See audio_panel_dispatcher.go for
 		// the full rule.
-		EnsureAnalyzersForTab(tab, z.activeChannel)
+		EnsureAnalyzersForTab(tab, z.activeChannel, z.analyzerInstrumentIDs()...)
 		if z.callbacks.OnTabChange != nil {
 			z.callbacks.OnTabChange(tab)
 		}
 	}
-	z.stickyBar = NewAudioStickyBar(130, onChannel, onFreeze, onClose, onTab)
-	// Wire the Reset Hold pill (Phase 1 spectrum redesign) to clear the
-	// all-time MaxPeak watermark on the spectrum bars. The pill itself
-	// lives in the sticky bar; the SpectrumPeakState lives here.
-	if rst := z.stickyBar.ResetHoldBtn(); rst != nil {
-		rst.OnClick = func() {
-			z.spectrumPeaks.ResetMax()
-		}
-	}
-	// Wire the Clear Clips pill (Phase 2 levels redesign) to clear the
-	// per-channel latches + the audio package's rolling 10 s clip
-	// window. Without this the persistent "!" markers couldn't be
-	// acknowledged.
-	if clr := z.stickyBar.ClearClipsBtn(); clr != nil {
-		clr.OnClick = func() {
-			if z.levelsLatches != nil {
-				z.levelsLatches.Clear()
-			}
-			audio.ResetClipsWindow()
-		}
-	}
+	z.stickyBar = NewAudioStickyBar(130, onChannel, onTab)
 	// Phase 5 audio-panel redesign: legend chip + tab expander.
 	if lg := z.stickyBar.LegendBtn(); lg != nil {
 		lg.OnClick = func() {
@@ -346,6 +354,26 @@ func (z *EQPanelZone) initButtons() {
 			}
 		}
 	}
+
+	// Per-tab control components own their buttons (audio-panel decoupling).
+	// ctrlZ sits one above the eq-panel catch-all (zIdx=130) so header pills
+	// win taps over the panel body — same z the sticky bar chrome uses.
+	const ctrlZ = 131
+	z.waveAutoGain = true
+	z.waveYGain = 1.0
+	z.waveControls = newWaveControls(ctrlZ, func() bool {
+		z.waveAutoGain = !z.waveAutoGain
+		return z.waveAutoGain
+	}, func() bool { return z.toggleTabFreeze(TabWave) })
+	z.levelsControls = newLevelsControls(ctrlZ, func() bool { return z.toggleTabFreeze(TabMeters) }, func() {
+		if z.levelsLatches != nil {
+			z.levelsLatches.Clear()
+		}
+		audio.ResetClipsWindow()
+	})
+	z.spectrumControls = newSpectrumControls(ctrlZ, func() bool { return z.toggleTabFreeze(TabSpectrum) }, func() {
+		z.spectrumPeaks.ResetMax()
+	})
 
 	z.hpfBtn = NewButton("HP", InstButtonStyle, func() {
 		if z.callbacks.OnToggleHPF != nil {
@@ -370,18 +398,8 @@ func (z *EQPanelZone) initButtons() {
 		})
 	}
 
-	// Per-band dB text inputs
-	for i := 0; i < 10; i++ {
-		ti := NewTextInput(image.Rectangle{}, EQDBBoxStyle)
-		ti.MaxLen = 5
-		ti.InputMode = "numeric"
-		ti.MobileInputID = fmt.Sprintf("eq-db-%d", i)
-		ti.Accept = func(r rune) bool {
-			return (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '+'
-		}
-		ti.SetText(formatDB(0))
-		z.eqDBInputs[i] = ti
-	}
+	// Per-band dB entry is owned by the shared editor (paramEditor).
+	z.paramEditor = NewParamValueEditor()
 }
 
 // --- Zone interface ---
@@ -396,6 +414,9 @@ func (z *EQPanelZone) Layout(rect image.Rectangle) {
 	z.rect = rect
 	z.needLayout = false
 	z.layoutButtons()
+	if c := z.activeTabControls(); c != nil {
+		c.Layout(z.headerRect())
+	}
 	z.layoutMuteAndDBInputs()
 	// Delegate layout to scope zone when Scope tab is active.
 	if z.chainZone != nil && z.tabState.ActiveTab() == TabScope {
@@ -450,7 +471,7 @@ func (z *EQPanelZone) SetActiveTab(tab PanelTab) {
 	// Mirror the onTab-closure analyzer-enable so programmatic tab
 	// switches (scene catalog, tests, SetActiveEQTab JS export) get the
 	// same dispatcher behaviour as a user click on a sticky-bar pill.
-	EnsureAnalyzersForTab(tab, z.activeChannel)
+	EnsureAnalyzersForTab(tab, z.activeChannel, z.analyzerInstrumentIDs()...)
 	if z.callbacks.OnTabChange != nil {
 		z.callbacks.OnTabChange(tab)
 	}
@@ -469,21 +490,16 @@ func (z *EQPanelZone) Update() {
 		}
 	}
 
-	if z.dbInputFocused < 0 {
-		// Quick scan: detect if any input gained focus externally (via hit adapter).
-		for i, ti := range z.eqDBInputs {
-			if ti != nil && ti.Focused() {
-				z.dbInputPrev = z.bandGainsDB[i]
-				ti.SetText("")
-				z.dbInputFocused = i
-				break
-			}
-		}
-		if z.dbInputFocused < 0 {
-			return // No text input active — skip 10x TextInput.Update() calls
+	// Sampler-tab numeric editor (blur-to-commit). Mirrors the synth branch.
+	if z.tabState.ActiveTab() == TabSampler && z.callbacks.SamplerTabUpdate != nil {
+		if z.callbacks.SamplerTabUpdate() {
+			z.needLayout = true
 		}
 	}
-	z.updateDBInputs()
+
+	if z.paramEditor != nil {
+		z.paramEditor.Update()
+	}
 }
 
 func (z *EQPanelZone) HitAreas() []HitArea {
@@ -534,7 +550,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			if z.callbacks.BeatGridFrac != nil {
 				beatGrid = z.callbacks.BeatGridFrac()
 			}
-			drawAnalyzerWaveform(screen, cr, ch, cap, beatGrid)
+			z.drawWaveformCached(screen, cr, state, ch, cap, beatGrid)
 			if z.cursorActive || z.cursorPinned {
 				drawWaveformCursor(screen, cr, ch, cap, z.cursorX)
 			}
@@ -544,7 +560,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	case TabSpectrum:
 		cr := z.bodyRect()
 		scale := freqScaleLog
-		if z.stickyBar != nil && !z.stickyBar.FreqScaleLog() {
+		if z.spectrumControls != nil && !z.spectrumControls.FreqScaleLog() {
 			scale = freqScaleLinear
 		}
 		if state := z.getAnalyzerStateForTab(activeTab); state != nil {
@@ -556,7 +572,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			// The two traces let kids see exactly what the EQ is
 			// shaping (the post-EQ curve is the bars + curve underlay,
 			// the pre-EQ trace is the orange dotted line below).
-			if z.stickyBar != nil && z.stickyBar.PreOverlay() {
+			if z.spectrumControls != nil && z.spectrumControls.PreOverlay() {
 				snap := audio.PreEQAnalyzerSnapshot(z.activeChannel)
 				if len(snap.Spectrum) > 0 {
 					drawPreEQOverlayFromSnapshot(screen, cr, snap.Spectrum, float64(audio.SampleRate()), scale)
@@ -581,26 +597,45 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			if z.lastClipCountsByID == nil {
 				z.lastClipCountsByID = map[string]int{}
 			}
-			// Tick every per-instrument latch + the master. Push the
-			// clip delta into the audio package's rolling 10 s window
-			// so the LevelsAggregates side panel can display
-			// "Clips (10s)" instead of a monotonic session total.
-			for i := range state.Instruments {
-				inst := &state.Instruments[i]
-				z.levelsLatches.Get(inst.ID).Update(inst.ClipCount, inst.PeakDB, inst.RMSDB)
-				if d := inst.ClipCount - z.lastClipCountsByID[inst.ID]; d > 0 {
+			// Re-entry guard: if the latches were not advanced on the
+			// immediately preceding frame, the Levels tab was hidden in
+			// between and the held peak/RMS values are stale. Discard them
+			// so the Update calls below re-seed from the live analyzer
+			// state (real-time accuracy) instead of slowly decaying down
+			// from a value frozen while the tab was away.
+			if uiAnimFrame-z.levelsLastTickFrame != 1 {
+				z.levelsLatches.Reset()
+				z.levelsLatch.Reset()
+			}
+			z.levelsLastTickFrame = uiAnimFrame
+			if z.tabFrozen(TabMeters) {
+				// Frozen: pin every latch to the frozen snapshot's
+				// peak/RMS so the meters hold the paused reading
+				// immediately instead of ballistically decaying. No new
+				// clips are counted while paused.
+				z.applyLevelsFreezeHold(state)
+			} else {
+				// Tick every per-instrument latch + the master. Push the
+				// clip delta into the audio package's rolling 10 s window
+				// so the LevelsAggregates side panel can display
+				// "Clips (10s)" instead of a monotonic session total.
+				for i := range state.Instruments {
+					inst := &state.Instruments[i]
+					z.levelsLatches.Get(inst.ID).Update(inst.ClipCount, inst.PeakDB, inst.RMSDB)
+					if d := inst.ClipCount - z.lastClipCountsByID[inst.ID]; d > 0 {
+						audio.PushClipDelta(d)
+					}
+					z.lastClipCountsByID[inst.ID] = inst.ClipCount
+				}
+				z.levelsLatches.Get("main").Update(state.Master.ClipCount, state.Master.PeakDB, state.Master.RMSDB)
+				if d := state.Master.ClipCount - z.lastClipCountsByID["main"]; d > 0 {
 					audio.PushClipDelta(d)
 				}
-				z.lastClipCountsByID[inst.ID] = inst.ClipCount
+				z.lastClipCountsByID["main"] = state.Master.ClipCount
+				// Keep the legacy single-channel latch in sync so the
+				// fallback path (zero instruments) still works.
+				z.levelsLatch.Update(state.Master.ClipCount, state.Master.PeakDB, state.Master.RMSDB)
 			}
-			z.levelsLatches.Get("main").Update(state.Master.ClipCount, state.Master.PeakDB, state.Master.RMSDB)
-			if d := state.Master.ClipCount - z.lastClipCountsByID["main"]; d > 0 {
-				audio.PushClipDelta(d)
-			}
-			z.lastClipCountsByID["main"] = state.Master.ClipCount
-			// Keep the legacy single-channel latch in sync so the
-			// fallback path (zero instruments) still works.
-			z.levelsLatch.Update(state.Master.ClipCount, state.Master.PeakDB, state.Master.RMSDB)
 			drawLevelsMultiChannel(screen, z.bodyRect(), state, z.levelsLatches)
 			z.snapshotLevelsIconRow(state)
 		} else {
@@ -628,19 +663,14 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 		z.drawEQCurve(screen)
 	}
 
-	// Sync the freeze pill's text/color from analyzer state before the
-	// sticky bar renders (the bar reads the pill's current Text to decide
-	// whether to render the active/inactive variant).
-	if z.stickyBar != nil {
-		if freeze := z.stickyBar.FreezeBtn(); freeze != nil {
-			if state := z.getAnalyzerStateForTab(activeTab); state != nil && state.Capture != nil && state.Capture.Frozen {
-				freeze.Text = ">"
-				freeze.TextColor = colAccent
-			} else {
-				freeze.Text = "||"
-				freeze.TextColor = colTextSecondary
-			}
+	// Per-tab control header: sync its freeze glyph from analyzer state, then
+	// draw it on top of the body (below the sticky bar, which is drawn last).
+	if c := z.activeTabControls(); c != nil {
+		c.SyncFreeze(z.tabFrozen(activeTab))
+		if wc, ok := c.(*waveControls); ok {
+			wc.SyncAuto(z.waveAutoGain)
 		}
+		c.Draw(screen)
 	}
 
 	// HPF/LPF live inside the content rect on TabEQ only — drawn before the
@@ -670,6 +700,10 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	}
 
 	drawRect(screen, z.rect, colButtonBorder, false)
+
+	if z.paramEditor != nil {
+		z.paramEditor.Draw(screen)
+	}
 }
 
 // drawPillTab draws a tab button with pill styling.
@@ -701,26 +735,16 @@ func (z *EQPanelZone) drawPillTab(dst *ebiten.Image, btn *Button, active bool, p
 }
 
 func (z *EQPanelZone) HandleKey(k ebiten.Key) InputResult {
-	if z.dbInputFocused >= 0 {
-		switch k {
-		case ebiten.KeyEnter:
-			z.commitDBText(z.dbInputFocused)
-			return InputConsumed
-		case ebiten.KeyEscape:
-			ti := z.eqDBInputs[z.dbInputFocused]
-			if ti != nil {
-				ti.SetText(formatDB(z.dbInputPrev))
-				ti.focused = false
-			}
-			z.dbInputFocused = -1
-			return InputConsumed
-		}
+	// The shared editor owns Enter (commit) and Escape (revert) via its own
+	// Update; swallow keys while it's open so global shortcuts don't fire.
+	if z.paramEditor != nil && z.paramEditor.Active() {
+		return InputConsumed
 	}
 	return InputIgnored
 }
 
 func (z *EQPanelZone) HandleChars(_ []rune) InputResult {
-	if z.dbInputFocused >= 0 {
+	if z.paramEditor != nil && z.paramEditor.Active() {
 		return InputConsumed
 	}
 	return InputIgnored
@@ -738,11 +762,26 @@ func (z *EQPanelZone) contentRect() image.Rectangle {
 }
 
 // activeTabControls returns the control component owning the active tab's
-// chrome, or nil for tabs that own their controls elsewhere (EQ inline, Chain
-// via ChainPanelZone, Synth/Sampler via DrumView header). Phase 0 stub — no
-// components are built yet, so this always returns nil. Later phases replace
-// the body with a per-tab switch.
-func (z *EQPanelZone) activeTabControls() tabControls { return nil }
+// chrome (Wave/Spectrum/Levels — audio_tab_controls.go), or nil for tabs that
+// own their controls elsewhere (EQ inline, Chain via ChainPanelZone,
+// Synth/Sampler via DrumView header).
+func (z *EQPanelZone) activeTabControls() tabControls {
+	switch z.tabState.ActiveTab() {
+	case TabWave:
+		if z.waveControls != nil {
+			return z.waveControls
+		}
+	case TabMeters:
+		if z.levelsControls != nil {
+			return z.levelsControls
+		}
+	case TabSpectrum:
+		if z.spectrumControls != nil {
+			return z.spectrumControls
+		}
+	}
+	return nil
+}
 
 // controlHeaderH is the height the active tab's control header needs (0 none).
 func (z *EQPanelZone) controlHeaderH() int {
@@ -823,6 +862,23 @@ func (z *EQPanelZone) eqPlotRect() image.Rectangle {
 	return image.Rect(cr.Min.X, cr.Min.Y, cr.Max.X, bottom)
 }
 
+// eqLiveBarsRect returns the rect the live spectrum bars (and their band
+// column tints) may occupy on TabEQ: exactly the gain-plot area. Deriving it
+// from eqPlotRect — content rect minus the HPF/LPF strip at the top and the
+// freq/dB label strip at the bottom — is what guarantees the bars can never
+// enter the label rows (pre-fix they ran flush to the panel bottom,
+// overpainting the per-band dB readouts). Pinned by
+// TestEQLiveBarsNeverEnterLabelStrip.
+func (z *EQPanelZone) eqLiveBarsRect() image.Rectangle {
+	return z.eqPlotRect()
+}
+
+// eqLabelStripRect is the bottom strip holding the per-band frequency labels
+// and dB readouts. Live bars and the curve plot must never intersect it.
+func (z *EQPanelZone) eqLabelStripRect() image.Rectangle {
+	return image.Rect(z.rect.Min.X, z.eqLabelStripTop(), z.rect.Max.X, z.rect.Max.Y)
+}
+
 // eqHandleY returns the clamped Y a band handle is drawn / hit-tested at for a
 // given gain, kept within the plot rect by the handle radius.
 func (z *EQPanelZone) eqHandleY(db float64) int {
@@ -883,7 +939,7 @@ func (z *EQPanelZone) SyncBandState(gains []float64, muted []bool) {
 	}
 	z.curveDirty = true
 	z.curveCache = nil // force full recompute — curveDirty alone may miss edge cases
-	z.syncAllDBInputTexts()
+	// dB readouts derive live from bandGainsDB; no input-text sync needed.
 }
 
 // ActiveChannel returns the current EQ channel ID.
@@ -907,7 +963,7 @@ func (z *EQPanelZone) SetActiveChannel(id string) {
 	z.activeChannel = id
 	if z.stickyBar != nil && z.stickyBar.ChannelBtn() != nil {
 		if id == "main" {
-			z.stickyBar.ChannelBtn().Text = "Master"
+			z.stickyBar.ChannelBtn().Text = i18n.T(i18n.KeyMaster)
 		} else {
 			z.stickyBar.ChannelBtn().Text = id
 		}
@@ -917,6 +973,18 @@ func (z *EQPanelZone) SetActiveChannel(id string) {
 // ChannelDropdownOpen returns whether the channel dropdown is open.
 func (z *EQPanelZone) ChannelDropdownOpen() bool {
 	return z.channelOpen
+}
+
+// OpenChannelDropdown opens the channel chooser dropdown, mirroring the
+// onChannel toggle's open branch (initButtons). Used by the screenshot
+// scene catalog to capture the chooser surface without synthesizing a
+// click on the channel pill.
+func (z *EQPanelZone) OpenChannelDropdown() {
+	if z.channelOpen {
+		return
+	}
+	z.channelOpen = true
+	z.buildChannelDropdown()
 }
 
 // --- Layout helpers ---
@@ -1049,15 +1117,123 @@ func (z *EQPanelZone) layoutMuteAndDBInputs() {
 			z.eqMuteBtns[i].SetRect(image.Rect(muteBtnX, muteBtnY, muteBtnX+muteBtnW, muteBtnY+muteBtnH))
 		}
 
-		if z.eqDBInputs[i] != nil {
-			_, level := z.eqBandLabelRects(i)
-			z.eqDBInputs[i].Rect = level
-		}
+		_, level := z.eqBandLabelRects(i)
+		z.dbReadoutRects[i] = level
 	}
 }
 
+// eqDBSpec parses/clamps/rounds a band gain to [-12,+12] @ 0.1 dB for the
+// shared numeric editor.
+func eqDBSpec() ValueSpec {
+	return ValueSpec{
+		Format: formatDB,
+		Parse: func(s string) (float64, bool) {
+			db, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+			if err != nil {
+				return 0, false
+			}
+			db = clampF64(db, -12.0, 12.0)
+			return math.Round(db*10) / 10, true
+		},
+		MinW:   48,
+		Style:  EQDBBoxStyle,
+		MaxLen: 5,
+	}
+}
+
+// dbReadoutRect returns the laid-out readout rect for band (zero rect if unset).
+func (z *EQPanelZone) dbReadoutRect(band int) image.Rectangle {
+	if band < 0 || band >= len(z.dbReadoutRects) {
+		return image.Rectangle{}
+	}
+	return z.dbReadoutRects[band]
+}
+
+// openEQDBEditor opens the shared editor over band's dB readout cell, pre-filled
+// with the current gain (caret at end). Commit clamps via eqDBSpec and writes
+// bandGainsDB + fires the EQ callbacks.
+func (z *EQPanelZone) openEQDBEditor(band int) {
+	if band < 0 || band >= len(z.bandGainsDB) {
+		return
+	}
+	if z.paramEditor == nil {
+		z.paramEditor = NewParamValueEditor()
+	}
+	z.paramEditor.OpenValue(ValueOpen{
+		Spec:          eqDBSpec(),
+		Anchor:        z.dbReadoutRect(band),
+		Clamp:         z.rect,
+		MobileInputID: fmt.Sprintf("eq-db-%d", band),
+		Get:           func() float64 { return z.bandGainsDB[band] },
+		Set: func(v float64) {
+			z.bandGainsDB[band] = v
+			z.curveDirty = true
+			if z.callbacks.OnGainChange != nil {
+				z.callbacks.OnGainChange(band, v)
+			}
+			if z.callbacks.OnApplyEQ != nil {
+				z.callbacks.OnApplyEQ()
+			}
+			if z.callbacks.OnEQBandCommit != nil {
+				z.callbacks.OnEQBandCommit()
+			}
+		},
+	})
+}
+
+// eqDBOpenAdapter opens the shared dB editor for a band on press.
+type eqDBOpenAdapter struct {
+	z    *EQPanelZone
+	band int
+}
+
+func (a *eqDBOpenAdapter) OnPress(x, y int) InputResult {
+	a.z.openEQDBEditor(a.band)
+	return InputConsumed
+}
+func (a *eqDBOpenAdapter) OnDrag(x, y int)                     {}
+func (a *eqDBOpenAdapter) OnRelease(x, y int)                  {}
+func (a *eqDBOpenAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
+
+// glowRect cues the now-clickable dB readout cell with the desktop hover
+// cushion like other interactive controls (matches glowTarget in
+// hover_glow_overlay.go).
+func (a *eqDBOpenAdapter) glowRect(_, _ int, _ image.Rectangle) image.Rectangle {
+	return a.z.dbReadoutRect(a.band)
+}
+
+// analyzerInstrumentIDs returns the instrument id of every active row,
+// used to enable a per-instrument analyzer tap when a per-instrument tab
+// activates (see AnalyzerInstrumentTapsForTab). Empty when no rows are
+// wired (e.g. early boot before the DrumView ctor sets the callback).
+func (z *EQPanelZone) analyzerInstrumentIDs() []string {
+	if z.callbacks.ActiveRows == nil {
+		return nil
+	}
+	rows := z.callbacks.ActiveRows()
+	ids := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r != nil && r.Instrument != "" {
+			ids = append(ids, r.Instrument)
+		}
+	}
+	return ids
+}
+
+// reapplyAnalyzerTaps re-runs the analyzer-enable rule for the CURRENT
+// tab without a tab transition. Needed after the row set changes out of
+// band (project/template import) while a per-instrument tab is already
+// open: SetActiveTab early-returns when the tab is unchanged, so the new
+// instruments' analyzers would otherwise never get wired on WASM.
+func (z *EQPanelZone) reapplyAnalyzerTaps() {
+	if z == nil || z.tabState == nil {
+		return
+	}
+	EnsureAnalyzersForTab(z.tabState.ActiveTab(), z.activeChannel, z.analyzerInstrumentIDs()...)
+}
+
 func (z *EQPanelZone) calcChannelBtnWidth() int {
-	maxPx := TextWidth("Master")
+	maxPx := TextWidth(i18n.T(i18n.KeyMaster))
 	if z.callbacks.ActiveRows != nil {
 		for _, r := range z.callbacks.ActiveRows() {
 			if w := TextWidth(r.Name); w > maxPx {
@@ -1099,14 +1275,26 @@ func (z *EQPanelZone) rebuildHitAreas() {
 	// hits the canonical "drag a synth knob also pans the timeline"
 	// leak.
 	if !z.rect.Empty() {
-		z.hitAreas = append(z.hitAreas, NewInputCaptureHitArea(z.rect, zIdx, "eq-panel-capture"))
+		// Consume-wheel variant: the EQ panel lives in the isolated audio-panel
+		// subtree (dv.audioTree) with no scroll-owning zone beneath it, so a
+		// wheel its own controls don't handle must stop here rather than bubble
+		// to the legacy row-scroll fallback (the "wheel over a non-scrollable
+		// synth knob scrolls the drum rows" leak). See input_capture.go.
+		z.hitAreas = append(z.hitAreas, NewInputCaptureHitAreaConsumeWheel(z.rect, zIdx, "eq-panel-capture"))
 	}
 
-	// EQ curve handle drag area (both desktop and mobile).
+	// EQ curve handle drag area (both desktop and mobile). It is a full-panel
+	// overlay, so it MUST sit one z above the catch-all (zIdx) — otherwise the
+	// two tie at the same z and same rect, HitIndex.At's stable sort keeps the
+	// earlier-appended catch-all first, and its InputConsumed swallows every
+	// curve/HP/LP handle press before this adapter runs (the "EQ handles don't
+	// respond" bug). The point controls below sit above THIS overlay so they
+	// still win where they overlap it: HPF/LPF zIdx+2, dB readout zIdx+3,
+	// mute zIdx+4. Regression: eq_curve_handle_dispatch_test.go.
 	if eqTab && !z.rect.Empty() {
 		z.hitAreas = append(z.hitAreas, HitArea{
 			Rect:    z.rect,
-			ZIndex:  zIdx,
+			ZIndex:  zIdx + 1,
 			Handler: &curveHandleHitAdapter{zone: z},
 			Tag:     "eq-curve-area",
 		})
@@ -1125,8 +1313,14 @@ func (z *EQPanelZone) rebuildHitAreas() {
 				continue
 			}
 			z.hitAreas = append(z.hitAreas, HitArea{
-				Rect:    r,
-				ZIndex:  zIdx + 1, // above sliders
+				Rect: r,
+				// Above the dB readout (zIdx+3): in a short panel the mute row
+				// and the dB readout overlap, and the mute button's centre lands
+				// inside the (taller) dB readout cell. The mute press must win
+				// there or it toggles nothing — pre-consolidation the dB hit area
+				// passed through, but the shared-editor adapter consumes, so the
+				// mute button now needs explicit priority on overlap.
+				ZIndex:  zIdx + 4,
 				Handler: &buttonHitAdapter{btn: btn},
 				Tag:     "eq-mute-" + eqCenterLabels[i],
 				Touch:   false,
@@ -1139,6 +1333,10 @@ func (z *EQPanelZone) rebuildHitAreas() {
 	// in-line build.
 	if z.stickyBar != nil {
 		z.hitAreas = append(z.hitAreas, z.stickyBar.HitAreas()...)
+	}
+
+	if c := z.activeTabControls(); c != nil {
+		z.hitAreas = append(z.hitAreas, c.HitAreas()...)
 	}
 
 	// Mobile cursor scrub: when the active tab is Wave or Spectrum, register
@@ -1159,6 +1357,24 @@ func (z *EQPanelZone) rebuildHitAreas() {
 		}
 	}
 
+	// Wave tab: scroll-wheel Y-zoom over the content rect. Registered at zIdx+1
+	// (one above the eq-panel catch-all, which is a CONSUME-WHEEL catch-all at
+	// zIdx — without this, the catch-all swallows the wheel before the zoom
+	// handler runs). The handler ignores press/drag, so a press over the body
+	// falls through to the catch-all and the small AUTO pill (also zIdx+1, but a
+	// tiny rect) still wins taps where it overlaps. Mobile cursor-scrub (zIdx,
+	// press/drag) is unaffected — wave-zoom never claims a press.
+	if activeTab == TabWave {
+		if cr := z.bodyRect(); !cr.Empty() {
+			z.hitAreas = append(z.hitAreas, HitArea{
+				Rect:    cr,
+				ZIndex:  zIdx + 1,
+				Handler: &waveZoomHandler{zone: z},
+				Tag:     "wave-zoom",
+			})
+		}
+	}
+
 	// HPF/LPF are content-rect items on TabEQ only. The visible chrome is a
 	// compact 28×18 pill; on mobile the hit area is expanded to the touch-min
 	// via Touch + ClipRect (not by growing the visual, which would crowd the
@@ -1170,7 +1386,7 @@ func (z *EQPanelZone) rebuildHitAreas() {
 			if r.Empty() {
 				return
 			}
-			ha := HitArea{Rect: r, ZIndex: zIdx + 1, Handler: &buttonHitAdapter{btn: btn}, Tag: tag}
+			ha := HitArea{Rect: r, ZIndex: zIdx + 2, Handler: &buttonHitAdapter{btn: btn}, Tag: tag}
 			if mobile {
 				ha.Touch = true
 				ha.ClipRect = expandToTouchMin(r)
@@ -1181,22 +1397,19 @@ func (z *EQPanelZone) rebuildHitAreas() {
 		filterHit(z.lpfBtn, "eq-lpf-btn")
 	}
 
-	// Per-band dB text inputs — only live when the EQ tab is active. On mobile
-	// their rects are cleared (replaced by the stepper) so this loop registers
-	// nothing there.
+	// Per-band dB readout cells — only live when the EQ tab is active. A press
+	// opens the shared editor for that band. On mobile their rects are cleared
+	// (replaced by the stepper) so this loop registers nothing there.
 	if eqTab {
-		for i, ti := range z.eqDBInputs {
-			if ti == nil {
-				continue
-			}
-			r := ti.Rect
+		for i := range z.dbReadoutRects {
+			r := z.dbReadoutRects[i]
 			if r.Empty() {
 				continue
 			}
 			z.hitAreas = append(z.hitAreas, HitArea{
 				Rect:    r,
-				ZIndex:  zIdx + 2, // above mute (131) and curve (130)
-				Handler: &textInputHitAdapter{ti: ti},
+				ZIndex:  zIdx + 3, // above HPF/LPF (zIdx+2) and the curve overlay (zIdx+1); the mute hit area (zIdx+4) intentionally sits above this so a mute press wins in the short-panel overlap region.
+				Handler: &eqDBOpenAdapter{z: z, band: i},
 				Tag:     fmt.Sprintf("eq-db-%s", eqCenterLabels[i]),
 			})
 		}
@@ -1221,6 +1434,36 @@ func (h *buttonHitAdapter) OnPress(x, y int) InputResult {
 func (h *buttonHitAdapter) OnDrag(x, y int)                     {}
 func (h *buttonHitAdapter) OnRelease(x, y int)                  {}
 func (h *buttonHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
+
+// waveZoomHandler implements HitHandler for scroll-wheel Y-zoom on the Wave
+// tab's content area. The Wave tab has only one axis, so plain scroll zooms Y
+// (no Shift needed). Any scroll disables auto-gain so the manual scale sticks;
+// re-enable via the AUTO pill. Mirrors chainZoomHandler's factor + clamp.
+type waveZoomHandler struct {
+	zone *EQPanelZone
+}
+
+func (h *waveZoomHandler) OnPress(x, y int) InputResult { return InputIgnored }
+func (h *waveZoomHandler) OnDrag(x, y int)              {}
+func (h *waveZoomHandler) OnRelease(x, y int)           {}
+func (h *waveZoomHandler) OnWheel(x, y, steps int) InputResult {
+	if steps == 0 {
+		return InputIgnored
+	}
+	z := h.zone
+	z.waveAutoGain = false
+	if z.waveYGain <= 0 {
+		z.waveYGain = 1.0
+	}
+	z.waveYGain *= 1 + float64(steps)*0.15
+	if z.waveYGain < 0.25 {
+		z.waveYGain = 0.25
+	}
+	if z.waveYGain > 16.0 {
+		z.waveYGain = 16.0
+	}
+	return InputConsumed
+}
 
 // sliderGroupHitAdapter wraps a SliderGroup as a HitHandler.
 // Used by RowRackZone (row volume) and TransportZone (master volume).
@@ -1423,7 +1666,7 @@ func (h *curveHandleHitAdapter) OnDrag(x, y int) {
 	if band < len(z.bandGainsDB) {
 		z.bandGainsDB[band] = db
 	}
-	z.syncDBInputText(band)
+	// dB readout derives live from bandGainsDB — no text sync needed.
 	hx, hy := z.eqBandHandlePos(band)
 	z.setDragLabel(fmt.Sprintf("%+.1f dB", db), hx, hy)
 	z.curveDirty = true
@@ -1534,14 +1777,14 @@ func (o *eqChannelDropdownOverlay) buildCallbacks() {
 		hideMaster = t == TabSynth || t == TabSampler
 	}
 	if !hideMaster {
-		o.allLabels = append(o.allLabels, "Master")
+		o.allLabels = append(o.allLabels, i18n.T(i18n.KeyMaster))
 		o.allOnClicks = append(o.allOnClicks, func() {
 			if z.callbacks.OnChannelChange != nil {
 				z.callbacks.OnChannelChange("main")
 			}
 			z.channelOpen = false
 			z.activeChannel = "main"
-			z.stickyBar.ChannelBtn().Text = "Master"
+			z.stickyBar.ChannelBtn().Text = i18n.T(i18n.KeyMaster)
 			if z.portal != nil {
 				z.portal.Close("eq-channel-dropdown")
 			}
@@ -1890,7 +2133,18 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 	if bandW < 1 {
 		bandW = 1
 	}
-	maxHeight := r.Dy() - 8
+	// Live bars (and their column tints) are confined to the gain-plot area
+	// so they can never paint over the HPF strip above or the band freq/dB
+	// label strip below — pre-fix they ran flush to the panel bottom,
+	// overpainting the dB readouts.
+	barR := z.eqLiveBarsRect()
+	if barR.Empty() {
+		return
+	}
+	maxHeight := barR.Dy() - 8
+	if maxHeight < 0 {
+		maxHeight = 0
+	}
 	muteBtnH := Profile().EQSliderH
 	muteBtnW := 16
 	if Profile().IsMobile() {
@@ -1918,28 +2172,36 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 		if i == len(eqBandDefs)-1 {
 			x1 = r.Max.X
 		}
-		y0 := r.Max.Y - h
+		y0 := barR.Max.Y - h
+		if y0 < barR.Min.Y {
+			y0 = barR.Min.Y
+		}
 
 		bg := fadeColor(colEQBg, 0.2)
 		if i%2 == 1 {
 			bg = fadeColor(colGridLine, 0.3)
 		}
 		isMuted := i < len(z.bandMuted) && z.bandMuted[i]
-		drawRect(dst, image.Rect(x0, r.Min.Y, x1, r.Max.Y), bg, true)
+		drawRect(dst, image.Rect(x0, barR.Min.Y, x1, barR.Max.Y), bg, true)
 
 		if isMuted {
-			drawRect(dst, image.Rect(x0, r.Min.Y, x1, r.Max.Y), fadeColor(colEQBg, 0.5), true)
+			drawRect(dst, image.Rect(x0, barR.Min.Y, x1, barR.Max.Y), fadeColor(colEQBg, 0.5), true)
 		} else {
-			col := colEQBar
+			base := colEQBar
 			if v > 0.8 {
-				col = colEQBarPeak
+				base = colEQBarPeak
 			}
-			drawRect(dst, image.Rect(x0, y0, x1, r.Max.Y), col, true)
-			drawRect(dst, image.Rect(x0, y0-2, x1, y0-1), fadeColor(col, 0.6), true)
+			// Translucent composite so the response curve, handles and any
+			// labels behind a tall bar stay legible — the bars are a live
+			// backdrop, not the primary data on this tab.
+			drawRect(dst, image.Rect(x0, y0, x1, barR.Max.Y), WithAlpha(base, AlphaSubtle), true)
+			if y0-2 >= barR.Min.Y {
+				drawRect(dst, image.Rect(x0, y0-2, x1, y0-1), WithAlpha(base, AlphaMedium), true)
+			}
 		}
 
 		if i > 0 {
-			drawRect(dst, image.Rect(x0, r.Min.Y, x0+1, r.Max.Y), colGridLine, true)
+			drawRect(dst, image.Rect(x0, barR.Min.Y, x0+1, barR.Max.Y), colGridLine, true)
 		}
 
 		// Row 1: Frequency band label — stacked above the level, centred and
@@ -1964,27 +2226,25 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 
 		// Row 2: level (dB) value — stacked under the frequency label, colour-
 		// coded (cyan boost / gray cut), centred + scaled to fit the column.
-		if z.eqDBInputs[i] != nil && !z.eqDBInputs[i].Rect.Empty() {
-			ti := z.eqDBInputs[i]
-			if ti.Focused() {
-				ti.Draw(dst)
+		if !z.dbReadoutRects[i].Empty() {
+			var labelCol color.Color
+			if isMuted {
+				labelCol = colEQDBLabelMuted
 			} else {
-				var labelCol color.Color
-				if isMuted {
-					labelCol = colEQDBLabelMuted
-				} else {
-					gain := 0.0
-					if i < len(z.bandGainsDB) {
-						gain = z.bandGainsDB[i]
-					}
-					if gain > 0 {
-						labelCol = colTextAccent // cyan for boost
-					} else {
-						labelCol = colTextSecondary // gray for cut or zero
-					}
+				gain := 0.0
+				if i < len(z.bandGainsDB) {
+					gain = z.bandGainsDB[i]
 				}
-				z.drawEQCellText(dst, ti.Value(), ti.Rect, labelCol)
+				if gain > 0 {
+					// Bright accent variant for boost — the base accent
+					// reads visibly dimmer than the cream negatives, so
+					// match perceived luminance with primary-bright.
+					labelCol = colAccentBright
+				} else {
+					labelCol = colTextSecondary // gray for cut or zero
+				}
 			}
+			z.drawEQCellText(dst, formatDB(z.bandGainsDB[i]), z.dbReadoutRects[i], labelCol)
 		}
 	}
 }
@@ -2040,12 +2300,75 @@ func (z *EQPanelZone) getAnalyzerState() *analyzer.State {
 // switch within one Draw call would invalidate it, but Draw never
 // changes tab mid-call so a single bool gate is sufficient. Cleared at
 // the top of Draw().
+// liveAnalyzerStateForTab returns the LIVE analyzer state for a tab (Levels uses
+// the metrics-only callback). Split out so toggleTabFreeze can snapshot it
+// without going through the frozen-aware getAnalyzerStateForTab.
+func (z *EQPanelZone) liveAnalyzerStateForTab(tab PanelTab) *analyzer.State {
+	if tab == TabMeters && z.callbacks.AnalyzerMetricsOnly != nil {
+		return z.callbacks.AnalyzerMetricsOnly()
+	}
+	if z.callbacks.AnalyzerState != nil {
+		return z.callbacks.AnalyzerState()
+	}
+	return nil
+}
+
+// toggleTabFreeze pauses/resumes the given signal tab independently. Returns the
+// new frozen state. Freezing snapshots the current immutable published analyzer
+// state (analyzer.State is atomically published, so holding the pointer freezes
+// that tab's data while the service keeps producing fresh states for live tabs).
+func (z *EQPanelZone) toggleTabFreeze(tab PanelTab) bool {
+	if z.frozenByTab == nil {
+		z.frozenByTab = map[PanelTab]*analyzer.State{}
+	}
+	if _, ok := z.frozenByTab[tab]; ok {
+		delete(z.frozenByTab, tab)
+		return false
+	}
+	live := z.liveAnalyzerStateForTab(tab)
+	if live == nil {
+		return false
+	}
+	z.frozenByTab[tab] = live
+	return true
+}
+
+// tabFrozen reports whether the given signal tab is currently paused.
+func (z *EQPanelZone) tabFrozen(tab PanelTab) bool {
+	return z.frozenByTab[tab] != nil
+}
+
+// applyLevelsFreezeHold pins every Levels latch to the frozen snapshot's
+// peak/RMS so the meters hold the paused reading immediately, instead of
+// ballistically settling. Called on the frozen branch of the Levels draw.
+func (z *EQPanelZone) applyLevelsFreezeHold(state *analyzer.State) {
+	if state == nil || z.levelsLatches == nil {
+		return
+	}
+	hold := func(l *LevelsLatch, peakDB, rmsDB float64) {
+		if l == nil {
+			return
+		}
+		l.PeakHoldDB = peakDB
+		l.RMSHoldDB = rmsDB
+		l.peakHoldSeeded = true
+		l.rmsHoldSeeded = true
+	}
+	for i := range state.Instruments {
+		inst := &state.Instruments[i]
+		hold(z.levelsLatches.Get(inst.ID), inst.PeakDB, inst.RMSDB)
+	}
+	hold(z.levelsLatches.Get("main"), state.Master.PeakDB, state.Master.RMSDB)
+}
+
 func (z *EQPanelZone) getAnalyzerStateForTab(tab PanelTab) *analyzer.State {
 	if z.frameAnalyzerValid && z.frameAnalyzerTab == tab {
 		return z.frameAnalyzerState
 	}
 	var state *analyzer.State
-	if tab == TabMeters && z.callbacks.AnalyzerMetricsOnly != nil {
+	if fs := z.frozenByTab[tab]; fs != nil {
+		state = fs
+	} else if tab == TabMeters && z.callbacks.AnalyzerMetricsOnly != nil {
 		state = z.callbacks.AnalyzerMetricsOnly()
 	} else if z.callbacks.AnalyzerState != nil {
 		state = z.callbacks.AnalyzerState()
@@ -2066,11 +2389,42 @@ func (z *EQPanelZone) resolveChannel(state *analyzer.State) (*analyzer.ChannelMe
 	return &state.Master, state.Capture
 }
 
+// resolveWaveGain returns the effective Y-gain for the Wave tab and whether
+// auto-gain is engaged. Auto-gain advances a smoothed peak-hold ONCE per
+// analyzer-state refresh (state-pointer change), so the scale eases instead of
+// jittering per frame; manual mode returns the scroll-wheel gain verbatim.
+func (z *EQPanelZone) resolveWaveGain(state *analyzer.State, ch *analyzer.ChannelMetrics, cap *analyzer.CaptureBuffer) (float64, bool) {
+	if state != z.waveSmoothState {
+		z.waveSmoothState = state
+		z.waveSmoothedPeak = advanceWavePeak(z.waveSmoothedPeak, waveWindowPeak(ch, cap))
+	}
+	if z.waveAutoGain {
+		return autoGainForPeak(z.waveSmoothedPeak), true
+	}
+	if z.waveYGain <= 0 {
+		return 1.0, false
+	}
+	return z.waveYGain, false
+}
+
 func (z *EQPanelZone) analyzerSnapshot() audio.AnalyzerSnapshot {
 	if z.callbacks.AnalyzerSnapshot != nil {
 		return z.callbacks.AnalyzerSnapshot(z.ActiveChannel())
 	}
 	return audio.AnalyzerSnapshot{}
+}
+
+// eqCurveSpanX returns the horizontal span over which the EQ response curve,
+// its fill and the dB rulers are drawn: inset by SpaceXS from each plot edge
+// so the stroke terminates with a small margin instead of running flush into
+// the panel border (which visually amputated the curve at x=0 / x=max).
+func (z *EQPanelZone) eqCurveSpanX(r image.Rectangle) (int, int) {
+	minX := r.Min.X + SpaceXS
+	maxX := r.Max.X - SpaceXS
+	if maxX <= minX {
+		minX, maxX = r.Min.X, r.Max.X
+	}
+	return minX, maxX
 }
 
 func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
@@ -2088,14 +2442,41 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 		return
 	}
 
+	// The curve, its fill and the dB rulers terminate at a small inset from
+	// the plot edges (first/last band column ± SpaceXS) instead of running
+	// flush into the panel border, which visually amputated the stroke at
+	// x=0 / x=panel-width.
+	curveMinX, curveMaxX := z.eqCurveSpanX(r)
+
 	// 0 dB reference line (dashed).
 	zeroY := gainDBToY(0, r)
-	for dx := r.Min.X; dx < r.Max.X; dx += 6 {
+	for dx := curveMinX; dx < curveMaxX; dx += 6 {
 		end := dx + 3
-		if end > r.Max.X {
-			end = r.Max.X
+		if end > curveMaxX {
+			end = curveMaxX
 		}
 		drawRect(dst, image.Rect(dx, zeroY, end, zeroY+1), colEQZeroLine, true)
+	}
+
+	// ±6 dB guide rulers — solid 1-px lines a step fainter than the dashed
+	// 0 dB reference, with tiny end labels so the plot carries a dB scale.
+	guideCol := WithAlpha(genColorEqZeroLine, AlphaSubtle)
+	guideLabelCol := WithAlpha(colTextSecondary, AlphaStrong)
+	for _, gdb := range [...]float64{eqGuideDB, -eqGuideDB} {
+		gy := gainDBToY(gdb, r)
+		if gy <= r.Min.Y || gy >= r.Max.Y-1 {
+			continue
+		}
+		drawRect(dst, image.Rect(curveMinX, gy, curveMaxX, gy+1), guideCol, true)
+		lbl := "+6"
+		if gdb < 0 {
+			lbl = "-6"
+		}
+		ly := gy - int(float64(TextHeight())*eqGuideLabelScale) - 1
+		if ly < r.Min.Y {
+			ly = gy + 2
+		}
+		DrawTextColorAtScale(dst, lbl, curveMinX+2, ly, guideLabelCol, eqGuideLabelScale)
 	}
 
 	// Curve.
@@ -2109,7 +2490,7 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 		if py > r.Max.Y-1 {
 			py = r.Max.Y - 1
 		}
-		if prevX >= 0 && px > prevX {
+		if prevX >= 0 && px > prevX && px >= curveMinX && px <= curveMaxX {
 			fillY0, fillY1 := py, zeroY
 			if fillY0 > fillY1 {
 				fillY0, fillY1 = fillY1, fillY0
@@ -2344,104 +2725,6 @@ func formatDB(db float64) string {
 		return "0.0"
 	}
 	return fmt.Sprintf("%+.1f", db)
-}
-
-// updateDBInputs runs per-frame update for all dB text inputs,
-// tracking focus transitions and ensuring only one is focused at a time.
-func (z *EQPanelZone) updateDBInputs() {
-	newFocused := -1
-	for i, ti := range z.eqDBInputs {
-		if ti == nil {
-			continue
-		}
-		prevFocus := ti.Focused()
-		ti.Update()
-		if ti.Focused() && !prevFocus {
-			// Focus gained: save prev value, clear text for entry.
-			z.dbInputPrev = z.bandGainsDB[i]
-			ti.SetText("")
-			newFocused = i
-		}
-		if !ti.Focused() && prevFocus {
-			// Focus lost (click-away or Enter in TextInput): commit.
-			z.commitDBText(i)
-		}
-		if ti.Focused() {
-			newFocused = i
-		}
-	}
-	// Ensure only one focused at a time.
-	if newFocused >= 0 {
-		for i, ti := range z.eqDBInputs {
-			if ti != nil && i != newFocused && ti.Focused() {
-				z.commitDBText(i)
-				ti.focused = false
-			}
-		}
-		z.dbInputFocused = newFocused
-	} else {
-		z.dbInputFocused = -1
-	}
-}
-
-// commitDBText parses and applies the dB value from the text input at band,
-// clamping to [-12, +12] and rounding to 0.1. Invalid/empty text reverts.
-func (z *EQPanelZone) commitDBText(band int) {
-	if band < 0 || band >= len(z.eqDBInputs) {
-		return
-	}
-	ti := z.eqDBInputs[band]
-	if ti == nil {
-		return
-	}
-	val := ti.Value()
-	db, err := strconv.ParseFloat(val, 64)
-	if err != nil || val == "" {
-		// Invalid or empty: revert to previous.
-		ti.SetText(formatDB(z.dbInputPrev))
-		ti.focused = false
-		return
-	}
-	db = clampF64(db, -12.0, 12.0)
-	db = math.Round(db*10) / 10
-	z.bandGainsDB[band] = db
-	ti.SetText(formatDB(db))
-	ti.focused = false
-	z.curveDirty = true
-	if z.callbacks.OnGainChange != nil {
-		z.callbacks.OnGainChange(band, db)
-	}
-	if z.callbacks.OnApplyEQ != nil {
-		z.callbacks.OnApplyEQ()
-	}
-	if z.callbacks.OnEQBandCommit != nil {
-		z.callbacks.OnEQBandCommit()
-	}
-}
-
-// syncDBInputText updates the dB text input for a single band from bandGainsDB,
-// unless that input is currently focused (user is editing) or a sync guard is set.
-func (z *EQPanelZone) syncDBInputText(band int) {
-	if z.dbInputSyncing {
-		return
-	}
-	if band < 0 || band >= len(z.eqDBInputs) {
-		return
-	}
-	ti := z.eqDBInputs[band]
-	if ti == nil || ti.Focused() {
-		return
-	}
-	z.dbInputSyncing = true
-	ti.SetText(formatDB(z.bandGainsDB[band]))
-	z.dbInputSyncing = false
-}
-
-// syncAllDBInputTexts syncs all 10 dB inputs from bandGainsDB.
-func (z *EQPanelZone) syncAllDBInputTexts() {
-	for i := range z.eqDBInputs {
-		z.syncDBInputText(i)
-	}
 }
 
 // newScrollBehavior creates a fresh ScrollBehavior for use in the zone.

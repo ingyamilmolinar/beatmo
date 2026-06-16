@@ -10,6 +10,16 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+func TestFitWidthGrowsToValueWithMin(t *testing.T) {
+	if got := FitWidth("", 80); got != 80 {
+		t.Fatalf("empty got %d want min 80", got)
+	}
+	long := "A very long instrument name"
+	if got := FitWidth(long, 80); got < TextWidth(long) {
+		t.Fatalf("got %d clips value (TextWidth=%d)", got, TextWidth(long))
+	}
+}
+
 func TestTextInputEditing(t *testing.T) {
 	assertDefaultParityState(t)
 	prevSuppress := suppressClicksUntilRelease
@@ -370,5 +380,26 @@ func TestTextInputDrawAnimatedPreservesBounds(t *testing.T) {
 	ti.Draw(ebiten.NewImage(100, 24))
 	if got.Dy() != 20 || got.Dx() != 96 {
 		t.Fatalf("animRect=%v", got)
+	}
+}
+
+func TestTextInputRightArrowMovesCursor(t *testing.T) {
+	assertDefaultParityState(t)
+	ti := NewTextInput(image.Rect(0, 0, 100, 20), BPMBoxStyle)
+	ti.focused = true
+	ti.SetText("abc")
+	ti.cursor = 0
+	restore := SetInputForTest(
+		func() (int, int) { return -1, -1 },
+		func(ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return k == ebiten.KeyRight },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	t.Cleanup(restore)
+	ti.Update()
+	if ti.cursor != 1 {
+		t.Fatalf("after Right cursor=%d want 1", ti.cursor)
 	}
 }

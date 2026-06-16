@@ -22,7 +22,11 @@ type Game struct {
 	cam                       *Camera
 	split                     *Splitter
 	drum                      *DrumView
+	i18nCancel                func()  // cancels the i18n.OnChange listener registered in NewGame
+	gridHelpBtn               *Button // desktop-only settings gear in grid pane top-right (opens settings overlay)
+	gridHelpCapturing         bool    // true while the grid "?" button holds the press; defers the tree so its click-outside doesn't close the just-opened overlay
 	undoManager               *UndoManager
+	keyboardRouter            *keyboardShortcutRouter // component-owned keyboard shortcut dispatch (keyboard_shortcuts.go)
 	inputDispatcher           *InputDispatcher
 	lastDispatcherSidebarOpen bool
 	dispatcherDirty           bool
@@ -283,9 +287,24 @@ type Game struct {
 	perfDrawMuted bool
 
 	// grid render cache
-	gridTile       *ebiten.Image
+	gridTile       *ebiten.Image // SubImage view of gridTileBacking for the current stepPx
 	gridTileStepPx int
 	gridTileSubSig uint64
+	// Grow-only backing texture for the grid tile. The logical tile is a
+	// stepPx×stepPx square that changes size on every frame of a continuous
+	// zoom; allocating it fresh each frame churns the GPU atlas and stalls the
+	// single WASM thread (starving audio). Instead we keep one backing image
+	// sized to the largest stepPx seen, redraw into its top-left region, and
+	// hand out a SubImage — so an active zoom reuses the backing, allocating
+	// only when a larger tile is needed. See buildGridTile.
+	gridTileBacking     *ebiten.Image
+	gridTileBackingSize int
+	// Logical period (px) at which the caller tiles gridTile into the grid cache.
+	// The tile is a multi-cell block (≥ gridTileMinBlockPx) so the per-rebuild
+	// blit count stays ~area/gridTileW² instead of ~area/stepPx² — without the
+	// block, tiling a tiny stepPx tile when zoomed out costs tens of thousands of
+	// blits/frame and starves audio. See buildGridTile.
+	gridTileW int
 	// grid layer cache (screen-space)
 	gridCache       *ebiten.Image
 	gridCacheW      int
@@ -310,6 +329,20 @@ type Game struct {
 	// gridTree owns the top grid pane's z-ordered draw + input tree
 	// (sibling to drum.tree which owns the bottom pane). See grid_tree.go.
 	gridTree *GridTree
+
+	// gridDrawScreen / gridDrawCtx are transient per-frame fields set by
+	// (*Game).drawGridPane before it dispatches to the drawGrid* sub-methods
+	// (grid_pane_draw.go). They carry, respectively, the unclipped screen image
+	// (for blocks that intentionally draw outside the grid subimage — node glow
+	// blooms, the desktop cursor label, debug crosses) and the per-frame derived
+	// camera/culling/edge-style locals that the sub-methods share. The
+	// one-time side-effecting setup (FastPanDetect counter mutation, draw-stat
+	// reset) runs exactly once in the dispatcher; the derived values below are
+	// pure functions of camera/grid state stashed here so the verbatim-cut
+	// sub-methods can read them without recomputation. Not persistent state —
+	// overwritten every drawGridPane call.
+	gridDrawScreen *ebiten.Image
+	gridDrawCtx    gridPaneDrawCtx
 
 	// draw stats (for tests and diagnostics)
 	lastDrawEdges  int

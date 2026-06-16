@@ -36,11 +36,11 @@ func TestColorWheelPressOnWheel(t *testing.T) {
 	dv.Length = 8
 
 	dv.openColorWheelPortal()
-	dv.colorWheelRect = image.Rect(100, 100, 200, 200)
+	wheelRect := image.Rect(100, 100, 200, 200)
 
 	// Point inside wheel rect should be detected as inside.
 	pt := image.Pt(150, 150)
-	if !pt.In(dv.colorWheelRect) {
+	if !pt.In(wheelRect) {
 		t.Error("expected point (150,150) to be inside color wheel rect")
 	}
 }
@@ -54,11 +54,11 @@ func TestColorWheelPressOutsideWheel(t *testing.T) {
 	dv.Length = 8
 
 	dv.openColorWheelPortal()
-	dv.colorWheelRect = image.Rect(100, 100, 200, 200)
+	wheelRect := image.Rect(100, 100, 200, 200)
 
 	// Point outside wheel rect.
 	pt := image.Pt(50, 50)
-	if pt.In(dv.colorWheelRect) {
+	if pt.In(wheelRect) {
 		t.Error("expected point (50,50) to be outside color wheel rect")
 	}
 }

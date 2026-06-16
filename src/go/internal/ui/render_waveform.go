@@ -8,7 +8,15 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
+
+// colWaveTraceFill is the soft synthwave "outrun" wash painted from the
+// waveform trace down to the centerline at AlphaSubtle. Package-level so the
+// color is served from pixelCache (no per-column color alloc); drawWaveTrace
+// emits one fill rect per column above/below the midline, the trace line on
+// top.
+var colWaveTraceFill = WithAlpha(colWaveTrace, AlphaSubtle)
 
 // drawAnalyzerWaveform renders a waveform from the given channel metrics into
 // the rectangle. It picks frozen capture data when available, otherwise
@@ -21,7 +29,7 @@ import (
 // The channel name is no longer drawn inside the waveform — the sticky bar
 // above the panel owns channel identity (see audio_sticky_bar.go). Restating
 // it here was redundant chrome.
-func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, beatGrid []float64) {
+func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, beatGrid []float64, gain float64, autoOn bool, tabFrozen bool) {
 	if ch == nil {
 		drawRect(dst, rect, colButtonBorder, false)
 		return
@@ -44,18 +52,27 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 
 	// Reserve left margin for amplitude labels + bottom strip for the ms
 	// axis (tick marks + labels), matching the Chain tab's convention so
-	// time-correlation reads the same way across both signal views.
-	const waveMSAxisH = 12
-	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-waveMSAxisH)
+	// time-correlation reads the same way across both signal views. The
+	// strip height holds one full caption text row so label baselines are
+	// never clipped by the panel's bottom edge.
+	waveRect := image.Rect(rect.Min.X+Profile().DensityValues().AudioLabelMarginW, rect.Min.Y, rect.Max.X, rect.Max.Y-waveTimeAxisHeight())
 
 	// Label scale.
 	captionScale := FontSizeCaption / FontSizeBody
 	lh := int(float64(TextHeight()) * captionScale)
 
-	// Draw amplitude labels in the left margin.
-	DrawTextColorAtScale(dst, "+1", rect.Min.X+2, waveRect.Min.Y+2, colTextSecondary, captionScale)
-	DrawTextColorAtScale(dst, "0", rect.Min.X+2, waveRect.Min.Y+waveRect.Dy()/2-lh/2, colTextSecondary, captionScale)
-	DrawTextColorAtScale(dst, "-1", rect.Min.X+2, waveRect.Max.Y-lh-2, colTextSecondary, captionScale)
+	if gain <= 0 {
+		gain = 1.0
+	}
+	edge := waveEdgeAmplitude(gain)
+
+	// Draw amplitude labels in the left margin (SpaceXS inset from the
+	// panel's left edge so they never render flush at x=0).
+	// Edge labels reflect the TRUE amplitude the panel edges represent at the
+	// current Y-gain (adaptive auto-scale): top/bottom = +/- 1/gain, center 0.
+	DrawTextColorAtScale(dst, fmt.Sprintf("+%.2g", edge), rect.Min.X+SpaceXS, waveRect.Min.Y+2, colTextSecondary, captionScale)
+	DrawTextColorAtScale(dst, "0", rect.Min.X+SpaceXS, waveRect.Min.Y+waveRect.Dy()/2-lh/2, colTextSecondary, captionScale)
+	DrawTextColorAtScale(dst, fmt.Sprintf("-%.2g", edge), rect.Min.X+SpaceXS, waveRect.Max.Y-lh-2, colTextSecondary, captionScale)
 
 	// Draw midline at vertical center.
 	midY := waveRect.Min.Y + waveRect.Dy()/2
@@ -103,8 +120,8 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		botRect := image.Rect(waveRect.Min.X, midY, waveRect.Max.X, waveRect.Max.Y)
 		topMid := topRect.Min.Y + topRect.Dy()/2
 		botMid := botRect.Min.Y + botRect.Dy()/2
-		drawWaveTrace(dst, ch.WaveformL, topRect, topMid, width, colWaveTrace, 1.0, nil)
-		drawWaveTrace(dst, ch.WaveformR, botRect, botMid, width, colWaveTrace, 1.0, nil)
+		drawWaveTrace(dst, ch.WaveformL, topRect, topMid, width, colWaveTrace, gain, colWaveTraceFill)
+		drawWaveTrace(dst, ch.WaveformR, botRect, botMid, width, colWaveTrace, gain, colWaveTraceFill)
 		// Small L / R labels along the left margin so the split reads
 		// clearly without relying on context.
 		DrawTextColorAtScale(dst, "L", rect.Min.X+2, topRect.Min.Y+2, colTextSecondary, captionScale)
@@ -112,7 +129,7 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		overdrawWaveClips(dst, ch.WaveformL, topRect, width, meterClip)
 		overdrawWaveClips(dst, ch.WaveformR, botRect, width, meterClip)
 	} else {
-		drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, 1.0, nil)
+		drawWaveTrace(dst, wave, waveRect, midY, width, colWaveTrace, gain, colWaveTraceFill)
 		// Clip flash: overdraw any column whose samples saturate (|v| > 1.0)
 		// with meterClip, full waveRect height. Gives instant DAW-style
 		// headroom warning that's impossible to miss against the steady
@@ -121,13 +138,19 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	}
 
 	// Time-axis: tick marks + ms labels along the reserved bottom strip.
-	axisRect := image.Rect(waveRect.Min.X, waveRect.Max.Y, waveRect.Max.X, waveRect.Max.Y+waveMSAxisH)
+	axisRect := image.Rect(waveRect.Min.X, waveRect.Max.Y, waveRect.Max.X, waveRect.Max.Y+waveTimeAxisHeight())
 	drawWaveTimeAxis(dst, axisRect, waveWindowMs(len(wave), audio.SampleRate()), captionScale)
 
-	// Frozen indicator at top-right.
-	if frozen {
-		frozenW := int(float64(TextWidth("FROZEN")) * captionScale)
-		DrawTextColorAtScale(dst, "FROZEN", waveRect.Max.X-frozenW-4, waveRect.Min.Y+2, colAccentBright, captionScale)
+	// Top-right status slot: FROZEN takes priority (global freeze reachable
+	// from other tabs); otherwise show the live Y-scale badge so the user
+	// always knows the current vertical scale.
+	if frozen || tabFrozen {
+		frozenW := int(float64(TextWidth(i18n.T(i18n.KeyCapFrozen))) * captionScale)
+		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapFrozen), waveRect.Max.X-frozenW-4, waveRect.Min.Y+2, colAccentBright, captionScale)
+	} else {
+		badge := waveGainBadgeText(gain, autoOn)
+		bw := int(float64(TextWidth(badge)) * captionScale)
+		DrawTextColorAtScale(dst, badge, waveRect.Max.X-bw-4, waveRect.Min.Y+2, colTextSecondary, captionScale)
 	}
 }
 
@@ -173,6 +196,14 @@ func overdrawWaveClips(dst *ebiten.Image, wave []float64, rect image.Rectangle, 
 	}
 }
 
+// waveTimeAxisHeight is the reserved bottom strip (in px) for the Wave tab's
+// ms-axis tick marks + labels: one caption text row plus padding, so label
+// baselines are never clipped by the panel's bottom edge.
+func waveTimeAxisHeight() int {
+	captionScale := FontSizeCaption / FontSizeBody
+	return int(float64(TextHeight())*captionScale) + SpaceSM
+}
+
 // drawWaveTimeAxis paints tick marks + ms labels across the bottom
 // strip of the wave panel. Mirrors the Chain tab's bottom-axis style
 // so time correlation reads identically across both signal surfaces.
@@ -181,15 +212,19 @@ func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs floa
 		return
 	}
 	w := axisRect.Dx()
+	lh := int(float64(TextHeight()) * captionScale)
 	for _, lbl := range waveAxisLabels(windowMs) {
 		x := axisRect.Min.X + int(lbl.Frac*float64(w))
 		if x >= axisRect.Max.X {
 			x = axisRect.Max.X - 1
 		}
-		// 1px wide × 3px tall tick mark at the top of the axis strip.
-		drawRect(dst, image.Rect(x, axisRect.Min.Y, x+1, axisRect.Min.Y+3), colTextSecondary, true)
-		// Label below the tick. Anchor first label to the left edge to
-		// avoid clipping; centre the rest under their tick.
+		// 1px wide × 3px tall tick mark anchored to the BOTTOM of the axis
+		// strip so it always lands in the panel's bottom band (where the
+		// time-base is read), regardless of how tall the reserved strip is.
+		drawRect(dst, image.Rect(x, axisRect.Max.Y-3, x+1, axisRect.Max.Y), colTextSecondary, true)
+		// Label sits ABOVE the tick, fully inside the strip, so its baseline
+		// is never clipped by the panel's bottom edge (the original bug).
+		// Anchor first label to the left edge; centre the rest under their tick.
 		lw := int(float64(TextWidth(lbl.Text)) * captionScale)
 		lx := x - lw/2
 		if lbl.Frac == 0 {
@@ -201,7 +236,11 @@ func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs floa
 		if lx < axisRect.Min.X {
 			lx = axisRect.Min.X
 		}
-		DrawTextColorAtScale(dst, lbl.Text, lx, axisRect.Min.Y+3, colTextSecondary, captionScale)
+		ly := axisRect.Max.Y - 3 - lh
+		if ly < axisRect.Min.Y {
+			ly = axisRect.Min.Y
+		}
+		DrawTextColorAtScale(dst, lbl.Text, lx, ly, colTextSecondary, captionScale)
 	}
 }
 
@@ -253,14 +292,29 @@ func drawWaveTrace(dst *ebiten.Image, wave []float64, rect image.Rectangle, midY
 			y1 = y0 + 1
 		}
 
-		// Fill from trace to centerline.
+		// Synthwave "outrun" fill from the trace down to the centerline:
+		// a single soft wash at the caller's fillCol. The wash always spans
+		// one contiguous vertical run from the far trace edge to the
+		// centerline, i.e. [min(y0,midY) .. max(y1,midY)] — drawing it as ONE
+		// rect per column instead of a top half + bottom half is
+		// pixel-identical (same span, same fillCol) but halves the per-column
+		// blit count on the audio panel's hottest renderer. That blit count
+		// is the dominant Draw cost on the Chain tab (two full-width traces),
+		// and on the single WASM thread an oversized Draw starves the
+		// sequencer goroutine → choppy audio. See profile_chain_tab.mjs.
+		// The fillCol is a fixed package-level color served from pixelCache,
+		// so no per-column color alloc is incurred.
 		if fillCol != nil {
 			px := rect.Min.X + x
-			if y0 < midY {
-				drawRect(dst, image.Rect(px, y0, px+1, midY), fillCol, true)
+			fy0, fy1 := y0, y1
+			if midY < fy0 {
+				fy0 = midY
 			}
-			if y1 > midY {
-				drawRect(dst, image.Rect(px, midY, px+1, y1), fillCol, true)
+			if midY > fy1 {
+				fy1 = midY
+			}
+			if fy1 > fy0 {
+				drawRect(dst, image.Rect(px, fy0, px+1, fy1), fillCol, true)
 			}
 		}
 
@@ -282,7 +336,7 @@ func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 	// bottom strip for the ms axis) so the cursor crosshair stops at
 	// the wave area, not the axis labels below it.
 	const waveMSAxisH = 12
-	waveRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-waveMSAxisH)
+	waveRect := image.Rect(rect.Min.X+Profile().DensityValues().AudioLabelMarginW, rect.Min.Y, rect.Max.X, rect.Max.Y-waveMSAxisH)
 	if cursorX < waveRect.Min.X || cursorX >= waveRect.Max.X {
 		return
 	}

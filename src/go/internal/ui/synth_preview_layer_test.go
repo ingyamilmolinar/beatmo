@@ -4,6 +4,7 @@ package ui
 
 import (
 	"image"
+	"math"
 	"testing"
 	"time"
 
@@ -74,11 +75,29 @@ func TestSynthADSRPlot_DecayKnobChangesShape(t *testing.T) {
 // the centre baseline + the sine trace.
 func TestSynthOscPlot_DrawsBaseline(t *testing.T) {
 	dst := ebiten.NewImage(280, 60)
+	r := image.Rect(0, 0, 280, 60)
 	rects := collectFilledRects(t, func() {
-		drawSynthOscPlot(dst, image.Rect(0, 0, 280, 60), "kick")
+		drawSynthOscPlot(dst, r, "kick")
 	})
 	if len(rects) == 0 {
 		t.Errorf("expected osc plot rects, got 0")
+	}
+	// Synthwave "outrun" wash beneath the osc trace.
+	if got := rectsWithColorInside(rects, r, colSynthOscFill); got == 0 {
+		t.Errorf("expected colSynthOscFill wash beneath osc trace, got 0")
+	}
+}
+
+// TestSynthADSRPlot_SynthwaveFill — the envelope plot fills from its curve
+// down to the baseline at colSynthEnvFill (the accent at AlphaSubtle).
+func TestSynthADSRPlot_SynthwaveFill(t *testing.T) {
+	dst := ebiten.NewImage(280, 60)
+	r := image.Rect(0, 0, 280, 60)
+	rects := collectFilledRects(t, func() {
+		drawSynthADSRPlot(dst, r, "", 1.0)
+	})
+	if got := rectsWithColorInside(rects, r, colSynthEnvFill); got == 0 {
+		t.Errorf("expected colSynthEnvFill wash beneath ADSR envelope, got 0")
 	}
 }
 
@@ -106,5 +125,20 @@ func TestTriggerPulse_GlowsAfterPlay(t *testing.T) {
 	audio.RecordVoiceTrigger(id)
 	if d := audio.SinceLastTrigger(id); d > 50*time.Millisecond {
 		t.Errorf("after play SinceLastTrigger=%v want < 50ms", d)
+	}
+}
+
+func TestMirrorDisplayWindow_CapsCycles(t *testing.T) {
+	wave := make([]float64, synthMirrorWaveCycles*64)
+	for i := range wave {
+		wave[i] = math.Sin(float64(i) * 0.3)
+	}
+	got := mirrorDisplayWindow(wave, synthMirrorWaveCycles)
+	maxLen := len(wave) * synthMirrorDisplayCyclesMax / synthMirrorWaveCycles
+	if len(got) > maxLen {
+		t.Fatalf("displayed window %d samples exceeds %d-cycle cap (%d)", len(got), synthMirrorDisplayCyclesMax, maxLen)
+	}
+	if len(got) < 1 {
+		t.Fatalf("displayed window collapsed to empty")
 	}
 }

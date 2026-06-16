@@ -9,6 +9,17 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
+// KnobScale describes the param domain a Knob represents so the widget can
+// snap discrete params to detents, accumulate endless drags in real units,
+// and feed the step badge / numeric editor. Set by the owning panel; the
+// zero value leaves the knob in legacy continuous-absolute mode.
+type KnobScale struct {
+	Min, Max float64
+	Unit     string   // "", "ms", "Hz", "dB", "%", "st"
+	Enum     []string // non-nil => discrete
+	Step     float64  // >0 => discrete detents at Min, Min+Step, ... Max
+}
+
 // Knob is a rotary control with a 0..1 value, used by the Synth tab. The
 // public API mirrors Slider (SetRect / Rect / Value / HandleInputResult /
 // Capturing / Draw) so the existing hit-area + propagate machinery in
@@ -44,6 +55,40 @@ type Knob struct {
 	// movement changes the value by a smaller amount. The Synth tab
 	// toggles this when the Shift modifier is held during a drag.
 	FineDrag bool
+
+	// Bipolar, when true, renders the value arc filling outward from the
+	// param's neutral point (ZeroFrac) instead of from the track start, so a
+	// neutral value (+0 dB gain, 0 cents detune, +0 st pitch) shows no fill
+	// and the arc grows on either side of neutral. Set by the synth/sampler
+	// panels for params whose range straddles zero; the drag math is
+	// unchanged (still a 0..1 normalized value).
+	Bipolar bool
+	// ZeroFrac is the normalized [0,1] position of the param's zero, used
+	// only when Bipolar is true. Symmetric ranges (±X) give 0.5; asymmetric
+	// ranges (gain -24..+6 dB) give a non-centre value (0.8) so the fill
+	// pivots on the true neutral, not the geometric middle.
+	ZeroFrac float64
+
+	// Scale describes the param domain (see KnobScale). Discrete/Endless are
+	// derived from it by the owning panel and set explicitly.
+	Scale KnobScale
+	// Discrete makes drag/wheel snap to evenly spaced detents (clicky). Set
+	// when Scale.Enum != nil || Scale.Step > 0.
+	Discrete bool
+	// Endless makes drag accumulate incrementally in real units (StepMul per
+	// knobEndlessPxPerNotch px) instead of mapping the rect to 0..1, so the
+	// turn never hits a travel wall. Mutually exclusive with Discrete.
+	Endless bool
+	// StepMul is the real-unit change applied per knobEndlessPxPerNotch px of
+	// endless drag and per wheel notch. Set from the step badge.
+	StepMul float64
+	// endlessLastX is the previous drag X for incremental accumulation.
+	endlessLastX int
+	// valueWheelAccum counts signed wheel notches toward the next value step so
+	// a two-finger horizontal trackpad drag moves the value slowly and clicky
+	// (one step per knobValueWheelNotchesPerStep notches) instead of racing.
+	// See StepValueByWheel.
+	valueWheelAccum int
 }
 
 const (
@@ -70,7 +115,42 @@ const (
 	// (2.5 % of the 0..1 range). FineDrag halves this.
 	knobWheelStep     = 0.025
 	knobWheelStepFine = 0.005
+
+	// knobEndlessPxPerNotch is the horizontal pixels that equal one StepMul of
+	// value change in endless mode. 8 px = one step gives fine finger control.
+	knobEndlessPxPerNotch = 8
 )
+
+// knobValueArcSpan returns the [from,to] angular span (radians) the filled
+// value arc should occupy for a normalized value in [0,1], plus whether there
+// is anything to draw. Pure function of value + polarity so it is unit-tested
+// directly (TestKnobValueArcSpan*).
+//
+//   - Unipolar: the arc runs from the track start to the value angle; value 0
+//     draws nothing.
+//   - Bipolar: the arc runs between the neutral angle (zeroFrac of the sweep)
+//     and the value angle (neutral→value above zero, value→neutral below), so
+//     value == zeroFrac draws nothing and the fill grows on either side of the
+//     param's true zero.
+func knobValueArcSpan(value, zeroFrac float64, bipolar bool) (from, to float32, draw bool) {
+	start := float32(knobArcStartDeg * math.Pi / 180)
+	valRad := start + float32(value*knobArcSweepDeg*math.Pi/180)
+	if !bipolar {
+		if valRad > start {
+			return start, valRad, true
+		}
+		return 0, 0, false
+	}
+	zeroRad := start + float32(zeroFrac*knobArcSweepDeg*math.Pi/180)
+	switch {
+	case valRad > zeroRad:
+		return zeroRad, valRad, true
+	case valRad < zeroRad:
+		return valRad, zeroRad, true
+	default:
+		return 0, 0, false
+	}
+}
 
 // NewKnob returns a Knob initialised to v (clamped to [0,1]).
 func NewKnob(v float64) *Knob {
@@ -120,6 +200,7 @@ func (k *Knob) HandleInputResult(mx, my int, pressed bool) InputResult {
 			k.pressX = mx
 			k.pressY = my
 			k.pressVal = k.Value
+			k.endlessLastX = mx
 			return InputCaptured
 		}
 		k.updateFromDrag(mx, my)
@@ -154,13 +235,44 @@ func (k *Knob) dragPixels() int {
 	return base
 }
 
-// HandleWheel adjusts the value by `steps` wheel notches. Each notch
-// produces `knobWheelStep` of value change (0.025 = 2.5 %, ≈ one notch
-// per 1.6 % of the range). Returns InputConsumed when the value changed,
-// InputIgnored when the click is outside the knob's rect.
+// HandleWheel adjusts the value by `steps` wheel notches. For discrete knobs,
+// each notch advances exactly one detent index. For endless knobs, each notch
+// applies ±StepMul real units (clamped to [Min,Max]). For legacy continuous
+// knobs the original knobWheelStep behaviour is preserved. Returns
+// InputConsumed when the value changed, InputIgnored when the cursor is
+// outside the knob's rect or the value is already at its limit.
 func (k *Knob) HandleWheel(mx, my, steps int) InputResult {
 	if !image.Pt(mx, my).In(k.r) {
 		return InputIgnored
+	}
+	if k.Discrete {
+		n := k.detentCount()
+		if n >= 2 {
+			idx := int(math.Round(k.Value*float64(n-1))) + steps
+			if idx < 0 {
+				idx = 0
+			} else if idx > n-1 {
+				idx = n - 1
+			}
+			nv := float64(idx) / float64(n-1)
+			if nv == k.Value {
+				return InputIgnored
+			}
+			k.Value = nv
+			return InputConsumed
+		}
+	}
+	if k.Endless {
+		span := k.Scale.Max - k.Scale.Min
+		if span > 0 && k.StepMul > 0 {
+			real := clampF64(k.Scale.Min+k.Value*span+float64(steps)*k.StepMul, k.Scale.Min, k.Scale.Max)
+			nv := (real - k.Scale.Min) / span
+			if nv == k.Value {
+				return InputIgnored
+			}
+			k.Value = nv
+			return InputConsumed
+		}
 	}
 	step := knobWheelStep
 	if k.FineDrag {
@@ -179,20 +291,143 @@ func (k *Knob) HandleWheel(mx, my, steps int) InputResult {
 	return InputConsumed
 }
 
+// knobValueWheelNotchesPerStep is how many two-finger/wheel notches advance the
+// knob VALUE by one step. >1 makes the wheel slow and human-paced; raise it to
+// slow further. (The per-step AMOUNT is StepMul, which the user controls via
+// the resolution badge — so resolution × cadence both shape the feel.)
+const knobValueWheelNotchesPerStep = 4
+
+// StepValueByWheel feeds a raw wheel/two-finger delta toward a value change.
+// Each call counts as a SINGLE notch regardless of magnitude (so a fast or
+// high-resolution trackpad can't race the value), and the value only advances
+// by ONE step once knobValueWheelNotchesPerStep notches accumulate in one
+// direction — giving a deliberate, easy-to-control feel. One step = ±StepMul
+// for endless knobs (honoring the user's chosen resolution) or ±1 detent for
+// discrete knobs. A reversal discards leftover travel. Returns true if the
+// value changed. Unlike HandleWheel it does NOT range-check the cursor, so it
+// works whether the gesture is over the dial, the caption, or the readout.
+func (k *Knob) StepValueByWheel(steps int) bool {
+	if steps == 0 {
+		return false
+	}
+	dir := 1
+	if steps < 0 {
+		dir = -1
+	}
+	if k.valueWheelAccum != 0 && (k.valueWheelAccum > 0) != (dir > 0) {
+		k.valueWheelAccum = 0
+	}
+	k.valueWheelAccum += dir
+	if k.valueWheelAccum > -knobValueWheelNotchesPerStep && k.valueWheelAccum < knobValueWheelNotchesPerStep {
+		return false
+	}
+	k.valueWheelAccum = 0
+	return k.applyValueStep(dir)
+}
+
+// applyValueStep moves the value by exactly one step in dir (+1/-1) — one
+// detent for discrete knobs, one StepMul for endless knobs — with no cursor
+// range check. Returns true if the value changed.
+func (k *Knob) applyValueStep(dir int) bool {
+	if k.Discrete {
+		n := k.detentCount()
+		if n < 2 {
+			return false
+		}
+		idx := int(math.Round(k.Value*float64(n-1))) + dir
+		if idx < 0 {
+			idx = 0
+		} else if idx > n-1 {
+			idx = n - 1
+		}
+		nv := float64(idx) / float64(n-1)
+		if nv == k.Value {
+			return false
+		}
+		k.Value = nv
+		return true
+	}
+	span := k.Scale.Max - k.Scale.Min
+	if span <= 0 {
+		return false
+	}
+	step := k.StepMul
+	if step <= 0 {
+		step = span / 200
+	}
+	real := clampF64(k.Scale.Min+k.Value*span+float64(dir)*step, k.Scale.Min, k.Scale.Max)
+	nv := (real - k.Scale.Min) / span
+	if nv == k.Value {
+		return false
+	}
+	k.Value = nv
+	return true
+}
+
+// detentCount returns the number of discrete positions, or 0 if continuous.
+func (k *Knob) detentCount() int {
+	if len(k.Scale.Enum) > 0 {
+		return len(k.Scale.Enum)
+	}
+	if k.Scale.Step > 0 && k.Scale.Max > k.Scale.Min {
+		return int(math.Round((k.Scale.Max-k.Scale.Min)/k.Scale.Step)) + 1
+	}
+	return 0
+}
+
+// snapToDetent rounds a normalized [0,1] value to the nearest detent.
+func (k *Knob) snapToDetent(v float64) float64 {
+	n := k.detentCount()
+	if n < 2 {
+		return v
+	}
+	idx := int(math.Round(v * float64(n-1)))
+	if idx < 0 {
+		idx = 0
+	} else if idx > n-1 {
+		idx = n - 1
+	}
+	return float64(idx) / float64(n-1)
+}
+
 func (k *Knob) updateFromDrag(mx, my int) {
+	if k.Endless {
+		k.updateEndless(mx)
+		return
+	}
 	pixels := k.dragPixels()
 	// Horizontal-only: right = increase, left = decrease. Vertical motion is
 	// deliberately ignored so dragging a knob never fights the panel's up/down
 	// scroll — the two gestures are on orthogonal axes. (my is unused.)
 	dxPixels := mx - k.pressX // right = positive
-	delta := float64(dxPixels) / float64(pixels)
-	v := k.pressVal + delta
+	v := k.pressVal + float64(dxPixels)/float64(pixels)
 	if v < 0 {
 		v = 0
 	} else if v > 1 {
 		v = 1
 	}
+	if k.Discrete {
+		v = k.snapToDetent(v)
+	}
 	k.Value = v
+}
+
+// updateEndless accumulates an incremental drag in real units so the knob has
+// no travel limit; the arc still fills proportionally to value-in-range.
+func (k *Knob) updateEndless(mx int) {
+	span := k.Scale.Max - k.Scale.Min
+	if span <= 0 {
+		return
+	}
+	step := k.StepMul
+	if step <= 0 {
+		step = span / 200
+	}
+	d := mx - k.endlessLastX
+	k.endlessLastX = mx
+	real := k.Scale.Min + k.Value*span
+	real = clampF64(real+(float64(d)/float64(knobEndlessPxPerNotch))*step, k.Scale.Min, k.Scale.Max)
+	k.Value = (real - k.Scale.Min) / span
 }
 
 // Draw renders the knob — background ring, value arc, indicator line, centre
@@ -224,11 +459,19 @@ func (k *Knob) Draw(dst *ebiten.Image) {
 	// Background ring (full sweep, muted).
 	drawArc(dst, cx, cy, radius, startRad, endRad, strokeWidth, trackCol)
 
-	// Value arc (from start through value-proportional angle).
-	valRad := startRad + float32(k.Value*knobArcSweepDeg*math.Pi/180)
-	if valRad > startRad {
-		drawArc(dst, cx, cy, radius, startRad, valRad, strokeWidth, fillCol)
+	// Value arc. Unipolar: grows from the track start. Bipolar: grows from
+	// the 12-o'clock centre outward (see knobValueArcSpan).
+	if from, to, draw := knobValueArcSpan(k.Value, k.ZeroFrac, k.Bipolar); draw {
+		drawArc(dst, cx, cy, radius, from, to, strokeWidth, fillCol)
 	}
+
+	// Detent ticks for discrete knobs: short radial marks at each stop.
+	if k.Discrete {
+		k.drawDetents(dst, cx, cy, float64(radius), strokeWidth, TokenTextSecondary())
+	}
+
+	// Indicator points at the current value angle regardless of polarity.
+	valRad := startRad + float32(k.Value*knobArcSweepDeg*math.Pi/180)
 
 	// Indicator: short line from inner edge of arc to the centre disk.
 	innerR := radius - strokeWidth*1.3
@@ -270,6 +513,41 @@ func (k *Knob) geom() (cx, cy float64, radius float32) {
 	cx = float64(k.r.Min.X) + float64(w)/2.0
 	cy = float64(k.r.Min.Y) + float64(side)/2.0
 	return
+}
+
+// detentTickDrawer is the per-detent draw hook, swappable in tests to count
+// detents without reading pixels.
+var detentTickDrawer = func(angleRad float64) {}
+
+func swapDetentTickDrawerForTest(fn func(float64)) func() {
+	prev := detentTickDrawer
+	detentTickDrawer = fn
+	return func() { detentTickDrawer = prev }
+}
+
+// drawDetents strokes a short radial tick at each detent position around the
+// arc, so a discrete knob visibly reads as N fixed stops.
+func (k *Knob) drawDetents(dst *ebiten.Image, cx, cy, radius float64, strokeWidth float32, col color.Color) {
+	n := k.detentCount()
+	if n < 2 {
+		return
+	}
+	start := knobArcStartDeg * math.Pi / 180
+	sweep := knobArcSweepDeg * math.Pi / 180
+	innerR := radius - float64(strokeWidth)*1.6
+	outerR := radius + float64(strokeWidth)*0.2
+	if innerR < 1 {
+		innerR = 1
+	}
+	for i := 0; i < n; i++ {
+		a := start + sweep*float64(i)/float64(n-1)
+		detentTickDrawer(a)
+		ix := cx + math.Cos(a)*innerR
+		iy := cy + math.Sin(a)*innerR
+		ox := cx + math.Cos(a)*outerR
+		oy := cy + math.Sin(a)*outerR
+		vector.StrokeLine(dst, float32(ix), float32(iy), float32(ox), float32(oy), 1.5, col, true)
+	}
 }
 
 // drawArcVS / drawArcIS are package-level scratch buffers reused across

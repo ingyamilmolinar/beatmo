@@ -10,24 +10,17 @@ import (
 /* ─── public update ────────────────────────────────────────── */
 
 // refreshLenButtonsStyle re-derives the length +/− buttons' Style and
-// IconColor from the current LayoutProfile so a mobile↔desktop transition
-// correctly retints them in real time. Called from recalcButtons every
-// layout pass and once from the ctor. Idempotent and O(1).
+// IconColor. Both platforms now use the neutral stepper look (same recipe
+// as button-secondary) so there is no mobile/desktop branch. Called from
+// recalcButtons every layout pass and once from the ctor. Idempotent and O(1).
 func (dv *DrumView) refreshLenButtonsStyle() {
 	if dv.lenDecBtn == nil || dv.lenIncBtn == nil {
 		return
 	}
-	if Profile().IsMobile() {
-		dv.lenDecBtn.Style = TransportDecStyle
-		dv.lenDecBtn.IconColor = colIncDecIcon
-		dv.lenIncBtn.Style = TransportIncStyle
-		dv.lenIncBtn.IconColor = colIncDecIcon
-	} else {
-		dv.lenDecBtn.Style = LenDecStyle
-		dv.lenDecBtn.IconColor = colIncDecIconHi
-		dv.lenIncBtn.Style = LenIncStyle
-		dv.lenIncBtn.IconColor = colIncDecIconHi
-	}
+	dv.lenDecBtn.Style = LenDecStyle
+	dv.lenDecBtn.IconColor = colIncDecIcon
+	dv.lenIncBtn.Style = LenIncStyle
+	dv.lenIncBtn.IconColor = colIncDecIcon
 }
 
 func (dv *DrumView) recalcButtons() {
@@ -55,8 +48,17 @@ func (dv *DrumView) recalcButtons() {
 		dv.eqH = 0
 	}
 	if runningUnderGoTest() {
-		eqPanelHeight = 0
-		dv.eqH = 0
+		// Tests normally collapse the audio panel (eqPanelHeight=0) to keep the
+		// drum rows dominant. eqPanelHeightForTest is a seam that lets a
+		// functional test exercise the REAL production-floored panel (where the
+		// panel top diverges from the widget-board boundary) — the scenario this
+		// gate otherwise hides. 0 = default collapse behaviour.
+		if eqPanelHeightForTest > 0 {
+			eqPanelHeight = eqPanelHeightForTest
+		} else {
+			eqPanelHeight = 0
+			dv.eqH = 0
+		}
 	}
 	dv.calcLabelWidth()
 
@@ -176,16 +178,35 @@ func (dv *DrumView) recalcButtons() {
 			// dedicated constant for exactly this control (above eq controls
 			// at 131, chain content at 141/142; below row-zoom chips at 160
 			// and portals at 300). Pinned by the view-mode transition matrix.
-			if dv.viewSwitchSegmented != nil && !dv.viewSwitchSegmented.Rect().Empty() {
-				dv.transportZone.hitAreas = append(dv.transportZone.hitAreas, HitArea{
-					Rect:     dv.viewSwitchSegmented.Rect(),
-					ClipRect: bar,
-					ZIndex:   ZViewSwitch,
-					Tag:      "transport-view-segmented",
-					Handler:  &segmentedHitAdapter{sc: dv.viewSwitchSegmented},
-				})
-			}
 			dv.tree.HitIndexRef().Update("transport", dv.transportZone.HitAreas())
+			// The mobile view-switch segmented control is published into the
+			// AUDIO subtree's HitIndex (NOT the transport zone in dv.tree). The
+			// switcher overlays the bottom bar that the eq-panel catch-all
+			// (z=130, audioTree) also covers; for its ZViewSwitch (150) z to
+			// win it must live in the SAME subtree as the catch-all. After the
+			// two-subtree split, a hit area in dv.tree can never outrank one in
+			// audioTree (separate HitIndexes — audioTree, the higher-z child, is
+			// dispatched first and its catch-all consumes the tap). Publishing
+			// here keeps the switcher reachable on Chain/Sampler/etc. Pinned by
+			// the view-mode transition matrix.
+			if dv.audioTree != nil {
+				if dv.viewSwitchSegmented != nil && !dv.viewSwitchSegmented.Rect().Empty() {
+					dv.audioTree.HitIndexRef().Update("view-switch", []HitArea{{
+						Rect:     dv.viewSwitchSegmented.Rect(),
+						ClipRect: bar,
+						ZIndex:   ZViewSwitch,
+						Tag:      "transport-view-segmented",
+						Handler:  &segmentedHitAdapter{sc: dv.viewSwitchSegmented},
+					}})
+				} else {
+					dv.audioTree.HitIndexRef().Update("view-switch", nil)
+				}
+			}
+		} else if dv.audioTree != nil {
+			// Non-mobile (or collapsed bar): no segmented switcher — clear any
+			// stale view-switch hit area from the audio subtree's HitIndex so a
+			// mobile→desktop transition can't strand it.
+			dv.audioTree.HitIndexRef().Update("view-switch", nil)
 		}
 	}
 
@@ -431,22 +452,31 @@ func (dv *DrumView) recalcButtons() {
 	if top < tlWidget.Min.Y {
 		top = tlWidget.Min.Y
 	}
-	// Compute track button width — positioned in timeline area on desktop only.
-	trackBtnW := 0
+	// Compute track button width. The track/lock chip is now the unified
+	// LEFT anchor of the band on BOTH platforms (counter + notification area
+	// sit to its right), so the timeline reserves left space on both. Mobile
+	// uses the touch-target floor; desktop matches the play-button width.
 	const trackBtnGap = 4 // breathing room between track button and timeline
-	if !p.IsMobile() {
-		trackBtnW = dv.playBtn().Rect().Dx()
-		if trackBtnW <= 0 {
-			trackBtnW = 44
+	trackBtnW := dv.playBtn().Rect().Dx()
+	if trackBtnW <= 0 {
+		trackBtnW = 44
+	}
+	if p.IsMobile() {
+		if tm := TouchMinTarget(); tm > trackBtnW {
+			trackBtnW = tm
 		}
 	}
-	// timelineRect starts AFTER the track button on desktop so the button
-	// never paints over the leftmost portion of the timeline progress bar
-	// (initial seconds were invisible when the two shared the same X range).
-	// On mobile trackBtnW=0, so the timeline keeps the full widget width.
+	// bandLeftReserved is the strip the track/lock chip occupies at the band's
+	// left on BOTH platforms (chip → counter → notif). On DESKTOP the timeline
+	// bar also steps around it (tall strip never paints over the bar). On
+	// MOBILE the bar keeps its full width — the short chip overlaps only the
+	// bar's left corner, the same trade the old right-edge chip made — so the
+	// narrow mobile ruler doesn't drop below its min-width floor
+	// (TestMobileDrumTimelineMinPercent).
+	bandLeftReserved := trackBtnW + trackBtnGap
 	tlLeftReserved := 0
-	if trackBtnW > 0 {
-		tlLeftReserved = trackBtnW + trackBtnGap
+	if !p.IsMobile() {
+		tlLeftReserved = bandLeftReserved
 	}
 	dv.timelineRect = image.Rect(
 		tlWidget.Min.X+tlLeftReserved,
@@ -470,8 +500,11 @@ func (dv *DrumView) recalcButtons() {
 	if bcTop < tlWidget.Min.Y {
 		bcTop = tlWidget.Min.Y
 	}
+	// Band content (counter + notif) starts right of the track chip on both
+	// platforms. On desktop this equals timelineRect.Min.X (the bar is also
+	// reserved); on mobile the bar starts further left, so anchor explicitly.
 	dv.beatCounterRect = image.Rect(
-		dv.timelineRect.Min.X, bcTop,
+		tlWidget.Min.X+bandLeftReserved, bcTop,
 		dv.timelineRect.Max.X, bcTop+infoH,
 	)
 
@@ -575,49 +608,64 @@ func (dv *DrumView) recalcButtons() {
 		}
 	}
 
-	// Position track button in timeline area.
-	// Desktop: vertical strip on the LEFT of the timeline (under the play
-	// button column). Mobile: square chip on the RIGHT edge of the beat
-	// counter rect. Mobile placement keeps the toggle adjacent to the
-	// thing it controls (the timeline ruler readout) rather than buried
-	// in the overflow menu (Theme 2 of the mobile UI consistency pass).
-	if !p.IsMobile() {
-		trackBtnBottom := dv.timelineRect.Max.Y
-		if pb := dv.playBtn().Rect(); !pb.Empty() && pb.Max.Y > trackBtnBottom {
-			trackBtnBottom = pb.Max.Y
+	// Position the track/lock chip — the unified LEFT anchor of the band on
+	// BOTH platforms. It occupies the reserved left strip (tlWidget.Min.X ..
+	// +trackBtnW) that the timeline already steps around, with the counter +
+	// notification area to its right. Desktop keeps a tall strip down to the
+	// play-button bottom; mobile grows to the touch-target floor.
+	if !dv.beatCounterRect.Empty() {
+		chipBottom := dv.timelineRect.Max.Y
+		if !p.IsMobile() {
+			if pb := dv.playBtn().Rect(); !pb.Empty() && pb.Max.Y > chipBottom {
+				chipBottom = pb.Max.Y
+			}
+		} else if h := chipBottom - dv.beatCounterRect.Min.Y; h < TouchMinTarget() {
+			chipBottom = dv.beatCounterRect.Min.Y + TouchMinTarget()
 		}
 		dv.trackBtn().SetRect(image.Rect(
 			tlWidget.Min.X, dv.beatCounterRect.Min.Y,
-			tlWidget.Min.X+trackBtnW, trackBtnBottom,
+			tlWidget.Min.X+trackBtnW, chipBottom,
 		))
-	} else if !dv.beatCounterRect.Empty() {
-		chipSide := TouchMinTarget()
-		// The beat counter row is shorter than TouchMinTarget; expand the
-		// chip vertically into the timeline bar area so the touch target
-		// hits the floor without disturbing the readout's right alignment.
-		// The chip may extend below the header floor by design — touch
-		// ergonomics take precedence over the header outline. Other tests
-		// (TestTrackChip_VisibleOnMobile, TestTrackButtonInline_Mobile,
-		// TestMobileTransportButtonUniformWidth) lock in this contract.
-		chipBottom := dv.timelineRect.Max.Y
-		if h := chipBottom - dv.beatCounterRect.Min.Y; h < chipSide {
-			chipBottom = dv.beatCounterRect.Min.Y + chipSide
+	}
+
+	// Carve the dedicated notification area from the right of the band. The
+	// counter keeps a left-anchored slot sized to a stable upper-bound width;
+	// the remainder (to the band's already-clamped right limit) becomes the
+	// notification marquee area. Runs AFTER the len-button / row-zoom-chip
+	// shrinks so it respects their right clamps.
+	if !dv.beatCounterRect.Empty() {
+		bandRight := dv.beatCounterRect.Max.X
+		// Size the counter slot to the LIVE rendered readout width (position +
+		// time) so the notification area starts right where the beat/timer text
+		// ends and reclaims the band's remaining width — the notif used to
+		// start after a fixed worst-case slot ("Beat 888 · 88:88"), leaving a
+		// large dead gap before it (it looked far smaller than the band
+		// allowed). recalcButtons runs every frame and re-carves this band, so
+		// the split tracks the live readout (dv.lastElapsedBeats, ≤1 frame
+		// stale). beatCounterSlotWidth is the CEILING: a pathological readout
+		// (4-digit beats / 2-digit minutes beyond the worst case) can't swallow
+		// the whole notif area — the readout clips at the cap instead.
+		readoutW := TextWidth(dv.timelineInfo(dv.lastElapsedBeats)) + 2*beatCounterPillPadX
+		counterSlotW := readoutW
+		if ub := beatCounterSlotWidth(); counterSlotW > ub {
+			counterSlotW = ub
 		}
-		chipRight := dv.beatCounterRect.Max.X
-		chipLeft := chipRight - chipSide
-		if chipLeft < dv.beatCounterRect.Min.X {
-			chipLeft = dv.beatCounterRect.Min.X
+		// Clamp to the band itself. On narrow phones this keeps the essential
+		// readout from being starved below its text width (the prior half-band
+		// clamp clipped "Beat 1" with the notif slot painted over the rest —
+		// screenshot review); the readout wins over the notif area on overflow.
+		if counterSlotW > dv.beatCounterRect.Dx() {
+			counterSlotW = dv.beatCounterRect.Dx()
 		}
-		dv.trackBtn().SetRect(image.Rect(
-			chipLeft, dv.beatCounterRect.Min.Y,
-			chipRight, chipBottom,
-		))
-		// Reserve the chip's footprint so the beat counter pill doesn't
-		// paint underneath the chip.
-		dv.beatCounterRect.Max.X = chipLeft - SpaceSM
-		if dv.beatCounterRect.Max.X < dv.beatCounterRect.Min.X {
-			dv.beatCounterRect.Max.X = dv.beatCounterRect.Min.X
+		dv.beatCounterRect.Max.X = dv.beatCounterRect.Min.X + counterSlotW
+		notifLeft := dv.beatCounterRect.Max.X + SpaceSM
+		if notifLeft < bandRight {
+			dv.notifRect = image.Rect(notifLeft, dv.beatCounterRect.Min.Y, bandRight, dv.beatCounterRect.Max.Y)
+		} else {
+			dv.notifRect = image.Rectangle{}
 		}
+	} else {
+		dv.notifRect = image.Rectangle{}
 	}
 
 	// Delegate timeline zone layout when available.
@@ -664,16 +712,17 @@ func (dv *DrumView) recalcButtons() {
 	if eqWidget.Empty() {
 		eqWidget = image.Rect(tlWidget.Min.X, dv.Bounds.Max.Y-dv.eqH, tlWidget.Max.X, dv.Bounds.Max.Y)
 	}
-	// Phase 0a of audio-panel redesign: every audio-analysis tab gets
-	// the same upward expansion the Synth tab already had. The widget-
-	// board's WidgetWave allocation is ~140 px at 1280×720 — too short
-	// for the Spectrum dB grid (needs ≥ 320 px to render 5-band ticks),
-	// the Levels segmented strips (≥ 320 px for legible 1.5-dB LED
-	// segments + per-channel labels), or the Chain stage cards. We
-	// expand all tabs to RuntimeProf().AudioPanelHeightMultiplier ×
-	// eqPanelHeight (default 3× ≈ 570 px) clamped to
-	// AudioPanelHeightScreenFrac × bounds.Dy (default 60 %).
-	if dv.eqPanelZone != nil && dv.eqPanelZone.tabState != nil {
+	// When the user has explicitly dragged the EQ divider, the panel height is
+	// dv.eqH (which already honors the clamp and overrides the floor). Anchor the
+	// rect to it and SKIP the analysis-tab floor expansion below — otherwise the
+	// floor re-inflates the panel and the divider drag has no effect (the
+	// "unusable divider" bug). Phase 0a otherwise expands every analysis tab to
+	// AudioPanelHeightMultiplier × eqPanelHeight (≈3×), clamped to
+	// AudioPanelHeightScreenFrac × bounds.Dy, because the widget-board's
+	// WidgetWave allocation is too short for the Spectrum/Levels/Chain chrome.
+	if dv.userEqH > 0 && !Profile().IsMobile() {
+		eqWidget = image.Rect(eqWidget.Min.X, dv.Bounds.Max.Y-dv.eqH, eqWidget.Max.X, dv.Bounds.Max.Y)
+	} else if dv.eqPanelZone != nil && dv.eqPanelZone.tabState != nil {
 		minPanelH := dv.eqPanelZone.tabState.PanelHeightAt(dv.Bounds.Dy())
 		// Synth keeps its prior 240 px floor as a separate hard minimum
 		// (header + sections + chrome) — never shorter than that even
@@ -720,8 +769,8 @@ func (dv *DrumView) recalcButtons() {
 	if len(dv.eqBandVals) != len(eqBandDefs) {
 		dv.eqBandVals = make([]float64, len(eqBandDefs))
 	}
-	if dv.eqPanelZone != nil && dv.tree != nil {
-		dv.tree.SetZoneRect("eq-panel", dv.eqRect)
+	if dv.eqPanelZone != nil && dv.audioTree != nil {
+		dv.audioTree.SetZoneRect("eq-panel", dv.eqRect)
 		// Force immediate layout so slider/button rects are available
 		// before Draw or the next Update cycle (fixes first-frame
 		// clicks). LayoutZoneNow consults the zone's registered
@@ -729,13 +778,13 @@ func (dv *DrumView) recalcButtons() {
 		// paint?" decision in drumview_ctor.go): hidden zones get their
 		// HitIndex entry cleared so the panel's catch-all can never
 		// re-introduce the Pads-tab input leak.
-		dv.tree.LayoutZoneNow("eq-panel")
+		dv.audioTree.LayoutZoneNow("eq-panel")
 	}
 
 	// Layout resize zone — refresh hit areas so column/row divider pills
 	// stay clickable after bounds changes and widget board resizes.
-	if dv.layoutResizeZone != nil && dv.tree != nil {
-		dv.tree.HitIndexRef().Update("layout-resize", dv.layoutResizeZone.HitAreas())
+	if dv.layoutResizeZone != nil && dv.audioTree != nil {
+		dv.audioTree.HitIndexRef().Update("layout-resize", dv.layoutResizeZone.HitAreas())
 	}
 
 	// EQ peek strip tap target (mobile, EQ-collapsed only). A single tap
@@ -806,7 +855,13 @@ func (dv *DrumView) recalcButtons() {
 	if p.IsMobile() {
 		mobileInputClear()
 
-		// BPM box — direct rect
+		// BPM box — direct rect, re-registered every layout pass. The JS
+		// native-input system creates the real <input> synchronously inside the
+		// touchend gesture (onCanvasTouchEnd), which only fires when "bpm" is
+		// already in the registrations map at touchend time. The shared editor's
+		// OpenValue registers "bpm" only after Go processes the tap (1-2 frames
+		// later, after this layout's mobileInputClear() has wiped it), so it can
+		// never satisfy the gesture handler — registration must live here.
 		if dv.bpmBox() != nil && !dv.bpmBox().Rect.Empty() {
 			r := dv.bpmBox().Rect
 			mobileInputRegister("bpm", r.Min.X, r.Min.Y, r.Dx(), r.Dy(),
@@ -956,34 +1011,6 @@ func (dv *DrumView) changeLength(newLen int) {
 	dv.SetBeatLength(dv.Length) // Update graph's beat length
 	dv.bgDirty = true
 	dv.markAllRowsDirty()
-}
-
-// rowControlWeights returns the grid column weights for per-row controls.
-// Desktop: Label, VolBar, Mute, Solo, FX, Overflow(⋯)
-// Mobile:  Label, VolBar, Mute, Solo, FX (Color/Rename/Origin/Delete in context menu)
-func rowControlWeights() []float64 {
-	if Profile().IsMobile() {
-		// Mobile: surface vol slider + mute/solo/FX inline so users can reach
-		// them without opening the context menu. Label cell is wider than
-		// the buttons so typical drum-kit names ("Hi-Hat", "Cowbell",
-		// "FM Snare") render in full without ellipsis truncation.
-		return []float64{
-			5, // Label
-			2, // Volume slider
-			2, // Mute
-			2, // Solo
-			2, // FX
-			0, 0, 0, 0,
-		}
-	}
-	return []float64{
-		6,   // Label
-		2.5, // Volume mini-bar
-		2,   // Mute
-		2,   // Solo
-		2.5, // FX (wider: "FX" needs more space than single chars)
-		1,   // Overflow (⋯)
-	}
 }
 
 // rowRectForIndex, positionRowWidgets, and positionAddRowBtn are now

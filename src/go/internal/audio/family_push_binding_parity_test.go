@@ -104,7 +104,6 @@ func TestFamilyPushMatchesBindingRender(t *testing.T) {
 	}
 }
 
-
 // maxScaledDiff returns the largest per-sample absolute difference NORMALIZED by
 // the local signal magnitude (max(1, |b|)) and the index where it occurs. For
 // near-unity signals this equals the raw abs diff; for amplified pre-clip tails

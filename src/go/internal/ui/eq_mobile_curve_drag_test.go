@@ -425,12 +425,13 @@ func TestMobileEQDragNotBlockedByTouchDeadZone(t *testing.T) {
 
 	dv.Update()
 
-	// The tree should have dispatched to the EQ curve handler.
-	if !dv.tree.Capturing() {
-		t.Fatal("expected tree to be capturing after touch on EQ band handle; " +
+	// The audio subtree should have dispatched to the EQ curve handler (the
+	// EQ panel lives in dv.audioTree after the two-subtree split).
+	if !dv.audioTree.Capturing() {
+		t.Fatal("expected audio tree to be capturing after touch on EQ band handle; " +
 			"touch dead zone likely blocked dispatch")
 	}
-	if tag := dv.tree.CapturedTag(); tag != "eq-curve-area" {
+	if tag := dv.audioTree.CapturedTag(); tag != "eq-curve-area" {
 		t.Fatalf("expected captured tag 'eq-curve-area', got %q", tag)
 	}
 

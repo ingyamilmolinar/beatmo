@@ -371,16 +371,26 @@ func TestTransportVolIconHitAdapter_NoOps(t *testing.T) {
 
 // --- textInputHitAdapter tests ---
 
-// TestTextInputHitAdapter_OnPressIgnored verifies that OnPress returns
-// InputIgnored (delegates to legacy TextInput.Update path).
-func TestTextInputHitAdapter_OnPressIgnored(t *testing.T) {
+// TestTextInputHitAdapter_OnPress verifies the consume flag controls the
+// dispatcher return value. Focus/caret are driven by the legacy
+// TextInput.Update mouse poll (tree Phase 2, before dispatch), so OnPress only
+// governs fall-through:
+//   - default (consume=false): InputIgnored, so the press falls through to a
+//     lower-z handler (EQ dB input over its band mute button).
+//   - consume=true: InputConsumed, so a BPM box tap is NOT leaked into the
+//     Record button's touch-expanded hit rect on mobile.
+//
+// Regression: transport_input_isolation_test.go + TestEQBandMuteHoldNoMultipleToggles.
+func TestTextInputHitAdapter_OnPress(t *testing.T) {
 	assertDefaultParityState(t)
 
 	ti := NewTextInput(image.Rect(0, 0, 100, 20), TextInputStyle{})
-	h := &textInputHitAdapter{ti: ti}
-	r := h.OnPress(50, 10)
-	if r != InputIgnored {
-		t.Fatalf("expected InputIgnored, got %d", r)
+
+	if r := (&textInputHitAdapter{ti: ti}).OnPress(50, 10); r != InputIgnored {
+		t.Fatalf("default adapter: expected InputIgnored, got %d", r)
+	}
+	if r := (&textInputHitAdapter{ti: ti, consume: true}).OnPress(50, 10); r != InputConsumed {
+		t.Fatalf("consume adapter: expected InputConsumed, got %d", r)
 	}
 }
 

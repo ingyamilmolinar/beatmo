@@ -1,10 +1,12 @@
 package ui
 
+import "github.com/ingyamilmolinar/beatmo/internal/i18n"
+
 // PanelTab identifies one of the tabs in the EQ/waveform/spectrum/meters panel.
 type PanelTab int
 
 const (
-	TabWave     PanelTab = iota
+	TabWave PanelTab = iota
 	TabSpectrum
 	TabMeters
 	TabEQ
@@ -32,19 +34,19 @@ func AllPanelTabs() []PanelTab {
 func PanelTabLabel(tab PanelTab) string {
 	switch tab {
 	case TabWave:
-		return "Wave"
+		return i18n.T(i18n.KeyTabWave)
 	case TabSpectrum:
-		return "Spectrum"
+		return i18n.T(i18n.KeyTabSpectrum)
 	case TabMeters:
-		return "Levels"
+		return i18n.T(i18n.KeyTabLevels)
 	case TabEQ:
-		return "EQ"
+		return i18n.T(i18n.KeyTabEQ)
 	case TabScope:
-		return "Chain"
+		return i18n.T(i18n.KeyTabChain)
 	case TabSynth:
-		return "Synth"
+		return i18n.T(i18n.KeyTabSynth)
 	case TabSampler:
-		return "Sampler"
+		return i18n.T(i18n.KeyTabSampler)
 	default:
 		return "?"
 	}
@@ -57,19 +59,19 @@ func PanelTabLabelForProfile(tab PanelTab) string {
 	if Profile().IsMobile() {
 		switch tab {
 		case TabWave:
-			return "Wave"
+			return i18n.T(i18n.KeyTabWaveShort)
 		case TabSpectrum:
-			return "Spec"
+			return i18n.T(i18n.KeyTabSpectrumShort)
 		case TabMeters:
-			return "Lvl"
+			return i18n.T(i18n.KeyTabLevelsShort)
 		case TabEQ:
-			return "EQ"
+			return i18n.T(i18n.KeyTabEQShort)
 		case TabScope:
-			return "Chn"
+			return i18n.T(i18n.KeyTabChainShort)
 		case TabSynth:
-			return "Syn"
+			return i18n.T(i18n.KeyTabSynthShort)
 		case TabSampler:
-			return "Smpl"
+			return i18n.T(i18n.KeyTabSamplerShort)
 		default:
 			return "?"
 		}
@@ -157,6 +159,12 @@ func (p *PanelTabState) PanelHeightAt(screenH int) int {
 		}
 	}
 	h := eqPanelHeight * mult
+	// The Synth tab packs a row of stage cards where each knob carries a dial,
+	// a caption, AND a concept mini-visual band beneath it — that needs more
+	// vertical room than the other analysis tabs, so it gets a taller floor.
+	if p.activeTab == TabSynth {
+		h += eqPanelHeight
+	}
 	if screenH > 0 && frac > 0 {
 		cap := int(float64(screenH) * frac)
 		if cap > 0 && h > cap {

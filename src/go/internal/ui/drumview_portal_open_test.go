@@ -65,8 +65,8 @@ func TestOpenOverflowMenuPortal_OnClose(t *testing.T) {
 	if dv.tree.Portal().Has("overflow-menu") {
 		t.Error("portal 'overflow-menu' should be closed")
 	}
-	if dv.overflowDeferredTap.Active() {
-		t.Error("overflowDeferredTap should be cancelled after OnClose")
+	if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.TapActive() {
+		t.Error("overflow menu deferred tap should be cancelled after OnClose")
 	}
 }
 
@@ -1563,8 +1563,8 @@ func TestOpenContextMenuPortal_WheelFn_WithScroll(t *testing.T) {
 
 	// Create a scroll behavior with scroll so wheelFn exercises the HasScroll branch.
 	dv.contextMenuScroll = NewScrollBehavior(DropdownScrollbarStyle, 24)
-	dv.contextMenuScroll.VS.Total = 20   // many items
-	dv.contextMenuScroll.VS.Visible = 5  // small viewport => HasScroll = true
+	dv.contextMenuScroll.VS.Total = 20  // many items
+	dv.contextMenuScroll.VS.Visible = 5 // small viewport => HasScroll = true
 
 	dv.openContextMenuPortal()
 
@@ -1600,9 +1600,8 @@ func TestOpenOverflowMenuPortal_WheelFn_WithScroll(t *testing.T) {
 	dv := newFullDrumView(t)
 
 	// Create a scroll behavior with scroll for overflow menu.
-	dv.overflowScroll = NewScrollBehavior(DropdownScrollbarStyle, 24)
-	dv.overflowScroll.VS.Total = 20
-	dv.overflowScroll.VS.Visible = 5
+	dv.overflowMenuScroll = NewMenuScroll(DropdownScrollbarStyle, 24)
+	dv.overflowMenuScroll.Configure(image.Rect(0, 0, 100, 200), 20, 5)
 
 	dv.openOverflowMenuPortal()
 

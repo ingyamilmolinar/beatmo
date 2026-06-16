@@ -175,6 +175,18 @@ try {
       setTimeout(() => resolve(null), 3000);
     });
 
+    // The worklet posts 'done' on the worker port (chan.port2 → port1) BEFORE
+    // the main-port 'done' (see _postWorkerDone before _postMainDone in the
+    // worklet's stop handler), but the two messages travel on independent
+    // channels with no cross-channel ordering guarantee. Resolving on the
+    // main-port 'done' above does NOT imply port1 has already received the
+    // worker-port 'done'. Wait for it explicitly before tearing the context
+    // down — otherwise ctx.close() can race ahead of the cross-thread delivery
+    // and drop the message (flaky "worker port received done" under load). If
+    // the worklet genuinely never posts it, this times out and the assertion
+    // still fails.
+    await waitUntil(() => state.workerDone, 2000);
+
     osc.stop();
     await ctx.close();
     return {

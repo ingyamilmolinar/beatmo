@@ -75,6 +75,7 @@ func (r *RenameComponent) Open() {
 	}
 
 	r.textBox = NewTextInput(rect, BPMBoxStyle)
+	r.textBox.Accept = AcceptTextRune
 	r.textBox.MaxLen = r.props.MaxLen
 	if r.textBox.MaxLen == 0 {
 		r.textBox.MaxLen = 32 // default
@@ -105,12 +106,31 @@ func (r *RenameComponent) Close() {
 	softKeyboardHide()
 }
 
+// HandleEscape runs the rename's cancel cleanup (so the edit is discarded and
+// renameRow is reset), then returns false so the universal handler closes the
+// portal. Reuses the component's existing OnCancel + Close.
+func (r *RenameComponent) HandleEscape() bool {
+	if r.props.OnCancel != nil {
+		r.props.OnCancel()
+	}
+	r.Close()
+	return false
+}
+
 // IsOpen returns whether the rename dialog is currently open.
 func (r *RenameComponent) IsOpen() bool {
 	if r.state.mobile {
 		return r.state.open
 	}
 	return r.state.open && r.textBox != nil
+}
+
+// ClaimsKeyboard reports whether this rename field currently owns the keyboard.
+// While open, all keys (typed name, caret moves) belong to the rename box, so
+// the grid must not act on them. Part of the keyboard-ownership contract
+// (keyboard_focus.go).
+func (r *RenameComponent) ClaimsKeyboard() bool {
+	return r != nil && r.IsOpen()
 }
 
 // Value returns the current text value.

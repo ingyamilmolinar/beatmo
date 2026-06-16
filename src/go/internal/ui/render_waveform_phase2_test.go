@@ -28,6 +28,24 @@ func TestWavePhase2_MSAxisTicksInBottomStrip(t *testing.T) {
 	}
 }
 
+// TestWaveSynthwaveFill — the synthwave "outrun" wash must be painted
+// beneath the waveform trace: at least a handful of colWaveTraceFill rects
+// (the trace color at sub-full AlphaSubtle) inside the wave subject when the
+// wave is alive. The crisp trace (colWaveTrace) still renders on top.
+func TestWaveSynthwaveFill(t *testing.T) {
+	g := driveScene(t, "crop_eq_tab_wave")
+	rect, rects := drawWithSnapshot(t, g, SubjectEQTabWave, snapshotWithSine())
+
+	fills := rectsWithColorInside(rects, rect, colWaveTraceFill)
+	if fills < 4 {
+		t.Fatalf("expected >=4 colWaveTraceFill wash rects beneath the wave trace in %v, got %d", rect, fills)
+	}
+	// Trace line must still be present (crisp on top).
+	if traceRects := rectsWithColorInside(rects, rect, colWaveTrace); traceRects < 4 {
+		t.Fatalf("expected the crisp colWaveTrace line on top of the fill, got %d rects", traceRects)
+	}
+}
+
 // TestWavePhase2_ClipFlashOnSaturation — when the waveform exceeds ±1.0
 // at any column, the renderer should paint that column in meterClip
 // instead of colWaveTrace. The visual gives instant DAW-style headroom

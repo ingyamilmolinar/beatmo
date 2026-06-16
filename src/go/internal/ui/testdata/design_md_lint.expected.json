@@ -15,7 +15,6 @@
     {"path": "colors.viz-meter-yellow",               "severity": "warning"},
     {"path": "components.button-destructive-confirm",     "severity": "warning"},
     {"path": "components.button-missing-instrument",      "severity": "warning"},
-    {"path": "components.button-record-active",           "severity": "warning"},
     {"path": "components.button-record-idle",             "severity": "warning"}
   ]
 }

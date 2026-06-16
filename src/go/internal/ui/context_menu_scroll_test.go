@@ -44,9 +44,10 @@ func newSmallDrumView(t *testing.T, w, h int) *DrumView {
 
 // TestContextMenuScrollStateOnOverflow verifies that opening the context menu
 // on a small screen results in a scrollable state. Height is sized to force
-// at least one hidden item with the current 4-item mobile menu.
+// at least one hidden item with the current 3-item mobile menu
+// (Rename / Origin / Delete + header).
 func TestContextMenuScrollStateOnOverflow(t *testing.T) {
-	dv := newSmallDrumView(t, 390, 180)
+	dv := newSmallDrumView(t, 390, 120)
 	dv.OpenContextMenu(0)
 
 	scroll := dv.ContextMenuScrollForTest()

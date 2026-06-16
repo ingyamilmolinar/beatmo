@@ -56,6 +56,21 @@ func (s *SegmentedControl) SetActive(i int) {
 // Active returns the currently selected segment index.
 func (s *SegmentedControl) Active() int { return s.active }
 
+// SetLabels replaces the segment labels in place (e.g. after a UI language
+// switch). The active index is preserved when still in range, else reset to 0.
+// The slice is copied so callers may reuse theirs.
+func (s *SegmentedControl) SetLabels(labels []string) {
+	s.labels = append([]string(nil), labels...)
+	if s.active < 0 || s.active >= len(s.labels) {
+		s.active = 0
+	}
+}
+
+// Labels returns a copy of the current segment labels (for tests/inspection).
+func (s *SegmentedControl) Labels() []string {
+	return append([]string(nil), s.labels...)
+}
+
 // SegmentRect returns the bounds of segment `i`, or the zero rect if i is
 // out of range.
 func (s *SegmentedControl) SegmentRect(i int) image.Rectangle {

@@ -149,7 +149,14 @@ func (dv *DrumView) refreshWidgetLayout() {
 	// behaviour where the widget-board could collapse the panel to
 	// ~130 px is what produced the "panel mostly empty during playback"
 	// screenshots that drove this redesign.)
-	if dv.eqPanelZone != nil && dv.eqPanelZone.tabState != nil {
+	if dv.userEqH > 0 && !p.IsMobile() {
+		// The user explicitly dragged the EQ divider: honor that height
+		// (clamped to the pane) and OVERRIDE the analysis-tab floor in both
+		// directions. Without this the floor (PanelHeightAt) always wins in a
+		// short drum pane — the widget-board row can't grow past it — so the
+		// divider drag would have no visible effect (the "unusable" bug).
+		dv.eqH = clampUserEqH(dv, dv.userEqH)
+	} else if dv.eqPanelZone != nil && dv.eqPanelZone.tabState != nil {
 		desired := dv.eqPanelZone.tabState.PanelHeightAt(dv.Bounds.Dy())
 		if dv.eqH < desired {
 			dv.eqH = desired
@@ -338,6 +345,25 @@ func (dv *DrumView) handleLayoutResize() {
 			return
 		}
 	}
+}
+
+// clampUserEqH bounds an explicit user-dragged audio-panel height so the panel
+// stays usable: never shorter than two sticky-bar rows (tabs + a sliver of
+// content always visible), never so tall it hides the transport header and
+// every drum row. Re-applied every layout so the height tracks window resizes.
+func clampUserEqH(dv *DrumView, h int) int {
+	minH := 2 * stickyBarHeight()
+	maxH := dv.Bounds.Dy() - dv.headerH - dv.rowHeight()
+	if maxH < minH {
+		maxH = minH
+	}
+	if h < minH {
+		h = minH
+	}
+	if h > maxH {
+		h = maxH
+	}
+	return h
 }
 
 // WidgetRectsSnapshot captures the current widget layout and key control rects.

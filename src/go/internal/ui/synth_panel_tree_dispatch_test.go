@@ -65,7 +65,10 @@ func TestSynthTab_KnobDragViaTreeDispatch(t *testing.T) {
 	}
 
 	// Frames 2-5: drag RIGHT 15 px each frame (60 px total). Knobs are
-	// horizontal-only — right increases the value.
+	// horizontal-only — right increases the value. For endless knobs the
+	// delta is proportional to StepMul (not absolute arc sweep), so we
+	// assert direction-of-change rather than a specific magnitude
+	// (Task 10: endless drag is the intentional new model).
 	for step := 1; step <= 4; step++ {
 		mouseX = cx + step*15
 		g.Update()
@@ -80,8 +83,8 @@ func TestSynthTab_KnobDragViaTreeDispatch(t *testing.T) {
 		t.Fatalf("knob value unchanged after tree-driven drag (before=%v after=%v) — drag is reaching the knob but not updating its value; rect=%v final-mouse=(%d,%d)", beforeDrag, afterRelease, rect, mouseX, mouseY)
 	}
 	// Expect a positive delta (drag right = value up).
-	if afterRelease < beforeDrag+0.3 {
-		t.Errorf("knob value increased by only %v after 60-px right drag (before=%v after=%v)", afterRelease-beforeDrag, beforeDrag, afterRelease)
+	if afterRelease <= beforeDrag {
+		t.Errorf("knob value did not increase after right drag (before=%v after=%v)", beforeDrag, afterRelease)
 	}
 
 	// Verify audio engine received the value change.

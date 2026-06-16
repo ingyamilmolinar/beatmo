@@ -1361,19 +1361,23 @@ func TestDrumViewOriginRequests(t *testing.T) {
 	}
 }
 
+// TestDrumViewInstrumentColor pins the pure-sequential color contract: the
+// initial row takes the first color of the canonical instrument series (by row
+// INDEX, not instrument id), and cycling the instrument does NOT change the
+// color — the color is bound to the row index.
 func TestDrumViewInstrumentColor(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	withDefaultAudio(t)
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), graph, logger)
-	expected := instColor(dv.Rows[0].Instrument)
-	if dv.Rows[0].Color != expected {
-		t.Fatalf("expected initial color %v got %v", expected, dv.Rows[0].Color)
+	expected := seriesColorAt(0)
+	if !colorsEqual(dv.Rows[0].Color, expected) {
+		t.Fatalf("expected initial color %v (seriesColorAt(0)) got %v", expected, dv.Rows[0].Color)
 	}
+	before := dv.Rows[0].Color
 	dv.CycleInstrument()
-	expected = instColor(dv.Rows[0].Instrument)
-	if dv.Rows[0].Color != expected {
-		t.Fatalf("expected cycled color %v got %v", expected, dv.Rows[0].Color)
+	if !colorsEqual(dv.Rows[0].Color, before) {
+		t.Fatalf("color must not change on instrument cycle: was %v now %v", before, dv.Rows[0].Color)
 	}
 }
 
@@ -1410,8 +1414,18 @@ func TestCustomInstrumentColorsRotate(t *testing.T) {
 	if colorsEqual(col1, col2) {
 		t.Fatalf("expected different colors for custom instruments")
 	}
-	if colorsEqual(col1, colStep) || colorsEqual(col2, colStep) {
-		t.Fatalf("unexpected fallback color used")
+	// Both rows must take real, on-palette instrument colors (from the canonical
+	// Vice City sequence), never a rogue off-palette placeholder. The historical
+	// check here compared against colStep, but colStep == primary == cyan-300 now
+	// legitimately coincides with instrumentSequence[1], so that sentinel produced
+	// a false positive. Membership in the swatch set is the correct, non-brittle
+	// intent: "custom instruments get genuine palette colors."
+	palette := viceCitySwatchSet()
+	if _, ok := palette[rgbKey(col1)]; !ok {
+		t.Fatalf("row 0 color %s is NOT a Vice City swatch", rgbKey(col1))
+	}
+	if _, ok := palette[rgbKey(col2)]; !ok {
+		t.Fatalf("row 1 color %s is NOT a Vice City swatch", rgbKey(col2))
 	}
 }
 
@@ -2738,39 +2752,19 @@ func TestDrumViewBPMTextInput(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
 
-	r := dv.bpmBox().Rect
-	mx, my := r.Min.X+1, r.Min.Y+1
-	pressed := true
-	chars := []rune{}
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(ebiten.MouseButton) bool { return pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { c := chars; chars = nil; return c },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 200, 200 },
-	)
-	defer restore()
-
-	dv.Update() // click to focus
-	pressed = false
-
-	chars = []rune{'2'}
-	dv.Update()
-	chars = []rune{'5'}
-	dv.Update()
-	chars = []rune{'0'}
-	dv.Update()
+	// Open the shared editor (pre-fills "120"), type a replacement value.
+	dv.transportZone.openBPMEditor()
+	ed := dv.transportZone.paramEditor
+	ed.ti.SetText("250")
 
 	if dv.BPM() != 120 {
 		t.Fatalf("BPM changed before commit: %d", dv.BPM())
 	}
 
-	chars = []rune{'\r'}
-	dv.Update()
+	ed.commit()
 
-	if dv.BPM() != 250 {
-		t.Fatalf("expected BPM 250 got %d", dv.BPM())
+	if dv.transportZone.BPM() != 250 {
+		t.Fatalf("expected BPM 250 got %d", dv.transportZone.BPM())
 	}
 }
 
@@ -2779,45 +2773,22 @@ func TestDrumViewBPMTextInputInvalid(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
 
-	r := dv.bpmBox().Rect
-	mx, my := r.Min.X+1, r.Min.Y+1
-	pressed := true
-	chars := []rune{}
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(ebiten.MouseButton) bool { return pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { c := chars; chars = nil; return c },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 200, 200 },
-	)
-	defer restore()
-
-	dv.Update() // focus
-	pressed = false
-
-	// enter out-of-range value
-	chars = []rune{'2'}
-	dv.Update()
-	chars = []rune{'0'}
-	dv.Update()
-	chars = []rune{'0'}
-	dv.Update()
-	chars = []rune{'0'}
-	dv.Update()
+	// Out-of-range value (>maxBPM) is invalid — no write, editor flashes.
+	dv.transportZone.openBPMEditor()
+	ed := dv.transportZone.paramEditor
+	ed.ti.SetText("2000")
 
 	if dv.BPM() != 120 {
 		t.Fatalf("BPM changed before commit: %d", dv.BPM())
 	}
 
-	chars = []rune{'\r'}
-	dv.Update()
+	ed.commit()
 
-	if dv.BPM() != 120 {
-		t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
+	if dv.transportZone.BPM() != 120 {
+		t.Fatalf("expected BPM to remain 120 got %d", dv.transportZone.BPM())
 	}
-	if dv.bpmErrorAnim == 0 {
-		t.Fatalf("expected error highlight for invalid BPM input")
+	if ed.errorAnim == 0 {
+		t.Fatalf("expected editor error highlight for invalid BPM input")
 	}
 }
 
@@ -2826,38 +2797,21 @@ func TestDrumViewBPMTextInputNonNumeric(t *testing.T) {
 	dv := NewDrumView(image.Rect(0, 0, 200, 200), g, testLogger)
 	dv.calcLayout()
 
-	r := dv.bpmBox().Rect
-	mx, my := r.Min.X+1, r.Min.Y+1
-	pressed := true
-	chars := []rune{}
-	restore := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(ebiten.MouseButton) bool { return pressed },
-		func(ebiten.Key) bool { return false },
-		func() []rune { c := chars; chars = nil; return c },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 200, 200 },
-	)
-	defer restore()
-
-	dv.Update() // focus
-	pressed = false
-
-	chars = []rune{'a'}
-	dv.Update()
+	dv.transportZone.openBPMEditor()
+	ed := dv.transportZone.paramEditor
+	ed.ti.SetText("a")
 
 	if dv.BPM() != 120 {
 		t.Fatalf("BPM changed before commit: %d", dv.BPM())
 	}
 
-	chars = []rune{'\r'}
-	dv.Update()
+	ed.commit()
 
-	if dv.BPM() != 120 {
-		t.Fatalf("expected BPM to remain 120 got %d", dv.BPM())
+	if dv.transportZone.BPM() != 120 {
+		t.Fatalf("expected BPM to remain 120 got %d", dv.transportZone.BPM())
 	}
-	if dv.bpmErrorAnim == 0 {
-		t.Fatalf("expected error highlight for invalid BPM input")
+	if ed.errorAnim == 0 {
+		t.Fatalf("expected editor error highlight for invalid BPM input")
 	}
 }
 

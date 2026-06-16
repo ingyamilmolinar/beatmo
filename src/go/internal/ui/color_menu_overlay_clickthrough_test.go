@@ -37,13 +37,13 @@ func TestColorMenuOverUploadDoesNotClickThrough(t *testing.T) {
 	if !g.drum.IsColorMenuOpen() {
 		t.Fatalf("color menu not open")
 	}
-	if g.drum.colorWheelRect.Empty() {
-		t.Fatalf("color wheel not built")
+	if g.drum.colorWheelComp.WheelRect().Empty() {
+		t.Fatalf("color picker not built")
 	}
 
 	// Pick a swatch near the top of the menu (opens upward) so it is likely
 	// to overlap the Upload region. Index 2 (3rd) satisfies timeline math.
-	r := g.drum.colorWheelRect
+	r := g.drum.colorWheelComp.WheelRect()
 	cx, cy := r.Min.X+r.Dx()*2/3, r.Min.Y+r.Dy()/2
 
 	// Hold mouse pressed across two updates to emulate the scenario where

@@ -1,0 +1,498 @@
+{
+  "version": 1,
+  "subdiv": 16,
+  "bpm": 132,
+  "instruments": [
+    {
+      "name": "Kick",
+      "id": "kick",
+      "kind": "builtin",
+      "volume": 1,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "synth_params": {
+        "body": 0.25,
+        "drive": 0.1
+      }
+    },
+    {
+      "name": "Clap",
+      "id": "clap",
+      "kind": "builtin",
+      "volume": 0.6,
+      "origin": 4,
+      "color": "#00C8E0FF",
+      "reverb_send": 0.1,
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 180,
+            "mix": 1,
+            "mode": 1,
+            "q": 0.707
+          }
+        },
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 9000,
+            "mix": 1,
+            "mode": 0,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hihat",
+      "id": "hihat",
+      "kind": "builtin",
+      "volume": 0.35,
+      "origin": 8,
+      "color": "#FFD319FF",
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 400,
+            "mix": 1,
+            "mode": 1,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hihat-1",
+      "id": "hihat-1",
+      "kind": "builtin",
+      "volume": 0.4,
+      "origin": 18,
+      "color": "#A030FFFF",
+      "synth_params": {
+        "decay": 1.8
+      },
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 400,
+            "mix": 1,
+            "mode": 1,
+            "q": 0.707
+          }
+        },
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 9000,
+            "mix": 1,
+            "mode": 0,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fm-bass",
+      "id": "fm-bass",
+      "kind": "builtin",
+      "volume": 0.6,
+      "origin": 26,
+      "color": "#3FD67AFF",
+      "synth_params": {
+        "drive": 0.2,
+        "tone": 0.2
+      }
+    },
+    {
+      "name": "Modular",
+      "id": "modular",
+      "kind": "builtin",
+      "volume": 0.5,
+      "origin": 34,
+      "color": "#3A6AF0FF",
+      "delay_send": 0.25,
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 110,
+            "mix": 1,
+            "mode": 1,
+            "q": 0.707
+          }
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        1
+      ]
+    },
+    {
+      "id": 1,
+      "i": 16,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        2
+      ]
+    },
+    {
+      "id": 2,
+      "i": 16,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        3
+      ]
+    },
+    {
+      "id": 3,
+      "i": 0,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        0
+      ]
+    },
+    {
+      "id": 4,
+      "i": 0,
+      "j": 24,
+      "type": "silent",
+      "outputs": [
+        5
+      ]
+    },
+    {
+      "id": 5,
+      "i": 16,
+      "j": 24,
+      "type": "silent",
+      "outputs": [
+        6
+      ]
+    },
+    {
+      "id": 6,
+      "i": 16,
+      "j": 40,
+      "type": "silent",
+      "outputs": [
+        7
+      ]
+    },
+    {
+      "id": 7,
+      "i": 0,
+      "j": 40,
+      "type": "regular",
+      "outputs": [
+        4
+      ]
+    },
+    {
+      "id": 8,
+      "i": 0,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        9
+      ]
+    },
+    {
+      "id": 9,
+      "i": 8,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        10
+      ]
+    },
+    {
+      "id": 10,
+      "i": 12,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        11
+      ],
+      "logic_kind": "probability",
+      "logic_p": 0.6
+    },
+    {
+      "id": 11,
+      "i": 16,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        12
+      ]
+    },
+    {
+      "id": 12,
+      "i": 16,
+      "j": 56,
+      "type": "regular",
+      "outputs": [
+        13
+      ]
+    },
+    {
+      "id": 13,
+      "i": 16,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        14
+      ]
+    },
+    {
+      "id": 14,
+      "i": 8,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        15
+      ]
+    },
+    {
+      "id": 15,
+      "i": 4,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        16
+      ],
+      "logic_kind": "probability",
+      "logic_p": 0.6
+    },
+    {
+      "id": 16,
+      "i": 0,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        17
+      ]
+    },
+    {
+      "id": 17,
+      "i": 0,
+      "j": 56,
+      "type": "regular",
+      "outputs": [
+        8
+      ]
+    },
+    {
+      "id": 18,
+      "i": 0,
+      "j": 72,
+      "type": "silent",
+      "outputs": [
+        19
+      ]
+    },
+    {
+      "id": 19,
+      "i": 8,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        20
+      ]
+    },
+    {
+      "id": 20,
+      "i": 16,
+      "j": 72,
+      "type": "silent",
+      "outputs": [
+        21
+      ]
+    },
+    {
+      "id": 21,
+      "i": 16,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        22
+      ]
+    },
+    {
+      "id": 22,
+      "i": 16,
+      "j": 88,
+      "type": "silent",
+      "outputs": [
+        23
+      ]
+    },
+    {
+      "id": 23,
+      "i": 8,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        24
+      ]
+    },
+    {
+      "id": 24,
+      "i": 0,
+      "j": 88,
+      "type": "silent",
+      "outputs": [
+        25
+      ]
+    },
+    {
+      "id": 25,
+      "i": 0,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        18
+      ]
+    },
+    {
+      "id": 26,
+      "i": 0,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        27
+      ]
+    },
+    {
+      "id": 27,
+      "i": 8,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        28
+      ]
+    },
+    {
+      "id": 28,
+      "i": 16,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        29
+      ],
+      "pitch": 12
+    },
+    {
+      "id": 29,
+      "i": 16,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        30
+      ]
+    },
+    {
+      "id": 30,
+      "i": 16,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        31
+      ]
+    },
+    {
+      "id": 31,
+      "i": 8,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        32
+      ],
+      "pitch": 7
+    },
+    {
+      "id": 32,
+      "i": 0,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        33
+      ]
+    },
+    {
+      "id": 33,
+      "i": 0,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        26
+      ]
+    },
+    {
+      "id": 34,
+      "i": 0,
+      "j": 120,
+      "type": "silent",
+      "outputs": [
+        35
+      ]
+    },
+    {
+      "id": 35,
+      "i": 16,
+      "j": 120,
+      "type": "silent",
+      "outputs": [
+        36
+      ]
+    },
+    {
+      "id": 36,
+      "i": 16,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        37
+      ]
+    },
+    {
+      "id": 37,
+      "i": 0,
+      "j": 136,
+      "type": "silent",
+      "outputs": [
+        34
+      ]
+    }
+  ],
+  "send_effects": {
+    "delay": {
+      "time_ms": 300,
+      "feedback": 0.3,
+      "damping_hz": 3000
+    },
+    "reverb": {
+      "room": 0.7,
+      "damping": 0.4,
+      "wet": 0.3
+    }
+  }
+}

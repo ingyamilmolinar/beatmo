@@ -36,14 +36,16 @@ func TestTrackChip_VisibleOnMobile(t *testing.T) {
 	if r.Dx() < TouchMinTarget() || r.Dy() < TouchMinTarget() {
 		t.Errorf("track chip %v below touch target %d", r, TouchMinTarget())
 	}
-	// Chip must sit inside (or aligned to) the timeline area.
+	// Unified layout: the track/lock chip is the LEFT anchor of the band, so
+	// it sits to the LEFT of the beat counter (which itself sits left of the
+	// notification area). Previously the chip was on the right edge of the
+	// beat counter; the notification redesign moved it left on both platforms.
 	bc := dv.beatCounterRect
-	tl := dv.timelineRect
-	if r.Min.X < bc.Min.X-2 {
-		t.Errorf("track chip %v extends left of beat counter rect %v", r, bc)
+	if r.Max.X > bc.Min.X+2 {
+		t.Errorf("track chip %v should sit left of the beat counter rect %v", r, bc)
 	}
-	if r.Max.X > tl.Max.X+2 {
-		t.Errorf("track chip %v extends right of timeline rect %v", r, tl)
+	if r.Min.X < dv.timelineRect.Min.X-TouchMinTarget()-8 {
+		t.Errorf("track chip %v sits implausibly far left of the band", r)
 	}
 }
 

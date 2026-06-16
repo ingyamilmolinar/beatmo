@@ -191,10 +191,10 @@ var snareVariantSpecs = map[string]struct {
 		"snare_attack": 1.0, "snare_wave": 0.0,
 	}},
 	"drum-clap": {3, 500.0, map[string]float64{
-		"snare_noise_tune": 1.0,
+		"snare_noise_tune":  1.0,
 		"snare_noise_decay": 7.0, "snare_tail_decay": 4.0,
 		"snare_noise_mix": 0.15,
-		"snare_attack": 110.0,
+		"snare_attack":    110.0,
 	}},
 }
 

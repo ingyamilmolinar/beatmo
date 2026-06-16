@@ -41,6 +41,26 @@ func TestControlGrid_MoreColumnsWhenWide(t *testing.T) {
 	}
 }
 
+func TestControlGrid_SetMaxColsCapsWideGrid(t *testing.T) {
+	g := newTestControlGrid()
+	g.SetMaxCols(2)
+	// 400px would fit ~5 columns adaptively; the cap forces 2.
+	g.Layout(image.Rect(0, 0, 400, 400), 12, tgCellIdealW, tgCellH, tgHGap, tgVGap)
+	if g.Cols() != 2 {
+		t.Fatalf("maxCols=2 on wide grid: Cols()=%d, want 2", g.Cols())
+	}
+}
+
+func TestControlGrid_SetMaxColsOneOverridesFloor(t *testing.T) {
+	g := newTestControlGrid()
+	g.SetMaxCols(1)
+	// The 2-column floor must yield to an explicit single-column cap (mobile).
+	g.Layout(image.Rect(0, 0, 400, 400), 12, tgCellIdealW, tgCellH, tgHGap, tgVGap)
+	if g.Cols() != 1 {
+		t.Fatalf("maxCols=1: Cols()=%d, want 1 (cap overrides the 2-col floor)", g.Cols())
+	}
+}
+
 func TestControlGrid_NeverLessThanTwoColumnsWithMultipleItems(t *testing.T) {
 	g := newTestControlGrid()
 	// Even an absurdly narrow rect must keep 2 columns when there are >=2 items.

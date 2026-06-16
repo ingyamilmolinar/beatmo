@@ -6,46 +6,50 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-var wantUndoableKinds = []hooks.Kind{
-	hooks.EventNodeAdded, hooks.EventNodeDeleted, hooks.EventNodeMoved,
-	hooks.EventNodeTypeChanged, hooks.EventNodeParamsChanged, hooks.EventStartNodeChanged,
-	hooks.EventEdgeAdded, hooks.EventEdgeDeleted,
-	hooks.EventRowAdded, hooks.EventRowDeleted, hooks.EventRowInstrumentChange,
-	hooks.EventRowMute, hooks.EventRowSolo, hooks.EventRowColorChanged,
-	hooks.EventRowVolume, hooks.EventRowPan, hooks.EventInstrumentRenamed,
-	hooks.EventBPMChange, hooks.EventSubdivChange, hooks.EventLengthChange,
-	hooks.EventMasterVolumeChange, hooks.EventEQBandChange,
-	hooks.EventInsertEffectAdded, hooks.EventInsertEffectRemoved, hooks.EventInsertEffectParam,
-	hooks.EventInsertEffectMoved, hooks.EventInsertEffectToggled, hooks.EventSendChanged,
-	hooks.EventInstrumentParamsCommitted, hooks.EventInstrumentParamsReset,
-	hooks.EventSampleEditChanged,
-}
-
+// TestUndoRecordedSetMatchesDeclared asserts every undoable kind in the registry
+// has a non-empty label in the derived documentScopeKinds, and no extra keys
+// exist. (Focused label-presence guard; the deeper equality check is
+// TestUndoableSetMatchesRegistry in undo_registry_drift_test.go.)
 func TestUndoRecordedSetMatchesDeclared(t *testing.T) {
-	want := map[hooks.Kind]bool{}
-	for _, k := range wantUndoableKinds {
-		want[k] = true
-		if documentScopeKinds[k] == "" {
-			t.Errorf("recorded kind %q missing a label in documentScopeKinds", k)
+	for _, a := range hooks.AllActions() {
+		if !hooks.Undoable(a.Kind) {
+			continue
+		}
+		if documentScopeKinds[a.Kind] == "" {
+			t.Errorf("undoable kind %q missing a label in documentScopeKinds", a.Kind)
 		}
 	}
 	for k := range documentScopeKinds {
-		if !want[k] {
-			t.Errorf("documentScopeKinds has %q not in wantUndoableKinds — deliberate? update the list", k)
+		if !hooks.Undoable(k) {
+			t.Errorf("documentScopeKinds has %q but registry says not undoable", k)
 		}
 	}
 }
 
+// TestUndoRecordedSetExcludesNonDocument asserts kinds that emit events for
+// coverage but cannot be snapshot-undone are NOT in the recorded-set. The
+// excluded set is derived from the registry (everything not Undoable), so this
+// can never drift from the classification.
 func TestUndoRecordedSetExcludesNonDocument(t *testing.T) {
-	excluded := []hooks.Kind{
-		hooks.EventPlayStart, hooks.EventPlayStop, hooks.EventSeek,
-		hooks.EventImport, hooks.EventExport, hooks.EventFavoriteToggled,
-		hooks.EventAudioPanelStateChanged, hooks.EventInstrumentParamChanged,
-		hooks.EventRecipeSaved, hooks.EventSceneApplied,
+	for _, a := range hooks.AllActions() {
+		if hooks.Undoable(a.Kind) {
+			continue
+		}
+		if _, ok := documentScopeKinds[a.Kind]; ok {
+			t.Errorf("%q is not undoable in the registry but appears in documentScopeKinds", a.Kind)
+		}
 	}
-	for _, k := range excluded {
-		if _, ok := documentScopeKinds[k]; ok {
-			t.Errorf("%q must NOT be in the undo recorded-set", k)
+}
+
+// TestDocumentGapsAreReasoned asserts every document-scope kind that is NOT
+// undoable carries an ExcludedReason — the honest record of a known gap
+// (e.g. row pan / sends are exported but have no UI commit site yet).
+func TestDocumentGapsAreReasoned(t *testing.T) {
+	for _, a := range hooks.AllActions() {
+		if a.Scope == hooks.ScopeDocument && !hooks.Undoable(a.Kind) {
+			if a.ExcludedReason == "" {
+				t.Errorf("document-scope gap %q must carry an ExcludedReason", a.Kind)
+			}
 		}
 	}
 }

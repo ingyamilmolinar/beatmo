@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/ingyamilmolinar/beatmo/core/model"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
@@ -376,42 +375,6 @@ func TestSplitterHandleRect_Vertical(t *testing.T) {
 	}
 }
 
-// ─── Sidebar Resize Handle Test ─────────────────────────────────────────────
-
-func TestSidebarResizeHandleRect(t *testing.T) {
-	assertDefaultParityState(t)
-	withDefaultStart(t, false)
-	logger := game_log.New(testLogOutput(), game_log.LevelError)
-	g := New(logger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
-	// Add a node so sidebar can open
-	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	if n == nil {
-		t.Fatal("failed to add node")
-	}
-	g.sidebar.Open(n)
-
-	r := g.sidebar.resizeHandleRect()
-	if r.Empty() {
-		t.Fatal("sidebar resize handle rect should not be empty when open")
-	}
-	// Handle should be at right edge of panel
-	panel := g.sidebar.rects["panel"]
-	if r.Min.X+r.Dx()/2 != panel.Max.X {
-		// Center X should be at panel right edge
-		cx := (r.Min.X + r.Max.X) / 2
-		t.Errorf("sidebar resize handle center X: got %d, expected %d", cx, panel.Max.X)
-	}
-	// Should be vertically centered
-	cy := (r.Min.Y + r.Max.Y) / 2
-	expectedCY := panel.Dy() / 2
-	if cy != expectedCY {
-		t.Errorf("sidebar resize handle center Y: got %d, expected %d", cy, expectedCY)
-	}
-}
-
 // ─── Dimension Accessor Tests ───────────────────────────────────────────────
 
 func TestSplitterHandleDimensions_DesktopVsMobile(t *testing.T) {
@@ -435,67 +398,97 @@ func TestSplitterHandleDimensions_DesktopVsMobile(t *testing.T) {
 	}
 }
 
-// ─── Grip Line Tests ────────────────────────────────────────────────────────
+// ─── Unified Splitter Handle Render Tests ───────────────────────────────────
+// The handle renders identically on every platform: a square (sharp-cornered)
+// handle plus a soft glow halo, with NO grip lines. Desktop's former grip-line
+// variant was retired so the same component renders one way everywhere.
 
-func TestDrawSplitterHandle_GripLines_Desktop(t *testing.T) {
-	forceSmallScreenForTest = false
-	dst := ebiten.NewImage(200, 200)
-
-	var rects []image.Rectangle
-	origDrawRect := drawRect
-	drawRect = func(d *ebiten.Image, r image.Rectangle, _ color.Color, filled bool) {
-		if filled {
-			rects = append(rects, r)
-		}
-		origDrawRect(d, r, color.RGBA{}, filled)
-	}
-	defer func() { drawRect = origDrawRect }()
-
-	DrawSplitterHandle(dst, 100, 100, true, false)
-
-	// We expect: 1 rounded-rect pill (many rects) + 3 grip lines (1px wide each).
-	// Count 1px-wide vertical rects inside the pill area as grip lines.
-	pillR := SplitterHandleRect(100, 100, true)
-	gripCount := 0
-	for _, r := range rects {
-		if r.Dx() == 1 && r.Min.X >= pillR.Min.X && r.Max.X <= pillR.Max.X &&
-			r.Min.Y >= pillR.Min.Y && r.Max.Y <= pillR.Max.Y {
-			gripCount++
-		}
-	}
-	if gripCount != 3 {
-		t.Errorf("expected 3 grip lines, got %d", gripCount)
-	}
+type capturedHandleRect struct {
+	r   image.Rectangle
+	col color.Color
 }
 
-func TestDrawSplitterHandle_NoGripLines_Mobile(t *testing.T) {
-	forceSmallScreenForTest = true
-	defer func() { forceSmallScreenForTest = false }()
+// captureSplitterHandleDraws records every filled rect (with its color) drawn
+// by a single non-hover DrawSplitterHandle call (horizontal pill at 100,100).
+func captureSplitterHandleDraws() []capturedHandleRect {
 	dst := ebiten.NewImage(200, 200)
-
-	var rects []image.Rectangle
+	var got []capturedHandleRect
 	origDrawRect := drawRect
-	drawRect = func(d *ebiten.Image, r image.Rectangle, _ color.Color, filled bool) {
+	drawRect = func(d *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
-			rects = append(rects, r)
+			got = append(got, capturedHandleRect{r, c})
 		}
 		origDrawRect(d, r, color.RGBA{}, filled)
 	}
 	defer func() { drawRect = origDrawRect }()
-
 	DrawSplitterHandle(dst, 100, 100, true, false)
+	return got
+}
 
-	// On mobile there should be no 1px-wide vertical rects (grip lines).
+// assertUnifiedSplitterHandle asserts: no grip lines, a square handle rect
+// exactly equal to the pill bounds, and a glow halo strictly larger than it.
+// Returns the handle's fill color for color-unification checks.
+func assertUnifiedSplitterHandle(t *testing.T) color.Color {
+	t.Helper()
+	draws := captureSplitterHandleDraws()
 	pillR := SplitterHandleRect(100, 100, true)
-	gripCount := 0
-	for _, r := range rects {
+
+	var handleCol color.Color
+	handleDrawn, glowDrawn := false, false
+	for _, d := range draws {
+		r := d.r
+		// No 1px grip ticks inside the pill.
 		if r.Dx() == 1 && r.Min.X >= pillR.Min.X && r.Max.X <= pillR.Max.X &&
 			r.Min.Y >= pillR.Min.Y && r.Max.Y <= pillR.Max.Y {
-			gripCount++
+			t.Errorf("expected no grip lines, found 1px rect %v inside the pill", r)
+		}
+		if r == pillR {
+			handleDrawn = true
+			handleCol = d.col
+		}
+		if r.Min.X < pillR.Min.X && r.Min.Y < pillR.Min.Y &&
+			r.Max.X > pillR.Max.X && r.Max.Y > pillR.Max.Y {
+			glowDrawn = true
 		}
 	}
-	if gripCount != 0 {
-		t.Errorf("expected 0 grip lines on mobile, got %d", gripCount)
+	if !handleDrawn {
+		t.Errorf("expected a square handle rect equal to pill bounds %v", pillR)
+	}
+	if !glowDrawn {
+		t.Error("expected a glow halo rect strictly larger than the pill")
+	}
+	return handleCol
+}
+
+func TestDrawSplitterHandle_Unified_Desktop(t *testing.T) {
+	forceSmallScreenForTest = false
+	assertUnifiedSplitterHandle(t)
+}
+
+func TestDrawSplitterHandle_Unified_Mobile(t *testing.T) {
+	forceSmallScreenForTest = true
+	defer func() { forceSmallScreenForTest = false }()
+	assertUnifiedSplitterHandle(t)
+}
+
+// TestSplitterHandle_ColorUnified verifies the resting (non-hover) handle fill
+// color is identical on desktop and mobile, and is the cyan splitter-handle
+// token (blue channel dominant) — desktop is no longer a gray pill.
+func TestSplitterHandle_ColorUnified(t *testing.T) {
+	forceSmallScreenForTest = false
+	deskCol := assertUnifiedSplitterHandle(t)
+	forceSmallScreenForTest = true
+	defer func() { forceSmallScreenForTest = false }()
+	mobileCol := assertUnifiedSplitterHandle(t)
+
+	dr, dg, db, da := deskCol.RGBA()
+	mr, mg, mb, ma := mobileCol.RGBA()
+	if dr != mr || dg != mg || db != mb || da != ma {
+		t.Errorf("desktop handle color %v != mobile handle color %v — not unified", deskCol, mobileCol)
+	}
+	// Cyan: blue channel dominant over red (a gray pill would have R≈B).
+	if db <= dr {
+		t.Errorf("expected cyan handle (B>R), got R=%d B=%d", dr>>8, db>>8)
 	}
 }
 

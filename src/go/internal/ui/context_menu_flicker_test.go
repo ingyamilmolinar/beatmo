@@ -10,19 +10,19 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestContextMenuStaysOpenAfterLabelTap reproduces the kebab-popup flicker bug.
+// TestContextMenuStaysOpenAfterKebabTap reproduces the kebab-popup flicker bug.
 //
-// Root cause: on mobile the row label button opens the context menu inside
+// Root cause: on mobile the row kebab (⋯) button opens the context menu inside
 // drum.Update() (which runs AFTER the InputDispatcher each frame). On the very
 // next frame the InputDispatcher dispatches to handleContextMenuInput() with
-// left=true at the label position. The label is NOT inside the context-menu
+// left=true at the kebab position. The kebab is NOT inside the context-menu
 // bottom-sheet rect, so the "click outside to close" check fires and immediately
 // closes the menu — even though suppressClicksUntilRelease=true was set by
 // openContextMenu(). The visible result is a 1-frame flash.
 //
 // The fix: honor suppressClicksUntilRelease in the "click outside to close"
 // path of handleContextMenuInput, the same way DeferredTap.Begin() does.
-func TestContextMenuStaysOpenAfterLabelTap(t *testing.T) {
+func TestContextMenuStaysOpenAfterKebabTap(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -49,17 +49,17 @@ func TestContextMenuStaysOpenAfterLabelTap(t *testing.T) {
 	dv.Update()
 	resetWarm()
 
-	if len(dv.rowLabels()) == 0 {
-		t.Fatal("no row labels after warm-up")
+	if len(dv.rowMenuBtns()) == 0 {
+		t.Fatal("no row kebab buttons after warm-up")
 	}
-	labelRect := dv.rowLabels()[0].Rect()
-	if labelRect.Empty() {
-		t.Skip("label rect empty — layout may differ in this configuration")
+	kebabRect := dv.rowMenuBtns()[0].Rect()
+	if kebabRect.Empty() {
+		t.Skip("kebab rect empty — layout may differ in this configuration")
 	}
-	lx := labelRect.Min.X + labelRect.Dx()/2
-	ly := labelRect.Min.Y + labelRect.Dy()/2
+	lx := kebabRect.Min.X + kebabRect.Dx()/2
+	ly := kebabRect.Min.Y + kebabRect.Dy()/2
 
-	// ── Frame 0: touch down at label position (touch override active) ──
+	// ── Frame 0: touch down at kebab position (touch override active) ──
 	// drum.Update() fires AFTER InputDispatcher each real frame.
 	// We call Update() directly to simulate the drum-update half of the frame.
 	// This should open the context menu and set suppressClicksUntilRelease.
@@ -100,12 +100,12 @@ func TestContextMenuStaysOpenAfterLabelTap(t *testing.T) {
 	if !dv.IsContextMenuOpen() {
 		menuRect := dv.contextMenuRect
 		t.Errorf(
-			"context menu was closed by HandleInput(left=true) at label pos (%d,%d) — flicker bug\n"+
-				"  label rect:   %v\n"+
+			"context menu was closed by HandleInput(left=true) at kebab pos (%d,%d) — flicker bug\n"+
+				"  kebab rect:   %v\n"+
 				"  menu rect:    %v\n"+
-				"  label in menu: %v\n"+
+				"  kebab in menu: %v\n"+
 				"  Fix: guard 'click outside to close' with !suppressClicksUntilRelease",
-			lx, ly, labelRect, menuRect,
+			lx, ly, kebabRect, menuRect,
 			image.Pt(lx, ly).In(menuRect),
 		)
 	}
@@ -142,17 +142,17 @@ func TestContextMenuClosesOnOutsideTapAfterSuppressClears(t *testing.T) {
 	dv.Update()
 	resetWarm()
 
-	if len(dv.rowLabels()) == 0 {
-		t.Fatal("no row labels after warm-up")
+	if len(dv.rowMenuBtns()) == 0 {
+		t.Fatal("no row kebab buttons after warm-up")
 	}
-	labelRect := dv.rowLabels()[0].Rect()
-	if labelRect.Empty() {
-		t.Skip("label rect empty")
+	kebabRect := dv.rowMenuBtns()[0].Rect()
+	if kebabRect.Empty() {
+		t.Skip("kebab rect empty")
 	}
-	lx := labelRect.Min.X + labelRect.Dx()/2
-	ly := labelRect.Min.Y + labelRect.Dy()/2
+	lx := kebabRect.Min.X + kebabRect.Dx()/2
+	ly := kebabRect.Min.Y + kebabRect.Dy()/2
 
-	// Open the menu via Update().
+	// Open the menu via Update() (tap the kebab).
 	resetOpen := SetInputForTest(
 		func() (int, int) { return lx, ly },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },

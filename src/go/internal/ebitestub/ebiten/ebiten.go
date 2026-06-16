@@ -194,6 +194,25 @@ const (
 	KeyMetaRight
 	KeyZ
 	KeyY
+	KeySpace
+	KeyArrowLeft
+	KeyArrowRight
+	KeyArrowUp
+	KeyArrowDown
+	KeyBracketLeft
+	KeyBracketRight
+	Key0
+	Key1
+	Key2
+	Key3
+	Key4
+	Key5
+	Key6
+	Key7
+	KeyEqual
+	KeyMinus
+	KeyNumpadAdd
+	KeyNumpadSubtract
 )
 
 // Window and run stubs

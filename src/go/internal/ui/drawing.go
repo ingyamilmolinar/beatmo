@@ -22,6 +22,7 @@ var drawRectOp ebiten.DrawImageOptions
 // drawRectBlit blits the 1x1 pixel px scaled to (sx, sy) at (tx, ty) using
 // the shared drawRectOp scratch.
 func drawRectBlit(dst *ebiten.Image, px *ebiten.Image, sx, sy, tx, ty float64) {
+	bumpDrawCall()
 	drawRectOp.GeoM.Reset()
 	drawRectOp.GeoM.Scale(sx, sy)
 	drawRectOp.GeoM.Translate(tx, ty)
@@ -46,6 +47,44 @@ var drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled 
 	drawRectBlit(dst, px, float64(r.Dx()), 1, float64(r.Min.X), float64(r.Max.Y-1))
 	drawRectBlit(dst, px, 1, float64(r.Dy()), float64(r.Min.X), float64(r.Min.Y))
 	drawRectBlit(dst, px, 1, float64(r.Dy()), float64(r.Max.X-1), float64(r.Min.Y))
+}
+
+// fillVerticalGradient paints rect with a smooth top→bottom gradient from
+// topCol to botCol as a stack of `bands` horizontal strips. Each strip is a
+// solid drawRect of a fixed interpolated color, so after the first frame the
+// per-band colors are served from pixelCache and the fill adds no per-frame
+// allocations. ~32 bands is visually indistinguishable from a true gradient
+// at panel scale while staying cheap. Used for the sunset grid-pane backdrop
+// (DESIGN.md colors.grid-horizon).
+func fillVerticalGradient(dst *ebiten.Image, rect image.Rectangle, topCol, botCol color.Color, bands int) {
+	if rect.Empty() || bands < 1 {
+		return
+	}
+	tr, tg, tb, ta := topCol.RGBA()
+	br, bg, bb, ba := botCol.RGBA()
+	lerp := func(a, b uint32, t float64) uint8 {
+		// a,b are 16-bit (0..65535); /257 maps back to 8-bit (0..255).
+		return uint8((float64(a)*(1-t) + float64(b)*t) / 257.0)
+	}
+	h := rect.Dy()
+	for i := 0; i < bands; i++ {
+		y0 := rect.Min.Y + h*i/bands
+		y1 := rect.Min.Y + h*(i+1)/bands
+		if y1 <= y0 {
+			continue
+		}
+		t := 0.0
+		if bands > 1 {
+			t = float64(i) / float64(bands-1)
+		}
+		c := color.RGBA{
+			R: lerp(tr, br, t),
+			G: lerp(tg, bg, t),
+			B: lerp(tb, bb, t),
+			A: lerp(ta, ba, t),
+		}
+		drawRect(dst, image.Rect(rect.Min.X, y0, rect.Max.X, y1), c, true)
+	}
 }
 
 // drawButton renders a filled rectangle with a border. It can be overridden in tests.
@@ -293,69 +332,28 @@ func SplitterHandleRect(cx, cy int, horizontal bool) image.Rectangle {
 	return image.Rect(x0, y0, x0+hThick, y0+hLen)
 }
 
-// DrawSplitterHandle draws the pill handle at (cx, cy) using unified colors.
+// DrawSplitterHandle draws the divider handle at (cx, cy) using a single
+// unified render path on every platform: a square (sharp-cornered) handle
+// with a soft glow halo behind it. The former desktop-only grip-line variant
+// was retired so the same component renders identically everywhere; only the
+// handle color stays platform-parameterized (gray desktop / cyan mobile).
 func DrawSplitterHandle(dst *ebiten.Image, cx, cy int, horizontal, hover bool) {
 	r := SplitterHandleRect(cx, cy, horizontal)
-	p := Profile()
-	col := p.SplitterHandleColor
+	col := Profile().SplitterHandleColor
 	if hover {
 		col = colSplitterHandleHover
 	}
-	radius := SplitterHandleThick() / 2
 
-	// Glow/halo effect on mobile: draw a wider, lower-opacity version behind.
-	if p.IsMobile() {
-		glowExtra := 8
-		var glowR image.Rectangle
-		if horizontal {
-			glowR = image.Rect(r.Min.X-glowExtra/2, r.Min.Y-glowExtra/2, r.Max.X+glowExtra/2, r.Max.Y+glowExtra/2)
-		} else {
-			glowR = image.Rect(r.Min.X-glowExtra/2, r.Min.Y-glowExtra/2, r.Max.X+glowExtra/2, r.Max.Y+glowExtra/2)
-		}
-		// Derive glow color: same RGB as handle, alpha * 0.3.
-		cr, cg, cb, ca := col.RGBA()
-		glowAlpha := uint8(float64(ca>>8) * 0.3)
-		glowCol := color.NRGBA{uint8(cr >> 8), uint8(cg >> 8), uint8(cb >> 8), glowAlpha}
-		glowRadius := (SplitterHandleThick() + glowExtra) / 2
-		drawRoundedRect(dst, glowR, glowCol, glowRadius, true)
-	}
+	// Soft glow/halo: a wider, lower-opacity square behind the handle.
+	const glowExtra = 8
+	glowR := image.Rect(r.Min.X-glowExtra/2, r.Min.Y-glowExtra/2, r.Max.X+glowExtra/2, r.Max.Y+glowExtra/2)
+	cr, cg, cb, ca := col.RGBA()
+	glowAlpha := uint8(float64(ca>>8) * 0.3)
+	glowCol := color.NRGBA{uint8(cr >> 8), uint8(cg >> 8), uint8(cb >> 8), glowAlpha}
+	drawRect(dst, glowR, glowCol, true)
 
-	drawRoundedRect(dst, r, col, radius, true)
-	// Draw grip lines on desktop for drag affordance.
-	if p.DrawSplitterGrip {
-		gripCol := colSplitterGripLine
-		if hover {
-			gripCol = colSplitterGripLineHover
-		}
-		drawSplitterGripLines(dst, r, horizontal, gripCol)
-	}
-}
-
-// drawSplitterGripLines draws 3 thin lines inside the pill, perpendicular
-// to the divider direction, as a visual drag affordance.
-func drawSplitterGripLines(dst *ebiten.Image, r image.Rectangle, horizontal bool, col color.Color) {
-	const nLines = 3
-	const lineSpacing = 3
-	if horizontal {
-		// Horizontal divider → wide pill → draw vertical dashes
-		cx := (r.Min.X + r.Max.X) / 2
-		totalW := (nLines-1)*lineSpacing + nLines // nLines * 1px + gaps
-		startX := cx - totalW/2
-		for i := 0; i < nLines; i++ {
-			x := startX + i*(1+lineSpacing)
-			// Inset top/bottom by 1px for a cleaner look inside the pill
-			drawRect(dst, image.Rect(x, r.Min.Y+1, x+1, r.Max.Y-1), col, true)
-		}
-	} else {
-		// Vertical divider → tall pill → draw horizontal dashes
-		cy := (r.Min.Y + r.Max.Y) / 2
-		totalH := (nLines-1)*lineSpacing + nLines
-		startY := cy - totalH/2
-		for i := 0; i < nLines; i++ {
-			y := startY + i*(1+lineSpacing)
-			drawRect(dst, image.Rect(r.Min.X+1, y, r.Max.X-1, y+1), col, true)
-		}
-	}
+	// Square handle (sharp corners) — unified across platforms.
+	drawRect(dst, r, col, true)
 }
 
 // popupCornerRadius returns the corner radius for popup panels.

@@ -78,46 +78,7 @@ func TestMultiLevelsLatch_ClearWipesPersistentMarkers(t *testing.T) {
 	}
 }
 
-// TestStickyBar_LevelsPillsOnlyOnMeters: Clear Clips + K-20 pills are
-// laid out only when the active tab is TabMeters.
-func TestStickyBar_LevelsPillsOnlyOnMeters(t *testing.T) {
-	tabs := []PanelTab{TabWave, TabSpectrum, TabEQ, TabScope, TabSynth}
-	for _, tab := range tabs {
-		bar := NewAudioStickyBar(0, func() {}, func() {}, func() {}, func(PanelTab) {})
-		bar.SetActiveTab(tab)
-		bar.Layout(image.Rect(0, 0, 800, stickyBarH))
-		if c := bar.ClearClipsBtn(); c != nil && !c.Rect().Empty() {
-			t.Errorf("tab=%v: Clear Clips pill rect=%v want empty", tab, c.Rect())
-		}
-		if k := bar.K20Btn(); k != nil && !k.Rect().Empty() {
-			t.Errorf("tab=%v: K-20 pill rect=%v want empty", tab, k.Rect())
-		}
-	}
-	bar := NewAudioStickyBar(0, func() {}, func() {}, func() {}, func(PanelTab) {})
-	bar.SetActiveTab(TabMeters)
-	bar.Layout(image.Rect(0, 0, 800, stickyBarH))
-	if c := bar.ClearClipsBtn(); c == nil || c.Rect().Empty() {
-		t.Errorf("TabMeters: Clear Clips pill must claim a rect")
-	}
-	if k := bar.K20Btn(); k == nil || k.Rect().Empty() {
-		t.Errorf("TabMeters: K-20 pill must claim a rect")
-	}
-}
-
-// TestStickyBar_K20Toggle pins K-20 view toggle semantics.
-func TestStickyBar_K20Toggle(t *testing.T) {
-	bar := NewAudioStickyBar(0, func() {}, func() {}, func() {}, func(PanelTab) {})
-	bar.SetActiveTab(TabMeters)
-	bar.Layout(image.Rect(0, 0, 800, stickyBarH))
-	if bar.K20View() {
-		t.Fatalf("K-20 default should be false")
-	}
-	bar.K20Btn().OnClick()
-	if !bar.K20View() {
-		t.Errorf("K-20 after click: want true")
-	}
-	bar.K20Btn().OnClick()
-	if bar.K20View() {
-		t.Errorf("K-20 after second click: want false")
-	}
-}
+// NOTE: the Clear-Clips + K-20 pills moved off the sticky bar into the per-tab
+// levelsControls component (audio_tab_controls.go) in the slim-bar phase. Their
+// Meters-only gating + K-20 toggle semantics are now covered by
+// TestLevelsControls* in audio_tab_controls_test.go.

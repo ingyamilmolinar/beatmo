@@ -1,6 +1,10 @@
 package ui
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
+)
 
 // PlainEnglish returns a kid-readable, one-line gloss for a UI label that
 // otherwise carries an audio-engineering term (Attack, Cutoff, Q, etc.).
@@ -18,8 +22,8 @@ import "strings"
 // legend chip (see audio_panel_legend.go), not here.
 func PlainEnglish(label string) string {
 	key := plainEnglishKey(label)
-	if v, ok := plainEnglishMap[key]; ok {
-		return v
+	if k, ok := plainEnglishMap[key]; ok {
+		return i18n.T(k)
 	}
 	return ""
 }
@@ -45,136 +49,136 @@ func plainEnglishKey(label string) string {
 // _zone.go) — those are duplicated here so the same helper can serve
 // any callsite that wants to apply the gloss to an individual knob
 // label without going through the section-card path.
-var plainEnglishMap = map[string]string{
+var plainEnglishMap = map[string]i18n.Key{
 	// Synth pipeline sections (Phase 8B unified Synth tab).
-	"voice": "what makes this sound",
-	"osc":   "the raw waveform",
+	"voice": i18n.KeyGlossVoice,
+	"osc":   i18n.KeyGlossOsc,
 
 	// Pitch
-	"pitch":     "how high or low",
-	"waveform":  "the raw wave shape",
-	"generator": "the raw wave shape",
-	"tune":      "how high or low",
-	"glide":     "slide between notes",
-	"bend":      "pitch wobble",
-	"detune":    "slight pitch shift",
+	"pitch":     i18n.KeyGlossPitch,
+	"waveform":  i18n.KeyGlossWaveform,
+	"generator": i18n.KeyGlossGenerator,
+	"tune":      i18n.KeyGlossTune,
+	"glide":     i18n.KeyGlossGlide,
+	"bend":      i18n.KeyGlossBend,
+	"detune":    i18n.KeyGlossDetune,
 
 	// Envelope
-	"envelope": "how it starts and dies",
-	"attack":   "how quickly it starts",
-	"decay":    "how fast it fades",
-	"sustain":  "how loud it holds",
-	"release":  "how slowly it ends",
+	"envelope": i18n.KeyGlossEnvelope,
+	"attack":   i18n.KeyGlossAttack,
+	"decay":    i18n.KeyGlossDecay,
+	"sustain":  i18n.KeyGlossSustain,
+	"release":  i18n.KeyGlossRelease,
 
 	// Tone / filter
-	"tone":      "bright or dull",
-	"cutoff":    "bright or dull",
-	"filter":    "bright or dull",
-	"reso":      "ringing edge",
-	"resonance": "ringing edge",
-	"body":      "punch vs air",
+	"tone":      i18n.KeyGlossTone,
+	"cutoff":    i18n.KeyGlossCutoff,
+	"filter":    i18n.KeyGlossFilter,
+	"reso":      i18n.KeyGlossReso,
+	"resonance": i18n.KeyGlossResonance,
+	"body":      i18n.KeyGlossBody,
 
 	// FM family knobs (native-deprecation migration). Op-numbered labels
 	// normalise through plainEnglishKey verbatim (no unit suffix), so the
 	// keys carry the full lowercase label.
-	"base pitch":    "the root note",
-	"pitch sweep":   "drop or rise at start",
-	"sweep time":    "how fast the sweep",
-	"op 1 ratio":    "harmonic of the root",
-	"op 2 ratio":    "harmonic of the root",
-	"op 3 ratio":    "harmonic of the root",
-	"op 4 ratio":    "harmonic of the root",
-	"op 1 fm depth": "metallic shimmer",
-	"op 2 fm depth": "metallic shimmer",
-	"op 3 fm depth": "metallic shimmer",
-	"op 4 fm depth": "metallic shimmer",
-	"op 1 decay":    "how fast it fades",
-	"op 2 decay":    "how fast it fades",
-	"op 3 decay":    "how fast it fades",
-	"op 4 decay":    "how fast it fades",
+	"base pitch":    i18n.KeyGlossBasePitch,
+	"pitch sweep":   i18n.KeyGlossPitchSweep,
+	"sweep time":    i18n.KeyGlossSweepTime,
+	"op 1 ratio":    i18n.KeyGlossOpRatio,
+	"op 2 ratio":    i18n.KeyGlossOpRatio,
+	"op 3 ratio":    i18n.KeyGlossOpRatio,
+	"op 4 ratio":    i18n.KeyGlossOpRatio,
+	"op 1 fm depth": i18n.KeyGlossOpFMDepth,
+	"op 2 fm depth": i18n.KeyGlossOpFMDepth,
+	"op 3 fm depth": i18n.KeyGlossOpFMDepth,
+	"op 4 fm depth": i18n.KeyGlossOpFMDepth,
+	"op 1 decay":    i18n.KeyGlossOpDecay,
+	"op 2 decay":    i18n.KeyGlossOpDecay,
+	"op 3 decay":    i18n.KeyGlossOpDecay,
+	"op 4 decay":    i18n.KeyGlossOpDecay,
 
 	// Kick family knobs (native-deprecation migration).
-	"fundamental":  "the root note",
-	"sweep speed":  "how fast the sweep",
-	"boom decay":   "how fast the boom fades",
-	"body decay":   "how fast the body fades",
-	"2nd harmonic": "adds body",
-	"3rd harmonic": "adds presence",
-	"4th harmonic": "adds bite",
-	"click":        "beater snap",
-	"thud":         "soft air punch",
+	"fundamental":  i18n.KeyGlossFundamental,
+	"sweep speed":  i18n.KeyGlossSweepSpeed,
+	"boom decay":   i18n.KeyGlossBoomDecay,
+	"body decay":   i18n.KeyGlossBodyDecay,
+	"2nd harmonic": i18n.KeyGloss2ndHarmonic,
+	"3rd harmonic": i18n.KeyGloss3rdHarmonic,
+	"4th harmonic": i18n.KeyGloss4thHarmonic,
+	"click":        i18n.KeyGlossClick,
+	"thud":         i18n.KeyGlossThud,
 
 	// Tom family knobs.
-	"ring decay": "how long it rings",
-	"overtone 1": "adds warmth",
-	"overtone 2": "adds edge",
-	"stick":      "stick snap",
-	"room":       "room echo feel",
+	"ring decay": i18n.KeyGlossRingDecay,
+	"overtone 1": i18n.KeyGlossOvertone1,
+	"overtone 2": i18n.KeyGlossOvertone2,
+	"stick":      i18n.KeyGlossStick,
+	"room":       i18n.KeyGlossRoom,
 
 	// Snare family knobs.
-	"tone 2":      "second ring note",
-	"noise tune":  "noise high or low",
-	"tone decay":  "how fast the note fades",
-	"noise decay": "how fast the hiss fades",
-	"tail decay":  "how long the tail",
-	"tone level":  "more note vs noise",
-	"noise level": "more noise vs note",
-	"wires":       "snare wire buzz",
-	"snap":        "sharper hit",
+	"tone 2":      i18n.KeyGlossTone2,
+	"noise tune":  i18n.KeyGlossNoiseTune,
+	"tone decay":  i18n.KeyGlossToneDecay,
+	"noise decay": i18n.KeyGlossNoiseDecay,
+	"tail decay":  i18n.KeyGlossTailDecay,
+	"tone level":  i18n.KeyGlossToneLevel,
+	"noise level": i18n.KeyGlossNoiseLevel,
+	"wires":       i18n.KeyGlossWires,
+	"snap":        i18n.KeyGlossSnap,
 
 	// Cymbal family knobs.
-	"metal tune":   "metal high or low",
-	"attack decay": "how fast the hit fades",
-	"metal level":  "more metal ring",
-	"sizzle level": "more sizzle hiss",
-	"sizzle decay": "how fast the sizzle fades",
+	"metal tune":   i18n.KeyGlossMetalTune,
+	"attack decay": i18n.KeyGlossAttackDecay,
+	"metal level":  i18n.KeyGlossMetalLevel,
+	"sizzle level": i18n.KeyGlossSizzleLevel,
+	"sizzle decay": i18n.KeyGlossSizzleDecay,
 
 	// Bass family knobs.
-	"pluck":       "soft or hard pluck",
-	"pick":        "pick click",
-	"fade":        "how fast it fades",
-	"overtone":    "adds presence",
-	"pitch punch": "punchy start",
-	"punch":       "punchy start",
+	"pluck":       i18n.KeyGlossPluck,
+	"pick":        i18n.KeyGlossPick,
+	"fade":        i18n.KeyGlossFade,
+	"overtone":    i18n.KeyGlossOvertone,
+	"pitch punch": i18n.KeyGlossPitchPunch,
+	"punch":       i18n.KeyGlossPunch,
 
 	// Drive / dynamics
-	"drive":      "softness vs edge",
-	"gain":       "louder or quieter",
-	"saturation": "warm edge",
-	"sat":        "warm edge",
-	"distortion": "rough edge",
+	"drive":      i18n.KeyGlossDrive,
+	"gain":       i18n.KeyGlossGain,
+	"saturation": i18n.KeyGlossSaturation,
+	"sat":        i18n.KeyGlossSat,
+	"distortion": i18n.KeyGlossDistortion,
 
 	// Spectrum / metering
-	"slope":    "tilt for tone balance",
-	"slopes":   "tilt for tone balance",
-	"pre":      "before EQ",
-	"post":     "after EQ",
-	"peak":     "loudest moment",
-	"rms":      "average loudness",
-	"clip":     "too loud — clipping",
-	"clips":    "too loud — clipping",
-	"headroom": "room before clipping",
-	"lufs":     "broadcast loudness",
-	"k-20":     "ref scale (-20 = 0)",
+	"slope":    i18n.KeyGlossSlope,
+	"slopes":   i18n.KeyGlossSlopes,
+	"pre":      i18n.KeyGlossPre,
+	"post":     i18n.KeyGlossPost,
+	"peak":     i18n.KeyGlossPeak,
+	"rms":      i18n.KeyGlossRMS,
+	"clip":     i18n.KeyGlossClip,
+	"clips":    i18n.KeyGlossClips,
+	"headroom": i18n.KeyGlossHeadroom,
+	"lufs":     i18n.KeyGlossLUFS,
+	"k-20":     i18n.KeyGlossK20,
 
 	// Mode / chain selectors
-	"overlay":   "show A and B together",
-	"split":     "show A on top, B on bottom",
-	"diff":      "show A minus B",
-	"ovr":       "show A and B together",
-	"spl":       "show A on top, B on bottom",
-	"dif":       "show A minus B",
-	"ag":        "auto adjust scale",
-	"auto gain": "auto adjust scale",
+	"overlay":   i18n.KeyGlossOverlay,
+	"split":     i18n.KeyGlossSplit,
+	"diff":      i18n.KeyGlossDiff,
+	"ovr":       i18n.KeyGlossOvr,
+	"spl":       i18n.KeyGlossSpl,
+	"dif":       i18n.KeyGlossDif,
+	"ag":        i18n.KeyGlossAG,
+	"auto gain": i18n.KeyGlossAutoGain,
 
 	// Sends / outs
-	"out":    "what reaches the master",
-	"delay":  "echo trail",
-	"reverb": "room space",
-	"send":   "amount to effect",
+	"out":    i18n.KeyGlossOut,
+	"delay":  i18n.KeyGlossDelay,
+	"reverb": i18n.KeyGlossReverb,
+	"send":   i18n.KeyGlossSend,
 
 	// Transport
-	"play":  "start the beat",
-	"stop":  "stop the beat",
-	"pause": "freeze the beat",
+	"play":  i18n.KeyGlossPlay,
+	"stop":  i18n.KeyGlossStop,
+	"pause": i18n.KeyGlossPause,
 }

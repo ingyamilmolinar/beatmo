@@ -32,8 +32,14 @@
  * batch is dropped and a `drop` notice fires on this.port. This mirrors
  * the desktop pipeline's `dropsTotal.Add(1)` discipline.
  *
- * Pass-through: the worklet writes the input to its output verbatim so
- * the channel chain is not silenced by the parallel tap.
+ * Acoustically transparent: this is a pure CAPTURE tap, so its output is
+ * left as silence (the render quantum's output buffer is pre-zeroed). It must
+ * NOT pass its input through to its output — the tapped source is already
+ * wired to ctx.destination, so re-emitting the same signal would sum a second
+ * copy at the speakers (+6 dB → audibly louder and distorting). The node is
+ * still connected to ctx.destination by the caller purely to keep it in the
+ * active render graph so process() is pulled; emitting silence contributes
+ * nothing to the mix.
  *
  * Communication via MessagePort (this.port — to/from main thread):
  *   Main → Worklet (this.port):
@@ -162,14 +168,13 @@ class RecordingCaptureProcessor extends AudioWorkletProcessor {
     });
   }
 
-  process(inputs, outputs, _parameters) {
+  process(inputs, _outputs, _parameters) {
     const input = inputs[0];
-    const output = outputs[0];
 
-    // Pass-through to keep the parallel tap from sinking the signal.
-    if (input && input[0] && output && output[0]) {
-      output[0].set(input[0]);
-    }
+    // NOTE: we deliberately do NOT write to `_outputs`. This is a capture-only
+    // tap; the source it reads is already routed to ctx.destination, so any
+    // pass-through here would double the signal at the speakers. Leaving the
+    // output as the pre-zeroed silence keeps the tap acoustically transparent.
 
     if (this._stopped) {
       return false; // tear down processor

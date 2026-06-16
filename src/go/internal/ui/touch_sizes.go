@@ -149,6 +149,8 @@ var IconStrokeWeight float32 = genIconStroke
 
 // Unified corner radii for all interactive elements
 const (
+	RadiusXXS  = genRoundedXxs  // swatches, mini chevron buttons, meter chevron
+	RadiusXS   = genRoundedXs   // small cards/chips/pills (synth chips, sidebar value pill)
 	RadiusSM   = genRoundedSm   // compact buttons, context menu groups (desktop)
 	RadiusMD   = genRoundedMd   // standard buttons (transport, row controls, popup items)
 	RadiusLG   = genRoundedLg   // panels, bottom sheets, popups (mobile)

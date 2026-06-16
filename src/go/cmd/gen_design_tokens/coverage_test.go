@@ -749,7 +749,7 @@ func TestEmitTokensProducesValidGoSource(t *testing.T) {
 	alpha := []keyVal{{Key: "subtle", Val: "100"}, {Key: "overlay", Val: "200"}}
 	swatches := []swatchOut{{Ident: "genInstrumentSwatchKick", Name: "kick", R: 1, G: 2, B: 3, SrcHex: "#010203"}}
 
-	out, err := emitTokens(colors, spacing, rounded, icon, alpha, swatches, nil, nil, nil, nil)
+	out, err := emitTokens(colors, spacing, rounded, icon, alpha, swatches, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -775,7 +775,7 @@ func TestEmitTokensProducesValidGoSource(t *testing.T) {
 
 func TestEmitTokensRejectsBadHex(t *testing.T) {
 	colors := []keyVal{{Key: "broken", Val: "not-hex"}}
-	if _, err := emitTokens(colors, nil, nil, nil, nil, nil, nil, nil, nil, nil); err == nil {
+	if _, err := emitTokens(colors, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err == nil {
 		t.Errorf("want error on bad color hex")
 	}
 }
@@ -789,7 +789,7 @@ func TestEmitTokensRejectsAlphaOutOfRange(t *testing.T) {
 	}
 	for _, bad := range []string{"-1", "256", "boom"} {
 		alpha := []keyVal{{Key: "x", Val: bad}}
-		if _, err := emitTokens(nil, nil, nil, icon, alpha, nil, nil, nil, nil, nil); err == nil {
+		if _, err := emitTokens(nil, nil, nil, icon, alpha, nil, nil, nil, nil, nil, nil); err == nil {
 			t.Errorf("want error for alpha=%q", bad)
 		}
 	}

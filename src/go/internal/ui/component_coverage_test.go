@@ -68,6 +68,12 @@ var allowedStyleBudget = map[string]int{
 	// `row-kebab-chip` component spec is added to the design system, replace
 	// with ButtonStyleFromSpec(ComponentRowKebabChip) and remove this entry.
 	"button_styles.go": 1,
+	// row_instrument_shades.go derives per-row mute/solo/FX/kebab ButtonStyles
+	// DYNAMICALLY from each instrument's color (rowToggleStyle + rowKebabStyle).
+	// These cannot come from a static ComponentSpec because the fill/border are
+	// per-instrument shades computed at draw time. Fills/borders use the
+	// adjustColor / WithAlphaFromColor token helpers — no inline literals here.
+	"row_instrument_shades.go": 2,
 }
 
 // styleConstructionRE matches `XxxStyle{` literal construction sites for

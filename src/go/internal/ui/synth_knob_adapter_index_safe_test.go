@@ -47,6 +47,22 @@ func selectSectionForKnobIdx(t *testing.T, g *Game, instID string, knobIdx int) 
 	}
 	dv.setSelectedSynthSection(instID, owner)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	// With the fewer-knobs-per-row layout (capped columns + taller cells) a
+	// stage's later knobs can land on a scrolled-off row. Scroll the target
+	// knob into view — local index = its position within the owning section —
+	// then re-layout so its rect is populated, mirroring a user scrolling to it.
+	for _, s := range dv.instEditorSections {
+		if s.id != owner {
+			continue
+		}
+		for local, k := range s.knobIdxs {
+			if k == knobIdx {
+				dv.sectionGrid(owner).ScrollToIndex(local)
+				g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+				return
+			}
+		}
+	}
 }
 
 // synthBindingIdxByName returns the binding index of the first knob whose

@@ -570,14 +570,16 @@ func TestContextMenuEffectsAbsentOnMobile(t *testing.T) {
 	}
 
 	for _, btn := range dv.contextMenuBtns {
-		if btn.Text == "Effects" || btn.Text == "Color" {
+		if btn.Text == "Effects" {
 			t.Errorf("mobile context menu should not contain %q", btn.Text)
 		}
 	}
 }
 
-// TestContextMenuHasFiveItemsMobile pins the mobile button count: four
-// items (Instrument, Rename, Origin, Delete) plus the close button = 5.
+// TestContextMenuHasFiveItemsMobile pins the mobile button count: four items
+// (Rename, Color, Origin, Delete) plus the close button = 5. ("Instrument" was
+// removed — the row label opens the picker directly on every platform; "Color"
+// was re-exposed in Task 14 to open the grouped Vice City picker.)
 func TestContextMenuHasFiveItemsMobile(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
@@ -596,7 +598,7 @@ func TestContextMenuHasFiveItemsMobile(t *testing.T) {
 		t.Fatal("context menu did not open")
 	}
 
-	// Mobile items: Instrument, Rename, Origin, Delete (4) + close = 5.
+	// Mobile items: Rename, Color, Origin, Delete (4) + close = 5.
 	want := 5
 	if got := len(dv.contextMenuBtns); got != want {
 		t.Errorf("expected %d context menu buttons (4 items + close), got %d", want, got)
@@ -1350,39 +1352,39 @@ func TestContextMenuButtonsFireOnMobile(t *testing.T) {
 	}
 	fxAdvanceFrames(t, dv, 2) // settle
 
-	// Find the "Instrument" button (present in mobile context menu).
+	// Find the "Rename" button (first item in the platform-uniform menu).
 	if len(dv.contextMenuBtns) == 0 {
 		t.Fatal("context menu has no buttons")
 	}
 
-	var instBtn *Button
+	var renameBtn *Button
 	for _, btn := range dv.contextMenuBtns {
-		if btn.Text == "Instrument" {
-			instBtn = btn
+		if btn.Text == "Rename" {
+			renameBtn = btn
 			break
 		}
 	}
-	if instBtn == nil {
-		t.Fatal("could not find Instrument button in context menu")
+	if renameBtn == nil {
+		t.Fatal("could not find Rename button in context menu")
 	}
-	r := instBtn.Rect()
+	r := renameBtn.Rect()
 	if r.Empty() {
-		t.Fatal("Instrument button has empty rect")
+		t.Fatal("Rename button has empty rect")
 	}
 
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
 
-	wasInstMenuOpen := dv.IsInstMenuOpen()
-
-	// Click on the Instrument button via the Game-loop path (HandleInput + Update).
+	// Click on the Rename button via the Game-loop path (HandleInput + Update).
 	// Before fix: tree yields at popupActive → portal inputFn never fires → button dead.
 	// After fix: tree dispatches to portal overlay → inputFn → handleContextMenuInput → button fires.
+	// Firing Rename closes the context menu (closeContextMenuPortal), so a
+	// still-open menu means the button never fired.
 	fxGameFrame(dv, cx, cy, true, 800, 300)
 	fxGameFrame(dv, cx, cy, false, 800, 300)
 
-	if dv.IsInstMenuOpen() == wasInstMenuOpen && dv.IsContextMenuOpen() {
-		t.Error("Instrument button did not fire — context menu buttons dead on mobile " +
+	if dv.IsContextMenuOpen() {
+		t.Error("Rename button did not fire — context menu buttons dead on mobile " +
 			"(tree yields at popupActive before portal dispatch)")
 	}
 }

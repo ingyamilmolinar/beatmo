@@ -194,6 +194,7 @@ var tokenBackedColorNames = map[string]bool{
 	"colRecordIdle":    true,
 	"colRecordActive":  true,
 	"colBorderSubtle":  true, // colors.border (white base)
+	"colGridHorizon":   true, // grid-horizon (sunset grid-pane backdrop)
 }
 
 // untokenizedAllowlist names colors that are intentionally not in DESIGN.md's
@@ -233,14 +234,10 @@ var untokenizedAllowlist = map[string]string{
 	"colDropdownEdge":  "accent at 50/255 alpha for dropdown borders — runtime alpha composite",
 	"colError":         "alias of colStopRed for error-text role — collapse",
 
-	// Splitter chrome — desktop/mobile differ intentionally; mobile uses
-	// primary-dim cyan which is already tokenized as colors.primary-dim
-	// indirectly. Splitter has no DESIGN.md component slot.
-	"colSplitterHandle":        "splitter handle desktop — neutral pill, no Stitch component slot",
-	"colSplitterHandleMobile":  "splitter handle mobile — primary-dim variant, runtime-only",
+	// Splitter chrome — one cyan handle color shared by desktop + mobile
+	// (the splitter-handle token). No DESIGN.md component slot.
+	"colSplitterHandle":        "splitter handle — cyan touch affordance, shared desktop+mobile",
 	"colSplitterHandleHover":   "splitter handle hover — runtime brightening",
-	"colSplitterGripLine":      "splitter grip tick mark — desktop chrome",
-	"colSplitterGripLineHover": "splitter grip tick hover — desktop chrome",
 
 	// Panel/scrim runtime alphas
 	"colPanelBorder": "panel border = border base at panel-border alpha (20/255)",

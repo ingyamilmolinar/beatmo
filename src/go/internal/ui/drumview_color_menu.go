@@ -1,24 +1,16 @@
 package ui
 
-import (
-	"image"
-)
-
-// buildColorMenu rebuilds the color picker dropdown for the selected row.
-// After the component computes its bounds via rebuildWheel(), this syncs
-// dv.colorWheelRect for legacy callers and rebuilds the wheel image.
+// buildColorMenu finalizes the swatch-grid color picker for the selected row.
+//
+// The picker is the ColorWheelComponent (a swatch grid restricted to the
+// curated instrument palette); it computes and owns its own panel rect via
+// rebuildWheel() when SetProps+Open runs. There is no separate bitmap wheel to
+// rebuild anymore — this hook simply guards the selection and logs.
 func (dv *DrumView) buildColorMenu() {
-	dv.colorWheelRect = image.Rect(0, 0, 0, 0)
 	if dv.colorMenuRow < 0 || dv.colorMenuRow >= len(dv.rowColorBtns()) {
 		return
 	}
-
-	// The component's SetProps+Open already computed the wheel rect.
-	// Sync it to the legacy field.
 	if dv.colorWheelComp != nil && dv.colorWheelComp.IsOpen() {
-		dv.colorWheelRect = dv.colorWheelComp.WheelRect()
+		dv.logger.Debugf("[COLOR] build picker: rect=%v", dv.colorWheelComp.WheelRect())
 	}
-
-	dv.logger.Debugf("[COLOR] build wheel: rect=%v", dv.colorWheelRect)
-	dv.rebuildColorWheelImage()
 }

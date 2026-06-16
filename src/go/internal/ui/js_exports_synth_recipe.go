@@ -190,6 +190,44 @@ func (g *Game) initJSSynthRecipe() {
 		return recipeParamsToJS(audio.RecipeDefaultParams(args[0].String()))
 	}))
 
+	// synthMirrorPCMLen() -> int
+	// Stage 5 debug bridge: renders the right-pane synth mirror SYNCHRONOUSLY
+	// for the active synth instrument and returns the resulting PCM sample
+	// count. Lets a browser test verify the WASM↔audio mirror path produces a
+	// non-empty render without reaching into DSP internals. Returns 0 when no
+	// synth instrument is active. (DSP correctness is covered in Go — see the
+	// synth_mirror_test.go suite.)
+	js.Global().Set("synthMirrorPCMLen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return 0
+		}
+		inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
+		if inst == "" {
+			return 0
+		}
+		g.drum.renderSynthMirrorNow(inst)
+		return g.drum.synthMirrorPCMLen()
+	}))
+
+	// synthMirrorPCMChecksum() -> int
+	// Companion to synthMirrorPCMLen: renders the mirror SYNCHRONOUSLY for the
+	// active synth instrument and returns a 32-bit fingerprint of the PCM
+	// CONTENT. A browser test calls it before/after a knob change to prove the
+	// WASM mirror REACTS to params (the fingerprint differs) — a length-only
+	// check would pass even for a frozen render. Returns 0 when no synth is
+	// active. (DSP correctness is covered in Go — see synth_mirror_test.go.)
+	js.Global().Set("synthMirrorPCMChecksum", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return 0
+		}
+		inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
+		if inst == "" {
+			return 0
+		}
+		g.drum.renderSynthMirrorNow(inst)
+		return g.drum.synthMirrorPCMChecksum()
+	}))
+
 	g.initJSSynthRecipeManagement()
 	g.initJSKitManagement()
 

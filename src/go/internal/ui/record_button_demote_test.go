@@ -27,11 +27,16 @@ func TestRecordButtonMobile_VisuallyDemoted(t *testing.T) {
 	if rec.Empty() || play.Empty() {
 		t.Fatalf("rects unexpectedly empty: play=%v rec=%v", play, rec)
 	}
+	// B12 demote is HEIGHT-only: the narrow mobile transport cells (play is
+	// ~20 px wide) can't lose width without collapsing to a sliver, so record
+	// is shortened (lower visual weight) at the full cell width. Height must
+	// be strictly smaller than play; width must stay at full cell size (no
+	// sliver) — the ~6 px collapse was the reported bug.
 	if rec.Dy() >= play.Dy() {
-		t.Fatalf("record height %d should be < play height %d on mobile (B12 demote)", rec.Dy(), play.Dy())
+		t.Fatalf("record height %d should be < play height %d on mobile (B12 height-demote)", rec.Dy(), play.Dy())
 	}
-	if rec.Dx() >= play.Dx() {
-		t.Fatalf("record width %d should be < play width %d on mobile (B12 demote)", rec.Dx(), play.Dx())
+	if rec.Dx() < play.Dx() {
+		t.Fatalf("record width %d collapsed below play cell width %d (sliver regression)", rec.Dx(), play.Dx())
 	}
 }
 

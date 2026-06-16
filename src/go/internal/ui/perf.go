@@ -96,6 +96,14 @@ func (p *perfCounters) reset() {
 	atomic.StoreInt64(&p.updSumNS, 0)
 	atomic.StoreInt64(&p.updMaxNS, 0)
 	p.updTopNS = [perfTrimOutliers]int64{}
+	// Draw accumulators were previously NOT reset here, so DrawAvgMS
+	// (= drawSumNS / (frames-warmup)) reported cumulative-since-page-load
+	// draw time divided by per-reset frames — inflating monotonically across
+	// every resetPerfStats() call and making drawAvg/drawMax unusable in any
+	// test that resets between phases (perf_e2e, fx_chain_stress). frames is
+	// reset above, so drawSumNS/drawMaxNS must be too.
+	atomic.StoreInt64(&p.drawSumNS, 0)
+	atomic.StoreInt64(&p.drawMaxNS, 0)
 	atomic.StoreInt64(&p.aEnq, 0)
 	atomic.StoreInt64(&p.aDeq, 0)
 	atomic.StoreInt64(&p.aQLatSumNS, 0)

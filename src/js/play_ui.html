@@ -7,7 +7,17 @@
   <body>
     <script type="module" src="audio.js"></script>
     <script src="wasm_exec.js"></script>
-    <script>
+    <!-- Module (deferred), so it runs AFTER the audio.js module above has
+         executed and defined window.audioReady + window.seedInstrumentDefaults.
+         A classic <script> here runs at parse time, BEFORE the deferred audio.js
+         module, so window.audioReady is still undefined and the Promise.all
+         below silently falls back to Promise.resolve() — go.run is then NOT
+         gated on audio.js, and Go's SeedInstrumentDefaultsToPlatform can call
+         window.seedInstrumentDefaults before it exists (silent no-op at
+         synth_recipe_wasm.go), dropping the modular-pad bootstrap defaults
+         (intermittent modular_synth_audible step-5 failure under load). Mirrors
+         production index.html, which already uses a module bootstrap. -->
+    <script type="module">
       const go = new Go();
       const wasmReady = WebAssembly.instantiateStreaming(fetch('play_ui.wasm'), go.importObject);
       Promise.all([wasmReady, window.audioReady || Promise.resolve()])

@@ -19,8 +19,6 @@ func newTestAudioStickyBar(t *testing.T, rect image.Rectangle) (*AudioStickyBar,
 	bar := NewAudioStickyBar(
 		130,
 		func() { log.channel++ },
-		func() { log.freeze++ },
-		func() { log.close++ },
 		func(tab PanelTab) { log.tabs = append(log.tabs, tab) },
 	)
 	bar.Layout(rect)
@@ -29,8 +27,6 @@ func newTestAudioStickyBar(t *testing.T, rect image.Rectangle) (*AudioStickyBar,
 
 type stickyBarCallbackLog struct {
 	channel int
-	freeze  int
-	close   int
 	tabs    []PanelTab
 }
 
@@ -68,8 +64,8 @@ func TestStickyBarLayoutFitsWithinRect(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		check("tab"+string(rune('0'+i)), bar.TabBtn(i))
 	}
-	check("freeze", bar.FreezeBtn())
-	check("close", bar.CloseBtn())
+	check("legend", bar.LegendBtn())
+	check("expander", bar.ExpanderBtn())
 }
 
 // TestStickyBarHitAreasUseParentZIndex verifies all hit areas register at the
@@ -124,117 +120,12 @@ func TestStickyBarChannelClickInvokesCallback(t *testing.T) {
 	}
 }
 
-// TestStickyBarFreezeClickInvokesCallback verifies freeze button click routes
-// through the onFreeze callback supplied to the constructor.
-func TestStickyBarFreezeClickInvokesCallback(t *testing.T) {
-	assertDefaultParityState(t)
-
-	bar, log := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
-	if bar.FreezeBtn() == nil || bar.FreezeBtn().OnClick == nil {
-		t.Fatal("freeze button should have OnClick set")
-	}
-	bar.FreezeBtn().OnClick()
-	if log.freeze != 1 {
-		t.Errorf("expected freeze callback invoked once, got %d", log.freeze)
-	}
-}
-
-// TestStickyBarCloseClickInvokesCallback verifies close button click routes
-// through the onClose callback.
-func TestStickyBarCloseClickInvokesCallback(t *testing.T) {
-	assertDefaultParityState(t)
-
-	bar, log := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
-	if bar.CloseBtn() == nil || bar.CloseBtn().OnClick == nil {
-		t.Fatal("close button should have OnClick set")
-	}
-	bar.CloseBtn().OnClick()
-	if log.close != 1 {
-		t.Errorf("expected close callback invoked once, got %d", log.close)
-	}
-}
-
-// TestStickyBarHasFreqScaleChip verifies the bar exposes a non-nil
-// freq-scale chip whose default state is the log axis, with the label
-// "log".
-func TestStickyBarHasFreqScaleChip(t *testing.T) {
-	assertDefaultParityState(t)
-
-	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
-	if bar.FreqScaleBtn() == nil {
-		t.Fatal("FreqScaleBtn() returned nil; want non-nil button")
-	}
-	if !bar.FreqScaleLog() {
-		t.Errorf("FreqScaleLog() = false at construction; want true (log default)")
-	}
-	if got := bar.FreqScaleBtn().Text; got != "log" {
-		t.Errorf("FreqScaleBtn().Text = %q at construction; want \"log\"", got)
-	}
-}
-
-// TestStickyBarFreqScaleClickToggles verifies that clicking the freq-scale
-// chip flips between log and lin and updates the button label in lockstep.
-func TestStickyBarFreqScaleClickToggles(t *testing.T) {
-	assertDefaultParityState(t)
-
-	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
-	btn := bar.FreqScaleBtn()
-	if btn == nil || btn.OnClick == nil {
-		t.Fatal("freq-scale chip should have OnClick set")
-	}
-
-	btn.OnClick()
-	if bar.FreqScaleLog() {
-		t.Errorf("after 1 click: FreqScaleLog()=true; want false")
-	}
-	if got := btn.Text; got != "lin" {
-		t.Errorf("after 1 click: Text=%q; want \"lin\"", got)
-	}
-
-	btn.OnClick()
-	if !bar.FreqScaleLog() {
-		t.Errorf("after 2 clicks: FreqScaleLog()=false; want true (toggled back)")
-	}
-	if got := btn.Text; got != "log" {
-		t.Errorf("after 2 clicks: Text=%q; want \"log\"", got)
-	}
-}
-
-// TestStickyBarFreqScaleChipFitsInRect verifies the freq-scale chip lays out
-// inside the sticky bar after Layout. Guards against the chip overflowing the
-// bar or being assigned an empty rect (which would skip the hit-area build).
-func TestStickyBarFreqScaleChipFitsInRect(t *testing.T) {
-	assertDefaultParityState(t)
-
-	bar, _ := newTestAudioStickyBar(t, image.Rect(0, 0, 800, stickyBarH))
-	// The freq-scale chip ("log" / "lin") is now Spectrum-only chrome
-	// (mobile-usability pass: hidden on tabs that don't need it). Flip
-	// to Spectrum + relayout so the chip claims its rect.
-	bar.SetActiveTab(TabSpectrum)
-	bar.Layout(image.Rect(0, 0, 800, stickyBarH))
-	r := bar.FreqScaleBtn().Rect()
-	if r.Empty() {
-		t.Fatal("freq-scale chip rect should be non-empty after Layout")
-	}
-	if r.Min.X < 0 || r.Max.X > 800 {
-		t.Errorf("freq-scale chip rect %v overflows bar width 800", r)
-	}
-	if r.Min.Y < 0 || r.Max.Y > stickyBarH {
-		t.Errorf("freq-scale chip rect %v overflows bar height %d", r, stickyBarH)
-	}
-
-	// Confirm the chip's hit area is registered.
-	foundTag := false
-	for _, a := range bar.HitAreas() {
-		if a.Tag == "eq-freqscale-btn" {
-			foundTag = true
-			break
-		}
-	}
-	if !foundTag {
-		t.Error("eq-freqscale-btn hit area missing from sticky bar HitAreas()")
-	}
-}
+// NOTE: the freeze toggle, the close button, and the freq-scale (log/lin) chip
+// were removed from the sticky bar in the slim-bar phase. Freeze + freq-scale
+// moved into the per-tab control components (audio_tab_controls.go) — covered
+// by TestWaveControls* / TestLevelsControls* / TestSpectrumControls*. The X
+// close button was deleted entirely (TestCloseButtonGone in
+// audio_tab_controls_test.go pins its absence).
 
 // TestStickyBarRectMatchesLastLayout exercises (*AudioStickyBar).Rect(),
 // the public bounds accessor used by the screenshot harness (subject
@@ -258,8 +149,9 @@ func TestStickyBarRectMatchesLastLayout(t *testing.T) {
 // --- Task B2: integration with EQPanelZone ---
 
 // TestEQStickyBarOwnsAllChromeHits verifies that every chrome-prefixed hit
-// area (channel/tab-N/freeze/close) on the panel is present in the sticky
-// bar's hit-area list (set membership by tag).
+// area (channel/tab-N) on the panel is present in the sticky bar's hit-area
+// list (set membership by tag). Freeze + close are no longer bar chrome
+// (slim-bar phase).
 func TestEQStickyBarOwnsAllChromeHits(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -277,7 +169,7 @@ func TestEQStickyBarOwnsAllChromeHits(t *testing.T) {
 		stickyTags[a.Tag] = true
 	}
 
-	chromePrefixes := []string{"eq-channel-btn", "eq-freeze-btn", "eq-close-btn"}
+	chromePrefixes := []string{"eq-channel-btn"}
 	for _, prefix := range chromePrefixes {
 		matched := false
 		for _, a := range z.HitAreas() {
@@ -289,9 +181,9 @@ func TestEQStickyBarOwnsAllChromeHits(t *testing.T) {
 			}
 		}
 		if !matched {
-			// Some chrome (e.g. close) is desktop+mobile; freeze appears on non-EQ tabs.
-			// The default tab is EQ — channel must always be present.
-			if prefix == "eq-channel-btn" || prefix == "eq-close-btn" {
+			// The channel pill must always be present (it's the persistent
+			// left-anchored selector on every tab).
+			if prefix == "eq-channel-btn" {
 				t.Errorf("expected chrome hit %q present on panel", prefix)
 			}
 		}
@@ -309,30 +201,9 @@ func TestEQStickyBarOwnsAllChromeHits(t *testing.T) {
 	}
 }
 
-// TestEQHasCloseButton verifies the panel exposes a close button which
-// invokes EQCallbacks.OnClose when clicked.
-func TestEQHasCloseButton(t *testing.T) {
-	assertDefaultParityState(t)
-
-	closeCount := 0
-	cb := EQCallbacks{OnClose: func() { closeCount++ }}
-	z := NewEQPanelZone(cb)
-	tree := registerEQZone(z, image.Rect(0, 400, 600, 580))
-	restore := noInputForTest()
-	tree.Update()
-	restore()
-
-	if z.stickyBar == nil || z.stickyBar.CloseBtn() == nil {
-		t.Fatal("EQPanelZone should expose a close button via stickyBar")
-	}
-	if r := z.stickyBar.CloseBtn().Rect(); r.Empty() {
-		t.Fatal("close button rect should be non-empty after layout")
-	}
-	z.stickyBar.CloseBtn().OnClick()
-	if closeCount != 1 {
-		t.Errorf("expected OnClose invoked once, got %d", closeCount)
-	}
-}
+// NOTE: TestEQHasCloseButton was deleted in the slim-bar phase — the X close
+// button and EQCallbacks.OnClose were removed entirely. TestCloseButtonGone in
+// audio_tab_controls_test.go now pins the button's absence on every tab.
 
 // TestEQHPFLPFInsideContentRectOnEQTab verifies that on TabEQ the HPF and LPF
 // buttons sit inside the panel's content rect (below the sticky bar) and not

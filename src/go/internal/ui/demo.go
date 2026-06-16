@@ -43,6 +43,20 @@ func (g *Game) buildDemo() {
 		return
 	}
 
+	// The initial demo circuit is NOT a user action. Whichever construction path
+	// runs below (env config / embedded startup JSON / programmatic fallback), the
+	// build emits node/row/edge changes that the per-frame undo bracket would
+	// otherwise record as the first undo step — leaving the transport Undo button
+	// lit at launch. Reset the undo baseline to the freshly-built document on every
+	// exit so the stack is empty (buttons greyed) until the user actually edits.
+	// The early-return above runs before this defer, so a redundant buildDemo call
+	// on an already-built game never wipes real user history.
+	defer func() {
+		if g.undoManager != nil {
+			g.undoManager.OnExternalLoad()
+		}
+	}()
+
 	// Optional override: when BEATMO_DEMO_CONFIG (or BEATMO_CONFIG) is set,
 	// load that JSON as the initial circuit.
 	cfg := os.Getenv("BEATMO_DEMO_CONFIG")
@@ -106,6 +120,10 @@ func (g *Game) buildDemo() {
 	// If this fails, fall back to the programmatic construction below.
 	if len(assets_pkg.StartupDemoJSON) > 0 {
 		if err := g.Import(assets_pkg.StartupDemoJSON); err == nil {
+			// Force the shipped demo's instrument (and thus node + edge) colors
+			// onto the canonical predictable sequence by row index, so the
+			// startup circuit always complies even if the baked JSON drifts.
+			g.drum.ResequenceRowColors()
 			g.logger.Infof("[DEMO] Using embedded startup rock demo (rows=%d)", len(g.drum.Rows))
 			g.demoBuilt = true
 			return
@@ -186,6 +204,10 @@ func (g *Game) buildDemo() {
 	// Fit drum machine length to the largest loop length encountered.
 	// updateBeatInfos computes per-row paths and shrinks beat length to traversal.
 	g.updateBeatInfos()
+
+	// Pure sequential by row index: re-derive instrument colors from the
+	// canonical series so the programmatic demo matches the embedded one.
+	g.drum.ResequenceRowColors()
 
 	// Nudge the timeline to start at the beginning.
 	g.drum.Offset = 0

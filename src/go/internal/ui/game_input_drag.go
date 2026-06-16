@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"image"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
@@ -14,6 +16,9 @@ func (g *Game) enqueueUI(fn func()) {
 
 // blocksAt reports whether any UI overlay blocks interaction at (x,y).
 func (g *Game) blocksAt(x, y int) bool {
+	if image.Pt(x, y).In(g.gridHelpButtonRect()) {
+		return true
+	}
 	if g.drum != nil && g.drum.BlocksAt(x, y) {
 		return true
 	}
@@ -61,7 +66,7 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 
 // menuHit reports whether a screen-space point lies within the node sidebar.
 func (g *Game) menuHit(x, y int) bool {
-	return g.sidebar.Hit(x, y)
+	return g.sidebar.Hit(x, y) || image.Pt(x, y).In(g.gridHelpButtonRect())
 }
 
 func (g *Game) spawnPulseFromRow(row, start int) {

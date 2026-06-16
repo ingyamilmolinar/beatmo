@@ -7,6 +7,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
+// fxActiveStyle / fxInactiveStyle are the per-instrument FX-chip styles the row
+// rack now applies: FX-on = the full instrument hue, FX-off = a dim tint of it
+// (see row_instrument_shades.go). They replace the former fixed FXActiveStyle /
+// InstButtonStyle the FX button used before per-instrument shading.
+func fxActiveStyle(dv *DrumView, row int) ButtonStyle {
+	return rowToggleStyle(dv.Rows[row].Color, roleFX, true)
+}
+func fxInactiveStyle(dv *DrumView, row int) ButtonStyle {
+	return rowToggleStyle(dv.Rows[row].Color, roleFX, false)
+}
+
 // fxButtonForRow returns the FX button for the given row.
 func fxButtonForRow(t *testing.T, dv *DrumView, row int) *Button {
 	t.Helper()
@@ -36,8 +47,8 @@ func TestFXButton_HighlightedWhenAnyEffectEnabled(t *testing.T) {
 
 	renderRowControlsDirect(t, dv)
 	btn := fxButtonForRow(t, dv, 0)
-	if btn.Style != FXActiveStyle {
-		t.Errorf("with one enabled effect, expected FXActiveStyle, got %T", btn.Style)
+	if btn.Style != fxActiveStyle(dv, 0) {
+		t.Errorf("with one enabled effect, expected the active instrument-hue FX style, got %v", btn.Style)
 	}
 }
 
@@ -52,24 +63,24 @@ func TestFXButton_InactiveWhenAllEffectsDisabled(t *testing.T) {
 
 	renderRowControlsDirect(t, dv)
 	btn := fxButtonForRow(t, dv, 0)
-	if btn.Style != FXActiveStyle {
-		t.Fatalf("precondition: expected FXActiveStyle with one enabled effect, got %T", btn.Style)
+	if btn.Style != fxActiveStyle(dv, 0) {
+		t.Fatalf("precondition: expected active instrument-hue FX style with one enabled effect, got %v", btn.Style)
 	}
 
 	// Disable the only effect — button must become inactive.
 	audio.ToggleInsertEffect(instID, 0, false)
 	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
-	if btn.Style != InstButtonStyle {
-		t.Errorf("with all effects disabled, expected InstButtonStyle, got %T", btn.Style)
+	if btn.Style != fxInactiveStyle(dv, 0) {
+		t.Errorf("with all effects disabled, expected dim instrument-hue FX style, got %v", btn.Style)
 	}
 
 	// Re-enable — button must become highlighted again.
 	audio.ToggleInsertEffect(instID, 0, true)
 	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
-	if btn.Style != FXActiveStyle {
-		t.Errorf("after re-enable, expected FXActiveStyle, got %T", btn.Style)
+	if btn.Style != fxActiveStyle(dv, 0) {
+		t.Errorf("after re-enable, expected active instrument-hue FX style, got %v", btn.Style)
 	}
 }
 
@@ -86,24 +97,24 @@ func TestFXButton_StaysHighlightedIfAnyEffectEnabled(t *testing.T) {
 	btn := fxButtonForRow(t, dv, 0)
 
 	renderRowControlsDirect(t, dv)
-	if btn.Style != FXActiveStyle {
-		t.Fatalf("both enabled, expected FXActiveStyle, got %T", btn.Style)
+	if btn.Style != fxActiveStyle(dv, 0) {
+		t.Fatalf("both enabled, expected active instrument-hue FX style, got %v", btn.Style)
 	}
 
 	// Disable just one — still highlighted because second remains enabled.
 	audio.ToggleInsertEffect(instID, 0, false)
 	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
-	if btn.Style != FXActiveStyle {
-		t.Errorf("one of two enabled, expected FXActiveStyle, got %T", btn.Style)
+	if btn.Style != fxActiveStyle(dv, 0) {
+		t.Errorf("one of two enabled, expected active instrument-hue FX style, got %v", btn.Style)
 	}
 
 	// Disable the second — now inactive.
 	audio.ToggleInsertEffect(instID, 1, false)
 	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
-	if btn.Style != InstButtonStyle {
-		t.Errorf("both disabled, expected InstButtonStyle, got %T", btn.Style)
+	if btn.Style != fxInactiveStyle(dv, 0) {
+		t.Errorf("both disabled, expected dim instrument-hue FX style, got %v", btn.Style)
 	}
 }
 
@@ -118,15 +129,15 @@ func TestFXButton_InactiveAfterRemovingAllEffects(t *testing.T) {
 
 	btn := fxButtonForRow(t, dv, 0)
 	renderRowControlsDirect(t, dv)
-	if btn.Style != FXActiveStyle {
-		t.Fatalf("precondition: expected FXActiveStyle, got %T", btn.Style)
+	if btn.Style != fxActiveStyle(dv, 0) {
+		t.Fatalf("precondition: expected active instrument-hue FX style, got %v", btn.Style)
 	}
 
 	audio.RemoveInsertEffect(instID, 0)
 	dv.syncFXToRow(0)
 	renderRowControlsDirect(t, dv)
-	if btn.Style != InstButtonStyle {
-		t.Errorf("after removing all effects, expected InstButtonStyle, got %T", btn.Style)
+	if btn.Style != fxInactiveStyle(dv, 0) {
+		t.Errorf("after removing all effects, expected dim instrument-hue FX style, got %v", btn.Style)
 	}
 }
 

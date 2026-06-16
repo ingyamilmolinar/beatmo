@@ -25,6 +25,15 @@ import (
 var (
 	imagesAllocatedTotal int64
 	drawCallsTotal       int64
+	// gridTileBlitsTotal counts grid-tile DrawImage blits into the grid cache.
+	// A grid rebuild tiles a stepPx-sized tile across the padded cache, so a naive
+	// tiling does ~area/stepPx² blits — quadratic as the camera zooms OUT (stepPx
+	// shrinks). At extreme zoom-out that is tens of thousands of DrawImage calls
+	// per frame, blocking Draw long enough on the single WASM thread to starve the
+	// sequencer goroutine (audio degrades, worse the further out). This counter
+	// makes that cost a deterministic, testable number (the grid must tile a
+	// multi-cell block so the blit count stays bounded across zoom levels).
+	gridTileBlitsTotal int64
 
 	imagesByTagMu sync.Mutex
 	imagesByTag   = map[string]int64{}
@@ -100,11 +109,20 @@ func MetricImagesAllocatedTotal() int64 {
 // MetricDrawCallsTotal returns the cumulative number of bumpDrawCall calls.
 func MetricDrawCallsTotal() int64 { return atomic.LoadInt64(&drawCallsTotal) }
 
+// bumpGridTileBlit increments the grid-tile blit counter; called once per tile
+// DrawImage in the grid-cache tiling loop.
+func bumpGridTileBlit() { atomic.AddInt64(&gridTileBlitsTotal, 1) }
+
+// MetricGridTileBlits returns the cumulative number of grid-tile blits since the
+// last ResetImageMetrics.
+func MetricGridTileBlits() int64 { return atomic.LoadInt64(&gridTileBlitsTotal) }
+
 // ResetImageMetrics zeroes the cumulative counters. Called at bench start and
 // once during the bench duration window to scope the numbers to playback.
 func ResetImageMetrics() {
 	atomic.StoreInt64(&imagesAllocatedTotal, 0)
 	atomic.StoreInt64(&drawCallsTotal, 0)
+	atomic.StoreInt64(&gridTileBlitsTotal, 0)
 	imagesByTagMu.Lock()
 	for k := range imagesByTag {
 		delete(imagesByTag, k)
@@ -157,9 +175,6 @@ func (g *Game) snapshotLiveImages() int {
 			n++
 		}
 		if dv.rowsLayerScratch != nil {
-			n++
-		}
-		if dv.colorWheelImg != nil {
 			n++
 		}
 		if dv.toolbarCache != nil {

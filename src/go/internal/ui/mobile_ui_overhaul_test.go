@@ -246,8 +246,8 @@ func TestMobileRowControlsSimplified(t *testing.T) {
 }
 
 // TestMobileContextMenuOpens verifies that openContextMenu creates a valid
-// context menu with 7 buttons (6 items + close) bounded within dv.Bounds.
-// Mobile items: Instrument, Rename, Color, Effects, Origin, Delete (+ close).
+// context menu with 4 buttons (3 items + close) bounded within dv.Bounds.
+// Mobile items: Rename, Origin, Delete (+ close) — identical to desktop.
 func TestMobileContextMenuOpens(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -456,8 +456,10 @@ func TestDesktopRowControlsFull(t *testing.T) {
 	}
 }
 
-// TestDesktopTransportFull verifies that Upload/Import/Export buttons
-// have valid rects and no overflow button is used on desktop.
+// TestDesktopTransportFull verifies that on desktop the File ops
+// (Upload/Import/Export) live behind a single overflow "..." button — matching
+// mobile — rather than being crowded inline. The overflow button is the visible
+// menu trigger; the inline file-op buttons are hidden.
 func TestDesktopTransportFull(t *testing.T) {
 	setupMobileTest(t, false) // desktop
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -476,16 +478,17 @@ func TestDesktopTransportFull(t *testing.T) {
 		{"export", dv.exportBtn()},
 	} {
 		r := pair.btn.Rect()
-		if r.Dx()*r.Dy() == 0 {
-			t.Errorf("desktop: %s button has zero area", pair.name)
+		if r.Dx()*r.Dy() != 0 {
+			t.Errorf("desktop: %s button should be hidden inline (behind overflow menu), got %v", pair.name, r)
 		}
 	}
-	// Overflow button should have zero area on desktop (hidden).
-	if dv.overflowBtn() != nil {
-		or := dv.overflowBtn().Rect()
-		if or.Dx()*or.Dy() > 0 {
-			t.Errorf("desktop: overflow button should have zero area, got %v", or)
-		}
+	// Overflow button should be visible on desktop (the single menu trigger).
+	if dv.overflowBtn() == nil {
+		t.Fatal("desktop: overflow button missing")
+	}
+	or := dv.overflowBtn().Rect()
+	if or.Dx()*or.Dy() == 0 {
+		t.Errorf("desktop: overflow button should have non-zero area, got %v", or)
 	}
 }
 

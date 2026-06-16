@@ -29,20 +29,50 @@ func scaleRectAboutCenter(r image.Rectangle, scale float64) image.Rectangle {
 	)
 }
 
-// buttonGlowAlpha returns the alpha of the azure accent glow ring. The
-// single-chrome-accent discipline reserves the accent for interaction: 0 at
-// rest, a steady value on hover, and a |sin| pulse when the button is latched
-// (toggled). Toggled takes precedence over hover.
+// buttonGlowAlpha returns the alpha of the cyan accent glow ring for a binary
+// hover state. It is a thin wrapper over buttonGlowAlphaAnimated (hover
+// progress 1 when hovered, 0 otherwise) kept for call sites and tests that
+// reason about the settled hover level rather than the in-flight fade.
 func buttonGlowAlpha(hovered, toggled bool, frame int64) uint8 {
-	switch {
-	case toggled:
+	p := 0.0
+	if hovered {
+		p = 1
+	}
+	return buttonGlowAlphaAnimated(p, toggled, frame)
+}
+
+// buttonGlowAlphaAnimated returns the alpha of the cyan accent glow ring for an
+// in-flight hover fade. The single-chrome-accent discipline reserves the
+// accent for interaction: a |sin| pulse when the button is latched (toggled,
+// which takes precedence and ignores hover), otherwise the hover-rest ceiling
+// scaled by hoverProgress (0..1) so the cursor-enter ramp glides smoothly from
+// 0 up to the same token-driven level the static hover used to sit at.
+func buttonGlowAlphaAnimated(hoverProgress float64, toggled bool, frame int64) uint8 {
+	if toggled {
 		return SinPulseAlpha(frame, genAnimButtonTogglePulse)
-	case hovered:
-		// Steady hover glow at the pulse's resting level.
-		return SinPulseAlpha(0, genAnimButtonTogglePulse)
-	default:
+	}
+	if hoverProgress <= 0 {
 		return 0
 	}
+	if hoverProgress > 1 {
+		hoverProgress = 1
+	}
+	// Hover-rest ceiling = a fraction (button-glow-rest) of the toggle pulse's
+	// own alpha scale, so the rest glow is token-governed rather than a
+	// hand-derived sample. Scaled by the fade progress.
+	return uint8(float64(genAnimButtonTogglePulse.AlphaScale) * float64(genAnimButtonGlowRest) * hoverProgress)
+}
+
+// buttonGlowRingColor picks the Vice City accent shade for the glow ring by
+// state: the hover ring uses primary-bright (#3FE0E8 — DESIGN.md's designated
+// "Hover ring; never decorative"), while the latched/active pulse uses the
+// base primary accent (#00C8E0). Both stay inside the single cyan
+// chrome-accent family (no hot-pink — that is reserved for focus rings).
+func buttonGlowRingColor(toggled bool) color.RGBA {
+	if toggled {
+		return TokenAccent()
+	}
+	return TokenAccentBright()
 }
 
 // drawButtonDropShadow paints a soft 1-px drop shadow beneath a resting button
@@ -57,13 +87,59 @@ func drawButtonDropShadow(dst *ebiten.Image, r image.Rectangle, rad int) {
 }
 
 // drawButtonGlowRing strokes an accent-coloured ring around the button at the
-// given alpha (from buttonGlowAlpha). A zero alpha is a no-op so resting
-// buttons carry no accent.
-func drawButtonGlowRing(dst *ebiten.Image, r image.Rectangle, rad int, alpha uint8) {
+// given color and alpha (from buttonGlowRingColor / buttonGlowAlphaAnimated).
+// A zero alpha is a no-op so resting buttons carry no accent.
+func drawButtonGlowRing(dst *ebiten.Image, r image.Rectangle, rad int, col color.RGBA, alpha uint8) {
 	if alpha == 0 || r.Empty() {
 		return
 	}
-	drawRoundedRect(dst, r, WithAlpha(TokenAccent(), alpha), rad, false)
+	drawRoundedRect(dst, r, WithAlpha(col, alpha), rad, false)
+}
+
+// drawButtonHoverGlow paints the high-visibility, cushioned hover affordance
+// around r, with every layer's alpha scaled by the fade progress p (0..1):
+//
+//  1. a soft primary-bright bloom expanded by button-hover-glow-spread, so the
+//     hover reads as a clear neon lift rather than a hairline;
+//  2. a dark contrast keyline hugging the button edge, then a crisp 2-px
+//     primary-bright ring just inside it — the dark backing makes the bright
+//     ring legible on both dark chrome and bright accent fills (contrast both
+//     ways);
+//  3. a light top edge + dark bottom edge bevel that lifts the button toward
+//     the cursor (a subtle 3D feel; light-from-above).
+//
+// Drawn on top of the (possibly cached) button by the hover overlay, so it is
+// independent of any zone sprite cache. Desktop-only is enforced by the caller.
+func drawButtonHoverGlow(dst *ebiten.Image, r image.Rectangle, rad int, p float64) {
+	if p <= 0 || r.Empty() {
+		return
+	}
+	if p > 1 {
+		p = 1
+	}
+	bright := TokenAccentBright()
+	// sa scales a base alpha by the fade progress.
+	sa := func(base uint8) uint8 { return uint8(float64(base) * p) }
+	spread := genGeomButtonHoverGlowSpread
+
+	// 1) Soft outer bloom (two falloff steps for a smooth halo).
+	drawRoundedRect(dst, r.Inset(-spread), WithAlpha(bright, sa(genAlphaSubtle)), rad+spread, false)
+	drawRoundedRect(dst, r.Inset(-1), WithAlpha(bright, sa(genAlphaMedium)), rad+1, false)
+
+	// 2) Dark contrast keyline at the very edge, then the crisp bright ring
+	// (2 px) just inside it — bright-on-dark reads against any background.
+	drawRoundedRect(dst, r, WithAlphaFromColor(color.Black, sa(genAlphaStrong)), rad, false)
+	drawRoundedRect(dst, r.Inset(1), WithAlpha(bright, sa(genAlphaStrong)), rad, false)
+	drawRoundedRect(dst, r.Inset(2), WithAlpha(bright, sa(genAlphaMedium)), rad, false)
+
+	// 3) Bevel: bright top edge + dark bottom edge → a raised 3D cushion.
+	if r.Dx() > 6 && r.Dy() > 6 {
+		band := genGeomButtonInnerShadowPx
+		top := image.Rect(r.Min.X+2, r.Min.Y+1, r.Max.X-2, r.Min.Y+1+band)
+		drawRect(dst, top, WithAlpha(colTextPrimary, sa(genAlphaStrong)), true)
+		bot := image.Rect(r.Min.X+2, r.Max.Y-1-band, r.Max.X-2, r.Max.Y-1)
+		drawRect(dst, bot, WithAlphaFromColor(color.Black, sa(genAlphaMedium)), true)
+	}
 }
 
 // drawButtonInnerShadow darkens the top inner edge of a pressed button so it
@@ -72,6 +148,8 @@ func drawButtonInnerShadow(dst *ebiten.Image, r image.Rectangle) {
 	if r.Empty() {
 		return
 	}
-	top := image.Rect(r.Min.X+1, r.Min.Y+1, r.Max.X-1, r.Min.Y+2)
+	// Band thickness is the button-inner-shadow-px geometry token (the inner
+	// pressed-in shadow inset thickness), measured down from the top edge.
+	top := image.Rect(r.Min.X+1, r.Min.Y+1, r.Max.X-1, r.Min.Y+genGeomButtonInnerShadowPx)
 	drawRect(dst, top, WithAlphaFromColor(color.Black, 48), true)
 }

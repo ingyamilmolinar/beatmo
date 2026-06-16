@@ -13,6 +13,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
 	"github.com/ingyamilmolinar/beatmo/internal/graphruntime"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
@@ -114,6 +115,15 @@ func New(logger *game_log.Logger) *Game {
 	// reach Game state. Must be set before any Draw that resolves the
 	// callback — every call site in drumview_ctor.go guards on nil.
 	g.drum.game = g
+	// Re-localize the UI on a language switch: invalidate text-baking caches so
+	// labels re-measure at the new locale's widths. Stored cancel lets tests
+	// drop the listener (the production Game is a process-lifetime singleton).
+	g.i18nCancel = i18n.OnChange(g.drum.OnLocaleChanged)
+	// Grid-pane settings gear (desktop-only): opens the same settings overlay
+	// as the "?"/"/" key. Drawn in the grid pane's top-right corner, NOT in the
+	// transport bar. Reuses the shared Button widget.
+	g.gridHelpBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleSettingsOverlay)
+	g.gridHelpBtn.Icon = string(IconSettings)
 	g.undoManager = NewUndoManager(g.undoCapture, g.undoRestore)
 	registerUndoObserver(g.undoManager)
 	// Ensure the timeline header interprets offsets/length in beats while we
@@ -158,10 +168,10 @@ func New(logger *game_log.Logger) *Game {
 		defer g.pendingNotifyMu.Unlock()
 		if p.Err != nil {
 			g.pendingNotifyError = append(g.pendingNotifyError,
-				"Recording save failed: "+p.Err.Error())
+				i18n.Tf(i18n.KeyNotifRecordingSaveFailed, p.Err.Error()))
 		} else {
 			g.pendingNotifyInfo = append(g.pendingNotifyInfo,
-				fmt.Sprintf("Recording saved (drops=%d): %s", p.Drops, p.Dir))
+				i18n.Tf(i18n.KeyNotifRecordingSaved, p.Drops, p.Dir))
 		}
 	})
 
@@ -308,5 +318,6 @@ func New(logger *game_log.Logger) *Game {
 	}
 	g.gridTree = NewGridTree()
 	g.registerGridTree()
+	g.keyboardRouter = newKeyboardShortcutRouter(g)
 	return g
 }

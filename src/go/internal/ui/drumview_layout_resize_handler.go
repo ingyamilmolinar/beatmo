@@ -43,6 +43,24 @@ func (h *LayoutResizeHandler) Capturing() bool {
 
 const layoutGrab = 6 // pixels from divider edge to detect
 
+// rowDividerGrabRect returns the pointer grab rect for row divider idx — the
+// visible pill expanded by the standard SpaceSM forgiveness, and nothing more.
+// This is the SAME footprint for every row divider, INCLUDING the EQ boundary.
+//
+// Earlier the EQ boundary used a much wider comfort band (160px wide, biased
+// downward into the sticky-bar's centre) so it was easy to grab. That band bled
+// into the area where the audio-panel EQ tab controls live, so reaching for a
+// tab lit the divider glow and flipped the resize cursor — an invasive hover.
+// Hover, cursor, and grab now all stop the instant the cursor leaves the pill:
+// the interactive footprint never extends past what the user can see.
+func (h *LayoutResizeHandler) rowDividerGrabRect(idx int) image.Rectangle {
+	pill := h.rowHandleRect(idx)
+	if pill.Empty() {
+		return image.Rectangle{}
+	}
+	return pill.Inset(-SpaceSM)
+}
+
 // HandleInput processes mouse input for layout resize.
 // Returns InputCaptured while dragging, InputConsumed when starting a drag,
 // or InputIgnored when not over a divider.
@@ -94,8 +112,7 @@ func (h *LayoutResizeHandler) HandleInput(x, y int, pressed bool) InputResult {
 	// Check row dividers (skip if inside any row control button/slider)
 	if axis, idx := h.detectRowDivider(x, y); idx >= 0 {
 		if !h.pointInsideRowControl(x, y) {
-			handleR := h.rowHandleRect(idx)
-			nearPill := image.Pt(x, y).In(handleR.Inset(-SpaceSM))
+			nearPill := image.Pt(x, y).In(h.rowDividerGrabRect(idx))
 			if nearPill {
 				h.syncHoverState(axis, idx)
 			} else {
@@ -265,6 +282,23 @@ func (h *LayoutResizeHandler) rowDividerSegments(rowIdx int) []image.Rectangle {
 	return segments
 }
 
+// rowDividerScreenY returns the actual on-screen Y of row divider `idx`.
+//
+// For the EQ boundary (a full-width audio panel sits below it), the panel is
+// rendered with a floor-expanded height (PanelHeightAt), so its real top edge —
+// dv.eqRect.Min.Y (== Bounds.Max.Y - eqH) — can sit well ABOVE the widget-board
+// boundary widgets.rowPos[idx+1]. The audio panel draws over the bottom of the
+// row rack, so the VISIBLE divider is the panel's top edge. Anchoring the pill,
+// the grab zone, and hit detection here keeps all three aligned with what the
+// user sees. When eqRect is empty (test stub with eqPanelHeight=0, mobile EQ
+// collapsed, or pre-layout), fall back to the widget-board boundary.
+func (h *LayoutResizeHandler) rowDividerScreenY(idx int) int {
+	if h.fullWidthWidgetBelow(idx) && !h.dv.eqRect.Empty() {
+		return h.dv.eqRect.Min.Y
+	}
+	return h.dv.widgets.rowPos[idx+1] + h.dv.Bounds.Min.Y
+}
+
 // detectRowDivider checks if (x,y) is over a row divider.
 // Returns ("row", idx) if detected, ("", -1) otherwise.
 // Uses widget-span-aware detection: row dividers are only grabbable in
@@ -276,23 +310,27 @@ func (h *LayoutResizeHandler) detectRowDivider(x, y int) (string, int) {
 	if !Profile().EnableLayoutResize {
 		return "", -1
 	}
-	off := h.dv.Bounds.Min
 	for i := 1; i < len(h.dv.widgets.rowPos)-1; i++ {
-		rowY := h.dv.widgets.rowPos[i] + off.Y
+		didx := i - 1
+		// EQ boundary (full-width panel below): detect only on the visible pill
+		// (plus SpaceSM forgiveness), so the grab never bleeds into the
+		// sticky-bar tab controls below it.
+		if h.fullWidthWidgetBelow(didx) {
+			if g := h.rowDividerGrabRect(didx); !g.Empty() && image.Pt(x, y).In(g) {
+				return "row", didx
+			}
+			continue
+		}
+		rowY := h.rowDividerScreenY(didx)
 		if utils.Abs(y-rowY) > layoutGrab {
 			continue
 		}
 		// Check if X falls within any valid line segment for this row divider
-		segments := h.rowDividerSegments(i - 1)
+		segments := h.rowDividerSegments(didx)
 		for _, seg := range segments {
 			if x >= seg.Min.X && x <= seg.Max.X {
-				return "row", i - 1
+				return "row", didx
 			}
-		}
-		// No line segments but a pill exists (EQ boundary): detect by Y
-		// proximity alone; HandleInput will further filter by pill proximity.
-		if len(segments) == 0 && h.fullWidthWidgetBelow(i-1) {
-			return "row", i - 1
 		}
 	}
 	return "", -1
@@ -326,8 +364,9 @@ func (h *LayoutResizeHandler) rowHandleRect(idx int) image.Rectangle {
 		return image.Rectangle{}
 	}
 	segments := h.rowDividerSegments(idx)
-	off := h.dv.Bounds.Min
-	y := h.dv.widgets.rowPos[idx+1] + off.Y
+	// Anchor to the divider's actual on-screen Y: the EQ boundary follows the
+	// rendered audio-panel top (dv.eqRect.Min.Y), not the widget-board row.
+	y := h.rowDividerScreenY(idx)
 	if len(segments) > 0 {
 		cx := (segments[0].Min.X + segments[len(segments)-1].Max.X) / 2
 		return SplitterHandleRect(cx, y, true)
@@ -363,6 +402,25 @@ func (h *LayoutResizeHandler) endDrag() {
 // handleDrag processes drag movement.
 func (h *LayoutResizeHandler) handleDrag(x, y int, pressed bool) {
 	if !pressed {
+		return
+	}
+	// EQ boundary: drive the audio-panel height DIRECTLY from the cursor. The
+	// widget-board row can't exceed the analysis-tab floor in a short drum pane,
+	// so a row-weight resize (ResizeAxis) has no visible effect — the panel
+	// stays pinned at the floor. Setting userEqH (an absolute height that
+	// overrides the floor) is what actually moves the divider.
+	if h.dragAxis == "row" && h.fullWidthWidgetBelow(h.dragIdx) {
+		newH := clampUserEqH(h.dv, h.dv.Bounds.Max.Y-y)
+		if newH != h.dv.userEqH {
+			h.dv.userEqH = newH
+			h.dv.refreshWidgetLayout()
+			h.dv.recalcButtons()
+			h.dv.calcLayout()
+			h.dv.invalidateRowCaches()
+			h.dv.rowsLayerDirty = true
+		}
+		h.dragPrev = y
+		h.dv.layoutDragPrev = y
 		return
 	}
 	cur := x

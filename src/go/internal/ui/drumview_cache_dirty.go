@@ -25,6 +25,7 @@ func (dv *DrumView) markAllRowsDirty() {
 		dv.rowFullDirty[i] = true
 	}
 	dv.rowsLayerDirty = true
+	dv.rowsWinContentDirty = true // content changed → windowed cache must re-bake
 }
 
 // markRowsShiftDirty invalidates cached sprites for offset shifts while
@@ -46,6 +47,7 @@ func (dv *DrumView) markRowCellsDirty(i int) {
 		dv.rowDirty[i] = true
 	}
 	dv.rowsLayerDirty = true
+	dv.rowsWinContentDirty = true // cell content changed → windowed cache re-bake
 }
 
 // markRowDirty invalidates the cached sprite for a single row. Safe for
@@ -60,6 +62,7 @@ func (dv *DrumView) markRowDirty(i int) {
 		}
 	}
 	dv.rowsLayerDirty = true
+	dv.rowsWinContentDirty = true // row content changed → windowed cache re-bake
 }
 
 // markRowShiftDirty invalidates the cached sprite for a single row but allows
@@ -80,6 +83,34 @@ func (dv *DrumView) invalidateRowCaches() {
 	dv.rowCacheH = 0
 	dv.markAllRowsDirty()
 	dv.rowsLayerDirty = true
+}
+
+// OnLocaleChanged re-invalidates every text-baking cache and text-heavy zone so
+// a language switch re-measures and re-bakes labels at the new locale's string
+// widths. Wired to i18n.OnChange in game_new.go. Cheap: just marks caches dirty;
+// the next layout/draw rebuilds them.
+func (dv *DrumView) OnLocaleChanged() {
+	dv.invalidateRowCaches()
+	dv.invalidateLabelCaches()
+	// Invalidate text-heavy panel zones so they re-layout at new string widths.
+	// Nil-guard each: a partially-built DrumView (or a Game without all zones)
+	// must not panic on a locale flip.
+	if dv.eqPanelZone != nil {
+		dv.eqPanelZone.Invalidate()
+		// The Chain (Scope) tab is owned by the EQ panel zone, not DrumView.
+		if cz := dv.eqPanelZone.ChainZone(); cz != nil {
+			cz.Invalidate()
+		}
+	}
+	if dv.rowRackZone != nil {
+		dv.rowRackZone.Invalidate()
+	}
+	// The mobile bottom-nav SegmentedControl copies its labels at construction,
+	// so it must be explicitly relabeled in the new locale (zone Invalidate does
+	// not reach it).
+	if dv.viewSwitchSegmented != nil {
+		dv.viewSwitchSegmented.SetLabels(dv.bottomNavLabels())
+	}
 }
 
 func (dv *DrumView) needsRowRebuild(i int) bool {

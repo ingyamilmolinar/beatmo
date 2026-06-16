@@ -488,11 +488,17 @@ func (g *Game) initJSEqWidgets() {
 	// (slope/Pre/K-20/log-lin on the sticky bar; display-mode/AG/freeze on Chain).
 	// These wrap existing zone accessors; the pill rects live in the snapshot's
 	// `chrome` object so the click itself stays a real, resilient interaction.
-	stickyBarOf := func() *AudioStickyBar {
+	spectrumControlsOf := func() *spectrumControls {
 		if g.drum == nil || g.drum.eqPanelZone == nil {
 			return nil
 		}
-		return g.drum.eqPanelZone.stickyBar
+		return g.drum.eqPanelZone.spectrumControls
+	}
+	levelsControlsOf := func() *levelsControls {
+		if g.drum == nil || g.drum.eqPanelZone == nil {
+			return nil
+		}
+		return g.drum.eqPanelZone.levelsControls
 	}
 	chainZoneOf := func() *ChainPanelZone {
 		if g.drum == nil || g.drum.eqPanelZone == nil {
@@ -501,26 +507,26 @@ func (g *Game) initJSEqWidgets() {
 		return g.drum.eqPanelZone.chainZone
 	}
 	js.Global().Set("spectrumSlope", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if sb := stickyBarOf(); sb != nil {
-			return js.ValueOf(sb.SlopeDBPerOct())
+		if sc := spectrumControlsOf(); sc != nil {
+			return js.ValueOf(sc.SlopeDBPerOct())
 		}
 		return js.ValueOf(nil)
 	}))
 	js.Global().Set("preOverlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if sb := stickyBarOf(); sb != nil {
-			return js.ValueOf(sb.PreOverlay())
+		if sc := spectrumControlsOf(); sc != nil {
+			return js.ValueOf(sc.PreOverlay())
 		}
 		return js.ValueOf(nil)
 	}))
 	js.Global().Set("k20View", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if sb := stickyBarOf(); sb != nil {
-			return js.ValueOf(sb.K20View())
+		if lc := levelsControlsOf(); lc != nil {
+			return js.ValueOf(lc.K20View())
 		}
 		return js.ValueOf(nil)
 	}))
 	js.Global().Set("freqScaleLog", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if sb := stickyBarOf(); sb != nil {
-			return js.ValueOf(sb.FreqScaleLog())
+		if sc := spectrumControlsOf(); sc != nil {
+			return js.ValueOf(sc.FreqScaleLog())
 		}
 		return js.ValueOf(nil)
 	}))
@@ -778,14 +784,17 @@ func (g *Game) initJSEqWidgets() {
 				chrome.Set(name, rectToJS(b.Rect()))
 			}
 		}
-		if dv.eqPanelZone != nil && dv.eqPanelZone.stickyBar != nil {
-			sb := dv.eqPanelZone.stickyBar
-			setChrome("slope", sb.SlopeBtn())
-			setChrome("pre", sb.PreBtn())
-			setChrome("k20", sb.K20Btn())
-			setChrome("clearClips", sb.ClearClipsBtn())
-			setChrome("logFreq", sb.FreqScaleBtn())
-			setChrome("resetHold", sb.ResetHoldBtn())
+		if dv.eqPanelZone != nil && dv.eqPanelZone.spectrumControls != nil {
+			sc := dv.eqPanelZone.spectrumControls
+			setChrome("slope", sc.slopeBtn)
+			setChrome("pre", sc.preBtn)
+			setChrome("logFreq", sc.freqScaleBtn)
+			setChrome("resetHold", sc.resetHoldBtn)
+		}
+		if dv.eqPanelZone != nil && dv.eqPanelZone.levelsControls != nil {
+			lc := dv.eqPanelZone.levelsControls
+			setChrome("k20", lc.k20Btn)
+			setChrome("clearClips", lc.clearClipsBtn)
 		}
 		if dv.eqPanelZone != nil && dv.eqPanelZone.chainZone != nil {
 			cz := dv.eqPanelZone.chainZone

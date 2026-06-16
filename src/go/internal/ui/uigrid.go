@@ -6,6 +6,8 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 const (
@@ -57,8 +59,12 @@ type ButtonVisual interface {
 
 // Button is a basic clickable component with a rectangular bounds and text label.
 type Button struct {
-	r       image.Rectangle
-	Text    string
+	r    image.Rectangle
+	Text string
+	// TextKey, when non-empty, makes the button resolve its label from the i18n
+	// catalog at draw time so a language switch updates it without
+	// reconstruction. Overrides Text. Set via NewButtonKey or SetTextKey.
+	TextKey i18n.Key
 	Style   ButtonVisual
 	OnClick func()
 	pressed bool
@@ -151,6 +157,26 @@ func NewSpecButton(text string, id ComponentID, onClick func()) *Button {
 	return b
 }
 
+// NewButtonKey constructs a spec-styled button whose label is resolved live
+// from the i18n catalog (resolve-at-draw). Prefer this for any localized label.
+func NewButtonKey(key i18n.Key, id ComponentID, onClick func()) *Button {
+	b := &Button{TextKey: key, OnClick: onClick}
+	b.SetSpec(id)
+	return b
+}
+
+// SetTextKey switches the button to live i18n resolution.
+func (b *Button) SetTextKey(key i18n.Key) { b.TextKey = key }
+
+// displayText returns the label to render: the live-resolved catalog string
+// when TextKey is set, else the static Text.
+func (b *Button) displayText() string {
+	if b.TextKey != "" {
+		return i18n.T(b.TextKey)
+	}
+	return b.Text
+}
+
 // Rect returns the button's bounds.
 func (b *Button) Rect() image.Rectangle { return b.r }
 
@@ -164,13 +190,15 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	b.AdvancePressAnim()
 	sr := scaleRectAboutCenter(b.r, b.PressScale())
 	rad := RadiusSM
-	// Cushion depth: neutral drop shadow at rest, azure accent-glow ring on
-	// hover/active, inner pressed-in shadow on press. Accent appears only on
-	// interaction so the single-chrome-accent invariant holds.
+	// Cushion depth: neutral drop shadow at rest, base-cyan accent-glow pulse
+	// when latched/active, inner pressed-in shadow on press. The *hover* glow
+	// is NOT drawn here — it lives in the per-frame DrumViewTree overlay
+	// (hover_glow_overlay.go) so it works for cached zones and tree-dispatched
+	// buttons alike; Button.Draw owns only the toggled/active pulse.
 	if !b.pressed {
 		drawButtonDropShadow(dst, sr, rad)
 	}
-	drawButtonGlowRing(dst, sr, rad, buttonGlowAlpha(b.hovered, b.toggled, uiAnimFrame))
+	drawButtonGlowRing(dst, sr, rad, buttonGlowRingColor(b.toggled), buttonGlowAlphaAnimated(0, b.toggled, uiAnimFrame))
 	switch {
 	case b.hasSpecID:
 		// Phase 4 PR3+ path: spec-driven render.
@@ -191,7 +219,7 @@ func (b *Button) Draw(dst *ebiten.Image) {
 			scale = 1.0
 		}
 		// Clip text to fit within the button rect.
-		clipped := clipTextToWidth(b.Text, b.r.Dx()-2*SpaceXS)
+		clipped := clipTextToWidth(b.displayText(), b.r.Dx()-2*SpaceXS)
 		spr := TextSprite(clipped)
 		// Center the scaled text within the button.
 		w := int(float64(TextWidth(clipped)) * scale)
@@ -285,7 +313,7 @@ func (b *Button) textRect() image.Rectangle {
 	if scale <= 0 {
 		scale = 1.0
 	}
-	clipped := clipTextToWidth(b.Text, b.r.Dx()-2*SpaceXS)
+	clipped := clipTextToWidth(b.displayText(), b.r.Dx()-2*SpaceXS)
 	w := int(float64(TextWidth(clipped)) * scale)
 	h := int(float64(TextHeight()) * scale)
 	x := b.r.Min.X + (b.r.Dx()-w)/2

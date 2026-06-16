@@ -3,15 +3,14 @@ package ui
 import (
 	"image"
 	"image/color"
-	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// indicatorTrackHeight is the thickness of the slider-level marker line.
-// Two pixels reads as a deliberate underline at every supported icon size
-// without competing with the glyph itself.
-const indicatorTrackHeight = 2
+// indicatorTrackHeight is the thickness of the slider-level marker.
+// Rounded 4px bar gives the indicator enough height to carry the pill shape
+// from drawSliderRail without competing with the icon glyph.
+const indicatorTrackHeight = 4
 
 // indicatorGapBelowIcon is the vertical breathing room between the icon
 // glyph's bottom edge and the indicator's top edge. The indicator may
@@ -68,21 +67,21 @@ func drawSliderLevelIndicator(dst *ebiten.Image, btnR, iconR image.Rectangle, va
 		return
 	}
 
-	trackR := image.Rect(iconR.Min.X, y0, iconR.Max.X, y1)
-	drawRect(dst, trackR, WithAlphaFromColor(fgCol, AlphaSubtle), true)
-
+	rail := image.Rect(iconR.Min.X, y0, iconR.Max.X, y1)
+	railVal := value
 	if off || value <= 0 {
-		return
+		railVal = 0
 	}
-	fillW := int(math.Round(float64(width) * value))
-	if fillW <= 0 {
-		return
+	// drawSliderRail wants a concrete color.RGBA. The icon color is frequently a
+	// color.NRGBA — per-row tints come from WithAlphaFromColor — so convert
+	// through color.RGBAModel rather than a type assertion. A plain
+	// fgCol.(color.RGBA) assertion fails for every colored row and would
+	// silently fall back to cyan, painting the wrong fill color.
+	fg, ok := fgCol.(color.RGBA)
+	if !ok {
+		fg = color.RGBAModel.Convert(fgCol).(color.RGBA)
 	}
-	if fillW > width {
-		fillW = width
-	}
-	fillR := image.Rect(iconR.Min.X, y0, iconR.Min.X+fillW, y1)
-	drawRect(dst, fillR, fgCol, true)
+	drawSliderRail(dst, rail, railVal, true /*horizontal*/, fg)
 }
 
 // drawVolumeButton renders the canonical volume control: a centered speaker

@@ -68,20 +68,22 @@ func TestDesktopBeatCounterWithinBounds(t *testing.T) {
 }
 
 // TestDesktopSingleRowTransport verifies the desktop transport is a single-row
-// layout — play and upload are in the same row.
+// layout — play (leftmost) and overflow (rightmost) are in the same row. Upload
+// is no longer inline on desktop (it moved behind the overflow menu), so the
+// overflow button is the rightmost inline control used to prove the single row.
 func TestDesktopSingleRowTransport(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), graph, testLogger)
 	dv.recalcButtons()
 	playR := dv.playBtn().Rect()
-	uploadR := dv.uploadBtn().Rect()
-	if playR.Empty() || uploadR.Empty() {
-		t.Fatalf("play or upload button has empty rect: play=%v upload=%v", playR, uploadR)
+	overflowR := dv.overflowBtn().Rect()
+	if playR.Empty() || overflowR.Empty() {
+		t.Fatalf("play or overflow button has empty rect: play=%v overflow=%v", playR, overflowR)
 	}
-	// Upload should be in the same row as play (overlapping Y ranges).
-	if uploadR.Min.Y >= playR.Max.Y || uploadR.Max.Y <= playR.Min.Y {
-		t.Fatalf("upload %v should overlap Y range with play %v in single-row layout", uploadR, playR)
+	// Overflow should be in the same row as play (overlapping Y ranges).
+	if overflowR.Min.Y >= playR.Max.Y || overflowR.Max.Y <= playR.Min.Y {
+		t.Fatalf("overflow %v should overlap Y range with play %v in single-row layout", overflowR, playR)
 	}
 }
 

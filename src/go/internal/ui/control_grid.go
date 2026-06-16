@@ -33,7 +33,14 @@ type ControlGrid struct {
 	rowH    int // cellH + vGap; the scroll item height
 	hGap    int
 	visRows int
+	maxCols int // 0 = unlimited; caps the adaptive column count (overrides the floor)
 }
+
+// SetMaxCols caps how many columns Layout will use, overriding both the
+// width-adaptive count AND the 2-column floor. 0 (default) leaves the grid
+// fully adaptive. The Synth tab sets this to make each knob cell wide enough to
+// host a plain-English purpose line beside its concept mini-visual.
+func (g *ControlGrid) SetMaxCols(n int) { g.maxCols = n }
 
 // NewControlGrid creates an empty grid using the given scrollbar style.
 func NewControlGrid(style ScrollbarStyle) *ControlGrid {
@@ -78,6 +85,9 @@ func (g *ControlGrid) Layout(rect image.Rectangle, count, cellIdealW, cellH, hGa
 	}
 	if cols < 2 {
 		cols = 2
+	}
+	if g.maxCols > 0 && cols > g.maxCols {
+		cols = g.maxCols // explicit cap overrides the adaptive count AND the floor
 	}
 	if cols > count {
 		cols = count
@@ -127,6 +137,23 @@ func (g *ControlGrid) CellRect(i int) (image.Rectangle, bool) {
 
 // Cols reports the current column count.
 func (g *ControlGrid) Cols() int { return g.cols }
+
+// ScrollToIndex scrolls the minimal amount so control i's row lies inside the
+// visible window. No-op when i is already visible. Used to bring a freshly
+// focused control (e.g. a selected synth knob on a scrolled-off row) into view.
+func (g *ControlGrid) ScrollToIndex(i int) {
+	if g.cols <= 0 || i < 0 {
+		return
+	}
+	row := i / g.cols
+	vs := &g.scroll.VS
+	if row < vs.First {
+		vs.First = row
+	} else if vs.Visible > 0 && row >= vs.First+vs.Visible {
+		vs.First = row - vs.Visible + 1
+	}
+	vs.Clamp()
+}
 
 // HasScroll reports whether the grid overflows its content rect vertically.
 func (g *ControlGrid) HasScroll() bool { return g.scroll.HasScroll() }

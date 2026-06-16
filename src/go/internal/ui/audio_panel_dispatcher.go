@@ -63,27 +63,66 @@ func AnalyzerTapsForTab(tab PanelTab) []string {
 	return []string{audioPanelMasterChannelID}
 }
 
+// AnalyzerInstrumentTapsForTab returns the analyzer IDs to enable for a
+// tab that renders PER-INSTRUMENT data (Levels strips, the multi-channel
+// state, per-row detail). It is the master tap plus one tap per row
+// instrument id.
+//
+// This closes a desktop↔WASM parity gap. On desktop the mixer's analyzer
+// Service feeds every active instrument slot unconditionally, so the
+// Levels tab always shows every instrument. On WASM each per-instrument
+// WebAudio AnalyserNode is wired on demand (applyRowEQ or channel
+// select); a template that ships no per-instrument EQ and is never
+// channel-selected therefore left its instrument analysers unwired and
+// the per-instrument views blank even while audio played. Enabling a tap
+// per row instrument when the tab activates restores parity.
+//
+// Returns nil for tabs that don't read the analyzer at all (Synth,
+// Sampler), matching AnalyzerTapsForTab.
+func AnalyzerInstrumentTapsForTab(tab PanelTab, instrumentIDs []string) []string {
+	if !tabReadsMasterAnalyzer(tab) {
+		return nil
+	}
+	taps := make([]string, 0, 1+len(instrumentIDs))
+	taps = append(taps, audioPanelMasterChannelID)
+	for _, id := range instrumentIDs {
+		if id == "" || id == audioPanelMasterChannelID {
+			continue
+		}
+		taps = append(taps, id)
+	}
+	return taps
+}
+
 // EnsureAnalyzersForTab enables the analyzers required by the given
 // tab. Idempotent — repeated calls are a no-op once the analyzer is
 // created. activeChannelID is the channel currently selected in the
 // EQ channel picker; when it's non-empty and not "main", we also
 // enable that channel's analyzer so per-row EQ stays responsive.
 //
-// Callers: the onTab closure inside (*EQPanelZone)/NewEQPanelZone and
-// the boot path that instantiates DrumView with TabEQ pre-selected.
-// The function never panics on stub audio builds — the audio.Enable*
-// helpers are no-ops when no oto context is alive.
-func EnsureAnalyzersForTab(tab PanelTab, activeChannelID string) {
-	for _, id := range AnalyzerTapsForTab(tab) {
+// instrumentIDs are the row instrument ids currently present. For tabs
+// that render per-instrument data they each get an analyzer tap so the
+// Levels strip / per-row detail has data on WASM without requiring the
+// instrument to be EQ'd or selected first (see
+// AnalyzerInstrumentTapsForTab). Pass none to preserve the legacy
+// master-only behaviour.
+//
+// Callers: the onTab closure inside (*EQPanelZone)/NewEQPanelZone, the
+// boot path that instantiates DrumView with TabEQ pre-selected, and the
+// import path (rows change without a tab transition). The function never
+// panics on stub audio builds — the audio.Enable* helpers are no-ops
+// when no oto context is alive.
+func EnsureAnalyzersForTab(tab PanelTab, activeChannelID string, instrumentIDs ...string) {
+	enable := func(id string) {
 		_ = audio.EnableChannelAnalyzer(id, 512)
 		_ = audio.EnablePreEQAnalyzer(id, 512)
 		_ = audio.EnableSynthAnalyzer(id, 512)
 		audio.SetAnalyzerEnabled(id, true)
 	}
+	for _, id := range AnalyzerInstrumentTapsForTab(tab, instrumentIDs) {
+		enable(id)
+	}
 	if activeChannelID != "" && activeChannelID != audioPanelMasterChannelID {
-		_ = audio.EnableChannelAnalyzer(activeChannelID, 512)
-		_ = audio.EnablePreEQAnalyzer(activeChannelID, 512)
-		_ = audio.EnableSynthAnalyzer(activeChannelID, 512)
-		audio.SetAnalyzerEnabled(activeChannelID, true)
+		enable(activeChannelID)
 	}
 }

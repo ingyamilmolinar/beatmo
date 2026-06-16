@@ -168,6 +168,14 @@ var formatters = map[hooks.Kind]formatter{
 		b, _ := p.(hooks.EQBandPayload)
 		return formatted{tag: "audio", msg: fmt.Sprintf("EQ %s band %d = %+.1f dB", b.Channel, b.Band, b.GainDB)}
 	},
+	hooks.EventEQFilterToggled: func(p any) formatted {
+		f, _ := p.(hooks.EQFilterPayload)
+		state := "off"
+		if f.Enabled {
+			state = "on"
+		}
+		return formatted{tag: "audio", msg: fmt.Sprintf("EQ %s %s %s", f.Channel, f.Filter, state)}
+	},
 	hooks.EventInsertEffectAdded: func(p any) formatted {
 		e, _ := p.(hooks.InsertEffectPayload)
 		return formatted{tag: "audio", msg: fmt.Sprintf("insert FX added %s slot=%d type=%s", e.Channel, e.Slot, e.Type)}

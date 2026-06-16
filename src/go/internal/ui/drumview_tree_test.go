@@ -1453,21 +1453,18 @@ func TestTree_AutoFocusEQPanelWhenDBInputFocused(t *testing.T) {
 		t.Errorf("expected no focus initially, got %q", tree.focusedZone)
 	}
 
-	// Create and focus a dB TextInput at band 3 to simulate user editing.
-	// EQPanelZone.Update() calls updateDBInputs() which scans eqDBInputs
-	// to derive dbInputFocused. We need a real focused TextInput.
-	ti := NewTextInput(image.Rect(100, 100, 200, 120), BPMBoxStyle)
-	ti.focused = true
-	ti.SetText("6.0")
-	ez.eqDBInputs[3] = ti
+	// Open the shared dB editor for band 3 to simulate user editing.
+	// EQPanelZone now derives its focus state from paramEditor.Active(), and
+	// the tree mirrors that into focusedZone.
+	ez.openEQDBEditor(3)
 	tree.Update()
 
 	if tree.focusedZone != "eq-panel" {
-		t.Errorf("expected focusedZone='eq-panel' when dB input is focused, got %q", tree.focusedZone)
+		t.Errorf("expected focusedZone='eq-panel' when dB editor is open, got %q", tree.focusedZone)
 	}
 
-	// Blur the dB input.
-	ti.focused = false
+	// Close (cancel) the dB editor.
+	ez.paramEditor.cancel()
 	tree.Update()
 
 	if tree.focusedZone != "" {

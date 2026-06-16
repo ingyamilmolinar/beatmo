@@ -547,10 +547,14 @@ function processAudioEvent(ev, ctx) {
     trackSource(id, src);
     try { src.playbackRate.setValueAtTime(rate, when); } catch (_) { src.playbackRate.value = rate; }
     src.buffer = buf;
-    // Anti-pop: per-source fade GainNode with 5ms fade-in ramp.
+    // Anti-pop: per-source fade GainNode with 5ms fade-in ramp. The ramp target
+    // is CHAIN_SPEC.voiceHeadroom (NOT 1.0): native applies this per-voice
+    // attenuation before summing voices (engine_stop.go renderVoiceIntoInstBuf),
+    // so WebAudio must too — otherwise N voices sum hot and slam the master
+    // compressor/limiter into audible clipping (browser-only mix distortion).
     const fadeGain = ctx.createGain();
     fadeGain.gain.setValueAtTime(0, when);
-    fadeGain.gain.linearRampToValueAtTime(1, when + 0.005);
+    fadeGain.gain.linearRampToValueAtTime(CHAIN_SPEC.voiceHeadroom, when + 0.005);
     src.connect(fadeGain);
     fadeGain.connect(getBus(id, vol));
     src._antiPopGain = fadeGain; // stash for stopSound fade-out
@@ -574,10 +578,14 @@ function processAudioEvent(ev, ctx) {
     trackSource(id, src);
     src.buffer = buf;
     try { src.playbackRate.setValueAtTime(rate, when); } catch (_) { src.playbackRate.value = rate; }
-    // Anti-pop: per-source fade GainNode with 5ms fade-in ramp.
+    // Anti-pop: per-source fade GainNode with 5ms fade-in ramp. The ramp target
+    // is CHAIN_SPEC.voiceHeadroom (NOT 1.0): native applies this per-voice
+    // attenuation before summing voices (engine_stop.go renderVoiceIntoInstBuf),
+    // so WebAudio must too — otherwise N voices sum hot and slam the master
+    // compressor/limiter into audible clipping (browser-only mix distortion).
     const fadeGain = ctx.createGain();
     fadeGain.gain.setValueAtTime(0, when);
-    fadeGain.gain.linearRampToValueAtTime(1, when + 0.005);
+    fadeGain.gain.linearRampToValueAtTime(CHAIN_SPEC.voiceHeadroom, when + 0.005);
     src.connect(fadeGain);
     fadeGain.connect(getBus(id, vol));
     src._antiPopGain = fadeGain; // stash for stopSound fade-out
@@ -1131,24 +1139,16 @@ function ensureReverbSendBus() {
   const inputGain = c.createGain();
   inputGain.gain.value = 1;
 
-  // Generate a synthetic impulse response (Schroeder-style room).
-  const irLength = Math.floor(c.sampleRate * 1.5); // 1.5s reverb tail
-  const irBuffer = c.createBuffer(1, irLength, c.sampleRate);
-  const irData = irBuffer.getChannelData(0);
-  for (let i = 0; i < irLength; i++) {
-    const t = i / c.sampleRate;
-    // Exponential decay with random noise.
-    irData[i] = (Math.random() * 2 - 1) * Math.exp(-3 * t);
-  }
-
-  const convolver = c.createConvolver();
-  convolver.buffer = irBuffer;
+  // Algorithmic Schroeder reverb (native nodes), same as the insert reverb —
+  // replaces a ConvolverNode (CPU hog) and matches desktop's Schroeder reverb.
+  // Medium room/damping for a ~1.5s shared send tail.
+  const { input: rvInput, wet: rvWet } = buildSchroederReverbCore(c, 0.6, 0.4);
 
   const wetGain = c.createGain();
   wetGain.gain.value = 0.3;
 
-  inputGain.connect(convolver);
-  convolver.connect(wetGain);
+  inputGain.connect(rvInput);
+  rvWet.connect(wetGain);
   wetGain.connect(ensureMainNode());
   if (sendBusAnalyser) {
     wetGain.connect(sendBusAnalyser); // fan-out tap for StageSends
@@ -1440,6 +1440,80 @@ function _createWorkletInsertNode(c, slots) {
   }
 }
 
+// buildSchroederReverbCore builds a Freeverb/Schroeder reverb out of native
+// WebAudio nodes — 4 damped-feedback comb filters + 2 allpass stages — matching
+// the desktop C reverb (src/c/insert_fx.c ifx_reverb: COMB_DELAYS, AP_DELAYS,
+// fb = 0.7 + 0.28*room, allpass g = 0.5, one-pole damping). It replaces the
+// previous ConvolverNode reverb, which was BOTH the dominant audio-thread CPU
+// cost (an OfflineAudioContext benchmark measured a 2.5s-IR convolver at ~36×
+// a gain node and ~3× the next-most-expensive effect — the cause of choppy
+// playback under heavy FX on real hardware) AND a sound mismatch vs desktop's
+// Schroeder reverb. The algorithmic version is ~6.7× cheaper (15% of the
+// convolver cost) and closer to desktop. Returns { input, wet } where `wet` is
+// the 100%-wet reverb output (callers add their own dry/mix).
+//
+// Native-node caveat: WebAudio adds a 1-render-quantum (128-sample) latency to
+// every feedback loop, so the effective comb/allpass times are ~2.7ms longer
+// than the C engine's; the reverb character is preserved, the tail is not
+// sample-identical. (Exact parity would require reviving the insert-FX worklet
+// running ifx_reverb; that reintroduces the per-channel WASM cost this fix
+// removes, so it is intentionally not used for the default reverb.)
+function buildSchroederReverbCore(c, room, damping) {
+  const sr = c.sampleRate;
+  const COMB = [1116, 1188, 1277, 1356]; // samples @ 44100 (C: COMB_DELAYS)
+  const AP = [556, 441];                 // samples @ 44100 (C: AP_DELAYS)
+  const fb = 0.7 + 0.28 * Math.max(0, Math.min(1, room)); // C: fb formula
+  // C damping is a one-pole coef == damping; map to a biquad lowpass cutoff
+  // fc where damping = exp(-2π fc / sr)  ⇒  fc = -ln(damping)·sr/2π.
+  const dClamp = Math.max(1e-4, Math.min(0.9999, damping));
+  let fc = (-Math.log(dClamp) * sr) / (2 * Math.PI);
+  fc = Math.max(200, Math.min(sr * 0.45, fc));
+
+  const input = c.createGain();
+  const combSum = c.createGain();
+  combSum.gain.value = 1 / COMB.length;
+  for (const d of COMB) {
+    const delay = c.createDelay(0.1);
+    delay.delayTime.value = d / 44100;
+    const fbg = c.createGain();
+    fbg.gain.value = fb;
+    // input → delay → out(combSum); delay → fbg → delay (feedback)
+    input.connect(delay);
+    delay.connect(combSum);
+    delay.connect(fbg);
+    fbg.connect(delay);
+  }
+  // Damping: one lowpass on the comb sum. The C engine damps inside each comb's
+  // one-pole feedback (per-comb); native WebAudio has no cheap one-pole, so both
+  // a per-comb biquad and this single comb-sum biquad are approximations — the
+  // comb-sum placement is ~29% cheaper (OfflineAudioContext-measured) and brings
+  // the reverb in line with the compressor instead of being the dominant cost.
+  const damp = c.createBiquadFilter();
+  damp.type = "lowpass";
+  damp.frequency.value = fc;
+  combSum.connect(damp);
+  // Two Schroeder allpass stages in series: y = d[n-M] - g·x ; d[n] = x + g·d[n-M].
+  let node = damp;
+  const g = 0.5;
+  for (const d of AP) {
+    const delay = c.createDelay(0.05);
+    delay.delayTime.value = d / 44100;
+    const ff = c.createGain();
+    ff.gain.value = -g; // feedforward -g·x
+    const fbg = c.createGain();
+    fbg.gain.value = g; // feedback g·d
+    const out = c.createGain();
+    node.connect(delay);
+    node.connect(ff);
+    delay.connect(out);
+    ff.connect(out);
+    delay.connect(fbg);
+    fbg.connect(delay);
+    node = out;
+  }
+  return { input, wet: node };
+}
+
 // Creates a WebAudio subgraph for a single insert effect slot.
 // Returns { input, output, nodes } or null if the effect type is unknown.
 function createInsertEffectSubgraph(c, slot) {
@@ -1486,24 +1560,19 @@ function createInsertEffectSubgraph(c, slot) {
     case 'reverb': {
       const room = Math.max(0, Math.min(1, p.room ?? 0.5));
       const damping = Math.max(0, Math.min(1, p.damping ?? 0.5));
-      // Synthetic impulse response scaled by room size.
-      const irLen = Math.floor(c.sampleRate * (0.5 + room * 2.5));
-      const irBuf = c.createBuffer(1, irLen, c.sampleRate);
-      const irData = irBuf.getChannelData(0);
-      const decay = 2 + damping * 6;
-      for (let i = 0; i < irLen; i++) {
-        const t = i / c.sampleRate;
-        irData[i] = (Math.random() * 2 - 1) * Math.exp(-decay * t);
-      }
-      const conv = c.createConvolver();
-      conv.buffer = irBuf;
+      // Algorithmic Schroeder reverb (native nodes) — ~6.7× cheaper than the
+      // old per-channel ConvolverNode, which OfflineAudioContext benchmarking
+      // pinned as the dominant audio-thread CPU cost behind choppy heavy-FX
+      // playback (and matches desktop's Schroeder reverb). See
+      // buildSchroederReverbCore + bench-results/choppy_audio_fx_chain_findings.
+      const { input: rvInput, wet: rvWet } = buildSchroederReverbCore(c, room, damping);
       const input = c.createGain(); input.gain.value = 1;
       const dry = c.createGain(); dry.gain.value = 1 - mix;
       const wet = c.createGain(); wet.gain.value = mix;
       const output = c.createGain(); output.gain.value = 1;
       input.connect(dry); dry.connect(output);
-      input.connect(conv); conv.connect(wet); wet.connect(output);
-      return { input, output, nodes: [conv, dry, wet] };
+      input.connect(rvInput); rvWet.connect(wet); wet.connect(output);
+      return { input, output, nodes: [dry, wet] };
     }
     case 'chorus': {
       const rate = Math.max(0.1, Math.min(10, p.rate ?? 1.5));
@@ -3999,8 +4068,9 @@ window.startMultiChannelCapture = async (instrumentIDs, optsJSON) => {
   // Per-channel wiring: for each instrument id and the master, create:
   //   - AudioWorkletNode (capture processor)
   //   - MessageChannel (port1 → worklet, port2 → worker)
-  //   - source → captureNode → ctx.destination (parallel tap; output is
-  //     pass-through inside the worklet so it doesn't sink the audio)
+  //   - source → captureNode → ctx.destination (parallel tap; the worklet
+  //     emits SILENCE, so connecting it to destination keeps it in the active
+  //     render graph without adding any signal to the audible mix)
   const setups = [];
   // Per-instrument first…
   for (const id of instrumentIDs) {
@@ -4045,7 +4115,7 @@ window.startMultiChannelCapture = async (instrumentIDs, optsJSON) => {
     await configured;
 
     setup.source.connect(node);
-    node.connect(c.destination);  // parallel tap; pass-through
+    node.connect(c.destination);  // parallel tap; worklet emits silence (see worklet)
     state.nodes.set(setup.id, { node, chain: setup.chain, isMaster: setup.isMaster, source: setup.source });
   }
 

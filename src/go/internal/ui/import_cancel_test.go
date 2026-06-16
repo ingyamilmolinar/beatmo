@@ -27,8 +27,8 @@ func TestImportEmptyPayloadIgnored(t *testing.T) {
 	if calls != 0 {
 		t.Fatalf("onImport invoked for empty payload")
 	}
-	if len(dv.notifs) != 0 {
-		t.Fatalf("unexpected notification after empty import: %+v", dv.notifs)
+	if dv.notifStore.Len() != 0 {
+		t.Fatalf("unexpected notification after empty import: %+v", dv.notifStore.History())
 	}
 
 	payload := []byte(`{}`)

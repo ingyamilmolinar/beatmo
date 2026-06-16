@@ -91,7 +91,6 @@ type LayoutProfile struct {
 	AccentStripeWidth    int  // desktop: 3, mobile: 5
 	AccentStripeInsetY   int  // desktop: 0, mobile: 2
 	SplitterHandleColor  color.Color
-	DrawSplitterGrip     bool // desktop: grip lines inside pill
 	PopupCornerRadius    int
 	CloseButtonSize      int // mobile: BtnHeightSM, desktop: 16
 
@@ -99,6 +98,10 @@ type LayoutProfile struct {
 	EQSliderH      int // desktop: 14, mobile: 28
 	EQHandleRadius int // desktop: eqHandleRadius+7 (12), mobile: touchMinTargetPx/2 (22)
 	EQDBInputH     int // desktop: 14, mobile: 20
+
+	// SynthHeaderH is the synth/sampler tab header strip height — layout-tied
+	// (desktop 48 / mobile 38), sourced from profileOverrides.synthHeaderH.
+	SynthHeaderH int
 
 	// ── Sizing: Slider ─────────────────────────────────────
 	SliderTrackH     int  // desktop: 4, mobile: 6
@@ -206,7 +209,7 @@ func desktopProfile() *LayoutProfile {
 	// — see design_density.gen.go. Hand-coded fields are now limited to:
 	//   - float scales (PopupTextScale family — fractional)
 	//   - color references (PlayIconColor family)
-	//   - bool feature flags (DrawTopEdgeHighlight, DrawSplitterGrip, …)
+	//   - bool feature flags (DrawTopEdgeHighlight, …)
 	//   - ButtonVisual style references (PlayBtnStyle family)
 	g := genDesktopProfile
 	dv := densityValuesFor(densityForClass(ScreenDesktop))
@@ -243,8 +246,15 @@ func desktopProfile() *LayoutProfile {
 		HeaderMaxH:   dv.HeaderMaxH,
 		TimelineBarH: dv.TimelineBarH,
 
-		// Widget weights
-		ColWeights: []float64{1, 3},
+		// Widget weights. Column 0 hosts the per-row control cluster AND the
+		// instrument-name label (the label flexes to fill whatever col0 width
+		// is left of the right-anchored cluster — see layoutRowControls). At the
+		// old {1,3} (25%) the label was squeezed to ~110px, clipping all but the
+		// shortest names. Widening col0 to 40% ({2,3}) roughly triples the label
+		// area so instrument names render fully with room for renamed/long ones.
+		// controlsW absorbs the slack (leftW-labelW), so needW == col0W and the
+		// "tighten to content" pass in drumview_geometry.go leaves col0 intact.
+		ColWeights: []float64{2, 3},
 		RowWeights: []float64{3, 3, 3},
 
 		// Scrollbar
@@ -278,7 +288,6 @@ func desktopProfile() *LayoutProfile {
 		AccentStripeWidth:    dv.AccentStripeWidth,
 		AccentStripeInsetY:   dv.AccentStripeInsetY,
 		SplitterHandleColor:  colSplitterHandle,
-		DrawSplitterGrip:     true,
 		PopupCornerRadius:    g.PopupCornerRadius, // layout-tied
 		CloseButtonSize:      dv.CloseButtonSize,
 
@@ -286,6 +295,7 @@ func desktopProfile() *LayoutProfile {
 		EQSliderH:      dv.EqSliderH,
 		EQHandleRadius: dv.EqHandleRadius,
 		EQDBInputH:     dv.EqDBInputH,
+		SynthHeaderH:   g.SynthHeaderH, // layout-tied (profileOverride)
 
 		// Slider sizing — density-tied
 		SliderTrackH:     dv.SliderTrackH,
@@ -400,8 +410,7 @@ func mobileProfile() *LayoutProfile {
 		DrawTopEdgeHighlight: false,
 		AccentStripeWidth:    dv.AccentStripeWidth,
 		AccentStripeInsetY:   dv.AccentStripeInsetY,
-		SplitterHandleColor:  colSplitterHandleMobile,
-		DrawSplitterGrip:     false,
+		SplitterHandleColor:  colSplitterHandle,
 		PopupCornerRadius:    g.PopupCornerRadius, // layout-tied
 		CloseButtonSize:      dv.CloseButtonSize,
 
@@ -409,6 +418,7 @@ func mobileProfile() *LayoutProfile {
 		EQSliderH:      dv.EqSliderH,
 		EQHandleRadius: dv.EqHandleRadius,
 		EQDBInputH:     dv.EqDBInputH,
+		SynthHeaderH:   g.SynthHeaderH, // layout-tied (profileOverride)
 
 		// Slider sizing — density-tied
 		SliderTrackH:     dv.SliderTrackH,

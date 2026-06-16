@@ -72,16 +72,32 @@ func TestDesktopVolIconHitArea(t *testing.T) {
 	}
 }
 
-// TestDesktopVolColumnWeight asserts the desktop volume column weight is
-// narrower than the old slider weight (was 7, now should be smaller).
-func TestDesktopVolColumnWeight(t *testing.T) {
+// TestDesktopVolColumnWidth asserts the desktop volume cell is a compact
+// mini-bar (a fixed multiple of the control-button size), not the old
+// full-width slider that dominated the row.
+func TestDesktopVolColumnWidth(t *testing.T) {
 	forceSmallScreenForTest = false
 	activeProfile = nil
 	defer func() { activeProfile = nil }()
 
-	weights := rowControlWeights()
-	// Column index 3 is the volume column.
-	if weights[3] >= 7 {
-		t.Errorf("desktop volume column weight should be < 7 (icon+%%), got %.1f", weights[3])
+	rows := makeTestRows(2)
+	z, _ := newTestRowRackZone(rows)
+	z.Layout(image.Rect(0, 0, 400, 300))
+
+	sliders := z.RowVolSliders()
+	if len(sliders) == 0 || sliders[0].Rect().Empty() {
+		t.Fatal("expected a non-empty volume slider rect on desktop")
+	}
+	volW := sliders[0].Rect().Dx()
+	// Compact: at most a few control-buttons wide, and narrower than the
+	// flexing label cell.
+	if volW > 3*RowControlBtnSize() {
+		t.Errorf("desktop volume width %d too wide (> 3*RowControlBtnSize=%d)", volW, 3*RowControlBtnSize())
+	}
+	groups := z.RowGroups()
+	if len(groups) > 0 && groups[0].Label != nil && !groups[0].Label.Rect().Empty() {
+		if labelW := groups[0].Label.Rect().Dx(); volW >= labelW {
+			t.Errorf("desktop volume width %d should be narrower than label width %d", volW, labelW)
+		}
 	}
 }

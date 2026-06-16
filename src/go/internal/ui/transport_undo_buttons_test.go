@@ -22,12 +22,17 @@ func TestTransportUndoRedoButtonsWired(t *testing.T) {
 		t.Fatal("precondition: expected CanUndo after record")
 	}
 
+	// The buttons defer the restore via QueueAction (so it never runs under the
+	// seqMu that Game.Update holds during dispatch); Game.Update drains the queue
+	// after releasing the lock, which drainPendingActions reproduces here.
 	tz.undoBtn.OnClick()
+	g.drainPendingActions()
 	if !g.undoManager.CanRedo() {
 		t.Fatal("after undo-button click, redo should be available")
 	}
 
 	tz.redoBtn.OnClick()
+	g.drainPendingActions()
 	if !g.undoManager.CanUndo() {
 		t.Fatal("after redo-button click, undo should be available again")
 	}

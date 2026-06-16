@@ -150,6 +150,13 @@ func (g *Game) Layout(w, h int) (int, int) {
 		g.cam.Snap()
 		g.centered = true
 	}
+	// Position the grid-pane "?" help button (top-right corner). Derived every
+	// Layout from the splitter geometry so its rect is current for both input
+	// (mouse HandleInputResult / blocksAt / menuHit) and Draw without waiting
+	// on the draw pass. Empty rect on mobile (gridHelpButtonRect guards it).
+	if g.gridHelpBtn != nil {
+		g.gridHelpBtn.SetRect(g.gridHelpButtonRect())
+	}
 	g.logger.Debugf("[GAME] Layout: winW: %d, winH: %d, split.Y: %d, drum.Bounds: %v", g.winW, g.winH, g.split.Y, g.drum.Bounds)
 	return w, h
 }

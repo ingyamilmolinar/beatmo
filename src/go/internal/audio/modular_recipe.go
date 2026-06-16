@@ -20,7 +20,7 @@ func ModularSynthParamDefs() []ParamDef {
 		{Name: "osc_type", Label: "Oscillator", Group: "osc", Min: 0, Max: 6, Default: 0,
 			Enum: []string{"Sine", "Saw", "Square", "Triangle", "FM", "Noise White", "Noise Pink"}},
 		{Name: "osc_detune", Label: "Detune", Group: "osc", Min: -100, Max: 100, Default: 0, Unit: "cents"},
-		{Name: "osc_octave", Label: "Octave", Group: "osc", Min: -2, Max: 2, Default: 0},
+		{Name: "osc_octave", Label: "Octave", Group: "osc", Min: -2, Max: 2, Default: 0, Step: 1},
 
 		// FM stage (used when osc_type == FM).
 		{Name: "fm_algorithm", Label: "Algorithm", Group: "fm", Min: 0, Max: 3, Default: 0,

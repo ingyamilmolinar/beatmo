@@ -173,6 +173,53 @@ const (
 	spectrumMaxDB = 0.0
 )
 
+// spectrumFreqLabelMinH is the minimum height of the Hz-label row at the
+// bottom of the spectrum panel (legacy 14px floor).
+const spectrumFreqLabelMinH = 14
+
+// captionTextH returns the pixel height of one caption-scale text row.
+func captionTextH() int {
+	return int(float64(TextHeight()) * (FontSizeCaption / FontSizeBody))
+}
+
+// spectrumLabelRows splits a spectrum panel rect into three vertically
+// stacked, non-overlapping regions:
+//
+//	barRect    — the bar/curve plot area (top)
+//	bracketRow — the Bass/Mids/Treble bracket strip (line + group labels)
+//	hzRow      — the Hz tick-label row (bottom)
+//
+// Pure function so layout invariants are unit-testable. bracketStripH is
+// the density token (SpectrumBracketH); it is raised to fit a full caption
+// text row under the bracket line so the group labels can never bleed into
+// the Hz row below — the pre-fix bug stamped "Mids" over "1k" and "Treble"
+// over "8k" because both label sets shared one undersized strip.
+func spectrumLabelRows(rect image.Rectangle, bracketStripH, captionH int) (barRect, bracketRow, hzRow image.Rectangle) {
+	// Bracket row contents: 2px gap + 1px line (caps reach 2px below the
+	// line top) + caption text row starting 3px below the line top.
+	minBracket := captionH + 5
+	if bracketStripH < minBracket {
+		bracketStripH = minBracket
+	}
+	hzRowH := captionH + 2
+	if hzRowH < spectrumFreqLabelMinH {
+		hzRowH = spectrumFreqLabelMinH
+	}
+	barBottom := rect.Max.Y - hzRowH - bracketStripH
+	barRect = image.Rect(rect.Min.X+Profile().DensityValues().AudioLabelMarginW, rect.Min.Y, rect.Max.X, barBottom)
+	bracketRow = image.Rect(barRect.Min.X, barBottom, rect.Max.X, barBottom+bracketStripH)
+	hzRow = image.Rect(barRect.Min.X, bracketRow.Max.Y, rect.Max.X, rect.Max.Y)
+	return barRect, bracketRow, hzRow
+}
+
+// spectrumPanelRows resolves spectrumLabelRows from the live density
+// profile + font metrics. Every spectrum renderer (bars, pre-EQ overlay,
+// cursor) derives its plot geometry through this single helper so the
+// layers always align.
+func spectrumPanelRows(rect image.Rectangle) (barRect, bracketRow, hzRow image.Rectangle) {
+	return spectrumLabelRows(rect, Profile().DensityValues().SpectrumBracketH, captionTextH())
+}
+
 // drawAnalyzerSpectrum renders a 10-band ISO spectrum analyzer into the given
 // rectangle using the channel's FFT data. It draws frequency labels along the
 // bottom, a dB scale on the left, and optional peak-hold indicators when peaks
@@ -217,14 +264,10 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 		return
 	}
 
-	// Reserve 28px left for dB scale, 14px bottom for freq labels, plus
-	// 8px above that for the Bass/Mids/Treble bracket strip.
-	const freqLabelH = 14
-	bracketStripH := Profile().DensityValues().SpectrumBracketH
-	if bracketStripH < 6 {
-		bracketStripH = 6
-	}
-	barRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-freqLabelH-bracketStripH)
+	// Reserve a left margin for the dB scale, plus two stacked label rows
+	// below the bars: the Bass/Mids/Treble bracket strip and the Hz tick
+	// labels each get their own row so they can never collide.
+	barRect, bracketRow, hzRow := spectrumPanelRows(rect)
 
 	// Group FFT bins into 10 bands and compute average dB for each.
 	var bandDB [10]float64
@@ -248,6 +291,12 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 	// Draw dB reference lines and labels.
 	captionScale := FontSizeCaption / FontSizeBody
 	dbRefs := []float64{0, -12, -24, -36, -48, -60}
+	// Inset the reference lines from the panel edges so they never read
+	// as a border artifact, and skip any line pinned at the top of the
+	// range — the 0 dB ref at norm=1 landed flush under the sticky bar
+	// and read as an error underline across the whole tab.
+	lineX0 := barRect.Min.X + SpaceXS
+	lineX1 := barRect.Max.X - SpaceXS
 	for _, db := range dbRefs {
 		norm := (db - spectrumMinDB) / (spectrumMaxDB - spectrumMinDB)
 		y := barRect.Max.Y - int(norm*float64(barRect.Dy()))
@@ -266,21 +315,29 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 			gridCol = WithAlpha(genColorBorder, genAlphaMedium)
 			solid = true
 		}
-		if solid {
-			drawRect(dst, image.Rect(barRect.Min.X, y, barRect.Max.X, y+1), gridCol, true)
-		} else {
-			for x := barRect.Min.X; x < barRect.Max.X; x += 6 {
-				endX := x + 3
-				if endX > barRect.Max.X {
-					endX = barRect.Max.X
+		pinnedAtTop := y <= barRect.Min.Y
+		if !pinnedAtTop && lineX1 > lineX0 {
+			if solid {
+				drawRect(dst, image.Rect(lineX0, y, lineX1, y+1), gridCol, true)
+			} else {
+				for x := lineX0; x < lineX1; x += 6 {
+					endX := x + 3
+					if endX > lineX1 {
+						endX = lineX1
+					}
+					drawRect(dst, image.Rect(x, y, endX, y+1), gridCol, true)
 				}
-				drawRect(dst, image.Rect(x, y, endX, y+1), gridCol, true)
 			}
 		}
-		// Label on left margin.
+		// Label on left margin (SpaceXS inset so it never sits flush at
+		// x=0; clamped so the topmost label stays inside the panel).
 		label := fmt.Sprintf("%.0f", db)
 		lh := int(float64(TextHeight()) * captionScale)
-		DrawTextColorAtScale(dst, label, rect.Min.X+2, y-lh/2, colTextSecondary, captionScale)
+		ly := y - lh/2
+		if ly < rect.Min.Y {
+			ly = rect.Min.Y
+		}
+		DrawTextColorAtScale(dst, label, rect.Min.X+SpaceXS, ly, colTextSecondary, captionScale)
 	}
 
 	// High-resolution FFT curve underlay. Maps every FFT bin to its
@@ -351,17 +408,30 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 
 		x0 := barRect.Min.X + b*(barWidth+1)
 		x1 := x0 + barWidth
+		// Clamp the band to the plot rect: bars (and their hold markers)
+		// must never run past the panel's right edge. A band that ends up
+		// with zero width or fully outside the plot draws nothing — the
+		// pre-fix renderer painted an orphan peak-hold line floating past
+		// the last bar, off the right edge of the panel.
+		if x1 > barRect.Max.X {
+			x1 = barRect.Max.X
+		}
+		if x0 >= barRect.Max.X || x1 <= x0 {
+			continue
+		}
 		y1 := barRect.Max.Y
 		y0 := y1 - barHeight
 
 		if barHeight > 0 {
-			drawRect(dst, image.Rect(x0, y0, x1, y1), colWaveTrace, true)
+			drawSpectrumBarGradient(dst, image.Rect(x0, y0, x1, y1))
 		}
 
-		// Peak-hold marker overlay (transient + watermark).
+		// Peak-hold marker overlay (transient + watermark). Markers pinned
+		// at the top extreme of the range are suppressed — a hold line
+		// flush under the sticky bar reads as chrome, not data.
 		if peaks != nil {
 			peakHeight := int(peaks.Peaks[b] * float64(barRect.Dy()))
-			if peakHeight > 0 {
+			if peakHeight > 0 && peakHeight < barRect.Dy() {
 				py := barRect.Max.Y - peakHeight
 				drawRect(dst, image.Rect(x0, py, x1, py+1), WithAlpha(genColorVizSpectrumPeakMarker, 200), true)
 			}
@@ -372,15 +442,20 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 				peaks.MaxPeaks[b] = norm
 			}
 			maxHeight := int(peaks.MaxPeaks[b] * float64(barRect.Dy()))
-			if maxHeight > 0 {
+			if maxHeight > 0 && maxHeight < barRect.Dy() {
 				my := barRect.Max.Y - maxHeight
-				drawRect(dst, image.Rect(x0, my-1, x1, my+1), genColorVizSpectrumPeakMarker, true)
+				myTop := my - 1
+				if myTop < barRect.Min.Y {
+					myTop = barRect.Min.Y
+				}
+				drawRect(dst, image.Rect(x0, myTop, x1, my+1), genColorVizSpectrumPeakMarker, true)
 			}
 		}
 	}
 
-	// Draw frequency labels below bars (below bracket strip).
-	freqLabelY := barRect.Max.Y + bracketStripH + 1
+	// Draw frequency labels in their dedicated Hz row (below the bracket
+	// strip row, never overlapping it).
+	freqLabelY := hzRow.Min.Y + 1
 	for b := 0; b < numBands; b++ {
 		x0 := barRect.Min.X + b*(barWidth+1)
 		label := labels[b]
@@ -389,13 +464,16 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 		DrawTextColorAtScale(dst, label, lx, freqLabelY, colTextSecondary, captionScale)
 	}
 
-	// Draw Bass/Mids/Treble bracket strip above the frequency labels.
+	// Draw Bass/Mids/Treble bracket strip in its own row above the Hz
+	// labels. The bracket line AND its group labels both live inside
+	// bracketRow (spectrumLabelRows sizes the row to fit a caption text
+	// line under the bracket), so they can never collide with the Hz row.
 	// The Bass/Mids/Treble grouping is tied to the ISO band layout, so the
 	// strip is only drawn in log mode — linear mode skips it (the equal-Hz
 	// bands don't map cleanly to musical bass/mid/treble ranges).
 	if scale == freqScaleLog {
 		bracketCol := WithAlpha(genColorBorder, AlphaSubtle)
-		bracketY := barRect.Max.Y + 2 // 2 px gap above bar baseline
+		bracketY := bracketRow.Min.Y + 2 // 2 px gap below bar baseline
 		for _, g := range bandGroups {
 			if g.endBand <= g.startBand || g.endBand > numBands {
 				continue
@@ -403,6 +481,9 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 			// Start X = left edge of first band in group; end X = right edge of last.
 			groupX0 := barRect.Min.X + g.startBand*(barWidth+1)
 			groupX1 := barRect.Min.X + (g.endBand-1)*(barWidth+1) + barWidth
+			if groupX1 > barRect.Max.X {
+				groupX1 = barRect.Max.X
+			}
 			if groupX1 <= groupX0 {
 				continue
 			}
@@ -411,7 +492,7 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 			// Tiny vertical end-caps (2 px tall).
 			drawRect(dst, image.Rect(groupX0, bracketY, groupX0+1, bracketY+2), bracketCol, true)
 			drawRect(dst, image.Rect(groupX1-1, bracketY, groupX1, bracketY+2), bracketCol, true)
-			// Centered group label.
+			// Centered group label, inside the bracket row.
 			lw := int(float64(TextWidth(g.label)) * captionScale)
 			lx := groupX0 + (groupX1-groupX0-lw)/2
 			ly := bracketY + 3
@@ -438,6 +519,38 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 			DrawTextColorAtScale(dst, n.label, lx, noteLabelY, colTextSecondary, captionScale)
 		}
 	}
+}
+
+// Synthwave spectrum fill palette. colSpectrumCurveFill is the faint area
+// wash painted beneath the hi-res FFT curve down to the baseline. The three
+// bar-gradient bands give each ISO bar a bright peak fading to a deeper base
+// (top → bottom) for the "outrun" read; all are fixed package-level colors so
+// drawRect serves them from pixelCache without per-bar/per-frame allocation.
+var (
+	colSpectrumCurveFill = WithAlpha(colWaveTrace, AlphaFaint)
+	colSpectrumBarTop    = WithAlpha(colWaveTrace, AlphaOverlay)
+	colSpectrumBarMid    = WithAlpha(colWaveTrace, AlphaStrong)
+	colSpectrumBarBase   = WithAlpha(colWaveTrace, AlphaMedium)
+)
+
+// drawSpectrumBarGradient fills one ISO bar with a fixed three-band vertical
+// gradient (bright peak → deep base). Three drawRects per bar (10 bars =
+// 30 rects/frame) keeps the cost flat regardless of bar height, unlike a
+// per-pixel gradient. Degrades gracefully to a single fill on tiny bars.
+func drawSpectrumBarGradient(dst *ebiten.Image, bar image.Rectangle) {
+	if bar.Empty() {
+		return
+	}
+	h := bar.Dy()
+	if h < 3 {
+		drawRect(dst, bar, colSpectrumBarTop, true)
+		return
+	}
+	y1 := bar.Min.Y + h/3
+	y2 := bar.Min.Y + 2*h/3
+	drawRect(dst, image.Rect(bar.Min.X, bar.Min.Y, bar.Max.X, y1), colSpectrumBarTop, true)
+	drawRect(dst, image.Rect(bar.Min.X, y1, bar.Max.X, y2), colSpectrumBarMid, true)
+	drawRect(dst, image.Rect(bar.Min.X, y2, bar.Max.X, bar.Max.Y), colSpectrumBarBase, true)
 }
 
 // spectrumCurveColScratch is the reusable per-column buffer used by
@@ -519,8 +632,10 @@ func drawSpectrumCurve(dst *ebiten.Image, barRect image.Rectangle, ch *analyzer.
 	// Batch adjacent columns that share the same y so the renderer
 	// produces a small number of wide rects rather than thousands of
 	// 1-pixel rects (the per-tab alloc budget is tight — see the
-	// discipline test). 2-pixel-tall single-rect-per-column "crown"
-	// only (area-fill skipped to keep alloc count under budget).
+	// discipline test). Each batch emits a synthwave "outrun" area-fill
+	// (faint) from the curve crown down to the baseline, then the 2px
+	// crown line on top. Because columns are batched, the fill is one
+	// extra wide rect per batch — not per pixel — so it stays alloc-cheap.
 	startC := -1
 	startY := 0
 	flush := func(endC int) {
@@ -529,6 +644,9 @@ func drawSpectrumCurve(dst *ebiten.Image, barRect image.Rectangle, ch *analyzer.
 		}
 		x0 := barRect.Min.X + startC
 		x1 := barRect.Min.X + endC
+		if startY+2 < barRect.Max.Y {
+			drawRect(dst, image.Rect(x0, startY+2, x1, barRect.Max.Y), colSpectrumCurveFill, true)
+		}
 		drawRect(dst, image.Rect(x0, startY, x1, startY+2), curveCol, true)
 		startC = -1
 	}
@@ -572,12 +690,7 @@ func drawPreEQOverlayFromSnapshot(dst *ebiten.Image, rect image.Rectangle, spec 
 	if len(spec) < 4 || sampleRate <= 0 {
 		return
 	}
-	const freqLabelH = 14
-	bracketStripH := Profile().DensityValues().SpectrumBracketH
-	if bracketStripH < 6 {
-		bracketStripH = 6
-	}
-	barRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-freqLabelH-bracketStripH)
+	barRect, _, _ := spectrumPanelRows(rect)
 	if barRect.Dx() <= 1 || barRect.Dy() <= 1 {
 		return
 	}
@@ -675,12 +788,7 @@ func drawPreEQOverlayFromSnapshot(dst *ebiten.Image, rect image.Rectangle, spec 
 // Only the log-scale layout is supported here — the cursor on the linear
 // layout falls back to "Hz · dB" computed off linearBands().
 func drawSpectrumCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, cursorX int) {
-	const freqLabelH = 14
-	bracketStripH := Profile().DensityValues().SpectrumBracketH
-	if bracketStripH < 6 {
-		bracketStripH = 6
-	}
-	barRect := image.Rect(rect.Min.X+28, rect.Min.Y, rect.Max.X, rect.Max.Y-freqLabelH-bracketStripH)
+	barRect, _, _ := spectrumPanelRows(rect)
 	if cursorX < barRect.Min.X || cursorX >= barRect.Max.X {
 		return
 	}
@@ -745,13 +853,13 @@ func drawSpectrumCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 	tw := int(float64(TextWidth(label)) * captionScale)
 	th := int(float64(TextHeight()) * captionScale)
 	lx := cursorX + 4
-	if lx+tw+4 > barRect.Max.X {
+	if lx+tw+4 > barRect.Max.X-SpaceXS {
 		lx = cursorX - tw - 4
 	}
-	if lx < barRect.Min.X {
-		lx = barRect.Min.X
+	if lx < barRect.Min.X+SpaceXS {
+		lx = barRect.Min.X + SpaceXS
 	}
-	ly := barRect.Min.Y + 2
+	ly := barRect.Min.Y + SpaceXS
 	bg := image.Rect(lx-2, ly-1, lx+tw+2, ly+th+2)
 	drawRect(dst, bg, WithAlpha(colSurface2, AlphaStrong), true)
 	DrawTextColorAtScale(dst, label, lx, ly, colTextSecondary, captionScale)

@@ -69,6 +69,7 @@ type designSpec struct {
 	ProfileOverrides          yaml.Node `yaml:"profileOverrides"`
 	Densities                 yaml.Node `yaml:"densities"`
 	InstrumentSwatches        yaml.Node `yaml:"instrumentSwatches"`
+	InstrumentSequence        yaml.Node `yaml:"instrumentSequence"`
 	InstrumentDefaults        yaml.Node `yaml:"instrumentDefaults"`
 	InstrumentFallbackPalette yaml.Node `yaml:"instrumentFallbackPalette"`
 	Animations                yaml.Node `yaml:"animations"`
@@ -84,10 +85,17 @@ type keyVal struct {
 func main() {
 	designPath := flag.String("design", "DESIGN.md", "path to DESIGN.md (relative to working dir)")
 	schemaPath := flag.String("schema", "", "path to schema.json (defaults to scripts/gen_design_tokens/schema.json near DESIGN.md)")
-	outPath := flag.String("out", "src/go/internal/ui/design_tokens.gen.go", "output for primitive tokens")
-	outComponentsPath := flag.String("out-components", "src/go/internal/ui/design_components.gen.go", "output for component specs")
-	outProfilePath := flag.String("out-profile", "src/go/internal/ui/design_profile.gen.go", "output for profile overrides")
-	outDensityPath := flag.String("out-density", "src/go/internal/ui/design_density.gen.go", "output for density values")
+	// Defaults are relative to src/go (the documented working dir for every
+	// invocation: Makefile, //go:generate, and the doc-comment example all run
+	// from src/go). A "src/go/" prefix here would make a bare run from src/go
+	// resolve to src/go/src/go/internal/ui/... — a nested duplicate package
+	// that has the *.gen.go files but not design_types.go, so it fails to
+	// compile (undefined ComponentID/ComponentSpec) and breaks `go test ./...`.
+	outPath := flag.String("out", "internal/ui/design_tokens.gen.go", "output for primitive tokens (relative to src/go)")
+	outComponentsPath := flag.String("out-components", "internal/ui/design_components.gen.go", "output for component specs (relative to src/go)")
+	outProfilePath := flag.String("out-profile", "internal/ui/design_profile.gen.go", "output for profile overrides (relative to src/go)")
+	outDensityPath := flag.String("out-density", "internal/ui/design_density.gen.go", "output for density values (relative to src/go)")
+	outSequencePath := flag.String("out-sequence", "internal/templates/instrument_sequence.gen.go", "output for the templates-package instrument color sequence (relative to src/go)")
 	flag.Parse()
 
 	resolved, err := resolveDesignPath(*designPath)
@@ -155,6 +163,11 @@ func main() {
 		fail("instrumentSwatches: %v", err)
 	}
 
+	sequence, err := parseInstrumentSequence(&spec.InstrumentSequence, swatches)
+	if err != nil {
+		fail("instrumentSequence: %v", err)
+	}
+
 	defaults, err := parseInstrumentDefaults(&spec.InstrumentDefaults)
 	if err != nil {
 		fail("instrumentDefaults: %v", err)
@@ -175,12 +188,26 @@ func main() {
 		fail("geometry: %v", err)
 	}
 
-	out, err := emitTokens(colors, spacing, rounded, icon, alpha, swatches, defaults, fallbacks, animations, geometry)
+	out, err := emitTokens(colors, spacing, rounded, icon, alpha, swatches, sequence, defaults, fallbacks, animations, geometry)
 	if err != nil {
 		fail("emit tokens: %v", err)
 	}
 	if err := writeIfChanged(*outPath, out); err != nil {
 		fail("write %s: %v", *outPath, err)
+	}
+
+	// Instrument color sequence → internal/templates (a package that cannot
+	// import internal/ui). Both the ui-side genInstrumentSequence (emitted by
+	// emitTokens above) and this templates-side slice are resolved from the
+	// SAME DESIGN.md instrumentSequence: block, so the two never drift.
+	if len(sequence) > 0 {
+		seqOut, err := emitTemplatesSequence(sequence)
+		if err != nil {
+			fail("emit instrument sequence: %v", err)
+		}
+		if err := writeIfChanged(*outSequencePath, seqOut); err != nil {
+			fail("write %s: %v", *outSequencePath, err)
+		}
 	}
 
 	// Phase 2: parse and emit components. Build a token resolver from
@@ -505,6 +532,58 @@ func parseInstrumentSwatches(node *yaml.Node) ([]swatchOut, error) {
 	return out, nil
 }
 
+// sequenceOut backs each entry in `instrumentSequence:`. Each entry resolves a
+// swatch name to its RGB, and carries both the bare `#RRGGBB` swatch hex (for
+// the ui-side color.RGBA emission) and the `#RRGGBBFF` form that the templates
+// package bakes verbatim into circuit JSON.
+type sequenceOut struct {
+	Name    string
+	R, G, B uint8
+	SrcHex  string // "#RRGGBB" (from the swatch)
+	HexFF   string // "#RRGGBBFF" (opaque, for templates JSON)
+}
+
+// parseInstrumentSequence parses the optional `instrumentSequence:` block: an
+// ordered list of swatch names defining the canonical instrument color series.
+// Every name MUST resolve to a swatch declared in `instrumentSwatches:` so the
+// series stays single-sourced and provably on-palette. Returns nil if absent.
+func parseInstrumentSequence(node *yaml.Node, swatches []swatchOut) ([]sequenceOut, error) {
+	if node == nil || node.Kind == 0 {
+		return nil, nil
+	}
+	if node.Kind != yaml.SequenceNode {
+		return nil, fmt.Errorf("instrumentSequence: expected sequence, got kind=%d", node.Kind)
+	}
+	byName := make(map[string]swatchOut, len(swatches))
+	for _, s := range swatches {
+		byName[s.Name] = s
+	}
+	out := make([]sequenceOut, 0, len(node.Content))
+	for i, entry := range node.Content {
+		if entry.Kind != yaml.ScalarNode {
+			return nil, fmt.Errorf("instrumentSequence[%d]: expected a swatch name string", i)
+		}
+		name := entry.Value
+		sw, ok := byName[name]
+		if !ok {
+			return nil, fmt.Errorf("instrumentSequence[%d]: %q is not a name declared in instrumentSwatches:", i, name)
+		}
+		hexFF := sw.SrcHex
+		if len(hexFF) == 7 { // "#RRGGBB" → "#RRGGBBFF"
+			hexFF += "FF"
+		}
+		out = append(out, sequenceOut{
+			Name:   sw.Name,
+			R:      sw.R,
+			G:      sw.G,
+			B:      sw.B,
+			SrcHex: sw.SrcHex,
+			HexFF:  hexFF,
+		})
+	}
+	return out, nil
+}
+
 func identForSwatch(name string) string {
 	return "genInstrumentSwatch" + pascal(name)
 }
@@ -792,7 +871,7 @@ func parseInstrumentFallbackPalette(node *yaml.Node) ([]instrumentFallbackOut, e
 // emitTokens renders the primitives .gen.go output (colors, spacing,
 // rounded, icon, alpha, instrumentSwatches). Component emission lives in
 // emitComponents (components.go).
-func emitTokens(colors, spacing, rounded, icon, alpha []keyVal, swatches []swatchOut, defaults []instrumentDefaultOut, fallbacks []instrumentFallbackOut, animations []animationOut, geometry []geometryOut) ([]byte, error) {
+func emitTokens(colors, spacing, rounded, icon, alpha []keyVal, swatches []swatchOut, sequence []sequenceOut, defaults []instrumentDefaultOut, fallbacks []instrumentFallbackOut, animations []animationOut, geometry []geometryOut) ([]byte, error) {
 	colorOuts := make([]colorOut, 0, len(colors))
 	for _, kv := range colors {
 		r, g, b, err := parseHexRGB(kv.Val)
@@ -855,6 +934,7 @@ func emitTokens(colors, spacing, rounded, icon, alpha []keyVal, swatches []swatc
 		IconFloats         []floatOut
 		Alpha              []intOut
 		Swatches           []swatchOut
+		Sequence           []sequenceOut
 		InstrumentDefaults []instrumentDefaultOut
 		InstrumentFallback []instrumentFallbackOut
 		AnimExpDecay       []animationOut
@@ -862,8 +942,42 @@ func emitTokens(colors, spacing, rounded, icon, alpha []keyVal, swatches []swatc
 		AnimFade           []animationOut
 		HasAnimations      bool
 		Geometry           []geometryOut
-	}{colorOuts, spacingOuts, roundedOuts, iconInts, iconFloats, alphaOuts, swatches, defaults, fallbacks, expDecay, sinPulse, fade, len(animations) > 0, geometry}
+	}{colorOuts, spacingOuts, roundedOuts, iconInts, iconFloats, alphaOuts, swatches, sequence, defaults, fallbacks, expDecay, sinPulse, fade, len(animations) > 0, geometry}
 	if err := tpl.Execute(&buf, data); err != nil {
+		return nil, err
+	}
+	formatted, err := format.Source(buf.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("gofmt: %w\n--- raw output ---\n%s", err, buf.String())
+	}
+	return formatted, nil
+}
+
+// emitTemplatesSequence renders the internal/templates-package source carrying
+// the canonical instrument color sequence as opaque `#RRGGBBAA` hex strings.
+// internal/templates cannot import internal/ui, so the series is emitted into
+// both packages from the SAME DESIGN.md instrumentSequence: block (see
+// emitTokens for the ui-side genInstrumentSequence).
+func emitTemplatesSequence(sequence []sequenceOut) ([]byte, error) {
+	const seqTemplate = `// Code generated by cmd/gen_design_tokens from DESIGN.md instrumentSequence:. DO NOT EDIT.
+
+package templates
+
+// InstrumentSequence is the canonical, ordered, finite instrument color series
+// (opaque #RRGGBBAA hex) shared with internal/ui (genInstrumentSequence). Genre
+// templates assign row N the color InstrumentSequence[N % len], so every
+// circuit's instrument colors are derived from one predictable series. There
+// are no hand-maintained hex lists — edit DESIGN.md instrumentSequence: and
+// re-run ` + "`make gen-design-tokens`" + `.
+var InstrumentSequence = []string{
+{{- range .}}
+	"{{.HexFF}}", // {{.Name}}
+{{- end}}
+}
+`
+	tpl := template.Must(template.New("seq").Parse(seqTemplate))
+	var buf bytes.Buffer
+	if err := tpl.Execute(&buf, sequence); err != nil {
 		return nil, err
 	}
 	formatted, err := format.Source(buf.Bytes())
@@ -1056,6 +1170,20 @@ type GenInstrumentSwatch struct {
 var genInstrumentSwatches = []GenInstrumentSwatch{
 {{- range .Swatches}}
 	{Name: "{{.Name}}", RGBA: {{.Ident}}, Hex: "{{.SrcHex}}"},
+{{- end}}
+}
+{{end}}
+{{if .Sequence}}
+// ── Instrument color sequence (canonical, ordered, finite) ────────────────
+//
+// THE single predictable series every circuit's instrument colors (and thus
+// node + edge colors) are derived from: row N takes
+// genInstrumentSequence[N % len]. Resolved from DESIGN.md instrumentSequence:
+// (swatch names in warm↔cool order). The internal/templates package gets the
+// identical series as templates.InstrumentSequence — both walk the same list.
+var genInstrumentSequence = []color.RGBA{
+{{- range .Sequence}}
+	{ {{.R}}, {{.G}}, {{.B}}, 255 }, // instrumentSequence.{{.Name}} = {{.SrcHex}}
 {{- end}}
 }
 {{end}}

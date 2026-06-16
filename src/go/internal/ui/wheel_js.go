@@ -12,13 +12,13 @@ func wheelZoomDelta() float64 {
 	return wy * 0.02 // ~= 1/50 per notch
 }
 
-// Convert wheel delta to discrete row scroll steps. Ensure at least +/-1 per
-// notch and cap extremes to avoid jumps from large deltas on some platforms.
-func wheelScrollSteps() int {
-	_, wy := wheel()
-	s := int(math.Round(wy * 0.02))
-	if s == 0 && wy != 0 { // ensure a notch registers
-		if wy > 0 {
+// wheelStepsFromDelta converts a single wheel-axis delta into discrete scroll
+// steps. Ensure at least +/-1 per notch and cap extremes to avoid jumps from
+// large deltas on some platforms.
+func wheelStepsFromDelta(d float64) int {
+	s := int(math.Round(d * 0.02))
+	if s == 0 && d != 0 { // ensure a notch registers
+		if d > 0 {
 			s = 1
 		} else {
 			s = -1
@@ -31,4 +31,10 @@ func wheelScrollSteps() int {
 		s = -3
 	}
 	return s
+}
+
+// Convert vertical wheel delta to discrete row scroll steps.
+func wheelScrollSteps() int {
+	_, wy := wheel()
+	return wheelStepsFromDelta(wy)
 }

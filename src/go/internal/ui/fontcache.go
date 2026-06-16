@@ -119,6 +119,22 @@ func measureTextHeight(size float64) int {
 	return (m.Ascent + m.Descent).Ceil()
 }
 
+// measureStyled returns width+height for s at the given size and weight.
+func measureStyled(s string, size float64, bold bool) (int, int) {
+	var face font.Face
+	if bold {
+		face = fontFaceBold(size)
+	} else {
+		face = fontFaceRegular(size)
+	}
+	if face == nil {
+		return len([]rune(s)) * debugCharW, styledLineHeightFallback(size)
+	}
+	w := text.BoundString(face, s).Dx() //nolint:staticcheck // no v2 drop-in
+	m := face.Metrics()
+	return w, (m.Ascent + m.Descent).Ceil()
+}
+
 // renderTextSprite creates an image containing the text rendered with TrueType.
 func renderTextSprite(s string, size float64, bold bool) *ebiten.Image {
 	var face font.Face
@@ -161,5 +177,13 @@ func init() {
 	}
 	textMeasureHeight = func() int {
 		return measureTextHeight(FontSizeBody)
+	}
+
+	// Wire sized text-role renderer and measurement.
+	styledTextSpriteRenderer = func(s string, size float64, bold bool) *ebiten.Image {
+		return renderTextSprite(s, size, bold)
+	}
+	styledTextMeasure = func(s string, size float64, bold bool) (int, int) {
+		return measureStyled(s, size, bold)
 	}
 }

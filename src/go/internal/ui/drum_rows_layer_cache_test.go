@@ -18,6 +18,13 @@ func TestRowsLayerCacheRebuild(t *testing.T) {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(800, 600)
 
+	// This test validates the LEGACY shift-path's partial-repaint byte
+	// efficiency. The windowed scroll cache (drumview_cache_rows_window.go)
+	// deliberately replaces that path during scroll, so disable it here to
+	// exercise the legacy shift accounting under test. The windowed path has
+	// its own guard: rows_layer_scroll_recompose_test.go.
+	defer SetRowsLayerWindowingForTest(false)()
+
 	// Minimal setup: one row, small length
 	if len(g.drum.Rows) == 0 {
 		g.drum.AddRow()

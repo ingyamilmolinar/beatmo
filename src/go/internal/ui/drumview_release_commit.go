@@ -1,6 +1,9 @@
 package ui
 
-import "github.com/ingyamilmolinar/beatmo/internal/hooks"
+import (
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+)
 
 // Deterministic release-commit points for continuous controls. The live
 // audio.Set* calls run per-frame during the drag so the sound updates live;
@@ -38,4 +41,71 @@ func (dv *DrumView) commitRowVolume(row int) {
 	}
 	emitRowVolume(row, dv.Rows[row].Volume)
 	dv.recordUndoStep(hooks.EventRowVolume)
+}
+
+// commitInstrumentParams emits + records a single instrument synth-param change.
+// It is the ONE reusable commit point for every synth-config edit that applies
+// live to audio (knob drag release, stage enable/disable toggle, numeric value
+// entry). The live audio.SetInstrumentParam runs at the edit site; this records
+// exactly one undo step for the whole gesture. No-op without an instrument.
+func (dv *DrumView) commitInstrumentParams(instID string) {
+	if instID == "" {
+		return
+	}
+	recipe := audio.RecipeForInstrument(instID)
+	emitInstrumentParamsCommitted(instID, recipe)
+	dv.recordUndoStep(hooks.EventInstrumentParamsCommitted)
+}
+
+// commitSamplerEdit applies the Sampler tab's staged edit live to the exported
+// document (audio.SetSampleEdit) and records ONE undo step per gesture. It is
+// the reusable commit point for every sampler edit gesture (trim handles, knobs,
+// reverse/normalize/fade toggles, numeric entry) — the analog of
+// commitInstrumentParams for synth and commitEQBand for EQ.
+//
+// Only the NON-DESTRUCTIVE synth-source path is applied live: its edit is a
+// descriptor (audio.SampleEdit) the export round-trips, so each gesture is
+// snapshot-undoable. WAV-source edits are a destructive bake materialised only
+// at Save (the Save step is already undoable); per-gesture baking would be
+// destructive and is intentionally not done. No-op without a captured buffer.
+func (dv *DrumView) commitSamplerEdit() {
+	s := &dv.sampler
+	if s.captureID == "" || !s.hasBuffer() || s.source != samplerSourceSynth {
+		return
+	}
+	audio.SetSampleEdit(s.captureID, s.editDescriptor())
+	dv.recordUndoStep(hooks.EventSampleEditChanged)
+}
+
+// commitEQFilter emits + records a single HPF/LPF enable toggle for the active
+// EQ channel. filter is "hpf" or "lpf". Called once by toggleHPF/toggleLPF
+// after the live applyEQ. Mirrors commitEQBand.
+func (dv *DrumView) commitEQFilter(filter string) {
+	ch := dv.activeEQChannel()
+	var enabled bool
+	var cutoff float64
+	switch filter {
+	case "hpf":
+		enabled, cutoff = dv.activeHPFEnabled(), dv.activeHPFCutoffHz()
+	case "lpf":
+		enabled, cutoff = dv.activeLPFEnabled(), dv.activeLPFCutoffHz()
+	default:
+		return
+	}
+	emitEQFilterToggled(ch, filter, enabled, cutoff)
+	dv.recordUndoStep(hooks.EventEQFilterToggled)
+}
+
+// commitEQBandMute emits + records a single per-band EQ mute toggle. A band
+// mute is a per-band EQ modification, so it reuses EventEQBandChange for the
+// undo step + event (there is no dedicated mute kind). Called once by
+// toggleEQBandMute after the live applyMasterEQ/applyRowEQ.
+func (dv *DrumView) commitEQBandMute(band int) {
+	ch := dv.activeEQChannel()
+	gainDB := 0.0
+	if band >= 0 && band < len(dv.eqBandGainsDB()) {
+		gainDB = dv.eqBandGainsDB()[band]
+	}
+	emitEQBandChange(ch, band, gainDB)
+	dv.recordUndoStep(hooks.EventEQBandChange)
 }

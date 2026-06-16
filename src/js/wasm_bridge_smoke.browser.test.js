@@ -396,6 +396,14 @@ const CATALOGUE = {
     { name: "saveActiveRecipe", skipCall: true },
     { name: "resetActiveRecipe", skipCall: true },
     { name: "recipeForInstrument", args: ["kick"], returns: "string" },
+    // Stage 5 debug bridge: renders the right-pane synth mirror for the active
+    // synth instrument and returns the PCM sample count (0 when no synth tab is
+    // active). Safe + idempotent to call. DSP correctness is covered in Go
+    // (synth_mirror_test.go); this only checks the WASM↔audio boundary.
+    { name: "synthMirrorPCMLen", args: [], returns: "number" },
+    // 32-bit fingerprint of the mirror PCM content; a browser test compares it
+    // before/after a knob change to prove the WASM mirror reacts to params.
+    { name: "synthMirrorPCMChecksum", args: [], returns: "number" },
     // Returns a native JS object: { recipeID: { displayName, category, params } }.
     { name: "synthRecipeCatalog", args: [], returns: "object" },
     { name: "recipeDefaultParams", args: ["drum-kick"], returns: "object" },

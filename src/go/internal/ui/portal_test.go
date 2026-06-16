@@ -481,3 +481,42 @@ func TestPortalOnCloseCallbackDuringCleanup(t *testing.T) {
 		t.Errorf("OnClose should not fire again on second CleanupClosed, got %d", closeCount)
 	}
 }
+
+// TestPortalScrimDimsBackdrop pins the backdrop scrim fix (B4-6/E4): a
+// Scrim-bearing overlay paints colScrim across the screen beneath it, and an
+// overlay without Scrim paints nothing. Previously NO overlay had a scrim and
+// the full-contrast background bled through every popup.
+func TestPortalScrimDimsBackdrop(t *testing.T) {
+	wantR, wantG, wantB, wantA := colScrim.RGBA()
+
+	t.Run("scrim_on_dims", func(t *testing.T) {
+		idx := &HitIndex{}
+		portal := NewOverlayPortal(idx)
+		portal.SetScreenBounds(image.Rect(0, 0, 800, 600))
+		portal.Open(PortalEntry{ID: "dim", Overlay: &testPortalOverlay{}, Scrim: true})
+
+		img := ebiten.NewImage(800, 600)
+		portal.Draw(img)
+		r, g, b, a := img.At(400, 300).RGBA()
+		if a == 0 {
+			t.Fatal("scrim entry drew no backdrop dimming")
+		}
+		if r != wantR || g != wantG || b != wantB || a != wantA {
+			t.Errorf("scrim pixel = (%d,%d,%d,%d), want colScrim (%d,%d,%d,%d)",
+				r, g, b, a, wantR, wantG, wantB, wantA)
+		}
+	})
+
+	t.Run("scrim_off_no_dim", func(t *testing.T) {
+		idx := &HitIndex{}
+		portal := NewOverlayPortal(idx)
+		portal.SetScreenBounds(image.Rect(0, 0, 800, 600))
+		portal.Open(PortalEntry{ID: "plain", Overlay: &testPortalOverlay{}, Scrim: false})
+
+		img := ebiten.NewImage(800, 600)
+		portal.Draw(img)
+		if _, _, _, a := img.At(400, 300).RGBA(); a != 0 {
+			t.Errorf("no-scrim entry dimmed the backdrop (alpha %d)", a)
+		}
+	})
+}

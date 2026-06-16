@@ -147,6 +147,12 @@ func drawWithSnapshot(t *testing.T, g *Game, subject Subject, snap audio.Analyze
 		t.Fatal("game.drum is nil")
 	}
 
+	// The Wave and Scope tabs cache their trace into an offscreen
+	// (0,0)-origin image; callers here count trace rects at their on-screen
+	// subject position via the drawRect interceptor, so render directly.
+	t.Cleanup(SetChainTraceCacheForTest(false))
+	t.Cleanup(SetWaveTraceCacheForTest(false))
+
 	// Legacy DrawWaveform fallback path.
 	post := snap
 	pre := snap
@@ -196,9 +202,12 @@ func countDataRects(tab PanelTab, rects []drawnRect, inside image.Rectangle) int
 		// drawWaveTrace emits one colWaveTrace rect per pixel column.
 		return rectsWithColorInside(rects, inside, colWaveTrace)
 	case TabSpectrum:
-		// drawSpectrumBars (in render_spectrum.go:142) uses colWaveTrace
-		// for each band's bar fill.
-		return rectsWithColorInside(rects, inside, colWaveTrace)
+		// drawSpectrumBarGradient (render_spectrum.go) fills each band's
+		// bar with a fixed three-band synthwave gradient; the bright peak
+		// band (colSpectrumBarTop) is emitted once per drawn bar and is the
+		// data-bearing discriminator (it never appears as chrome). The
+		// mid/base bands are counted too so a height-1 bar still registers.
+		return rectsWithColorInside(rects, inside, colSpectrumBarTop, colSpectrumBarMid, colSpectrumBarBase)
 	case TabMeters:
 		return barRectsInsideMeter(rects, inside)
 	case TabScope:

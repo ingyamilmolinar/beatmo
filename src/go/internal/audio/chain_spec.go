@@ -59,6 +59,13 @@ const SoftClipThreshold = 0.9
 // can reason about it. (Distinct from the legacy exported MixHeadroom=0.25 in
 // config.go, which the browser does not consume; the value the desktop mixer
 // actually applies is this one.)
+//
+// CRITICAL — this MUST be applied on BOTH platforms. The browser (audio.js)
+// ramps every voice's anti-pop gain to CHAIN_SPEC.voiceHeadroom; omitting it
+// makes N voices sum ~5x hot and slam the master limiter into audible clipping
+// when a full circuit plays (the 2026-06 browser-clipping bug). Guarded by
+// TestWebAudioAppliesVoiceHeadroom (source) + TestTemplateMasterMix (headroom).
+// See docs/master-mix-dsp.md.
 const VoiceHeadroom = 0.18
 
 // TargetSampleRate is the sample rate the cross-platform parity fixtures and

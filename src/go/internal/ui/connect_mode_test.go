@@ -94,10 +94,10 @@ func TestConnectModeNonPerpendicularError(t *testing.T) {
 		t.Fatalf("no edge should have been created; got %d edges", len(g.edges))
 	}
 	// Verify error notification was shown.
-	if len(g.drum.notifs) == 0 {
+	if g.drum.notifStore.Len() == 0 {
 		t.Fatal("expected an error notification")
 	}
-	last := g.drum.notifs[len(g.drum.notifs)-1]
+	last := g.drum.notifStore.Latest()
 	if !last.isErr {
 		t.Fatal("notification should be an error")
 	}
@@ -134,18 +134,13 @@ func TestConnectModeEscCancels(t *testing.T) {
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.enterConnectMode(a)
 
-	// Simulate ESC key press via handleEditor.
-	restore := SetInputForTest(
-		func() (int, int) { return 400, 300 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return k == ebiten.KeyEscape },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return g.winW, g.winH },
-	)
+	// Esc is now owned by handleEscape (Task 6 consolidation); it is dispatched
+	// every frame from handleGlobalShortcuts in production. Drive that single
+	// authority directly instead of handleEditor (which no longer touches Esc).
+	restore := stubKeys(nil, map[ebiten.Key]bool{ebiten.KeyEscape: true})
 	defer restore()
 
-	g.handleEditor()
+	g.handleEscape()
 
 	if g.connectMode {
 		t.Fatal("connectMode should be cancelled after ESC")

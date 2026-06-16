@@ -131,7 +131,9 @@ func TestRenderPipelineDisciplineLayerCoverage(t *testing.T) {
 		"newTransportPulseLayer",
 		"newViewSwitchLayer",
 		"newRowZoomChipsLayer",
-		"newNotificationsLayer",
+		// newNotificationsLayer removed: the floating top-right toast was
+		// replaced by the in-band notification area (drawn by TimelineZone)
+		// + the notif-history portal popup (notification redesign).
 		"newLayoutPillsLayer",
 		"newLayoutGuidesLayer",
 	}

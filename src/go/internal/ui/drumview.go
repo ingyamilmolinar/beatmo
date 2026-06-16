@@ -109,6 +109,11 @@ func viewModeFromSlug(slug string) (viewMode, bool) {
 
 var eqPanelHeight = 190
 
+// eqPanelHeightForTest, when > 0, overrides the test-mode collapse of the audio
+// panel so functional tests can drive the REAL production-floored layout. See
+// the runningUnderGoTest gate in (*DrumView) layout. Always 0 outside tests.
+var eqPanelHeightForTest int
+
 type eqBandDef struct {
 	loHz float64
 	hiHz float64
@@ -256,6 +261,8 @@ type DrumView struct {
 	instMenuShowFavoritesCategory bool
 	logger                        *game_log.Logger
 	tree                          *DrumViewTree // zone-based component tree (Phase 1+)
+	audioTree                     *DrumViewTree // audio-panel subtree (eq-panel + divider + view-switch)
+	rootTree                      *RootTree     // composes [tree, audioTree] for isolated input/draw
 	eqPanelZone                   *EQPanelZone  // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
 	scopeVisible                  bool
 	transportZone                 *TransportZone // Phase 3: transport zone (owns transport buttons/state)
@@ -278,12 +285,14 @@ type DrumView struct {
 	widgetRects     map[WidgetKind]image.Rectangle
 	headerH         int // dynamic header height (replaces timelineHeight)
 	eqH             int // dynamic EQ panel height
+	userEqH         int // explicit audio-panel height set by dragging the EQ divider (0 = auto/floored)
 	layoutHoverAxis string
 	layoutHoverIdx  int
 	layoutDragAxis  string
 	layoutDragIdx   int
 	layoutDragPrev  int
 	layoutHandler   *LayoutResizeHandler // widget-span-aware layout resize
+	rowEQDivider    *rowEQDividerLayer   // animated EQ-boundary divider (shared SplitterHandle)
 
 	cell      int // px per step
 	labelW    int
@@ -330,12 +339,8 @@ type DrumView struct {
 	instRegistryVersion        uint64
 	instRefreshDirty           bool
 
-	// color picker: wheel popup
-	colorMenuRow   int
-	colorWheelRect image.Rectangle
-	colorWheelImg  *ebiten.Image
-	wheelCacheW    int
-	wheelCacheH    int
+	// color picker: swatch-grid popup
+	colorMenuRow int
 
 	// FX panel
 	fxPanelRow       int
@@ -367,9 +372,10 @@ type DrumView struct {
 	// keep the two values in sync so either widget can drive playback. The
 	// Slider's rect is set equal to the Knob's bounds so hit-test paths
 	// that still consult slider rects land on the knob area.
-	instEditorSliders  []*Slider
-	instEditorKnobs    []*Knob
-	instEditorBindings []instParamBinding // maps widget index → ParamDef
+	instEditorSliders    []*Slider
+	instEditorKnobs      []*Knob
+	instEditorStepBadges []*KnobStepBadge // index-aligned with instEditorKnobs; nil for discrete params
+	instEditorBindings   []instParamBinding // maps widget index → ParamDef
 	instEditorBtns     []*Button          // footer buttons: Reset, Save, Save-As (close lives on the sticky bar)
 	instEditorSections []synthSection     // PITCH | ENVELOPE | TONE | DRIVE cards
 	// instEditorPreviewRect holds the geometry of the right-half
@@ -378,6 +384,15 @@ type DrumView struct {
 	// content area is below the minimum width for the pane to fit.
 	// Phase 4 of the audio-panel redesign.
 	instEditorPreviewRect image.Rectangle
+	// instEditorMobileFocusRect is the stacked band reserved at the TOP of
+	// the sections area on mobile (where there is no side preview pane) for
+	// the "Your sound" mirror + the focus graph. Empty on desktop (the side
+	// pane carries those instead).
+	instEditorMobileFocusRect image.Rectangle
+	// instEditorSectionsRect is the post-shrink knob-grid rect that
+	// layoutSynthSections consumes (after reserving the desktop preview pane
+	// and/or the mobile focus band). Stored for test introspection.
+	instEditorSectionsRect image.Rectangle
 	// instEditorNoSynth is set when the active row's instrument has no
 	// synth recipe (it plays a loaded WAV sample). In that state the synth
 	// tab replaces its grid of section cards with a single explanatory
@@ -406,9 +421,23 @@ type DrumView struct {
 	// [[feedback_runtime_profile_derivation]] — geometry is re-derived every
 	// Layout from instEditorSelectedSection.
 	instEditorSelectedSection map[string]synthSectionID // resolved instID → open stage
+	// instEditorSelectedKnob is the per-instrument index (into instEditorKnobs /
+	// instEditorBindings) of the knob explained by the focus graph. Set on knob
+	// press (click-to-select); defaults to the open stage's main knob.
+	instEditorSelectedKnob map[string]int
 	instEditorChips           []synthChip               // rebuilt (reused [:0]) every Layout
 	instEditorDetailR         image.Rectangle           // detail pane rect (selected stage's knobs)
 	instEditorDetailHeaderH   int                       // effective detail header height (token, shrunk on short panels)
+	instEditorReadoutRects    []image.Rectangle         // index-aligned with instEditorKnobs; readout tap hit rects
+	paramEditor               *ParamValueEditor         // shared numeric entry box for synth knob readout taps
+
+	// synthMirror caches the live final-output re-render for the Synth tab's
+	// right-pane mirror (Stage 4). Lazily created on first requestSynthMirror.
+	synthMirror *synthMirror
+
+	// synthGhost holds the per-knob pre-drag param snapshots + fade state for
+	// the Synth tab concept overlays (Stage 5). Lazily created on first capture.
+	synthGhost *synthGhostState
 
 	// sampler holds the Sampler tab's working buffer + edit params + widgets.
 	sampler        samplerState
@@ -520,6 +549,27 @@ type DrumView struct {
 	rowsLayerBytes    int64
 	rowsLayerFrame    int64
 
+	// ── Windowed scroll cache (perf: avoid per-scroll full-layer recompose) ──
+	// During steady follow-scroll playback the row CONTENT does not change, the
+	// window merely translates. The legacy path recomposited (a full-layer
+	// shift-copy + double-buffer swap → Ebiten dependency-graph churn) on every
+	// recenter. The windowed path renders cells into a buffer WIDER than the
+	// visible window, fills the leading edge incrementally as the playhead
+	// scrolls, and blits a moving sub-rectangle each frame — recompositing only
+	// when the playhead scrolls past the pad (every rowsWinPadCells cells) or
+	// when content/size changes. See drumview_cache_rows_window.go and
+	// rows_layer_scroll_recompose_test.go.
+	rowsWinBuf          *ebiten.Image // wide cache: width = rowWidth + padPx
+	rowsWinBufW         int
+	rowsWinBufH         int
+	rowsWinBakeOffset   int  // dv.Offset the buffer's cell 0 corresponds to
+	rowsWinRenderedTo   int  // exclusive buffer-cell index rendered so far
+	rowsWinRowWidth     int  // visible window width (px) the buffer pitch uses
+	rowsWinLength       int  // dv.Length the buffer was baked with
+	rowsWinBaseX        int  // baseX the buffer was baked with
+	rowsWinContentDirty bool // a real content/edit change → force re-bake
+	rowsWinValid        bool
+
 	// Row-stripes path: a horizontal split of the rows layer into multiple
 	// sprites so a wide layer can stream as separate textures. These
 	// fields are kept as no-op zero-value stubs while the stripes path is
@@ -588,7 +638,12 @@ type DrumView struct {
 	rowZoomDecBtn   *Button
 
 	// Mobile overflow menu for Upload/Import/Export
-	overflowScroll *ScrollBehavior // scroll when items overflow
+	overflowMenuScroll *MenuScroll // shared scroll component for the overflow menu
+
+	// overflowPage selects the overflow popup page: 0 = File actions, 1 = the
+	// genre template list. Reset to 0 whenever the menu closes or a template is
+	// chosen so reopening always starts at the File page.
+	overflowPage int
 
 	// Mobile beat counter rect (inside transport row, 7th column on mobile)
 	beatCounterRect image.Rectangle
@@ -623,7 +678,6 @@ type DrumView struct {
 	eqChDeferredTap        DeferredTap
 	instMenuDeferredTap    DeferredTap
 	contextMenuDeferredTap DeferredTap
-	overflowDeferredTap    DeferredTap
 	fxPanelDeferredTap     DeferredTap
 
 	// Deferred release-commit state for continuous controls. The live
@@ -654,6 +708,13 @@ type DrumView struct {
 
 	frame int64
 
+	// lastElapsedBeats is the elapsedBeats value from the most recent Draw.
+	// recalcButtons (which runs every frame) reads it to size the beat-counter
+	// slot to the LIVE readout width, so the notification area can hug the
+	// rendered beat/timer text instead of a fixed worst-case slot. At most one
+	// frame stale; defaults to 0 ("Beat 1 · 0:00") before the first Draw.
+	lastElapsedBeats float64
+
 	timelineRect  image.Rectangle // progress bar for fast seek
 	timelineBeats int             // total beats represented by timeline
 	// Units per beat used by the timeline header. When running under Game,
@@ -669,7 +730,6 @@ type DrumView struct {
 	Length        int  // Length of the drum view, independent of graph
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button
-	bpmPrev       int  // previous BPM before editing
 	bpmDelta      int  // accumulated BPM adjustments from +/- buttons
 
 	// button animations
@@ -693,6 +753,11 @@ type DrumView struct {
 	rowOffset         int
 	rowScrollFromZone bool // set by zone callbacks to signal zone→dv sync needed
 
+	// twoFingerPan tracks an in-progress two-finger pan gesture over the drum
+	// cell grid so it can drive the timeline (horizontal) / row scroll
+	// (vertical) exactly like the single-finger grid drag, direction-locked.
+	twoFingerPan twoFingerPanState
+
 	scrubbing bool
 
 	// mouseDownInBounds is true while mouse is pressed and press started in drum view.
@@ -715,8 +780,14 @@ type DrumView struct {
 	// perfDrawLite skips expensive, non-critical chrome when perf fast path is on.
 	perfDrawLite bool
 
-	// notifications: small popups in the top-right of the drum view panel
-	notifs []notification
+	// notifications: single source of truth for the in-band notification
+	// area + history popup. Replaces the former floating top-right toast.
+	notifStore *notificationStore
+	// notifRect is the dedicated in-band notification area (right of the
+	// beat counter); computed in calcLayout.
+	notifRect image.Rectangle
+	// notifHistoryRect is the history popup's on-screen rect when open.
+	notifHistoryRect image.Rectangle
 	// import
 	importAttemptFrame  int
 	importAttemptUpdate int
@@ -888,3 +959,14 @@ func (dv *DrumView) overflowBtn() *Button         { return dv.transportZone.over
 func (dv *DrumView) mainVolSlider() *Slider       { return dv.transportZone.mainVolSlider }
 func (dv *DrumView) mainVolGroup() *SliderGroup   { return dv.transportZone.mainVolGroup }
 func (dv *DrumView) transportGroup() *LayoutGroup { return dv.transportZone.transportGroup }
+
+// RowOffsetForTest reports the index of the first visible drum row
+// (dv.rowOffset). Test-only read accessor — production code reads the field
+// directly or via the row-rack zone. Used by input-isolation tests that
+// assert an unrelated wheel gesture did NOT scroll the drum rows.
+func (dv *DrumView) RowOffsetForTest() int { return dv.rowOffset }
+
+// VisibleRowsForTest reports how many drum rows are currently visible
+// (dv.visibleRows()). Test-only read accessor used to prove a row-scroll
+// test is non-vacuous (more rows exist than fit, so scrolling is possible).
+func (dv *DrumView) VisibleRowsForTest() int { return dv.visibleRows() }

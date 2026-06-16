@@ -54,6 +54,36 @@ type prefsDoc struct {
 	// so they live in prefs.json like RecipeOverrides — NOT in the PCM
 	// SampleStore. The audio package owns the SampleEdit↔map conversion.
 	SampleEdits map[string]map[string]float64 `json:"sample_edits,omitempty"`
+	// Notifications carries the persisted user-notification history
+	// (bounded, oldest..newest). omitempty so older prefs files don't grow
+	// until the user actually raises a notification.
+	Notifications []NotificationRecord `json:"notifications,omitempty"`
+	// KnobSteps carries per-param-name chosen step-multiplier rungs for the
+	// synth/sampler knob step badges. param-name → step value. omitempty so
+	// older prefs files don't grow until the user actually changes any rung.
+	KnobSteps map[string]float64 `json:"knob_steps,omitempty"`
+	// Language carries the chosen UI locale (e.g. "es", "fr"). Empty =
+	// default (English) upstream. omitempty so older prefs files don't grow
+	// until the user actually picks a non-default language.
+	Language string `json:"language,omitempty"`
+}
+
+// notifHistoryMax bounds the persisted notification history (drop-oldest).
+const notifHistoryMax = 100
+
+// NotificationRecord is one persisted user notification (the on-the-wire
+// shape; the UI maps its internal struct to/from this).
+type NotificationRecord struct {
+	Text   string `json:"text"`
+	IsErr  bool   `json:"is_err,omitempty"`
+	UnixMs int64  `json:"unix_ms,omitempty"`
+}
+
+// NotificationHistoryStore persists the bounded notification history across
+// sessions. Expose via type assertion on the Store returned by NewBackingStore.
+type NotificationHistoryStore interface {
+	LoadNotifications() ([]NotificationRecord, error)
+	SaveNotifications(recs []NotificationRecord) error
 }
 
 // AudioPanelStateDoc mirrors the persisted shape of the audio-panel
@@ -173,6 +203,25 @@ type SampleEditStore interface {
 	DeleteSampleEdit(instID string) error
 }
 
+// KnobStepStore is the sibling surface for per-param knob step-multiplier
+// rung persistence (synth/sampler step badges). param-name keyed flat
+// float64 map inside the unified prefs document. Expose via type assertion
+// on the Store returned by NewBackingStore.
+type KnobStepStore interface {
+	// LoadKnobSteps returns param-name → step value for every persisted rung.
+	// Empty map (never nil) when none exist.
+	LoadKnobSteps() map[string]float64
+	// SaveKnobStep upserts the chosen step for the named param.
+	SaveKnobStep(name string, step float64) error
+}
+
+// LanguageStore persists the chosen UI locale. Expose via type assertion on
+// the Store returned by NewBackingStore.
+type LanguageStore interface {
+	LoadLanguage() (string, error)
+	SaveLanguage(lang string) error
+}
+
 // Options configure a Store at construction. Zero values pick
 // production defaults; tests pass overrides.
 type Options struct {
@@ -286,6 +335,132 @@ func marshalPrefsV4(favs map[string]bool, overrides map[string]map[string]float6
 		doc.SampleEdits[id] = cp
 	}
 	return json.MarshalIndent(doc, "", "  ")
+}
+
+// marshalPrefsV5 extends marshalPrefsV4 with the notification-history
+// section, using the same parse-back-and-set trick so the older sections'
+// shapes and deterministic ordering stay untouched. Notifications are
+// trimmed to the newest notifHistoryMax before writing.
+func marshalPrefsV5(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc, sampleEdits map[string]map[string]float64, notifications []NotificationRecord) ([]byte, error) {
+	data, err := marshalPrefsV4(favs, overrides, userRecipes, audioPanel, sampleEdits)
+	if err != nil {
+		return nil, err
+	}
+	recs := boundNotifications(notifications)
+	if len(recs) == 0 {
+		return data, nil
+	}
+	var doc prefsDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return data, nil
+	}
+	doc.Notifications = recs
+	return json.MarshalIndent(doc, "", "  ")
+}
+
+// boundNotifications trims to the newest notifHistoryMax entries and drops
+// records with an empty Text (boundary sanitization).
+func boundNotifications(recs []NotificationRecord) []NotificationRecord {
+	out := make([]NotificationRecord, 0, len(recs))
+	for _, r := range recs {
+		if r.Text == "" {
+			continue
+		}
+		out = append(out, r)
+	}
+	if len(out) > notifHistoryMax {
+		out = out[len(out)-notifHistoryMax:]
+	}
+	return out
+}
+
+// parseNotifications extracts the notification-history section from a prefs
+// document, applying the same boundary sanitization as the writer. Empty /
+// corrupt input returns a nil slice.
+func parseNotifications(data []byte) []NotificationRecord {
+	if len(data) == 0 {
+		return nil
+	}
+	var doc prefsDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil
+	}
+	return boundNotifications(doc.Notifications)
+}
+
+// marshalPrefsV6 extends marshalPrefsV5 with the knob-step-rung section,
+// using the same parse-back-and-set trick so the older sections' shapes
+// and deterministic ordering stay untouched.
+func marshalPrefsV6(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc, sampleEdits map[string]map[string]float64, notifications []NotificationRecord, knobSteps map[string]float64) ([]byte, error) {
+	data, err := marshalPrefsV5(favs, overrides, userRecipes, audioPanel, sampleEdits, notifications)
+	if err != nil {
+		return nil, err
+	}
+	if len(knobSteps) == 0 {
+		return data, nil
+	}
+	var doc prefsDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return data, nil
+	}
+	cp := make(map[string]float64, len(knobSteps))
+	for name, step := range knobSteps {
+		if name == "" || !isFiniteFloat(step) {
+			continue
+		}
+		cp[name] = step
+	}
+	if len(cp) > 0 {
+		doc.KnobSteps = cp
+	}
+	return json.MarshalIndent(doc, "", "  ")
+}
+
+// marshalPrefsV7 extends marshalPrefsV6 with the chosen UI language.
+func marshalPrefsV7(favs map[string]bool, overrides map[string]map[string]float64, userRecipes map[string][]byte, audioPanel AudioPanelStateDoc, sampleEdits map[string]map[string]float64, notifications []NotificationRecord, knobSteps map[string]float64, language string) ([]byte, error) {
+	data, err := marshalPrefsV6(favs, overrides, userRecipes, audioPanel, sampleEdits, notifications, knobSteps)
+	if err != nil || language == "" {
+		return data, err
+	}
+	var doc prefsDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	doc.Language = language
+	return json.MarshalIndent(doc, "", "  ")
+}
+
+// parseKnobStepsFromPrefs extracts the knob-step section from a prefs
+// document. Empty / corrupt input returns a fresh empty map (never nil).
+func parseKnobStepsFromPrefs(data []byte) (map[string]float64, error) {
+	out := map[string]float64{}
+	if len(data) == 0 {
+		return out, nil
+	}
+	var doc prefsDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return out, err
+	}
+	for name, step := range doc.KnobSteps {
+		if name == "" || !isFiniteFloat(step) {
+			continue
+		}
+		out[name] = step
+	}
+	return out, nil
+}
+
+// parseLanguageFromPrefs extracts the chosen UI language from a prefs
+// document. Empty / corrupt input returns "" (default English).
+func parseLanguageFromPrefs(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	var doc prefsDoc
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return ""
+	}
+	return doc.Language
 }
 
 // parseSampleEdits extracts the sample-edit section from a prefs document,

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // TestMobileTransportNoVolViewMenuCaptions guarantees the mobile transport
@@ -35,7 +37,7 @@ func TestMobileTransportNoVolViewMenuCaptions(t *testing.T) {
 	textCacheMu.RLock()
 	defer textCacheMu.RUnlock()
 	for _, banned := range []string{"Vol", "View", "Menu"} {
-		if _, ok := textSprites[banned]; ok {
+		if _, ok := textSprites[textKey{s: banned, gen: i18n.FontGeneration()}]; ok {
 			t.Errorf("mobile transport rendered the banned caption %q — drawMobileRowLabelsOffset must stay deleted", banned)
 		}
 	}

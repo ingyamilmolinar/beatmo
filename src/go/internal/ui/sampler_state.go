@@ -81,8 +81,10 @@ type samplerState struct {
 	endHandleRect   image.Rectangle
 	metaRect        image.Rectangle // length/sample-rate readout strip
 
-	knobs []*Knob   // samplerKnobCount knobs, reused across Layout
-	btns  []*Button // header + control-row buttons, rebuilt each Layout
+	knobs          []*Knob                       // samplerKnobCount knobs, reused across Layout
+	knobStepBadges []*KnobStepBadge              // index-aligned with knobs; one badge per knob
+	readoutRects   [samplerKnobCount]image.Rectangle // caption hit-rects; populated each Draw
+	btns           []*Button        // header + control-row buttons, rebuilt each Layout
 
 	dragHandle int // -1 none, 0 start handle, 1 end handle
 
@@ -232,6 +234,55 @@ func (s *samplerState) knobValue(idx int) float64 {
 		return clampUnit((s.gainDB - samplerGainMinDB) / (samplerGainMaxDB - samplerGainMinDB))
 	}
 	return 0
+}
+
+// samplerKnobScale returns the real-unit domain for a sampler knob so the
+// endless drag, step badge, and numeric editor operate in real units. The
+// normalized knob Value still maps through setKnob/knobValue.
+func samplerKnobScale(idx int) KnobScale {
+	switch idx {
+	case samplerKnobStart, samplerKnobEnd:
+		return KnobScale{Min: 0, Max: 100, Unit: "%"}
+	case samplerKnobTranspose:
+		return KnobScale{Min: -samplerTransposeRange, Max: samplerTransposeRange, Unit: "st"}
+	case samplerKnobDetune:
+		return KnobScale{Min: -samplerDetuneRange, Max: samplerDetuneRange, Unit: "cents"}
+	case samplerKnobGain:
+		return KnobScale{Min: samplerGainMinDB, Max: samplerGainMaxDB, Unit: "dB"}
+	}
+	return KnobScale{Min: 0, Max: 1}
+}
+
+// samplerStepPrefName is the persistence key for a sampler knob's step rung.
+func samplerStepPrefName(idx int) string {
+	switch idx {
+	case samplerKnobStart:
+		return "sampler.start"
+	case samplerKnobEnd:
+		return "sampler.end"
+	case samplerKnobTranspose:
+		return "sampler.transpose"
+	case samplerKnobDetune:
+		return "sampler.detune"
+	case samplerKnobGain:
+		return "sampler.gain"
+	}
+	return "sampler.unknown"
+}
+
+// samplerKnobBipolar reports whether a sampler knob's range straddles zero
+// and, if so, the normalized [0,1] position of that zero. Transpose/Detune are
+// symmetric (±range → 0.5); Gain is asymmetric (-24..+6 dB → 0 dB at 0.8);
+// Start/End are unipolar position fractions. Drives Knob.Bipolar/ZeroFrac so
+// the neutral value reads as a centred (un-filled) arc.
+func samplerKnobBipolar(idx int) (zeroFrac float64, bipolar bool) {
+	switch idx {
+	case samplerKnobTranspose, samplerKnobDetune:
+		return 0.5, true
+	case samplerKnobGain:
+		return (0 - samplerGainMinDB) / (samplerGainMaxDB - samplerGainMinDB), true
+	}
+	return 0, false
 }
 
 // edit snapshots the current params into an audio.SampleEdit, ordering the

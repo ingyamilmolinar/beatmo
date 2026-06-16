@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // audio_panel_legend.go — kid-friendly explanation chip + popover for
@@ -19,29 +21,28 @@ import (
 // The text content is sourced from audioPanelLegendText[tab] so
 // adding a new tab only requires adding one map entry.
 
-// audioPanelLegendText maps each PanelTab to a short, kid-readable
-// explanation of what the tab shows. Each line ≤ ~120 chars so the
-// 220-px popover wraps to ≤ 3 lines at body font.
-var audioPanelLegendText = map[PanelTab]string{
-	TabWave: "Wave shows the live sound as a moving line. Tall bumps mean loud beats; flat means silence. " +
-		"Use the cursor to find what made the noise.",
-	TabSpectrum: "Spectrum shows which notes are loud. Bass on the left, treble on the right. " +
-		"The slope button tilts the picture so pink noise looks flat — kid-friendly tonal balance.",
-	TabMeters: "Levels shows how loud each instrument is. Green is safe, yellow is loud, red is too loud. " +
-		"The big HEADROOM number tells you how much room is left before clipping.",
-	TabEQ: "EQ shapes the sound's tone. Bend the curve up to boost a frequency, down to cut. " +
-		"Mute a band with M to hear what it was adding.",
-	TabScope: "Chain shows the signal flowing through six stages. Click a stage to compare it (A) " +
-		"against another (B). Overlay/Split/Diff change how A and B are drawn against each other.",
-	TabSynth: "Synth lets you reshape each instrument's voice. Spin a knob and the next beat plays the new sound. " +
-		"OUT shows what reaches the master.",
-	TabSampler: "Sampler turns a sound into your own instrument. Grab a WAV or capture the current synth, " +
-		"drag the handles to trim it, tune it up or down, then Save to add it to your instruments.",
+// audioPanelLegendText maps each PanelTab to the i18n key for its
+// short, kid-readable explanation of what the tab shows. Each line
+// ≤ ~120 chars so the 220-px popover wraps to ≤ 3 lines at body font.
+var audioPanelLegendText = map[PanelTab]i18n.Key{
+	TabWave:     i18n.KeyLegendWave,
+	TabSpectrum: i18n.KeyLegendSpectrum,
+	TabMeters:   i18n.KeyLegendMeters,
+	TabEQ:       i18n.KeyLegendEQ,
+	TabScope:    i18n.KeyLegendScope,
+	TabSynth:    i18n.KeyLegendSynth,
+	TabSampler:  i18n.KeyLegendSampler,
 }
 
 // LegendText returns the kid-readable explanation for the supplied
-// tab, or "" for unknown tabs.
-func LegendText(tab PanelTab) string { return audioPanelLegendText[tab] }
+// tab in the active locale, or "" for unknown tabs.
+func LegendText(tab PanelTab) string {
+	k, ok := audioPanelLegendText[tab]
+	if !ok {
+		return ""
+	}
+	return i18n.T(k)
+}
 
 // drawAudioPanelLegend paints the popover sheet for the currently-
 // active tab anchored at chipR (the "?" pill's screen-space rect).
@@ -87,8 +88,8 @@ func drawAudioPanelLegend(dst *ebiten.Image, chipR image.Rectangle, panelMaxX in
 	y0 := chipR.Max.Y + 4
 	y1 := y0 + sheetH
 	sheet := image.Rect(x0, y0, x1, y1)
-	drawRoundedRect(dst, sheet, TokenSurface2(), 6, true)
-	drawRoundedRect(dst, sheet, TokenAccent(), 6, false)
+	drawRoundedRect(dst, sheet, TokenSurface2(), RadiusXS, true)
+	drawRoundedRect(dst, sheet, TokenAccent(), RadiusXS, false)
 	ty := y0 + padY
 	for _, ln := range lines {
 		DrawTextColorAt(dst, ln, x0+padX, ty, TokenTextPrimary())

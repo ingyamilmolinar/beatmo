@@ -9,7 +9,24 @@ func (dv *DrumView) timelineInfo(elapsedBeats float64) string {
 	curMS := int(math.Round(elapsedBeats * dv.secPerBeat * 1000.0))
 	curS := curMS / 1000
 
-	return fmt.Sprintf("Beat %d · %s", int(elapsedBeats)+1, formatElapsedTime(curS))
+	return formatBeatReadout(int(elapsedBeats)+1, curS)
+}
+
+// formatBeatReadout renders the beat-counter readout, position + elapsed time
+// on both platforms. The desktop band has room for the labelled form
+// ("Beat 12 · 1:04"); the mobile band above the step grid is bracketed by the
+// track/lock chip (left) and the row-zoom chips (right) and is only ~90 px
+// wide — too narrow for the labelled form plus the dedicated notification
+// slot. On mobile we drop the "Beat " label and keep the compact "12 · 1:04"
+// form, which fits position + time AND leaves the notification area its slot.
+// Both the drawn text (timelineInfoCached) and the stable slot width
+// (beatCounterSlotWidth) route through the same mobile branch so they can
+// never disagree (the regression behind the clipped "Beat 1 · 0:(" garbage).
+func formatBeatReadout(beat, totalSeconds int) string {
+	if Profile().IsMobile() {
+		return fmt.Sprintf("%d · %s", beat, formatElapsedTime(totalSeconds))
+	}
+	return fmt.Sprintf("Beat %d · %s", beat, formatElapsedTime(totalSeconds))
 }
 
 // formatElapsedTime renders totalSeconds as M:SS while under an hour and as

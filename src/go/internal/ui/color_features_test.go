@@ -78,10 +78,10 @@ func TestColorButtonLayoutAndMenu(t *testing.T) {
 	if !dv.IsColorMenuOpen() {
 		t.Fatalf("color menu not open")
 	}
-	// Color wheel rectangle should be inside drum view bounds.
-	w := dv.colorWheelRect
+	// Color picker rectangle should be inside drum view bounds.
+	w := dv.colorWheelComp.WheelRect()
 	if w.Empty() || w.Min.Y < dv.Bounds.Min.Y || w.Max.Y > dv.Bounds.Max.Y {
-		t.Fatalf("color wheel rect out of bounds: %v vs %v", w, dv.Bounds)
+		t.Fatalf("color picker rect out of bounds: %v vs %v", w, dv.Bounds)
 	}
 }
 
@@ -98,6 +98,21 @@ func TestSetRowColorRejectsDuplicate(t *testing.T) {
 	dv.SetRowColor(0, dup)
 	if dv.colorKey(dv.Rows[0].Color) == dv.colorKey(dup) {
 		t.Fatalf("duplicate color allowed for different rows")
+	}
+}
+
+func TestSetRowColorManualAllowsDuplicate(t *testing.T) {
+	assertDefaultParityState(t)
+	graph := model.NewGraph(testLogger)
+	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+3*24), graph, testLogger)
+	dv.AddRow()
+	if len(dv.Rows) < 2 {
+		t.Fatalf("need at least two rows")
+	}
+	want := dv.Rows[0].Color
+	dv.SetRowColorManual(1, want) // deliberately duplicate row 0's color
+	if dv.colorKey(dv.Rows[1].Color) != dv.colorKey(want) {
+		t.Fatalf("manual pick should win even when duplicate: got %v want %v", dv.Rows[1].Color, want)
 	}
 }
 
@@ -178,6 +193,72 @@ func TestColorWheelClickSetsColor(t *testing.T) {
 	after := dv.colorKey(dv.Rows[0].Color)
 	if after == before {
 		t.Fatalf("wheel click did not change color: %s", after)
+	}
+}
+
+// TestEnsureUniqueColorPaletteOnly verifies the core requirement: every
+// row/instrument color assigned by ensureUniqueColor is a member of the
+// curated instrument palette (no brighten/darken adjustments, no
+// pseudo-random generation). Uniqueness holds while the row count stays at
+// or below the palette size; beyond that, reuse is allowed but the color
+// must still be on-palette.
+func TestEnsureUniqueColorPaletteOnly(t *testing.T) {
+	assertDefaultParityState(t)
+	logger := game_log.New(testDiscard{}, game_log.LevelError)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 400, timelineHeight+20*24), graph, logger)
+
+	palette := instrumentPaletteColors()
+	if len(palette) == 0 {
+		t.Fatalf("instrumentPaletteColors() returned empty palette")
+	}
+	inPalette := map[string]bool{}
+	for _, c := range palette {
+		inPalette[dv.colorKey(c)] = true
+	}
+
+	// Drive N rows, forcing every row to try the SAME base color so
+	// ensureUniqueColor must remap each one onto a distinct palette color.
+	// The uniqueness assertion below is the real check; N need only be large
+	// enough to exercise the remap path.
+	const N = 14
+	base := palette[0]
+	for len(dv.Rows) < N {
+		dv.AddRow()
+	}
+	for i := range dv.Rows {
+		dv.SetRowColor(i, base)
+	}
+
+	seen := map[string]int{}
+	for i, row := range dv.Rows {
+		key := dv.colorKey(row.Color)
+		if !inPalette[key] {
+			t.Fatalf("row %d color %s is NOT a palette member", i, key)
+		}
+		seen[key]++
+	}
+
+	// Uniqueness must hold while N <= palette size. Re-run with exactly
+	// len(palette) rows and assert all colors are distinct.
+	dv2 := NewDrumView(image.Rect(0, 0, 400, timelineHeight+20*24), graph, logger)
+	for len(dv2.Rows) < len(palette) {
+		dv2.AddRow()
+	}
+	for i := range dv2.Rows {
+		dv2.SetRowColor(i, base)
+	}
+	distinct := map[string]bool{}
+	for i, row := range dv2.Rows {
+		key := dv2.colorKey(row.Color)
+		if !inPalette[key] {
+			t.Fatalf("row %d color %s is NOT a palette member", i, key)
+		}
+		if distinct[key] {
+			t.Fatalf("duplicate color %s at row %d while N (%d) <= palette size (%d)",
+				key, i, len(dv2.Rows), len(palette))
+		}
+		distinct[key] = true
 	}
 }
 

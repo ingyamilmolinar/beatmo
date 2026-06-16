@@ -10,6 +10,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // benchFmtMS formats a seconds value as milliseconds for human-readable
@@ -67,6 +68,15 @@ func (g *Game) Update() error {
 			}
 		}
 	}()
+	// Per-frame undo bracket: every recorded mutation produced by this frame's
+	// single user gesture (a click that adds + auto-stitches, a drag release,
+	// etc.) collapses into ONE atomic undo step. endGroup is a cheap no-op when
+	// nothing was recorded (it never calls capture on an idle frame). This is the
+	// safety net beneath the per-operation groups in game_graph_nodes.go.
+	if g.undoManager != nil {
+		g.undoManager.beginGroup("")
+		defer g.undoManager.endGroup()
+	}
 	// ── Screenshot mode ──
 	if g.screenshotReady() {
 		return ebiten.Termination
@@ -196,8 +206,10 @@ eventsDone:
 		g.scopeApplied = true
 	}
 	// splitter (resize only - input handled via dispatcher)
+	// UpdateResize must run here (before the dispatcher) so the splitter's
+	// winW/totalH are current for in-drag clamping. The drum bounds are
+	// propagated *after* the dispatcher moves the divider — see SetBounds below.
 	g.split.UpdateResize(g.winH, g.winW)
-	g.drum.SetBounds(g.split.DrumRect(g.winW, g.winH))
 
 	// Decay popup-close guard so taps that closed a popup on a prior frame
 	// don't create nodes underneath (touch-to-mouse / gesture dual processing).
@@ -214,6 +226,10 @@ eventsDone:
 	if g.sidebar.IsOpen() {
 		g.sidebar.UpdateScroll()
 	}
+	// Tie node-scoped UI (coordinate badge, open node menu) to node lifecycle:
+	// drop anything pointing at a node that has left the graph, whatever the
+	// cause (undo/redo restore, direct delete, import).
+	g.pruneDanglingNodeRefs()
 
 	// === TOUCH INPUT ===
 	// Poll touch state FIRST (before any cursor reads) so that the
@@ -233,6 +249,12 @@ eventsDone:
 		if g.drum.tree != nil {
 			g.drum.tree.wasPressed = false
 		}
+		if g.drum.audioTree != nil {
+			g.drum.audioTree.wasPressed = false
+		}
+		if g.drum.rootTree != nil {
+			g.drum.rootTree.ResetPressEdge()
+		}
 	}
 
 	// Set frame-level touch override so cursorPosition() and
@@ -244,6 +266,13 @@ eventsDone:
 	// This is critical for WASM where fastPath is enabled by default.
 	mx, my := cursorPosition()
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
+
+	// Global undo/redo shortcuts are dispatched here, unconditionally, BEFORE any
+	// editor/dispatcher/popup gating. Ctrl/Cmd+Z must work everywhere — including
+	// while a popup or dropdown is open, during a drag capture, or with the mouse
+	// held over a panel — not only when the cursor happens to be over the grid.
+	g.handleUndoRedoKeys()
+	g.handleGlobalShortcuts()
 
 	// Handle gestures that are NOT mappable to mouse (multi-touch + grid tap/long-press).
 	// Single-finger drag is now handled by the override → cam.HandleMouse / DrumView.Update.
@@ -267,7 +296,7 @@ eventsDone:
 			g.handleTouchPinch(gesture.CenterX, gesture.CenterY, gesture.Scale)
 			touchHandled = true
 		case GestureTwoFingerPan:
-			g.handleTouchTwoFingerPan(gesture.DeltaX, gesture.DeltaY)
+			g.handleTouchTwoFingerPan(gesture.DeltaX, gesture.DeltaY, gesture.CenterX, gesture.CenterY)
 			touchHandled = true
 		}
 		// GestureSingleFingerDrag is intentionally NOT handled here —
@@ -281,6 +310,9 @@ eventsDone:
 	if globalTouchState.ActiveTouchCount() < 2 {
 		g.pinchBaseScale = 0
 		g.pinchBaseGestureScale = 0
+		if g.drum != nil {
+			g.drum.EndTwoFingerPan()
+		}
 	}
 
 	// Long-press popup intercept: when visible, it exclusively handles input
@@ -321,14 +353,24 @@ eventsDone:
 			inputHandled = g.inputDispatcher.Dispatch(mx, my, left)
 		}
 
-		// Nudge BPM text input focus early when clicking inside the BPM box so
-		// manual editing works even if other handlers short-circuit later.
-		if g.drum != nil && !inputHandled {
-			r := g.drum.bpmBox().Rect
-			if left && mx >= r.Min.X && mx < r.Max.X && my >= r.Min.Y && my < r.Max.Y {
-				g.drum.bpmBox().focused = true
+		// Grid-pane "?" help button: reuse the Button widget's click+anim. Driven
+		// only on the mouse path (touch is handled in handleTapInGrid). Consuming
+		// the press marks inputHandled so the grid editor doesn't also react, and
+		// sets gridHelpCapturing so the DrumViewTree defers this press (below) —
+		// otherwise the same press that opens the overlay is seen by the tree's
+		// click-outside logic (the button is outside all tree hit areas) and
+		// immediately closes it.
+		g.gridHelpCapturing = false
+		if !touchHandled && !Profile().IsMobile() && g.gridHelpBtn != nil {
+			if g.gridHelpBtn.HandleInputResult(mx, my, left) == InputConsumed {
+				inputHandled = true
+				g.gridHelpCapturing = true
 			}
 		}
+
+		// (Removed: the legacy BPM-box focus-nudge. The BPM readout is now a
+		// display-only box; tapping it opens the shared ParamValueEditor via
+		// bpmOpenAdapter through the tree dispatcher — it must never be focused.)
 		// Only handle editor if input not consumed by dispatcher
 		// The function has internal guards for blocking conditions (splitter, menus, bounds).
 		if !inputHandled && !g.blocksAt(mx, my) {
@@ -347,6 +389,15 @@ eventsDone:
 			g.hover = nil
 		}
 	}
+
+	// Propagate the (possibly just-dragged) splitter position to the drum pane
+	// *after* the dispatcher has moved the divider this frame. The grid pane
+	// reads the splitter live at draw time, so baking the drum bounds from an
+	// earlier (pre-dispatch) splitter Y left the drum one frame behind — an
+	// uncovered "dark band" trailing the divider during a fast resize drag.
+	// SetBounds is gated on an actual rect change, so a non-resize frame no-ops;
+	// the cascade still runs at most once per frame while dragging.
+	g.drum.SetBounds(g.split.DrumRect(g.winW, g.winH))
 
 	// Run drum view logic before evaluating panning so it can capture drags.
 	prevPlaying := g.Playing()
@@ -367,7 +418,9 @@ eventsDone:
 	// capture so it can avoid starting new interactions (e.g. touch scroll)
 	// when the splitter or another handler owns the input.
 	if g.drum != nil && g.inputDispatcher != nil {
-		g.drum.inputCapturedExternally = g.inputDispatcher.HasCaptureOtherThan(g.drum)
+		// gridHelpCapturing: while the grid "?" button holds the press, defer the
+		// tree so its click-outside doesn't close the overlay the button just opened.
+		g.drum.inputCapturedExternally = g.inputDispatcher.HasCaptureOtherThan(g.drum) || g.gridHelpCapturing
 	}
 	// Must always process input to maintain correct state transitions.
 	g.drum.Update()
@@ -473,10 +526,10 @@ eventsDone:
 		if err != nil {
 			g.logger.Errorf("[GAME] Import error: %v", err)
 			if g.drum != nil {
-				g.drum.notifyError("Error loading JSON: " + err.Error())
+				g.drum.notifyError(i18n.Tf(i18n.KeyNotifErrLoadJSON, err.Error()))
 			}
 		} else if g.drum != nil {
-			g.drum.notifyInfo("Imported project JSON")
+			g.drum.notifyInfo(i18n.T(i18n.KeyNotifImported))
 			emitImport(len(data), len(g.graph.Nodes), len(g.drum.Rows))
 		}
 	}
@@ -787,9 +840,9 @@ eventsDone:
 			g.drum.SetRecording(false)
 			if err != nil {
 				g.logger.Errorf("[game] recording error: %v", err)
-				g.drum.notifyError("Recording failed: " + err.Error())
+				g.drum.notifyError(i18n.Tf(i18n.KeyNotifRecordingFailed, err.Error()))
 			} else if result != nil {
-				g.drum.notifyInfo("Saving recording to " + result.SessionDir)
+				g.drum.notifyInfo(i18n.Tf(i18n.KeyNotifSavingRecording, result.SessionDir))
 			}
 		} else {
 			g.logger.Debugf("[game] record start pressed")
@@ -809,7 +862,7 @@ eventsDone:
 			}
 			if err := audio.StartRecording(opts); err != nil {
 				g.logger.Errorf("[game] start recording error: %v", err)
-				g.drum.notifyError("Cannot start recording: " + err.Error())
+				g.drum.notifyError(i18n.Tf(i18n.KeyNotifCannotStartRecording, err.Error()))
 			} else {
 				g.drum.SetRecording(true)
 				// Auto-start playback if not already playing
@@ -1007,10 +1060,6 @@ func (g *Game) updateCursorShape() {
 		}
 		return
 	}
-	if g.sidebar.IsOpen() && g.sidebar.resizing {
-		setCursorShape(ebiten.CursorShapeEWResize)
-		return
-	}
 	if g.drum != nil && g.drum.layoutHandler != nil && g.drum.layoutHandler.dragging {
 		if g.drum.layoutHandler.dragAxis == "col" {
 			setCursorShape(ebiten.CursorShapeEWResize)
@@ -1029,12 +1078,6 @@ func (g *Game) updateCursorShape() {
 			setCursorShape(ebiten.CursorShapeEWResize)
 		}
 		return
-	}
-	if g.sidebar.IsOpen() {
-		if hr := g.sidebar.resizeHandleRect(); !hr.Empty() && cursor.In(hr.Inset(handleExpand)) {
-			setCursorShape(ebiten.CursorShapeEWResize)
-			return
-		}
 	}
 	if g.drum != nil && g.drum.layoutHoverIdx >= 0 {
 		if g.drum.layoutHoverAxis == "col" {

@@ -12,9 +12,9 @@ import (
 // - the transport-cluster pill rect (play+stop+record) is non-empty
 //   and contains all three of those button rects;
 // - the BPM pill rect contains the BPM input box and both ± buttons;
-// - the subdivision button rect (which gets its own surface-2 pill +
-//   chevron-down hint via drawSubdivPillOffset / drawSubdivChevronOffset)
-//   is non-empty and lives in the right portion of the transport row.
+// - the subdivision button rect (which gets its own surface-2 pill via
+//   drawSubdivPillOffset) is non-empty and lives in the right portion of
+//   the transport row.
 //
 // Pixel-level verification of the surface-2 fill color is left to the
 // regenerated mobile screenshot baseline; ebitenstub does not support

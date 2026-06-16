@@ -39,7 +39,7 @@ func TestDrawAudioPanelLegend_ProducesSheet(t *testing.T) {
 // just one).
 func TestStickyBar_LegendAndExpanderAlwaysVisible(t *testing.T) {
 	for _, tab := range AllPanelTabs() {
-		bar := NewAudioStickyBar(0, func() {}, func() {}, func() {}, func(PanelTab) {})
+		bar := NewAudioStickyBar(0, func() {}, func(PanelTab) {})
 		bar.SetActiveTab(tab)
 		bar.Layout(image.Rect(0, 0, 800, stickyBarH))
 		if lg := bar.LegendBtn(); lg == nil || lg.Rect().Empty() {

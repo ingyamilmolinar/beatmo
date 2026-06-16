@@ -252,7 +252,7 @@ func TestContextMenuDeferredTap(t *testing.T) {
 
 	// Release — fires the deferred tap.
 	dv.handleContextMenuInput(cx, cy, false)
-	// The first button is "Instrument" which closes the context menu.
+	// The first button is "Rename", which closes the context menu when fired.
 	if dv.IsContextMenuOpen() {
 		t.Fatal("context menu still open after tap release")
 	}
@@ -294,7 +294,8 @@ func TestOverflowMenuDeferredTap(t *testing.T) {
 	if !dv.IsOverflowMenuOpen() {
 		t.Fatal("overflow menu closed on press")
 	}
-	if !dv.overflowDeferredTap.Active() {
+	// The shared MenuScroll now owns the overflow menu's deferred tap.
+	if dv.overflowMenuScroll == nil || !dv.overflowMenuScroll.TapActive() {
 		t.Fatal("deferred tap not active")
 	}
 

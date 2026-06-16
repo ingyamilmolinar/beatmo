@@ -2,10 +2,13 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"slices"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // InstrumentOption represents an instrument available for selection.
@@ -108,19 +111,19 @@ const (
 
 // InstrumentMenuState contains the internal state for the instrument menu component.
 type InstrumentMenuState struct {
-	open             bool
-	hold             bool // Capture flag after menu closes
-	mode             InstMenuMode
-	activeCat        string
+	open      bool
+	hold      bool // Capture flag after menu closes
+	mode      InstMenuMode
+	activeCat string
 	// favoritesView, when true, makes buildInstrumentsMode filter to ★-favorited
 	// ids only and skip the activeCat check. Set by clicking the virtual
 	// "Favorites" category at the top of buildCategoriesMode; cleared by Back.
-	favoritesView    bool
-	userScrolled     bool
-	lastAdded        string
-	cameFromCats     bool
-	searchText       string
-	filteredInsts    []string
+	favoritesView bool
+	userScrolled  bool
+	lastAdded     string
+	cameFromCats  bool
+	searchText    string
+	filteredInsts []string
 	// fuzzyScores parallels filteredInsts when searchText is non-empty;
 	// used by StableTierBreaker to break score ties by tier without losing
 	// the score primary key. Empty when no search query is active.
@@ -136,7 +139,8 @@ type InstrumentMenuComponent struct {
 	props InstrumentMenuProps
 	state InstrumentMenuState
 
-	scroll       *ScrollBehavior
+	menuScroll   *MenuScroll     // shared scroll component (owns the ScrollBehavior)
+	scroll       *ScrollBehavior // == menuScroll.ScrollBehavior(); kept for the existing call sites
 	categoryBtns []*Button
 	instBtns     []*Button
 	searchBox    *TextInput
@@ -164,6 +168,12 @@ type InstrumentMenuComponent struct {
 	selectedIdx int
 	keyEdge     map[ebiten.Key]bool
 
+	// instIDs parallels instBtns: instIDs[i] is the instrument id rendered
+	// by instBtns[i]. Needed by Draw to look up the per-instrument swatch
+	// color and to determine the menuItemActive stripe for the currently
+	// selected instrument. Rebuilt on every rebuildMenu pass.
+	instIDs []string
+
 	// favRects and favIDs together define the per-row star hit areas
 	// when props.Favorites is non-nil. favRects[i] is screen-space and
 	// favIDs[i] is the corresponding instrument id. They are rebuilt
@@ -185,7 +195,6 @@ type InstrumentMenuComponent struct {
 func NewInstrumentMenuComponent() *InstrumentMenuComponent {
 	return &InstrumentMenuComponent{
 		overlayBase: newOverlayBase(),
-		scroll:      NewScrollBehavior(DropdownScrollbarStyle, 24),
 		keyEdge:     map[ebiten.Key]bool{},
 		style:       DefaultMenuStyle(),
 	}
@@ -230,8 +239,12 @@ func (m *InstrumentMenuComponent) rebuildMaps() {
 
 // ensureScroll lazily initializes the scroll behavior.
 func (m *InstrumentMenuComponent) ensureScroll() {
+	if m.menuScroll == nil {
+		m.menuScroll = NewMenuScroll(DropdownScrollbarStyle, 24)
+		m.scroll = m.menuScroll.ScrollBehavior()
+	}
 	if m.scroll == nil {
-		m.scroll = NewScrollBehavior(DropdownScrollbarStyle, 24)
+		m.scroll = m.menuScroll.ScrollBehavior()
 	}
 }
 
@@ -283,6 +296,14 @@ func (m *InstrumentMenuComponent) IsOpen() bool {
 	return m.state.open
 }
 
+// ClaimsKeyboard reports whether the instrument menu currently owns the
+// keyboard. While open, the search box (and pagination jump field) consume
+// typed/caret keys, so the grid must not act on them. Part of the
+// keyboard-ownership contract (keyboard_focus.go).
+func (m *InstrumentMenuComponent) ClaimsKeyboard() bool {
+	return m != nil && m.IsOpen()
+}
+
 // SetLastAdded sets the instrument ID to auto-bias to when opening.
 func (m *InstrumentMenuComponent) SetLastAdded(id string) {
 	m.state.lastAdded = id
@@ -297,6 +318,20 @@ func (m *InstrumentMenuComponent) Refresh() {
 		return
 	}
 	m.rebuildMenu()
+}
+
+// HandleEscape clears a non-empty search query (keeping the menu open). With an
+// empty query it returns false so the universal Esc handler closes the menu.
+func (m *InstrumentMenuComponent) HandleEscape() bool {
+	if strings.TrimSpace(m.state.searchText) == "" {
+		return false
+	}
+	m.state.searchText = ""
+	if m.searchBox != nil {
+		m.searchBox.SetText("")
+	}
+	m.rebuildMenu() // reuse the existing rebuild so the filtered list refreshes
+	return true
 }
 
 // InstBtns returns the current instrument buttons (for test access and legacy sync).
@@ -347,6 +382,7 @@ func (m *InstrumentMenuComponent) rebuildMenu() {
 	m.ensureScroll()
 	m.categoryBtns = m.categoryBtns[:0]
 	m.instBtns = m.instBtns[:0]
+	m.instIDs = m.instIDs[:0]
 
 	if m.props.AnchorRect.Empty() {
 		m.scroll.VS.View = image.Rectangle{}
@@ -717,9 +753,9 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		// this, a Favorites view with no ★s and a query that produces no
 		// matches both leave the user stuck. Back rect lives at the original
 		// position above the search row.
-		extraTop := rowH                // search row
+		extraTop := rowH // search row
 		if showBack {
-			extraTop += rowH            // back row
+			extraTop += rowH // back row
 		}
 		emptyView := image.Rect(base.Min.X, listStartY, base.Max.X, listStartY+rowH)
 		m.scroll.VS.View = emptyView
@@ -734,7 +770,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 				bcH = rowH
 			}
 			backRect := image.Rect(base.Min.X, startY, base.Max.X, startY+bcH)
-			m.backBtn = NewButton("Back", DropdownStyle, func() {
+			m.backBtn = NewButton(i18n.T(i18n.KeyMenuBack), DropdownStyle, func() {
 				m.state.mode = InstMenuModeCategories
 				m.state.favoritesView = false
 				m.scroll.VS.First = 0
@@ -757,18 +793,32 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	m.scroll.VS.View = image.Rect(base.Min.X, listStartY, base.Max.X, listStartY+vis*rowH)
 	m.fullRect = image.Rect(base.Min.X, startY, base.Max.X, listStartY+vis*rowH)
 
-	// Clamp and shift if needed
+	// Translate the whole picker so it sits inside vertBounds, then shift every
+	// derived coordinate (breadcrumb, search row, list, per-row buttons) by the
+	// same delta so they stay aligned to the surface. This is a pure
+	// translation in BOTH axes — we must NOT shrink the rect (the menu's
+	// content has a fixed height/width), so we compute the translation delta
+	// directly rather than via ClampRectInto, which would shrink an
+	// oversized rect and detach the rows from the panel.
 	if !vertBounds.Empty() {
-		shiftY := 0
-		if m.fullRect.Min.Y < vertBounds.Min.Y {
-			shiftY = vertBounds.Min.Y - m.fullRect.Min.Y
-		} else if m.fullRect.Max.Y > vertBounds.Max.Y {
-			shiftY = vertBounds.Max.Y - m.fullRect.Max.Y
+		delta := image.Point{}
+		if m.fullRect.Min.X < vertBounds.Min.X {
+			delta.X = vertBounds.Min.X - m.fullRect.Min.X
+		} else if m.fullRect.Max.X > vertBounds.Max.X {
+			delta.X = vertBounds.Max.X - m.fullRect.Max.X
 		}
-		if shiftY != 0 {
-			m.fullRect = m.fullRect.Add(image.Pt(0, shiftY))
-			m.scroll.VS.View = m.scroll.VS.View.Add(image.Pt(0, shiftY))
-			m.searchRect = m.searchRect.Add(image.Pt(0, shiftY))
+		if m.fullRect.Min.Y < vertBounds.Min.Y {
+			delta.Y = vertBounds.Min.Y - m.fullRect.Min.Y
+		} else if m.fullRect.Max.Y > vertBounds.Max.Y {
+			delta.Y = vertBounds.Max.Y - m.fullRect.Max.Y
+		}
+		if delta.X != 0 || delta.Y != 0 {
+			m.fullRect = m.fullRect.Add(delta)
+			m.scroll.VS.View = m.scroll.VS.View.Add(delta)
+			m.searchRect = m.searchRect.Add(delta)
+			startY += delta.Y
+			listStartY += delta.Y
+			base = base.Add(delta)
 		}
 	}
 
@@ -805,8 +855,14 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		pagH = rowH
 	}
 	pagY := listStartY + vis*rowH
-	pagRect := image.Rect(base.Min.X, pagY, base.Max.X, pagY+pagH)
+	// Inset the strip horizontally so the prev/next chevrons sit inside the
+	// card surface instead of being clipped at its rounded edges.
+	pagRect := image.Rect(base.Min.X+SpaceSM, pagY, base.Max.X-SpaceSM, pagY+pagH)
 	m.computePaginationStrip(pagRect)
+
+	// Close button rect (top-right). Computed here so the breadcrumb strip and
+	// the per-row star column can give it SpaceMD clearance and never collide.
+	closeBtnRect := closeButtonRect(m.fullRect, SpaceXS)
 
 	hasScroll := m.scroll.HasScroll()
 	buttonMaxX := base.Max.X
@@ -844,8 +900,16 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		if bcH <= 0 || bcH > rowH {
 			bcH = rowH
 		}
-		backRect := image.Rect(base.Min.X, startY, base.Max.X, startY+bcH)
-		m.backBtn = NewButton("Back", DropdownStyle, func() {
+		// Inset the breadcrumb's right edge so it clears the close × at the
+		// top-right (the breadcrumb shares the top band with the close button).
+		bcRight := base.Max.X
+		if !closeBtnRect.Empty() && startY < closeBtnRect.Max.Y && startY+bcH > closeBtnRect.Min.Y {
+			if r := closeBtnRect.Min.X - SpaceMD; r < bcRight {
+				bcRight = r
+			}
+		}
+		backRect := image.Rect(base.Min.X, startY, bcRight, startY+bcH)
+		m.backBtn = NewButton(i18n.T(i18n.KeyMenuBack), DropdownStyle, func() {
 			m.state.mode = InstMenuModeCategories
 			m.state.favoritesView = false
 			m.scroll.VS.First = 0
@@ -889,10 +953,19 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		btn.Highlights = m.state.searchHighlights[optID]
 		btn.SetRect(insetRect(r, SpaceXS))
 		m.instBtns = append(m.instBtns, btn)
+		m.instIDs = append(m.instIDs, optID)
 		if starsActive {
 			// Star hit area is the small rectangle to the right of the
 			// row button. Drawn in Draw, hit-tested in HandleInput.
 			starRect := image.Rect(buttonMaxX, r.Min.Y, buttonMaxX+favColWidth, r.Max.Y)
+			// Give the close × clearance: if this row shares the close
+			// button's Y-band, slide the star column left so the star and the
+			// × never collide (SpaceMD gap).
+			if !closeBtnRect.Empty() && starRect.Min.Y < closeBtnRect.Max.Y && starRect.Max.Y > closeBtnRect.Min.Y {
+				if shift := starRect.Max.X - (closeBtnRect.Min.X - SpaceMD); shift > 0 {
+					starRect = starRect.Sub(image.Pt(shift, 0))
+				}
+			}
 			m.favRects = append(m.favRects, starRect)
 			m.favIDs = append(m.favIDs, optID)
 		}
@@ -1375,7 +1448,8 @@ func (m *InstrumentMenuComponent) Draw(dst *ebiten.Image) {
 		return
 	}
 
-	drawScrim(dst)
+	// Backdrop scrim painted by the OverlayPortal (PortalEntry.Scrim) so the
+	// whole stack dims once; this overlay only draws its own surface.
 	if Profile().UseBottomSheet {
 		drawBottomSheetPanel(dst, m.fullRect)
 	} else {
@@ -1387,18 +1461,27 @@ func (m *InstrumentMenuComponent) Draw(dst *ebiten.Image) {
 
 	if m.state.mode == InstMenuModeCategories {
 		for _, btn := range m.categoryBtns {
-			btn.Draw(dst)
+			m.drawCategoryRow(dst, btn)
 		}
 		m.drawScrollbar(dst)
 	} else {
 		// Breadcrumb strip replaces the back button visually; the
 		// back button remains for legacy click compat.
 		m.drawBreadcrumbStrip(dst)
+		// Header band over the search row (Neon Horizon treatment), tinted to
+		// the row's current instrument color.
+		if !m.searchRect.Empty() {
+			drawMenuHeaderBandAccent(dst, m.searchRect, m.menuAccent())
+		}
 		if m.searchBox != nil {
 			m.drawSearchRow(dst)
 		}
-		for _, btn := range m.instBtns {
-			btn.Draw(dst)
+		for i, btn := range m.instBtns {
+			id := ""
+			if i < len(m.instIDs) {
+				id = m.instIDs[i]
+			}
+			m.drawInstRow(dst, btn, id)
 		}
 		m.drawFavoriteStars(dst)
 		m.drawPaginationStrip(dst)
@@ -1447,6 +1530,20 @@ func (m *InstrumentMenuComponent) computeBreadcrumbStrip(r image.Rectangle) {
 // separators. The active (last) segment uses the on-surface accent
 // color; previous segments use the secondary text color so the user
 // reads them as clickable.
+// menuAccent returns the picker's owning-instrument accent — the color of the
+// row's currently-selected instrument — so the menu chrome (active category
+// rows, pagination chip, breadcrumb, header underline) reads as owned by that
+// instrument. Instrument ROWS keep their own per-id color (drawInstRow). Falls
+// back to the azure chrome accent when there is no current instrument.
+func (m *InstrumentMenuComponent) menuAccent() color.Color {
+	if m.props.CurrentInstrument != "" {
+		if c := instColor(m.props.CurrentInstrument); c != nil {
+			return c
+		}
+	}
+	return colAccent
+}
+
 func (m *InstrumentMenuComponent) drawBreadcrumbStrip(dst *ebiten.Image) {
 	labels := m.BreadcrumbPath()
 	if len(labels) == 0 || len(m.breadcrumbRects) == 0 {
@@ -1456,11 +1553,13 @@ func (m *InstrumentMenuComponent) drawBreadcrumbStrip(dst *ebiten.Image) {
 		if i >= len(labels) {
 			break
 		}
-		col := colTextSecondary
+		var col color.Color = colTextSecondary
 		if i == len(labels)-1 {
-			col = colTextAccent
+			col = m.menuAccent()
 		}
-		DrawTextColorAt(dst, labels[i], seg.Min.X+m.style.SegmentPaddingX, seg.Min.Y+seg.Dy()/2, col)
+		th := StyledTextHeight(RoleBody)
+		ty := seg.Min.Y + (seg.Dy()-th)/2
+		DrawTextStyled(dst, labels[i], seg.Min.X+m.style.SegmentPaddingX, ty, RoleBody, col)
 		// Separator chevron between segments.
 		if i < len(labels)-1 && i < len(m.breadcrumbRects)-1 {
 			next := m.breadcrumbRects[i+1]
@@ -1557,11 +1656,17 @@ func (m *InstrumentMenuComponent) drawPaginationStrip(dst *ebiten.Image) {
 	if pc <= pageChipsThreshold {
 		for i, chip := range m.pageChipRects {
 			label := pageChipLabel(i + 1)
-			col := colTextSecondary
+			var col color.Color = colTextSecondary
 			if i+1 == cur {
-				col = colTextAccent
+				col = m.menuAccent()
 			}
-			DrawTextColorAt(dst, label, chip.Min.X+chip.Dx()/2, chip.Min.Y+chip.Dy()/2, col)
+			// Active page chip gets the instrument-color stripe + tint background.
+			if i+1 == cur {
+				drawMenuItemBackgroundAccent(dst, chip, menuItemActive, m.menuAccent())
+			}
+			th := StyledTextHeight(RoleCaption)
+			ty := chip.Min.Y + (chip.Dy()-th)/2
+			DrawTextStyled(dst, label, chip.Min.X+chip.Dx()/2-StyledTextWidth(label, RoleCaption)/2, ty, RoleCaption, col)
 		}
 		return
 	}
@@ -1569,7 +1674,9 @@ func (m *InstrumentMenuComponent) drawPaginationStrip(dst *ebiten.Image) {
 	if m.jumpInput != nil {
 		m.jumpInput.Draw(dst)
 	}
-	DrawTextColorAt(dst, pageOfMLabel(cur, pc), m.jumpInputRect.Min.X+SpaceSM, m.jumpInputRect.Min.Y+m.jumpInputRect.Dy()/2, colTextSecondary)
+	th := StyledTextHeight(RoleBody)
+	ty := m.jumpInputRect.Min.Y + (m.jumpInputRect.Dy()-th)/2
+	DrawTextStyled(dst, pageOfMLabel(cur, pc), m.jumpInputRect.Min.X+SpaceSM, ty, RoleBody, colTextSecondary)
 }
 
 // pageChipLabel formats a 1-based page number for chip display.
@@ -1623,6 +1730,87 @@ func (m *InstrumentMenuComponent) popBreadcrumbTo(d int) {
 	// Future-proof: deeper levels become no-ops today.
 }
 
+// instMenuSwatchSz is the side length (in px) of the colored instrument
+// swatch drawn to the left of each instrument label. Matches the row-rack
+// accent-dot convention (small, clearly visible, not overwhelming).
+const instMenuSwatchSz = 8
+
+// drawInstRow renders one instrument-list row using the Vice City menu
+// treatment: drawMenuItemBackground for hover/active state, a small colored
+// instrument swatch, and the label via DrawTextStyled(RoleBody).
+func (m *InstrumentMenuComponent) drawInstRow(dst *ebiten.Image, btn *Button, id string) {
+	r := btn.Rect()
+	if r.Empty() {
+		return
+	}
+	// Determine row state: currently-selected instrument → active; hover/press → hover.
+	state := menuItemRest
+	if id != "" && id == m.props.CurrentInstrument {
+		state = menuItemActive
+	} else if btn.hovered || btn.pressed {
+		state = menuItemHover
+	}
+	// Tint the hover/active chrome to this instrument's own color so the
+	// highlight matches its swatch — colors stay informational and consistent.
+	drawMenuItemBackgroundAccent(dst, r, state, instColor(id))
+
+	// Draw button chrome (shadow/glow/press) without text — blank Text temporarily.
+	saved := btn.Text
+	btn.Text = ""
+	btn.Draw(dst)
+	btn.Text = saved
+
+	// Colored instrument swatch (small rounded square) — left-aligned, vertically
+	// centered. Uses instColor which returns a design-system token or custom color.
+	swatchCol := instColor(id)
+	swatchSz := instMenuSwatchSz
+	swatchX := r.Min.X + SpaceSM
+	swatchY := r.Min.Y + (r.Dy()-swatchSz)/2
+	swatchRect := image.Rect(swatchX, swatchY, swatchX+swatchSz, swatchY+swatchSz)
+	drawRoundedRect(dst, swatchRect, swatchCol, RadiusXXS, true)
+
+	// Fuzzy match highlights: draw rectangles behind matched chars. Applied
+	// before the label text so highlights sit under, not over, the text.
+	th := StyledTextHeight(RoleBody)
+	labelX := swatchRect.Max.X + SpaceSM
+	ty := r.Min.Y + (r.Dy()-th)/2
+	if len(btn.Highlights) > 0 {
+		drawButtonHighlights(dst, saved, btn.Highlights, labelX, ty, 1.0)
+	}
+
+	// Label via RoleBody + colTextPrimary.
+	DrawTextStyled(dst, saved, labelX, ty, RoleBody, colTextPrimary)
+}
+
+// drawCategoryRow renders one category row: drawMenuItemBackground for the
+// hover/active state and the label via DrawTextStyled(RoleBody).
+func (m *InstrumentMenuComponent) drawCategoryRow(dst *ebiten.Image, btn *Button) {
+	r := btn.Rect()
+	if r.Empty() {
+		return
+	}
+	// Determine row state.
+	state := menuItemRest
+	if btn.Style == PopupButtonStyle {
+		// PopupButtonStyle is set on the active category/Favorites row.
+		state = menuItemActive
+	} else if btn.hovered || btn.pressed {
+		state = menuItemHover
+	}
+	drawMenuItemBackgroundAccent(dst, r, state, m.menuAccent())
+
+	// Draw button chrome (shadow/glow) without text.
+	saved := btn.Text
+	btn.Text = ""
+	btn.Draw(dst)
+	btn.Text = saved
+
+	// Label via RoleBody.
+	th := StyledTextHeight(RoleBody)
+	ty := r.Min.Y + (r.Dy()-th)/2
+	DrawTextStyled(dst, saved, r.Min.X+SpaceMD, ty, RoleBody, colTextPrimary)
+}
+
 // drawFavoriteStars renders the per-row star icons. Empty star (outline)
 // for unfavorited items; filled star for favorited. The hit areas live
 // in m.favRects with matching ids in m.favIDs.
@@ -1634,10 +1822,11 @@ func (m *InstrumentMenuComponent) drawFavoriteStars(dst *ebiten.Image) {
 		id := m.favIDs[i]
 		fav := m.props.Favorites.Get(id)
 		icon := IconStar
-		col := colTextSecondary
+		var col color.Color = colTextSecondary
 		if fav {
 			icon = IconStarFilled
-			col = genColorPrimary
+			// Filled star carries that instrument's own color.
+			col = instColor(id)
 		}
 		// Inset slightly so the icon doesn't touch the row border.
 		DrawIcon(dst, icon, insetRect(rect, SpaceXS), col)
@@ -1711,15 +1900,15 @@ func (m *InstrumentMenuComponent) drawBottomSheetHandle(dst *ebiten.Image) {
 }
 
 // drawSearchRow renders the search input plus a muted "Search" hint when the
-// box is empty and unfocused. Hint placement matches TextInput.Draw's text
-// origin (4 px x-inset, vertically centered).
+// box is empty and unfocused. Hint placement uses StyledTextHeight(RoleBody)
+// for vertical centering.
 func (m *InstrumentMenuComponent) drawSearchRow(dst *ebiten.Image) {
 	m.searchBox.Draw(dst)
 	if m.state.searchText == "" && !m.searchBox.Focused() {
 		r := m.searchBox.Rect
-		th := TextHeight()
+		th := StyledTextHeight(RoleBody)
 		ty := r.Min.Y + (r.Dy()-th)/2
-		DrawTextColorAt(dst, "Search", r.Min.X+4, ty, colTextSecondary)
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapSearch), r.Min.X+SpaceXS, ty, RoleBody, colTextSecondary)
 	}
 }
 

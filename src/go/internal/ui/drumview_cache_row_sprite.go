@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -9,6 +10,51 @@ import (
 )
 
 const rowCachePatchMax = 12
+
+// drumCellGradientBands is the band count for the backlit-hardware micro
+// gradient baked into ON drum cells. The gradient draws into the cached row
+// sprite (once per dirty, not per frame), so band fills are served from
+// pixelCache after the first paint — alloc-free in steady state.
+const drumCellGradientBands = 4
+
+// drawDrumCell renders a single drum cell into the row sprite. ON regular
+// cells get a subtle vertical micro-gradient (top slightly lighter → bottom
+// slightly darker) in the instrument color for a backlit-hardware ("808")
+// look; everything else (OFF cells, mute cells, narrow cells, highlights)
+// falls through to the shared DrumCellUI.Draw path unchanged. The gradient is
+// derived from the instrument color via adjustColor so it threads the same hue
+// the graph cluster uses — chrome stays restrained; color is the signal.
+func drawDrumCell(dst *ebiten.Image, rect image.Rectangle, on bool, fillCol color.Color, isMute bool) {
+	// Backlit gradient only applies to ON, non-mute, non-narrow cells where
+	// the gradient bands are actually visible. Otherwise defer to the shared
+	// flat-cell style so muted/off/narrow rendering is byte-identical.
+	if on && !isMute && fillCol != nil && rect.Dx() > narrowCellThreshold && rect.Dy() > drumCellGradientBands {
+		top := adjustColor(fillCol, 22)  // lighter top edge — "lit from above"
+		bot := adjustColor(fillCol, -26) // darker bottom — recessed body
+		fillVerticalGradient(dst, rect, top, bot, drumCellGradientBands)
+		// 1px border keeps cell separation crisp over the gradient body.
+		drawRect(dst, rect, DrumCellUI.Border, false)
+		return
+	}
+	DrumCellUI.Draw(dst, rect, on, false, fillCol)
+}
+
+// drawBeatGroupSeparators bakes faint vertical lines at every per-beat group
+// boundary into the row sprite so the rack reads as an 808 step row rather
+// than a flat CSV heatmap. group is the subdivisions-per-beat; <=1 disables.
+func drawBeatGroupSeparators(dst *ebiten.Image, w, h, n, group int) {
+	if group <= 1 || n <= group || w <= 0 || h <= 0 {
+		return
+	}
+	sepCol := WithAlpha(genColorOnSurface, AlphaFaint)
+	for j := group; j < n; j += group {
+		x := (j * w) / n
+		if x <= 0 || x >= w {
+			continue
+		}
+		drawRect(dst, image.Rect(x, 0, x+1, h), sepCol, true)
+	}
+}
 
 // buildRowSprite rebuild kinds returned to callers.
 const (
@@ -104,10 +150,11 @@ func (dv *DrumView) buildRowSprite(i int) int {
 					cellType = dv.Rows[i].CellTypes[j]
 				}
 				fillCol := onCol
-				if cellType == model.NodeTypeMute {
+				isMute := cellType == model.NodeTypeMute
+				if isMute {
 					fillCol = colMuteCell
 				}
-				DrumCellUI.Draw(newImg, rect, on, false, fillCol)
+				drawDrumCell(newImg, rect, on, fillCol, isMute)
 			}
 			dv.rowCache[i], dv.rowCacheScratch[i] = newImg, dv.rowCache[i]
 			dv.rowCacheLen = dv.Length
@@ -158,10 +205,17 @@ func (dv *DrumView) buildRowSprite(i int) int {
 						}
 						rect := image.Rect(x0, 0, x1, h)
 						fillCol := onCol
-						if typ == model.NodeTypeMute {
+						isMute := typ == model.NodeTypeMute
+						if isMute {
 							fillCol = colMuteCell
 						}
-						DrumCellUI.Draw(dv.rowCache[i], rect, step, false, fillCol)
+						drawDrumCell(dv.rowCache[i], rect, step, fillCol, isMute)
+						// A patched cell starts exactly on its group-boundary
+						// separator column; re-draw the line so the 808 grouping
+						// survives in-place cell edits.
+						if g := dv.timelineUnitsPerBeat; g > 1 && j%g == 0 && j > 0 && x0 > 0 && x0 < w {
+							drawRect(dv.rowCache[i], image.Rect(x0, 0, x0+1, h), WithAlpha(genColorOnSurface, AlphaFaint), true)
+						}
 					}
 					dv.rowCacheLen = dv.Length
 					dv.rowCacheW, dv.rowCacheH = w, h
@@ -207,11 +261,16 @@ func (dv *DrumView) buildRowSprite(i int) int {
 				cellType = dv.Rows[i].CellTypes[j]
 			}
 			fillCol := onCol
-			if cellType == model.NodeTypeMute {
+			isMute := cellType == model.NodeTypeMute
+			if isMute {
 				fillCol = colMuteCell
 			}
-			DrumCellUI.Draw(img, rect, on, false, fillCol)
+			drawDrumCell(img, rect, on, fillCol, isMute)
 		}
+		// Bake faint per-beat group separators so the rack reads as an 808
+		// step row. Drawn after cells so ON-cell gradients don't overpaint
+		// the boundary lines (the patch path re-draws them per-cell below).
+		drawBeatGroupSeparators(img, w, h, n, dv.timelineUnitsPerBeat)
 	}
 
 	// When zoomed out (more steps than pixels), bake decimated marker ticks

@@ -47,6 +47,7 @@ type profileValues struct {
 	SplitterGrabThreshold int // profileOverrides.splitterGrabThreshold
 	SplitterHandleLen     int // profileOverrides.splitterHandleLen
 	SplitterHandleThk     int // profileOverrides.splitterHandleThk
+	SynthHeaderH          int // profileOverrides.synthHeaderH
 	TimelineBarH          int // profileOverrides.timelineBarH
 	TransportBtnSize      int // profileOverrides.transportBtnSize
 }
@@ -90,6 +91,7 @@ var (
 		SplitterGrabThreshold: 0,
 		SplitterHandleLen:     50,
 		SplitterHandleThk:     8,
+		SynthHeaderH:          48,
 		TimelineBarH:          12,
 		TransportBtnSize:      32,
 	}
@@ -123,7 +125,7 @@ var (
 		PopupPad:              10,
 		PopupPanelW:           300,
 		PopupSectionGap:       8,
-		RowControlBtnSize:     32,
+		RowControlBtnSize:     36,
 		RowHeight:             44,
 		SliderThumbH:          24,
 		SliderThumbW:          14,
@@ -131,6 +133,7 @@ var (
 		SplitterGrabThreshold: 8,
 		SplitterHandleLen:     56,
 		SplitterHandleThk:     6,
+		SynthHeaderH:          38,
 		TimelineBarH:          14,
 		TransportBtnSize:      44,
 	}

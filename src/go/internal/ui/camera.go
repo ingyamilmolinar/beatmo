@@ -17,6 +17,15 @@ type Camera struct {
 
 func NewCamera() *Camera { return &Camera{Scale: 2.0} }
 
+// Reset restores the default zoom and recenters the view (the keyboard "0"
+// shortcut). Default scale matches NewCamera (2.0).
+func (c *Camera) Reset() {
+	c.Scale = 2.0
+	c.OffsetX = 0
+	c.OffsetY = 0
+	c.Snap()
+}
+
 // ScreenPos converts world coordinates to screen-space using the current
 // camera transform.
 func (c *Camera) ScreenPos(x, y float64) (sx, sy float64) {

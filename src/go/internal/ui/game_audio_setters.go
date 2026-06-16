@@ -69,6 +69,13 @@ func (g *Game) SetEQBandGain(channel string, band int, gainDB float64) {
 	if g.drum.eqPanelZone != nil && len(g.drum.eqPanelZone.bandGainsDB) == len(gains) {
 		copy(g.drum.eqPanelZone.bandGainsDB, gains)
 		copy(g.drum.eqPanelZone.bandMuted, muted)
+		// Invalidate the panel's own curve cache so the EQ-tab plot redraws
+		// with the new gains. Without this the panel's drawEQCurve keeps
+		// serving the stale cache (DrumView.eqCurveDirty drives a different
+		// curve), which is why band-adjusted scenes rendered identically to
+		// the flat-EQ base.
+		g.drum.eqPanelZone.curveDirty = true
+		g.drum.eqPanelZone.curveCache = nil
 	}
 	g.drum.applyEQ()
 	g.drum.eqCurveDirty = true

@@ -101,14 +101,14 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 
 	// Verify notification was shown.
 	found := false
-	for _, n := range dv.notifs {
-		if strings.Contains(n.msg, "NewKick") {
+	for _, n := range dv.notifStore.History() {
+		if strings.Contains(n.text, "NewKick") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected info notification containing 'NewKick', got %v", dv.notifs)
+		t.Errorf("expected info notification containing 'NewKick', got %v", dv.notifStore.History())
 	}
 }
 
@@ -213,14 +213,14 @@ func TestRenameInvalidCharsShowsError(t *testing.T) {
 
 			// An error notification should have been shown.
 			hasErr := false
-			for _, n := range dv.notifs {
+			for _, n := range dv.notifStore.History() {
 				if n.isErr {
 					hasErr = true
 					break
 				}
 			}
 			if !hasErr {
-				t.Errorf("expected error notification for invalid name %q, got notifs=%v", tc.name, dv.notifs)
+				t.Errorf("expected error notification for invalid name %q, got notifs=%v", tc.name, dv.notifStore.History())
 			}
 		})
 	}

@@ -29,6 +29,8 @@ func (dv *DrumView) decayAnims() {
 		decay(&dv.bpmErrorAnim)
 		dv.transportZone.bpmErrorAnim = dv.bpmErrorAnim
 	}
+	// Stage 5: tick per-knob synth concept ghosts (fade-out after release).
+	dv.advanceSynthGhost()
 	// DrumView-specific animations.
 	decay(&dv.lenDecAnim)
 	decay(&dv.lenIncAnim)

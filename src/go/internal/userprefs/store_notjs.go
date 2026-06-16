@@ -42,7 +42,14 @@ type fileStore struct {
 	// sampleEdits mirrors the on-disk non-destructive sample-edit
 	// descriptors (instrument id → field → value).
 	sampleEdits map[string]map[string]float64
-	loaded      bool
+	// notifications mirrors the on-disk bounded notification history
+	// (oldest..newest).
+	notifications []NotificationRecord
+	// knobSteps mirrors the on-disk per-param step-multiplier rung choices.
+	knobSteps map[string]float64
+	// language mirrors the on-disk chosen UI locale ("" = default English).
+	language string
+	loaded   bool
 
 	dirty    bool           // queued write pending (any section modified)
 	inflight bool           // true between worker submit and worker exit
@@ -117,6 +124,9 @@ func (s *fileStore) ensureLoadedLocked() error {
 	if err == nil {
 		s.favorites, s.overrides, s.userRecipes, s.audioPanel = parsePrefsV3(data, s.logf)
 		s.sampleEdits = parseSampleEdits(data)
+		s.notifications = parseNotifications(data)
+		s.knobSteps, _ = parseKnobStepsFromPrefs(data)
+		s.language = parseLanguageFromPrefs(data)
 		s.loaded = true
 		return nil
 	}
@@ -125,6 +135,7 @@ func (s *fileStore) ensureLoadedLocked() error {
 		s.overrides = map[string]map[string]float64{}
 		s.userRecipes = map[string][]byte{}
 		s.sampleEdits = map[string]map[string]float64{}
+		s.knobSteps = map[string]float64{}
 		s.loaded = true
 		return err
 	}
@@ -132,6 +143,7 @@ func (s *fileStore) ensureLoadedLocked() error {
 	s.overrides = map[string]map[string]float64{}
 	s.userRecipes = map[string][]byte{}
 	s.sampleEdits = map[string]map[string]float64{}
+	s.knobSteps = map[string]float64{}
 	s.loaded = true
 	return nil
 }
@@ -358,11 +370,14 @@ func (s *fileStore) queueWriteLocked() error {
 // prefsSnapshot is the immutable state the worker writes. Distinct
 // from the live cache so the worker can drop the lock before disk I/O.
 type prefsSnapshot struct {
-	favorites   map[string]bool
-	overrides   map[string]map[string]float64
-	userRecipes map[string][]byte
-	audioPanel  AudioPanelStateDoc
-	sampleEdits map[string]map[string]float64
+	favorites     map[string]bool
+	overrides     map[string]map[string]float64
+	userRecipes   map[string][]byte
+	audioPanel    AudioPanelStateDoc
+	sampleEdits   map[string]map[string]float64
+	notifications []NotificationRecord
+	knobSteps     map[string]float64
+	language      string
 }
 
 // LoadAudioPanelState returns the persisted Phase-5 audio-panel state.
@@ -381,6 +396,69 @@ func (s *fileStore) SaveAudioPanelState(state AudioPanelStateDoc) error {
 	s.mu.Lock()
 	_ = s.ensureLoadedLocked()
 	s.audioPanel = state
+	return s.queueWriteLocked()
+}
+
+// LoadNotifications returns the persisted notification history (oldest..newest).
+func (s *fileStore) LoadNotifications() ([]NotificationRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.ensureLoadedLocked(); err != nil {
+		return nil, err
+	}
+	out := make([]NotificationRecord, len(s.notifications))
+	copy(out, s.notifications)
+	return out, nil
+}
+
+// SaveNotifications upserts the whole notification history, bounded to the
+// newest notifHistoryMax entries.
+func (s *fileStore) SaveNotifications(recs []NotificationRecord) error {
+	s.mu.Lock()
+	_ = s.ensureLoadedLocked()
+	s.notifications = boundNotifications(recs)
+	return s.queueWriteLocked()
+}
+
+// LoadKnobSteps returns the persisted per-param step-multiplier rungs.
+func (s *fileStore) LoadKnobSteps() map[string]float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.ensureLoadedLocked()
+	out := make(map[string]float64, len(s.knobSteps))
+	for k, v := range s.knobSteps {
+		out[k] = v
+	}
+	return out
+}
+
+// SaveKnobStep upserts the chosen step-multiplier for the named param.
+func (s *fileStore) SaveKnobStep(name string, step float64) error {
+	if name == "" || !isFiniteFloat(step) {
+		return nil
+	}
+	s.mu.Lock()
+	_ = s.ensureLoadedLocked()
+	if s.knobSteps == nil {
+		s.knobSteps = map[string]float64{}
+	}
+	s.knobSteps[name] = step
+	return s.queueWriteLocked()
+}
+
+// LoadLanguage returns the persisted UI locale ("" = default English).
+func (s *fileStore) LoadLanguage() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.ensureLoadedLocked()
+	return s.language, nil
+}
+
+// SaveLanguage upserts the chosen UI locale.
+func (s *fileStore) SaveLanguage(lang string) error {
+	s.mu.Lock()
+	_ = s.ensureLoadedLocked()
+	s.language = lang
 	return s.queueWriteLocked()
 }
 
@@ -413,7 +491,22 @@ func (s *fileStore) snapshotPrefsLocked() prefsSnapshot {
 		}
 		sampleEdits[id] = cp
 	}
-	return prefsSnapshot{favs, overrides, userRecipes, s.audioPanel, sampleEdits}
+	notifs := make([]NotificationRecord, len(s.notifications))
+	copy(notifs, s.notifications)
+	knobSteps := make(map[string]float64, len(s.knobSteps))
+	for k, v := range s.knobSteps {
+		knobSteps[k] = v
+	}
+	return prefsSnapshot{
+		favorites:     favs,
+		overrides:     overrides,
+		userRecipes:   userRecipes,
+		audioPanel:    s.audioPanel,
+		sampleEdits:   sampleEdits,
+		notifications: notifs,
+		knobSteps:     knobSteps,
+		language:      s.language,
+	}
 }
 
 // drainPending is the single worker job; it loops until no further write
@@ -464,7 +557,7 @@ func (s *fileStore) writeAtomic(snap prefsSnapshot) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	data, err := marshalPrefsV4(snap.favorites, snap.overrides, snap.userRecipes, snap.audioPanel, snap.sampleEdits)
+	data, err := marshalPrefsV7(snap.favorites, snap.overrides, snap.userRecipes, snap.audioPanel, snap.sampleEdits, snap.notifications, snap.knobSteps, snap.language)
 	if err != nil {
 		return err
 	}

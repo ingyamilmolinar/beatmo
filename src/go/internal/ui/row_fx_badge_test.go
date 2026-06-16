@@ -4,6 +4,7 @@ package ui
 
 import (
 	"image"
+	"image/color"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -52,7 +53,7 @@ func TestRowFXBadgeCountFromActiveSlots(t *testing.T) {
 			// count helpers above; pixel-level verification lives in the
 			// regenerated mobile screenshot baseline.
 			img := ebiten.NewImage(32, 32)
-			drawFXBadge(img, image.Rect(0, 0, 32, 32), gotN)
+			drawFXBadge(img, image.Rect(0, 0, 32, 32), gotN, color.RGBA{190, 120, 60, 255})
 		})
 	}
 }

@@ -5,6 +5,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestSliderPopupOpenClose(t *testing.T) {
@@ -177,15 +179,16 @@ func TestSliderPopupWithLabel(t *testing.T) {
 	bounds := image.Rect(0, 0, 800, 600)
 	sp.Open(anchor, bounds, 30)
 
-	// With a label, trackTop should be at rect.Min.Y + 32.
-	expectedTrackTop := sp.Rect().Min.Y + 32
+	// With a label (no title): SpaceXS + RoleBody height + SpaceXS + TextHeight + SpaceXS
+	// = 3 + 18 + 3 + 16 + 3 = 43.
+	expectedTrackTop := sp.Rect().Min.Y + SpaceXS + StyledTextHeight(RoleBody) + SpaceXS + TextHeight() + SpaceXS
 	if sp.trackTop() != expectedTrackTop {
 		t.Fatalf("trackTop() = %d, want %d", sp.trackTop(), expectedTrackTop)
 	}
 
 	sp.Close()
 
-	// Without label.
+	// Without label (no title): SpaceXS + RoleBody height + SpaceXS = 3 + 18 + 3 = 24.
 	sp2 := NewSliderPopup(SliderPopupConfig{
 		ID:       "test-nolabel",
 		ZIndex:   100,
@@ -193,11 +196,66 @@ func TestSliderPopupWithLabel(t *testing.T) {
 		SetValue: func(v float64) { val = v },
 	})
 	sp2.Open(anchor, bounds, 30)
-	expectedTrackTop = sp2.Rect().Min.Y + 28
+	expectedTrackTop = sp2.Rect().Min.Y + SpaceXS + StyledTextHeight(RoleBody) + SpaceXS
 	if sp2.trackTop() != expectedTrackTop {
 		t.Fatalf("trackTop() = %d, want %d (no label)", sp2.trackTop(), expectedTrackTop)
 	}
 	sp2.Close()
+}
+
+func TestSliderPopupDrawUsesRoundedThumb(t *testing.T) {
+	assertDefaultParityState(t)
+	val := 0.5
+	sp := NewSliderPopup(SliderPopupConfig{
+		ID: "t", ZIndex: 100,
+		GetValue: func() float64 { return val },
+		SetValue: func(v float64) { val = v },
+	})
+	sp.Open(image.Rect(100, 200, 130, 230), image.Rect(0, 0, 800, 600), 30)
+	dst := ebiten.NewImage(800, 600)
+	calls := captureRoundedRectCalls(t, func() { sp.Draw(dst) })
+	wantDia := Profile().DensityValues().SliderThumbH
+	foundThumb := false
+	for _, c := range calls {
+		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Rect.Dx() >= wantDia-2 && c.Radius == c.Rect.Dx()/2 {
+			foundThumb = true
+		}
+	}
+	if !foundThumb {
+		t.Fatalf("expected a round filled thumb; got %+v", calls)
+	}
+}
+
+func TestSliderPopupHorizontalMapsXToValue(t *testing.T) {
+	assertDefaultParityState(t)
+	forceSmallScreenForTest = true
+	UpdateProfile()
+	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
+
+	val := 0.0
+	sp := NewSliderPopup(SliderPopupConfig{
+		ID: "h", ZIndex: 100,
+		GetValue: func() float64 { return val },
+		SetValue: func(v float64) { val = v },
+	})
+	bounds := image.Rect(0, 0, 400, 800)
+	sp.Open(image.Rect(40, 700, 84, 744), bounds, 0)
+	if !sp.IsHorizontal() {
+		t.Fatal("popup should be horizontal on mobile")
+	}
+	if !sp.Rect().In(bounds) {
+		t.Fatalf("popup rect %v should fit inside bounds %v (no off-screen clip)", sp.Rect(), bounds)
+	}
+	midY := (sp.Rect().Min.Y + sp.Rect().Max.Y) / 2
+	x0, x1 := sp.trackStart(), sp.trackEnd()
+	sp.HandleInput(x1, midY, true) // far right
+	if val < 0.9 {
+		t.Fatalf("press at right end should set value ~1, got %.2f", val)
+	}
+	sp.HandleInput(x0, midY, true) // far left
+	if val > 0.1 {
+		t.Fatalf("press at left end should set value ~0, got %.2f", val)
+	}
 }
 
 func TestSliderPopupOverlayInterface(t *testing.T) {
@@ -268,5 +326,87 @@ func TestSliderPopupOverlayInterface(t *testing.T) {
 	result = o.HandleInput(100, 100, true)
 	if result != InputIgnored {
 		t.Fatalf("HandleInput when closed = %v, want InputIgnored", result)
+	}
+}
+
+// TestSliderPopupHorizontalDrawEmitsHorizontalRail verifies that the mobile
+// (horizontal) Draw path emits a clearly-landscape rail rect (Dx >= 2*Dy) and a
+// near-square round thumb. A regression that swapped axes would draw a vertical
+// rail (Dx < Dy) and this test would catch it.
+func TestSliderPopupHorizontalDrawEmitsHorizontalRail(t *testing.T) {
+	assertDefaultParityState(t)
+	forceSmallScreenForTest = true
+	UpdateProfile()
+	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
+
+	val := 0.5
+	sp := NewSliderPopup(SliderPopupConfig{
+		ID: "h-draw", ZIndex: 100,
+		GetValue: func() float64 { return val },
+		SetValue: func(v float64) { val = v },
+	})
+	bounds := image.Rect(0, 0, 400, 800)
+	sp.Open(image.Rect(40, 700, 84, 744), bounds, 0)
+	if !sp.IsHorizontal() {
+		t.Fatal("popup should be horizontal on mobile")
+	}
+
+	dst := ebiten.NewImage(400, 800)
+	calls := captureRoundedRectCalls(t, func() { sp.Draw(dst) })
+
+	// Assert there is a clearly horizontal filled rail: Dx >= 2*Dy.
+	foundHRail := false
+	for _, r := range calls {
+		if r.Filled && r.Rect.Dy() > 0 && r.Rect.Dx() >= 2*r.Rect.Dy() {
+			foundHRail = true
+			break
+		}
+	}
+	if !foundHRail {
+		t.Fatalf("expected a horizontal filled rail (Dx >= 2*Dy) but got: %+v", calls)
+	}
+
+	// Assert there is a near-square round thumb (|Dx-Dy|<=2, Radius==Dx/2, Dx>=8).
+	wantDia := Profile().DensityValues().SliderThumbH
+	foundThumb := false
+	for _, c := range calls {
+		if c.Filled && intAbs(c.Rect.Dx()-c.Rect.Dy()) <= 2 && c.Rect.Dx() >= wantDia-2 && c.Radius == c.Rect.Dx()/2 {
+			foundThumb = true
+			break
+		}
+	}
+	if !foundThumb {
+		t.Fatalf("expected a round filled thumb (dia~%d) but got: %+v", wantDia, calls)
+	}
+}
+
+// TestSliderPopupHorizontalLongTitleStaysInViewport verifies that a very long
+// Title cannot push the mobile popup width past the bounds.Dx()-2*SpaceMD
+// margin (regression guard for the Title-expansion-after-clamp ordering bug).
+func TestSliderPopupHorizontalLongTitleStaysInViewport(t *testing.T) {
+	assertDefaultParityState(t)
+	forceSmallScreenForTest = true
+	UpdateProfile()
+	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
+
+	longTitle := "Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	val := 0.5
+	sp := NewSliderPopup(SliderPopupConfig{
+		ID:       "test-long-title",
+		ZIndex:   100,
+		Title:    func() string { return longTitle },
+		GetValue: func() float64 { return val },
+		SetValue: func(v float64) { val = v },
+	})
+
+	boundsW := 300
+	bounds := image.Rect(0, 0, boundsW, 600)
+	anchor := image.Rect(100, 300, 130, 330)
+	sp.Open(anchor, bounds, 0)
+
+	maxAllowed := boundsW - 2*SpaceMD
+	if got := sp.Rect().Dx(); got > maxAllowed {
+		t.Fatalf("mobile popup width %d exceeds viewport margin limit %d (bounds %d - 2*SpaceMD %d)",
+			got, maxAllowed, boundsW, SpaceMD)
 	}
 }

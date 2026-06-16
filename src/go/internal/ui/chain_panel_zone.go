@@ -7,13 +7,12 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	audio "github.com/ingyamilmolinar/beatmo/internal/audio"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
 const (
-	chainHeaderH = 26 // 4px + 18px button + 4px
-	chainPanelH  = 160
+	chainHeaderH = 32 // header band: shared audioPillHeight() pill + vertical centering
+	chainPanelH  = 166
 )
 
 // chainDisplayMode selects how A/B traces are rendered.
@@ -35,7 +34,6 @@ type ChainCallbacks struct {
 	OnClearTapA    func()
 	OnClearTapB    func()
 	OnFreezeToggle func() bool
-	OnClose        func()
 
 	// StagePeak returns the latest peak/RMS dB for the given pipeline
 	// stage. Used to paint per-stage mini-meters beside every stage
@@ -68,7 +66,6 @@ type ChainPanelZone struct {
 	autoGainBtn  *Button    // auto-gain toggle (Y) — chrome row
 	fitBtn       *Button    // auto-fit toggle (X) — chrome row
 	freezeBtn    *Button    // freeze toggle
-	closeBtn     *Button    // close panel
 
 	// segmentedRowH is the vertical space claimed by the mobile segmented
 	// OVR|SPL|DIF row (0 on desktop, where the modes are pills in the chrome
@@ -99,6 +96,32 @@ type ChainPanelZone struct {
 	// fitState is reusable scratch for the auto-fit sub-sliced snapshot so
 	// Draw never heap-allocates a new State per frame (alloc budget gate).
 	fitState scope.State
+
+	// Trace cache. The waveform trace area (drawChainTraces) is by far the
+	// hottest renderer on the audio panel — two full-width traces at ~2
+	// drawRect blits per pixel column (~5k blits/frame, ~87% of the Chain
+	// tab's Draw cost). The scope service republishes State only at ~30 Hz
+	// (scope/service.go) while Draw runs up to 60 fps, so between ticks the
+	// trace pixels are identical. We render the trace into an offscreen image
+	// once per (state-timestamp + layout) change and blit it on the unchanged
+	// frames. That halves the panel's per-frame blit count and — the part
+	// that actually fixes the audio — hands the sequencer goroutine a cheap
+	// frame between renders on the single WASM thread, so a Draw burst stops
+	// starving it (the choppy-under-Chain-tab report). Pixel-identical: the
+	// cache holds the real render. See profile_chain_tab.mjs and
+	// TestChainTraceCacheMatchesDirect.
+	traceCache *ebiten.Image
+	traceKey   chainTraceKey
+	traceKeyOK bool
+	// traceState pins the scope.State the cache was last rendered from. The
+	// state pointer is the cache's freshness signal: ScopeState() hands back a
+	// fresh *scope.State whenever the data refreshes — on desktop the service
+	// swaps it every ~30 Hz tick, and on WASM cachedScopeState rebuilds it
+	// every stateCacheTTL. (Do NOT key on state.Timestamp — the WASM
+	// SynthesizeScopeState path leaves it 0, which would freeze the trace.)
+	// Holding the reference also prevents the allocator from reusing the
+	// address while it is still our key, so pointer identity is unambiguous.
+	traceState *scope.State
 
 	// WASM-only zone-local state. On desktop these stay zero-valued because
 	// the audio.ScopeService() owns freeze + instrument selection.
@@ -161,21 +184,13 @@ func (z *ChainPanelZone) initButtons() {
 	z.diffBtn = NewButton("DIF", InstButtonStyle, func() {
 		z.displayMode = chainDiff
 	})
-	// Freeze indicator uses single-character text per DESIGN.md §5d
-	// (permitted text-glyph exception): "||" frozen, ">" resume; tinted
-	// colTextSecondary inactive, colAccent when frozen.
-	z.freezeBtn = NewButton("||", InstButtonStyle, func() {
+	// Freeze indicator is icon-only: a pause icon while live (click action is
+	// "pause") and a play icon while frozen (action "resume"), set by
+	// applyFreezeVisual (shared with the analyzer-tab freeze pill).
+	z.freezeBtn = NewButton("", InstButtonStyle, func() {
 		z.SetFrozen(!z.frozen)
 	})
-	z.freezeBtn.TextColor = colTextSecondary
-	// Close uses IconClose per DESIGN.md §5c (no raw "X" text in chrome).
-	z.closeBtn = NewButton("", InstButtonStyle, func() {
-		if z.callbacks.OnClose != nil {
-			z.callbacks.OnClose()
-		}
-	})
-	z.closeBtn.Icon = string(IconClose)
-	z.closeBtn.IconColor = colTextSecondary
+	applyFreezeVisual(z.freezeBtn, z.frozen)
 }
 
 // SetTapA programmatically sets the TapA stage (use -1 to clear). Fires
@@ -272,6 +287,7 @@ func (z *ChainPanelZone) OverlayBtn() *Button { return z.overlayBtn }
 func (z *ChainPanelZone) SplitBtn() *Button   { return z.splitBtn }
 func (z *ChainPanelZone) DiffBtn() *Button    { return z.diffBtn }
 func (z *ChainPanelZone) AGBtn() *Button      { return z.autoGainBtn }
+func (z *ChainPanelZone) FitBtn() *Button     { return z.fitBtn }
 func (z *ChainPanelZone) FreezeBtn() *Button  { return z.freezeBtn }
 
 // TraceVisible reports whether the named trace ("A" or "B") is currently
@@ -312,15 +328,7 @@ func (z *ChainPanelZone) SetFrozen(frozen bool) {
 		_ = z.callbacks.OnFreezeToggle()
 	}
 	z.frozen = frozen
-	if z.freezeBtn != nil {
-		if z.frozen {
-			z.freezeBtn.Text = ">"
-			z.freezeBtn.TextColor = colAccent
-		} else {
-			z.freezeBtn.Text = "||"
-			z.freezeBtn.TextColor = colTextSecondary
-		}
-	}
+	applyFreezeVisual(z.freezeBtn, z.frozen)
 }
 
 // SetAutoGain drives the same auto-gain flow the AG-button click takes
@@ -542,48 +550,7 @@ func (z *ChainPanelZone) Draw(screen *ebiten.Image) {
 	if z.callbacks.ScopeState != nil {
 		state = z.callbacks.ScopeState()
 	}
-	effectiveGain := z.yGain
-	if z.autoGain && state != nil {
-		peak := chainPeakAmplitude(state)
-		if peak > 0.001 {
-			effectiveGain = 0.9 / peak
-			if effectiveGain < 1.0 {
-				effectiveGain = 1.0
-			}
-			if effectiveGain > 16.0 {
-				effectiveGain = 16.0
-			}
-		}
-	}
-
-	// Auto-fit: frame the X window to the signal's active span so the
-	// waveform fills the trace. The scope captures ~500ms but a transient is
-	// ~2ms; without this the trace is ~98% dead width and the time-axis
-	// labels (driven by windowMs) disagree with what's rendered. We sub-slice
-	// each tap's samples (alloc-free, into reusable scratch) and derive an
-	// effective window so labels match. Manual zoom (z.windowMs) is the
-	// ceiling. See [[project_chain_tab_redesign]] / scope.ActiveSpan.
-	drawState := state
-	drawWindowMs := z.windowMs
-	if z.autoFit && state != nil {
-		if start, end := chainFitSpan(state, z.showTapA, z.showTapB); end > start {
-			z.fitState = *state
-			z.fitState.TapA.Samples = chainSliceSpan(state.TapA.Samples, start, end)
-			z.fitState.TapB.Samples = chainSliceSpan(state.TapB.Samples, start, end)
-			drawState = &z.fitState
-			if sr := audio.SampleRate(); sr > 0 {
-				spanMs := float64(end-start) * 1000.0 / float64(sr)
-				if minMs := float64(Profile().DensityValues().ChainAutoFitMinMs); spanMs < minMs {
-					spanMs = minMs
-				}
-				if spanMs > z.windowMs {
-					spanMs = z.windowMs // manual zoom ceiling
-				}
-				drawWindowMs = spanMs
-			}
-		}
-	}
-	drawChainTraces(screen, cr, drawState, drawWindowMs, z.displayMode, z.frozen, effectiveGain, z.showTapA, z.showTapB)
+	z.drawTracesCached(screen, cr, state)
 
 	// Header.
 	z.drawHeader(screen)
@@ -607,7 +574,7 @@ func (z *ChainPanelZone) HandleChars(_ []rune) InputResult {
 // stage column (density-driven width) and below the chrome strip plus the
 // mobile segmented mode row (segmentedRowH, 0 on desktop).
 func (z *ChainPanelZone) contentRect() image.Rectangle {
-	left := z.rect.Min.X + Profile().DensityValues().ChainStageColW + 8
+	left := z.rect.Min.X + Profile().DensityValues().ChainStageColW + Profile().DensityValues().ChainContentGap
 	top := z.rect.Min.Y + chainHeaderH + z.segmentedRowH
 	if left >= z.rect.Max.X || top >= z.rect.Max.Y {
 		return image.Rectangle{}
@@ -687,14 +654,13 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 	// Mode selector — three pills. Desktop: separated, in the chrome row.
 	// Mobile: a contiguous segmented control on its own row (rects set in
 	// layoutButtons); always-visible either way.
-	z.drawPillButton(dst, z.overlayBtn, z.displayMode == chainOverlay, false)
-	z.drawPillButton(dst, z.splitBtn, z.displayMode == chainSplit, false)
-	z.drawPillButton(dst, z.diffBtn, z.displayMode == chainDiff, false)
+	drawPillTabAt(dst, z.overlayBtn, z.displayMode == chainOverlay)
+	drawPillTabAt(dst, z.splitBtn, z.displayMode == chainSplit)
+	drawPillTabAt(dst, z.diffBtn, z.displayMode == chainDiff)
 
-	z.drawPillButton(dst, z.fitBtn, z.autoFit, false)
-	z.drawPillButton(dst, z.autoGainBtn, z.autoGain, false)
-	z.drawPillButton(dst, z.freezeBtn, z.frozen, false)
-	z.drawPillButton(dst, z.closeBtn, false, false)
+	drawPillTabAt(dst, z.fitBtn, z.autoFit)
+	drawPillTabAt(dst, z.autoGainBtn, z.autoGain)
+	drawPillTabAt(dst, z.freezeBtn, z.frozen)
 }
 
 // drawPillChrome paints just the pill background + border (active = filled
@@ -727,43 +693,6 @@ func pillGlyphColor(active, disabled bool) color.Color {
 	default:
 		return colTextSecondary
 	}
-}
-
-// drawPillButton draws a button with pill styling (rounded-ish filled rect).
-// When disabled is true the button is drawn dimmed and non-interactive.
-func (z *ChainPanelZone) drawPillButton(dst *ebiten.Image, btn *Button, active, disabled bool) {
-	r := btn.Rect()
-	if r.Empty() {
-		return
-	}
-	z.drawPillChrome(dst, r, active)
-
-	glyphCol := pillGlyphColor(active, disabled)
-
-	// Icon-only pills (e.g. the close button) carry an Icon + empty Text;
-	// drawPillButton paints its own chrome so it must render the icon here —
-	// it never calls btn.Draw(). Without this the close pill drew an empty
-	// outlined box (bug: missing glyph). The icon is inset inside the pill so
-	// it doesn't touch the border.
-	if btn.Icon != "" {
-		ic := glyphCol
-		if btn.IconColor != nil {
-			ic = btn.IconColor
-		}
-		iconR := r.Inset(4)
-		if iconR.Dx() > 0 && iconR.Dy() > 0 {
-			DrawIcon(dst, IconID(btn.Icon), iconR, ic)
-		}
-		return
-	}
-
-	// Center text. Density-aware pill text grows on mobile (Spacious).
-	captionScale := chainPillScale()
-	tw := int(float64(TextWidth(btn.Text)) * captionScale)
-	th := int(float64(TextHeight()) * captionScale)
-	tx := r.Min.X + (r.Dx()-tw)/2
-	ty := r.Min.Y + (r.Dy()-th)/2
-	DrawTextColorAtScale(dst, btn.Text, tx, ty, glyphCol, captionScale)
 }
 
 // drawStagePill draws a stage button's chrome plus its label, reserving
@@ -908,7 +837,7 @@ const (
 func (z *ChainPanelZone) layoutButtons() {
 	r := z.rect
 	dv := Profile().DensityValues()
-	btnH := 18
+	btnH := audioPillHeight()
 
 	// --- Vertical stage column on the LEFT — density-driven width ---
 	stageW := dv.ChainStageColW
@@ -924,31 +853,29 @@ func (z *ChainPanelZone) layoutButtons() {
 	}
 
 	// --- Right-aligned chrome row at TOP, just above the trace area ---
-	y := r.Min.Y + 4
-	rightEdge := r.Max.X - 6
-
-	// Close (icon-only) furthest right.
-	closeW := dv.CloseButtonSize
-	if closeW < 20 {
-		closeW = 20
+	// Vertically center the pills in the header band (chainHeaderH tall).
+	bandTop := r.Min.Y + 4
+	if pad := (chainHeaderH - btnH) / 2; pad > 0 {
+		bandTop = r.Min.Y + pad
 	}
-	z.closeBtn.SetRect(image.Rect(rightEdge-closeW, y, rightEdge, y+btnH))
-	rightEdge -= closeW + 3
+	y := bandTop
+	gap := Profile().DensityValues().AudioPillGap
+	rightEdge := r.Max.X - SpaceSM
 
-	// Freeze.
-	freezeW := closeW
+	// Freeze (right-most chrome pill).
+	freezeW := audioPillWidth(z.freezeBtn)
 	z.freezeBtn.SetRect(image.Rect(rightEdge-freezeW, y, rightEdge, y+btnH))
-	rightEdge -= freezeW + 3
+	rightEdge -= freezeW + gap
 
 	// Auto-gain (Y) + auto-fit (X) toggles live IN the chrome row. They used
 	// to sit in the trace's lower-right corner where AG collided with the
 	// time-axis labels; the row keeps them out of the waveform entirely.
-	agW := dv.ChainAggregateW
+	agW := audioPillWidth(z.autoGainBtn)
 	z.autoGainBtn.SetRect(image.Rect(rightEdge-agW, y, rightEdge, y+btnH))
-	rightEdge -= agW + 3
-	fitW := agW
+	rightEdge -= agW + gap
+	fitW := audioPillWidth(z.fitBtn)
 	z.fitBtn.SetRect(image.Rect(rightEdge-fitW, y, rightEdge, y+btnH))
-	rightEdge -= fitW + 3
+	rightEdge -= fitW + gap
 
 	z.segmentedRowH = 0
 	if Profile().ChainModeSegmented {
@@ -958,22 +885,23 @@ func (z *ChainPanelZone) layoutButtons() {
 		// trace/legend. Each segment is touch-min tall. The row claims
 		// vertical space via segmentedRowH so contentRect() drops the trace
 		// below it.
-		pillW := dv.ChainModePillW
 		segH := ExpandHitArea(btnH)
 		segY := y + btnH + 2
-		x0 := colX + stageW + 8
+		x0 := colX + stageW + Profile().DensityValues().ChainContentGap
 		for _, btn := range []*Button{z.overlayBtn, z.splitBtn, z.diffBtn} {
+			pillW := audioPillWidth(btn)
 			btn.SetRect(image.Rect(x0, segY, x0+pillW, segY+segH))
 			x0 += pillW // contiguous — segmented, no inter-pill gap
 		}
 		z.segmentedRowH = segH + 4
 	} else {
 		// Desktop: three separate mode pills in the chrome row, right-aligned.
-		// Density-driven width (Compact 28 / Comfortable 36 / Spacious 48).
-		pillW := dv.ChainModePillW
+		// Each pill content-fit via audioPillWidth (labels are 3 chars so the
+		// widths match the analyzer-tab pills).
 		for _, btn := range []*Button{z.diffBtn, z.splitBtn, z.overlayBtn} {
+			pillW := audioPillWidth(btn)
 			btn.SetRect(image.Rect(rightEdge-pillW, y, rightEdge, y+btnH))
-			rightEdge -= pillW + 3
+			rightEdge -= pillW + gap
 		}
 	}
 }
@@ -1025,70 +953,90 @@ func (z *ChainPanelZone) rebuildHitAreas() {
 
 	// Auto-gain button.
 	if ar := z.autoGainBtn.Rect(); !ar.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
+		ha := HitArea{
 			Rect:    ar,
 			ZIndex:  zIdx + 1,
 			Handler: &buttonHitAdapter{btn: z.autoGainBtn},
 			Tag:     "scope-ag-btn",
-		})
+		}
+		if Profile().IsMobile() {
+			ha.Touch = true
+			ha.ClipRect = expandToTouchMin(ar)
+		}
+		z.hitAreas = append(z.hitAreas, ha)
 	}
 
 	// Auto-fit (FIT) button.
 	if fr := z.fitBtn.Rect(); !fr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
+		ha := HitArea{
 			Rect:    fr,
 			ZIndex:  zIdx + 1,
 			Handler: &buttonHitAdapter{btn: z.fitBtn},
 			Tag:     "scope-fit-btn",
-		})
+		}
+		if Profile().IsMobile() {
+			ha.Touch = true
+			ha.ClipRect = expandToTouchMin(fr)
+		}
+		z.hitAreas = append(z.hitAreas, ha)
 	}
 
 	// Three separate mode pills (overlay, split, diff). The legacy
 	// "scope-split-btn" tag is preserved on the split pill so older callers
 	// and discipline tests that expect it still resolve.
 	if sr := z.overlayBtn.Rect(); !sr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
+		ha := HitArea{
 			Rect:    sr,
 			ZIndex:  zIdx + 1,
 			Handler: &buttonHitAdapter{btn: z.overlayBtn},
 			Tag:     "scope-overlay-btn",
-		})
+		}
+		if Profile().IsMobile() {
+			ha.Touch = true
+			ha.ClipRect = expandToTouchMin(sr)
+		}
+		z.hitAreas = append(z.hitAreas, ha)
 	}
 	if sr := z.splitBtn.Rect(); !sr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
+		ha := HitArea{
 			Rect:    sr,
 			ZIndex:  zIdx + 1,
 			Handler: &buttonHitAdapter{btn: z.splitBtn},
 			Tag:     "scope-split-btn",
-		})
+		}
+		if Profile().IsMobile() {
+			ha.Touch = true
+			ha.ClipRect = expandToTouchMin(sr)
+		}
+		z.hitAreas = append(z.hitAreas, ha)
 	}
 	if sr := z.diffBtn.Rect(); !sr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
+		ha := HitArea{
 			Rect:    sr,
 			ZIndex:  zIdx + 1,
 			Handler: &buttonHitAdapter{btn: z.diffBtn},
 			Tag:     "scope-diff-btn",
-		})
+		}
+		if Profile().IsMobile() {
+			ha.Touch = true
+			ha.ClipRect = expandToTouchMin(sr)
+		}
+		z.hitAreas = append(z.hitAreas, ha)
 	}
 
 	// Freeze button.
 	if fr := z.freezeBtn.Rect(); !fr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
+		ha := HitArea{
 			Rect:    fr,
 			ZIndex:  zIdx + 1,
 			Handler: &buttonHitAdapter{btn: z.freezeBtn},
 			Tag:     "scope-freeze-btn",
-		})
-	}
-
-	// Close button.
-	if cr := z.closeBtn.Rect(); !cr.Empty() {
-		z.hitAreas = append(z.hitAreas, HitArea{
-			Rect:    cr,
-			ZIndex:  zIdx + 1,
-			Handler: &buttonHitAdapter{btn: z.closeBtn},
-			Tag:     "scope-close-btn",
-		})
+		}
+		if Profile().IsMobile() {
+			ha.Touch = true
+			ha.ClipRect = expandToTouchMin(fr)
+		}
+		z.hitAreas = append(z.hitAreas, ha)
 	}
 
 	// Trace visibility toggles: the A/B legend segments in the reserved strip

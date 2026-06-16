@@ -54,8 +54,8 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	// HitIndex always follows what this frame renders — a bare Layout
 	// loop here used to consume needLayout WITHOUT republishing, leaving
 	// input permanently dispatched to pre-scroll row positions.
-	if dv.tree != nil {
-		dv.tree.EnsureLayouts()
+	if dv.rootTree != nil {
+		dv.rootTree.EnsureLayouts()
 	}
 
 	dv.logger.Tracef("[DRUMVIEW] Draw called. beatInfos: %v, highlightsByRow: %v", beatInfos, highlightsByRow)
@@ -69,6 +69,10 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	// regardless of which zone draws first.
 	dv.updateRowRects()
 
+	// Remember the live readout position so recalcButtons can size the
+	// beat-counter slot to the rendered text width (notif hugs the counter).
+	dv.lastElapsedBeats = elapsedBeats
+
 	// Hand timeline draw parameters to the zone before dispatching the
 	// tree's draw walk; TimelineZone reads these in its Draw method.
 	if dv.timelineZone != nil {
@@ -80,9 +84,9 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 	// (see layer_rack_mask.go Visible()), so the mask never paints into
 	// dv.panelMaskRect — the rect naturally stays at whatever the layer
 	// last wrote (or empty) without a post-Draw fixup here.
-	if dv.tree != nil {
-		dv.tree.SetBounds(dv.Bounds)
-		dv.tree.Draw(dst)
+	if dv.rootTree != nil {
+		dv.rootTree.SetBounds(dv.Bounds)
+		dv.rootTree.Draw(dst)
 	}
 
 	// Post-draw test/JS-export sync.
@@ -219,6 +223,12 @@ func (dv *DrumView) drawRowComposite(dst *ebiten.Image) {
 				dv.rowsDrawnMask[i] = true
 			}
 		}
+		return
+	}
+	// Windowed scroll cache: during scrolled follow playback this serves the
+	// composite from a wider buffer via a moving sub-rect blit, avoiding the
+	// per-scroll full-layer recomposite (drumview_cache_rows_window.go).
+	if dv.drawRowCompositeWindowed(dst) {
 		return
 	}
 	dv.rowsLayerMaybeRebuild()

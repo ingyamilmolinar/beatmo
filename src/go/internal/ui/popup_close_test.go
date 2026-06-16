@@ -70,17 +70,16 @@ func TestNodeMenuEscClose(t *testing.T) {
 	n.Selected = true
 	g.sidebar.Open(n)
 
-	restore := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return k == ebiten.KeyEscape },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return g.winW, g.winH },
+	// Esc is owned by the universal handler (Game.handleEscape → rung 3 closes
+	// the sidebar), not handleEditor anymore; it is edge-triggered, so drive
+	// isKeyJustPressed via stubKeys.
+	restore := stubKeys(
+		map[ebiten.Key]bool{ebiten.KeyEscape: true},
+		map[ebiten.Key]bool{ebiten.KeyEscape: true},
 	)
 	defer restore()
 
-	g.handleEditor()
+	g.handleEscape()
 
 	if g.sidebar.IsOpen() {
 		t.Fatalf("node menu still open after ESC")
@@ -203,8 +202,11 @@ func TestColorWheelCloseButton(t *testing.T) {
 }
 
 // TestContextMenuCloseButton verifies the close button appended to context menu.
+// The close × is bottom-sheet (mobile) only — on desktop the menu dismisses
+// via click-outside + Esc, so this test drives the mobile profile.
 func TestContextMenuCloseButton(t *testing.T) {
 	assertDefaultParityState(t)
+	withSmallScreen(t, true)
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
 
@@ -364,7 +366,7 @@ func TestEQChannelDropdownEscClose(t *testing.T) {
 	// Open via portal path so tree's ESC handler can close it.
 	dv.eqPanelZone.stickyBar.ChannelBtn().OnClick()
 
-	if !dv.tree.Portal().Has("eq-channel-dropdown") {
+	if !dv.audioTree.Portal().Has("eq-channel-dropdown") {
 		t.Fatalf("eq-channel-dropdown portal not open")
 	}
 
@@ -380,7 +382,7 @@ func TestEQChannelDropdownEscClose(t *testing.T) {
 
 	dv.Update()
 
-	if dv.tree.Portal().Has("eq-channel-dropdown") {
+	if dv.audioTree.Portal().Has("eq-channel-dropdown") {
 		t.Fatalf("EQ channel dropdown portal still open after ESC")
 	}
 }

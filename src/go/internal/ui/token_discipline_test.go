@@ -132,12 +132,11 @@ var allowedLiteralBudget = map[string]int{
 	"components.go":                    1, // 2 of 3 migrated; 1 remaining is runtime alpha math (fadeColor)
 	"drumview.go":                      0, // migrated to row-rack-color-fallback
 	"drumview_cache_row_sprite.go":     0, // migrated to drum-stripe-* tokens
-	"drumview_cache_rows_stripes.go":   2, // both are color.RGBA{} zero-value Fill (transparent clear), not a color choice — permanent
-	"drumview_colors.go":               4, // HSV→RGB / hash→RGB / pixel-write runtime computations
+	"drumview_colors.go":               0, // HSV→RGB / hash→RGB wheel code removed; ensureUniqueColor is palette-only
 	"drumview_context_menu.go":         0, // migrated to scrollbar-thumb alpha
 	"drumview_draw.go":                 0, // migrated to drum-stripe + drum-glow + row-rack-zebra
 	"drumview_fx_panel.go":             0, // migrated to slider-track-fill + border (white)
-	"drumview_overlay_color_comp.go":   3, // 2 fallbacks migrated; 3 remain are HSV→RGB runtime computations
+	"drumview_overlay_color_comp.go":   0, // swatch-grid picker uses genInstrumentSwatches palette; HSV literals removed
 	"eq_panel_zone.go":                 0, // migrated to eq-readout-bg + primary alpha composite + border
 	"game_connect_mode.go":             0,
 	"game_draw.go":                     0, // throttle/frameBuffer deleted in Phase G; no literals remain
@@ -150,7 +149,8 @@ var allowedLiteralBudget = map[string]int{
 	"render_scope.go":                  0, // half-mode fill alpha → WithAlphaNRGBA helper
 	"render_spectrum.go":               0, // both migrated
 	"render_waveform.go":               0, // migrated to border + border-panel alpha
-	"row_rack_zone.go":                 0, // both per-row color rebinds → WithAlphaFromColor + AlphaOverlay/AlphaRowActive
+	"row_instrument_shades.go":         1, // rowToggleBaseRGBA narrows an arbitrary instrument color.Color to RGBA (one constructor); all shades derive via adjustColor / WithAlphaFromColor token helpers
+	"row_rack_zone.go":                 0, // per-row tints via WithAlphaFromColor; volume slider uses the row's node color directly
 	"scope_panel_zone.go":              0, // migrated to scope-label-dim + alpha bucket
 	"scrollbar_style.go":               0, // all migrated to scrollbar-* alpha buckets
 	"slider.go":                        0, // all migrated to slider-* tokens

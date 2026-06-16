@@ -13,35 +13,21 @@ import (
 // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y = redo. It is
 // edge-triggered (just-pressed) so a held chord fires once. Returns true if a
 // key was consumed. Works on desktop (Control) and browser/macOS (Meta/Cmd).
+// handleUndoRedoKeys dispatches the ungated shortcut tier (undo/redo). Kept as
+// the Game.Update entry point and bool-returning test anchor; the actual key
+// logic lives in the undo node (g.undoShortcut, keyboard_shortcuts.go). Returns
+// whether an ungated node claimed the frame.
 func (g *Game) handleUndoRedoKeys() bool {
-	if g.undoManager == nil {
+	if g.keyboardRouter == nil {
 		return false
 	}
-	ctrl := isKeyPressed(ebiten.KeyControlLeft) || isKeyPressed(ebiten.KeyControlRight) ||
-		isKeyPressed(ebiten.KeyMetaLeft) || isKeyPressed(ebiten.KeyMetaRight)
-	if !ctrl {
-		return false
-	}
-	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
-	if isKeyJustPressed(ebiten.KeyZ) {
-		if shift {
-			g.undoManager.Redo()
-		} else {
-			g.undoManager.Undo()
-		}
-		return true
-	}
-	if isKeyJustPressed(ebiten.KeyY) {
-		g.undoManager.Redo()
-		return true
-	}
-	return false
+	return g.keyboardRouter.dispatchUngated()
 }
 
 func (g *Game) handleEditor() {
-	if g.handleUndoRedoKeys() {
-		return
-	}
+	// Undo/redo shortcuts are dispatched unconditionally from Game.Update (so
+	// they work over panels/popups/during drags), NOT here — handleEditor is
+	// cursor-gated. Do not re-add the dispatch here or a single chord fires twice.
 	left := isMouseButtonPressed(ebiten.MouseButtonLeft)
 	right := isMouseButtonPressed(ebiten.MouseButtonRight)
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
@@ -62,21 +48,7 @@ func (g *Game) handleEditor() {
 		return
 	}
 
-	// ESC closes node sidebar
-	if g.sidebar.IsOpen() && isKeyPressed(ebiten.KeyEscape) {
-		g.sidebar.Close()
-		g.leftPrev = left
-		return
-	}
-
-	// ESC cancels connect mode
-	if g.connectMode && isKeyPressed(ebiten.KeyEscape) {
-		g.cancelConnectMode()
-		g.leftPrev = left
-		return
-	}
-
-	// Move mode: handle placement and ESC
+	// Move mode: handle placement (ESC cancel now lives in handleEscape).
 	if g.moveMode && g.movingNode != nil {
 		x, y := cursorPosition()
 		if g.moveConfirm {
@@ -95,12 +67,6 @@ func (g *Game) handleEditor() {
 					g.cancelMoveMode()
 				}
 			}
-			g.leftPrev = left
-			return
-		}
-		// ESC cancels move mode
-		if isKeyPressed(ebiten.KeyEscape) {
-			g.cancelMoveMode()
 			g.leftPrev = left
 			return
 		}

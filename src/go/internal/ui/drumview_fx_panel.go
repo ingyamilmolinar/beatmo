@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // fxToggleTag is the prefix used to identify toggle buttons in the FX panel.
@@ -147,6 +148,19 @@ func (dv *DrumView) OpenFXPanel(row int) {
 	}
 	dv.CloseAllPopups()
 	dv.openFXPanel(row)
+}
+
+// fxPanelAccent returns the FX panel's owning-row instrument color — the accent
+// the enable-toggle pill and other FX highlights tint to, so the effects panel
+// reads as owned by the instrument it edits. Falls back to the azure chrome
+// accent when the row has no color.
+func (dv *DrumView) fxPanelAccent() color.Color {
+	if dv.fxPanelRow >= 0 && dv.fxPanelRow < len(dv.Rows) {
+		if c := dv.Rows[dv.fxPanelRow].Color; c != nil {
+			return c
+		}
+	}
+	return colAccent
 }
 
 // CloseFXPanel closes the FX panel.
@@ -545,6 +559,12 @@ func (dv *DrumView) buildFXPanel() {
 						// previous "80%" duplicate was redundant.
 						sl.TrackH = 6
 						sl.SuppressLabel = true
+						// Tint the rail with the owning row's instrument color
+						// so the FX sliders match the instrument, not a fixed
+						// light-blue.
+						if dv.fxPanelRow >= 0 && dv.fxPanelRow < len(dv.Rows) {
+							sl.FillCol = rowShadeToRGBA(rowToggleBaseRGBA(dv.Rows[dv.fxPanelRow].Color))
+						}
 						dv.fxPanelSliders = append(dv.fxPanelSliders, sl)
 						dv.fxSliderBindings = append(dv.fxSliderBindings, fxSliderBinding{
 							slotIndex: si,
@@ -585,7 +605,7 @@ func (dv *DrumView) buildFXPanel() {
 		cBot := y + lineH
 		cInView := cBot > dv.fxViewportRect.Min.Y && cTop < dv.fxViewportRect.Max.Y
 		if cInView {
-			cancelBtn := NewButton("Cancel", DisabledButtonStyle, nil)
+			cancelBtn := NewButton(i18n.T(i18n.KeyCancel), DisabledButtonStyle, nil)
 			cancelBtn.SetRect(image.Rect(x+4, y+2, x+w-4, y+lineH-2))
 			cancelBtn.OnClick = func() {
 				dv.fxAddMenuOpen = false
@@ -599,7 +619,7 @@ func (dv *DrumView) buildFXPanel() {
 		aBot := y + footerH
 		aInView := aBot > dv.fxViewportRect.Min.Y && aTop < dv.fxViewportRect.Max.Y
 		if aInView {
-			addBtn := NewButton("+ Add Effect", addEffectButtonStyle{}, nil)
+			addBtn := NewButton(i18n.T(i18n.KeyAddEffect), addEffectButtonStyle{}, nil)
 			addBtn.TextColor = colTextSecondary
 			addBtn.SetRect(image.Rect(x+4, y+4, x+w-4, y+footerH-4))
 			addBtn.OnClick = func() {
@@ -782,9 +802,10 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		if br.Max.Y > dv.fxViewportRect.Min.Y && br.Min.Y < dv.fxViewportRect.Max.Y {
 			// Render pill-style toggle for effect enable/disable buttons.
 			if isToggle, enabled := isFXToggleBtn(btn); isToggle {
-				// FX enable toggle uses azure accent (single-accent rule),
-				// NOT the shared green default used by the synth stage pills.
-				drawFXTogglePillCol(dst, br, enabled, colAccent)
+				// FX enable toggle tints to the owning instrument's color so the
+				// effects panel reads as owned by that instrument (NOT the
+				// shared green default used by the synth stage pills).
+				drawFXTogglePillCol(dst, br, enabled, dv.fxPanelAccent())
 			} else {
 				btn.Draw(dst)
 			}

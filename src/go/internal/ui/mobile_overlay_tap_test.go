@@ -68,7 +68,7 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 		t.Fatal("context menu should be open")
 	}
 
-	// Find the first menu button (e.g., "Instrument").
+	// Find the first menu button (e.g., "Rename").
 	if len(dv.contextMenuBtns) == 0 {
 		t.Fatal("no context menu buttons")
 	}
@@ -104,8 +104,8 @@ func TestContextMenuTapInjectionWithOpenMenu(t *testing.T) {
 	if !handled {
 		t.Error("handleContextMenuInput should consume input when deferred tap is active on release")
 	}
-	// The deferred tap should have fired and closed the menu (Instrument button
-	// opens the inst menu and closes the context menu).
+	// The deferred tap should have fired and closed the menu (the Rename
+	// button closes the context menu when fired).
 	if dv.contextMenuDeferredTap.Active() {
 		t.Error("deferred tap should have fired on release")
 	}
@@ -182,7 +182,8 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 	handled := dv.handleOverflowMenuInput(px, py, true)
 	r()
 
-	if !dv.overflowDeferredTap.Active() {
+	// The shared MenuScroll now owns the overflow menu's deferred tap.
+	if dv.overflowMenuScroll == nil || !dv.overflowMenuScroll.TapActive() {
 		t.Fatal("overflow deferred tap should be active after press inside menu")
 	}
 	if !handled {
@@ -194,7 +195,7 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 	dv.handleOverflowMenuInput(0, 0, false)
 	r()
 
-	if dv.overflowDeferredTap.Active() {
+	if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.TapActive() {
 		t.Error("overflow deferred tap should have fired on release")
 	}
 }
@@ -252,7 +253,7 @@ func TestLongPressCancelsDeferredTap(t *testing.T) {
 	if dv.contextMenuDeferredTap.Active() {
 		t.Error("context menu deferred tap should be cancelled")
 	}
-	if dv.overflowDeferredTap.Active() {
+	if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.TapActive() {
 		t.Error("overflow deferred tap should be cancelled")
 	}
 	if dv.fxPanelDeferredTap.Active() {

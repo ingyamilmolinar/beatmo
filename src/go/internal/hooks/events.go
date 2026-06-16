@@ -89,6 +89,12 @@ const (
 	EventUIStateApplied    Kind = "uistate.applied"
 	EventFavoriteToggled   Kind = "favorite.toggled"
 
+	// EventEQFilterToggled names the master/channel EQ HPF or LPF enable toggle.
+	// Reserved name only: the UI toggle (eq_panel_zone.go OnToggleHPF/OnToggleLPF)
+	// does not emit it yet. Classified ScopeDocument with an ExcludedReason in
+	// the action registry until a commit site + undo tap are wired.
+	EventEQFilterToggled Kind = "audio.eq_filter_toggled"
+
 	// Phase 4 (synth-recipe refactor): user-narrative events for recipe
 	// save / clone / delete and kit apply. RecipePayload carries the
 	// recipe id + base recipe id (for clones) + the instrument id the
@@ -147,6 +153,7 @@ var KindAll = []Kind{
 	EventInstrumentParamsCommitted, EventInstrumentParamsReset,
 	EventAudioPanelStateChanged,
 	EventRowColorChanged, EventCustomWAVLoaded, EventInstrumentRenamed,
+	EventEQFilterToggled,
 	EventSceneApplied, EventUIStateApplied, EventFavoriteToggled,
 	EventRecipeSaved, EventRecipeCreated, EventRecipeDeleted, EventKitApplied,
 	EventSampleSaved, EventSampleCreated, EventSampleReset, EventSampleEditChanged,
@@ -163,8 +170,9 @@ var KindAll = []Kind{
 // (sample reset): 43 + 1 = 44. The non-destructive sample-edit descriptor
 // added 1 (sample edit changed): 44 + 1 = 45. The event-coverage + undo
 // pass added 8 (row volume/pan, insert moved/toggled, send, synth
-// committed/reset, audio-panel state): 45 + 8 = 53.
-const NumNonVerbose = 53
+// committed/reset, audio-panel state): 45 + 8 = 53. The HPF/LPF filter-toggle
+// naming gap added 1 (eq filter toggled): 53 + 1 = 54.
+const NumNonVerbose = 54
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
 // kinds that the default sink filters out.
@@ -290,10 +298,10 @@ type StartNodePayload struct {
 // populated only for EventRowInstrumentChange (and stays empty for the
 // other row events).
 type RowChangePayload struct {
-	Row           int    `json:"row"`
-	Instrument    string `json:"instrument,omitempty"`
-	OldInstrument string `json:"old_instrument,omitempty"`
-	Name          string `json:"name,omitempty"`
+	Row           int     `json:"row"`
+	Instrument    string  `json:"instrument,omitempty"`
+	OldInstrument string  `json:"old_instrument,omitempty"`
+	Name          string  `json:"name,omitempty"`
 	Mute          bool    `json:"mute,omitempty"`
 	Solo          bool    `json:"solo,omitempty"`
 	Volume        float64 `json:"volume,omitempty"`
@@ -344,11 +352,20 @@ type EQBandPayload struct {
 	GainDB  float64 `json:"gain_db"`
 }
 
+// EQFilterPayload describes a master/channel EQ HPF/LPF enable toggle. Channel
+// is the instrument id ("main", "kick", …), Filter is "hpf" or "lpf".
+type EQFilterPayload struct {
+	Channel  string  `json:"channel"`
+	Filter   string  `json:"filter"`
+	Enabled  bool    `json:"enabled"`
+	CutoffHz float64 `json:"cutoff_hz,omitempty"`
+}
+
 // InsertEffectPayload covers insert-effect added/removed/param events.
 type InsertEffectPayload struct {
-	Channel string  `json:"channel"`
-	Slot    int     `json:"slot"`
-	Type    string  `json:"type,omitempty"`
+	Channel  string  `json:"channel"`
+	Slot     int     `json:"slot"`
+	Type     string  `json:"type,omitempty"`
 	Param    string  `json:"param,omitempty"`
 	Value    float64 `json:"value,omitempty"`
 	Enabled  bool    `json:"enabled,omitempty"`

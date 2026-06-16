@@ -107,6 +107,9 @@ var ActionRegistry = []ActionMeta{
 
 	// ── Round 2 narrative events ────────────────────────────────────────
 	{EventRowColorChanged, "recolor row", ScopeDocument, ""},
+	// HPF/LPF toggle mutates exported master-EQ state; the UI toggle emits +
+	// records one undo step at the commit site (commitEQFilter).
+	{EventEQFilterToggled, "toggle EQ filter", ScopeDocument, ""},
 	// Loading a user WAV is a library/asset op, not a journaled document edit.
 	{EventCustomWAVLoaded, "load WAV", ScopeSession, ""},
 	{EventInstrumentRenamed, "rename instrument", ScopeDocument, ""},

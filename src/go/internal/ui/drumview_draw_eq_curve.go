@@ -12,7 +12,15 @@ const (
 	eqCurveMaxDB   = 12.0
 	eqCurvePoints  = 200
 	eqHandleRadius = 10
+	// eqGuideDB is the ± dB value at which the EQ plot draws faint guide
+	// rulers with end labels, so the otherwise-unlabeled handle field
+	// carries a visible dB scale.
+	eqGuideDB = 6.0
 )
+
+// eqGuideLabelScale sizes the ±6 dB end labels (caption-sized, derived from
+// the font tokens so it tracks any future font change).
+var eqGuideLabelScale = FontSizeCaption / FontSizeBody
 
 // freqToX maps a frequency (Hz) to an X pixel within eqRect using log scale.
 func freqToX(hz float64, r image.Rectangle) int {

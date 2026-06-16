@@ -4,8 +4,6 @@ package ui
 
 import (
 	"testing"
-
-	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
 // TestSidebarTextWidthUsesTextWidth verifies that sidebarScaledTextWidth uses
@@ -19,39 +17,13 @@ func TestSidebarTextWidthUsesTextWidth(t *testing.T) {
 	t.Cleanup(func() { textMeasureWidth = oldMeasure })
 
 	s := "Every N"
-	scale := sidebarTextScale
+	scale := sidebarLabelScale()
 
 	got := sidebarScaledTextWidth(s, scale)
 	want := int(float64(TextWidth(s)) * scale) // 10*7*1.2 = 84
 
 	if got != want {
 		t.Fatalf("sidebarScaledTextWidth(%q, %.1f) = %d, want %d (using TextWidth)", s, scale, got, want)
-	}
-}
-
-// TestSidebarResizeHandlePillOrientation verifies the sidebar resize pill
-// is oriented vertically (taller than wide) for the vertical divider edge.
-func TestSidebarResizeHandlePillOrientation(t *testing.T) {
-	assertDefaultParityState(t)
-
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(800, 600)
-
-	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.sel = n
-	n.Selected = true
-	g.sidebar.Open(n)
-	g.sidebar.layout()
-
-	r := g.sidebar.resizeHandleRect()
-	if r.Empty() {
-		t.Fatal("resize handle rect is empty")
-	}
-
-	// Vertical divider → pill should be taller than wide.
-	if r.Dy() <= r.Dx() {
-		t.Fatalf("pill should be taller than wide for vertical divider: Dx=%d Dy=%d", r.Dx(), r.Dy())
 	}
 }
 

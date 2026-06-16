@@ -13,119 +13,160 @@ import "image/color"
 // 255 here (Stitch only allows opaque #RRGGBB); semi-transparent uses
 // compose these via WithAlpha() + a named bucket below.
 var (
-	genColorPrimary                     = color.RGBA{79, 180, 255, 255}  // colors.primary = #4FB4FF
-	genColorPrimaryBright               = color.RGBA{130, 203, 255, 255} // colors.primary-bright = #82CBFF
-	genColorPrimaryDim                  = color.RGBA{58, 134, 200, 255}  // colors.primary-dim = #3A86C8
-	genColorBackground                  = color.RGBA{16, 20, 28, 255}    // colors.background = #10141C
-	genColorSurface1                    = color.RGBA{26, 31, 44, 255}    // colors.surface-1 = #1A1F2C
-	genColorSurface2                    = color.RGBA{38, 44, 60, 255}    // colors.surface-2 = #262C3C
-	genColorSurface3                    = color.RGBA{52, 59, 78, 255}    // colors.surface-3 = #343B4E
-	genColorSurfaceOverlay              = color.RGBA{31, 37, 51, 255}    // colors.surface-overlay = #1F2533
-	genColorOnSurface                   = color.RGBA{252, 239, 208, 255} // colors.on-surface = #FCEFD0
-	genColorOnSurfaceMuted              = color.RGBA{160, 176, 200, 255} // colors.on-surface-muted = #A0B0C8
-	genColorOnSurfaceDisabled           = color.RGBA{90, 100, 112, 255}  // colors.on-surface-disabled = #5A6470
-	genColorOnSurfaceAccent             = color.RGBA{79, 180, 255, 255}  // colors.on-surface-accent = #4FB4FF
+	genColorSunsetGold100               = color.RGBA{255, 233, 138, 255} // colors.sunset-gold-100 = #FFE98A
+	genColorSunsetGold200               = color.RGBA{255, 211, 25, 255}  // colors.sunset-gold-200 = #FFD319
+	genColorSunsetGold300               = color.RGBA{255, 179, 10, 255}  // colors.sunset-gold-300 = #FFB30A
+	genColorSunsetGold400               = color.RGBA{255, 158, 31, 255}  // colors.sunset-gold-400 = #FF9E1F
+	genColorSunsetGold500               = color.RGBA{245, 138, 18, 255}  // colors.sunset-gold-500 = #F58A12
+	genColorTangerine100                = color.RGBA{255, 194, 153, 255} // colors.tangerine-100 = #FFC299
+	genColorTangerine200                = color.RGBA{255, 158, 84, 255}  // colors.tangerine-200 = #FF9E54
+	genColorTangerine300                = color.RGBA{255, 122, 61, 255}  // colors.tangerine-300 = #FF7A3D
+	genColorTangerine400                = color.RGBA{255, 92, 42, 255}   // colors.tangerine-400 = #FF5C2A
+	genColorTangerine500                = color.RGBA{232, 74, 31, 255}   // colors.tangerine-500 = #E84A1F
+	genColorHotPink100                  = color.RGBA{255, 168, 224, 255} // colors.hot-pink-100 = #FFA8E0
+	genColorHotPink200                  = color.RGBA{255, 106, 213, 255} // colors.hot-pink-200 = #FF6AD5
+	genColorHotPink300                  = color.RGBA{255, 45, 158, 255}  // colors.hot-pink-300 = #FF2D9E
+	genColorHotPink400                  = color.RGBA{238, 0, 221, 255}   // colors.hot-pink-400 = #EE00DD
+	genColorHotPink500                  = color.RGBA{196, 0, 181, 255}   // colors.hot-pink-500 = #C400B5
+	genColorOrchid100                   = color.RGBA{224, 168, 255, 255} // colors.orchid-100 = #E0A8FF
+	genColorOrchid200                   = color.RGBA{194, 79, 255, 255}  // colors.orchid-200 = #C24FFF
+	genColorOrchid300                   = color.RGBA{160, 48, 255, 255}  // colors.orchid-300 = #A030FF
+	genColorOrchid400                   = color.RGBA{140, 30, 255, 255}  // colors.orchid-400 = #8C1EFF
+	genColorOrchid500                   = color.RGBA{110, 18, 224, 255}  // colors.orchid-500 = #6E12E0
+	genColorElectricBlue100             = color.RGBA{168, 200, 255, 255} // colors.electric-blue-100 = #A8C8FF
+	genColorElectricBlue200             = color.RGBA{94, 138, 255, 255}  // colors.electric-blue-200 = #5E8AFF
+	genColorElectricBlue300             = color.RGBA{58, 106, 240, 255}  // colors.electric-blue-300 = #3A6AF0
+	genColorElectricBlue400             = color.RGBA{42, 95, 214, 255}   // colors.electric-blue-400 = #2A5FD6
+	genColorElectricBlue500             = color.RGBA{30, 71, 181, 255}   // colors.electric-blue-500 = #1E47B5
+	genColorCyan100                     = color.RGBA{154, 240, 255, 255} // colors.cyan-100 = #9AF0FF
+	genColorCyan200                     = color.RGBA{63, 224, 232, 255}  // colors.cyan-200 = #3FE0E8
+	genColorCyan300                     = color.RGBA{0, 200, 224, 255}   // colors.cyan-300 = #00C8E0
+	genColorCyan400                     = color.RGBA{0, 168, 201, 255}   // colors.cyan-400 = #00A8C9
+	genColorCyan500                     = color.RGBA{14, 115, 145, 255}  // colors.cyan-500 = #0E7391
+	genColorMint100                     = color.RGBA{179, 245, 194, 255} // colors.mint-100 = #B3F5C2
+	genColorMint200                     = color.RGBA{107, 232, 154, 255} // colors.mint-200 = #6BE89A
+	genColorMint300                     = color.RGBA{63, 214, 122, 255}  // colors.mint-300 = #3FD67A
+	genColorMint400                     = color.RGBA{43, 200, 92, 255}   // colors.mint-400 = #2BC85C
+	genColorMint500                     = color.RGBA{31, 168, 74, 255}   // colors.mint-500 = #1FA84A
+	genColorNightBg                     = color.RGBA{18, 10, 28, 255}    // colors.night-bg = #120A1C
+	genColorNightSurface1               = color.RGBA{28, 18, 48, 255}    // colors.night-surface-1 = #1C1230
+	genColorNightSurface2               = color.RGBA{40, 26, 64, 255}    // colors.night-surface-2 = #281A40
+	genColorNightSurface3               = color.RGBA{56, 35, 84, 255}    // colors.night-surface-3 = #382354
+	genColorNightSurfaceOverlay         = color.RGBA{31, 20, 56, 255}    // colors.night-surface-overlay = #1F1438
+	genColorNightTextHi                 = color.RGBA{253, 242, 255, 255} // colors.night-text-hi = #FDF2FF
+	genColorNightTextMid                = color.RGBA{201, 184, 214, 255} // colors.night-text-mid = #C9B8D6
+	genColorNightTextDim                = color.RGBA{138, 122, 156, 255} // colors.night-text-dim = #8A7A9C
+	genColorPrimary                     = color.RGBA{0, 200, 224, 255}   // colors.primary = #00C8E0
+	genColorPrimaryBright               = color.RGBA{63, 224, 232, 255}  // colors.primary-bright = #3FE0E8
+	genColorPrimaryDim                  = color.RGBA{0, 168, 201, 255}   // colors.primary-dim = #00A8C9
+	genColorBackground                  = color.RGBA{18, 10, 28, 255}    // colors.background = #120A1C
+	genColorSurface1                    = color.RGBA{28, 18, 48, 255}    // colors.surface-1 = #1C1230
+	genColorSurface2                    = color.RGBA{40, 26, 64, 255}    // colors.surface-2 = #281A40
+	genColorSurface3                    = color.RGBA{56, 35, 84, 255}    // colors.surface-3 = #382354
+	genColorSurfaceOverlay              = color.RGBA{31, 20, 56, 255}    // colors.surface-overlay = #1F1438
+	genColorOnSurface                   = color.RGBA{253, 242, 255, 255} // colors.on-surface = #FDF2FF
+	genColorOnSurfaceMuted              = color.RGBA{201, 184, 214, 255} // colors.on-surface-muted = #C9B8D6
+	genColorOnSurfaceDisabled           = color.RGBA{138, 122, 156, 255} // colors.on-surface-disabled = #8A7A9C
+	genColorOnSurfaceAccent             = color.RGBA{0, 200, 224, 255}   // colors.on-surface-accent = #00C8E0
 	genColorBorder                      = color.RGBA{255, 255, 255, 255} // colors.border = #FFFFFF
-	genColorSuccess                     = color.RGBA{80, 208, 128, 255}  // colors.success = #50D080
-	genColorError                       = color.RGBA{255, 88, 72, 255}   // colors.error = #FF5848
-	genColorMute                        = color.RGBA{160, 72, 48, 255}   // colors.mute = #A04830
-	genColorDestructive                 = color.RGBA{72, 20, 20, 255}    // colors.destructive = #481414
-	genColorDestructiveBorder           = color.RGBA{160, 56, 48, 255}   // colors.destructive-border = #A03830
-	genColorRecordIdle                  = color.RGBA{224, 64, 64, 255}   // colors.record-idle = #E04040
-	genColorRecordActive                = color.RGBA{255, 64, 64, 255}   // colors.record-active = #FF4040
-	genColorVizBg                       = color.RGBA{19, 23, 31, 255}    // colors.viz-bg = #13171F
-	genColorVizBar                      = color.RGBA{90, 200, 224, 255}  // colors.viz-bar = #5AC8E0
-	genColorVizBarPeak                  = color.RGBA{160, 224, 255, 255} // colors.viz-bar-peak = #A0E0FF
-	genColorVizCurve                    = color.RGBA{79, 180, 255, 255}  // colors.viz-curve = #4FB4FF
-	genColorVizWaveA                    = color.RGBA{128, 224, 255, 255} // colors.viz-wave-a = #80E0FF
-	genColorVizWaveB                    = color.RGBA{122, 138, 168, 255} // colors.viz-wave-b = #7A8AA8
-	genColorVizMeterGreen               = color.RGBA{80, 208, 128, 255}  // colors.viz-meter-green = #50D080
-	genColorVizMeterYellow              = color.RGBA{240, 224, 32, 255}  // colors.viz-meter-yellow = #F0E020
-	genColorVizMeterRed                 = color.RGBA{255, 64, 48, 255}   // colors.viz-meter-red = #FF4030
-	genColorVizMeterBg                  = color.RGBA{26, 36, 56, 255}    // colors.viz-meter-bg = #1A2438
-	genColorVizMeterClip                = color.RGBA{255, 48, 48, 255}   // colors.viz-meter-clip = #FF3030
-	genColorVizBass                     = color.RGBA{232, 144, 96, 255}  // colors.viz-bass = #E89060
-	genColorVizMids                     = color.RGBA{192, 192, 192, 255} // colors.viz-mids = #C0C0C0
-	genColorVizTreble                   = color.RGBA{128, 184, 224, 255} // colors.viz-treble = #80B8E0
-	genColorVizGlow                     = color.RGBA{180, 224, 255, 255} // colors.viz-glow = #B4E0FF
-	genColorFocusRing                   = color.RGBA{255, 255, 255, 255} // colors.focus-ring = #FFFFFF
-	genColorSliderThumbFill             = color.RGBA{252, 239, 208, 255} // colors.slider-thumb-fill = #FCEFD0
+	genColorSuccess                     = color.RGBA{63, 214, 122, 255}  // colors.success = #3FD67A
+	genColorError                       = color.RGBA{255, 92, 42, 255}   // colors.error = #FF5C2A
+	genColorMute                        = color.RGBA{196, 0, 181, 255}   // colors.mute = #C400B5
+	genColorDestructive                 = color.RGBA{232, 74, 31, 255}   // colors.destructive = #E84A1F
+	genColorDestructiveBorder           = color.RGBA{255, 92, 42, 255}   // colors.destructive-border = #FF5C2A
+	genColorRecordIdle                  = color.RGBA{232, 74, 31, 255}   // colors.record-idle = #E84A1F
+	genColorRecordActive                = color.RGBA{255, 92, 42, 255}   // colors.record-active = #FF5C2A
+	genColorVizBg                       = color.RGBA{18, 10, 28, 255}    // colors.viz-bg = #120A1C
+	genColorVizBar                      = color.RGBA{0, 200, 224, 255}   // colors.viz-bar = #00C8E0
+	genColorVizBarPeak                  = color.RGBA{154, 240, 255, 255} // colors.viz-bar-peak = #9AF0FF
+	genColorVizCurve                    = color.RGBA{0, 200, 224, 255}   // colors.viz-curve = #00C8E0
+	genColorVizWaveA                    = color.RGBA{63, 224, 232, 255}  // colors.viz-wave-a = #3FE0E8
+	genColorVizWaveB                    = color.RGBA{138, 122, 156, 255} // colors.viz-wave-b = #8A7A9C
+	genColorVizMeterGreen               = color.RGBA{63, 214, 122, 255}  // colors.viz-meter-green = #3FD67A
+	genColorVizMeterYellow              = color.RGBA{255, 211, 25, 255}  // colors.viz-meter-yellow = #FFD319
+	genColorVizMeterRed                 = color.RGBA{255, 92, 42, 255}   // colors.viz-meter-red = #FF5C2A
+	genColorVizMeterBg                  = color.RGBA{28, 18, 48, 255}    // colors.viz-meter-bg = #1C1230
+	genColorVizMeterClip                = color.RGBA{232, 74, 31, 255}   // colors.viz-meter-clip = #E84A1F
+	genColorVizBass                     = color.RGBA{255, 122, 61, 255}  // colors.viz-bass = #FF7A3D
+	genColorVizMids                     = color.RGBA{201, 184, 214, 255} // colors.viz-mids = #C9B8D6
+	genColorVizTreble                   = color.RGBA{58, 106, 240, 255}  // colors.viz-treble = #3A6AF0
+	genColorVizGlow                     = color.RGBA{154, 240, 255, 255} // colors.viz-glow = #9AF0FF
+	genColorFocusRing                   = color.RGBA{255, 45, 158, 255}  // colors.focus-ring = #FF2D9E
+	genColorSliderThumbFill             = color.RGBA{253, 242, 255, 255} // colors.slider-thumb-fill = #FDF2FF
 	genColorSliderThumbShadow           = color.RGBA{0, 0, 0, 255}       // colors.slider-thumb-shadow = #000000
-	genColorSliderTrackFill             = color.RGBA{45, 56, 72, 255}    // colors.slider-track-fill = #2D3848
-	genColorSliderFill                  = color.RGBA{58, 134, 200, 255}  // colors.slider-fill = #3A86C8
-	genColorSidebarSectionBg            = color.RGBA{90, 104, 132, 255}  // colors.sidebar-section-bg = #5A6884
-	genColorVizScopeTraceA              = color.RGBA{79, 180, 255, 255}  // colors.viz-scope-trace-a = #4FB4FF
-	genColorVizScopeTraceB              = color.RGBA{128, 232, 255, 255} // colors.viz-scope-trace-b = #80E8FF
-	genColorVizScopeTraceDiff           = color.RGBA{160, 224, 128, 255} // colors.viz-scope-trace-diff = #A0E080
-	genColorVizScopeBg                  = color.RGBA{19, 23, 31, 255}    // colors.viz-scope-bg = #13171F
-	genColorVizScopeTrigger             = color.RGBA{255, 224, 96, 255}  // colors.viz-scope-trigger = #FFE060
-	genColorVizSpectrumPeakMarker       = color.RGBA{255, 232, 208, 255} // colors.viz-spectrum-peak-marker = #FFE8D0
-	genColorPlayDesktopFill             = color.RGBA{64, 160, 96, 255}   // colors.play-desktop-fill = #40A060
-	genColorPlayDesktopBorder           = color.RGBA{96, 208, 128, 255}  // colors.play-desktop-border = #60D080
-	genColorStopDesktopFill             = color.RGBA{184, 44, 44, 255}   // colors.stop-desktop-fill = #B82C2C
-	genColorStopDesktopBorder           = color.RGBA{224, 72, 72, 255}   // colors.stop-desktop-border = #E04848
-	genColorStepperFill                 = color.RGBA{28, 48, 80, 255}    // colors.stepper-fill = #1C3050
-	genColorStepperBorder               = color.RGBA{64, 128, 192, 255}  // colors.stepper-border = #4080C0
-	genColorDisabledFill                = color.RGBA{45, 56, 72, 255}    // colors.disabled-fill = #2D3848
-	genColorDestructiveConfirmFill      = color.RGBA{208, 48, 48, 255}   // colors.destructive-confirm-fill = #D03030
-	genColorDestructiveConfirmBorder    = color.RGBA{255, 96, 96, 255}   // colors.destructive-confirm-border = #FF6060
-	genColorMuteActiveBorder            = color.RGBA{216, 120, 72, 255}  // colors.mute-active-border = #D87848
-	genColorSoloActiveBorder            = color.RGBA{130, 203, 255, 255} // colors.solo-active-border = #82CBFF
-	genColorFxActiveFill                = color.RGBA{20, 42, 80, 255}    // colors.fx-active-fill = #142A50
-	genColorEqFilterActiveFill          = color.RGBA{58, 134, 200, 255}  // colors.eq-filter-active-fill = #3A86C8
-	genColorEqFilterActiveBorder        = color.RGBA{79, 180, 255, 255}  // colors.eq-filter-active-border = #4FB4FF
-	genColorTransportFollowOnFill       = color.RGBA{38, 44, 60, 255}    // colors.transport-follow-on-fill = #262C3C
-	genColorTransportFollowOnBorderBase = color.RGBA{124, 192, 255, 255} // colors.transport-follow-on-border-base = #7CC0FF
-	genColorErrorText                   = color.RGBA{255, 88, 72, 255}   // colors.error-text = #FF5848
-	genColorEqMuteActiveFill            = color.RGBA{184, 44, 44, 255}   // colors.eq-mute-active-fill = #B82C2C
-	genColorSidebarChipFill             = color.RGBA{56, 72, 88, 255}    // colors.sidebar-chip-fill = #384858
-	genColorSidebarChipBorder           = color.RGBA{120, 136, 160, 255} // colors.sidebar-chip-border = #7888A0
-	genColorSidebarSwatchFallback       = color.RGBA{180, 192, 208, 255} // colors.sidebar-swatch-fallback = #B4C0D0
-	genColorSidebarBadgeBg              = color.RGBA{26, 34, 56, 255}    // colors.sidebar-badge-bg = #1A2238
-	genColorRowRackColorFallback        = color.RGBA{216, 224, 232, 255} // colors.row-rack-color-fallback = #D8E0E8
-	genColorVizDebugEdge                = color.RGBA{255, 255, 0, 255}   // colors.viz-debug-edge = #FFFF00
-	genColorVizDebugNode                = color.RGBA{255, 64, 128, 255}  // colors.viz-debug-node = #FF4080
-	genColorVizPillFill                 = color.RGBA{26, 31, 44, 255}    // colors.viz-pill-fill = #1A1F2C
-	genColorVizPillBorder               = color.RGBA{120, 136, 160, 255} // colors.viz-pill-border = #7888A0
-	genColorVizConfirmGreen             = color.RGBA{64, 160, 96, 255}   // colors.viz-confirm-green = #40A060
-	genColorVizCancelRed                = color.RGBA{140, 48, 48, 255}   // colors.viz-cancel-red = #8C3030
-	genColorDividerBase                 = color.RGBA{160, 176, 200, 255} // colors.divider-base = #A0B0C8
-	genColorDividerShadow               = color.RGBA{16, 20, 28, 255}    // colors.divider-shadow = #10141C
-	genColorDividerHighlight            = color.RGBA{52, 59, 78, 255}    // colors.divider-highlight = #343B4E
-	genColorDrumStripeEven              = color.RGBA{24, 28, 38, 255}    // colors.drum-stripe-even = #181C26
-	genColorDrumStripeOdd               = color.RGBA{19, 23, 31, 255}    // colors.drum-stripe-odd = #13171F
-	genColorDrumGlow                    = color.RGBA{79, 180, 255, 255}  // colors.drum-glow = #4FB4FF
-	genColorDrumCellOff                 = color.RGBA{19, 23, 31, 255}    // colors.drum-cell-off = #13171F
-	genColorDrumCellHighlight           = color.RGBA{252, 239, 208, 255} // colors.drum-cell-highlight = #FCEFD0
-	genColorEqReadoutBg                 = color.RGBA{26, 36, 56, 255}    // colors.eq-readout-bg = #1A2438
-	genColorPopupTextSecondary          = color.RGBA{184, 200, 208, 255} // colors.popup-text-secondary = #B8C8D0
-	genColorScopeLabelDim               = color.RGBA{56, 68, 80, 255}    // colors.scope-label-dim = #384450
-	genColorTransportBarBg              = color.RGBA{23, 27, 37, 255}    // colors.transport-bar-bg = #171B25
+	genColorSliderTrackFill             = color.RGBA{40, 26, 64, 255}    // colors.slider-track-fill = #281A40
+	genColorSliderFill                  = color.RGBA{0, 168, 201, 255}   // colors.slider-fill = #00A8C9
+	genColorSidebarSectionBg            = color.RGBA{56, 35, 84, 255}    // colors.sidebar-section-bg = #382354
+	genColorVizScopeTraceA              = color.RGBA{0, 200, 224, 255}   // colors.viz-scope-trace-a = #00C8E0
+	genColorVizScopeTraceB              = color.RGBA{63, 224, 232, 255}  // colors.viz-scope-trace-b = #3FE0E8
+	genColorVizScopeTraceDiff           = color.RGBA{63, 214, 122, 255}  // colors.viz-scope-trace-diff = #3FD67A
+	genColorVizScopeBg                  = color.RGBA{18, 10, 28, 255}    // colors.viz-scope-bg = #120A1C
+	genColorVizScopeTrigger             = color.RGBA{255, 211, 25, 255}  // colors.viz-scope-trigger = #FFD319
+	genColorVizSpectrumPeakMarker       = color.RGBA{253, 242, 255, 255} // colors.viz-spectrum-peak-marker = #FDF2FF
+	genColorPlayDesktopFill             = color.RGBA{43, 200, 92, 255}   // colors.play-desktop-fill = #2BC85C
+	genColorPlayDesktopBorder           = color.RGBA{63, 214, 122, 255}  // colors.play-desktop-border = #3FD67A
+	genColorStopDesktopFill             = color.RGBA{232, 74, 31, 255}   // colors.stop-desktop-fill = #E84A1F
+	genColorStopDesktopBorder           = color.RGBA{255, 92, 42, 255}   // colors.stop-desktop-border = #FF5C2A
+	genColorStepperFill                 = color.RGBA{28, 18, 48, 255}    // colors.stepper-fill = #1C1230
+	genColorStepperBorder               = color.RGBA{0, 168, 201, 255}   // colors.stepper-border = #00A8C9
+	genColorDisabledFill                = color.RGBA{40, 26, 64, 255}    // colors.disabled-fill = #281A40
+	genColorDestructiveConfirmFill      = color.RGBA{232, 74, 31, 255}   // colors.destructive-confirm-fill = #E84A1F
+	genColorDestructiveConfirmBorder    = color.RGBA{255, 92, 42, 255}   // colors.destructive-confirm-border = #FF5C2A
+	genColorMuteActiveBorder            = color.RGBA{255, 106, 213, 255} // colors.mute-active-border = #FF6AD5
+	genColorSoloActiveBorder            = color.RGBA{63, 224, 232, 255}  // colors.solo-active-border = #3FE0E8
+	genColorFxActiveFill                = color.RGBA{40, 26, 64, 255}    // colors.fx-active-fill = #281A40
+	genColorEqFilterActiveFill          = color.RGBA{0, 168, 201, 255}   // colors.eq-filter-active-fill = #00A8C9
+	genColorEqFilterActiveBorder        = color.RGBA{0, 200, 224, 255}   // colors.eq-filter-active-border = #00C8E0
+	genColorTransportFollowOnFill       = color.RGBA{40, 26, 64, 255}    // colors.transport-follow-on-fill = #281A40
+	genColorTransportFollowOnBorderBase = color.RGBA{63, 224, 232, 255}  // colors.transport-follow-on-border-base = #3FE0E8
+	genColorErrorText                   = color.RGBA{255, 92, 42, 255}   // colors.error-text = #FF5C2A
+	genColorEqMuteActiveFill            = color.RGBA{232, 74, 31, 255}   // colors.eq-mute-active-fill = #E84A1F
+	genColorSidebarChipFill             = color.RGBA{56, 35, 84, 255}    // colors.sidebar-chip-fill = #382354
+	genColorSidebarChipBorder           = color.RGBA{138, 122, 156, 255} // colors.sidebar-chip-border = #8A7A9C
+	genColorSidebarSwatchFallback       = color.RGBA{201, 184, 214, 255} // colors.sidebar-swatch-fallback = #C9B8D6
+	genColorSidebarBadgeBg              = color.RGBA{28, 18, 48, 255}    // colors.sidebar-badge-bg = #1C1230
+	genColorRowRackColorFallback        = color.RGBA{253, 242, 255, 255} // colors.row-rack-color-fallback = #FDF2FF
+	genColorVizDebugEdge                = color.RGBA{255, 211, 25, 255}  // colors.viz-debug-edge = #FFD319
+	genColorVizDebugNode                = color.RGBA{255, 92, 42, 255}   // colors.viz-debug-node = #FF5C2A
+	genColorVizPillFill                 = color.RGBA{28, 18, 48, 255}    // colors.viz-pill-fill = #1C1230
+	genColorVizPillBorder               = color.RGBA{138, 122, 156, 255} // colors.viz-pill-border = #8A7A9C
+	genColorVizConfirmGreen             = color.RGBA{63, 214, 122, 255}  // colors.viz-confirm-green = #3FD67A
+	genColorVizCancelRed                = color.RGBA{232, 74, 31, 255}   // colors.viz-cancel-red = #E84A1F
+	genColorDividerBase                 = color.RGBA{253, 242, 255, 255} // colors.divider-base = #FDF2FF
+	genColorDividerShadow               = color.RGBA{0, 0, 0, 255}       // colors.divider-shadow = #000000
+	genColorDividerHighlight            = color.RGBA{56, 35, 84, 255}    // colors.divider-highlight = #382354
+	genColorDrumStripeEven              = color.RGBA{28, 18, 48, 255}    // colors.drum-stripe-even = #1C1230
+	genColorDrumStripeOdd               = color.RGBA{18, 10, 28, 255}    // colors.drum-stripe-odd = #120A1C
+	genColorDrumGlow                    = color.RGBA{0, 200, 224, 255}   // colors.drum-glow = #00C8E0
+	genColorDrumCellOff                 = color.RGBA{40, 26, 64, 255}    // colors.drum-cell-off = #281A40
+	genColorDrumCellHighlight           = color.RGBA{253, 242, 255, 255} // colors.drum-cell-highlight = #FDF2FF
+	genColorEqReadoutBg                 = color.RGBA{28, 18, 48, 255}    // colors.eq-readout-bg = #1C1230
+	genColorPopupTextSecondary          = color.RGBA{201, 184, 214, 255} // colors.popup-text-secondary = #C9B8D6
+	genColorScopeLabelDim               = color.RGBA{56, 35, 84, 255}    // colors.scope-label-dim = #382354
+	genColorTransportBarBg              = color.RGBA{18, 10, 28, 255}    // colors.transport-bar-bg = #120A1C
 	genColorDimBlack                    = color.RGBA{0, 0, 0, 255}       // colors.dim-black = #000000
-	genColorGridLine                    = color.RGBA{28, 36, 50, 255}    // colors.grid-line = #1C2432
-	genColorGridHalf                    = color.RGBA{36, 44, 58, 255}    // colors.grid-half = #242C3A
-	genColorGridQuarter                 = color.RGBA{44, 52, 66, 255}    // colors.grid-quarter = #2C3442
-	genColorGridEighth                  = color.RGBA{52, 60, 74, 255}    // colors.grid-eighth = #343C4A
-	genColorGridSixteenth               = color.RGBA{60, 68, 82, 255}    // colors.grid-sixteenth = #3C4452
-	genColorGridThirtySecond            = color.RGBA{68, 76, 90, 255}    // colors.grid-thirty-second = #444C5A
-	genColorNodeFill                    = color.RGBA{40, 42, 52, 255}    // colors.node-fill = #282A34
-	genColorNodeBorder                  = color.RGBA{140, 142, 155, 255} // colors.node-border = #8C8E9B
-	genColorEdgeColor                   = color.RGBA{120, 122, 140, 255} // colors.edge-color = #787A8C
-	genColorSplitterHandle              = color.RGBA{200, 200, 210, 255} // colors.splitter-handle = #C8C8D2
-	genColorSplitterHandleMobile        = color.RGBA{0, 140, 200, 255}   // colors.splitter-handle-mobile = #008CC8
-	genColorSplitterGripLine            = color.RGBA{100, 100, 110, 255} // colors.splitter-grip-line = #64646E
-	genColorSplitterGripLineHover       = color.RGBA{180, 180, 190, 255} // colors.splitter-grip-line-hover = #B4B4BE
-	genColorTimelineTotalBg             = color.RGBA{12, 16, 28, 255}    // colors.timeline-total-bg = #0C101C
-	genColorTimelineView                = color.RGBA{255, 160, 64, 255}  // colors.timeline-view = #FFA040
-	genColorTimelineViewHi              = color.RGBA{255, 184, 80, 255}  // colors.timeline-view-hi = #FFB850
-	genColorTimelineCursor              = color.RGBA{255, 200, 96, 255}  // colors.timeline-cursor = #FFC860
-	genColorTimelineBeat                = color.RGBA{80, 82, 90, 255}    // colors.timeline-beat = #50525A
-	genColorDrumMuteCell                = color.RGBA{100, 100, 110, 255} // colors.drum-mute-cell = #64646E
-	genColorDrumMuteHighlight           = color.RGBA{180, 182, 190, 255} // colors.drum-mute-highlight = #B4B6BE
-	genColorWaveTraceDry                = color.RGBA{120, 144, 176, 255} // colors.wave-trace-dry = #7890B0
-	genColorEqZeroLine                  = color.RGBA{120, 120, 130, 255} // colors.eq-zero-line = #787882
-	genColorMenuDeleteTint              = color.RGBA{220, 50, 50, 255}   // colors.menu-delete-tint = #DC3232
-	genColorIncdecIconHi                = color.RGBA{79, 180, 255, 255}  // colors.incdec-icon-hi = #4FB4FF
+	genColorGridLine                    = color.RGBA{28, 18, 48, 255}    // colors.grid-line = #1C1230
+	genColorGridHalf                    = color.RGBA{28, 18, 48, 255}    // colors.grid-half = #1C1230
+	genColorGridQuarter                 = color.RGBA{40, 26, 64, 255}    // colors.grid-quarter = #281A40
+	genColorGridEighth                  = color.RGBA{40, 26, 64, 255}    // colors.grid-eighth = #281A40
+	genColorGridSixteenth               = color.RGBA{56, 35, 84, 255}    // colors.grid-sixteenth = #382354
+	genColorGridThirtySecond            = color.RGBA{56, 35, 84, 255}    // colors.grid-thirty-second = #382354
+	genColorGridHorizon                 = color.RGBA{56, 35, 84, 255}    // colors.grid-horizon = #382354
+	genColorNodeFill                    = color.RGBA{40, 26, 64, 255}    // colors.node-fill = #281A40
+	genColorNodeBorder                  = color.RGBA{138, 122, 156, 255} // colors.node-border = #8A7A9C
+	genColorEdgeColor                   = color.RGBA{138, 122, 156, 255} // colors.edge-color = #8A7A9C
+	genColorSplitterHandle              = color.RGBA{0, 200, 224, 255}   // colors.splitter-handle = #00C8E0
+	genColorTimelineTotalBg             = color.RGBA{18, 10, 28, 255}    // colors.timeline-total-bg = #120A1C
+	genColorTimelineView                = color.RGBA{255, 158, 31, 255}  // colors.timeline-view = #FF9E1F
+	genColorTimelineViewHi              = color.RGBA{255, 179, 10, 255}  // colors.timeline-view-hi = #FFB30A
+	genColorTimelineCursor              = color.RGBA{255, 211, 25, 255}  // colors.timeline-cursor = #FFD319
+	genColorTimelineBeat                = color.RGBA{138, 122, 156, 255} // colors.timeline-beat = #8A7A9C
+	genColorDrumMuteCell                = color.RGBA{138, 122, 156, 255} // colors.drum-mute-cell = #8A7A9C
+	genColorDrumMuteHighlight           = color.RGBA{253, 242, 255, 255} // colors.drum-mute-highlight = #FDF2FF
+	genColorWaveTraceDry                = color.RGBA{138, 122, 156, 255} // colors.wave-trace-dry = #8A7A9C
+	genColorEqZeroLine                  = color.RGBA{138, 122, 156, 255} // colors.eq-zero-line = #8A7A9C
+	genColorMenuDeleteTint              = color.RGBA{232, 74, 31, 255}   // colors.menu-delete-tint = #E84A1F
+	genColorIncdecIconHi                = color.RGBA{0, 200, 224, 255}   // colors.incdec-icon-hi = #00C8E0
 )
 
 // ── Spacing ───────────────────────────────────────────────────────────────
@@ -148,6 +189,8 @@ const (
 
 // ── Rounded (corner radii) ────────────────────────────────────────────────
 const (
+	genRoundedXxs  = 4   // rounded.xxs
+	genRoundedXs   = 6   // rounded.xs
 	genRoundedSm   = 8   // rounded.sm
 	genRoundedMd   = 12  // rounded.md
 	genRoundedLg   = 16  // rounded.lg
@@ -205,10 +248,11 @@ const (
 	genAlphaEqCurveFill          uint8 = 20  // alpha.eq-curve-fill
 	genAlphaMuteHighlight        uint8 = 160 // alpha.mute-highlight
 	genAlphaScrim                uint8 = 150 // alpha.scrim
-	genAlphaSplitterGripHover    uint8 = 200 // alpha.splitter-grip-hover
 	genAlphaSplitterHover        uint8 = 240 // alpha.splitter-hover
 	genAlphaPanelNearOpaque      uint8 = 250 // alpha.panel-near-opaque
 	genAlphaBeatGroupAlt         uint8 = 4   // alpha.beat-group-alt
+	genAlphaMenuActiveTint       uint8 = 60  // alpha.menu-active-tint
+	genAlphaMenuHeaderAccent     uint8 = 50  // alpha.menu-header-accent
 )
 
 // ── Instrument swatches (curated suggestion palette) ──────────────────────
@@ -217,18 +261,41 @@ const (
 // hue wheel. Beatmo-only extension; the chrome runtime ignores this set.
 // Source order from DESIGN.md is preserved.
 var (
-	genInstrumentSwatchAzure    = color.RGBA{79, 180, 255, 255}  // instrumentSwatches.azure = #4FB4FF
-	genInstrumentSwatchPeach    = color.RGBA{255, 180, 132, 255} // instrumentSwatches.peach = #FFB484
-	genInstrumentSwatchMarigold = color.RGBA{255, 213, 106, 255} // instrumentSwatches.marigold = #FFD56A
-	genInstrumentSwatchLime     = color.RGBA{168, 224, 122, 255} // instrumentSwatches.lime = #A8E07A
-	genInstrumentSwatchMint     = color.RGBA{122, 224, 184, 255} // instrumentSwatches.mint = #7AE0B8
-	genInstrumentSwatchAqua     = color.RGBA{122, 220, 224, 255} // instrumentSwatches.aqua = #7ADCE0
-	genInstrumentSwatchSky      = color.RGBA{132, 184, 255, 255} // instrumentSwatches.sky = #84B8FF
-	genInstrumentSwatchLavender = color.RGBA{168, 154, 255, 255} // instrumentSwatches.lavender = #A89AFF
-	genInstrumentSwatchOrchid   = color.RGBA{216, 154, 255, 255} // instrumentSwatches.orchid = #D89AFF
-	genInstrumentSwatchRose     = color.RGBA{255, 154, 200, 255} // instrumentSwatches.rose = #FF9AC8
-	genInstrumentSwatchSand     = color.RGBA{212, 194, 154, 255} // instrumentSwatches.sand = #D4C29A
-	genInstrumentSwatchSlate    = color.RGBA{154, 176, 200, 255} // instrumentSwatches.slate = #9AB0C8
+	genInstrumentSwatchSunsetGold100   = color.RGBA{255, 233, 138, 255} // instrumentSwatches.sunset-gold-100 = #FFE98A
+	genInstrumentSwatchSunsetGold200   = color.RGBA{255, 211, 25, 255}  // instrumentSwatches.sunset-gold-200 = #FFD319
+	genInstrumentSwatchSunsetGold300   = color.RGBA{255, 179, 10, 255}  // instrumentSwatches.sunset-gold-300 = #FFB30A
+	genInstrumentSwatchSunsetGold400   = color.RGBA{255, 158, 31, 255}  // instrumentSwatches.sunset-gold-400 = #FF9E1F
+	genInstrumentSwatchSunsetGold500   = color.RGBA{245, 138, 18, 255}  // instrumentSwatches.sunset-gold-500 = #F58A12
+	genInstrumentSwatchTangerine100    = color.RGBA{255, 194, 153, 255} // instrumentSwatches.tangerine-100 = #FFC299
+	genInstrumentSwatchTangerine200    = color.RGBA{255, 158, 84, 255}  // instrumentSwatches.tangerine-200 = #FF9E54
+	genInstrumentSwatchTangerine300    = color.RGBA{255, 122, 61, 255}  // instrumentSwatches.tangerine-300 = #FF7A3D
+	genInstrumentSwatchTangerine400    = color.RGBA{255, 92, 42, 255}   // instrumentSwatches.tangerine-400 = #FF5C2A
+	genInstrumentSwatchTangerine500    = color.RGBA{232, 74, 31, 255}   // instrumentSwatches.tangerine-500 = #E84A1F
+	genInstrumentSwatchHotPink100      = color.RGBA{255, 168, 224, 255} // instrumentSwatches.hot-pink-100 = #FFA8E0
+	genInstrumentSwatchHotPink200      = color.RGBA{255, 106, 213, 255} // instrumentSwatches.hot-pink-200 = #FF6AD5
+	genInstrumentSwatchHotPink300      = color.RGBA{255, 45, 158, 255}  // instrumentSwatches.hot-pink-300 = #FF2D9E
+	genInstrumentSwatchHotPink400      = color.RGBA{238, 0, 221, 255}   // instrumentSwatches.hot-pink-400 = #EE00DD
+	genInstrumentSwatchHotPink500      = color.RGBA{196, 0, 181, 255}   // instrumentSwatches.hot-pink-500 = #C400B5
+	genInstrumentSwatchOrchid100       = color.RGBA{224, 168, 255, 255} // instrumentSwatches.orchid-100 = #E0A8FF
+	genInstrumentSwatchOrchid200       = color.RGBA{194, 79, 255, 255}  // instrumentSwatches.orchid-200 = #C24FFF
+	genInstrumentSwatchOrchid300       = color.RGBA{160, 48, 255, 255}  // instrumentSwatches.orchid-300 = #A030FF
+	genInstrumentSwatchOrchid400       = color.RGBA{140, 30, 255, 255}  // instrumentSwatches.orchid-400 = #8C1EFF
+	genInstrumentSwatchOrchid500       = color.RGBA{110, 18, 224, 255}  // instrumentSwatches.orchid-500 = #6E12E0
+	genInstrumentSwatchElectricBlue100 = color.RGBA{168, 200, 255, 255} // instrumentSwatches.electric-blue-100 = #A8C8FF
+	genInstrumentSwatchElectricBlue200 = color.RGBA{94, 138, 255, 255}  // instrumentSwatches.electric-blue-200 = #5E8AFF
+	genInstrumentSwatchElectricBlue300 = color.RGBA{58, 106, 240, 255}  // instrumentSwatches.electric-blue-300 = #3A6AF0
+	genInstrumentSwatchElectricBlue400 = color.RGBA{42, 95, 214, 255}   // instrumentSwatches.electric-blue-400 = #2A5FD6
+	genInstrumentSwatchElectricBlue500 = color.RGBA{30, 71, 181, 255}   // instrumentSwatches.electric-blue-500 = #1E47B5
+	genInstrumentSwatchCyan100         = color.RGBA{154, 240, 255, 255} // instrumentSwatches.cyan-100 = #9AF0FF
+	genInstrumentSwatchCyan200         = color.RGBA{63, 224, 232, 255}  // instrumentSwatches.cyan-200 = #3FE0E8
+	genInstrumentSwatchCyan300         = color.RGBA{0, 200, 224, 255}   // instrumentSwatches.cyan-300 = #00C8E0
+	genInstrumentSwatchCyan400         = color.RGBA{0, 168, 201, 255}   // instrumentSwatches.cyan-400 = #00A8C9
+	genInstrumentSwatchCyan500         = color.RGBA{14, 115, 145, 255}  // instrumentSwatches.cyan-500 = #0E7391
+	genInstrumentSwatchMint100         = color.RGBA{179, 245, 194, 255} // instrumentSwatches.mint-100 = #B3F5C2
+	genInstrumentSwatchMint200         = color.RGBA{107, 232, 154, 255} // instrumentSwatches.mint-200 = #6BE89A
+	genInstrumentSwatchMint300         = color.RGBA{63, 214, 122, 255}  // instrumentSwatches.mint-300 = #3FD67A
+	genInstrumentSwatchMint400         = color.RGBA{43, 200, 92, 255}   // instrumentSwatches.mint-400 = #2BC85C
+	genInstrumentSwatchMint500         = color.RGBA{31, 168, 74, 255}   // instrumentSwatches.mint-500 = #1FA84A
 )
 
 // GenInstrumentSwatch is the public shape of an entry in
@@ -241,18 +308,59 @@ type GenInstrumentSwatch struct {
 }
 
 var genInstrumentSwatches = []GenInstrumentSwatch{
-	{Name: "azure", RGBA: genInstrumentSwatchAzure, Hex: "#4FB4FF"},
-	{Name: "peach", RGBA: genInstrumentSwatchPeach, Hex: "#FFB484"},
-	{Name: "marigold", RGBA: genInstrumentSwatchMarigold, Hex: "#FFD56A"},
-	{Name: "lime", RGBA: genInstrumentSwatchLime, Hex: "#A8E07A"},
-	{Name: "mint", RGBA: genInstrumentSwatchMint, Hex: "#7AE0B8"},
-	{Name: "aqua", RGBA: genInstrumentSwatchAqua, Hex: "#7ADCE0"},
-	{Name: "sky", RGBA: genInstrumentSwatchSky, Hex: "#84B8FF"},
-	{Name: "lavender", RGBA: genInstrumentSwatchLavender, Hex: "#A89AFF"},
-	{Name: "orchid", RGBA: genInstrumentSwatchOrchid, Hex: "#D89AFF"},
-	{Name: "rose", RGBA: genInstrumentSwatchRose, Hex: "#FF9AC8"},
-	{Name: "sand", RGBA: genInstrumentSwatchSand, Hex: "#D4C29A"},
-	{Name: "slate", RGBA: genInstrumentSwatchSlate, Hex: "#9AB0C8"},
+	{Name: "sunset-gold-100", RGBA: genInstrumentSwatchSunsetGold100, Hex: "#FFE98A"},
+	{Name: "sunset-gold-200", RGBA: genInstrumentSwatchSunsetGold200, Hex: "#FFD319"},
+	{Name: "sunset-gold-300", RGBA: genInstrumentSwatchSunsetGold300, Hex: "#FFB30A"},
+	{Name: "sunset-gold-400", RGBA: genInstrumentSwatchSunsetGold400, Hex: "#FF9E1F"},
+	{Name: "sunset-gold-500", RGBA: genInstrumentSwatchSunsetGold500, Hex: "#F58A12"},
+	{Name: "tangerine-100", RGBA: genInstrumentSwatchTangerine100, Hex: "#FFC299"},
+	{Name: "tangerine-200", RGBA: genInstrumentSwatchTangerine200, Hex: "#FF9E54"},
+	{Name: "tangerine-300", RGBA: genInstrumentSwatchTangerine300, Hex: "#FF7A3D"},
+	{Name: "tangerine-400", RGBA: genInstrumentSwatchTangerine400, Hex: "#FF5C2A"},
+	{Name: "tangerine-500", RGBA: genInstrumentSwatchTangerine500, Hex: "#E84A1F"},
+	{Name: "hot-pink-100", RGBA: genInstrumentSwatchHotPink100, Hex: "#FFA8E0"},
+	{Name: "hot-pink-200", RGBA: genInstrumentSwatchHotPink200, Hex: "#FF6AD5"},
+	{Name: "hot-pink-300", RGBA: genInstrumentSwatchHotPink300, Hex: "#FF2D9E"},
+	{Name: "hot-pink-400", RGBA: genInstrumentSwatchHotPink400, Hex: "#EE00DD"},
+	{Name: "hot-pink-500", RGBA: genInstrumentSwatchHotPink500, Hex: "#C400B5"},
+	{Name: "orchid-100", RGBA: genInstrumentSwatchOrchid100, Hex: "#E0A8FF"},
+	{Name: "orchid-200", RGBA: genInstrumentSwatchOrchid200, Hex: "#C24FFF"},
+	{Name: "orchid-300", RGBA: genInstrumentSwatchOrchid300, Hex: "#A030FF"},
+	{Name: "orchid-400", RGBA: genInstrumentSwatchOrchid400, Hex: "#8C1EFF"},
+	{Name: "orchid-500", RGBA: genInstrumentSwatchOrchid500, Hex: "#6E12E0"},
+	{Name: "electric-blue-100", RGBA: genInstrumentSwatchElectricBlue100, Hex: "#A8C8FF"},
+	{Name: "electric-blue-200", RGBA: genInstrumentSwatchElectricBlue200, Hex: "#5E8AFF"},
+	{Name: "electric-blue-300", RGBA: genInstrumentSwatchElectricBlue300, Hex: "#3A6AF0"},
+	{Name: "electric-blue-400", RGBA: genInstrumentSwatchElectricBlue400, Hex: "#2A5FD6"},
+	{Name: "electric-blue-500", RGBA: genInstrumentSwatchElectricBlue500, Hex: "#1E47B5"},
+	{Name: "cyan-100", RGBA: genInstrumentSwatchCyan100, Hex: "#9AF0FF"},
+	{Name: "cyan-200", RGBA: genInstrumentSwatchCyan200, Hex: "#3FE0E8"},
+	{Name: "cyan-300", RGBA: genInstrumentSwatchCyan300, Hex: "#00C8E0"},
+	{Name: "cyan-400", RGBA: genInstrumentSwatchCyan400, Hex: "#00A8C9"},
+	{Name: "cyan-500", RGBA: genInstrumentSwatchCyan500, Hex: "#0E7391"},
+	{Name: "mint-100", RGBA: genInstrumentSwatchMint100, Hex: "#B3F5C2"},
+	{Name: "mint-200", RGBA: genInstrumentSwatchMint200, Hex: "#6BE89A"},
+	{Name: "mint-300", RGBA: genInstrumentSwatchMint300, Hex: "#3FD67A"},
+	{Name: "mint-400", RGBA: genInstrumentSwatchMint400, Hex: "#2BC85C"},
+	{Name: "mint-500", RGBA: genInstrumentSwatchMint500, Hex: "#1FA84A"},
+}
+
+// ── Instrument color sequence (canonical, ordered, finite) ────────────────
+//
+// THE single predictable series every circuit's instrument colors (and thus
+// node + edge colors) are derived from: row N takes
+// genInstrumentSequence[N % len]. Resolved from DESIGN.md instrumentSequence:
+// (swatch names in warm↔cool order). The internal/templates package gets the
+// identical series as templates.InstrumentSequence — both walk the same list.
+var genInstrumentSequence = []color.RGBA{
+	{238, 0, 221, 255},   // instrumentSequence.hot-pink-400 = #EE00DD
+	{0, 200, 224, 255},   // instrumentSequence.cyan-300 = #00C8E0
+	{255, 211, 25, 255},  // instrumentSequence.sunset-gold-200 = #FFD319
+	{160, 48, 255, 255},  // instrumentSequence.orchid-300 = #A030FF
+	{63, 214, 122, 255},  // instrumentSequence.mint-300 = #3FD67A
+	{58, 106, 240, 255},  // instrumentSequence.electric-blue-300 = #3A6AF0
+	{255, 122, 61, 255},  // instrumentSequence.tangerine-300 = #FF7A3D
+	{255, 106, 213, 255}, // instrumentSequence.hot-pink-200 = #FF6AD5
 }
 
 // ── Instrument default colors (per built-in id) ───────────────────────────
@@ -262,11 +370,11 @@ var genInstrumentSwatches = []GenInstrumentSwatch{
 // drum-cell tint, edge tint, and rack swatch unless the user picks
 // a custom color. Source order from DESIGN.md is preserved.
 var (
-	genInstrumentDefaultKick  = color.RGBA{50, 170, 100, 255} // instrumentDefaults.kick = #32AA64
-	genInstrumentDefaultSnare = color.RGBA{195, 72, 80, 255}  // instrumentDefaults.snare = #C34850
-	genInstrumentDefaultHihat = color.RGBA{200, 168, 45, 255} // instrumentDefaults.hihat = #C8A82D
-	genInstrumentDefaultTom   = color.RGBA{68, 100, 195, 255} // instrumentDefaults.tom = #4464C3
-	genInstrumentDefaultClap  = color.RGBA{185, 68, 168, 255} // instrumentDefaults.clap = #B944A8
+	genInstrumentDefaultKick  = color.RGBA{255, 122, 61, 255} // instrumentDefaults.kick = #FF7A3D
+	genInstrumentDefaultSnare = color.RGBA{238, 0, 221, 255}  // instrumentDefaults.snare = #EE00DD
+	genInstrumentDefaultHihat = color.RGBA{255, 211, 25, 255} // instrumentDefaults.hihat = #FFD319
+	genInstrumentDefaultTom   = color.RGBA{140, 30, 255, 255} // instrumentDefaults.tom = #8C1EFF
+	genInstrumentDefaultClap  = color.RGBA{0, 200, 224, 255}  // instrumentDefaults.clap = #00C8E0
 )
 
 var genInstrumentDefaults = map[string]color.RGBA{
@@ -282,11 +390,11 @@ var genInstrumentDefaults = map[string]color.RGBA{
 // When an instrument id is not present in genInstrumentDefaults, the
 // runtime cycles this slice. Source order matters; do not sort.
 var (
-	genInstrumentFallback0 = color.RGBA{68, 168, 168, 255} // instrumentFallbackPalette[0] = #44A8A8
-	genInstrumentFallback1 = color.RGBA{170, 110, 68, 255} // instrumentFallbackPalette[1] = #AA6E44
-	genInstrumentFallback2 = color.RGBA{110, 68, 168, 255} // instrumentFallbackPalette[2] = #6E44A8
-	genInstrumentFallback3 = color.RGBA{170, 68, 110, 255} // instrumentFallbackPalette[3] = #AA446E
-	genInstrumentFallback4 = color.RGBA{68, 168, 110, 255} // instrumentFallbackPalette[4] = #44A86E
+	genInstrumentFallback0 = color.RGBA{63, 214, 122, 255}  // instrumentFallbackPalette[0] = #3FD67A
+	genInstrumentFallback1 = color.RGBA{255, 106, 213, 255} // instrumentFallbackPalette[1] = #FF6AD5
+	genInstrumentFallback2 = color.RGBA{42, 95, 214, 255}   // instrumentFallbackPalette[2] = #2A5FD6
+	genInstrumentFallback3 = color.RGBA{194, 79, 255, 255}  // instrumentFallbackPalette[3] = #C24FFF
+	genInstrumentFallback4 = color.RGBA{255, 179, 10, 255}  // instrumentFallbackPalette[4] = #FFB30A
 )
 
 var genInstrumentFallbackPalette = []color.RGBA{
@@ -329,6 +437,7 @@ type FadeFactor float64
 var (
 	genAnimHighlightDecay                = ExpDecayAnim{Rate: 0.8, Threshold: 0.02}                                  // animations.highlight-decay
 	genAnimButtonPressDecay              = ExpDecayAnim{Rate: 0.6, Threshold: 0.01}                                  // animations.button-press-decay
+	genAnimButtonHoverFade               = ExpDecayAnim{Rate: 0.65, Threshold: 0.01}                                 // animations.button-hover-fade
 	genAnimPlayheadPulse                 = SinPulseAnim{FrameStep: 0.05, Amplitude: 0.6, Base: 0.4, AlphaScale: 120} // animations.playhead-pulse
 	genAnimButtonTogglePulse             = SinPulseAnim{FrameStep: 0.08, Amplitude: 0.5, Base: 0.5, AlphaScale: 110} // animations.button-toggle-pulse
 	genAnimSignalGlowOuter    FadeFactor = 0.3                                                                       // animations.signal-glow-outer
@@ -350,8 +459,9 @@ const (
 	genGeomHighlightBorderThickness   = 2    // geometry.highlight-border-thickness
 	genGeomNodeRadius                 = 16   // geometry.node-radius
 	genGeomSignalRadius               = 6    // geometry.signal-radius
-	genGeomButtonGlowRadiusPx         = 6    // geometry.button-glow-radius-px
 	genGeomButtonInnerShadowPx        = 2    // geometry.button-inner-shadow-px
 	genGeomButtonPressScale           = 0.92 // geometry.button-press-scale
 	genGeomButtonReleaseOvershoot     = 1.03 // geometry.button-release-overshoot
+	genGeomButtonHoverGlowSpread      = 3    // geometry.button-hover-glow-spread
+	genGeomTransportMinBtnW           = 48   // geometry.transport-min-btn-w
 )

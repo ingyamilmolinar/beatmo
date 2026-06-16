@@ -247,6 +247,26 @@ func (g *Game) Import(data []byte) (retErr error) {
 		if g.drum.activeEQChannel() == "main" {
 			g.drum.setEQActiveChannel("main")
 		}
+	} else if g.drum != nil {
+		// Import is replace-not-merge: a document with NO master EQ must RESET any
+		// in-session master EQ to defaults, otherwise stale gains/mute/filters
+		// persist (this broke undo of an EQ change — undoing to a no-EQ snapshot
+		// left the EQ applied). Zero the shared gain/mute slices in place and
+		// disable the filters.
+		for i := range g.drum.eqBandGainsDB() {
+			g.drum.eqBandGainsDB()[i] = 0
+		}
+		for i := range g.drum.eqBandMuted() {
+			g.drum.eqBandMuted()[i] = false
+		}
+		g.drum.hpfEnabled = false
+		g.drum.hpfCutoffHz = 20
+		g.drum.lpfEnabled = false
+		g.drum.lpfCutoffHz = 20000
+		g.drum.applyEQ()
+		if g.drum.activeEQChannel() == "main" {
+			g.drum.setEQActiveChannel("main")
+		}
 	}
 
 	// Create nodes (regular/silent/mute) and remember mapping id->uiNode.
@@ -625,7 +645,26 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.perfMode.ForceRefresh()
 	if g.drum != nil {
 		g.drum.markAllRowsDirty()
+		// Re-wire per-instrument analyzers for the freshly imported rows.
+		// On WASM each instrument's AnalyserNode is enabled on demand;
+		// a template that ships no per-instrument EQ (so applyRowEQ never
+		// ran) would otherwise leave the Levels/per-instrument views blank
+		// while audio plays. No tab transition fires on import, so do it
+		// here. Idempotent + harmless on desktop. See
+		// audio_panel_dispatcher.go (AnalyzerInstrumentTapsForTab).
+		if g.drum.eqPanelZone != nil {
+			g.drum.eqPanelZone.reapplyAnalyzerTaps()
+		}
 	}
+	// The graph was rebuilt wholesale above; drop any transient UI that still
+	// points at nodes from the previous graph (coordinate badge, open node menu)
+	// so an undone/replaced node never leaves its coordinates or menu on screen.
+	g.pruneDanglingNodeRefs()
+	// Re-seed the Sampler tab's editing state from the restored document so an
+	// undo/redo/load that changed an instrument's sample_edit moves the sampler
+	// knobs/trim/reverse back (otherwise the tab keeps the pre-restore edit and
+	// the next gesture re-applies it).
+	g.drum.resyncSamplerEditFromDocument()
 	g.logger.Debugf("[import] completed: bpm=%d nodes=%d rows=%d subdiv=%d", f.BPM, len(f.Nodes), len(g.drum.Rows), f.Subdiv)
 	return nil
 }

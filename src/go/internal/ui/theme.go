@@ -12,6 +12,10 @@ var (
 	// Level 0 (base): deepest background — grid pane, timeline
 	colBGTop    = genColorBackground
 	colBGBottom = genColorBackground
+	// Sunset horizon: warm magenta-violet at the bottom edge of the grid
+	// pane; the pane grades from colBGTop (top) to this (bottom). See
+	// DESIGN.md colors.grid-horizon.
+	colGridHorizon = genColorGridHorizon
 
 	// Level 1 (surface): main surfaces — row rack, transport bg
 	colSurface1 = genColorSurface1
@@ -77,16 +81,14 @@ var (
 	// Row label brighter color
 	colRowLabel = colTextPrimary
 
-	// Splitter handle colors (pill indicator on divider lines).
-	// Sourced from DESIGN.md splitter-* color tokens × alpha buckets.
+	// Splitter handle colors (handle indicator on divider lines). One cyan
+	// color on every platform (desktop + mobile share it). Sourced from the
+	// DESIGN.md splitter-handle token at the strong alpha bucket.
 	// `splitter-handle-hover` reuses the universal white `border` token at
-	// the splitter-hover bucket; the role is "splitter pill at hover", the
+	// the splitter-hover bucket; the role is "splitter handle at hover", the
 	// hex is white (no separate token needed since border already names it).
-	colSplitterHandle        = WithAlpha(genColorSplitterHandle, genAlphaOverlay)
-	colSplitterHandleMobile  = WithAlpha(genColorSplitterHandleMobile, genAlphaStrong)
+	colSplitterHandle        = WithAlpha(genColorSplitterHandle, genAlphaStrong)
 	colSplitterHandleHover   = WithAlpha(genColorBorder, genAlphaSplitterHover)
-	colSplitterGripLine      = WithAlpha(genColorSplitterGripLine, genAlphaStrong)
-	colSplitterGripLineHover = WithAlpha(genColorSplitterGripLineHover, genAlphaSplitterGripHover)
 
 	// Rack surface: Level 1 for visual separation
 	colRackSurface = colSurface1

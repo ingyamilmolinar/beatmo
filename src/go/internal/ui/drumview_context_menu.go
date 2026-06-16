@@ -5,7 +5,27 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/assets"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
+
+// contextMenuAccent returns the accent color for the open per-row context menu:
+// the row's instrument color so the menu chrome (header underline + active item
+// stripe + color dot) reads as owned by the instrument. Falls back to the
+// instrument's registered color, then the global azure accent when no row is
+// targeted.
+func (dv *DrumView) contextMenuAccent() color.Color {
+	if dv.contextMenuRow >= 0 && dv.contextMenuRow < len(dv.Rows) {
+		if c := dv.Rows[dv.contextMenuRow].Color; c != nil {
+			return c
+		}
+		if c := instColor(dv.Rows[dv.contextMenuRow].Instrument); c != nil {
+			return c
+		}
+	}
+	return colAccent
+}
 
 // openContextMenu builds a context menu for row actions.
 // On mobile, renders as a bottom sheet anchored to the bottom of the drum pane.
@@ -84,7 +104,11 @@ func (dv *DrumView) openContextMenu(rowIdx int) {
 			curY += rowH
 		}
 	} else {
-		// Desktop: positioned popup next to row label.
+		// Desktop: positioned popup next to row label, placed via the shared
+		// AnchorPopupRect primitive (flip + clamp) so a bottom-row anchor never
+		// runs the menu off-screen. Uniform row pitch: dividers add NO extra
+		// gap here (visual grouping comes from the group-container backgrounds
+		// in drawContextMenu), so every row has the same height.
 		var anchor image.Rectangle
 		if rowIdx < len(dv.rowLabels()) {
 			anchor = dv.rowLabels()[rowIdx].Rect()
@@ -92,35 +116,20 @@ func (dv *DrumView) openContextMenu(rowIdx int) {
 			anchor = image.Rect(dv.Bounds.Min.X, dv.Bounds.Min.Y+dv.headerH, dv.Bounds.Min.X+100, dv.Bounds.Min.Y+dv.headerH+dv.rowHeight())
 		}
 		menuW := 160
-		dividerSpace := nDividers * (dividerH + SpaceSM)
-		fullH := nItems*rowH + dividerSpace
-		menuH := fullH
-		if maxH := dv.Bounds.Dy(); menuH > maxH {
-			menuH = maxH
-		}
-		mx := anchor.Max.X + 4
-		my := anchor.Min.Y
-		if mx+menuW > dv.Bounds.Max.X {
-			mx = anchor.Min.X - menuW - 4
-		}
-		if mx < dv.Bounds.Min.X {
-			mx = dv.Bounds.Min.X
-		}
-		if my+menuH > dv.Bounds.Max.Y {
-			my = dv.Bounds.Max.Y - menuH
-		}
-		if my < dv.Bounds.Min.Y {
-			my = dv.Bounds.Min.Y
-		}
-		dv.contextMenuRect = image.Rect(mx, my, mx+menuW, my+menuH)
+		menuH := nItems * rowH
+		dv.contextMenuRect = AnchorPopupRect(dv.Bounds, anchor, menuW, menuH, PopupRight)
 
-		curY := my
+		// Label column starts to the right of the leading icon so labels are
+		// left-aligned next to their icons (icon at SpaceMD, label at
+		// icon-right + SpaceSM).
+		iconSize := IconSizeSM
+		labelLeft := dv.contextMenuRect.Min.X + SpaceMD + iconSize + SpaceSM
+		curY := dv.contextMenuRect.Min.Y
 		for _, item := range items {
 			if item.divider {
-				curY += dividerH + SpaceSM
-				continue
+				continue // no extra pitch: uniform row height on desktop
 			}
-			r := image.Rect(mx, curY, mx+menuW, curY+rowH)
+			r := image.Rect(labelLeft, curY, dv.contextMenuRect.Max.X, curY+rowH)
 			btn := NewButton(item.label, item.style, item.onClick)
 			btn.SetRect(insetRect(r, SpaceXS))
 			if item.textColor != nil {
@@ -163,14 +172,19 @@ func (dv *DrumView) openContextMenu(rowIdx int) {
 		dv.contextMenuScroll.VS.Visible = visibleItems
 	}
 
-	// Close button at top-right.
-	closeR := closeButtonRect(dv.contextMenuRect, SpaceXS)
-	closeB := NewButton("", PopupButtonStyle, func() { dv.closeContextMenuPortal() })
-	closeB.Icon = "close"
-	closeB.IconColor = colButtonBorder
-	closeB.SetRect(closeR)
-	closeB.ConsumeOnPress = true
-	dv.contextMenuBtns = append(dv.contextMenuBtns, closeB)
+	// Close button at top-right — bottom-sheet (mobile) only. On desktop the
+	// first menu row sits at the very top, so a corner × would straddle the
+	// rounded corner and collide with the Rename row; desktop dismissal is via
+	// click-outside + Esc (popup_click_outside_test.go), which already work.
+	if Profile().UseBottomSheet {
+		closeR := closeButtonRect(dv.contextMenuRect, SpaceXS)
+		closeB := NewButton("", PopupButtonStyle, func() { dv.closeContextMenuPortal() })
+		closeB.Icon = "close"
+		closeB.IconColor = colButtonBorder
+		closeB.SetRect(closeR)
+		closeB.ConsumeOnPress = true
+		dv.contextMenuBtns = append(dv.contextMenuBtns, closeB)
+	}
 	dv.openContextMenuPortal()
 }
 
@@ -181,10 +195,16 @@ func (dv *DrumView) rebuildContextMenuButtons() {
 		return
 	}
 	rowH := touchMinTargetPx
-	scrollPx := dv.contextMenuScroll.VS.First * rowH
+	scrollPx := dv.contextMenuScroll.VS.First * dv.contextMenuScroll.ItemHeight
 
-	// Rebuild non-close buttons with scroll offset
+	// Rebuild non-close buttons with scroll offset. itemBtnCount is the number
+	// of menu-item buttons (mobile appends a trailing close button; desktop
+	// does not), so the guard works on both platforms.
 	items := dv.contextMenuItems(dv.contextMenuRow)
+	itemBtnCount := len(dv.contextMenuBtns)
+	if Profile().UseBottomSheet {
+		itemBtnCount-- // trailing close button
+	}
 	btnIdx := 0
 	if Profile().UseBottomSheet {
 		curY := dv.contextMenuRect.Min.Y + touchMinTargetPx - scrollPx // skip header
@@ -193,7 +213,7 @@ func (dv *DrumView) rebuildContextMenuButtons() {
 				curY += SpaceSM // group gap (no divider line)
 				continue
 			}
-			if btnIdx < len(dv.contextMenuBtns)-1 { // -1 for close button
+			if btnIdx < itemBtnCount {
 				r := image.Rect(dv.contextMenuRect.Min.X+SpaceMD, curY, dv.contextMenuRect.Max.X-SpaceMD, curY+rowH)
 				dv.contextMenuBtns[btnIdx].SetRect(insetRect(r, SpaceXS))
 			}
@@ -201,13 +221,17 @@ func (dv *DrumView) rebuildContextMenuButtons() {
 			curY += rowH
 		}
 	} else {
+		// Desktop: uniform row pitch (no divider gap), labels left-aligned to
+		// the right of the icon column — mirror openContextMenu's desktop layout.
+		iconSize := IconSizeSM
+		labelLeft := dv.contextMenuRect.Min.X + SpaceMD + iconSize + SpaceSM
 		curY := dv.contextMenuRect.Min.Y - scrollPx
 		for _, item := range items {
 			if item.divider {
 				continue
 			}
-			if btnIdx < len(dv.contextMenuBtns)-1 { // -1 for close button
-				r := image.Rect(dv.contextMenuRect.Min.X, curY, dv.contextMenuRect.Max.X, curY+rowH)
+			if btnIdx < itemBtnCount {
+				r := image.Rect(labelLeft, curY, dv.contextMenuRect.Max.X, curY+rowH)
 				dv.contextMenuBtns[btnIdx].SetRect(insetRect(r, SpaceXS))
 			}
 			btnIdx++
@@ -228,45 +252,43 @@ type contextMenuItem struct {
 }
 
 // contextMenuItems returns the grouped list of context menu entries for a row.
-// On mobile, Instrument is included (row controls are hidden there); Color and
-// Effects are intentionally omitted from the mobile menu.
-// On desktop/non-mobile, Rename, Color, Origin, and Delete appear (the rest are
-// accessible via dedicated row buttons or by clicking the label).
-// Mute and Solo are omitted on all platforms — they are exposed in the row controls.
+// The menu is identical on every platform: Rename, Color, Origin, Delete.
+//
+// "Instrument" is no longer a menu entry — tapping the instrument-name label
+// opens the instrument picker directly on every platform (see row_rack_zone.go
+// and the 2026-06-13 mobile-instrument-button design). "Color" opens the
+// grouped Vice City color picker via OpenColorMenu (the same entry point used
+// by scenes / JS exports). "Effects" is omitted: it has its own row button.
+// Mute and Solo are omitted on all platforms — they are exposed in the row
+// controls.
 func (dv *DrumView) contextMenuItems(rowIdx int) []contextMenuItem {
 	itemStyle := ButtonVisual(ContextMenuItemStyle)
 
 	var items []contextMenuItem
 
 	// Group 0: Identity
-	if Profile().IsMobile() {
-		// Instrument only on mobile — on desktop, clicking the label opens the selector directly.
-		items = append(items, contextMenuItem{label: "Instrument", icon: "note", style: itemStyle, group: 0, onClick: func() {
-			dv.closeContextMenuPortal()
-			dv.selRow = rowIdx
-			dv.openInstMenuForRow(rowIdx)
-		}})
-	}
 	items = append(items,
-		contextMenuItem{label: "Rename", icon: "pencil", style: itemStyle, group: 0, onClick: func() {
+		contextMenuItem{label: i18n.T(i18n.KeyMenuRename), icon: "pencil", style: itemStyle, group: 0, onClick: func() {
 			dv.closeContextMenuPortal()
 			if rowIdx < len(dv.rowEditBtns()) {
 				dv.rowEditBtns()[rowIdx].OnClick()
 			}
 		}},
 	)
-	if !Profile().IsMobile() {
-		// Color is desktop-only in this menu; mobile users access color via the row swatch.
-		items = append(items, contextMenuItem{label: "Color", icon: "color", style: itemStyle, group: 0, onClick: func() {
-			dv.closeContextMenuPortal()
-			dv.openColorPickerForRow(rowIdx)
-		}})
-	}
 	items = append(items, contextMenuItem{divider: true})
+
+	// Group 1: Appearance — open the grouped Vice City color picker.
+	items = append(items,
+		contextMenuItem{label: i18n.T(i18n.KeyMenuColor), icon: "color", style: itemStyle, group: 1, onClick: func() {
+			dv.closeContextMenuPortal()
+			dv.OpenColorMenu(rowIdx)
+		}},
+		contextMenuItem{divider: true},
+	)
 
 	// Group 2: Routing
 	items = append(items,
-		contextMenuItem{label: "Origin", icon: "target", style: itemStyle, group: 2, onClick: func() {
+		contextMenuItem{label: i18n.T(i18n.KeyMenuOrigin), icon: "target", style: itemStyle, group: 2, onClick: func() {
 			dv.closeContextMenuPortal()
 			dv.originReq = append(dv.originReq, rowIdx)
 		}},
@@ -280,7 +302,7 @@ func (dv *DrumView) contextMenuItems(rowIdx int) []contextMenuItem {
 		deleteItemStyle = DisabledButtonStyle
 		deleteTextColor = colTextDisabled
 	}
-	items = append(items, contextMenuItem{label: "Delete", icon: "trash", style: deleteItemStyle, textColor: deleteTextColor, group: 3, onClick: func() {
+	items = append(items, contextMenuItem{label: i18n.T(i18n.KeyMenuDelete), icon: "trash", style: deleteItemStyle, textColor: deleteTextColor, group: 3, onClick: func() {
 		dv.closeContextMenuPortal()
 		if len(dv.Rows) > 1 {
 			dv.DeleteRow(rowIdx)
@@ -435,7 +457,8 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 	if !dv.IsContextMenuOpen() {
 		return
 	}
-	drawScrim(dst)
+	// Backdrop scrim is painted by the OverlayPortal (PortalEntry.Scrim) so the
+	// whole stack dims once; this overlay only draws its own surface.
 	if Profile().UseBottomSheet {
 		drawBottomSheetPanel(dst, dv.contextMenuRect)
 	} else {
@@ -456,6 +479,12 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 	if Profile().IsMobile() && !dv.contextMenuHeaderRect.Empty() &&
 		dv.contextMenuRow >= 0 && dv.contextMenuRow < len(dv.Rows) {
 		row := dv.Rows[dv.contextMenuRow]
+		// "Neon Horizon" header band across the full header height.
+		headerBandRect := image.Rect(
+			dv.contextMenuRect.Min.X, dv.contextMenuRect.Min.Y,
+			dv.contextMenuRect.Max.X, dv.contextMenuRect.Min.Y+touchMinTargetPx,
+		)
+		drawMenuHeaderBandAccent(dst, headerBandRect, dv.contextMenuAccent())
 		// Draw row color dot before row name.
 		dotSize := 8
 		dotX := dv.contextMenuHeaderRect.Min.X
@@ -466,11 +495,13 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 		}
 		drawRoundedRect(dst, image.Rect(dotX, dotY, dotX+dotSize, dotY+dotSize),
 			rowCol, dotSize/2, true)
-		// Draw row name offset to right of dot.
+		// Draw row name offset to right of dot using RolePanelTitle.
 		textX := dotX + dotSize + SpaceMD
-		DrawTextAt(dst, row.Name,
+		th := StyledTextHeight(RolePanelTitle)
+		DrawTextStyled(dst, row.Name,
 			textX,
-			dv.contextMenuHeaderRect.Min.Y+(dv.contextMenuHeaderRect.Dy()-TextHeight())/2)
+			dv.contextMenuHeaderRect.Min.Y+(dv.contextMenuHeaderRect.Dy()-th)/2,
+			RolePanelTitle, colTextPrimary)
 	}
 
 	// Draw group container backgrounds behind items.
@@ -525,13 +556,20 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 			drawRoundedRect(dst, gr, bg, radius, true)
 		}
 
+		// Desktop uses uniform row pitch (no divider gap); mobile keeps the
+		// SpaceSM group gap between groups. Must mirror the layout walk in
+		// openContextMenu / rebuildContextMenuButtons.
+		dividerGap := SpaceSM
+		if !isMobile {
+			dividerGap = 0
+		}
 		for _, item := range items {
 			if item.divider {
 				// Emit previous group
 				if lastGroup >= 0 {
 					drawGroupBG(groupStartY, curY, lastGroup)
 				}
-				curY += SpaceSM // group gap
+				curY += dividerGap // group gap
 				groupStartY = curY
 				lastGroup = -1
 			} else {
@@ -548,51 +586,75 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 		}
 	}
 
+	// drawContextMenuItem renders a single item button with the Vice City
+	// menu treatment: drawMenuItemBackground for the hover/rest state,
+	// leading icon, and label via DrawTextStyled(RoleBody).
+	iconSize := IconSizeSM
+	if Profile().IsMobile() {
+		iconSize = IconSizeMD
+	}
+	iconCol := colMenuIcon
+	drawContextMenuItem := func(i int, btn *Button) {
+		r := btn.Rect()
+		if r.Empty() {
+			return
+		}
+		// Per-item hover background.
+		state := menuItemRest
+		if btn.hovered || btn.pressed {
+			state = menuItemHover
+		}
+		drawMenuItemBackgroundAccent(dst, r, state, dv.contextMenuAccent())
+
+		// Icon at the menu's left edge (SpaceMD inset), vertically centered.
+		if i < len(dv.contextMenuIcons) {
+			ico := dv.contextMenuIcons[i]
+			if ico != "" {
+				ix := r.Min.X + SpaceMD
+				if !Profile().UseBottomSheet {
+					ix = dv.contextMenuRect.Min.X + SpaceMD
+				}
+				iy := r.Min.Y + (r.Dy()-iconSize)/2
+				iconR := image.Rect(ix, iy, ix+iconSize, iy+iconSize)
+				drawContextMenuIcon(dst, iconR, ico, iconCol)
+			}
+		}
+
+		// Draw button chrome (shadow/glow) without text — null Text temporarily.
+		saved := btn.Text
+		btn.Text = ""
+		btn.Draw(dst)
+		btn.Text = saved
+
+		// Label via RoleBody; keep the existing per-item text color (e.g. red for Delete).
+		var labelCol color.Color = colTextPrimary
+		if btn.TextColor != nil {
+			labelCol = btn.TextColor
+		}
+		th := StyledTextHeight(RoleBody)
+		ty := r.Min.Y + (r.Dy()-th)/2
+		DrawTextStyled(dst, saved, r.Min.X, ty, RoleBody, labelCol)
+	}
+
 	// Draw buttons, clipping to the item viewport so off-screen buttons
 	// don't render over the header or outside the menu.
 	if dv.contextMenuScroll != nil && Profile().IsMobile() {
 		itemView := dv.contextMenuScroll.VS.View
 		for i, btn := range dv.contextMenuBtns {
-			// Always draw the close button (last, lives in header area).
+			// Always draw the close button (last, lives in header area) via its own path.
 			if i == len(dv.contextMenuBtns)-1 {
 				btn.Draw(dst)
 				continue
 			}
 			r := btn.Rect()
 			if r.Max.Y > itemView.Min.Y && r.Min.Y < itemView.Max.Y {
-				btn.Draw(dst)
+				drawContextMenuItem(i, btn)
 			}
 		}
 	} else {
-		for _, btn := range dv.contextMenuBtns {
-			btn.Draw(dst)
+		for i, btn := range dv.contextMenuBtns {
+			drawContextMenuItem(i, btn)
 		}
-	}
-
-	// Draw context menu icons to the left of each button's text.
-	iconSize := IconSizeSM
-	if Profile().IsMobile() {
-		iconSize = IconSizeMD
-	}
-	iconCol := colMenuIcon
-	for i, btn := range dv.contextMenuBtns {
-		// Skip close button (last) and buttons without icons.
-		if i >= len(dv.contextMenuIcons) {
-			break
-		}
-		ico := dv.contextMenuIcons[i]
-		if ico == "" {
-			continue
-		}
-		r := btn.Rect()
-		if r.Empty() {
-			continue
-		}
-		// Position icon at left edge of button, vertically centered.
-		ix := r.Min.X + SpaceMD
-		iy := r.Min.Y + (r.Dy()-iconSize)/2
-		iconR := image.Rect(ix, iy, ix+iconSize, iy+iconSize)
-		drawContextMenuIcon(dst, iconR, ico, iconCol)
 	}
 
 	// Scrollbar (drawn on top of buttons)
@@ -620,39 +682,28 @@ func (dv *DrumView) handleOverflowMenuInput(mx, my int, left bool) bool {
 	if !dv.IsOverflowMenuOpen() {
 		return false
 	}
-	// Build popup rect anchored below the overflow button.
+	dv.configureOverflowScroll()
 	popupRect := dv.overflowPopupRect()
-	pt := image.Pt(mx, my)
+	btns := dv.overflowPopupBtns(popupRect)
+	closeBtn := btns[len(btns)-1]
 
-	// On mobile, use deferred tap pattern.
-	if Profile().IsMobile() {
-		if dv.overflowDeferredTap.Active() {
-			if !left {
-				dv.overflowDeferredTap.End(dv.fireOverflowMenuTapAt)
+	return dv.overflowMenuScroll.HandleInput(MenuScrollInput{
+		Pt:        image.Pt(mx, my),
+		Pressed:   left,
+		PopupRect: popupRect,
+		ItemView:  popupRect,
+		// Buttons are rebuilt every frame from the live offset, so no Relayout.
+		FireTapAt: dv.fireOverflowMenuTapAt,
+		CloseBtn:  closeBtn,
+		DesktopHit: func(pt image.Point, pressed bool) bool {
+			for _, b := range btns {
+				if b.HandleInputResult(pt.X, pt.Y, pressed) != InputIgnored {
+					return true
+				}
 			}
-			return true
-		}
-		if left && pt.In(popupRect) {
-			if dv.overflowDeferredTap.Begin(mx, my) {
-				return true
-			}
-		}
-	} else {
-		// Desktop: immediate button handling.
-		popupBtns := dv.overflowPopupBtns(popupRect)
-		for _, btn := range popupBtns {
-			if btn.HandleInputResult(mx, my, left) != InputIgnored {
-				return true
-			}
-		}
-	}
-
-	// Consume all input when open and inside the popup rect.
-	// Click-outside closing is handled by the tree (drumview_tree.go:245-249).
-	if pt.In(popupRect) {
-		return true
-	}
-	return false
+			return false
+		},
+	})
 }
 
 // fireOverflowMenuTapAt finds the overflow menu button at (x, y) and fires it.
@@ -706,7 +757,7 @@ func (dv *DrumView) openColorPickerForRow(rowIdx int) {
 			Bounds:     rackBounds,
 			RowHeight:  dv.rowHeight(),
 			OnColorPick: func(c color.Color) {
-				dv.SetRowColor(dv.colorMenuRow, c)
+				dv.SetRowColorManual(dv.colorMenuRow, c)
 			},
 			OnClose: func() {},
 		})
@@ -783,7 +834,7 @@ func (dv *DrumView) overflowPopupRect() image.Rectangle {
 //
 // iconID, when non-empty, is rendered as a small leading icon by
 // drawOverflowMenu. active toggles the icon tint between colFollowActive
-// (on, bright cyan) and colIncDecIcon (off, neutral) — used by stateful
+// (on, bright azure) and colIncDecIcon (off, neutral) — used by stateful
 // entries such as the track/free follow toggle. Plain action entries
 // (Upload, Import, Export) leave both fields zero-valued.
 type overflowItem struct {
@@ -799,29 +850,55 @@ type overflowItem struct {
 // rendered as dimmed section dividers and must NOT appear in the popup's
 // button hit list (see overflowPopupBtns).
 func (dv *DrumView) overflowItems() []overflowItem {
+	if dv.overflowPage == 1 {
+		items := []overflowItem{
+			{label: i18n.T(i18n.KeyMenuTemplates), header: true},
+			{label: i18n.T(i18n.KeyMenuBack), iconID: IconChevronLeft, onClick: func() {
+				dv.overflowPage = 0
+			}},
+		}
+		for _, tp := range assets.Templates() {
+			tp := tp
+			items = append(items, overflowItem{
+				label:  tp.Display,
+				iconID: IconRows,
+				onClick: func() {
+					dv.overflowPage = 0
+					dv.closeOverflowMenu()
+					if dv.onImport != nil {
+						_ = dv.onImport(tp.Bytes)
+					}
+				},
+			})
+		}
+		return items
+	}
 	items := []overflowItem{
 		// File group — every action carries a semantic IconID so the
 		// menu communicates meaning through iconography (Theme 5 of the
 		// mobile UI consistency pass; DESIGN.md single-chrome-accent
 		// invariant forbids per-item accent colors).
-		{label: "File", header: true},
-		{label: "Upload", iconID: IconUpload, onClick: func() {
+		{label: i18n.T(i18n.KeyMenuFile), header: true},
+		{label: i18n.T(i18n.KeyMenuUpload), iconID: IconUpload, onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.uploadBtn().OnClick != nil {
 				dv.uploadBtn().OnClick()
 			}
 		}},
-		{label: "Import", iconID: IconImport, onClick: func() {
+		{label: i18n.T(i18n.KeyMenuImport), iconID: IconImport, onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.importBtn().OnClick != nil {
 				dv.importBtn().OnClick()
 			}
 		}},
-		{label: "Export", iconID: IconExport, onClick: func() {
+		{label: i18n.T(i18n.KeyMenuExport), iconID: IconExport, onClick: func() {
 			dv.closeOverflowMenu()
 			if dv.exportBtn().OnClick != nil {
 				dv.exportBtn().OnClick()
 			}
+		}},
+		{label: i18n.T(i18n.KeyMenuLoadTemplate), iconID: IconRows, onClick: func() {
+			dv.overflowPage = 1
 		}},
 	}
 	// Track/free follow toggle is exposed inline on both platforms:
@@ -833,6 +910,14 @@ func (dv *DrumView) overflowItems() []overflowItem {
 	// previous mobile-only overflow duplicate was removed as redundant.
 	// With both view-related entries gone, the empty "View" subgroup
 	// header was removed as well.
+	items = append(items, overflowItem{
+		label:  i18n.T(i18n.KeySettingsTitle),
+		iconID: IconSettings,
+		onClick: func() {
+			dv.closeOverflowMenu()
+			dv.openSettingsOverlay()
+		},
+	})
 	return items
 }
 
@@ -841,11 +926,12 @@ func (dv *DrumView) overflowItems() []overflowItem {
 // as dimmed section labels; they are NOT included in the returned button list
 // so taps on them don't fire any action.
 func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
+	dv.configureOverflowScroll()
 	rowH := touchMinTargetPx
 	items := dv.overflowItems()
 	btns := make([]*Button, 0, len(items)+1)
 	itemStyle := ButtonVisual(DropdownStyle)
-	curY := popupRect.Min.Y
+	curY := popupRect.Min.Y - dv.overflowMenuScroll.OffsetPx() // scroll offset
 	for _, item := range items {
 		if item.header {
 			// Headers occupy vertical space but are not buttons.
@@ -874,33 +960,35 @@ func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
 // Header items are drawn as dimmed non-interactive section labels.
 // Stateful items (those carrying an iconID) get a small leading icon
 // overlay drawn after the button so it sits on top of the chrome. The icon
-// tint flips with item.active — bright cyan when active, neutral otherwise
+// tint flips with item.active — bright azure when active, neutral otherwise
 // — mirroring the inline track-button's icon-tint state model.
 func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	if !dv.IsOverflowMenuOpen() {
 		return
 	}
 	popupRect := dv.overflowPopupRect()
-	drawScrim(dst)
+	dv.configureOverflowScroll()
+	// Backdrop scrim painted by the OverlayPortal (PortalEntry.Scrim).
 	drawPanel(dst, popupRect)
+	// Clip scrolling rows to the popup so offset content can't paint outside.
+	clip := dst.SubImage(popupRect).(*ebiten.Image)
 	// Build buttons (headers excluded) then close button.
 	btns := dv.overflowPopupBtns(popupRect)
 	// Draw header rows and action-button rows by iterating items in order,
 	// tracking which button corresponds to each non-header item.
 	items := dv.overflowItems()
 	rowH := touchMinTargetPx
-	curY := popupRect.Min.Y
+	curY := popupRect.Min.Y - dv.overflowMenuScroll.OffsetPx()
 	btnIdx := 0                  // index into btns (excluding the trailing close button)
 	nActionBtns := len(btns) - 1 // last button is always the close button
 	for _, item := range items {
 		rowR := image.Rect(popupRect.Min.X, curY, popupRect.Max.X, curY+rowH)
 		curY += rowH
 		if item.header {
-			// Subgroup header: dimmed label, no background fill, no hit area.
-			col := WithAlpha(genColorOnSurface, genAlphaSubtle)
+			// Subgroup header: RoleCaption + colTextSecondary, no fill, no hit area.
 			tx := rowR.Min.X + SpaceMD
-			ty := rowR.Min.Y + (rowR.Dy()-TextHeight())/2
-			DrawTextColorAt(dst, item.label, tx, ty, col)
+			ty := rowR.Min.Y + (rowR.Dy()-StyledTextHeight(RoleCaption))/2
+			DrawTextStyled(clip, item.label, tx, ty, RoleCaption, colTextSecondary)
 			continue
 		}
 		if btnIdx >= nActionBtns {
@@ -908,7 +996,15 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 		}
 		btn := btns[btnIdx]
 		btnIdx++
-		btn.Draw(dst)
+
+		// Per-item hover background.
+		state := menuItemRest
+		if btn.hovered || btn.pressed {
+			state = menuItemHover
+		}
+		drawMenuItemBackgroundAccent(clip, btn.Rect(), state, dv.contextMenuAccent())
+
+		// Draw leading icon (from item.iconID).
 		if item.iconID != "" {
 			r := btn.Rect()
 			// Square icon at the leading edge, sized to the row height,
@@ -927,37 +1023,66 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 			if item.active {
 				tint = colFollowActive
 			}
-			DrawIcon(dst, item.iconID, iconR, tint)
+			DrawIcon(clip, item.iconID, iconR, tint)
 		}
+
+		// Draw button chrome (shadow/glow) without text — null Text temporarily.
+		saved := btn.Text
+		btn.Text = ""
+		btn.Draw(clip)
+		btn.Text = saved
+
+		// Label via RoleBody.
+		r := btn.Rect()
+		th := StyledTextHeight(RoleBody)
+		ty := r.Min.Y + (r.Dy()-th)/2
+		DrawTextStyled(clip, saved, r.Min.X, ty, RoleBody, colTextPrimary)
 	}
-	// Draw the close button (always last in btns).
+	// Close button + scrollbar draw on the unclipped dst (pinned chrome).
 	if len(btns) > 0 {
 		btns[len(btns)-1].Draw(dst)
 	}
-	if dv.overflowScroll != nil {
-		dv.overflowScroll.Draw(dst)
+	if dv.overflowMenuScroll != nil {
+		dv.overflowMenuScroll.Draw(dst)
 	}
 }
 
-// initOverflowScroll initializes scroll behavior for the overflow menu.
+// initOverflowScroll creates the overflow menu's shared scroll component.
 func (dv *DrumView) initOverflowScroll() {
+	dv.overflowMenuScroll = NewMenuScroll(DropdownScrollbarStyle, touchMinTargetPx)
+	dv.configureOverflowScroll()
+}
+
+// configureOverflowScroll refreshes scroll geometry from the current page's
+// items and popup rect. Cheap + idempotent; safe to call every frame. Preserves
+// the scroll position across page switches (Configure clamps, not resets).
+func (dv *DrumView) configureOverflowScroll() {
+	if dv.overflowMenuScroll == nil {
+		dv.overflowMenuScroll = NewMenuScroll(DropdownScrollbarStyle, touchMinTargetPx)
+	}
 	items := dv.overflowItems()
 	rowH := touchMinTargetPx
 	popupRect := dv.overflowPopupRect()
-	visibleItems := popupRect.Dy() / rowH
-	if visibleItems > len(items) {
-		visibleItems = len(items)
+	visible := popupRect.Dy() / rowH
+	if visible > len(items) {
+		visible = len(items)
 	}
-	dv.overflowScroll = NewScrollBehavior(DropdownScrollbarStyle, rowH)
-	dv.overflowScroll.VS.Total = len(items)
-	dv.overflowScroll.VS.Visible = visibleItems
-	dv.overflowScroll.VS.View = popupRect
+	if visible < 1 {
+		visible = 1
+	}
+	dv.overflowMenuScroll.Configure(popupRect, len(items), visible)
 }
+
+// OverflowMenuScrollForTest exposes the overflow menu's MenuScroll for tests.
+func (dv *DrumView) OverflowMenuScrollForTest() *MenuScroll { return dv.overflowMenuScroll }
 
 // closeOverflowMenu centralizes overflow menu teardown, including clearing
 // file picker rects registered for mobile gesture-based file picking.
 func (dv *DrumView) closeOverflowMenu() {
-	dv.overflowDeferredTap.Cancel()
+	dv.overflowPage = 0
+	if dv.overflowMenuScroll != nil {
+		dv.overflowMenuScroll.DeferredTap().Cancel()
+	}
 	filePickerClearRects()
 	dv.closeOverflowMenuPortal()
 }
@@ -972,6 +1097,8 @@ func (dv *DrumView) registerFilePickerRects() {
 		return
 	}
 	rowH := touchMinTargetPx
+	dv.configureOverflowScroll()
+	offset := dv.overflowMenuScroll.OffsetPx()
 	// Locate Upload and Import by iterating overflowItems() so that the
 	// indices stay correct when items are added or reordered.
 	// (Previously hardcoded indices 0 and 1 broke when Track/Len+/Len-/EQ
@@ -990,7 +1117,7 @@ func (dv *DrumView) registerFilePickerRects() {
 		if !ok {
 			continue
 		}
-		y0 := popupRect.Min.Y + i*rowH
+		y0 := popupRect.Min.Y + i*rowH - offset
 		r := insetRect(image.Rect(popupRect.Min.X, y0, popupRect.Max.X, y0+rowH), SpaceXS)
 		// Crop to avoid overlap with close button so tapping close
 		// doesn't also trigger the file picker.

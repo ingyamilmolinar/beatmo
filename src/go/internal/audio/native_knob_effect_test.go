@@ -24,10 +24,10 @@ import (
 
 // familyKnobCase describes one curated knob on one recipe.
 type familyKnobCase struct {
-	name     string  // ParamDef name
-	def      float64 // expected Default (== C hardcoded constant)
-	off      float64 // off-default test value (within Min..Max)
-	aux      RecipeParams // extra overrides needed for the knob to be audible
+	name string       // ParamDef name
+	def  float64      // expected Default (== C hardcoded constant)
+	off  float64      // off-default test value (within Min..Max)
+	aux  RecipeParams // extra overrides needed for the knob to be audible
 }
 
 // fmFamilyKnobs is the curated FM knob set per recipe. Defaults mirror the
@@ -307,10 +307,10 @@ var cymbalFamilyKnobs = map[string][]familyKnobCase{
 		{name: "cym_noise_decay", def: 60, off: 15},  // metal rasp decay
 	},
 	"drum-shaker": {
-		{name: "cym_tune", def: 1.0, off: 0.7},     // ×8000 bandpass
-		{name: "cym_env_fast", def: 200, off: 60},  // burst sharpness
-		{name: "cym_env_tail", def: 25, off: 8},    // overall decay
-		{name: "cym_tone_mix", def: 0.6, off: 0.1}, // HP component
+		{name: "cym_tune", def: 1.0, off: 0.7},      // ×8000 bandpass
+		{name: "cym_env_fast", def: 200, off: 60},   // burst sharpness
+		{name: "cym_env_tail", def: 25, off: 8},     // overall decay
+		{name: "cym_tone_mix", def: 0.6, off: 0.1},  // HP component
 		{name: "cym_noise_mix", def: 0.5, off: 1.2}, // bandpass shimmer
 	},
 }

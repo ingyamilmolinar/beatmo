@@ -7,6 +7,8 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/hooks"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // The Sampler tab. A waveform-prominent editor: a full-width waveform with
@@ -164,6 +166,30 @@ func (dv *DrumView) samplerActiveInstrument() string {
 // the selection is already loaded, so the per-Layout call never re-renders or
 // thrashes a failed capture. instID == "" (no rows / nothing selected) is a
 // no-op that leaves the panel in its empty state.
+// resyncSamplerEditFromDocument re-seeds the Sampler tab's editing state from the
+// instrument's CURRENT saved edit (audio.SampleEditFor). Call after the document
+// changes underneath the tab (undo/redo/import): ensureSamplerLoaded preserves
+// an already-loaded instrument's in-progress edit, so without this the knobs /
+// trim / reverse would keep the pre-undo values — the gesture wouldn't visibly
+// undo, and the next gesture would re-apply the stale edit via commitSamplerEdit.
+// Synth-source only (WAV edits aren't descriptors). No-op without a buffer.
+func (dv *DrumView) resyncSamplerEditFromDocument() {
+	s := &dv.sampler
+	if s.captureID == "" || !s.hasBuffer() || s.source != samplerSourceSynth {
+		return
+	}
+	e, ok := audio.SampleEditFor(s.captureID)
+	if !ok {
+		e = audio.SampleEdit{EndFrac: 1} // identity: no saved edit ⇒ revert to defaults
+	}
+	// loadEditDescriptor only flips the working buffer one way (off→on); reconcile
+	// the reverse parity here so an undo that turns reverse OFF un-flips the buffer.
+	if e.Reverse != s.reverse {
+		s.reverseBuffer()
+	}
+	s.loadEditDescriptor(e)
+}
+
 func (dv *DrumView) ensureSamplerLoaded(instID string) {
 	s := &dv.sampler
 	if instID == "" {
@@ -265,8 +291,19 @@ func (dv *DrumView) buildSamplerTab(contentR image.Rectangle, instID string) {
 	// allocate once.
 	if len(s.knobs) != samplerKnobCount {
 		s.knobs = make([]*Knob, samplerKnobCount)
+		s.knobStepBadges = make([]*KnobStepBadge, samplerKnobCount)
 		for i := range s.knobs {
 			s.knobs[i] = NewKnob(s.knobValue(i))
+			s.knobs[i].ZeroFrac, s.knobs[i].Bipolar = samplerKnobBipolar(i)
+			sc := samplerKnobScale(i)
+			s.knobs[i].Scale = sc
+			s.knobs[i].Endless = true
+			badge := NewKnobStepBadge(audio.ParamDef{Name: samplerStepPrefName(i), Min: sc.Min, Max: sc.Max, Unit: sc.Unit})
+			if persisted, ok := dv.knobStepPref(badge.ParamName()); ok {
+				badge.SetStep(persisted)
+			}
+			s.knobs[i].StepMul = badge.Step()
+			s.knobStepBadges[i] = badge
 		}
 	}
 
@@ -288,7 +325,7 @@ func (dv *DrumView) buildSamplerTab(contentR image.Rectangle, instID string) {
 	// ── Header band ───────────────────────────────────────────────
 	btnH := dv2.SynthHeaderButtonH
 	headerH := btnH + 2*SpaceXS
-	const minBodyH = 48
+	minBodyH := Profile().DensityValues().SamplerMinBodyH
 	if contentR.Dy() < headerH+minBodyH {
 		headerH = contentR.Dy() - minBodyH
 		if headerH < 0 {
@@ -331,7 +368,7 @@ func (dv *DrumView) buildSamplerTab(contentR image.Rectangle, instID string) {
 			waveH = maxWaveH
 		}
 		if waveH < 36 {
-			waveH = 36
+			waveH = Profile().DensityValues().SamplerWaveMinH
 		}
 		waveR = image.Rect(body.Min.X, body.Min.Y, body.Max.X, body.Min.Y+waveH)
 		ctrlR = image.Rect(body.Min.X, waveR.Max.Y+SpaceSM, body.Max.X, body.Max.Y)
@@ -371,7 +408,10 @@ func (dv *DrumView) clearSamplerControlButtonRects() {
 // group-label row, a minimum-diameter knob + caption, the toggle row, and
 // the metadata strip — used to reserve space before sizing the waveform.
 func (dv *DrumView) samplerControlMinH(dv2 densityValues) int {
-	return TextHeight() + dv2.SynthKnobMin + dv2.SynthKnobCaptionH + dv2.SynthHeaderButtonH + TextHeight() + 3*SpaceXS
+	badgeH := Profile().DensityValues().KnobStepBadgeH
+	// cellH must match layoutSamplerControls: SpaceXS + captionH + SpaceXS + badgeH.
+	cellH := SpaceXS + dv2.SynthKnobCaptionH + SpaceXS + badgeH
+	return TextHeight() + dv2.SynthKnobMin + cellH + dv2.SynthHeaderButtonH + TextHeight() + 3*SpaceXS
 }
 
 // layoutSamplerHeaderButtons places the Load WAV source button a SpaceMD gap
@@ -385,7 +425,7 @@ func (dv *DrumView) layoutSamplerHeaderButtons(hdr image.Rectangle, btnH int, mo
 	if by < hdr.Min.Y {
 		by = hdr.Min.Y
 	}
-	x := hdr.Min.X + samplerTitlePad + TextWidth("SAMPLER") + SpaceMD
+	x := hdr.Min.X + samplerTitlePad + TextWidth(i18n.T(i18n.KeyCapSamplerTitle)) + SpaceMD
 	for _, tag := range []string{"sampler-load-wav"} {
 		b := dv.samplerButtonByTag(tag)
 		if b == nil {
@@ -431,6 +471,13 @@ func (dv *DrumView) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityValu
 	}
 	labelH := TextHeight()
 	captionH := dv2.SynthKnobCaptionH
+	badgeH := Profile().DensityValues().KnobStepBadgeH
+	// cellH accounts for the caption and badge pill below the dial.
+	// Matches drawSamplerKnobs placement:
+	//   captionY = r.Min.Y + dialD + SpaceXS
+	//   badgeY   = captionY + TextHeight() + SpaceXS
+	// so cell height below dial = SpaceXS + captionH + SpaceXS + badgeH.
+	cellH := SpaceXS + captionH + SpaceXS + badgeH
 	btnH := dv2.SynthHeaderButtonH
 	metaH := TextHeight()
 
@@ -441,9 +488,11 @@ func (dv *DrumView) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityValu
 	s.metaRect = metaR
 
 	// Knob diameter from the full vertical budget, clamped to the density
-	// ideal, the per-knob width, and the density minimum.
+	// ideal, the per-knob width, and the density minimum. The cell height
+	// accounts for the caption band AND the step-badge pill so both always
+	// fit within the allocated rect.
 	knobTop := ctrlR.Min.Y + labelH + SpaceXS
-	budget := toggleY0 - SpaceXS - knobTop - captionH
+	budget := toggleY0 - SpaceXS - knobTop - cellH
 	knobD := budget
 	if knobD > dv2.SynthKnobIdeal {
 		knobD = dv2.SynthKnobIdeal
@@ -466,7 +515,9 @@ func (dv *DrumView) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityValu
 			continue
 		}
 		x0 := startX + i*(knobD+gap)
-		k.SetRect(image.Rect(x0, knobTop, x0+knobD, knobTop+knobD+captionH))
+		// Cell rect spans dial + caption + badge pill so hit areas and draw
+		// checks (k.Rect().Empty()) gate correctly on the full visual footprint.
+		k.SetRect(image.Rect(x0, knobTop, x0+knobD, knobTop+knobD+cellH))
 		if !k.Capturing() {
 			k.Value = s.knobValue(i)
 		}
@@ -566,31 +617,34 @@ func (dv *DrumView) buildSamplerButtons(hasBuf bool) {
 		}
 	}
 	defs := []samplerButton{
-		{NewSpecButton("Load WAV", ComponentButtonSecondary, func() {
+		{NewSpecButton(i18n.T(i18n.KeyLoadWAV), ComponentButtonSecondary, func() {
 			dv.samplerLoadWAV()
 		}), "sampler-load-wav", nil},
 		// Reverse is an ACTION, not a toggle: one click reverses the working
 		// signal in place (visible waveform + baked audio both flip). active is
 		// nil so it never latches into a Primary on-state.
-		{NewSpecButton("Rev", actionSpec(false), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeyReverse), actionSpec(false), guard(func() {
 			dv.sampler.reverseBuffer()
+			dv.commitSamplerEdit()
 		})), "sampler-reverse", nil},
-		{NewSpecButton("Norm", toggleSpec(s.normalize), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeyNormalize), toggleSpec(s.normalize), guard(func() {
 			dv.sampler.normalize = !dv.sampler.normalize
+			dv.commitSamplerEdit()
 		})), "sampler-normalize", func() bool { return dv.sampler.normalize }},
-		{NewSpecButton("Fade", toggleSpec(s.fadeOn), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeyFade), toggleSpec(s.fadeOn), guard(func() {
 			dv.sampler.fadeOn = !dv.sampler.fadeOn
+			dv.commitSamplerEdit()
 		})), "sampler-fade", func() bool { return dv.sampler.fadeOn }},
-		{NewSpecButton("Preview", actionSpec(false), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeyPreview), actionSpec(false), guard(func() {
 			dv.samplerPreview()
 		})), "sampler-preview", nil},
-		{NewSpecButton("Save", actionSpec(true), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeySave), actionSpec(true), guard(func() {
 			dv.samplerSave()
 		})), "sampler-save", nil},
-		{NewSpecButton("Save As", actionSpec(false), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeySaveAs), actionSpec(false), guard(func() {
 			dv.samplerSaveAs()
 		})), "sampler-save-as", nil},
-		{NewSpecButton("Reset", actionSpec(false), guard(func() {
+		{NewSpecButton(i18n.T(i18n.KeyReset), actionSpec(false), guard(func() {
 			dv.samplerReset()
 		})), "sampler-reset", nil},
 	}
@@ -614,13 +668,13 @@ func (dv *DrumView) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangle) 
 
 	// Header background + title.
 	if !s.headerRect.Empty() {
-		drawRoundedRect(dst, s.headerRect, TokenSurface1(), 8, true)
-		DrawTextColorAt(dst, "SAMPLER", s.headerRect.Min.X+samplerTitlePad, s.headerRect.Min.Y+(s.headerRect.Dy()-TextHeight())/2, TokenTextPrimary())
+		drawRoundedRect(dst, s.headerRect, TokenSurface1(), RadiusSM, true)
+		DrawTextColorAt(dst, i18n.T(i18n.KeyCapSamplerTitle), s.headerRect.Min.X+samplerTitlePad, s.headerRect.Min.Y+(s.headerRect.Dy()-TextHeight())/2, TokenTextPrimary())
 	}
 
 	// Waveform card.
 	if !s.waveformRect.Empty() {
-		drawRoundedRect(dst, s.waveformRect, TokenSurface2(), 6, true)
+		drawRoundedRect(dst, s.waveformRect, TokenSurface2(), RadiusXS, true)
 		if hasBuf {
 			dv.drawSamplerWaveform(dst)
 		} else {
@@ -652,6 +706,12 @@ func (dv *DrumView) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangle) 
 			}
 		}
 		b.btn.Draw(dst)
+	}
+
+	// Numeric param editor floats above the knob captions (shared with the
+	// Synth tab's editor; only one can be open at a time).
+	if dv.paramEditor != nil {
+		dv.paramEditor.Draw(dst)
 	}
 
 	// Save As name-prompt dialog floats above the tab content (shared with the
@@ -695,9 +755,19 @@ func (dv *DrumView) drawSamplerMeta(dst *ebiten.Image, r image.Rectangle) {
 }
 
 // drawSamplerKnobs draws each laid-out knob with its group label (above the
-// cluster) and its caption (value + plain-English helper) below.
+// cluster) and its caption (value + plain-English helper) below. It also
+// draws the step badge pill beneath the caption and records the caption
+// hit-rect so samplerKnobReadoutRect can be used by OnPress and HitAreas.
 func (dv *DrumView) drawSamplerKnobs(dst *ebiten.Image) {
 	s := &dv.sampler
+	// Clear all badge rects and readout rects before populating the visible
+	// knobs so stale rects from a prior draw never steal taps.
+	for i := range s.knobStepBadges {
+		if s.knobStepBadges[i] != nil {
+			s.knobStepBadges[i].SetRect(image.Rectangle{})
+		}
+		s.readoutRects[i] = image.Rectangle{}
+	}
 	for i, k := range s.knobs {
 		if k == nil || k.Rect().Empty() {
 			continue
@@ -729,7 +799,37 @@ func (dv *DrumView) drawSamplerKnobs(dst *ebiten.Image) {
 		}
 		k.Draw(dst)
 		cap := samplerKnobCaption(i, s)
-		DrawTextColorAt(dst, cap, r.Min.X+(r.Dx()-TextWidth(cap))/2, r.Max.Y-Profile().DensityValues().SynthKnobCaptionH+SpaceXS, colTextSecondary)
+		// Caption is placed just below the dial circle, NOT derived from
+		// r.Max.Y (which now includes badge space). knobD pixels = dial height.
+		// We find the dial bottom by computing knobD from the knob's draw rect:
+		// the dial occupies a square from r.Min, so dial bottom = r.Min.Y + dialD.
+		// layoutSamplerControls ensures dialD <= r.Dx(), so r.Dx() is an upper
+		// bound. We use the fact that Knob draws its dial inside a square of
+		// side min(r.Dx(), r.Dy()... but the rect is now taller. Use r.Dx() as
+		// the dial diameter (the layout guarantees knobD == k.Rect().Dx()).
+		dialD := r.Dx()
+		captionY := r.Min.Y + dialD + SpaceXS
+		DrawTextColorAt(dst, cap, r.Min.X+(r.Dx()-TextWidth(cap))/2, captionY, colTextSecondary)
+
+		// Record the caption line as the tappable readout rect.
+		readoutR := image.Rect(r.Min.X, captionY, r.Max.X, captionY+TextHeight())
+		s.readoutRects[i] = readoutR
+
+		// Step badge pill: a narrow pill below the caption, centered in the
+		// knob cell and clamped so it never extends outside the cell.
+		if i < len(s.knobStepBadges) {
+			if badge := s.knobStepBadges[i]; badge != nil {
+				bw, bh := Profile().DensityValues().KnobStepBadgeW, Profile().DensityValues().KnobStepBadgeH
+				bx := r.Min.X + (r.Dx()-bw)/2
+				by := captionY + TextHeight() + SpaceXS
+				// Only draw if the badge fits within the knob cell below.
+				if by >= r.Min.Y && by+bh <= r.Max.Y {
+					badge.SetRect(image.Rect(bx, by, bx+bw, by+bh))
+					badge.Draw(dst)
+				}
+				// If it doesn't fit, rect stays empty (cleared above).
+			}
+		}
 	}
 }
 
@@ -780,17 +880,20 @@ func (dv *DrumView) drawSamplerWaveform(dst *ebiten.Image) {
 
 // samplerKnobCaption returns the short value readout shown beneath each knob.
 func samplerKnobCaption(idx int, s *samplerState) string {
+	// Values route through the shared formatParamValue so Sampler captions read
+	// coherently with the Synth tab: Pitch carries its "st" unit ("+0 st"),
+	// Fine its cents ("+0 c"), Gain its dB ("+0 dB").
 	switch idx {
 	case samplerKnobStart:
-		return fmt.Sprintf("Start %d%%", int(s.startFrac*100))
+		return "Start " + formatParamValue(s.startFrac*100, "%")
 	case samplerKnobEnd:
-		return fmt.Sprintf("End %d%%", int(s.endFrac*100))
+		return "End " + formatParamValue(s.endFrac*100, "%")
 	case samplerKnobTranspose:
-		return fmt.Sprintf("Pitch %+d", int(s.transposeSemis))
+		return "Pitch " + formatParamValue(s.transposeSemis, "st")
 	case samplerKnobDetune:
-		return fmt.Sprintf("Fine %+dc", int(s.detuneCents))
+		return "Fine " + formatParamValue(s.detuneCents, "cents")
 	case samplerKnobGain:
-		return fmt.Sprintf("Gain %+.0fdB", s.gainDB)
+		return "Gain " + formatParamValue(s.gainDB, "dB")
 	}
 	return ""
 }
@@ -801,6 +904,103 @@ func (dv *DrumView) applySamplerKnob(idx int) {
 		return
 	}
 	dv.sampler.setKnob(idx, dv.sampler.knobs[idx].Value)
+}
+
+// samplerKnobReadoutRect returns the caption hit-rect for the given sampler
+// knob index. Returns the zero rectangle when the index is out of range or
+// the rect has not been populated yet (no Draw pass has occurred).
+func (dv *DrumView) samplerKnobReadoutRect(idx int) image.Rectangle {
+	if idx < 0 || idx >= samplerKnobCount {
+		return image.Rectangle{}
+	}
+	return dv.sampler.readoutRects[idx]
+}
+
+// cycleSamplerKnobStep advances the step badge for sampler knob idx and
+// syncs the knob's StepMul, persisting the choice. Analogous to
+// cycleKnobStep for the synth tab but operates on s.knobStepBadges.
+func (dv *DrumView) cycleSamplerKnobStep(idx int) {
+	s := &dv.sampler
+	if idx < 0 || idx >= len(s.knobStepBadges) {
+		return
+	}
+	badge := s.knobStepBadges[idx]
+	if badge == nil {
+		return
+	}
+	badge.Cycle()
+	if idx < len(s.knobs) && s.knobs[idx] != nil {
+		s.knobs[idx].StepMul = badge.Step()
+	}
+	dv.persistKnobStep(badge)
+}
+
+// stepSamplerKnobResolution shifts sampler knob idx's step-badge rung by
+// `steps` (mouse-wheel delta; positive = scroll up = finer), syncing StepMul
+// and persisting. Returns true if the rung moved. Used by the wheel handler
+// when the cursor is over the resolution badge.
+func (dv *DrumView) stepSamplerKnobResolution(idx, steps int) bool {
+	s := &dv.sampler
+	if idx < 0 || idx >= len(s.knobStepBadges) {
+		return false
+	}
+	badge := s.knobStepBadges[idx]
+	if badge == nil || !badge.WheelResolution(steps) {
+		return false
+	}
+	if idx < len(s.knobs) && s.knobs[idx] != nil {
+		s.knobs[idx].StepMul = badge.Step()
+	}
+	dv.persistKnobStep(badge)
+	return true
+}
+
+// openSamplerParamEditor opens the shared numeric editor anchored over the
+// caption (readout) of sampler knob at idx. The setValue callback writes
+// back through setKnob so the state stays consistent with the knob.
+// Numeric entry must NOT audition (sampler edits apply on Save/Preview).
+func (dv *DrumView) openSamplerParamEditor(idx int) {
+	if idx < 0 || idx >= samplerKnobCount {
+		return
+	}
+	if dv.paramEditor == nil {
+		dv.paramEditor = NewParamValueEditor()
+	}
+	sc := samplerKnobScale(idx)
+	def := audio.ParamDef{Name: samplerStepPrefName(idx), Min: sc.Min, Max: sc.Max, Unit: sc.Unit}
+	anchor := dv.samplerKnobReadoutRect(idx)
+	span := sc.Max - sc.Min
+	if span <= 0 {
+		span = 1
+	}
+	dv.paramEditor.OpenValue(ValueOpen{
+		Spec:          paramSpec(def),
+		Anchor:        anchor,
+		MobileInputID: "sampler-param",
+		Get: func() float64 {
+			return sc.Min + dv.sampler.knobValue(idx)*span
+		},
+		Set: func(v float64) {
+			dv.sampler.knobs[idx].Value = (v - sc.Min) / span
+			dv.applySamplerKnob(idx)
+			// A typed value is one discrete commit → one undo step.
+			dv.commitSamplerEdit()
+		},
+	})
+}
+
+// samplerTabUpdate pumps the shared numeric editor so blur-to-commit works
+// in production. Returns true when the editor just closed, signalling
+// EQPanelZone.Update to request a re-layout so the caption refreshes.
+func (dv *DrumView) samplerTabUpdate() bool {
+	if dv.paramEditor != nil {
+		wasActive := dv.paramEditor.Active()
+		dv.paramEditor.Update()
+		if wasActive && !dv.paramEditor.Active() {
+			return true
+		}
+	}
+	return false
 }
 
 // samplerHandleDrag maps a cursor X position to a trim fraction for the given
@@ -847,6 +1047,12 @@ func (dv *DrumView) samplerPreview() {
 // picker. Mirrors the Synth tab's Save (overwrite current, keep editing it).
 func (dv *DrumView) samplerSave() {
 	dv.sampler.save()
+	// Record an undo step at the user-action site. The sample-edit descriptor's
+	// hooks event is published from the audio package (which Import also drives),
+	// so it never taps recordUndo on its own. Without this, a Save changed the
+	// exported document but left the undo baseline stale — undoing a later,
+	// unrelated action would silently revert the sample edit (baseline drift).
+	dv.recordUndoStep(hooks.EventSampleEditChanged)
 	dv.refreshInstruments()
 	dv.markAllRowsDirty()
 }
@@ -965,6 +1171,34 @@ func (dv *DrumView) samplerTabHitAreas() []HitArea {
 			Touch:    true,
 			ClipRect: clipFor(k.Rect()),
 		})
+		// Readout (caption) hit area — sits below the dial, outside k.Rect().
+		// OnPress checks for readout/badge before starting a drag, so tapping
+		// here opens the numeric editor rather than capturing a knob drag.
+		if rr := dv.samplerKnobReadoutRect(i); !rr.Empty() {
+			out = append(out, HitArea{
+				Rect:     rr,
+				ZIndex:   z,
+				Handler:  &samplerKnobHitAdapter{dv: dv, idx: i},
+				Tag:      fmt.Sprintf("sampler-readout-%d", i),
+				Touch:    true,
+				ClipRect: clipFor(rr),
+			})
+		}
+		// Badge hit area — sits below the caption, outside k.Rect().
+		// OnPress handles the cycle; this HitArea makes the badge reachable
+		// via the real tree dispatch path.
+		if i < len(s.knobStepBadges) {
+			if b := s.knobStepBadges[i]; b != nil && !b.Rect().Empty() {
+				out = append(out, HitArea{
+					Rect:     b.Rect(),
+					ZIndex:   z + 1, // above readout so badge wins over readout on overlap
+					Handler:  &samplerKnobHitAdapter{dv: dv, idx: i},
+					Tag:      fmt.Sprintf("sampler-badge-%d", i),
+					Touch:    true,
+					ClipRect: clipFor(b.Rect()),
+				})
+			}
+		}
 	}
 
 	// Trim handles (only when a buffer is loaded).
@@ -1029,6 +1263,23 @@ func (h *samplerKnobHitAdapter) knob() *Knob {
 }
 
 func (h *samplerKnobHitAdapter) OnPress(x, y int) InputResult {
+	// Numeric editor open: swallow the tap so a knob drag doesn't start
+	// beneath the open editor.
+	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
+		return InputConsumed
+	}
+	// Step-badge pill: a tap cycles the resolution step instead of dragging.
+	if h.idx < len(h.dv.sampler.knobStepBadges) {
+		if b := h.dv.sampler.knobStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
+			h.dv.cycleSamplerKnobStep(h.idx)
+			return InputConsumed
+		}
+	}
+	// Value readout (caption line): a tap opens the numeric editor.
+	if rr := h.dv.samplerKnobReadoutRect(h.idx); !rr.Empty() && image.Pt(x, y).In(rr) {
+		h.dv.openSamplerParamEditor(h.idx)
+		return InputConsumed
+	}
 	k := h.knob()
 	if k == nil {
 		return InputIgnored
@@ -1063,6 +1314,9 @@ func (h *samplerKnobHitAdapter) OnRelease(x, y int) {
 		h.dv.applySamplerKnob(h.idx)
 	}
 	h.active = false
+	// One undo step per gesture, committed here on release (the per-frame drag
+	// only staged the value).
+	h.dv.commitSamplerEdit()
 }
 
 func (h *samplerKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
@@ -1070,11 +1324,55 @@ func (h *samplerKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
 	if k == nil {
 		return InputIgnored
 	}
+	// Scrolling while hovering the step-RESOLUTION badge shifts its rung
+	// (scroll up = finer, down = coarser). The knob itself is left untouched.
+	s := &h.dv.sampler
+	if h.idx >= 0 && h.idx < len(s.knobStepBadges) {
+		if b := s.knobStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
+			h.dv.stepSamplerKnobResolution(h.idx, steps)
+			return InputConsumed
+		}
+	}
+	// Anywhere else (the knob dial): ORIGINAL behavior — wheel turns the knob.
 	res := k.HandleWheel(x, y, steps)
 	if res == InputConsumed {
 		h.dv.applySamplerKnob(h.idx)
 	}
 	return res
+}
+
+// OnWheel2D handles a two-finger trackpad drag with the raw axes. Over the
+// step-resolution badge the scroll shifts the rung. Over the knob body a
+// LEFT/RIGHT (horizontal-dominant) scroll changes the value — mirroring a
+// left/right mouse drag. An UP/DOWN scroll is reserved for overflow rows; the
+// sampler has none, so vertical scroll is a no-op (it never nudges the value).
+func (h *samplerKnobHitAdapter) OnWheel2D(x, y, dx, dy int) InputResult {
+	k := h.knob()
+	if k == nil {
+		return InputIgnored
+	}
+	s := &h.dv.sampler
+	if h.idx >= 0 && h.idx < len(s.knobStepBadges) {
+		if b := s.knobStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
+			steps := dy
+			if steps == 0 {
+				steps = dx
+			}
+			h.dv.stepSamplerKnobResolution(h.idx, steps)
+			return InputConsumed
+		}
+	}
+	if wheelAxisHorizontal(dx, dy) {
+		// Debounced + magnitude-insensitive (slow, human-paced); per-step amount
+		// is StepMul (the user's chosen resolution).
+		if k.StepValueByWheel(dx) {
+			h.dv.applySamplerKnob(h.idx)
+		}
+		return InputConsumed
+	}
+	// Vertical: no overflow rows to scroll on the sampler — consume as a no-op
+	// so it neither turns the knob nor surprises with a page scroll.
+	return InputConsumed
 }
 
 type samplerHandleHitAdapter struct {
@@ -1095,7 +1393,11 @@ func (h *samplerHandleHitAdapter) OnDrag(x, y int) {
 	}
 }
 
-func (h *samplerHandleHitAdapter) OnRelease(x, y int)                  { h.active = false }
+func (h *samplerHandleHitAdapter) OnRelease(x, y int) {
+	h.active = false
+	// One undo step for the whole trim-handle drag, committed on release.
+	h.dv.commitSamplerEdit()
+}
 func (h *samplerHandleHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
 type samplerButtonHitAdapter struct{ btn *Button }

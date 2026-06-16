@@ -15,15 +15,19 @@ import (
 // fill, etc.) and stay as numeric arguments to WithAlpha; only the base
 // hex moves to DESIGN.md.
 var (
-	colScopeA     = WithAlpha(genColorVizScopeTraceA, 180)
-	colScopeB     = WithAlpha(genColorVizScopeTraceB, 150)
-	colScopeAFill = WithAlpha(genColorVizScopeTraceA, 18)
-	colScopeBFill = WithAlpha(genColorVizScopeTraceB, 15)
+	colScopeA = WithAlpha(genColorVizScopeTraceA, 180)
+	colScopeB = WithAlpha(genColorVizScopeTraceB, 150)
+	// Synthwave "outrun" fills beneath the A/B scope traces — raised from
+	// the old 18/15 hints to AlphaSubtle so the wash from trace to the
+	// zero-line reads as the defining sunset move, while the trace stays a
+	// crisp line on top. Per-lane color so split/overlay keep their tint.
+	colScopeAFill = WithAlpha(genColorVizScopeTraceA, AlphaSubtle)
+	colScopeBFill = WithAlpha(genColorVizScopeTraceB, AlphaSubtle)
 )
 
 var (
 	colScopeDiff     = WithAlpha(genColorVizScopeTraceDiff, 200)
-	colScopeDiffFill = WithAlpha(genColorVizScopeTraceDiff, 15)
+	colScopeDiffFill = WithAlpha(genColorVizScopeTraceDiff, AlphaSubtle)
 )
 
 var (
@@ -322,13 +326,21 @@ func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *s
 	DrawTextColorAtScale(dst, "0", fullRect.Min.X+4, midY-lh/2, colTextPrimary, labelScale)
 	DrawTextColorAtScale(dst, botLabel, fullRect.Min.X+2, halfRect.Max.Y-lh-1, colTextPrimary, labelScale)
 
-	// Waveform trace with fill (each half is dedicated, no overlap concern).
+	// Waveform trace with the synthwave "outrun" fill. Use the canonical
+	// per-lane fill color (matched to col) so the two-band gradient fade
+	// kicks in (drawWaveTrace → traceFillFaint); each half is dedicated, so
+	// there's no overlap concern.
 	if tap.Active && len(tap.Samples) > 0 {
 		var fillCol color.Color
-		if nrgba, ok := col.(color.NRGBA); ok {
-			// 18 matches the per-trace fill alpha used by colScopeAFill /
-			// colScopeBFill at the top of this file (scope-internal pattern).
-			fillCol = WithAlphaNRGBA(nrgba, 18)
+		switch col {
+		case color.Color(colScopeA):
+			fillCol = colScopeAFill
+		case color.Color(colScopeB):
+			fillCol = colScopeBFill
+		default:
+			if nrgba, ok := col.(color.NRGBA); ok {
+				fillCol = WithAlphaNRGBA(nrgba, AlphaSubtle)
+			}
 		}
 		drawWaveTrace(dst, tap.Samples, halfRect, midY, w, col, yGain, fillCol)
 	}

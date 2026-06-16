@@ -53,8 +53,7 @@ func (z *layoutResizeZone) Update() {
 	}
 	if axis, idx := z.handler.detectRowDivider(mx, my); idx >= 0 {
 		if !z.handler.pointInsideRowControl(mx, my) {
-			handleR := z.handler.rowHandleRect(idx)
-			if image.Pt(mx, my).In(handleR.Inset(-SpaceSM)) {
+			if image.Pt(mx, my).In(z.handler.rowDividerGrabRect(idx)) {
 				z.handler.syncHoverState(axis, idx)
 			} else {
 				z.handler.syncHoverState("", -1)
@@ -89,16 +88,17 @@ func (z *layoutResizeZone) HitAreas() []HitArea {
 		})
 	}
 
-	// Row divider pills.
+	// Row divider pills. The grab target is rowDividerGrabRect — the visible
+	// pill plus SpaceSM forgiveness — so the hover/click/drag footprint never
+	// extends past what the user sees (true for the EQ boundary too).
 	numRows := len(z.handler.dv.widgets.rowPos)
 	for i := 0; i < numRows-2; i++ {
-		r := z.handler.rowHandleRect(i)
-		if r.Empty() {
+		grab := z.handler.rowDividerGrabRect(i)
+		if grab.Empty() {
 			continue
 		}
-		expanded := r.Inset(-SpaceSM)
 		areas = append(areas, HitArea{
-			Rect:    expanded,
+			Rect:    grab,
 			ZIndex:  ZResize,
 			Handler: &layoutResizeHitHandler{handler: z.handler, axis: "row", idx: i},
 			Tag:     "layout-resize-row",

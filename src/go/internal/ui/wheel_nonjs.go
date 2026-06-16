@@ -9,15 +9,22 @@ func wheelZoomDelta() float64 {
 	return wy
 }
 
-// wheelScrollSteps converts the wheel delta into discrete scroll steps (rows).
-// Desktop wheels typically report +/-1 per notch; we clamp to small integers.
-func wheelScrollSteps() int {
-	_, wy := wheel()
-	if wy > 0.5 {
+// wheelStepsFromDelta converts a single wheel-axis delta into discrete scroll
+// steps. Desktop wheels typically report +/-1 per notch; we clamp to small
+// integers.
+func wheelStepsFromDelta(d float64) int {
+	if d > 0.5 {
 		return 1
 	}
-	if wy < -0.5 {
+	if d < -0.5 {
 		return -1
 	}
 	return 0
+}
+
+// wheelScrollSteps converts the vertical wheel delta into discrete row scroll
+// steps.
+func wheelScrollSteps() int {
+	_, wy := wheel()
+	return wheelStepsFromDelta(wy)
 }

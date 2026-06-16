@@ -276,8 +276,8 @@ func TestRowLabelTapWorksWithScrollableRows(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.IsContextMenuOpen() {
-		t.Fatal("context menu should NOT open during real touch (dead zone should block)")
+	if dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should NOT open during real touch (dead zone should block)")
 	}
 
 	// Phase 2: Release — touch scroll ends.
@@ -308,8 +308,8 @@ func TestRowLabelTapWorksWithScrollableRows(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should open after injected tap on row label")
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should open after injected tap on row label")
 	}
 }
 
@@ -463,8 +463,8 @@ func TestRowLabelTapOverlapScrollerActive(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.IsContextMenuOpen() {
-		t.Fatal("context menu should NOT open during real touch (dead zone should block)")
+	if dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should NOT open during real touch (dead zone should block)")
 	}
 	if !dv.rowScroll().TouchActive() {
 		t.Fatal("row scroller should be active after real touch press")
@@ -497,8 +497,8 @@ func TestRowLabelTapOverlapScrollerActive(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should open after injected tap on row label (scroller overlap)")
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should open after injected tap on row label (scroller overlap)")
 	}
 }
 
@@ -565,10 +565,10 @@ func TestContextMenuCloseButtonDoesNotFireInstrument(t *testing.T) {
 	}
 }
 
-// TestContextMenuMobileOmitsColorAndEffects verifies that the mobile context
-// menu intentionally omits the Color and Effects entries — mobile users
-// access color via the row swatch and have no in-app FX entry point here.
-func TestContextMenuMobileOmitsColorAndEffects(t *testing.T) {
+// TestContextMenuMobileOmitsEffects verifies that the mobile context
+// menu intentionally omits the Effects entry (FX has its own row button).
+// The "Color" entry IS present — it opens the grouped Vice City picker.
+func TestContextMenuMobileOmitsEffects(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -583,10 +583,17 @@ func TestContextMenuMobileOmitsColorAndEffects(t *testing.T) {
 	dv.Length = 8
 
 	items := dv.ContextMenuItemsForTest(0)
+	hasColor := false
 	for _, it := range items {
-		if it.label == "Color" || it.label == "Effects" {
+		if it.label == "Effects" {
 			t.Errorf("mobile context menu should not contain %q, got items=%v", it.label, nonDividerLabels(items))
 		}
+		if it.label == "Color" {
+			hasColor = true
+		}
+	}
+	if !hasColor {
+		t.Errorf("mobile context menu should contain \"Color\", got items=%v", nonDividerLabels(items))
 	}
 }
 
@@ -953,8 +960,8 @@ func TestRowLabelTapViaHandleInputPipeline(t *testing.T) {
 	dv.Update()
 	r()
 
-	if dv.IsContextMenuOpen() {
-		t.Fatal("context menu should NOT open during real touch press")
+	if dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should NOT open during real touch press")
 	}
 
 	// Phase 2: Release — HandleInput then Update.
@@ -985,8 +992,8 @@ func TestRowLabelTapViaHandleInputPipeline(t *testing.T) {
 	r()
 	SetTouchTapInjectedForTest(false)
 
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should open after injected tap on row label via HandleInput pipeline")
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should open after injected tap on row label via HandleInput pipeline")
 	}
 }
 
@@ -1652,11 +1659,11 @@ func TestContextMenuDesktopButtonIteration(t *testing.T) {
 	}
 }
 
-// TestContextMenuItemsDesktopStructure documents the expected item set
-// for non-mobile builds: no Instrument, no Effects entries (those are
-// reachable via row controls on desktop). Spike outcome of P2.4: the
-// existing contextMenuItems builder is already isolated enough to test
-// directly — no refactor needed.
+// TestContextMenuItemsDesktopStructure documents the expected item set for
+// non-mobile builds: Rename / Color / Origin / Delete. Instrument and Effects
+// are reachable via row controls / the label; "Color" opens the grouped Vice
+// City picker (see Task 14 of the Vice City palette plan). The menu is
+// identical on every platform.
 func TestContextMenuItemsDesktopStructure(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 1024, 600), nil, game_log.New(nil, game_log.LevelError))
@@ -1679,10 +1686,11 @@ func TestContextMenuItemsDesktopStructure(t *testing.T) {
 	}
 }
 
-// TestContextMenuItemsMobileStructure documents the mobile variant which
-// adds Instrument (group 0) but intentionally omits Color and Effects —
-// mobile users access color via the row swatch, and the FX entry point is
-// not exposed in this menu on mobile.
+// TestContextMenuItemsMobileStructure documents the mobile variant which is
+// identical to desktop: Rename / Color / Origin / Delete. "Instrument" was
+// removed because tapping the row label opens the instrument picker directly on
+// every platform; "Color" opens the grouped Vice City picker (Task 14);
+// Effects remains omitted (it has its own row button).
 func TestContextMenuItemsMobileStructure(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -1695,7 +1703,7 @@ func TestContextMenuItemsMobileStructure(t *testing.T) {
 
 	items := dv.ContextMenuItemsForTest(0)
 	labels := nonDividerLabels(items)
-	want := []string{"Instrument", "Rename", "Origin", "Delete"}
+	want := []string{"Rename", "Color", "Origin", "Delete"}
 	if !equalStringSlices(labels, want) {
 		t.Fatalf("mobile labels=%v want=%v", labels, want)
 	}
@@ -1775,4 +1783,55 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestContextMenuDesktopStaysOnScreen is the regression case for the desktop
+// context menu running off-screen / over the EQ panel. Opening the menu for the
+// last (bottom-most) row must keep dv.contextMenuRect fully inside dv.Bounds
+// (AnchorPopupRect flip + clamp), and there is no close × on desktop.
+func TestContextMenuDesktopStaysOnScreen(t *testing.T) {
+	assertDefaultParityState(t)
+
+	const W, H = 800, 600
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	for i := 0; i < 12; i++ {
+		dv.Rows = append(dv.Rows, &DrumRow{
+			Name:       "Row",
+			Instrument: "kick",
+			Steps:      make([]bool, 8),
+			Volume:     1.0,
+		})
+	}
+	dv.Length = 8
+
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+
+	// Open for the last row (bottom-most anchor).
+	dv.openContextMenu(len(dv.Rows) - 1)
+	if !dv.IsContextMenuOpen() {
+		t.Fatal("context menu should be open")
+	}
+
+	if !dv.contextMenuRect.In(dv.Bounds) {
+		t.Fatalf("desktop context menu rect %v escapes bounds %v", dv.contextMenuRect, dv.Bounds)
+	}
+	for i, btn := range dv.contextMenuBtns {
+		if !btn.Rect().In(dv.Bounds) {
+			t.Errorf("context menu button %d rect %v escapes bounds %v", i, btn.Rect(), dv.Bounds)
+		}
+	}
+
+	// Desktop drops the close × — the last button must NOT be a close icon.
+	if n := len(dv.contextMenuBtns); n > 0 && dv.contextMenuBtns[n-1].Icon == "close" {
+		t.Error("desktop context menu must not have a close button")
+	}
 }

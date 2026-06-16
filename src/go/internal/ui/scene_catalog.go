@@ -43,6 +43,8 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) { g.SetPlaying(true) }},
 	{Name: "transport_high_bpm", Description: "BPM at upper end",
 		Setup: func(g *Game) { sceneSetBPM(g, 240) }},
+	{Name: "shortcuts_overlay", Description: "settings overlay open (grid gear button)",
+		Setup: func(g *Game) { g.toggleSettingsOverlay() }},
 
 	// ─── EQ tabs ──────────────────────────────────────────────────
 	// Mobile pass enters SetMobileEQMode so the panel is actually visible;
@@ -143,12 +145,8 @@ var sceneCatalog = []Scene{
 		}},
 
 	// ─── multi-row state ──────────────────────────────────────────
-	{Name: "multi_row_full_grid", Description: "four rows added", Mobile: true,
-		Setup: func(g *Game) {
-			for i := 0; i < 4; i++ {
-				g.drum.AddRow()
-			}
-		}},
+	{Name: "multi_row_full_grid", Description: "five rows total (rack shows multiple distinct rows)", Mobile: true,
+		Setup: func(g *Game) { ensureMultiRow(g, 5) }},
 	{Name: "row_muted_soloed", Description: "row 0 muted, row 2 soloed",
 		Setup: func(g *Game) {
 			ensureRow(g, 2)
@@ -446,12 +444,22 @@ var sceneCatalog = []Scene{
 				muted[4] = true
 			}
 		}},
-	{Name: "eq_chain_custom_settings", Description: "Chain tab with two bands tweaked", SettleFrames: 150,
+	{Name: "eq_chain_custom_settings", Description: "Chain tab with custom taps + traces running (EQ bands also tweaked)", SettleFrames: 150,
 		Setup: func(g *Game) {
 			_ = g.SetActiveEQTab("chain")
 			g.SetChainVisible(true)
+			// EQ-band tweaks alone are invisible on the Chain tab (it renders
+			// scope traces, not the EQ plot), so the variant must also change
+			// the Chain surface itself: assign distinct A/B taps and run
+			// playback so the trace area fills. Without this the scene
+			// rendered identically to the bare eq_tab_chain base.
+			if z := chainZoneOf(g); z != nil {
+				z.SetTapA(scope.StageSynth)
+				z.SetTapB(scope.StageMaster)
+			}
 			g.SetEQBandGain("main", 1, -8)
 			g.SetEQBandGain("main", 7, 6)
+			g.SetPlaying(true)
 		}},
 
 	// ─── graph & sidebar variants ─────────────────────────────────
@@ -580,23 +588,15 @@ var sceneCatalog = []Scene{
 	{Name: "crop_drum_view_default", Description: "drum pane (header + rows + EQ panel), default rows",
 		Subject: SubjectDrumView,
 		Setup:   func(g *Game) {}},
-	{Name: "crop_drum_view_multi_row", Description: "drum pane (header + rows + EQ panel), four rows",
+	{Name: "crop_drum_view_multi_row", Description: "drum pane (header + rows + EQ panel), five rows",
 		Subject: SubjectDrumView,
-		Setup: func(g *Game) {
-			for i := 0; i < 4; i++ {
-				g.drum.AddRow()
-			}
-		}},
+		Setup:   func(g *Game) { ensureMultiRow(g, 5) }},
 	{Name: "crop_drum_rows_default", Description: "drum row scroll area only (no header, no EQ)",
 		Subject: SubjectDrumRows,
 		Setup:   func(g *Game) {}},
-	{Name: "crop_drum_rows_multi_row", Description: "drum row scroll area only, four rows",
+	{Name: "crop_drum_rows_multi_row", Description: "drum row scroll area only, five rows",
 		Subject: SubjectDrumRows,
-		Setup: func(g *Game) {
-			for i := 0; i < 4; i++ {
-				g.drum.AddRow()
-			}
-		}},
+		Setup:   func(g *Game) { ensureMultiRow(g, 5) }},
 	{Name: "crop_eq_tab_eq", Description: "EQ panel cropped — EQ tab",
 		Subject: SubjectEQTabEQ,
 		Setup:   func(g *Game) { _ = g.SetActiveEQTab("eq") }},
@@ -629,14 +629,22 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabSceneSetup("hihat"),
 		MobileSetup: mobileSynthTabSetup("hihat")},
-	{Name: "crop_synth_tab_master_chooser", Description: "Synth tab cropped — Master channel selected, header resolves to first row",
+	{Name: "crop_synth_tab_master_chooser", Description: "Synth tab cropped — channel chooser dropdown open over the Synth tab",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabSceneSetup(""),
-		MobileSetup: mobileSynthTabSetup("")},
+		Setup:       synthTabMasterChooserSetup(),
+		MobileSetup: mobileSynthTabMasterChooserSetup()},
 	{Name: "crop_synth_tab_modular", Description: "Synth tab cropped — modular voice (OSC+FM+ENVELOPE+FILTER+POST sections, enum knobs)",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabSceneSetup("modular"),
 		MobileSetup: mobileSynthTabSetup("modular")},
+	{Name: "crop_synth_knob_viz", Description: "Synth tab — FILTER stage expanded: each knob shows its concept mini-visual (the abstract 'what this knob does' picture) in the band below its caption",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthTabStageSetup("modular", "FILTER", ""),
+		MobileSetup: mobileSynthTabStageSetup("modular", "FILTER", "")},
+	{Name: "crop_synth_mirror", Description: "Synth tab — right-pane live final-output MIRROR: the real re-rendered note (with a ghost of the prior render) above the OSC/ADSR/FILTER seed plots",
+		Subject:     SubjectSynthPanel,
+		Setup:       synthMirrorSceneSetup(),
+		MobileSetup: mobileSynthMirrorSceneSetup()},
 	{Name: "crop_synth_tab_drum_generator", Description: "Synth tab — bespoke drum (snare) showing the Generator selector (Native) alongside its wired knobs",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabSceneSetup("snare"),
@@ -669,6 +677,54 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabStageSetup("modular", "FILTER", "filter_enabled"),
 		MobileSetup: mobileSynthTabStageSetup("modular", "FILTER", "filter_enabled")},
+		// Focus-graph crops: one per property-native domain. Each selects a
+		// specific knob in a stage so the single big focus graph renders that
+		// knob's domain (replaces the old per-knob concept bands). The mirror
+		// scene exercises the de-crammed "Your sound" pane.
+		{Name: "crop_synth_focus_filter", Description: "Synth tab focus graph: FILTER stage, Cutoff knob selected (frequency-domain picture)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "FILTER", "filter_cutoff"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "FILTER", "filter_cutoff")},
+		{Name: "crop_synth_focus_env", Description: "Synth tab focus graph: ENVELOPE stage, Attack knob selected (amp-envelope time-domain picture)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "ENVELOPE", "amp_attack"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "ENVELOPE", "amp_attack")},
+		{Name: "crop_synth_focus_post", Description: "Synth tab focus graph: POST stage, Drive knob selected (drive/saturation transfer curve)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "POST", "drive"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "POST", "drive")},
+		{Name: "crop_synth_focus_fm", Description: "Synth tab focus graph: FM stage, Op2 Depth knob selected (FM modulation-index picture)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "FM", "fm_op2_depth"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "FM", "fm_op2_depth")},
+		{Name: "crop_synth_focus_osc", Description: "Synth tab focus graph: OSC stage, Oscillator shape knob selected (single-cycle waveform shape picture via conceptOsc)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "OSC", "osc_type"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "OSC", "osc_type")},
+		{Name: "crop_synth_focus_pitch", Description: "Synth tab focus graph: OSC stage, Octave knob selected (real-pitch wave whose period tracks the knob, via conceptPitchWave)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "OSC", "osc_octave"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "OSC", "osc_octave")},
+		{Name: "crop_synth_focus_motion", Description: "Synth tab focus graph: LFO stage, Rate knob selected (modulation-over-time wiggle curve via conceptMotion)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "LFO", "lfo_rate"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "LFO", "lfo_rate")},
+		{Name: "crop_synth_focus_burst", Description: "Synth tab focus graph: BURST stage, Hit 1 Level knob selected (transient-burst modulation curve via conceptMotion)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("modular", "BURST", "burst1_amp"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("modular", "BURST", "burst1_amp")},
+		{Name: "crop_synth_focus_fm_decay", Description: "Synth tab focus graph: FM stage, Op 2 Decay knob selected (FM operator decay schematic via conceptFMEnvelope)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("fm-bass", "FM", "fm_op2_decay"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("fm-bass", "FM", "fm_op2_decay")},
+		{Name: "crop_synth_focus_fm_penv", Description: "Synth tab focus graph: FM stage, Pitch Sweep knob selected (FM pitch-env schematic via conceptFMEnvelope)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthTabFocusKnobSetup("fm-bass", "FM", "fm_pitch_env_amount"),
+			MobileSetup: mobileSynthTabFocusKnobSetup("fm-bass", "FM", "fm_pitch_env_amount")},
+		{Name: "crop_synth_mirror_clean", Description: "Synth tab de-crammed right-pane 'Your sound' MIRROR (modular voice, clean live final-output render)",
+			Subject:     SubjectSynthPanel,
+			Setup:       synthMirrorSceneSetup(),
+			MobileSetup: mobileSynthMirrorSceneSetup()},
 	// Sampler-tab scenes — the sample editor (trim/pitch/gain a synth capture
 	// or loaded WAV, then Save / Save As). The "captured" scene populates the
 	// working buffer so the waveform, trim handles, and trimmed-region shading
@@ -762,9 +818,21 @@ var sceneCatalog = []Scene{
 				z.SetDisplayMode("diff")
 			}
 		}},
+	// This scene captures the mobile-only segmented OVR/SPL/DIF control, so
+	// it must be marked Mobile:true — otherwise it never enters the mobile
+	// capture pass (-list-mobile-scenes filters on Mobile) and the desktop
+	// Setup renders the desktop display-mode pills instead of the segmented
+	// control, i.e. "renders desktop".
 	{Name: "crop_chain_segmented_mobile", Description: "Chain mobile segmented OVR/SPL/DIF control",
-		SettleFrames: 150, Subject: SubjectChain,
-		Setup: activateScopeTab,
+		Mobile: true, SettleFrames: 150, Subject: SubjectChain,
+		Setup: func(g *Game) {
+			// Desktop fallback Setup still forces the mobile profile so even a
+			// desktop-pass capture shows the segmented control rather than the
+			// desktop pills.
+			g.SetForceMobileProfile(true)
+			g.drum.SetMobileEQMode(true)
+			activateScopeTab(g)
+		},
 		MobileSetup: func(g *Game) {
 			g.SetForceMobileProfile(true)
 			g.drum.SetMobileEQMode(true)
@@ -808,6 +876,14 @@ func runSceneInternal(g *Game, name string, mobile bool) error {
 			if setup != nil {
 				setup(g)
 			}
+			// Suppress the coordinate badge ("(i, j)" pill) that node
+			// placement arms: tryAddNode selects the new node and sets
+			// g.coordBadgeNode, which would otherwise leak a transient
+			// debug-ish hover affordance into the capture (observed as a
+			// stray "(4, 2)" pill in graph_complex_3_nodes_4_edges). It
+			// re-arms only on real input, so a single clear after Setup
+			// holds through the settle countdown.
+			g.coordBadgeNode = nil
 			if s.SettleFrames > 0 {
 				g.SetScreenshotSettleFrames(s.SettleFrames)
 			}
@@ -917,6 +993,32 @@ func synthTabSceneSetup(instrumentOverride string) func(*Game) {
 	}
 }
 
+// synthTabMasterChooserSetup opens the Synth tab and then opens the
+// channel chooser dropdown so the capture actually shows the chooser
+// surface (the scene's whole point). The panel must be laid out through
+// the tree first so its portal exists before OpenChannelDropdown builds
+// the dropdown entry.
+func synthTabMasterChooserSetup() func(*Game) {
+	return func(g *Game) {
+		synthTabSceneSetup("")(g)
+		if g.drum == nil || g.drum.eqPanelZone == nil {
+			return
+		}
+		if g.drum.audioTree != nil {
+			g.drum.audioTree.LayoutZoneNow("eq-panel")
+		}
+		g.drum.eqPanelZone.OpenChannelDropdown()
+	}
+}
+
+func mobileSynthTabMasterChooserSetup() func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabMasterChooserSetup()(g)
+	}
+}
+
 // synthTabNoSynthSceneSetup points the active row at a WAV-sample
 // instrument with no synth recipe so the synth tab renders its single
 // "this instrument does not use the synth" banner instead of the section
@@ -976,10 +1078,17 @@ func synthTabStageSetup(instrumentOverride, stageLabel, disableParam string) fun
 		// the forced layouts through the tree (LayoutZoneNow) — a direct
 		// eqPanelZone.Layout bypasses the hit-area republish and trips the
 		// chokepoint discipline guard (TestZoneLayoutRoutesThroughTreeDiscipline).
-		if g.drum != nil && g.drum.tree != nil {
-			g.drum.tree.LayoutZoneNow("eq-panel")
+		if g.drum != nil && g.drum.audioTree != nil {
+			g.drum.audioTree.LayoutZoneNow("eq-panel")
 			g.drum.SelectSynthSectionByLabel(stageLabel)
-			g.drum.tree.LayoutZoneNow("eq-panel")
+			g.drum.audioTree.LayoutZoneNow("eq-panel")
+		}
+		// Render the "Your sound" mirror synchronously so it's deterministic at
+		// capture time (the live per-frame path needs a real Draw to populate).
+		if g.drum != nil {
+			if inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument()); inst != "" {
+				g.drum.renderSynthMirrorNow(inst)
+			}
 		}
 	}
 }
@@ -990,6 +1099,74 @@ func mobileSynthTabStageSetup(instrumentOverride, stageLabel, disableParam strin
 		g.SetForceMobileProfile(true)
 		g.drum.SetMobileEQMode(true)
 		synthTabStageSetup(instrumentOverride, stageLabel, disableParam)(g)
+	}
+}
+
+// synthTabFocusKnobSetup opens stageLabel for instrument and selects the knob
+// named knobParam so the focus graph shows that knob's property-native domain.
+// Builds on synthTabStageSetup (which selects the stage + renders the mirror),
+// then walks the selected section's knobs to find the one whose ParamDef.Name
+// matches knobParam and records it via setSynthSelectedKnob. If the knob name
+// isn't present in the stage, the focus graph falls back to the section's main
+// knob — still renders, but pick correct names so the intended domain shows.
+func synthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam string) func(*Game) {
+	return func(g *Game) {
+		synthTabStageSetup(instrumentOverride, stageLabel, "")(g)
+		if g.drum == nil {
+			return
+		}
+		inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
+		if inst == "" {
+			return
+		}
+		sec := g.drum.synthSelectedSection()
+		if sec == nil {
+			return
+		}
+		for _, kIdx := range sec.knobIdxs {
+			if kIdx >= 0 && kIdx < len(g.drum.instEditorBindings) &&
+				g.drum.instEditorBindings[kIdx].def.Name == knobParam {
+				g.drum.setSynthSelectedKnob(inst, kIdx)
+				break
+			}
+		}
+		g.drum.renderSynthMirrorNow(inst)
+	}
+}
+
+// mobileSynthTabFocusKnobSetup is the mobile counterpart of
+// synthTabFocusKnobSetup — exercises the mobile stacked focus band.
+func mobileSynthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam string) func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam)(g)
+	}
+}
+
+// synthMirrorSceneSetup opens the Synth tab on the modular voice and fills the
+// right-pane mirror SYNCHRONOUSLY (renderSynthMirrorNow bypasses the async pool)
+// so the rendered note exists deterministically at screenshot-capture time.
+// Stage 4.
+func synthMirrorSceneSetup() func(*Game) {
+	return func(g *Game) {
+		synthTabSceneSetup("modular")(g)
+		if g.drum == nil {
+			return
+		}
+		inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
+		if inst != "" {
+			g.drum.renderSynthMirrorNow(inst)
+		}
+	}
+}
+
+// mobileSynthMirrorSceneSetup is the mobile counterpart of synthMirrorSceneSetup.
+func mobileSynthMirrorSceneSetup() func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		synthMirrorSceneSetup()(g)
 	}
 }
 
@@ -1113,6 +1290,23 @@ func mobileAudioPanelPlaySetup(tab string) func(*Game) {
 		g.drum.SetMobileEQMode(true)
 		_ = g.SetActiveEQTab(tab)
 		g.SetPlaying(true)
+	}
+}
+
+// ensureMultiRow guarantees the rack has at least n distinct rows for the
+// multi-row scenes. It builds the demo synchronously first: buildDemo is
+// otherwise deferred to the first Update(), and if it ran AFTER the scene
+// appended rows it would import-replace them, collapsing the rack back to
+// the demo's row count (the "shows one row" capture bug). Building it here
+// flips demoBuilt so the subsequent settle Updates leave the added rows
+// intact.
+func ensureMultiRow(g *Game, n int) {
+	if g.drum == nil {
+		return
+	}
+	g.buildDemo()
+	for len(g.drum.Rows) < n {
+		g.drum.AddRow()
 	}
 }
 

@@ -20,6 +20,14 @@ func (dv *DrumView) openVolumePopup(rowIdx int) {
 	}
 
 	dv.volPopupRow = rowIdx
+	// Heading echoes the row name so the popup identifies its subject.
+	dv.volPopup.SetTitle(func() string {
+		r := dv.volPopupRow
+		if r >= 0 && r < len(dv.Rows) {
+			return dv.Rows[r].Name
+		}
+		return ""
+	})
 	dv.volPopup.Open(iconRect, dv.Bounds, dv.headerH)
 	dv.openVolPopupPortal()
 }
@@ -38,6 +46,7 @@ func (dv *DrumView) openMasterVolumePopup() {
 	if iconRect.Empty() {
 		return
 	}
+	dv.masterVolPopup.SetTitle(func() string { return "Master" })
 	dv.masterVolPopup.Open(iconRect, dv.Bounds, dv.headerH)
 	dv.openMasterVolPopupPortal()
 }

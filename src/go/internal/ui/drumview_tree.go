@@ -33,9 +33,10 @@ const (
 	ZLayoutPills    = 185 // splitter pills draw ON TOP of guides so the
 	//                       interactive pill remains visible/clickable
 	//                       when the debug overlay is on.
-	ZBaseMax    = 199 // base zone range end
-	ZResize     = 200 // layout resize handler
-	ZOverlayMin = 300 // portal overlays start at 300 + stack index
+	ZRowEQDivider = 186 // row↔EQ-boundary divider line+pill (drawn above guides)
+	ZBaseMax      = 199 // base zone range end
+	ZResize       = 200 // layout resize handler
+	ZOverlayMin   = 300 // portal overlays start at 300 + stack index
 )
 
 // DrumViewTree orchestrates the zone-based component tree. It runs a strict
@@ -67,6 +68,13 @@ type DrumViewTree struct {
 	capturedHandler HitHandler
 	capturedTag     string
 
+	// externalCapture, when set and returning true, tells the tree that a
+	// SEPARATE (legacy) input system currently holds capture for this press
+	// cycle. The tree then defers new presses so the two dispatchers never
+	// both act on a single press (the divider-pill-over-notification
+	// conflict). nil/false ⇒ no external capture, normal dispatch.
+	externalCapture func() bool
+
 	// Suppress flag: prevents new presses from being dispatched until
 	// the current press is released. Owned by the tree; propagated to
 	// global suppressClicksUntilRelease only when inputHandled is set.
@@ -83,6 +91,15 @@ type DrumViewTree struct {
 	// Legacy code in DrumView.Update() checks this to avoid double-handling.
 	wheelHandled bool
 
+	// allowNewPress gates whether handleInput may START a new press dispatch
+	// (and dispatch wheel events) this frame. Set by DispatchInput before
+	// calling handleInput. When false, the tree still completes an in-flight
+	// capture (drag) and processes a release, but ignores fresh presses and
+	// wheel events — this lets a future RootTree tick both the drum-view and
+	// audio-panel subtrees while routing NEW input to exactly one of them.
+	// Update() (back-compat wrapper) leaves this true.
+	allowNewPress bool
+
 	// dragActive returns true when any drag operation is active.
 	// The tree skips dispatching new presses during drags.
 	dragActive func() bool
@@ -92,6 +109,14 @@ type DrumViewTree struct {
 
 	// Screen bounds for portal layout.
 	bounds image.Rectangle
+
+	// Hover-glow overlay state (see hover_glow_overlay.go). hoverGlowRect is
+	// the rect of the button currently (or most recently) hovered;
+	// hoverGlowAnim is the 0..1 fade progress eased by drawHoverGlow each
+	// frame. Kept on the tree so the affordance is a single per-frame overlay
+	// independent of any zone's sprite cache.
+	hoverGlowRect image.Rectangle
+	hoverGlowAnim float64
 }
 
 type zoneEntry struct {
@@ -217,9 +242,30 @@ func (t *DrumViewTree) HitIndexRef() *HitIndex {
 	return t.hitIndex
 }
 
+// HasZoneForTest reports whether a zone with the given ID is REGISTERED as a
+// Zone (not merely a decorative layer) in this subtree. Read-only; used by the
+// audio-panel ↔ drum-view isolation discipline tests to assert that each
+// surface lives in exactly one subtree (eq-panel only in audioTree, row-rack
+// only in dv.tree).
+func (t *DrumViewTree) HasZoneForTest(id string) bool {
+	_, ok := t.zoneMap[id]
+	return ok
+}
+
 // SetFocus sets keyboard focus to a zone by ID. Pass "" to clear focus.
 func (t *DrumViewTree) SetFocus(zoneID string) {
 	t.focusedZone = zoneID
+}
+
+// FocusedZoneObj returns the currently focused zone, or nil if none.
+func (t *DrumViewTree) FocusedZoneObj() Zone {
+	if t.focusedZone == "" {
+		return nil
+	}
+	if e, ok := t.zoneMap[t.focusedZone]; ok {
+		return e.zone
+	}
+	return nil
 }
 
 // Update runs the 4-phase frame loop: Layout → Update → Input → Draw
@@ -229,6 +275,16 @@ func (t *DrumViewTree) SetFocus(zoneID string) {
 // handled input this frame it propagates suppress to the global flag
 // so legacy code doesn't double-dispatch.
 func (t *DrumViewTree) Update() {
+	t.Tick()
+	t.DispatchInput(true)
+}
+
+// Tick runs the non-input phases of the frame loop: layout, per-zone Update,
+// auto-focus, and portal Update. It is the half of the old Update() that a
+// composing RootTree can run for EVERY subtree every frame regardless of which
+// subtree owns input. DispatchInput runs the input half. Tick resets the
+// per-frame inputHandled/wheelHandled flags at the start (as the old Update did).
+func (t *DrumViewTree) Tick() {
 	t.inputHandled = false
 	t.wheelHandled = false
 
@@ -240,6 +296,18 @@ func (t *DrumViewTree) Update() {
 		t.zones[i].zone.Update()
 	}
 
+	// Phase 2.5: Auto-focus pass (transport BPM box, eq-panel dB input).
+	t.autoFocusPass()
+
+	// Phase 2.5c: Update portal overlays (momentum, animations).
+	t.portal.Update()
+}
+
+// autoFocusPass routes keyboard focus to whichever zone currently owns a live
+// text edit (transport BPM box, eq-panel dB input) so Enter/Backspace/chars
+// reach it, and clears that focus when the edit ends. Extracted verbatim from
+// the old Update() Phase 2.5a/2.5b.
+func (t *DrumViewTree) autoFocusPass() {
 	// Phase 2.5a: Auto-focus transport zone when BPM box is focused.
 	// This ensures keyboard events (Enter, Escape) are routed to the
 	// transport zone's HandleKey while BPM text editing is active.
@@ -253,19 +321,28 @@ func (t *DrumViewTree) Update() {
 		}
 	}
 
-	// Phase 2.5b: Auto-focus eq-panel zone when a dB input is focused.
+	// Phase 2.5b: Auto-focus eq-panel zone when the shared dB editor is open.
 	if e, ok := t.zoneMap["eq-panel"]; ok {
 		if ez, ok := e.zone.(*EQPanelZone); ok {
-			if ez.dbInputFocused >= 0 {
+			if ez.paramEditor != nil && ez.paramEditor.Active() {
 				t.focusedZone = "eq-panel"
 			} else if t.focusedZone == "eq-panel" {
 				t.focusedZone = ""
 			}
 		}
 	}
+}
 
-	// Phase 2.5c: Update portal overlays (momentum, animations).
-	t.portal.Update()
+// DispatchInput runs the input half of the frame loop: handleInput (Phase 3)
+// and portal.CleanupClosed (Phase 3.5), then writes the tree's suppress flag
+// through to the global. allowNewPress gates whether a NEW press (or wheel)
+// may start this frame — an in-flight drag or a release always completes so a
+// composing RootTree can withhold fresh input from a subtree without stranding
+// an ongoing gesture. Returns busy=true when the tree is actively engaged
+// (handled input/wheel this frame, holds a capture, or a modal portal is up),
+// which the RootTree uses to decide press routing.
+func (t *DrumViewTree) DispatchInput(allowNewPress bool) (busy bool) {
+	t.allowNewPress = allowNewPress
 
 	// Phase 3: Input.
 	t.handleInput()
@@ -278,6 +355,8 @@ func (t *DrumViewTree) Update() {
 	// the global flag so non-tree consumers (splitter.go, textinput.go)
 	// see the same value.
 	suppressClicksUntilRelease = t.suppress
+
+	return t.inputHandled || t.wheelHandled || t.Capturing() || t.PortalHasModal()
 }
 
 // layoutPass lays out zones that need it (NeedsLayout, rect change, or a
@@ -383,6 +462,15 @@ func (t *DrumViewTree) LayoutZoneNow(id string) {
 // drumview_draw.go and drumview_toolbar.go, so any byte that lands on
 // screen here originated from a registered Layer or Zone.
 func (t *DrumViewTree) Draw(screen *ebiten.Image) {
+	t.DrawContent(screen)
+	t.DrawOverlays(screen)
+}
+
+// DrawContent draws the merged Layer/Zone slice in ascending z plus the
+// hover-glow affordance — everything EXCEPT portal overlays. A RootTree
+// calls DrawContent on all subtrees, then DrawOverlays on all subtrees, so
+// portals (and full-screen modals) composite above every subtree's content.
+func (t *DrumViewTree) DrawContent(screen *ebiten.Image) {
 	for _, layer := range t.layers {
 		if !layer.Visible() {
 			continue
@@ -420,7 +508,15 @@ func (t *DrumViewTree) Draw(screen *ebiten.Image) {
 			layer.Draw(sub)
 		}
 	}
-	// Portal overlays on top (Z >= ZOverlayMin).
+	// Hover-glow affordance: drawn on top of all zones (so it escapes their
+	// sprite caches) but beneath portal overlays (menus carry their own
+	// hover styling). See hover_glow_overlay.go.
+	t.drawHoverGlow(screen)
+}
+
+// DrawOverlays draws this tree's portal overlays (menus, dropdowns,
+// modals) on top (Z >= ZOverlayMin).
+func (t *DrumViewTree) DrawOverlays(screen *ebiten.Image) {
 	t.portal.Draw(screen)
 }
 
@@ -465,11 +561,20 @@ func (t *DrumViewTree) handleInput() {
 		return
 	}
 
-	// Handle new press.
-	if pressed && !t.wasPressed {
+	// Handle new press. Gated by allowNewPress so a composing RootTree can
+	// withhold fresh presses from this subtree (the in-flight capture and
+	// release branches above are intentionally NOT gated, so an ongoing
+	// drag/release always completes).
+	if t.allowNewPress && pressed && !t.wasPressed {
 		t.wasPressed = true
 
 		if t.suppress {
+			return
+		}
+
+		// Defer the press when a separate (legacy) dispatcher holds capture
+		// this cycle, so both input systems never act on one press.
+		if t.externalCapture != nil && t.externalCapture() {
 			return
 		}
 
@@ -557,13 +662,23 @@ func (t *DrumViewTree) handleInput() {
 		if wx != 0 && steps == 0 {
 			steps = int(wx)
 		}
-		if steps != 0 {
+		if t.allowNewPress && steps != 0 {
 			hits := t.hitIndex.At(mx, my)
 			for _, h := range hits {
 				if h.Handler == nil {
 					continue
 				}
-				if h.Handler.OnWheel(mx, my, steps) != InputIgnored {
+				// Handlers that need the two-finger axis (knobs: left/right =
+				// value, up/down = scroll overflow rows) implement wheel2DHandler
+				// and receive the raw dx/dy; everyone else gets the collapsed
+				// single-axis steps.
+				var res InputResult
+				if w2, ok := h.Handler.(wheel2DHandler); ok {
+					res = w2.OnWheel2D(mx, my, int(wx), int(wy))
+				} else {
+					res = h.Handler.OnWheel(mx, my, steps)
+				}
+				if res != InputIgnored {
 					t.wheelHandled = true
 					break
 				}
@@ -620,6 +735,62 @@ func (t *DrumViewTree) ClearCapture() {
 	t.capturedHandler = nil
 	t.capturedTag = ""
 	t.suppress = false
+	// NOTE: deliberately does NOT reset t.wasPressed. ClearCapture is called
+	// mid-dispatch by setViewMode/closePopups (drumview_close_popups.go,
+	// game_input_shortcuts.go); zeroing wasPressed there desyncs the
+	// press→release state machine and eats the next tap (the alternating
+	// "seg=2/4/6 viewMode didn't change" regression in
+	// view_mode_segmented_test.go and the Pads→EQ channel-pill-dead case in
+	// audio_panel_input_alive_test.go). The release frame clears wasPressed.
+}
+
+// DismissOnForeignPress closes this tree's top NON-BLOCKING portal overlay
+// (e.g. the docked FX panel) when a fresh press — consumed by a SIBLING
+// subtree under RootTree composition — falls outside this tree's portal
+// overlay. It performs ONLY the click-outside dismissal, never a zone
+// dispatch, so a click in one section can dismiss a transient panel owned by
+// the other section WITHOUT acting on that section's controls (isolation
+// holds). Blocking overlays (modal/scrim) are left untouched — they own
+// input exclusively via RootTree.blockingPortalOwner and run their own
+// click-outside in handleInput. No-op when no non-blocking overlay is open.
+func (t *DrumViewTree) DismissOnForeignPress(mx, my int) {
+	if t.portal == nil || !t.portal.IsOpen() || t.portal.HasBlocking() {
+		return
+	}
+	// If the press lands inside one of THIS tree's own portal overlay hit
+	// areas (z >= ZOverlayMin), it isn't "outside" — don't dismiss. (Guards
+	// against overlapping geometry; normally a press inside this tree's
+	// overlay would have been handled by this tree, not a sibling.)
+	for _, h := range t.hitIndex.At(mx, my) {
+		if h.ZIndex >= ZOverlayMin {
+			return
+		}
+	}
+	t.portal.CloseTop()
+}
+
+// Suppressing reports whether the tree is currently suppressing new presses.
+// Alias of Suppress() exposed for the RootTree's press-routing predicate.
+func (t *DrumViewTree) Suppressing() bool { return t.suppress }
+
+// PortalHasModal reports whether this subtree's portal currently has a modal
+// overlay up. A modal overlay claims input for its owning subtree, so the
+// RootTree treats it as "busy".
+func (t *DrumViewTree) PortalHasModal() bool {
+	if t.portal == nil {
+		return false
+	}
+	return t.portal.HasModal()
+}
+
+// PortalHasBlocking reports whether this tree's portal has a blocking
+// (modal or scrim-backed) overlay open. Used by RootTree to decide
+// cross-subtree input exclusivity — passive tooltips do not count.
+func (t *DrumViewTree) PortalHasBlocking() bool {
+	if t.portal == nil {
+		return false
+	}
+	return t.portal.HasBlocking()
 }
 
 // InputHandled returns true if the tree dispatched to a handler this frame.
@@ -635,4 +806,12 @@ func (t *DrumViewTree) WheelHandled() bool {
 // SetDragActive sets the callback used to check if any drag is active.
 func (t *DrumViewTree) SetDragActive(fn func() bool) {
 	t.dragActive = fn
+}
+
+// SetExternalCapture registers a predicate the tree consults before accepting
+// a new press. When it returns true, a separate (legacy) input system holds
+// capture for this press cycle and the tree defers, so the two dispatchers
+// never both act on a single press.
+func (t *DrumViewTree) SetExternalCapture(fn func() bool) {
+	t.externalCapture = fn
 }

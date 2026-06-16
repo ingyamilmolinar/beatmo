@@ -159,8 +159,8 @@ func (h *synthOverflowSheetRowHandler) OnRelease(_, _ int) {
 		}
 	}
 	h.sheet.Close()
-	if dv := h.sheet.dv; dv != nil && dv.tree != nil {
-		dv.tree.Portal().Close("synth-overflow-sheet")
+	if dv := h.sheet.dv; dv != nil && dv.audioTree != nil {
+		dv.audioTree.Portal().Close("synth-overflow-sheet")
 	}
 }
 func (h *synthOverflowSheetRowHandler) OnWheel(_, _, _ int) InputResult { return InputIgnored }
@@ -168,10 +168,10 @@ func (h *synthOverflowSheetRowHandler) OnWheel(_, _, _ int) InputResult { return
 // openSynthOverflowSheet opens the bottom-sheet overlay for the given
 // dropped actions. Called from the overflow chevron's OnClick.
 func (dv *DrumView) openSynthOverflowSheet(actions []string, resolved string) {
-	if dv == nil || dv.tree == nil || len(actions) == 0 {
+	if dv == nil || dv.audioTree == nil || len(actions) == 0 {
 		return
 	}
-	portal := dv.tree.Portal()
+	portal := dv.audioTree.Portal()
 	if portal == nil {
 		return
 	}

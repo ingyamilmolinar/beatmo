@@ -147,14 +147,29 @@ func TestColorWheelPickViaPortalTree(t *testing.T) {
 		t.Fatal("color menu should be open")
 	}
 
-	// Pick color near the right edge of the wheel via direct HandleInput.
-	r := dv.colorWheelComp.InputBounds()
-	if r.Empty() {
-		t.Fatal("colorWheelComp InputBounds is empty")
+	// Pick a swatch cell whose color differs from the current row color, via
+	// direct HandleInput at that cell's center. (Geometry-agnostic: derives the
+	// target from the laid-out cells so it survives the 7×5 ramp layout.)
+	cells := dv.colorWheelComp.SwatchCells()
+	if len(cells) == 0 {
+		t.Fatal("colorWheelComp has no swatch cells")
 	}
-	x := (r.Min.X+r.Max.X)/2 + r.Dx()/3
-	y := (r.Min.Y + r.Max.Y) / 2
-	res := dv.colorWheelComp.HandleInput(x, y, true)
+	target := image.Point{}
+	found := false
+	for _, cr := range cells {
+		cx := (cr.Min.X + cr.Max.X) / 2
+		cy := (cr.Min.Y + cr.Max.Y) / 2
+		col := dv.colorWheelComp.pickColorAt(cx, cy)
+		if col != nil && dv.colorKey(col) != before {
+			target = image.Pt(cx, cy)
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("no swatch cell differs from the current color")
+	}
+	res := dv.colorWheelComp.HandleInput(target.X, target.Y, true)
 	if res == InputIgnored {
 		t.Fatal("HandleInput returned InputIgnored — click was not processed")
 	}

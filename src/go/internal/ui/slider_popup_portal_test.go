@@ -528,15 +528,16 @@ func TestSliderPopupPortal_TouchDragIntegration(t *testing.T) {
 		t.Fatal("popup should be dragging after OnPress")
 	}
 
-	// Drag to top of track → value should approach 1.0.
-	trackTop := sp.trackTop()
-	hits[0].Handler.OnDrag(cx, trackTop)
+	// On mobile (horizontal), drag to the right end of the track → value
+	// should approach 1.0. trackEnd() returns the X endpoint on horizontal.
+	trackEnd := sp.trackEnd()
+	hits[0].Handler.OnDrag(trackEnd, cy)
 	if val != 1.0 {
-		t.Fatalf("after drag to trackTop, val = %f, want 1.0", val)
+		t.Fatalf("after drag to trackEnd, val = %f, want 1.0", val)
 	}
 
 	// Release.
-	hits[0].Handler.OnRelease(cx, trackTop)
+	hits[0].Handler.OnRelease(trackEnd, cy)
 	if sp.IsDragging() {
 		t.Fatal("should not be dragging after OnRelease")
 	}

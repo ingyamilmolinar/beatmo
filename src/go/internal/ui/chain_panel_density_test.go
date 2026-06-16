@@ -73,9 +73,9 @@ func TestChainTriggerMarkerVisibleAtAllDensities(t *testing.T) {
 // users see more chain at once.
 func TestChainStageColWidensWithDensity(t *testing.T) {
 	cases := []struct {
-		density   Density
-		wantColW  int
-		wantRowH  int
+		density  Density
+		wantColW int
+		wantRowH int
 	}{
 		{DensityCompact, 48, 20},
 		{DensityComfortable, 64, 26},
@@ -96,29 +96,6 @@ func TestChainStageColWidensWithDensity(t *testing.T) {
 	}
 }
 
-// TestChainModePillsExpandWithDensity — the OVR/SPL/DIF pills go from
-// 28 px (Compact) to 48 px (Spacious) so a fat finger can hit them
-// without zooming.
-func TestChainModePillsExpandWithDensity(t *testing.T) {
-	cases := []struct {
-		density Density
-		wantW   int
-	}{
-		{DensityCompact, 28},
-		{DensityComfortable, 36},
-		{DensitySpacious, 48},
-	}
-	for _, c := range cases {
-		restore := SetDensityForTest(c.density)
-		dv := Profile().DensityValues()
-		if dv.ChainModePillW != c.wantW {
-			t.Errorf("density=%v: ChainModePillW=%d, want %d",
-				c.density, dv.ChainModePillW, c.wantW)
-		}
-		restore()
-	}
-}
-
 // TestChainTextScalesGrowWithDensity — Chain text scales are authored as
 // permille-of-Body and MUST grow monotonically from Compact → Spacious so
 // labels/readouts/pills/badges enlarge on mobile (Spacious) instead of
@@ -132,8 +109,8 @@ func TestChainTextScalesGrowWithDensity(t *testing.T) {
 	compact, comfortable, spacious := get(DensityCompact), get(DensityComfortable), get(DensitySpacious)
 
 	scales := []struct {
-		name             string
-		c, m, s          int
+		name    string
+		c, m, s int
 	}{
 		{"ChainLabelScale", compact.ChainLabelScale, comfortable.ChainLabelScale, spacious.ChainLabelScale},
 		{"ChainReadoutScale", compact.ChainReadoutScale, comfortable.ChainReadoutScale, spacious.ChainReadoutScale},

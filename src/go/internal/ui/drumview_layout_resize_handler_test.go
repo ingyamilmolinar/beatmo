@@ -210,11 +210,14 @@ func TestLayoutResizeHandler_RowDividerDetection(t *testing.T) {
 	}
 
 	// Row 1 divider (between row 1 and row 2) IS detectable via the EQ
-	// pill-only path (fullWidthWidgetBelow).
+	// boundary's central grab handle (fullWidthWidgetBelow). The handle is
+	// centred horizontally — clear of the sticky-bar's edge controls — so the
+	// divider is detected at the panel centre, not in the rack column.
 	rowY2 := dv.widgets.rowPos[2] + dv.widgets.offset.Y
-	axis2, idx2 := h.detectRowDivider(midX, rowY2)
+	cx := (dv.Bounds.Min.X + dv.Bounds.Max.X) / 2
+	axis2, idx2 := h.detectRowDivider(cx, rowY2)
 	if axis2 != "row" || idx2 != 1 {
-		t.Errorf("Row 1 divider should be detected (EQ pill): got axis=%q idx=%d, expected axis=\"row\" idx=1", axis2, idx2)
+		t.Errorf("Row 1 divider should be detected at the central EQ handle: got axis=%q idx=%d, expected axis=\"row\" idx=1", axis2, idx2)
 	}
 }
 
@@ -304,13 +307,14 @@ func TestRow1_2DividerDetectableViaPill(t *testing.T) {
 	dv := newTestDrumViewWithBounds(image.Rect(0, 300, 800, 600))
 	h := dv.layoutHandler
 
-	// The row 1/2 divider should be detectable (EQ resize pill).
+	// The row 1/2 divider should be detectable at its central grab handle
+	// (the EQ resize pill is centred, clear of the sticky-bar edge controls).
 	rowY := dv.widgets.rowPos[2] + dv.widgets.offset.Y
-	midX := dv.widgets.colPos[0] + dv.widgets.offset.X + dv.widgets.ColWidth(0)/2
+	cx := (dv.Bounds.Min.X + dv.Bounds.Max.X) / 2
 
-	axis, idx := h.detectRowDivider(midX, rowY)
+	axis, idx := h.detectRowDivider(cx, rowY)
 	if axis != "row" || idx != 1 {
-		t.Errorf("Row 1/2 divider should be detectable via EQ pill, got axis=%q idx=%d", axis, idx)
+		t.Errorf("Row 1/2 divider should be detectable at the central EQ handle, got axis=%q idx=%d", axis, idx)
 	}
 }
 

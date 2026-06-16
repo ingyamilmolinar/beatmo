@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // openSubdivMenuPortal opens the subdiv menu component through the portal.
@@ -12,10 +13,14 @@ func (dv *DrumView) openSubdivMenuPortal() {
 	if dv.tree == nil || dv.subdivMenuComp == nil {
 		return
 	}
+	// Feed the clamp region so the menu card positions via AnchorPopupRect and
+	// never runs off-screen (SubdivMenuProps carries no bounds field).
+	dv.subdivMenuComp.SetScreenBounds(dv.Bounds)
 	dv.tree.Portal().Open(PortalEntry{
 		ID:      "subdiv-menu",
 		Overlay: &compPortalOverlay{comp: dv.subdivMenuComp, tag: "subdiv-menu"},
 		Modal:   false,
+		Scrim:   true, // menu/picker — backdrop dims so modality is visible
 		Anchor:  dv.subdivBtn().Rect(),
 		OnClose: func() {
 			dv.subdivMenuComp.Close()
@@ -42,14 +47,15 @@ func (dv *DrumView) openInstMenuPortal() {
 	dv.tree.Portal().Open(PortalEntry{
 		ID: "inst-menu",
 		Overlay: &compPortalOverlay{
-			comp:     dv.instMenuComp,
-			tag:      "inst-menu",
+			comp: dv.instMenuComp,
+			tag:  "inst-menu",
 			updateFn: func() {
 				dv.instMenuComp.Update()
 				dv.syncInstMenuScrollFromComp()
 			},
 		},
 		Modal:  false,
+		Scrim:  true, // instrument picker — backdrop dims so modality is visible
 		Anchor: anchor,
 		OnClose: func() {
 			if dv.instMenuComp != nil && dv.instMenuComp.IsOpen() {
@@ -89,7 +95,9 @@ func (dv *DrumView) openColorWheelPortal() {
 		ID:      "color-wheel",
 		Overlay: &compPortalOverlay{comp: dv.colorWheelComp, tag: "color-wheel"},
 		Modal:   false,
-		Anchor:  anchor,
+		// Scrim left off: the color picker (drumview_overlay_color_comp.go) draws
+		// its own scrim today; migrating it to the portal scrim is a later phase.
+		Anchor: anchor,
 		OnClose: func() {
 			if dv.colorWheelComp != nil && dv.colorWheelComp.IsOpen() {
 				dv.colorWheelComp.Close()
@@ -125,6 +133,7 @@ func (dv *DrumView) openRenamePortal() {
 			},
 		},
 		Modal:  false,
+		Scrim:  true, // rename dialog — backdrop dims so modality is visible
 		Anchor: anchor,
 	})
 }
@@ -141,6 +150,9 @@ func (dv *DrumView) openOverflowMenuPortal() {
 	if dv.tree == nil {
 		return
 	}
+	// Ensure the shared scroll component exists/refreshed for the current page so
+	// callers (and tests) see a configured MenuScroll the moment the menu opens.
+	dv.configureOverflowScroll()
 	dv.tree.Portal().Open(PortalEntry{
 		ID: "overflow-menu",
 		Overlay: &dvOverlayPortal{
@@ -149,7 +161,7 @@ func (dv *DrumView) openOverflowMenuPortal() {
 			rectFn:   func() image.Rectangle { return dv.overflowPopupRect() },
 			inputFn: func(x, y int, pressed bool) InputResult {
 				if dv.handleOverflowMenuInput(x, y, pressed) {
-					if dv.overflowDeferredTap.Active() {
+					if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.TapActive() {
 						return InputCaptured
 					}
 					return InputConsumed
@@ -157,19 +169,22 @@ func (dv *DrumView) openOverflowMenuPortal() {
 				return InputIgnored
 			},
 			wheelFn: func(x, y, steps int) InputResult {
-				if dv.overflowScroll != nil && dv.overflowScroll.HasScroll() {
-					dv.overflowScroll.HandleWheel(steps)
+				if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.HasScroll() {
+					dv.overflowMenuScroll.HandleWheel(steps)
 				}
 				return InputConsumed
 			},
 			drawFn: func(dst *ebiten.Image) { dv.drawOverflowMenu(dst) },
 		},
 		Modal: false,
+		Scrim: true, // overflow menu — backdrop dims so modality is visible
 		OnClose: func() {
 			// Do non-portal cleanup only (portal removal is handled by
 			// the portal system itself — avoid calling closeOverflowMenu
 			// which would recursively call portal.Close).
-			dv.overflowDeferredTap.Cancel()
+			if dv.overflowMenuScroll != nil {
+				dv.overflowMenuScroll.DeferredTap().Cancel()
+			}
 			filePickerClearRects()
 		},
 	})
@@ -224,6 +239,7 @@ func (dv *DrumView) openContextMenuPortal() {
 			},
 		},
 		Modal:   false,
+		Scrim:   true, // row context menu — backdrop dims so modality is visible
 		OnClose: func() {},
 	})
 }
@@ -273,6 +289,8 @@ func (dv *DrumView) openFXPanelPortal() {
 			},
 			drawFn: func(dst *ebiten.Image) { dv.drawFXPanel(dst) },
 			updateFn: func() {
+				// Scrim intentionally off: the FX panel is a docked tool panel
+				// the user interacts around (not a modal menu/picker).
 				if dv.fxScrollTS.HasMomentum() {
 					delta := dv.fxScrollTS.UpdateMomentum()
 					if delta != 0 {
@@ -314,7 +332,6 @@ func (dv *DrumView) closeFXPanelPortal() {
 	}
 }
 
-
 // openVolPopupPortal opens the row volume popup through the portal.
 func (dv *DrumView) openVolPopupPortal() {
 	if dv.tree == nil || dv.volPopup == nil {
@@ -324,6 +341,7 @@ func (dv *DrumView) openVolPopupPortal() {
 		ID:      "volume-popup",
 		Overlay: &sliderPopupPortalOverlay{popup: dv.volPopup, tag: "volume-popup"},
 		Modal:   true,
+		Scrim:   true, // row volume popup — backdrop dims so modality is visible
 		OnClose: func() {
 			dv.volPopup.Close()
 		},
@@ -346,6 +364,7 @@ func (dv *DrumView) openMasterVolPopupPortal() {
 		ID:      "master-volume-popup",
 		Overlay: &sliderPopupPortalOverlay{popup: dv.masterVolPopup, tag: "master-vol-popup"},
 		Modal:   true,
+		Scrim:   true, // master volume popup — backdrop dims so modality is visible
 		OnClose: func() {
 			dv.masterVolPopup.Close()
 		},
@@ -438,7 +457,7 @@ func (dv *DrumView) openNamingPortal() {
 				}
 				dv.nameBox.Rect = box
 				if dv.saveBtn == nil {
-					dv.saveBtn = NewButton("Save", UploadBtnStyle, nil)
+					dv.saveBtn = NewButton(i18n.T(i18n.KeySave), UploadBtnStyle, nil)
 				}
 				dv.saveBtn.SetRect(image.Rect(box.Max.X+10, box.Min.Y, box.Max.X+60, box.Max.Y))
 				dv.saveBtn.OnClick = func() {
@@ -465,6 +484,7 @@ func (dv *DrumView) openNamingPortal() {
 			},
 		},
 		Modal: true,
+		Scrim: true, // WAV-naming dialog — backdrop dims so modality is visible
 		OnClose: func() {
 			// Do non-portal cleanup only (avoid closeNaming which
 			// calls closeNamingPortal → recursive portal.Close).

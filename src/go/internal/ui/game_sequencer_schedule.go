@@ -137,8 +137,8 @@ func (g *Game) seqScheduleTime() {
 		ensureHorizon = 0
 	}
 	ensured := false
-	// Schedule up to a small burst per row to catch up to target without
-	// introducing audible jitter at high BPM/short segments.
+	// Schedule up to a small burst per row to catch up to target
+	// without introducing audible jitter at high BPM/short segments.
 	for row := range g.drum.Rows {
 		if row >= len(g.drum.Rows) {
 			break

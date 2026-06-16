@@ -337,10 +337,14 @@ func TestTransportZoneResponsiveLayout(t *testing.T) {
 	desktopAreas := make([]HitArea, len(z.HitAreas()))
 	copy(desktopAreas, z.HitAreas())
 
-	// Should have upload button visible on desktop.
-	uploadArea := findHitAreaByTagPrefix(desktopAreas, "transport-upload")
-	if uploadArea == nil {
-		t.Error("desktop layout should have 'transport-upload' hit area")
+	// Desktop now routes File ops through the overflow "..." menu, so the
+	// overflow button (not the inline upload button) is the visible trigger.
+	overflowArea := findHitAreaByTagPrefix(desktopAreas, "transport-overflow")
+	if overflowArea == nil {
+		t.Error("desktop layout should have 'transport-overflow' hit area")
+	}
+	if uploadArea := findHitAreaByTagPrefix(desktopAreas, "transport-upload"); uploadArea != nil {
+		t.Error("desktop layout should NOT register 'transport-upload' (file ops moved behind overflow menu)")
 	}
 
 	// Mobile layout: vol-icon / view-switch / overflow now live in
@@ -386,23 +390,18 @@ func TestTransportZoneBPMTextInput(t *testing.T) {
 	z, log := newTestTransportZone()
 	z.Layout(image.Rect(10, 10, 500, 90))
 
-	// Simulate typing into BPM box.
-	z.bpmBox.focused = true
-	z.bpmPrev = 120
-	z.bpmBox.SetText("150")
-
-	// HandleKey(Enter) should commit the BPM.
-	result := z.HandleKey(ebiten.KeyEnter)
-	if result != InputConsumed {
-		t.Errorf("expected InputConsumed from HandleKey(Enter), got %d", result)
-	}
+	// Editing happens in the shared editor now: open it, type, commit.
+	z.SetBPM(120)
+	z.openBPMEditor()
+	z.paramEditor.ti.SetText("150")
+	z.paramEditor.commit()
 
 	if z.BPM() != 150 {
 		t.Errorf("expected BPM 150 after commit, got %d", z.BPM())
 	}
 
-	if z.bpmBox.Focused() {
-		t.Error("bpmBox should be unfocused after Enter commit")
+	if z.paramEditor.Active() {
+		t.Error("editor should be inactive after commit")
 	}
 
 	if len(log.bpmChanges) == 0 {
@@ -415,19 +414,18 @@ func TestTransportZoneBPMTextInputInvalid(t *testing.T) {
 	z.Layout(image.Rect(10, 10, 500, 90))
 
 	z.SetBPM(120)
-	z.bpmBox.focused = true
-	z.bpmPrev = 120
-	z.bpmBox.SetText("abc")
+	z.openBPMEditor()
+	z.paramEditor.ti.SetText("abc")
+	z.paramEditor.commit()
 
-	z.HandleKey(ebiten.KeyEnter)
-
-	// Should revert to previous BPM.
+	// Invalid input does not write — BPM stays put.
 	if z.BPM() != 120 {
 		t.Errorf("expected BPM 120 after invalid input, got %d", z.BPM())
 	}
 
-	if z.bpmErrorAnim <= 0 {
-		t.Error("expected bpmErrorAnim > 0 after invalid input")
+	// The editor flashes its own error on invalid commit.
+	if z.paramEditor.errorAnim <= 0 {
+		t.Error("expected editor errorAnim > 0 after invalid input")
 	}
 }
 
@@ -436,22 +434,18 @@ func TestTransportZoneBPMEscape(t *testing.T) {
 	z.Layout(image.Rect(10, 10, 500, 90))
 
 	z.SetBPM(120)
-	z.bpmBox.focused = true
-	z.bpmPrev = 120
-	z.bpmBox.SetText("999")
+	z.openBPMEditor()
+	z.paramEditor.ti.SetText("999")
 
-	result := z.HandleKey(ebiten.KeyEscape)
-	if result != InputConsumed {
-		t.Errorf("expected InputConsumed from HandleKey(Escape), got %d", result)
-	}
+	// Cancel (Escape) closes without writing — BPM reverts to its prior value.
+	z.paramEditor.cancel()
 
-	// Should revert to previous BPM.
 	if z.BPM() != 120 {
-		t.Errorf("expected BPM 120 after Escape, got %d", z.BPM())
+		t.Errorf("expected BPM 120 after cancel, got %d", z.BPM())
 	}
 
-	if z.bpmBox.Focused() {
-		t.Error("bpmBox should be unfocused after Escape")
+	if z.paramEditor.Active() {
+		t.Error("editor should be inactive after cancel")
 	}
 }
 
@@ -641,25 +635,23 @@ func TestTransportZoneUpdateNoDeltaNoChange(t *testing.T) {
 	}
 }
 
-// --- commitBPMText() edge cases ---
+// --- BPM editor commit edge cases ---
 
 func TestTransportZoneCommitBPMTextEmpty(t *testing.T) {
 	z, _ := newTestTransportZone()
 	z.Layout(image.Rect(10, 10, 500, 90))
 
 	z.SetBPM(100)
-	z.bpmPrev = 100
-	z.bpmBox.focused = true
-	z.bpmBox.SetText("")
+	z.openBPMEditor()
+	z.paramEditor.ti.SetText("")
+	z.paramEditor.commit()
 
-	z.HandleKey(ebiten.KeyEnter)
-
-	// Empty text should revert to bpmPrev.
+	// Empty text fails to parse — no write — BPM stays at its prior value.
 	if z.BPM() != 100 {
 		t.Errorf("expected BPM 100 on empty commit, got %d", z.BPM())
 	}
-	if z.bpmBox.Focused() {
-		t.Error("bpmBox should be unfocused after commit")
+	if z.paramEditor.Active() {
+		t.Error("editor should be inactive after commit")
 	}
 }
 
@@ -668,15 +660,13 @@ func TestTransportZoneCommitBPMTextEmptyNoPrev(t *testing.T) {
 	z.Layout(image.Rect(10, 10, 500, 90))
 
 	z.SetBPM(80)
-	z.bpmPrev = 0 // no previous saved
-	z.bpmBox.focused = true
-	z.bpmBox.SetText("")
+	z.openBPMEditor()
+	z.paramEditor.ti.SetText("")
+	z.paramEditor.commit()
 
-	z.HandleKey(ebiten.KeyEnter)
-
-	// When bpmPrev < 1, should fall back to current bpm.
+	// Empty commit is invalid — BPM is left unchanged at the current value.
 	if z.BPM() != 80 {
-		t.Errorf("expected BPM 80 on empty commit with no prev, got %d", z.BPM())
+		t.Errorf("expected BPM 80 on empty commit, got %d", z.BPM())
 	}
 }
 
@@ -882,9 +872,11 @@ func TestTransportZonePlayPressedConsumed(t *testing.T) {
 
 // --- P3 additional tests ---
 
-// TestTransport_BPMFocusGainClearsText verifies that when the BPM text box
-// gains focus during Update(), the text is cleared to "" and bpmPrev is saved.
-func TestTransport_BPMFocusGainClearsText(t *testing.T) {
+// TestTransport_BPMFocusGainPrefillsValue verifies that opening the shared BPM
+// editor pre-fills it with the current BPM value (so the user can see and edit
+// it) rather than presenting a blank box. The readout box itself is no longer
+// focusable — editing lives entirely in the editor.
+func TestTransport_BPMFocusGainPrefillsValue(t *testing.T) {
 	z, _ := newTestTransportZone()
 	tree := registerTransportZone(z, image.Rect(10, 10, 500, 90))
 
@@ -895,45 +887,20 @@ func TestTransport_BPMFocusGainClearsText(t *testing.T) {
 
 	z.SetBPM(180)
 
-	// BPM box is unfocused, text shows "180".
-	if z.bpmBox.Focused() {
-		t.Fatal("bpmBox should start unfocused")
+	// Opening the editor pre-fills the current tempo.
+	z.openBPMEditor()
+	if !z.paramEditor.Active() {
+		t.Fatal("editor should be active after open")
 	}
-
-	// To trigger the focus-gain path in Update(), we need bpmBox.Update()
-	// to transition focused from false to true. bpmBox.Update() sets
-	// focused=true when mouse is pressed inside its Rect.
-	bpmR := z.bpmBox.Rect
-	if bpmR.Empty() {
-		t.Fatal("bpmBox Rect is empty after layout")
-	}
-	cx := (bpmR.Min.X + bpmR.Max.X) / 2
-	cy := (bpmR.Min.Y + bpmR.Max.Y) / 2
-
-	// Set input: cursor inside bpmBox, mouse pressed.
-	restore = SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 800, 600 },
-	)
-	suppressClicksUntilRelease = false
-	tree.Update() // bpmBox.Update() gains focus, then z.Update() sees the transition
-	restore()
-
-	if z.bpmPrev != 180 {
-		t.Errorf("expected bpmPrev=180 after focus gain, got %d", z.bpmPrev)
-	}
-	if z.bpmBox.Value() != "" {
-		t.Errorf("expected bpmBox text cleared to empty on focus gain, got %q", z.bpmBox.Value())
+	if z.paramEditor.ti.Value() != "180" {
+		t.Errorf("expected editor to pre-fill current value '180' on open, got %q", z.paramEditor.ti.Value())
 	}
 }
 
-// TestTransport_InputBlockedBlursBPM verifies that when inputBlocked returns
-// true while the BPM box is focused, the box is auto-blurred and the value committed.
-func TestTransport_InputBlockedBlursBPM(t *testing.T) {
+// TestTransport_InputBlockedCancelsBPMEditor verifies that when inputBlocked
+// returns true while the BPM editor is active, the editor is cancelled (no
+// write) so it doesn't linger behind the overlay.
+func TestTransport_InputBlockedCancelsBPMEditor(t *testing.T) {
 	restore := noInputForTest()
 	defer restore()
 
@@ -944,27 +911,26 @@ func TestTransport_InputBlockedBlursBPM(t *testing.T) {
 	z.SetBPM(120)
 	log.bpmChanges = nil
 
-	// Focus the BPM box and type a new value.
-	z.bpmBox.focused = true
-	z.bpmPrev = 120
-	z.bpmBox.SetText("160")
+	// Open the editor and type a new value (not yet committed).
+	z.openBPMEditor()
+	z.paramEditor.ti.SetText("160")
 
 	// Set inputBlocked to return true (simulating a popup/overlay opening).
 	z.SetInputBlocked(func() bool { return true })
 
-	// Run Update() — should detect blocked + focused and call forceBlurBPM().
+	// Run Update() — should detect blocked + active editor and cancel it.
 	z.Update()
 
-	if z.bpmBox.Focused() {
-		t.Error("expected bpmBox to be unfocused after inputBlocked blurs it")
+	if z.paramEditor.Active() {
+		t.Error("expected editor to be cancelled after inputBlocked fires")
 	}
 
-	// The value "160" should have been committed.
-	if z.BPM() != 160 {
-		t.Errorf("expected BPM 160 after blocked commit, got %d", z.BPM())
+	// Cancel does not write — BPM stays at its prior value (no commit).
+	if z.BPM() != 120 {
+		t.Errorf("expected BPM 120 (uncommitted edit cancelled), got %d", z.BPM())
 	}
-	if len(log.bpmChanges) == 0 {
-		t.Error("expected OnBPMChange callback after blocked commit")
+	if len(log.bpmChanges) != 0 {
+		t.Error("expected no OnBPMChange callback after cancelled edit")
 	}
 }
 
@@ -1067,5 +1033,21 @@ func TestTransport_SubdivButtonCallback(t *testing.T) {
 
 	if log.subdivClicks == 0 {
 		t.Error("expected OnSubdivClick callback after clicking subdiv button")
+	}
+}
+
+// TestBPMReadoutRectMatchesGroupOutline pins the geometry invariant: the BPM
+// readout keeps the exact rect bpmBox had, so the ± group outline still encloses
+// it after the editor unification (the editor pops over this rect on tap).
+func TestBPMReadoutRectMatchesGroupOutline(t *testing.T) {
+	z, _ := newTestTransportZone()
+	tree := registerTransportZone(z, image.Rect(10, 10, 500, 90))
+	tree.Update() // run layout so bpmBox.Rect + bpmGroupRect are assigned
+	r := z.bpmBox.Rect
+	if r.Empty() {
+		t.Fatalf("bpm readout rect empty after layout")
+	}
+	if z.bpmGroupRect.Empty() || !r.Overlaps(z.bpmGroupRect) {
+		t.Fatalf("bpm group outline (%v) no longer encloses the readout (%v)", z.bpmGroupRect, r)
 	}
 }

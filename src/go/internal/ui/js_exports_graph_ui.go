@@ -11,6 +11,7 @@ import (
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 func (g *Game) initJSGraphUI() {
@@ -861,11 +862,14 @@ func (g *Game) initJSGraphUI() {
 	// Hex input removed; wheel used instead
 
 	// colorWheelRect() -> {x,y,w,h}
+	// Returns the swatch-grid picker panel rect (the free hue wheel was
+	// replaced by a palette-restricted swatch grid; the component keeps the
+	// legacy "Wheel" naming so this export stays stable for browser tests).
 	js.Global().Set("colorWheelRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil {
+		if g.drum == nil || g.drum.colorWheelComp == nil {
 			return nil
 		}
-		return rectToJS(g.drum.colorWheelRect)
+		return rectToJS(g.drum.colorWheelComp.WheelRect())
 	}))
 
 	// pickColorAtWheel(row, fx, fy) – opens wheel if needed and picks color at fractional coords (0..1)
@@ -895,7 +899,7 @@ func (g *Game) initJSGraphUI() {
 				Bounds:     rackBounds,
 				RowHeight:  g.drum.rowHeight(),
 				OnColorPick: func(c color.Color) {
-					g.drum.SetRowColor(g.drum.colorMenuRow, c)
+					g.drum.SetRowColorManual(g.drum.colorMenuRow, c)
 				},
 				OnClose: func() {},
 			})
@@ -904,7 +908,10 @@ func (g *Game) initJSGraphUI() {
 		}
 		g.drum.buildColorMenu()
 		g.drum.openColorWheelPortal()
-		r := g.drum.colorWheelRect
+		if g.drum.colorWheelComp == nil {
+			return nil
+		}
+		r := g.drum.colorWheelComp.WheelRect()
 		if r.Dx() <= 0 || r.Dy() <= 0 {
 			return nil
 		}
@@ -922,8 +929,23 @@ func (g *Game) initJSGraphUI() {
 		}
 		x := int(float64(r.Min.X) + fx*float64(r.Dx()))
 		y := int(float64(r.Min.Y) + fy*float64(r.Dy()))
-		col := g.drum.pickColorFromWheel(x, y)
-		g.drum.SetRowColor(row, col)
+		// Map the fractional point onto the swatch grid. pickColorAt resolves
+		// any point in the grid body (gap-tolerant) to a palette swatch; if the
+		// point lands in the header band it returns nil, so fall back to the
+		// first swatch so the export always picks an on-palette color.
+		col := g.drum.colorWheelComp.pickColorAt(x, y)
+		if col == nil {
+			if cells := g.drum.colorWheelComp.cells; len(cells) > 0 {
+				col = cells[0].col
+			}
+		}
+		if col != nil {
+			// Mirror the real-user picker: a deliberate pick wins even if it
+			// duplicates another row's color (SetRowColorManual). Using the
+			// plain SetRowColor here would silently substitute duplicates away,
+			// diverging from the manual-pick path scenes/WASM exercise.
+			g.drum.SetRowColorManual(row, col)
+		}
 		g.drum.closeColorWheelPortal()
 		return nil
 	}))
@@ -1082,7 +1104,7 @@ func (g *Game) initJSGraphUI() {
 						g.drum.markRowControlsDirty()
 						g.drum.bgDirty = true
 						g.drum.onRowInstrumentChanged(g.drum.renameRow, oldID, newID)
-						g.drum.notifyInfo("Renamed instrument to: " + name)
+						g.drum.notifyInfo(i18n.Tf(i18n.KeyNotifRenamedInstrument, name))
 					}
 					g.drum.renameRow = -1
 				},

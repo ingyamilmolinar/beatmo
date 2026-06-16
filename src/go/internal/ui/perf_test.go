@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -69,5 +71,36 @@ func TestDesktopPerfCountersCollect(t *testing.T) {
 	}
 	if s.AudioDeq == 0 {
 		t.Fatalf("no audio dispatch recorded")
+	}
+}
+
+// TestPerfResetClearsDrawStats pins the resetPerfStats() contract: resetting
+// must zero the DRAW accumulators (drawSumNS/drawMaxNS), not only the
+// update/audio ones. The omission made DrawAvgMS report cumulative-since-page
+// draw time divided by per-reset frames, so it grew monotonically across every
+// resetPerfStats() call — corrupting drawAvg/drawMax in every perf test that
+// resets between phases (webaudio_perf_e2e, webaudio_fx_chain_stress). Found
+// while A/B profiling the choppy-audio FX-chain stress run, where baseline
+// (no audio chain) reported HIGHER drawAvg than the heavy circuit purely
+// because it ran later in the same page session.
+func TestPerfResetClearsDrawStats(t *testing.T) {
+	var p perfCounters
+	// Get past the draw warmup so onDraw actually accumulates.
+	for i := 0; i < perfDrawWarmupFrames+5; i++ {
+		atomic.AddInt64(&p.frames, 1)
+		p.onDraw(20 * time.Millisecond)
+	}
+	if got := atomic.LoadInt64(&p.drawSumNS); got == 0 {
+		t.Fatalf("precondition: drawSumNS should be non-zero before reset, got %d", got)
+	}
+	p.reset()
+	if got := atomic.LoadInt64(&p.drawSumNS); got != 0 {
+		t.Errorf("reset() left drawSumNS=%d; want 0", got)
+	}
+	if got := atomic.LoadInt64(&p.drawMaxNS); got != 0 {
+		t.Errorf("reset() left drawMaxNS=%d; want 0", got)
+	}
+	if got := atomic.LoadInt64(&p.frames); got != 0 {
+		t.Errorf("reset() left frames=%d; want 0", got)
 	}
 }

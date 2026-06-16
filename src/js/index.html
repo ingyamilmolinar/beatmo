@@ -70,6 +70,30 @@
         if (e.key === 'Enter') {
           charBuf.push('\n');
           e.preventDefault();
+        } else if (e.key === 'Escape') {
+          // The hidden proxy holds keyboard focus, so the canvas/ebiten never
+          // sees this Esc. Forward it to the universal Esc handler (cancel +
+          // close the active text input) and dismiss the soft keyboard.
+          if (typeof window._kbProxyEscapeGo === 'function') {
+            window._kbProxyEscapeGo();
+          }
+          charBuf = [];
+          proxy.blur();
+          e.preventDefault();
+        } else if (e.key === 'ArrowLeft') {
+          // Same reason as Esc: the proxy holds focus, so caret-navigation keys
+          // never reach the canvas. Forward Left/Right to move the focused text
+          // input's caret in Go (preventDefault so the proxy's own hidden caret
+          // doesn't fight it).
+          if (typeof window._kbProxyArrowLeftGo === 'function') {
+            window._kbProxyArrowLeftGo();
+          }
+          e.preventDefault();
+        } else if (e.key === 'ArrowRight') {
+          if (typeof window._kbProxyArrowRightGo === 'function') {
+            window._kbProxyArrowRightGo();
+          }
+          e.preventDefault();
         }
       });
 
@@ -216,11 +240,26 @@
 
       // --- Internal helpers ---
 
+      // detachInput removes the native <input> for an entry exactly once.
+      // It nulls entry.element BEFORE calling remove() because removing a focused
+      // element synchronously fires a 'blur' event whose handler would otherwise
+      // try to remove the same node again — that double-remove throws
+      // "NotFoundError: ... no longer a child of this node" (an uncaught pageerror
+      // that aborts the browser-test's waitForFunction polling). Nulling first
+      // makes the blur handler's `entry.element !== null` guard a no-op; the
+      // try/catch is belt-and-suspenders against any other re-entrant removal.
+      function detachInput(entry) {
+        if (!entry) return;
+        const el = entry.element;
+        entry.element = null;
+        if (el && el.parentNode) {
+          try { el.remove(); } catch (_) { /* already detached */ }
+        }
+      }
+
       function closeActiveInput() {
         if (!activeInput) return;
-        if (activeInput.element && activeInput.element.parentNode) {
-          activeInput.element.remove();
-        }
+        detachInput(activeInput);
         activeInput = null;
       }
 
@@ -269,13 +308,11 @@
           if (e.key === 'Enter') {
             e.preventDefault();
             entry.result = { value: input.value, committed: true };
-            if (input.parentNode) input.remove();
-            entry.element = null;
+            detachInput(entry);
           } else if (e.key === 'Escape') {
             e.preventDefault();
             entry.result = { value: '', committed: false };
-            if (input.parentNode) input.remove();
-            entry.element = null;
+            detachInput(entry);
           }
         });
 
@@ -284,8 +321,7 @@
           // Only commit if not already committed via Enter/Escape
           if (entry.element !== null) {
             entry.result = { value: input.value, committed: true };
-            if (input.parentNode) input.remove();
-            entry.element = null;
+            detachInput(entry);
           }
         });
 

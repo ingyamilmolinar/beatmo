@@ -64,7 +64,7 @@ func TestGeneratorRejectsSchemaViolations(t *testing.T) {
 			name: "color hex pattern violation",
 			mutate: func(in string) string {
 				return strings.Replace(in,
-					"primary: \"#4FB4FF\"",
+					"primary: \"#00C8E0\"",
 					"primary: \"#abc\"",
 					1)
 			},

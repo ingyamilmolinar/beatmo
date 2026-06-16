@@ -85,3 +85,35 @@ func TestSpectrumPhase2_MaxMarkerRendered(t *testing.T) {
 		t.Fatalf("expected ≥3 spectrum peak-marker rects (MAX + decay), got %d in %v", got, rect)
 	}
 }
+
+// TestSpectrumSynthwaveFill — the spectrum tab gets two synthwave touches:
+// a faint area wash beneath the hi-res FFT curve (colSpectrumCurveFill) down
+// to the baseline, and a bright→deep three-band gradient on each ISO bar
+// (colSpectrumBarTop). Both must render when the channel carries real energy.
+func TestSpectrumSynthwaveFill(t *testing.T) {
+	rect := image.Rect(0, 0, 600, 160)
+	dst := ebiten.NewImage(rect.Dx(), rect.Dy())
+
+	// Decaying spectrum so multiple bands carry energy (varied dB, not floor).
+	const n = 64
+	freq := make([]float64, n)
+	fft := make([]float64, n)
+	for i := 0; i < n; i++ {
+		freq[i] = 20 + float64(i)*340
+		fft[i] = -10 - float64(i) // -10 dB sloping down
+	}
+	ch := &analyzer.ChannelMetrics{Active: true, FFTBins: fft, FreqBins: freq}
+
+	rects := collectFilledRects(t, func() {
+		drawAnalyzerSpectrumWithScale(dst, rect, ch, nil, freqScaleLog)
+	})
+
+	// Curve area wash beneath the FFT underlay.
+	if got := rectsWithColorInside(rects, rect, colSpectrumCurveFill); got == 0 {
+		t.Errorf("expected colSpectrumCurveFill wash beneath the FFT curve, got 0 in %v", rect)
+	}
+	// Bar gradient: the bright peak band must appear for at least a few bars.
+	if got := rectsWithColorInside(rects, rect, colSpectrumBarTop); got < 3 {
+		t.Errorf("expected >=3 colSpectrumBarTop gradient rects (one per drawn bar), got %d in %v", got, rect)
+	}
+}

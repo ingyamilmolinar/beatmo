@@ -37,6 +37,66 @@ func TestAnalyzerTapsForTab(t *testing.T) {
 	}
 }
 
+// TestAnalyzerInstrumentTapsForTab pins the per-instrument dispatcher
+// rule (the template-load blackout fix): tabs that render per-instrument
+// data must enable an analyzer tap for EVERY row instrument, not just the
+// master. On WASM each per-instrument AnalyserNode is wired on demand, so
+// a template that ships no per-instrument EQ (and is never channel-
+// selected) otherwise leaves its instrument analysers unwired and the
+// Levels/per-instrument views blank — even though desktop, whose mixer
+// feeds every instrument slot unconditionally, is fine. Synth/Sampler
+// read per-voice caches and need no analyzer tap.
+func TestAnalyzerInstrumentTapsForTab(t *testing.T) {
+	ids := []string{"kick-tight", "snare", "fm-bass"}
+	cases := []struct {
+		tab  PanelTab
+		want []string
+	}{
+		{TabWave, []string{"main", "kick-tight", "snare", "fm-bass"}},
+		{TabSpectrum, []string{"main", "kick-tight", "snare", "fm-bass"}},
+		{TabMeters, []string{"main", "kick-tight", "snare", "fm-bass"}},
+		{TabEQ, []string{"main", "kick-tight", "snare", "fm-bass"}},
+		{TabScope, []string{"main", "kick-tight", "snare", "fm-bass"}},
+		{TabSynth, nil},
+		{TabSampler, nil},
+	}
+	for _, c := range cases {
+		got := AnalyzerInstrumentTapsForTab(c.tab, ids)
+		if len(got) != len(c.want) {
+			t.Errorf("tab=%v taps=%v want %v", c.tab, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("tab=%v taps[%d]=%q want %q", c.tab, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
+// TestEnsureAnalyzersForTab_EnablesPerInstrument covers the live side of
+// the template-load fix: passing the row instrument ids to the dispatcher
+// for a per-instrument tab must enable each instrument's analyzer so the
+// next Draw of the Levels strip has data, with no prior channel select.
+func TestEnsureAnalyzersForTab_EnablesPerInstrument(t *testing.T) {
+	ids := []string{"tmpl-kick", "tmpl-snare"}
+	EnsureAnalyzersForTab(TabMeters, "", ids...)
+	for _, id := range ids {
+		an := audio.EnableChannelAnalyzer(id, 512)
+		if an == nil {
+			t.Fatalf("EnableChannelAnalyzer(%q) returned nil (stub build)", id)
+		}
+		samples := make([]float32, 1024)
+		for i := range samples {
+			samples[i] = 0.4
+		}
+		an.ProcessBlock(samples, 1024)
+		if snap := audio.ChannelAnalyzerSnapshot(id); snap.Peak <= 0 {
+			t.Errorf("per-instrument analyzer %q Peak=%f want >0 after dispatcher enable", id, snap.Peak)
+		}
+	}
+}
+
 // TestEnsureAnalyzersForTab_EnablesMaster covers the Phase 0 root-cause
 // fix: navigating to Spectrum / Levels / Chain (or Wave / EQ) without
 // touching the channel picker must enable the master analyzer so the

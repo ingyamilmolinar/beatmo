@@ -20,6 +20,10 @@ type PortalEntry struct {
 	Owner   Zone
 	Overlay PortalOverlay
 	Modal   bool
+	// Scrim dims the whole screen beneath this overlay (colScrim). Menus,
+	// pickers and popups set it so modality is visible; docked tool panels
+	// (FX panel) leave it off because the user interacts around them.
+	Scrim   bool
 	Anchor  image.Rectangle
 	OnClose func() // called when the portal removes this entry
 }
@@ -132,12 +136,33 @@ func (p *OverlayPortal) HasModal() bool {
 	return false
 }
 
+// HasBlocking reports whether any overlay in the stack is blocking — modal
+// or scrim-backed (menus, pickers, dropdowns, popups). Passive overlays
+// (tooltips, docked tool panels with no scrim) are NOT blocking: the user
+// interacts around them, so they must not seize input from a sibling tree.
+func (p *OverlayPortal) HasBlocking() bool {
+	for _, e := range p.stack {
+		if e.Modal || e.Scrim {
+			return true
+		}
+	}
+	return false
+}
+
 // TopID returns the ID of the topmost overlay, or "" if empty.
 func (p *OverlayPortal) TopID() string {
 	if len(p.stack) == 0 {
 		return ""
 	}
 	return p.stack[len(p.stack)-1].ID
+}
+
+// TopOverlay returns the topmost overlay on the stack, or nil if empty.
+func (p *OverlayPortal) TopOverlay() PortalOverlay {
+	if len(p.stack) == 0 {
+		return nil
+	}
+	return p.stack[len(p.stack)-1].Overlay
 }
 
 // SetScreenBounds updates the screen bounds used for overlay layout.
@@ -206,9 +231,21 @@ func (p *OverlayPortal) CleanupClosed() {
 	}
 }
 
-// Draw renders all overlays in stack order (bottom to top).
+// Draw renders all overlays in stack order (bottom to top). A single
+// backdrop scrim is painted directly beneath the topmost scrim-bearing
+// entry so stacked popups never double-dim the screen.
 func (p *OverlayPortal) Draw(screen *ebiten.Image) {
-	for _, e := range p.stack {
+	scrimIdx := -1
+	for i := len(p.stack) - 1; i >= 0; i-- {
+		if p.stack[i].Scrim {
+			scrimIdx = i
+			break
+		}
+	}
+	for i, e := range p.stack {
+		if i == scrimIdx {
+			drawRect(screen, p.screenBounds, colScrim, true)
+		}
 		e.Overlay.Draw(screen)
 	}
 }

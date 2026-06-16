@@ -184,6 +184,17 @@ func (p *Predictor) Ensure(horizon int) {
 	if p.predDirty {
 		startIdx = p.windowStart
 	}
+	// The bounded dirty-rebuild optimization requires no custom programmatic
+	// Logic funcs (those use triggerCounts, which depends on actual trigger
+	// history and is not analytically seedable). Built-in LogicKind rules only
+	// use `counts` (== appearances, pure loop geometry) + last-loop state.
+	hasCustomLogic := false
+	for _, nd := range p.nodes {
+		if nd.Params.Logic != nil {
+			hasCustomLogic = true
+			break
+		}
+	}
 	for row := 0; row < n; row++ {
 		counts := p.countsByRow[row]
 		if counts == nil {
@@ -226,12 +237,24 @@ func (p *Predictor) Ensure(horizon int) {
 			lastFired = model.InvalidNodeID
 			gate = 0
 			visGate = -1
-			// Re-walk historical positions [0, startIdx) to rebuild per-row
-			// context. This walks O(windowStart) BeatInfos on each dirty event;
-			// the work doesn't allocate (maps already exist) and dirty events
-			// are rare (graph mutations), so the cost is acceptable for
-			// correctness.
-			for i := 0; i < startIdx; i++ {
+			// Re-walk historical positions to rebuild per-row context. A full
+			// walk is O(windowStart) per dirty event — and windowStart grows
+			// unbounded with session length, so editing a node rule mid-song
+			// cost O(session) and starved the audio scheduler (the deterministic
+			// root cause of "choppy when I add node rules"; see the cost table
+			// in internal/audio/node_logic_cost_test.go). For a looping row with
+			// only built-in logic, the cumulative `counts` are pure loop
+			// geometry (counts == appearances) and seedable analytically, while
+			// last-loop state (lastTrig/lastFired/gate/visGate) settles within a
+			// couple of loops — so we seed counts and re-walk only the last few
+			// loops. boundedRewalkStart returns 0 (full walk) when this is not
+			// safe. Equivalence is pinned byte-for-byte by
+			// TestDirtyRebuildEquivalentToFullWalk.
+			rewalkFrom := 0
+			if !p.forceFullRebuild {
+				rewalkFrom = p.boundedRewalkStart(row, startIdx, loop, start, seg, hasCustomLogic, counts)
+			}
+			for i := rewalkFrom; i < startIdx; i++ {
 				bi := p.beatInfoAtRow(row, i)
 				if bi.NodeType != model.NodeTypeRegular && bi.NodeType != model.NodeTypeMute {
 					continue

@@ -144,15 +144,12 @@ func TestSaveAsDialog_EscapeKeyDismisses(t *testing.T) {
 	if dv.SynthSaveAsDialog() == nil {
 		t.Fatal("dialog not open")
 	}
-	// Simulate Escape via the input hook.
-	mx, my := 0, 0
-	restoreInput := SetInputForTest(
-		func() (int, int) { return mx, my },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return k == ebiten.KeyEscape },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 1280, 800 },
+	// Esc is owned by the universal handler (Game.handleEscape → rung 2b
+	// CancelActiveTextDialog), which is edge-triggered. Drive isKeyJustPressed
+	// via stubKeys — SetInputForTest only sets isKeyPressed.
+	restoreInput := stubKeys(
+		map[ebiten.Key]bool{ebiten.KeyEscape: true},
+		map[ebiten.Key]bool{ebiten.KeyEscape: true},
 	)
 	defer restoreInput()
 	env.g.Update()

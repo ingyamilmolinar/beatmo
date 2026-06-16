@@ -8,7 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// All 29 IconID bodies, defined in the unified Lucide-style visual language.
+// All 31 IconID bodies, defined in the unified Lucide-style visual language.
 //
 // Each function takes a bounding rect; it composes itself in the 24-unit
 // logical grid via icon_renderer.go's helpers and the iconCanvas mapping.
@@ -184,16 +184,16 @@ var drawChevronLeftIcon = func(dst *ebiten.Image, r image.Rectangle, col color.C
 // the icon's 24×24 canvas. Outer radius 9, inner radius 3.5, centered
 // at (12,12). Points alternate outer/inner clockwise from the top.
 var starPathPoints = [][2]float32{
-	{12.00, 3.00},   // top outer
-	{14.06, 9.17},   // upper-right inner
-	{20.56, 9.22},   // upper-right outer
-	{15.33, 13.08},  // right inner
-	{17.29, 19.28},  // lower-right outer
-	{12.00, 15.50},  // bottom inner
-	{6.71, 19.28},   // lower-left outer
-	{8.67, 13.08},   // left inner
-	{3.44, 9.22},    // upper-left outer
-	{9.94, 9.17},    // upper-left inner
+	{12.00, 3.00},  // top outer
+	{14.06, 9.17},  // upper-right inner
+	{20.56, 9.22},  // upper-right outer
+	{15.33, 13.08}, // right inner
+	{17.29, 19.28}, // lower-right outer
+	{12.00, 15.50}, // bottom inner
+	{6.71, 19.28},  // lower-left outer
+	{8.67, 13.08},  // left inner
+	{3.44, 9.22},   // upper-left outer
+	{9.94, 9.17},   // upper-left inner
 }
 
 var drawStarIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
@@ -280,6 +280,36 @@ var drawExportIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	// Vertical shaft pointing up + arrow head.
 	iconStrokeLine(dst, c, 12, 4, 12, 14, col)
 	iconStrokePolyline(dst, c, [][2]float32{{7, 9}, {12, 4}, {17, 9}}, col)
+}
+
+// ── Undo / Redo (2) ─────────────────────────────────────────────────────
+//
+// A curved arrow over the top of the canvas with a downward arrowhead at one
+// terminus: left terminus = Undo (counter-clockwise / "back"), right terminus
+// = Redo (clockwise / "forward"). Vector-drawn so the narrow desktop transport
+// cells render a glyph instead of collapsing a "Undo"/"Redo" text label to the
+// bare "..." ellipsis.
+
+var drawUndoIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	// Top arch: left (6,13) → top → right (18,13).
+	iconStrokeArc(dst, c, 12, 13, 6, float32(math.Pi), 2*float32(math.Pi), col)
+	// Arrowhead at the left terminus, pointing down.
+	iconStrokePolyline(dst, c, [][2]float32{{2, 10}, {6, 14}, {10, 10}}, col)
+}
+
+var drawRedoIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	// Same top arch.
+	iconStrokeArc(dst, c, 12, 13, 6, float32(math.Pi), 2*float32(math.Pi), col)
+	// Arrowhead at the right terminus, pointing down (mirror of Undo).
+	iconStrokePolyline(dst, c, [][2]float32{{14, 10}, {18, 14}, {22, 10}}, col)
 }
 
 // ── Audio (2) ──────────────────────────────────────────────────────────
@@ -370,6 +400,26 @@ var drawTargetIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color)
 	iconStrokeLine(dst, c, 12, 15, 12, 20, col)
 	iconStrokeLine(dst, c, 4, 12, 9, 12, col)
 	iconStrokeLine(dst, c, 15, 12, 20, 12, col)
+}
+
+// Gear: a body ring with a small hub and eight short radial teeth. Used for the
+// Settings entry that replaces the grid "?" affordance.
+var drawSettingsIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeCircle(dst, c, 12, 12, 6, col) // body ring
+	iconStrokeCircle(dst, c, 12, 12, 2, col) // hub
+	// Eight teeth from the ring (r≈6) out to r≈9.
+	iconStrokeLine(dst, c, 12, 6, 12, 3, col)   // N
+	iconStrokeLine(dst, c, 16, 8, 18, 6, col)   // NE
+	iconStrokeLine(dst, c, 18, 12, 21, 12, col) // E
+	iconStrokeLine(dst, c, 16, 16, 18, 18, col) // SE
+	iconStrokeLine(dst, c, 12, 18, 12, 21, col) // S
+	iconStrokeLine(dst, c, 8, 16, 6, 18, col)   // SW
+	iconStrokeLine(dst, c, 6, 12, 3, 12, col)   // W
+	iconStrokeLine(dst, c, 8, 8, 6, 6, col)     // NW
 }
 
 var drawTrashIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {

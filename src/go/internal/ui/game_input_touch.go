@@ -9,6 +9,11 @@ import (
 // handleTapInGrid handles a tap gesture in the grid area.
 // This provides direct tap-to-click handling without relying on the mouse state machine.
 func (g *Game) handleTapInGrid(x, y int) {
+	if !Profile().IsMobile() && image.Pt(x, y).In(g.gridHelpButtonRect()) {
+		g.toggleSettingsOverlay()
+		return
+	}
+
 	// Connect mode: tap selects target node for edge creation.
 	if g.connectMode && g.connectFromNode != nil {
 		g.handleConnectModeTap(x, y)
@@ -231,7 +236,16 @@ func (g *Game) handleTouchPinch(centerX, centerY int, scale float64) {
 }
 
 // handleTouchTwoFingerPan handles a two-finger pan gesture.
-func (g *Game) handleTouchTwoFingerPan(deltaX, deltaY int) {
+//
+// Over the drum cell grid the pan moves the timeline view (horizontal) or
+// scrolls the instrument rows (vertical), direction-locked, mirroring the
+// single-finger grid drag — it must NOT pan the grid/graph camera, and a
+// left/right swipe must never scroll rows. Anywhere else (the graph pane) the
+// pan keeps moving the camera.
+func (g *Game) handleTouchTwoFingerPan(deltaX, deltaY, centerX, centerY int) {
+	if g.drum != nil && g.drum.HandleTwoFingerPan(centerX, centerY) {
+		return
+	}
 	g.cam.OffsetX += float64(deltaX)
 	g.cam.OffsetY += float64(deltaY)
 	g.cam.Snap()

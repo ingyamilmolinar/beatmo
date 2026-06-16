@@ -20,6 +20,10 @@ type Splitter struct {
 	totalH      int     // track total height for clamping in HandleInput
 	horizontal  bool    // true = top/bottom (default), false = left/right
 	guardFrames int     // >0 prevents new drag initiation (cooldown after drum capture)
+
+	// handle owns the shared animated line+pill draw (glow + grow on hover).
+	// Shared with the EQ-boundary divider via SplitterHandle.
+	handle SplitterHandle
 }
 
 // Horizontal returns true when layout is stacked (grid top, drum bottom).
@@ -243,10 +247,34 @@ func (s *Splitter) HandleRect() image.Rectangle {
 func (s *Splitter) InputBounds() image.Rectangle {
 	grab := TouchGrabZone()
 	const belowExtent = 4
+	// The grab strip must also encompass the full visible handle pill, so the
+	// dispatcher routes presses that land on the drawn pill to the splitter.
+	// Previously belowExtent (4 px) was smaller than the pill's lower half
+	// (thick/2 + SpaceSM), so presses on the bottom of the pill never reached
+	// HandleInput and fell through to whatever sat beneath it (the notification
+	// bar). HandleInput still self-gates on the pill rect, so widening the
+	// strip never steals presses that miss the pill.
+	pill := s.HandleRect().Inset(-SpaceSM)
 	if !s.horizontal {
-		return image.Rect(s.X-grab, 0, s.X+belowExtent, s.totalH)
+		left := s.X - grab
+		right := s.X + belowExtent
+		if pill.Min.X < left {
+			left = pill.Min.X
+		}
+		if pill.Max.X > right {
+			right = pill.Max.X
+		}
+		return image.Rect(left, 0, right, s.totalH)
 	}
-	return image.Rect(0, s.Y-grab, s.winW, s.Y+belowExtent)
+	top := s.Y - grab
+	bottom := s.Y + belowExtent
+	if pill.Min.Y < top {
+		top = pill.Min.Y
+	}
+	if pill.Max.Y > bottom {
+		bottom = pill.Max.Y
+	}
+	return image.Rect(0, top, s.winW, bottom)
 }
 
 // ZIndex returns the splitter's z-order for input dispatch.
@@ -281,7 +309,11 @@ func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
 
 	if s.horizontal {
 		// --- Stacked mode: drag Y ---
-		if !s.dragging && y > s.Y+initGrab {
+		// Reject presses well below the divider UNLESS they land on the visible
+		// handle pill (which extends below s.Y). Without the pill exception, a
+		// press on the lower half of the drawn pill fell through to the
+		// notification bar beneath it.
+		if !s.dragging && y > s.Y+initGrab && !image.Pt(x, y).In(s.HandleRect().Inset(-SpaceSM)) {
 			return InputIgnored
 		}
 		if pressed {
@@ -325,7 +357,8 @@ func (s *Splitter) HandleInput(x, y int, pressed bool) InputResult {
 		}
 	} else {
 		// --- Side-by-side mode: drag X ---
-		if !s.dragging && x > s.X+initGrab {
+		// Mirror the stacked-mode pill exception (see above).
+		if !s.dragging && x > s.X+initGrab && !image.Pt(x, y).In(s.HandleRect().Inset(-SpaceSM)) {
 			return InputIgnored
 		}
 		if pressed {

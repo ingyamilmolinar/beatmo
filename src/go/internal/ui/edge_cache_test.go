@@ -32,11 +32,22 @@ func TestEdgeCacheRebuildOnGraphChange(t *testing.T) {
 	if g.edgeCache != first || g.edgeCacheCount != cnt {
 		t.Fatalf("unexpected edge cache rebuild without changes")
 	}
-	// Add another edge -> should rebuild
+	// Add another edge -> should rebuild (re-render the edges into the cache).
+	// The rebuild REUSES the same texture (Clear()+redraw) rather than allocating
+	// a fresh image: per-frame edge-cache reallocation is the atlas churn that
+	// stalls the single WASM thread and starves audio during a zoom, so the fix in
+	// grid_pane_draw.go reuses the image when its dimensions are unchanged. Rebuild
+	// is therefore detected by the edge count increasing, not by image identity —
+	// and we additionally pin the no-realloc guarantee (same image object).
 	n2 := g.tryAddNode(1, 1, model.NodeTypeRegular)
 	g.addEdge(n1, n2)
 	g.drawGridPane(img)
-	if g.edgeCache == first || g.edgeCacheCount <= cnt {
-		t.Fatalf("expected edge cache rebuild and increased count: before=%d after=%d", cnt, g.edgeCacheCount)
+	if g.edgeCacheCount <= cnt {
+		t.Fatalf("expected edge cache rebuild (more edges drawn): before=%d after=%d", cnt, g.edgeCacheCount)
+	}
+	if g.edgeCache != first {
+		t.Fatalf("edge cache reallocated on rebuild; it must reuse the same texture " +
+			"(Clear()+redraw) when dimensions are unchanged — per-frame realloc is the " +
+			"atlas churn that starves audio during a zoom")
 	}
 }

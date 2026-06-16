@@ -14,6 +14,113 @@ func clearClickSuppression(t *testing.T) {
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
 }
 
+// TestSubdivMenuBottomAnchorStaysOnScreen is the regression case for the
+// "menu renders ~250px below its ÷n anchor over the EQ panel, clipped at the
+// screen bottom" bug. With the ÷n button anchored at the very bottom edge of
+// the bounds, AnchorPopupRect must flip/clamp the card so it stays fully on
+// screen.
+func TestSubdivMenuBottomAnchorStaysOnScreen(t *testing.T) {
+	bounds := image.Rect(0, 0, 800, 600)
+	// Anchor flush against the bottom edge — there is no room below it.
+	anchor := image.Rect(700, 580, 740, 600)
+
+	comp := NewSubdivMenuComponent()
+	comp.SetScreenBounds(bounds)
+	comp.SetProps(SubdivMenuProps{
+		AnchorRect: anchor,
+		Current:    16,
+		Options:    []int{4, 8, 16, 32},
+		RowHeight:  24,
+	})
+	comp.Open()
+
+	card := comp.CardRect()
+	if card.Empty() {
+		t.Fatal("subdiv card rect empty after open")
+	}
+	if !card.In(bounds) {
+		t.Fatalf("subdiv card %v not contained in bounds %v", card, bounds)
+	}
+	for i, btn := range comp.Buttons() {
+		if !btn.Rect().In(bounds) {
+			t.Errorf("subdiv option %d rect %v escapes bounds %v", i, btn.Rect(), bounds)
+		}
+	}
+}
+
+// TestSubdivMenuOptionsNotTruncated verifies the option labels keep their full
+// text ("16", "32") — the desktop card sizes its width from StyledTextWidth
+// (RoleBody) so the wider labels never collapse to "···".
+func TestSubdivMenuOptionsNotTruncated(t *testing.T) {
+	bounds := image.Rect(0, 0, 800, 600)
+	anchor := image.Rect(100, 100, 140, 124)
+
+	comp := NewSubdivMenuComponent()
+	comp.SetScreenBounds(bounds)
+	comp.SetProps(SubdivMenuProps{
+		AnchorRect: anchor,
+		Current:    8,
+		Options:    []int{4, 8, 16, 32},
+		RowHeight:  24,
+	})
+	comp.Open()
+
+	want := map[string]bool{"4": false, "8": false, "16": false, "32": false}
+	for _, btn := range comp.Buttons() {
+		want[btn.Text] = true
+		// The button must be at least wide enough to show its RoleBody-styled label.
+		if btn.Rect().Dx() < StyledTextWidth(btn.Text, RoleBody) {
+			t.Errorf("option %q button width %d < label width %d (would truncate)",
+				btn.Text, btn.Rect().Dx(), StyledTextWidth(btn.Text, RoleBody))
+		}
+	}
+	for label, seen := range want {
+		if !seen {
+			t.Errorf("option %q missing from rendered buttons", label)
+		}
+	}
+}
+
+// TestSubdivMenuHighlightsCurrent verifies the active subdivision option is
+// rendered with the active draw state (azure stripe + colTextAccent label).
+// The highlight is now determined in drawSubdivRow by comparing the option
+// value to props.Current — this test verifies the component correctly exposes
+// the current value through Props() so the draw logic can distinguish it.
+func TestSubdivMenuHighlightsCurrent(t *testing.T) {
+	bounds := image.Rect(0, 0, 800, 600)
+	comp := NewSubdivMenuComponent()
+	comp.SetScreenBounds(bounds)
+	comp.SetProps(SubdivMenuProps{
+		AnchorRect: image.Rect(100, 100, 140, 124),
+		Current:    16,
+		Options:    []int{4, 8, 16, 32},
+		RowHeight:  24,
+	})
+	comp.Open()
+
+	// Verify props.Current is correctly stored — drawSubdivRow uses
+	// comp.props.Current (not btn.Style) to decide the active state.
+	if comp.Props().Current != 16 {
+		t.Errorf("props.Current = %d, want 16", comp.Props().Current)
+	}
+	// All buttons use the same base DropdownStyle; active highlight is in Draw.
+	for _, btn := range comp.Buttons() {
+		if btn.Style != ButtonVisual(DropdownStyle) {
+			t.Errorf("option %q: Style should be DropdownStyle; active highlight is drawn via drawMenuItemBackground", btn.Text)
+		}
+	}
+	// Verify every expected option label is present.
+	wantLabels := map[string]bool{"4": false, "8": false, "16": false, "32": false}
+	for _, btn := range comp.Buttons() {
+		wantLabels[btn.Text] = true
+	}
+	for label, seen := range wantLabels {
+		if !seen {
+			t.Errorf("option %q missing from rendered buttons", label)
+		}
+	}
+}
+
 func TestSubdivMenuComponent_OpenClose(t *testing.T) {
 	comp := NewSubdivMenuComponent()
 

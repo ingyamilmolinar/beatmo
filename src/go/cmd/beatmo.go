@@ -48,6 +48,9 @@ func main() {
 	eventLog := flag.String("event-log", "", "write all hooks events to this JSONL file (also honors BEATMO_EVENT_LOG)")
 	eventLogVerbose := flag.Bool("event-log-verbose", false, "include high-frequency Verbose* events in the event log")
 	screenshot := flag.String("screenshot", "", "capture a screenshot to this path and exit")
+	winW := flag.Int("win-w", 1280, "window width")
+	winH := flag.Int("win-h", 720, "window height")
+	forceMobile := flag.Bool("mobile", false, "force the mobile layout profile")
 	scopeOpen := flag.Bool("scope", false, "open with scope panel visible")
 	scopeExport := flag.Bool("scope-export", false, "enable continuous scope data export to JSONL")
 	sceneName := flag.String("scene", "", "name of catalog scene to apply at startup")
@@ -193,6 +196,12 @@ func main() {
 	defer func() { _ = prefsStore.Close() }()
 	ui.SetFavoritesStore(ui.NewPersistedFavoritesStore(prefsStore))
 
+	// Notification history: persist the in-band notification log across
+	// sessions so the history popup survives a restart.
+	if ns, ok := prefsStore.(userprefs.NotificationHistoryStore); ok {
+		ui.SetNotificationHistoryStore(ui.NewPersistedNotificationHistory(ns))
+	}
+
 	// Phase 3: apply user-saved recipe overrides + register user
 	// recipes from disk. The parity gate is flipped on here (production
 	// bootstrap only) so test binaries / parity goldens keep shipped
@@ -225,8 +234,25 @@ func main() {
 		audio.ApplySavedSampleEdits(se)
 	}
 
+	// Knob step-rung persistence: remember each param's chosen step badge
+	// rung across restarts. Keyed by param name (global, not per-instrument).
+	if ks, ok := prefsStore.(userprefs.KnobStepStore); ok {
+		ui.SetKnobStepSink(ks)
+	}
+
+	// UI language: apply the persisted locale before the first Layout so the
+	// first frame renders in the user's chosen language.
+	if ls, ok := prefsStore.(userprefs.LanguageStore); ok {
+		ui.SetLanguageSink(ls)
+		ui.ApplyStoredLanguage()
+	}
+
 	// Create an instance of our game
 	g := ui.New(logger)
+
+	if *forceMobile {
+		g.SetForceMobileProfile(true)
+	}
 
 	// Boot order for the screenshot harness: import circuit first, then
 	// apply ui-state config, then run the named scene. Scene Setup runs last
@@ -287,7 +313,7 @@ func main() {
 	}()
 
 	// Optional window settings (not used in WASM, but for desktop builds)
-	ebiten.SetWindowSize(1280, 720)
+	ebiten.SetWindowSize(*winW, *winH)
 	ebiten.SetWindowTitle("Beatmo - Node Music Game")
 	// Keep simulation running at a fixed TPS even if rendering falls behind. This
 	// decouples Update() (audio/scheduler) from Draw() so slow frames on web do not

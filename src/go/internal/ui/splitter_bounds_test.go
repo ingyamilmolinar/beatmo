@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"image"
 	"testing"
 )
 
@@ -93,13 +94,18 @@ func TestSplitter_InputBounds(t *testing.T) {
 	if bounds.Max.X != 800 {
 		t.Errorf("expected bounds.Max.X = 800, got %d", bounds.Max.X)
 	}
-	// Above-divider extent is the full grab zone (5px on desktop).
-	if bounds.Min.Y != 295 {
-		t.Errorf("expected bounds.Min.Y = 295, got %d", bounds.Min.Y)
+	// InputBounds must encompass BOTH the grab strip and the visible handle
+	// pill, so the dispatcher routes presses on the drawn pill to HandleInput.
+	// (No-steal of drum controls below the divider is enforced by HandleInput's
+	// pill self-gate — see TestSplitterCapturesPillButNotOffPillBelowDivider.)
+	grab := TouchGrabZone()
+	gripStrip := image.Rect(0, s.Y-grab, s.winW, s.Y+4)
+	pill := s.HandleRect().Inset(-SpaceSM)
+	if bounds.Union(gripStrip) != bounds {
+		t.Errorf("InputBounds %v must contain the grab strip %v", bounds, gripStrip)
 	}
-	// Below-divider extent is 4px (reduced to avoid stealing drum button taps).
-	if bounds.Max.Y != 304 {
-		t.Errorf("expected bounds.Max.Y = 304, got %d", bounds.Max.Y)
+	if bounds.Union(pill) != bounds {
+		t.Errorf("InputBounds %v must contain the visible handle pill %v", bounds, pill)
 	}
 }
 

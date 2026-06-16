@@ -275,6 +275,7 @@ func (g *Game) initJSPlaybackPerf() {
 		}
 		obj.Set("liveImages", g.snapshotLiveImages())
 		obj.Set("imagesAllocatedTotal", float64(MetricImagesAllocatedTotal()))
+		obj.Set("drawCalls", float64(MetricDrawCallsTotal()))
 		obj.Set("imagesByTag", imagesByTagSnapshot())
 		// Three-stage latency: nested object so callers reading only the
 		// existing flat fields don't conflict with the new keys.

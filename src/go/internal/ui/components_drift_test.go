@@ -36,21 +36,21 @@ func TestComponentSpecsDrift(t *testing.T) {
 		{"input-field-focused ↔ TextInputStyle focused border", ComponentInputFieldFocused, colSurface2, colBorderStrong},
 
 		// ── desktop play / stop ──
-		{"button-play-desktop ↔ PlayButtonStyle", ComponentButtonPlayDesktop, colPlayButton, color.RGBA{96, 208, 128, 255}},
-		{"button-stop-desktop ↔ StopButtonStyle", ComponentButtonStopDesktop, colStopButton, color.RGBA{224, 72, 72, 255}},
+		{"button-play-desktop ↔ PlayButtonStyle", ComponentButtonPlayDesktop, colPlayButton, color.RGBA{63, 214, 122, 255}},
+		{"button-stop-desktop ↔ StopButtonStyle", ComponentButtonStopDesktop, colStopButton, color.RGBA{255, 92, 42, 255}},
 
-		// ── numeric steppers ──
-		{"button-stepper ↔ BPMIncStyle / BPMDecStyle / LenIncStyle / LenDecStyle", ComponentButtonStepper, colIncDec, colIncDecBorder},
+		// ── numeric steppers ── (now neutral, same recipe as button-secondary)
+		{"button-stepper ↔ BPMIncStyle / BPMDecStyle / LenIncStyle / LenDecStyle", ComponentButtonStepper, colSurface2, colBorderSubtle},
 
 		// ── dropdown ──
 		{"button-dropdown ↔ DropdownStyle", ComponentButtonDropdown, colSurface2, colDropdownEdge},
 
 		// ── disabled ──
-		{"button-disabled ↔ DisabledButtonStyle", ComponentButtonDisabled, color.RGBA{45, 56, 72, 255}, colBorderSubtle},
+		{"button-disabled ↔ DisabledButtonStyle", ComponentButtonDisabled, color.RGBA{40, 26, 64, 255}, colBorderSubtle},
 
 		// ── destructive (delete + confirm) ──
 		{"button-destructive ↔ DeleteButtonStyle", ComponentButtonDestructive, colDeleteFill, colDeleteBorder},
-		{"button-destructive-confirm ↔ DeleteConfirmButtonStyle", ComponentButtonDestructiveConfirm, color.RGBA{208, 48, 48, 255}, color.RGBA{255, 96, 96, 255}},
+		{"button-destructive-confirm ↔ DeleteConfirmButtonStyle", ComponentButtonDestructiveConfirm, color.RGBA{232, 74, 31, 255}, color.RGBA{255, 92, 42, 255}},
 
 		// ── missing instrument ──
 		{"button-missing-instrument ↔ MissingInstStyle", ComponentButtonMissingInstrument, colError, colBorderMedium},
@@ -58,17 +58,17 @@ func TestComponentSpecsDrift(t *testing.T) {
 		// ── row-control active variants ──
 		{"button-row-control-mute-active ↔ MuteActiveStyle", ComponentButtonRowControlMuteActive, colMuteActive, colMuteActiveBdr},
 		{"button-row-control-solo-active ↔ SoloActiveStyle", ComponentButtonRowControlSoloActive, colSoloActive, colSoloActiveBdr},
-		{"button-row-control-fx-active ↔ FXActiveStyle", ComponentButtonRowControlFxActive, color.RGBA{20, 42, 80, 255}, colAccent},
+		{"button-row-control-fx-active ↔ FXActiveStyle", ComponentButtonRowControlFxActive, color.RGBA{40, 26, 64, 255}, colAccent},
 
 		// ── EQ band-mute chips ──
 		{"button-eq-mute ↔ EQMuteButtonStyle", ComponentButtonEqMute, colSurface3, colBorderMedium},
-		{"button-eq-mute-active ↔ EQMuteButtonActiveStyle", ComponentButtonEqMuteActive, color.RGBA{184, 44, 44, 255}, colBorderMedium},
+		{"button-eq-mute-active ↔ EQMuteButtonActiveStyle", ComponentButtonEqMuteActive, color.RGBA{232, 74, 31, 255}, colBorderMedium},
 
 		// ── EQ filter active ──
-		{"button-eq-filter-active ↔ EQFilterButtonActiveStyle", ComponentButtonEqFilterActive, color.RGBA{58, 134, 200, 255}, color.RGBA{79, 180, 255, 255}},
+		{"button-eq-filter-active ↔ EQFilterButtonActiveStyle", ComponentButtonEqFilterActive, color.RGBA{0, 168, 201, 255}, color.RGBA{0, 200, 224, 255}},
 
 		// ── transport follow-on ──
-		{"button-transport-follow-on ↔ TransportFollowOnStyle", ComponentButtonTransportFollowOn, color.RGBA{38, 44, 60, 255}, color.NRGBA{124, 192, 255, 80}},
+		{"button-transport-follow-on ↔ TransportFollowOnStyle", ComponentButtonTransportFollowOn, color.RGBA{40, 26, 64, 255}, color.NRGBA{63, 224, 232, 80}},
 
 		// ── primary FAB ──
 		{"button-primary ↔ FABStyle", ComponentButtonPrimary, colAccent, color.NRGBA{255, 255, 255, 30}},

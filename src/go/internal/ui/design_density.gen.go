@@ -14,16 +14,21 @@ package ui
 type densityValues struct {
 	AccentStripeInsetY     int // densities.accentStripeInsetY
 	AccentStripeWidth      int // densities.accentStripeWidth
-	ChainAggregateH        int // densities.chainAggregateH
-	ChainAggregateW        int // densities.chainAggregateW
+	AudioChannelMinW       int // densities.audioChannelMinW
+	AudioLabelMarginW      int // densities.audioLabelMarginW
+	AudioPillGap           int // densities.audioPillGap
+	AudioPillH             int // densities.audioPillH
+	AudioPillNarrowW       int // densities.audioPillNarrowW
+	AudioPillPadX          int // densities.audioPillPadX
+	AudioTabMinW           int // densities.audioTabMinW
 	ChainAutoFitMinMs      int // densities.chainAutoFitMinMs
 	ChainBadgeScale        int // densities.chainBadgeScale
+	ChainContentGap        int // densities.chainContentGap
 	ChainLabelScale        int // densities.chainLabelScale
 	ChainLegendStripH      int // densities.chainLegendStripH
 	ChainMiniMeterGap      int // densities.chainMiniMeterGap
 	ChainMiniMeterW        int // densities.chainMiniMeterW
 	ChainMiniWaveH         int // densities.chainMiniWaveH
-	ChainModePillW         int // densities.chainModePillW
 	ChainPillScale         int // densities.chainPillScale
 	ChainReadoutScale      int // densities.chainReadoutScale
 	ChainScopeBottomMargin int // densities.chainScopeBottomMargin
@@ -45,6 +50,8 @@ type densityValues struct {
 	GrabZone               int // densities.grabZone
 	HeaderMaxH             int // densities.headerMaxH
 	HeaderMinH             int // densities.headerMinH
+	KnobStepBadgeH         int // densities.knobStepBadgeH
+	KnobStepBadgeW         int // densities.knobStepBadgeW
 	LevelsReadoutFooterH   int // densities.levelsReadoutFooterH
 	LevelsReadoutWFull     int // densities.levelsReadoutWFull
 	LevelsReadoutWIcons    int // densities.levelsReadoutWIcons
@@ -58,7 +65,11 @@ type densityValues struct {
 	PopupSectionGap        int // densities.popupSectionGap
 	RowControlBtnSize      int // densities.rowControlBtnSize
 	RowHeight              int // densities.rowHeight
+	SamplerMinBodyH        int // densities.samplerMinBodyH
 	SamplerPlayheadStroke  int // densities.samplerPlayheadStroke
+	SamplerWaveMinH        int // densities.samplerWaveMinH
+	SidebarLabelScale      int // densities.sidebarLabelScale
+	SidebarValuePillW      int // densities.sidebarValuePillW
 	SliderThumbH           int // densities.sliderThumbH
 	SliderThumbW           int // densities.sliderThumbW
 	SliderTrackH           int // densities.sliderTrackH
@@ -70,12 +81,16 @@ type densityValues struct {
 	SynthChipH             int // densities.synthChipH
 	SynthChipMinW          int // densities.synthChipMinW
 	SynthChipStripH        int // densities.synthChipStripH
+	SynthConceptVizH       int // densities.synthConceptVizH
 	SynthDetailHeaderH     int // densities.synthDetailHeaderH
+	SynthFocusGraphH       int // densities.synthFocusGraphH
 	SynthHeaderButtonH     int // densities.synthHeaderButtonH
 	SynthHeaderThumbW      int // densities.synthHeaderThumbW
 	SynthKnobCaptionH      int // densities.synthKnobCaptionH
 	SynthKnobIdeal         int // densities.synthKnobIdeal
 	SynthKnobMin           int // densities.synthKnobMin
+	SynthPreviewMinW       int // densities.synthPreviewMinW
+	SynthPreviewTargetW    int // densities.synthPreviewTargetW
 	SynthSectionMinH       int // densities.synthSectionMinH
 	TimelineBarH           int // densities.timelineBarH
 	TransportBtnSize       int // densities.transportBtnSize
@@ -86,16 +101,21 @@ var (
 	genComfortableDensity = densityValues{
 		AccentStripeInsetY:     0,
 		AccentStripeWidth:      3,
-		ChainAggregateH:        16,
-		ChainAggregateW:        26,
+		AudioChannelMinW:       72,
+		AudioLabelMarginW:      28,
+		AudioPillGap:           3,
+		AudioPillH:             24,
+		AudioPillNarrowW:       18,
+		AudioPillPadX:          16,
+		AudioTabMinW:           28,
 		ChainAutoFitMinMs:      2,
 		ChainBadgeScale:        900,
+		ChainContentGap:        8,
 		ChainLabelScale:        850,
 		ChainLegendStripH:      16,
 		ChainMiniMeterGap:      3,
 		ChainMiniMeterW:        6,
 		ChainMiniWaveH:         7,
-		ChainModePillW:         36,
 		ChainPillScale:         850,
 		ChainReadoutScale:      800,
 		ChainScopeBottomMargin: 18,
@@ -117,6 +137,8 @@ var (
 		GrabZone:               5,
 		HeaderMaxH:             40,
 		HeaderMinH:             40,
+		KnobStepBadgeH:         18,
+		KnobStepBadgeW:         44,
 		LevelsReadoutFooterH:   16,
 		LevelsReadoutWFull:     180,
 		LevelsReadoutWIcons:    36,
@@ -130,7 +152,11 @@ var (
 		PopupSectionGap:        4,
 		RowControlBtnSize:      28,
 		RowHeight:              36,
+		SamplerMinBodyH:        48,
 		SamplerPlayheadStroke:  4,
+		SamplerWaveMinH:        36,
+		SidebarLabelScale:      1200,
+		SidebarValuePillW:      50,
 		SliderThumbH:           18,
 		SliderThumbW:           12,
 		SliderTrackH:           4,
@@ -142,12 +168,16 @@ var (
 		SynthChipH:             26,
 		SynthChipMinW:          64,
 		SynthChipStripH:        34,
+		SynthConceptVizH:       50,
 		SynthDetailHeaderH:     34,
+		SynthFocusGraphH:       120,
 		SynthHeaderButtonH:     28,
 		SynthHeaderThumbW:      120,
 		SynthKnobCaptionH:      18,
 		SynthKnobIdeal:         72,
 		SynthKnobMin:           28,
+		SynthPreviewMinW:       160,
+		SynthPreviewTargetW:    280,
 		SynthSectionMinH:       72,
 		TimelineBarH:           12,
 		TransportBtnSize:       32,
@@ -156,16 +186,21 @@ var (
 	genCompactDensity = densityValues{
 		AccentStripeInsetY:     0,
 		AccentStripeWidth:      2,
-		ChainAggregateH:        14,
-		ChainAggregateW:        22,
+		AudioChannelMinW:       60,
+		AudioLabelMarginW:      24,
+		AudioPillGap:           2,
+		AudioPillH:             20,
+		AudioPillNarrowW:       16,
+		AudioPillPadX:          12,
+		AudioTabMinW:           24,
 		ChainAutoFitMinMs:      2,
 		ChainBadgeScale:        800,
+		ChainContentGap:        6,
 		ChainLabelScale:        800,
 		ChainLegendStripH:      14,
 		ChainMiniMeterGap:      2,
 		ChainMiniMeterW:        3,
 		ChainMiniWaveH:         5,
-		ChainModePillW:         28,
 		ChainPillScale:         800,
 		ChainReadoutScale:      750,
 		ChainScopeBottomMargin: 14,
@@ -187,6 +222,8 @@ var (
 		GrabZone:               4,
 		HeaderMaxH:             36,
 		HeaderMinH:             36,
+		KnobStepBadgeH:         16,
+		KnobStepBadgeW:         38,
 		LevelsReadoutFooterH:   14,
 		LevelsReadoutWFull:     120,
 		LevelsReadoutWIcons:    28,
@@ -200,7 +237,11 @@ var (
 		PopupSectionGap:        3,
 		RowControlBtnSize:      24,
 		RowHeight:              32,
+		SamplerMinBodyH:        42,
 		SamplerPlayheadStroke:  3,
+		SamplerWaveMinH:        30,
+		SidebarLabelScale:      1100,
+		SidebarValuePillW:      44,
 		SliderThumbH:           16,
 		SliderThumbW:           10,
 		SliderTrackH:           3,
@@ -212,12 +253,16 @@ var (
 		SynthChipH:             22,
 		SynthChipMinW:          56,
 		SynthChipStripH:        28,
+		SynthConceptVizH:       38,
 		SynthDetailHeaderH:     28,
+		SynthFocusGraphH:       96,
 		SynthHeaderButtonH:     24,
 		SynthHeaderThumbW:      96,
 		SynthKnobCaptionH:      14,
 		SynthKnobIdeal:         56,
 		SynthKnobMin:           24,
+		SynthPreviewMinW:       140,
+		SynthPreviewTargetW:    240,
 		SynthSectionMinH:       56,
 		TimelineBarH:           10,
 		TransportBtnSize:       28,
@@ -226,16 +271,21 @@ var (
 	genSpaciousDensity = densityValues{
 		AccentStripeInsetY:     2,
 		AccentStripeWidth:      5,
-		ChainAggregateH:        20,
-		ChainAggregateW:        32,
+		AudioChannelMinW:       84,
+		AudioLabelMarginW:      32,
+		AudioPillGap:           4,
+		AudioPillH:             30,
+		AudioPillNarrowW:       22,
+		AudioPillPadX:          20,
+		AudioTabMinW:           34,
 		ChainAutoFitMinMs:      2,
 		ChainBadgeScale:        1050,
+		ChainContentGap:        10,
 		ChainLabelScale:        1100,
 		ChainLegendStripH:      22,
 		ChainMiniMeterGap:      4,
 		ChainMiniMeterW:        10,
 		ChainMiniWaveH:         12,
-		ChainModePillW:         48,
 		ChainPillScale:         1050,
 		ChainReadoutScale:      1000,
 		ChainScopeBottomMargin: 26,
@@ -257,6 +307,8 @@ var (
 		GrabZone:               16,
 		HeaderMaxH:             56,
 		HeaderMinH:             56,
+		KnobStepBadgeH:         22,
+		KnobStepBadgeW:         52,
 		LevelsReadoutFooterH:   20,
 		LevelsReadoutWFull:     220,
 		LevelsReadoutWIcons:    44,
@@ -268,9 +320,13 @@ var (
 		PopupGap:               6,
 		PopupPad:               10,
 		PopupSectionGap:        8,
-		RowControlBtnSize:      32,
+		RowControlBtnSize:      36,
 		RowHeight:              44,
+		SamplerMinBodyH:        56,
 		SamplerPlayheadStroke:  5,
+		SamplerWaveMinH:        44,
+		SidebarLabelScale:      1300,
+		SidebarValuePillW:      56,
 		SliderThumbH:           24,
 		SliderThumbW:           14,
 		SliderTrackH:           6,
@@ -282,12 +338,16 @@ var (
 		SynthChipH:             32,
 		SynthChipMinW:          72,
 		SynthChipStripH:        40,
+		SynthConceptVizH:       58,
 		SynthDetailHeaderH:     44,
+		SynthFocusGraphH:       140,
 		SynthHeaderButtonH:     44,
 		SynthHeaderThumbW:      80,
 		SynthKnobCaptionH:      22,
 		SynthKnobIdeal:         88,
 		SynthKnobMin:           40,
+		SynthPreviewMinW:       180,
+		SynthPreviewTargetW:    320,
 		SynthSectionMinH:       96,
 		TimelineBarH:           14,
 		TransportBtnSize:       44,

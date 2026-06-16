@@ -200,13 +200,14 @@ func TestDBInputMeetsTouchMinAtSpacious(t *testing.T) {
 	z.Layout(image.Rect(0, 0, 600, 240))
 
 	minTarget := Profile().MinTarget
-	for i, ti := range z.eqDBInputs {
-		if ti == nil {
+	for i := range z.dbReadoutRects {
+		r := z.dbReadoutRects[i]
+		if r.Empty() {
 			continue
 		}
-		h := ti.Rect.Dy()
+		h := r.Dy()
 		if h < minTarget {
-			t.Errorf("dB input %d height=%d < MinTarget=%d", i, h, minTarget)
+			t.Errorf("dB readout %d height=%d < MinTarget=%d", i, h, minTarget)
 		}
 	}
 }

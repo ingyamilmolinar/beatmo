@@ -6,8 +6,6 @@ import (
 	"image"
 	"math"
 	"testing"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // --- sliderGroupHitAdapter unit tests ---
@@ -444,8 +442,8 @@ func TestEQ_HPFHandleDrag(t *testing.T) {
 	}
 }
 
-// TestEQ_DBInputCommit verifies that focusing a dB input, changing text to
-// "6.0", and simulating Enter commits the value via OnGainChange + OnApplyEQ.
+// TestEQ_DBInputCommit verifies that opening the shared dB editor for a band,
+// typing "6.0", and committing applies the value via OnGainChange + OnApplyEQ.
 func TestEQ_DBInputCommit(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -456,36 +454,29 @@ func TestEQ_DBInputCommit(t *testing.T) {
 	tree.Update()
 	restore()
 
-	// Set up focused state: simulate what focus-gained would do.
-	ti := z.eqDBInputs[4]
-	z.dbInputPrev = 0
-	z.dbInputFocused = 4
-	ti.focused = true
-	ti.SetText("6.0")
-
-	// Simulate Enter key via HandleKey.
-	result := z.HandleKey(ebiten.KeyEnter)
-	if result != InputConsumed {
-		t.Errorf("expected InputConsumed from HandleKey(Enter), got %d", result)
-	}
+	// Open the shared editor over band 4, type a new value, commit (Enter/blur).
+	z.openEQDBEditor(4)
+	z.paramEditor.ti.SetText("6.0")
+	z.paramEditor.commit()
 
 	if z.bandGainsDB[4] != 6.0 {
 		t.Errorf("expected gain=6.0, got %v", z.bandGainsDB[4])
 	}
-	if ti.Focused() {
-		t.Error("expected dB input to be unfocused after Enter commit")
+	if z.paramEditor.Active() {
+		t.Error("expected dB editor closed after commit")
 	}
 	if len(log.gainChanges) == 0 || log.gainChanges[len(log.gainChanges)-1].db != 6.0 {
 		t.Error("expected OnGainChange(4, 6.0)")
 	}
 	if log.applyCount == 0 {
-		t.Error("expected OnApplyEQ fired after Enter commit")
+		t.Error("expected OnApplyEQ fired after commit")
 	}
 	_ = tree
 }
 
-// TestEQ_DBInputEscapeReverts verifies that focusing a dB input, changing text,
-// and pressing Escape reverts to the previous value without firing gain/apply callbacks.
+// TestEQ_DBInputEscapeReverts verifies that opening the shared dB editor,
+// typing a new value, and cancelling (Escape) reverts to the previous value
+// without firing gain/apply callbacks.
 func TestEQ_DBInputEscapeReverts(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -498,28 +489,20 @@ func TestEQ_DBInputEscapeReverts(t *testing.T) {
 
 	// Pre-set gain for band 5 to 3.0.
 	z.bandGainsDB[5] = 3.0
-	z.dbInputPrev = 3.0 // simulate what focus-gained saves
 
-	ti := z.eqDBInputs[5]
-	ti.focused = true
-	z.dbInputFocused = 5
-	ti.SetText("10.0") // user typed this
+	z.openEQDBEditor(5)
+	z.paramEditor.ti.SetText("10.0") // user typed this
+	z.paramEditor.cancel()
 
-	// Simulate Escape key.
-	result := z.HandleKey(ebiten.KeyEscape)
-	if result != InputConsumed {
-		t.Errorf("expected InputConsumed from HandleKey(Escape), got %d", result)
+	// Gain should remain at the pre-edit value; readout derives live from it.
+	if z.bandGainsDB[5] != 3.0 {
+		t.Errorf("expected gain reverted to 3.0, got %v", z.bandGainsDB[5])
 	}
-
-	// Text should revert to previous formatted value.
-	if ti.Value() != "+3.0" {
-		t.Errorf("expected text reverted to '+3.0', got %q", ti.Value())
+	if formatDB(z.bandGainsDB[5]) != "+3.0" {
+		t.Errorf("expected readout '+3.0', got %q", formatDB(z.bandGainsDB[5]))
 	}
-	if ti.Focused() {
-		t.Error("expected dB input unfocused after Escape")
-	}
-	if z.dbInputFocused != -1 {
-		t.Errorf("expected dbInputFocused=-1, got %d", z.dbInputFocused)
+	if z.paramEditor.Active() {
+		t.Error("expected dB editor closed after Escape")
 	}
 	// Escape should NOT fire OnGainChange or OnApplyEQ.
 	if len(log.gainChanges) != 0 {

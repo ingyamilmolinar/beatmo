@@ -33,9 +33,18 @@ func findLayerByID(t *testing.T, dv *DrumView, id string) Layer {
 	if dv.tree == nil {
 		t.Fatalf("dv.tree nil")
 	}
+	// Search both subtrees: the audio-panel layers (eq-panel, view-switch,
+	// row-eq-divider) live in dv.audioTree; everything else in dv.tree.
 	for _, l := range dv.tree.LayersForTest() {
 		if l.ID() == id {
 			return l
+		}
+	}
+	if dv.audioTree != nil {
+		for _, l := range dv.audioTree.LayersForTest() {
+			if l.ID() == id {
+				return l
+			}
 		}
 	}
 	return nil

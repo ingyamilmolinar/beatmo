@@ -65,6 +65,41 @@ func (inputCaptureHandler) OnWheel(x, y, steps int) InputResult { return InputIg
 // `rebuildHitAreas` loop doesn't allocate a fresh struct per frame.
 var sharedInputCaptureHandler inputCaptureHandler
 
+// inputCaptureWheelHandler is the catch-all variant that ALSO consumes the
+// wheel. It exists because the audio-panel subtree (dv.audioTree) is isolated:
+// there is no scroll-owning zone *beneath* the panel inside that subtree, so a
+// wheel the panel's own controls don't handle must stop here. If it bubbled
+// (the InputIgnored default), the legacy row-scroll fallback in
+// drumview_update.go — which lives OUTSIDE the tree and keys off the cursor
+// being inside dv.Bounds — would scroll the unrelated drum rows (the canonical
+// "wheel over a non-scrollable synth knob scrolls the rows" leak that the
+// two-subtree split fixes). Consuming sets the subtree's wheelHandled flag, and
+// drumview_update.go gates the legacy fallback on (dv.tree || dv.audioTree)
+// WheelHandled.
+type inputCaptureWheelHandler struct{ inputCaptureHandler }
+
+// OnWheel consumes the wheel so it does not bubble out of the isolated
+// audio-panel subtree to the legacy row-scroll fallback.
+func (inputCaptureWheelHandler) OnWheel(x, y, steps int) InputResult { return InputConsumed }
+
+// sharedInputCaptureWheelHandler is the stateless singleton for the
+// wheel-consuming catch-all.
+var sharedInputCaptureWheelHandler inputCaptureWheelHandler
+
+// NewInputCaptureHitAreaConsumeWheel returns a catch-all `HitArea` that consumes
+// both press AND wheel inside `rect` at `zIndex`. Use it for opaque zones living
+// in an isolated subtree with no scroll-owning zone beneath them (the audio
+// panel). For zones whose subtree owns scrolling beneath the catch-all, use
+// NewInputCaptureHitArea (wheel bubbles).
+func NewInputCaptureHitAreaConsumeWheel(rect image.Rectangle, zIndex int, tag string) HitArea {
+	return HitArea{
+		Rect:    rect,
+		ZIndex:  zIndex,
+		Handler: sharedInputCaptureWheelHandler,
+		Tag:     tag,
+	}
+}
+
 // NewInputCaptureHitArea returns a `HitArea` that consumes any press
 // inside `rect` at `zIndex`. Drag/release/wheel pass through.
 //

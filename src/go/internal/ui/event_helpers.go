@@ -115,10 +115,11 @@ func emitSubdivChange(subdiv int) {
 	recordUndo(hooks.EventSubdivChange)
 }
 
-// emitLengthChange publishes EventLengthChange.
+// emitLengthChange publishes EventLengthChange. Length is derived display state
+// (re-computed from the graph beat-path; not in the export schema), so it is
+// intentionally NOT tapped for undo — see TestUndoRecordedSetExcludesNonDocument.
 func emitLengthChange(length int) {
 	hooks.PublishWithSource(hooks.EventLengthChange, hooks.LengthPayload{Length: length}, hooks.CaptureSource(1))
-	recordUndo(hooks.EventLengthChange)
 }
 
 // emitRowAdded publishes EventRowAdded.
@@ -147,16 +148,17 @@ func emitRowInstrumentChange(row int, oldInstrument, instrument, name string) {
 	recordUndo(hooks.EventRowInstrumentChange)
 }
 
-// emitRowMute publishes EventRowMute.
+// emitRowMute publishes EventRowMute. Mute is session state (not in the export
+// schema), so it is intentionally NOT tapped for undo — see documentScopeKinds
+// and TestMuteSoloNotUndoableByDesign.
 func emitRowMute(row int, mute bool) {
 	hooks.PublishWithSource(hooks.EventRowMute, hooks.RowChangePayload{Row: row, Mute: mute}, hooks.CaptureSource(1))
-	recordUndo(hooks.EventRowMute)
 }
 
-// emitRowSolo publishes EventRowSolo.
+// emitRowSolo publishes EventRowSolo. Solo is session state (not in the export
+// schema), so it is intentionally NOT tapped for undo.
 func emitRowSolo(row int, solo bool) {
 	hooks.PublishWithSource(hooks.EventRowSolo, hooks.RowChangePayload{Row: row, Solo: solo}, hooks.CaptureSource(1))
-	recordUndo(hooks.EventRowSolo)
 }
 
 // emitMasterVolumeChange publishes EventMasterVolumeChange. Called from
@@ -232,6 +234,16 @@ func emitFavoriteToggled(instrumentID string, isFavorite bool) {
 func emitEQBandChange(channel string, band int, gainDB float64) {
 	hooks.PublishWithSource(hooks.EventEQBandChange, hooks.EQBandPayload{
 		Channel: channel, Band: band, GainDB: gainDB,
+	}, hooks.CaptureSource(1))
+}
+
+// emitEQFilterToggled publishes EventEQFilterToggled when a channel's HPF or
+// LPF enable toggles. channel is the row instrument id ("main", "kick"…),
+// filter is "hpf" or "lpf". Paired with recordUndoStep at the commit site
+// (the toggle handler), mirroring emitEQBandChange / commitEQBand.
+func emitEQFilterToggled(channel, filter string, enabled bool, cutoffHz float64) {
+	hooks.PublishWithSource(hooks.EventEQFilterToggled, hooks.EQFilterPayload{
+		Channel: channel, Filter: filter, Enabled: enabled, CutoffHz: cutoffHz,
 	}, hooks.CaptureSource(1))
 }
 

@@ -157,7 +157,10 @@ func TestViewModeTransitionMatrix(t *testing.T) {
 						continue
 					}
 					cx, cy := (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2
-					hits := dv.tree.HitIndexRef().At(cx, cy)
+					// The view-switch segmented control is published into the
+					// audio subtree's HitIndex (so its ZViewSwitch z outranks the
+					// eq-panel catch-all in the same subtree). Check there.
+					hits := dv.audioTree.HitIndexRef().At(cx, cy)
 					if len(hits) == 0 {
 						t.Fatalf("%s->%s: no hit at the %s segment (%d,%d) — the user cannot switch tabs from here",
 							from.name, to.name, seg.name, cx, cy)

@@ -69,16 +69,24 @@ func TestSplitterInputBoundsReduced(t *testing.T) {
 
 	bounds := s.InputBounds()
 
+	// Below the divider the strip extends only far enough to cover the visible
+	// handle pill — NOT the full TouchGrabZone (which would re-introduce the
+	// drum-button-steal bug). No-steal off the pill is enforced by HandleInput
+	// (see TestSplitterCapturesPillButNotOffPillBelowDivider).
+	pill := s.HandleRect().Inset(-SpaceSM)
 	belowExtent := bounds.Max.Y - s.Y
-	if belowExtent > 4 {
-		t.Errorf("Expected below-divider extent <= 4px, got %d (bounds.Max.Y=%d, s.Y=%d)", belowExtent, bounds.Max.Y, s.Y)
+	pillBelow := pill.Max.Y - s.Y
+	if belowExtent != pillBelow {
+		t.Errorf("Expected below-divider extent = pill extent %d, got %d", pillBelow, belowExtent)
+	}
+	if belowExtent >= TouchGrabZone() {
+		t.Errorf("below-divider extent %d must stay well under the full TouchGrabZone %d", belowExtent, TouchGrabZone())
 	}
 
-	// Above-divider should still be the full grab zone.
+	// Above-divider should still be at least the full grab zone.
 	aboveExtent := s.Y - bounds.Min.Y
-	expectedGrab := TouchGrabZone()
-	if aboveExtent != expectedGrab {
-		t.Errorf("Expected above-divider extent = %d (TouchGrabZone), got %d", expectedGrab, aboveExtent)
+	if aboveExtent < TouchGrabZone() {
+		t.Errorf("Expected above-divider extent >= %d (TouchGrabZone), got %d", TouchGrabZone(), aboveExtent)
 	}
 }
 
@@ -97,15 +105,21 @@ func TestSplitterInputBoundsReducedSideBySide(t *testing.T) {
 
 	bounds := s.InputBounds()
 
+	// Right of the divider the strip extends only far enough to cover the
+	// visible handle pill — NOT the full TouchGrabZone.
+	pill := s.HandleRect().Inset(-SpaceSM)
 	rightExtent := bounds.Max.X - s.X
-	if rightExtent > 4 {
-		t.Errorf("Expected right-of-divider extent <= 4px, got %d", rightExtent)
+	pillRight := pill.Max.X - s.X
+	if rightExtent != pillRight {
+		t.Errorf("Expected right-of-divider extent = pill extent %d, got %d", pillRight, rightExtent)
+	}
+	if rightExtent >= TouchGrabZone() {
+		t.Errorf("right-of-divider extent %d must stay well under the full TouchGrabZone %d", rightExtent, TouchGrabZone())
 	}
 
 	leftExtent := s.X - bounds.Min.X
-	expectedGrab := TouchGrabZone()
-	if leftExtent != expectedGrab {
-		t.Errorf("Expected left-of-divider extent = %d (TouchGrabZone), got %d", expectedGrab, leftExtent)
+	if leftExtent < TouchGrabZone() {
+		t.Errorf("Expected left-of-divider extent >= %d (TouchGrabZone), got %d", TouchGrabZone(), leftExtent)
 	}
 }
 

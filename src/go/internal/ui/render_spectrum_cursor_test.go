@@ -137,19 +137,21 @@ func TestSpectrumLinearModeBucketsByEqualHz(t *testing.T) {
 }
 
 // countBars returns the number of distinct vertical "bar" rects emitted by
-// the spectrum renderer. We discriminate by color (colWaveTrace) and by
-// shape: bars are tall (Dy > 1) and a few pixels wide (Dx <= ~50).
-// dB-grid dashes and peak markers are 1px tall, so they're excluded.
+// the spectrum renderer. Bars are now drawn as a three-band synthwave
+// gradient (drawSpectrumBarGradient), so we discriminate by ANY of the three
+// gradient colors and group rects by Min.X column so a single bar's three
+// bands count once. dB-grid dashes and peak markers are 1px tall, so they're
+// excluded by the Dy >= 2 floor.
 func countBars(rects []drawnRect) int {
-	wave := color.RGBAModel.Convert(colWaveTrace).(color.RGBA)
-	// Each band emits at most one bar — group rects by Min.X column so we
-	// don't over-count.
+	top := color.RGBAModel.Convert(colSpectrumBarTop).(color.RGBA)
+	mid := color.RGBAModel.Convert(colSpectrumBarMid).(color.RGBA)
+	base := color.RGBAModel.Convert(colSpectrumBarBase).(color.RGBA)
+	isBar := func(c color.RGBA) bool { return c == top || c == mid || c == base }
+	// Each band emits up to three rects (top/mid/base) sharing a Min.X —
+	// group by column so we don't over-count.
 	seen := map[int]bool{}
 	for _, r := range rects {
-		if r.Color != wave {
-			continue
-		}
-		if r.Rect.Dy() < 2 {
+		if !isBar(r.Color) {
 			continue
 		}
 		if r.Rect.Dx() > 80 {
@@ -158,12 +160,11 @@ func countBars(rects []drawnRect) int {
 		seen[r.Rect.Min.X] = true
 	}
 	// Guard: at least one bar must exist; if the rough heuristics get out
-	// of sync with the renderer return -1 so the caller surfaces a clear
+	// of sync with the renderer return 0 so the caller surfaces a clear
 	// failure.
 	if len(seen) == 0 {
-		// Fall back to "any colWaveTrace tall rect".
 		for _, r := range rects {
-			if r.Color == wave && r.Rect.Dy() >= 2 {
+			if isBar(r.Color) {
 				return 1
 			}
 		}

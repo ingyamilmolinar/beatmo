@@ -170,20 +170,34 @@ func TestMasterVolIcon_StyleParityWithRowIcon_Mobile(t *testing.T) {
 	}
 	z.mainVolSlider.Value = 0.5
 
-	// Master: should produce zero filled rounded rects (no chip) and zero
-	// bottom-edge fill bars (no overlay).
+	// Parity check: the master icon and a direct drawVolumeButton call with the
+	// same parameters must produce an identical count of filled rounded rects.
+	// Both share the same drawVolumeButton implementation, so any divergence
+	// means the master path has extra chrome. We also guard that the indicator
+	// actually draws at least one rounded rect (the neon rail).
 	dstM := ebiten.NewImage(720, 240)
 	roundedM := captureRoundedRect(t, func() {
 		z.drawMasterVolIconOffset(dstM, 0, 0)
 	})
-	var chipCount int
-	for _, c := range roundedM {
-		if c.Filled {
-			chipCount++
+	dstR := ebiten.NewImage(720, 240)
+	roundedR := captureRoundedRect(t, func() {
+		drawVolumeButton(dstR, z.mainVolIconRect, 0.5, false, nil)
+	})
+	countFilledRoundedRects := func(calls []styleDrawCall) int {
+		n := 0
+		for _, c := range calls {
+			if c.Filled {
+				n++
+			}
 		}
+		return n
 	}
-	if chipCount != 0 {
-		t.Fatalf("master vol icon drew %d rounded chip(s); row vol icon style draws zero", chipCount)
+	mCount, rCount := countFilledRoundedRects(roundedM), countFilledRoundedRects(roundedR)
+	if mCount != rCount {
+		t.Fatalf("master vol icon drew %d filled rounded rect(s); per-row icon draws %d — must match for style parity", mCount, rCount)
+	}
+	if mCount == 0 {
+		t.Fatalf("expected the level indicator to draw a rounded rail; got 0 rounded rects")
 	}
 }
 

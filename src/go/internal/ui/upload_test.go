@@ -22,6 +22,28 @@ func waitForUploadNaming(t *testing.T, g *Game) {
 	t.Fatalf("upload click did not enter naming state (uploading=%v naming=%v)", g.drum.uploading, g.drum.IsNamingOpen())
 }
 
+// clickUploadViaOverflow opens the overflow ("...") menu and fires its "Upload"
+// entry. Upload is no longer an inline transport button on either platform — it
+// lives behind the overflow menu — so this is the real user path to start an
+// upload. The overflow entry invokes the same uploadBtn().OnClick the inline
+// button used to, exercising the menu-item wiring end to end.
+func clickUploadViaOverflow(t *testing.T, g *Game) {
+	t.Helper()
+	dv := g.drum
+	dv.OpenOverflowMenu()
+	if !dv.IsOverflowMenuOpen() {
+		t.Fatalf("overflow menu did not open")
+	}
+	for _, b := range dv.overflowPopupBtns(dv.overflowPopupRect()) {
+		if b.Text == "Upload" {
+			r := b.Rect()
+			dv.fireOverflowMenuTapAt(r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2)
+			return
+		}
+	}
+	t.Fatalf("Upload entry not found in overflow menu")
+}
+
 func TestUploadWAVRegistersInstrument(t *testing.T) {
 	withDefaultAudio(t)
 	g := New(testLogger)
@@ -90,9 +112,8 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 	g.drum.recalcButtons()
 	initial := g.drum.Rows[0].Instrument
 
-	// first upload via button click
-	r := g.drum.uploadBtn().Rect()
-	click(g, r.Min.X+1, r.Min.Y+1)
+	// first upload via the overflow menu's Upload entry
+	clickUploadViaOverflow(t, g)
 	waitForUploadNaming(t, g)
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
@@ -120,22 +141,12 @@ func TestUploadButtonWorksAfterSelectingCustom(t *testing.T) {
 		t.Fatalf("expected instrument 'a' to be listed after upload")
 	}
 
-	// simulate clicking upload button again
-	restore2 := SetInputForTest(
-		func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
-		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 0, 0 },
-	)
-	t.Cleanup(restore2)
-	g.drum.Update()
-	if !g.drum.uploading {
-		t.Fatalf("upload button inactive")
+	// upload again via the overflow menu — the entry must keep working after a
+	// prior upload completed.
+	clickUploadViaOverflow(t, g)
+	if !g.drum.uploading && !g.drum.IsNamingOpen() {
+		t.Fatalf("upload entry inactive on second use")
 	}
-	restore2()
-	g.drum.Update()
 }
 
 // When the instrument menu is open, clicking Upload should close the menu and
@@ -157,15 +168,13 @@ func TestUploadButtonWhileMenuOpen(t *testing.T) {
 		t.Fatalf("instrument menu did not open")
 	}
 
-	// Click Upload while menu is open
-	r := g.drum.uploadBtn().Rect()
-	click(g, r.Min.X+1, r.Min.Y+1)
-
-	if g.drum.IsInstMenuOpen() {
-		t.Fatalf("instrument menu still open after upload click")
-	}
+	// Start an upload via the overflow "..." menu while the instrument menu is
+	// open. Upload is no longer an inline button (it moved behind the overflow
+	// menu), so this is the path a user takes — it must still trigger the
+	// upload flow regardless of the instrument menu being open.
+	clickUploadViaOverflow(t, g)
 	if !g.drum.uploading && !g.drum.IsNamingOpen() {
-		t.Fatalf("upload not triggered while menu open")
+		t.Fatalf("upload not triggered via overflow while instrument menu open")
 	}
 }
 
@@ -182,8 +191,7 @@ func TestUploadButtonClickableTwice(t *testing.T) {
 	g.Layout(640, 480)
 	g.drum.recalcButtons()
 
-	r := g.drum.uploadBtn().Rect()
-	click(g, r.Min.X+1, r.Min.Y+1)
+	clickUploadViaOverflow(t, g)
 	waitForUploadNaming(t, g)
 	// dismiss naming dialog
 	restore := SetInputForTest(
@@ -201,8 +209,7 @@ func TestUploadButtonClickableTwice(t *testing.T) {
 		t.Fatalf("naming still active after Escape")
 	}
 
-	r = g.drum.uploadBtn().Rect()
-	click(g, r.Min.X+1, r.Min.Y+1)
+	clickUploadViaOverflow(t, g)
 	g.drum.Update()
 	if !g.drum.uploading && !g.drum.IsNamingOpen() {
 		t.Fatalf("second click did not trigger upload")

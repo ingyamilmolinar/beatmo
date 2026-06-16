@@ -280,7 +280,9 @@ func TestInstMenuToggleOnSecondClick(t *testing.T) {
 }
 
 // TestInstMenuMobileStaysOpen tests that on a small screen (mobile layout),
-// opening the inst menu via the row label keeps it open.
+// tapping the row label opens the instrument picker directly (cross-platform
+// parity with desktop — see the 2026-06-13 mobile-instrument-button design)
+// and that it stays open across subsequent frames.
 func TestInstMenuMobileStaysOpen(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -326,7 +328,7 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
-	// Frame 1: press on row label — on mobile, opens context menu (not inst menu)
+	// Frame 1: press on row label — on every platform, opens the inst menu.
 	restorePress := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -338,9 +340,12 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	dv.Update()
 	restorePress()
 
-	if !dv.IsContextMenuOpen() {
-		t.Fatalf("mobile context menu should be open after press on label (contextMenuOpen=%v, anyDragActive=%v)",
-			dv.IsContextMenuOpen(), dv.anyDragActive())
+	if !dv.IsInstMenuOpen() {
+		t.Fatalf("mobile inst menu should be open after press on label (instMenuOpen=%v, contextMenuOpen=%v, anyDragActive=%v)",
+			dv.IsInstMenuOpen(), dv.IsContextMenuOpen(), dv.anyDragActive())
+	}
+	if dv.IsContextMenuOpen() {
+		t.Fatal("mobile label tap must NOT open the context menu anymore")
 	}
 
 	// Frame 2: release
@@ -355,8 +360,8 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	dv.Update()
 	restoreRel()
 
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("mobile context menu should still be open after release")
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("mobile inst menu should still be open after release")
 	}
 
 	// Verify stays open for several idle frames
@@ -370,8 +375,8 @@ func TestInstMenuMobileStaysOpen(t *testing.T) {
 	)
 	for i := 0; i < 10; i++ {
 		dv.Update()
-		if !dv.IsContextMenuOpen() {
-			t.Fatalf("mobile context menu closed on idle frame %d", i)
+		if !dv.IsInstMenuOpen() {
+			t.Fatalf("mobile inst menu closed on idle frame %d", i)
 		}
 	}
 	restore()
@@ -424,7 +429,7 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	cx := lblRect.Min.X + lblRect.Dx()/2
 	cy := lblRect.Min.Y + lblRect.Dy()/2
 
-	// --- Phase 1: Open context menu via the row label (mobile behavior) ---
+	// --- Phase 1: Open the inst menu via the row label (every platform) ---
 	r1 := SetInputForTest(
 		func() (int, int) { return cx, cy },
 		func(b ebiten.MouseButton) bool { return b == ebiten.MouseButtonLeft },
@@ -436,8 +441,8 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	dv.Update()
 	r1()
 
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should be open after press on label")
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should be open after press on label")
 	}
 
 	// --- Phase 2: Release ---
@@ -452,15 +457,16 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	dv.Update()
 	r2()
 
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should stay open after release")
+	if !dv.IsInstMenuOpen() {
+		t.Fatal("inst menu should stay open after release")
 	}
 
 	// --- Phase 3: Verify the Game-level guard ---
-	// anyDropdownOpen() must return true when the context menu is open.
-	// This is the condition that prevents tap injection in game_update.go.
+	// anyDropdownOpen() must return true when a row popup is open (the inst
+	// menu and the context menu both open through the same portal). This is
+	// the condition that prevents tap injection in game_update.go.
 	if !dv.anyDropdownOpen() {
-		t.Fatal("anyDropdownOpen() should return true when context menu is open")
+		t.Fatal("anyDropdownOpen() should return true when the inst menu is open")
 	}
 
 	// The Game-level guard in game_update.go:
@@ -469,7 +475,7 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	// This prevents the double-fire that causes the menu to toggle closed.
 	t.Log("anyDropdownOpen() correctly returns true — tap injection blocked")
 
-	// --- Phase 4: Verify context menu survives idle frames ---
+	// --- Phase 4: Verify the inst menu survives idle frames ---
 	idle := SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(b ebiten.MouseButton) bool { return false },
@@ -480,8 +486,8 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 	)
 	for i := 0; i < 5; i++ {
 		dv.Update()
-		if !dv.IsContextMenuOpen() {
-			t.Fatalf("context menu closed on idle frame %d", i)
+		if !dv.IsInstMenuOpen() {
+			t.Fatalf("inst menu closed on idle frame %d", i)
 		}
 	}
 	idle()
@@ -490,8 +496,8 @@ func TestInstMenuMobileTapInjectionDoesNotClose(t *testing.T) {
 }
 
 // TestInstMenuMobileWithCategories tests mobile layout with forced categories.
-// On mobile, the label opens the context menu first; the "Instrument" item
-// in the context menu opens the inst menu with categories.
+// Tapping the row label opens the inst menu directly (every platform); with
+// forced categories it opens in categories mode.
 func TestInstMenuMobileWithCategories(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -538,31 +544,20 @@ func TestInstMenuMobileWithCategories(t *testing.T) {
 		t.Fatal("rowLabels not created")
 	}
 
-	// On mobile, clicking the label opens the context menu.
-	// Then clicking "Instrument" in the context menu opens the inst menu.
-	dv.openContextMenu(0)
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should be open")
-	}
+	// Tapping the row label opens the inst menu directly on every platform.
+	lblRect := dv.rowLabels()[0].Rect()
+	cx := lblRect.Min.X + lblRect.Dx()/2
+	cy := lblRect.Min.Y + lblRect.Dy()/2
+	clickDrumViewAt(t, dv, cx, cy, 390, 844)
 
-	// Find and click the "Instrument" button in the context menu.
-	var instBtn *Button
-	for _, btn := range dv.contextMenuBtns {
-		if btn.Text == "Instrument" {
-			instBtn = btn
-			break
-		}
-	}
-	if instBtn == nil {
-		t.Fatal("Instrument button not found in context menu")
-	}
-	instBtn.OnClick()
-
-	t.Logf("After Instrument click: instMenuOpen=%v, compOpen=%v",
+	t.Logf("After label tap: instMenuOpen=%v, compOpen=%v",
 		dv.IsInstMenuOpen(), dv.instMenuComp != nil && dv.instMenuComp.IsOpen())
 
 	if !dv.IsInstMenuOpen() {
 		t.Fatal("mobile inst menu with categories should be open")
+	}
+	if dv.IsContextMenuOpen() {
+		t.Fatal("mobile label tap must not open the context menu")
 	}
 
 	// Check it's in categories mode

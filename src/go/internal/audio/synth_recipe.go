@@ -30,6 +30,11 @@ type ParamDef struct {
 	// render a selector instead of a knob. A ParamDef without an enum serializes
 	// exactly as v1 (no "enum" key), so existing recipe goldens are unaffected.
 	Enum []string `json:"enum,omitempty"`
+	// Step (v2, additive + omitempty) marks a non-enum param as DISCRETE with
+	// detents at Min, Min+Step, ... Max. Enum params are implicitly Step:1.
+	// A zero Step serializes identically to v1 (no "step" key), so existing
+	// recipe goldens are unaffected.
+	Step float64 `json:"step,omitempty"`
 }
 
 // RecipeParams is the IPC-shaped parameter payload. Keys are ParamDef.Name.

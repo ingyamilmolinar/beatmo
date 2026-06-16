@@ -3,10 +3,18 @@ package ui
 import (
 	"image"
 	"image/color"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
+
+// AcceptTextRune is the input filter for free-text fields (e.g. instrument
+// names): it permits any printable Unicode rune — letters, marks, digits,
+// punctuation, symbols, and spaces across all scripts — so non-ASCII names
+// (é, ñ, 日本語) can be typed. Control characters are rejected. Numeric fields
+// keep the ASCII-only default instead (they set no Accept).
+func AcceptTextRune(r rune) bool { return unicode.IsGraphic(r) }
 
 // TextInput is a reusable editable text box with cursor support.
 type TextInput struct {
@@ -37,6 +45,18 @@ type TextInput struct {
 // NewTextInput constructs a text input with the given rectangle and style.
 func NewTextInput(r image.Rectangle, style TextInputStyle) *TextInput {
 	return &TextInput{Rect: r, Style: style, repeat: make(map[ebiten.Key]int)}
+}
+
+// FitWidth returns a box width that fits text (plus padding + caret margin),
+// never below minW. Shared sizing for inline editable boxes.
+func FitWidth(text string, minW int) int {
+	const pad = 4
+	const caretMargin = 8
+	w := TextWidth(text) + 2*pad + caretMargin
+	if w < minW {
+		w = minW
+	}
+	return w
 }
 
 // Focused reports whether the input currently has focus.
@@ -209,12 +229,16 @@ func (t *TextInput) Update() bool {
 			t.cursor--
 		}
 	}
-	if t.keyRepeat(ebiten.KeyLeft) {
+	// Left/Right move the caret. The keyRepeat path covers desktop (and any
+	// platform where the canvas receives the keydown); consumeSoftKeyboardArrow*
+	// covers WASM, where the hidden soft-keyboard proxy holds keyboard focus and
+	// the canvas never sees the arrow keydown (the proxy forwards it out-of-band).
+	if t.keyRepeat(ebiten.KeyLeft) || consumeSoftKeyboardArrowLeft() {
 		if t.cursor > 0 {
 			t.cursor--
 		}
 	}
-	if t.keyRepeat(ebiten.KeyRight) {
+	if t.keyRepeat(ebiten.KeyRight) || consumeSoftKeyboardArrowRight() {
 		if t.cursor < utf8.RuneCountInString(t.Text) {
 			t.cursor++
 		}

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 	"math"
 
@@ -45,6 +44,11 @@ type TimelineCallbacks struct {
 	MobileEQActive  func() bool            // mobile EQ mode active
 	BeatCounterRect func() image.Rectangle // beat counter display rect
 	RowsTopY        func() int             // Y coordinate where rows start (Bounds.Min.Y + headerH)
+
+	// Notification band area (right of the beat counter).
+	NotifRect    func() image.Rectangle                 // dedicated notification area rect
+	NotifLatest  func() (text string, isErr, show bool) // live entry to render (show=false → idle)
+	OnNotifClick func()                                 // open the history popup
 
 	// Action callbacks
 	OnOffsetChange   func(newOffset int)
@@ -106,9 +110,9 @@ type TimelineZone struct {
 	highlightsByRow [][]highlightEntry
 
 	// Highlight sprite cache
-	hlSpriteReg    *ebiten.Image
-	hlSpriteMute   *ebiten.Image
-	hlSpriteH      int
+	hlSpriteReg  *ebiten.Image
+	hlSpriteMute *ebiten.Image
+	hlSpriteH    int
 	// --- Per-row sprite cache (owned by zone, aliased to DrumView) ---
 
 	// Timeline base cache (background + beat markers)
@@ -233,6 +237,7 @@ func (z *TimelineZone) Draw(screen *ebiten.Image) {
 	// --- Beat/time counter ---
 	if !simpleDraw && !perfDrawLite {
 		z.drawBeatCounter(screen, elapsedBeats)
+		z.drawNotifArea(screen)
 	}
 
 	// --- Len +/- buttons ---
@@ -389,6 +394,10 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 			z.TlCache.Clear()
 		}
 		drawRect(z.TlCache, image.Rect(0, 0, z.TlCacheW, z.TlCacheH), colTimelineTotal, true)
+		// Faint amber track fill so the bright view-rect reads as a window
+		// onto a recessed warm "sunset" track rather than floating in the
+		// near-black total-bg. Baked into the cache (alloc-free per frame).
+		drawRect(z.TlCache, image.Rect(0, 0, z.TlCacheW, z.TlCacheH), WithAlpha(genColorTimelineView, AlphaFaint), true)
 		z.drawRibbonTicks(z.TlCache, winStart, pxPerBeat)
 	}
 	var op ebiten.DrawImageOptions
@@ -445,6 +454,9 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	}
 	cursorRect := image.Rect(cursorX-cursorThick, barRect.Min.Y, cursorX+cursorThick, barRect.Max.Y)
 	drawRect(dst, cursorRect, cursorCol, true)
+	// 1px brighter core so the playhead is findable against the warm ticks.
+	coreRect := image.Rect(cursorX, barRect.Min.Y, cursorX+1, barRect.Max.Y)
+	drawRect(dst, coreRect, colAccentBright, true)
 
 	drawRect(dst, barRect, colButtonBorder, false)
 }
@@ -514,8 +526,26 @@ func (z *TimelineZone) timelineInfoCached(elapsedBeats float64) string {
 	curS := curMS / 1000
 	z.LastInfoCurMS = curMS
 	z.LastInfoTotMS = totMS
-	z.LastInfoText = fmt.Sprintf("Beat %d · %s", int(elapsedBeats)+1, formatElapsedTime(curS))
+	z.LastInfoText = formatBeatReadout(int(elapsedBeats)+1, curS)
 	return z.LastInfoText
+}
+
+// beatCounterSlotWidth returns a stable left-anchored slot width for the beat
+// counter pill, sized to a generous upper-bound readout so the adjacent
+// notification area doesn't reflow as the live counter text changes width frame
+// to frame. Mobile uses the position-only upper bound ("Beat 888") to match the
+// compact mobile readout (see formatBeatReadout) — the desktop "Beat 888 ·
+// 88:88" bound would exceed the narrow mobile band and steal the whole band
+// from the notification area.
+func beatCounterSlotWidth() int {
+	if Profile().IsMobile() {
+		// Compact mobile form "N · M:SS" (see formatBeatReadout). A stable
+		// upper bound sized for 3-digit beats and m:ss keeps the notif slot's
+		// left edge from jittering as the readout digits change, while still
+		// leaving the dedicated notification area room in the ~90 px band.
+		return TextWidth("888 · 8:88") + 2*beatCounterPillPadX
+	}
+	return TextWidth("Beat 888 · 88:88") + 2*beatCounterPillPadX
 }
 
 // drawBeatCounter renders the beat/time counter above the timeline bar
@@ -548,18 +578,67 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 	if pillH > beatCounterRect.Dy() {
 		pillH = beatCounterRect.Dy()
 	}
-	// Right-aligned: pillX = Max.X - pillW. Falls back to left-anchor if
-	// the rect is too narrow to host the chip.
-	pillX := beatCounterRect.Max.X - pillW
-	if pillX < beatCounterRect.Min.X {
-		pillX = beatCounterRect.Min.X
-	}
+	// Left-anchored: the counter now lives in a left slot next to the track
+	// chip, with the notification area to its right (notification redesign).
+	pillX := beatCounterRect.Min.X
 	pillY := beatCounterRect.Min.Y + (beatCounterRect.Dy()-pillH)/2
 	pillR := image.Rect(pillX, pillY, pillX+pillW, pillY+pillH)
-	drawRoundedRect(dst, pillR, colSurface1, RadiusMD, true)
-	drawRoundedRect(dst, pillR, colBorderSubtle, RadiusMD, false)
+	// Square corners (plain rect) — the rounded pill read as ugly chrome.
+	drawRect(dst, pillR, colSurface1, true)
+	drawRect(dst, pillR, colBorderSubtle, false)
 	infoY := pillY + pillPadY
 	DrawTextAt(dst, info, pillX+pillPadX, infoY)
+}
+
+// drawNotifArea renders the dedicated in-band notification area to the right of
+// the beat counter. The latest session notification is shown on a single line;
+// a message too wide for the area scrolls slowly leftward (marquee), clipped to
+// the area. Errors render in red, info in the primary text color. When no
+// session notification exists the area paints an empty recessed slot.
+func (z *TimelineZone) drawNotifArea(dst *ebiten.Image) {
+	if z.callbacks.NotifRect == nil {
+		return
+	}
+	r := z.callbacks.NotifRect()
+	if r.Empty() {
+		return
+	}
+	// Recessed slot background so the area reads as a dedicated container.
+	// Square corners (plain rect) to match the squared beat-counter chip.
+	drawRect(dst, r, colSurface1, true)
+	drawRect(dst, r, colBorderSubtle, false)
+
+	text, isErr, show := "", false, false
+	if z.callbacks.NotifLatest != nil {
+		text, isErr, show = z.callbacks.NotifLatest()
+	}
+	if !show || text == "" {
+		return
+	}
+	pad := beatCounterPillPadX
+	innerW := r.Dx() - 2*pad
+	if innerW <= 0 {
+		return
+	}
+	// Severity color: red for errors, primary for info.
+	accent := colTextPrimary
+	if isErr {
+		accent = colError
+	}
+	stripe := image.Rect(r.Min.X, r.Min.Y, r.Min.X+3, r.Max.Y)
+	drawRect(dst, stripe, accent, true)
+
+	tw := TextWidth(text)
+	frame := 0
+	if z.callbacks.Frame != nil {
+		frame = int(z.callbacks.Frame())
+	}
+	offX := notifMarqueeOffsetX(frame, tw, innerW, pad)
+	textY := r.Min.Y + (r.Dy()-TextHeight())/2
+	// Clip to the inner area so the scrolling text never paints outside the slot.
+	inner := image.Rect(r.Min.X+pad, r.Min.Y, r.Max.X-pad, r.Max.Y)
+	sub := dst.SubImage(inner).(*ebiten.Image)
+	DrawTextColorAt(sub, text, inner.Min.X+offX, textY, accent)
 }
 
 // rowsTopY returns the Y coordinate where rows start. Uses the RowsTopY
@@ -1098,7 +1177,71 @@ func (z *TimelineZone) rebuildHitAreas() {
 			// rect by recalcButtons(), so clipping prevents mobile touch hits.
 		})
 	}
+
+	// Beat counter: a visible opaque chip with no action of its own. It sits
+	// in the band between the track chip (left) and the notification area
+	// (right), both of which register Touch-expanded hit areas (44 px on every
+	// side, clipped only to the whole zone). Without its own hit area, those
+	// expansions reach over the counter and a tap on it opened the track menu
+	// or the notification history. Register a non-Touch catch-all on its exact
+	// rect: HitIndex.At sorts exact-rect hits ahead of touch-expanded-only
+	// hits, so this wins for any tap inside the counter, and it consumes the
+	// press (the counter has no action) so nothing falls through. This is the
+	// opaque-to-z contract applied to the counter. Regression test:
+	// beat_counter_input_isolation_test.go.
+	if z.callbacks.BeatCounterRect != nil {
+		if bc := z.callbacks.BeatCounterRect(); !bc.Empty() {
+			z.hitAreas = append(z.hitAreas, HitArea{
+				Rect:     bc,
+				ZIndex:   zBtn,
+				Handler:  &beatCounterHitAdapter{},
+				Tag:      "timeline-beat-counter",
+				ClipRect: z.rect,
+			})
+		}
+	}
+
+	// Notification area: click anywhere in the band's notif strip to open the
+	// history popup. Lives at the same z as the other band buttons.
+	if z.callbacks.NotifRect != nil {
+		if nr := z.callbacks.NotifRect(); !nr.Empty() {
+			z.hitAreas = append(z.hitAreas, HitArea{
+				Rect:     nr,
+				ZIndex:   zBtn,
+				Handler:  &notifClickAdapter{zone: z},
+				Tag:      "timeline-notif",
+				Touch:    true,
+				ClipRect: z.rect,
+			})
+		}
+	}
 }
+
+// beatCounterHitAdapter absorbs presses on the beat-counter chip so a
+// band-mate's touch-expanded hit area can never steal a tap meant for the
+// counter. The counter is display-only, so the press is consumed (no-op).
+type beatCounterHitAdapter struct{}
+
+func (h *beatCounterHitAdapter) OnPress(x, y int) InputResult { return InputConsumed }
+func (h *beatCounterHitAdapter) OnDrag(x, y int)              {}
+func (h *beatCounterHitAdapter) OnRelease(x, y int)           {}
+func (h *beatCounterHitAdapter) OnWheel(x, y, steps int) InputResult {
+	return InputIgnored
+}
+
+// notifClickAdapter opens the notification-history popup on press.
+type notifClickAdapter struct{ zone *TimelineZone }
+
+func (h *notifClickAdapter) OnPress(x, y int) InputResult {
+	if h.zone.callbacks.OnNotifClick != nil {
+		h.zone.callbacks.OnNotifClick()
+	}
+	return InputConsumed
+}
+
+func (h *notifClickAdapter) OnDrag(x, y int)                     {}
+func (h *notifClickAdapter) OnRelease(x, y int)                  {}
+func (h *notifClickAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
 // --- Grid drag hit handler ---
 
@@ -1175,13 +1318,42 @@ func (h *gridDragHitAdapter) OnRelease(x, y int) {
 }
 
 func (h *gridDragHitAdapter) OnWheel(x, y, steps int) InputResult {
+	z := h.zone
+	// Dominant-axis routing over the drum cell grid. A two-finger trackpad
+	// scroll arrives as a wheel event with both axes; route the dominant one
+	// and ONLY that one — a mostly-horizontal scroll moves the timeline view,
+	// a mostly-vertical scroll scrolls the rows. They are mutually exclusive:
+	// a diagonal gesture never moves both at once. (The vertical wheel path
+	// reaching only OnRowScrollWheel was the bug — horizontal intent was
+	// dropped and its incidental vertical component scrolled the rows.)
+	wx, wy := wheel()
+	ax, ay := wx, wy
+	if ax < 0 {
+		ax = -ax
+	}
+	if ay < 0 {
+		ay = -ay
+	}
+	if ax > ay {
+		sx := wheelStepsFromDelta(wx)
+		if sx == 0 || z.callbacks.OnOffsetChange == nil || z.callbacks.Offset == nil {
+			return InputIgnored
+		}
+		// Scroll right (positive dx) advances the timeline; clamp at 0 to match
+		// the single-finger horizontal grid drag.
+		newOffset := z.callbacks.Offset() + sx
+		if newOffset < 0 {
+			newOffset = 0
+		}
+		z.callbacks.OnOffsetChange(newOffset)
+		return InputConsumed
+	}
+
 	if steps == 0 {
 		return InputIgnored
 	}
-	if h.zone.callbacks.OnRowScrollWheel != nil {
-		if h.zone.callbacks.OnRowScrollWheel(steps) {
-			return InputConsumed
-		}
+	if z.callbacks.OnRowScrollWheel != nil && z.callbacks.OnRowScrollWheel(steps) {
+		return InputConsumed
 	}
 	return InputIgnored
 }

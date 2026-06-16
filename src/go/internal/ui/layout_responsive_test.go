@@ -20,7 +20,20 @@ func setupMobileTest(t *testing.T, smallScreen bool) {
 
 	if smallScreen {
 		forceSmallScreenForTest = true
-		t.Cleanup(func() { forceSmallScreenForTest = false })
+		// Restore BOTH the flag and the touch screen size on cleanup. These
+		// tests Layout the game at a small (mobile) width, which calls
+		// SetTouchScreenSize and leaves touchScreenWidth tiny. A later test that
+		// enables touch small-screen detection (e.g. one using the browser
+		// runtime profile) would then see that stale width and wrongly resolve a
+		// mobile profile — the cross-test leak that hid the EQ divider. Reset to
+		// the zero-value default (the clean desktop state: detectSmallScreen
+		// requires touchScreenWidth > 0) and rebuild the profile, so the next
+		// test starts fresh regardless of what an earlier test may have left.
+		t.Cleanup(func() {
+			forceSmallScreenForTest = false
+			SetTouchScreenSize(0, 0)
+			UpdateProfile()
+		})
 	}
 }
 

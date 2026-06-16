@@ -313,10 +313,15 @@ func TestDesktopToMobileFingerprintMatchesFreshMobile(t *testing.T) {
 // ─── Test 3: Row rack desktop branch selected after transition
 
 // TestMobileToDesktopRowControlsUseDesktopLayout asserts that the row
-// rack zone's positionRowWidgets selected the desktop branch (M S FX ⋯)
-// after a mobile→desktop transition. The mobile branch hides the menu
-// button; the desktop branch shows it. The row labels must also have
-// desktop typography (TextScale=0 sentinel, TextColor=nil sentinel).
+// rack zone re-derives desktop state after a mobile→desktop transition.
+// The control cluster (vol · M · S · FX · ⋯) is now unified across both
+// profiles — the ⋯ overflow chip is present on mobile AND desktop (the
+// row label opens the instrument picker on every platform). What the
+// transition must flip is the row-label TYPOGRAPHY: mobile upscales it
+// (non-zero TextScale + explicit TextColor), desktop resets to the
+// Button defaults (TextScale=0 sentinel, TextColor=nil sentinel). This
+// guards against the construction-time bake regression — see
+// [[feedback_runtime_profile_derivation]].
 func TestMobileToDesktopRowControlsUseDesktopLayout(t *testing.T) {
 	assertDefaultParityState(t)
 	forceAutoSize = true
@@ -337,9 +342,11 @@ func TestMobileToDesktopRowControlsUseDesktopLayout(t *testing.T) {
 	g.Layout(400, 800)
 	advanceFrames(g, 2)
 
-	// Confirm mobile baseline: menu btn hidden, label typography upscaled
-	if !g.drum.rowRackZone.RowMenuBtns()[0].Rect().Empty() {
-		t.Fatal("baseline: mobile should hide ⋯ menu button (rect should be empty)")
+	// Confirm mobile baseline: ⋯ menu btn present (unified cluster shows it
+	// on mobile too), label typography upscaled (the thing that must reset
+	// on the desktop transition).
+	if g.drum.rowRackZone.RowMenuBtns()[0].Rect().Empty() {
+		t.Fatal("baseline: mobile must show ⋯ menu button (unified control cluster)")
 	}
 	if got := g.drum.rowRackZone.RowLabels()[0].TextScale; got == 0 {
 		t.Fatalf("baseline: mobile row label TextScale=%v, want non-zero (upscaled)", got)
@@ -415,13 +422,13 @@ func TestMobileToDesktopLenButtonStylesResetToDesktop(t *testing.T) {
 		t.Fatalf("lenIncBtn.Style after transition: got=%+v want=LenIncStyle (%+v)",
 			dv.lenIncBtn.Style, LenIncStyle)
 	}
-	if !colorsEqualTest(dv.lenDecBtn.IconColor, colIncDecIconHi) {
-		t.Fatalf("lenDecBtn.IconColor after transition: got=%v want=colIncDecIconHi (%v)",
-			dv.lenDecBtn.IconColor, colIncDecIconHi)
+	if !colorsEqualTest(dv.lenDecBtn.IconColor, colIncDecIcon) {
+		t.Fatalf("lenDecBtn.IconColor after transition: got=%v want=colIncDecIcon (%v)",
+			dv.lenDecBtn.IconColor, colIncDecIcon)
 	}
-	if !colorsEqualTest(dv.lenIncBtn.IconColor, colIncDecIconHi) {
-		t.Fatalf("lenIncBtn.IconColor after transition: got=%v want=colIncDecIconHi (%v)",
-			dv.lenIncBtn.IconColor, colIncDecIconHi)
+	if !colorsEqualTest(dv.lenIncBtn.IconColor, colIncDecIcon) {
+		t.Fatalf("lenIncBtn.IconColor after transition: got=%v want=colIncDecIcon (%v)",
+			dv.lenIncBtn.IconColor, colIncDecIcon)
 	}
 }
 

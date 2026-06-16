@@ -64,6 +64,11 @@ func (dv *DrumView) SetBounds(b image.Rectangle) {
 
 // AddRow appends a new drum row with default settings.
 func (dv *DrumView) AddRow() {
+	// One atomic undo step. The group also defers the undo snapshot to the END
+	// of this method, so it captures the post-mutation document regardless of
+	// where inside the body the emit (and its recordUndo tap) fires.
+	beginUndoGroup("add row")
+	defer endUndoGroup()
 	if dv.onStructuralMutation != nil {
 		dv.onStructuralMutation("row-add")
 	}
@@ -73,9 +78,10 @@ func (dv *DrumView) AddRow() {
 	}
 	name := dv.computeInstLabel(inst)
 	idx := len(dv.Rows)
-	baseCol := instColor(inst)
-	uniq := dv.ensureUniqueColor(baseCol, idx)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: uniq, Origin: model.InvalidNodeID, Node: nil, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))})
+	// Pure sequential by row index: row N takes the Nth color of the canonical
+	// instrument series (wrapping). Independent of the instrument id.
+	rowColor := seriesColorAt(idx)
+	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: rowColor, Origin: model.InvalidNodeID, Node: nil, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))})
 	dv.logger.Debugf("[drumview] row added index=%d instrument=%s name=%s", idx, inst, name)
 	emitRowAdded(idx, inst, name)
 	dv.added = append(dv.added, idx)
@@ -120,6 +126,13 @@ func (dv *DrumView) DeleteRow(i int) {
 	if i < 0 || i >= len(dv.Rows) || len(dv.Rows) <= 1 {
 		return
 	}
+	// One atomic undo step whose snapshot is captured at the END of this method.
+	// emitRowDeleted (below) fires BEFORE the row is spliced out, so a direct
+	// recordUndo would snapshot the pre-delete document and miss the change; the
+	// group defers the capture to endGroup, after the splice. Cascaded deletes
+	// (deleteNodeInternal → DeleteRow) nest under the outer group and stay one step.
+	beginUndoGroup("delete row")
+	defer endUndoGroup()
 	if dv.onStructuralMutation != nil {
 		dv.onStructuralMutation("row-delete")
 	}
