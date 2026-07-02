@@ -81,6 +81,7 @@ func TestDrumViewTimelineDrawStaysWithinTimelineRect(t *testing.T) {
 	// Stripe colors used by drawRowsDirect for row backgrounds.
 	stripeEven := genColorDrumStripeEven
 	stripeOdd := genColorDrumStripeOdd
+	rh := dv.rowHeight()
 
 	rec := &drawCallRecorder{}
 	dst := ebiten.NewImage(dv.Bounds.Dx(), dv.Bounds.Dy())
@@ -93,6 +94,16 @@ func TestDrumViewTimelineDrawStaysWithinTimelineRect(t *testing.T) {
 			continue
 		}
 		if c.Color != stripeEven && c.Color != stripeOdd {
+			continue
+		}
+		// The drum-stripe tokens now alias the background/surface-1 tokens by
+		// design — row stripes are dark magenta-violet so empty cells recede
+		// into the background (DESIGN.md: drum-stripe-even == surface-1,
+		// drum-stripe-odd == background). That means legitimate full-zone
+		// background fills share the stripe RGBA and must NOT count as bleed.
+		// A real per-row stripe is exactly one rowHeight tall; zone/area
+		// backgrounds are much taller. Skip anything taller than a single row.
+		if c.Rect.Dy() > rh {
 			continue
 		}
 		// Row stripes drawn into the offscreen row-sprite buffer use

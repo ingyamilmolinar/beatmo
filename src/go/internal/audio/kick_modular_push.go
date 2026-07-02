@@ -121,6 +121,7 @@ func kickPushVoiceParams(recipeID string, variant float64, def float64, lit map[
 		elided := elideRecipeDefaults(recipeID, merged)
 		out := RecipeParams{}
 		out["voice_freq_hz"] = kickFundamental(merged, def)
+		out["kick_enabled"] = 1 // legacy kicks always render the source==5 voice
 		out["gen1_source"] = 5
 		out["gen1_freq_mode"] = 0
 		out["gen1_freq"] = 1
@@ -141,8 +142,30 @@ func kickPushVoiceParams(recipeID string, variant float64, def float64, lit map[
 		put("gen1_kick_pe_rate", "kick_pitch_env_rate")
 		put("gen1_kick_click", "kick_click")
 		put("gen1_kick_noise", "kick_noise")
+		// Phase-9 structural extras (attack/fade/sat): the legacy kicks don't
+		// expose these as knobs, so emit the per-variant literal directly (the
+		// native binding passes NaN → the SAME C kp_get literal). Spelled out
+		// because NaN can't survive the JS block-fill.
+		if l, ok := kickPhase9Lit[variant]; ok {
+			out["gen1_kick_attack"] = l[0]
+			out["gen1_kick_fade"] = l[1]
+			out["gen1_kick_sat"] = l[2]
+		}
 		return out
 	}
+}
+
+// kickPhase9Lit holds the per-variant Phase-9 structural literals
+// {attack-boost amount, global-fade rate, saturation pre-gain} — the exact
+// kp_get fallbacks baked into each variant branch of modular_gen_slot_kick
+// (src/c/modular_stages.c). Keyed by the variant discriminator. MUST stay in
+// sync with the C literals (the push↔binding byte-parity contract).
+var kickPhase9Lit = map[float64][3]float64{
+	0: {0.3, 4.0, 0.55}, // base
+	1: {0.15, 3.0, 1.2}, // deep
+	2: {0.5, 5.0, 0.8},  // punchy
+	3: {0.2, 3.0, 1.5},  // lofi
+	4: {0.3, 4.5, 0.45}, // tight
 }
 
 // kickVariantSpecs maps each kick recipe to its (variant code, fundamental

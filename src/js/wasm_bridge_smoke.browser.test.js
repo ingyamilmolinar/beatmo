@@ -237,6 +237,7 @@ const CATALOGUE = {
     { name: "instMenuRenderedOrder", args: [], returns: "any" },
     { name: "instMenuScrollBarRect", args: [], returns: "any" },
     { name: "instMenuScrollOffset", args: [], returns: "number" },
+    { name: "instMenuSearchRect", args: [], returns: "any" },
     { name: "instMenuScrollThumbRect", args: [], returns: "any" },
     { name: "instMenuSelectCategory", skipCall: true },
     { name: "instMenuSelectItem", skipCall: true },
@@ -246,6 +247,7 @@ const CATALOGUE = {
     { name: "projectPinsList", args: [], returns: "any" },
     { name: "setProjectPinsListForTest", skipCall: true }, // test-only mutation
     { name: "instOptions", args: [], returns: "any" },
+    { name: "isNamingOpen", args: [], returns: "boolean" },
     { name: "isPlaying", args: [], returns: "boolean" },
     { name: "isUploading", args: [], returns: "boolean" },
     { name: "kbProxyFocused", args: [], returns: "boolean" },
@@ -274,6 +276,7 @@ const CATALOGUE = {
     { name: "openSubdivMenu", skipCall: true },
     { name: "pickColorAtWheel", skipCall: true },
     { name: "playBtnRect", args: [], returns: "any" },
+    { name: "recBtnRect", args: [], returns: "any" },
     { name: "portalStackLen", args: [], returns: "number" },
     { name: "portalTopID", args: [], returns: "any" },
     { name: "renameBoxRect", args: [], returns: "any" },
@@ -462,6 +465,7 @@ const CATALOGUE = {
     { name: "setBPM", skipCall: true },
     { name: "setPerfFastPath", skipCall: true },
     { name: "setSimpleDraw", skipCall: true },
+    { name: "slimBarDiag", args: [], returns: "any" }, // drum slim-bar render diagnostic
     { name: "startPlay", skipCall: true },
     { name: "stopPlay", skipCall: true },
     { name: "syncHighlights", args: [], returns: "any" },
@@ -503,6 +507,11 @@ const CATALOGUE = {
 
   // ───────── scenes + popups + master mix (js_exports_scenes.go) ─────────
   scenes: [
+    // Mobile file-picker overlay → Go entry points: the real <input type=file>
+    // overlay's change handler calls these to run the import/upload flow after a
+    // pick (see mobile_import_gesture.browser.test.js). Mutating; existence-only.
+    { name: "_fpStartImport", skipCall: true },
+    { name: "_fpStartUpload", skipCall: true },
     { name: "closeColorMenu", args: [], returns: "any" },
     { name: "closeContextMenu", args: [], returns: "any" },
     { name: "closeFXPanel", args: [], returns: "any" },

@@ -9,8 +9,25 @@ import (
 // handleTapInGrid handles a tap gesture in the grid area.
 // This provides direct tap-to-click handling without relying on the mouse state machine.
 func (g *Game) handleTapInGrid(x, y int) {
-	if !Profile().IsMobile() && image.Pt(x, y).In(g.gridHelpButtonRect()) {
-		g.toggleSettingsOverlay()
+	// A blocking overlay (e.g. the mobile synth-knob wheel popup) owns input
+	// exclusively. A tap on the scrim outside it must only close the overlay
+	// (the tree's click-outside path), never reach the grid to create/select a
+	// node beneath it.
+	if g.modalOverlayActive() {
+		return
+	}
+	// Mobile landscape is unsupported: the rotate-to-portrait notice covers the
+	// screen, so taps must not reach the (invisible) grid beneath it.
+	if g.landscapeUnsupported() {
+		return
+	}
+	if image.Pt(x, y).In(g.gridHelpButtonRect()) {
+		// The gear is the inputDispatcher's job: gridHelpInputHandler toggles it
+		// on the press edge (mouse, and touch via the override). A normal tap
+		// always presents at least one pressed frame to the dispatcher, so by the
+		// time this release-time GestureTap fires the overlay is already
+		// open/closed. Just consume the tap here — toggling again would double-fire
+		// it back, and falling through would create a node under the gear.
 		return
 	}
 
@@ -157,6 +174,12 @@ func (g *Game) handleTapInGrid(x, y int) {
 // In the grid pane, deletes the node under the touch point.
 // In the drum pane, opens the mobile context menu for the row label.
 func (g *Game) handleTouchLongPress(x, y int) {
+	// A blocking overlay owns input exclusively — a long-press over the scrim
+	// must not delete a node or open a context menu on a background surface.
+	// Mobile landscape is unsupported, so suppress here too.
+	if g.modalOverlayActive() || g.landscapeUnsupported() {
+		return
+	}
 	// Audio panel: Levels icon-row long-press → tooltip with the
 	// unabbreviated readout value (Phase 4 audio-panel redesign).
 	if g.drum != nil && g.drum.eqPanelZone != nil {
@@ -192,6 +215,12 @@ func (g *Game) handleTouchLongPress(x, y int) {
 //   - Inside the grid pane: scales the camera (the original behavior).
 //   - Anywhere else: ignored.
 func (g *Game) handleTouchPinch(centerX, centerY int, scale float64) {
+	// A blocking overlay owns input exclusively — a pinch over the scrim must
+	// not zoom the camera beneath it. Mobile landscape is unsupported, so
+	// suppress here too.
+	if g.modalOverlayActive() || g.landscapeUnsupported() {
+		return
+	}
 	// Drum rows zone has priority on mobile so two-finger pinches over
 	// the rack are absorbed (do not bleed into camera zoom). The legacy
 	// "pinch to scale row height" behavior was retired alongside the
@@ -243,6 +272,12 @@ func (g *Game) handleTouchPinch(centerX, centerY int, scale float64) {
 // left/right swipe must never scroll rows. Anywhere else (the graph pane) the
 // pan keeps moving the camera.
 func (g *Game) handleTouchTwoFingerPan(deltaX, deltaY, centerX, centerY int) {
+	// A blocking overlay owns input exclusively — a two-finger pan over the
+	// scrim must not pan the camera or timeline beneath it. Mobile landscape is
+	// unsupported, so suppress here too.
+	if g.modalOverlayActive() || g.landscapeUnsupported() {
+		return
+	}
 	if g.drum != nil && g.drum.HandleTwoFingerPan(centerX, centerY) {
 		return
 	}

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"math"
 	"strconv"
 	"strings"
@@ -16,25 +15,25 @@ import (
 // TransportCallbacks contains callbacks for the TransportZone to communicate
 // with the DrumView and audio engine. Zones don't reference Game or each other.
 type TransportCallbacks struct {
-	OnPlayToggle    func()            // play/pause pressed
-	OnStop          func()            // stop pressed
-	OnBPMChange     func(bpm int)     // BPM committed (from text or +/-)
-	OnFollowChange  func(follow bool) // track toggle
-	OnUploadClick   func()            // delegates to DrumView's upload goroutine
-	OnImportClick   func()            // delegates to DrumView's import picker
-	OnExportClick   func()            // delegates to DrumView's export
-	OnViewCycle     func()            // mobile view mode toggle
-	OnRecordToggle  func()            // record button pressed
-	OnUndo          func()            // undo button pressed
-	OnRedo          func()            // redo button pressed
-	CanUndo         func() bool       // whether the undo stack is non-empty (drives dim)
-	CanRedo         func() bool       // whether the redo stack is non-empty (drives dim)
-	IsPlaying       func() bool       // read current playback state
-	IsRecording     func() bool       // read current recording state
-	GetMainVolume   func() float64    // read master volume
-	SetMainVolume   func(v float64)   // set master volume (per-frame, live)
-	OnMainVolCommit func()            // fires once at master-vol drag release (emit + undo)
-	OnNotifyError   func(msg string)  // display error notification
+	OnPlayToggle     func()                             // play/pause pressed
+	OnStop           func()                             // stop pressed
+	OnBPMChange      func(bpm int)                      // BPM committed (from text or +/-)
+	OnFollowChange   func(follow bool)                  // track toggle
+	OnUploadClick    func()                             // delegates to DrumView's upload goroutine
+	OnImportClick    func()                             // delegates to DrumView's import picker
+	OnExportClick    func()                             // delegates to DrumView's export
+	OnViewCycle      func()                             // mobile view mode toggle
+	OnRecordToggle   func()                             // record button pressed
+	OnUndo           func()                             // undo button pressed
+	OnRedo           func()                             // redo button pressed
+	CanUndo          func() bool                        // whether the undo stack is non-empty (drives dim)
+	CanRedo          func() bool                        // whether the redo stack is non-empty (drives dim)
+	IsPlaying        func() bool                        // read current playback state
+	IsRecording      func() bool                        // read current recording state
+	GetMainVolume    func() float64                     // read master volume
+	SetMainVolume    func(v float64)                    // set master volume (per-frame, live)
+	OnMainVolCommit  func()                             // fires once at master-vol drag release (emit + undo)
+	OnNotifyErrorKey func(key i18n.Key, args ...string) // display a localized error notification (optional Tf args)
 
 	// Overlay callbacks: delegate to DrumView's overlay mechanisms.
 	OnSubdivClick    func()       // delegates to DrumView's SubdivMenuComponent
@@ -490,6 +489,13 @@ func (z *TransportZone) Draw(screen *ebiten.Image) {
 	if z.rect.Dy() < 8 || z.rect.Dx() < 8 {
 		return
 	}
+	// Sync the Undo/Redo dim state at DRAW time so the buttons reflect the
+	// CURRENT CanUndo/CanRedo. Update()'s Tick runs BEFORE this frame's input is
+	// dispatched and the undo step is committed (at the per-frame endGroup), so
+	// syncing only in Update would render the previous frame's state — the button
+	// would lag one frame (or longer if the app then idles) behind a knob/edit.
+	// The toolbar cache hash also reads CanUndo/CanRedo, so both stay consistent.
+	z.syncUndoRedoVisual()
 	z.renderToolbarControls(screen)
 	// Draw the shared BPM editor OVER the (possibly cached) toolbar, straight to
 	// screen — never into the toolbar cache. Its per-keystroke text/caret/flash
@@ -523,6 +529,11 @@ func (z *TransportZone) HandleChars(chars []rune) InputResult {
 // state is visually dominant and the playing state recedes.
 func (z *TransportZone) SetPlaying(p bool) {
 	z.isPlaying = p
+	// Subdivision changes are rejected mid-flight (validateSubdivisions), so
+	// grey out the selector during playback to signal it's unavailable.
+	if z.subdivBtn != nil {
+		z.subdivBtn.Disabled = p
+	}
 	prof := Profile()
 	// DESIGN.md §0/§5: icon-only button — never raw Unicode in Text.
 	z.playBtn.Text = ""
@@ -1127,8 +1138,8 @@ func (z *TransportZone) bpmSpec() ValueSpec {
 			if v, ok := parseBPM(strings.TrimSpace(s)); ok {
 				return float64(v), true
 			}
-			if z.callbacks.OnNotifyError != nil {
-				z.callbacks.OnNotifyError(i18n.T(i18n.KeyNotifInvalidBPM))
+			if z.callbacks.OnNotifyErrorKey != nil {
+				z.callbacks.OnNotifyErrorKey(i18n.KeyNotifInvalidBPMDetail, strings.TrimSpace(s), strconv.Itoa(maxBPM))
 			}
 			return 0, false
 		},
@@ -1178,9 +1189,11 @@ func (a *bpmOpenAdapter) OnWheel(x, y, steps int) InputResult { return InputIgno
 
 // syncTrackBtnVisual mirrors the play/stop visual model: chrome (Style) stays
 // fixed across states; the icon glyph and icon color carry the active/inactive
-// signal. Active = primary-bright coral (colFollowActive, the single chrome
-// accent per DESIGN.md); inactive = the platform-neutral BPM/secondary-control
-// tint.
+// signal. Neutral, no chrome accent: active (tracking) = bright neutral
+// (colFollowActive == colTextPrimary), free = dim neutral (colTextDisabled).
+// An explicit bright/dim pair keeps the on/off contrast legible on every
+// platform — the old inactive (prof.BPMIconColor) resolves to colTextPrimary on
+// mobile, which would collide with a bright active tint.
 func (z *TransportZone) syncTrackBtnVisual() {
 	if z.trackBtn == nil {
 		return
@@ -1190,7 +1203,7 @@ func (z *TransportZone) syncTrackBtnVisual() {
 		z.trackBtn, z.follow,
 		prof.TrackBtnStyle, prof.TrackBtnStyle, // same chrome both states
 		IconTrack, IconTrackOff,
-		colFollowActive, prof.BPMIconColor,
+		colFollowActive, colTextDisabled,
 	)
 }
 
@@ -1645,12 +1658,11 @@ func (z *TransportZone) drawPlayAccentOffset(dst *ebiten.Image, offsetX, offsetY
 // drawRecordArmedRingOffset draws a 2px destructive ring outside the record
 // button when recording is armed (z.isRecording == true). Signals "armed —
 // next play will record". Drawn AFTER the button so the ring sits on top of
-// the button border. Mobile only — desktop already has a stronger pulsing
-// indicator on the icon.
+// the button border. Rendered on both platforms so the recording-state
+// highlight does not diverge by screen class.
 func (z *TransportZone) drawRecordArmedRingOffset(dst *ebiten.Image, offsetX, offsetY int) {
-	if !Profile().IsMobile() {
-		return
-	}
+	// Rendered on both platforms: the recording-armed highlight must not
+	// diverge by screen class.
 	if !z.isRecording {
 		return
 	}
@@ -1722,26 +1734,18 @@ func (z *TransportZone) drawSubdivPillOffset(dst *ebiten.Image, offsetX, offsetY
 }
 
 // drawTransportGroupOffset draws the transport group pill container
-// (play+stop+record) as a rounded rect. Uses colSurface2 fill on mobile
-// (one step lighter than the surface-1 toolbar) so the cluster reads as
-// a distinct grouping; desktop keeps the more subtle colTransportGroupBG
-// since the desktop toolbar already has stronger chrome cues.
+// (play+stop+record) as a rounded rect. The fill (colTransportGroupBG) is a
+// translucent white lift, so it reads as a distinct grouping on either
+// toolbar surface — identical styling on both platforms (visual styling does
+// not diverge by screen class).
 func (z *TransportZone) drawTransportGroupOffset(dst *ebiten.Image, offsetX, offsetY int) {
 	gr := z.transportGroupRect
 	if gr.Empty() {
 		return
 	}
 	r := gr.Sub(image.Pt(offsetX, offsetY))
-	radius := RadiusMD
-	fill := color.Color(colTransportGroupBG)
-	border := color.Color(colTransportGroupBorder)
-	if Profile().IsMobile() {
-		radius = RadiusMD + 2 // 10px for mobile
-		fill = colSurface2
-		border = colBorderMedium
-	}
-	drawRoundedRect(dst, r, fill, radius, true)
-	drawRoundedRect(dst, r, border, radius, false)
+	drawRoundedRect(dst, r, colTransportGroupBG, RadiusMD, true)
+	drawRoundedRect(dst, r, colTransportGroupBorder, RadiusMD, false)
 }
 
 // drawFileOpsGroupOffset draws the file-ops group pill container

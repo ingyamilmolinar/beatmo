@@ -261,8 +261,14 @@ export function assertResponsiveBreakpoints(snap) {
     if (tc.minTarget < 40) {
       errors.push(`Small screen but minTarget=${tc.minTarget} (expected >= 40)`);
     }
-    if (tc.minCellWidth < 15) {
-      errors.push(`Small screen but minCellWidth=${tc.minCellWidth} (expected >= 15)`);
+    // minCellWidth is no longer screen-class-divergent: since the design-token
+    // migration it is a DESIGN.md profileOverride that resolves to 2px on BOTH
+    // desktop and mobile (see design_profile.gen.go / touchMinCellWidthPx). It is
+    // the floor a grid cell may shrink to when zoomed all the way out, not a
+    // touch-target size, so a mobile-specific ">= 15" expectation is stale. Keep
+    // a sanity floor (> 0) so a regression that zeroes the token still trips.
+    if (tc.minCellWidth < 1) {
+      errors.push(`Small screen but minCellWidth=${tc.minCellWidth} (expected >= 1)`);
     }
   } else {
     // Desktop: should use desktop constants

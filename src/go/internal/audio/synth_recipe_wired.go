@@ -31,7 +31,6 @@ var recipeWiredParams = map[string][]string{
 	"drum-open-hihat":      {"decay", "drive", "brightness"},
 	"drum-tom-high":        {"pitch", "decay", "drive"},
 	"drum-tom-low":         {"pitch", "decay", "drive"},
-	"drum-bass-guitar":     {"pitch", "decay", "tone", "drive", "body"},
 	"drum-sub-bass":        {"pitch", "decay", "drive", "body"},
 	"drum-snare-rimshot":   {"pitch", "decay", "tone", "drive"},
 	"drum-snare-sidestick": {"pitch", "decay", "tone", "drive"},
@@ -99,13 +98,6 @@ var recipeExtraParams = map[string][]ParamDef{
 		click: 0.40, noise: 0.15,
 	}),
 	// Bass family.
-	"drum-bass-guitar": []ParamDef{
-		{Name: "fundamental", Label: "Fundamental", Group: "core", Min: 25, Max: 250, Default: 55, Unit: "Hz"},
-		{Name: "bass_sustain", Label: "Sustain", Group: "core", Min: 0.9, Max: 0.9995, Default: 0.996},
-		{Name: "bass_pluck", Label: "Pluck", Group: "core", Min: 0.05, Max: 0.9, Default: 0.35},
-		{Name: "bass_attack", Label: "Pick", Group: "core", Min: 0, Max: 1, Default: 0.25},
-		{Name: "bass_env_rate", Label: "Fade", Group: "core", Min: 0.5, Max: 10, Default: 1.8},
-	},
 	"drum-sub-bass": []ParamDef{
 		waveParamDef("bass_wave", 0),
 		{Name: "fundamental", Label: "Fundamental", Group: "core", Min: 25, Max: 250, Default: 45, Unit: "Hz"},
@@ -187,7 +179,7 @@ var recipeExtraParams = map[string][]ParamDef{
 		opDepth: map[int]float64{2: 3.5, 3: 2},
 	}),
 	"fm-epiano": fmFamilyParamDefs(fmFamilySpec{
-		baseFreq: 261.63, noPitchEnv: true,
+		baseFreq: 220.0, noPitchEnv: true, // A3 = pitch-0 convention (was 261.63/C4 = +3 key bug)
 		opRatio: []float64{1, 1, 2}, opDecay: []float64{0.8, 0.2, 0.5},
 		opDepth: map[int]float64{2: 2.2},
 	}),

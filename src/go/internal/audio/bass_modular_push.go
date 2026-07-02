@@ -13,7 +13,7 @@ import "math"
 // params (fundamental, bass_sustain, bass_wave, …). Translation to the
 // modular-named block happens ONLY at the platform-push seam (via
 // ModularPushParams), so the browser's render_modular_p sees the same effective
-// params the native binding (bassRecipeToModular / bassGuitarRecipeToModular)
+// params the native binding (bassRecipeToModular)
 // feeds the C engine.
 //
 // Why a tag-neutral copy of the mapping: the native binding
@@ -37,10 +37,6 @@ var (
 		DecayRate: 4.0, Pitch: true, Decay: true, Body: true, Drive: true,
 		Brightness: false, Tone: false,
 	}
-	bassGuitarPostConfig = familyPostConfig{
-		DecayRate: 5.0, Pitch: true, Decay: true, Body: true, Tone: true, Drive: true,
-		Brightness: false,
-	}
 )
 
 // subBassFundamental replicates the deleted C bass_fund(base, 45.0): the
@@ -49,12 +45,6 @@ var (
 // push).
 func subBassFundamental(merged RecipeParams) float64 {
 	return fundamentalResolve(merged, 45.0)
-}
-
-// bassGuitarFundamental replicates the deleted C bass_fund(base, 55.0): the
-// resolved bass-guitar fundamental in Hz. Same clamp, default 55.
-func bassGuitarFundamental(merged RecipeParams) float64 {
-	return fundamentalResolve(merged, 55.0)
 }
 
 // bassLegacyNilElision reproduces the deleted BassParams.toC()==nil rule used by
@@ -124,31 +114,10 @@ func subBassPushVoiceParams(merged RecipeParams) RecipeParams {
 	return out
 }
 
-// bassGuitarPushVoiceParams emits the bass-guitar gen-slot voice (Karplus-Strong
-// string, source==3) plus the voice_freq_hz override. kp_get literals spelled
-// out; family fields read from the elided map. (Distinct from
-// bass_modular_native.go's bassGuitarVoiceParams baked-ModularParams fast path.)
-func bassGuitarPushVoiceParams(merged RecipeParams) RecipeParams {
-	elided := elideRecipeDefaults("drum-bass-guitar", merged)
-	out := RecipeParams{}
-	out["voice_freq_hz"] = bassGuitarFundamental(merged)
-	// Slot 1 = Karplus-Strong string voice (source==3), ratio ×1.
-	out["gen1_source"] = 3
-	out["gen1_freq_mode"] = 0
-	out["gen1_freq"] = 1
-	out["gen1_ks_sustain"] = elidedValOr(elided, "bass_sustain", 0.996)
-	out["gen1_ks_pluck"] = elidedValOr(elided, "bass_pluck", 0.35)
-	out["gen1_atk_amt"] = elidedValOr(elided, "bass_attack", 0.25)
-	out["gen1_atk_rate"] = 400.0
-	out["gen1_env_fast_rate"] = elidedValOr(elided, "bass_env_rate", 1.8)
-	out["gen1_out_scale"] = 0.85
-	return out
-}
-
-// registerBassMigrations registers the two bass family migrations into the
-// tag-neutral registry, so both native and js builds route drum-sub-bass /
-// drum-bass-guitar through the modular engine. The default fundamentals (45/55)
-// are carried inside the voiceParams closures via fundamentalResolve.
+// registerBassMigrations registers the sub-bass family migration into the
+// tag-neutral registry, so both native and js builds route drum-sub-bass
+// through the modular engine. The default fundamental (45) is carried inside
+// the voiceParams closure via fundamentalResolve.
 //
 // This runs as a package-level VARIABLE initialization (not init()) so the
 // registry is populated BEFORE any init() function — in particular before
@@ -163,11 +132,6 @@ func registerBassMigrations() struct{} {
 	registerModularMigration("drum-sub-bass", modularFamilyMigration{
 		voiceParams: subBassPushVoiceParams,
 		post:        subBassPostConfig,
-		postSkipped: bassLegacyNilElision,
-	})
-	registerModularMigration("drum-bass-guitar", modularFamilyMigration{
-		voiceParams: bassGuitarPushVoiceParams,
-		post:        bassGuitarPostConfig,
 		postSkipped: bassLegacyNilElision,
 	})
 	return struct{}{}

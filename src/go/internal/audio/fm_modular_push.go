@@ -175,7 +175,10 @@ var fmVariantSpecs = map[string]struct {
 		"fm_op3_ratio": 3.0, "fm_op3_depth": 2.0, "fm_op3_decay": 0.08,
 	}},
 	"fm-epiano": {3, map[string]float64{
-		"fm_wave": 0.0, "fm_base_freq": 261.63,
+		// fm_base_freq is the frequency at pitch 0 — MUST be A3 (220) to match the
+		// Beatmo pitch convention; was 261.63 (C4), which shifted every fm-epiano
+		// template +3 semitones into the wrong key (the chic-good-times bug).
+		"fm_wave": 0.0, "fm_base_freq": 220.0,
 		// No pitch sweep (noPitchEnv) → fm_pitch_env_* not wired.
 		"fm_op1_ratio": 1.0, "fm_op1_decay": 0.8,
 		"fm_op2_ratio": 1.0, "fm_op2_depth": 2.2, "fm_op2_decay": 0.2,

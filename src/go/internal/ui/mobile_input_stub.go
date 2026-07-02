@@ -2,6 +2,8 @@
 
 package ui
 
+import "image"
+
 // testMobileInputActive is a per-ID active state for test injection.
 var testMobileInputActive map[string]bool
 
@@ -20,6 +22,14 @@ var testMobileInputRegistered map[string]bool
 // testMobileInputTriggerRegistered tracks trigger registrations for test assertions.
 var testMobileInputTriggerRegistered map[string]bool
 
+// testMobileInputRect records the registered rect for direct registrations.
+var testMobileInputRect map[string]image.Rectangle
+
+// testMobileInputTriggerRect records the registered TRIGGER rect (the tap
+// target that activates the native input), so tests can assert a trigger lands
+// on the intended control and not an adjacent one.
+var testMobileInputTriggerRect map[string]image.Rectangle
+
 //nolint:unused // cross-build-tag stub matching mobile_input_wasm.go
 func mobileInputInit() {}
 
@@ -27,11 +37,17 @@ func mobileInputRegister(id string, x, y, w, h int, text string, maxLen int, inp
 	if testMobileInputRegistered != nil {
 		testMobileInputRegistered[id] = true
 	}
+	if testMobileInputRect != nil {
+		testMobileInputRect[id] = image.Rect(x, y, x+w, y+h)
+	}
 }
 
 func mobileInputRegisterTrigger(id string, trigX, trigY, trigW, trigH, inputX, inputY, inputW, inputH int, text string, maxLen int, inputMode string) {
 	if testMobileInputTriggerRegistered != nil {
 		testMobileInputTriggerRegistered[id] = true
+	}
+	if testMobileInputTriggerRect != nil {
+		testMobileInputTriggerRect[id] = image.Rect(trigX, trigY, trigX+trigW, trigY+trigH)
 	}
 }
 
@@ -41,6 +57,12 @@ func mobileInputClear() {
 	}
 	for k := range testMobileInputTriggerRegistered {
 		delete(testMobileInputTriggerRegistered, k)
+	}
+	for k := range testMobileInputRect {
+		delete(testMobileInputRect, k)
+	}
+	for k := range testMobileInputTriggerRect {
+		delete(testMobileInputTriggerRect, k)
 	}
 }
 

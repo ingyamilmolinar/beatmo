@@ -24,11 +24,18 @@ const RoundRobinVariants = 3
 // (see hashRecipeParams in synth_recipe.go); the zero value means "default
 // params" so the cache key is byte-identical for all-zero SynthParams and
 // for instruments that don't carry recipe params at all.
+//
+// pitch is the node semitone offset used by pitch-aware melodic recipes
+// (pitchAwareRecipe). For drums and non-pitch-aware instruments pitch is
+// always 0, so their keys are unchanged — drum cache + goldens stay
+// byte-identical. For melodic synths pitch is the rounded node semitone
+// value so each pitch level gets its own rendered-at-pitch buffer.
 type voiceCacheKey struct {
 	instrumentID string
 	bpm          int // 0 for core instruments that don't depend on BPM
 	sampleRate   int
 	paramsHash   uint64
+	pitch        float64 // 0 for non-pitch-aware; rounded semitones for melodic
 }
 
 // roundRobinEntry stores N variants of a rendered voice buffer plus a

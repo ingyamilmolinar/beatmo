@@ -75,7 +75,16 @@ const fail = (m) => { failed = true; console.error("[FAIL] " + m); };
 
 try {
   await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
-  await page.waitForFunction(() => typeof window.updateSampleEdit === "function" && typeof window.__testApplySampleEdit === "function" && typeof window.__testCaptureSynthRender === "function", { timeout: 30000 });
+  // updateSampleEdit / __testApplySampleEdit / __testCaptureSynthRender are all
+  // defined at audio.js MODULE LOAD — they exist before the Go runtime boots.
+  // The full-pipeline parity (item 5) renders a MIGRATED instrument (kick →
+  // render_modular_p), whose recipe-default modular param block is pushed to JS
+  // by Go's SeedInstrumentDefaultsToPlatform() at the END of initJSSynthRecipe.
+  // setInstrumentParam is registered in that SAME synchronous Go init, so gating
+  // on it guarantees the seed has run; without this gate the test can render kick
+  // through the UN-seeded generic modular voice (peak/rms ~5–11x off the native
+  // golden) before the seed arrives. Mirrors instrument_params_audible's gate.
+  await page.waitForFunction(() => typeof window.updateSampleEdit === "function" && typeof window.__testApplySampleEdit === "function" && typeof window.__testCaptureSynthRender === "function" && typeof window.setInstrumentParam === "function", { timeout: 30000 });
 
   // ── 1. Transform parity with Go BakeSample (golden) ──────────────────────
   const got = await page.evaluate(({ input, edit }) =>

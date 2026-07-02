@@ -14,14 +14,14 @@ func (g *Game) seqScheduleTime() {
 	if g == nil {
 		return
 	}
-	g.logger.Tracef("[SEQSCHEDULE] entering, about to acquire seqMu")
+	g.logger.Tracef("[seqschedule] entering, about to acquire seqMu")
 	if !g.seqMu.TryLock() {
-		g.logger.Tracef("[SEQSCHEDULE] seqMu held by Update(); skipping tick")
+		g.logger.Tracef("[seqschedule] seqMu held by Update(); skipping tick")
 		return // Update() holds the lock; retry next 1ms tick
 	}
-	g.logger.Tracef("[SEQSCHEDULE] acquired seqMu")
+	g.logger.Tracef("[seqschedule] acquired seqMu")
 	defer func() {
-		g.logger.Tracef("[SEQSCHEDULE] releasing seqMu")
+		g.logger.Tracef("[seqschedule] releasing seqMu")
 		g.seqMu.Unlock()
 	}()
 
@@ -332,7 +332,9 @@ func (g *Game) seqScheduleTime() {
 						g.playFn(inst, vol)
 						// The test-only direct-play path bypasses audioLoop; still record
 						// a parity audio event so parityScan's audio_missing check reflects
-						// what was dispatched.
+						// what was dispatched, and mark the decision enqueued to keep the
+						// Audible⟹Enqueued invariant honest on this path too.
+						g.markSeqAudioEnqueued(row, idx)
 						g.recordParityAudio(row, idx, audio.Now(), inst, vol, pitch, dur, g.audioGen.Load())
 					} else {
 						// Ideal audio time for this beat: anchored to
@@ -364,6 +366,11 @@ func (g *Game) seqScheduleTime() {
 							info     model.BeatInfo
 						}{row: row, idx: idx, info: info}:
 						default:
+							// hlCh full: this beat's highlight is dropped and the
+							// UI will never paint it. Record the drop so parity
+							// exempts it from highlight_vs_audio (cosmetic loss
+							// under load, not an audio/UI desync).
+							g.markHighlightDropped(row, idx)
 						}
 					}
 				} else {

@@ -31,6 +31,8 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 	}
 	origName := dv.Rows[0].Name
 	origInst := dv.Rows[0].Instrument
+	// Rename is metadata-only: clear the process-global display override it leaves.
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName(origInst) })
 
 	// Run an initial Update to build layout and buttons.
 	restore := SetInputForTest(
@@ -87,22 +89,22 @@ func TestMobileRenameUpdatesLabel(t *testing.T) {
 	}
 
 	// ── Step 4: Assert the rename took effect ──
-	// These should all FAIL because Open() entered desktop mode and never
-	// polls the mobile input result.
+	// Rename is metadata-only: the display name + row label follow the new name,
+	// but the instrument id is NEVER changed.
 	if dv.Rows[0].Name != "NewKick" {
 		t.Errorf("Rows[0].Name = %q, want %q (was %q)", dv.Rows[0].Name, "NewKick", origName)
 	}
 	if len(dv.rowLabels()) > 0 && dv.rowLabels()[0].Text != "NewKick" {
 		t.Errorf("rowLabels[0].Text = %q, want %q", dv.rowLabels()[0].Text, "NewKick")
 	}
-	if dv.Rows[0].Instrument != "newkick" {
-		t.Errorf("Rows[0].Instrument = %q, want %q (was %q)", dv.Rows[0].Instrument, "newkick", origInst)
+	if dv.Rows[0].Instrument != origInst {
+		t.Errorf("rename changed instrument id: got %q, want %q (must be metadata-only)", dv.Rows[0].Instrument, origInst)
 	}
 
 	// Verify notification was shown.
 	found := false
 	for _, n := range dv.notifStore.History() {
-		if strings.Contains(n.text, "NewKick") {
+		if strings.Contains(n.display(), "NewKick") {
 			found = true
 			break
 		}

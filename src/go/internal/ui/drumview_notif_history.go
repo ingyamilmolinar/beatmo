@@ -114,9 +114,9 @@ func (dv *DrumView) drawNotifHistory(dst *ebiten.Image) {
 		if n.isErr {
 			col = colError
 		}
-		line := n.text
+		line := n.display()
 		if ts := formatNotifTime(n.unixMs); ts != "" {
-			line = ts + "  " + n.text
+			line = ts + "  " + line
 		}
 		DrawTextColorAt(clip, line, x, y, col)
 		y += rowH

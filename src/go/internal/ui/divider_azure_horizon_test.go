@@ -8,12 +8,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestDividerIsAzureHorizon pins the split divider to the azure chrome accent
-// (the Vice City "horizon line"), not the old bright-gray hairline that
+// TestDividerIsGoldHorizon pins the split divider to the sunset-gold chrome
+// accent (the Vice City "horizon line"), not the old bright-gray hairline that
 // out-shone every other element. Reads the divider row back from a real image
-// and asserts an azure hue (blue-dominant: B>G>R, matching #4FB4FF), which
+// and asserts a gold hue (red-dominant: R>G>B, matching #FFB30A), which
 // holds for both the rest (colAccent) and hover (colAccentBright) variants.
-func TestDividerIsAzureHorizon(t *testing.T) {
+func TestDividerIsGoldHorizon(t *testing.T) {
 	withDefaultStart(t, false)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -32,7 +32,7 @@ func TestDividerIsAzureHorizon(t *testing.T) {
 	if a8 == 0 {
 		t.Fatalf("divider row (40,%d) is transparent — nothing drawn", g.split.Y)
 	}
-	if !(b8 > g8 && g8 > r8) {
-		t.Errorf("divider colour #%02X%02X%02X is not azure (want blue-dominant B>G>R like the accent)", r8, g8, b8)
+	if !(r8 > g8 && g8 > b8) {
+		t.Errorf("divider colour #%02X%02X%02X is not gold (want red-dominant R>G>B like the accent)", r8, g8, b8)
 	}
 }

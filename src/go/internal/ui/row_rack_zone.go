@@ -322,6 +322,14 @@ func (z *RowRackZone) Layout(rect image.Rectangle) {
 	z.lastLayoutRectInitialized = true
 	z.rect = rect
 	z.needLayout = false
+	// Re-clamp the scroll offset against the (possibly changed) visible-row
+	// count. When the bottom panel is resized larger the rack gains vertical
+	// space, so VisibleRows() grows and a previously-scrolled offset can point
+	// past the last valid window. The scrollbar-draw path only reconciles the
+	// offset while content overflows, so without this the scrollbar correctly
+	// disappears but a stale offset keeps the first rows hidden. Clamp before
+	// rebuildEntries/rebuildHitAreas consume z.rowOffset.
+	z.clampRowOffset()
 	// Profile-driven scrollbar appearance: re-derive every Layout so a
 	// mobile↔desktop transition correctly retheme the row scrollbar (mobile
 	// uses a wider thumb / larger min-thumb height for touch ergonomics).
@@ -332,11 +340,12 @@ func (z *RowRackZone) Layout(rect image.Rectangle) {
 		// hidden rows exist. The shared desktop thumb at alpha 40 reads as
 		// invisible against the dark rack — users couldn't tell the kit
 		// scrolled and reported instruments as unreachable (screenshot
-		// review). Bump the rack thumb (and track) to a clearly visible
-		// contrast while keeping the pinned narrow width
+		// review). Bump the rack thumb to a high-alpha sunset-gold accent
+		// (the shared scrollbar hue) over a neutral hairline track so it is
+		// clearly visible, while keeping the pinned narrow width
 		// (TestScrollbarWidthDesktop); discoverability comes from contrast,
 		// not width.
-		want.ThumbColor = WithAlpha(genColorBorder, genAlphaStrong)
+		want.ThumbColor = WithAlpha(genColorPrimary, genAlphaStrong)
 		want.TrackColor = WithAlpha(genColorBorder, genAlphaMedium)
 		if z.rowScroll.Style != want {
 			z.rowScroll.Style = want
@@ -937,6 +946,16 @@ func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 	}
 	margin := SpaceXS
 	labelMinW := btnW * 2
+	// Mobile: the per-row volume renders as a compact speaker icon, not a wide
+	// draggable track (precise control lives in the tap-to-open volume popup),
+	// so the default 2×-button-width reservation is dead space that the
+	// narrow-row clamp pays for by shrinking the mute/solo/fx/⋯ keys. Right-size
+	// it to a single key width so the four primary controls win that space and
+	// render larger ("buttons too small" report). Label reservation is left
+	// untouched.
+	if Profile().IsMobile() {
+		volW = btnW
+	}
 
 	// Reserve horizontal space at the panel's right edge for the row-rack
 	// scrollbar so the right-anchored control cluster — most visibly the ⋯
@@ -980,9 +999,31 @@ func (z *RowRackZone) layoutRowControls(e *rowEntry, rowRect image.Rectangle) {
 
 	right := rowRect.Max.X - margin - scrollReserve
 	// Place buttons from the right edge inward: ⋯, FX, Solo, Mute.
+	//
+	// The control buttons fill their cell instead of rendering a small
+	// btnW-square centered in the (taller) row, which left big empty bands
+	// above and below each key and made them read far smaller than their
+	// boundaries ("buttons smaller than they should be" report). The cell is
+	// btnW wide, so the key grows to fill the row height (minus a hairline
+	// breathing inset) — a larger, easier touch target that uses the space it
+	// already owns. centerSquareIn is retained only as the floor for degenerate
+	// (sub-btnW) cells so a clamped narrow row never produces an inverted rect.
+	fillKeys := Profile().IsMobile()
+	vPad := SpaceXS
 	placeBtn := func(b *Button) {
 		cell := image.Rect(right-btnW, rowRect.Min.Y, right, rowRect.Max.Y)
-		b.SetRect(centerSquareIn(cell, btnW))
+		filled := centerSquareIn(cell, btnW)
+		if fillKeys {
+			// Mobile: grow the key to fill the row height (minus a hairline
+			// breathing inset) instead of the small centered square; desktop
+			// keeps the centered square. Guarded so a clamped/short row never
+			// produces an inverted or sub-square key.
+			grown := image.Rect(cell.Min.X, cell.Min.Y+vPad, cell.Max.X, cell.Max.Y-vPad)
+			if grown.Dx() > 0 && grown.Dy() >= filled.Dy() {
+				filled = grown
+			}
+		}
+		b.SetRect(filled)
 		right -= btnW + gap
 	}
 	placeBtn(e.menuBtn)
@@ -1083,6 +1124,27 @@ func (z *RowRackZone) AddRowBtnRect() image.Rectangle {
 }
 
 // --- Scroll helpers ---
+
+// clampRowOffset keeps z.rowOffset within [0, max(0, total-visible)] for the
+// current rect/visible-row count. Idempotent; sets needLayout only when it
+// actually moves the offset so callers already inside Layout don't re-loop.
+func (z *RowRackZone) clampRowOffset() {
+	maxOffset := len(z.rows()) - z.VisibleRows()
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	off := z.rowOffset
+	if off > maxOffset {
+		off = maxOffset
+	}
+	if off < 0 {
+		off = 0
+	}
+	if off != z.rowOffset {
+		z.rowOffset = off
+		z.needLayout = true
+	}
+}
 
 func (z *RowRackZone) syncScroll() {
 	rows := z.rows()

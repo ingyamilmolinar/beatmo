@@ -58,8 +58,9 @@ func TestMobileLandscapeStacked(t *testing.T) {
 }
 
 // TestMobilePortraitAdaptiveSplit verifies that on a small screen in portrait
-// orientation, the drum pane gets primary screen space (capped at 65%, floored
-// at 30%) so editing dominates and the graph stays as a 35% reference.
+// orientation, the split is the content-based adaptive value: the drum pane is
+// sized to fit the rack AND the tallest audio tab, clamped so the grid keeps at
+// least 40% of the height (drum pane capped at 60%).
 func TestMobilePortraitAdaptiveSplit(t *testing.T) {
 	setupMobileTest(t, true)
 
@@ -69,10 +70,14 @@ func TestMobilePortraitAdaptiveSplit(t *testing.T) {
 
 	g.Layout(400, 800)
 
-	// With 1 row: needed=mobileHeaderH(56)+TouchRowHeight(52)+padding(24)=132,
-	// minDrum=240 (30% of 800), drumH=240, splitY=560.
-	if g.split.Y < 520 || g.split.Y > 600 {
-		t.Fatalf("expected split near 560 for 400x800 mobile portrait (1 row), got %d", g.split.Y)
+	// Layout applies adaptiveMobilePortraitSplitY at startup; assert against the
+	// same source of truth and that the grid keeps >= 40% of the height.
+	want := adaptiveMobilePortraitSplitY(800, g)
+	if g.split.Y != want {
+		t.Fatalf("expected adaptive split %d for 400x800 mobile portrait, got %d", want, g.split.Y)
+	}
+	if g.split.Y < 800*40/100 {
+		t.Fatalf("grid %d below 40%% of 800", g.split.Y)
 	}
 }
 
@@ -85,11 +90,11 @@ func TestMobileOrientationChange(t *testing.T) {
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
 
-	// Portrait first — stacked (adaptive, drum 30–65%)
+	// Portrait first — stacked (adaptive, grid >= 40%)
 	g.Layout(400, 800)
 	portraitY := g.split.Y
-	if portraitY < 520 || portraitY > 600 {
-		t.Fatalf("portrait split expected near 560 (adaptive, 1 row, drum=30%% floor), got %d", portraitY)
+	if want := adaptiveMobilePortraitSplitY(800, g); portraitY != want {
+		t.Fatalf("portrait split expected adaptive %d, got %d", want, portraitY)
 	}
 
 	// Rotate to landscape — still stacked, adaptive Y split for h=400
@@ -99,11 +104,11 @@ func TestMobileOrientationChange(t *testing.T) {
 		t.Fatalf("landscape split.Y expected in range [100,350] for h=400, got %d", landscapeY)
 	}
 
-	// Rotate back to portrait — stacked (adaptive, drum 30–65%)
+	// Rotate back to portrait — stacked (adaptive, grid >= 40%)
 	g.Layout(400, 800)
 	portrait2Y := g.split.Y
-	if portrait2Y < 520 || portrait2Y > 600 {
-		t.Fatalf("portrait (2nd) split expected near 560 (adaptive, 1 row), got %d", portrait2Y)
+	if want := adaptiveMobilePortraitSplitY(800, g); portrait2Y != want {
+		t.Fatalf("portrait (2nd) split expected adaptive %d, got %d", want, portrait2Y)
 	}
 }
 
@@ -217,11 +222,13 @@ func TestStaleRatioAfterLandscapeToPortrait(t *testing.T) {
 	// Start in landscape — sets split.Y to full height (390)
 	g.Layout(844, 390)
 
-	// Rotate to portrait — split.Y should use adaptive formula, not stale 390.
-	// With h=844 and 1 row: minDrum=253 (30%), drumH=253, splitY=591.
+	// Rotate to portrait — split.Y should use the adaptive formula, not stale 390.
 	g.Layout(390, 844)
-	if g.split.Y < 560 || g.split.Y > 620 {
-		t.Fatalf("expected split.Y near 591 (adaptive, h=844, 1 row) after landscape→portrait, got %d", g.split.Y)
+	if want := adaptiveMobilePortraitSplitY(844, g); g.split.Y != want {
+		t.Fatalf("expected adaptive split %d (h=844) after landscape→portrait, got %d", want, g.split.Y)
+	}
+	if g.split.Y < 844*40/100 {
+		t.Fatalf("grid %d below 40%% of 844 after landscape→portrait", g.split.Y)
 	}
 }
 

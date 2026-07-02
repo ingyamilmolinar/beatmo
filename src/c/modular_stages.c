@@ -19,7 +19,7 @@ const wavetable_t *modular_shared_table_for(int wave);
 /* ── RBJ biquad — moved here from modular.c (de-static'd, bodies IDENTICAL to
  * the originals so the modular FILTER stage keeps its exact bytes). ── */
 
-void mod_biquad_set(mod_biquad *f, int type, double cutoff, double q, int sr) {
+void mod_biquad_set_coeffs(mod_biquad *f, int type, double cutoff, double q, int sr) {
     if (cutoff < 20.0) cutoff = 20.0;
     double nyq = 0.5 * (double)sr;
     if (cutoff > nyq * 0.99) cutoff = nyq * 0.99;
@@ -61,6 +61,10 @@ void mod_biquad_set(mod_biquad *f, int type, double cutoff, double q, int sr) {
     f->b2 = (float)(b2 / a0);
     f->a1 = (float)(a1 / a0);
     f->a2 = (float)(a2 / a0);
+}
+
+void mod_biquad_set(mod_biquad *f, int type, double cutoff, double q, int sr) {
+    mod_biquad_set_coeffs(f, type, cutoff, q, sr);
     f->x1 = f->x2 = f->y1 = f->y2 = 0.0f;
 }
 
@@ -201,6 +205,7 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
     /* Family knobs — NaN keeps the original literals (bit-identical). */
     double bSustain = kp_get(p->gen_ks_sustain[k], 0.996);
     double bPluck   = kp_get(p->gen_ks_pluck[k], 0.35);
+    double bBlow    = kp_get(p->gen_ks_blow[k], 0.0); /* 0 = plucked (legacy); >0 = blown tube / wind */
     double bAttack  = kp_get(p->gen_atk_amt[k], 0.25);
     double bAttackR = kp_get(p->gen_atk_rate[k], 400.0);
     double bEnvRate = kp_get(p->gen_env_fast_rate[k], 1.8);
@@ -246,6 +251,75 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
 
     int attackSamples = (int)(0.008 * (double)sampleRate); /* ~8ms */
     if (attackSamples > samples) attackSamples = samples;
+
+    /* ── Blown-flute mode (source==3 with gen_ks_blow>0) ──────────────────────
+     * STK / Perry Cook jet-driven flute (single-bore simplification). A real
+     * flute is a TUBE: breath pressure drives a tuned bore delay through a CUBIC
+     * jet nonlinearity (x^3 - x, clipped). The cubic's saturation SELF-LIMITS the
+     * oscillation to a stable limit cycle — this is what bounds the amplitude
+     * (the earlier linear comb built up without bound). A one-pole lowpass in the
+     * reflection path is the open-tube radiation loss (sets brightness); a DC
+     * blocker removes the asymmetric jet DC. Continuous breath noise = the air
+     * turbulence, so the tone is pitched, breathy and never exactly repeats.
+     *   gen_ks_blow    = breath pressure (drive / loudness),
+     *   gen_ks_sustain = bore reflection gain (resonance vs damping),
+     *   gen_ks_pluck   = reflection-filter lowpass alpha (air color).
+     * The recipe amp ADSR shapes the note. Gated on bBlow>0 so every plucked KS
+     * instrument is byte-identical (bBlow defaults to 0). */
+    if (bBlow > 0.0) {
+        /* Resonant bore = a tuned delay with a lowpass in the feedback (the comb
+         * that pitches the breath noise). High feedback gives a clear pitch but a
+         * LINEAR comb builds up without bound; a tanh saturator on the recirculated
+         * signal turns it into a stable, self-limiting LIMIT CYCLE (loop gain falls
+         * as amplitude grows) — the bounded "jet" behaviour, without a second delay
+         * line. Continuous breath noise keeps it alive and breathy. */
+        /* Regeneration: a blown tube self-oscillates only when the loop gain
+         * exceeds unity at small signal. gen_ks_sustain is in [0,1] (and >1 would
+         * blow up the linear pluck path), so scale it up by 1.05 HERE — the tanh
+         * keeps the resulting limit cycle bounded. ks_sustain ~0.96-0.99 → loop
+         * gain ~1.01-1.04 → a sustained, stable tone; lower → it decays (softer). */
+        double fb      = decayFactor * 1.05; /* gen_ks_sustain → blown loop gain (>1 = self-oscillating) */
+        double lpAlpha = bPluck;             /* reflection lowpass alpha (tube air color) */
+        if (lpAlpha <= 0.0) lpAlpha = 0.5;
+        double lpState = 0.0;         /* reflection lowpass state */
+        /* Breath = SMOOTH airy turbulence, NOT white hiss. A raw white-noise drive
+         * makes the tone harsh/"industrial"; a 2-pole lowpass turns it into soft air
+         * so the tube sings smoothly. (This LP is on the excitation, not the bore
+         * round-trip, so it does not affect pitch.) */
+        const double breathAlpha = 0.10;
+        double bA = 0.0, bB = 0.0;    /* 2-pole breath lowpass state */
+        /* High-pass JUST BELOW the fundamental (0.65×f0): the loop's broadband
+         * floor leaks a low-frequency rumble ("old-recording" background noise);
+         * a tube has no musical content below f0, so removing it cleans the noise
+         * while leaving the (treble) tone intact. Pitch-relative → safe at any note.
+         * 2-pole one-pole-cascade HP, pole R = exp(-2π·fc/sr). */
+        double hpFc = 0.65 * baseFreq;
+        double hpR = exp(-2.0 * M_PI * hpFc / (double)sampleRate);
+        double h1x = 0.0, h1y = 0.0, h2x = 0.0, h2y = 0.0;
+        for (int i = 0; i < samples; i++) {
+            double bore = (double)delayBuf[readPtr];
+            /* reflection filter: one-pole lowpass (open-tube radiation damping) */
+            lpState = lpState * (1.0 - lpAlpha) + bore * lpAlpha;
+            /* breath excitation: white noise → 2-pole lowpass (smooth air) */
+            float nz = noise_ma_white_tick(&noise);
+            bA = bA * (1.0 - breathAlpha) + (double)nz * breathAlpha;
+            bB = bB * (1.0 - breathAlpha) + bA * breathAlpha;
+            /* recirculate feedback + breath, SATURATED → bounded limit cycle */
+            double recirc = tanh(lpState * fb + bB * bBlow);
+            delayBuf[readPtr] = (float)recirc;
+            readPtr = (readPtr + 1) % delayLen;
+            /* high-pass the output below the fundamental (kills the rumble floor) */
+            double s = bore;
+            h1y = hpR * (h1y + s - h1x);
+            h1x = s;
+            h2y = hpR * (h2y + h1y - h2x);
+            h2x = h1y;
+            float v = softsat_shared((float)(h2y * outScale));
+            if (assign) out[i] = v;
+            else        out[i] += v;
+        }
+        return;
+    }
 
     for (int i = 0; i < samples; i++) {
         double tSec = (double)i / (double)sampleRate;
@@ -309,6 +383,15 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
 static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
                                   const modular_params *p, int k,
                                   double voice_freq, int assign) {
+    /* KICK stage enable pill (Phase-10): <0.5 silences the voice. assign=1 means
+     * this slot is the primary writer, so zero the buffer; assign=0 accumulates,
+     * so add nothing. Every real source==5 consumer sets kick_enabled=1. */
+    if (p->kick_enabled < 0.5f) {
+        if (assign) {
+            for (int i = 0; i < samples; ++i) out[i] = 0.0f;
+        }
+        return;
+    }
     int variant = (int)lrintf(p->gen_kick_variant[k]);
     int kWave   = (int)kp_get(p->gen_wave[k], 0.0);
 
@@ -330,6 +413,9 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
         double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
         double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.15);
         double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.10);
+        double kAttack   = kp_get(p->gen_kick_attack[k], 0.15);
+        double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
+        double kSat      = kp_get(p->gen_kick_sat[k], 1.2);
 
         double lpNoise = 0.0;
         double phase0 = M_PI * 0.5;
@@ -368,13 +454,13 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
             double env2 = exp(-12.0 * tSec);
 
             double tonal = s0 * env0 * 0.95 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
-            double attackShape = 1.0 + 0.15 * exp(-50.0 * tSec);
+            double attackShape = 1.0 + kAttack * exp(-50.0 * tSec);
             tonal *= attackShape;
 
-            double g = exp(-3.0 * tNorm);
+            double g = exp(-kFade * tNorm);
             double mixed = (tonal + noiseThud + click) * g;
 
-            float y = (float)(tanh(mixed * 1.2) * 0.95);
+            float y = (float)(tanh(mixed * kSat) * 0.95);
             if (y > 1.0f) y = 1.0f;
             if (y < -1.0f) y = -1.0f;
             KICK_WRITE(y);
@@ -387,6 +473,9 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
         double kEnv0Rate = kp_get(p->gen_kick_env0[k], 8.0);
         double kEnv1Rate = kp_get(p->gen_kick_env1[k], 14.0);
         double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
+        double kAttack   = kp_get(p->gen_kick_attack[k], 0.5);
+        double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
+        double kSat      = kp_get(p->gen_kick_sat[k], 0.8);
 
         double lpClick = 0.0;
         float r0 = noise_ma_white_tick(&noise);
@@ -420,12 +509,12 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
             double env1 = exp(-kEnv1Rate * tSec);
 
             double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain;
-            double attackShape = 1.0 + 0.5 * exp(-60.0 * tSec);
+            double attackShape = 1.0 + kAttack * exp(-60.0 * tSec);
             tonal *= attackShape;
 
-            double g = exp(-5.0 * tNorm);
+            double g = exp(-kFade * tNorm);
             double mixed = (tonal + click) * g;
-            float y = softsat_shared((float)mixed * 0.8f) * 1.3f;
+            float y = softsat_shared((float)mixed * (float)kSat) * 1.3f;
             if (y > 1.0f) y = 1.0f;
             if (y < -1.0f) y = -1.0f;
             KICK_WRITE(y);
@@ -439,6 +528,9 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
         double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
         double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
         double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
+        double kAttack   = kp_get(p->gen_kick_attack[k], 0.2);
+        double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
+        double kSat      = kp_get(p->gen_kick_sat[k], 1.5);
 
         double lpNoise = 0.0;
         float r0 = noise_ma_white_tick(&noise);
@@ -480,15 +572,15 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
             double env2 = exp(-10.0 * tSec);
 
             double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
-            double attackShape = 1.0 + 0.2 * exp(-35.0 * tSec);
+            double attackShape = 1.0 + kAttack * exp(-35.0 * tSec);
             tonal *= attackShape;
 
-            double g = exp(-3.0 * tNorm);
+            double g = exp(-kFade * tNorm);
             double mixed = (tonal + noiseThud) * g;
 
             double levels = 128.0;
             mixed = floor(mixed * levels + 0.5) / levels;
-            mixed = tanh(tanh(mixed * 1.5) * 1.8);
+            mixed = tanh(tanh(mixed * kSat) * 1.8);
             lpOut += lpAlpha * (mixed - lpOut);
             mixed = lpOut;
 
@@ -507,6 +599,9 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
         double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
         double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.35);
         double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.15);
+        double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
+        double kFade     = kp_get(p->gen_kick_fade[k], 4.5);
+        double kSat      = kp_get(p->gen_kick_sat[k], 0.45);
 
         float r0 = noise_ma_white_tick(&noise);
         float r1 = noise_ma_white_tick(&noise);
@@ -573,19 +668,105 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
             double env2 = exp(-17.0 * tSec);
 
             double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
-            double attackShape = 1.0 + 0.3 * exp(-50.0 * tSec);
+            double attackShape = 1.0 + kAttack * exp(-50.0 * tSec);
             tonal *= attackShape;
 
             double gate = 1.0;
             if (tNorm > 0.45) {
                 gate = exp(-12.0 * (tNorm - 0.45));
             }
-            double g = exp(-4.5 * tNorm);
+            double g = exp(-kFade * tNorm);
 
             double mixed = (tonal + beater + room) * g * gate;
-            float y = softsat_shared((float)mixed * 0.45f) * 1.1f;
+            float y = softsat_shared((float)mixed * (float)kSat) * 1.1f;
             if (y > 1.0f) y = 1.0f;
             if (y < -1.0f) y = -1.0f;
+            KICK_WRITE(y);
+        }
+    } else if (variant == 5) {
+        /* ── hybrid/punchy (layered DSP, for punchy/raw kicks) ──
+         * Three DECOUPLED layers — decoupling is what keeps it SMOOTH, not spitty:
+         *   (1) a pitch-swept harmonic BODY, smoothly WAVESHAPED for raw harmonics
+         *       (deterministic → no flutter);
+         *   (2) a separate COLORED-NOISE TEXTURE — band-passed, given the body's
+         *       smooth ENVELOPE (not its oscillating wave) and ADDED on top, NOT
+         *       run through the distortion. Fusing noise into the waveshaper and
+         *       multiplying it by the body WAVE amplitude-modulates it at ~2x the
+         *       pitch and the tanh amplifies its peaks → sputtering "spit"; an
+         *       additive, envelope-scaled texture is a steady "air" instead;
+         *   (3) a short bright CLICK = the attack snap + crest/punch.
+         * Reuses the kick knobs: sat=distortion drive, noise=texture, click=attack. */
+        double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.12);
+        double kClickAmt = kp_get(p->gen_kick_click[k], 0.40);
+        double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 90.0);
+        double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 1.5);
+        double kEnv0Rate = kp_get(p->gen_kick_env0[k], 7.0);
+        double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
+        double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
+        double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
+        double kDrive    = kp_get(p->gen_kick_sat[k], 2.0);
+        double kAttack   = kp_get(p->gen_kick_attack[k], 1.5);
+        double kFade     = kp_get(p->gen_kick_fade[k], 6.0);
+
+        double phase0 = M_PI * 0.5, phase1 = M_PI * 0.5, phase2 = M_PI * 0.5;
+        double f1 = f0 * 2.0, f2 = f0 * 3.0;
+        double lpClick = 0.0, nzLo = 0.0, nzBand = 0.0, nzBand2 = 0.0;
+
+        for (int i = 0; i < samples; ++i) {
+            double tSec  = (double)i / (double)sampleRate;
+            double tNorm = (double)i / (double)samples;
+
+            double pitchEnv = exp(-kPeRate * tSec);
+            double freqMul  = 1.0 + kPeAmt * pitchEnv;
+            phase0 += 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+            phase1 += 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+            phase2 += 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+
+            /* body amp env = a fast attack RAMP (~15 ms) × exp decay → the body
+             * SWELLS to a peak then decays (the reference peaks ~30 ms). A pure
+             * exp decay peaks at t=0 and feels "weak/instant"; the swell is the
+             * weighty THUMP. */
+            double decayEnv = exp(-kEnv0Rate * tSec);
+            double atkRamp  = 1.0 - exp(-90.0 * tSec);
+            double bodyEnv  = decayEnv * atkRamp;
+            double harmEnv = exp(-kEnv1Rate * tSec);
+            double body = osc_wave_shared(kWave, phase0)
+                        + kH2Gain * harmEnv * osc_wave_shared(kWave, phase1)
+                        + kH3Gain * harmEnv * osc_wave_shared(kWave, phase2);
+            body *= bodyEnv;
+
+            /* (1) smooth raw body: waveshape the BODY ALONE (no noise inside →
+             *     deterministic, no flutter), re-apply bodyEnv so it decays. */
+            double distorted = tanh(body * (1.0 + kDrive * 3.0)) * bodyEnv * 0.45;
+
+            /* (2) ORGANIC AIR TEXTURE: HP (~150 Hz) to drop rumble, gentle LP
+             *     (~4 kHz) → a broadband "air" like a real kick's beater/room
+             *     overtones (the reference carries ~2% here and reads ORGANIC, not
+             *     electronic). Keep the LEVEL low — the "spit" was this same air an
+             *     octave too loud. Scaled by the smooth bodyEnv, ADDED (no AM). */
+            float nz = noise_ma_white_tick(&noise);
+            nzLo  += 0.020 * ((double)nz - nzLo);   /* ~150 Hz */
+            double nzHP = (double)nz - nzLo;         /* HP → broadband air */
+            nzBand += 0.28 * (nzHP - nzBand);        /* gentle LP ~2.6 kHz (trim the very top) */
+            /* The air rides a VERY fast decay (essentially gone by ~50 ms), NOT the
+             * body envelope: it belongs only to the organic ATTACK. Any air left in
+             * the tail reads as "spit" against the quiet decay, so the kick must
+             * finish bone-DRY (pure tonal body). */
+            double airEnv = exp(-75.0 * tSec);
+            double texture = nzBand * kNoiseAmt * airEnv;
+
+            /* (3) LOW THUD transient = the thump's punch + crest. A heavily
+             * LOW-passed noise burst (~130 Hz) is a low "thud", NOT a high tick:
+             * an HP/bright click reads as "tss"/spit and pulls the perceived pitch
+             * up. Fast decay (~3 ms) so it's a punch, not a tail. */
+            float cn = noise_ma_white_tick(&noise);
+            lpClick += 0.017 * ((double)cn - lpClick);  /* 1-pole LP ~130 Hz */
+            double click = lpClick * kClickAmt * exp(-300.0 * tSec) * 12.0;
+
+            double g = exp(-kFade * tNorm);
+            double s = (distorted + texture + click * (0.6 + 0.5 * kAttack)) * g;
+            /* GENTLE soft-limit (smooth saturation, NOT a hard clamp). */
+            float y = (float)(tanh(s) * 0.95);
             KICK_WRITE(y);
         }
     } else {
@@ -599,6 +780,9 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
         double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
         double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
         double kH4Gain   = kp_get(p->gen_kick_h4[k], 0.12);
+        double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
+        double kFade     = kp_get(p->gen_kick_fade[k], 4.0);
+        double kSat      = kp_get(p->gen_kick_sat[k], 0.55);
 
         double lpNoise = 0.0;
         double lpClick = 0.0;
@@ -657,12 +841,12 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
                 s2 * env2 * kH3Gain +
                 s3 * env3 * kH4Gain;
 
-            double attackShape = 1.0 + 0.3 * exp(-40.0 * tSec);
+            double attackShape = 1.0 + kAttack * exp(-40.0 * tSec);
             tonal *= attackShape;
 
-            double g = exp(-4.0 * tNorm);
+            double g = exp(-kFade * tNorm);
             double mixed = (tonal + noiseThud + click) * g;
-            float y = softsat_shared((float)mixed * 0.55f) * 1.2f;
+            float y = softsat_shared((float)mixed * (float)kSat) * 1.2f;
             if (y > 1.0f) y = 1.0f;
             if (y < -1.0f) y = -1.0f;
             KICK_WRITE(y);
@@ -1650,7 +1834,7 @@ static void modular_gen_slot_fm(float *out, int sampleRate, int samples,
         break;
     case 3: /* PRESET_FM_EPIANO */
         pr.num_ops = 3;
-        baseLit = 261.63; peAmtLit = 0.0; peDecayLit = 0.0;
+        baseLit = 220.0; peAmtLit = 0.0; peDecayLit = 0.0;
         pr.ops[0].freq_offset = 0.0f; pr.ops[0].amplitude = 0.7f;
         pr.ops[0].attack_sec = 0.002f; pr.ops[0].sustain_level = 0.3f;
         pr.ops[0].release_sec = 0.4f; pr.ops[0].is_carrier = 1;
@@ -1752,6 +1936,18 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
      * slots accumulate in slot-index order (spec §2 mix order). */
     int wrote = osc_wrote;
 
+    /* ── Pitch-vibrato gate (mirrors modular.c's vib_on). When active, the
+     * wavetable-osc gen slots apply a per-sample 2^(semis/12) multiplier to
+     * their slot frequency, using the SAME formula as the OSC stage. When
+     * inactive, the existing code path runs unchanged (byte-identity). ── */
+    int   gb_lfo_on     = p->lfo_enabled >= 0.5f;
+    float gb_lfo_rate   = p->lfo_rate;
+    float gb_lfo_depth  = p->lfo_depth;
+    int   gb_lfo_target = (int)lrintf(p->lfo_target);
+    float gb_lfo_delay  = p->lfo_delay;
+    int   gb_vib_on     = gb_lfo_on && gb_lfo_target == 1
+                          && gb_lfo_depth > 0.0f && gb_lfo_rate > 0.0f;
+
     /* ── Noise bus: rendered ONCE so slots sharing the stream consume the
      * same draws in the same order as a legacy interleaved loop (spec §2
      * shared-noise-draws rule). Layout: prelude draws first, then
@@ -1805,8 +2001,9 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
              * verified by the full golden gate. */
             double nyq = 0.5 * (double)sampleRate;
             if (f > nyq * 0.99) f = nyq * 0.99;
+            const wavetable_t *wt = modular_shared_table_for((int)lrintf(p->gen_wave[k]));
             wt_osc_t osc;
-            wt_osc_init(&osc, modular_shared_table_for((int)lrintf(p->gen_wave[k])), f, sampleRate);
+            wt_osc_init(&osc, wt, f, sampleRate);
             int pm = (int)lrintf(p->gen_phase_mode[k]);
             if (pm == 1) {
                 wt_osc_set_phase(&osc, (double)p->gen_phase[k] / (2.0 * M_PI));
@@ -1816,13 +2013,106 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                     wt_osc_set_phase(&osc, (double)bus[pi]); /* draw in [0,1) (or slightly negative post-wrap; wt wraps) */
                 }
             }
-            for (int i = 0; i < samples; i++) {
-                double t = (double)i / (double)sampleRate;
-                double s = (double)wt_osc_tick(&osc);
-                s = gen_slot_filter_tick(&filt, s);
-                double env = fm * exp(-fr * t) + tm * exp(-tr * t);
-                if (assign) out[i] = (float)(s * env * gain);
-                else        out[i] += (float)(s * env * gain);
+            /* Phase-8E unison: gated on nv>=2 so nv==1 is the exact original loop. */
+            int unison_nv = (int)lrintf(p->unison_voices);
+            if (unison_nv < 1) unison_nv = 1;
+            if (unison_nv > 7) unison_nv = 7;
+            if (unison_nv >= 2) {
+                double udet = (double)p->unison_detune;
+                double umix = (double)p->unison_mix;
+                double udrift_rate  = (double)p->unison_drift_rate;
+                double udrift_depth = (double)p->unison_drift_depth;
+                int ns = unison_nv - 1;
+                wt_osc_t side[6];
+                double base_cents_gb[6];
+                for (int v = 0; v < ns; v++) {
+                    double spread = -1.0 + 2.0 * (double)v / (double)(ns > 1 ? ns - 1 : 1);
+                    base_cents_gb[v] = udet * spread;
+                    double fv = f * pow(2.0, base_cents_gb[v] / 1200.0);
+                    if (fv > nyq * 0.99) fv = nyq * 0.99;
+                    wt_osc_init(&side[v], wt, fv, sampleRate);
+                    wt_osc_set_phase(&side[v], (double)(v + 1) / (double)unison_nv);
+                }
+                double norm = 1.0 / sqrt((double)unison_nv);
+                int drift_on_gb = (udrift_rate > 0.0 && udrift_depth > 0.0);
+                double drift_rate_v_gb[6], drift_phase_v_gb[6];
+                if (drift_on_gb) {
+                    for (int v = 0; v < ns; v++) {
+                        drift_rate_v_gb[v]  = udrift_rate * (1.0 + 0.13 * (double)v);
+                        drift_phase_v_gb[v] = 2.0 * M_PI * (double)(v + 1) / (double)unison_nv;
+                    }
+                }
+                for (int i = 0; i < samples; i++) {
+                    double t = (double)i / (double)sampleRate;
+                    /* Pitch-vibrato multiplier: same formula as OSC stage. Applied
+                     * to the center voice AND every side voice (vibrato on top of
+                     * unison detune/drift), matching OSC-stage unison behaviour. */
+                    double vib_mult = 1.0;
+                    if (gb_vib_on) {
+                        double ramp = (gb_lfo_delay > 0.0f)
+                                      ? fmin(t / (double)gb_lfo_delay, 1.0) : 1.0;
+                        double semis = (double)gb_lfo_depth * ramp
+                                       * sin(2.0 * M_PI * (double)gb_lfo_rate * t);
+                        vib_mult = pow(2.0, semis / 12.0);
+                        /* Center voice: set freq per-sample with vibrato. */
+                        double fc = f * vib_mult;
+                        if (fc > nyq * 0.99) fc = nyq * 0.99;
+                        wt_osc_set_freq(&osc, fc, sampleRate);
+                    }
+                    if (drift_on_gb) {
+                        for (int v = 0; v < ns; v++) {
+                            double drift_cents = udrift_depth
+                                * sin(2.0 * M_PI * drift_rate_v_gb[v] * t + drift_phase_v_gb[v]);
+                            double total_cents = base_cents_gb[v] + drift_cents;
+                            double fv = f * pow(2.0, total_cents / 1200.0) * vib_mult;
+                            if (fv > nyq * 0.99) fv = nyq * 0.99;
+                            wt_osc_set_freq(&side[v], fv, sampleRate);
+                        }
+                    } else if (gb_vib_on) {
+                        /* No drift but vibrato active: update side voices with vibrato. */
+                        for (int v = 0; v < ns; v++) {
+                            double fv = f * pow(2.0, base_cents_gb[v] / 1200.0) * vib_mult;
+                            if (fv > nyq * 0.99) fv = nyq * 0.99;
+                            wt_osc_set_freq(&side[v], fv, sampleRate);
+                        }
+                    }
+                    double center = (double)wt_osc_tick(&osc);
+                    double ensemble = center;
+                    for (int v = 0; v < ns; v++) ensemble += (double)wt_osc_tick(&side[v]);
+                    ensemble *= norm;
+                    double s = (1.0 - umix) * center + umix * ensemble;
+                    s = gen_slot_filter_tick(&filt, s);
+                    double env = fm * exp(-fr * t) + tm * exp(-tr * t);
+                    if (assign) out[i] = (float)(s * env * gain);
+                    else        out[i] += (float)(s * env * gain);
+                }
+            } else if (gb_vib_on) {
+                /* Per-sample pitch-vibrato: same formula as modular.c OSC stage.
+                 * Only runs when vibrato is active; inactive path below is unchanged
+                 * (byte-identity when gb_vib_on == 0). */
+                for (int i = 0; i < samples; i++) {
+                    double t = (double)i / (double)sampleRate;
+                    double ramp = (gb_lfo_delay > 0.0f)
+                                  ? fmin(t / (double)gb_lfo_delay, 1.0) : 1.0;
+                    double semis = (double)gb_lfo_depth * ramp
+                                   * sin(2.0 * M_PI * (double)gb_lfo_rate * t);
+                    double mult = pow(2.0, semis / 12.0);
+                    wt_osc_set_freq(&osc, f * mult, sampleRate);
+                    double s = (double)wt_osc_tick(&osc);
+                    s = gen_slot_filter_tick(&filt, s);
+                    double env = fm * exp(-fr * t) + tm * exp(-tr * t);
+                    if (assign) out[i] = (float)(s * env * gain);
+                    else        out[i] += (float)(s * env * gain);
+                }
+            } else {
+                for (int i = 0; i < samples; i++) {
+                    double t = (double)i / (double)sampleRate;
+                    double s = (double)wt_osc_tick(&osc);
+                    s = gen_slot_filter_tick(&filt, s);
+                    double env = fm * exp(-fr * t) + tm * exp(-tr * t);
+                    if (assign) out[i] = (float)(s * env * gain);
+                    else        out[i] += (float)(s * env * gain);
+                }
             }
             wrote = 1;
         } else if (src == 2 && bus) { /* noise tap */

@@ -122,18 +122,8 @@ func ResetInstruments() {
 	ResetCatalogForTest(nil)
 	ClearAllInsertEffects()
 	resetInstrumentChannels(insts)
+	clearInstrumentDisplayNames()
 	bindBuiltinInstrumentRecipes()
-}
-
-func RenameInstrument(oldID, newID string) {
-	for i, id := range insts {
-		if id == oldID {
-			insts[i] = newID
-			bumpInstrumentsVersion()
-			break
-		}
-	}
-	renameInstrumentChannel(oldID, newID)
 }
 
 // Send effect stubs for tests.

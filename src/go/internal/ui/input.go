@@ -102,6 +102,39 @@ func SetInputForTest(
 	}
 }
 
+// resetInputForTest re-installs the package-default input function variables
+// (the touch-override wrappers and the raw Ebiten bindings) and clears the
+// test-input flag. Tests that read input through the real wrappers but do NOT
+// install their own full mock call this first, so a prior test that replaced an
+// input variable via a stub helper whose restore never ran (or whose saved
+// "original" was itself already polluted) can't leak a stale cursor/mouse mock
+// into them. Mirrors the assignments in the package-var block above.
+func resetInputForTest() {
+	_ebCursorPosition = ebiten.CursorPosition
+	_ebIsMouseButtonPressed = ebiten.IsMouseButtonPressed
+	cursorPosition = func() (int, int) {
+		if touchOverrideActive {
+			return touchOverrideX, touchOverrideY
+		}
+		return _ebCursorPosition()
+	}
+	isMouseButtonPressed = func(b ebiten.MouseButton) bool {
+		if touchOverrideActive && b == ebiten.MouseButtonLeft && touchOverrideLeft {
+			return true
+		}
+		return _ebIsMouseButtonPressed(b)
+	}
+	isKeyPressed = ebiten.IsKeyPressed
+	isKeyJustPressed = inpututil.IsKeyJustPressed
+	inputChars = ebiten.InputChars //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
+	wheel = ebiten.Wheel
+	screenSize = ebiten.ScreenSizeInFullscreen //nolint:staticcheck // deprecated Ebiten API, migration tracked separately
+	// touchIDs / touchPosition are deliberately left alone: SetTouchForTest owns
+	// them with its own restore, so callers can invoke resetInputForTest before
+	// OR after SetTouchForTest without clobbering the touch mock.
+	inputForTestActive = false
+}
+
 // SetTouchForTest replaces touch input functions during tests.
 func SetTouchForTest(
 	ids func() []ebiten.TouchID,

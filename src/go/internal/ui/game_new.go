@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/core/engine"
@@ -41,6 +42,7 @@ func New(logger *game_log.Logger) *Game {
 		engineProgress:     eng.Progress,
 		split:              NewSplitter(720), // real height set in Layout below
 		highlightedBeats:   make(map[int]int64),
+		hlDropped:          make(map[int]int64),
 		bpm:                120, // Default BPM
 		beatInfos:          []model.BeatInfo{},
 		drumBeatInfos:      []model.BeatInfo{},
@@ -119,11 +121,18 @@ func New(logger *game_log.Logger) *Game {
 	// labels re-measure at the new locale's widths. Stored cancel lets tests
 	// drop the listener (the production Game is a process-lifetime singleton).
 	g.i18nCancel = i18n.OnChange(g.drum.OnLocaleChanged)
-	// Grid-pane settings gear (desktop-only): opens the same settings overlay
-	// as the "?"/"/" key. Drawn in the grid pane's top-right corner, NOT in the
-	// transport bar. Reuses the shared Button widget.
+	// Keep the browser landscape-block overlay's text in the active language
+	// (no-op off the browser). Visibility is pure CSS (orientation media query).
+	registerLandscapeNoticeLocaleSync()
+	// Grid-pane settings gear (desktop AND mobile): opens the same settings
+	// overlay as the "?"/"/" key. Drawn in the grid pane's top-right corner, NOT
+	// in the transport bar. Reuses the shared Button widget.
 	g.gridHelpBtn = NewSpecButton("", ComponentButtonSecondary, g.toggleSettingsOverlay)
 	g.gridHelpBtn.Icon = string(IconSettings)
+	// Input is routed through the grid pane's inputDispatcher via
+	// gridHelpInputHandler (z=gridHelpInputZ). The button fires OnClick once per
+	// press edge; the release-time GestureTap path (handleTapInGrid) deliberately
+	// does NOT touch the gear, so no double-fire guard is needed here.
 	g.undoManager = NewUndoManager(g.undoCapture, g.undoRestore)
 	registerUndoObserver(g.undoManager)
 	// Ensure the timeline header interprets offsets/length in beats while we
@@ -141,8 +150,9 @@ func New(logger *game_log.Logger) *Game {
 	}
 	// wire import handler - queue data for processing after seqMu is released
 	// to avoid recursive locking (drum.Update is called while holding seqMu)
-	g.drum.onImport = func(data []byte) error {
+	g.drum.onImport = func(data []byte, source string) error {
 		g.pendingImportData = data
+		g.pendingImportSource = source
 		return nil // actual result will be notified via pendingImportCB
 	}
 	g.drum.onImportDialogStart = g.startImportDialog
@@ -167,11 +177,11 @@ func New(logger *game_log.Logger) *Game {
 		g.pendingNotifyMu.Lock()
 		defer g.pendingNotifyMu.Unlock()
 		if p.Err != nil {
-			g.pendingNotifyError = append(g.pendingNotifyError,
-				i18n.Tf(i18n.KeyNotifRecordingSaveFailed, p.Err.Error()))
+			g.pendingNotifs = append(g.pendingNotifs,
+				pendingNotif{key: i18n.KeyNotifRecordingSaveFailed, args: []string{p.Err.Error()}, isErr: true})
 		} else {
-			g.pendingNotifyInfo = append(g.pendingNotifyInfo,
-				i18n.Tf(i18n.KeyNotifRecordingSaved, p.Drops, p.Dir))
+			g.pendingNotifs = append(g.pendingNotifs,
+				pendingNotif{key: i18n.KeyNotifRecordingSaved, args: []string{strconv.FormatInt(p.Drops, 10), p.Dir}})
 		}
 	})
 
@@ -295,7 +305,21 @@ func New(logger *game_log.Logger) *Game {
 		g.notifyPredictorNode(id)
 		g.pathsDirty = true
 		if g.Playing() {
+			// A node-param change (volume/pitch/logic) updates predictor truth
+			// (notifyPredictorNode, above) without necessarily changing path
+			// topology, so updateBeatInfos's pathsChanged invalidation may not
+			// run. Drop in-flight audio (audioGen) AND advance the parity
+			// generation (+grace) so the scan's parityGen filter excludes any
+			// decision/audio recorded under the pre-change params. The explicit
+			// buffer wipe below is the memory-hygiene step (redundant with the
+			// gen filter). Skip the path-dirty/freeze/clear side effects — this
+			// hook owns paths-dirty itself.
 			g.audioGen.Add(1)
+			g.bumpParityGen("node-param-change", structuralMutationOptions{
+				SkipPathsDirty:     true,
+				SkipPathChangeMark: true,
+				SkipBufferClear:    true,
+			})
 			g.parityMu.Lock()
 			g.parityAudio = nil
 			g.parityAudioMaxIdx = nil

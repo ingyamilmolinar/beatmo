@@ -5,6 +5,8 @@ package ui
 import (
 	"image"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // clearClickSuppression clears the global click suppression state for tests.
@@ -106,7 +108,7 @@ func TestSubdivMenuHighlightsCurrent(t *testing.T) {
 	// All buttons use the same base DropdownStyle; active highlight is in Draw.
 	for _, btn := range comp.Buttons() {
 		if btn.Style != ButtonVisual(DropdownStyle) {
-			t.Errorf("option %q: Style should be DropdownStyle; active highlight is drawn via drawMenuItemBackground", btn.Text)
+			t.Errorf("option %q: Style should be DropdownStyle; active highlight is drawn via drawMenuRow", btn.Text)
 		}
 	}
 	// Verify every expected option label is present.
@@ -389,5 +391,41 @@ func TestSubdiv_SetPropsRebuildWhileOpen(t *testing.T) {
 	newBounds := comp.Bounds()
 	if newBounds == origBounds {
 		t.Errorf("expected bounds to change after SetProps, still %v", newBounds)
+	}
+}
+
+// TestSubdivRowAdvancesPressAnimAfterRefactor verifies that after routing
+// drawSubdivRow through drawMenuRow, successive Draw calls advance the button's
+// press animation (drawMenuRow calls btn.Draw → AdvancePressAnim). Before the
+// refactor the old flat path never called btn.Draw, so pressDepth never moved.
+func TestSubdivRowAdvancesPressAnimAfterRefactor(t *testing.T) {
+	comp := NewSubdivMenuComponent()
+	comp.SetScreenBounds(image.Rect(0, 0, 200, 400))
+	comp.SetProps(SubdivMenuProps{
+		AnchorRect: image.Rect(50, 50, 150, 75),
+		Current:    8,
+		Options:    []int{4, 8, 16},
+		RowHeight:  24,
+	})
+	comp.Open()
+
+	dst := ebiten.NewImage(200, 400)
+	if len(comp.buttons) == 0 {
+		t.Fatal("no subdiv buttons built")
+	}
+	b := comp.buttons[0]
+	b.pressTarget = 1
+	start := b.pressDepth
+	for i := 0; i < 5; i++ {
+		comp.Draw(dst)
+	}
+	// Persistence: the same *Button must survive across frames (animation state
+	// lives on it). A separate assertion from pressDepth so a failing run
+	// distinguishes "button recreated" from "animation didn't advance".
+	if comp.buttons[0] != b {
+		t.Fatal("subdiv button was recreated across frames; press-animation state would be lost")
+	}
+	if b.pressDepth <= start {
+		t.Fatalf("subdiv row did not animate after drawMenuRow refactor: %v <= %v", b.pressDepth, start)
 	}
 }

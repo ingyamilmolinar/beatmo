@@ -14,16 +14,16 @@ import (
 // The Sampler tab. A waveform-prominent editor: a full-width waveform with
 // draggable Start/End trim handles on top, and one control area beneath with
 // Start/End/Transpose/Detune/Gain knobs plus Reverse/Normalize/Fade toggles
-// and a Preview button. The header carries the Load WAV source button and
-// Save / Save As (the dropdown auto-loads the selected instrument — the old
-// "From Synth" button is gone). All sample logic lives on samplerState
-// (sampler_state.go); this file owns only layout, drawing, and input.
+// and a Preview button. The header carries Save / Save As (the dropdown
+// auto-loads the selected instrument — the old "From Synth" and "Load WAV"
+// buttons are gone; WAV loading now lives only on the master panel's kebab
+// Upload action). All sample logic lives on samplerState (sampler_state.go);
+// this file owns only layout, drawing, and input.
 
 const samplerPreviewID = "preview.sampler"
 
 // samplerTitlePad is the left inset of the "SAMPLER" title inside the
-// header strip. Header source buttons start a SpaceMD gap past the title's
-// right edge so the title never collides with the first button.
+// header strip.
 const samplerTitlePad = SpaceSM
 
 // samplerGroupLabel returns the functional group a knob belongs to, used
@@ -33,11 +33,11 @@ const samplerTitlePad = SpaceSM
 func samplerGroupLabel(idx int) string {
 	switch idx {
 	case samplerKnobStart:
-		return "TRIM"
+		return i18n.T(i18n.KeySamplerGroupTrim)
 	case samplerKnobTranspose:
-		return "TUNE"
+		return i18n.T(i18n.KeySamplerGroupTune)
 	case samplerKnobGain:
-		return "LEVEL"
+		return i18n.T(i18n.KeySamplerGroupLevel)
 	}
 	return ""
 }
@@ -48,15 +48,15 @@ func samplerGroupLabel(idx int) string {
 func samplerKnobPlainEnglish(idx int) string {
 	switch idx {
 	case samplerKnobStart:
-		return "where it begins"
+		return i18n.T(i18n.KeySamplerGlossStart)
 	case samplerKnobEnd:
-		return "where it ends"
+		return i18n.T(i18n.KeySamplerGlossEnd)
 	case samplerKnobTranspose:
-		return "how high or low"
+		return i18n.T(i18n.KeySamplerGlossPitch)
 	case samplerKnobDetune:
-		return "tiny pitch nudge"
+		return i18n.T(i18n.KeySamplerGlossFine)
 	case samplerKnobGain:
-		return "louder or quieter"
+		return i18n.T(i18n.KeySamplerGlossGain)
 	}
 	return ""
 }
@@ -230,12 +230,25 @@ func (dv *DrumView) ensureSamplerLoaded(instID string) {
 		s.srcSignature = sig
 		return
 	}
-	// A saved sample-edit descriptor means the instrument is a SYNTH with a
-	// non-destructive edit: load the RAW source render and overlay the saved
-	// edit into the editor state, so Save keeps round-tripping the same
-	// descriptor. Checked before the user-sample store — the descriptor only
-	// exists for recipe-bound synths, never for baked PCM.
-	if e, hasEdit := audio.SampleEditFor(instID); hasEdit {
+	// A user sample (WAV import, saved chop, or a file-picker WAV already seeded
+	// below) is a WAV source: its PRISTINE PCM is the canonical store entry. Load
+	// that and overlay any saved sample-edit descriptor onto the knob state, so
+	// the editor shows the un-edited waveform with the edit applied declaratively
+	// — the same non-destructive shape the synth path uses. Checked before the
+	// descriptor branch so a user sample's edit never routes through the (recipe-
+	// only) raw synth capture.
+	if rec, ok := audio.UserSamplePCM(instID); ok && len(rec.PCM) > 0 {
+		s.loadFromInstrument(instID, append([]float32(nil), rec.PCM...), rec.SampleRate, samplerSourceWAV)
+		if e, hasEdit := audio.SampleEditFor(instID); hasEdit {
+			s.loadEditDescriptor(e)
+		}
+		return
+	}
+	// A saved sample-edit descriptor on a RECIPE-bound instrument means it is a
+	// SYNTH with a non-destructive edit: load the RAW recipe render and overlay
+	// the saved edit. (A non-recipe instrument with a descriptor is a user sample,
+	// handled above.)
+	if e, hasEdit := audio.SampleEditFor(instID); hasEdit && audio.RecipeForInstrument(instID) != "" {
 		pcm, sr := samplerRawCaptureFn(instID)
 		if len(pcm) == 0 {
 			s.captureID = instID
@@ -248,15 +261,23 @@ func (dv *DrumView) ensureSamplerLoaded(instID string) {
 		s.srcSignature = samplerSourceSignatureFn(instID)
 		return
 	}
-	if rec, ok := audio.UserSamplePCM(instID); ok && len(rec.PCM) > 0 {
-		s.loadFromInstrument(instID, append([]float32(nil), rec.PCM...), rec.SampleRate, samplerSourceWAV)
-		return
-	}
 	pcm, sr := samplerCaptureFn(instID)
 	if len(pcm) == 0 {
 		s.captureID = instID
 		s.raw = nil
 		s.status = "Loading — play the sound once if it doesn't appear"
+		return
+	}
+	// A recipe binding is what makes an instrument a SYNTH (the descriptor is
+	// applied to the fresh recipe render at trigger time). A file-picker WAV
+	// (audio.RegisterWAV) is a raw PCM Sample with NO recipe and no user-sample
+	// store entry, so it is a WAV source. Seed its pristine PCM into the store so
+	// the real-time edit path (audio.SetSampleEdit → reapplyUserSampleEdit) has a
+	// source to bake from — this is what makes trim/reverse/etc audible
+	// immediately, without waiting for Save.
+	if audio.RecipeForInstrument(instID) == "" {
+		audio.PutUserSample(instID, pcm, sr)
+		s.loadFromInstrument(instID, pcm, sr, samplerSourceWAV)
 		return
 	}
 	s.loadFromInstrument(instID, pcm, sr, samplerSourceSynth)
@@ -364,7 +385,8 @@ func (dv *DrumView) buildSamplerTab(contentR image.Rectangle, instID string) {
 		// (capped) to the waveform.
 		minCtrlH := dv.samplerControlMinH(dv2)
 		waveH := body.Dy() - minCtrlH - SpaceSM
-		if maxWaveH := body.Dy() * 45 / 100; waveH > maxWaveH {
+		// Cap the graph a bit smaller (40%) so the two-row knob grid has room.
+		if maxWaveH := body.Dy() * 40 / 100; waveH > maxWaveH {
 			waveH = maxWaveH
 		}
 		if waveH < 36 {
@@ -373,8 +395,9 @@ func (dv *DrumView) buildSamplerTab(contentR image.Rectangle, instID string) {
 		waveR = image.Rect(body.Min.X, body.Min.Y, body.Max.X, body.Min.Y+waveH)
 		ctrlR = image.Rect(body.Min.X, waveR.Max.Y+SpaceSM, body.Max.X, body.Max.Y)
 	} else {
-		// Side-by-side: big waveform left (~56%), control column right.
-		waveW := body.Dx() * 56 / 100
+		// Side-by-side: waveform left (~50%), wider control column right so the
+		// knob captions ("Ganancia +0 dB") render at full font without crowding.
+		waveW := body.Dx() * 50 / 100
 		waveR = image.Rect(body.Min.X, body.Min.Y, body.Min.X+waveW, body.Max.Y)
 		ctrlR = image.Rect(waveR.Max.X+SpaceMD, body.Min.Y, body.Max.X, body.Max.Y)
 	}
@@ -394,10 +417,15 @@ func (dv *DrumView) clearSamplerKnobRects() {
 	}
 }
 
-// clearSamplerControlButtonRects collapses the Rev/Norm/Fade/Preview buttons
-// so they are neither drawn nor hit-tested when no buffer is loaded.
+// clearSamplerControlButtonRects collapses the edit + action buttons so they
+// are neither drawn nor hit-tested when no buffer is loaded. Includes the
+// Save/Save As/Reset actions because on mobile they live in the control column
+// (the two-row action layout) rather than the header.
 func (dv *DrumView) clearSamplerControlButtonRects() {
-	for _, tag := range []string{"sampler-reverse", "sampler-normalize", "sampler-fade", "sampler-preview"} {
+	for _, tag := range []string{
+		"sampler-reverse", "sampler-normalize", "sampler-fade", "sampler-preview",
+		"sampler-save", "sampler-save-as", "sampler-reset",
+	} {
 		if b := dv.samplerButtonByTag(tag); b != nil {
 			b.SetRect(image.Rectangle{})
 		}
@@ -408,32 +436,34 @@ func (dv *DrumView) clearSamplerControlButtonRects() {
 // group-label row, a minimum-diameter knob + caption, the toggle row, and
 // the metadata strip — used to reserve space before sizing the waveform.
 func (dv *DrumView) samplerControlMinH(dv2 densityValues) int {
-	badgeH := Profile().DensityValues().KnobStepBadgeH
-	// cellH must match layoutSamplerControls: SpaceXS + captionH + SpaceXS + badgeH.
-	cellH := SpaceXS + dv2.SynthKnobCaptionH + SpaceXS + badgeH
-	return TextHeight() + dv2.SynthKnobMin + cellH + dv2.SynthHeaderButtonH + TextHeight() + 3*SpaceXS
+	return samplerControlMinHeight(dv2)
 }
 
-// layoutSamplerHeaderButtons places the Load WAV source button a SpaceMD gap
-// right of the SAMPLER title. On desktop, Save / Save As
-// are right-aligned in the header; on mobile the header is too narrow for
-// five elements, so Save / Save As move to the action row beneath the knobs
-// (layoutSamplerControlButtons) and their header rects are cleared. Every
-// button is sized to fit its label.
+// samplerControlMinHeight is the package-level form shared with the mobile
+// audio-panel content-floor calc so the panel reserves exactly the height the
+// scrolling sampler control column needs: ONE full knob cell (group-label band +
+// an ideal-diameter dial + caption band) + the TWO mobile button rows
+// (Rev/Norm/Fade toggles, then the Preview/Save/Save As/Reset action row) +
+// the metadata strip. The remaining knobs scroll, so the floor only has to
+// guarantee the first dial renders at its full size.
+func samplerControlMinHeight(dv2 densityValues) int {
+	labelBandH := TextHeight() + SpaceXS            // group-label band above the dial
+	captionCellH := SpaceXS + dv2.SynthKnobCaptionH // caption band below the dial
+	cellH := labelBandH + dv2.SynthKnobIdeal + captionCellH
+	// +SpaceSM slack so the budget lands comfortably above the ideal after the
+	// waveform 40% cap and split rounding take their cut. Two button rows so
+	// every edit + action button stays visible (mirrors the Synth tab).
+	return cellH + SpaceSM + 2*dv2.SynthHeaderButtonH + SpaceXS + TextHeight() + 2*SpaceXS
+}
+
+// layoutSamplerHeaderButtons right-aligns Save / Save As / Reset in the
+// header. On mobile the header is too narrow, so Save / Save As / Reset move
+// to the action row beneath the knobs (layoutSamplerControlButtons) and their
+// header rects are cleared. Every button is sized to fit its label.
 func (dv *DrumView) layoutSamplerHeaderButtons(hdr image.Rectangle, btnH int, mobile bool) {
 	by := hdr.Min.Y + (hdr.Dy()-btnH)/2
 	if by < hdr.Min.Y {
 		by = hdr.Min.Y
-	}
-	x := hdr.Min.X + samplerTitlePad + TextWidth(i18n.T(i18n.KeyCapSamplerTitle)) + SpaceMD
-	for _, tag := range []string{"sampler-load-wav"} {
-		b := dv.samplerButtonByTag(tag)
-		if b == nil {
-			continue
-		}
-		w := samplerBtnWidth(b.Text)
-		b.SetRect(image.Rect(x, by, x+w, by+btnH))
-		x += w + SpaceSM
 	}
 	if mobile {
 		// Save / Save As / Reset live in the action row on mobile.
@@ -472,12 +502,16 @@ func (dv *DrumView) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityValu
 	labelH := TextHeight()
 	captionH := dv2.SynthKnobCaptionH
 	badgeH := Profile().DensityValues().KnobStepBadgeH
-	// cellH accounts for the caption and badge pill below the dial.
-	// Matches drawSamplerKnobs placement:
-	//   captionY = r.Min.Y + dialD + SpaceXS
-	//   badgeY   = captionY + TextHeight() + SpaceXS
-	// so cell height below dial = SpaceXS + captionH + SpaceXS + badgeH.
-	cellH := SpaceXS + captionH + SpaceXS + badgeH
+	// Two cell heights below the dial:
+	//   captionCellH — caption line only (gap + caption, NO trailing pad — it is
+	//                  the last element in the tight two-row cell, so the saved
+	//                  pad goes to a bigger dial)
+	//   fullCellH    — caption + step-badge pill (the roomy 1-row layout)
+	// The badge is reserved only when there is room; on the tight two-row mobile
+	// layout it is dropped (the badge draw guard auto-hides it) so the full-font
+	// captions fit — readable captions outrank the advanced step-badge affordance.
+	captionCellH := SpaceXS + captionH
+	fullCellH := captionCellH + SpaceXS + badgeH
 	btnH := dv2.SynthHeaderButtonH
 	metaH := TextHeight()
 
@@ -487,55 +521,156 @@ func (dv *DrumView) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityValu
 	toggleY0 := toggleY1 - btnH
 	s.metaRect = metaR
 
-	// Knob diameter from the full vertical budget, clamped to the density
-	// ideal, the per-knob width, and the density minimum. The cell height
-	// accounts for the caption band AND the step-badge pill so both always
-	// fit within the allocated rect.
-	knobTop := ctrlR.Min.Y + labelH + SpaceXS
-	budget := toggleY0 - SpaceXS - knobTop - cellH
-	knobD := budget
+	if mobile {
+		// Two FIXED full-width button rows so every edit + action button is
+		// directly visible and untruncated (mirrors the Synth tab's fixed
+		// action row): Rev/Norm/Fade toggles on top, then the
+		// Preview/Save/Save As/Reset action row pinned above the metadata.
+		actionY1 := metaR.Min.Y - SpaceXS
+		actionY0 := actionY1 - btnH
+		mToggleY1 := actionY0 - SpaceXS
+		mToggleY0 := mToggleY1 - btnH
+		gridBottomM := mToggleY0 - SpaceXS
+		dv.layoutSamplerKnobsScrolling(image.Rect(ctrlR.Min.X, ctrlR.Min.Y, ctrlR.Max.X, gridBottomM), dv2)
+		dv.layoutSamplerMobileButtonRows(
+			image.Rect(ctrlR.Min.X, mToggleY0, ctrlR.Max.X, mToggleY1),
+			image.Rect(ctrlR.Min.X, actionY0, ctrlR.Max.X, actionY1),
+		)
+		return
+	}
+
+	// LANGUAGE-INVARIANT knob grid. The row count depends ONLY on screen class
+	// (never on caption length), so the dial diameter is identical in every
+	// language. The desktop control column is wide enough for five full-font
+	// captions in one row; the narrower mobile column wraps to two rows (3 + 2,
+	// dropping the step-badge band) so the longest caption ("Ganancia +0 dB")
+	// fits at full font. Captions centre in the full cell, decoupled from the
+	// dial, so a longer Spanish caption widens nothing and shrinks no dial.
+	gridTop := ctrlR.Min.Y
+	gridBottom := toggleY0 - SpaceXS
+
+	// Desktop: all five knobs in one side-by-side row (the wide control column
+	// has room). No scrolling. (mobile is handled above and returns.)
+	perRow, rows, cellH := samplerKnobCount, 1, fullCellH
+	rowOverhead := labelH + SpaceXS + cellH
+
+	// Dial diameter = the chosen grid's vertical budget (capped at the density
+	// ideal and the cell width). It is NEVER clamped up past the budget — that
+	// would overflow the control column. Instead the panel floor
+	// (samplerControlMinHeight / mobileAudioPanelMinContentH) reserves enough
+	// height that the budget lands at or above the density minimum, so the dial
+	// is usable on every real panel. The size depends only on the rect + density
+	// (never on caption length), so it is identical in every language.
+	vb := (gridBottom - gridTop) - (rows-1)*SpaceSM - rows*rowOverhead
+	knobD := vb / rows
+	cellW := ctrlR.Dx() / perRow
 	if knobD > dv2.SynthKnobIdeal {
 		knobD = dv2.SynthKnobIdeal
 	}
-	perKnobW := ctrlR.Dx() / samplerKnobCount
-	if knobD > perKnobW {
-		knobD = perKnobW
+	if knobD > cellW {
+		knobD = cellW
 	}
-	if knobD < dv2.SynthKnobMin {
-		knobD = dv2.SynthKnobMin
+	if knobD < 1 {
+		knobD = 1 // degenerate (panel far too small); never zero/negative
 	}
 
-	gap := 0
-	if rem := ctrlR.Dx() - knobD*samplerKnobCount; rem > 0 {
-		gap = rem / (samplerKnobCount + 1)
-	}
-	startX := ctrlR.Min.X + gap
+	rowStride := rowOverhead + knobD + SpaceSM
 	for i, k := range s.knobs {
 		if k == nil {
 			continue
 		}
-		x0 := startX + i*(knobD+gap)
-		// Cell rect spans dial + caption + badge pill so hit areas and draw
-		// checks (k.Rect().Empty()) gate correctly on the full visual footprint.
-		k.SetRect(image.Rect(x0, knobTop, x0+knobD, knobTop+knobD+cellH))
+		col := i % perRow
+		row := i / perRow
+		cellX0 := ctrlR.Min.X + col*cellW
+		cellTop := gridTop + row*rowStride
+		dialTop := cellTop + labelH + SpaceXS
+		dialX0 := cellX0 + (cellW-knobD)/2
+		// Knob rect = the dial square (+ caption/badge band) so Knob.geom sizes
+		// the dial to knobD. The wider CELL is tracked separately so the caption,
+		// group label, and step badge centre in the full cell, not the dial.
+		k.SetRect(image.Rect(dialX0, dialTop, dialX0+knobD, dialTop+knobD+cellH))
+		s.knobCells[i] = image.Rect(cellX0, cellTop, cellX0+cellW, dialTop+knobD+cellH)
 		if !k.Capturing() {
 			k.Value = s.knobValue(i)
 		}
 	}
 
-	dv.layoutSamplerControlButtons(image.Rect(ctrlR.Min.X, toggleY0, ctrlR.Max.X, toggleY1), mobile)
+	dv.layoutSamplerControlButtons(image.Rect(ctrlR.Min.X, toggleY0, ctrlR.Max.X, toggleY1))
 }
 
-// layoutSamplerControlButtons lays the Rev/Norm/Fade/Preview row out
-// left-to-right, each sized to its label, clamped to the row's right edge.
-// On mobile, Save / Save As join the row (the header has no room for them).
-func (dv *DrumView) layoutSamplerControlButtons(rowR image.Rectangle, mobile bool) {
-	tags := []string{"sampler-reverse", "sampler-normalize", "sampler-fade", "sampler-preview"}
-	if mobile {
-		tags = append(tags, "sampler-save", "sampler-save-as", "sampler-reset")
+// ensureKnobGrid lazily creates the mobile single-column scroll grid, preserving
+// the scroll position across Layout calls.
+func (s *samplerState) ensureKnobGrid() *ControlGrid {
+	if s.knobGrid == nil {
+		s.knobGrid = NewControlGrid(ScrollbarStyleForPlatform())
 	}
+	return s.knobGrid
+}
+
+// layoutSamplerKnobsScrolling lays the five knobs out in a single vertical
+// column inside gridR, scrolling when they overflow. Each cell reserves a band
+// above the dial for the group label (TRIM/TUNE/LEVEL), the dial itself at the
+// density ideal, and a caption band below. Off-window knobs get an empty rect so
+// drawSamplerKnobs / samplerTabHitAreas skip them. Mirrors the Synth tab's
+// ControlGrid usage (SetMaxCols(1) on mobile).
+func (dv *DrumView) layoutSamplerKnobsScrolling(gridR image.Rectangle, dv2 densityValues) {
+	s := &dv.sampler
+	grid := s.ensureKnobGrid()
+	s.knobGridRect = gridR
+
+	labelBandH := TextHeight() + SpaceXS            // group-label band above the dial
+	captionCellH := SpaceXS + dv2.SynthKnobCaptionH // caption band below the dial
+	cellH := labelBandH + dv2.SynthKnobIdeal + captionCellH
+	if cellH > gridR.Dy() && gridR.Dy() > 0 {
+		cellH = gridR.Dy() // degrade gracefully on a tiny panel (one shrunk row)
+	}
+	if cellH < 1 {
+		cellH = 1
+	}
+	grid.SetMaxCols(1)
+	grid.Layout(gridR, samplerKnobCount, dv2.SynthKnobIdeal, cellH, SpaceSM, SpaceXS)
+
+	for i, k := range s.knobs {
+		if k == nil {
+			continue
+		}
+		slot, vis := grid.CellRect(i)
+		if !vis {
+			k.SetRect(image.Rectangle{})
+			s.knobCells[i] = image.Rectangle{}
+			continue
+		}
+		// Dial below the label band, centred in the cell, capped to the ideal and
+		// what the slot can hold (label band + dial + caption must fit).
+		d := dv2.SynthKnobIdeal
+		if maxH := slot.Dy() - labelBandH - captionCellH; d > maxH {
+			d = maxH
+		}
+		if d > slot.Dx() {
+			d = slot.Dx()
+		}
+		if d < 1 {
+			d = 1
+		}
+		dialX0 := slot.Min.X + (slot.Dx()-d)/2
+		dialTop := slot.Min.Y + labelBandH
+		// Knob rect = dial square + caption band (drawSamplerKnobs reads r.Dx() as
+		// the dial diameter and places the caption at r.Min.Y + r.Dx() + SpaceXS).
+		k.SetRect(image.Rect(dialX0, dialTop, dialX0+d, dialTop+d+captionCellH))
+		s.knobCells[i] = slot
+		if !k.Capturing() {
+			k.Value = s.knobValue(i)
+		}
+	}
+}
+
+// layoutSamplerControlButtons lays the DESKTOP Rev/Norm/Fade/Preview row out
+// left-to-right, each sized to its label, clamped to the row's right edge.
+// (Save / Save As / Reset live in the desktop header; mobile uses the
+// two-row layoutSamplerMobileButtonRows instead.)
+func (dv *DrumView) layoutSamplerControlButtons(rowR image.Rectangle) {
 	x := rowR.Min.X
-	for _, tag := range tags {
+	for _, tag := range []string{"sampler-reverse", "sampler-normalize", "sampler-fade", "sampler-preview"} {
 		b := dv.samplerButtonByTag(tag)
 		if b == nil {
 			continue
@@ -551,6 +686,40 @@ func (dv *DrumView) layoutSamplerControlButtons(rowR image.Rectangle, mobile boo
 		b.SetRect(image.Rect(x, rowR.Min.Y, x+w, rowR.Max.Y))
 		x += w + SpaceSM
 	}
+}
+
+// layoutSamplerMobileButtonRows lays the sampler's mobile edit controls out as
+// TWO FIXED full-width rows of equal-width cells — Rev/Norm/Fade toggles on
+// top, Preview/Save/Save As/Reset actions below — so every button stays
+// directly visible and untruncated on a narrow phone, matching the Synth tab's
+// fixed action row. The last cell in each row claims the remainder so rounding
+// slack never leaves a gap.
+func (dv *DrumView) layoutSamplerMobileButtonRows(toggleR, actionR image.Rectangle) {
+	place := func(rowR image.Rectangle, tags []string) {
+		n := len(tags)
+		if n == 0 || rowR.Dx() <= 0 {
+			return
+		}
+		cellW := (rowR.Dx() - (n-1)*SpaceSM) / n
+		if cellW < 1 {
+			cellW = 1
+		}
+		x := rowR.Min.X
+		for i, tag := range tags {
+			b := dv.samplerButtonByTag(tag)
+			if b == nil {
+				continue
+			}
+			x1 := x + cellW
+			if i == n-1 {
+				x1 = rowR.Max.X // last cell claims the remainder
+			}
+			b.SetRect(image.Rect(x, rowR.Min.Y, x1, rowR.Max.Y))
+			x = x1 + SpaceSM
+		}
+	}
+	place(toggleR, []string{"sampler-reverse", "sampler-normalize", "sampler-fade"})
+	place(actionR, []string{"sampler-preview", "sampler-save", "sampler-save-as", "sampler-reset"})
 }
 
 // samplerHandleRect returns the thin vertical drag-handle rect for a trim
@@ -617,16 +786,15 @@ func (dv *DrumView) buildSamplerButtons(hasBuf bool) {
 		}
 	}
 	defs := []samplerButton{
-		{NewSpecButton(i18n.T(i18n.KeyLoadWAV), ComponentButtonSecondary, func() {
-			dv.samplerLoadWAV()
-		}), "sampler-load-wav", nil},
-		// Reverse is an ACTION, not a toggle: one click reverses the working
-		// signal in place (visible waveform + baked audio both flip). active is
-		// nil so it never latches into a Primary on-state.
-		{NewSpecButton(i18n.T(i18n.KeyReverse), actionSpec(false), guard(func() {
+		// Reverse is a stateful TOGGLE: one click reverses the working signal in
+		// place (visible waveform + baked audio both flip) AND latches the button
+		// ON; a second click un-reverses and un-latches. The latched visual reads
+		// off samplerState.reverse (the net flip parity), so it reflects the live
+		// reversed state identically on every platform.
+		{NewSpecButton(i18n.T(i18n.KeyReverse), toggleSpec(s.reverse), guard(func() {
 			dv.sampler.reverseBuffer()
 			dv.commitSamplerEdit()
-		})), "sampler-reverse", nil},
+		})), "sampler-reverse", func() bool { return dv.sampler.reverse }},
 		{NewSpecButton(i18n.T(i18n.KeyNormalize), toggleSpec(s.normalize), guard(func() {
 			dv.sampler.normalize = !dv.sampler.normalize
 			dv.commitSamplerEdit()
@@ -649,6 +817,19 @@ func (dv *DrumView) buildSamplerButtons(hasBuf bool) {
 		})), "sampler-reset", nil},
 	}
 	dv.samplerButtons = defs
+	dv.refreshSamplerToggleStates()
+}
+
+// refreshSamplerToggleStates syncs each Sampler toggle's latched visual (the
+// shared amber engaged keycap drawn by Button.Draw when Toggled) to its live
+// on/off predicate, so Reverse / Normalize / Fade read their state identically
+// on every platform. Action buttons (active==nil) and the empty-buffer state
+// never latch. Called on every (re)build and once per frame from drawSamplerTab.
+func (dv *DrumView) refreshSamplerToggleStates() {
+	hasBuf := dv.sampler.hasBuffer()
+	for _, b := range dv.samplerButtons {
+		b.btn.SetToggled(b.active != nil && hasBuf && b.active())
+	}
 }
 
 func (dv *DrumView) samplerButtonByTag(tag string) *Button {
@@ -669,7 +850,7 @@ func (dv *DrumView) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangle) 
 	// Header background + title.
 	if !s.headerRect.Empty() {
 		drawRoundedRect(dst, s.headerRect, TokenSurface1(), RadiusSM, true)
-		DrawTextColorAt(dst, i18n.T(i18n.KeyCapSamplerTitle), s.headerRect.Min.X+samplerTitlePad, s.headerRect.Min.Y+(s.headerRect.Dy()-TextHeight())/2, TokenTextPrimary())
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapSamplerTitle), s.headerRect.Min.X+samplerTitlePad, s.headerRect.Min.Y+(s.headerRect.Dy()-StyledTextHeight(RoleSectionHeader))/2, RoleSectionHeader, TokenTextPrimary())
 	}
 
 	// Waveform card.
@@ -690,20 +871,19 @@ func (dv *DrumView) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangle) 
 	// Knobs + group labels + captions (only when laid out).
 	if hasBuf {
 		dv.drawSamplerKnobs(dst)
+		// Mobile single-column knob list scrollbar (no-op when it fits without
+		// scrolling; never created/used on desktop).
+		if Profile().IsMobile() && s.knobGrid != nil {
+			s.knobGrid.Draw(dst)
+		}
 	}
 
-	// Buttons. Refresh toggle spec so active toggles show the Primary fill —
-	// but only when enabled; the disabled spec must survive the empty state.
+	// Buttons. Sync every toggle's latched (amber engaged keycap) visual to its
+	// live state so Reverse/Normalize/Fade read identically on all platforms.
+	dv.refreshSamplerToggleStates()
 	for _, b := range dv.samplerButtons {
 		if b.btn.Rect().Empty() {
 			continue
-		}
-		if b.active != nil && hasBuf {
-			if b.active() {
-				b.btn.SpecID = ComponentButtonPrimary
-			} else {
-				b.btn.SpecID = ComponentButtonSecondary
-			}
 		}
 		b.btn.Draw(dst)
 	}
@@ -725,7 +905,7 @@ func (dv *DrumView) drawSamplerTab(dst *ebiten.Image, contentR image.Rectangle) 
 func (dv *DrumView) drawSamplerPlaceholder(dst *ebiten.Image, card image.Rectangle) {
 	s := &dv.sampler
 	avail := card.Dx() - 2*SpaceMD
-	msg := "Pick an instrument from the dropdown, or Load WAV"
+	msg := "Pick an instrument from the dropdown"
 	if TextWidth(msg) > avail {
 		msg = "Capture or load a sample"
 	}
@@ -746,11 +926,17 @@ func (dv *DrumView) drawSamplerPlaceholder(dst *ebiten.Image, card image.Rectang
 	}
 }
 
+// samplerMetaText formats the length / sample-rate readout. The "of"/"de"
+// joiner follows the active locale; units (s, kHz) are international.
+func samplerMetaText(trimSec, lengthSec, srKHz float64) string {
+	return i18n.Tf(i18n.KeySamplerMetaFmt, trimSec, lengthSec, srKHz)
+}
+
 // drawSamplerMeta renders the length / sample-rate readout.
 func (dv *DrumView) drawSamplerMeta(dst *ebiten.Image, r image.Rectangle) {
 	s := &dv.sampler
 	sr := s.rawSampleRate
-	txt := fmt.Sprintf("%.2fs of %.2fs · %.1f kHz", s.trimSeconds(), s.lengthSeconds(), float64(sr)/1000)
+	txt := samplerMetaText(s.trimSeconds(), s.lengthSeconds(), float64(sr)/1000)
 	DrawTextColorAt(dst, txt, r.Min.X, r.Min.Y+(r.Dy()-TextHeight())/2, WithAlpha(TokenTextSecondary(), AlphaMedium))
 }
 
@@ -773,46 +959,54 @@ func (dv *DrumView) drawSamplerKnobs(dst *ebiten.Image) {
 			continue
 		}
 		r := k.Rect()
+		// All chrome (group label, caption, badge) centres in the full CELL,
+		// not the narrower dial rect — that decoupling is what lets a long
+		// Spanish caption render at full font without overlapping a neighbour.
+		cell := s.knobCells[i]
+		if cell.Empty() {
+			cell = r
+		}
 		// Group label + plain-English gloss above the cluster's first knob,
 		// mirroring the Synth tab's section title + subtitle convention. The
 		// gloss is appended on the same row at caption scale only when it
 		// fits, so it never clips into the neighbouring cluster.
 		if g := samplerGroupLabel(i); g != "" {
 			labelY := r.Min.Y - SpaceXS - TextHeight()
-			if labelY < 0 {
-				labelY = r.Min.Y
+			if labelY < cell.Min.Y {
+				labelY = cell.Min.Y
 			}
-			DrawTextColorAt(dst, g, r.Min.X, labelY, TokenTextSecondary())
+			DrawTextColorAt(dst, g, cell.Min.X, labelY, TokenTextSecondary())
 			gloss := samplerKnobPlainEnglish(i)
 			captionScale := FontSizeCaption / FontSizeBody
-			glossX := r.Min.X + TextWidth(g) + SpaceSM
+			glossX := cell.Min.X + TextWidth(g) + SpaceSM
 			glossW := int(float64(TextWidth(gloss)) * captionScale)
-			// Right edge of the control column (metaRect spans its full
-			// width). Skip the gloss if it would clip past the panel edge.
-			rightEdge := s.metaRect.Max.X
-			if rightEdge == 0 {
-				rightEdge = r.Max.X
-			}
-			if gloss != "" && glossX+glossW <= rightEdge {
+			// Skip the gloss if it would clip past the cell's right edge.
+			if gloss != "" && glossX+glossW <= cell.Max.X {
 				DrawTextColorAtScale(dst, gloss, glossX, labelY+2, WithAlpha(TokenTextSecondary(), AlphaMedium), captionScale)
 			}
 		}
-		k.Draw(dst)
+		// Mobile: render the tap-to-open value-pill button (the value caption is
+		// drawn below); desktop keeps the rotary dial. Mirrors the Synth tab.
+		if Profile().IsMobile() {
+			drawKnobValuePillRect(dst, dv.samplerMobileKnobButtonRect(i), samplerKnobCaption(i, s))
+		} else {
+			k.Draw(dst)
+		}
 		cap := samplerKnobCaption(i, s)
-		// Caption is placed just below the dial circle, NOT derived from
-		// r.Max.Y (which now includes badge space). knobD pixels = dial height.
-		// We find the dial bottom by computing knobD from the knob's draw rect:
-		// the dial occupies a square from r.Min, so dial bottom = r.Min.Y + dialD.
-		// layoutSamplerControls ensures dialD <= r.Dx(), so r.Dx() is an upper
-		// bound. We use the fact that Knob draws its dial inside a square of
-		// side min(r.Dx(), r.Dy()... but the rect is now taller. Use r.Dx() as
-		// the dial diameter (the layout guarantees knobD == k.Rect().Dx()).
+		// Caption sits just below the dial. The dial is a knobD square at the
+		// top of the knob rect, so its bottom = r.Min.Y + r.Dx() (== knobD).
 		dialD := r.Dx()
 		captionY := r.Min.Y + dialD + SpaceXS
-		DrawTextColorAt(dst, cap, r.Min.X+(r.Dx()-TextWidth(cap))/2, captionY, colTextSecondary)
+		// Full font, centred in the CELL width — fits because the layout widened
+		// the cell (and/or wrapped to two rows) until the caption fits.
+		capX := cell.Min.X + (cell.Dx()-TextWidth(cap))/2
+		if capX < cell.Min.X {
+			capX = cell.Min.X
+		}
+		DrawTextColorAt(dst, cap, capX, captionY, colTextSecondary)
 
-		// Record the caption line as the tappable readout rect.
-		readoutR := image.Rect(r.Min.X, captionY, r.Max.X, captionY+TextHeight())
+		// Record the caption line as the tappable readout rect (full cell width).
+		readoutR := image.Rect(cell.Min.X, captionY, cell.Max.X, captionY+TextHeight())
 		s.readoutRects[i] = readoutR
 
 		// Step badge pill: a narrow pill below the caption, centered in the
@@ -820,7 +1014,7 @@ func (dv *DrumView) drawSamplerKnobs(dst *ebiten.Image) {
 		if i < len(s.knobStepBadges) {
 			if badge := s.knobStepBadges[i]; badge != nil {
 				bw, bh := Profile().DensityValues().KnobStepBadgeW, Profile().DensityValues().KnobStepBadgeH
-				bx := r.Min.X + (r.Dx()-bw)/2
+				bx := cell.Min.X + (cell.Dx()-bw)/2
 				by := captionY + TextHeight() + SpaceXS
 				// Only draw if the badge fits within the knob cell below.
 				if by >= r.Min.Y && by+bh <= r.Max.Y {
@@ -879,23 +1073,40 @@ func (dv *DrumView) drawSamplerWaveform(dst *ebiten.Image) {
 }
 
 // samplerKnobCaption returns the short value readout shown beneath each knob.
+// Label and value both come from the shared paramFacet registry (sampleEditFacet)
+// — the SAME source an undo/redo notification reads — so a Sampler caption and a
+// notification describing the same edit can never drift. Captions still read
+// coherently with the Synth tab (Pitch "+0 st", Fine "+0 c", Gain "+0 dB")
+// because the facet formatters delegate to the shared formatParamValue.
 func samplerKnobCaption(idx int, s *samplerState) string {
-	// Values route through the shared formatParamValue so Sampler captions read
-	// coherently with the Synth tab: Pitch carries its "st" unit ("+0 st"),
-	// Fine its cents ("+0 c"), Gain its dB ("+0 dB").
+	key, val, ok := samplerKnobEditField(idx, s)
+	if !ok {
+		return ""
+	}
+	f, ok := sampleEditFacet(key)
+	if !ok {
+		return ""
+	}
+	return f.renderLabel() + " " + f.format(val)
+}
+
+// samplerKnobEditField maps a Sampler knob index to its sample_edit map key and
+// the live value — the bridge between the index-keyed UI and the key-keyed
+// paramFacet registry.
+func samplerKnobEditField(idx int, s *samplerState) (string, float64, bool) {
 	switch idx {
 	case samplerKnobStart:
-		return "Start " + formatParamValue(s.startFrac*100, "%")
+		return "start_frac", s.startFrac, true
 	case samplerKnobEnd:
-		return "End " + formatParamValue(s.endFrac*100, "%")
+		return "end_frac", s.endFrac, true
 	case samplerKnobTranspose:
-		return "Pitch " + formatParamValue(s.transposeSemis, "st")
+		return "transpose_semis", s.transposeSemis, true
 	case samplerKnobDetune:
-		return "Fine " + formatParamValue(s.detuneCents, "cents")
+		return "detune_cents", s.detuneCents, true
 	case samplerKnobGain:
-		return "Gain " + formatParamValue(s.gainDB, "dB")
+		return "gain_db", s.gainDB, true
 	}
-	return ""
+	return "", 0, false
 }
 
 // applySamplerKnob pushes a knob's current normalized value into the state.
@@ -993,6 +1204,10 @@ func (dv *DrumView) openSamplerParamEditor(idx int) {
 // in production. Returns true when the editor just closed, signalling
 // EQPanelZone.Update to request a re-layout so the caption refreshes.
 func (dv *DrumView) samplerTabUpdate() bool {
+	// Tick the mobile knob-scroll cooldown clock (see ControlGrid.WheelStep/Tick).
+	if dv.sampler.knobGrid != nil {
+		dv.sampler.knobGrid.Tick()
+	}
 	if dv.paramEditor != nil {
 		wasActive := dv.paramEditor.Active()
 		dv.paramEditor.Update()
@@ -1127,19 +1342,16 @@ func samplerSaveAsSuggestion(dv *DrumView, base string) string {
 	return label + " chop"
 }
 
-// samplerLoadWAV is the "Load WAV" action. Wired in Phase 2; a no-op stub
-// until the desktop/browser decode bridges land.
-func (dv *DrumView) samplerLoadWAV() {
-	dv.samplerLoadWAVImpl()
-}
-
 // samplerTabHitAreas publishes hit areas for the knobs, trim handles, and
-// buttons. Per-control areas sit at ZEQPanel+1 so they win over the panel's
-// catch-all at ZEQPanel.
+// buttons. Per-control areas sit at ZEQPanel+2 so they win over both the panel's
+// catch-all at ZEQPanel AND the mobile knob-scroll body catch-all at ZEQPanel+1
+// (a press on a knob captures the knob; a press on empty knob-column space
+// scrolls). The scrollbar thumb sits a tier above the knobs so it wins on overlap.
 func (dv *DrumView) samplerTabHitAreas() []HitArea {
 	s := &dv.sampler
-	z := ZEQPanel + 1
-	out := make([]HitArea, 0, len(s.knobs)+len(dv.samplerButtons)+2)
+	scrollBodyZ := ZEQPanel + 1
+	z := ZEQPanel + 2
+	out := make([]HitArea, 0, len(s.knobs)+len(dv.samplerButtons)+4)
 
 	touchMin := TouchMinTarget()
 	clipFor := func(r image.Rectangle) image.Rectangle {
@@ -1157,6 +1369,27 @@ func (dv *DrumView) samplerTabHitAreas() []HitArea {
 			}
 		}
 		return clip
+	}
+
+	// Mobile knob-scroll: a body catch-all (wheel + touch/drag scroll) over the
+	// knob column, plus a scrollbar thumb-drag handle. Only when the single-column
+	// list actually overflows. The body sits BELOW the knobs in z so a press on a
+	// knob still captures the knob; a press on empty column space scrolls.
+	if Profile().IsMobile() && s.knobGrid != nil && s.knobGrid.HasScroll() && !s.knobGridRect.Empty() {
+		out = append(out, HitArea{
+			Rect:    s.knobGridRect,
+			ZIndex:  scrollBodyZ,
+			Handler: &samplerKnobScrollAdapter{dv: dv, body: true},
+			Tag:     "sampler-scrollbody",
+		})
+		if thumb := s.knobGrid.Scroll().BarRect(); !thumb.Empty() {
+			out = append(out, HitArea{
+				Rect:    thumb,
+				ZIndex:  z + 1,
+				Handler: &samplerKnobScrollAdapter{dv: dv},
+				Tag:     "sampler-scroll",
+			})
+		}
 	}
 
 	for i, k := range s.knobs {
@@ -1234,7 +1467,7 @@ func (dv *DrumView) samplerTabHitAreas() []HitArea {
 		out = append(out, HitArea{
 			Rect:    b.btn.Rect(),
 			ZIndex:  z,
-			Handler: &samplerButtonHitAdapter{btn: b.btn},
+			Handler: &buttonHitAdapter{btn: b.btn},
 			Tag:     b.tag,
 			Touch:   true,
 		})
@@ -1266,6 +1499,13 @@ func (h *samplerKnobHitAdapter) OnPress(x, y int) InputResult {
 	// Numeric editor open: swallow the tap so a knob drag doesn't start
 	// beneath the open editor.
 	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
+		return InputConsumed
+	}
+	// Mobile: a tap on the knob cell opens the vertical scroll-wheel popup,
+	// which owns value + resolution + numeric entry. Desktop keeps the in-place
+	// rotary drag (the code below). Mirrors synthKnobHitAdapter.OnPress.
+	if Profile().IsMobile() {
+		h.dv.openSamplerKnobWheelPopup(h.idx)
 		return InputConsumed
 	}
 	// Step-badge pill: a tap cycles the resolution step instead of dragging.
@@ -1400,16 +1640,70 @@ func (h *samplerHandleHitAdapter) OnRelease(x, y int) {
 }
 func (h *samplerHandleHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-type samplerButtonHitAdapter struct{ btn *Button }
+// samplerKnobScrollAdapter routes scroll input for the mobile single-column knob
+// list to the sampler's ControlGrid. With body == true it is the card-body
+// catch-all (a grab on empty column space) and scrolls naturally (content follows
+// the finger, BeginContentDrag); with body == false it is the scrollbar thumb and
+// scrolls directly (thumb follows the finger, BeginDrag). A scroll change calls
+// Invalidate so the next Layout re-derives the visible knob rects. Mirrors
+// synthSectionScrollAdapter.
+type samplerKnobScrollAdapter struct {
+	dv   *DrumView
+	body bool
+}
 
-func (h *samplerButtonHitAdapter) OnPress(x, y int) InputResult {
-	if h.btn != nil && h.btn.OnClick != nil {
-		h.btn.OnClick()
-		return InputConsumed
+func (h *samplerKnobScrollAdapter) grid() *ControlGrid {
+	if h.dv == nil {
+		return nil
+	}
+	return h.dv.sampler.knobGrid
+}
+
+func (h *samplerKnobScrollAdapter) invalidate() {
+	if h.dv != nil && h.dv.eqPanelZone != nil {
+		h.dv.eqPanelZone.Invalidate()
+	}
+}
+
+func (h *samplerKnobScrollAdapter) OnPress(x, y int) InputResult {
+	g := h.grid()
+	if g == nil {
+		return InputIgnored
+	}
+	began := false
+	if h.body {
+		began = g.BeginContentDrag(y)
+	} else {
+		began = g.BeginDrag(y)
+	}
+	if began {
+		return InputCaptured
 	}
 	return InputIgnored
 }
 
-func (h *samplerButtonHitAdapter) OnDrag(x, y int)                     {}
-func (h *samplerButtonHitAdapter) OnRelease(x, y int)                  {}
-func (h *samplerButtonHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
+func (h *samplerKnobScrollAdapter) OnDrag(x, y int) {
+	if g := h.grid(); g != nil && g.DragTo(y) {
+		h.invalidate()
+	}
+}
+
+func (h *samplerKnobScrollAdapter) OnRelease(x, y int) {
+	if g := h.grid(); g != nil {
+		g.EndDrag()
+	}
+}
+
+func (h *samplerKnobScrollAdapter) OnWheel(x, y, steps int) InputResult {
+	g := h.grid()
+	if g == nil {
+		return InputIgnored
+	}
+	if g.WheelStep(steps) {
+		h.invalidate()
+	}
+	return InputConsumed
+}
+
+// Sampler footer buttons route through the shared buttonHitAdapter (see
+// eq_panel_zone.go) like every other action button — no bespoke adapter.

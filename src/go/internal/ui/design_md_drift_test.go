@@ -59,6 +59,9 @@ func TestDesignMDDrift(t *testing.T) {
 		"viz-bar":             colEQBar,
 		"viz-bar-peak":        colEQBarPeak,
 		"viz-wave-a":          colWaveTrace,
+		"viz-meter-low":       meterLow,
+		"viz-meter-mid":       meterMid,
+		"viz-meter-high":      meterHigh,
 		// Spectrum frequency-group tinting tokens (Phase 5 audio-panel polish).
 		"viz-bass":   colVizBass,
 		"viz-mids":   colVizMids,
@@ -67,21 +70,20 @@ func TestDesignMDDrift(t *testing.T) {
 		// Each pinned to the runtime alias declared in theme.go. RGB-only
 		// comparison; tokens that pick up a non-255 alpha at runtime are
 		// listed under rgbOnly below.
-		"grid-line":               colGridLine,
-		"grid-half":               colGridHalf,
-		"grid-quarter":            colGridQuarter,
-		"grid-eighth":             colGridEighth,
-		"grid-sixteenth":          colGridSixteenth,
-		"grid-thirty-second":      colGridThirtySecond,
-		"grid-horizon":            colGridHorizon,
-		"node-fill":               genColorNodeFill,
-		"node-border":             genColorNodeBorder,
-		"timeline-total-bg":       colTimelineTotal,
-		"timeline-view-hi":        colTimelineViewHi,
-		"timeline-cursor":         colTimelineCursor,
-		"timeline-beat":           colTimelineBeat,
-		"drum-mute-cell":          colMuteCell,
-		"incdec-icon-hi":          colIncDecIconHi,
+		"grid-line":          colGridLine,
+		"grid-half":          colGridHalf,
+		"grid-quarter":       colGridQuarter,
+		"grid-eighth":        colGridEighth,
+		"grid-sixteenth":     colGridSixteenth,
+		"grid-thirty-second": colGridThirtySecond,
+		"grid-horizon":       colGridHorizon,
+		"node-fill":          genColorNodeFill,
+		"node-border":        genColorNodeBorder,
+		"timeline-total-bg":  colTimelineTotal,
+		"timeline-view-hi":   colTimelineViewHi,
+		"timeline-cursor":    colTimelineCursor,
+		"timeline-beat":      colTimelineBeat,
+		"drum-mute-cell":     colMuteCell,
 	}
 	for key, want := range wantColors {
 		raw, ok := gotColors[key]
@@ -117,13 +119,13 @@ func TestDesignMDDrift(t *testing.T) {
 		// across all three border tokens. Verify against colBorderSubtle.
 		"border": {colBorderSubtle.R, colBorderSubtle.G, colBorderSubtle.B},
 		// ── Phase 3 PR1: tokens whose runtime form picks up a non-255 alpha ──
-		"edge-color":               {EdgeUI.Color.(color.NRGBA).R, EdgeUI.Color.(color.NRGBA).G, EdgeUI.Color.(color.NRGBA).B},
-		"splitter-handle":          {colSplitterHandle.R, colSplitterHandle.G, colSplitterHandle.B},
-		"timeline-view":            {colTimelineView.R, colTimelineView.G, colTimelineView.B},
-		"drum-mute-highlight":      {colMuteHighlight.R, colMuteHighlight.G, colMuteHighlight.B},
-		"wave-trace-dry":           {colWaveTraceDry.R, colWaveTraceDry.G, colWaveTraceDry.B},
-		"eq-zero-line":             {colEQZeroLine.R, colEQZeroLine.G, colEQZeroLine.B},
-		"menu-delete-tint":         {colMenuGroupDeleteBG.R, colMenuGroupDeleteBG.G, colMenuGroupDeleteBG.B},
+		"edge-color":          {EdgeUI.Color.(color.NRGBA).R, EdgeUI.Color.(color.NRGBA).G, EdgeUI.Color.(color.NRGBA).B},
+		"splitter-handle":     {colSplitterHandle.R, colSplitterHandle.G, colSplitterHandle.B},
+		"timeline-view":       {colTimelineView.R, colTimelineView.G, colTimelineView.B},
+		"drum-mute-highlight": {colMuteHighlight.R, colMuteHighlight.G, colMuteHighlight.B},
+		"wave-trace-dry":      {colWaveTraceDry.R, colWaveTraceDry.G, colWaveTraceDry.B},
+		"eq-zero-line":        {colEQZeroLine.R, colEQZeroLine.G, colEQZeroLine.B},
+		"menu-delete-tint":    {colMenuGroupDeleteBG.R, colMenuGroupDeleteBG.G, colMenuGroupDeleteBG.B},
 	}
 	for key, want := range rgbOnly {
 		raw, ok := gotColors[key]
@@ -177,9 +179,9 @@ func TestDesignMDDrift(t *testing.T) {
 		"xxs": RadiusXXS,
 		"xs":  RadiusXS,
 		"sm":  RadiusSM,
-		"md": RadiusMD,
-		"lg": RadiusLG,
-		"xl": RadiusXL,
+		"md":  RadiusMD,
+		"lg":  RadiusLG,
+		"xl":  RadiusXL,
 	}
 	for key, want := range wantRounded {
 		raw, ok := gotRounded[key]
@@ -286,8 +288,10 @@ func TestDesignMDDrift(t *testing.T) {
 	// sin-pulse → SinPulseAnim struct; fade → FadeFactor.
 	anims := parseAnimationsBlock(front)
 	wantExpDecay := map[string]ExpDecayAnim{
-		"highlight-decay":    genAnimHighlightDecay,
-		"button-press-decay": genAnimButtonPressDecay,
+		"highlight-decay":     genAnimHighlightDecay,
+		"button-press-decay":  genAnimButtonPressDecay,
+		"button-hover-fade":   genAnimButtonHoverFade,
+		"button-engage-flash": genAnimButtonEngageFlash,
 	}
 	for name, want := range wantExpDecay {
 		fields, ok := anims[name]
@@ -365,6 +369,10 @@ func TestDesignMDDrift(t *testing.T) {
 		"transport-min-btn-w":           genGeomTransportMinBtnW,
 		"button-press-scale":            genGeomButtonPressScale,
 		"button-release-overshoot":      genGeomButtonReleaseOvershoot,
+		"button-hover-glow-spread":      genGeomButtonHoverGlowSpread,
+		"keycap-wall-depth":             genGeomKeycapWallDepth,
+		"keycap-active-raise":           genGeomKeycapActiveRaise,
+		"keycap-release-overshoot-frac": genGeomKeycapReleaseOvershootFrac,
 	}
 	for key, want := range wantGeometry {
 		raw, ok := gotGeometry[key]

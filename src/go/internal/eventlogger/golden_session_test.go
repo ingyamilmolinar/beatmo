@@ -114,8 +114,9 @@ func TestEventLoggerGoldenSession(t *testing.T) {
 	}
 }
 
-// TestEventLoggerVerboseFiltersByDefault asserts that camera/drag verbose
-// events do NOT appear at INFO unless Options.Verbose=true.
+// TestEventLoggerVerboseFiltersByDefault asserts that drag-progress (still
+// verbose) does NOT appear at INFO, while camera pan (promoted out of verbose)
+// DOES appear by default.
 func TestEventLoggerVerboseFiltersByDefault(t *testing.T) {
 	restore := gamelog.SetTimestampFunc(func() string { return "00:00:00.000" })
 	defer restore()
@@ -131,21 +132,19 @@ func TestEventLoggerVerboseFiltersByDefault(t *testing.T) {
 	t.Cleanup(func() { _ = logger.Close() })
 
 	pubFixed(bus, hooks.EventCameraPan, hooks.CameraPanPayload{DX: 1, DY: 2})
-	pubFixed(bus, hooks.EventCameraZoom, hooks.CameraZoomPayload{Factor: 1.1})
 	pubFixed(bus, hooks.EventDragProgress, hooks.DragProgressPayload{NodeID: 1, I: 0, J: 0})
-	pubFixed(bus, hooks.EventPlayStart, nil) // sentinel: must appear
+	pubFixed(bus, hooks.EventPlayStart, nil)
 
 	waitFor(t, func() bool { return logger.Stats().Written >= 1 }, 2*time.Second)
 	logger.FlushNow()
-	// Give any stray late delivery a moment to misbehave so we can catch it.
 	time.Sleep(80 * time.Millisecond)
 
 	out := buf.String()
-	if strings.Contains(out, "[camera]") || strings.Contains(out, "[drag]") {
-		t.Fatalf("verbose events leaked into INFO with Verbose=false:\n%s", out)
+	if strings.Contains(out, "[drag]") {
+		t.Fatalf("drag (still verbose) leaked into INFO:\n%s", out)
 	}
-	if !strings.Contains(out, "play started") {
-		t.Fatalf("non-verbose event missing:\n%s", out)
+	if !strings.Contains(out, "[camera] pan") {
+		t.Fatalf("camera pan should now appear at INFO by default:\n%s", out)
 	}
 }
 
@@ -205,6 +204,37 @@ func TestEventLoggerCoalescesRapidBPM(t *testing.T) {
 	}
 	if !strings.Contains(matches[0], "120.0") {
 		t.Fatalf("expected trailing BPM = 120.0, got %q", matches[0])
+	}
+}
+
+// TestEventLoggerCoalescesRapidScroll publishes 10 EventScroll events in a tight
+// burst and asserts only one INFO line is produced after the coalesce window
+// closes. Mirror of TestEventLoggerCoalescesRapidBPM, adapted for scroll.
+func TestEventLoggerCoalescesRapidScroll(t *testing.T) {
+	restore := gamelog.SetTimestampFunc(func() string { return "00:00:00.000" })
+	defer restore()
+
+	bus := hooks.NewBus(context.Background(), hooks.Options{PoolWorkers: 1, Name: "eventlogger.scroll"})
+	t.Cleanup(func() { _ = bus.Close() })
+	var buf bytes.Buffer
+	lg := gamelog.NewForTest(&buf, gamelog.LevelInfo)
+	logger, err := Open(bus, lg, Options{CoalesceWindow: 40 * time.Millisecond})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = logger.Close() })
+
+	for i := 0; i < 10; i++ {
+		pubFixed(bus, hooks.EventScroll, hooks.ScrollPayload{Surface: "inst-menu"})
+	}
+	// Wait past the coalesce window then flush any stragglers.
+	time.Sleep(100 * time.Millisecond)
+	logger.FlushNow()
+
+	scrollLineRE := regexp.MustCompile(`\[scroll\] scrolled inst-menu`)
+	matches := scrollLineRE.FindAllString(buf.String(), -1)
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly 1 scroll INFO line, got %d:\n%s", len(matches), buf.String())
 	}
 }
 

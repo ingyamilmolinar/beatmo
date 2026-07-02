@@ -58,7 +58,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 		dv.rootTree.EnsureLayouts()
 	}
 
-	dv.logger.Tracef("[DRUMVIEW] Draw called. beatInfos: %v, highlightsByRow: %v", beatInfos, highlightsByRow)
+	dv.logger.Tracef("[drumview] Draw called. beatInfos: %v, highlightsByRow: %v", beatInfos, highlightsByRow)
 
 	// Animations — state-only, not drawing.
 	dv.decayAnims()
@@ -99,7 +99,7 @@ func (dv *DrumView) Draw(dst *ebiten.Image, highlightsByRow [][]highlightEntry, 
 
 	if dv.logger != nil && dv.rowsLayerFrame == dv.frame {
 		kb := float64(dv.rowsLayerBytes) / 1024.0
-		dv.logger.Debugf("[DRUMVIEW PERF] frame=%d repaints=%d layerKB=%.2f", dv.frame, dv.rowsRepaints, kb)
+		dv.logger.Debugf("[drumview perf] frame=%d repaints=%d layerKB=%.2f", dv.frame, dv.rowsRepaints, kb)
 	}
 }
 
@@ -216,6 +216,7 @@ func (dv *DrumView) zoneClipRect(z Zone) image.Rectangle {
 func (dv *DrumView) drawRowComposite(dst *ebiten.Image) {
 	dv.ensureRowCache()
 	if Profile().DirectDrawRows {
+		dv.lastRowsRenderPath = "direct"
 		dv.drawRowsDirect(dst)
 		vis := dv.visibleRows()
 		for i := dv.rowOffset; i < dv.rowOffset+vis && i < len(dv.Rows); i++ {
@@ -229,8 +230,10 @@ func (dv *DrumView) drawRowComposite(dst *ebiten.Image) {
 	// composite from a wider buffer via a moving sub-rect blit, avoiding the
 	// per-scroll full-layer recomposite (drumview_cache_rows_window.go).
 	if dv.drawRowCompositeWindowed(dst) {
+		dv.lastRowsRenderPath = "windowed"
 		return
 	}
+	dv.lastRowsRenderPath = "legacy"
 	dv.rowsLayerMaybeRebuild()
 	if dv.rowsLayer != nil {
 		var op ebiten.DrawImageOptions

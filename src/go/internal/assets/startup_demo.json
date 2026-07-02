@@ -5,8 +5,8 @@
   "master_volume": 0.81,
   "instruments": [
     {
-      "name": "Kick-1",
-      "id": "kick-1",
+      "name": "Dnb Kick",
+      "id": "dnb-kick",
       "kind": "builtin",
       "volume": 1,
       "origin": 0,
@@ -70,25 +70,13 @@
         "lpf_enabled": true,
         "lpf_cutoff_hz": 1000
       },
-      "effects": [
-        {
-          "type": "tape",
-          "enabled": true,
-          "params": {
-            "drive": 8.189349112426036,
-            "flutter": 0.23076923076923078,
-            "mix": 0.47928994082840237,
-            "warmth": 0.5857988165680473,
-            "wow": 0.5976331360946746
-          }
-        }
-      ]
+      "recipe": "synth-modular-kick-dnb"
     },
     {
       "name": "Snare",
       "id": "snare",
       "kind": "builtin",
-      "volume": 0.6,
+      "volume": 0.81,
       "origin": 3,
       "color": "#00C8E0FF",
       "eq": {
@@ -162,11 +150,12 @@
           }
         }
       ],
-      "reverb_send": 0.15
+      "reverb_send": 0.15,
+      "recipe": "drum-snare"
     },
     {
-      "name": "Hi-Hat",
-      "id": "hihat",
+      "name": "Hihat 1",
+      "id": "hihat-1",
       "kind": "builtin",
       "volume": 1,
       "origin": 6,
@@ -230,18 +219,8 @@
         "hpf_cutoff_hz": 343.70531311604617,
         "lpf_cutoff_hz": 20000
       },
-      "effects": [
-        {
-          "type": "delay",
-          "enabled": true,
-          "params": {
-            "feedback": 0.3,
-            "mix": 0.25,
-            "time": 250
-          }
-        }
-      ],
-      "pan": 0.35
+      "pan": 0.35,
+      "recipe": "drum-open-hihat"
     },
     {
       "name": "Clap",
@@ -310,26 +289,14 @@
         "lpf_enabled": true,
         "lpf_cutoff_hz": 16291.740941713846
       },
-      "effects": [
-        {
-          "type": "phaser",
-          "enabled": true,
-          "params": {
-            "depth": 0.4873417721518987,
-            "feedback": 0.4569620253164557,
-            "mix": 0.3924050632911392,
-            "rate": 1.0838509316770186,
-            "stages": 2.538922155688623
-          }
-        }
-      ],
       "pan": -0.15,
       "delay_send": 0.1,
-      "reverb_send": 0.25
+      "reverb_send": 0.25,
+      "recipe": "drum-clap"
     },
     {
-      "name": "Cowbell",
-      "id": "cowbell",
+      "name": "Shaker",
+      "id": "shaker",
       "kind": "builtin",
       "volume": 0.06,
       "origin": 20,
@@ -394,25 +361,15 @@
         "lpf_enabled": true,
         "lpf_cutoff_hz": 4000
       },
-      "effects": [
-        {
-          "type": "distortion",
-          "enabled": true,
-          "params": {
-            "drive": 1.3,
-            "mix": 0.3,
-            "tone": 4000
-          }
-        }
-      ],
       "pan": 0.45,
-      "reverb_send": 0.2
+      "reverb_send": 0.2,
+      "recipe": "drum-shaker"
     },
     {
-      "name": "Fm-epiano-1",
-      "id": "fm-epiano-1",
+      "name": "Organ Church",
+      "id": "organ-church",
       "kind": "builtin",
-      "volume": 0.12,
+      "volume": 0.53,
       "origin": 46,
       "color": "#3A6AF0FF",
       "eq": {
@@ -475,7 +432,8 @@
       },
       "pan": -0.2,
       "delay_send": 0.15,
-      "reverb_send": 0.3
+      "reverb_send": 0.3,
+      "recipe": "synth-modular-organ-church"
     }
   ],
   "nodes": [
@@ -1177,16 +1135,16 @@
   ],
   "eq": {
     "gains_db": [
-      -6,
-      -6,
+      -8,
+      -8,
+      -8,
       -6,
       -3,
-      -1.6,
-      -3,
-      -0.9,
-      1.6,
-      5,
-      -0.2
+      -0.4,
+      2.1,
+      0.8,
+      1.5,
+      0.4
     ],
     "bands_hz": [
       [

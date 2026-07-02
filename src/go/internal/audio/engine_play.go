@@ -83,7 +83,18 @@ func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
 			delay = int(d * float64(sampleRate))
 		}
 	}
-	v := newRecipeAwareVoice(id, bpm, sampleRate)
+	// For pitch-aware melodic recipes: re-render at the node pitch so the
+	// filter formant stays at an absolute Hz instead of being slid by
+	// resampling. The playback rate then carries only the duration factor.
+	// For all other instruments (drums, FM, etc.) the old path is unchanged.
+	recipeID := RecipeForInstrument(id)
+	pitchAware := pitchAwareRecipe(recipeID)
+	var v Voice
+	if pitchAware {
+		v = newRecipeAwareVoicePitched(id, bpm, sampleRate, pitch)
+	} else {
+		v = newRecipeAwareVoice(id, bpm, sampleRate)
+	}
 	if v == nil {
 		return
 	}
@@ -92,8 +103,16 @@ func PlayParams(id string, vol, pitch, dur float64, when ...float64) {
 	if dur <= 0 {
 		dur = 1
 	}
-	// 2^(semitones/12)
-	rate := pow2(pitch/12.0) / dur
+	// For pitch-aware voices the buffer is already at-pitch, so pitch factor
+	// is not applied — only duration scaling is needed.
+	// For non-pitch-aware voices: rate = 2^(semitones/12) / dur (unchanged).
+	var rate float64
+	if pitchAware {
+		rate = 1.0 / dur
+	} else {
+		// 2^(semitones/12)
+		rate = pow2(pitch/12.0) / dur
+	}
 	if rate <= 0 {
 		rate = 1
 	}

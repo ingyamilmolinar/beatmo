@@ -402,8 +402,30 @@ func TestSynthSave_NoSinkIsNoOp(t *testing.T) {
 // truncate the four new recipe / kit kinds and the eventlogger coverage
 // path would emit them anyway — confusing log output.
 func TestHooks_NumNonVerboseUpdated(t *testing.T) {
-	if hooks.NumNonVerbose != 54 {
-		t.Errorf("hooks.NumNonVerbose = %d, want 54 (Phase 4 added 4 recipe/kit kinds; Sampler added 2 sample kinds; factory Reset added 1; the non-destructive sample-edit descriptor added 1; the event-coverage + undo pass added 8: row volume/pan, insert moved/toggled, send, synth committed/reset, audio-panel state; the HPF/LPF filter-toggle naming gap added 1)", hooks.NumNonVerbose)
+	// Derive the expected count from the source of truth (KindAll + IsVerbose)
+	// rather than hardcoding a magic number, so adding/removing a Kind doesn't
+	// require editing this test. The invariant the constant must satisfy:
+	// NumNonVerbose equals the number of non-verbose kinds, AND every verbose
+	// kind sits at the tail — i.e. KindAll[:NumNonVerbose] contains zero verbose
+	// kinds and KindAll[NumNonVerbose:] contains only verbose kinds. Otherwise
+	// KindAll[:NumNonVerbose] would mis-slice and the eventlogger coverage path
+	// would emit (or drop) the wrong kinds.
+	wantCount := 0
+	for _, k := range hooks.KindAll {
+		if !hooks.IsVerbose(k) {
+			wantCount++
+		}
+	}
+	if hooks.NumNonVerbose != wantCount {
+		t.Errorf("hooks.NumNonVerbose = %d, want %d (count of non-verbose kinds in KindAll)", hooks.NumNonVerbose, wantCount)
+	}
+	for i, k := range hooks.KindAll {
+		if i < hooks.NumNonVerbose && hooks.IsVerbose(k) {
+			t.Errorf("verbose kind %q at index %d is inside the non-verbose prefix KindAll[:%d]", k, i, hooks.NumNonVerbose)
+		}
+		if i >= hooks.NumNonVerbose && !hooks.IsVerbose(k) {
+			t.Errorf("non-verbose kind %q at index %d is outside the non-verbose prefix KindAll[%d:]", k, i, hooks.NumNonVerbose)
+		}
 	}
 	// Sanity check: the recipe/kit + sampler kinds are present in KindAll and
 	// within the non-verbose prefix.

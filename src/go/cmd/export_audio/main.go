@@ -287,8 +287,6 @@ func renderParamCases() []ParamCaseSample {
 		// (paramBlock:'modular') via audio.ModularPushParams for the browser,
 		// while the desktop reference renders through the modular binding. Same
 		// param sweeps as before the Phase-2 migration — coverage preserved.
-		{"bassgtr-identity", "drum-bass-guitar", map[string]float64{}},
-		{"bassgtr-sustain-pluck", "drum-bass-guitar", map[string]float64{"bass_sustain": 0.95, "bass_pluck": 0.8}},
 		{"subbass-overtone", "drum-sub-bass", map[string]float64{"bass_harmonic": 0.5, "fundamental": 80}},
 		// Tom family knobs. Cases stay LEGACY-named (tom_sweep_rate, tom_ring_rate,
 		// tom_wave, fundamental, …); renderParamCases translates them to the modular

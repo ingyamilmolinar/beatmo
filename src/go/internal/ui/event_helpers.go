@@ -228,6 +228,14 @@ func emitFavoriteToggled(instrumentID string, isFavorite bool) {
 	}, hooks.CaptureSource(1))
 }
 
+// emitLanguageChanged publishes EventLanguageChanged from the settings overlay
+// language pick. old/new are locale strings ("en", "es").
+func emitLanguageChanged(oldLoc, newLoc string) {
+	hooks.PublishWithSource(hooks.EventLanguageChanged, hooks.LanguagePayload{
+		Old: oldLoc, New: newLoc,
+	}, hooks.CaptureSource(1))
+}
+
 // emitEQBandChange publishes EventEQBandChange when a per-channel EQ band
 // gain changes. channel is the row instrument id ("kick", "snare", "main"…),
 // band is the 0-indexed band number, gainDB is the new gain in decibels.
@@ -315,6 +323,27 @@ func emitInstrumentParamsReset(channel, recipe string) {
 // coverage only — not undoable).
 func emitAudioPanelStateChanged(field string) {
 	hooks.PublishWithSource(hooks.EventAudioPanelStateChanged, hooks.AudioPanelStatePayload{Field: field}, hooks.CaptureSource(1))
+}
+
+// emitCameraPan publishes EventCameraPan once at pan-gesture release with the
+// cumulative screen-space delta. No longer verbose — shows in default narrative.
+func emitCameraPan(dx, dy float64) {
+	hooks.PublishWithSource(hooks.EventCameraPan, hooks.CameraPanPayload{DX: dx, DY: dy}, hooks.CaptureSource(1))
+}
+
+// emitCameraZoom publishes EventCameraZoom per zoom tick; the eventlogger
+// coalescer collapses a continuous wheel/pinch burst into one trailing line.
+func emitCameraZoom(factor float64) {
+	hooks.PublishWithSource(hooks.EventCameraZoom, hooks.CameraZoomPayload{Factor: factor}, hooks.CaptureSource(1))
+}
+
+// emitUndo / emitRedo publish the undo/redo meta-action with the reverted
+// edit's label (captured pre-Undo in undo_seam.go).
+func emitUndo(label string) {
+	hooks.PublishWithSource(hooks.EventUndo, hooks.UndoPayload{Label: label}, hooks.CaptureSource(1))
+}
+func emitRedo(label string) {
+	hooks.PublishWithSource(hooks.EventRedo, hooks.UndoPayload{Label: label}, hooks.CaptureSource(1))
 }
 
 // nodeTypeName converts a model.NodeType to its lowercase string label

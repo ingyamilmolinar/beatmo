@@ -36,10 +36,10 @@ func TestTokenSurfaces(t *testing.T) {
 
 func TestTokenAccentConsistency(t *testing.T) {
 	acc := TokenAccent()
-	// Single chrome accent — azure #4FB4FF. See "Single chrome accent"
-	// invariant in DESIGN.md.
-	if acc.R != 79 || acc.G != 180 || acc.B != 255 {
-		t.Errorf("TokenAccent must be #4FB4FF, got R=%d G=%d B=%d", acc.R, acc.G, acc.B)
+	// Single chrome accent — sunset-gold #FFB30A (the cyan→gold repaint;
+	// DESIGN.md primary / on-surface-accent both resolve to #FFB30A).
+	if acc.R != 255 || acc.G != 179 || acc.B != 10 {
+		t.Errorf("TokenAccent must be #FFB30A, got R=%d G=%d B=%d", acc.R, acc.G, acc.B)
 	}
 }
 

@@ -11,7 +11,8 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestScrollbarWidthMobile verifies the scrollbar is wider on mobile.
+// TestScrollbarWidthMobile verifies the mobile scrollbar uses the single shared
+// mobile width (slim hairline; touch grab comes from the tall thumb, not width).
 func TestScrollbarWidthMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -22,8 +23,26 @@ func TestScrollbarWidthMobile(t *testing.T) {
 
 	r := dv.scrollBarRect()
 	w := r.Dx()
-	if w != 16 {
-		t.Fatalf("expected scrollbar width=16 on mobile, got %d", w)
+	if w != mobileScrollbarWidth {
+		t.Fatalf("expected scrollbar width=%d on mobile, got %d", mobileScrollbarWidth, w)
+	}
+}
+
+// TestMobileScrollbarsUniformWidth verifies every scrollbar surface on mobile —
+// content scrollers (MobileScrollbarStyle) and popup/menu scrollers
+// (dropdownScrollbarStyle) — shares one width, so none reads thicker than another.
+func TestMobileScrollbarsUniformWidth(t *testing.T) {
+	assertDefaultParityState(t)
+	withSmallScreen(t, true)
+
+	if got := ScrollbarStyleForPlatform().Width; got != mobileScrollbarWidth {
+		t.Fatalf("content scrollbar width = %d, want %d", got, mobileScrollbarWidth)
+	}
+	if got := dropdownScrollbarStyle().Width; got != mobileScrollbarWidth {
+		t.Fatalf("dropdown/menu scrollbar style width = %d, want %d", got, mobileScrollbarWidth)
+	}
+	if got := dropdownScrollbarWidth(); got != mobileScrollbarWidth {
+		t.Fatalf("dropdown/menu scrollbar inset width = %d, want %d", got, mobileScrollbarWidth)
 	}
 }
 

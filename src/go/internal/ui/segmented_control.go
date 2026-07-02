@@ -2,15 +2,16 @@ package ui
 
 import (
 	"image"
-	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// SegmentedControl is a general-purpose 2-to-N segment toggle. The active
-// segment renders with a colored fill (TokenAccent at AlphaMedium); the
-// other segments render with the surface-2 chip color. Clicks dispatch
-// to the registered callback with the segment index.
+// SegmentedControl is a general-purpose 2-to-N segment toggle. It renders as a
+// row of matte keycaps inside a surface-2 tray (the same look drawPillTabAt
+// gives the desktop audio tabs): the active segment is a solid sunset-gold
+// (#FFB30A) cap, inactive segments are neutral caps, disabled segments are
+// greyed and inert. Clicks dispatch to the registered callback with the segment
+// index.
 //
 // Compared to a row of plain Buttons, the segmented control provides:
 //   - a single visual container that reads as a unified control;
@@ -25,6 +26,11 @@ type SegmentedControl struct {
 	labels  []string
 	active  int
 	onClick func(int)
+	// disabled[i] greys segment i and makes it inert: HitTest consumes the tap
+	// (so it doesn't fall through to a lower-z handler) but neither activates it
+	// nor fires onClick. Lazily sized to len(labels); a nil/short slice means
+	// "all enabled". Used to grey the Synth segment for WAV instruments.
+	disabled []bool
 }
 
 // NewSegmentedControl returns a SegmentedControl with the given labels and
@@ -55,6 +61,25 @@ func (s *SegmentedControl) SetActive(i int) {
 
 // Active returns the currently selected segment index.
 func (s *SegmentedControl) Active() int { return s.active }
+
+// SetSegmentDisabled greys segment i and makes it inert (or re-enables it).
+// Out-of-range indices are ignored.
+func (s *SegmentedControl) SetSegmentDisabled(i int, disabled bool) {
+	if i < 0 || i >= len(s.labels) {
+		return
+	}
+	if len(s.disabled) < len(s.labels) {
+		grown := make([]bool, len(s.labels))
+		copy(grown, s.disabled)
+		s.disabled = grown
+	}
+	s.disabled[i] = disabled
+}
+
+// segmentDisabled reports whether segment i is currently disabled.
+func (s *SegmentedControl) segmentDisabled(i int) bool {
+	return i >= 0 && i < len(s.disabled) && s.disabled[i]
+}
 
 // SetLabels replaces the segment labels in place (e.g. after a UI language
 // switch). The active index is preserved when still in range, else reset to 0.
@@ -97,6 +122,10 @@ func (s *SegmentedControl) HitTest(x, y int) bool {
 	}
 	for i := range s.labels {
 		if image.Pt(x, y).In(s.SegmentRect(i)) {
+			if s.segmentDisabled(i) {
+				// Consume the tap (don't fall through) but do nothing.
+				return true
+			}
 			s.active = i
 			if s.onClick != nil {
 				s.onClick(i)
@@ -107,27 +136,64 @@ func (s *SegmentedControl) HitTest(x, y int) bool {
 	return false
 }
 
-// Draw renders the control. Active segment uses TokenAccent at
-// AlphaMedium; inactive uses surface-2.
+// Draw renders the control as a row of matte keycaps inside a surface-2 tray —
+// the same look drawPillTabAt gives the desktop audio tabs, so the mobile
+// switcher matches the desktop pills. The active segment is a solid sunset-gold
+// (#FFB30A) cap sitting pressed-IN (inverted bevel); inactive segments are
+// neutral raised caps; a disabled segment is a greyed, inert cap. Each cap is
+// inset 1px inside its cell so the tray shows through the seams as hairline
+// dividers. The pre-boxed pill* palette is reused so the path adds no per-call
+// color boxing and introduces no inline color literals.
 func (s *SegmentedControl) Draw(dst *ebiten.Image) {
 	if s.rect.Empty() || len(s.labels) == 0 {
 		return
 	}
-	// Container surface.
+	// Tray backdrop. The keycaps sit on top; the surface-2 tray peeks through the
+	// 1px seams between caps as the segment dividers.
 	drawRoundedRect(dst, s.rect, colSurface2, RadiusMD, true)
 	drawRoundedRect(dst, s.rect, colBorderMedium, RadiusMD, false)
-	// Per-segment fills + labels.
+
+	pillRadius := RadiusMD / 2 // 4px corners — matches the desktop audio tabs
 	for i, label := range s.labels {
-		segR := s.SegmentRect(i)
-		if i == s.active {
-			fill := color.Color(WithAlpha(TokenAccent(), genAlphaMedium))
-			drawRoundedRect(dst, insetRect(segR, 2), fill, RadiusSM, true)
+		cell := insetRect(s.SegmentRect(i), 1) // 1px seam → hairline divider
+		if cell.Empty() {
+			continue
 		}
-		// Center label: assumes single-line, fits the segment width.
+		dis := s.segmentDisabled(i)
+		active := i == s.active && !dis
+
+		// Shared pill palette (see audio_sticky_bar.go) so the mobile switcher is
+		// pixel-consistent with the desktop tabs.
+		capFill, borderCol, textCol, shellCol := pillCapFillInactive, pillCapBorderInact, pillTextInactive, pillShellInactive
+		switch {
+		case dis:
+			capFill, borderCol, textCol, shellCol = pillCapFillDisabled, pillCapBorderDisab, pillTextDisabled, pillShellDisabled
+		case active:
+			capFill, borderCol, textCol, shellCol = pillCapFillActive, pillCapBorderActive, pillTextActive, pillShellActive
+		}
+
+		// Static keycap (segments aren't Buttons, so no press-spring). The cap is
+		// travel-invariant: raised=false anchors it at the cell top, the wall shows
+		// at the bottom as the socket.
+		capR := keycapCapRect(cell, 0, false)
+		if genGeomKeycapWallDepth != 0 {
+			drawRoundedButton(dst, cell, shellCol, shellCol, pillRadius, false) // socket/side-wall
+		}
+		drawKeycapContactShadow(dst, capR, pillRadius)
+		drawRoundedButton(dst, capR, capFill, borderCol, pillRadius, false) // cap face
+		if !dis {
+			if active {
+				drawKeycapActiveInset(dst, capR, pillRadius) // lit-amber, pressed-IN
+			} else {
+				drawKeycapBevel(dst, capR, pillRadius) // matte raised
+			}
+		}
+
+		// Center label on the cap face.
 		tw := TextWidth(label)
 		th := TextHeight()
-		tx := segR.Min.X + (segR.Dx()-tw)/2
-		ty := segR.Min.Y + (segR.Dy()-th)/2
-		DrawTextAt(dst, label, tx, ty)
+		tx := capR.Min.X + (capR.Dx()-tw)/2
+		ty := capR.Min.Y + (capR.Dy()-th)/2
+		DrawTextColorAt(dst, label, tx, ty, textCol)
 	}
 }

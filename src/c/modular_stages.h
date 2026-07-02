@@ -15,6 +15,9 @@ typedef struct {
 } mod_biquad;
 
 void mod_biquad_set(mod_biquad *f, int type, double cutoff, double q, int sr);
+/* Update coefficients WITHOUT resetting the delay line (x1/x2/y1/y2). For
+ * per-block cutoff modulation where zeroing state would click. */
+void mod_biquad_set_coeffs(mod_biquad *f, int type, double cutoff, double q, int sr);
 float mod_biquad_tick_f(mod_biquad *f, float x);
 
 /* Renders the gen bank and ACCUMULATES into out[0..samples-1] (slot-index

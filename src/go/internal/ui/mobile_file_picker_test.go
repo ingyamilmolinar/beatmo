@@ -10,6 +10,53 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
+// TestStartOverflowImportTriggersPickerAndClosesMenu locks the JS→Go entry
+// point used by the mobile real-input file-picker overlay. When the user taps
+// the (real, transparent) <input type=file> over the Import row and picks a
+// file, the overlay's change handler calls _fpStartImport, which routes here.
+// It must close the overflow menu and fire the import picker flow exactly like
+// the overflow "Import" menu item — otherwise the picked file is dropped and
+// "tapping Import does nothing".
+func TestStartOverflowImportTriggersPickerAndClosesMenu(t *testing.T) {
+	assertDefaultParityState(t)
+	withSmallScreen(t, true)
+
+	old := selectJSONAsyncFn
+	defer func() { selectJSONAsyncFn = old }()
+	pickerCalls := 0
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) { pickerCalls++ }
+
+	const W, H = 390, 844
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	dv.Rows = []*DrumRow{{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0}}
+	dv.Length = 8
+
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+
+	dv.OpenOverflowMenu()
+	if !dv.IsOverflowMenuOpen() {
+		t.Fatal("overflow menu should be open before StartOverflowImport")
+	}
+
+	dv.StartOverflowImport()
+
+	if dv.IsOverflowMenuOpen() {
+		t.Error("StartOverflowImport should close the overflow menu")
+	}
+	if pickerCalls != 1 {
+		t.Errorf("StartOverflowImport should fire the import picker exactly once, got %d", pickerCalls)
+	}
+}
+
 // TestOverflowMenuRegistersFilePickerRects verifies that opening the overflow
 // menu on a small screen registers file picker rects for the Import and Upload
 // buttons, enabling the gesture-based file picker on mobile.

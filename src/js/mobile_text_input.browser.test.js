@@ -51,6 +51,15 @@ function assert(cond, msg) {
 async function setupMobilePage() {
   const context = await browser.newContext({ ...iPhone });
   const page = await context.newPage();
+  // Force the page to be treated as focused. In the 4-job parallel batch this
+  // context is usually NOT the OS-foreground window, so a freshly-created native
+  // <input>'s .focus() does not stick — a spurious `blur` fires within ~1 frame,
+  // our blur handler commits + tears the <input> down, and the detection poll
+  // never sees it. setFocusEmulationEnabled makes document.hasFocus()==true so
+  // focus() holds and the spurious blur never fires. (Pure test-harness fix —
+  // production runs in a real focused tab.) Mirrors mobile_native_input.
+  const focusCdp = await context.newCDPSession(page);
+  await focusCdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.goto(`http://localhost:${port}/`);
   await page.waitForFunction(() =>
     typeof bpmBoxRect === "function" &&
@@ -73,11 +82,22 @@ async function setupMobilePage() {
 // after a short window lets the natural loop tick and register "bpm"; once
 // registered it stays registered. We deliberately do NOT force manual Update
 // ticks (forceGameTick), which can stall the WASM run loop. Returns true if the
-// input appeared. Mirrors the retry discipline in mobile_native_input.browser.test.js.
+// input appeared.
+//
+// CRITICAL: poll on a FIXED 50 ms interval, not Playwright's default `polling:
+// 'raf'`. Under the 4-job parallel software-GL batch the page's rAF is throttled
+// hard; a rAF-driven waitForFunction starves and can miss an input that *was*
+// created (the documented detection race — input IS created+registered, the poll
+// just never evaluates in time). A timer-driven poll fires independently of the
+// page's rAF. The per-attempt window is widened to 1500 ms (touchend->gesture->
+// register creation latency can exceed 600 ms under load) with 12 re-tap
+// attempts. This mirrors mobile_native_input.browser.test.js EXACTLY — keep the
+// two helpers in lockstep; the polling:50 fix must live in both or whichever file
+// keeps the rAF default flakes alone in the batch.
 async function tapBPMAwaitInput(page, rect) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     await cdpTap(page, cx, cy);
     try {
       await page.waitForFunction(() => {
@@ -86,11 +106,11 @@ async function tapBPMAwaitInput(page, rect) {
           if (inp.style.zIndex === '10000') return true;
         }
         return false;
-      }, { timeout: 500 });
+      }, { timeout: 1500, polling: 50 });
       return true;
     } catch (_) {
       // Registration not ready yet — let the rAF loop tick, then re-tap.
-      await page.waitForTimeout(150);
+      await page.waitForTimeout(120);
     }
   }
   return false;
@@ -181,9 +201,11 @@ console.log("Test 3: Type BPM value via keyboard");
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect returned empty");
 
-    // Focus BPM box
-    await cdpTap(page, rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(200);
+    // Focus BPM box (retry-aware: a single tap races the throttled rAF Update
+    // loop that registers the "bpm" rect under the parallel batch + software-GL,
+    // so the native input may not appear and the typed keys go nowhere — the BPM
+    // would then stay at its default. Mirrors Tests 1 & 2.)
+    assert(await tapBPMAwaitInput(page, rect), "native input did not appear after tap");
     await page.evaluate(() => forceDraw?.());
 
     // Type "150" into the proxy input and press Enter

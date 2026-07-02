@@ -75,7 +75,7 @@ func rectsWithColorInside(rects []drawnRect, inside image.Rectangle, colors ...c
 }
 
 // barRectsInsideMeter counts horizontal bar rects in the Meters panel,
-// keyed on the data colors meterGreen/meterYellow/meterRed produced by
+// keyed on the data colors meterLow/meterMid/meterHigh produced by
 // meterColor(db). Empty snapshots produce -80 dB → dbToFrac=0 → peakPx=0
 // → no meter-color rect drawn at all. Any non-zero count is conclusive
 // evidence that the renderer received non-zero peak/RMS data.
@@ -86,7 +86,7 @@ func barRectsInsideMeter(rects []drawnRect, inside image.Rectangle) int {
 	// Match against the three meter colors (peak fill) plus their
 	// 50% RMS overlays. WithAlpha returns NRGBA, so build the
 	// expected RGBA representations the same way the renderer does.
-	wantedRGB := []color.RGBA{meterGreen, meterYellow, meterRed}
+	wantedRGB := []color.RGBA{meterLow, meterMid, meterHigh}
 	wanted := make(map[color.RGBA]bool, 6)
 	for _, c := range wantedRGB {
 		wanted[c] = true
@@ -100,6 +100,14 @@ func barRectsInsideMeter(rects []drawnRect, inside image.Rectangle) int {
 			continue
 		}
 		if r.Rect.Intersect(inside).Empty() {
+			continue
+		}
+		// meterLow is now gold (#FFB30A) after the cyan→gold token repaint, which
+		// aliases the panel's full-width chrome divider/accent line at the top of
+		// the Levels surface. That line is NOT meter data — it spans the entire
+		// subject width, whereas real meter bars / LED segments are inset within
+		// per-channel strips. Skip rects that span the full subject width.
+		if r.Rect.Min.X <= inside.Min.X && r.Rect.Max.X >= inside.Max.X {
 			continue
 		}
 		count++
@@ -132,13 +140,13 @@ func driveScene(t *testing.T, name string) *Game {
 // SubjectRect.
 //
 // Three injection points are needed:
-//   1. dv.eqTestSnapshot / eqTestPreEQSnapshot — feeds the legacy
-//      DrawWaveform fallback path (used by the Wave tab when
-//      AnalyzerState callback returns nil).
-//   2. testAnalyzerStateOverride — read by BuildAnalyzerStateFromSnapshots
-//      under -tags test, so the AnalyzerState callback (Spectrum,
-//      Meters, Wave-via-new-path) sees real data.
-//   3. testScopeStateOverride — same idea for the Scope tab.
+//  1. dv.eqTestSnapshot / eqTestPreEQSnapshot — feeds the legacy
+//     DrawWaveform fallback path (used by the Wave tab when
+//     AnalyzerState callback returns nil).
+//  2. testAnalyzerStateOverride — read by BuildAnalyzerStateFromSnapshots
+//     under -tags test, so the AnalyzerState callback (Spectrum,
+//     Meters, Wave-via-new-path) sees real data.
+//  3. testScopeStateOverride — same idea for the Scope tab.
 //
 // All three are restored to nil via t.Cleanup so tests don't leak state.
 func drawWithSnapshot(t *testing.T, g *Game, subject Subject, snap audio.AnalyzerSnapshot) (image.Rectangle, []drawnRect) {
@@ -332,5 +340,52 @@ func TestSceneCropAudioPanelsCoverScreen(t *testing.T) {
 		if !found {
 			t.Errorf("scene %q not in sceneCatalog (audio-panel pixel test depends on it)", name)
 		}
+	}
+}
+
+// TestEQTabStripesRenderWithoutAnalyzerData pins the EQ tab's static
+// chrome to the first frame. The alternating per-band background stripes,
+// band separators, frequency/dB labels and mute-button hit rects are
+// chrome, not data — they must render at startup BEFORE the analyzer has
+// produced any spectrum (no playback, empty AnalyzerSnapshot).
+//
+// Regression: drawSpectrumBars early-returned on an empty spectrum
+// snapshot and dropped the ENTIRE striped backdrop (plus labels and mute
+// hit rects). The stripes only appeared after the user clicked something,
+// which gave the analyzer time to populate. The crop_eq_tab_eq scene
+// activates the EQ tab without SetPlaying, so the snapshot stays empty —
+// the exact startup condition. No snapshot is injected here on purpose.
+func TestEQTabStripesRenderWithoutAnalyzerData(t *testing.T) {
+	g := driveScene(t, "crop_eq_tab_eq")
+
+	rect, ok := g.SubjectRect(SubjectEQTabEQ)
+	if !ok || rect.Empty() {
+		t.Fatalf("SubjectRect(eq) ok=%v rect=%v", ok, rect)
+	}
+
+	// Force the empty-spectrum condition the renderer sees at startup on a
+	// suspended-AudioContext browser: ChannelAnalyzerSnapshot returns an
+	// empty snapshot until a user gesture unlocks audio. Injecting an empty
+	// snapshot through eqTestSnapshot reproduces that exactly (the Go stub
+	// analyzer otherwise hands back non-empty data and masks the bug).
+	empty := audio.AnalyzerSnapshot{}
+	g.drum.eqTestSnapshot = &empty
+	t.Cleanup(func() { g.drum.eqTestSnapshot = nil })
+
+	screen := ebiten.NewImage(1280, 720)
+	rects := collectFilledRects(t, func() { g.Draw(screen) })
+
+	// 10 bands → 5 even-band fills (fadeColor(colEQBg,0.2)) + 5 odd-band
+	// fills (fadeColor(colGridLine,0.3)). Floor well below 10 to stay
+	// robust against band-count / density tweaks, but a count of 0 means
+	// the static backdrop never drew.
+	stripes := rectsWithColorInside(rects, rect,
+		fadeColor(colEQBg, 0.2), fadeColor(colGridLine, 0.3))
+	if stripes < 5 {
+		t.Errorf("EQ tab striped background: only %d stripe rects in subject %v (want ≥ 5) — drawSpectrumBars dropped its static chrome when the analyzer had no data",
+			stripes, rect)
+	}
+	if testing.Verbose() {
+		t.Logf("EQ stripes (no analyzer data): rect=%v stripes=%d", rect, stripes)
 	}
 }

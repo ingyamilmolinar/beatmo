@@ -57,7 +57,7 @@ func (s *Scheduler) Start() {
 	s.last = time.Time{}
 	s.currentStep = 0
 	if s.logger != nil {
-		s.logger.Debugf("[SCHEDULER] Started")
+		s.logger.Debugf("[scheduler] Started")
 	}
 }
 
@@ -66,7 +66,7 @@ func (s *Scheduler) Stop() {
 	s.currentStep = 0
 	s.last = time.Time{}
 	if s.logger != nil {
-		s.logger.Debugf("[SCHEDULER] Stopped")
+		s.logger.Debugf("[scheduler] Stopped")
 	}
 }
 

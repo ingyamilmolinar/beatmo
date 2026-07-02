@@ -6,6 +6,41 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
+// anySoloActive reports whether any row is soloed. Soloing changes the
+// audibility rule from "everything not muted" to "only soloed rows".
+func anySoloActive(rows []*DrumRow) bool {
+	for _, r := range rows {
+		if r != nil && r.Solo {
+			return true
+		}
+	}
+	return false
+}
+
+// rowAudible is the canonical per-row audibility predicate used across the
+// engine: a row is audible when it is not muted AND (nothing is soloed OR it
+// is itself soloed). Pass anySolo from anySoloActive(rows).
+func rowAudible(r *DrumRow, anySolo bool) bool {
+	return r != nil && !r.Muted && (!anySolo || r.Solo)
+}
+
+// audibleInstrumentIDs returns the set of instrument IDs that are currently
+// audible given the rows' solo/mute state. Rows with an empty Instrument ID
+// are skipped (no channel to key on).
+func audibleInstrumentIDs(rows []*DrumRow) map[string]bool {
+	anySolo := anySoloActive(rows)
+	out := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		if r == nil || r.Instrument == "" {
+			continue
+		}
+		if rowAudible(r, anySolo) {
+			out[r.Instrument] = true
+		}
+	}
+	return out
+}
+
 // SetBounds is called from Game whenever the splitter moves or the window
 // resizes; it invalidates the cached background so dimensions update next draw.
 func (dv *DrumView) SetBounds(b image.Rectangle) {
@@ -254,17 +289,11 @@ func (dv *DrumView) autoSelectSoleAudibleChannel() {
 	if len(dv.Rows) < 2 {
 		return
 	}
-	anySolo := false
-	for _, r := range dv.Rows {
-		if r.Solo {
-			anySolo = true
-			break
-		}
-	}
+	anySolo := anySoloActive(dv.Rows)
 	count := 0
 	var sole *DrumRow
 	for _, r := range dv.Rows {
-		if !r.Muted && (!anySolo || r.Solo) {
+		if rowAudible(r, anySolo) {
 			count++
 			sole = r
 		}

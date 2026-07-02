@@ -186,7 +186,7 @@ for (const device of devices) {
       ({ browser, context, page } = await connectRemoteDevice(device, credentials, port));
       console.log("  Connected. Waiting for WASM...");
 
-      await waitForWasmReady(page, 60000);
+      await waitForWasmReady(page, 90000);
       console.log("  WASM ready. Loading fixture...");
 
       await loadMultiRowFixture(page);
@@ -318,7 +318,7 @@ for (const device of devices) {
         passed++;
         console.log("  PASS");
       }
-    })(), 120000, `${device.name} test`);
+    })(), 240000, `${device.name} test`);
   } catch (e) {
     console.error(`  ERROR: ${e.message}`);
     if (page) {

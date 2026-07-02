@@ -14,11 +14,11 @@ import (
 // Meter bridge colors — sourced from DESIGN.md `viz-meter-*` tokens.
 // To change a hue, edit DESIGN.md and run `make gen-design-tokens`.
 var (
-	meterGreen  = genColorVizMeterGreen
-	meterYellow = genColorVizMeterYellow
-	meterRed    = genColorVizMeterRed
-	meterBg     = genColorVizMeterBg
-	meterClip   = genColorVizMeterClip
+	meterLow  = genColorVizMeterLow
+	meterMid  = genColorVizMeterMid
+	meterHigh = genColorVizMeterHigh
+	meterBg   = genColorVizMeterBg
+	meterClip = genColorVizMeterClip
 )
 
 const (
@@ -255,7 +255,7 @@ func drawLevelsDetail(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Chan
 		if latch != nil && latch.peakHoldSeeded && latch.PeakHoldDB > barDB {
 			barDB = latch.PeakHoldDB
 		}
-		drawLevelsBar(dst, peakBar, barDB, "PEAK", rect.Min.X+2)
+		drawLevelsBar(dst, peakBar, barDB, i18n.T(i18n.KeyLevelsPeak), rect.Min.X+2)
 		if latch != nil {
 			drawLevelsPeakHoldMarker(dst, peakBar, latch.PeakHoldDB)
 		}
@@ -307,7 +307,7 @@ func drawLevelsBar(dst *ebiten.Image, rect image.Rectangle, db float64, label st
 
 // drawLevelsPeakHoldMarker paints a 2px-wide vertical bar at the peak-
 // hold dB position on the Peak bar. Uses colTextPrimary so it reads
-// clearly against the meter green/yellow/red fills.
+// clearly against the meter golden/orange/red fills.
 func drawLevelsPeakHoldMarker(dst *ebiten.Image, peakBar image.Rectangle, peakHoldDB float64) {
 	if peakBar.Dy() < 4 || peakBar.Dx() < 4 {
 		return
@@ -368,15 +368,12 @@ func drawLevelsReadout(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Cha
 		headroom = -peakReadout
 	}
 
-	// Static prefix.
-	prefix := fmt.Sprintf("Pk %s · RMS %s · Hdr %s · Clips ",
+	// Static prefix (localized; the clip COUNT is drawn separately, colored).
+	prefix := i18n.Tf(i18n.KeyLevelsReadoutFmt,
 		formatMeterDB(peakReadout),
 		formatMeterDB(rmsReadout),
 		formatMeterDB(headroom),
 	)
-	DrawTextColorAtScale(dst, prefix, rect.Min.X+4, y, colTextSecondary, captionScale)
-	prefixW := int(float64(TextWidth(prefix)) * captionScale)
-
 	// Clip number with optional latch coloring.
 	clipsText := fmt.Sprintf("%d", ch.ClipCount)
 	clipsCol := colTextSecondary
@@ -385,7 +382,27 @@ func drawLevelsReadout(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Cha
 	} else if ch.ClipCount > 0 {
 		clipsCol = colError
 	}
-	DrawTextColorAtScale(dst, clipsText, rect.Min.X+4+prefixW, y, clipsCol, captionScale)
+
+	// Shrink the whole line to fit the strip width — the localized prefix
+	// (e.g. "Pico … · RMS … · Margen … · Recortes ") is longer than English,
+	// so a fixed scale would clip/overflow.
+	drawScale := fitScaleToWidth(TextWidth(prefix)+TextWidth(clipsText), captionScale, rect.Dx()-8)
+	DrawTextColorAtScale(dst, prefix, rect.Min.X+4, y, colTextSecondary, drawScale)
+	prefixW := int(float64(TextWidth(prefix)) * drawScale)
+	DrawTextColorAtScale(dst, clipsText, rect.Min.X+4+prefixW, y, clipsCol, drawScale)
+}
+
+// fitScaleToWidth returns base, or a smaller scale so that text of width
+// naturalW (measured at scale 1.0) fits within maxW. Used to guarantee
+// longer localized strings never overflow a fixed-width readout.
+func fitScaleToWidth(naturalW int, base float64, maxW int) float64 {
+	if naturalW <= 0 || maxW <= 0 {
+		return base
+	}
+	if int(float64(naturalW)*base) <= maxW {
+		return base
+	}
+	return float64(maxW) / float64(naturalW)
 }
 
 // formatDB renders a dB value compactly for the readout strip.
@@ -401,12 +418,12 @@ func formatMeterDB(db float64) string {
 // meterColor returns the meter color for a given peak dB level.
 func meterColor(db float64) color.RGBA {
 	if db > meterRedDB {
-		return meterRed
+		return meterHigh
 	}
 	if db > meterYellowDB {
-		return meterYellow
+		return meterMid
 	}
-	return meterGreen
+	return meterLow
 }
 
 // meterColorAlpha returns the meter color with a custom alpha for overlays.
@@ -427,7 +444,7 @@ func meterColorAlpha(db float64, alpha uint8) color.NRGBA {
 // When state has no instruments (only master), falls back to the
 // single-channel drawLevelsDetail so the layout stays meaningful for
 // boot-time idle states.
-func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch) {
+func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) {
 	drawRect(dst, rect, colButtonBorder, false)
 	if state == nil {
 		return
@@ -455,8 +472,6 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 	// below 360 px, leaving mobile users with no Headroom readout at
 	// all.
 	ldv := Profile().DensityValues()
-	readoutWFull := ldv.LevelsReadoutWFull
-	readoutWIcons := ldv.LevelsReadoutWIcons
 
 	contentH := rect.Dy() - headerH - footerH
 	if contentH < 24 {
@@ -464,24 +479,26 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 		return
 	}
 
-	readoutMode := readoutColModeFull
-	readoutW := readoutWFull
-	switch {
-	case rect.Dx() >= 2*readoutWFull:
-		readoutMode = readoutColModeFull
-		readoutW = readoutWFull
-	case rect.Dx() >= readoutWFull+readoutWIcons:
-		readoutMode = readoutColModeIcons
-		readoutW = readoutWIcons
-	default:
-		readoutMode = readoutColModeChevron
-		readoutW = 0
-	}
+	readoutMode, readoutW := levelsReadoutLayout(rect.Dx())
 	stripsRect := image.Rect(rect.Min.X+4, rect.Min.Y, rect.Max.X-readoutW, rect.Max.Y)
 
 	// Slots: every instrument + master last. Master gets ~2× the
 	// width of a regular strip.
-	nInst := len(state.Instruments)
+	nInst := 0
+	for i := range state.Instruments {
+		if visibleIDs == nil {
+			nInst++
+			continue
+		}
+		if _, present := visibleIDs[state.Instruments[i].ID]; present {
+			nInst++
+		}
+	}
+	if nInst == 0 {
+		// Nothing audible among instruments — fall back to master-only detail.
+		drawLevelsDetail(dst, rect, &state.Master, latchOrNil(latches, "main"))
+		return
+	}
 	totalWeights := nInst + 2 // master = 2 weights
 	stripSpace := stripsRect.Dx() - (nInst)*stripGap - masterStripPad
 	if stripSpace < totalWeights {
@@ -496,6 +513,13 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 	x := stripsRect.Min.X
 	for i := range state.Instruments {
 		inst := &state.Instruments[i]
+		if visibleIDs != nil {
+			if _, present := visibleIDs[inst.ID]; !present {
+				// Hidden because not audible (solo/mute). Skip so the
+				// remaining strips reclaim its width.
+				continue
+			}
+		}
 		stripW := weightPx
 		drawLevelsChannelStrip(dst,
 			image.Rect(x, stripsRect.Min.Y, x+stripW, stripsRect.Max.Y),
@@ -514,7 +538,7 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 	if masterW > 14 {
 		drawLevelsChannelStrip(dst,
 			image.Rect(x, stripsRect.Min.Y, x+masterW, stripsRect.Max.Y),
-			"Master", state.Master.PeakDB, state.Master.RMSDB, state.Master.ClipCount,
+			i18n.T(i18n.KeyMaster), state.Master.PeakDB, state.Master.RMSDB, state.Master.ClipCount,
 			latchOrNil(latches, "main"))
 	}
 
@@ -523,11 +547,11 @@ func drawLevelsMultiChannel(dst *ebiten.Image, rect image.Rectangle, state *anal
 	case readoutColModeFull:
 		drawLevelsAggregates(dst,
 			image.Rect(rect.Max.X-readoutW+4, rect.Min.Y+4, rect.Max.X-4, rect.Max.Y-4),
-			state, latches)
+			state, latches, visibleIDs)
 	case readoutColModeIcons:
 		drawLevelsAggregatesIconRow(dst,
 			image.Rect(rect.Max.X-readoutW+2, rect.Min.Y+4, rect.Max.X-2, rect.Max.Y-4),
-			state, latches)
+			state, latches, visibleIDs)
 	case readoutColModeChevron:
 		// Footer chevron — drawn in the footer strip's right edge. The
 		// tap target opens a bottom-sheet (UseBottomSheet) carrying the
@@ -566,10 +590,81 @@ type LevelsAggregate struct {
 	LoudestName string
 }
 
+// instrumentVisibleInAgg reports whether an instrument id is included in the
+// Levels aggregate readouts. nil visibleIDs means "include all" (idle/legacy).
+func instrumentVisibleInAgg(visibleIDs map[string]bool, id string) bool {
+	return visibleIDs == nil || visibleIDs[id]
+}
+
+// levelsReadoutFullPadX is the horizontal padding (px) added to the measured
+// content width of the full aggregate column — matches the 4px-per-side inset
+// drawLevelsAggregates draws into, plus a little slack.
+const levelsReadoutFullPadX = 12
+
+// levelsReadoutFullMinW is a small floor so the content-fit column never
+// collapses below what drawLevelsAggregates needs to render at all.
+const levelsReadoutFullMinW = 68
+
+// levelsReadoutFullW returns the minimal width the full aggregate readout
+// column needs to render its static labels + the widest big number at the
+// current font/locale. It is independent of instrument count and of the
+// per-frame loudest name (which truncates), so the summary stays a fixed,
+// content-fit width while the bars absorb all remaining horizontal space.
+// Clamped to [floor, the density's LevelsReadoutWFull budget] so it never
+// grows beyond today's reserved width.
+func levelsReadoutFullW() int {
+	capScale := FontSizeCaption / FontSizeBody
+	headlineScale := FontSizeHeading / FontSizeBody
+	w := 0
+	cands := []struct {
+		s  string
+		sc float64
+	}{
+		{i18n.T(i18n.KeyCapHeadroom), capScale},
+		{i18n.T(i18n.KeyLevelsClips) + " (10s)", capScale},
+		{"LUFS-S", capScale},
+		{i18n.T(i18n.KeyCapLoudest), capScale},
+		{"+99 dB", headlineScale}, // widest big number
+		{"CLIP!", headlineScale},
+	}
+	for _, c := range cands {
+		if tw := int(float64(TextWidth(c.s)) * c.sc); tw > w {
+			w = tw
+		}
+	}
+	w += levelsReadoutFullPadX
+	if w < levelsReadoutFullMinW {
+		w = levelsReadoutFullMinW
+	}
+	if budget := Profile().DensityValues().LevelsReadoutWFull; w > budget {
+		w = budget
+	}
+	return w
+}
+
+// levelsReadoutLayout picks the aggregate-readout mode and its column width
+// for a panel of the given width. The mode THRESHOLDS stay tied to the
+// density's LevelsReadoutWFull/WIcons tokens (so a mobile-width panel still
+// lands in icon-row mode), but full mode renders at the content-fit width
+// from levelsReadoutFullW so the bars get every spare pixel.
+func levelsReadoutLayout(panelDx int) (readoutColMode, int) {
+	ldv := Profile().DensityValues()
+	full := ldv.LevelsReadoutWFull
+	icons := ldv.LevelsReadoutWIcons
+	switch {
+	case panelDx >= 2*full:
+		return readoutColModeFull, levelsReadoutFullW()
+	case panelDx >= full+icons:
+		return readoutColModeIcons, icons
+	default:
+		return readoutColModeChevron, 0
+	}
+}
+
 // levelsAggregatesValues computes the headroom / clips / loudest readouts
 // for the icon-row. Pure function — used by both the renderer and the
 // tooltip layer to keep their formatted strings in sync.
-func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch) LevelsAggregate {
+func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) LevelsAggregate {
 	masterPeak := state.Master.PeakDB
 	if latches != nil {
 		if l, ok := latches.byID["main"]; ok && l != nil && l.peakHoldSeeded && l.PeakHoldDB > masterPeak {
@@ -585,6 +680,9 @@ func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch) Le
 	}
 	totalClips := state.Master.ClipCount
 	for i := range state.Instruments {
+		if !instrumentVisibleInAgg(visibleIDs, state.Instruments[i].ID) {
+			continue
+		}
 		totalClips += state.Instruments[i].ClipCount
 	}
 	clipsTxt := "0"
@@ -594,6 +692,9 @@ func levelsAggregatesValues(state *analyzer.State, latches *MultiLevelsLatch) Le
 	loudestName := ""
 	loudestPeak := -1e9
 	for i := range state.Instruments {
+		if !instrumentVisibleInAgg(visibleIDs, state.Instruments[i].ID) {
+			continue
+		}
 		p := state.Instruments[i].PeakDB
 		if latches != nil {
 			if l, ok := latches.byID[state.Instruments[i].ID]; ok && l != nil && l.peakHoldSeeded && l.PeakHoldDB > p {
@@ -636,17 +737,17 @@ func levelsAggregateIconRects(rect image.Rectangle) (hdr, clp, lou image.Rectang
 // is too narrow for the full-text column but wide enough to surface
 // the per-icon values inline. Each icon's tap target meets the
 // density's MinTarget at Spacious.
-func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch) {
+func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) {
 	if rect.Dx() < 20 || rect.Dy() < 40 {
 		return
 	}
-	agg := levelsAggregatesValues(state, latches)
-	headroomCol := meterGreen
+	agg := levelsAggregatesValues(state, latches, visibleIDs)
+	headroomCol := meterLow
 	if agg.HeadroomDB < 6 {
-		headroomCol = meterYellow
+		headroomCol = meterMid
 	}
 	if agg.HeadroomDB < 1 {
-		headroomCol = meterRed
+		headroomCol = meterHigh
 	}
 	clipsCol := colTextSecondary
 	if agg.ClipsTotal > 0 {
@@ -696,16 +797,16 @@ func levelsAggregateTooltipText(slot string, agg LevelsAggregate) string {
 	switch slot {
 	case "headroom":
 		if agg.HeadroomDB <= 0 {
-			return "Headroom: 0 dB (clipping)"
+			return i18n.T(i18n.KeyLevelsTipHeadroomClip)
 		}
-		return "Headroom: " + agg.HeadroomTxt + " dB"
+		return i18n.Tf(i18n.KeyLevelsTipHeadroom, agg.HeadroomTxt)
 	case "clips":
-		return "Clips (10s): " + agg.ClipsTxt
+		return i18n.Tf(i18n.KeyLevelsTipClips, agg.ClipsTxt)
 	case "loudest":
 		if agg.LoudestName == "" {
-			return "Loudest: —"
+			return i18n.T(i18n.KeyLevelsTipLoudestNone)
 		}
-		return "Loudest: " + agg.LoudestName
+		return i18n.Tf(i18n.KeyLevelsTipLoudest, agg.LoudestName)
 	}
 	return ""
 }
@@ -854,7 +955,7 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 }
 
 // drawSegmentedLevelBar paints a vertical level meter with 1.5 dB LED
-// segments: green below -6 dB, yellow between -6 and -1 dB, red above.
+// segments: golden below -6 dB, orange between -6 and -1 dB, red above.
 // `isPeak` controls the segment opacity — RMS uses a softer fill so
 // peak transients stand out visually against the body of the signal.
 func drawSegmentedLevelBar(dst *ebiten.Image, r image.Rectangle, db float64, isPeak bool) {
@@ -952,10 +1053,10 @@ const levelsAggRowGap = 4
 // Ebiten surface.
 func levelsAggregateColumnRows(rect image.Rectangle, textH int) []levelsAggRow {
 	captionScale := FontSizeCaption / FontSizeBody
-	const (
-		bodyScale     = 1.0
-		headlineScale = 2.0
-	)
+	// Type-scale-derived multipliers (relative to body text). The headline
+	// (big Headroom number) is the Heading step; body rows are the Body step.
+	bodyScale := FontSizeBody / FontSizeBody        // 1.0 — Body step, expressed via the type scale
+	headlineScale := FontSizeHeading / FontSizeBody // ≈1.43 — Heading step (was a raw 2.0)
 	scales := [aggRowCount]float64{
 		aggRowHeadroomLabel: captionScale,
 		aggRowHeadroomValue: headlineScale,
@@ -986,7 +1087,7 @@ func levelsAggregateColumnRows(rect image.Rectangle, textH int) []levelsAggRow {
 // answers "how much room do I have left before it gets ugly?" in one
 // glance. Row positions come from levelsAggregateColumnRows — a
 // sequential flow that never overlaps; rows that don't fit are dropped.
-func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch) {
+func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyzer.State, latches *MultiLevelsLatch, visibleIDs map[string]bool) {
 	if rect.Dx() < 60 || rect.Dy() < 60 {
 		return
 	}
@@ -1006,12 +1107,12 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		}
 	}
 	headroom := -masterPeak
-	headroomCol := meterGreen
+	headroomCol := meterLow
 	if headroom < 6 {
-		headroomCol = meterYellow
+		headroomCol = meterMid
 	}
 	if headroom < 1 {
-		headroomCol = meterRed
+		headroomCol = meterHigh
 	}
 
 	// "Headroom" label.
@@ -1025,7 +1126,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	switch {
 	case headroom < 0:
 		bigNum = "CLIP!"
-		headroomCol = meterRed
+		headroomCol = meterHigh
 	case headroom > 99:
 		bigNum = "+99 dB"
 	default:
@@ -1045,13 +1146,16 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	clipsLast := state.ClipsLastWindow
 	totalClips := state.Master.ClipCount
 	for i := range state.Instruments {
+		if !instrumentVisibleInAgg(visibleIDs, state.Instruments[i].ID) {
+			continue
+		}
 		totalClips += state.Instruments[i].ClipCount
 	}
 	clipsDisplay := clipsLast
-	clipsLabel := "CLIPS (10s)"
+	clipsLabel := i18n.T(i18n.KeyLevelsClips) + " (10s)"
 	if clipsLast == 0 && totalClips > 0 {
 		clipsDisplay = totalClips
-		clipsLabel = "CLIPS"
+		clipsLabel = i18n.T(i18n.KeyLevelsClips)
 	}
 	if r, ok := rowAt(aggRowClipsLabel); ok {
 		DrawTextColorAtScale(dst, clipsLabel, rect.Min.X, r.Y, colTextSecondary, r.Scale)
@@ -1085,6 +1189,9 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	loudestName := ""
 	loudestPeak := -math.Inf(1)
 	for i := range state.Instruments {
+		if !instrumentVisibleInAgg(visibleIDs, state.Instruments[i].ID) {
+			continue
+		}
 		p := state.Instruments[i].PeakDB
 		if latches != nil {
 			if l, ok := latches.byID[state.Instruments[i].ID]; ok && l != nil && l.peakHoldSeeded && l.PeakHoldDB > p {

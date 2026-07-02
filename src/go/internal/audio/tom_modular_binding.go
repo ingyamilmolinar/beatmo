@@ -47,7 +47,7 @@ func tomRecipeToModular(recipeID string, merged RecipeParams, variant float64, d
 	mp.GenTomRoom[0] = elidedValOrNaN(elided, "tom_room")
 
 	// Slots 2..12 stay at source 0 (off).
-	for i := 1; i < 12; i++ {
+	for i := 1; i < modularGenSlots; i++ {
 		mp.GenSource[i] = 0
 	}
 

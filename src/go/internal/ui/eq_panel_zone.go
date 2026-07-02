@@ -97,6 +97,12 @@ type EQCallbacks struct {
 	// when a scroll position changed so the zone re-lays-out next frame.
 	SynthTabUpdate func() bool
 
+	// SynthTabDisabled reports whether the Synth tab selector should be greyed
+	// out / inert because the active instrument is a WAV sample (no synth
+	// controls to shape). Wired to !DrumView.activeInstrumentHasSynth() in
+	// drumview_ctor.go. Nil ⇒ never disabled.
+	SynthTabDisabled func() bool
+
 	// Sampler tab routing — mirrors the Synth-tab callbacks above. The EQ
 	// panel owns no sampler state; DrumView builds/draws the sampler tab and
 	// the wiring lives in drumview_ctor.go.
@@ -336,22 +342,16 @@ func (z *EQPanelZone) initButtons() {
 		// every transition is cheap. See audio_panel_dispatcher.go for
 		// the full rule.
 		EnsureAnalyzersForTab(tab, z.activeChannel, z.analyzerInstrumentIDs()...)
+		emitAudioPanelStateChanged("tab:" + PanelTabSlug(tab))
 		if z.callbacks.OnTabChange != nil {
 			z.callbacks.OnTabChange(tab)
 		}
 	}
 	z.stickyBar = NewAudioStickyBar(130, onChannel, onTab)
-	// Phase 5 audio-panel redesign: legend chip + tab expander.
+	// Phase 5 audio-panel redesign: legend chip.
 	if lg := z.stickyBar.LegendBtn(); lg != nil {
 		lg.OnClick = func() {
 			z.legendOpen = !z.legendOpen
-		}
-	}
-	if ex := z.stickyBar.ExpanderBtn(); ex != nil {
-		ex.OnClick = func() {
-			if z.tabState != nil {
-				z.tabState.ToggleExpanded()
-			}
 		}
 	}
 
@@ -636,8 +636,12 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 				// fallback path (zero instruments) still works.
 				z.levelsLatch.Update(state.Master.ClipCount, state.Master.PeakDB, state.Master.RMSDB)
 			}
-			drawLevelsMultiChannel(screen, z.bodyRect(), state, z.levelsLatches)
-			z.snapshotLevelsIconRow(state)
+			var visibleIDs map[string]bool
+			if z.callbacks.ActiveRows != nil {
+				visibleIDs = audibleInstrumentIDs(z.callbacks.ActiveRows())
+			}
+			drawLevelsMultiChannel(screen, z.bodyRect(), state, z.levelsLatches, visibleIDs)
+			z.snapshotLevelsIconRow(state, visibleIDs)
 		} else {
 			drawLevelsDetail(screen, z.bodyRect(), nil, nil)
 		}
@@ -678,16 +682,19 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 	if z.tabState.ActiveTab() == TabEQ {
 		if z.hpfBtn != nil {
 			hpfActive := z.callbacks.HPFEnabled != nil && z.callbacks.HPFEnabled()
-			z.drawPillTab(screen, z.hpfBtn, hpfActive, "")
+			drawPillTabAt(screen, z.hpfBtn, hpfActive)
 		}
 		if z.lpfBtn != nil {
 			lpfActive := z.callbacks.LPFEnabled != nil && z.callbacks.LPFEnabled()
-			z.drawPillTab(screen, z.lpfBtn, lpfActive, "")
+			drawPillTabAt(screen, z.lpfBtn, lpfActive)
 		}
 	}
 
 	// Sticky bar drawn last so chrome is never occluded by band overlays.
 	if z.stickyBar != nil {
+		// Refresh the Synth-pill disabled state every frame so it tracks the
+		// active instrument even when no relayout happened this frame.
+		z.stickyBar.SetSynthDisabled(z.synthTabDisabled())
 		z.stickyBar.Draw(screen, activeTab)
 	}
 	// Phase 5: legend popover sits above everything else when the
@@ -710,30 +717,6 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 // active: filled with colSurface2 + colAccent border + colTextAccent text.
 // inactive: colButtonBorder border + colTextSecondary text.
 // prefix is prepended to the button text.
-func (z *EQPanelZone) drawPillTab(dst *ebiten.Image, btn *Button, active bool, prefix string) {
-	r := btn.Rect()
-	if r.Empty() {
-		return
-	}
-	pillRadius := RadiusMD / 2 // 4px corners
-	if active {
-		drawRoundedRect(dst, r, colSurface2, pillRadius, true)
-		drawRoundedRect(dst, r, colAccent, pillRadius, false)
-	} else {
-		drawRoundedRect(dst, r, colButtonBorder, pillRadius, false)
-	}
-	text := prefix + btn.Text
-	tw := TextWidth(text)
-	th := TextHeight()
-	tx := r.Min.X + (r.Dx()-tw)/2
-	ty := r.Min.Y + (r.Dy()-th)/2
-	textCol := colTextSecondary
-	if active {
-		textCol = colTextAccent
-	}
-	DrawTextColorAt(dst, text, tx, ty, textCol)
-}
-
 func (z *EQPanelZone) HandleKey(k ebiten.Key) InputResult {
 	// The shared editor owns Enter (commit) and Escape (revert) via its own
 	// Update; swallow keys while it's open so global shortcuts don't fire.
@@ -989,6 +972,13 @@ func (z *EQPanelZone) OpenChannelDropdown() {
 
 // --- Layout helpers ---
 
+// synthTabDisabled reports whether the Synth tab selector should be greyed out
+// (active instrument is a WAV sample). Defaults to false when no callback is
+// wired (e.g. test-only zones).
+func (z *EQPanelZone) synthTabDisabled() bool {
+	return z.callbacks.SynthTabDisabled != nil && z.callbacks.SynthTabDisabled()
+}
+
 func (z *EQPanelZone) layoutButtons() {
 	r := z.rect
 
@@ -1002,6 +992,7 @@ func (z *EQPanelZone) layoutButtons() {
 		// tab before Layout so it can decide whether to claim space for
 		// the Spectrum-only pills (slope / Pre / Reset Hold).
 		z.stickyBar.SetActiveTab(z.tabState.ActiveTab())
+		z.stickyBar.SetSynthDisabled(z.synthTabDisabled())
 		z.stickyBar.Layout(image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+stickyBarHeight()))
 	}
 
@@ -1419,20 +1410,42 @@ func (z *EQPanelZone) rebuildHitAreas() {
 
 // --- Hit handler adapters ---
 
-// buttonHitAdapter wraps a Button as a HitHandler.
+// buttonHitAdapter is the single canonical adapter that wraps a *Button as a
+// tree HitHandler. Every tree-routed action button (synth/sampler footers, EQ
+// pills, audio sticky bar tabs, chain panel, row rack, …) uses it so they all
+// share one input lifecycle via Button.PressFromTree → applyPress: fire OnClick
+// on the press edge, drive the visual pressed state, honour Disabled /
+// ConsumeOnPress, and settle on release. Returning InputCaptured makes the tree
+// deliver OnRelease, so the press state is always cleared — no stale-held latch.
 type buttonHitAdapter struct {
 	btn *Button
 }
 
 func (h *buttonHitAdapter) OnPress(x, y int) InputResult {
-	if h.btn.OnClick != nil {
-		h.btn.OnClick()
+	if h.btn == nil {
+		return InputIgnored
 	}
+	// Disabled buttons swallow the press (so it doesn't fall through to a
+	// lower-z sibling) but perform no action.
+	if h.btn.Disabled {
+		return InputConsumed
+	}
+	// Clear any stale press state from a prior cycle whose release wasn't
+	// delivered, so the press edge always fires (defensive latch-proofing).
+	h.btn.ResetPress()
+	h.btn.PressFromTree(true)
 	return InputCaptured
 }
 
-func (h *buttonHitAdapter) OnDrag(x, y int)                     {}
-func (h *buttonHitAdapter) OnRelease(x, y int)                  {}
+func (h *buttonHitAdapter) OnDrag(x, y int) {}
+
+func (h *buttonHitAdapter) OnRelease(x, y int) {
+	// Deliver the release so the button settles out of its pressed state.
+	if h.btn != nil {
+		h.btn.PressFromTree(false)
+	}
+}
+
 func (h *buttonHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
 // waveZoomHandler implements HitHandler for scroll-wheel Y-zoom on the Wave
@@ -1822,7 +1835,7 @@ func (o *eqChannelDropdownOverlay) layoutFor(anchor, screenBounds image.Rectangl
 	total := len(o.allOnClicks)
 	scroll := z.channelScroll
 	scroll.ItemHeight = btnH
-	scroll.Style = DropdownScrollbarStyle
+	scroll.Style = dropdownScrollbarStyle()
 	scroll.VS.Total = total
 
 	visible := total
@@ -1850,7 +1863,7 @@ func (o *eqChannelDropdownOverlay) layoutFor(anchor, screenBounds image.Rectangl
 
 	buttonMaxX := anchor.Max.X
 	if scroll.HasScroll() {
-		buttonMaxX -= eqChannelMenuScrollBarWidth
+		buttonMaxX -= dropdownScrollbarWidth()
 		if buttonMaxX <= anchor.Min.X {
 			buttonMaxX = anchor.Min.X + 1
 		}
@@ -1938,7 +1951,7 @@ func (o *eqChannelDropdownOverlay) rebuildVisibleButtons() {
 
 	buttonMaxX := anchor.Max.X
 	if scroll.HasScroll() {
-		buttonMaxX -= eqChannelMenuScrollBarWidth
+		buttonMaxX -= dropdownScrollbarWidth()
 		if buttonMaxX <= anchor.Min.X {
 			buttonMaxX = anchor.Min.X + 1
 		}
@@ -2094,39 +2107,51 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 	r := z.rect
 	snap := z.analyzerSnapshot()
 	spec := snap.Spectrum
-	if len(spec) == 0 {
-		return
-	}
 
 	if len(z.eqBandVals) != len(eqBandDefs) {
 		z.eqBandVals = make([]float64, len(eqBandDefs))
 	}
+	// The live bar heights are the ONLY part of this tab that depends on
+	// analyzer data. Everything drawn below — the alternating per-band
+	// background stripes, band separators, frequency/dB labels and the
+	// mute-button hit rects — is static chrome that must render on the
+	// first frame even before the analyzer has produced any spectrum
+	// (startup, or a suspended-AudioContext browser awaiting the first
+	// user gesture). Pre-fix an empty-spectrum early-return dropped the
+	// entire backdrop until the user clicked something. When there is no
+	// data we just let the smoothed band values decay toward zero, so the
+	// backdrop draws bare of bars but otherwise complete.
 	blend := 0.5
-	specLen := len(spec)
-	for i, band := range eqBandDefs {
-		nq := 24000.0
-		start := int(math.Floor((band.loHz / nq) * float64(specLen)))
-		end := int(math.Ceil((band.hiHz / nq) * float64(specLen)))
-		if end <= start {
-			end = start + 1
-		}
-		if start < 0 {
-			start = 0
-		}
-		if end > specLen {
-			end = specLen
-		}
-		maxV := 0.0
-		for j := start; j < end; j++ {
-			if spec[j] > maxV {
-				maxV = spec[j]
+	if specLen := len(spec); specLen > 0 {
+		for i, band := range eqBandDefs {
+			nq := 24000.0
+			start := int(math.Floor((band.loHz / nq) * float64(specLen)))
+			end := int(math.Ceil((band.hiHz / nq) * float64(specLen)))
+			if end <= start {
+				end = start + 1
 			}
+			if start < 0 {
+				start = 0
+			}
+			if end > specLen {
+				end = specLen
+			}
+			maxV := 0.0
+			for j := start; j < end; j++ {
+				if spec[j] > maxV {
+					maxV = spec[j]
+				}
+			}
+			if maxV > 1 {
+				maxV = 1
+			}
+			display := math.Sqrt(maxV)
+			z.eqBandVals[i] = z.eqBandVals[i]*blend + display*(1-blend)
 		}
-		if maxV > 1 {
-			maxV = 1
+	} else {
+		for i := range z.eqBandVals {
+			z.eqBandVals[i] *= blend
 		}
-		display := math.Sqrt(maxV)
-		z.eqBandVals[i] = z.eqBandVals[i]*blend + display*(1-blend)
 	}
 
 	bandW := r.Dx() / len(eqBandDefs)
@@ -2729,7 +2754,7 @@ func formatDB(db float64) string {
 
 // newScrollBehavior creates a fresh ScrollBehavior for use in the zone.
 func newScrollBehavior() *ScrollBehavior {
-	return NewScrollBehavior(DropdownScrollbarStyle, 24)
+	return NewScrollBehavior(dropdownScrollbarStyle(), 24)
 }
 
 // eqMuteTouchFloor returns the minimum mute-button hit-rect height for
@@ -2771,7 +2796,7 @@ func eqDBInputTouchFloor(d Density) int {
 // re-reading analyzer state. Called only when the Levels-tab draw path
 // picks the icon-row cascade mode. Empty rects when another mode is
 // active — checked by levelsAggregateSlotForPoint.
-func (z *EQPanelZone) snapshotLevelsIconRow(state *analyzer.State) {
+func (z *EQPanelZone) snapshotLevelsIconRow(state *analyzer.State, visibleIDs map[string]bool) {
 	z.levelsHeadroomRect = image.Rectangle{}
 	z.levelsClipsRect = image.Rectangle{}
 	z.levelsLoudestRect = image.Rectangle{}
@@ -2793,7 +2818,7 @@ func (z *EQPanelZone) snapshotLevelsIconRow(state *analyzer.State) {
 	}
 	colRect := image.Rect(rect.Max.X-readoutWIcons+2, rect.Min.Y+4, rect.Max.X-2, rect.Max.Y-4)
 	z.levelsHeadroomRect, z.levelsClipsRect, z.levelsLoudestRect = levelsAggregateIconRects(colRect)
-	z.levelsAggSnapshot = levelsAggregatesValues(state, z.levelsLatches)
+	z.levelsAggSnapshot = levelsAggregatesValues(state, z.levelsLatches, visibleIDs)
 }
 
 // LevelsAggregateSlotForPoint reports which Levels icon-row slot

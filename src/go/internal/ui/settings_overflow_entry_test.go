@@ -2,28 +2,17 @@ package ui
 
 import "testing"
 
-func TestOverflowMenuHasSettingsEntry(t *testing.T) {
+// Settings is reached exclusively via the grid pane's top-right gear button on
+// every platform. The overflow ("ellipsis") menu must NOT carry a duplicate
+// Settings entry.
+func TestOverflowMenuHasNoSettingsEntry(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(1200, 800)
 	dv := g.drum
 	items := dv.overflowItems()
-	var found *overflowItem
 	for i := range items {
 		if items[i].iconID == IconSettings {
-			it := items[i]
-			found = &it
-			break
+			t.Fatal("overflow menu still has a Settings entry (IconSettings); it should be removed")
 		}
-	}
-	if found == nil {
-		t.Fatal("overflow menu has no Settings entry (IconSettings)")
-	}
-	if found.onClick == nil {
-		t.Fatal("Settings overflow item has no onClick")
-	}
-	found.onClick()
-	p := dv.tree.Portal()
-	if p == nil || !p.Has(settingsOverlayID) {
-		t.Fatal("Settings overflow item did not open the settings overlay")
 	}
 }

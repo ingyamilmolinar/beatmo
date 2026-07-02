@@ -14,6 +14,13 @@ import (
 // TestInstMenuCompTouchScrollCategories verifies that dragging on a category
 // button scrolls the list instead of selecting.
 func TestInstMenuCompTouchScrollCategories(t *testing.T) {
+	// Touch-scroll (drag = scroll, not select) is a mobile-only affordance:
+	// desktop selects on the press edge and scrolls via wheel/scrollbar. Force
+	// the mobile profile so the deferred-tap / dead-zone path is exercised.
+	oldM := forceSmallScreenForTest
+	forceSmallScreenForTest = true
+	t.Cleanup(func() { forceSmallScreenForTest = oldM })
+
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })
@@ -78,6 +85,11 @@ func TestInstMenuCompTouchScrollCategories(t *testing.T) {
 // TestInstMenuCompTouchScrollInstruments verifies dragging on an instrument
 // button scrolls the list instead of selecting.
 func TestInstMenuCompTouchScrollInstruments(t *testing.T) {
+	// Touch-scroll (drag = scroll, not select) is a mobile-only affordance.
+	oldM := forceSmallScreenForTest
+	forceSmallScreenForTest = true
+	t.Cleanup(func() { forceSmallScreenForTest = oldM })
+
 	prev := suppressClicksUntilRelease
 	suppressClicksUntilRelease = false
 	t.Cleanup(func() { suppressClicksUntilRelease = prev })

@@ -122,6 +122,10 @@ func (g *Game) initJSScenes() {
 			obj.Set("description", s.Description)
 			obj.Set("mobile", s.Mobile)
 			obj.Set("subject", string(s.Subject))
+			// settleFrames lets the browser capture runner wait proportionally
+			// (frames/60 → seconds) for the same settle the desktop binary honors
+			// via screenshotThreshold. 0 means "use the default" (90 frames).
+			obj.Set("settleFrames", s.SettleFrames)
 			arr.SetIndex(i, obj)
 		}
 		return arr

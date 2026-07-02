@@ -22,8 +22,10 @@ import (
 // clickable control is under the cursor (the index already knows every
 // control's rect and z-order/occlusion), eases a single 0..1 fade toward "over
 // a control?", and paints the cushion on top of everything — outside every
-// cache. Desktop-only (DESIGN.md "mobile chrome stays flat"). See DESIGN.md
-// § Cushioned elevation → Hover glow.
+// cache. On mobile the same affordance is press-driven (the captured control
+// lifts while held) since touch has no hover — see drawHoverGlow. The lift
+// renders on both platforms (visual styling does not diverge by screen class).
+// See DESIGN.md § Cushioned elevation → Hover / press lift.
 
 // glowTarget is implemented by hit-handler adapters for clickable controls that
 // should show the hover cushion: buttons, text inputs (BPM box), the volume
@@ -52,13 +54,6 @@ func (h *repeatButtonHitAdapter) glowRect(_, _ int, _ image.Rectangle) image.Rec
 	}
 	return h.btn.Rect()
 }
-func (h *samplerButtonHitAdapter) glowRect(_, _ int, _ image.Rectangle) image.Rectangle {
-	if h.btn.Toggled() {
-		return image.Rectangle{}
-	}
-	return h.btn.Rect()
-}
-
 // Text inputs (BPM box, …) — the input's rect; empty while focused (the focus
 // ring is the active-edit signal there).
 func (h *textInputHitAdapter) glowRect(_, _ int, _ image.Rectangle) image.Rectangle {
@@ -116,19 +111,28 @@ func (t *DrumViewTree) hoveredGlowRect(mx, my int) (image.Rectangle, bool) {
 	return image.Rectangle{}, false
 }
 
-// drawHoverGlow advances the hover-fade one frame and strokes the glow ring
-// around the hovered button. Called from Draw, on top of all zones, before the
-// portal. Desktop-only; a no-op (and self-clearing) on mobile.
+// drawHoverGlow advances the hover-fade one frame and paints the matte lift
+// over the active control. Called from Draw, on top of all zones, before the
+// portal.
+//
+// Desktop drives the lift from HOVER (the control under the cursor). Touch has
+// no hover, so on mobile the lift is PRESS-driven: the currently-pressed
+// (captured) control lifts while held and fades out on release — the touch
+// analog of the desktop hover affordance, so the animation does not diverge by
+// platform. Drag-only surfaces (knobs, sliders, scrub) aren't glowTargets, so
+// they never lift; a latched/focused control suppresses its own lift via
+// glowRect.
 func (t *DrumViewTree) drawHoverGlow(screen *ebiten.Image) {
-	if Profile().IsMobile() {
-		t.hoverGlowAnim = 0
-		t.hoverGlowRect = image.Rectangle{}
-		return
-	}
-
 	target := 0.0
 	mx, my := cursorPosition()
-	if r, ok := t.hoveredGlowRect(mx, my); ok {
+	if Profile().IsMobile() {
+		if gt, ok := t.capturedHandler.(glowTarget); ok {
+			if r := gt.glowRect(mx, my, t.hoverGlowRect); !r.Empty() {
+				target = 1.0
+				t.hoverGlowRect = r
+			}
+		}
+	} else if r, ok := t.hoveredGlowRect(mx, my); ok {
 		target = 1.0
 		t.hoverGlowRect = r // snap so the glow slides between controls
 	}

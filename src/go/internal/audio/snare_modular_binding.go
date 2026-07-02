@@ -68,7 +68,7 @@ func snareRecipeToModular(recipeID string, merged RecipeParams, variant float64,
 	set(&mp.GenSnareAttack[0], "snare_attack")
 
 	// Slots 2..12 stay at source 0 (off).
-	for i := 1; i < 12; i++ {
+	for i := 1; i < modularGenSlots; i++ {
 		mp.GenSource[i] = 0
 	}
 

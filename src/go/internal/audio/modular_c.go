@@ -69,31 +69,31 @@ type ModularParams struct {
 	NoiseDraws   float64
 	NoisePrelude float64
 
-	GenSource      [12]float64
-	GenWave        [12]float64
-	GenFreqMode    [12]float64
-	GenFreq        [12]float64
-	GenGain        [12]float64
-	GenEnvFastRate [12]float64
-	GenEnvTailRate [12]float64
-	GenEnvFastMix  [12]float64
-	GenEnvTailMix  [12]float64
-	GenFiltType    [12]float64
-	GenFiltAlpha   [12]float64
-	GenFiltFreq    [12]float64
-	GenFiltQ       [12]float64
-	GenPhaseMode   [12]float64
-	GenPhase       [12]float64
-	GenNoiseOffset [12]float64
+	GenSource      [modularGenSlots]float64
+	GenWave        [modularGenSlots]float64
+	GenFreqMode    [modularGenSlots]float64
+	GenFreq        [modularGenSlots]float64
+	GenGain        [modularGenSlots]float64
+	GenEnvFastRate [modularGenSlots]float64
+	GenEnvTailRate [modularGenSlots]float64
+	GenEnvFastMix  [modularGenSlots]float64
+	GenEnvTailMix  [modularGenSlots]float64
+	GenFiltType    [modularGenSlots]float64
+	GenFiltAlpha   [modularGenSlots]float64
+	GenFiltFreq    [modularGenSlots]float64
+	GenFiltQ       [modularGenSlots]float64
+	GenPhaseMode   [modularGenSlots]float64
+	GenPhase       [modularGenSlots]float64
+	GenNoiseOffset [modularGenSlots]float64
 
 	// ── Phase-2 (bass family) analytic-voice per-slot fields (source==4). ──
-	GenPitchEnvAmt  [12]float64
-	GenPitchEnvRate [12]float64
-	GenHarmMix      [12]float64
-	GenAtkAmt       [12]float64
-	GenAtkRate      [12]float64
-	GenSatK         [12]float64
-	GenOutScale     [12]float64
+	GenPitchEnvAmt  [modularGenSlots]float64
+	GenPitchEnvRate [modularGenSlots]float64
+	GenHarmMix      [modularGenSlots]float64
+	GenAtkAmt       [modularGenSlots]float64
+	GenAtkRate      [modularGenSlots]float64
+	GenSatK         [modularGenSlots]float64
+	GenOutScale     [modularGenSlots]float64
 
 	// ── Phase-2 globals: voice-freq override + shared POST stage. ──
 	VoiceFreqHz      float64
@@ -114,21 +114,22 @@ type ModularParams struct {
 
 	// ── Phase-2 Task-2 (Karplus-Strong, source==3) per-slot fields. Appended
 	// at the very tail of the ABI (after the Phase-2 globals). ──
-	GenKsSustain [12]float64
-	GenKsPluck   [12]float64
+	GenKsSustain [modularGenSlots]float64
+	GenKsPluck   [modularGenSlots]float64
+	GenKsBlow    [modularGenSlots]float64
 
 	// ── Phase-3 (kick family, source==5) harmonic-bank kick voice per-slot
 	// fields. Appended at the NEW very tail (after the Phase-2 KS columns). ──
-	GenKickVariant [12]float64
-	GenKickH2      [12]float64
-	GenKickH3      [12]float64
-	GenKickH4      [12]float64
-	GenKickEnv0    [12]float64
-	GenKickEnv1    [12]float64
-	GenKickPeAmt   [12]float64
-	GenKickPeRate  [12]float64
-	GenKickClick   [12]float64
-	GenKickNoise   [12]float64
+	GenKickVariant [modularGenSlots]float64
+	GenKickH2      [modularGenSlots]float64
+	GenKickH3      [modularGenSlots]float64
+	GenKickH4      [modularGenSlots]float64
+	GenKickEnv0    [modularGenSlots]float64
+	GenKickEnv1    [modularGenSlots]float64
+	GenKickPeAmt   [modularGenSlots]float64
+	GenKickPeRate  [modularGenSlots]float64
+	GenKickClick   [modularGenSlots]float64
+	GenKickNoise   [modularGenSlots]float64
 
 	// ── Phase-3 (kick post-order fix): selects the POST-stage op ORDER. Appended
 	// at the NEW very tail (after the kick voice columns) so every prior flat
@@ -140,13 +141,13 @@ type ModularParams struct {
 	// Appended at the NEW very tail (after post_order) so every prior flat index
 	// stays frozen. Identity 0 each; read only when a slot's source is 6.
 	// GenTomVariant is a discriminator (0=tom 1=high 2=low). ──
-	GenTomVariant [12]float64
-	GenTomSweep   [12]float64
-	GenTomRing    [12]float64
-	GenTomO1      [12]float64
-	GenTomO2      [12]float64
-	GenTomStick   [12]float64
-	GenTomRoom    [12]float64
+	GenTomVariant [modularGenSlots]float64
+	GenTomSweep   [modularGenSlots]float64
+	GenTomRing    [modularGenSlots]float64
+	GenTomO1      [modularGenSlots]float64
+	GenTomO2      [modularGenSlots]float64
+	GenTomStick   [modularGenSlots]float64
+	GenTomRoom    [modularGenSlots]float64
 
 	// ── Phase-5 (snare family): snare-ish voice (source==7, 3 variant branches)
 	// + clap voice (source==8) per-slot fields. Appended at the NEW very tail
@@ -154,16 +155,16 @@ type ModularParams struct {
 	// Identity 0 each; read only when a slot's source is 7 or 8. GenSnareVariant
 	// is a discriminator (0=snare 1=rimshot 2=sidestick); the curated knobs are
 	// NaN-driven at the binding so the C kp_get supplies the per-variant literal. ──
-	GenSnareVariant [12]float64
-	GenSnareTone2   [12]float64
-	GenSnareTune    [12]float64
-	GenSnareToneD   [12]float64
-	GenSnareNoiseD  [12]float64
-	GenSnareTailD   [12]float64
-	GenSnareToneM   [12]float64
-	GenSnareNoiseM  [12]float64
-	GenSnareWireM   [12]float64
-	GenSnareAttack  [12]float64
+	GenSnareVariant [modularGenSlots]float64
+	GenSnareTone2   [modularGenSlots]float64
+	GenSnareTune    [modularGenSlots]float64
+	GenSnareToneD   [modularGenSlots]float64
+	GenSnareNoiseD  [modularGenSlots]float64
+	GenSnareTailD   [modularGenSlots]float64
+	GenSnareToneM   [modularGenSlots]float64
+	GenSnareNoiseM  [modularGenSlots]float64
+	GenSnareWireM   [modularGenSlots]float64
+	GenSnareAttack  [modularGenSlots]float64
 
 	// ── Phase-6 (cymbal family): metallic voice (source==9, 6 variant branches:
 	// 0=hihat 1=open-hihat 2=cowbell 3=shaker 4=ride 5=crash) per-slot fields.
@@ -171,13 +172,13 @@ type ModularParams struct {
 	// prior flat index stays frozen. Identity 0 each; read only when a slot's
 	// source is 9. GenCymVariant is a discriminator; the curated knobs are
 	// NaN-driven at the binding so the C kp_get supplies the per-variant literal. ──
-	GenCymVariant [12]float64
-	GenCymTune    [12]float64
-	GenCymEnvFast [12]float64
-	GenCymEnvTail [12]float64
-	GenCymToneM   [12]float64
-	GenCymNoiseM  [12]float64
-	GenCymNoiseD  [12]float64
+	GenCymVariant [modularGenSlots]float64
+	GenCymTune    [modularGenSlots]float64
+	GenCymEnvFast [modularGenSlots]float64
+	GenCymEnvTail [modularGenSlots]float64
+	GenCymToneM   [modularGenSlots]float64
+	GenCymNoiseM  [modularGenSlots]float64
+	GenCymNoiseD  [modularGenSlots]float64
 
 	// ── Phase-7 (FM family, the LAST legacy family): 4-operator FM preset voice
 	// (source==10, 5 variant branches: 0=bass 1=bell 2=lead 3=epiano 4=pluck)
@@ -186,22 +187,22 @@ type ModularParams struct {
 	// when a slot's source is 10. GenFMVariant is a discriminator; the curated
 	// knobs are NaN-driven at the binding so the C kp_get supplies the per-variant
 	// preset literal (the same overlay the deleted fm_apply_params performed). ──
-	GenFMVariant [12]float64
-	GenFMBase    [12]float64
-	GenFMPeAmt   [12]float64
-	GenFMPeDecay [12]float64
-	GenFMR1      [12]float64
-	GenFMR2      [12]float64
-	GenFMR3      [12]float64
-	GenFMR4      [12]float64
-	GenFMD1      [12]float64
-	GenFMD2      [12]float64
-	GenFMD3      [12]float64
-	GenFMD4      [12]float64
-	GenFMDec1    [12]float64
-	GenFMDec2    [12]float64
-	GenFMDec3    [12]float64
-	GenFMDec4    [12]float64
+	GenFMVariant [modularGenSlots]float64
+	GenFMBase    [modularGenSlots]float64
+	GenFMPeAmt   [modularGenSlots]float64
+	GenFMPeDecay [modularGenSlots]float64
+	GenFMR1      [modularGenSlots]float64
+	GenFMR2      [modularGenSlots]float64
+	GenFMR3      [modularGenSlots]float64
+	GenFMR4      [modularGenSlots]float64
+	GenFMD1      [modularGenSlots]float64
+	GenFMD2      [modularGenSlots]float64
+	GenFMD3      [modularGenSlots]float64
+	GenFMD4      [modularGenSlots]float64
+	GenFMDec1    [modularGenSlots]float64
+	GenFMDec2    [modularGenSlots]float64
+	GenFMDec3    [modularGenSlots]float64
+	GenFMDec4    [modularGenSlots]float64
 
 	// ── Phase-8C modulator stages (PITCH ENV / LFO / BURST — the spec-§1 gap
 	// closure). Appended at the NEW very tail (after the Phase-7 FM columns) so
@@ -224,6 +225,53 @@ type ModularParams struct {
 	Burst3Amp       float64
 	Burst4Off       float64
 	Burst4Amp       float64
+	// LFO routing target: 0 = amp (default/identity), 1 = pitch vibrato, 2 = cutoff sweep.
+	LfoTarget float64
+
+	// ── Phase-8D filter envelope (APPEND-ONLY at the very tail, after lfo_target).
+	// Default 0 = off = byte-identical to every pre-Phase-8D render. When enabled,
+	// the filter cutoff brightens by FiltEnvAmt octaves at onset and decays
+	// exponentially with time constant FiltEnvDecay seconds. Separate from the LFO
+	// cutoff sweep so it composes with vibrato. ──
+	FiltEnvEnabled float64 // >=0.5 runs the filter envelope
+	FiltEnvAmt     float64 // octaves of brightening at onset (0..4)
+	FiltEnvDecay   float64 // exp time constant, seconds (0.01..2)
+	FiltEnvAttack  float64 // seconds for the cutoff to RISE to +amt before decay (0 = onset bloom; >0 = brass crescendo swell)
+	BodyModel      float64 // 0=off, 1=violin body-resonator bank (organic string shimmer)
+	BodyMix        float64 // wet resonant peaks added to the dry signal (0..~1.5)
+	BowDynamics    float64 // bowing-expression depth: slow random loudness+brightness motion (0=off)
+
+	// ── Phase-8E unison/ensemble (APPEND-ONLY at the very tail, after filtenv_decay).
+	// Default UnisonVoices=1 = single oscillator = byte-identical to before this
+	// change (the unison path is gated on nv>=2). UnisonDetune=0, UnisonMix=0.5.
+	UnisonVoices float64 // 1..7, integer-valued, default 1 (identity)
+	UnisonDetune float64 // cents spread ±detune/2 across side voices, 0..50, default 0
+	UnisonMix    float64 // 0=center only, 1=full ensemble, default 0.5
+
+	// ── Phase-8F unison drift (APPEND-ONLY at the very tail, after unison_mix).
+	// Default=0 for both → identity: no drift, byte-identical to before this change.
+	UnisonDriftRate  float64 // Hz, 0..8, per-voice drift LFO base rate (0=off)
+	UnisonDriftDepth float64 // cents, 0..30, per-voice drift depth (0=off)
+
+	// ── Phase-8G LFO onset delay (APPEND-ONLY at the very tail, after unison_drift_depth).
+	// Default=0 → ramp factor always 1.0 → byte-identical to pre-Phase-8G behavior.
+	// Applied to ALL three LFO targets (amp/pitch/cutoff).
+	LfoDelay float64 // seconds, 0..3, default 0 (identity)
+
+	// ── Phase-9 (kick family extras): the source==5 kick voice's structural
+	// shaping constants promoted to per-slot knobs (attack-boost amount,
+	// global-fade rate, saturation pre-gain). APPEND-ONLY at the very tail.
+	// Identity 0 each; read only when a slot's source is 5. NaN-driven at the
+	// binding so the C kp_get supplies the exact per-variant literal — every
+	// existing kick variant stays byte-identical. ──
+	GenKickAttack [modularGenSlots]float64
+	GenKickFade   [modularGenSlots]float64
+	GenKickSat    [modularGenSlots]float64
+
+	// ── Phase-10 KICK-stage enable: gates the source==5 kick voice (the Synth-tab
+	// KICK stage's enable pill). APPEND-ONLY at the very tail. Identity 0 (off);
+	// every source==5 consumer sets it to 1. ──
+	KickEnabled float64
 }
 
 // toCModularParams converts the Go struct to a C modular_params pointer.
@@ -288,22 +336,36 @@ func (p ModularParams) toCModularParams() *C.modular_params {
 		post_drive_on:      C.float(p.PostDriveOn),
 		post_order:         C.float(p.PostOrder),
 
-		pitchenv_enabled: C.float(p.PitchEnvEnabled),
-		pitchenv_amt:     C.float(p.PitchEnvAmt),
-		pitchenv_decay:   C.float(p.PitchEnvDecay),
-		lfo_enabled:      C.float(p.LfoEnabled),
-		lfo_rate:         C.float(p.LfoRate),
-		lfo_depth:        C.float(p.LfoDepth),
-		burst_enabled:    C.float(p.BurstEnabled),
-		burst_sharp:      C.float(p.BurstSharp),
-		burst1_off:       C.float(p.Burst1Off),
-		burst1_amp:       C.float(p.Burst1Amp),
-		burst2_off:       C.float(p.Burst2Off),
-		burst2_amp:       C.float(p.Burst2Amp),
-		burst3_off:       C.float(p.Burst3Off),
-		burst3_amp:       C.float(p.Burst3Amp),
-		burst4_off:       C.float(p.Burst4Off),
-		burst4_amp:       C.float(p.Burst4Amp),
+		pitchenv_enabled:   C.float(p.PitchEnvEnabled),
+		pitchenv_amt:       C.float(p.PitchEnvAmt),
+		pitchenv_decay:     C.float(p.PitchEnvDecay),
+		lfo_enabled:        C.float(p.LfoEnabled),
+		lfo_rate:           C.float(p.LfoRate),
+		lfo_depth:          C.float(p.LfoDepth),
+		burst_enabled:      C.float(p.BurstEnabled),
+		burst_sharp:        C.float(p.BurstSharp),
+		burst1_off:         C.float(p.Burst1Off),
+		burst1_amp:         C.float(p.Burst1Amp),
+		burst2_off:         C.float(p.Burst2Off),
+		burst2_amp:         C.float(p.Burst2Amp),
+		burst3_off:         C.float(p.Burst3Off),
+		burst3_amp:         C.float(p.Burst3Amp),
+		burst4_off:         C.float(p.Burst4Off),
+		burst4_amp:         C.float(p.Burst4Amp),
+		lfo_target:         C.float(p.LfoTarget),
+		filtenv_enabled:    C.float(p.FiltEnvEnabled),
+		filtenv_amt:        C.float(p.FiltEnvAmt),
+		filtenv_decay:      C.float(p.FiltEnvDecay),
+		filtenv_attack:     C.float(p.FiltEnvAttack),
+		body_model:         C.float(p.BodyModel),
+		body_mix:           C.float(p.BodyMix),
+		bow_dynamics:       C.float(p.BowDynamics),
+		unison_voices:      C.float(p.UnisonVoices),
+		unison_detune:      C.float(p.UnisonDetune),
+		unison_mix:         C.float(p.UnisonMix),
+		unison_drift_rate:  C.float(p.UnisonDriftRate),
+		unison_drift_depth: C.float(p.UnisonDriftDepth),
+		lfo_delay:          C.float(p.LfoDelay),
 	}
 	// Go [12]float64 → C float gen_<field>[12] must be copied element-wise.
 	for i := 0; i < 12; i++ {
@@ -334,6 +396,7 @@ func (p ModularParams) toCModularParams() *C.modular_params {
 
 		cp.gen_ks_sustain[i] = C.float(p.GenKsSustain[i])
 		cp.gen_ks_pluck[i] = C.float(p.GenKsPluck[i])
+		cp.gen_ks_blow[i] = C.float(p.GenKsBlow[i])
 
 		cp.gen_kick_variant[i] = C.float(p.GenKickVariant[i])
 		cp.gen_kick_h2[i] = C.float(p.GenKickH2[i])
@@ -345,6 +408,9 @@ func (p ModularParams) toCModularParams() *C.modular_params {
 		cp.gen_kick_pe_rate[i] = C.float(p.GenKickPeRate[i])
 		cp.gen_kick_click[i] = C.float(p.GenKickClick[i])
 		cp.gen_kick_noise[i] = C.float(p.GenKickNoise[i])
+		cp.gen_kick_attack[i] = C.float(p.GenKickAttack[i])
+		cp.gen_kick_fade[i] = C.float(p.GenKickFade[i])
+		cp.gen_kick_sat[i] = C.float(p.GenKickSat[i])
 
 		cp.gen_tom_variant[i] = C.float(p.GenTomVariant[i])
 		cp.gen_tom_sweep[i] = C.float(p.GenTomSweep[i])
@@ -390,6 +456,8 @@ func (p ModularParams) toCModularParams() *C.modular_params {
 		cp.gen_fm_dec3[i] = C.float(p.GenFMDec3[i])
 		cp.gen_fm_dec4[i] = C.float(p.GenFMDec4[i])
 	}
+	// Phase-10 KICK-stage enable (global, not per-slot).
+	cp.kick_enabled = C.float(p.KickEnabled)
 	return cp
 }
 
@@ -466,22 +534,37 @@ func recipeParamsToModular(p RecipeParams) ModularParams {
 		PostDriveOn:      get("post_drive_on"),
 		PostOrder:        get("post_order"),
 
-		PitchEnvEnabled: get("pitchenv_enabled"),
-		PitchEnvAmt:     get("pitchenv_amt"),
-		PitchEnvDecay:   get("pitchenv_decay"),
-		LfoEnabled:      get("lfo_enabled"),
-		LfoRate:         get("lfo_rate"),
-		LfoDepth:        get("lfo_depth"),
-		BurstEnabled:    get("burst_enabled"),
-		BurstSharp:      get("burst_sharp"),
-		Burst1Off:       get("burst1_off"),
-		Burst1Amp:       get("burst1_amp"),
-		Burst2Off:       get("burst2_off"),
-		Burst2Amp:       get("burst2_amp"),
-		Burst3Off:       get("burst3_off"),
-		Burst3Amp:       get("burst3_amp"),
-		Burst4Off:       get("burst4_off"),
-		Burst4Amp:       get("burst4_amp"),
+		PitchEnvEnabled:  get("pitchenv_enabled"),
+		PitchEnvAmt:      get("pitchenv_amt"),
+		PitchEnvDecay:    get("pitchenv_decay"),
+		LfoEnabled:       get("lfo_enabled"),
+		LfoRate:          get("lfo_rate"),
+		LfoDepth:         get("lfo_depth"),
+		BurstEnabled:     get("burst_enabled"),
+		BurstSharp:       get("burst_sharp"),
+		Burst1Off:        get("burst1_off"),
+		Burst1Amp:        get("burst1_amp"),
+		Burst2Off:        get("burst2_off"),
+		Burst2Amp:        get("burst2_amp"),
+		Burst3Off:        get("burst3_off"),
+		Burst3Amp:        get("burst3_amp"),
+		Burst4Off:        get("burst4_off"),
+		Burst4Amp:        get("burst4_amp"),
+		LfoTarget:        get("lfo_target"),
+		FiltEnvEnabled:   get("filtenv_enabled"),
+		FiltEnvAmt:       get("filtenv_amt"),
+		FiltEnvDecay:     get("filtenv_decay"),
+		FiltEnvAttack:    get("filtenv_attack"),
+		BodyModel:        get("body_model"),
+		BodyMix:          get("body_mix"),
+		BowDynamics:      get("bow_dynamics"),
+		UnisonVoices:     get("unison_voices"),
+		UnisonDetune:     get("unison_detune"),
+		UnisonMix:        get("unison_mix"),
+		UnisonDriftRate:  get("unison_drift_rate"),
+		UnisonDriftDepth: get("unison_drift_depth"),
+		LfoDelay:         get("lfo_delay"),
+		KickEnabled:      get("kick_enabled"),
 	}
 	for i := 0; i < 12; i++ {
 		k := i + 1
@@ -512,6 +595,7 @@ func recipeParamsToModular(p RecipeParams) ModularParams {
 
 		mp.GenKsSustain[i] = get(fmt.Sprintf("gen%d_ks_sustain", k))
 		mp.GenKsPluck[i] = get(fmt.Sprintf("gen%d_ks_pluck", k))
+		mp.GenKsBlow[i] = get(fmt.Sprintf("gen%d_ks_blow", k))
 
 		mp.GenKickVariant[i] = get(fmt.Sprintf("gen%d_kick_variant", k))
 		mp.GenKickH2[i] = get(fmt.Sprintf("gen%d_kick_h2", k))
@@ -523,6 +607,9 @@ func recipeParamsToModular(p RecipeParams) ModularParams {
 		mp.GenKickPeRate[i] = get(fmt.Sprintf("gen%d_kick_pe_rate", k))
 		mp.GenKickClick[i] = get(fmt.Sprintf("gen%d_kick_click", k))
 		mp.GenKickNoise[i] = get(fmt.Sprintf("gen%d_kick_noise", k))
+		mp.GenKickAttack[i] = get(fmt.Sprintf("gen%d_kick_attack", k))
+		mp.GenKickFade[i] = get(fmt.Sprintf("gen%d_kick_fade", k))
+		mp.GenKickSat[i] = get(fmt.Sprintf("gen%d_kick_sat", k))
 
 		mp.GenTomVariant[i] = get(fmt.Sprintf("gen%d_tom_variant", k))
 		mp.GenTomSweep[i] = get(fmt.Sprintf("gen%d_tom_sweep", k))
@@ -613,6 +700,31 @@ func renderModularPad(buf []float32, sampleRate, samples int) {
 		return
 	}
 	renderModularP(buf, sampleRate, samples, modularPadVoiceParams)
+}
+
+// bakedModularRender returns a CVariantInstrument Render closure that renders a
+// SEEDED modular preset with its seed baked in (the modular schema identity
+// overlaid with the seed, marshaled once at call time). It is the canonical
+// no-edit render path for every seeded modular kick/percussion instrument.
+//
+// REQUIRED because a seeded built-in's seed IS its shipped default, so
+// RecipeDefaultsCustomized(id) is false → at playback tryRecipeVoiceOpts does
+// NOT take the recipe path and instead calls this Render closure directly. The
+// bare renderModular would play the UNPARAMETERIZED ~218 Hz modular voice (the
+// "electronic xylophone" bug), ignoring the seed. Mirrors renderModularPad,
+// generalized so each new seeded kick variant needs no bespoke render func.
+func bakedModularRender(seed RecipeParams) func(buf []float32, sampleRate, samples int) {
+	p := ModularParamSchemaIdentity()
+	for k, v := range seed {
+		p[k] = v
+	}
+	params := recipeParamsToModular(RecipeParams(p))
+	return func(buf []float32, sampleRate, samples int) {
+		if len(buf) == 0 || samples == 0 || samples > len(buf) {
+			return
+		}
+		renderModularP(buf, sampleRate, samples, params)
+	}
 }
 
 // oracleMaNoiseWhiteFill fills out with the REAL miniaudio ma_noise white

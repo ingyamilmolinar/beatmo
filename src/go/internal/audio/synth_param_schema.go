@@ -146,7 +146,7 @@ var modularGenSlotFieldsPhase2KS = []struct {
 	Name     string
 	Identity float64
 }{
-	{"ks_sustain", 0}, {"ks_pluck", 0},
+	{"ks_sustain", 0}, {"ks_pluck", 0}, {"ks_blow", 0},
 }
 
 // modularGenSlotFieldsPhase3Kick are the Phase-3 (kick family) harmonic-bank
@@ -285,6 +285,45 @@ var modularGlobalsPhase8 = []struct {
 	{"burst2_off", 0}, {"burst2_amp", 0},
 	{"burst3_off", 0}, {"burst3_amp", 0},
 	{"burst4_off", 0}, {"burst4_amp", 0},
+	{"lfo_target", 0},
+	{"filtenv_enabled", 0}, {"filtenv_amt", 0}, {"filtenv_decay", 0}, {"filtenv_attack", 0},
+	/* Phase-8E unison/ensemble. Identity: unison_voices=1 (single osc, no change). */
+	{"unison_voices", 1}, {"unison_detune", 0}, {"unison_mix", 0.5},
+	/* Phase-8F unison drift. Identity: both 0 = no drift, byte-identical. */
+	{"unison_drift_rate", 0}, {"unison_drift_depth", 0},
+	/* Phase-8G LFO onset delay. Identity: 0 = ramp factor 1.0 = byte-identical. */
+	{"lfo_delay", 0},
+	{"body_model", 0}, {"body_mix", 0}, {"bow_dynamics", 0},
+}
+
+// modularGenSlotFieldsPhase9KickExtra are the Phase-9 (kick family extras)
+// per-slot fields — the source==5 kick voice's structural shaping constants
+// (attack-boost amount, global-fade rate, saturation pre-gain) promoted to
+// knobs so the configurable KICK stage can shape tail/punch/weight beyond the
+// curated Phase-3 set. APPEND-ONLY at the VERY tail of the modular schema —
+// AFTER the Phase-8C modulator globals — so every prior flat index stays frozen.
+// Identities are 0 (read only when a slot's source is 5); the kick voice's
+// kp_get(field, per-variant literal) supplies the exact legacy double default at
+// NaN, so every existing kick variant stays byte-identical.
+var modularGenSlotFieldsPhase9KickExtra = []struct {
+	Name     string
+	Identity float64
+}{
+	{"kick_attack", 0}, {"kick_fade", 0}, {"kick_sat", 0},
+}
+
+// modularGlobalsPhase10 is the Phase-10 KICK-stage enable: a single global
+// gating the source==5 kick voice (the Synth-tab KICK stage's enable pill).
+// APPEND-ONLY at the VERY tail of the modular schema — AFTER the Phase-9
+// kick-extra columns. Identity 0 (off = the new-stage byte-identity polarity);
+// every source==5 consumer (legacy kick binding/push + the dnb-kick seed) sets
+// it to 1, and a render with no kick slot never reads it, so pre-Phase-10
+// renders stay byte-identical.
+var modularGlobalsPhase10 = []struct {
+	Name     string
+	Identity float64
+}{
+	{"kick_enabled", 0},
 }
 
 var modularParamSchema = func() []string {
@@ -362,6 +401,18 @@ var modularParamSchema = func() []string {
 	// VERY END (after the Phase-7 FM columns) — matching the C struct's last
 	// fields. Append-only.
 	for _, g := range modularGlobalsPhase8 {
+		s = append(s, g.Name)
+	}
+	// Phase-9 kick-extra per-slot columns append at the VERY END (after the
+	// Phase-8C globals) — matching the C struct's last fields. Append-only.
+	for _, f := range modularGenSlotFieldsPhase9KickExtra {
+		for k := 1; k <= modularGenSlots; k++ {
+			s = append(s, fmt.Sprintf("gen%d_%s", k, f.Name))
+		}
+	}
+	// Phase-10 KICK-stage enable global appends at the VERY END (after the
+	// Phase-9 kick-extra columns) — matching the C struct's last field.
+	for _, g := range modularGlobalsPhase10 {
 		s = append(s, g.Name)
 	}
 	return s
@@ -517,6 +568,17 @@ func ModularParamSchemaIdentity() map[string]float64 {
 	// identities (audible starting points, gated by the off-by-default enable) —
 	// see modular_recipe.go and the carve-out in the defaults-match invariant.
 	for _, g := range modularGlobalsPhase8 {
+		out[g.Name] = g.Identity
+	}
+	// Phase-9 kick-extra per-slot columns (new tail; identity 0, read only at
+	// source==5; the C kp_get supplies the per-variant literal at NaN).
+	for _, f := range modularGenSlotFieldsPhase9KickExtra {
+		for k := 1; k <= modularGenSlots; k++ {
+			out[fmt.Sprintf("gen%d_%s", k, f.Name)] = f.Identity
+		}
+	}
+	// Phase-10 KICK-stage enable (new tail; identity 0 = off).
+	for _, g := range modularGlobalsPhase10 {
 		out[g.Name] = g.Identity
 	}
 	return out

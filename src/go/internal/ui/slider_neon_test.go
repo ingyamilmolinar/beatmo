@@ -85,3 +85,29 @@ func TestSliderThumb_DrawsCoreCircle(t *testing.T) {
 		t.Fatalf("expected a filled core with radius 12, got %+v", calls)
 	}
 }
+
+func TestSliderThumb_SculptedShadowNoBloom(t *testing.T) {
+	dst := ebiten.NewImage(60, 60)
+	center := image.Pt(30, 30)
+	dia := 24
+	rad := dia / 2
+	r := image.Rect(center.X-rad, center.Y-rad, center.X+rad, center.Y+rad)
+	calls := captureRoundedForNeon(t, func() { drawSliderThumb(dst, center, dia, false, false) })
+
+	// No bloom: nothing extends horizontally beyond the thumb rect.
+	for _, c := range calls {
+		if c.Rect.Min.X < r.Min.X || c.Rect.Max.X > r.Max.X {
+			t.Fatalf("bloom/overspill: rounded rect %+v exceeds thumb x-bounds %v", c.Rect, r)
+		}
+	}
+	// Contact shadow: a filled rect that extends one px below the thumb body.
+	foundShadow := false
+	for _, c := range calls {
+		if c.Filled && c.Rect.Max.Y == r.Max.Y+1 {
+			foundShadow = true
+		}
+	}
+	if !foundShadow {
+		t.Fatalf("expected a contact-shadow filled rect 1px below the thumb, got %+v", calls)
+	}
+}

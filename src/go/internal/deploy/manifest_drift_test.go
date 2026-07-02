@@ -271,3 +271,26 @@ func TestDeployManifestSetsExplicitMIMEAndCache(t *testing.T) {
 		}
 	}
 }
+
+// TestDeployCompressesAssets guarantees the deploy gzip-compresses the bundle
+// and serves it with the headers a streaming-compile-safe gzip download needs:
+// Content-Encoding: gzip (so the 28 MiB main.wasm transfers as ~6.5 MiB) and
+// Cache-Control: no-transform (so GCS does NOT decompressively transcode --
+// which would strip Content-Length and break instantiateStreaming).
+func TestDeployCompressesAssets(t *testing.T) {
+	root := repoRoot(t)
+	script := mustRead(t, filepath.Join(root, "scripts", "deploy-wasm-gcs.sh"))
+
+	mustContain := []struct {
+		needle, why string
+	}{
+		{"gzip", "deploy must gzip-compress the bundle before upload"},
+		{"Content-Encoding", "gzipped objects need an explicit Content-Encoding header"},
+		{"no-transform", "Cache-Control must include no-transform so GCS does not decompressively transcode the gzipped wasm"},
+	}
+	for _, m := range mustContain {
+		if !strings.Contains(script, m.needle) {
+			t.Errorf("deploy-wasm-gcs.sh missing %q -- %s", m.needle, m.why)
+		}
+	}
+}

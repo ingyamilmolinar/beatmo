@@ -131,7 +131,14 @@ func TestLongPressPopupButtonsRounded(t *testing.T) {
 }
 
 // TestLongPressPopupButtonColors verifies that Move/Connect buttons use
-// colDropdown fill and Delete uses colDeleteFill.
+// colDropdown fill and Delete uses colDeleteFill on the cap face.
+//
+// After the keycap restyle each button renders as a raised keycap:
+//   - drawKeycapShell paints the socket at the full hit rect (shell = adjustColor(fill,-45))
+//   - drawRoundedButton paints the cap face at keycapCapRect(hitRect, 0, true)
+//     with the semantic fill color
+//
+// We therefore check the cap-face rect, not the hit rect.
 func TestLongPressPopupButtonColors(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -163,28 +170,31 @@ func TestLongPressPopupButtonColors(t *testing.T) {
 	expectDropdown := color.RGBAModel.Convert(colDropdown).(color.RGBA)
 	expectDelete := color.RGBAModel.Convert(colDeleteFill).(color.RGBA)
 
-	// Find the rounded button calls for each button.
+	// The cap face is inset from the hit rect: keycapCapRect(hitRect, 0, true).
+	// We look for a drawRoundedButton whose rect equals the cap rect and whose
+	// fill matches the semantic button color (not the darkened shell color).
 	for _, btn := range []struct {
 		name      string
-		rect      image.Rectangle
+		hitRect   image.Rectangle
 		wantColor color.RGBA
 	}{
 		{"move", g.longPressPopupMove, expectDropdown},
 		{"connect", g.longPressPopupConn, expectDropdown},
 		{"delete", g.longPressPopupDel, expectDelete},
 	} {
+		capRect := keycapCapRect(btn.hitRect, 0, true)
 		found := false
 		for _, c := range rec.calls {
-			if c.Kind == drawCallRoundedButton && c.Rect == btn.rect {
+			if c.Kind == drawCallRoundedButton && c.Rect == capRect {
 				found = true
 				if c.Color != btn.wantColor {
-					t.Errorf("%s button fill=%v, want %v", btn.name, c.Color, btn.wantColor)
+					t.Errorf("%s button cap fill=%v, want %v", btn.name, c.Color, btn.wantColor)
 				}
 				break
 			}
 		}
 		if !found {
-			t.Errorf("%s button: no drawRoundedButton call at %v", btn.name, btn.rect)
+			t.Errorf("%s button: no drawRoundedButton call at cap rect %v", btn.name, capRect)
 		}
 	}
 }

@@ -11,34 +11,19 @@ import (
 // value with a tolerance large enough to absorb float32 rounding.
 func fEq32(a, b float64) bool { return a-b < 1e-6 && b-a < 1e-6 }
 
-// sampler_reverse_test.go — the Reverse control is an ACTION (one click reverses
-// the working signal in place), not a stateful toggle, and the playback
-// highlight must ALWAYS sweep left→right (forward in time), never right→left.
+// sampler_reverse_test.go — the Reverse control is a stateful TOGGLE: one click
+// reverses the working signal in place AND latches the button ON (so it reads
+// like every other toggle), a second click un-reverses and un-latches. The
+// playback highlight must ALWAYS sweep left→right (forward in time), never
+// right→left. Latched-state assertions live in sampler_toggle_state_test.go.
 
-// ── Reverse is an action, not a toggle ───────────────────────────────────────
+// ── Reverse latches its state and reverses in place ──────────────────────────
 
-func TestSamplerReverseButtonIsActionNotToggle(t *testing.T) {
+func TestSamplerReverseLatchesAcrossRebuild(t *testing.T) {
 	assertDefaultParityState(t)
-	dv := &DrumView{}
-	dv.sampler.raw = []float32{1, 2, 3, 4}
-	dv.sampler.rawSampleRate = 48000
-	dv.buildSamplerButtons(true)
-
-	for _, b := range dv.samplerButtons {
-		if b.tag == "sampler-reverse" {
-			if b.active != nil {
-				t.Fatal("Reverse must be an action button (active predicate nil), not a toggle")
-			}
-			return
-		}
-	}
-	t.Fatal("sampler-reverse button not found")
-}
-
-func TestSamplerReverseNeverShowsPrimaryOnState(t *testing.T) {
-	assertDefaultParityState(t)
-	// A toggle would flip to the Primary "on" fill when engaged. An action button
-	// must keep the Secondary spec across clicks — it never latches on.
+	// A Layout rebuild recreates the buttons; the reverse toggle must re-derive
+	// its latched state from the persistent samplerState.reverse parity, so the
+	// engaged keycap survives the rebuild.
 	dv := &DrumView{}
 	dv.sampler.raw = []float32{1, 2, 3, 4}
 	dv.sampler.rawSampleRate = 48000
@@ -47,14 +32,14 @@ func TestSamplerReverseNeverShowsPrimaryOnState(t *testing.T) {
 	if rev == nil {
 		t.Fatal("no reverse button")
 	}
-	if rev.SpecID == ComponentButtonPrimary {
-		t.Fatal("reverse must not start in the Primary on-state")
+	if rev.Toggled() {
+		t.Fatal("reverse must not start latched")
 	}
 	rev.OnClick()
 	dv.buildSamplerButtons(true) // rebuild as a Layout would
 	rev = dv.samplerButtonByTag("sampler-reverse")
-	if rev.SpecID == ComponentButtonPrimary {
-		t.Error("reverse latched to the Primary on-state after a click — it must be an action, not a toggle")
+	if !rev.Toggled() {
+		t.Error("reverse must stay latched ON across a Layout rebuild while the buffer is reversed")
 	}
 }
 

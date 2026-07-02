@@ -47,9 +47,10 @@ func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 		synthSectionPitch:    "pitchenv_enabled",
 		synthSectionLFO:      "lfo_enabled",
 		synthSectionBurst:    "burst_enabled",
-		synthSectionEnvelope: "env_enabled",
-		synthSectionFilter:   "filter_enabled",
-		synthSectionPost:     "drive_enabled",
+		synthSectionEnvelope:  "env_enabled",
+		synthSectionFilter:    "filter_enabled",
+		synthSectionFilterEnv: "filtenv_enabled",
+		synthSectionPost:      "drive_enabled",
 	}
 	seen := map[synthSectionID]bool{}
 	for _, s := range g.drum.SynthTabSections() {
@@ -95,9 +96,10 @@ func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 		synthSectionPitch:    "pitchenv_enabled",
 		synthSectionLFO:      "lfo_enabled",
 		synthSectionBurst:    "burst_enabled",
-		synthSectionEnvelope: "env_enabled",
-		synthSectionFilter:   "filter_enabled",
-		synthSectionPost:     "post_enabled",
+		synthSectionEnvelope:  "env_enabled",
+		synthSectionFilter:    "filter_enabled",
+		synthSectionFilterEnv: "filtenv_enabled",
+		synthSectionPost:      "post_enabled",
 	}
 	for _, s := range g2.drum.SynthTabSections() {
 		if s.SectionID() == synthSectionVoice {
@@ -184,9 +186,10 @@ func TestSynthTab_EnablePillHasHitArea(t *testing.T) {
 		synthSectionPitch:    "synth-toggle-pitchenv_enabled",
 		synthSectionLFO:      "synth-toggle-lfo_enabled",
 		synthSectionBurst:    "synth-toggle-burst_enabled",
-		synthSectionEnvelope: "synth-toggle-env_enabled",
-		synthSectionFilter:   "synth-toggle-filter_enabled",
-		synthSectionPost:     "synth-toggle-drive_enabled",
+		synthSectionEnvelope:  "synth-toggle-env_enabled",
+		synthSectionFilter:    "synth-toggle-filter_enabled",
+		synthSectionFilterEnv: "synth-toggle-filtenv_enabled",
+		synthSectionPost:      "synth-toggle-drive_enabled",
 	}
 	for id, wantTag := range stages {
 		selectStageProdHeight(t, g, "modular", id)

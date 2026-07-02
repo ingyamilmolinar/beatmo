@@ -38,8 +38,14 @@ func TestEQActiveChannelFollowsInstrumentChange(t *testing.T) {
 	if dv.eqChannelBtn() == nil {
 		t.Fatalf("eqChannelBtn is nil")
 	}
-	if got := dv.eqChannelBtn().Text; got != "Hihat" {
-		t.Fatalf("eqChannelBtn.Text = %q, want %q", got, "Hihat")
+	// The channel button must reflect the row's new name. That name is
+	// whatever SetInstrument computed for "hihat" (audio.InstrumentDisplayName),
+	// which depends on global catalog state — "Hi-Hat" when the catalog is
+	// loaded, "Hihat" (PrettyName fallback) when it is empty. Assert against
+	// the row name rather than a hardcoded string so the test verifies the
+	// actual contract (button follows row) independent of catalog/test order.
+	if got, want := dv.eqChannelBtn().Text, dv.Rows[dv.selRow].Name; got != want {
+		t.Fatalf("eqChannelBtn.Text = %q, want %q (the new row name)", got, want)
 	}
 }
 

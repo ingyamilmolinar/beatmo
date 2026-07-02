@@ -43,6 +43,7 @@ func (g *Game) clearParityState() {
 	g.parityMu.Unlock()
 	g.highlightMu.Lock()
 	g.highlightedBeats = make(map[int]int64)
+	g.hlDropped = make(map[int]int64)
 	g.highlightMu.Unlock()
 	g.ClearParityMismatches()
 }
@@ -52,14 +53,19 @@ func (g *Game) clearParityState() {
 // (highlightedBeats — a UI-rendering aid, not a parity input). It deliberately
 // leaves parityAudio, paritySeqDecisions, and highlightedBeats untouched:
 //
-//   - parityAudio entries carry ParityGen; the scan filters by current gen.
-//   - paritySeqDecisions entries carry ParityGen; same filter.
+//   - parityAudio entries carry ParityGen; parityScan drops events whose
+//     ParityGen != current (game_parity_diff_scan.go, audio-events loop).
+//   - paritySeqDecisions entries carry ParityGen; parityScan applies the same
+//     filter symmetrically when copying decisions (seqCopy loop). Both sides
+//     of every comparison are therefore guaranteed same-generation.
 //   - highlightedBeats is genuine past UI state (one expiration frame per
 //     beat key) — clearing it while the audio thread still has fresh events
 //     in flight creates spurious highlight_vs_audio mismatches.
 //
-// Called from bumpParityGen after the parity generation advances. The function
-// is currently a no-op for that reason; we keep it as a named seam so future
+// Called from bumpParityGen after the parity generation advances. Because the
+// scan's ParityGen filter (above) already excludes prior-generation entries
+// from every comparison, clearing here is pure memory hygiene and is left to
+// parityPrune's abs-window bound; the function stays a no-op seam so future
 // pruning policies have an obvious place to land.
 func (g *Game) clearParityStateForGenBump() {
 	// Intentionally empty. See doc comment above.
@@ -195,6 +201,17 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 	// the UI thread stalls (slow draw) or parityScan stops being called, the
 	// map could grow unbounded between prunes. Mirror parityAudioMax (line 150)
 	// with a per-row sliding window keyed by abs.
+	//
+	// abs advances monotonically in the sequencer, so the entry that just fell
+	// out of the retention window is exactly abs-paritySeqDecisionsPerRowMax —
+	// drop it in O(1) rather than scanning the whole map on every write (that
+	// scan is O(map) per call once the cap is reached, i.e. O(abs·max) over a
+	// session, which starves the sequencer goroutine).
+	if old := abs - paritySeqDecisionsPerRowMax; old >= 0 {
+		delete(m, old)
+	}
+	// Fallback: if abs ever arrives non-contiguously (gaps/jumps), the O(1)
+	// delete above can't guarantee the bound, so scan once to re-clamp.
 	if len(m) > paritySeqDecisionsPerRowMax {
 		minKeep := abs - paritySeqDecisionsPerRowMax + 1
 		for k := range m {
@@ -202,6 +219,32 @@ func (g *Game) recordSeqDecision(row, abs int, audible bool, typ model.NodeType,
 				delete(m, k)
 			}
 		}
+	}
+}
+
+// markSeqAudioEnqueued records that the scheduler handed (row, abs)'s audio to
+// the audio pipeline (queued into audioCh). It is called from the sequencer
+// audio-enqueue chokepoints immediately after recordSeqDecision, on the same
+// goroutine and the same seqMu critical section, so the decision is already in
+// the map. The flag lets parityScan's audio_missing check tell genuine
+// scheduler bugs (audible but never enqueued) from audio that is merely still
+// in-flight or was dropped downstream. See paritySeqDecision.Enqueued.
+func (g *Game) markSeqAudioEnqueued(row, abs int) {
+	if g == nil || row < 0 {
+		return
+	}
+	if g.parityWatch == parityWatchOff && !parityFatalEnabled.Load() {
+		return
+	}
+	g.parityMu.Lock()
+	defer g.parityMu.Unlock()
+	m := g.paritySeqDecisions[row]
+	if m == nil {
+		return
+	}
+	if dec, ok := m[abs]; ok {
+		dec.Enqueued = true
+		m[abs] = dec
 	}
 }
 
@@ -262,7 +305,7 @@ func (g *Game) parityReport(entry mismatchEntry) {
 	if g.parityInGrace() {
 		g.parityRing.add(entry)
 		if g.logger != nil {
-			g.logger.Debugf("[PARITY][grace][%s] row=%d abs=%d expected=%v actual=%v src=%s detail=%s",
+			g.logger.Debugf("[parity][grace][%s] row=%d abs=%d expected=%v actual=%v src=%s detail=%s",
 				entry.Kind, entry.Row, entry.Abs, entry.Expected, entry.Actual, entry.Source, entry.Detail)
 		}
 		return
@@ -277,7 +320,7 @@ func (g *Game) parityReport(entry mismatchEntry) {
 		g.emitParityFatal(entry)
 	case parityWatchLog:
 		if g.logger != nil {
-			g.logger.Warnf("[PARITY][%s] row=%d abs=%d expected=%v actual=%v src=%s detail=%s",
+			g.logger.Warnf("[parity][%s] row=%d abs=%d expected=%v actual=%v src=%s detail=%s",
 				entry.Kind, entry.Row, entry.Abs, entry.Expected, entry.Actual, entry.Source, entry.Detail)
 		}
 	case parityWatchPanic:
@@ -290,7 +333,7 @@ func (g *Game) parityReport(entry mismatchEntry) {
 func (g *Game) emitParityFatal(e mismatchEntry) {
 	if !parityFatalEnabled.Load() && !e.Force {
 		if g.logger != nil {
-			g.logger.Warnf("[PARITY][nonfatal] row=%d abs=%d src=%s sched=%v slate=%v inWindow=%v", e.Row, e.Abs, e.Source, e.Scheduled, e.Slate, e.InWindow)
+			g.logger.Warnf("[parity][nonfatal] row=%d abs=%d src=%s sched=%v slate=%v inWindow=%v", e.Row, e.Abs, e.Source, e.Scheduled, e.Slate, e.InWindow)
 		}
 		return
 	}

@@ -27,7 +27,9 @@ const page = await browser.newPage();
 const fallbackLogs = [];
 page.on("console", (m) => {
   const t = m.text();
-  if (/parameterized render threw/.test(t)) fallbackLogs.push(t);
+  // "threw" (sync ccall) OR "failed" (off-thread render rejected) — both mean
+  // the parameterized render fell back to the native renderer.
+  if (/parameterized render (threw|failed)/.test(t)) fallbackLogs.push(t);
   try { console.log("[PAGE]", m.type(), t); } catch (_) {}
 });
 
@@ -106,7 +108,7 @@ try {
     fail(`instrument went SILENT after a re-voice render throw (rms=${post.toFixed(6)} < ${floor.toFixed(6)}) — native fallback did not save it`);
   }
   if (fallbackLogs.length === 0) {
-    fail("expected a LOUD '[AUDIOJS] parameterized render threw … falling back to native' error, but none was logged");
+    fail("expected a LOUD '[AUDIOJS] parameterized render threw/failed … falling back to native' error, but none was logged");
   }
 
   // Disarm and confirm a clean re-voice still works (no permanent damage).

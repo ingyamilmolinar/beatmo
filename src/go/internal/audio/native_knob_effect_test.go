@@ -72,7 +72,7 @@ var fmFamilyKnobs = map[string][]familyKnobCase{
 	},
 	"fm-epiano": {
 		{name: "fm_wave", def: 0, off: 2},
-		{name: "fm_base_freq", def: 261.63, off: 523.26},
+		{name: "fm_base_freq", def: 220, off: 440},
 		{name: "fm_op1_ratio", def: 1, off: 2},
 		{name: "fm_op2_ratio", def: 1, off: 3},
 		{name: "fm_op3_ratio", def: 2, off: 4},
@@ -319,16 +319,8 @@ func TestCymbalFamilyKnobContract(t *testing.T) {
 	assertFamilyKnobContract(t, cymbalFamilyKnobs)
 }
 
-// bassFamilyKnobs — defaults mirror the literals in render_bass_guitar
-// (Karplus-Strong) and render_sub_bass.
+// bassFamilyKnobs — defaults mirror the literals in render_sub_bass.
 var bassFamilyKnobs = map[string][]familyKnobCase{
-	"drum-bass-guitar": {
-		{name: "fundamental", def: 55, off: 110},
-		{name: "bass_sustain", def: 0.996, off: 0.95}, // KS decay factor
-		{name: "bass_pluck", def: 0.35, off: 0.8},     // pluck LP alpha
-		{name: "bass_attack", def: 0.25, off: 0.9},    // finger transient
-		{name: "bass_env_rate", def: 1.8, off: 6},     // global env
-	},
 	"drum-sub-bass": {
 		{name: "bass_wave", def: 0, off: 2},
 		{name: "fundamental", def: 45, off: 80},

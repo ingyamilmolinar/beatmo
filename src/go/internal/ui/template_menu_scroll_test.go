@@ -16,7 +16,7 @@ func openTemplatePageClamped(t *testing.T) *DrumView {
 	t.Cleanup(g.CloseForTest)
 	g.Layout(420, 360) // short pane → popup is height-clamped
 	dv := g.drum
-	dv.overflowPage = 1 // template page (Templates header + Back + 7 genres)
+	dv.overflowPage = 1 // template page (Templates header + Back + the genre templates)
 	dv.OpenOverflowMenu()
 	return dv
 }
@@ -52,9 +52,17 @@ func TestTemplateMenu_ScrollsToReachLastItem(t *testing.T) {
 	}
 	// Bug: with no offset applied, the last row sits at the same Y regardless of
 	// scroll. After wheel-scrolling toward the end, its Y must decrease (move up
-	// into the viewport).
-	for i := 0; i < 20; i++ {
+	// into the viewport). Scroll until the bottom is reached (the last row stops
+	// moving) rather than a fixed step count — the template list grew well past
+	// the original 7 genres, so a hard-coded count under-scrolls the longer list.
+	prevY := 1 << 30
+	for i := 0; i < scroll.ScrollBehavior().VS.Total+4; i++ {
 		scroll.HandleWheel(-1) // scroll down one item
+		row, _ := lastTemplateBtn(dv)
+		if row.Min.Y == prevY {
+			break // reached the clamp — further wheel steps don't move the list
+		}
+		prevY = row.Min.Y
 	}
 	after, _ := lastTemplateBtn(dv)
 

@@ -377,6 +377,15 @@ func TestSamplerWaveform_NoPlayheadsWhenIdle(t *testing.T) {
 	calls := installDrawRectRecorder(t)
 	dv.drawSamplerWaveform(nil)
 	for i := 0; i < samplerMaxPlayheads; i++ {
+		// The waveform trace + trim handles always draw in colAccent
+		// (sunset-gold). That accent hex is also a member of the instrument
+		// fallback palette the playhead colours cycle through, so the
+		// accent-coloured index can't be distinguished from a playhead by
+		// colour alone — skip it. Every other palette index is drawn only by
+		// a real playhead line, so it must be absent when idle.
+		if sameRGBA(samplerPlayheadColor(i), colAccent) {
+			continue
+		}
 		if n := countByColor(calls, samplerPlayheadColor(i)); n != 0 {
 			t.Errorf("idle: playhead color%d drawn %d times, want 0", i, n)
 		}

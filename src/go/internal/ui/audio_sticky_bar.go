@@ -39,19 +39,20 @@ type AudioStickyBar struct {
 	// tabBtns is a slice rather than a fixed array so the strip can grow
 	// (Phase 4 added a 6th Synth tab; future plugin recipes may add more).
 	tabBtns []*Button
-	// Phase 5 audio-panel redesign: legend chip + tab expander.
+	// Phase 5 audio-panel redesign: legend chip.
 	// legendBtn ("?") opens a 220-px kid-friendly explanation
-	// popover for the active tab; expanderBtn (chevron-down)
-	// toggles PanelTabState.Expanded so the panel can grow/shrink
-	// in place without leaving the active tab.
-	legendBtn   *Button
-	expanderBtn *Button
+	// popover for the active tab.
+	legendBtn *Button
 	// activeTab is the tab the parent says is currently selected. Parent must
 	// call SetActiveTab before Layout for the active pill to render correctly;
 	// Draw also re-syncs it.
 	activeTab    PanelTab
 	hitAreas     []HitArea
 	parentZIndex int
+	// synthTabIdx caches the index of the Synth pill within tabBtns (computed
+	// once at construction) so SetSynthDisabled — called every frame — never
+	// re-allocates via AllPanelTabs(). -1 when there is no Synth tab.
+	synthTabIdx int
 }
 
 // NewAudioStickyBar builds the tab-switcher row. parentZIndex is the owning
@@ -60,12 +61,15 @@ type AudioStickyBar struct {
 // picked; the bar itself does not own the active-tab state — the parent passes
 // the active tab to Draw so the bar can render the correct active pill.
 func NewAudioStickyBar(parentZIndex int, onChannel func(), onTab func(PanelTab)) *AudioStickyBar {
-	b := &AudioStickyBar{parentZIndex: parentZIndex}
+	b := &AudioStickyBar{parentZIndex: parentZIndex, synthTabIdx: -1}
 	b.channelBtn = NewButton(i18n.T(i18n.KeyMaster), InstButtonStyle, onChannel)
 	tabs := AllPanelTabs()
 	b.tabBtns = make([]*Button, len(tabs))
 	for i, tab := range tabs {
 		t := tab // capture
+		if t == TabSynth {
+			b.synthTabIdx = i
+		}
 		b.tabBtns[i] = NewButton(PanelTabLabelForProfile(t), InstButtonStyle, func() {
 			if onTab != nil {
 				onTab(t)
@@ -73,16 +77,12 @@ func NewAudioStickyBar(parentZIndex int, onChannel func(), onTab func(PanelTab))
 		})
 	}
 
-	// Phase 5: kid-friendly legend chip + tab expander chevron. Both
-	// are always visible (every tab benefits) and sit at the left end
-	// of the right-aligned cluster. Their OnClick handlers are bound
-	// by the parent zone (legend toggles popover state; expander calls
-	// PanelTabState.ToggleExpanded).
+	// Phase 5: kid-friendly legend chip. Always visible (every tab
+	// benefits) and sits at the left end of the right-aligned cluster.
+	// Its OnClick handler is bound by the parent zone (toggles the
+	// popover state).
 	b.legendBtn = NewButton("?", InstButtonStyle, nil)
 	b.legendBtn.TextColor = colTextSecondary
-	b.expanderBtn = NewButton("", InstButtonStyle, nil)
-	b.expanderBtn.Icon = string(IconChevronDown)
-	b.expanderBtn.IconColor = colTextSecondary
 	return b
 }
 
@@ -127,24 +127,13 @@ func (b *AudioStickyBar) Layout(rect image.Rectangle) {
 	}
 	b.channelBtn.SetRect(image.Rect(rect.Min.X+SpaceSM, y, rect.Min.X+6+chW, y+btnH))
 
-	// Right-aligned cluster: legend + expander, then the tab strip (desktop).
+	// Right-aligned cluster: legend, then the tab strip (desktop).
 	rightEdge := rect.Max.X - SpaceSM
 
-	// Phase 5: legend chip + tab expander. Hidden on mobile so the
-	// chrome row stays narrow (the bottom-nav strip on mobile takes
-	// the discoverability role the legend chip plays on desktop; the
-	// expander chevron is desktop-only because mobile uses the full-
-	// height bottom-sheet pattern, not a collapsible panel).
+	// Phase 5: legend chip. Hidden on mobile so the chrome row stays
+	// narrow (the bottom-nav strip on mobile takes the discoverability
+	// role the legend chip plays on desktop).
 	mobileChromeSquish := Profile().IsMobile()
-	if b.expanderBtn != nil {
-		if mobileChromeSquish {
-			b.expanderBtn.SetRect(image.Rectangle{})
-		} else {
-			exW := d.AudioPillNarrowW
-			b.expanderBtn.SetRect(image.Rect(rightEdge-exW, y, rightEdge, y+btnH))
-			rightEdge -= exW + d.AudioPillGap
-		}
-	}
 	if b.legendBtn != nil {
 		if mobileChromeSquish {
 			b.legendBtn.SetRect(image.Rectangle{})
@@ -259,7 +248,6 @@ func (b *AudioStickyBar) rebuildHitAreas() {
 		addBtn(tb, fmt.Sprintf("eq-tab-%d", i))
 	}
 	addBtn(b.legendBtn, "eq-legend-btn")
-	addBtn(b.expanderBtn, "eq-expander-btn")
 }
 
 // Draw renders the entire tab-switcher row. activeTab tells the bar which tab
@@ -292,25 +280,34 @@ func (b *AudioStickyBar) Draw(dst *ebiten.Image, activeTab PanelTab) {
 	if b.legendBtn != nil {
 		drawPillTabAt(dst, b.legendBtn, false)
 	}
-	if b.expanderBtn != nil {
-		drawPillTabAt(dst, b.expanderBtn, false)
-	}
 }
 
 // LegendBtn returns the "?" legend-chip pill (visible on every tab).
 // Parent zone binds OnClick to toggle the legend popover state.
 func (b *AudioStickyBar) LegendBtn() *Button { return b.legendBtn }
 
-// ExpanderBtn returns the chevron-down panel-expander pill (visible
-// on every tab). Parent zone binds OnClick to call
-// PanelTabState.ToggleExpanded so the panel grows/shrinks in place.
-func (b *AudioStickyBar) ExpanderBtn() *Button { return b.expanderBtn }
-
 // SetActiveTab tells the bar which tab is currently active so the next
 // Layout/Draw call renders the correct active pill. Parent zone calls this
 // before Layout; Draw also syncs it so direct-Draw callers (tests) work.
 func (b *AudioStickyBar) SetActiveTab(tab PanelTab) {
 	b.activeTab = tab
+}
+
+// SetSynthDisabled greys/disables the Synth tab pill (or re-enables it). The
+// parent zone calls this every frame (before Layout and Draw) with
+// !activeInstrumentHasSynth() so the pill tracks the active instrument. The
+// disabled flag lives on the pill Button, so the shared buttonHitAdapter
+// already swallows clicks on it — no separate hit-area bookkeeping needed.
+func (b *AudioStickyBar) SetSynthDisabled(disabled bool) {
+	if pill := b.synthTabPill(); pill != nil {
+		pill.Disabled = disabled
+	}
+}
+
+// synthTabPill returns the tab pill that corresponds to TabSynth, or nil.
+// Uses the cached index so it never allocates on the per-frame path.
+func (b *AudioStickyBar) synthTabPill() *Button {
+	return b.TabBtn(b.synthTabIdx)
 }
 
 // HitAreas returns the cached chrome hit areas. Call Layout first.
@@ -332,9 +329,41 @@ func (b *AudioStickyBar) TabBtn(i int) *Button {
 	return b.tabBtns[i]
 }
 
+// Pre-boxed pill palette. The theme colors (colSurface2/colAccent/…) are
+// concrete color.RGBA set once at package init; assigning them to a
+// color.Color interface local boxes a fresh copy on every call. drawPillTabAt
+// runs ~9× per audio-panel frame, so boxing those five palette values per pill
+// was the dominant per-frame allocation on the Levels tab (it, not the
+// DrawImage cost, is what TestEQPanelDrawAllocDiscipline measures under the
+// ebitenstub backend). Boxing once at init keeps the hot path allocation-free.
+// The shell colors are the wall shade drawKeycapShell derives via
+// adjustColor(fill, -45) — pre-boxed here so the pill path never re-derives it.
+var (
+	pillCapFillInactive color.Color = colSurface2
+	pillCapBorderInact  color.Color = colButtonBorder
+	pillTextInactive    color.Color = colTextSecondary
+	// Active pill = lit lamp-amber face (#FFB30A), pressed-IN (recessed), with
+	// dark text — matte retro-analogue restyle (2026-06-17). Replaces the
+	// lit-cyan raised face + cyan engage flash.
+	pillCapFillActive   color.Color = genColorSunsetGold300
+	pillCapBorderActive color.Color = genColorSunsetGold300
+	pillTextActive      color.Color = genColorBackground
+	pillShellInactive   color.Color = adjustColor(colSurface2, -45)
+	pillShellActive     color.Color = adjustColor(genColorSunsetGold300, -45)
+	// Disabled pill: recessed/dim cap + greyed label so it reads as inert
+	// (mirrors the subdiv button's DisabledButtonStyle treatment). Pre-boxed
+	// once like the rest of the palette to keep drawPillTabAt allocation-free.
+	pillCapFillDisabled color.Color = adjustColor(colSurface2, -20)
+	pillCapBorderDisab  color.Color = adjustColor(colButtonBorder, -20)
+	pillTextDisabled    color.Color = colTextDisabled
+	pillShellDisabled   color.Color = adjustColor(colSurface2, -55)
+)
+
 // drawPillTabAt is the file-scope free-function version of the legacy
 // EQPanelZone.drawPillTab method. Copied here so AudioStickyBar can render
 // pills without holding a receiver reference to the zone.
+// It applies the keycap look: dark socket/wall + a travelling cap that raises
+// when active. A one-shot engage flash fires on the first off→on transition.
 func drawPillTabAt(dst *ebiten.Image, btn *Button, active bool) {
 	if btn == nil {
 		return
@@ -343,33 +372,77 @@ func drawPillTabAt(dst *ebiten.Image, btn *Button, active bool) {
 	if r.Empty() {
 		return
 	}
-	pillRadius := RadiusMD / 2 // 4px corners
-	if active {
-		drawRoundedRect(dst, r, colSurface2, pillRadius, true)
-		drawRoundedRect(dst, r, colAccent, pillRadius, false)
-	} else {
-		drawRoundedRect(dst, r, colButtonBorder, pillRadius, false)
+	// A disabled pill is inert: never raised/active, no engage flash, greyed.
+	if btn.Disabled {
+		active = false
 	}
+	// Pills bypass Button.Draw, so tick the press/engage springs here.
+	btn.AdvancePressAnim()
+	if active && !btn.wasActive {
+		btn.engageAnim = 1 // one-shot flash on selection
+	}
+	btn.wasActive = active
+
+	pillRadius := RadiusMD / 2 // 4px corners
+	// Active pill sits recessed (pressed-IN), never raised — raised=false.
+	capR := keycapCapRect(r, btn.pressTravelPx(), false)
+
+	// Active = lit amber face (recessed); inactive = neutral surface cap. All
+	// palette values are the pre-boxed package-level color.Color interfaces
+	// (see the var block above) so selecting a state copies an interface header
+	// rather than boxing a fresh color.RGBA on every pill, every frame.
+	capFill, borderCol, textCol, shellCol := pillCapFillInactive, pillCapBorderInact, pillTextInactive, pillShellInactive
+	switch {
+	case btn.Disabled:
+		capFill, borderCol, textCol, shellCol = pillCapFillDisabled, pillCapBorderDisab, pillTextDisabled, pillShellDisabled
+	case active:
+		// Dark legend on the lit-cyan face: matches button-primary textColor
+		// (DESIGN.md: textColor: "{colors.background}") — genColorBackground.
+		capFill, borderCol, textCol, shellCol = pillCapFillActive, pillCapBorderActive, pillTextActive, pillShellActive
+	}
+	// Shell (dark socket/side-wall) as a cached fill-only composite — the rect
+	// is static so the (w,h,fill,border,radius) sprite stays warm. Mirrors
+	// drawKeycapShell but with the pre-derived wall shade (no per-call
+	// adjustColor box). Guards match drawKeycapShell.
+	if !r.Empty() && genGeomKeycapWallDepth != 0 {
+		drawRoundedButton(dst, r, shellCol, shellCol, pillRadius, false)
+	}
+	if btn.pressDepth <= 0 {
+		drawKeycapContactShadow(dst, capR, pillRadius)
+	}
+	// Cap face fill+border as a single cached composite sprite (keyed by
+	// w,h,fill,border,radius). capR's size is travel-invariant (only Y moves),
+	// so the sprite stays warm across press travel — steady-state cost is one
+	// allocation-free blit instead of two uncached drawRoundedRect primitives.
+	drawRoundedButton(dst, capR, capFill, borderCol, pillRadius, false)
+	if !btn.Disabled {
+		if active {
+			// Latched amber pill reads pressed-IN (inverted bevel).
+			drawKeycapActiveInset(dst, capR, pillRadius)
+		} else {
+			drawKeycapBevel(dst, capR, pillRadius)
+		}
+	}
+	// No-op since the matte restyle; engageAnim is still ticked above so the
+	// pill press-spring contract (TestPillKeycapEngageAndTravel) is unchanged.
+	drawKeycapEngageFlash(dst, capR, pillRadius, btn.engageAnim)
+
 	// Icon-only pills (e.g. expander) draw the glyph centered; otherwise draw
 	// the button's text label, color-coded by active/inactive state.
 	if btn.Icon != "" {
 		iconCol := btn.IconColor
 		if iconCol == nil {
-			iconCol = colTextSecondary
+			iconCol = textCol
 		}
-		DrawIcon(dst, IconID(btn.Icon), r, iconCol)
+		DrawIcon(dst, IconID(btn.Icon), capR, iconCol)
 		return
-	}
-	var textCol color.Color = colTextSecondary
-	if active {
-		textCol = colTextAccent
 	}
 	if btn.TextColor != nil {
 		textCol = btn.TextColor
 	}
 	tw := TextWidth(btn.Text)
 	th := TextHeight()
-	tx := r.Min.X + (r.Dx()-tw)/2
-	ty := r.Min.Y + (r.Dy()-th)/2
+	tx := capR.Min.X + (capR.Dx()-tw)/2
+	ty := capR.Min.Y + (capR.Dy()-th)/2
 	DrawTextColorAt(dst, btn.Text, tx, ty, textCol)
 }

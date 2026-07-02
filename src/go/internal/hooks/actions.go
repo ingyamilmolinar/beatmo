@@ -22,6 +22,11 @@ const (
 	// ScopeVerbose is high-frequency telemetry (camera/drag/per-frame param),
 	// never an undo action.
 	ScopeVerbose
+	// ScopeInteraction is pure interaction telemetry (button tap, popup
+	// open/close, scroll, search, text commit, view switch). Never undoable;
+	// not document or session state — it records what the user touched, not a
+	// state change.
+	ScopeInteraction
 )
 
 // ActionMeta is one row of the canonical user-action registry: the single
@@ -29,6 +34,7 @@ const (
 type ActionMeta struct {
 	Kind           Kind
 	Label          string // human label, e.g. "add node"
+	Tag            string // INFO bracket tag (lowercase), e.g. "node"
 	Scope          ActionScope
 	ExcludedReason string // non-empty ⇒ ScopeDocument but deliberately not undoable yet
 }
@@ -44,97 +50,86 @@ type ActionMeta struct {
 // user-facing undo labels and must stay stable — TestUndoableSetMatchesRegistry
 // asserts they equal the derived documentScopeKinds.
 var ActionRegistry = []ActionMeta{
-	// ── Transport ───────────────────────────────────────────────────────
-	{EventPlayStart, "start playback", ScopeTransport, ""},
-	{EventPlayStop, "stop playback", ScopeTransport, ""},
-	{EventPaused, "pause", ScopeTransport, ""},
-	{EventResumed, "resume", ScopeTransport, ""},
-	{EventSeek, "seek", ScopeTransport, ""},
+	{EventPlayStart, "start playback", "play", ScopeTransport, ""},
+	{EventPlayStop, "stop playback", "play", ScopeTransport, ""},
+	{EventPaused, "pause", "play", ScopeTransport, ""},
+	{EventResumed, "resume", "play", ScopeTransport, ""},
+	{EventSeek, "seek", "seek", ScopeTransport, ""},
 
-	// ── Recording ───────────────────────────────────────────────────────
-	{EventRecordStart, "start recording", ScopeRecording, ""},
-	{EventRecordStop, "stop recording", ScopeRecording, ""},
-	{EventRecordDropped, "recording dropped", ScopeRecording, ""},
+	{EventRecordStart, "start recording", "record", ScopeRecording, ""},
+	{EventRecordStop, "stop recording", "record", ScopeRecording, ""},
+	{EventRecordDropped, "recording dropped", "record", ScopeRecording, ""},
 
-	// ── Time settings ───────────────────────────────────────────────────
-	{EventBPMChange, "change BPM", ScopeDocument, ""},
-	{EventSubdivChange, "change subdivision", ScopeDocument, ""},
-	// Length is derived display state recomputed from the graph beat-path; it
-	// is not in the export schema, so a snapshot cannot restore it independently.
-	{EventLengthChange, "change length", ScopeSession, ""},
+	{EventBPMChange, "change BPM", "bpm", ScopeDocument, ""},
+	{EventSubdivChange, "change subdivision", "transport", ScopeDocument, ""},
+	{EventLengthChange, "change length", "transport", ScopeSession, ""},
 
-	// ── Project I/O ─────────────────────────────────────────────────────
-	{EventImport, "import project", ScopeProjectIO, ""},
-	{EventExport, "export project", ScopeProjectIO, ""},
+	{EventImport, "import project", "import", ScopeProjectIO, ""},
+	{EventExport, "export project", "export", ScopeProjectIO, ""},
 
-	// ── Graph edits (all undoable) ──────────────────────────────────────
-	{EventNodeAdded, "add node", ScopeDocument, ""},
-	{EventNodeDeleted, "delete node", ScopeDocument, ""},
-	{EventNodeMoved, "move node", ScopeDocument, ""},
-	{EventNodeTypeChanged, "change node type", ScopeDocument, ""},
-	{EventNodeParamsChanged, "edit node", ScopeDocument, ""},
-	{EventStartNodeChanged, "set start node", ScopeDocument, ""},
-	{EventEdgeAdded, "add edge", ScopeDocument, ""},
-	{EventEdgeDeleted, "delete edge", ScopeDocument, ""},
+	{EventNodeAdded, "add node", "node", ScopeDocument, ""},
+	{EventNodeDeleted, "delete node", "node", ScopeDocument, ""},
+	{EventNodeMoved, "move node", "node", ScopeDocument, ""},
+	{EventNodeTypeChanged, "change node type", "node", ScopeDocument, ""},
+	{EventNodeParamsChanged, "edit node", "node", ScopeDocument, ""},
+	{EventStartNodeChanged, "set start node", "node", ScopeDocument, ""},
+	{EventEdgeAdded, "add edge", "edge", ScopeDocument, ""},
+	{EventEdgeDeleted, "delete edge", "edge", ScopeDocument, ""},
 
-	// ── Drum rows ───────────────────────────────────────────────────────
-	{EventRowAdded, "add row", ScopeDocument, ""},
-	{EventRowDeleted, "delete row", ScopeDocument, ""},
-	{EventRowInstrumentChange, "change instrument", ScopeDocument, ""},
-	// Mute/solo are session state (Row.Muted/Solo), not in exportBytes.
-	{EventRowMute, "toggle mute", ScopeSession, ""},
-	{EventRowSolo, "toggle solo", ScopeSession, ""},
+	{EventRowAdded, "add row", "row", ScopeDocument, ""},
+	{EventRowDeleted, "delete row", "row", ScopeDocument, ""},
+	{EventRowInstrumentChange, "change instrument", "row", ScopeDocument, ""},
+	{EventRowMute, "toggle mute", "row", ScopeSession, ""},
+	{EventRowSolo, "toggle solo", "row", ScopeSession, ""},
 
-	// ── Audio settings ──────────────────────────────────────────────────
-	{EventMasterVolumeChange, "set master volume", ScopeDocument, ""},
-	{EventEQBandChange, "adjust EQ", ScopeDocument, ""},
-	{EventInsertEffectAdded, "add effect", ScopeDocument, ""},
-	{EventInsertEffectRemoved, "remove effect", ScopeDocument, ""},
-	{EventInsertEffectParam, "adjust effect", ScopeDocument, ""},
-	{EventRowVolume, "set row volume", ScopeDocument, ""},
-	// Row pan IS in the export schema, but no UI control writes it today (import
-	// + display only). Re-classify as undoable when a commit site lands.
-	{EventRowPan, "set row pan", ScopeDocument, "import-only; no UI commit site yet"},
-	{EventInsertEffectMoved, "reorder effect", ScopeDocument, ""},
-	{EventInsertEffectToggled, "toggle effect", ScopeDocument, ""},
-	// Per-row delay/reverb sends ARE in the export schema, but no UI control
-	// writes them today (import + display only).
-	{EventSendChanged, "adjust send", ScopeDocument, "import-only; no UI commit site yet"},
-	{EventInstrumentParamsCommitted, "edit synth", ScopeDocument, ""},
-	{EventInstrumentParamsReset, "reset synth", ScopeDocument, ""},
-	// Audio-panel prefs persist to userprefs, not the project document.
-	{EventAudioPanelStateChanged, "change audio-panel view", ScopeSession, ""},
+	{EventMasterVolumeChange, "set master volume", "master", ScopeDocument, ""},
+	{EventEQBandChange, "adjust EQ", "eq", ScopeDocument, ""},
+	{EventInsertEffectAdded, "add effect", "fx", ScopeDocument, ""},
+	{EventInsertEffectRemoved, "remove effect", "fx", ScopeDocument, ""},
+	{EventInsertEffectParam, "adjust effect", "fx", ScopeDocument, ""},
+	{EventRowVolume, "set row volume", "row", ScopeDocument, ""},
+	{EventRowPan, "set row pan", "row", ScopeDocument, "import-only; no UI commit site yet"},
+	{EventInsertEffectMoved, "reorder effect", "fx", ScopeDocument, ""},
+	{EventInsertEffectToggled, "toggle effect", "fx", ScopeDocument, ""},
+	{EventSendChanged, "adjust send", "send", ScopeDocument, "import-only; no UI commit site yet"},
+	{EventInstrumentParamsCommitted, "edit synth", "synth", ScopeDocument, ""},
+	{EventInstrumentParamsReset, "reset synth", "synth", ScopeDocument, ""},
+	{EventAudioPanelStateChanged, "change audio-panel view", "panel", ScopeSession, ""},
 
-	// ── Round 2 narrative events ────────────────────────────────────────
-	{EventRowColorChanged, "recolor row", ScopeDocument, ""},
-	// HPF/LPF toggle mutates exported master-EQ state; the UI toggle emits +
-	// records one undo step at the commit site (commitEQFilter).
-	{EventEQFilterToggled, "toggle EQ filter", ScopeDocument, ""},
-	// Loading a user WAV is a library/asset op, not a journaled document edit.
-	{EventCustomWAVLoaded, "load WAV", ScopeSession, ""},
-	{EventInstrumentRenamed, "rename instrument", ScopeDocument, ""},
-	{EventSceneApplied, "apply scene", ScopeProjectIO, ""},
-	{EventUIStateApplied, "apply UI state", ScopeSession, ""},
-	{EventFavoriteToggled, "toggle favorite", ScopeSession, ""},
+	{EventRowColorChanged, "recolor row", "row", ScopeDocument, ""},
+	{EventEQFilterToggled, "toggle EQ filter", "eq", ScopeDocument, ""},
+	{EventCustomWAVLoaded, "load WAV", "sampler", ScopeSession, ""},
+	{EventInstrumentRenamed, "rename instrument", "synth", ScopeDocument, ""},
+	{EventSceneApplied, "apply scene", "scene", ScopeProjectIO, ""},
+	{EventUIStateApplied, "apply UI state", "uistate", ScopeSession, ""},
+	{EventFavoriteToggled, "toggle favorite", "favorite", ScopeSession, ""},
+	{EventLanguageChanged, "change language", "lang", ScopeSession, ""},
 
-	// ── Recipe / kit lifecycle (library ops, not journaled) ─────────────
-	{EventRecipeSaved, "save recipe", ScopeSession, ""},
-	{EventRecipeCreated, "create recipe", ScopeSession, ""},
-	{EventRecipeDeleted, "delete recipe", ScopeSession, ""},
-	{EventKitApplied, "apply kit", ScopeSession, ""},
+	{EventRecipeSaved, "save recipe", "recipe", ScopeSession, ""},
+	{EventRecipeCreated, "create recipe", "recipe", ScopeSession, ""},
+	{EventRecipeDeleted, "delete recipe", "recipe", ScopeSession, ""},
+	{EventKitApplied, "apply kit", "kit", ScopeSession, ""},
 
-	// ── Sampler lifecycle ───────────────────────────────────────────────
-	{EventSampleSaved, "save sample", ScopeSession, ""},
-	{EventSampleCreated, "create sample", ScopeSession, ""},
-	{EventSampleReset, "reset sample", ScopeSession, ""},
-	// The non-destructive sample-edit descriptor IS exported (sample_edit).
-	{EventSampleEditChanged, "edit sample", ScopeDocument, ""},
+	{EventSampleSaved, "save sample", "sampler", ScopeSession, ""},
+	{EventSampleCreated, "create sample", "sampler", ScopeSession, ""},
+	{EventSampleReset, "reset sample", "sampler", ScopeSession, ""},
+	{EventSampleEditChanged, "edit sample", "sampler", ScopeDocument, ""},
 
-	// ── Verbose (never undo actions) ────────────────────────────────────
-	{EventCameraPan, "camera pan", ScopeVerbose, ""},
-	{EventCameraZoom, "camera zoom", ScopeVerbose, ""},
-	{EventDragProgress, "drag", ScopeVerbose, ""},
-	{EventInstrumentParamChanged, "edit synth (live)", ScopeVerbose, ""},
+	{EventUndo, "undo", "undo", ScopeSession, ""},
+	{EventRedo, "redo", "redo", ScopeSession, ""},
+
+	{EventUITap, "tap", "ui", ScopeInteraction, ""},
+	{EventPopupOpened, "open popup", "popup", ScopeInteraction, ""},
+	{EventPopupClosed, "close popup", "popup", ScopeInteraction, ""},
+	{EventScroll, "scroll", "scroll", ScopeInteraction, ""},
+	{EventSearchChanged, "search", "search", ScopeInteraction, ""},
+	{EventTextCommitted, "edit text", "input", ScopeInteraction, ""},
+	{EventViewModeChanged, "switch view", "view", ScopeInteraction, ""},
+
+	{EventCameraPan, "camera pan", "camera", ScopeVerbose, ""},
+	{EventCameraZoom, "camera zoom", "camera", ScopeVerbose, ""},
+	{EventDragProgress, "drag", "drag", ScopeVerbose, ""},
+	{EventInstrumentParamChanged, "edit synth (live)", "synth", ScopeVerbose, ""},
 }
 
 // actionByKind indexes ActionRegistry for O(1) lookup. Built once at init.

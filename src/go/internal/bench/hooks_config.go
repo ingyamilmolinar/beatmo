@@ -126,7 +126,7 @@ func SubscribeRules(rules []HookRule, log ActionLogger, counter *ActionCounter, 
 				counter.Inc(action)
 			}
 			if log != nil {
-				log.Infof("[HOOKS] %s → %s payload=%v", e.Kind, action, e.Payload)
+				log.Infof("[hooks] %s → %s payload=%v", e.Kind, action, e.Payload)
 			}
 			if runner != nil {
 				runner(action, e)
@@ -134,7 +134,7 @@ func SubscribeRules(rules []HookRule, log ActionLogger, counter *ActionCounter, 
 		})
 		unsubs = append(unsubs, unsub)
 		if log != nil {
-			log.Infof("[HOOKS] subscribed: on=%s do=%s", rule.On, rule.Do)
+			log.Infof("[hooks] subscribed: on=%s do=%s", rule.On, rule.Do)
 		}
 	}
 	return func() {

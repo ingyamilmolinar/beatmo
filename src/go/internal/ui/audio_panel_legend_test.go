@@ -34,10 +34,9 @@ func TestDrawAudioPanelLegend_ProducesSheet(t *testing.T) {
 	}
 }
 
-// TestStickyBar_LegendAndExpanderAlwaysVisible — the ? chip and the
-// chevron-down pill must claim non-empty rects on every tab (not
-// just one).
-func TestStickyBar_LegendAndExpanderAlwaysVisible(t *testing.T) {
+// TestStickyBar_LegendAlwaysVisible — the ? chip must claim a
+// non-empty rect on every tab (not just one).
+func TestStickyBar_LegendAlwaysVisible(t *testing.T) {
 	for _, tab := range AllPanelTabs() {
 		bar := NewAudioStickyBar(0, func() {}, func(PanelTab) {})
 		bar.SetActiveTab(tab)
@@ -45,34 +44,6 @@ func TestStickyBar_LegendAndExpanderAlwaysVisible(t *testing.T) {
 		if lg := bar.LegendBtn(); lg == nil || lg.Rect().Empty() {
 			t.Errorf("tab=%v: legend pill must claim a rect", tab)
 		}
-		if ex := bar.ExpanderBtn(); ex == nil || ex.Rect().Empty() {
-			t.Errorf("tab=%v: expander pill must claim a rect", tab)
-		}
-	}
-}
-
-// TestStickyBar_ExpanderTogglesState — clicking the expander pill via
-// the bound OnClick toggles PanelTabState.Expanded.
-func TestStickyBar_ExpanderTogglesPanelState(t *testing.T) {
-	cb := EQCallbacks{}
-	z := NewEQPanelZone(cb)
-	if z.tabState == nil {
-		t.Fatalf("tabState should be non-nil")
-	}
-	if z.tabState.Expanded() {
-		t.Fatalf("expander should default to collapsed")
-	}
-	ex := z.stickyBar.ExpanderBtn()
-	if ex == nil || ex.OnClick == nil {
-		t.Fatalf("expander button or OnClick missing")
-	}
-	ex.OnClick()
-	if !z.tabState.Expanded() {
-		t.Errorf("after click expander: Expanded()=false want true")
-	}
-	ex.OnClick()
-	if z.tabState.Expanded() {
-		t.Errorf("after second click expander: Expanded()=true want false")
 	}
 }
 

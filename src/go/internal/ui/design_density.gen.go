@@ -56,6 +56,11 @@ type densityValues struct {
 	LevelsReadoutWFull     int // densities.levelsReadoutWFull
 	LevelsReadoutWIcons    int // densities.levelsReadoutWIcons
 	MinTarget              int // densities.minTarget
+	MobileWheelH           int // densities.mobileWheelH
+	MobileWheelPillH       int // densities.mobileWheelPillH
+	MobileWheelResStripW   int // densities.mobileWheelResStripW
+	MobileWheelTickGap     int // densities.mobileWheelTickGap
+	MobileWheelW           int // densities.mobileWheelW
 	NodeMaxPx              int // densities.nodeMaxPx
 	NodeMinPx              int // densities.nodeMinPx
 	PopupBtnH              int // densities.popupBtnH
@@ -123,7 +128,7 @@ var (
 		ChainStageColW:         64,
 		ChainStageRowH:         26,
 		ChainTriggerMarkerW:    3,
-		CloseButtonSize:        16,
+		CloseButtonSize:        22,
 		ControlGap:             2,
 		ControlGroupPad:        3,
 		ControlPadding:         4,
@@ -143,6 +148,11 @@ var (
 		LevelsReadoutWFull:     180,
 		LevelsReadoutWIcons:    36,
 		MinTarget:              0,
+		MobileWheelH:           300,
+		MobileWheelPillH:       38,
+		MobileWheelResStripW:   40,
+		MobileWheelTickGap:     34,
+		MobileWheelW:           220,
 		NodeMaxPx:              16,
 		NodeMinPx:              8,
 		PopupBtnH:              16,
@@ -208,7 +218,7 @@ var (
 		ChainStageColW:         48,
 		ChainStageRowH:         20,
 		ChainTriggerMarkerW:    2,
-		CloseButtonSize:        14,
+		CloseButtonSize:        20,
 		ControlGap:             2,
 		ControlGroupPad:        2,
 		ControlPadding:         3,
@@ -228,6 +238,11 @@ var (
 		LevelsReadoutWFull:     120,
 		LevelsReadoutWIcons:    28,
 		MinTarget:              0,
+		MobileWheelH:           260,
+		MobileWheelPillH:       34,
+		MobileWheelResStripW:   36,
+		MobileWheelTickGap:     30,
+		MobileWheelW:           200,
 		NodeMaxPx:              14,
 		NodeMinPx:              6,
 		PopupBtnH:              14,
@@ -311,8 +326,13 @@ var (
 		KnobStepBadgeW:         52,
 		LevelsReadoutFooterH:   20,
 		LevelsReadoutWFull:     220,
-		LevelsReadoutWIcons:    44,
+		LevelsReadoutWIcons:    34,
 		MinTarget:              44,
+		MobileWheelH:           340,
+		MobileWheelPillH:       44,
+		MobileWheelResStripW:   44,
+		MobileWheelTickGap:     38,
+		MobileWheelW:           240,
 		NodeMaxPx:              20,
 		NodeMinPx:              12,
 		PopupBtnH:              36,

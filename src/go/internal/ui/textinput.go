@@ -40,6 +40,11 @@ type TextInput struct {
 	// corresponding mobile native input is active (the native HTML <input>
 	// is visible instead).
 	MobileInputID string
+	// LogField, when non-empty, causes EventTextCommitted to be emitted on
+	// Enter/blur with Field=LogField and Value=the committed text. Leave
+	// empty (the default) for domain editors that emit their own event
+	// (instrument rename, BPM entry, search query).
+	LogField string
 }
 
 // NewTextInput constructs a text input with the given rectangle and style.
@@ -143,6 +148,7 @@ func (t *TextInput) Update() bool {
 			t.OnFocusGained()
 		}
 	} else if !t.focused && t.prevFocused {
+		emitTextCommitted(t.LogField, t.Value())
 		if t.OnFocusLost != nil {
 			t.OnFocusLost()
 		}
@@ -216,6 +222,10 @@ func (t *TextInput) Update() bool {
 		}
 	}
 	// Treat Enter as commit even when it is not part of InputChars().
+	// Note: do NOT call emitTextCommitted here. Setting focused=false causes
+	// the blur-transition branch (line ~151) to fire on the next Update() frame,
+	// which is the sole emitter for EventTextCommitted. Emitting here would
+	// produce a double-emit (Enter frame + blur frame).
 	if t.focused && isKeyPressed(ebiten.KeyEnter) {
 		t.focused = false
 		return true

@@ -83,10 +83,12 @@ func (g *Game) parityCheck(row, idx int, info model.BeatInfo, scheduled bool, so
 	if !inWindow {
 		return
 	}
-	fatalNow := (g.parityWatch == parityWatchPanic) || (g.parityWatch == parityWatchOff && parityFatalEnabled.Load())
-	// Allow a single-beat grace during nonfatal/log parity runs: sequencer may
-	// have just scheduled idx while DrumView will reflect it on the next refresh.
-	if !fatalNow && scheduled && !slate && row >= 0 && row < len(g.seqNextIdxs) && idx == g.seqNextIdxs[row]-1 {
+	// Single-beat grace in EVERY mode (including fatal): the sequencer just
+	// scheduled idx and the DrumView slate will reflect it on the next refresh,
+	// so a scheduled-but-not-yet-slated just-scheduled beat is a one-frame
+	// pipeline-latency artifact, not a desync. Bypassing this under fatal mode
+	// (the old `!fatalNow &&`) turned that benign lag into a panic.
+	if scheduled && !slate && row >= 0 && row < len(g.seqNextIdxs) && idx == g.seqNextIdxs[row]-1 {
 		return
 	}
 	// Do not early-return; we also want to check highlight parity.

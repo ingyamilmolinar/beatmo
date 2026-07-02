@@ -472,8 +472,9 @@ func TestDrawSplitterHandle_Unified_Mobile(t *testing.T) {
 }
 
 // TestSplitterHandle_ColorUnified verifies the resting (non-hover) handle fill
-// color is identical on desktop and mobile, and is the cyan splitter-handle
-// token (blue channel dominant) — desktop is no longer a gray pill.
+// color is identical on desktop and mobile, and is the sunset-gold
+// splitter-handle token (red channel dominant) — desktop is no longer a gray
+// pill.
 func TestSplitterHandle_ColorUnified(t *testing.T) {
 	forceSmallScreenForTest = false
 	deskCol := assertUnifiedSplitterHandle(t)
@@ -486,9 +487,9 @@ func TestSplitterHandle_ColorUnified(t *testing.T) {
 	if dr != mr || dg != mg || db != mb || da != ma {
 		t.Errorf("desktop handle color %v != mobile handle color %v — not unified", deskCol, mobileCol)
 	}
-	// Cyan: blue channel dominant over red (a gray pill would have R≈B).
-	if db <= dr {
-		t.Errorf("expected cyan handle (B>R), got R=%d B=%d", dr>>8, db>>8)
+	// Sunset-gold: red channel dominant over blue (a gray pill would have R≈B).
+	if dr <= db {
+		t.Errorf("expected gold handle (R>B), got R=%d B=%d", dr>>8, db>>8)
 	}
 }
 

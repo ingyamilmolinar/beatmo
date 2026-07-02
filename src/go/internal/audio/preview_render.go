@@ -378,6 +378,27 @@ func previewOscShape(oscType int, ph float64) float64 {
 			v *= 0.6
 		}
 		return v
+	case 7:
+		// Bowed string (waveguide): the bridge waveform is a sawtooth (Helmholtz
+		// stick-slip motion) with a slightly rounded corner.
+		return 0.9*(2*frac-1) + 0.1*math.Sin(2*math.Pi*frac)
+	case 8:
+		// Brass (lip-reed): a bright, harmonically dense pulse.
+		return math.Sin(2*math.Pi*frac) + 0.45*math.Sin(4*math.Pi*frac) + 0.2*math.Sin(6*math.Pi*frac)
+	case 9:
+		// Reed (clarinet): ODD-harmonic, hollow square-ish.
+		if frac < 0.5 {
+			return 0.85
+		}
+		return -0.85
+	case 10:
+		// Air-jet flute: nearly a sine with a breathy 2nd harmonic.
+		return 0.92*math.Sin(2*math.Pi*frac) + 0.16*math.Sin(4*math.Pi*frac)
+	case 11:
+		// Sax (Saxofony reed-cone): rich ALL-harmonic reed — a full sawtooth
+		// blended with its harmonics (even + odd) so it reads distinct from the
+		// odd-only reed and the saw.
+		return 0.6*(2*frac-1) + 0.25*math.Sin(2*math.Pi*frac) + 0.15*math.Sin(4*math.Pi*frac)
 	default:
 		return math.Sin(2 * math.Pi * frac)
 	}

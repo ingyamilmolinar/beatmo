@@ -72,11 +72,15 @@ func TestSamplerEnsureLoadedFromUserSample(t *testing.T) {
 	}
 }
 
-// TestSamplerEnsureLoadedRendersSynth verifies a non-sample instrument
-// auto-loads via a synth one-shot render when selected.
+// TestSamplerEnsureLoadedRendersSynth verifies a recipe-bound instrument
+// auto-loads via a synth one-shot render when selected. A recipe binding is
+// what makes an instrument a synth source (the descriptor path that Save uses
+// is only applied to recipe-bound voices); a non-recipe id is a raw WAV.
 func TestSamplerEnsureLoadedRendersSynth(t *testing.T) {
 	g := newSamplerTabGame(t)
-	const id = "ensureload.synth.test" // never saved as a user sample
+	const id = "ensureload.synth.test" // recipe-bound synth, never saved as a user sample
+	audio.BindInstrumentToRecipe(id, "drum-kick")
+	t.Cleanup(func() { audio.BindInstrumentToRecipe(id, "") })
 	g.drum.ensureSamplerLoaded(id)
 	s := &g.drum.sampler
 	if !s.hasBuffer() {

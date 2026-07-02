@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -94,7 +95,7 @@ func (g *Game) Update() error {
 			g.perf.reset()
 			g.schedMetrics.Reset()
 			ResetImageMetrics()
-			g.logger.Infof("[BENCH] Started: bpm=%d duration=%s", g.benchBPM, g.benchDuration)
+			g.logger.Infof("[bench] Started: bpm=%d duration=%s", g.benchBPM, g.benchDuration)
 			if g.benchRecord {
 				g.startBenchRecording()
 			}
@@ -102,7 +103,7 @@ func (g *Game) Update() error {
 			// Duration elapsed → log stats, stop, exit cleanly
 			s := g.PerfSnapshot()
 			sm := s.SchedMetrics
-			g.logger.Infof("[BENCH] Complete: frames=%d fps=%.1f upd=%.2f/%.2fms draw=%.2f/%.2fms audio_enq=%d audio_deq=%d qlat=%.2f/%.2fms sched(count=%d overdue=%d minLead=%sms lagP90=%sms lagP99=%sms) heap=%dKB goroutines=%d",
+			g.logger.Infof("[bench] Complete: frames=%d fps=%.1f upd=%.2f/%.2fms draw=%.2f/%.2fms audio_enq=%d audio_deq=%d qlat=%.2f/%.2fms sched(count=%d overdue=%d minLead=%sms lagP90=%sms lagP99=%sms) heap=%dKB goroutines=%d",
 				s.Frames, s.FPSAvg,
 				s.UpdateAvgMS, s.UpdateMaxMS,
 				s.DrawAvgMS, s.DrawMaxMS,
@@ -112,7 +113,7 @@ func (g *Game) Update() error {
 				benchFmtMS(sm.MinLead), benchFmtMS(sm.LagP90), benchFmtMS(sm.LagP99),
 				s.HeapAllocKB, s.Goroutines)
 			pAvg, pMax, pCount := g.parityScanStats()
-			g.logger.Infof("[BENCH] Parity: scans=%d avg=%.3fms max=%.3fms", pCount, pAvg, pMax)
+			g.logger.Infof("[bench] Parity: scans=%d avg=%.3fms max=%.3fms", pCount, pAvg, pMax)
 			// Machine-readable JSON line for scripts/bench-desktop.sh.
 			// Uses benchJsonMS() to emit "null" for NaN values (valid JSON).
 			jm := benchJsonMS
@@ -144,7 +145,7 @@ func (g *Game) Update() error {
 	if g.simpleDrawAutoDisableFrames > 0 {
 		g.simpleDrawAutoDisableFrames--
 		if g.simpleDrawAutoDisableFrames == 0 && g.simpleDraw {
-			g.logger.Debugf("[GAME] auto-disabling simple draw for interactive session")
+			g.logger.Debugf("[game] auto-disabling simple draw for interactive session")
 			g.simpleDraw = false
 		}
 	}
@@ -261,6 +262,17 @@ eventsDone:
 	// isMouseButtonPressed() return touch data for all existing handlers.
 	updateTouchOverride()
 
+	// Mobile landscape is unsupported (a rotate-to-portrait notice is shown
+	// instead of the layout). Clear the touch override so every override-driven
+	// handler — the input dispatcher, drum.Update(), the camera — observes a
+	// clean no-press/released state this frame (a valid transition, never a
+	// skip), and the multi-touch gesture block below is gated too. Rotating back
+	// to portrait simply stops blocking, so the transition stays seamless.
+	blockLandscapeInput := g.landscapeUnsupported()
+	if blockLandscapeInput {
+		touchOverrideActive = false
+	}
+
 	// === SINGLE INPUT ENTRY POINT ===
 	// ALWAYS poll input - input state transitions cannot be skipped or state corrupts.
 	// This is critical for WASM where fastPath is enabled by default.
@@ -276,7 +288,7 @@ eventsDone:
 
 	// Handle gestures that are NOT mappable to mouse (multi-touch + grid tap/long-press).
 	// Single-finger drag is now handled by the override → cam.HandleMouse / DrumView.Update.
-	if gesture != nil {
+	if gesture != nil && !blockLandscapeInput {
 		switch gesture.Kind {
 		case GestureTap:
 			if gesture.Y >= gridTopOffset() && g.split.InGridPane(gesture.X, gesture.Y) && !globalTouchState.RecentMultiTouch() {
@@ -336,6 +348,14 @@ eventsDone:
 			g.dispatcherDirty = false
 			g.lastDispatcherSidebarOpen = sidebarOpen
 			g.inputDispatcher.Clear()
+			// Settings gear: registered at the TOP z (gridHelpInputZ=300) so a
+			// press inside its rect wins over the grid editor on every platform.
+			// Routing it through the dispatcher (which runs on the touch-to-mouse
+			// override coords) unifies desktop mouse, mobile touch, and mobile
+			// pointer/click — replacing the old platform-gated bespoke path.
+			if g.gridHelpBtn != nil {
+				g.inputDispatcher.Register(gridHelpInputHandler{g: g})
+			}
 			if sidebarOpen {
 				g.inputDispatcher.Register(g.sidebar)
 			}
@@ -346,26 +366,16 @@ eventsDone:
 			g.inputDispatcher.Sort()
 		}
 
+		// gridHelpInputHandler sets gridHelpCapturing during Dispatch when the
+		// gear consumes the press; reset it BEFORE dispatch so the flag reflects
+		// only this frame.
+		g.gridHelpCapturing = false
+
 		// Skip normal input dispatch if touch gesture was fully handled
 		inputHandled := touchHandled
 		if !touchHandled {
 			// Single dispatch - returns true if any handler consumed
 			inputHandled = g.inputDispatcher.Dispatch(mx, my, left)
-		}
-
-		// Grid-pane "?" help button: reuse the Button widget's click+anim. Driven
-		// only on the mouse path (touch is handled in handleTapInGrid). Consuming
-		// the press marks inputHandled so the grid editor doesn't also react, and
-		// sets gridHelpCapturing so the DrumViewTree defers this press (below) —
-		// otherwise the same press that opens the overlay is seen by the tree's
-		// click-outside logic (the button is outside all tree hit areas) and
-		// immediately closes it.
-		g.gridHelpCapturing = false
-		if !touchHandled && !Profile().IsMobile() && g.gridHelpBtn != nil {
-			if g.gridHelpBtn.HandleInputResult(mx, my, left) == InputConsumed {
-				inputHandled = true
-				g.gridHelpCapturing = true
-			}
 		}
 
 		// (Removed: the legacy BPM-box focus-nudge. The BPM readout is now a
@@ -494,19 +504,17 @@ eventsDone:
 	// notify funcs touch UI state, so we forward them on the game-thread
 	// goroutine, mirroring the pendingImportData pattern.
 	g.pendingNotifyMu.Lock()
-	infos := g.pendingNotifyInfo
-	errs := g.pendingNotifyError
-	g.pendingNotifyInfo = nil
-	g.pendingNotifyError = nil
+	pend := g.pendingNotifs
+	g.pendingNotifs = nil
 	g.pendingNotifyMu.Unlock()
-	for _, m := range infos {
-		if g.drum != nil {
-			g.drum.notifyInfo(m)
+	for _, p := range pend {
+		if g.drum == nil {
+			continue
 		}
-	}
-	for _, m := range errs {
-		if g.drum != nil {
-			g.drum.notifyError(m)
+		if p.isErr {
+			g.drum.notifyErrorKey(p.key, p.args...)
+		} else {
+			g.drum.notifyInfoKey(p.key, p.args...)
 		}
 	}
 
@@ -520,16 +528,26 @@ eventsDone:
 	// that the lock is free.
 	if g.pendingImportData != nil {
 		data := g.pendingImportData
+		source := g.pendingImportSource
 		g.pendingImportData = nil
+		g.pendingImportSource = ""
 		err := g.Import(data)
 		// Notify DrumView of the result so it can show success/error notification
 		if err != nil {
-			g.logger.Errorf("[GAME] Import error: %v", err)
+			g.logger.Errorf("[game] Import error: %v", err)
 			if g.drum != nil {
-				g.drum.notifyError(i18n.Tf(i18n.KeyNotifErrLoadJSON, err.Error()))
+				g.drum.notifyErrorKey(i18n.KeyNotifErrLoadJSON, err.Error())
 			}
 		} else if g.drum != nil {
-			g.drum.notifyInfo(i18n.T(i18n.KeyNotifImported))
+			// Name the loaded source (filename / template) + its node/row counts
+			// so the toast is concrete; fall back to the generic key when the
+			// source is unknown (e.g. a JS path that surfaced no filename).
+			if source != "" {
+				g.drum.notifyInfoKey(i18n.KeyNotifImportedNamed, importSourceName(source),
+					strconv.Itoa(len(g.graph.Nodes)), strconv.Itoa(len(g.drum.Rows)))
+			} else {
+				g.drum.notifyInfoKey(i18n.KeyNotifImported)
+			}
 			emitImport(len(data), len(g.graph.Nodes), len(g.drum.Rows))
 		}
 	}
@@ -564,7 +582,7 @@ eventsDone:
 	// Camera panning always runs - essential for grid interaction on all platforms.
 	// Not guarded by fastPath since it's just mouse delta math (not expensive).
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
-	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.longPressPopup
+	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.longPressPopup && !g.modalOverlayActive() && !blockLandscapeInput
 
 	// Diagnostic: log why panOK is false for grid touches on mobile.
 	// Throttled to once per 60 frames to avoid log spam.
@@ -610,6 +628,10 @@ eventsDone:
 	if left && drag {
 		g.camDragged = true
 	}
+	if g.camGesture == nil {
+		g.camGesture = &cameraGesture{emitPan: func(dx, dy float64) { emitCameraPan(dx, dy) }, emitZoom: func(f float64) { emitCameraZoom(f) }}
+	}
+	g.camGesture.observe(g.camDragging, g.cam.OffsetX, g.cam.OffsetY, g.cam.Scale)
 
 	if !fastPath {
 		// edge animation progress
@@ -774,7 +796,7 @@ eventsDone:
 				g.syncUIToTime()
 			}
 		} else {
-			g.logger.Warnf("[GAME] Play pressed but no start node; ignoring")
+			g.logger.Warnf("[game] Play pressed but no start node; ignoring")
 			g.state.SetPlayingForTest(false)
 			g.state.SetPausedForTest(false)
 		}
@@ -840,9 +862,9 @@ eventsDone:
 			g.drum.SetRecording(false)
 			if err != nil {
 				g.logger.Errorf("[game] recording error: %v", err)
-				g.drum.notifyError(i18n.Tf(i18n.KeyNotifRecordingFailed, err.Error()))
+				g.drum.notifyErrorKey(i18n.KeyNotifRecordingFailed, err.Error())
 			} else if result != nil {
-				g.drum.notifyInfo(i18n.Tf(i18n.KeyNotifSavingRecording, result.SessionDir))
+				g.drum.notifyInfoKey(i18n.KeyNotifSavingRecording, result.SessionDir)
 			}
 		} else {
 			g.logger.Debugf("[game] record start pressed")
@@ -862,7 +884,7 @@ eventsDone:
 			}
 			if err := audio.StartRecording(opts); err != nil {
 				g.logger.Errorf("[game] start recording error: %v", err)
-				g.drum.notifyError(i18n.Tf(i18n.KeyNotifCannotStartRecording, err.Error()))
+				g.drum.notifyErrorKey(i18n.KeyNotifCannotStartRecording, err.Error())
 			} else {
 				g.drum.SetRecording(true)
 				// Auto-start playback if not already playing

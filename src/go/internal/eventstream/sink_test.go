@@ -93,7 +93,7 @@ func TestSink_FiltersVerboseByDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "events.jsonl")
 	sink, _ := Open(bus, path, Options{FlushInterval: 50 * time.Millisecond})
 
-	bus.PublishKind(hooks.EventCameraPan, hooks.CameraPanPayload{DX: 1, DY: 2})
+	bus.PublishKind(hooks.EventDragProgress, hooks.DragProgressPayload{NodeID: 1, I: 0, J: 0})
 	bus.PublishKind(hooks.EventNodeAdded, hooks.NodeEdit{ID: 1})
 
 	time.Sleep(200 * time.Millisecond)
@@ -117,7 +117,7 @@ func TestSink_VerboseModeIncludesAll(t *testing.T) {
 		Verbose:       true,
 	})
 
-	bus.PublishKind(hooks.EventCameraPan, hooks.CameraPanPayload{DX: 1, DY: 2})
+	bus.PublishKind(hooks.EventDragProgress, hooks.DragProgressPayload{NodeID: 1, I: 0, J: 0})
 	bus.PublishKind(hooks.EventNodeAdded, hooks.NodeEdit{ID: 1})
 
 	time.Sleep(200 * time.Millisecond)

@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
@@ -11,28 +10,18 @@ import (
 // settingsOverlayW is the panel width in px.
 const settingsOverlayW = 480
 
-// settingsPanelHandler routes a press anywhere in the settings panel to the
-// language pill it lands on. The overlay exposes ONE full-panel hit area with
-// this handler rather than separate per-pill hit areas, because the portal
-// flattens every overlay hit area's ZIndex to the same value (300+stackPos):
-// multiple z-layered areas don't arbitrate, and a full-panel catch-all
-// registered first would swallow the pill clicks. Mirrors comp_portal_overlay.go.
-type settingsPanelHandler struct{ o *SettingsOverlay }
+// settingsPanelHandler is the full-panel catch-all: it consumes any press that
+// lands on the panel background (not on a pill or the close button) so a
+// panel-background click never falls through. The pills and close button carry
+// their own per-control hit areas (shared buttonHitAdapter) registered BEFORE
+// this catch-all, so they win the equal-z stable-sort tiebreak on overlap. The
+// overlay is opened modal, so presses outside the panel are filtered out by the
+// HitIndex before they ever reach a handler.
+type settingsPanelHandler struct{}
 
-func (h settingsPanelHandler) OnPress(x, y int) InputResult {
-	p := image.Pt(x, y)
-	switch {
-	case p.In(h.o.enRect):
-		h.o.pick(i18n.LocaleEN)
-	case p.In(h.o.esRect):
-		h.o.pick(i18n.LocaleES)
-	}
-	// Consume regardless: a panel-background click must not fall through to
-	// click-outside-close. The overlay closes via the gear toggle or Esc.
-	return InputConsumed
-}
-func (settingsPanelHandler) OnDrag(x, y int)                     {}
-func (settingsPanelHandler) OnRelease(x, y int)                  {}
+func (settingsPanelHandler) OnPress(x, y int) InputResult { return InputConsumed }
+func (settingsPanelHandler) OnDrag(x, y int)              {}
+func (settingsPanelHandler) OnRelease(x, y int)           {}
 func (settingsPanelHandler) OnWheel(x, y, steps int) InputResult { return InputConsumed }
 
 // SettingsOverlay is the portal panel for language selection plus a localized
@@ -43,11 +32,25 @@ type SettingsOverlay struct {
 	rect   image.Rectangle
 	enRect image.Rectangle
 	esRect image.Rectangle
+
+	// Real Buttons so the pills + close affordance get the shared keycap chrome
+	// and press/hover animation as every other control (DESIGN.md). The active
+	// language pill is rendered toggled (latched amber). Created once in the
+	// constructor; SetRect'd each Layout.
+	enBtn    *Button
+	esBtn    *Button
+	closeBtn *Button
 }
 
 // NewSettingsOverlay creates a settings portal overlay; onPick fires on a pill tap.
 func NewSettingsOverlay(onPick func(i18n.Locale)) *SettingsOverlay {
-	return &SettingsOverlay{onPick: onPick}
+	o := &SettingsOverlay{onPick: onPick}
+	o.enBtn = NewButtonKey(i18n.KeyLangEnglish, ComponentButtonSecondary, func() { o.pick(i18n.LocaleEN) })
+	o.esBtn = NewButtonKey(i18n.KeyLangSpanish, ComponentButtonSecondary, func() { o.pick(i18n.LocaleES) })
+	o.closeBtn = NewSpecButton("", ComponentButtonSecondary, func() { o.Close() })
+	o.closeBtn.Icon = "close"
+	o.closeBtn.IconColor = closeIconColor()
+	return o
 }
 
 // Close marks the overlay for removal on the next portal sweep.
@@ -56,16 +59,24 @@ func (o *SettingsOverlay) Close() { o.closed = true }
 // ShouldClose reports whether Close() has been invoked.
 func (o *SettingsOverlay) ShouldClose() bool { return o.closed }
 
-// Layout centers the panel on the screen and positions the two language pills.
+// Layout centers the panel on the screen and positions the two language pills
+// and the close button.
 func (o *SettingsOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	b := screenBounds
 	w := settingsOverlayW
-	// Height: header + language row + shortcuts rows (or desktop-only note on mobile).
-	rows := len(localizedShortcutRows())
-	if Profile().IsMobile() {
-		rows = 1
+	// Clamp to the available width with a side margin so the panel (and its
+	// content, inset 24px) stays fully on-screen on narrow mobile panes — the
+	// fixed 480px width otherwise centers off both edges of a ~390px phone.
+	if maxW := b.Dx() - 2*24; maxW > 0 && w > maxW {
+		w = maxW
 	}
-	h := 40 + 56 + 26*(rows+1) + 24
+	// Height: header + language row, plus the shortcuts section on desktop only
+	// (mobile drops it entirely, so the panel is correspondingly shorter).
+	h := 40 + 56 + 24
+	if o.shortcutsVisible() {
+		rows := len(localizedShortcutRows())
+		h += 26 * (rows + 1)
+	}
 	cx := (b.Min.X + b.Max.X) / 2
 	cy := (b.Min.Y + b.Max.Y) / 2
 	o.rect = image.Rect(cx-w/2, cy-h/2, cx+w/2, cy-h/2+h)
@@ -75,21 +86,39 @@ func (o *SettingsOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	py := o.rect.Min.Y + 40 + 24
 	o.enRect = image.Rect(px, py, px+pillW, py+pillH)
 	o.esRect = image.Rect(px+pillW+12, py, px+pillW+12+pillW, py+pillH)
+	o.enBtn.SetRect(o.enRect)
+	o.esBtn.SetRect(o.esRect)
+	// Close button in the panel's top-right corner, sized via the shared helper
+	// so it matches every other pop-up.
+	o.closeBtn.SetRect(closeButtonRect(o.rect, SpaceXS))
 }
 
-// HitAreas exposes ONE full-panel hit area whose handler internally routes the
-// press to whichever language pill it lands on (and consumes panel-background
-// clicks). A single area is required because the portal flattens overlay hit
-// areas to one ZIndex — see settingsPanelHandler.
+// HitAreas publishes one hit area per interactive control (the two language
+// pills and the close button) plus a full-panel catch-all registered LAST so
+// the pill/close areas win the portal's equal-z stable-sort on overlap. Each
+// control routes through the shared buttonHitAdapter so it shares the canonical
+// press lifecycle (edge fire, press/hover animation, release settle).
 func (o *SettingsOverlay) HitAreas() []HitArea {
 	if o.rect.Empty() {
 		return nil
 	}
 	return []HitArea{
+		{Rect: o.enBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-lang-en",
+			Handler: &buttonHitAdapter{btn: o.enBtn}},
+		{Rect: o.esBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-lang-es",
+			Handler: &buttonHitAdapter{btn: o.esBtn}},
+		{Rect: o.closeBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-close",
+			Handler: &buttonHitAdapter{btn: o.closeBtn}},
 		{Rect: o.rect, ZIndex: ZOverlayMin, Tag: "settings-panel",
-			Handler: settingsPanelHandler{o: o}},
+			Handler: settingsPanelHandler{}},
 	}
 }
+
+// shortcutsVisible reports whether the keyboard-shortcuts section is shown.
+// Desktop shows the localized shortcut list; mobile hides the section entirely
+// (no header, no rows, no desktop-only note) since touch devices have no
+// physical keyboard.
+func (o *SettingsOverlay) shortcutsVisible() bool { return !Profile().IsMobile() }
 
 func (o *SettingsOverlay) pick(l i18n.Locale) {
 	if o.onPick != nil {
@@ -103,8 +132,11 @@ func (o *SettingsOverlay) LanguagePillRects() (en, es image.Rectangle) {
 	return o.enRect, o.esRect
 }
 
-// Draw paints the modal scrim, the panel chrome, the language pills, and the
-// localized keyboard-shortcuts list (or a desktop-only note on mobile).
+// CloseButtonRect returns the close button's bounds. Valid after Layout.
+func (o *SettingsOverlay) CloseButtonRect() image.Rectangle { return o.closeBtn.Rect() }
+
+// Draw paints the modal scrim, the panel chrome, the language pills, the close
+// button, and the localized keyboard-shortcuts list (desktop only).
 func (o *SettingsOverlay) Draw(screen *ebiten.Image) {
 	if screen == nil || o.rect.Empty() {
 		return
@@ -118,32 +150,26 @@ func (o *SettingsOverlay) Draw(screen *ebiten.Image) {
 	DrawTextStyled(screen, i18n.T(i18n.KeySettingsTitle), x, y, RolePanelTitle, colTextPrimary)
 	y += 36
 	DrawTextStyled(screen, i18n.T(i18n.KeySettingsLanguage), x, y, RoleCaption, colTextSecondary)
-	// Pills (active = toggled look).
-	o.drawPill(screen, o.enRect, i18n.T(i18n.KeyLangEnglish), i18n.ActiveLocale() == i18n.LocaleEN)
-	o.drawPill(screen, o.esRect, i18n.T(i18n.KeyLangSpanish), i18n.ActiveLocale() == i18n.LocaleES)
-	// Shortcuts section.
+	// Language pills as real Buttons: the active locale renders toggled (latched)
+	// so it matches every other active control. Buttons handle their own keycap
+	// chrome + press/hover animation.
+	o.enBtn.SetToggled(i18n.ActiveLocale() == i18n.LocaleEN)
+	o.esBtn.SetToggled(i18n.ActiveLocale() == i18n.LocaleES)
+	o.enBtn.Draw(screen)
+	o.esBtn.Draw(screen)
+	// Close button (top-right).
+	o.closeBtn.Draw(screen)
+	// Shortcuts section — desktop only. Mobile hides it entirely (no physical
+	// keyboard), so there is no header and no desktop-only note.
+	if !o.shortcutsVisible() {
+		return
+	}
 	y = o.esRect.Max.Y + 18
 	DrawTextStyled(screen, i18n.T(i18n.KeySettingsShortcuts), x, y, RoleSectionHeader, colTextPrimary)
 	y += 28
-	if Profile().IsMobile() {
-		DrawTextStyled(screen, i18n.T(i18n.KeySettingsDesktopOnly), x, y, RoleCaption, colTextSecondary)
-		return
-	}
 	for _, row := range localizedShortcutRows() {
 		DrawTextStyled(screen, row.keys, x, y, RoleCaption, colTextPrimary)
 		DrawTextStyled(screen, i18n.T(row.actionKey), x+120, y, RoleCaption, colTextSecondary)
 		y += 26
 	}
-}
-
-func (o *SettingsOverlay) drawPill(screen *ebiten.Image, r image.Rectangle, label string, active bool) {
-	var fill color.Color = colSurface2
-	if active {
-		fill = colButtonBorder
-	}
-	drawRoundedRect(screen, r, fill, RadiusSM, true)
-	drawRoundedRect(screen, r, colButtonBorder, RadiusSM, false)
-	tx := r.Min.X + 12
-	ty := r.Min.Y + (r.Dy()-StyledTextHeight(RoleBody))/2
-	DrawTextStyled(screen, label, tx, ty, RoleBody, colTextPrimary)
 }

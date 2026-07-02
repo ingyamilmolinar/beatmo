@@ -82,14 +82,18 @@ func TestSamplerHeaderTitleClearsButtons(t *testing.T) {
 	g := samplerLayoutGame(t)
 	g.drum.sampler.captureFromSynth("kick")
 	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
-	loadWAV := g.drum.samplerButtonByTag("sampler-load-wav")
-	if loadWAV == nil {
-		t.Fatal("missing load-wav button")
-	}
+	// The header's right-aligned action buttons must never overlap the SAMPLER
+	// title on the left.
 	titleEnd := g.drum.sampler.headerRect.Min.X + samplerTitlePad + TextWidth("SAMPLER")
-	if loadWAV.Rect().Min.X < titleEnd {
-		t.Errorf("Load WAV button starts at x=%d, overlaps SAMPLER title ending at x=%d",
-			loadWAV.Rect().Min.X, titleEnd)
+	for _, tag := range []string{"sampler-save", "sampler-save-as", "sampler-reset"} {
+		b := g.drum.samplerButtonByTag(tag)
+		if b == nil {
+			t.Fatalf("missing button %q", tag)
+		}
+		if b.Rect().Min.X < titleEnd {
+			t.Errorf("button %q starts at x=%d, overlaps SAMPLER title ending at x=%d",
+				tag, b.Rect().Min.X, titleEnd)
+		}
 	}
 }
 
@@ -98,7 +102,6 @@ func TestSamplerHeaderButtonsFitLabels(t *testing.T) {
 	g.drum.sampler.captureFromSynth("kick")
 	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
 	for _, tc := range []struct{ tag, label string }{
-		{"sampler-load-wav", "Load WAV"},
 		{"sampler-save", "Save"},
 		{"sampler-save-as", "Save As"},
 	} {
@@ -178,13 +181,6 @@ func TestSamplerEmptyStateDisablesActions(t *testing.T) {
 		}
 		if b.SpecID != ComponentButtonDisabled {
 			t.Errorf("button %q SpecID=%v, want ComponentButtonDisabled in empty state", tag, b.SpecID)
-		}
-	}
-	// Source button (Load WAV) stays enabled.
-	for _, tag := range []string{"sampler-load-wav"} {
-		b := dv.samplerButtonByTag(tag)
-		if b == nil || b.SpecID == ComponentButtonDisabled {
-			t.Errorf("source button %q must stay enabled in empty state", tag)
 		}
 	}
 	// Knobs not laid out.
@@ -271,9 +267,9 @@ func TestSamplerCaptureEmptyReportsStatus(t *testing.T) {
 }
 
 // TestSamplerButtonsDoNotOverlapMobile guards the mobile header crowding bug
-// (title + From Synth + Load WAV + Save + Save As don't fit one 390-px row,
-// so "Load WAV" truncated to "Load W" and overlapped Save). Save / Save As
-// move to the action row on mobile; no two laid-out buttons may intersect.
+// (title + Save + Save As don't all fit one 390-px row, so labels truncated
+// and overlapped). Save / Save As move to the action row on mobile; no two
+// laid-out buttons may intersect.
 func TestSamplerButtonsDoNotOverlapMobile(t *testing.T) {
 	g := samplerLayoutGame(t)
 	withSmallScreen(t, true)
@@ -308,5 +304,72 @@ func TestSamplerKnobsHavePlainEnglish(t *testing.T) {
 		if samplerKnobPlainEnglish(i) == "" {
 			t.Errorf("knob %d has no plain-English gloss", i)
 		}
+	}
+}
+
+// newMobileSamplerTabGameForTestSize builds a *Game on the mobile Sampler tab
+// with the adaptive mobile split applied (forceAutoSize), so the sampler control
+// column is sized by Task 1's audio-panel content floor — the real layout a user
+// sees, not a synthetic buildSamplerTab rect.
+func newMobileSamplerTabGameForTestSize(t *testing.T, w, h int) *Game {
+	t.Helper()
+	restoreProfile := SetRuntimeProfileForTest(browserRuntimeProfile())
+	t.Cleanup(restoreProfile)
+	if !forceAutoSize {
+		forceAutoSize = true
+		t.Cleanup(func() { forceAutoSize = false })
+	}
+
+	g := New(game_log.New(nil, game_log.LevelError))
+	t.Cleanup(g.CloseForTest)
+	g.SetForceMobileProfile(true)
+	g.Layout(w, h)
+	mobileSamplerTabSetup(true)(g) // mobile profile + EQ mode + sampler tab + captured buffer
+	// Re-run Layout now that the Sampler tab is active so the adaptive split takes
+	// the audio-tab branch and applies mobileAudioPanelMinContentH.
+	g.Layout(w, h)
+	g.Update()
+	return g
+}
+
+// TestSamplerControlsClearKnobRowMobile proves the sampler control-button row
+// (Rev/Norm/Fade/Preview) sits at or below the knob row on a real mobile Sampler
+// tab — i.e. Task 1's content floor gives the control column enough height that
+// the buttons never overlap the knob labels.
+func TestSamplerControlsClearKnobRowMobile(t *testing.T) {
+	g := newMobileSamplerTabGameForTestSize(t, 390, 844)
+	dv := g.drum
+	if !dv.sampler.hasBuffer() {
+		t.Skip("no sampler buffer captured")
+	}
+	lowestBtnTop := 1 << 30
+	for _, tag := range []string{"sampler-reverse", "sampler-normalize", "sampler-fade", "sampler-preview"} {
+		b := dv.samplerButtonByTag(tag)
+		if b == nil || b.Rect().Empty() {
+			continue
+		}
+		if b.Rect().Min.Y < lowestBtnTop {
+			lowestBtnTop = b.Rect().Min.Y
+		}
+	}
+	if lowestBtnTop == 1<<30 {
+		t.Skip("no sampler control buttons laid out")
+	}
+	// knobBottom = the lowest laid-out sampler knob cell's Max.Y (the knob rect
+	// spans dial + caption + step-badge band, so its Max.Y is the row bottom).
+	knobBottom := 0
+	for _, k := range dv.sampler.knobs {
+		if k == nil || k.Rect().Empty() {
+			continue
+		}
+		if k.Rect().Max.Y > knobBottom {
+			knobBottom = k.Rect().Max.Y
+		}
+	}
+	if knobBottom == 0 {
+		t.Skip("no sampler knobs laid out")
+	}
+	if lowestBtnTop < knobBottom {
+		t.Fatalf("sampler buttons (top %d) overlap the knob row (bottom %d)", lowestBtnTop, knobBottom)
 	}
 }

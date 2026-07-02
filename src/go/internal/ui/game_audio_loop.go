@@ -28,7 +28,7 @@ func (g *Game) audioLoop() {
 			first = req
 		}
 		if g.Paused() {
-			g.logger.Debugf("[AUDIO] drop id=%s vol=%.3f while paused", first.id, first.vol)
+			g.logger.Debugf("[audio] drop id=%s vol=%.3f while paused", first.id, first.vol)
 			continue
 		}
 
@@ -61,7 +61,7 @@ func (g *Game) audioLoop() {
 					continue
 				}
 				if g.Paused() {
-					g.logger.Debugf("[AUDIO] drop id=%s vol=%.3f while paused", req.id, req.vol)
+					g.logger.Debugf("[audio] drop id=%s vol=%.3f while paused", req.id, req.vol)
 					continue
 				}
 				reqs = append(reqs, req)
@@ -88,17 +88,17 @@ func (g *Game) audioLoop() {
 			if req.row >= 0 {
 				curGen := g.audioGen.Load()
 				if req.gen != curGen {
-					g.logger.Debugf("[AUDIO] drop stale scheduled id=%s row=%d abs=%d gen=%d curGen=%d", req.id, req.row, req.abs, req.gen, curGen)
+					g.logger.Debugf("[audio] drop stale scheduled id=%s row=%d abs=%d gen=%d curGen=%d", req.id, req.row, req.abs, req.gen, curGen)
 					continue
 				}
 				if !g.Playing() {
-					g.logger.Debugf("[AUDIO] drop scheduled id=%s row=%d abs=%d while stopped", req.id, req.row, req.abs)
+					g.logger.Debugf("[audio] drop scheduled id=%s row=%d abs=%d while stopped", req.id, req.row, req.abs)
 					continue
 				}
 			}
 			if !logged {
 				logged = true
-				g.logger.Debugf("[AUDIO] dispatch id=%s vol=%.3f pitch=%.3f dur=%.3f when=%v", req.id, req.vol, req.pitch, req.dur, req.when)
+				g.logger.Debugf("[audio] dispatch id=%s vol=%.3f pitch=%.3f dur=%.3f when=%v", req.id, req.vol, req.pitch, req.dur, req.when)
 			}
 			qlat := time.Since(req.enqAt)
 			// Stage B observation: raw enqueue→dispatch latency, before the

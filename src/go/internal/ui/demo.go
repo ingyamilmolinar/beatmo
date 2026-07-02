@@ -45,17 +45,19 @@ func (g *Game) buildDemo() {
 
 	// The initial demo circuit is NOT a user action. Whichever construction path
 	// runs below (env config / embedded startup JSON / programmatic fallback), the
-	// build emits node/row/edge changes that the per-frame undo bracket would
-	// otherwise record as the first undo step — leaving the transport Undo button
-	// lit at launch. Reset the undo baseline to the freshly-built document on every
-	// exit so the stack is empty (buttons greyed) until the user actually edits.
-	// The early-return above runs before this defer, so a redundant buildDemo call
-	// on an already-built game never wipes real user history.
-	defer func() {
-		if g.undoManager != nil {
+	// build emits node/row/edge changes (BuildPath → tryAddNode, Import, …) that
+	// would otherwise be recorded as the first undo step — leaving the transport
+	// Undo button lit at launch instead of greyed. Suppress undo recording for the
+	// whole build (the same flag undo-restore uses), then establish the freshly
+	// built document as the clean, empty-history baseline. The early-return above
+	// runs first, so a redundant buildDemo call never wipes real user history.
+	if g.undoManager != nil {
+		g.undoManager.restoring = true
+		defer func() {
+			g.undoManager.restoring = false
 			g.undoManager.OnExternalLoad()
-		}
-	}()
+		}()
+	}
 
 	// Optional override: when BEATMO_DEMO_CONFIG (or BEATMO_CONFIG) is set,
 	// load that JSON as the initial circuit.
@@ -65,10 +67,10 @@ func (g *Game) buildDemo() {
 	}
 	if cfg != "" {
 		path := expandHome(cfg)
-		g.logger.Infof("[DEMO] Loading env config: %s", path)
+		g.logger.Infof("[demo] Loading env config: %s", path)
 		if data, err := os.ReadFile(path); err == nil {
 			if err := g.Import(data); err == nil {
-				g.logger.Infof("[DEMO] Imported env config: rows=%d nodes=%d start=%v", len(g.drum.Rows), len(g.graph.Nodes), g.graph.StartNodeID)
+				g.logger.Infof("[demo] Imported env config: rows=%d nodes=%d start=%v", len(g.drum.Rows), len(g.graph.Nodes), g.graph.StartNodeID)
 				// If the imported config lacks instruments, create a sensible
 				// default drum row and set a start node so playback and the
 				// drum view work out of the box.
@@ -94,25 +96,25 @@ func (g *Game) buildDemo() {
 						}
 						g.start = g.nodeByID(minID)
 						g.graph.StartNodeID = minID
-						g.logger.Infof("[DEMO] Added default row and start from node %d", minID)
+						g.logger.Infof("[demo] Added default row and start from node %d", minID)
 					}
 				} else if g.graph.StartNodeID == model.InvalidNodeID && g.drum.Rows[0].Origin != model.InvalidNodeID {
 					// Ensure graph has a valid start matching row 0.
 					id := g.drum.Rows[0].Origin
 					g.graph.StartNodeID = id
 					g.start = g.nodeByID(id)
-					g.logger.Infof("[DEMO] Set start from row 0 origin: %d", id)
+					g.logger.Infof("[demo] Set start from row 0 origin: %d", id)
 				}
 				// Recompute beat paths so drum view and playback are ready.
 				g.updateBeatInfos()
-				g.logger.Infof("[DEMO] After import: beatPath[0]=%d drumLen=%d rows=%d", len(g.beatInfosByRow[0]), g.drum.Length, len(g.drum.Rows))
+				g.logger.Infof("[demo] After import: beatPath[0]=%d drumLen=%d rows=%d", len(g.beatInfosByRow[0]), g.drum.Length, len(g.drum.Rows))
 				g.demoBuilt = true
 				return
 			} else {
-				g.logger.Infof("[DEMO] Failed to import %s: %v (falling back)", cfg, err)
+				g.logger.Infof("[demo] Failed to import %s: %v (falling back)", cfg, err)
 			}
 		} else {
-			g.logger.Infof("[DEMO] Cannot read %s: %v (falling back)", cfg, err)
+			g.logger.Infof("[demo] Cannot read %s: %v (falling back)", cfg, err)
 		}
 	}
 
@@ -124,11 +126,11 @@ func (g *Game) buildDemo() {
 			// onto the canonical predictable sequence by row index, so the
 			// startup circuit always complies even if the baked JSON drifts.
 			g.drum.ResequenceRowColors()
-			g.logger.Infof("[DEMO] Using embedded startup rock demo (rows=%d)", len(g.drum.Rows))
+			g.logger.Infof("[demo] Using embedded startup rock demo (rows=%d)", len(g.drum.Rows))
 			g.demoBuilt = true
 			return
 		} else {
-			g.logger.Infof("[DEMO] Failed to import startup demo JSON: %v (falling back)", err)
+			g.logger.Infof("[demo] Failed to import startup demo JSON: %v (falling back)", err)
 		}
 	}
 
@@ -256,7 +258,7 @@ func (g *Game) RunDemo() {
 	g.spawnPulseFromRow(0, 0)
 	go func() {
 		time.Sleep(2 * time.Second)
-		g.logger.Infof("[DEMO] Finished demo run")
+		g.logger.Infof("[demo] Finished demo run")
 		os.Exit(0)
 	}()
 }

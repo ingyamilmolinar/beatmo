@@ -619,25 +619,6 @@ func (cm *channelManager) volume(id string) float64 {
 	return ch.Volume()
 }
 
-func (cm *channelManager) renameInstrument(oldID, newID string) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	ch, ok := cm.instruments[oldID]
-	if !ok {
-		if _, exists := cm.instruments[newID]; !exists {
-			cm.instruments[newID] = newChannel(newID, cm.main)
-			cm.channels[newID] = cm.instruments[newID]
-		}
-		delete(cm.instruments, oldID)
-		return
-	}
-	delete(cm.channels, oldID)
-	delete(cm.instruments, oldID)
-	ch.id = newID
-	cm.channels[newID] = ch
-	cm.instruments[newID] = ch
-}
-
 func (cm *channelManager) resetInstruments(ids []string) {
 	cm.mu.Lock()
 	main := cm.main
@@ -705,11 +686,6 @@ func resetInstrumentChannels(ids []string) {
 		platformChannelVolumeChanged(id, chanMgr.volume(id))
 	}
 	resetAnalyzers()
-}
-
-func renameInstrumentChannel(oldID, newID string) {
-	chanMgr.renameInstrument(oldID, newID)
-	platformChannelVolumeChanged(newID, chanMgr.volume(newID))
 }
 
 func channelForInstrument(id string) *Channel {

@@ -46,7 +46,8 @@ type layoutFingerprint struct {
 	rowLabel0TextScale float64
 	rowLabel0TextColor color.Color
 
-	// Scrollbar style (identified by Width which differs: desktop=6, mobile=16)
+	// Scrollbar style (mobile and desktop share Width=6 but differ by MinThumbH:
+	// desktop=10, mobile=44 for the touch target)
 	rowScrollWidth     int
 	rowScrollMinThumbH int
 

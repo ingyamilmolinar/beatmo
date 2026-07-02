@@ -587,64 +587,88 @@ func (g *Game) initJSEqWidgets() {
 		drumLayout.Set("timelineRect", rectToJS(dv.timelineRect))
 		obj.Set("drumLayout", drumLayout)
 
-		// Buttons
+		// Buttons. Only emit a control when it has a real on-canvas rect:
+		// since the June UX overhaul, several controls (Import/Export/Upload,
+		// the view switch, the main-volume slider) live behind the overflow
+		// menu on desktop and report an empty 0×0 rect when not laid out
+		// inline. Reporting them as 0×0 top-level buttons would make the
+		// layout-parity check ("accessible buttons have positive area") fail
+		// for controls that are intentionally reached via the overflow menu.
+		// setBtn skips empty rects so the snapshot reflects what is actually
+		// on screen; relocated controls simply drop out (the overflow button
+		// that reaches them is still reported).
 		buttons := js.Global().Get("Object").New()
+		setBtn := func(name string, r image.Rectangle) {
+			if !r.Empty() {
+				buttons.Set(name, rectToJS(r))
+			}
+		}
 		if dv.playBtn() != nil {
-			buttons.Set("play", rectToJS(dv.playBtn().Rect()))
+			setBtn("play", dv.playBtn().Rect())
 		}
 		if dv.stopBtn() != nil {
-			buttons.Set("stop", rectToJS(dv.stopBtn().Rect()))
+			setBtn("stop", dv.stopBtn().Rect())
 		}
 		if dv.bpmIncBtn() != nil {
-			buttons.Set("bpmInc", rectToJS(dv.bpmIncBtn().Rect()))
+			setBtn("bpmInc", dv.bpmIncBtn().Rect())
 		}
 		if dv.bpmDecBtn() != nil {
-			buttons.Set("bpmDec", rectToJS(dv.bpmDecBtn().Rect()))
+			setBtn("bpmDec", dv.bpmDecBtn().Rect())
 		}
 		if dv.addRowBtn() != nil {
-			buttons.Set("addRow", rectToJS(dv.addRowBtn().Rect()))
+			setBtn("addRow", dv.addRowBtn().Rect())
 		}
 		if dv.subdivBtn() != nil {
-			buttons.Set("subdiv", rectToJS(dv.subdivBtn().Rect()))
+			setBtn("subdiv", dv.subdivBtn().Rect())
 		}
 		if dv.lenIncBtn != nil {
-			buttons.Set("lenInc", rectToJS(dv.lenIncBtn.Rect()))
+			setBtn("lenInc", dv.lenIncBtn.Rect())
 		}
 		if dv.lenDecBtn != nil {
-			buttons.Set("lenDec", rectToJS(dv.lenDecBtn.Rect()))
+			setBtn("lenDec", dv.lenDecBtn.Rect())
 		}
 		if dv.trackBtn() != nil {
-			buttons.Set("track", rectToJS(dv.trackBtn().Rect()))
+			setBtn("track", dv.trackBtn().Rect())
 		}
 		if dv.uploadBtn() != nil {
-			buttons.Set("upload", rectToJS(dv.uploadBtn().Rect()))
+			setBtn("upload", dv.uploadBtn().Rect())
 		}
 		if dv.importBtn() != nil {
-			buttons.Set("import", rectToJS(dv.importBtn().Rect()))
+			setBtn("import", dv.importBtn().Rect())
 		}
 		if dv.exportBtn() != nil {
-			buttons.Set("export", rectToJS(dv.exportBtn().Rect()))
+			setBtn("export", dv.exportBtn().Rect())
 		}
 		if dv.overflowBtn() != nil {
-			buttons.Set("overflow", rectToJS(dv.overflowBtn().Rect()))
+			setBtn("overflow", dv.overflowBtn().Rect())
 		}
 		if dv.viewSwitchBtn() != nil {
-			buttons.Set("viewSwitch", rectToJS(dv.viewSwitchBtn().Rect()))
+			setBtn("viewSwitch", dv.viewSwitchBtn().Rect())
 		}
 		if dv.bpmBox() != nil {
-			buttons.Set("bpmBox", rectToJS(dv.bpmBox().Rect))
+			setBtn("bpmBox", dv.bpmBox().Rect)
 		}
 		if dv.mainVolSlider() != nil {
-			buttons.Set("mainVol", rectToJS(dv.mainVolSlider().Rect()))
+			setBtn("mainVol", dv.mainVolSlider().Rect())
 		}
 		if dv.eqToggleBtn() != nil {
-			buttons.Set("eqToggle", rectToJS(dv.eqToggleBtn().Rect()))
+			setBtn("eqToggle", dv.eqToggleBtn().Rect())
 		}
 		obj.Set("buttons", buttons)
 
 		// Widgets
 		widgets := js.Global().Get("Object").New()
 		if r, ok := dv.widgetRects[WidgetTransport]; ok {
+			// The transport widgetRect is the uncapped grid row-0 cell, which
+			// can be taller than the actual drawn transport bar: refreshWidgetLayout
+			// caps the header to headerH and starts the rack at Bounds.Min.Y+headerH,
+			// but never re-caps the transport rect's Max.Y. Reporting the uncapped
+			// rect makes the layout-parity overlap check see transport bleeding into
+			// the rack band (which the rack actually owns). Cap to the drawn bar so
+			// the snapshot matches what's on screen.
+			if capY := dv.Bounds.Min.Y + dv.headerH; r.Max.Y > capY {
+				r.Max.Y = capY
+			}
 			widgets.Set("transport", rectToJS(r))
 		}
 		if r, ok := dv.widgetRects[WidgetRack]; ok {

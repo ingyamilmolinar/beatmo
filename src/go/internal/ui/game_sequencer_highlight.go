@@ -9,7 +9,7 @@ import (
 func (g *Game) applySequencerHighlight(row, idx int, info model.BeatInfo) {
 	rows := len(g.drum.Rows)
 	if row < 0 || row >= rows {
-		g.logger.Warnf("[GAME] highlight row out of range: row=%d rows=%d idx=%d", row, rows, idx)
+		g.logger.Warnf("[game] highlight row out of range: row=%d rows=%d idx=%d", row, rows, idx)
 		return
 	}
 	// Guard against late/out-of-order highlights (e.g., a full hlCh) rewinding

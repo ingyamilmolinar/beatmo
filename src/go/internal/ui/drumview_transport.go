@@ -27,6 +27,12 @@ func (dv *DrumView) PlayPressed() bool {
 // SetPlaying updates the play button label to reflect playback state.
 func (dv *DrumView) SetPlaying(p bool) {
 	dv.isPlaying = p
+	// The subdivision selector is disabled during playback; if its menu is open
+	// when playback starts, close it so a stale selection can't slip through.
+	if p && dv.subdivMenuComp != nil && dv.subdivMenuComp.IsOpen() {
+		dv.subdivMenuComp.Close()
+		dv.closeSubdivMenuPortal()
+	}
 	if dv.transportZone != nil {
 		dv.transportZone.SetPlaying(p)
 		return
@@ -244,7 +250,7 @@ func (dv *DrumView) TrackBeat(cur int) {
 	if dv.Offset != desired {
 		dv.Offset = desired
 		dv.offsetChanged = true
-		dv.logger.Tracef("[DRUMVIEW/TRACK] cur=%d offset->%d", cur, dv.Offset)
+		dv.logger.Tracef("[drumview/track] cur=%d offset->%d", cur, dv.Offset)
 	} else if runningUnderGoTest() && trackBeatForceRefreshUnderTest {
 		// In tests, force a cache refresh to satisfy visibility assertions even
 		// when the offset stays within the current window.
@@ -415,7 +421,7 @@ func (dv *DrumView) CycleInstrument() {
 func (dv *DrumView) registerInstrument(id string) {
 	if id == "" {
 		dv.logger.Debugf("[drumview] ignored empty WAV name")
-		dv.notifyError(i18n.T(i18n.KeyNotifInstNameEmpty))
+		dv.notifyErrorKey(i18n.KeyNotifInstNameEmpty)
 		dv.pendingWAV = ""
 		dv.nameInput = ""
 		dv.nameBox = nil
@@ -450,15 +456,15 @@ func (dv *DrumView) registerInstrument(id string) {
 					// WAV onto an existing row does not re-tint it.
 				}
 			}
-			dv.notifyInfo(i18n.Tf(i18n.KeyNotifUpdatedWAVInst, canonicalID))
+			dv.notifyInfoKey(i18n.KeyNotifUpdatedWAVInst, canonicalID)
 		} else {
-			dv.notifyInfo(i18n.Tf(i18n.KeyNotifLoadedWAVInst, canonicalID))
+			dv.notifyInfoKey(i18n.KeyNotifLoadedWAVInst, canonicalID)
 		}
 		dv.logger.Debugf("[drumview] loaded user WAV %s (existing=%v)", canonicalID, existed)
 		emitCustomWAVLoaded(canonicalID, existed)
 	} else {
 		dv.logger.Errorf("[drumview] failed to load WAV: %v", err)
-		dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadWAV, err.Error()))
+		dv.notifyErrorKey(i18n.KeyNotifErrLoadWAV, err.Error())
 	}
 	dv.pendingWAV = ""
 	dv.nameInput = ""

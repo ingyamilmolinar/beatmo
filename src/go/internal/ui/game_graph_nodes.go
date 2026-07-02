@@ -33,7 +33,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 	selectingOrigin := (g.pendingStartRow >= 0)
 	importing := g.importing
 	if selectingOrigin {
-		g.logger.Debugf("[ORIGIN] placing node at grid=(%d,%d) nodeType=%v pendingRow=%d", i, j, nodeType, g.pendingStartRow)
+		g.logger.Debugf("[origin] placing node at grid=(%d,%d) nodeType=%v pendingRow=%d", i, j, nodeType, g.pendingStartRow)
 	}
 	if n := g.nodeAt(i, j); n != nil {
 		// If there's an invisible node here and we want a regular node,
@@ -60,7 +60,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 						g.start = n
 						g.graph.StartNodeID = n.ID
 					}
-					g.logger.Debugf("[ORIGIN] set origin row=%d to existing node id=%d grid=(%d,%d)", row, n.ID, n.I, n.J)
+					g.logger.Debugf("[origin] set origin row=%d to existing node id=%d grid=(%d,%d)", row, n.ID, n.I, n.J)
 					if !importing {
 						g.updateBeatInfos()
 					}
@@ -76,7 +76,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 				if !importing {
 					g.notifyPredictorNode(n.ID)
 				}
-				g.logger.Debugf("[GAME] Upgraded invisible node to regular at grid=(%d,%d)", i, j)
+				g.logger.Debugf("[game] Upgraded invisible node to regular at grid=(%d,%d)", i, j)
 				g.logger.Debugf("[game] node upgraded to regular id=%d grid=(%d,%d)", n.ID, i, j)
 				emitNodeTypeChanged(n.ID, model.NodeTypeInvisible, model.NodeTypeRegular)
 				if g.start == nil {
@@ -153,7 +153,7 @@ func (g *Game) tryAddNode(i, j int, nodeType model.NodeType) *uiNode {
 		g.stitchEdgesAt(n)
 	}
 	if selectingOrigin {
-		g.logger.Debugf("[ORIGIN] created node id=%d grid=(%d,%d) for row=%d (no stitch)", n.ID, n.I, n.J, g.pendingStartRow)
+		g.logger.Debugf("[origin] created node id=%d grid=(%d,%d) for row=%d (no stitch)", n.ID, n.I, n.J, g.pendingStartRow)
 	}
 	if !importing {
 		g.updateBeatInfos()

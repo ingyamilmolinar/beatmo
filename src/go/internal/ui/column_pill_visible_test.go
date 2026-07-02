@@ -72,7 +72,11 @@ func TestColumnPillVisibleOnDesktop(t *testing.T) {
 	screen := ebiten.NewImage(1200, 800)
 	dv.Draw(screen, nil, 0, nil, 0)
 
-	// Find the last opaque filled draw call that covers the pill center
+	// Find the last substantial filled draw call that covers the pill center.
+	// The splitter handle is now a gold (#FFB30A) fill at AlphaStrong (180),
+	// drawn on top of a faint glow halo — so the visibility floor is the
+	// handle's own alpha, not a hard 200. Anything at >= AlphaStrong counts
+	// (handle + opaque backgrounds); the faint halo (~0.3 alpha) is ignored.
 	pillPt := image.Pt(pillCX, pillCY)
 	lastFilledSeq := -1
 	var lastFilledColor color.Color
@@ -83,12 +87,8 @@ func TestColumnPillVisibleOnDesktop(t *testing.T) {
 		if !pillPt.In(c.rect) {
 			continue
 		}
-		// Check if this is an opaque fill (alpha >= 200)
-		r, g, b, a := c.col.RGBA()
-		_ = r
-		_ = g
-		_ = b
-		if a>>8 >= 200 {
+		_, _, _, a := c.col.RGBA()
+		if a>>8 >= uint32(genAlphaStrong) {
 			lastFilledSeq = c.seq
 			lastFilledColor = c.col
 		}
@@ -98,10 +98,10 @@ func TestColumnPillVisibleOnDesktop(t *testing.T) {
 		t.Fatal("no opaque filled draw call covers the pill center")
 	}
 
-	// The last opaque fill at the pill position should NOT be a background fill.
-	// It should be the pill handle itself (colSplitterHandle or similar).
-	// The rack surface fill is color.RGBA{22, 22, 28, 255} — a dark opaque color.
-	// The pill handle is color.NRGBA{200, 200, 210, 220} — a light color.
+	// The last substantial fill at the pill position should NOT be a background
+	// fill. It should be the pill handle itself (colSplitterHandle, gold
+	// #FFB30A). Background/divider fills are dark (R,G,B < 100 in 8-bit);
+	// the gold handle is light (R high).
 	lr, lg, lb, _ := lastFilledColor.RGBA()
 	// Background fills are dark (R,G,B < 50 in 8-bit). The pill handle is light (R,G,B > 150).
 	r8 := lr >> 8

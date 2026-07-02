@@ -52,8 +52,8 @@ func oracleRecipeIDs(t *testing.T) []string {
 		}
 	}
 	sort.Strings(ids)
-	if len(ids) != 25 {
-		t.Fatalf("expected 25 drum+fm oracle recipes, got %d: %v", len(ids), ids)
+	if len(ids) != 24 {
+		t.Fatalf("expected 24 drum+fm oracle recipes, got %d: %v", len(ids), ids)
 	}
 	return ids
 }
@@ -150,7 +150,7 @@ func oracleCases(recipeID string, defs []ParamDef) []oracleCase {
 // seam; the combo case additionally pins inter-param interactions against the
 // legacy bytes, so a migration with the wrong op order goes RED here.
 //
-// Bass (drum-sub-bass / drum-bass-guitar) has NO legacy renderer — its C path
+// Bass (drum-sub-bass) has NO legacy renderer — its C path
 // was deleted in the Phase-2 cutover — so those recipes are absent from this map
 // and their combo renders via the live (modular) recipe seam, self-pinning the
 // new contract. The kick family (drum-kick + deep/punchy/lofi/tight) followed in

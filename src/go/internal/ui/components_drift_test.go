@@ -65,10 +65,10 @@ func TestComponentSpecsDrift(t *testing.T) {
 		{"button-eq-mute-active ↔ EQMuteButtonActiveStyle", ComponentButtonEqMuteActive, color.RGBA{232, 74, 31, 255}, colBorderMedium},
 
 		// ── EQ filter active ──
-		{"button-eq-filter-active ↔ EQFilterButtonActiveStyle", ComponentButtonEqFilterActive, color.RGBA{0, 168, 201, 255}, color.RGBA{0, 200, 224, 255}},
+		{"button-eq-filter-active ↔ EQFilterButtonActiveStyle", ComponentButtonEqFilterActive, color.RGBA{255, 158, 31, 255}, color.RGBA{255, 179, 10, 255}},
 
 		// ── transport follow-on ──
-		{"button-transport-follow-on ↔ TransportFollowOnStyle", ComponentButtonTransportFollowOn, color.RGBA{40, 26, 64, 255}, color.NRGBA{63, 224, 232, 80}},
+		{"button-transport-follow-on ↔ TransportFollowOnStyle", ComponentButtonTransportFollowOn, colSurface3, colBorderSubtle},
 
 		// ── primary FAB ──
 		{"button-primary ↔ FABStyle", ComponentButtonPrimary, colAccent, color.NRGBA{255, 255, 255, 30}},

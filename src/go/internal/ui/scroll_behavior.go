@@ -18,6 +18,11 @@ type ScrollBehavior struct {
 	pixelAccum float64 // sub-item precision accumulator
 	dirty      bool    // true when VS.First changed since last ClearDirty
 
+	// Surface names the scrolled region for interaction telemetry
+	// (e.g. "inst-menu", "row-rack", "synth-grid"). Default "" renders as
+	// "scrolled" in the INFO log.
+	Surface string
+
 	// Opt-in "step-by-step" state (used by the synth ControlGrid and the row
 	// rack). These power WheelStep / StepDragTo and are independent of the
 	// continuous HandleWheel / HandleDragTo / HandleTouch* paths, so scrollbars
@@ -27,6 +32,7 @@ type ScrollBehavior struct {
 	stepDragging   bool // a stepped thumb drag is in progress
 	stepDragStartY int  // pointer Y at the start of the stepped drag
 	stepFirst      int  // VS.First at the start of the stepped drag
+	stepNatural    bool // invert drag direction so content follows the finger
 }
 
 // NewScrollBehavior creates a ScrollBehavior with the given style and item height.
@@ -44,6 +50,7 @@ func NewScrollBehavior(style ScrollbarStyle, itemHeight int) *ScrollBehavior {
 func (sb *ScrollBehavior) HandleWheel(steps int) bool {
 	if sb.VS.ScrollBy(-steps) {
 		sb.dirty = true
+		emitScroll(sb.Surface)
 		return true
 	}
 	return false
@@ -70,6 +77,8 @@ func (sb *ScrollBehavior) HandleDragTo(y int) bool {
 // HandleDragEnd ends the scrollbar drag.
 func (sb *ScrollBehavior) HandleDragEnd() {
 	sb.VS.EndDrag()
+	// Any drag-end means the scrollbar thumb was engaged — always emit.
+	emitScroll(sb.Surface)
 }
 
 // --- Step-by-step input (opt-in; see the stepCooldown/stepDragging fields) ---
@@ -119,6 +128,21 @@ func (sb *ScrollBehavior) BeginStepDrag(y int) bool {
 	sb.VS.dragging = true
 	sb.stepDragStartY = y
 	sb.stepFirst = sb.VS.First
+	sb.stepNatural = false
+	return true
+}
+
+// BeginStepDragNatural is BeginStepDrag with the direction inverted so the
+// CONTENT follows the finger (natural touch scrolling): dragging down slides the
+// content down and reveals earlier items, dragging up reveals later items. Use
+// this for a content/body grab; use BeginStepDrag for the scrollbar THUMB, where
+// the thumb itself must follow the finger. Returns false (no capture) when the
+// content does not scroll.
+func (sb *ScrollBehavior) BeginStepDragNatural(y int) bool {
+	if !sb.BeginStepDrag(y) {
+		return false
+	}
+	sb.stepNatural = true
 	return true
 }
 
@@ -130,6 +154,11 @@ func (sb *ScrollBehavior) StepDragTo(y, stepPx int) bool {
 		return false
 	}
 	rows := (y - sb.stepDragStartY) / stepPx
+	if sb.stepNatural {
+		// Content follows the finger: invert so dragging down reveals earlier
+		// items (First decreases) instead of advancing the list.
+		rows = -rows
+	}
 	newFirst := sb.stepFirst + rows
 	maxFirst := sb.VS.Total - sb.VS.Visible
 	if maxFirst < 0 {
@@ -153,6 +182,8 @@ func (sb *ScrollBehavior) StepDragTo(y, stepPx int) bool {
 func (sb *ScrollBehavior) EndStepDrag() {
 	sb.stepDragging = false
 	sb.VS.dragging = false
+	sb.stepNatural = false
+	emitScroll(sb.Surface)
 }
 
 // StepDragging reports whether a stepped thumb drag is in progress.
@@ -175,7 +206,11 @@ func (sb *ScrollBehavior) HandleTouchMove(x, y int) bool {
 
 // HandleTouchEnd ends the touch and captures velocity for momentum.
 func (sb *ScrollBehavior) HandleTouchEnd() {
+	committed := sb.TS.ScrollingCommitted()
 	sb.TS.End()
+	if committed {
+		emitScroll(sb.Surface)
+	}
 }
 
 // UpdateMomentum applies per-frame momentum decay. Returns true if VS.First changed.

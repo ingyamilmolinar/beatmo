@@ -94,8 +94,14 @@ func TestImportEmbeddedPCM(t *testing.T) {
 	}()
 
 	// Performance budget: this file must load quickly on the fast path.
-	const budget = 250 * time.Millisecond
-	if elapsed > budget {
-		t.Errorf("import too slow: %v > %v budget", elapsed, budget)
+	// Skip under coverage instrumentation (`make coverage-go`): the embedded-PCM
+	// gunzip is CPU-heavy, and per-statement coverage counters inflate wall-clock
+	// time well past the budget even though the real fast-path cost is fine.
+	// Timing assertions are meaningless when the binary is instrumented.
+	if testing.CoverMode() == "" {
+		const budget = 250 * time.Millisecond
+		if elapsed > budget {
+			t.Errorf("import too slow: %v > %v budget", elapsed, budget)
+		}
 	}
 }

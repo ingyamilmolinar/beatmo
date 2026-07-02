@@ -1,0 +1,1226 @@
+{
+  "version": 1,
+  "subdiv": 16,
+  "bpm": 70,
+  "instruments": [
+    {
+      "name": "Organ",
+      "id": "organ",
+      "kind": "builtin",
+      "volume": 0.8,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "reverb_send": 0.4,
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Pedal",
+      "id": "organ-2",
+      "kind": "builtin",
+      "volume": 0.78,
+      "origin": 94,
+      "color": "#00C8E0FF",
+      "reverb_send": 0.32,
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Strings",
+      "id": "violin-ensemble",
+      "kind": "builtin",
+      "volume": 0.5,
+      "origin": 104,
+      "color": "#FFD319FF",
+      "reverb_send": 0.4,
+      "synth_params": {
+        "pitch": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        1
+      ],
+      "pitch": 12,
+      "volume": 1,
+      "duration": 0.5
+    },
+    {
+      "id": 1,
+      "i": 4,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        2
+      ],
+      "pitch": 10,
+      "duration": 0.25
+    },
+    {
+      "id": 2,
+      "i": 8,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        3
+      ],
+      "pitch": 12,
+      "volume": 1,
+      "duration": 1.6
+    },
+    {
+      "id": 3,
+      "i": 32,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        4
+      ],
+      "pitch": 10,
+      "duration": 0.4
+    },
+    {
+      "id": 4,
+      "i": 36,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        5
+      ],
+      "pitch": 8,
+      "duration": 0.4
+    },
+    {
+      "id": 5,
+      "i": 40,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        6
+      ],
+      "pitch": 7,
+      "duration": 0.4
+    },
+    {
+      "id": 6,
+      "i": 44,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        7
+      ],
+      "pitch": 5,
+      "duration": 0.4
+    },
+    {
+      "id": 7,
+      "i": 48,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        8
+      ],
+      "pitch": 4,
+      "duration": 0.4
+    },
+    {
+      "id": 8,
+      "i": 52,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        9
+      ],
+      "pitch": 5,
+      "volume": 0.95,
+      "duration": 1.2
+    },
+    {
+      "id": 9,
+      "i": 64,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        10
+      ],
+      "volume": 1,
+      "duration": 0.5
+    },
+    {
+      "id": 10,
+      "i": 68,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        11
+      ],
+      "pitch": -2,
+      "duration": 0.25
+    },
+    {
+      "id": 11,
+      "i": 72,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        12
+      ],
+      "duration": 1.6
+    },
+    {
+      "id": 12,
+      "i": 96,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        13
+      ],
+      "pitch": -2,
+      "duration": 0.4
+    },
+    {
+      "id": 13,
+      "i": 100,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        14
+      ],
+      "pitch": -4,
+      "duration": 0.4
+    },
+    {
+      "id": 14,
+      "i": 104,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        15
+      ],
+      "pitch": -5,
+      "duration": 0.4
+    },
+    {
+      "id": 15,
+      "i": 108,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        16
+      ],
+      "pitch": -7,
+      "duration": 0.4
+    },
+    {
+      "id": 16,
+      "i": 112,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        17
+      ],
+      "pitch": -8,
+      "duration": 0.4
+    },
+    {
+      "id": 17,
+      "i": 116,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        18
+      ],
+      "pitch": -7,
+      "volume": 0.95,
+      "duration": 1.2
+    },
+    {
+      "id": 18,
+      "i": 128,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        19
+      ],
+      "pitch": 12
+    },
+    {
+      "id": 19,
+      "i": 128,
+      "j": 4,
+      "type": "regular",
+      "outputs": [
+        20
+      ],
+      "pitch": 10
+    },
+    {
+      "id": 20,
+      "i": 128,
+      "j": 8,
+      "type": "regular",
+      "outputs": [
+        21
+      ],
+      "pitch": 8
+    },
+    {
+      "id": 21,
+      "i": 128,
+      "j": 12,
+      "type": "regular",
+      "outputs": [
+        22
+      ],
+      "pitch": 7
+    },
+    {
+      "id": 22,
+      "i": 128,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        23
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 23,
+      "i": 128,
+      "j": 20,
+      "type": "regular",
+      "outputs": [
+        24
+      ],
+      "pitch": 3
+    },
+    {
+      "id": 24,
+      "i": 128,
+      "j": 24,
+      "type": "regular",
+      "outputs": [
+        25
+      ],
+      "pitch": 1
+    },
+    {
+      "id": 25,
+      "i": 128,
+      "j": 28,
+      "type": "regular",
+      "outputs": [
+        26
+      ]
+    },
+    {
+      "id": 26,
+      "i": 128,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        27
+      ],
+      "pitch": -2
+    },
+    {
+      "id": 27,
+      "i": 128,
+      "j": 36,
+      "type": "regular",
+      "outputs": [
+        28
+      ],
+      "pitch": -4
+    },
+    {
+      "id": 28,
+      "i": 128,
+      "j": 40,
+      "type": "regular",
+      "outputs": [
+        29
+      ],
+      "pitch": -5
+    },
+    {
+      "id": 29,
+      "i": 128,
+      "j": 44,
+      "type": "regular",
+      "outputs": [
+        30
+      ],
+      "pitch": -7
+    },
+    {
+      "id": 30,
+      "i": 128,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        31
+      ],
+      "pitch": -9
+    },
+    {
+      "id": 31,
+      "i": 128,
+      "j": 52,
+      "type": "regular",
+      "outputs": [
+        32
+      ],
+      "pitch": -11
+    },
+    {
+      "id": 32,
+      "i": 128,
+      "j": 56,
+      "type": "regular",
+      "outputs": [
+        33
+      ],
+      "pitch": -12,
+      "duration": 0.6
+    },
+    {
+      "id": 33,
+      "i": 128,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        34
+      ],
+      "pitch": 4,
+      "duration": 0.4
+    },
+    {
+      "id": 34,
+      "i": 128,
+      "j": 68,
+      "type": "regular",
+      "outputs": [
+        35
+      ],
+      "pitch": 7,
+      "duration": 0.4
+    },
+    {
+      "id": 35,
+      "i": 128,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        36
+      ],
+      "pitch": 10,
+      "duration": 0.4
+    },
+    {
+      "id": 36,
+      "i": 128,
+      "j": 76,
+      "type": "regular",
+      "outputs": [
+        37
+      ],
+      "pitch": 13,
+      "duration": 0.4
+    },
+    {
+      "id": 37,
+      "i": 128,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        38
+      ],
+      "pitch": 12,
+      "volume": 1,
+      "duration": 0.6
+    },
+    {
+      "id": 38,
+      "i": 128,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        39
+      ],
+      "pitch": 5,
+      "duration": 0.4
+    },
+    {
+      "id": 39,
+      "i": 128,
+      "j": 100,
+      "type": "regular",
+      "outputs": [
+        40
+      ],
+      "pitch": 8,
+      "duration": 0.4
+    },
+    {
+      "id": 40,
+      "i": 128,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        41
+      ],
+      "pitch": 12,
+      "duration": 0.4
+    },
+    {
+      "id": 41,
+      "i": 128,
+      "j": 108,
+      "type": "regular",
+      "outputs": [
+        42
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 42,
+      "i": 128,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        43
+      ],
+      "pitch": 12,
+      "volume": 1,
+      "duration": 2
+    },
+    {
+      "id": 43,
+      "i": 128,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        44
+      ]
+    },
+    {
+      "id": 44,
+      "i": 124,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        45
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 45,
+      "i": 120,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        46
+      ],
+      "pitch": 8
+    },
+    {
+      "id": 46,
+      "i": 116,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        47
+      ],
+      "pitch": 12
+    },
+    {
+      "id": 47,
+      "i": 112,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        48
+      ],
+      "pitch": 8
+    },
+    {
+      "id": 48,
+      "i": 108,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        49
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 49,
+      "i": 104,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        50
+      ]
+    },
+    {
+      "id": 50,
+      "i": 100,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        51
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 51,
+      "i": 96,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        52
+      ]
+    },
+    {
+      "id": 52,
+      "i": 92,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        53
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 53,
+      "i": 88,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        54
+      ],
+      "pitch": 8
+    },
+    {
+      "id": 54,
+      "i": 84,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        55
+      ],
+      "pitch": 12
+    },
+    {
+      "id": 55,
+      "i": 80,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        56
+      ],
+      "pitch": 8
+    },
+    {
+      "id": 56,
+      "i": 76,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        57
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 57,
+      "i": 72,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        58
+      ]
+    },
+    {
+      "id": 58,
+      "i": 68,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        59
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 59,
+      "i": 64,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        60
+      ],
+      "pitch": -2
+    },
+    {
+      "id": 60,
+      "i": 60,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        61
+      ],
+      "pitch": 1
+    },
+    {
+      "id": 61,
+      "i": 56,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        62
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 62,
+      "i": 52,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        63
+      ],
+      "pitch": 10
+    },
+    {
+      "id": 63,
+      "i": 48,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        64
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 64,
+      "i": 44,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        65
+      ],
+      "pitch": 1
+    },
+    {
+      "id": 65,
+      "i": 40,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        66
+      ],
+      "pitch": -2
+    },
+    {
+      "id": 66,
+      "i": 36,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        67
+      ],
+      "pitch": 1
+    },
+    {
+      "id": 67,
+      "i": 32,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        68
+      ],
+      "pitch": -2
+    },
+    {
+      "id": 68,
+      "i": 28,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        69
+      ],
+      "pitch": 1
+    },
+    {
+      "id": 69,
+      "i": 24,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        70
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 70,
+      "i": 20,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        71
+      ],
+      "pitch": 10
+    },
+    {
+      "id": 71,
+      "i": 16,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        72
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 72,
+      "i": 12,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        73
+      ],
+      "pitch": 1
+    },
+    {
+      "id": 73,
+      "i": 8,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        74
+      ],
+      "pitch": -2
+    },
+    {
+      "id": 74,
+      "i": 4,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        75
+      ],
+      "pitch": 1
+    },
+    {
+      "id": 75,
+      "i": 0,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        76
+      ],
+      "pitch": -12
+    },
+    {
+      "id": 76,
+      "i": 0,
+      "j": 124,
+      "type": "regular",
+      "outputs": [
+        77
+      ],
+      "pitch": -9
+    },
+    {
+      "id": 77,
+      "i": 0,
+      "j": 120,
+      "type": "regular",
+      "outputs": [
+        78
+      ],
+      "pitch": -7
+    },
+    {
+      "id": 78,
+      "i": 0,
+      "j": 116,
+      "type": "regular",
+      "outputs": [
+        79
+      ],
+      "pitch": -5
+    },
+    {
+      "id": 79,
+      "i": 0,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        80
+      ],
+      "pitch": -4
+    },
+    {
+      "id": 80,
+      "i": 0,
+      "j": 108,
+      "type": "regular",
+      "outputs": [
+        81
+      ],
+      "pitch": -2
+    },
+    {
+      "id": 81,
+      "i": 0,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        82
+      ]
+    },
+    {
+      "id": 82,
+      "i": 0,
+      "j": 100,
+      "type": "regular",
+      "outputs": [
+        83
+      ],
+      "pitch": 3
+    },
+    {
+      "id": 83,
+      "i": 0,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        84
+      ],
+      "pitch": 5
+    },
+    {
+      "id": 84,
+      "i": 0,
+      "j": 92,
+      "type": "regular",
+      "outputs": [
+        85
+      ],
+      "pitch": 7
+    },
+    {
+      "id": 85,
+      "i": 0,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        86
+      ],
+      "pitch": 8
+    },
+    {
+      "id": 86,
+      "i": 0,
+      "j": 84,
+      "type": "regular",
+      "outputs": [
+        87
+      ],
+      "pitch": 10
+    },
+    {
+      "id": 87,
+      "i": 0,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        88
+      ],
+      "pitch": 12
+    },
+    {
+      "id": 88,
+      "i": 0,
+      "j": 76,
+      "type": "regular",
+      "outputs": [
+        89
+      ],
+      "pitch": 15
+    },
+    {
+      "id": 89,
+      "i": 0,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        90
+      ],
+      "pitch": 17
+    },
+    {
+      "id": 90,
+      "i": 0,
+      "j": 68,
+      "type": "regular",
+      "outputs": [
+        91
+      ],
+      "pitch": 19
+    },
+    {
+      "id": 91,
+      "i": 0,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        92
+      ],
+      "pitch": 12,
+      "volume": 1,
+      "duration": 0.5
+    },
+    {
+      "id": 92,
+      "i": 0,
+      "j": 60,
+      "type": "regular",
+      "outputs": [
+        93
+      ],
+      "pitch": 10,
+      "duration": 0.25
+    },
+    {
+      "id": 93,
+      "i": 0,
+      "j": 56,
+      "type": "regular",
+      "outputs": [
+        0
+      ],
+      "pitch": 12,
+      "volume": 1,
+      "duration": 2
+    },
+    {
+      "id": 94,
+      "i": 0,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        95
+      ],
+      "pitch": -19,
+      "volume": 0.85,
+      "duration": 4
+    },
+    {
+      "id": 95,
+      "i": 64,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        96
+      ],
+      "pitch": -19,
+      "volume": 0.85,
+      "duration": 4
+    },
+    {
+      "id": 96,
+      "i": 128,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        97
+      ],
+      "pitch": -19,
+      "volume": 0.85,
+      "duration": 4
+    },
+    {
+      "id": 97,
+      "i": 128,
+      "j": 200,
+      "type": "regular",
+      "outputs": [
+        98
+      ],
+      "pitch": -20,
+      "volume": 0.8,
+      "duration": 2
+    },
+    {
+      "id": 98,
+      "i": 128,
+      "j": 232,
+      "type": "regular",
+      "outputs": [
+        99
+      ],
+      "pitch": -19,
+      "volume": 0.9,
+      "duration": 2
+    },
+    {
+      "id": 99,
+      "i": 128,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        100
+      ],
+      "pitch": -19,
+      "volume": 0.8,
+      "duration": 4
+    },
+    {
+      "id": 100,
+      "i": 64,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        101
+      ],
+      "pitch": -14,
+      "volume": 0.8,
+      "duration": 4
+    },
+    {
+      "id": 101,
+      "i": 0,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        102
+      ],
+      "pitch": -19,
+      "volume": 0.8,
+      "duration": 4
+    },
+    {
+      "id": 102,
+      "i": 0,
+      "j": 200,
+      "type": "regular",
+      "outputs": [
+        103
+      ],
+      "pitch": -12,
+      "volume": 0.85,
+      "duration": 2
+    },
+    {
+      "id": 103,
+      "i": 0,
+      "j": 168,
+      "type": "regular",
+      "outputs": [
+        94
+      ],
+      "pitch": -19,
+      "volume": 0.9,
+      "duration": 2
+    },
+    {
+      "id": 104,
+      "i": 0,
+      "j": 272,
+      "type": "silent",
+      "outputs": [
+        105
+      ]
+    },
+    {
+      "id": 105,
+      "i": 128,
+      "j": 272,
+      "type": "silent",
+      "outputs": [
+        106
+      ]
+    },
+    {
+      "id": 106,
+      "i": 128,
+      "j": 336,
+      "type": "regular",
+      "outputs": [
+        107
+      ],
+      "volume": 0.55,
+      "duration": 2
+    },
+    {
+      "id": 107,
+      "i": 128,
+      "j": 368,
+      "type": "regular",
+      "outputs": [
+        108
+      ],
+      "pitch": 5,
+      "volume": 0.6,
+      "duration": 2
+    },
+    {
+      "id": 108,
+      "i": 128,
+      "j": 400,
+      "type": "regular",
+      "outputs": [
+        109
+      ],
+      "pitch": -4,
+      "volume": 0.5,
+      "duration": 4
+    },
+    {
+      "id": 109,
+      "i": 64,
+      "j": 400,
+      "type": "regular",
+      "outputs": [
+        110
+      ],
+      "pitch": 1,
+      "volume": 0.5,
+      "duration": 4
+    },
+    {
+      "id": 110,
+      "i": 0,
+      "j": 400,
+      "type": "regular",
+      "outputs": [
+        111
+      ],
+      "volume": 0.55,
+      "duration": 4
+    },
+    {
+      "id": 111,
+      "i": 0,
+      "j": 336,
+      "type": "regular",
+      "outputs": [
+        104
+      ],
+      "pitch": 5,
+      "volume": 0.6,
+      "duration": 4
+    }
+  ]
+}

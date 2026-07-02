@@ -55,7 +55,7 @@ func nonBgInkArea(rects []drawnRect) int {
 // TestConceptRendererForGroup_TotalCoverage — every param group resolves to a
 // non-nil concept renderer (the registry is total).
 func TestConceptRendererForGroup_TotalCoverage(t *testing.T) {
-	groups := []string{"osc", "filter", "env", "fm", "post", "pitch", "lfo", "burst", "core", "generic", "voice", ""}
+	groups := []string{"osc", "filter", "filtenv", "env", "fm", "post", "pitch", "lfo", "burst", "unison", "core", "generic", "voice", ""}
 	for _, g := range groups {
 		if conceptRendererForGroup(g) == nil {
 			t.Errorf("group %q has no concept renderer", g)

@@ -4,7 +4,7 @@ package ui
 func (dv *DrumView) SetBeatLength(length int) {
 	if dv.Graph != nil {
 		dv.Graph.SetBeatLength(length)
-		dv.logger.Debugf("[DRUMVIEW] Graph beat length set to: %d", length)
+		dv.logger.Debugf("[drumview] Graph beat length set to: %d", length)
 	}
 	// Do not change the visual timeline scale while playing to avoid jumps
 	// in the cursor position. The header can be updated after Stop.

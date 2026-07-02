@@ -13,8 +13,8 @@ func TestImportButtonFlowCallsOnImport(t *testing.T) {
 	// Override the async picker to immediately return a tiny JSON
 	old := selectJSONAsyncFn
 	defer func() { selectJSONAsyncFn = old }()
-	selectJSONAsyncFn = func(cb func([]byte, error)) {
-		cb([]byte(`{"version":1,"subdiv":32,"bpm":120,"instruments":[],"nodes":[]}`), nil)
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {
+		cb([]byte(`{"version":1,"subdiv":32,"bpm":120,"instruments":[],"nodes":[]}`), "", nil)
 	}
 
 	g := New(testLogger)
@@ -24,7 +24,7 @@ func TestImportButtonFlowCallsOnImport(t *testing.T) {
 	})
 	g.Layout(640, 480)
 	called := false
-	g.drum.onImport = func(b []byte) error {
+	g.drum.onImport = func(b []byte, _ string) error {
 		var m map[string]any
 		_ = json.Unmarshal(b, &m)
 		called = true
@@ -44,7 +44,7 @@ func TestImportCancelUnblocksAfterTimeout(t *testing.T) {
 	// Override the picker to do nothing (simulate cancel with no change event)
 	old := selectJSONAsyncFn
 	defer func() { selectJSONAsyncFn = old }()
-	selectJSONAsyncFn = func(cb func([]byte, error)) {}
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {}
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -66,7 +66,7 @@ func TestImportCancelUnblocksAfterTimeout(t *testing.T) {
 	}
 	// Next click should be allowed again
 	tries := 0
-	selectJSONAsyncFn = func(cb func([]byte, error)) { tries++ }
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) { tries++ }
 	g.drum.importBtn().OnClick()
 	if tries == 0 {
 		t.Fatalf("import click did not invoke picker after timeout release")
@@ -78,7 +78,7 @@ func TestImportButtonIgnoredWhileImporting(t *testing.T) {
 	tries := 0
 	old := selectJSONAsyncFn
 	defer func() { selectJSONAsyncFn = old }()
-	selectJSONAsyncFn = func(cb func([]byte, error)) { tries++ }
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) { tries++ }
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -104,7 +104,7 @@ func TestImportButtonIgnoredWhileNaming(t *testing.T) {
 	tries := 0
 	old := selectJSONAsyncFn
 	defer func() { selectJSONAsyncFn = old }()
-	selectJSONAsyncFn = func(cb func([]byte, error)) { tries++ }
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) { tries++ }
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -127,7 +127,7 @@ func TestImportButtonIgnoredWhileUploading(t *testing.T) {
 	tries := 0
 	old := selectJSONAsyncFn
 	defer func() { selectJSONAsyncFn = old }()
-	selectJSONAsyncFn = func(cb func([]byte, error)) { tries++ }
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) { tries++ }
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

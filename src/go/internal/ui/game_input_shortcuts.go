@@ -122,14 +122,14 @@ func (g *Game) undoShortcut() bool {
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
 	if isKeyJustPressed(ebiten.KeyZ) {
 		if shift {
-			g.undoManager.Redo()
+			g.performRedo()
 		} else {
-			g.undoManager.Undo()
+			g.performUndo()
 		}
 		return true
 	}
 	if isKeyJustPressed(ebiten.KeyY) {
-		g.undoManager.Redo()
+		g.performRedo()
 		return true
 	}
 	return false
@@ -249,10 +249,11 @@ func (g *Game) handleGlobalShortcuts() {
 }
 
 // gridHelpButtonRect is the screen-space rect of the settings gear button in
-// the grid pane's top-right corner. Empty on mobile (the settings overlay is
-// desktop-only) or before the button exists.
+// the grid pane's top-right corner. Present on both desktop and mobile (the gear
+// is the single Settings entry point on every platform). Empty before the button
+// exists.
 func (g *Game) gridHelpButtonRect() image.Rectangle {
-	if g.gridHelpBtn == nil || Profile().IsMobile() {
+	if g.gridHelpBtn == nil {
 		return image.Rectangle{}
 	}
 	const sz = 30
@@ -298,13 +299,18 @@ func (dv *DrumView) openSettingsOverlay() {
 	p.Open(PortalEntry{
 		ID: settingsOverlayID,
 		Overlay: NewSettingsOverlay(func(l i18n.Locale) {
+			old := i18n.ActiveLocale()
 			i18n.SetLocale(l)
 			persistLanguage(l)
+			emitLanguageChanged(old.String(), l.String())
 		}),
-		// The overlay paints its own full-screen scrim + centers itself, so
-		// the portal scrim is left off. Non-modal: a click outside the panel
-		// routes through the tree's click-outside → CloseTop.
-		Modal: false,
+		// Modal: the settings panel owns all input while open — presses outside
+		// it are filtered out by the HitIndex modal filter (so grid taps / camera
+		// pans never fire behind the panel) and PortalHasBlocking() suppresses the
+		// out-of-tree gesture handlers. The user closes it via the X button or Esc.
+		// The overlay paints its own full-screen scrim + centers itself, so the
+		// portal scrim is left off (avoids double-dimming).
+		Modal: true,
 		Scrim: false,
 	})
 }

@@ -6,6 +6,7 @@ package ui
 func (g *Game) initJS() {
 	softKeyboardInit()
 	filePickerInit()
+	g.initFilePickerActions()
 	g.initJSPlaybackPerf()
 	g.initJSEqWidgets()
 	g.initJSTimelinePredictor()
@@ -18,4 +19,5 @@ func (g *Game) initJS() {
 	g.initMediaSessionExports()
 	g.initJSScenes()
 	g.initJSDiag()
+	g.initJSSlimBarDiag()
 }

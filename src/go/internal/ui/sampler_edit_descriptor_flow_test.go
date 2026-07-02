@@ -14,6 +14,24 @@ import (
 // stays the source of truth and later synth changes always take effect.
 // Only WAV sources bake PCM.
 
+// sampleEditApproxEqual compares two SampleEdits with a tolerance on the float
+// fields (trim fractions, pitch, gain, fades) and exact on the bool flags. Used
+// where the reverse trim-mirror introduces sub-ulp float drift on round-trip.
+func sampleEditApproxEqual(a, b audio.SampleEdit, eps float64) bool {
+	close := func(x, y float64) bool {
+		d := x - y
+		if d < 0 {
+			d = -d
+		}
+		return d <= eps
+	}
+	return close(a.StartFrac, b.StartFrac) && close(a.EndFrac, b.EndFrac) &&
+		close(a.TransposeSemis, b.TransposeSemis) && close(a.DetuneCents, b.DetuneCents) &&
+		close(float64(a.GainDB), float64(b.GainDB)) &&
+		close(a.FadeInMs, b.FadeInMs) && close(a.FadeOutMs, b.FadeOutMs) &&
+		a.Reverse == b.Reverse && a.Normalize == b.Normalize
+}
+
 // cleanupSamplerEditState snapshots and restores the global audio state the
 // sampler Save flow mutates (TEST GOTCHA: save() writes GLOBAL maps).
 func cleanupSamplerEditState(t *testing.T, instID string) {
@@ -62,31 +80,39 @@ func TestSamplerSaveOnSynthKeepsBindingAndStoresDescriptor(t *testing.T) {
 	}
 }
 
-func TestSamplerSaveOnWAVStillBakesPCM(t *testing.T) {
+// TestSamplerSaveOnWAVStoresDescriptorNonDestructively: a WAV / user-sample
+// Save is now NON-DESTRUCTIVE and real-time, mirroring the synth path. It stores
+// the edit as a descriptor (already live via commitSamplerEdit), KEEPS the
+// pristine source PCM, and re-registers the BAKED buffer for playback — it does
+// NOT replace the stored PCM with a baked one. Replaces the old bake-only test.
+func TestSamplerSaveOnWAVStoresDescriptorNonDestructively(t *testing.T) {
 	assertDefaultParityState(t)
 	const id = "user.sample.wavsave"
 	cleanupSamplerEditState(t, id)
 
-	s := &samplerState{}
-	s.reset()
 	pcm := make([]float32, 800)
 	for i := range pcm {
 		pcm[i] = 0.5
 	}
-	s.loadPCM(pcm, 48000)
-	s.captureID = id
+	// ensureSamplerLoaded seeds the pristine PCM into the store; mirror that.
+	audio.PutUserSample(id, pcm, 48000)
+
+	s := &samplerState{}
+	s.reset()
+	s.loadFromInstrument(id, append([]float32(nil), pcm...), 48000, samplerSourceWAV)
 	s.startFrac = 0.25
 	s.save()
 
+	if !audio.HasSampleEdit(id) {
+		t.Error("WAV-source Save must store the sample-edit descriptor (real-time, non-destructive)")
+	}
 	rec, ok := audio.UserSamplePCM(id)
-	if !ok || len(rec.PCM) == 0 {
-		t.Fatal("WAV-source Save must keep the baked-PCM path")
+	if !ok || len(rec.PCM) != 800 {
+		t.Errorf("WAV-source Save must KEEP the pristine PCM (len=%d, want 800), not bake over it", len(rec.PCM))
 	}
-	if len(rec.PCM) != 600 {
-		t.Errorf("baked len=%d, want 600 (quarter-trimmed 800)", len(rec.PCM))
-	}
-	if audio.HasSampleEdit(id) {
-		t.Error("WAV-source Save must not store a descriptor")
+	reg, ok := audio.LastRegisteredSamplePCMForTest(id)
+	if !ok || len(reg.PCM) != 600 {
+		t.Errorf("WAV-source Save must re-register the baked playable buffer (len=%d, want 600 — quarter-trimmed 800)", len(reg.PCM))
 	}
 }
 
@@ -106,7 +132,11 @@ func TestSamplerEnsureLoadedRestoresDescriptorIntoEditor(t *testing.T) {
 	if s.source != samplerSourceSynth {
 		t.Fatalf("source=%v, want synth (descriptor keeps the synth source of truth)", s.source)
 	}
-	if got := s.editDescriptor(); got != want {
+	// Tolerance compare: a reversed descriptor's trim is mirrored to the display
+	// frame on load and back to the source frame on save (editDescriptor), and the
+	// 1-x mirror is not exactly self-inverse in float64 (1-(1-0.2) ≈ 0.2 to ~1e-16).
+	// The round-trip is faithful well below a single sample, so compare with eps.
+	if got := s.editDescriptor(); !sampleEditApproxEqual(got, want, 1e-9) {
 		t.Errorf("editor state after load = %+v, want the saved descriptor %+v", got, want)
 	}
 	if !s.fadeOn || !s.normalize {

@@ -41,7 +41,7 @@ import (
 // no-edit native fast path is renderClapVoice (snare_modular_native.go).
 
 // renderBassGuitar / renderSubBass deleted — the bass family migrated to the
-// modular engine (Phase-2). The no-edit native fast path is renderBassGuitarVoice
+// modular engine (Phase-2). The no-edit native fast path is renderSubBassVoice
 // / renderSubBassVoice (bass_modular_native.go), which renders the baked
 // recipe-default ModularParams through render_modular_p.
 

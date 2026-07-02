@@ -514,7 +514,15 @@ function processAudioEvent(ev, ctx) {
   const vol = Number.isFinite(ev.vol) ? ev.vol : 1.0;
   const pitch = Number.isFinite(ev.pitch) ? ev.pitch : 0.0;
   const dur = Number.isFinite(ev.dur) && ev.dur > 0 ? ev.dur : 1.0;
-  const rate = Math.pow(2, pitch / 12) / dur;
+  // Melodic instruments re-render at the played pitch (desktop parity), so the
+  // BufferSource only needs the RESIDUAL pitch ratio (rounded → integer/half-
+  // semitone, so ≈1.0) plus the duration scale. Non-melodic (drums, FM, base
+  // modular) keep the full resample rate exactly as before (byte-identical).
+  const melodic = isMelodicInstrument(id);
+  const roundedPitch = melodic ? roundPitchForCache(pitch) : 0;
+  const residualPitch = melodic ? (pitch - roundedPitch) : pitch;
+  const rate = Math.pow(2, residualPitch / 12) / dur;
+  const cacheKey = melodic ? cacheKeyFor(id, roundedPitch) : id;
   const now = ctx.currentTime || 0;
   let when = Number.isFinite(ev.when) ? ev.when : NaN;
   const minWhen = now + AUDIO_MIN_LEAD_SEC;
@@ -523,12 +531,12 @@ function processAudioEvent(ev, ctx) {
   } else if (when < minWhen) {
     when = minWhen;
   }
-  const render = renderCache.get(id);
+  const render = renderCache.get(cacheKey);
   if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch && window.__synthEvtTrace) {
-    console.log('[SYNTH-EVT]', { id, cached: !!render, hasRENDER: !!RENDER[id], vol, pitch, dur, rate, when, now, params: instrumentParamsFor(id) });
+    console.log('[SYNTH-EVT]', { id, cacheKey, cached: !!render, hasRENDER: !!RENDER[id], vol, pitch, roundedPitch, dur, rate, when, now, params: instrumentParamsFor(id) });
   }
   if (!render && RENDER[id]) {
-    ensureRenderReady(id).then(() => {
+    ensureRenderReady(id, melodic ? roundedPitch : undefined).then(() => {
       // Omit `when` so the event plays at current time instead of the
       // original (now stale) timestamp that was computed before the
       // sample finished rendering.
@@ -538,7 +546,7 @@ function processAudioEvent(ev, ctx) {
   }
   if (render) {
     // Lazily create the AudioBuffer from cached Float32Array on first play.
-    const buf = render.buffer || ensureAudioBuffer(id);
+    const buf = render.buffer || ensureAudioBuffer(id, cacheKey);
     if (!buf) {
       dbg('audio.render.nobuf', { id });
       return;
@@ -884,6 +892,126 @@ async function ensureModule() {
   return mod;
 }
 
+// ───────── Off-main-thread synth rendering (WASM perf fix) ─────────
+// The C voice renderers (render_modular_p, render_X, …) are synchronous and
+// cost ~30–40 ms for a 2 s melodic / physical-model voice. Running them via
+// ccall on the main thread blocked the UI + audio scheduler whenever a live
+// param edit invalidated the render cache mid-playback (the user-reported
+// "lag / jitter / audio breaks" — see webaudio_synth_param_stress.browser
+// .test.js). synth_render_worker.js hosts a SECOND instance of the SINGLE_FILE
+// DSP module and renders off-thread; the main thread builds the flat param
+// block (the param-ABI lives in one place) and awaits a transferred buffer.
+//
+// The renderers read ALL input through args (sr / frames / param block) — no
+// JS-side global state — so the worker's module produces identical output. If
+// the worker is unavailable (no Worker support, init failure, hung render) the
+// code falls back to the original synchronous main-thread ccall, so behaviour
+// degrades to "pre-fix" rather than breaking.
+let synthRenderWorker = null;
+let synthWorkerDisabled = false;
+let synthWorkerReqSeq = 0;
+const synthWorkerPending = new Map();
+const SYNTH_WORKER_RENDER_TIMEOUT_MS = 4000;
+
+function ensureSynthRenderWorker() {
+  if (synthRenderWorker) return synthRenderWorker;
+  if (synthWorkerDisabled) return null;
+  if (typeof Worker === 'undefined') { synthWorkerDisabled = true; return null; }
+  try {
+    const w = new Worker(new URL('./synth_render_worker.js', import.meta.url), { type: 'module' });
+    w.onmessage = (ev) => {
+      const msg = ev.data || {};
+      if (msg.type === 'rendered') {
+        const p = synthWorkerPending.get(msg.reqId);
+        if (p) { synthWorkerPending.delete(msg.reqId); if (p.t) clearTimeout(p.t); p.resolve(msg.data); }
+      } else if (msg.type === 'error') {
+        const p = synthWorkerPending.get(msg.reqId);
+        if (p) { synthWorkerPending.delete(msg.reqId); if (p.t) clearTimeout(p.t); p.reject(new Error(msg.err || 'worker render error')); }
+      } else if (msg.type === 'ready') {
+        dbg('synth.worker.ready');
+      } else if (msg.type === 'initerror') {
+        synthWorkerDisabled = true;
+        dbg('synth.worker.initerror', { err: msg.err });
+        rejectAllSynthWorkerPending(new Error('worker init failed: ' + msg.err));
+      }
+    };
+    w.onerror = (e) => {
+      synthWorkerDisabled = true;
+      dbg('synth.worker.error', { err: String(e && e.message ? e.message : e) });
+      rejectAllSynthWorkerPending(new Error('worker error: ' + String(e && e.message ? e.message : e)));
+    };
+    synthRenderWorker = w;
+    return w;
+  } catch (e) {
+    synthWorkerDisabled = true;
+    dbg('synth.worker.create.error', { err: String(e) });
+    return null;
+  }
+}
+
+function rejectAllSynthWorkerPending(err) {
+  for (const [, p] of synthWorkerPending) { if (p.t) clearTimeout(p.t); try { p.reject(err); } catch (_) {} }
+  synthWorkerPending.clear();
+}
+
+// renderVoiceInWorker posts a render request and resolves with the rendered
+// Float32Array (length === frames). Rejects if the worker is unavailable, errors,
+// or does not answer within the timeout — callers fall back to a sync render.
+// The param block is structured-cloned (NOT transferred) so the caller keeps it
+// for the synchronous fallback path.
+function renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount) {
+  const w = ensureSynthRenderWorker();
+  if (!w) return Promise.reject(new Error('synth render worker unavailable'));
+  return new Promise((resolve, reject) => {
+    const reqId = ++synthWorkerReqSeq;
+    const t = setTimeout(() => {
+      if (synthWorkerPending.has(reqId)) {
+        synthWorkerPending.delete(reqId);
+        reject(new Error('synth render worker timeout'));
+      }
+    }, SYNTH_WORKER_RENDER_TIMEOUT_MS);
+    synthWorkerPending.set(reqId, { resolve, reject, t });
+    try {
+      w.postMessage({ type: 'render', reqId, renderFn, sr, frames, allocCount: allocCount || 0, params: paramArr || null });
+    } catch (e) {
+      synthWorkerPending.delete(reqId); clearTimeout(t); reject(e);
+    }
+  });
+}
+
+// renderVoiceSync is the original synchronous main-thread render, used as the
+// fallback when the worker is unavailable and to preserve the parameterized →
+// native resilience path. Returns a freshly-copied Float32Array (length frames).
+function renderVoiceSync(m, renderFn, sr, frames, paramArr, allocCount) {
+  const ptr = m._malloc(frames * 4);
+  if (!ptr) throw new Error('Failed to allocate memory for audio buffer.');
+  let paramsPtr = 0;
+  try {
+    if (paramArr) {
+      const count = Math.max(paramArr.length, allocCount || 0);
+      paramsPtr = m._malloc(count * 4);
+      if (!paramsPtr) throw new Error('Failed to allocate memory for param block.');
+      const pheap = m.HEAPF32.subarray(paramsPtr >> 2, (paramsPtr >> 2) + count);
+      pheap.fill(0);
+      pheap.set(paramArr);
+      m.ccall(renderFn, null, ['number', 'number', 'number', 'number'], [ptr, sr, frames, paramsPtr]);
+    } else {
+      m.ccall(renderFn, null, ['number', 'number', 'number'], [ptr, sr, frames]);
+    }
+    const heap = m.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + frames);
+    const data = new Float32Array(frames);
+    data.set(heap);
+    return data;
+  } finally {
+    m._free(ptr);
+    if (paramsPtr) m._free(paramsPtr);
+  }
+}
+
+// Pre-warm the off-thread synth renderer so the first live render is ready to
+// go off-main-thread (no first-note main-thread stall). Best-effort.
+try { ensureSynthRenderWorker(); } catch (_) {}
+
 const RENDER = {
   // Snare family migrated to the unified modular engine (Phase-5). Render through
   // render_modular / render_modular_p; the binding-translated modular default
@@ -911,7 +1039,6 @@ const RENDER = {
   // Render through render_modular / render_modular_p; the binding-translated
   // modular default block is seeded into JS at bootstrap (seedInstrumentDefaults)
   // and per-edit pushes carry modular-named params (synth_recipe_wasm.go seam).
-  'bass-guitar': 'render_modular',
   'sub-bass': 'render_modular',
   // Variant set 1: slightly brighter/tighter flavours.
   'snare-1': 'render_modular',
@@ -920,7 +1047,6 @@ const RENDER = {
   'tom-1': 'render_modular',
   'clap-1': 'render_modular',
   'cowbell-1': 'render_modular',
-  'bass-guitar-1': 'render_modular',
   'sub-bass-1': 'render_modular',
   // Variant set 2: more obviously digital/lofi flavours.
   'snare-2': 'render_modular',
@@ -960,6 +1086,56 @@ const RENDER = {
   // Second shipped modular preset — same C renderer, pad defaults seeded
   // into JS at bootstrap via seedInstrumentDefaults.
   'modular-pad': 'render_modular',
+  // Bowed strings family — same C renderer, seed defaults seeded at bootstrap.
+  'violin':          'render_modular',
+  'violin-ensemble': 'render_modular',
+  'cello':           'render_modular',
+  'cello-warm':      'render_modular',
+  'organ-church':    'render_modular',
+  'scifi-lead':      'render_modular',
+  // Plucked strings — guitars (Task 2).
+  'guitar-nylon':         'render_modular',
+  'guitar-nylon-bright':  'render_modular',
+  'guitar-steel':         'render_modular',
+  'guitar-steel-warm':    'render_modular',
+  'guitar-electric':      'render_modular',
+  'guitar-electric-neck': 'render_modular',
+  'harp':                 'render_modular',
+  // Keys — piano (Task 3).
+  'piano-grand': 'render_modular',
+  'piano-felt':  'render_modular',
+  // Woodwind (Task 4).
+  'flute':         'render_modular',
+  'flute-breathy': 'render_modular',
+  'oboe':          'render_modular',
+  'oboe-full':     'render_modular',
+  // Brass (Task 5).
+  'trumpet':          'render_modular',
+  'trumpet-mellow':   'render_modular',
+  'french-horn':      'render_modular',
+  'french-horn-loud': 'render_modular',
+  // Synth bass (Task 6).
+  'bass-guitar': 'render_modular',
+  'bass-acid': 'render_modular',
+  'bass-reese': 'render_modular',
+  'bass-fm': 'render_modular',
+  'bass-808': 'render_modular',
+  // Modal conga (Task 7).
+  'conga': 'render_modular',
+  'conga-open': 'render_modular',
+  'conga-tumba': 'render_modular',
+  // Masterpiece template set — organ + sax (shipped as Go builtins in
+  // config.go / instrument_ids_gen.go and bound to synth-modular-organ /
+  // synth-modular-sax). Without these entries playSoundParams('organ'|'sax')
+  // throws "Unknown sound" and is silent on WASM while playing fine on desktop.
+  'organ': 'render_modular',
+  'sax': 'render_modular',
+  // Configurable KICK stage family (modular gen-bank kick voice, source==5).
+  'dnb-kick': 'render_modular',
+  'kick-electro': 'render_modular',
+  'kick-808': 'render_modular',
+  'kick-acoustic': 'render_modular',
+  'kick-punchy': 'render_modular',
 };
 
 const RENDER_INFO = {
@@ -969,7 +1145,6 @@ const RENDER_INFO = {
   tom:     { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
   clap:    { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
   cowbell: { seconds: 0.4,  amp: 0.8 , paramBlock: 'modular' },
-  'bass-guitar': { seconds: 1.5, amp: 0.8 , paramBlock: 'modular' },
   'sub-bass':    { seconds: 2.0, amp: 0.8 , paramBlock: 'modular' },
   'snare-1':        { seconds: 0.9,  amp: 0.8, paramBlock: 'modular' },
   'kick-1':         { seconds: 0.6,  amp: 0.8, paramBlock: 'modular' },
@@ -977,7 +1152,6 @@ const RENDER_INFO = {
   'tom-1':          { seconds: 0.6,  amp: 0.8, paramBlock: 'modular' },
   'clap-1':         { seconds: 0.45, amp: 0.8, paramBlock: 'modular' },
   'cowbell-1':      { seconds: 0.5,  amp: 0.8 , paramBlock: 'modular' },
-  'bass-guitar-1':  { seconds: 1.2,  amp: 0.8 , paramBlock: 'modular' },
   'sub-bass-1':     { seconds: 1.5,  amp: 0.8 , paramBlock: 'modular' },
   'snare-2':        { seconds: 0.7,  amp: 0.8, paramBlock: 'modular' },
   'kick-2':         { seconds: 0.5,  amp: 0.8, paramBlock: 'modular' },
@@ -1012,12 +1186,141 @@ const RENDER_INFO = {
   // Modular voice instrument uses the wide modular_params block (paramBlock).
   'modular':        { seconds: 1.0,  amp: 0.8, paramBlock: 'modular' },
   'modular-pad':    { seconds: 1.0,  amp: 0.8, paramBlock: 'modular' },
+  // Bowed strings family — sustained (2s), same modular param block.
+  'violin':          { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'violin-ensemble': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'cello':           { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'cello-warm':      { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'organ-church':    { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'scifi-lead':      { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  // Plucked strings — guitars (Task 2, 1.5s).
+  'guitar-nylon':         { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'guitar-nylon-bright':  { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'guitar-steel':         { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'guitar-steel-warm':    { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'guitar-electric':      { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'guitar-electric-neck': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'harp':                 { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  // Keys — piano (Task 3, 2.0s).
+  'piano-grand': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'piano-felt':  { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  // Woodwind (Task 4, 2.0s).
+  'flute':         { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'flute-breathy': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'oboe':          { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'oboe-full':     { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  // Brass (Task 5, 2.0s).
+  'trumpet':          { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'trumpet-mellow':   { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'french-horn':      { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'french-horn-loud': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  // Synth bass (Task 6, 1.5s).
+  'bass-guitar': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'bass-acid': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'bass-reese': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'bass-fm': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  'bass-808': { seconds: 1.5, amp: 0.8, paramBlock: 'modular' },
+  // Modal conga (Task 7, 0.5s — short percussion).
+  'conga': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
+  'conga-open': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
+  'conga-tumba': { seconds: 0.6, amp: 0.8, paramBlock: 'modular' },
+  // Masterpiece template set — organ + sax (sustained 2.0s, modular block).
+  'organ': { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  'sax':   { seconds: 2.0, amp: 0.8, paramBlock: 'modular' },
+  // Configurable KICK stage family. NOT in MELODIC_INSTRUMENTS (percussion:
+  // resampled like the other drums, not per-pitch re-rendered).
+  'dnb-kick': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
+  'kick-electro': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
+  'kick-808': { seconds: 0.75, amp: 0.8, paramBlock: 'modular' },
+  'kick-acoustic': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
+  'kick-punchy': { seconds: 0.5, amp: 0.8, paramBlock: 'modular' },
 };
+
+// ───────── Per-pitch melodic re-render (desktop↔WASM parity) ─────────
+// Desktop melodic instruments RE-RENDER the C voice at the played semitone
+// pitch (synth_recipe_dispatch.go: newRecipeAwareVoicePitched →
+// tryRecipeVoicePitched) so the filter formant stays at an absolute Hz and
+// does not slide ("munchkin") with pitch. WebAudio used to resample one base
+// (pitch-0) buffer via BufferSource.playbackRate, sliding the formant. For the
+// instruments below we instead render the buffer AT the rounded pitch (via the
+// modular param block's `pitch` field, MODULAR_PARAM_INDEX.pitch=25 → the C
+// voice's freq=220·2^(pitch/12)) and play at ~1.0 rate. The cache is keyed by
+// `${id}:${roundedPitch}` so distinct pitches coexist; drums / FM / base
+// modular are UNTOUCHED (bare-id key, full playbackRate resample, byte-identical
+// to before).
+//
+// This MUST stay in sync with melodicRecipeIDs in
+// src/go/internal/audio/synth_recipe_dispatch.go. These are the INSTRUMENT ids
+// (bare names) whose recipe is the synth-modular melodic recipe. (bass-guitar →
+// recipe synth-modular-bass-guitar.)
+const MELODIC_INSTRUMENTS = new Set([
+  // Bowed strings
+  'violin', 'violin-ensemble', 'cello', 'cello-warm', 'organ-church', 'scifi-lead',
+  // Plucked strings — guitars
+  'guitar-nylon', 'guitar-nylon-bright', 'guitar-steel', 'guitar-steel-warm',
+  'guitar-electric', 'guitar-electric-neck', 'harp',
+  // Keys — piano
+  'piano-grand', 'piano-felt',
+  // Woodwind
+  'flute', 'flute-breathy', 'oboe', 'oboe-full',
+  // Brass
+  'trumpet', 'trumpet-mellow', 'french-horn', 'french-horn-loud',
+  // Bass guitar (renamed from synth-bass) + synth bass family
+  'bass-guitar', 'bass-acid', 'bass-reese', 'bass-fm', 'bass-808',
+  // Masterpiece template set — organ + sax (melodic on desktop:
+  // synth-modular-organ / synth-modular-sax in melodicRecipeIDs)
+  'organ', 'sax',
+]);
+
+function isMelodicInstrument(id) {
+  return MELODIC_INSTRUMENTS.has(id);
+}
+
+// Test seam: xplat_melodic_formant.browser.test.js asserts the JS melodic set
+// matches the desktop melodicRecipeIDs. Underscored + window-scoped so linters /
+// tree-shaking skip it; production code uses isMelodicInstrument directly.
+export const __isMelodicInstrument = isMelodicInstrument;
+
+// roundPitchForCache mirrors Go's roundPitchForCache: round to nearest 0.5
+// semitone. Bounds the cache key space while staying exact for the UI's
+// integer / half-integer node pitches.
+function roundPitchForCache(pitch) {
+  const p = Number.isFinite(pitch) ? pitch : 0;
+  return Math.round(p * 2) / 2;
+}
+
+// cacheKeyFor returns the renderCache key for (id, rounded pitch). For melodic
+// instruments the rounded pitch is folded into the key so each played pitch
+// gets its own at-pitch render. Non-melodic instruments (and melodic at
+// pitch 0) keep the bare-id key so all existing call sites — sampler capture,
+// param-edit invalidation, registerSamplePCM — are byte-for-byte unchanged.
+function cacheKeyFor(id, roundedPitch) {
+  if (isMelodicInstrument(id) && roundedPitch !== 0) {
+    return id + ':' + roundedPitch;
+  }
+  return id;
+}
+
+// evictRenderCache drops the bare-id render AND every per-pitch melodic variant
+// (`${id}:<pitch>`) for id, so a param / recipe / sample-edit change re-renders
+// all played pitches with the new values. Non-melodic ids only ever hold the
+// bare key, so this is a single delete for them.
+function evictRenderCache(id) {
+  renderCache.delete(id);
+  if (isMelodicInstrument(id)) {
+    const prefix = id + ':';
+    for (const key of renderCache.keys()) {
+      if (key.startsWith(prefix)) renderCache.delete(key);
+    }
+  }
+}
 
 // renderCache holds the pre-rendered Float32Array + metadata for every
 // synthesized instrument. Exported so browser tests can probe re-render
 // after a setInstrumentParam mutation without re-implementing the
-// module's render bookkeeping.
+// module's render bookkeeping. For melodic instruments at a non-zero pitch the
+// key is `${id}:${roundedPitch}` (see cacheKeyFor); every other entry is keyed
+// by the bare instrument id exactly as before.
 export const renderCache = new Map();
 const pendingRenderEnsures = new Map();
 const pendingSampleLoads = new Map();
@@ -1893,7 +2196,7 @@ window.seedInstrumentDefaults = (id, paramsJSON) => {
       instrumentDefaultParams.delete(id);
     }
     // A late seed (after first render) must re-render with the preset.
-    renderCache.delete(id);
+    evictRenderCache(id);
     delete samples[id];
     rawRenderCache.delete(id);
   } catch (err) { dbg('synth.defaults.error', { id, err: String(err) }); }
@@ -1919,7 +2222,7 @@ window.updateInstrumentRecipe = (id, recipeID, exemplar) => {
       if (!recipeID && RENDER_DEFAULTS[id] && RENDER[id] !== RENDER_DEFAULTS[id]) {
         RENDER[id] = RENDER_DEFAULTS[id];
         if (renderInfoFactory.has(id)) RENDER_INFO[id] = renderInfoFactory.get(id);
-        renderCache.delete(id);
+        evictRenderCache(id);
         delete samples[id];
         rawRenderCache.delete(id);
       }
@@ -1932,7 +2235,7 @@ window.updateInstrumentRecipe = (id, recipeID, exemplar) => {
     if (!renderInfoFactory.has(id) && RENDER_INFO[id]) renderInfoFactory.set(id, RENDER_INFO[id]);
     RENDER[id] = wantFn;
     RENDER_INFO[id] = { ...RENDER_INFO[target] };
-    renderCache.delete(id);
+    evictRenderCache(id);
     delete samples[id];
     rawRenderCache.delete(id);
     dbg('synth.recipe.rebind', { id, recipeID, exemplar });
@@ -2020,7 +2323,7 @@ function _updateInstrumentParams(id, paramsJSON) {
   // on a soloed (sample) instrument kills the audio, dead until reload" bug.
   // Guard: synth_sample_param_change_keeps_audio.browser.test.js.
   if (RENDER[id]) {
-    renderCache.delete(id);
+    evictRenderCache(id);
     delete samples[id];
     rawRenderCache.delete(id);
   } else if (RENDER_DEFAULTS[id] !== undefined) {
@@ -2036,7 +2339,7 @@ function _updateInstrumentParams(id, paramsJSON) {
     // Pure user samples (no factory render) keep the silence protection
     // above. Regression: synth_edits_override_stale_sample.browser.test.js.
     RENDER[id] = RENDER_DEFAULTS[id];
-    renderCache.delete(id);
+    evictRenderCache(id);
     delete samples[id];
     rawRenderCache.delete(id);
   }
@@ -2106,7 +2409,7 @@ function _updateSampleEdit(id, editJSON) {
   // it would permanently silence the instrument. The descriptor only applies
   // to re-derivable C-synth renders anyway.
   if (RENDER[id]) {
-    renderCache.delete(id);
+    evictRenderCache(id);
     delete samples[id];
   }
 }
@@ -2752,13 +3055,20 @@ async function ensureRenderedSample(id, opts) {
   const skipEdit = !!(opts && opts.skipEdit);
   const sampleEdit = skipEdit ? null : (instrumentSampleEdits.get(id) || null);
   const bypassCache = skipEdit && instrumentSampleEdits.has(id);
+  // Melodic per-pitch re-render: when a rounded pitch is requested for a
+  // melodic instrument, render the C voice AT that pitch and cache under the
+  // pitch-folded key. roundedPitch defaults to 0 → bare-id key (unchanged for
+  // drums / FM / pitch-0 melodic / sampler captures).
+  const roundedPitch = (opts && Number.isFinite(opts.pitch)) ? roundPitchForCache(opts.pitch) : 0;
+  const atPitch = isMelodicInstrument(id) && roundedPitch !== 0;
+  const cacheKey = atPitch ? cacheKeyFor(id, roundedPitch) : id;
   // Use getSampleRate() to avoid creating AudioContext prematurely.
   // If ctx already exists we get the real rate; otherwise 48000 default.
   const sr = Math.max(8000, Math.min(192000, getSampleRate()));
   // If cache exists but was built for a different sample rate, rebuild so pitch
   // and duration stay correct on devices that default to 48 kHz.
-  if (!bypassCache && renderCache.has(id)) {
-    const hit = renderCache.get(id);
+  if (!bypassCache && renderCache.has(cacheKey)) {
+    const hit = renderCache.get(cacheKey);
     if (hit && hit.sr === sr) {
       try {
         if (typeof window !== 'undefined') {
@@ -2769,17 +3079,17 @@ async function ensureRenderedSample(id, opts) {
       return hit;
     }
     // Drop stale entry so we regenerate with the correct rate.
-    renderCache.delete(id);
+    renderCache.delete(cacheKey);
   }
   const info = RENDER_INFO[id] || { seconds: 0.5, amp: 0.8 };
   const frames = Math.max(1, Math.floor(sr * info.seconds));
+  // The synchronous main-thread module is still loaded (other paths — worklets,
+  // insert effects, delay/reverb — use it) and serves as the render fallback.
   const m = await ensureModule();
-  const ptr = m._malloc(frames * 4);
-  if (!ptr) throw new Error('Failed to allocate memory for audio buffer.');
   // Phase 5: when user has edited synth params for this instrument,
-  // route through the parameterized C variant (`render_X_p`). The
-  // synth_params struct is 8 floats (32 bytes); we allocate it in the
-  // WASM heap, fill it from instrumentSynthParams[id], and free after.
+  // route through the parameterized C variant (`render_X_p`). The param block
+  // is built here on the main thread (the ABI lives in one place) and shipped
+  // to the off-thread renderer or the sync fallback.
   const params = instrumentParamsFor(id);
   // Select the param block by the instrument's render family. The legacy
   // bespoke renderers use the 7-field synth_params block; the unified modular
@@ -2799,150 +3109,153 @@ async function ensureRenderedSample(id, opts) {
   const PARAM_COUNT = useModular ? MODULAR_PARAM_COUNT : (fam ? fam.count : SYNTH_PARAM_COUNT);
   const PARAM_INDEX = useModular ? MODULAR_PARAM_INDEX : (fam ? fam.index : SYNTH_PARAM_INDEX);
   const PARAM_IDENTITY = useModular ? MODULAR_PARAM_IDENTITY : (fam ? fam.identity : SYNTH_PARAM_IDENTITY);
-  let paramsPtr = 0;
+  // Build the flat param block as a plain Float32Array (NOT a WASM heap view) so
+  // it can be structured-cloned into the render worker AND reused by the sync
+  // fallback. allocCount carries a safety floor (see below).
+  let paramArr = null;
+  let allocCount = 0;
   if (params) {
-    // Phase 2 of the live-instrument synthesis remediation plan replaced
-    // the hand-maintained positional heap[0..5] writes with a schema-keyed
-    // write loop driven by PARAM_INDEX from synth_param_abi.gen.js. The C
-    // struct field order is the source of truth; the gen file is regenerated
-    // from src/go/internal/audio/synth_param_schema.go. If the Go schema and
-    // the gen file drift, synth_param_schema_test.go (Go side) fails first.
-    //
     // CRITICAL: unset knobs MUST resolve to their C-side IDENTITY values
     // (the *_PARAM_IDENTITY map mirrors the C fallbacks). Passing 0 for decay
     // causes the legacy `_p` variant to divide-by-zero on the envelope formula
     // (`1 / decayMul`), producing NaN output that silences the channel.
-    // Allocate with a safety floor and ZERO the block. The floor guards against
-    // a stale/undersized ABI (the silence bug): the C modular_params struct is
-    // wider than the legacy synth_params, so if MODULAR_PARAM_COUNT ever lags the
-    // struct, an exact-size malloc would let the C voice read past the buffer
-    // (uninitialised heap → random/garbage enable flags → dead generator). A
-    // generous zeroed block keeps every read in-bounds and deterministic.
-    const allocCount = useModular ? Math.max(PARAM_COUNT, MODULAR_ALLOC_FLOOR) : PARAM_COUNT;
-    paramsPtr = m._malloc(allocCount * 4);
-    if (paramsPtr) {
-      // NOTE: named pheap (NOT heap) on purpose — a second `const heap` for the
-      // OUTPUT buffer is declared later in this function. Reusing the name here
-      // creates a temporal-dead-zone trap for any later reference to `heap`
-      // before that declaration. Keep these two views distinctly named.
-      const pheap = m.HEAPF32.subarray(paramsPtr >> 2, (paramsPtr >> 2) + allocCount);
-      pheap.fill(0);
-      for (const [name, idx] of Object.entries(PARAM_INDEX)) {
-        const v = params[name];
-        pheap[idx] = (typeof v === 'number' && Number.isFinite(v))
-          ? v
-          : PARAM_IDENTITY[name];
+    // The floor guards against a stale/undersized ABI (the silence bug): the C
+    // modular_params struct is wider than the legacy synth_params, so a generous
+    // zeroed block keeps every C read in-bounds and deterministic.
+    allocCount = useModular ? Math.max(PARAM_COUNT, MODULAR_ALLOC_FLOOR) : PARAM_COUNT;
+    paramArr = new Float32Array(allocCount); // zero-initialised
+    for (const [name, idx] of Object.entries(PARAM_INDEX)) {
+      const v = params[name];
+      paramArr[idx] = (typeof v === 'number' && Number.isFinite(v)) ? v : PARAM_IDENTITY[name];
+    }
+    // Per-pitch melodic re-render: override the modular `pitch` field so the C
+    // voice renders at freq=220·2^(roundedPitch/12) (formant stays fixed, no
+    // resample). Only modular melodic instruments reach here with atPitch=true.
+    if (atPitch && useModular && Number.isFinite(PARAM_INDEX.pitch)) {
+      paramArr[PARAM_INDEX.pitch] = roundedPitch;
+    }
+  }
+  const renderFn = paramArr ? (useModular ? 'render_modular_p' : (RENDER[id] + '_p')) : RENDER[id];
+  const nativeFn = RENDER[id];
+  if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
+    const fld = (n) => (paramArr && Number.isFinite(MODULAR_PARAM_INDEX[n])) ? paramArr[MODULAR_PARAM_INDEX[n]] : 'n/a';
+    const block = (paramArr && useModular) ? {
+      osc_type: fld('osc_type'), osc_enabled: fld('osc_enabled'),
+      fm_enabled: fld('fm_enabled'), env_enabled: fld('env_enabled'),
+      filter_enabled: fld('filter_enabled'), drive_enabled: fld('drive_enabled'),
+      gain: fld('gain'), osc_level: fld('osc_level'), level: fld('level'),
+    } : null;
+    console.log('[SYNTH-DISPATCH]', 'render request', { id, fn: renderFn, useModular, block, params });
+  }
+  // Test seam (synth_revoice_render_resilience.browser.test.js): force the
+  // parameterized render to fail so the native-fallback path is exercised.
+  const forceParamThrow = (typeof window !== 'undefined' && !!window.__forceRevoiceRenderThrow);
+
+  // ── Render: off-thread worker preferred, synchronous main-thread fallback ──
+  // This is the WASM perf fix: the ~30–40 ms C render runs on the worker so a
+  // live param edit that invalidates the cache mid-playback no longer blocks
+  // the UI + audio scheduler. The worker is unavailable (or times out) → fall
+  // back to the original synchronous ccall (degraded, not broken). A failure of
+  // the PARAMETERIZED render falls back to the NATIVE renderer so the instrument
+  // keeps sounding (preserves the pre-worker resilience contract).
+  let data = null;
+  let viaWorker = false;
+  let nativeFallback = false;
+  if (!(paramArr && forceParamThrow)) {
+    try {
+      data = await renderVoiceInWorker(renderFn, sr, frames, paramArr, allocCount);
+      viaWorker = true;
+    } catch (werr) {
+      try {
+        data = renderVoiceSync(m, renderFn, sr, frames, paramArr, allocCount);
+        viaWorker = false;
+      } catch (serr) {
+        data = null; // parameterized render itself threw → native fallback below
       }
     }
+  }
+  if (data === null && paramArr) {
+    console.error('[AUDIOJS] parameterized render failed for ' + id + ' via ' + renderFn +
+      '; falling back to native ' + nativeFn);
+    nativeFallback = true;
+    try {
+      data = await renderVoiceInWorker(nativeFn, sr, frames, null, 0);
+      viaWorker = true;
+    } catch (_) {
+      data = renderVoiceSync(m, nativeFn, sr, frames, null, 0);
+      viaWorker = false;
+    }
+  }
+  if (data === null) {
+    // No params (or everything above failed) — last-resort synchronous render.
+    data = renderVoiceSync(m, nativeFn, sr, frames, null, 0);
+    viaWorker = false;
+  }
+
+  // ── Post-processing: peak-normalize → amp scale → optional sample-edit ──
+  let peak = 0;
+  for (let i = 0; i < data.length; i++) {
+    const a = Math.abs(data[i]);
+    if (a > peak) peak = a;
+  }
+  if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
+    console.log('[SYNTH-DISPATCH]', 'render result', { id, viaWorker, nativeFallback, rawPeak: peak, silent: !(peak > 1e-6) });
+  }
+  if (peak > 0) {
+    const inv = 1 / peak;
+    for (let i = 0; i < data.length; i++) data[i] *= inv;
+  }
+  const amp = Number.isFinite(info.amp) ? info.amp : 0.6;
+  for (let i = 0; i < data.length; i++) data[i] *= amp;
+  // Non-destructive Sampler edit: same transform as Go's BakeSample, applied
+  // to the fresh C render (mirrors tryRecipeVoice in synth_recipe_dispatch.go).
+  // The synth stays the source of truth — a param change re-renders through
+  // this path on the next play, so synth edits always take effect.
+  let finalData = data;
+  if (sampleEdit) {
+    finalData = applySampleEdit(data, sr, sampleEdit);
+  }
+  // Store raw Float32Array + metadata. AudioBuffer is created lazily in
+  // ensureAudioBuffer() when playback actually needs it, so this path
+  // never forces an AudioContext into existence.
+  const record = { buffer: null, data: finalData, sr, frames: finalData.length };
+  if (!bypassCache) {
+    renderCache.set(cacheKey, record);
   }
   try {
-    if (paramsPtr) {
-      const renderFnP = useModular ? 'render_modular_p' : (RENDER[id] + '_p');
-      if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
-        // Dump the exact modular heap fields most likely to silence a re-voiced
-        // voice so a repro shows WHICH field is wrong (vs. inferring from RMS).
-        // Read via paramsPtr directly — do NOT reference the block-scoped `heap`
-        // (a second `const heap` is declared later in this fn; touching the name
-        // here would hit its temporal dead zone and throw).
-        const fld = (n) => (paramsPtr && Number.isFinite(MODULAR_PARAM_INDEX[n]))
-          ? m.HEAPF32[(paramsPtr >> 2) + MODULAR_PARAM_INDEX[n]] : 'n/a';
-        const block = useModular ? {
-          osc_type: fld('osc_type'), osc_enabled: fld('osc_enabled'),
-          fm_enabled: fld('fm_enabled'), env_enabled: fld('env_enabled'),
-          filter_enabled: fld('filter_enabled'), drive_enabled: fld('drive_enabled'),
-          gain: fld('gain'), osc_level: fld('osc_level'), level: fld('level'),
-        } : null;
-        console.log('[SYNTH-DISPATCH]', 'parameterized render', { id, fn: renderFnP, useModular, block, params });
-      }
-      try {
-        // Test seam (consistent with window.__beatmoDebugSynthDispatch above):
-        // synth_revoice_render_resilience.browser.test.js arms this flag to force
-        // the parameterized / re-voice render to throw, exercising the native
-        // fallback below. Production code never sets it.
-        if (typeof window !== 'undefined' && window.__forceRevoiceRenderThrow) {
-          throw new Error('forced re-voice render throw (test seam __forceRevoiceRenderThrow)');
-        }
-        m.ccall(renderFnP, null, ['number', 'number', 'number', 'number'], [ptr, sr, frames, paramsPtr]);
-      } catch (perr) {
-        // A throw in the parameterized / re-voice render (e.g. a missing C export
-        // in a stale audio module, or a bad ccall arg) must NOT permanently
-        // silence the instrument. processAudioEvent drops the hit and re-renders
-        // on every subsequent hit, so a persistent throw here leaves the row dead
-        // until reload — exactly the user-reported "audio instantly stops for that
-        // instrument". Fall back to the instrument's native renderer so it keeps
-        // sounding (degraded, not dead) and surface the real error LOUDLY.
-        console.error('[AUDIOJS] parameterized render threw for ' + id + ' via ' + renderFnP +
-          '; falling back to native ' + RENDER[id] + '. err=' + (perr && perr.message ? perr.message : String(perr)));
-        m.ccall(RENDER[id], null, ['number', 'number', 'number'], [ptr, sr, frames]);
-      }
-    } else {
-      if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
-        console.log('[SYNTH-DISPATCH]', 'unparameterized render', { id, fn: RENDER[id] });
-      }
-      m.ccall(RENDER[id], null, ['number', 'number', 'number'], [ptr, sr, frames]);
+    if (typeof window !== 'undefined') {
+      const metrics = window.__audioMetrics || (window.__audioMetrics = { renders: {}, cacheHits: {} });
+      if (!metrics.workerRenders) metrics.workerRenders = {};
+      if (!metrics.mainThreadRenders) metrics.mainThreadRenders = {};
+      metrics.renders[id] = (metrics.renders[id] || 0) + 1;
+      if (viaWorker) metrics.workerRenders[id] = (metrics.workerRenders[id] || 0) + 1;
+      else metrics.mainThreadRenders[id] = (metrics.mainThreadRenders[id] || 0) + 1;
+      const meta = window.__renderMeta || (window.__renderMeta = {});
+      meta[id] = { sr, frames, seconds: frames / sr };
     }
-    const heap = m.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + frames);
-    const data = new Float32Array(frames);
-    data.set(heap);
-    let peak = 0;
-    for (let i = 0; i < data.length; i++) {
-      const a = Math.abs(data[i]);
-      if (a > peak) peak = a;
-    }
-    if (typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch) {
-      console.log('[SYNTH-DISPATCH]', 'render result', { id, rawPeak: peak, silent: !(peak > 1e-6) });
-    }
-    if (peak > 0) {
-      const inv = 1 / peak;
-      for (let i = 0; i < data.length; i++) data[i] *= inv;
-    }
-    const amp = Number.isFinite(info.amp) ? info.amp : 0.6;
-    for (let i = 0; i < data.length; i++) data[i] *= amp;
-    // Non-destructive Sampler edit: same transform as Go's BakeSample, applied
-    // to the fresh C render (mirrors tryRecipeVoice in synth_recipe_dispatch.go).
-    // The synth stays the source of truth — a param change re-renders through
-    // this path on the next play, so synth edits always take effect.
-    let finalData = data;
-    if (sampleEdit) {
-      finalData = applySampleEdit(data, sr, sampleEdit);
-    }
-    // Store raw Float32Array + metadata. AudioBuffer is created lazily in
-    // ensureAudioBuffer() when playback actually needs it, so this path
-    // never forces an AudioContext into existence.
-    const record = { buffer: null, data: finalData, sr, frames: finalData.length };
-    if (!bypassCache) {
-      renderCache.set(id, record);
-    }
-    try {
-      if (typeof window !== 'undefined') {
-        const metrics = window.__audioMetrics || (window.__audioMetrics = { renders: {}, cacheHits: {} });
-        metrics.renders[id] = (metrics.renders[id] || 0) + 1;
-        const meta = window.__renderMeta || (window.__renderMeta = {});
-        meta[id] = { sr, frames, seconds: frames / sr };
-      }
-    } catch (_) {}
-    return record;
-  } finally {
-    m._free(ptr);
-    if (paramsPtr) {
-      m._free(paramsPtr);
-    }
-  }
+  } catch (_) {}
+  return record;
 }
 
 // Phase B: Lazily create an AudioBuffer from the cached Float32Array.
 // Called at play time when we actually need a buffer source node.
 // WebAudio handles resampling automatically if the buffer's sample rate
 // differs from the context's rate, so we don't need to re-render.
-function ensureAudioBuffer(id) {
-  const record = renderCache.get(id);
+function ensureAudioBuffer(id, cacheKey) {
+  const key = cacheKey || id;
+  const record = renderCache.get(key);
   if (!record || !record.data) return null;
   if (record.buffer) return record.buffer;
   const c = getCtx();
   const buffer = c.createBuffer(1, record.frames, record.sr);
   buffer.copyToChannel(record.data, 0);
   record.buffer = buffer;
-  samples[id] = buffer;
+  // Only mirror into samples[id] for the canonical (bare-id) render. Per-pitch
+  // melodic variants keep their AudioBuffer on the renderCache record only, so
+  // they never clobber the instrument's base entry in samples[].
+  if (key === id) {
+    samples[id] = buffer;
+  }
   return buffer;
 }
 
@@ -3100,30 +3413,35 @@ window.idbDeleteSample = async (id) => {
 // after invalidating the cache via setInstrumentParam (which renderCache
 // .delete's the entry). Production code reaches it through
 // enqueueAudioEvents / playSound; tests use it directly.
-export function ensureRenderReady(id) {
+export function ensureRenderReady(id, pitch) {
   const trace = typeof window !== 'undefined' && window.__beatmoDebugSynthDispatch && window.__synthEvtTrace;
-  if (renderCache.has(id)) {
-    return Promise.resolve(renderCache.get(id));
+  // Melodic per-pitch variant: cache + pending are keyed by the pitch-folded
+  // cacheKey so each played pitch warms independently. Non-melodic / pitch-0
+  // callers pass no pitch → bare-id key, unchanged.
+  const roundedPitch = (isMelodicInstrument(id) && Number.isFinite(pitch)) ? roundPitchForCache(pitch) : 0;
+  const cacheKey = cacheKeyFor(id, roundedPitch);
+  if (renderCache.has(cacheKey)) {
+    return Promise.resolve(renderCache.get(cacheKey));
   }
   if (!RENDER[id]) {
     return Promise.resolve(null);
   }
-  let pending = pendingRenderEnsures.get(id);
+  let pending = pendingRenderEnsures.get(cacheKey);
   if (pending) {
-    if (trace) console.log('[SYNTH-RDY]', 'reuse pending', { id });
+    if (trace) console.log('[SYNTH-RDY]', 'reuse pending', { id, cacheKey });
     return pending;
   }
-  if (trace) console.log('[SYNTH-RDY]', 'start render', { id });
-  pending = ensureRenderedSample(id).then((record) => {
-    pendingRenderEnsures.delete(id);
-    if (trace) console.log('[SYNTH-RDY]', 'render done', { id, ok: !!record, nowCached: renderCache.has(id) });
+  if (trace) console.log('[SYNTH-RDY]', 'start render', { id, cacheKey });
+  pending = ensureRenderedSample(id, roundedPitch !== 0 ? { pitch: roundedPitch } : undefined).then((record) => {
+    pendingRenderEnsures.delete(cacheKey);
+    if (trace) console.log('[SYNTH-RDY]', 'render done', { id, cacheKey, ok: !!record, nowCached: renderCache.has(cacheKey) });
     return record;
   }).catch((err) => {
-    pendingRenderEnsures.delete(id);
-    if (trace) console.log('[SYNTH-RDY]', 'render THREW', { id, err: String(err) });
+    pendingRenderEnsures.delete(cacheKey);
+    if (trace) console.log('[SYNTH-RDY]', 'render THREW', { id, cacheKey, err: String(err) });
     throw err;
   });
-  pendingRenderEnsures.set(id, pending);
+  pendingRenderEnsures.set(cacheKey, pending);
   return pending;
 }
 
@@ -3537,11 +3855,15 @@ function fmtNum(v) {
 // Open a file picker and read a JSON file as text. Returns a Promise.
 window.openJSONFile = () => new Promise((resolve) => {
   console.log('[IMPORT] openJSONFile invoked');
+  // Stash the picked filename for the Go side (read after the promise resolves)
+  // so the "Loaded <name>" notification can name the file. Kept off the resolved
+  // value itself so openJSONFile's string contract (and its browser test) holds.
+  window.__lastImportName = '';
   // Check for a pending mobile file pick from the gesture-based rect system.
   const pending = window._fpConsumePending?.('import');
   if (pending) {
     console.log('[IMPORT] consuming pending mobile file pick');
-    pending.then(r => resolve(r?.data || '')).catch(() => resolve(''));
+    pending.then(r => { window.__lastImportName = r?.name || ''; resolve(r?.data || ''); }).catch(() => resolve(''));
     return;
   }
   try {
@@ -3563,6 +3885,7 @@ window.openJSONFile = () => new Promise((resolve) => {
         return;
       }
       console.log('[IMPORT] reading file', file.name, file.size);
+      window.__lastImportName = file.name || '';
       const text = await file.text();
       settle(text);
       setTimeout(() => input.remove(), 0);

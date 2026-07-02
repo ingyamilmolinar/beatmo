@@ -1,6 +1,9 @@
 package hooks
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestEveryKindClassified asserts every Kind in KindAll has exactly one
 // ActionRegistry entry and vice versa. This is the central completeness guard:
@@ -62,5 +65,27 @@ func TestUndoableImpliesDocument(t *testing.T) {
 				t.Errorf("Undoable(%q)=true but scope=%v reason=%q", a.Kind, a.Scope, a.ExcludedReason)
 			}
 		}
+	}
+}
+
+// TestEveryActionHasLowercaseTag asserts every registry entry carries a
+// non-empty, all-lowercase bracket tag (the single source of truth for the
+// INFO tag column).
+func TestEveryActionHasLowercaseTag(t *testing.T) {
+	for _, a := range ActionRegistry {
+		if a.Tag == "" {
+			t.Errorf("Kind %q has empty Tag", a.Kind)
+			continue
+		}
+		if a.Tag != strings.ToLower(a.Tag) {
+			t.Errorf("Kind %q tag %q is not lowercase", a.Kind, a.Tag)
+		}
+	}
+}
+
+func TestInteractionScopeNotUndoable(t *testing.T) {
+	m := ActionMeta{Kind: "x.test", Scope: ScopeInteraction}
+	if m.Scope == ScopeDocument {
+		t.Fatal("ScopeInteraction must not equal ScopeDocument")
 	}
 }

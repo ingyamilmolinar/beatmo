@@ -27,7 +27,7 @@ func TestLevelsAggregates_LUFSRendered(t *testing.T) {
 	latches.Get("main").Update(0, -12, -18)
 
 	dst := ebiten.NewImage(400, 200)
-	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), state, latches)
+	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), state, latches, nil)
 	// Smoke-test only — drawLevelsAggregates returns early on small
 	// rects, so we mainly verify no panic and a non-empty draw. A
 	// dedicated rect-counter integration lives in audio_panel_render
@@ -51,8 +51,8 @@ func TestLevelsAggregates_ClipsWindowOverridesTotal(t *testing.T) {
 	// branch behaviour at the API level. drawLevelsAggregates renders
 	// label "CLIPS (10s)" when ClipsLastWindow>0 and "CLIPS" otherwise
 	// — we exercise both code paths.
-	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), stateWithWindow, nil)
-	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), stateNoWindow, nil)
+	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), stateWithWindow, nil, nil)
+	drawLevelsAggregates(dst, image.Rect(0, 0, 200, 200), stateNoWindow, nil, nil)
 }
 
 // TestMultiLevelsLatch_ClearWipesPersistentMarkers: clicking the Clear

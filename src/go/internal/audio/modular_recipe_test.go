@@ -53,10 +53,11 @@ func TestModularSynthParamDefs_ShapeAndDefaults(t *testing.T) {
 	// TestPitchEnvDisabledIsExactBypass et al). The toggles are NOT carved out.
 	modulatorNumericCarveOut := map[string]bool{
 		"pitchenv_amt": true, "pitchenv_decay": true,
-		"lfo_rate": true, "lfo_depth": true,
+		"lfo_rate": true, "lfo_depth": true, "lfo_target": true,
 		"burst_sharp": true,
 		"burst1_off":  true, "burst1_amp": true, "burst2_off": true, "burst2_amp": true,
 		"burst3_off": true, "burst3_amp": true, "burst4_off": true, "burst4_amp": true,
+		"filtenv_amt": true, "filtenv_decay": true,
 	}
 	seen := map[string]bool{}
 	for i, d := range defs {
@@ -82,10 +83,12 @@ func TestModularSynthParamDefs_ShapeAndDefaults(t *testing.T) {
 	// The four discrete params must carry enum labels (osc_type now includes
 	// the two noise generators; the five per-stage enable toggles are Off/On).
 	enums := map[string]int{
-		"osc_type": 7, "fm_algorithm": 4, "amp_curve": 2, "filter_type": 3,
+		"osc_type": 12, "fm_algorithm": 4, "amp_curve": 2, "filter_type": 3,
 		"osc_enabled": 2, "fm_enabled": 2, "env_enabled": 2, "filter_enabled": 2, "drive_enabled": 2,
 		// Phase-8C modulator-stage toggles (Off/On).
 		"pitchenv_enabled": 2, "lfo_enabled": 2, "burst_enabled": 2,
+		// Phase-8D filter envelope toggle (Off/On).
+		"filtenv_enabled": 2,
 	}
 	byName := map[string]ParamDef{}
 	for _, d := range defs {

@@ -73,13 +73,28 @@ func TestMobileDefault_RackBottomAbutsActionBar(t *testing.T) {
 // for the new row count.
 func fillMobileRackToScreenshotScenario(t *testing.T, g *Game) {
 	t.Helper()
-	for len(g.drum.Rows) < 4 {
-		g.drum.AddRow()
+	relayout := func() {
+		g.Layout(390, 844)
+		g.drum.refreshWidgetLayout()
+		g.drum.recalcButtons()
+		g.drum.calcLayout()
 	}
-	g.Layout(390, 844)
-	g.drum.refreshWidgetLayout()
-	g.drum.recalcButtons()
-	g.drum.calcLayout()
+	relayout()
+	// Add rows until the rack is saturated: keep going until the visible-row
+	// count stops growing (rows now overflow the rack) plus a couple extra so
+	// the snap-flush precondition (slack < rowHeight) holds regardless of the
+	// exact row-height / rack geometry. A fixed count (was 4) under-fills once
+	// the mobile row height grows, leaving the snap-flush branch dormant.
+	prevVis := -1
+	for i := 0; i < 64; i++ {
+		vis := g.drum.rackVisibleRows()
+		if vis > 0 && vis == prevVis && len(g.drum.Rows) > vis+1 {
+			break
+		}
+		prevVis = vis
+		g.drum.AddRow()
+		relayout()
+	}
 }
 
 // TestMobileDefault_AddRowBtnFlushBelowLastRow asserts that the addRow

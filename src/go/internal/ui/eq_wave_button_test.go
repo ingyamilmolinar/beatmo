@@ -65,9 +65,17 @@ func TestEQWaveButtonAlwaysHasBorder(t *testing.T) {
 
 	screen := ebiten.NewImage(400, 200)
 
+	// The keycap pill renders its cap face fill+border as a single cached
+	// drawRoundedButton composite (the border is baked into the sprite), so on
+	// a warm cache no raw stroked drawRoundedRect fires. Accept either form:
+	// an uncached stroked rounded-rect OR a rounded-button composite (which
+	// always carries a border arg) in the button region.
 	hasBorderStroke := func(rec *drawCallRecorder) bool {
 		for _, c := range rec.inRegion(toggleRect) {
 			if c.Kind == drawCallRoundedRect && !c.Filled {
+				return true
+			}
+			if c.Kind == drawCallRoundedButton {
 				return true
 			}
 		}
@@ -133,7 +141,10 @@ func TestEQPillTabsDrawAboveSpectrumBands(t *testing.T) {
 		minPillSeq := -1
 		maxBandFillSeq := -1
 		for _, c := range rec.inRegion(br) {
-			if c.Kind == drawCallRoundedRect {
+			// Pill tabs draw their shell + cap face as cached drawRoundedButton
+			// composites (keycap redesign); the legacy raw stroked rounded-rect
+			// path still counts for any pill not yet migrated.
+			if c.Kind == drawCallRoundedRect || c.Kind == drawCallRoundedButton {
 				if minPillSeq < 0 || c.Seq < minPillSeq {
 					minPillSeq = c.Seq
 				}

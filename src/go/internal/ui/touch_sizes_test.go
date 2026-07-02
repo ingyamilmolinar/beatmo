@@ -55,8 +55,8 @@ func TestTouchSizesMobile(t *testing.T) {
 	if TransportBtnSize() != 44 {
 		t.Errorf("TransportBtnSize() = %d, want 44", TransportBtnSize())
 	}
-	if RowControlBtnSize() != 32 {
-		t.Errorf("RowControlBtnSize() = %d, want 32", RowControlBtnSize())
+	if RowControlBtnSize() != 36 {
+		t.Errorf("RowControlBtnSize() = %d, want 36", RowControlBtnSize())
 	}
 	if MinCellWidth() != 2 {
 		t.Errorf("MinCellWidth() = %d, want 2", MinCellWidth())

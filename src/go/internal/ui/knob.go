@@ -325,6 +325,13 @@ func (k *Knob) StepValueByWheel(steps int) bool {
 	return k.applyValueStep(dir)
 }
 
+// StepValueDirect advances the value by exactly ONE step in dir (+1/-1) with
+// no internal accumulator — one detent for discrete knobs, one StepMul for
+// endless knobs. Use this when the caller already manages its own debounce
+// accumulator (e.g. MobileWheelPopup's discAcc), so the extra per-notch
+// threshold of StepValueByWheel is not desirable.
+func (k *Knob) StepValueDirect(dir int) bool { return k.applyValueStep(dir) }
+
 // applyValueStep moves the value by exactly one step in dir (+1/-1) — one
 // detent for discrete knobs, one StepMul for endless knobs — with no cursor
 // range check. Returns true if the value changed.
@@ -430,9 +437,76 @@ func (k *Knob) updateEndless(mx int) {
 	k.Value = (real - k.Scale.Min) / span
 }
 
+// NudgeEndless accumulates an endless value change by deltaPx pixels of motion
+// (positive = increase). Delta-based sibling of updateEndless: the caller owns
+// the per-frame delta, so this carries no latched state and is safe to drive
+// from the mobile wheel popup's vertical drag. Clamps at Scale.Min/Max.
+func (k *Knob) NudgeEndless(deltaPx int) {
+	span := k.Scale.Max - k.Scale.Min
+	if span <= 0 {
+		return
+	}
+	step := k.StepMul
+	if step <= 0 {
+		step = span / 200
+	}
+	real := k.Scale.Min + k.Value*span
+	real = clampF64(real+(float64(deltaPx)/float64(knobEndlessPxPerNotch))*step, k.Scale.Min, k.Scale.Max)
+	k.Value = (real - k.Scale.Min) / span
+}
+
 // Draw renders the knob — background ring, value arc, indicator line, centre
 // dot. The caption (`name  value unit`) is drawn separately by the calling
 // panel because the unit text is param-specific.
+// knurledCapKey is just the diameter — the static cap (knurled rim + dome +
+// side wall + contact shadow) is value/travel-invariant, so it is rasterized
+// once per diameter and blitted each frame; only the live value arc + pointer
+// draw on top. This keeps per-frame knob cost a single blit + the existing two
+// drawArc calls — critical on the synth tab's many small knobs under the WASM
+// single audio thread.
+var knurledCapCache = map[int]*ebiten.Image{}
+
+const knurledRidges = 18
+
+// knurledCapSprite returns the cached static knob-cap sprite of the given
+// diameter (square). Rasterized once, blitted thereafter.
+func knurledCapSprite(diameter int) *ebiten.Image {
+	if diameter < 2 {
+		diameter = 2
+	}
+	if spr, ok := knurledCapCache[diameter]; ok {
+		return spr
+	}
+	spr := ebiten.NewImage(diameter, diameter)
+	cx, cy := float64(diameter)/2, float64(diameter)/2
+	rad := float32(diameter) / 2
+	wall := TokenSurface1()
+	body := TokenSurface2()
+	dome := TokenSurface3()
+	// Contact shadow (offset 1px down) + side wall.
+	vector.DrawFilledCircle(spr, float32(cx), float32(cy)+1, rad, WithAlphaFromColor(color.Black, 64), true)
+	vector.DrawFilledCircle(spr, float32(cx), float32(cy), rad, wall, true)
+	// Knurled rim: alternating light/dark radial ridges.
+	for i := 0; i < knurledRidges; i++ {
+		a := float64(i) / float64(knurledRidges) * 2 * math.Pi
+		var col color.Color = dome
+		if i%2 == 0 {
+			col = adjustColor(dome, 18)
+		}
+		ix := cx + math.Cos(a)*float64(rad)*0.74
+		iy := cy + math.Sin(a)*float64(rad)*0.74
+		ox := cx + math.Cos(a)*float64(rad)*0.96
+		oy := cy + math.Sin(a)*float64(rad)*0.96
+		vector.StrokeLine(spr, float32(ix), float32(iy), float32(ox), float32(oy), 2, col, true)
+	}
+	// Matte center dome — concentric body/dome rings, no specular highlight
+	// (retro-analogue restyle 2026-06-17).
+	vector.DrawFilledCircle(spr, float32(cx), float32(cy), rad*0.72, body, true)
+	vector.DrawFilledCircle(spr, float32(cx), float32(cy), rad*0.5, dome, true)
+	knurledCapCache[diameter] = spr
+	return spr
+}
+
 func (k *Knob) Draw(dst *ebiten.Image) {
 	if k.r.Empty() {
 		return
@@ -440,6 +514,14 @@ func (k *Knob) Draw(dst *ebiten.Image) {
 	cx, cy, radius := k.geom()
 	if radius < 4 {
 		return
+	}
+
+	// Static volumetric cap (cached), blitted centered under the live arc.
+	d := int(radius * 2)
+	if spr := knurledCapSprite(d); spr != nil {
+		var op ebiten.DrawImageOptions
+		op.GeoM.Translate(cx-float64(d)/2, cy-float64(d)/2)
+		dst.DrawImage(spr, &op)
 	}
 
 	trackCol := TokenSurface3()
@@ -484,13 +566,6 @@ func (k *Knob) Draw(dst *ebiten.Image) {
 	ox := cx + math.Cos(float64(valRad))*float64(outerR)
 	oy := cy + math.Sin(float64(valRad))*float64(outerR)
 	vector.StrokeLine(dst, float32(ix), float32(iy), float32(ox), float32(oy), strokeWidth, indicatorCol, true)
-
-	// Centre disk for visual anchor.
-	dotR := strokeWidth * 0.9
-	if dotR < 1 {
-		dotR = 1
-	}
-	vector.DrawFilledCircle(dst, float32(cx), float32(cy), dotR, trackCol, true)
 }
 
 // geom resolves the centre point + radius of the knob given its rect. The

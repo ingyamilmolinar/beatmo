@@ -176,14 +176,27 @@ func TestButtonHitAdapter_OnDragNoOp(t *testing.T) {
 	h.OnDrag(10, 10) // must not panic
 }
 
-// TestButtonHitAdapter_OnReleaseNoOp verifies that OnRelease does nothing and
-// does not panic.
-func TestButtonHitAdapter_OnReleaseNoOp(t *testing.T) {
+// TestButtonHitAdapter_OnReleaseSettlesPress verifies that OnRelease delivers
+// the release to the button so it settles out of the pressed state (the tree
+// captures the adapter on press, so release always arrives). A release with no
+// prior press is a harmless no-op.
+func TestButtonHitAdapter_OnReleaseSettlesPress(t *testing.T) {
 	assertDefaultParityState(t)
+	suppressClicksUntilRelease = false
+	t.Cleanup(func() { suppressClicksUntilRelease = false })
 
 	b := NewButton("test", ButtonStyle{}, nil)
+	b.SetRect(image.Rect(0, 0, 50, 20))
 	h := &buttonHitAdapter{btn: b}
-	h.OnRelease(10, 10) // must not panic
+
+	h.OnPress(25, 10)
+	if !b.Pressed() {
+		t.Fatal("button should be pressed after OnPress")
+	}
+	h.OnRelease(25, 10)
+	if b.Pressed() {
+		t.Fatal("button should settle out of pressed after OnRelease")
+	}
 }
 
 // TestButtonHitAdapter_OnWheelIgnored verifies that OnWheel returns

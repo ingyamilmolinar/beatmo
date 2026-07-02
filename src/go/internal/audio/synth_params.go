@@ -122,7 +122,7 @@ type cParamRenderer func(buf []float32, sampleRate, samples int, params SynthPar
 // BassParams / bassParamsFromSynth / recipeParamsToBass / isUnset / toC /
 // renderBassGuitarFam / renderSubBassFam are deleted: the bass family migrated
 // to the unified modular engine (Phase-2). Its render binding is
-// bassRecipeToModular / bassGuitarRecipeToModular (bass_modular_binding.go), and
+// bassRecipeToModular (bass_modular_binding.go), and
 // the deleted toC()==nil POST-skip rule now lives, tag-neutral, in
 // bassLegacyNilElision (bass_modular_push.go).
 

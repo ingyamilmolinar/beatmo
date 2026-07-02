@@ -36,7 +36,7 @@ func TestModularSaveAs_RoundTripsWithEnumAndSeed(t *testing.T) {
 	if oscDef == nil {
 		t.Fatalf("saved doc missing osc_type ParamDef")
 	}
-	if len(oscDef.Enum) != 7 || oscDef.Enum[1] != "Saw" {
+	if len(oscDef.Enum) != 12 || oscDef.Enum[1] != "Saw" {
 		t.Errorf("osc_type enum labels lost in Save-As: %v", oscDef.Enum)
 	}
 
@@ -68,7 +68,7 @@ func TestModularSaveAs_RoundTripsWithEnumAndSeed(t *testing.T) {
 		t.Fatalf("round-trip param count %d != %d", len(back.ParamDefs), len(doc.ParamDefs))
 	}
 	for _, d := range back.ParamDefs {
-		if d.Name == "osc_type" && len(d.Enum) != 7 {
+		if d.Name == "osc_type" && len(d.Enum) != 12 {
 			t.Errorf("osc_type enum lost through JSON: %v", d.Enum)
 		}
 	}

@@ -139,8 +139,9 @@ func TestSynthTab_ResetButtonClearsParams(t *testing.T) {
 	if resetBtn == nil {
 		t.Fatalf("reset button not present among %d header buttons", len(btns))
 	}
-	// Reset via the hit adapter (the same path real input uses).
-	adapter := &synthResetHitAdapter{dv: g.drum}
+	// Reset via the shared buttonHitAdapter (the same path real input uses
+	// now that footer buttons dispatch through their own OnClick).
+	adapter := &buttonHitAdapter{btn: resetBtn}
 	cx := (resetBtn.Rect().Min.X + resetBtn.Rect().Max.X) / 2
 	cy := (resetBtn.Rect().Min.Y + resetBtn.Rect().Max.Y) / 2
 	adapter.OnPress(cx, cy)
@@ -219,51 +220,57 @@ func TestSynthTab_HitAreasFlowFromEQPanelWhenActive(t *testing.T) {
 }
 
 func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
-	// Phase 8B unified Synth tab (+ Phase-8C modulator stages): every synth
-	// instrument shows the standardized
-	// VOICE · OSC · FM · PITCH · LFO · BURST · ENVELOPE · FILTER · POST
+	// Phase 8B unified Synth tab (+ Phase-8C modulator stages + the Phase-8E
+	// filter-envelope / unison additions): every synth instrument shows the
+	// standardized
+	// VOICE · OSC · FM · PITCH · LFO · BURST · ENVELOPE · FILTER · FILTER ENV · POST
 	// sequence. For drum-snare:
-	//   VOICE  = the 11 snare family/voice knobs (generator + fundamental + the
-	//            tone/noise/tail decays + mixes + attack — the knobs that ARE
-	//            the snare sound),
-	//   OSC    = the 3 standardized oscillator knobs (osc_type/detune/octave),
-	//   FM     = the 13 standardized FM operator knobs,
-	//   PITCH  = the 2 pitch-env knobs (pitchenv_amt/decay),
-	//   LFO    = the 2 LFO knobs (lfo_rate/depth),
-	//   BURST  = sharpness + 4×(off, amp) = 9,
-	//   ENV    = decay (generic) + the 5 amp ADSR knobs = 6,
-	//   FILTER = the 3 standardized filter knobs,
-	//   POST   = pitch + tone + drive (generic post) + gain = 4.
+	//   VOICE     = the 11 snare family/voice knobs (generator + fundamental + the
+	//               tone/noise/tail decays + mixes + attack — the knobs that ARE
+	//               the snare sound),
+	//   OSC       = the 3 standardized oscillator knobs (osc_type/detune/octave)
+	//               PLUS the 5 unison/ensemble knobs (Voices/Detune/Mix + 2 drift)
+	//               which stack the oscillator → 8,
+	//   FM        = the 13 standardized FM operator knobs,
+	//   PITCH     = the 2 pitch-env knobs (pitchenv_amt/decay),
+	//   LFO       = the 4 LFO knobs (lfo_rate/depth/target/delay),
+	//   BURST     = sharpness + 4×(off, amp) = 9,
+	//   ENV       = decay (generic) + the 5 amp ADSR knobs = 6,
+	//   FILTER    = the 3 standardized static-filter knobs,
+	//   FILTER ENV= the 3 filter-envelope knobs (filtenv_amt/decay/attack),
+	//   POST      = pitch + tone + drive (generic post) + gain = 4.
 	// Each stage section also carries its enable pill; VOICE carries none.
 	g := newSynthTabGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	sections := g.drum.SynthTabSections()
-	if len(sections) != 9 {
-		t.Fatalf("got %d sections, want 9 (VOICE/OSC/FM/PITCH/LFO/BURST/ENVELOPE/FILTER/POST)", len(sections))
+	if len(sections) != 10 {
+		t.Fatalf("got %d sections, want 10 (VOICE/OSC/FM/PITCH/LFO/BURST/ENVELOPE/FILTER/FILTER ENV/POST)", len(sections))
 	}
 	wantBySection := map[synthSectionID]int{
-		synthSectionVoice:    11,
-		synthSectionOsc:      3,
-		synthSectionFM:       13,
-		synthSectionPitch:    2,
-		synthSectionLFO:      2,
-		synthSectionBurst:    9,
-		synthSectionEnvelope: 6,
-		synthSectionFilter:   3,
-		synthSectionPost:     4,
+		synthSectionVoice:     11,
+		synthSectionOsc:       8,
+		synthSectionFM:        13,
+		synthSectionPitch:     2,
+		synthSectionLFO:       4,
+		synthSectionBurst:     9,
+		synthSectionEnvelope:  6,
+		synthSectionFilter:    3,
+		synthSectionFilterEnv: 3,
+		synthSectionPost:      4,
 	}
 	wantEnable := map[synthSectionID]string{
-		synthSectionVoice:    "",
-		synthSectionOsc:      "osc_enabled",
-		synthSectionFM:       "fm_enabled",
-		synthSectionPitch:    "pitchenv_enabled",
-		synthSectionLFO:      "lfo_enabled",
-		synthSectionBurst:    "burst_enabled",
-		synthSectionEnvelope: "env_enabled",
-		synthSectionFilter:   "filter_enabled",
-		synthSectionPost:     "post_enabled",
+		synthSectionVoice:     "",
+		synthSectionOsc:       "osc_enabled",
+		synthSectionFM:        "fm_enabled",
+		synthSectionPitch:     "pitchenv_enabled",
+		synthSectionLFO:       "lfo_enabled",
+		synthSectionBurst:     "burst_enabled",
+		synthSectionEnvelope:  "env_enabled",
+		synthSectionFilter:    "filter_enabled",
+		synthSectionFilterEnv: "filtenv_enabled",
+		synthSectionPost:      "post_enabled",
 	}
 	for _, s := range sections {
 		want, ok := wantBySection[s.id]

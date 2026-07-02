@@ -17,7 +17,7 @@ row controls + context menu, camera gestures, long-press node delete, and real a
 
 ## UI reminders (mobile)
 - Rows show `Label | Vol | M | S | FX` inline → Mute/Solo via `click_ui button="mute"/"solo" row=N`.
-- The row context menu (`open_row_menu`) has only Instrument/Rename/Origin/Delete (no Mute/Solo).
+- The row context menu (`open_row_menu`) has Rename/Color/Origin/Delete (no Instrument, no Mute/Solo). Change the instrument by tapping the row **LABEL** (`click_ui button="label" row=N`) — that opens the instrument picker (a bottom sheet on mobile) on every platform.
 - Bottom-nav views via `switch_view {slug}`; the State hint reports `viewMode`, `camScale`, `camOffset`, `nodes`.
 
 ## Rules
@@ -31,7 +31,7 @@ row controls + context menu, camera gestures, long-press node delete, and real a
 
 ## Phase 2 — Rows (inline + context menu)
 4. `click_ui button="mute" row=1` → `checkpoint {name:"row1_muted", expect:{row:1, muted:true}}`; `click_ui button="mute" row=1` → `checkpoint {name:"row1_unmuted", expect:{row:1, muted:false}}`.
-5. (Exercise) `open_row_menu {row:3}` → `menu_click {label:"Instrument"}` → pick a different instrument; report `ISSUE` if the menu is wrong.
+5. (Exercise) `click_ui button="label" row=3` to open the instrument picker (bottom sheet) → `computer` tap a different instrument item; report `ISSUE` if the picker doesn't open. Then `open_row_menu {row:3}` and confirm its items are exactly Rename/Color/Origin/Delete (no Instrument); `menu_click {label:"Color"}` and observe — report `ISSUE` if a menu item is wrong.
 
 ## Phase 3 — Bottom-nav views
 6. `switch_view {slug:"eq"}` → `checkpoint {name:"view_eq", expect:{viewMode:"eq"}}`. (Exercise) on EQ, toggle `click_ui button="chrome:k20"` or drag a band — observe.

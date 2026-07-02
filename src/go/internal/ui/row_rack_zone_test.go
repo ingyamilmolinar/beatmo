@@ -971,11 +971,12 @@ func TestRowRack_DeleteConfirmVisualTiming(t *testing.T) {
 	if len(delBtns) < 2 {
 		t.Fatal("expected at least 2 delete buttons")
 	}
+	// The confirm state is distinguished by the "!!" warning glyph. (Its button
+	// style — DeleteConfirmButtonStyle — is visually identical to the resting
+	// DeleteButtonStyle by design: DESIGN.md unified destructive-confirm-fill /
+	// -border to the same hex as destructive, so the glyph carries the signal.)
 	if delBtns[1].Text != "!!" {
 		t.Errorf("expected delete button text '!!' during confirm, got %q", delBtns[1].Text)
-	}
-	if delBtns[1].Style != DeleteConfirmButtonStyle {
-		t.Error("expected DeleteConfirmButtonStyle during confirm window")
 	}
 
 	// Now advance past the 120-frame window.
@@ -993,9 +994,10 @@ func TestRowRack_DeleteConfirmVisualTiming(t *testing.T) {
 	if delBtns[1].Icon != string(IconClose) {
 		t.Errorf("expected delete button icon %q after confirm expires, got %q", IconClose, delBtns[1].Icon)
 	}
-	if delBtns[1].Style == DeleteConfirmButtonStyle {
-		t.Error("expected non-DeleteConfirmButtonStyle after confirm window expires")
-	}
+	// The "!!" glyph clearing back to the close icon (asserted above) is the
+	// confirm-expiry signal. The button style is not asserted here because
+	// DeleteConfirmButtonStyle and DeleteButtonStyle resolve to identical
+	// visuals by design (see confirm-window assertion above).
 }
 
 func TestRowRack_LabelSkippedDuringRename(t *testing.T) {

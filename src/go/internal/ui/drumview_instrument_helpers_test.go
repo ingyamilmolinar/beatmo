@@ -62,30 +62,11 @@ func TestInstDisplayLabel_InitializesCache(t *testing.T) {
 }
 
 // --- computeInstLabel tests ---
-
-func TestComputeInstLabel_WithMetaName(t *testing.T) {
-	dv := &DrumView{
-		instMeta: map[string]audio.SoundMeta{
-			"kick808": {Name: "808 Kick"},
-		},
-	}
-	got := dv.computeInstLabel("kick808")
-	if got != "808 Kick" {
-		t.Fatalf("computeInstLabel(%q) = %q, want %q", "kick808", got, "808 Kick")
-	}
-}
-
-func TestComputeInstLabel_WithMetaRelPath(t *testing.T) {
-	dv := &DrumView{
-		instMeta: map[string]audio.SoundMeta{
-			"myinst": {RelPath: "drums/deep_kick.wav"},
-		},
-	}
-	got := dv.computeInstLabel("myinst")
-	if got != "Deep Kick" {
-		t.Fatalf("computeInstLabel(%q) = %q, want %q", "myinst", got, "Deep Kick")
-	}
-}
+// NOTE: catalog-tier resolution (explicit Name, RelPath basename, empty-Name
+// → RelPath) moved into audio.InstrumentDisplayName and is tested in
+// internal/audio/instrument_names_test.go (TestInstrumentDisplayNameRelPathFallback).
+// computeInstLabel now just delegates, so the UI-tier instMeta tests were
+// removed. Remaining tests cover the pure-id pretty-case fallback path.
 
 func TestComputeInstLabel_FallbackCapitalize(t *testing.T) {
 	dv := &DrumView{}
@@ -100,18 +81,6 @@ func TestComputeInstLabel_SingleChar(t *testing.T) {
 	got := dv.computeInstLabel("x")
 	if got != "X" {
 		t.Fatalf("computeInstLabel(%q) = %q, want %q", "x", got, "X")
-	}
-}
-
-func TestComputeInstLabel_MetaEmptyNameUsesRelPath(t *testing.T) {
-	dv := &DrumView{
-		instMeta: map[string]audio.SoundMeta{
-			"test": {Name: "", RelPath: "samples/bright_snare.wav"},
-		},
-	}
-	got := dv.computeInstLabel("test")
-	if got != "Bright Snare" {
-		t.Fatalf("computeInstLabel(%q) = %q, want %q", "test", got, "Bright Snare")
 	}
 }
 
@@ -151,11 +120,11 @@ func TestMatchInstrumentSearch_MatchIDCaseInsensitive(t *testing.T) {
 }
 
 func TestMatchInstrumentSearch_MatchLabel(t *testing.T) {
-	dv := &DrumView{
-		instMeta: map[string]audio.SoundMeta{
-			"k808": {Name: "808 Deep Kick"},
-		},
-	}
+	// The display label now resolves through audio.InstrumentDisplayName, which
+	// reads the real catalog — so seed it there rather than dv.instMeta.
+	audio.ResetCatalogForTest([]audio.SoundMeta{{ID: "k808", Name: "808 Deep Kick"}})
+	defer audio.ResetCatalogForTest(nil)
+	dv := &DrumView{}
 	if !dv.matchInstrumentSearch("k808", "deep") {
 		t.Fatal("query 'deep' should match label '808 Deep Kick'")
 	}

@@ -194,8 +194,8 @@ func (l *Logger) writeEvent(e hooks.Event) {
 	if !ok {
 		return
 	}
-	out := f(e.Payload)
-	if out.msg == "" {
+	msg := f(e.Payload)
+	if msg == "" {
 		return
 	}
 	l.written.Add(1)
@@ -203,10 +203,14 @@ func (l *Logger) writeEvent(e hooks.Event) {
 	if s := e.Source.String(); s != "" {
 		srcSuffix = "  src=" + s
 	}
-	if out.tag == "" {
-		l.log.Infof("%s%s", out.msg, srcSuffix)
+	tag := ""
+	if meta, ok := hooks.MetaFor(e.Kind); ok {
+		tag = meta.Tag
+	}
+	if tag == "" {
+		l.log.Infof("%s%s", msg, srcSuffix)
 	} else {
-		l.log.Infof("[%s] %s%s", out.tag, out.msg, srcSuffix)
+		l.log.Infof("[%s] %s%s", tag, msg, srcSuffix)
 	}
 }
 

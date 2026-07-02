@@ -36,3 +36,28 @@ func filePickerClearRects() {
 	}
 	fpClearRectsFn.Invoke()
 }
+
+// initFilePickerActions registers the JS→Go entry points the mobile real-input
+// file-picker overlays call once the user has picked a file. The overlay's
+// change handler stashes the file via _fpConsumePending and then invokes one of
+// these so the normal import/upload flow runs (consuming the pending pick).
+// Mutations are queued so they execute on the next Update tick after seqMu is
+// released — JS must never enter UI code while drum.Update holds the lock.
+func (g *Game) initFilePickerActions() {
+	js.Global().Set("_fpStartImport", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		g.QueueAction(func(g *Game) {
+			if g.drum != nil {
+				g.drum.StartOverflowImport()
+			}
+		})
+		return nil
+	}))
+	js.Global().Set("_fpStartUpload", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		g.QueueAction(func(g *Game) {
+			if g.drum != nil {
+				g.drum.StartOverflowUpload()
+			}
+		})
+		return nil
+	}))
+}

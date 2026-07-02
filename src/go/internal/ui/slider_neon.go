@@ -47,34 +47,33 @@ func drawSliderRail(dst *ebiten.Image, rail image.Rectangle, value float64, hori
 		fill = image.Rect(rail.Min.X, rail.Max.Y-fh, rail.Max.X, rail.Max.Y)
 	}
 	drawRoundedRect(dst, fill, fillCol, rad, true)
-	// Subtle glow stroke: inset -1 (expand outward by 1px), stroke only.
-	drawRoundedRect(dst, fill.Inset(-1), WithAlpha(fillCol, AlphaSubtle), rad+1, false)
+	// Matte rail — no outer glow stroke (retro-analogue restyle 2026-06-17).
 }
 
-// drawSliderThumb renders a round glowing thumb centered at center. active
-// brightens the glow (during drag); calm lowers the glow ceiling and skips the
-// outer bloom (used by many-on-screen param sliders so they don't shimmer).
+// drawSliderThumb renders a matte cap thumb centered at center. A neutral edge
+// rim conveys depth; active strengthens that rim (during drag) while calm
+// halves it (used by many-on-screen param sliders so they don't shimmer). No
+// specular highlight, no cyan rim, no bloom — matte retro-analogue restyle
+// (2026-06-17).
 func drawSliderThumb(dst *ebiten.Image, center image.Point, diameter int, active, calm bool) {
 	if diameter < 2 {
 		return
 	}
 	rad := diameter / 2
 	r := image.Rect(center.X-rad, center.Y-rad, center.X+rad, center.Y+rad)
-	ring := buttonGlowRingColor(active)
-	if !calm {
-		spread := genGeomButtonHoverGlowSpread
-		drawRoundedRect(dst, r.Inset(-spread), WithAlpha(ring, AlphaSubtle), rad+spread, false)
-	}
+	// Contact shadow 1px below → reads as a raised cap.
+	drawRoundedRect(dst, image.Rect(r.Min.X, r.Min.Y+1, r.Max.X, r.Max.Y+1),
+		WithAlphaFromColor(color.Black, 64), rad, true)
+	// Matte body — no specular highlight.
 	drawRoundedRect(dst, r, genColorOnSurface, rad, true)
-	// Rest-glow ceiling: same derivation as buttonGlowAlphaAnimated at hoverProgress=1
-	// (uint8(AlphaScale * GlowRest * 1.0)). calm halves it; active uses AlphaStrong.
-	restGlow := uint8(float64(genAnimButtonTogglePulse.AlphaScale) * float64(genAnimButtonGlowRest))
-	ringAlpha := restGlow
-	if calm {
-		ringAlpha = restGlow / 2
-	}
+	// Neutral edge rim: stronger while dragging (active), halved when calm. No
+	// cyan accent.
+	ringAlpha := genAlphaMedium
 	if active {
-		ringAlpha = AlphaStrong
+		ringAlpha = genAlphaStrong
 	}
-	drawRoundedRect(dst, r, WithAlpha(ring, ringAlpha), rad, false)
+	if calm {
+		ringAlpha /= 2
+	}
+	drawRoundedRect(dst, r, WithAlpha(colTextPrimary, ringAlpha), rad, false)
 }

@@ -166,6 +166,36 @@ func initSendEffects(sr int) {
 	sendFX = fx
 }
 
+// resetSendEffectsState clears the global send delay + reverb tails in place
+// (re-initializing the C delay/reverb on their existing buffers — no realloc) and
+// restores the shipped default params. The send delay/reverb are process-global
+// and survive ResetInstruments, so without this a prior render's reverb tail
+// leaks into the next. Used for render isolation (e.g. the template audio tests,
+// where a sustained reverb-sent organ would otherwise inherit a residual tail
+// left by an earlier test and read as a false clip). No-op if uninitialized.
+func resetSendEffectsState() {
+	if sendFX == nil || !sendFX.initialized {
+		return
+	}
+	sendFX.mu.Lock()
+	defer sendFX.mu.Unlock()
+	sr := sendFX.sr
+	initialDelaySamples := sr * 300 / 1000
+	if initialDelaySamples < 1 {
+		initialDelaySamples = 1
+	}
+	C.delay_init(&sendFX.delay, (*C.float)(sendFX.delayBuf), C.int(initialDelaySamples),
+		C.float(0.3), C.float(3000), C.int(sr))
+	C.reverb_init(&sendFX.reverb, (*C.float)(sendFX.reverbBuf), C.int(sr),
+		C.float(0.7), C.float(0.4), C.float(0.3))
+	sendFX.delayTimeMs = 300
+	sendFX.delayFeedback = 0.3
+	sendFX.delayDampingHz = 3000
+	sendFX.reverbRoom = 0.7
+	sendFX.reverbDamping = 0.4
+	sendFX.reverbWet = 0.3
+}
+
 // processSlotSends is the slot-indexed variant of processSends, used by the
 // mixer's hot path to avoid map lookups. slotIDs maps slot → instrument ID.
 func (fx *sendEffects) processSlotSends(instBufs [][]float64, slotIDs []string, activeSlots []int, blockLen int, masterBuf []float64) {

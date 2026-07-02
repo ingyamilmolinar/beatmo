@@ -8,16 +8,19 @@ import (
 	"strings"
 )
 
-func selectJSON() ([]byte, error) {
-	if _, err := exec.LookPath("zenity"); err == nil {
+// selectJSON returns the picked file's bytes and its path (for the "Loaded
+// <name>" notification). path is "" when nothing was picked.
+func selectJSON() (data []byte, path string, err error) {
+	if _, e := exec.LookPath("zenity"); e == nil {
 		cmd := exec.Command("zenity", "--file-selection", "--file-filter=*.json")
-		out, err := cmd.Output()
-		if err == nil {
-			path := strings.TrimSpace(string(out))
-			if path != "" {
-				return os.ReadFile(path)
+		out, e := cmd.Output()
+		if e == nil {
+			p := strings.TrimSpace(string(out))
+			if p != "" {
+				b, rerr := os.ReadFile(p)
+				return b, p, rerr
 			}
 		}
 	}
-	return nil, nil
+	return nil, "", nil
 }

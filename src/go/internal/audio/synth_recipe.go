@@ -265,6 +265,16 @@ func SetInstrumentParams(instrumentID string, p RecipeParams) {
 	}
 	m := instrumentParamsMgr
 	m.mu.Lock()
+	// No-op skip (mirrors SetInstrumentParam's per-value skip): if the sanitized
+	// set equals what is already stored, the cache-invalidate + platform/WASM
+	// re-render are pure waste. The JSON import path that EVERY undo/redo restore
+	// rides re-applies every instrument's full param set, so without this an undo
+	// of a single synth knob re-renders the whole kit's PCM on WASM — the
+	// "applying actions is slow" lag.
+	if recipeParamsEqual(m.params[instrumentID], sanitized) {
+		m.mu.Unlock()
+		return
+	}
 	if len(sanitized) == 0 {
 		delete(m.params, instrumentID)
 	} else {
@@ -327,6 +337,13 @@ func ResetInstrumentParams(instrumentID string) {
 func BindInstrumentToRecipe(instrumentID, recipeID string) {
 	m := instrumentParamsMgr
 	m.mu.Lock()
+	// No-op skip: re-binding to the recipe already in effect would re-fire the
+	// platform/WASM re-bind for no reason. The undo/redo full re-import re-binds
+	// every instrument on every restore — skip the unchanged ones.
+	if m.bindings[instrumentID] == recipeID {
+		m.mu.Unlock()
+		return
+	}
 	if recipeID == "" {
 		delete(m.bindings, instrumentID)
 	} else {
@@ -402,7 +419,6 @@ var builtinRecipeDescriptors = []builtinRecipeDescriptor{
 	{ID: "drum-open-hihat", Display: "Open Hi-Hat", Category: "drum"},
 	{ID: "drum-tom-high", Display: "Tom High", Category: "drum"},
 	{ID: "drum-tom-low", Display: "Tom Low", Category: "drum"},
-	{ID: "drum-bass-guitar", Display: "Bass Guitar", Category: "drum"},
 	{ID: "drum-sub-bass", Display: "Sub Bass", Category: "drum"},
 	{ID: "drum-snare-rimshot", Display: "Rimshot", Category: "drum"},
 	{ID: "drum-snare-sidestick", Display: "Sidestick", Category: "drum"},
@@ -424,6 +440,55 @@ var builtinRecipeDescriptors = []builtinRecipeDescriptor{
 	{ID: "synth-modular", Display: "Modular", Category: modularRecipeCategory},
 	// Second shipped modular preset: same schema, pad defaults via Seed.
 	{ID: "synth-modular-pad", Display: "Modular Pad", Category: modularRecipeCategory, Seed: modularPadSeed},
+	// Bowed strings family — LFO→pitch vibrato showcase (Phase-1 seeds).
+	{ID: "synth-modular-violin", Display: "Violin", Category: modularRecipeCategory, Seed: violinSeed},
+	{ID: "synth-modular-violin-ensemble", Display: "Violin Ensemble", Category: modularRecipeCategory, Seed: violinEnsembleSeed},
+	{ID: "synth-modular-cello", Display: "Cello", Category: modularRecipeCategory, Seed: celloSeed},
+	{ID: "synth-modular-cello-warm", Display: "Cello Warm", Category: modularRecipeCategory, Seed: celloWarmSeed},
+	{ID: "synth-modular-organ-church", Display: "Church Organ", Category: modularRecipeCategory, Seed: organChurchSeed},
+	{ID: "synth-modular-scifi-lead", Display: "Sci-Fi Lead", Category: modularRecipeCategory, Seed: sciFiLeadSeed},
+	// Plucked strings — Karplus-Strong (Task 2).
+	{ID: "synth-modular-guitar-nylon", Display: "Guitar Nylon", Category: modularRecipeCategory, Seed: guitarNylonSeed},
+	{ID: "synth-modular-guitar-nylon-bright", Display: "Guitar Nylon Bright", Category: modularRecipeCategory, Seed: guitarNylonBrightSeed},
+	{ID: "synth-modular-guitar-steel", Display: "Guitar Steel", Category: modularRecipeCategory, Seed: guitarSteelSeed},
+	{ID: "synth-modular-guitar-steel-warm", Display: "Guitar Steel Warm", Category: modularRecipeCategory, Seed: guitarSteelWarmSeed},
+	{ID: "synth-modular-guitar-electric", Display: "Guitar Electric", Category: modularRecipeCategory, Seed: guitarElectricSeed},
+	{ID: "synth-modular-harp", Display: "Harp", Category: modularRecipeCategory, Seed: harpSeed},
+	{ID: "synth-modular-guitar-electric-neck", Display: "Guitar Electric Neck", Category: modularRecipeCategory, Seed: guitarElectricNeckSeed},
+	// Keys — additive piano (Task 3).
+	{ID: "synth-modular-piano-grand", Display: "Piano Grand", Category: modularRecipeCategory, Seed: pianoGrandSeed},
+	{ID: "synth-modular-piano-felt", Display: "Piano Felt", Category: modularRecipeCategory, Seed: pianoFeltSeed},
+	// Woodwind family (Task 4).
+	{ID: "synth-modular-flute", Display: "Flute", Category: modularRecipeCategory, Seed: fluteSeed},
+	{ID: "synth-modular-flute-breathy", Display: "Flute Breathy", Category: modularRecipeCategory, Seed: fluteBreathySeed},
+	{ID: "synth-modular-oboe", Display: "Oboe", Category: modularRecipeCategory, Seed: oboeSeed},
+	{ID: "synth-modular-oboe-full", Display: "Oboe Full", Category: modularRecipeCategory, Seed: oboeFullSeed},
+	// Brass family (Task 5).
+	{ID: "synth-modular-trumpet", Display: "Trumpet", Category: modularRecipeCategory, Seed: trumpetSeed},
+	{ID: "synth-modular-trumpet-mellow", Display: "Trumpet Mellow", Category: modularRecipeCategory, Seed: trumpetMellowSeed},
+	{ID: "synth-modular-french-horn", Display: "French Horn", Category: modularRecipeCategory, Seed: frenchHornSeed},
+	{ID: "synth-modular-french-horn-loud", Display: "French Horn Loud", Category: modularRecipeCategory, Seed: frenchHornLoudSeed},
+	// Bass guitar — tuned plucked electric bass (renamed from synth-bass).
+	{ID: "synth-modular-bass-guitar", Display: "Bass Guitar", Category: modularRecipeCategory, Seed: bassGuitarSeed},
+	// Synth bass family — acid / reese / FM / 808.
+	{ID: "synth-modular-bass-acid", Display: "Acid Bass", Category: modularRecipeCategory, Seed: bassAcidSeed},
+	{ID: "synth-modular-bass-reese", Display: "Reese Bass", Category: modularRecipeCategory, Seed: bassReeseSeed},
+	{ID: "synth-modular-bass-fm", Display: "FM Bass DX", Category: modularRecipeCategory, Seed: bassFMSeed},
+	{ID: "synth-modular-bass-808", Display: "808 Bass", Category: modularRecipeCategory, Seed: bass808Seed},
+	// Modal conga (Task 7).
+	{ID: "synth-modular-conga", Display: "Conga", Category: modularRecipeCategory, Seed: congaSeed},
+	{ID: "synth-modular-conga-open", Display: "Conga Open", Category: modularRecipeCategory, Seed: congaOpenSeed},
+	{ID: "synth-modular-conga-tumba", Display: "Conga Tumba", Category: modularRecipeCategory, Seed: congaTumbaSeed},
+	// Masterpiece template set — three new instruments.
+	{ID: "synth-modular-organ", Display: "Organ", Category: modularRecipeCategory, Seed: organSeed},
+	{ID: "synth-modular-sax", Display: "Saxophone", Category: modularRecipeCategory, Seed: saxSeed},
+	// Configurable KICK stage — the modular gen-bank kick voice (source==5)
+	// surfaced as a first-class instrument, tuned to a deep, dark DnB sub-kick.
+	{ID: "synth-modular-kick-dnb", Display: "DnB Kick", Category: modularRecipeCategory, Seed: dnbKickSeed},
+	{ID: "synth-modular-kick-electro", Display: "Electro Kick", Category: modularRecipeCategory, Seed: electroKickSeed},
+	{ID: "synth-modular-kick-808", Display: "808 Kick", Category: modularRecipeCategory, Seed: kick808Seed},
+	{ID: "synth-modular-kick-acoustic", Display: "Acoustic Kick", Category: modularRecipeCategory, Seed: acousticKickSeed},
+	{ID: "synth-modular-kick-punchy", Display: "Punchy Kick", Category: modularRecipeCategory, Seed: punchyKickSeed},
 }
 
 // builtinInstrumentRecipeBindings maps every shipped instrument id (base
@@ -441,23 +506,21 @@ var builtinInstrumentRecipeBindings = map[string]string{
 	"tom":     "drum-tom",
 	"cowbell": "drum-cowbell",
 	// New distinct drum instruments.
-	"rimshot":     "drum-snare-rimshot",
-	"sidestick":   "drum-snare-sidestick",
-	"kick-deep":   "drum-kick-deep",
-	"shaker":      "drum-shaker",
-	"ride":        "drum-ride",
-	"crash":       "drum-crash",
-	"bass-guitar": "drum-bass-guitar",
-	"sub-bass":    "drum-sub-bass",
+	"rimshot":   "drum-snare-rimshot",
+	"sidestick": "drum-snare-sidestick",
+	"kick-deep": "drum-kick-deep",
+	"shaker":    "drum-shaker",
+	"ride":      "drum-ride",
+	"crash":     "drum-crash",
+	"sub-bass":  "drum-sub-bass",
 	// Variant set 1 (electronic/tight) — bound to the actual base renderer used.
-	"snare-1":       "drum-snare-rimshot",
-	"kick-1":        "drum-kick-punchy",
-	"hihat-1":       "drum-open-hihat",
-	"tom-1":         "drum-tom-high",
-	"clap-1":        "drum-clap",
-	"cowbell-1":     "drum-cowbell",
-	"bass-guitar-1": "drum-bass-guitar",
-	"sub-bass-1":    "drum-sub-bass",
+	"snare-1":    "drum-snare-rimshot",
+	"kick-1":     "drum-kick-punchy",
+	"hihat-1":    "drum-open-hihat",
+	"tom-1":      "drum-tom-high",
+	"clap-1":     "drum-clap",
+	"cowbell-1":  "drum-cowbell",
+	"sub-bass-1": "drum-sub-bass",
 	// Variant set 2 (lo-fi/dark).
 	"snare-2":   "drum-snare",
 	"kick-2":    "drum-kick-lofi",
@@ -484,6 +547,53 @@ var builtinInstrumentRecipeBindings = map[string]string{
 	// Unified modular synth voice.
 	"modular":     "synth-modular",
 	"modular-pad": "synth-modular-pad",
+	// Bowed strings family.
+	"violin":          "synth-modular-violin",
+	"violin-ensemble": "synth-modular-violin-ensemble",
+	"cello":           "synth-modular-cello",
+	"cello-warm":      "synth-modular-cello-warm",
+	"organ-church":    "synth-modular-organ-church",
+	"scifi-lead":      "synth-modular-scifi-lead",
+	// Plucked strings — guitars (Task 2).
+	"guitar-nylon":         "synth-modular-guitar-nylon",
+	"guitar-nylon-bright":  "synth-modular-guitar-nylon-bright",
+	"guitar-steel":         "synth-modular-guitar-steel",
+	"guitar-steel-warm":    "synth-modular-guitar-steel-warm",
+	"guitar-electric":      "synth-modular-guitar-electric",
+	"harp":                 "synth-modular-harp",
+	"guitar-electric-neck": "synth-modular-guitar-electric-neck",
+	// Keys — piano (Task 3).
+	"piano-grand": "synth-modular-piano-grand",
+	"piano-felt":  "synth-modular-piano-felt",
+	// Woodwind (Task 4).
+	"flute":         "synth-modular-flute",
+	"flute-breathy": "synth-modular-flute-breathy",
+	"oboe":          "synth-modular-oboe",
+	"oboe-full":     "synth-modular-oboe-full",
+	// Brass (Task 5).
+	"trumpet":          "synth-modular-trumpet",
+	"trumpet-mellow":   "synth-modular-trumpet-mellow",
+	"french-horn":      "synth-modular-french-horn",
+	"french-horn-loud": "synth-modular-french-horn-loud",
+	// Bass guitar (renamed from synth-bass) + synth bass family.
+	"bass-guitar": "synth-modular-bass-guitar",
+	"bass-acid":   "synth-modular-bass-acid",
+	"bass-reese":  "synth-modular-bass-reese",
+	"bass-fm":     "synth-modular-bass-fm",
+	"bass-808":    "synth-modular-bass-808",
+	// Modal conga (Task 7).
+	"conga":       "synth-modular-conga",
+	"conga-open":  "synth-modular-conga-open",
+	"conga-tumba": "synth-modular-conga-tumba",
+	// Masterpiece template set — three new instruments.
+	"organ": "synth-modular-organ",
+	"sax":   "synth-modular-sax",
+	// Configurable KICK stage instruments.
+	"dnb-kick":      "synth-modular-kick-dnb",
+	"kick-electro":  "synth-modular-kick-electro",
+	"kick-808":      "synth-modular-kick-808",
+	"kick-acoustic": "synth-modular-kick-acoustic",
+	"kick-punchy":   "synth-modular-kick-punchy",
 }
 
 // factoryRecipeForInstrument returns the shipped SynthRecipe id for a built-in
@@ -494,7 +604,18 @@ var builtinInstrumentRecipeBindings = map[string]string{
 // live binding was cleared or the app was restarted. Returns "" for non-built-in
 // ids (user samples / Save-As clones).
 func factoryRecipeForInstrument(instID string) string {
-	return builtinInstrumentRecipeBindings[instID]
+	if r, ok := builtinInstrumentRecipeBindings[instID]; ok {
+		return r
+	}
+	// Instance variants ("organ-2") resolve to their base instrument's recipe
+	// so a duplicated voice renders identically without its own binding entry.
+	// instanceBaseID is the tag-neutral strip shared with EnsureInstanceInstrument
+	// (the dispatch-file baseInstrumentID carries a !test build tag and can't be
+	// used here).
+	if base := instanceBaseID(instID); base != instID {
+		return builtinInstrumentRecipeBindings[base]
+	}
+	return ""
 }
 
 // bindBuiltinInstrumentRecipes wires each built-in instrument id to its
@@ -594,6 +715,22 @@ func cloneRecipeParams(p RecipeParams) RecipeParams {
 		out[k] = v
 	}
 	return out
+}
+
+// recipeParamsEqual reports whether two param sets are identical (same keys,
+// same values). Empty and nil are equal. Used to skip redundant re-applies in
+// SetInstrumentParams so a full re-import (undo/redo) doesn't re-render
+// unchanged instruments.
+func recipeParamsEqual(a, b RecipeParams) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
 }
 
 // hashRecipeParams returns a deterministic FNV-1a hash over the (name,value)

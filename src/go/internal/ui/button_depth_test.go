@@ -30,10 +30,12 @@ func TestButtonInnerShadowStrips(t *testing.T) {
 	}
 }
 
-// TestButtonDrawPressEmitsInnerShadow drives the full Button.Draw path and
-// asserts a pressed button emits more drawRect activity than a resting one —
-// i.e. the inner pressed-in shadow only appears on press.
-func TestButtonDrawPressEmitsInnerShadow(t *testing.T) {
+// TestButtonDrawDepthContactShadow drives the full Button.Draw path under the
+// keycap-travel model: a resting/raised cap (pressDepth <= 0) draws a contact
+// shadow under it so it reads as lifted, while a held-down cap (pressDepth > 0
+// after the first AdvancePressAnim tick in Draw) bottoms out and drops it — so
+// the pressed button emits FEWER drawRect calls than the resting one.
+func TestButtonDrawDepthContactShadow(t *testing.T) {
 	dst := ebiten.NewImage(300, 200)
 
 	rest := NewButton("X", InstButtonStyle, func() {})
@@ -42,13 +44,20 @@ func TestButtonDrawPressEmitsInnerShadow(t *testing.T) {
 
 	pressed := NewButton("X", InstButtonStyle, func() {})
 	pressed.SetRect(image.Rect(20, 20, 100, 52))
-	pressed.HandleInputResult(40, 36, true) // press inside
+	pressed.HandleInputResult(40, 36, true) // press inside → target full depth
 	if !pressed.pressed {
 		t.Fatal("setup: button should be pressed")
 	}
+	// Settle the cap toward bottom-out so pressDepth > 0 (contact shadow drops).
+	for i := 0; i < 6; i++ {
+		pressed.AdvancePressAnim()
+	}
+	if pressed.pressDepth <= 0 {
+		t.Fatalf("setup: held cap should have descended (depth>0), got %v", pressed.pressDepth)
+	}
 	pressRects, _ := captureDrawRects(t, func() { pressed.Draw(dst) })
 
-	if len(pressRects) <= len(restRects) {
-		t.Fatalf("pressed button must emit more drawRect calls than resting (inner shadow): pressed=%d rest=%d", len(pressRects), len(restRects))
+	if len(pressRects) >= len(restRects) {
+		t.Fatalf("bottomed-out cap should drop the contact shadow (fewer drawRect than resting): pressed=%d rest=%d", len(pressRects), len(restRects))
 	}
 }

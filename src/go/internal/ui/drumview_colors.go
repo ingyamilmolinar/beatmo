@@ -129,6 +129,34 @@ func (dv *DrumView) ResequenceRowColors() {
 	dv.markRowControlsDirty()
 }
 
+// rowColorAt returns the live color of row idx, or nil when the index is out of
+// range or the row has no color. Used to seed menus (e.g. the color picker's
+// CurrentColor selected-ring) from the same value the grid node is drawn with.
+func (dv *DrumView) rowColorAt(idx int) color.Color {
+	if idx < 0 || idx >= len(dv.Rows) || dv.Rows[idx] == nil {
+		return nil
+	}
+	return dv.Rows[idx].Color
+}
+
+// instrumentRowColor returns the live display color of the row currently bound
+// to instrument id — the same color the grid node is drawn with — or nil when
+// no row uses that instrument. The instrument menu threads this into each
+// InstrumentOption.Color so the picker swatch / active stripe / accent match the
+// node exactly (instead of the registered instColor default). Re-read on every
+// menu (re)build, so a node recolor propagates the next time the menu opens.
+func (dv *DrumView) instrumentRowColor(id string) color.Color {
+	if id == "" {
+		return nil
+	}
+	for i := range dv.Rows {
+		if dv.Rows[i] != nil && dv.Rows[i].Instrument == id && dv.Rows[i].Color != nil {
+			return dv.Rows[i].Color
+		}
+	}
+	return nil
+}
+
 // SetRowColor sets the color for a row ensuring uniqueness across rows.
 func (dv *DrumView) SetRowColor(idx int, c color.Color) {
 	if idx < 0 || idx >= len(dv.Rows) {
@@ -147,6 +175,11 @@ func (dv *DrumView) SetRowColor(idx int, c color.Color) {
 	// too or the in-row volume control keeps painting the old color.
 	dv.markRowControlsDirty()
 	emitRowColorChanged(idx, packRGBA(dv.Rows[idx].Color))
+	// An open instrument menu derives its per-instrument swatch/accent from the
+	// live row colors (instrumentRowColor → InstrumentOption.Color); refresh it
+	// so a recolor is reflected immediately even while the menu is open. No-op
+	// when the menu is closed.
+	dv.refreshInstMenuComponent()
 	// Color picks are a single commit per gesture (the picker latches picked
 	// after the first pick), so record one undo step here beside the emit.
 	dv.recordUndoStep(hooks.EventRowColorChanged)
@@ -171,6 +204,9 @@ func (dv *DrumView) SetRowColorManual(idx int, c color.Color) {
 	// label tint) — markAllRowsDirty/rowDirty only cover the grid step cells.
 	dv.markRowControlsDirty()
 	emitRowColorChanged(idx, packRGBA(dv.Rows[idx].Color))
+	// Keep an open instrument menu's derived colors in sync with the live row
+	// color (see SetRowColor). No-op when the menu is closed.
+	dv.refreshInstMenuComponent()
 	dv.recordUndoStep(hooks.EventRowColorChanged)
 }
 

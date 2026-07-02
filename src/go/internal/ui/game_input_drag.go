@@ -33,7 +33,7 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	// start drag
 	if left && !g.linkDrag.active && shift {
 		if n := g.nodeAt(i, j); n != nil {
-			g.logger.Debugf("[GAME] Start link drag: node=%d at grid=(%d,%d)", n.ID, n.I, n.J)
+			g.logger.Debugf("[game] Start link drag: node=%d at grid=(%d,%d)", n.ID, n.I, n.J)
 			g.linkDrag = dragLink{from: n, active: true}
 		}
 	}
@@ -49,17 +49,17 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 			tTo := g.graph.Nodes[n2.ID].Type
 			if tFrom != model.NodeTypeInvisible && tTo != model.NodeTypeInvisible {
 				if right {
-					g.logger.Debugf("[GAME] Deleting edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
+					g.logger.Debugf("[game] Deleting edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
 					g.deleteEdge(g.linkDrag.from, n2)
 				} else {
-					g.logger.Debugf("[GAME] Adding edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
+					g.logger.Debugf("[game] Adding edge: node=%d grid=(%d,%d) and node=%d grid=(%d,%d)", g.linkDrag.from.ID, g.linkDrag.from.I, g.linkDrag.from.J, n2.ID, n2.I, n2.J)
 					g.addEdge(g.linkDrag.from, n2)
 				}
 			} else {
-				g.logger.Debugf("[GAME] Ignoring link to invisible node at grid=(%d,%d)", i, j)
+				g.logger.Debugf("[game] Ignoring link to invisible node at grid=(%d,%d)", i, j)
 			}
 		}
-		g.logger.Debugf("[GAME] End link drag at grid=(%d,%d)", i, j)
+		g.logger.Debugf("[game] End link drag at grid=(%d,%d)", i, j)
 		g.linkDrag = dragLink{}
 	}
 }
@@ -69,8 +69,17 @@ func (g *Game) menuHit(x, y int) bool {
 	return g.sidebar.Hit(x, y) || image.Pt(x, y).In(g.gridHelpButtonRect())
 }
 
+// modalOverlayActive reports whether a blocking (modal/scrim) overlay — such as
+// the mobile synth-knob wheel popup or a volume popup — is open in the drum
+// view's input trees. The out-of-tree Game-level gesture/camera handlers consult
+// this so a gesture over the scrim never leaks to the grid, camera, or timeline
+// beneath; the overlay closes via the tree's click-outside / Esc path instead.
+func (g *Game) modalOverlayActive() bool {
+	return g.drum != nil && g.drum.PortalHasBlocking()
+}
+
 func (g *Game) spawnPulseFromRow(row, start int) {
-	g.logger.Tracef("[PULSE] spawn row=%d from=%d", row, start)
+	g.logger.Tracef("[pulse] spawn row=%d from=%d", row, start)
 	if row < 0 || row >= len(g.beatInfosByRow) {
 		return
 	}

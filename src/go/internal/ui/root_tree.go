@@ -142,6 +142,14 @@ func (r *RootTree) capturer() *DrumViewTree {
 	return nil
 }
 
+// HasBlockingPortal reports whether ANY composed subtree currently has a
+// BLOCKING overlay (modal or scrim-backed menu/picker/dropdown/popup) open. A
+// blocking overlay owns input exclusively, so out-of-tree Game-level handlers
+// (grid tap, camera pan/zoom, two-finger pan) must stand down while one is up.
+func (r *RootTree) HasBlockingPortal() bool {
+	return r.blockingPortalOwner() != nil
+}
+
 // blockingPortalOwner returns the top-most (highest z) subtree that has a
 // BLOCKING overlay (modal or scrim-backed menu/picker/dropdown/popup) open in
 // its portal. A blocking overlay owns the next click cycle, so input is routed

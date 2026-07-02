@@ -126,6 +126,7 @@ func ResetInstruments() {
 	bumpInstrumentsVersion()
 	ClearAllInsertEffects()
 	resetInstrumentChannels(instruments)
+	clearInstrumentDisplayNames()
 	// Phase 5: wire each shipped instrument id to its SynthRecipe so the
 	// browser audio pipeline can pick up user-edited params at render time
 	// (mirrors the desktop + stub build paths).
@@ -181,24 +182,6 @@ func Instruments() []string {
 	ids := append([]string(nil), instruments...)
 	instrumentsMu.RUnlock()
 	return ids
-}
-
-// RenameInstrument updates an instrument ID in the list.
-func RenameInstrument(oldID, newID string) {
-	changed := false
-	instrumentsMu.Lock()
-	for i, id := range instruments {
-		if id == oldID {
-			instruments[i] = newID
-			changed = true
-			break
-		}
-	}
-	instrumentsMu.Unlock()
-	if changed {
-		bumpInstrumentsVersion()
-	}
-	renameInstrumentChannel(oldID, newID)
 }
 
 // AnalyzerService returns nil on WASM (analyzer runs via JS AudioWorklet, not Go).

@@ -93,12 +93,12 @@ func (g *Game) Import(data []byte) (retErr error) {
 	// playing=false will cause it to skip scheduling until import completes.
 	wasPlaying := g.Playing()
 	if wasPlaying {
-		g.logger.Debugf("[IMPORT] stopping playback during import")
+		g.logger.Debugf("[import] stopping playback during import")
 		g.SetPlaying(false)
 	}
 	defer func() {
 		if wasPlaying {
-			g.logger.Debugf("[IMPORT] restoring playback after import")
+			g.logger.Debugf("[import] restoring playback after import")
 			g.SetPlaying(true)
 		}
 	}()
@@ -121,7 +121,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.paritySeqDecisions = make(map[int]map[int]paritySeqDecision)
 	g.parityMu.Unlock()
 
-	g.logger.Debugf("[IMPORT] parity cleared elapsed=%v", time.Since(importStart))
+	g.logger.Debugf("[import] parity cleared elapsed=%v", time.Since(importStart))
 	var f importFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return err
@@ -196,9 +196,9 @@ func (g *Game) Import(data []byte) (retErr error) {
 	subdivStart := time.Now()
 	if err := g.SetSubdivisions(f.Subdiv); err != nil {
 		// If change is denied (e.g., playing), keep current grid and scale coords.
-		g.logger.Warnf("[GAME] Import: cannot apply subdiv %d now: %v; scaling nodes to current grid", f.Subdiv, err)
+		g.logger.Warnf("[game] Import: cannot apply subdiv %d now: %v; scaling nodes to current grid", f.Subdiv, err)
 	}
-	g.logger.Debugf("[IMPORT] SetSubdivisions elapsed=%v", time.Since(subdivStart))
+	g.logger.Debugf("[import] SetSubdivisions elapsed=%v", time.Since(subdivStart))
 	cur := g.grid.MaxDiv()
 	scale := float64(cur) / float64(f.Subdiv)
 
@@ -433,7 +433,12 @@ func (g *Game) Import(data []byte) (retErr error) {
 		g.drum.AddRow()
 		idx := len(g.drum.Rows) - 1
 		row := g.drum.Rows[idx]
-		row.Name = inst.Name
+		if inst.Name != "" {
+			audio.SetInstrumentDisplayName(inst.ID, inst.Name)
+		} else {
+			audio.ClearInstrumentDisplayName(inst.ID)
+		}
+		row.Name = g.drum.computeInstLabel(inst.ID)
 		row.Instrument = inst.ID
 		// Explicit kit-role tag (export.go writes it; previously never applied).
 		row.Role = inst.Role
@@ -446,6 +451,11 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 		row.Volume = rv
 		row.Color = parseHexColor(inst.Color)
+		// Promote gen-showcase instance variants ("organ-2") to first-class,
+		// available, recipe-bound, voiced instruments that render identically to
+		// their base ("organ"). Must run BEFORE availability bookkeeping below so
+		// EnsureInstrumentKnown / refreshInstruments see the registered variant.
+		audio.EnsureInstanceInstrument(inst.ID)
 		// Remember instrument id even if missing so users can switch back or
 		// load it later by the same name.
 		g.drum.EnsureInstrumentKnown(inst.ID)
@@ -493,7 +503,7 @@ func (g *Game) Import(data []byte) (retErr error) {
 				g.start = ui
 				g.graph.StartNodeID = ui.ID
 			}
-			g.logger.Debugf("[GAME] Import row %d: name=%q inst=%q origin(json)=%d -> nodeID=%d", i, inst.Name, inst.ID, inst.Origin, ui.ID)
+			g.logger.Debugf("[game] Import row %d: name=%q inst=%q origin(json)=%d -> nodeID=%d", i, inst.Name, inst.ID, inst.Origin, ui.ID)
 		} else {
 			g.logger.Warnf("[import] row %d: name=%q inst=%q origin(json)=%d not found; leaving origin unset", i, inst.Name, inst.ID, inst.Origin)
 		}

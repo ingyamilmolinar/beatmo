@@ -492,19 +492,18 @@ func TestKnobDragFreezesRowRackPresses(t *testing.T) {
 
 // TestPanelModalBlocksRowRack: a BLOCKING overlay open in the audio subtree
 // gives that subtree exclusive dispatch, so a press on a drum-row control is
-// not dispatched. Uses the Synth overflow bottom-sheet (Modal:true, opened on
-// dv.audioTree.Portal()).
+// not dispatched. Uses a Modal scrim overlay opened on dv.audioTree.Portal().
 func TestPanelModalBlocksRowRack(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12)
 	activateSynthTab(t, dv)
 	dv.layoutForTest()
 
-	resolved := ""
-	if len(dv.Rows) > 0 && dv.Rows[0] != nil {
-		resolved = dv.Rows[0].Instrument
-	}
-	// Open a Modal bottom-sheet in the AUDIO subtree.
-	dv.openSynthOverflowSheet([]string{"reset"}, resolved)
+	// Open a Modal overlay in the AUDIO subtree.
+	dv.audioTree.Portal().Open(PortalEntry{
+		ID:      "test-audio-modal",
+		Overlay: &nullScrimOverlay{},
+		Modal:   true,
+	})
 	dv.updateForTest()
 	if !dv.audioTree.PortalHasBlocking() {
 		t.Fatal("audio subtree should report a blocking overlay after opening the synth overflow sheet")
@@ -531,7 +530,7 @@ func TestPanelModalBlocksRowRack(t *testing.T) {
 	}
 
 	// Close the modal; a row press now dispatches.
-	dv.audioTree.Portal().Close("synth-overflow-sheet")
+	dv.audioTree.Portal().Close("test-audio-modal")
 	dv.updateForTest()
 	if dv.audioTree.PortalHasBlocking() {
 		t.Fatal("modal should be closed")

@@ -249,6 +249,7 @@ func newLevelsControls(z int, onFreeze func() bool, onClearClips func()) *levels
 	c.freezeBtn = newFreezePill(onFreeze)
 	c.z = z
 	c.clearClipsBtn = NewButton("CLR", InstButtonStyle, onClearClips)
+	c.clearClipsBtn.SetTextKey(i18n.KeyLevelsClear)
 	c.clearClipsBtn.TextColor = colTextSecondary
 	c.k20Btn = NewButton("K20", InstButtonStyle, nil)
 	c.k20Btn.TextColor = colTextSecondary

@@ -83,6 +83,17 @@ type DrumViewTree struct {
 	// Track press state for capture lifecycle.
 	wasPressed bool
 
+	// wasInjecting tracks the previous frame's tap-injection state so we can
+	// detect the injection's press EDGE. A tap injection (touch.go) replays a
+	// confirmed tap that the dead zone blocked; on real mobile it fires on the
+	// SAME frame the originating touch ends (the injection branch in
+	// updateTouchOverride supersedes the release-hold frame), so the raw mouse
+	// button never reports a released frame and wasPressed stays latched true.
+	// Without recognising the injection as a fresh press, the new-press branch
+	// in handleInput never fires and the tapped control (kebab, row label) is
+	// silently dropped. Regression: TestKebabTapOverlapScrollerActive.
+	wasInjecting bool
+
 	// inputHandled is set when the tree dispatched a press to a handler
 	// during the current frame.
 	inputHandled bool
@@ -524,6 +535,20 @@ func (t *DrumViewTree) DrawOverlays(screen *ebiten.Image) {
 func (t *DrumViewTree) handleInput() {
 	mx, my := cursorPosition()
 	pressed := isMouseButtonPressed(ebiten.MouseButtonLeft)
+
+	// Tap-injection press edge: a confirmed tap that the dead zone blocked is
+	// replayed via tap injection, and on real mobile it lands on the SAME frame
+	// the originating touch ends — no released frame in between, so wasPressed
+	// is still latched true from the real-touch press. Treat the injection's
+	// rising edge as a fresh press (clear wasPressed) so the new-press branch
+	// below dispatches the tap to the control under it. Only when nothing is
+	// captured: an in-flight capture/drag owns the gesture and is completed by
+	// the branches below. Regression: TestKebabTapOverlapScrollerActive.
+	injecting := isTouchTapInjecting()
+	if injecting && !t.wasInjecting && pressed && t.capturedHandler == nil {
+		t.wasPressed = false
+	}
+	t.wasInjecting = injecting
 
 	// Clear stale suppress when no press cycle is active. Suppress set
 	// during a press cycle (click-outside, InputConsumed) is maintained

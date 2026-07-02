@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "subdiv": 16,
+  "bpm": 110,
+  "instruments": [
+    {
+      "name": "Synth Bass",
+      "id": "bass-guitar",
+      "kind": "builtin",
+      "volume": 0.85,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "reverb_send": 0.12,
+      "synth_params": {
+        "pitch": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        1
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 1,
+      "i": 16,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        2
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 2,
+      "i": 24,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        3
+      ],
+      "pitch": -12,
+      "duration": 0.25
+    },
+    {
+      "id": 3,
+      "i": 32,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        4
+      ],
+      "pitch": -17,
+      "duration": 0.4
+    },
+    {
+      "id": 4,
+      "i": 32,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        5
+      ],
+      "pitch": -14,
+      "duration": 0.25
+    },
+    {
+      "id": 5,
+      "i": 32,
+      "j": 24,
+      "type": "regular",
+      "outputs": [
+        6
+      ],
+      "pitch": -12,
+      "duration": 0.25
+    },
+    {
+      "id": 6,
+      "i": 32,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        7
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 7,
+      "i": 16,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        8
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 8,
+      "i": 8,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        9
+      ],
+      "pitch": -10,
+      "duration": 0.25
+    },
+    {
+      "id": 9,
+      "i": 0,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        10
+      ],
+      "pitch": -17,
+      "duration": 0.4
+    },
+    {
+      "id": 10,
+      "i": 0,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        11
+      ],
+      "pitch": -14,
+      "duration": 0.4
+    },
+    {
+      "id": 11,
+      "i": 0,
+      "j": 8,
+      "type": "regular",
+      "outputs": [
+        0
+      ],
+      "pitch": -12,
+      "duration": 0.25
+    }
+  ]
+}

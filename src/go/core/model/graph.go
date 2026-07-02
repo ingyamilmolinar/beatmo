@@ -36,7 +36,7 @@ func (g *Graph) AddNode(i, j int, nodeType NodeType) NodeID {
 	g.Next++
 	// Initialize sensible defaults for params.
 	g.Nodes[id] = Node{I: i, J: j, Type: nodeType, Params: NodeParams{Volume: 1, Duration: 1}}
-	g.logger.Debugf("[GRAPH] Added node: %d at (%d, %d) with type %v", id, i, j, nodeType)
+	g.logger.Debugf("[graph] Added node: %d at (%d, %d) with type %v", id, i, j, nodeType)
 	if g.onNodeChanged != nil {
 		g.onNodeChanged(id)
 	}
@@ -51,7 +51,7 @@ func (g *Graph) RemoveNode(id NodeID) {
 			delete(g.Edges, k)
 		}
 	}
-	g.logger.Debugf("[GRAPH] Removed node: %d at (%d, %d)", id, n.I, n.J)
+	g.logger.Debugf("[graph] Removed node: %d at (%d, %d)", id, n.I, n.J)
 	if g.onNodeChanged != nil {
 		g.onNodeChanged(id)
 	}

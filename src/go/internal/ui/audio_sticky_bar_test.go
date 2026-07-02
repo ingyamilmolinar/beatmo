@@ -65,7 +65,6 @@ func TestStickyBarLayoutFitsWithinRect(t *testing.T) {
 		check("tab"+string(rune('0'+i)), bar.TabBtn(i))
 	}
 	check("legend", bar.LegendBtn())
-	check("expander", bar.ExpanderBtn())
 }
 
 // TestStickyBarHitAreasUseParentZIndex verifies all hit areas register at the

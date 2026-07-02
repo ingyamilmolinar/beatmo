@@ -32,6 +32,10 @@ func kickRecipeToModular(recipeID string, merged RecipeParams, variant float64, 
 	// voice reads it through gen_freq×voice_freq (ratio mode).
 	mp.VoiceFreqHz = kickFundamental(merged, def)
 
+	// KICK stage enabled: the legacy kicks always render the voice (the Synth-tab
+	// enable pill defaults off in the schema, so the binding must set it).
+	mp.KickEnabled = 1
+
 	mp.GenSource[0] = 5
 	mp.GenFreqMode[0] = 0 // ratio
 	mp.GenFreq[0] = 1     // ×voice_freq
@@ -56,8 +60,17 @@ func kickRecipeToModular(recipeID string, merged RecipeParams, variant float64, 
 	set(&mp.GenKickClick[0], "kick_click")
 	set(&mp.GenKickNoise[0], "kick_noise")
 
+	// Phase-9 structural extras (attack-boost amount, global-fade rate,
+	// saturation pre-gain): the legacy kicks never expose these as knobs, so
+	// always pass NaN → the C kp_get per-variant literal, reproducing the exact
+	// legacy sound. (Without this they default to 0; gen_kick_sat=0 silences the
+	// voice — see the configurable KICK stage.)
+	mp.GenKickAttack[0] = nan
+	mp.GenKickFade[0] = nan
+	mp.GenKickSat[0] = nan
+
 	// Slots 2..12 stay at source 0 (off).
-	for i := 1; i < 12; i++ {
+	for i := 1; i < modularGenSlots; i++ {
 		mp.GenSource[i] = 0
 	}
 

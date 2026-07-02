@@ -56,16 +56,52 @@ async function main() {
     if (baseline.sum === null) failures.push("synthMirrorPCMChecksum export missing");
     else if (baseline.sum === 0) failures.push("synthMirrorPCMChecksum = 0 (empty render)");
 
-    // Change a wave-SHAPE param (oscillator type) and re-render. The "Your
-    // sound" trace is cycle-normalized so it tracks timbre (osc / filter / drive
-    // / FM), so flipping the oscillator shape MUST change the fingerprint —
-    // proving the WASM mirror reflects the knobs, not a frozen wave.
-    const changed = await page.evaluate((id) => {
-      // Default oscillator is sine (0); switch to square (2) for a clear shape
-      // change. setInstrumentParam clamps to the param's range.
-      window.setInstrumentParam(id, "osc_type", 2);
-      return typeof window.synthMirrorPCMChecksum === "function" ? window.synthMirrorPCMChecksum() : null;
+    // Change the recipe's wave-SHAPE param and re-render. The "Your sound" trace
+    // is cycle-normalized so it tracks timbre (osc / filter / drive / FM), so
+    // flipping the wave shape MUST change the fingerprint — proving the WASM
+    // mirror reflects the knobs, not a frozen wave.
+    //
+    // Which param IS the wave shape is recipe-specific: a modular lead exposes
+    // `osc_type`, but a bespoke drum recipe (the default project's first
+    // instrument is a kick) exposes a visible "Generator" knob (kick_wave,
+    // snare_wave, …) and keeps osc_type secondary — the preview's
+    // previewGeneratorType reads the visible Generator and ignores the secondary
+    // osc_type, exactly as the on-screen knob does. So resolve the actual
+    // wave-shape param from the recipe catalogue using the SAME predicate the
+    // preview uses (first non-hidden param whose name is "osc_type" or whose
+    // label is "Generator"), then flip THAT. Hardcoding "osc_type" would no-op on
+    // a kick and falsely fail.
+    const change = await page.evaluate((id) => {
+      const recipeID =
+        typeof window.recipeForInstrument === "function" ? window.recipeForInstrument(id) : "";
+      const catalog =
+        typeof window.synthRecipeCatalog === "function" ? window.synthRecipeCatalog() : {};
+      const entry = catalog && catalog[recipeID];
+      const params = (entry && entry.params) || [];
+      // Mirror previewGeneratorType's selection: first non-hidden param that is
+      // the wave-shape selector. Catalogue order == registration order, so this
+      // picks the exact param the preview renders from.
+      const gen = params.find(
+        (p) => p && p.group !== "hidden" && (p.name === "osc_type" || p.label === "Generator")
+      );
+      if (!gen) return { ok: false, reason: `recipe ${recipeID} exposes no wave-shape param` };
+      // Square (2) is a shape the preview renders distinctly; clamp to range and
+      // ensure it differs from the current default so the render actually moves.
+      let val = 2;
+      if (typeof gen.max === "number" && val > gen.max) val = gen.max;
+      if (typeof gen.min === "number" && val < gen.min) val = gen.min;
+      if (val === gen.default) val = val === 0 ? Math.min(1, gen.max ?? 1) : 0;
+      window.setInstrumentParam(id, gen.name, val);
+      const sum =
+        typeof window.synthMirrorPCMChecksum === "function" ? window.synthMirrorPCMChecksum() : null;
+      return { ok: true, param: gen.name, value: val, sum };
     }, target);
+    if (!change.ok) {
+      failures.push(change.reason);
+    } else {
+      console.log(`[test] flipped wave-shape param ${change.param}=${change.value}`);
+    }
+    const changed = change.ok ? change.sum : null;
     console.log(`[test] post-change checksum=${changed}`);
 
     if (changed !== null && baseline.sum !== null && changed === baseline.sum) {

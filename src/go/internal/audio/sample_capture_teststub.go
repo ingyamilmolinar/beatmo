@@ -32,9 +32,23 @@ func RenderInstrumentOneShotRaw(id string) ([]float32, int) {
 	return RenderInstrumentOneShot(id)
 }
 
+// lastRegisteredSamplePCM records the most recent RegisterSamplePCM payload per
+// id so tests can assert the live re-registration the Sampler's real-time edit
+// flow performs (SetSampleEdit → reapplyUserSampleEdit → RegisterSamplePCM).
+var lastRegisteredSamplePCM = map[string]SampleRecord{}
+
 // RegisterSamplePCM registers an in-memory PCM buffer as a playable instrument.
 func RegisterSamplePCM(id string, pcm []float32, sr int) {
 	registerStub(id)
+	lastRegisteredSamplePCM[id] = SampleRecord{PCM: append([]float32(nil), pcm...), SampleRate: sr}
+}
+
+// LastRegisteredSamplePCMForTest returns the PCM most recently handed to
+// RegisterSamplePCM for id (test build only). Lets the Sampler real-time tests
+// verify that an edit re-registered the BAKED buffer for playback.
+func LastRegisteredSamplePCMForTest(id string) (SampleRecord, bool) {
+	rec, ok := lastRegisteredSamplePCM[id]
+	return rec, ok
 }
 
 // sampleUnregisterCalls records UnregisterSamplePCM ids so tests can assert the

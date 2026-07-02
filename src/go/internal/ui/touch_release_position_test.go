@@ -23,6 +23,13 @@ import (
 // Post-fix: the override holds the last single-touch position for exactly one
 // post-end frame with touchOverrideLeft=false.
 func TestTouchReleasePosition_HoldsLiftCoords(t *testing.T) {
+	// Restore the package-default input function variables first: a prior test
+	// that replaced cursorPosition/isMouseButtonPressed via a stub helper whose
+	// restore never ran would otherwise leak its mock into this test (which
+	// reads cursorPosition through the real touch-override wrapper to verify
+	// lift-coordinate handling). resetInputForTest re-installs the defaults so
+	// the test is order-independent.
+	resetInputForTest()
 	// Use the real globalTouchState so we exercise the same code paths the
 	// dispatcher does. Reset before and after to avoid leaking state.
 	globalTouchState.Reset()

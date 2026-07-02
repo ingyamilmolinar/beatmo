@@ -12,12 +12,12 @@ func TestImportEmptyPayloadIgnored(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	var calls int
-	dv.onImport = func(_ []byte) error {
+	dv.onImport = func(_ []byte, _ string) error {
 		calls++
 		return nil
 	}
 	old := selectJSONAsyncFn
-	selectJSONAsyncFn = func(cb func([]byte, error)) {}
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {}
 	t.Cleanup(func() { selectJSONAsyncFn = old })
 
 	startImportForTest(t, dv)

@@ -53,7 +53,7 @@ var legacyRenderers = map[string]cRenderer{
 	// bass-guitar / sub-bass migrated to the modular engine (Phase-2): their
 	// legacy renderBassGuitar / renderSubBass wrappers were deleted, so they
 	// drop out of this legacy guard-branch table. The modular fast path
-	// (renderBassGuitarVoice / renderSubBassVoice) guards empty buffers by
+	// (renderSubBassVoice) guards empty buffers by
 	// returning (not panicking) and is exercised in bass_native_fastpath_test.go.
 	// fm-bass / fm-bell / fm-lead / fm-epiano / fm-pluck migrated to the modular
 	// engine (Phase-7, the LAST legacy family): their legacy render_fm_* wrappers

@@ -84,6 +84,13 @@ func TestSynthTab_KnobMobileTouchLifecycle(t *testing.T) {
 	t.Cleanup(restoreTouch)
 	globalTouchState.Reset()
 	resetTouchOverride()
+	// Re-install the package-default input vars: a prior test that replaced
+	// cursorPosition/isMouseButtonPressed (or left inputForTestActive set) via a
+	// stub whose restore never ran would otherwise short-circuit the touch path
+	// so the knob never captures. As the comment above notes, this test relies
+	// on updateTouchOverride NOT being suppressed. Safe after SetTouchForTest —
+	// resetInputForTest leaves touchIDs/touchPosition untouched.
+	resetInputForTest()
 	t.Cleanup(func() {
 		globalTouchState.Reset()
 		resetTouchOverride()

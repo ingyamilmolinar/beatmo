@@ -106,6 +106,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		dv.rowsLayerGen++
 		dv.rowsLayerDirty = false
 		dv.rowsLayerFrame = dv.frame
+		dv.lastLegacyRebuildKind = "overdraw"
 		return
 	}
 	if anyRebuilt && !allPatches {
@@ -115,6 +116,9 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		if offsetDelta != 0 {
 			dv.rowsLayerOffset = dv.Offset
 			dv.rowsLayerFrame = dv.frame
+			dv.lastLegacyRebuildKind = "stale-accept"
+		} else {
+			dv.lastLegacyRebuildKind = "skip"
 		}
 		return
 	}
@@ -202,6 +206,7 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 		dv.rowsLayerGen++
 		dv.rowsLayerDirty = false
 		dv.rowsLayerFrame = dv.frame
+		dv.lastLegacyRebuildKind = "shift"
 		return
 	}
 	var img *ebiten.Image
@@ -250,4 +255,5 @@ func (dv *DrumView) rowsLayerMaybeRebuild() {
 	dv.rowsLayerGen++
 	dv.rowsLayerDirty = false
 	dv.rowsLayerFrame = dv.frame
+	dv.lastLegacyRebuildKind = "full"
 }

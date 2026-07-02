@@ -172,6 +172,8 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) { g.SetForceMobileProfile(true) }},
 	{Name: "mobile_overflow_open", Description: "overflow menu (Upload/Import/Export)", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) { g.SetForceMobileProfile(true); g.drum.OpenOverflowMenu() }},
+	{Name: "overflow_menu_open", Description: "desktop overflow menu (Upload/Import/Export)", SettleFrames: 120,
+		Setup: func(g *Game) { g.drum.OpenOverflowMenu() }},
 	{Name: "mobile_view_audio", Description: "mobile audio view (EQ/Wave) mode", Mobile: true,
 		Setup: func(g *Game) {
 			g.SetForceMobileProfile(true)
@@ -488,6 +490,15 @@ var sceneCatalog = []Scene{
 				g.sidebar.sectionOpen["logic"] = true
 			}
 		}},
+	{Name: "node_sidebar_all_expanded", Description: "node sidebar with every section expanded (all main buttons visible)",
+		Setup: func(g *Game) {
+			n := g.tryAddNode(3, 1, model.NodeTypeRegular)
+			g.updateBeatInfos()
+			if n != nil && g.sidebar != nil {
+				g.sidebar.Open(n)
+				g.sidebar.ExpandAllSections()
+			}
+		}},
 	{Name: "node_sidebar_groove_expanded", Description: "node sidebar with Groove section expanded",
 		Setup: func(g *Game) {
 			n := g.tryAddNode(3, 1, model.NodeTypeRegular)
@@ -634,6 +645,7 @@ var sceneCatalog = []Scene{
 		Setup:       synthTabMasterChooserSetup(),
 		MobileSetup: mobileSynthTabMasterChooserSetup()},
 	{Name: "crop_synth_tab_modular", Description: "Synth tab cropped — modular voice (OSC+FM+ENVELOPE+FILTER+POST sections, enum knobs)",
+		Mobile:      true, // also captured in the mobile pass: shows the inline value pills
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabSceneSetup("modular"),
 		MobileSetup: mobileSynthTabSetup("modular")},
@@ -851,6 +863,11 @@ var sceneCatalog = []Scene{
 	{Name: "crop_toolbar_playing", Description: "Top toolbar/transport while playing",
 		Subject: SubjectToolbar,
 		Setup:   func(g *Game) { g.SetPlaying(true) }},
+	{Name: "crop_mobile_synth_wheel", Description: "mobile synth scroll-wheel popup open over a continuous knob",
+		Mobile:      true, // captured in the mobile pass: the after-tap scroll-wheel state
+		Subject:     SubjectSynthWheel,
+		Setup:       synthWheelSceneSetup(),
+		MobileSetup: mobileSynthWheelSceneSetup()},
 }
 
 // RunScene applies the named scene's Setup to g. Returns an error if the
@@ -1273,6 +1290,65 @@ func mobileSamplerTabSetup(captured bool) func(*Game) {
 // expands the mobile audio (EQ/Wave/Spec/Meters/Scope) panel, and sets
 // the requested tab. Used as the MobileSetup for desktop EQ scenes so
 // their mobile capture exercises a real route to the panel.
+// synthWheelSceneSetup opens the Synth tab, lays out the synth panel, finds
+// a continuous knob (filter_cutoff on the modular recipe), and opens the
+// mobile scroll-wheel popup for that knob. The popup stays open because
+// MobileWheelPopup.ShouldClose() only fires on an explicit Close call.
+// Works at any framebuffer size (desktop 1280×720 or mobile 390×844).
+func synthWheelSceneSetup() func(*Game) {
+	return func(g *Game) {
+		// Use the modular recipe — it has filter_cutoff (continuous, non-enum).
+		synthTabSceneSetup("modular")(g)
+		if g.drum == nil {
+			return
+		}
+		// Drive a layout pass so dv.Bounds is populated before opening the popup.
+		if g.drum.audioTree != nil {
+			g.drum.audioTree.LayoutZoneNow("eq-panel")
+		}
+		// Find filter_cutoff knob index.
+		idx := -1
+		for i, b := range g.drum.instEditorBindings {
+			if b.def.Name == "filter_cutoff" {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return
+		}
+		// Select the section that owns this knob so the knob has a non-empty rect.
+		inst := g.drum.resolveSynthInstrument(g.drum.synthTabActiveInstrument())
+		for _, s := range g.drum.instEditorSections {
+			for _, k := range s.knobIdxs {
+				if k == idx {
+					g.drum.setSelectedSynthSection(inst, s.id)
+					break
+				}
+			}
+		}
+		if g.drum.audioTree != nil {
+			g.drum.audioTree.LayoutZoneNow("eq-panel")
+		}
+		// Open the wheel popup.
+		g.drum.openSynthKnobWheelPopup(idx, inst)
+	}
+}
+
+// mobileSynthWheelSceneSetup is the mobile counterpart of synthWheelSceneSetup.
+func mobileSynthWheelSceneSetup() func(*Game) {
+	return func(g *Game) {
+		g.SetForceMobileProfile(true)
+		g.drum.SetMobileEQMode(true)
+		// Force a layout at mobile dimensions so dv.Bounds is populated before
+		// the inner setup opens the popup (the GOTCHA from CLAUDE.md: opening
+		// a popup against stale/zero bounds produces an off-screen subject rect).
+		g.Layout(414, 896)
+		g.Update()
+		synthWheelSceneSetup()(g)
+	}
+}
+
 func mobileAudioPanelSetup(tab string) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)

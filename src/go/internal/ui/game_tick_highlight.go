@@ -120,7 +120,7 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 		instAvailable = g.drum.IsInstrumentAvailable(g.drum.Rows[row].Instrument)
 	}
 	if row >= 0 && row < len(g.drum.Rows) && !instAvailable && g.playFn == nil && g.scheduleHook == nil {
-		g.logger.Debugf("[GAME/AUDIO] missing instrument for row %d", row)
+		g.logger.Debugf("[game/audio] missing instrument for row %d", row)
 		return
 	}
 	anySolo := false
@@ -131,7 +131,7 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 		}
 	}
 	if g.drum.Rows[row].Muted || (anySolo && !g.drum.Rows[row].Solo) {
-		g.logger.Debugf("[GAME/AUDIO] muted row %d", row)
+		g.logger.Debugf("[game/audio] muted row %d", row)
 		return
 	}
 	// Decide audible via the engine predictor (single source of truth).
@@ -149,13 +149,13 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 		}
 		g.lastFiredNodeByRow[row] = info.NodeID
 		g.setLastTriggered(row, info.NodeID, true)
-		g.logger.Tracef("[GAME/HIGHLIGHT] row=%d idx=%d inst=%s", row, idx, inst)
+		g.logger.Tracef("[game/highlight] row=%d idx=%d inst=%s", row, idx, inst)
 		// Avoid double-triggering audio while the sequencer is running during playback.
 		if !g.Playing() {
 			vol, pitch, dur := g.evalNodeParamsOnly(row, idx, info)
 			g.scheduleSound(row, idx, info, inst, vol, pitch, dur, math.NaN(), false)
 		}
-		g.logger.Tracef("[GAME/HIGHLIGHT] played inst=%s node=%d beat=%d row=%d", inst, info.NodeID, idx, row)
+		g.logger.Tracef("[game/highlight] played inst=%s node=%d beat=%d row=%d", inst, info.NodeID, idx, row)
 	} else {
 		g.setLastTriggered(row, info.NodeID, false)
 		// Explicitly clear any lingering animation on skipped triggers to

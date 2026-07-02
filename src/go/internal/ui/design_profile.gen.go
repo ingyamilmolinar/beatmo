@@ -56,7 +56,7 @@ var (
 	genDesktopProfile = profileValues{
 		AccentStripeInsetY:    0,
 		AccentStripeWidth:     3,
-		CloseButtonSize:       16,
+		CloseButtonSize:       22,
 		ControlGap:            2,
 		ControlGroupPad:       3,
 		ControlLeftInset:      12,

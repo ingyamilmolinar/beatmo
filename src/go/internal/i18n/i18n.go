@@ -22,6 +22,17 @@ func T(k Key) string {
 // Tf resolves k then applies fmt.Sprintf with args.
 func Tf(k Key, args ...any) string { return fmt.Sprintf(T(k), args...) }
 
+// EN returns the English message for k regardless of the active locale, falling
+// back to the raw key string. Used to reverse-map legacy rendered strings (e.g.
+// a notification persisted as English text with no key) back to their key so the
+// UI can retranslate historical entries in the current locale.
+func EN(k Key) string {
+	if v, ok := en[k]; ok {
+		return v
+	}
+	return string(k)
+}
+
 // ActiveLocale returns the active locale.
 func ActiveLocale() Locale { return currentLocale() }
 

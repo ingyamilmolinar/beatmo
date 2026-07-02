@@ -26,12 +26,12 @@ func startPyroscope(logger *game_log.Logger) func() {
 	})
 	if err != nil {
 		if logger != nil {
-			logger.Warnf("[PYROSCOPE] start failed: %v", err)
+			logger.Warnf("[pyroscope] start failed: %v", err)
 		}
 		return nil
 	}
 	if logger != nil {
-		logger.Infof("[PYROSCOPE] started app=%s url=%s", app, url)
+		logger.Infof("[pyroscope] started app=%s url=%s", app, url)
 	}
 	return func() {
 		_ = prof.Stop()

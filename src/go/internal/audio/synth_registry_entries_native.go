@@ -126,7 +126,7 @@ var builtinRecipeRenderers = map[string]cParamRenderer{
 	// modular binding (builtinFamilyRenderers, rebound in cymbal_modular_binding.go)
 	// — no legacy renderHiHatP / renderOpenHihatP / renderCowbellP / renderShakerP /
 	// renderRideP / renderCrashP entry (those C/Go paths are deleted Phase-6).
-	// drum-bass-guitar / drum-sub-bass render via the modular binding
+	// drum-sub-bass renders via the modular binding
 	// (builtinFamilyRenderers, rebound in bass_modular_binding.go) — no legacy
 	// renderBassGuitarP / renderSubBassP entry (those C/Go paths are deleted).
 	// drum-kick-deep / punchy / lofi / tight render via the modular binding

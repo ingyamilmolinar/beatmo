@@ -13,9 +13,10 @@ import (
 // TestLevelsReadoutNeverDisappears pins the Phase 4 contract: across
 // every (density × width) combination, the aggregate readouts must
 // remain reachable. Three render paths cover the space:
-//   • full text column at wide widths
-//   • icon-row collapse at medium widths
-//   • footer chevron at narrow widths (one-tap to bottom-sheet)
+//   - full text column at wide widths
+//   - icon-row collapse at medium widths
+//   - footer chevron at narrow widths (one-tap to bottom-sheet)
+//
 // At no width should a user lose the Headroom number entirely.
 func TestLevelsReadoutNeverDisappears(t *testing.T) {
 	state := &analyzer.State{
@@ -38,7 +39,7 @@ func TestLevelsReadoutNeverDisappears(t *testing.T) {
 		for _, w := range widths {
 			dst := ebiten.NewImage(w, 240)
 			rects := collectFilledRects(t, func() {
-				drawLevelsMultiChannel(dst, image.Rect(0, 0, w, 240), state, latches)
+				drawLevelsMultiChannel(dst, image.Rect(0, 0, w, 240), state, latches, nil)
 			})
 			if len(rects) == 0 {
 				t.Errorf("density=%v w=%d: no rects drawn (expected at least the meter chrome)", d, w)
@@ -58,7 +59,7 @@ func TestLevelsReadoutModeSelection(t *testing.T) {
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
 	dv := Profile().DensityValues()
-	full := dv.LevelsReadoutWFull // 180
+	full := dv.LevelsReadoutWFull   // 180
 	icons := dv.LevelsReadoutWIcons // 36
 	cases := []struct {
 		width    int
@@ -74,16 +75,7 @@ func TestLevelsReadoutModeSelection(t *testing.T) {
 		{100, readoutColModeChevron, "very-narrow"},
 	}
 	for _, c := range cases {
-		// Simulate the same boundary logic as drawLevelsMultiChannel.
-		var mode readoutColMode
-		switch {
-		case c.width >= 2*full:
-			mode = readoutColModeFull
-		case c.width >= full+icons:
-			mode = readoutColModeIcons
-		default:
-			mode = readoutColModeChevron
-		}
+		mode, _ := levelsReadoutLayout(c.width)
 		if mode != c.wantMode {
 			t.Errorf("%s (width=%d): mode=%v, want %v", c.name, c.width, mode, c.wantMode)
 		}
@@ -107,7 +99,7 @@ func TestLevelsAggregatesIconRowRendersAllThree(t *testing.T) {
 
 	dst := ebiten.NewImage(60, 90)
 	rects := collectFilledRects(t, func() {
-		drawLevelsAggregatesIconRow(dst, image.Rect(0, 0, 60, 90), state, latches)
+		drawLevelsAggregatesIconRow(dst, image.Rect(0, 0, 60, 90), state, latches, nil)
 	})
 	// Text rects are NOT filled rects, so we don't expect them — but
 	// at minimum the chevron-style backgrounds shouldn't be there

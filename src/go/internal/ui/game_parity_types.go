@@ -87,13 +87,13 @@ func (r *mismatchRing) clear() {
 }
 
 type parityAudioEvent struct {
-	Row        int
-	Abs        int
-	When       float64
-	Inst       string
-	Vol        float64
-	Pitch      float64
-	Dur        float64
+	Row   int
+	Abs   int
+	When  float64
+	Inst  string
+	Vol   float64
+	Pitch float64
+	Dur   float64
 	// Gen is the audio scheduler's replay generation (g.audioGen) — bumped on
 	// stop/replay to drop in-flight notes from the previous run.
 	Gen uint64
@@ -107,12 +107,24 @@ type parityAudioEvent struct {
 }
 
 type paritySeqDecision struct {
-	Row     int
-	Abs     int
-	Audible bool // audio truth (AudibleAt)
-	Visible bool // view truth (VisibleAt)
+	Row      int
+	Abs      int
+	Audible  bool // audio truth (AudibleAt)
+	Visible  bool // view truth (VisibleAt)
 	NodeType model.NodeType
 	Missing  bool
+	// Enqueued reports whether the scheduler actually handed this beat's audio
+	// to the audio pipeline (queued into audioCh). In production every audible,
+	// non-gated regular decision enqueues its audio in the SAME seqMu critical
+	// section that records the decision, so Audible⟹Enqueued is an invariant.
+	// The audio_missing parity check uses this to distinguish a genuine
+	// scheduler bug (decided audible but never enqueued — Enqueued=false) from
+	// audio that is merely still in-flight in the channel or was dropped by the
+	// audio thread under backpressure/transport transitions (Enqueued=true).
+	// Without it, a beat whose audio is queued but not yet dispatched by the
+	// audioLoop trips a false-positive audio_missing once the 120ms grace
+	// (anchored to the decision timestamp) expires.
+	Enqueued bool
 	// ParityGen is the structural-mutation generation at the moment this seq
 	// decision was recorded. The scan filters by current ParityGen so prior-
 	// generation decisions never participate in comparisons.

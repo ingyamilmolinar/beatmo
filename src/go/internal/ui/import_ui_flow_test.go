@@ -26,9 +26,9 @@ func TestImportViaUIFlowNoDeadlock(t *testing.T) {
 
 	// Simulate clicking the import button - this sets dv.importing=true
 	// and calls selectJSONAsyncFn
-	selectJSONAsyncFn = func(cb func([]byte, error)) {
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {
 		// Simulate async file picker returning data
-		cb(testData, nil)
+		cb(testData, "", nil)
 	}
 	startImportForTest(t, g.drum)
 
@@ -91,8 +91,8 @@ func TestImportViaUIFlowWhilePlaying(t *testing.T) {
 	}
 
 	// Now trigger import via UI flow while "playing"
-	selectJSONAsyncFn = func(cb func([]byte, error)) {
-		cb(testData, nil)
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {
+		cb(testData, "", nil)
 	}
 	startImportForTest(t, g.drum)
 
@@ -137,7 +137,7 @@ func TestImportViaUIFlowWithSeqMuHeld(t *testing.T) {
 
 		// This simulates what happens inside drum.Update() when import data arrives
 		if g.drum.onImport != nil {
-			err := g.drum.onImport(testData)
+			err := g.drum.onImport(testData, "")
 			if err != nil {
 				t.Errorf("onImport returned error: %v", err)
 			}

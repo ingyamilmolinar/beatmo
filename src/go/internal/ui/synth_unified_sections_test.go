@@ -15,7 +15,7 @@ import (
 // unification discipline: every shipped synth (non-WAV) recipe lays out as a
 // PREFIX-preserving subsequence of the standardized pipeline order
 //
-//	VOICE · OSC · FM · PITCH · LFO · BURST · ENVELOPE · FILTER · POST
+//	VOICE · OSC · FM · PITCH · LFO · BURST · ENVELOPE · FILTER · FILTER ENV · POST
 //
 // (PITCH/LFO/BURST are the Phase-8C modulator stages — the spec-§1 gap
 // closure.) Sections may be pruned (a recipe with no FM stage has no FM card),
@@ -25,15 +25,17 @@ import (
 // sections, in the same order, for every synth instrument.
 func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 	rank := map[synthSectionID]int{
-		synthSectionVoice:    0,
-		synthSectionOsc:      1,
-		synthSectionFM:       2,
-		synthSectionPitch:    3,
-		synthSectionLFO:      4,
-		synthSectionBurst:    5,
-		synthSectionEnvelope: 6,
-		synthSectionFilter:   7,
-		synthSectionPost:     8,
+		synthSectionVoice:     0,
+		synthSectionOsc:       1,
+		synthSectionKick:      2,
+		synthSectionFM:        3,
+		synthSectionPitch:     4,
+		synthSectionLFO:       5,
+		synthSectionBurst:     6,
+		synthSectionEnvelope:  7,
+		synthSectionFilter:    8,
+		synthSectionFilterEnv: 9,
+		synthSectionPost:      10,
 	}
 	for id, reg := range audio.RecipeRegistrations() {
 		if reg == nil {
@@ -53,7 +55,7 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 				continue
 			}
 			if r <= last {
-				t.Errorf("recipe %q: section order %v is not the standardized subsequence (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·POST)", id, order)
+				t.Errorf("recipe %q: section order %v is not the standardized subsequence (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·FILTER ENV·POST)", id, order)
 				break
 			}
 			last = r
@@ -85,14 +87,16 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 func TestSynthUnified_EveryStageSectionHasEnablePill(t *testing.T) {
 	// section → the *_enabled toggle that gates it.
 	stageToggle := map[synthSectionID][]string{
-		synthSectionOsc:      {"osc_enabled"},
-		synthSectionFM:       {"fm_enabled"},
-		synthSectionPitch:    {"pitchenv_enabled"},
-		synthSectionLFO:      {"lfo_enabled"},
-		synthSectionBurst:    {"burst_enabled"},
-		synthSectionEnvelope: {"env_enabled"},
-		synthSectionFilter:   {"filter_enabled"},
-		synthSectionPost:     {"drive_enabled", "post_enabled"},
+		synthSectionOsc:       {"osc_enabled"},
+		synthSectionKick:      {"kick_enabled"},
+		synthSectionFM:        {"fm_enabled"},
+		synthSectionPitch:     {"pitchenv_enabled"},
+		synthSectionLFO:       {"lfo_enabled"},
+		synthSectionBurst:     {"burst_enabled"},
+		synthSectionEnvelope:  {"env_enabled"},
+		synthSectionFilter:    {"filter_enabled"},
+		synthSectionFilterEnv: {"filtenv_enabled"},
+		synthSectionPost:      {"drive_enabled", "post_enabled"},
 	}
 	chipFor := func(dv *DrumView, id synthSectionID) (synthChip, bool) {
 		for _, c := range dv.instEditorChips {

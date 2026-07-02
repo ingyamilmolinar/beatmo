@@ -65,9 +65,9 @@ func TestDrawLevelsDetail_NilChannelDrawsBorderOnly(t *testing.T) {
 	}
 }
 
-// TestDrawLevelsDetail_LowLevelUsesGreen asserts the meter color when the
-// peak is well below the yellow threshold — must be green.
-func TestDrawLevelsDetail_LowLevelUsesGreen(t *testing.T) {
+// TestDrawLevelsDetail_LowLevelUsesLowColor asserts the meter color when the
+// peak is well below the mid threshold — must be the low-zone color (golden).
+func TestDrawLevelsDetail_LowLevelUsesLowColor(t *testing.T) {
 	assertDefaultParityState(t)
 
 	w, h := 240, 120
@@ -88,10 +88,10 @@ func TestDrawLevelsDetail_LowLevelUsesGreen(t *testing.T) {
 
 	drawLevelsDetail(dst, rect, ch, nil)
 
-	if g := countByColor(calls, meterGreen); g < 2 {
-		t.Errorf("expected at least 2 green rects (peak + RMS fill), got %d", g)
+	if g := countByColor(calls, meterLow); g < 2 {
+		t.Errorf("expected at least 2 low-zone (golden) rects (peak + RMS fill), got %d", g)
 	}
-	if r := countByColor(calls, meterRed); r != 0 {
+	if r := countByColor(calls, meterHigh); r != 0 {
 		t.Errorf("expected 0 red rects at low level, got %d", r)
 	}
 }
@@ -119,7 +119,7 @@ func TestDrawLevelsDetail_ClipPaintsRed(t *testing.T) {
 
 	drawLevelsDetail(dst, rect, ch, nil)
 
-	if r := countByColor(calls, meterRed); r < 1 {
+	if r := countByColor(calls, meterHigh); r < 1 {
 		t.Errorf("expected at least 1 red rect at 0 dB peak, got %d", r)
 	}
 }

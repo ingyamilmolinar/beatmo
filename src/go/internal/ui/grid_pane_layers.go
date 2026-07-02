@@ -42,5 +42,5 @@ func (g *Game) registerGridTree() {
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-move-confirm", z: GZMoveConfirm, clip: true, vis: func() bool { return g.moveConfirm }, draw: g.drawGridMoveConfirm})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-sidebar", z: GZSidebar, clip: false, vis: func() bool { return g.sidebar.IsOpen() }, draw: func(dst *ebiten.Image) { g.sidebar.Draw(dst) }})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-cursor-label", z: GZCursorLabel, clip: false, draw: g.drawGridCursorLabel})
-	g.gridTree.RegisterLayer(gridLayer{id: "grid-help-button", z: GZGridHelpButton, clip: true, vis: func() bool { return !Profile().IsMobile() }, draw: g.drawGridHelpButton})
+	g.gridTree.RegisterLayer(gridLayer{id: "grid-help-button", z: GZGridHelpButton, clip: true, draw: g.drawGridHelpButton})
 }

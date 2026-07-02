@@ -38,7 +38,7 @@ func (g *Game) handleConnectModeTap(x, y int) {
 	// Reject invisible nodes.
 	if mn, ok := g.graph.GetNodeByID(target.ID); ok && mn.Type == model.NodeTypeInvisible {
 		if g.drum != nil {
-			g.drum.notifyError(i18n.T(i18n.KeyNotifCannotConnectInvisible))
+			g.drum.notifyErrorKey(i18n.KeyNotifCannotConnectInvisible)
 		}
 		return
 	}
@@ -46,7 +46,7 @@ func (g *Game) handleConnectModeTap(x, y int) {
 	from := g.connectFromNode
 	if from.I != target.I && from.J != target.J {
 		if g.drum != nil {
-			g.drum.notifyError(i18n.T(i18n.KeyNotifOnlyPerpendicular))
+			g.drum.notifyErrorKey(i18n.KeyNotifOnlyPerpendicular)
 		}
 		return
 	}

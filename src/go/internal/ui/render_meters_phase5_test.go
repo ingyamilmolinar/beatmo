@@ -39,13 +39,13 @@ func TestLevelsPhase5_StereoSplitWhenStereoData(t *testing.T) {
 	contentH := rect.Dy() - 14 - 18
 	peakBand := image.Rect(rect.Min.X+28, contentY0, rect.Max.X-4, contentY0+contentH*60/100)
 
-	gotRed := rectsWithColorInside(rects, peakBand, meterRed)
-	gotYel := rectsWithColorInside(rects, peakBand, meterYellow)
+	gotRed := rectsWithColorInside(rects, peakBand, meterHigh)
+	gotYel := rectsWithColorInside(rects, peakBand, meterMid)
 	if gotRed == 0 {
-		t.Errorf("expected ≥1 meterRed rect (L channel @ -0.5 dB) in peak band %v, got 0", peakBand)
+		t.Errorf("expected ≥1 meterHigh rect (L channel @ -0.5 dB) in peak band %v, got 0", peakBand)
 	}
 	if gotYel == 0 {
-		t.Errorf("expected ≥1 meterYellow rect (R channel @ -3 dB) in peak band %v, got 0", peakBand)
+		t.Errorf("expected ≥1 meterMid rect (R channel @ -3 dB) in peak band %v, got 0", peakBand)
 	}
 }
 

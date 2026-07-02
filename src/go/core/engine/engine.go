@@ -113,7 +113,7 @@ func (e *Engine) run() {
 					}
 					// [PERF/ENGINE] avg=.. max=.. count=.. (debug-only)
 					if e.logger != nil {
-						e.logger.Debugf("[PERF/ENGINE] ticker avg=%s max=%s count=%d", avg.String(), e.tickMax.String(), e.tickCount)
+						e.logger.Debugf("[perf/engine] ticker avg=%s max=%s count=%d", avg.String(), e.tickMax.String(), e.tickCount)
 					}
 					e.tickCount, e.tickSum, e.tickMax = 0, 0, 0
 					e.tickLogAt = now.Add(2 * time.Second)
@@ -154,7 +154,7 @@ func (e *Engine) Close() {
 		case <-e.runDone:
 		case <-time.After(engineCloseJoinTimeout):
 			if e.logger != nil {
-				e.logger.Errorf("[ENGINE] Close() join timed out after %s — run loop still parked", engineCloseJoinTimeout)
+				e.logger.Errorf("[engine] Close() join timed out after %s — run loop still parked", engineCloseJoinTimeout)
 			}
 		}
 	}

@@ -284,6 +284,25 @@ func TestFFTObserver_UsesLastSamples(t *testing.T) {
 	}
 }
 
+func TestMagnitudeSpectrum_SinePeakBin(t *testing.T) {
+	sr := 44100
+	w := Sine(1000, 1.0, 0.2, sr) // exported testgen
+	mag, binHz := MagnitudeSpectrum(w, 16384, WindowHann)
+	if len(mag) != 16384/2+1 {
+		t.Fatalf("got %d bins, want %d", len(mag), 16384/2+1)
+	}
+	peak, peakIdx := 0.0, 0
+	for i, m := range mag {
+		if m > peak {
+			peak, peakIdx = m, i
+		}
+	}
+	gotHz := float64(peakIdx) * binHz
+	if math.Abs(gotHz-1000) > binHz*2 {
+		t.Errorf("peak at %.1f Hz, want ~1000 (binHz=%.2f)", gotHz, binHz)
+	}
+}
+
 // --- FFT: empty wave ---
 
 func TestFFTObserver_EmptyWave(t *testing.T) {

@@ -269,7 +269,7 @@ func TestUploadButtonIgnoredWhileImporting(t *testing.T) {
 	withDefaultAudio(t)
 	tries := 0
 	old := selectJSONAsyncFn
-	selectJSONAsyncFn = func(cb func([]byte, error)) { tries++ }
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) { tries++ }
 	t.Cleanup(func() { selectJSONAsyncFn = old })
 
 	g := New(testLogger)

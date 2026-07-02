@@ -2,66 +2,68 @@ package ui
 
 import (
 	"image"
-	"image/color"
 	"math"
 	"testing"
 )
 
-// TestButtonPressSpring asserts the springy press/release scale lifecycle:
-// rest = 1.0, press snaps to genGeomButtonPressScale (0.92), release snaps to
-// genGeomButtonReleaseOvershoot (1.03), then AdvancePressAnim relaxes back
-// toward 1.0 and finally settles exactly at 1.0.
+// TestButtonPressSpring asserts the springy press/release depth lifecycle:
+// rest = 0, press targets full depth (1) and eases toward it, release targets
+// rest (0), kicks the cap UP (negative overshoot) then springs monotonically
+// back and finally settles exactly at 0.
 func TestButtonPressSpring(t *testing.T) {
 	b := NewButton("Hit", InstButtonStyle, func() {})
 	b.SetRect(image.Rect(100, 100, 160, 130))
 
-	// Rest: a freshly constructed button reads as scale 1.0 (zero → 1.0).
-	if got := b.PressScale(); got != 1 {
-		t.Fatalf("rest PressScale = %v, want 1", got)
+	// Rest: a freshly constructed button reads as depth 0.
+	if b.pressDepth != 0 || b.pressTarget != 0 {
+		t.Fatalf("rest depth/target = %v/%v, want 0/0", b.pressDepth, b.pressTarget)
 	}
 
-	// Press inside → press-floor scale.
+	// Press inside → target full depth, depth eases toward 1.
 	mx, my := 110, 110
 	b.HandleInputResult(mx, my, true)
-	if got := b.PressScale(); got != genGeomButtonPressScale {
-		t.Fatalf("pressed PressScale = %v, want %v (button-press-scale)", got, genGeomButtonPressScale)
+	if b.pressTarget != 1 {
+		t.Fatalf("pressed target = %v, want 1", b.pressTarget)
 	}
-	if genGeomButtonPressScale >= 1 {
-		t.Fatalf("button-press-scale must shrink the button (<1), got %v", genGeomButtonPressScale)
+	for i := 0; i < 12; i++ {
+		b.AdvancePressAnim()
+	}
+	if b.pressDepth < 0.9 {
+		t.Fatalf("held depth eased to %v, want ~1", b.pressDepth)
 	}
 
-	// Release → overshoot past rest.
+	// Release → target rest, kick the cap UP (negative overshoot).
 	b.HandleInputResult(mx, my, false)
-	if got := b.PressScale(); got != genGeomButtonReleaseOvershoot {
-		t.Fatalf("released PressScale = %v, want %v (button-release-overshoot)", got, genGeomButtonReleaseOvershoot)
+	if b.pressTarget != 0 {
+		t.Fatalf("released target = %v, want 0", b.pressTarget)
 	}
-	if genGeomButtonReleaseOvershoot <= 1 {
-		t.Fatalf("button-release-overshoot must overshoot rest (>1), got %v", genGeomButtonReleaseOvershoot)
+	if b.pressDepth >= 0 {
+		t.Fatalf("release must kick depth negative (overshoot up), got %v", b.pressDepth)
 	}
 
-	// Spring relaxes monotonically toward 1.0 and eventually settles at 1.0.
-	prevDist := math.Abs(b.PressScale() - 1)
+	// Spring relaxes monotonically toward 0 and eventually settles at 0.
+	prevDist := math.Abs(b.pressDepth)
 	settled := false
 	for i := 0; i < 500; i++ {
 		b.AdvancePressAnim()
-		dist := math.Abs(b.PressScale() - 1)
+		dist := math.Abs(b.pressDepth)
 		if dist > prevDist+1e-9 {
 			t.Fatalf("spring diverged at step %d: dist %v > prev %v", i, dist, prevDist)
 		}
 		prevDist = dist
-		if b.PressScale() == 1 {
+		if b.pressDepth == 0 {
 			settled = true
 			break
 		}
 	}
 	if !settled {
-		t.Fatalf("spring never settled to 1.0; final scale = %v", b.PressScale())
+		t.Fatalf("spring never settled to 0; final depth = %v", b.pressDepth)
 	}
 
 	// Settled spring is a no-op.
 	b.AdvancePressAnim()
-	if got := b.PressScale(); got != 1 {
-		t.Fatalf("settled AdvancePressAnim moved scale off 1.0: %v", got)
+	if b.pressDepth != 0 {
+		t.Fatalf("settled AdvancePressAnim moved depth off 0: %v", b.pressDepth)
 	}
 }
 
@@ -81,34 +83,6 @@ func TestButtonToggleState(t *testing.T) {
 		t.Fatal("SetToggled(false) did not clear")
 	}
 }
-
-// TestScaleRectAboutCenter asserts the press-scale geometry: shrinking keeps
-// the rect centered and smaller; scale 1 / zero / empty returns the input.
-func TestScaleRectAboutCenter(t *testing.T) {
-	r := image.Rect(100, 100, 200, 140) // center (150,120), 100x40
-	if got := scaleRectAboutCenter(r, 1); got != r {
-		t.Fatalf("scale 1 must be identity, got %v", got)
-	}
-	if got := scaleRectAboutCenter(r, 0); got != r {
-		t.Fatalf("scale 0 must be identity (guard), got %v", got)
-	}
-	if got := scaleRectAboutCenter(image.Rectangle{}, 0.9); !got.Empty() {
-		t.Fatalf("empty input must stay empty, got %v", got)
-	}
-	got := scaleRectAboutCenter(r, 0.5)
-	if got.Dx() >= r.Dx() || got.Dy() >= r.Dy() {
-		t.Fatalf("scale 0.5 must shrink, got %v from %v", got, r)
-	}
-	// Center preserved (within rounding).
-	wantCx, wantCy := 150, 120
-	gotCx := (got.Min.X + got.Max.X) / 2
-	gotCy := (got.Min.Y + got.Max.Y) / 2
-	if abs(gotCx-wantCx) > 1 || abs(gotCy-wantCy) > 1 {
-		t.Fatalf("center drifted: got (%d,%d), want (%d,%d)", gotCx, gotCy, wantCx, wantCy)
-	}
-}
-
-// (abs is provided by game_math.go)
 
 // TestButtonGlowAlpha asserts the single-chrome-accent discipline: the cyan
 // glow ring is invisible at rest (accent reserved for interaction), present on
@@ -178,21 +152,36 @@ func TestButtonGlowAlphaAnimated(t *testing.T) {
 // TestHoverGlowOverlay* in hover_glow_overlay_test.go (functional, through the
 // real tree Draw path).
 
-// TestButtonGlowRingColor pins the Vice City two-shade hover/active split: the
-// hover ring uses primary-bright (#3FE0E8, DESIGN.md "Hover ring"), while the
-// latched/active pulse uses the base primary accent (#00C8E0).
+// TestButtonGlowRingColor pins the neutral-lift hover/active ring color after
+// the chrome de-accent pass (2026-06-15). Both hover and toggle states use
+// TokenTextPrimary (near-white) so interaction feedback is brightness-based,
+// not cyan. The previous two-shade cyan split (primary-bright/primary) was
+// removed to de-accent the chrome.
 func TestButtonGlowRingColor(t *testing.T) {
-	if got := buttonGlowRingColor(false); got != TokenAccentBright() {
-		t.Fatalf("hover ring color = %v, want primary-bright %v", got, TokenAccentBright())
+	hover := buttonGlowRingColor(false)
+	tog := buttonGlowRingColor(true)
+	if hover == TokenAccentBright() || tog == TokenAccent() {
+		t.Fatalf("glow ring still cyan: hover=%v tog=%v", hover, tog)
 	}
-	if got := buttonGlowRingColor(true); got != TokenAccent() {
-		t.Fatalf("toggled ring color = %v, want primary %v", got, TokenAccent())
+	if hover != TokenTextPrimary() {
+		t.Fatalf("hover ring want neutral TokenTextPrimary, got %v", hover)
 	}
-	// Guard the two shades are actually distinct (a regression that aliased
-	// them would silently erase the hover-vs-active signal).
-	var _ color.RGBA = buttonGlowRingColor(false)
-	if buttonGlowRingColor(false) == buttonGlowRingColor(true) {
-		t.Fatal("hover and active ring colors must differ (primary-bright vs primary)")
+	if tog != TokenTextPrimary() {
+		t.Fatalf("toggled ring want neutral TokenTextPrimary, got %v", tog)
+	}
+}
+
+// TestButtonGlowRingColorIsNeutral is the explicit post-de-accent guard: the
+// hover/toggle glow ring must be neutral (no cyan accent) — chrome
+// de-accent pass 2026-06-15.
+func TestButtonGlowRingColorIsNeutral(t *testing.T) {
+	hover := buttonGlowRingColor(false)
+	tog := buttonGlowRingColor(true)
+	if hover == TokenAccentBright() || tog == TokenAccent() {
+		t.Fatalf("glow ring still cyan: hover=%v tog=%v", hover, tog)
+	}
+	if hover != TokenTextPrimary() {
+		t.Fatalf("hover ring want neutral TokenTextPrimary, got %v", hover)
 	}
 }
 

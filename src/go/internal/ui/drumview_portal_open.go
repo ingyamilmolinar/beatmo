@@ -355,6 +355,52 @@ func (dv *DrumView) closeVolPopupPortal() {
 	}
 }
 
+// openSynthWheelPortal opens the mobile synth-knob wheel popup through the portal.
+func (dv *DrumView) openSynthWheelPortal() {
+	if dv.tree == nil || dv.synthWheelPopup == nil {
+		return
+	}
+	dv.tree.Portal().Open(PortalEntry{
+		ID:      "synth-wheel-popup",
+		Overlay: &mobileWheelPopupPortalOverlay{popup: dv.synthWheelPopup, tag: "synth-wheel-popup"},
+		Modal:   true,
+		Scrim:   true, // synth wheel popup — backdrop dims so modality is visible
+		OnClose: func() {
+			dv.synthWheelPopup.Close()
+		},
+	})
+}
+
+// closeSynthWheelPortal closes the synth wheel popup portal entry.
+func (dv *DrumView) closeSynthWheelPortal() {
+	if dv.tree != nil {
+		dv.tree.Portal().Close("synth-wheel-popup")
+	}
+}
+
+// openSamplerWheelPortal opens the mobile sampler-knob wheel popup through the portal.
+func (dv *DrumView) openSamplerWheelPortal() {
+	if dv.tree == nil || dv.samplerWheelPopup == nil {
+		return
+	}
+	dv.tree.Portal().Open(PortalEntry{
+		ID:      "sampler-wheel-popup",
+		Overlay: &mobileWheelPopupPortalOverlay{popup: dv.samplerWheelPopup, tag: "sampler-wheel-popup"},
+		Modal:   true,
+		Scrim:   true, // sampler wheel popup — backdrop dims so modality is visible
+		OnClose: func() {
+			dv.samplerWheelPopup.Close()
+		},
+	})
+}
+
+// closeSamplerWheelPortal closes the sampler wheel popup portal entry.
+func (dv *DrumView) closeSamplerWheelPortal() {
+	if dv.tree != nil {
+		dv.tree.Portal().Close("sampler-wheel-popup")
+	}
+}
+
 // openMasterVolPopupPortal opens the master volume popup through the portal.
 func (dv *DrumView) openMasterVolPopupPortal() {
 	if dv.tree == nil || dv.masterVolPopup == nil {

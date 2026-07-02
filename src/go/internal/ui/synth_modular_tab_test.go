@@ -151,9 +151,17 @@ func TestSynthTab_ModularEnumKnobWritesSnappedIndex(t *testing.T) {
 	})
 	t.Cleanup(func() { audio.SwapPlatformInstrumentParamsChangedForTest(oldCb) })
 
-	// osc_type range [0,6] (Sine..Noise Pink); 1/6 of the sweep == index 1
-	// (Saw). The snap must land it on exactly 1 — no fractional drift.
-	sliders[idx].Value = 1.0 / 6.0
+	// osc_type is a discrete Enum knob spanning [Min,Max]; the slider value
+	// that targets index 1 (Saw) is 1/(Max-Min) regardless of how many
+	// oscillator types exist. Derive it from the live binding so this stays
+	// correct as the enum grows (it has expanded from 7 to 12 entries). The
+	// snap must land on exactly 1 — no fractional drift.
+	def := bindings[idx].def
+	span := def.Max - def.Min
+	if span <= 0 {
+		t.Fatalf("osc_type binding has non-positive span: Min=%v Max=%v", def.Min, def.Max)
+	}
+	sliders[idx].Value = 1.0 / span
 	g.drum.propagateSynthSliderValue(idx, "modular")
 
 	got := audio.GetInstrumentParams("modular")["osc_type"]

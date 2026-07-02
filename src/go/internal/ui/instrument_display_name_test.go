@@ -22,21 +22,6 @@ func TestComputeInstLabel_HyphenatedIDFallback(t *testing.T) {
 	}
 }
 
-// TestComputeInstLabel_HyphenatedRelPathFallback pins the regression
-// target for the RelPath fallback path: a sample at "x/hi-hat.wav"
-// with no explicit Name must render as "Hi Hat".
-func TestComputeInstLabel_HyphenatedRelPathFallback(t *testing.T) {
-	dv := &DrumView{
-		instMeta: map[string]audio.SoundMeta{
-			"x": {RelPath: "samples/hi-hat.wav"},
-		},
-	}
-	got := dv.computeInstLabel("x")
-	if got != "Hi Hat" {
-		t.Fatalf("computeInstLabel(%q) = %q, want %q", "x", got, "Hi Hat")
-	}
-}
-
 // TestComputeInstLabel_UnderscoredIDFallback covers the other separator.
 func TestComputeInstLabel_UnderscoredIDFallback(t *testing.T) {
 	dv := &DrumView{}

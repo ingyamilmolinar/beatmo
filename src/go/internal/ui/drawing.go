@@ -462,6 +462,11 @@ func drawSparkLineSeg(dst *ebiten.Image, x0, y0, x1, y1 int, col color.Color) {
 	}
 }
 
+// closeIconColor is the shared tint for every pop-up close "X" glyph: the
+// existing error/stop red on an otherwise-neutral button body. Reusing the
+// error red avoids a 4th red (DESIGN.md three-reds invariant).
+func closeIconColor() color.Color { return colError }
+
 // closeButtonRect returns a rect at the top-right corner of panelRect.
 // Uses a smaller size on mobile for better proportioning.
 func closeButtonRect(panelRect image.Rectangle, pad int) image.Rectangle {

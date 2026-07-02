@@ -47,7 +47,7 @@ func TestFMPresetGolden(t *testing.T) {
 		{"fm-bass", renderFMBassVoice, "998475b068d793cea7105767e9c066ac6c9f63e17752a5f9b801c6eff449a39f"},
 		{"fm-bell", renderFMBellVoice, "5292788a862816663611bf08163160c700387aab0d39dca109e2062c34c0a096"},
 		{"fm-lead", renderFMLeadVoice, "0612df6948f77cc95245f313e671d229d7b7d73e83665007be4bc363254dbb4b"},
-		{"fm-epiano", renderFMEPianoVoice, "69d406b04c8f3e42293fa68aa1b0678575a0419ab351859dbcd51c71b68c451f"},
+		{"fm-epiano", renderFMEPianoVoice, "8e6a4705ba91fe19300777f80ccfbb3586889af06654fc2a90d4cf6f8fe54a7d"},
 		{"fm-pluck", renderFMPluckVoice, "61463214e4b161b265127b59a0a05cb1ab8d1fc92c8df1be510726a26824e98c"},
 	}
 	for _, tc := range cases {

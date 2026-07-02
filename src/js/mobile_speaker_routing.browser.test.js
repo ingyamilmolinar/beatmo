@@ -287,16 +287,27 @@ try {
         return { error: `expected running, got ${ctx.state}` };
       }
 
+      // capturePlay arms recordSamples, fires a (fire-and-forget) playSound,
+      // then polls until the async flush has recorded the hit. window.playSound
+      // only enqueues the event and resolves immediately; the render +
+      // recordSamples runs later in flushAudioQueue (deferred to setTimeout(0)
+      // under contention), so we must poll rather than assume `await playSound`
+      // finished recording. Returns a copy so a later deferred flush can't
+      // mutate it after capture is disabled.
+      const capturePlay = async (id, vol) => {
+        window.__samples = [];
+        window.__captureSamples = true;
+        await playSound(id, vol);
+        const deadline = performance.now() + 2000;
+        while (window.__samples.length === 0 && performance.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        window.__captureSamples = false;
+        return window.__samples.slice();
+      };
+
       // Play a sound to prove audio works before suspend.
-      // Use software-side recordSamples capture instead of
-      // ScriptProcessorNode-based output capture.  The deprecated
-      // ScriptProcessorNode is unreliable in headless Chromium after
-      // AudioContext suspend/resume cycles.
-      window.__samples = [];
-      window.__captureSamples = true;
-      await playSound("kick", 1.0);
-      window.__captureSamples = false;
-      const beforeCapture = window.__samples;
+      const beforeCapture = await capturePlay("kick", 1.0);
       let beforeRMS = 0;
       for (let i = 0; i < beforeCapture.length; i++) {
         beforeRMS += beforeCapture[i] * beforeCapture[i];
@@ -317,11 +328,7 @@ try {
       const afterVisState = ctx.state;
 
       // Play another sound after recovery.
-      window.__samples = [];
-      window.__captureSamples = true;
-      await playSound("snare", 1.0);
-      window.__captureSamples = false;
-      const afterCapture = window.__samples;
+      const afterCapture = await capturePlay("snare", 1.0);
       let afterRMS = 0;
       for (let i = 0; i < afterCapture.length; i++) {
         afterRMS += afterCapture[i] * afterCapture[i];
@@ -393,6 +400,22 @@ try {
       if (!ctx) return { error: "no AudioContext" };
       if (ctx.state !== 'running') return { error: `initial state ${ctx.state}` };
 
+      // capturePlay arms recordSamples, fires a (fire-and-forget) playSound,
+      // then polls until the async flush has recorded the hit. Returns the
+      // captured Float32 samples (a copy, so a later deferred flush can't
+      // mutate it after capture is disabled).
+      const capturePlay = async (id, vol) => {
+        window.__samples = [];
+        window.__captureSamples = true;
+        await playSound(id, vol);
+        const deadline = performance.now() + 2000;
+        while (window.__samples.length === 0 && performance.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        window.__captureSamples = false;
+        return window.__samples.slice();
+      };
+
       const results = [];
 
       for (let cycle = 0; cycle < 3; cycle++) {
@@ -413,13 +436,15 @@ try {
         // ScriptProcessorNode-based output capture.  The deprecated
         // ScriptProcessorNode is unreliable in headless Chromium under
         // CPU contention (parallel tests), producing all-zero buffers.
-        // recordSamples captures synchronously inside playSound(), so
-        // it's deterministic regardless of audio thread scheduling.
-        window.__samples = [];
-        window.__captureSamples = true;
-        await playSound("kick", 1.0);
-        window.__captureSamples = false;
-        const captured = window.__samples;
+        //
+        // NOTE: window.playSound() is fire-and-forget — it enqueues the
+        // event and resolves immediately; the actual render + recordSamples
+        // runs later in flushAudioQueue, which defers to setTimeout(0)
+        // whenever a flush is already in-flight or the render isn't cached
+        // yet. Under CPU contention that deferral lands AFTER the line that
+        // disables capture, so we must POLL until samples accumulate rather
+        // than assume `await playSound` completed the recording.
+        const captured = await capturePlay("kick", 1.0);
 
         let rms = 0;
         for (let i = 0; i < captured.length; i++) {

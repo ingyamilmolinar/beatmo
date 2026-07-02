@@ -166,12 +166,6 @@ var (
 	SignalUI = SignalStyle{Radius: float32(genGeomSignalRadius), Color: colAccent}
 	EdgeUI   = EdgeStyle{Color: WithAlpha(genColorEdgeColor, genAlphaEdgeDefault)} // edge @ alpha.edge-default (100)
 
-	// Unified increment/decrement button color (deep-navy + steel-blue border).
-	// Same hex as `stepper-*`, but the runtime carries a separate var name
-	// for the legacy +/- code path; aliased to the generated stepper tokens.
-	colIncDec       = genColorStepperFill
-	colIncDecBorder = genColorStepperBorder
-
 	// Transport surface: Level 1 for visual hierarchy
 	colTransportSurface = colSurface1
 	// Transport border: subtle section divider
@@ -189,10 +183,9 @@ var (
 	colPlayIconTint  = colPlayGreen                    // green for play icon
 	colStopIconTint  = colStopRed                      // red for stop icon
 	colIncDecIcon    = colTextPrimary                   // primary text for +/- icons (mobile)
-	colIncDecIconHi  = genColorIncdecIconHi             // amber for +/- icons (desktop), DESIGN.md incdec-icon-hi
 	colVolumeIconOn  = colTextPrimary                   // primary when volume > 0
 	colVolumeIconOff = colTextDisabled                  // disabled when muted/zero
-	colFollowActive  = colAccentBright                  // primary-bright coral for follow-on (DESIGN.md single-chrome-accent)
+	colFollowActive  = colTextPrimary                   // neutral bright tint for follow-on (track lit); free state dims to colTextDisabled
 	colRecordIdle    = genColorRecordIdle                // red circle for record button (DESIGN.md record-idle, opaque)
 	colRecordActive  = genColorRecordActive              // bright red when recording (DESIGN.md record-active, opaque)
 

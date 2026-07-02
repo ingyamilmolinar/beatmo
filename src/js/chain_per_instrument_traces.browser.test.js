@@ -109,8 +109,7 @@ async function runCaseForChannel(page, label, channel, { tapA, tapB }) {
   // 10 ms silent window even though audio is scheduled. Strategy: fire a
   // short BURST of overlapping hits to guarantee continuous audio, then
   // poll the analyser snapshot in a tight retry until both taps report
-  // Active. The retries run server-side via Promise.all of probes so we
-  // don't pay Playwright RPC overhead per attempt.
+  // Active, RE-FIRING a fresh hit on every attempt so the pipe never drains.
   const MAX_ATTEMPTS = 25;
   const PROBE_INTERVAL_MS = 50;
   let probe = null;
@@ -122,7 +121,22 @@ async function runCaseForChannel(page, label, channel, { tapA, tapB }) {
   }
   // Now poll the snapshot repeatedly. The first probe where both taps see
   // non-zero data wins.
+  //
+  // CRITICAL: re-fire a hit BEFORE every probe (not every 5th attempt). The
+  // pre-EQ taps — synth (channel ingress) and insertfx (pre-EQ) — read
+  // *exact zero* the instant no fresh hit sits inside the AnalyserNode's
+  // ~10 ms time-domain window, whereas the postEQ tap (eq) keeps reporting
+  // Active from the EQ biquads' ringing/denormal tail even after the source
+  // has gone silent. A deep, short kick (e.g. the dnb-kick now seeded at row
+  // 0) decays inside a single probe interval, so a sparse-hit poll can land
+  // on "eq active, ingress silent" and spuriously fail antipop_vs_eq /
+  // synth_vs_insertfx under CPU contention. Firing every attempt keeps the
+  // ingress continuously fed; the 50 ms wait lets the audio thread render the
+  // hit into the analyser window before we sample it. See
+  // chain_tab_per_instrument_test.go for the Go-side enable contract.
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    await page.evaluate(({ id }) => playSound?.(id, 1.0), { id: target });
+    await page.waitForTimeout(PROBE_INTERVAL_MS);
     probe = await page.evaluate(() =>
       typeof probeScopeState === "function" ? probeScopeState() : null
     );
@@ -136,12 +150,6 @@ async function runCaseForChannel(page, label, channel, { tapA, tapB }) {
     ) {
       return { ok: true, probe };
     }
-    // If audio hasn't arrived yet, fire another hit and wait. This adds
-    // resilience when the audio thread is severely backlogged.
-    if (attempt % 5 === 4) {
-      await page.evaluate(({ id }) => playSound?.(id, 1.0), { id: target });
-    }
-    await page.waitForTimeout(PROBE_INTERVAL_MS);
   }
 
   if (!probe || probe.available !== true) {

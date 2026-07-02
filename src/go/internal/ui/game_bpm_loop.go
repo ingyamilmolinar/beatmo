@@ -25,13 +25,13 @@ func (g *Game) bpmLoop() {
 				// keep draining
 			default:
 				start := time.Now()
-				g.logger.Debugf("[GAME] applying BPM=%d", b)
+				g.logger.Debugf("[game] applying BPM=%d", b)
 				if bpmOwner.Load() != g {
 					goto applied
 				}
 				g.engine.SetBPM(b)
 				audio.SetBPM(b)
-				g.logger.Debugf("[GAME] applied BPM=%d in %s", b, time.Since(start))
+				g.logger.Debugf("[game] applied BPM=%d in %s", b, time.Since(start))
 				sendLatest(g.bpmAck, b, nil)
 				// If UI has moved on while we were applying BPM (e.g. audio
 				// layer was blocked), immediately converge to the current
@@ -45,13 +45,13 @@ func (g *Game) bpmLoop() {
 					}
 					b = cur
 					start = time.Now()
-					g.logger.Debugf("[GAME] reconciling BPM=%d", b)
+					g.logger.Debugf("[game] reconciling BPM=%d", b)
 					if bpmOwner.Load() != g {
 						break
 					}
 					g.engine.SetBPM(b)
 					audio.SetBPM(b)
-					g.logger.Debugf("[GAME] reconciled BPM=%d in %s", b, time.Since(start))
+					g.logger.Debugf("[game] reconciled BPM=%d in %s", b, time.Since(start))
 					sendLatest(g.bpmAck, b, nil)
 				}
 				goto applied

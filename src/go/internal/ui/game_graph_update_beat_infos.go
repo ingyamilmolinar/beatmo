@@ -15,7 +15,7 @@ func (g *Game) updateBeatInfos() {
 	defer func() { g.logger.Debugf("[update_beat_infos] total=%v", time.Since(start)) }()
 
 	g.rebuildNodeCache()
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] rebuildNodeCache elapsed=%v", time.Since(start))
+	g.logger.Debugf("[update_beat_infos] rebuildNodeCache elapsed=%v", time.Since(start))
 
 	// Use a generously large beat length so CalculateBeatRow returns the
 	// complete path even when disconnected nodes exist elsewhere in the
@@ -26,10 +26,10 @@ func (g *Game) updateBeatInfos() {
 	// steps are synthesized on-the-fly instead of stored as nodes.
 	calcStart := time.Now()
 	fullBeatRow, isLoop, loopStart := g.graph.CalculateBeatRowUnbounded()
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] CalculateBeatRowUnbounded elapsed=%v isLoop=%v loopStart=%d pathLen=%d",
+	g.logger.Debugf("[update_beat_infos] CalculateBeatRowUnbounded elapsed=%v isLoop=%v loopStart=%d pathLen=%d",
 		time.Since(calcStart), isLoop, loopStart, len(fullBeatRow))
 	baseLen := rawBeatLen(fullBeatRow, isLoop, loopStart)
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] rawBeatLen=%d", baseLen)
+	g.logger.Debugf("[update_beat_infos] rawBeatLen=%d", baseLen)
 
 	g.beatInfos = fullBeatRow[:baseLen]
 	g.isLoop = isLoop
@@ -38,7 +38,7 @@ func (g *Game) updateBeatInfos() {
 	maxLen := baseLen
 	g.nodeRows = map[model.NodeID]int{}
 	nRows := len(g.drum.Rows)
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] nRows=%d drum.Rows=%d", nRows, len(g.drum.Rows))
+	g.logger.Debugf("[update_beat_infos] nRows=%d drum.Rows=%d", nRows, len(g.drum.Rows))
 	prevNextByRow := g.nextBeatIdxs
 	g.beatInfosByRow = make([][]model.BeatInfo, nRows)
 	g.isLoopByRow = make([]bool, nRows)
@@ -53,7 +53,7 @@ func (g *Game) updateBeatInfos() {
 	for i := range g.lastHLIdxByRow {
 		g.lastHLIdxByRow[i] = -1
 	}
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] before row0 setup nRows=%d", nRows)
+	g.logger.Debugf("[update_beat_infos] before row0 setup nRows=%d", nRows)
 	if nRows > 0 {
 		g.beatInfosByRow[0] = g.beatInfos
 		g.isLoopByRow[0] = isLoop
@@ -62,7 +62,7 @@ func (g *Game) updateBeatInfos() {
 			g.loopLenByRow[0] = loopSegmentLen(g.beatInfos, loopStart)
 		}
 		origin := g.drum.Rows[0].Origin
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] row0 origin=%d beatInfosLen=%d", origin, len(g.beatInfos))
+		g.logger.Debugf("[update_beat_infos] row0 origin=%d beatInfosLen=%d", origin, len(g.beatInfos))
 		for idx, b := range g.beatInfos {
 			if b.NodeID != model.InvalidNodeID {
 				g.nodeRows[b.NodeID] = 0
@@ -71,13 +71,13 @@ func (g *Game) updateBeatInfos() {
 				g.originIdxsByRow[0] = append(g.originIdxsByRow[0], idx)
 			}
 		}
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] row0 setup done")
+		g.logger.Debugf("[update_beat_infos] row0 setup done")
 	}
 
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] before row loop, nRows=%d", nRows)
+	g.logger.Debugf("[update_beat_infos] before row loop, nRows=%d", nRows)
 	// Compute beat paths for additional drum rows using their origin nodes.
 	for i, r := range g.drum.Rows {
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] processing row %d origin=%d", i, r.Origin)
+		g.logger.Debugf("[update_beat_infos] processing row %d origin=%d", i, r.Origin)
 		if i == 0 {
 			// row 0 handled above; ensure its origin tracks the start node
 			if r.Origin == model.InvalidNodeID && g.start != nil {
@@ -87,12 +87,12 @@ func (g *Game) updateBeatInfos() {
 			continue
 		}
 		if r.Origin == model.InvalidNodeID {
-			g.logger.Debugf("[UPDATE_BEAT_INFOS] row %d has InvalidNodeID origin, skipping", i)
+			g.logger.Debugf("[update_beat_infos] row %d has InvalidNodeID origin, skipping", i)
 			continue
 		}
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] row %d calling CalculateBeatRowFrom origin=%d", i, r.Origin)
+		g.logger.Debugf("[update_beat_infos] row %d calling CalculateBeatRowFrom origin=%d", i, r.Origin)
 		rowPath, rowLoop, rowStart := g.graph.CalculateBeatRowFrom(r.Origin)
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] row %d CalculateBeatRowFrom done pathLen=%d", i, len(rowPath))
+		g.logger.Debugf("[update_beat_infos] row %d CalculateBeatRowFrom done pathLen=%d", i, len(rowPath))
 		rowLen := rawBeatLen(rowPath, rowLoop, rowStart)
 		g.beatInfosByRow[i] = rowPath[:rowLen]
 		g.isLoopByRow[i] = rowLoop
@@ -118,12 +118,12 @@ func (g *Game) updateBeatInfos() {
 
 	// Reduce the graph's beat length to the actual maximum traversal size so
 	// subsequent path calculations are not padded with extra loop cycles.
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] after row loop, maxLen=%d", maxLen)
+	g.logger.Debugf("[update_beat_infos] after row loop, maxLen=%d", maxLen)
 	g.graph.SetBeatLength(maxLen)
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] SetBeatLength done")
+	g.logger.Debugf("[update_beat_infos] SetBeatLength done")
 
 	g.resetOriginSequences()
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] resetOriginSequences done")
+	g.logger.Debugf("[update_beat_infos] resetOriginSequences done")
 	g.muteUntilByRow = make([]int, len(g.drum.Rows))
 	g.renderReady = false
 
@@ -132,7 +132,7 @@ func (g *Game) updateBeatInfos() {
 	g.nodeTriggerCountsByRow = make(map[int]map[model.NodeID]int)
 	g.nodeLogicTriggerCountsByRow = make(map[int]map[model.NodeID]int)
 	g.lastEvalIdxByRowNode = make(map[int]map[model.NodeID]int)
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] trigger counters reset")
+	g.logger.Debugf("[update_beat_infos] trigger counters reset")
 
 	if maxLen < 1 {
 		maxLen = 1
@@ -152,11 +152,11 @@ func (g *Game) updateBeatInfos() {
 				}
 			}
 		}
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] calling drum.SetLengthClamped visLen=%d (maxLen=%d)", visLen, maxLen)
+		g.logger.Debugf("[update_beat_infos] calling drum.SetLengthClamped visLen=%d (maxLen=%d)", visLen, maxLen)
 		g.drum.SetLengthClamped(visLen)
 		// Restore graph beat length that SetLengthClamped may have shrunk.
 		g.graph.SetBeatLength(maxLen)
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] drum.SetLengthClamped done")
+		g.logger.Debugf("[update_beat_infos] drum.SetLengthClamped done")
 	} else {
 		// While playing, avoid changing DrumView.Length to prevent window
 		// clamping jumps; update only the underlying graph beat length.
@@ -165,7 +165,7 @@ func (g *Game) updateBeatInfos() {
 
 	// Rebind active pulses to the updated beat paths while preserving
 	// their absolute progression indices.
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] rebinding %d active pulses", len(g.activePulses))
+	g.logger.Debugf("[update_beat_infos] rebinding %d active pulses", len(g.activePulses))
 	for _, p := range g.activePulses {
 		if p.row >= len(g.beatInfosByRow) {
 			continue
@@ -192,17 +192,17 @@ func (g *Game) updateBeatInfos() {
 		}
 	}
 
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] active pulses done")
-	g.logger.Debugf("[GAME] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))
+	g.logger.Debugf("[update_beat_infos] active pulses done")
+	g.logger.Debugf("[game] updateBeatInfos: drum.Length=%d, beatPath=%d", g.drum.Length, len(g.beatInfos))
 	// Log per-row path sizes to aid debugging imports/demo configs.
 	if len(g.beatInfosByRow) > 0 {
 		sizes := make([]int, len(g.beatInfosByRow))
 		for i := range g.beatInfosByRow {
 			sizes[i] = len(g.beatInfosByRow[i])
 		}
-		g.logger.Debugf("[GAME] per-row path lens: %v", sizes)
+		g.logger.Debugf("[game] per-row path lens: %v", sizes)
 	}
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] after per-row path lens")
+	g.logger.Debugf("[update_beat_infos] after per-row path lens")
 
 	// Preserve current drum offset when the beat path changes. Clamp against
 	// the timeline length (in subdivisions) rather than the raw beat path so
@@ -215,11 +215,11 @@ func (g *Game) updateBeatInfos() {
 	if g.drum.Offset > maxOffset {
 		g.drum.Offset = maxOffset
 	}
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] offset clamped")
+	g.logger.Debugf("[update_beat_infos] offset clamped")
 
 	// Compute path signatures and detect rows whose shape changed.
 	nPaths := len(g.beatInfosByRow)
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] computing path signatures nPaths=%d", nPaths)
+	g.logger.Debugf("[update_beat_infos] computing path signatures nPaths=%d", nPaths)
 	if len(g.pathSigByRow) != nPaths {
 		old := g.pathSigByRow
 		g.pathSigByRow = make([]uint64, nPaths)
@@ -235,7 +235,7 @@ func (g *Game) updateBeatInfos() {
 		}
 	}
 	pathsChanged := false
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] starting path sig loop nPaths=%d", nPaths)
+	g.logger.Debugf("[update_beat_infos] starting path sig loop nPaths=%d", nPaths)
 	for r := 0; r < nPaths; r++ {
 		prevNextVal := 0
 		if r < len(g.nextBeatIdxs) {
@@ -260,7 +260,7 @@ func (g *Game) updateBeatInfos() {
 				g.pathChangeBeatByRow[r] = g.elapsedBeats
 			}
 		}
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] path sig row %d changed=%v prevNext=%d", r, g.rowsPathChanged[r], prevNextVal)
+		g.logger.Debugf("[update_beat_infos] path sig row %d changed=%v prevNext=%d", r, g.rowsPathChanged[r], prevNextVal)
 		// If the path changed while playing, seed commits for already-traversed
 		// steps in the current window so past cells remain immutable even when
 		// they previously lacked explicit timeline entries (e.g., invisible gaps).
@@ -351,13 +351,13 @@ func (g *Game) updateBeatInfos() {
 			g.nextBeatIdxs[r] = next
 		}
 	}
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] path sig loop done, pathsChanged=%v", pathsChanged)
-	g.logger.Debugf("[UPDATE_BEAT_INFOS] starting TrimAfterPathChange loop")
+	g.logger.Debugf("[update_beat_infos] path sig loop done, pathsChanged=%v", pathsChanged)
+	g.logger.Debugf("[update_beat_infos] starting TrimAfterPathChange loop")
 	for row, changed := range g.rowsPathChanged {
 		if !changed {
 			continue
 		}
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] TrimAfterPathChange row %d", row)
+		g.logger.Debugf("[update_beat_infos] TrimAfterPathChange row %d", row)
 		cutoff := g.drum.Offset
 		if row < len(g.nextBeatIdxs) {
 			cutoff = g.nextBeatIdxs[row]
@@ -372,7 +372,7 @@ func (g *Game) updateBeatInfos() {
 			beforeStart, beforeEnd, beforeOK = g.timelineCommittedRange(row)
 		}
 		report := g.timelineService().TrimAfterPathChange(row, cutoff, freezeBefore)
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] TrimAfterPathChange row %d done", row)
+		g.logger.Debugf("[update_beat_infos] TrimAfterPathChange row %d done", row)
 		maxKeep := report.MaxKeep
 		// Avoid freezing future entries past the updated path frontier: clamp
 		// frozenUpTo to the new maxKeep so stale commits don't mask re-added
@@ -416,25 +416,42 @@ func (g *Game) updateBeatInfos() {
 	}
 	g.nextIdxSticky = nil
 
-	// If paths changed during playback, invalidate any already-scheduled audio
-	// and parity buffers. Otherwise, a live edit can leave an "old" audio event
-	// queued while the predictor/drumview has already advanced to the new path,
-	// producing audio_unexpected mismatches.
+	// Invalidate already-scheduled audio / parity buffers (when paths changed
+	// during playback) AND republish the new paths to the predictor under a
+	// SINGLE seqMu critical section. Previously these were three separate locks
+	// (rewind; then an unlocked audioGen-bump + buffer wipe; then SetPaths),
+	// leaving a window in which the background sequencer (seqScheduleTime
+	// TryLocks seqMu) could schedule a beat against the OLD path snapshot after
+	// the buffers were cleared — that stale decision then contradicted the
+	// post-SetPaths predictor and panicked the app on a live graph edit. Holding
+	// the lock across the whole invalidate→republish makes the transition atomic
+	// w.r.t. the sequencer: it either sees fully-old or fully-new state.
+
+	// Snapshot node params outside seqMu (guarded by nodeCacheMu) so the lock
+	// hold below stays short.
+	var nodes map[model.NodeID]model.Node
+	if g.engine != nil && g.engine.Predictor != nil {
+		nodes = make(map[model.NodeID]model.Node, len(g.nodeCache))
+		g.nodeCacheMu.RLock()
+		for id, node := range g.nodeCache {
+			nodes[id] = node
+		}
+		g.nodeCacheMu.RUnlock()
+	}
+
+	clearedParity := false
+	g.logger.Debugf("[update_beat_infos] about to acquire seqMu for invalidate+SetPaths")
+	g.seqMu.Lock()
+	g.logger.Debugf("[update_beat_infos] acquired seqMu for invalidate+SetPaths")
 	if pathsChanged && g.Playing() {
-		// Rewind the sequencer counters for affected rows to the next-beat boundary
-		// so the next scheduling tick can re-enqueue any audio that was just
-		// canceled by the generation bump / Stop calls below. Never rewind to the
-		// current beat (pastExclusive-1): those cells are already immutable, and
-		// re-scheduling them would violate the "edits only affect abs>=pastExclusive"
-		// invariant and trip parity (audio_vs_view).
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] about to acquire seqMu for pathsChanged rewind")
-		g.seqMu.Lock()
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] acquired seqMu for pathsChanged rewind")
+		// Rewind the sequencer counters for affected rows to the next-beat
+		// boundary so the next scheduling tick can re-enqueue any audio just
+		// canceled by the generation bumps below. Never rewind to the current
+		// beat (pastExclusive-1): those cells are already immutable, and
+		// re-scheduling them would violate the "edits only affect
+		// abs>=pastExclusive" invariant and trip parity (audio_vs_view).
 		for row, changed := range g.rowsPathChanged {
-			if !changed {
-				continue
-			}
-			if row < 0 || row >= len(g.seqNextIdxs) {
+			if !changed || row < 0 || row >= len(g.seqNextIdxs) {
 				continue
 			}
 			next := 0
@@ -448,9 +465,17 @@ func (g *Game) updateBeatInfos() {
 				g.seqNextIdxs[row] = next
 			}
 		}
-		g.seqMu.Unlock()
-
+		// Drop in-flight audio from the old paths (audioGen) AND advance the
+		// parity generation (+grace) so the scan's parityGen filter excludes any
+		// decision/audio recorded under the old paths. Skip the path-dirty /
+		// freeze-marker / buffer-clear side effects — updateBeatInfos owns
+		// paths-dirty itself, and the explicit wipe below is the hygiene step.
 		g.audioGen.Add(1)
+		g.bumpParityGen("paths-changed", structuralMutationOptions{
+			SkipPathsDirty:     true,
+			SkipPathChangeMark: true,
+			SkipBufferClear:    true,
+		})
 		for row, changed := range g.rowsPathChanged {
 			if !changed || row < 0 || row >= len(g.drum.Rows) {
 				continue
@@ -462,26 +487,15 @@ func (g *Game) updateBeatInfos() {
 		g.parityAudioMaxIdx = nil
 		g.paritySeqDecisions = make(map[int]map[int]paritySeqDecision)
 		g.parityMu.Unlock()
-		g.ClearParityMismatches()
+		clearedParity = true
 	}
 
-	// Update engine predictor with the new paths so scheduling/preview uses
-	// the authoritative engine-owned buffers. This must run after any
-	// seqMu-protected rewinds to avoid lock-order inversions with the
-	// background sequencer (seqMu -> predictor).
+	// Update engine predictor with the new paths so scheduling/preview uses the
+	// authoritative engine-owned buffers (seqMu -> predictor lock order).
 	if g.engine != nil && g.engine.Predictor != nil {
-		nodes := make(map[model.NodeID]model.Node, len(g.nodeCache))
-		g.nodeCacheMu.RLock()
-		for id, node := range g.nodeCache {
-			nodes[id] = node
-		}
-		g.nodeCacheMu.RUnlock()
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] about to acquire seqMu for SetPaths")
-		g.seqMu.Lock()
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] acquired seqMu for SetPaths")
 		setPathsStart := time.Now()
 		g.engine.Predictor.SetPaths(g.beatInfosByRow, g.isLoopByRow, g.loopStartByRow, nodes)
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] SetPaths elapsed=%v rows=%d nodes=%d", time.Since(setPathsStart), len(g.beatInfosByRow), len(nodes))
+		g.logger.Debugf("[update_beat_infos] SetPaths elapsed=%v rows=%d nodes=%d", time.Since(setPathsStart), len(g.beatInfosByRow), len(nodes))
 		g.pathsDirty = false
 		// Rebase predictor contexts at the current absolute position so
 		// subsequent Ensure() uses the live timeline, avoiding phase drift.
@@ -503,18 +517,14 @@ func (g *Game) updateBeatInfos() {
 			}
 			rebaseStart := time.Now()
 			g.engine.Predictor.RebaseAt(base)
-			g.logger.Debugf("[UPDATE_BEAT_INFOS] RebaseAt base=%d elapsed=%v", base, time.Since(rebaseStart))
+			g.logger.Debugf("[update_beat_infos] RebaseAt base=%d elapsed=%v", base, time.Since(rebaseStart))
 		}
-		g.storeSeqPathSnapshot()
-		g.seqMu.Unlock()
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] released seqMu after SetPaths")
-	} else {
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] about to acquire seqMu for storeSeqPathSnapshot (no predictor)")
-		g.seqMu.Lock()
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] acquired seqMu for storeSeqPathSnapshot (no predictor)")
-		g.storeSeqPathSnapshot()
-		g.seqMu.Unlock()
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] released seqMu for storeSeqPathSnapshot (no predictor)")
+	}
+	g.storeSeqPathSnapshot()
+	g.seqMu.Unlock()
+	g.logger.Debugf("[update_beat_infos] released seqMu after invalidate+SetPaths")
+	if clearedParity {
+		g.ClearParityMismatches()
 	}
 
 	// Set dirty flag so next Update refreshes DrumView immediately on edit.
@@ -543,6 +553,6 @@ func (g *Game) updateBeatInfos() {
 	if !g.Playing() {
 		refreshStart := time.Now()
 		g.refreshDrumRow()
-		g.logger.Debugf("[UPDATE_BEAT_INFOS] refreshDrumRow elapsed=%v", time.Since(refreshStart))
+		g.logger.Debugf("[update_beat_infos] refreshDrumRow elapsed=%v", time.Since(refreshStart))
 	}
 }

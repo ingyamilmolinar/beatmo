@@ -13,7 +13,7 @@ import (
 // Synth tab redesign — pipeline chip strip + expand-one detail pane.
 //
 // Collapsed stages render as compact chips laid out in audio-pipeline order
-// (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·POST); exactly one stage is
+// (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·FILTER ENV·POST); exactly one stage is
 // expanded at a time into a full-width detail pane below the strip. Disabled
 // stages stay visible as dimmed ghost chips. Selection is per-session,
 // per-instrument state on DrumView (no userprefs).
@@ -303,8 +303,9 @@ func TestSynthDetailPane_EnablePillForSelectedStage(t *testing.T) {
 }
 
 // TestSynthChips_MobileWrapAllStagesVisible — at 360×800 portrait every chip
-// stays visible (wrapping rows, no horizontal scroll/clipping) and the detail
-// pane spans the full content width below the strip.
+// stays visible (wrapping rows, no horizontal scroll/clipping) and the body
+// below the strip splits into a left knob column + a right wave column that
+// together span the content width (Task 1 mobile side-by-side layout).
 func TestSynthChips_MobileWrapAllStagesVisible(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
@@ -347,8 +348,24 @@ func TestSynthChips_MobileWrapAllStagesVisible(t *testing.T) {
 	if dv.instEditorDetailR.Empty() {
 		t.Fatalf("mobile detail pane is empty")
 	}
-	if got, want := dv.instEditorDetailR.Dx(), panel.Dx()*3/4; got < want {
-		t.Errorf("mobile detail pane width %d too narrow (want >= %d) — pane must span full content width", got, want)
+	// Task 1 split the mobile synth body into a LEFT knob column
+	// (instEditorDetailR) and a RIGHT wave column (synthMobileFocusRect). The
+	// detail pane is therefore no longer full-content-width; assert instead that
+	// it owns a substantial left slice (>= ~45% of content) and that the two
+	// columns together span the content width with the knob column on the left.
+	detail := dv.instEditorDetailR
+	focus := dv.synthMobileFocusRect()
+	content := dv.eqPanelZone.ContentRect()
+	if got, want := detail.Dx(), content.Dx()*45/100; got < want {
+		t.Errorf("mobile knob column width %d too narrow (want >= %d) — knob column must own a substantial left slice", got, want)
+	}
+	if !focus.Empty() {
+		if detail.Min.X > focus.Min.X {
+			t.Errorf("mobile knob column %v must be left of the wave column %v", detail, focus)
+		}
+		if span := focus.Max.X - detail.Min.X; span < content.Dx()*3/4 {
+			t.Errorf("knob+wave columns span %d too narrow (want >= %d) — columns must together span content width", span, content.Dx()*3/4)
+		}
 	}
 }
 

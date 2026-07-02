@@ -5,12 +5,49 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
+// notification is stored as a TRANSLATABLE reference (key + args), not a frozen
+// rendered string, so the in-band area and the history popup display in the
+// CURRENT locale and re-render when the language changes. key == "" falls back
+// to the literal text (legacy persisted entries / ad-hoc plain strings).
 type notification struct {
-	text   string
+	key    i18n.Key // translation key; "" ⇒ use text verbatim
+	args   []string // Tf args; an arg prefixed "@" is itself an i18n key (resolved at display)
+	text   string   // rendered fallback when key == ""
 	isErr  bool
 	unixMs int64 // unix millis when raised; 0 in pure-unit tests
+}
+
+// display renders the notification in the current locale. Keyed entries
+// re-render on every call (so the whole history follows a locale switch); plain
+// entries return their frozen text. An arg beginning with "@" is an i18n key
+// reference (undo/redo store the action name this way) and is itself translated.
+func (n notification) display() string {
+	key, args := n.key, n.args
+	if key == "" {
+		if n.text == "" {
+			return ""
+		}
+		// Legacy / plain entry: reverse-map the frozen English text back to its
+		// key so historical (incl. persisted) notifications retranslate when
+		// drawn. Unknown strings are shown verbatim.
+		k, a, ok := resolveLegacyNotif(n.text)
+		if !ok {
+			return n.text
+		}
+		key, args = k, a
+	}
+	out := make([]any, len(args))
+	for i, a := range args {
+		if len(a) > 1 && a[0] == '@' {
+			out[i] = i18n.T(i18n.Key(a[1:]))
+		} else {
+			out[i] = a
+		}
+	}
+	return i18n.Tf(key, out...)
 }
 
 // initNotifPersistence seeds the live ring from the persisted history (for
@@ -30,6 +67,8 @@ func (dv *DrumView) initNotifPersistence() {
 	}
 }
 
+// notifyInfo/notifyError push a plain (already-rendered) string. Prefer the
+// keyed variants below so the notification follows the current locale.
 func (dv *DrumView) notifyInfo(msg string)  { dv.pushNotif(msg, false) }
 func (dv *DrumView) notifyError(msg string) { dv.pushNotif(msg, true) }
 func (dv *DrumView) pushNotif(msg string, isErr bool) {
@@ -37,6 +76,28 @@ func (dv *DrumView) pushNotif(msg string, isErr bool) {
 		dv.notifStore = newNotificationStore(notifHistoryCap)
 	}
 	dv.notifStore.Push(notification{text: msg, isErr: isErr, unixMs: nowUnixMilli()})
+}
+
+// pendingNotif is an off-thread-queued notification carrying the i18n key +
+// args (not a rendered string), so it renders in whatever locale is active when
+// the UI goroutine drains it (game_update.go).
+type pendingNotif struct {
+	key   i18n.Key
+	args  []string
+	isErr bool
+}
+
+// notifyInfoKey/notifyErrorKey push a TRANSLATABLE notification (i18n key +
+// string args) so it renders in whatever locale is active when displayed. An
+// arg of the form "@some.key" is resolved as a nested translation key. This is
+// the preferred API for every user-facing notification.
+func (dv *DrumView) notifyInfoKey(key i18n.Key, args ...string)  { dv.pushNotifKey(key, args, false) }
+func (dv *DrumView) notifyErrorKey(key i18n.Key, args ...string) { dv.pushNotifKey(key, args, true) }
+func (dv *DrumView) pushNotifKey(key i18n.Key, args []string, isErr bool) {
+	if dv.notifStore == nil {
+		dv.notifStore = newNotificationStore(notifHistoryCap)
+	}
+	dv.notifStore.Push(notification{key: key, args: args, isErr: isErr, unixMs: nowUnixMilli()})
 }
 
 // anyDropdownOpen returns true if any dropdown menu is currently open.
@@ -137,6 +198,17 @@ func (dv *DrumView) capturingDrag() bool {
 // block camera panning and prevent input from passing through.
 func (dv *DrumView) Capturing() bool {
 	return dv.capturingDrag() || dv.anyDropdownOpen()
+}
+
+// PortalHasBlocking reports whether a BLOCKING overlay (modal or scrim-backed
+// menu/picker/dropdown/popup, e.g. the mobile synth-knob wheel popup) is open
+// in any of the drum view's composed input trees. While one is up the overlay
+// owns input exclusively: gestures handled OUTSIDE the tree in Game.Update (grid
+// tap, camera pan/zoom, two-finger pan) must not act, so they never leak
+// through the scrim to background surfaces. The only effect a tap outside the
+// overlay may have is closing it (the tree's click-outside / Esc path).
+func (dv *DrumView) PortalHasBlocking() bool {
+	return dv.rootTree != nil && dv.rootTree.HasBlockingPortal()
 }
 
 // logCapturingState logs a detailed breakdown of what makes Capturing() true.

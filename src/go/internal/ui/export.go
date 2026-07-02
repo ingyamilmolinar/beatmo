@@ -429,7 +429,7 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	for _, r := range dv.Rows {
 		kind := kindForID(r.Instrument)
 		ei := exportInstrument{
-			Name:   r.Name,
+			Name:   audio.InstrumentDisplayName(r.Instrument),
 			ID:     r.Instrument,
 			Kind:   kind,
 			Volume: r.Volume,

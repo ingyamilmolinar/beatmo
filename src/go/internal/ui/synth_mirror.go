@@ -45,24 +45,35 @@ const synthMirrorPoolName = "synth.preview"
 // render as a ghost. Cheap to construct; release the shared pool via
 // closeForTest in any test that builds one (the ui suite is goleak-checked).
 type synthMirror struct {
-	mu       sync.Mutex
-	lastHash string
-	pcm      []float64
-	ghost    []float64
-	ready    bool
-	pending  func() // the render job, swapped to nil by takePending
-	pool     *async.Pool
+	mu          sync.Mutex
+	lastHash    string
+	pcm         []float64
+	ghost       []float64
+	ready       bool
+	pending     func() // the render job, swapped to nil by takePending
+	pool        *async.Pool
+	privatePool bool // true when pool is a private fallback (budget exhausted)
 }
 
 // newSynthMirror acquires the shared 1-worker preview pool from the default
-// registry. Multiple instances share the registry name; each must release it
-// via closeForTest in tests.
+// registry. The mirror is created LAZILY mid-session (when the Synth tab is
+// first built), so registry-budget exhaustion must NOT crash the app: like
+// eventlogger.format and hooks.fanout, fall back to a private pool when the
+// shared budget is full. Multiple instances share the registry name; each must
+// release it via closeForTest in tests.
 func newSynthMirror() *synthMirror {
-	pool := async.DefaultRegistry().MustGet(synthMirrorPoolName, async.Options{
+	opts := async.Options{
 		MaxConcurrent: 1,
 		QueueSize:     8,
 		Name:          synthMirrorPoolName,
-	})
+	}
+	pool, err := async.DefaultRegistry().Get(synthMirrorPoolName, opts)
+	if err != nil {
+		// Registry budget exhausted — fall back to a private pool so the Synth
+		// tab's live preview still works rather than panicking the UI thread.
+		opts.Name = synthMirrorPoolName + ".fallback"
+		return &synthMirror{pool: async.NewPool(context.Background(), opts), privatePool: true}
+	}
 	return &synthMirror{pool: pool}
 }
 
@@ -181,8 +192,16 @@ func (m *synthMirror) ghostForTest() []float64 {
 }
 
 // closeForTest releases the shared pool name so the goleak-checked ui suite
-// stays clean. Mirrors the async test-discipline note in CLAUDE.md.
-func (m *synthMirror) closeForTest() { _ = async.DefaultRegistry().Release(synthMirrorPoolName) }
+// stays clean. Mirrors the async test-discipline note in CLAUDE.md. A private
+// fallback pool (budget was exhausted at construction) isn't registry-tracked,
+// so close it directly instead of releasing the name.
+func (m *synthMirror) closeForTest() {
+	if m.privatePool {
+		_ = m.pool.Close()
+		return
+	}
+	_ = async.DefaultRegistry().Release(synthMirrorPoolName)
+}
 
 // --- DrumView wiring ---
 

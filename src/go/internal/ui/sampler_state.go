@@ -57,14 +57,14 @@ type samplerState struct {
 
 	// Edit params (canonical). Knobs and handles read/write these.
 	//
-	// Note on reverse: the Reverse control is a destructive ACTION
-	// (reverseBuffer) that flips the working buffer in place, so the visible
-	// waveform and the baked audio both reflect it directly — and the playback
-	// highlight always sweeps forward (it has no direction flag to honour).
-	// `reverse` tracks the NET flip parity purely for editDescriptor(): the
-	// non-destructive synth path re-renders the recipe forward at trigger time,
-	// so the descriptor must carry reversal declaratively (the buffer flip
-	// can't travel with it).
+	// Note on reverse: the Reverse control flips the working buffer in place
+	// (reverseBuffer), so the visible waveform and the baked audio both reflect
+	// it directly — and the playback highlight always sweeps forward (it has no
+	// direction flag to honour). `reverse` tracks the NET flip parity: it feeds
+	// editDescriptor() (the non-destructive synth path re-renders the recipe
+	// forward at trigger time, so the descriptor must carry reversal
+	// declaratively) AND drives the Reverse toggle's latched on/off visual, so
+	// the button reads its reversed state like every other toggle.
 	startFrac      float64
 	endFrac        float64
 	transposeSemis float64
@@ -81,10 +81,19 @@ type samplerState struct {
 	endHandleRect   image.Rectangle
 	metaRect        image.Rectangle // length/sample-rate readout strip
 
-	knobs          []*Knob                       // samplerKnobCount knobs, reused across Layout
-	knobStepBadges []*KnobStepBadge              // index-aligned with knobs; one badge per knob
+	knobs          []*Knob                           // samplerKnobCount knobs, reused across Layout
+	knobStepBadges []*KnobStepBadge                  // index-aligned with knobs; one badge per knob
+	knobCells      [samplerKnobCount]image.Rectangle // full per-knob cell (caption/label/badge center here, decoupled from the dial)
 	readoutRects   [samplerKnobCount]image.Rectangle // caption hit-rects; populated each Draw
-	btns           []*Button        // header + control-row buttons, rebuilt each Layout
+
+	// knobGrid scrolls the single-column knob list on mobile (desktop keeps the
+	// side-by-side one-row layout and never uses it). Persisted across Layout so
+	// the scroll position survives re-layout — mirrors the Synth tab's per-section
+	// grids. knobGridRect is the area it lays the cells inside, reused by the
+	// scroll body catch-all hit area.
+	knobGrid     *ControlGrid
+	knobGridRect image.Rectangle
+	btns         []*Button // header + control-row buttons, rebuilt each Layout
 
 	dragHandle int // -1 none, 0 start handle, 1 end handle
 
@@ -95,24 +104,57 @@ type samplerState struct {
 
 	// waveF64 is a reusable float32→float64 scratch buffer for the waveform
 	// trace renderer. Owned here (not re-allocated per Draw) so the Sampler
-	// tab honours the audio-panel per-tab alloc budget.
+	// tab honours the audio-panel per-tab alloc budget. dispF32 is its
+	// float32 sibling: waveFloat64 applies the amplitude overlays
+	// (normalize/gain/fade) into it before widening, so the rendered trace
+	// reflects the same button state the baked audio does.
 	waveF64 []float64
+	dispF32 []float32
 
 	// playheads tracks the in-flight preview/playback lines. Each trigger gets
 	// its own line so overlapping voices render as separate coloured lines.
 	playheads samplerPlayheadTracker
 }
 
-// waveFloat64 returns the raw buffer converted to float64 for the shared
-// trace renderer, reusing a cached backing array across calls so the
-// per-frame Draw path allocates nothing once the buffer length is stable.
+// waveFloat64 returns the RENDERED signal as float64 for the trace renderer:
+// the working buffer with the length-preserving amplitude overlays applied —
+// normalize → gain → fade, the same transforms (and the same DSP functions)
+// BakeSample applies to produce the audio. The Reverse order-edit already lives
+// in s.raw, and trim is drawn as a shading overlay rather than truncating the
+// trace, so the displayed waveform reflects every toggle button exactly as the
+// sound does. Both backing arrays are cached so the per-frame Draw path
+// allocates nothing once the buffer length is stable; with no overlay active it
+// widens s.raw directly (the original fast path).
 func (s *samplerState) waveFloat64() []float64 {
 	n := len(s.raw)
 	if cap(s.waveF64) < n {
 		s.waveF64 = make([]float64, n)
 	}
 	s.waveF64 = s.waveF64[:n]
-	for i, v := range s.raw {
+
+	src := s.raw
+	if s.normalize || s.gainDB != 0 || s.fadeOn {
+		if cap(s.dispF32) < n {
+			s.dispF32 = make([]float32, n)
+		}
+		s.dispF32 = s.dispF32[:n]
+		copy(s.dispF32, s.raw) // never mutate the source-of-truth buffer
+		if s.normalize {
+			audio.NormalizePeak(s.dispF32)
+		}
+		if s.gainDB != 0 {
+			audio.ApplyGainDB(s.dispF32, float32(s.gainDB))
+		}
+		if s.fadeOn {
+			sr := s.rawSampleRate
+			if sr <= 0 {
+				sr = audio.SampleRate()
+			}
+			audio.ApplyFades(s.dispF32, sr, samplerFadeMs, samplerFadeMs)
+		}
+		src = s.dispF32
+	}
+	for i, v := range src {
 		s.waveF64[i] = float64(v)
 	}
 	return s.waveF64
@@ -311,13 +353,25 @@ func (s *samplerState) edit() audio.SampleEdit {
 	}
 }
 
-// editDescriptor snapshots the current params for the NON-DESTRUCTIVE synth
-// path, where the recipe buffer is rendered forward at trigger time. It is
-// edit() plus a declarative Reverse — the working-buffer flip that edit()
-// relies on cannot travel with a descriptor applied to a fresh render.
+// editDescriptor snapshots the current params for the NON-DESTRUCTIVE path,
+// where the FORWARD source (recipe render, or a user sample's pristine PCM) is
+// baked at trigger time. It is edit() plus a declarative Reverse — the
+// working-buffer flip that edit() relies on cannot travel with a descriptor
+// applied to a fresh forward render.
+//
+// Trim is expressed over the DISPLAYED working buffer, which is physically
+// reversed when s.reverse is set; but BakeSample applies the descriptor to the
+// forward source and trims BEFORE it reverses (trim → reverse). Selecting
+// [lo,hi] of reverse(P) equals reverse(P[1-hi : 1-lo]), so when reverse is on we
+// must MIRROR the trim fractions into the source frame — otherwise the audible
+// trim lands on the wrong (mirror-image) region while the UI/preview show the
+// selected one. loadEditDescriptor performs the inverse mirror on load.
 func (s *samplerState) editDescriptor() audio.SampleEdit {
 	e := s.edit()
-	e.Reverse = s.reverse
+	if s.reverse {
+		e.StartFrac, e.EndFrac = 1-e.EndFrac, 1-e.StartFrac
+		e.Reverse = true
+	}
 	return e
 }
 
@@ -327,8 +381,16 @@ func (s *samplerState) editDescriptor() audio.SampleEdit {
 // The working buffer must hold the RAW (un-edited) source render; a saved
 // reverse is re-applied to it once so the displayed waveform matches.
 func (s *samplerState) loadEditDescriptor(e audio.SampleEdit) {
-	s.startFrac = e.StartFrac
-	s.endFrac = e.EndFrac
+	// Inverse of editDescriptor's source-frame mirror: a reversed descriptor
+	// stores trim in the forward-source frame, so un-mirror it back to the
+	// display frame the handles live in (1-EndFrac .. 1-StartFrac). Without this,
+	// reopening a reversed+trimmed chop would show the handles on the wrong end.
+	if e.Reverse {
+		s.startFrac, s.endFrac = 1-e.EndFrac, 1-e.StartFrac
+	} else {
+		s.startFrac = e.StartFrac
+		s.endFrac = e.EndFrac
+	}
 	s.transposeSemis = e.TransposeSemis
 	s.detuneCents = e.DetuneCents
 	s.gainDB = float64(e.GainDB)
@@ -418,11 +480,20 @@ func (s *samplerState) loadFromInstrument(id string, pcm []float32, sr int, src 
 // waveform must track it live — unlike loadFromInstrument (a new selection),
 // re-rendering the current sound must not discard the chop the user is shaping.
 // Trim handles stay valid because start/end are fractions of the buffer length.
+//
+// The fresh render arrives FORWARD; the Reverse button is the source of truth
+// for order, so when it is latched we re-apply the flip to keep the working
+// buffer (and thus the displayed trace) consistent with the button — otherwise
+// the audio (editDescriptor().Reverse) would play reversed while the waveform
+// showed it forward.
 func (s *samplerState) recaptureRaw(pcm []float32, sr int) {
 	s.raw = pcm
 	s.rawSampleRate = sr
 	s.source = samplerSourceSynth
 	s.status = ""
+	if s.reverse {
+		audio.ReverseSample(s.raw)
+	}
 }
 
 // reverseBuffer flips the working buffer in place — the Reverse control is an
@@ -465,34 +536,34 @@ func (s *samplerState) bake() ([]float32, int) {
 // save overrides the captured instrument in place (same id), mirroring the
 // Synth tab's "Save". No-op without a capture id.
 //
-// SYNTH source — NON-DESTRUCTIVE: the edit is stored as a per-instrument
-// descriptor (audio.SetSampleEdit) and the recipe binding is KEPT. The voice
-// dispatcher applies the descriptor to the freshly-rendered recipe buffer at
-// trigger time, so the synth stays the source of truth: later synth changes
-// (knobs, recipe Save) always take effect on the next trigger. Baking PCM
-// here (the old behavior) silently converted the instrument into a dead
-// sample — synth edits stopped being audible.
+// BOTH sources — NON-DESTRUCTIVE: the edit is stored as a per-instrument
+// descriptor (audio.SetSampleEdit) and is ALREADY live by the time Save is
+// pressed (commitSamplerEdit applied it per gesture). Save's job is durability,
+// not application:
 //
-// WAV source: bake-and-register as before (there is no synth to re-render).
+//   - SYNTH source: persist the descriptor; the recipe binding is KEPT so the
+//     synth stays the source of truth and the dispatcher re-applies the edit to
+//     the fresh recipe render at trigger time. Baking PCM here (the old behavior)
+//     silently converted the instrument into a dead sample.
+//   - WAV / user-sample source: persist the descriptor AND the pristine source
+//     PCM (PersistUserSample) so the chop reproduces across sessions. Playback is
+//     already driven live by reapplyUserSampleEdit; we do NOT bake destructively,
+//     so the edit stays reversible and the pristine remains the source of truth.
 func (s *samplerState) save() {
 	if s.captureID == "" || !s.hasBuffer() {
 		return
 	}
-	if s.source == samplerSourceSynth {
-		audio.SetSampleEdit(s.captureID, s.editDescriptor())
-		samplerEditPersistFn(s.captureID)
-		hooks.PublishKind(hooks.EventSampleSaved, hooks.SamplePayload{
-			SampleID: s.captureID,
-			SourceID: s.captureID,
-		})
-		return
+	audio.SetSampleEdit(s.captureID, s.editDescriptor())
+	samplerEditPersistFn(s.captureID)
+	frames := 0
+	if rec, ok := audio.UserSamplePCM(s.captureID); ok {
+		audio.PersistUserSample(s.captureID)
+		frames = len(rec.PCM)
 	}
-	baked, sr := s.bake()
-	audio.SaveUserSample(s.captureID, baked, sr)
 	hooks.PublishKind(hooks.EventSampleSaved, hooks.SamplePayload{
 		SampleID: s.captureID,
 		SourceID: s.captureID,
-		Frames:   len(baked),
+		Frames:   frames,
 	})
 }
 

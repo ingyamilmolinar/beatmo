@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // TestExportIncludesLogicFields ensures logic fields are present in export.
@@ -49,6 +50,7 @@ func TestExportIncludesLogicFields(t *testing.T) {
 // TestImportLogicFields verifies import applies the logic fields onto node params.
 func TestImportLogicFields(t *testing.T) {
 	assertDefaultParityState(t)
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName("snare") })
 	file := exportFile{
 		Version:     1,
 		Subdiv:      32,
@@ -76,5 +78,25 @@ func TestImportLogicFields(t *testing.T) {
 	}
 	if !have {
 		t.Fatalf("imported node not found")
+	}
+}
+
+func TestImportSetsDisplayNameOverride(t *testing.T) {
+	assertDefaultParityState(t)
+	audio.ClearInstrumentDisplayName("kick")
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName("kick") })
+
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+
+	js := `{"version":1,"subdiv":8,"bpm":120,` +
+		`"instruments":[{"name":"Boomer","id":"kick","kind":"builtin","volume":1,"origin":0,"color":"#C87850FF"}],` +
+		`"nodes":[{"id":0,"i":0,"j":0,"type":"regular","outputs":[]}]}`
+	if err := g.Import([]byte(js)); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if got := audio.InstrumentDisplayName("kick"); got != "Boomer" {
+		t.Fatalf("override not set on import: got %q", got)
 	}
 }

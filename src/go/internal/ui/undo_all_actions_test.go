@@ -211,41 +211,27 @@ func undoActionCases() []undoCase {
 			},
 		},
 		{
-			// Mirrors the DrumView rename closure (drumview_ctor.go): rename the
-			// row-0 instrument id, emitInstrumentRenamed. The exported instrument
-			// id (and the node-origin binding via the row) changes.
+			// Mirrors the DrumView rename closure (drumview_ctor.go): rename is now a
+			// METADATA-ONLY operation. The instrument id never changes; only the
+			// display-name override (and the row's Name, which the exported doc reads)
+			// is updated. renameInstrumentTo emits EventInstrumentRenamed.
 			name: "instrument-renamed",
 			kind: hooks.EventInstrumentRenamed,
 			setup: func(t *testing.T, g *Game) {
-				// RenameInstrument mutates PROCESS-GLOBAL audio state (the instrument
-				// list + recipe binding). Restore it after this subtest so a later
-				// case keyed on the original id (e.g. the synth-param cases on the
-				// row-0 instrument) still resolves its recipe.
-				oldID := g.drum.Rows[0].Instrument
-				recipe := audio.RecipeForInstrument(oldID)
-				t.Cleanup(func() {
-					audio.RenameInstrument("renamed-inst-x", oldID)
-					if recipe != "" {
-						audio.BindInstrumentToRecipe(oldID, recipe)
-					}
-				})
+				// renameInstrumentTo sets a PROCESS-GLOBAL display-name override; clear
+				// it after this subtest so later cases keyed on the original id render
+				// the canonical name.
+				id := g.drum.Rows[0].Instrument
+				t.Cleanup(func() { audio.ClearInstrumentDisplayName(id) })
 			},
 			mutate: func(t *testing.T, g *Game) {
-				oldID := g.drum.Rows[0].Instrument
-				newID := "renamed-inst-x"
-				// Faithful to the production closure (drumview_ctor.go:787-795): it
-				// emits — which taps recordUndo — BEFORE updating the row's Instrument
-				// id, even though the exported doc reads from row.Instrument. The
-				// immediate record is therefore a no-op (doc still == baseline); rename
-				// undo works ONLY because Game.Update wraps every frame in
+				// Rename undo works ONLY because Game.Update wraps every frame in
 				// beginGroup/endGroup (game_update.go:76-77), deferring the snapshot to
-				// frame end after the row is updated. Mirror that bracket here so the
-				// case tests the REAL mechanism, not a contrived ordering.
+				// frame end after the row's Name is updated. Mirror that bracket here so
+				// the case tests the REAL mechanism. renameInstrumentTo does the emit
+				// (taps recordUndo) and sets Rows[0].Name from the display override.
 				beginUndoGroup("rename instrument")
-				audio.RenameInstrument(oldID, newID)
-				emitInstrumentRenamed(oldID, newID)
-				g.drum.Rows[0].Instrument = newID
-				g.drum.Rows[0].Name = newID
+				g.drum.renameInstrumentTo(0, "Renamed Display")
 				endUndoGroup()
 			},
 		},

@@ -71,17 +71,34 @@ type Button struct {
 	hovered bool
 	Repeat  bool
 	held    int
-	// pressAnim is the springy press/release scale factor (1.0 = rest). On
-	// press it jumps to genGeomButtonPressScale (0.92); on release it jumps
-	// to genGeomButtonReleaseOvershoot (1.03) and relaxes back toward 1.0 via
-	// AdvancePressAnim (genAnimButtonPressDecay). Stored on the struct so the
-	// cushion animation allocates nothing per frame. Zero is treated as 1.0
-	// so zero-valued buttons render at rest scale.
-	pressAnim float64
-	// toggled marks a latched/active button (e.g. an active pill tab). When
-	// set, the cushion glow becomes a persistent pulsing accent ring driven
-	// by genAnimButtonTogglePulse. Set via SetToggled.
+	// pressDepth is the springy press travel: 0 = rest, 1 = fully bottomed
+	// out (cap descended by genGeomKeycapWallDepth px), negative = raised
+	// (release overshoot). Eased toward pressTarget each frame by
+	// AdvancePressAnim via genAnimButtonPressDecay. Stored on the struct so
+	// the animation allocates nothing per frame and settles exactly to 0.
+	pressDepth  float64
+	pressTarget float64
+	// engageAnim is a one-shot 1→0 brightness flash fired when the button
+	// latches ON (its active/selected off→on transition, detected via
+	// wasActive in drawPillTabAt). Decays via genAnimButtonEngageFlash.
+	// Drawn over the cap by drawKeycapEngageFlash.
+	engageAnim float64
+	// wasActive tracks whether this button was drawn in its active/selected
+	// state last frame, so a pill renderer can fire the one-shot engage flash
+	// exactly on an off→on transition. Set by drawPillTabAt.
+	wasActive bool
+	// toggled marks a latched/active button. When set, Button.Draw raises the
+	// keycap (lit & raised) via keycapCapRect's raised arg. Set via SetToggled.
+	// (The old continuous toggle-pulse glow was removed in the keycap redesign;
+	// audio-tab pills carry their own lit-cyan active state in drawPillTabAt.)
 	toggled bool
+	// Disabled marks the button as inert: it renders greyed-out (via
+	// DisabledButtonStyle chrome + colTextDisabled label/icon) and never fires
+	// OnClick — both the legacy HandleInputResult path and the tree's
+	// buttonHitAdapter swallow presses. Set directly (e.g. the subdivision
+	// selector is disabled during playback, since validateSubdivisions rejects
+	// mid-flight changes).
+	Disabled bool
 	// ConsumeOnPress: when true, after the first press triggers OnClick, suppress
 	// any further button clicks across the UI until the mouse is released. Use
 	// this for destructive actions to avoid cascading operations when the layout
@@ -188,27 +205,35 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	// Advance the springy press scale once per visible frame. Draw is the
 	// per-frame tick site for buttons; a settled button no-ops here.
 	b.AdvancePressAnim()
-	sr := scaleRectAboutCenter(b.r, b.PressScale())
 	rad := RadiusSM
-	// Cushion depth: neutral drop shadow at rest, base-cyan accent-glow pulse
-	// when latched/active, inner pressed-in shadow on press. The *hover* glow
-	// is NOT drawn here — it lives in the per-frame DrumViewTree overlay
-	// (hover_glow_overlay.go) so it works for cached zones and tree-dispatched
-	// buttons alike; Button.Draw owns only the toggled/active pulse.
-	if !b.pressed {
-		drawButtonDropShadow(dst, sr, rad)
+	// Keycap framing: dark socket/wall behind a cap that travels with the
+	// press depth (negative = raised). A latched button (Active) sits recessed
+	// (pressed-IN) with a lamp-amber fill — never raised — so the cap rect uses
+	// raised=false regardless of toggled state (matte retro-analogue restyle).
+	cap := keycapCapRect(b.r, b.pressTravelPx(), false)
+	fill := b.fillColor()
+	drawKeycapShell(dst, b.r, rad, fill)
+	if b.pressDepth <= 0 {
+		drawKeycapContactShadow(dst, cap, rad)
 	}
-	drawButtonGlowRing(dst, sr, rad, buttonGlowRingColor(b.toggled), buttonGlowAlphaAnimated(0, b.toggled, uiAnimFrame))
+	sr := cap
 	switch {
+	case b.Disabled:
+		// Greyed-out chrome; never reflect press/hover/active state.
+		DisabledButtonStyle.Draw(dst, sr, false, false)
 	case b.hasSpecID:
-		// Phase 4 PR3+ path: spec-driven render.
-		Render(dst, sr, Spec(b.SpecID), ComponentState{Pressed: b.pressed, Hovered: b.hovered})
+		Render(dst, sr, Spec(b.SpecID), ComponentState{Pressed: b.pressed, Hovered: b.hovered, Active: b.toggled})
 	case b.Style != nil:
-		// Legacy path — *Style.Draw delegates to renderLegacy internally.
 		b.Style.Draw(dst, sr, b.pressed, b.hovered)
 	}
-	if b.pressed {
-		drawButtonInnerShadow(dst, sr)
+	if !b.Disabled {
+		if b.toggled {
+			// Latched: lit-amber cap, pressed-IN (inverted bevel). No glow/flash.
+			drawRoundedButton(dst, cap, keycapActiveFill, keycapActiveFill, rad, false)
+			drawKeycapActiveInset(dst, cap, rad)
+		} else {
+			drawKeycapBevel(dst, cap, rad)
+		}
 	}
 	// Skip text rendering when an icon is set — the icon is the visual
 	// representation and the debug font can't render Unicode icon glyphs
@@ -218,14 +243,14 @@ func (b *Button) Draw(dst *ebiten.Image) {
 		if scale <= 0 {
 			scale = 1.0
 		}
-		// Clip text to fit within the button rect.
-		clipped := clipTextToWidth(b.displayText(), b.r.Dx()-2*SpaceXS)
+		// Clip text to fit within the cap face.
+		clipped := clipTextToWidth(b.displayText(), cap.Dx()-2*SpaceXS)
 		spr := TextSprite(clipped)
-		// Center the scaled text within the button.
+		// Center the scaled text within the cap.
 		w := int(float64(TextWidth(clipped)) * scale)
 		h := int(float64(TextHeight()) * scale)
-		x := b.r.Min.X + (b.r.Dx()-w)/2
-		y := b.r.Min.Y + (b.r.Dy()-h)/2
+		x := cap.Min.X + (cap.Dx()-w)/2
+		y := cap.Min.Y + (cap.Dy()-h)/2
 
 		// Draw fuzzy-match highlight rectangles behind matched chars.
 		if len(b.Highlights) > 0 {
@@ -235,8 +260,16 @@ func (b *Button) Draw(dst *ebiten.Image) {
 		var op ebiten.DrawImageOptions
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(float64(x), float64(y))
-		if b.TextColor != nil {
-			r, g, bb, a := b.TextColor.RGBA()
+		textCol := b.TextColor
+		if b.Disabled {
+			textCol = colTextDisabled
+		} else if b.toggled && textCol == nil {
+			// Dark legend on the lit-amber latched cap (genColorBackground),
+			// matching the active-pill text treatment.
+			textCol = genColorBackground
+		}
+		if textCol != nil {
+			r, g, bb, a := textCol.RGBA()
 			if a > 0 {
 				op.ColorScale.Scale(float32(r)/float32(a), float32(g)/float32(a), float32(bb)/float32(a), float32(a)/0xffff)
 			}
@@ -249,16 +282,22 @@ func (b *Button) Draw(dst *ebiten.Image) {
 		if col == nil {
 			col = colButtonBorder
 		}
+		if b.Disabled {
+			col = colTextDisabled
+		} else if b.toggled && b.IconColor == nil {
+			// Dark glyph on the lit-amber latched cap.
+			col = genColorBackground
+		}
 		// Proportional margin: 18% of min(w,h), min 2px.
-		dim := b.r.Dx()
-		if b.r.Dy() < dim {
-			dim = b.r.Dy()
+		dim := cap.Dx()
+		if cap.Dy() < dim {
+			dim = cap.Dy()
 		}
 		pad := dim * 18 / 100
 		if pad < 2 {
 			pad = 2
 		}
-		box := image.Rect(b.r.Min.X+pad, b.r.Min.Y+pad, b.r.Max.X-pad, b.r.Max.Y-pad)
+		box := image.Rect(cap.Min.X+pad, cap.Min.Y+pad, cap.Max.X-pad, cap.Max.Y-pad)
 		// Sprite cache path: 1 DrawImage blit instead of many drawRect calls.
 		if spr := iconSprite(b.Icon, box.Dx(), box.Dy()); spr != nil {
 			var op ebiten.DrawImageOptions
@@ -326,6 +365,12 @@ func (b *Button) textRect() image.Rectangle {
 // On touch devices, the hit area is expanded to meet minimum touch target size.
 // Returns InputConsumed on click, InputIgnored otherwise.
 func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
+	if b.Disabled {
+		b.pressed = false
+		b.hovered = false
+		b.held = 0
+		return InputIgnored
+	}
 	if suppressClicksUntilRelease {
 		if !pressed {
 			suppressClicksUntilRelease = false
@@ -351,12 +396,24 @@ func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
 		}
 	}
 	inside := image.Pt(mx, my).In(hitRect)
+	return b.applyPress(inside, pressed)
+}
+
+// applyPress is the shared press/fire/repeat/release core for one pointer
+// event, factored out of HandleInputResult so the tree's buttonHitAdapter can
+// reuse the exact same edge-firing, held-counter, repeat, and release-settle
+// logic without re-running geometry. `inside` is whether the pointer is over
+// the (touch-expanded) button; callers that trust an upstream hit decision
+// (the input tree) pass inside=true. Returns InputConsumed when the press is
+// consumed, InputIgnored otherwise.
+func (b *Button) applyPress(inside, pressed bool) InputResult {
 	b.hovered = inside
 	if pressed && inside {
 		b.held++
 		if b.held == 1 {
-			// Press edge: kick the springy scale down to the press floor.
-			b.pressAnim = genGeomButtonPressScale
+			// Press edge: ease the cap down toward full travel.
+			emitUITap(b.displayText(), b.Icon)
+			b.pressTarget = 1
 			if b.OnClick != nil {
 				b.OnClick()
 			}
@@ -372,38 +429,92 @@ func (b *Button) HandleInputResult(mx, my int, pressed bool) InputResult {
 		return InputConsumed
 	}
 	if b.pressed {
-		// Release edge: spring past rest before settling back to 1.0.
-		b.pressAnim = genGeomButtonReleaseOvershoot
+		// Release edge: settle target to rest, kick the cap UP for the
+		// analogue overshoot before it springs back down to 0.
+		b.pressTarget = 0
+		if b.pressDepth > 0 {
+			b.pressDepth = -genGeomKeycapReleaseOvershootFrac
+		}
 	}
 	b.pressed = false
 	b.held = 0
 	return InputIgnored
 }
 
-// PressScale returns the current springy press/release scale factor for the
-// button (1.0 at rest). Zero is normalised to 1.0 so a freshly-constructed
-// button renders at rest size.
-func (b *Button) PressScale() float64 {
-	if b.pressAnim == 0 {
-		return 1
+// PressFromTree applies a pointer event whose hit was already decided by the
+// input tree (so no geometry re-check). Disabled buttons swallow the press
+// without firing. This is the single seam the shared buttonHitAdapter uses, so
+// every tree-routed button reuses HandleInputResult's exact press lifecycle
+// (edge fire, held counter, repeat, ConsumeOnPress, release settle).
+func (b *Button) PressFromTree(pressed bool) InputResult {
+	if b.Disabled {
+		b.pressed = false
+		b.hovered = false
+		b.held = 0
+		return InputConsumed
 	}
-	return b.pressAnim
+	return b.applyPress(true, pressed)
 }
 
-// AdvancePressAnim relaxes the press scale one tick toward 1.0 via the
-// genAnimButtonPressDecay spring. Call once per frame from the owning
-// container's update. Allocation-free; a no-op once settled.
-func (b *Button) AdvancePressAnim() {
-	cur := b.PressScale()
-	if cur == 1 {
-		return
+// ResetPress clears the transient press/hover state so the NEXT pressed-inside
+// frame is treated as a fresh press edge (Button.held back to 0 → OnClick fires
+// on held==1). Stay-open menus that reuse the same *Button across selections
+// (the instrument menu) must call this before re-dispatching a press: those
+// menus return InputConsumed (one-shot, not captured), so the input tree never
+// delivers a release to the button, leaving held latched at 1 — a second click
+// on the same row would otherwise increment held to 2 and be silently swallowed.
+// Mirrors the release-edge settle in HandleInputResult.
+func (b *Button) ResetPress() {
+	if b.pressed {
+		b.pressTarget = 0
+		if b.pressDepth > 0 {
+			b.pressDepth = -genGeomKeycapReleaseOvershootFrac
+		}
 	}
-	cur = 1 + (cur-1)*genAnimButtonPressDecay.Rate
-	if math.Abs(cur-1) < genAnimButtonPressDecay.Threshold {
-		cur = 1
-	}
-	b.pressAnim = cur
+	b.pressed = false
+	b.hovered = false
+	b.held = 0
 }
+
+// AdvancePressAnim eases the press depth toward its target (analogue settle,
+// both directions) and decays the one-shot engage flash. Call once per frame
+// from Draw. Allocation-free; a no-op once depth==target and flash==0.
+func (b *Button) AdvancePressAnim() {
+	if b.pressDepth != b.pressTarget {
+		r := genAnimButtonPressDecay.Rate
+		b.pressDepth = b.pressTarget + (b.pressDepth-b.pressTarget)*r
+		if math.Abs(b.pressDepth-b.pressTarget) < genAnimButtonPressDecay.Threshold {
+			b.pressDepth = b.pressTarget
+		}
+	}
+	if b.engageAnim > 0 {
+		if v, alive := DecayStep(b.engageAnim, genAnimButtonEngageFlash); alive {
+			b.engageAnim = v
+		} else {
+			b.engageAnim = 0
+		}
+	}
+}
+
+// pressTravelPx is the current cap travel in px: positive descends toward
+// bottom-out, negative raises (release overshoot). keycapCapRect consumes it.
+func (b *Button) pressTravelPx() int {
+	return int(math.Round(b.pressDepth * float64(genGeomKeycapWallDepth)))
+}
+
+// fillColor resolves the cap's base fill for the shell/wall derivation: the
+// spec's Fill when spec-driven, else a neutral surface fallback.
+func (b *Button) fillColor() color.Color {
+	if b.hasSpecID {
+		return Spec(b.SpecID).Fill
+	}
+	return TokenSurface2()
+}
+
+// Pressed reports whether the button is currently in the pressed (held-down)
+// visual state. Driven by the shared input lifecycle (HandleInputResult /
+// buttonHitAdapter); used by tests and any caller that needs press feedback.
+func (b *Button) Pressed() bool { return b.pressed }
 
 // SetToggled marks the button as latched/active so its cushion glow becomes a
 // persistent pulsing accent ring. Idempotent.

@@ -10,18 +10,13 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 )
 
-// TestSynthSaveButtonReachableAtAllDensities — the canonical mobile
-// Save bug: at narrow widths the Save / SaveAs / Reset cascade
-// previously left "Save" silently dropped (or truncated to a single
-// character). Phase 2 audio-panel redesign: dropped actions must
-// surface through the overflow chevron + bottom sheet. This test
-// pins the contract: at every density, on a 360-px portrait viewport,
-// Save is either:
-//
-//	(a) directly tappable in the header (saveRect area ≥ MinTarget²), OR
-//	(b) reachable via the overflow chevron (overflowRect non-empty AND
-//	    "save" listed in overflowActions).
-func TestSynthSaveButtonReachableAtAllDensities(t *testing.T) {
+// TestSynthActionsDirectlyVisibleAtAllDensities — the canonical mobile
+// Save bug: at narrow widths the Save / SaveAs / Reset cascade previously
+// dropped actions behind an overflow (⋯) chevron. The fixed-layout
+// redesign removes the cascade entirely: at every density, on a 360-px
+// portrait viewport, ALL FOUR actions (Preview / Save / Save As / Reset)
+// are laid out as directly-tappable, non-empty buttons.
+func TestSynthActionsDirectlyVisibleAtAllDensities(t *testing.T) {
 	for _, d := range []Density{DensityCompact, DensityComfortable, DensitySpacious} {
 		restoreDensity := SetDensityForTest(d)
 		// Force the small-screen profile so layoutSynthHeader picks the
@@ -30,24 +25,19 @@ func TestSynthSaveButtonReachableAtAllDensities(t *testing.T) {
 		t.Cleanup(func() { forceSmallScreenForTest = false })
 
 		dv := &DrumView{}
-		contentR := image.Rect(0, 0, 360, 200)
-		// 52 px header strip is the Phase 2 default for mobile.
-		dv.layoutSynthHeader(contentR, 52, "kick-1", "drum-kick", true)
+		// Header tall enough for the two-row mobile layout (caption + action row).
+		btnH := Profile().DensityValues().SynthHeaderButtonH
+		headerH := 2*SpaceSM + TextHeight() + SpaceSM + btnH
+		dv.layoutSynthHeader(image.Rect(0, 0, 360, 200), headerH, "kick-1", "drum-kick", true)
 		h := dv.instEditorHeader
 
-		minTarget := Profile().MinTarget
-		saveArea := h.saveRect.Dx() * h.saveRect.Dy()
-		minArea := minTarget * minTarget
-		directlyReachable := !h.saveRect.Empty() && saveArea >= minArea
-		viaOverflow := !h.overflowRect.Empty() && containsString(h.overflowActions, "save")
-		// "save" also reachable when overflow lists nothing — i.e. it
-		// fit alongside the other buttons even if its rect is below
-		// MinTarget at Compact (the visible chrome can be smaller; what
-		// matters is *reachability*).
-		fitInHeader := !h.saveRect.Empty() && !containsString(h.overflowActions, "save")
-		if !directlyReachable && !viaOverflow && !fitInHeader {
-			t.Errorf("density=%v: Save button is unreachable — saveRect=%v overflowRect=%v actions=%v",
-				d, h.saveRect, h.overflowRect, h.overflowActions)
+		for name, r := range map[string]image.Rectangle{
+			"preview": h.previewRect, "save": h.saveRect,
+			"save-as": h.saveAsRect, "reset": h.resetRect,
+		} {
+			if r.Empty() {
+				t.Errorf("density=%v: %q action button is empty (must be directly visible, no overflow)", d, name)
+			}
 		}
 		restoreDensity()
 	}
@@ -144,7 +134,7 @@ func TestLevelsReadoutTooltipSurfacesValues(t *testing.T) {
 	// panel at the exact pixel width.
 	r := image.Rect(0, 0, 40, 120)
 	z.levelsHeadroomRect, z.levelsClipsRect, z.levelsLoudestRect = levelsAggregateIconRects(r)
-	z.levelsAggSnapshot = levelsAggregatesValues(state, nil)
+	z.levelsAggSnapshot = levelsAggregatesValues(state, nil, nil)
 
 	// Long-press over the Headroom icon → tooltip with "Headroom".
 	headroomCenter := image.Pt(

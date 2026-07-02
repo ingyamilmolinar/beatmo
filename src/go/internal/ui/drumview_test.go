@@ -1000,14 +1000,9 @@ func TestInstrumentMenuIncludesCustom(t *testing.T) {
 		}
 	}
 	if btn == nil {
-		// If not visible, the test should at least verify it's in the total count
-		if dv.instMenuComp != nil {
-			scroll := dv.instMenuComp.Scroll()
-			if scroll.Total < 19 { // 18 built-in + 1 custom
-				t.Errorf("expected at least 19 instruments, got %d", scroll.Total)
-			}
-		}
-		// Use SetInstrument directly since button may not be visible
+		// The menu opens pre-filtered to the row's instrument category ("Snare"),
+		// so the "Custom" instrument (category "Other") is not in the visible list.
+		// The instrument was already verified in instOptions above. Select directly.
 		dv.SetInstrument("custom")
 	} else {
 		btn.OnClick()
@@ -1139,6 +1134,11 @@ func TestDrumViewRenameInstrument(t *testing.T) {
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 800, 400), graph, logger)
 	dv.Update()
+
+	// Rename is metadata-only: it leaves a process-global display-name override
+	// keyed by the (unchanged) instrument id. Clear it so it can't leak.
+	id := dv.Rows[0].Instrument
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName(id) })
 
 	// Open rename via callback (edit button is hidden on desktop).
 	dv.rowEditBtns()[0].OnClick()
@@ -1285,7 +1285,12 @@ func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
 	if dv.renameComp == nil {
 		t.Fatal("renameComp is nil")
 	}
-	// Open rename via the component path.
+	origID := dv.Rows[0].Instrument
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName(origID) })
+
+	// Open rename via the component path. Rename is now metadata-only: it routes
+	// through dv.renameInstrumentTo, which sets a display-name override and never
+	// changes the instrument id.
 	dv.renameRow = 0
 	r := dv.rowLabels()[0].Rect()
 	committed := false
@@ -1297,13 +1302,7 @@ func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
 			committed = true
 			name := strings.TrimSpace(newName)
 			if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
-				oldID := dv.Rows[dv.renameRow].Instrument
-				newID := strings.ToLower(name)
-				audio.RenameInstrument(oldID, newID)
-				dv.Rows[dv.renameRow].Instrument = newID
-				dv.Rows[dv.renameRow].Name = name
-				dv.rowLabels()[dv.renameRow].Text = name
-				dv.refreshInstruments()
+				dv.renameInstrumentTo(dv.renameRow, name)
 			}
 			dv.renameRow = -1
 		},
@@ -1313,9 +1312,9 @@ func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
 	})
 	dv.renameComp.Open()
 	dv.openRenamePortal()
-	// Set text to "snare2" and commit via Enter.
+	// Set text to "Snare2" and commit via Enter.
 	if dv.renameComp.textBox != nil {
-		dv.renameComp.textBox.SetText("snare2")
+		dv.renameComp.textBox.SetText("Snare2")
 	}
 	restore := SetInputForTest(
 		func() (int, int) { return r.Min.X + 1, r.Min.Y + 1 },
@@ -1331,11 +1330,16 @@ func TestRenameUpdatesInstrumentDropdown(t *testing.T) {
 	if !committed {
 		t.Fatal("rename OnCommit was not called")
 	}
-	if dv.Rows[0].Instrument != "snare2" {
-		t.Fatalf("instrument=%s", dv.Rows[0].Instrument)
+	// Metadata-only: the instrument id is unchanged; only the display label and
+	// row name follow the new override.
+	if dv.Rows[0].Instrument != origID {
+		t.Fatalf("rename changed instrument id: got %s want %s", dv.Rows[0].Instrument, origID)
 	}
-	if !slices.Contains(audio.Instruments(), "snare2") {
-		t.Fatalf("dropdown missing renamed instrument")
+	if dv.Rows[0].Name != "Snare2" {
+		t.Fatalf("row name=%q want Snare2", dv.Rows[0].Name)
+	}
+	if dv.instDisplayLabel(origID) != "Snare2" {
+		t.Fatalf("dropdown label not updated: got %q", dv.instDisplayLabel(origID))
 	}
 }
 
@@ -1677,16 +1681,49 @@ func TestInstrumentCategoryFilterAndLazyLoad(t *testing.T) {
 	if len(dv.instMenuBtns()) < 2 { // back + snares
 		t.Fatalf("expected instrument list, got %d", len(dv.instMenuBtns()))
 	}
-	for _, b := range dv.instMenuBtns() {
-		if strings.Contains(strings.ToLower(b.Text), "snare cat 1") {
-			target = b
+	// Use the full filtered list (not just visible buttons) since canonical "Snare"
+	// category now includes built-in snares too, pushing staged items beyond the
+	// visible window.
+	filtered := instMenuFilteredOptionsForTest(dv)
+	foundSnareCAT1 := false
+	for _, id := range filtered {
+		if id == "snare-cat-1" {
+			foundSnareCAT1 = true
 		}
-		if strings.Contains(strings.ToLower(b.Text), "kick") {
+		if id == "kick-cat-1" {
 			t.Fatalf("kick option leaked into snare filter")
 		}
 	}
-	if target == nil {
+	if !foundSnareCAT1 {
 		t.Fatalf("snare option missing after filter")
+	}
+	// Find or synthesize a button rect for the click test. Prefer visible button;
+	// fall back to scrolling to the item first.
+	for _, b := range dv.instMenuBtns() {
+		if b.Text == "Snare Cat 1" {
+			target = b
+			break
+		}
+	}
+	if target == nil {
+		// Scroll the component until the item is visible.
+		dv.instMenuComp.SetScrollFirst(0)
+		for range 30 {
+			for _, b := range dv.instMenuBtns() {
+				if b.Text == "Snare Cat 1" {
+					target = b
+					break
+				}
+			}
+			if target != nil {
+				break
+			}
+			dv.instMenuComp.SetScrollFirst(dv.instMenuScroll.First + 1)
+			dv.syncInstMenuScrollFromComp()
+		}
+	}
+	if target == nil {
+		t.Fatalf("snare-cat-1 not visible after scrolling")
 	}
 	bx, by := target.Rect().Min.X+1, target.Rect().Min.Y+1
 	pressed := true
@@ -1783,8 +1820,10 @@ func TestInstrumentCategoryScrollMovesList(t *testing.T) {
 	// collapsed in test mode), so the previous count of 10 fit without
 	// scrolling on tall fixtures. 30 ensures the list overflows even with
 	// a 400-px-tall drum view.
+	// Use IDs containing "snare" so canonical CategoryOf maps them to "Snare"
+	// (an early taxonomy entry that is always in the visible category list).
 	for i := 0; i < 30; i++ {
-		entries = append(entries, audio.SoundMeta{ID: fmt.Sprintf("sample-%02d", i), Name: fmt.Sprintf("Sample %02d", i), Category: "Samples"})
+		entries = append(entries, audio.SoundMeta{ID: fmt.Sprintf("snare-samp-%02d", i), Name: fmt.Sprintf("Snare Samp %02d", i), Category: "Snare"})
 	}
 	withAudioCatalog(t, entries)
 	graph := model.NewGraph(logger)
@@ -1793,9 +1832,9 @@ func TestInstrumentCategoryScrollMovesList(t *testing.T) {
 	dv.instMenuShowFavoritesCategory = false
 	dv.calcLayout()
 	dv.rowLabels()[0].OnClick()
-	// Enter Samples category.
+	// Enter the canonical "Snare" category.
 	for _, b := range dv.instCategoryBtns {
-		if b.Text == "Samples" {
+		if b.Text == "Snare" {
 			b.OnClick()
 			break
 		}
@@ -2143,29 +2182,36 @@ func TestInstrumentMenuOpensAtRowCategoryWithBack(t *testing.T) {
 	if !dv.IsInstMenuOpen() || dv.instMenuMode != "categories" {
 		t.Fatalf("menu not open in categories mode")
 	}
-	var snaresBtn *Button
+	// With canonical taxonomy, "snare" id maps to "Snare" (not old folder "Snares").
+	var snareBtn *Button
 	for _, b := range dv.instCategoryBtns {
-		if b.Text == "Snares" {
-			snaresBtn = b
+		if b.Text == "Snare" {
+			snareBtn = b
 			break
 		}
 	}
-	if snaresBtn == nil {
-		t.Fatalf("snares category missing")
+	if snareBtn == nil {
+		t.Fatalf("snare category missing; cats=%v", func() []string {
+			var out []string
+			for _, b := range dv.instCategoryBtns {
+				out = append(out, b.Text)
+			}
+			return out
+		}())
 	}
-	snaresBtn.OnClick()
+	snareBtn.OnClick()
 	if dv.instMenuMode != "instruments" {
 		t.Fatalf("menu did not enter instruments mode")
 	}
-	if dv.instMenuActiveCat != "Snares" {
-		t.Fatalf("expected active category Snares, got %q", dv.instMenuActiveCat)
+	if dv.instMenuActiveCat != "Snare" {
+		t.Fatalf("expected active category Snare, got %q", dv.instMenuActiveCat)
 	}
 	if len(dv.instMenuBtns()) == 0 || dv.instMenuBtns()[0].Text != "Back" {
 		t.Fatalf("back button missing; btns=%d", len(dv.instMenuBtns()))
 	}
 	foundSnare := false
-	for _, b := range dv.instMenuBtns() {
-		if strings.Contains(strings.ToLower(b.Text), "snare") {
+	for _, id := range instMenuFilteredOptionsForTest(dv) {
+		if strings.Contains(strings.ToLower(id), "snare") {
 			foundSnare = true
 			break
 		}
@@ -2193,14 +2239,37 @@ func TestInstrumentMenuShowsBackWithoutForcedCategories(t *testing.T) {
 	if dv.instMenuMode != "instruments" {
 		t.Fatalf("expected instruments mode, got %q", dv.instMenuMode)
 	}
-	if dv.instMenuActiveCat != "Snares" {
-		t.Fatalf("expected active cat Snares, got %q", dv.instMenuActiveCat)
+	// With canonical taxonomy, "snare" id maps to "Snare" (not old folder "Snares").
+	if dv.instMenuActiveCat != "Snare" {
+		t.Fatalf("expected active cat Snare, got %q", dv.instMenuActiveCat)
 	}
 	if len(dv.instMenuBtns()) == 0 || dv.instMenuBtns()[0].Text != "Back" {
 		t.Fatalf("back button missing when entering instruments directly")
 	}
-	if dv.instMenuScroll.Total != 1 {
-		t.Fatalf("expected only snare in filtered list, total=%d", dv.instMenuScroll.Total)
+	// Canonical "Snare" category includes the built-in snare family (snare,
+	// snare-1, snare-2, rimshot, sidestick), so the filtered list has several
+	// entries — and must EXCLUDE non-snares like "kick", proving the filter ran
+	// (a guard against a regression that returns every instrument).
+	filtered := instMenuFilteredOptionsForTest(dv)
+	if len(filtered) < 2 {
+		t.Fatalf("expected snare family (>=2) under Snare filter, got %d: %v", len(filtered), filtered)
+	}
+	kickPresent, kickLeaked := false, false
+	for _, id := range dv.instOptions {
+		if id == "kick" {
+			kickPresent = true
+		}
+	}
+	for _, id := range filtered {
+		if id == "kick" {
+			kickLeaked = true
+		}
+	}
+	if !kickPresent {
+		t.Fatalf("precondition: 'kick' should be among all instruments")
+	}
+	if kickLeaked {
+		t.Fatalf("non-snare 'kick' leaked into Snare-filtered list: %v", filtered)
 	}
 }
 
@@ -2308,11 +2377,12 @@ func TestInstrumentBackReturnsToCategoriesWithoutClosing(t *testing.T) {
 func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
 	var metas []audio.SoundMeta
+	// Use IDs containing "snare" so canonical CategoryOf maps them to CatSnare → "Snare".
 	for i := 0; i < 12; i++ {
-		id := fmt.Sprintf("sn-%02d", i)
-		metas = append(metas, audio.SoundMeta{ID: id, Name: "Sn", Category: "Snares"})
+		id := fmt.Sprintf("snare-var-%02d", i)
+		metas = append(metas, audio.SoundMeta{ID: id, Name: "Sn", Category: "Snare"})
 	}
-	metas = append(metas, audio.SoundMeta{ID: "kick", Name: "Kick", Category: "Kicks"})
+	metas = append(metas, audio.SoundMeta{ID: "kick", Name: "Kick", Category: "Kick"})
 	withAudioCatalog(t, metas)
 
 	graph := model.NewGraph(logger)
@@ -2321,7 +2391,7 @@ func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	dv.instMenuShowFavoritesCategory = false
 	dv.refreshInstruments()
 	dv.instMenuLastAdded = ""
-	target := "sn-09"
+	target := "snare-var-09"
 	dv.SetInstrument(target)
 	dv.calcLayout()
 	dv.rowLabels()[0].OnClick()
@@ -2329,22 +2399,23 @@ func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 	if !dv.IsInstMenuOpen() || dv.instMenuMode != "categories" {
 		t.Fatalf("menu not open in categories mode")
 	}
-	var snaresBtn *Button
+	// With canonical taxonomy, "snare-var-*" ids map to "Snare" category.
+	var snareBtn *Button
 	for _, b := range dv.instCategoryBtns {
-		if b.Text == "Snares" {
-			snaresBtn = b
+		if b.Text == "Snare" {
+			snareBtn = b
 			break
 		}
 	}
-	if snaresBtn == nil {
-		t.Fatalf("snares category missing")
+	if snareBtn == nil {
+		t.Fatalf("snare category missing")
 	}
-	snaresBtn.OnClick()
+	snareBtn.OnClick()
 
 	if dv.instMenuMode != "instruments" {
 		t.Fatalf("menu not open in instruments mode")
 	}
-	if dv.instMenuActiveCat != "Snares" {
+	if dv.instMenuActiveCat != "Snare" {
 		t.Fatalf("active category %q", dv.instMenuActiveCat)
 	}
 	if !dv.instMenuHasScroll() {

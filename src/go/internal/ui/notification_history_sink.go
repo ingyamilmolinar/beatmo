@@ -3,6 +3,7 @@ package ui
 import (
 	"sync"
 
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 	"github.com/ingyamilmolinar/beatmo/internal/userprefs"
 )
 
@@ -86,7 +87,7 @@ func recordsToNotifs(recs []userprefs.NotificationRecord) []notification {
 	}
 	out := make([]notification, len(recs))
 	for i, r := range recs {
-		out[i] = notification{text: r.Text, isErr: r.IsErr, unixMs: r.UnixMs}
+		out[i] = notification{key: i18n.Key(r.Key), args: r.Args, text: r.Text, isErr: r.IsErr, unixMs: r.UnixMs}
 	}
 	return out
 }
@@ -97,7 +98,7 @@ func notifsToRecords(ns []notification) []userprefs.NotificationRecord {
 	}
 	out := make([]userprefs.NotificationRecord, len(ns))
 	for i, n := range ns {
-		out[i] = userprefs.NotificationRecord{Text: n.text, IsErr: n.isErr, UnixMs: n.unixMs}
+		out[i] = userprefs.NotificationRecord{Key: string(n.key), Args: n.args, Text: n.text, IsErr: n.isErr, UnixMs: n.unixMs}
 	}
 	return out
 }

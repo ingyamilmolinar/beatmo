@@ -54,6 +54,11 @@ func TestSamplerRecapturesWhenSynthSignatureChanges(t *testing.T) {
 	restoreSig := SwapSamplerSourceSignatureFnForTest(func(string) uint64 { return sig })
 	t.Cleanup(func() { SwapSamplerSourceSignatureFnForTest(restoreSig) })
 
+	// A recipe binding makes inst.alpha a synth source (the precondition for
+	// live re-capture-on-signature-change); a non-recipe id is a raw WAV.
+	audio.BindInstrumentToRecipe("inst.alpha", "drum-kick")
+	t.Cleanup(func() { audio.BindInstrumentToRecipe("inst.alpha", "") })
+
 	s := &g.drum.sampler
 
 	// Initial load renders the one-shot exactly once.

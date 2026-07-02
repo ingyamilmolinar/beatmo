@@ -56,7 +56,7 @@ var genSlotFieldsPhase2KS = []struct {
 	Field    string
 	Identity float64
 }{
-	{"ks_sustain", 0}, {"ks_pluck", 0},
+	{"ks_sustain", 0}, {"ks_pluck", 0}, {"ks_blow", 0},
 }
 
 // genSlotFieldsPhase3Kick are the Phase-3 kick-family (source==5) per-slot
@@ -161,6 +161,33 @@ var genGlobalsPhase8 = []struct {
 	{"burst2_off", 0}, {"burst2_amp", 0},
 	{"burst3_off", 0}, {"burst3_amp", 0},
 	{"burst4_off", 0}, {"burst4_amp", 0},
+	{"lfo_target", 0},
+	{"filtenv_enabled", 0}, {"filtenv_amt", 0}, {"filtenv_decay", 0}, {"filtenv_attack", 0},
+	{"unison_voices", 1}, {"unison_detune", 0}, {"unison_mix", 0.5},
+	{"unison_drift_rate", 0}, {"unison_drift_depth", 0},
+	{"lfo_delay", 0},
+	{"body_model", 0}, {"body_mix", 0}, {"bow_dynamics", 0},
+}
+
+// genSlotFieldsPhase9KickExtra mirrors modularGenSlotFieldsPhase9KickExtra: the
+// kick voice's structural shaping constants (attack/fade/sat) promoted to
+// per-slot knobs, appended field-major at the NEW very tail (after the Phase-8C
+// globals). APPEND-ONLY. Identities 0 (read only at source==5).
+var genSlotFieldsPhase9KickExtra = []struct {
+	Field    string
+	Identity float64
+}{
+	{"kick_attack", 0}, {"kick_fade", 0}, {"kick_sat", 0},
+}
+
+// genGlobalsPhase10 mirrors modularGlobalsPhase10: the KICK-stage enable global
+// gating the source==5 kick voice. APPEND-ONLY at the VERY tail (after the
+// Phase-9 kick-extra columns). Identity 0 (off).
+var genGlobalsPhase10 = []struct {
+	Name     string
+	Identity float64
+}{
+	{"kick_enabled", 0},
 }
 
 func TestModularGenBankSchemaShape(t *testing.T) {
@@ -374,8 +401,43 @@ func TestModularGenBankSchemaShape(t *testing.T) {
 		pos++
 	}
 
+	// 2k. Phase-9 kick-extra per-slot columns: appended field-major at the NEW
+	//     very tail, AFTER the Phase-8C modulator globals.
+	for _, f := range genSlotFieldsPhase9KickExtra {
+		for k := 1; k <= genSlots; k++ {
+			name := fmt.Sprintf("gen%d_%s", k, f.Field)
+			got, ok := idx[name]
+			if !ok {
+				t.Fatalf("schema missing Phase-9 kick-extra field %q", name)
+			}
+			if got != pos {
+				t.Fatalf("Phase-9 kick-extra field %q at index %d, want %d (must append after the Phase-8C globals)", name, got, pos)
+			}
+			if iv, ok := ident[name]; !ok || iv != f.Identity {
+				t.Fatalf("Phase-9 kick-extra field %q identity = %v (present=%v), want %v", name, iv, ok, f.Identity)
+			}
+			pos++
+		}
+	}
+
+	// 2l. Phase-10 KICK-stage enable global: appended at the NEW very tail, AFTER
+	//     the Phase-9 kick-extra columns.
+	for _, g := range genGlobalsPhase10 {
+		got, ok := idx[g.Name]
+		if !ok {
+			t.Fatalf("schema missing Phase-10 global %q", g.Name)
+		}
+		if got != pos {
+			t.Fatalf("Phase-10 global %q at index %d, want %d (must append after the Phase-9 kick-extra columns)", g.Name, got, pos)
+		}
+		if iv, ok := ident[g.Name]; !ok || iv != g.Identity {
+			t.Fatalf("Phase-10 global %q identity = %v (present=%v), want %v", g.Name, iv, ok, g.Identity)
+		}
+		pos++
+	}
+
 	if len(schema) != pos {
-		t.Fatalf("schema has %d entries, want exactly %d (no stray params after the Phase-8 modulator globals)", len(schema), pos)
+		t.Fatalf("schema has %d entries, want exactly %d (no stray params after the Phase-10 KICK enable)", len(schema), pos)
 	}
 
 	// 3. ParamDefs stay 1:1 with the schema, and every gen-bank def is hidden
@@ -389,7 +451,11 @@ func TestModularGenBankSchemaShape(t *testing.T) {
 			t.Fatalf("def[%d] = %q, schema[%d] = %q — order must mirror the ABI", i, d.Name, i, schema[i])
 		}
 		if strings.HasPrefix(d.Name, "gen") || d.Name == "noise_draws" || d.Name == "noise_prelude" {
-			if d.Group != SynthHiddenGroup {
+			// The slot-1 kick knobs (gen1_kick_*) are deliberately surfaced as the
+			// visible KICK Synth-tab stage (group "kick"); every other gen-bank def
+			// stays hidden. Slots 2..12 remain hidden (ABI completeness only).
+			surfacedKick := strings.HasPrefix(d.Name, "gen1_kick_")
+			if !surfacedKick && d.Group != SynthHiddenGroup {
 				t.Fatalf("%q must be Group:hidden until Phase 8 (got %q)", d.Name, d.Group)
 			}
 			if d.Default != ident[d.Name] {

@@ -85,7 +85,8 @@ func (dv *DrumView) drawRowCompositeWindowed(dst *ebiten.Image) bool {
 	rebake := !dv.rowsWinValid || dv.rowsWinBuf == nil ||
 		dv.rowsWinBufW != bufW || dv.rowsWinBufH != bufH ||
 		dv.rowsWinRowWidth != rowWidth || dv.rowsWinLength != n ||
-		dv.rowsWinBaseX != baseX || dv.rowsWinContentDirty ||
+		dv.rowsWinBaseX != baseX || dv.rowsWinRowOff != dv.rowOffset ||
+		dv.rowsWinContentDirty ||
 		dv.Offset < dv.rowsWinBakeOffset ||
 		(dv.Offset-dv.rowsWinBakeOffset) > padCells
 	if rebake {
@@ -101,6 +102,7 @@ func (dv *DrumView) drawRowCompositeWindowed(dst *ebiten.Image) bool {
 		dv.rowsWinRowWidth = rowWidth
 		dv.rowsWinLength = n
 		dv.rowsWinBaseX = baseX
+		dv.rowsWinRowOff = dv.rowOffset
 		// Keep the legacy per-row sprite cache coherent on a rebake so any
 		// sprite-based consumer (and the live-edit-during-shift guards) still
 		// sees rebuilt sprites — the windowed buffer renders from Steps, but the

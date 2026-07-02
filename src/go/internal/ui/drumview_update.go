@@ -86,7 +86,7 @@ func (dv *DrumView) Update() {
 			}
 			if res.err != nil {
 				dv.logger.Errorf("[drumview] import failed: %v", res.err)
-				dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadJSON, res.err.Error()))
+				dv.notifyErrorKey(i18n.KeyNotifErrLoadJSON, res.err.Error())
 			} else if len(res.data) == 0 {
 				dv.logger.Debugf("[drumview] import canceled (no data)")
 			} else if dv.onImport != nil {
@@ -94,9 +94,9 @@ func (dv *DrumView) Update() {
 				// and returns nil; notifications are handled by game.Update().
 				// For standalone use (tests with mock handlers), onImport may
 				// return an error directly, which we handle here.
-				if err := dv.onImport(res.data); err != nil {
+				if err := dv.onImport(res.data, importSourceName(res.name)); err != nil {
 					dv.logger.Errorf("[drumview] import error: %v", err)
-					dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadJSON, err.Error()))
+					dv.notifyErrorKey(i18n.KeyNotifErrLoadJSON, err.Error())
 				}
 				// Note: success notifications are handled by Game.Update() after
 				// the deferred import completes, not here.
@@ -110,7 +110,7 @@ func (dv *DrumView) Update() {
 			if dv.onImportDialogEnd != nil {
 				dv.onImportDialogEnd()
 			}
-			dv.notifyError(i18n.T(i18n.KeyNotifImportCanceled))
+			dv.notifyErrorKey(i18n.KeyNotifImportCanceled)
 		}
 	}
 
@@ -118,10 +118,10 @@ func (dv *DrumView) Update() {
 		select {
 		case res := <-dv.uploadCh:
 			dv.uploading = false
-			dv.logger.Debugf("[DRUMVIEW] Upload result path=%s err=%v", res.path, res.err)
+			dv.logger.Debugf("[drumview] Upload result path=%s err=%v", res.path, res.err)
 			if res.err != nil {
 				dv.logger.Errorf("[drumview] failed to load WAV: %v", res.err)
-				dv.notifyError(i18n.Tf(i18n.KeyNotifErrLoadWAV, res.err.Error()))
+				dv.notifyErrorKey(i18n.KeyNotifErrLoadWAV, res.err.Error())
 			} else {
 				dv.CloseAllPopups() // close rename/menus before entering naming mode
 				dv.pendingWAV = res.path
@@ -135,13 +135,13 @@ func (dv *DrumView) Update() {
 				dv.nameBox.OnFocusLost = func() { softKeyboardHide() }
 				dv.nameBox.SetText("")
 				dv.nameBox.focused = true
-				dv.notifyInfo(i18n.Tf(i18n.KeyNotifSelectedWAV, res.path))
+				dv.notifyInfoKey(i18n.KeyNotifSelectedWAV, importSourceName(res.path))
 			}
 		drainUpload:
 			for {
 				select {
 				case extra := <-dv.uploadCh:
-					dv.logger.Debugf("[DRUMVIEW] Dropping stale upload result path=%s err=%v", extra.path, extra.err)
+					dv.logger.Debugf("[drumview] Dropping stale upload result path=%s err=%v", extra.path, extra.err)
 				default:
 					break drainUpload
 				}

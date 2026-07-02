@@ -10,11 +10,7 @@ func (g *Game) SetScreenshot(path string) {
 }
 
 func (g *Game) screenshotReady() bool {
-	threshold := g.screenshotSettleFrames
-	if threshold <= 0 {
-		threshold = 90
-	}
-	return g.screenshotPath != "" && g.screenshotDraws >= threshold
+	return g.screenshotPath != "" && g.screenshotCaptured
 }
 
 func (g *Game) SetScreenshotSettleFrames(n int) { g.screenshotSettleFrames = n }

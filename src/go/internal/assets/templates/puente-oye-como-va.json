@@ -1,0 +1,3323 @@
+{
+  "version": 1,
+  "subdiv": 16,
+  "bpm": 126,
+  "instruments": [
+    {
+      "name": "Montuno",
+      "id": "piano-grand",
+      "kind": "builtin",
+      "volume": 0.7,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "reverb_send": 0.1,
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Trumpet",
+      "id": "trumpet",
+      "kind": "builtin",
+      "volume": 0.82,
+      "origin": 88,
+      "color": "#00C8E0FF",
+      "reverb_send": 0.12,
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Sax",
+      "id": "sax",
+      "kind": "builtin",
+      "volume": 0.72,
+      "origin": 144,
+      "color": "#FFD319FF",
+      "reverb_send": 0.12,
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Bass",
+      "id": "bass-guitar",
+      "kind": "builtin",
+      "volume": 0.85,
+      "origin": 158,
+      "color": "#A030FFFF",
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Clave",
+      "id": "sidestick",
+      "kind": "builtin",
+      "volume": 0.95,
+      "origin": 190,
+      "color": "#3FD67AFF"
+    },
+    {
+      "name": "Cowbell",
+      "id": "cowbell",
+      "kind": "builtin",
+      "volume": 0.7,
+      "origin": 214,
+      "color": "#3A6AF0FF"
+    },
+    {
+      "name": "Conga Open",
+      "id": "conga",
+      "kind": "builtin",
+      "volume": 0.88,
+      "origin": 246,
+      "color": "#FF7A3DFF",
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Conga Slap",
+      "id": "conga-2",
+      "kind": "builtin",
+      "volume": 0.88,
+      "origin": 270,
+      "color": "#FF6AD5FF",
+      "synth_params": {
+        "pitch": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "silent",
+      "outputs": [
+        1
+      ]
+    },
+    {
+      "id": 1,
+      "i": 8,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        2
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 2,
+      "i": 12,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        3
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 3,
+      "i": 16,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        4
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 4,
+      "i": 24,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        5
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 5,
+      "i": 28,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        6
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 6,
+      "i": 32,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        7
+      ],
+      "pitch": 10,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 7,
+      "i": 40,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        8
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 8,
+      "i": 44,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        9
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 9,
+      "i": 48,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        10
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 10,
+      "i": 56,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        11
+      ],
+      "pitch": 3,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 11,
+      "i": 60,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        12
+      ],
+      "pitch": 7,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 12,
+      "i": 64,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        13
+      ],
+      "pitch": 9,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 13,
+      "i": 72,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        14
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 14,
+      "i": 76,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        15
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 15,
+      "i": 80,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        16
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 16,
+      "i": 88,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        17
+      ],
+      "pitch": 2,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 17,
+      "i": 92,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        18
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 18,
+      "i": 96,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        19
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 19,
+      "i": 104,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        20
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 20,
+      "i": 108,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        21
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 21,
+      "i": 112,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        22
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 22,
+      "i": 128,
+      "j": 0,
+      "type": "silent",
+      "outputs": [
+        23
+      ]
+    },
+    {
+      "id": 23,
+      "i": 128,
+      "j": 8,
+      "type": "regular",
+      "outputs": [
+        24
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 24,
+      "i": 128,
+      "j": 12,
+      "type": "regular",
+      "outputs": [
+        25
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 25,
+      "i": 128,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        26
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 26,
+      "i": 128,
+      "j": 24,
+      "type": "regular",
+      "outputs": [
+        27
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 27,
+      "i": 128,
+      "j": 28,
+      "type": "regular",
+      "outputs": [
+        28
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 28,
+      "i": 128,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        29
+      ],
+      "pitch": 10,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 29,
+      "i": 128,
+      "j": 40,
+      "type": "regular",
+      "outputs": [
+        30
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 30,
+      "i": 128,
+      "j": 44,
+      "type": "regular",
+      "outputs": [
+        31
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 31,
+      "i": 128,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        32
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 32,
+      "i": 128,
+      "j": 56,
+      "type": "regular",
+      "outputs": [
+        33
+      ],
+      "pitch": 3,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 33,
+      "i": 128,
+      "j": 60,
+      "type": "regular",
+      "outputs": [
+        34
+      ],
+      "pitch": 7,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 34,
+      "i": 128,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        35
+      ],
+      "pitch": 9,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 35,
+      "i": 128,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        36
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 36,
+      "i": 128,
+      "j": 76,
+      "type": "regular",
+      "outputs": [
+        37
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 37,
+      "i": 128,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        38
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 38,
+      "i": 128,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        39
+      ],
+      "pitch": 2,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 39,
+      "i": 128,
+      "j": 92,
+      "type": "regular",
+      "outputs": [
+        40
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 40,
+      "i": 128,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        41
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 41,
+      "i": 128,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        42
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 42,
+      "i": 128,
+      "j": 108,
+      "type": "regular",
+      "outputs": [
+        43
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 43,
+      "i": 128,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        44
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 44,
+      "i": 128,
+      "j": 128,
+      "type": "silent",
+      "outputs": [
+        45
+      ]
+    },
+    {
+      "id": 45,
+      "i": 120,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        46
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 46,
+      "i": 116,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        47
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 47,
+      "i": 112,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        48
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 48,
+      "i": 104,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        49
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 49,
+      "i": 100,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        50
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 50,
+      "i": 96,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        51
+      ],
+      "pitch": 10,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 51,
+      "i": 88,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        52
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 52,
+      "i": 84,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        53
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 53,
+      "i": 80,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        54
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 54,
+      "i": 72,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        55
+      ],
+      "pitch": 3,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 55,
+      "i": 68,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        56
+      ],
+      "pitch": 7,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 56,
+      "i": 64,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        57
+      ],
+      "pitch": 9,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 57,
+      "i": 56,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        58
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 58,
+      "i": 52,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        59
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 59,
+      "i": 48,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        60
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 60,
+      "i": 40,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        61
+      ],
+      "pitch": 2,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 61,
+      "i": 36,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        62
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 62,
+      "i": 32,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        63
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 63,
+      "i": 24,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        64
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 64,
+      "i": 20,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        65
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 65,
+      "i": 16,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        66
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 66,
+      "i": 0,
+      "j": 128,
+      "type": "silent",
+      "outputs": [
+        67
+      ]
+    },
+    {
+      "id": 67,
+      "i": 0,
+      "j": 120,
+      "type": "regular",
+      "outputs": [
+        68
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 68,
+      "i": 0,
+      "j": 116,
+      "type": "regular",
+      "outputs": [
+        69
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 69,
+      "i": 0,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        70
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 70,
+      "i": 0,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        71
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 71,
+      "i": 0,
+      "j": 100,
+      "type": "regular",
+      "outputs": [
+        72
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 72,
+      "i": 0,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        73
+      ],
+      "pitch": 10,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 73,
+      "i": 0,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        74
+      ],
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 74,
+      "i": 0,
+      "j": 84,
+      "type": "regular",
+      "outputs": [
+        75
+      ],
+      "pitch": 3,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 75,
+      "i": 0,
+      "j": 80,
+      "type": "regular",
+      "outputs": [
+        76
+      ],
+      "pitch": 7,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 76,
+      "i": 0,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        77
+      ],
+      "pitch": 3,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 77,
+      "i": 0,
+      "j": 68,
+      "type": "regular",
+      "outputs": [
+        78
+      ],
+      "pitch": 7,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 78,
+      "i": 0,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        79
+      ],
+      "pitch": 9,
+      "volume": 0.8,
+      "duration": 0.3
+    },
+    {
+      "id": 79,
+      "i": 0,
+      "j": 56,
+      "type": "regular",
+      "outputs": [
+        80
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 80,
+      "i": 0,
+      "j": 52,
+      "type": "regular",
+      "outputs": [
+        81
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 81,
+      "i": 0,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        82
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 82,
+      "i": 0,
+      "j": 40,
+      "type": "regular",
+      "outputs": [
+        83
+      ],
+      "pitch": 2,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 83,
+      "i": 0,
+      "j": 36,
+      "type": "regular",
+      "outputs": [
+        84
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 84,
+      "i": 0,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        85
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 85,
+      "i": 0,
+      "j": 24,
+      "type": "regular",
+      "outputs": [
+        86
+      ],
+      "pitch": 5,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 86,
+      "i": 0,
+      "j": 20,
+      "type": "regular",
+      "outputs": [
+        87
+      ],
+      "pitch": 9,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 87,
+      "i": 0,
+      "j": 16,
+      "type": "regular",
+      "outputs": [
+        0
+      ],
+      "pitch": 12,
+      "volume": 0.7,
+      "duration": 0.3
+    },
+    {
+      "id": 88,
+      "i": 0,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        89
+      ],
+      "pitch": 12,
+      "volume": 0.85,
+      "duration": 0.5
+    },
+    {
+      "id": 89,
+      "i": 8,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        90
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 90,
+      "i": 16,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        91
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 91,
+      "i": 24,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        92
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 92,
+      "i": 32,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        93
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 93,
+      "i": 40,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        94
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 94,
+      "i": 48,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        95
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 95,
+      "i": 64,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        96
+      ],
+      "pitch": 12,
+      "duration": 0.5
+    },
+    {
+      "id": 96,
+      "i": 72,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        97
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 97,
+      "i": 80,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        98
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 98,
+      "i": 88,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        99
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 99,
+      "i": 96,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        100
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 100,
+      "i": 104,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        101
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 101,
+      "i": 112,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        102
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 102,
+      "i": 128,
+      "j": 136,
+      "type": "regular",
+      "outputs": [
+        103
+      ],
+      "pitch": 12,
+      "duration": 0.5
+    },
+    {
+      "id": 103,
+      "i": 128,
+      "j": 144,
+      "type": "regular",
+      "outputs": [
+        104
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 104,
+      "i": 128,
+      "j": 152,
+      "type": "regular",
+      "outputs": [
+        105
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 105,
+      "i": 128,
+      "j": 160,
+      "type": "regular",
+      "outputs": [
+        106
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 106,
+      "i": 128,
+      "j": 168,
+      "type": "regular",
+      "outputs": [
+        107
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 107,
+      "i": 128,
+      "j": 176,
+      "type": "regular",
+      "outputs": [
+        108
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 108,
+      "i": 128,
+      "j": 184,
+      "type": "regular",
+      "outputs": [
+        109
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 109,
+      "i": 128,
+      "j": 200,
+      "type": "regular",
+      "outputs": [
+        110
+      ],
+      "pitch": 12,
+      "duration": 0.5
+    },
+    {
+      "id": 110,
+      "i": 128,
+      "j": 208,
+      "type": "regular",
+      "outputs": [
+        111
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 111,
+      "i": 128,
+      "j": 216,
+      "type": "regular",
+      "outputs": [
+        112
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 112,
+      "i": 128,
+      "j": 224,
+      "type": "regular",
+      "outputs": [
+        113
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 113,
+      "i": 128,
+      "j": 232,
+      "type": "regular",
+      "outputs": [
+        114
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 114,
+      "i": 128,
+      "j": 240,
+      "type": "regular",
+      "outputs": [
+        115
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 115,
+      "i": 128,
+      "j": 248,
+      "type": "regular",
+      "outputs": [
+        116
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 116,
+      "i": 128,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        117
+      ],
+      "pitch": 12,
+      "duration": 0.5
+    },
+    {
+      "id": 117,
+      "i": 120,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        118
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 118,
+      "i": 112,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        119
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 119,
+      "i": 104,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        120
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 120,
+      "i": 96,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        121
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 121,
+      "i": 88,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        122
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 122,
+      "i": 80,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        123
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 123,
+      "i": 64,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        124
+      ],
+      "pitch": 12,
+      "duration": 0.5
+    },
+    {
+      "id": 124,
+      "i": 56,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        125
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 125,
+      "i": 48,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        126
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 126,
+      "i": 40,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        127
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 127,
+      "i": 32,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        128
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 128,
+      "i": 24,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        129
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 129,
+      "i": 16,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        130
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 130,
+      "i": 0,
+      "j": 264,
+      "type": "regular",
+      "outputs": [
+        131
+      ],
+      "pitch": 12,
+      "duration": 0.5
+    },
+    {
+      "id": 131,
+      "i": 0,
+      "j": 256,
+      "type": "regular",
+      "outputs": [
+        132
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 132,
+      "i": 0,
+      "j": 248,
+      "type": "regular",
+      "outputs": [
+        133
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 133,
+      "i": 0,
+      "j": 240,
+      "type": "regular",
+      "outputs": [
+        134
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 134,
+      "i": 0,
+      "j": 232,
+      "type": "regular",
+      "outputs": [
+        135
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 135,
+      "i": 0,
+      "j": 224,
+      "type": "regular",
+      "outputs": [
+        136
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 136,
+      "i": 0,
+      "j": 216,
+      "type": "regular",
+      "outputs": [
+        137
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 137,
+      "i": 0,
+      "j": 200,
+      "type": "regular",
+      "outputs": [
+        138
+      ],
+      "pitch": 12,
+      "duration": 0.5
+    },
+    {
+      "id": 138,
+      "i": 0,
+      "j": 192,
+      "type": "regular",
+      "outputs": [
+        139
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 139,
+      "i": 0,
+      "j": 184,
+      "type": "regular",
+      "outputs": [
+        140
+      ],
+      "pitch": 15,
+      "duration": 0.5
+    },
+    {
+      "id": 140,
+      "i": 0,
+      "j": 176,
+      "type": "regular",
+      "outputs": [
+        141
+      ],
+      "pitch": 17,
+      "duration": 0.5
+    },
+    {
+      "id": 141,
+      "i": 0,
+      "j": 168,
+      "type": "regular",
+      "outputs": [
+        142
+      ],
+      "pitch": 14,
+      "duration": 0.5
+    },
+    {
+      "id": 142,
+      "i": 0,
+      "j": 160,
+      "type": "regular",
+      "outputs": [
+        143
+      ],
+      "pitch": 10,
+      "duration": 0.5
+    },
+    {
+      "id": 143,
+      "i": 0,
+      "j": 152,
+      "type": "regular",
+      "outputs": [
+        88
+      ],
+      "pitch": 12,
+      "duration": 1.5
+    },
+    {
+      "id": 144,
+      "i": 0,
+      "j": 272,
+      "type": "silent",
+      "outputs": [
+        145
+      ]
+    },
+    {
+      "id": 145,
+      "i": 128,
+      "j": 272,
+      "type": "silent",
+      "outputs": [
+        146
+      ]
+    },
+    {
+      "id": 146,
+      "i": 128,
+      "j": 320,
+      "type": "regular",
+      "outputs": [
+        147
+      ],
+      "pitch": 7,
+      "volume": 0.72,
+      "duration": 0.3
+    },
+    {
+      "id": 147,
+      "i": 128,
+      "j": 328,
+      "type": "regular",
+      "outputs": [
+        148
+      ],
+      "pitch": 10,
+      "duration": 0.3
+    },
+    {
+      "id": 148,
+      "i": 128,
+      "j": 336,
+      "type": "regular",
+      "outputs": [
+        149
+      ],
+      "pitch": 12,
+      "volume": 0.8,
+      "duration": 0.5
+    },
+    {
+      "id": 149,
+      "i": 128,
+      "j": 368,
+      "type": "regular",
+      "outputs": [
+        150
+      ],
+      "pitch": 14,
+      "duration": 0.3
+    },
+    {
+      "id": 150,
+      "i": 128,
+      "j": 376,
+      "type": "regular",
+      "outputs": [
+        151
+      ],
+      "pitch": 12,
+      "volume": 0.8,
+      "duration": 0.5
+    },
+    {
+      "id": 151,
+      "i": 128,
+      "j": 400,
+      "type": "silent",
+      "outputs": [
+        152
+      ]
+    },
+    {
+      "id": 152,
+      "i": 0,
+      "j": 400,
+      "type": "silent",
+      "outputs": [
+        153
+      ]
+    },
+    {
+      "id": 153,
+      "i": 0,
+      "j": 352,
+      "type": "regular",
+      "outputs": [
+        154
+      ],
+      "pitch": 7,
+      "volume": 0.72,
+      "duration": 0.3
+    },
+    {
+      "id": 154,
+      "i": 0,
+      "j": 344,
+      "type": "regular",
+      "outputs": [
+        155
+      ],
+      "pitch": 10,
+      "duration": 0.3
+    },
+    {
+      "id": 155,
+      "i": 0,
+      "j": 336,
+      "type": "regular",
+      "outputs": [
+        156
+      ],
+      "pitch": 12,
+      "volume": 0.8,
+      "duration": 0.5
+    },
+    {
+      "id": 156,
+      "i": 0,
+      "j": 304,
+      "type": "regular",
+      "outputs": [
+        157
+      ],
+      "pitch": 14,
+      "duration": 0.3
+    },
+    {
+      "id": 157,
+      "i": 0,
+      "j": 296,
+      "type": "regular",
+      "outputs": [
+        144
+      ],
+      "pitch": 19,
+      "volume": 0.85,
+      "duration": 0.6
+    },
+    {
+      "id": 158,
+      "i": 0,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        159
+      ],
+      "pitch": -12,
+      "volume": 0.9,
+      "duration": 0.8
+    },
+    {
+      "id": 159,
+      "i": 24,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        160
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 160,
+      "i": 32,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        161
+      ],
+      "pitch": -17,
+      "duration": 0.6
+    },
+    {
+      "id": 161,
+      "i": 48,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        162
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 162,
+      "i": 64,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        163
+      ],
+      "pitch": -19,
+      "duration": 0.8
+    },
+    {
+      "id": 163,
+      "i": 88,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        164
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 164,
+      "i": 96,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        165
+      ],
+      "pitch": -12,
+      "duration": 0.6
+    },
+    {
+      "id": 165,
+      "i": 112,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        166
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 166,
+      "i": 128,
+      "j": 408,
+      "type": "regular",
+      "outputs": [
+        167
+      ],
+      "pitch": -12,
+      "volume": 0.9,
+      "duration": 0.8
+    },
+    {
+      "id": 167,
+      "i": 128,
+      "j": 432,
+      "type": "regular",
+      "outputs": [
+        168
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 168,
+      "i": 128,
+      "j": 440,
+      "type": "regular",
+      "outputs": [
+        169
+      ],
+      "pitch": -17,
+      "duration": 0.6
+    },
+    {
+      "id": 169,
+      "i": 128,
+      "j": 456,
+      "type": "regular",
+      "outputs": [
+        170
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 170,
+      "i": 128,
+      "j": 472,
+      "type": "regular",
+      "outputs": [
+        171
+      ],
+      "pitch": -19,
+      "duration": 0.8
+    },
+    {
+      "id": 171,
+      "i": 128,
+      "j": 496,
+      "type": "regular",
+      "outputs": [
+        172
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 172,
+      "i": 128,
+      "j": 504,
+      "type": "regular",
+      "outputs": [
+        173
+      ],
+      "pitch": -12,
+      "duration": 0.6
+    },
+    {
+      "id": 173,
+      "i": 128,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        174
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 174,
+      "i": 128,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        175
+      ],
+      "pitch": -12,
+      "volume": 0.9,
+      "duration": 0.8
+    },
+    {
+      "id": 175,
+      "i": 104,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        176
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 176,
+      "i": 96,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        177
+      ],
+      "pitch": -17,
+      "duration": 0.6
+    },
+    {
+      "id": 177,
+      "i": 80,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        178
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 178,
+      "i": 64,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        179
+      ],
+      "pitch": -19,
+      "duration": 0.8
+    },
+    {
+      "id": 179,
+      "i": 40,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        180
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 180,
+      "i": 32,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        181
+      ],
+      "pitch": -12,
+      "duration": 0.6
+    },
+    {
+      "id": 181,
+      "i": 16,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        182
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 182,
+      "i": 0,
+      "j": 536,
+      "type": "regular",
+      "outputs": [
+        183
+      ],
+      "pitch": -12,
+      "volume": 0.9,
+      "duration": 0.8
+    },
+    {
+      "id": 183,
+      "i": 0,
+      "j": 512,
+      "type": "regular",
+      "outputs": [
+        184
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 184,
+      "i": 0,
+      "j": 504,
+      "type": "regular",
+      "outputs": [
+        185
+      ],
+      "pitch": -17,
+      "duration": 0.6
+    },
+    {
+      "id": 185,
+      "i": 0,
+      "j": 488,
+      "type": "regular",
+      "outputs": [
+        186
+      ],
+      "pitch": -12,
+      "duration": 0.4
+    },
+    {
+      "id": 186,
+      "i": 0,
+      "j": 472,
+      "type": "regular",
+      "outputs": [
+        187
+      ],
+      "pitch": -19,
+      "duration": 0.8
+    },
+    {
+      "id": 187,
+      "i": 0,
+      "j": 448,
+      "type": "regular",
+      "outputs": [
+        188
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 188,
+      "i": 0,
+      "j": 440,
+      "type": "regular",
+      "outputs": [
+        189
+      ],
+      "pitch": -12,
+      "duration": 0.6
+    },
+    {
+      "id": 189,
+      "i": 0,
+      "j": 424,
+      "type": "regular",
+      "outputs": [
+        158
+      ],
+      "pitch": -19,
+      "duration": 0.4
+    },
+    {
+      "id": 190,
+      "i": 0,
+      "j": 544,
+      "type": "silent",
+      "outputs": [
+        191
+      ]
+    },
+    {
+      "id": 191,
+      "i": 16,
+      "j": 544,
+      "type": "regular",
+      "outputs": [
+        192
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 192,
+      "i": 32,
+      "j": 544,
+      "type": "regular",
+      "outputs": [
+        193
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 193,
+      "i": 64,
+      "j": 544,
+      "type": "regular",
+      "outputs": [
+        194
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 194,
+      "i": 88,
+      "j": 544,
+      "type": "regular",
+      "outputs": [
+        195
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 195,
+      "i": 112,
+      "j": 544,
+      "type": "regular",
+      "outputs": [
+        196
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 196,
+      "i": 128,
+      "j": 544,
+      "type": "silent",
+      "outputs": [
+        197
+      ]
+    },
+    {
+      "id": 197,
+      "i": 128,
+      "j": 560,
+      "type": "regular",
+      "outputs": [
+        198
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 198,
+      "i": 128,
+      "j": 576,
+      "type": "regular",
+      "outputs": [
+        199
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 199,
+      "i": 128,
+      "j": 608,
+      "type": "regular",
+      "outputs": [
+        200
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 200,
+      "i": 128,
+      "j": 632,
+      "type": "regular",
+      "outputs": [
+        201
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 201,
+      "i": 128,
+      "j": 656,
+      "type": "regular",
+      "outputs": [
+        202
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 202,
+      "i": 128,
+      "j": 672,
+      "type": "silent",
+      "outputs": [
+        203
+      ]
+    },
+    {
+      "id": 203,
+      "i": 112,
+      "j": 672,
+      "type": "regular",
+      "outputs": [
+        204
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 204,
+      "i": 96,
+      "j": 672,
+      "type": "regular",
+      "outputs": [
+        205
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 205,
+      "i": 64,
+      "j": 672,
+      "type": "regular",
+      "outputs": [
+        206
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 206,
+      "i": 40,
+      "j": 672,
+      "type": "regular",
+      "outputs": [
+        207
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 207,
+      "i": 16,
+      "j": 672,
+      "type": "regular",
+      "outputs": [
+        208
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 208,
+      "i": 0,
+      "j": 672,
+      "type": "silent",
+      "outputs": [
+        209
+      ]
+    },
+    {
+      "id": 209,
+      "i": 0,
+      "j": 656,
+      "type": "regular",
+      "outputs": [
+        210
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 210,
+      "i": 0,
+      "j": 640,
+      "type": "regular",
+      "outputs": [
+        211
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 211,
+      "i": 0,
+      "j": 608,
+      "type": "regular",
+      "outputs": [
+        212
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 212,
+      "i": 0,
+      "j": 584,
+      "type": "regular",
+      "outputs": [
+        213
+      ],
+      "pitch": 6,
+      "volume": 1
+    },
+    {
+      "id": 213,
+      "i": 0,
+      "j": 560,
+      "type": "regular",
+      "outputs": [
+        190
+      ],
+      "pitch": 6,
+      "volume": 1.1
+    },
+    {
+      "id": 214,
+      "i": 0,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        215
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 215,
+      "i": 16,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        216
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 216,
+      "i": 32,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        217
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 217,
+      "i": 48,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        218
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 218,
+      "i": 64,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        219
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 219,
+      "i": 80,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        220
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 220,
+      "i": 96,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        221
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 221,
+      "i": 112,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        222
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 222,
+      "i": 128,
+      "j": 680,
+      "type": "regular",
+      "outputs": [
+        223
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 223,
+      "i": 128,
+      "j": 696,
+      "type": "regular",
+      "outputs": [
+        224
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 224,
+      "i": 128,
+      "j": 712,
+      "type": "regular",
+      "outputs": [
+        225
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 225,
+      "i": 128,
+      "j": 728,
+      "type": "regular",
+      "outputs": [
+        226
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 226,
+      "i": 128,
+      "j": 744,
+      "type": "regular",
+      "outputs": [
+        227
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 227,
+      "i": 128,
+      "j": 760,
+      "type": "regular",
+      "outputs": [
+        228
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 228,
+      "i": 128,
+      "j": 776,
+      "type": "regular",
+      "outputs": [
+        229
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 229,
+      "i": 128,
+      "j": 792,
+      "type": "regular",
+      "outputs": [
+        230
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 230,
+      "i": 128,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        231
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 231,
+      "i": 112,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        232
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 232,
+      "i": 96,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        233
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 233,
+      "i": 80,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        234
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 234,
+      "i": 64,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        235
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 235,
+      "i": 48,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        236
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 236,
+      "i": 32,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        237
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 237,
+      "i": 16,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        238
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 238,
+      "i": 0,
+      "j": 808,
+      "type": "regular",
+      "outputs": [
+        239
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 239,
+      "i": 0,
+      "j": 792,
+      "type": "regular",
+      "outputs": [
+        240
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 240,
+      "i": 0,
+      "j": 776,
+      "type": "regular",
+      "outputs": [
+        241
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 241,
+      "i": 0,
+      "j": 760,
+      "type": "regular",
+      "outputs": [
+        242
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 242,
+      "i": 0,
+      "j": 744,
+      "type": "regular",
+      "outputs": [
+        243
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 243,
+      "i": 0,
+      "j": 728,
+      "type": "regular",
+      "outputs": [
+        244
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 244,
+      "i": 0,
+      "j": 712,
+      "type": "regular",
+      "outputs": [
+        245
+      ],
+      "volume": 0.8
+    },
+    {
+      "id": 245,
+      "i": 0,
+      "j": 696,
+      "type": "regular",
+      "outputs": [
+        214
+      ],
+      "volume": 0.7
+    },
+    {
+      "id": 246,
+      "i": 0,
+      "j": 816,
+      "type": "regular",
+      "outputs": [
+        247
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 247,
+      "i": 24,
+      "j": 816,
+      "type": "regular",
+      "outputs": [
+        248
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 248,
+      "i": 40,
+      "j": 816,
+      "type": "regular",
+      "outputs": [
+        249
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 249,
+      "i": 64,
+      "j": 816,
+      "type": "regular",
+      "outputs": [
+        250
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 250,
+      "i": 88,
+      "j": 816,
+      "type": "regular",
+      "outputs": [
+        251
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 251,
+      "i": 104,
+      "j": 816,
+      "type": "regular",
+      "outputs": [
+        252
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 252,
+      "i": 128,
+      "j": 816,
+      "type": "regular",
+      "outputs": [
+        253
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 253,
+      "i": 128,
+      "j": 840,
+      "type": "regular",
+      "outputs": [
+        254
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 254,
+      "i": 128,
+      "j": 856,
+      "type": "regular",
+      "outputs": [
+        255
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 255,
+      "i": 128,
+      "j": 880,
+      "type": "regular",
+      "outputs": [
+        256
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 256,
+      "i": 128,
+      "j": 904,
+      "type": "regular",
+      "outputs": [
+        257
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 257,
+      "i": 128,
+      "j": 920,
+      "type": "regular",
+      "outputs": [
+        258
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 258,
+      "i": 128,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        259
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 259,
+      "i": 104,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        260
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 260,
+      "i": 88,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        261
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 261,
+      "i": 64,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        262
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 262,
+      "i": 40,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        263
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 263,
+      "i": 24,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        264
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 264,
+      "i": 0,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        265
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 265,
+      "i": 0,
+      "j": 920,
+      "type": "regular",
+      "outputs": [
+        266
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 266,
+      "i": 0,
+      "j": 904,
+      "type": "regular",
+      "outputs": [
+        267
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 267,
+      "i": 0,
+      "j": 880,
+      "type": "regular",
+      "outputs": [
+        268
+      ],
+      "volume": 1,
+      "duration": 0.4
+    },
+    {
+      "id": 268,
+      "i": 0,
+      "j": 856,
+      "type": "regular",
+      "outputs": [
+        269
+      ],
+      "volume": 0.85,
+      "duration": 0.35
+    },
+    {
+      "id": 269,
+      "i": 0,
+      "j": 840,
+      "type": "regular",
+      "outputs": [
+        246
+      ],
+      "volume": 0.75,
+      "duration": 0.3
+    },
+    {
+      "id": 270,
+      "i": 0,
+      "j": 952,
+      "type": "silent",
+      "outputs": [
+        271
+      ]
+    },
+    {
+      "id": 271,
+      "i": 44,
+      "j": 952,
+      "type": "regular",
+      "outputs": [
+        272
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 272,
+      "i": 56,
+      "j": 952,
+      "type": "regular",
+      "outputs": [
+        273
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    },
+    {
+      "id": 273,
+      "i": 108,
+      "j": 952,
+      "type": "regular",
+      "outputs": [
+        274
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 274,
+      "i": 120,
+      "j": 952,
+      "type": "regular",
+      "outputs": [
+        275
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    },
+    {
+      "id": 275,
+      "i": 128,
+      "j": 952,
+      "type": "silent",
+      "outputs": [
+        276
+      ]
+    },
+    {
+      "id": 276,
+      "i": 128,
+      "j": 996,
+      "type": "regular",
+      "outputs": [
+        277
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 277,
+      "i": 128,
+      "j": 1008,
+      "type": "regular",
+      "outputs": [
+        278
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    },
+    {
+      "id": 278,
+      "i": 128,
+      "j": 1060,
+      "type": "regular",
+      "outputs": [
+        279
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 279,
+      "i": 128,
+      "j": 1072,
+      "type": "regular",
+      "outputs": [
+        280
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    },
+    {
+      "id": 280,
+      "i": 128,
+      "j": 1080,
+      "type": "silent",
+      "outputs": [
+        281
+      ]
+    },
+    {
+      "id": 281,
+      "i": 84,
+      "j": 1080,
+      "type": "regular",
+      "outputs": [
+        282
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 282,
+      "i": 72,
+      "j": 1080,
+      "type": "regular",
+      "outputs": [
+        283
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    },
+    {
+      "id": 283,
+      "i": 20,
+      "j": 1080,
+      "type": "regular",
+      "outputs": [
+        284
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 284,
+      "i": 8,
+      "j": 1080,
+      "type": "regular",
+      "outputs": [
+        285
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    },
+    {
+      "id": 285,
+      "i": 0,
+      "j": 1080,
+      "type": "silent",
+      "outputs": [
+        286
+      ]
+    },
+    {
+      "id": 286,
+      "i": 0,
+      "j": 1036,
+      "type": "regular",
+      "outputs": [
+        287
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 287,
+      "i": 0,
+      "j": 1024,
+      "type": "regular",
+      "outputs": [
+        288
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    },
+    {
+      "id": 288,
+      "i": 0,
+      "j": 972,
+      "type": "regular",
+      "outputs": [
+        289
+      ],
+      "pitch": 9,
+      "volume": 0.85,
+      "duration": 0.22
+    },
+    {
+      "id": 289,
+      "i": 0,
+      "j": 960,
+      "type": "regular",
+      "outputs": [
+        270
+      ],
+      "pitch": 9,
+      "volume": 1,
+      "duration": 0.22
+    }
+  ]
+}

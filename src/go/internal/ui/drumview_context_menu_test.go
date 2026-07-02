@@ -1245,8 +1245,11 @@ func TestMouseClickWorksOnMobileLayout(t *testing.T) {
 	}
 }
 
-// TestMouseClickOnLabelWorksOnMobileLayout verifies that clicking the label
-// on mobile opens the context menu (not the instrument menu directly).
+// TestMouseClickOnLabelWorksOnMobileLayout verifies that clicking the row
+// label on mobile opens the instrument picker. Per the 2026-06-13
+// mobile-instrument-button design, tapping the instrument-name label opens
+// the picker on every platform (the ellipsis/kebab owns the context menu:
+// Rename / Color / Origin / Delete). See row_rack_zone.go label OnClick.
 func TestMouseClickOnLabelWorksOnMobileLayout(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -1305,9 +1308,14 @@ func TestMouseClickOnLabelWorksOnMobileLayout(t *testing.T) {
 		t.Fatal("row scroller should NOT be active for mouse clicks (no touch override)")
 	}
 
-	// On mobile, the label button opens the context menu (not the instrument menu).
-	if !dv.IsContextMenuOpen() {
-		t.Fatal("context menu should open on label click in mobile layout")
+	// On every platform, the label button opens the instrument picker (the
+	// kebab/ellipsis owns the context menu).
+	if !dv.IsInstMenuOpen() {
+		t.Fatalf("instrument picker should open on label click in mobile layout (instMenuOpen=%v contextMenuOpen=%v)",
+			dv.IsInstMenuOpen(), dv.IsContextMenuOpen())
+	}
+	if dv.IsContextMenuOpen() {
+		t.Error("label click must not open the context menu")
 	}
 }
 
@@ -1830,8 +1838,128 @@ func TestContextMenuDesktopStaysOnScreen(t *testing.T) {
 		}
 	}
 
-	// Desktop drops the close × — the last button must NOT be a close icon.
-	if n := len(dv.contextMenuBtns); n > 0 && dv.contextMenuBtns[n-1].Icon == "close" {
-		t.Error("desktop context menu must not have a close button")
+	// Desktop now carries a header with a close × (last button).
+	if n := len(dv.contextMenuBtns); n == 0 || dv.contextMenuBtns[n-1].Icon != "close" {
+		t.Error("desktop context menu must have a close button")
+	}
+}
+
+func TestContextMenuDesktopHasHeaderAndClose(t *testing.T) {
+	assertDefaultParityState(t)
+
+	const W, H = 1280, 720
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	for i := 0; i < 4; i++ {
+		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0})
+	}
+	dv.Length = 8
+
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+
+	dv.openContextMenu(0)
+	if !dv.IsContextMenuOpen() {
+		t.Fatal("context menu should be open")
+	}
+	// Title header rect must be present (like the mobile sheet / other menus).
+	if dv.contextMenuHeaderRect.Empty() {
+		t.Fatal("desktop context menu must have a non-empty header (title) rect")
+	}
+	// Close button present as the trailing button.
+	n := len(dv.contextMenuBtns)
+	if n == 0 || dv.contextMenuBtns[n-1].Icon != "close" {
+		t.Fatal("desktop context menu must have a trailing close button")
+	}
+	// The first menu item must sit BELOW the header band (not overlapping it).
+	headerBandBottom := dv.contextMenuRect.Min.Y + touchMinTargetPx
+	if dv.contextMenuBtns[0].Rect().Min.Y < headerBandBottom {
+		t.Fatalf("first item top %d above header band bottom %d", dv.contextMenuBtns[0].Rect().Min.Y, headerBandBottom)
+	}
+}
+
+func TestContextMenuDesktopAnchorsNearKebab(t *testing.T) {
+	assertDefaultParityState(t)
+
+	const W, H = 1280, 720
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	for i := 0; i < 4; i++ {
+		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0})
+	}
+	dv.Length = 8
+
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+
+	kebabs := dv.rowMenuBtns()
+	if len(kebabs) == 0 {
+		t.Fatal("expected per-row kebab buttons")
+	}
+	kebab := kebabs[0].Rect()
+	if kebab.Empty() {
+		t.Fatal("kebab button rect is empty")
+	}
+
+	dv.openContextMenu(0)
+	if !dv.IsContextMenuOpen() {
+		t.Fatal("context menu should be open")
+	}
+	// Menu must appear near the kebab button (left edges aligned), not far-left
+	// at the row label.
+	dx := dv.contextMenuRect.Min.X - kebab.Min.X
+	if dx < 0 {
+		dx = -dx
+	}
+	if dx > 8 {
+		t.Fatalf("context menu Min.X=%d not aligned to kebab Min.X=%d (delta %d)",
+			dv.contextMenuRect.Min.X, kebab.Min.X, dx)
+	}
+	if !dv.contextMenuRect.In(dv.Bounds) {
+		t.Fatalf("context menu rect %v escapes bounds %v", dv.contextMenuRect, dv.Bounds)
+	}
+}
+
+// Context-menu item icon and label must never overlap (the mobile bug): the
+// label starts to the right of the leading icon on both platforms.
+func TestContextMenuItemLabelClearsIcon(t *testing.T) {
+	assertDefaultParityState(t)
+	const W, H = 1280, 720
+	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
+	for i := 0; i < 4; i++ {
+		dv.Rows = append(dv.Rows, &DrumRow{Name: "Kick", Instrument: "kick", Steps: make([]bool, 8), Volume: 1.0})
+	}
+	dv.Length = 8
+	warmUp := SetInputForTest(
+		func() (int, int) { return 0, 0 },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return W, H },
+	)
+	dv.Update()
+	warmUp()
+	dv.openContextMenu(0)
+	iconR, labelX := dv.contextMenuItemGeom(0)
+	if labelX <= iconR.Max.X {
+		t.Fatalf("context item label x %d overlaps icon (icon max x %d)", labelX, iconR.Max.X)
+	}
+	if iconR.Dx() != menuRowIconSize() {
+		t.Fatalf("context item icon must be %dpx, got %d", menuRowIconSize(), iconR.Dx())
 	}
 }

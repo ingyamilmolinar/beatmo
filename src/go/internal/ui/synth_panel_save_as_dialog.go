@@ -164,8 +164,8 @@ func (dv *DrumView) drawSaveAsDialog(dst *ebiten.Image) {
 	}
 	drawRoundedRect(dst, dlg.rect, TokenSurface2(), RadiusMD, true)
 	drawRoundedRect(dst, dlg.rect, TokenBorderMedium(), RadiusMD, false)
-	DrawTextColorAt(dst, title,
-		dlg.rect.Min.X+SpaceMD, dlg.rect.Min.Y+SpaceMD, TokenTextPrimary())
+	DrawTextStyled(dst, title,
+		dlg.rect.Min.X+SpaceMD, dlg.rect.Min.Y+SpaceMD, RolePanelTitle, TokenTextPrimary())
 	dlg.textInput.Draw(dst)
 	dlg.okBtn.Draw(dst)
 	dlg.cancelBtn.Draw(dst)

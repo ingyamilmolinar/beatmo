@@ -11,6 +11,6 @@ func (dv *DrumView) buildColorMenu() {
 		return
 	}
 	if dv.colorWheelComp != nil && dv.colorWheelComp.IsOpen() {
-		dv.logger.Debugf("[COLOR] build picker: rect=%v", dv.colorWheelComp.WheelRect())
+		dv.logger.Debugf("[color] build picker: rect=%v", dv.colorWheelComp.WheelRect())
 	}
 }

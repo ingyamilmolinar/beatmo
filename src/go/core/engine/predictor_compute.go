@@ -95,7 +95,7 @@ func (p *Predictor) Ensure(horizon int) {
 	logLargeHorizon := horizon > 500 && p.logger != nil
 	if logLargeHorizon {
 		ensureStart = time.Now()
-		p.logger.Debugf("[PREDICTOR] Ensure called with large horizon=%d predDirty=%v windowStart=%d windowEnd=%d windowCap=%d rows=%d",
+		p.logger.Debugf("[predictor] Ensure called with large horizon=%d predDirty=%v windowStart=%d windowEnd=%d windowCap=%d rows=%d",
 			horizon, p.predDirty, p.windowStart, p.windowEnd, p.windowCap, len(p.beatInfosByRow))
 	}
 	p.mu.Lock()
@@ -110,7 +110,7 @@ func (p *Predictor) Ensure(horizon int) {
 	// declared") keeps engine-only callers on the original early-exit path.
 	if !p.predDirty && horizon <= p.windowEnd && (p.visibleMinAbs < 0 || p.visibleMinAbs >= p.windowStart) {
 		if logLargeHorizon {
-			p.logger.Debugf("[PREDICTOR] Ensure early-exit (not dirty, horizon satisfied) elapsed=%v", time.Since(ensureStart))
+			p.logger.Debugf("[predictor] Ensure early-exit (not dirty, horizon satisfied) elapsed=%v", time.Since(ensureStart))
 		}
 		return
 	}
@@ -349,7 +349,7 @@ func (p *Predictor) Ensure(horizon int) {
 	// calls at the same horizon should be O(1) unless inputs change again.
 	p.predDirty = false
 	if logLargeHorizon {
-		p.logger.Debugf("[PREDICTOR] Ensure completed horizon=%d windowStart=%d windowEnd=%d elapsed=%v",
+		p.logger.Debugf("[predictor] Ensure completed horizon=%d windowStart=%d windowEnd=%d elapsed=%v",
 			horizon, p.windowStart, p.windowEnd, time.Since(ensureStart))
 	}
 }

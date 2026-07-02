@@ -31,42 +31,45 @@ func hoverGlowTestTree(t *testing.T, btnRect image.Rectangle) (*DrumViewTree, *B
 	return hoverGlowTestTreeH(t, btnRect, &buttonHitAdapter{btn: b}), b
 }
 
-// ringDraw records one stroked drawRoundedRect call.
-type ringDraw struct {
+// fillDraw records one FILLED drawRoundedRect call.
+type fillDraw struct {
 	rect image.Rectangle
 	col  color.NRGBA
 }
 
-// captureRings intercepts drawRoundedRect and records every STROKED ring
-// (filled=false). Returns a snapshot getter + restore.
-func captureRings() (rings func() []ringDraw, restore func()) {
-	var got []ringDraw
+// captureFills intercepts drawRoundedRect and records every FILLED rect
+// (filled=true). Returns a snapshot getter + restore. The matte hover
+// affordance (retro-analogue restyle 2026-06-17) is a flat FILLED lift of the
+// control rect — no stroked rim — so the tests record fills, not rings.
+func captureFills() (fills func() []fillDraw, restore func()) {
+	var got []fillDraw
 	orig := drawRoundedRect
 	drawRoundedRect = func(dst *ebiten.Image, r image.Rectangle, cc color.Color, radius int, filled bool) {
-		if !filled {
+		if filled {
 			if nc, ok := cc.(color.NRGBA); ok {
-				got = append(got, ringDraw{r, nc})
+				got = append(got, fillDraw{r, nc})
 			}
 		}
 		orig(dst, r, cc, radius, filled)
 	}
-	return func() []ringDraw { return got }, func() { drawRoundedRect = orig }
+	return func() []fillDraw { return got }, func() { drawRoundedRect = orig }
 }
 
-// brightRingNear reports the max-alpha primary-bright stroked ring whose four
-// edges are within `slack` px of `around` (covers the button rect, its inset
-// bright rings, and the expanded bloom). Returns alpha 0 when none.
-func brightRingNear(rings []ringDraw, around image.Rectangle, slack int) uint8 {
-	want := TokenAccentBright()
+// liftAlphaOver reports the max-alpha neutral-white FILLED lift whose rect
+// matches `around` within `slack` px on all four edges. The matte hover lift is
+// a flat fill of the on-surface neutral (TokenTextPrimary) over the control
+// rect — no rim, no specular. Returns alpha 0 when none.
+func liftAlphaOver(fills []fillDraw, around image.Rectangle, slack int) uint8 {
+	want := TokenTextPrimary()
 	var best uint8
-	for _, rd := range rings {
-		if rd.col.R != want.R || rd.col.G != want.G || rd.col.B != want.B {
+	for _, fd := range fills {
+		if fd.col.R != want.R || fd.col.G != want.G || fd.col.B != want.B {
 			continue
 		}
-		if abs(rd.rect.Min.X-around.Min.X) <= slack && abs(rd.rect.Min.Y-around.Min.Y) <= slack &&
-			abs(rd.rect.Max.X-around.Max.X) <= slack && abs(rd.rect.Max.Y-around.Max.Y) <= slack {
-			if rd.col.A > best {
-				best = rd.col.A
+		if abs(fd.rect.Min.X-around.Min.X) <= slack && abs(fd.rect.Min.Y-around.Min.Y) <= slack &&
+			abs(fd.rect.Max.X-around.Max.X) <= slack && abs(fd.rect.Max.Y-around.Max.Y) <= slack {
+			if fd.col.A > best {
+				best = fd.col.A
 			}
 		}
 	}
@@ -75,10 +78,11 @@ func brightRingNear(rings []ringDraw, around image.Rectangle, slack int) uint8 {
 
 // TestHoverGlowOverlayDrawsRingOnButtonHover is the functional regression test:
 // with the cursor parked over a button registered in the tree's HitIndex, the
-// tree's own Draw path must stroke a primary-bright glow ring around that
-// button — proving the hover affordance works through the REAL input/draw
-// loop (not just helper unit tests). This is the bug the user reported: no
-// hover on any button.
+// tree's own Draw path must paint a restrained neutral FILL lift over that
+// button — proving the hover affordance works through the REAL input/draw loop
+// (not just helper unit tests). The matte lift is a flat ~8% white brighten
+// (keycapHoverLiftAlpha), NOT a rim or bloom. This is the bug the user
+// reported: no hover on any button.
 func TestHoverGlowOverlayDrawsRingOnButtonHover(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -97,28 +101,29 @@ func TestHoverGlowOverlayDrawsRingOnButtonHover(t *testing.T) {
 
 	tree, _ := hoverGlowTestTree(t, btnRect)
 
-	rings, restoreRing := captureRings()
-	defer restoreRing()
+	fills, restoreFill := captureFills()
+	defer restoreFill()
 
 	screen := ebiten.NewImage(800, 600)
 	for i := 0; i < 30; i++ { // advance the fade well past zero
 		tree.Draw(screen)
 	}
 
-	// A primary-bright ring must be drawn around the button, and it must be
-	// HIGHLY VISIBLE — alpha well above the old hairline (~27). Slack covers
-	// the bloom expansion (button-hover-glow-spread).
-	a := brightRingNear(rings(), btnRect, genGeomButtonHoverGlowSpread+1)
+	// A neutral matte lift must be painted over the button. It is a flat,
+	// subtle brighten (keycapHoverLiftAlpha ≈ 22) — it must be present but must
+	// NOT be a bold bloom (the old implementation reached >=120 via a strong
+	// inner ring).
+	a := liftAlphaOver(fills(), btnRect, genGeomButtonHoverGlowSpread+1)
 	if a == 0 {
-		t.Fatal("no primary-bright hover ring drawn around the hovered button (affordance dead)")
+		t.Fatal("no matte hover lift painted over the hovered button (affordance dead)")
 	}
-	if a < 120 {
-		t.Fatalf("hover ring barely visible: alpha=%d, want a bold ring (>=120)", a)
+	if a > 40 {
+		t.Fatalf("hover lift too bold/bloom-like: alpha=%d, want subtle flat lift (<=40)", a)
 	}
 }
 
 // hoverGlowExpectRing drives the tree with the cursor at (cx,cy) for 30 frames
-// and returns the max-alpha primary-bright ring near `area`.
+// and returns the max-alpha neutral matte lift near `area`.
 func hoverGlowExpectRing(t *testing.T, tree *DrumViewTree, cx, cy int, area image.Rectangle) uint8 {
 	t.Helper()
 	restore := SetInputForTest(
@@ -130,17 +135,17 @@ func hoverGlowExpectRing(t *testing.T, tree *DrumViewTree, cx, cy int, area imag
 		func() (int, int) { return 800, 600 },
 	)
 	defer restore()
-	rings, restoreRing := captureRings()
-	defer restoreRing()
+	fills, restoreFill := captureFills()
+	defer restoreFill()
 	screen := ebiten.NewImage(800, 600)
 	for i := 0; i < 30; i++ {
 		tree.Draw(screen)
 	}
-	return brightRingNear(rings(), area, genGeomButtonHoverGlowSpread+1)
+	return liftAlphaOver(fills(), area, genGeomButtonHoverGlowSpread+1)
 }
 
 // TestHoverGlowOverlayCoversTextInput proves a clickable text input (the BPM
-// box and similar) gets the same bold hover cushion as a button.
+// box and similar) gets the same restrained matte hover lift as a button.
 func TestHoverGlowOverlayCoversTextInput(t *testing.T) {
 	forceSmallScreenForTest = false
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
@@ -150,8 +155,12 @@ func TestHoverGlowOverlayCoversTextInput(t *testing.T) {
 	ti := &TextInput{Rect: r}
 	tree := hoverGlowTestTreeH(t, r, &textInputHitAdapter{ti: ti})
 
-	if a := hoverGlowExpectRing(t, tree, 90, 35, r); a < 120 {
-		t.Fatalf("text input hover ring barely visible/absent: alpha=%d, want >=120", a)
+	a := hoverGlowExpectRing(t, tree, 90, 35, r)
+	if a == 0 {
+		t.Fatal("text input hover lift absent (affordance dead)")
+	}
+	if a > 40 {
+		t.Fatalf("text input hover lift too bold/bloom-like: alpha=%d, want subtle flat lift (<=40)", a)
 	}
 }
 
@@ -185,14 +194,18 @@ func TestHoverGlowOverlayCoversSlider(t *testing.T) {
 	grp := NewSliderGroup([]*Slider{s}, nil)
 	tree := hoverGlowTestTreeH(t, r, &sliderGroupHitAdapter{group: grp})
 
-	if a := hoverGlowExpectRing(t, tree, 110, 34, r); a < 120 {
-		t.Fatalf("slider hover ring barely visible/absent: alpha=%d, want >=120", a)
+	a := hoverGlowExpectRing(t, tree, 110, 34, r)
+	if a == 0 {
+		t.Fatal("slider hover lift absent (affordance dead)")
+	}
+	if a > 40 {
+		t.Fatalf("slider hover lift too bold/bloom-like: alpha=%d, want subtle flat lift (<=40)", a)
 	}
 }
 
 // TestHoverGlowOverlayRowVolumesAreIndividual is the regression for the
 // reported bug: the per-row volume column is registered as ONE slider-group hit
-// area spanning every row, but hovering a single row's volume must glow only
+// area spanning every row, but hovering a single row's volume must lift only
 // THAT row's slider — not the whole grouped column.
 func TestHoverGlowOverlayRowVolumesAreIndividual(t *testing.T) {
 	forceSmallScreenForTest = false
@@ -200,7 +213,7 @@ func TestHoverGlowOverlayRowVolumesAreIndividual(t *testing.T) {
 	UpdateProfile()
 
 	// Two stacked row-volume sliders sharing one group hit area (its rect is
-	// the union — what the old code glowed).
+	// the union — what the old code lifted).
 	row0 := image.Rect(60, 20, 120, 44)
 	row1 := image.Rect(60, 50, 120, 74)
 	s0, s1 := NewSlider(0.5), NewSlider(0.5)
@@ -220,24 +233,24 @@ func TestHoverGlowOverlayRowVolumesAreIndividual(t *testing.T) {
 		func() (int, int) { return 800, 600 },
 	)
 	defer restore()
-	rings, restoreRing := captureRings()
-	defer restoreRing()
+	fills, restoreFill := captureFills()
+	defer restoreFill()
 	screen := ebiten.NewImage(800, 600)
 	for i := 0; i < 30; i++ {
 		tree.Draw(screen)
 	}
 
 	slack := genGeomButtonHoverGlowSpread + 1
-	if a := brightRingNear(rings(), row1, slack); a < 120 {
-		t.Fatalf("row-1 volume hover ring absent/weak: alpha=%d, want >=120", a)
+	if a := liftAlphaOver(fills(), row1, slack); a == 0 {
+		t.Fatal("row-1 volume hover lift absent (affordance dead)")
 	}
-	// The glow must NOT be painted around the whole grouped column.
-	if a := brightRingNear(rings(), union, slack); a != 0 {
-		t.Fatalf("hover glow drawn around the whole row-volume group (alpha=%d) — should be the individual slider only", a)
+	// The lift must NOT be painted over the whole grouped column.
+	if a := liftAlphaOver(fills(), union, slack); a != 0 {
+		t.Fatalf("hover lift painted over the whole row-volume group (alpha=%d) — should be the individual slider only", a)
 	}
 }
 
-// TestHoverGlowOverlayNoRingWhenCursorAway proves the glow fades out / is
+// TestHoverGlowOverlayNoRingWhenCursorAway proves the lift fades out / is
 // absent when the cursor is not over any button.
 func TestHoverGlowOverlayNoRingWhenCursorAway(t *testing.T) {
 	forceSmallScreenForTest = false
@@ -257,21 +270,22 @@ func TestHoverGlowOverlayNoRingWhenCursorAway(t *testing.T) {
 
 	tree, _ := hoverGlowTestTree(t, btnRect)
 
-	rings, restoreRing := captureRings()
-	defer restoreRing()
+	fills, restoreFill := captureFills()
+	defer restoreFill()
 
 	screen := ebiten.NewImage(800, 600)
 	for i := 0; i < 30; i++ {
 		tree.Draw(screen)
 	}
-	if a := brightRingNear(rings(), btnRect, genGeomButtonHoverGlowSpread+1); a != 0 {
-		t.Fatalf("hover glow ring drawn (alpha=%d) while cursor was away from every button", a)
+	if a := liftAlphaOver(fills(), btnRect, genGeomButtonHoverGlowSpread+1); a != 0 {
+		t.Fatalf("hover lift painted (alpha=%d) while cursor was away from every button", a)
 	}
 }
 
-// TestHoverGlowOverlayMobileNoRing pins the desktop-only rule: on a mobile
-// profile, no hover glow even with the cursor over a button.
-func TestHoverGlowOverlayMobileNoRing(t *testing.T) {
+// TestHoverGlowOverlayMobileNoGlowWithoutPress pins that on mobile (no hover
+// concept) a button NOT being pressed shows no lift even with the cursor
+// parked over it — the glow is press-driven there, not hover-driven.
+func TestHoverGlowOverlayMobileNoGlowWithoutPress(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
 	UpdateProfile()
@@ -282,7 +296,7 @@ func TestHoverGlowOverlayMobileNoRing(t *testing.T) {
 	btnRect := image.Rect(50, 20, 110, 50)
 	restore := SetInputForTest(
 		func() (int, int) { return 80, 35 },
-		func(ebiten.MouseButton) bool { return false },
+		func(ebiten.MouseButton) bool { return false }, // not pressed
 		func(ebiten.Key) bool { return false },
 		func() []rune { return nil },
 		func() (float64, float64) { return 0, 0 },
@@ -292,14 +306,56 @@ func TestHoverGlowOverlayMobileNoRing(t *testing.T) {
 
 	tree, _ := hoverGlowTestTree(t, btnRect)
 
-	rings, restoreRing := captureRings()
-	defer restoreRing()
+	fills, restoreFill := captureFills()
+	defer restoreFill()
 
 	screen := ebiten.NewImage(800, 600)
 	for i := 0; i < 30; i++ {
 		tree.Draw(screen)
 	}
-	if a := brightRingNear(rings(), btnRect, genGeomButtonHoverGlowSpread+1); a != 0 {
-		t.Fatalf("hover glow ring drawn (alpha=%d) on a mobile profile (must stay flat)", a)
+	if a := liftAlphaOver(fills(), btnRect, genGeomButtonHoverGlowSpread+1); a != 0 {
+		t.Fatalf("lift painted (alpha=%d) on mobile with no press (must stay flat until pressed)", a)
+	}
+}
+
+// TestHoverGlowOverlayMobileTapLift pins cross-platform animation parity: since
+// touch has no hover, PRESSING a button on mobile lifts it with the same matte
+// affordance desktop shows on hover. Without this the mobile chrome was flat
+// (the retired "mobile stays flat" rule), diverging from desktop.
+func TestHoverGlowOverlayMobileTapLift(t *testing.T) {
+	forceSmallScreenForTest = true
+	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
+	UpdateProfile()
+	if !Profile().IsMobile() {
+		t.Skip("could not force mobile profile")
+	}
+
+	btnRect := image.Rect(50, 20, 110, 50)
+	restore := SetInputForTest(
+		func() (int, int) { return 80, 35 },           // finger on the button
+		func(ebiten.MouseButton) bool { return true }, // pressed (held)
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 800, 600 },
+	)
+	defer restore()
+
+	tree, _ := hoverGlowTestTree(t, btnRect)
+	tree.Update() // dispatch the press → capture the button
+
+	fills, restoreFill := captureFills()
+	defer restoreFill()
+
+	screen := ebiten.NewImage(800, 600)
+	for i := 0; i < 30; i++ { // advance the fade past zero
+		tree.Draw(screen)
+	}
+	a := liftAlphaOver(fills(), btnRect, genGeomButtonHoverGlowSpread+1)
+	if a == 0 {
+		t.Fatal("no matte tap lift painted over the pressed button on mobile (animation parity broken)")
+	}
+	if a > 40 {
+		t.Fatalf("tap lift too bold/bloom-like: alpha=%d, want subtle flat lift (<=40)", a)
 	}
 }

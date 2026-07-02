@@ -113,6 +113,8 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		// Emit + undo record once at drag release.
 		OnRelease: func() { dv.commitMainVolume() },
 	})
+	dv.synthWheelPopup = NewMobileWheelPopup()
+	dv.samplerWheelPopup = NewMobileWheelPopup()
 	// Initialize overlay components (Phase 5)
 	dv.subdivMenuComp = NewSubdivMenuComponent()
 	dv.renameComp = NewRenameComponent()
@@ -121,7 +123,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 
 	// rowScroll and rowVolGroup are now created by RowRackZone (Phase 4).
 	// Fields are aliased after zone creation below tree initialization.
-	dv.eqChannelScroll = NewScrollBehavior(DropdownScrollbarStyle, TouchRowHeight())
+	dv.eqChannelScroll = NewScrollBehavior(dropdownScrollbarStyle(), TouchRowHeight())
 	dv.eqActiveChannel = "main"
 	dv.eqCurveDragBand = -1
 	dv.eqCurveDirty = true
@@ -384,6 +386,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		SynthTabUpdate: func() bool {
 			return dv.synthTabUpdate()
 		},
+		SynthTabDisabled: func() bool {
+			return !dv.activeInstrumentHasSynth()
+		},
 		OnSamplerTabLayout: func(r image.Rectangle) {
 			dv.buildSamplerTab(r, dv.samplerActiveInstrument())
 		},
@@ -549,8 +554,8 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.logger.Debugf("[drumview] BPM set: -> %d", bpm)
 			emitBPMChange(bpm)
 		},
-		OnNotifyError: func(msg string) {
-			dv.notifyError(msg)
+		OnNotifyErrorKey: func(key i18n.Key, args ...string) {
+			dv.notifyErrorKey(key, args...)
 		},
 		OnFollowChange: func(follow bool) {
 			if follow {
@@ -561,13 +566,13 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		},
 		OnUploadClick: func() {
 			dv.logger.Debugf("[drumview] upload button pressed")
-			dv.logger.Debugf("[DRUMVIEW] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.IsNamingOpen(), dv.IsInstMenuOpen())
+			dv.logger.Debugf("[drumview] Upload button clicked. uploading=%v naming=%v menuOpen=%v", dv.uploading, dv.IsNamingOpen(), dv.IsInstMenuOpen())
 			if dv.importing {
 				return
 			}
 			if !dv.uploading && !dv.IsNamingOpen() {
 				dv.uploading = true
-				dv.logger.Debugf("[DRUMVIEW] Opening file chooser")
+				dv.logger.Debugf("[drumview] Opening file chooser")
 				if err := async.Go("ui.dialog", func(_ context.Context) {
 					path, err := audio.SelectWAV()
 					dv.uploadCh <- uploadResult{path: path, err: err}
@@ -590,9 +595,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.importing = true
 			dv.importAttemptFrame = int(dv.frame)
 			dv.importAttemptUpdate = dv.updateSeq
-			selectJSONAsyncFn(func(data []byte, err error) {
-				jsLog("Import callback invoked; bytes=%d err=%v", len(data), err)
-				dv.importCh <- importResult{data: data, err: err}
+			selectJSONAsyncFn(func(data []byte, name string, err error) {
+				jsLog("Import callback invoked; bytes=%d name=%s err=%v", len(data), name, err)
+				dv.importCh <- importResult{data: data, name: name, err: err}
 			})
 		},
 		OnExportClick: func() {
@@ -679,12 +684,12 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		// is already dispatched before the lock, so it stays a direct call.)
 		OnUndo: func() {
 			if dv.game != nil && dv.game.undoManager != nil {
-				dv.game.QueueAction(func(g *Game) { g.undoManager.Undo() })
+				dv.game.QueueAction(func(g *Game) { g.performUndo() })
 			}
 		},
 		OnRedo: func() {
 			if dv.game != nil && dv.game.undoManager != nil {
-				dv.game.QueueAction(func(g *Game) { g.undoManager.Redo() })
+				dv.game.QueueAction(func(g *Game) { g.performRedo() })
 			}
 		},
 		CanUndo: func() bool {
@@ -768,9 +773,10 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 					anchor = dv.rowLabels()[row].Rect()
 				}
 				dv.colorWheelComp.SetProps(ColorWheelProps{
-					AnchorRect: anchor,
-					Bounds:     rackBounds,
-					RowHeight:  dv.rowHeight(),
+					AnchorRect:   anchor,
+					Bounds:       rackBounds,
+					RowHeight:    dv.rowHeight(),
+					CurrentColor: dv.rowColorAt(row),
 					OnColorPick: func(c color.Color) {
 						dv.SetRowColorManual(dv.colorMenuRow, c)
 					},
@@ -797,31 +803,14 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 						name := strings.TrimSpace(newName)
 						if name != "" && dv.renameRow >= 0 && dv.renameRow < len(dv.Rows) {
 							if strings.ContainsAny(name, "/\\<>\x00") {
-								dv.notifyError(i18n.T(i18n.KeyNotifInvalidName))
+								dv.notifyErrorKey(i18n.KeyNotifInvalidName)
 								dv.renameBox = nil
 								dv.renameRow = -1
 								return
 							}
-							oldID := dv.Rows[dv.renameRow].Instrument
-							newID := strings.ToLower(name)
-							dv.logger.Debugf("[drumview] rename instrument row=%d %q -> %q", dv.renameRow, oldID, newID)
-							audio.RenameInstrument(oldID, newID)
-							emitInstrumentRenamed(oldID, newID)
-							if dv.samplePath != nil {
-								if p, ok := dv.samplePath[oldID]; ok {
-									dv.samplePath[newID] = p
-									delete(dv.samplePath, oldID)
-								}
-							}
-							dv.Rows[dv.renameRow].Instrument = newID
-							dv.Rows[dv.renameRow].Name = name
-							dv.rowLabels()[dv.renameRow].Text = name
-							customColors[newID] = dv.Rows[dv.renameRow].Color
-							dv.invalidateLabelCaches()
-							dv.refreshInstruments()
-							dv.markRowControlsDirty()
-							dv.bgDirty = true
-							dv.notifyInfo(i18n.Tf(i18n.KeyNotifRenamedInstrument, name))
+							dv.logger.Debugf("[drumview] rename instrument row=%d %q -> %q", dv.renameRow, dv.Rows[dv.renameRow].Instrument, name)
+							dv.renameInstrumentTo(dv.renameRow, name)
+							dv.notifyInfoKey(i18n.KeyNotifRenamedInstrument, name)
 						}
 						dv.renameBox = nil
 						dv.renameRow = -1
@@ -893,14 +882,14 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			if newOffset != dv.Offset {
 				dv.Offset = newOffset
 				dv.offsetChanged = true
-				dv.logger.Tracef("[DRUMVIEW/DRAG] offset=%d", dv.Offset)
+				dv.logger.Tracef("[drumview/drag] offset=%d", dv.Offset)
 			}
 		},
 		OnScrubPosition: func(newOffset int) {
 			if newOffset != dv.Offset {
 				dv.Offset = newOffset
 				dv.offsetChanged = true
-				dv.logger.Tracef("[DRUMVIEW/SCRUB] offset=%d len=%d total=%d", dv.Offset, dv.Length, dv.timelineBeats)
+				dv.logger.Tracef("[drumview/scrub] offset=%d len=%d total=%d", dv.Offset, dv.Length, dv.timelineBeats)
 			}
 		},
 		OnRowsLayerDirty: func() {
@@ -926,7 +915,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			if n == nil {
 				return "", false, false
 			}
-			return n.text, n.isErr, true
+			return n.display(), n.isErr, true
 		},
 		OnNotifClick: dv.openNotifHistoryPortal,
 		SetTimelineBeats: func(beats int) {
@@ -1013,16 +1002,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.bottomNavLabels(),
 		0, // Pads active by default
 		func(i int) {
-			modes := []viewMode{
-				viewModeRows,
-				viewModeEQ,
-				viewModeWave,
-				viewModeSpectrum,
-				viewModeMeters,
-				viewModeChain,
-				viewModeSynth,
-				viewModeSampler,
-			}
+			modes := bottomNavModes()
 			if i >= 0 && i < len(modes) {
 				dv.setViewMode(modes[i])
 			}
@@ -1062,6 +1042,45 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	suppressClicksUntilRelease = false
 	return dv
 }
+
+// bottomNavModeList is the canonical mobile bottom-nav segment → viewMode
+// mapping, in display order. Index N of bottomNavLabels() switches to
+// bottomNavModeList[N]. A package-level slice (not a fresh literal per call) so
+// the per-frame disabled-state refresh in the view-switch layer never
+// allocates. Read-only by convention.
+var bottomNavModeList = []viewMode{
+	viewModeRows,
+	viewModeEQ,
+	viewModeWave,
+	viewModeSpectrum,
+	viewModeMeters,
+	viewModeChain,
+	viewModeSynth,
+	viewModeSampler,
+}
+
+// bottomNavModes returns the shared segment → viewMode mapping. Shared by the
+// segmented-control click handler and bottomNavSynthIndex so they can't drift.
+func bottomNavModes() []viewMode { return bottomNavModeList }
+
+// segmentIndexForViewMode returns the bottom-nav segment index that displays
+// viewMode m, or -1 if m has no segment. It is the single inverse of
+// bottomNavModeList: the segmented control's selected index is derived from the
+// same list the click handler uses to map segment→mode, so the forward and
+// reverse mappings can never drift apart. Prefer this over a hand-maintained
+// SetActive(0..7) switch.
+func segmentIndexForViewMode(m viewMode) int {
+	for i, mode := range bottomNavModeList {
+		if mode == m {
+			return i
+		}
+	}
+	return -1
+}
+
+// bottomNavSynthIndex returns the bottom-nav segment index of the Synth view,
+// or -1 if absent.
+func bottomNavSynthIndex() int { return segmentIndexForViewMode(viewModeSynth) }
 
 // bottomNavLabels returns the mobile bottom-nav segment labels resolved in the
 // active locale (Pads + the 7 short tab labels). Used at construction and again

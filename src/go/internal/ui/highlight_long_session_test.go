@@ -57,7 +57,9 @@ func TestCellHighlight_FiresAtAbsBeyondPredictorWindow(t *testing.T) {
 	// returns true (matching live-session conditions where users hear
 	// the kick fire on every beat).
 	const instID = "longsession-kick"
-	if err := audio.RegisterWAV(instID, "test://placeholder.wav"); err != nil {
+	// Empty path → silent placeholder sample (no decode attempt, no log
+	// noise). See sample_desktop.go RegisterAudio's empty-path branch.
+	if err := audio.RegisterWAV(instID, ""); err != nil {
 		t.Fatalf("RegisterWAV: %v", err)
 	}
 	t.Cleanup(func() {

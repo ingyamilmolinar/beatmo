@@ -28,8 +28,10 @@ func parseParamEntry(def audio.ParamDef, text string) (float64, bool) {
 		return 0, false
 	}
 	if len(def.Enum) > 0 {
+		// Accept either the canonical English member or its localized display
+		// label (what the user actually sees prefilled in the editor box).
 		for i, l := range def.Enum {
-			if strings.EqualFold(l, text) {
+			if strings.EqualFold(l, text) || strings.EqualFold(localizeEnumLabel(l), text) {
 				return float64(i), true
 			}
 		}
@@ -100,6 +102,19 @@ func (e *ParamValueEditor) Active() bool { return e.active }
 // and is clamped inside o.Clamp when set.
 func (e *ParamValueEditor) OpenValue(o ValueOpen) {
 	if e.active {
+		// Re-opening the SAME mobile native-input editor would close() it
+		// (calling mobileInputClose, which tears down the live native <input>)
+		// and immediately re-create it. On mobile that dismisses + re-raises the
+		// soft keyboard and, worse, races the native input's creation — a second
+		// press on an already-open BPM/knob editor (touch + synthesized-mouse, an
+		// auto-repeat, or a retry tap) could destroy the freshly-created <input>
+		// before it is visible. If we're already open for this exact mobile id
+		// with the native input still active, the editor is already showing what
+		// the caller wants — leave it untouched.
+		if o.MobileInputID != "" && e.mobileID == o.MobileInputID &&
+			Profile().IsMobile() && mobileInputActive(e.mobileID) {
+			return
+		}
 		e.close()
 	}
 	e.errorAnim = 0 // clear any pending flash from a prior surface's failed commit
@@ -177,13 +192,31 @@ func (e *ParamValueEditor) Update() {
 		}
 		return
 	}
-	if e.mobileID != "" && Profile().IsMobile() && mobileInputActive(e.mobileID) {
-		if val, committed, ok := mobileInputPollResult(e.mobileID); ok {
-			if committed {
-				e.ti.SetText(val)
-				e.commit()
-			} else {
-				e.cancel()
+	if e.mobileID != "" && Profile().IsMobile() {
+		// On mobile the native <input> overlay owns the editor lifecycle. Poll its
+		// result (set by the input's Enter / Escape / blur) and commit/cancel
+		// accordingly; an outside tap blurs the native input, which sets a
+		// committed result here, so "tap outside to dismiss" still works.
+		//
+		// We MUST return unconditionally and never fall through to the desktop
+		// focus-loss path below — even when mobileInputActive is momentarily
+		// false. The native input is created on the gesture's `touchend`, 1-2
+		// frames AFTER Go opens this editor on the tap; in that window (and under
+		// any DPR/canvas coordinate race that places the touch-as-mouse-press
+		// "outside" e.ti.Rect) e.ti.Update() would drop focus and commit() →
+		// close() → mobileInputClose(), tearing the freshly-created <input> down
+		// before the user (or a test) can see it. That was the parallel-batch
+		// flake: the input was created on every retry and Go closed it on every
+		// retry (createCount == go-close detaches). Deferring entirely to the
+		// native input's own lifecycle removes the race.
+		if mobileInputActive(e.mobileID) {
+			if val, committed, ok := mobileInputPollResult(e.mobileID); ok {
+				if committed {
+					e.ti.SetText(val)
+					e.commit()
+				} else {
+					e.cancel()
+				}
 			}
 		}
 		return

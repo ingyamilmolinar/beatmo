@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image"
+	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -174,7 +175,7 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 
 	// Configure shared scroll over the card's interior.
 	if s.menuScroll == nil {
-		s.menuScroll = NewMenuScroll(DropdownScrollbarStyle, rowH)
+		s.menuScroll = NewMenuScroll(dropdownScrollbarStyle(), rowH)
 	}
 	view := s.itemViewport()
 	visible := view.Dy() / rowH
@@ -188,7 +189,8 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 	offset := s.menuScroll.OffsetPx()
 
 	// Stacked items, uniform pitch. Active highlight is painted in Draw via
-	// drawMenuItemBackground, so all buttons use the same base DropdownStyle.
+	// drawMenuRow (shared menu-row renderer), so all buttons use the same base
+	// DropdownStyle.
 	itemX0 := s.cardRect.Min.X + pad
 	itemX1 := s.cardRect.Max.X - pad
 	for i, v := range s.props.Options {
@@ -280,42 +282,29 @@ func (s *SubdivMenuComponent) Draw(dst *ebiten.Image) {
 	}
 }
 
-// drawSubdivRow renders one subdivision option row using the Vice City menu
-// treatment: drawMenuItemBackground for hover/active state and the label via
-// DrawTextStyled(RoleBody). Active = azure stripe + tint; hover = lift; rest
-// = plain. Label is colTextAccent for the current subdivision, colTextPrimary
-// otherwise.
+// drawSubdivRow renders one subdivision option row through the shared
+// drawMenuRow primitive (keycap chrome + press/hover animation). Current
+// subdivision → active with colTextAccent label; hover/press → hover; rest
+// = plain. Label is centered.
 func (s *SubdivMenuComponent) drawSubdivRow(dst *ebiten.Image, btn *Button, v int) {
-	r := btn.Rect()
-	if r.Empty() {
+	if btn.Rect().Empty() {
 		return
 	}
-
-	// Determine row state: current subdivision → active; hover/press → hover.
+	// Current subdivision → active; hover/press → hover.
 	state := menuItemRest
+	var labelCol color.Color // nil → colTextPrimary in drawMenuRow
 	if v == s.props.Current {
 		state = menuItemActive
+		labelCol = colTextAccent
 	} else if btn.hovered || btn.pressed {
 		state = menuItemHover
 	}
-	drawMenuItemBackground(dst, r, state)
-
-	// Draw button chrome (glow/shadow/press) without text — blank Text temporarily.
-	saved := btn.Text
-	btn.Text = ""
-	btn.Draw(dst)
-	btn.Text = saved
-
-	// Label centered via StyledTextHeight/StyledTextWidth (RoleBody).
-	th := StyledTextHeight(RoleBody)
-	tw := StyledTextWidth(saved, RoleBody)
-	tx := r.Min.X + (r.Dx()-tw)/2
-	ty := r.Min.Y + (r.Dy()-th)/2
-	col := colTextPrimary
-	if v == s.props.Current {
-		col = colTextAccent
-	}
-	DrawTextStyled(dst, saved, tx, ty, RoleBody, col)
+	drawMenuRow(dst, btn, MenuRowSpec{
+		State:       state,
+		Label:       btn.Text,
+		LabelColor:  labelCol,
+		CenterLabel: true,
+	})
 }
 
 // Capturing returns whether the component is capturing input.

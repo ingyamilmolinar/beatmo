@@ -53,12 +53,49 @@ func SetSampleEdit(instID string, e SampleEdit) {
 		return
 	}
 	sampleEditsMu.Lock()
+	// No-op skip: re-applying the identical edit (as a full re-import does on
+	// every undo/redo) would re-render the sample for nothing.
+	if cur, ok := sampleEdits[instID]; ok && cur == e {
+		sampleEditsMu.Unlock()
+		return
+	}
 	sampleEdits[instID] = e
 	sampleEditsMu.Unlock()
 
 	voiceCacheInvalidate(instID)
+	reapplyUserSampleEdit(instID, e)
 	hooks.PublishKind(hooks.EventSampleEditChanged, hooks.SamplePayload{SampleID: instID})
 	platformSampleEditChanged(instID, e)
+}
+
+// reapplyUserSampleEdit makes a Sampler edit on a WAV / user-sample instrument
+// audible IMMEDIATELY — the real-time, no-Save path. A user sample has no synth
+// recipe to re-render, so the edit cannot be applied through the recipe voice
+// dispatch (tryRecipeVoice); instead we re-derive the playable PCM from the
+// instrument's PRISTINE source through descriptor e and re-register it via
+// RegisterSamplePCM. That one bridge updates the native Sample table AND the
+// browser renderCache, so the edited chop plays on the next trigger on every
+// platform without baking destructively (the pristine stays the source of truth
+// in the user-sample store, so further edits and Reset are non-destructive).
+//
+// No-op for instruments without a stored pristine source — i.e. synths, which
+// re-render through the recipe path and apply the descriptor there instead.
+//
+// The source is UserSamplePCM (the CURRENT canonical pristine), not
+// OriginalUserSamplePCM (first-put-wins): project import calls PutUserSample with
+// the embedded pristine PCM and THEN SetSampleEdit, so baking from the current
+// store re-derives the playable buffer from the freshly imported source —
+// OriginalUserSamplePCM could still hold a prior session's first-loaded buffer.
+func reapplyUserSampleEdit(id string, e SampleEdit) {
+	rec, ok := UserSamplePCM(id)
+	if !ok || len(rec.PCM) == 0 {
+		return
+	}
+	sr := rec.SampleRate
+	if sr <= 0 {
+		sr = SampleRate()
+	}
+	RegisterSamplePCM(id, BakeSample(rec.PCM, sr, e), sr)
 }
 
 // ClearSampleEdit removes the descriptor for an instrument. A no-op (no
@@ -72,6 +109,9 @@ func ClearSampleEdit(instID string) {
 		return
 	}
 	voiceCacheInvalidate(instID)
+	// Restore a user sample's pristine playback (identity bake) so clearing the
+	// edit reverts the chop in real time, mirroring SetSampleEdit. No-op for synths.
+	reapplyUserSampleEdit(instID, SampleEdit{StartFrac: 0, EndFrac: 1})
 	hooks.PublishKind(hooks.EventSampleEditChanged, hooks.SamplePayload{SampleID: instID})
 	platformSampleEditChanged(instID, SampleEdit{EndFrac: 1}) // identity ⇒ JS deletes its entry
 }

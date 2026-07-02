@@ -847,6 +847,32 @@ func (g *Game) initJSGraphUI() {
 		return arr
 	}))
 
+	// isNamingOpen() -> bool. True while the WAV-upload naming portal is open
+	// (after a .wav is picked, before the new sampler instrument is named/created).
+	// Read-only; lets the real-device upload test assert the OS file pick advanced
+	// the real upload→naming flow.
+	js.Global().Set("isNamingOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil {
+			return js.ValueOf(false)
+		}
+		return js.ValueOf(g.drum.IsNamingOpen())
+	}))
+
+	// instMenuSearchRect() -> {x,y,w,h} of the instrument-menu search field, or
+	// null when the menu is closed / not in instruments mode. Read-only; used by
+	// the mobile sanity test to tap the search field and assert the native
+	// keyboard opens.
+	js.Global().Set("instMenuSearchRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.Null()
+		}
+		r := g.drum.instMenuComp.SearchRect()
+		if r.Empty() {
+			return js.Null()
+		}
+		return rectToJS(r)
+	}))
+
 	// rowColor(row) -> hex string like #RRGGBBAA
 	js.Global().Set("rowColor", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if g.drum == nil || len(args) < 1 {
@@ -1043,24 +1069,7 @@ func (g *Game) initJSGraphUI() {
 		name := args[0].String()
 		name = strings.TrimSpace(name)
 		if name != "" && g.drum.renameRow >= 0 && g.drum.renameRow < len(g.drum.Rows) {
-			oldID := g.drum.Rows[g.drum.renameRow].Instrument
-			newID := strings.ToLower(name)
-			audio.RenameInstrument(oldID, newID)
-			if g.drum.samplePath != nil {
-				if p, ok := g.drum.samplePath[oldID]; ok {
-					g.drum.samplePath[newID] = p
-					delete(g.drum.samplePath, oldID)
-				}
-			}
-			g.drum.Rows[g.drum.renameRow].Instrument = newID
-			g.drum.Rows[g.drum.renameRow].Name = name
-			g.drum.rowLabels()[g.drum.renameRow].Text = name
-			customColors[newID] = g.drum.Rows[g.drum.renameRow].Color
-			g.drum.invalidateLabelCaches()
-			g.drum.refreshInstruments()
-			g.drum.markRowControlsDirty()
-			g.drum.bgDirty = true
-			g.drum.onRowInstrumentChanged(g.drum.renameRow, oldID, newID)
+			g.drum.renameInstrumentTo(g.drum.renameRow, name)
 		}
 		g.drum.closeRename()
 		return nil
@@ -1086,25 +1095,8 @@ func (g *Game) initJSGraphUI() {
 				OnCommit: func(newName string) {
 					name := strings.TrimSpace(newName)
 					if name != "" && g.drum.renameRow >= 0 && g.drum.renameRow < len(g.drum.Rows) {
-						oldID := g.drum.Rows[g.drum.renameRow].Instrument
-						newID := strings.ToLower(name)
-						audio.RenameInstrument(oldID, newID)
-						if g.drum.samplePath != nil {
-							if p, ok := g.drum.samplePath[oldID]; ok {
-								g.drum.samplePath[newID] = p
-								delete(g.drum.samplePath, oldID)
-							}
-						}
-						g.drum.Rows[g.drum.renameRow].Instrument = newID
-						g.drum.Rows[g.drum.renameRow].Name = name
-						g.drum.rowLabels()[g.drum.renameRow].Text = name
-						customColors[newID] = g.drum.Rows[g.drum.renameRow].Color
-						g.drum.invalidateLabelCaches()
-						g.drum.refreshInstruments()
-						g.drum.markRowControlsDirty()
-						g.drum.bgDirty = true
-						g.drum.onRowInstrumentChanged(g.drum.renameRow, oldID, newID)
-						g.drum.notifyInfo(i18n.Tf(i18n.KeyNotifRenamedInstrument, name))
+						g.drum.renameInstrumentTo(g.drum.renameRow, name)
+						g.drum.notifyInfoKey(i18n.KeyNotifRenamedInstrument, name)
 					}
 					g.drum.renameRow = -1
 				},
@@ -1382,6 +1374,15 @@ func (g *Game) initJSGraphUI() {
 			return nil
 		}
 		return rectToJS(g.drum.playBtn().Rect())
+	}))
+
+	// recBtnRect() -> {x,y,w,h} of the transport Record button (or null). Lets
+	// the real-device test tap Record with real touch to start/stop recording.
+	js.Global().Set("recBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if g.drum == nil || g.drum.recordBtn() == nil {
+			return nil
+		}
+		return rectToJS(g.drum.recordBtn().Rect())
 	}))
 
 	// stopBtnRect() -> {x,y,w,h}

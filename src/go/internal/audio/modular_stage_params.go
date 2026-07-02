@@ -66,13 +66,16 @@ var modularStageGroups = []modularStageGroup{
 	// (needs the OSC stage on with a pitched osc type) exactly like fm_enabled;
 	// LFO/BURST are post-mix and shape every voice incl. the family gen-slots. ──
 	{numeric: []string{"pitchenv_amt", "pitchenv_decay"}, toggle: "pitchenv_enabled"},
-	{numeric: []string{"lfo_rate", "lfo_depth"}, toggle: "lfo_enabled"},
+	{numeric: []string{"lfo_rate", "lfo_depth", "lfo_target", "lfo_delay"}, toggle: "lfo_enabled"},
 	{numeric: []string{
 		"burst_sharp",
 		"burst1_off", "burst1_amp", "burst2_off", "burst2_amp",
 		"burst3_off", "burst3_amp", "burst4_off", "burst4_amp",
 	}, toggle: "burst_enabled"},
 	{numeric: []string{"filter_type", "filter_cutoff", "filter_resonance"}, toggle: "filter_enabled"},
+	{numeric: []string{"filtenv_amt", "filtenv_decay", "filtenv_attack"}, toggle: "filtenv_enabled"},
+	/* Phase-8E/F unison/ensemble + drift. No toggle — voices=1 is the identity off-state. */
+	{numeric: []string{"unison_voices", "unison_detune", "unison_mix", "unison_drift_rate", "unison_drift_depth"}, toggle: ""},
 	// The modular DRIVE stage (`drive` + drive_enabled) is intentionally NOT
 	// exposed on migrated recipes: its `drive` knob name is the SAME token the
 	// generic post drive uses, and the two are different DSP nodes — surfacing

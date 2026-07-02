@@ -17,8 +17,8 @@ import "fmt"
 func ModularSynthParamDefs() []ParamDef {
 	defs := []ParamDef{
 		// Oscillator stage.
-		{Name: "osc_type", Label: "Oscillator", Group: "osc", Min: 0, Max: 6, Default: 0,
-			Enum: []string{"Sine", "Saw", "Square", "Triangle", "FM", "Noise White", "Noise Pink"}},
+		{Name: "osc_type", Label: "Oscillator", Group: "osc", Min: 0, Max: 11, Default: 0,
+			Enum: []string{"Sine", "Saw", "Square", "Triangle", "FM", "Noise White", "Noise Pink", "Bowed String", "Brass", "Reed", "Flute", "Sax"}},
 		{Name: "osc_detune", Label: "Detune", Group: "osc", Min: -100, Max: 100, Default: 0, Unit: "cents"},
 		{Name: "osc_octave", Label: "Octave", Group: "osc", Min: -2, Max: 2, Default: 0, Step: 1},
 
@@ -86,7 +86,11 @@ func ModularSynthParamDefs() []ParamDef {
 		ParamDef{Name: "noise_prelude", Label: "Noise Prelude", Group: SynthHiddenGroup, Min: 0, Max: 16, Default: 0},
 	)
 	genBounds := map[string][2]float64{
-		"source": {0, 4}, "wave": {0, 3}, "freq_mode": {0, 1}, "freq": {0, 20000}, "gain": {0, 4},
+		// source ceiling tracks the highest implemented gen_source voice (10=FM
+		// family; 5=kick). A stale max here CLAMPS a kick/tom/snare/cymbal/FM
+		// seed's gen_source down into the analytic-voice range and silently
+		// renders the wrong (or no) voice — see the DnB kick clamp bug.
+		"source": {0, 10}, "wave": {0, 3}, "freq_mode": {0, 1}, "freq": {0, 20000}, "gain": {0, 4},
 		"env_fast_rate": {0, 2000}, "env_tail_rate": {0, 2000}, "env_fast_mix": {0, 4}, "env_tail_mix": {0, 4},
 		"filt_type": {0, 5}, "filt_alpha": {0, 1}, "filt_freq": {20, 20000}, "filt_q": {0.1, 16},
 		"phase_mode": {0, 2}, "phase": {0, 16}, "noise_offset": {0, 3},
@@ -129,7 +133,7 @@ func ModularSynthParamDefs() []ParamDef {
 	// Appended at the very tail to mirror modularGenSlotFieldsPhase2KS (which
 	// mirrors the C struct tail). Defaults are the schema identities (no-op). ──
 	ksBounds := map[string][2]float64{
-		"ks_sustain": {0, 1}, "ks_pluck": {0, 1},
+		"ks_sustain": {0, 1}, "ks_pluck": {0, 1}, "ks_blow": {0, 2},
 	}
 	for _, f := range modularGenSlotFieldsPhase2KS {
 		b := ksBounds[f.Name]
@@ -150,20 +154,48 @@ func ModularSynthParamDefs() []ParamDef {
 	// bounds (these hidden defs exist for ABI completeness only; the source==5
 	// voice reads the live kick knobs, not these). Max = the engine ceiling.
 	kickBounds := map[string][2]float64{
-		"kick_variant": {0, 4},
-		"kick_h2":      {0, 1}, "kick_h3": {0, 1}, "kick_h4": {0, 1},
-		"kick_env0": {0, 20}, "kick_env1": {0, 30},
-		"kick_pe_amt": {0, 0.5}, "kick_pe_rate": {0, 100},
+		"kick_variant": {0, 5}, // 5 = the layered hybrid/punchy DSP
+		"kick_h2":      {0, 2}, "kick_h3": {0, 1}, "kick_h4": {0, 1},
+		"kick_env0": {0, 40}, "kick_env1": {0, 40},
+		"kick_pe_amt": {0, 3}, "kick_pe_rate": {0, 100},
 		"kick_click": {0, 1}, "kick_noise": {0, 1},
 	}
+	// kickStageMeta = the friendly UI label (and enum for the variant selector)
+	// for each slot-1 kick knob surfaced in the visible KICK stage.
+	kickStageMeta := map[string]struct {
+		label string
+		enum  []string
+	}{
+		"kick_variant": {"Variant", []string{"Base", "Deep", "Punchy", "Lo-Fi", "Tight", "Hybrid"}},
+		"kick_h2":      {"2nd Harmonic", nil},
+		"kick_h3":      {"3rd Harmonic", nil},
+		"kick_h4":      {"4th Harmonic", nil},
+		"kick_env0":    {"Body Decay", nil},
+		"kick_env1":    {"Harmonic Decay", nil},
+		"kick_pe_amt":  {"Pitch Drop", nil},
+		"kick_pe_rate": {"Drop Speed", nil},
+		"kick_click":   {"Click", nil},
+		"kick_noise":   {"Thud", nil},
+		"kick_attack":  {"Punch", nil},
+		"kick_fade":    {"Tail", nil},
+		"kick_sat":     {"Drive", nil},
+	}
+	// kickStageMeta surfaces the SLOT-1 kick knobs as the visible KICK Synth-tab
+	// stage (group "kick"); slots 2..12 stay hidden (ABI completeness only). The
+	// kick voice lives in gen-slot 1 by convention for a modular kick instrument.
 	for _, f := range modularGenSlotFieldsPhase3Kick {
 		b := kickBounds[f.Name]
 		for k := 1; k <= modularGenSlots; k++ {
 			name := fmt.Sprintf("gen%d_%s", k, f.Name)
-			defs = append(defs, ParamDef{
+			d := ParamDef{
 				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
-				Min: b[0], Max: b[1], Default: ident[name],
-			})
+				Min: b[0], Max: b[1], Default: ident[name]}
+			if k == 1 {
+				if m, ok := kickStageMeta[f.Name]; ok {
+					d.Group, d.Label, d.Enum = "kick", m.label, m.enum
+				}
+			}
+			defs = append(defs, d)
 		}
 	}
 
@@ -308,7 +340,68 @@ func ModularSynthParamDefs() []ParamDef {
 		ParamDef{Name: "burst3_amp", Label: "Hit 3 Level", Group: "burst", Min: 0, Max: 1, Default: 0.35},
 		ParamDef{Name: "burst4_off", Label: "Hit 4 Time", Group: "burst", Min: 0, Max: 0.25, Default: 0, Unit: "s"},
 		ParamDef{Name: "burst4_amp", Label: "Hit 4 Level", Group: "burst", Min: 0, Max: 1, Default: 0},
+		ParamDef{Name: "lfo_target", Label: "LFO Target", Group: "lfo", Min: 0, Max: 2, Default: 0,
+			Enum: []string{"Amp", "Pitch", "Cutoff"}},
+		// Filter ENVELOPE is its OWN standardized Synth-tab stage (group "filtenv"
+		// → synthSectionFilterEnv), distinct from the static FILTER stage: the
+		// FILTER pill must stay filter_enabled (the rest of the UI — scene catalog,
+		// concept-viz, preview — keys off it), so the env's filtenv_enabled gate
+		// owns a dedicated FILTER-ENV section rather than clobbering FILTER's pill.
+		ParamDef{Name: "filtenv_enabled", Label: "Filter Env", Group: "filtenv", Min: 0, Max: 1, Default: 0,
+			Enum: []string{"Off", "On"}},
+		ParamDef{Name: "filtenv_amt", Label: "Env Amount", Group: "filtenv", Min: 0, Max: 4, Default: 2, Unit: "oct"},
+		ParamDef{Name: "filtenv_decay", Label: "Env Decay", Group: "filtenv", Min: 0.01, Max: 2, Default: 0.3, Unit: "s"},
+		ParamDef{Name: "filtenv_attack", Label: "Env Rise", Group: "filtenv", Min: 0, Max: 2, Default: 0, Unit: "s"},
+		/* Phase-8E unison/ensemble. Default voices=1 = identity (single osc). */
+		ParamDef{Name: "unison_voices", Label: "Voices", Group: "unison", Min: 1, Max: 7, Default: 1,
+			Enum: []string{"1", "2", "3", "4", "5", "6", "7"}},
+		ParamDef{Name: "unison_detune", Label: "Detune", Group: "unison", Min: 0, Max: 50, Default: 0, Unit: "¢"},
+		ParamDef{Name: "unison_mix", Label: "Mix", Group: "unison", Min: 0, Max: 1, Default: 0.5},
+		/* Phase-8F unison drift. Default 0 = identity (no drift). */
+		ParamDef{Name: "unison_drift_rate", Label: "Voice Drift", Group: "unison", Min: 0, Max: 8, Default: 0, Unit: "Hz"},
+		ParamDef{Name: "unison_drift_depth", Label: "Drift Depth", Group: "unison", Min: 0, Max: 30, Default: 0, Unit: "¢"},
+		/* Phase-8G LFO onset delay. Default 0 = identity (ramp factor 1.0 = byte-identical). */
+		ParamDef{Name: "lfo_delay", Label: "Vibrato Delay", Group: "lfo", Min: 0, Max: 3, Default: 0, Unit: "s"},
+		/* Body-resonator bank (organic string body). Default off = identity. */
+		ParamDef{Name: "body_model", Label: "Body Model", Group: SynthHiddenGroup, Min: 0, Max: 4, Default: 0, Enum: []string{"Off", "Violin", "Guitar", "Cello", "Steel Guitar"}},
+		ParamDef{Name: "body_mix", Label: "Body Mix", Group: SynthHiddenGroup, Min: 0, Max: 1.5, Default: 0},
+		ParamDef{Name: "bow_dynamics", Label: "Bow Dynamics", Group: SynthHiddenGroup, Min: 0, Max: 1, Default: 0},
 	)
+
+	// ── Phase-9 kick-extra per-slot fields (source==5): the kick voice's
+	// structural shaping constants (attack-boost amount, global-fade rate,
+	// saturation pre-gain) promoted to knobs. Hidden until the KICK Synth-tab
+	// stage surfaces the slot-1 instances; appended at the new very tail to
+	// mirror modularGenSlotFieldsPhase9KickExtra (the C struct's last fields).
+	// Default 0 = the schema identity (read only at source==5; the C kp_get
+	// supplies the per-variant literal at NaN). Max = the engine ceiling. ──
+	kickExtraBounds := map[string][2]float64{
+		"kick_attack": {0, 3}, "kick_fade": {0, 32}, "kick_sat": {0, 4},
+	}
+	for _, f := range modularGenSlotFieldsPhase9KickExtra {
+		b := kickExtraBounds[f.Name]
+		for k := 1; k <= modularGenSlots; k++ {
+			name := fmt.Sprintf("gen%d_%s", k, f.Name)
+			d := ParamDef{
+				Name: name, Label: fmt.Sprintf("G%d %s", k, f.Name), Group: SynthHiddenGroup,
+				Min: b[0], Max: b[1], Default: ident[name]}
+			if k == 1 {
+				if m, ok := kickStageMeta[f.Name]; ok {
+					d.Group, d.Label, d.Enum = "kick", m.label, m.enum
+				}
+			}
+			defs = append(defs, d)
+		}
+	}
+
+	// ── Phase-10 KICK-stage enable pill (USER-FACING). The kick voice is gated
+	// by source==5 + this toggle; the Synth-tab KICK stage's enable pill writes
+	// it. Default 0 (off, the schema identity / byte-identity polarity); a kick
+	// instrument's seed sets it to 1. ──
+	defs = append(defs, ParamDef{
+		Name: "kick_enabled", Label: "Kick", Group: "kick", Min: 0, Max: 1, Default: 0,
+		Enum: []string{"Off", "On"},
+	})
 	return defs
 }
 

@@ -3,14 +3,14 @@ package model
 import "sort"
 
 func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
-	g.logger.Debugf("[GRAPH] CalculateBeatRow: Start. StartNodeID: %d, BeatLengthValue: %d", g.StartNodeID, g.beatLengthValue)
+	g.logger.Debugf("[graph] CalculateBeatRow: Start. StartNodeID: %d, BeatLengthValue: %d", g.StartNodeID, g.beatLengthValue)
 
 	if g.StartNodeID == InvalidNodeID {
 		beatRow := make([]BeatInfo, g.beatLengthValue)
 		for i := range beatRow {
 			beatRow[i] = BeatInfo{NodeID: InvalidNodeID, NodeType: NodeTypeInvisible, I: -1, J: -1}
 		}
-		g.logger.Debugf("[GRAPH] CalculateBeatRow: No start node, returning empty beat row: %v", beatRow)
+		g.logger.Debugf("[graph] CalculateBeatRow: No start node, returning empty beat row: %v", beatRow)
 		return beatRow, false, -1
 	}
 
@@ -36,12 +36,12 @@ func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 		if idx, ok := visitedBeatIdx[cur]; ok {
 			isLoop = true
 			loopStartBeatIdx = idx
-			g.logger.Debugf("[GRAPH] CalculateBeatRow: Loop detected at node %d (beatIdx=%d)", cur, idx)
+			g.logger.Debugf("[graph] CalculateBeatRow: Loop detected at node %d (beatIdx=%d)", cur, idx)
 			break
 		}
 		nodeCur, ok := g.Nodes[cur]
 		if !ok {
-			g.logger.Warnf("[GRAPH] Missing node %d in Nodes; stopping traversal", cur)
+			g.logger.Warnf("[graph] Missing node %d in Nodes; stopping traversal", cur)
 			break
 		}
 		visitedBeatIdx[cur] = len(beatRow)
@@ -108,7 +108,7 @@ func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 		cur = next
 	}
 
-	g.logger.Tracef("[GRAPH] CalculateBeatRow: Raw beatRow before padding/loop handling: %v", beatRow)
+	g.logger.Tracef("[graph] CalculateBeatRow: Raw beatRow before padding/loop handling: %v", beatRow)
 
 	if isLoop {
 		prefix := beatRow[:loopStartBeatIdx]
@@ -119,20 +119,20 @@ func (g *Graph) CalculateBeatRow() ([]BeatInfo, bool, int) {
 			final = append(final, loopSegment...)
 		}
 		beatRow = final
-		g.logger.Tracef("[GRAPH] CalculateBeatRow: BeatRow after loop expansion: %v", beatRow)
+		g.logger.Tracef("[graph] CalculateBeatRow: BeatRow after loop expansion: %v", beatRow)
 	}
 
 	if len(beatRow) > g.beatLengthValue {
 		beatRow = beatRow[:g.beatLengthValue]
-		g.logger.Tracef("[GRAPH] CalculateBeatRow: Trimmed beatRow to length %d: %v", g.beatLengthValue, beatRow)
+		g.logger.Tracef("[graph] CalculateBeatRow: Trimmed beatRow to length %d: %v", g.beatLengthValue, beatRow)
 	} else {
 		for len(beatRow) < g.beatLengthValue {
 			beatRow = append(beatRow, BeatInfo{NodeID: InvalidNodeID, NodeType: NodeTypeInvisible, I: -1, J: -1})
 		}
-		g.logger.Tracef("[GRAPH] CalculateBeatRow: Padded beatRow to length %d: %v", g.beatLengthValue, beatRow)
+		g.logger.Tracef("[graph] CalculateBeatRow: Padded beatRow to length %d: %v", g.beatLengthValue, beatRow)
 	}
 
-	g.logger.Debugf("[GRAPH] CalculateBeatRow: End. Final beatRow length: %d, IsLoop: %t", len(beatRow), isLoop)
+	g.logger.Debugf("[graph] CalculateBeatRow: End. Final beatRow length: %d, IsLoop: %t", len(beatRow), isLoop)
 	return beatRow, isLoop, loopStartBeatIdx
 }
 
@@ -240,7 +240,7 @@ func (g *Graph) CalculateBeatRowFrom(start NodeID) ([]BeatInfo, bool, int) {
 }
 
 func (g *Graph) IsLoop() bool {
-	g.logger.Debugf("[GRAPH] IsLoop called. StartNodeID: %d, Nodes: %v, Edges: %v", g.StartNodeID, g.Nodes, g.Edges)
+	g.logger.Debugf("[graph] IsLoop called. StartNodeID: %d, Nodes: %v, Edges: %v", g.StartNodeID, g.Nodes, g.Edges)
 
 	visited := make(map[NodeID]bool)
 	recStack := make(map[NodeID]bool)
@@ -248,20 +248,20 @@ func (g *Graph) IsLoop() bool {
 	// Iterate over all nodes to handle disconnected components
 	for nodeID := range g.Nodes {
 		if !visited[nodeID] {
-			g.logger.Tracef("[GRAPH] IsLoop: Starting DFS from node %d", nodeID)
+			g.logger.Tracef("[graph] IsLoop: Starting DFS from node %d", nodeID)
 			if g.dfsDetectCycle(nodeID, visited, recStack) {
-				g.logger.Tracef("[GRAPH] IsLoop: Found a cycle, returning true")
+				g.logger.Tracef("[graph] IsLoop: Found a cycle, returning true")
 				return true
 			}
 		}
 	}
 
-	g.logger.Debugf("[GRAPH] IsLoop: No cycle found, returning false")
+	g.logger.Debugf("[graph] IsLoop: No cycle found, returning false")
 	return false
 }
 
 func (g *Graph) dfsDetectCycle(nodeID NodeID, visited, recStack map[NodeID]bool) bool {
-	g.logger.Tracef("[GRAPH] dfsDetectCycle: Visiting node %d. visited: %v, recStack: %v", nodeID, visited, recStack)
+	g.logger.Tracef("[graph] dfsDetectCycle: Visiting node %d. visited: %v, recStack: %v", nodeID, visited, recStack)
 	visited[nodeID] = true
 	recStack[nodeID] = true
 
@@ -276,18 +276,18 @@ func (g *Graph) dfsDetectCycle(nodeID NodeID, visited, recStack map[NodeID]bool)
 	})
 
 	for _, neighborID := range neighbors {
-		g.logger.Tracef("[GRAPH] dfsDetectCycle: From node %d, checking neighbor %d", nodeID, neighborID)
+		g.logger.Tracef("[graph] dfsDetectCycle: From node %d, checking neighbor %d", nodeID, neighborID)
 		if !visited[neighborID] {
 			if g.dfsDetectCycle(neighborID, visited, recStack) {
 				return true
 			}
 		} else if recStack[neighborID] {
-			g.logger.Tracef("[GRAPH] dfsDetectCycle: Found back edge to %d (cycle detected)", neighborID)
+			g.logger.Tracef("[graph] dfsDetectCycle: Found back edge to %d (cycle detected)", neighborID)
 			return true // Found a cycle
 		}
 	}
 
 	recStack[nodeID] = false
-	g.logger.Tracef("[GRAPH] dfsDetectCycle: Backtracking from node %d. recStack: %v", nodeID, recStack)
+	g.logger.Tracef("[graph] dfsDetectCycle: Backtracking from node %d. recStack: %v", nodeID, recStack)
 	return false
 }

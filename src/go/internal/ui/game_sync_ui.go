@@ -129,10 +129,28 @@ func (g *Game) syncUIToTime() {
 		}
 		if freezeTarget > upTo {
 			need := target + 1
+			// Window the predictor actually has values for. The sliding window
+			// only ever advances (Ensure does not rewind), so after a backward
+			// seek/replay the playhead can land BELOW windowStart: indices there
+			// have been evicted and AudibleAt/VisibleAt/TriggeredAt return false
+			// meaning "not computed", NOT "no hit". Freezing that false as an
+			// immutable playback commit permanently masks real hits — most
+			// visibly the start node at abs=0 — which then trips the
+			// scheduler-vs-DrumView parity watchdog on the next playback. We stop
+			// freezing at the first index outside the window and let a later
+			// frame freeze it once refreshDrumRow has re-anchored the window over
+			// the playhead. Regression: TestSwitchInstrumentAfterStopReplayParity.
+			predWinStart, predWinEnd := 0, need
 			if g.engine != nil && g.engine.Predictor != nil {
 				g.engine.Predictor.Ensure(need)
+				predWinStart = g.engine.Predictor.WindowStart()
+				predWinEnd = g.engine.Predictor.Horizon()
 			}
+			frozeUpTo := upTo
 			for j := upTo + 1; j <= freezeTarget; j++ {
+				if j < predWinStart || j >= predWinEnd {
+					break
+				}
 				bi := g.beatInfoAtRow(row, j)
 				on := false
 				if g.engine != nil && g.engine.Predictor != nil {
@@ -148,8 +166,9 @@ func (g *Game) syncUIToTime() {
 				// produced an audible sample yet. Treat all frozen entries as
 				// playback commits so later edits cannot mutate the past.
 				g.recordTimelineCommitKind(row, j, on, bi.NodeType, timeline.CommitKindPlayback)
+				frozeUpTo = j
 			}
-			g.frozenUpToByRow[row] = freezeTarget
+			g.frozenUpToByRow[row] = frozeUpTo
 		}
 		// Set animation progress precisely to current fraction within segment.
 		// absDivF and lastIdx are in subdivisions; convert to beats first.
@@ -198,7 +217,7 @@ func (g *Game) advancePulse(p *pulse) bool {
 	arrivalBeatInfo := p.toBeatInfo
 	arrivalPathIdx := p.pathIdx
 
-	g.logger.Tracef("[PULSE/ADVANCE] arrived beat=%d info=%+v", arrivalPathIdx, arrivalBeatInfo)
+	g.logger.Tracef("[pulse/advance] arrived beat=%d info=%+v", arrivalPathIdx, arrivalBeatInfo)
 	if p.row < len(g.drum.Rows) {
 		origin := g.drum.Rows[p.row].Origin
 		if origin != model.InvalidNodeID && arrivalBeatInfo.NodeID == origin &&

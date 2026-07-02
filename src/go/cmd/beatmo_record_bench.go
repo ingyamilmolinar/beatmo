@@ -55,28 +55,28 @@ func startRecordBench(logger *game_log.Logger) (string, func(), error) {
 		cpuFile.Close()
 		return "", nil, fmt.Errorf("start cpu profile: %w", err)
 	}
-	logger.Infof("[RECORD-BENCH] outDir=%s cpuProfile=%s", outDir, cpuPath)
+	logger.Infof("[record-bench] outDir=%s cpuProfile=%s", outDir, cpuPath)
 
 	blockRate := bench.EnvInt("BEATMO_BLOCK_PROFILE", 0)
 	mutexFrac := bench.EnvInt("BEATMO_MUTEX_PROFILE", 0)
 	if blockRate > 0 {
 		runtime.SetBlockProfileRate(blockRate)
-		logger.Infof("[RECORD-BENCH] block profiling enabled rate=%d", blockRate)
+		logger.Infof("[record-bench] block profiling enabled rate=%d", blockRate)
 	}
 	if mutexFrac > 0 {
 		runtime.SetMutexProfileFraction(mutexFrac)
-		logger.Infof("[RECORD-BENCH] mutex profiling enabled fraction=%d", mutexFrac)
+		logger.Infof("[record-bench] mutex profiling enabled fraction=%d", mutexFrac)
 	}
 
 	subUnsubs := []func(){
 		hooks.Subscribe(hooks.EventRecordStart, func(e hooks.Event) {
-			logger.Infof("[RECORD-BENCH/hook] record.start payload=%v", e.Payload)
+			logger.Infof("[record-bench/hook] record.start payload=%v", e.Payload)
 		}),
 		hooks.Subscribe(hooks.EventRecordStop, func(e hooks.Event) {
-			logger.Infof("[RECORD-BENCH/hook] record.stop payload=%v", e.Payload)
+			logger.Infof("[record-bench/hook] record.stop payload=%v", e.Payload)
 		}),
 		hooks.Subscribe(hooks.EventRecordDropped, func(e hooks.Event) {
-			logger.Errorf("[RECORD-BENCH/hook] record.dropped count=%v — pipeline backpressure!", e.Payload)
+			logger.Errorf("[record-bench/hook] record.dropped count=%v — pipeline backpressure!", e.Payload)
 		}),
 	}
 
@@ -115,7 +115,7 @@ func startRecordBench(logger *game_log.Logger) (string, func(), error) {
 		for _, u := range subUnsubs {
 			u()
 		}
-		logger.Infof("[RECORD-BENCH] artifacts in %s", outDir)
+		logger.Infof("[record-bench] artifacts in %s", outDir)
 	}
 	return outDir, stop, nil
 }
@@ -166,15 +166,15 @@ func writeNamedHeapProfile(outDir, name string, logger *game_log.Logger) {
 	path := filepath.Join(outDir, name+".pprof")
 	f, err := os.Create(path)
 	if err != nil {
-		logger.Errorf("[RECORD-BENCH] create %s profile: %v", name, err)
+		logger.Errorf("[record-bench] create %s profile: %v", name, err)
 		return
 	}
 	defer f.Close()
 	if err := pprof.WriteHeapProfile(f); err != nil {
-		logger.Errorf("[RECORD-BENCH] write %s profile: %v", name, err)
+		logger.Errorf("[record-bench] write %s profile: %v", name, err)
 		return
 	}
-	logger.Infof("[RECORD-BENCH] %s profile → %s", name, path)
+	logger.Infof("[record-bench] %s profile → %s", name, path)
 }
 
 // runSynthParamChurn drives audio.SetInstrumentParam at hz on every
@@ -198,7 +198,7 @@ func runSynthParamChurn(hz int, logger *game_log.Logger, stop <-chan struct{}, w
 	if period <= 0 {
 		period = time.Millisecond
 	}
-	logger.Infof("[RECORD-BENCH] synth param churn enabled hz=%d period=%s", hz, period)
+	logger.Infof("[record-bench] synth param churn enabled hz=%d period=%s", hz, period)
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 	start := time.Now()
@@ -206,7 +206,7 @@ func runSynthParamChurn(hz int, logger *game_log.Logger, stop <-chan struct{}, w
 	for {
 		select {
 		case <-stop:
-			logger.Infof("[RECORD-BENCH] synth param churn stopped ticks=%d", ticks)
+			logger.Infof("[record-bench] synth param churn stopped ticks=%d", ticks)
 			return
 		case <-ticker.C:
 			ticks++
@@ -226,21 +226,21 @@ func runSynthParamChurn(hz int, logger *game_log.Logger, stop <-chan struct{}, w
 func writeNamedProfile(outDir, name string, logger *game_log.Logger) {
 	prof := pprof.Lookup(name)
 	if prof == nil {
-		logger.Errorf("[RECORD-BENCH] no profile named %q", name)
+		logger.Errorf("[record-bench] no profile named %q", name)
 		return
 	}
 	path := filepath.Join(outDir, name+".pprof")
 	f, err := os.Create(path)
 	if err != nil {
-		logger.Errorf("[RECORD-BENCH] create %s profile: %v", name, err)
+		logger.Errorf("[record-bench] create %s profile: %v", name, err)
 		return
 	}
 	defer f.Close()
 	if err := prof.WriteTo(f, 0); err != nil {
-		logger.Errorf("[RECORD-BENCH] write %s profile: %v", name, err)
+		logger.Errorf("[record-bench] write %s profile: %v", name, err)
 		return
 	}
-	logger.Infof("[RECORD-BENCH] %s profile → %s", name, path)
+	logger.Infof("[record-bench] %s profile → %s", name, path)
 }
 
 func writeHeapProfile(outDir string, logger *game_log.Logger) {
@@ -248,15 +248,15 @@ func writeHeapProfile(outDir string, logger *game_log.Logger) {
 	heapPath := filepath.Join(outDir, "heap.pprof")
 	f, err := os.Create(heapPath)
 	if err != nil {
-		logger.Errorf("[RECORD-BENCH] create heap profile: %v", err)
+		logger.Errorf("[record-bench] create heap profile: %v", err)
 		return
 	}
 	defer f.Close()
 	if err := pprof.WriteHeapProfile(f); err != nil {
-		logger.Errorf("[RECORD-BENCH] write heap profile: %v", err)
+		logger.Errorf("[record-bench] write heap profile: %v", err)
 		return
 	}
-	logger.Infof("[RECORD-BENCH] heap profile → %s", heapPath)
+	logger.Infof("[record-bench] heap profile → %s", heapPath)
 }
 
 // audioCountersAdapter bridges the internal/audio package-level helpers
@@ -272,12 +272,12 @@ func writeRuntimeStats(outDir string, logger *game_log.Logger) {
 	stats := bench.RuntimeStatsSnapshot(audioCountersAdapter{})
 	b, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
-		logger.Errorf("[RECORD-BENCH] marshal runtime stats: %v", err)
+		logger.Errorf("[record-bench] marshal runtime stats: %v", err)
 		return
 	}
 	statsPath := filepath.Join(outDir, "runtime_stats.json")
 	if err := os.WriteFile(statsPath, b, 0o644); err != nil {
-		logger.Errorf("[RECORD-BENCH] write runtime stats: %v", err)
+		logger.Errorf("[record-bench] write runtime stats: %v", err)
 	}
 }
 
@@ -306,7 +306,7 @@ func loadHooksConfig(path string, logger *game_log.Logger) (func(), error) {
 
 func runHookAction(action string, _ hooks.Event, logger *game_log.Logger) {
 	if !bench.IsKnownAction(action) {
-		logger.Errorf("[HOOKS] unknown action: %s", action)
+		logger.Errorf("[hooks] unknown action: %s", action)
 		return
 	}
 	switch bench.HookAction(action) {
@@ -322,16 +322,16 @@ func runHookAction(action string, _ hooks.Event, logger *game_log.Logger) {
 			_ = os.MkdirAll(filepath.Dir(path), 0o755)
 			f, err := os.Create(path)
 			if err != nil {
-				logger.Errorf("[HOOKS] dump_pprof: %v", err)
+				logger.Errorf("[hooks] dump_pprof: %v", err)
 				return
 			}
 			defer f.Close()
 			runtime.GC()
 			if err := pprof.WriteHeapProfile(f); err != nil {
-				logger.Errorf("[HOOKS] dump_pprof write: %v", err)
+				logger.Errorf("[hooks] dump_pprof write: %v", err)
 				return
 			}
-			logger.Infof("[HOOKS] dump_pprof → %s", path)
+			logger.Infof("[hooks] dump_pprof → %s", path)
 		}()
 	}
 }

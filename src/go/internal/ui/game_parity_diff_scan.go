@@ -247,6 +247,17 @@ func (g *Game) parityScan(reason string) {
 			if k < audioStart || k >= audioEnd {
 				continue
 			}
+			// Generation filter (SYMMETRIC with the audio side below): a
+			// decision recorded before the latest structural mutation belongs
+			// to a prior parity generation and must never be compared against
+			// the post-mutation predictor — that comparison is the live-edit
+			// false positive. Dropping it here (and the matching audio event
+			// below) keeps both sides of every comparison in the same
+			// generation. The sequencer re-records current/future beats under
+			// the new generation, so detection resumes within a frame.
+			if v.ParityGen != curParityGen {
+				continue
+			}
 			rowCopy[k] = v
 		}
 		if len(rowCopy) > 0 {
@@ -257,16 +268,12 @@ func (g *Game) parityScan(reason string) {
 
 	eventsByRow := make(map[int]map[int]parityAudioEvent)
 	curGen := g.audioGen.Load()
-	// Track the contributing parity-gen per (row, abs) so per-mismatch reports
-	// can stamp GenAtRecord. The scan retains entries whose ParityGen disagrees
-	// with the current one so audio_vs_seq / seq_vs_view comparisons remain
-	// symmetric (filtering one side and not the other creates spurious
-	// mismatches when a structural mutation lands mid-frame). Cross-generation
-	// pairings are tolerated because D4 (freeze-loop demotion) and the runtime
-	// grace window absorb the genuine inconsistency window.
-	_ = curParityGen
 	for _, ev := range audioEvents {
-		if ev.Gen != curGen {
+		// audioGen filter: drop in-flight notes from a prior audio run
+		// (stop/replay). parityGen filter: drop events from a prior structural
+		// generation (live edit), symmetric with the seq-decision filter above.
+		// Both sides of every comparison are now guaranteed same-generation.
+		if ev.Gen != curGen || ev.ParityGen != curParityGen {
 			continue
 		}
 		if ev.Abs < audioStart || ev.Abs >= audioEnd {
@@ -457,7 +464,18 @@ func (g *Game) parityScan(reason string) {
 				ev, hasAudio = rowEvents[abs]
 			}
 			if dec, ok2 := decRow[abs]; ok2 {
-				if dec.Audible && !dec.Missing && !hasAudio && typ == model.NodeTypeRegular {
+				// dec.Enqueued gates this check: a decision whose audio the
+				// scheduler already handed to the audio pipeline is NOT a
+				// missing-audio violation even when no parityAudio event has
+				// been recorded yet — the audio is simply still in-flight in
+				// audioCh (audioLoop briefly behind), or was dropped by the
+				// audio thread under backpressure / a transport transition.
+				// audio_missing only flags the genuine scheduler bug: an
+				// audible decision whose audio was never enqueued at all
+				// (Enqueued=false). Production couples decision-record and
+				// enqueue in one seqMu critical section, so Audible⟹Enqueued
+				// and this check never false-positives on pipeline latency.
+				if dec.Audible && !dec.Missing && !dec.Enqueued && !hasAudio && typ == model.NodeTypeRegular {
 					// Avoid racey false-positives: if the sequencer just
 					// recorded the decision but hasn't yet logged the audio
 					// event into parityAudio, allow a small grace window.
@@ -488,11 +506,19 @@ func (g *Game) parityScan(reason string) {
 			if inWindow {
 				if dec, ok2 := decRow[abs]; ok2 {
 					if !dec.Missing && !rowMuted && !soloGated {
-						fatalNow := (g.parityWatch == parityWatchPanic) || (g.parityWatch == parityWatchOff && parityFatalEnabled.Load())
 						// Use dec.Visible (view truth) for seq_vs_view comparison,
 						// not dec.Audible (audio truth). Mute gates make nodes
 						// inaudible but still visible in the UI.
-						if fatalNow || !dec.Visible || slate || row < 0 || row >= len(g.seqNextIdxs) || abs != g.seqNextIdxs[row]-1 {
+						//
+						// The `abs == seqNextIdxs[row]-1` clause is the
+						// just-scheduled-beat grace: that beat's slate will be
+						// rendered on the next refresh, so a visible-decision /
+						// not-yet-slated disagreement there is a one-frame
+						// pipeline lag, not a desync. This grace now holds in
+						// EVERY mode (including fatal) — previously a leading
+						// `fatalNow ||` bypassed it exactly in the panic mode,
+						// crashing on the benign lag.
+						if !dec.Visible || slate || row < 0 || row >= len(g.seqNextIdxs) || abs != g.seqNextIdxs[row]-1 {
 							if dec.Visible != slate {
 								g.parityReport(mismatchEntry{
 									Row:       row,
@@ -590,6 +616,12 @@ func (g *Game) parityScan(reason string) {
 						// Audio clock not initialized yet; defer highlight parity until it is.
 						skip = true
 					}
+				}
+				// A highlight the sequencer dropped (hlCh full under load) is
+				// never painted by the UI, so "audio fired but no highlight" is
+				// an expected cosmetic loss, not an audio/UI desync. Exempt it.
+				if !skip && g.highlightWasDropped(row, abs) {
+					skip = true
 				}
 				if !skip {
 					key := makeBeatKey(row, abs)

@@ -68,34 +68,60 @@ func TestSegmentedControl_OutsideTapIgnored(t *testing.T) {
 }
 
 // TestSegmentedControl_ActiveSegmentUsesAccent verifies the active segment
-// is filled with the accent token, while inactive segments are not. We
-// intercept drawRoundedRect and look for an accent-coloured fill inside
-// the active segment's rect.
+// renders as a lit sunset-gold keycap — its cap face is drawn via the cached
+// rounded-button primitive (drawRoundedButton, the same path drawPillTabAt
+// uses for the desktop audio tabs) with the accent (#FFB30A) fill, located
+// inside the active segment. Inactive segments must NOT carry an accent fill.
 func TestSegmentedControl_ActiveSegmentUsesAccent(t *testing.T) {
 	sc := NewSegmentedControl([]string{"A", "B", "C"}, 1, nil)
 	sc.SetRect(image.Rect(0, 0, 300, 44))
 
 	dst := ebiten.NewImage(300, 44)
-	calls := captureRoundedRectCalls(t, func() { sc.Draw(dst) })
+	var rec drawCallRecorder
+	rec.record(t, func() { sc.Draw(dst) })
 
-	activeR := sc.SegmentRect(1)
-	accent := color.NRGBAModel.Convert(TokenAccent()).(color.NRGBA)
-	matched := false
-	for _, c := range calls {
-		if !c.Filled {
-			continue
+	accent := color.RGBAModel.Convert(TokenAccent()).(color.RGBA)
+	accentIn := func(seg image.Rectangle) bool {
+		for _, c := range rec.calls {
+			if c.Kind != drawCallRoundedButton {
+				continue
+			}
+			if c.Color == accent && c.Rect.In(seg) {
+				return true
+			}
 		}
-		got, ok := c.Color.(color.NRGBA)
-		if !ok {
-			continue
-		}
-		if got.R == accent.R && got.G == accent.G && got.B == accent.B && c.Rect.In(activeR) {
-			matched = true
-			break
-		}
+		return false
 	}
-	if !matched {
-		t.Fatalf("no accent-coloured fill inside active segment %v; calls=%+v", activeR, calls)
+
+	if !accentIn(sc.SegmentRect(1)) {
+		t.Fatalf("active segment %v has no accent keycap cap; calls=%+v", sc.SegmentRect(1), rec.calls)
+	}
+	if accentIn(sc.SegmentRect(0)) {
+		t.Fatalf("inactive segment 0 should not carry an accent fill")
+	}
+	if accentIn(sc.SegmentRect(2)) {
+		t.Fatalf("inactive segment 2 should not carry an accent fill")
+	}
+}
+
+// TestSegmentedControl_DisabledSegmentNotAccented verifies a disabled segment
+// never renders the lit-amber active cap even when it is the active index
+// (e.g. the Synth segment greyed for WAV instruments). It also must not draw
+// dark-on-amber active text.
+func TestSegmentedControl_DisabledSegmentNotAccented(t *testing.T) {
+	sc := NewSegmentedControl([]string{"A", "B", "C"}, 1, nil)
+	sc.SetRect(image.Rect(0, 0, 300, 44))
+	sc.SetSegmentDisabled(1, true)
+
+	dst := ebiten.NewImage(300, 44)
+	var rec drawCallRecorder
+	rec.record(t, func() { sc.Draw(dst) })
+
+	accent := color.RGBAModel.Convert(TokenAccent()).(color.RGBA)
+	for _, c := range rec.calls {
+		if c.Kind == drawCallRoundedButton && c.Color == accent && c.Rect.In(sc.SegmentRect(1)) {
+			t.Fatalf("disabled active segment must not render the amber cap; got %+v", c)
+		}
 	}
 }
 

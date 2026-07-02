@@ -399,6 +399,7 @@ func TestPillDragRightKeepsTimelineDrawConfined(t *testing.T) {
 
 	stripeEven := genColorDrumStripeEven
 	stripeOdd := genColorDrumStripeOdd
+	rh := dv.rowHeight()
 
 	rec := &drawCallRecorder{}
 	dst := ebiten.NewImage(dv.Bounds.Dx(), dv.Bounds.Dy())
@@ -411,6 +412,14 @@ func TestPillDragRightKeepsTimelineDrawConfined(t *testing.T) {
 			continue
 		}
 		if c.Color != stripeEven && c.Color != stripeOdd {
+			continue
+		}
+		// The drum-stripe tokens alias the background/surface-1 tokens by
+		// design (DESIGN.md: stripes recede into the background), so legitimate
+		// full-zone background fills share the stripe RGBA. A real per-row
+		// stripe is exactly one rowHeight tall; zone/area backgrounds are
+		// taller. Only single-row-height fills can be true bleed.
+		if c.Rect.Dy() > rh {
 			continue
 		}
 		if c.Rect.Overlaps(rack) {

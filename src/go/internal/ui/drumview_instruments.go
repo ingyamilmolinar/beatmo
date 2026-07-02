@@ -4,9 +4,40 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
+
+// renameInstrumentTo sets a metadata-only display-name override for the
+// instrument in the given row. The instrument ID is never changed — this is
+// the entire rename operation. Empty/whitespace names are ignored.
+func (dv *DrumView) renameInstrumentTo(row int, name string) {
+	name = strings.TrimSpace(name)
+	if name == "" || row < 0 || row >= len(dv.Rows) {
+		return
+	}
+	id := dv.Rows[row].Instrument
+	if id == "" {
+		return
+	}
+	audio.SetInstrumentDisplayName(id, name)
+	dv.invalidateLabelCaches()
+	dv.Rows[row].Name = dv.computeInstLabel(id)
+	if row < len(dv.rowLabels()) {
+		dv.rowLabels()[row].Text = dv.Rows[row].Name
+	}
+	if dv.IsInstMenuOpen() {
+		dv.refreshInstMenuComponent()
+	}
+	dv.markRowControlsDirty()
+	dv.bgDirty = true
+	// The id is unchanged, so this is NOT an instrument swap — do NOT call
+	// onRowInstrumentChanged. Emit the rename event (publishes
+	// EventInstrumentRenamed + records undo via recordUndo). For a
+	// metadata-only rename old==new id.
+	emitInstrumentRenamed(id, id)
+}
 
 func (dv *DrumView) refreshInstruments() {
 	// Query available instruments (catalog + already-registered) lazily.
@@ -22,25 +53,19 @@ func (dv *DrumView) refreshInstruments() {
 	dv.instRegistryVersion = instVer
 	dv.instRefreshDirty = false
 	meta := audio.Catalog()
-	dv.instCatByID = map[string]string{}
 	dv.instMeta = map[string]audio.SoundMeta{}
 	for _, m := range meta {
-		dv.instCatByID[m.ID] = m.Category
 		dv.instMeta[m.ID] = m
 	}
-	cats := audio.CatalogCategories()
-	fallbackCat := fallbackInstCategory
 
 	seen := map[string]bool{}
 	opts := []string{}
-	// Registered (built-in or already loaded) instruments first to keep legacy ordering.
 	for _, id := range audio.Instruments() {
 		if !seen[id] {
 			opts = append(opts, id)
 			seen[id] = true
 		}
 	}
-	// Catalog entries in their discovered order.
 	for _, m := range meta {
 		if !seen[m.ID] {
 			opts = append(opts, m.ID)
@@ -48,29 +73,25 @@ func (dv *DrumView) refreshInstruments() {
 		}
 	}
 
-	// Assign a fallback category to any instrument that lacks catalog metadata
-	// so category mode never renders empty and built-ins remain reachable.
-	uncat := 0
+	// Canonical category per instrument, plus the ordered taxonomy filtered to
+	// categories that actually have at least one instrument.
+	dv.instCatByID = map[string]string{}
+	catNameByID := map[audio.CategoryID]string{}
+	for _, c := range audio.Categories() {
+		catNameByID[c.ID] = c.Name
+	}
+	usedCats := map[audio.CategoryID]bool{}
 	for _, id := range opts {
-		if _, ok := dv.instCatByID[id]; !ok {
-			dv.instCatByID[id] = fallbackCat
-			uncat++
+		cid := audio.CategoryOf(id)
+		dv.instCatByID[id] = catNameByID[cid]
+		usedCats[cid] = true
+	}
+	cats := []string{}
+	for _, c := range audio.Categories() {
+		if usedCats[c.ID] {
+			cats = append(cats, c.Name)
 		}
 	}
-	if uncat > 0 {
-		hasFallback := false
-		for _, c := range cats {
-			if c == fallbackCat {
-				hasFallback = true
-				break
-			}
-		}
-		if !hasFallback {
-			cats = append(cats, fallbackCat)
-		}
-	}
-	// Deterministic ordering keeps tests stable.
-	slices.Sort(cats)
 	dv.instCategories = cats
 	if len(dv.instCategories) > 0 && dv.instMenuActiveCat == "" {
 		dv.instMenuActiveCat = dv.instCategories[0]
@@ -230,6 +251,7 @@ func (dv *DrumView) refreshInstMenuComponent() {
 			ID:       id,
 			Label:    label,
 			Category: cat,
+			Color:    dv.instrumentRowColor(id),
 		})
 	}
 	props := dv.instMenuComp.Props()

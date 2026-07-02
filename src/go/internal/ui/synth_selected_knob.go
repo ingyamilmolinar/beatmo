@@ -2,9 +2,9 @@ package ui
 
 import "image"
 
-// synthMobileFocusRect is the stacked band reserved above the knob grid on
-// mobile for "Your sound" + the focus graph (empty on desktop, where the side
-// preview pane carries them instead).
+// synthMobileFocusRect is the right column beside the knob grid (empty on
+// desktop) reserved on mobile for "Your sound" + the focus graph (on desktop the
+// side preview pane carries them instead).
 func (dv *DrumView) synthMobileFocusRect() image.Rectangle { return dv.instEditorMobileFocusRect }
 
 // synthSectionsRectForTest returns the post-shrink knob-grid rect that

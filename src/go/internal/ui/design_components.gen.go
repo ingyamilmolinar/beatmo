@@ -55,7 +55,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonPrimary: {
 		ID:       ComponentButtonPrimary,
 		Category: CategoryButton,
-		Fill:     color.RGBA{0, 200, 224, 255},
+		Fill:     color.RGBA{255, 179, 10, 255},
 		Border: BorderRef{
 			BaseColor: color.RGBA{255, 255, 255, 255},
 			Alpha:     genAlphaWhiteDecoration,
@@ -115,9 +115,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonRowControlSoloActive: {
 		ID:       ComponentButtonRowControlSoloActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{63, 224, 232, 255},
+		Fill:     color.RGBA{255, 211, 25, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{63, 224, 232, 255},
+			BaseColor: color.RGBA{255, 211, 25, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -128,7 +128,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 		Category: CategoryButton,
 		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{0, 200, 224, 255},
+			BaseColor: color.RGBA{255, 179, 10, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -208,7 +208,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 	},
 	ComponentSplitterHandleMobile: {
 		ID:     ComponentSplitterHandleMobile,
-		Fill:   color.RGBA{0, 168, 201, 255},
+		Fill:   color.RGBA{255, 158, 31, 255},
 		Radius: 8,
 	},
 	ComponentRowRack: {
@@ -222,11 +222,11 @@ var componentSpecs = [componentCount]ComponentSpec{
 	},
 	ComponentVizSpectrumBar: {
 		ID:   ComponentVizSpectrumBar,
-		Fill: color.RGBA{0, 200, 224, 255},
+		Fill: color.RGBA{255, 179, 10, 255},
 	},
 	ComponentVizSpectrumBarPeak: {
 		ID:   ComponentVizSpectrumBarPeak,
-		Fill: color.RGBA{154, 240, 255, 255},
+		Fill: color.RGBA{255, 233, 138, 255},
 	},
 	ComponentVizEqCurve: {
 		ID: ComponentVizEqCurve,
@@ -304,7 +304,7 @@ var componentSpecs = [componentCount]ComponentSpec{
 		Category: CategoryButton,
 		Fill:     color.RGBA{40, 26, 64, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{0, 200, 224, 255},
+			BaseColor: color.RGBA{255, 179, 10, 255},
 			Alpha:     genAlphaAccentTint,
 		},
 		Radius: 12,
@@ -345,9 +345,9 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonEqFilterActive: {
 		ID:       ComponentButtonEqFilterActive,
 		Category: CategoryButton,
-		Fill:     color.RGBA{0, 168, 201, 255},
+		Fill:     color.RGBA{255, 158, 31, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{0, 200, 224, 255},
+			BaseColor: color.RGBA{255, 179, 10, 255},
 			Alpha:     255,
 		},
 		Radius: 8,
@@ -356,13 +356,15 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentButtonTransportFollowOn: {
 		ID:       ComponentButtonTransportFollowOn,
 		Category: CategoryButton,
-		Fill:     color.RGBA{40, 26, 64, 255},
+		Fill:     color.RGBA{56, 35, 84, 255},
 		Border: BorderRef{
-			BaseColor: color.RGBA{63, 224, 232, 255},
-			Alpha:     genAlphaAccentOverlay,
+			BaseColor: color.RGBA{255, 255, 255, 255},
+			Alpha:     genAlphaBorderThin,
 		},
-		Radius: 12,
-		Height: 36,
+		Radius:       12,
+		Height:       36,
+		IconColor:    color.RGBA{253, 242, 255, 255},
+		HasIconColor: true,
 	},
 	ComponentButtonRowLabelMobile: {
 		ID:       ComponentButtonRowLabelMobile,

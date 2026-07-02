@@ -202,11 +202,12 @@ func intToStr(n int) string {
 	return string(digits)
 }
 
-// TestSynthTab_KnobDragViaTreeDispatch_Mobile runs the same drag scenario
-// in a mobile-profile game, because the mobile layout stacks sections
-// vertically and uses different knob sizes. If the mobile layout breaks
-// the hit-area registration, this test catches it.
-func TestSynthTab_KnobDragViaTreeDispatch_Mobile(t *testing.T) {
+// TestSynthTab_KnobTapViaTreeDispatch_Mobile verifies that on mobile the synth
+// knob hit-area is correctly registered (non-empty rect, reachable via the
+// tree dispatcher) and that a tap opens the scroll-wheel popup (the mobile
+// knob-interaction path introduced by the mobile-wheel feature). The old drag
+// path is replaced by the wheel on mobile; desktop drag is tested separately.
+func TestSynthTab_KnobTapViaTreeDispatch_Mobile(t *testing.T) {
 	assertDefaultParityState(t)
 	restoreProfile := SetRuntimeProfileForTest(browserRuntimeProfile())
 	t.Cleanup(restoreProfile)
@@ -254,7 +255,6 @@ func TestSynthTab_KnobDragViaTreeDispatch_Mobile(t *testing.T) {
 	if rect.Empty() {
 		t.Fatalf("mobile decay knob has empty rect; section layout = %v", g.drum.SynthTabSections())
 	}
-	beforeDrag := k.Value
 
 	cx := (rect.Min.X + rect.Max.X) / 2
 	cy := (rect.Min.Y + rect.Max.Y) / 2
@@ -271,20 +271,19 @@ func TestSynthTab_KnobDragViaTreeDispatch_Mobile(t *testing.T) {
 	)
 	defer restoreInput()
 
+	// On mobile, a tap on the knob cell opens the scroll-wheel popup instead
+	// of starting an in-place rotary drag. The tree dispatcher routes the press
+	// to synthKnobHitAdapter.OnPress which returns InputConsumed (not Captured).
 	pressed = true
 	g.Update()
-	if !k.Capturing() {
-		t.Fatalf("mobile: knob not capturing after press at center (%d,%d); rect=%v", cx, cy, rect)
+	if !g.drum.synthWheelPopup.IsOpen() {
+		t.Fatalf("mobile: wheel popup not open after press at center (%d,%d); rect=%v", cx, cy, rect)
+	}
+	// The knob itself must NOT be in capturing mode (the wheel owns the interaction).
+	if k.Capturing() {
+		t.Fatalf("mobile: knob must not be capturing when wheel popup handles the interaction; rect=%v", rect)
 	}
 
-	for step := 1; step <= 4; step++ {
-		mouseX = cx + step*15
-		g.Update()
-	}
 	pressed = false
 	g.Update()
-
-	if k.Value == beforeDrag {
-		t.Fatalf("mobile: knob value unchanged after drag; rect=%v", rect)
-	}
 }

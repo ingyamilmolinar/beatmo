@@ -114,7 +114,7 @@ func (g *Game) bumpParityGen(reason string, opts structuralMutationOptions) {
 		g.clearParityStateForGenBump()
 	}
 	if g.logger != nil {
-		g.logger.Tracef("[PARITY][gen-bump] reason=%s gen=%d grace=%v", reason, g.parityGen.Load(), opts.Grace)
+		g.logger.Tracef("[parity][gen-bump] reason=%s gen=%d grace=%v", reason, g.parityGen.Load(), opts.Grace)
 	}
 }
 

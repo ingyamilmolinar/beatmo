@@ -88,8 +88,8 @@ func (o *ShortcutsOverlay) Draw(screen *ebiten.Image) {
 	keyCol := r.Min.X + shortcutsOverlayPadX
 	actCol := keyCol + shortcutsOverlayActX
 	y := r.Min.Y + shortcutsOverlayPadY
-	DrawTextStyled(screen, i18n.T(i18n.KeySettingsShortcuts), keyCol, y, RoleBody, colTextPrimary)
-	y += shortcutsOverlayLine
+	DrawTextStyled(screen, i18n.T(i18n.KeySettingsShortcuts), keyCol, y, RoleSectionHeader, colTextPrimary)
+	y += StyledTextHeight(RoleSectionHeader) + SpaceSM
 	for _, row := range rows {
 		DrawTextStyled(screen, row.keys, keyCol, y, RoleCaption, colTextPrimary)
 		DrawTextStyled(screen, i18n.T(row.actionKey), actCol, y, RoleCaption, colTextSecondary)

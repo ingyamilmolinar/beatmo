@@ -28,6 +28,7 @@ func allHitsPeak(t *testing.T, insts []struct {
 }) float64 {
 	t.Helper()
 	ResetInstruments()
+	resetSendEffectsState() // clear any reverb/delay tail a prior test left (render isolation)
 	sr := sampleRate
 	m := &mixer{workBuf: make([]float64, blockSize), voiceTemp: make([]float64, blockSize), masterBuf: make([]float64, blockSize), postEQBuf: make([]float64, blockSize), instSlots: make(map[string]int)}
 	for _, in := range insts {

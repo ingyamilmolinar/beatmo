@@ -31,7 +31,7 @@ export function buildWasm() {
   const GO = resolveGoBinary();
   const build = spawnSync(
     GO,
-    ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd/..."],
+    ["build", "-o", path.join(jsDir, "main.wasm"), "./cmd"],
     {
       cwd: goDir,
       env: { ...process.env, GOOS: "js", GOARCH: "wasm" },
@@ -57,7 +57,15 @@ export async function startServer() {
       else if (filePath.endsWith(".js")) ct = "application/javascript";
       else if (filePath.endsWith(".wasm")) ct = "application/wasm";
       else if (filePath.endsWith(".json")) ct = "application/json";
-      res.writeHead(200, { "Content-Type": ct });
+      // No-cache: each test run rebuilds main.wasm, so the served assets must
+      // never come from a browser/proxy cache (a stale binary would silently run
+      // an old build).
+      res.writeHead(200, {
+        "Content-Type": ct,
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      });
       res.end(data);
     });
   });
@@ -99,15 +107,40 @@ export async function initPage(browser, viewport, port) {
  * @param {Page} page
  * @param {number} [timeout=60000] Timeout in ms (remote devices are slower)
  */
-export async function waitForWasmReady(page, timeout = 60000) {
-  await page.waitForFunction(
-    () =>
-      typeof widgetLayoutSnapshot === "function" &&
-      typeof forceDraw === "function" &&
-      typeof importJSON === "function" &&
-      typeof fullLayoutSnapshot === "function",
-    { timeout }
-  );
+export async function waitForWasmReady(page, timeout = 90000) {
+  // BrowserStack caps a single page.waitForFunction at ~30s on its CDP relay
+  // and rejects with "browserstack_error: Operation timed out as timeout was
+  // set to 30000ms" regardless of the timeout option we pass. Older real
+  // devices (notably iPhone 14) can take longer than that to instantiate the
+  // ~30 MB WASM. So poll in sub-30s windows under our own outer deadline and
+  // re-poll on the relay's timeout instead of bubbling it up as a device skip.
+  const exportsReady = () =>
+    typeof widgetLayoutSnapshot === "function" &&
+    typeof forceDraw === "function" &&
+    typeof importJSON === "function" &&
+    typeof fullLayoutSnapshot === "function";
+  const deadline = Date.now() + timeout;
+  let ready = false;
+  let lastErr = null;
+  while (Date.now() < deadline) {
+    const windowMs = Math.min(20000, deadline - Date.now());
+    if (windowMs <= 0) break;
+    try {
+      await page.waitForFunction(exportsReady, { timeout: windowMs });
+      ready = true;
+      break;
+    } catch (e) {
+      lastErr = e;
+      // Relay/poll window elapsed without the exports appearing — loop and
+      // try again until the outer deadline.
+    }
+  }
+  if (!ready) {
+    throw new Error(
+      `WASM exports not ready within ${timeout}ms` +
+      (lastErr ? ` (last: ${lastErr.message})` : "")
+    );
+  }
   // Let layout settle — extra iterations for remote device latency
   for (let i = 0; i < 5; i++) {
     await page.evaluate(() => forceDraw?.());

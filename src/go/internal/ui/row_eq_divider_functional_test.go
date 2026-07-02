@@ -44,6 +44,15 @@ func TestRowEQDivider_GlowsWhenCursorProbeDisabled(t *testing.T) {
 func driveRealEQDivider(t *testing.T) (g *Game, mx, my *int, pressed *bool, px, py int) {
 	t.Helper()
 	assertDefaultParityState(t)
+	// Guarantee a clean DESKTOP layout profile regardless of a prior test that
+	// left forceSmallScreenForTest / a small touchScreenWidth behind (the
+	// documented cross-test leak that hides the EQ divider — see setupMobileTest).
+	// The EQ divider is a desktop feature, so a leaked mobile profile makes
+	// eqDividerRowIdx return -1 ("no EQ divider present").
+	forceSmallScreenForTest = false
+	SetTouchScreenSize(0, 0)
+	UpdateProfile()
+	t.Cleanup(func() { SetTouchScreenSize(0, 0); UpdateProfile() })
 	eqPanelHeightForTest = 190
 	t.Cleanup(func() { eqPanelHeightForTest = 0 })
 

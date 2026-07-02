@@ -43,8 +43,13 @@ func TestSynthSections_WaveKnobGetsVoiceCard(t *testing.T) {
 			// own osc_type) → no claim about VOICE here.
 			continue
 		}
-		if id == "synth-modular" || id == "synth-modular-pad" {
-			continue // modular's osc_type already owns its OSC stage
+		// All modular-derived recipes (synth-modular, -pad, and the orchestral
+		// synth-modular-* voices: trumpet/violin/guitar/flute/…) use the
+		// pure modular voice schema: their generator is the modular gen-bank
+		// (gen1_wave, label "G1 wave"), driven by osc_type in the OSC stage — they
+		// have no <family>_wave VOICE knob, so the VOICE-card claim doesn't apply.
+		if strings.HasPrefix(id, "synth-modular") {
+			continue
 		}
 		if got := sectionForParamDefIn(id, *waveDef); got != synthSectionVoice {
 			t.Errorf("recipe %q: %s maps to section %v, want VOICE (the generator card)", id, waveDef.Name, got)
@@ -65,8 +70,9 @@ func TestSynthSections_EveryGridKnobLandsInVisibleSection(t *testing.T) {
 		for _, sec := range order {
 			visible[sec] = true
 		}
+		kickActive := schemaUsesKickStage(reg.Params)
 		for _, def := range reg.Params {
-			if !synthParamIsGridKnob(def) {
+			if !synthParamIsGridKnob(def) || synthKickParamHidden(kickActive, def) {
 				continue
 			}
 			sec := sectionForParamDefIn(id, def)

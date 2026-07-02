@@ -21,5 +21,10 @@ func (l *ViewSwitchLayer) Visible() bool {
 }
 
 func (l *ViewSwitchLayer) Draw(dst *ebiten.Image) {
+	// Keep the Synth segment's greyed state fresh every frame even when no
+	// relayout ran (the active instrument can change between layouts).
+	if idx := bottomNavSynthIndex(); idx >= 0 {
+		l.dv.viewSwitchSegmented.SetSegmentDisabled(idx, !l.dv.activeInstrumentHasSynth())
+	}
 	l.dv.viewSwitchSegmented.Draw(dst)
 }

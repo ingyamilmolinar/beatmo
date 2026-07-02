@@ -127,7 +127,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		g.drawGridBackground(dst)
 		phaseX, phaseY, tileW, tileH := ctx.phaseX, ctx.phaseY, ctx.tileW, ctx.tileH
 		ds := 1.0
-		g.logger.Tracef("[DRAW/CAM] frame=%d scale=%.4f off=(%.0f,%.0f) unitPx=%.2f stepPx=%d camScale=%.6f splitY=%d dscale=%.2f", g.frame, g.cam.Scale, offX, offY, unitPx, g.grid.StepPixels(g.cam.Scale), camScale, g.split.Y, ds)
+		g.logger.Tracef("[draw/cam] frame=%d scale=%.4f off=(%.0f,%.0f) unitPx=%.2f stepPx=%d camScale=%.6f splitY=%d dscale=%.2f", g.frame, g.cam.Scale, offX, offY, unitPx, g.grid.StepPixels(g.cam.Scale), camScale, g.split.Y, ds)
 		// One-line frame state summary for real-time debugging, include modes.
 		mode := ""
 		if renderSafe {
@@ -139,7 +139,7 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 		if envNoPixelSnap {
 			mode += " NO_PIXEL_SNAP"
 		}
-		g.logger.Tracef("[FRAME/SCENE] f=%d nodes=%d edges=%d pulses=%d tile=(%d,%d) phase=(%d,%d) cam=(%.3f,%.0f,%.0f)%s", g.frame, len(g.nodes), len(g.edges), len(g.activePulses), tileW, tileH, phaseX, phaseY, g.cam.Scale, offX, offY, mode)
+		g.logger.Tracef("[frame/scene] f=%d nodes=%d edges=%d pulses=%d tile=(%d,%d) phase=(%d,%d) cam=(%.3f,%.0f,%.0f)%s", g.frame, len(g.nodes), len(g.edges), len(g.activePulses), tileW, tileH, phaseX, phaseY, g.cam.Scale, offX, offY, mode)
 	}
 
 	// Dispatch every grid-pane layer through the GridTree, which walks the

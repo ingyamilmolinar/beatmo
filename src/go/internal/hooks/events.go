@@ -95,6 +95,46 @@ const (
 	// the action registry until a commit site + undo tap are wired.
 	EventEQFilterToggled Kind = "audio.eq_filter_toggled"
 
+	// EventLanguageChanged fires when the user switches UI language in the
+	// settings overlay. ScopeSession (locale persists to userprefs, not the
+	// project document).
+	EventLanguageChanged Kind = "lang.changed"
+
+	// EventUndo / EventRedo fire when the user reverts / re-applies one edit.
+	// ScopeSession (the meta-action itself is never journaled).
+	EventUndo Kind = "undo"
+	EventRedo Kind = "redo"
+
+	// EventUITap fires once on a button/pill/toggle/keycap press edge (Layer-B
+	// interaction telemetry). The domain effect, if any, is a separate event.
+	EventUITap Kind = "ui.tap"
+
+	// EventPopupOpened / EventPopupClosed fire from the shared overlay portal
+	// for every menu/dialog/picker/slider-popup. Reason on close is
+	// "explicit", "top", or "dismiss" (Esc/click-outside self-close).
+	EventPopupOpened Kind = "popup.opened"
+	EventPopupClosed Kind = "popup.closed"
+
+	// EventScroll fires at scroll-gesture end (touch lift / scrollbar drag
+	// release / stepped-grid drag end). Coalesced so a flick + momentum is one
+	// line. Surface names the scrolled region.
+	EventScroll Kind = "ui.scroll"
+
+	// EventSearchChanged fires when a search field's query changes. Emitted
+	// per-keystroke at the source but coalesced so rapid typing → one trailing
+	// line with the settled query. Surface names the search context (e.g.
+	// "inst-menu"); Query is the current input value ("" means cleared).
+	EventSearchChanged Kind = "ui.search"
+
+	// EventTextCommitted fires when a generic text field commits (Enter/blur).
+	// Domain-specific text commits (instrument rename, BPM entry) use their own
+	// events and do NOT emit this.
+	EventTextCommitted Kind = "ui.text"
+
+	// EventViewModeChanged fires when the mobile bottom-nav switches the
+	// visible view (pads/eq/wave/spectrum/levels/chain/synth/sampler).
+	EventViewModeChanged Kind = "ui.view"
+
 	// Phase 4 (synth-recipe refactor): user-narrative events for recipe
 	// save / clone / delete and kit apply. RecipePayload carries the
 	// recipe id + base recipe id (for clones) + the instrument id the
@@ -125,11 +165,17 @@ const (
 	// applied to the freshly-rendered recipe buffer at trigger time.
 	EventSampleEditChanged Kind = "audio.sample_edit"
 
+	// Camera events — promoted out of verbose. EventCameraPan fires once per
+	// pan gesture (at release, carrying the cumulative delta) via the
+	// cameraGesture tracker in internal/ui. EventCameraZoom fires per zoom
+	// tick; the eventlogger coalescer debounce-trails a wheel/pinch burst into
+	// one trailing line. Both now appear in the default INFO narrative.
+	EventCameraPan  Kind = "verbose.pan"
+	EventCameraZoom Kind = "verbose.zoom"
+
 	// Verbose / opt-in (only delivered when verbose mode is enabled on the
 	// bus or the eventstream sink). These fire many times per frame; the
 	// default sink filters them out.
-	EventCameraPan    Kind = "verbose.pan"
-	EventCameraZoom   Kind = "verbose.zoom"
 	EventDragProgress Kind = "verbose.drag"
 )
 
@@ -155,8 +201,16 @@ var KindAll = []Kind{
 	EventRowColorChanged, EventCustomWAVLoaded, EventInstrumentRenamed,
 	EventEQFilterToggled,
 	EventSceneApplied, EventUIStateApplied, EventFavoriteToggled,
+	EventLanguageChanged,
 	EventRecipeSaved, EventRecipeCreated, EventRecipeDeleted, EventKitApplied,
 	EventSampleSaved, EventSampleCreated, EventSampleReset, EventSampleEditChanged,
+	EventUndo, EventRedo,
+	EventUITap,
+	EventPopupOpened, EventPopupClosed,
+	EventScroll,
+	EventSearchChanged,
+	EventTextCommitted,
+	EventViewModeChanged,
 	EventCameraPan, EventCameraZoom, EventDragProgress, EventInstrumentParamChanged,
 }
 
@@ -171,14 +225,21 @@ var KindAll = []Kind{
 // added 1 (sample edit changed): 44 + 1 = 45. The event-coverage + undo
 // pass added 8 (row volume/pan, insert moved/toggled, send, synth
 // committed/reset, audio-panel state): 45 + 8 = 53. The HPF/LPF filter-toggle
-// naming gap added 1 (eq filter toggled): 53 + 1 = 54.
-const NumNonVerbose = 54
+// naming gap added 1 (eq filter toggled): 53 + 1 = 54. + lang.changed = 55.
+// + undo/redo = 57. pan+zoom promoted out of verbose (+2) = 59.
+// + ui.tap (Layer-B interaction telemetry) = 60.
+// + popup.opened + popup.closed (portal chokepoint) = 62.
+// + ui.scroll (scroll gesture end, coalesced) = 63.
+// + ui.search (search field query changed, coalesced) = 64.
+// + ui.text (generic text-field commit, Enter/blur) = 65.
+// + ui.view (mobile view-mode switch) = 66.
+const NumNonVerbose = 66
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
 // kinds that the default sink filters out.
 func IsVerbose(k Kind) bool {
 	switch k {
-	case EventCameraPan, EventCameraZoom, EventDragProgress, EventInstrumentParamChanged:
+	case EventDragProgress, EventInstrumentParamChanged:
 		return true
 	}
 	return false
@@ -463,6 +524,12 @@ type SamplePayload struct {
 	Frames      int    `json:"frames,omitempty"`
 }
 
+// UndoPayload names the action being undone/redone (the registry label of the
+// reverted edit, e.g. "adjust EQ").
+type UndoPayload struct {
+	Label string `json:"label"`
+}
+
 // KitPayload describes a kit-apply event. Members carries the
 // role→instrumentID map snapshot the kit just rebound. UI for kits lands
 // in a later phase; the payload is reserved now so the eventlogger
@@ -484,4 +551,47 @@ type SendPayload struct {
 // slope, Pre overlay, K-20 view, chain A/B taps). Userpref coverage only.
 type AudioPanelStatePayload struct {
 	Field string `json:"field"`
+}
+
+// LanguagePayload describes a UI-language switch.
+type LanguagePayload struct {
+	Old string `json:"old"`
+	New string `json:"new"`
+}
+
+// UITapPayload identifies a tapped button by its resolved label (and icon id
+// when the button is icon-only).
+type UITapPayload struct {
+	Label string `json:"label"`
+	Icon  string `json:"icon,omitempty"`
+}
+
+// PopupPayload identifies a portal overlay by its stable ID (e.g. "inst-menu",
+// "color-wheel", "settings"). Reason is set on close only.
+type PopupPayload struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// ScrollPayload names the scrolled surface (e.g. "inst-menu", "row-rack",
+// "synth-grid").
+type ScrollPayload struct {
+	Surface string `json:"surface"`
+}
+
+// SearchPayload carries the search surface + the (settled) query string.
+type SearchPayload struct {
+	Surface string `json:"surface"`
+	Query   string `json:"query"`
+}
+
+// TextPayload carries the field tag + the committed value.
+type TextPayload struct {
+	Field string `json:"field"`
+	Value string `json:"value"`
+}
+
+// ViewModePayload names the newly-selected mobile view mode.
+type ViewModePayload struct {
+	Mode string `json:"mode"`
 }

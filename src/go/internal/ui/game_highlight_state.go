@@ -17,6 +17,44 @@ func (g *Game) highlightDelete(key int) {
 	g.highlightMu.Unlock()
 }
 
+// hlDroppedExemptFrames is how long (in frames, ~ a few seconds at 60 Hz) a
+// dropped-highlight exemption is honored before pruning. It need only outlast
+// the audio event's residence in the parity scan window (lookahead + grace),
+// which is well under a second; this is generous slack.
+const hlDroppedExemptFrames = 600
+
+// markHighlightDropped records that the sequencer dropped (row, idx)'s highlight
+// because hlCh was full. highlight_vs_audio parity then exempts that beat: the
+// UI legitimately never paints it, so "audio fired but no highlight" is an
+// expected cosmetic loss under load, not a desync. Called from the sequencer
+// goroutine (holds seqMu); takes highlightMu (seqMu -> highlightMu order, same
+// as applySequencerHighlight).
+func (g *Game) markHighlightDropped(row, idx int) {
+	if g == nil {
+		return
+	}
+	key := makeBeatKey(row, idx)
+	g.highlightMu.Lock()
+	if g.hlDropped == nil {
+		g.hlDropped = make(map[int]int64)
+	}
+	g.hlDropped[key] = g.frame + hlDroppedExemptFrames
+	g.highlightMu.Unlock()
+}
+
+// highlightWasDropped reports whether (row, abs)'s highlight was dropped and the
+// exemption is still live. Caller must NOT hold highlightMu.
+func (g *Game) highlightWasDropped(row, abs int) bool {
+	if g == nil {
+		return false
+	}
+	key := makeBeatKey(row, abs)
+	g.highlightMu.RLock()
+	until, ok := g.hlDropped[key]
+	g.highlightMu.RUnlock()
+	return ok && until > g.frame
+}
+
 // highlightEntry holds a single per-row highlight (column index + encoded value).
 type highlightEntry struct {
 	idx int
@@ -116,6 +154,14 @@ const highlightAbsRetentionSlack = 64
 func (g *Game) clearExpiredHighlights() {
 	g.highlightMu.Lock()
 	defer g.highlightMu.Unlock()
+	// Prune expired dropped-highlight exemptions (independent of highlightedBeats;
+	// runs even when no highlights are live so the map can't grow unbounded under
+	// sustained drop load).
+	for key, until := range g.hlDropped {
+		if g.frame > until {
+			delete(g.hlDropped, key)
+		}
+	}
 	if len(g.highlightedBeats) == 0 {
 		return
 	}
@@ -130,7 +176,7 @@ func (g *Game) clearExpiredHighlights() {
 		row, idx := splitBeatKey(key)
 		if g.frame > until {
 			delete(g.highlightedBeats, key)
-			g.logger.Debugf("[GAME] Cleared expired highlight for beat %d row %d. highlightedBeats: %v", idx, row, g.highlightedBeats)
+			g.logger.Debugf("[game] Cleared expired highlight for beat %d row %d. highlightedBeats: %v", idx, row, g.highlightedBeats)
 			continue
 		}
 		if haveBound && idx < minAbs {
@@ -157,6 +203,7 @@ func (g *Game) clearRowHighlights(row int) {
 func (g *Game) resetHighlights() {
 	g.highlightMu.Lock()
 	g.highlightedBeats = map[int]int64{}
+	g.hlDropped = map[int]int64{}
 	g.highlightMu.Unlock()
 }
 

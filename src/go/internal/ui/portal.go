@@ -52,9 +52,12 @@ func NewOverlayPortal(hitIndex *HitIndex) *OverlayPortal {
 // becomes the modal filter in the HitIndex.
 func (p *OverlayPortal) Open(entry PortalEntry) {
 	// Remove existing entry with same ID to avoid duplicates.
-	p.closeByID(entry.ID)
+	if p.closeByID(entry.ID) {
+		emitPopupClosed(entry.ID, "replaced")
+	}
 
 	p.stack = append(p.stack, entry)
+	emitPopupOpened(entry.ID)
 
 	// Layout the overlay.
 	entry.Overlay.Layout(entry.Anchor, p.screenBounds)
@@ -74,7 +77,10 @@ func (p *OverlayPortal) Open(entry PortalEntry) {
 
 // Close removes a specific overlay by ID.
 func (p *OverlayPortal) Close(id string) {
-	p.closeByID(id)
+	removed := p.closeByID(id)
+	if removed {
+		emitPopupClosed(id, "explicit")
+	}
 	p.hitIndex.RemovePortal(id)
 	p.updateModalState()
 }
@@ -86,6 +92,7 @@ func (p *OverlayPortal) CloseTop() bool {
 	}
 	top := p.stack[len(p.stack)-1]
 	p.stack = p.stack[:len(p.stack)-1]
+	emitPopupClosed(top.ID, "top")
 	if top.OnClose != nil {
 		top.OnClose()
 	}
@@ -220,6 +227,7 @@ func (p *OverlayPortal) CleanupClosed() {
 			p.stack[i].OnClose = nil
 			p.closeByID(id)
 			p.hitIndex.RemovePortal(id)
+			emitPopupClosed(id, "dismiss")
 			if onClose != nil {
 				onClose()
 			}
@@ -256,7 +264,8 @@ func (p *OverlayPortal) StackLen() int {
 }
 
 // closeByID removes an overlay by ID without updating the hit index.
-func (p *OverlayPortal) closeByID(id string) {
+// Returns true if at least one entry was removed.
+func (p *OverlayPortal) closeByID(id string) bool {
 	n := 0
 	for _, e := range p.stack {
 		if e.ID != id {
@@ -270,7 +279,9 @@ func (p *OverlayPortal) closeByID(id string) {
 	for i := n; i < len(p.stack); i++ {
 		p.stack[i] = PortalEntry{}
 	}
+	removed := n < len(p.stack)
 	p.stack = p.stack[:n]
+	return removed
 }
 
 // updateModalState sets the HitIndex modal filter to the topmost modal

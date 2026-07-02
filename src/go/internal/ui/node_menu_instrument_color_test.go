@@ -36,21 +36,16 @@ func TestNodeSidebarTintsToOwningInstrumentColor(t *testing.T) {
 	dst := ebiten.NewImage(640, 480)
 	rects := collectFilledRects(t, func() { g.sidebar.Draw(dst) })
 
-	// An expanded section header draws a solid left accent stripe in the
-	// instrument color (thin, tall).
-	stripe := false
+	// The node sidebar header underline tints to the instrument color (the
+	// header swatch + button faces also carry it; see the other test). NOTE:
+	// expanded section headers intentionally NO LONGER draw a node-color
+	// fill/stripe — that "selected bar" highlight was removed as distracting.
 	warmUnderline := false
 	for _, dr := range rects {
-		if dr.Color == want && dr.Rect.Dx() <= accentStripeW()+1 && dr.Rect.Dy() >= 12 {
-			stripe = true
-		}
 		// Header underline: alpha-blended tint of the warm color (R >= B).
 		if dr.Rect.Dy() == 1 && dr.Color.A > 0 && dr.Color.R >= dr.Color.B && dr.Color.R > 0 {
 			warmUnderline = true
 		}
-	}
-	if !stripe {
-		t.Errorf("expanded section header should draw a solid instrument-color (%v) stripe", want)
 	}
 	if !warmUnderline {
 		t.Errorf("node sidebar header underline should tint to the warm instrument color")
@@ -110,41 +105,32 @@ func TestNodeSidebarButtonBordersUseInstrumentColor(t *testing.T) {
 	g.sidebar.sectionOpen["logic"] = true
 	g.sidebar.layout()
 
-	volRect, ok := g.sidebar.rects["vol+"]
-	if !ok || volRect.Empty() || !g.sidebar.inViewport(volRect) {
-		t.Skip("vol+ not laid out / not in viewport")
-	}
-
-	// Intercept border (unfilled) drawRect calls — collectFilledRects only
-	// records filled rects.
-	var borders []drawnRect
-	orig := drawRect
-	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		if !filled {
-			borders = append(borders, drawnRect{Rect: r, Color: color.RGBAModel.Convert(c).(color.RGBA)})
-		}
-		orig(dst, r, c, filled)
-	}
+	// Node buttons now carry the instrument color as a TINT on the keycap FACE
+	// (the 3D-keycap accent — like the latched-amber state — instead of a flat
+	// bright outline) so they read as the same 3D keycaps as the menus while
+	// still being node-colored. Draw so tintBtnAccent runs, then assert the
+	// blended fill on a stepper and the logic selector.
 	g.sidebar.Draw(ebiten.NewImage(640, 1000))
-	drawRect = orig
 
-	// The vol+ stepper button must be outlined in the instrument color.
-	stepperTinted := false
-	for _, b := range borders {
-		if b.Color == want && b.Rect == volRect {
-			stepperTinted = true
+	ddFill := color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA)
+	wantFill := blendColor(ddFill, want, sidebarBtnAccentTint)
+
+	if vb := g.sidebar.btns["vol+"]; vb != nil {
+		if bs, ok := vb.Style.(ButtonStyle); ok {
+			if got := color.RGBAModel.Convert(bs.Fill).(color.RGBA); got != wantFill {
+				t.Errorf("vol+ stepper face = %v, want node-tinted %v", got, wantFill)
+			}
+		} else {
+			t.Errorf("vol+ button style is %T, want ButtonStyle", vb.Style)
 		}
-	}
-	if !stepperTinted {
-		t.Errorf("vol+ stepper border should be the instrument color %v", want)
+	} else {
+		t.Error("vol+ stepper missing after layout")
 	}
 
-	// The logic selector button's style border must also be the instrument color.
 	if lb := g.sidebar.btns["logic"]; lb != nil {
 		if bs, ok := lb.Style.(ButtonStyle); ok {
-			got := color.RGBAModel.Convert(bs.Border).(color.RGBA)
-			if got != want {
-				t.Errorf("logic selector border = %v, want instrument color %v", got, want)
+			if got := color.RGBAModel.Convert(bs.Fill).(color.RGBA); got != wantFill {
+				t.Errorf("logic selector face = %v, want node-tinted %v", got, wantFill)
 			}
 		} else {
 			t.Errorf("logic button style is %T, want ButtonStyle", lb.Style)

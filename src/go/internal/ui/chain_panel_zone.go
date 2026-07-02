@@ -7,8 +7,40 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 	scope "github.com/ingyamilmolinar/beatmo/internal/scope"
 )
+
+// chainStageKey maps a scope pipeline Stage to its i18n display-label key.
+// Stage names keep their common DAW English form (Synth/AntiPop/FX/EQ/Bus/
+// Master) but route through i18n so the Chain tab is fully localizable; the
+// scope package stays free of any i18n dependency.
+func chainStageKey(st scope.Stage) i18n.Key {
+	switch st {
+	case scope.StageSynth:
+		return i18n.KeyChainStageSynth
+	case scope.StageAntiPop:
+		return i18n.KeyChainStageAntiPop
+	case scope.StageInsertFX:
+		return i18n.KeyChainStageFX
+	case scope.StageEQ:
+		return i18n.KeyChainStageEQ
+	case scope.StageSends:
+		return i18n.KeyChainStageBus
+	case scope.StageMaster:
+		return i18n.KeyMaster
+	}
+	return ""
+}
+
+// chainStageLabelLocalized returns the localized stage label for st, falling
+// back to the scope package's canonical English label for unknown stages.
+func chainStageLabelLocalized(st scope.Stage) string {
+	if k := chainStageKey(st); k != "" {
+		return i18n.T(k)
+	}
+	return scope.StageLabel(st)
+}
 
 const (
 	chainHeaderH = 32 // header band: shared audioPillHeight() pill + vertical centering
@@ -163,27 +195,33 @@ func (z *ChainPanelZone) initButtons() {
 		z.stageButtons[i] = NewButton(scope.StageLabel(st), InstButtonStyle, func() {
 			z.handleStageClick(st)
 		})
+		z.stageButtons[i].SetTextKey(chainStageKey(st))
 	}
 
 	z.autoGainBtn = NewButton("AG", InstButtonStyle, func() {
 		z.SetAutoGain(!z.autoGain)
 	})
+	z.autoGainBtn.SetTextKey(i18n.KeyChainAutoGain)
 	// FIT toggles X auto-fit (frame the signal's active span). Active by
 	// default; manual zoom turns it off, this turns it back on.
 	z.fitBtn = NewButton("FIT", InstButtonStyle, func() {
 		z.SetAutoFit(!z.autoFit)
 	})
+	z.fitBtn.SetTextKey(i18n.KeyChainFit)
 	// Three separate mode pills replace the previous OVR/SPL/DIF cycle button.
 	// Clicking each sets the displayMode directly (no implicit cycle).
 	z.overlayBtn = NewButton("OVR", InstButtonStyle, func() {
 		z.displayMode = chainOverlay
 	})
+	z.overlayBtn.SetTextKey(i18n.KeyChainOverlay)
 	z.splitBtn = NewButton("SPL", InstButtonStyle, func() {
 		z.displayMode = chainSplit
 	})
+	z.splitBtn.SetTextKey(i18n.KeyChainSplit)
 	z.diffBtn = NewButton("DIF", InstButtonStyle, func() {
 		z.displayMode = chainDiff
 	})
+	z.diffBtn.SetTextKey(i18n.KeyChainDiff)
 	// Freeze indicator is icon-only: a pause icon while live (click action is
 	// "pause") and a play icon while frozen (action "resume"), set by
 	// applyFreezeVisual (shared with the analyzer-tab freeze pill).

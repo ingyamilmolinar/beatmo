@@ -116,10 +116,11 @@ func TestStatsCountsPublished(t *testing.T) {
 }
 
 func TestIsVerbose(t *testing.T) {
-	// Spec lives in events.go: only camera pan/zoom and drag-progress
-	// are verbose. Lock the contract to prevent quiet additions that
-	// would expand sink filtering.
-	verbose := []Kind{EventCameraPan, EventCameraZoom, EventDragProgress}
+	// Spec lives in events.go: only drag-progress and instrument-param-changed
+	// are verbose. Camera pan+zoom were promoted out of verbose (they now emit
+	// once per gesture, not per frame). Lock the contract to prevent quiet
+	// additions that would expand sink filtering.
+	verbose := []Kind{EventDragProgress, EventInstrumentParamChanged}
 	for _, k := range verbose {
 		if !IsVerbose(k) {
 			t.Errorf("%s should be verbose", k)
@@ -130,6 +131,7 @@ func TestIsVerbose(t *testing.T) {
 		EventPlayStart, EventPlayStop, EventPaused, EventResumed,
 		EventSeek, EventNodeAdded, EventNodeDeleted,
 		EventEdgeAdded, EventRowAdded, EventMasterVolumeChange,
+		EventCameraPan, EventCameraZoom, // promoted out of verbose
 	}
 	for _, k := range nonVerbose {
 		if IsVerbose(k) {

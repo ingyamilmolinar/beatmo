@@ -43,8 +43,16 @@ func TestModularRenderPathDeterministicAcrossCalls(t *testing.T) {
 		// Karplus-Strong (source==3): the one voice with a private delay line +
 		// its OWN noise_ma stream — both must be re-initialized per call (no
 		// carried state). Gap-audit addition: the original 3 representatives
-		// never exercised the KS state.
-		{"drum-bass-guitar", renderBassGuitarVoice},
+		// never exercised the KS state. Driven explicitly via a modular gen slot
+		// since the bespoke render_bass_guitar path was deleted.
+		{"modular+ks", func(buf []float32, sampleRate, samples int) {
+			p := recipeParamsToModular(RecipeParams(ModularParamSchemaIdentity()))
+			p.VoiceFreqHz = 55
+			p.GenSource[0] = 3 // Karplus-Strong string
+			p.GenFreqMode[0] = 0
+			p.GenFreq[0] = 1
+			renderModularP(buf, sampleRate, samples, p)
+		}},
 		// Phase-8C modulator stages active (PITCH ENV + LFO + BURST over the
 		// base voice): the modulators are pure functions of t and must carry no
 		// cross-call state either.

@@ -216,30 +216,42 @@ var drawStarFilledIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Co
 
 // ── Track / state (2) ──────────────────────────────────────────────────
 
+// Padlock, closed = "tracking" (timeline follows the playhead). A balanced
+// Lucide-style lock: a rounded body centred on the 24-grid, a slim shackle
+// narrower than the body, and a keyhole for polish.
 var drawTrackIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
 	}
 	c := newIconCanvas(r)
-	// Padlock body.
-	iconStrokeOpenRoundedRect(dst, c, 5, 11, 14, 9, 1.5, "", col)
-	// Closed shackle: arch from (8,11) up to (16,11), peaking near (12,5).
-	iconStrokePolyline(dst, c, [][2]float32{{8, 11}, {8, 8}}, col)
-	iconStrokeArc(dst, c, 12, 8, 4, float32(math.Pi), 2*float32(math.Pi), col)
-	iconStrokePolyline(dst, c, [][2]float32{{16, 8}, {16, 11}}, col)
+	// Lock body (centred: x 5..19, y 10..20).
+	iconStrokeOpenRoundedRect(dst, c, 5, 10, 14, 10, 2, "", col)
+	// Closed shackle: both legs seat into the body top.
+	iconStrokeLine(dst, c, 8.5, 10, 8.5, 7, col)
+	iconStrokeArc(dst, c, 12, 7, 3.5, float32(math.Pi), 2*float32(math.Pi), col)
+	iconStrokeLine(dst, c, 15.5, 10, 15.5, 7, col)
+	// Keyhole.
+	iconFillCircle(dst, c, 12, 14, 1.1, col)
+	iconStrokeLine(dst, c, 12, 14.8, 12, 16.6, col)
 }
 
+// Padlock, open = "free" (timeline scrolls independently of the playhead).
+// Same body + keyhole as the closed lock; the shackle's free leg lifts away
+// (Lucide-unlock silhouette) instead of seating into the body.
 var drawTrackOffIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
 	}
 	c := newIconCanvas(r)
-	// Open padlock — shackle's right arm raised away from the body.
-	iconStrokeOpenRoundedRect(dst, c, 5, 11, 14, 9, 1.5, "", col)
-	iconStrokePolyline(dst, c, [][2]float32{{8, 11}, {8, 8}}, col)
-	iconStrokeArc(dst, c, 12, 8, 4, float32(math.Pi), 2*float32(math.Pi), col)
-	// Right arm angles outward instead of returning to body.
-	iconStrokeLine(dst, c, 16, 8, 19, 11, col)
+	// Lock body — identical to the closed state.
+	iconStrokeOpenRoundedRect(dst, c, 5, 10, 14, 10, 2, "", col)
+	// Open shackle: left leg seats in; the arch lifts and its free end floats
+	// above the body on the right (no descending right leg).
+	iconStrokeLine(dst, c, 8.5, 10, 8.5, 7, col)
+	iconStrokeArc(dst, c, 12, 7, 3.5, float32(math.Pi), 1.78*float32(math.Pi), col)
+	// Keyhole.
+	iconFillCircle(dst, c, 12, 14, 1.1, col)
+	iconStrokeLine(dst, c, 12, 14.8, 12, 16.6, col)
 }
 
 // ── Upload / I/O (3) ──────────────────────────────────────────────────

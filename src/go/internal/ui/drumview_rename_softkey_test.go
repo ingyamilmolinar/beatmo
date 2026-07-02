@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
 // TestRenameLabelStyleNotMissing verifies that after renaming an instrument,
-// the row label does NOT get MissingInstStyle (red). This was caused by the
-// WASM RenameInstrument not calling bumpInstrumentsVersion(), so
-// refreshInstruments() early-returned and never added the new ID to instAvail.
+// the row label does NOT get MissingInstStyle (red). Rename is now
+// metadata-only (the instrument ID is unchanged), so the row's instrument stays
+// available and the label keeps its normal style.
 func TestRenameLabelStyleNotMissing(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
@@ -37,6 +38,10 @@ func TestRenameLabelStyleNotMissing(t *testing.T) {
 	if len(dv.rowLabels()) == 0 || len(dv.rowEditBtns()) == 0 {
 		t.Fatal("no row labels or edit buttons after initial Update")
 	}
+
+	// Rename is metadata-only: clear the process-global display override it leaves.
+	renamedID := dv.Rows[0].Instrument
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName(renamedID) })
 
 	// Precondition: label is NOT MissingInstStyle before rename.
 	if dv.rowLabels()[0].Style == MissingInstStyle {
@@ -90,6 +95,9 @@ func TestMobileSoftKeyboardRenameCommits(t *testing.T) {
 		t.Fatal("expected at least one row")
 	}
 	origName := dv.Rows[0].Name
+	// Rename is metadata-only: clear the process-global display override it leaves.
+	softID := dv.Rows[0].Instrument
+	t.Cleanup(func() { audio.ClearInstrumentDisplayName(softID) })
 
 	// Initial Update to build layout and buttons.
 	restore := SetInputForTest(
@@ -175,7 +183,7 @@ func TestMobileSoftKeyboardRenameCommits(t *testing.T) {
 	// Verify notification was shown.
 	found := false
 	for _, n := range dv.notifStore.History() {
-		if strings.Contains(n.text, "NewKick") {
+		if strings.Contains(n.display(), "NewKick") {
 			found = true
 			break
 		}

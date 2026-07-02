@@ -50,6 +50,11 @@ var conceptRenderers = map[string]conceptRenderer{
 	"pitchenv": conceptMotion,
 	"lfo":      conceptMotion,
 	"burst":    conceptMotion,
+	// Filter ENVELOPE sweeps the cutoff over time — a time-domain motion picture,
+	// like pitchenv. Unison stacks detuned oscillator copies — a timbre/waveform
+	// thickening, so it shows the resulting wave.
+	"filtenv":  conceptMotion,
+	"unison":   conceptKnobWave,
 	"core":     conceptKnobWave,
 	"generic":  conceptKnobWave,
 	"voice":    conceptKnobWave,
@@ -64,6 +69,8 @@ func conceptStageEnableParam(group string) (string, bool) {
 	switch group {
 	case "filter":
 		return "filter_enabled", true
+	case "filtenv":
+		return "filtenv_enabled", true
 	case "fm":
 		return "fm_enabled", true
 	case "post":

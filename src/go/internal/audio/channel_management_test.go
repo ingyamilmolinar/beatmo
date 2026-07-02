@@ -88,42 +88,6 @@ func TestConcurrentPanAndProcessing(t *testing.T) {
 	wg.Wait()
 }
 
-func TestRenameInstrumentChannel(t *testing.T) {
-	withDefaultAudio(t)
-	oldID := "rename-old"
-	newID := "rename-new"
-
-	ch := InstrumentChannel(oldID)
-	ch.SetVolume(0.42)
-	ch.replaceProcessors(nil, []Processor{&mockSampleOnlyProcessor{gain: 0.5}})
-
-	renameInstrumentChannel(oldID, newID)
-
-	newCh := chanMgr.ensureChannel(newID)
-	if math.Abs(newCh.Volume()-0.42) > 0.001 {
-		t.Errorf("renamed channel volume = %f, want 0.42", newCh.Volume())
-	}
-	newCh.mu.RLock()
-	numProcs := len(newCh.processors)
-	newCh.mu.RUnlock()
-	if numProcs != 1 {
-		t.Errorf("renamed channel lost processors: got %d, want 1", numProcs)
-	}
-}
-
-func TestRenameNonExistentChannel(t *testing.T) {
-	withDefaultAudio(t)
-	// Renaming a non-existent channel should create a fresh one.
-	renameInstrumentChannel("ghost-old", "ghost-new")
-	ch := chanMgr.ensureChannel("ghost-new")
-	if ch == nil {
-		t.Fatal("expected channel to be created for ghost-new")
-	}
-	if ch.Volume() != 1.0 {
-		t.Errorf("new channel volume = %f, want 1.0", ch.Volume())
-	}
-}
-
 func TestResetInstrumentChannels(t *testing.T) {
 	withDefaultAudio(t)
 	// Create some instrument channels.

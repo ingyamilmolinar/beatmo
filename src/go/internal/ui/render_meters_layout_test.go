@@ -77,7 +77,7 @@ func TestLevelsAggregateColumnRows_TruncatesNotOverlaps(t *testing.T) {
 	// A rect tall enough for only the HEADROOM label + big number must
 	// keep exactly those two rows (label is the first to render).
 	capScale := FontSizeCaption / FontSizeBody
-	twoRowH := int(math.Ceil(float64(textH)*capScale)) + levelsAggRowGap + int(math.Ceil(float64(textH)*2.0))
+	twoRowH := int(math.Ceil(float64(textH)*capScale)) + levelsAggRowGap + int(math.Ceil(float64(textH)*(FontSizeHeading/FontSizeBody)))
 	rect := image.Rect(0, 0, 160, twoRowH)
 	rows := levelsAggregateColumnRows(rect, textH)
 	if len(rows) != 2 {

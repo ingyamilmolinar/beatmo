@@ -138,6 +138,7 @@ typedef struct {
      *    and gen_freq/gen_freq_mode (the KS fundamental). ── */
     float gen_ks_sustain[12]; /* KS decay factor (NaN→0.996) */
     float gen_ks_pluck[12];   /* KS pluck-LP alpha (NaN→0.35) */
+    float gen_ks_blow[12];    /* KS continuous-noise excitation (NaN→0 = plucked; >0 = blown tube / wind) */
 
     /* ── Phase-3 (kick family): harmonic-bank kick voice (source==5) per-slot
      *    fields. APPEND-ONLY at the very tail (after the Phase-2 KS columns) —
@@ -365,6 +366,81 @@ typedef struct {
     float burst3_amp;
     float burst4_off;
     float burst4_amp;
+    /* LFO routing target: 0 = amplitude tremolo (default, identity), 1 = pitch
+     * vibrato (wavetable OSC path), 2 = filter-cutoff sweep. Appended at the
+     * struct tail so the WASM flat param-block indices stay frozen. */
+    float lfo_target;
+
+    /* Filter envelope: cutoff *= 2^(amt * exp(-t/decay)) — brightens on attack,
+     * decays to base. Separate from the LFO cutoff sweep so it composes with
+     * vibrato. Default 0 = off = byte-identical. */
+    float filtenv_enabled;
+    float filtenv_amt;
+    float filtenv_decay;
+    /* filtenv_attack: seconds for the cutoff to RISE from base to +filtenv_amt
+     * octaves before the decay/hold phase. Default 0 = no rise = onset bloom
+     * then decay (byte-identical). >0 = a slow brightening swell — the brass
+     * "spectral envelope tracks loudness" crescendo (set filtenv_decay large to
+     * HOLD bright after the rise). */
+    float filtenv_attack;
+
+    /* ── Phase-8E (unison/ensemble): each wavetable oscillator (OSC stage + gen-bank
+     *    source==1 slots) renders N detuned copies with decorrelated phases.
+     *    APPEND-ONLY at the VERY tail — every prior flat index stays frozen.
+     *    unison_voices==1 (the default, identity 1) means single oscillator →
+     *    byte-identical to before this change (the unison path is gated strictly
+     *    on nv >= 2). Phase accumulators for side voices are stack-allocated per
+     *    render call (the whole note is rendered in one shot), so no persistent
+     *    state is needed in the params struct. ── */
+    float unison_voices; /* 1..7, integer-valued, default 1 (identity = single osc) */
+    float unison_detune; /* cents spread ±detune/2 across side voices, 0..50, default 0 */
+    float unison_mix;    /* 0=only center, 1=full ensemble blend, default 0.5 */
+    /* Phase-8F unison drift: slow per-voice decorrelated LFO on detune.
+     * APPEND-ONLY at very tail. Identity: both 0 → byte-identical to before. */
+    float unison_drift_rate;  /* Hz, 0..8, base rate (each voice uses rate*(1+0.13*v)) */
+    float unison_drift_depth; /* cents, 0..30, per-voice drift amplitude */
+
+    /* ── Phase-8G LFO onset delay: ramps LFO depth from 0 at t=0 to full at
+     * t=lfo_delay (linear ramp min(t/lfo_delay, 1)). Identity 0 = ramp factor
+     * always 1.0 = byte-identical to pre-Phase-8G behavior. Applied to ALL
+     * three LFO targets (amp/pitch/cutoff). APPEND-ONLY at very tail. ── */
+    float lfo_delay;  /* seconds, 0..3, default 0 (identity) */
+
+    /* ── Body-resonator bank (organic string/violin body). A parallel bank of
+     * narrow band-pass resonators ≈ an instrument body's signature modes, driven
+     * by the tonal signal AFTER the filter stage. The fixed narrow peaks make
+     * each harmonic's level swing as vibrato sweeps it across them → the timbre
+     * "shimmer" a single biquad cannot make. APPEND-ONLY at very tail.
+     * body_model 0 = OFF = byte-identical. */
+    float body_model; /* 0=off, 1=violin (hardcoded mode table) */
+    float body_mix;   /* 0..~1.5, wet (resonant peaks) added to the dry signal */
+
+    /* ── Bow dynamics (bowing expression). A slow smoothed-random modulator (the
+     * bow pressure/speed wandering) drives loudness AND brightness together (more
+     * pressure → louder + brighter), the organic non-repeating performance motion
+     * a steady synth tone lacks (the "sounds like an organ" fix). APPEND-ONLY at
+     * very tail. 0 = off = byte-identical. */
+    float bow_dynamics; /* 0..1, modulation depth */
+
+    /* ── Phase-9 (kick family extras): the structural shaping constants of the
+     * source==5 kick voice promoted to per-slot knobs, so the configurable KICK
+     * stage can match real kicks the curated h2/h3/env0/env1/pe/click/noise set
+     * cannot (a too-short tail, a harder transient, more saturation weight).
+     * APPEND-ONLY at the VERY tail — every prior flat index stays frozen. Each
+     * is NaN-driven (kp_get(field, per-variant literal)): an unset value
+     * reproduces the exact legacy per-variant constant, so every existing kick
+     * variant renders byte-identically. Read only when a slot's source is 5. ── */
+    float gen_kick_attack[12]; /* attack-boost amount (NaN→variant literal: base .3 deep .15 punchy .5 lofi .2 tight .3) */
+    float gen_kick_fade[12];   /* global-fade rate /tNorm (NaN→variant literal: base 4 deep 3 punchy 5 lofi 3 tight 4.5) — higher = shorter tail */
+    float gen_kick_sat[12];    /* saturation pre-gain (NaN→variant literal: base .55 deep 1.2 punchy .8 lofi 1.5 tight .45) */
+
+    /* ── Phase-10 (KICK stage enable): the Synth-tab KICK stage's enable pill.
+     * Gates the source==5 kick voice: <0.5 silences it. APPEND-ONLY at the VERY
+     * tail. Identity 0 (off, the new-stage byte-identity polarity) — but every
+     * source==5 consumer (the legacy kick binding/push + the dnb-kick seed) sets
+     * it to 1, and a render with no kick slot (gen_source!=5) never reads it, so
+     * pre-Phase-10 renders stay byte-identical. ── */
+    float kick_enabled; /* >=0.5 runs the source==5 kick voice; <0.5 silences it */
 } modular_params;
 
 /* Render the modular voice with built-in defaults (sine, percussive env). */

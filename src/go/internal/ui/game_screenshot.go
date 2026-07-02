@@ -19,15 +19,13 @@ func (g *Game) SetScreenshot(path string) {
 	g.demoScheduled = true
 }
 
-// screenshotReady returns true once enough draws have occurred for the UI
-// to be fully rendered. Default threshold is 90 frames (~1.5s @ 60fps);
-// scenes with slow-settling caches override via SetScreenshotSettleFrames.
+// screenshotReady reports whether the game should terminate after a screenshot.
+// It is gated on the capture having actually fired (screenshotCaptured, set by
+// Draw at screenshotThreshold) rather than on the draw count directly, so the
+// game can never exit before the capture frame — the root cause of the
+// SettleFrames<90 "no PNG" bug.
 func (g *Game) screenshotReady() bool {
-	threshold := g.screenshotSettleFrames
-	if threshold <= 0 {
-		threshold = 90
-	}
-	return g.screenshotPath != "" && g.screenshotDraws >= threshold
+	return g.screenshotPath != "" && g.screenshotCaptured
 }
 
 // SetScreenshotSettleFrames overrides the default 90-frame wait before

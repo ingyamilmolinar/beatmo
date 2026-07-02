@@ -18,9 +18,9 @@ func countColoredSegments(t *testing.T, barDy int, db float64) int {
 	dst := ebiten.NewImage(40, barDy+4)
 	r := image.Rect(2, 2, 38, 2+barDy)
 	lit := map[color.RGBA]bool{
-		meterGreen:  true,
-		meterYellow: true,
-		meterRed:    true,
+		meterLow:  true,
+		meterMid:  true,
+		meterHigh: true,
 	}
 	rects := collectFilledRects(t, func() {
 		drawSegmentedLevelBar(dst, r, db, true)

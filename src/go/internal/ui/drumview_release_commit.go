@@ -63,14 +63,18 @@ func (dv *DrumView) commitInstrumentParams(instID string) {
 // reverse/normalize/fade toggles, numeric entry) — the analog of
 // commitInstrumentParams for synth and commitEQBand for EQ.
 //
-// Only the NON-DESTRUCTIVE synth-source path is applied live: its edit is a
-// descriptor (audio.SampleEdit) the export round-trips, so each gesture is
-// snapshot-undoable. WAV-source edits are a destructive bake materialised only
-// at Save (the Save step is already undoable); per-gesture baking would be
-// destructive and is intentionally not done. No-op without a captured buffer.
+// BOTH sources apply live through the SAME non-destructive descriptor: the edit
+// is an audio.SampleEdit the export round-trips, so each gesture is
+// snapshot-undoable. For a synth the dispatcher applies the descriptor to the
+// fresh recipe render at trigger time; for a WAV / user sample (no recipe)
+// audio.SetSampleEdit re-derives the playable PCM from the stored pristine
+// source and re-registers it (reapplyUserSampleEdit), so the chop updates in
+// real time without waiting for Save. The WAV's pristine PCM is seeded into the
+// user-sample store by ensureSamplerLoaded, which the descriptor decorates. No-op
+// without a captured buffer or capture id.
 func (dv *DrumView) commitSamplerEdit() {
 	s := &dv.sampler
-	if s.captureID == "" || !s.hasBuffer() || s.source != samplerSourceSynth {
+	if s.captureID == "" || !s.hasBuffer() {
 		return
 	}
 	audio.SetSampleEdit(s.captureID, s.editDescriptor())

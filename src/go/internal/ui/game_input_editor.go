@@ -128,7 +128,7 @@ func (g *Game) handleEditor() {
 	// ---------------- delete node (right-click) ----------------
 	if right && !shift && !left {
 		if n := g.nodeAtScreen(x, y); n != nil {
-			g.logger.Debugf("[GAME] Deleting node: %d at grid=(%d,%d)", n.ID, i, j)
+			g.logger.Debugf("[game] Deleting node: %d at grid=(%d,%d)", n.ID, i, j)
 			g.deleteNode(n)
 		}
 		return
@@ -166,7 +166,7 @@ func (g *Game) handleEditor() {
 		g.clickNode = g.nodeAtScreen(x, y)
 		g.pendingClick = true
 		g.camDragged = false
-		g.logger.Tracef("[INPUT/MOUSE] down screen=(%d,%d) grid=(%d,%d)", x, y, i, j)
+		g.logger.Tracef("[input/mouse] down screen=(%d,%d) grid=(%d,%d)", x, y, i, j)
 		// Handle origin selection immediately when a row requested it and a visible
 		// node is pressed.
 		if g.pendingStartRow >= 0 {
@@ -211,7 +211,7 @@ func (g *Game) handleEditor() {
 	if !left && g.leftPrev {
 		// Node menu button clicks are handled on press; fall through on release.
 		if g.pendingClick && !g.camDragged {
-			g.logger.Tracef("[INPUT/MOUSE] up screen=(%d,%d) grid=(%d,%d)", x, y, i, j)
+			g.logger.Tracef("[input/mouse] up screen=(%d,%d) grid=(%d,%d)", x, y, i, j)
 			// If clicking over an existing node (screen hit), select and open menu
 			if n := g.clickNode; n != nil {
 				if g.sel != nil {
@@ -225,14 +225,14 @@ func (g *Game) handleEditor() {
 				g.coordBadgeFrame = g.frame
 			} else {
 				// Empty intersection → add/select regular node and close menu
-				g.logger.Tracef("[INPUT/NODE] add/select grid=(%d,%d)", g.clickI, g.clickJ)
+				g.logger.Tracef("[input/node] add/select grid=(%d,%d)", g.clickI, g.clickJ)
 				n := g.tryAddNode(g.clickI, g.clickJ, model.NodeTypeRegular)
 				if g.sel != n {
 					if g.sel != nil {
-						g.logger.Tracef("[INPUT/NODE] deselect grid=(%d,%d)", g.sel.I, g.sel.J)
+						g.logger.Tracef("[input/node] deselect grid=(%d,%d)", g.sel.I, g.sel.J)
 						g.sel.Selected = false
 					}
-					g.logger.Tracef("[INPUT/NODE] select grid=(%d,%d)", n.I, n.J)
+					g.logger.Tracef("[input/node] select grid=(%d,%d)", n.I, n.J)
 					g.sel = n
 					n.Selected = true
 					g.computeSelNeighbors()
@@ -246,7 +246,7 @@ func (g *Game) handleEditor() {
 	if isKeyPressed(ebiten.KeyS) && g.sel != nil {
 		if g.start != nil {
 			g.start.Start = false
-			g.logger.Debugf("[GAME] Unsetting start node: %d,%d", g.start.I, g.start.J)
+			g.logger.Debugf("[game] Unsetting start node: %d,%d", g.start.I, g.start.J)
 		}
 		g.start = g.sel
 		g.start.Start = true

@@ -20,7 +20,7 @@ func TestParityCheckSkippedDuringImportDialog(t *testing.T) {
 
 	// Simulate the import chooser being open before Game.Import is invoked.
 	old := selectJSONAsyncFn
-	selectJSONAsyncFn = func(cb func([]byte, error)) {}
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {}
 	defer func() { selectJSONAsyncFn = old }()
 	g.drum.importBtn().OnClick()
 	if !g.importDialog || !g.drum.importing {

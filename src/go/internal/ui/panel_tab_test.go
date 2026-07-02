@@ -65,10 +65,16 @@ func TestPanelTabAlwaysTallHeight(t *testing.T) {
 	// Every tab returns the tall height regardless of expanded state —
 	// the kid-friendly redesign defaults every audio tab to the same
 	// readable size. Drag-resize via DrumView.eqH overrides downstream.
+	// The Synth tab is the one exception: it packs a row of stage cards
+	// (dial + caption + concept band per knob) and gets one extra
+	// eqPanelHeight of vertical room (see PanelHeightAt).
 	for _, tab := range AllPanelTabs() {
 		s := NewPanelTabState()
 		s.SetActiveTab(tab)
 		want := eqPanelHeight * RuntimeProf().AudioPanelHeightMultiplier
+		if tab == TabSynth {
+			want += eqPanelHeight
+		}
 		if h := s.PanelHeight(); h != want {
 			t.Errorf("tab %d height: expected %d, got %d", tab, want, h)
 		}

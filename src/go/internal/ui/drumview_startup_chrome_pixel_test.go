@@ -51,11 +51,15 @@ func TestStartupChrome_BeatCounterPillPaintsInsideRect_Desktop(t *testing.T) {
 	if bc.Empty() {
 		t.Fatal("beatCounterRect is empty")
 	}
-	// Find the pill background — drawRoundedRect filled with colSurface1
-	// whose rect overlaps the beat counter band.
+	// Find the pill background. The pill now uses square corners (a plain
+	// drawRect, not drawRoundedRect — the rounded pill read as ugly chrome,
+	// see drawBeatCounter). It is filled with colSurface1 and sits inside the
+	// beat-counter band. Match by signature — overlaps the band and is no
+	// larger than the band — so larger surface-1 zone backgrounds and the
+	// adjacent notif slot don't masquerade as the pill.
 	var pillCalls []drawCall
 	for _, c := range rec.calls {
-		if c.Kind != drawCallRoundedRect || !c.Filled {
+		if c.Kind != drawCallRect || !c.Filled {
 			continue
 		}
 		if c.Color != colSurface1 {
@@ -64,10 +68,13 @@ func TestStartupChrome_BeatCounterPillPaintsInsideRect_Desktop(t *testing.T) {
 		if !c.Rect.Overlaps(bc) {
 			continue
 		}
+		if c.Rect.Dx() > bc.Dx() || c.Rect.Dy() > bc.Dy() {
+			continue
+		}
 		pillCalls = append(pillCalls, c)
 	}
 	if len(pillCalls) == 0 {
-		t.Fatalf("no beat counter pill drawRoundedRect(colSurface1) found in beatCounterRect=%v (%d total calls captured)",
+		t.Fatalf("no beat counter pill drawRect(colSurface1) found in beatCounterRect=%v (%d total calls captured)",
 			bc, len(rec.calls))
 	}
 	// Every pill call must be fully contained within the rect — no bleed.
@@ -165,14 +172,17 @@ func TestStartupChrome_BeatCounterPillPaintsInsideRect_Mobile(t *testing.T) {
 	if bc.Empty() {
 		t.Fatal("beatCounterRect is empty on mobile")
 	}
+	// Square-corner pill (plain drawRect), filled colSurface1, no larger than
+	// the band (see desktop counterpart for rationale).
 	var pillCalls []drawCall
 	for _, c := range rec.calls {
-		if c.Kind == drawCallRoundedRect && c.Filled && c.Color == colSurface1 && c.Rect.Overlaps(bc) {
+		if c.Kind == drawCallRect && c.Filled && c.Color == colSurface1 &&
+			c.Rect.Overlaps(bc) && c.Rect.Dx() <= bc.Dx() && c.Rect.Dy() <= bc.Dy() {
 			pillCalls = append(pillCalls, c)
 		}
 	}
 	if len(pillCalls) == 0 {
-		t.Fatalf("no beat counter pill drawRoundedRect(colSurface1) found in beatCounterRect=%v (%d total calls captured)",
+		t.Fatalf("no beat counter pill drawRect(colSurface1) found in beatCounterRect=%v (%d total calls captured)",
 			bc, len(rec.calls))
 	}
 	for _, c := range pillCalls {

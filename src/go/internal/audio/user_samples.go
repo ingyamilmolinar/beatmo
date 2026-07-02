@@ -197,6 +197,25 @@ func SaveUserSample(id string, pcm []float32, sr int) {
 	}
 }
 
+// PersistUserSample writes the instrument's canonical (pristine) PCM to the
+// persistence sink WITHOUT re-registering it for playback. The Sampler Save on a
+// WAV / user-sample source uses it: that source's edit already drives playback
+// in real time through the sample-edit descriptor (reapplyUserSampleEdit
+// re-registers the BAKED buffer), so re-registering the pristine buffer here —
+// as SaveUserSample/PutUserSample would — must NOT happen or it would clobber
+// the edited playback. No-op when id is not a stored user sample or no sink is
+// installed.
+func PersistUserSample(id string) {
+	userSamplesMu.RLock()
+	rec, ok := userSamples[id]
+	sink := sampleSink
+	userSamplesMu.RUnlock()
+	if !ok || len(rec.PCM) == 0 || sink == nil {
+		return
+	}
+	sink.SaveSample(id, append([]float32(nil), rec.PCM...), rec.SampleRate)
+}
+
 // UserSamplePCM returns the canonical record for id, if it is a user sample.
 func UserSamplePCM(id string) (SampleRecord, bool) {
 	userSamplesMu.RLock()

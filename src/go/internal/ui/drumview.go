@@ -26,8 +26,6 @@ const (
 	instMenuMaxVisibleRows      = 8
 	instMenuScrollBarWidth      = 10
 	eqChannelMenuMaxVisibleRows = 8
-	eqChannelMenuScrollBarWidth = 10
-	fallbackInstCategory        = "Registered"
 )
 
 // tlBarHeight returns the timeline bar height, larger on mobile for touch targets.
@@ -186,6 +184,7 @@ type uploadResult struct {
 
 type importResult struct {
 	data []byte
+	name string // picked filename / path; "" when unknown (basenamed for the notification)
 	err  error
 }
 
@@ -343,20 +342,21 @@ type DrumView struct {
 	colorMenuRow int
 
 	// FX panel
-	fxPanelRow       int
-	fxPanelRect      image.Rectangle
-	fxPanelBtns      []*Button         // add/remove/toggle/reorder buttons within the panel
-	fxPanelSliders   []*Slider         // param sliders within the panel
-	fxSliderBindings []fxSliderBinding // maps slider index to effect param
-	fxSliderDragging bool              // active slider drag in FX panel
-	fxSliderDragIdx  int               // index into fxPanelSliders being dragged
-	fxAddMenuOpen    bool
-	fxExpandedSlots  map[int]bool    // which effect slots are expanded (mobile only)
-	fxScrollOffsetPx int             // pixel scroll offset for FX panel content area
-	fxScrollTS       TouchScroller   // touch scroll tracking for FX panel
-	fxScrollMaxPx    int             // max scroll offset (contentH - viewportH), 0 = no scroll
-	fxSliderLeft     int             // computed label area width for FX param rows (desktop)
-	fxViewportRect   image.Rectangle // scrollable content area (between header and footer)
+	fxPanelRow         int
+	fxPanelRect        image.Rectangle
+	fxPanelBtns        []*Button         // add/remove/toggle/reorder buttons within the panel
+	fxPanelCloseButton *Button           // the close (×) button, tracked by identity (never the slice tail)
+	fxPanelSliders     []*Slider         // param sliders within the panel
+	fxSliderBindings   []fxSliderBinding // maps slider index to effect param
+	fxSliderDragging   bool              // active slider drag in FX panel
+	fxSliderDragIdx    int               // index into fxPanelSliders being dragged
+	fxAddMenuOpen      bool
+	fxExpandedSlots    map[int]bool    // which effect slots are expanded (mobile only)
+	fxScrollOffsetPx   int             // pixel scroll offset for FX panel content area
+	fxScrollTS         TouchScroller   // touch scroll tracking for FX panel
+	fxScrollMaxPx      int             // max scroll offset (contentH - viewportH), 0 = no scroll
+	fxSliderLeft       int             // computed label area width for FX param rows (desktop)
+	fxViewportRect     image.Rectangle // scrollable content area (between header and footer)
 
 	// Instrument-editor (Phase 4 → redesigned per
 	// hey-please-review-the-vectorized-rocket.md) state. The editor lives
@@ -374,10 +374,12 @@ type DrumView struct {
 	// that still consult slider rects land on the knob area.
 	instEditorSliders    []*Slider
 	instEditorKnobs      []*Knob
-	instEditorStepBadges []*KnobStepBadge // index-aligned with instEditorKnobs; nil for discrete params
+	instEditorStepBadges []*KnobStepBadge   // index-aligned with instEditorKnobs; nil for discrete params
 	instEditorBindings   []instParamBinding // maps widget index → ParamDef
-	instEditorBtns     []*Button          // footer buttons: Reset, Save, Save-As (close lives on the sticky bar)
-	instEditorSections []synthSection     // PITCH | ENVELOPE | TONE | DRIVE cards
+	synthWheelPopup      *MobileWheelPopup  // mobile vertical scroll-wheel for synth knobs
+	samplerWheelPopup    *MobileWheelPopup  // mobile vertical scroll-wheel for sampler knobs
+	instEditorBtns       []*Button          // footer buttons: Reset, Save, Save-As (close lives on the sticky bar)
+	instEditorSections   []synthSection     // PITCH | ENVELOPE | TONE | DRIVE cards
 	// instEditorPreviewRect holds the geometry of the right-half
 	// preview pane (osc + ADSR + filter plots). Empty when the panel
 	// is too narrow for a horizontal split (mobile) or when the
@@ -424,12 +426,12 @@ type DrumView struct {
 	// instEditorSelectedKnob is the per-instrument index (into instEditorKnobs /
 	// instEditorBindings) of the knob explained by the focus graph. Set on knob
 	// press (click-to-select); defaults to the open stage's main knob.
-	instEditorSelectedKnob map[string]int
-	instEditorChips           []synthChip               // rebuilt (reused [:0]) every Layout
-	instEditorDetailR         image.Rectangle           // detail pane rect (selected stage's knobs)
-	instEditorDetailHeaderH   int                       // effective detail header height (token, shrunk on short panels)
-	instEditorReadoutRects    []image.Rectangle         // index-aligned with instEditorKnobs; readout tap hit rects
-	paramEditor               *ParamValueEditor         // shared numeric entry box for synth knob readout taps
+	instEditorSelectedKnob  map[string]int
+	instEditorChips         []synthChip       // rebuilt (reused [:0]) every Layout
+	instEditorDetailR       image.Rectangle   // detail pane rect (selected stage's knobs)
+	instEditorDetailHeaderH int               // effective detail header height (token, shrunk on short panels)
+	instEditorReadoutRects  []image.Rectangle // index-aligned with instEditorKnobs; readout tap hit rects
+	paramEditor             *ParamValueEditor // shared numeric entry box for synth knob readout taps
 
 	// synthMirror caches the live final-output re-render for the Synth tab's
 	// right-pane mirror (Stage 4). Lazily created on first requestSynthMirror.
@@ -454,8 +456,9 @@ type DrumView struct {
 	renameRow          int
 	renameBox          *TextInput
 
-	// import handler
-	onImport            func([]byte) error
+	// import handler. source is a short label (filename / template name) the
+	// success notification names; "" falls back to the generic "Imported" toast.
+	onImport            func(data []byte, source string) error
 	onImportDialogStart func()
 	onImportDialogEnd   func()
 
@@ -543,11 +546,18 @@ type DrumView struct {
 	rowsLayerRowWidth int
 	rowsLayerLength   int
 	rowsLayerGen      int
-	rowsLayerDirty    bool
-	rowsLayerPadPx    int
-	rowsLayerScratch  *ebiten.Image // double-buffer scratch for layer shifts
-	rowsLayerBytes    int64
-	rowsLayerFrame    int64
+	// lastRowsRenderPath / lastLegacyRebuildKind record which compositing path
+	// produced the most recent drum-row frame, for the slim-bar diagnostic
+	// (drum_render_diag.go). lastRowsRenderPath is "windowed" | "legacy" |
+	// "direct" | ""; lastLegacyRebuildKind details the legacy branch taken
+	// ("full" | "shift" | "overdraw" | "patch-skip" | "stale-accept" | "skip").
+	lastRowsRenderPath    string
+	lastLegacyRebuildKind string
+	rowsLayerDirty        bool
+	rowsLayerPadPx        int
+	rowsLayerScratch      *ebiten.Image // double-buffer scratch for layer shifts
+	rowsLayerBytes        int64
+	rowsLayerFrame        int64
 
 	// ── Windowed scroll cache (perf: avoid per-scroll full-layer recompose) ──
 	// During steady follow-scroll playback the row CONTENT does not change, the
@@ -567,6 +577,7 @@ type DrumView struct {
 	rowsWinRowWidth     int  // visible window width (px) the buffer pitch uses
 	rowsWinLength       int  // dv.Length the buffer was baked with
 	rowsWinBaseX        int  // baseX the buffer was baked with
+	rowsWinRowOff       int  // dv.rowOffset (vertical scroll) the buffer was baked with
 	rowsWinContentDirty bool // a real content/edit change → force re-bake
 	rowsWinValid        bool
 
@@ -639,6 +650,8 @@ type DrumView struct {
 
 	// Mobile overflow menu for Upload/Import/Export
 	overflowMenuScroll *MenuScroll // shared scroll component for the overflow menu
+	overflowBtns       []*Button   // persisted overflow/template rows (rebuilt on open/page switch); rects updated per frame for scroll
+	overflowBtnsPage   int         // page the persisted overflowBtns were built for; rebuild on page change
 
 	// overflowPage selects the overflow popup page: 0 = File actions, 1 = the
 	// genre template list. Reset to 0 whenever the menu closes or a template is
@@ -656,12 +669,13 @@ type DrumView struct {
 	masterVolPopup *SliderPopup
 
 	// Mobile context menu for row controls (long-press on row label)
-	contextMenuRow        int
-	contextMenuRect       image.Rectangle
-	contextMenuBtns       []*Button
-	contextMenuIcons      []string        // icon name per button (parallel to contextMenuBtns, excluding close btn)
-	contextMenuHeaderRect image.Rectangle // mobile bottom sheet header area
-	contextMenuScroll     *ScrollBehavior // scroll when items overflow
+	contextMenuRow         int
+	contextMenuRect        image.Rectangle
+	contextMenuBtns        []*Button
+	contextMenuCloseButton *Button            // the close (×) button, tracked by identity so retrieval never relies on append position
+	contextMenuItemIcons   map[*Button]string // per-button leading icon, keyed by button identity (not a parallel slice — can't drift out of lockstep)
+	contextMenuHeaderRect  image.Rectangle    // mobile bottom sheet header area
+	contextMenuScroll      *ScrollBehavior    // scroll when items overflow
 
 	// EQ visualization (supports master and per-instrument channels)
 	eqRect          image.Rectangle
@@ -945,6 +959,7 @@ func (dv *DrumView) rowScroll() *ScrollBehavior {
 
 func (dv *DrumView) playBtn() *Button             { return dv.transportZone.playBtn }
 func (dv *DrumView) stopBtn() *Button             { return dv.transportZone.stopBtn }
+func (dv *DrumView) recordBtn() *Button           { return dv.transportZone.recordBtn }
 func (dv *DrumView) bpmDecBtn() *Button           { return dv.transportZone.bpmDecBtn }
 func (dv *DrumView) bpmBox() *TextInput           { return dv.transportZone.bpmBox }
 func (dv *DrumView) bpmIncBtn() *Button           { return dv.transportZone.bpmIncBtn }

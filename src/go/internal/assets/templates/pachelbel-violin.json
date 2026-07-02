@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "subdiv": 16,
+  "bpm": 64,
+  "instruments": [
+    {
+      "name": "Violin",
+      "id": "violin",
+      "kind": "builtin",
+      "volume": 0.85,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "reverb_send": 0.14,
+      "synth_params": {
+        "pitch": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        1
+      ],
+      "pitch": 21,
+      "duration": 2
+    },
+    {
+      "id": 1,
+      "i": 32,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        2
+      ],
+      "pitch": 19,
+      "duration": 2
+    },
+    {
+      "id": 2,
+      "i": 64,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        3
+      ],
+      "pitch": 17,
+      "duration": 2
+    },
+    {
+      "id": 3,
+      "i": 96,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        4
+      ],
+      "pitch": 16,
+      "duration": 2
+    },
+    {
+      "id": 4,
+      "i": 128,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        5
+      ],
+      "pitch": 14,
+      "duration": 2
+    },
+    {
+      "id": 5,
+      "i": 128,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        6
+      ],
+      "pitch": 12,
+      "duration": 2
+    },
+    {
+      "id": 6,
+      "i": 128,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        7
+      ],
+      "pitch": 14,
+      "duration": 2
+    },
+    {
+      "id": 7,
+      "i": 128,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        8
+      ],
+      "pitch": 16,
+      "duration": 2
+    },
+    {
+      "id": 8,
+      "i": 128,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        9
+      ],
+      "pitch": 17,
+      "duration": 2
+    },
+    {
+      "id": 9,
+      "i": 96,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        10
+      ],
+      "pitch": 21,
+      "duration": 2
+    },
+    {
+      "id": 10,
+      "i": 64,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        11
+      ],
+      "pitch": 24,
+      "duration": 2
+    },
+    {
+      "id": 11,
+      "i": 32,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        12
+      ],
+      "pitch": 22,
+      "duration": 2
+    },
+    {
+      "id": 12,
+      "i": 0,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        13
+      ],
+      "pitch": 21,
+      "duration": 2
+    },
+    {
+      "id": 13,
+      "i": 0,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        14
+      ],
+      "pitch": 17,
+      "duration": 2
+    },
+    {
+      "id": 14,
+      "i": 0,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        15
+      ],
+      "pitch": 21,
+      "duration": 2
+    },
+    {
+      "id": 15,
+      "i": 0,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        0
+      ],
+      "pitch": 19,
+      "duration": 2
+    }
+  ]
+}

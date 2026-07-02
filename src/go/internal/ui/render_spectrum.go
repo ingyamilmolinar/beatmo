@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // spectrumSlope expresses the post-display tilt applied to the spectrum
@@ -39,13 +40,22 @@ var isoLabels = [10]string{"31", "62", "125", "250", "500", "1k", "2k", "4k", "8
 // live in Treble. The brackets are a kid-friendly orientation aid;
 // the underlying ISO band data is unchanged.
 var bandGroups = [3]struct {
-	label     string
+	label     string   // canonical English (reference / fallback)
+	key       i18n.Key // localized display label
 	startBand int
 	endBand   int // exclusive
 }{
-	{"Bass", 0, 4},
-	{"Mids", 4, 7},
-	{"Treble", 7, 10},
+	{"Bass", i18n.KeySpectrumBandBass, 0, 4},
+	{"Mids", i18n.KeySpectrumBandMids, 4, 7},
+	{"Treble", i18n.KeySpectrumBandTreble, 7, 10},
+}
+
+// bandGroupLabelAt returns the localized display label for ISO band group i.
+func bandGroupLabelAt(i int) string {
+	if i < 0 || i >= len(bandGroups) {
+		return ""
+	}
+	return i18n.T(bandGroups[i].key)
 }
 
 // noteAnchors are octave-C reference frequencies overlaid on the spectrum
@@ -474,10 +484,11 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 	if scale == freqScaleLog {
 		bracketCol := WithAlpha(genColorBorder, AlphaSubtle)
 		bracketY := bracketRow.Min.Y + 2 // 2 px gap below bar baseline
-		for _, g := range bandGroups {
+		for gi, g := range bandGroups {
 			if g.endBand <= g.startBand || g.endBand > numBands {
 				continue
 			}
+			gLabel := bandGroupLabelAt(gi)
 			// Start X = left edge of first band in group; end X = right edge of last.
 			groupX0 := barRect.Min.X + g.startBand*(barWidth+1)
 			groupX1 := barRect.Min.X + (g.endBand-1)*(barWidth+1) + barWidth
@@ -493,10 +504,10 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 			drawRect(dst, image.Rect(groupX0, bracketY, groupX0+1, bracketY+2), bracketCol, true)
 			drawRect(dst, image.Rect(groupX1-1, bracketY, groupX1, bracketY+2), bracketCol, true)
 			// Centered group label, inside the bracket row.
-			lw := int(float64(TextWidth(g.label)) * captionScale)
+			lw := int(float64(TextWidth(gLabel)) * captionScale)
 			lx := groupX0 + (groupX1-groupX0-lw)/2
 			ly := bracketY + 3
-			DrawTextColorAtScale(dst, g.label, lx, ly, colTextSecondary, captionScale)
+			DrawTextColorAtScale(dst, gLabel, lx, ly, colTextSecondary, captionScale)
 		}
 
 		// Note-name overlay: tiny C3/C4/C5/C6/C7 markers along the top of the

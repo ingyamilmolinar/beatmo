@@ -198,8 +198,8 @@ func TestOrientationSwitchResetsAutoSize(t *testing.T) {
 	g.Layout(400, 800)
 
 	portraitY := g.split.Y
-	if portraitY < 400 || portraitY > 700 {
-		t.Fatalf("portrait split.Y=%d out of range [400,700] for h=800", portraitY)
+	if want := adaptiveMobilePortraitSplitY(800, g); portraitY != want {
+		t.Fatalf("portrait split.Y=%d, want adaptive %d for h=800", portraitY, want)
 	}
 
 	// Rotate to landscape — still stacked, adaptive Y for h=400

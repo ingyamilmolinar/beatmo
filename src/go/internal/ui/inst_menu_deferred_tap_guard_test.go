@@ -328,6 +328,12 @@ func TestEQChannelMenuSuppressBlocksDeferredTap(t *testing.T) {
 func TestInstMenuCloseButtonViaDeferredTap(t *testing.T) {
 	assertDefaultParityState(t)
 
+	// The deferred-tap (fire-on-release) close path is a mobile affordance;
+	// desktop closes on the press edge. Force mobile so this exercises the
+	// deferred-tap path the test name describes.
+	forceSmallScreenForTest = true
+	t.Cleanup(func() { forceSmallScreenForTest = false })
+
 	const W, H = 800, 600
 	dv, cx, cy := newCategoryDrumView(t, W, H)
 

@@ -406,8 +406,10 @@ func mobileProfile() *LayoutProfile {
 		TransportMisc:   TransportMiscStyle,
 		RowLabelStyle:   MobileRowLabelStyle,
 
-		// Drawing — density-tied stripe + close, layout-tied corner radius
-		DrawTopEdgeHighlight: false,
+		// Drawing — density-tied stripe + close, layout-tied corner radius.
+		// Top-edge depth highlight renders on BOTH platforms: visual styling
+		// must not diverge by screen class (only layout & density may).
+		DrawTopEdgeHighlight: true,
 		AccentStripeWidth:    dv.AccentStripeWidth,
 		AccentStripeInsetY:   dv.AccentStripeInsetY,
 		SplitterHandleColor:  colSplitterHandle,

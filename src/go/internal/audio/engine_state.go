@@ -85,25 +85,3 @@ func Instruments() []string {
 	instMu.RUnlock()
 	return ids
 }
-
-// RenameInstrument updates the ID of an existing instrument.
-func RenameInstrument(oldID, newID string) {
-	changed := false
-	instMu.Lock()
-	if inst, ok := instruments[oldID]; ok {
-		delete(instruments, oldID)
-		instruments[newID] = inst
-		for i, id := range instOrder {
-			if id == oldID {
-				instOrder[i] = newID
-				break
-			}
-		}
-		changed = true
-	}
-	instMu.Unlock()
-	if changed {
-		bumpInstrumentsVersion()
-	}
-	renameInstrumentChannel(oldID, newID)
-}

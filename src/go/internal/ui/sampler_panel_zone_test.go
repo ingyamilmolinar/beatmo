@@ -39,7 +39,7 @@ func TestSamplerTabBuildsKnobsAndButtons(t *testing.T) {
 			t.Errorf("knob %d has empty rect", i)
 		}
 	}
-	for _, tag := range []string{"sampler-load-wav", "sampler-preview", "sampler-save", "sampler-save-as"} {
+	for _, tag := range []string{"sampler-preview", "sampler-save", "sampler-save-as"} {
 		if dv.samplerButtonByTag(tag) == nil {
 			t.Errorf("missing button %q", tag)
 		}
@@ -144,35 +144,3 @@ func TestSamplerHandleDragSetsTrim(t *testing.T) {
 	}
 }
 
-func TestSamplerLoadWAVPopulatesRaw(t *testing.T) {
-	g := newSamplerTabGame(t)
-	fixture := []float32{0.1, -0.2, 0.3, -0.4, 0.5}
-	restore := SwapSamplerWAVLoadFnForTest(func() ([]float32, int, bool) {
-		return fixture, 44100, true
-	})
-	defer SwapSamplerWAVLoadFnForTest(restore)
-
-	g.drum.samplerLoadWAV()
-	if len(g.drum.sampler.raw) != len(fixture) {
-		t.Fatalf("raw len = %d, want %d after Load WAV", len(g.drum.sampler.raw), len(fixture))
-	}
-	if g.drum.sampler.source != samplerSourceWAV {
-		t.Errorf("source = %v, want samplerSourceWAV", g.drum.sampler.source)
-	}
-	if g.drum.sampler.rawSampleRate != 44100 {
-		t.Errorf("rawSampleRate = %d, want 44100", g.drum.sampler.rawSampleRate)
-	}
-}
-
-func TestSamplerLoadWAVCancelLeavesBufferEmpty(t *testing.T) {
-	g := newSamplerTabGame(t)
-	restore := SwapSamplerWAVLoadFnForTest(func() ([]float32, int, bool) {
-		return nil, 0, false // user cancelled
-	})
-	defer SwapSamplerWAVLoadFnForTest(restore)
-
-	g.drum.samplerLoadWAV()
-	if g.drum.sampler.hasBuffer() {
-		t.Error("cancelled Load WAV should leave the buffer empty")
-	}
-}

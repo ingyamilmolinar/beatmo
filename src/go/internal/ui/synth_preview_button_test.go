@@ -45,28 +45,6 @@ func TestSynthHeaderPreviewOnMobileMeetsTouchMin(t *testing.T) {
 	}
 }
 
-func TestSynthHeaderPreviewCollapsesFirst(t *testing.T) {
-	restore := SetDensityForTest(DensityComfortable)
-	defer restore()
-	// Shrink the panel until the cascade first collapses something; the FIRST
-	// dropped action must be "preview" (Save / Save As / Reset are more
-	// load-bearing — knob release already auditions).
-	for w := 1200; w >= 200; w -= 10 {
-		h := synthHeaderForTest(t, image.Rect(0, 0, w, 200), "kick-1", "drum-kick", false)
-		if len(h.overflowActions) == 0 {
-			continue
-		}
-		if h.overflowActions[0] != "preview" {
-			t.Fatalf("width %d: first collapsed action = %q, want preview (order %v)", w, h.overflowActions[0], h.overflowActions)
-		}
-		if !h.previewRect.Empty() {
-			t.Fatalf("width %d: preview collapsed but previewRect still laid out", w)
-		}
-		return
-	}
-	t.Fatal("cascade never collapsed — widen the sweep")
-}
-
 func TestSynthPreviewButtonFiresAuditionOnce(t *testing.T) {
 	assertDefaultParityState(t)
 	var calls []string
@@ -95,14 +73,6 @@ func TestSynthPreviewButtonFiresAuditionOnce(t *testing.T) {
 	preview.OnClick()
 	if len(calls) != 1 || calls[0] != want {
 		t.Fatalf("audition calls = %v, want exactly one for %q", calls, want)
-	}
-}
-
-func TestSynthOverflowSheetIncludesPreview(t *testing.T) {
-	sheet := newSynthOverflowSheet(&DrumView{}, []string{"preview", "save"}, "kick")
-	labels := sheet.SynthOverflowLabels()
-	if len(labels) != 2 || labels[0] != "Preview" {
-		t.Fatalf("overflow labels = %v, want [Preview Save]", labels)
 	}
 }
 

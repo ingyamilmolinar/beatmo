@@ -7,6 +7,8 @@ import (
 	"unicode"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // ColorWheelProps contains the external state passed to the color picker.
@@ -286,23 +288,12 @@ func (c *ColorWheelComponent) rebuildWheel() {
 		c.cells = append(c.cells, swatchCell{rect: cellRect, col: s.RGBA})
 	}
 
-	// Close button inside the header (top-right) — sized for touch on mobile.
-	closeSz := c.titleRect.Dy() - 6
-	if closeSz < 1 {
-		closeSz = c.titleRect.Dy()
-	}
-	if tm := TouchMinTarget(); Profile().IsMobile() && tm > closeSz {
-		closeSz = min(tm, c.titleRect.Dy())
-	}
-	cr := image.Rect(
-		c.titleRect.Max.X-closeSz-3,
-		c.titleRect.Min.Y+(c.titleRect.Dy()-closeSz)/2,
-		c.titleRect.Max.X-3,
-		c.titleRect.Min.Y+(c.titleRect.Dy()-closeSz)/2+closeSz,
-	)
+	// Close button inside the header (top-right) — sized via the shared
+	// closeButtonRect helper so it is consistent with every other pop-up.
+	cr := closeButtonRect(c.titleRect, SpaceXS)
 	c.closeBtn = NewButton("", PopupButtonStyle, func() { c.Close() })
 	c.closeBtn.Icon = "close"
-	c.closeBtn.IconColor = colButtonBorder
+	c.closeBtn.IconColor = closeIconColor()
 	c.closeBtn.SetRect(cr)
 	c.closeBtn.ConsumeOnPress = true
 }
@@ -452,13 +443,11 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 		return
 	}
 
-	// Panel chrome + "Neon Horizon" header band.
+	// Panel chrome + unified menu title (shared drawMenuTitle, no swatch).
 	drawPanel(dst, r)
 	drawMenuHeaderBand(dst, c.titleRect)
-	title := "Color"
-	th := StyledTextHeight(RolePanelTitle)
-	ty := c.titleRect.Min.Y + (c.titleRect.Dy()-th)/2
-	DrawTextStyled(dst, title, c.titleRect.Min.X+colorSwatchPad, ty, RolePanelTitle, colTextPrimary)
+	titleRect := image.Rect(c.titleRect.Min.X+colorSwatchPad, c.titleRect.Min.Y, c.titleRect.Max.X, c.titleRect.Max.Y)
+	drawMenuTitle(dst, titleRect, i18n.T(i18n.KeyMenuColor), nil)
 
 	// Family-name labels in the left gutter, vertically centered on each row.
 	sw := c.swatches()

@@ -29,12 +29,12 @@ import (
 // 1-sample impulse would be multiplied by ~0 at voice start and be inaudible).
 // Same params → byte-identical samples every run, so it pins a golden hash.
 type burstVoice struct {
-	pos      int
-	n        int
-	freq     float64
-	decay    float64
-	amp      float64
-	sr       float64
+	pos   int
+	n     int
+	freq  float64
+	decay float64
+	amp   float64
+	sr    float64
 }
 
 // newBurstVoice returns the canonical harness instrument: a 1 kHz sine that

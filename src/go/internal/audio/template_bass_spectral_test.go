@@ -8,9 +8,8 @@ import (
 	"testing"
 )
 
-// template_bass_spectral_test.go is the evidence-backed half of the "bass guitar
-// sounds metallic" regression guard (the shipped templates avoid bass-guitar for
-// bass roles; TestBassGuitarBannedFromTemplates pins why).
+// template_bass_spectral_test.go pins that the clean bass instruments the
+// shipped templates rely on stay spectrally deep.
 //
 // The circuit templates drive bass lines through per-node pitch, which the
 // engine realises via naive linear-interpolation resampling (PlayParams). An
@@ -18,9 +17,7 @@ import (
 // pluck — not a bass — and resampling only makes it worse. This test renders
 // each candidate bass instrument and measures the fraction of spectral energy
 // above 2 kHz: a real bass note (≤110 Hz fundamental) should sit almost entirely
-// below ~1 kHz. fm-bass / sub-bass must stay clean; bass-guitar is pinned as
-// intrinsically bright so the contrast (and the reason it is banned from bass
-// roles) is documented, not folklore.
+// below ~1 kHz. fm-bass / sub-bass must stay clean.
 
 func bassHFEnergyFraction(render func(buf []float32, sampleRate, samples int)) float64 {
 	const sr = 48000
@@ -87,14 +84,5 @@ func TestTemplateBassInstrumentsAreSpectrallyClean(t *testing.T) {
 			t.Errorf("%s: %.1f%% of energy above 2 kHz (>%.0f%%) — no longer a clean bass; "+
 				"templates rely on it sounding deep", c.name, hf*100, cleanMax*100)
 		}
-	}
-
-	// bass-guitar is intrinsically bright (Karplus-Strong, golden-locked). Pin
-	// that fact: if it ever becomes clean, revisit cleanBassInstruments.
-	hf := bassHFEnergyFraction(renderBassGuitarVoice)
-	t.Logf("%-10s HF>2kHz = %.1f%% (intentionally banned from bass roles)", "bass-guitar", hf*100)
-	if hf < 0.40 {
-		t.Errorf("bass-guitar HF=%.1f%% is now low — it may be usable as a bass; "+
-			"re-evaluate the cleanBassInstruments allowlist in internal/templates", hf*100)
 	}
 }

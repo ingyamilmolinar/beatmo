@@ -157,11 +157,13 @@ func TestDesktopLabelTapOpensInstMenu(t *testing.T) {
 	}
 }
 
-// wantEllipsisMenu is the platform-uniform ellipsis menu contract.
-var wantEllipsisMenu = []string{"Rename", "Origin", "Delete"}
+// wantEllipsisMenu is the platform-uniform ellipsis menu contract:
+// Rename / Color / Origin / Delete (see contextMenuItems doc comment).
+// "Instrument" is absent — tapping the row label opens the picker directly.
+var wantEllipsisMenu = []string{"Rename", "Color", "Origin", "Delete"}
 
 // TestEllipsisMenuMobileItems pins the mobile ellipsis menu to exactly
-// Rename / Origin / Delete — "Instrument" and "Color" are absent.
+// Rename / Color / Origin / Delete — "Instrument" is absent.
 func TestEllipsisMenuMobileItems(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
@@ -178,14 +180,14 @@ func TestEllipsisMenuMobileItems(t *testing.T) {
 		t.Fatalf("mobile ellipsis labels=%v want=%v", labels, wantEllipsisMenu)
 	}
 	for _, l := range labels {
-		if l == "Instrument" || l == "Color" {
+		if l == "Instrument" {
 			t.Errorf("mobile ellipsis menu must not contain %q", l)
 		}
 	}
 }
 
 // TestEllipsisMenuDesktopItems pins the desktop ellipsis menu to exactly
-// Rename / Origin / Delete — "Color" (formerly desktop-only) is gone.
+// Rename / Color / Origin / Delete — identical to mobile.
 func TestEllipsisMenuDesktopItems(t *testing.T) {
 	assertDefaultParityState(t)
 
@@ -201,7 +203,7 @@ func TestEllipsisMenuDesktopItems(t *testing.T) {
 		t.Fatalf("desktop ellipsis labels=%v want=%v", labels, wantEllipsisMenu)
 	}
 	for _, l := range labels {
-		if l == "Color" || l == "Instrument" {
+		if l == "Instrument" {
 			t.Errorf("desktop ellipsis menu must not contain %q", l)
 		}
 	}

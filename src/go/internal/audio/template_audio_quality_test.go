@@ -24,7 +24,7 @@ import (
 //     WAVs for listening.
 //   - TestTemplateAudioQuality — the guard: fails if any mix clips, is squashed,
 //     or if a melodic bass is noisy (metallic HF) or muddy (inharmonic cluster),
-//     or if the bass overpowers the kick. Pins bass-guitar as banned.
+//     or if the bass overpowers the kick.
 //
 // Both build under the native (!test) tag because they exercise the CGo synth
 // engine and the real master chain (compressor + soft-clip + limiter).
@@ -329,6 +329,7 @@ func instVol(in templateInst) float64 {
 func renderTemplateAllHitsPeak(t *testing.T, d templateDoc) float64 {
 	t.Helper()
 	ResetInstruments()
+	resetSendEffectsState() // clear any reverb/delay tail a prior test left (render isolation)
 	sr := sampleRate
 	m := newTemplateMixer()
 	for _, in := range d.Instruments {
@@ -350,6 +351,7 @@ func renderTemplateAllHitsPeak(t *testing.T, d templateDoc) float64 {
 func renderTemplateInstrumentSolo(t *testing.T, d templateDoc, in templateInst, seconds float64) []float64 {
 	t.Helper()
 	ResetInstruments()
+	resetSendEffectsState() // clear any reverb/delay tail a prior test left (render isolation)
 	applyTemplateInstrument(in)
 	sr := sampleRate
 	totalSamples := int(seconds * float64(sr))
@@ -429,8 +431,28 @@ func TestTemplateAudioQuality(t *testing.T) {
 				// noise-based percussion voice (a hi-hat at brightness 0.6 measures
 				// ~0.38) is an intentional sound, not a bug. This guard only catches a
 				// near-pure-white-noise render — a genuinely broken/garbage voice.
-				if s.flatness > 0.50 {
-					t.Errorf("%s: flatness=%.3f (>0.50): near-white-noise — broken/garbage render?", in.ID, s.flatness)
+				//
+				// Spectral flatness alone is too blunt: a CLAP is, by design, a short
+				// burst of band-limited noise, so its spectrum is legitimately near-
+				// white (pop-ballad/house-piano claps measure ~0.48–0.50). What tells
+				// a real noise-burst HIT apart from a genuinely broken "stuck hiss" is
+				// TIME structure, not spectrum. A percussion hit is transient — energy
+				// packed into short decaying bursts with near-silence between, so its
+				// crest factor (peak/rms over the whole 3 s solo) is high (claps ≈7.6–
+				// 10.6, hats ≈10–18). A broken white-noise render fills the buffer
+				// evenly and sits at a low crest (≈3–5). So: sustained sounds keep the
+				// strict 0.50 bound; a transient noise-burst (clap/hat/snare) is held
+				// to a looser ceiling that still rejects an actually-pure-white render
+				// (flatness → ~0.9–1.0) but passes a real clap (~0.5).
+				const noiseBurstCrestMin = 6.0     // transient ⇒ percussive noise burst, not a stuck hiss
+				const noiseBurstFlatnessMax = 0.65 // even a clap is nowhere near pure white noise
+				flatnessMax := 0.50
+				if s.crest >= noiseBurstCrestMin {
+					flatnessMax = noiseBurstFlatnessMax
+				}
+				if s.flatness > flatnessMax {
+					t.Errorf("%s: flatness=%.3f (>%.2f, crest=%.2f): near-white-noise — broken/garbage render?",
+						in.ID, s.flatness, flatnessMax, s.crest)
 				}
 				if s.jumpRate > 1.0 {
 					t.Errorf("%s: jumpRate=%.2f%% (>1%%): crackle/clicks", in.ID, s.jumpRate*100)
@@ -495,23 +517,4 @@ func TestTemplateInsertEffectsAreImportable(t *testing.T) {
 		t.Fatal("no template insert effects found — the lowpass tuning is not being emitted")
 	}
 	t.Logf("verified %d importable insert-effect slots across templates", found)
-}
-
-// TestBassGuitarBannedFromTemplates pins the reason bass-guitar is not used as a
-// bass voice in the shipped templates: its Karplus-Strong render is intrinsically
-// bright/metallic (TestTemplateAudioQuality would flag it as metallic if a
-// template adopted it for a bass role). If this ever changes, re-evaluate.
-func TestBassGuitarBannedFromTemplates(t *testing.T) {
-	ResetInstruments()
-	buf := make([]float32, sampleRate)
-	renderBassGuitarVoice(buf, sampleRate, sampleRate)
-	f := make([]float64, len(buf))
-	for i, v := range buf {
-		f[i] = float64(v)
-	}
-	_, hf := spectralStats(f, sampleRate)
-	t.Logf("bass-guitar HF>4kHz = %.1f%%", hf*100)
-	if hf < 0.20 {
-		t.Errorf("bass-guitar HF=%.1f%% is now low — it may be usable as a bass; re-evaluate cleanBassInstruments", hf*100)
-	}
 }

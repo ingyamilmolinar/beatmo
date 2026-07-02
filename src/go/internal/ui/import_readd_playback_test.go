@@ -24,7 +24,9 @@ func ensureRowInstrumentsAvailable(t *testing.T, g *Game) {
 			continue
 		}
 		if !g.drum.IsInstrumentAvailable(row.Instrument) {
-			_ = audio.RegisterWAV(row.Instrument, "test://placeholder.wav")
+			// Empty path → silent placeholder sample (no decode attempt, no
+			// log noise). See sample_desktop.go RegisterAudio empty-path branch.
+			_ = audio.RegisterWAV(row.Instrument, "")
 		}
 	}
 	g.drum.refreshInstruments()

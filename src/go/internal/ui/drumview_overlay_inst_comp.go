@@ -11,11 +11,22 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
+// instSearchMobileInputID is the mobile native-input bridge id for the
+// instrument-menu search field. Shared by drumview_layout.go (which registers
+// the field's rect so a tap raises the native keyboard) and the component's
+// Update() (which reads the live typed value back to drive real-time filtering).
+const instSearchMobileInputID = "inst-search"
+
 // InstrumentOption represents an instrument available for selection.
 type InstrumentOption struct {
 	ID       string
 	Label    string
 	Category string
+	// Color is the instrument's effective display color — the live DrumRow.Color
+	// of the row this instrument is bound to, so the picker swatch / active
+	// stripe / accent matches the grid node exactly. Nil for instruments not on
+	// any row; the menu then falls back to the instColor(id) registered default.
+	Color color.Color
 }
 
 // InstrumentMenuProps contains the external state passed to the instrument menu component.
@@ -98,7 +109,6 @@ const (
 
 const (
 	instMenuMaxVisibleRowsComp = 10
-	instMenuScrollBarWidthComp = 10
 	// pageChipsThreshold pins the boundary between numbered chips
 	// and the numeric jump-input. ≤ threshold pages → chips render;
 	// > threshold → "Page [N]/M" with a typed input.
@@ -120,7 +130,12 @@ type InstrumentMenuState struct {
 	// "Favorites" category at the top of buildCategoriesMode; cleared by Back.
 	favoritesView bool
 	userScrolled  bool
-	lastAdded     string
+	// selectedID is the live "currently-selected" instrument the menu
+	// highlights as active. Seeded from props.CurrentInstrument at Open and
+	// updated on every in-menu selection so the active stripe follows the user
+	// while the menu stays open (audition). Empty falls back to the prop.
+	selectedID   string
+	lastAdded    string
 	cameFromCats  bool
 	searchText    string
 	filteredInsts []string
@@ -130,6 +145,11 @@ type InstrumentMenuState struct {
 	fuzzyScores      map[string]int
 	categoryByID     map[string]string
 	displayLabelByID map[string]string
+	// colorByID maps an instrument id to its effective display color (the live
+	// owning-row color from props.InstrumentOption.Color). Rebuilt on every
+	// SetProps so a node recolor flows through; absent ids fall back to
+	// instColor(id) via instColorFor. See TestInstMenuInstrumentRowMatchesNodeColor.
+	colorByID        map[string]color.Color
 	searchHighlights map[string][]int // Per-ID highlight positions from fuzzy search.
 }
 
@@ -214,9 +234,38 @@ func (m *InstrumentMenuComponent) SetProps(p InstrumentMenuProps) {
 	}
 	m.props = p
 	m.style = p.Style.resolved()
+	// Rebuild the per-instrument color overrides every SetProps (not gated by
+	// needsRebuild): a node recolor leaves the id list identical but changes the
+	// effective color, and the menu must pick it up.
+	m.rebuildColorMap()
 	if needsRebuild {
 		m.rebuildMaps()
 	}
+}
+
+// rebuildColorMap refreshes state.colorByID from props.Instruments, recording
+// only entries that carry an explicit color (an instrument bound to a row).
+func (m *InstrumentMenuComponent) rebuildColorMap() {
+	m.state.colorByID = make(map[string]color.Color, len(m.props.Instruments))
+	for _, inst := range m.props.Instruments {
+		if inst.Color != nil {
+			m.state.colorByID[inst.ID] = inst.Color
+		}
+	}
+}
+
+// instColorFor resolves an instrument's effective display color: the live owning
+// row color when the instrument is on a row (props.InstrumentOption.Color),
+// otherwise the registered instColor(id) default. This is the single seam the
+// menu uses for swatches, active stripes, favorite stars, and chrome accent so
+// every surface matches the grid node exactly.
+func (m *InstrumentMenuComponent) instColorFor(id string) color.Color {
+	if m.state.colorByID != nil {
+		if c, ok := m.state.colorByID[id]; ok && c != nil {
+			return c
+		}
+	}
+	return instColor(id)
 }
 
 // Style returns the resolved MenuStyle currently in use. Useful for
@@ -240,7 +289,7 @@ func (m *InstrumentMenuComponent) rebuildMaps() {
 // ensureScroll lazily initializes the scroll behavior.
 func (m *InstrumentMenuComponent) ensureScroll() {
 	if m.menuScroll == nil {
-		m.menuScroll = NewMenuScroll(DropdownScrollbarStyle, 24)
+		m.menuScroll = NewMenuScroll(dropdownScrollbarStyle(), 24)
 		m.scroll = m.menuScroll.ScrollBehavior()
 	}
 	if m.scroll == nil {
@@ -258,6 +307,9 @@ func (m *InstrumentMenuComponent) Open() {
 	m.state.searchText = ""
 	m.state.lastAdded = ""
 	m.state.cameFromCats = false
+	// Seed the live selection from the row's current instrument; subsequent
+	// in-menu picks update it so the active highlight follows the user.
+	m.state.selectedID = m.props.CurrentInstrument
 
 	// Default to instruments mode unless ForceCategories is set and categories exist
 	if m.props.ForceCategories && len(m.props.Categories) > 0 {
@@ -550,9 +602,9 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 
 		if favPrefix && absIdx == 0 {
 			favCount := len(m.favoritesIDs())
-			label := "Favorites"
+			label := i18n.T(i18n.KeyMenuFavorites)
 			if favCount > 0 {
-				label = "Favorites (" + pageChipLabel(favCount) + ")"
+				label = label + " (" + pageChipLabel(favCount) + ")"
 			}
 			btn := NewButton(label, DropdownStyle, func() {
 				m.state.favoritesView = true
@@ -867,7 +919,7 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 	hasScroll := m.scroll.HasScroll()
 	buttonMaxX := base.Max.X
 	if hasScroll {
-		buttonMaxX -= instMenuScrollBarWidthComp
+		buttonMaxX -= dropdownScrollbarWidth()
 		if buttonMaxX <= base.Min.X {
 			buttonMaxX = base.Min.X + 1
 		}
@@ -943,6 +995,13 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 			label = id
 		}
 		btn := NewButton(label, DropdownStyle, func() {
+			// Track the live selection so the active-row highlight follows it.
+			// props.CurrentInstrument is only a snapshot from menu-open and is
+			// never refreshed while the menu stays open, so without this the
+			// open-time instrument would stay highlighted forever (the "buttons
+			// remain toggled" bug). Set on every selection path (desktop press,
+			// mobile fireTapAt, keyboard) since they all route through OnClick.
+			m.state.selectedID = optID
 			if m.props.OnSelect != nil {
 				m.props.OnSelect(optID)
 			}
@@ -984,7 +1043,7 @@ func (m *InstrumentMenuComponent) buildCloseBtn() {
 	r := closeButtonRect(m.fullRect, SpaceXS)
 	m.closeBtn = NewButton("", PopupButtonStyle, func() { m.Close() })
 	m.closeBtn.Icon = "close"
-	m.closeBtn.IconColor = colButtonBorder
+	m.closeBtn.IconColor = closeIconColor()
 	m.closeBtn.SetRect(r)
 	m.closeBtn.ConsumeOnPress = true
 }
@@ -1025,9 +1084,23 @@ func (m *InstrumentMenuComponent) fireTapAt(x, y int) {
 				return
 			}
 		}
+		// Mirror the desktop dispatch (HandleInput, instruments-mode block):
+		// clear any stale press from the previously-selected row, then drive the
+		// tapped row through the SAME Button press core the mouse path uses
+		// (PressFromTree → applyPress). This fires OnClick AND eases the keycap
+		// down + leaves the row pressed-IN, so the selected-row "toggle pressed
+		// down" feedback is identical on touch and under the cursor. The deferred
+		// tap is the only reason instrument rows aren't already on the shared
+		// press path; firing OnClick directly here skipped the press lifecycle so
+		// the mobile selection stayed visually flat. The menu stays open (one-shot
+		// InputConsumed, no release), so the pressed state persists until the next
+		// selection's ResetPress — matching desktop.
 		for _, btn := range m.instBtns {
-			if pt.In(btn.Rect()) && btn.OnClick != nil {
-				btn.OnClick()
+			btn.ResetPress()
+		}
+		for _, btn := range m.instBtns {
+			if pt.In(btn.Rect()) {
+				btn.PressFromTree(true)
 				return
 			}
 		}
@@ -1067,6 +1140,17 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 
 	m.ensureScroll()
 
+	// The touch / deferred-tap state machine (dead-zone scroll, fire-on-release)
+	// is a MOBILE affordance. On desktop, route input straight to the per-control
+	// hit handlers below, which fire immediately on the press edge via
+	// Button.HandleInputResult — the same split the context menu uses
+	// (drumview_context_menu.go handleContextMenuInput). Without this, desktop
+	// clicks went through the touch path: they only registered on release and
+	// any pointer drift past the 10px dead zone (tapMaxMovePx) was swallowed as a
+	// scroll, so the menu "did not respond to clicks well". Scrollbar thumb drag
+	// stays available on both platforms (handled below, outside the touch blocks).
+	mobile := Profile().IsMobile()
+
 	// ESC closes
 	if isKeyPressed(ebiten.KeyEscape) {
 		m.Close()
@@ -1086,7 +1170,7 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 	}
 
 	// Handle touch scroll (suppresses button taps while scrolling)
-	if m.scroll.ScrollingCommitted() {
+	if mobile && m.scroll.ScrollingCommitted() {
 		if pressed {
 			m.scroll.HandleTouchMove(x, y)
 		} else {
@@ -1104,7 +1188,7 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 
 	// While a touch is active but not yet committed (in dead zone),
 	// process moves. On release, check if it was a tap.
-	if m.scroll.TouchActive() {
+	if mobile && m.scroll.TouchActive() {
 		if pressed {
 			if m.scroll.HandleTouchMove(x, y) {
 				m.state.userScrolled = true
@@ -1137,7 +1221,7 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 
 	// Touch begin in scroll area: suppress ALL buttons on initial contact.
 	// The deferred tap will fire on release if no scroll was committed.
-	if pressed && pt.In(m.scroll.VS.View) && !m.scroll.TouchActive() && !m.scroll.Dragging() {
+	if mobile && pressed && pt.In(m.scroll.VS.View) && !m.scroll.TouchActive() && !m.scroll.Dragging() {
 		if m.deferredTap.Begin(x, y) {
 			m.scroll.HandleTouchBegin(x, y)
 			return InputCaptured
@@ -1220,8 +1304,22 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 		}
 	}
 
-	// Handle instrument buttons (suppress during drag or touch scroll)
+	// Handle instrument buttons (suppress during drag or touch scroll).
+	//
+	// The menu stays open after a selection (audition) and returns
+	// InputConsumed, so the input tree never delivers a release to these
+	// buttons — Button.held stays latched at 1 across selections. Clear the
+	// latched press state of every row on the press edge so a fresh click on a
+	// previously-selected row is never swallowed by a stale held counter (the
+	// "instrument menu is very flaky" bug). HandleInput reaches this loop once
+	// per physical press on desktop (one-shot, not captured), so reset-then-fire
+	// fires exactly once.
 	if m.state.mode == InstMenuModeInstruments && !m.scroll.Dragging() && !touchSuppressButtons {
+		if pressed {
+			for _, btn := range m.instBtns {
+				btn.ResetPress()
+			}
+		}
 		for _, btn := range m.instBtns {
 			if btn.HandleInputResult(x, y, pressed) != InputIgnored {
 				return InputConsumed
@@ -1280,11 +1378,24 @@ func (m *InstrumentMenuComponent) Update() {
 	// pointer events (via compHitHandler), so without this, typed
 	// characters are silently lost after the initial click-to-focus.
 	if m.state.mode == InstMenuModeInstruments && m.searchBox != nil {
+		// Mobile: the search text is typed into a native HTML <input> overlay,
+		// not the ebiten keyboard the searchBox reads. Pull its live value
+		// (non-consuming) every frame so the list filters/highlights in real
+		// time as the user types. mobileInputGetValue returns ok=false when no
+		// native input is active for this field, leaving the query untouched.
+		if Profile().IsMobile() {
+			if v, ok := mobileInputGetValue(instSearchMobileInputID); ok && v != m.state.searchText {
+				m.state.searchText = v
+				m.searchBox.SetText(v)
+				m.rebuildMenu()
+			}
+		}
 		m.searchBox.Update()
 		newText := m.searchBox.Value()
 		if newText != m.state.searchText {
 			m.state.searchText = newText
 			m.rebuildMenu()
+			emitSearchChanged("inst-menu", newText)
 		}
 	}
 
@@ -1536,8 +1647,8 @@ func (m *InstrumentMenuComponent) computeBreadcrumbStrip(r image.Rectangle) {
 // instrument. Instrument ROWS keep their own per-id color (drawInstRow). Falls
 // back to the azure chrome accent when there is no current instrument.
 func (m *InstrumentMenuComponent) menuAccent() color.Color {
-	if m.props.CurrentInstrument != "" {
-		if c := instColor(m.props.CurrentInstrument); c != nil {
+	if cur := m.ActiveInstrumentID(); cur != "" {
+		if c := m.instColorFor(cur); c != nil {
 			return c
 		}
 	}
@@ -1735,61 +1846,40 @@ func (m *InstrumentMenuComponent) popBreadcrumbTo(d int) {
 // accent-dot convention (small, clearly visible, not overwhelming).
 const instMenuSwatchSz = 8
 
-// drawInstRow renders one instrument-list row using the Vice City menu
-// treatment: drawMenuItemBackground for hover/active state, a small colored
-// instrument swatch, and the label via DrawTextStyled(RoleBody).
+// drawInstRow renders one instrument-list row through drawMenuRow: background
+// accent tinted to the instrument's own color, keycap chrome, a colored swatch,
+// fuzzy-match highlights, and the label. Pixel-identical to the previous
+// hand-rolled body; routing through drawMenuRow unifies styling with every
+// other overlay menu.
 func (m *InstrumentMenuComponent) drawInstRow(dst *ebiten.Image, btn *Button, id string) {
-	r := btn.Rect()
-	if r.Empty() {
+	if btn.Rect().Empty() {
 		return
 	}
-	// Determine row state: currently-selected instrument → active; hover/press → hover.
+	// LIVE selection (ActiveInstrumentID) → exactly one row reads active; the
+	// highlight follows audition picks while the menu stays open.
 	state := menuItemRest
-	if id != "" && id == m.props.CurrentInstrument {
+	if id != "" && id == m.ActiveInstrumentID() {
 		state = menuItemActive
 	} else if btn.hovered || btn.pressed {
 		state = menuItemHover
 	}
-	// Tint the hover/active chrome to this instrument's own color so the
-	// highlight matches its swatch — colors stay informational and consistent.
-	drawMenuItemBackgroundAccent(dst, r, state, instColor(id))
-
-	// Draw button chrome (shadow/glow/press) without text — blank Text temporarily.
-	saved := btn.Text
-	btn.Text = ""
-	btn.Draw(dst)
-	btn.Text = saved
-
-	// Colored instrument swatch (small rounded square) — left-aligned, vertically
-	// centered. Uses instColor which returns a design-system token or custom color.
-	swatchCol := instColor(id)
-	swatchSz := instMenuSwatchSz
-	swatchX := r.Min.X + SpaceSM
-	swatchY := r.Min.Y + (r.Dy()-swatchSz)/2
-	swatchRect := image.Rect(swatchX, swatchY, swatchX+swatchSz, swatchY+swatchSz)
-	drawRoundedRect(dst, swatchRect, swatchCol, RadiusXXS, true)
-
-	// Fuzzy match highlights: draw rectangles behind matched chars. Applied
-	// before the label text so highlights sit under, not over, the text.
-	th := StyledTextHeight(RoleBody)
-	labelX := swatchRect.Max.X + SpaceSM
-	ty := r.Min.Y + (r.Dy()-th)/2
-	if len(btn.Highlights) > 0 {
-		drawButtonHighlights(dst, saved, btn.Highlights, labelX, ty, 1.0)
-	}
-
-	// Label via RoleBody + colTextPrimary.
-	DrawTextStyled(dst, saved, labelX, ty, RoleBody, colTextPrimary)
+	accent := m.instColorFor(id)
+	drawMenuRow(dst, btn, MenuRowSpec{
+		Accent:     accent,
+		State:      state,
+		Swatch:     accent, // instrument swatch == its accent color
+		Highlights: btn.Highlights,
+		Label:      btn.Text,
+	})
 }
 
-// drawCategoryRow renders one category row: drawMenuItemBackground for the
-// hover/active state and the label via DrawTextStyled(RoleBody).
+// drawCategoryRow renders one category row through drawMenuRow: background
+// accent, keycap chrome, and the label at SpaceMD — identical to the previous
+// hand-rolled body, unified with every other overlay menu via drawMenuRow.
 func (m *InstrumentMenuComponent) drawCategoryRow(dst *ebiten.Image, btn *Button) {
-	r := btn.Rect()
-	if r.Empty() {
+	if btn.Rect().Empty() {
 		return
 	}
-	// Determine row state.
 	state := menuItemRest
 	if btn.Style == PopupButtonStyle {
 		// PopupButtonStyle is set on the active category/Favorites row.
@@ -1797,18 +1887,11 @@ func (m *InstrumentMenuComponent) drawCategoryRow(dst *ebiten.Image, btn *Button
 	} else if btn.hovered || btn.pressed {
 		state = menuItemHover
 	}
-	drawMenuItemBackgroundAccent(dst, r, state, m.menuAccent())
-
-	// Draw button chrome (shadow/glow) without text.
-	saved := btn.Text
-	btn.Text = ""
-	btn.Draw(dst)
-	btn.Text = saved
-
-	// Label via RoleBody.
-	th := StyledTextHeight(RoleBody)
-	ty := r.Min.Y + (r.Dy()-th)/2
-	DrawTextStyled(dst, saved, r.Min.X+SpaceMD, ty, RoleBody, colTextPrimary)
+	drawMenuRow(dst, btn, MenuRowSpec{
+		Accent: m.menuAccent(),
+		State:  state,
+		Label:  btn.Text,
+	})
 }
 
 // drawFavoriteStars renders the per-row star icons. Empty star (outline)
@@ -1826,26 +1909,27 @@ func (m *InstrumentMenuComponent) drawFavoriteStars(dst *ebiten.Image) {
 		if fav {
 			icon = IconStarFilled
 			// Filled star carries that instrument's own color.
-			col = instColor(id)
+			col = m.instColorFor(id)
 		}
 		// Inset slightly so the icon doesn't touch the row border.
 		DrawIcon(dst, icon, insetRect(rect, SpaceXS), col)
 	}
 }
 
-// BreadcrumbPath returns the current path as visible-segment labels.
-// Returns []string{} when closed; ["Categories"] at root; ["Categories",
-// <activeCat>] when drilled into a category. Used by the new
+// BreadcrumbPath returns the current path as visible-segment labels,
+// localized in the active locale. Returns []string{} when closed; the
+// localized "Categories" root at root level (English default shown here);
+// [<Categories>, <activeCat>] when drilled into a category. Used by the
 // instMenuBreadcrumbPath JS export and by tests asserting on the
 // breadcrumb state without coupling to the legacy mode enum.
 func (m *InstrumentMenuComponent) BreadcrumbPath() []string {
 	if !m.state.open {
 		return []string{}
 	}
-	out := []string{"Categories"}
+	out := []string{i18n.T(i18n.KeyMenuCategories)}
 	if m.state.mode == InstMenuModeInstruments {
 		if m.state.favoritesView {
-			out = append(out, "Favorites")
+			out = append(out, i18n.T(i18n.KeyMenuFavorites))
 		} else if m.state.activeCat != "" {
 			out = append(out, m.state.activeCat)
 		}
@@ -1936,6 +2020,19 @@ func (m *InstrumentMenuComponent) ActiveCategory() string {
 	return m.state.activeCat
 }
 
+// ActiveInstrumentID returns the instrument id the menu renders as the
+// currently-selected ("active") row. The menu stays open after a selection so
+// the user can audition multiple instruments; the active highlight must follow
+// the LIVE selection so exactly one row ever reads as selected. drawInstRow and
+// menuAccent both consult this so the test seam and the render path can never
+// disagree.
+func (m *InstrumentMenuComponent) ActiveInstrumentID() string {
+	if m.state.selectedID != "" {
+		return m.state.selectedID
+	}
+	return m.props.CurrentInstrument
+}
+
 // Scroll returns the scroll state for testing.
 func (m *InstrumentMenuComponent) Scroll() VerticalScroller {
 	m.ensureScroll()
@@ -1951,6 +2048,18 @@ func (m *InstrumentMenuComponent) ScrollBehaviorRef() *ScrollBehavior {
 // SearchBox returns the search text input for testing/legacy sync.
 func (m *InstrumentMenuComponent) SearchBox() *TextInput {
 	return m.searchBox
+}
+
+// SearchRect returns the current search-field rect, or the zero rect when the
+// search field is not present (categories mode). DrumView mirrors this into
+// dv.instSearchRect so the soft-keyboard / mobile native-input registrations in
+// drumview_layout.go can locate the field — without the mirror, the field is
+// never registered and the mobile native keyboard never opens.
+func (m *InstrumentMenuComponent) SearchRect() image.Rectangle {
+	if m == nil || m.state.mode != InstMenuModeInstruments {
+		return image.Rectangle{}
+	}
+	return m.searchRect
 }
 
 // SetSearchText sets the search text and rebuilds the menu.

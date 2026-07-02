@@ -37,6 +37,18 @@ func (p *Predictor) Horizon() int {
 	return p.windowEnd
 }
 
+// WindowStart returns the lowest absolute index retained in the sliding window
+// (the inclusive lower bound). Reads below this index have been evicted and
+// AudibleAt/VisibleAt/TriggeredAt return false for them — "not computed", not
+// "no hit". Callers that persist predictor truth as immutable state must guard
+// against this lower edge so a backward seek (whose playhead lands below the
+// retained window before Ensure rewinds it) cannot be frozen as empty past.
+func (p *Predictor) WindowStart() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.windowStart
+}
+
 // AudibleAt returns predicted audible state for row/index. Returns false for
 // idx outside the current sliding window (idx < windowStart is evicted history;
 // idx >= windowEnd is unwritten future).

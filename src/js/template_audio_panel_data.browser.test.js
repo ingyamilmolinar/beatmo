@@ -130,9 +130,14 @@ try {
   }
 
   // The fix: every audible template instrument must report a live
-  // per-instrument analyser (non-zero peak). Pre-fix every value is
-  // exactly 0.
-  const SIGNAL = 0.0005;
+  // per-instrument analyser (NON-ZERO peak). Pre-fix every value is EXACTLY 0
+  // (the analyser node is never wired into the graph), so the only robust
+  // discriminator is "non-zero vs exactly zero". Use a tiny epsilon well above
+  // float dust but far below any real signal: quiet/transient instruments are
+  // legitimately low (e.g. a hi-hat reads ~1.2e-4, ~20x quieter than the kick
+  // at ~2.3e-3) yet are clearly wired — the old 0.0005 cutoff false-failed them
+  // even though they are not the unwired-analyser bug this test guards.
+  const SIGNAL = 1e-5;
   const silent = TEMPLATE_INSTR.filter((id) => maxPeak[id] <= SIGNAL);
   if (silent.length > 0) {
     console.error(

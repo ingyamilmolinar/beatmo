@@ -67,6 +67,12 @@ const deviceMatrix = [
     name: "iPhone 12 landscape (DPR 3)",
     config: devices['iPhone 12 landscape'],
     expectedDPR: 3,
+    // Mobile landscape is intentionally unsupported: the mobile profile detects
+    // landscape (IsMobile && winW > winH) and shows a rotate-to-portrait notice
+    // while BLOCKING all touch input (internal/ui/landscape_unsupported.go +
+    // game_input_touch.go). So this device asserts the OPPOSITE of the others —
+    // that touch input is blocked — instead of verifying gestures work.
+    landscapeBlocked: true,
   },
   {
     name: "Pixel 5 (DPR 2.75)",
@@ -162,6 +168,35 @@ async function runDeviceTests(device) {
     }));
     console.log(`Viewport: ${viewportInfo.innerWidth}x${viewportInfo.innerHeight}`);
 
+    if (device.landscapeBlocked) {
+      // Landscape disable invariant: a tap/drag/pinch must produce NO gesture
+      // and must NOT move/scale the camera, because input is blocked behind the
+      // rotate-to-portrait notice. (Asserting touch WORKS here, as this matrix
+      // used to, contradicts the shipped landscape-disabled feature. The disable
+      // itself is owned + fully tested by landscape_block.browser.test.js.)
+      await page.evaluate(() => window.clearTouchEventLog && clearTouchEventLog());
+      const camBefore = await page.evaluate(() => (typeof camOffset === "function" ? camOffset() : { x: 0, y: 0 }));
+      const scaleBefore = await page.evaluate(() => (typeof camScale === "function" ? camScale() : 1));
+
+      const cx = Math.floor(viewportInfo.innerWidth / 2);
+      const cy = Math.floor(viewportInfo.innerHeight / 2);
+      await cdpTap(page, cx, cy);
+      await page.waitForTimeout(200);
+      await cdpDrag(page, 100, 100, 240, 140, 5);
+      await page.waitForTimeout(100);
+      await cdpPinch(page, cx, 120, 40, 90, 5);
+      await page.waitForTimeout(100);
+
+      const st = await page.evaluate(() => touchDebugState());
+      assert(st.lastGesture === "none", `landscape blocks input (gesture=${st.lastGesture}, expected none)`);
+
+      const camAfter = await page.evaluate(() => (typeof camOffset === "function" ? camOffset() : { x: 0, y: 0 }));
+      const camMoved = Math.abs(camAfter.x - camBefore.x) > 3 || Math.abs(camAfter.y - camBefore.y) > 3;
+      assert(!camMoved, `landscape: camera unmoved by drag (dx=${camAfter.x - camBefore.x}, dy=${camAfter.y - camBefore.y})`);
+
+      const scaleAfter = await page.evaluate(() => (typeof camScale === "function" ? camScale() : 1));
+      assert(Math.abs(scaleAfter - scaleBefore) < 0.01, `landscape: camera scale unchanged by pinch (${scaleBefore.toFixed(3)} -> ${scaleAfter.toFixed(3)})`);
+    } else {
     // Test coordinates at various positions
     const testPositions = [
       { name: "top-left", x: 50, y: 50 },
@@ -295,6 +330,7 @@ async function runDeviceTests(device) {
     const isSmall = await page.evaluate(() => isSmallScreenMode());
     console.log(`\nSmall screen mode: ${isSmall} (viewport ${viewportInfo.innerWidth}px)`);
     // Don't fail on this, just report
+    }
 
   } catch (err) {
     console.error(`  ERROR: ${err.message}`);

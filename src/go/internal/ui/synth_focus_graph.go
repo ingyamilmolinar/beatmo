@@ -56,10 +56,20 @@ var synthFocusRenderers = map[string]conceptRenderer{
 	"pitchenv": conceptMotion,
 	"lfo":      conceptMotion,
 	"burst":    conceptMotion,
-	"core":     conceptFocusLevelWave,
-	"generic":  conceptFocusLevelWave,
-	"voice":    conceptFocusLevelWave,
-	"":         conceptFocusLevelWave,
+	// filtenv (filter envelope) and unison/ensemble have no dedicated domain
+	// curve yet. The level wave is the INTENTIONAL choice (not the silent
+	// fallback): the env's depth/decay and the ensemble's voices/detune/mix all
+	// scale the displayed output, so the selected knob stays responsive.
+	"filtenv": conceptFocusLevelWave,
+	"unison":  conceptFocusLevelWave,
+	// kick (the configurable KICK stage): like "core"/"voice", the kick knobs
+	// (harmonics/decay/pitch-drop/punch/tail) all scale the percussive output, so
+	// the level wave keeps the selected knob responsive (no dedicated curve yet).
+	"kick":    conceptFocusLevelWave,
+	"core":    conceptFocusLevelWave,
+	"generic": conceptFocusLevelWave,
+	"voice":   conceptFocusLevelWave,
+	"":        conceptFocusLevelWave,
 }
 
 // synthFocusRendererForGroup is TOTAL: every group resolves to a non-nil

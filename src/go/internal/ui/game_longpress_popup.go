@@ -163,47 +163,32 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	drawScrim(dst)
 	drawPanel(dst, g.longPressPopupRect)
 
-	// Move button — unified dark style, azure text when hovered.
+	// Move button — raised keycap, neutral color, instrument-accent text on hover.
 	moveHover := g.longPressPopupHover == "move"
-	moveFill, moveBorder := color.Color(colDropdown), color.Color(colTransportBorder)
-	if moveHover {
-		moveFill = adjustColor(moveFill, 12)
-		moveBorder = adjustColor(moveBorder, 20)
-	}
-	drawRoundedButton(dst, g.longPressPopupMove, moveFill, moveBorder, popupButtonRadius(), false)
+	moveCap := drawKeycapPanelButton(dst, g.longPressPopupMove, colDropdown, colTransportBorder, moveHover)
 	moveTxtCol := color.Color(genColorPopupTextSecondary)
 	if moveHover {
 		moveTxtCol = accent // instrument-color text when hovered
 	}
-	mtx := g.longPressPopupMove.Min.X + (g.longPressPopupMove.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapMove), RoleBody))/2
-	mty := g.longPressPopupMove.Min.Y + (g.longPressPopupMove.Dy()-StyledTextHeight(RoleBody))/2
+	mtx := moveCap.Min.X + (moveCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapMove), RoleBody))/2
+	mty := moveCap.Min.Y + (moveCap.Dy()-StyledTextHeight(RoleBody))/2
 	DrawTextStyled(dst, i18n.T(i18n.KeyCapMove), mtx, mty, RoleBody, moveTxtCol)
 
-	// Connect button — unified dark style, azure text when hovered.
+	// Connect button — raised keycap, neutral color, instrument-accent text on hover.
 	connHover := g.longPressPopupHover == "connect"
-	connFill, connBorder := color.Color(colDropdown), color.Color(colTransportBorder)
-	if connHover {
-		connFill = adjustColor(connFill, 12)
-		connBorder = adjustColor(connBorder, 20)
-	}
-	drawRoundedButton(dst, g.longPressPopupConn, connFill, connBorder, popupButtonRadius(), false)
+	connCap := drawKeycapPanelButton(dst, g.longPressPopupConn, colDropdown, colTransportBorder, connHover)
 	connTxtCol := color.Color(genColorPopupTextSecondary)
 	if connHover {
 		connTxtCol = accent // instrument-color text when hovered
 	}
-	ctx := g.longPressPopupConn.Min.X + (g.longPressPopupConn.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapConnect), RoleBody))/2
-	cty := g.longPressPopupConn.Min.Y + (g.longPressPopupConn.Dy()-StyledTextHeight(RoleBody))/2
+	ctx := connCap.Min.X + (connCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapConnect), RoleBody))/2
+	cty := connCap.Min.Y + (connCap.Dy()-StyledTextHeight(RoleBody))/2
 	DrawTextStyled(dst, i18n.T(i18n.KeyCapConnect), ctx, cty, RoleBody, connTxtCol)
 
-	// Delete button — destructive red style.
+	// Delete button — raised keycap, destructive rust color, primary text (no accent on hover).
 	delHover := g.longPressPopupHover == "delete"
-	delFill, delBorder := color.Color(colDeleteFill), color.Color(colDeleteBorder)
-	if delHover {
-		delFill = adjustColor(delFill, 12)
-		delBorder = adjustColor(delBorder, 20)
-	}
-	drawRoundedButton(dst, g.longPressPopupDel, delFill, delBorder, popupButtonRadius(), false)
-	dtx := g.longPressPopupDel.Min.X + (g.longPressPopupDel.Dx()-StyledTextWidth(i18n.T(i18n.KeyMenuDelete), RoleBody))/2
-	dty := g.longPressPopupDel.Min.Y + (g.longPressPopupDel.Dy()-StyledTextHeight(RoleBody))/2
+	delCap := drawKeycapPanelButton(dst, g.longPressPopupDel, colDeleteFill, colDeleteBorder, delHover)
+	dtx := delCap.Min.X + (delCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyMenuDelete), RoleBody))/2
+	dty := delCap.Min.Y + (delCap.Dy()-StyledTextHeight(RoleBody))/2
 	DrawTextStyled(dst, i18n.T(i18n.KeyMenuDelete), dtx, dty, RoleBody, colTextPrimary)
 }

@@ -163,6 +163,11 @@ func (dv *DrumView) fxPanelAccent() color.Color {
 	return colAccent
 }
 
+// fxPanelCloseBtn returns the FX panel's close (×) button by identity, or nil
+// when the panel is closed. Tracked as a field so retrieval never depends on
+// the button being the last entry in fxPanelBtns.
+func (dv *DrumView) fxPanelCloseBtn() *Button { return dv.fxPanelCloseButton }
+
 // CloseFXPanel closes the FX panel.
 func (dv *DrumView) CloseFXPanel() { dv.closeFXPanel() }
 
@@ -393,6 +398,7 @@ func (dv *DrumView) buildFXPanel() {
 
 	// Build buttons and sliders
 	dv.fxPanelBtns = nil
+	dv.fxPanelCloseButton = nil
 	dv.fxPanelSliders = nil
 	dv.fxSliderBindings = nil
 
@@ -636,9 +642,10 @@ func (dv *DrumView) buildFXPanel() {
 	closeR := closeButtonRect(dv.fxPanelRect, SpaceXS)
 	closeB := NewButton("", PopupButtonStyle, func() { dv.closeFXPanel() })
 	closeB.Icon = "close"
-	closeB.IconColor = colButtonBorder
+	closeB.IconColor = closeIconColor()
 	closeB.SetRect(closeR)
 	closeB.ConsumeOnPress = true
+	dv.fxPanelCloseButton = closeB
 	dv.fxPanelBtns = append(dv.fxPanelBtns, closeB)
 }
 
@@ -788,13 +795,14 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		}
 	}
 
-	// Draw buttons (skip those outside viewport, except close button which is last)
-	for i, btn := range dv.fxPanelBtns {
+	// Draw buttons (skip those outside viewport, except the close button which
+	// is pinned to the header).
+	for _, btn := range dv.fxPanelBtns {
 		if btn == nil {
 			continue
 		}
-		// Close button is always the last one and is fixed (not scrolled)
-		if i == len(dv.fxPanelBtns)-1 {
+		// Close button is fixed (not scrolled) — matched by identity, not slice tail.
+		if btn == dv.fxPanelCloseButton {
 			btn.Draw(dst)
 			continue
 		}
@@ -827,11 +835,8 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 	drawRoundedRect(dst, headerR, genColorSliderTrackFill, popupCornerRadius(), true)
 	DrawTextAt(dst, title, headerR.Min.X+8, textY)
 	// Redraw close button on top of header
-	if len(dv.fxPanelBtns) > 0 {
-		closeBtn := dv.fxPanelBtns[len(dv.fxPanelBtns)-1]
-		if closeBtn != nil {
-			closeBtn.Draw(dst)
-		}
+	if closeBtn := dv.fxPanelCloseBtn(); closeBtn != nil {
+		closeBtn.Draw(dst)
 	}
 
 	// Scrollbar

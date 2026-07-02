@@ -74,9 +74,11 @@ const notifHistoryMax = 100
 // NotificationRecord is one persisted user notification (the on-the-wire
 // shape; the UI maps its internal struct to/from this).
 type NotificationRecord struct {
-	Text   string `json:"text"`
-	IsErr  bool   `json:"is_err,omitempty"`
-	UnixMs int64  `json:"unix_ms,omitempty"`
+	Text   string   `json:"text"`
+	IsErr  bool     `json:"is_err,omitempty"`
+	UnixMs int64    `json:"unix_ms,omitempty"`
+	Key    string   `json:"key,omitempty"`  // i18n key; when set the entry retranslates on load
+	Args   []string `json:"args,omitempty"` // Tf args for Key
 }
 
 // NotificationHistoryStore persists the bounded notification history across
@@ -359,11 +361,11 @@ func marshalPrefsV5(favs map[string]bool, overrides map[string]map[string]float6
 }
 
 // boundNotifications trims to the newest notifHistoryMax entries and drops
-// records with an empty Text (boundary sanitization).
+// empty records (no Text AND no translation Key — boundary sanitization).
 func boundNotifications(recs []NotificationRecord) []NotificationRecord {
 	out := make([]NotificationRecord, 0, len(recs))
 	for _, r := range recs {
-		if r.Text == "" {
+		if r.Text == "" && r.Key == "" {
 			continue
 		}
 		out = append(out, r)

@@ -4,6 +4,7 @@ package audio
 
 import (
 	"log"
+	"math"
 	"os"
 	"time"
 )
@@ -44,6 +45,157 @@ func newRecipeAwareVoice(id string, bpm, sampleRate int) Voice {
 		log.Printf("[SYNTH-DISPATCH] legacy path id=%q (no user params or no recipe binding)", id)
 	}
 	return legacyNewVoice(id, bpm, sampleRate)
+}
+
+// melodicRecipeIDs is the set of synth-modular recipe IDs that represent
+// melodic instruments (bowed/plucked strings, keys, woodwinds, brass).
+// These are pitch-aware: at trigger time the C renderer re-renders the
+// voice at the node's semitone pitch so the filter formant stays at an
+// absolute Hz (not resampled). Instruments NOT in this set (drums, FM,
+// synth-modular base, synth-modular-pad) keep the legacy resample path.
+var melodicRecipeIDs = map[string]bool{
+	// Bowed strings
+	"synth-modular-violin":          true,
+	"synth-modular-violin-ensemble": true,
+	"synth-modular-cello":           true,
+	"synth-modular-cello-warm":      true,
+	"synth-modular-organ-church":    true,
+	"synth-modular-scifi-lead":      true,
+	// Plucked strings
+	"synth-modular-guitar-nylon":         true,
+	"synth-modular-guitar-nylon-bright":  true,
+	"synth-modular-guitar-steel":         true,
+	"synth-modular-guitar-steel-warm":    true,
+	"synth-modular-guitar-electric":      true,
+	"synth-modular-harp":                 true,
+	"synth-modular-guitar-electric-neck": true,
+	// Keys
+	"synth-modular-piano-grand": true,
+	"synth-modular-piano-felt":  true,
+	// Woodwinds
+	"synth-modular-flute":         true,
+	"synth-modular-flute-breathy": true,
+	"synth-modular-oboe":          true,
+	"synth-modular-oboe-full":     true,
+	// Brass
+	"synth-modular-trumpet":          true,
+	"synth-modular-trumpet-mellow":   true,
+	"synth-modular-french-horn":      true,
+	"synth-modular-french-horn-loud": true,
+	// Bass guitar (renamed from synth-bass) + synth bass family — pitched melodic.
+	"synth-modular-bass-guitar": true,
+	"synth-modular-bass-acid":   true,
+	"synth-modular-bass-reese":  true,
+	"synth-modular-bass-fm":     true,
+	"synth-modular-bass-808":    true,
+	// Masterpiece template set — pitched melodic instruments.
+	"synth-modular-organ": true,
+	"synth-modular-sax":   true,
+}
+
+// pitchAwareRecipe returns true when recipeID is a melodic synth-modular
+// recipe that benefits from per-pitch re-rendering instead of resampling.
+// Returns false for drums, FM, synth-modular (base), and synth-modular-pad.
+func pitchAwareRecipe(recipeID string) bool {
+	return melodicRecipeIDs[recipeID]
+}
+
+// roundPitchForCache rounds a semitone value to the nearest 0.5 st for the
+// cache key. This keeps the key space bounded while resolving the audible
+// re-render granularity coarser than human pitch-discrimination (~5 cents)
+// but finer than a half-step. For practical use (node pitches from the UI
+// quantize to integer or half-integer semitones) 0.5-st resolution is exact.
+func roundPitchForCache(pitch float64) float64 {
+	return math.Round(pitch*2) / 2
+}
+
+// newRecipeAwareVoicePitched is the pitch-aware variant of newRecipeAwareVoice.
+// For melodic (pitch-aware) recipe instruments it threads the node semitone
+// pitch into the render so the voice is produced at the target frequency
+// instead of at the base pitch (A3=220 Hz) and later resampled. For all
+// other instruments it falls through to newRecipeAwareVoice with no change.
+func newRecipeAwareVoicePitched(id string, bpm, sampleRate int, pitch float64) Voice {
+	recipeID := RecipeForInstrument(id)
+	if pitchAwareRecipe(recipeID) {
+		if v, ok := tryRecipeVoicePitched(id, bpm, sampleRate, pitch); ok {
+			if debugSynthDispatch {
+				log.Printf("[SYNTH-DISPATCH] melodic at-pitch path id=%q recipe=%q pitch=%.2f", id, recipeID, pitch)
+			}
+			return v
+		}
+	}
+	return newRecipeAwareVoice(id, bpm, sampleRate)
+}
+
+// tryRecipeVoicePitched renders a melodic recipe at the given node pitch (in
+// semitones), sets "pitch" in the merged params before Render, and uses a
+// cache key that includes the rounded pitch. Returns (nil, false) if any
+// precondition fails (unknown id, no recipe, etc.).
+func tryRecipeVoicePitched(id string, bpm, sampleRate int, pitch float64) (Voice, bool) {
+	recipeID := RecipeForInstrument(id)
+	if recipeID == "" {
+		return nil, false
+	}
+	recipe := NewRecipe(recipeID)
+	if recipe == nil {
+		return nil, false
+	}
+	params := GetInstrumentParams(id)
+	samples, bpmKey := instrumentDurationSamples(id, bpm, sampleRate)
+	if samples <= 0 {
+		return nil, false
+	}
+	merged := MergeRecipeDefaults(recipeID, params)
+
+	// Override the modular "pitch" param with the node's semitone value so
+	// the C renderer uses freq=220·2^(pitch/12) as its fundamental, keeping
+	// the filter cutoff at an absolute Hz (not slid by resampling).
+	merged["pitch"] = pitch
+
+	ph := hashRecipeParams(merged)
+	roundedPitch := roundPitchForCache(pitch)
+	key := voiceCacheKey{
+		instrumentID: id,
+		bpm:          bpmKey,
+		sampleRate:   sampleRate,
+		paramsHash:   ph,
+		pitch:        roundedPitch,
+	}
+	if buf, ok := globalVoiceCache.Get(key); ok {
+		return &cVoice{buf: buf}, true
+	}
+
+	// Account for sample-edit descriptor in the cache key (same as
+	// tryRecipeVoiceOpts) but only fold it in if present.
+	edit, hasEdit := SampleEditFor(id)
+	if hasEdit {
+		// Recompute key with edit hash folded in (matching tryRecipeVoiceOpts
+		// so same render parameters produce the same cache slot).
+		foldedPh := ph ^ hashSampleEdit(edit)
+		foldedKey := voiceCacheKey{
+			instrumentID: id,
+			bpm:          bpmKey,
+			sampleRate:   sampleRate,
+			paramsHash:   foldedPh,
+			pitch:        roundedPitch,
+		}
+		if buf, ok := globalVoiceCache.Get(foldedKey); ok {
+			return &cVoice{buf: buf}, true
+		}
+		// Render and store under the folded key.
+		buf := make([]float32, samples)
+		recipe.Render(buf, sampleRate, samples, 0, merged)
+		normalizeAndScale(buf, baseInstrumentID(id))
+		buf = ApplySampleEditToBuffer(buf, sampleRate, edit)
+		globalVoiceCache.Put(foldedKey, buf)
+		return &cVoice{buf: buf}, true
+	}
+
+	buf := make([]float32, samples)
+	recipe.Render(buf, sampleRate, samples, 0, merged)
+	normalizeAndScale(buf, baseInstrumentID(id))
+	globalVoiceCache.Put(key, buf)
+	return &cVoice{buf: buf}, true
 }
 
 // tryRecipeVoice returns (voice, true) when the recipe path applies, else

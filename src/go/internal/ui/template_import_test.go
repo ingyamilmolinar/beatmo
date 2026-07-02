@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -74,6 +75,11 @@ func TestTemplates_AllInstrumentsRegistered(t *testing.T) {
 			t.Fatalf("%s: unmarshal: %v", tp.Genre, err)
 		}
 		for _, in := range f.Instruments {
+			// Instance variants ("organ-2") aren't pre-registered builtins; import
+			// promotes them to first-class instruments aliased onto their base.
+			// Mirror that promotion (import.go does the same) before the check.
+			audio.EnsureInstanceInstrument(in.ID)
+			registered[in.ID] = registered[in.ID] || slices.Contains(audio.Instruments(), in.ID)
 			if !registered[in.ID] {
 				t.Errorf("%s: instrument %q is not a registered builtin (audio.Play would silently drop it)", tp.Genre, in.ID)
 			}

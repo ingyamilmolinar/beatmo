@@ -6,8 +6,16 @@ import "syscall/js"
 
 // selectJSONAsync invokes the browser file picker and calls cb with the file
 // contents when ready. It must be called synchronously from a user gesture.
-func selectJSONAsync(cb func([]byte, error)) {
+func selectJSONAsync(cb func([]byte, string, error)) {
 	g := js.Global()
+	// lastImportName reads the filename openJSONFile stashed on the global (its
+	// resolved value stays a string for back-compat); "" when unavailable.
+	lastImportName := func() string {
+		if n := g.Get("__lastImportName"); n.Truthy() {
+			return n.String()
+		}
+		return ""
+	}
 	open := g.Get("openJSONFile")
 	jsLog("selectJSONAsync called; openJSONFile present=%v", open.Truthy())
 	if open.Truthy() {
@@ -17,9 +25,9 @@ func selectJSONAsync(cb func([]byte, error)) {
 			then := js.FuncOf(func(this js.Value, args []js.Value) any {
 				jsLog("openJSONFile.then called; args=%d", len(args))
 				if len(args) > 0 {
-					cb([]byte(args[0].String()), nil)
+					cb([]byte(args[0].String()), lastImportName(), nil)
 				} else {
-					cb(nil, nil)
+					cb(nil, "", nil)
 				}
 				return nil
 			})
@@ -32,7 +40,7 @@ func selectJSONAsync(cb func([]byte, error)) {
 	doc := g.Get("document")
 	if !doc.Truthy() {
 		jsLog("document not available; aborting import")
-		cb(nil, nil)
+		cb(nil, "", nil)
 		return
 	}
 	input := doc.Call("createElement", "input")
@@ -43,17 +51,18 @@ func selectJSONAsync(cb func([]byte, error)) {
 		files := input.Get("files")
 		if !files.Truthy() || files.Length() == 0 {
 			jsLog("no file selected")
-			cb(nil, nil)
+			cb(nil, "", nil)
 			return nil
 		}
 		f := files.Index(0)
-		jsLog("reading file via File.text(): name=%s size=%v", f.Get("name").String(), f.Get("size").Int())
+		name := f.Get("name").String()
+		jsLog("reading file via File.text(): name=%s size=%v", name, f.Get("size").Int())
 		prom := f.Call("text")
 		then := js.FuncOf(func(this js.Value, args []js.Value) any {
 			if len(args) > 0 {
-				cb([]byte(args[0].String()), nil)
+				cb([]byte(args[0].String()), name, nil)
 			} else {
-				cb(nil, nil)
+				cb(nil, "", nil)
 			}
 			// cleanup
 			input.Call("remove")

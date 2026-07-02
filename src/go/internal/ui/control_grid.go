@@ -184,13 +184,16 @@ const (
 	controlGridScrollCooldownFrames = 14
 )
 
-// BeginDrag / DragTo / EndDrag / WheelStep / Tick are thin wrappers over the
-// embedded ScrollBehavior's step-by-step API (shared with the row rack). Used
-// for BOTH the scrollbar thumb and the card-body grab so the feel is identical
-// wherever the user grabs.
-func (g *ControlGrid) BeginDrag(y int) bool { return g.scroll.BeginStepDrag(y) }
-func (g *ControlGrid) DragTo(y int) bool    { return g.scroll.StepDragTo(y, controlGridDragStepPx) }
-func (g *ControlGrid) EndDrag()             { g.scroll.EndStepDrag() }
+// BeginDrag / BeginContentDrag / DragTo / EndDrag / WheelStep / Tick are thin
+// wrappers over the embedded ScrollBehavior's step-by-step API (shared with the
+// row rack). BeginDrag is the scrollbar THUMB grab (direct — the thumb follows
+// the finger). BeginContentDrag is the card-BODY grab (natural — the content
+// follows the finger, so dragging down reveals earlier rows). Both share DragTo/
+// EndDrag; the direction is chosen at Begin time.
+func (g *ControlGrid) BeginDrag(y int) bool        { return g.scroll.BeginStepDrag(y) }
+func (g *ControlGrid) BeginContentDrag(y int) bool { return g.scroll.BeginStepDragNatural(y) }
+func (g *ControlGrid) DragTo(y int) bool           { return g.scroll.StepDragTo(y, controlGridDragStepPx) }
+func (g *ControlGrid) EndDrag()                    { g.scroll.EndStepDrag() }
 func (g *ControlGrid) WheelStep(steps int) bool {
 	return g.scroll.WheelStep(steps, controlGridScrollCooldownFrames)
 }

@@ -225,10 +225,9 @@ func TestWaveKnob_ParamDefShape(t *testing.T) {
 
 // TestWaveKnob_NoOscillatorEnginesExcluded documents the curation: engines
 // without a core oscillator (clap = filtered noise bursts, shaker = noise
-// grains, bass-guitar = Karplus-Strong noise-excited string) must NOT
-// declare a wave knob — it would be a silent no-op selector.
+// grains) must NOT declare a wave knob — it would be a silent no-op selector.
 func TestWaveKnob_NoOscillatorEnginesExcluded(t *testing.T) {
-	for _, recipe := range []string{"drum-clap", "drum-shaker", "drum-bass-guitar"} {
+	for _, recipe := range []string{"drum-clap", "drum-shaker"} {
 		for _, d := range WiredParamsForRecipe(recipe) {
 			switch d.Name {
 			case "snare_wave", "cym_wave", "bass_wave":

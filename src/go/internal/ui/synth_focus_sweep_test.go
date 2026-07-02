@@ -58,6 +58,11 @@ var focusSweepExemptByName = map[string]string{
 	//    regardless of the live burst_enabled gate, so burstN_off / burstN_amp /
 	//    burst_sharp move the picture — EXCEPT hit-4, which is silent by default.
 	"burst4_off": "the hit-4 marker is gated by burst4_amp, which defaults to 0 (a SILENT hit) across every recipe; with no audible hit-4, its off-TIME has nothing to position. (burst1/2/3_off respond — their amps default >0.)",
+
+	// ── lfo group → conceptMotion, which draws the LFO's steady-state wobble from
+	//    lfo_rate/lfo_depth. Two LFO knobs have no curve under that renderer:
+	"lfo_target": "lfo_target is an enum ROUTING choice (Amp/Pitch/Cutoff) — it changes WHAT the LFO modulates, not the wobble's own rate/depth shape conceptMotion draws, so Min vs Max share the same curve. (lfo_rate/lfo_depth — the wobble's shape — respond.)",
+	"lfo_delay":  "lfo_delay is the vibrato ONSET delay; conceptMotion paints a fixed steady-state wobble window and does not model the onset ramp, so Min vs Max paint the same steady wobble. (lfo_rate/lfo_depth respond.)",
 }
 
 // focusSweepExemptPair lists per-(recipe, knob) exemptions for knobs that respond

@@ -67,6 +67,48 @@ func assertFinite(t *testing.T, buf []float32) {
 	}
 }
 
+func TestLfoTarget_RoundTripsThroughParams(t *testing.T) {
+	mp := recipeParamsToModular(map[string]float64{"lfo_target": 2})
+	if mp.LfoTarget != 2 {
+		t.Fatalf("LfoTarget round-trip = %v, want 2", mp.LfoTarget)
+	}
+}
+
+func TestLfoTarget_DefaultZeroKeepsAmpLFOByteIdentical(t *testing.T) {
+	const sr, n = 48000, 24000
+	// An instrument using the amp-wobble LFO at the default target (0).
+	base := defaultModularParams()
+	base.OscType = 1 // saw
+	base.LfoEnabled = 1
+	base.LfoRate = 6
+	base.LfoDepth = 0.5
+	// LfoTarget defaults to 0 (amp). Render it.
+	withTarget := base
+	withTarget.LfoTarget = 0
+	a := make([]float32, n)
+	b := make([]float32, n)
+	renderModularP(a, sr, n, base)       // field present, zero value
+	renderModularP(b, sr, n, withTarget) // explicit 0
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("amp-LFO at target 0 not byte-identical at sample %d: %v vs %v", i, a[i], b[i])
+		}
+	}
+	// And it must actually wobble (sanity: not silent / not flat).
+	var mn, mx float32 = a[0], a[0]
+	for _, v := range a {
+		if v < mn {
+			mn = v
+		}
+		if v > mx {
+			mx = v
+		}
+	}
+	if mx-mn < 0.01 {
+		t.Fatalf("amp-LFO produced near-flat output (range %v)", mx-mn)
+	}
+}
+
 func TestRenderModularP_DefaultsFiniteNonSilent(t *testing.T) {
 	const sr = 48000
 	n := sr / 2 // 0.5s
@@ -256,12 +298,19 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 	// changes output through the default branch. ──
 	modulatorTarget := map[string]float64{
 		"pitchenv_amt": -24, "pitchenv_decay": 2,
-		"lfo_rate": 40, "lfo_depth": 0,
+		"lfo_rate": 40, "lfo_depth": 0, "lfo_target": 1, "lfo_delay": 3,
 		"burst_sharp": 200,
 		"burst1_off":  0.25, "burst1_amp": 0,
 		"burst2_off": 0.25, "burst2_amp": 0,
 		"burst3_off": 0.25, "burst3_amp": 1,
 		"burst4_off": 0.25, "burst4_amp": 1,
+		"filtenv_amt": 0, "filtenv_decay": 2, "filtenv_attack": 0.8,
+		"body_model": 0, "body_mix": 1.3, "bow_dynamics": 0.8,
+		// Phase-8E unison: detune/mix only have authority when voices>=2.
+		"unison_detune": 30, "unison_mix": 0,
+		// Phase-8F drift: both params only have effect when voices>=2 and the
+		// complementary param is >0 (seeded in modulatorBase below).
+		"unison_drift_rate": 6, "unison_drift_depth": 15,
 	}
 	isModulatorNumeric := func(name string) bool { _, ok := modulatorTarget[name]; return ok }
 	modulatorBase := func(name string) RecipeParams {
@@ -275,6 +324,42 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			rp["burst_enabled"] = 1
 			if name == "burst4_off" {
 				rp["burst4_amp"] = 1
+			}
+		case strings.HasPrefix(name, "filtenv_"):
+			// Activate the filter envelope stage with a saw + low LP cutoff so
+			// the cutoff modulation is audible, then enable filtenv.
+			rp["osc_type"] = 1         // saw (rich harmonics)
+			rp["env_enabled"] = 0      // steady output for clean comparison
+			rp["filter_enabled"] = 1   // filter on
+			rp["filter_cutoff"] = 1200 // low cutoff so amt has room to brighten
+			rp["filtenv_enabled"] = 1  // stage on
+			rp["filtenv_amt"] = 2      // default seed amt
+			rp["filtenv_decay"] = 0.3  // default seed decay
+		case strings.HasPrefix(name, "bow_"):
+			rp["osc_type"] = 1 // saw (energy for the bow modulator to shape)
+			rp["env_enabled"] = 0
+		case strings.HasPrefix(name, "body_"):
+			// Body-resonator bank: body_model and body_mix are interdependent
+			// (the bank runs only when model>=1 AND mix>0). Activate both with a
+			// saw so toggling/mixing the bank audibly changes the filtered output.
+			rp["osc_type"] = 1    // saw (rich harmonics for the modes to shape)
+			rp["env_enabled"] = 0 // steady output for clean comparison
+			rp["body_model"] = 1  // violin bank on
+			rp["body_mix"] = 0.6  // baseline wet
+		case strings.HasPrefix(name, "unison_"):
+			// Unison params only have authority when voices>=2. Activate with a
+			// saw (harmonically rich) so detuning and mix changes are audible.
+			rp["osc_type"] = 1       // saw
+			rp["unison_voices"] = 3  // enable unison path
+			rp["unison_detune"] = 15 // seed detune so mix changes are audible
+			rp["unison_mix"] = 0.7   // seed mix so detune changes are audible
+			// Drift params require BOTH rate>0 AND depth>0 for effect. Seed the
+			// complementary param so that mutating the one under test has effect.
+			if name == "unison_drift_rate" {
+				rp["unison_drift_depth"] = 10 // seed depth so rate mutation registers
+			}
+			if name == "unison_drift_depth" {
+				rp["unison_drift_rate"] = 2 // seed rate so depth mutation registers
 			}
 		}
 		return rp
@@ -355,6 +440,13 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		rp[p("kick_pe_rate")] = 30
 		rp[p("kick_click")] = 0.35
 		rp[p("kick_noise")] = 0.18
+		// Phase-9 structural extras seeded to the base-kick literals (a 0
+		// gen_kick_sat would silence the voice — kp_get only falls back to the
+		// variant literal at NaN, not at the schema-identity 0).
+		rp[p("kick_attack")] = 0.3
+		rp[p("kick_fade")] = 4.0
+		rp[p("kick_sat")] = 0.55
+		rp["kick_enabled"] = 1 // gate the source==5 voice on
 		rp["voice_freq_hz"] = 0
 	}
 	// activateSlotTom turns slot k into an audible Phase-4 808-style tom voice
@@ -468,6 +560,13 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			}
 			return rp, target, true
 		}
+		if name == "kick_enabled" {
+			// Global KICK-stage enable: only has authority with the source==5
+			// voice active. Base = on (audible kick), target = off (silence).
+			rp := sineBase()
+			activateSlotKick(rp, 1)
+			return rp, 0, true
+		}
 		if !strings.HasPrefix(name, "gen") {
 			return nil, 0, false
 		}
@@ -555,7 +654,7 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				rp[name] = 1
 				return rp, 0.5, true // trim the output
 			}
-		case "ks_sustain", "ks_pluck":
+		case "ks_sustain", "ks_pluck", "ks_blow":
 			// Phase-2 Karplus-Strong voice fields: only have authority when the
 			// slot's source is 3. Build an audible KS slot, then pick a per-field
 			// target that moves the output.
@@ -567,9 +666,13 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			case "ks_pluck":
 				rp[name] = 0.35
 				return rp, 0.9, true // brighter pluck LP (different delay-line init)
+			case "ks_blow":
+				rp[name] = 0         // base: plucked (one-shot decay)
+				return rp, 0.6, true // target: blown (continuous-excitation tube) — audibly different
 			}
 		case "kick_variant", "kick_h2", "kick_h3", "kick_h4", "kick_env0",
-			"kick_env1", "kick_pe_amt", "kick_pe_rate", "kick_click", "kick_noise":
+			"kick_env1", "kick_pe_amt", "kick_pe_rate", "kick_click", "kick_noise",
+			"kick_attack", "kick_fade", "kick_sat":
 			// Phase-3 harmonic-bank kick voice fields: only have authority when the
 			// slot's source is 5. Build an audible base-kick slot (variant 0 reads
 			// every curated knob), then pick a per-field target that moves output.
@@ -605,6 +708,15 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			case "kick_noise":
 				rp[name] = 0.18
 				return rp, 1.0, true // louder noise thud
+			case "kick_attack":
+				rp[name] = 0.3
+				return rp, 2.0, true // stronger attack-boost transient
+			case "kick_fade":
+				rp[name] = 4.0
+				return rp, 16, true // much tighter global-fade tail
+			case "kick_sat":
+				rp[name] = 0.55
+				return rp, 1.4, true // more saturation drive
 			}
 		case "tom_variant", "tom_sweep", "tom_ring", "tom_o1", "tom_o2",
 			"tom_stick", "tom_room":
@@ -877,5 +989,619 @@ func TestModularPadRendersDistinctFromBase(t *testing.T) {
 	}
 	if diff == 0 {
 		t.Fatalf("synth-modular and synth-modular-pad rendered identical buffers; the pad preset is not diverging")
+	}
+}
+
+func TestLfoTarget_PitchVibratoBendsAndIsIdentityAtDepthZero(t *testing.T) {
+	const sr, n = 48000, 48000
+	mk := func(target, depth float64) []float32 {
+		p := defaultModularParams()
+		p.OscType = 0 // sine — easy to measure pitch via zero crossings
+		p.FilterEnabled = 0
+		p.EnvEnabled = 0
+		p.LfoEnabled = 1
+		p.LfoRate = 6
+		p.LfoDepth = depth
+		p.LfoTarget = target
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, p)
+		return buf
+	}
+	plain := mk(1, 0) // vibrato selected but depth 0 → must equal no-LFO baseline
+	base := defaultModularParams()
+	base.OscType = 0
+	base.FilterEnabled = 0
+	base.EnvEnabled = 0
+	baseBuf := make([]float32, n)
+	renderModularP(baseBuf, sr, n, base)
+	for i := range plain {
+		if plain[i] != baseBuf[i] {
+			t.Fatalf("vibrato at depth 0 not identity at %d: %v vs %v", i, plain[i], baseBuf[i])
+		}
+	}
+	vib := mk(1, 0.5) // ±0.5 st vibrato → output must differ from baseline
+	diff := 0
+	for i := range vib {
+		if vib[i] != baseBuf[i] {
+			diff++
+		}
+	}
+	if diff == 0 {
+		t.Fatal("vibrato at depth 0.5 produced no change vs baseline")
+	}
+}
+
+func TestModBiquadCoeffOnly_FilterStaysFinite(t *testing.T) {
+	const sr, n = 48000, 24000
+	p := defaultModularParams()
+	p.OscType = 1 // saw
+	p.FilterEnabled = 1
+	p.FilterType = 0 // low-pass
+	p.FilterCutoff = 2000
+	p.LfoEnabled = 1
+	p.LfoRate = 5
+	p.LfoDepth = 0.5
+	p.LfoTarget = 2 // cutoff sweep — drives the coeff-only path (Task 4)
+	buf := make([]float32, n)
+	renderModularP(buf, sr, n, p)
+	for i, v := range buf {
+		if v != v || v > 4 || v < -4 {
+			t.Fatalf("non-finite/exploded filter output at %d: %v", i, v)
+		}
+	}
+}
+
+func TestLfoTarget_CutoffSweepChangesFilteredOutput(t *testing.T) {
+	const sr, n = 48000, 48000
+
+	// mkSweep builds a saw through an enabled LP filter with the cutoff-sweep
+	// LFO (lfo_target=2). Only lfo_depth varies between calls so amplitude
+	// behaviour is identical across all renders (amp-tremolo is gated to
+	// target==0 and is OFF here for every depth value).
+	mkSweep := func(depth float64) []float32 {
+		p := defaultModularParams()
+		p.OscType = 1    // saw — harmonically rich so cutoff changes are audible
+		p.EnvEnabled = 0 // eliminate amp-envelope variation
+		p.FilterEnabled = 1
+		p.FilterType = 0 // low-pass
+		p.FilterCutoff = 2000
+		p.LfoEnabled = 1
+		p.LfoRate = 4
+		p.LfoDepth = depth
+		p.LfoTarget = 2 // cutoff sweep; amp-tremolo is gated OFF at this target
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, p)
+		return buf
+	}
+
+	// Assertion (a): depth 0.6 must differ from depth 0 — proves the sweep changes output.
+	shallow := mkSweep(0)
+	deep := mkSweep(0.6)
+	diff := 0
+	for i := range shallow {
+		if deep[i] != shallow[i] {
+			diff++
+		}
+	}
+	if diff == 0 {
+		t.Fatal("cutoff sweep at depth 0.6 produced no change vs depth 0 (lfo_target=2 both)")
+	}
+
+	// Assertion (b): depth-0 with lfo_target=2 must be byte-identical to a
+	// no-LFO static-filter baseline (same params, lfo_enabled=0). This proves
+	// depth-0 is a true no-op and that the sweep — not an amplitude side-effect
+	// — is what assertion (a) measures.
+	noLFO := defaultModularParams()
+	noLFO.OscType = 1
+	noLFO.EnvEnabled = 0
+	noLFO.FilterEnabled = 1
+	noLFO.FilterType = 0
+	noLFO.FilterCutoff = 2000
+	noLFO.LfoEnabled = 0 // LFO completely off
+	noLFOBuf := make([]float32, n)
+	renderModularP(noLFOBuf, sr, n, noLFO)
+	for i := range shallow {
+		if shallow[i] != noLFOBuf[i] {
+			t.Fatalf("assertion (b) FAILED: depth-0 cutoff-sweep (target=2) not byte-identical to no-LFO baseline at sample %d: %v vs %v", i, shallow[i], noLFOBuf[i])
+		}
+	}
+
+	// Finiteness check on the swept render.
+	for i, v := range deep {
+		if v != v || v > 4 || v < -4 {
+			t.Fatalf("cutoff sweep non-finite at %d: %v", i, v)
+		}
+	}
+}
+
+func TestFiltEnv_BrightenThenSettleAndIdentityWhenOff(t *testing.T) {
+	const sr, n = 48000, 48000
+	mk := func(enabled, amt float64) []float32 {
+		p := defaultModularParams()
+		p.OscType = 1 // saw (rich harmonics so cutoff motion is audible)
+		p.EnvEnabled = 0
+		p.FilterEnabled = 1
+		p.FilterType = 0
+		p.FilterCutoff = 1200
+		p.FiltEnvEnabled = enabled
+		p.FiltEnvAmt = amt
+		p.FiltEnvDecay = 0.2
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, p)
+		return buf
+	}
+	off := mk(0, 3) // disabled → identity (amt ignored)
+	base := defaultModularParams()
+	base.OscType = 1
+	base.EnvEnabled = 0
+	base.FilterEnabled = 1
+	base.FilterType = 0
+	base.FilterCutoff = 1200
+	baseBuf := make([]float32, n)
+	renderModularP(baseBuf, sr, n, base)
+	for i := range off {
+		if off[i] != baseBuf[i] {
+			t.Fatalf("filtenv disabled not byte-identical at %d", i)
+		}
+	}
+	on := mk(1, 3) // enabled → differs (brighter attack)
+	diff := 0
+	for i := range on {
+		if on[i] != baseBuf[i] {
+			diff++
+		}
+	}
+	if diff == 0 {
+		t.Fatal("filter envelope produced no change")
+	}
+	// Attack window should be brighter (more HF energy = larger sample-to-sample delta) than the tail.
+	d := func(b []float32, a, z int) float64 {
+		var s float64
+		for i := a + 1; i < z; i++ {
+			s += math.Abs(float64(b[i] - b[i-1]))
+		}
+		return s
+	}
+	if d(on, 0, 2000) <= d(on, 40000, 42000) {
+		t.Fatal("filter envelope attack not brighter than tail")
+	}
+}
+
+// ── Phase-8E unison tests ──────────────────────────────────────────────────
+
+func renderSawWithUnison(voices int, detune, mix float64) []float32 {
+	const sr, n = 48000, 24000
+	mp := defaultModularParams()
+	mp.OscType = 1 // saw
+	mp.UnisonVoices = float64(voices)
+	mp.UnisonDetune = detune
+	mp.UnisonMix = mix
+	buf := make([]float32, n)
+	renderModularP(buf, sr, n, mp)
+	return buf
+}
+
+// TestUnisonVoices1ByteIdentical verifies that unison_voices=1 produces
+// byte-identical output to the baseline (no unison field set at all).
+func TestUnisonVoices1ByteIdentical(t *testing.T) {
+	const sr, n = 48000, 24000
+	mp := defaultModularParams()
+	mp.OscType = 1 // saw
+
+	baseline := make([]float32, n)
+	renderModularP(baseline, sr, n, mp)
+
+	mp.UnisonVoices = 1
+	mp.UnisonDetune = 20
+	mp.UnisonMix = 0.5
+	withUnison1 := make([]float32, n)
+	renderModularP(withUnison1, sr, n, mp)
+
+	for i, v := range withUnison1 {
+		if v != baseline[i] {
+			t.Fatalf("voices=1 sample[%d]: got %v, want %v (not byte-identical)", i, v, baseline[i])
+		}
+	}
+}
+
+// TestUnisonVoices5Differs verifies that voices=5 with detune=20 produces
+// output that differs from voices=1 and remains finite and bounded.
+func TestUnisonVoices5Differs(t *testing.T) {
+	voices1 := renderSawWithUnison(1, 20, 0.5)
+	voices5 := renderSawWithUnison(5, 20, 0.5)
+
+	assertFinite(t, voices5)
+
+	// Must differ from voices=1.
+	same := true
+	for i, v := range voices5 {
+		if v != voices1[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("voices=5,detune=20 produced byte-identical output to voices=1 (no detuning applied)")
+	}
+
+	// Bounded: no sample should exceed ±2.0 (well within any sane headroom).
+	pk := peakAbs(voices5)
+	if pk > 2.0 {
+		t.Fatalf("voices=5 peak %v exceeds ±2.0 bound", pk)
+	}
+	// Must have non-silent output.
+	if pk <= 0 {
+		t.Fatal("voices=5 output is silent")
+	}
+}
+
+// TestUnisonDetune0Sanity verifies voices=3,detune=0,mix=1 stays bounded and
+// is non-silent (when detune=0 voices sum in-phase → louder but not unbounded).
+func TestUnisonDetune0Sanity(t *testing.T) {
+	voices3det0 := renderSawWithUnison(3, 0, 1)
+	assertFinite(t, voices3det0)
+	pk := peakAbs(voices3det0)
+	if pk <= 0 {
+		t.Fatal("voices=3,detune=0 output is silent")
+	}
+	// 1/sqrt(3) normalization keeps things bounded even with in-phase sum.
+	if pk > 2.0 {
+		t.Fatalf("voices=3,detune=0 peak %v exceeds ±2.0 bound", pk)
+	}
+}
+
+// TestUnisonGenBankSource1Differs verifies unison also works for gen-bank
+// source==1 (wt_osc slots), producing different output when voices>1.
+func TestUnisonGenBankSource1Differs(t *testing.T) {
+	const sr, n = 48000, 24000
+
+	baseMP := ModularParams{
+		OscEnabled:    0, // disable legacy OSC; use gen bank only
+		EnvEnabled:    1,
+		FilterEnabled: 1,
+		FilterCutoff:  8000, FilterResonance: 0.707,
+		AmpAttack: 0.005, AmpDecay: 0.3, AmpSustain: 0.6, AmpRelease: 0.2, AmpCurve: 1,
+		Gain: 1,
+	}
+	// slot 0: source=1 (wt_osc), freq_mode=0 (ratio), freq=1, gain=1
+	baseMP.GenSource[0] = 1
+	baseMP.GenFreqMode[0] = 0
+	baseMP.GenFreq[0] = 1
+	baseMP.GenGain[0] = 1
+	baseMP.GenEnvFastMix[0] = 1
+	baseMP.GenEnvFastRate[0] = 0
+
+	baseline := make([]float32, n)
+	renderModularP(baseline, sr, n, baseMP)
+
+	withUnison := baseMP
+	withUnison.UnisonVoices = 3
+	withUnison.UnisonDetune = 15
+	withUnison.UnisonMix = 0.8
+	unisonBuf := make([]float32, n)
+	renderModularP(unisonBuf, sr, n, withUnison)
+
+	assertFinite(t, unisonBuf)
+
+	same := true
+	for i, v := range unisonBuf {
+		if v != baseline[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("gen-bank source==1 voices=3 produced byte-identical output to voices=1")
+	}
+}
+
+// ── Unison drift / voices=2 bug tests (Phase-8F) ───────────────────────────
+
+// TestUnison_TwoVoicesDetune verifies that voices=2 with detune>0 actually
+// detunes the side voice (the bug: ns==1 gave spread=0 → side voice at exact
+// center pitch, not detuned). We verify by comparing voices=2,detune=25 against
+// voices=2,detune=0: detuned should differ (frequency difference) while with
+// the bug both land at center pitch so the only difference is phase (and
+// phase-only 2-voice is the SAME as 2-voice detune=0).
+func TestUnison_TwoVoicesDetune(t *testing.T) {
+	v2det25 := renderSawWithUnison(2, 25, 1.0) // mix=1 = full ensemble
+	v2det0 := renderSawWithUnison(2, 0, 1.0)   // mix=1, no detune
+	assertFinite(t, v2det25)
+	assertFinite(t, v2det0)
+	// With proper spread math, detune=25 should differ from detune=0 because
+	// the side voice frequency actually changes. With the bug (spread=0 always
+	// for ns==1), both produce center+phase_offset, so output is identical.
+	same := true
+	for i, s := range v2det25 {
+		if s != v2det0[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("unison_voices=2 detune=25 is identical to detune=0 (spread=0 bug: side voice stuck at center pitch)")
+	}
+}
+
+// TestUnison_DriftIdentityAndEffect verifies:
+// (a) drift_depth=0 is byte-identical to no drift fields set (identity).
+// (b) drift_rate>0 && drift_depth>0 produces different output (drift has effect).
+func TestUnison_DriftIdentityAndEffect(t *testing.T) {
+	const sr, n = 48000, 24000
+
+	noDrift := func() []float32 {
+		mp := defaultModularParams()
+		mp.OscType = 1 // saw
+		mp.UnisonVoices = 5
+		mp.UnisonDetune = 20
+		mp.UnisonMix = 0.7
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, mp)
+		return buf
+	}
+	driftOff := func() []float32 {
+		mp := defaultModularParams()
+		mp.OscType = 1 // saw
+		mp.UnisonVoices = 5
+		mp.UnisonDetune = 20
+		mp.UnisonMix = 0.7
+		mp.UnisonDriftRate = 0
+		mp.UnisonDriftDepth = 0
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, mp)
+		return buf
+	}
+	driftOn := func() []float32 {
+		mp := defaultModularParams()
+		mp.OscType = 1 // saw
+		mp.UnisonVoices = 5
+		mp.UnisonDetune = 20
+		mp.UnisonMix = 0.7
+		mp.UnisonDriftRate = 2
+		mp.UnisonDriftDepth = 10
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, mp)
+		return buf
+	}
+
+	base := noDrift()
+	off := driftOff()
+	on := driftOn()
+
+	assertFinite(t, off)
+	assertFinite(t, on)
+
+	// (a) drift_depth=0 must be byte-identical to no drift fields.
+	for i, v := range off {
+		if v != base[i] {
+			t.Fatalf("drift identity broken: drift_depth=0 differs from no-drift at sample %d (got %v, want %v)", i, v, base[i])
+		}
+	}
+
+	// (b) drift on must differ from drift off.
+	same := true
+	for i, v := range on {
+		if v != off[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("drift has no effect: drift_rate=2 drift_depth=10 produced byte-identical output to drift-off")
+	}
+
+	// (b) drift output must be bounded.
+	for i, v := range on {
+		if v > 4.0 || v < -4.0 {
+			t.Fatalf("drift output unbounded at sample %d: %v", i, v)
+		}
+	}
+}
+
+func TestLfoDelay_IdentityAndRampsIn(t *testing.T) {
+	const sr = 48000
+	n := sr * 2 // 2 seconds
+
+	// Base params: vibrato LFO enabled (target=1 = pitch vibrato for identity/early test)
+	base := defaultModularParams()
+	base.OscType = 1 // saw
+	base.LfoEnabled = 1
+	base.LfoRate = 6
+	base.LfoDepth = 0.3
+	base.LfoTarget = 1 // pitch vibrato
+
+	// (a) Identity: lfo_delay=0 must be byte-identical to a render where LfoDelay is absent (zero-value).
+	withZeroDelay := base
+	withZeroDelay.LfoDelay = 0
+	noDelay := make([]float32, n)
+	withDelayZero := make([]float32, n)
+	renderModularP(noDelay, sr, n, base)
+	renderModularP(withDelayZero, sr, n, withZeroDelay)
+	for i := range noDelay {
+		if noDelay[i] != withDelayZero[i] {
+			t.Fatalf("identity broken: lfo_delay=0 not byte-identical to absent field at sample %d (%v vs %v)", i, noDelay[i], withDelayZero[i])
+		}
+	}
+
+	// (b) With lfo_delay=0.5: early window (first 0.25s) must differ from no-delay.
+	withDelay := base
+	withDelay.LfoDelay = 0.5
+	delayed := make([]float32, n)
+	renderModularP(delayed, sr, n, withDelay)
+
+	earlyN := sr / 4 // first 0.25s
+	var earlyDiff float64
+	for i := 0; i < earlyN; i++ {
+		d := float64(noDelay[i] - delayed[i])
+		earlyDiff += d * d
+	}
+	if earlyDiff < 1e-6 {
+		t.Fatalf("lfo_delay=0.5: early window identical to no-delay (earlyDiff=%v), delay ramp not applied", earlyDiff)
+	}
+
+	// (c) Late-window convergence: use amp tremolo (target=0) which is stateless
+	// (per-sample multiply, no oscillator phase accumulation), so once ramp=1.0
+	// the output is sample-identical to the no-delay render.
+	// Render the same params with amp LFO (target=0).
+	baseAmp := defaultModularParams()
+	baseAmp.OscType = 1 // saw
+	baseAmp.LfoEnabled = 1
+	baseAmp.LfoRate = 6
+	baseAmp.LfoDepth = 0.3
+	baseAmp.LfoTarget = 0 // amp tremolo (stateless post-mix multiply)
+
+	noDelayAmp := make([]float32, n)
+	renderModularP(noDelayAmp, sr, n, baseAmp)
+
+	delayedAmp := baseAmp
+	delayedAmp.LfoDelay = 0.5
+	delayedAmpBuf := make([]float32, n)
+	renderModularP(delayedAmpBuf, sr, n, delayedAmp)
+
+	// Late window (t>1.5s): ramp completed at 0.5s, so output must be identical.
+	lateStart := int(1.5 * float64(sr))
+	lateN := n - lateStart
+	var lateDiff float64
+	for i := lateStart; i < n; i++ {
+		d := float64(noDelayAmp[i] - delayedAmpBuf[i])
+		lateDiff += d * d
+	}
+	lateAvgDiff := lateDiff / float64(lateN)
+	if lateAvgDiff > 1e-10 {
+		t.Fatalf("lfo_delay=0.5 amp-tremolo: late window (t>1.5s) not identical to no-delay (avgDiff=%v), ramp did not converge to 1.0", lateAvgDiff)
+	}
+}
+
+// TestVibrato_ReachesGenSlots verifies that pitch vibrato (lfo_target==1) reaches
+// gen-bank wavetable-osc slots when the legacy OSC stage is disabled (osc_enabled:0).
+// Additive instruments like violin/cello carry all their tone in gen-bank slots and
+// had no vibrato before the fix. This test must FAIL before the C fix and PASS after.
+func TestVibrato_ReachesGenSlots(t *testing.T) {
+	const sr, n = 48000, 48000
+
+	// Gen-slot-only voice: legacy OSC disabled, single wavetable-osc gen slot.
+	mkGenOnly := func(lfoDepth float64) []float32 {
+		mp := ModularParams{
+			OscEnabled:    0, // legacy OSC stage off — tone lives in gen bank only
+			EnvEnabled:    1,
+			FilterEnabled: 0,
+			AmpAttack:     0.005,
+			AmpDecay:      2.0,
+			AmpSustain:    0.8,
+			AmpRelease:    0.2,
+			AmpCurve:      1,
+			Gain:          1,
+			// LFO: pitch vibrato
+			LfoEnabled: 1,
+			LfoTarget:  1, // pitch vibrato
+			LfoRate:    6,
+			LfoDepth:   lfoDepth,
+		}
+		// slot 0: source=1 (wavetable osc), sine wave, ratio freq=1 (voice_freq), gain=1
+		mp.GenSource[0] = 1   // wavetable osc
+		mp.GenWave[0] = 0     // sine
+		mp.GenFreqMode[0] = 0 // ratio (freq × voice_freq)
+		mp.GenFreq[0] = 1     // ratio 1× (fundamental)
+		mp.GenGain[0] = 1
+		mp.GenEnvFastMix[0] = 0
+		mp.GenEnvTailMix[0] = 1
+		mp.GenEnvTailRate[0] = 0.5 // slow decay so there's sustained output to compare
+
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, mp)
+		return buf
+	}
+
+	withVibrato := mkGenOnly(0.4)    // vibrato on: should modulate gen slot pitch
+	withoutVibrato := mkGenOnly(0.0) // no vibrato: flat pitch
+
+	assertFinite(t, withVibrato)
+	assertFinite(t, withoutVibrato)
+
+	// The gen slot must produce non-silent output.
+	if peakAbs(withoutVibrato) <= 0 {
+		t.Fatal("gen-slot-only voice is silent (env/params misconfigured in test)")
+	}
+
+	// With vibrato active, the pitch must wobble: the two renders must differ.
+	same := true
+	for i, v := range withVibrato {
+		if v != withoutVibrato[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Fatal("vibrato (lfo_target=1, depth=0.4) had NO effect on gen-bank wavetable-osc slot output — vibrato is not routed to gen slots (bug)")
+	}
+}
+
+// TestVibrato_GenSlotIdentityWhenOff verifies byte-identity when vibrato is
+// completely disabled (lfo_enabled=0) for a gen-slot-only voice. This must pass
+// both before and after the C fix (no regression on the inactive path).
+func TestVibrato_GenSlotIdentityWhenOff(t *testing.T) {
+	const sr, n = 48000, 48000
+
+	mkGenNoLFO := func(lfoEnabled float64) []float32 {
+		mp := ModularParams{
+			OscEnabled:    0,
+			EnvEnabled:    1,
+			FilterEnabled: 0,
+			AmpAttack:     0.005,
+			AmpDecay:      2.0,
+			AmpSustain:    0.8,
+			AmpRelease:    0.2,
+			AmpCurve:      1,
+			Gain:          1,
+			LfoEnabled:    lfoEnabled, // 0 = LFO completely off
+			LfoTarget:     1,
+			LfoRate:       6,
+			LfoDepth:      0.4,
+		}
+		mp.GenSource[0] = 1
+		mp.GenWave[0] = 0
+		mp.GenFreqMode[0] = 0
+		mp.GenFreq[0] = 1
+		mp.GenGain[0] = 1
+		mp.GenEnvFastMix[0] = 0
+		mp.GenEnvTailMix[0] = 1
+		mp.GenEnvTailRate[0] = 0.5
+
+		buf := make([]float32, n)
+		renderModularP(buf, sr, n, mp)
+		return buf
+	}
+
+	lfoOff := mkGenNoLFO(0) // lfo_enabled=0 → no vibrato
+	// lfo_enabled=0 with all LFO fields set should be byte-identical to a render
+	// where LFO fields are all zero (the gate must short-circuit before any per-sample work).
+	mpZeroLFO := ModularParams{
+		OscEnabled:    0,
+		EnvEnabled:    1,
+		FilterEnabled: 0,
+		AmpAttack:     0.005,
+		AmpDecay:      2.0,
+		AmpSustain:    0.8,
+		AmpRelease:    0.2,
+		AmpCurve:      1,
+		Gain:          1,
+		// LFO fields all zero (default)
+	}
+	mpZeroLFO.GenSource[0] = 1
+	mpZeroLFO.GenWave[0] = 0
+	mpZeroLFO.GenFreqMode[0] = 0
+	mpZeroLFO.GenFreq[0] = 1
+	mpZeroLFO.GenGain[0] = 1
+	mpZeroLFO.GenEnvFastMix[0] = 0
+	mpZeroLFO.GenEnvTailMix[0] = 1
+	mpZeroLFO.GenEnvTailRate[0] = 0.5
+
+	baseline := make([]float32, n)
+	renderModularP(baseline, sr, n, mpZeroLFO)
+
+	for i, v := range lfoOff {
+		if v != baseline[i] {
+			t.Fatalf("gen-slot with lfo_enabled=0 not byte-identical to zero-LFO baseline at sample %d: got %v, want %v", i, v, baseline[i])
+		}
 	}
 }

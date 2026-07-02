@@ -63,7 +63,7 @@ func TestLevelsPhase0a_BarFillsToHeldValue(t *testing.T) {
 	barBand := image.Rect(rect.Min.X+28, rect.Min.Y+14, rect.Max.X-4, rect.Max.Y-18)
 	found := 0
 	for _, r := range rects {
-		if r.Color == meterGreen || r.Color == meterYellow || r.Color == meterRed {
+		if r.Color == meterLow || r.Color == meterMid || r.Color == meterHigh {
 			if r.Rect.Min.X >= barBand.Min.X && r.Rect.Max.X > barBand.Min.X+20 {
 				found++
 			}

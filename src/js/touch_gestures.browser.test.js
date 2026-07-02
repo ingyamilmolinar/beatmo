@@ -40,8 +40,15 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
-// Use iPhone 12 landscape device emulation for realistic mobile testing
-const iPhone = devices['iPhone 12 landscape'];
+// Use iPhone 12 (portrait) device emulation for realistic mobile testing.
+// Must be PORTRAIT: mobile landscape is intentionally unsupported — the mobile
+// profile shows a rotate-to-portrait notice and blocks all touch input
+// (internal/ui/landscape_unsupported.go), so gesture verification (drag pans,
+// pinch zooms, two-finger pan) can only run in the supported portrait
+// orientation. The landscape-disabled behavior itself is covered by
+// landscape_block.browser.test.js + the landscape cases in
+// touch_device_matrix / mobile_import_gesture.
+const iPhone = devices['iPhone 12'];
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const context = await browser.newContext({
   ...iPhone,

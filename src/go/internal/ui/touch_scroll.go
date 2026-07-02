@@ -39,8 +39,15 @@ func (ts *TouchScroller) Move(x, y int) float64 {
 	if !ts.dirLocked {
 		dx := x - ts.startX
 		dy := y - ts.startY
-		dist := math.Sqrt(float64(dx*dx + dy*dy))
-		if dist < touchScrollDeadZone {
+		// Per-axis dead zone, matching the gesture detector's tap threshold
+		// (gesture.go: a touch is a TAP while dx <= tapMaxMovePx && dy <=
+		// tapMaxMovePx). A Euclidean check here was STRICTER than that box —
+		// e.g. an (8,8) real-finger jitter is Euclidean 11.3 (>10) yet per-axis
+		// 8 (a tap) — so it committed a scroll and cancelled the deferred tap,
+		// making instrument-menu items unselectable on real iPhone Safari while
+		// open/scroll worked. Keeping the two thresholds identical means any
+		// movement the gesture layer calls a tap never commits a scroll here.
+		if abs(dx) <= touchScrollDeadZone && abs(dy) <= touchScrollDeadZone {
 			return 0
 		}
 		ts.dirLocked = true

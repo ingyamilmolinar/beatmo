@@ -69,12 +69,16 @@ func startFakeBucket(t *testing.T, override func(rel string, h http.Header)) *ht
 			return
 		}
 		w.Header().Set("Content-Type", contentTypeFor(rel))
-		// Default Cache-Control mirrors the deploy script's choices.
+		// Default Cache-Control mirrors the deploy script's choices, including
+		// the no-transform directive that protects the gzipped objects from
+		// GCS decompressive transcoding.
 		if rel == "index.html" || strings.HasSuffix(rel, ".gen.js") {
-			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate, no-transform")
 		} else {
-			w.Header().Set("Cache-Control", "public, max-age=300, must-revalidate")
+			w.Header().Set("Cache-Control", "public, max-age=300, must-revalidate, no-transform")
 		}
+		// The deploy gzip-compresses the bundle and serves it gzip-encoded.
+		w.Header().Set("Content-Encoding", "gzip")
 		if override != nil {
 			override(rel, w.Header())
 		}
@@ -183,6 +187,43 @@ func TestVerifyHeadersScript_Flags404(t *testing.T) {
 	}
 	if !strings.Contains(out, "recording_encoder_worker.js") {
 		t.Errorf("error output must name the missing file, got:\n%s", out)
+	}
+}
+
+func TestVerifyHeadersScript_FlagsMissingWASMGzipEncoding(t *testing.T) {
+	script := verifyScriptPath(t)
+	srv := startFakeBucket(t, func(rel string, h http.Header) {
+		if rel == "main.wasm" {
+			// Simulate a deploy that forgot Content-Encoding: gzip -- the
+			// browser would receive raw gzip bytes as identity and fail to
+			// compile, or (with GCS transcoding) the 28 MiB uncompressed body.
+			h.Del("Content-Encoding")
+		}
+	})
+	out, err := runVerify(t, script, srv.URL)
+	if err == nil {
+		t.Fatalf("expected non-zero exit when main.wasm lacks Content-Encoding: gzip; got OK:\n%s", out)
+	}
+	if !strings.Contains(out, "main.wasm") || !strings.Contains(strings.ToLower(out), "content-encoding") {
+		t.Errorf("error output must mention main.wasm + Content-Encoding, got:\n%s", out)
+	}
+}
+
+func TestVerifyHeadersScript_FlagsMissingNoTransform(t *testing.T) {
+	script := verifyScriptPath(t)
+	srv := startFakeBucket(t, func(rel string, h http.Header) {
+		if rel == "main.wasm" {
+			// no-transform protects the gzipped object from GCS decompressive
+			// transcoding; dropping it is a deploy regression.
+			h.Set("Cache-Control", "public, max-age=300, must-revalidate")
+		}
+	})
+	out, err := runVerify(t, script, srv.URL)
+	if err == nil {
+		t.Fatalf("expected non-zero exit when main.wasm Cache-Control lacks no-transform; got OK:\n%s", out)
+	}
+	if !strings.Contains(strings.ToLower(out), "no-transform") {
+		t.Errorf("error output must mention no-transform, got:\n%s", out)
 	}
 }
 

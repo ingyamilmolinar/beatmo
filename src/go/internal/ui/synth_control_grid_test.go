@@ -200,6 +200,61 @@ func TestSynthSection_ThumbDragAdvancesOneRowPerStep(t *testing.T) {
 	ha.Handler.OnRelease(cx, cy+2*controlGridDragStepPx)
 }
 
+// synthBodyHitArea returns the FM section's card-body scroll catch-all — the
+// surface a finger grabs to scroll the content (as opposed to the thumb).
+func synthBodyHitArea(t *testing.T, g *Game) *HitArea {
+	t.Helper()
+	tag := "synth-scrollbody-" + fmt.Sprint(int(synthSectionFM))
+	hits := g.drum.eqPanelZone.HitAreas()
+	for i := range hits {
+		if hits[i].Tag == tag {
+			return &hits[i]
+		}
+	}
+	t.Fatalf("no %q scroll-body hit-area published", tag)
+	return nil
+}
+
+// TestSynthSection_BodyDragIsNatural pins the reported fix: grabbing the synth
+// card BODY scrolls naturally — the content follows the finger. Dragging the
+// finger DOWN moves the content down (revealing earlier rows → First decreases);
+// dragging UP reveals later rows (First increases). This is the opposite of the
+// scrollbar thumb, which stays direct (TestSynthSection_ThumbDragAdvancesOneRowPerStep).
+func TestSynthSection_BodyDragIsNatural(t *testing.T) {
+	g := modularSynthGameRealistic(t)
+	grid := g.drum.SynthSectionGrid(synthSectionFM)
+	if grid == nil || !grid.HasScroll() {
+		t.Fatalf("FM section should overflow and scroll (grid=%v)", grid)
+	}
+	ha := synthBodyHitArea(t, g)
+	cx := (ha.Rect.Min.X + ha.Rect.Max.X) / 2
+	cy := (ha.Rect.Min.Y + ha.Rect.Max.Y) / 2
+
+	// Drag finger UP one step from a mid position → content follows the finger
+	// (slides up), revealing later rows → First increases.
+	grid.Scroll().VS.First = 1
+	if res := ha.Handler.OnPress(cx, cy); res != InputCaptured {
+		t.Fatalf("press on body returned %v, want InputCaptured", res)
+	}
+	ha.Handler.OnDrag(cx, cy-controlGridDragStepPx)
+	if got := grid.Scroll().VS.First; got != 2 {
+		t.Errorf("finger UP: First=%d, want 2 (natural: drag up reveals later rows)", got)
+	}
+	ha.Handler.OnRelease(cx, cy-controlGridDragStepPx)
+
+	// Drag finger DOWN one step → content follows the finger (slides down),
+	// revealing earlier rows → First decreases.
+	grid.Scroll().VS.First = 1
+	if res := ha.Handler.OnPress(cx, cy); res != InputCaptured {
+		t.Fatalf("press on body returned %v, want InputCaptured", res)
+	}
+	ha.Handler.OnDrag(cx, cy+controlGridDragStepPx)
+	if got := grid.Scroll().VS.First; got != 0 {
+		t.Errorf("finger DOWN: First=%d, want 0 (natural: drag down reveals earlier rows)", got)
+	}
+	ha.Handler.OnRelease(cx, cy+controlGridDragStepPx)
+}
+
 func TestSynthSection_WheelThrottledOneRowPerCooldown(t *testing.T) {
 	g := modularSynthGameRealistic(t)
 	grid := g.drum.SynthSectionGrid(synthSectionFM)
@@ -287,16 +342,18 @@ func TestSynthKnob_VerticalDragScrollsInsteadOfAdjusting(t *testing.T) {
 	if handler.OnPress(cx, cy) != InputCaptured {
 		t.Fatal("press on knob did not capture")
 	}
-	// Drag straight DOWN one full step: must scroll the section one row and
-	// leave the knob value untouched.
-	handler.OnDrag(cx, cy+controlGridDragStepPx)
+	// Drag straight UP one full step: natural content scrolling reveals the
+	// items below (First advances one row), and the knob value stays untouched.
+	// (Up rather than down because First starts at 0 and natural drag-down would
+	// clamp; the direction itself is asserted in TestSynthSection_BodyDragIsNatural.)
+	handler.OnDrag(cx, cy-controlGridDragStepPx)
 	if got := grid.Scroll().VS.First; got != firstBefore+1 {
 		t.Errorf("vertical drag on knob: First=%d, want %d (should scroll one row)", got, firstBefore+1)
 	}
 	if knob.Value != valBefore {
 		t.Errorf("vertical drag on knob changed its value %v→%v (must only scroll)", valBefore, knob.Value)
 	}
-	handler.OnRelease(cx, cy+controlGridDragStepPx)
+	handler.OnRelease(cx, cy-controlGridDragStepPx)
 }
 
 func TestSynthKnob_HorizontalDragAdjustsWithoutScrolling(t *testing.T) {
@@ -375,15 +432,16 @@ func TestSynthKnob_MostlyVerticalDragOverKnobScrolls(t *testing.T) {
 	if handler.OnPress(cx, cy) != InputCaptured {
 		t.Fatal("press did not capture")
 	}
-	// Mostly vertical (one full step down) with a small horizontal wobble.
-	handler.OnDrag(cx+3, cy+controlGridDragStepPx)
+	// Mostly vertical (one full step up) with a small horizontal wobble. Up so
+	// the natural drag advances First off the 0 floor (see the sibling test).
+	handler.OnDrag(cx+3, cy-controlGridDragStepPx)
 	if knob.Value != v0 {
 		t.Errorf("mostly-vertical drag turned the knob (%v→%v)", v0, knob.Value)
 	}
 	if grid.Scroll().VS.First == first0 {
 		t.Errorf("mostly-vertical drag did not scroll the section (First stayed %d)", first0)
 	}
-	handler.OnRelease(cx+3, cy+controlGridDragStepPx)
+	handler.OnRelease(cx+3, cy-controlGridDragStepPx)
 }
 
 func TestSynthSection_OffWindowKnobsNotHittable(t *testing.T) {

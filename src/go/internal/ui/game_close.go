@@ -65,7 +65,7 @@ func (g *Game) Close() {
 	case <-done:
 	case <-time.After(closeJoinTimeout):
 		if g.logger != nil {
-			g.logger.Errorf("[GAME] Close() join timed out after %s — background loops still parked", closeJoinTimeout)
+			g.logger.Errorf("[game] Close() join timed out after %s — background loops still parked", closeJoinTimeout)
 		}
 	}
 	audio.Close()

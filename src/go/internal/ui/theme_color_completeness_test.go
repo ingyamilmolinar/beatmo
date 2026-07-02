@@ -234,9 +234,9 @@ var untokenizedAllowlist = map[string]string{
 	"colDropdownEdge":  "accent at 50/255 alpha for dropdown borders — runtime alpha composite",
 	"colError":         "alias of colStopRed for error-text role — collapse",
 
-	// Splitter chrome — one cyan handle color shared by desktop + mobile
+	// Splitter chrome — one sunset-gold handle color shared by desktop + mobile
 	// (the splitter-handle token). No DESIGN.md component slot.
-	"colSplitterHandle":        "splitter handle — cyan touch affordance, shared desktop+mobile",
+	"colSplitterHandle":        "splitter handle — sunset-gold touch affordance, shared desktop+mobile",
 	"colSplitterHandleHover":   "splitter handle hover — runtime brightening",
 
 	// Panel/scrim runtime alphas
@@ -270,10 +270,6 @@ var untokenizedAllowlist = map[string]string{
 	"colEQFilterHandleActive": "EQ filter handle active — brighter variant",
 	"colEQFilterLine":         "EQ filter band line — handle color at 60/255",
 
-	// Increment/decrement steppers (BPM ±, etc.)
-	"colIncDec":       "BPM stepper fill — dark navy, distinct from surface ladder",
-	"colIncDecBorder": "BPM stepper border — accent blue",
-	"colIncDecIconHi": "BPM stepper icon tint — desktop blue, distinct from accent",
 
 	// Transport pill group
 	"colTransportDivider":     "transport divider — border base at 20/255",
@@ -283,5 +279,5 @@ var untokenizedAllowlist = map[string]string{
 	// Mute / solo active borders
 	"colMuteActiveBdr": "mute active button border — sibling of TokenMuteActiveFill",
 	"colSoloActive":    "solo active fill — bright cyan (was amber), distinct from primary",
-	"colSoloActiveBdr": "solo active border — lighter cyan companion to colSoloActive",
+	"colSoloActiveBdr": "solo active border — lighter sunset-gold companion to colSoloActive",
 }

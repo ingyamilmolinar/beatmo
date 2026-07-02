@@ -4,10 +4,65 @@ package ui
 
 import (
 	"image"
+	"strconv"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/async"
 )
+
+// TestSynthMirror_FallsBackWhenBudgetExhausted reproduces the desktop crash
+// where opening the Synth tab panicked with
+// "async.Registry.MustGet(synth.preview): registry budget exhausted".
+// newSynthMirror is created lazily mid-session (when the Synth tab is built),
+// so it MUST gracefully fall back to a private pool — like eventlogger.format
+// and hooks.fanout already do — instead of panicking and killing the app.
+func TestSynthMirror_FallsBackWhenBudgetExhausted(t *testing.T) {
+	reg := async.DefaultRegistry()
+	// Free the shared preview slot so we exercise the exhaustion path even if a
+	// prior test in this suite warmed it.
+	_ = reg.Release(synthMirrorPoolName)
+
+	// Saturate the shared worker budget with throwaway 1-worker pools.
+	var filler []string
+	for {
+		bs := reg.BudgetStats()
+		if bs.Used >= bs.Budget {
+			break
+		}
+		name := "test.budget.filler." + strconv.Itoa(len(filler))
+		if _, err := reg.Get(name, async.Options{MaxConcurrent: 1, QueueSize: 1, Name: name}); err != nil {
+			break
+		}
+		filler = append(filler, name)
+	}
+	t.Cleanup(func() {
+		for _, n := range filler {
+			_ = reg.Release(n)
+		}
+	})
+
+	// With the budget exhausted, construction must not panic.
+	var m *synthMirror
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("newSynthMirror panicked on exhausted budget: %v", r)
+			}
+		}()
+		m = newSynthMirror()
+	}()
+	t.Cleanup(m.closeForTest)
+
+	// The fallback pool must still produce a render.
+	rendered := 0
+	m.request("kick", "h1", func(string) []float64 { rendered++; return []float64{0.5, -0.5} })
+	m.drainForTest()
+	if rendered != 1 || len(m.pcmForTest()) != 2 {
+		t.Fatalf("fallback mirror did not render: rendered=%d pcm=%d", rendered, len(m.pcmForTest()))
+	}
+}
 
 func TestSynthMirror_CachesByParamsHash(t *testing.T) {
 	m := newSynthMirror()

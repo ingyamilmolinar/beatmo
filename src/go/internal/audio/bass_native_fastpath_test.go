@@ -8,10 +8,9 @@ import "testing"
 //
 // The instruments-table Render closure for an unedited bass instrument must
 // produce a buffer byte-identical to the recipe path's default render. Before
-// the cutover the table pointed Render at the legacy render_bass_guitar /
-// render_sub_bass C functions; after it, Render bakes the recipe-default
-// ModularParams and renders via render_modular_p (renderSubBassVoice /
-// renderBassGuitarVoice). This test proves the baked fast path equals the
+// the cutover the table pointed Render at the legacy render_sub_bass C function;
+// after it, Render bakes the recipe-default ModularParams and renders via
+// render_modular_p (renderSubBassVoice). This test proves the baked fast path equals the
 // recipe path so the cheap no-overlay dispatch and the recipe/edit dispatch
 // agree to the bit — the same invariant nativeGoldenCases locks via the golden
 // hash.
@@ -24,7 +23,6 @@ func TestBassNoEditFastPathMatchesRecipe(t *testing.T) {
 		fast     func(buf []float32, sampleRate, samples int)
 	}{
 		{"drum-sub-bass", renderSubBassVoice},
-		{"drum-bass-guitar", renderBassGuitarVoice},
 	} {
 		t.Run(tc.recipeID, func(t *testing.T) {
 			// Recipe-path default render (the exact path tryRecipeVoice takes for
@@ -50,14 +48,15 @@ func TestBassNoEditFastPathMatchesRecipe(t *testing.T) {
 }
 
 // TestBassInstrumentTableUsesModularFastPath asserts the live instruments table
-// binds bass-guitar / sub-bass (and their -1 variants) to the modular fast-path
-// renderers, not the deleted legacy C wrappers. It introspects the table the
-// same way ResetInstruments populates it.
+// binds the modular bass instruments (sub-bass + its -1 variant, plus the
+// renamed bass-guitar and the synth-bass family) to the modular render path, not
+// any deleted legacy C wrapper. It introspects the table the same way
+// ResetInstruments populates it.
 func TestBassInstrumentTableUsesModularFastPath(t *testing.T) {
 	ResetInstruments()
 	instMu.RLock()
 	defer instMu.RUnlock()
-	for _, id := range []string{"bass-guitar", "sub-bass", "bass-guitar-1", "sub-bass-1"} {
+	for _, id := range []string{"bass-guitar", "bass-acid", "bass-reese", "bass-fm", "bass-808", "sub-bass", "sub-bass-1"} {
 		inst, ok := instruments[id]
 		if !ok {
 			t.Errorf("instrument %q missing from table", id)

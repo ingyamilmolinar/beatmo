@@ -139,16 +139,15 @@ var nativeGoldenCases = []struct {
 	{"drum-open-hihat", renderOpenHiHatVoice, cymbalGoldenIdentity(renderOpenHiHatVoice), "577d48513953e94ec712e625831e14c1c340d6ceeb17162f19895125040a38e8"},
 	{"drum-tom-high", renderTomHighVoice, tomGoldenIdentity(renderTomHighVoice), "499d7c941b0dc2c89a7894b4295e2fbc5b1b76af229acbd3a790eff7b5052652"},
 	{"drum-tom-low", renderTomLowVoice, tomGoldenIdentity(renderTomLowVoice), "f8e7727eff919b587ef674d5a7119dbfa77c313259d59aff25488de74abfa6f8"},
-	// Bass family migrated to the modular engine (Phase-2). The bespoke
-	// render_bass_guitar / render_sub_bass C paths are deleted, so these entries
-	// render through the no-edit modular fast path (renderBassGuitarVoice /
-	// renderSubBassVoice — the baked recipe-default ModularParams). The hash is
-	// UNCHANGED from the legacy path: the oracle fixtures prove byte-identity.
-	// renderP is bassGoldenIdentity, which ignores the (always-zero) SynthParams
-	// and renders the same baked voice, so the identity-parity assertion below
-	// is trivially satisfied (the modular path has no SynthParams surface — it
-	// reads its params from the wide modular block, exercised by the oracle).
-	{"drum-bass-guitar", renderBassGuitarVoice, bassGoldenIdentity(renderBassGuitarVoice), "51662148f584972f5519be13f30e691e5fcc6d65f763bd7f1defea0f1d33d7ee"},
+	// Sub-bass migrated to the modular engine (Phase-2). The bespoke
+	// render_sub_bass C path is deleted, so this entry renders through the no-edit
+	// modular fast path (renderSubBassVoice — the baked recipe-default
+	// ModularParams). The hash is UNCHANGED from the legacy path: the oracle
+	// fixtures prove byte-identity. renderP is bassGoldenIdentity, which ignores
+	// the (always-zero) SynthParams and renders the same baked voice, so the
+	// identity-parity assertion below is trivially satisfied (the modular path has
+	// no SynthParams surface — it reads its params from the wide modular block,
+	// exercised by the oracle).
 	{"drum-sub-bass", renderSubBassVoice, bassGoldenIdentity(renderSubBassVoice), "ab7b8c781ae55c67802394696549d39ddee7588f770f982e311156e221ff84a0"},
 	{"drum-snare-rimshot", renderSnareRimshotVoice, snareGoldenIdentity(renderSnareRimshotVoice), "c435b1b79c729a8a1e60b946f3417f7a6ead8e6f711ada37f21c2570e29cea0a"},
 	{"drum-snare-sidestick", renderSnareSidestickVoice, snareGoldenIdentity(renderSnareSidestickVoice), "0d9994e2647773bd83469603060b251fa892d5f470d15108afde55f94dd04172"},

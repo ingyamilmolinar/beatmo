@@ -28,18 +28,24 @@ func TestChainPhase3_PerStageMeterLitForActiveStage(t *testing.T) {
 	dst := ebiten.NewImage(600, 200)
 	rects := collectFilledRects(t, func() { z.Draw(dst) })
 
-	// meterColor(-0.5) = meterRed (since -0.5 > meterRedDB=-1).
-	// Look for at least one meterRed rect inside the stage column area
+	// meterColor(-0.5) = meterHigh (since -0.5 > meterRedDB=-1).
+	// Look for at least one meterHigh rect inside the stage column area
 	// (left chainStageColW pixels of the panel).
 	col := image.Rect(0, 0, chainStageColW+16, 200)
-	if got := rectsWithColorInside(rects, col, meterRed); got == 0 {
-		t.Fatalf("expected ≥1 meterRed rect (per-stage meter) in stage column %v, got 0", col)
+	if got := rectsWithColorInside(rects, col, meterHigh); got == 0 {
+		t.Fatalf("expected ≥1 meterHigh rect (per-stage meter) in stage column %v, got 0", col)
 	}
 }
 
 // TestChainPhase3_PerStageMeterDarkForSilentStage — silent stages must
 // NOT light up. The whole point of the per-stage display is "this
 // stage is active right now" vs "this stage is silent right now".
+//
+// Note: meterLow (#FFB30A, sunset-gold-300) is now the same hex as the
+// primary accent, so it legitimately appears in chain-panel chrome (buttons,
+// borders, etc.) even in a silent state — we do NOT check meterLow here.
+// meterMid (#FF7A3D, tangerine-300) and meterHigh (#E84A1F, tangerine-500)
+// are distinct from all other UI chrome, so they must be absent in silence.
 func TestChainPhase3_PerStageMeterDarkForSilentStage(t *testing.T) {
 	cb := ChainCallbacks{
 		ScopeState: func() *scope.State { return nil },
@@ -54,11 +60,11 @@ func TestChainPhase3_PerStageMeterDarkForSilentStage(t *testing.T) {
 	rects := collectFilledRects(t, func() { z.Draw(dst) })
 
 	col := image.Rect(0, 0, chainStageColW+16, 200)
-	gotRed := rectsWithColorInside(rects, col, meterRed)
-	gotYel := rectsWithColorInside(rects, col, meterYellow)
-	gotGreen := rectsWithColorInside(rects, col, meterGreen)
-	if gotRed+gotYel+gotGreen > 0 {
-		t.Fatalf("expected no meter-color rects in silent state, got red=%d yel=%d green=%d", gotRed, gotYel, gotGreen)
+	gotRed := rectsWithColorInside(rects, col, meterHigh)
+	gotYel := rectsWithColorInside(rects, col, meterMid)
+	// meterLow == primary accent (#FFB30A) — skip; appears in chrome at all times.
+	if gotRed+gotYel > 0 {
+		t.Fatalf("expected no meterMid/meterHigh rects in silent state, got orange=%d red=%d", gotYel, gotRed)
 	}
 }
 

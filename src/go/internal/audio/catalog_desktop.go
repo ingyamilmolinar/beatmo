@@ -277,10 +277,18 @@ func synthCategory(id string) string {
 		return "Cowbells (Synth)"
 	case strings.HasPrefix(lower, "ride"), strings.HasPrefix(lower, "crash"):
 		return "Cymbals (Synth)"
-	case strings.HasPrefix(lower, "shaker"):
+	case strings.HasPrefix(lower, "shaker"), strings.HasPrefix(lower, "conga"):
 		return "Percussion (Synth)"
 	case strings.HasPrefix(lower, "bass"):
 		return "Bass (Synth)"
+	case strings.HasPrefix(lower, "violin"), strings.HasPrefix(lower, "viola"), strings.HasPrefix(lower, "cello"),
+		strings.HasPrefix(lower, "guitar"):
+		return "Strings (Synth)"
+	case strings.HasPrefix(lower, "piano"):
+		return "Keys (Synth)"
+	case strings.HasPrefix(lower, "flute"), strings.HasPrefix(lower, "oboe"),
+		strings.HasPrefix(lower, "trumpet"), strings.HasPrefix(lower, "french-horn"):
+		return "Winds (Synth)"
 	default:
 		return "Synth (Other)"
 	}

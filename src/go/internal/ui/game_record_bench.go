@@ -36,10 +36,10 @@ func (g *Game) startBenchRecording() {
 		OutputDir:   g.benchOutDir,
 	}
 	if err := audio.StartRecording(opts); err != nil {
-		g.logger.Errorf("[BENCH] StartRecording failed: %v", err)
+		g.logger.Errorf("[bench] StartRecording failed: %v", err)
 		return
 	}
-	g.logger.Infof("[BENCH] Recording started -> %s", g.benchOutDir)
+	g.logger.Infof("[bench] Recording started -> %s", g.benchOutDir)
 }
 
 // finishBenchRecording stops the recording, writes a perfStats snapshot
@@ -51,7 +51,7 @@ func (g *Game) finishBenchRecording(stats PerfStats) {
 	}
 	result, err := audio.StopRecording()
 	if err != nil {
-		g.logger.Errorf("[BENCH] StopRecording failed: %v", err)
+		g.logger.Errorf("[bench] StopRecording failed: %v", err)
 		return
 	}
 	dir := result.SessionDir
@@ -59,17 +59,17 @@ func (g *Game) finishBenchRecording(stats PerfStats) {
 		dir = g.benchOutDir
 	}
 	if _, err := audio.SaveRecording(result); err != nil {
-		g.logger.Errorf("[BENCH] SaveRecording failed: %v", err)
+		g.logger.Errorf("[bench] SaveRecording failed: %v", err)
 	}
-	g.logger.Infof("[BENCH] Recording stopped: drops=%d channels=%d dir=%s",
+	g.logger.Infof("[bench] Recording stopped: drops=%d channels=%d dir=%s",
 		stats.RecordingDrops, len(result.Channels), dir)
 
 	if statsBytes, err := json.MarshalIndent(stats, "", "  "); err == nil {
 		statsPath := filepath.Join(dir, "perf_stats.json")
 		if err := os.WriteFile(statsPath, statsBytes, 0o644); err != nil {
-			g.logger.Errorf("[BENCH] write perf_stats.json: %v", err)
+			g.logger.Errorf("[bench] write perf_stats.json: %v", err)
 		} else {
-			g.logger.Infof("[BENCH] perf snapshot -> %s", statsPath)
+			g.logger.Infof("[bench] perf snapshot -> %s", statsPath)
 		}
 	}
 

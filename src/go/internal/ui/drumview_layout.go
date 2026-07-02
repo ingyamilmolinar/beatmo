@@ -163,6 +163,12 @@ func (dv *DrumView) recalcButtons() {
 					segRect = image.Rect(segRect.Min.X+barPad, segRect.Min.Y, segRect.Max.X-barPad, segRect.Max.Y)
 				}
 				dv.viewSwitchSegmented.SetRect(segRect)
+				// Grey the Synth segment when the active instrument is a WAV
+				// sample (no synth controls). HitTest reads this live, so the
+				// hit area published below stays consistent with the visual.
+				if idx := bottomNavSynthIndex(); idx >= 0 {
+					dv.viewSwitchSegmented.SetSegmentDisabled(idx, !dv.activeInstrumentHasSynth())
+				}
 			}
 			// Re-rebuild hit areas so the segmented control is registered
 			// (transport zone's Layout ran before we placed it).
@@ -827,6 +833,20 @@ func (dv *DrumView) recalcButtons() {
 		dv.tree.HitIndexRef().Update("drumview-row-zoom", zoomAreas)
 	}
 
+	// Keep the legacy DrumView mirrors of the instrument-menu search field in
+	// sync with the menu component. The soft-keyboard (desktop) and mobile
+	// native-input registrations below locate the field via dv.instSearchRect;
+	// it is otherwise never assigned, so it stays the zero rect and the search
+	// field is never registered — meaning a tap on it cannot open the mobile
+	// native keyboard. Mirror the component's live rect (empty in categories
+	// mode) every layout pass.
+	if dv.instMenuComp != nil && dv.IsInstMenuOpen() {
+		dv.instSearchBox = dv.instMenuComp.SearchBox()
+		dv.instSearchRect = dv.instMenuComp.SearchRect()
+	} else {
+		dv.instSearchRect = image.Rectangle{}
+	}
+
 	// Register focusable rects for mobile soft keyboard gesture-based focus.
 	// On small screens, the mobile native input system handles text inputs
 	// directly (creating real HTML <input> overlays), so we skip focus-rect
@@ -839,7 +859,7 @@ func (dv *DrumView) recalcButtons() {
 		}
 		if dv.IsInstMenuOpen() && dv.instSearchBox != nil && !dv.instSearchRect.Empty() {
 			r := dv.instSearchRect
-			softKeyboardRegisterRect("inst-search", r.Min.X, r.Min.Y, r.Dx(), r.Dy(), "text")
+			softKeyboardRegisterRect(instSearchMobileInputID, r.Min.X, r.Min.Y, r.Dx(), r.Dy(), "text")
 		}
 		if dv.IsNamingOpen() && dv.nameBox != nil && !dv.nameBox.Rect.Empty() {
 			r := dv.nameBox.Rect
@@ -868,31 +888,34 @@ func (dv *DrumView) recalcButtons() {
 				dv.bpmBox().Text, 4, "numeric")
 		}
 
-		// Rename — register trigger only when context menu is open.
-		// The "Rename" button in the context menu is the trigger (index 1).
-		// We must NOT register the kebab button itself as a trigger, otherwise
-		// the JS touchend handler intercepts the tap and creates a native
-		// rename input instead of letting the context menu open.
+		// Rename — register the native-input trigger only when the context menu
+		// is open, glued to the *Rename* item (found by identity, not a magic
+		// index — see contextMenuRenameBtn). Registering it on the wrong item
+		// makes the JS touchend handler open the rename input when that adjacent
+		// item is tapped (the "tapping Color opens rename" bug). We must also NOT
+		// register the kebab button itself as a trigger, otherwise the JS handler
+		// intercepts the tap and creates a native rename input instead of letting
+		// the context menu open.
 		if dv.IsContextMenuOpen() && dv.contextMenuRow >= 0 &&
-			dv.contextMenuRow < len(dv.Rows) && dv.contextMenuRow < len(dv.rowLabels()) &&
-			len(dv.contextMenuBtns) > 1 {
-			renameBtn := dv.contextMenuBtns[1] // "Rename" is index 1
-			trigR := renameBtn.Rect()
-			labelR := dv.rowLabels()[dv.contextMenuRow].Rect()
-			if !trigR.Empty() && !labelR.Empty() {
-				mobileInputRegisterTrigger(
-					fmt.Sprintf("rename-%d", dv.contextMenuRow),
-					trigR.Min.X, trigR.Min.Y, trigR.Dx(), trigR.Dy(),
-					labelR.Min.X, labelR.Min.Y, labelR.Dx(), labelR.Dy(),
-					dv.Rows[dv.contextMenuRow].Name, 32, "text",
-				)
+			dv.contextMenuRow < len(dv.Rows) && dv.contextMenuRow < len(dv.rowLabels()) {
+			if renameBtn := dv.contextMenuRenameBtn(); renameBtn != nil {
+				trigR := renameBtn.Rect()
+				labelR := dv.rowLabels()[dv.contextMenuRow].Rect()
+				if !trigR.Empty() && !labelR.Empty() {
+					mobileInputRegisterTrigger(
+						fmt.Sprintf("rename-%d", dv.contextMenuRow),
+						trigR.Min.X, trigR.Min.Y, trigR.Dx(), trigR.Dy(),
+						labelR.Min.X, labelR.Min.Y, labelR.Dx(), labelR.Dy(),
+						dv.Rows[dv.contextMenuRow].Name, 32, "text",
+					)
+				}
 			}
 		}
 
 		// Instrument search — direct rect (when inst menu is open)
 		if dv.IsInstMenuOpen() && dv.instSearchBox != nil && !dv.instSearchRect.Empty() {
 			r := dv.instSearchRect
-			mobileInputRegister("inst-search", r.Min.X, r.Min.Y, r.Dx(), r.Dy(),
+			mobileInputRegister(instSearchMobileInputID, r.Min.X, r.Min.Y, r.Dx(), r.Dy(),
 				dv.instSearchBox.Text, 40, "text")
 		}
 

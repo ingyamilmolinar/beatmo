@@ -49,24 +49,3 @@ func TestSubBassRendersViaModular(t *testing.T) {
 		t.Fatalf("drum-sub-bass migrated but not rebound onto a modular family renderer")
 	}
 }
-
-// Phase-2 bass-family migration (Task 2: bass-guitar / Karplus-Strong).
-//
-// TestBassGuitarModularMatchesOracle is the byte gate (a subset of the
-// legacy-oracle fixture; passes trivially BEFORE the migration, the regression
-// net AFTER it). TestBassGuitarRendersViaModular is the red: it asserts the
-// recipe is rebound onto the modular binding, which only becomes true once
-// bass_modular_binding.go rebinds drum-bass-guitar.
-
-func TestBassGuitarModularMatchesOracle(t *testing.T) {
-	assertRecipeMatchesOracleFixtures(t, "drum-bass-guitar")
-}
-
-func TestBassGuitarRendersViaModular(t *testing.T) {
-	if !IsModularMigratedRecipe("drum-bass-guitar") {
-		t.Fatalf("drum-bass-guitar is not migrated to the modular engine yet")
-	}
-	if builtinFamilyRenderers["drum-bass-guitar"] == nil {
-		t.Fatalf("drum-bass-guitar migrated but not rebound onto a modular family renderer")
-	}
-}

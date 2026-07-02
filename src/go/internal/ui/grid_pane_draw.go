@@ -76,7 +76,7 @@ func (g *Game) drawGridBackground(dst *ebiten.Image) {
 	// Optionally disable grid drawing entirely for geometry debugging.
 	if envNoGridDraw {
 		if g.logDrawNodes {
-			g.logger.Debugf("[DRAW-GRID] disabled via NO_GRID_DRAW")
+			g.logger.Debugf("[draw-grid] disabled via NO_GRID_DRAW")
 		}
 	} else {
 		// Grid layer cache: build once per scale/subdiv, then blit with translation
@@ -94,7 +94,7 @@ func (g *Game) drawGridBackground(dst *ebiten.Image) {
 		// grow-only backing, so this does not allocate per frame during a zoom.
 		if g.gridTile == nil || g.gridTileStepPx != stepPx || g.gridTileSubSig != g.grid.subSig {
 			if g.logDrawNodes {
-				g.logger.Tracef("[DRAW/GRID] rebuild tile: stepPx=%d maxDiv=%d unitPx=%.2f subSig=%d", stepPx, g.grid.MaxDiv(), g.grid.UnitPixels(g.cam.Scale), g.grid.subSig)
+				g.logger.Tracef("[draw/grid] rebuild tile: stepPx=%d maxDiv=%d unitPx=%.2f subSig=%d", stepPx, g.grid.MaxDiv(), g.grid.UnitPixels(g.cam.Scale), g.grid.subSig)
 			}
 			g.gridTile = g.buildGridTile(stepPx)
 			g.gridTileStepPx = stepPx
@@ -128,7 +128,7 @@ func (g *Game) drawGridBackground(dst *ebiten.Image) {
 					reuse = true
 					blitCache(dst, g.gridCache, -g.gridCachePad+dx, -g.gridCachePad+dy)
 					if g.logDrawNodes {
-						g.logger.Tracef("[DRAW/GRID-CACHE] reuse dx=%d dy=%d pad=%d", dx, dy, g.gridCachePad)
+						g.logger.Tracef("[draw/grid-cache] reuse dx=%d dy=%d pad=%d", dx, dy, g.gridCachePad)
 					}
 				}
 			}
@@ -183,7 +183,7 @@ func (g *Game) drawGridBackground(dst *ebiten.Image) {
 				}
 				blitCache(dst, g.gridCache, -g.gridCachePad, -g.gridCachePad)
 				if g.logDrawNodes {
-					g.logger.Tracef("[DRAW/GRID-CACHE] rebuild w=%d h=%d pad=%d phase=(%d,%d)", w, h, g.gridCachePad, phaseX, phaseY)
+					g.logger.Tracef("[draw/grid-cache] rebuild w=%d h=%d pad=%d phase=(%d,%d)", w, h, g.gridCachePad, phaseX, phaseY)
 				}
 			}
 		}
@@ -228,7 +228,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 				blitCache(dst, g.edgeCache, -g.edgeCachePad+dx, -g.edgeCachePad+dy)
 				g.lastDrawEdges = g.edgeCacheCount
 				if g.logDrawNodes {
-					g.logger.Tracef("[DRAW/EDGE-CACHE] state=reuse dx=%d dy=%d count=%d scale=%.6f off=(%.0f,%.0f) pad=%d", dx, dy, g.edgeCacheCount, camScale, offX, offY, g.edgeCachePad)
+					g.logger.Tracef("[draw/edge-cache] state=reuse dx=%d dy=%d count=%d scale=%.6f off=(%.0f,%.0f) pad=%d", dx, dy, g.edgeCacheCount, camScale, offX, offY, g.edgeCachePad)
 				}
 			}
 		}
@@ -309,7 +309,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 			blitCache(dst, g.edgeCache, -g.edgeCachePad, -g.edgeCachePad)
 			g.lastDrawEdges = g.edgeCacheCount
 			if g.logDrawNodes {
-				g.logger.Tracef("[DRAW/EDGE-CACHE] state=rebuild count=%d scale=%.6f off=(%.0f,%.0f) pad=%d worldPad=%.3f", cnt, camScale, offX, offY, g.edgeCachePad, float64(g.edgeCachePad)/camScale)
+				g.logger.Tracef("[draw/edge-cache] state=rebuild count=%d scale=%.6f off=(%.0f,%.0f) pad=%d worldPad=%.3f", cnt, camScale, offX, offY, g.edgeCachePad, float64(g.edgeCachePad)/camScale)
 			}
 		}
 	}
@@ -417,10 +417,10 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 			dcxB, dcyB := math.Round(bcx), math.Round(bcy)
 			rEx0, rEy0 := math.Round(ex0), math.Round(ey0)
 			rEx1, rEy1 := math.Round(ex1), math.Round(ey1)
-			g.logger.Tracef("[DRAW/EDGE] frame=%d A=%d gridA=(%d,%d) nodeA=(%.1f,%.1f) projA=(%.1f,%.1f) roundA=(%.0f,%.0f) B=%d gridB=(%d,%d) nodeB=(%.1f,%.1f) projB=(%.1f,%.1f) roundB=(%.0f,%.0f)",
+			g.logger.Tracef("[draw/edge] frame=%d A=%d gridA=(%d,%d) nodeA=(%.1f,%.1f) projA=(%.1f,%.1f) roundA=(%.0f,%.0f) B=%d gridB=(%d,%d) nodeB=(%.1f,%.1f) projB=(%.1f,%.1f) roundB=(%.0f,%.0f)",
 				g.frame, e.A.ID, e.A.I, e.A.J, acx, acy, ex0, ey0, dcxA, dcyA, e.B.ID, e.B.I, e.B.J, bcx, bcy, ex1, ey1, dcxB, dcyB)
 			if dcxA != rEx0 || dcyA != rEy0 || dcxB != rEx1 || dcyB != rEy1 {
-				g.logger.Debugf("[EDGE-MISALIGN] A id=%d nodeRound=(%.0f,%.0f) projRound=(%.0f,%.0f) B id=%d nodeRound=(%.0f,%.0f) projRound=(%.0f,%.0f)", e.A.ID, dcxA, dcyA, rEx0, rEy0, e.B.ID, dcxB, dcyB, rEx1, rEy1)
+				g.logger.Debugf("[edge-misalign] A id=%d nodeRound=(%.0f,%.0f) projRound=(%.0f,%.0f) B id=%d nodeRound=(%.0f,%.0f) projRound=(%.0f,%.0f)", e.A.ID, dcxA, dcyA, rEx0, rEy0, e.B.ID, dcxB, dcyB, rEx1, rEy1)
 			}
 		}
 		// Suppress transient edge pulses during origin selection and for a
@@ -468,7 +468,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 		ey1 := e.B.Y*camScale + offY + float64(gridTopOffset())
 		da := math.Hypot(acx-ex0, acy-ey0)
 		db := math.Hypot(bcx-ex1, bcy-ey1)
-		g.logger.Tracef("[DRAW/EDGE-CHECK] first edge A=%d@(%d,%d) B=%d@(%d,%d) nodeA=(%.0f,%.0f) edgeA=(%.0f,%.0f) dA=%.2f nodeB=(%.0f,%.0f) edgeB=(%.0f,%.0f) dB=%.2f cache=%t dx=%d dy=%d",
+		g.logger.Tracef("[draw/edge-check] first edge A=%d@(%d,%d) B=%d@(%d,%d) nodeA=(%.0f,%.0f) edgeA=(%.0f,%.0f) dA=%.2f nodeB=(%.0f,%.0f) edgeB=(%.0f,%.0f) dB=%.2f cache=%t dx=%d dy=%d",
 			e.A.ID, e.A.I, e.A.J, e.B.ID, e.B.I, e.B.J,
 			math.Round(acx), math.Round(acy), math.Round(ex0), math.Round(ey0), da,
 			math.Round(bcx), math.Round(bcy), math.Round(ex1), math.Round(ey1), db,
@@ -511,7 +511,7 @@ func (g *Game) drawGridEdges(dst *ebiten.Image) {
 				maxDB, badB = db, e.B
 			}
 		}
-		g.logger.Debugf("[ALIGN] edges=%d maxDA=%.2f (id=%v) maxDB=%.2f (id=%v)", len(g.edges), maxDA, idOrNil(badA), maxDB, idOrNil(badB))
+		g.logger.Debugf("[align] edges=%d maxDA=%.2f (id=%v) maxDB=%.2f (id=%v)", len(g.edges), maxDA, idOrNil(badA), maxDB, idOrNil(badB))
 	}
 }
 
@@ -850,7 +850,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 					fb := color.RGBAModel.Convert(style.Fill).(color.RGBA)
 					bb := color.RGBAModel.Convert(style.Border).(color.RGBA)
 					x1, y1, x2, y2 := g.nodeScreenRect(n)
-					g.logger.Tracef("[DRAW/NODE] frame=%d id=%d row=%d grid=(%d,%d) scr=(%.1f,%.1f)-(%.1f,%.1f) radius=%.2f start=%t fill=(%d,%d,%d,%d) border=(%d,%d,%d,%d) pendingStartRow=%d playing=%t",
+					g.logger.Tracef("[draw/node] frame=%d id=%d row=%d grid=(%d,%d) scr=(%.1f,%.1f)-(%.1f,%.1f) radius=%.2f start=%t fill=(%d,%d,%d,%d) border=(%d,%d,%d,%d) pendingStartRow=%d playing=%t",
 						g.frame, n.ID, rowIdx, n.I, n.J, x1, y1, x2, y2, style.Radius, n.Start,
 						fb.R, fb.G, fb.B, fb.A, bb.R, bb.G, bb.B, bb.A, g.pendingStartRow, g.Playing())
 				}
@@ -994,7 +994,7 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 					ex := n.X*camScale + offX
 					ey := n.Y*camScale + offY + float64(gridTopOffset())
 					wpx := float64(rPx) * 2
-					g.logger.Tracef("[DRAW/NODE-PLACED] id=%d grid=(%d,%d) drawnCenter=(%.0f,%.0f) rect=(%.0f,%.0f)-(%.0f,%.0f) proj=(%.2f,%.2f)", n.ID, n.I, n.J, dcx, dcy, dx, dy, dx+wpx, dy+wpx, ex, ey)
+					g.logger.Tracef("[draw/node-placed] id=%d grid=(%d,%d) drawnCenter=(%.0f,%.0f) rect=(%.0f,%.0f)-(%.0f,%.0f) proj=(%.2f,%.2f)", n.ID, n.I, n.J, dcx, dcy, dx, dy, dx+wpx, dy+wpx, ex, ey)
 				}
 			}
 
@@ -1071,7 +1071,7 @@ func (g *Game) drawGridPulses(dst *ebiten.Image) {
 		if g.logDrawNodes {
 			sx := px*camScale + offX
 			sy := py*camScale + offY + float64(gridTopOffset())
-			g.logger.Tracef("[DRAW/PULSE] frame=%d row=%d t=%.2f world=(%.2f,%.2f) screen=(%.1f,%.1f)", g.frame, p.row, p.t, px, py, sx, sy)
+			g.logger.Tracef("[draw/pulse] frame=%d row=%d t=%.2f world=(%.2f,%.2f) screen=(%.1f,%.1f)", g.frame, p.row, p.t, px, py, sx, sy)
 		}
 	}
 }
@@ -1213,10 +1213,10 @@ func (g *Game) drawGridCursorLabel(dst *ebiten.Image) {
 	}
 }
 
-// drawGridHelpButton renders the "?" keyboard-shortcuts button in the grid
-// pane's top-right corner. Reuses the shared Button widget.
+// drawGridHelpButton renders the settings gear button in the grid pane's
+// top-right corner (both desktop and mobile). Reuses the shared Button widget.
 func (g *Game) drawGridHelpButton(dst *ebiten.Image) {
-	if g.gridHelpBtn == nil || Profile().IsMobile() {
+	if g.gridHelpBtn == nil {
 		return
 	}
 	g.gridHelpBtn.SetRect(g.gridHelpButtonRect())

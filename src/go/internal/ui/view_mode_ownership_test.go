@@ -130,14 +130,19 @@ func TestMobile_PadsAfterEQ_EQPanelDrawNotInvoked(t *testing.T) {
 	logger := game_log.New(testLogOutput(), game_log.LevelError)
 	g := New(logger)
 	t.Cleanup(g.CloseForTest)
-	g.Layout(569, 430)
+	// Portrait viewport: mobile landscape is disabled (landscapeUnsupported()
+	// replaces the whole UI with the rotate-to-portrait notice, so no zone
+	// draws). Use a tall-enough portrait pane that the EQ widget still gets a
+	// non-zero rect in viewModeRows, exercising the tree visibility gate rather
+	// than the zero-rect Draw guard.
+	g.Layout(430, 720)
 	advanceFrames(g, 2)
 	dv := g.drum
 
 	// Visit the EQ tab so the zone is known-good and known-paintable.
 	dv.setViewMode(viewModeEQ)
 	advanceFrames(g, 2)
-	g.Draw(ebiten.NewImage(569, 430))
+	g.Draw(ebiten.NewImage(430, 720))
 	if dv.eqPanelZone.DrawCallsForTest() == 0 {
 		t.Fatalf("precondition: EQPanelZone.Draw should have been invoked at least once during viewModeEQ")
 	}
@@ -148,7 +153,7 @@ func TestMobile_PadsAfterEQ_EQPanelDrawNotInvoked(t *testing.T) {
 	dv.setViewMode(viewModeRows)
 	advanceFrames(g, 2)
 	before := dv.eqPanelZone.DrawCallsForTest()
-	g.Draw(ebiten.NewImage(569, 430))
+	g.Draw(ebiten.NewImage(430, 720))
 	after := dv.eqPanelZone.DrawCallsForTest()
 	if delta := after - before; delta != 0 {
 		t.Errorf("mobile Pads after EQ: EQPanelZone.Draw was invoked %d times during a frame in viewModeRows — pills will leak. The tree's RegisterZoneVisible gate is not short-circuiting the zone.", delta)

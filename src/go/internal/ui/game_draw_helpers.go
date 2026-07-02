@@ -123,7 +123,7 @@ func (g *Game) buildGridTile(stepPx int) *ebiten.Image {
 	}
 	img := g.gridTileBacking
 	if g.logDrawNodes {
-		g.logger.Tracef("[DRAW/GRID] buildGridTile: stepPx=%d cells=%d tileW=%d subs=%d backing=%d", stepPx, cells, tileW, len(g.grid.Subs), g.gridTileBackingSize)
+		g.logger.Tracef("[draw/grid] buildGridTile: stepPx=%d cells=%d tileW=%d subs=%d backing=%d", stepPx, cells, tileW, len(g.grid.Subs), g.gridTileBackingSize)
 	}
 	// Draw the lattice across [0,tileW)²: lines repeat with period stepPx, each
 	// spanning the full block extent so tiling the block is seamless. Line

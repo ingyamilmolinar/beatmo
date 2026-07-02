@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "subdiv": 16,
+  "bpm": 104,
+  "instruments": [
+    {
+      "name": "Guitar",
+      "id": "guitar-electric",
+      "kind": "builtin",
+      "volume": 0.85,
+      "origin": 0,
+      "color": "#EE00DDFF",
+      "reverb_send": 0.12,
+      "synth_params": {
+        "pitch": 0
+      }
+    }
+  ],
+  "nodes": [
+    {
+      "id": 0,
+      "i": 0,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        1
+      ],
+      "duration": 0.18
+    },
+    {
+      "id": 1,
+      "i": 12,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        2
+      ],
+      "duration": 0.18
+    },
+    {
+      "id": 2,
+      "i": 16,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        3
+      ],
+      "pitch": 3,
+      "duration": 0.18
+    },
+    {
+      "id": 3,
+      "i": 24,
+      "j": 0,
+      "type": "regular",
+      "outputs": [
+        4
+      ],
+      "duration": 0.18
+    },
+    {
+      "id": 4,
+      "i": 32,
+      "j": 0,
+      "type": "silent",
+      "outputs": [
+        5
+      ]
+    },
+    {
+      "id": 5,
+      "i": 32,
+      "j": 8,
+      "type": "regular",
+      "outputs": [
+        6
+      ],
+      "pitch": 5,
+      "duration": 0.18
+    },
+    {
+      "id": 6,
+      "i": 32,
+      "j": 12,
+      "type": "regular",
+      "outputs": [
+        7
+      ],
+      "duration": 0.18
+    },
+    {
+      "id": 7,
+      "i": 32,
+      "j": 24,
+      "type": "regular",
+      "outputs": [
+        8
+      ],
+      "pitch": 3,
+      "duration": 0.18
+    },
+    {
+      "id": 8,
+      "i": 32,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        9
+      ],
+      "duration": 0.18
+    },
+    {
+      "id": 9,
+      "i": 20,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        10
+      ],
+      "duration": 0.18
+    },
+    {
+      "id": 10,
+      "i": 16,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        11
+      ],
+      "pitch": 7,
+      "duration": 0.18
+    },
+    {
+      "id": 11,
+      "i": 8,
+      "j": 32,
+      "type": "regular",
+      "outputs": [
+        12
+      ],
+      "pitch": 5,
+      "duration": 0.18
+    },
+    {
+      "id": 12,
+      "i": 0,
+      "j": 32,
+      "type": "silent",
+      "outputs": [
+        13
+      ]
+    },
+    {
+      "id": 13,
+      "i": 0,
+      "j": 24,
+      "type": "regular",
+      "outputs": [
+        14
+      ],
+      "pitch": 3,
+      "duration": 0.18
+    },
+    {
+      "id": 14,
+      "i": 0,
+      "j": 20,
+      "type": "regular",
+      "outputs": [
+        15
+      ],
+      "duration": 0.18
+    },
+    {
+      "id": 15,
+      "i": 0,
+      "j": 8,
+      "type": "regular",
+      "outputs": [
+        0
+      ],
+      "pitch": 7,
+      "duration": 0.18
+    }
+  ]
+}

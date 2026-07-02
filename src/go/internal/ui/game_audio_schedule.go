@@ -32,7 +32,7 @@ func (g *Game) queueSoundParams(id string, vol, pitch, dur float64) {
 		req.hasWhen = true
 		req.when = n
 	}
-	g.logger.Tracef("[AUDIO/QUEUE] id=%s vol=%.3f when=%v", id, vol, req.when)
+	g.logger.Tracef("[audio/queue] id=%s vol=%.3f when=%v", id, vol, req.when)
 	g.perf.onAudioEnq()
 	sendLatest(g.audioCh, req, &g.perf.aDrops)
 }
@@ -43,7 +43,11 @@ func (g *Game) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, when
 		vol = 0
 	}
 	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, when: whenSec, hasWhen: true, enqAt: time.Now(), gen: g.audioGen.Load(), row: row, abs: abs}
-	g.logger.Tracef("[AUDIO/QUEUE] id=%s vol=%.3f when=[%.6f]", id, vol, whenSec)
+	// Mark the seq decision as having reached the audio pipeline so parity's
+	// audio_missing check does not flag in-flight/dropped audio as a scheduler
+	// bug (see paritySeqDecision.Enqueued). Sequencer reqs only (row >= 0).
+	g.markSeqAudioEnqueued(row, abs)
+	g.logger.Tracef("[audio/queue] id=%s vol=%.3f when=[%.6f]", id, vol, whenSec)
 	g.perf.onAudioEnq()
 	sendLatest(g.audioCh, req, &g.perf.aDrops)
 }

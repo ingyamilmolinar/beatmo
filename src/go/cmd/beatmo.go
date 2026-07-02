@@ -29,7 +29,7 @@ import (
 // self-documenting about which scheduler/GC knobs were active.
 func logRuntimeFinal(logger *game_log.Logger, _ async.RuntimeSnapshot) {
 	final := async.Snapshot()
-	logger.Infof("[RUNTIME] final snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d goroutines=%d",
+	logger.Infof("[runtime] final snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d goroutines=%d",
 		final.NumCPU, final.GOMAXPROCS, final.GCPercent, final.MemoryLimit, final.NumGoroutine)
 }
 
@@ -90,7 +90,7 @@ func main() {
 	// linear-memory ceiling that crashes the browser tab. Both can be
 	// overridden via BEATMO_MEMORY_LIMIT_MB / BEATMO_GC_PERCENT envs.
 	rtSnap := async.ConfigureRuntime(wasmFriendlyRuntimeOpts())
-	logger.Infof("[RUNTIME] startup snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d",
+	logger.Infof("[runtime] startup snapshot: NumCPU=%d GOMAXPROCS=%d GCPercent=%d MemoryLimit=%d",
 		rtSnap.NumCPU, rtSnap.GOMAXPROCS, rtSnap.GCPercent, rtSnap.MemoryLimit)
 	defer logRuntimeFinal(logger, rtSnap)
 

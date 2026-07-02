@@ -63,7 +63,7 @@ func fmRecipeToModular(recipeID string, merged RecipeParams, variant float64, wi
 	set(&mp.GenFMDec4[0], "fm_op4_decay")
 
 	// Slots 2..12 stay at source 0 (off).
-	for i := 1; i < 12; i++ {
+	for i := 1; i < modularGenSlots; i++ {
 		mp.GenSource[i] = 0
 	}
 

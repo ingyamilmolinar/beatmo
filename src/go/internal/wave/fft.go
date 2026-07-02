@@ -63,6 +63,37 @@ func bitReverse(v, bits int) int {
 	return r
 }
 
+// MagnitudeSpectrum returns the linear magnitude spectrum (DC..Nyquist) of the
+// first fftSize samples of w (zero-padded if shorter), after applying the given
+// window. binHz is the per-bin frequency resolution.
+//
+// fftSize is rounded UP to the next power of two (n); the returned slice has
+// n/2+1 bins and binHz = sampleRate/n. Pass a power-of-two fftSize (as the
+// fingerprint library does: 16384, 2048) to get exactly fftSize/2+1 bins.
+// This is the single shared FFT entry point for analysis; NewFFTObserver
+// builds its dB output on top of it.
+func MagnitudeSpectrum(w Wave, fftSize int, window WindowType) (mag []float64, binHz float64) {
+	n := nextPow2(fftSize)
+	sr := w.SampleRate
+	if sr == 0 {
+		sr = sr44100Default
+	}
+	seg := make([]float64, n)
+	copy(seg, w.Samples) // from the start; truncates if longer, zero-pads if shorter
+	applyWindowInPlace(seg, window)
+	buf := make([]complex128, n)
+	for i, s := range seg {
+		buf[i] = complex(s, 0)
+	}
+	fft(buf)
+	numBins := n/2 + 1
+	mag = make([]float64, numBins)
+	for i := 0; i < numBins; i++ {
+		mag[i] = cmplx.Abs(buf[i])
+	}
+	return mag, float64(sr) / float64(n)
+}
+
 // --- FFT Observer ---
 
 type fftObserver struct {
@@ -91,40 +122,29 @@ func (o *fftObserver) Observe(w Wave) Observation {
 		sr = sr44100Default
 	}
 
-	// Extract the last n samples (or zero-pad if shorter).
-	segment := make([]float64, n)
+	// Extract the last n samples (or use all if shorter), preserving the
+	// "last N" contract.  Pass a trimmed Wave to MagnitudeSpectrum so it
+	// reads from the start of the slice (which is our last-N window).
+	var lastN []float64
 	if len(w.Samples) >= n {
-		copy(segment, w.Samples[len(w.Samples)-n:])
+		lastN = w.Samples[len(w.Samples)-n:]
 	} else {
-		// Copy what we have, rest stays zero.
-		copy(segment, w.Samples)
+		lastN = w.Samples
 	}
+	trimmed := Wave{Samples: lastN, SampleRate: sr}
 
-	// Apply Hann window.
-	for i := 0; i < n; i++ {
-		hann := 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(n)))
-		segment[i] *= hann
-	}
+	linMag, binHz := MagnitudeSpectrum(trimmed, n, WindowHann)
 
-	// Build complex buffer and run FFT.
-	buf := make([]complex128, n)
-	for i, s := range segment {
-		buf[i] = complex(s, 0)
-	}
-	fft(buf)
-
-	// Compute magnitude spectrum (N/2 + 1 bins: DC to Nyquist).
-	numBins := n/2 + 1
-	binHz := float64(sr) / float64(n)
+	// Convert linear magnitudes to dB (normalized by N, matching original).
+	numBins := len(linMag)
 	bins := make([]float64, numBins)
 	freqBins := make([]float64, numBins)
 
 	peakIdx := 0
 	peakMag := -math.MaxFloat64
 
-	for i := 0; i < numBins; i++ {
-		mag := cmplx.Abs(buf[i]) / float64(n)
-		db := ampToDB(mag)
+	for i, lm := range linMag {
+		db := ampToDB(lm / float64(n))
 		bins[i] = db
 		freqBins[i] = float64(i) * binHz
 

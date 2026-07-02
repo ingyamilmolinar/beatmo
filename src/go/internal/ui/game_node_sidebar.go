@@ -391,7 +391,12 @@ func (sb *NodeSidebar) wireButtons() {
 			return
 		}
 		if _, ok := sb.btns[id]; !ok {
-			sb.btns[id] = NewButton(label, PopupButtonStyle, func() {
+			// Every node-sidebar control uses the shared menu keycap style
+			// (DropdownStyle) so the node pop-up's buttons + dropdown lists read
+			// identically to the instrument / context / subdivision menus. The
+			// node's own color is layered on via tintBtnAccent (keycap face tint) and, for
+			// dropdown lists, drawMenuRow's accent stripe.
+			sb.btns[id] = NewButton(label, DropdownStyle, func() {
 				g.enqueueUI(onClick)
 				sb.anim[id] = 1
 			})
@@ -405,6 +410,17 @@ func (sb *NodeSidebar) wireButtons() {
 		sb.btns[id].SetRect(r)
 		sb.btns[id].ConsumeOnPress = true
 		sb.btns[id].TextScale = sidebarLabelScale()
+		// +/− steppers use icon-based drawing (Button.Draw path) instead of the
+		// legacy hand-drawn glyph so they get cushion + glow + rounded chrome.
+		if strings.HasSuffix(id, "-") {
+			sb.btns[id].Icon = "minus"
+			sb.btns[id].Text = ""
+			sb.btns[id].IconColor = colTextPrimary
+		} else if strings.HasSuffix(id, "+") {
+			sb.btns[id].Icon = "plus"
+			sb.btns[id].Text = ""
+			sb.btns[id].IconColor = colTextPrimary
+		}
 	}
 
 	// Volume +/-
@@ -661,11 +677,11 @@ func (sb *NodeSidebar) wireButtons() {
 		r, ok := sb.rects["close"]
 		if ok && !r.Empty() {
 			if _, exists := sb.btns["close"]; !exists {
-				sb.btns["close"] = NewButton("", PopupButtonStyle, func() {
+				sb.btns["close"] = NewButton("", DropdownStyle, func() {
 					sb.Close()
 				})
 				sb.btns["close"].Icon = "close"
-				sb.btns["close"].IconColor = colButtonBorder
+				sb.btns["close"].IconColor = closeIconColor()
 			} else {
 				sb.btns["close"].OnClick = func() {
 					sb.Close()
@@ -1070,9 +1086,9 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				y := r.Min.Y + (sidebarBtnH-StyledTextHeight(RoleCaption))/2
 				DrawTextStyled(dst, i18n.T(i18n.KeyCapVol), sidebarPad+2, y, RoleCaption, colTextSecondary)
 				pct := int(math.Round(volVal * 100))
-				sb.drawIncDecBtn(dst, "vol-", "\u2212") // −
+				sb.drawBtn(dst, "vol-")
 				sb.drawValuePill(dst, "volval", fmt.Sprintf("%d%%", pct))
-				sb.drawIncDecBtn(dst, "vol+", "+")
+				sb.drawBtn(dst, "vol+")
 			}
 		}
 	}
@@ -1083,9 +1099,9 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 			if r := sb.rects["pit-"]; !r.Empty() && sb.inViewport(r) {
 				y := r.Min.Y + (sidebarBtnH-StyledTextHeight(RoleCaption))/2
 				DrawTextStyled(dst, i18n.T(i18n.KeyCapPitch), sidebarPad+2, y, RoleCaption, colTextSecondary)
-				sb.drawIncDecBtn(dst, "pit-", "\u2212") // −
+				sb.drawBtn(dst, "pit-")
 				sb.drawValuePill(dst, "pitval", fmt.Sprintf("%+d", int(pitVal)))
-				sb.drawIncDecBtn(dst, "pit+", "+")
+				sb.drawBtn(dst, "pit+")
 			}
 		}
 	}
@@ -1096,9 +1112,9 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 			if r := sb.rects["dur-"]; !r.Empty() && sb.inViewport(r) {
 				y := r.Min.Y + (sidebarBtnH-StyledTextHeight(RoleCaption))/2
 				DrawTextStyled(dst, i18n.T(i18n.KeyCapDur), sidebarPad+2, y, RoleCaption, colTextSecondary)
-				sb.drawIncDecBtn(dst, "dur-", "\u2212") // −
+				sb.drawBtn(dst, "dur-")
 				sb.drawValuePill(dst, "durval", fmt.Sprintf("%.2fx", durVal))
-				sb.drawIncDecBtn(dst, "dur+", "+")
+				sb.drawBtn(dst, "dur+")
 			}
 		}
 	}
@@ -1147,16 +1163,16 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				case "every_n_triggers", "skip_every_n":
 					if lnRect := sb.rects["ln-"]; !lnRect.Empty() && sb.inViewport(lnRect) {
 						DrawTextStyled(dst, "N", sidebarPad+2, lnRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
-						sb.drawIncDecBtn(dst, "ln-", "\u2212")
+						sb.drawBtn(dst, "ln-")
 						sb.drawValuePill(dst, "lnval", fmt.Sprintf("%d", mn.Params.LogicN))
-						sb.drawIncDecBtn(dst, "ln+", "+")
+						sb.drawBtn(dst, "ln+")
 					}
 				case "probability":
 					if lpRect := sb.rects["lp-"]; !lpRect.Empty() && sb.inViewport(lpRect) {
 						DrawTextStyled(dst, "P", sidebarPad+2, lpRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
-						sb.drawIncDecBtn(dst, "lp-", "\u2212")
+						sb.drawBtn(dst, "lp-")
 						sb.drawValuePill(dst, "lpval", fmt.Sprintf("%.0f%%", mn.Params.LogicP*100))
-						sb.drawIncDecBtn(dst, "lp+", "+")
+						sb.drawBtn(dst, "lp+")
 					}
 				}
 			}
@@ -1197,9 +1213,9 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				if haveNode {
 					if gpRect := sb.rects["gp-"]; !gpRect.Empty() && sb.inViewport(gpRect) {
 						DrawTextStyled(dst, i18n.T(i18n.KeyCapPct), sidebarPad+2, gpRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleCaption))/2, RoleCaption, colTextSecondary)
-						sb.drawIncDecBtn(dst, "gp-", "\u2212")
+						sb.drawBtn(dst, "gp-")
 						sb.drawValuePill(dst, "gpval", fmt.Sprintf("%.0f%%", mn.Params.GroovePct*100))
-						sb.drawIncDecBtn(dst, "gp+", "+")
+						sb.drawBtn(dst, "gp+")
 					}
 				}
 			}
@@ -1210,8 +1226,8 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		sb.drawSectionHeader(dst, "sec-aud", i18n.T(i18n.KeyNodeSecAudible), "aud", sepColor, secTextOffY)
 		if sb.sectionOpen["aud"] {
 			if audRect := sb.rects["aud"]; !audRect.Empty() && sb.inViewport(audRect) {
-				audStyle := PopupButtonStyle
-				audStyle.Border = sb.nodeAccent()
+				audStyle := DropdownStyle
+				audStyle.Fill = blendColor(color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA), color.RGBAModel.Convert(sb.nodeAccent()).(color.RGBA), sidebarBtnAccentTint)
 				audStyle.DrawAnimated(dst, audRect, false, sb.anim["aud"])
 				label := i18n.T(i18n.KeyNodeSecAudible)
 				switch nodeType {
@@ -1229,8 +1245,8 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		sb.drawSectionHeader(dst, "sec-move", i18n.T(i18n.KeyCapMove), "move", sepColor, secTextOffY)
 		if sb.sectionOpen["move"] {
 			if moveRect := sb.rects["move"]; !moveRect.Empty() && sb.inViewport(moveRect) {
-				moveStyle := PopupButtonStyle
-				moveStyle.Border = sb.nodeAccent()
+				moveStyle := DropdownStyle
+				moveStyle.Fill = blendColor(color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA), color.RGBAModel.Convert(sb.nodeAccent()).(color.RGBA), sidebarBtnAccentTint)
 				moveStyle.DrawAnimated(dst, moveRect, false, sb.anim["move"])
 				DrawTextStyled(dst, i18n.T(i18n.KeyCapMoveNode), moveRect.Min.X+sidebarInnerPad, moveRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleBody))/2, RoleBody, colTextPrimary)
 			}
@@ -1244,7 +1260,7 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		if !r.Empty() {
 			drawRect(dst, r, WithAlpha(genColorSidebarChipFill, genAlphaSidebarChip), true)
 			drawRect(dst, r, sb.nodeAccent(), false)
-			sb.tintBtnBorder(btn)
+			sb.tintBtnAccent(btn)
 			btn.Draw(dst)
 		}
 	}
@@ -1290,28 +1306,17 @@ func (sb *NodeSidebar) drawHeader(dst *ebiten.Image) {
 	// Shared "Neon Horizon" header band, tinted to the node's instrument color.
 	drawMenuHeaderBandAccent(dst, headerRect, sb.nodeAccent())
 
-	// Instrument color swatch (12×12 rounded square) + name only (no coordinates).
+	// Instrument swatch + name via the shared, unified menu-title treatment so
+	// the node pop-up title matches the row context menu 100% (font/size/icon).
 	swatchCol := color.Color(genColorSidebarSwatchFallback)
 	label := i18n.T(i18n.KeyNodeTitle)
-
 	if row, ok := g.nodeRows[sb.node.ID]; ok && row >= 0 && row < len(g.drum.Rows) {
 		dr := g.drum.Rows[row]
 		swatchCol = dr.Color
 		label = dr.Name
 	}
-
-	th := StyledTextHeight(RolePanelTitle)
-	hy := headerRect.Min.Y + (sidebarHeaderH-th)/2
-	swatchY := headerRect.Min.Y + (sidebarHeaderH-sidebarSwatchSz)/2
-	swatchRect := image.Rect(headerRect.Min.X+2, swatchY, headerRect.Min.X+2+sidebarSwatchSz, swatchY+sidebarSwatchSz)
-
-	// Soft glow: a faint enlarged swatch behind the crisp one.
-	glow := swatchRect.Inset(-3)
-	drawRoundedRect(dst, glow, WithAlphaFromColor(swatchCol, AlphaSubtle), RadiusXXS, true)
-	drawRoundedRect(dst, swatchRect, swatchCol, RadiusXXS, true)
-
-	textX := swatchRect.Max.X + sidebarGap
-	DrawTextStyled(dst, label, textX, hy, RolePanelTitle, colTextPrimary)
+	titleRect := image.Rect(headerRect.Min.X+2, headerRect.Min.Y, headerRect.Max.X, headerRect.Min.Y+sidebarHeaderH)
+	drawMenuTitle(dst, titleRect, label, swatchCol)
 }
 
 // drawSectionHeader draws a collapsible section header using the shared menu
@@ -1323,20 +1328,13 @@ func (sb *NodeSidebar) drawSectionHeader(dst *ebiten.Image, rectID, label, secti
 		return
 	}
 	expanded := sb.sectionOpen[sectionID]
-	state := menuItemRest
-	if expanded {
-		state = menuItemActive
-	}
-	accent := sb.nodeAccent()
-	drawMenuItemBackgroundAccent(dst, r, state, accent)
-
+	// No expand highlight: the chevron direction (down=open, right=closed) already
+	// conveys section state, and the node-color fill/stripe + accent text read as a
+	// distracting "selected" bar. Headers stay neutral; node color lives on the
+	// buttons, header swatch, and dropdown stripes.
 	chevR := image.Rect(r.Min.X+sidebarPad, r.Min.Y, r.Min.X+sidebarPad+IconSizeMD, r.Max.Y)
 	var chevCol color.Color = colTextSecondary
 	var labelCol color.Color = colTextPrimary
-	if expanded {
-		chevCol = accent
-		labelCol = accent
-	}
 	drawMenuChevron(dst, chevR, expanded, chevCol)
 
 	th := StyledTextHeight(RoleSectionHeader)
@@ -1443,79 +1441,83 @@ func (sb *NodeSidebar) drawBtn(dst *ebiten.Image, id string) {
 	if r, ok := sb.rects[id]; ok && !sb.inViewport(r) {
 		return
 	}
-	sb.tintBtnBorder(b)
+	sb.tintBtnAccent(b)
 	b.Draw(dst)
 }
 
-// tintBtnBorder recolors a node-sidebar button's border to the node's
-// instrument accent so every interactive control in the sidebar carries the
-// instrument outline. Non-ButtonStyle visuals are left untouched.
-func (sb *NodeSidebar) tintBtnBorder(b *Button) {
+// sidebarBtnAccentTint is how strongly a node-sidebar button's keycap FACE is
+// tinted toward the node's color. Low enough to keep the 3D keycap reading
+// (shell + bevel) while carrying a clear node-color accent.
+const sidebarBtnAccentTint = 0.4
+
+// tintBtnAccent gives a node-sidebar button the node's color as a tint on its
+// keycap FACE — the same way the rest of our buttons accent (a filled cap, like
+// the latched/amber state), NOT a flat bright outline. The button keeps the
+// standard 3D keycap frame (dark socket shell + bevel + default border) so it
+// reads identically to the menu keycaps, just node-colored. Blends from the
+// stable DropdownStyle.Fill base so repeated per-frame calls don't compound.
+func (sb *NodeSidebar) tintBtnAccent(b *Button) {
 	if b == nil {
 		return
 	}
 	if bs, ok := b.Style.(ButtonStyle); ok {
-		bs.Border = sb.nodeAccent()
+		base := color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA)
+		acc := color.RGBAModel.Convert(sb.nodeAccent()).(color.RGBA)
+		bs.Fill = blendColor(base, acc, sidebarBtnAccentTint)
 		b.Style = bs
 	}
 }
 
-// drawDropdownItem draws a logic/groove dropdown option button and, when it is
-// the currently-selected option, overlays an instrument-color active highlight
-// (left stripe + tint) so the selection reads as owned by the node's
-// instrument. The option button fill is opaque, so the highlight is drawn AFTER
-// the button rather than behind it.
+// drawDropdownItem renders one Logic/Groove dropdown LIST row through the shared
+// drawMenuRow primitive (same as every other menu list): background accent +
+// keycap chrome + label. The node's own color (nodeAccent — SSOT DrumRow.Color)
+// is the accent, so the selected row shows a node-color stripe and a hovered row
+// a node-color tint. The clip guard keeps off-viewport rows from drawing.
 func (sb *NodeSidebar) drawDropdownItem(dst *ebiten.Image, id string, selected bool) {
-	sb.drawBtn(dst, id)
-	if !selected {
+	b := sb.btns[id]
+	if b == nil {
 		return
 	}
-	if r, ok := sb.rects[id]; ok && !r.Empty() && sb.inViewport(r) {
-		drawMenuItemBackgroundAccent(dst, r, menuItemActive, sb.nodeAccent())
-	}
-}
-
-// drawIncDecBtn draws an increment/decrement button as a square (sharp-cornered)
-// rectangle matching the close button: colIncDec fill (darkened by -20 when
-// pressed) and a node-instrument-color stroke (sb.nodeAccent()). Label in the
-// instrument accent, centered via RoleBody metrics.
-func (sb *NodeSidebar) drawIncDecBtn(dst *ebiten.Image, key, label string) {
-	r, ok := sb.rects[key]
+	r, ok := sb.rects[id]
 	if !ok || r.Empty() || !sb.inViewport(r) {
 		return
 	}
-	pressed := false
-	if b := sb.btns[key]; b != nil {
-		pressed = b.pressed
+	state := menuItemRest
+	if selected {
+		state = menuItemActive
+	} else if b.hovered || b.pressed {
+		state = menuItemHover
 	}
-	fill := color.Color(colIncDec)
-	if pressed {
-		fill = adjustColor(fill, -20)
-	}
-	drawRect(dst, r, fill, true)
-	// Stepper outline carries the node's instrument color (was the fixed
-	// light-blue stepper border).
-	drawRect(dst, r, sb.nodeAccent(), false)
-
-	tw := StyledTextWidth(label, RoleBody)
-	th := StyledTextHeight(RoleBody)
-	tx := r.Min.X + (r.Dx()-tw)/2
-	ty := r.Min.Y + (r.Dy()-th)/2
-	// The +/- glyph carries the instrument accent so the stepper matches the
-	// node's owning instrument color.
-	DrawTextStyled(dst, label, tx, ty, RoleBody, sb.nodeAccent())
+	drawMenuRow(dst, b, MenuRowSpec{
+		Accent: sb.nodeAccent(),
+		State:  state,
+		Label:  b.Text,
+	})
 }
 
-// drawValuePill draws a centered value display between inc/dec buttons as a
-// square (sharp-cornered) rectangle: colSurface2 fill, colBorderMedium stroke,
-// colTextPrimary text centered.
+
+// drawValuePill draws a centered value READOUT between the inc/dec stepper
+// keys. In the mechanical-keycap language the steppers are raised keys, so the
+// readout reads as a RECESSED display window sunk into the panel: a fill
+// darker than the panel + an inner top shadow (the tactile opposite of a
+// keycap's top specular), then the border and centered colTextPrimary text.
 func (sb *NodeSidebar) drawValuePill(dst *ebiten.Image, key, value string) {
 	r, ok := sb.rects[key]
 	if !ok || r.Empty() || !sb.inViewport(r) {
 		return
 	}
-	drawRect(dst, r, colSurface2, true)
-	drawRect(dst, r, colBorderMedium, false)
+	drawRecessedPill(dst, r, value)
+}
+
+// drawRecessedPill paints a value READOUT as a recessed display well: a fill
+// darker than the panel + an inner top shadow (the tactile opposite of a
+// keycap's top specular), the border, then centered colTextPrimary text. Pure
+// (no sidebar state) so it is unit-testable and reusable for any readout.
+func drawRecessedPill(dst *ebiten.Image, r image.Rectangle, value string) {
+	drawRoundedRect(dst, r, adjustColor(colSurface2, -22), RadiusSM, true)
+	drawRect(dst, image.Rect(r.Min.X+2, r.Min.Y+1, r.Max.X-2, r.Min.Y+1+genGeomButtonInnerShadowPx),
+		WithAlphaFromColor(color.Black, 56), true)
+	drawRoundedRect(dst, r, colBorderMedium, RadiusSM, false)
 
 	tw := StyledTextWidth(value, RoleBody)
 	th := StyledTextHeight(RoleBody)

@@ -3,6 +3,8 @@ package ui
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestOverflowMenu_TemplatePageListsGenres(t *testing.T) {
@@ -40,7 +42,12 @@ func TestOverflowMenu_TemplatePageListsGenres(t *testing.T) {
 	if !back {
 		t.Fatalf("template page missing Back row")
 	}
-	for _, want := range []string{"Rock", "Hip-Hop", "Pop", "Funk", "Salsa", "House", "Techno"} {
+	for _, want := range []string{
+		"Bach — Toccata & Fugue in D minor",
+		"Eagles — Hotel California",
+		"Miles Davis — So What",
+		"Tito Puente — Oye Como Va",
+	} {
 		if !labels[want] {
 			t.Fatalf("template page missing %q (have %v)", want, labels)
 		}
@@ -55,18 +62,19 @@ func TestOverflowMenu_SelectTemplateQueuesImport(t *testing.T) {
 	dv := g.drum
 	dv.overflowPage = 1
 
-	// Click the "Rock" entry.
-	var rock *overflowItem
+	// Click the first template entry (Bach — Toccata & Fugue).
+	const bach = "Bach — Toccata & Fugue in D minor"
+	var tpl *overflowItem
 	for i := range dv.overflowItems() {
-		if dv.overflowItems()[i].label == "Rock" {
+		if dv.overflowItems()[i].label == bach {
 			it := dv.overflowItems()[i]
-			rock = &it
+			tpl = &it
 		}
 	}
-	if rock == nil {
-		t.Fatalf("no Rock entry on template page")
+	if tpl == nil {
+		t.Fatalf("no %q entry on template page", bach)
 	}
-	rock.onClick()
+	tpl.onClick()
 
 	if len(g.pendingImportData) == 0 {
 		t.Fatalf("selecting a template did not queue import data")
@@ -86,5 +94,42 @@ func TestOverflowMenu_SelectTemplateQueuesImport(t *testing.T) {
 	// Selecting resets the page so reopening starts at File.
 	if dv.overflowPage != 0 {
 		t.Fatalf("overflowPage=%d want 0 after selection", dv.overflowPage)
+	}
+}
+
+// TestOverflowButtonsPersistAcrossFrames verifies that after the persistence
+// refactor the SAME *Button instances survive repeated drawOverflowMenu calls
+// so press-animation state can accumulate across frames (the old code called
+// NewButton on every frame, making animation impossible).
+func TestOverflowButtonsPersistAcrossFrames(t *testing.T) {
+	// Use the same harness as openTemplatePageClamped.
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(420, 360)
+	dv := g.drum
+	dv.overflowPage = 1 // Templates page (header + Back + template rows)
+	dv.OpenOverflowMenu()
+
+	// Explicitly rebuild so dv.overflowBtns is populated before we capture a pointer.
+	dv.rebuildOverflowBtns()
+	if len(dv.overflowBtns) == 0 {
+		t.Fatal("no overflow buttons built")
+	}
+	// btns[0] = Back row, btns[1] = first template row (header is excluded).
+	firstPtr := dv.overflowBtns[1]
+	firstPtr.pressTarget = 1 // simulate held press
+	start := firstPtr.pressDepth
+
+	dst := ebiten.NewImage(420, 360)
+	for i := 0; i < 5; i++ {
+		dv.drawOverflowMenu(dst)
+	}
+	if dv.overflowBtns[1] != firstPtr {
+		t.Fatal("overflow buttons were recreated across frames — animation state lost")
+	}
+	if firstPtr.pressDepth <= start {
+		t.Fatalf("overflow row did not animate after persistence refactor: depth %v <= start %v",
+			firstPtr.pressDepth, start)
 	}
 }

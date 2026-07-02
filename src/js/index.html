@@ -12,9 +12,23 @@
       overflow: hidden;
       position: fixed;
       width: 100%;
-      height: 100%;
-      height: 100dvh;
+      /* Ebiten's web runtime forces `height: 100%` INLINE on <html>/<body> and
+         the canvas. On iOS Safari `height:100%` resolves to the LAYOUT viewport,
+         which doesn't update promptly on an orientation change — so after
+         rotating back to portrait the canvas stays the wrong height (a black
+         band at the top + a mis-scaled game resolution). We override that inline
+         height with `!important` (stylesheet !important beats inline) bound to
+         --app-vh, which JS pins to the ACTUAL visible viewport (see syncAppVh
+         below) and re-applies on every resize/orientationchange. Falls back to
+         100dvh (dynamic viewport) until JS runs — already better than 100%. */
+      height: var(--app-vh, 100dvh) !important;
     }
+    /* NOTE: do NOT force the canvas height/width directly. Ebiten owns the
+       canvas (inline width/height:100% of the body) and derives its framebuffer
+       from the canvas's client size; pinning a fixed canvas height fought that
+       and left the framebuffer the wrong shape (a black box over half the
+       screen). Correcting the BODY height above is enough — the canvas fills the
+       corrected body at 100% in both axes. */
     canvas {
       touch-action: none;
       -webkit-touch-callout: none;
@@ -34,10 +48,86 @@
       pointer-events: none;
     }
     #loading-indicator.hidden { display: none; }
+
+    /* Landscape is unsupported on small (phone) screens. A pure-CSS overlay,
+       anchored to the visible viewport (position:fixed; inset:0), covers the
+       canvas and shows a rotate-to-portrait notice. Driven by the real
+       orientation media query — NOT the Ebiten framebuffer — so it can't be
+       mis-positioned by canvas/DPR sizing races on rotation (the "top half
+       black, message in the bottom half" bug). pointer-events:auto blocks all
+       input to the canvas beneath while shown. Rotating back to portrait hides
+       it automatically (media query), so the transition is seamless. */
+    #landscape-block {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+      background: #120A1C;
+      color: #FDF2FF;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      pointer-events: auto;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #landscape-block .lb-title { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+    #landscape-block .lb-body { font-size: 15px; color: #C9B8D6; max-width: 32em; line-height: 1.4; }
+    @media screen and (orientation: landscape) and (max-width: 900px) {
+      #landscape-block { display: flex; }
+    }
   </style>
 </head>
 <body>
   <div id="loading-indicator">Loading...</div>
+  <!-- Landscape-unsupported overlay (shown via the orientation media query). -->
+  <div id="landscape-block" aria-hidden="true" role="alertdialog">
+    <div class="lb-title">Rotate your device</div>
+    <div class="lb-body">Landscape isn't supported yet — turn your phone upright to keep playing.</div>
+  </div>
+  <script>
+    // Localized text is pushed from Go (single i18n source) via this setter, so
+    // the overlay tracks the in-app language. English is baked in as the
+    // pre-WASM fallback. Visibility is pure CSS (orientation media query).
+    window.__beatmoSetLandscapeText = function (title, body) {
+      try {
+        var el = document.getElementById('landscape-block');
+        if (!el) return;
+        if (title) el.querySelector('.lb-title').textContent = title;
+        if (body) el.querySelector('.lb-body').textContent = body;
+      } catch (_) { /* ignore */ }
+    };
+
+    // iOS Safari mis-reports 100dvh across orientation changes: after rotating
+    // back to portrait the layout-viewport height can stay at a stale value, so
+    // the canvas (100% of body) ends up TALLER than the visible viewport — a
+    // ~10% black band at the top and a wrong (too-tall) game resolution. Pin the
+    // app height to the ACTUAL visible viewport and re-apply on every resize /
+    // orientation change so the Ebiten canvas always refits exactly.
+    (function () {
+      function syncAppVh() {
+        var h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+        if (h > 0) document.documentElement.style.setProperty('--app-vh', h + 'px');
+      }
+      window.__beatmoSyncAppVh = syncAppVh; // exposed for tests
+      syncAppVh();
+      window.addEventListener('resize', syncAppVh);
+      window.addEventListener('orientationchange', function () {
+        // iOS settles the viewport a few frames after the event fires; re-apply.
+        syncAppVh();
+        setTimeout(syncAppVh, 100);
+        setTimeout(syncAppVh, 400);
+      });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', syncAppVh);
+      }
+    })();
+  </script>
   <!-- Hidden proxy input for mobile soft keyboard activation -->
   <input id="beatmo-kb-proxy"
          style="position:fixed;left:-9999px;top:50%;opacity:0;width:1px;height:1px;border:none;padding:0"
@@ -353,11 +443,18 @@
         if (!e.changedTouches || e.changedTouches.length === 0) return;
         const touch = e.changedTouches[0];
 
-        // Check movement from touchstart — ignore if > 10px (drag, not tap)
+        // Movement gate — must match Go's tap detector (gesture.go,
+        // tapMaxMovePx=10) EXACTLY. Go accepts a tap when BOTH axes move <= 10px
+        // (a square envelope, ~14px diagonally) and opens the in-canvas editor.
+        // A Euclidean circle (dx*dx+dy*dy > 100) rejected diagonal real-finger
+        // jitter that Go accepts — so the editor opened but no native <input> was
+        // created and the soft keyboard never appeared on real iOS Safari. Use
+        // the same per-axis test so any gesture Go treats as a tap also raises
+        // the keyboard.
         if (touchStartPos) {
-          const dx = touch.clientX - touchStartPos.x;
-          const dy = touch.clientY - touchStartPos.y;
-          if (dx * dx + dy * dy > 100) {
+          const dx = Math.abs(touch.clientX - touchStartPos.x);
+          const dy = Math.abs(touch.clientY - touchStartPos.y);
+          if (dx > 10 || dy > 10) {
             touchStartPos = null;
             return;
           }
@@ -407,20 +504,97 @@
     })();
   </script>
   <script>
-    // File picker rect system: registers canvas regions that should trigger a file
-    // picker on touchend. Mobile browsers require input.click() inside a trusted
-    // gesture handler; Go's game loop fires 1-2 frames late, so the browser silently
-    // ignores the click. This listener runs synchronously on touchend, preserving
-    // the gesture context.
+    // File picker rect system: registers canvas regions (Import/Upload buttons in
+    // the mobile overflow menu) that should open a file picker on tap.
+    //
+    // iOS Safari will NOT open a file picker from a programmatic input.click()
+    // fired in a canvas `touchend` handler — it only reliably opens the native
+    // picker when the user physically taps a real <input type=file>. So for each
+    // registered rect we place a real, transparent <input type=file> OVERLAY over
+    // the button. The user's tap lands directly on the input, which every browser
+    // (including iOS Safari) honors. On change we stash the file via the `pending`
+    // map and call back into Go (_fpStartImport/_fpStartUpload) to run the normal
+    // import/upload flow, which consumes the pending pick through _fpConsumePending.
     (function() {
-      const rects = new Map(); // id -> {x, y, w, h, accept}
-      const pending = new Map(); // id -> Promise<{data, name} | null>
+      const rects = new Map();    // id -> {x, y, w, h, accept}
+      const pending = new Map();  // id -> Promise<{data, name} | null>
+      const overlays = new Map(); // id -> HTMLInputElement
+
+      function canvasOffset() {
+        const c = document.querySelector('canvas');
+        if (!c) return null;
+        const r = c.getBoundingClientRect();
+        return { left: r.left, top: r.top };
+      }
+
+      function removeOverlay(id) {
+        const el = overlays.get(id);
+        overlays.delete(id);
+        if (el && el.parentNode) { try { el.remove(); } catch (_) {} }
+      }
+      function removeAllOverlays() {
+        for (const id of Array.from(overlays.keys())) removeOverlay(id);
+      }
+
+      // Read the picked file into the shape _fpConsumePending resolves with.
+      function readPick(file, accept) {
+        if (!file) return Promise.resolve(null);
+        if (accept && accept.indexOf('.json') >= 0) {
+          const MAX = 5 * 1024 * 1024; // 5MB guard, mirrors the JSON import cap
+          if (typeof file.size === 'number' && file.size > MAX) {
+            console.warn('[FilePicker] file too large:', file.size);
+            return Promise.resolve(null);
+          }
+          return file.text().then((text) => ({ data: text, name: file.name })).catch(() => null);
+        }
+        // WAV/other: object URL
+        try { return Promise.resolve({ data: URL.createObjectURL(file), name: file.name }); }
+        catch (_) { return Promise.resolve(null); }
+      }
+
+      // Create (or replace) the transparent file-input overlay for a rect.
+      function makeOverlay(id, rect) {
+        removeOverlay(id);
+        const off = canvasOffset();
+        if (!off) return; // canvas not ready; rect still stored for fallback path
+        const input = document.createElement('input');
+        input.type = 'file';
+        if (rect.accept) input.accept = rect.accept;
+        input.setAttribute('data-fp-id', id);
+        input.setAttribute('aria-hidden', 'true');
+        input.tabIndex = -1;
+        input.style.cssText = [
+          'position:fixed',
+          'z-index:9999',
+          'left:' + (off.left + rect.x) + 'px',
+          'top:' + (off.top + rect.y) + 'px',
+          'width:' + rect.w + 'px',
+          'height:' + rect.h + 'px',
+          'margin:0', 'padding:0', 'border:0',
+          'opacity:0',
+          // 16px avoids iOS auto-zoom; the element is invisible either way.
+          'font-size:16px',
+          'cursor:pointer',
+        ].join(';');
+        input.addEventListener('change', () => {
+          const file = input.files && input.files[0];
+          pending.set(id, readPick(file, rect.accept || ''));
+          if (!file) return;
+          if (id === 'import') { if (window._fpStartImport) window._fpStartImport(); }
+          else if (id === 'upload') { if (window._fpStartUpload) window._fpStartUpload(); }
+        });
+        document.body.appendChild(input);
+        overlays.set(id, input);
+      }
 
       window._fpRegisterRect = function(id, x, y, w, h, accept) {
-        rects.set(id, { x: x, y: y, w: w, h: h, accept: accept || '' });
+        const rect = { x: x, y: y, w: w, h: h, accept: accept || '' };
+        rects.set(id, rect);
+        makeOverlay(id, rect);
       };
       window._fpClearRects = function() {
         rects.clear();
+        removeAllOverlays();
       };
 
       // Consume a pending file pick result. Returns a Promise or null.
@@ -433,72 +607,30 @@
         return null;
       };
 
-      function onCanvasTouchEnd(e) {
-        if (!e.changedTouches || e.changedTouches.length === 0) return;
-        const touch = e.changedTouches[0];
-        const canvas = e.currentTarget;
-        const cr = canvas.getBoundingClientRect();
-        const cx = touch.clientX - cr.left;
-        const cy = touch.clientY - cr.top;
+      // Test-observability hook: returns the currently registered rects keyed by
+      // id. Go caches a reference to _fpRegisterRect at init, so tests cannot
+      // intercept registration by reassigning the global; this reads the
+      // authoritative closure-owned map instead.
+      window._fpDebugRects = function() {
+        const out = {};
+        for (const [id, r] of rects.entries()) out[id] = { x: r.x, y: r.y, w: r.w, h: r.h, accept: r.accept };
+        return out;
+      };
 
+      // Reposition overlays if the canvas moves/resizes while a menu is open so
+      // the invisible inputs stay aligned with their (canvas-drawn) buttons.
+      function repositionOverlays() {
+        const off = canvasOffset();
+        if (!off) return;
         for (const [id, rect] of rects.entries()) {
-          if (cx >= rect.x && cx <= rect.x + rect.w &&
-              cy >= rect.y && cy <= rect.y + rect.h) {
-            // Create file input and click synchronously within gesture handler.
-            const input = document.createElement('input');
-            input.type = 'file';
-            if (rect.accept) input.accept = rect.accept;
-            const p = new Promise((resolve) => {
-              let settled = false;
-              const settle = (val) => { if (!settled) { settled = true; resolve(val); } };
-              input.onchange = () => {
-                const file = input.files && input.files[0];
-                if (!file) { settle(null); input.remove(); return; }
-                // JSON files: read as text (with 5MB guard)
-                if (rect.accept && rect.accept.indexOf('.json') >= 0) {
-                  const MAX = 5 * 1024 * 1024;
-                  if (typeof file.size === 'number' && file.size > MAX) {
-                    console.warn('[FilePicker] file too large:', file.size);
-                    settle(null); input.remove(); return;
-                  }
-                  file.text().then((text) => {
-                    settle({ data: text, name: file.name });
-                    input.remove();
-                  }).catch(() => { settle(null); input.remove(); });
-                } else {
-                  // WAV/other files: create object URL
-                  try {
-                    const url = URL.createObjectURL(file);
-                    settle({ data: url, name: file.name });
-                  } catch (_) { settle(null); }
-                  input.remove();
-                }
-              };
-              // Fallback: if user cancels and 'change' does not fire.
-              setTimeout(() => { settle(null); try { input.remove(); } catch(_){} }, 5000);
-            });
-            pending.set(id, p);
-            document.body.appendChild(input);
-            input.click();
-            return;
-          }
+          const el = overlays.get(id);
+          if (!el) continue;
+          el.style.left = (off.left + rect.x) + 'px';
+          el.style.top = (off.top + rect.y) + 'px';
         }
       }
-
-      function attachFilePickerListener() {
-        const canvas = document.querySelector('canvas');
-        if (!canvas) {
-          requestAnimationFrame(attachFilePickerListener);
-          return;
-        }
-        canvas.addEventListener('touchend', onCanvasTouchEnd, { passive: true });
-      }
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', attachFilePickerListener);
-      } else {
-        attachFilePickerListener();
-      }
+      window.addEventListener('resize', repositionOverlays);
+      window.addEventListener('scroll', repositionOverlays, { passive: true });
     })();
   </script>
   <script>
@@ -628,19 +760,39 @@
   <script type="module" src="audio.js"></script>
   <script src="wasm_exec.js"></script>
   <script type="module">
+    // Boot waterfall: lightweight performance timings recorded into
+    // window.__beatmoBoot (all values are performance.now() ms). Harmless in
+    // production and reusable for real-user monitoring. Consumed by
+    // src/js/wasm_load_startup.browser.test.js. TTI ("first frame + input
+    // wired") == firstFrame: the rAF fired right after setSimpleDraw(false).
+    const boot = (window.__beatmoBoot = window.__beatmoBoot || {});
+    const bootMark = (name) => {
+      boot[name] = performance.now();
+      try { performance.mark("beatmo:" + name); } catch (_) { /* ignore */ }
+    };
+    bootMark("scriptStart");
+
     const go = new Go(); // from wasm_exec.js
-    const wasmReady = WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject);
+    bootMark("wasmFetchStart");
+    const wasmReady = WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject)
+      .then((result) => { bootMark("wasmInstantiated"); return result; });
     Promise.all([wasmReady, window.audioReady || Promise.resolve()])
       .then(([result]) => {
         go.run(result.instance);
+        bootMark("goRun");
         console.log("Beatmo WASM game started (audio pre-warmed)");
         // Hide loading indicator once the game starts
         const el = document.getElementById('loading-indicator');
         if (el) el.classList.add('hidden');
-        // Disable simpleDraw mode once WASM is loaded to show full UI
+        // Disable simpleDraw mode once WASM is loaded to show full UI. The
+        // poll loop also records the boot waterfall's last two milestones:
+        // exportsReady (Go-registered JS exports are callable) and firstFrame
+        // (the next painted frame after the full UI is enabled == TTI).
         const disableSimpleDraw = () => {
           if (typeof setSimpleDraw === "function") {
+            bootMark("exportsReady");
             try { setSimpleDraw(false); } catch (_) {}
+            requestAnimationFrame(() => bootMark("firstFrame"));
             return;
           }
           requestAnimationFrame(disableSimpleDraw);

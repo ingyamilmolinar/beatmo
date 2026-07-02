@@ -18,12 +18,12 @@ func TestNotificationOnImportSuccess(t *testing.T) {
 	// import and notification happen in Game.Update(). For this standalone test,
 	// we simulate the notification that Game.Update() would show after a
 	// successful import.
-	dv.onImport = func(_ []byte) error {
+	dv.onImport = func(_ []byte, _ string) error {
 		dv.notifyInfo("Imported project JSON")
 		return nil
 	}
 	old := selectJSONAsyncFn
-	selectJSONAsyncFn = func(cb func([]byte, error)) {}
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {}
 	t.Cleanup(func() { selectJSONAsyncFn = old })
 	startImportForTest(t, dv)
 	dv.importCh <- importResult{data: []byte("{}"), err: nil}
@@ -40,9 +40,9 @@ func TestNotificationOnImportError(t *testing.T) {
 	assertDefaultParityState(t)
 	g := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, g)
-	dv.onImport = func(_ []byte) error { return errors.New("bad json") }
+	dv.onImport = func(_ []byte, _ string) error { return errors.New("bad json") }
 	old := selectJSONAsyncFn
-	selectJSONAsyncFn = func(cb func([]byte, error)) {}
+	selectJSONAsyncFn = func(cb func([]byte, string, error)) {}
 	t.Cleanup(func() { selectJSONAsyncFn = old })
 	startImportForTest(t, dv)
 	dv.importCh <- importResult{data: []byte("{"), err: nil}

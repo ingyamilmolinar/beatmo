@@ -2,7 +2,6 @@ package ui
 
 import (
 	"image"
-	"path"
 	"strings"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
@@ -22,7 +21,7 @@ func (dv *DrumView) instMenuThumbRect() image.Rectangle {
 	if !dv.IsInstMenuOpen() || !dv.instMenuHasScroll() || dv.instMenuScroll.View.Empty() {
 		return image.Rect(0, 0, 0, 0)
 	}
-	return dv.instMenuScroll.ThumbRect(instMenuScrollBarWidth, dv.rowHeight()/2)
+	return dv.instMenuScroll.ThumbRect(dropdownScrollbarWidth(), dv.rowHeight()/2)
 }
 
 // instDisplayLabel returns a user-facing name for an instrument ID,
@@ -45,27 +44,11 @@ func (dv *DrumView) instDisplayLabel(id string) string {
 	return lbl
 }
 
-// computeInstLabel computes the display label for an instrument ID
-// without caching. Order of preference: meta.Name → meta.RelPath
-// (basename, pretty-cased) → id (pretty-cased). Hyphens and
-// underscores in the fallback inputs are converted to spaces by
-// audio.PrettyName so that ids like "hi-hat" render as "Hi Hat".
+// computeInstLabel computes the display label for an instrument ID without
+// caching. Delegates to audio.InstrumentDisplayName, the single source of
+// truth: user override → catalog name → catalog basename → pretty-cased id.
 func (dv *DrumView) computeInstLabel(id string) string {
-	if dv.instMeta != nil {
-		if meta, ok := dv.instMeta[id]; ok {
-			if meta.Name != "" {
-				return meta.Name
-			}
-			if meta.RelPath != "" {
-				base := path.Base(meta.RelPath)
-				base = strings.TrimSuffix(base, path.Ext(base))
-				if base != "" {
-					return audio.PrettyName(base)
-				}
-			}
-		}
-	}
-	return audio.PrettyName(id)
+	return audio.InstrumentDisplayName(id)
 }
 
 // matchInstrumentSearch reports whether the query q matches the
@@ -205,6 +188,7 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 			ID:       id,
 			Label:    label,
 			Category: cat,
+			Color:    dv.instrumentRowColor(id),
 		})
 	}
 
@@ -217,15 +201,15 @@ func (dv *DrumView) openInstMenuForRow(rowIdx int) {
 		anchorRect = dv.rowLabels()[rowIdx].Rect()
 	}
 	dv.instMenuComp.SetProps(InstrumentMenuProps{
-		AnchorRect:        anchorRect,
-		VertBounds:        vertBounds,
-		RowIndex:          rowIdx,
-		CurrentInstrument: dv.Rows[rowIdx].Instrument,
-		Categories:        dv.instCategories,
-		Instruments:       instOpts,
-		RowHeight:         dv.rowHeight(),
-		LabelWidth:        dv.labelW,
-		ControlsWidth:     dv.controlsW,
+		AnchorRect:            anchorRect,
+		VertBounds:            vertBounds,
+		RowIndex:              rowIdx,
+		CurrentInstrument:     dv.Rows[rowIdx].Instrument,
+		Categories:            dv.instCategories,
+		Instruments:           instOpts,
+		RowHeight:             dv.rowHeight(),
+		LabelWidth:            dv.labelW,
+		ControlsWidth:         dv.controlsW,
 		ForceCategories:       dv.instMenuForceCategories,
 		Favorites:             Favorites(),
 		ShowFavoritesCategory: dv.instMenuShowFavoritesCategory,
