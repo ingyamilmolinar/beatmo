@@ -139,7 +139,7 @@ func drawSynthMirror(dst *ebiten.Image, rect image.Rectangle, mirror *synthMirro
 	pad := SpaceSM
 	captionScale := FontSizeCaption / FontSizeBody
 	captionH := int(float64(TextHeight()) * captionScale)
-	DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapYourSound), rect.Min.X+pad, rect.Min.Y+pad/2, TokenTextSecondary(), captionScale)
+	DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapUpClose), rect.Min.X+pad, rect.Min.Y+pad/2, TokenTextSecondary(), captionScale)
 
 	traceRect := image.Rect(rect.Min.X+pad, rect.Min.Y+pad+captionH, rect.Max.X-pad, rect.Max.Y-pad)
 	if traceRect.Dx() < 8 || traceRect.Dy() < 6 {
@@ -406,7 +406,7 @@ func synthOscParamsFor(instID string) (oscType int, fmRatio, fmDepth float64) {
 	if recipeID == "" {
 		return 0, 1, 0
 	}
-	merged := audio.MergeRecipeDefaults(recipeID, audio.GetInstrumentParams(instID))
+	merged := audio.MergedInstrumentParamsRO(instID)
 	if _, ok := merged["osc_type"]; !ok {
 		return 0, 1, 0 // not a modular voice
 	}
@@ -619,7 +619,7 @@ func synthADSRParamsFor(instID string) (a, d, s, r float64, ok bool) {
 	if !synthVoiceExposesParam(recipeID, "amp_attack") {
 		return 0, 0, 0, 0, false
 	}
-	merged := audio.MergeRecipeDefaults(recipeID, audio.GetInstrumentParams(instID))
+	merged := audio.MergedInstrumentParamsRO(instID)
 	if _, has := merged["amp_attack"]; !has {
 		return 0, 0, 0, 0, false
 	}
@@ -642,7 +642,7 @@ func synthFilterParamsFor(instID string) (filterType int, cutoff, q float64, ok 
 	if !synthVoiceExposesParam(recipeID, "filter_cutoff") {
 		return 0, 0, 0, false
 	}
-	merged := audio.MergeRecipeDefaults(recipeID, audio.GetInstrumentParams(instID))
+	merged := audio.MergedInstrumentParamsRO(instID)
 	if _, has := merged["filter_cutoff"]; !has {
 		return 0, 0, 0, false
 	}

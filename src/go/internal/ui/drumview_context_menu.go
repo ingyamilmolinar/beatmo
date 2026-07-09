@@ -459,12 +459,7 @@ func (dv *DrumView) drawContextMenu(dst *ebiten.Image) {
 
 	// Mobile: pill-shaped drag handle indicator at top of bottom sheet.
 	if Profile().IsMobile() {
-		handleW := 36
-		handleH := 4
-		hx := dv.contextMenuRect.Min.X + dv.contextMenuRect.Dx()/2 - handleW/2
-		hy := dv.contextMenuRect.Min.Y + 8
-		drawRoundedRect(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
-			WithAlpha(genColorBorder, genAlphaScrollbarThumb), handleH/2, true)
+		drawSheetDragHandle(dst, dv.contextMenuRect)
 	}
 
 	// Draw header text (both platforms) with row color dot.
@@ -809,7 +804,7 @@ func (dv *DrumView) overflowItems() []overflowItem {
 			tp := tp
 			items = append(items, overflowItem{
 				label:  tp.Display,
-				iconID: IconRows,
+				iconID: IconTemplate,
 				onClick: func() {
 					dv.overflowPage = 0
 					dv.closeOverflowMenu()
@@ -845,7 +840,7 @@ func (dv *DrumView) overflowItems() []overflowItem {
 				dv.exportBtn().OnClick()
 			}
 		}},
-		{label: i18n.T(i18n.KeyMenuLoadTemplate), iconID: IconRows, onClick: func() {
+		{label: i18n.T(i18n.KeyMenuLoadTemplate), iconID: IconTemplate, onClick: func() {
 			dv.overflowPage = 1
 		}},
 	}
@@ -947,7 +942,14 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	popupRect := dv.overflowPopupRect()
 	dv.configureOverflowScroll()
 	// Backdrop scrim painted by the OverlayPortal (PortalEntry.Scrim).
-	drawPanel(dst, popupRect)
+	// Mobile renders as a bottom sheet with the shared drag handle so the
+	// File sheet's chrome matches the context menu and instrument picker.
+	if Profile().UseBottomSheet {
+		drawBottomSheetPanel(dst, popupRect)
+		drawSheetDragHandle(dst, popupRect)
+	} else {
+		drawPanel(dst, popupRect)
+	}
 	// Clip scrolling rows to the popup so offset content can't paint outside.
 	clip := dst.SubImage(popupRect).(*ebiten.Image)
 	// Build buttons (headers excluded) then close button.
@@ -1037,51 +1039,7 @@ func (dv *DrumView) closeOverflowMenu() {
 	if dv.overflowMenuScroll != nil {
 		dv.overflowMenuScroll.DeferredTap().Cancel()
 	}
-	filePickerClearRects()
 	dv.closeOverflowMenuPortal()
-}
-
-// registerFilePickerRects computes the Import and Upload button positions from
-// the overflow popup and registers them as file picker rects for the mobile
-// gesture-based system. This allows touchend inside these buttons to open the
-// file picker synchronously within the trusted gesture handler.
-func (dv *DrumView) registerFilePickerRects() {
-	popupRect := dv.overflowPopupRect()
-	if popupRect.Empty() {
-		return
-	}
-	rowH := touchMinTargetPx
-	dv.configureOverflowScroll()
-	offset := dv.overflowMenuScroll.OffsetPx()
-	// Locate Upload and Import by iterating overflowItems() so that the
-	// indices stay correct when items are added or reordered.
-	// (Previously hardcoded indices 0 and 1 broke when Track/Len+/Len-/EQ
-	// were prepended, pushing Upload to index 4 and Import to index 5.)
-	accept := map[string]string{
-		"Upload": ".wav",
-		"Import": "application/json,.json",
-	}
-	idByLabel := map[string]string{
-		"Upload": "upload",
-		"Import": "import",
-	}
-	closeR := closeButtonRect(popupRect, SpaceXS)
-	for i, item := range dv.overflowItems() {
-		fileID, ok := idByLabel[item.label]
-		if !ok {
-			continue
-		}
-		y0 := popupRect.Min.Y + i*rowH - offset
-		r := insetRect(image.Rect(popupRect.Min.X, y0, popupRect.Max.X, y0+rowH), SpaceXS)
-		// Crop to avoid overlap with close button so tapping close
-		// doesn't also trigger the file picker.
-		if r.Max.Y > closeR.Min.Y && r.Min.Y < closeR.Max.Y {
-			if r.Max.X > closeR.Min.X {
-				r.Max.X = closeR.Min.X - SpaceSM
-			}
-		}
-		filePickerRegisterRect(fileID, r.Min.X, r.Min.Y, r.Dx(), r.Dy(), accept[item.label])
-	}
 }
 
 // setViewMode transitions to target. Idempotent: a no-op if already in
@@ -1290,7 +1248,7 @@ func (dv *DrumView) OpenContextMenu(rowIdx int) { dv.openContextMenu(rowIdx) }
 // CloseContextMenu closes the row context menu portal.
 func (dv *DrumView) CloseContextMenu() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("context-menu")
+		dv.portal().Close("context-menu")
 	}
 }
 

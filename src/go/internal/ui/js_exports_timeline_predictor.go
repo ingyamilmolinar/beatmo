@@ -11,11 +11,11 @@ import (
 
 func (g *Game) initJSTimelinePredictor() {
 	// rowWindow(row) -> snapshot of Steps for the requested row.
-	js.Global().Set("rowWindow", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowWindow", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf(nil)
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return js.ValueOf(nil)
 		}
@@ -28,11 +28,11 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// rowCacheOffset(row) -> int (diagnostics for tests)
-	js.Global().Set("rowCacheOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowCacheOffset", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf(-1)
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		g.drum.ensureRowCache()
 		if row < 0 || row >= len(g.drum.rowCacheOff) {
 			return js.ValueOf(-1)
@@ -41,17 +41,17 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// togglePlay – alias of startPlay for clarity in tests (toggles play/pause)
-	js.Global().Set("togglePlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("togglePlay", jsFn(func(args jsArgs) any {
 		g.drum.playPressed = true
 		return nil
 	}))
 
 	// dumpRowState(row) -> diagnostic snapshot of history/predictor state.
-	js.Global().Set("dumpRowState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("dumpRowState", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(nil)
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		state := g.rowStateSnapshot(row)
 		obj := js.Global().Get("Object").New()
 		obj.Set("nextBeatIdx", state.NextBeatIdx)
@@ -84,16 +84,16 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// transportSnapshot() -> object containing transport-related counters.
-	js.Global().Set("transportSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("transportSnapshot", jsFn(func(args jsArgs) any {
 		return transportSnapshotToJS(g.transportSnapshot())
 	}))
 
 	// dumpTimelineSegments(row) -> {offset, past, pastMask, present, future}
-	js.Global().Set("dumpTimelineSegments", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("dumpTimelineSegments", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(nil)
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		seg := g.TimelineSegments(row)
 		obj := js.Global().Get("Object").New()
 		obj.Set("offset", seg.Offset)
@@ -106,11 +106,11 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// timelineCommittedRange(row) -> [start, end, ok]
-	js.Global().Set("timelineCommittedRange", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("timelineCommittedRange", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(nil)
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		start, end, ok := g.timelineCommittedRange(row)
 		arr := js.Global().Get("Array").New(3)
 		arr.SetIndex(0, start)
@@ -120,12 +120,12 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// setFollow(bool)
-	js.Global().Set("setFollow", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setFollow", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
 		if g.drum != nil {
-			f := args[0].Bool()
+			f := args.Bool(0)
 			g.drum.SetFollow(f)
 			if g.simpleDraw {
 				g.simpleDrawSavedFollow = f
@@ -136,7 +136,7 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// gridSubdiv() -> int (MaxDiv)
-	js.Global().Set("gridSubdiv", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("gridSubdiv", jsFn(func(args jsArgs) any {
 		if g.grid == nil {
 			return js.ValueOf(1)
 		}
@@ -144,7 +144,7 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// nextBeatIdxs() -> []int
-	js.Global().Set("nextBeatIdxs", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("nextBeatIdxs", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		for i := 0; i < len(g.nextBeatIdxs); i++ {
 			arr.Call("push", g.nextBeatIdxs[i])
@@ -153,11 +153,11 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// rowSteps(row) -> []int (0/1)
-	js.Global().Set("rowSteps", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || g.drum == nil {
+	js.Global().Set("rowSteps", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || g.drum == nil {
 			return nil
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
@@ -174,7 +174,7 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// recentSchedulerMismatches() -> [{row, abs, kind, nodeType, scheduled, slate, source, offset, length, inWindow, rowMuted, anySolo, missing, expected, actual, when, force, detail}]
-	js.Global().Set("recentSchedulerMismatches", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("recentSchedulerMismatches", jsFn(func(args jsArgs) any {
 		m := g.ParityMismatchSnapshot()
 		arr := js.Global().Get("Array").New(len(m))
 		for i, e := range m {
@@ -203,18 +203,18 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// clearSchedulerMismatches() -> nil
-	js.Global().Set("clearSchedulerMismatches", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("clearSchedulerMismatches", jsFn(func(args jsArgs) any {
 		g.ClearParityMismatches()
 		return nil
 	}))
 
 	// nodeSuccessorsGrid(i,j) -> array of successors with coordinates.
-	js.Global().Set("nodeSuccessorsGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("nodeSuccessorsGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(nil)
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return js.ValueOf(nil)
@@ -235,23 +235,23 @@ func (g *Game) initJSTimelinePredictor() {
 		return arr
 	}))
 
-	js.Global().Set("rowBeatCount", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("rowBeatCount", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(0)
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		if row < 0 || row >= len(g.beatInfosByRow) {
 			return js.ValueOf(0)
 		}
 		return js.ValueOf(len(g.beatInfosByRow[row]))
 	}))
 
-	js.Global().Set("beatInfoAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("beatInfoAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		row := args[0].Int()
-		idx := args[1].Int()
+		row := args.Int(0)
+		idx := args.Int(1)
 		info := g.beatInfoAtRow(row, idx)
 		typ := "invisible"
 		switch info.NodeType {
@@ -270,25 +270,25 @@ func (g *Game) initJSTimelinePredictor() {
 		return obj
 	}))
 
-	js.Global().Set("nodeAnimValue", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("nodeAnimValue", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(0)
 		}
-		id := model.NodeID(args[0].Int())
+		id := model.NodeID(args.Int(0))
 		return js.ValueOf(g.nodeAnimGet(id))
 	}))
 
 	// nodeHighlightUntilValue(nodeId) -> {start: number, end: number, ok: bool, now: number}
-	js.Global().Set("nodeHighlightUntilValue", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("nodeHighlightUntilValue", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
-		if len(args) < 1 {
+		if args.Len() < 1 {
 			obj.Set("start", 0)
 			obj.Set("end", 0)
 			obj.Set("ok", false)
 			obj.Set("now", audio.Now())
 			return obj
 		}
-		id := model.NodeID(args[0].Int())
+		id := model.NodeID(args.Int(0))
 		start, end, ok := g.nodeHighlightUntil(id)
 		obj.Set("start", start)
 		obj.Set("end", end)
@@ -298,40 +298,40 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// hasHighlight(row, abs) -> bool
-	js.Global().Set("hasHighlight", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("hasHighlight", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		row := args[0].Int()
-		abs := args[1].Int()
+		row := args.Int(0)
+		abs := args.Int(1)
 		return js.ValueOf(g.hasHighlight(row, abs))
 	}))
 
 	// hasRealtimeHighlight(row, abs) -> bool using Game.highlightedBeats
-	js.Global().Set("hasRealtimeHighlight", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("hasRealtimeHighlight", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		row := args[0].Int()
-		abs := args[1].Int()
+		row := args.Int(0)
+		abs := args.Int(1)
 		return js.ValueOf(g.hasHighlight(row, abs))
 	}))
 
 	// hasAnyRowHighlight(row) -> bool — true if any highlight exists for the row.
-	js.Global().Set("hasAnyRowHighlight", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("hasAnyRowHighlight", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		return js.ValueOf(g.hasAnyRowHighlight(row))
 	}))
 
 	// ensure(need)
-	js.Global().Set("ensure", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("ensure", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		need := args[0].Int()
+		need := args.Int(0)
 		if g.engine != nil && g.engine.Predictor != nil {
 			g.engine.Predictor.Ensure(need)
 		}
@@ -339,12 +339,12 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// visibleAt(row, abs) -> bool
-	js.Global().Set("visibleAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("visibleAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		row := args[0].Int()
-		abs := args[1].Int()
+		row := args.Int(0)
+		abs := args.Int(1)
 		if row < 0 || abs < 0 {
 			return js.ValueOf(false)
 		}
@@ -356,12 +356,12 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// audibleAt(row, abs) -> bool
-	js.Global().Set("audibleAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("audibleAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		row := args[0].Int()
-		abs := args[1].Int()
+		row := args.Int(0)
+		abs := args.Int(1)
 		if row < 0 || abs < 0 {
 			return js.ValueOf(false)
 		}
@@ -372,12 +372,12 @@ func (g *Game) initJSTimelinePredictor() {
 		return js.ValueOf(g.engine.Predictor.AudibleAt(row, abs))
 	}))
 
-	js.Global().Set("triggeredAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("triggeredAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		row := args[0].Int()
-		abs := args[1].Int()
+		row := args.Int(0)
+		abs := args.Int(1)
 		if row < 0 || abs < 0 {
 			return js.ValueOf(false)
 		}
@@ -393,13 +393,13 @@ func (g *Game) initJSTimelinePredictor() {
 	}))
 
 	// predictorAudibleSnapshot(row, start, count) -> []int(0/1)
-	js.Global().Set("predictorAudibleSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("predictorAudibleSnapshot", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return js.Global().Get("Array").New()
 		}
-		row := args[0].Int()
-		start := args[1].Int()
-		count := args[2].Int()
+		row := args.Int(0)
+		start := args.Int(1)
+		count := args.Int(2)
 		if count < 0 {
 			count = 0
 		}

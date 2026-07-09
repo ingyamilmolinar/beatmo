@@ -49,25 +49,25 @@ func recipeParamDefToJS(d audio.ParamDef) js.Value {
 
 func (g *Game) initJSSynthRecipe() {
 	// setInstrumentParam(instrumentID, paramName, value)
-	js.Global().Set("setInstrumentParam", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("setInstrumentParam", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return nil
 		}
-		id := args[0].String()
-		name := args[1].String()
-		value := args[2].Float()
+		id := args.Str(0)
+		name := args.Str(1)
+		value := args.Float(2)
 		audio.SetInstrumentParam(id, name, value)
 		return nil
 	}))
 
 	// setInstrumentParams(instrumentID, paramsObject) — bulk set, replaces
 	// the entire per-instrument param map (mirrors audio.SetInstrumentParams).
-	js.Global().Set("setInstrumentParams", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("setInstrumentParams", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		id := args[0].String()
-		obj := args[1]
+		id := args.Str(0)
+		obj := args.At(1)
 		if obj.Type() != js.TypeObject {
 			return nil
 		}
@@ -82,28 +82,28 @@ func (g *Game) initJSSynthRecipe() {
 	}))
 
 	// getInstrumentParams(instrumentID) -> {name: value, ...}
-	js.Global().Set("getInstrumentParams", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("getInstrumentParams", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.Global().Get("Object").New()
 		}
-		id := args[0].String()
+		id := args.Str(0)
 		return recipeParamsToJS(audio.GetInstrumentParams(id))
 	}))
 
 	// resetInstrumentParams(instrumentID)
-	js.Global().Set("resetInstrumentParams", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("resetInstrumentParams", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		audio.ResetInstrumentParams(args[0].String())
+		audio.ResetInstrumentParams(args.Str(0))
 		return nil
 	}))
 
 	// __setSynthDragDebug(bool) — flip verbose Synth-tab drag/schema-swap logging
 	// (sdbg) on/off at runtime so a browser repro can capture the full UI→audio
 	// cascade in the console. Debug-only; never called by production JS.
-	js.Global().Set("__setSynthDragDebug", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		synthDragDebug = len(args) > 0 && args[0].Truthy()
+	js.Global().Set("__setSynthDragDebug", jsFn(func(args jsArgs) any {
+		synthDragDebug = args.Len() > 0 && args.At(0).Truthy()
 		// One call enables the WHOLE cascade: the Go [synthdrag] stream AND the
 		// JS-side audio.js streams ([SYNTH-DISPATCH]/[SYNTH-UPD]/[SYNTH-EVT]/
 		// [SYNTH-RDY]/[SYNTH-ERS]). Saves the user from setting three globals.
@@ -118,11 +118,11 @@ func (g *Game) initJSSynthRecipe() {
 	// browser tests drive the Synth tab so its live re-layout (generator
 	// re-voicing swaps the section schema every frame) runs against a playing
 	// engine — the exact path the user exercises when audio stopped.
-	js.Global().Set("setActiveEQTab", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("setActiveEQTab", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return false
 		}
-		if err := g.SetActiveEQTab(args[0].String()); err != nil {
+		if err := g.SetActiveEQTab(args.Str(0)); err != nil {
 			return false
 		}
 		return true
@@ -133,35 +133,35 @@ func (g *Game) initJSSynthRecipe() {
 	// the instrument's effective params into the recipe defaults and persists,
 	// keeping the per-instrument overlay so the WebAudio voice cache retains
 	// the just-saved tone. Routes through the same Go core as the button.
-	js.Global().Set("saveActiveRecipe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("saveActiveRecipe", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		return saveRecipeForInstrument(args[0].String())
+		return saveRecipeForInstrument(args.Str(0))
 	}))
 
 	// resetActiveRecipe(instrumentID) -> recipeID
 	// Mirrors the Synth-tab Reset button for an explicit instrument id:
 	// restores the recipe's original shipped defaults (undoing any Save) and
 	// clears the per-instrument overlay. Routes through the same Go core.
-	js.Global().Set("resetActiveRecipe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("resetActiveRecipe", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		return resetRecipeForInstrument(args[0].String())
+		return resetRecipeForInstrument(args.Str(0))
 	}))
 
 	// recipeForInstrument(instrumentID) -> recipeID string
-	js.Global().Set("recipeForInstrument", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("recipeForInstrument", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return ""
 		}
-		return audio.RecipeForInstrument(args[0].String())
+		return audio.RecipeForInstrument(args.Str(0))
 	}))
 
 	// synthRecipeCatalog() -> { recipeID: { displayName, category, params: [paramDef...] } }
 	// Mirrors insertEffectCatalog() for the recipe registry.
-	js.Global().Set("synthRecipeCatalog", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthRecipeCatalog", jsFn(func(args jsArgs) any {
 		out := js.Global().Get("Object").New()
 		regs := audio.RecipeRegistrations()
 		for _, id := range audio.RecipeOrder() {
@@ -183,11 +183,11 @@ func (g *Game) initJSSynthRecipe() {
 	}))
 
 	// recipeDefaultParams(recipeID) -> {name: value}
-	js.Global().Set("recipeDefaultParams", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("recipeDefaultParams", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.Global().Get("Object").New()
 		}
-		return recipeParamsToJS(audio.RecipeDefaultParams(args[0].String()))
+		return recipeParamsToJS(audio.RecipeDefaultParams(args.Str(0)))
 	}))
 
 	// synthMirrorPCMLen() -> int
@@ -197,7 +197,7 @@ func (g *Game) initJSSynthRecipe() {
 	// non-empty render without reaching into DSP internals. Returns 0 when no
 	// synth instrument is active. (DSP correctness is covered in Go — see the
 	// synth_mirror_test.go suite.)
-	js.Global().Set("synthMirrorPCMLen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthMirrorPCMLen", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return 0
 		}
@@ -216,7 +216,7 @@ func (g *Game) initJSSynthRecipe() {
 	// WASM mirror REACTS to params (the fingerprint differs) — a length-only
 	// check would pass even for a frozen render. Returns 0 when no synth is
 	// active. (DSP correctness is covered in Go — see synth_mirror_test.go.)
-	js.Global().Set("synthMirrorPCMChecksum", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthMirrorPCMChecksum", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return 0
 		}
@@ -255,12 +255,12 @@ func (g *Game) initJSSynthRecipeManagement() {
 	// saveUserRecipe(recipeID, paramsObj) — persist the override map as
 	// the new defaults for recipeID. Mirrors the Synth-tab Save button.
 	// Returns the recipe id on success, empty string on failure.
-	js.Global().Set("saveUserRecipe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 || args[0].Type() != js.TypeString {
+	js.Global().Set("saveUserRecipe", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		recipeID := args[0].String()
-		params := jsObjectToParams(args[1])
+		recipeID := args.Str(0)
+		params := jsObjectToParams(args.At(1))
 		if sink := activeRecipeSink(); sink != nil {
 			_ = sink.SaveRecipeOverride(recipeID, params)
 		}
@@ -276,22 +276,22 @@ func (g *Game) initJSSynthRecipeManagement() {
 	// recipe so the next trigger uses it (matches dv.SaveActiveRecipeAs
 	// semantics — passing the row's instrument id from JS keeps the
 	// rebind in lockstep with what the Save-As button does in Go).
-	js.Global().Set("createUserRecipe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("createUserRecipe", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		baseID := args[0].String()
+		baseID := args.Str(0)
 		displayName := ""
-		if len(args) >= 2 && args[1].Type() == js.TypeString {
-			displayName = args[1].String()
+		if args.Len() >= 2 && args.At(1).Type() == js.TypeString {
+			displayName = args.Str(1)
 		}
 		var seed map[string]float64
-		if len(args) >= 3 {
-			seed = jsObjectToParams(args[2])
+		if args.Len() >= 3 {
+			seed = jsObjectToParams(args.At(2))
 		}
 		rebindInst := ""
-		if len(args) >= 4 && args[3].Type() == js.TypeString {
-			rebindInst = args[3].String()
+		if args.Len() >= 4 && args.At(3).Type() == js.TypeString {
+			rebindInst = args.Str(3)
 		}
 		if displayName == "" {
 			if reg, ok := audio.RecipeRegistrations()[baseID]; ok && reg != nil {
@@ -325,11 +325,11 @@ func (g *Game) initJSSynthRecipeManagement() {
 
 	// deleteUserRecipe(recipeID) — unregister + ask the sink to drop the
 	// persisted doc + persisted override (idempotent).
-	js.Global().Set("deleteUserRecipe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("deleteUserRecipe", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return false
 		}
-		recipeID := args[0].String()
+		recipeID := args.Str(0)
 		audio.UnregisterRecipeForTest(recipeID)
 		if sink := activeRecipeSink(); sink != nil {
 			if rs, ok := sink.(recipeStoreDeleter); ok {
@@ -345,7 +345,7 @@ func (g *Game) initJSSynthRecipeManagement() {
 	// Iterates the recipe registry and returns the entries whose
 	// category is the user-scope ("user"). Cheap O(N) walk over a
 	// process-global table; called rarely (menu open / picker refresh).
-	js.Global().Set("listUserRecipes", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("listUserRecipes", jsFn(func(args jsArgs) any {
 		regs := audio.RecipeRegistrations()
 		arr := js.Global().Get("Array").New(0)
 		i := 0
@@ -367,11 +367,11 @@ func (g *Game) initJSSynthRecipeManagement() {
 	// exportUserRecipe(recipeID) → JSON string ready to share or save
 	// as a .beatmo-preset.json file. Returns empty string if the recipe
 	// isn't registered or marshalling fails.
-	js.Global().Set("exportUserRecipe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("exportUserRecipe", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		recipeID := args[0].String()
+		recipeID := args.Str(0)
 		reg := audio.RecipeRegistrations()[recipeID]
 		if reg == nil {
 			return ""
@@ -397,11 +397,11 @@ func (g *Game) initJSSynthRecipeManagement() {
 	// Decodes the JSON into a RecipeDoc, registers it via the plugin
 	// path, persists it via the sink. The decoded BaseRecipe must
 	// already be registered or the import is rejected.
-	js.Global().Set("importUserRecipe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("importUserRecipe", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		raw := []byte(args[0].String())
+		raw := []byte(args.Str(0))
 		var doc audio.RecipeDoc
 		if err := json.Unmarshal(raw, &doc); err != nil || doc.ID == "" {
 			return ""
@@ -474,25 +474,25 @@ func kitsJSValue() js.Value {
 // in a later phase when the export.go schema picks up the Kits field.
 func (g *Game) initJSKitManagement() {
 	// listKits() → [{id, displayName, members: {role: instID}}]
-	js.Global().Set("listKits", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("listKits", jsFn(func(args jsArgs) any {
 		return kitsJSValue()
 	}))
 
 	// createKit(kitID, displayName, membersObj) → kitID
 	// Registers (or replaces) a kit. membersObj is {role: instID, ...}.
-	js.Global().Set("createKit", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("createKit", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return ""
 		}
-		kit := audio.Kit{ID: args[0].String(), Members: map[string]string{}}
-		if len(args) >= 2 && args[1].Type() == js.TypeString {
-			kit.DisplayName = args[1].String()
+		kit := audio.Kit{ID: args.Str(0), Members: map[string]string{}}
+		if args.Len() >= 2 && args.At(1).Type() == js.TypeString {
+			kit.DisplayName = args.Str(1)
 		}
-		if len(args) >= 3 && args[2].Type() == js.TypeObject {
-			keys := js.Global().Get("Object").Call("keys", args[2])
+		if args.Len() >= 3 && args.At(2).Type() == js.TypeObject {
+			keys := js.Global().Get("Object").Call("keys", args.At(2))
 			for i := 0; i < keys.Length(); i++ {
 				role := keys.Index(i).String()
-				val := args[2].Get(role)
+				val := args.At(2).Get(role)
 				if val.Type() == js.TypeString {
 					kit.Members[role] = val.String()
 				}
@@ -504,11 +504,11 @@ func (g *Game) initJSKitManagement() {
 
 	// setKitMember(kitID, role, instID) — upsert one role's instrument
 	// on an existing kit. Returns false if the kit isn't registered.
-	js.Global().Set("setKitMember", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 || args[0].Type() != js.TypeString || args[1].Type() != js.TypeString || args[2].Type() != js.TypeString {
+	js.Global().Set("setKitMember", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 || args.At(0).Type() != js.TypeString || args.At(1).Type() != js.TypeString || args.At(2).Type() != js.TypeString {
 			return false
 		}
-		kitID, role, instID := args[0].String(), args[1].String(), args[2].String()
+		kitID, role, instID := args.Str(0), args.Str(1), args.Str(2)
 		k, ok := audio.KitForID(kitID)
 		if !ok {
 			return false
@@ -522,22 +522,22 @@ func (g *Game) initJSKitManagement() {
 	}))
 
 	// deleteKit(kitID) — remove the kit. Idempotent.
-	js.Global().Set("deleteKit", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("deleteKit", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return false
 		}
-		audio.UnregisterKit(args[0].String())
+		audio.UnregisterKit(args.Str(0))
 		return true
 	}))
 
 	// applyKit(kitID) — rebind the active DrumView's rows per the
 	// kit's role → instrument map. Returns the rebound row count.
 	// Mix state (volume/pan/sends/EQ/effects) is preserved per Phase 6.
-	js.Global().Set("applyKit", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+	js.Global().Set("applyKit", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || args.At(0).Type() != js.TypeString {
 			return 0
 		}
-		k, ok := audio.KitForID(args[0].String())
+		k, ok := audio.KitForID(args.Str(0))
 		if !ok || g.drum == nil {
 			return 0
 		}

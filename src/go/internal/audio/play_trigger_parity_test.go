@@ -34,10 +34,14 @@ func TestPlayVariantsRecordTriggerOnEveryPlatform(t *testing.T) {
 		"PlayBatch": true,
 	}
 	// A body satisfies the invariant if it calls RecordVoiceTrigger directly, or
-	// delegates to another Play* entry point (which is itself checked).
+	// delegates to another Play* entry point (which is itself checked), or to
+	// playParamsIdentity — the shared internal implementation behind
+	// PlayParams/PlayParamsAt (added in the parity-timing identity threading;
+	// it calls RecordVoiceTrigger directly, see engine_play.go).
 	satisfies := map[string]bool{
 		"RecordVoiceTrigger": true,
 		"Play":               true, "PlayVol": true, "PlayParams": true, "PlayParamsAt": true,
+		"playParamsIdentity": true,
 	}
 
 	for _, f := range files {

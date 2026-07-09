@@ -34,6 +34,25 @@ func TestWASMRenderTableCoversBuiltinSynthInstruments(t *testing.T) {
 	render := jsMapKeys(t, src, "RENDER")
 	renderInfo := jsMapKeys(t, src, "RENDER_INFO")
 
+	// The config-first modular instrument family (kick voices, etc.) no longer
+	// lives inline in audio.js's RENDER/RENDER_INFO literals: it is generated
+	// into modular_instruments.gen.js and merged at runtime via
+	// Object.assign(RENDER, MODULAR_RENDER) / Object.assign(RENDER_INFO,
+	// MODULAR_RENDER_INFO). Union those generated keys so this guard sees the
+	// same effective tables the browser does.
+	genPath := filepath.Join("..", "..", "..", "js", "modular_instruments.gen.js")
+	if gb, gerr := os.ReadFile(genPath); gerr == nil {
+		gsrc := string(gb)
+		for k := range jsFreezeMapKeys(t, gsrc, "MODULAR_RENDER") {
+			render[k] = true
+		}
+		for k := range jsFreezeMapKeys(t, gsrc, "MODULAR_RENDER_INFO") {
+			renderInfo[k] = true
+		}
+	} else {
+		t.Logf("modular_instruments.gen.js not readable (%v) — relying on inline RENDER tables only", gerr)
+	}
+
 	for instID := range builtinInstrumentRecipeBindings {
 		if !render[instID] {
 			t.Errorf("instrument %q is a builtin recipe-bound synth but has no RENDER[%q] entry in audio.js — it will throw \"Unknown sound\" and be silent on WASM", instID, instID)
@@ -68,6 +87,33 @@ func jsMapKeys(t *testing.T, src, name string) map[string]bool {
 	}
 	if len(out) == 0 {
 		t.Fatalf("audio.js: parsed zero keys from `%s` — parser drift", name)
+	}
+	return out
+}
+
+// jsFreezeMapKeys extracts the top-level keys of a generated
+// `export const <name> = Object.freeze({ ... });` object literal (the shape
+// emitted by cmd/gen-modular-instruments). Same key grammar as jsMapKeys.
+func jsFreezeMapKeys(t *testing.T, src, name string) map[string]bool {
+	t.Helper()
+	head := "const " + name + " = Object.freeze({"
+	start := indexAfter(src, head)
+	if start < 0 {
+		t.Fatalf("modular_instruments.gen.js: could not find `%s`", head)
+	}
+	rest := src[start:]
+	end := indexAfter(rest, "\n});")
+	if end < 0 {
+		t.Fatalf("modular_instruments.gen.js: could not find end of `%s` object", name)
+	}
+	block := rest[:end]
+	keyRe := regexp.MustCompile(`(?m)^\s*['"]?([A-Za-z0-9_-]+)['"]?\s*:`)
+	out := make(map[string]bool)
+	for _, m := range keyRe.FindAllStringSubmatch(block, -1) {
+		out[m[1]] = true
+	}
+	if len(out) == 0 {
+		t.Fatalf("modular_instruments.gen.js: parsed zero keys from `%s` — parser drift", name)
 	}
 	return out
 }

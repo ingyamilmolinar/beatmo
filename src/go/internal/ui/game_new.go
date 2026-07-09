@@ -30,67 +30,79 @@ func New(logger *game_log.Logger) *Game {
 	eng := engine.New(logger)
 	eng.Predictor.SetWindowCap(RuntimeProf().PredictorWindowCap)
 	g := &Game{
-		cam:                NewCamera(),
-		inputDispatcher:    NewInputDispatcher(),
-		dispatcherDirty:    true,
-		logger:             logger,
-		graph:              eng.Graph,
-		graphRuntime:       graphruntime.NewRuntime(eng.Graph),
-		state:              gamestate.New(120),
-		timeline:           timeline.NewService(),
-		engine:             eng,
-		engineProgress:     eng.Progress,
-		split:              NewSplitter(720), // real height set in Layout below
-		highlightedBeats:   make(map[int]int64),
-		hlDropped:          make(map[int]int64),
-		bpm:                120, // Default BPM
-		beatInfos:          []model.BeatInfo{},
-		drumBeatInfos:      []model.BeatInfo{},
-		beatInfosByRow:     [][]model.BeatInfo{},
-		isLoopByRow:        []bool{},
-		loopStartByRow:     []int{},
-		loopLenByRow:       []int{},
-		originIdxsByRow:    [][]int{},
-		nextOriginIdxByRow: []int{},
-		nextBeatIdxs:       []int{},
-		nodeRows:           make(map[model.NodeID]int),
-		nodesByID:          make(map[model.NodeID]*uiNode),
-		activePulses:       []*pulse{},
-		pendingStartRow:    -1,
-		grid:               NewGrid(DefaultGridStep),
-		audioCh:            make(chan soundReq, 128),
-		audioQuit:          make(chan struct{}),
-		bpmCh:              make(chan int, 1),
-		bpmAck:             make(chan int, 1),
-		playFn:             nil,
-		lastHLIdxByRow:     nil,
-		hlCh: make(chan struct {
-			row, idx int
-			info     model.BeatInfo
-		}, 64),
-		nodeTriggerCountsByRow:      make(map[int]map[model.NodeID]int),
-		lastEvalIdxByRowNode:        make(map[int]map[model.NodeID]int),
-		nodeLogicTriggerCountsByRow: make(map[int]map[model.NodeID]int),
-		lastTriggeredByRow:          make(map[int]map[model.NodeID]bool),
-		nodeAnim:                    make(map[model.NodeID]float64),
-		lastFiredNodeByRow:          []model.NodeID{},
-		muteUntilByRow:              []int{},
-		loopCountByRow:              []int{},
-		lastNodeHL:                  map[model.NodeID]bool{},
-		nodeHLUntil:                 map[model.NodeID]highlightWindow{},
-		lastStepsOffset:             -1,
-		lastCellTypesOffset:         -1,
-		parityRing:                  newMismatchRing(256),
-		parityStreak:                make(map[string]int),
-		parityWatch:                 parityWatchDefault,
-		parityAudioMaxIdx:           []int{},
-		paritySeqDecisions:          make(map[int]map[int]paritySeqDecision),
-		parityScanEvery:             parityScanEveryFrames,
-		parityScanStride:            parityScanStride,
-		importPrevParityFatal:       true,
-		importPrevParityWatch:       parityWatchDefault,
+		cam:                   NewCamera(),
+		inputDispatcher:       NewInputDispatcher(),
+		dispatcherDirty:       true,
+		logger:                logger,
+		graph:                 eng.Graph,
+		graphRuntime:          graphruntime.NewRuntime(eng.Graph),
+		state:                 gamestate.New(120),
+		engine:                eng,
+		engineProgress:        eng.Progress,
+		split:                 NewSplitter(720), // real height set in Layout below
+		highlightedBeats:      make(map[int]int64),
+		hlDropped:             make(map[int]int64),
+		bpm:                   120, // Default BPM
+		nodeRows:              make(map[model.NodeID]int),
+		nodesByID:             make(map[model.NodeID]*uiNode),
+		activePulses:          []*pulse{},
+		pendingStartRow:       -1,
+		grid:                  NewGrid(DefaultGridStep),
+		audioCh:               make(chan soundReq, 128),
+		audioQuit:             make(chan struct{}),
+		bpmCh:                 make(chan int, 1),
+		bpmAck:                make(chan int, 1),
+		playFn:                nil,
+		nodeAnim:              make(map[model.NodeID]float64),
+		lastNodeHL:            map[model.NodeID]bool{},
+		nodeHLUntil:           map[model.NodeID]highlightWindow{},
+		importPrevParityFatal: true,
+		importPrevParityWatch: parityWatchDefault,
 	}
+	// playbackSlate owns the scheduling/beat-path/timeline/trigger field
+	// cluster (see playback_slate.go); set as statements because promoted
+	// (embedded) fields can't be keyed in a composite literal, and the
+	// struct carries atomics that must never be copied.
+	g.playbackSlate.g = g
+	g.timeline = timeline.NewService()
+	g.beatInfos = []model.BeatInfo{}
+	g.drumBeatInfos = []model.BeatInfo{}
+	g.beatInfosByRow = [][]model.BeatInfo{}
+	g.isLoopByRow = []bool{}
+	g.loopStartByRow = []int{}
+	g.loopLenByRow = []int{}
+	g.originIdxsByRow = [][]int{}
+	g.nextOriginIdxByRow = []int{}
+	g.nextBeatIdxs = []int{}
+	g.lastHLIdxByRow = nil
+	g.hlCh = make(chan struct {
+		row, idx int
+		info     model.BeatInfo
+	}, 64)
+	g.nodeTriggerCountsByRow = make(map[int]map[model.NodeID]int)
+	g.lastEvalIdxByRowNode = make(map[int]map[model.NodeID]int)
+	g.nodeLogicTriggerCountsByRow = make(map[int]map[model.NodeID]int)
+	g.lastTriggeredByRow = make(map[int]map[model.NodeID]bool)
+	g.lastFiredNodeByRow = []model.NodeID{}
+	g.muteUntilByRow = []int{}
+	g.loopCountByRow = []int{}
+	g.lastStepsOffset = -1
+	g.lastCellTypesOffset = -1
+	// Parity diagnostics state lives in the embedded parityTracker; set as
+	// statements because promoted (embedded) fields can't be keyed in a
+	// composite literal.
+	g.parityRing = newMismatchRing(256)
+	g.parityStreak = make(map[string]int)
+	g.parityWatch = parityWatchDefault
+	g.parityTimingWatch = parityTimingWatchDefault
+	g.parityAudioMaxIdx = []int{}
+	g.paritySeqDecisions = make(map[int]map[int]paritySeqDecision)
+	g.parityScanEvery = parityScanEveryFrames
+	g.parityScanStride = parityScanStride
+	g.timingTraces = make(map[int64]timingTrace)
+	g.emissionReportBuf = make([]audio.EmitReport, 128)
 	g.sidebar = NewNodeSidebar(g)
+	g.groupMenu = NewGroupMenu(g)
 	g.perfMode.SetFastPath(defaultPerfFastPath)
 	if runningUnderGoTest() {
 		g.parityScanEvery = 1
@@ -207,6 +219,7 @@ func New(logger *game_log.Logger) *Game {
 		timerPool = async.NewPool(nil, timerOpts)
 	}
 	g.audioScheduler = async.NewScheduler(timerPool)
+	g.voicePrewarmer = newVoicePrewarmer(g)
 	g.bgWG.Add(2)
 	go g.audioLoop()
 	go g.bpmLoop()
@@ -305,16 +318,19 @@ func New(logger *game_log.Logger) *Game {
 		g.notifyPredictorNode(id)
 		g.pathsDirty = true
 		if g.Playing() {
-			// A node-param change (volume/pitch/logic) updates predictor truth
+			// A node-param change (volume/pitch/logic, or an edge add/remove that
+			// rewrites a node's input/output lists) updates predictor truth
 			// (notifyPredictorNode, above) without necessarily changing path
-			// topology, so updateBeatInfos's pathsChanged invalidation may not
-			// run. Drop in-flight audio (audioGen) AND advance the parity
-			// generation (+grace) so the scan's parityGen filter excludes any
-			// decision/audio recorded under the pre-change params. The explicit
-			// buffer wipe below is the memory-hygiene step (redundant with the
-			// gen filter). Skip the path-dirty/freeze/clear side effects — this
-			// hook owns paths-dirty itself.
-			g.audioGen.Add(1)
+			// topology, so updateBeatInfos's pathsChanged invalidation may not run.
+			// Drop in-flight audio for the AFFECTED ROW only (per-row structural
+			// generation) AND advance the parity generation (+grace) so the scan's
+			// parityGen filter excludes any decision/audio recorded under the
+			// pre-change params. Using the global audioGen here dropped in-flight
+			// beats on OTHER rows too — an audible gap when a node/edge on one row
+			// is touched. The explicit buffer wipe below is the memory-hygiene step
+			// (redundant with the gen filter). Skip the path-dirty/freeze/clear side
+			// effects — this hook owns paths-dirty itself.
+			g.bumpRowStructGen(row)
 			g.bumpParityGen("node-param-change", structuralMutationOptions{
 				SkipPathsDirty:     true,
 				SkipPathChangeMark: true,
@@ -335,6 +351,8 @@ func New(logger *game_log.Logger) *Game {
 			g.refreshDrumRow()
 		}
 	})
+	g.graph.SetGroupChangedHook(func(model.GroupID) { g.onGroupsChanged() })
+	g.refreshGroupIndex()
 	g.rebuildNodeCache()
 	g.storeSeqPathSnapshot()
 	if runningUnderGoTest() {

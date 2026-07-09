@@ -36,7 +36,7 @@ func allHitsPeak(t *testing.T, insts []struct {
 		if v == nil {
 			continue
 		}
-		m.Schedule(in.id, &scaledVoice{v: v, gain: in.vol}, 0)
+		m.Schedule(in.id, &scaledVoice{v: v, gain: in.vol}, 0, -1, -1)
 	}
 	StartOutputCapture()
 	readMixerSamples(m, sr) // 1s captures the full transient

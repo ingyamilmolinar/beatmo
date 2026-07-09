@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"strings"
+	"sync"
 )
 
 //go:embed templates/*.json
@@ -48,10 +49,25 @@ var templateOrder = []string{
 	"puente-oye-como-va", "salsa-vivir", "bachata-obsesion",
 }
 
-// Templates returns the built-in genre circuits in menu order. Panics at init
-// only if an embedded file is missing or malformed — a build-time guarantee,
-// never runtime (the embed + the JSON shape are both compile/test enforced).
+// Templates returns the built-in genre circuits in menu order. The embedded
+// files are immutable, so the result is parsed once and cached: the template
+// menu calls this every frame (from both its draw and input paths) while open,
+// and re-reading + re-json.Unmarshaling ~1 MB of embedded JSON per call froze
+// WASM mobile the moment the menu was opened. Callers treat the result as
+// read-only (Display/BPM/Bytes are never mutated). Panics at init only if an
+// embedded file is missing or malformed — a build-time guarantee, never runtime
+// (the embed + the JSON shape are both compile/test enforced).
 func Templates() []Template {
+	templatesOnce.Do(func() { templatesCache = buildTemplates() })
+	return templatesCache
+}
+
+var (
+	templatesOnce  sync.Once
+	templatesCache []Template
+)
+
+func buildTemplates() []Template {
 	out := make([]Template, 0, len(templateOrder))
 	for _, genre := range templateOrder {
 		b, err := templateFS.ReadFile("templates/" + genre + ".json")

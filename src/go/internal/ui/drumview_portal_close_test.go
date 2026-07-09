@@ -24,12 +24,18 @@ func setupPortalCloseTest(t *testing.T) (*DrumView, func()) {
 	dv := &DrumView{}
 	dv.tree = NewDrumViewTree()
 	dv.tree.SetBounds(image.Rect(0, 0, 800, 600))
+	// Popups live in the single global overlay subtree (drumview_ctor.go), so a
+	// minimal DrumView under test must wire it or the open* helpers hit a nil
+	// portal.
+	dv.overlayTree = NewDrumViewTree()
+	dv.overlayTree.SetBounds(image.Rect(0, 0, 800, 600))
 	return dv, restore
 }
 
-// openTestPortal opens a minimal portal entry with the given ID on the tree.
+// openTestPortal opens a minimal portal entry with the given ID on the global
+// overlay portal.
 func openTestPortal(dv *DrumView, id string) {
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      id,
 		Overlay: &testPortalOverlay{},
 		Modal:   false,
@@ -43,13 +49,13 @@ func TestCloseSubdivMenuPortal(t *testing.T) {
 	defer restore()
 
 	openTestPortal(dv, "subdiv-menu")
-	if !dv.tree.Portal().Has("subdiv-menu") {
+	if !dv.portal().Has("subdiv-menu") {
 		t.Fatal("portal 'subdiv-menu' should be open")
 	}
 
 	dv.closeSubdivMenuPortal()
 
-	if dv.tree.Portal().Has("subdiv-menu") {
+	if dv.portal().Has("subdiv-menu") {
 		t.Error("portal 'subdiv-menu' should be closed after closeSubdivMenuPortal()")
 	}
 }
@@ -67,13 +73,13 @@ func TestCloseInstMenuPortal(t *testing.T) {
 	defer restore()
 
 	openTestPortal(dv, "inst-menu")
-	if !dv.tree.Portal().Has("inst-menu") {
+	if !dv.portal().Has("inst-menu") {
 		t.Fatal("portal 'inst-menu' should be open")
 	}
 
 	dv.closeInstMenuPortal()
 
-	if dv.tree.Portal().Has("inst-menu") {
+	if dv.portal().Has("inst-menu") {
 		t.Error("portal 'inst-menu' should be closed after closeInstMenuPortal()")
 	}
 }
@@ -90,13 +96,13 @@ func TestCloseColorWheelPortal(t *testing.T) {
 	defer restore()
 
 	openTestPortal(dv, "color-wheel")
-	if !dv.tree.Portal().Has("color-wheel") {
+	if !dv.portal().Has("color-wheel") {
 		t.Fatal("portal 'color-wheel' should be open")
 	}
 
 	dv.closeColorWheelPortal()
 
-	if dv.tree.Portal().Has("color-wheel") {
+	if dv.portal().Has("color-wheel") {
 		t.Error("portal 'color-wheel' should be closed after closeColorWheelPortal()")
 	}
 }
@@ -113,13 +119,13 @@ func TestCloseContextMenuPortal(t *testing.T) {
 	defer restore()
 
 	openTestPortal(dv, "context-menu")
-	if !dv.tree.Portal().Has("context-menu") {
+	if !dv.portal().Has("context-menu") {
 		t.Fatal("portal 'context-menu' should be open")
 	}
 
 	dv.closeContextMenuPortal()
 
-	if dv.tree.Portal().Has("context-menu") {
+	if dv.portal().Has("context-menu") {
 		t.Error("portal 'context-menu' should be closed after closeContextMenuPortal()")
 	}
 }

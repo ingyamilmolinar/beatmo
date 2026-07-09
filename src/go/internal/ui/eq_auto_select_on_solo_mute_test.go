@@ -108,25 +108,46 @@ func TestReSoloMovesSelection(t *testing.T) {
 	assertChannelAllTabs(t, g, "hat")
 }
 
-// 4. Leaving the single-audible state (un-solo) keeps the selection: no revert.
-func TestUnSoloDoesNotRevert(t *testing.T) {
+//  4. Leaving the single-audible state (un-solo) reverts the selection to
+//     Master: with more than one instrument audible there is no single focus,
+//     so the selector goes back to Master.
+func TestUnSoloRevertsToMasterWhenMultipleAudible(t *testing.T) {
 	g := newAutoSelectGame(t, "kick", "snare", "hat")
 	g.drum.toggleSolo(1)
 	assertChannelAllTabs(t, g, "snare")
 
-	g.drum.toggleSolo(1) // un-solo -> all 3 audible -> stay put on snare
-	if got := g.drum.activeEQChannel(); got != "snare" {
-		t.Errorf("after un-solo, channel = %q, want snare (no revert)", got)
-	}
-	if got := g.drum.eqPanelZone.ActiveChannel(); got != "snare" {
-		t.Errorf("after un-solo, ActiveChannel() = %q, want snare (no revert)", got)
-	}
+	g.drum.toggleSolo(1) // un-solo -> all 3 audible -> revert to Master
+	assertChannelStaysMaster(t, g)
 }
 
-// 5. No auto-select while two or more instruments remain audible.
+// 5. No instrument is auto-selected while two or more remain audible; if one
+//    was previously selected the selector reverts to Master.
 func TestNoAutoSelectWhenMultipleAudible(t *testing.T) {
 	g := newAutoSelectGame(t, "kick", "snare", "hat")
 	g.drum.toggleMute(0) // two still audible
+	assertChannelStaysMaster(t, g)
+}
+
+//  5b. Un-muting back into a multi-audible state reverts a previously
+//      auto-selected instrument to Master.
+func TestUnMuteBackToMultipleRevertsToMaster(t *testing.T) {
+	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g.drum.toggleMute(0) // kick muted; snare+hat audible (2) -> stays Master
+	g.drum.toggleMute(2) // hat muted; snare sole-audible -> auto-select snare
+	assertChannelAllTabs(t, g, "snare")
+
+	g.drum.toggleMute(0) // un-mute kick; kick+snare audible (2) -> revert to Master
+	assertChannelStaysMaster(t, g)
+}
+
+//  5c. A MANUAL channel selection also reverts to Master once a mute/solo
+//      change leaves more than one instrument audible.
+func TestManualSelectionRevertsToMasterWhenMultipleAudible(t *testing.T) {
+	g := newAutoSelectGame(t, "kick", "snare", "hat")
+	g.drum.eqPanelZone.callbacks.OnChannelChange("kick") // manually focus kick
+	assertChannelAllTabs(t, g, "kick")
+
+	g.drum.toggleMute(2) // mute hat; kick+snare audible (2) -> revert to Master
 	assertChannelStaysMaster(t, g)
 }
 

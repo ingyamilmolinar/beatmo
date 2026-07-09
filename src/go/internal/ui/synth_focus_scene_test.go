@@ -20,6 +20,9 @@ func TestSynthFocusSceneSelectsIntendedKnob(t *testing.T) {
 		{"crop_synth_focus_pitch", "osc_octave"},
 		{"crop_synth_focus_motion", "lfo_rate"},
 		{"crop_synth_focus_burst", "burst1_amp"},
+		{"crop_synth_focus_burst_hit", "burst2_amp"},
+		{"crop_synth_focus_drive", "drive"},
+		{"crop_synth_full_note", "amp_decay"},
 		{"crop_synth_focus_fm_decay", "fm_op2_decay"},
 		{"crop_synth_focus_fm_penv", "fm_pitch_env_amount"},
 	}

@@ -105,6 +105,14 @@ func (s *Service) RegisterInstrument(slot int, id, name string) {
 // PushInstBuf pushes audio samples into an instrument's ring buffer.
 // Called from the audio thread — memcopy only.
 func (s *Service) PushInstBuf(slot int, buf []float64) {
+	// The mixer allocates an ever-increasing slot index per unique instrument
+	// ID (engine_mixer.go instrumentSlot) with no cap, so slot can exceed the
+	// fixed slots array once a session cycles through more than MaxInstruments
+	// distinct instruments. Mirror RegisterInstrument's bounds check: an
+	// out-of-range slot was never registered (no ring), so drop it silently.
+	if slot < 0 || slot >= len(s.slots) {
+		return
+	}
 	s.mu.Lock()
 	sl := s.slots[slot]
 	s.mu.Unlock()

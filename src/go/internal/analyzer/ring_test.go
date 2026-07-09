@@ -89,7 +89,8 @@ func TestAvailable(t *testing.T) {
 
 func TestConcurrentSPSC(t *testing.T) {
 	const total = 10000
-	r := NewRingBuffer(256)
+	const capacity = 256
+	r := NewRingBuffer(capacity)
 
 	var producerDone atomic.Bool
 	var totalRead atomic.Int64
@@ -129,8 +130,17 @@ func TestConcurrentSPSC(t *testing.T) {
 	}
 
 	got := totalRead.Load()
-	if got < total/4 {
-		t.Fatalf("consumer read %d samples, expected at least %d", got, total/4)
+	// This is a lossy, non-blocking overflow ring: Write never blocks and
+	// overwrites the oldest unread data, so a consumer that loses the race
+	// legitimately drops most samples (RingBuffer.Write doc). Under scheduler
+	// starvation — e.g. this test running inside the full `make test-real`
+	// suite where hundreds of goroutines contend — the producer can outrun the
+	// consumer entirely; the only guaranteed floor is one full buffer drained
+	// after the producer finishes. Asserting a keep-pace threshold (total/4)
+	// made this test flaky (observed 576 reads under load). Assert the real
+	// contract: the buffer is drainable and data flows.
+	if got < capacity {
+		t.Fatalf("consumer read %d samples, expected at least one full buffer (%d)", got, capacity)
 	}
 	t.Logf("consumer read %d / %d samples", got, total)
 }

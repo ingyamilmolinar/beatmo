@@ -36,7 +36,7 @@ func TestGridHelpButtonClickThroughUpdate(t *testing.T) {
 	// Press frame: HandleInputResult fires OnClick on the press edge.
 	g.Update()
 
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("left-click on the grid help button (via real Update) should open the shortcuts overlay")
 	}
 }

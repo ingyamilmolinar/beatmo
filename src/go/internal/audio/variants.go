@@ -39,10 +39,13 @@ func (v CVariantInstrument) NewVoice(bpm, sampleRate int) Voice {
 
 	// Try cache hit first (returns round-robin selected variant).
 	if buf, ok := globalVoiceCache.Get(key); ok {
-		// If not all variants are rendered yet, render one more in the background.
-		if !globalVoiceCache.IsFull(key) {
-			v.renderAndCache(key, bpm, sampleRate)
-		}
+		// Deliberately NO variant top-up on a hit: this runs on the audioLoop
+		// dispatch goroutine, where an extra renderAndCache is a synchronous
+		// ~13-20ms C render stall (the class of stall the timing-parity gate
+		// panics on), and the C renderers seed ma_noise identically per call so
+		// the extra variants are byte-identical anyway (pinned by
+		// TestLegacyRendersAreDeterministicAcrossCalls). Revisit only when a
+		// per-variant seed input exists — and fill off-thread if so.
 		return &cVoice{buf: buf}
 	}
 
@@ -94,9 +97,8 @@ func (v CVariantInstrument) NewVoiceWithParams(bpm, sampleRate int, params Synth
 	}
 	key := voiceCacheKey{instrumentID: v.Name, bpm: bpm, sampleRate: sampleRate, paramsHash: hashRecipeParams(params.ToRecipeParams())}
 	if buf, ok := globalVoiceCache.Get(key); ok {
-		if !globalVoiceCache.IsFull(key) {
-			v.renderParamAndCache(key, bpm, sampleRate, params)
-		}
+		// No variant top-up on a hit — same dispatch-goroutine stall rationale
+		// as NewVoice above.
 		return &cVoice{buf: buf}
 	}
 	buf := v.renderParamAndCache(key, bpm, sampleRate, params)

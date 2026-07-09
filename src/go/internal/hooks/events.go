@@ -42,6 +42,12 @@ const (
 	EventEdgeAdded         Kind = "edge.added"
 	EventEdgeDeleted       Kind = "edge.deleted"
 
+	// Node groups (marquee multi-select). All three are document-scope,
+	// undoable, non-verbose.
+	EventGroupCreated Kind = "group.created"
+	EventGroupChanged Kind = "group.changed"
+	EventGroupDeleted Kind = "group.deleted"
+
 	// Drum rows.
 	EventRowAdded            Kind = "row.added"
 	EventRowDeleted          Kind = "row.deleted"
@@ -191,6 +197,7 @@ var KindAll = []Kind{
 	EventNodeAdded, EventNodeDeleted, EventNodeMoved, EventNodeTypeChanged,
 	EventNodeParamsChanged, EventStartNodeChanged,
 	EventEdgeAdded, EventEdgeDeleted,
+	EventGroupCreated, EventGroupChanged, EventGroupDeleted,
 	EventRowAdded, EventRowDeleted, EventRowInstrumentChange, EventRowMute, EventRowSolo,
 	EventMasterVolumeChange, EventEQBandChange,
 	EventInsertEffectAdded, EventInsertEffectRemoved, EventInsertEffectParam,
@@ -233,7 +240,9 @@ var KindAll = []Kind{
 // + ui.search (search field query changed, coalesced) = 64.
 // + ui.text (generic text-field commit, Enter/blur) = 65.
 // + ui.view (mobile view-mode switch) = 66.
-const NumNonVerbose = 66
+// + group.created + group.changed + group.deleted (marquee multi-select
+// node groups) = 69.
+const NumNonVerbose = 69
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
 // kinds that the default sink filters out.
@@ -336,6 +345,13 @@ type NodeParamsPayload struct {
 	LogicP     float64 `json:"logic_p,omitempty"`
 	GrooveKind string  `json:"groove_kind,omitempty"`
 	GroovePct  float64 `json:"groove_pct,omitempty"`
+}
+
+// GroupPayload describes a node-group mutation.
+type GroupPayload struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Nodes []int  `json:"nodes,omitempty"`
 }
 
 // EdgeEdit is the payload for edge add/delete events.

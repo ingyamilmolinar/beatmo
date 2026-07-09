@@ -91,7 +91,7 @@ func TestSnapshotJSONL(t *testing.T) {
 	s.PushSamples(scope.StageMaster, "master", samples)
 
 	// Start and let one tick fire.
-	go s.Run()
+	s.Start()
 	time.Sleep(120 * time.Millisecond)
 	s.Stop()
 

@@ -26,26 +26,41 @@ import (
 
 // Tight budgets. Each is set just above the measured stripped+gzipped number,
 // so an UNSTRIPPED or UNCOMPRESSED-thinking regression fails the gate. Bytes
-// quoted are from `make wasm` (-s -w) on 2026-06-17. Each cites its basis.
+// quoted are from `make wasm` (-s -w) on 2026-07-01. Each cites its basis.
+//
+// 2026-07-01: budgets ratcheted DOWN ~8 MiB raw / ~1.7 MiB gzip after stripping
+// desktop/dev-only code that was leaking into the browser build:
+//   - cmd/beatmo.go unconditionally imported net/http + net/http/pprof +
+//     runtime/pprof (the PPROF=1 localhost:6060 server and file CPU profiling --
+//     both meaningless in a browser). Moved behind //go:build !js (profiling.go
+//     + beatmo_record_bench.go) with js no-op stubs.
+//   - internal/ui/textcache.go imported ebitenutil solely for a never-hit debug
+//     -font fallback; ebitenutil's sibling NewImageFromURL drags in net/http.
+// Together these pulled net + crypto/tls + runtime/pprof's profile machinery
+// (~4-5 MiB raw) into main.wasm for zero browser benefit. See the //go:build js
+// stubs in src/go/cmd/ for the pattern.
 const (
-	// main.wasm raw size. Stripped: 30,136,514 B (28.74 MiB) as of 2026-06-24,
-	// up from 29,462,878 B (28.10 MiB) on 2026-06-17 -- the add-core-node-types
-	// branch replaced 8 small genre templates with 15+ larger song-recreation
-	// templates (~656 KiB embedded JSON) plus the musicxml parser, gen-showcase,
-	// and 3 new synth instruments. This is legitimate content growth: the gzip
-	// transfer size (what users download) stayed within budget, confirming it is
-	// well-compressing data, not code bloat. An unstripped build still exceeds
-	// this, so the gate continues to enforce -s -w.
-	defaultWasmRawMaxBytes = 30670848 // 29.25 MiB
+	// main.wasm raw size. Stripped: 22,606,472 B (21.56 MiB) as of 2026-07-01;
+	// 23,139,178 B (22.07 MiB) as of 2026-07-06 (synth-panel + loudness-
+	// normalization + sp_* DSP-primitives work); 26,085,653 B (24.88 MiB) as of
+	// 2026-07-09 (synth-pipeline overhaul + instrument tuning: the modular voice
+	// DSP + expanded instrument/recipe tables); 26,459,907 B (25.23 MiB) as of
+	// 2026-07-11 (canonical `make wasm` build of the overhaul HEAD -- the 07-09
+	// number was measured from a pre-final build and under-recorded the shipped
+	// size by ~0.35 MiB). An unstripped build still far exceeds this, so the gate
+	// continues to enforce -s -w.
+	defaultWasmRawMaxBytes = 26738688 // 25.50 MiB (~0.27 MiB headroom over the 25.23 MiB canonical build)
 
 	// main.wasm gzip(BestCompression) size -- the bytes a user on a
 	// gzip-serving CDN actually downloads; the number that drives load time.
-	// Stripped: ~6.47 MiB. Unstripped (~6.61 MiB) exceeds this.
-	defaultWasmGzipMaxBytes = 6868172 // 6.55 MiB
+	// Stripped: 5,235,898 B (4.99 MiB) 2026-07-06; 5,496,177 B (5.24 MiB)
+	// 2026-07-09 (synth-pipeline overhaul).
+	defaultWasmGzipMaxBytes = 5609242 // 5.35 MiB
 
 	// Sum of gzip(BestCompression) sizes of every shipped asset (wasm + JS +
-	// html) -- the total a cold visitor transfers. Stripped total: ~6.71 MiB.
-	defaultAssetsGzipMaxBytes = 7130316 // 6.80 MiB
+	// html) -- the total a cold visitor transfers. Stripped total: 5,503,664 B
+	// (5.25 MiB) 2026-07-06; 5,779,343 B (5.51 MiB) 2026-07-09.
+	defaultAssetsGzipMaxBytes = 5898240 // 5.63 MiB
 )
 
 func envBytes(t *testing.T, name string, def int64) int64 {

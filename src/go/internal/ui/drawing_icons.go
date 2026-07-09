@@ -508,3 +508,18 @@ var drawLoudestIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color
 	iconFillRoundedRect(dst, c, 15, 7, 3, 13, 0.5, col)
 	iconStrokeLine(dst, c, 3, 5, 20, 5, col)
 }
+
+// drawTemplateIcon renders a template/preset card: a rounded-rect chassis
+// with two content rules and a leading note dot. Deliberately distinct
+// from IconRows (three bare lines = the rows VIEW) so "Load template"
+// carries its own glyph per the one-icon-one-role rule.
+var drawTemplateIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeOpenRoundedRect(dst, c, 4, 3, 16, 18, float32(IconCornerRadius), "", col)
+	iconStrokeLine(dst, c, 7.5, 9, 16.5, 9, col)
+	iconStrokeLine(dst, c, 7.5, 13, 16.5, 13, col)
+	iconFillCircle(dst, c, 9, 16.5, 1.2, col)
+}

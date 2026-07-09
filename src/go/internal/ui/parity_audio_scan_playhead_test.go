@@ -40,7 +40,7 @@ func TestParityDetectsAudioMismatchWhenViewIsPannedAway(t *testing.T) {
 
 	abs := 4
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
-	g.recordParityAudio(0, abs, 1.0, "kick", 1, 0, 1, g.audioGen.Load())
+	g.recordParityAudio(0, abs, 1.0, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 
 	// Pan DrumView far away from the playhead so the rendered window doesn't
 	// include abs=4.

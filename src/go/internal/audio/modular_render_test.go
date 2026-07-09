@@ -311,6 +311,39 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		// Phase-8F drift: both params only have effect when voices>=2 and the
 		// complementary param is >0 (seeded in modulatorBase below).
 		"unison_drift_rate": 6, "unison_drift_depth": 15,
+		// Phase-13 physical-model OSC (osc_type 11 = render_sax): targets off the
+		// shipped defaults, within the ParamDef ranges. modulatorBase sets
+		// osc_type=11 so render_sax is the active voice.
+		"osc_sax_blow": 0.4, "osc_sax_reed_off": 0.4, "osc_sax_reed_slope": 0.55,
+		"osc_sax_reflect": -0.7, "osc_sax_breath": 0.4, "osc_sax_loss": 0.9,
+		// Phase-14 bowed-string (osc_type 7 = render_bowed_string): targets off the
+		// shipped defaults, within the ParamDef ranges. modulatorBase sets osc_type=7.
+		"osc_bow_pos": 0.2, "osc_bow_slope": 4.5, "osc_bow_vel": 0.4, "osc_bow_loss": 0.75,
+		// Phase-15 FORMANT stage: the numerics only have authority when the
+		// stage is enabled with mix>0 (modulatorBase seeds enabled=1, mix=0.6
+		// over a saw). The toggle itself is tested by flipping the ACTIVE stage
+		// OFF (base enabled=1 → target 0 = exact bypass), because its numerics
+		// identity-default to 0 so a bare 0→1 flip is inert. morph_rate/morph_to
+		// are interdependent (the morph LFO only retunes when BOTH are set) —
+		// each seeds the complementary param in modulatorBase.
+		"formant_enabled": 0, "formant_vowel": 4, "formant_voice_type": 3,
+		"formant_mix": 1, "formant_shift": 2, "formant_breath": 1,
+		"formant_sing": 1, "formant_morph_rate": 4, "formant_morph_to": 4,
+		// Phase-15 ENSEMBLE humanization: scatter/vibrato only have authority
+		// when unison is active with mix>0 (modulatorBase seeds voices=3,
+		// mix=0.7 over a saw). Vibrato rate/depth are interdependent (both
+		// need to be >0 for ens_vib_on) — modulatorBase seeds the
+		// complementary param, same pattern as unison_drift_*. humanize only
+		// has authority once vibrato is already on, so modulatorBase seeds
+		// both rate and depth for that param.
+		"ens_scatter": 10, "ens_vib_rate": 5.5, "ens_vib_depth": 8, "ens_humanize": 0.8,
+		// Phase-16 voice-realism: ens_jitter reuses the "ens_" prefix context
+		// below (unison active, voices=3, mix=0.7) — jitter reaches the output
+		// only through the (side- and center-voice) unison path. formant_dry
+		// reuses the "formant_" prefix context (formant_enabled=1, mix=0.6) —
+		// target 0 fully removes the dry blend, contrasting with the identity
+		// default 1.
+		"ens_jitter": 0.6, "formant_dry": 0,
 	}
 	isModulatorNumeric := func(name string) bool { _, ok := modulatorTarget[name]; return ok }
 	modulatorBase := func(name string) RecipeParams {
@@ -338,6 +371,34 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 		case strings.HasPrefix(name, "bow_"):
 			rp["osc_type"] = 1 // saw (energy for the bow modulator to shape)
 			rp["env_enabled"] = 0
+		case strings.HasPrefix(name, "osc_sax_"):
+			// Sax physical model (osc_type 11 = render_sax): the osc_sax_* args
+			// only have authority when the sax OSC is active. Enable it + steady
+			// output so mutating a sax knob audibly changes the raw tone.
+			rp["osc_type"] = 11
+			rp["env_enabled"] = 0
+		case strings.HasPrefix(name, "osc_bow_"):
+			// Bowed-string physical model (osc_type 7 = render_bowed_string): the
+			// osc_bow_* args only have authority when the bowed OSC is active.
+			rp["osc_type"] = 7
+			rp["env_enabled"] = 0
+		case strings.HasPrefix(name, "formant_"):
+			// Phase-15 FORMANT stage: active vowel bank over a harmonically rich
+			// saw so retuning the bank is audible. mix 0.6 (not 1) so mutating
+			// mix itself to 1 also registers.
+			rp["osc_type"] = 1     // saw (harmonics for the formants to shape)
+			rp["env_enabled"] = 0  // steady output for clean comparison
+			rp["formant_enabled"] = 1
+			rp["formant_mix"] = 0.6
+			// The morph LFO retunes the bank only when rate>0 AND morph_to
+			// differs from vowel (0). Seed the complementary param so the one
+			// under test has authority (same pattern as unison_drift_*).
+			if name == "formant_morph_rate" {
+				rp["formant_morph_to"] = 4
+			}
+			if name == "formant_morph_to" {
+				rp["formant_morph_rate"] = 4
+			}
 		case strings.HasPrefix(name, "body_"):
 			// Body-resonator bank: body_model and body_mix are interdependent
 			// (the bank runs only when model>=1 AND mix>0). Activate both with a
@@ -360,6 +421,24 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 			}
 			if name == "unison_drift_depth" {
 				rp["unison_drift_rate"] = 2 // seed rate so depth mutation registers
+			}
+		case strings.HasPrefix(name, "ens_"):
+			// Phase-15 ENSEMBLE humanization: scatter is SIDE-voice-only, so it
+			// only reaches the output when unison is active with mix>0 (blending
+			// side voices in). Vibrato applies to the center voice too, but keep
+			// the same active-ensemble context for consistency.
+			rp["osc_type"] = 1      // saw (harmonically rich; side-voice detuning audible)
+			rp["unison_voices"] = 3 // enable unison path (>=2 side voices)
+			rp["unison_mix"] = 0.7  // blend the ensemble in so side-voice changes are audible
+			switch name {
+			case "ens_vib_rate":
+				rp["ens_vib_depth"] = 8 // seed depth so rate mutation registers (ens_vib_on needs both)
+			case "ens_vib_depth":
+				rp["ens_vib_rate"] = 5 // seed rate so depth mutation registers (ens_vib_on needs both)
+			case "ens_humanize":
+				// humanize only has authority once vibrato is already on.
+				rp["ens_vib_rate"] = 5
+				rp["ens_vib_depth"] = 8
 			}
 		}
 		return rp
@@ -718,6 +797,35 @@ func TestRenderModularP_EveryParamMutatesInContext(t *testing.T) {
 				rp[name] = 0.55
 				return rp, 1.4, true // more saturation drive
 			}
+		case "kick_mode_detune", "kick_mode_gain", "kick_mode_decay":
+			// Phase-11 modal-kick fields: only read by the source==5 variant-6
+			// (modal) voice, and only when the resonant mode is audible
+			// (mode_gain > 0). Build a variant-6 kick slot with the resonant mode
+			// active, then move each field to a value that changes output.
+			activateSlotKick(rp, k)
+			gp := func(f string) string { return "gen" + strconv.Itoa(k) + "_" + f }
+			rp[gp("kick_variant")] = 6
+			rp[gp("kick_mode_detune")] = 0.11
+			rp[gp("kick_mode_gain")] = 0.8
+			rp[gp("kick_mode_decay")] = 4.0
+			switch field {
+			case "kick_mode_detune":
+				rp[name] = 0.11
+				return rp, 0.4, true // very different mode split → different beating
+			case "kick_mode_gain":
+				rp[name] = 0.8
+				return rp, 2.0, true // much louder resonant mode
+			case "kick_mode_decay":
+				rp[name] = 4.0
+				return rp, 40, true // resonant mode rings far shorter
+			}
+		case "kick_reverb":
+			// Phase-12 reverb: only read by the source==5 variant-7 (acoustic)
+			// voice. Build a variant-7 kick slot, then turn the reverb tail up.
+			activateSlotKick(rp, k)
+			rp["gen"+strconv.Itoa(k)+"_kick_variant"] = 7
+			rp[name] = 0.0
+			return rp, 0.8, true // dry → a strong room tail
 		case "tom_variant", "tom_sweep", "tom_ring", "tom_o1", "tom_o2",
 			"tom_stick", "tom_room":
 			// Phase-4 808-style tom voice fields: only have authority when the

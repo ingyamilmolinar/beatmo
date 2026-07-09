@@ -44,10 +44,19 @@ func TestVoiceCache_ClearInstrumentUnknownIsNoop(t *testing.T) {
 	}
 }
 
-func TestSetInstrumentParam_InvalidatesGlobalVoiceCache(t *testing.T) {
+// TestSetInstrumentParam_DoesNotBlanketInvalidate documents the neighborhood-
+// cache behavior change: a single live param edit (the knob-drag hot path) no
+// longer clears the whole instrument's cached voices. The edited params map to a
+// DIFFERENT cache key (full paramsHash), so dispatch renders the new sound under
+// that key while old-value entries are RETAINED (bounded by the LRU byte
+// budget). Retaining them is what lets a pre-warmed neighbor survive a drag and
+// hit instead of cold-rendering. Blanket-clearing here was the root of the
+// 93%-miss knob-drag storm. Contrast ResetInstrumentParams (below), which still
+// clears.
+func TestSetInstrumentParam_DoesNotBlanketInvalidate(t *testing.T) {
 	t.Cleanup(func() { ResetInstrumentParams("test-cache-snare") })
 
-	// Seed the global cache with a snare entry.
+	// Seed the global cache with a snare entry (old-params key).
 	k := voiceCacheKey{instrumentID: "test-cache-snare", sampleRate: 44100}
 	globalVoiceCache.Put(k, []float32{0.5})
 	if _, ok := globalVoiceCache.Get(k); !ok {
@@ -56,8 +65,9 @@ func TestSetInstrumentParam_InvalidatesGlobalVoiceCache(t *testing.T) {
 
 	SetInstrumentParam("test-cache-snare", "pitch", 1)
 
-	if _, ok := globalVoiceCache.Get(k); ok {
-		t.Errorf("SetInstrumentParam did not invalidate globalVoiceCache for instrument")
+	if _, ok := globalVoiceCache.Get(k); !ok {
+		t.Errorf("a single live param edit must NOT blanket-clear the cache — " +
+			"old-value entries are retained (LRU-bounded) so pre-warmed neighbors survive a drag")
 	}
 }
 

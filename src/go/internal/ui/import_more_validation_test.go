@@ -63,8 +63,11 @@ func TestImportClampsRowAndNodeParams(t *testing.T) {
 		t.Fatalf("missing node")
 	}
 	if mn, ok := g.graph.GetNodeByID(any.ID); ok {
-		if mn.Params.Volume < 0 || mn.Params.Volume > 4 {
-			t.Fatalf("node volume not clamped: %v", mn.Params.Volume)
+		// Node volume is floored at 0 (the imported -5 becomes 0) but has no
+		// upper clamp — per-node gain is intentionally allowed to go arbitrarily
+		// high. (Row/instrument volume, checked above, is still clamped to [0,4].)
+		if mn.Params.Volume < 0 {
+			t.Fatalf("node volume not floored at 0: %v", mn.Params.Volume)
 		}
 		if mn.Params.Duration <= 0 {
 			// Duration should not be <=0 after import; default remains 1 (set by model.New node params default)

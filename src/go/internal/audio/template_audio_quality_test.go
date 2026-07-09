@@ -338,7 +338,7 @@ func renderTemplateAllHitsPeak(t *testing.T, d templateDoc) float64 {
 		if v == nil {
 			continue
 		}
-		m.Schedule(in.ID, &scaledVoice{v: v, gain: instVol(in)}, 0)
+		m.Schedule(in.ID, &scaledVoice{v: v, gain: instVol(in)}, 0, -1, -1)
 	}
 	StartOutputCapture()
 	readMixerSamples(m, sr) // 1s captures the full transient
@@ -365,7 +365,7 @@ func renderTemplateInstrumentSolo(t *testing.T, d templateDoc, in templateInst, 
 		if v == nil {
 			break
 		}
-		m.Schedule(in.ID, &scaledVoice{v: v, gain: instVol(in)}, delay)
+		m.Schedule(in.ID, &scaledVoice{v: v, gain: instVol(in)}, delay, -1, -1)
 	}
 	StartOutputCapture()
 	readMixerSamples(m, totalSamples)

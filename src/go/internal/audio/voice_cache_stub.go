@@ -11,6 +11,9 @@ func VoiceCacheStatsForTest() (entries int, totalBytes int64) {
 	return 0, 0
 }
 
+// SetVoiceCacheBudgetBytes is a no-op on stub/WASM builds (no native cache).
+func SetVoiceCacheBudgetBytes(n int64) {}
+
 // LatestVoiceSample returns the most recently rendered cached sample
 // buffer for the given instrument. Under -tags test / GOOS=js, the
 // real voice cache doesn't exist, so this returns nil and UI callers

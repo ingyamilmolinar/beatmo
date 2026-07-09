@@ -41,6 +41,11 @@ var jsNativeCatalogueEntries = map[string]bool{
 	"idbGetAllSamples":     true,
 	"idbPutSample":         true,
 	"registerSamplePCM":    true,
+	// Parity timing-sync: WebAudio emission-timing ring lives in audio.js
+	// (window.getTimingTraces / window.resetTimingTraces), pulled by the
+	// //go:build js Stage-D drain — no Go-side js.Global().Set registration.
+	"getTimingTraces":   true,
+	"resetTimingTraces": true,
 }
 
 var jsGlobalSetRe = regexp.MustCompile(`js\.Global\(\)\.Set\("([^"]+)"`)

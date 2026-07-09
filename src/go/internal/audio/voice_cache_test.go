@@ -9,8 +9,8 @@ import (
 
 func newTestCache() *voiceCache {
 	return &voiceCache{
-		entries: make(map[voiceCacheKey]*roundRobinEntry),
-		maxSize: 256,
+		entries:    make(map[voiceCacheKey]*roundRobinEntry),
+		maxEntries: 256,
 	}
 }
 
@@ -226,24 +226,113 @@ func TestVoiceCachePutIgnoresExtraVariants(t *testing.T) {
 	}
 }
 
-func TestVoiceCacheMaxSizeEvictionBlock(t *testing.T) {
+// TestGlobalVoiceCacheByteBudgetSoak is the OOM guard: warming far more distinct
+// keys than fit under the budget keeps retained bytes <= budget (LRU evicts the
+// rest). Guards against the predictive neighborhood / knob-drag key churn
+// hoarding memory now that live param edits no longer blanket-clear.
+func TestGlobalVoiceCacheByteBudgetSoak(t *testing.T) {
+	globalVoiceCache.mu.Lock()
+	prevBudget := globalVoiceCache.budgetBytes
+	globalVoiceCache.mu.Unlock()
+	const budget = 2 << 20 // 2 MB
+	SetVoiceCacheBudgetBytes(budget)
+	t.Cleanup(func() {
+		globalVoiceCache.Clear()
+		SetVoiceCacheBudgetBytes(prevBudget)
+	})
+
+	const bufLen = 44100 // ~176 KB/variant, organ-sized
+	for i := 0; i < 500; i++ {
+		key := voiceCacheKey{instrumentID: "soak", bpm: i, sampleRate: 44100}
+		globalVoiceCache.Put(key, make([]float32, bufLen))
+	}
+	entries, bytes := VoiceCacheStatsForTest()
+	if bytes > budget {
+		t.Fatalf("byte budget breached under warm soak: %d bytes > %d budget (%d entries)", bytes, budget, entries)
+	}
+	// ~176 KB entries under a 2 MB budget → ~11 entries retained, not 500.
+	if entries >= 500 {
+		t.Fatalf("no eviction happened (%d entries) — LRU not enforcing the byte budget", entries)
+	}
+	t.Logf("500 warms of ~176KB each -> retained %d entries, %d bytes (budget %d)", entries, bytes, budget)
+}
+
+func TestVoiceCacheMaxEntriesEvictsLRU(t *testing.T) {
+	// Deterministic LRU clock: each Put/Get advances the tick.
+	restore := nowNS
+	var tick int64
+	nowNS = func() int64 { tick++; return tick }
+	defer func() { nowNS = restore }()
+
 	vc := &voiceCache{
-		entries: make(map[voiceCacheKey]*roundRobinEntry),
-		maxSize: 4,
+		entries:    make(map[voiceCacheKey]*roundRobinEntry),
+		maxEntries: 4,
 	}
 
-	// Fill to max.
+	// Fill to max: a, b, c, d (a is oldest).
+	keys := make([]voiceCacheKey, 4)
 	for i := 0; i < 4; i++ {
-		key := voiceCacheKey{instrumentID: string(rune('a' + i)), sampleRate: 44100}
-		vc.Put(key, []float32{1})
+		keys[i] = voiceCacheKey{instrumentID: string(rune('a' + i)), sampleRate: 44100}
+		vc.Put(keys[i], []float32{1})
+	}
+	// Touch 'a' so 'b' becomes the LRU victim.
+	if _, ok := vc.Get(keys[0]); !ok {
+		t.Fatal("a should be present")
 	}
 
-	// 5th key should be silently dropped.
+	// 5th key: at maxEntries, evict the LRU ('b'), STORE the new one.
 	overflow := voiceCacheKey{instrumentID: "overflow", sampleRate: 44100}
 	vc.Put(overflow, []float32{1})
 
-	if _, ok := vc.Get(overflow); ok {
-		t.Error("overflow key should not be stored when cache is at maxSize")
+	if _, ok := vc.Get(overflow); !ok {
+		t.Error("new key should be stored (evicting LRU), not dropped")
+	}
+	if _, ok := vc.Get(keys[1]); ok {
+		t.Error("LRU entry 'b' should have been evicted")
+	}
+	if _, ok := vc.Get(keys[0]); !ok {
+		t.Error("recently-touched 'a' should survive")
+	}
+}
+
+// TestVoiceCacheByteBudgetEvictsLRU verifies the byte ceiling: warming past the
+// budget evicts least-recently-accessed entries, retained bytes stay under
+// budget, and a recently-Get entry survives while a stale one is evicted.
+func TestVoiceCacheByteBudgetEvictsLRU(t *testing.T) {
+	restore := nowNS
+	var tick int64
+	nowNS = func() int64 { tick++; return tick }
+	defer func() { nowNS = restore }()
+
+	const bufLen = 1000 // 4000 bytes/variant
+	vc := &voiceCache{
+		entries:     make(map[voiceCacheKey]*roundRobinEntry),
+		maxEntries:  100000,
+		budgetBytes: 5 * bufLen * 4, // room for ~5 single-variant entries
+	}
+
+	mk := func(i int) voiceCacheKey {
+		return voiceCacheKey{instrumentID: "x", bpm: i, sampleRate: 44100}
+	}
+	// Put entry 0 and keep touching it so it stays "hot".
+	vc.Put(mk(0), make([]float32, bufLen))
+	for i := 1; i < 50; i++ {
+		vc.Put(mk(i), make([]float32, bufLen))
+		vc.Get(mk(0)) // keep entry 0 recent
+	}
+
+	vc.mu.RLock()
+	cur := vc.curBytes
+	budget := vc.budgetBytes
+	vc.mu.RUnlock()
+	if cur > budget {
+		t.Fatalf("curBytes %d exceeds budget %d — byte ceiling not enforced", cur, budget)
+	}
+	if _, ok := vc.Get(mk(0)); !ok {
+		t.Error("hot entry 0 should survive eviction (kept recently accessed)")
+	}
+	if _, ok := vc.Get(mk(1)); ok {
+		t.Error("stale early entry should have been evicted under the byte budget")
 	}
 }
 

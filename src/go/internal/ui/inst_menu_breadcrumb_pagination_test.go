@@ -74,22 +74,23 @@ func TestInstMenuComp_BreadcrumbStripClickPopsToCategories(t *testing.T) {
 	}
 }
 
-func TestInstMenuComp_PaginationChipsRenderForLargeList(t *testing.T) {
-	// 100 instruments + small viewport guarantees >7 pages. We pin the
-	// instrument list large enough that the pagination strip activates;
-	// chip vs jump-input branch tested by PageCount.
+func TestInstMenuComp_LargeListScrollsWithoutPaginationStrip(t *testing.T) {
+	// The pagination strip was removed (2026-07-04 design pass): it was a
+	// second navigation affordance layered on a list that already scrolls,
+	// and its bottom-band layout clipped off-panel/off-screen. A large list
+	// must instead expose the scrollbar, and every laid-out row must sit
+	// inside the panel bounds.
 	comp := makeInstMenuWithFiltered(t, 100)
 	if comp.PageCount() <= 1 {
 		t.Fatalf("precondition: many instruments should produce >1 page; got %d", comp.PageCount())
 	}
-	if comp.paginationRect.Empty() {
-		t.Fatalf("paginationRect must be non-empty when PageCount>1")
+	if !comp.scroll.HasScroll() {
+		t.Fatal("large list must be scrollable")
 	}
-	if comp.PageCount() > pageChipsThreshold && comp.jumpInputRect.Empty() {
-		t.Fatalf("jump-input variant expected for PageCount=%d", comp.PageCount())
-	}
-	if comp.PageCount() <= pageChipsThreshold && len(comp.pageChipRects) == 0 {
-		t.Fatalf("chip variant expected for PageCount=%d", comp.PageCount())
+	for i, b := range comp.InstBtns() {
+		if !b.Rect().In(comp.Bounds()) {
+			t.Fatalf("row %d rect %v outside panel bounds %v", i, b.Rect(), comp.Bounds())
+		}
 	}
 }
 

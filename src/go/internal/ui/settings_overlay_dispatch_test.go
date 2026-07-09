@@ -36,7 +36,7 @@ func TestSettingsLanguagePillRealClickDispatch(t *testing.T) {
 	g.toggleSettingsOverlay()
 	advanceFrames(g, 2)
 
-	ov, ok := g.drum.tree.Portal().TopOverlay().(*SettingsOverlay)
+	ov, ok := g.drum.portal().TopOverlay().(*SettingsOverlay)
 	if !ok || ov == nil {
 		t.Fatal("settings overlay is not the top portal overlay after toggle")
 	}
@@ -74,7 +74,7 @@ func TestSettingsEnglishPillRealClickDispatch(t *testing.T) {
 	g.toggleSettingsOverlay()
 	advanceFrames(g, 2)
 
-	ov, ok := g.drum.tree.Portal().TopOverlay().(*SettingsOverlay)
+	ov, ok := g.drum.portal().TopOverlay().(*SettingsOverlay)
 	if !ok || ov == nil {
 		t.Fatal("settings overlay is not the top portal overlay after toggle")
 	}

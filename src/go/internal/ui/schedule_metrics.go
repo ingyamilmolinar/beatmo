@@ -29,9 +29,9 @@ const (
 // since the sequencer + audio queue both live in the Go runtime even
 // under WASM.
 type ScheduleMetricsSnapshot struct {
-	Count          int64   `json:"count"`
-	Overdue        int64   `json:"overdue"`
-	SmallLeadCount int64   `json:"smallLeadCount"`
+	Count          int64 `json:"count"`
+	Overdue        int64 `json:"overdue"`
+	SmallLeadCount int64 `json:"smallLeadCount"`
 
 	// Stage C — schedule lead (existing).
 	MinLead    float64 `json:"minLead"`
@@ -63,6 +63,13 @@ type ScheduleMetricsSnapshot struct {
 	SeqFireP90    float64 `json:"seqFireP90"`
 	SeqFireP99    float64 `json:"seqFireP99"`
 	SeqFireStdDev float64 `json:"seqFireStdDev"`
+
+	// Stage D — emission drift (idealWhen → sample emission), seconds.
+	EmitCount  int64   `json:"emitCount"`
+	EmitAvg    float64 `json:"emitAvg"`    // signed mean (systematic bias)
+	EmitAbsMax float64 `json:"emitAbsMax"` // max |drift|
+	EmitP99    float64 `json:"emitP99"`    // P99 of |drift|
+	EmitStdDev float64 `json:"emitStdDev"` // stddev of |drift|
 
 	// End-to-end latency = SeqFireLate + Bridge + max(0, -Lead).
 	// Sampled by combining contemporaneous observations; we approximate
@@ -106,6 +113,14 @@ type scheduleMetrics struct {
 	seqFireSumSq   float64
 	seqFireMax     float64
 	seqFireSamples []float64
+
+	// Stage D — emission drift (idealWhen → actual sample emission).
+	emitCount    int64
+	emitSumSig   float64 // signed sum, for systematic-bias mean
+	emitSumAbs   float64 // sum of |drift|, for stddev
+	emitSumSqAbs float64 // sum of squares of |drift|, for stddev
+	emitAbsMax   float64
+	emitSamples  []float64 // |drift| reservoir for percentile
 }
 
 // Observe records a Stage C scheduling event (audio dispatch → fire).
@@ -197,6 +212,53 @@ func (m *scheduleMetrics) ObserveSeqFireLate(lateSec float64) {
 	pushSample(&m.seqFireSamples, lateSec)
 }
 
+// ObserveEmitDrift records a Stage D observation: driftSec is the signed
+// wall-clock seconds between a beat's ideal scheduled moment and the actual
+// audio sample emission (emittedAt - idealWhen). Signed drift feeds the
+// systematic-bias mean; |drift| feeds the tail/max/stddev so symmetric
+// jitter cannot cancel out.
+func (m *scheduleMetrics) ObserveEmitDrift(driftSec float64) {
+	if math.IsNaN(driftSec) || math.IsInf(driftSec, 0) {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a := math.Abs(driftSec)
+	m.emitCount++
+	m.emitSumSig += driftSec
+	m.emitSumAbs += a
+	m.emitSumSqAbs += a * a
+	if a > m.emitAbsMax {
+		m.emitAbsMax = a
+	}
+	pushSample(&m.emitSamples, a)
+}
+
+// ResetPeaks zeroes only the per-stage session-monotonic MAX fields
+// (seqFireMax, maxLag, bridgeMax, emitAbsMax) — counts, sums, and the
+// percentile reservoirs are left untouched so mean/P99/stddev keep
+// integrating over their existing window.
+//
+// Called from bumpParityGen (game_mutation_gate.go) on every structural
+// mutation (node/edge/rule/group/BPM/length/insert-fx — every path that
+// routes through the mutation gate) so a spike latched by an edit-induced
+// scheduling stall — either recorded just before the edit, or slipping
+// through DURING the edit before the grace-window observation guards in
+// game_sequencer_schedule.go / game_audio_loop.go take effect — can never
+// survive to breach evalTimingStage's absMax dropout check (which fires
+// regardless of MinSamples) after grace expires. This is the deterministic
+// half of the C1 fix; the grace-window observation guards are the
+// preventive half. See design §3.4 ("universal suppression across all
+// stages") in docs/superpowers/specs/2026-07-10-parity-timing-sync-design.md.
+func (m *scheduleMetrics) ResetPeaks() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.maxLag = 0
+	m.bridgeMax = 0
+	m.seqFireMax = 0
+	m.emitAbsMax = 0
+}
+
 // Reset clears all collected data.
 func (m *scheduleMetrics) Reset() {
 	m.mu.Lock()
@@ -225,6 +287,13 @@ func (m *scheduleMetrics) Reset() {
 	m.seqFireSumSq = 0
 	m.seqFireMax = 0
 	m.seqFireSamples = m.seqFireSamples[:0]
+
+	m.emitCount = 0
+	m.emitSumSig = 0
+	m.emitSumAbs = 0
+	m.emitSumSqAbs = 0
+	m.emitAbsMax = 0
+	m.emitSamples = m.emitSamples[:0]
 }
 
 // Snapshot returns a point-in-time snapshot. Safe to call concurrently.
@@ -241,6 +310,8 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 		BridgeMax:      m.bridgeMax,
 		SeqFireCount:   m.seqFireCount,
 		SeqFireMax:     m.seqFireMax,
+		EmitCount:      m.emitCount,
+		EmitAbsMax:     m.emitAbsMax,
 	}
 
 	if m.count == 0 {
@@ -258,14 +329,19 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 		s.MaxLead = m.maxLead
 		s.AvgLead = m.sumLead / float64(m.count)
 		s.LeadStdDev = stddev(m.sumLead, m.sumLeadSq, m.count)
-		if len(m.lagSamples) > 0 {
-			s.AvgLag = m.sumLag / float64(len(m.lagSamples))
-		}
+		// Lag statistics are normalized over ALL dispatches in the window, not
+		// just the overdue ones. sumLag/len(lagSamples) is the conditional
+		// "mean lateness of the late beats" — under that reading a SINGLE 4ms
+		// blip in a 65-dispatch window reported AvgLag=LagP99=4ms and breached
+		// the 0.5ms MeanMax bound written for sustained drift (300 BPM bench
+		// crash, 2026-07-13). On-time dispatches contribute lag 0; the isolated
+		// blip belongs to MaxLag (dropout), which the emit cross-check governs.
+		s.AvgLag = m.sumLag / float64(m.count)
 		s.LeadP50 = percentileSample(m.leadSamples, 0.50)
 		s.LeadP90 = percentileSample(m.leadSamples, 0.90)
 		s.LeadP99 = percentileSample(m.leadSamples, 0.99)
-		s.LagP90 = percentileSample(m.lagSamples, 0.90)
-		s.LagP99 = percentileSample(m.lagSamples, 0.99)
+		s.LagP90 = lagPercentileAll(m.lagSamples, m.overdue, m.count, 0.90)
+		s.LagP99 = lagPercentileAll(m.lagSamples, m.overdue, m.count, 0.99)
 	}
 
 	if m.bridgeCount > 0 {
@@ -294,6 +370,16 @@ func (m *scheduleMetrics) Snapshot() ScheduleMetricsSnapshot {
 		s.SeqFireP50 = math.NaN()
 		s.SeqFireP90 = math.NaN()
 		s.SeqFireP99 = math.NaN()
+	}
+
+	if m.emitCount > 0 {
+		s.EmitAvg = m.emitSumSig / float64(m.emitCount)
+		s.EmitStdDev = stddev(m.emitSumAbs, m.emitSumSqAbs, m.emitCount)
+		s.EmitP99 = percentileSample(m.emitSamples, 0.99)
+	} else {
+		s.EmitAvg = math.NaN()
+		s.EmitStdDev = math.NaN()
+		s.EmitP99 = math.NaN()
 	}
 
 	// End-to-end P99: sum the per-stage P99s plus any overdue lag. This
@@ -335,6 +421,21 @@ func pushSample(buf *[]float64, v float64) {
 	} else {
 		(*buf)[rand.Intn(len(*buf))] = v //nolint:gosec // perf sampling, not crypto
 	}
+}
+
+// lagPercentileAll returns the q-quantile of the lag distribution over ALL
+// count dispatches, where the (count-overdue) on-time dispatches have lag 0
+// and the overdue tail is approximated by the lagSamples reservoir. Zero when
+// the overdue fraction is at most (1-q): the q-quantile dispatch was on-time.
+func lagPercentileAll(lagSamples []float64, overdue, count int64, q float64) float64 {
+	if count <= 0 || overdue <= 0 || len(lagSamples) == 0 {
+		return 0
+	}
+	tail := (1 - q) * float64(count) // dispatches strictly above the quantile
+	if float64(overdue) <= tail {
+		return 0
+	}
+	return percentileSample(lagSamples, 1-tail/float64(overdue))
 }
 
 // percentileSample returns the qth percentile from a sample buffer.

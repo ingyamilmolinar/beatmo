@@ -83,7 +83,16 @@ func buildInflightHighlightGame(t *testing.T, recordedAt time.Time) *Game {
 // the mismatch fires.
 func TestParityHighlightInFlightGraceFreshAudio(t *testing.T) {
 	assertDefaultParityState(t)
-	g := buildInflightHighlightGame(t, time.Now()) // freshly recorded
+	// Pin the RecordedAt-grace clock so "freshly recorded" is deterministic:
+	// the event's RecordedAt equals the pinned now, so the scan always sees it
+	// inside the 120ms window no matter how long the surrounding setup takes.
+	// Without pinning, a scan landing >120ms after the stamp (GC pause / a
+	// CPU-saturated test host) spuriously expires the grace and panics.
+	fixedNow := time.Now()
+	restoreNow := SetParityRecordNowForTest(func() time.Time { return fixedNow })
+	defer restoreNow()
+
+	g := buildInflightHighlightGame(t, fixedNow) // freshly recorded (pinned)
 	g.parityWatch = parityWatchPanic
 
 	// Without the grace, parityScan panics with highlight_vs_audio here.

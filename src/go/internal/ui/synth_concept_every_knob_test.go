@@ -26,7 +26,7 @@ func TestEveryKnobHasConceptInk(t *testing.T) {
 	r := image.Rect(0, 0, 160, 60)
 	for _, b := range bindings {
 		group := b.def.Group
-		rend := conceptRendererForGroup(group)
+		rend := synthFocusRendererForGroup(group)
 		rects := collectFilledRects(t, func() { rend(dst, r, "modular", b.def, nil) })
 		if countNonBgRects(rects) == 0 {
 			t.Errorf("knob %q (group %q) drew NO concept graphic at its default value", b.def.Name, group)

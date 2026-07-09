@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/beat"
@@ -21,6 +22,9 @@ type Engine struct {
 	Graph  *model.Graph
 	sched  *beat.Scheduler
 	Events chan Event
+	// subs is appended by Subscribe (caller goroutine) and read by the
+	// scheduler OnTick callback (run loop goroutine); subsMu guards it.
+	subsMu sync.Mutex
 	subs   []chan Event
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -75,12 +79,14 @@ func New(logger *game_log.Logger) *Engine {
 		default:
 		}
 		// broadcast to subscribers non-blockingly
+		e.subsMu.Lock()
 		for _, ch := range e.subs {
 			select {
 			case ch <- evt:
 			default:
 			}
 		}
+		e.subsMu.Unlock()
 	}
 
 	go e.run()
@@ -137,7 +143,7 @@ func (e *Engine) Stop() { e.sched.Stop() }
 func (e *Engine) SetBPM(bpm int) { e.sched.SetBPM(bpm) }
 
 // BPM returns the current scheduler BPM.
-func (e *Engine) BPM() int { return e.sched.BPM }
+func (e *Engine) BPM() int { return e.sched.CurrentBPM() }
 
 // Close terminates the engine goroutine and waits for it to exit. Bounded by
 // engineCloseJoinTimeout so a hung run() loop surfaces as a logged warning
@@ -179,6 +185,8 @@ func (e *Engine) Progress() float64 { return e.sched.Progress() }
 // events if the receiver falls behind.
 func (e *Engine) Subscribe() <-chan Event {
 	ch := make(chan Event, 16)
+	e.subsMu.Lock()
 	e.subs = append(e.subs, ch)
+	e.subsMu.Unlock()
 	return ch
 }

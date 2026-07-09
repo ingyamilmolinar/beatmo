@@ -13,6 +13,16 @@ import (
 // same glow+grow behavior is pixel-identical on both dividers.
 type SplitterHandle struct {
 	hoverAnim float64 // 0 = rest, 1 = fully hovered
+
+	// PillAnchorAbove hangs the pill above the divider line instead of
+	// centering it on the line. The main grid↔drum splitter sets this so
+	// the pill protrudes into the spacious grid pane rather than occluding
+	// transport-bar chrome below (the "Beat N · M:SS" readout — A6 in the
+	// 2026-07-04 screenshot critique). Hit/hover rects stay centered on the
+	// line (SplitterHandleRect), which just adds a few px of forgiveness
+	// below the drawn pill. Horizontal dividers only; the vertical form and
+	// the row↔EQ divider keep the centered pill.
+	PillAnchorAbove bool
 }
 
 // splitterHoverStep is the per-frame ramp for the hover animation. 1/6 settles
@@ -49,7 +59,13 @@ func (h *SplitterHandle) DrawHorizontalDivider(dst *ebiten.Image, x0, x1, y int)
 	drawRect(dst, image.Rect(x0, y-1, x1, y), genColorDividerShadow, true)
 	drawRect(dst, image.Rect(x0, y, x1, y+1), h.lineColor(), true)
 	drawRect(dst, image.Rect(x0, y+1, x1, y+2), WithAlpha(colAccent, AlphaSubtle), true)
-	h.drawHandle(dst, (x0+x1)/2, y, true)
+	pillCY := y
+	if h.PillAnchorAbove {
+		// Pill bottom flush with the shadow row (y-1): the whole body sits
+		// above the line, clear of the chrome band below.
+		pillCY = y - 1 - SplitterHandleThick()/2
+	}
+	h.drawHandle(dst, (x0+x1)/2, pillCY, true)
 }
 
 // DrawVerticalDivider is the side-by-side (left/right) counterpart of

@@ -82,8 +82,9 @@ func TestModularSynthParamDefs_ShapeAndDefaults(t *testing.T) {
 	}
 	// The four discrete params must carry enum labels (osc_type now includes
 	// the two noise generators; the five per-stage enable toggles are Off/On).
+	// Phase-15 added glottal-pulse osc_type 12 ("Voice"), bumping 12 -> 13.
 	enums := map[string]int{
-		"osc_type": 12, "fm_algorithm": 4, "amp_curve": 2, "filter_type": 3,
+		"osc_type": 13, "fm_algorithm": 4, "amp_curve": 2, "filter_type": 3,
 		"osc_enabled": 2, "fm_enabled": 2, "env_enabled": 2, "filter_enabled": 2, "drive_enabled": 2,
 		// Phase-8C modulator-stage toggles (Off/On).
 		"pitchenv_enabled": 2, "lfo_enabled": 2, "burst_enabled": 2,

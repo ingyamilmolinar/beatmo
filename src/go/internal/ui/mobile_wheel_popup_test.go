@@ -21,25 +21,64 @@ func wheelTestBinding(k *Knob) (*WheelBinding, *int) {
 	return b, &commits
 }
 
-func TestWheelDragUpIncreasesValue(t *testing.T) {
+// TestWheelDownGesturesAllIncrease locks the cross-input barrel invariant: a
+// DOWNWARD gesture raises the value ("the wheel turns down, higher numbers descend
+// to the center selector"). Finger drag DOWN and mouse/two-finger scroll DOWN must
+// BOTH increase. They read different sign sources — pointer-y (my increases
+// downward) vs ebiten.Wheel's wy (POSITIVE for a downward scroll on the target
+// device) — so this guards against re-inverting one path without the other (the
+// bug that recurred while tuning the wheel direction).
+func TestWheelDownGesturesAllIncrease(t *testing.T) {
+	// Finger drag DOWN (pointer y increases) increases.
+	k1 := newEndlessKnobForTest(0, 200, 1.0)
+	b1, _ := wheelTestBinding(k1)
+	w1 := NewMobileWheelPopup()
+	w1.Open(*b1, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
+	cx1 := w1.Rect().Min.X + 20
+	y0 := w1.Rect().Min.Y + w1.Rect().Dy()/2
+	w1.HandleInput(cx1, y0, true)
+	w1.HandleInput(cx1, y0+knobEndlessPxPerNotch*10, true) // drag DOWN
+	w1.HandleInput(cx1, y0+knobEndlessPxPerNotch*10, false)
+	if realValue(k1) <= 100 {
+		t.Fatalf("finger drag DOWN must increase, got %v", realValue(k1))
+	}
+
+	// Scroll DOWN (positive ebiten wy on the target => positive steps) increases —
+	// same direction as the finger drag.
+	k2 := newEndlessKnobForTest(0, 200, 1.0)
+	b2, _ := wheelTestBinding(k2)
+	w2 := NewMobileWheelPopup()
+	w2.Open(*b2, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
+	cx2 := w2.valRect.Min.X + 4
+	cy2 := (w2.valRect.Min.Y + w2.valRect.Max.Y) / 2
+	for i := 0; i < wheelStepEventsPerNotch+1; i++ {
+		w2.HandleWheel(cx2, cy2, 3) // scroll DOWN
+	}
+	if realValue(k2) <= 100 {
+		t.Fatalf("scroll DOWN (positive wy) must increase, got %v", realValue(k2))
+	}
+}
+
+func TestWheelDragDownIncreasesValue(t *testing.T) {
 	k := newEndlessKnobForTest(0, 200, 1.0) // value 0.5 -> real 100
 	b, _ := wheelTestBinding(k)
 	w := NewMobileWheelPopup()
 	w.Open(*b, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
 
 	cx := w.Rect().Min.X + 20
-	// press near vertical center, then drag the finger UP (y decreases) = increase.
+	// Barrel: higher values sit at the top. Dragging the finger DOWN (y increases)
+	// pulls those higher rows down toward the center selector => value increases.
 	y0 := w.Rect().Min.Y + w.Rect().Dy()/2
 	w.HandleInput(cx, y0, true)
-	w.HandleInput(cx, y0-knobEndlessPxPerNotch*10, true)
-	w.HandleInput(cx, y0-knobEndlessPxPerNotch*10, false)
+	w.HandleInput(cx, y0+knobEndlessPxPerNotch*10, true)
+	w.HandleInput(cx, y0+knobEndlessPxPerNotch*10, false)
 
 	if got := realValue(k); got <= 100 {
-		t.Fatalf("drag up should increase value past 100, got %v", got)
+		t.Fatalf("drag down should increase value past 100, got %v", got)
 	}
 }
 
-func TestWheelDragDownDecreasesValue(t *testing.T) {
+func TestWheelDragUpDecreasesValue(t *testing.T) {
 	k := newEndlessKnobForTest(0, 200, 1.0)
 	b, _ := wheelTestBinding(k)
 	w := NewMobileWheelPopup()
@@ -47,25 +86,32 @@ func TestWheelDragDownDecreasesValue(t *testing.T) {
 	cx := w.Rect().Min.X + 20
 	y0 := w.Rect().Min.Y + w.Rect().Dy()/2
 	w.HandleInput(cx, y0, true)
-	w.HandleInput(cx, y0+knobEndlessPxPerNotch*10, true)
-	w.HandleInput(cx, y0+knobEndlessPxPerNotch*10, false)
+	w.HandleInput(cx, y0-knobEndlessPxPerNotch*10, true)
+	w.HandleInput(cx, y0-knobEndlessPxPerNotch*10, false)
 	if got := realValue(k); got >= 100 {
-		t.Fatalf("drag down should decrease value below 100, got %v", got)
+		t.Fatalf("drag up should decrease value below 100, got %v", got)
 	}
 }
 
-func TestWheelReleaseCommitsOnce(t *testing.T) {
+// Transactional model: a drag+release previews the change but DEFERS the undo
+// commit; the single commit fires on Accept (Enter / tap-away), not on release.
+func TestWheelReleaseDefersCommitToAccept(t *testing.T) {
 	k := newEndlessKnobForTest(0, 200, 1.0)
 	b, commits := wheelTestBinding(k)
 	w := NewMobileWheelPopup()
 	w.Open(*b, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
 	cx := w.Rect().Min.X + 20
 	y0 := w.Rect().Min.Y + w.Rect().Dy()/2
+	gap := Profile().DensityValues().MobileWheelTickGap
 	w.HandleInput(cx, y0, true)
-	w.HandleInput(cx, y0-20, true)
-	w.HandleInput(cx, y0-20, false)
+	w.HandleInput(cx, y0-gap*20, true) // drag far enough to cross value notches
+	w.HandleInput(cx, y0-gap*20, false)
+	if *commits != 0 {
+		t.Fatalf("release must not commit (deferred to Accept), got %d", *commits)
+	}
+	w.Accept()
 	if *commits != 1 {
-		t.Fatalf("expected exactly 1 commit on release, got %d", *commits)
+		t.Fatalf("expected exactly 1 commit on Accept, got %d", *commits)
 	}
 }
 
@@ -77,8 +123,8 @@ func TestWheelClampsAtMax(t *testing.T) {
 	cx := w.Rect().Min.X + 20
 	y0 := w.Rect().Min.Y + w.Rect().Dy()/2
 	w.HandleInput(cx, y0, true)
-	w.HandleInput(cx, y0-knobEndlessPxPerNotch*100000, true)
-	w.HandleInput(cx, y0-knobEndlessPxPerNotch*100000, false)
+	w.HandleInput(cx, y0+knobEndlessPxPerNotch*100000, true) // drag down = increase toward max
+	w.HandleInput(cx, y0+knobEndlessPxPerNotch*100000, false)
 	if got := realValue(k); math.Abs(got-10) > 1e-6 {
 		t.Fatalf("clamp at max: got %v want 10", got)
 	}

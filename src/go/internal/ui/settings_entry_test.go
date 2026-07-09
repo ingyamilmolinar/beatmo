@@ -6,7 +6,7 @@ func TestSettingsGearOpensSettingsOverlay(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.Layout(1200, 800)
 	g.toggleSettingsOverlay()
-	p := g.drum.tree.Portal()
+	p := g.drum.portal()
 	if p == nil || !p.Has(settingsOverlayID) {
 		t.Fatal("toggleSettingsOverlay did not open the settings portal")
 	}

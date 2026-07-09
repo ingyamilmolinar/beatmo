@@ -123,7 +123,7 @@ func TestSynthWheelPopupClickOutsideCloses(t *testing.T) {
 	if g.drum.synthWheelPopup.IsOpen() {
 		t.Fatal("click outside the popup should close it")
 	}
-	if g.drum.tree.Portal().Has("synth-wheel-popup") {
+	if g.drum.portal().Has("synth-wheel-popup") {
 		t.Fatal("portal should drop the synth-wheel-popup entry after click-outside")
 	}
 	if len(g.nodes) != nodesBefore {

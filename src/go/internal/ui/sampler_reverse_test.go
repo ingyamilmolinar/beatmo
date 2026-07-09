@@ -103,6 +103,76 @@ func TestSamplerReverseEmptyBufferIsNoop(t *testing.T) {
 	}
 }
 
+// ── Reverse moves the trim window to keep the SAME audio, reversed ────────────
+//
+// Regression: clicking Reverse flipped the working buffer while leaving the trim
+// handles at fixed fractions, so the kept [start,end] region slid onto the
+// mirror-image part of the sound. Reverse must MIRROR the trim window so the
+// audible chop stays the same audio, only reversed.
+
+// Dyadic trim fractions (0.25, 0.5) map to exact sample indices on an 8-sample
+// buffer AND survive the 1-x mirror without float drift, so these tests exercise
+// the region-preservation contract without brittleness from int(frac*n) rounding.
+// The window is asymmetric about 0.5 so a missing mirror is detectable.
+
+func TestSamplerReverseKeepsTrimmedRegionReversed(t *testing.T) {
+	assertDefaultParityState(t)
+	dv := &DrumView{}
+	// Unique ramp so every kept sample is identifiable by value.
+	raw := make([]float32, 8)
+	for i := range raw {
+		raw[i] = float32(i + 1) // 1..8
+	}
+	dv.sampler.raw = append([]float32(nil), raw...)
+	dv.sampler.rawSampleRate = 48000
+	dv.sampler.reset()
+	dv.sampler.startFrac, dv.sampler.endFrac = 0.25, 0.5 // keep samples {3,4}
+	before, _ := dv.sampler.bake()
+
+	dv.buildSamplerButtons(true)
+	dv.samplerButtonByTag("sampler-reverse").OnClick()
+
+	after, _ := dv.sampler.bake()
+	if len(after) != len(before) {
+		t.Fatalf("reverse changed the kept region length: before %d, after %d", len(before), len(after))
+	}
+	for i := range before {
+		want := float64(before[len(before)-1-i])
+		if !fEq32(float64(after[i]), want) {
+			t.Fatalf("reverse must keep the SAME audio reversed:\n before=%v\n after=%v", before, after)
+		}
+	}
+}
+
+func TestSamplerReverseTwiceRestoresTrimmedRegion(t *testing.T) {
+	assertDefaultParityState(t)
+	dv := &DrumView{}
+	raw := make([]float32, 8)
+	for i := range raw {
+		raw[i] = float32(i + 1)
+	}
+	dv.sampler.raw = append([]float32(nil), raw...)
+	dv.sampler.rawSampleRate = 48000
+	dv.sampler.reset()
+	dv.sampler.startFrac, dv.sampler.endFrac = 0.25, 0.5
+	before, _ := dv.sampler.bake()
+
+	dv.buildSamplerButtons(true)
+	rev := dv.samplerButtonByTag("sampler-reverse")
+	rev.OnClick()
+	rev.OnClick()
+
+	after, _ := dv.sampler.bake()
+	if len(after) != len(before) {
+		t.Fatalf("two reverses changed the kept length: before %d, after %d", len(before), len(after))
+	}
+	for i := range before {
+		if !fEq32(float64(after[i]), float64(before[i])) {
+			t.Fatalf("two reverses must restore the original trimmed region:\n before=%v\n after=%v", before, after)
+		}
+	}
+}
+
 // ── Reverse is baked into the buffer, not re-applied at bake time ─────────────
 
 func TestSamplerEditNeverRequestsReverse(t *testing.T) {

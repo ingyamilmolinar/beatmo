@@ -22,7 +22,8 @@ func isMuteHighlight(val int64) bool {
 	return val&highlightMuteFlag != 0
 }
 
-func (g *Game) onTick(step int) {
+func (s *playbackSlate) onTick(step int) {
+	g := s.g
 	g.currentStep = step
 
 	if step == 0 {
@@ -40,7 +41,8 @@ func (g *Game) onTick(step int) {
 	}
 }
 
-func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) {
+func (s *playbackSlate) highlightBeat(row, idx int, info model.BeatInfo, duration int64) {
+	g := s.g
 	triggered, stateKnown := g.nodeTriggeredState(row, idx, info)
 	if !triggered {
 		if v, _, ok := g.timelineCommitted(row, idx); ok && v {
@@ -163,4 +165,10 @@ func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) 
 		g.nodeAnimSet(info.NodeID, 0)
 		g.clearNodeHighlight(info.NodeID)
 	}
+}
+
+func (g *Game) onTick(step int) { g.playbackSlate.onTick(step) }
+
+func (g *Game) highlightBeat(row, idx int, info model.BeatInfo, duration int64) {
+	g.playbackSlate.highlightBeat(row, idx, info, duration)
 }

@@ -33,9 +33,6 @@ func TestMobileBPMInputRegisteredPerFrame(t *testing.T) {
 	}}
 	dv.Length = 8
 
-	testMobileInputRegistered = make(map[string]bool)
-	t.Cleanup(func() { testMobileInputRegistered = nil })
-
 	restore := SetInputForTest(
 		func() (int, int) { return 0, 0 },
 		func(b ebiten.MouseButton) bool { return false },
@@ -52,8 +49,17 @@ func TestMobileBPMInputRegisteredPerFrame(t *testing.T) {
 	}
 
 	// The native-input gesture handler can only create the input if "bpm" is
-	// registered during the layout pass (not deferred to editor-open).
-	if !testMobileInputRegistered["bpm"] {
+	// registered during the layout pass (not deferred to editor-open). The
+	// tree-owned native-gesture sync (syncNativeGestures, called from
+	// dv.Update) is the current registration path — assert against its gated
+	// output rather than the old direct mobileInputRegister capture.
+	found := false
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel == NativeTextInput && r.Intent.ID == "bpm" {
+			found = true
+		}
+	}
+	if !found {
 		t.Fatal("bpm native input rect must be registered every layout pass on mobile")
 	}
 }

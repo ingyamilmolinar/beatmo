@@ -33,6 +33,9 @@ func TestAudioLoopAllocStability(t *testing.T) {
 	g := &Game{
 		audioCh: make(chan soundReq, 256),
 	}
+	// playbackSlate methods dereference this back-reference; struct literals
+	// that bypass New() must set it explicitly (mirrors New()).
+	g.playbackSlate.g = g
 
 	enqueue := func(n int) {
 		for i := 0; i < n; i++ {

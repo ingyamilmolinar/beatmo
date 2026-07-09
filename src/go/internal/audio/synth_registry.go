@@ -48,6 +48,7 @@ func RegisterRecipe(reg RecipeRegistration) {
 	}
 	recipeRegMu.Lock()
 	defer recipeRegMu.Unlock()
+	bumpRecipeDefaultsRev()
 	// Capture the shipped defaults on every (re-)registration: a re-register
 	// (platform override) is a fresh "ship", whereas updateRecipeDefaults
 	// (Save / reload) is a user customization and must not move this baseline.
@@ -156,6 +157,13 @@ func UnregisterRecipeForTest(id string) {
 	unregisterRecipeForTest(id)
 }
 
+// unregisterRecipe removes a recipe from the registry (production path, used by
+// DeleteInstrument to drop a cloned/user recipe). Same mechanics as the test
+// helper; separated so the intent reads correctly at the call site.
+func unregisterRecipe(id string) {
+	unregisterRecipeForTest(id)
+}
+
 // unregisterRecipeForTest removes a recipe from the registry. Intended for
 // test cleanup only; production code never unregisters because recipes are
 // process-global singletons.
@@ -165,6 +173,7 @@ func unregisterRecipeForTest(id string) {
 	if _, ok := recipeRegMap[id]; !ok {
 		return
 	}
+	bumpRecipeDefaultsRev()
 	delete(recipeRegMap, id)
 	out := recipeOrder[:0]
 	for _, x := range recipeOrder {

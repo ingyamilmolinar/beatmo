@@ -4,8 +4,9 @@
 #include "modular_stages.h"
 #include "wavetable.h"
 #include "noise.h"
-#include "synth_post.h" /* osc_wave_shared (analytic source==4) + kp_get */
-#include "fmsynth.h"    /* fm_preset + fm_render (source==10 FM-family voice) */
+#include "synth_post.h"          /* osc_wave_shared (analytic source==4) + kp_get */
+#include "synth_dsp_primitives.h" /* sp_onepole / sp_osc / sp_pitch_glide / sp_reverb3 */
+#include "fmsynth.h"             /* fm_preset + fm_render (source==10 FM-family voice) */
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -380,6 +381,686 @@ static void modular_gen_slot_ks(float *out, int sampleRate, int samples,
  *
  * assign: when 1 the first sample-write ASSIGNS (out[i]=v) — matching the legacy
  * renderer's direct out[i]= — so a -0.0 sample is not flipped to +0.0. */
+static void gen_kick_acoustic(float *out, int sampleRate, int samples,
+                              const modular_params *p, int k,
+                              double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── acoustic modal (inharmonic modal bank + beater excitation) ──
+     * A REAL recorded kick's timbre = coupled INHARMONIC membrane/shell modes
+     * STRUCK by a beater — not a pure sine + one band-passed click (which is
+     * why the "tight" variant, however tuned, reads synthetic: its MFCC /
+     * spectral SHAPE is wrong). Body = a small bank of inharmonic partials
+     * (ratios stretched by mode_detune), each STRUCK at t=0 (no swell → the
+     * sharp natural transient / high crest) with its OWN decay (fundamental
+     * slow, higher modes fast — the frequency-dependent damping of a real
+     * head). A bright HP beater CLICK supplies the impact brightness; a
+     * broadband, envelope-shaped, spectrally-tilted NOISE supplies the
+     * recorded-air texture (raises spectral flatness the way a real recording
+     * does); gentle saturation glues the layers into one event. Reuses every
+     * kick knob (NO new ABI): mode_detune = inharmonic stretch, mode_gain =
+     * high-mode level, mode_decay = high-mode damping. */
+    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.25);
+    double kClickAmt = kp_get(p->gen_kick_click[k], 0.60);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 60.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.20);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 12.0); /* fundamental decay /s */
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 28.0); /* low-mid mode decay /s */
+    double kH2       = kp_get(p->gen_kick_h2[k], 0.50);   /* mode-2 gain */
+    double kH3       = kp_get(p->gen_kick_h3[k], 0.35);   /* mode-3 gain */
+    double kH4       = kp_get(p->gen_kick_h4[k], 0.20);   /* mode-4 gain */
+    double kSat      = kp_get(p->gen_kick_sat[k], 1.4);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 0.6);
+    double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
+    double kStretch  = kp_get(p->gen_kick_mode_detune[k], 0.15); /* inharmonic stretch */
+    double kModeGain = kp_get(p->gen_kick_mode_gain[k], 1.0);    /* high-mode level */
+    double kHiDecay  = kp_get(p->gen_kick_mode_decay[k], 55.0);  /* high-mode damping /s */
+    double kReverb   = kp_get(p->gen_kick_reverb[k], 0.0);       /* room/echo tail amount */
+
+    /* Composed from synth_dsp_primitives.h: a 4-osc INHARMONIC modal bank, a
+     * band-pass beater click + a low-mid texture (both one-pole primitives),
+     * a pitch glide, and a dense feedback reverb TAIL. Byte-identical to the
+     * former inline loop (TestVariant7RefactorByteIdentity). */
+    sp_reverb3 rev;
+    sp_reverb3_init(&rev, sampleRate); /* zeroed tank; dry kicks just don't read it */
+
+    /* INHARMONIC partial ratios (a real membrane's modes are non-integer,
+     * clustering higher; extra stretch via mode_detune). */
+    double r1 = 1.0;
+    double r2 = 2.1 * (1.0 + kStretch);
+    double r3 = 3.4 * (1.0 + kStretch);
+    double r4 = 5.2 * (1.0 + kStretch);
+    sp_osc osc1, osc2, osc3, osc4;
+    sp_osc_init(&osc1, M_PI * 0.5);
+    sp_osc_init(&osc2, M_PI * 0.5);
+    sp_osc_init(&osc3, M_PI * 0.5);
+    sp_osc_init(&osc4, M_PI * 0.5);
+    double lpHi = 0.0, lpLo = 0.0, nzLo = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double freqMul = sp_pitch_glide(tSec, kPeRate, kPeAmt);
+        double m1 = sp_osc_tick(&osc1, kWave, 2.0 * M_PI * f0 * r1 * freqMul / (double)sampleRate);
+        double m2 = sp_osc_tick(&osc2, kWave, 2.0 * M_PI * f0 * r2 * freqMul / (double)sampleRate);
+        double m3 = sp_osc_tick(&osc3, kWave, 2.0 * M_PI * f0 * r3 * freqMul / (double)sampleRate);
+        double m4 = sp_osc_tick(&osc4, kWave, 2.0 * M_PI * f0 * r4 * freqMul / (double)sampleRate);
+
+        /* struck modes (start at peak → sharp attack), per-mode decay. */
+        double e1 = exp(-kEnv0Rate * tSec);
+        double e2 = exp(-kEnv1Rate * tSec);
+        double e3 = exp(-kHiDecay * 0.55 * tSec);
+        double e4 = exp(-kHiDecay * tSec);
+        double body = m1 * e1
+                    + kH2 * kModeGain * m2 * e2
+                    + kH3 * kModeGain * m3 * e3
+                    + kH4 * kModeGain * m4 * e4;
+        /* saturate the BODY ONLY (glue the modes into one tone) — the click +
+         * texture are added AFTER, un-compressed, so the sharp transient
+         * survives (a real kick's crest is ~8; compressing everything flattens
+         * it toward ~4). */
+        double driven = tanh(body * (1.0 + kSat)) * 0.6;
+
+        /* BAND-PASS beater click (~500 Hz–2.5 kHz felt beater), two one-pole
+         * LPs subtracted → a felt-beater band, NOT full-bright white. */
+        double cn = (double)noise_ma_white_tick(noise);
+        double bpClick = sp_onepole_tick(&lpHi, 0.30, cn) - sp_onepole_tick(&lpLo, 0.05, cn);
+        double click = bpClick * kClickAmt * (1.0 + kAttack) * exp(-220.0 * tSec);
+
+        /* LP-limited (~2 kHz) recorded-air texture, attack-weighted — keeps the
+         * body tonal (low flatness), unlike full white (hissy/synthetic). */
+        double nz = (double)noise_ma_white_tick(noise);
+        double texture = sp_onepole_tick(&nzLo, 0.28, nz) * kNoiseAmt * exp(-45.0 * tSec);
+
+        double g = exp(-kFade * tNorm);
+        double s = (driven + click + texture) * g;
+
+        /* reverb/echo TAIL — the recorded-kick "space". Skipped when dry. */
+        if (kReverb > 0.0) {
+            s += sp_reverb3_tick(&rev, s, kReverb);
+        }
+
+        /* final gentle soft-limit only (does NOT compress the body a second
+         * time) → the click peak stays sharp. */
+        float y = (float)(tanh(s) * 0.95);
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
+static void gen_kick_tight(float *out, int sampleRate, int samples,
+                           const modular_params *p, int k,
+                           double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── tight (render_kick_tight_internal) ── */
+    double kClickAmt = kp_get(p->gen_kick_click[k], 0.40);
+    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.15);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 65.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.05);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 7.5);
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
+    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.35);
+    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.15);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
+    double kFade     = kp_get(p->gen_kick_fade[k], 4.5);
+    double kSat      = kp_get(p->gen_kick_sat[k], 0.45);
+
+    float r0 = noise_ma_white_tick(noise);
+    float r1 = noise_ma_white_tick(noise);
+    float r2 = noise_ma_white_tick(noise);
+    double phase0 = 2.0 * M_PI * (double)r0;
+    double phase1 = 2.0 * M_PI * (double)r1;
+    double phase2 = 2.0 * M_PI * (double)r2;
+    double f1 = f0 * 2.0;
+    double f2 = f0 * 3.0;
+
+    double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
+    {
+        double fc = 2500.0; double Q = 0.7;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+        double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+        b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
+    }
+    sp_biquad bq_bp = {0};
+    bq_bp.b0 = b0_bp; bq_bp.b1 = b1_bp; bq_bp.b2 = b2_bp; bq_bp.a1 = a1_bp; bq_bp.a2 = a2_bp;
+
+    double b0_rm, b1_rm, b2_rm, a1_rm, a2_rm;
+    {
+        double fc = 200.0; double Q = 0.5;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+        double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+        b0_rm = b0/a0; b1_rm = b1/a0; b2_rm = b2/a0; a1_rm = a1/a0; a2_rm = a2/a0;
+    }
+    sp_biquad bq_rm = {0};
+    bq_rm.b0 = b0_rm; bq_rm.b1 = b1_rm; bq_rm.b2 = b2_rm; bq_rm.a1 = a1_rm; bq_rm.a2 = a2_rm;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        float n = noise_ma_white_tick(noise);
+        double x = (double)n;
+
+        double ybp = sp_biquad_tick(&bq_bp, x);
+        double beaterEnv = exp(-150.0 * tSec);
+        double beater = ybp * beaterEnv * kClickAmt;
+
+        double yrm = sp_biquad_tick(&bq_rm, x);
+        double roomEnv = exp(-80.0 * tSec);
+        double room = yrm * roomEnv * kNoiseAmt;
+
+        double pitchEnv = exp(-kPeRate * tSec);
+        double freqMul  = 1.0 + kPeAmt * pitchEnv;
+
+        double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+        double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+        double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+        phase0 += step0; phase1 += step1; phase2 += step2;
+
+        double s0 = osc_wave_shared(kWave, phase0);
+        double s1 = osc_wave_shared(kWave, phase1);
+        double s2 = osc_wave_shared(kWave, phase2);
+
+        double env0 = exp(-kEnv0Rate * tSec);
+        double env1 = exp(-kEnv1Rate * tSec);
+        double env2 = exp(-17.0 * tSec);
+
+        double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
+        double attackShape = 1.0 + kAttack * exp(-50.0 * tSec);
+        tonal *= attackShape;
+
+        double gate = 1.0;
+        if (tNorm > 0.45) {
+            gate = exp(-12.0 * (tNorm - 0.45));
+        }
+        double g = exp(-kFade * tNorm);
+
+        double mixed = (tonal + beater + room) * g * gate;
+        float y = softsat_shared((float)mixed * (float)kSat) * 1.1f;
+        if (y > 1.0f) y = 1.0f;
+        if (y < -1.0f) y = -1.0f;
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
+static void gen_kick_modal(float *out, int sampleRate, int samples,
+                           const modular_params *p, int k,
+                           double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── modal (coupled two-mode drumhead) ──
+     * A physically-motivated ORGANIC kick. Two pitch-swept modes:
+     *   BATTER  — struck, heavily damped, fast swell → the initial weighty thump;
+     *   RESONANT— detuned below the batter (f0·(1-detune)), LESS damped, SLOW
+     *             (delayed) swell → a late "bloom". Summed, the two modes BEAT
+     *             at Δf = f0·detune, so a plateau-then-bloom amplitude envelope
+     *             emerges from a REAL mechanism (energy sloshing batter→resonant
+     *             head), not a hand-drawn multi-segment envelope. That is what
+     *             lets it reproduce the organic complexity without overfitting.
+     * A drumhead-tension pitch glide, modest 2nd/3rd harmonics for punch, a low
+     * beater thud, and a DECOUPLED low-mid grit texture (additive, envelope-
+     * scaled — never run through the waveshaper, the anti-"spit" rule from
+     * variant 5) sit on top. Gentle tanh soft-limit, no hard clamp.
+     * Reuses the kick knobs; adds three modal knobs (mode_detune/gain/decay). */
+    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.12);
+    double kClickAmt = kp_get(p->gen_kick_click[k], 0.30);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 45.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 1.6);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 11.0); /* batter decay /s */
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 20.0); /* harmonic decay /s */
+    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.30);
+    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.04);
+    double kDrive    = kp_get(p->gen_kick_sat[k], 0.8);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 0.5);
+    double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
+    double kDetune   = kp_get(p->gen_kick_mode_detune[k], 0.11);
+    double kModeGain = kp_get(p->gen_kick_mode_gain[k], 0.8);
+    double kModeDec  = kp_get(p->gen_kick_mode_decay[k], 4.0);
+
+    double fR = f0 * (1.0 - kDetune);
+    sp_osc oscB, oscR, osc2, osc3;
+    sp_osc_init(&oscB, M_PI * 0.5);
+    sp_osc_init(&oscR, M_PI * 0.5);
+    sp_osc_init(&osc2, M_PI * 0.5);
+    sp_osc_init(&osc3, M_PI * 0.5);
+    double f2 = f0 * 2.0, f3 = f0 * 3.0;
+    double lpClick = 0.0, nzLo = 0.0, nzBand = 0.0, nzBand2 = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double pitchEnv = exp(-kPeRate * tSec);
+        double freqMul  = 1.0 + kPeAmt * pitchEnv;
+
+        /* batter: fast swell (~11 ms) × exp decay → peaks ~25 ms (the thump). */
+        double batterEnv = exp(-kEnv0Rate * tSec) * (1.0 - exp(-90.0 * tSec));
+        /* resonant: SLOW swell (~40 ms, energy sloshes in) × LONG decay → the
+         * delayed bloom; beats against the batter at Δf = f0·detune. */
+        double resoEnv = exp(-kModeDec * tSec) * (1.0 - exp(-25.0 * tSec)) * kModeGain;
+        /* harmonics ride the batter's SWELL too (they come from the struck
+         * head's nonlinearity) — without the swell they sound at full level at
+         * t=0 while the fundamental is still ramping, so the onset is all
+         * high-pitch 2f0/3f0 (energy lands in 120-250 not 60-120, and the peak
+         * jumps to t=0). Sharing the swell keeps the fundamental dominant. */
+        double harmEnv = exp(-kEnv1Rate * tSec) * (1.0 - exp(-90.0 * tSec));
+
+        double body = sp_osc_tick(&oscB, kWave, 2.0 * M_PI * f0 * freqMul / (double)sampleRate) * batterEnv
+                    + sp_osc_tick(&oscR, kWave, 2.0 * M_PI * fR * freqMul / (double)sampleRate) * resoEnv
+                    + kH2Gain * harmEnv * sp_osc_tick(&osc2, kWave, 2.0 * M_PI * f2 * freqMul / (double)sampleRate)
+                    + kH3Gain * harmEnv * sp_osc_tick(&osc3, kWave, 2.0 * M_PI * f3 * freqMul / (double)sampleRate);
+
+        /* gentle warmth drive on the summed body (deterministic → no flutter). */
+        double driven = tanh(body * (1.0 + kDrive));
+
+        /* low beater thud (1-pole LP ~140 Hz, short) — punch, not a high tick. */
+        double cn = (double)noise_ma_white_tick(noise);
+        sp_onepole_tick(&lpClick, 0.018, cn);
+        double click = lpClick * kClickAmt * exp(-260.0 * tSec) * 10.0;
+
+        /* DECOUPLED low-mid grit texture (HP ~120 → steep 2-pole LP ~500 Hz),
+         * attack-only, added on top (not through the waveshaper). */
+        double nz = (double)noise_ma_white_tick(noise);
+        sp_onepole_tick(&nzLo, 0.016, nz);
+        double nzHP = nz - nzLo;
+        sp_onepole_tick(&nzBand, 0.065, nzHP);
+        sp_onepole_tick(&nzBand2, 0.065, nzBand);
+        double texture = nzBand2 * kNoiseAmt * exp(-70.0 * tSec) * 3.0;
+
+        double g = exp(-kFade * tNorm);
+        double s = (driven * 0.7 + texture + click * (0.6 + 0.5 * kAttack)) * g;
+        float y = (float)(tanh(s) * 0.95);
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
+static void gen_kick_hybrid(float *out, int sampleRate, int samples,
+                            const modular_params *p, int k,
+                            double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── hybrid/punchy (layered DSP, for punchy/raw kicks) ──
+     * Three DECOUPLED layers — decoupling is what keeps it SMOOTH, not spitty:
+     *   (1) a pitch-swept harmonic BODY, smoothly WAVESHAPED for raw harmonics
+     *       (deterministic → no flutter);
+     *   (2) a separate COLORED-NOISE TEXTURE — band-passed, given the body's
+     *       smooth ENVELOPE (not its oscillating wave) and ADDED on top, NOT
+     *       run through the distortion. Fusing noise into the waveshaper and
+     *       multiplying it by the body WAVE amplitude-modulates it at ~2x the
+     *       pitch and the tanh amplifies its peaks → sputtering "spit"; an
+     *       additive, envelope-scaled texture is a steady "air" instead;
+     *   (3) a short bright CLICK = the attack snap + crest/punch.
+     * Reuses the kick knobs: sat=distortion drive, noise=texture, click=attack. */
+    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.12);
+    double kClickAmt = kp_get(p->gen_kick_click[k], 0.40);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 90.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 1.5);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 7.0);
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
+    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
+    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
+    double kDrive    = kp_get(p->gen_kick_sat[k], 2.0);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 1.5);
+    double kFade     = kp_get(p->gen_kick_fade[k], 6.0);
+
+    sp_osc osc0, osc1, osc2;
+    sp_osc_init(&osc0, M_PI * 0.5);
+    sp_osc_init(&osc1, M_PI * 0.5);
+    sp_osc_init(&osc2, M_PI * 0.5);
+    double f1 = f0 * 2.0, f2 = f0 * 3.0;
+    double lpClick = 0.0, nzLo = 0.0, nzBand = 0.0, nzBand2 = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double pitchEnv = exp(-kPeRate * tSec);
+        double freqMul  = 1.0 + kPeAmt * pitchEnv;
+
+        /* body amp env = a fast attack RAMP (~15 ms) × exp decay → the body
+         * SWELLS to a peak then decays (the reference peaks ~30 ms). A pure
+         * exp decay peaks at t=0 and feels "weak/instant"; the swell is the
+         * weighty THUMP. */
+        double decayEnv = exp(-kEnv0Rate * tSec);
+        double atkRamp  = 1.0 - exp(-90.0 * tSec);
+        double bodyEnv  = decayEnv * atkRamp;
+        double harmEnv = exp(-kEnv1Rate * tSec);
+        double body = sp_osc_tick(&osc0, kWave, 2.0 * M_PI * f0 * freqMul / (double)sampleRate)
+                    + kH2Gain * harmEnv * sp_osc_tick(&osc1, kWave, 2.0 * M_PI * f1 * freqMul / (double)sampleRate)
+                    + kH3Gain * harmEnv * sp_osc_tick(&osc2, kWave, 2.0 * M_PI * f2 * freqMul / (double)sampleRate);
+        body *= bodyEnv;
+
+        /* (1) smooth raw body: waveshape the BODY ALONE (no noise inside →
+         *     deterministic, no flutter), re-apply bodyEnv so it decays. */
+        double distorted = tanh(body * (1.0 + kDrive * 3.0)) * bodyEnv * 0.45;
+
+        /* (2) LOW-MID GRIT TEXTURE: HP (~120 Hz) then a STEEP 2-pole LP
+         *     (~500 Hz) → a low-mid "grit/thickness", NOT high air. "Airy/spitty"
+         *     is high-frequency noise (>1 kHz); the organic body character is
+         *     low-mid noise. This adds attack thwack + organic thickness with NO
+         *     high hiss. Attack-only (fast decay) so the tail stays dry. */
+        float nz = noise_ma_white_tick(noise);
+        sp_onepole_tick(&nzLo, 0.016, (double)nz);   /* HP ~120 Hz (drop sub rumble) */
+        double nzHP = (double)nz - nzLo;
+        sp_onepole_tick(&nzBand, 0.065, nzHP);       /* 1-pole LP ~500 Hz */
+        sp_onepole_tick(&nzBand2, 0.065, nzBand);    /* 2nd pole → steep, kills >800 Hz (no air) */
+        /* Attack-only fast decay (gone ~50 ms) → dry tail. */
+        double airEnv = exp(-75.0 * tSec);
+        double texture = nzBand2 * kNoiseAmt * airEnv * 3.5;
+
+        /* (3) LOW THUD transient = the thump's punch + crest. A heavily
+         * LOW-passed noise burst (~130 Hz) is a low "thud", NOT a high tick:
+         * an HP/bright click reads as "tss"/spit and pulls the perceived pitch
+         * up. Fast decay (~3 ms) so it's a punch, not a tail. */
+        float cn = noise_ma_white_tick(noise);
+        sp_onepole_tick(&lpClick, 0.017, (double)cn);  /* 1-pole LP ~130 Hz */
+        double click = lpClick * kClickAmt * exp(-300.0 * tSec) * 12.0;
+
+        double g = exp(-kFade * tNorm);
+        double s = (distorted + texture + click * (0.6 + 0.5 * kAttack)) * g;
+        /* GENTLE soft-limit (smooth saturation, NOT a hard clamp). */
+        float y = (float)(tanh(s) * 0.95);
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
+static void gen_kick_base(float *out, int sampleRate, int samples,
+                          const modular_params *p, int k,
+                          double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── base (render_kick_internal) ── */
+    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.18);
+    double kClickAmt = kp_get(p->gen_kick_click[k], 0.35);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 30.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.10);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 5.5);
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 9.0);
+    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
+    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
+    double kH4Gain   = kp_get(p->gen_kick_h4[k], 0.12);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
+    double kFade     = kp_get(p->gen_kick_fade[k], 4.0);
+    double kSat      = kp_get(p->gen_kick_sat[k], 0.55);
+
+    double lpNoise = 0.0;
+    double lpClick = 0.0;
+
+    float r0 = noise_ma_white_tick(noise);
+    float r1 = noise_ma_white_tick(noise);
+    float r2 = noise_ma_white_tick(noise);
+    float r3 = noise_ma_white_tick(noise);
+    double phase0 = 2.0 * M_PI * (double)r0;
+    double phase1 = 2.0 * M_PI * (double)r1;
+    double phase2 = 2.0 * M_PI * (double)r2;
+    double phase3 = 2.0 * M_PI * (double)r3;
+
+    double f1 = f0 * 2.0;
+    double f2 = f0 * 3.0;
+    double f3 = f0 * 4.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        float n = noise_ma_white_tick(noise);
+        sp_onepole_mix(&lpNoise, 0.97, 0.03, (double)n);
+        double noiseEnv = exp(-16.0 * tSec);
+        double noiseThud = lpNoise * noiseEnv * kNoiseAmt;
+
+        float cn = noise_ma_white_tick(noise);
+        double clickRaw = (double)cn;
+        sp_onepole_mix(&lpClick, 0.85, 0.15, clickRaw);
+        double hpClick = clickRaw - lpClick;
+        double clickEnv = exp(-120.0 * tSec);
+        double click = hpClick * clickEnv * kClickAmt;
+
+        double pitchEnv = exp(-kPeRate * tSec);
+        double freqMul  = 1.0 + kPeAmt * pitchEnv;
+
+        double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+        double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+        double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+        double step3 = 2.0 * M_PI * f3 * freqMul / (double)sampleRate;
+        phase0 += step0; phase1 += step1; phase2 += step2; phase3 += step3;
+
+        double s0 = osc_wave_shared(kWave, phase0);
+        double s1 = osc_wave_shared(kWave, phase1);
+        double s2 = osc_wave_shared(kWave, phase2);
+        double s3 = osc_wave_shared(kWave, phase3);
+
+        double env0 = exp(-kEnv0Rate * tSec);
+        double env1 = exp(-kEnv1Rate * tSec);
+        double env2 = exp(-12.0 * tSec);
+        double env3 = exp(-18.0 * tSec);
+
+        double tonal =
+            s0 * env0 * 0.85 +
+            s1 * env1 * kH2Gain +
+            s2 * env2 * kH3Gain +
+            s3 * env3 * kH4Gain;
+
+        double attackShape = 1.0 + kAttack * exp(-40.0 * tSec);
+        tonal *= attackShape;
+
+        double g = exp(-kFade * tNorm);
+        double mixed = (tonal + noiseThud + click) * g;
+        float y = softsat_shared((float)mixed * (float)kSat) * 1.2f;
+        if (y > 1.0f) y = 1.0f;
+        if (y < -1.0f) y = -1.0f;
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
+static void gen_kick_lofi(float *out, int sampleRate, int samples,
+                          const modular_params *p, int k,
+                          double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── lofi (render_kick_lofi_internal) ── */
+    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.25);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 20.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.08);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 4.5);
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
+    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
+    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 0.2);
+    double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
+    double kSat      = kp_get(p->gen_kick_sat[k], 1.5);
+
+    double lpNoise = 0.0;
+    float r0 = noise_ma_white_tick(noise);
+    float r1 = noise_ma_white_tick(noise);
+    float r2 = noise_ma_white_tick(noise);
+    double phase0 = 2.0 * M_PI * (double)r0;
+    double phase1 = 2.0 * M_PI * (double)r1;
+    double phase2 = 2.0 * M_PI * (double)r2;
+    double f1 = f0 * 2.0;
+    double f2 = f0 * 3.0;
+
+    double lpOut = 0.0;
+    double lpAlpha = 2.0 * M_PI * 600.0 / (double)sampleRate;
+    if (lpAlpha > 1.0) lpAlpha = 1.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        float n = noise_ma_white_tick(noise);
+        sp_onepole_mix(&lpNoise, 0.96, 0.04, (double)n);
+        double noiseEnv = exp(-12.0 * tSec);
+        double noiseThud = lpNoise * noiseEnv * kNoiseAmt;
+
+        double pitchEnv = exp(-kPeRate * tSec);
+        double freqMul  = 1.0 + kPeAmt * pitchEnv;
+
+        double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+        double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+        double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+        phase0 += step0; phase1 += step1; phase2 += step2;
+
+        double s0 = osc_wave_shared(kWave, phase0);
+        double s1 = osc_wave_shared(kWave, phase1);
+        double s2 = osc_wave_shared(kWave, phase2);
+
+        double env0 = exp(-kEnv0Rate * tSec);
+        double env1 = exp(-kEnv1Rate * tSec);
+        double env2 = exp(-10.0 * tSec);
+
+        double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
+        double attackShape = 1.0 + kAttack * exp(-35.0 * tSec);
+        tonal *= attackShape;
+
+        double g = exp(-kFade * tNorm);
+        double mixed = (tonal + noiseThud) * g;
+
+        double levels = 128.0;
+        mixed = floor(mixed * levels + 0.5) / levels;
+        mixed = tanh(tanh(mixed * kSat) * 1.8);
+        sp_onepole_tick(&lpOut, lpAlpha, mixed);
+        mixed = lpOut;
+
+        float y = (float)mixed * 0.95f;
+        if (y > 1.0f) y = 1.0f;
+        if (y < -1.0f) y = -1.0f;
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
+static void gen_kick_deep(float *out, int sampleRate, int samples,
+                          const modular_params *p, int k,
+                          double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── deep (render_kick_deep_internal) ── */
+    double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.10);
+    double kClickAmt = kp_get(p->gen_kick_click[k], 0.20);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 15.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.15);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 3.5);
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
+    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.15);
+    double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.10);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 0.15);
+    double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
+    double kSat      = kp_get(p->gen_kick_sat[k], 1.2);
+
+    double lpNoise = 0.0;
+    double phase0 = M_PI * 0.5;
+    double phase1 = M_PI * 0.5;
+    double f1 = f0 * 2.0;
+    double f2 = f0 * 3.0;
+    double phase2 = M_PI * 0.5;
+    double lpClick = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        float n = noise_ma_white_tick(noise);
+        sp_onepole_mix(&lpNoise, 0.97, 0.03, (double)n);
+        double noiseEnv = exp(-20.0 * tSec);
+        double noiseThud = lpNoise * noiseEnv * kNoiseAmt;
+
+        sp_onepole_mix(&lpClick, 0.85, 0.15, (double)n);
+        double click = ((double)n - lpClick) * exp(-180.0 * tSec) * kClickAmt;
+
+        double pitchEnv = exp(-kPeRate * tSec);
+        double freqMul  = 1.0 + kPeAmt * pitchEnv;
+
+        double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+        double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+        double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
+        phase0 += step0; phase1 += step1; phase2 += step2;
+
+        double s0 = osc_wave_shared(kWave, phase0);
+        double s1 = osc_wave_shared(kWave, phase1);
+        double s2 = osc_wave_shared(kWave, phase2);
+
+        double env0 = exp(-kEnv0Rate * tSec);
+        double env1 = exp(-kEnv1Rate * tSec);
+        double env2 = exp(-12.0 * tSec);
+
+        double tonal = s0 * env0 * 0.95 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
+        double attackShape = 1.0 + kAttack * exp(-50.0 * tSec);
+        tonal *= attackShape;
+
+        double g = exp(-kFade * tNorm);
+        double mixed = (tonal + noiseThud + click) * g;
+
+        float y = (float)(tanh(mixed * kSat) * 0.95);
+        if (y > 1.0f) y = 1.0f;
+        if (y < -1.0f) y = -1.0f;
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
+static void gen_kick_punchy(float *out, int sampleRate, int samples,
+                            const modular_params *p, int k,
+                            double f0, int kWave, noise_ma_gen *noise, int assign) {
+#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── punchy (render_kick_punchy_internal) ── */
+    double kClickAmt = kp_get(p->gen_kick_click[k], 0.45);
+    double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 55.0);
+    double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.25);
+    double kEnv0Rate = kp_get(p->gen_kick_env0[k], 8.0);
+    double kEnv1Rate = kp_get(p->gen_kick_env1[k], 14.0);
+    double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
+    double kAttack   = kp_get(p->gen_kick_attack[k], 0.5);
+    double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
+    double kSat      = kp_get(p->gen_kick_sat[k], 0.8);
+
+    double lpClick = 0.0;
+    float r0 = noise_ma_white_tick(noise);
+    float r1 = noise_ma_white_tick(noise);
+    double phase0 = 2.0 * M_PI * (double)r0;
+    double phase1 = 2.0 * M_PI * (double)r1;
+    double f1 = f0 * 2.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double tSec  = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        float cn = noise_ma_white_tick(noise);
+        double clickRaw = (double)cn;
+        sp_onepole_mix(&lpClick, 0.80, 0.20, clickRaw);
+        double hpClick = clickRaw - lpClick;
+        double clickEnv = exp(-120.0 * tSec);
+        double click = hpClick * clickEnv * kClickAmt;
+
+        double pitchEnv = exp(-kPeRate * tSec);
+        double freqMul  = 1.0 + kPeAmt * pitchEnv;
+
+        double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
+        double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
+        phase0 += step0; phase1 += step1;
+
+        double s0 = osc_wave_shared(kWave, phase0);
+        double s1 = osc_wave_shared(kWave, phase1);
+
+        double env0 = exp(-kEnv0Rate * tSec);
+        double env1 = exp(-kEnv1Rate * tSec);
+
+        double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain;
+        double attackShape = 1.0 + kAttack * exp(-60.0 * tSec);
+        tonal *= attackShape;
+
+        double g = exp(-kFade * tNorm);
+        double mixed = (tonal + click) * g;
+        float y = softsat_shared((float)mixed * (float)kSat) * 1.3f;
+        if (y > 1.0f) y = 1.0f;
+        if (y < -1.0f) y = -1.0f;
+        KICK_WRITE(y);
+    }
+#undef KICK_WRITE
+}
+
 static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
                                   const modular_params *p, int k,
                                   double voice_freq, int assign) {
@@ -401,458 +1082,23 @@ static void modular_gen_slot_kick(float *out, int sampleRate, int samples,
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
 
-#define KICK_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
-
     if (variant == 1) {
-        /* ── deep (render_kick_deep_internal) ── */
-        double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.10);
-        double kClickAmt = kp_get(p->gen_kick_click[k], 0.20);
-        double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 15.0);
-        double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.15);
-        double kEnv0Rate = kp_get(p->gen_kick_env0[k], 3.5);
-        double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
-        double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.15);
-        double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.10);
-        double kAttack   = kp_get(p->gen_kick_attack[k], 0.15);
-        double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
-        double kSat      = kp_get(p->gen_kick_sat[k], 1.2);
-
-        double lpNoise = 0.0;
-        double phase0 = M_PI * 0.5;
-        double phase1 = M_PI * 0.5;
-        double f1 = f0 * 2.0;
-        double f2 = f0 * 3.0;
-        double phase2 = M_PI * 0.5;
-        double lpClick = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double tSec  = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            float n = noise_ma_white_tick(&noise);
-            lpNoise = lpNoise * 0.97 + (double)n * 0.03;
-            double noiseEnv = exp(-20.0 * tSec);
-            double noiseThud = lpNoise * noiseEnv * kNoiseAmt;
-
-            lpClick = lpClick * 0.85 + (double)n * 0.15;
-            double click = ((double)n - lpClick) * exp(-180.0 * tSec) * kClickAmt;
-
-            double pitchEnv = exp(-kPeRate * tSec);
-            double freqMul  = 1.0 + kPeAmt * pitchEnv;
-
-            double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
-            double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
-            double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
-            phase0 += step0; phase1 += step1; phase2 += step2;
-
-            double s0 = osc_wave_shared(kWave, phase0);
-            double s1 = osc_wave_shared(kWave, phase1);
-            double s2 = osc_wave_shared(kWave, phase2);
-
-            double env0 = exp(-kEnv0Rate * tSec);
-            double env1 = exp(-kEnv1Rate * tSec);
-            double env2 = exp(-12.0 * tSec);
-
-            double tonal = s0 * env0 * 0.95 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
-            double attackShape = 1.0 + kAttack * exp(-50.0 * tSec);
-            tonal *= attackShape;
-
-            double g = exp(-kFade * tNorm);
-            double mixed = (tonal + noiseThud + click) * g;
-
-            float y = (float)(tanh(mixed * kSat) * 0.95);
-            if (y > 1.0f) y = 1.0f;
-            if (y < -1.0f) y = -1.0f;
-            KICK_WRITE(y);
-        }
+        gen_kick_deep(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     } else if (variant == 2) {
-        /* ── punchy (render_kick_punchy_internal) ── */
-        double kClickAmt = kp_get(p->gen_kick_click[k], 0.45);
-        double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 55.0);
-        double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.25);
-        double kEnv0Rate = kp_get(p->gen_kick_env0[k], 8.0);
-        double kEnv1Rate = kp_get(p->gen_kick_env1[k], 14.0);
-        double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-        double kAttack   = kp_get(p->gen_kick_attack[k], 0.5);
-        double kFade     = kp_get(p->gen_kick_fade[k], 5.0);
-        double kSat      = kp_get(p->gen_kick_sat[k], 0.8);
-
-        double lpClick = 0.0;
-        float r0 = noise_ma_white_tick(&noise);
-        float r1 = noise_ma_white_tick(&noise);
-        double phase0 = 2.0 * M_PI * (double)r0;
-        double phase1 = 2.0 * M_PI * (double)r1;
-        double f1 = f0 * 2.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double tSec  = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            float cn = noise_ma_white_tick(&noise);
-            double clickRaw = (double)cn;
-            lpClick = lpClick * 0.80 + clickRaw * 0.20;
-            double hpClick = clickRaw - lpClick;
-            double clickEnv = exp(-120.0 * tSec);
-            double click = hpClick * clickEnv * kClickAmt;
-
-            double pitchEnv = exp(-kPeRate * tSec);
-            double freqMul  = 1.0 + kPeAmt * pitchEnv;
-
-            double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
-            double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
-            phase0 += step0; phase1 += step1;
-
-            double s0 = osc_wave_shared(kWave, phase0);
-            double s1 = osc_wave_shared(kWave, phase1);
-
-            double env0 = exp(-kEnv0Rate * tSec);
-            double env1 = exp(-kEnv1Rate * tSec);
-
-            double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain;
-            double attackShape = 1.0 + kAttack * exp(-60.0 * tSec);
-            tonal *= attackShape;
-
-            double g = exp(-kFade * tNorm);
-            double mixed = (tonal + click) * g;
-            float y = softsat_shared((float)mixed * (float)kSat) * 1.3f;
-            if (y > 1.0f) y = 1.0f;
-            if (y < -1.0f) y = -1.0f;
-            KICK_WRITE(y);
-        }
+        gen_kick_punchy(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     } else if (variant == 3) {
-        /* ── lofi (render_kick_lofi_internal) ── */
-        double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.25);
-        double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 20.0);
-        double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.08);
-        double kEnv0Rate = kp_get(p->gen_kick_env0[k], 4.5);
-        double kEnv1Rate = kp_get(p->gen_kick_env1[k], 7.0);
-        double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-        double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
-        double kAttack   = kp_get(p->gen_kick_attack[k], 0.2);
-        double kFade     = kp_get(p->gen_kick_fade[k], 3.0);
-        double kSat      = kp_get(p->gen_kick_sat[k], 1.5);
-
-        double lpNoise = 0.0;
-        float r0 = noise_ma_white_tick(&noise);
-        float r1 = noise_ma_white_tick(&noise);
-        float r2 = noise_ma_white_tick(&noise);
-        double phase0 = 2.0 * M_PI * (double)r0;
-        double phase1 = 2.0 * M_PI * (double)r1;
-        double phase2 = 2.0 * M_PI * (double)r2;
-        double f1 = f0 * 2.0;
-        double f2 = f0 * 3.0;
-
-        double lpOut = 0.0;
-        double lpAlpha = 2.0 * M_PI * 600.0 / (double)sampleRate;
-        if (lpAlpha > 1.0) lpAlpha = 1.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double tSec  = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            float n = noise_ma_white_tick(&noise);
-            lpNoise = lpNoise * 0.96 + (double)n * 0.04;
-            double noiseEnv = exp(-12.0 * tSec);
-            double noiseThud = lpNoise * noiseEnv * kNoiseAmt;
-
-            double pitchEnv = exp(-kPeRate * tSec);
-            double freqMul  = 1.0 + kPeAmt * pitchEnv;
-
-            double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
-            double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
-            double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
-            phase0 += step0; phase1 += step1; phase2 += step2;
-
-            double s0 = osc_wave_shared(kWave, phase0);
-            double s1 = osc_wave_shared(kWave, phase1);
-            double s2 = osc_wave_shared(kWave, phase2);
-
-            double env0 = exp(-kEnv0Rate * tSec);
-            double env1 = exp(-kEnv1Rate * tSec);
-            double env2 = exp(-10.0 * tSec);
-
-            double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
-            double attackShape = 1.0 + kAttack * exp(-35.0 * tSec);
-            tonal *= attackShape;
-
-            double g = exp(-kFade * tNorm);
-            double mixed = (tonal + noiseThud) * g;
-
-            double levels = 128.0;
-            mixed = floor(mixed * levels + 0.5) / levels;
-            mixed = tanh(tanh(mixed * kSat) * 1.8);
-            lpOut += lpAlpha * (mixed - lpOut);
-            mixed = lpOut;
-
-            float y = (float)mixed * 0.95f;
-            if (y > 1.0f) y = 1.0f;
-            if (y < -1.0f) y = -1.0f;
-            KICK_WRITE(y);
-        }
+        gen_kick_lofi(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     } else if (variant == 4) {
-        /* ── tight (render_kick_tight_internal) ── */
-        double kClickAmt = kp_get(p->gen_kick_click[k], 0.40);
-        double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.15);
-        double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 65.0);
-        double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.05);
-        double kEnv0Rate = kp_get(p->gen_kick_env0[k], 7.5);
-        double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
-        double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.35);
-        double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.15);
-        double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
-        double kFade     = kp_get(p->gen_kick_fade[k], 4.5);
-        double kSat      = kp_get(p->gen_kick_sat[k], 0.45);
-
-        float r0 = noise_ma_white_tick(&noise);
-        float r1 = noise_ma_white_tick(&noise);
-        float r2 = noise_ma_white_tick(&noise);
-        double phase0 = 2.0 * M_PI * (double)r0;
-        double phase1 = 2.0 * M_PI * (double)r1;
-        double phase2 = 2.0 * M_PI * (double)r2;
-        double f1 = f0 * 2.0;
-        double f2 = f0 * 3.0;
-
-        double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
-        {
-            double fc = 2500.0; double Q = 0.7;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
-            double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
-            b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
-        }
-        double x1_bp = 0, x2_bp = 0, y1_bp = 0, y2_bp = 0;
-
-        double b0_rm, b1_rm, b2_rm, a1_rm, a2_rm;
-        {
-            double fc = 200.0; double Q = 0.5;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
-            double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
-            b0_rm = b0/a0; b1_rm = b1/a0; b2_rm = b2/a0; a1_rm = a1/a0; a2_rm = a2/a0;
-        }
-        double x1_rm = 0, x2_rm = 0, y1_rm = 0, y2_rm = 0;
-
-        for (int i = 0; i < samples; ++i) {
-            double tSec  = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            float n = noise_ma_white_tick(&noise);
-            double x = (double)n;
-
-            double ybp = b0_bp*x + b1_bp*x1_bp + b2_bp*x2_bp - a1_bp*y1_bp - a2_bp*y2_bp;
-            x2_bp = x1_bp; x1_bp = x; y2_bp = y1_bp; y1_bp = ybp;
-            double beaterEnv = exp(-150.0 * tSec);
-            double beater = ybp * beaterEnv * kClickAmt;
-
-            double yrm = b0_rm*x + b1_rm*x1_rm + b2_rm*x2_rm - a1_rm*y1_rm - a2_rm*y2_rm;
-            x2_rm = x1_rm; x1_rm = x; y2_rm = y1_rm; y1_rm = yrm;
-            double roomEnv = exp(-80.0 * tSec);
-            double room = yrm * roomEnv * kNoiseAmt;
-
-            double pitchEnv = exp(-kPeRate * tSec);
-            double freqMul  = 1.0 + kPeAmt * pitchEnv;
-
-            double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
-            double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
-            double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
-            phase0 += step0; phase1 += step1; phase2 += step2;
-
-            double s0 = osc_wave_shared(kWave, phase0);
-            double s1 = osc_wave_shared(kWave, phase1);
-            double s2 = osc_wave_shared(kWave, phase2);
-
-            double env0 = exp(-kEnv0Rate * tSec);
-            double env1 = exp(-kEnv1Rate * tSec);
-            double env2 = exp(-17.0 * tSec);
-
-            double tonal = s0 * env0 * 0.85 + s1 * env1 * kH2Gain + s2 * env2 * kH3Gain;
-            double attackShape = 1.0 + kAttack * exp(-50.0 * tSec);
-            tonal *= attackShape;
-
-            double gate = 1.0;
-            if (tNorm > 0.45) {
-                gate = exp(-12.0 * (tNorm - 0.45));
-            }
-            double g = exp(-kFade * tNorm);
-
-            double mixed = (tonal + beater + room) * g * gate;
-            float y = softsat_shared((float)mixed * (float)kSat) * 1.1f;
-            if (y > 1.0f) y = 1.0f;
-            if (y < -1.0f) y = -1.0f;
-            KICK_WRITE(y);
-        }
+        gen_kick_tight(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     } else if (variant == 5) {
-        /* ── hybrid/punchy (layered DSP, for punchy/raw kicks) ──
-         * Three DECOUPLED layers — decoupling is what keeps it SMOOTH, not spitty:
-         *   (1) a pitch-swept harmonic BODY, smoothly WAVESHAPED for raw harmonics
-         *       (deterministic → no flutter);
-         *   (2) a separate COLORED-NOISE TEXTURE — band-passed, given the body's
-         *       smooth ENVELOPE (not its oscillating wave) and ADDED on top, NOT
-         *       run through the distortion. Fusing noise into the waveshaper and
-         *       multiplying it by the body WAVE amplitude-modulates it at ~2x the
-         *       pitch and the tanh amplifies its peaks → sputtering "spit"; an
-         *       additive, envelope-scaled texture is a steady "air" instead;
-         *   (3) a short bright CLICK = the attack snap + crest/punch.
-         * Reuses the kick knobs: sat=distortion drive, noise=texture, click=attack. */
-        double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.12);
-        double kClickAmt = kp_get(p->gen_kick_click[k], 0.40);
-        double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 90.0);
-        double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 1.5);
-        double kEnv0Rate = kp_get(p->gen_kick_env0[k], 7.0);
-        double kEnv1Rate = kp_get(p->gen_kick_env1[k], 12.0);
-        double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-        double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
-        double kDrive    = kp_get(p->gen_kick_sat[k], 2.0);
-        double kAttack   = kp_get(p->gen_kick_attack[k], 1.5);
-        double kFade     = kp_get(p->gen_kick_fade[k], 6.0);
-
-        double phase0 = M_PI * 0.5, phase1 = M_PI * 0.5, phase2 = M_PI * 0.5;
-        double f1 = f0 * 2.0, f2 = f0 * 3.0;
-        double lpClick = 0.0, nzLo = 0.0, nzBand = 0.0, nzBand2 = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double tSec  = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            double pitchEnv = exp(-kPeRate * tSec);
-            double freqMul  = 1.0 + kPeAmt * pitchEnv;
-            phase0 += 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
-            phase1 += 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
-            phase2 += 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
-
-            /* body amp env = a fast attack RAMP (~15 ms) × exp decay → the body
-             * SWELLS to a peak then decays (the reference peaks ~30 ms). A pure
-             * exp decay peaks at t=0 and feels "weak/instant"; the swell is the
-             * weighty THUMP. */
-            double decayEnv = exp(-kEnv0Rate * tSec);
-            double atkRamp  = 1.0 - exp(-90.0 * tSec);
-            double bodyEnv  = decayEnv * atkRamp;
-            double harmEnv = exp(-kEnv1Rate * tSec);
-            double body = osc_wave_shared(kWave, phase0)
-                        + kH2Gain * harmEnv * osc_wave_shared(kWave, phase1)
-                        + kH3Gain * harmEnv * osc_wave_shared(kWave, phase2);
-            body *= bodyEnv;
-
-            /* (1) smooth raw body: waveshape the BODY ALONE (no noise inside →
-             *     deterministic, no flutter), re-apply bodyEnv so it decays. */
-            double distorted = tanh(body * (1.0 + kDrive * 3.0)) * bodyEnv * 0.45;
-
-            /* (2) ORGANIC AIR TEXTURE: HP (~150 Hz) to drop rumble, gentle LP
-             *     (~4 kHz) → a broadband "air" like a real kick's beater/room
-             *     overtones (the reference carries ~2% here and reads ORGANIC, not
-             *     electronic). Keep the LEVEL low — the "spit" was this same air an
-             *     octave too loud. Scaled by the smooth bodyEnv, ADDED (no AM). */
-            float nz = noise_ma_white_tick(&noise);
-            nzLo  += 0.020 * ((double)nz - nzLo);   /* ~150 Hz */
-            double nzHP = (double)nz - nzLo;         /* HP → broadband air */
-            nzBand += 0.28 * (nzHP - nzBand);        /* gentle LP ~2.6 kHz (trim the very top) */
-            /* The air rides a VERY fast decay (essentially gone by ~50 ms), NOT the
-             * body envelope: it belongs only to the organic ATTACK. Any air left in
-             * the tail reads as "spit" against the quiet decay, so the kick must
-             * finish bone-DRY (pure tonal body). */
-            double airEnv = exp(-75.0 * tSec);
-            double texture = nzBand * kNoiseAmt * airEnv;
-
-            /* (3) LOW THUD transient = the thump's punch + crest. A heavily
-             * LOW-passed noise burst (~130 Hz) is a low "thud", NOT a high tick:
-             * an HP/bright click reads as "tss"/spit and pulls the perceived pitch
-             * up. Fast decay (~3 ms) so it's a punch, not a tail. */
-            float cn = noise_ma_white_tick(&noise);
-            lpClick += 0.017 * ((double)cn - lpClick);  /* 1-pole LP ~130 Hz */
-            double click = lpClick * kClickAmt * exp(-300.0 * tSec) * 12.0;
-
-            double g = exp(-kFade * tNorm);
-            double s = (distorted + texture + click * (0.6 + 0.5 * kAttack)) * g;
-            /* GENTLE soft-limit (smooth saturation, NOT a hard clamp). */
-            float y = (float)(tanh(s) * 0.95);
-            KICK_WRITE(y);
-        }
+        gen_kick_hybrid(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
+    } else if (variant == 6) {
+        gen_kick_modal(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
+    } else if (variant == 7) {
+        gen_kick_acoustic(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     } else {
-        /* ── base (render_kick_internal) ── */
-        double kNoiseAmt = kp_get(p->gen_kick_noise[k], 0.18);
-        double kClickAmt = kp_get(p->gen_kick_click[k], 0.35);
-        double kPeRate   = kp_get(p->gen_kick_pe_rate[k], 30.0);
-        double kPeAmt    = kp_get(p->gen_kick_pe_amt[k], 0.10);
-        double kEnv0Rate = kp_get(p->gen_kick_env0[k], 5.5);
-        double kEnv1Rate = kp_get(p->gen_kick_env1[k], 9.0);
-        double kH2Gain   = kp_get(p->gen_kick_h2[k], 0.40);
-        double kH3Gain   = kp_get(p->gen_kick_h3[k], 0.20);
-        double kH4Gain   = kp_get(p->gen_kick_h4[k], 0.12);
-        double kAttack   = kp_get(p->gen_kick_attack[k], 0.3);
-        double kFade     = kp_get(p->gen_kick_fade[k], 4.0);
-        double kSat      = kp_get(p->gen_kick_sat[k], 0.55);
-
-        double lpNoise = 0.0;
-        double lpClick = 0.0;
-
-        float r0 = noise_ma_white_tick(&noise);
-        float r1 = noise_ma_white_tick(&noise);
-        float r2 = noise_ma_white_tick(&noise);
-        float r3 = noise_ma_white_tick(&noise);
-        double phase0 = 2.0 * M_PI * (double)r0;
-        double phase1 = 2.0 * M_PI * (double)r1;
-        double phase2 = 2.0 * M_PI * (double)r2;
-        double phase3 = 2.0 * M_PI * (double)r3;
-
-        double f1 = f0 * 2.0;
-        double f2 = f0 * 3.0;
-        double f3 = f0 * 4.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double tSec  = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            float n = noise_ma_white_tick(&noise);
-            lpNoise = lpNoise * 0.97 + (double)n * 0.03;
-            double noiseEnv = exp(-16.0 * tSec);
-            double noiseThud = lpNoise * noiseEnv * kNoiseAmt;
-
-            float cn = noise_ma_white_tick(&noise);
-            double clickRaw = (double)cn;
-            lpClick = lpClick * 0.85 + clickRaw * 0.15;
-            double hpClick = clickRaw - lpClick;
-            double clickEnv = exp(-120.0 * tSec);
-            double click = hpClick * clickEnv * kClickAmt;
-
-            double pitchEnv = exp(-kPeRate * tSec);
-            double freqMul  = 1.0 + kPeAmt * pitchEnv;
-
-            double step0 = 2.0 * M_PI * f0 * freqMul / (double)sampleRate;
-            double step1 = 2.0 * M_PI * f1 * freqMul / (double)sampleRate;
-            double step2 = 2.0 * M_PI * f2 * freqMul / (double)sampleRate;
-            double step3 = 2.0 * M_PI * f3 * freqMul / (double)sampleRate;
-            phase0 += step0; phase1 += step1; phase2 += step2; phase3 += step3;
-
-            double s0 = osc_wave_shared(kWave, phase0);
-            double s1 = osc_wave_shared(kWave, phase1);
-            double s2 = osc_wave_shared(kWave, phase2);
-            double s3 = osc_wave_shared(kWave, phase3);
-
-            double env0 = exp(-kEnv0Rate * tSec);
-            double env1 = exp(-kEnv1Rate * tSec);
-            double env2 = exp(-12.0 * tSec);
-            double env3 = exp(-18.0 * tSec);
-
-            double tonal =
-                s0 * env0 * 0.85 +
-                s1 * env1 * kH2Gain +
-                s2 * env2 * kH3Gain +
-                s3 * env3 * kH4Gain;
-
-            double attackShape = 1.0 + kAttack * exp(-40.0 * tSec);
-            tonal *= attackShape;
-
-            double g = exp(-kFade * tNorm);
-            double mixed = (tonal + noiseThud + click) * g;
-            float y = softsat_shared((float)mixed * (float)kSat) * 1.2f;
-            if (y > 1.0f) y = 1.0f;
-            if (y < -1.0f) y = -1.0f;
-            KICK_WRITE(y);
-        }
+        gen_kick_base(out, sampleRate, samples, p, k, f0, kWave, &noise, assign);
     }
-#undef KICK_WRITE
 }
 
 /* modular_gen_slot_tom: the source==6 808-style tom voice. The three legacy tom
@@ -916,9 +1162,10 @@ static void modular_gen_slot_tom(float *out, int sampleRate, int samples,
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
 
-    double phaseFund = 0.0;
-    double phaseO1 = 0.0;
-    double phaseO2 = 0.0;
+    sp_osc oscFund, oscO1, oscO2;
+    sp_osc_init(&oscFund, 0.0);
+    sp_osc_init(&oscO1, 0.0);
+    sp_osc_init(&oscO2, 0.0);
 
     double lpState1 = 0.0, lpState2 = 0.0;
     double hpState = 0.0;
@@ -938,13 +1185,9 @@ static void modular_gen_slot_tom(float *out, int sampleRate, int samples,
 
         double freqFund = fEnd + (fStart - fEnd) * exp(-tSweepRate * tSec);
 
-        phaseFund += 2.0 * M_PI * freqFund / (double)sampleRate;
-        phaseO1 += 2.0 * M_PI * freqFund * 1.5 / (double)sampleRate;
-        phaseO2 += 2.0 * M_PI * freqFund * 2.1 / (double)sampleRate;
-
-        double fund = osc_wave_shared(tWave, phaseFund);
-        double o1 = osc_wave_shared(tWave, phaseO1);
-        double o2 = osc_wave_shared(tWave, phaseO2);
+        double fund = sp_osc_tick(&oscFund, tWave, 2.0 * M_PI * freqFund / (double)sampleRate);
+        double o1 = sp_osc_tick(&oscO1, tWave, 2.0 * M_PI * freqFund * 1.5 / (double)sampleRate);
+        double o2 = sp_osc_tick(&oscO2, tWave, 2.0 * M_PI * freqFund * 2.1 / (double)sampleRate);
 
         double envFund = exp(-tRingRate * tSec);
         double envO1 = exp(-envO1Rate[variant] * tSec);
@@ -997,6 +1240,281 @@ static void modular_gen_slot_tom(float *out, int sampleRate, int samples,
  * Primary tone freq (the snare fundamental): gen_freq[k] × voice_freq in ratio
  * mode, so the binding passes ratio 1 and the fundamental flows through voice_freq
  * (= the resolved snare_fund Hz, clamped [80,2000] in the binding). */
+static void gen_snare_rimshot(float *out, int sampleRate, int samples,
+                              const modular_params *p, int k,
+                              double fundamentalHz, int sWave,
+                              noise_ma_gen *noise, int assign) {
+#define SNARE_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── rimshot (render_snare_rimshot_internal) ── */
+    double sTone2  = kp_get(p->gen_snare_tone2[k], 1050.0);
+    double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
+    double sToneD  = kp_get(p->gen_snare_tone_d[k], 40.0);
+    double sNoiseD = kp_get(p->gen_snare_noise_d[k], 200.0);
+    double sToneM  = kp_get(p->gen_snare_tone_m[k], 1.0);
+    double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.7);
+    double sAtk    = kp_get(p->gen_snare_attack[k], 2.0);
+
+    float seed;
+    seed = noise_ma_white_tick(noise);
+    double detune = 1.0 + 0.02 * (double)seed;
+
+    double f1 = fundamentalHz * detune;
+    double f2 = sTone2 * detune;
+    double f3 = 1700.0 * detune;
+    double f4 = 2800.0 * detune;
+    sp_osc osc1, osc2, osc3, osc4;
+    sp_osc_init(&osc1, 0.0);
+    sp_osc_init(&osc2, 0.0);
+    sp_osc_init(&osc3, 0.0);
+    sp_osc_init(&osc4, 0.0);
+
+    double rc = 1.0 / (2.0 * M_PI * (400.0 * sTune));
+    double dt = 1.0 / (double)sampleRate;
+    double hpAlpha = rc / (rc + dt);
+    double hpPrev = 0.0, hpOut = 0.0;
+
+    double lpAlpha = dt / (1.0 / (2.0 * M_PI * (5000.0 * sTune)) + dt);
+    double lpState = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double p1 = sp_osc_tick(&osc1, sWave, 2.0 * M_PI * f1 / (double)sampleRate) * 1.0  * exp(-sToneD * sec);
+        double p2 = sp_osc_tick(&osc2, sWave, 2.0 * M_PI * f2 / (double)sampleRate) * 0.95 * exp(-50.0 * sec);
+        double p3 = sp_osc_tick(&osc3, sWave, 2.0 * M_PI * f3 / (double)sampleRate) * 0.8  * exp(-65.0 * sec);
+        double p4 = sp_osc_tick(&osc4, sWave, 2.0 * M_PI * f4 / (double)sampleRate) * 0.5  * exp(-90.0 * sec);
+        double tones = p1 + p2 + p3 + p4;
+
+        float n = noise_ma_white_tick(noise);
+        sp_onepole_tick(&lpState, lpAlpha, (double)n);
+        double hpNoise = (double)n - lpState;
+        double transient = hpNoise * sNoiseM * exp(-sNoiseD * sec);
+
+        double attack = 1.0 + sAtk * exp(-1500.0 * sec);
+
+        double raw = (tones * sToneM + transient) * attack;
+
+        hpOut = hpAlpha * (hpOut + raw - hpPrev);
+        hpPrev = raw;
+
+        double driven = tanh(hpOut * 4.0);
+        double global = 1.0 - 0.1 * tNorm;
+        if (global < 0.0) global = 0.0;
+
+        SNARE_WRITE(0.95f * softsat_shared((float)(driven * global)));
+    }
+#undef SNARE_WRITE
+}
+
+static void gen_snare_sidestick(float *out, int sampleRate, int samples,
+                                const modular_params *p, int k,
+                                double fundamentalHz, int sWave,
+                                noise_ma_gen *noise, int assign) {
+#define SNARE_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── sidestick (render_snare_sidestick_internal) ── */
+    double sTone2  = kp_get(p->gen_snare_tone2[k], 1200.0);
+    double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
+    double sToneD  = kp_get(p->gen_snare_tone_d[k], 100.0);
+    double sNoiseD = kp_get(p->gen_snare_noise_d[k], 150.0);
+    double sToneM  = kp_get(p->gen_snare_tone_m[k], 0.5);
+    double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.5);
+    double sAtk    = kp_get(p->gen_snare_attack[k], 1.0);
+
+    float seed;
+    seed = noise_ma_white_tick(noise);
+    double detune = 1.0 + 0.02 * (double)seed;
+
+    double fWood = fundamentalHz * detune;
+    double fRim = sTone2 * detune;
+    sp_osc oscWood, oscRim;
+    sp_osc_init(&oscWood, 0.0);
+    sp_osc_init(&oscRim, 0.0);
+
+    double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
+    {
+        double fc = 1500.0 * sTune; double Q = 0.7;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+        double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+        b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
+    }
+    sp_biquad bq_bp = {0};
+    bq_bp.b0 = b0_bp; bq_bp.b1 = b1_bp; bq_bp.b2 = b2_bp; bq_bp.a1 = a1_bp; bq_bp.a2 = a2_bp;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+
+        double wood = sp_osc_tick(&oscWood, sWave, 2.0 * M_PI * fWood / (double)sampleRate) * sToneM * exp(-sToneD * sec);
+        double rim = sp_osc_tick(&oscRim, sWave, 2.0 * M_PI * fRim / (double)sampleRate) * 0.45 * exp(-120.0 * sec);
+
+        float n = noise_ma_white_tick(noise);
+        double x = (double)n;
+        double ybp = sp_biquad_tick(&bq_bp, x);
+        double noise_out = ybp * sNoiseM * exp(-sNoiseD * sec);
+
+        double attackBoost = 1.0 + sAtk * exp(-800.0 * sec);
+        double mixed = (wood + rim + noise_out) * attackBoost;
+
+        SNARE_WRITE(0.95f * softsat_shared((float)mixed));
+    }
+#undef SNARE_WRITE
+}
+
+static void gen_snare_main(float *out, int sampleRate, int samples,
+                           const modular_params *p, int k,
+                           double fundamentalHz, int sWave,
+                           noise_ma_gen *noise, int assign) {
+#define SNARE_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── snare (render_snare_internal) — FAT-BOTTOM tuning (matches
+     * 579499__yenus__fat-snare-bottom-ramon): lower 2nd tone, MORE tone +
+     * LESS noise, a FAST body thump (tone decay) + a LONG wire ring (slow
+     * noise/tail decay), darker noise tune. Defaults kept in sync with the
+     * drum-snare recipe spec in synth_recipe_wired.go. */
+    double sTone2  = kp_get(p->gen_snare_tone2[k], 280.0);
+    double sTune   = kp_get(p->gen_snare_tune[k], 0.55);
+    double sToneD  = kp_get(p->gen_snare_tone_d[k], 46.0);
+    double sNoiseD = kp_get(p->gen_snare_noise_d[k], 7.0);
+    double sTailD  = kp_get(p->gen_snare_tail_d[k], 10.0);
+    double sToneM  = kp_get(p->gen_snare_tone_m[k], 1.12);
+    double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.56);
+    double sWireM  = kp_get(p->gen_snare_wire_m[k], 0.8);
+    double sAtk    = kp_get(p->gen_snare_attack[k], 0.5);
+
+    float seed;
+    seed = noise_ma_white_tick(noise);
+    double detune = 1.0 + 0.02 * (double)seed;
+
+    double fBody1 = fundamentalHz * detune;
+    double fBody2 = sTone2 * detune;
+    sp_osc osc1, osc2;
+    sp_osc_init(&osc1, 0.0);
+    sp_osc_init(&osc2, 0.0);
+
+    double b0_lp, b1_lp, b2_lp, a1_lp, a2_lp;
+    double b0_bp1, b1_bp1, b2_bp1, a1_bp1, a2_bp1;
+    double b0_bp2, b1_bp2, b2_bp2, a1_bp2, a2_bp2;
+    double b0_bp3, b1_bp3, b2_bp3, a1_bp3, a2_bp3;
+
+    {
+        double fc = 350.0 * sTune;
+        double Q = 0.7;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0);
+        double alpha = sin(w0) / (2.0 * Q);
+        double b0 = (1.0 - cosw) * 0.5;
+        double b1 = 1.0 - cosw;
+        double b2 = (1.0 - cosw) * 0.5;
+        double a0 = 1.0 + alpha;
+        double a1 = -2.0 * cosw;
+        double a2 = 1.0 - alpha;
+        b0_lp = b0 / a0; b1_lp = b1 / a0; b2_lp = b2 / a0;
+        a1_lp = a1 / a0; a2_lp = a2 / a0;
+    }
+    {
+        double fc = 1800.0 * sTune;
+        double Q = 1.0;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0);
+        double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5;
+        double b1 = 0.0;
+        double b2 = -b0;
+        double a0 = 1.0 + alpha;
+        double a1 = -2.0 * cosw;
+        double a2 = 1.0 - alpha;
+        b0_bp1 = b0 / a0; b1_bp1 = b1 / a0; b2_bp1 = b2 / a0;
+        a1_bp1 = a1 / a0; a2_bp1 = a2 / a0;
+    }
+    {
+        double fc = 3200.0 * sTune;
+        double Q = 1.0;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0);
+        double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5;
+        double b1 = 0.0;
+        double b2 = -b0;
+        double a0 = 1.0 + alpha;
+        double a1 = -2.0 * cosw;
+        double a2 = 1.0 - alpha;
+        b0_bp2 = b0 / a0; b1_bp2 = b1 / a0; b2_bp2 = b2 / a0;
+        a1_bp2 = a1 / a0; a2_bp2 = a2 / a0;
+    }
+    {
+        double fc = 4500.0 * sTune;
+        double Q = 1.0;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0);
+        double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5;
+        double b1 = 0.0;
+        double b2 = -b0;
+        double a0 = 1.0 + alpha;
+        double a1 = -2.0 * cosw;
+        double a2 = 1.0 - alpha;
+        b0_bp3 = b0 / a0; b1_bp3 = b1 / a0; b2_bp3 = b2 / a0;
+        a1_bp3 = a1 / a0; a2_bp3 = a2 / a0;
+    }
+
+    sp_biquad bq_lp = {0};
+    bq_lp.b0 = b0_lp; bq_lp.b1 = b1_lp; bq_lp.b2 = b2_lp; bq_lp.a1 = a1_lp; bq_lp.a2 = a2_lp;
+    sp_biquad bq_bp1 = {0};
+    bq_bp1.b0 = b0_bp1; bq_bp1.b1 = b1_bp1; bq_bp1.b2 = b2_bp1; bq_bp1.a1 = a1_bp1; bq_bp1.a2 = a2_bp1;
+    sp_biquad bq_bp2 = {0};
+    bq_bp2.b0 = b0_bp2; bq_bp2.b1 = b1_bp2; bq_bp2.b2 = b2_bp2; bq_bp2.a1 = a1_bp2; bq_bp2.a2 = a2_bp2;
+    sp_biquad bq_bp3 = {0};
+    bq_bp3.b0 = b0_bp3; bq_bp3.b1 = b1_bp3; bq_bp3.b2 = b2_bp3; bq_bp3.a1 = a1_bp3; bq_bp3.a2 = a2_bp3;
+
+    double lfoRate = 13.0 + 2.0 * (double)seed;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double f1Step = fBody1 - 40.0 * sec;
+        double f2Step = fBody2 - 60.0 * sec;
+        if (f1Step < 140.0) f1Step = 140.0;
+        if (f2Step < 180.0) f2Step = 180.0;
+        double bodyTone = sp_osc_tick(&osc1, sWave, 2.0 * M_PI * f1Step / (double)sampleRate)
+                        + 0.6 * sp_osc_tick(&osc2, sWave, 2.0 * M_PI * f2Step / (double)sampleRate);
+        double envBody = exp(-sec * sToneD);
+        double body = bodyTone * envBody * 0.45;
+
+        float n = noise_ma_white_tick(noise);
+        double x = (double)n;
+
+        double ylp = sp_biquad_tick(&bq_lp, x);
+        double lowNoise = ylp;
+
+        double ybp1 = sp_biquad_tick(&bq_bp1, x);
+
+        double ybp2 = sp_biquad_tick(&bq_bp2, x);
+
+        double ybp3 = sp_biquad_tick(&bq_bp3, x);
+
+        double lfo = 1.0 + 0.10 * sin(2.0 * M_PI * lfoRate * sec);
+        double wiresBand = (ybp1 * 0.9 + ybp2 * 0.6 + ybp3 * 0.2) * lfo;
+
+        double envLow = exp(-sec * sNoiseD);
+        double envHighFast = exp(-sec * 200.0);
+        double envHighTail = exp(-sec * sTailD);
+
+        double noisyBody = lowNoise * envLow * 1.1;
+        double wires = wiresBand * (envHighFast * 0.9 + envHighTail * 0.45);
+
+        double attackBoost = 1.0 + sAtk * exp(-sec * 350.0);
+        wires *= attackBoost;
+
+        double mixed = body * sToneM + noisyBody * sNoiseM + wires * sWireM;
+        mixed *= (1.0 - 0.04 * tNorm);
+
+        SNARE_WRITE(0.95f * softsat_shared((float)mixed));
+    }
+#undef SNARE_WRITE
+}
+
 static void modular_gen_slot_snare(float *out, int sampleRate, int samples,
                                    const modular_params *p, int k,
                                    double voice_freq, int assign) {
@@ -1010,261 +1528,12 @@ static void modular_gen_slot_snare(float *out, int sampleRate, int samples,
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
 
-#define SNARE_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
-
     if (variant == 1) {
-        /* ── rimshot (render_snare_rimshot_internal) ── */
-        double sTone2  = kp_get(p->gen_snare_tone2[k], 1050.0);
-        double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
-        double sToneD  = kp_get(p->gen_snare_tone_d[k], 40.0);
-        double sNoiseD = kp_get(p->gen_snare_noise_d[k], 200.0);
-        double sToneM  = kp_get(p->gen_snare_tone_m[k], 1.0);
-        double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.7);
-        double sAtk    = kp_get(p->gen_snare_attack[k], 2.0);
-
-        float seed;
-        seed = noise_ma_white_tick(&noise);
-        double detune = 1.0 + 0.02 * (double)seed;
-
-        double f1 = fundamentalHz * detune;
-        double f2 = sTone2 * detune;
-        double f3 = 1700.0 * detune;
-        double f4 = 2800.0 * detune;
-        double phase1 = 0.0, phase2 = 0.0, phase3 = 0.0, phase4 = 0.0;
-
-        double rc = 1.0 / (2.0 * M_PI * (400.0 * sTune));
-        double dt = 1.0 / (double)sampleRate;
-        double hpAlpha = rc / (rc + dt);
-        double hpPrev = 0.0, hpOut = 0.0;
-
-        double lpAlpha = dt / (1.0 / (2.0 * M_PI * (5000.0 * sTune)) + dt);
-        double lpState = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            phase1 += 2.0 * M_PI * f1 / (double)sampleRate;
-            phase2 += 2.0 * M_PI * f2 / (double)sampleRate;
-            phase3 += 2.0 * M_PI * f3 / (double)sampleRate;
-            phase4 += 2.0 * M_PI * f4 / (double)sampleRate;
-            double p1 = osc_wave_shared(sWave, phase1) * 1.0  * exp(-sToneD * sec);
-            double p2 = osc_wave_shared(sWave, phase2) * 0.95 * exp(-50.0 * sec);
-            double p3 = osc_wave_shared(sWave, phase3) * 0.8  * exp(-65.0 * sec);
-            double p4 = osc_wave_shared(sWave, phase4) * 0.5  * exp(-90.0 * sec);
-            double tones = p1 + p2 + p3 + p4;
-
-            float n = noise_ma_white_tick(&noise);
-            lpState += lpAlpha * ((double)n - lpState);
-            double hpNoise = (double)n - lpState;
-            double transient = hpNoise * sNoiseM * exp(-sNoiseD * sec);
-
-            double attack = 1.0 + sAtk * exp(-1500.0 * sec);
-
-            double raw = (tones * sToneM + transient) * attack;
-
-            hpOut = hpAlpha * (hpOut + raw - hpPrev);
-            hpPrev = raw;
-
-            double driven = tanh(hpOut * 4.0);
-            double global = 1.0 - 0.1 * tNorm;
-            if (global < 0.0) global = 0.0;
-
-            SNARE_WRITE(0.95f * softsat_shared((float)(driven * global)));
-        }
+        gen_snare_rimshot(out, sampleRate, samples, p, k, fundamentalHz, sWave, &noise, assign);
     } else if (variant == 2) {
-        /* ── sidestick (render_snare_sidestick_internal) ── */
-        double sTone2  = kp_get(p->gen_snare_tone2[k], 1200.0);
-        double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
-        double sToneD  = kp_get(p->gen_snare_tone_d[k], 100.0);
-        double sNoiseD = kp_get(p->gen_snare_noise_d[k], 150.0);
-        double sToneM  = kp_get(p->gen_snare_tone_m[k], 0.5);
-        double sNoiseM = kp_get(p->gen_snare_noise_m[k], 0.5);
-        double sAtk    = kp_get(p->gen_snare_attack[k], 1.0);
-
-        float seed;
-        seed = noise_ma_white_tick(&noise);
-        double detune = 1.0 + 0.02 * (double)seed;
-
-        double fWood = fundamentalHz * detune;
-        double fRim = sTone2 * detune;
-        double phaseWood = 0.0, phaseRim = 0.0;
-
-        double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
-        {
-            double fc = 1500.0 * sTune; double Q = 0.7;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
-            double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
-            b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
-        }
-        double x1_bp = 0, x2_bp = 0, y1_bp = 0, y2_bp = 0;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-
-            phaseWood += 2.0 * M_PI * fWood / (double)sampleRate;
-            phaseRim += 2.0 * M_PI * fRim / (double)sampleRate;
-            double wood = osc_wave_shared(sWave, phaseWood) * sToneM * exp(-sToneD * sec);
-            double rim = osc_wave_shared(sWave, phaseRim) * 0.45 * exp(-120.0 * sec);
-
-            float n = noise_ma_white_tick(&noise);
-            double x = (double)n;
-            double ybp = b0_bp*x + b1_bp*x1_bp + b2_bp*x2_bp - a1_bp*y1_bp - a2_bp*y2_bp;
-            x2_bp = x1_bp; x1_bp = x; y2_bp = y1_bp; y1_bp = ybp;
-            double noise_out = ybp * sNoiseM * exp(-sNoiseD * sec);
-
-            double attackBoost = 1.0 + sAtk * exp(-800.0 * sec);
-            double mixed = (wood + rim + noise_out) * attackBoost;
-
-            SNARE_WRITE(0.95f * softsat_shared((float)mixed));
-        }
+        gen_snare_sidestick(out, sampleRate, samples, p, k, fundamentalHz, sWave, &noise, assign);
     } else {
-        /* ── snare (render_snare_internal) ── */
-        double sTone2  = kp_get(p->gen_snare_tone2[k], 330.0);
-        double sTune   = kp_get(p->gen_snare_tune[k], 1.0);
-        double sToneD  = kp_get(p->gen_snare_tone_d[k], 28.0);
-        double sNoiseD = kp_get(p->gen_snare_noise_d[k], 12.0);
-        double sTailD  = kp_get(p->gen_snare_tail_d[k], 18.0);
-        double sToneM  = kp_get(p->gen_snare_tone_m[k], 0.40);
-        double sNoiseM = kp_get(p->gen_snare_noise_m[k], 1.1);
-        double sWireM  = kp_get(p->gen_snare_wire_m[k], 0.9);
-        double sAtk    = kp_get(p->gen_snare_attack[k], 0.3);
-
-        float seed;
-        seed = noise_ma_white_tick(&noise);
-        double detune = 1.0 + 0.02 * (double)seed;
-
-        double fBody1 = fundamentalHz * detune;
-        double fBody2 = sTone2 * detune;
-        double phase1 = 0.0, phase2 = 0.0;
-
-        double b0_lp, b1_lp, b2_lp, a1_lp, a2_lp;
-        double b0_bp1, b1_bp1, b2_bp1, a1_bp1, a2_bp1;
-        double b0_bp2, b1_bp2, b2_bp2, a1_bp2, a2_bp2;
-        double b0_bp3, b1_bp3, b2_bp3, a1_bp3, a2_bp3;
-
-        {
-            double fc = 350.0 * sTune;
-            double Q = 0.7;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0);
-            double alpha = sin(w0) / (2.0 * Q);
-            double b0 = (1.0 - cosw) * 0.5;
-            double b1 = 1.0 - cosw;
-            double b2 = (1.0 - cosw) * 0.5;
-            double a0 = 1.0 + alpha;
-            double a1 = -2.0 * cosw;
-            double a2 = 1.0 - alpha;
-            b0_lp = b0 / a0; b1_lp = b1 / a0; b2_lp = b2 / a0;
-            a1_lp = a1 / a0; a2_lp = a2 / a0;
-        }
-        {
-            double fc = 1800.0 * sTune;
-            double Q = 1.0;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0);
-            double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5;
-            double b1 = 0.0;
-            double b2 = -b0;
-            double a0 = 1.0 + alpha;
-            double a1 = -2.0 * cosw;
-            double a2 = 1.0 - alpha;
-            b0_bp1 = b0 / a0; b1_bp1 = b1 / a0; b2_bp1 = b2 / a0;
-            a1_bp1 = a1 / a0; a2_bp1 = a2 / a0;
-        }
-        {
-            double fc = 3200.0 * sTune;
-            double Q = 1.0;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0);
-            double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5;
-            double b1 = 0.0;
-            double b2 = -b0;
-            double a0 = 1.0 + alpha;
-            double a1 = -2.0 * cosw;
-            double a2 = 1.0 - alpha;
-            b0_bp2 = b0 / a0; b1_bp2 = b1 / a0; b2_bp2 = b2 / a0;
-            a1_bp2 = a1 / a0; a2_bp2 = a2 / a0;
-        }
-        {
-            double fc = 4500.0 * sTune;
-            double Q = 1.0;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0);
-            double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5;
-            double b1 = 0.0;
-            double b2 = -b0;
-            double a0 = 1.0 + alpha;
-            double a1 = -2.0 * cosw;
-            double a2 = 1.0 - alpha;
-            b0_bp3 = b0 / a0; b1_bp3 = b1 / a0; b2_bp3 = b2 / a0;
-            a1_bp3 = a1 / a0; a2_bp3 = a2 / a0;
-        }
-
-        double x1_lp = 0.0, x2_lp = 0.0, y1_lp = 0.0, y2_lp = 0.0;
-        double x1_bp1 = 0.0, x2_bp1 = 0.0, y1_bp1 = 0.0, y2_bp1 = 0.0;
-        double x1_bp2 = 0.0, x2_bp2 = 0.0, y1_bp2 = 0.0, y2_bp2 = 0.0;
-        double x1_bp3 = 0.0, x2_bp3 = 0.0, y1_bp3 = 0.0, y2_bp3 = 0.0;
-
-        double lfoRate = 13.0 + 2.0 * (double)seed;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            double f1Step = fBody1 - 40.0 * sec;
-            double f2Step = fBody2 - 60.0 * sec;
-            if (f1Step < 140.0) f1Step = 140.0;
-            if (f2Step < 180.0) f2Step = 180.0;
-            phase1 += 2.0 * M_PI * f1Step / (double)sampleRate;
-            phase2 += 2.0 * M_PI * f2Step / (double)sampleRate;
-            double bodyTone = osc_wave_shared(sWave, phase1) + 0.6 * osc_wave_shared(sWave, phase2);
-            double envBody = exp(-sec * sToneD);
-            double body = bodyTone * envBody * 0.45;
-
-            float n = noise_ma_white_tick(&noise);
-            double x = (double)n;
-
-            double ylp = b0_lp * x + b1_lp * x1_lp + b2_lp * x2_lp - a1_lp * y1_lp - a2_lp * y2_lp;
-            x2_lp = x1_lp; x1_lp = x;
-            y2_lp = y1_lp; y1_lp = ylp;
-            double lowNoise = ylp;
-
-            double ybp1 = b0_bp1 * x + b1_bp1 * x1_bp1 + b2_bp1 * x2_bp1 - a1_bp1 * y1_bp1 - a2_bp1 * y2_bp1;
-            x2_bp1 = x1_bp1; x1_bp1 = x;
-            y2_bp1 = y1_bp1; y1_bp1 = ybp1;
-
-            double ybp2 = b0_bp2 * x + b1_bp2 * x1_bp2 + b2_bp2 * x2_bp2 - a1_bp2 * y1_bp2 - a2_bp2 * y2_bp2;
-            x2_bp2 = x1_bp2; x1_bp2 = x;
-            y2_bp2 = y1_bp2; y1_bp2 = ybp2;
-
-            double ybp3 = b0_bp3 * x + b1_bp3 * x1_bp3 + b2_bp3 * x2_bp3 - a1_bp3 * y1_bp3 - a2_bp3 * y2_bp3;
-            x2_bp3 = x1_bp3; x1_bp3 = x;
-            y2_bp3 = y1_bp3; y1_bp3 = ybp3;
-
-            double lfo = 1.0 + 0.10 * sin(2.0 * M_PI * lfoRate * sec);
-            double wiresBand = (ybp1 * 0.9 + ybp2 * 0.6 + ybp3 * 0.2) * lfo;
-
-            double envLow = exp(-sec * sNoiseD);
-            double envHighFast = exp(-sec * 200.0);
-            double envHighTail = exp(-sec * sTailD);
-
-            double noisyBody = lowNoise * envLow * 1.1;
-            double wires = wiresBand * (envHighFast * 0.9 + envHighTail * 0.45);
-
-            double attackBoost = 1.0 + sAtk * exp(-sec * 350.0);
-            wires *= attackBoost;
-
-            double mixed = body * sToneM + noisyBody * sNoiseM + wires * sWireM;
-            mixed *= (1.0 - 0.04 * tNorm);
-
-            SNARE_WRITE(0.95f * softsat_shared((float)mixed));
-        }
+        gen_snare_main(out, sampleRate, samples, p, k, fundamentalHz, sWave, &noise, assign);
     }
 }
 
@@ -1308,15 +1577,14 @@ static void modular_gen_slot_clap(float *out, int sampleRate, int samples,
         b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0;
         a1_bp = a1/a0; a2_bp = a2/a0;
     }
-    double x1_bp = 0.0, x2_bp = 0.0, y1_bp = 0.0, y2_bp = 0.0;
+    sp_biquad bq_bp = {0};
+    bq_bp.b0 = b0_bp; bq_bp.b1 = b1_bp; bq_bp.b2 = b2_bp; bq_bp.a1 = a1_bp; bq_bp.a2 = a2_bp;
 
     for (int i = 0; i < samples; ++i) {
         double t = (double)i / (double)sampleRate;
         float n = noise_ma_white_tick(&noise);
 
-        double ybp = b0_bp * (double)n + b1_bp * x1_bp + b2_bp * x2_bp - a1_bp * y1_bp - a2_bp * y2_bp;
-        x2_bp = x1_bp; x1_bp = (double)n;
-        y2_bp = y1_bp; y1_bp = ybp;
+        double ybp = sp_biquad_tick(&bq_bp, (double)n);
 
         double burst =
             exp(-sAtk * fabs(t - 0.000)) +
@@ -1359,6 +1627,423 @@ static void modular_gen_slot_clap(float *out, int sampleRate, int samples,
  *
  * assign: when 1 the first sample-write ASSIGNS (out[i]=expr) — matching the
  * legacy renderer's direct out[i]= — so a -0.0 sample is not flipped to +0.0. */
+static void gen_cymbal_hihat(float *out, int sampleRate, int samples,
+                             const modular_params *p, int k,
+                             noise_ma_gen *noise, int assign) {
+#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+#define HH_PARTIALS 6
+    /* ── hihat (render_hihat_internal) ── */
+    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
+    double cyFast   = kp_get(p->gen_cym_env_fast[k], 180.0);
+    double cyTail   = kp_get(p->gen_cym_env_tail[k], 35.0);
+    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.85);
+    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.45);
+    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 100.0);
+    int    cyWave   = (int)kp_get(p->gen_wave[k], 2.0);
+
+    static const double baseFreq[HH_PARTIALS] = {4100.0, 5400.0, 6700.0, 8300.0, 9900.0, 11800.0};
+    sp_osc osc[HH_PARTIALS];
+    double freq[HH_PARTIALS];
+    double gain[HH_PARTIALS];
+
+    for (int kk = 0; kk < HH_PARTIALS; ++kk) {
+        float s = noise_ma_white_tick(noise);
+        double det = 1.0 + 0.02 * (double)s;
+        freq[kk] = (baseFreq[kk] * cyTune) * det;
+        sp_osc_init(&osc[kk], 2.0 * M_PI * (double)s);
+        gain[kk] = (kk < 3) ? 1.0 / (double)HH_PARTIALS : 0.75 / (double)HH_PARTIALS;
+    }
+
+    double lpCluster = 0.0;
+    double lpNoise = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double cluster = 0.0;
+        for (int kk = 0; kk < HH_PARTIALS; ++kk) {
+            double sq = sp_osc_tick(&osc[kk], cyWave, 2.0 * M_PI * freq[kk] / (double)sampleRate);
+            double lfo = 1.0 + 0.10 * sin(2.0 * M_PI * (10.0 + 4.0 * kk) * sec);
+            cluster += sq * gain[kk] * lfo;
+        }
+
+        sp_onepole_mix(&lpCluster, 0.9, 0.1, cluster);
+        double hpCluster = cluster - lpCluster;
+
+        float wn = noise_ma_white_tick(noise);
+        double xNoise = (double)wn;
+        sp_onepole_mix(&lpNoise, 0.92, 0.08, xNoise);
+        double hpNoise = xNoise - lpNoise;
+
+        double envFast = exp(-sec * cyFast);
+        double envTail = exp(-sec * cyTail);
+        double env = envFast * 0.8 + envTail * 0.6;
+
+        double noiseEnv = exp(-sec * cyNoiseD);
+
+        double y = hpCluster * env * cyToneM + hpNoise * noiseEnv * cyNoiseM;
+        y *= (1.0 - 0.15 * tNorm);
+
+        CYM_WRITE(0.9f * softsat_shared((float)y));
+    }
+#undef HH_PARTIALS
+#undef CYM_WRITE
+}
+
+static void gen_cymbal_open(float *out, int sampleRate, int samples,
+                            const modular_params *p, int k,
+                            noise_ma_gen *noise, int assign) {
+#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+#define HH_PARTIALS 6
+    /* ── open-hihat (render_open_hihat_internal) ── */
+    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
+    double cyFast   = kp_get(p->gen_cym_env_fast[k], 120.0);
+    double cyTail   = kp_get(p->gen_cym_env_tail[k], 22.0);
+    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.7);
+    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.9);
+    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 18.0);
+    int    cyWave   = (int)kp_get(p->gen_wave[k], 2.0);
+
+    static const double baseFreq[HH_PARTIALS] = {4100.0, 5400.0, 6700.0, 8300.0, 9900.0, 11800.0};
+    sp_osc osc[HH_PARTIALS];
+    double freq[HH_PARTIALS];
+    double gain[HH_PARTIALS];
+
+    for (int kk = 0; kk < HH_PARTIALS; ++kk) {
+        float s = noise_ma_white_tick(noise);
+        double det = 1.0 + 0.015 * (double)s;
+        freq[kk] = (baseFreq[kk] * cyTune) * det;
+        sp_osc_init(&osc[kk], 2.0 * M_PI * (double)s);
+        gain[kk] = (kk < 3) ? 1.0 / (double)HH_PARTIALS : 0.9 / (double)HH_PARTIALS;
+    }
+
+    double lpCluster = 0.0;
+    double lpNoise = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double cluster = 0.0;
+        for (int kk = 0; kk < HH_PARTIALS; ++kk) {
+            double sq = sp_osc_tick(&osc[kk], cyWave, 2.0 * M_PI * freq[kk] / (double)sampleRate);
+            double lfo = 1.0 + 0.12 * sin(2.0 * M_PI * (9.0 + 3.0 * kk) * sec);
+            cluster += sq * gain[kk] * lfo;
+        }
+
+        sp_onepole_mix(&lpCluster, 0.92, 0.08, cluster);
+        double hpCluster = cluster - lpCluster;
+
+        float wn = noise_ma_white_tick(noise);
+        double xNoise = (double)wn;
+        sp_onepole_mix(&lpNoise, 0.94, 0.06, xNoise);
+        double hpNoise = xNoise - lpNoise;
+
+        double envClusterFast = exp(-sec * cyFast);
+        double envClusterTail = exp(-sec * cyTail);
+        double envCluster = envClusterFast * 0.7 + envClusterTail * 0.8;
+
+        double envNoiseFast = exp(-sec * 80.0);
+        double envNoiseTail = exp(-sec * cyNoiseD);
+        double envNoise = envNoiseFast * 0.7 + envNoiseTail * 1.1;
+
+        double y = hpCluster * envCluster * cyToneM + hpNoise * envNoise * cyNoiseM;
+        y *= exp(-1.5 * tNorm);
+
+        CYM_WRITE(0.9f * softsat_shared((float)(y * 1.05)));
+    }
+#undef HH_PARTIALS
+#undef CYM_WRITE
+}
+
+static void gen_cymbal_cowbell(float *out, int sampleRate, int samples,
+                               const modular_params *p, int k,
+                               noise_ma_gen *noise, int assign) {
+#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── cowbell (render_cowbell_internal) ── */
+    float seed = noise_ma_white_tick(noise);
+    double detune = 1.0 + 0.01 * (double)seed;
+
+    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
+    double cyFast   = kp_get(p->gen_cym_env_fast[k], 260.0);
+    double cyTail   = kp_get(p->gen_cym_env_tail[k], 9.0);
+    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
+    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.55);
+    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 60.0);
+    int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
+
+    const double freqs[4] = {
+        (640.0 * cyTune) * detune,
+        (920.0 * cyTune) * detune,
+        (1300.0 * cyTune) * detune,
+        (1900.0 * cyTune) * detune,
+    };
+    const double gains[4] = {1.0, 0.85, 0.6, 0.4};
+    sp_osc osc[4];
+    for (int kk = 0; kk < 4; ++kk) sp_osc_init(&osc[kk], 0.0);
+
+    double lpNoise = 0.0;
+
+    double b0_cb, b1_cb, b2_cb, a1_cb, a2_cb;
+    {
+        double fc = 1200.0;
+        double Q = 2.0;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0);
+        double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5;
+        double b1 = 0.0;
+        double b2 = -b0;
+        double a0 = 1.0 + alpha;
+        double a1 = -2.0 * cosw;
+        double a2 = 1.0 - alpha;
+        b0_cb = b0/a0; b1_cb = b1/a0; b2_cb = b2/a0;
+        a1_cb = a1/a0; a2_cb = a2/a0;
+    }
+    sp_biquad bq_cb = {0};
+    bq_cb.b0 = b0_cb; bq_cb.b1 = b1_cb; bq_cb.b2 = b2_cb; bq_cb.a1 = a1_cb; bq_cb.a2 = a2_cb;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+        float n = noise_ma_white_tick(noise);
+
+        double tone = 0.0;
+        for (int kk = 0; kk < 4; ++kk) {
+            tone += sp_osc_tick(&osc[kk], cyWave, 2.0 * M_PI * freqs[kk] / (double)sampleRate) * gains[kk];
+        }
+        double envTone = exp(-sec * cyTail);
+
+        sp_onepole_mix(&lpNoise, 0.9, 0.1, n);
+        double ycb = sp_biquad_tick(&bq_cb, (double)n);
+        double impactEnv = exp(-sec * cyFast);
+        double impact = ycb * impactEnv * cyNoiseM;
+        double hpMetal = (double)n - lpNoise;
+        double metalEnv = exp(-sec * cyNoiseD);
+        double metal = hpMetal * metalEnv * 0.30;
+
+        double global = 1.0 - 0.06 * tNorm;
+        if (global < 0.0) global = 0.0;
+
+        double mixed = (tone * envTone * cyToneM + impact + metal) * global;
+        CYM_WRITE(0.95f * softsat_shared((float)mixed));
+    }
+#undef CYM_WRITE
+}
+
+static void gen_cymbal_shaker(float *out, int sampleRate, int samples,
+                              const modular_params *p, int k,
+                              noise_ma_gen *noise, int assign) {
+#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── shaker (render_shaker_internal) ── */
+    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
+    double cyFast   = kp_get(p->gen_cym_env_fast[k], 200.0);
+    double cyTail   = kp_get(p->gen_cym_env_tail[k], 25.0);
+    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.6);
+    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.5);
+
+    float seed = noise_ma_white_tick(noise);
+    double timeVar = 0.001 * (double)seed; /* ±1ms variation */
+
+    double burstOff[4] = { 0.000, 0.004, 0.009, 0.015 };
+    const double burstAmp[4] = { 1.0, 0.85, 0.7, 0.5 };
+    for (int kk = 0; kk < 4; ++kk) {
+        burstOff[kk] += timeVar;
+    }
+
+    double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
+    {
+        double fc = 8000.0 * cyTune; double Q = 0.7;
+        double w0 = 2.0 * M_PI * fc / (double)sampleRate;
+        double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
+        double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
+        double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
+        b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
+    }
+    sp_biquad bq_bp = {0};
+    bq_bp.b0 = b0_bp; bq_bp.b1 = b1_bp; bq_bp.b2 = b2_bp; bq_bp.a1 = a1_bp; bq_bp.a2 = a2_bp;
+
+    double hpState = 0.0;
+    double hpAlpha = 0.85;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+
+        float n = noise_ma_white_tick(noise);
+        double x = (double)n;
+
+        hpState = hpState * hpAlpha + x * (1.0 - hpAlpha);
+        double hp = x - hpState;
+
+        double ybp = sp_biquad_tick(&bq_bp, x);
+
+        double burst = 0.0;
+        for (int kk = 0; kk < 4; ++kk) {
+            burst += burstAmp[kk] * exp(-cyFast * fabs(sec - burstOff[kk]));
+        }
+
+        double overall = exp(-cyTail * sec);
+        double mixed = (hp * cyToneM + ybp * cyNoiseM) * burst * overall;
+
+        CYM_WRITE(0.95f * softsat_shared((float)mixed));
+    }
+#undef CYM_WRITE
+}
+
+static void gen_cymbal_ride(float *out, int sampleRate, int samples,
+                            const modular_params *p, int k,
+                            noise_ma_gen *noise, int assign) {
+#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── ride (render_ride_internal) ── */
+    const int RIDE_PARTIALS = 10;
+    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
+    double cyFast   = kp_get(p->gen_cym_env_fast[k], 40.0);
+    double cyTail   = kp_get(p->gen_cym_env_tail[k], 8.0);
+    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
+    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.3);
+    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 12.0);
+    int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
+
+    static const double baseFreq[10] = {
+        3100.0, 3800.0, 4700.0, 5900.0, 7100.0,
+        8400.0, 9800.0, 11500.0, 13200.0, 15000.0
+    };
+    static const double baseGain[10] = {
+        1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.35
+    };
+
+    sp_osc osc[10];
+    double freq[10];
+    double gain[10];
+
+    for (int kk = 0; kk < RIDE_PARTIALS; ++kk) {
+        float s = noise_ma_white_tick(noise);
+        double det = 1.0 + 0.015 * (double)s;
+        freq[kk] = (baseFreq[kk] * cyTune) * det;
+        sp_osc_init(&osc[kk], 2.0 * M_PI * (double)s);
+        gain[kk] = baseGain[kk] / (double)RIDE_PARTIALS;
+    }
+
+    double bellPhase = 0.0;
+    float bs = noise_ma_white_tick(noise);
+    double bellFreq = 3000.0 * (1.0 + 0.01 * (double)bs);
+
+    double lpCluster = 0.0;
+    double lpNoise = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double cluster = 0.0;
+        for (int kk = 0; kk < RIDE_PARTIALS; ++kk) {
+            cluster += sp_osc_tick(&osc[kk], cyWave, 2.0 * M_PI * freq[kk] / (double)sampleRate) * gain[kk];
+        }
+
+        sp_onepole_mix(&lpCluster, 0.92, 0.08, cluster);
+        double hpCluster = cluster - lpCluster;
+
+        bellPhase += 2.0 * M_PI * bellFreq / (double)sampleRate;
+        double bellEnv = exp(-6.0 * sec);
+        double bell = sin(bellPhase) * bellEnv * 0.15;
+
+        double envFast = exp(-cyFast * sec);
+        double envTail = exp(-cyTail * sec);
+        double env = envFast * 0.5 + envTail * 0.8;
+
+        float wn = noise_ma_white_tick(noise);
+        double xNoise = (double)wn;
+        sp_onepole_mix(&lpNoise, 0.92, 0.08, xNoise);
+        double hpNoise = xNoise - lpNoise;
+        double noiseEnv = exp(-cyNoiseD * sec);
+
+        double lfo = 1.0 + 0.06 * sin(2.0 * M_PI * 7.0 * sec);
+
+        double y = (hpCluster * env * cyToneM + bell) * lfo + hpNoise * noiseEnv * cyNoiseM;
+        y *= exp(-2.0 * tNorm);
+
+        CYM_WRITE(0.9f * softsat_shared((float)y));
+    }
+#undef CYM_WRITE
+}
+
+static void gen_cymbal_crash(float *out, int sampleRate, int samples,
+                             const modular_params *p, int k,
+                             noise_ma_gen *noise, int assign) {
+#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
+    /* ── crash (render_crash_internal) ── */
+    const int CRASH_PARTIALS = 8;
+    double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
+    double cyFast   = kp_get(p->gen_cym_env_fast[k], 10.0);
+    double cyTail   = kp_get(p->gen_cym_env_tail[k], 3.0);
+    double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
+    double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.35);
+    double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 8.0);
+    int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
+
+    static const double baseFreq[8] = {
+        2000.0, 2800.0, 3700.0, 4800.0, 6200.0, 7800.0, 9500.0, 11500.0
+    };
+    static const double baseGain[8] = {
+        0.6, 0.9, 1.0, 1.0, 0.85, 0.65, 0.45, 0.3
+    };
+
+    sp_osc osc[8];
+    double freq[8];
+    double gain[8];
+
+    for (int kk = 0; kk < CRASH_PARTIALS; ++kk) {
+        float s = noise_ma_white_tick(noise);
+        double det = 1.0 + 0.02 * (double)s;
+        freq[kk] = (baseFreq[kk] * cyTune) * det;
+        sp_osc_init(&osc[kk], 2.0 * M_PI * (double)s);
+        gain[kk] = baseGain[kk] / (double)CRASH_PARTIALS;
+    }
+
+    double bellPhase = 0.0;
+    float bs = noise_ma_white_tick(noise);
+    double bellFreq = 2500.0 * (1.0 + 0.01 * (double)bs);
+
+    double lpCluster = 0.0;
+    double lpNoise = 0.0;
+
+    for (int i = 0; i < samples; ++i) {
+        double sec = (double)i / (double)sampleRate;
+        double tNorm = (double)i / (double)samples;
+
+        double cluster = 0.0;
+        for (int kk = 0; kk < CRASH_PARTIALS; ++kk) {
+            cluster += sp_osc_tick(&osc[kk], cyWave, 2.0 * M_PI * freq[kk] / (double)sampleRate) * gain[kk];
+        }
+
+        sp_onepole_mix(&lpCluster, 0.93, 0.07, cluster);
+        double hpCluster = cluster - lpCluster;
+
+        bellPhase += 2.0 * M_PI * bellFreq / (double)sampleRate;
+        double bellEnv = exp(-4.0 * sec);
+        double bell = sin(bellPhase) * bellEnv * 0.18;
+
+        double envFast = exp(-cyFast * sec);
+        double envTail = exp(-cyTail * sec);
+        double env = envFast * 0.5 + envTail * 0.9;
+
+        float wn = noise_ma_white_tick(noise);
+        double xNoise = (double)wn;
+        sp_onepole_mix(&lpNoise, 0.93, 0.07, xNoise);
+        double hpNoise = xNoise - lpNoise;
+        double noiseEnv = exp(-cyNoiseD * sec);
+
+        double lfo = 1.0 + 0.06 * sin(2.0 * M_PI * 5.0 * sec);
+
+        double y = (hpCluster * env * cyToneM + bell) * lfo + hpNoise * noiseEnv * cyNoiseM;
+        y *= exp(-1.5 * tNorm);
+
+        CYM_WRITE(0.9f * softsat_shared((float)y));
+    }
+#undef CYM_WRITE
+}
+
 static void modular_gen_slot_cymbal(float *out, int sampleRate, int samples,
                                     const modular_params *p, int k,
                                     double voice_freq, int assign) {
@@ -1369,394 +2054,19 @@ static void modular_gen_slot_cymbal(float *out, int sampleRate, int samples,
     noise_ma_gen noise;
     noise_ma_init(&noise, 0);
 
-#define CYM_WRITE(expr) do { if (assign) out[i] = (expr); else out[i] += (expr); } while (0)
-#define HH_PARTIALS 6
-
     if (variant == 0) {
-        /* ── hihat (render_hihat_internal) ── */
-        double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-        double cyFast   = kp_get(p->gen_cym_env_fast[k], 180.0);
-        double cyTail   = kp_get(p->gen_cym_env_tail[k], 35.0);
-        double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.85);
-        double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.45);
-        double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 100.0);
-        int    cyWave   = (int)kp_get(p->gen_wave[k], 2.0);
-
-        static const double baseFreq[HH_PARTIALS] = {4100.0, 5400.0, 6700.0, 8300.0, 9900.0, 11800.0};
-        double phase[HH_PARTIALS] = {0, 0, 0, 0, 0, 0};
-        double freq[HH_PARTIALS];
-        double gain[HH_PARTIALS];
-
-        for (int kk = 0; kk < HH_PARTIALS; ++kk) {
-            float s = noise_ma_white_tick(&noise);
-            double det = 1.0 + 0.02 * (double)s;
-            freq[kk] = (baseFreq[kk] * cyTune) * det;
-            phase[kk] = 2.0 * M_PI * (double)s;
-            gain[kk] = (kk < 3) ? 1.0 / (double)HH_PARTIALS : 0.75 / (double)HH_PARTIALS;
-        }
-
-        double lpCluster = 0.0;
-        double lpNoise = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            double cluster = 0.0;
-            for (int kk = 0; kk < HH_PARTIALS; ++kk) {
-                phase[kk] += 2.0 * M_PI * freq[kk] / (double)sampleRate;
-                double sq = osc_wave_shared(cyWave, phase[kk]);
-                double lfo = 1.0 + 0.10 * sin(2.0 * M_PI * (10.0 + 4.0 * kk) * sec);
-                cluster += sq * gain[kk] * lfo;
-            }
-
-            lpCluster = lpCluster * 0.9 + cluster * 0.1;
-            double hpCluster = cluster - lpCluster;
-
-            float wn = noise_ma_white_tick(&noise);
-            double xNoise = (double)wn;
-            lpNoise = lpNoise * 0.92 + xNoise * 0.08;
-            double hpNoise = xNoise - lpNoise;
-
-            double envFast = exp(-sec * cyFast);
-            double envTail = exp(-sec * cyTail);
-            double env = envFast * 0.8 + envTail * 0.6;
-
-            double noiseEnv = exp(-sec * cyNoiseD);
-
-            double y = hpCluster * env * cyToneM + hpNoise * noiseEnv * cyNoiseM;
-            y *= (1.0 - 0.15 * tNorm);
-
-            CYM_WRITE(0.9f * softsat_shared((float)y));
-        }
+        gen_cymbal_hihat(out, sampleRate, samples, p, k, &noise, assign);
     } else if (variant == 1) {
-        /* ── open-hihat (render_open_hihat_internal) ── */
-        double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-        double cyFast   = kp_get(p->gen_cym_env_fast[k], 120.0);
-        double cyTail   = kp_get(p->gen_cym_env_tail[k], 22.0);
-        double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.7);
-        double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.9);
-        double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 18.0);
-        int    cyWave   = (int)kp_get(p->gen_wave[k], 2.0);
-
-        static const double baseFreq[HH_PARTIALS] = {4100.0, 5400.0, 6700.0, 8300.0, 9900.0, 11800.0};
-        double phase[HH_PARTIALS] = {0, 0, 0, 0, 0, 0};
-        double freq[HH_PARTIALS];
-        double gain[HH_PARTIALS];
-
-        for (int kk = 0; kk < HH_PARTIALS; ++kk) {
-            float s = noise_ma_white_tick(&noise);
-            double det = 1.0 + 0.015 * (double)s;
-            freq[kk] = (baseFreq[kk] * cyTune) * det;
-            phase[kk] = 2.0 * M_PI * (double)s;
-            gain[kk] = (kk < 3) ? 1.0 / (double)HH_PARTIALS : 0.9 / (double)HH_PARTIALS;
-        }
-
-        double lpCluster = 0.0;
-        double lpNoise = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            double cluster = 0.0;
-            for (int kk = 0; kk < HH_PARTIALS; ++kk) {
-                phase[kk] += 2.0 * M_PI * freq[kk] / (double)sampleRate;
-                double sq = osc_wave_shared(cyWave, phase[kk]);
-                double lfo = 1.0 + 0.12 * sin(2.0 * M_PI * (9.0 + 3.0 * kk) * sec);
-                cluster += sq * gain[kk] * lfo;
-            }
-
-            lpCluster = lpCluster * 0.92 + cluster * 0.08;
-            double hpCluster = cluster - lpCluster;
-
-            float wn = noise_ma_white_tick(&noise);
-            double xNoise = (double)wn;
-            lpNoise = lpNoise * 0.94 + xNoise * 0.06;
-            double hpNoise = xNoise - lpNoise;
-
-            double envClusterFast = exp(-sec * cyFast);
-            double envClusterTail = exp(-sec * cyTail);
-            double envCluster = envClusterFast * 0.7 + envClusterTail * 0.8;
-
-            double envNoiseFast = exp(-sec * 80.0);
-            double envNoiseTail = exp(-sec * cyNoiseD);
-            double envNoise = envNoiseFast * 0.7 + envNoiseTail * 1.1;
-
-            double y = hpCluster * envCluster * cyToneM + hpNoise * envNoise * cyNoiseM;
-            y *= exp(-1.5 * tNorm);
-
-            CYM_WRITE(0.9f * softsat_shared((float)(y * 1.05)));
-        }
+        gen_cymbal_open(out, sampleRate, samples, p, k, &noise, assign);
     } else if (variant == 2) {
-        /* ── cowbell (render_cowbell_internal) ── */
-        float seed = noise_ma_white_tick(&noise);
-        double detune = 1.0 + 0.01 * (double)seed;
-
-        double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-        double cyFast   = kp_get(p->gen_cym_env_fast[k], 260.0);
-        double cyTail   = kp_get(p->gen_cym_env_tail[k], 9.0);
-        double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
-        double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.55);
-        double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 60.0);
-        int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
-
-        const double freqs[4] = {
-            (640.0 * cyTune) * detune,
-            (920.0 * cyTune) * detune,
-            (1300.0 * cyTune) * detune,
-            (1900.0 * cyTune) * detune,
-        };
-        const double gains[4] = {1.0, 0.85, 0.6, 0.4};
-        double phase[4] = {0, 0, 0, 0};
-
-        double lpNoise = 0.0;
-
-        double b0_cb, b1_cb, b2_cb, a1_cb, a2_cb;
-        {
-            double fc = 1200.0;
-            double Q = 2.0;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0);
-            double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5;
-            double b1 = 0.0;
-            double b2 = -b0;
-            double a0 = 1.0 + alpha;
-            double a1 = -2.0 * cosw;
-            double a2 = 1.0 - alpha;
-            b0_cb = b0/a0; b1_cb = b1/a0; b2_cb = b2/a0;
-            a1_cb = a1/a0; a2_cb = a2/a0;
-        }
-        double x1_cb = 0.0, x2_cb = 0.0, y1_cb = 0.0, y2_cb = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-            float n = noise_ma_white_tick(&noise);
-
-            double tone = 0.0;
-            for (int kk = 0; kk < 4; ++kk) {
-                phase[kk] += 2.0 * M_PI * freqs[kk] / (double)sampleRate;
-                tone += osc_wave_shared(cyWave, phase[kk]) * gains[kk];
-            }
-            double envTone = exp(-sec * cyTail);
-
-            lpNoise = lpNoise * 0.9 + n * 0.1;
-            double ycb = b0_cb * (double)n + b1_cb * x1_cb + b2_cb * x2_cb - a1_cb * y1_cb - a2_cb * y2_cb;
-            x2_cb = x1_cb; x1_cb = (double)n;
-            y2_cb = y1_cb; y1_cb = ycb;
-            double impactEnv = exp(-sec * cyFast);
-            double impact = ycb * impactEnv * cyNoiseM;
-            double hpMetal = (double)n - lpNoise;
-            double metalEnv = exp(-sec * cyNoiseD);
-            double metal = hpMetal * metalEnv * 0.30;
-
-            double global = 1.0 - 0.06 * tNorm;
-            if (global < 0.0) global = 0.0;
-
-            double mixed = (tone * envTone * cyToneM + impact + metal) * global;
-            CYM_WRITE(0.95f * softsat_shared((float)mixed));
-        }
+        gen_cymbal_cowbell(out, sampleRate, samples, p, k, &noise, assign);
     } else if (variant == 3) {
-        /* ── shaker (render_shaker_internal) ── */
-        double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-        double cyFast   = kp_get(p->gen_cym_env_fast[k], 200.0);
-        double cyTail   = kp_get(p->gen_cym_env_tail[k], 25.0);
-        double cyToneM  = kp_get(p->gen_cym_tone_m[k], 0.6);
-        double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.5);
-
-        float seed = noise_ma_white_tick(&noise);
-        double timeVar = 0.001 * (double)seed; /* ±1ms variation */
-
-        double burstOff[4] = { 0.000, 0.004, 0.009, 0.015 };
-        const double burstAmp[4] = { 1.0, 0.85, 0.7, 0.5 };
-        for (int kk = 0; kk < 4; ++kk) {
-            burstOff[kk] += timeVar;
-        }
-
-        double b0_bp, b1_bp, b2_bp, a1_bp, a2_bp;
-        {
-            double fc = 8000.0 * cyTune; double Q = 0.7;
-            double w0 = 2.0 * M_PI * fc / (double)sampleRate;
-            double cosw = cos(w0); double alpha = sin(w0) / (2.0 * Q);
-            double b0 = sin(w0) * 0.5; double b1 = 0.0; double b2 = -b0;
-            double a0 = 1.0 + alpha; double a1 = -2.0 * cosw; double a2 = 1.0 - alpha;
-            b0_bp = b0/a0; b1_bp = b1/a0; b2_bp = b2/a0; a1_bp = a1/a0; a2_bp = a2/a0;
-        }
-        double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-
-        double hpState = 0.0;
-        double hpAlpha = 0.85;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-
-            float n = noise_ma_white_tick(&noise);
-            double x = (double)n;
-
-            hpState = hpState * hpAlpha + x * (1.0 - hpAlpha);
-            double hp = x - hpState;
-
-            double ybp = b0_bp*x + b1_bp*x1 + b2_bp*x2 - a1_bp*y1 - a2_bp*y2;
-            x2 = x1; x1 = x; y2 = y1; y1 = ybp;
-
-            double burst = 0.0;
-            for (int kk = 0; kk < 4; ++kk) {
-                burst += burstAmp[kk] * exp(-cyFast * fabs(sec - burstOff[kk]));
-            }
-
-            double overall = exp(-cyTail * sec);
-            double mixed = (hp * cyToneM + ybp * cyNoiseM) * burst * overall;
-
-            CYM_WRITE(0.95f * softsat_shared((float)mixed));
-        }
+        gen_cymbal_shaker(out, sampleRate, samples, p, k, &noise, assign);
     } else if (variant == 4) {
-        /* ── ride (render_ride_internal) ── */
-        const int RIDE_PARTIALS = 10;
-        double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-        double cyFast   = kp_get(p->gen_cym_env_fast[k], 40.0);
-        double cyTail   = kp_get(p->gen_cym_env_tail[k], 8.0);
-        double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
-        double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.3);
-        double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 12.0);
-        int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
-
-        static const double baseFreq[10] = {
-            3100.0, 3800.0, 4700.0, 5900.0, 7100.0,
-            8400.0, 9800.0, 11500.0, 13200.0, 15000.0
-        };
-        static const double baseGain[10] = {
-            1.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.35
-        };
-
-        double phase[10];
-        double freq[10];
-        double gain[10];
-
-        for (int kk = 0; kk < RIDE_PARTIALS; ++kk) {
-            float s = noise_ma_white_tick(&noise);
-            double det = 1.0 + 0.015 * (double)s;
-            freq[kk] = (baseFreq[kk] * cyTune) * det;
-            phase[kk] = 2.0 * M_PI * (double)s;
-            gain[kk] = baseGain[kk] / (double)RIDE_PARTIALS;
-        }
-
-        double bellPhase = 0.0;
-        float bs = noise_ma_white_tick(&noise);
-        double bellFreq = 3000.0 * (1.0 + 0.01 * (double)bs);
-
-        double lpCluster = 0.0;
-        double lpNoise = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            double cluster = 0.0;
-            for (int kk = 0; kk < RIDE_PARTIALS; ++kk) {
-                phase[kk] += 2.0 * M_PI * freq[kk] / (double)sampleRate;
-                cluster += osc_wave_shared(cyWave, phase[kk]) * gain[kk];
-            }
-
-            lpCluster = lpCluster * 0.92 + cluster * 0.08;
-            double hpCluster = cluster - lpCluster;
-
-            bellPhase += 2.0 * M_PI * bellFreq / (double)sampleRate;
-            double bellEnv = exp(-6.0 * sec);
-            double bell = sin(bellPhase) * bellEnv * 0.15;
-
-            double envFast = exp(-cyFast * sec);
-            double envTail = exp(-cyTail * sec);
-            double env = envFast * 0.5 + envTail * 0.8;
-
-            float wn = noise_ma_white_tick(&noise);
-            double xNoise = (double)wn;
-            lpNoise = lpNoise * 0.92 + xNoise * 0.08;
-            double hpNoise = xNoise - lpNoise;
-            double noiseEnv = exp(-cyNoiseD * sec);
-
-            double lfo = 1.0 + 0.06 * sin(2.0 * M_PI * 7.0 * sec);
-
-            double y = (hpCluster * env * cyToneM + bell) * lfo + hpNoise * noiseEnv * cyNoiseM;
-            y *= exp(-2.0 * tNorm);
-
-            CYM_WRITE(0.9f * softsat_shared((float)y));
-        }
+        gen_cymbal_ride(out, sampleRate, samples, p, k, &noise, assign);
     } else {
-        /* ── crash (render_crash_internal) ── */
-        const int CRASH_PARTIALS = 8;
-        double cyTune   = kp_get(p->gen_cym_tune[k], 1.0);
-        double cyFast   = kp_get(p->gen_cym_env_fast[k], 10.0);
-        double cyTail   = kp_get(p->gen_cym_env_tail[k], 3.0);
-        double cyToneM  = kp_get(p->gen_cym_tone_m[k], 1.0);
-        double cyNoiseM = kp_get(p->gen_cym_noise_m[k], 0.35);
-        double cyNoiseD = kp_get(p->gen_cym_noise_d[k], 8.0);
-        int    cyWave   = (int)kp_get(p->gen_wave[k], 0.0);
-
-        static const double baseFreq[8] = {
-            2000.0, 2800.0, 3700.0, 4800.0, 6200.0, 7800.0, 9500.0, 11500.0
-        };
-        static const double baseGain[8] = {
-            0.6, 0.9, 1.0, 1.0, 0.85, 0.65, 0.45, 0.3
-        };
-
-        double phase[8];
-        double freq[8];
-        double gain[8];
-
-        for (int kk = 0; kk < CRASH_PARTIALS; ++kk) {
-            float s = noise_ma_white_tick(&noise);
-            double det = 1.0 + 0.02 * (double)s;
-            freq[kk] = (baseFreq[kk] * cyTune) * det;
-            phase[kk] = 2.0 * M_PI * (double)s;
-            gain[kk] = baseGain[kk] / (double)CRASH_PARTIALS;
-        }
-
-        double bellPhase = 0.0;
-        float bs = noise_ma_white_tick(&noise);
-        double bellFreq = 2500.0 * (1.0 + 0.01 * (double)bs);
-
-        double lpCluster = 0.0;
-        double lpNoise = 0.0;
-
-        for (int i = 0; i < samples; ++i) {
-            double sec = (double)i / (double)sampleRate;
-            double tNorm = (double)i / (double)samples;
-
-            double cluster = 0.0;
-            for (int kk = 0; kk < CRASH_PARTIALS; ++kk) {
-                phase[kk] += 2.0 * M_PI * freq[kk] / (double)sampleRate;
-                cluster += osc_wave_shared(cyWave, phase[kk]) * gain[kk];
-            }
-
-            lpCluster = lpCluster * 0.93 + cluster * 0.07;
-            double hpCluster = cluster - lpCluster;
-
-            bellPhase += 2.0 * M_PI * bellFreq / (double)sampleRate;
-            double bellEnv = exp(-4.0 * sec);
-            double bell = sin(bellPhase) * bellEnv * 0.18;
-
-            double envFast = exp(-cyFast * sec);
-            double envTail = exp(-cyTail * sec);
-            double env = envFast * 0.5 + envTail * 0.9;
-
-            float wn = noise_ma_white_tick(&noise);
-            double xNoise = (double)wn;
-            lpNoise = lpNoise * 0.93 + xNoise * 0.07;
-            double hpNoise = xNoise - lpNoise;
-            double noiseEnv = exp(-cyNoiseD * sec);
-
-            double lfo = 1.0 + 0.06 * sin(2.0 * M_PI * 5.0 * sec);
-
-            double y = (hpCluster * env * cyToneM + bell) * lfo + hpNoise * noiseEnv * cyNoiseM;
-            y *= exp(-1.5 * tNorm);
-
-            CYM_WRITE(0.9f * softsat_shared((float)y));
-        }
+        gen_cymbal_crash(out, sampleRate, samples, p, k, &noise, assign);
     }
-#undef HH_PARTIALS
-#undef CYM_WRITE
 }
 
 /* modular_gen_slot_fm: the source==10 4-operator FM-family voice. Builds the
@@ -2042,24 +2352,49 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                         drift_phase_v_gb[v] = 2.0 * M_PI * (double)(v + 1) / (double)unison_nv;
                     }
                 }
+                /* Control-rate pitch modulation. Vibrato (gb_lfo_rate) and unison
+                 * drift (udrift_rate) are slow (~3 Hz); evaluating their sin/pow
+                 * every sample cost ~(1+ns) sin + (1+ns) pow per sample per slot —
+                 * the dominant cost of a 7-voice additive patch and, on emscripten's
+                 * software libm, the reason organ-church rendered ~420 ms in WASM.
+                 * Recompute the modulated frequencies every GB_CTRL_STRIDE samples
+                 * (0.67 ms @ 48 kHz) and HOLD the wt_osc frequency between updates;
+                 * the oscillators still tick every sample. At 0.67 ms the 3 Hz
+                 * modulation moves ~0.006% between updates — inaudible — for ~30x
+                 * fewer transcendentals. (Native/WASM share this C, so xplat parity
+                 * is preserved; drums/FM don't reach this branch so their goldens
+                 * are unaffected.) */
+                const int GB_CTRL_STRIDE = 32;
+                double vib_mult = 1.0;
+                /* Envelope via incremental multiply instead of a per-sample
+                 * exp(): fm*exp(-fr*t)+tm*exp(-tr*t) == fm*decF^i + tm*decT^i
+                 * with decF=exp(-fr/sr). Two exp() at setup replace 2*samples
+                 * exp() calls per slot — the remaining hot-loop transcendental
+                 * cost after control-rate. Mathematically identical; float drift
+                 * over the buffer is negligible and native/WASM share the code
+                 * (xplat parity preserved). */
+                double gb_decF = exp(-fr / (double)sampleRate);
+                double gb_decT = exp(-tr / (double)sampleRate);
+                double gb_ef = fm;
+                double gb_et = tm;
                 for (int i = 0; i < samples; i++) {
                     double t = (double)i / (double)sampleRate;
+                    int ctrl = ((i % GB_CTRL_STRIDE) == 0);
                     /* Pitch-vibrato multiplier: same formula as OSC stage. Applied
                      * to the center voice AND every side voice (vibrato on top of
                      * unison detune/drift), matching OSC-stage unison behaviour. */
-                    double vib_mult = 1.0;
-                    if (gb_vib_on) {
+                    if (gb_vib_on && ctrl) {
                         double ramp = (gb_lfo_delay > 0.0f)
                                       ? fmin(t / (double)gb_lfo_delay, 1.0) : 1.0;
                         double semis = (double)gb_lfo_depth * ramp
                                        * sin(2.0 * M_PI * (double)gb_lfo_rate * t);
                         vib_mult = pow(2.0, semis / 12.0);
-                        /* Center voice: set freq per-sample with vibrato. */
+                        /* Center voice: set freq at control rate with vibrato. */
                         double fc = f * vib_mult;
                         if (fc > nyq * 0.99) fc = nyq * 0.99;
                         wt_osc_set_freq(&osc, fc, sampleRate);
                     }
-                    if (drift_on_gb) {
+                    if (drift_on_gb && ctrl) {
                         for (int v = 0; v < ns; v++) {
                             double drift_cents = udrift_depth
                                 * sin(2.0 * M_PI * drift_rate_v_gb[v] * t + drift_phase_v_gb[v]);
@@ -2068,7 +2403,7 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                             if (fv > nyq * 0.99) fv = nyq * 0.99;
                             wt_osc_set_freq(&side[v], fv, sampleRate);
                         }
-                    } else if (gb_vib_on) {
+                    } else if (gb_vib_on && ctrl) {
                         /* No drift but vibrato active: update side voices with vibrato. */
                         for (int v = 0; v < ns; v++) {
                             double fv = f * pow(2.0, base_cents_gb[v] / 1200.0) * vib_mult;
@@ -2082,7 +2417,9 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                     ensemble *= norm;
                     double s = (1.0 - umix) * center + umix * ensemble;
                     s = gen_slot_filter_tick(&filt, s);
-                    double env = fm * exp(-fr * t) + tm * exp(-tr * t);
+                    double env = gb_ef + gb_et;
+                    gb_ef *= gb_decF;
+                    gb_et *= gb_decT;
                     if (assign) out[i] = (float)(s * env * gain);
                     else        out[i] += (float)(s * env * gain);
                 }
@@ -2155,4 +2492,98 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
         }
     }
     free(bus);
+}
+
+/* ── Phase-15 FORMANT stage ────────────────────────────────────────────────
+ * Csound Appendix D formant tables: [voice][vowel][formant] for voices
+ * soprano/alto/tenor/bass and vowels a/e/i/o/u. Amplitudes are dB relative
+ * to F1; bandwidths are -6 dB widths (Q = Fc/BW). */
+static const float form_hz[4][5][5] = {
+    {{800,1150,2900,3900,4950},{350,2000,2800,3600,4950},{270,2140,2950,3900,4950},
+     {450,800,2830,3800,4950},{325,700,2700,3800,4950}},   /* soprano */
+    {{800,1150,2800,3500,4950},{400,1600,2700,3300,4950},{350,1700,2700,3700,4950},
+     {450,800,2830,3500,4950},{325,700,2530,3500,4950}},   /* alto */
+    {{650,1080,2650,2900,3250},{400,1700,2600,3200,3580},{290,1870,2800,3250,3540},
+     {400,800,2600,2800,3000},{350,600,2700,2900,3300}},   /* tenor */
+    {{600,1040,2250,2450,2750},{400,1620,2400,2800,3100},{250,1750,2600,3050,3340},
+     {400,750,2400,2600,2900},{350,600,2400,2675,2950}},   /* bass */
+};
+static const float form_db[4][5][5] = {
+    {{0,-6,-32,-20,-50},{0,-20,-15,-40,-56},{0,-12,-26,-26,-44},{0,-11,-22,-22,-50},{0,-16,-35,-40,-60}},
+    {{0,-4,-20,-36,-60},{0,-24,-30,-35,-60},{0,-20,-30,-36,-60},{0,-9,-16,-28,-55},{0,-12,-30,-40,-64}},
+    {{0,-6,-7,-8,-22},{0,-14,-12,-14,-20},{0,-15,-18,-20,-30},{0,-10,-12,-12,-26},{0,-20,-17,-14,-26}},
+    {{0,-7,-9,-9,-20},{0,-12,-9,-12,-18},{0,-30,-16,-22,-28},{0,-11,-21,-20,-40},{0,-20,-32,-28,-36}},
+};
+static const float form_bw[4][5][5] = {
+    {{80,90,120,130,140},{60,100,120,150,200},{60,90,100,120,120},{40,80,100,120,120},{50,60,170,180,200}},
+    {{80,90,120,130,140},{60,80,120,150,200},{50,100,120,150,200},{70,80,100,130,135},{50,60,170,180,200}},
+    {{80,90,120,130,140},{70,80,100,120,120},{40,90,100,120,120},{70,80,100,130,135},{40,60,100,120,120}},
+    {{60,70,110,120,130},{40,80,100,120,120},{60,90,100,120,120},{40,80,100,120,120},{40,80,100,120,120}},
+};
+/* Singer's-formant center per voice type (Sundberg). */
+static const float form_sing_hz[4] = {3092.0f, 3000.0f, 2750.0f, 2400.0f};
+
+/* Interpolate the 5-band (Fc, linear gain, Q) set at a continuous vowel
+ * position v in [0,4], scaled by shift. init!=0 uses mod_biquad_set (fresh
+ * state); init==0 uses mod_biquad_set_coeffs (state-preserving — the same
+ * block-rate morph pattern as the filter-env sweep in modular.c). */
+static void formant_bank_tune(mod_biquad *bank, float *g, int voice_type,
+                              float v, float shift, int sampleRate, int init) {
+    if (v < 0.0f) v = 0.0f; else if (v > 4.0f) v = 4.0f;
+    int   i0 = (int)v; if (i0 > 3) i0 = 3;
+    float fr = v - (float)i0;
+    for (int k = 0; k < 5; k++) {
+        double hz = ((1.0f - fr) * form_hz[voice_type][i0][k] + fr * form_hz[voice_type][i0 + 1][k])
+                  * (double)shift;
+        double db = (1.0f - fr) * form_db[voice_type][i0][k] + fr * form_db[voice_type][i0 + 1][k];
+        double bw = ((1.0f - fr) * form_bw[voice_type][i0][k] + fr * form_bw[voice_type][i0 + 1][k])
+                  * (double)shift;
+        double nyq = 0.49 * (double)sampleRate;
+        if (hz > nyq) hz = nyq;
+        double q = hz / bw; if (q < 0.5) q = 0.5;
+        g[k] = (float)pow(10.0, db / 20.0);
+        if (init) mod_biquad_set(&bank[k], 2 /* band-pass */, hz, q, sampleRate);
+        else      mod_biquad_set_coeffs(&bank[k], 2, hz, q, sampleRate);
+    }
+}
+
+void modular_formant_process(float *out, int sampleRate, int samples,
+                             int voice_type, float vowel, float mix,
+                             float shift, float sing,
+                             float morph_rate, float morph_to, float dry) {
+    if (mix <= 0.0f || samples <= 0) return;
+    if (voice_type < 0) voice_type = 0; else if (voice_type > 3) voice_type = 3;
+    if (shift <= 0.0f) shift = 1.0f;
+    mod_biquad bank[5];
+    float g[5];
+    formant_bank_tune(bank, g, voice_type, vowel, shift, sampleRate, 1);
+    mod_biquad singbq;
+    if (sing > 0.0f) {
+        double shz = (double)form_sing_hz[voice_type] * (double)shift;
+        double nyq = 0.49 * (double)sampleRate;
+        if (shz > nyq) shz = nyq;
+        mod_biquad_set(&singbq, 2, shz, 10.0, sampleRate);
+    }
+    int morph_on = morph_rate > 0.0f;
+    /* Suppress the dry as mix grows (same shaping rationale as the body
+     * resonator's dryAmt — the harmonics should move THROUGH the formants,
+     * not sit under them). dryAmt(0)=1 → exact bypass at mix 0. Phase-16:
+     * `dry` further scales the whole dry-blend amount (1.0 = identity,
+     * pre-Phase-16 behavior; 0 = the wet-only formant signal, no dry bleed). */
+    double dryAmt = (1.0 - 0.85 * fmin((double)mix, 1.0)) * (double)dry;
+    for (int i = 0; i < samples; i++) {
+        if (morph_on && (i & 63) == 0) {
+            double t = (double)i / (double)sampleRate;
+            double m = 0.5 - 0.5 * cos(2.0 * M_PI * (double)morph_rate * t);
+            float v = (float)((1.0 - m) * (double)vowel + m * (double)morph_to);
+            formant_bank_tune(bank, g, voice_type, v, shift, sampleRate, 0);
+        }
+        double x = (double)out[i];
+        double wet = 0.0;
+        for (int k = 0; k < 5; k++)
+            wet += (double)mod_biquad_tick_f(&bank[k], (float)x) * (double)g[k];
+        if (sing > 0.0f)
+            wet += (double)mod_biquad_tick_f(&singbq, (float)x) * (double)sing * 0.7;
+        out[i] = (float)(x * dryAmt + wet * (double)mix);
+    }
 }

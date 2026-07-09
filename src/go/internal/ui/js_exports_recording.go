@@ -16,7 +16,7 @@ func (g *Game) initJSRecording() {
 	var lastResult *audio.RecordingResult
 
 	// isRecording() -> bool
-	js.Global().Set("isRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("isRecording", jsFn(func(args jsArgs) any {
 		return js.ValueOf(audio.IsRecording())
 	}))
 
@@ -29,10 +29,10 @@ func (g *Game) initJSRecording() {
 	// MUST run on a goroutine (not inside the JS callback) — otherwise the
 	// JS event loop is held by this callback and can never dispatch the
 	// Promise resolution, deadlocking the page.
-	js.Global().Set("startRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("startRecording", jsFn(func(args jsArgs) any {
 		format := audio.FormatWAV24
-		if len(args) > 0 && args[0].Type() == js.TypeString {
-			format = audio.AudioFormat(args[0].String())
+		if args.Len() > 0 && args.At(0).Type() == js.TypeString {
+			format = audio.AudioFormat(args.Str(0))
 		}
 
 		instruments := make([]audio.InstrumentMeta, 0, len(g.drum.Rows))
@@ -81,7 +81,7 @@ func (g *Game) initJSRecording() {
 	// emitted the final Blob and the EventRecordStop hook has fired. The
 	// returned `filename` is the zip name ready in Downloads. JS callers
 	// (browser tests, custom UIs) should `await` this.
-	js.Global().Set("stopRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("stopRecording", jsFn(func(args jsArgs) any {
 		promiseCtor := js.Global().Get("Promise")
 		executor := js.FuncOf(func(this js.Value, pargs []js.Value) interface{} {
 			resolve := pargs[0]
@@ -185,7 +185,7 @@ func (g *Game) initJSRecording() {
 	//   - If not recording but a previous session is still pending the
 	//     download anchor click: triggers it and returns.
 	//   - Otherwise: returns {error: "no recording available to save"}.
-	js.Global().Set("saveRecording", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("saveRecording", jsFn(func(args jsArgs) any {
 		promiseCtor := js.Global().Get("Promise")
 		executor := js.FuncOf(func(this js.Value, pargs []js.Value) interface{} {
 			resolve := pargs[0]
@@ -258,12 +258,12 @@ func (g *Game) initJSRecording() {
 	}))
 
 	// recordingElapsedMs() -> float (milliseconds since recording start)
-	js.Global().Set("recordingElapsedMs", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("recordingElapsedMs", jsFn(func(args jsArgs) any {
 		return js.ValueOf(audio.RecordingElapsed().Seconds() * 1000)
 	}))
 
 	// availableFormats() -> ["wav16", "wav24", "wav32f", "flac", "ogg"]
-	js.Global().Set("availableFormats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("availableFormats", jsFn(func(args jsArgs) any {
 		formats := audio.AvailableFormats()
 		arr := js.Global().Get("Array").New(len(formats))
 		for i, f := range formats {

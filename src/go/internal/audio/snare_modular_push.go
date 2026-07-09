@@ -172,11 +172,11 @@ var snareVariantSpecs = map[string]struct {
 	def     float64
 	lit     map[string]float64
 }{
-	"drum-snare": {0, 200.0, map[string]float64{
-		"snare_tone2_freq": 330.0, "snare_noise_tune": 1.0,
-		"snare_tone_decay": 28.0, "snare_noise_decay": 12.0, "snare_tail_decay": 18.0,
-		"snare_tone_mix": 0.40, "snare_noise_mix": 1.1, "snare_wire_mix": 0.9,
-		"snare_attack": 0.3, "snare_wave": 0.0,
+	"drum-snare": {0, 186.0, map[string]float64{
+		"snare_tone2_freq": 280.0, "snare_noise_tune": 0.55,
+		"snare_tone_decay": 46.0, "snare_noise_decay": 7.0, "snare_tail_decay": 10.0,
+		"snare_tone_mix": 1.12, "snare_noise_mix": 0.56, "snare_wire_mix": 0.8,
+		"snare_attack": 0.5, "snare_wave": 0.0,
 	}},
 	"drum-snare-rimshot": {1, 500.0, map[string]float64{
 		"snare_tone2_freq": 1050.0, "snare_noise_tune": 1.0,

@@ -46,11 +46,13 @@ type mixer struct {
 }
 
 type voiceState struct {
-	start int
-	id    string
-	slot  int // index into mixer.instBufs (pre-resolved at Schedule time)
-	v     Voice
-	ch    *Channel
+	start    int
+	id       string
+	slot     int // index into mixer.instBufs (pre-resolved at Schedule time)
+	v        Voice
+	ch       *Channel
+	row, abs int  // parity identity; (-1,-1) for non-sequencer sounds
+	emitted  bool // guard so we publish exactly one report per voice
 }
 
 func newMixer(c *oto.Context) *mixer {
@@ -92,7 +94,7 @@ func unwrapCVoice(v Voice) *cVoice {
 // Schedule adds a voice to start after delaySamples have elapsed.
 // Uses a separate pending queue to minimize contention with Read().
 // Wraps the voice in antiPopVoice for click-free start/stop.
-func (m *mixer) Schedule(id string, v Voice, delaySamples int) {
+func (m *mixer) Schedule(id string, v Voice, delaySamples, row, abs int) {
 	// In test voice mode, replace all synth voices with simple sine
 	if testVoiceMode {
 		v = newTestSineVoice()
@@ -131,7 +133,7 @@ func (m *mixer) Schedule(id string, v Voice, delaySamples int) {
 
 	ch := channelForInstrument(id) // Lookup OUTSIDE any lock
 	slot := m.instrumentSlot(id)
-	vs := &voiceState{start: m.pos + delaySamples, id: id, slot: slot, v: v, ch: ch}
+	vs := &voiceState{start: m.pos + delaySamples, id: id, slot: slot, v: v, ch: ch, row: row, abs: abs}
 
 	m.pendingMu.Lock()
 	m.pendingAdd = append(m.pendingAdd, vs)

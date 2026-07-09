@@ -39,12 +39,12 @@ func effectParamDefToJS(p audio.EffectParamDef) js.Value {
 
 func (g *Game) initJSInsertEffects() {
 	// addInsertEffect(instrumentID, effectType) -> slotIndex
-	js.Global().Set("addInsertEffect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("addInsertEffect", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return -1
 		}
-		id := args[0].String()
-		et := audio.EffectType(args[1].String())
+		id := args.Str(0)
+		et := audio.EffectType(args.Str(1))
 		g.bumpParityGen("insert-fx-add", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		idx := audio.AddInsertEffect(id, et, nil)
 		emitInsertEffectAdded(id, idx, string(et))
@@ -52,12 +52,12 @@ func (g *Game) initJSInsertEffects() {
 	}))
 
 	// removeInsertEffect(instrumentID, slotIndex)
-	js.Global().Set("removeInsertEffect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("removeInsertEffect", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		id := args[0].String()
-		slot := args[1].Int()
+		id := args.Str(0)
+		slot := args.Int(1)
 		g.bumpParityGen("insert-fx-remove", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		audio.RemoveInsertEffect(id, slot)
 		emitInsertEffectRemoved(id, slot)
@@ -65,13 +65,13 @@ func (g *Game) initJSInsertEffects() {
 	}))
 
 	// moveInsertEffect(instrumentID, fromIndex, toIndex)
-	js.Global().Set("moveInsertEffect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("moveInsertEffect", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return nil
 		}
-		id := args[0].String()
-		from := args[1].Int()
-		to := args[2].Int()
+		id := args.Str(0)
+		from := args.Int(1)
+		to := args.Int(2)
 		g.bumpParityGen("insert-fx-move", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		audio.MoveInsertEffect(id, from, to)
 		emitInsertEffectMoved(id, from, to)
@@ -80,14 +80,14 @@ func (g *Game) initJSInsertEffects() {
 	}))
 
 	// setInsertEffectParam(instrumentID, slotIndex, paramName, value)
-	js.Global().Set("setInsertEffectParam", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 4 {
+	js.Global().Set("setInsertEffectParam", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
 			return nil
 		}
-		id := args[0].String()
-		slot := args[1].Int()
-		param := args[2].String()
-		value := args[3].Float()
+		id := args.Str(0)
+		slot := args.Int(1)
+		param := args.Str(2)
+		value := args.Float(3)
 		// Param tweaks are continuous (slider drag); skip the gen bump on
 		// param changes so we don't burn the grace window on every micro-step
 		// — buffer hygiene cost would be too high. The chain shape isn't
@@ -99,13 +99,13 @@ func (g *Game) initJSInsertEffects() {
 	}))
 
 	// toggleInsertEffect(instrumentID, slotIndex, enabled)
-	js.Global().Set("toggleInsertEffect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("toggleInsertEffect", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return nil
 		}
-		id := args[0].String()
-		slot := args[1].Int()
-		enabled := args[2].Bool()
+		id := args.Str(0)
+		slot := args.Int(1)
+		enabled := args.Bool(2)
 		g.bumpParityGen("insert-fx-toggle", structuralMutationOptions{SkipPathsDirty: true, SkipPathChangeMark: true})
 		audio.ToggleInsertEffect(id, slot, enabled)
 		emitInsertEffectToggled(id, slot, enabled)
@@ -115,12 +115,12 @@ func (g *Game) initJSInsertEffects() {
 
 	// getInsertEffects(instrumentID) -> Array of {type, enabled, params}
 	// Returns a native JS array; callers must NOT JSON.parse it.
-	js.Global().Set("getInsertEffects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getInsertEffects", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
-		if len(args) < 1 {
+		if args.Len() < 1 {
 			return arr
 		}
-		id := args[0].String()
+		id := args.Str(0)
 		slots := audio.GetInsertEffects(id)
 		for _, s := range slots {
 			arr.Call("push", effectSlotToJS(s))
@@ -131,7 +131,7 @@ func (g *Game) initJSInsertEffects() {
 	// insertEffectCatalog() -> Object keyed by effect type, each value an
 	// Array of {name, min, max, default, unit?}. Returns native JS objects;
 	// callers must NOT JSON.parse it.
-	js.Global().Set("insertEffectCatalog", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("insertEffectCatalog", jsFn(func(args jsArgs) any {
 		out := js.Global().Get("Object").New()
 		for t, defs := range audio.InsertEffectCatalog() {
 			arr := js.Global().Get("Array").New()

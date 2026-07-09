@@ -36,6 +36,9 @@ var undoActionLabelKeys = map[string]i18n.Key{
 	"toggle EQ filter":   i18n.KeyActionToggleEQFilter,
 	"rename instrument":  i18n.KeyActionRenameInstrument,
 	"edit sample":        i18n.KeyActionEditSample,
+	"create group":       i18n.KeyActionCreateGroup,
+	"edit group":         i18n.KeyActionEditGroup,
+	"delete group":       i18n.KeyActionDeleteGroup,
 }
 
 // notifyUndoRedo raises a localized undo/redo notification. prefixKey is

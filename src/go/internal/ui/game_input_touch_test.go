@@ -666,7 +666,7 @@ func TestMobileGridCapturingFalseDuringGridTouch(t *testing.T) {
 		t.Logf("  rowScroll().TouchActive=%v", g.drum.rowScroll().TouchActive())
 		t.Logf("  anyDropdownOpen=%v", g.drum.anyDropdownOpen())
 		if g.drum.tree != nil {
-			t.Logf("  portal.IsOpen=%v stackLen=%d", g.drum.tree.Portal().IsOpen(), g.drum.tree.Portal().StackLen())
+			t.Logf("  portal.IsOpen=%v stackLen=%d", g.drum.portal().IsOpen(), g.drum.portal().StackLen())
 		}
 		t.Logf("  touchOverrideActive=%v touchOverrideX=%d touchOverrideY=%d",
 			touchOverrideActive, touchOverrideX, touchOverrideY)
@@ -704,7 +704,7 @@ func TestMobileGridPanAfterPortalClose(t *testing.T) {
 	advanceFrames(g, 2)
 
 	// Simulate opening and closing a portal (volume popup).
-	if g.drum.tree != nil && g.drum.tree.Portal() != nil {
+	if g.drum.tree != nil && g.drum.portal() != nil {
 		g.drum.openVolPopupPortal()
 		advanceFrames(g, 2)
 
@@ -717,7 +717,7 @@ func TestMobileGridPanAfterPortalClose(t *testing.T) {
 
 			if g.drum.anyDropdownOpen() {
 				t.Errorf("Portal still open after CloseAllPopups; portal stackLen=%d",
-					g.drum.tree.Portal().StackLen())
+					g.drum.portal().StackLen())
 			}
 		}
 	}

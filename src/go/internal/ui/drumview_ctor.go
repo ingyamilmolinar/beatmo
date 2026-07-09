@@ -59,7 +59,87 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		// caller-supplied category set this false at the start of the test.
 		instMenuShowFavoritesCategory: true,
 	}
+	// samplerPanel holds the Sampler-tab methods with a dv back-reference
+	// (see sampler_panel.go). Set as a statement (bare literal composite fields
+	// can't reference dv). Any test that builds *DrumView without this ctor must
+	// set dv.samplerPanel similarly before invoking a sampler method.
+	dv.samplerPanel = &samplerPanel{dv: dv}
 	dv.initNotifPersistence()
+	dv.initVolumeAndWheelPopups()
+	dv.initOverlayComponents()
+
+	// rowScroll and rowVolGroup are now created by RowRackZone (Phase 4).
+	// Fields are aliased after zone creation below tree initialization.
+	dv.initEQChannelState()
+	// Transport buttons are now created by TransportZone (Phase 3).
+	// Fields are aliased after zone creation below tree initialization.
+	// Non-transport buttons remain here.
+	dv.initLengthAndSaveButtons()
+	// addRowBtn is now created by RowRackZone (Phase 4).
+	// Field is aliased after zone creation below tree initialization.
+
+	// Pure sequential by row index: the first row is index 0, so it takes the
+	// first color of the canonical instrument series (DESIGN.md instrumentSequence:).
+	firstColor := seriesColorAt(0)
+	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: firstColor, Origin: model.InvalidNodeID, Volume: 0.5, EQGainsDB: make([]float64, len(eqBandDefs))}}
+	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
+	// Initialize instrument availability/options immediately so early
+	// highlight/audio paths (e.g., tests spawning pulses before the first
+	// Update) see valid instruments and do not suppress playback.
+	dv.initWidgetBoard(b)
+	dv.refreshInstruments()
+	// recalcButtons() is deferred until after TransportZone creation below,
+	// because transport buttons are owned by the zone and aliased to DrumView.
+	// Calling recalcButtons() here would crash on nil button pointers.
+	dv.rowCachePadPx = defaultRowCachePadPx
+	dv.rowsLayerPadPx = defaultRowsLayerPadPx
+	dv.layoutDragIdx = -1
+	dv.layoutHoverIdx = -1
+	dv.layoutHandler = NewLayoutResizeHandler(dv)
+	// Initialize zone-based component tree (Phase 1 infrastructure).
+	dv.initInputTrees(b)
+	dv.initEQPanelZone()
+
+	dv.initChainZone()
+
+	// EQ zone now owns all EQ sliders, buttons, and state. DrumView
+	// provides accessor methods (eqSliders(), eqBandGainsDB(), etc.)
+	// that delegate to eqPanelZone.
+
+	// EQ zone initial layout is deferred to the recalcButtons()+calcLayout()
+	// call after both zones (EQ + Transport) are created and aliased.
+
+	dv.initTransportZone()
+
+	dv.initRowRackZone()
+
+	// RowRack zone fields are now accessed via accessor methods on DrumView
+	// (addRowBtn(), rowVolGroup(), rowScroll(), etc.).
+
+	dv.initTimelineZone()
+
+	dv.initLayoutResizeAndDrawLayers()
+
+	dv.initMobileViewControls()
+
+	// Now that all zones (EQ + Transport + RowRack + Timeline) are created
+	// and aliased, run the deferred layout initialization that was skipped
+	// earlier. This computes button positions, zone rects, and row caches.
+	dv.recalcButtons()
+	if dv.bgDirty {
+		dv.calcLayout()
+		dv.bgDirty = false
+	}
+	dv.ensureRowCache()
+	dv.markAllRowsDirty()
+	// Cache aliases are handled by ensureRowCache via timelineZone delegation.
+
+	// Reset global click suppression to ensure clean state for new views/tests.
+	suppressClicksUntilRelease = false
+	return dv
+}
+
+func (dv *DrumView) initVolumeAndWheelPopups() {
 	dv.volPopup = NewSliderPopup(SliderPopupConfig{
 		ID:     "volume-popup",
 		ZIndex: 225,
@@ -115,14 +195,26 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	})
 	dv.synthWheelPopup = NewMobileWheelPopup()
 	dv.samplerWheelPopup = NewMobileWheelPopup()
+	dv.eqWheelPopup = NewMobileWheelPopup()
+	// Shared step-resolution ladder for every EQ dB band. Constructed once here
+	// (mirrors the synth/sampler badges built lazily per stage) so the EQ
+	// precision wheel's StepMul is always well-defined; the persisted rung is
+	// restored lazily on first popup open (see openEQKnobWheelPopup) because the
+	// ctor runs before SetKnobStepSink installs the global sink.
+	dv.eqWheelStepBadge = NewKnobStepBadge(audio.ParamDef{
+		Name: "eq_band_gain", Min: eqDBMin, Max: eqDBMax, Unit: "dB",
+	})
+}
+
+func (dv *DrumView) initOverlayComponents() {
 	// Initialize overlay components (Phase 5)
 	dv.subdivMenuComp = NewSubdivMenuComponent()
 	dv.renameComp = NewRenameComponent()
 	dv.colorWheelComp = NewColorWheelComponent()
 	dv.instMenuComp = NewInstrumentMenuComponent()
+}
 
-	// rowScroll and rowVolGroup are now created by RowRackZone (Phase 4).
-	// Fields are aliased after zone creation below tree initialization.
+func (dv *DrumView) initEQChannelState() {
 	dv.eqChannelScroll = NewScrollBehavior(dropdownScrollbarStyle(), TouchRowHeight())
 	dv.eqActiveChannel = "main"
 	dv.eqCurveDragBand = -1
@@ -139,9 +231,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// produces real per-stage data instead.
 	_ = audio.EnableSynthAnalyzer("main", 512)
 	_ = audio.EnableSendBusAnalyzer(512)
-	// Transport buttons are now created by TransportZone (Phase 3).
-	// Fields are aliased after zone creation below tree initialization.
-	// Non-transport buttons remain here.
+}
+
+func (dv *DrumView) initLengthAndSaveButtons() {
 	dv.lenDecBtn = NewButton("", LenDecStyle, func() {
 		dv.logger.Debugf("[drumview] length - button pressed")
 		dv.lenDecPressed = true
@@ -169,17 +261,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.mobileEQCollapsed = true
 		dv.mobileEQInited = true
 	}
-	// addRowBtn is now created by RowRackZone (Phase 4).
-	// Field is aliased after zone creation below tree initialization.
+}
 
-	// Pure sequential by row index: the first row is index 0, so it takes the
-	// first color of the canonical instrument series (DESIGN.md instrumentSequence:).
-	firstColor := seriesColorAt(0)
-	dv.Rows = []*DrumRow{{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: firstColor, Origin: model.InvalidNodeID, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))}}
-	dv.SetBeatLength(dv.Length) // Initialize graph's beat length
-	// Initialize instrument availability/options immediately so early
-	// highlight/audio paths (e.g., tests spawning pulses before the first
-	// Update) see valid instruments and do not suppress playback.
+func (dv *DrumView) initWidgetBoard(b image.Rectangle) {
 	dv.widgetRects = map[WidgetKind]image.Rectangle{}
 	// Default widget grid: 2 columns (instrument vs timeline) × 3 rows
 	// (header, rows, EQ). Weights read from the active LayoutProfile.
@@ -194,16 +278,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		dv.widgets.ToggleWidget(WidgetWave, false)
 	}
 	dv.refreshWidgetLayout()
-	dv.refreshInstruments()
-	// recalcButtons() is deferred until after TransportZone creation below,
-	// because transport buttons are owned by the zone and aliased to DrumView.
-	// Calling recalcButtons() here would crash on nil button pointers.
-	dv.rowCachePadPx = defaultRowCachePadPx
-	dv.rowsLayerPadPx = defaultRowsLayerPadPx
-	dv.layoutDragIdx = -1
-	dv.layoutHoverIdx = -1
-	dv.layoutHandler = NewLayoutResizeHandler(dv)
-	// Initialize zone-based component tree (Phase 1 infrastructure).
+}
+
+func (dv *DrumView) initInputTrees(b image.Rectangle) {
 	dv.tree = NewDrumViewTree()
 	dv.tree.SetBounds(b)
 	dv.tree.SetDragActive(func() bool { return dv.anyDragActive() })
@@ -220,9 +297,27 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.audioTree = NewDrumViewTree()
 	dv.audioTree.SetDragActive(func() bool { return dv.anyDragActive() })
 	dv.audioTree.SetExternalCapture(func() bool { return dv.inputCapturedExternally })
+
+	// Overlay subtree: a THIRD, zone-less DrumViewTree registered as the
+	// HIGHEST-z RootTree child so it is offered every press/wheel FIRST. It
+	// owns the SINGLE global OverlayPortal returned by dv.portal(); EVERY popup
+	// — whether opened by DrumView directly (drumview_portal_open.go) or by a
+	// zone via SetPortal — lives here so it composites and hit-tests above ALL
+	// base zones in every subtree. Without this the overlay tree is nil,
+	// dv.portal() returns nil, and (now that OverlayPortal is nil-safe) every
+	// popup silently no-ops — the instrument picker, subdiv/color/rename menus,
+	// FX panel, volume popups, etc. never open.
+	dv.overlayTree = NewDrumViewTree()
+	dv.overlayTree.SetDragActive(func() bool { return dv.anyDragActive() })
+	dv.overlayTree.SetExternalCapture(func() bool { return dv.inputCapturedExternally })
+
 	dv.rootTree = NewRootTree()
 	dv.rootTree.AddChild("drumview", dv.tree, 0)
 	dv.rootTree.AddChild("audio", dv.audioTree, 1)
+	dv.rootTree.AddChild("overlay", dv.overlayTree, 2)
+}
+
+func (dv *DrumView) initEQPanelZone() {
 	// Phase 2: EQ panel zone — owns EQ sliders, buttons, and state.
 	// Callbacks delegate audio operations to DrumView's existing methods.
 	dv.eqPanelZone = NewEQPanelZone(EQCallbacks{
@@ -247,6 +342,10 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.eqPendingChannel, dv.eqPendingBand, dv.eqPendingGainDB, dv.eqPendingDirty = ch, band, db, true
 		},
 		OnEQBandCommit: func() { dv.commitEQBand() },
+		// A dB-cell press opens the precision wheel (desktop + mobile); the
+		// wheel's center-box tap re-opens the inline numeric editor. Without
+		// this the adapter falls back to opening the editor directly.
+		OnOpenValueWheel: func(band int) { dv.openEQKnobWheelPopup(band) },
 		OnMuteToggle: func(band int) {
 			dv.toggleEQBandMute(band)
 		},
@@ -335,6 +434,16 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		OnTabChange: func(tab PanelTab) {
 			// Scope tab auto-expands the panel; trigger layout recalc.
 			dv.bgDirty = true
+			// Mobile: while the audio view owns the screen, the bottom-nav
+			// highlight must track programmatic tab switches (scene catalog,
+			// JS exports, keyboard) — the nav derives from the tab state, it
+			// is not a second source of truth. A background tab change while
+			// Pads is visible never hijacks the user into the audio view.
+			if Profile().IsMobile() && dv.MobileEQMode() {
+				if vm, ok := viewModeForPanelTab(tab); ok {
+					dv.setViewMode(vm)
+				}
+			}
 		},
 		BeatGridFrac: func() []float64 {
 			if dv == nil || dv.game == nil {
@@ -416,7 +525,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			return false
 		},
 	})
-	dv.eqPanelZone.SetPortal(dv.audioTree.Portal())
+	dv.eqPanelZone.SetPortal(dv.overlayTree.Portal())
 	// Visibility is owned by the tab system: on mobile, the bottom-bar
 	// segmented switcher's selection drives currentViewMode, and the EQ
 	// panel is hidden when the user is on the Pads tab (viewModeRows).
@@ -435,7 +544,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		}
 		return true
 	})
+}
 
+func (dv *DrumView) initChainZone() {
 	// Scope zone — owns the pipeline strip, tap selection, and trace rendering.
 	// Hosted inside the EQ panel's Scope tab (not a standalone zone).
 	chainZ := NewChainPanelZone(ChainCallbacks{
@@ -531,14 +642,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		},
 	})
 	dv.eqPanelZone.SetChainZone(chainZ)
+}
 
-	// EQ zone now owns all EQ sliders, buttons, and state. DrumView
-	// provides accessor methods (eqSliders(), eqBandGainsDB(), etc.)
-	// that delegate to eqPanelZone.
-
-	// EQ zone initial layout is deferred to the recalcButtons()+calcLayout()
-	// call after both zones (EQ + Transport) are created and aliased.
-
+func (dv *DrumView) initTransportZone() {
 	// Phase 3: Transport zone — owns transport buttons, BPM state, and
 	// animation. Callbacks delegate to DrumView's existing methods.
 	dv.transportZone = NewTransportZone(TransportCallbacks{
@@ -664,9 +770,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			} else {
 				dv.CloseAllPopups()
 				dv.initOverflowScroll()
-				if Profile().IsMobile() {
-					dv.registerFilePickerRects()
-				}
 				dv.openOverflowMenuPortal()
 			}
 		},
@@ -699,7 +802,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			return dv.game != nil && dv.game.undoManager != nil && dv.game.undoManager.CanRedo()
 		},
 	})
-	dv.transportZone.SetPortal(dv.tree.Portal())
+	dv.transportZone.SetPortal(dv.overlayTree.Portal())
 	dv.tree.RegisterZoneVisible(dv.transportZone, ZTransport, func() bool { return !dv.simpleDraw })
 
 	// Sync initial BPM into TransportZone. Follow state has its single source
@@ -715,7 +818,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		treeBlocking := dv.tree != nil && dv.tree.Portal().IsOpen()
 		return dv.anyDropdownOpen() || treeBlocking
 	})
+}
 
+func (dv *DrumView) initRowRackZone() {
 	// Phase 4: Row rack zone — owns per-row buttons/sliders, add-row button,
 	// row scrolling, and row volume slider group.
 	dv.rowRackZone = NewRowRackZone(RowRackCallbacks{
@@ -855,12 +960,11 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		IsMobileEQMode:    func() bool { return dv.MobileEQMode() },
 		Frame:             func() int64 { return dv.frame },
 	})
-	dv.rowRackZone.SetPortal(dv.tree.Portal())
+	dv.rowRackZone.SetPortal(dv.overlayTree.Portal())
 	dv.tree.RegisterZone(dv.rowRackZone, ZRowRack)
+}
 
-	// RowRack zone fields are now accessed via accessor methods on DrumView
-	// (addRowBtn(), rowVolGroup(), rowScroll(), etc.).
-
+func (dv *DrumView) initTimelineZone() {
 	// Phase 5: Timeline zone — owns drag/scrub input for the grid and
 	// timeline bar areas. Callbacks delegate offset changes to DrumView.
 	dv.timelineZone = NewTimelineZone(TimelineCallbacks{
@@ -952,10 +1056,12 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 			dv.drawRowComposite(dst)
 		},
 	})
-	dv.timelineZone.SetPortal(dv.tree.Portal())
+	dv.timelineZone.SetPortal(dv.overlayTree.Portal())
 	dv.timelineZone.SetButtons(dv.transportZone.trackBtn, dv.lenDecBtn, dv.lenIncBtn)
 	dv.tree.RegisterZone(dv.timelineZone, ZTimeline)
+}
 
+func (dv *DrumView) initLayoutResizeAndDrawLayers() {
 	// Layout resize zone — wraps LayoutResizeHandler for tree-based input.
 	// Registered in the AUDIO subtree (not the drumview subtree) so its
 	// divider-pill hit areas (z=ZResize=200) out-prioritize the eq-panel
@@ -990,7 +1096,9 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// Row↔EQ divider (ZRowEQDivider=186) marks the panel boundary — audioTree.
 	dv.rowEQDivider = newRowEQDividerLayer(dv)
 	dv.audioTree.RegisterLayer(dv.rowEQDivider)
+}
 
+func (dv *DrumView) initMobileViewControls() {
 	// 7-segment view-switch (Pads/EQ/Wave/Spec/Lvl/Chn/Syn) — mobile only,
 	// spans full bottom action bar width (Theme 1). Labels match the
 	// canonical PanelTabLabelForProfile output: Lvl = Levels (was Mtr),
@@ -1025,22 +1133,6 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	dv.rowZoomDecBtn.OnClick = func() {
 		dv.lenDecPressed = true
 	}
-
-	// Now that all zones (EQ + Transport + RowRack + Timeline) are created
-	// and aliased, run the deferred layout initialization that was skipped
-	// earlier. This computes button positions, zone rects, and row caches.
-	dv.recalcButtons()
-	if dv.bgDirty {
-		dv.calcLayout()
-		dv.bgDirty = false
-	}
-	dv.ensureRowCache()
-	dv.markAllRowsDirty()
-	// Cache aliases are handled by ensureRowCache via timelineZone delegation.
-
-	// Reset global click suppression to ensure clean state for new views/tests.
-	suppressClicksUntilRelease = false
-	return dv
 }
 
 // bottomNavModeList is the canonical mobile bottom-nav segment → viewMode

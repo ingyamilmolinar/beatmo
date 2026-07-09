@@ -278,7 +278,7 @@ func TestEQChannelMenuBuild(t *testing.T) {
 
 	// Portal should be open (the EQ channel dropdown lives in the isolated
 	// audio-panel subtree's portal).
-	if !g.drum.audioTree.Portal().Has("eq-channel-dropdown") {
+	if !g.drum.portal().Has("eq-channel-dropdown") {
 		t.Error("expected eq-channel-dropdown portal to be open")
 	}
 
@@ -330,7 +330,7 @@ func TestEQChannelDropdownButtonsAreVisible(t *testing.T) {
 	}
 
 	// Portal should be open with the dropdown (in the audio-panel subtree).
-	if !dv.audioTree.Portal().Has("eq-channel-dropdown") {
+	if !dv.portal().Has("eq-channel-dropdown") {
 		t.Error("expected eq-channel-dropdown portal to be open")
 	}
 

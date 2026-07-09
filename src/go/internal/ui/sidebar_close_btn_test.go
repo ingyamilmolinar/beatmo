@@ -69,7 +69,7 @@ func TestSidebarCloseButtonVisible(t *testing.T) {
 }
 
 // TestOverflowCloseButtonNotOverlappingFilePickerRects verifies that the
-// file picker rects registered by registerFilePickerRects() do not overlap
+// file picker rects produced by filePickerCandidates() do not overlap
 // with the overflow popup's close button. Previously, the Upload file picker
 // rect spanned the full popup width and overlapped the close button, causing
 // taps on close to also trigger the file picker on mobile.
@@ -80,15 +80,13 @@ func TestOverflowCloseButtonNotOverlappingFilePickerRects(t *testing.T) {
 	const W, H = 390, 300
 	dv := newDrumViewForOverflowTest(t, image.Rect(0, 0, W, H))
 
-	// Open the overflow menu.
+	// Open the overflow menu (File page).
 	dv.SetOverflowMenuOpen(true)
+	dv.overflowPage = 0
 
-	// Capture file picker rects.
-	var captured []capturedFilePickerRect
-	testCapturedFilePickerRects = &captured
-	t.Cleanup(func() { testCapturedFilePickerRects = nil })
-
-	dv.registerFilePickerRects()
+	// filePickerCandidates() is the producer that replaced
+	// registerFilePickerRects(); inspect its return value directly.
+	captured := dv.filePickerCandidates()
 
 	if len(captured) < 1 {
 		t.Fatal("expected at least 1 file picker rect, got 0")
@@ -106,11 +104,10 @@ func TestOverflowCloseButtonNotOverlappingFilePickerRects(t *testing.T) {
 
 	// Assert no file picker rect overlaps the close button.
 	for _, c := range captured {
-		fpRect := image.Rect(c.X, c.Y, c.X+c.W, c.Y+c.H)
-		if fpRect.Overlaps(closeR) {
+		if c.Rect.Overlaps(closeR) {
 			t.Errorf("file picker rect %q %v overlaps close button rect %v — "+
 				"tapping close would trigger file picker on mobile",
-				c.ID, fpRect, closeR)
+				c.Intent.ID, c.Rect, closeR)
 		}
 	}
 }

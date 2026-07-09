@@ -169,40 +169,39 @@ func TestTextInputDesktopRegression(t *testing.T) {
 func TestFocusRectCoordinatesMatchGameCoords(t *testing.T) {
 	assertDefaultParityState(t)
 
-	// Capture rects during layout.
-	var rects []capturedRect
-	testCapturedRects = &rects
-	defer func() { testCapturedRects = nil }()
-
 	// iPhone 12 CSS dimensions (390×844). Layout returns the same values
 	// since Game.Layout echoes its inputs; these are game coordinates.
 	dv := newTestDrumView(t, 390, 844)
 	dv.calcLayout()
 
-	// Find the "bpm" rect.
-	var found *capturedRect
-	for i := range rects {
-		if rects[i].ID == "bpm" {
-			found = &rects[i]
+	// Tree-owned native-gesture rect isolation (soft-keyboard channel
+	// migration): calcLayout no longer registers rects imperatively; the
+	// candidate producer is queried directly and gated by the per-frame
+	// sync phase. Find the "bpm" candidate.
+	var found *NativeRectCandidate
+	for _, c := range dv.softKeyboardCandidates() {
+		if c.Intent.ID == "bpm" {
+			cc := c
+			found = &cc
 			break
 		}
 	}
 	if found == nil {
-		t.Fatal("softKeyboardRegisterRect was never called with id='bpm'")
+		t.Fatal("softKeyboardCandidates never produced id='bpm'")
 	}
 
-	// The registered rect must match bpmBox.Rect exactly (game coordinates).
+	// The candidate rect must match bpmBox.Rect exactly (game coordinates).
 	box := dv.bpmBox().Rect
-	if found.X != box.Min.X || found.Y != box.Min.Y {
-		t.Fatalf("bpm rect origin mismatch: registered=(%d,%d) bpmBox=(%d,%d)",
-			found.X, found.Y, box.Min.X, box.Min.Y)
+	if found.Rect.Min.X != box.Min.X || found.Rect.Min.Y != box.Min.Y {
+		t.Fatalf("bpm rect origin mismatch: candidate=(%d,%d) bpmBox=(%d,%d)",
+			found.Rect.Min.X, found.Rect.Min.Y, box.Min.X, box.Min.Y)
 	}
-	if found.W != box.Dx() || found.H != box.Dy() {
-		t.Fatalf("bpm rect size mismatch: registered=(%dx%d) bpmBox=(%dx%d)",
-			found.W, found.H, box.Dx(), box.Dy())
+	if found.Rect.Dx() != box.Dx() || found.Rect.Dy() != box.Dy() {
+		t.Fatalf("bpm rect size mismatch: candidate=(%dx%d) bpmBox=(%dx%d)",
+			found.Rect.Dx(), found.Rect.Dy(), box.Dx(), box.Dy())
 	}
-	if found.InputMode != "numeric" {
-		t.Fatalf("expected inputmode='numeric', got %q", found.InputMode)
+	if found.Intent.InputMode != "numeric" {
+		t.Fatalf("expected inputmode='numeric', got %q", found.Intent.InputMode)
 	}
 }
 

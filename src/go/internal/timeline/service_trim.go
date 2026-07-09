@@ -116,6 +116,15 @@ func (s *Service) ReplaceCommit(row, abs int, val bool, typ model.NodeType, kind
 				rowMap[abs] = commitEntry{val: val, typ: typ, kind: kind}
 				return true
 			}
+			// The ring no longer retains this abs, so demoting the immutable
+			// sidecar entry by deletion would drop the only surviving record of
+			// this played/imported beat. Migrate it to the cold archive first so
+			// scroll-back still resolves it — mirrors pruneImmutablesRowLocked and
+			// upholds the playback/import immutability contract even when a live
+			// edit demotes a leaked future commit that has aged out of the ring.
+			if ce, ok := rowMap[abs]; ok {
+				s.ensureArchiveLocked(row).append(abs, ce.val, ce.typ, ce.kind, s.archiveMaxEntries)
+			}
 			delete(rowMap, abs)
 			if len(rowMap) == 0 {
 				delete(s.immutables, row)

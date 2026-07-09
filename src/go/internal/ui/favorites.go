@@ -73,6 +73,30 @@ func (p PinSource) SortByTierAlpha(ids []string, labelFor func(string) string) {
 	})
 }
 
+// SortByTierScore stably reorders ids by (tier, -score, label): pinned and
+// ★-favorited ids always sort ABOVE unpinned ones, regardless of fuzzy
+// score, and score only orders items within the same tier. This is the
+// "favorites always on top of every search" ordering — use it when a search
+// query is active and matching favorites must lead the results.
+func (p PinSource) SortByTierScore(ids []string, scoreOf func(string) int, labelFor func(string) string) {
+	if len(ids) < 2 {
+		return
+	}
+	sort.SliceStable(ids, func(i, j int) bool {
+		ti := p.Tier(ids[i])
+		tj := p.Tier(ids[j])
+		if ti != tj {
+			return ti < tj
+		}
+		si := scoreOf(ids[i])
+		sj := scoreOf(ids[j])
+		if si != sj {
+			return si > sj
+		}
+		return strings.ToLower(labelFor(ids[i])) < strings.ToLower(labelFor(ids[j]))
+	})
+}
+
 // StableTierBreaker reorders ids that are already sorted by descending
 // score, breaking ties by tier and then label. Use after a fuzzy-score
 // sort when you want pinned items to win equal-score ties without

@@ -465,26 +465,36 @@ var guitarElectricNeckSeed = RecipeParams{
 
 // pianoGrandSeed: additive sine partials at ratios 1/2/3/4 + hammer noise tap.
 var pianoGrandSeed = RecipeParams{
-	// CLEAN acoustic-piano note (struck string = sine fundamental + decaying upper
-	// partials + the piano's slight multi-string DETUNE for warmth). Tuned to a real
-	// piano G (pinkyfinger piano-g — sounds G5 ~= 790Hz, a fairly PURE fundamental-
-	// dominant tone with a quick struck decay, centroid ~1383, clean). NO hammer-
-	// noise gen: the user wanted a PURE note with no background hiss.
-	"osc_type":      0, // sine fundamental
+	// ACOUSTIC-PIANO note (struck string). The previous version sounded ELECTRONIC
+	// because its partials were EXACT integer harmonics (freq 2,3,4). A real piano
+	// string is STIFF, so its partials are STRETCHED progressively SHARP:
+	// f_n = n·f0·√(1+B·n²). Measured on the ref (pinkyfinger piano-g, G5≈792Hz):
+	// H3 +5, H4 +15, H5 +28, H6 +42 cents (B≈0.0013) — the inharmonic shimmer that
+	// reads as a real struck string, NOT a synth/organ. Also: more upper partials +
+	// a brighter filter (the ref centroid is ~1686 Hz, not the old dark 1021), a
+	// slightly-detuned unison for beating, and a SHORT (~20 ms) percussive HAMMER
+	// transient (the felt thunk of the strike — NOT sustained hiss).
+	"osc_type":      0, // sine fundamental (exact; the stiffness stretch is in the upper partials)
 	"osc_enabled":   1,
-	"osc_detune":    1.0,   // slight detune = the piano's slightly-mistuned unison strings (warmth, NOT noise)
+	"osc_detune":    1.5,   // slight unison detune = the piano's mistuned string pairs (beating/warmth)
 	"amp_attack":    0.006, // sharp hammer strike
-	"amp_decay":     0.45,  // struck decay (~1s to -20dB, like the ref)
+	"amp_decay":     0.9,   // struck decay — longer ring (the ref sustains, less plinky)
 	"amp_curve":     1,
 	"amp_sustain":   0.0,
 	"amp_release":   0.3,
 	"filter_type":   0,
-	"filter_cutoff": 3200,
-	// upper partials — fundamental-dominant (the ref is nearly pure); upper partials
-	// decay faster (higher env_fast_rate) as a real struck string does.
-	"gen1_source": 1, "gen1_wave": 0, "gen1_freq_mode": 0, "gen1_freq": 2, "gen1_gain": 0.55, "gen1_env_fast_rate": 4.0,
-	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 3, "gen2_gain": 0.22, "gen2_env_fast_rate": 6.0,
-	"gen3_source": 1, "gen3_wave": 0, "gen3_freq_mode": 0, "gen3_freq": 4, "gen3_gain": 0.08, "gen3_env_fast_rate": 8.0,
+	"filter_cutoff": 6000, // let H5/H6 through — the ref is brighter (centroid ~1686 Hz)
+	// STRETCHED upper partials (stiff-string inharmonicity) — the anti-electronic fix.
+	// Frequencies = n·2^(measured cents/1200); upper partials boosted + slower decay
+	// so the sustained tone keeps the ref's brightness (not just the strike).
+	"gen1_source": 1, "gen1_wave": 0, "gen1_freq_mode": 0, "gen1_freq": 2.0000, "gen1_gain": 0.48, "gen1_env_fast_rate": 3.0, // H2
+	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 3.0087, "gen2_gain": 0.26, "gen2_env_fast_rate": 4.0, // H3 +5c
+	"gen3_source": 1, "gen3_wave": 0, "gen3_freq_mode": 0, "gen3_freq": 4.0347, "gen3_gain": 0.26, "gen3_env_fast_rate": 5.0, // H4 +15c
+	"gen4_source": 1, "gen4_wave": 0, "gen4_freq_mode": 0, "gen4_freq": 5.0813, "gen4_gain": 0.20, "gen4_env_fast_rate": 6.0, // H5 +28c
+	"gen5_source": 1, "gen5_wave": 0, "gen5_freq_mode": 0, "gen5_freq": 6.1466, "gen5_gain": 0.13, "gen5_env_fast_rate": 7.0, // H6 +42c
+	// percussive hammer strike — brief broadband thunk, gone in ~20 ms (no sustained hiss)
+	"gen6_source": 2, "gen6_gain": 0.22, "gen6_filt_type": 5, "gen6_filt_freq": 2600, "gen6_filt_q": 0.4,
+	"gen6_env_fast_mix": 1.0, "gen6_env_fast_rate": 45, "gen6_env_tail_mix": 0.0, "gen6_env_tail_rate": 0.0,
 	"gain": 0.9,
 }
 
@@ -497,17 +507,23 @@ var pianoFeltSeed = RecipeParams{
 	// highs). Pure note, no background hiss.
 	"osc_type":      0,
 	"osc_enabled":   1,
-	"osc_detune":    1.2,
-	"amp_attack":    0.006, // softer felt strike
+	"osc_detune":    1.5,
+	"amp_attack":    0.008, // softer felt strike
 	"amp_curve":     1,     // exponential struck decay
-	"amp_decay":     0.55,
+	"amp_decay":     0.9,
 	"amp_sustain":   0.0,
 	"amp_release":   0.3,
 	"filter_type":   0,
-	"filter_cutoff": 3200, // duller, felt-damped tone
-	"gen1_source":   1, "gen1_wave": 0, "gen1_freq_mode": 0, "gen1_freq": 2, "gen1_gain": 0.4, "gen1_env_fast_rate": 4.0,
-	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 3, "gen2_gain": 0.14, "gen2_env_fast_rate": 6.0,
-	"gen3_source": 1, "gen3_wave": 0, "gen3_freq_mode": 0, "gen3_freq": 4, "gen3_gain": 0.05, "gen3_env_fast_rate": 8.0,
+	"filter_cutoff": 4000, // duller, felt-damped tone (darker than the grand)
+	// STRETCHED partials (stiff-string inharmonicity — the anti-electronic fix),
+	// but weaker/darker upper partials than the grand (felt mutes the highs).
+	"gen1_source": 1, "gen1_wave": 0, "gen1_freq_mode": 0, "gen1_freq": 2.0000, "gen1_gain": 0.38, "gen1_env_fast_rate": 4.0, // H2
+	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 3.0087, "gen2_gain": 0.16, "gen2_env_fast_rate": 6.0, // H3 +5c
+	"gen3_source": 1, "gen3_wave": 0, "gen3_freq_mode": 0, "gen3_freq": 4.0347, "gen3_gain": 0.10, "gen3_env_fast_rate": 8.0, // H4 +15c
+	"gen4_source": 1, "gen4_wave": 0, "gen4_freq_mode": 0, "gen4_freq": 5.0813, "gen4_gain": 0.05, "gen4_env_fast_rate": 10.0, // H5 +28c
+	// soft felt-hammer thunk — quieter + darker than the grand
+	"gen5_source": 2, "gen5_gain": 0.14, "gen5_filt_type": 5, "gen5_filt_freq": 1800, "gen5_filt_q": 0.4,
+	"gen5_env_fast_mix": 1.0, "gen5_env_fast_rate": 55, "gen5_env_tail_mix": 0.0, "gen5_env_tail_rate": 0.0,
 	"gain": 0.9,
 }
 
@@ -526,36 +542,40 @@ var pianoFeltSeed = RecipeParams{
 // + pitched). gen_ks_sustain → blown loop gain (×1.05 inside; ~0.96-0.99 sustains), gen_ks_blow = breath
 // drive, gen_ks_pluck = reflection/air-color lowpass alpha.
 var fluteSeed = RecipeParams{
-	// FLUTE = a Karplus-Strong BLOWN-TUBE physical model (gen1_source:3). The keys to
-	// not sounding like an ORGAN (user feedback): (1) AIR — a continuous breath
-	// component (~14% noise, matching the real flute's ~16%); too clean reads as a
-	// pure organ pipe. (2) MOVEMENT — a gentle PITCH vibrato (the air-jet wavers),
-	// not a static amplitude tremolo. (3) a fairly PURE harmonic series (a real flute
-	// is close to a sine + air, not a rich organ-like stack). Reference: flute E5
-	// (sgossner). (A dedicated air-jet waveguide osc_type:10 exists but only
-	// oscillates in a narrow short-bore regime that mistunes ~1.47x — kept for later.)
-	"osc_enabled":   0,
-	"filter_type":   0,
-	"filter_cutoff": 3000, // moderate roll-off — purer flute, fewer organ-rich harmonics
-	"amp_attack":    0.05,
-	"amp_decay":     0.05,
-	"amp_sustain":   0.95,
-	"amp_release":   0.10,
-	// PITCH vibrato (the flute wavers) — movement is what breaks the static organ tone
+	// FLUTE = ADDITIVE near-sine tone + CONTINUOUS BREATH AIR (osc_enabled:0). The
+	// old Karplus-Strong blown tube (gen1_source:3) read HARPY: at low blow the KS
+	// excitation decays like a PLUCKED STRING (that's what KS is) rather than a
+	// continuously BLOWN pipe — and raising blow to sustain it made it 5x too airy
+	// and warbly (the KS delay pitch-mod is nonlinear). Additive is the right model
+	// (same as the oboe fix): a sustained sparse harmonic series (real flute E5 is
+	// near a sine — P1 1.0, P2 .27, P3 .10) + a PROMINENT, SUSTAINED band-passed
+	// breath hiss = the defining "blowing" air, present the whole note, not a
+	// decaying pluck. Additive pitch vibrato is stable, so the flute can actually
+	// waver (~8 cents) without the KS wander.
+	"osc_enabled":      0,
+	"filter_type":      0,
+	"filter_cutoff":    2900, // the flute centroid is only ~2 kHz — roll off the top for a rounder, less whistly tone
+	"filter_resonance": 1.0,
+	"amp_attack":       0.04, // soft breathy chiff onset
+	"amp_decay":        0.05,
+	"amp_sustain":      0.94,
+	"amp_release":      0.12,
+	// PITCH vibrato — the air-jet wavers (~8 cents, 5.6 Hz). Stable in additive.
 	"lfo_enabled": 1,
-	"lfo_rate":    5.5,
-	"lfo_depth":   0.14,
+	"lfo_rate":    5.6,
+	"lfo_depth":   0.05,
 	"lfo_target":  1,
-	"lfo_delay":   0.3,
-	// blown tube
-	"gen1_source":     3,
-	"gen1_freq_mode":  0,
-	"gen1_freq":       1.0,
-	"gen1_ks_blow":    0.15, // AIR / breath drive (~14% noise; organ = too clean)
-	"gen1_ks_sustain": 0.982,
-	"gen1_ks_pluck":   0.65, // air color / turbulence balance
-	"gen1_gain":       1.0,
-	"gain":            0.9,
+	"lfo_delay":   0.25,
+	// sparse near-sine harmonic series (a real flute is close to a sine + air)
+	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 1.0, "gen2_gain": 0.55, // H1
+	"gen3_source": 1, "gen3_wave": 0, "gen3_freq_mode": 0, "gen3_freq": 2.0, "gen3_gain": 0.15, // H2 (ref .27)
+	"gen4_source": 1, "gen4_wave": 0, "gen4_freq_mode": 0, "gen4_freq": 3.0, "gen4_gain": 0.05, // H3 (ref .10)
+	// CONTINUOUS breath air — the flute's defining sound. Band-passed around the
+	// blowing frequencies, SUSTAINED for the whole note (tail_mix high, no decay),
+	// prominent (this is what makes it read as BLOWN, not plucked/organ).
+	"gen1_source": 2, "gen1_gain": 0.42, "gen1_filt_type": 5, "gen1_filt_freq": 2100, "gen1_filt_q": 0.45,
+	"gen1_env_fast_mix": 0.4, "gen1_env_fast_rate": 4, "gen1_env_tail_mix": 0.9, "gen1_env_tail_rate": 0.0,
+	"gain": 0.9,
 }
 
 // fluteBreathySeed: breathier flute — more noise + same harmonic structure.
@@ -628,54 +648,60 @@ var fluteBreathySeed = RecipeParams{
 //   - amp_attack=0.05 — reed speaks fast but not instant; the saw routing makes this measure.
 //   - 6Hz vibrato (lfo_target=1, pitch) for the characteristic oboe wobble.
 var oboeSeed = RecipeParams{
-	// OBOE = a REED-WOODWIND PHYSICAL MODEL (osc_type:9 -> render_reed in modular.c):
-	// a bore delay line + a nonlinear reed table (the reed slaps shut as breath
-	// pressure rises) + a one-zero bell loss filter, self-oscillating into a
-	// sustained, organic reed tone. render_reed's hardcoded defaults use the
-	// STK-clarinet config (inverting bell, offset 0.7, slope -0.3, breath 0.8 to
-	// cross the oscillation threshold) — a clean, woody, odd-harmonic reed voice
-	// (clarinet-leaning physics; a true conical/non-inverting oboe bore only
-	// oscillates weakly/chaotically, deferred). Reference: oboe A4=440 (acclivity).
-	// Gens/unison are unused by the waveguide path; gentle post-LP + amp ADSR +
-	// light amplitude vibrato shape the voice.
-	"osc_enabled":   1,
-	"osc_type":      9,
-	"filter_type":   0,
-	"filter_cutoff": 6000,
-	"amp_attack":    0.02,
-	"amp_decay":     0.05,
-	"amp_sustain":   0.92,
-	"amp_release":   0.10,
-	"lfo_enabled":   1,
-	"lfo_rate":      5.6,
-	"lfo_depth":     0.08,
-	"lfo_target":    0,
-	"lfo_delay":     0.15,
-	"gain":          0.8,
+	// OBOE = ADDITIVE reed formant (osc_enabled:0, sine bank). The old reed
+	// WAVEGUIDE (osc_type:9 render_reed) was a CLARINET — inverting single-delay
+	// bell → odd harmonics only (measured even/odd 0.03 vs the real oboe's 0.53).
+	// The conical two-delay model gives even+odd but its limit cycle wanders
+	// 20–140 cents at the oboe's short bore (unstable). Additive is rock-stable
+	// and places the real oboe's H3-DOMINANT reedy spectrum directly: measured
+	// (acclivity A4) H1 1.0, H2 .26, H3 1.39 (peak), H4 .63, H5 .60, H6 .18 — a
+	// reed formant around H3–H5 that reads bright/nasal. A band-passed reed-buzz
+	// noise supplies the ~0.5 broadband content; a fast reedy attack + subtle
+	// vibrato the movement.
+	"osc_enabled":      0,
+	"filter_type":      0,
+	"filter_cutoff":    7000, // bright/nasal — the oboe centroid is ~3 kHz
+	"filter_resonance": 1.0,
+	"amp_attack":       0.012, // fast reedy speech
+	"amp_decay":        0.05,
+	"amp_sustain":      0.92,
+	"amp_release":      0.10,
+	// subtle vibrato (real oboe is nearly straight, ~2 cents)
+	"lfo_enabled": 1,
+	"lfo_rate":    5.6,
+	"lfo_depth":   0.015,
+	"lfo_target":  1,
+	"lfo_delay":   0.2,
+	// measured H3-dominant reed formant (gains boosted ~2x for gen-slot attenuation)
+	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 1.0, "gen2_gain": 0.42, // H1
+	"gen3_source": 1, "gen3_wave": 0, "gen3_freq_mode": 0, "gen3_freq": 2.0, "gen3_gain": 0.12, // H2 (ref weak)
+	"gen4_source": 1, "gen4_wave": 0, "gen4_freq_mode": 0, "gen4_freq": 3.0, "gen4_gain": 0.58, // H3 PEAK
+	"gen5_source": 1, "gen5_wave": 0, "gen5_freq_mode": 0, "gen5_freq": 4.0, "gen5_gain": 0.27, // H4
+	"gen6_source": 1, "gen6_wave": 0, "gen6_freq_mode": 0, "gen6_freq": 5.0, "gen6_gain": 0.25, // H5
+	"gen7_source": 1, "gen7_wave": 0, "gen7_freq_mode": 0, "gen7_freq": 6.0, "gen7_gain": 0.08, // H6
+	"gen8_source": 1, "gen8_wave": 0, "gen8_freq_mode": 0, "gen8_freq": 7.0, "gen8_gain": 0.05, // H7
+	// band-passed reed-buzz noise, SUSTAINED (real oboe ~0.54 broadband); centred
+	// near the reed formant so it adds buzz without over-brightening the centroid.
+	"gen1_source": 2, "gen1_gain": 0.7, "gen1_filt_type": 5, "gen1_filt_freq": 1900, "gen1_filt_q": 0.35,
+	"gen1_env_fast_mix": 0.6, "gen1_env_fast_rate": 10, "gen1_env_tail_mix": 0.6, "gen1_env_tail_rate": 0.0,
+	// slight reedy attack bloom
+	"filtenv_enabled": 1, "filtenv_amt": 0.4, "filtenv_decay": 0.1,
+	"gain": 0.75,
 }
 
 // oboeFullSeed: fuller oboe — same SUBTRACTIVE saw→band-pass→filtenv architecture as
 // oboeSeed but BRIGHTER and louder (higher BP center, stronger upper-formant lift, bigger
 // filtenv bloom) for a fatter reed tone. Distinct from oboeSeed (seed-distinct guard).
-var oboeFullSeed = RecipeParams{
-	// FULLER oboe — the SAME reed waveguide as the base oboe (osc_type:9 render_reed)
-	// but louder and a touch fuller (lower post-LP keeps more body, higher gain,
-	// more sustain). Was an old saw; re-synced to the reed model.
-	"osc_enabled":   1,
-	"osc_type":      9,
-	"filter_type":   0,
-	"filter_cutoff": 5000,
-	"amp_attack":    0.02,
-	"amp_decay":     0.05,
-	"amp_sustain":   0.95,
-	"amp_release":   0.12,
-	"lfo_enabled":   1,
-	"lfo_rate":      5.4,
-	"lfo_depth":     0.06,
-	"lfo_target":    0,
-	"lfo_delay":     0.15,
-	"gain":          0.95,
-}
+// FULLER oboe — the additive oboe with a stronger fundamental + upper body and
+// higher gain for a fatter reed tone (no longer the clarinet reed waveguide).
+var oboeFullSeed = cloneSeed(oboeSeed, RecipeParams{
+	"gen2_gain":   0.58, // fuller fundamental
+	"gen5_gain":   0.32, // more H4 body
+	"gen6_gain":   0.30, // more H5 body
+	"amp_sustain": 0.95,
+	"amp_release": 0.12,
+	"gain":        0.9,
+})
 
 // ---------------------------------------------------------------------------
 // Task 5: Winds — Brass (trumpet, french horn)
@@ -720,7 +746,7 @@ var trumpetSeed = RecipeParams{
 	"filtenv_enabled":  1,
 	"filtenv_amt":      1.6, // brass bloom: cutoff rises over the crescendo (dark->bright)
 	"filtenv_attack":   0.4,
-	"filtenv_decay":    4.0,
+	"filtenv_decay":    2.0, // honest ParamDef max (was 4.0, silently clamped to 2.0 in the recipe path)
 	"lfo_enabled":      1,
 	"lfo_rate":         3.2,
 	"lfo_depth":        0.06, // amplitude tremolo only (real trumpet is a straight tone)
@@ -762,7 +788,7 @@ var trumpetMellowSeed = RecipeParams{
 	"filtenv_enabled":  1,
 	"filtenv_amt":      1.0,
 	"filtenv_attack":   0.45,
-	"filtenv_decay":    4.0,
+	"filtenv_decay":    2.0, // honest ParamDef max (was 4.0, silently clamped to 2.0 in the recipe path)
 	"lfo_enabled":      1,
 	"lfo_rate":         3.0,
 	"lfo_depth":        0.05,
@@ -810,16 +836,16 @@ var frenchHornSeed = RecipeParams{
 	"unison_mix":         0.35,
 	"unison_drift_rate":  2.5,
 	"unison_drift_depth": 8.0,
-	"amp_attack":         0.08, // soft brass onset (~80ms)
+	"amp_attack":         0.02, // fast horn onset — the ref speaks in ~12ms; the old 80ms + drift beating pushed the measured attack to ~0.7s
 	"amp_decay":          0.06,
 	"amp_sustain":        0.9,
 	"amp_release":        0.15,
-	// gentle vibrato — horn is steady (real ripple ~2.6 dB)
+	// gentle vibrato — horn is steady (real ~3 Hz / 5 cents); short delay so it doesn't delay the onset peak
 	"lfo_enabled": 1,
-	"lfo_rate":    5.2,
-	"lfo_depth":   0.018,
+	"lfo_rate":    4.0,
+	"lfo_depth":   0.02,
 	"lfo_target":  1,
-	"lfo_delay":   0.3,
+	"lfo_delay":   0.05,
 	// measured harmonic ladder (rel f0): H2 −18, H3 −29, H4 −31 (formant plateau), H5 −41, H6 −49.
 	// Upper gens are boosted above the bare ratio to offset the gen-slot ~10 dB attenuation.
 	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 1.0, "gen2_gain": 0.32, // H1 (ref: H2 is LOUDER)
@@ -870,7 +896,7 @@ var frenchHornLoudSeed = RecipeParams{
 	"gen5_source": 1, "gen5_wave": 0, "gen5_freq_mode": 0, "gen5_freq": 4.0, "gen5_gain": 0.24, // H4 boosted
 	"gen6_source": 1, "gen6_wave": 0, "gen6_freq_mode": 0, "gen6_freq": 5.0, "gen6_gain": 0.12, // H5 boosted
 	"gen7_source": 1, "gen7_wave": 0, "gen7_freq_mode": 0, "gen7_freq": 6.0, "gen7_gain": 0.05, // H6
-	"gen1_source": 2, "gen1_gain": 0.04, "gen1_filt_type": 5, "gen1_filt_freq": 1300, "gen1_filt_q": 0.5,
+	"gen1_source": 2, "gen1_gain": 0.03, "gen1_filt_type": 5, "gen1_filt_freq": 1300, "gen1_filt_q": 0.5,
 	"gen1_env_fast_mix": 0.5, "gen1_env_fast_rate": 14, "gen1_env_tail_mix": 0.8, "gen1_env_tail_rate": 0.0,
 	"gain": 1.0,
 }
@@ -897,7 +923,7 @@ var bassGuitarSeed = RecipeParams{
 	"filter_type":   0,
 	"filter_cutoff": 2200,
 	"amp_attack":    0.002, // sharp finger pluck
-	"amp_decay":     8,     // long natural ring-down (the string slowly dies)
+	"amp_decay":     4,     // honest ParamDef max (was 8, silently clamped to 4 in the recipe path); long natural ring-down
 	"amp_sustain":   0.0,   // PLUCKS AND DECAYS
 	"amp_release":   0.15,
 	// harmonic set matched to the reference (upper partials decay a little faster = the
@@ -1140,39 +1166,150 @@ var punchyKickSeed = kickSeedWith(RecipeParams{
 	"gen1_kick_pe_amt": 0.9, "gen1_kick_pe_rate": 35,
 	"gen1_kick_h2": 0.22, "gen1_kick_h3": 0.02, // modest h2 punch, tiny h3 (ref has ~1% in 120-250)
 	"gen1_kick_env0": 12.0, "gen1_kick_env1": 12, // tight decay + attack-swell = a punchy thump that finishes DRY
-	// "RAW/ORGANIC" here is broadband AIR in the ATTACK only (very-fast-decayed in
-	// the DSP so the tail is bone dry), NOT heavy mid distortion (electronic mids).
-	"gen1_kick_sat":    1.2,  // LIGHT body distortion (heavy = electronic boxy mids)
-	"gen1_kick_noise":  0.15, // a touch of organic attack air only; gone by ~50 ms → dry tail
+	// ORGANIC grit comes from a LOW-MID noise texture (120-500 Hz, steep) in the
+	// ATTACK only — that's body thickness + attack thwack (punch), NOT high air.
+	// "Airy/spitty" is HF noise (>1 kHz); this band has none, so it's organic +
+	// punchy without spit. Fully removing noise made it electronic and unpunchy.
+	"gen1_kick_sat":    1.4,  // light tonal distortion for warmth/dirt
+	"gen1_kick_noise":  0.16, // low-mid attack grit = organic thickness + punch (no high air)
 	"gen1_kick_click":  0.30, // low thud attack = punch without a high tss
 	"gen1_kick_attack": 1.5, "gen1_kick_fade": 4,
 })
 
 // kick808Seed: a long boomy 808 sub kick — a near-pure deep sub with the 808
 // "pew" pitch drop and a LONG ringing tail (the sustained sub-bass note).
+// kick808Seed: a deep progressive-house / 808 sub kick, tuned (harness +
+// fingerprint metrics) toward 860393__cat-fox_alex__progressivehouse-kick-2:
+// sub-dominant (<60 Hz carries most energy) BUT with real body in 60-120 Hz
+// (~28% in the ref — a pure sub reads weak), a BIG fast pitch drop (~150→~40 Hz,
+// the house "pew"), and a long sustained tail. The old seed barely dropped
+// (pe_amt 0.4) and was ~89% sub with no body; these values restore the drop +
+// body while keeping the boom.
 var kick808Seed = kickSeedWith(RecipeParams{
-	"voice_freq_hz":     42,
+	"voice_freq_hz":     44,
 	"gen1_kick_variant": 1,                            // deep
-	"gen1_kick_pe_amt":  0.4, "gen1_kick_pe_rate": 22, // the 808 drop
-	"gen1_kick_h2": 0.10, "gen1_kick_h3": 0.05, // mostly pure sub
-	"gen1_kick_env0": 1.2, "gen1_kick_env1": 2.5, // LONG sustain
-	"gen1_kick_click": 0.04, "gen1_kick_noise": 0.04,
-	"gen1_kick_fade": 1.5, "gen1_kick_attack": 0.3, "gen1_kick_sat": 1.2, // long tail, warm
+	"gen1_kick_pe_amt":  2.4, "gen1_kick_pe_rate": 25, // BIG 808/house pitch drop ~150→44 Hz
+	"gen1_kick_h2": 0.20, "gen1_kick_h3": 0.05, // sub + a body in 60-120 (not a pure sub)
+	"gen1_kick_env0": 2.4, "gen1_kick_env1": 2.5, // sustained boom
+	"gen1_kick_click": 0.30, "gen1_kick_noise": 0.04, // a bit of transport punch
+	"gen1_kick_fade": 1.3, "gen1_kick_attack": 0.3, "gen1_kick_sat": 1.2, // long tail, warm
 })
 
 // acousticKickSeed: a natural tight acoustic kick — a beater click on a woody
 // body with controlled harmonics and a short, gated tail (the tight variant's
 // band-pass beater + room give the real-drum character).
+// acousticKickSeed: a tight, punchy, ORGANIC acoustic-style kick, tuned (harness
+// + fingerprint metrics) toward the real recorded sample 36010__sandyrb__dnb-
+// kick-003: fundamental ~85-90 Hz with 60-120 Hz DOMINANT (~85% of energy — NOT
+// a sub-boom), almost no <60 Hz, a SHARP beater attack (high crest ~7-8, the
+// natural-kick transient) and a fast body decay. The old seed sat at ~55 Hz and
+// ~50% sub with a soft beater — boomy and un-acoustic; these values move it to a
+// real tight-kick character (the tight variant's band-pass beater does the rest).
 var acousticKickSeed = kickSeedWith(RecipeParams{
-	"voice_freq_hz":     55,
-	"gen1_kick_variant": 4, // tight
-	"gen1_kick_pe_amt":  0.15, "gen1_kick_pe_rate": 55,
-	"gen1_kick_h2": 0.35, "gen1_kick_h3": 0.18, "gen1_kick_h4": 0.10, // natural harmonics
-	"gen1_kick_env0": 7, "gen1_kick_env1": 12,
-	// click/noise kept LOW: the band-pass beater + room white-noise read as
-	// "crackle" when prominent. A soft thump, not a noisy beater.
-	"gen1_kick_click": 0.12, "gen1_kick_noise": 0.04,
-	"gen1_kick_fade": 6, "gen1_kick_attack": 0.4, "gen1_kick_sat": 0.5,
+	// Re-tuned toward the reference as a REAL KICK (the earlier bright modal tuning
+	// read as a high tom — that sound is now the "High Tom Organic" instrument):
+	// LOWER (~60 Hz) and fundamental-DOMINANT at the loud onset (low mid-mode
+	// gains → a kick, not a tom), more BRUTAL (harder saturation + click), and a
+	// room REVERB tail (the recorded kick's space). Variant 7's inharmonic modal
+	// bank keeps the organic timbre; the low fundamental + reverb make it a kick.
+	"voice_freq_hz":     54,                            // LOWER / HEAVIER — a deep real kick, not a high tom
+	"gen1_kick_variant": 7,                             // acoustic (inharmonic modal bank + beater excitation)
+	"gen1_kick_pe_amt":  0.25, "gen1_kick_pe_rate": 55, // subtler downward drop (less "closing-door" sweep)
+	// mid modes kept LOW + high modes minimal, and NEAR-HARMONIC (small stretch) so
+	// they don't buzz — the deep fundamental dominates. Heavy and organic, not creaky.
+	"gen1_kick_h2": 0.35, "gen1_kick_h3": 0.08, "gen1_kick_h4": 0.02,
+	"gen1_kick_env0": 8, "gen1_kick_env1": 22, // a bit more fundamental sustain = weight
+	"gen1_kick_mode_detune": 0.03, "gen1_kick_mode_gain": 0.45, "gen1_kick_mode_decay": 45,
+	// a hard sharp click carries the punch/crest (the aggressive soul); the body
+	// saturation is kept LOW — saturating the summed inharmonic modes makes
+	// intermodulation roughness that reads as a "creak"/wooden buzz.
+	"gen1_kick_click": 0.90, "gen1_kick_noise": 0.03, "gen1_kick_reverb": 0.85,
+	"gen1_kick_fade": 2.5, "gen1_kick_attack": 1.0, "gen1_kick_sat": 0.25,
+})
+
+// zgumpKickSeed: an ORGANIC, punchy mid-bass kick tuned toward the reference
+// 83768__zgump__kick-pack-0708.wav. It rides the MODAL kick DSP (variant 6):
+// a struck BATTER mode + a detuned, less-damped, delayed RESONANT mode whose
+// beating (Δf = f0·detune) and slow ring produce the reference's organic
+// plateau-then-tail-bloom envelope from a real mechanism, not a drawn envelope.
+// The reference is a mid-bass thump: dominant ~80 Hz, ~73% of its energy in
+// 60-120 Hz + ~24% in 120-250 Hz (strong 2nd harmonic), almost no true sub or
+// HF, a big smooth 240→~78 Hz glide, and crest ~3.4 (a thump, not a click).
+// Every value is explicit so bakedModularRender bakes it (the seeded-kick
+// playback gotcha): a bare gen1_kick_* default would render the wrong voice.
+var zgumpKickSeed = kickSeedWith(RecipeParams{
+	// Tuned by the native harness (zgump_kick_tune_test.go) against the reference
+	// via the fingerprint kick metrics: bands 71/26 (ref 71/25), settle ~66 Hz
+	// (ref 67.5), attack peak ~25 ms (ref 25), crest ~3.2 (ref 3.4), tail bloom
+	// present, glide ~120 ms (ref 125). Band accuracy was prioritized over the
+	// pitch-glide trace where they conflict (bands win perceptually).
+	"voice_freq_hz":     78, // settles ~67 Hz (the reference fundamental)
+	"gen1_kick_variant": 6,  // modal (coupled two-mode drumhead)
+	// a SLOW, gradual glide (~210→67 Hz over ~120 ms) — the drumhead-tension drop,
+	// the reference's #1 organic tell (its pitch declines gradually, not a snap).
+	"gen1_kick_pe_amt": 2.0, "gen1_kick_pe_rate": 45,
+	// modest 2nd harmonic loads the 120-250 band (~25% of ref energy); tiny 3rd.
+	"gen1_kick_h2": 0.18, "gen1_kick_h3": 0.04,
+	// batter decay (~25 ms peak by construction) + faster harmonic decay.
+	"gen1_kick_env0": 11.0, "gen1_kick_env1": 20.0,
+	// the modal knobs: Δf≈9 Hz beat (plateau ripple) + a strong, long, delayed
+	// resonant ring (the tail bloom) — the organic plateau-then-bloom.
+	"gen1_kick_mode_detune": 0.12, "gen1_kick_mode_gain": 1.3, "gen1_kick_mode_decay": 3.0,
+	// a soft swell-in onset (low click/grit) — the reference peaks at 25 ms, it is
+	// NOT a sharp beater-click kick; a low thud gives punch without a high tick.
+	"gen1_kick_click": 0.20, "gen1_kick_noise": 0.04,
+	"gen1_kick_sat": 0.8, "gen1_kick_attack": 0.5, "gen1_kick_fade": 4.0,
+})
+
+// cloneSeed returns a deep copy of base with overrides applied on top. Used to
+// derive a new instrument config from an existing one (the config-first "copy an
+// instrument" primitive, at definition time).
+func cloneSeed(base RecipeParams, overrides RecipeParams) RecipeParams {
+	out := make(RecipeParams, len(base)+len(overrides))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range overrides {
+		out[k] = v
+	}
+	return out
+}
+
+// highTomOrganicSeed: the variant-7 modal voice tuned (originally as the
+// acoustic kick) to a bright, organic, inharmonic-modal timbre — which the user
+// judged reads as a HIGH TOM rather than a kick (its ×2.1/×3.4/×5.2 mid modes
+// are prominent). Saved as its own instrument because it's a good organic tom;
+// kick-acoustic is then re-tuned lower/brutaler/reverberant for a real kick.
+// Explicit snapshot (NOT cloneSeed(acousticKickSeed)) so re-tuning the kick does
+// not move the tom.
+var highTomOrganicSeed = kickSeedWith(RecipeParams{
+	"voice_freq_hz":     85,
+	"gen1_kick_variant": 7, // acoustic (inharmonic modal bank)
+	"gen1_kick_pe_amt":  0.25, "gen1_kick_pe_rate": 60,
+	"gen1_kick_h2": 0.50, "gen1_kick_h3": 0.35, "gen1_kick_h4": 0.20,
+	"gen1_kick_env0": 16, "gen1_kick_env1": 28,
+	"gen1_kick_mode_detune": 0.10, "gen1_kick_mode_gain": 1.0, "gen1_kick_mode_decay": 55,
+	"gen1_kick_click": 0.40, "gen1_kick_noise": 0.04,
+	"gen1_kick_fade": 5.0, "gen1_kick_attack": 0.6, "gen1_kick_sat": 0.3,
+})
+
+// rawKickSeed: a RAW / HEAVY / BRUTAL sibling of zgump-kick — literally CLONED
+// from zgumpKickSeed's config (cloneSeed) and pushed toward the reference's
+// grittier natural character (which the clean zgump tuning smoothed out). Same
+// MODAL variant-6 DSP; the overrides add broadband grit texture (kick_noise↑),
+// saturation drive (kick_sat↑), a heavier sub (lower voice_freq + stronger,
+// longer resonant mode) and a harder attack (kick_click/kick_attack↑).
+// zgump-kick stays untouched; this is its rawer clone. Tuned in the harness.
+var rawKickSeed = cloneSeed(zgumpKickSeed, RecipeParams{
+	"voice_freq_hz":        70,   // lower/heavier than zgump's 78
+	"gen1_kick_h2":         0.30, // more harmonic edge
+	"gen1_kick_h3":         0.12,
+	"gen1_kick_mode_gain":  1.7,  // heavier body
+	"gen1_kick_mode_decay": 2.2,  // longer resonant ring = heavier tail
+	"gen1_kick_click":      0.50, // harder attack transient (brutal)
+	"gen1_kick_noise":      0.30, // broadband grit (raw / organic)
+	"gen1_kick_sat":        2.5,  // strong distortion drive (raw)
+	"gen1_kick_attack":     1.5,
 })
 
 // ---------------------------------------------------------------------------
@@ -1303,21 +1440,215 @@ var organSeed = RecipeParams{
 // tail), and a slower-blooming filtenv. Used as the So What 2nd horn and the
 // Girl from Ipanema melody (Stan Getz tenor).
 var saxSeed = RecipeParams{
-	// SAXOPHONE = a SAXOFONY REED-CONE PHYSICAL MODEL (osc_type:11 -> render_sax in
-	// modular.c): the inverting clarinet reed loop with the bore SPLIT into two
-	// delay lines at an off-centre blow position -> the full even+odd harmonic
-	// series of a conical sax. (The odd-only clarinet reed was the wrong source,
-	// and a subtractive saw read as "buzzy/repetitive/electronic" — the user's
-	// complaint.) Self-oscillating reed dynamics + breath noise + vibrato = organic.
-	// Reference: mtg baritone sax (sounds C2 ~= 65Hz). render_sax hardcodes the
-	// baritone defaults (off-centre blow, positive reed slope, hard breath).
-	"osc_enabled":   1,
-	"osc_type":      11,
-	"filter_type":   0,
-	"filter_cutoff": 6000,
-	"amp_attack":    0.08,
-	"amp_decay":     0.06,
-	"amp_sustain":   0.92,
-	"amp_release":   0.12,
-	"gain":          0.7,
+	// SAXOPHONE = hybrid additive + formant-filtered saw. Tuned against the
+	// TRUE-grid measurement of 360251__mtg__sax-baritone-c3 (f0 ≈ 122.8 Hz/B2 —
+	// the earlier "H3-dominant, breath 0.45" profile was an OCTAVE-UP analysis
+	// artifact: DetectF0 locked onto H2 because the bari fundamental sits ~7 dB
+	// below it; fixed via the odd-harmonic-evidence octave guard). Real bari
+	// signature (rel H2=1.0): H1 .47, H2 1.00, H3 .97, H4 .68, H5 .39, H6 .67
+	// (the ~740 Hz knee formant), H7 .37, then a REBOUND plateau H14-H16 ≈ .3
+	// (the 1.9/2.6 kHz formants); even/odd 1.25 (conical bore = even-strong);
+	// noise only ~0.08; vibrato ~2¢ (nearly straight); rise10-90 ≈ 0.22 s; and
+	// brightness tracks loudness (+0.77) via the note's slow decrescendo.
+	// Architecture: sines pin H1-H4+H6 exactly; a saw→BP@820 builds the knee
+	// fill (H5/H7-H10); a saw→BP@2050 builds the high formant plateau; a narrow
+	// breath-noise band sits at the ref's residual centroid (~1.2-1.5 kHz) so
+	// louder breath = brighter (positive coupling), and a slow amp decrescendo
+	// supplies the macro brightness-loudness coupling.
+	"osc_enabled":      0,
+	"filter_type":      0,
+	"filter_cutoff":    2200, // shoulder just above the 2 kHz formant plateau (ref cliffs at ~2.6 kHz)
+	"filter_resonance": 1.0,
+	"amp_attack":       0.5, // measured rise10-90 0.21 s ≈ ref 0.22 s (env curve is nonlinear)
+	"amp_decay":        2.5, // slow decrescendo — drives the ref's +0.77 brightness↔loudness coupling
+	"amp_sustain":      0.45,
+	"amp_release":      0.2,
+	// subtle vibrato (the ref reads 2.4¢, below the 3¢ detection threshold)
+	"lfo_enabled": 1,
+	"lfo_rate":    5.0,
+	"lfo_depth":   0.002, // renders ~2.1¢ ≈ ref 2.4¢ (0.008 rendered 8.5¢)
+	"lfo_target":  1,
+	"lfo_delay":   0.2,
+	// sines pin the measured low harmonics (rel H2 ×0.5 gain scale)
+	"gen2_source": 1, "gen2_wave": 0, "gen2_freq_mode": 0, "gen2_freq": 1.0, "gen2_gain": 0.22, // H1 (weak fundamental)
+	"gen3_source": 1, "gen3_wave": 0, "gen3_freq_mode": 0, "gen3_freq": 2.0, "gen3_gain": 0.50, // H2 DOMINANT
+	"gen4_source": 1, "gen4_wave": 0, "gen4_freq_mode": 0, "gen4_freq": 3.0, "gen4_gain": 0.45, // H3 near-equal
+	"gen5_source": 1, "gen5_wave": 0, "gen5_freq_mode": 0, "gen5_freq": 4.0, "gen5_gain": 0.37, // H4
+	"gen6_source": 1, "gen6_wave": 0, "gen6_freq_mode": 0, "gen6_freq": 6.0, "gen6_gain": 0.53, // H6 knee-formant bump
+	// saw → BP@820 Q1.8: the ~740 Hz knee fill (H5, H7-H10)
+	"gen7_source": 1, "gen7_wave": 1, "gen7_freq_mode": 0, "gen7_freq": 1.0, "gen7_gain": 1.9,
+	"gen7_filt_type": 5, "gen7_filt_freq": 820, "gen7_filt_q": 1.8,
+	// saw → BP@2050 Q2.0: the H14-H18 plateau (1.9 + 2.6 kHz formants).
+	// gain 4.0 = the gen_gain ParamDef Max — the recipe path CLAMPS on merge,
+	// so a larger value silently renders as 4.0 anyway, and the baked one-shot
+	// path (which does NOT clamp) would diverge from playback.
+	"gen8_source": 1, "gen8_wave": 1, "gen8_freq_mode": 0, "gen8_freq": 1.0, "gen8_gain": 4.0,
+	"gen8_filt_type": 5, "gen8_filt_freq": 2050, "gen8_filt_q": 2.0,
+	// breath noise at the ref's residual centroid (~1.5 kHz), narrow + quiet
+	// (true breathiness is ~0.08, not the octave-artifact 0.45)
+	"gen1_source": 2, "gen1_gain": 0.18, "gen1_filt_type": 5, "gen1_filt_freq": 1200, "gen1_filt_q": 2.5,
+	"gen1_env_fast_mix": 0.5, "gen1_env_fast_rate": 8, "gen1_env_tail_mix": 0.85, "gen1_env_tail_rate": 0.0,
+	"gain": 0.7,
+}
+
+// ── Phase-15 voice/choir family. Source–filter vocal synthesis: glottal pulse
+// (osc_type 12) or detuned saws → formant vowel bank (Csound Appendix D
+// tables) + humanized ensemble. Values are research-derived starting points
+// (spec 2026-07-08); final values are set by the EAR-TUNING pass — the user's
+// ear is the acceptance gate, not these numbers.
+
+// ensembleLeadSeed: glottal-ensemble lead — born as a choir "ahh" attempt,
+// kept as a synth per ear review 2026-07-08; cello-like sustained ensemble, 5
+// humanized glottal voices, tenor "a" formants, moderate singer's formant,
+// soft 100 ms attack.
+var ensembleLeadSeed = RecipeParams{
+	"osc_type": 12, "osc_enabled": 1,
+	"unison_voices": 5, "unison_detune": 8, "unison_mix": 0.7,
+	"unison_drift_rate": 0.3, "unison_drift_depth": 4,
+	"ens_scatter": 10, "ens_vib_rate": 5.5, "ens_vib_depth": 8, "ens_humanize": 0.8,
+	"filter_type": 0, "filter_cutoff": 6000, "filter_resonance": 0.707,
+	"amp_attack": 0.10, "amp_decay": 0.3, "amp_sustain": 0.85, "amp_release": 0.5,
+	"formant_enabled": 1, "formant_vowel": 0, "formant_voice_type": 2,
+	"formant_mix": 0.85, "formant_breath": 0.06, "formant_sing": 0.35,
+	"gain": 0.55, // not 0.5 — TestPhase2Native mutates gain->0.5 and needs a delta
+}
+
+// ensembleLeadDarkSeed: darker sustained ensemble-lead pad — born as a choir
+// "ooh" attempt, kept as a synth per ear review 2026-07-08; alto "u" vowel,
+// more breath, slower attack, long release.
+var ensembleLeadDarkSeed = RecipeParams{
+	"osc_type": 12, "osc_enabled": 1,
+	"unison_voices": 5, "unison_detune": 7, "unison_mix": 0.75,
+	"unison_drift_rate": 0.25, "unison_drift_depth": 4,
+	"ens_scatter": 9, "ens_vib_rate": 5.0, "ens_vib_depth": 7, "ens_humanize": 0.85,
+	"filter_type": 0, "filter_cutoff": 4200, "filter_resonance": 0.707,
+	"amp_attack": 0.15, "amp_decay": 0.4, "amp_sustain": 0.9, "amp_release": 1.0,
+	"formant_enabled": 1, "formant_vowel": 4, "formant_voice_type": 1,
+	"formant_mix": 0.85, "formant_breath": 0.12, "formant_sing": 0.2,
+	"gain": 0.55,
+}
+
+// voiceSopranoSeed: solo soprano — single glottal voice, expressive ±60¢
+// vibrato after a 0.3 s onset, onset scoop via a small negative pitch env,
+// bright 3.1 kHz singer's formant.
+var voiceSopranoSeed = RecipeParams{
+	"osc_type": 12, "osc_enabled": 1, "osc_octave": 1,
+	"unison_voices": 1,
+	"lfo_enabled":   1, "lfo_target": 1, "lfo_rate": 5.5, "lfo_depth": 0.6, "lfo_delay": 0.3,
+	"pitchenv_enabled": 1, "pitchenv_amt": -0.5, "pitchenv_decay": 0.09,
+	"filter_type": 0, "filter_cutoff": 8000, "filter_resonance": 0.707,
+	"amp_attack": 0.06, "amp_decay": 0.2, "amp_sustain": 0.9, "amp_release": 0.4,
+	"formant_enabled": 1, "formant_vowel": 0, "formant_voice_type": 0,
+	"formant_mix": 0.9, "formant_breath": 0.05, "formant_sing": 0.5,
+	"gain": 0.6,
+}
+
+// ghostBassSeed: solo glottal bass synth — born as a "voice-bass" solo singer
+// attempt, kept as a synth (Bass) per ear review 2026-07-08; glottal an octave
+// down, bass "o" vowel, restrained ±30¢ vibrato, low 2.4 kHz singer's formant.
+var ghostBassSeed = RecipeParams{
+	"osc_type": 12, "osc_enabled": 1, "osc_octave": -1,
+	"unison_voices": 1,
+	"lfo_enabled":   1, "lfo_target": 1, "lfo_rate": 5.0, "lfo_depth": 0.3, "lfo_delay": 0.35,
+	"pitchenv_enabled": 1, "pitchenv_amt": -0.4, "pitchenv_decay": 0.1,
+	"filter_type": 0, "filter_cutoff": 5000, "filter_resonance": 0.707,
+	"amp_attack": 0.09, "amp_decay": 0.25, "amp_sustain": 0.9, "amp_release": 0.45,
+	"formant_enabled": 1, "formant_vowel": 3, "formant_voice_type": 3,
+	"formant_mix": 0.9, "formant_breath": 0.05, "formant_sing": 0.3,
+	"gain": 0.6,
+}
+
+// violaPadSeed: lush vowel-morphing string pad — born as a "voice-pad" vocal
+// attempt, kept as a synth (Strings) per ear review 2026-07-08; 7 detuned SAWS
+// (deliberately synthy), slow ah↔oh morph, wide humanized ensemble.
+var violaPadSeed = RecipeParams{
+	"osc_type": 1, "osc_enabled": 1,
+	"unison_voices": 7, "unison_detune": 12, "unison_mix": 0.85,
+	"unison_drift_rate": 0.4, "unison_drift_depth": 6,
+	"ens_scatter": 8, "ens_vib_rate": 5.0, "ens_vib_depth": 6, "ens_humanize": 0.6,
+	"filter_type": 0, "filter_cutoff": 4500, "filter_resonance": 0.707,
+	"amp_attack": 0.25, "amp_decay": 0.5, "amp_sustain": 0.9, "amp_release": 1.2,
+	"formant_enabled": 1, "formant_vowel": 0, "formant_voice_type": 1,
+	"formant_mix": 0.9, "formant_morph_rate": 0.15, "formant_morph_to": 3,
+	"formant_breath": 0.04, "formant_sing": 0.15,
+	"gain": 0.55,
+}
+
+// voiceWhisperSeed: unvoiced texture — NO pitch source (osc off), pure breath
+// noise through "ee" formants. Unpitched: NOT in melodicRecipeIDs.
+var voiceWhisperSeed = RecipeParams{
+	"osc_enabled":     0,
+	"formant_enabled": 1, "formant_vowel": 2, "formant_voice_type": 1,
+	"formant_mix": 1.0, "formant_breath": 1.0,
+	"filter_type": 0, "filter_cutoff": 9000, "filter_resonance": 0.707,
+	"amp_attack": 0.08, "amp_decay": 0.3, "amp_sustain": 0.9, "amp_release": 0.4,
+	"gain": 0.6,
+}
+
+// voiceAhhSeed: sung male "ahh" — tuned against a real 7.5 s C3 (131 Hz) "ahh"
+// recording (tmp/voice_tuning/ref_ahhhh.wav). The ref has virtually NO
+// fundamental energy (fixed-grid tristimulus [0.00,0.33,0.67]; the loudest
+// harmonics are H4-H8 ≈ 525-1050 Hz, the F1 region), a large non-harmonic
+// component (NoiseRatio 0.63, residual centered ~1178 Hz), ~7.7 Hz vibrato
+// over a big slow pitch wander, and a slow ~1.3 s swell.
+// Design (found by iteration): the glottal osc's 1/n² slope is too steep for
+// the formant bank to recover H5+ above the hard-coded 15% dry leak, so the
+// source is a SAW (1/n) whose fundamental is stripped by a 400 Hz HIGH-PASS
+// before the tenor "ah" formant bank at full mix; formant_shift 1.25 puts
+// F1 ≈ 810 Hz on the ref's broad ~864 Hz hump and formant_sing supplies the
+// ref's -11 dB ~2959 Hz hill. Breathiness = formant_breath (white,
+// vowel-colored) + two band-passed gen-bank noise taps at 1100/600 Hz
+// bracketing the ref's residual centroid (the cello bow-noise pattern).
+// Pitch aliveness = 7.5 Hz ±80¢ vibrato after 0.4 s, a -2 st onset scoop,
+// 3 drifting unison voices with full ens humanization, and bow_dynamics for
+// slow breath-pressure loudness wander. Fixed-grid match (4 s render at
+// -9 st = 130.8 Hz): tri [0.07,0.27,0.66] vs ref [0.00,0.33,0.67]. Known
+// gap: the engine has no cycle-level glottal jitter knob (ref Jitter 0.53),
+// so the render is cleaner/steadier than a real throat.
+var voiceAhhSeed = RecipeParams{
+	"osc_type": 1, "osc_enabled": 1,
+	"unison_voices": 3, "unison_detune": 6, "unison_mix": 0.6,
+	"unison_drift_rate": 0.3, "unison_drift_depth": 14,
+	"ens_scatter": 6, "ens_vib_rate": 6.5, "ens_vib_depth": 30, "ens_humanize": 1.0,
+	"lfo_enabled": 1, "lfo_target": 1, "lfo_rate": 7.5, "lfo_depth": 0.8, "lfo_delay": 0.4,
+	"pitchenv_enabled": 1, "pitchenv_amt": -2.0, "pitchenv_decay": 0.7,
+	"bow_dynamics": 0.35,
+	"filter_type":  1, "filter_cutoff": 400, "filter_resonance": 0.707,
+	"amp_attack": 0.55, "amp_decay": 0.3, "amp_sustain": 0.9, "amp_release": 0.6,
+	"formant_enabled": 1, "formant_vowel": 0, "formant_voice_type": 2,
+	"formant_mix": 1.0, "formant_shift": 1.25, "formant_breath": 0.07, "formant_sing": 0.28,
+	"gen1_source": 2, "gen1_gain": 0.25, "gen1_filt_type": 5, "gen1_filt_freq": 1100, "gen1_filt_q": 1.7,
+	"gen1_env_fast_mix": 0.2, "gen1_env_fast_rate": 8, "gen1_env_tail_mix": 0.8, "gen1_env_tail_rate": 0.0,
+	"gen2_source": 2, "gen2_gain": 0.18, "gen2_filt_type": 5, "gen2_filt_freq": 600, "gen2_filt_q": 1.2,
+	"gen2_env_fast_mix": 0.1, "gen2_env_fast_rate": 8, "gen2_env_tail_mix": 0.9, "gen2_env_tail_rate": 0.0,
+	"gain": 0.6,
+}
+
+// voiceOperaSeed: breathier "old-man opera" variant of voiceAhhSeed, ear-
+// approved per the 2026-07-08 round-2 review (auditioned as
+// tmp/voice_audition_v2/voice-ahh_alt_breathier.wav — a temp-edit alternate
+// rendered during voice-ahh tuning, ruled genuinely human-sounding and
+// promoted to its own instrument rather than folded into voice-ahh). Exact
+// voiceAhhSeed values with three deltas that add more air/huskiness and
+// brighter noise: formant_breath 0.07→0.18, gen1_gain 0.25→0.38, gen2_gain
+// 0.18→0.30. Every other key (osc, unison, ensemble, lfo, pitch env, bow
+// dynamics, filter, amp envelope, formant shift/sing, gen filter
+// type/freq/Q, gain) is unchanged from voice-ahh.
+var voiceOperaSeed = RecipeParams{
+	"osc_type": 1, "osc_enabled": 1,
+	"unison_voices": 3, "unison_detune": 6, "unison_mix": 0.6,
+	"unison_drift_rate": 0.3, "unison_drift_depth": 14,
+	"ens_scatter": 6, "ens_vib_rate": 6.5, "ens_vib_depth": 30, "ens_humanize": 1.0,
+	"lfo_enabled": 1, "lfo_target": 1, "lfo_rate": 7.5, "lfo_depth": 0.8, "lfo_delay": 0.4,
+	"pitchenv_enabled": 1, "pitchenv_amt": -2.0, "pitchenv_decay": 0.7,
+	"bow_dynamics": 0.35,
+	"filter_type":  1, "filter_cutoff": 400, "filter_resonance": 0.707,
+	"amp_attack": 0.55, "amp_decay": 0.3, "amp_sustain": 0.9, "amp_release": 0.6,
+	"formant_enabled": 1, "formant_vowel": 0, "formant_voice_type": 2,
+	"formant_mix": 1.0, "formant_shift": 1.25, "formant_breath": 0.18, "formant_sing": 0.28,
+	"gen1_source": 2, "gen1_gain": 0.38, "gen1_filt_type": 5, "gen1_filt_freq": 1100, "gen1_filt_q": 1.7,
+	"gen1_env_fast_mix": 0.2, "gen1_env_fast_rate": 8, "gen1_env_tail_mix": 0.8, "gen1_env_tail_rate": 0.0,
+	"gen2_source": 2, "gen2_gain": 0.30, "gen2_filt_type": 5, "gen2_filt_freq": 600, "gen2_filt_q": 1.2,
+	"gen2_env_fast_mix": 0.1, "gen2_env_fast_rate": 8, "gen2_env_tail_mix": 0.9, "gen2_env_tail_rate": 0.0,
+	"gain": 0.6,
 }

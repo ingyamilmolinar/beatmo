@@ -5,6 +5,7 @@ package audio
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // RoundRobinVariants is the number of pre-rendered voice variants per cache
@@ -43,23 +44,56 @@ type voiceCacheKey struct {
 type roundRobinEntry struct {
 	variants [][]float32 // N pre-rendered buffers
 	counter  atomic.Uint64
+	bytes    int64        // sum of len(variant)*4 across variants, for the byte budget
+	lastNS   atomic.Int64 // last access (Get/Put) UnixNano, for LRU eviction
 }
+
+// defaultVoiceCacheBudgetBytes is the default retained-buffer ceiling. 48 MB is
+// tighter than the old 256-entry cap's ~135 MB worst case (256 × 3 × 176 KB
+// organ variants), yet ample for the demo working set + predictive
+// neighborhood. Overridable via SetVoiceCacheBudgetBytes (RuntimeProfile wires
+// a per-platform value; browser sets a smaller one).
+const defaultVoiceCacheBudgetBytes int64 = 48 << 20
+
+// defaultVoiceCacheMaxEntries bounds the map size + eviction-scan cost
+// regardless of buffer sizes (a secondary guard behind the byte budget).
+const defaultVoiceCacheMaxEntries = 1024
 
 // voiceCache stores rendered voice buffers keyed by instrument+params.
 // Uses round-robin selection across N variants to avoid the "machine gun
-// effect" when the same instrument fires repeatedly.
+// effect" when the same instrument fires repeatedly. Memory is bounded by a
+// hard byte budget with LRU-by-access eviction (predictive neighborhood warming
+// can mint many keys, so an entry-count cap is not a safe memory proxy).
 type voiceCache struct {
 	mu          sync.RWMutex
 	entries     map[voiceCacheKey]*roundRobinEntry
-	maxSize     int                  // cap number of entries to limit memory
+	maxEntries  int                  // secondary guard: bounds map size + scan cost
+	budgetBytes int64                // primary memory ceiling (retained buffer bytes)
+	curBytes    int64                // current retained bytes (sum of entry.bytes)
 	lastSamples map[string][]float32 // most recently Put'd buffer per instrumentID (Phase 4)
 }
 
 var globalVoiceCache = &voiceCache{
 	entries:     make(map[voiceCacheKey]*roundRobinEntry),
-	maxSize:     256,
+	maxEntries:  defaultVoiceCacheMaxEntries,
+	budgetBytes: defaultVoiceCacheBudgetBytes,
 	lastSamples: make(map[string][]float32),
 }
+
+// SetVoiceCacheBudgetBytes sets the retained-buffer ceiling (0 disables the
+// byte budget, leaving only the entry-count guard). Evicts immediately if the
+// new budget is below current usage. Called once at startup from the UI runtime
+// profile; also used by tests/benches to exercise eviction with a tiny budget.
+func SetVoiceCacheBudgetBytes(n int64) {
+	globalVoiceCache.mu.Lock()
+	globalVoiceCache.budgetBytes = n
+	globalVoiceCache.evictToBudgetLocked(voiceCacheKey{})
+	globalVoiceCache.mu.Unlock()
+}
+
+// nowNS is the LRU clock. A package var so tests can make eviction order
+// deterministic without a real wall clock.
+var nowNS = func() int64 { return time.Now().UnixNano() }
 
 // Get returns a SHARED (not cloned) round-robin-selected cached buffer.
 // Playback position is tracked outside the buffer in cVoice.i (see
@@ -75,6 +109,9 @@ func (vc *voiceCache) Get(key voiceCacheKey) ([]float32, bool) {
 	if !ok || len(entry.variants) == 0 {
 		return nil, false
 	}
+	// LRU stamp: a played/probed voice is "recent" and thus protected from
+	// eviction. Atomic store is safe under the RLock — no Get serialization.
+	entry.lastNS.Store(nowNS())
 	// Round-robin: select next variant.
 	idx := entry.counter.Add(1) % uint64(len(entry.variants))
 	return entry.variants[idx], true
@@ -89,19 +126,24 @@ func (vc *voiceCache) Get(key voiceCacheKey) ([]float32, bool) {
 // ~80 KB per cache-miss trigger; per-trigger ownership transfer is now
 // implicit at the Put boundary.
 func (vc *voiceCache) Put(key voiceCacheKey, buf []float32) {
+	nb := int64(len(buf)) * 4
 	vc.mu.Lock()
 	entry, ok := vc.entries[key]
 	if !ok {
-		if len(vc.entries) >= vc.maxSize {
-			vc.mu.Unlock()
-			return
+		// Secondary entry-count guard: evict the LRU entry to make room rather
+		// than dropping the new one, so the freshest render always lands.
+		if vc.maxEntries > 0 && len(vc.entries) >= vc.maxEntries {
+			vc.evictLRULocked(key)
 		}
 		entry = &roundRobinEntry{}
 		vc.entries[key] = entry
 	}
 	if len(entry.variants) < RoundRobinVariants {
 		entry.variants = append(entry.variants, buf)
+		entry.bytes += nb
+		vc.curBytes += nb
 	}
+	entry.lastNS.Store(nowNS())
 	// Track the most recent buffer per instrumentID for the UI's
 	// Synth-tab waveform preview (Phase 4). Shares the backing array
 	// per the Put contract — readers must treat it as read-only.
@@ -109,7 +151,51 @@ func (vc *voiceCache) Put(key voiceCacheKey, buf []float32) {
 		vc.lastSamples = make(map[string][]float32)
 	}
 	vc.lastSamples[key.instrumentID] = buf
+	// Enforce the byte ceiling, never evicting the entry we just wrote (it has
+	// the newest lastNS anyway, so it is never the LRU victim).
+	vc.evictToBudgetLocked(key)
 	vc.mu.Unlock()
+}
+
+// evictLRULocked removes the single least-recently-accessed entry other than
+// keep. Caller holds vc.mu. No-op if only keep remains.
+func (vc *voiceCache) evictLRULocked(keep voiceCacheKey) {
+	var victim voiceCacheKey
+	var oldest int64
+	found := false
+	for k, e := range vc.entries {
+		if k == keep {
+			continue
+		}
+		if ln := e.lastNS.Load(); !found || ln < oldest {
+			oldest, victim, found = ln, k, true
+		}
+	}
+	if !found {
+		return
+	}
+	vc.curBytes -= vc.entries[victim].bytes
+	if vc.curBytes < 0 {
+		vc.curBytes = 0
+	}
+	delete(vc.entries, victim)
+}
+
+// evictToBudgetLocked evicts LRU entries until curBytes <= budgetBytes (0
+// budget disables it). Never evicts keep. Caller holds vc.mu. Deleting a map
+// entry whose buffer a live cVoice still reads is safe — Go GC keeps the slice
+// alive until that voice finishes; only the lookup is dropped.
+func (vc *voiceCache) evictToBudgetLocked(keep voiceCacheKey) {
+	if vc.budgetBytes <= 0 {
+		return
+	}
+	for vc.curBytes > vc.budgetBytes && len(vc.entries) > 1 {
+		before := len(vc.entries)
+		vc.evictLRULocked(keep)
+		if len(vc.entries) == before {
+			break // only keep remains over budget — can't shrink further
+		}
+	}
 }
 
 // LatestSample returns the most recently Put-cached buffer for the
@@ -129,6 +215,16 @@ func LatestVoiceSample(instrumentID string) []float32 {
 	return globalVoiceCache.LatestSample(instrumentID)
 }
 
+// Has reports whether key has at least one rendered variant, without mutating
+// the round-robin counter (unlike Get). Used by VoiceCached for a side-effect-
+// free "is this pitch already warm?" probe from the UI prewarmer.
+func (vc *voiceCache) Has(key voiceCacheKey) bool {
+	vc.mu.RLock()
+	entry, ok := vc.entries[key]
+	vc.mu.RUnlock()
+	return ok && len(entry.variants) > 0
+}
+
 // IsFull returns true if the cache entry for key has all N variants rendered.
 func (vc *voiceCache) IsFull(key voiceCacheKey) bool {
 	vc.mu.RLock()
@@ -144,7 +240,10 @@ func (vc *voiceCache) IsFull(key voiceCacheKey) bool {
 func (vc *voiceCache) Clear() {
 	vc.mu.Lock()
 	vc.entries = make(map[voiceCacheKey]*roundRobinEntry)
+	vc.curBytes = 0
 	vc.mu.Unlock()
+	// "" => whole-cache invalidation, so the prewarmer re-warms everything.
+	notifyVoiceCacheInvalidated("")
 }
 
 // ClearInstrument removes every cache entry for a single instrument id.
@@ -152,12 +251,17 @@ func (vc *voiceCache) Clear() {
 // param edits invalidate stale buffers without touching unrelated entries.
 func (vc *voiceCache) ClearInstrument(instrumentID string) {
 	vc.mu.Lock()
-	defer vc.mu.Unlock()
-	for k := range vc.entries {
+	for k, e := range vc.entries {
 		if k.instrumentID == instrumentID {
+			vc.curBytes -= e.bytes
 			delete(vc.entries, k)
 		}
 	}
+	if vc.curBytes < 0 {
+		vc.curBytes = 0
+	}
+	vc.mu.Unlock()
+	notifyVoiceCacheInvalidated(instrumentID)
 }
 
 func init() {

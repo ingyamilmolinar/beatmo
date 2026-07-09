@@ -3,6 +3,7 @@
 package audio
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -261,6 +262,15 @@ func TestStopRecordingWithCapturedData(t *testing.T) {
 	result, err := StopRecording()
 	if err != nil {
 		t.Fatalf("StopRecording: %v", err)
+	}
+
+	// StopRecording detaches finalization to the lifecycle pool, which writes
+	// result.Metadata.Channels asynchronously. Wait for it before reading any
+	// finalize-populated field or the read races the pool goroutine.
+	wctx, wcancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer wcancel()
+	if err := WaitRecordingFinalized(wctx); err != nil {
+		t.Fatalf("WaitRecordingFinalized: %v", err)
 	}
 
 	// Should have master + 2 instruments = 3 channels

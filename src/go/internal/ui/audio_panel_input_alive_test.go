@@ -147,6 +147,15 @@ func TestAudioPanelInput_AliveAfterPadsToTab_AllTabs(t *testing.T) {
 				t.Fatalf("precondition: fresh mobile game should open on Pads, got %v", dv.currentViewMode)
 			}
 
+			// The Synth/Sampler segments require a single-instrument context
+			// (Master blocks them); select the first row's instrument so the
+			// segment is enabled and the Pads->tab tap can take effect.
+			if tc.mode == viewModeSynth || tc.mode == viewModeSampler {
+				if len(dv.Rows) > 0 {
+					dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+				}
+			}
+
 			// Real user flow: tap the target audio tab in the bottom-nav.
 			// That Pads->tab transition is what triggers the tree's "became
 			// visible" re-layout against the (formerly stale) rect.

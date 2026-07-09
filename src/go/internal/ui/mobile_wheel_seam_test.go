@@ -144,7 +144,7 @@ func TestDesktopTapKnobStartsDrag(t *testing.T) {
 }
 
 // TestMobileWheelEndToEndDragChangesAudioValue opens the mobile scroll-wheel
-// for a continuous knob (filter_cutoff), drags up by 20 notches, then asserts
+// for a continuous knob (filter_cutoff), drags down by 20 notches, then asserts
 // the knob's value has increased. The assertion validates the full path:
 // HandleInput → applyValueDelta → Knob.NudgeEndless → value change.
 //
@@ -172,8 +172,8 @@ func TestMobileWheelEndToEndDragChangesAudioValue(t *testing.T) {
 	cx := w.Rect().Min.X + 20
 	y0 := w.Rect().Min.Y + w.Rect().Dy()*3/4
 	w.HandleInput(cx, y0, true)
-	// Drag up by 20 notches (y decreases → positive delta → value increases).
-	y1 := y0 - knobEndlessPxPerNotch*20
+	// Drag down by 20 notches (y increases → higher rows to center → value increases).
+	y1 := y0 + knobEndlessPxPerNotch*20
 	w.HandleInput(cx, y1, true)
 	w.HandleInput(cx, y1, false)
 

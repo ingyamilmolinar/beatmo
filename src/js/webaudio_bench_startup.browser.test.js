@@ -103,7 +103,14 @@ for (const bpm of BPM_LEVELS) {
     }, profileOverride);
   }
   await page.goto(`http://localhost:${port}/`);
-  await page.waitForFunction(() => typeof startPlay === "function", { timeout: 30000 });
+  // Gate on forceDraw, not just startPlay: js_bootstrap_wasm.go registers a
+  // STUB startPlay early (before Game.initJS registers the real exports), so
+  // startPlay alone can pass while forceDraw below is still unregistered —
+  // the bare-identifier `forceDraw?.()` then throws ReferenceError.
+  await page.waitForFunction(
+    () => typeof startPlay === "function" && typeof forceDraw === "function",
+    { timeout: 30000 },
+  );
   await clearSchedulerMismatches(page);
 
   // Unlock AudioContext + settle caches

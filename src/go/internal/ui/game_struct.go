@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"image"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,30 +13,30 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/gamestate"
 	"github.com/ingyamilmolinar/beatmo/internal/graphruntime"
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
-	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
 type Game struct {
 	/* subsystems */
-	cam                       *Camera
-	split                     *Splitter
-	drum                      *DrumView
-	i18nCancel                func()  // cancels the i18n.OnChange listener registered in NewGame
-	gridHelpBtn               *Button // desktop-only settings gear in grid pane top-right (opens settings overlay)
-	gridHelpCapturing         bool    // true while the grid "?" button holds the press; defers the tree so its click-outside doesn't close the just-opened overlay
-	undoManager               *UndoManager
-	keyboardRouter            *keyboardShortcutRouter // component-owned keyboard shortcut dispatch (keyboard_shortcuts.go)
-	inputDispatcher           *InputDispatcher
-	lastDispatcherSidebarOpen bool
-	dispatcherDirty           bool
-	graph                     *model.Graph
-	graphRuntime              *graphruntime.Runtime
-	state                     *gamestate.State
-	engine                    *engine.Engine
-	engineProgress            func() float64
-	logger                    *game_log.Logger
-	grid                      *Grid
-	audioCh                   chan soundReq
+	cam                         *Camera
+	split                       *Splitter
+	drum                        *DrumView
+	i18nCancel                  func()  // cancels the i18n.OnChange listener registered in NewGame
+	gridHelpBtn                 *Button // settings gear in grid pane top-right (opens settings overlay; both desktop and mobile)
+	gridHelpCapturing           bool    // true while the grid "?" button holds the press; defers the tree so its click-outside doesn't close the just-opened overlay
+	undoManager                 *UndoManager
+	keyboardRouter              *keyboardShortcutRouter // component-owned keyboard shortcut dispatch (keyboard_shortcuts.go)
+	inputDispatcher             *InputDispatcher
+	lastDispatcherSidebarOpen   bool
+	lastDispatcherGroupMenuOpen bool
+	dispatcherDirty             bool
+	graph                       *model.Graph
+	graphRuntime                *graphruntime.Runtime
+	state                       *gamestate.State
+	engine                      *engine.Engine
+	engineProgress              func() float64
+	logger                      *game_log.Logger
+	grid                        *Grid
+	audioCh                     chan soundReq
 	// audioLoopReqs and audioLoopBatch are reusable scratch buffers held
 	// across audioLoop iterations so steady-state playback does not
 	// allocate ~3 KB of soundReq slice + a BatchParam slice every drain
@@ -47,7 +46,13 @@ type Game struct {
 	// audioLoop goroutine; no cross-goroutine access.
 	audioLoopReqs  []soundReq
 	audioLoopBatch []audio.BatchParam
-	audioGen       atomic.Uint64
+	// rowStructGen holds a per-row STRUCTURAL generation. updateBeatInfos bumps
+	// only the generation of rows whose path signature changed; the audioLoop
+	// filter drops an in-flight beat when its stamped rowGen != the current
+	// per-row generation, so unchanged rows keep their scheduled beats while a
+	// changed row's stale (old-path) beats are dropped and rescheduled. Fixed
+	// array so audioLoop reads are race-free against concurrent structural edits.
+	rowStructGen [maxAudioGenRows]atomic.Uint64
 	// audioQuit terminates audioLoop. audioLoop both reads from and (via the
 	// opportunistic seqScheduleTime drive) writes back into audioCh, so
 	// audioCh must never be closed — closing the channel a goroutine still
@@ -61,6 +66,9 @@ type Game struct {
 	bpmCh   chan int
 	bpmAck  chan int
 	playFn  func(string, float64, ...float64)
+	// voicePrewarmer renders upcoming melody voices off the audioLoop dispatch
+	// goroutine so dispatch never cold-renders (fixes the overdue/absmax panic).
+	voicePrewarmer *voicePrewarmer
 	// audioScheduler dispatches future-timestamped playFn calls onto a
 	// bounded pool instead of spawning a goroutine per scheduled note.
 	// Initialized by New(); tests that construct Game directly may leave
@@ -79,76 +87,40 @@ type Game struct {
 	frame               int64
 	renderedPulsesCount int
 	highlightedBeats    map[int]int64 // Expiration frames with mute flag encoded in high bit
-	highlightMu         sync.RWMutex
-	selNeighbors        map[*uiNode]bool
-	hover               *uiNode
-	cursorLabel         string
-	nodeAnimMu          sync.RWMutex
+	// hlDropped records beat keys (makeBeatKey) whose highlight the sequencer
+	// dropped because hlCh was full under load. The UI never paints these, so
+	// highlight_vs_audio parity exempts them — a dropped highlight is a known
+	// cosmetic loss, not an audio/UI desync. Value = g.frame deadline after
+	// which the exemption is pruned (highlight is a transient visual effect).
+	// Guarded by highlightMu (same lock as highlightedBeats).
+	hlDropped    map[int]int64
+	highlightMu  sync.RWMutex
+	selNeighbors map[*uiNode]bool
+	hover        *uiNode
+	cursorLabel  string
+	nodeAnimMu   sync.RWMutex
 
 	// divider visuals (for tests)
 	dividerHover bool
 	dividerThick float64
 
-	/* editor state */
-	sel            *uiNode
-	linkDrag       dragLink
-	camDragging    bool
-	camDragged     bool
-	leftPrev       bool
-	pendingClick   bool
-	clickI, clickJ int
-	clickNode      *uiNode
-
-	// Move node mode: MOVE button sets moveMode, next grid click places node
-	moveMode        bool    // MOVE mode active, next click places node
-	movingNode      *uiNode // node being moved
-	moveConfirm     bool    // confirmation dialog showing
-	moveConfirmI    int     // target coordinates for pending move
-	moveConfirmJ    int
-	moveEdgeLoss    int  // number of edges that would be dropped
-	moveSkipRelease bool // skip the first mouse release after entering move mode
-
-	// Long-press quick-action popup (mobile)
-	longPressPopup          bool
-	longPressPopupNode      *uiNode
-	longPressPopupRect      image.Rectangle
-	longPressPopupMove      image.Rectangle
-	longPressPopupConn      image.Rectangle
-	longPressPopupDel       image.Rectangle
-	longPressPopupHover     string // "move", "connect", "delete", or ""
-	longPressPopupLastHover string // hover from previous frame (for release detection)
-
-	// Connect mode: next node tap creates edge from connectFromNode → target
-	connectMode     bool
-	connectFromNode *uiNode
-
-	// Coordinate badge above selected/created node
-	coordBadgeNode  *uiNode // node to show badge for
-	coordBadgeFrame int64   // frame when badge was set
-
-	pinchBaseScale        float64 // camera scale when pinch started
-	pinchBaseGestureScale float64 // gesture scale value on first pinch event
+	/* editor state — node-editor + pointer/touch gesture interaction, grouped
+	   into the embedded inputGestureState (see game_input_gesture_state.go).
+	   Anonymous so g.sel / g.moveMode / g.longPressPopup / … keep resolving via
+	   field promotion. */
+	inputGestureState
 
 	/* game state */
-	bpm                int
-	currentStep        int                // Current step in the sequence
-	beatInfos          []model.BeatInfo   // Full traversal path for primary start
-	drumBeatInfos      []model.BeatInfo   // BeatInfos sized to drum view
-	beatInfosByRow     [][]model.BeatInfo // Per-row traversal paths
-	isLoop             bool               // Indicates if the current graph forms a loop
-	loopStartIndex     int                // The index in beatInfos where the loop segment begins
-	isLoopByRow        []bool
-	loopStartByRow     []int
-	loopLenByRow       []int
-	originIdxsByRow    [][]int
-	nextOriginIdxByRow []int
-	nextBeatIdxs       []int                // Absolute beat index per row
-	nextIdxSticky      []bool               // Preserve nextBeatIdxs on row shifts
-	startNextBuf       []int                // Reusable buffer for frame-start snapshot of nextBeatIdxs
-	nodeRows           map[model.NodeID]int // nodeID -> row index
-	elapsedBeats       int
-	nodeCacheMu        sync.RWMutex
-	nodeCache          map[model.NodeID]model.Node
+	bpm         int
+	currentStep int                  // Current step in the sequence
+	nodeRows    map[model.NodeID]int // nodeID -> row index
+	nodeCacheMu sync.RWMutex
+	nodeCache   map[model.NodeID]model.Node
+
+	// Node-group rule evaluation: immutable index snapshot, swapped whole on
+	// every group mutation. Read from the sequencer goroutine and UI thread.
+	groupIdxMu sync.RWMutex
+	groupIdx   *model.GroupIndex
 
 	/* misc */
 	winW, winH      int
@@ -171,6 +143,7 @@ type Game struct {
 	screenshotPath         string
 	screenshotDraws        int
 	screenshotSettleFrames int     // override for the default 90-frame wait; 0 = use default
+	screenshotCaptured     bool    // set once captureScreen has fired; gates termination
 	screenshotSubject      Subject // when non-empty, captureScreen crops to this subject's bounds
 	// Scope panel: open scope on first Update after flag is set
 	scopeOpen    bool
@@ -183,48 +156,26 @@ type Game struct {
 	// re-anchor the timebase to avoid jumps when BPM changes mid-play.
 	prevBPM int
 
-	// sequencer (engine-driven audio independent from UI)
-	seqCh       <-chan engine.Event
-	seqNextIdxs []int
-	seqQuit     chan struct{}
 	// seqMu guards state shared between the background sequencer goroutine and
 	// the UI thread during structural edits (row add/delete, path rebuilds).
 	// It is intentionally coarse-grained to keep row indexing consistent and
 	// avoid parity panics when rows shift mid-playback.
 	seqMu sync.Mutex
-	// seqPathSnap holds an immutable snapshot of per-row beat paths for the
-	// background sequencer so path rebuilds do not race with scheduling.
-	seqPathSnap atomic.Pointer[seqPathSnapshot]
 
-	// lastHLIdxByRow tracks the last highlighted absolute subdivision index
-	// per row to prevent duplicate highlight hooks when the same cell is
-	// refreshed across frames.
-	lastHLIdxByRow []int
-
-	// highlight scheduling from sequencer goroutine
-	hlCh chan struct {
-		row, idx int
-		info     model.BeatInfo
-	}
+	// playbackSlate owns the scheduling/beat-path/timeline/trigger field cluster
+	// (see playback_slate.go). Anonymous value-embed so g.nextBeatIdxs / g.timeline /
+	// g.beatInfosByRow / … keep resolving via field promotion.
+	playbackSlate
 
 	// enable special behavior for precise timing tests
 	timingTestMode bool
 
-	// Per-row trigger counters for node-level logic evaluation.
-	nodeTriggerCountsByRow map[int]map[model.NodeID]int
-	// Guard to avoid double-incrementing trigger counters when the same
-	// (row, idx, node) is evaluated multiple times within a frame.
-	lastEvalIdxByRowNode map[int]map[model.NodeID]int
-	// Per-row trigger counters for NodeLogic callbacks (separate from built-in logic).
-	nodeLogicTriggerCountsByRow map[int]map[model.NodeID]int
-
 	// Node property sidebar (left-anchored panel)
 	sidebar *NodeSidebar
 
-	// Last trigger state for each node per row: true if the last evaluation
-	// for that node resulted in an audible trigger. Used by advanced logic
-	// rules that depend on previous node trigger/skip.
-	lastTriggeredByRow map[int]map[model.NodeID]bool
+	// GroupMenu: anchored panel editing one node group (batch param edits +
+	// the single v1 rule). Sibling of sidebar, not left-docked.
+	groupMenu *GroupMenu
 
 	triggerMu sync.RWMutex
 
@@ -235,6 +186,10 @@ type Game struct {
 	// callback from drum.Update() sets this; game.Update() processes it after
 	// seqMu.Unlock() to avoid recursive locking.
 	pendingImportData []byte
+	// pendingImportSource is the short label (filename / template name) of the
+	// queued import, drained alongside pendingImportData to name the success
+	// notification ("Loaded <source> …"). "" ⇒ generic "Imported" toast.
+	pendingImportSource string
 
 	// pendingActions are deferred UI mutations queued by external callers
 	// (e.g. JS exports invoked via page.evaluate between frames). Game.Update
@@ -248,21 +203,12 @@ type Game struct {
 	// goroutine; game.Update drains and dispatches via DrumView's
 	// notifyInfo/notifyError on the UI goroutine. Mirrors the pendingImportData
 	// pattern so we never call into UI code from off-thread.
-	pendingNotifyMu    sync.Mutex
-	pendingNotifyInfo  []string
-	pendingNotifyError []string
+	pendingNotifyMu sync.Mutex
+	pendingNotifs   []pendingNotif // off-thread → drained to the UI as keyed (localizable) notifications
 
 	// Per-node trigger animation in [0..1], decays each frame. Set only when
 	// an audible trigger occurs (after applying node logic and mute/solo).
 	nodeAnim map[model.NodeID]float64
-
-	// Last audible node fired on each row; used by built-in logic rules.
-	lastFiredNodeByRow []model.NodeID
-	// Per-row mute gate (absolute subdivision index, exclusive) set by
-	// mute nodes to temporarily silence playback.
-	muteUntilByRow []int
-	// Loop completion counts per row.
-	loopCountByRow []int
 
 	// Debug: emit per-node draw logs when true (set via env DEBUG_DRAW_NODES=1).
 	logDrawNodes bool
@@ -285,46 +231,17 @@ type Game struct {
 	schedMetrics  scheduleMetrics
 	perfMode      PerfMode
 	perfDrawMuted bool
+	// Rolling-window deadline for schedMetrics (timing-parity gate); see
+	// maybeResetSchedMetricsWindow in game_parity_timing.go.
+	schedMetricsNextReset time.Time
+	// Per-window dedup of WarnOnly timing-gate dumps (emitTimingFatal).
+	timingWarnedThisWindow map[string]struct{}
 
-	// grid render cache
-	gridTile       *ebiten.Image // SubImage view of gridTileBacking for the current stepPx
-	gridTileStepPx int
-	gridTileSubSig uint64
-	// Grow-only backing texture for the grid tile. The logical tile is a
-	// stepPx×stepPx square that changes size on every frame of a continuous
-	// zoom; allocating it fresh each frame churns the GPU atlas and stalls the
-	// single WASM thread (starving audio). Instead we keep one backing image
-	// sized to the largest stepPx seen, redraw into its top-left region, and
-	// hand out a SubImage — so an active zoom reuses the backing, allocating
-	// only when a larger tile is needed. See buildGridTile.
-	gridTileBacking     *ebiten.Image
-	gridTileBackingSize int
-	// Logical period (px) at which the caller tiles gridTile into the grid cache.
-	// The tile is a multi-cell block (≥ gridTileMinBlockPx) so the per-rebuild
-	// blit count stays ~area/gridTileW² instead of ~area/stepPx² — without the
-	// block, tiling a tiny stepPx tile when zoomed out costs tens of thousands of
-	// blits/frame and starves audio. See buildGridTile.
-	gridTileW int
-	// grid layer cache (screen-space)
-	gridCache       *ebiten.Image
-	gridCacheW      int
-	gridCacheH      int
-	gridCacheScale  float64
-	gridCacheOffX   float64
-	gridCacheOffY   float64
-	gridCachePad    int
-	gridCacheStepPx int
-	gridCacheSubSig uint64
-
-	// Cached SubImage wrapper for the grid pane region of the screen.
-	// Reused across frames when the parent screen pointer and grid rect are
-	// unchanged. Without this, drawGridPane's `screen.SubImage(...)` call
-	// allocated a fresh *ebiten.Image wrapper every frame — at 60 FPS that
-	// was the dominant non-zone allocation source behind a fast WASM OOM
-	// (see playback_alloc_throughput_test.go).
-	gridPaneSubParent *ebiten.Image
-	gridPaneSubRect   image.Rectangle
-	gridPaneSub       *ebiten.Image
+	// grid/node/edge render caches — grouped into one embedded struct (see
+	// game_grid_render_cache.go). Anonymous so g.gridTileW / g.nodeLayer / … keep
+	// resolving via field promotion; this only lifts the ~34 cache fields out of
+	// the Game struct into a cohesive unit.
+	gridRenderCache
 
 	// gridTree owns the top grid pane's z-ordered draw + input tree
 	// (sibling to drum.tree which owns the bottom pane). See grid_tree.go.
@@ -381,108 +298,23 @@ type Game struct {
 	// Audio scheduling lookahead in seconds (web)
 	audioLookaheadSec float64
 
-	// Parity diagnostics between scheduler (audio) and DrumView slate.
-	parityRing            mismatchRing
-	parityStreak          map[string]int
-	parityWatch           parityWatchMode
-	parityMu              sync.Mutex
-	parityAudio           []parityAudioEvent
-	parityAudioMaxIdx     []int
-	paritySeqDecisions    map[int]map[int]paritySeqDecision
+	// Parity diagnostics between scheduler (audio) and DrumView slate — grouped
+	// into the embedded parityTracker (see game_parity_tracker.go). Anonymous so
+	// g.parityRing / g.parityGen / g.parityScan* keep resolving via field
+	// promotion; this only lifts the ~20 parity fields out of the Game struct.
+	parityTracker
+
+	// Import flow state (kept on Game — not parity memoization). importPrev* save
+	// parity fatal/watch across an import so it can be restored afterwards.
 	importing             bool
 	importDialog          bool
 	importPrevParityFatal bool
 	importPrevParityWatch parityWatchMode
-	parityScanEvery       int
-	parityScanStride      int
-	parityScanPhase       int
-	parityScanLastFrame   int64
-	parityScanSumNS       int64
-	parityScanMaxNS       int64
-	parityScanCount       int64
-	// Test-only diagnostic counters for parityPrune invocations.
-	parityPruneCallsForTest     int64
-	parityPruneMaxMinAbsForTest int
-	parityScanCallsForTest      int64
-	parityScanReturnsForTest    [10]int64 // by early-return slot
-	// parityGen monotonically advances on every runtime structural mutation
-	// (instrument change, BPM, length, graph edit, row add/del, etc). All
-	// parity event records (audio, seq decisions, highlights) carry the gen at
-	// which they were recorded; parityScan discards entries whose gen disagrees
-	// with the current generation. This is the single coordination spine
-	// between the audio thread, the scheduler, and the parity comparator.
-	parityGen atomic.Uint64
-	// parityGraceUntilNS is a wall-clock deadline (UnixNano). Until this time,
-	// parityScan/parityCheck downgrade mismatches to log-only — gives parity
-	// buffers and the predictor/timeline state a window to reach coherence
-	// after a structural mutation. Stored as int64 (nanoseconds) under
-	// atomic.Int64 so concurrent writers from the audio thread don't race.
-	parityGraceUntilNS atomic.Int64
 
-	// Per-frame pre-computed node radii (avoids O(n²) neighbor checks in draw loop)
-	nodeRadiiCache []float64
-
-	// Static node layer cache: all nodes in default (non-highlighted) state.
-	// Rebuilt only when camera moves beyond pad, graph changes, or scale changes.
-	nodeLayer         *ebiten.Image
-	nodeLayerDirty    bool
-	nodeLayerCamOffX  float64
-	nodeLayerCamOffY  float64
-	nodeLayerCamScale float64
-	nodeLayerGraphSig uint64 // hash of node positions + colors + types
-	nodeLayerPad      int    // reuse tolerance for camera pans
-
-	// node sprite cache (screen-space) keyed by radius px + colors
-	nodeSpriteCache map[spriteKey]*ebiten.Image
-
-	// edge static cache (screen-space)
-	edgeCache         *ebiten.Image
-	edgeCacheW        int
-	edgeCacheH        int
-	edgeCacheScale    float64
-	edgeCacheOffX     float64
-	edgeCacheOffY     float64
-	edgeCacheCount    int
-	edgesDirty        bool
-	edgeCachePad      int
-	edgeCacheColorSig uint64
-
-	// Per-row signature of the current rendered row window (Steps + CellTypes)
-	// used to invalidate only changed row caches when circuits are edited
-	// during active playback.
-	rowRenderSig []uint64
-	// Scratch buffers used by refreshDrumRow so published Steps/CellTypes are not
-	// mutated in place. When rowSnapshotMode is enabled (debug), refreshDrumRow
-	// allocates fresh slices instead of reusing these buffers.
-	rowStepsScratch [][]bool
-	rowTypesScratch [][]model.NodeType
-	rowSnapshotMode bool
-	// Offsets of the last DrumView window used to populate step/cell metadata.
-	// Helps preserve past cells across refreshes when the visible window stays
-	// stationary; rewound windows must recompute from predictor snapshots.
-	lastStepsOffset     int
-	lastCellTypesOffset int
-
-	// Segmented drum timeline; stores committed past beats per row.
-	timeline *timeline.Service
-	// Highest absolute subdivision index frozen per row (inclusive). Starts
-	// at -1; grows monotonically while playing. Reset on Stop.
-	frozenUpToByRow []int
-
-	// Highest absolute subdivision index already validated by reconcileFrozen
-	// per row (inclusive). reconcileFrozen's per-refresh scan resumes from
-	// reconciledUpToByRow[r]+1 instead of futureReleaseStart, bounding scan
-	// cost to O(newly frozen abs since last refresh) instead of O(freezeLimit).
-	// -1 means "not yet reconciled". Invalidated on SetPaths, Stop reset, row
-	// count change, and inside reconcileFrozen on clamp/trim.
-	reconciledUpToByRow []int
-
-	// Path signatures per row to detect circuit shape changes. Used to avoid
-	// recomputing stable rows during active playback.
-	pathSigByRow        []uint64
-	rowsPathChanged     []bool
-	pathChangeBeatByRow []int
-	pathsDirty          bool
+	// edgesDirty is set on graph edits to drive an edge-cache rebuild. It stays a
+	// direct Game field (a mutation flag, not render memoization); the edge cache
+	// data itself lives in the embedded gridRenderCache.
+	edgesDirty bool
 
 	// lastNodeHL tracks which nodes were drawn highlighted in the last Draw() call
 	lastNodeHL   map[model.NodeID]bool

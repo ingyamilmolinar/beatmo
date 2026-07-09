@@ -2,12 +2,19 @@ package beat
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
+// Scheduler is driven concurrently: the engine's run loop calls Tick() on its
+// own goroutine every ~16ms while the UI/BPM goroutines call Start/Stop/SetBPM
+// and read Progress()/CurrentBPM(). mu serialises all access to the mutable
+// fields below (BPM, last, running, currentStep). Fields set once before the
+// run loop starts (now, OnTick, BeatLength, logger) are read without the lock.
 type Scheduler struct {
+	mu          sync.Mutex
 	BPM         int
 	now         func() time.Time
 	last        time.Time
@@ -29,6 +36,8 @@ func NewScheduler(logger *game_log.Logger) *Scheduler {
 }
 
 func (s *Scheduler) SetBPM(bpm int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	// Preserve fractional progress across BPM changes to avoid immediate
 	// catch-up bursts. Map the elapsed fraction using the old spb into the
 	// new spb so the next tick fires smoothly on the new timeline.
@@ -53,6 +62,8 @@ func (s *Scheduler) SetBPM(bpm int) {
 }
 
 func (s *Scheduler) Start() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.running = true
 	s.last = time.Time{}
 	s.currentStep = 0
@@ -62,6 +73,8 @@ func (s *Scheduler) Start() {
 }
 
 func (s *Scheduler) Stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.running = false
 	s.currentStep = 0
 	s.last = time.Time{}
@@ -71,6 +84,8 @@ func (s *Scheduler) Stop() {
 }
 
 func (s *Scheduler) Tick() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if !s.running || s.BPM <= 0 {
 		return
 	}
@@ -94,9 +109,20 @@ func (s *Scheduler) Tick() {
 
 // Progress returns the fraction of the current beat that has elapsed.
 func (s *Scheduler) Progress() float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.BPM <= 0 || s.last.IsZero() {
 		return 0
 	}
 	spb := time.Minute / time.Duration(s.BPM)
 	return float64(s.now().Sub(s.last)) / float64(spb)
+}
+
+// CurrentBPM returns the BPM under the scheduler lock. Concurrent callers
+// (the engine's public BPM() accessor) must use this rather than reading the
+// exported BPM field directly, which the run loop and SetBPM mutate.
+func (s *Scheduler) CurrentBPM() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.BPM
 }

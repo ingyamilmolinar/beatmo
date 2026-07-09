@@ -23,7 +23,7 @@ func TestBPMChangeNonBlocking(t *testing.T) {
 			close(block)
 		}
 	})
-	prevSetBPM := audio.SetBPMFunc
+	prevSetBPM := audio.BPMFuncForTest()
 	audio.SetBPMFuncForTest(func(int) { <-block })
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
@@ -56,7 +56,7 @@ func TestBPMButtonHoldNonBlocking(t *testing.T) {
 			close(block)
 		}
 	})
-	prevSetBPM := audio.SetBPMFunc
+	prevSetBPM := audio.BPMFuncForTest()
 	audio.SetBPMFuncForTest(func(int) { <-block })
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
@@ -104,7 +104,7 @@ func TestBPMHoldDoesNotStallPulseProgress(t *testing.T) {
 			close(block)
 		}
 	})
-	prevSetBPM := audio.SetBPMFunc
+	prevSetBPM := audio.BPMFuncForTest()
 	audio.SetBPMFuncForTest(func(int) { <-block })
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 

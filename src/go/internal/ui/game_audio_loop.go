@@ -91,6 +91,15 @@ func (g *Game) audioLoop() {
 					g.logger.Debugf("[audio] drop stale scheduled id=%s row=%d abs=%d gen=%d curGen=%d", req.id, req.row, req.abs, req.gen, curGen)
 					continue
 				}
+				// Per-row structural gate: drop only beats belonging to a row
+				// whose path changed after this beat was scheduled. Unchanged
+				// rows keep their in-flight beats (no gap on a node placement
+				// elsewhere); the edited row's stale beats are dropped here and
+				// rescheduled by the seqNextIdxs rewind.
+				if curRowGen := g.rowStructGenLoad(req.row); req.rowGen != curRowGen {
+					g.logger.Debugf("[audio] drop stale-row scheduled id=%s row=%d abs=%d rowGen=%d curRowGen=%d", req.id, req.row, req.abs, req.rowGen, curRowGen)
+					continue
+				}
 				if !g.Playing() {
 					g.logger.Debugf("[audio] drop scheduled id=%s row=%d abs=%d while stopped", req.id, req.row, req.abs)
 					continue
@@ -106,7 +115,17 @@ func (g *Game) audioLoop() {
 			// (qlat -= leadDur) is for the AudioQLatAvg metric, which folds
 			// in the scheduling cushion; the 3-stage view wants the raw
 			// goroutine handoff latency uncontaminated by lookahead.
-			g.schedMetrics.ObserveBridge(qlat.Seconds())
+			//
+			// Grace-filter the observation itself (design §3.4: universal
+			// suppression across all stages), not just the downstream
+			// parityTimingCheck: a live edit can stall the sequencer
+			// goroutine long enough to produce a bridge-latency spike here
+			// that latches into schedMetrics' session-monotonic bridgeMax
+			// and would otherwise survive the grace window to panic the
+			// next check.
+			if !g.parityInGrace() {
+				g.schedMetrics.ObserveBridge(qlat.Seconds())
+			}
 			// Dispatch-time floor: never let a sequencer-scheduled req.when
 			// slip into the past or the small-lead danger zone. This is the
 			// last safety net before the audio buffer is scheduled; clamping
@@ -129,7 +148,15 @@ func (g *Game) audioLoop() {
 						req.when = floor
 					}
 				}
-				g.schedMetrics.Observe(audioNow, req.when)
+				// Grace-filter the observation itself (design §3.4), not just
+				// the downstream check: an edit-induced scheduling stall can
+				// dispatch this beat far overdue and latch into schedMetrics'
+				// session-monotonic maxLag. The lead/lag computation used for
+				// AudioQLat below must still run unconditionally — only the
+				// schedMetrics.Observe call is guarded.
+				if !g.parityInGrace() {
+					g.schedMetrics.Observe(audioNow, req.when)
+				}
 				if lead := req.when - audioNow; lead > 0 {
 					leadDur := time.Duration(lead * float64(time.Second))
 					if qlat > leadDur {
@@ -143,12 +170,12 @@ func (g *Game) audioLoop() {
 
 			// Record parity only for audio that actually passes the final dispatch boundary.
 			if req.hasWhen {
-				g.recordParityAudio(req.row, req.abs, req.when, req.id, req.vol, req.pitch, req.dur, req.gen)
+				g.recordParityAudio(req.row, req.abs, req.when, req.id, req.vol, req.pitch, req.dur, req.gen, req.parityGen)
 			} else {
-				g.recordParityAudio(req.row, req.abs, audio.Now(), req.id, req.vol, req.pitch, req.dur, req.gen)
+				g.recordParityAudio(req.row, req.abs, audio.Now(), req.id, req.vol, req.pitch, req.dur, req.gen, req.parityGen)
 			}
 
-			b := audio.BatchParam{ID: req.id, Vol: req.vol, Pitch: req.pitch, Dur: req.dur}
+			b := audio.BatchParam{ID: req.id, Vol: req.vol, Pitch: req.pitch, Dur: req.dur, Row: req.row, Abs: req.abs}
 			if req.hasWhen {
 				b.HasWhen = true
 				b.When = req.when
@@ -175,6 +202,7 @@ func (g *Game) audioLoop() {
 		avgQLat := time.Duration(int64(qlatSum) / int64(len(batch)))
 		t0 := time.Now()
 		audio.PlayBatch(batch)
+		g.drainEmissionReports()
 		callDur := time.Since(t0)
 		if n := len(batch); n > 1 {
 			callDur /= time.Duration(n)

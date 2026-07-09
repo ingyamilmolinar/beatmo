@@ -4,7 +4,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-func (g *Game) setLastTriggered(row int, id model.NodeID, val bool) {
+func (s *playbackSlate) setLastTriggered(row int, id model.NodeID, val bool) {
+	g := s.g
 	g.triggerMu.Lock()
 	if g.lastTriggeredByRow == nil {
 		g.lastTriggeredByRow = make(map[int]map[model.NodeID]bool)
@@ -16,7 +17,8 @@ func (g *Game) setLastTriggered(row int, id model.NodeID, val bool) {
 	g.triggerMu.Unlock()
 }
 
-func (g *Game) cacheNode(id model.NodeID) {
+func (s *playbackSlate) cacheNode(id model.NodeID) {
+	g := s.g
 	if g.graph == nil {
 		return
 	}
@@ -33,7 +35,8 @@ func (g *Game) cacheNode(id model.NodeID) {
 	g.nodeCacheMu.Unlock()
 }
 
-func (g *Game) removeNodeCache(id model.NodeID) {
+func (s *playbackSlate) removeNodeCache(id model.NodeID) {
+	g := s.g
 	g.nodeCacheMu.Lock()
 	if g.nodeCache != nil {
 		delete(g.nodeCache, id)
@@ -41,7 +44,8 @@ func (g *Game) removeNodeCache(id model.NodeID) {
 	g.nodeCacheMu.Unlock()
 }
 
-func (g *Game) rebuildNodeCache() {
+func (s *playbackSlate) rebuildNodeCache() {
+	g := s.g
 	if g.graph == nil {
 		return
 	}
@@ -59,14 +63,16 @@ func (g *Game) rebuildNodeCache() {
 	g.nodeCacheMu.Unlock()
 }
 
-func (g *Game) nodeSnapshot(id model.NodeID) (model.Node, bool) {
+func (s *playbackSlate) nodeSnapshot(id model.NodeID) (model.Node, bool) {
+	g := s.g
 	g.nodeCacheMu.RLock()
 	node, ok := g.nodeCache[id]
 	g.nodeCacheMu.RUnlock()
 	return node, ok
 }
 
-func (g *Game) lastTriggered(row int, id model.NodeID) (bool, bool) {
+func (s *playbackSlate) lastTriggered(row int, id model.NodeID) (bool, bool) {
+	g := s.g
 	g.triggerMu.RLock()
 	defer g.triggerMu.RUnlock()
 	if g.lastTriggeredByRow == nil {
@@ -81,10 +87,38 @@ func (g *Game) lastTriggered(row int, id model.NodeID) (bool, bool) {
 
 // Test-only helpers to interact with lastTriggeredByRow without racing the
 // sequencer goroutines. They simply wrap the locked versions above.
-func (g *Game) setLastTriggeredForTest(row int, id model.NodeID, v bool) {
+func (s *playbackSlate) setLastTriggeredForTest(row int, id model.NodeID, v bool) {
+	g := s.g
 	g.setLastTriggered(row, id, v)
 }
 
-func (g *Game) lastTriggeredForTest(row int, id model.NodeID) (bool, bool) {
+func (s *playbackSlate) lastTriggeredForTest(row int, id model.NodeID) (bool, bool) {
+	g := s.g
 	return g.lastTriggered(row, id)
+}
+
+func (g *Game) setLastTriggered(row int, id model.NodeID, val bool) {
+	g.playbackSlate.setLastTriggered(row, id, val)
+}
+
+func (g *Game) cacheNode(id model.NodeID) { g.playbackSlate.cacheNode(id) }
+
+func (g *Game) removeNodeCache(id model.NodeID) { g.playbackSlate.removeNodeCache(id) }
+
+func (g *Game) rebuildNodeCache() { g.playbackSlate.rebuildNodeCache() }
+
+func (g *Game) nodeSnapshot(id model.NodeID) (model.Node, bool) {
+	return g.playbackSlate.nodeSnapshot(id)
+}
+
+func (g *Game) lastTriggered(row int, id model.NodeID) (bool, bool) {
+	return g.playbackSlate.lastTriggered(row, id)
+}
+
+func (g *Game) setLastTriggeredForTest(row int, id model.NodeID, v bool) {
+	g.playbackSlate.setLastTriggeredForTest(row, id, v)
+}
+
+func (g *Game) lastTriggeredForTest(row int, id model.NodeID) (bool, bool) {
+	return g.playbackSlate.lastTriggeredForTest(row, id)
 }

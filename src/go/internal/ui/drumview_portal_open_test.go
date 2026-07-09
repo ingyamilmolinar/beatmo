@@ -41,7 +41,7 @@ func TestOpenOverflowMenuPortal(t *testing.T) {
 
 	dv.openOverflowMenuPortal()
 
-	if !dv.tree.Portal().Has("overflow-menu") {
+	if !dv.portal().Has("overflow-menu") {
 		t.Error("portal 'overflow-menu' should be open")
 	}
 }
@@ -55,14 +55,14 @@ func TestOpenOverflowMenuPortal_OnClose(t *testing.T) {
 	dv := newFullDrumView(t)
 
 	dv.openOverflowMenuPortal()
-	if !dv.tree.Portal().Has("overflow-menu") {
+	if !dv.portal().Has("overflow-menu") {
 		t.Fatal("portal 'overflow-menu' should be open")
 	}
 
 	// Close triggers OnClose callback (cancels deferred tap, clears file picker rects).
-	dv.tree.Portal().Close("overflow-menu")
+	dv.portal().Close("overflow-menu")
 
-	if dv.tree.Portal().Has("overflow-menu") {
+	if dv.portal().Has("overflow-menu") {
 		t.Error("portal 'overflow-menu' should be closed")
 	}
 	if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.TapActive() {
@@ -76,8 +76,8 @@ func TestOpenOverflowMenuPortal_Idempotent(t *testing.T) {
 	dv.openOverflowMenuPortal()
 	dv.openOverflowMenuPortal() // second call should replace, not duplicate
 
-	if dv.tree.Portal().StackLen() != 1 {
-		t.Errorf("expected 1 portal entry, got %d", dv.tree.Portal().StackLen())
+	if dv.portal().StackLen() != 1 {
+		t.Errorf("expected 1 portal entry, got %d", dv.portal().StackLen())
 	}
 }
 
@@ -90,7 +90,7 @@ func TestOpenContextMenuPortal(t *testing.T) {
 
 	dv.openContextMenuPortal()
 
-	if !dv.tree.Portal().Has("context-menu") {
+	if !dv.portal().Has("context-menu") {
 		t.Error("portal 'context-menu' should be open")
 	}
 }
@@ -104,13 +104,13 @@ func TestOpenContextMenuPortal_CloseRoundtrip(t *testing.T) {
 	dv := newFullDrumView(t)
 
 	dv.openContextMenuPortal()
-	if !dv.tree.Portal().Has("context-menu") {
+	if !dv.portal().Has("context-menu") {
 		t.Fatal("portal 'context-menu' should be open")
 	}
 
-	dv.tree.Portal().Close("context-menu")
+	dv.portal().Close("context-menu")
 
-	if dv.tree.Portal().Has("context-menu") {
+	if dv.portal().Has("context-menu") {
 		t.Error("portal 'context-menu' should be closed")
 	}
 }
@@ -124,7 +124,7 @@ func TestOpenFXPanelPortal(t *testing.T) {
 
 	dv.openFXPanelPortal()
 
-	if !dv.tree.Portal().Has("fx-panel") {
+	if !dv.portal().Has("fx-panel") {
 		t.Error("portal 'fx-panel' should be open")
 	}
 }
@@ -149,7 +149,7 @@ func TestOpenFXPanelPortal_OnClose(t *testing.T) {
 	dv.openFXPanelPortal()
 
 	// Close triggers OnClose.
-	dv.tree.Portal().Close("fx-panel")
+	dv.portal().Close("fx-panel")
 
 	if dv.fxAddMenuOpen {
 		t.Error("fxAddMenuOpen should be false after OnClose")
@@ -183,7 +183,7 @@ func TestOpenNamingPortal(t *testing.T) {
 
 	dv.openNamingPortal()
 
-	if !dv.tree.Portal().Has("naming") {
+	if !dv.portal().Has("naming") {
 		t.Error("portal 'naming' should be open")
 	}
 }
@@ -198,7 +198,7 @@ func TestOpenNamingPortal_Modal(t *testing.T) {
 
 	dv.openNamingPortal()
 
-	if !dv.tree.Portal().HasModal() {
+	if !dv.portal().HasModal() {
 		t.Error("naming portal should be modal")
 	}
 }
@@ -214,7 +214,7 @@ func TestOpenNamingPortal_OnClose(t *testing.T) {
 	dv.openNamingPortal()
 
 	// Close triggers OnClose.
-	dv.tree.Portal().Close("naming")
+	dv.portal().Close("naming")
 
 	if dv.pendingWAV != "" {
 		t.Errorf("pendingWAV should be empty, got %q", dv.pendingWAV)
@@ -238,7 +238,7 @@ func TestOpenVolPopupPortal(t *testing.T) {
 	dv.volPopup = newTestSliderPopup()
 	dv.openVolPopupPortal()
 
-	if !dv.tree.Portal().Has("volume-popup") {
+	if !dv.portal().Has("volume-popup") {
 		t.Error("portal 'volume-popup' should be open")
 	}
 }
@@ -255,7 +255,7 @@ func TestOpenVolPopupPortal_NilPopup(t *testing.T) {
 
 	dv.openVolPopupPortal() // volPopup is nil, should not panic
 
-	if dv.tree.Portal().Has("volume-popup") {
+	if dv.portal().Has("volume-popup") {
 		t.Error("portal 'volume-popup' should NOT be open when volPopup is nil")
 	}
 }
@@ -267,7 +267,7 @@ func TestOpenVolPopupPortal_Modal(t *testing.T) {
 	dv.volPopup = newTestSliderPopup()
 	dv.openVolPopupPortal()
 
-	if !dv.tree.Portal().HasModal() {
+	if !dv.portal().HasModal() {
 		t.Error("volume-popup portal should be modal")
 	}
 }
@@ -282,7 +282,7 @@ func TestOpenVolPopupPortal_OnClose(t *testing.T) {
 	}
 
 	dv.openVolPopupPortal()
-	dv.tree.Portal().Close("volume-popup")
+	dv.portal().Close("volume-popup")
 
 	if dv.volPopup.IsOpen() {
 		t.Error("volPopup should be closed after OnClose")
@@ -300,7 +300,7 @@ func TestOpenMasterVolPopupPortal(t *testing.T) {
 	dv.masterVolPopup = newTestSliderPopup()
 	dv.openMasterVolPopupPortal()
 
-	if !dv.tree.Portal().Has("master-volume-popup") {
+	if !dv.portal().Has("master-volume-popup") {
 		t.Error("portal 'master-volume-popup' should be open")
 	}
 }
@@ -317,7 +317,7 @@ func TestOpenMasterVolPopupPortal_NilPopup(t *testing.T) {
 
 	dv.openMasterVolPopupPortal() // masterVolPopup is nil
 
-	if dv.tree.Portal().Has("master-volume-popup") {
+	if dv.portal().Has("master-volume-popup") {
 		t.Error("portal 'master-volume-popup' should NOT be open when masterVolPopup is nil")
 	}
 }
@@ -329,7 +329,7 @@ func TestOpenMasterVolPopupPortal_Modal(t *testing.T) {
 	dv.masterVolPopup = newTestSliderPopup()
 	dv.openMasterVolPopupPortal()
 
-	if !dv.tree.Portal().HasModal() {
+	if !dv.portal().HasModal() {
 		t.Error("master-volume-popup portal should be modal")
 	}
 }
@@ -344,7 +344,7 @@ func TestOpenMasterVolPopupPortal_OnClose(t *testing.T) {
 	}
 
 	dv.openMasterVolPopupPortal()
-	dv.tree.Portal().Close("master-volume-popup")
+	dv.portal().Close("master-volume-popup")
 
 	if dv.masterVolPopup.IsOpen() {
 		t.Error("masterVolPopup should be closed after OnClose")
@@ -367,7 +367,7 @@ func TestOpenSubdivMenuPortal_NilComp(t *testing.T) {
 
 	dv.openSubdivMenuPortal() // subdivMenuComp is nil
 
-	if dv.tree.Portal().Has("subdiv-menu") {
+	if dv.portal().Has("subdiv-menu") {
 		t.Error("portal 'subdiv-menu' should NOT be open when subdivMenuComp is nil")
 	}
 }
@@ -385,7 +385,7 @@ func TestOpenSubdivMenuPortal_HappyPath(t *testing.T) {
 	dv.subdivMenuComp.Open()
 	dv.openSubdivMenuPortal()
 
-	if !dv.tree.Portal().Has("subdiv-menu") {
+	if !dv.portal().Has("subdiv-menu") {
 		t.Error("portal 'subdiv-menu' should be open")
 	}
 }
@@ -399,7 +399,7 @@ func TestOpenSubdivMenuPortal_OnClose(t *testing.T) {
 	}
 
 	dv.openSubdivMenuPortal()
-	dv.tree.Portal().Close("subdiv-menu")
+	dv.portal().Close("subdiv-menu")
 
 	if dv.subdivMenuComp.IsOpen() {
 		t.Error("subdivMenuComp should be closed after portal OnClose")
@@ -422,7 +422,7 @@ func TestOpenInstMenuPortal_NilComp(t *testing.T) {
 
 	dv.openInstMenuPortal() // instMenuComp is nil
 
-	if dv.tree.Portal().Has("inst-menu") {
+	if dv.portal().Has("inst-menu") {
 		t.Error("portal 'inst-menu' should NOT be open when instMenuComp is nil")
 	}
 }
@@ -439,7 +439,7 @@ func TestOpenInstMenuPortal_HappyPath(t *testing.T) {
 	dv.instMenuRow = 0
 	dv.openInstMenuPortal()
 
-	if !dv.tree.Portal().Has("inst-menu") {
+	if !dv.portal().Has("inst-menu") {
 		t.Error("portal 'inst-menu' should be open")
 	}
 }
@@ -452,7 +452,7 @@ func TestOpenInstMenuPortal_NegativeRow(t *testing.T) {
 	dv.openInstMenuPortal()
 
 	// Should still open, just with zero anchor.
-	if !dv.tree.Portal().Has("inst-menu") {
+	if !dv.portal().Has("inst-menu") {
 		t.Error("portal 'inst-menu' should be open even with negative instMenuRow")
 	}
 }
@@ -465,7 +465,7 @@ func TestOpenInstMenuPortal_RowOutOfBounds(t *testing.T) {
 	dv.openInstMenuPortal()
 
 	// Should still open, just with zero anchor.
-	if !dv.tree.Portal().Has("inst-menu") {
+	if !dv.portal().Has("inst-menu") {
 		t.Error("portal 'inst-menu' should be open even with out-of-bounds instMenuRow")
 	}
 }
@@ -481,7 +481,7 @@ func TestOpenInstMenuPortal_OnClose(t *testing.T) {
 		t.Fatal("instMenuComp should be open")
 	}
 
-	dv.tree.Portal().Close("inst-menu")
+	dv.portal().Close("inst-menu")
 
 	if dv.instMenuComp.IsOpen() {
 		t.Error("instMenuComp should be closed after portal OnClose")
@@ -504,7 +504,7 @@ func TestOpenColorWheelPortal_NilComp(t *testing.T) {
 
 	dv.openColorWheelPortal() // colorWheelComp is nil
 
-	if dv.tree.Portal().Has("color-wheel") {
+	if dv.portal().Has("color-wheel") {
 		t.Error("portal 'color-wheel' should NOT be open when colorWheelComp is nil")
 	}
 }
@@ -521,7 +521,7 @@ func TestOpenColorWheelPortal_HappyPath(t *testing.T) {
 	dv.colorMenuRow = 0
 	dv.openColorWheelPortal()
 
-	if !dv.tree.Portal().Has("color-wheel") {
+	if !dv.portal().Has("color-wheel") {
 		t.Error("portal 'color-wheel' should be open")
 	}
 }
@@ -533,7 +533,7 @@ func TestOpenColorWheelPortal_NegativeRow(t *testing.T) {
 	dv.colorMenuRow = -1
 	dv.openColorWheelPortal()
 
-	if !dv.tree.Portal().Has("color-wheel") {
+	if !dv.portal().Has("color-wheel") {
 		t.Error("portal 'color-wheel' should be open even with negative colorMenuRow")
 	}
 }
@@ -547,7 +547,7 @@ func TestOpenColorWheelPortal_OnClose(t *testing.T) {
 	}
 
 	dv.openColorWheelPortal()
-	dv.tree.Portal().Close("color-wheel")
+	dv.portal().Close("color-wheel")
 
 	if dv.colorWheelComp.IsOpen() {
 		t.Error("colorWheelComp should be closed after portal OnClose")
@@ -570,7 +570,7 @@ func TestOpenRenamePortal_NilComp(t *testing.T) {
 
 	dv.openRenamePortal() // renameComp is nil
 
-	if dv.tree.Portal().Has("rename") {
+	if dv.portal().Has("rename") {
 		t.Error("portal 'rename' should NOT be open when renameComp is nil")
 	}
 }
@@ -587,7 +587,7 @@ func TestOpenRenamePortal_HappyPath(t *testing.T) {
 	dv.renameRow = 0
 	dv.openRenamePortal()
 
-	if !dv.tree.Portal().Has("rename") {
+	if !dv.portal().Has("rename") {
 		t.Error("portal 'rename' should be open")
 	}
 }
@@ -599,7 +599,7 @@ func TestOpenRenamePortal_NegativeRow(t *testing.T) {
 	dv.renameRow = -1
 	dv.openRenamePortal()
 
-	if !dv.tree.Portal().Has("rename") {
+	if !dv.portal().Has("rename") {
 		t.Error("portal 'rename' should be open even with negative renameRow")
 	}
 }
@@ -615,16 +615,16 @@ func TestOpenMultiplePortals(t *testing.T) {
 	dv.openContextMenuPortal()
 	dv.openNamingPortal()
 
-	if dv.tree.Portal().StackLen() != 3 {
-		t.Errorf("expected 3 portal entries, got %d", dv.tree.Portal().StackLen())
+	if dv.portal().StackLen() != 3 {
+		t.Errorf("expected 3 portal entries, got %d", dv.portal().StackLen())
 	}
-	if !dv.tree.Portal().Has("overflow-menu") {
+	if !dv.portal().Has("overflow-menu") {
 		t.Error("overflow-menu should be open")
 	}
-	if !dv.tree.Portal().Has("context-menu") {
+	if !dv.portal().Has("context-menu") {
 		t.Error("context-menu should be open")
 	}
-	if !dv.tree.Portal().Has("naming") {
+	if !dv.portal().Has("naming") {
 		t.Error("naming should be open")
 	}
 }
@@ -635,10 +635,10 @@ func TestOpenPortal_ReplacesExisting(t *testing.T) {
 	dv.openFXPanelPortal()
 	dv.openFXPanelPortal() // should replace, not add
 
-	if dv.tree.Portal().StackLen() != 1 {
-		t.Errorf("expected 1 entry after double-open, got %d", dv.tree.Portal().StackLen())
+	if dv.portal().StackLen() != 1 {
+		t.Errorf("expected 1 entry after double-open, got %d", dv.portal().StackLen())
 	}
-	if !dv.tree.Portal().Has("fx-panel") {
+	if !dv.portal().Has("fx-panel") {
 		t.Error("fx-panel should still be open")
 	}
 }
@@ -649,7 +649,7 @@ func TestOpenPortal_TopID(t *testing.T) {
 	dv.openContextMenuPortal()
 	dv.openFXPanelPortal()
 
-	if top := dv.tree.Portal().TopID(); top != "fx-panel" {
+	if top := dv.portal().TopID(); top != "fx-panel" {
 		t.Errorf("expected TopID 'fx-panel', got %q", top)
 	}
 }
@@ -662,13 +662,13 @@ func TestCloseOverflowMenuPortal(t *testing.T) {
 	dv := newFullDrumView(t)
 
 	dv.openOverflowMenuPortal()
-	if !dv.tree.Portal().Has("overflow-menu") {
+	if !dv.portal().Has("overflow-menu") {
 		t.Fatal("portal should be open")
 	}
 
 	dv.closeOverflowMenuPortal()
 
-	if dv.tree.Portal().Has("overflow-menu") {
+	if dv.portal().Has("overflow-menu") {
 		t.Error("portal 'overflow-menu' should be closed")
 	}
 }
@@ -682,13 +682,13 @@ func TestCloseFXPanelPortal(t *testing.T) {
 	dv := newFullDrumView(t)
 
 	dv.openFXPanelPortal()
-	if !dv.tree.Portal().Has("fx-panel") {
+	if !dv.portal().Has("fx-panel") {
 		t.Fatal("portal should be open")
 	}
 
 	dv.closeFXPanelPortal()
 
-	if dv.tree.Portal().Has("fx-panel") {
+	if dv.portal().Has("fx-panel") {
 		t.Error("portal 'fx-panel' should be closed")
 	}
 }
@@ -704,13 +704,13 @@ func TestCloseVolPopupPortal(t *testing.T) {
 
 	dv.volPopup = newTestSliderPopup()
 	dv.openVolPopupPortal()
-	if !dv.tree.Portal().Has("volume-popup") {
+	if !dv.portal().Has("volume-popup") {
 		t.Fatal("portal should be open")
 	}
 
 	dv.closeVolPopupPortal()
 
-	if dv.tree.Portal().Has("volume-popup") {
+	if dv.portal().Has("volume-popup") {
 		t.Error("portal 'volume-popup' should be closed")
 	}
 }
@@ -726,13 +726,13 @@ func TestCloseMasterVolPopupPortal(t *testing.T) {
 
 	dv.masterVolPopup = newTestSliderPopup()
 	dv.openMasterVolPopupPortal()
-	if !dv.tree.Portal().Has("master-volume-popup") {
+	if !dv.portal().Has("master-volume-popup") {
 		t.Fatal("portal should be open")
 	}
 
 	dv.closeMasterVolPopupPortal()
 
-	if dv.tree.Portal().Has("master-volume-popup") {
+	if dv.portal().Has("master-volume-popup") {
 		t.Error("portal 'master-volume-popup' should be closed")
 	}
 }
@@ -746,13 +746,13 @@ func TestCloseNamingPortal(t *testing.T) {
 	dv := newFullDrumView(t)
 
 	dv.openNamingPortal()
-	if !dv.tree.Portal().Has("naming") {
+	if !dv.portal().Has("naming") {
 		t.Fatal("portal should be open")
 	}
 
 	dv.closeNamingPortal()
 
-	if dv.tree.Portal().Has("naming") {
+	if dv.portal().Has("naming") {
 		t.Error("portal 'naming' should be closed")
 	}
 }
@@ -846,7 +846,7 @@ func TestOpenInstMenuPortal_ValidRowAnchor(t *testing.T) {
 	dv.instMenuRow = 0
 	dv.openInstMenuPortal()
 
-	if !dv.tree.Portal().Has("inst-menu") {
+	if !dv.portal().Has("inst-menu") {
 		t.Error("portal 'inst-menu' should be open with valid row anchor")
 	}
 }
@@ -867,7 +867,7 @@ func TestOpenColorWheelPortal_ValidRowAnchor(t *testing.T) {
 	dv.colorMenuRow = 0
 	dv.openColorWheelPortal()
 
-	if !dv.tree.Portal().Has("color-wheel") {
+	if !dv.portal().Has("color-wheel") {
 		t.Error("portal 'color-wheel' should be open with valid row anchor")
 	}
 }
@@ -888,7 +888,7 @@ func TestOpenRenamePortal_ValidRowAnchor(t *testing.T) {
 	dv.renameRow = 0
 	dv.openRenamePortal()
 
-	if !dv.tree.Portal().Has("rename") {
+	if !dv.portal().Has("rename") {
 		t.Error("portal 'rename' should be open with valid row anchor")
 	}
 }
@@ -911,7 +911,7 @@ func TestOpenOverflowMenuPortal_OverlayShouldClose(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openOverflowMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "overflow-menu")
+	entry := portalEntryByID(dv.portal(), "overflow-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -926,7 +926,7 @@ func TestOpenOverflowMenuPortal_OverlayHitAreas(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openOverflowMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "overflow-menu")
+	entry := portalEntryByID(dv.portal(), "overflow-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -938,7 +938,7 @@ func TestOpenOverflowMenuPortal_OverlayDraw(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openOverflowMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "overflow-menu")
+	entry := portalEntryByID(dv.portal(), "overflow-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -951,7 +951,7 @@ func TestOpenContextMenuPortal_OverlayShouldClose(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openContextMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "context-menu")
+	entry := portalEntryByID(dv.portal(), "context-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -964,7 +964,7 @@ func TestOpenContextMenuPortal_OverlayHitAreas(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openContextMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "context-menu")
+	entry := portalEntryByID(dv.portal(), "context-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -975,7 +975,7 @@ func TestOpenFXPanelPortal_OverlayShouldClose(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -988,7 +988,7 @@ func TestOpenFXPanelPortal_OverlayHitAreas(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -999,7 +999,7 @@ func TestOpenNamingPortal_OverlayShouldClose(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1013,7 +1013,7 @@ func TestOpenNamingPortal_OverlayHitAreas(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1028,13 +1028,13 @@ func TestOpenNamingPortal_OverlayUpdate_NotOpen(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
 
 	// Close the portal first so updateFn hits the early return.
-	dv.tree.Portal().Close("naming")
+	dv.portal().Close("naming")
 
 	// Manually invoke Update on the overlay. Since the portal is closed,
 	// IsNamingOpen returns false and the updateFn early-returns.
@@ -1050,7 +1050,7 @@ func TestOpenNamingPortal_OverlayUpdate_DesktopPath(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1073,7 +1073,7 @@ func TestOpenNamingPortal_WheelFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1094,7 +1094,7 @@ func TestOpenNamingPortal_InputFn_ClickOutside(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1124,7 +1124,7 @@ func TestOpenOverflowMenuPortal_WheelFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openOverflowMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "overflow-menu")
+	entry := portalEntryByID(dv.portal(), "overflow-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1143,7 +1143,7 @@ func TestOpenContextMenuPortal_WheelFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openContextMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "context-menu")
+	entry := portalEntryByID(dv.portal(), "context-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1162,7 +1162,7 @@ func TestOpenFXPanelPortal_WheelFn_NoScroll(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1185,7 +1185,7 @@ func TestOpenFXPanelPortal_WheelFn_WithScroll(t *testing.T) {
 	dv.fxScrollOffsetPx = 100
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1208,7 +1208,7 @@ func TestOpenFXPanelPortal_WheelFn_ClampMin(t *testing.T) {
 	dv.fxScrollOffsetPx = 10
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1227,7 +1227,7 @@ func TestOpenFXPanelPortal_WheelFn_ClampMax(t *testing.T) {
 	dv.fxScrollOffsetPx = 190
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1244,7 +1244,7 @@ func TestOpenOverflowMenuPortal_InputFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openOverflowMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "overflow-menu")
+	entry := portalEntryByID(dv.portal(), "overflow-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1262,7 +1262,7 @@ func TestOpenContextMenuPortal_InputFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openContextMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "context-menu")
+	entry := portalEntryByID(dv.portal(), "context-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1279,7 +1279,7 @@ func TestOpenFXPanelPortal_InputFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1301,13 +1301,13 @@ func TestCloseRenamePortal(t *testing.T) {
 	dv.renameComp.Open()
 	dv.renameRow = 0
 	dv.openRenamePortal()
-	if !dv.tree.Portal().Has("rename") {
+	if !dv.portal().Has("rename") {
 		t.Fatal("portal should be open")
 	}
 
 	dv.closeRenamePortal()
 
-	if dv.tree.Portal().Has("rename") {
+	if dv.portal().Has("rename") {
 		t.Error("portal 'rename' should be closed")
 	}
 }
@@ -1325,7 +1325,7 @@ func TestOpenContextMenuPortal_UpdateFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openContextMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "context-menu")
+	entry := portalEntryByID(dv.portal(), "context-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1340,7 +1340,7 @@ func TestOpenContextMenuPortal_DrawFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openContextMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "context-menu")
+	entry := portalEntryByID(dv.portal(), "context-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1353,7 +1353,7 @@ func TestOpenFXPanelPortal_DrawFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1366,7 +1366,7 @@ func TestOpenFXPanelPortal_UpdateFn(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1382,7 +1382,7 @@ func TestOpenNamingPortal_DrawFn(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1401,7 +1401,7 @@ func TestOpenNamingPortal_DrawFn_WithExistingNameBox(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1420,7 +1420,7 @@ func TestOpenNamingPortal_InputFn_NoPress(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1438,7 +1438,7 @@ func TestOpenNamingPortal_UpdateFn_MultipleFrames(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1459,7 +1459,7 @@ func TestOpenNamingPortal_InputFn_SaveBtn(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1504,7 +1504,7 @@ func TestOpenNamingPortal_UpdateFn_EscapeKey(t *testing.T) {
 	dv.nameInput = "hello"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1545,7 +1545,7 @@ func TestOpenNamingPortal_UpdateFn_EnterKey(t *testing.T) {
 	dv.pendingWAV = "test.wav"
 	dv.openNamingPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "naming")
+	entry := portalEntryByID(dv.portal(), "naming")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1568,7 +1568,7 @@ func TestOpenContextMenuPortal_WheelFn_WithScroll(t *testing.T) {
 
 	dv.openContextMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "context-menu")
+	entry := portalEntryByID(dv.portal(), "context-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1584,7 +1584,7 @@ func TestOpenFXPanelPortal_UpdateFn_NoMomentum(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1605,7 +1605,7 @@ func TestOpenOverflowMenuPortal_WheelFn_WithScroll(t *testing.T) {
 
 	dv.openOverflowMenuPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "overflow-menu")
+	entry := portalEntryByID(dv.portal(), "overflow-menu")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1621,7 +1621,7 @@ func TestOpenFXPanelPortal_OverlayShouldClose_True(t *testing.T) {
 	dv := newFullDrumView(t)
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.tree.Portal(), "fx-panel")
+	entry := portalEntryByID(dv.portal(), "fx-panel")
 	if entry == nil {
 		t.Fatal("entry not found")
 	}
@@ -1630,7 +1630,7 @@ func TestOpenFXPanelPortal_OverlayShouldClose_True(t *testing.T) {
 	overlay := entry.Overlay
 
 	// Close the portal. IsFXPanelOpen checks portal.Has().
-	dv.tree.Portal().Close("fx-panel")
+	dv.portal().Close("fx-panel")
 
 	// The overlay's isOpenFn still references dv.IsFXPanelOpen() which
 	// checks portal.Has("fx-panel"). Since we closed it, ShouldClose

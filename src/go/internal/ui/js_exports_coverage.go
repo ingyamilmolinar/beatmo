@@ -12,7 +12,7 @@ import (
 func init() {
 	// flushGoCoverage() returns {meta: base64, counters: base64} or null
 	// if the binary was not built with -cover.
-	js.Global().Set("flushGoCoverage", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("flushGoCoverage", jsFn(func(args jsArgs) any {
 		var meta bytes.Buffer
 		if err := coverage.WriteMeta(&meta); err != nil {
 			return nil
@@ -29,7 +29,7 @@ func init() {
 	}))
 
 	// clearGoCoverage() resets coverage counters. Returns true on success.
-	js.Global().Set("clearGoCoverage", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("clearGoCoverage", jsFn(func(args jsArgs) any {
 		if err := coverage.ClearCounters(); err != nil {
 			return js.ValueOf(false)
 		}

@@ -5,7 +5,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-func (g *Game) timelineWindowLen() int {
+func (s *playbackSlate) timelineWindowLen() int {
+	g := s.g
 	if g == nil || g.drum == nil {
 		return 1
 	}
@@ -15,44 +16,53 @@ func (g *Game) timelineWindowLen() int {
 	return 1
 }
 
-func (g *Game) timelineService() *timeline.Service {
+func (s *playbackSlate) timelineService() *timeline.Service {
+	g := s.g
 	if g.timeline == nil {
 		g.timeline = timeline.NewService()
 	}
 	return g.timeline
 }
 
-func (g *Game) recordTimelineCommit(row, abs int, val bool, typ model.NodeType) {
+func (s *playbackSlate) recordTimelineCommit(row, abs int, val bool, typ model.NodeType) {
+	g := s.g
 	g.recordTimelineCommitKind(row, abs, val, typ, timeline.CommitKindPlayback)
 }
 
-func (g *Game) recordTimelineCommitKind(row, abs int, val bool, typ model.NodeType, kind timeline.CommitKind) {
+func (s *playbackSlate) recordTimelineCommitKind(row, abs int, val bool, typ model.NodeType, kind timeline.CommitKind) {
+	g := s.g
 	windowLen := g.timelineWindowLen()
 	capacity := windowLen
 	g.timelineService().RecordCommitKind(row, abs, val, typ, kind, windowLen, capacity)
 }
 
-func (g *Game) timelineTrimAfter(row, maxAbs int) {
+func (s *playbackSlate) timelineTrimAfter(row, maxAbs int) {
+	g := s.g
 	g.timelineService().TrimAfter(row, maxAbs)
 }
 
-func (g *Game) timelineTrimAfterMutable(row, maxAbs int) {
+func (s *playbackSlate) timelineTrimAfterMutable(row, maxAbs int) {
+	g := s.g
 	g.timelineService().TrimAfterMutable(row, maxAbs)
 }
 
-func (g *Game) timelineClearRow(row int) {
+func (s *playbackSlate) timelineClearRow(row int) {
+	g := s.g
 	g.timelineService().ClearRow(row)
 }
 
-func (g *Game) timelineCommitted(row, abs int) (bool, model.NodeType, bool) {
+func (s *playbackSlate) timelineCommitted(row, abs int) (bool, model.NodeType, bool) {
+	g := s.g
 	return g.timelineService().Committed(row, abs)
 }
 
-func (g *Game) timelineCommittedWithKind(row, abs int) (bool, model.NodeType, timeline.CommitKind, bool) {
+func (s *playbackSlate) timelineCommittedWithKind(row, abs int) (bool, model.NodeType, timeline.CommitKind, bool) {
+	g := s.g
 	return g.timelineService().CommittedKind(row, abs)
 }
 
-func (g *Game) timelineReplaceCommit(row, abs int, val bool, typ model.NodeType, kind timeline.CommitKind) bool {
+func (s *playbackSlate) timelineReplaceCommit(row, abs int, val bool, typ model.NodeType, kind timeline.CommitKind) bool {
+	g := s.g
 	// Keep immutable past playback/import commits stable; allow demotion only
 	// for future/leaked entries so live edits can refresh upcoming beats.
 	if v, t, k, ok := g.timelineCommittedWithKind(row, abs); ok && (k == timeline.CommitKindPlayback || k == timeline.CommitKindImport) {
@@ -95,11 +105,13 @@ func (g *Game) timelineReplaceCommit(row, abs int, val bool, typ model.NodeType,
 	return g.timelineService().ReplaceCommit(row, abs, val, typ, kind)
 }
 
-func (g *Game) TimelineSegments(row int) TimelineSegments {
+func (s *playbackSlate) TimelineSegments(row int) TimelineSegments {
+	g := s.g
 	return g.timelineService().Snapshot(row)
 }
 
-func (g *Game) rowWindow(row int) RowWindow {
+func (s *playbackSlate) rowWindow(row int) RowWindow {
+	g := s.g
 	if g == nil || g.drum == nil || row < 0 || row >= len(g.drum.Rows) {
 		return RowWindow{}
 	}
@@ -118,6 +130,49 @@ func (g *Game) rowWindow(row int) RowWindow {
 	return win
 }
 
-func (g *Game) timelineCommittedRange(row int) (int, int, bool) {
+func (s *playbackSlate) timelineCommittedRange(row int) (int, int, bool) {
+	g := s.g
 	return g.timelineService().CommittedRange(row)
+}
+
+func (g *Game) timelineWindowLen() int { return g.playbackSlate.timelineWindowLen() }
+
+func (g *Game) timelineService() *timeline.Service { return g.playbackSlate.timelineService() }
+
+func (g *Game) recordTimelineCommit(row, abs int, val bool, typ model.NodeType) {
+	g.playbackSlate.recordTimelineCommit(row, abs, val, typ)
+}
+
+func (g *Game) recordTimelineCommitKind(row, abs int, val bool, typ model.NodeType, kind timeline.CommitKind) {
+	g.playbackSlate.recordTimelineCommitKind(row, abs, val, typ, kind)
+}
+
+func (g *Game) timelineTrimAfter(row, maxAbs int) { g.playbackSlate.timelineTrimAfter(row, maxAbs) }
+
+func (g *Game) timelineTrimAfterMutable(row, maxAbs int) {
+	g.playbackSlate.timelineTrimAfterMutable(row, maxAbs)
+}
+
+func (g *Game) timelineClearRow(row int) { g.playbackSlate.timelineClearRow(row) }
+
+func (g *Game) timelineCommitted(row, abs int) (bool, model.NodeType, bool) {
+	return g.playbackSlate.timelineCommitted(row, abs)
+}
+
+func (g *Game) timelineCommittedWithKind(row, abs int) (bool, model.NodeType, timeline.CommitKind, bool) {
+	return g.playbackSlate.timelineCommittedWithKind(row, abs)
+}
+
+func (g *Game) timelineReplaceCommit(row, abs int, val bool, typ model.NodeType, kind timeline.CommitKind) bool {
+	return g.playbackSlate.timelineReplaceCommit(row, abs, val, typ, kind)
+}
+
+func (g *Game) TimelineSegments(row int) TimelineSegments {
+	return g.playbackSlate.TimelineSegments(row)
+}
+
+func (g *Game) rowWindow(row int) RowWindow { return g.playbackSlate.rowWindow(row) }
+
+func (g *Game) timelineCommittedRange(row int) (int, int, bool) {
+	return g.playbackSlate.timelineCommittedRange(row)
 }

@@ -98,9 +98,10 @@ check_one() {
     return
   fi
 
-  local ct cc
+  local ct cc ce
   ct="$(printf '%s\n' "$resp" | grep -i '^content-type:' | tail -n1 | sed -E 's/^[^:]+:[[:space:]]*//' | tr -d '\r')"
   cc="$(printf '%s\n' "$resp" | grep -i '^cache-control:' | tail -n1 | sed -E 's/^[^:]+:[[:space:]]*//' | tr -d '\r')"
+  ce="$(printf '%s\n' "$resp" | grep -i '^content-encoding:' | tail -n1 | sed -E 's/^[^:]+:[[:space:]]*//' | tr -d '\r')"
 
   if [[ -n "$want_ct" ]]; then
     if [[ "$ct" != *"$want_ct"* ]]; then
@@ -110,8 +111,18 @@ check_one() {
   if [[ -z "$cc" ]]; then
     ERRORS+=("${rel}: Cache-Control header is missing (empty); deploy must set it explicitly")
   fi
+  # The deploy gzip-compresses the bundle: every asset must come back
+  # gzip-encoded (Content-Encoding: gzip) and carry no-transform so GCS does
+  # not decompressively transcode the gzipped object -- transcoding strips
+  # Content-Length and breaks WebAssembly.instantiateStreaming on main.wasm.
+  if [[ "$ce" != *"gzip"* ]]; then
+    ERRORS+=("${rel}: Content-Encoding must be 'gzip', got '${ce:-<missing>}'")
+  fi
+  if [[ "$cc" != *"no-transform"* ]]; then
+    ERRORS+=("${rel}: Cache-Control must contain 'no-transform' to prevent GCS decompressive transcoding, got '${cc:-<missing>}'")
+  fi
 
-  printf '  %-34s 200  ct=%-40s cc=%s\n' "${rel}" "${ct:-<missing>}" "${cc:-<missing>}"
+  printf '  %-34s 200  ct=%-32s ce=%-6s cc=%s\n' "${rel}" "${ct:-<missing>}" "${ce:-<missing>}" "${cc:-<missing>}"
 }
 
 echo "[verify] Target: ${URL}"

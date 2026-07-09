@@ -190,6 +190,71 @@ var genGlobalsPhase10 = []struct {
 	{"kick_enabled", 0},
 }
 
+// genSlotFieldsPhase11KickMode mirrors modularGenSlotFieldsPhase11KickMode: the
+// modal-kick (variant 6) coupled two-mode drumhead per-slot knobs. APPEND-ONLY
+// at the VERY tail (after the Phase-10 kick_enabled global). Identity 0 (read
+// only at source==5 variant 6).
+var genSlotFieldsPhase11KickMode = []struct {
+	Field    string
+	Identity float64
+}{
+	{"kick_mode_detune", 0}, {"kick_mode_gain", 0}, {"kick_mode_decay", 0},
+}
+
+// genSlotFieldsPhase12KickReverb mirrors modularGenSlotFieldsPhase12KickReverb:
+// the variant-7 acoustic kick's room-tail amount. APPEND-ONLY at the VERY tail
+// (after the Phase-11 modal columns). Identity 0 (dry).
+var genSlotFieldsPhase12KickReverb = []struct {
+	Field    string
+	Identity float64
+}{
+	{"kick_reverb", 0},
+}
+
+// genGlobalsPhase13Sax mirrors modularGlobalsPhase13Sax: the physical-model OSC
+// params (osc_type 11 = render_sax). APPEND-ONLY at the VERY tail (after the
+// Phase-12 kick-reverb column). Identity = the shipped render_sax default.
+var genGlobalsPhase13Sax = []struct {
+	Field    string
+	Identity float64
+}{
+	{"osc_sax_blow", 0.15}, {"osc_sax_reed_off", 0.58}, {"osc_sax_reed_slope", 0.28},
+	{"osc_sax_reflect", -0.94}, {"osc_sax_breath", 0.85}, {"osc_sax_loss", 0.7},
+}
+
+// genGlobalsPhase14Bow mirrors modularGlobalsPhase14Bow: the bowed-string
+// physical-model musical params (osc_type 7 = render_bowed_string). APPEND-ONLY
+// at the VERY tail (after Phase-13 sax).
+var genGlobalsPhase14Bow = []struct {
+	Field    string
+	Identity float64
+}{
+	{"osc_bow_pos", 0.13}, {"osc_bow_slope", 3.0}, {"osc_bow_vel", 0.25}, {"osc_bow_loss", 0.55},
+}
+
+// genGlobalsPhase15Voice mirrors modularGlobalsPhase15Voice: the FORMANT
+// vowel-bank stage + ENSEMBLE humanization globals. APPEND-ONLY at the VERY
+// tail (after Phase-14 bow).
+var genGlobalsPhase15Voice = []struct {
+	Field    string
+	Identity float64
+}{
+	{"formant_enabled", 0}, {"formant_vowel", 0}, {"formant_voice_type", 0},
+	{"formant_mix", 0}, {"formant_shift", 1.0}, {"formant_breath", 0},
+	{"formant_sing", 0}, {"formant_morph_rate", 0}, {"formant_morph_to", 0},
+	{"ens_scatter", 0}, {"ens_vib_rate", 0}, {"ens_vib_depth", 0}, {"ens_humanize", 0},
+}
+
+// genGlobalsPhase16VoiceRealism mirrors modularGlobalsPhase16VoiceRealism: the
+// ensemble cycle-jitter knob + the formant dry-blend scaler. APPEND-ONLY at the
+// VERY tail (after Phase-15 voice/choir).
+var genGlobalsPhase16VoiceRealism = []struct {
+	Field    string
+	Identity float64
+}{
+	{"ens_jitter", 0}, {"formant_dry", 1.0},
+}
+
 func TestModularGenBankSchemaShape(t *testing.T) {
 	schema := ModularParamSchema()
 	idx := ModularParamSchemaIndexMap()
@@ -436,8 +501,110 @@ func TestModularGenBankSchemaShape(t *testing.T) {
 		pos++
 	}
 
+	// 2m. Phase-11 modal-kick per-slot columns: appended field-major at the NEW
+	//     very tail, AFTER the Phase-10 KICK enable global.
+	for _, f := range genSlotFieldsPhase11KickMode {
+		for k := 1; k <= genSlots; k++ {
+			name := fmt.Sprintf("gen%d_%s", k, f.Field)
+			got, ok := idx[name]
+			if !ok {
+				t.Fatalf("schema missing Phase-11 modal-kick field %q", name)
+			}
+			if got != pos {
+				t.Fatalf("Phase-11 modal-kick field %q at index %d, want %d (must append after the Phase-10 KICK enable)", name, got, pos)
+			}
+			if iv, ok := ident[name]; !ok || iv != f.Identity {
+				t.Fatalf("Phase-11 modal-kick field %q identity = %v (present=%v), want %v", name, iv, ok, f.Identity)
+			}
+			pos++
+		}
+	}
+
+	// 2n. Phase-12 kick-reverb per-slot column: appended field-major at the NEW
+	//     very tail, AFTER the Phase-11 modal columns.
+	for _, f := range genSlotFieldsPhase12KickReverb {
+		for k := 1; k <= genSlots; k++ {
+			name := fmt.Sprintf("gen%d_%s", k, f.Field)
+			got, ok := idx[name]
+			if !ok {
+				t.Fatalf("schema missing Phase-12 kick-reverb field %q", name)
+			}
+			if got != pos {
+				t.Fatalf("Phase-12 kick-reverb field %q at index %d, want %d (must append after the Phase-11 modal columns)", name, got, pos)
+			}
+			if iv, ok := ident[name]; !ok || iv != f.Identity {
+				t.Fatalf("Phase-12 kick-reverb field %q identity = %v (present=%v), want %v", name, iv, ok, f.Identity)
+			}
+			pos++
+		}
+	}
+
+	// 2o. Phase-13 physical-model OSC globals: appended by NAME at the VERY tail,
+	//     AFTER the Phase-12 kick-reverb column.
+	for _, g := range genGlobalsPhase13Sax {
+		got, ok := idx[g.Field]
+		if !ok {
+			t.Fatalf("schema missing Phase-13 sax field %q", g.Field)
+		}
+		if got != pos {
+			t.Fatalf("Phase-13 sax field %q at index %d, want %d (must append after the Phase-12 kick-reverb column)", g.Field, got, pos)
+		}
+		if iv, ok := ident[g.Field]; !ok || iv != g.Identity {
+			t.Fatalf("Phase-13 sax field %q identity = %v (present=%v), want %v", g.Field, iv, ok, g.Identity)
+		}
+		pos++
+	}
+
+	// 2p. Phase-14 bowed-string physical-model globals: appended by NAME at the
+	//     VERY tail, AFTER the Phase-13 sax globals.
+	for _, g := range genGlobalsPhase14Bow {
+		got, ok := idx[g.Field]
+		if !ok {
+			t.Fatalf("schema missing Phase-14 bow field %q", g.Field)
+		}
+		if got != pos {
+			t.Fatalf("Phase-14 bow field %q at index %d, want %d (must append after the Phase-13 sax globals)", g.Field, got, pos)
+		}
+		if iv, ok := ident[g.Field]; !ok || iv != g.Identity {
+			t.Fatalf("Phase-14 bow field %q identity = %v (present=%v), want %v", g.Field, iv, ok, g.Identity)
+		}
+		pos++
+	}
+
+	// 2q. Phase-15 voice/choir globals (FORMANT + ENSEMBLE): appended by NAME at
+	//     the VERY tail, AFTER the Phase-14 bow globals.
+	for _, g := range genGlobalsPhase15Voice {
+		got, ok := idx[g.Field]
+		if !ok {
+			t.Fatalf("schema missing Phase-15 voice field %q", g.Field)
+		}
+		if got != pos {
+			t.Fatalf("Phase-15 voice field %q at index %d, want %d (must append after the Phase-14 bow globals)", g.Field, got, pos)
+		}
+		if iv, ok := ident[g.Field]; !ok || iv != g.Identity {
+			t.Fatalf("Phase-15 voice field %q identity = %v (present=%v), want %v", g.Field, iv, ok, g.Identity)
+		}
+		pos++
+	}
+
+	// 2r. Phase-16 voice-realism globals (ens_jitter + formant_dry): appended by
+	//     NAME at the VERY tail, AFTER the Phase-15 voice/choir globals.
+	for _, g := range genGlobalsPhase16VoiceRealism {
+		got, ok := idx[g.Field]
+		if !ok {
+			t.Fatalf("schema missing Phase-16 voice-realism field %q", g.Field)
+		}
+		if got != pos {
+			t.Fatalf("Phase-16 voice-realism field %q at index %d, want %d (must append after the Phase-15 voice/choir globals)", g.Field, got, pos)
+		}
+		if iv, ok := ident[g.Field]; !ok || iv != g.Identity {
+			t.Fatalf("Phase-16 voice-realism field %q identity = %v (present=%v), want %v", g.Field, iv, ok, g.Identity)
+		}
+		pos++
+	}
+
 	if len(schema) != pos {
-		t.Fatalf("schema has %d entries, want exactly %d (no stray params after the Phase-10 KICK enable)", len(schema), pos)
+		t.Fatalf("schema has %d entries, want exactly %d (no stray params after the Phase-16 voice-realism globals)", len(schema), pos)
 	}
 
 	// 3. ParamDefs stay 1:1 with the schema, and every gen-bank def is hidden

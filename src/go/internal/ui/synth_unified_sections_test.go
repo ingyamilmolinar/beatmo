@@ -15,10 +15,12 @@ import (
 // unification discipline: every shipped synth (non-WAV) recipe lays out as a
 // PREFIX-preserving subsequence of the standardized pipeline order
 //
-//	VOICE · OSC · FM · PITCH · LFO · BURST · ENVELOPE · FILTER · FILTER ENV · POST
+//	VOICE · OSC · ENSEMBLE · FM · PITCH · LFO · BURST · ENVELOPE · FILTER ·
+//	FILTER ENV · FORMANT · RESONATOR · POST
 //
 // (PITCH/LFO/BURST are the Phase-8C modulator stages — the spec-§1 gap
-// closure.) Sections may be pruned (a recipe with no FM stage has no FM card),
+// closure; ENSEMBLE/FORMANT/RESONATOR are the Phase-15 voice/choir stages —
+// Task 8.) Sections may be pruned (a recipe with no FM stage has no FM card),
 // but the surviving sections must always appear in this exact relative order,
 // and POST must always be present (every synth carries gain + a post toggle,
 // or a generic post knob). This is the user-facing deliverable: the same
@@ -28,14 +30,17 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 		synthSectionVoice:     0,
 		synthSectionOsc:       1,
 		synthSectionKick:      2,
-		synthSectionFM:        3,
-		synthSectionPitch:     4,
-		synthSectionLFO:       5,
-		synthSectionBurst:     6,
-		synthSectionEnvelope:  7,
-		synthSectionFilter:    8,
-		synthSectionFilterEnv: 9,
-		synthSectionPost:      10,
+		synthSectionEnsemble:  3,
+		synthSectionFM:        4,
+		synthSectionPitch:     5,
+		synthSectionLFO:       6,
+		synthSectionBurst:     7,
+		synthSectionEnvelope:  8,
+		synthSectionFilter:    9,
+		synthSectionFilterEnv: 10,
+		synthSectionFormant:   11,
+		synthSectionResonator: 12,
+		synthSectionPost:      13,
 	}
 	for id, reg := range audio.RecipeRegistrations() {
 		if reg == nil {
@@ -55,7 +60,7 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 				continue
 			}
 			if r <= last {
-				t.Errorf("recipe %q: section order %v is not the standardized subsequence (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·FILTER ENV·POST)", id, order)
+				t.Errorf("recipe %q: section order %v is not the standardized subsequence (VOICE·OSC·ENSEMBLE·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·FILTER ENV·FORMANT·RESONATOR·POST)", id, order)
 				break
 			}
 			last = r
@@ -66,6 +71,25 @@ func TestSynthUnified_EverySynthRecipeUsesStandardOrder(t *testing.T) {
 		if !havePost {
 			t.Errorf("recipe %q: standardized order %v is missing the POST section", id, order)
 		}
+	}
+}
+
+// TestVoiceStagesRouting is the Task 8 routing guard: the Phase-15 voice/choir
+// param Groups (formant, unison, resonator — carried verbatim from
+// ModularSynthParamDefs) route to their standardized ENSEMBLE/FORMANT/RESONATOR
+// sections, and the FORMANT enable toggle owns the FORMANT section.
+func TestVoiceStagesRouting(t *testing.T) {
+	if sec, ok := modularStageGroupSection("unison"); !ok || sec != synthSectionEnsemble {
+		t.Fatalf("unison group must route to ENSEMBLE, got %v ok=%v", sec, ok)
+	}
+	if sec, ok := modularStageGroupSection("formant"); !ok || sec != synthSectionFormant {
+		t.Fatalf("formant group must route to FORMANT, got %v ok=%v", sec, ok)
+	}
+	if sec, ok := modularStageGroupSection("resonator"); !ok || sec != synthSectionResonator {
+		t.Fatalf("resonator group must route to RESONATOR, got %v ok=%v", sec, ok)
+	}
+	if sec, ok := enableToggleSection("formant_enabled"); !ok || sec != synthSectionFormant {
+		t.Fatalf("formant_enabled pill must own FORMANT, got %v ok=%v", sec, ok)
 	}
 }
 

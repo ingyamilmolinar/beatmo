@@ -164,6 +164,27 @@ func (r *RootTree) blockingPortalOwner() *DrumViewTree {
 	return nil
 }
 
+// TopmostOwnerAt returns the ownerID that a fresh press at (x, y) would be
+// dispatched to, using the SAME precedence as dispatchInput: capture-holder →
+// blocking-portal owner → top-down by z. Within the chosen subtree it returns
+// that subtree's topmost hit area's ownerID. "" if nothing is there. This is the
+// gate for native-gesture rects: a rect is armable only where a real press would
+// reach its owning component.
+func (r *RootTree) TopmostOwnerAt(x, y int) string {
+	if c := r.capturer(); c != nil {
+		return c.topOwnerAt(x, y)
+	}
+	if c := r.blockingPortalOwner(); c != nil {
+		return c.topOwnerAt(x, y)
+	}
+	for i := len(r.children) - 1; i >= 0; i-- {
+		if o := r.children[i].tree.topOwnerAt(x, y); o != "" {
+			return o
+		}
+	}
+	return ""
+}
+
 // Draw composites all subtree content (ascending z), then all subtree
 // overlays (ascending z), so portals/modals sit above every subtree.
 func (r *RootTree) Draw(screen *ebiten.Image) {

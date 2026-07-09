@@ -50,7 +50,15 @@ func softKeyboardInit() {
 	mobileInputInit()
 }
 
-// softKeyboardShow focuses the hidden proxy input to trigger the mobile soft keyboard.
+// softKeyboardShow focuses the hidden proxy input. The proxy is the keyboard-
+// capture path for text fields on WASM (desktop AND mobile): it buffers every
+// keystroke via the browser's own keydown/input events, so short key presses are
+// never dropped — unlike Ebiten's per-frame isKeyPressed() level check, which
+// misses a Backspace/Enter that goes down+up between two Update ticks (observed
+// on WebKit/Safari and any throttled loop). The proxy's keydown handler
+// (index.html) forwards Backspace/Enter/Escape/Arrows as buffered runes; see
+// softKeyboardDrainChars. Do NOT gate this on platform — a hardware keyboard on
+// desktop needs the buffered proxy path just as much as a mobile soft keyboard.
 func softKeyboardShow(inputmode string) {
 	if !kbInitialized {
 		return

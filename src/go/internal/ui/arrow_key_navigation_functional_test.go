@@ -35,11 +35,18 @@ func TestFunctional_ArrowKeys_EQdBEditor(t *testing.T) {
 		t.Skip("no EQ dB readout rect after draw")
 	}
 
-	// Open the editor via a real click on the dB readout.
+	// A real click on the dB readout now opens the precision wheel popup
+	// (Task 2: EQ wheel-popup value editor) instead of the numeric editor
+	// directly; the numeric editor opens via the wheel's center-box tap.
 	r := ez.dbReadoutRect(idx)
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
+	if g.drum.eqWheelPopup == nil || !g.drum.eqWheelPopup.IsOpen() {
+		t.Fatalf("click did not open the EQ wheel popup for band %d", idx)
+	}
+	cb := g.drum.eqWheelPopup.centerH
+	fi.clickAt(t, g, (cb.Min.X+cb.Max.X)/2, (cb.Min.Y+cb.Max.Y)/2)
 	if ez.paramEditor == nil || !ez.paramEditor.Active() {
-		t.Fatalf("click did not open dB editor for band %d", idx)
+		t.Fatalf("click on the wheel's center box did not open dB editor for band %d", idx)
 	}
 
 	startCursor := ez.paramEditor.ti.cursor
@@ -134,10 +141,19 @@ func TestFunctional_SoftKeyboardArrowMovesCaret(t *testing.T) {
 	if idx < 0 {
 		t.Skip("no EQ dB readout rect")
 	}
+	// A real click on the dB readout now opens the precision wheel popup
+	// (Task 2: EQ wheel-popup value editor) instead of the numeric editor
+	// directly; the numeric editor opens via the wheel's center-box tap —
+	// mirrors TestFunctional_ArrowKeys_EQdBEditor above.
 	r := ez.dbReadoutRect(idx)
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
+	if g.drum.eqWheelPopup == nil || !g.drum.eqWheelPopup.IsOpen() {
+		t.Fatalf("click did not open the EQ wheel popup for band %d", idx)
+	}
+	cb := g.drum.eqWheelPopup.centerH
+	fi.clickAt(t, g, (cb.Min.X+cb.Max.X)/2, (cb.Min.Y+cb.Max.Y)/2)
 	if ez.paramEditor == nil || !ez.paramEditor.Active() {
-		t.Fatalf("click did not open dB editor")
+		t.Fatalf("click on the wheel's center box did not open dB editor")
 	}
 	startCursor := ez.paramEditor.ti.cursor
 	if startCursor == 0 {

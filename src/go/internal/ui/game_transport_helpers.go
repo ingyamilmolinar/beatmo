@@ -19,6 +19,12 @@ func (g *Game) LastDisplayBeat() float64 { return g.state.LastDisplayBeat() }
 
 func (g *Game) LastProg() float64 { return g.state.LastProg() }
 
+// FreezeBackfillIters reports the lifetime count of iterations executed by
+// refreshDrumRow's safety-net freeze back-fill loop. Test introspection seam
+// for asserting resume-time work is bounded by the predictor window rather than
+// the elapsed playhead.
+func (g *Game) FreezeBackfillIters() int64 { return g.freezeBackfillIters }
+
 func (g *Game) SetPlaying(v bool) {
 	g.state.SetPlaying(v)
 	if v {

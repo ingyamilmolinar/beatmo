@@ -7,7 +7,8 @@ import (
 )
 
 // TestNodeMenuVolumePercentAdjustsAudio opens the popup, clicks VOL- once
-// (100% -> 90%), and verifies the next playback uses the reduced volume.
+// (one perceptual −3 dB step, i.e. ÷nodeVolStepFactor), and verifies the next
+// playback uses the reduced volume.
 func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
@@ -33,7 +34,7 @@ func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 	if btn == nil {
 		t.Fatalf("vol- button missing")
 	}
-	// Click once: 100% -> 90%
+	// Click once: one perceptual step down (−3 dB).
 	btn.OnClick()
 	if err := g.Update(); err != nil {
 		t.Fatalf("update: %v", err)
@@ -53,9 +54,9 @@ func TestNodeMenuVolumePercentAdjustsAudio(t *testing.T) {
 	if v0 <= 0 || v1 <= 0 {
 		t.Fatalf("zero volumes v0=%.3f v1=%.3f", v0, v1)
 	}
-	want := 0.9 * v0
+	want := v0 / nodeVolStepFactor
 	// allow tiny float error
 	if (v1-want) > 1e-6 || (want-v1) > 1e-6 {
-		t.Fatalf("volume percent not applied: want 90%% of %.3f => %.3f got %.3f", v0, want, v1)
+		t.Fatalf("volume step not applied: want %.3f (−3 dB of %.3f) got %.3f", want, v0, v1)
 	}
 }

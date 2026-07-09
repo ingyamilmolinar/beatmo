@@ -6,7 +6,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
@@ -92,8 +91,14 @@ func TextSprite(s string) *ebiten.Image {
 		if h < 1 {
 			h = 1
 		}
+		// The TrueType renderer is unavailable, which only happens if the
+		// embedded font failed to initialise -- a state in which no glyph
+		// source exists to draw from. Emit a correctly-sized blank sprite
+		// rather than importing ebitenutil, whose sibling NewImageFromURL
+		// drags net/http + crypto/tls (~4 MiB) into the browser build. Under
+		// -tags test this path was already a no-op stub (ebitestub's
+		// DebugPrintAt), so behaviour there is unchanged.
 		img = ebiten.NewImage(w, h)
-		ebitenutil.DebugPrintAt(img, s, 0, 0)
 	}
 
 	textCacheMu.Lock()
@@ -254,9 +259,16 @@ func DrawTextAtScale(dst *ebiten.Image, s string, x, y int, scale float64) {
 	dst.DrawImage(spr, &op)
 }
 
+// drawTextColorAtScaleHook, when non-nil, is invoked with each string passed
+// to DrawTextColorAtScale. Test-only observation seam (zero cost when nil).
+var drawTextColorAtScaleHook func(string)
+
 // DrawTextColorAtScale draws cached text at (x,y) scaled and tinted with col.
 // Combines GeoM.Scale for size and ColorScale for tint in a single blit.
 func DrawTextColorAtScale(dst *ebiten.Image, s string, x, y int, col color.Color, scale float64) {
+	if drawTextColorAtScaleHook != nil {
+		drawTextColorAtScaleHook(s)
+	}
 	spr := TextSprite(s)
 	var op ebiten.DrawImageOptions
 	op.GeoM.Scale(scale, scale)

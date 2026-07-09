@@ -187,6 +187,14 @@ func TestViewSwitchSegmented_TapDispatchesViewMode(t *testing.T) {
 		{7, viewModeSampler},
 	}
 	for _, c := range cases {
+		// The Synth/Sampler segments require a single-instrument context
+		// (Master blocks them); select the first row's instrument so the
+		// segment is enabled and the tap can switch views.
+		if c.want == viewModeSynth || c.want == viewModeSampler {
+			if len(dv.Rows) > 0 {
+				dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+			}
+		}
 		r := dv.viewSwitchSegmented.SegmentRect(c.seg)
 		mid := image.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 		simulateTap(mid.X, mid.Y)

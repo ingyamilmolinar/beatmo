@@ -20,7 +20,7 @@ import (
 // global so DevTools and Playwright tests can sample heap + bridge-call
 // counters at any moment. Called once from initJS().
 func (g *Game) initJSDiag() {
-	js.Global().Set("memSizes", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("memSizes", jsFn(func(args jsArgs) any {
 		var ms runtime.MemStats
 		runtime.ReadMemStats(&ms)
 		obj := js.Global().Get("Object").New()
@@ -99,7 +99,7 @@ func (g *Game) initJSDiag() {
 		return obj
 	}))
 
-	js.Global().Set("analyzerBridgeStats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("analyzerBridgeStats", jsFn(func(args jsArgs) any {
 		calls, reads := audio.AnalyzerBridgeStats()
 		obj := js.Global().Get("Object").New()
 		obj.Set("calls", float64(calls))
@@ -111,7 +111,7 @@ func (g *Game) initJSDiag() {
 		return obj
 	}))
 
-	js.Global().Set("resetAnalyzerBridgeStats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("resetAnalyzerBridgeStats", jsFn(func(args jsArgs) any {
 		audio.ResetAnalyzerBridgeStats()
 		return nil
 	}))

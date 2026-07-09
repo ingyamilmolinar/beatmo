@@ -48,6 +48,13 @@ type MobileWheelPopup struct {
 	valNotcher   stepNotcher // clicky cadence for value drag (one step per notch)
 	resNotcher   stepNotcher // clicky cadence for resolution-strip drag
 	wheelNotcher stepNotcher // paces mouse-wheel / two-finger scroll (events per step)
+
+	// Transactional edit state. The popup is a modal value editor: turning the
+	// wheel previews live via OnChange, but the undo commit is DEFERRED until
+	// the edit is Accepted (Enter / tap-away / navigate-away). Esc Cancels,
+	// restoring initialValue. See Accept/Cancel.
+	initialValue float64 // Knob.Value snapshotted at Open (for Cancel)
+	dirty        bool    // a value change happened since Open
 }
 
 // wheelStepEventsPerNotch is how many discrete scroll events advance the value by
@@ -68,6 +75,12 @@ func (w *MobileWheelPopup) Open(b WheelBinding, anchor, bounds image.Rectangle, 
 	w.open = true
 	w.dragging = false
 	w.dragKind = wheelDragNone
+	w.dirty = false
+	if b.Knob != nil {
+		w.initialValue = b.Knob.Value
+	} else {
+		w.initialValue = 0
+	}
 	w.valNotcher = newStepNotcher(w.tickGap())
 	w.resNotcher = newStepNotcher(w.tickGap())
 	w.wheelNotcher = newStepNotcher(wheelStepEventsPerNotch)
@@ -103,6 +116,36 @@ func (w *MobileWheelPopup) layout() {
 }
 
 func (w *MobileWheelPopup) Close()                  { w.open = false; w.dragging = false; w.dragKind = wheelDragNone }
+
+// Accept persists the current edit: if the value changed since Open it fires
+// OnCommit once (recording a single undo step), then closes. This is the
+// terminal action for Enter, tapping outside, re-tapping the opener, and
+// navigating away — every dismissal EXCEPT Esc. A no-op when nothing changed.
+func (w *MobileWheelPopup) Accept() {
+	if !w.open {
+		return
+	}
+	if w.dirty && w.binding.OnCommit != nil {
+		w.binding.OnCommit()
+	}
+	w.Close()
+}
+
+// Cancel discards the edit: it restores the value snapshotted at Open, re-applies
+// it via OnChange (so the source of truth and live audio revert to their previous
+// state), does NOT commit, then closes. This is the terminal action for Esc.
+func (w *MobileWheelPopup) Cancel() {
+	if !w.open {
+		return
+	}
+	if w.dirty && w.binding.Knob != nil {
+		w.binding.Knob.Value = w.initialValue
+		if w.binding.OnChange != nil {
+			w.binding.OnChange()
+		}
+	}
+	w.Close()
+}
 func (w *MobileWheelPopup) IsOpen() bool            { return w.open }
 func (w *MobileWheelPopup) Rect() image.Rectangle   { return w.rect }
 func (w *MobileWheelPopup) Anchor() image.Rectangle { return w.anchor }
@@ -119,7 +162,8 @@ func (w *MobileWheelPopup) IsDraggingAny() bool { return w.dragging }
 // unit of direction to a notcher, so it takes wheelStepEventsPerNotch events to
 // advance one step — slow and controlled, matching the clicky drag. Over the
 // resolution strip it shifts the rung at the same cadence. Returns true if it
-// consumed the event; each emitted step commits so wheel edits land in undo.
+// consumed the event. Value changes preview live (OnChange); the undo commit is
+// deferred to Accept (Enter / tap-away), like the drag path.
 func (w *MobileWheelPopup) HandleWheel(mx, my, steps int) bool {
 	if !w.open || steps == 0 {
 		return false
@@ -135,11 +179,16 @@ func (w *MobileWheelPopup) HandleWheel(mx, my, steps int) bool {
 	}
 	if overStrip {
 		changed := false
+		// Match the resolution DRAG (and the value barrel): a DOWNWARD scroll is a
+		// positive step on the target (n>0) and must COARSEN (bigger step number),
+		// like the value wheel where a downward scroll raises the shown number.
+		// Scroll UP (n<0) finens. (This mirrors applyResDelta, where drag-down —
+		// steps<0 — already coarsens; the two paths now agree.)
 		for i := 0; i < n; i++ {
-			changed = w.binding.Badge.AdjustResolution(1) || changed
+			changed = w.binding.Badge.AdjustResolution(-1) || changed // scroll down => coarser
 		}
 		for i := 0; i > n; i-- {
-			changed = w.binding.Badge.AdjustResolution(-1) || changed
+			changed = w.binding.Badge.AdjustResolution(1) || changed // scroll up => finer
 		}
 		if changed {
 			if w.binding.Knob != nil {
@@ -155,16 +204,25 @@ func (w *MobileWheelPopup) HandleWheel(mx, my, steps int) bool {
 	if k == nil {
 		return false
 	}
+	// Same barrel "down = higher" direction as the finger drag: a DOWNWARD scroll
+	// must RAISE the value (higher numbers descend to the center selector). The tree
+	// hands the popup ebiten.Wheel's raw int(wy) as steps. EMPIRICAL PLATFORM FACT
+	// (confirmed on the target device): a downward two-finger/wheel scroll arrives as
+	// POSITIVE int(wy), so n>0 for a downward scroll and we apply the RAW n to
+	// increase. (This is opposite to some in-repo scroll comments — the wheel "down"
+	// sign is natural-scroll/platform dependent; we match the user's device. The
+	// finger drag reaches the same "down = increase" via delta=lastY-my; both are
+	// locked together by TestWheelDownGesturesAllIncrease.) The resolution-strip
+	// branch above keeps the raw n (finer/coarser is unchanged).
 	if w.binding.Discrete {
 		applyKnobSteps(k, n)
 	} else {
 		k.NudgeEndless(n * knobEndlessPxPerNotch)
 	}
+	// Live preview only; the undo commit is deferred to Accept (Enter / tap-away).
+	w.dirty = true
 	if w.binding.OnChange != nil {
 		w.binding.OnChange()
-	}
-	if w.binding.OnCommit != nil {
-		w.binding.OnCommit()
 	}
 	return true
 }
@@ -175,9 +233,8 @@ func (w *MobileWheelPopup) HandleInput(mx, my int, pressed bool) bool {
 		return false
 	}
 	if !pressed {
-		if w.dragging && w.dragKind == wheelDragValue && w.binding.OnCommit != nil {
-			w.binding.OnCommit()
-		}
+		// Releasing a drag ends the gesture but does NOT commit — the undo
+		// commit is deferred to Accept (Enter / tap-away). See Accept/Cancel.
 		w.dragging = false
 		w.dragKind = wheelDragNone
 		return true
@@ -187,6 +244,10 @@ func (w *MobileWheelPopup) HandleInput(mx, my int, pressed bool) bool {
 		// Press: decide which sub-control this gesture owns.
 		switch {
 		case !w.binding.Discrete && pt.In(w.centerH) && w.binding.OpenEditor != nil:
+			// Hand off to the numeric editor: persist any wheel edit and close
+			// first (navigate-away = persist), so the two editors never nest and
+			// Esc can't revert a numeric-committed value against a stale snapshot.
+			w.Accept()
 			w.binding.OpenEditor()
 			return true
 		case !w.resRect.Empty() && pt.In(w.resRect):
@@ -207,10 +268,13 @@ func (w *MobileWheelPopup) HandleInput(mx, my int, pressed bool) bool {
 	// Continue drag.
 	switch w.dragKind {
 	case wheelDragValue:
-		delta := w.lastY - my // finger up (y decreases) => positive => increase
+		delta := w.lastY - my // finger down (y increases) => negative delta; see applyValueDelta
 		w.lastY = my
-		if w.applyValueDelta(delta) && w.binding.OnChange != nil {
-			w.binding.OnChange() // only when a detent actually clicked over
+		if w.applyValueDelta(delta) { // only when a detent actually clicked over
+			w.dirty = true
+			if w.binding.OnChange != nil {
+				w.binding.OnChange()
+			}
 		}
 	case wheelDragRes:
 		w.applyResDelta(w.lastY - my)
@@ -223,8 +287,13 @@ func (w *MobileWheelPopup) HandleInput(mx, my int, pressed bool) bool {
 // advances the value one detent per notch — the same step-by-step feel as a
 // discrete knob, so a tiny drag no longer flies through every value. Continuous
 // params move exactly one StepMul per notch (snapping to the step grid); enum
-// params advance one item per notch (list-scroll: drag down = next). Returns
-// true if at least one detent clicked over.
+// params advance one item per notch. Returns true if at least one detent clicked
+// over.
+//
+// Direction: the barrel draws higher values at the top, lower at the bottom, so
+// dragging the finger DOWN (delta<0) pulls the higher rows toward the center
+// selector and must INCREASE the value. Both branches therefore invert delta so
+// that finger-down => positive steps => value up.
 func (w *MobileWheelPopup) applyValueDelta(delta int) bool {
 	k := w.binding.Knob
 	if k == nil {
@@ -239,7 +308,8 @@ func (w *MobileWheelPopup) applyValueDelta(delta int) bool {
 		applyKnobSteps(k, steps)
 		return true
 	}
-	steps := w.valNotcher.add(delta)
+	// Drag down (delta<0) => -delta>0 => steps>0 => NudgeEndless raises the value.
+	steps := w.valNotcher.add(-delta)
 	if steps == 0 {
 		return false
 	}

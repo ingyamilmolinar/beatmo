@@ -30,25 +30,17 @@ var colWaveTraceFill = WithAlpha(colWaveTrace, AlphaSubtle)
 // above the panel owns channel identity (see audio_sticky_bar.go). Restating
 // it here was redundant chrome.
 func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, capture *analyzer.CaptureBuffer, beatGrid []float64, gain float64, autoOn bool, tabFrozen bool) {
-	if ch == nil {
-		drawRect(dst, rect, colButtonBorder, false)
-		return
-	}
-
-	// Choose waveform source.
+	// Choose waveform source (nil-safe: an idle panel still renders its
+	// axis chrome below instead of a dead black rect).
 	var wave []float64
 	frozen := capture != nil && capture.Frozen
 	switch {
 	case frozen:
 		wave = capture.Wave.Samples
-	case ch.Active:
+	case ch != nil && ch.Active:
 		wave = ch.Waveform
 	}
-
-	if len(wave) == 0 {
-		drawRect(dst, rect, colButtonBorder, false)
-		return
-	}
+	idle := len(wave) == 0
 
 	// Reserve left margin for amplitude labels + bottom strip for the ms
 	// axis (tick marks + labels), matching the Chain tab's convention so
@@ -99,6 +91,16 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		return
 	}
 
+	if idle {
+		// Idle state: the axis chrome above is already painted; add a quiet
+		// centered caption so the panel reads as "waiting for sound", never
+		// as a dead black rect.
+		hint := i18n.T(i18n.KeyAnalyzerIdle)
+		hx := waveRect.Min.X + (waveRect.Dx()-StyledTextWidth(hint, RoleCaption))/2
+		DrawTextStyled(dst, hint, hx, midY+SpaceMD, RoleCaption, colTextSecondary)
+		return
+	}
+
 	// Beat-grid overlay: 1-px vertical ticks at fractional positions (AlphaSubtle).
 	// Drawn before the trace so the wave stays visually on top.
 	if len(beatGrid) > 0 {
@@ -115,7 +117,7 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	// Phase 5: when stereo data is present, paint L in the top half and
 	// R in the bottom half so the user sees per-channel content. Mono
 	// signals continue to render as a single trace down the centerline.
-	if ch.HasStereo() && len(ch.WaveformL) > 0 && len(ch.WaveformR) > 0 {
+	if ch != nil && ch.HasStereo() && len(ch.WaveformL) > 0 && len(ch.WaveformR) > 0 {
 		topRect := image.Rect(waveRect.Min.X, waveRect.Min.Y, waveRect.Max.X, midY)
 		botRect := image.Rect(waveRect.Min.X, midY, waveRect.Max.X, waveRect.Max.Y)
 		topMid := topRect.Min.Y + topRect.Dy()/2

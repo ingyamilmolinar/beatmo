@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"sync/atomic"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
@@ -24,9 +25,11 @@ func TestBPMSpamCoalesces(t *testing.T) {
 			close(block)
 		}
 	})
-	var last int
-	prevSetBPM := audio.SetBPMFunc
-	audio.SetBPMFuncForTest(func(b int) { last = b; <-block })
+	// last is written on the bpmLoop goroutine (via the hook) and read on the
+	// test goroutine, so it must be atomic.
+	var last atomic.Int64
+	prevSetBPM := audio.BPMFuncForTest()
+	audio.SetBPMFuncForTest(func(b int) { last.Store(int64(b)); <-block })
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 
 	// Trigger an initial BPM change that will block inside SetBPMFunc.
@@ -42,8 +45,8 @@ func TestBPMSpamCoalesces(t *testing.T) {
 	// Unblock audio and allow the BPM goroutine to apply the latest value.
 	close(block)
 	blockClosed = true
-	waitForUpdateCond(t, g, 10000, func() bool { return last == g.drum.BPM() })
-	if last != g.drum.BPM() {
-		t.Fatalf("expected audio BPM %d, got %d", g.drum.BPM(), last)
+	waitForUpdateCond(t, g, 10000, func() bool { return last.Load() == int64(g.drum.BPM()) })
+	if got := last.Load(); got != int64(g.drum.BPM()) {
+		t.Fatalf("expected audio BPM %d, got %d", g.drum.BPM(), got)
 	}
 }

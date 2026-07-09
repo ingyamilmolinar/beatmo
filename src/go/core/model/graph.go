@@ -11,6 +11,8 @@ type Graph struct {
 	beatLengthValue int    // Desired length of the beat row
 	logger          *game_log.Logger
 	onNodeChanged   func(NodeID)
+	Groups          map[GroupID]*NodeGroup
+	onGroupChanged  func(GroupID)
 }
 
 func NewGraph(logger *game_log.Logger) *Graph {
@@ -22,6 +24,7 @@ func NewGraph(logger *game_log.Logger) *Graph {
 		StartNodeID:     InvalidNodeID, // Initialize with an invalid ID
 		beatLengthValue: 16,            // Default beat length
 		logger:          logger,
+		Groups:          map[GroupID]*NodeGroup{},
 	}
 }
 
@@ -51,6 +54,7 @@ func (g *Graph) RemoveNode(id NodeID) {
 			delete(g.Edges, k)
 		}
 	}
+	g.removeNodeFromAllGroups(id)
 	g.logger.Debugf("[graph] Removed node: %d at (%d, %d)", id, n.I, n.J)
 	if g.onNodeChanged != nil {
 		g.onNodeChanged(id)

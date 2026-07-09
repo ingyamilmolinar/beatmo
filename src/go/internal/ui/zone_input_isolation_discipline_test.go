@@ -199,10 +199,10 @@ func TestTabIsolation_OnlyActiveTabPublishes(t *testing.T) {
 // opener-coverage discipline test below.
 func assertNoTransientOverlayAfterSwitch(t *testing.T, dv *DrumView, ctx string) {
 	t.Helper()
-	if dv.tree != nil && dv.tree.Portal().IsOpen() {
-		t.Fatalf("%s: a portal overlay (top=%q) survived — it can swallow input on the new view", ctx, dv.tree.Portal().TopID())
+	if dv.tree != nil && dv.portal().IsOpen() {
+		t.Fatalf("%s: a portal overlay (top=%q) survived — it can swallow input on the new view", ctx, dv.portal().TopID())
 	}
-	if dv.tree != nil && dv.tree.Portal().HasModal() {
+	if dv.tree != nil && dv.portal().HasModal() {
 		t.Fatalf("%s: a MODAL portal survived — it blocks ALL input on the new view", ctx)
 	}
 	if dv.saveAsDialog != nil {
@@ -265,7 +265,7 @@ func TestTabIsolation_SwitchResetsTransientState(t *testing.T) {
 			if dv.saveAsDialog == nil {
 				t.Fatal("precondition: Save-As dialog did not open")
 			}
-			if !dv.tree.Portal().HasModal() {
+			if !dv.portal().HasModal() {
 				t.Fatal("precondition: modal naming portal did not open")
 			}
 

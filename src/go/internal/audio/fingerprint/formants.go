@@ -78,14 +78,19 @@ func computeSpectralEnvelope(w wave.Wave, cfg AnalysisConfig) SpectralEnvelope {
 	}
 
 	// 3. Real-cepstrum liftering via DCT-II (forward) + zero high quefrencies + inverse DCT.
-	// Forward DCT-II of logMag → cepstrum coefficients.
-	cep := make([]float64, numBins)
-	dctII(logMag, cep)
-
-	// Zero out high-quefrency coefficients (liftering: keep 0..cepLifterN-1).
-	for i := cepLifterN; i < numBins; i++ {
-		cep[i] = 0
+	// Forward DCT-II of logMag → cepstrum coefficients. Only the first cepLifterN
+	// coefficients survive liftering (the inverse pass below reads at most
+	// cepLifterN of them), so compute exactly those and skip the ~99% of
+	// quefrencies that would immediately be zeroed. dctII computes len(cep)
+	// independent outputs, so a shorter cep yields bit-identical low
+	// coefficients at O(numBins·cepLifterN) instead of O(numBins²) cos calls —
+	// the DCT was the dominant cost of the whole fingerprint (see FromWave).
+	keep := cepLifterN
+	if keep > numBins {
+		keep = numBins
 	}
+	cep := make([]float64, keep)
+	dctII(logMag, cep)
 
 	// Inverse DCT-II (= DCT-III scaled): reconstruct smooth log-envelope.
 	// IDCT-II(x)[n] = (x[0] + 2*sum_{k=1}^{N-1} x[k]*cos(pi/N*(n+0.5)*k)) / N

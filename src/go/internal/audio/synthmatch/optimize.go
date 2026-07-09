@@ -38,17 +38,35 @@ func Match(instID string, ref wave.Wave, budget, restarts int) (Result, error) {
 
 	// Step 2: build reference fingerprint, detect pitch, determine sr/dur.
 	refFP := fingerprint.FromWave(ref, "ref")
-	f0 := fingerprint.DetectF0(ref)
-	pitch := 0.0
-	if f0 > 0 {
-		pitch = 12 * math.Log2(f0/220)
-	}
 	sr := ref.SampleRate
 	if sr == 0 {
 		sr = 44100
 	}
 	dur := ref.Duration()
 	// dur<=0 means use instrument default (resolveRender handles <=0 → instrument default)
+
+	// Detect the reference pitch and translate it into a render-pitch for the
+	// candidate. Naively `12*log2(f0/220)` assumes the synth emits exactly
+	// 220 Hz at pitch 0, but the modular voices carry a small fixed detune
+	// (e.g. sax renders ~221.35 Hz at pitch 0). Feeding the detected f0 through
+	// the ideal-220 formula then re-applies that detune on top of the voice's
+	// own, so the candidate renders a fraction of a semitone sharp relative to
+	// the reference — a systematic pitch mismatch that dominates the spectral
+	// fingerprint distance and biases every other tuned parameter (a filter
+	// sweep's loss minimum lands well off the true cutoff). Calibrate instead
+	// against the synth's OWN pitch-0 output so the candidate reproduces the
+	// reference's measured f0 in the voice's own tuning frame.
+	f0 := fingerprint.DetectF0(ref)
+	pitch := 0.0
+	if f0 > 0 {
+		baseF0 := 220.0
+		if probe, perr := RenderWithParams(instID, 0, sr, dur, nil); perr == nil {
+			if pf0 := fingerprint.DetectF0(probe); pf0 > 0 {
+				baseF0 = pf0
+			}
+		}
+		pitch = 12 * math.Log2(f0/baseF0)
+	}
 
 	// Build merged defaults for the start point.
 	recipeID := audio.RecipeForInstrument(instID)

@@ -96,6 +96,7 @@ type densityValues struct {
 	SynthKnobMin           int // densities.synthKnobMin
 	SynthPreviewMinW       int // densities.synthPreviewMinW
 	SynthPreviewTargetW    int // densities.synthPreviewTargetW
+	SynthRightCardMinH     int // densities.synthRightCardMinH
 	SynthSectionMinH       int // densities.synthSectionMinH
 	TimelineBarH           int // densities.timelineBarH
 	TransportBtnSize       int // densities.transportBtnSize
@@ -188,6 +189,7 @@ var (
 		SynthKnobMin:           28,
 		SynthPreviewMinW:       160,
 		SynthPreviewTargetW:    280,
+		SynthRightCardMinH:     40,
 		SynthSectionMinH:       72,
 		TimelineBarH:           12,
 		TransportBtnSize:       32,
@@ -278,6 +280,7 @@ var (
 		SynthKnobMin:           24,
 		SynthPreviewMinW:       140,
 		SynthPreviewTargetW:    240,
+		SynthRightCardMinH:     34,
 		SynthSectionMinH:       56,
 		TimelineBarH:           10,
 		TransportBtnSize:       28,
@@ -368,6 +371,7 @@ var (
 		SynthKnobMin:           40,
 		SynthPreviewMinW:       180,
 		SynthPreviewTargetW:    320,
+		SynthRightCardMinH:     44,
 		SynthSectionMinH:       96,
 		TimelineBarH:           14,
 		TransportBtnSize:       44,

@@ -2,13 +2,13 @@
   "version": 1,
   "subdiv": 8,
   "bpm": 120,
-  "master_volume": 0.81,
+  "master_volume": 0.72,
   "instruments": [
     {
       "name": "Dnb Kick",
       "id": "dnb-kick",
       "kind": "builtin",
-      "volume": 1,
+      "volume": 0.7,
       "origin": 0,
       "color": "#EE00DDFF",
       "eq": {
@@ -76,7 +76,7 @@
       "name": "Snare",
       "id": "snare",
       "kind": "builtin",
-      "volume": 0.81,
+      "volume": 0.57,
       "origin": 3,
       "color": "#00C8E0FF",
       "eq": {
@@ -157,7 +157,7 @@
       "name": "Hihat 1",
       "id": "hihat-1",
       "kind": "builtin",
-      "volume": 1,
+      "volume": 0.7,
       "origin": 6,
       "color": "#FFD319FF",
       "eq": {
@@ -226,7 +226,7 @@
       "name": "Clap",
       "id": "clap",
       "kind": "builtin",
-      "volume": 0.69,
+      "volume": 0.48,
       "origin": 13,
       "color": "#A030FFFF",
       "eq": {
@@ -298,7 +298,7 @@
       "name": "Shaker",
       "id": "shaker",
       "kind": "builtin",
-      "volume": 0.06,
+      "volume": 0.12,
       "origin": 20,
       "color": "#3FD67AFF",
       "eq": {
@@ -369,7 +369,7 @@
       "name": "Organ Church",
       "id": "organ-church",
       "kind": "builtin",
-      "volume": 0.53,
+      "volume": 0.37,
       "origin": 46,
       "color": "#3A6AF0FF",
       "eq": {
@@ -1135,16 +1135,16 @@
   ],
   "eq": {
     "gains_db": [
-      -8,
-      -8,
-      -8,
-      -6,
-      -3,
-      -0.4,
-      2.1,
-      0.8,
-      1.5,
-      0.4
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
     ],
     "bands_hz": [
       [

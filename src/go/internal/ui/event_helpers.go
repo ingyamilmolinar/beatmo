@@ -77,6 +77,30 @@ func emitNodeParamsChanged(id model.NodeID, p model.NodeParams) {
 	recordUndo(hooks.EventNodeParamsChanged)
 }
 
+// emitGroupCreated publishes EventGroupCreated and records the undo step.
+func emitGroupCreated(id model.GroupID, name string, nodeIDs []model.NodeID) {
+	nodes := make([]int, 0, len(nodeIDs))
+	for _, n := range nodeIDs {
+		nodes = append(nodes, int(n))
+	}
+	hooks.PublishWithSource(hooks.EventGroupCreated, hooks.GroupPayload{
+		ID: int(id), Name: name, Nodes: nodes,
+	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventGroupCreated)
+}
+
+// emitGroupChanged publishes EventGroupChanged (rename/membership/rules).
+func emitGroupChanged(id model.GroupID) {
+	hooks.PublishWithSource(hooks.EventGroupChanged, hooks.GroupPayload{ID: int(id)}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventGroupChanged)
+}
+
+// emitGroupDeleted publishes EventGroupDeleted.
+func emitGroupDeleted(id model.GroupID) {
+	hooks.PublishWithSource(hooks.EventGroupDeleted, hooks.GroupPayload{ID: int(id)}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventGroupDeleted)
+}
+
 // emitStartNodeChanged publishes EventStartNodeChanged when a row's
 // origin node is reassigned.
 func emitStartNodeChanged(row int, id model.NodeID) {

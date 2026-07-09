@@ -1,6 +1,9 @@
 package analyzer
 
-import "sync/atomic"
+import (
+	"math"
+	"sync/atomic"
+)
 
 // RingBuffer is a single-producer, single-consumer (SPSC) circular buffer
 // for float64 samples. It uses monotonically increasing atomic counters for
@@ -9,8 +12,15 @@ import "sync/atomic"
 //
 // The producer calls Write, which overwrites the oldest data on overflow
 // (never blocks). The consumer calls Read, which drains available samples.
+//
+// Because Write overwrites the oldest slots on overflow, the producer can
+// legitimately clobber a physical slot the consumer is mid-read on (the ring
+// is lossy by design — see Write). Each slot is therefore stored as an
+// atomic.Uint64 (float64 bits) so those unavoidable overlapping accesses are
+// well-defined instead of a data race; the consumer may still observe a
+// newer-generation value in an overflowed slot, which the doc contract allows.
 type RingBuffer struct {
-	buf  []float64
+	buf  []atomic.Uint64
 	cap  int64
 	wPos atomic.Int64 // monotonic write position (total samples written)
 	rPos atomic.Int64 // monotonic read position (total samples consumed)
@@ -23,7 +33,7 @@ func NewRingBuffer(capacity int) *RingBuffer {
 		capacity = 1
 	}
 	return &RingBuffer{
-		buf: make([]float64, capacity),
+		buf: make([]atomic.Uint64, capacity),
 		cap: int64(capacity),
 	}
 }
@@ -48,9 +58,11 @@ func (r *RingBuffer) Write(data []float64) {
 
 	wPos := r.wPos.Load()
 
-	// Copy data into the circular buffer using modular indexing.
+	// Copy data into the circular buffer using modular indexing. Each slot
+	// is written atomically so an overflow that clobbers a slot the consumer
+	// is reading stays well-defined rather than a data race.
 	for i := int64(0); i < n; i++ {
-		r.buf[(wPos+i)%cap] = data[i]
+		r.buf[(wPos+i)%cap].Store(math.Float64bits(data[i]))
 	}
 
 	newWPos := wPos + n
@@ -83,7 +95,7 @@ func (r *RingBuffer) Read(dst []float64) int {
 
 	cap := r.cap
 	for i := int64(0); i < n; i++ {
-		dst[i] = r.buf[(rPos+i)%cap]
+		dst[i] = math.Float64frombits(r.buf[(rPos+i)%cap].Load())
 	}
 
 	r.rPos.Store(rPos + n)

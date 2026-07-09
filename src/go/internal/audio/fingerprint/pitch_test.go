@@ -49,6 +49,82 @@ func TestDetectF0_DominantSecondHarmonic(t *testing.T) {
 	}
 }
 
+func TestDetectF0_RichWeakFundamental(t *testing.T) {
+	// Baritone-sax B2 signature (measured from 360251__mtg__sax-baritone-c3):
+	// a FULL 12-harmonic series whose fundamental is ~7 dB below the dominant
+	// H2, with H3 nearly as strong. The 6-harmonic octave-guard coverage count
+	// ties (both f0 and 2f0 cover 6/6), and the k1Mag tiebreak then picks the
+	// louder 2nd harmonic — an octave-up error. The odd harmonics (1,3,5,…×f0)
+	// are strong and CANNOT be explained by the 2f0 candidate; the detector
+	// must use that evidence and return f0.
+	sr := 48000
+	n := int(1.5 * float64(sr))
+	f0 := 122.8
+	amps := []float64{0.45, 1.0, 0.92, 0.55, 0.40, 0.64, 0.33, 0.19, 0.23, 0.32, 0.16, 0.14}
+	s := make([]float64, n)
+	for i := range s {
+		tsec := float64(i) / float64(sr)
+		for k, a := range amps {
+			s[i] += 0.2 * a * math.Sin(2*math.Pi*f0*float64(k+1)*tsec)
+		}
+	}
+	got := DetectF0(wave.Wave{Samples: s, SampleRate: sr})
+	if math.Abs(got-f0) > f0*0.05 {
+		t.Errorf("F0=%.1f want ~%.1f (rich weak-fundamental reed spectrum must not octave-up)", got, f0)
+	}
+}
+
+func TestDetectF0_RichWeakFundamental_H3Lock(t *testing.T) {
+	// The synth-sax render variant of the octave error: H2 and H3 nearly EQUAL
+	// (both ~2× the fundamental). YIN's median can lock onto the H3 period and
+	// the k1Mag tiebreak then keeps 3×f0. The f0 candidate (= detected/3) is
+	// fully evidenced by the in-between harmonics (1×, 2×, 4× of f0) which the
+	// 3f0 comb cannot explain.
+	sr := 48000
+	n := int(1.5 * float64(sr))
+	f0 := 122.8
+	amps := []float64{0.55, 1.0, 0.99, 0.68, 0.40, 0.69, 0.34, 0.24, 0.17, 0.17, 0.20, 0.24, 0.27, 0.31, 0.32, 0.31}
+	s := make([]float64, n)
+	for i := range s {
+		tsec := float64(i) / float64(sr)
+		for k, a := range amps {
+			s[i] += 0.15 * a * math.Sin(2*math.Pi*f0*float64(k+1)*tsec)
+		}
+	}
+	got := DetectF0(wave.Wave{Samples: s, SampleRate: sr})
+	if math.Abs(got-f0) > f0*0.05 {
+		t.Errorf("F0=%.1f want ~%.1f (equal-H2/H3 reed spectrum must not lock onto H3)", got, f0)
+	}
+}
+
+func TestDetectF0_SubOctaveLayerDoesNotHalve(t *testing.T) {
+	// The shipped cello (bowed waveguide + sub-octave gen layer) at D2 contains
+	// a REAL half-grid series (73.4 Hz at ~36% of the fundamental, plus
+	// period-doubling components at 1.5×/2.5×f0 at 70-83%) — but the note IS
+	// D2. The odd-harmonic evidence check must not halve: the sub-grid's odd
+	// teeth carry clearly less energy than its even teeth (ratio ~0.38 vs the
+	// bari sax's ~0.75 for a true weak fundamental).
+	sr := 48000
+	n := int(1.5 * float64(sr))
+	f0 := 146.8
+	s := make([]float64, n)
+	type comp struct{ hz, a float64 }
+	comps := []comp{
+		{f0 * 0.5, 0.36}, {f0, 1.0}, {f0 * 1.5, 0.70}, {f0 * 2, 0.77},
+		{f0 * 2.5, 0.83}, {f0 * 3, 1.52}, {f0 * 3.5, 0.43}, {f0 * 4, 0.60},
+	}
+	for i := range s {
+		tsec := float64(i) / float64(sr)
+		for _, c := range comps {
+			s[i] += 0.1 * c.a * math.Sin(2*math.Pi*c.hz*tsec)
+		}
+	}
+	got := DetectF0(wave.Wave{Samples: s, SampleRate: sr})
+	if math.Abs(got-f0) > f0*0.09 && math.Abs(got-2*f0) > 2*f0*0.09 {
+		t.Errorf("F0=%.1f want ~%.1f (sub-octave layer must not force a halving)", got, f0)
+	}
+}
+
 func TestDetectF0_Vibrato(t *testing.T) {
 	sr := 44100
 	// mk generates a vibrato waveform using proper phase accumulation (matching

@@ -99,7 +99,7 @@ func TestSamplerKnobPressOpensWheelOnMobile(t *testing.T) {
 	if !dv.samplerWheelPopup.IsOpen() {
 		t.Fatal("mobile knob press did not open the sampler wheel popup")
 	}
-	if dv.tree == nil || !dv.tree.Portal().Has("sampler-wheel-popup") {
+	if dv.tree == nil || !dv.portal().Has("sampler-wheel-popup") {
 		t.Fatal("sampler wheel popup did not open as a portal entry")
 	}
 }
@@ -139,11 +139,12 @@ func TestSamplerKnobPressDesktopNoPopup(t *testing.T) {
 	}
 }
 
-// TestSamplerWheelPopupDragChangesValueAndCommitsOnce opens the popup for the
-// gain knob, drags the barrel, and asserts the knob value changed (OnChange →
-// applySamplerKnob) and exactly one undo step was recorded on release (OnCommit
-// → commitSamplerEdit) — one undo step per gesture, matching the rotary path.
-func TestSamplerWheelPopupDragChangesValueAndCommitsOnce(t *testing.T) {
+// TestSamplerWheelPopupDragChangesValueAndCommitsOnAccept opens the popup for
+// the gain knob, drags the barrel, and asserts the knob value changed (OnChange
+// → applySamplerKnob) live but that the single undo step is recorded on Accept
+// (OnCommit → commitSamplerEdit), NOT on drag release — the transactional model
+// (Enter / tap-away persists; Esc reverts). One undo step per accepted edit.
+func TestSamplerWheelPopupDragChangesValueAndCommitsOnAccept(t *testing.T) {
 	g, _ := newMobileSamplerWheelGame(t)
 	dv := g.drum
 	idx := samplerKnobGain
@@ -169,14 +170,19 @@ func TestSamplerWheelPopupDragChangesValueAndCommitsOnce(t *testing.T) {
 	}
 	gap := Profile().DensityValues().MobileWheelTickGap
 	w.HandleInput(cx, py, true)         // press
-	w.HandleInput(cx, py-gap*20, true)  // drag up = increase
-	w.HandleInput(cx, py-gap*20, false) // release → commit
+	w.HandleInput(cx, py+gap*20, true)  // drag down = increase (live preview)
+	w.HandleInput(cx, py+gap*20, false) // release → NO commit (deferred)
 
 	if k.Value <= valBefore {
-		t.Fatalf("wheel drag up did not increase the knob value: %.4f -> %.4f", valBefore, k.Value)
+		t.Fatalf("wheel drag down did not increase the knob value: %.4f -> %.4f", valBefore, k.Value)
 	}
+	if steps := len(g.undoManager.undo) - depth0; steps != 0 {
+		t.Fatalf("drag release recorded %d undo steps, want 0 (commit is deferred to Accept)", steps)
+	}
+
+	w.Accept() // Enter / tap-away persists → exactly one undo step
 	if steps := len(g.undoManager.undo) - depth0; steps != 1 {
-		t.Fatalf("wheel drag recorded %d undo steps, want exactly 1", steps)
+		t.Fatalf("Accept recorded %d undo steps, want exactly 1", steps)
 	}
 }
 
@@ -264,7 +270,7 @@ func TestSamplerWheelPopupClickOutsideCloses(t *testing.T) {
 	if dv.samplerWheelPopup.IsOpen() {
 		t.Fatal("click outside should close the sampler wheel popup")
 	}
-	if dv.tree.Portal().Has("sampler-wheel-popup") {
+	if dv.portal().Has("sampler-wheel-popup") {
 		t.Fatal("portal should drop the sampler-wheel-popup entry after click-outside")
 	}
 }

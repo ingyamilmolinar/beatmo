@@ -39,6 +39,12 @@ type exportFile struct {
 	// future work; the InsertChain field on each kit round-trips through
 	// JSON so kits authored today survive the rollout.
 	Kits []audio.Kit `json:"kits,omitempty"`
+	// Groups carries node groups (batch pitch/volume/duration rules across a
+	// set of nodes). Additive + omitempty: legacy files without groups stay
+	// byte-identical. Invisible nodes are never exported, so group members
+	// are filtered to exported node ids; a group left empty after filtering
+	// is dropped.
+	Groups []exportGroup `json:"groups,omitempty"`
 }
 
 type exportInstrument struct {
@@ -135,6 +141,24 @@ func decodeSamplePCM(p *exportSamplePCM) ([]float32, int, bool) {
 		pcm[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[i*4:]))
 	}
 	return pcm, p.SampleRate, true
+}
+
+// exportGroupRule mirrors model.GroupRule for JSON persistence.
+type exportGroupRule struct {
+	Param     string  `json:"param"`
+	Delta     float64 `json:"delta"`
+	EveryN    int     `json:"every_n"`
+	Min       float64 `json:"min,omitempty"`
+	Max       float64 `json:"max,omitempty"`
+	AnchorIdx int     `json:"anchor_idx,omitempty"`
+}
+
+// exportGroup mirrors model.NodeGroup for JSON persistence.
+type exportGroup struct {
+	ID      int               `json:"id"`
+	Name    string            `json:"name,omitempty"`
+	NodeIDs []int             `json:"node_ids"`
+	Rules   []exportGroupRule `json:"rules,omitempty"`
 }
 
 type exportNode struct {
@@ -425,6 +449,31 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		}
 		nodes = append(nodes, en)
 	}
+	// Node groups. Invisible nodes are not exported, so filter members to
+	// exported node ids; a group that empties after filtering is skipped.
+	exportedID := make(map[int]bool, len(nodes))
+	for _, en := range nodes {
+		exportedID[en.ID] = true
+	}
+	groups := make([]exportGroup, 0)
+	for _, grp := range g.AllGroups() {
+		eg := exportGroup{ID: int(grp.ID), Name: grp.Name}
+		for _, n := range grp.NodeIDs {
+			if exportedID[int(n)] {
+				eg.NodeIDs = append(eg.NodeIDs, int(n))
+			}
+		}
+		if len(eg.NodeIDs) == 0 {
+			continue
+		}
+		for _, r := range grp.Rules {
+			eg.Rules = append(eg.Rules, exportGroupRule{
+				Param: string(r.Param), Delta: r.Delta, EveryN: r.EveryN, Min: r.Min, Max: r.Max,
+				AnchorIdx: r.AnchorIdx,
+			})
+		}
+		groups = append(groups, eg)
+	}
 	insts := make([]exportInstrument, 0, len(dv.Rows))
 	for _, r := range dv.Rows {
 		kind := kindForID(r.Instrument)
@@ -551,7 +600,7 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 		}
 		insts = append(insts, ei)
 	}
-	file := exportFile{Version: 1, Subdiv: currentMaxDiv(), BPM: dv.BPM(), Instruments: insts, Nodes: nodes}
+	file := exportFile{Version: 1, Subdiv: currentMaxDiv(), BPM: dv.BPM(), Instruments: insts, Nodes: nodes, Groups: groups}
 	// Phase 6: embed every registered kit. KitsForExport returns a
 	// defensive copy; the field stays omitempty so projects with no
 	// kits round-trip identically to the pre-Phase-6 shape.

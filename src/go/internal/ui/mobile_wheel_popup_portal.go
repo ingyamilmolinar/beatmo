@@ -42,6 +42,22 @@ func (o *mobileWheelPopupPortalOverlay) HitAreas() []HitArea {
 func (o *mobileWheelPopupPortalOverlay) Draw(screen *ebiten.Image) { o.popup.Draw(screen) }
 func (o *mobileWheelPopupPortalOverlay) ShouldClose() bool         { return !o.popup.IsOpen() }
 
+// HandleEscape (portalEscapeHandler) cancels the edit — reverting the value to
+// the snapshot taken at Open — then returns false so handleEscape's universal
+// CloseTop still removes the portal entry (and fires OnClose). Esc discards.
+func (o *mobileWheelPopupPortalOverlay) HandleEscape() bool {
+	o.popup.Cancel()
+	return false
+}
+
+// HandleEnter (portalEnterHandler) accepts the edit — persisting it with one
+// undo step — and closes. Returns true (consumed); the now-closed popup is
+// removed by OverlayPortal.CleanupClosed next frame (ShouldClose()==true).
+func (o *mobileWheelPopupPortalOverlay) HandleEnter() bool {
+	o.popup.Accept()
+	return true
+}
+
 // mobileWheelHitHandler routes HitHandler events to a MobileWheelPopup.
 type mobileWheelHitHandler struct{ popup *MobileWheelPopup }
 
@@ -71,7 +87,8 @@ type mobileWheelAnchorCloseHandler struct{ popup *MobileWheelPopup }
 
 func (h *mobileWheelAnchorCloseHandler) OnPress(x, y int) InputResult {
 	if h.popup != nil && h.popup.IsOpen() {
-		h.popup.Close()
+		// Re-tapping the opener is a dismissal, not a cancel — persist the edit.
+		h.popup.Accept()
 	}
 	return InputConsumed
 }

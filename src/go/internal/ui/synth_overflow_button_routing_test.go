@@ -62,7 +62,7 @@ func TestSynthOverflowButtonOpensSheet(t *testing.T) {
 
 	clickGame(g, cx, cy)
 
-	portal := g.drum.audioTree.Portal()
+	portal := g.drum.portal()
 	if portal == nil || !portal.Has("synth-overflow-sheet") {
 		t.Fatalf("tapping the overflow ⋯ button did not open the overflow sheet "+
 			"(portal open=%v) — the footer dispatch mis-routed it to another handler",

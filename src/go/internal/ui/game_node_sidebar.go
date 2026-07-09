@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"math"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -69,8 +68,9 @@ type NodeSidebar struct {
 	closedGuard int // frames to suppress tap-to-create after close
 
 	// Dropdown state
-	logicDropdownOpen  bool
-	grooveDropdownOpen bool
+	logicDropdownOpen    bool
+	grooveDropdownOpen   bool
+	groupAddDropdownOpen bool
 }
 
 // NewNodeSidebar creates a new sidebar attached to the game.
@@ -95,6 +95,7 @@ func (sb *NodeSidebar) Open(node *uiNode) {
 	sb.scroll.ResetTouch()
 	sb.logicDropdownOpen = false
 	sb.grooveDropdownOpen = false
+	sb.groupAddDropdownOpen = false
 	// Reset all sections to collapsed
 	sb.sectionOpen = map[string]bool{}
 	sb.deferredTap.Cancel()
@@ -111,6 +112,55 @@ func (sb *NodeSidebar) Close() {
 	sb.closedGuard = 2
 	sb.btns = make(map[string]*Button)
 	sb.rects = make(map[string]image.Rectangle)
+}
+
+// fireGroupChip closes the sidebar and opens the GroupMenu for gid, anchored
+// at the sidebar's panel origin.
+func (sb *NodeSidebar) fireGroupChip(gid model.GroupID) {
+	g := sb.game
+	panel := sb.rects["panel"]
+	sb.Close()
+	g.groupMenu.OpenAt(gid, panel.Min.X+20, panel.Min.Y+20)
+}
+
+// addToGroup adds the sidebar's current node to group gid via the model API
+// and closes the add dropdown (mirrors closing logic/groove dropdowns on
+// selection). Model errors (e.g. the group vanished mid-frame) are a silent
+// no-op — logged at Debug — no emit, no undo step.
+func (sb *NodeSidebar) addToGroup(gid model.GroupID) {
+	sb.groupAddDropdownOpen = false
+	node := sb.node
+	if node == nil {
+		return
+	}
+	g := sb.game
+	if err := g.graph.AddNodeToGroup(gid, node.ID); err != nil {
+		g.logger.Debugf("[sidebar] AddNodeToGroup(%d, %d): %v", gid, node.ID, err)
+		return
+	}
+	emitGroupChanged(gid)
+}
+
+// removeFromGroup removes the sidebar's current node from group gid via the
+// model API. If the group still exists afterward, emits EventGroupChanged;
+// if removing the last member auto-deleted it (model's
+// RemoveNodeFromGroup), emits EventGroupDeleted instead. Model errors are a
+// silent no-op — logged at Debug — no emit, no undo step.
+func (sb *NodeSidebar) removeFromGroup(gid model.GroupID) {
+	node := sb.node
+	if node == nil {
+		return
+	}
+	g := sb.game
+	if err := g.graph.RemoveNodeFromGroup(gid, node.ID); err != nil {
+		g.logger.Debugf("[sidebar] RemoveNodeFromGroup(%d, %d): %v", gid, node.ID, err)
+		return
+	}
+	if _, ok := g.graph.Group(gid); ok {
+		emitGroupChanged(gid)
+	} else {
+		emitGroupDeleted(gid)
+	}
 }
 
 // IsOpen returns true if the sidebar is visible.
@@ -146,7 +196,7 @@ func (sb *NodeSidebar) Hit(x, y int) bool {
 
 // ExpandAllSections opens all collapsible sections (for tests).
 func (sb *NodeSidebar) ExpandAllSections() {
-	for _, s := range []string{"vol", "pit", "dur", "logic", "groove", "aud", "move"} {
+	for _, s := range []string{"vol", "pit", "dur", "logic", "groove", "aud", "move", "grp"} {
 		sb.sectionOpen[s] = true
 	}
 }
@@ -254,6 +304,12 @@ func (sb *NodeSidebar) layout() {
 			sb.rects["move"] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarBtnH)
 			y += sidebarBtnH + sidebarGap
 		}
+	}
+	// Section: Groups — shown whenever ANY group exists in the graph, not
+	// only when the node itself is a member, so a non-member node can still
+	// discover "Add to group".
+	if len(g.graph.AllGroups()) > 0 {
+		y = sb.layoutGroupSection(y, w, sb.node.ID)
 	}
 
 	// Compute scroll limits via ScrollBehavior
@@ -375,6 +431,68 @@ func (sb *NodeSidebar) layoutGrooveSection(y, w, btnX int) int {
 	return y
 }
 
+// layoutGroupSection lays out the collapsible Groups section:
+//  1. Membership rows — one chip ("grpchip:<gid>", opens the GroupMenu) plus
+//     a compact remove button ("grpdel:<gid>") per group the node currently
+//     belongs to, side by side so neither rect overlaps the other.
+//  2. An "Add to group" row ("grpadd"), shown only when at least one group
+//     exists that the node is NOT a member of; clicking it toggles
+//     groupAddDropdownOpen, which lists those candidates
+//     ("grpaddopt:<gid>").
+//
+// The section header itself ("sec-grp") is laid out unconditionally by the
+// caller's `len(g.graph.AllGroups()) > 0` gate — a non-member node still
+// needs the section to reach "Add to group".
+func (sb *NodeSidebar) layoutGroupSection(y, w int, nodeID model.NodeID) int {
+	sb.rects["sec-grp"] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarSectionH)
+	y += sidebarSectionH
+	if !sb.sectionOpen["grp"] {
+		return y
+	}
+	g := sb.game
+	grpIDs := g.graph.GroupsForNode(nodeID)
+	memberSet := make(map[model.GroupID]bool, len(grpIDs))
+	for _, gid := range grpIDs {
+		memberSet[gid] = true
+	}
+	delW := sidebarIncBtnW
+	for _, gid := range grpIDs {
+		delX := w - sidebarPad - delW
+		sb.rects[fmt.Sprintf("grpchip:%d", gid)] = image.Rect(sidebarPad, y, delX-sidebarGap, y+sidebarBtnH)
+		delY := y + (sidebarBtnH-sidebarIncBtnH)/2
+		sb.rects[fmt.Sprintf("grpdel:%d", gid)] = image.Rect(delX, delY, delX+delW, delY+sidebarIncBtnH)
+		y += sidebarBtnH + sidebarGap
+	}
+
+	hasCandidate := false
+	for _, grp := range g.graph.AllGroups() {
+		if !memberSet[grp.ID] {
+			hasCandidate = true
+			break
+		}
+	}
+	if !hasCandidate {
+		// No candidate left to add to (e.g. the last one was just added) —
+		// the dropdown can't be reachable, so force it closed.
+		sb.groupAddDropdownOpen = false
+		return y
+	}
+	sb.rects["grpadd"] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarBtnH)
+	y += sidebarBtnH + sidebarGap
+	if sb.groupAddDropdownOpen {
+		for _, grp := range g.graph.AllGroups() {
+			if memberSet[grp.ID] {
+				continue
+			}
+			id := fmt.Sprintf("grpaddopt:%d", grp.ID)
+			sb.rects[id] = image.Rect(sidebarPad, y, w-sidebarPad, y+sidebarBtnH)
+			y += sidebarBtnH + 2
+		}
+		y += sidebarGap - 2
+	}
+	return y
+}
+
 // ─── Button wiring ─────────────────────────────────────────────────────────
 
 func (sb *NodeSidebar) wireButtons() {
@@ -420,6 +538,13 @@ func (sb *NodeSidebar) wireButtons() {
 			sb.btns[id].Icon = "plus"
 			sb.btns[id].Text = ""
 			sb.btns[id].IconColor = colTextPrimary
+		} else if strings.HasPrefix(id, "grpdel:") {
+			// Remove-from-group button: same icon language as the +/- steppers
+			// (Icon = "minus"), sized via its own rect (sidebarIncBtnW/H) set
+			// in layoutGroupSection.
+			sb.btns[id].Icon = "minus"
+			sb.btns[id].Text = ""
+			sb.btns[id].IconColor = colTextPrimary
 		}
 	}
 
@@ -427,13 +552,7 @@ func (sb *NodeSidebar) wireButtons() {
 	mk("vol-", "-", func() {
 		if mn, ok := g.graph.GetNodeByID(node.ID); ok {
 			p := mn.Params
-			if p.Volume == 0 {
-				p.Volume = 1
-			}
-			p.Volume -= 0.10
-			if p.Volume < 0 {
-				p.Volume = 0
-			}
+			p.Volume = stepNodeVolume(p.Volume, false)
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
 			emitNodeParamsChanged(node.ID, p)
@@ -442,10 +561,7 @@ func (sb *NodeSidebar) wireButtons() {
 	mk("vol+", "+", func() {
 		if mn, ok := g.graph.GetNodeByID(node.ID); ok {
 			p := mn.Params
-			if p.Volume == 0 {
-				p.Volume = 1
-			}
-			p.Volume += 0.10
+			p.Volume = stepNodeVolume(p.Volume, true)
 			g.graph.SetNodeParams(node.ID, p)
 			g.notifyPredictorNode(node.ID)
 			emitNodeParamsChanged(node.ID, p)
@@ -494,6 +610,7 @@ func (sb *NodeSidebar) wireButtons() {
 		sb.logicDropdownOpen = !sb.logicDropdownOpen
 		if sb.logicDropdownOpen {
 			sb.grooveDropdownOpen = false
+			sb.groupAddDropdownOpen = false
 		}
 	})
 	// Logic dropdown items
@@ -594,6 +711,7 @@ func (sb *NodeSidebar) wireButtons() {
 		sb.grooveDropdownOpen = !sb.grooveDropdownOpen
 		if sb.grooveDropdownOpen {
 			sb.logicDropdownOpen = false
+			sb.groupAddDropdownOpen = false
 		}
 	})
 	// Groove dropdown items
@@ -672,6 +790,83 @@ func (sb *NodeSidebar) wireButtons() {
 		sb.Close()
 		g.moveSkipRelease = true
 	})
+	// Group chips — one per group this node currently belongs to, each
+	// paired with a remove button. Below them, an "Add to group" row +
+	// dropdown for groups the node is NOT a member of (see
+	// layoutGroupSection for the matching geometry).
+	grpIDs := g.graph.GroupsForNode(node.ID)
+	grpIDSet := make(map[model.GroupID]bool, len(grpIDs))
+	for _, gid := range grpIDs {
+		gid := gid
+		grpIDSet[gid] = true
+		label := i18n.T(i18n.KeyGroupMenuTitle)
+		if grp, ok := g.graph.Group(gid); ok && grp.Name != "" {
+			label = grp.Name
+		}
+		mk(fmt.Sprintf("grpchip:%d", gid), label, func() {
+			sb.fireGroupChip(gid)
+		})
+		mk(fmt.Sprintf("grpdel:%d", gid), "", func() {
+			sb.removeFromGroup(gid)
+		})
+	}
+	// "Add to group" row + dropdown of non-member groups. mk()'s own rect
+	// check (layoutGroupSection only creates "grpadd" when a candidate
+	// exists) handles hiding this row the same way "move" hides on mobile —
+	// no extra gating needed here.
+	var nonMemberGroups []model.NodeGroup
+	for _, grp := range g.graph.AllGroups() {
+		if !grpIDSet[grp.ID] {
+			nonMemberGroups = append(nonMemberGroups, grp)
+		}
+	}
+	mk("grpadd", i18n.T(i18n.KeyGroupAddTo), func() {
+		sb.groupAddDropdownOpen = !sb.groupAddDropdownOpen
+		if sb.groupAddDropdownOpen {
+			sb.logicDropdownOpen = false
+			sb.grooveDropdownOpen = false
+		}
+	})
+	if sb.groupAddDropdownOpen {
+		for _, grp := range nonMemberGroups {
+			gid := grp.ID
+			label := grp.Name
+			if label == "" {
+				label = i18n.T(i18n.KeyGroupMenuTitle)
+			}
+			mk(fmt.Sprintf("grpaddopt:%d", gid), label, func() {
+				sb.addToGroup(gid)
+			})
+		}
+	}
+	// Prune stale group buttons: chip/remove for groups the node no longer
+	// belongs to (dynamic-count section, unlike the fixed vol/pit/dur ids
+	// above).
+	for id := range sb.btns {
+		switch {
+		case strings.HasPrefix(id, "grpchip:"):
+			var gid model.GroupID
+			if _, err := fmt.Sscanf(id, "grpchip:%d", &gid); err != nil || !grpIDSet[gid] {
+				delete(sb.btns, id)
+			}
+		case strings.HasPrefix(id, "grpdel:"):
+			var gid model.GroupID
+			if _, err := fmt.Sscanf(id, "grpdel:%d", &gid); err != nil || !grpIDSet[gid] {
+				delete(sb.btns, id)
+			}
+		case strings.HasPrefix(id, "grpaddopt:"):
+			// Dropdown option buttons list NON-member groups (grpIDSet holds
+			// memberships, so it must not gate them). Prune when the dropdown
+			// is closed or the group itself vanished, so rect-less orphans
+			// don't accumulate in sb.btns.
+			var gid model.GroupID
+			if _, err := fmt.Sscanf(id, "grpaddopt:%d", &gid); err != nil || !sb.groupAddDropdownOpen {
+				delete(sb.btns, id)
+			} else if _, exists := sb.game.graph.Group(gid); !exists {
+				delete(sb.btns, id)
+			}
+		}
+	}
 	// Close button
 	{
 		r, ok := sb.rects["close"]
@@ -814,7 +1009,7 @@ func (sb *NodeSidebar) HandleInput(x, y int, pressed bool) InputResult {
 
 	// 9. Section header clicks (only if not suppressed by touch)
 	if !touchSuppressButtons {
-		sections := []string{"vol", "pit", "dur", "logic", "groove", "aud", "move"}
+		sections := []string{"vol", "pit", "dur", "logic", "groove", "aud", "move", "grp"}
 		for _, sec := range sections {
 			r, ok := sb.rects["sec-"+sec]
 			if !ok || r.Empty() {
@@ -871,6 +1066,9 @@ func (sb *NodeSidebar) toggleSection(sec string) {
 	if !sb.sectionOpen["groove"] {
 		sb.grooveDropdownOpen = false
 	}
+	if !sb.sectionOpen["grp"] {
+		sb.groupAddDropdownOpen = false
+	}
 }
 
 // closeDropdownsOutside closes logic/groove dropdowns if click is outside them.
@@ -904,6 +1102,21 @@ func (sb *NodeSidebar) closeDropdownsOutside(x, y int) {
 		}
 		if !inside {
 			sb.grooveDropdownOpen = false
+		}
+	}
+	if sb.groupAddDropdownOpen {
+		inside := false
+		if r, ok := sb.rects["grpadd"]; ok && pt.In(r) {
+			inside = true
+		}
+		for id, r := range sb.rects {
+			if strings.HasPrefix(id, "grpaddopt:") && pt.In(r) {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			sb.groupAddDropdownOpen = false
 		}
 	}
 }
@@ -943,7 +1156,7 @@ func (sb *NodeSidebar) fireTapAt(x, y int) {
 	}
 
 	// Section headers
-	sections := []string{"vol", "pit", "dur", "logic", "groove", "aud", "move"}
+	sections := []string{"vol", "pit", "dur", "logic", "groove", "aud", "move", "grp"}
 	for _, sec := range sections {
 		r, ok := sb.rects["sec-"+sec]
 		if !ok || r.Empty() {
@@ -989,6 +1202,13 @@ func (sb *NodeSidebar) Capturing() bool {
 // buttonOrder returns button ids in z-order (highest first).
 func (sb *NodeSidebar) buttonOrder() []string {
 	order := []string{"close"}
+	if sb.groupAddDropdownOpen {
+		for id := range sb.rects {
+			if strings.HasPrefix(id, "grpaddopt:") {
+				order = append(order, id)
+			}
+		}
+	}
 	if sb.grooveDropdownOpen {
 		for id := range sb.rects {
 			if strings.HasPrefix(id, "groove:") {
@@ -1004,8 +1224,13 @@ func (sb *NodeSidebar) buttonOrder() []string {
 		}
 	}
 	order = append(order, "ln-", "ln+", "lp-", "lp+", "gp-", "gp+")
-	order = append(order, "logic", "grv")
+	order = append(order, "logic", "grv", "grpadd")
 	order = append(order, "vol-", "vol+", "pit-", "pit+", "dur-", "dur+", "aud", "move")
+	for id := range sb.rects {
+		if strings.HasPrefix(id, "grpchip:") || strings.HasPrefix(id, "grpdel:") {
+			order = append(order, id)
+		}
+	}
 	return order
 }
 
@@ -1085,9 +1310,8 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 			if r := sb.rects["vol-"]; !r.Empty() && sb.inViewport(r) {
 				y := r.Min.Y + (sidebarBtnH-StyledTextHeight(RoleCaption))/2
 				DrawTextStyled(dst, i18n.T(i18n.KeyCapVol), sidebarPad+2, y, RoleCaption, colTextSecondary)
-				pct := int(math.Round(volVal * 100))
 				sb.drawBtn(dst, "vol-")
-				sb.drawValuePill(dst, "volval", fmt.Sprintf("%d%%", pct))
+				sb.drawValuePill(dst, "volval", formatNodeVolumeDb(volVal))
 				sb.drawBtn(dst, "vol+")
 			}
 		}
@@ -1102,6 +1326,20 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 				sb.drawBtn(dst, "pit-")
 				sb.drawValuePill(dst, "pitval", fmt.Sprintf("%+d", int(pitVal)))
 				sb.drawBtn(dst, "pit+")
+				// Read-only note chip in the row's left gap: the musical note
+				// this node sounds (empty for percussion). Derived live so it
+				// tracks pitch / synth / sampler edits.
+				if note := g.nodeNoteLabel(sb.node.ID, pitVal); note != "" {
+					if minusR := sb.rects["pit-"]; !minusR.Empty() {
+						cw := StyledTextWidth(note, RoleBody) + 2*sidebarGap
+						cx1 := minusR.Min.X - sidebarGap
+						cx0 := cx1 - cw
+						labelRight := sidebarPad + 2 + StyledTextWidth(i18n.T(i18n.KeyCapPitch), RoleCaption) + sidebarGap
+						if cx0 >= labelRight {
+							drawRecessedPill(dst, image.Rect(cx0, minusR.Min.Y, cx1, minusR.Max.Y), note)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -1253,6 +1491,51 @@ func (sb *NodeSidebar) Draw(dst *ebiten.Image) {
 		}
 	}
 
+	// Groups section — membership chips (reopening the GroupMenu on click,
+	// fireGroupChip) each paired with a remove button, plus an "Add to
+	// group" row + dropdown for groups this node is NOT a member of. Shown
+	// whenever any group exists in the graph (see layout()'s gate), not
+	// only when this node is a member.
+	if len(g.graph.AllGroups()) > 0 {
+		sb.drawSectionHeader(dst, "sec-grp", i18n.T(i18n.KeyGroupMenuTitle), "grp", sepColor, secTextOffY)
+		if sb.sectionOpen["grp"] {
+			grpIDs := g.graph.GroupsForNode(sb.node.ID)
+			for _, gid := range grpIDs {
+				chipID := fmt.Sprintf("grpchip:%d", gid)
+				delID := fmt.Sprintf("grpdel:%d", gid)
+				r := sb.rects[chipID]
+				if r.Empty() || !sb.inViewport(r) {
+					continue
+				}
+				// Tinted with the group's OWN color (groupColor), not the
+				// node's instrument color — each group chip carries the
+				// same color its badge/rings/menu use for that gid.
+				grpStyle := DropdownStyle
+				grpStyle.Fill = blendColor(color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA), g.groupColor(gid), sidebarBtnAccentTint)
+				grpStyle.DrawAnimated(dst, r, false, sb.anim[chipID])
+				label := i18n.T(i18n.KeyGroupMenuTitle)
+				if grp, ok := g.graph.Group(gid); ok && grp.Name != "" {
+					label = grp.Name
+				}
+				DrawTextStyled(dst, label, r.Min.X+sidebarInnerPad, r.Min.Y+(sidebarBtnH-StyledTextHeight(RoleBody))/2, RoleBody, colTextPrimary)
+				sb.drawBtn(dst, delID)
+			}
+			if addRect, ok := sb.rects["grpadd"]; ok && !addRect.Empty() && sb.inViewport(addRect) {
+				addStyle := DropdownStyle
+				addStyle.Fill = blendColor(color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA), color.RGBAModel.Convert(sb.nodeAccent()).(color.RGBA), sidebarBtnAccentTint)
+				addStyle.DrawAnimated(dst, addRect, false, sb.anim["grpadd"])
+				DrawTextStyled(dst, i18n.T(i18n.KeyGroupAddTo), addRect.Min.X+sidebarInnerPad, addRect.Min.Y+(sidebarBtnH-StyledTextHeight(RoleBody))/2, RoleBody, colTextPrimary)
+				if sb.groupAddDropdownOpen {
+					for id := range sb.rects {
+						if strings.HasPrefix(id, "grpaddopt:") {
+							sb.drawDropdownItem(dst, id, false)
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Close button — draw with visible background for discoverability; its
 	// outline carries the node's instrument color like every other control.
 	if btn, ok := sb.btns["close"]; ok && btn != nil {
@@ -1381,9 +1664,11 @@ func (sb *NodeSidebar) sectionBadgeText(sectionID string) string {
 	}
 	switch sectionID {
 	case "vol":
-		pct := int(math.Round(mn.Params.Volume * 100))
-		return fmt.Sprintf("%d%%", pct)
+		return formatNodeVolumeDb(mn.Params.Volume)
 	case "pit":
+		if note := g.nodeNoteLabel(sb.node.ID, mn.Params.Pitch); note != "" {
+			return note
+		}
 		return fmt.Sprintf("%+d", int(mn.Params.Pitch))
 	case "dur":
 		return fmt.Sprintf("%.2fx", mn.Params.Duration)
@@ -1494,7 +1779,6 @@ func (sb *NodeSidebar) drawDropdownItem(dst *ebiten.Image, id string, selected b
 		Label:  b.Text,
 	})
 }
-
 
 // drawValuePill draws a centered value READOUT between the inc/dec stepper
 // keys. In the mechanical-keycap language the steppers are raised keys, so the

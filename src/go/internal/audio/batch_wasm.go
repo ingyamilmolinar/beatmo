@@ -24,6 +24,8 @@ type batchScratch struct {
 	durs    []any
 	whens   []any
 	hasWhen []any
+	rows    []any
+	abss    []any
 }
 
 var batchScratchPool batchScratch
@@ -39,6 +41,8 @@ func (s *batchScratch) ensureLen(n int) {
 		s.durs = make([]any, n)
 		s.whens = make([]any, n)
 		s.hasWhen = make([]any, n)
+		s.rows = make([]any, n)
+		s.abss = make([]any, n)
 		return
 	}
 	s.ids = s.ids[:n]
@@ -47,6 +51,8 @@ func (s *batchScratch) ensureLen(n int) {
 	s.durs = s.durs[:n]
 	s.whens = s.whens[:n]
 	s.hasWhen = s.hasWhen[:n]
+	s.rows = s.rows[:n]
+	s.abss = s.abss[:n]
 }
 
 // PlayBatch dispatches multiple sound requests via a single JS bridge call
@@ -87,6 +93,14 @@ func PlayBatch(reqs []BatchParam) {
 				s.hasWhen[i] = nil
 				s.whens[i] = nil
 			}
+			// Row/Abs: sequencer identity (-1 for fire-and-forget) threaded to
+			// audio.js's timingTraces ring (Stage-D browser emission timing,
+			// parity-timing-sync). Always sent — JS defaults missing/undefined
+			// entries to -1 anyway, but sending explicit -1 keeps both sides
+			// symmetric and avoids relying on sparse-array holes across the
+			// Go->JS bridge.
+			s.rows[i] = r.Row
+			s.abss[i] = r.Abs
 		}
 		jsIDs := js.ValueOf(s.ids)
 		jsVols := js.ValueOf(s.vols)
@@ -94,8 +108,10 @@ func PlayBatch(reqs []BatchParam) {
 		jsDurs := js.ValueOf(s.durs)
 		jsWhens := js.ValueOf(s.whens)
 		jsHasWhen := js.ValueOf(s.hasWhen)
+		jsRows := js.ValueOf(s.rows)
+		jsAbss := js.ValueOf(s.abss)
 		batchScratchPool.mu.Unlock()
-		fnFlat.Invoke(jsIDs, jsVols, jsPitches, jsDurs, jsWhens, jsHasWhen)
+		fnFlat.Invoke(jsIDs, jsVols, jsPitches, jsDurs, jsWhens, jsHasWhen, jsRows, jsAbss)
 		return
 	}
 	fn := js.Global().Get("playSoundsBatch")
@@ -108,6 +124,8 @@ func PlayBatch(reqs []BatchParam) {
 			o.Set("vol", r.Vol)
 			o.Set("pitch", r.Pitch)
 			o.Set("dur", r.Dur)
+			o.Set("row", r.Row)
+			o.Set("abs", r.Abs)
 			if r.HasWhen {
 				o.Set("when", r.When)
 			}

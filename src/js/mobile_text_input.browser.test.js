@@ -1,4 +1,4 @@
-import { chromium, devices } from "playwright";
+import { chromium, webkit, devices } from "playwright";
 import http from "http";
 import fs from "fs";
 import path from "path";
@@ -323,35 +323,139 @@ console.log("Test 6: Proxy input element attributes");
   }
 }
 
-// Test 7: Desktop keyboard still works (regression)
-console.log("Test 7: Desktop keyboard regression");
+// Test 7: Desktop HARDWARE keyboard fully edits a text field on WebKit/Safari.
+//
+// Bug ("click, see the cursor, no key does anything" on Safari): text fields
+// capture keys through the hidden soft-keyboard proxy <input>. Backspace was
+// derived from the proxy's `beforeinput(deleteContentBackward)` event — which
+// WebKit/Safari does NOT fire on an EMPTY input (the proxy is kept empty; the app
+// draws its own text). So a hardware-keyboard user could never clear the prefill
+// and editing was dead. Chromium/Firefox fire beforeinput even when empty, hiding
+// it. Fix (src/js/index.html): buffer Backspace from the proxy KEYDOWN event
+// (fires on every engine, immune to the empty-input quirk AND to short presses
+// that Ebiten's per-frame isKeyPressed would drop).
+//
+// This runs on WEBKIT specifically — chromium can't exhibit the bug. Uses NORMAL
+// (short) key presses, exactly like a user, since that is what was dropped. Skips
+// gracefully if the WebKit browser binary is unavailable.
+console.log("Test 7: Desktop hardware-keyboard edit on WebKit (Safari backspace)");
 {
-  // Use desktop viewport (no mobile emulation)
-  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  let wkBrowser = null;
+  try {
+    try {
+      wkBrowser = await webkit.launch();
+    } catch (e) {
+      console.log(`  SKIP: WebKit unavailable (${e.message.split("\n")[0]})`);
+    }
+    if (wkBrowser) {
+      const context = await wkBrowser.newContext({ viewport: { width: 1280, height: 720 } });
+      const page = await context.newPage();
+      try {
+        await page.goto(`http://localhost:${port}/`);
+        await page.waitForFunction(() =>
+          typeof bpmBoxRect === "function" &&
+          typeof forceDraw === "function" &&
+          typeof getBPM === "function"
+        );
+        await assertSimpleDrawMode(page, false, "desktop text input");
+        await page.evaluate(() => forceDraw?.());
+        await page.waitForTimeout(300);
+
+        const rect = await page.evaluate(() => bpmBoxRect?.());
+        assert(rect && rect.w > 0, "bpmBoxRect empty");
+        const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+        const target = 96;
+
+        // Open + edit end-to-end, retrying the whole cycle until the commit lands.
+        // A quick mouse.click can be missed by the throttled headless rAF loop, so
+        // hold the OPENING press ~400ms. But the KEY PRESSES are NORMAL/short —
+        // that is exactly the input that Safari dropped, and what must now work.
+        let committed = false;
+        for (let attempt = 0; attempt < 6 && !committed; attempt++) {
+          await page.mouse.move(cx, cy);
+          await page.mouse.down();
+          await page.waitForTimeout(420);
+          await page.mouse.up();
+          await page.waitForTimeout(150);
+
+          // Clear the prefill with NORMAL short Backspaces (the dead key on Safari).
+          for (let i = 0; i < 5; i++) { await page.keyboard.press("Backspace"); await page.waitForTimeout(90); }
+          await page.keyboard.type(String(target));
+          await page.waitForTimeout(120);
+          await page.keyboard.press("Enter");
+          await page.waitForTimeout(200);
+          for (let i = 0; i < 5; i++) { await page.evaluate(() => forceDraw?.()); await page.waitForTimeout(40); }
+
+          if ((await page.evaluate(() => getBPM?.())) === target) committed = true;
+        }
+
+        assert(committed,
+          `Safari hardware keyboard could not clear+retype+commit BPM=${target} — ` +
+          `Backspace on the empty proxy was dropped (beforeinput doesn't fire on empty <input> in WebKit)`);
+        console.log("  PASS");
+      } finally {
+        await context.close();
+      }
+    }
+  } catch (e) {
+    console.log(`  FAIL: ${e.message}`);
+  } finally {
+    if (wkBrowser) await wkBrowser.close();
+  }
+}
+
+// Test 7b: MOBILE LAYOUT on a TOUCH-CAPABLE device driven with a MOUSE.
+//
+// THE reported bug: in mobile layout (narrow viewport) on a touch-capable device
+// — a touchscreen laptop, or Chrome DevTools device-mode — a MOUSE click opens a
+// text editor (cursor shows) but no key does anything. The native <input> overlay
+// is created only inside a `touchend` handler; a mouse fires no touchend, so it
+// never appears, and the editor previously gated the native path on device touch
+// CAPABILITY (maxTouchPoints>0, true here) → it sat inert.
+//
+// Fix: gate on the OPENING GESTURE's pointer type (pointerdown pointerType), not
+// capability. A mouse-opened editor uses the buffered keyboard path. This context
+// sets hasTouch:true (maxTouchPoints>0) but interacts with page.mouse, so it
+// reproduces the exact failing combination. Runs on chromium (the shared browser),
+// which exhibited the bug.
+console.log("Test 7b: Mobile-layout + touch-capable device + MOUSE edits BPM");
+{
+  // Narrow viewport => mobile LAYOUT; hasTouch:true => touch-CAPABLE device.
+  const context = await browser.newContext({ viewport: { width: 414, height: 896 }, hasTouch: true });
   const page = await context.newPage();
   try {
     await page.goto(`http://localhost:${port}/`);
     await page.waitForFunction(() =>
-      typeof bpmBoxRect === "function" &&
-      typeof forceDraw === "function" &&
-      typeof getBPM === "function"
+      typeof bpmBoxRect === "function" && typeof forceDraw === "function" && typeof getBPM === "function"
     );
-    await assertSimpleDrawMode(page, false, "desktop text input");
+    await assertSimpleDrawMode(page, false, "mobile-layout mouse");
     await page.evaluate(() => forceDraw?.());
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
 
     const rect = await page.evaluate(() => bpmBoxRect?.());
     assert(rect && rect.w > 0, "bpmBoxRect empty");
+    const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2;
+    const target = 77;
 
-    // Click BPM box with mouse
-    await page.mouse.click(rect.x + rect.w / 2, rect.y + rect.h / 2);
-    await page.waitForTimeout(200);
-    await page.evaluate(() => forceDraw?.());
-
-    // On desktop, the proxy should NOT be focused (isSmallScreen returns false)
-    const focused = await page.evaluate(() => kbProxyFocused?.());
-    assert(focused === false, `Expected proxy NOT focused on desktop, got ${focused}`);
-
+    // Open with a MOUSE (hold so the throttled rAF loop sees it) + NORMAL keys.
+    let committed = false;
+    for (let attempt = 0; attempt < 6 && !committed; attempt++) {
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.waitForTimeout(420);
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+      for (let i = 0; i < 5; i++) { await page.keyboard.press("Backspace"); await page.waitForTimeout(90); }
+      await page.keyboard.type(String(target));
+      await page.waitForTimeout(120);
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(200);
+      for (let i = 0; i < 5; i++) { await page.evaluate(() => forceDraw?.()); await page.waitForTimeout(40); }
+      if ((await page.evaluate(() => getBPM?.())) === target) committed = true;
+    }
+    assert(committed,
+      `mobile-layout + touch-capable + MOUSE: hardware keyboard could not edit BPM to ${target} — ` +
+      `the mobile native-<input> path was taken but no touchend created the input (should use the keyboard path)`);
     console.log("  PASS");
   } catch (e) {
     console.log(`  FAIL: ${e.message}`);

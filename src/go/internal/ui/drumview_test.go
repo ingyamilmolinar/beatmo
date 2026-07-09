@@ -1756,7 +1756,10 @@ func TestInstrumentCategoryClickKeepsMenuOpenAndIsolated(t *testing.T) {
 		{ID: "snare-cat-1", Name: "Snare Cat 1", Category: "Snare"},
 	})
 	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 260, 220), graph, logger)
+	// Tall enough for the categories view's title band + GLOBAL SEARCH row +
+	// at least two category rows (the global search bar consumes one row of
+	// vertical space that this fixture's original 220px height did not have).
+	dv := NewDrumView(image.Rect(0, 0, 260, 360), graph, logger)
 	dv.instMenuForceCategories = true
 	dv.instMenuShowFavoritesCategory = false
 	dv.calcLayout()
@@ -2436,15 +2439,15 @@ func TestInstrumentMenuScrollsToCurrentInstrument(t *testing.T) {
 
 func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelError)
-	var metas []audio.SoundMeta
-	for i := 0; i < 12; i++ {
-		metas = append(metas, audio.SoundMeta{
-			ID:       fmt.Sprintf("cat-%02d", i),
-			Name:     "C",
-			Category: fmt.Sprintf("Cat-%02d", i),
-		})
-	}
-	withAudioCatalog(t, metas)
+	// Categories are derived from the taxonomy — audio.Categories() filtered to
+	// the categories that own at least one instrument, keyed by CategoryOf() —
+	// NOT from the legacy SoundMeta.Category string, which the taxonomy refactor
+	// stopped consulting. The default kit spans well over four categories, so
+	// the list is scrollable; assert the visible window advances against the
+	// actually-derived list rather than fabricated category names.
+	withDefaultAudio(t)
+	audio.ResetCategoriesForTest() // clean taxonomy baseline (no cross-test custom cats)
+	t.Cleanup(audio.ResetCategoriesForTest)
 
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 260, 240), graph, logger)
@@ -2460,18 +2463,24 @@ func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	if !dv.instMenuHasScroll() {
 		t.Fatalf("expected scrollbar for long category list")
 	}
+	cats := append([]string(nil), dv.instCategories...)
+	if len(cats) < 4 {
+		t.Fatalf("need at least 4 categories to exercise scroll, got %d: %v", len(cats), cats)
+	}
 	if len(dv.instCategoryBtns) == 0 {
 		t.Fatalf("no category buttons")
 	}
+	// Note: the initial visible window is biased to the selected row's category
+	// (buildCategoriesMode's active-category bias), so instCategoryBtns[0] is
+	// not necessarily cats[0]. We only assert the window MOVES on scroll.
 	firstLabel := dv.instCategoryBtns[0].Text
 
 	// Scroll down a few slots through the component (legacy path retired).
 	dv.instMenuComp.SetScrollFirst(3)
 	dv.syncInstMenuScrollFromComp()
-	changed := dv.instMenuScroll.First == 3
 
-	if !changed || dv.instMenuScroll.First != 3 {
-		t.Fatalf("scroll first=%d changed=%v", dv.instMenuScroll.First, changed)
+	if dv.instMenuScroll.First != 3 {
+		t.Fatalf("scroll first=%d, want 3", dv.instMenuScroll.First)
 	}
 	if len(dv.instCategoryBtns) == 0 {
 		t.Fatalf("no category buttons after scroll")
@@ -2479,7 +2488,7 @@ func TestInstrumentCategoriesScrollMovesWindow(t *testing.T) {
 	if dv.instCategoryBtns[0].Text == firstLabel {
 		t.Fatalf("category list did not scroll: first=%q after=%q", firstLabel, dv.instCategoryBtns[0].Text)
 	}
-	if want := "Cat-03"; dv.instCategoryBtns[0].Text != want {
+	if want := cats[3]; dv.instCategoryBtns[0].Text != want {
 		t.Fatalf("expected first visible category %q after scroll, got %q", want, dv.instCategoryBtns[0].Text)
 	}
 }
@@ -2634,9 +2643,9 @@ func TestNameBoxShowsBlinkingCursor(t *testing.T) {
 	defer func() { drawCursor = oldCursor }()
 
 	dst := ebiten.NewImage(320, 220)
-	// Naming overlay now draws through the portal tree.
-	if dv.tree != nil {
-		dv.tree.Draw(dst)
+	// Naming overlay now draws through the global overlay subtree.
+	if dv.overlayTree != nil {
+		dv.overlayTree.Draw(dst)
 	}
 	if calls == 0 {
 		t.Fatalf("expected blinking cursor for manual name input")
@@ -2904,9 +2913,9 @@ func TestVolumeSliderOpensPopup(t *testing.T) {
 	defer restore()
 	dv.Update()
 	// Desktop now opens volume popup instead of inline slider change.
-	// Volume should remain unchanged at the default.
-	if dv.Rows[0].Volume != 1.0 {
-		t.Fatalf("expected volume unchanged at 1.0 after click (popup opens), got %f", dv.Rows[0].Volume)
+	// Volume should remain unchanged at the fresh default (0.5).
+	if dv.Rows[0].Volume != 0.5 {
+		t.Fatalf("expected volume unchanged at 0.5 after click (popup opens), got %f", dv.Rows[0].Volume)
 	}
 }
 

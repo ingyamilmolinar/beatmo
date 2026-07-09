@@ -9,13 +9,14 @@ import (
 )
 
 // wheelValueDrag presses just inside the barrel (not the center band or strip),
-// drags the finger UP by dyUp px in a single move, then releases.
-func wheelValueDrag(w *MobileWheelPopup, dyUp int) {
+// drags the finger DOWN by dyDown px in a single move, then releases. Drag down
+// pulls the higher (top) rows toward the center selector, so it advances the value.
+func wheelValueDrag(w *MobileWheelPopup, dyDown int) {
 	sx := w.valRect.Min.X + 4
 	sy := w.valRect.Min.Y + 4 // above the center band -> value drag, not editor
 	w.HandleInput(sx, sy, true)
-	w.HandleInput(sx, sy-dyUp, true)
-	w.HandleInput(sx, sy-dyUp, false)
+	w.HandleInput(sx, sy+dyDown, true)
+	w.HandleInput(sx, sy+dyDown, false)
 }
 
 // A drag of exactly one notch advances the value by exactly ONE step (StepMul),
@@ -118,7 +119,7 @@ func TestWheelScroll_LargeEventDoesNotFly(t *testing.T) {
 	cy := w.valRect.Min.Y + 4
 
 	start := realValue(k)
-	w.HandleWheel(cx, cy, 12) // one fast two-finger scroll event
+	w.HandleWheel(cx, cy, 12) // one fast two-finger scroll DOWN event (positive int(wy) on target)
 	if moved := realValue(k) - start; moved > 1.0+1e-9 {
 		t.Fatalf("a single scroll event must move at most one step, moved %v", moved)
 	}
@@ -134,7 +135,7 @@ func TestWheelScroll_PacedAcrossEvents(t *testing.T) {
 	cy := w.valRect.Min.Y + 4
 
 	start := realValue(k)
-	w.HandleWheel(cx, cy, 1)
+	w.HandleWheel(cx, cy, 1) // scroll DOWN (positive int(wy) on target) advances the value
 	if realValue(k) != start {
 		t.Fatalf("first scroll event should not yet advance a step (paced); start=%v got=%v", start, realValue(k))
 	}

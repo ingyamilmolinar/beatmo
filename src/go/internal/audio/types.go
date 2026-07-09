@@ -11,4 +11,6 @@ type BatchParam struct {
 	Dur     float64
 	When    float64
 	HasWhen bool
+	Row     int // parity identity (-1 for fire-and-forget)
+	Abs     int
 }

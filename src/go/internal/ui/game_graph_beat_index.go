@@ -4,7 +4,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-func (g *Game) beatInfoAtRow(row, idx int) model.BeatInfo {
+func (s *playbackSlate) beatInfoAtRow(row, idx int) model.BeatInfo {
+	g := s.g
 	if row < 0 || row >= len(g.beatInfosByRow) {
 		return model.BeatInfo{NodeID: model.InvalidNodeID, NodeType: model.NodeTypeInvisible, I: -1, J: -1}
 	}
@@ -29,7 +30,8 @@ func (g *Game) beatInfoAtRow(row, idx int) model.BeatInfo {
 	return infos[idx]
 }
 
-func (g *Game) wrapBeatIndexRow(row, idx int) int {
+func (s *playbackSlate) wrapBeatIndexRow(row, idx int) int {
+	g := s.g
 	if row < 0 || row >= len(g.beatInfosByRow) {
 		return 0
 	}
@@ -55,7 +57,8 @@ func (g *Game) wrapBeatIndexRow(row, idx int) int {
 
 // rowIsAudible reports whether the given drum row is currently audible under
 // mute/solo gating. When any row is soloed, only solo=true rows are audible.
-func (g *Game) rowIsAudible(row int) bool {
+func (s *playbackSlate) rowIsAudible(row int) bool {
+	g := s.g
 	if row < 0 || row >= len(g.drum.Rows) {
 		return false
 	}
@@ -80,7 +83,8 @@ func (g *Game) rowIsAudible(row int) bool {
 
 // playheadFloor returns the smallest nextBeatIdx across rows (or renderOffset
 // when unknown) so parity checks can ignore cells that are already in the past.
-func (g *Game) playheadFloor() int {
+func (s *playbackSlate) playheadFloor() int {
+	g := s.g
 	if g == nil {
 		return 0
 	}
@@ -105,7 +109,8 @@ func (g *Game) playheadFloor() int {
 // globalPastExclusive returns the global "true past" boundary (exclusive) in
 // subdivision units. It is derived from the wall-clock playhead (elapsedBeats)
 // so row-specific counters cannot accidentally freeze future beats.
-func (g *Game) globalPastExclusive() int {
+func (s *playbackSlate) globalPastExclusive() int {
+	g := s.g
 	if g == nil {
 		return 0
 	}
@@ -126,7 +131,8 @@ func (g *Game) globalPastExclusive() int {
 // rowPastExclusive returns the row's "true past" boundary (exclusive) in
 // subdivision units, clamped to the global playhead to prevent stale timeline
 // commits from masking the mutable future.
-func (g *Game) rowPastExclusive(row int) int {
+func (s *playbackSlate) rowPastExclusive(row int) int {
+	g := s.g
 	if g == nil {
 		return 0
 	}
@@ -144,4 +150,28 @@ func (g *Game) rowPastExclusive(row int) int {
 		next = global
 	}
 	return next
+}
+
+func (g *Game) beatInfoAtRow(row, idx int) model.BeatInfo {
+	return g.playbackSlate.beatInfoAtRow(row, idx)
+}
+
+func (g *Game) wrapBeatIndexRow(row, idx int) int {
+	return g.playbackSlate.wrapBeatIndexRow(row, idx)
+}
+
+func (g *Game) rowIsAudible(row int) bool {
+	return g.playbackSlate.rowIsAudible(row)
+}
+
+func (g *Game) playheadFloor() int {
+	return g.playbackSlate.playheadFloor()
+}
+
+func (g *Game) globalPastExclusive() int {
+	return g.playbackSlate.globalPastExclusive()
+}
+
+func (g *Game) rowPastExclusive(row int) int {
+	return g.playbackSlate.rowPastExclusive(row)
 }

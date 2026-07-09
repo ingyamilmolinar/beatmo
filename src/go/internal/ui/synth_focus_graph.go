@@ -5,6 +5,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // synth_focus_graph.go — the Synth tab's right pane.
@@ -24,7 +25,7 @@ import (
 // separates them. When the pane is too short to host a legible mirror, the
 // mirror collapses to empty and the focus band takes the whole rect.
 func splitSynthRightPane(r image.Rectangle) (mirror, focus image.Rectangle) {
-	const minBand = 40
+	minBand := Profile().DensityValues().SynthRightCardMinH
 	if r.Dy() < minBand*2 {
 		return image.Rectangle{}, r
 	}
@@ -40,22 +41,51 @@ func splitSynthRightPane(r image.Rectangle) (mirror, focus image.Rectangle) {
 	return mirror, focus
 }
 
+// splitSynthRightPane3 carves the right pane into three stacked cards:
+// full-note "Your sound" (~30%), "Up close" steady wave (~26%), and the focus
+// graph (~44%, the star). Collapse order when short: "Up close" first (most
+// redundant with the focus graph), then the two-card split's own rules.
+func splitSynthRightPane3(r image.Rectangle) (full, up, focus image.Rectangle) {
+	minBand := Profile().DensityValues().SynthRightCardMinH
+	if r.Dy() < 3*minBand+2 {
+		f, foc := splitSynthRightPane(r)
+		return f, image.Rectangle{}, foc
+	}
+	fullH := r.Dy() * 30 / 100
+	upH := r.Dy() * 26 / 100
+	if fullH < minBand {
+		fullH = minBand
+	}
+	if upH < minBand {
+		upH = minBand
+	}
+	y1 := r.Min.Y + fullH
+	y2 := y1 + 1 + upH
+	full = image.Rect(r.Min.X, r.Min.Y, r.Max.X, y1)
+	up = image.Rect(r.Min.X, y1+1, r.Max.X, y2)
+	focus = image.Rect(r.Min.X, y2+1, r.Max.X, r.Max.Y)
+	return full, up, focus
+}
+
 // synthFocusRenderers maps each param GROUP to the PROPERTY-NATIVE renderer the
-// focus graph draws large. Unlike the (retired) per-knob conceptRenderers — which
-// drew the output wave for every timbre knob — the focus graph shows each knob in
-// its own domain: a filter as a frequency curve, drive as a transfer curve, etc.
-// The grab-bag groups (core/generic/voice) and unknown groups fall back to a
+// focus graph draws large, and is the SINGLE source of truth for group→renderer
+// routing (the old per-knob conceptRenderers table that drew the output wave for
+// every timbre knob is deleted). The focus graph shows each knob in its own
+// domain: a filter as a frequency curve, drive as a transfer curve, etc. The
+// grab-bag groups (core/generic/voice) and unknown groups fall back to a
 // level-scaled output wave so volume/gain/pan changes stay visible.
+// TestEveryRecipeGroupHasExplicitConceptRenderer + TestSynthFocusRenderer_EveryGroupExplicit
+// keep every live recipe group an explicit key here (no silent-fallback absorption).
 var synthFocusRenderers = map[string]conceptRenderer{
 	"osc":      conceptOsc,
 	"filter":   conceptFilter,
 	"env":      conceptEnvelope,
 	"fm":       conceptFM,
-	"post":     conceptPost,
-	"pitch":    conceptMotion,
-	"pitchenv": conceptMotion,
-	"lfo":      conceptMotion,
-	"burst":    conceptMotion,
+	"post":     conceptPostWave,
+	"pitch":    conceptPitchWave,
+	"pitchenv": conceptPitchEnvSweep,
+	"lfo":      conceptLFO,
+	"burst":    conceptBurst,
 	// filtenv (filter envelope) and unison/ensemble have no dedicated domain
 	// curve yet. The level wave is the INTENTIONAL choice (not the silent
 	// fallback): the env's depth/decay and the ensemble's voices/detune/mix all
@@ -65,11 +95,16 @@ var synthFocusRenderers = map[string]conceptRenderer{
 	// kick (the configurable KICK stage): like "core"/"voice", the kick knobs
 	// (harmonics/decay/pitch-drop/punch/tail) all scale the percussive output, so
 	// the level wave keeps the selected knob responsive (no dedicated curve yet).
-	"kick":    conceptFocusLevelWave,
-	"core":    conceptFocusLevelWave,
-	"generic": conceptFocusLevelWave,
-	"voice":   conceptFocusLevelWave,
-	"":        conceptFocusLevelWave,
+	"kick": conceptFocusLevelWave,
+	// Phase-15 voice/choir stages (Task 8): FORMANT (vowel/voice-type/mix/shape)
+	// and RESONATOR (body model/mix/bow dynamics) have no dedicated domain curve
+	// yet either — same intentional level-wave choice as filtenv/unison/kick.
+	"formant":   conceptFocusLevelWave,
+	"resonator": conceptFocusLevelWave,
+	"core":      conceptFocusLevelWave,
+	"generic":   conceptFocusLevelWave,
+	"voice":     conceptFocusLevelWave,
+	"":          conceptFocusLevelWave,
 }
 
 // synthFocusRendererForGroup is TOTAL: every group resolves to a non-nil
@@ -93,7 +128,7 @@ func conceptFocusLevelWave(dst *ebiten.Image, rect image.Rectangle, instID strin
 		return
 	}
 	conceptBgFill(dst, rect)
-	const cycles, pts = 3, 64
+	const cycles, pts = 3, 256
 	wave := audio.RenderInstrumentPreviewWave(instID, nil, cycles, pts)
 	if len(wave) < 2 {
 		return
@@ -179,13 +214,33 @@ func (dv *DrumView) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle,
 	if purpose := synthKnobPurpose(def); purpose != "" {
 		caption = label + " — " + purpose
 	}
-	DrawTextColorAtScale(dst, caption, rect.Min.X+pad, rect.Min.Y+pad/2, colConceptStroke, captionScale)
+	capY := rect.Min.Y + pad/2
+	DrawTextColorAtScale(dst, caption, rect.Min.X+pad, capY, colConceptStroke, captionScale)
+
+	// Before/after legend: only when a ghost (pre-drag) snapshot exists for this
+	// knob, and only when the caption row has room for both — otherwise the
+	// legend would crowd or overlap the caption text.
+	if dv.synthConceptGhost(kIdx) != nil {
+		legend := i18n.T(i18n.KeyCapBeforeAfter)
+		capW := int(float64(TextWidth(caption)) * captionScale)
+		legendW := int(float64(TextWidth(legend)) * captionScale)
+		if capW+legendW+pad*2 <= rect.Dx() {
+			DrawTextColorAtScale(dst, legend, rect.Max.X-pad-legendW, capY, TokenTextSecondary(), captionScale)
+		}
+	}
 
 	graphR := image.Rect(rect.Min.X+pad, rect.Min.Y+pad+captionH, rect.Max.X-pad, rect.Max.Y-pad)
 	if graphR.Dx() < 8 || graphR.Dy() < 10 {
 		return
 	}
 	synthFocusRendererForKnob(def)(dst, graphR, instID, def, dv.synthConceptGhost(kIdx))
+	// Honesty scrim: the picture previews what the knob WOULD do, but when the
+	// stage is off the sound doesn't change — dim the graph and say so.
+	if en, ok := conceptStageEnableParam(def.Group); ok && !synthStageEnabled(instID, en) {
+		drawRect(dst, graphR, WithAlpha(TokenSurface1(), AlphaStrong), true)
+		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapStageOff),
+			graphR.Min.X+SpaceSM, graphR.Max.Y-captionH-2, TokenTextSecondary(), captionScale)
+	}
 }
 
 // isSynthPitchKnob reports whether a knob changes PITCH rather than timbre. The

@@ -30,6 +30,7 @@ const (
 	CatStrings    CategoryID = "strings"
 	CatWoodwind   CategoryID = "woodwind"
 	CatBrass      CategoryID = "brass"
+	CatVoice      CategoryID = "voice"
 	CatLead       CategoryID = "lead"
 	CatOther      CategoryID = "other"
 )
@@ -42,7 +43,7 @@ var (
 		{CatCymbal, "Cymbal"}, {CatTom, "Tom"}, {CatPercussion, "Percussion"},
 		{CatBass, "Bass"}, {CatKeys, "Keys"}, {CatGuitar, "Guitar"},
 		{CatStrings, "Strings"}, {CatWoodwind, "Woodwind"}, {CatBrass, "Brass"},
-		{CatLead, "Lead/Synth"}, {CatOther, "Other"},
+		{CatVoice, "Voice"}, {CatLead, "Lead/Synth"}, {CatOther, "Other"},
 	}
 	// extraCategories holds custom categories registered at runtime.
 	extraCategories []Category
@@ -93,8 +94,21 @@ func AssignCategory(instID string, cat CategoryID) {
 	categoryMu.Unlock()
 }
 
+// ResetCategoriesForTest clears the runtime taxonomy mutations (custom
+// categories registered via RegisterCategory and per-instrument overrides set
+// via AssignCategory), restoring the built-in taxonomy. The built-in order is
+// never mutated, so it needs no reset. Mirrors ResetCatalogForTest /
+// ResetInstruments so tests can inject a synthetic taxonomy and clean up.
+func ResetCategoriesForTest() {
+	categoryMu.Lock()
+	extraCategories = nil
+	categoryAssignments = map[string]CategoryID{}
+	categoryMu.Unlock()
+}
+
 // CategoryOf returns the category for an instrument ID. Order: explicit
-// assignment → recipe-derived → role-heuristic-derived → CatOther.
+// assignment → voice-text pre-check (see below) → recipe-derived →
+// role-heuristic-derived → id-text fallback → CatOther.
 func CategoryOf(id string) CategoryID {
 	if id == "" {
 		return CatOther
@@ -104,6 +118,18 @@ func CategoryOf(id string) CategoryID {
 	categoryMu.RUnlock()
 	if ok {
 		return assigned
+	}
+	// Voice/choir text match wins over recipe/role dispatch: roleHeuristic
+	// (kit.go) has its own generic "bass" substring rule with no voice
+	// awareness, so a hypothetical "voice-bass"-shaped id would hit CatBass
+	// via categoryByRole before ever reaching categoryByText below (the
+	// real voice-bass was renamed to ghost-bass and moved to CatBass on
+	// purpose per the 2026-07-08 ear review — this pre-check no longer
+	// applies to it). This narrow pre-check only short-circuits when the id
+	// itself is voice-flavored; every other id falls through to the
+	// unchanged recipe → role → text precedence.
+	if c, ok := categoryByText(id); ok && c == CatVoice {
+		return c
 	}
 	if c, ok := categoryByRecipe(factoryRecipeForInstrument(id)); ok {
 		return c
@@ -169,11 +195,18 @@ func categoryByText(s string) (CategoryID, bool) {
 		return CatTom, true
 	case strings.Contains(lc, "clap"), strings.Contains(lc, "cowbell"), strings.Contains(lc, "shaker"), strings.Contains(lc, "conga"), strings.Contains(lc, "perc"):
 		return CatPercussion, true
+	// Voice/choir before "bass"/"string"/"lead": a voice-flavored id must hit
+	// Voice, not the bass substring rule below (ghost-bass/viola-pad/
+	// ensemble-lead(-dark) are NOT voice-flavored ids, so they correctly fall
+	// through to the bass/strings/lead rules per the 2026-07-08 re-category).
+	case strings.Contains(lc, "choir"), strings.Contains(lc, "vocal"), strings.Contains(lc, "voice"),
+		strings.Contains(lc, "soprano"), strings.Contains(lc, "whisper"):
+		return CatVoice, true
 	case strings.Contains(lc, "bass"), strings.Contains(lc, "808"), strings.Contains(lc, "sub"):
 		return CatBass, true
 	case strings.Contains(lc, "guitar"):
 		return CatGuitar, true
-	case strings.Contains(lc, "violin"), strings.Contains(lc, "cello"), strings.Contains(lc, "harp"), strings.Contains(lc, "string"):
+	case strings.Contains(lc, "violin"), strings.Contains(lc, "viola"), strings.Contains(lc, "cello"), strings.Contains(lc, "harp"), strings.Contains(lc, "string"):
 		return CatStrings, true
 	case strings.Contains(lc, "piano"), strings.Contains(lc, "organ"), strings.Contains(lc, "epiano"), strings.Contains(lc, "keys"):
 		return CatKeys, true

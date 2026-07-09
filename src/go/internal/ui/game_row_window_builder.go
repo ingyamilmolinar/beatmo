@@ -8,7 +8,8 @@ import (
 
 // buildRowWindow merges predictor state, timeline commits, freezes, and past preservation
 // into a fresh Steps/CellTypes window.
-func (g *Game) buildRowWindow(rowIdx int, cfg rowWindowConfig) ([]bool, []model.NodeType) {
+func (s *playbackSlate) buildRowWindow(rowIdx int, cfg rowWindowConfig) ([]bool, []model.NodeType) {
+	g := s.g
 	windowLen := g.drum.Length
 	offset := g.drum.Offset
 
@@ -34,6 +35,10 @@ func (g *Game) buildRowWindow(rowIdx int, cfg rowWindowConfig) ([]bool, []model.
 		PrevTypes:         cfg.prevTypes,
 		FastPath:          cfg.fastPath,
 	}, beatInfoAt, wantAt, commitAt, cfg.reuseSteps, cfg.reuseTypes)
+}
+
+func (g *Game) buildRowWindow(rowIdx int, cfg rowWindowConfig) ([]bool, []model.NodeType) {
+	return g.playbackSlate.buildRowWindow(rowIdx, cfg)
 }
 
 func rowRenderSignature(steps []bool, types []model.NodeType) uint64 {

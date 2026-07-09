@@ -1,0 +1,58 @@
+# Basic scene set — one capture per distinct UI surface, popup, tab, or control.
+# Used by `make screenshots-basic`. State variants (playback_*, recording_*,
+# eq_hpf/lpf/band_muted, node_sidebar_* section variants, crop_synth_focus_*,
+# chain display modes, fx single-effect variants) intentionally stay out of
+# this list — they belong to the comprehensive `make screenshots-all` pass.
+# Drift guard: internal/ui/basic_scenes_test.go asserts every name here exists
+# in the scene catalog. Blank lines and #-comments are ignored.
+
+# Transport / shell
+transport_idle
+transport_recording
+shortcuts_overlay
+
+# Graph / nodes
+graph_complex_3_nodes_4_edges
+node_sidebar_all_expanded
+node_longpress_menu
+
+# Row rack
+multi_row_full_grid
+
+# Menus / popups
+context_menu_open
+instrument_menu_open
+instrument_menu_categories
+color_wheel_open
+subdiv_menu_open
+master_vol_popup
+desktop_per_row_vol_popup
+mobile_per_row_vol_popup
+overflow_menu_open
+mobile_overflow_menu_redesigned
+
+# FX panel
+fx_panel_with_3_effects
+fx_panel_knob_drawer_open
+
+# Audio panel — one per tab
+eq_tab_eq
+eq_tab_wave
+eq_tab_spectrum
+eq_tab_levels
+eq_tab_chain
+eq_tab_synth
+
+# Synth / sampler sub-surfaces
+crop_synth_tab_master_chooser
+crop_synth_tab_detail_envelope
+crop_mobile_synth_wheel
+crop_sampler_tab_captured
+
+# Mobile shell
+mobile_default
+mobile_transport_bottom_bar
+mobile_row_inline_controls
+mobile_track_chip_following
+mobile_bottom_nav_synth
+mobile_bottom_nav_sampler

@@ -5,59 +5,171 @@
   "instruments": [
     {
       "name": "Whistle",
-      "id": "fm-lead",
+      "id": "scifi-lead",
       "kind": "builtin",
-      "volume": 0.6,
+      "volume": 0.55,
       "origin": 0,
       "color": "#EE00DDFF",
-      "reverb_send": 0.2
+      "reverb_send": 0.16,
+      "synth_params": {
+        "pitch": 0
+      }
     },
     {
       "name": "Bass",
       "id": "bass-guitar",
       "kind": "builtin",
       "volume": 0.9,
-      "origin": 40,
+      "origin": 61,
       "color": "#00C8E0FF",
       "synth_params": {
         "pitch": 0
       }
     },
     {
-      "name": "Keys",
-      "id": "piano-grand",
+      "name": "Sub",
+      "id": "bass-808",
+      "kind": "builtin",
+      "volume": 0.45,
+      "origin": 189,
+      "color": "#FFD319FF",
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "EP Stab",
+      "id": "fm-epiano",
       "kind": "builtin",
       "volume": 0.55,
-      "origin": 104,
-      "color": "#FFD319FF",
-      "reverb_send": 0.12,
+      "origin": 221,
+      "color": "#A030FFFF",
+      "pan": 0.2
+    },
+    {
+      "name": "Wah Gtr",
+      "id": "guitar-electric-neck",
+      "kind": "builtin",
+      "volume": 0.48,
+      "origin": 281,
+      "color": "#3FD67AFF",
+      "pan": -0.25,
+      "synth_params": {
+        "pitch": 0
+      }
+    },
+    {
+      "name": "Pad",
+      "id": "viola-pad",
+      "kind": "builtin",
+      "volume": 0.42,
+      "origin": 305,
+      "color": "#3A6AF0FF",
+      "pan": 0.15,
+      "reverb_send": 0.2,
       "synth_params": {
         "pitch": 0
       }
     },
     {
       "name": "Kick",
-      "id": "kick",
+      "id": "kick-deep",
       "kind": "builtin",
       "volume": 1,
-      "origin": 132,
-      "color": "#A030FFFF"
+      "origin": 318,
+      "color": "#FF7A3DFF"
+    },
+    {
+      "name": "Kick 2",
+      "id": "kick-acoustic",
+      "kind": "builtin",
+      "volume": 0.75,
+      "origin": 390,
+      "color": "#FF6AD5FF"
     },
     {
       "name": "Snare",
       "id": "snare",
       "kind": "builtin",
-      "volume": 0.88,
-      "origin": 156,
-      "color": "#3FD67AFF"
+      "volume": 0.85,
+      "origin": 402,
+      "color": "#EE00DDFF"
+    },
+    {
+      "name": "Stick",
+      "id": "sidestick",
+      "kind": "builtin",
+      "volume": 0.55,
+      "origin": 438,
+      "color": "#00C8E0FF"
     },
     {
       "name": "Hihat",
       "id": "hihat",
       "kind": "builtin",
       "volume": 0.5,
-      "origin": 176,
+      "origin": 474,
+      "color": "#FFD319FF"
+    },
+    {
+      "name": "Open Hat",
+      "id": "hihat-1",
+      "kind": "builtin",
+      "volume": 0.68,
+      "origin": 594,
+      "color": "#A030FFFF",
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 9000,
+            "mix": 1,
+            "mode": 0,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tamb",
+      "id": "shaker",
+      "kind": "builtin",
+      "volume": 0.4,
+      "origin": 606,
+      "color": "#3FD67AFF",
+      "effects": [
+        {
+          "type": "filter",
+          "enabled": true,
+          "params": {
+            "cutoff": 9000,
+            "mix": 1,
+            "mode": 0,
+            "q": 0.707
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vibraslap",
+      "id": "cowbell-1",
+      "kind": "builtin",
+      "volume": 0.3,
+      "origin": 862,
       "color": "#3A6AF0FF"
+    },
+    {
+      "name": "Conga",
+      "id": "conga-open",
+      "kind": "builtin",
+      "volume": 0.4,
+      "origin": 867,
+      "color": "#FF7A3DFF",
+      "pan": 0.3,
+      "synth_params": {
+        "pitch": 0
+      }
     }
   ],
   "nodes": [
@@ -70,7 +182,7 @@
         1
       ],
       "pitch": 26,
-      "volume": 0.6,
+      "volume": 0.55,
       "duration": 0.54
     },
     {
@@ -82,6 +194,7 @@
         2
       ],
       "pitch": 24,
+      "volume": 0.63,
       "duration": 0.53
     },
     {
@@ -93,6 +206,7 @@
         3
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
@@ -104,6 +218,7 @@
         4
       ],
       "pitch": 28,
+      "volume": 0.55,
       "duration": 0.56
     },
     {
@@ -115,6 +230,7 @@
         5
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
@@ -126,6 +242,7 @@
         6
       ],
       "pitch": 24,
+      "volume": 0.71,
       "duration": 1.09
     },
     {
@@ -137,6 +254,7 @@
         7
       ],
       "pitch": 22,
+      "volume": 0.71,
       "duration": 0.52
     },
     {
@@ -148,7 +266,8 @@
         8
       ],
       "pitch": 21,
-      "duration": 1.02
+      "volume": 0.71,
+      "duration": 1.03
     },
     {
       "id": 8,
@@ -159,6 +278,7 @@
         9
       ],
       "pitch": 19,
+      "volume": 0.71,
       "duration": 0.55
     },
     {
@@ -170,7 +290,10 @@
         10
       ],
       "pitch": 21,
-      "duration": 2.42
+      "volume": 0.71,
+      "duration": 2.43,
+      "groove_kind": "delay",
+      "groove_pct": 0.17
     },
     {
       "id": 10,
@@ -181,321 +304,604 @@
         11
       ],
       "pitch": 26,
-      "volume": 0.6,
+      "volume": 0.55,
       "duration": 0.54
     },
     {
       "id": 11,
-      "i": 128,
-      "j": 8,
+      "i": 136,
+      "j": 0,
       "type": "regular",
       "outputs": [
         12
       ],
       "pitch": 24,
+      "volume": 0.63,
       "duration": 0.53
     },
     {
       "id": 12,
-      "i": 128,
-      "j": 16,
+      "i": 144,
+      "j": 0,
       "type": "regular",
       "outputs": [
         13
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
       "id": 13,
-      "i": 128,
-      "j": 24,
+      "i": 152,
+      "j": 0,
       "type": "regular",
       "outputs": [
         14
       ],
       "pitch": 28,
+      "volume": 0.55,
       "duration": 0.56
     },
     {
       "id": 14,
-      "i": 128,
-      "j": 32,
+      "i": 160,
+      "j": 0,
       "type": "regular",
       "outputs": [
         15
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
       "id": 15,
-      "i": 128,
-      "j": 40,
+      "i": 168,
+      "j": 0,
       "type": "regular",
       "outputs": [
         16
       ],
       "pitch": 24,
+      "volume": 0.71,
       "duration": 1.09
     },
     {
       "id": 16,
-      "i": 128,
-      "j": 56,
+      "i": 184,
+      "j": 0,
       "type": "regular",
       "outputs": [
         17
       ],
       "pitch": 22,
+      "volume": 0.71,
       "duration": 0.52
     },
     {
       "id": 17,
-      "i": 128,
-      "j": 64,
+      "i": 192,
+      "j": 0,
       "type": "regular",
       "outputs": [
         18
       ],
       "pitch": 21,
-      "duration": 1.02
+      "volume": 0.71,
+      "duration": 1.03
     },
     {
       "id": 18,
-      "i": 128,
-      "j": 80,
+      "i": 208,
+      "j": 0,
       "type": "regular",
       "outputs": [
         19
       ],
       "pitch": 19,
+      "volume": 0.71,
       "duration": 0.55
     },
     {
       "id": 19,
-      "i": 128,
-      "j": 88,
+      "i": 216,
+      "j": 0,
       "type": "regular",
       "outputs": [
         20
       ],
       "pitch": 21,
-      "duration": 2.42
+      "volume": 0.71,
+      "duration": 2.43,
+      "groove_kind": "delay",
+      "groove_pct": 0.17
     },
     {
       "id": 20,
-      "i": 128,
-      "j": 128,
+      "i": 256,
+      "j": 0,
       "type": "regular",
       "outputs": [
         21
       ],
       "pitch": 26,
-      "volume": 0.6,
+      "volume": 0.55,
       "duration": 0.54
     },
     {
       "id": 21,
-      "i": 120,
-      "j": 128,
+      "i": 256,
+      "j": 8,
       "type": "regular",
       "outputs": [
         22
       ],
       "pitch": 24,
+      "volume": 0.63,
       "duration": 0.53
     },
     {
       "id": 22,
-      "i": 112,
-      "j": 128,
+      "i": 256,
+      "j": 16,
       "type": "regular",
       "outputs": [
         23
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
       "id": 23,
-      "i": 104,
-      "j": 128,
+      "i": 256,
+      "j": 24,
       "type": "regular",
       "outputs": [
         24
       ],
       "pitch": 28,
+      "volume": 0.55,
       "duration": 0.56
     },
     {
       "id": 24,
-      "i": 96,
-      "j": 128,
+      "i": 256,
+      "j": 32,
       "type": "regular",
       "outputs": [
         25
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
       "id": 25,
-      "i": 88,
-      "j": 128,
+      "i": 256,
+      "j": 40,
       "type": "regular",
       "outputs": [
         26
       ],
       "pitch": 24,
+      "volume": 0.71,
       "duration": 1.09
     },
     {
       "id": 26,
-      "i": 72,
-      "j": 128,
+      "i": 256,
+      "j": 56,
       "type": "regular",
       "outputs": [
         27
       ],
       "pitch": 22,
+      "volume": 0.71,
       "duration": 0.52
     },
     {
       "id": 27,
-      "i": 64,
-      "j": 128,
+      "i": 256,
+      "j": 64,
       "type": "regular",
       "outputs": [
         28
       ],
       "pitch": 21,
-      "duration": 1.02
+      "volume": 0.71,
+      "duration": 1.03
     },
     {
       "id": 28,
-      "i": 48,
-      "j": 128,
+      "i": 256,
+      "j": 80,
       "type": "regular",
       "outputs": [
         29
       ],
       "pitch": 19,
+      "volume": 0.71,
       "duration": 0.55
     },
     {
       "id": 29,
-      "i": 40,
-      "j": 128,
+      "i": 256,
+      "j": 88,
       "type": "regular",
       "outputs": [
         30
       ],
       "pitch": 21,
-      "duration": 2.42
+      "volume": 0.71,
+      "duration": 2.43,
+      "groove_kind": "delay",
+      "groove_pct": 0.17
     },
     {
       "id": 30,
-      "i": 0,
+      "i": 256,
       "j": 128,
       "type": "regular",
       "outputs": [
         31
       ],
       "pitch": 26,
-      "volume": 0.6,
+      "volume": 0.55,
       "duration": 0.54
     },
     {
       "id": 31,
-      "i": 0,
-      "j": 120,
+      "i": 256,
+      "j": 136,
       "type": "regular",
       "outputs": [
         32
       ],
       "pitch": 24,
+      "volume": 0.63,
       "duration": 0.53
     },
     {
       "id": 32,
-      "i": 0,
-      "j": 112,
+      "i": 256,
+      "j": 144,
       "type": "regular",
       "outputs": [
         33
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
       "id": 33,
-      "i": 0,
-      "j": 104,
+      "i": 256,
+      "j": 152,
       "type": "regular",
       "outputs": [
         34
       ],
       "pitch": 28,
+      "volume": 0.55,
       "duration": 0.56
     },
     {
       "id": 34,
-      "i": 0,
-      "j": 96,
+      "i": 256,
+      "j": 160,
       "type": "regular",
       "outputs": [
         35
       ],
       "pitch": 26,
+      "volume": 0.71,
       "duration": 0.56
     },
     {
       "id": 35,
-      "i": 0,
-      "j": 88,
+      "i": 256,
+      "j": 168,
       "type": "regular",
       "outputs": [
         36
       ],
       "pitch": 24,
+      "volume": 0.71,
       "duration": 1.09
     },
     {
       "id": 36,
-      "i": 0,
-      "j": 72,
+      "i": 256,
+      "j": 184,
       "type": "regular",
       "outputs": [
         37
       ],
       "pitch": 22,
+      "volume": 0.71,
       "duration": 0.52
     },
     {
       "id": 37,
-      "i": 0,
-      "j": 64,
+      "i": 256,
+      "j": 192,
       "type": "regular",
       "outputs": [
         38
       ],
       "pitch": 21,
-      "duration": 1.02
+      "volume": 0.71,
+      "duration": 1.03
     },
     {
       "id": 38,
-      "i": 0,
-      "j": 48,
+      "i": 256,
+      "j": 208,
       "type": "regular",
       "outputs": [
         39
       ],
       "pitch": 19,
+      "volume": 0.71,
       "duration": 0.55
     },
     {
       "id": 39,
+      "i": 256,
+      "j": 216,
+      "type": "regular",
+      "outputs": [
+        40
+      ],
+      "pitch": 21,
+      "volume": 0.71,
+      "duration": 2.43,
+      "groove_kind": "delay",
+      "groove_pct": 0.17
+    },
+    {
+      "id": 40,
+      "i": 256,
+      "j": 256,
+      "type": "silent",
+      "outputs": [
+        41
+      ]
+    },
+    {
+      "id": 41,
+      "i": 0,
+      "j": 256,
+      "type": "regular",
+      "outputs": [
+        42
+      ],
+      "pitch": 26,
+      "volume": 0.55,
+      "duration": 0.54
+    },
+    {
+      "id": 42,
+      "i": 0,
+      "j": 248,
+      "type": "regular",
+      "outputs": [
+        43
+      ],
+      "pitch": 24,
+      "volume": 0.63,
+      "duration": 0.53
+    },
+    {
+      "id": 43,
+      "i": 0,
+      "j": 240,
+      "type": "regular",
+      "outputs": [
+        44
+      ],
+      "pitch": 26,
+      "volume": 0.71,
+      "duration": 0.56
+    },
+    {
+      "id": 44,
+      "i": 0,
+      "j": 232,
+      "type": "regular",
+      "outputs": [
+        45
+      ],
+      "pitch": 28,
+      "volume": 0.55,
+      "duration": 0.56
+    },
+    {
+      "id": 45,
+      "i": 0,
+      "j": 224,
+      "type": "regular",
+      "outputs": [
+        46
+      ],
+      "pitch": 26,
+      "volume": 0.71,
+      "duration": 0.56
+    },
+    {
+      "id": 46,
+      "i": 0,
+      "j": 216,
+      "type": "regular",
+      "outputs": [
+        47
+      ],
+      "pitch": 24,
+      "volume": 0.71,
+      "duration": 1.09
+    },
+    {
+      "id": 47,
+      "i": 0,
+      "j": 200,
+      "type": "regular",
+      "outputs": [
+        48
+      ],
+      "pitch": 22,
+      "volume": 0.71,
+      "duration": 0.52
+    },
+    {
+      "id": 48,
+      "i": 0,
+      "j": 192,
+      "type": "regular",
+      "outputs": [
+        49
+      ],
+      "pitch": 21,
+      "volume": 0.71,
+      "duration": 1.03
+    },
+    {
+      "id": 49,
+      "i": 0,
+      "j": 176,
+      "type": "regular",
+      "outputs": [
+        50
+      ],
+      "pitch": 19,
+      "volume": 0.71,
+      "duration": 0.55
+    },
+    {
+      "id": 50,
+      "i": 0,
+      "j": 168,
+      "type": "regular",
+      "outputs": [
+        51
+      ],
+      "pitch": 21,
+      "volume": 0.71,
+      "duration": 2.43,
+      "groove_kind": "delay",
+      "groove_pct": 0.17
+    },
+    {
+      "id": 51,
+      "i": 0,
+      "j": 128,
+      "type": "regular",
+      "outputs": [
+        52
+      ],
+      "pitch": 26,
+      "volume": 0.55,
+      "duration": 0.54
+    },
+    {
+      "id": 52,
+      "i": 0,
+      "j": 120,
+      "type": "regular",
+      "outputs": [
+        53
+      ],
+      "pitch": 24,
+      "volume": 0.63,
+      "duration": 0.53
+    },
+    {
+      "id": 53,
+      "i": 0,
+      "j": 112,
+      "type": "regular",
+      "outputs": [
+        54
+      ],
+      "pitch": 26,
+      "volume": 0.71,
+      "duration": 0.56
+    },
+    {
+      "id": 54,
+      "i": 0,
+      "j": 104,
+      "type": "regular",
+      "outputs": [
+        55
+      ],
+      "pitch": 28,
+      "volume": 0.55,
+      "duration": 0.56
+    },
+    {
+      "id": 55,
+      "i": 0,
+      "j": 96,
+      "type": "regular",
+      "outputs": [
+        56
+      ],
+      "pitch": 26,
+      "volume": 0.71,
+      "duration": 0.56
+    },
+    {
+      "id": 56,
+      "i": 0,
+      "j": 88,
+      "type": "regular",
+      "outputs": [
+        57
+      ],
+      "pitch": 24,
+      "volume": 0.71,
+      "duration": 1.09
+    },
+    {
+      "id": 57,
+      "i": 0,
+      "j": 72,
+      "type": "regular",
+      "outputs": [
+        58
+      ],
+      "pitch": 22,
+      "volume": 0.71,
+      "duration": 0.52
+    },
+    {
+      "id": 58,
+      "i": 0,
+      "j": 64,
+      "type": "regular",
+      "outputs": [
+        59
+      ],
+      "pitch": 21,
+      "volume": 0.71,
+      "duration": 1.03
+    },
+    {
+      "id": 59,
+      "i": 0,
+      "j": 48,
+      "type": "regular",
+      "outputs": [
+        60
+      ],
+      "pitch": 19,
+      "volume": 0.71,
+      "duration": 0.55
+    },
+    {
+      "id": 60,
       "i": 0,
       "j": 40,
       "type": "regular",
@@ -503,2115 +909,8913 @@
         0
       ],
       "pitch": 21,
-      "duration": 2.42
-    },
-    {
-      "id": 40,
-      "i": 0,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        41
-      ],
-      "pitch": -22,
-      "volume": 0.9,
-      "duration": 0.23
-    },
-    {
-      "id": 41,
-      "i": 4,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        42
-      ],
-      "pitch": -24,
-      "duration": 0.23
-    },
-    {
-      "id": 42,
-      "i": 8,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        43
-      ],
-      "pitch": -27,
-      "duration": 0.29
-    },
-    {
-      "id": 43,
-      "i": 12,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        44
-      ],
-      "pitch": -22,
-      "duration": 0.26
-    },
-    {
-      "id": 44,
-      "i": 32,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        45
-      ],
-      "pitch": -22,
-      "duration": 0.26
-    },
-    {
-      "id": 45,
-      "i": 36,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        46
-      ],
-      "pitch": -19,
-      "duration": 0.29
-    },
-    {
-      "id": 46,
-      "i": 40,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        47
-      ],
-      "pitch": -17,
-      "duration": 0.29
-    },
-    {
-      "id": 47,
-      "i": 44,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        48
-      ],
-      "pitch": -15,
-      "duration": 0.26
-    },
-    {
-      "id": 48,
-      "i": 64,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        49
-      ],
-      "pitch": -22,
-      "duration": 0.23
-    },
-    {
-      "id": 49,
-      "i": 68,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        50
-      ],
-      "pitch": -19,
-      "duration": 0.29
-    },
-    {
-      "id": 50,
-      "i": 72,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        51
-      ],
-      "pitch": -17,
-      "duration": 0.29
-    },
-    {
-      "id": 51,
-      "i": 76,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        52
-      ],
-      "pitch": -15,
-      "duration": 0.26
-    },
-    {
-      "id": 52,
-      "i": 96,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        53
-      ],
-      "pitch": -22,
-      "duration": 0.23
-    },
-    {
-      "id": 53,
-      "i": 100,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        54
-      ],
-      "pitch": -24,
-      "duration": 0.23
-    },
-    {
-      "id": 54,
-      "i": 104,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        55
-      ],
-      "pitch": -27,
-      "duration": 0.41
-    },
-    {
-      "id": 55,
-      "i": 108,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        56
-      ],
-      "pitch": -22,
-      "duration": 0.26
-    },
-    {
-      "id": 56,
-      "i": 128,
-      "j": 136,
-      "type": "regular",
-      "outputs": [
-        57
-      ],
-      "pitch": -22,
-      "volume": 0.9,
-      "duration": 0.23
-    },
-    {
-      "id": 57,
-      "i": 128,
-      "j": 140,
-      "type": "regular",
-      "outputs": [
-        58
-      ],
-      "pitch": -24,
-      "duration": 0.23
-    },
-    {
-      "id": 58,
-      "i": 128,
-      "j": 144,
-      "type": "regular",
-      "outputs": [
-        59
-      ],
-      "pitch": -27,
-      "duration": 0.29
-    },
-    {
-      "id": 59,
-      "i": 128,
-      "j": 148,
-      "type": "regular",
-      "outputs": [
-        60
-      ],
-      "pitch": -22,
-      "duration": 0.26
-    },
-    {
-      "id": 60,
-      "i": 128,
-      "j": 168,
-      "type": "regular",
-      "outputs": [
-        61
-      ],
-      "pitch": -22,
-      "duration": 0.26
+      "volume": 0.71,
+      "duration": 2.43,
+      "groove_kind": "delay",
+      "groove_pct": 0.17
     },
     {
       "id": 61,
-      "i": 128,
-      "j": 172,
+      "i": 0,
+      "j": 264,
       "type": "regular",
       "outputs": [
         62
       ],
-      "pitch": -19,
-      "duration": 0.29
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
       "id": 62,
-      "i": 128,
-      "j": 176,
+      "i": 4,
+      "j": 264,
       "type": "regular",
       "outputs": [
         63
       ],
-      "pitch": -17,
-      "duration": 0.29
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 63,
-      "i": 128,
-      "j": 180,
+      "i": 8,
+      "j": 264,
       "type": "regular",
       "outputs": [
         64
       ],
       "pitch": -15,
-      "duration": 0.26
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
       "id": 64,
-      "i": 128,
-      "j": 200,
+      "i": 12,
+      "j": 264,
       "type": "regular",
       "outputs": [
         65
       ],
-      "pitch": -22,
-      "duration": 0.23
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 65,
-      "i": 128,
-      "j": 204,
+      "i": 32,
+      "j": 264,
       "type": "regular",
       "outputs": [
         66
       ],
-      "pitch": -19,
-      "duration": 0.29
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 66,
-      "i": 128,
-      "j": 208,
+      "i": 36,
+      "j": 264,
       "type": "regular",
       "outputs": [
         67
       ],
-      "pitch": -17,
+      "pitch": -7,
+      "volume": 0.79,
       "duration": 0.29
     },
     {
       "id": 67,
-      "i": 128,
-      "j": 212,
+      "i": 40,
+      "j": 264,
       "type": "regular",
       "outputs": [
         68
       ],
-      "pitch": -15,
-      "duration": 0.26
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
       "id": 68,
-      "i": 128,
-      "j": 232,
+      "i": 44,
+      "j": 264,
       "type": "regular",
       "outputs": [
         69
       ],
-      "pitch": -22,
-      "duration": 0.23
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 69,
-      "i": 128,
-      "j": 236,
+      "i": 64,
+      "j": 264,
       "type": "regular",
       "outputs": [
         70
       ],
-      "pitch": -24,
+      "pitch": -10,
+      "volume": 0.79,
       "duration": 0.23
     },
     {
       "id": 70,
-      "i": 128,
-      "j": 240,
+      "i": 68,
+      "j": 264,
       "type": "regular",
       "outputs": [
         71
       ],
-      "pitch": -27,
-      "duration": 0.41
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
       "id": 71,
-      "i": 128,
-      "j": 244,
+      "i": 72,
+      "j": 264,
       "type": "regular",
       "outputs": [
         72
       ],
-      "pitch": -22,
-      "duration": 0.26
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
       "id": 72,
-      "i": 128,
+      "i": 76,
       "j": 264,
       "type": "regular",
       "outputs": [
         73
       ],
-      "pitch": -22,
-      "volume": 0.9,
-      "duration": 0.23
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 73,
-      "i": 124,
+      "i": 96,
       "j": 264,
       "type": "regular",
       "outputs": [
         74
       ],
-      "pitch": -24,
+      "pitch": -10,
+      "volume": 0.79,
       "duration": 0.23
     },
     {
       "id": 74,
-      "i": 120,
+      "i": 100,
       "j": 264,
       "type": "regular",
       "outputs": [
         75
       ],
-      "pitch": -27,
-      "duration": 0.29
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 75,
-      "i": 116,
+      "i": 104,
       "j": 264,
       "type": "regular",
       "outputs": [
         76
       ],
-      "pitch": -22,
-      "duration": 0.26
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
       "id": 76,
-      "i": 96,
+      "i": 108,
       "j": 264,
       "type": "regular",
       "outputs": [
         77
       ],
-      "pitch": -22,
-      "duration": 0.26
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 77,
-      "i": 92,
+      "i": 128,
       "j": 264,
       "type": "regular",
       "outputs": [
         78
       ],
-      "pitch": -19,
-      "duration": 0.29
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
       "id": 78,
-      "i": 88,
+      "i": 132,
       "j": 264,
       "type": "regular",
       "outputs": [
         79
       ],
-      "pitch": -17,
-      "duration": 0.29
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 79,
-      "i": 84,
+      "i": 136,
       "j": 264,
       "type": "regular",
       "outputs": [
         80
       ],
       "pitch": -15,
-      "duration": 0.26
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
       "id": 80,
-      "i": 64,
+      "i": 140,
       "j": 264,
       "type": "regular",
       "outputs": [
         81
       ],
-      "pitch": -22,
-      "duration": 0.23
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 81,
-      "i": 60,
+      "i": 160,
       "j": 264,
       "type": "regular",
       "outputs": [
         82
       ],
-      "pitch": -19,
-      "duration": 0.29
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 82,
-      "i": 56,
+      "i": 164,
       "j": 264,
       "type": "regular",
       "outputs": [
         83
       ],
-      "pitch": -17,
+      "pitch": -7,
+      "volume": 0.79,
       "duration": 0.29
     },
     {
       "id": 83,
-      "i": 52,
+      "i": 168,
       "j": 264,
       "type": "regular",
       "outputs": [
         84
       ],
-      "pitch": -15,
-      "duration": 0.26
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
       "id": 84,
-      "i": 32,
+      "i": 172,
       "j": 264,
       "type": "regular",
       "outputs": [
         85
       ],
-      "pitch": -22,
-      "duration": 0.23
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 85,
-      "i": 28,
+      "i": 192,
       "j": 264,
       "type": "regular",
       "outputs": [
         86
       ],
-      "pitch": -24,
+      "pitch": -10,
+      "volume": 0.79,
       "duration": 0.23
     },
     {
       "id": 86,
-      "i": 24,
+      "i": 196,
       "j": 264,
       "type": "regular",
       "outputs": [
         87
       ],
-      "pitch": -27,
-      "duration": 0.41
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
       "id": 87,
-      "i": 20,
+      "i": 200,
       "j": 264,
       "type": "regular",
       "outputs": [
         88
       ],
-      "pitch": -22,
-      "duration": 0.26
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
       "id": 88,
-      "i": 0,
+      "i": 204,
       "j": 264,
       "type": "regular",
       "outputs": [
         89
       ],
-      "pitch": -22,
-      "volume": 0.9,
-      "duration": 0.23
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 89,
-      "i": 0,
-      "j": 260,
+      "i": 224,
+      "j": 264,
       "type": "regular",
       "outputs": [
         90
       ],
-      "pitch": -24,
+      "pitch": -10,
+      "volume": 0.79,
       "duration": 0.23
     },
     {
       "id": 90,
-      "i": 0,
-      "j": 256,
+      "i": 228,
+      "j": 264,
       "type": "regular",
       "outputs": [
         91
       ],
-      "pitch": -27,
-      "duration": 0.29
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 91,
-      "i": 0,
-      "j": 252,
+      "i": 232,
+      "j": 264,
       "type": "regular",
       "outputs": [
         92
       ],
-      "pitch": -22,
-      "duration": 0.26
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
       "id": 92,
-      "i": 0,
-      "j": 232,
+      "i": 236,
+      "j": 264,
       "type": "regular",
       "outputs": [
         93
       ],
-      "pitch": -22,
-      "duration": 0.26
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 93,
-      "i": 0,
-      "j": 228,
+      "i": 256,
+      "j": 264,
       "type": "regular",
       "outputs": [
         94
       ],
-      "pitch": -19,
-      "duration": 0.29
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
       "id": 94,
-      "i": 0,
-      "j": 224,
+      "i": 256,
+      "j": 268,
       "type": "regular",
       "outputs": [
         95
       ],
-      "pitch": -17,
-      "duration": 0.29
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 95,
-      "i": 0,
-      "j": 220,
+      "i": 256,
+      "j": 272,
       "type": "regular",
       "outputs": [
         96
       ],
       "pitch": -15,
-      "duration": 0.26
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
       "id": 96,
-      "i": 0,
-      "j": 200,
+      "i": 256,
+      "j": 276,
       "type": "regular",
       "outputs": [
         97
       ],
-      "pitch": -22,
-      "duration": 0.23
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 97,
-      "i": 0,
-      "j": 196,
+      "i": 256,
+      "j": 296,
       "type": "regular",
       "outputs": [
         98
       ],
-      "pitch": -19,
-      "duration": 0.29
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 98,
-      "i": 0,
-      "j": 192,
+      "i": 256,
+      "j": 300,
       "type": "regular",
       "outputs": [
         99
       ],
-      "pitch": -17,
+      "pitch": -7,
+      "volume": 0.79,
       "duration": 0.29
     },
     {
       "id": 99,
-      "i": 0,
-      "j": 188,
+      "i": 256,
+      "j": 304,
       "type": "regular",
       "outputs": [
         100
       ],
-      "pitch": -15,
-      "duration": 0.26
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
       "id": 100,
-      "i": 0,
-      "j": 168,
+      "i": 256,
+      "j": 308,
       "type": "regular",
       "outputs": [
         101
       ],
-      "pitch": -22,
-      "duration": 0.23
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 101,
-      "i": 0,
-      "j": 164,
+      "i": 256,
+      "j": 328,
       "type": "regular",
       "outputs": [
         102
       ],
-      "pitch": -24,
+      "pitch": -10,
+      "volume": 0.79,
       "duration": 0.23
     },
     {
       "id": 102,
-      "i": 0,
-      "j": 160,
+      "i": 256,
+      "j": 332,
       "type": "regular",
       "outputs": [
         103
       ],
-      "pitch": -27,
-      "duration": 0.41
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
       "id": 103,
-      "i": 0,
-      "j": 156,
-      "type": "regular",
-      "outputs": [
-        40
-      ],
-      "pitch": -22,
-      "duration": 0.26
-    },
-    {
-      "id": 104,
-      "i": 0,
-      "j": 272,
-      "type": "silent",
-      "outputs": [
-        105
-      ]
-    },
-    {
-      "id": 105,
-      "i": 16,
-      "j": 272,
-      "type": "regular",
-      "outputs": [
-        106
-      ],
-      "pitch": 2,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 106,
-      "i": 20,
-      "j": 272,
-      "type": "regular",
-      "outputs": [
-        107
-      ],
-      "pitch": 5,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 107,
-      "i": 24,
-      "j": 272,
-      "type": "regular",
-      "outputs": [
-        108
-      ],
-      "pitch": 9,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 108,
-      "i": 80,
-      "j": 272,
-      "type": "regular",
-      "outputs": [
-        109
-      ],
-      "pitch": 2,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 109,
-      "i": 84,
-      "j": 272,
-      "type": "regular",
-      "outputs": [
-        110
-      ],
-      "pitch": 5,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 110,
-      "i": 88,
-      "j": 272,
-      "type": "regular",
-      "outputs": [
-        111
-      ],
-      "pitch": 9,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 111,
-      "i": 128,
-      "j": 272,
-      "type": "silent",
-      "outputs": [
-        112
-      ]
-    },
-    {
-      "id": 112,
-      "i": 128,
-      "j": 288,
-      "type": "regular",
-      "outputs": [
-        113
-      ],
-      "pitch": 2,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 113,
-      "i": 128,
-      "j": 292,
-      "type": "regular",
-      "outputs": [
-        114
-      ],
-      "pitch": 5,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 114,
-      "i": 128,
-      "j": 296,
-      "type": "regular",
-      "outputs": [
-        115
-      ],
-      "pitch": 9,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 115,
-      "i": 128,
-      "j": 352,
-      "type": "regular",
-      "outputs": [
-        116
-      ],
-      "pitch": 2,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 116,
-      "i": 128,
-      "j": 356,
-      "type": "regular",
-      "outputs": [
-        117
-      ],
-      "pitch": 5,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 117,
-      "i": 128,
-      "j": 360,
-      "type": "regular",
-      "outputs": [
-        118
-      ],
-      "pitch": 9,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 118,
-      "i": 128,
-      "j": 400,
-      "type": "silent",
-      "outputs": [
-        119
-      ]
-    },
-    {
-      "id": 119,
-      "i": 112,
-      "j": 400,
-      "type": "regular",
-      "outputs": [
-        120
-      ],
-      "pitch": 2,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 120,
-      "i": 108,
-      "j": 400,
-      "type": "regular",
-      "outputs": [
-        121
-      ],
-      "pitch": 5,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 121,
-      "i": 104,
-      "j": 400,
-      "type": "regular",
-      "outputs": [
-        122
-      ],
-      "pitch": 9,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 122,
-      "i": 48,
-      "j": 400,
-      "type": "regular",
-      "outputs": [
-        123
-      ],
-      "pitch": 2,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 123,
-      "i": 44,
-      "j": 400,
-      "type": "regular",
-      "outputs": [
-        124
-      ],
-      "pitch": 5,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 124,
-      "i": 40,
-      "j": 400,
-      "type": "regular",
-      "outputs": [
-        125
-      ],
-      "pitch": 9,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 125,
-      "i": 0,
-      "j": 400,
-      "type": "silent",
-      "outputs": [
-        126
-      ]
-    },
-    {
-      "id": 126,
-      "i": 0,
-      "j": 384,
-      "type": "regular",
-      "outputs": [
-        127
-      ],
-      "pitch": 2,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 127,
-      "i": 0,
-      "j": 380,
-      "type": "regular",
-      "outputs": [
-        128
-      ],
-      "pitch": 5,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 128,
-      "i": 0,
-      "j": 376,
-      "type": "regular",
-      "outputs": [
-        129
-      ],
-      "pitch": 9,
-      "volume": 0.55,
-      "duration": 0.4
-    },
-    {
-      "id": 129,
-      "i": 0,
-      "j": 320,
-      "type": "regular",
-      "outputs": [
-        130
-      ],
-      "pitch": 2,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 130,
-      "i": 0,
-      "j": 316,
-      "type": "regular",
-      "outputs": [
-        131
-      ],
-      "pitch": 5,
-      "volume": 0.5,
-      "duration": 0.4
-    },
-    {
-      "id": 131,
-      "i": 0,
-      "j": 312,
+      "i": 256,
+      "j": 336,
       "type": "regular",
       "outputs": [
         104
       ],
-      "pitch": 9,
-      "volume": 0.5,
-      "duration": 0.4
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
-      "id": 132,
-      "i": 0,
-      "j": 408,
+      "id": 104,
+      "i": 256,
+      "j": 340,
       "type": "regular",
       "outputs": [
-        133
+        105
       ],
-      "volume": 1
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
-      "id": 133,
-      "i": 24,
-      "j": 408,
+      "id": 105,
+      "i": 256,
+      "j": 360,
       "type": "regular",
       "outputs": [
-        134
+        106
       ],
-      "volume": 0.8
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
-      "id": 134,
-      "i": 40,
-      "j": 408,
+      "id": 106,
+      "i": 256,
+      "j": 364,
       "type": "regular",
       "outputs": [
-        135
+        107
       ],
-      "volume": 0.85
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 135,
-      "i": 64,
-      "j": 408,
+      "id": 107,
+      "i": 256,
+      "j": 368,
       "type": "regular",
       "outputs": [
-        136
+        108
       ],
-      "volume": 1
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
-      "id": 136,
-      "i": 88,
-      "j": 408,
+      "id": 108,
+      "i": 256,
+      "j": 372,
       "type": "regular",
       "outputs": [
-        137
+        109
       ],
-      "volume": 0.8
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 137,
-      "i": 104,
-      "j": 408,
+      "id": 109,
+      "i": 256,
+      "j": 392,
       "type": "regular",
       "outputs": [
-        138
+        110
       ],
-      "volume": 0.85
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
-      "id": 138,
-      "i": 128,
-      "j": 408,
+      "id": 110,
+      "i": 256,
+      "j": 396,
       "type": "regular",
       "outputs": [
-        139
+        111
       ],
-      "volume": 1
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 139,
-      "i": 128,
+      "id": 111,
+      "i": 256,
+      "j": 400,
+      "type": "regular",
+      "outputs": [
+        112
+      ],
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 112,
+      "i": 256,
+      "j": 404,
+      "type": "regular",
+      "outputs": [
+        113
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 113,
+      "i": 256,
+      "j": 424,
+      "type": "regular",
+      "outputs": [
+        114
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
+    },
+    {
+      "id": 114,
+      "i": 256,
+      "j": 428,
+      "type": "regular",
+      "outputs": [
+        115
+      ],
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
+    },
+    {
+      "id": 115,
+      "i": 256,
       "j": 432,
       "type": "regular",
       "outputs": [
-        140
+        116
       ],
-      "volume": 0.8
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
-      "id": 140,
-      "i": 128,
-      "j": 448,
+      "id": 116,
+      "i": 256,
+      "j": 436,
       "type": "regular",
       "outputs": [
-        141
+        117
       ],
-      "volume": 0.85
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
-      "id": 141,
-      "i": 128,
-      "j": 472,
+      "id": 117,
+      "i": 256,
+      "j": 456,
       "type": "regular",
       "outputs": [
-        142
+        118
       ],
-      "volume": 1
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
-      "id": 142,
-      "i": 128,
+      "id": 118,
+      "i": 256,
+      "j": 460,
+      "type": "regular",
+      "outputs": [
+        119
+      ],
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
+    },
+    {
+      "id": 119,
+      "i": 256,
+      "j": 464,
+      "type": "regular",
+      "outputs": [
+        120
+      ],
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
+    },
+    {
+      "id": 120,
+      "i": 256,
+      "j": 468,
+      "type": "regular",
+      "outputs": [
+        121
+      ],
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
+    },
+    {
+      "id": 121,
+      "i": 256,
+      "j": 488,
+      "type": "regular",
+      "outputs": [
+        122
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
+    },
+    {
+      "id": 122,
+      "i": 256,
+      "j": 492,
+      "type": "regular",
+      "outputs": [
+        123
+      ],
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 123,
+      "i": 256,
       "j": 496,
       "type": "regular",
       "outputs": [
-        143
+        124
       ],
-      "volume": 0.8
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
-      "id": 143,
-      "i": 128,
-      "j": 512,
+      "id": 124,
+      "i": 256,
+      "j": 500,
       "type": "regular",
       "outputs": [
-        144
+        125
       ],
-      "volume": 0.85
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 144,
-      "i": 128,
-      "j": 536,
+      "id": 125,
+      "i": 256,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        145
+        126
       ],
-      "volume": 1
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
-      "id": 145,
-      "i": 104,
-      "j": 536,
+      "id": 126,
+      "i": 252,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        146
+        127
       ],
-      "volume": 0.8
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 146,
-      "i": 88,
-      "j": 536,
+      "id": 127,
+      "i": 248,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        147
+        128
       ],
-      "volume": 0.85
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
-      "id": 147,
-      "i": 64,
-      "j": 536,
+      "id": 128,
+      "i": 244,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        148
+        129
       ],
-      "volume": 1
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 148,
-      "i": 40,
-      "j": 536,
+      "id": 129,
+      "i": 224,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        149
+        130
       ],
-      "volume": 0.8
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
-      "id": 149,
-      "i": 24,
-      "j": 536,
+      "id": 130,
+      "i": 220,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        150
+        131
       ],
-      "volume": 0.85
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
-      "id": 150,
-      "i": 0,
-      "j": 536,
-      "type": "regular",
-      "outputs": [
-        151
-      ],
-      "volume": 1
-    },
-    {
-      "id": 151,
-      "i": 0,
-      "j": 512,
-      "type": "regular",
-      "outputs": [
-        152
-      ],
-      "volume": 0.8
-    },
-    {
-      "id": 152,
-      "i": 0,
-      "j": 496,
-      "type": "regular",
-      "outputs": [
-        153
-      ],
-      "volume": 0.85
-    },
-    {
-      "id": 153,
-      "i": 0,
-      "j": 472,
-      "type": "regular",
-      "outputs": [
-        154
-      ],
-      "volume": 1
-    },
-    {
-      "id": 154,
-      "i": 0,
-      "j": 448,
-      "type": "regular",
-      "outputs": [
-        155
-      ],
-      "volume": 0.8
-    },
-    {
-      "id": 155,
-      "i": 0,
-      "j": 432,
+      "id": 131,
+      "i": 216,
+      "j": 520,
       "type": "regular",
       "outputs": [
         132
       ],
-      "volume": 0.85
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
-      "id": 156,
-      "i": 0,
-      "j": 544,
-      "type": "silent",
-      "outputs": [
-        157
-      ]
-    },
-    {
-      "id": 157,
-      "i": 16,
-      "j": 544,
+      "id": 132,
+      "i": 212,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        158
+        133
       ],
-      "volume": 0.88
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
-      "id": 158,
-      "i": 48,
-      "j": 544,
+      "id": 133,
+      "i": 192,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        159
+        134
       ],
-      "volume": 0.88
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
-      "id": 159,
-      "i": 80,
-      "j": 544,
+      "id": 134,
+      "i": 188,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        160
+        135
       ],
-      "volume": 0.88
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
-      "id": 160,
-      "i": 112,
-      "j": 544,
+      "id": 135,
+      "i": 184,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        161
+        136
       ],
-      "volume": 0.88
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
-      "id": 161,
+      "id": 136,
+      "i": 180,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        137
+      ],
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
+    },
+    {
+      "id": 137,
+      "i": 160,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        138
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
+    },
+    {
+      "id": 138,
+      "i": 156,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        139
+      ],
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 139,
+      "i": 152,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        140
+      ],
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 140,
+      "i": 148,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        141
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 141,
       "i": 128,
-      "j": 544,
-      "type": "silent",
-      "outputs": [
-        162
-      ]
-    },
-    {
-      "id": 162,
-      "i": 128,
-      "j": 560,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        163
+        142
       ],
-      "volume": 0.88
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
-      "id": 163,
-      "i": 128,
-      "j": 592,
+      "id": 142,
+      "i": 124,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        164
+        143
       ],
-      "volume": 0.88
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 164,
-      "i": 128,
-      "j": 624,
+      "id": 143,
+      "i": 120,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        165
+        144
       ],
-      "volume": 0.88
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
-      "id": 165,
-      "i": 128,
-      "j": 656,
+      "id": 144,
+      "i": 116,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        166
+        145
       ],
-      "volume": 0.88
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
-      "id": 166,
-      "i": 128,
-      "j": 672,
-      "type": "silent",
-      "outputs": [
-        167
-      ]
-    },
-    {
-      "id": 167,
-      "i": 112,
-      "j": 672,
+      "id": 145,
+      "i": 96,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        168
+        146
       ],
-      "volume": 0.88
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
-      "id": 168,
-      "i": 80,
-      "j": 672,
+      "id": 146,
+      "i": 92,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        169
+        147
       ],
-      "volume": 0.88
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
-      "id": 169,
-      "i": 48,
-      "j": 672,
+      "id": 147,
+      "i": 88,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        170
+        148
       ],
-      "volume": 0.88
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
-      "id": 170,
-      "i": 16,
-      "j": 672,
+      "id": 148,
+      "i": 84,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        171
+        149
       ],
-      "volume": 0.88
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
-      "id": 171,
-      "i": 0,
-      "j": 672,
-      "type": "silent",
-      "outputs": [
-        172
-      ]
-    },
-    {
-      "id": 172,
-      "i": 0,
-      "j": 656,
+      "id": 149,
+      "i": 64,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        173
+        150
       ],
-      "volume": 0.88
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
-      "id": 173,
-      "i": 0,
-      "j": 624,
+      "id": 150,
+      "i": 60,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        174
+        151
       ],
-      "volume": 0.88
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
-      "id": 174,
-      "i": 0,
-      "j": 592,
+      "id": 151,
+      "i": 56,
+      "j": 520,
       "type": "regular",
       "outputs": [
-        175
+        152
       ],
-      "volume": 0.88
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
-      "id": 175,
-      "i": 0,
-      "j": 560,
+      "id": 152,
+      "i": 52,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        153
+      ],
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
+    },
+    {
+      "id": 153,
+      "i": 32,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        154
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
+    },
+    {
+      "id": 154,
+      "i": 28,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        155
+      ],
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 155,
+      "i": 24,
+      "j": 520,
       "type": "regular",
       "outputs": [
         156
       ],
-      "volume": 0.88
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 156,
+      "i": 20,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        157
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 157,
+      "i": 0,
+      "j": 520,
+      "type": "regular",
+      "outputs": [
+        158
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
+    },
+    {
+      "id": 158,
+      "i": 0,
+      "j": 516,
+      "type": "regular",
+      "outputs": [
+        159
+      ],
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 159,
+      "i": 0,
+      "j": 512,
+      "type": "regular",
+      "outputs": [
+        160
+      ],
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 160,
+      "i": 0,
+      "j": 508,
+      "type": "regular",
+      "outputs": [
+        161
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 161,
+      "i": 0,
+      "j": 488,
+      "type": "regular",
+      "outputs": [
+        162
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
+    },
+    {
+      "id": 162,
+      "i": 0,
+      "j": 484,
+      "type": "regular",
+      "outputs": [
+        163
+      ],
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
+    },
+    {
+      "id": 163,
+      "i": 0,
+      "j": 480,
+      "type": "regular",
+      "outputs": [
+        164
+      ],
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
+    },
+    {
+      "id": 164,
+      "i": 0,
+      "j": 476,
+      "type": "regular",
+      "outputs": [
+        165
+      ],
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
+    },
+    {
+      "id": 165,
+      "i": 0,
+      "j": 456,
+      "type": "regular",
+      "outputs": [
+        166
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
+    },
+    {
+      "id": 166,
+      "i": 0,
+      "j": 452,
+      "type": "regular",
+      "outputs": [
+        167
+      ],
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
+    },
+    {
+      "id": 167,
+      "i": 0,
+      "j": 448,
+      "type": "regular",
+      "outputs": [
+        168
+      ],
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
+    },
+    {
+      "id": 168,
+      "i": 0,
+      "j": 444,
+      "type": "regular",
+      "outputs": [
+        169
+      ],
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
+    },
+    {
+      "id": 169,
+      "i": 0,
+      "j": 424,
+      "type": "regular",
+      "outputs": [
+        170
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
+    },
+    {
+      "id": 170,
+      "i": 0,
+      "j": 420,
+      "type": "regular",
+      "outputs": [
+        171
+      ],
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 171,
+      "i": 0,
+      "j": 416,
+      "type": "regular",
+      "outputs": [
+        172
+      ],
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 172,
+      "i": 0,
+      "j": 412,
+      "type": "regular",
+      "outputs": [
+        173
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 173,
+      "i": 0,
+      "j": 392,
+      "type": "regular",
+      "outputs": [
+        174
+      ],
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
+    },
+    {
+      "id": 174,
+      "i": 0,
+      "j": 388,
+      "type": "regular",
+      "outputs": [
+        175
+      ],
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
+    },
+    {
+      "id": 175,
+      "i": 0,
+      "j": 384,
+      "type": "regular",
+      "outputs": [
+        176
+      ],
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.29,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
       "id": 176,
       "i": 0,
-      "j": 680,
+      "j": 380,
       "type": "regular",
       "outputs": [
         177
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 177,
-      "i": 12,
-      "j": 680,
+      "i": 0,
+      "j": 360,
       "type": "regular",
       "outputs": [
         178
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 178,
-      "i": 16,
-      "j": 680,
+      "i": 0,
+      "j": 356,
       "type": "regular",
       "outputs": [
         179
       ],
-      "volume": 0.5
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
       "id": 179,
-      "i": 28,
-      "j": 680,
+      "i": 0,
+      "j": 352,
       "type": "regular",
       "outputs": [
         180
       ],
-      "volume": 0.45
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
       "id": 180,
-      "i": 32,
-      "j": 680,
+      "i": 0,
+      "j": 348,
       "type": "regular",
       "outputs": [
         181
       ],
-      "volume": 0.5
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 181,
-      "i": 44,
-      "j": 680,
+      "i": 0,
+      "j": 328,
       "type": "regular",
       "outputs": [
         182
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
       "id": 182,
-      "i": 48,
-      "j": 680,
+      "i": 0,
+      "j": 324,
       "type": "regular",
       "outputs": [
         183
       ],
-      "volume": 0.5
+      "pitch": -7,
+      "volume": 0.79,
+      "duration": 0.29
     },
     {
       "id": 183,
-      "i": 60,
-      "j": 680,
+      "i": 0,
+      "j": 320,
       "type": "regular",
       "outputs": [
         184
       ],
-      "volume": 0.45
+      "pitch": -5,
+      "volume": 0.71,
+      "duration": 0.29
     },
     {
       "id": 184,
-      "i": 64,
-      "j": 680,
+      "i": 0,
+      "j": 316,
       "type": "regular",
       "outputs": [
         185
       ],
-      "volume": 0.5
+      "pitch": -3,
+      "volume": 0.79,
+      "duration": 0.26
     },
     {
       "id": 185,
-      "i": 76,
-      "j": 680,
+      "i": 0,
+      "j": 296,
       "type": "regular",
       "outputs": [
         186
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.23
     },
     {
       "id": 186,
-      "i": 80,
-      "j": 680,
+      "i": 0,
+      "j": 292,
       "type": "regular",
       "outputs": [
         187
       ],
-      "volume": 0.5
+      "pitch": -12,
+      "volume": 0.79,
+      "duration": 0.23,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 187,
-      "i": 92,
-      "j": 680,
+      "i": 0,
+      "j": 288,
       "type": "regular",
       "outputs": [
         188
       ],
-      "volume": 0.45
+      "pitch": -15,
+      "volume": 0.79,
+      "duration": 0.41,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
     },
     {
       "id": 188,
-      "i": 96,
-      "j": 680,
+      "i": 0,
+      "j": 284,
       "type": "regular",
       "outputs": [
-        189
+        61
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.79,
+      "duration": 0.26,
+      "groove_kind": "rush",
+      "groove_pct": 0.08
     },
     {
       "id": 189,
-      "i": 108,
-      "j": 680,
+      "i": 0,
+      "j": 528,
       "type": "regular",
       "outputs": [
         190
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 190,
-      "i": 112,
-      "j": 680,
+      "i": 32,
+      "j": 528,
       "type": "regular",
       "outputs": [
         191
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 191,
-      "i": 124,
-      "j": 680,
+      "i": 64,
+      "j": 528,
       "type": "regular",
       "outputs": [
         192
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 192,
-      "i": 128,
-      "j": 680,
+      "i": 96,
+      "j": 528,
       "type": "regular",
       "outputs": [
         193
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 193,
       "i": 128,
-      "j": 692,
+      "j": 528,
       "type": "regular",
       "outputs": [
         194
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 194,
-      "i": 128,
-      "j": 696,
+      "i": 160,
+      "j": 528,
       "type": "regular",
       "outputs": [
         195
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 195,
-      "i": 128,
-      "j": 708,
+      "i": 192,
+      "j": 528,
       "type": "regular",
       "outputs": [
         196
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 196,
-      "i": 128,
-      "j": 712,
+      "i": 224,
+      "j": 528,
       "type": "regular",
       "outputs": [
         197
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 197,
-      "i": 128,
-      "j": 724,
+      "i": 256,
+      "j": 528,
       "type": "regular",
       "outputs": [
         198
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 198,
-      "i": 128,
-      "j": 728,
+      "i": 256,
+      "j": 560,
       "type": "regular",
       "outputs": [
         199
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 199,
-      "i": 128,
-      "j": 740,
+      "i": 256,
+      "j": 592,
       "type": "regular",
       "outputs": [
         200
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 200,
-      "i": 128,
-      "j": 744,
+      "i": 256,
+      "j": 624,
       "type": "regular",
       "outputs": [
         201
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 201,
-      "i": 128,
-      "j": 756,
+      "i": 256,
+      "j": 656,
       "type": "regular",
       "outputs": [
         202
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 202,
-      "i": 128,
-      "j": 760,
+      "i": 256,
+      "j": 688,
       "type": "regular",
       "outputs": [
         203
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 203,
-      "i": 128,
-      "j": 772,
+      "i": 256,
+      "j": 720,
       "type": "regular",
       "outputs": [
         204
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 204,
-      "i": 128,
-      "j": 776,
+      "i": 256,
+      "j": 752,
       "type": "regular",
       "outputs": [
         205
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 205,
-      "i": 128,
-      "j": 788,
+      "i": 256,
+      "j": 784,
       "type": "regular",
       "outputs": [
         206
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 206,
-      "i": 128,
-      "j": 792,
+      "i": 224,
+      "j": 784,
       "type": "regular",
       "outputs": [
         207
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 207,
-      "i": 128,
-      "j": 804,
+      "i": 192,
+      "j": 784,
       "type": "regular",
       "outputs": [
         208
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 208,
-      "i": 128,
-      "j": 808,
+      "i": 160,
+      "j": 784,
       "type": "regular",
       "outputs": [
         209
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 209,
-      "i": 116,
-      "j": 808,
+      "i": 128,
+      "j": 784,
       "type": "regular",
       "outputs": [
         210
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 210,
-      "i": 112,
-      "j": 808,
+      "i": 96,
+      "j": 784,
       "type": "regular",
       "outputs": [
         211
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 211,
-      "i": 100,
-      "j": 808,
+      "i": 64,
+      "j": 784,
       "type": "regular",
       "outputs": [
         212
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 212,
-      "i": 96,
-      "j": 808,
+      "i": 32,
+      "j": 784,
       "type": "regular",
       "outputs": [
         213
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 213,
-      "i": 84,
-      "j": 808,
+      "i": 0,
+      "j": 784,
       "type": "regular",
       "outputs": [
         214
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 214,
-      "i": 80,
-      "j": 808,
+      "i": 0,
+      "j": 752,
       "type": "regular",
       "outputs": [
         215
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 215,
-      "i": 68,
-      "j": 808,
+      "i": 0,
+      "j": 720,
       "type": "regular",
       "outputs": [
         216
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 216,
-      "i": 64,
-      "j": 808,
+      "i": 0,
+      "j": 688,
       "type": "regular",
       "outputs": [
         217
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 217,
-      "i": 52,
-      "j": 808,
+      "i": 0,
+      "j": 656,
       "type": "regular",
       "outputs": [
         218
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 218,
-      "i": 48,
-      "j": 808,
+      "i": 0,
+      "j": 624,
       "type": "regular",
       "outputs": [
         219
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 219,
-      "i": 36,
-      "j": 808,
+      "i": 0,
+      "j": 592,
       "type": "regular",
       "outputs": [
         220
       ],
-      "volume": 0.45
+      "pitch": -10,
+      "volume": 0.5,
+      "duration": 0.4
     },
     {
       "id": 220,
-      "i": 32,
-      "j": 808,
+      "i": 0,
+      "j": 560,
       "type": "regular",
       "outputs": [
-        221
+        189
       ],
-      "volume": 0.5
+      "pitch": -10,
+      "volume": 0.45,
+      "duration": 0.4
     },
     {
       "id": 221,
-      "i": 20,
-      "j": 808,
-      "type": "regular",
+      "i": 0,
+      "j": 792,
+      "type": "silent",
       "outputs": [
         222
-      ],
-      "volume": 0.45
+      ]
     },
     {
       "id": 222,
       "i": 16,
-      "j": 808,
+      "j": 792,
       "type": "regular",
       "outputs": [
         223
       ],
-      "volume": 0.5
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 223,
-      "i": 4,
-      "j": 808,
+      "i": 20,
+      "j": 792,
       "type": "regular",
       "outputs": [
         224
       ],
-      "volume": 0.45
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 224,
-      "i": 0,
-      "j": 808,
+      "i": 24,
+      "j": 792,
       "type": "regular",
       "outputs": [
         225
       ],
-      "volume": 0.5
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 225,
-      "i": 0,
-      "j": 796,
+      "i": 80,
+      "j": 792,
       "type": "regular",
       "outputs": [
         226
       ],
-      "volume": 0.45
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 226,
-      "i": 0,
+      "i": 84,
       "j": 792,
       "type": "regular",
       "outputs": [
         227
       ],
-      "volume": 0.5
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 227,
-      "i": 0,
-      "j": 780,
+      "i": 88,
+      "j": 792,
       "type": "regular",
       "outputs": [
         228
       ],
-      "volume": 0.45
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 228,
-      "i": 0,
-      "j": 776,
+      "i": 96,
+      "j": 792,
       "type": "regular",
       "outputs": [
         229
       ],
-      "volume": 0.5
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
     },
     {
       "id": 229,
-      "i": 0,
-      "j": 764,
+      "i": 144,
+      "j": 792,
       "type": "regular",
       "outputs": [
         230
       ],
-      "volume": 0.45
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 230,
-      "i": 0,
-      "j": 760,
+      "i": 148,
+      "j": 792,
       "type": "regular",
       "outputs": [
         231
       ],
-      "volume": 0.5
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 231,
-      "i": 0,
-      "j": 748,
+      "i": 152,
+      "j": 792,
       "type": "regular",
       "outputs": [
         232
       ],
-      "volume": 0.45
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 232,
-      "i": 0,
-      "j": 744,
+      "i": 208,
+      "j": 792,
       "type": "regular",
       "outputs": [
         233
       ],
-      "volume": 0.5
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 233,
-      "i": 0,
-      "j": 732,
+      "i": 212,
+      "j": 792,
       "type": "regular",
       "outputs": [
         234
       ],
-      "volume": 0.45
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 234,
-      "i": 0,
-      "j": 728,
+      "i": 216,
+      "j": 792,
       "type": "regular",
       "outputs": [
         235
       ],
-      "volume": 0.5
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 235,
-      "i": 0,
-      "j": 716,
+      "i": 224,
+      "j": 792,
       "type": "regular",
       "outputs": [
         236
       ],
-      "volume": 0.45
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
     },
     {
       "id": 236,
-      "i": 0,
-      "j": 712,
-      "type": "regular",
+      "i": 256,
+      "j": 792,
+      "type": "silent",
       "outputs": [
         237
-      ],
-      "volume": 0.5
+      ]
     },
     {
       "id": 237,
-      "i": 0,
-      "j": 700,
+      "i": 256,
+      "j": 808,
       "type": "regular",
       "outputs": [
         238
       ],
-      "volume": 0.45
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 238,
-      "i": 0,
-      "j": 696,
+      "i": 256,
+      "j": 812,
       "type": "regular",
       "outputs": [
         239
       ],
-      "volume": 0.5
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
     },
     {
       "id": 239,
-      "i": 0,
-      "j": 684,
+      "i": 256,
+      "j": 816,
       "type": "regular",
       "outputs": [
-        176
+        240
       ],
-      "volume": 0.45
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 240,
+      "i": 256,
+      "j": 872,
+      "type": "regular",
+      "outputs": [
+        241
+      ],
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 241,
+      "i": 256,
+      "j": 876,
+      "type": "regular",
+      "outputs": [
+        242
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 242,
+      "i": 256,
+      "j": 880,
+      "type": "regular",
+      "outputs": [
+        243
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 243,
+      "i": 256,
+      "j": 888,
+      "type": "regular",
+      "outputs": [
+        244
+      ],
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
+    },
+    {
+      "id": 244,
+      "i": 256,
+      "j": 936,
+      "type": "regular",
+      "outputs": [
+        245
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 245,
+      "i": 256,
+      "j": 940,
+      "type": "regular",
+      "outputs": [
+        246
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 246,
+      "i": 256,
+      "j": 944,
+      "type": "regular",
+      "outputs": [
+        247
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 247,
+      "i": 256,
+      "j": 1000,
+      "type": "regular",
+      "outputs": [
+        248
+      ],
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 248,
+      "i": 256,
+      "j": 1004,
+      "type": "regular",
+      "outputs": [
+        249
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 249,
+      "i": 256,
+      "j": 1008,
+      "type": "regular",
+      "outputs": [
+        250
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 250,
+      "i": 256,
+      "j": 1016,
+      "type": "regular",
+      "outputs": [
+        251
+      ],
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
+    },
+    {
+      "id": 251,
+      "i": 256,
+      "j": 1048,
+      "type": "silent",
+      "outputs": [
+        252
+      ]
+    },
+    {
+      "id": 252,
+      "i": 240,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        253
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 253,
+      "i": 236,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        254
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 254,
+      "i": 232,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        255
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 255,
+      "i": 176,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        256
+      ],
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 256,
+      "i": 172,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        257
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 257,
+      "i": 168,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        258
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 258,
+      "i": 160,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        259
+      ],
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
+    },
+    {
+      "id": 259,
+      "i": 112,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        260
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 260,
+      "i": 108,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        261
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 261,
+      "i": 104,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        262
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 262,
+      "i": 48,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        263
+      ],
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 263,
+      "i": 44,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        264
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 264,
+      "i": 40,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        265
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 265,
+      "i": 32,
+      "j": 1048,
+      "type": "regular",
+      "outputs": [
+        266
+      ],
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
+    },
+    {
+      "id": 266,
+      "i": 0,
+      "j": 1048,
+      "type": "silent",
+      "outputs": [
+        267
+      ]
+    },
+    {
+      "id": 267,
+      "i": 0,
+      "j": 1032,
+      "type": "regular",
+      "outputs": [
+        268
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 268,
+      "i": 0,
+      "j": 1028,
+      "type": "regular",
+      "outputs": [
+        269
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 269,
+      "i": 0,
+      "j": 1024,
+      "type": "regular",
+      "outputs": [
+        270
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 270,
+      "i": 0,
+      "j": 968,
+      "type": "regular",
+      "outputs": [
+        271
+      ],
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 271,
+      "i": 0,
+      "j": 964,
+      "type": "regular",
+      "outputs": [
+        272
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 272,
+      "i": 0,
+      "j": 960,
+      "type": "regular",
+      "outputs": [
+        273
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 273,
+      "i": 0,
+      "j": 952,
+      "type": "regular",
+      "outputs": [
+        274
+      ],
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
+    },
+    {
+      "id": 274,
+      "i": 0,
+      "j": 904,
+      "type": "regular",
+      "outputs": [
+        275
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 275,
+      "i": 0,
+      "j": 900,
+      "type": "regular",
+      "outputs": [
+        276
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 276,
+      "i": 0,
+      "j": 896,
+      "type": "regular",
+      "outputs": [
+        277
+      ],
+      "pitch": 14,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 277,
+      "i": 0,
+      "j": 840,
+      "type": "regular",
+      "outputs": [
+        278
+      ],
+      "pitch": 7,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 278,
+      "i": 0,
+      "j": 836,
+      "type": "regular",
+      "outputs": [
+        279
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 279,
+      "i": 0,
+      "j": 832,
+      "type": "regular",
+      "outputs": [
+        280
+      ],
+      "pitch": 12,
+      "volume": 0.55,
+      "duration": 0.12
+    },
+    {
+      "id": 280,
+      "i": 0,
+      "j": 824,
+      "type": "regular",
+      "outputs": [
+        221
+      ],
+      "pitch": 9,
+      "volume": 0.24,
+      "duration": 0.12
+    },
+    {
+      "id": 281,
+      "i": 0,
+      "j": 1056,
+      "type": "regular",
+      "outputs": [
+        282
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 282,
+      "i": 32,
+      "j": 1056,
+      "type": "regular",
+      "outputs": [
+        283
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 283,
+      "i": 96,
+      "j": 1056,
+      "type": "regular",
+      "outputs": [
+        284
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 284,
+      "i": 128,
+      "j": 1056,
+      "type": "regular",
+      "outputs": [
+        285
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 285,
+      "i": 160,
+      "j": 1056,
+      "type": "regular",
+      "outputs": [
+        286
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 286,
+      "i": 224,
+      "j": 1056,
+      "type": "regular",
+      "outputs": [
+        287
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 287,
+      "i": 256,
+      "j": 1056,
+      "type": "regular",
+      "outputs": [
+        288
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 288,
+      "i": 256,
+      "j": 1088,
+      "type": "regular",
+      "outputs": [
+        289
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 289,
+      "i": 256,
+      "j": 1152,
+      "type": "regular",
+      "outputs": [
+        290
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 290,
+      "i": 256,
+      "j": 1184,
+      "type": "regular",
+      "outputs": [
+        291
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 291,
+      "i": 256,
+      "j": 1216,
+      "type": "regular",
+      "outputs": [
+        292
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 292,
+      "i": 256,
+      "j": 1280,
+      "type": "regular",
+      "outputs": [
+        293
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 293,
+      "i": 256,
+      "j": 1312,
+      "type": "regular",
+      "outputs": [
+        294
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 294,
+      "i": 224,
+      "j": 1312,
+      "type": "regular",
+      "outputs": [
+        295
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 295,
+      "i": 160,
+      "j": 1312,
+      "type": "regular",
+      "outputs": [
+        296
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 296,
+      "i": 128,
+      "j": 1312,
+      "type": "regular",
+      "outputs": [
+        297
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 297,
+      "i": 96,
+      "j": 1312,
+      "type": "regular",
+      "outputs": [
+        298
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 298,
+      "i": 32,
+      "j": 1312,
+      "type": "regular",
+      "outputs": [
+        299
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 299,
+      "i": 0,
+      "j": 1312,
+      "type": "regular",
+      "outputs": [
+        300
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 300,
+      "i": 0,
+      "j": 1280,
+      "type": "regular",
+      "outputs": [
+        301
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 301,
+      "i": 0,
+      "j": 1216,
+      "type": "regular",
+      "outputs": [
+        302
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 302,
+      "i": 0,
+      "j": 1184,
+      "type": "regular",
+      "outputs": [
+        303
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 303,
+      "i": 0,
+      "j": 1152,
+      "type": "regular",
+      "outputs": [
+        304
+      ],
+      "pitch": 7,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 304,
+      "i": 0,
+      "j": 1088,
+      "type": "regular",
+      "outputs": [
+        281
+      ],
+      "pitch": 9,
+      "volume": 0.63,
+      "duration": 0.99
+    },
+    {
+      "id": 305,
+      "i": 0,
+      "j": 1320,
+      "type": "silent",
+      "outputs": [
+        306
+      ]
+    },
+    {
+      "id": 306,
+      "i": 256,
+      "j": 1320,
+      "type": "silent",
+      "outputs": [
+        307
+      ]
+    },
+    {
+      "id": 307,
+      "i": 256,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        308
+      ],
+      "pitch": 14,
+      "volume": 0.5,
+      "duration": 1.66,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 308,
+      "i": 232,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        309
+      ],
+      "pitch": 12,
+      "volume": 0.5,
+      "duration": 0.61,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 309,
+      "i": 224,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        310
+      ],
+      "pitch": 9,
+      "volume": 0.5,
+      "duration": 0.98,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 310,
+      "i": 208,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        311
+      ],
+      "pitch": 7,
+      "volume": 0.5,
+      "duration": 0.53,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 311,
+      "i": 200,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        312
+      ],
+      "pitch": 9,
+      "volume": 0.5,
+      "duration": 4.58,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 312,
+      "i": 128,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        313
+      ],
+      "pitch": 14,
+      "volume": 0.5,
+      "duration": 1.66,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 313,
+      "i": 104,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        314
+      ],
+      "pitch": 12,
+      "volume": 0.5,
+      "duration": 0.61,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 314,
+      "i": 96,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        315
+      ],
+      "pitch": 9,
+      "volume": 0.5,
+      "duration": 0.98,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 315,
+      "i": 80,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        316
+      ],
+      "pitch": 7,
+      "volume": 0.5,
+      "duration": 0.53,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 316,
+      "i": 72,
+      "j": 1576,
+      "type": "regular",
+      "outputs": [
+        317
+      ],
+      "pitch": 9,
+      "volume": 0.5,
+      "duration": 4.58,
+      "groove_kind": "rush",
+      "groove_pct": 0.33
+    },
+    {
+      "id": 317,
+      "i": 0,
+      "j": 1576,
+      "type": "silent",
+      "outputs": [
+        305
+      ]
+    },
+    {
+      "id": 318,
+      "i": 0,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        319
+      ],
+      "volume": 1
+    },
+    {
+      "id": 319,
+      "i": 24,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        320
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 320,
+      "i": 32,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        321
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 321,
+      "i": 56,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        322
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 322,
+      "i": 64,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        323
+      ],
+      "volume": 1
+    },
+    {
+      "id": 323,
+      "i": 88,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        324
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 324,
+      "i": 96,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        325
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 325,
+      "i": 104,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        326
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 326,
+      "i": 120,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        327
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 327,
+      "i": 128,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        328
+      ],
+      "volume": 1
+    },
+    {
+      "id": 328,
+      "i": 152,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        329
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 329,
+      "i": 160,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        330
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 330,
+      "i": 184,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        331
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 331,
+      "i": 192,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        332
+      ],
+      "volume": 1
+    },
+    {
+      "id": 332,
+      "i": 216,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        333
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 333,
+      "i": 224,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        334
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 334,
+      "i": 232,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        335
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 335,
+      "i": 248,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        336
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 336,
+      "i": 256,
+      "j": 1584,
+      "type": "regular",
+      "outputs": [
+        337
+      ],
+      "volume": 1
+    },
+    {
+      "id": 337,
+      "i": 256,
+      "j": 1608,
+      "type": "regular",
+      "outputs": [
+        338
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 338,
+      "i": 256,
+      "j": 1616,
+      "type": "regular",
+      "outputs": [
+        339
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 339,
+      "i": 256,
+      "j": 1640,
+      "type": "regular",
+      "outputs": [
+        340
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 340,
+      "i": 256,
+      "j": 1648,
+      "type": "regular",
+      "outputs": [
+        341
+      ],
+      "volume": 1
+    },
+    {
+      "id": 341,
+      "i": 256,
+      "j": 1672,
+      "type": "regular",
+      "outputs": [
+        342
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 342,
+      "i": 256,
+      "j": 1680,
+      "type": "regular",
+      "outputs": [
+        343
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 343,
+      "i": 256,
+      "j": 1688,
+      "type": "regular",
+      "outputs": [
+        344
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 344,
+      "i": 256,
+      "j": 1704,
+      "type": "regular",
+      "outputs": [
+        345
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 345,
+      "i": 256,
+      "j": 1712,
+      "type": "regular",
+      "outputs": [
+        346
+      ],
+      "volume": 1
+    },
+    {
+      "id": 346,
+      "i": 256,
+      "j": 1736,
+      "type": "regular",
+      "outputs": [
+        347
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 347,
+      "i": 256,
+      "j": 1744,
+      "type": "regular",
+      "outputs": [
+        348
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 348,
+      "i": 256,
+      "j": 1768,
+      "type": "regular",
+      "outputs": [
+        349
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 349,
+      "i": 256,
+      "j": 1776,
+      "type": "regular",
+      "outputs": [
+        350
+      ],
+      "volume": 1
+    },
+    {
+      "id": 350,
+      "i": 256,
+      "j": 1800,
+      "type": "regular",
+      "outputs": [
+        351
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 351,
+      "i": 256,
+      "j": 1808,
+      "type": "regular",
+      "outputs": [
+        352
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 352,
+      "i": 256,
+      "j": 1816,
+      "type": "regular",
+      "outputs": [
+        353
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 353,
+      "i": 256,
+      "j": 1832,
+      "type": "regular",
+      "outputs": [
+        354
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 354,
+      "i": 256,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        355
+      ],
+      "volume": 1
+    },
+    {
+      "id": 355,
+      "i": 232,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        356
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 356,
+      "i": 224,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        357
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 357,
+      "i": 200,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        358
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 358,
+      "i": 192,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        359
+      ],
+      "volume": 1
+    },
+    {
+      "id": 359,
+      "i": 168,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        360
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 360,
+      "i": 160,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        361
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 361,
+      "i": 152,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        362
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 362,
+      "i": 136,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        363
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 363,
+      "i": 128,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        364
+      ],
+      "volume": 1
+    },
+    {
+      "id": 364,
+      "i": 104,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        365
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 365,
+      "i": 96,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        366
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 366,
+      "i": 72,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        367
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 367,
+      "i": 64,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        368
+      ],
+      "volume": 1
+    },
+    {
+      "id": 368,
+      "i": 40,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        369
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 369,
+      "i": 32,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        370
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 370,
+      "i": 24,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        371
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 371,
+      "i": 8,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        372
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 372,
+      "i": 0,
+      "j": 1840,
+      "type": "regular",
+      "outputs": [
+        373
+      ],
+      "volume": 1
+    },
+    {
+      "id": 373,
+      "i": 0,
+      "j": 1816,
+      "type": "regular",
+      "outputs": [
+        374
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 374,
+      "i": 0,
+      "j": 1808,
+      "type": "regular",
+      "outputs": [
+        375
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 375,
+      "i": 0,
+      "j": 1784,
+      "type": "regular",
+      "outputs": [
+        376
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 376,
+      "i": 0,
+      "j": 1776,
+      "type": "regular",
+      "outputs": [
+        377
+      ],
+      "volume": 1
+    },
+    {
+      "id": 377,
+      "i": 0,
+      "j": 1752,
+      "type": "regular",
+      "outputs": [
+        378
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 378,
+      "i": 0,
+      "j": 1744,
+      "type": "regular",
+      "outputs": [
+        379
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 379,
+      "i": 0,
+      "j": 1736,
+      "type": "regular",
+      "outputs": [
+        380
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 380,
+      "i": 0,
+      "j": 1720,
+      "type": "regular",
+      "outputs": [
+        381
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 381,
+      "i": 0,
+      "j": 1712,
+      "type": "regular",
+      "outputs": [
+        382
+      ],
+      "volume": 1
+    },
+    {
+      "id": 382,
+      "i": 0,
+      "j": 1688,
+      "type": "regular",
+      "outputs": [
+        383
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 383,
+      "i": 0,
+      "j": 1680,
+      "type": "regular",
+      "outputs": [
+        384
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 384,
+      "i": 0,
+      "j": 1656,
+      "type": "regular",
+      "outputs": [
+        385
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 385,
+      "i": 0,
+      "j": 1648,
+      "type": "regular",
+      "outputs": [
+        386
+      ],
+      "volume": 1
+    },
+    {
+      "id": 386,
+      "i": 0,
+      "j": 1624,
+      "type": "regular",
+      "outputs": [
+        387
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 387,
+      "i": 0,
+      "j": 1616,
+      "type": "regular",
+      "outputs": [
+        388
+      ],
+      "volume": 0.97
+    },
+    {
+      "id": 388,
+      "i": 0,
+      "j": 1608,
+      "type": "regular",
+      "outputs": [
+        389
+      ],
+      "volume": 0.87
+    },
+    {
+      "id": 389,
+      "i": 0,
+      "j": 1592,
+      "type": "regular",
+      "outputs": [
+        318
+      ],
+      "volume": 0.95
+    },
+    {
+      "id": 390,
+      "i": 0,
+      "j": 1848,
+      "type": "silent",
+      "outputs": [
+        391
+      ]
+    },
+    {
+      "id": 391,
+      "i": 104,
+      "j": 1848,
+      "type": "regular",
+      "outputs": [
+        392
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 392,
+      "i": 232,
+      "j": 1848,
+      "type": "regular",
+      "outputs": [
+        393
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 393,
+      "i": 256,
+      "j": 1848,
+      "type": "silent",
+      "outputs": [
+        394
+      ]
+    },
+    {
+      "id": 394,
+      "i": 256,
+      "j": 1952,
+      "type": "regular",
+      "outputs": [
+        395
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 395,
+      "i": 256,
+      "j": 2080,
+      "type": "regular",
+      "outputs": [
+        396
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 396,
+      "i": 256,
+      "j": 2104,
+      "type": "silent",
+      "outputs": [
+        397
+      ]
+    },
+    {
+      "id": 397,
+      "i": 152,
+      "j": 2104,
+      "type": "regular",
+      "outputs": [
+        398
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 398,
+      "i": 24,
+      "j": 2104,
+      "type": "regular",
+      "outputs": [
+        399
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 399,
+      "i": 0,
+      "j": 2104,
+      "type": "silent",
+      "outputs": [
+        400
+      ]
+    },
+    {
+      "id": 400,
+      "i": 0,
+      "j": 2000,
+      "type": "regular",
+      "outputs": [
+        401
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 401,
+      "i": 0,
+      "j": 1872,
+      "type": "regular",
+      "outputs": [
+        390
+      ],
+      "volume": 0.85
+    },
+    {
+      "id": 402,
+      "i": 0,
+      "j": 2112,
+      "type": "silent",
+      "outputs": [
+        403
+      ]
+    },
+    {
+      "id": 403,
+      "i": 16,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        404
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 404,
+      "i": 48,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        405
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 405,
+      "i": 80,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        406
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 406,
+      "i": 112,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        407
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 407,
+      "i": 144,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        408
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 408,
+      "i": 176,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        409
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 409,
+      "i": 208,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        410
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 410,
+      "i": 240,
+      "j": 2112,
+      "type": "regular",
+      "outputs": [
+        411
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 411,
+      "i": 256,
+      "j": 2112,
+      "type": "silent",
+      "outputs": [
+        412
+      ]
+    },
+    {
+      "id": 412,
+      "i": 256,
+      "j": 2128,
+      "type": "regular",
+      "outputs": [
+        413
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 413,
+      "i": 256,
+      "j": 2160,
+      "type": "regular",
+      "outputs": [
+        414
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 414,
+      "i": 256,
+      "j": 2192,
+      "type": "regular",
+      "outputs": [
+        415
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 415,
+      "i": 256,
+      "j": 2224,
+      "type": "regular",
+      "outputs": [
+        416
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 416,
+      "i": 256,
+      "j": 2256,
+      "type": "regular",
+      "outputs": [
+        417
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 417,
+      "i": 256,
+      "j": 2288,
+      "type": "regular",
+      "outputs": [
+        418
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 418,
+      "i": 256,
+      "j": 2320,
+      "type": "regular",
+      "outputs": [
+        419
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 419,
+      "i": 256,
+      "j": 2352,
+      "type": "regular",
+      "outputs": [
+        420
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 420,
+      "i": 256,
+      "j": 2368,
+      "type": "silent",
+      "outputs": [
+        421
+      ]
+    },
+    {
+      "id": 421,
+      "i": 240,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        422
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 422,
+      "i": 208,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        423
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 423,
+      "i": 176,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        424
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 424,
+      "i": 144,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        425
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 425,
+      "i": 112,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        426
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 426,
+      "i": 80,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        427
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 427,
+      "i": 48,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        428
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 428,
+      "i": 16,
+      "j": 2368,
+      "type": "regular",
+      "outputs": [
+        429
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 429,
+      "i": 0,
+      "j": 2368,
+      "type": "silent",
+      "outputs": [
+        430
+      ]
+    },
+    {
+      "id": 430,
+      "i": 0,
+      "j": 2352,
+      "type": "regular",
+      "outputs": [
+        431
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 431,
+      "i": 0,
+      "j": 2320,
+      "type": "regular",
+      "outputs": [
+        432
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 432,
+      "i": 0,
+      "j": 2288,
+      "type": "regular",
+      "outputs": [
+        433
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 433,
+      "i": 0,
+      "j": 2256,
+      "type": "regular",
+      "outputs": [
+        434
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 434,
+      "i": 0,
+      "j": 2224,
+      "type": "regular",
+      "outputs": [
+        435
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 435,
+      "i": 0,
+      "j": 2192,
+      "type": "regular",
+      "outputs": [
+        436
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 436,
+      "i": 0,
+      "j": 2160,
+      "type": "regular",
+      "outputs": [
+        437
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 437,
+      "i": 0,
+      "j": 2128,
+      "type": "regular",
+      "outputs": [
+        402
+      ],
+      "volume": 0.85,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 438,
+      "i": 0,
+      "j": 2376,
+      "type": "silent",
+      "outputs": [
+        439
+      ]
+    },
+    {
+      "id": 439,
+      "i": 16,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        440
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 440,
+      "i": 48,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        441
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 441,
+      "i": 80,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        442
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 442,
+      "i": 112,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        443
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 443,
+      "i": 144,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        444
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 444,
+      "i": 176,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        445
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 445,
+      "i": 208,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        446
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 446,
+      "i": 240,
+      "j": 2376,
+      "type": "regular",
+      "outputs": [
+        447
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 447,
+      "i": 256,
+      "j": 2376,
+      "type": "silent",
+      "outputs": [
+        448
+      ]
+    },
+    {
+      "id": 448,
+      "i": 256,
+      "j": 2392,
+      "type": "regular",
+      "outputs": [
+        449
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 449,
+      "i": 256,
+      "j": 2424,
+      "type": "regular",
+      "outputs": [
+        450
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 450,
+      "i": 256,
+      "j": 2456,
+      "type": "regular",
+      "outputs": [
+        451
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 451,
+      "i": 256,
+      "j": 2488,
+      "type": "regular",
+      "outputs": [
+        452
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 452,
+      "i": 256,
+      "j": 2520,
+      "type": "regular",
+      "outputs": [
+        453
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 453,
+      "i": 256,
+      "j": 2552,
+      "type": "regular",
+      "outputs": [
+        454
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 454,
+      "i": 256,
+      "j": 2584,
+      "type": "regular",
+      "outputs": [
+        455
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 455,
+      "i": 256,
+      "j": 2616,
+      "type": "regular",
+      "outputs": [
+        456
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 456,
+      "i": 256,
+      "j": 2632,
+      "type": "silent",
+      "outputs": [
+        457
+      ]
+    },
+    {
+      "id": 457,
+      "i": 240,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        458
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 458,
+      "i": 208,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        459
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 459,
+      "i": 176,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        460
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 460,
+      "i": 144,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        461
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 461,
+      "i": 112,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        462
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 462,
+      "i": 80,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        463
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 463,
+      "i": 48,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        464
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 464,
+      "i": 16,
+      "j": 2632,
+      "type": "regular",
+      "outputs": [
+        465
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 465,
+      "i": 0,
+      "j": 2632,
+      "type": "silent",
+      "outputs": [
+        466
+      ]
+    },
+    {
+      "id": 466,
+      "i": 0,
+      "j": 2616,
+      "type": "regular",
+      "outputs": [
+        467
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 467,
+      "i": 0,
+      "j": 2584,
+      "type": "regular",
+      "outputs": [
+        468
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 468,
+      "i": 0,
+      "j": 2552,
+      "type": "regular",
+      "outputs": [
+        469
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 469,
+      "i": 0,
+      "j": 2520,
+      "type": "regular",
+      "outputs": [
+        470
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 470,
+      "i": 0,
+      "j": 2488,
+      "type": "regular",
+      "outputs": [
+        471
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 471,
+      "i": 0,
+      "j": 2456,
+      "type": "regular",
+      "outputs": [
+        472
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 472,
+      "i": 0,
+      "j": 2424,
+      "type": "regular",
+      "outputs": [
+        473
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 473,
+      "i": 0,
+      "j": 2392,
+      "type": "regular",
+      "outputs": [
+        438
+      ],
+      "volume": 0.55,
+      "groove_kind": "delay",
+      "groove_pct": 0.04
+    },
+    {
+      "id": 474,
+      "i": 0,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        475
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 475,
+      "i": 8,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        476
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 476,
+      "i": 16,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        477
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 477,
+      "i": 24,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        478
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 478,
+      "i": 32,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        479
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 479,
+      "i": 40,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        480
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 480,
+      "i": 48,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        481
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 481,
+      "i": 56,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        482
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 482,
+      "i": 64,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        483
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 483,
+      "i": 72,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        484
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 484,
+      "i": 80,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        485
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 485,
+      "i": 88,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        486
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 486,
+      "i": 96,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        487
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 487,
+      "i": 112,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        488
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 488,
+      "i": 120,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        489
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 489,
+      "i": 128,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        490
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 490,
+      "i": 136,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        491
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 491,
+      "i": 144,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        492
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 492,
+      "i": 152,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        493
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 493,
+      "i": 160,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        494
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 494,
+      "i": 168,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        495
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 495,
+      "i": 176,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        496
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 496,
+      "i": 184,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        497
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 497,
+      "i": 192,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        498
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 498,
+      "i": 200,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        499
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 499,
+      "i": 208,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        500
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 500,
+      "i": 216,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        501
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 501,
+      "i": 224,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        502
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 502,
+      "i": 240,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        503
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 503,
+      "i": 248,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        504
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 504,
+      "i": 256,
+      "j": 2640,
+      "type": "regular",
+      "outputs": [
+        505
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 505,
+      "i": 256,
+      "j": 2648,
+      "type": "regular",
+      "outputs": [
+        506
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 506,
+      "i": 256,
+      "j": 2656,
+      "type": "regular",
+      "outputs": [
+        507
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 507,
+      "i": 256,
+      "j": 2664,
+      "type": "regular",
+      "outputs": [
+        508
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 508,
+      "i": 256,
+      "j": 2672,
+      "type": "regular",
+      "outputs": [
+        509
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 509,
+      "i": 256,
+      "j": 2680,
+      "type": "regular",
+      "outputs": [
+        510
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 510,
+      "i": 256,
+      "j": 2688,
+      "type": "regular",
+      "outputs": [
+        511
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 511,
+      "i": 256,
+      "j": 2696,
+      "type": "regular",
+      "outputs": [
+        512
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 512,
+      "i": 256,
+      "j": 2704,
+      "type": "regular",
+      "outputs": [
+        513
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 513,
+      "i": 256,
+      "j": 2712,
+      "type": "regular",
+      "outputs": [
+        514
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 514,
+      "i": 256,
+      "j": 2720,
+      "type": "regular",
+      "outputs": [
+        515
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 515,
+      "i": 256,
+      "j": 2728,
+      "type": "regular",
+      "outputs": [
+        516
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 516,
+      "i": 256,
+      "j": 2736,
+      "type": "regular",
+      "outputs": [
+        517
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 517,
+      "i": 256,
+      "j": 2752,
+      "type": "regular",
+      "outputs": [
+        518
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 518,
+      "i": 256,
+      "j": 2760,
+      "type": "regular",
+      "outputs": [
+        519
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 519,
+      "i": 256,
+      "j": 2768,
+      "type": "regular",
+      "outputs": [
+        520
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 520,
+      "i": 256,
+      "j": 2776,
+      "type": "regular",
+      "outputs": [
+        521
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 521,
+      "i": 256,
+      "j": 2784,
+      "type": "regular",
+      "outputs": [
+        522
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 522,
+      "i": 256,
+      "j": 2792,
+      "type": "regular",
+      "outputs": [
+        523
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 523,
+      "i": 256,
+      "j": 2800,
+      "type": "regular",
+      "outputs": [
+        524
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 524,
+      "i": 256,
+      "j": 2808,
+      "type": "regular",
+      "outputs": [
+        525
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 525,
+      "i": 256,
+      "j": 2816,
+      "type": "regular",
+      "outputs": [
+        526
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 526,
+      "i": 256,
+      "j": 2824,
+      "type": "regular",
+      "outputs": [
+        527
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 527,
+      "i": 256,
+      "j": 2832,
+      "type": "regular",
+      "outputs": [
+        528
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 528,
+      "i": 256,
+      "j": 2840,
+      "type": "regular",
+      "outputs": [
+        529
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 529,
+      "i": 256,
+      "j": 2848,
+      "type": "regular",
+      "outputs": [
+        530
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 530,
+      "i": 256,
+      "j": 2856,
+      "type": "regular",
+      "outputs": [
+        531
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 531,
+      "i": 256,
+      "j": 2864,
+      "type": "regular",
+      "outputs": [
+        532
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 532,
+      "i": 256,
+      "j": 2880,
+      "type": "regular",
+      "outputs": [
+        533
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 533,
+      "i": 256,
+      "j": 2888,
+      "type": "regular",
+      "outputs": [
+        534
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 534,
+      "i": 256,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        535
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 535,
+      "i": 248,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        536
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 536,
+      "i": 240,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        537
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 537,
+      "i": 232,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        538
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 538,
+      "i": 224,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        539
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 539,
+      "i": 216,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        540
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 540,
+      "i": 208,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        541
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 541,
+      "i": 200,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        542
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 542,
+      "i": 192,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        543
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 543,
+      "i": 184,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        544
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 544,
+      "i": 176,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        545
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 545,
+      "i": 168,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        546
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 546,
+      "i": 160,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        547
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 547,
+      "i": 144,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        548
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 548,
+      "i": 136,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        549
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 549,
+      "i": 128,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        550
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 550,
+      "i": 120,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        551
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 551,
+      "i": 112,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        552
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 552,
+      "i": 104,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        553
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 553,
+      "i": 96,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        554
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 554,
+      "i": 88,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        555
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 555,
+      "i": 80,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        556
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 556,
+      "i": 72,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        557
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 557,
+      "i": 64,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        558
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 558,
+      "i": 56,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        559
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 559,
+      "i": 48,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        560
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 560,
+      "i": 40,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        561
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 561,
+      "i": 32,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        562
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 562,
+      "i": 16,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        563
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 563,
+      "i": 8,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        564
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 564,
+      "i": 0,
+      "j": 2896,
+      "type": "regular",
+      "outputs": [
+        565
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 565,
+      "i": 0,
+      "j": 2888,
+      "type": "regular",
+      "outputs": [
+        566
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 566,
+      "i": 0,
+      "j": 2880,
+      "type": "regular",
+      "outputs": [
+        567
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 567,
+      "i": 0,
+      "j": 2872,
+      "type": "regular",
+      "outputs": [
+        568
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 568,
+      "i": 0,
+      "j": 2864,
+      "type": "regular",
+      "outputs": [
+        569
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 569,
+      "i": 0,
+      "j": 2856,
+      "type": "regular",
+      "outputs": [
+        570
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 570,
+      "i": 0,
+      "j": 2848,
+      "type": "regular",
+      "outputs": [
+        571
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 571,
+      "i": 0,
+      "j": 2840,
+      "type": "regular",
+      "outputs": [
+        572
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 572,
+      "i": 0,
+      "j": 2832,
+      "type": "regular",
+      "outputs": [
+        573
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 573,
+      "i": 0,
+      "j": 2824,
+      "type": "regular",
+      "outputs": [
+        574
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 574,
+      "i": 0,
+      "j": 2816,
+      "type": "regular",
+      "outputs": [
+        575
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 575,
+      "i": 0,
+      "j": 2808,
+      "type": "regular",
+      "outputs": [
+        576
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 576,
+      "i": 0,
+      "j": 2800,
+      "type": "regular",
+      "outputs": [
+        577
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 577,
+      "i": 0,
+      "j": 2784,
+      "type": "regular",
+      "outputs": [
+        578
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 578,
+      "i": 0,
+      "j": 2776,
+      "type": "regular",
+      "outputs": [
+        579
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 579,
+      "i": 0,
+      "j": 2768,
+      "type": "regular",
+      "outputs": [
+        580
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 580,
+      "i": 0,
+      "j": 2760,
+      "type": "regular",
+      "outputs": [
+        581
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 581,
+      "i": 0,
+      "j": 2752,
+      "type": "regular",
+      "outputs": [
+        582
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 582,
+      "i": 0,
+      "j": 2744,
+      "type": "regular",
+      "outputs": [
+        583
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 583,
+      "i": 0,
+      "j": 2736,
+      "type": "regular",
+      "outputs": [
+        584
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 584,
+      "i": 0,
+      "j": 2728,
+      "type": "regular",
+      "outputs": [
+        585
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 585,
+      "i": 0,
+      "j": 2720,
+      "type": "regular",
+      "outputs": [
+        586
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 586,
+      "i": 0,
+      "j": 2712,
+      "type": "regular",
+      "outputs": [
+        587
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 587,
+      "i": 0,
+      "j": 2704,
+      "type": "regular",
+      "outputs": [
+        588
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 588,
+      "i": 0,
+      "j": 2696,
+      "type": "regular",
+      "outputs": [
+        589
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 589,
+      "i": 0,
+      "j": 2688,
+      "type": "regular",
+      "outputs": [
+        590
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 590,
+      "i": 0,
+      "j": 2680,
+      "type": "regular",
+      "outputs": [
+        591
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 591,
+      "i": 0,
+      "j": 2672,
+      "type": "regular",
+      "outputs": [
+        592
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 592,
+      "i": 0,
+      "j": 2656,
+      "type": "regular",
+      "outputs": [
+        593
+      ],
+      "volume": 0.55
+    },
+    {
+      "id": 593,
+      "i": 0,
+      "j": 2648,
+      "type": "regular",
+      "outputs": [
+        474
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 594,
+      "i": 0,
+      "j": 2904,
+      "type": "silent",
+      "outputs": [
+        595
+      ]
+    },
+    {
+      "id": 595,
+      "i": 104,
+      "j": 2904,
+      "type": "regular",
+      "outputs": [
+        596
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 596,
+      "i": 232,
+      "j": 2904,
+      "type": "regular",
+      "outputs": [
+        597
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 597,
+      "i": 256,
+      "j": 2904,
+      "type": "silent",
+      "outputs": [
+        598
+      ]
+    },
+    {
+      "id": 598,
+      "i": 256,
+      "j": 3008,
+      "type": "regular",
+      "outputs": [
+        599
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 599,
+      "i": 256,
+      "j": 3136,
+      "type": "regular",
+      "outputs": [
+        600
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 600,
+      "i": 256,
+      "j": 3160,
+      "type": "silent",
+      "outputs": [
+        601
+      ]
+    },
+    {
+      "id": 601,
+      "i": 152,
+      "j": 3160,
+      "type": "regular",
+      "outputs": [
+        602
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 602,
+      "i": 24,
+      "j": 3160,
+      "type": "regular",
+      "outputs": [
+        603
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 603,
+      "i": 0,
+      "j": 3160,
+      "type": "silent",
+      "outputs": [
+        604
+      ]
+    },
+    {
+      "id": 604,
+      "i": 0,
+      "j": 3056,
+      "type": "regular",
+      "outputs": [
+        605
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 605,
+      "i": 0,
+      "j": 2928,
+      "type": "regular",
+      "outputs": [
+        594
+      ],
+      "volume": 0.72
+    },
+    {
+      "id": 606,
+      "i": 0,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        607
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 607,
+      "i": 4,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        608
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 608,
+      "i": 8,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        609
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 609,
+      "i": 12,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        610
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 610,
+      "i": 16,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        611
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 611,
+      "i": 20,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        612
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 612,
+      "i": 24,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        613
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 613,
+      "i": 28,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        614
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 614,
+      "i": 32,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        615
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 615,
+      "i": 36,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        616
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 616,
+      "i": 40,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        617
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 617,
+      "i": 44,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        618
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 618,
+      "i": 48,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        619
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 619,
+      "i": 52,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        620
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 620,
+      "i": 56,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        621
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 621,
+      "i": 60,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        622
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 622,
+      "i": 64,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        623
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 623,
+      "i": 68,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        624
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 624,
+      "i": 72,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        625
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 625,
+      "i": 76,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        626
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 626,
+      "i": 80,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        627
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 627,
+      "i": 84,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        628
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 628,
+      "i": 88,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        629
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 629,
+      "i": 92,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        630
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 630,
+      "i": 96,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        631
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 631,
+      "i": 100,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        632
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 632,
+      "i": 104,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        633
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 633,
+      "i": 108,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        634
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 634,
+      "i": 112,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        635
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 635,
+      "i": 116,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        636
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 636,
+      "i": 120,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        637
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 637,
+      "i": 124,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        638
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 638,
+      "i": 128,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        639
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 639,
+      "i": 132,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        640
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 640,
+      "i": 136,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        641
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 641,
+      "i": 140,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        642
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 642,
+      "i": 144,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        643
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 643,
+      "i": 148,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        644
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 644,
+      "i": 152,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        645
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 645,
+      "i": 156,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        646
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 646,
+      "i": 160,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        647
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 647,
+      "i": 164,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        648
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 648,
+      "i": 168,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        649
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 649,
+      "i": 172,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        650
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 650,
+      "i": 176,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        651
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 651,
+      "i": 180,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        652
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 652,
+      "i": 184,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        653
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 653,
+      "i": 188,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        654
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 654,
+      "i": 192,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        655
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 655,
+      "i": 196,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        656
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 656,
+      "i": 200,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        657
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 657,
+      "i": 204,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        658
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 658,
+      "i": 208,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        659
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 659,
+      "i": 212,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        660
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 660,
+      "i": 216,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        661
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 661,
+      "i": 220,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        662
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 662,
+      "i": 224,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        663
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 663,
+      "i": 228,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        664
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 664,
+      "i": 232,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        665
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 665,
+      "i": 236,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        666
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 666,
+      "i": 240,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        667
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 667,
+      "i": 244,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        668
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 668,
+      "i": 248,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        669
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 669,
+      "i": 252,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        670
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 670,
+      "i": 256,
+      "j": 3168,
+      "type": "regular",
+      "outputs": [
+        671
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 671,
+      "i": 256,
+      "j": 3172,
+      "type": "regular",
+      "outputs": [
+        672
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 672,
+      "i": 256,
+      "j": 3176,
+      "type": "regular",
+      "outputs": [
+        673
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 673,
+      "i": 256,
+      "j": 3180,
+      "type": "regular",
+      "outputs": [
+        674
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 674,
+      "i": 256,
+      "j": 3184,
+      "type": "regular",
+      "outputs": [
+        675
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 675,
+      "i": 256,
+      "j": 3188,
+      "type": "regular",
+      "outputs": [
+        676
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 676,
+      "i": 256,
+      "j": 3192,
+      "type": "regular",
+      "outputs": [
+        677
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 677,
+      "i": 256,
+      "j": 3196,
+      "type": "regular",
+      "outputs": [
+        678
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 678,
+      "i": 256,
+      "j": 3200,
+      "type": "regular",
+      "outputs": [
+        679
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 679,
+      "i": 256,
+      "j": 3204,
+      "type": "regular",
+      "outputs": [
+        680
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 680,
+      "i": 256,
+      "j": 3208,
+      "type": "regular",
+      "outputs": [
+        681
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 681,
+      "i": 256,
+      "j": 3212,
+      "type": "regular",
+      "outputs": [
+        682
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 682,
+      "i": 256,
+      "j": 3216,
+      "type": "regular",
+      "outputs": [
+        683
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 683,
+      "i": 256,
+      "j": 3220,
+      "type": "regular",
+      "outputs": [
+        684
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 684,
+      "i": 256,
+      "j": 3224,
+      "type": "regular",
+      "outputs": [
+        685
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 685,
+      "i": 256,
+      "j": 3228,
+      "type": "regular",
+      "outputs": [
+        686
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 686,
+      "i": 256,
+      "j": 3232,
+      "type": "regular",
+      "outputs": [
+        687
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 687,
+      "i": 256,
+      "j": 3236,
+      "type": "regular",
+      "outputs": [
+        688
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 688,
+      "i": 256,
+      "j": 3240,
+      "type": "regular",
+      "outputs": [
+        689
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 689,
+      "i": 256,
+      "j": 3244,
+      "type": "regular",
+      "outputs": [
+        690
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 690,
+      "i": 256,
+      "j": 3248,
+      "type": "regular",
+      "outputs": [
+        691
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 691,
+      "i": 256,
+      "j": 3252,
+      "type": "regular",
+      "outputs": [
+        692
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 692,
+      "i": 256,
+      "j": 3256,
+      "type": "regular",
+      "outputs": [
+        693
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 693,
+      "i": 256,
+      "j": 3260,
+      "type": "regular",
+      "outputs": [
+        694
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 694,
+      "i": 256,
+      "j": 3264,
+      "type": "regular",
+      "outputs": [
+        695
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 695,
+      "i": 256,
+      "j": 3268,
+      "type": "regular",
+      "outputs": [
+        696
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 696,
+      "i": 256,
+      "j": 3272,
+      "type": "regular",
+      "outputs": [
+        697
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 697,
+      "i": 256,
+      "j": 3276,
+      "type": "regular",
+      "outputs": [
+        698
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 698,
+      "i": 256,
+      "j": 3280,
+      "type": "regular",
+      "outputs": [
+        699
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 699,
+      "i": 256,
+      "j": 3284,
+      "type": "regular",
+      "outputs": [
+        700
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 700,
+      "i": 256,
+      "j": 3288,
+      "type": "regular",
+      "outputs": [
+        701
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 701,
+      "i": 256,
+      "j": 3292,
+      "type": "regular",
+      "outputs": [
+        702
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 702,
+      "i": 256,
+      "j": 3296,
+      "type": "regular",
+      "outputs": [
+        703
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 703,
+      "i": 256,
+      "j": 3300,
+      "type": "regular",
+      "outputs": [
+        704
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 704,
+      "i": 256,
+      "j": 3304,
+      "type": "regular",
+      "outputs": [
+        705
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 705,
+      "i": 256,
+      "j": 3308,
+      "type": "regular",
+      "outputs": [
+        706
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 706,
+      "i": 256,
+      "j": 3312,
+      "type": "regular",
+      "outputs": [
+        707
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 707,
+      "i": 256,
+      "j": 3316,
+      "type": "regular",
+      "outputs": [
+        708
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 708,
+      "i": 256,
+      "j": 3320,
+      "type": "regular",
+      "outputs": [
+        709
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 709,
+      "i": 256,
+      "j": 3324,
+      "type": "regular",
+      "outputs": [
+        710
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 710,
+      "i": 256,
+      "j": 3328,
+      "type": "regular",
+      "outputs": [
+        711
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 711,
+      "i": 256,
+      "j": 3332,
+      "type": "regular",
+      "outputs": [
+        712
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 712,
+      "i": 256,
+      "j": 3336,
+      "type": "regular",
+      "outputs": [
+        713
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 713,
+      "i": 256,
+      "j": 3340,
+      "type": "regular",
+      "outputs": [
+        714
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 714,
+      "i": 256,
+      "j": 3344,
+      "type": "regular",
+      "outputs": [
+        715
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 715,
+      "i": 256,
+      "j": 3348,
+      "type": "regular",
+      "outputs": [
+        716
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 716,
+      "i": 256,
+      "j": 3352,
+      "type": "regular",
+      "outputs": [
+        717
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 717,
+      "i": 256,
+      "j": 3356,
+      "type": "regular",
+      "outputs": [
+        718
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 718,
+      "i": 256,
+      "j": 3360,
+      "type": "regular",
+      "outputs": [
+        719
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 719,
+      "i": 256,
+      "j": 3364,
+      "type": "regular",
+      "outputs": [
+        720
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 720,
+      "i": 256,
+      "j": 3368,
+      "type": "regular",
+      "outputs": [
+        721
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 721,
+      "i": 256,
+      "j": 3372,
+      "type": "regular",
+      "outputs": [
+        722
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 722,
+      "i": 256,
+      "j": 3376,
+      "type": "regular",
+      "outputs": [
+        723
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 723,
+      "i": 256,
+      "j": 3380,
+      "type": "regular",
+      "outputs": [
+        724
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 724,
+      "i": 256,
+      "j": 3384,
+      "type": "regular",
+      "outputs": [
+        725
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 725,
+      "i": 256,
+      "j": 3388,
+      "type": "regular",
+      "outputs": [
+        726
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 726,
+      "i": 256,
+      "j": 3392,
+      "type": "regular",
+      "outputs": [
+        727
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 727,
+      "i": 256,
+      "j": 3396,
+      "type": "regular",
+      "outputs": [
+        728
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 728,
+      "i": 256,
+      "j": 3400,
+      "type": "regular",
+      "outputs": [
+        729
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 729,
+      "i": 256,
+      "j": 3404,
+      "type": "regular",
+      "outputs": [
+        730
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 730,
+      "i": 256,
+      "j": 3408,
+      "type": "regular",
+      "outputs": [
+        731
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 731,
+      "i": 256,
+      "j": 3412,
+      "type": "regular",
+      "outputs": [
+        732
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 732,
+      "i": 256,
+      "j": 3416,
+      "type": "regular",
+      "outputs": [
+        733
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 733,
+      "i": 256,
+      "j": 3420,
+      "type": "regular",
+      "outputs": [
+        734
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 734,
+      "i": 256,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        735
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 735,
+      "i": 252,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        736
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 736,
+      "i": 248,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        737
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 737,
+      "i": 244,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        738
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 738,
+      "i": 240,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        739
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 739,
+      "i": 236,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        740
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 740,
+      "i": 232,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        741
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 741,
+      "i": 228,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        742
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 742,
+      "i": 224,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        743
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 743,
+      "i": 220,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        744
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 744,
+      "i": 216,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        745
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 745,
+      "i": 212,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        746
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 746,
+      "i": 208,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        747
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 747,
+      "i": 204,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        748
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 748,
+      "i": 200,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        749
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 749,
+      "i": 196,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        750
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 750,
+      "i": 192,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        751
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 751,
+      "i": 188,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        752
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 752,
+      "i": 184,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        753
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 753,
+      "i": 180,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        754
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 754,
+      "i": 176,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        755
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 755,
+      "i": 172,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        756
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 756,
+      "i": 168,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        757
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 757,
+      "i": 164,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        758
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 758,
+      "i": 160,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        759
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 759,
+      "i": 156,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        760
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 760,
+      "i": 152,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        761
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 761,
+      "i": 148,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        762
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 762,
+      "i": 144,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        763
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 763,
+      "i": 140,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        764
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 764,
+      "i": 136,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        765
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 765,
+      "i": 132,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        766
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 766,
+      "i": 128,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        767
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 767,
+      "i": 124,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        768
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 768,
+      "i": 120,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        769
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 769,
+      "i": 116,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        770
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 770,
+      "i": 112,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        771
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 771,
+      "i": 108,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        772
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 772,
+      "i": 104,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        773
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 773,
+      "i": 100,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        774
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 774,
+      "i": 96,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        775
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 775,
+      "i": 92,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        776
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 776,
+      "i": 88,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        777
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 777,
+      "i": 84,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        778
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 778,
+      "i": 80,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        779
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 779,
+      "i": 76,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        780
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 780,
+      "i": 72,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        781
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 781,
+      "i": 68,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        782
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 782,
+      "i": 64,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        783
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 783,
+      "i": 60,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        784
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 784,
+      "i": 56,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        785
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 785,
+      "i": 52,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        786
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 786,
+      "i": 48,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        787
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 787,
+      "i": 44,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        788
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 788,
+      "i": 40,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        789
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 789,
+      "i": 36,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        790
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 790,
+      "i": 32,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        791
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 791,
+      "i": 28,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        792
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 792,
+      "i": 24,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        793
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 793,
+      "i": 20,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        794
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 794,
+      "i": 16,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        795
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 795,
+      "i": 12,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        796
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 796,
+      "i": 8,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        797
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 797,
+      "i": 4,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        798
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 798,
+      "i": 0,
+      "j": 3424,
+      "type": "regular",
+      "outputs": [
+        799
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 799,
+      "i": 0,
+      "j": 3420,
+      "type": "regular",
+      "outputs": [
+        800
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 800,
+      "i": 0,
+      "j": 3416,
+      "type": "regular",
+      "outputs": [
+        801
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 801,
+      "i": 0,
+      "j": 3412,
+      "type": "regular",
+      "outputs": [
+        802
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 802,
+      "i": 0,
+      "j": 3408,
+      "type": "regular",
+      "outputs": [
+        803
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 803,
+      "i": 0,
+      "j": 3404,
+      "type": "regular",
+      "outputs": [
+        804
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 804,
+      "i": 0,
+      "j": 3400,
+      "type": "regular",
+      "outputs": [
+        805
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 805,
+      "i": 0,
+      "j": 3396,
+      "type": "regular",
+      "outputs": [
+        806
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 806,
+      "i": 0,
+      "j": 3392,
+      "type": "regular",
+      "outputs": [
+        807
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 807,
+      "i": 0,
+      "j": 3388,
+      "type": "regular",
+      "outputs": [
+        808
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 808,
+      "i": 0,
+      "j": 3384,
+      "type": "regular",
+      "outputs": [
+        809
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 809,
+      "i": 0,
+      "j": 3380,
+      "type": "regular",
+      "outputs": [
+        810
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 810,
+      "i": 0,
+      "j": 3376,
+      "type": "regular",
+      "outputs": [
+        811
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 811,
+      "i": 0,
+      "j": 3372,
+      "type": "regular",
+      "outputs": [
+        812
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 812,
+      "i": 0,
+      "j": 3368,
+      "type": "regular",
+      "outputs": [
+        813
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 813,
+      "i": 0,
+      "j": 3364,
+      "type": "regular",
+      "outputs": [
+        814
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 814,
+      "i": 0,
+      "j": 3360,
+      "type": "regular",
+      "outputs": [
+        815
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 815,
+      "i": 0,
+      "j": 3356,
+      "type": "regular",
+      "outputs": [
+        816
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 816,
+      "i": 0,
+      "j": 3352,
+      "type": "regular",
+      "outputs": [
+        817
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 817,
+      "i": 0,
+      "j": 3348,
+      "type": "regular",
+      "outputs": [
+        818
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 818,
+      "i": 0,
+      "j": 3344,
+      "type": "regular",
+      "outputs": [
+        819
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 819,
+      "i": 0,
+      "j": 3340,
+      "type": "regular",
+      "outputs": [
+        820
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 820,
+      "i": 0,
+      "j": 3336,
+      "type": "regular",
+      "outputs": [
+        821
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 821,
+      "i": 0,
+      "j": 3332,
+      "type": "regular",
+      "outputs": [
+        822
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 822,
+      "i": 0,
+      "j": 3328,
+      "type": "regular",
+      "outputs": [
+        823
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 823,
+      "i": 0,
+      "j": 3324,
+      "type": "regular",
+      "outputs": [
+        824
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 824,
+      "i": 0,
+      "j": 3320,
+      "type": "regular",
+      "outputs": [
+        825
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 825,
+      "i": 0,
+      "j": 3316,
+      "type": "regular",
+      "outputs": [
+        826
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 826,
+      "i": 0,
+      "j": 3312,
+      "type": "regular",
+      "outputs": [
+        827
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 827,
+      "i": 0,
+      "j": 3308,
+      "type": "regular",
+      "outputs": [
+        828
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 828,
+      "i": 0,
+      "j": 3304,
+      "type": "regular",
+      "outputs": [
+        829
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 829,
+      "i": 0,
+      "j": 3300,
+      "type": "regular",
+      "outputs": [
+        830
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 830,
+      "i": 0,
+      "j": 3296,
+      "type": "regular",
+      "outputs": [
+        831
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 831,
+      "i": 0,
+      "j": 3292,
+      "type": "regular",
+      "outputs": [
+        832
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 832,
+      "i": 0,
+      "j": 3288,
+      "type": "regular",
+      "outputs": [
+        833
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 833,
+      "i": 0,
+      "j": 3284,
+      "type": "regular",
+      "outputs": [
+        834
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 834,
+      "i": 0,
+      "j": 3280,
+      "type": "regular",
+      "outputs": [
+        835
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 835,
+      "i": 0,
+      "j": 3276,
+      "type": "regular",
+      "outputs": [
+        836
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 836,
+      "i": 0,
+      "j": 3272,
+      "type": "regular",
+      "outputs": [
+        837
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 837,
+      "i": 0,
+      "j": 3268,
+      "type": "regular",
+      "outputs": [
+        838
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 838,
+      "i": 0,
+      "j": 3264,
+      "type": "regular",
+      "outputs": [
+        839
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 839,
+      "i": 0,
+      "j": 3260,
+      "type": "regular",
+      "outputs": [
+        840
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 840,
+      "i": 0,
+      "j": 3256,
+      "type": "regular",
+      "outputs": [
+        841
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 841,
+      "i": 0,
+      "j": 3252,
+      "type": "regular",
+      "outputs": [
+        842
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 842,
+      "i": 0,
+      "j": 3248,
+      "type": "regular",
+      "outputs": [
+        843
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 843,
+      "i": 0,
+      "j": 3244,
+      "type": "regular",
+      "outputs": [
+        844
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 844,
+      "i": 0,
+      "j": 3240,
+      "type": "regular",
+      "outputs": [
+        845
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 845,
+      "i": 0,
+      "j": 3236,
+      "type": "regular",
+      "outputs": [
+        846
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 846,
+      "i": 0,
+      "j": 3232,
+      "type": "regular",
+      "outputs": [
+        847
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 847,
+      "i": 0,
+      "j": 3228,
+      "type": "regular",
+      "outputs": [
+        848
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 848,
+      "i": 0,
+      "j": 3224,
+      "type": "regular",
+      "outputs": [
+        849
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 849,
+      "i": 0,
+      "j": 3220,
+      "type": "regular",
+      "outputs": [
+        850
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 850,
+      "i": 0,
+      "j": 3216,
+      "type": "regular",
+      "outputs": [
+        851
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 851,
+      "i": 0,
+      "j": 3212,
+      "type": "regular",
+      "outputs": [
+        852
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 852,
+      "i": 0,
+      "j": 3208,
+      "type": "regular",
+      "outputs": [
+        853
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 853,
+      "i": 0,
+      "j": 3204,
+      "type": "regular",
+      "outputs": [
+        854
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 854,
+      "i": 0,
+      "j": 3200,
+      "type": "regular",
+      "outputs": [
+        855
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 855,
+      "i": 0,
+      "j": 3196,
+      "type": "regular",
+      "outputs": [
+        856
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 856,
+      "i": 0,
+      "j": 3192,
+      "type": "regular",
+      "outputs": [
+        857
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 857,
+      "i": 0,
+      "j": 3188,
+      "type": "regular",
+      "outputs": [
+        858
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 858,
+      "i": 0,
+      "j": 3184,
+      "type": "regular",
+      "outputs": [
+        859
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 859,
+      "i": 0,
+      "j": 3180,
+      "type": "regular",
+      "outputs": [
+        860
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 860,
+      "i": 0,
+      "j": 3176,
+      "type": "regular",
+      "outputs": [
+        861
+      ],
+      "volume": 0.5
+    },
+    {
+      "id": 861,
+      "i": 0,
+      "j": 3172,
+      "type": "regular",
+      "outputs": [
+        606
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 862,
+      "i": 0,
+      "j": 3432,
+      "type": "regular",
+      "outputs": [
+        863
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 863,
+      "i": 8,
+      "j": 3432,
+      "type": "regular",
+      "outputs": [
+        864
+      ],
+      "volume": 0.2
+    },
+    {
+      "id": 864,
+      "i": 256,
+      "j": 3432,
+      "type": "silent",
+      "outputs": [
+        865
+      ]
+    },
+    {
+      "id": 865,
+      "i": 256,
+      "j": 3688,
+      "type": "regular",
+      "outputs": [
+        866
+      ],
+      "volume": 0.32
+    },
+    {
+      "id": 866,
+      "i": 0,
+      "j": 3688,
+      "type": "silent",
+      "outputs": [
+        862
+      ]
+    },
+    {
+      "id": 867,
+      "i": 0,
+      "j": 3696,
+      "type": "silent",
+      "outputs": [
+        868
+      ]
+    },
+    {
+      "id": 868,
+      "i": 120,
+      "j": 3696,
+      "type": "regular",
+      "outputs": [
+        869
+      ],
+      "volume": 0.42,
+      "duration": 0.3
+    },
+    {
+      "id": 869,
+      "i": 248,
+      "j": 3696,
+      "type": "regular",
+      "outputs": [
+        870
+      ],
+      "volume": 0.42,
+      "duration": 0.3
+    },
+    {
+      "id": 870,
+      "i": 256,
+      "j": 3696,
+      "type": "silent",
+      "outputs": [
+        871
+      ]
+    },
+    {
+      "id": 871,
+      "i": 256,
+      "j": 3816,
+      "type": "regular",
+      "outputs": [
+        872
+      ],
+      "volume": 0.42,
+      "duration": 0.3
+    },
+    {
+      "id": 872,
+      "i": 256,
+      "j": 3944,
+      "type": "regular",
+      "outputs": [
+        873
+      ],
+      "volume": 0.42,
+      "duration": 0.3
+    },
+    {
+      "id": 873,
+      "i": 256,
+      "j": 3952,
+      "type": "silent",
+      "outputs": [
+        874
+      ]
+    },
+    {
+      "id": 874,
+      "i": 136,
+      "j": 3952,
+      "type": "regular",
+      "outputs": [
+        875
+      ],
+      "volume": 0.42,
+      "duration": 0.3
+    },
+    {
+      "id": 875,
+      "i": 8,
+      "j": 3952,
+      "type": "regular",
+      "outputs": [
+        876
+      ],
+      "volume": 0.42,
+      "duration": 0.3
+    },
+    {
+      "id": 876,
+      "i": 0,
+      "j": 3952,
+      "type": "silent",
+      "outputs": [
+        877
+      ]
+    },
+    {
+      "id": 877,
+      "i": 0,
+      "j": 3832,
+      "type": "regular",
+      "outputs": [
+        878
+      ],
+      "volume": 0.42,
+      "duration": 0.3
+    },
+    {
+      "id": 878,
+      "i": 0,
+      "j": 3704,
+      "type": "regular",
+      "outputs": [
+        867
+      ],
+      "volume": 0.42,
+      "duration": 0.3
     }
   ]
 }

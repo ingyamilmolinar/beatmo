@@ -516,8 +516,6 @@ try {
 
     await page.waitForFunction(() =>
       typeof playSound === "function" &&
-      typeof startOutputCapture === "function" &&
-      typeof stopOutputCapture === "function" &&
       typeof resumeAudio === "function"
     );
 
@@ -532,31 +530,47 @@ try {
       const ctx = window.__audioCtx;
       if (!ctx) return { error: "no AudioContext" };
 
-      // Enable output capture before suspending.
-      enableOutputCapture?.();
+      // Arm the DETERMINISTIC raw-PCM capture. recordSamples() pushes each
+      // dispatched voice's PCM into window.__samples the moment the deferred
+      // event is PROCESSED in flushAudioQueue — i.e. after resume flushes the
+      // queue. We assert audibility off this signal, NOT the live ScriptProcessor
+      // output capture: on headless SwiftShader under CPU contention the capture
+      // node underruns and drops the short kick/snare transient right after
+      // resume, so RMS off the live tap is non-deterministic (flaked to ~0 under
+      // make test-real's 4-job load). The BufferSources still schedule + play
+      // fine; only the live measurement instrument is unreliable for short
+      // transients — hence the rendered-PCM assertion (see the capturePlay poll
+      // in mobile_speaker_routing.browser.test.js).
+      window.__samples = [];
+      window.__captureSamples = true;
 
       // Suspend the context to simulate mobile state.
       await ctx.suspend();
       if (ctx.state !== 'suspended') {
+        window.__captureSamples = false;
         return { error: `expected suspended, got ${ctx.state}` };
       }
 
-      // Enqueue audio events while context is suspended.
-      // These should be deferred by flushAudioQueue's suspended guard.
-      startOutputCapture?.();
+      // Enqueue audio events while context is suspended. These are deferred by
+      // flushAudioQueue's suspended guard until the context reaches 'running'.
       await playSound("kick", 1.0);
       await playSound("snare", 1.0);
 
       // Small wait to let the deferred flush path set up its promise chain.
       await new Promise((r) => setTimeout(r, 100));
 
-      // Resume the context — statechange listener should trigger flush.
+      // Resume the context — statechange listener triggers the deferred flush.
       await ctx.resume();
 
-      // Wait for the flush to process deferred events and audio to render.
-      await new Promise((r) => setTimeout(r, 800));
+      // Poll until the flushed events render + record their PCM (fire-and-forget
+      // flush, deferred to setTimeout(0) under contention), up to a 2s deadline.
+      const deadline = performance.now() + 2000;
+      while (window.__samples.length === 0 && performance.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      window.__captureSamples = false;
 
-      const captured = Array.from(stopOutputCapture?.() || []);
+      const captured = window.__samples.slice();
       let peak = 0;
       let sum = 0;
       for (let i = 0; i < captured.length; i++) {

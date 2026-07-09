@@ -103,8 +103,7 @@ func (dv *DrumView) pushNotifKey(key i18n.Key, args []string, isErr bool) {
 // anyDropdownOpen returns true if any dropdown menu is currently open.
 // Delegates to the portal system which is the single source of truth.
 func (dv *DrumView) anyDropdownOpen() bool {
-	return (dv.tree != nil && dv.tree.Portal().IsOpen()) ||
-		(dv.audioTree != nil && dv.audioTree.Portal().IsOpen())
+	return dv.portal().IsOpen()
 }
 
 // Portal-based accessors: read-only queries backed by portal.Has().
@@ -112,12 +111,12 @@ func (dv *DrumView) anyDropdownOpen() bool {
 
 // IsSubdivMenuOpen returns whether the subdivision menu is open.
 func (dv *DrumView) IsSubdivMenuOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("subdiv-menu")
+	return dv.tree != nil && dv.portal().Has("subdiv-menu")
 }
 
 // IsInstMenuOpen returns whether the instrument menu is open.
 func (dv *DrumView) IsInstMenuOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("inst-menu")
+	return dv.tree != nil && dv.portal().Has("inst-menu")
 }
 
 // InstrumentMenuRect returns the on-screen rectangle of the open instrument
@@ -132,32 +131,32 @@ func (dv *DrumView) InstrumentMenuRect() image.Rectangle {
 
 // IsColorMenuOpen returns whether the color wheel is open.
 func (dv *DrumView) IsColorMenuOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("color-wheel")
+	return dv.tree != nil && dv.portal().Has("color-wheel")
 }
 
 // IsContextMenuOpen returns whether the context menu is open.
 func (dv *DrumView) IsContextMenuOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("context-menu")
+	return dv.tree != nil && dv.portal().Has("context-menu")
 }
 
 // IsOverflowMenuOpen returns whether the overflow menu is open.
 func (dv *DrumView) IsOverflowMenuOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("overflow-menu")
+	return dv.tree != nil && dv.portal().Has("overflow-menu")
 }
 
 // IsFXPanelOpen returns whether the FX panel is open.
 func (dv *DrumView) IsFXPanelOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("fx-panel")
+	return dv.tree != nil && dv.portal().Has("fx-panel")
 }
 
 // IsEQChannelOpen returns whether the EQ channel dropdown is open.
 func (dv *DrumView) IsEQChannelOpen() bool {
-	return dv.audioTree != nil && dv.audioTree.Portal().Has("eq-channel")
+	return dv.audioTree != nil && dv.portal().Has("eq-channel")
 }
 
 // IsNamingOpen returns whether the WAV-naming dialog is open.
 func (dv *DrumView) IsNamingOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("naming")
+	return dv.tree != nil && dv.portal().Has("naming")
 }
 
 // anyDragActive reports whether any drag, scrub, slider, hold interaction,
@@ -242,10 +241,10 @@ func (dv *DrumView) logCapturingState() {
 			dv.instMenuScroll.dragging)
 	}
 	if dv.anyDropdownOpen() && dv.tree != nil {
-		dv.logger.Debugf("[pan] portal stack size=%d", dv.tree.Portal().StackLen())
-		for i := 0; i < dv.tree.Portal().StackLen(); i++ {
-			if i < len(dv.tree.Portal().stack) {
-				dv.logger.Debugf("[pan]   portal[%d] id=%q", i, dv.tree.Portal().stack[i].ID)
+		dv.logger.Debugf("[pan] portal stack size=%d", dv.portal().StackLen())
+		for i := 0; i < dv.portal().StackLen(); i++ {
+			if i < len(dv.portal().stack) {
+				dv.logger.Debugf("[pan]   portal[%d] id=%q", i, dv.portal().stack[i].ID)
 			}
 		}
 	}

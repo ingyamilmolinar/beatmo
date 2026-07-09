@@ -32,7 +32,13 @@ func applySongInstruments(insts []SongRenderInstrument) {
 		if len(in.SynthParams) > 0 {
 			SetInstrumentParams(in.ID, RecipeParams(in.SynthParams))
 		}
-		SetChannelVolume(in.ID, in.Volume)
+		// Instrument volume is already folded into every note's Gain by
+		// songrender/arrangement.go (and the test-build stub relies on that).
+		// Setting the channel volume to in.Volume as well would square it
+		// (0.5 → 0.25) in the master mix while the pre-channel send taps kept
+		// the single factor — an inconsistent, over-attenuated render. Keep the
+		// channel at unity so instrument volume is applied exactly once.
+		SetChannelVolume(in.ID, 1.0)
 		SetChannelPan(in.ID, in.Pan)
 		SetReverbSend(in.ID, in.ReverbSend)
 		SetDelaySend(in.ID, in.DelaySend)
@@ -55,7 +61,7 @@ func renderOnePass(notes []SongRenderNote, bpm, sampleRate, totalSamples int, ke
 			continue
 		}
 		// scaledVoice satisfies Voice via a POINTER receiver — must pass &scaledVoice.
-		m.Schedule(n.InstID, &scaledVoice{v: v, gain: n.Gain}, n.AtSample)
+		m.Schedule(n.InstID, &scaledVoice{v: v, gain: n.Gain}, n.AtSample, -1, -1)
 	}
 	return renderMixer(m, totalSamples)
 }

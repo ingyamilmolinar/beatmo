@@ -80,6 +80,32 @@ func viewModeSlug(m viewMode) string {
 	}
 }
 
+// viewModeForPanelTab maps an audio-panel tab to the mobile view mode that
+// displays it. The bottom-nav segmented control derives its highlight from
+// currentViewMode, so any programmatic tab switch (scene catalog, JS
+// exports, keyboard shortcuts) routes through this mapping to keep the nav
+// a derived view of the panel tab state — never a second source of truth.
+func viewModeForPanelTab(tab PanelTab) (viewMode, bool) {
+	switch tab {
+	case TabEQ:
+		return viewModeEQ, true
+	case TabWave:
+		return viewModeWave, true
+	case TabSpectrum:
+		return viewModeSpectrum, true
+	case TabMeters:
+		return viewModeMeters, true
+	case TabScope:
+		return viewModeChain, true
+	case TabSynth:
+		return viewModeSynth, true
+	case TabSampler:
+		return viewModeSampler, true
+	default:
+		return viewModeRows, false
+	}
+}
+
 // viewModeFromSlug is the inverse of viewModeSlug. Returns (mode, true) for a
 // recognized slug, or (viewModeRows, false) otherwise.
 func viewModeFromSlug(slug string) (viewMode, bool) {
@@ -261,10 +287,14 @@ type DrumView struct {
 	logger                        *game_log.Logger
 	tree                          *DrumViewTree // zone-based component tree (Phase 1+)
 	audioTree                     *DrumViewTree // audio-panel subtree (eq-panel + divider + view-switch)
-	rootTree                      *RootTree     // composes [tree, audioTree] for isolated input/draw
-	eqPanelZone                   *EQPanelZone  // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
-	scopeVisible                  bool
-	transportZone                 *TransportZone // Phase 3: transport zone (owns transport buttons/state)
+	overlayTree                   *DrumViewTree // top-of-z overlay subtree: owns the SINGLE global portal
+	rootTree                      *RootTree     // composes [tree, audioTree, overlayTree] for isolated input/draw
+	// lastNativeRects is the set of native-gesture rects synced to JS last frame.
+	// syncNativeGestures diffs against it to avoid per-frame arm/clear churn.
+	lastNativeRects []NativeRect
+	eqPanelZone     *EQPanelZone // Phase 2: EQ panel zone (owns EQ buttons/sliders/state)
+	scopeVisible    bool
+	transportZone   *TransportZone // Phase 3: transport zone (owns transport buttons/state)
 	// viewSwitchSegmented is the mobile 3-segment view selector
 	// (Pads/EQ/Wave). Replaces the binary viewSwitchBtn on mobile; nil on
 	// desktop. See B4 in the mobile UX overhaul plan.
@@ -378,6 +408,9 @@ type DrumView struct {
 	instEditorBindings   []instParamBinding // maps widget index → ParamDef
 	synthWheelPopup      *MobileWheelPopup  // mobile vertical scroll-wheel for synth knobs
 	samplerWheelPopup    *MobileWheelPopup  // mobile vertical scroll-wheel for sampler knobs
+	eqWheelPopup         *MobileWheelPopup  // desktop+mobile precision wheel for EQ band dB
+	eqWheelStepBadge     *KnobStepBadge     // shared step-resolution ladder for all EQ dB bands
+	eqWheelStepRestored  bool               // true once eqWheelStepBadge's persisted rung has been restored (lazy, on first popup open)
 	instEditorBtns       []*Button          // footer buttons: Reset, Save, Save-As (close lives on the sticky bar)
 	instEditorSections   []synthSection     // PITCH | ENVELOPE | TONE | DRIVE cards
 	// instEditorPreviewRect holds the geometry of the right-half
@@ -431,17 +464,36 @@ type DrumView struct {
 	instEditorDetailR       image.Rectangle   // detail pane rect (selected stage's knobs)
 	instEditorDetailHeaderH int               // effective detail header height (token, shrunk on short panels)
 	instEditorReadoutRects  []image.Rectangle // index-aligned with instEditorKnobs; readout tap hit rects
-	paramEditor             *ParamValueEditor // shared numeric entry box for synth knob readout taps
+	// P4 tiering: per-stage Advanced-expander state. A stage shows its Essential
+	// (character) knobs always; its Advanced (fine-tuning) knobs stay collapsed
+	// until the user opens the expander. synthAdvExpanderRect is the bar for the
+	// currently-open stage (draw + hit-test); rebuilt each Layout.
+	synthAdvExpanded     map[synthSectionID]bool
+	synthAdvExpanderRect image.Rectangle
+	// synthAdvScrollPending: set when the user OPENS an Advanced expander so the
+	// next layout auto-scrolls to the first revealed knob (the synth pane is
+	// short, so otherwise the newly-shown knobs sit below the fold and the reveal
+	// looks like nothing happened).
+	synthAdvScrollPending bool
+	paramEditor           *ParamValueEditor // shared numeric entry box for synth knob readout taps
 
 	// synthMirror caches the live final-output re-render for the Synth tab's
 	// right-pane mirror (Stage 4). Lazily created on first requestSynthMirror.
 	synthMirror *synthMirror
+
+	// stageThumbs caches one preview render per chip strip stage (wave 2's
+	// living pipeline strip), each rendered with every downstream stage
+	// forced disabled. Lazily created on first ensureStageThumbs.
+	stageThumbs *synthStageThumbs
 
 	// synthGhost holds the per-knob pre-drag param snapshots + fade state for
 	// the Synth tab concept overlays (Stage 5). Lazily created on first capture.
 	synthGhost *synthGhostState
 
 	// sampler holds the Sampler tab's working buffer + edit params + widgets.
+	// The sampler methods live on samplerPanel (see sampler_panel.go); these
+	// fields stay here (accessed via the panel's dv back-ref) in Rung A.
+	samplerPanel   *samplerPanel
 	sampler        samplerState
 	samplerButtons []samplerButton // header + control-row buttons, rebuilt each Layout
 
@@ -501,25 +553,10 @@ type DrumView struct {
 	// callback to change subdivisions per beat
 	onChangeSubdiv func(int) error
 
-	// per-row cached sprites for the steps area (no highlights). Each sprite
-	// covers the full timeline width and one row height. Rebuilt when length,
-	// row color, or timeline width/height change.
-	rowCache        []*ebiten.Image
-	rowDirty        []bool
-	rowFullDirty    []bool
-	rowCacheW       int
-	rowCacheH       int
-	rowCacheLen     int
-	rowCacheOff     []int
-	rowCacheGen     []int
-	rowCacheSig     []uint64
-	rowCacheSteps   [][]bool
-	rowCacheTypes   [][]model.NodeType
-	rowCachePadPx   int
-	rowCacheShift   int
-	rowCachePatch   int
-	rowCacheFull    int
-	rowCacheScratch []*ebiten.Image // double-buffer scratch for row sprite shifts
+	// Per-row sprite cache — grouped into the embedded rowSpriteCache (see
+	// drumview_row_sprite_cache.go). Anonymous so dv.rowCache / dv.rowCacheGen /
+	// … keep resolving via field promotion.
+	rowSpriteCache
 
 	// Segmented timeline slices populated each refresh; mirrors TimelineSegments.
 	timelineOffset    []int
@@ -528,77 +565,15 @@ type DrumView struct {
 	timelinePresent   [][]bool
 	timelineFuture    [][]bool
 
-	// rowsLayer caches the composition of all visible row sprites (rowCache)
-	// for the current offset and scroll. Highlights are drawn on top separately.
-	rowsLayer       *ebiten.Image
-	rowsLayerW      int
-	rowsLayerH      int
-	rowsLayerOffset int
-	rowsLayerRowOff int
-	rowsLayerBaseX  int
-	// rowsLayerRowWidth and rowsLayerLength snapshot the timeline-rect width
-	// and step count the composite was built with. The shift-and-fill reuse
-	// path copies stale pixels left and only refills a small right strip, so
-	// if either dimension changes without the caller setting rowsLayerDirty,
-	// the leftmost pixels keep an old cell pitch while the right strip is
-	// painted at the new pitch — producing the mixed-pitch artifact users
-	// see after long sessions.
-	rowsLayerRowWidth int
-	rowsLayerLength   int
-	rowsLayerGen      int
-	// lastRowsRenderPath / lastLegacyRebuildKind record which compositing path
-	// produced the most recent drum-row frame, for the slim-bar diagnostic
-	// (drum_render_diag.go). lastRowsRenderPath is "windowed" | "legacy" |
-	// "direct" | ""; lastLegacyRebuildKind details the legacy branch taken
-	// ("full" | "shift" | "overdraw" | "patch-skip" | "stale-accept" | "skip").
-	lastRowsRenderPath    string
-	lastLegacyRebuildKind string
-	rowsLayerDirty        bool
-	rowsLayerPadPx        int
-	rowsLayerScratch      *ebiten.Image // double-buffer scratch for layer shifts
-	rowsLayerBytes        int64
-	rowsLayerFrame        int64
+	// Rows-layer composite cache — grouped into the embedded rowsLayerCache (see
+	// drumview_rows_layer_cache.go). Anonymous so dv.rowsLayer / dv.rowsLayerGen /
+	// … keep resolving via field promotion.
+	rowsLayerCache
 
-	// ── Windowed scroll cache (perf: avoid per-scroll full-layer recompose) ──
-	// During steady follow-scroll playback the row CONTENT does not change, the
-	// window merely translates. The legacy path recomposited (a full-layer
-	// shift-copy + double-buffer swap → Ebiten dependency-graph churn) on every
-	// recenter. The windowed path renders cells into a buffer WIDER than the
-	// visible window, fills the leading edge incrementally as the playhead
-	// scrolls, and blits a moving sub-rectangle each frame — recompositing only
-	// when the playhead scrolls past the pad (every rowsWinPadCells cells) or
-	// when content/size changes. See drumview_cache_rows_window.go and
-	// rows_layer_scroll_recompose_test.go.
-	rowsWinBuf          *ebiten.Image // wide cache: width = rowWidth + padPx
-	rowsWinBufW         int
-	rowsWinBufH         int
-	rowsWinBakeOffset   int  // dv.Offset the buffer's cell 0 corresponds to
-	rowsWinRenderedTo   int  // exclusive buffer-cell index rendered so far
-	rowsWinRowWidth     int  // visible window width (px) the buffer pitch uses
-	rowsWinLength       int  // dv.Length the buffer was baked with
-	rowsWinBaseX        int  // baseX the buffer was baked with
-	rowsWinRowOff       int  // dv.rowOffset (vertical scroll) the buffer was baked with
-	rowsWinContentDirty bool // a real content/edit change → force re-bake
-	rowsWinValid        bool
-
-	// Row-stripes path: a horizontal split of the rows layer into multiple
-	// sprites so a wide layer can stream as separate textures. These
-	// fields are kept as no-op zero-value stubs while the stripes path is
-	// being refactored — production callers (js_exports_*.go,
-	// image_metrics.go, drumview_cache_row_sprite.go) read but never
-	// initialise them, so the layer-based path runs unchanged.
-	rowsStripingEnabled bool
-	rowsStripeCount     int
-	rowsStripes         []*ebiten.Image
-	rowsStripeStarts    []int
-	rowsStripeWidths    []int
-	rowsStripeLastFrame int64
-	rowsStripeOffset    int
-	rowsStripeRowOff    int
-	rowsStripeCachedW   []int
-	rowsStripeCachedH   []int
-	rowsStripeAuto      bool
-	rowsStripeScratch   []*ebiten.Image
+	// Windowed row-scroll cache — grouped into the embedded rowsWinCache (see
+	// drumview_rows_win_cache.go). Anonymous so dv.rowsWinBuf / … keep resolving
+	// via field promotion.
+	rowsWinCache
 
 	// follow mirrors TransportZone.followPlayback for backward-compatible
 	// access on test paths that build a DrumView without a TransportZone.

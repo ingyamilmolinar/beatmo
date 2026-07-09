@@ -204,11 +204,18 @@ func TestFunctional_Esc_EQdBInput(t *testing.T) {
 	}
 	orig := ez.bandGainsDB[idx]
 
-	// 1. Click the dB readout to open the shared editor (the user edits the value).
+	// 1. Click the dB readout — this now opens the precision wheel popup
+	// (Task 2: EQ wheel-popup value editor); click the wheel's center box to
+	// reach the shared numeric editor (the user edits the value).
 	r := ez.dbReadoutRect(idx)
 	fi.clickAt(t, g, (r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
+	if g.drum.eqWheelPopup == nil || !g.drum.eqWheelPopup.IsOpen() {
+		t.Fatalf("click did not open the EQ wheel popup for band %d", idx)
+	}
+	cb := g.drum.eqWheelPopup.centerH
+	fi.clickAt(t, g, (cb.Min.X+cb.Max.X)/2, (cb.Min.Y+cb.Max.Y)/2)
 	if ez.paramEditor == nil || !ez.paramEditor.Active() {
-		t.Fatalf("click did not open the dB editor for band %d — the readout must be editable", idx)
+		t.Fatalf("click on the wheel's center box did not open the dB editor for band %d — the readout must be editable", idx)
 	}
 
 	// 2. Type a new dB value.

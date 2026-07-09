@@ -140,6 +140,20 @@ func TestParityRuntimeMutationMatrix(t *testing.T) {
 				g.drum.SetInstrument("cowbell")
 			},
 		},
+		{
+			name: "length-change-midplay",
+			mutate: func(t *testing.T, g *Game) {
+				// Change the sequence length / subdivision window mid-play; must
+				// not trip parity. DrumView.SetLength already routes through the
+				// mutation gate (onStructuralMutation -> g.bumpParityGen), same
+				// as the real transport length control (see
+				// js_exports_graph_ui.go setDrumLength). updateBeatInfos()
+				// mirrors that control's follow-up recompute of per-row paths
+				// from the graph (which SetLength alone does not touch).
+				g.drum.SetLength(g.drum.Length + 4)
+				g.updateBeatInfos()
+			},
+		},
 	}
 
 	for _, c := range cases {

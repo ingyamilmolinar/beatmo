@@ -41,7 +41,7 @@ func TestParityIgnoresStaleAudioGeneration(t *testing.T) {
 	// Bump audio generation and insert a stale audio event.
 	g.audioGen.Add(1)
 	staleGen := g.audioGen.Load() - 1
-	g.recordParityAudio(0, 0, 0, "kick", 1, 0, 1, staleGen)
+	g.recordParityAudio(0, 0, 0, "kick", 1, 0, 1, staleGen, g.parityGen.Load())
 
 	defer func() {
 		if r := recover(); r != nil {

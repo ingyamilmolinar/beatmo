@@ -33,4 +33,14 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                              const modular_params *p, double voice_freq,
                              unsigned int seed, int osc_wrote);
 
+/* Phase-15 FORMANT stage: parallel 5-band vowel bandpass bank + singer's
+ * formant. Runs between the static filter and the body resonator. Exact no-op
+ * when mix <= 0 (caller also gates on formant_enabled).
+ * Phase-16: `dry` (0..1) scales the stage's dry-blend amount; dry=1 (identity)
+ * reproduces the pre-Phase-16 dryAmt exactly. */
+void modular_formant_process(float *out, int sampleRate, int samples,
+                             int voice_type, float vowel, float mix,
+                             float shift, float sing,
+                             float morph_rate, float morph_to, float dry);
+
 #endif /* MODULAR_STAGES_H */

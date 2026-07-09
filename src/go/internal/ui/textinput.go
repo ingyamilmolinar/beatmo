@@ -97,6 +97,10 @@ func (t *TextInput) SetText(s string) {
 // Value returns the current text value.
 func (t *TextInput) Value() string { return t.Text }
 
+// CursorForTest returns the caret's rune index. Read-only observation seam
+// for tests and the instMenuSearchState debug export.
+func (t *TextInput) CursorForTest() int { return t.cursor }
+
 // Update processes mouse/keyboard input.
 
 func (t *TextInput) Update() bool {

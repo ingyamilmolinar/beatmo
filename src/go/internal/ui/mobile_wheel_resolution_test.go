@@ -74,8 +74,14 @@ func TestWheelHandleWheelChangesValue(t *testing.T) {
 	w := NewMobileWheelPopup()
 	w.Open(*b, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
 
-	// Scroll up (positive steps) over the barrel -> value increases. Scroll is
-	// paced, so issue a full notch of events.
+	// A DOWNWARD two-finger/wheel scroll raises the value (higher numbers descend to
+	// the center selector) — the "down = higher" barrel direction, matching the
+	// finger drag. The tree hands the popup ebiten.Wheel's raw int(wy) as steps.
+	// EMPIRICAL PLATFORM FACT (confirmed on the target device): a downward scroll
+	// arrives as POSITIVE int(wy) — so POSITIVE steps = scroll down = increase. (This
+	// is opposite to some in-repo scroll comments, which are natural-scroll/platform
+	// dependent; the barrel matches the user's device.) Scroll is paced, so issue a
+	// full notch of events.
 	cx := w.valRect.Min.X + 4
 	cy := (w.valRect.Min.Y + w.valRect.Max.Y) / 2
 	start := realValue(k)
@@ -86,15 +92,62 @@ func TestWheelHandleWheelChangesValue(t *testing.T) {
 		w.HandleWheel(cx, cy, 5)
 	}
 	if realValue(k) <= start {
-		t.Fatalf("wheel up should increase value from %v, got %v", start, realValue(k))
+		t.Fatalf("scroll down (positive steps) should increase value from %v, got %v", start, realValue(k))
 	}
-	// Scroll down -> decreases.
+	// Scroll up (negative steps) -> decreases.
 	mid := realValue(k)
 	for i := 0; i < wheelStepEventsPerNotch+1; i++ {
 		w.HandleWheel(cx, cy, -8)
 	}
 	if realValue(k) >= mid {
-		t.Fatalf("wheel down should decrease value from %v, got %v", mid, realValue(k))
+		t.Fatalf("scroll up (negative steps) should decrease value from %v, got %v", mid, realValue(k))
+	}
+}
+
+// TestWheelResolutionDragAndWheelAgree locks the resolution strip's gesture
+// direction: a DOWNWARD gesture (drag down / scroll down) must move the
+// resolution the SAME way for BOTH input paths — coarser (a bigger step number),
+// matching the value barrel where a downward gesture raises the shown number.
+// The bug: drag-down coarsened but scroll-down finened (the same drag-vs-wheel
+// inversion the value wheel had before it was fixed).
+func TestWheelResolutionDragAndWheelAgree(t *testing.T) {
+	newPopup := func() (*MobileWheelPopup, *KnobStepBadge) {
+		def := audio.ParamDef{Name: "cutoff", Min: 20, Max: 20000, Unit: "Hz"}
+		k := &Knob{Endless: true}
+		k.Scale = KnobScale{Min: def.Min, Max: def.Max, Unit: def.Unit}
+		k.Value = 0.5
+		badge := NewKnobStepBadge(def)
+		k.StepMul = badge.Step()
+		b := WheelBinding{Knob: k, Badge: badge, Def: def,
+			OnChange: func() {}, OnResolution: func() {}, Title: func() string { return "Cutoff" }}
+		w := NewMobileWheelPopup()
+		w.Open(b, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
+		return w, badge
+	}
+	gap := Profile().DensityValues().MobileWheelTickGap
+
+	// Drag DOWN on the resolution strip -> coarser (bigger step).
+	wD, bD := newPopup()
+	rx := wD.resRect.Min.X + 2
+	y0 := wD.resRect.Min.Y + wD.resRect.Dy()/2
+	startD := bD.Step()
+	wD.HandleInput(rx, y0, true)
+	wD.HandleInput(rx, y0+gap*4, true) // drag DOWN
+	wD.HandleInput(rx, y0+gap*4, false)
+	if bD.Step() <= startD {
+		t.Fatalf("resolution DRAG down should coarsen (bigger step): %v -> %v", startD, bD.Step())
+	}
+
+	// Scroll DOWN (positive steps on target) must ALSO coarsen — same direction.
+	wW, bW := newPopup()
+	rx2 := wW.resRect.Min.X + 2
+	ry2 := (wW.resRect.Min.Y + wW.resRect.Max.Y) / 2
+	startW := bW.Step()
+	for i := 0; i < wheelStepEventsPerNotch+1; i++ {
+		wW.HandleWheel(rx2, ry2, 3) // scroll DOWN
+	}
+	if bW.Step() <= startW {
+		t.Fatalf("resolution SCROLL down should coarsen like the drag (bigger step): %v -> %v", startW, bW.Step())
 	}
 }
 

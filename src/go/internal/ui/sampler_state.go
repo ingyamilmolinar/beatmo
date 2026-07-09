@@ -496,6 +496,25 @@ func (s *samplerState) recaptureRaw(pcm []float32, sr int) {
 	}
 }
 
+// toggleReverse is the user-facing Reverse control. It flips the working buffer
+// (reverseBuffer) AND mirrors the trim window so the kept [start,end] region
+// keeps covering the SAME audio, now reversed. Without the mirror, flipping the
+// buffer under fixed handles slides the kept region onto the mirror-image part
+// of the sound (the trim window and the audio would no longer agree). The mirror
+// is expressed in the displayed-buffer frame: [start,end] → [1-end, 1-start].
+// A no-op on an empty buffer, so the handles stay put when nothing flips.
+//
+// reverseBuffer stays the low-level primitive: the descriptor-load path
+// (loadEditDescriptor) computes the display-frame handles itself and must not
+// have them mirrored a second time, so it calls reverseBuffer directly.
+func (s *samplerState) toggleReverse() {
+	if len(s.raw) == 0 {
+		return
+	}
+	s.startFrac, s.endFrac = 1-s.endFrac, 1-s.startFrac
+	s.reverseBuffer()
+}
+
 // reverseBuffer flips the working buffer in place — the Reverse control is an
 // ACTION (one click reverses the signal), not a stateful toggle. Because the
 // reversal lives in the buffer, the visible waveform flips, the baked audio

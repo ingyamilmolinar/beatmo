@@ -99,8 +99,10 @@ func TestOverflowMenu_SelectTemplateQueuesImport(t *testing.T) {
 
 // TestOverflowButtonsPersistAcrossFrames verifies that after the persistence
 // refactor the SAME *Button instances survive repeated drawOverflowMenu calls
-// so press-animation state can accumulate across frames (the old code called
-// NewButton on every frame, making animation impossible).
+// so input state (hover/press edges, deferred taps) stays coherent across
+// frames (the old code called NewButton on every frame). Menu rows are flat
+// (no keycap animation — TestDrawMenuRowIsFlatNoKeycap), so persistence is
+// asserted directly on the pointer.
 func TestOverflowButtonsPersistAcrossFrames(t *testing.T) {
 	// Use the same harness as openTemplatePageClamped.
 	assertDefaultParityState(t)
@@ -118,18 +120,12 @@ func TestOverflowButtonsPersistAcrossFrames(t *testing.T) {
 	}
 	// btns[0] = Back row, btns[1] = first template row (header is excluded).
 	firstPtr := dv.overflowBtns[1]
-	firstPtr.pressTarget = 1 // simulate held press
-	start := firstPtr.pressDepth
 
 	dst := ebiten.NewImage(420, 360)
 	for i := 0; i < 5; i++ {
 		dv.drawOverflowMenu(dst)
 	}
 	if dv.overflowBtns[1] != firstPtr {
-		t.Fatal("overflow buttons were recreated across frames — animation state lost")
-	}
-	if firstPtr.pressDepth <= start {
-		t.Fatalf("overflow row did not animate after persistence refactor: depth %v <= start %v",
-			firstPtr.pressDepth, start)
+		t.Fatal("overflow buttons were recreated across frames — input state lost")
 	}
 }

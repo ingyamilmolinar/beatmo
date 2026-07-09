@@ -12,8 +12,8 @@ func TestMixerPlaysSequentialVoices(t *testing.T) {
 		postEQBuf: make([]float64, blockSize),
 		instSlots: make(map[string]int),
 	}
-	m.Schedule("snare", Snare{}.NewVoice(120, sampleRate), 0)
-	m.Schedule("snare", Snare{}.NewVoice(120, sampleRate), sampleRate/4)
+	m.Schedule("snare", Snare{}.NewVoice(120, sampleRate), 0, -1, -1)
+	m.Schedule("snare", Snare{}.NewVoice(120, sampleRate), sampleRate/4, -1, -1)
 	buf := make([]byte, sampleRate)
 	m.Read(buf)
 	first := -1

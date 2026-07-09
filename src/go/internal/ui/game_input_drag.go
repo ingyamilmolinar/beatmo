@@ -64,9 +64,10 @@ func (g *Game) handleLinkDrag(left, right bool, gx, gy float64, i, j int) {
 	}
 }
 
-// menuHit reports whether a screen-space point lies within the node sidebar.
+// menuHit reports whether a screen-space point lies within the node sidebar
+// or the group menu.
 func (g *Game) menuHit(x, y int) bool {
-	return g.sidebar.Hit(x, y) || image.Pt(x, y).In(g.gridHelpButtonRect())
+	return g.sidebar.Hit(x, y) || g.groupMenu.Hit(x, y) || image.Pt(x, y).In(g.gridHelpButtonRect())
 }
 
 // modalOverlayActive reports whether a blocking (modal/scrim) overlay — such as

@@ -21,10 +21,15 @@ func (l *ViewSwitchLayer) Visible() bool {
 }
 
 func (l *ViewSwitchLayer) Draw(dst *ebiten.Image) {
-	// Keep the Synth segment's greyed state fresh every frame even when no
-	// relayout ran (the active instrument can change between layouts).
+	// Keep the Synth/Sampler segments' greyed state fresh every frame even when
+	// no relayout ran (the active instrument / channel can change between
+	// layouts). Both are blocked on the master bus (no single-instrument
+	// context); Synth is additionally blocked for WAV-sample instruments.
 	if idx := bottomNavSynthIndex(); idx >= 0 {
-		l.dv.viewSwitchSegmented.SetSegmentDisabled(idx, !l.dv.activeInstrumentHasSynth())
+		l.dv.viewSwitchSegmented.SetSegmentDisabled(idx, l.dv.synthViewDisabled())
+	}
+	if idx := segmentIndexForViewMode(viewModeSampler); idx >= 0 {
+		l.dv.viewSwitchSegmented.SetSegmentDisabled(idx, l.dv.samplerViewDisabled())
 	}
 	l.dv.viewSwitchSegmented.Draw(dst)
 }

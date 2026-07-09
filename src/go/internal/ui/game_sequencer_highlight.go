@@ -6,7 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-func (g *Game) applySequencerHighlight(row, idx int, info model.BeatInfo) {
+func (s *playbackSlate) applySequencerHighlight(row, idx int, info model.BeatInfo) {
+	g := s.g
 	rows := len(g.drum.Rows)
 	if row < 0 || row >= rows {
 		g.logger.Warnf("[game] highlight row out of range: row=%d rows=%d idx=%d", row, rows, idx)
@@ -61,4 +62,8 @@ func (g *Game) applySequencerHighlight(row, idx int, info model.BeatInfo) {
 	}
 	isOn := info.NodeType == model.NodeTypeRegular || info.NodeType == model.NodeTypeMute
 	g.recordTimelineCommitKind(row, idx, isOn, info.NodeType, kind)
+}
+
+func (g *Game) applySequencerHighlight(row, idx int, info model.BeatInfo) {
+	g.playbackSlate.applySequencerHighlight(row, idx, info)
 }

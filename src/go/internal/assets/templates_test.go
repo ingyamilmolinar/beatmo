@@ -217,7 +217,9 @@ func TestTemplates_BPMInGenreBand(t *testing.T) {
 		"wonder-superstition":     {90, 115},
 		"chic-good-times":         {105, 125},
 		"eagles-hotel-california": {65, 90},
-		"marley-exodus":           {85, 110},
+		// Exodus: MIDI tempo meta (bitmidi 18775) + songbpm.com both say ~132;
+		// the old 98 was unsourced (2026-07 enrichment dossier).
+		"marley-exodus": {125, 140},
 		"toto-africa":             {85, 105},
 		"dre-g-thang":             {80, 100},
 		"blackbox-ride-on-time":   {115, 130},

@@ -5,6 +5,7 @@ package audio
 import (
 	"math"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ingyamilmolinar/beatmo/internal/analyzer"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
@@ -22,6 +23,22 @@ func SampleRate() int {
 	return 44100
 }
 
+// EmitReport identifies a voice's first-emitted block. Exported so the UI
+// package can drain into a []audio.EmitReport. Test-build stub — mirrors the
+// desktop type in engine_clock_probe.go; the ring is not implemented under
+// -tags test (no real mixer loop to produce reports).
+type EmitReport struct {
+	Row, Abs int
+	DevPos   int64
+}
+
+// DeviceClockSnapshot is a no-op stub under -tags test: no real mixer clock
+// exists, so it always reports unavailable.
+func DeviceClockSnapshot() (int64, float64, bool) { return 0, 0, false }
+
+// DrainEmitReports is a no-op stub under -tags test: always empty.
+func DrainEmitReports(dst []EmitReport) int { return 0 }
+
 func registerStub(id string) {
 	for _, existing := range insts {
 		if existing == id {
@@ -35,6 +52,24 @@ func registerStub(id string) {
 
 func Register(id string, inst Instrument) {
 	registerStub(id)
+}
+
+// Unregister removes a runtime-registered instrument id from the stub set (the
+// inverse of Register). No-op if absent.
+func Unregister(id string) {
+	found := false
+	out := insts[:0]
+	for _, existing := range insts {
+		if existing == id {
+			found = true
+			continue
+		}
+		out = append(out, existing)
+	}
+	insts = out
+	if found {
+		bumpInstrumentsVersion()
+	}
 }
 
 func RegisterAudio(id, path string) error {
@@ -109,9 +144,30 @@ func Close() {}
 // Reset is a stub used during tests.
 func Reset() { resetChannels() }
 
-var SetBPMFunc = func(int) {}
+// bpmFunc holds the test BPM hook. It is stored atomically because SetBPM is
+// invoked from Game.Update goroutines while tests swap the hook (and restore
+// it in a defer) from the test goroutine — a plain package var raced there.
+var bpmFunc atomic.Pointer[func(int)]
 
-func SetBPM(bpm int) { SetBPMFunc(bpm) }
+func init() {
+	noop := func(int) {}
+	bpmFunc.Store(&noop)
+}
+
+func SetBPM(bpm int) {
+	if fp := bpmFunc.Load(); fp != nil {
+		(*fp)(bpm)
+	}
+}
+
+// BPMFuncForTest returns the currently installed BPM hook. Tests use it to
+// capture the previous hook before overriding via SetBPMFuncForTest.
+func BPMFuncForTest() func(int) {
+	if fp := bpmFunc.Load(); fp != nil {
+		return *fp
+	}
+	return nil
+}
 
 // Instruments returns placeholder instrument IDs during tests.
 func Instruments() []string { return insts }

@@ -46,10 +46,32 @@ func niceStep(x float64) float64 {
 	}
 }
 
-// stepLadder builds a strictly-increasing slice of 4 "nice" step sizes for
-// def, ranging from a fine rung (~span/2000 notches) to a coarse rung
-// (~span/16 notches). Duplicate values are collapsed so the result is always
-// strictly increasing.
+// nextNiceStep returns the next-larger value in the 1/2/5 × 10^k sequence after
+// x (which is assumed to already be a nice-step): 1→2, 2→5, 5→10. This walks the
+// sequence one rung at a time so a ladder built from it never skips a rung.
+func nextNiceStep(x float64) float64 {
+	if x <= 0 {
+		return 1
+	}
+	exp := math.Floor(math.Log10(x) + 1e-9)
+	pow := math.Pow(10, exp)
+	m := x / pow // ≈ 1, 2, or 5
+	switch {
+	case m < 1.5:
+		return 2 * pow
+	case m < 3.5:
+		return 5 * pow
+	default:
+		return 10 * pow
+	}
+}
+
+// stepLadder builds a strictly-increasing slice of "nice" step sizes for def,
+// ranging from a fine rung (~span/2000 notches) to a coarse rung (~span/16
+// notches). The rungs are the CONSECUTIVE run of 1/2/5 × 10^k nice-steps between
+// those endpoints — never a sparse sample — so the resolution strip always
+// exposes the human "unitary" resolutions (…0.1, 1, 10…, e.g. 1%) and never
+// jumps 0.5% → 2%, which is not a sensible tick for a human.
 //
 // For a degenerate range (span ≤ 0) a single-element ladder {1} is returned.
 func stepLadder(def audio.ParamDef) []float64 {
@@ -57,21 +79,17 @@ func stepLadder(def audio.ParamDef) []float64 {
 	if span <= 0 {
 		return []float64{1}
 	}
-	// divisors control the notch-count at each rung:
-	//   span/2000 → very fine (~2000 notches across range)
-	//   span/400  → moderate (~400 notches)
-	//   span/80   → coarser (~80 notches)
-	//   span/16   → coarse  (~16 notches)
-	divisors := []float64{2000, 400, 80, 16}
-	out := make([]float64, 0, len(divisors))
-	for _, d := range divisors {
-		s := niceStep(span / d)
-		if len(out) == 0 || s > out[len(out)-1] {
-			out = append(out, s)
-		}
+	fine := niceStep(span / 2000)  // ~2000 notches across the range (fine)
+	coarse := niceStep(span / 16)  // ~16 notches across the range (coarse)
+	if coarse < fine {
+		coarse = fine
 	}
-	if len(out) == 0 {
-		out = []float64{niceStep(span / 400)}
+	out := []float64{fine}
+	for s := nextNiceStep(fine); s <= coarse*(1+1e-9); s = nextNiceStep(s) {
+		out = append(out, s)
+		if len(out) >= 24 { // safety bound; the fine→coarse span (~125×) is ~8 rungs
+			break
+		}
 	}
 	return out
 }
@@ -94,15 +112,18 @@ func defaultStepIndex(def audio.ParamDef, ladder []float64) int {
 }
 
 // formatStepValue formats a step size for display. When def carries a unit
-// (e.g. "Hz", "ms", "dB") the result is "100 Hz". For dimensionless params
-// the result is "x0.1" — using the ASCII letter x, NOT the multiplication
-// glyph, to satisfy the glyph lint on DESIGN.md forbidden-glyph list.
+// (e.g. "Hz", "ms", "dB") the result is "±100 Hz" — the "±" marks the chip
+// as a STEP SIZE so it never reads as a second value readout next to the
+// knob's actual value (like ÷n, ± is a math operator; see the DESIGN.md
+// permitted-text-glyph table). For dimensionless params the result is
+// "x0.1" — the ASCII letter x, NOT the multiplication glyph, to satisfy
+// the glyph lint on DESIGN.md forbidden-glyph list.
 func formatStepValue(def audio.ParamDef, step float64) string {
 	s := trimFloat(step)
 	if def.Unit == "" {
 		return "x" + s
 	}
-	return s + " " + def.Unit
+	return "±" + s + " " + def.Unit
 }
 
 // trimFloat formats v as a decimal string with no trailing zeros or

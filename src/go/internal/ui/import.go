@@ -37,6 +37,9 @@ type importFile struct {
 	// (kit-bus audio routing is still future work, but the definitions survive
 	// the round-trip). Additive — absent on files with no kits.
 	Kits []audio.Kit `json:"kits,omitempty"`
+	// Groups mirrors exportFile.Groups (node-group batch rules). Additive —
+	// absent on files with no groups.
+	Groups []exportGroup `json:"groups,omitempty"`
 }
 
 func parseHexColor(s string) color.Color {
@@ -110,6 +113,10 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.dismissLongPressPopup()
 	g.cancelConnectMode()
 	g.cancelMoveMode()
+	g.marquee = marqueeDrag{}
+	if g.groupMenu != nil {
+		g.groupMenu.Close()
+	}
 	g.importing = true
 	defer func() { g.importing = false }()
 	g.renderReady = false
@@ -174,6 +181,13 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.graph.Edges = map[[2]model.NodeID]struct{}{}
 	g.graph.Next = 0
 	g.graph.Row = make([]bool, 4)
+	// Replace-not-merge for node groups: the graph object is reused (not
+	// reallocated) across imports, so a previous project's groups map would
+	// otherwise survive into a file that carries none. ResetGroups also
+	// resets the GroupID counter (unlike a bare map reset) so re-importing
+	// the same document always mints the same GroupIDs, keeping the exported
+	// bytes deterministic across undo/redo's reimport-based restore.
+	g.graph.ResetGroups()
 	g.nodes = nil
 	g.nodesByID = make(map[model.NodeID]*uiNode)
 	g.edges = nil
@@ -304,12 +318,12 @@ func (g *Game) Import(data []byte) (retErr error) {
 		if mn, ok := g.graph.GetNodeByID(ui.ID); ok {
 			p := mn.Params
 			if n.Volume != 0 {
-				// Clamp imported gain to a safe range (0..4) matching web gain limits.
+				// Per-node volume is an unbounded gain — it may boost above unity
+				// arbitrarily. Only reject negatives (which would phase-invert);
+				// there is intentionally no upper clamp.
 				v := n.Volume
 				if v < 0 {
 					v = 0
-				} else if v > 4 {
-					v = 4
 				}
 				p.Volume = v
 			}
@@ -419,6 +433,61 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 	}
 	g.logger.Debugf("[import] edge creation elapsed=%v", time.Since(edgesStart))
+	// Node groups. Group node_ids reference the JSON file's node ids, which
+	// MUST be remapped through idToNode (imported node IDs are reissued).
+	// Validation: unknown node ids are dropped; a group left with zero known
+	// members is dropped entirely; every_n floors to 1; a bad rule is
+	// dropped without rejecting the whole group (SetGroupRules is
+	// all-or-nothing, so retry rule-by-rule on rejection).
+	for _, eg := range f.Groups {
+		ids := make([]model.NodeID, 0, len(eg.NodeIDs))
+		for _, jsonID := range eg.NodeIDs {
+			if un := idToNode[jsonID]; un != nil {
+				ids = append(ids, un.ID)
+			}
+		}
+		if len(ids) == 0 {
+			continue // all members unknown -> drop group
+		}
+		gid, err := g.graph.CreateGroup(eg.Name, ids)
+		if err != nil {
+			g.logger.Debugf("[import] dropping group %d: %v", eg.ID, err)
+			continue
+		}
+		rules := make([]model.GroupRule, 0, len(eg.Rules))
+		for _, r := range eg.Rules {
+			n := r.EveryN
+			if n < 1 {
+				n = 1
+			}
+			anchor := r.AnchorIdx
+			if anchor < 0 {
+				anchor = 0
+			}
+			rules = append(rules, model.GroupRule{
+				Param:     model.GroupParam(strings.ToLower(strings.TrimSpace(r.Param))),
+				Delta:     clampF64(r.Delta, -24, 24),
+				EveryN:    n,
+				Min:       r.Min,
+				Max:       r.Max,
+				AnchorIdx: anchor,
+			})
+		}
+		// Per-rule rejection: SetGroupRules is all-or-nothing, so on error
+		// retry each rule individually against the growing kept-set and only
+		// commit the ones that validate.
+		if err := g.graph.SetGroupRules(gid, rules); err != nil {
+			kept := make([]model.GroupRule, 0, len(rules))
+			for _, r := range rules {
+				candidate := append(append([]model.GroupRule{}, kept...), r)
+				if e := g.graph.SetGroupRules(gid, candidate); e == nil {
+					kept = candidate
+				}
+			}
+			_ = g.graph.SetGroupRules(gid, kept)
+		}
+	}
+	g.refreshGroupIndex()
 	// Instruments -> rows
 	rowsStart := time.Now()
 	g.drum.Rows = nil

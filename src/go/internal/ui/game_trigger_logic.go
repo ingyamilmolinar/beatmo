@@ -6,7 +6,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-func (g *Game) incrementLogicTriggerCount(row int, id model.NodeID) int {
+func (s *playbackSlate) incrementLogicTriggerCount(row int, id model.NodeID) int {
+	g := s.g
 	if g.nodeLogicTriggerCountsByRow == nil {
 		g.nodeLogicTriggerCountsByRow = make(map[int]map[model.NodeID]int)
 	}
@@ -18,7 +19,8 @@ func (g *Game) incrementLogicTriggerCount(row int, id model.NodeID) int {
 }
 
 // seqPrevTriggered mirrors prevTriggered but uses the sequencer path snapshot.
-func (g *Game) seqPrevTriggered(row, idx int, snap *seqPathSnapshot) (bool, bool) {
+func (s *playbackSlate) seqPrevTriggered(row, idx int, snap *seqPathSnapshot) (bool, bool) {
+	g := s.g
 	j := idx - 1
 	prevIdx := -1
 	prevID := model.InvalidNodeID
@@ -46,7 +48,8 @@ func (g *Game) seqPrevTriggered(row, idx int, snap *seqPathSnapshot) (bool, bool
 }
 
 // seqShouldTriggerNode evaluates built-in logic rules using the sequencer path snapshot.
-func (g *Game) seqShouldTriggerNode(row, idx int, info model.BeatInfo, n model.Node, counts map[model.NodeID]int, snap *seqPathSnapshot) bool {
+func (s *playbackSlate) seqShouldTriggerNode(row, idx int, info model.BeatInfo, n model.Node, counts map[model.NodeID]int, snap *seqPathSnapshot) bool {
+	g := s.g
 	if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
 		return false
 	}
@@ -124,7 +127,8 @@ func applyNodeDecision(vol, pitch, dur float64, dec model.NodeDecision) (float64
 
 // evalNodeParamsOnly computes effective volume/pitch/duration from node
 // parameters without touching trigger counters or applying gating logic.
-func (g *Game) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, float64, float64) {
+func (s *playbackSlate) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, float64, float64) {
+	g := s.g
 	if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
 		return 0, 0, 1
 	}
@@ -141,15 +145,41 @@ func (g *Game) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, f
 		// Do not apply user logic or trigger-based rules here; gating and
 		// counters are handled elsewhere by predictions/sequencer.
 	}
+	if gi := g.groupIndexSnapshot(); gi != nil && gi.HasRules(info.NodeID) {
+		loopStart, loopLen := g.rowLoopSpan(row)
+		pd, vm, dm := model.GroupEffect(gi, info.NodeID, idx, loopStart, loopLen)
+		pitch += pd
+		vol *= vm
+		dur *= dm
+		// Final legal-range clamp — only for ruled nodes so ungrouped
+		// behavior is byte-identical to before this feature.
+		if pitch < -24 {
+			pitch = -24
+		} else if pitch > 24 {
+			pitch = 24
+		}
+		if vol < 0 {
+			vol = 0
+		} else if vol > 4 {
+			vol = 4
+		}
+		if dur < 0.1 {
+			dur = 0.1
+		} else if dur > 4 {
+			dur = 4
+		}
+	}
 	return vol, pitch, dur
 }
 
-func (g *Game) nodeTriggered(row, idx int, info model.BeatInfo) bool {
+func (s *playbackSlate) nodeTriggered(row, idx int, info model.BeatInfo) bool {
+	g := s.g
 	trig, _ := g.nodeTriggeredState(row, idx, info)
 	return trig
 }
 
-func (g *Game) nodeTriggeredState(row, idx int, info model.BeatInfo) (bool, bool) {
+func (s *playbackSlate) nodeTriggeredState(row, idx int, info model.BeatInfo) (bool, bool) {
+	g := s.g
 	if info.NodeType != model.NodeTypeRegular && info.NodeType != model.NodeTypeMute {
 		return false, true
 	}
@@ -173,7 +203,7 @@ func (g *Game) nodeTriggeredState(row, idx int, info model.BeatInfo) (bool, bool
 // the given row/index/node triple, stable across runs and independent of wall
 // clock, so preview predictions and audio playback can agree for probability
 // logic without shared mutable RNG state.
-func (g *Game) deterministicRoll(row, idx int, id model.NodeID) float64 {
+func (s *playbackSlate) deterministicRoll(row, idx int, id model.NodeID) float64 {
 	// 64-bit SplitMix-derived hash
 	x := uint64(uint32(row))<<32 ^ uint64(uint32(idx)) ^ (uint64(uint32(id)) << 16) ^ 0x9E3779B97F4A7C15
 	x += 0x9E3779B97F4A7C15
@@ -183,4 +213,32 @@ func (g *Game) deterministicRoll(row, idx int, id model.NodeID) float64 {
 	z ^= (z >> 31)
 	// Map lower 53 bits to [0,1)
 	return float64(z&((1<<53)-1)) / float64(1<<53)
+}
+
+func (g *Game) incrementLogicTriggerCount(row int, id model.NodeID) int {
+	return g.playbackSlate.incrementLogicTriggerCount(row, id)
+}
+
+func (g *Game) seqPrevTriggered(row, idx int, snap *seqPathSnapshot) (bool, bool) {
+	return g.playbackSlate.seqPrevTriggered(row, idx, snap)
+}
+
+func (g *Game) seqShouldTriggerNode(row, idx int, info model.BeatInfo, n model.Node, counts map[model.NodeID]int, snap *seqPathSnapshot) bool {
+	return g.playbackSlate.seqShouldTriggerNode(row, idx, info, n, counts, snap)
+}
+
+func (g *Game) evalNodeParamsOnly(row, idx int, info model.BeatInfo) (float64, float64, float64) {
+	return g.playbackSlate.evalNodeParamsOnly(row, idx, info)
+}
+
+func (g *Game) nodeTriggered(row, idx int, info model.BeatInfo) bool {
+	return g.playbackSlate.nodeTriggered(row, idx, info)
+}
+
+func (g *Game) nodeTriggeredState(row, idx int, info model.BeatInfo) (bool, bool) {
+	return g.playbackSlate.nodeTriggeredState(row, idx, info)
+}
+
+func (g *Game) deterministicRoll(row, idx int, id model.NodeID) float64 {
+	return g.playbackSlate.deterministicRoll(row, idx, id)
 }

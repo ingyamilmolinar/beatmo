@@ -203,12 +203,19 @@ const CATALOGUE = {
     { name: "contextMenuOpen", args: [], returns: "boolean" },
     { name: "contextMenuRect", args: [], returns: "any" },
     { name: "contextMenuRow", args: [], returns: "number" },
+    // Node groups (marquee-select "group these nodes" flow, Task 1-9).
+    // createNodeGroup() with no ids safely returns -1 (no group created).
+    { name: "createNodeGroup", args: [], returns: "number" },
     { name: "debugGridInputState", args: [], returns: "any" },
     { name: "deleteEdgeGrid", skipCall: true },
+    // deleteGroup(999999) targets a nonexistent group; returns false, no mutation.
+    { name: "deleteGroup", args: [999999], returns: "boolean" },
     { name: "deleteNodeGrid", skipCall: true },
     { name: "drumBounds", args: [], returns: "any" },
     { name: "drumLength", args: [], returns: "number" },
     { name: "drumOffset", args: [], returns: "number" },
+    // dumpGroups() is read-only; returns the JSON-encoded AllGroups() array.
+    { name: "dumpGroups", args: [], returns: "string" },
     { name: "ensureDefaultPath", args: [], returns: "any" },
     { name: "exportBtnRect", args: [], returns: "any" },
     { name: "exportJSON", args: [], returns: "string" },
@@ -238,6 +245,7 @@ const CATALOGUE = {
     { name: "instMenuScrollBarRect", args: [], returns: "any" },
     { name: "instMenuScrollOffset", args: [], returns: "number" },
     { name: "instMenuSearchRect", args: [], returns: "any" },
+    { name: "instMenuSearchState", args: [], returns: "any" },
     { name: "instMenuScrollThumbRect", args: [], returns: "any" },
     { name: "instMenuSelectCategory", skipCall: true },
     { name: "instMenuSelectItem", skipCall: true },
@@ -298,6 +306,9 @@ const CATALOGUE = {
     { name: "selectedNodeId", args: [], returns: "any" },
     { name: "setDrumLength", skipCall: true },
     { name: "setFastPath", skipCall: true },
+    // setGroupRule(999999, 'pitch', 1, 1) targets a nonexistent group; returns
+    // false, no mutation.
+    { name: "setGroupRule", args: [999999, "pitch", 1, 1], returns: "boolean" },
     { name: "setMainVolume", skipCall: true },
     { name: "setNodeLogicGrid", skipCall: true },
     { name: "setOrigin", skipCall: true },
@@ -476,6 +487,11 @@ const CATALOGUE = {
     // Mutating perf/sequencer controls — existence-only.
     { name: "resetThreeStageLatency", skipCall: true },
     { name: "tickSequencer", skipCall: true },
+    // WebAudio emission-timing ring (audio.js, parity-timing-sync Stage-D).
+    // Existence-only here — recording behavior is verified end-to-end by
+    // timing_traces.browser.test.js.
+    { name: "getTimingTraces", args: [], returns: "array" },
+    { name: "resetTimingTraces", skipCall: true },
   ],
 
   // ───────── diagnostics (js_exports_diag.go) ─────────

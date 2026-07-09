@@ -17,7 +17,8 @@ const (
 	minHighlightSeconds = 0.05 // 50ms minimum
 )
 
-func (g *Game) queueSoundParams(id string, vol, pitch, dur float64) {
+func (s *playbackSlate) queueSoundParams(id string, vol, pitch, dur float64) {
+	g := s.g
 	// Queue non-blockingly; if the buffer is saturated, drop the oldest
 	// and enqueue the latest so playback remains responsive while tests
 	// can also assert non-blocking behavior.
@@ -27,7 +28,7 @@ func (g *Game) queueSoundParams(id string, vol, pitch, dur float64) {
 	if vol < 0 {
 		vol = 0
 	}
-	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, enqAt: time.Now(), gen: g.audioGen.Load(), row: -1, abs: -1}
+	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, enqAt: time.Now(), gen: g.audioGen.Load(), parityGen: g.parityGen.Load(), row: -1, abs: -1}
 	if n > 0 {
 		req.hasWhen = true
 		req.when = n
@@ -37,12 +38,33 @@ func (g *Game) queueSoundParams(id string, vol, pitch, dur float64) {
 	sendLatest(g.audioCh, req, &g.perf.aDrops)
 }
 
+// rowStructGenLoad returns the current per-row structural generation for row,
+// or 0 for out-of-range rows (which then rely on global-transport gating only).
+func (s *playbackSlate) rowStructGenLoad(row int) uint64 {
+	g := s.g
+	if row < 0 || row >= len(g.rowStructGen) {
+		return 0
+	}
+	return g.rowStructGen[row].Load()
+}
+
+// bumpRowStructGen advances the structural generation of a single row so that
+// its already-scheduled in-flight beats are dropped by the audioLoop filter.
+func (s *playbackSlate) bumpRowStructGen(row int) {
+	g := s.g
+	if row < 0 || row >= len(g.rowStructGen) {
+		return
+	}
+	g.rowStructGen[row].Add(1)
+}
+
 // queueSoundAtParams schedules with explicit timestamp seconds.
-func (g *Game) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, whenSec float64) {
+func (s *playbackSlate) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, whenSec float64) {
+	g := s.g
 	if vol < 0 {
 		vol = 0
 	}
-	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, when: whenSec, hasWhen: true, enqAt: time.Now(), gen: g.audioGen.Load(), row: row, abs: abs}
+	req := soundReq{id: id, vol: vol, pitch: pitch, dur: dur, when: whenSec, hasWhen: true, enqAt: time.Now(), gen: g.audioGen.Load(), rowGen: g.rowStructGenLoad(row), parityGen: g.parityGen.Load(), row: row, abs: abs}
 	// Mark the seq decision as having reached the audio pipeline so parity's
 	// audio_missing check does not flag in-flight/dropped audio as a scheduler
 	// bug (see paritySeqDecision.Enqueued). Sequencer reqs only (row >= 0).
@@ -55,11 +77,13 @@ func (g *Game) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, when
 // audioChNearFull returns true if the audio channel is above 75% capacity.
 // Used by seqScheduleTime to skip the entire tick when the audioLoop
 // goroutine hasn't drained the channel yet.
-func (g *Game) audioChNearFull() bool {
+func (s *playbackSlate) audioChNearFull() bool {
+	g := s.g
 	return len(g.audioCh) >= cap(g.audioCh)*3/4
 }
 
-func (g *Game) runtimeAudioLookahead() float64 {
+func (s *playbackSlate) runtimeAudioLookahead() float64 {
+	g := s.g
 	look := g.audioLookaheadSec
 	if look < 0 {
 		look = 0
@@ -76,18 +100,18 @@ func (g *Game) runtimeAudioLookahead() float64 {
 	if look == 0 {
 		return 0
 	}
-	s := g.perf.snapshot()
+	ps := g.perf.snapshot()
 	extra := 0.0
-	if s.AudioQLatMax > 18 {
+	if ps.AudioQLatMax > 18 {
 		extra = math.Max(extra, 0.03)
-	} else if s.AudioQLatMax > 12 {
+	} else if ps.AudioQLatMax > 12 {
 		extra = math.Max(extra, 0.02)
 	}
-	if s.DrawAvgMS > 18.0 || s.UpdateMaxMS > 25.0 {
+	if ps.DrawAvgMS > 18.0 || ps.UpdateMaxMS > 25.0 {
 		extra = math.Max(extra, 0.03)
-	} else if s.DrawAvgMS > 14.0 || s.UpdateMaxMS > 18.0 {
+	} else if ps.DrawAvgMS > 14.0 || ps.UpdateMaxMS > 18.0 {
 		extra = math.Max(extra, 0.02)
-	} else if s.DrawAvgMS > 11.0 || s.UpdateAvgMS > 8.0 {
+	} else if ps.DrawAvgMS > 11.0 || ps.UpdateAvgMS > 8.0 {
 		extra = math.Max(extra, 0.01)
 	}
 	look += extra
@@ -98,7 +122,8 @@ func (g *Game) runtimeAudioLookahead() float64 {
 }
 
 // scheduleSound applies groove (swing and micro-delay) and enqueues the sound.
-func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol, pitch, dur, baseNow float64, sequencer bool) {
+func (s *playbackSlate) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol, pitch, dur, baseNow float64, sequencer bool) {
+	g := s.g
 	if info.NodeType == model.NodeTypeMute {
 		g.ensureGateSlices()
 		if row < len(g.muteUntilByRow) {
@@ -115,6 +140,14 @@ func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol
 		g.lastFiredNodeByRow[row] = info.NodeID
 		g.setLastTriggered(row, info.NodeID, false)
 		return
+	}
+	// Backstop the graph-change enumeration: warm the exact post-effect pitch
+	// (includes group transpose / logic decisions) off the dispatch goroutine.
+	// Only for real sequencer beats — fire-and-forget UI sounds (sequencer=false)
+	// play immediately and don't need pre-warming. Reached only for non-mute
+	// regular beats (mute nodes returned above).
+	if sequencer && g.voicePrewarmer != nil {
+		g.voicePrewarmer.warmPitch(inst, pitch)
 	}
 	when := baseNow
 	if !(when > 0) {
@@ -133,6 +166,17 @@ func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol
 	parityRow, parityAbs := -1, -1
 	if sequencer {
 		parityRow, parityAbs = row, idx
+		// Stage-D drift measures scheduler-INTENDED vs actually-produced: how
+		// faithfully the audio device emitted the sample at the moment we asked
+		// it to. The intended moment is 'when' — the fully-resolved schedule
+		// time AFTER the deliberate groove nudge + lookahead cushion — NOT the
+		// bare grid time baseNow. Passing baseNow folds the whole lookahead
+		// (desktop ~20ms, more under adaptive headroom) into every drift
+		// reading, so Stage D would report a systematic ~lookahead bias and
+		// breach EmitDrift.MeanMax on normal playback even when the device is
+		// emitting perfectly on schedule. drift = emittedWall - when isolates
+		// true device jitter, which is what the gate is meant to catch.
+		g.openTimingTrace(row, idx, when, g.audioGen.Load(), g.parityGen.Load())
 	}
 	g.queueSoundAtParams(parityRow, parityAbs, inst, vol, pitch, dur, when)
 	// Adjust highlight durations to match audio length as closely as possible.
@@ -155,7 +199,8 @@ func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol
 // expectedHighlightSeconds estimates the number of seconds a highlight should
 // persist, capped to provide a short visual "punch" regardless of audio length.
 // The highlight indicates "a note fired" not "the note is still playing".
-func (g *Game) expectedHighlightSeconds(inst string, pitch, dur float64) float64 {
+func (s *playbackSlate) expectedHighlightSeconds(inst string, pitch, dur float64) float64 {
+	g := s.g
 	base := audio.SampleSeconds(inst)
 	if base <= 0 {
 		// Fallback to a fraction of a beat if unknown: quarter-beat.
@@ -186,4 +231,28 @@ func (g *Game) expectedHighlightSeconds(inst string, pitch, dur float64) float64
 		sec = minHighlightSeconds
 	}
 	return sec
+}
+
+func (g *Game) queueSoundParams(id string, vol, pitch, dur float64) {
+	g.playbackSlate.queueSoundParams(id, vol, pitch, dur)
+}
+
+func (g *Game) rowStructGenLoad(row int) uint64 { return g.playbackSlate.rowStructGenLoad(row) }
+
+func (g *Game) bumpRowStructGen(row int) { g.playbackSlate.bumpRowStructGen(row) }
+
+func (g *Game) queueSoundAtParams(row, abs int, id string, vol, pitch, dur, whenSec float64) {
+	g.playbackSlate.queueSoundAtParams(row, abs, id, vol, pitch, dur, whenSec)
+}
+
+func (g *Game) audioChNearFull() bool { return g.playbackSlate.audioChNearFull() }
+
+func (g *Game) runtimeAudioLookahead() float64 { return g.playbackSlate.runtimeAudioLookahead() }
+
+func (g *Game) scheduleSound(row, idx int, info model.BeatInfo, inst string, vol, pitch, dur, baseNow float64, sequencer bool) {
+	g.playbackSlate.scheduleSound(row, idx, info, inst, vol, pitch, dur, baseNow, sequencer)
+}
+
+func (g *Game) expectedHighlightSeconds(inst string, pitch, dur float64) float64 {
+	return g.playbackSlate.expectedHighlightSeconds(inst, pitch, dur)
 }

@@ -66,7 +66,7 @@ func TestArrowKeysYieldToRenameTextInput(t *testing.T) {
 	rc.SetProps(RenameProps{InitialText: "kick", MaxLen: 32, AnchorRect: image.Rect(0, 0, 120, 24)})
 	rc.Open()
 	g.drum.openRenamePortal()
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("setup: rename portal should be open")
 	}
 	if !rc.IsOpen() {

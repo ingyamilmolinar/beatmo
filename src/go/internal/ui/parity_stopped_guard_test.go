@@ -26,7 +26,7 @@ func TestParityScanSkippedWhenNotPlaying(t *testing.T) {
 	g.drum.SetLength(1)
 	g.drum.Offset = 0
 	g.refreshDrumRow()
-	g.recordParityAudio(0, 0, 0.1, "kick", 1, 0, 1, g.audioGen.Load())
+	g.recordParityAudio(0, 0, 0.1, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 
 	defer func() {
 		if r := recover(); r != nil {

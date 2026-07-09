@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"image"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -61,6 +60,14 @@ func (dv *DrumView) recalcButtons() {
 		}
 	}
 	dv.calcLabelWidth()
+
+	// Reconcile eqH with the audio panel's actual painted floor for the CURRENT
+	// tab BEFORE the row rack is laid out below (its bottom + the add-row "+"
+	// anchor derive from rowsBottom() == Bounds.Max.Y - eqH). refreshWidgetLayout
+	// computes eqH only at SetBounds/resize, so a tab switch to Synth (taller
+	// 240 px floor) would otherwise leave eqH stale and strand the rack under
+	// the panel. Runs every frame; idempotent.
+	dv.reconcileEQHeightToPanelFloor()
 
 	// Allocate the mobile-only bottom action bar host. This is the bottom
 	// sheet that holds the volume icon, view-switch, and overflow controls
@@ -163,11 +170,15 @@ func (dv *DrumView) recalcButtons() {
 					segRect = image.Rect(segRect.Min.X+barPad, segRect.Min.Y, segRect.Max.X-barPad, segRect.Max.Y)
 				}
 				dv.viewSwitchSegmented.SetRect(segRect)
-				// Grey the Synth segment when the active instrument is a WAV
-				// sample (no synth controls). HitTest reads this live, so the
-				// hit area published below stays consistent with the visual.
+				// Grey the Synth/Sampler segments when they have no instrument
+				// context: Master selected (both), or a WAV-sample instrument
+				// (Synth only). HitTest reads this live, so the hit area
+				// published below stays consistent with the visual.
 				if idx := bottomNavSynthIndex(); idx >= 0 {
-					dv.viewSwitchSegmented.SetSegmentDisabled(idx, !dv.activeInstrumentHasSynth())
+					dv.viewSwitchSegmented.SetSegmentDisabled(idx, dv.synthViewDisabled())
+				}
+				if idx := segmentIndexForViewMode(viewModeSampler); idx >= 0 {
+					dv.viewSwitchSegmented.SetSegmentDisabled(idx, dv.samplerViewDisabled())
 				}
 			}
 			// Re-rebuild hit areas so the segmented control is registered
@@ -728,15 +739,12 @@ func (dv *DrumView) recalcButtons() {
 	// WidgetWave allocation is too short for the Spectrum/Levels/Chain chrome.
 	if dv.userEqH > 0 && !Profile().IsMobile() {
 		eqWidget = image.Rect(eqWidget.Min.X, dv.Bounds.Max.Y-dv.eqH, eqWidget.Max.X, dv.Bounds.Max.Y)
-	} else if dv.eqPanelZone != nil && dv.eqPanelZone.tabState != nil {
-		minPanelH := dv.eqPanelZone.tabState.PanelHeightAt(dv.Bounds.Dy())
-		// Synth keeps its prior 240 px floor as a separate hard minimum
-		// (header + sections + chrome) — never shorter than that even
-		// if the runtime-profile multiplier resolves smaller.
-		const minSynthPanelH = 240
-		if dv.eqPanelZone.ActiveTab() == TabSynth && minPanelH < minSynthPanelH {
-			minPanelH = minSynthPanelH
-		}
+	} else if minPanelH := dv.audioPanelFloorHeight(); minPanelH > 0 {
+		// minPanelH is the shared audio-panel floor (Synth tab: >= 240 px).
+		// dv.eqH is floored to the SAME value in refreshWidgetLayout so
+		// rowsBottom() (the row-rack bottom + add-row "+" anchor) lines up
+		// with this panel top — otherwise the rack renders underneath the
+		// panel (the add-row "+" occlusion regression).
 		if eqWidget.Dy() < minPanelH {
 			expanded := image.Rect(
 				eqWidget.Min.X,
@@ -834,97 +842,17 @@ func (dv *DrumView) recalcButtons() {
 	}
 
 	// Keep the legacy DrumView mirrors of the instrument-menu search field in
-	// sync with the menu component. The soft-keyboard (desktop) and mobile
-	// native-input registrations below locate the field via dv.instSearchRect;
-	// it is otherwise never assigned, so it stays the zero rect and the search
-	// field is never registered — meaning a tap on it cannot open the mobile
-	// native keyboard. Mirror the component's live rect (empty in categories
-	// mode) every layout pass.
+	// sync with the menu component. The native-gesture producers
+	// (softKeyboardCandidates / nativeInputCandidates in native_gesture.go)
+	// locate the field via dv.instSearchRect; it is otherwise never assigned, so
+	// it stays the zero rect and the search field is never registered — meaning a
+	// tap on it cannot open the mobile native keyboard. Mirror the component's
+	// live rect (empty in categories mode) every layout pass.
 	if dv.instMenuComp != nil && dv.IsInstMenuOpen() {
 		dv.instSearchBox = dv.instMenuComp.SearchBox()
 		dv.instSearchRect = dv.instMenuComp.SearchRect()
 	} else {
 		dv.instSearchRect = image.Rectangle{}
-	}
-
-	// Register focusable rects for mobile soft keyboard gesture-based focus.
-	// On small screens, the mobile native input system handles text inputs
-	// directly (creating real HTML <input> overlays), so we skip focus-rect
-	// registration to avoid the proxy also capturing the touchend gesture.
-	softKeyboardClearRects()
-	if !p.IsMobile() {
-		if dv.bpmBox() != nil && !dv.bpmBox().Rect.Empty() {
-			r := dv.bpmBox().Rect
-			softKeyboardRegisterRect("bpm", r.Min.X, r.Min.Y, r.Dx(), r.Dy(), "numeric")
-		}
-		if dv.IsInstMenuOpen() && dv.instSearchBox != nil && !dv.instSearchRect.Empty() {
-			r := dv.instSearchRect
-			softKeyboardRegisterRect(instSearchMobileInputID, r.Min.X, r.Min.Y, r.Dx(), r.Dy(), "text")
-		}
-		if dv.IsNamingOpen() && dv.nameBox != nil && !dv.nameBox.Rect.Empty() {
-			r := dv.nameBox.Rect
-			softKeyboardRegisterRect("wav-name", r.Min.X, r.Min.Y, r.Dx(), r.Dy(), "text")
-		}
-		if dv.renameBox != nil && !dv.renameBox.Rect.Empty() {
-			r := dv.renameBox.Rect
-			softKeyboardRegisterRect("rename", r.Min.X, r.Min.Y, r.Dx(), r.Dy(), "text")
-		}
-	}
-
-	// Register mobile native input rects (replaces focus-rects for text inputs on mobile)
-	if p.IsMobile() {
-		mobileInputClear()
-
-		// BPM box — direct rect, re-registered every layout pass. The JS
-		// native-input system creates the real <input> synchronously inside the
-		// touchend gesture (onCanvasTouchEnd), which only fires when "bpm" is
-		// already in the registrations map at touchend time. The shared editor's
-		// OpenValue registers "bpm" only after Go processes the tap (1-2 frames
-		// later, after this layout's mobileInputClear() has wiped it), so it can
-		// never satisfy the gesture handler — registration must live here.
-		if dv.bpmBox() != nil && !dv.bpmBox().Rect.Empty() {
-			r := dv.bpmBox().Rect
-			mobileInputRegister("bpm", r.Min.X, r.Min.Y, r.Dx(), r.Dy(),
-				dv.bpmBox().Text, 4, "numeric")
-		}
-
-		// Rename — register the native-input trigger only when the context menu
-		// is open, glued to the *Rename* item (found by identity, not a magic
-		// index — see contextMenuRenameBtn). Registering it on the wrong item
-		// makes the JS touchend handler open the rename input when that adjacent
-		// item is tapped (the "tapping Color opens rename" bug). We must also NOT
-		// register the kebab button itself as a trigger, otherwise the JS handler
-		// intercepts the tap and creates a native rename input instead of letting
-		// the context menu open.
-		if dv.IsContextMenuOpen() && dv.contextMenuRow >= 0 &&
-			dv.contextMenuRow < len(dv.Rows) && dv.contextMenuRow < len(dv.rowLabels()) {
-			if renameBtn := dv.contextMenuRenameBtn(); renameBtn != nil {
-				trigR := renameBtn.Rect()
-				labelR := dv.rowLabels()[dv.contextMenuRow].Rect()
-				if !trigR.Empty() && !labelR.Empty() {
-					mobileInputRegisterTrigger(
-						fmt.Sprintf("rename-%d", dv.contextMenuRow),
-						trigR.Min.X, trigR.Min.Y, trigR.Dx(), trigR.Dy(),
-						labelR.Min.X, labelR.Min.Y, labelR.Dx(), labelR.Dy(),
-						dv.Rows[dv.contextMenuRow].Name, 32, "text",
-					)
-				}
-			}
-		}
-
-		// Instrument search — direct rect (when inst menu is open)
-		if dv.IsInstMenuOpen() && dv.instSearchBox != nil && !dv.instSearchRect.Empty() {
-			r := dv.instSearchRect
-			mobileInputRegister(instSearchMobileInputID, r.Min.X, r.Min.Y, r.Dx(), r.Dy(),
-				dv.instSearchBox.Text, 40, "text")
-		}
-
-		// WAV name — direct rect (when naming)
-		if dv.IsNamingOpen() && dv.nameBox != nil && !dv.nameBox.Rect.Empty() {
-			r := dv.nameBox.Rect
-			mobileInputRegister("wav-name", r.Min.X, r.Min.Y, r.Dx(), r.Dy(),
-				dv.nameBox.Text, 32, "text")
-		}
 	}
 }
 

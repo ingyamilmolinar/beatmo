@@ -23,33 +23,38 @@ func visibleSamplerKnobRects(dv *DrumView) map[int]image.Rectangle {
 	return out
 }
 
-// TestSamplerKnobsSingleColumnMobile pins the mobile Sampler tab to a single
-// column of knobs (one dial per row) — the user-facing fix for the crammed
-// 3+2 grid of tiny dials. Every visible dial must share the same left edge.
-func TestSamplerKnobsSingleColumnMobile(t *testing.T) {
-	g := samplerLayoutGame(t)
-	withSmallScreen(t, true)
-	restore := SetDensityForTest(DensitySpacious)
-	defer restore()
-	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 270), "kick")
+// TestSamplerKnobsMultiColumnMobile pins the mobile Sampler tab to a
+// width-adaptive multi-column knob grid (2–4 columns, ControlGrid's native
+// behaviour capped at 4) so the panel's horizontal space is used instead of
+// stacking one pill per row. On a REAL 390×844 mobile layout at Spacious
+// density the grid adapts to 4 columns, so the whole first row of knobs is
+// visible at once (the second row scrolls, exactly like the Synth tab).
+func TestSamplerKnobsMultiColumnMobile(t *testing.T) {
+	g := newMobileSamplerTabGameForTestSize(t, 390, 844)
 
+	grid := g.drum.sampler.knobGrid
+	if grid == nil {
+		t.Fatal("sampler knob grid not created on mobile")
+	}
+	cols := grid.Cols()
+	if cols < 2 || cols > 4 {
+		t.Errorf("mobile sampler grid Cols()=%d, want 2..4 (adaptive, capped at 4)", cols)
+	}
 	vis := visibleSamplerKnobRects(g.drum)
-	if len(vis) == 0 {
-		t.Fatal("no sampler knobs laid out on mobile")
+	// The whole first ROW must be visible — one knob per column.
+	if len(vis) < cols {
+		t.Errorf("only %d knobs visible; the full first row of %d columns must fit", len(vis), cols)
 	}
 	xs := map[int]bool{}
-	ys := map[int]bool{}
 	for _, r := range vis {
 		xs[r.Min.X] = true
-		ys[r.Min.Y] = true
 	}
-	if len(xs) != 1 {
-		t.Errorf("mobile sampler knobs must be a single column; got %d distinct X (rects=%v)", len(xs), vis)
+	if len(xs) < 2 {
+		t.Errorf("mobile sampler knobs must span multiple columns; all share one X (rects=%v)", vis)
 	}
-	// One dial per row → as many distinct Y as visible knobs.
-	if len(ys) != len(vis) {
-		t.Errorf("mobile sampler knobs must be one-per-row; %d visible knobs share only %d distinct Y", len(vis), len(ys))
+	// Knobs 0 and 1 sit in the same (first) row → same top edge.
+	if vis[0].Min.Y != vis[1].Min.Y {
+		t.Errorf("knobs 0 and 1 should share the first row: Y %d vs %d", vis[0].Min.Y, vis[1].Min.Y)
 	}
 }
 

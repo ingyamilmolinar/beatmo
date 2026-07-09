@@ -10,16 +10,16 @@ import (
 // the spectrum evolves over time — key for distinguishing organic instruments
 // from static synthesized tones.
 type TemporalFingerprint struct {
-	NumFrames         int
-	CentroidMean      float64
-	CentroidSlope     float64    // Hz/sec (linear regression)
-	CentroidRange     float64    // max-min
-	HarmonicFluxMean  float64
-	SpectralVariance  float64
+	NumFrames          int
+	CentroidMean       float64
+	CentroidSlope      float64 // Hz/sec (linear regression)
+	CentroidRange      float64 // max-min
+	HarmonicFluxMean   float64
+	SpectralVariance   float64
 	PartialDecaySlopes [6]float64 // dB/sec
-	VibratoDetected   bool
-	VibratoRateHz     float64
-	VibratoDepthCents float64
+	VibratoDetected    bool
+	VibratoRateHz      float64
+	VibratoDepthCents  float64
 }
 
 // computeTemporal builds the temporal fingerprint from w (sustain region) using

@@ -33,20 +33,58 @@ func bindFocusSweepInst(t *testing.T, recipeID string) string {
 // SCOPE: per-stage enable toggles (*_enabled) and engine-internal hidden params
 // are NOT keys here — they are filtered out before the sweep loop by
 // synthParamIsGridKnob (they render as section pills / have no UI, never as a
-// selectable knob the focus graph explains). Pitch knobs (osc_octave/osc_detune/
-// pitch/tune/...) route to conceptPitchWave (per-knob routing) and ARE responsive
-// — they are NOT exempt.
+// selectable knob the focus graph explains).
 //
-// What remains is a tiny FM residue. Task 1/2 closed the time-domain FM knobs:
-// operator decay (fm_op*_decay) and the FM pitch-envelope sweep
-// (fm_pitch_env_*) now route through conceptFMEnvelope, a schematic time-curve,
-// and ARE responsive — they are no longer exempt. One FM knob stays exempt
-// because no faithful picture exists: fm_op1_level (carrier emitted without
-// level scaling across all FM algorithms). fm_base_freq is now responsive —
-// RenderInstrumentPreview honors it as the FM carrier fundamental (Task 5), so
-// conceptPitchWave's fixed-window wave changes at Min vs Max. The remaining
-// exemption FAILS in every recipe it appears in, so a name-level exemption
-// loses no passing assertion.
+// ROUTING (synthFocusRendererForKnob, synth_focus_graph.go): each swept knob
+// picks its renderer in this order —
+//  1. Pitch knobs (isSynthPitchKnob: osc_octave/osc_detune/pitch/tune/fm_base/
+//     fm_base_freq/fundamental/base_freq) → conceptPitchWave, a real-note
+//     fixed-time-window render whose cycle count tracks pitch.
+//  2. FM time-domain knobs (isFMTimeDomainKnob: operator decay, FM pitch-env
+//     sweep) → conceptFMEnvelope, a schematic time-curve.
+//  3. Everything else routes BY GROUP (synthFocusRendererForGroup):
+//     osc → conceptOsc (cycle-normalized timbre curve); filter → conceptFilter;
+//     env → conceptEnvelope; fm → conceptFM (the FM output waveform, operators
+//     forced audible); post → conceptPostWave (before/after waveshaper-transfer
+//     curve); pitch → conceptPitchWave; pitchenv → conceptPitchEnvSweep (bipolar
+//     pitch-vs-time sweep over pitchenv_amt/pitchenv_decay); lfo → conceptLFO
+//     (the LFO's own wobble: rate/depth plus the delay onset ramp, with real
+//     lfo_depth affine-mapped onto a teachable [0.35,1] display range so even a
+//     near-zero seed depth still visibly changes); burst → conceptBurst (a
+//     per-hit spike timeline; a silent hit, e.g. burst4_amp defaulting to 0,
+//     still draws a dim placeholder spike so its *_off timing knob stays
+//     responsive). Groups with no dedicated domain curve yet (filtenv, unison,
+//     kick, core, and any unlisted group) fall through to
+//     conceptFocusLevelWave, which scales the displayed output wave's amplitude
+//     by the knob's Min..Max fraction.
+//
+// What remains exempt is a tiny, genuinely-unshowable residue:
+//   - fm_op1_level (fm group): op1's level is not a reliable output-amplitude
+//     control in any FM algorithm (see fmOp1IsCarrier's evidence in
+//     synth_focus_graph.go — the carrier path never multiplies by levels[0]),
+//     so no faithful picture exists; it falls through to conceptFM but Min vs
+//     Max share the same curve in every recipe.
+//   - lfo_target (lfo group): an enum ROUTING choice (Amp/Pitch/Cutoff) that
+//     changes WHAT the LFO modulates, not the wobble's own rate/depth/onset
+//     shape conceptLFO draws — lfo_rate/lfo_depth/lfo_delay (the shape and
+//     onset) all respond and are NOT exempt.
+//   - the fm-epiano/fm_op3_ratio PAIR (focusSweepExemptPair below): op3 ships a
+//     ratio but zero depth in that one recipe, so the operator is inert there
+//     specifically (op3_ratio DOES respond in fm-lead and the modular recipes).
+//
+// Each of the two by-name exemptions FAILS in every recipe it appears in, so a
+// name-level exemption loses no passing assertion.
+//
+// Known pre-existing baseline (NOT exempted here): every "group osc"
+// physical-model knob (osc_sax_*/osc_bow_*/osc_type) on recipes carrying a
+// physical-model oscillator (e.g. synth-modular-oboe-full,
+// synth-modular-piano-felt) currently fails this gate — conceptOsc's
+// cycle-normalized timbre curve does not yet depict those knobs' effect. That
+// gap is owned by a concurrent, in-flight physical-model work stream and is
+// deliberately left UNEXEMPTED: adding exemptions now would flip to
+// "EXEMPT but now RESPONSIVE" the moment that work lands and silently mask
+// the very knobs it's fixing. The failure count fluctuates as that work
+// progresses (observed in the 140..497 range) — do not chase it here.
 var focusSweepExemptByName = map[string]string{
 	// ── fm group. Most FM knobs are PROVEN responsive: ratio/depth/level/algorithm
 	//    drive conceptFM (the FM output waveform), and the time-domain knobs
@@ -54,15 +92,16 @@ var focusSweepExemptByName = map[string]string{
 	//    What stays exempt is what NO faithful picture can show:
 	"fm_op1_level": "op1 level is not a reliable output-amplitude control (carrier emitted without level scaling across all FM algorithms — preview_render.go FM matrix), so no faithful picture exists.",
 
-	// ── burst group → conceptMotion. The burst markers (Task 17) are drawn
-	//    regardless of the live burst_enabled gate, so burstN_off / burstN_amp /
-	//    burst_sharp move the picture — EXCEPT hit-4, which is silent by default.
-	"burst4_off": "the hit-4 marker is gated by burst4_amp, which defaults to 0 (a SILENT hit) across every recipe; with no audible hit-4, its off-TIME has nothing to position. (burst1/2/3_off respond — their amps default >0.)",
+	// ── burst group → conceptBurst (Task 7). Every burstN_off / burstN_amp /
+	//    burst_sharp knob is now responsive, including hit-4: a silent hit
+	//    (burst4_amp defaults to 0 across every recipe) draws a dim placeholder
+	//    spike at 15% height instead of nothing, so burst4_off's timing still
+	//    moves the picture. No burst-group exemptions remain.
 
-	// ── lfo group → conceptMotion, which draws the LFO's steady-state wobble from
-	//    lfo_rate/lfo_depth. Two LFO knobs have no curve under that renderer:
-	"lfo_target": "lfo_target is an enum ROUTING choice (Amp/Pitch/Cutoff) — it changes WHAT the LFO modulates, not the wobble's own rate/depth shape conceptMotion draws, so Min vs Max share the same curve. (lfo_rate/lfo_depth — the wobble's shape — respond.)",
-	"lfo_delay":  "lfo_delay is the vibrato ONSET delay; conceptMotion paints a fixed steady-state wobble window and does not model the onset ramp, so Min vs Max paint the same steady wobble. (lfo_rate/lfo_depth respond.)",
+	// ── lfo group → conceptLFO, which draws the LFO's own wobble (rate/depth) plus
+	//    the vibrato onset ramp (lfo_delay: silent, then a 0.25s ramp to full
+	//    depth). One LFO knob has no shape under that renderer:
+	"lfo_target": "lfo_target is an enum ROUTING choice (Amp/Pitch/Cutoff) — it changes WHAT the LFO modulates, not the wobble's own rate/depth/onset shape conceptLFO draws, so Min vs Max share the same curve. (lfo_rate/lfo_depth/lfo_delay — the wobble's shape and onset — respond.)",
 }
 
 // focusSweepExemptPair lists per-(recipe, knob) exemptions for knobs that respond
@@ -158,7 +197,11 @@ func TestFocusGraph_RespondsToEveryKnob(t *testing.T) {
 }
 
 // fingerprintFocus renders into a fresh image and returns a hash of the painted
-// rects (count + summed geometry) that changes when the picture changes.
+// rects (count + summed geometry + color) that changes when the picture
+// changes. Color is included (not just geometry) so a renderer that repaints
+// the SAME rect in a different color — e.g. conceptBurst's selected-hit
+// highlight, which swaps a spike between AlphaStrong/AlphaMedium without
+// moving it — still fingerprints as a different picture.
 func fingerprintFocus(t *testing.T, draw func(*ebiten.Image)) int {
 	t.Helper()
 	rects := collectFilledRects(t, func() { draw(ebiten.NewImage(260, 110)) })
@@ -168,6 +211,10 @@ func fingerprintFocus(t *testing.T, draw func(*ebiten.Image)) int {
 		h = h*31 + r.Rect.Min.Y
 		h = h*31 + r.Rect.Max.X
 		h = h*31 + r.Rect.Max.Y
+		h = h*31 + int(r.Color.R)
+		h = h*31 + int(r.Color.G)
+		h = h*31 + int(r.Color.B)
+		h = h*31 + int(r.Color.A)
 	}
 	return h*31 + len(rects)
 }

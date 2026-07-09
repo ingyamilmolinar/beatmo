@@ -16,7 +16,7 @@ func TestVoiceStartsWithin50ms(t *testing.T) {
 		postEQBuf: make([]float64, blockSize),
 		instSlots: make(map[string]int),
 	}
-	m.Schedule("snare", Snare{}.NewVoice(120, sr), 0)
+	m.Schedule("snare", Snare{}.NewVoice(120, sr), 0, -1, -1)
 	buf := make([]byte, sr/10*2) // 0.1s of 16-bit mono
 	m.Read(buf)
 	first := -1

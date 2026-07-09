@@ -43,17 +43,10 @@ func (dv *DrumView) closeNaming() {
 // Portal CloseTop invokes OnClose callbacks that handle component teardown,
 // boolean clears, and deferred tap cancellation.
 func (dv *DrumView) CloseAllPopups() {
-	if dv.tree != nil {
-		for dv.tree.Portal().IsOpen() {
-			dv.tree.Portal().CloseTop()
-		}
-	}
-	// The audio-panel subtree owns its own portal (channel dropdown,
-	// synth-overflow-sheet); drain it too.
-	if dv.audioTree != nil {
-		for dv.audioTree.Portal().IsOpen() {
-			dv.audioTree.Portal().CloseTop()
-		}
+	// Every popup (menus, pickers, FX panel, channel dropdown, wheel popups,
+	// dialogs) lives in the single global overlay portal — drain it fully.
+	for dv.portal().IsOpen() {
+		dv.portal().CloseTop()
 	}
 	if dv.volPopup != nil && dv.volPopup.IsOpen() {
 		dv.volPopup.Close()
@@ -61,6 +54,7 @@ func (dv *DrumView) CloseAllPopups() {
 	if dv.masterVolPopup != nil && dv.masterVolPopup.IsOpen() {
 		dv.masterVolPopup.Close()
 	}
+	dv.closeEQKnobWheelPopup()
 	dv.closeRename()
 	dv.closeNaming()
 	dv.CancelAllDeferredTaps()

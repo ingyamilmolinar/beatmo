@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"fmt"
 	"log"
 	"math"
 	"sort"
@@ -38,6 +39,23 @@ func asturiasShowcase() Showcase {
 // Rest notes are skipped. Step collisions within a row advance to the next free step.
 // Guard: if divisions <= 0, returns an empty Showcase with Bars=1.
 func scoreToShowcase(sc musicxml.Score, stem, instID, instName string, subdiv int) Showcase {
+	partInsts := make([]InstSpec, len(sc.Parts))
+	for i := range partInsts {
+		partInsts[i] = InstSpec{ID: instID, Name: instName, Volume: defaultScoreInstVolume}
+	}
+	return scoreToShowcaseMulti(sc, stem, subdiv, partInsts)
+}
+
+// scoreToShowcaseMulti is the multi-instrument generalization of
+// scoreToShowcase: part k plays partInsts[k] (every voice of that part gets its
+// own row carrying the part's InstSpec — pan/sends/synth params included).
+// len(partInsts) must equal len(sc.Parts); a mismatch is an authoring error and
+// panics at generation time. An InstSpec with Volume 0 gets
+// defaultScoreInstVolume (a 0 volume silences the imported row).
+func scoreToShowcaseMulti(sc musicxml.Score, stem string, subdiv int, partInsts []InstSpec) Showcase {
+	if len(partInsts) != len(sc.Parts) {
+		panic(fmt.Sprintf("scoreToShowcaseMulti(%s): %d partInsts for %d score parts", stem, len(partInsts), len(sc.Parts)))
+	}
 	if sc.Divisions <= 0 {
 		return Showcase{Stem: stem, Subdiv: subdiv, Bars: 1}
 	}
@@ -128,11 +146,16 @@ func scoreToShowcase(sc musicxml.Score, stem, instID, instName string, subdiv in
 			}
 		}
 
-		rows = append(rows, RowSpec{Inst: instID, Hits: hits})
-		// Volume must be > 0: the exporter writes instrument volume with json:"volume"
-		// (no omitempty) and import.go copies it straight to row.Volume without a
-		// 0→default fallback, so a 0 here silences the row on load.
-		insts = append(insts, InstSpec{ID: instID, Name: instName, Volume: defaultScoreInstVolume})
+		ins := partInsts[k.partIdx]
+		if ins.Volume <= 0 {
+			// Volume must be > 0: the exporter writes instrument volume with
+			// json:"volume" (no omitempty) and import.go copies it straight to
+			// row.Volume without a 0→default fallback, so a 0 here silences the
+			// row on load.
+			ins.Volume = defaultScoreInstVolume
+		}
+		rows = append(rows, RowSpec{Inst: ins.ID, Hits: hits})
+		insts = append(insts, ins)
 	}
 
 	bars := (maxStep / subdiv) + 1
