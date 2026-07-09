@@ -272,6 +272,63 @@ type ModularParams struct {
 	// KICK stage's enable pill). APPEND-ONLY at the very tail. Identity 0 (off);
 	// every source==5 consumer sets it to 1. ──
 	KickEnabled float64
+
+	// ── Phase-11 modal-kick knobs (variant 6): coupled two-mode drumhead. Read
+	// only by the source==5 kick voice's variant-6 branch. APPEND-ONLY at the
+	// very tail (after KickEnabled) to mirror the C struct's last fields. ──
+	GenKickModeDetune [modularGenSlots]float64
+	GenKickModeGain   [modularGenSlots]float64
+	GenKickModeDecay  [modularGenSlots]float64
+
+	// ── Phase-12 kick reverb (variant 7 acoustic): baked feedback-comb room
+	// tail amount. APPEND-ONLY at the very tail. 0 = dry. ──
+	GenKickReverb [modularGenSlots]float64
+
+	// ── Phase-13 physical-model OSC params (osc_type 11 = render_sax): the
+	// render_sax args, now config. APPEND-ONLY at the very tail. Mirrors the C
+	// modular_params osc_sax_* scalar fields. ──
+	OscSaxBlow      float64
+	OscSaxReedOff   float64
+	OscSaxReedSlope float64
+	OscSaxReflect   float64
+	OscSaxBreath    float64
+	OscSaxLoss      float64
+
+	// ── Phase-14 bowed-string physical model (osc_type 7 = render_bowed_string,
+	// violin/cello). APPEND-ONLY at the very tail. ──
+	OscBowPos   float64
+	OscBowSlope float64
+	OscBowVel   float64
+	OscBowLoss  float64
+
+	// ── Phase-15 FORMANT stage (vowel bank + singer's formant + breath).
+	// Mirrors the C modular_params formant_* scalar fields. APPEND-ONLY at the
+	// very tail. FormantEnabled 0 (identity) = the stage never runs. ──
+	FormantEnabled   float64
+	FormantVowel     float64
+	FormantVoiceType float64
+	FormantMix       float64
+	FormantShift     float64
+	FormantBreath    float64
+	FormantSing      float64
+	FormantMorphRate float64
+	FormantMorphTo   float64
+
+	// ── Phase-15 ENSEMBLE humanization (scatter + per-voice vibrato).
+	// Mirrors the C modular_params ens_* scalar fields. APPEND-ONLY at the
+	// very tail. All-zero (identity) = the unison stage never mutates —
+	// exact bypass. ──
+	EnsScatter  float64
+	EnsVibRate  float64
+	EnsVibDepth float64
+	EnsHumanize float64
+
+	// ── Phase-16 voice-realism (ensemble cycle jitter + formant dry blend).
+	// Mirrors the C modular_params ens_jitter/formant_dry scalar fields.
+	// APPEND-ONLY at the very tail. EnsJitter 0 (identity) = no jitter;
+	// FormantDry 1.0 (identity) = full dry blend (exact bypass). ──
+	EnsJitter  float64
+	FormantDry float64
 }
 
 // toCModularParams converts the Go struct to a C modular_params pointer.
@@ -366,6 +423,41 @@ func (p ModularParams) toCModularParams() *C.modular_params {
 		unison_drift_rate:  C.float(p.UnisonDriftRate),
 		unison_drift_depth: C.float(p.UnisonDriftDepth),
 		lfo_delay:          C.float(p.LfoDelay),
+
+		// Phase-13 physical-model OSC params (osc_type 11 = render_sax).
+		osc_sax_blow:       C.float(p.OscSaxBlow),
+		osc_sax_reed_off:   C.float(p.OscSaxReedOff),
+		osc_sax_reed_slope: C.float(p.OscSaxReedSlope),
+		osc_sax_reflect:    C.float(p.OscSaxReflect),
+		osc_sax_breath:     C.float(p.OscSaxBreath),
+		osc_sax_loss:       C.float(p.OscSaxLoss),
+
+		// Phase-14 bowed-string physical model (osc_type 7 = render_bowed_string).
+		osc_bow_pos:   C.float(p.OscBowPos),
+		osc_bow_slope: C.float(p.OscBowSlope),
+		osc_bow_vel:   C.float(p.OscBowVel),
+		osc_bow_loss:  C.float(p.OscBowLoss),
+
+		// Phase-15 FORMANT stage (vowel bank + singer's formant + breath).
+		formant_enabled:    C.float(p.FormantEnabled),
+		formant_vowel:      C.float(p.FormantVowel),
+		formant_voice_type: C.float(p.FormantVoiceType),
+		formant_mix:        C.float(p.FormantMix),
+		formant_shift:      C.float(p.FormantShift),
+		formant_breath:     C.float(p.FormantBreath),
+		formant_sing:       C.float(p.FormantSing),
+		formant_morph_rate: C.float(p.FormantMorphRate),
+		formant_morph_to:   C.float(p.FormantMorphTo),
+
+		// Phase-15 ENSEMBLE humanization (scatter + per-voice vibrato).
+		ens_scatter:   C.float(p.EnsScatter),
+		ens_vib_rate:  C.float(p.EnsVibRate),
+		ens_vib_depth: C.float(p.EnsVibDepth),
+		ens_humanize:  C.float(p.EnsHumanize),
+
+		// Phase-16 voice-realism (ensemble cycle jitter + formant dry blend).
+		ens_jitter:  C.float(p.EnsJitter),
+		formant_dry: C.float(p.FormantDry),
 	}
 	// Go [12]float64 → C float gen_<field>[12] must be copied element-wise.
 	for i := 0; i < 12; i++ {
@@ -411,6 +503,10 @@ func (p ModularParams) toCModularParams() *C.modular_params {
 		cp.gen_kick_attack[i] = C.float(p.GenKickAttack[i])
 		cp.gen_kick_fade[i] = C.float(p.GenKickFade[i])
 		cp.gen_kick_sat[i] = C.float(p.GenKickSat[i])
+		cp.gen_kick_mode_detune[i] = C.float(p.GenKickModeDetune[i])
+		cp.gen_kick_mode_gain[i] = C.float(p.GenKickModeGain[i])
+		cp.gen_kick_mode_decay[i] = C.float(p.GenKickModeDecay[i])
+		cp.gen_kick_reverb[i] = C.float(p.GenKickReverb[i])
 
 		cp.gen_tom_variant[i] = C.float(p.GenTomVariant[i])
 		cp.gen_tom_sweep[i] = C.float(p.GenTomSweep[i])
@@ -467,7 +563,10 @@ func (p ModularParams) toCModularParams() *C.modular_params {
 // recipeParamsToSynth; the nativeModularRecipe renderer uses it so the modular
 // voice flows through the existing voice-cache + persistence machinery.
 func recipeParamsToModular(p RecipeParams) ModularParams {
-	ident := ModularParamSchemaIdentity()
+	// Read-only shared identity: recipeParamsToModular only reads ident[name]
+	// as a fallback, so it never needs its own copy. Rebuilding the map here was
+	// ~90% of per-render allocations. See sharedModularParamSchemaIdentity.
+	ident := sharedModularParamSchemaIdentity()
 	get := func(name string) float64 {
 		if v, ok := p[name]; ok {
 			return v
@@ -565,6 +664,43 @@ func recipeParamsToModular(p RecipeParams) ModularParams {
 		UnisonDriftDepth: get("unison_drift_depth"),
 		LfoDelay:         get("lfo_delay"),
 		KickEnabled:      get("kick_enabled"),
+
+		// Phase-13 physical-model OSC params (osc_type 11 = render_sax). get()
+		// falls back to the schema identity = the shipped default, so an
+		// un-overridden sax renders byte-identically.
+		OscSaxBlow:      get("osc_sax_blow"),
+		OscSaxReedOff:   get("osc_sax_reed_off"),
+		OscSaxReedSlope: get("osc_sax_reed_slope"),
+		OscSaxReflect:   get("osc_sax_reflect"),
+		OscSaxBreath:    get("osc_sax_breath"),
+		OscSaxLoss:      get("osc_sax_loss"),
+
+		// Phase-14 bowed-string physical model (osc_type 7 = render_bowed_string).
+		OscBowPos:   get("osc_bow_pos"),
+		OscBowSlope: get("osc_bow_slope"),
+		OscBowVel:   get("osc_bow_vel"),
+		OscBowLoss:  get("osc_bow_loss"),
+
+		// Phase-15 FORMANT stage (vowel bank + singer's formant + breath).
+		FormantEnabled:   get("formant_enabled"),
+		FormantVowel:     get("formant_vowel"),
+		FormantVoiceType: get("formant_voice_type"),
+		FormantMix:       get("formant_mix"),
+		FormantShift:     get("formant_shift"),
+		FormantBreath:    get("formant_breath"),
+		FormantSing:      get("formant_sing"),
+		FormantMorphRate: get("formant_morph_rate"),
+		FormantMorphTo:   get("formant_morph_to"),
+
+		// Phase-15 ENSEMBLE humanization (scatter + per-voice vibrato).
+		EnsScatter:  get("ens_scatter"),
+		EnsVibRate:  get("ens_vib_rate"),
+		EnsVibDepth: get("ens_vib_depth"),
+		EnsHumanize: get("ens_humanize"),
+
+		// Phase-16 voice-realism (ensemble cycle jitter + formant dry blend).
+		EnsJitter:  get("ens_jitter"),
+		FormantDry: get("formant_dry"),
 	}
 	for i := 0; i < 12; i++ {
 		k := i + 1
@@ -610,6 +746,10 @@ func recipeParamsToModular(p RecipeParams) ModularParams {
 		mp.GenKickAttack[i] = get(fmt.Sprintf("gen%d_kick_attack", k))
 		mp.GenKickFade[i] = get(fmt.Sprintf("gen%d_kick_fade", k))
 		mp.GenKickSat[i] = get(fmt.Sprintf("gen%d_kick_sat", k))
+		mp.GenKickModeDetune[i] = get(fmt.Sprintf("gen%d_kick_mode_detune", k))
+		mp.GenKickModeGain[i] = get(fmt.Sprintf("gen%d_kick_mode_gain", k))
+		mp.GenKickModeDecay[i] = get(fmt.Sprintf("gen%d_kick_mode_decay", k))
+		mp.GenKickReverb[i] = get(fmt.Sprintf("gen%d_kick_reverb", k))
 
 		mp.GenTomVariant[i] = get(fmt.Sprintf("gen%d_tom_variant", k))
 		mp.GenTomSweep[i] = get(fmt.Sprintf("gen%d_tom_sweep", k))

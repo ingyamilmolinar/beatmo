@@ -34,7 +34,7 @@ func TestVolumePopupClickOutsideCloses(t *testing.T) {
 	if !dv.volPopup.IsOpen() {
 		t.Fatal("volPopup should be open after openVolumePopup")
 	}
-	if !dv.tree.Portal().Has("volume-popup") {
+	if !dv.portal().Has("volume-popup") {
 		t.Fatal("portal should have 'volume-popup' entry")
 	}
 
@@ -63,7 +63,7 @@ func TestVolumePopupClickOutsideCloses(t *testing.T) {
 	restore()
 
 	// Portal entry should be removed.
-	if dv.tree.Portal().Has("volume-popup") {
+	if dv.portal().Has("volume-popup") {
 		t.Fatal("portal should not have 'volume-popup' after click-outside")
 	}
 
@@ -92,7 +92,7 @@ func TestMasterVolumePopupClickOutsideCloses(t *testing.T) {
 	if !dv.masterVolPopup.IsOpen() {
 		t.Fatal("masterVolPopup should be open")
 	}
-	if !dv.tree.Portal().Has("master-volume-popup") {
+	if !dv.portal().Has("master-volume-popup") {
 		t.Fatal("portal should have 'master-volume-popup' entry")
 	}
 
@@ -120,7 +120,7 @@ func TestMasterVolumePopupClickOutsideCloses(t *testing.T) {
 	dv.Update()
 	restore()
 
-	if dv.tree.Portal().Has("master-volume-popup") {
+	if dv.portal().Has("master-volume-popup") {
 		t.Fatal("portal should not have 'master-volume-popup' after click-outside")
 	}
 	if dv.masterVolPopup.IsOpen() {

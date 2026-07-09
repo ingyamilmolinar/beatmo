@@ -87,6 +87,7 @@ export GO=$(pwd)/.tools/go/bin/go
 | List browser tests | `make test-browser-list` |
 | Sync WAV embeds | `make sync-wav` |
 | Go coverage | `make coverage-go` |
+| C coverage (gcov, own DSP files) | `make coverage-c` |
 | Browser coverage (Go+JS) | `make coverage-browser` |
 | JS source coverage | `make coverage-js` |
 | All coverage | `make coverage` |
@@ -138,6 +139,18 @@ make test-parity
 make coverage-go              # Go unit test coverage (atomic mode, outputs coverage/go.out)
 ```
 
+### C coverage (own DSP sources, miniaudio excluded)
+
+```sh
+make coverage-c               # gcov line coverage of src/c/*.c via the native Go audio tests.
+                              # Outputs: coverage/c-summary.txt (per-file + TOTAL table),
+                              # coverage/c/*.c.gcov (annotated; ##### = uncovered line),
+                              # coverage/go-native.out (Go coverage of the CGo bridge build,
+                              # which coverage-go's -tags test build never compiles).
+                              # COVERAGE_C_FLOOR=NN enforces a floor; COVERAGE_C_XVFB=1 adds
+                              # the display-requiring mixer test pass.
+```
+
 ### Browser coverage (Go + JS via WASM)
 
 ```sh
@@ -153,7 +166,7 @@ make coverage-js              # V8 coverage report via c8 (requires a prior brow
 ### All coverage
 
 ```sh
-make coverage                 # Run coverage-go + coverage-browser + coverage-js in sequence
+make coverage                 # Run coverage-go + coverage-c + coverage-browser + coverage-js in sequence
 ```
 
 ### Reports & visualization
@@ -199,6 +212,17 @@ Notes:
 - Playwright auto-starts a tiny HTTP server per test; ports are randomized.
 - On WASM runs, parity panics are **disabled by default**; set `PARITY_WASM_FATAL=1`
   if you need fatal parity during debugging.
+
+### Debugging JS/WASM audio bugs
+
+Audio spans three layers — **Go (`main.wasm`)** schedules, **JS (`audio.js`)** renders + plays, **C (`drums.single.js`)** does DSP. Localize the layer before fixing. Field guide (full version in `AGENTS.md` → "Debugging JS/WASM Audio Bugs"):
+
+- **Enable the full diagnostic cascade** from the browser console with one call: `__setSynthDragDebug(true)`. Then trace logs in order: `[synthdrag]` (Go drag) → `[SYNTH-UPD]` (JS got the param) → `[SYNTH-EVT] {cached,hasRENDER}` → `[SYNTH-DISPATCH]` (a render ran) → `render result {silent}`.
+- **Synth vs sample**: `hasRENDER:true` = C-synth (cache is re-derivable); `hasRENDER:false` = sample (its `renderCache` entry is the **only** copy of its audio — deleting it = permanent silence). This distinction caused the "changing the generator kills the audio" bug.
+- **Stale assets**: `make serve` is now no-cache, but still **hard-reload** (Ctrl/Cmd+Shift+R). Confirm freshness via the `[AUDIOJS] loaded build SYNTHDBG-N` console banner. Fresh Go logs but no `[SYNTH-*]` logs ⇒ you're on cached `audio.js`.
+- **Measure real output**, not "didn't throw": tap `AudioContext.destination` for windowed RMS, or use `startOutputCapture()`/`stopOutputCapture()`. Constant **~0.0002 RMS = silence**; use a **relative** floor (~5 % of baseline).
+- **Watch out for vacuous tests**: verify the input actually changed the target state first (e.g. synth knobs only turn on **horizontal** drag — a vertical drag scrolls and the knob never moves). Prove a fix has teeth by reverting it and confirming the test goes red.
+- **Your own debug logging can be the bug**: an out-of-scope/TDZ reference in a `console.log` throws inside the render and silences the voice. Keep diagnostics side-effect-free.
 
 ## Performance instrumentation
 - Enable periodic UI perf logs with `PERF_LOG=1`. Prints fps, Update/Draw timing, and audio latency every ~2 seconds.
@@ -313,6 +337,9 @@ Notes:
 | `PAN_STRESS_DRAW_MAX_MS=<float>` | Max avg draw time for pan stress test |
 | `STRESS_COMPLEX_FPS_MIN=<float>` | Min FPS for complex stress test |
 | `STRESS_COMPLEX_DRAW_MAX_MS=<float>` | Max avg draw time for complex stress test |
+| `STRESS_COMPLEX_DRAW_MAX_SPIKE_MS=<float>` | Max single-frame draw time (worst-case spike) |
+| `STRESS_COMPLEX_AUDIO_CALL_AVG_MS=<float>` | Max avg per-call WebAudio scheduler time |
+| `STRESS_COMPLEX_AUDIO_CALL_MAX_MS=<float>` | Max single-call WebAudio scheduler time |
 | `STRESS_COMPLEX_INTERVAL_MS=<int>` | Sample interval for stress test |
 | `STRESS_COMPLEX_SAMPLES=<int>` | Number of stress test samples |
 | `DRUM_EDIT_TIMEOUT_MS=<int>` | Timeout for drum edit changes (default: 350ms) |

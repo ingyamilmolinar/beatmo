@@ -13,13 +13,13 @@ import (
 
 func (g *Game) initJSHarness() {
 	// zoomAt(x, y, delta) applies a zoom centered at screen coords (x,y).
-	js.Global().Set("zoomAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("zoomAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return nil
 		}
-		x := args[0].Float()
-		y := args[1].Float()
-		delta := args[2].Float()
+		x := args.Float(0)
+		y := args.Float(1)
+		delta := args.Float(2)
 		wx := (x - g.cam.OffsetX) / g.cam.Scale
 		// Account for the transport bar offset in screen space
 		wy := (y - float64(gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
@@ -38,7 +38,7 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// visibleRows() -> int
-	js.Global().Set("visibleRows", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("visibleRows", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -46,7 +46,7 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// drumRowCount() -> int
-	js.Global().Set("drumRowCount", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("drumRowCount", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -54,7 +54,7 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// rowsContentVisibleCount() -> int : counts visible rows with any content drawn
-	js.Global().Set("rowsContentVisibleCount", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("rowsContentVisibleCount", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -69,7 +69,7 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// uiLayoutOk() – sanity check to catch catastrophic UI layout regressions.
-	js.Global().Set("uiLayoutOk", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("uiLayoutOk", jsFn(func(args jsArgs) any {
 		if g == nil || g.drum == nil {
 			return js.ValueOf(false)
 		}
@@ -92,15 +92,15 @@ func (g *Game) initJSHarness() {
 
 	// buildPerfRect(rows, side) builds 'rows' disjoint 1-rectangle loops
 	// each with edges of length 'side' grid units to stress scheduling.
-	js.Global().Set("buildPerfRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("buildPerfRect", jsFn(func(args jsArgs) any {
 		start := time.Now()
 		rows := 1
 		side := 1
-		if len(args) > 0 {
-			rows = args[0].Int()
+		if args.Len() > 0 {
+			rows = args.Int(0)
 		}
-		if len(args) > 1 {
-			side = args[1].Int()
+		if args.Len() > 1 {
+			side = args.Int(1)
 		}
 		if rows < 1 {
 			rows = 1
@@ -135,13 +135,13 @@ func (g *Game) initJSHarness() {
 
 	// setNodeLogicCallbackGrid(i, j, kind) – attach a built-in NodeLogic callback
 	// for browser harnesses. Kinds: "param_boost", "param_drop", "disable_even", "none".
-	js.Global().Set("setNodeLogicCallbackGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("setNodeLogicCallbackGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
-		kind := args[2].String()
+		i := args.Int(0)
+		j := args.Int(1)
+		kind := args.Str(2)
 		node := g.nodeAt(i, j)
 		if node == nil {
 			return nil
@@ -175,25 +175,25 @@ func (g *Game) initJSHarness() {
 		return nil
 	}))
 
-	js.Global().Set("incrementBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("incrementBPM", jsFn(func(args jsArgs) any {
 		b := g.drum.BPM() + 1
 		g.drum.SetBPM(b)
 		js.Global().Get("console").Call("log", "[WASM] incrementBPM ->", b)
 		return nil
 	}))
 
-	js.Global().Set("currentBeat", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("currentBeat", jsFn(func(args jsArgs) any {
 		cb := g.currentBeat()
 		js.Global().Get("console").Call("log", "[WASM] currentBeat()=", cb)
 		return js.ValueOf(cb)
 	}))
 
 	// camScale() -> float, camOffset() -> {x,y}
-	js.Global().Set("camScale", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("camScale", jsFn(func(args jsArgs) any {
 		return js.ValueOf(g.cam.Scale)
 	}))
 
-	js.Global().Set("camOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("camOffset", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		obj.Set("x", g.cam.OffsetX)
 		obj.Set("y", g.cam.OffsetY)
@@ -201,33 +201,33 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// setCamScale(s) – set camera scale directly.
-	js.Global().Set("setCamScale", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setCamScale", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		g.cam.Scale = args[0].Float()
+		g.cam.Scale = args.Float(0)
 		g.cam.Snap()
 		return nil
 	}))
 
 	// setCamOffset(x, y) – set camera offset directly and snap to pixels.
-	js.Global().Set("setCamOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("setCamOffset", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		g.cam.OffsetX = args[0].Float()
-		g.cam.OffsetY = args[1].Float()
+		g.cam.OffsetX = args.Float(0)
+		g.cam.OffsetY = args.Float(1)
 		g.cam.Snap()
 		return nil
 	}))
 
 	// panBy(dx, dy) – adjust camera offset directly and snap to pixels.
-	js.Global().Set("panBy", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("panBy", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		dx := args[0].Float()
-		dy := args[1].Float()
+		dx := args.Float(0)
+		dy := args.Float(1)
 		g.cam.OffsetX += dx
 		g.cam.OffsetY += dy
 		g.cam.Snap()
@@ -236,12 +236,12 @@ func (g *Game) initJSHarness() {
 
 	// gridToScreen(i,j) -> {x,y} screen coordinates for a grid position,
 	// even if no node exists there. Useful for clicking empty grid cells.
-	js.Global().Set("gridToScreen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("gridToScreen", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		unitPx := g.grid.UnitPixels(g.cam.Scale)
 		offX := math.Round(g.cam.OffsetX)
 		offY := math.Round(g.cam.OffsetY)
@@ -254,12 +254,12 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// nodeRect(i,j) -> {x,y,w,h} for a node at grid coordinates. nil if none.
-	js.Global().Set("nodeRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("nodeRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return nil
@@ -274,12 +274,12 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// nodeIdAt(i,j) -> id or -1 if none
-	js.Global().Set("nodeIdAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("nodeIdAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(-1)
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return js.ValueOf(-1)
@@ -288,12 +288,12 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// nodeHighlightedAt(i,j) -> bool using last drawn highlight state
-	js.Global().Set("nodeHighlightedAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("nodeHighlightedAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return js.ValueOf(false)
@@ -302,12 +302,12 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// openNodeMenu(i,j) -> opens the node popup for the node at grid coords.
-	js.Global().Set("openNodeMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("openNodeMenu", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return nil
@@ -321,14 +321,14 @@ func (g *Game) initJSHarness() {
 	// centerCamera() resets the centered flag and re-runs Layout so the camera
 	// re-centers on the current splitY. Useful after the demo circuit changes
 	// splitY post-init.
-	js.Global().Set("centerCamera", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("centerCamera", jsFn(func(args jsArgs) any {
 		g.centered = false
 		g.Layout(g.winW, g.winH)
 		return nil
 	}))
 
 	// instrumentsList() -> string[] : returns the Go-side instrument ID list.
-	js.Global().Set("instrumentsList", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instrumentsList", jsFn(func(args jsArgs) any {
 		ids := audio.Instruments()
 		arr := js.Global().Get("Array").New(len(ids))
 		for i, id := range ids {
@@ -338,7 +338,7 @@ func (g *Game) initJSHarness() {
 	}))
 
 	// debugDrumLayout() -> object with all critical rendering state for mobile diagnosis.
-	js.Global().Set("debugDrumLayout", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("debugDrumLayout", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(nil)
 		}
@@ -399,7 +399,7 @@ func (g *Game) initJSHarness() {
 	// debugDrumRender() -> object with per-frame render decision trace.
 	// Call forceDraw() first, then immediately call debugDrumRender() to
 	// inspect what happened in the most recent Draw().
-	js.Global().Set("debugDrumRender", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("debugDrumRender", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(nil)
 		}

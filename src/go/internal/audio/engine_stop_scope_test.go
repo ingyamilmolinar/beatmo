@@ -49,7 +49,7 @@ func TestAllStagePushesDuringRead(t *testing.T) {
 	// Schedule a few overlapping voices to keep the mixer busy through Read().
 	const voiceSamples = 8192
 	for i := 0; i < 3; i++ {
-		m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0)
+		m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 	}
 
 	// Drive enough samples through Read() so every block-processing stage
@@ -73,7 +73,7 @@ func TestAllStagePushesDuringRead(t *testing.T) {
 
 			// Push more audio so the new tap selection gets fresh data.
 			for i := 0; i < 4; i++ {
-				m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0)
+				m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 			}
 			readMixerSamples(m, voiceSamples)
 

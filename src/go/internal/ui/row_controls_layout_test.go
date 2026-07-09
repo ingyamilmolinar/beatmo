@@ -39,17 +39,26 @@ func firstRowControlRects(t *testing.T, g *Game) rowControlRects {
 	}
 }
 
-// TestRowControls_NoCramping_AllProfiles asserts that on both desktop and
-// mobile the mute/solo/fx/ellipsis buttons each render at least the comfortable
-// RowControlBtnSize, never overlap one another, and leave a non-empty label.
+// TestRowControls_NoCramping_AllProfiles asserts the mute/solo/fx/ellipsis
+// buttons never overlap one another and always leave a non-empty label, and
+// that each renders at least the per-profile minimum size.
+//
+// Desktop: the rack column is wide, so controls render at the full comfortable
+// RowControlBtnSize. Mobile: the rack lives in a ~192px left column
+// (rows-left / timeline-right), which cannot fit four full-size (36px) keys
+// plus a readable label; the layout's narrow-row clamp scales the keys down to
+// a compact ~20px visual width (each still backed by a 44px touch skirt via
+// HitArea.Touch). The mobile floor below reflects that reality and guards
+// against a regression that would collapse the keys into slivers.
 func TestRowControls_NoCramping_AllProfiles(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		mobile bool
-		w, h   int
+		name    string
+		mobile  bool
+		w, h    int
+		minCtrl int
 	}{
-		{"desktop", false, 1280, 800},
-		{"mobile", true, 390, 844},
+		{"desktop", false, 1280, 800, 0}, // 0 → RowControlBtnSize()
+		{"mobile", true, 390, 844, 16},   // compact clamp in the 192px column
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.mobile {
@@ -63,7 +72,10 @@ func TestRowControls_NoCramping_AllProfiles(t *testing.T) {
 			advanceFrames(g, 2)
 
 			rc := firstRowControlRects(t, g)
-			minSize := RowControlBtnSize()
+			minSize := tc.minCtrl
+			if minSize == 0 {
+				minSize = RowControlBtnSize()
+			}
 
 			controls := []struct {
 				name string
@@ -80,7 +92,7 @@ func TestRowControls_NoCramping_AllProfiles(t *testing.T) {
 					continue
 				}
 				if c.r.Dx() < minSize {
-					t.Errorf("%s width %d < RowControlBtnSize %d (cramped)", c.name, c.r.Dx(), minSize)
+					t.Errorf("%s width %d < profile min %d (cramped)", c.name, c.r.Dx(), minSize)
 				}
 			}
 

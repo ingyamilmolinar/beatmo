@@ -17,8 +17,8 @@ func (g *Game) drawDivider(screen *ebiten.Image) {
 	// The divider handle is drawn last (above both panes), so suppress it while
 	// a full-screen modal overlay (e.g. the settings overlay) is up — the
 	// pill must not poke through the overlay's scrim.
-	if g.drum != nil && g.drum.tree != nil && g.drum.tree.Portal() != nil &&
-		g.drum.tree.Portal().Has(settingsOverlayID) {
+	if g.drum != nil && g.drum.tree != nil && g.drum.portal() != nil &&
+		g.drum.portal().Has(settingsOverlayID) {
 		return
 	}
 	mX, mY := cursorPosition()

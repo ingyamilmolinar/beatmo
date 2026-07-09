@@ -45,16 +45,31 @@ func TestTemplates_ImportRoundTrip(t *testing.T) {
 					t.Fatalf("%s row %d (%s): empty beat path", tp.Genre, i, r.Instrument)
 				}
 			}
-			// The circuit must actually play: row 0 produces at least one visible step.
+			// The circuit must actually play: at least one row shows a visible
+			// step in the opening import window. We deliberately do NOT require
+			// row 0 specifically — row 0 is just the first-listed part, and a
+			// faithful multi-part transcription can have that part rest at the
+			// opening. handel-water-horn is the canonical case: "Horn 1" (row 0)
+			// is silent for the first 10 bars (first score onset at step 120),
+			// so on the square-perimeter layout its first audible node lands at
+			// beat 480 — past the ~250-wide import window — while the trumpets
+			// hit the downbeat. The circuit plays; only the top row is quiet at
+			// the very start. (Every row already asserted a non-empty beat path
+			// above, so a truly dead circuit still fails.)
 			anyStep := false
-			for _, v := range g.drum.Rows[0].Steps {
-				if v {
-					anyStep = true
+			for _, r := range g.drum.Rows {
+				for _, v := range r.Steps {
+					if v {
+						anyStep = true
+						break
+					}
+				}
+				if anyStep {
 					break
 				}
 			}
 			if !anyStep {
-				t.Fatalf("%s: row 0 produced no visible steps", tp.Genre)
+				t.Fatalf("%s: no row produced any visible steps in the opening window", tp.Genre)
 			}
 		})
 	}

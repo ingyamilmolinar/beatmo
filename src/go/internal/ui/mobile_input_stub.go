@@ -73,6 +73,17 @@ func mobileInputActive(id string) bool {
 	return false
 }
 
+// lastPointerWasTouchForTest overrides lastPointerWasTouch() under the stub.
+// Defaults to true so existing mobile tests (which force the mobile profile and
+// drive the native <input> path) keep exercising that path without change. A
+// test simulating "mobile layout driven with a MOUSE" (touch-capable device or
+// narrow desktop, pointer=mouse) sets this to false.
+var lastPointerWasTouchForTest = true
+
+// lastPointerWasTouch reports whether the most recent pointer interaction was a
+// touch/pen. See the WASM implementation in mobile_input_wasm.go.
+func lastPointerWasTouch() bool { return lastPointerWasTouchForTest }
+
 //nolint:unused // cross-build-tag stub matching mobile_input_wasm.go
 func mobileInputAnyActive() bool {
 	for _, v := range testMobileInputActive {

@@ -929,8 +929,8 @@ func TestFXPanelSliderClickBlocksRowCallback(t *testing.T) {
 	}
 
 	// Tree should have dispatched to the FX panel portal.
-	if dv.tree != nil && !dv.tree.InputHandled() {
-		t.Error("tree.InputHandled() should be true — input routed to FX portal")
+	if dv.overlayTree != nil && !dv.overlayTree.InputHandled() {
+		t.Error("overlayTree.InputHandled() should be true — input routed to FX portal")
 	}
 
 	// Row callbacks must NOT have been called.
@@ -1003,8 +1003,8 @@ func TestFXPanelHeaderClickBlocksRowCallback(t *testing.T) {
 	fxHoldAt(t, dv, hx, hy)
 
 	// Tree should have handled the input (check before release resets it).
-	if dv.tree != nil && !dv.tree.InputHandled() {
-		t.Error("tree.InputHandled() should be true — header click should be consumed by portal")
+	if dv.overlayTree != nil && !dv.overlayTree.InputHandled() {
+		t.Error("overlayTree.InputHandled() should be true — header click should be consumed by portal")
 	}
 
 	// Row callbacks must NOT have been called.
@@ -1381,8 +1381,8 @@ func TestFXPanelEmptySpaceDoesNotLeakToRowRack(t *testing.T) {
 	fxHoldAt(t, dv, emptyX, emptyY)
 
 	// Tree should have handled the input.
-	if dv.tree != nil && !dv.tree.InputHandled() {
-		t.Error("tree.InputHandled() should be true — empty space click should be consumed by portal")
+	if dv.overlayTree != nil && !dv.overlayTree.InputHandled() {
+		t.Error("overlayTree.InputHandled() should be true — empty space click should be consumed by portal")
 	}
 
 	// No row callbacks leaked.

@@ -4,12 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
-	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime/pprof"
 	"syscall"
 	"time"
 
@@ -98,29 +95,19 @@ func main() {
 		defer stop()
 	}
 
-	// Optional pprof server for profiling: enable with PPROF=1 and visit http://localhost:6060
-	if os.Getenv("PPROF") == "1" {
-		go func() {
-			_ = http.ListenAndServe("localhost:6060", nil)
-		}()
-	}
+	// Optional pprof server for profiling: enable with PPROF=1 and visit http://localhost:6060.
+	// Desktop-only; a no-op on js/wasm (see profiling_js.go) so the browser build
+	// never pulls in net/http + crypto/tls.
+	maybeStartPprofServer()
 
 	// CPU profiling for benchmark mode (write to file, avoids HTTP race).
 	if *benchBPM > 0 && *benchProf != "" {
-		f, err := os.Create(*benchProf)
+		stop, err := startBenchCPUProfile(*benchProf)
 		if err != nil {
 			log.Printf("bench-prof: %v", err)
 			return
 		}
-		if err := pprof.StartCPUProfile(f); err != nil {
-			f.Close()
-			log.Printf("bench-prof: %v", err)
-			return
-		}
-		defer func() {
-			pprof.StopCPUProfile()
-			f.Close()
-		}()
+		defer stop()
 	}
 
 	// Auto-record benchmark mode: orchestrates demo+recording+profile so a

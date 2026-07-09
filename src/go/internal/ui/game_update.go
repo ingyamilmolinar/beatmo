@@ -63,11 +63,12 @@ func (g *Game) Update() error {
 				g.logger.Debugf("[perf] ui: fps=%.1f upd_avg=%.3fms upd_max=%.3fms refresh=%.3fms draw_grid=%.3fms draw_drum=%.3fms rows_repaint=%d row_cache(full=%d shift=%d patch=%d) a_enq=%d a_deq=%d qlat_avg=%.3fms qlat_max=%.3fms acall_avg=%.3fms acall_max=%.3fms par_avg=%.3fms par_max=%.3fms par_n=%d live_images=%d images_alloc=%d images_by_tag=[%s]",
 					s.FPSAvg, s.UpdateAvgMS, s.UpdateMaxMS, g.lastRefreshMS, g.lastDrawGridMS, g.lastDrawDrumMS, rowsRepaints, rowCacheFull, rowCacheShift, rowCachePatch, s.AudioEnq, s.AudioDeq, s.AudioQLatAvg, s.AudioQLatMax, s.AudioCallAvg, s.AudioCallMax, parAvg, parMax, parCount, g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot())
 				g.perf.reset()
-				g.schedMetrics.Reset()
 				g.resetParityPerf()
 				g.perf.nextLog = now.Add(2 * time.Second)
 			}
 		}
+		// Timing-gate metrics window — always on, independent of PERF_LOG.
+		g.maybeResetSchedMetricsWindow(time.Now())
 	}()
 	// Per-frame undo bracket: every recorded mutation produced by this frame's
 	// single user gesture (a click that adds + auto-stitches, a drag release,
@@ -112,6 +113,9 @@ func (g *Game) Update() error {
 				sm.Count, sm.Overdue,
 				benchFmtMS(sm.MinLead), benchFmtMS(sm.LagP90), benchFmtMS(sm.LagP99),
 				s.HeapAllocKB, s.Goroutines)
+			rl := audio.GetRenderLatencyMetrics()
+			g.logger.Infof("[bench] RenderLatency: cacheHits=%d cacheMisses=%d renderAvg=%.2fms renderMax=%.2fms",
+				rl.CacheHits, rl.CacheMisses, float64(rl.RenderAvgNS)/1e6, float64(rl.RenderMaxNS)/1e6)
 			pAvg, pMax, pCount := g.parityScanStats()
 			g.logger.Infof("[bench] Parity: scans=%d avg=%.3fms max=%.3fms", pCount, pAvg, pMax)
 			// Machine-readable JSON line for scripts/bench-desktop.sh.
@@ -342,11 +346,13 @@ eventsDone:
 			g.split.guardFrames--
 		}
 
-		// Rebuild handler list only when sidebar state changes.
+		// Rebuild handler list only when sidebar/group-menu state changes.
 		sidebarOpen := g.sidebar.IsOpen()
-		if g.dispatcherDirty || sidebarOpen != g.lastDispatcherSidebarOpen {
+		groupMenuOpen := g.groupMenu.IsOpen()
+		if g.dispatcherDirty || sidebarOpen != g.lastDispatcherSidebarOpen || groupMenuOpen != g.lastDispatcherGroupMenuOpen {
 			g.dispatcherDirty = false
 			g.lastDispatcherSidebarOpen = sidebarOpen
+			g.lastDispatcherGroupMenuOpen = groupMenuOpen
 			g.inputDispatcher.Clear()
 			// Settings gear: registered at the TOP z (gridHelpInputZ=300) so a
 			// press inside its rect wins over the grid editor on every platform.
@@ -358,6 +364,9 @@ eventsDone:
 			}
 			if sidebarOpen {
 				g.inputDispatcher.Register(g.sidebar)
+			}
+			if groupMenuOpen {
+				g.inputDispatcher.Register(g.groupMenu)
 			}
 			g.inputDispatcher.Register(g.split)
 			if g.drum != nil {
@@ -386,6 +395,16 @@ eventsDone:
 		if !inputHandled && !g.blocksAt(mx, my) {
 			g.handleEditor()
 		} else {
+			// A marquee drag whose release frame is consumed by an overlay
+			// (GroupMenu, sidebar, settings gear, ...) never reaches
+			// handleEditor's own release/out-of-pane cancel paths. Left
+			// dangling, g.marquee.active stays true forever — panOK gates
+			// camera pan on it, so panning goes dead — and the next plain
+			// grid click would replay the stale start/cur rect into a
+			// phantom group. Cancel only: never create a group here.
+			if g.marquee.active {
+				g.marquee = marqueeDrag{}
+			}
 			g.leftPrev = left
 		}
 	}
@@ -582,7 +601,7 @@ eventsDone:
 	// Camera panning always runs - essential for grid interaction on all platforms.
 	// Not guarded by fastPath since it's just mouse delta math (not expensive).
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
-	panOK := !g.linkDrag.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.longPressPopup && !g.modalOverlayActive() && !blockLandscapeInput
+	panOK := !g.linkDrag.active && !g.marquee.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.longPressPopup && !g.modalOverlayActive() && !blockLandscapeInput
 
 	// Diagnostic: log why panOK is false for grid touches on mobile.
 	// Throttled to once per 60 frames to avoid log spam.

@@ -74,8 +74,25 @@ var modularStageGroups = []modularStageGroup{
 	}, toggle: "burst_enabled"},
 	{numeric: []string{"filter_type", "filter_cutoff", "filter_resonance"}, toggle: "filter_enabled"},
 	{numeric: []string{"filtenv_amt", "filtenv_decay", "filtenv_attack"}, toggle: "filtenv_enabled"},
-	/* Phase-8E/F unison/ensemble + drift. No toggle — voices=1 is the identity off-state. */
-	{numeric: []string{"unison_voices", "unison_detune", "unison_mix", "unison_drift_rate", "unison_drift_depth"}, toggle: ""},
+	/* Phase-8E/F unison/ensemble + drift, PLUS the Phase-15 humanization knobs
+	   (ens_scatter/vib_rate/vib_depth/humanize — same ENSEMBLE stage as the
+	   unison stack, Task 8) AND the Phase-16 ens_jitter cycle-roughness knob.
+	   No toggle — voices=1 is the identity off-state. */
+	{numeric: []string{
+		"unison_voices", "unison_detune", "unison_mix", "unison_drift_rate", "unison_drift_depth",
+		"ens_scatter", "ens_vib_rate", "ens_vib_depth", "ens_humanize", "ens_jitter",
+	}, toggle: ""},
+	// Phase-15 FORMANT vowel-bank stage (Task 8), PLUS the Phase-16 formant_dry
+	// dry-blend scaler. formant_enabled is the pill; the numerics are the
+	// vowel/voice-type/mix/shape knobs.
+	{numeric: []string{
+		"formant_vowel", "formant_voice_type", "formant_mix", "formant_shift",
+		"formant_breath", "formant_sing", "formant_morph_rate", "formant_morph_to",
+		"formant_dry",
+	}, toggle: "formant_enabled"},
+	// Phase-15 RESONATOR body bank (Task 8). No toggle — body_model==0 ("Off")
+	// is the identity off-state, mirroring the unison/ensemble stage.
+	{numeric: []string{"body_model", "body_mix", "bow_dynamics"}, toggle: ""},
 	// The modular DRIVE stage (`drive` + drive_enabled) is intentionally NOT
 	// exposed on migrated recipes: its `drive` knob name is the SAME token the
 	// generic post drive uses, and the two are different DSP nodes — surfacing

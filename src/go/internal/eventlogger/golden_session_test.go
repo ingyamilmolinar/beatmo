@@ -1,7 +1,6 @@
 package eventlogger
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -33,8 +32,8 @@ func TestEventLoggerGoldenSession(t *testing.T) {
 	})
 	t.Cleanup(func() { _ = bus.Close() })
 
-	var buf bytes.Buffer
-	lg := gamelog.NewForTest(&buf, gamelog.LevelInfo)
+	buf := &syncBuffer{}
+	lg := gamelog.NewForTest(buf, gamelog.LevelInfo)
 
 	logger, err := Open(bus, lg, Options{Verbose: false})
 	if err != nil {
@@ -123,8 +122,8 @@ func TestEventLoggerVerboseFiltersByDefault(t *testing.T) {
 
 	bus := hooks.NewBus(context.Background(), hooks.Options{PoolWorkers: 1, Name: "eventlogger.verbose-off"})
 	t.Cleanup(func() { _ = bus.Close() })
-	var buf bytes.Buffer
-	lg := gamelog.NewForTest(&buf, gamelog.LevelInfo)
+	buf := &syncBuffer{}
+	lg := gamelog.NewForTest(buf, gamelog.LevelInfo)
 	logger, err := Open(bus, lg, Options{Verbose: false, CoalesceWindow: 20 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -155,8 +154,8 @@ func TestEventLoggerVerboseEmitsWhenOptedIn(t *testing.T) {
 
 	bus := hooks.NewBus(context.Background(), hooks.Options{PoolWorkers: 1, Name: "eventlogger.verbose-on"})
 	t.Cleanup(func() { _ = bus.Close() })
-	var buf bytes.Buffer
-	lg := gamelog.NewForTest(&buf, gamelog.LevelInfo)
+	buf := &syncBuffer{}
+	lg := gamelog.NewForTest(buf, gamelog.LevelInfo)
 	logger, err := Open(bus, lg, Options{Verbose: true, CoalesceWindow: 20 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -182,8 +181,8 @@ func TestEventLoggerCoalescesRapidBPM(t *testing.T) {
 
 	bus := hooks.NewBus(context.Background(), hooks.Options{PoolWorkers: 1, Name: "eventlogger.bpm"})
 	t.Cleanup(func() { _ = bus.Close() })
-	var buf bytes.Buffer
-	lg := gamelog.NewForTest(&buf, gamelog.LevelInfo)
+	buf := &syncBuffer{}
+	lg := gamelog.NewForTest(buf, gamelog.LevelInfo)
 	logger, err := Open(bus, lg, Options{CoalesceWindow: 40 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -216,8 +215,8 @@ func TestEventLoggerCoalescesRapidScroll(t *testing.T) {
 
 	bus := hooks.NewBus(context.Background(), hooks.Options{PoolWorkers: 1, Name: "eventlogger.scroll"})
 	t.Cleanup(func() { _ = bus.Close() })
-	var buf bytes.Buffer
-	lg := gamelog.NewForTest(&buf, gamelog.LevelInfo)
+	buf := &syncBuffer{}
+	lg := gamelog.NewForTest(buf, gamelog.LevelInfo)
 	logger, err := Open(bus, lg, Options{CoalesceWindow: 40 * time.Millisecond})
 	if err != nil {
 		t.Fatalf("open: %v", err)

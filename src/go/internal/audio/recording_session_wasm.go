@@ -114,9 +114,7 @@ func StopRecording() (*RecordingResult, error) {
 	// Mirrors the desktop queueFinalize pattern (recording_lifecycle.go)
 	// so panics are recovered by the pool worker and the goroutine count
 	// is bounded by the registry budget.
-	finalizeMu.Lock()
-	finalizePending.Add(1)
-	finalizeMu.Unlock()
+	finalizeBegin()
 
 	err := lifecyclePool().Submit(func(_ context.Context) {
 		finalizeRecordingAsync(session, result, duration, timestamp)
@@ -135,11 +133,11 @@ func StopRecording() (*RecordingResult, error) {
 // finalizeRecordingAsync drives the JS encoder Worker through finalize,
 // triggers the browser download, and publishes EventRecordStop. Runs on
 // the recording.lifecycle pool worker (or inline as a fallback); never
-// blocks the UI thread. The matching finalizePending.Add(1) is performed
-// by the caller (StopRecording) so WaitRecordingFinalized is symmetric
-// with the desktop path.
+// blocks the UI thread. The matching finalizeBegin() is performed by the
+// caller (StopRecording) so WaitRecordingFinalized is symmetric with the
+// desktop path.
 func finalizeRecordingAsync(session *recordingSession, result *RecordingResult, duration float64, timestamp string) {
-	defer finalizePending.Done()
+	defer finalizeDone()
 
 	finRes, err := platformFinalizeCapture(map[string]any{
 		"bpm":            session.opts.BPM,

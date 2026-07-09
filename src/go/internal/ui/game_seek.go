@@ -143,6 +143,27 @@ func (g *Game) handlePlaybackTransition(prevPlaying, prevPaused bool) {
 	}
 	g.logger.Debugf("[game] playing state changed: %t -> %t", prevPlaying, curr)
 	if curr {
+		// Session-relative anchors (task-rule-replay): every FRESH playback
+		// start — stop->play, NOT resume-from-pause (prevPaused distinguishes
+		// the two; a resume must keep the mid-session anchor so the
+		// task-rule-continuity in-place-edit guarantee holds) — re-anchors
+		// every group rule to the session's starting absolute subdivision
+		// index (0 after a stop, or the seek position when playback starts
+		// from a seek — playheadAbsSubdiv is the same clock ruleAnchorIdxNow
+		// reads, sampled here BEFORE any scheduling advance this frame).
+		// Without this, a rule saved mid-session N (anchored well after abs
+		// 0) silently fails to ramp for the entire region below that stale
+		// anchor on session N+1, since GroupEffect's anchor=min(anchor,absIdx)
+		// collapse forces steps=0 until the playhead re-passes it. This is
+		// the single chokepoint shared by the transport play button and the
+		// JS startPlay export (both set dv.playPressed, consumed by
+		// Game.Update's PlayPressed() handling, which runs earlier in the
+		// same Update() call that ends with this transition check). No
+		// emits/undo: this is runtime ramp state, not a document edit — see
+		// ReanchorAllGroupRules' doc comment.
+		if !prevPaused {
+			g.graph.ReanchorAllGroupRules(g.playheadAbsSubdiv())
+		}
 		if !g.Paused() && len(g.activePulses) == 0 {
 			for row := range g.drum.Rows {
 				g.spawnPulseFromRow(row, g.nextBeatIdxs[row])

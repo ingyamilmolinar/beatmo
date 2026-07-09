@@ -66,8 +66,9 @@ type Sink struct {
 	dropped  atomic.Int64
 	bytesOut atomic.Int64
 
-	closed atomic.Bool
-	stopCh chan struct{}
+	closed   atomic.Bool
+	stopCh   chan struct{}
+	flushReq chan chan struct{} // FlushNow → run() barrier (see FlushNow)
 
 	unsubs []func()
 	opts   Options
@@ -103,6 +104,7 @@ func Open(bus *hooks.Bus, path string, opts Options) (*Sink, error) {
 		flushTick: time.NewTicker(opts.FlushInterval),
 		startMono: monotonicNow(),
 		stopCh:    make(chan struct{}),
+		flushReq:  make(chan chan struct{}),
 		opts:      opts,
 		path:      path,
 	}
@@ -185,6 +187,13 @@ func (s *Sink) run() {
 		case <-s.flushTick.C:
 			s.flush()
 			s.maybeRotate()
+		case ack := <-s.flushReq:
+			// FlushNow barrier: drain everything currently queued and flush,
+			// all on this goroutine (the sole owner of bufW), then ack so the
+			// caller observes a consistent on-disk view without touching bufW
+			// concurrently.
+			s.drainAndFlush()
+			close(ack)
 		case <-s.stopCh:
 			// Drain any remaining queued events before exiting.
 			for {
@@ -196,6 +205,21 @@ func (s *Sink) run() {
 					return
 				}
 			}
+		}
+	}
+}
+
+// drainAndFlush writes every record currently in the queue, then flushes the
+// buffered writer. Called only from run()'s goroutine (via the flushReq case
+// and the stopCh drain) so bufW stays single-owner.
+func (s *Sink) drainAndFlush() {
+	for {
+		select {
+		case rec := <-s.queue:
+			s.writeOne(rec)
+		default:
+			s.flush()
+			return
 		}
 	}
 }
@@ -308,16 +332,25 @@ func monotonicNow() int64 {
 	return int64(time.Since(startWall))
 }
 
-// FlushNow is exposed for tests that want deterministic flush before
-// reading the file back.
+// FlushNow is exposed for tests that want a deterministic flush before
+// reading the file back. It waits briefly for any in-flight async bus
+// fan-out to land in the queue, then asks the run() goroutine to drain the
+// queue and flush — the flush happens on run()'s goroutine so bufW is never
+// touched concurrently (the previous direct s.flush() here raced run()).
 func (s *Sink) FlushNow() {
-	if s == nil {
+	if s == nil || s.queue == nil {
 		return
 	}
 	if !s.closed.Load() {
 		time.Sleep(s.opts.FlushInterval + 50*time.Millisecond)
 	}
-	s.flush()
+	ack := make(chan struct{})
+	select {
+	case s.flushReq <- ack:
+		<-ack
+	case <-s.stopCh:
+		// run() has stopped (or is stopping); it flushes on drain/exit.
+	}
 }
 
 // _ unused interface — kept for forward compatibility with future

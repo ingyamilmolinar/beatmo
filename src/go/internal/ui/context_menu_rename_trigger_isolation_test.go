@@ -35,23 +35,15 @@ func TestMobileColorButtonDoesNotTriggerRename(t *testing.T) {
 	withDefaultAudio(t)
 	withSmallScreen(t, true)
 
-	// Capture the registered trigger rects.
-	testMobileInputTriggerRegistered = map[string]bool{}
-	testMobileInputTriggerRect = map[string]image.Rectangle{}
-	testMobileInputRect = map[string]image.Rectangle{}
-	t.Cleanup(func() {
-		testMobileInputTriggerRegistered = nil
-		testMobileInputTriggerRect = nil
-		testMobileInputRect = nil
-	})
-
 	logger := gamelog.New(testLogOutput(), gamelog.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 700), nil, logger)
 
-	// Open the row context menu (bottom sheet on mobile) and lay out controls so
-	// the mobile native-input rects get registered.
+	// Open the row context menu (bottom sheet on mobile) and drive a full
+	// Update so the mobile native-input rects get produced (nativeInputCandidates),
+	// gated (rootTree.TopmostOwnerAt against owner "context-menu"), and synced
+	// (syncNativeGestures) exactly like a real frame.
 	dv.OpenContextMenu(0)
-	dv.recalcButtons()
+	dv.Update()
 
 	if !dv.IsContextMenuOpen() {
 		t.Fatal("context menu should be open")
@@ -66,9 +58,16 @@ func TestMobileColorButtonDoesNotTriggerRename(t *testing.T) {
 		t.Fatalf("could not find Color menu item rect; icons=%v", dv.ContextMenuIconsForTest())
 	}
 
-	trigRect, ok := testMobileInputTriggerRect["rename-0"]
-	if !ok {
-		t.Fatalf("rename-0 trigger was not registered; registered=%v", testMobileInputTriggerRegistered)
+	var trigRect image.Rectangle
+	found := false
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel == NativeTextInput && r.Intent.ID == "rename-0" {
+			trigRect = r.Rect
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("rename-0 trigger was not armed; lastNativeRects=%+v", dv.lastNativeRects)
 	}
 
 	// The trigger must sit on the Rename item, NOT the Color item.

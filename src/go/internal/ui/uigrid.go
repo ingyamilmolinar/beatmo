@@ -254,7 +254,7 @@ func (b *Button) Draw(dst *ebiten.Image) {
 
 		// Draw fuzzy-match highlight rectangles behind matched chars.
 		if len(b.Highlights) > 0 {
-			drawButtonHighlights(dst, clipped, b.Highlights, x, y, scale)
+			drawTextHighlights(dst, clipped, b.Highlights, x, y, scale, TextHeight(), TextWidth)
 		}
 
 		var op ebiten.DrawImageOptions
@@ -318,27 +318,43 @@ func (b *Button) Draw(dst *ebiten.Image) {
 // colFuzzyHighlight is the background color for fuzzy-match highlighted chars.
 var colFuzzyHighlight = WithAlpha(genColorPrimary, genAlphaSubtle) // cyan accent, semi-transparent
 
-// drawButtonHighlights draws small colored rectangles behind characters at
-// the given rune indices. Used to visualize fuzzy search matches in buttons.
-func drawButtonHighlights(dst *ebiten.Image, text string, highlights []int, baseX, baseY int, scale float64) {
+// drawTextHighlights draws small colored rectangles behind characters at the
+// given rune indices. Used to visualize fuzzy search matches. measure and
+// cellH MUST be the same metric the text is rendered with (TextWidth/
+// TextHeight for body-font buttons, StyledTextWidth/StyledTextHeight for
+// styled menu labels): cell i spans [measure(text[:i]), measure(text[:i+1])]
+// so the cells tile exactly with the drawn glyphs. Summing per-rune widths
+// instead is wrong for proportional fonts — an isolated rune measures its ink
+// bounds (a space measures 0, side bearings vanish, kerning is lost), so the
+// cells drift left of the glyphs they mark.
+func drawTextHighlights(dst *ebiten.Image, text string, highlights []int, baseX, baseY int, scale float64, cellH int, measure func(string) int) {
 	rs := []rune(text)
-	th := TextHeight()
-	// Build a set for O(1) lookup.
 	hlSet := make(map[int]bool, len(highlights))
+	maxIdx := -1
 	for _, idx := range highlights {
-		hlSet[idx] = true
-	}
-	xOff := 0
-	for i, r := range rs {
-		cw := TextWidth(string(r))
-		if hlSet[i] {
-			sx := baseX + int(float64(xOff)*scale)
-			sy := baseY
-			sw := int(float64(cw) * scale)
-			sh := int(float64(th) * scale)
-			drawRect(dst, image.Rect(sx, sy, sx+sw, sy+sh), colFuzzyHighlight, true)
+		if idx >= 0 && idx < len(rs) {
+			hlSet[idx] = true
+			if idx > maxIdx {
+				maxIdx = idx
+			}
 		}
-		xOff += cw
+	}
+	if maxIdx < 0 {
+		return
+	}
+	prevW := 0
+	for i := 0; i <= maxIdx; i++ {
+		w := measure(string(rs[:i+1]))
+		if w < prevW {
+			w = prevW // measure is nondecreasing; guard trailing-space quirks
+		}
+		if hlSet[i] && w > prevW {
+			sx := baseX + int(float64(prevW)*scale)
+			sw := int(float64(w-prevW) * scale)
+			sh := int(float64(cellH) * scale)
+			drawRect(dst, image.Rect(sx, baseY, sx+sw, baseY+sh), colFuzzyHighlight, true)
+		}
+		prevW = w
 	}
 }
 

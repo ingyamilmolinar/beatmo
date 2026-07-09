@@ -90,6 +90,28 @@ func Register(id string, inst Instrument) {
 	InstrumentChannel(id)
 }
 
+// Unregister removes a runtime-registered instrument from the playable set. It
+// is the inverse of Register, used by DeleteInstrument to drop a cloned/user
+// instrument. Removing an id that isn't registered is a no-op.
+func Unregister(id string) {
+	instMu.Lock()
+	_, existed := instruments[id]
+	if existed {
+		delete(instruments, id)
+		out := instOrder[:0]
+		for _, x := range instOrder {
+			if x != id {
+				out = append(out, x)
+			}
+		}
+		instOrder = out
+	}
+	instMu.Unlock()
+	if existed {
+		bumpInstrumentsVersion()
+	}
+}
+
 // AnalyzerService returns the global analyzer service, or nil if audio
 // has not been initialized (e.g. in test/WASM builds).
 func AnalyzerService() *analyzer.Service { return analyzerSvc }
@@ -177,7 +199,7 @@ func initContext() {
 			ChannelPan:    ChannelPan,
 			MainVolume:    MainVolume,
 		})
-		go exportSvc.Run()
+		exportSvc.Start()
 	}
 }
 

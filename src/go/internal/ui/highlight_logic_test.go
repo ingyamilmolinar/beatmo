@@ -21,6 +21,9 @@ func stubGameForHighlight(nodeType model.NodeType, triggered bool) *Game {
 		// Prevent highlightBeat from early-returning due to missing instruments in stubbed DrumView.
 		playFn: func(string, float64, ...float64) {},
 	}
+	// playbackSlate methods (timelineCommitted, etc.) dereference this
+	// back-reference; struct literals that bypass New() must set it explicitly.
+	g.playbackSlate.g = g
 	g.drum = &DrumView{
 		Rows:   []*DrumRow{{}},
 		Graph:  g.graph,

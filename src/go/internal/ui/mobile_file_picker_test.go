@@ -58,169 +58,142 @@ func TestStartOverflowImportTriggersPickerAndClosesMenu(t *testing.T) {
 }
 
 // TestOverflowMenuRegistersFilePickerRects verifies that opening the overflow
-// menu on a small screen registers file picker rects for the Import and Upload
-// buttons, enabling the gesture-based file picker on mobile.
+// menu on a small screen arms file-picker native rects (via the tree-owned
+// native-gesture sync, syncNativeGestures -> filePickerCandidates) for the
+// Import and Upload buttons, enabling the gesture-based file picker on
+// mobile. Re-pointed from the retired imperative registerFilePickerRects()
+// capture mechanism to dv.lastNativeRects, the new source of truth.
 func TestOverflowMenuRegistersFilePickerRects(t *testing.T) {
 	assertDefaultParityState(t)
-	withSmallScreen(t, true)
+	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
+	defer restore()
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.SetForceMobileProfile(true)
+	g.Layout(390, 844)
+	dv := g.drum
 
-	const W, H = 390, 844
-	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{
-		Name:       "Kick",
-		Instrument: "kick",
-		Steps:      make([]bool, 8),
-		Volume:     1.0,
-	}}
-	dv.Length = 8
-
-	// Enable test capture for file picker rects.
-	var captured []capturedFilePickerRect
-	testCapturedFilePickerRects = &captured
-	t.Cleanup(func() { testCapturedFilePickerRects = nil })
-
-	// Warm-up frame for layout init.
-	warmUp := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	warmUp()
-
-	if dv.overflowBtn() == nil {
-		t.Fatal("overflowBtn not created after warm-up")
-	}
-
-	// Click the overflow button to open the menu.
-	dv.overflowBtn().OnClick()
+	// Open the overflow menu on the File page — the tree-owned sync runs
+	// during g.Update() and arms the file-picker rects.
+	dv.OpenOverflowMenu()
+	dv.overflowPage = 0
+	g.Update()
 
 	if !dv.IsOverflowMenuOpen() {
-		t.Fatal("overflow menu should be open after clicking overflow button")
+		t.Fatal("overflow menu should be open")
 	}
 
-	if len(captured) < 2 {
-		t.Fatalf("expected at least 2 file picker rects, got %d", len(captured))
-	}
-
-	// Verify the Upload rect (index 0).
-	found := map[string]bool{}
-	for _, r := range captured {
-		found[r.ID] = true
-		if r.W <= 0 || r.H <= 0 {
-			t.Errorf("rect %q has non-positive dimensions: %dx%d", r.ID, r.W, r.H)
+	found := map[string]NativeIntent{}
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel != NativeFilePicker {
+			continue
+		}
+		found[r.Intent.ID] = r.Intent
+		if r.Rect.Dx() <= 0 || r.Rect.Dy() <= 0 {
+			t.Errorf("rect %q has non-positive dimensions: %v", r.Intent.ID, r.Rect)
 		}
 	}
-	if !found["upload"] {
+	if len(found) < 2 {
+		t.Fatalf("expected at least 2 file picker rects, got %d", len(found))
+	}
+	if _, ok := found["upload"]; !ok {
 		t.Error("missing file picker rect with ID 'upload'")
 	}
-	if !found["import"] {
+	if _, ok := found["import"]; !ok {
 		t.Error("missing file picker rect with ID 'import'")
 	}
 
 	// Verify accept types.
-	for _, r := range captured {
-		switch r.ID {
-		case "upload":
-			if r.Accept != ".wav" {
-				t.Errorf("upload rect accept=%q, want '.wav'", r.Accept)
-			}
-		case "import":
-			if r.Accept != "application/json,.json" {
-				t.Errorf("import rect accept=%q, want 'application/json,.json'", r.Accept)
-			}
-		}
+	if got := found["upload"].Accept; got != ".wav" {
+		t.Errorf("upload rect accept=%q, want '.wav'", got)
+	}
+	if got := found["import"].Accept; got != "application/json,.json" {
+		t.Errorf("import rect accept=%q, want 'application/json,.json'", got)
 	}
 }
 
 // TestOverflowMenuClearsFilePickerRectsOnClose verifies that closing the
-// overflow menu clears all registered file picker rects.
+// overflow menu clears all armed file-picker native rects. Re-pointed from
+// the retired imperative filePickerClearRects() capture mechanism to
+// dv.lastNativeRects, the new source of truth: the tree-owned sync clears
+// the channel once filePickerCandidates() stops producing candidates
+// (menu closed), no explicit clear call needed.
 func TestOverflowMenuClearsFilePickerRectsOnClose(t *testing.T) {
 	assertDefaultParityState(t)
-	withSmallScreen(t, true)
+	restore := SetRuntimeProfileForTest(browserRuntimeProfile())
+	defer restore()
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.SetForceMobileProfile(true)
+	g.Layout(390, 844)
+	dv := g.drum
 
-	const W, H = 390, 844
-	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{
-		Name:       "Kick",
-		Instrument: "kick",
-		Steps:      make([]bool, 8),
-		Volume:     1.0,
-	}}
-	dv.Length = 8
-
-	var captured []capturedFilePickerRect
-	testCapturedFilePickerRects = &captured
-	t.Cleanup(func() { testCapturedFilePickerRects = nil })
-
-	// Warm-up frame.
-	warmUp := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	warmUp()
-
-	// Open overflow menu — rects are registered.
-	dv.overflowBtn().OnClick()
-	if len(captured) < 2 {
-		t.Fatalf("expected rects after open, got %d", len(captured))
+	// Open overflow menu — rects are armed.
+	dv.OpenOverflowMenu()
+	dv.overflowPage = 0
+	g.Update()
+	armed := 0
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel == NativeFilePicker {
+			armed++
+		}
+	}
+	if armed < 2 {
+		t.Fatalf("expected rects after open, got %d", armed)
 	}
 
-	// Close overflow menu via the button toggle.
-	dv.overflowBtn().OnClick()
+	// Close overflow menu.
+	dv.SetOverflowMenuOpen(false)
+	g.Update()
 	if dv.IsOverflowMenuOpen() {
-		t.Fatal("overflow menu should be closed after second click")
+		t.Fatal("overflow menu should be closed")
 	}
-	if len(captured) != 0 {
-		t.Fatalf("expected 0 rects after close, got %d", len(captured))
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel == NativeFilePicker {
+			t.Fatalf("expected 0 file-picker rects after close, found %q at %v", r.Intent.ID, r.Rect)
+		}
 	}
 }
 
 // TestFilePickerRectsNotRegisteredOnDesktop verifies that file picker rects
-// are NOT registered when the overflow menu opens on a large (desktop) screen.
+// are NOT registered when the overflow menu opens on a large (desktop)
+// screen. The file-picker rect registry is a mobile-only trusted-touch-
+// gesture mechanism (desktop opens Upload/Import via normal button clicks,
+// not the JS touchend rect), so filePickerCandidates() must be gated on
+// Profile().IsMobile(). Checks the real source of truth, dv.lastNativeRects,
+// via the tree-owned native-gesture sync (mirrors
+// TestOverflowTemplatePage_NoFilePickerRectArmed's harness style).
 func TestFilePickerRectsNotRegisteredOnDesktop(t *testing.T) {
 	assertDefaultParityState(t)
-	// Do NOT call withSmallScreen — use default (desktop) mode.
+	// Do NOT call SetForceMobileProfile — a plain Layout() is desktop.
 
-	const W, H = 1280, 720
-	dv := NewDrumView(image.Rect(0, 0, W, H), nil, game_log.New(nil, game_log.LevelError))
-	dv.Rows = []*DrumRow{{
-		Name:       "Kick",
-		Instrument: "kick",
-		Steps:      make([]bool, 8),
-		Volume:     1.0,
-	}}
-	dv.Length = 8
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(1280, 720)
+	dv := g.drum
 
-	var captured []capturedFilePickerRect
-	testCapturedFilePickerRects = &captured
-	t.Cleanup(func() { testCapturedFilePickerRects = nil })
+	var captured []NativeRect
+	prev := testCapturedNativeRects
+	testCapturedNativeRects = &captured
+	t.Cleanup(func() { testCapturedNativeRects = prev })
 
-	// Warm-up frame.
-	warmUp := SetInputForTest(
-		func() (int, int) { return 0, 0 },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return W, H },
-	)
-	dv.Update()
-	warmUp()
+	// Open the overflow menu on the File page — on mobile this arms
+	// Upload+Import file-picker rects; on desktop it must not.
+	dv.OpenOverflowMenu()
+	dv.overflowPage = 0
+	g.Update()
 
-	// Manually open the overflow menu (on desktop, the button may not be visible
-	// but we can test the OnClick handler directly).
-	dv.overflowBtn().OnClick()
+	if !dv.IsOverflowMenuOpen() {
+		t.Fatal("overflow menu should be open")
+	}
 
-	if len(captured) != 0 {
-		t.Fatalf("expected 0 file picker rects on desktop, got %d", len(captured))
+	fileArmed := 0
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel == NativeFilePicker {
+			fileArmed++
+		}
+	}
+	if fileArmed != 0 {
+		t.Fatalf("expected 0 file picker rects on desktop, got %d", fileArmed)
 	}
 }

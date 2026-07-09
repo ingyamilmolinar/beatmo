@@ -49,8 +49,11 @@ func NewOverlayPortal(hitIndex *HitIndex) *OverlayPortal {
 }
 
 // Open pushes an overlay onto the stack. If the overlay is modal, it
-// becomes the modal filter in the HitIndex.
+// becomes the modal filter in the HitIndex. Nil-safe.
 func (p *OverlayPortal) Open(entry PortalEntry) {
+	if p == nil {
+		return
+	}
 	// Remove existing entry with same ID to avoid duplicates.
 	if p.closeByID(entry.ID) {
 		emitPopupClosed(entry.ID, "replaced")
@@ -75,8 +78,11 @@ func (p *OverlayPortal) Open(entry PortalEntry) {
 	}
 }
 
-// Close removes a specific overlay by ID.
+// Close removes a specific overlay by ID. Nil-safe.
 func (p *OverlayPortal) Close(id string) {
+	if p == nil {
+		return
+	}
 	removed := p.closeByID(id)
 	if removed {
 		emitPopupClosed(id, "explicit")
@@ -86,8 +92,9 @@ func (p *OverlayPortal) Close(id string) {
 }
 
 // CloseTop closes the topmost overlay and returns true. Returns false if empty.
+// Nil-safe.
 func (p *OverlayPortal) CloseTop() bool {
-	if len(p.stack) == 0 {
+	if p == nil || len(p.stack) == 0 {
 		return false
 	}
 	top := p.stack[len(p.stack)-1]
@@ -106,6 +113,9 @@ func (p *OverlayPortal) CloseTop() bool {
 // buildFXPanel() recomputes fxPanelRect) so the hit index stays in sync
 // without waiting for the next frame's Update().
 func (p *OverlayPortal) RefreshEntry(id string) {
+	if p == nil {
+		return
+	}
 	for si, e := range p.stack {
 		if e.ID == id {
 			areas := e.Overlay.HitAreas()
@@ -119,7 +129,11 @@ func (p *OverlayPortal) RefreshEntry(id string) {
 }
 
 // Has returns true if an overlay with the given ID is in the stack.
+// Nil-safe: a nil portal has nothing.
 func (p *OverlayPortal) Has(id string) bool {
+	if p == nil {
+		return false
+	}
 	for _, e := range p.stack {
 		if e.ID == id {
 			return true
@@ -128,13 +142,16 @@ func (p *OverlayPortal) Has(id string) bool {
 	return false
 }
 
-// IsOpen returns true if any overlay is in the stack.
+// IsOpen returns true if any overlay is in the stack. Nil-safe.
 func (p *OverlayPortal) IsOpen() bool {
-	return len(p.stack) > 0
+	return p != nil && len(p.stack) > 0
 }
 
-// HasModal returns true if any overlay in the stack is modal.
+// HasModal returns true if any overlay in the stack is modal. Nil-safe.
 func (p *OverlayPortal) HasModal() bool {
+	if p == nil {
+		return false
+	}
 	for _, e := range p.stack {
 		if e.Modal {
 			return true
@@ -148,6 +165,9 @@ func (p *OverlayPortal) HasModal() bool {
 // (tooltips, docked tool panels with no scrim) are NOT blocking: the user
 // interacts around them, so they must not seize input from a sibling tree.
 func (p *OverlayPortal) HasBlocking() bool {
+	if p == nil {
+		return false
+	}
 	for _, e := range p.stack {
 		if e.Modal || e.Scrim {
 			return true
@@ -156,17 +176,17 @@ func (p *OverlayPortal) HasBlocking() bool {
 	return false
 }
 
-// TopID returns the ID of the topmost overlay, or "" if empty.
+// TopID returns the ID of the topmost overlay, or "" if empty. Nil-safe.
 func (p *OverlayPortal) TopID() string {
-	if len(p.stack) == 0 {
+	if p == nil || len(p.stack) == 0 {
 		return ""
 	}
 	return p.stack[len(p.stack)-1].ID
 }
 
-// TopOverlay returns the topmost overlay on the stack, or nil if empty.
+// TopOverlay returns the topmost overlay on the stack, or nil if empty. Nil-safe.
 func (p *OverlayPortal) TopOverlay() PortalOverlay {
-	if len(p.stack) == 0 {
+	if p == nil || len(p.stack) == 0 {
 		return nil
 	}
 	return p.stack[len(p.stack)-1].Overlay
@@ -258,8 +278,11 @@ func (p *OverlayPortal) Draw(screen *ebiten.Image) {
 	}
 }
 
-// StackLen returns the number of overlays in the stack.
+// StackLen returns the number of overlays in the stack. Nil-safe.
 func (p *OverlayPortal) StackLen() int {
+	if p == nil {
+		return 0
+	}
 	return len(p.stack)
 }
 

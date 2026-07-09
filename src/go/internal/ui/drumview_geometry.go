@@ -39,6 +39,65 @@ func (dv *DrumView) HeaderRect() image.Rectangle {
 	)
 }
 
+// minSynthPanelH is the hard minimum painted height (px) of the bottom audio
+// panel while the Synth tab is active — header + stage sections + knob chrome
+// need this even when the runtime-profile multiplier resolves smaller. Shared
+// by dv.eqRect (drumview_layout.go) and dv.eqH (via audioPanelFloorHeight) so
+// the two never drift.
+const minSynthPanelH = 240
+
+// audioPanelFloorHeight returns the minimum painted height (px) of the bottom
+// audio panel for the current tab and bounds. It is the SINGLE floor shared by
+// dv.eqRect (the panel's drawn rect) and dv.eqH (which drives rowsBottom() —
+// the row-rack bottom and the add-row "+" anchor). Deriving both from this one
+// function is what guarantees the row rack never renders underneath the panel
+// (the add-row "+" occlusion regression). Returns the unclamped floor; callers
+// clamp the panel top to dv.Bounds.Min.Y (i.e. the height to dv.Bounds.Dy()).
+// Returns 0 when no panel/tab state is present.
+func (dv *DrumView) audioPanelFloorHeight() int {
+	if dv.eqPanelZone == nil || dv.eqPanelZone.tabState == nil {
+		return 0
+	}
+	h := dv.eqPanelZone.tabState.PanelHeightAt(dv.Bounds.Dy())
+	if dv.eqPanelZone.ActiveTab() == TabSynth && h < minSynthPanelH {
+		h = minSynthPanelH
+	}
+	return h
+}
+
+// reconcileEQHeightToPanelFloor bumps dv.eqH up to the panel's actual painted
+// floor so rowsBottom() (the row-rack bottom and the add-row "+" anchor) lines
+// up with dv.eqRect.Min.Y. drumview_layout.go floors dv.eqRect to
+// audioPanelFloorHeight() (Synth tab: >= 240 px) and clamps its top to
+// dv.Bounds.Min.Y, so the panel can fill the whole pane when the floor exceeds
+// the available height. If dv.eqH lags that floored height — e.g. it was
+// computed for a shorter tab in refreshWidgetLayout, then the user switched to
+// Synth (which does NOT re-run refreshWidgetLayout) — the row rack and the
+// add-row "+" pinned to its bottom render UNDERNEATH the panel (the screenshot
+// regression). Called per-frame from recalcButtons (before the rack is laid
+// out) and from refreshWidgetLayout (after the safety guard). Idempotent —
+// only ever raises eqH. Skipped for the user drag-resize (honored separately)
+// and mobile (its EQ panel uses a different, bar-clamped rect that already
+// sits above the rows area).
+func (dv *DrumView) reconcileEQHeightToPanelFloor() {
+	if dv.userEqH != 0 || Profile().IsMobile() {
+		return
+	}
+	if runningUnderGoTest() && eqPanelHeight == 0 {
+		return // test-mode collapse pins eqH = 0; don't re-inflate it.
+	}
+	floorH := dv.audioPanelFloorHeight()
+	if floorH <= 0 {
+		return
+	}
+	if floorH > dv.Bounds.Dy() {
+		floorH = dv.Bounds.Dy()
+	}
+	if dv.eqH < floorH {
+		dv.eqH = floorH
+	}
+}
+
 // RowsRect is the public alias for the rows scroll area; see rowsRect.
 func (dv *DrumView) RowsRect() image.Rectangle { return dv.rowsRect() }
 
@@ -187,6 +246,11 @@ func (dv *DrumView) refreshWidgetLayout() {
 			dv.eqH = 0
 		}
 	}
+
+	// Reconcile eqH with the panel's ACTUAL painted floor — the FINAL word,
+	// after every clamp above (including the safety guard). See
+	// reconcileEQHeightToPanelFloor.
+	dv.reconcileEQHeightToPanelFloor()
 
 	// Invariant: when dv.eqH is forced to 0 (test-mode eqPanelHeight=0,
 	// mobile EQ collapsed, safety guard, or any other collapse path),

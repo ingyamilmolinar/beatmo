@@ -78,115 +78,147 @@ func (g *Game) drawGridBackground(dst *ebiten.Image) {
 		if g.logDrawNodes {
 			g.logger.Debugf("[draw-grid] disabled via NO_GRID_DRAW")
 		}
+		return
+	}
+	g.drawGridTiles(dst)
+}
+
+// drawGridTiles ensures the per-scale grid-line tile exists, then blits the
+// cached grid into dst — reusing the existing cache when the pan delta fits its
+// pad, otherwise rebuilding it. Split out of drawGridBackground so the reuse and
+// rebuild paths are each shallow.
+func (g *Game) drawGridTiles(dst *ebiten.Image) {
+	ctx := &g.gridDrawCtx
+	// Grid layer cache: build once per scale/subdiv, then blit with translation
+	// for small pans. This reduces per-frame tiling draw calls dramatically.
+	stepPx := g.grid.StepPixels(g.cam.Scale)
+	if envNoGridTileCache {
+		// g.gridTile aliases gridTileBacking — release the backing (the owning
+		// allocation), never g.gridTile, and force a rebuild.
+		releaseImage(g.gridTileBacking)
+		g.gridTileBacking = nil
+		g.gridTileBackingSize = 0
+		g.gridTile = nil
+	}
+	// Ensure the base tile exists for this scale/subdiv. buildGridTile reuses a
+	// grow-only backing, so this does not allocate per frame during a zoom.
+	if g.gridTile == nil || g.gridTileStepPx != stepPx || g.gridTileSubSig != g.grid.subSig {
+		if g.logDrawNodes {
+			g.logger.Tracef("[draw/grid] rebuild tile: stepPx=%d maxDiv=%d unitPx=%.2f subSig=%d", stepPx, g.grid.MaxDiv(), g.grid.UnitPixels(g.cam.Scale), g.grid.subSig)
+		}
+		g.gridTile = g.buildGridTile(stepPx)
+		g.gridTileStepPx = stepPx
+		g.gridTileSubSig = g.grid.subSig
+	}
+	if g.gridTile == nil || stepPx <= 0 {
+		return
+	}
+	// Camera offset snapped to px for phase alignment.
+	offXInt := int(math.Round(g.cam.OffsetX))
+	offYInt := int(math.Round(g.cam.OffsetY))
+	// Tile at the logical block period (gridTileW = cells*stepPx), NOT the
+	// backing image size. The block is ≥ gridTileMinBlockPx so the rebuild
+	// blit count stays bounded when zoomed out; the backing may be larger
+	// still (next power of two) with a transparent margin that overlaps the
+	// neighbouring tile and alpha-blends to a no-op.
+	ctx.tileW = g.gridTileW
+	ctx.tileH = g.gridTileW
+	tileW := ctx.tileW
+	tileH := ctx.tileH
+	// Start positions so that the grid's tile origin aligns with the
+	// camera’s world→screen origin within the cache (including pad).
+	ctx.phaseX = ((offXInt % tileW) + tileW) % tileW
+	ctx.phaseY = (((offYInt + gridTopOffset()) % tileH) + tileH) % tileH
+	phaseX := ctx.phaseX
+	phaseY := ctx.phaseY
+	// Try to reuse an existing grid cache by shifting within pad; otherwise rebuild.
+	if g.tryBlitGridCacheReuse(dst, stepPx) {
+		return
+	}
+	g.rebuildGridCache(dst, stepPx, tileW, tileH, phaseX, phaseY)
+}
+
+// gridCacheMatches reports whether the current grid cache was built for this
+// scale/step/subdiv and the current window+pad dimensions (so it can be shifted
+// within its pad instead of rebuilt).
+func (g *Game) gridCacheMatches(stepPx int) bool {
+	return g.gridCache != nil &&
+		g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad &&
+		g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad &&
+		g.gridCacheScale == g.cam.Scale &&
+		g.gridCacheStepPx == stepPx &&
+		g.gridCacheSubSig == g.grid.subSig
+}
+
+// tryBlitGridCacheReuse blits the existing grid cache shifted by the pan delta
+// when the cache still matches and the delta fits within the pad. Returns true
+// when it reused the cache (nothing more to draw).
+func (g *Game) tryBlitGridCacheReuse(dst *ebiten.Image, stepPx int) bool {
+	if !g.gridCacheMatches(stepPx) {
+		return false
+	}
+	dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
+	dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
+	if abs(dx) > g.gridCachePad || abs(dy) > g.gridCachePad {
+		return false
+	}
+	blitCache(dst, g.gridCache, -g.gridCachePad+dx, -g.gridCachePad+dy)
+	if g.logDrawNodes {
+		g.logger.Tracef("[draw/grid-cache] reuse dx=%d dy=%d pad=%d", dx, dy, g.gridCachePad)
+	}
+	return true
+}
+
+// rebuildGridCache (re)tiles the full grid cache with an offscreen pad, aligning
+// the phase plus pad, then blits it into dst. Called when the cache can't be
+// reused via a simple pad shift.
+func (g *Game) rebuildGridCache(dst *ebiten.Image, stepPx, tileW, tileH, phaseX, phaseY int) {
+	// Adaptive grid pad: if reuse failed only because the pan delta exceeded the
+	// pad, enlarge the pad (up to a cap) to convert rebuilds into reuses next frame.
+	if RuntimeProf().AdaptivePanPad && g.gridCacheMatches(stepPx) {
+		dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
+		dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
+		if (abs(dx) > g.gridCachePad || abs(dy) > g.gridCachePad) && g.gridCachePad < 256 {
+			g.gridCachePad = min(g.gridCachePad*2, 256)
+		}
+	}
+	// Rebuild the full grid cache with an offscreen pad to sustain pans.
+	w := g.split.GridW(g.winW) + 2*g.gridCachePad
+	h := g.split.GridH(g.winH) + 2*g.gridCachePad
+	// Reuse the existing texture when its dimensions are unchanged (a zoom
+	// changes the scale, not the size). Clear()+retile avoids a fresh GPU
+	// allocation every frame — the atlas churn that stalls the single WASM
+	// thread and starves audio. Only a size change (window resize / adaptive
+	// pad growth) allocates.
+	if g.gridCache == nil || g.gridCacheW != w || g.gridCacheH != h {
+		releaseImage(g.gridCache)
+		g.gridCache = newTrackedImage("gridCache", w, h)
+		g.gridCacheW, g.gridCacheH = w, h
 	} else {
-		// Grid layer cache: build once per scale/subdiv, then blit with translation
-		// for small pans. This reduces per-frame tiling draw calls dramatically.
-		stepPx := g.grid.StepPixels(g.cam.Scale)
-		if envNoGridTileCache {
-			// g.gridTile aliases gridTileBacking — release the backing (the owning
-			// allocation), never g.gridTile, and force a rebuild.
-			releaseImage(g.gridTileBacking)
-			g.gridTileBacking = nil
-			g.gridTileBackingSize = 0
-			g.gridTile = nil
+		g.gridCache.Clear()
+	}
+	g.gridCacheScale = g.cam.Scale
+	g.gridCacheOffX = g.cam.OffsetX
+	g.gridCacheOffY = g.cam.OffsetY
+	g.gridCacheStepPx = stepPx
+	g.gridCacheSubSig = g.grid.subSig
+	// Tile the step tile into the cache, aligning the phase plus pad. Use modulo
+	// so startX/Y ∈ [-tileW, -1], guaranteeing the first tile covers cache pixel
+	// (0,0) regardless of how small tileW is vs the pad.
+	startX := (g.gridCachePad+phaseX)%tileW - tileW
+	startY := (g.gridCachePad+phaseY)%tileH - tileH
+	var op ebiten.DrawImageOptions
+	for y := startY; y < h; y += tileH {
+		for x := startX; x < w; x += tileW {
+			op.GeoM.Reset()
+			op.GeoM.Translate(float64(x), float64(y))
+			g.gridCache.DrawImage(g.gridTile, &op)
+			bumpGridTileBlit()
 		}
-		// Ensure the base tile exists for this scale/subdiv. buildGridTile reuses a
-		// grow-only backing, so this does not allocate per frame during a zoom.
-		if g.gridTile == nil || g.gridTileStepPx != stepPx || g.gridTileSubSig != g.grid.subSig {
-			if g.logDrawNodes {
-				g.logger.Tracef("[draw/grid] rebuild tile: stepPx=%d maxDiv=%d unitPx=%.2f subSig=%d", stepPx, g.grid.MaxDiv(), g.grid.UnitPixels(g.cam.Scale), g.grid.subSig)
-			}
-			g.gridTile = g.buildGridTile(stepPx)
-			g.gridTileStepPx = stepPx
-			g.gridTileSubSig = g.grid.subSig
-		}
-		if g.gridTile != nil && stepPx > 0 {
-			// Camera offset snapped to px for phase alignment.
-			offXInt := int(math.Round(g.cam.OffsetX))
-			offYInt := int(math.Round(g.cam.OffsetY))
-			// Tile at the logical block period (gridTileW = cells*stepPx), NOT the
-			// backing image size. The block is ≥ gridTileMinBlockPx so the rebuild
-			// blit count stays bounded when zoomed out; the backing may be larger
-			// still (next power of two) with a transparent margin that overlaps the
-			// neighbouring tile and alpha-blends to a no-op.
-			ctx.tileW = g.gridTileW
-			ctx.tileH = g.gridTileW
-			tileW := ctx.tileW
-			tileH := ctx.tileH
-			// Start positions so that the grid's tile origin aligns with the
-			// camera’s world→screen origin within the cache (including pad).
-			ctx.phaseX = ((offXInt % tileW) + tileW) % tileW
-			ctx.phaseY = (((offYInt + gridTopOffset()) % tileH) + tileH) % tileH
-			phaseX := ctx.phaseX
-			phaseY := ctx.phaseY
-			// Try to reuse an existing grid cache by shifting within pad.
-			reuse := false
-			if g.gridCache != nil && g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad && g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
-				dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
-				dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
-				if abs(dx) <= g.gridCachePad && abs(dy) <= g.gridCachePad {
-					reuse = true
-					blitCache(dst, g.gridCache, -g.gridCachePad+dx, -g.gridCachePad+dy)
-					if g.logDrawNodes {
-						g.logger.Tracef("[draw/grid-cache] reuse dx=%d dy=%d pad=%d", dx, dy, g.gridCachePad)
-					}
-				}
-			}
-			if !reuse {
-				// Adaptive grid pad: if reuse failed due to pad, enlarge pad.
-				if RuntimeProf().AdaptivePanPad && g.gridCache != nil && g.gridCacheW == g.split.GridW(g.winW)+2*g.gridCachePad && g.gridCacheH == g.split.GridH(g.winH)+2*g.gridCachePad && g.gridCacheScale == g.cam.Scale && g.gridCacheStepPx == stepPx && g.gridCacheSubSig == g.grid.subSig {
-					dx := int(math.Round(g.cam.OffsetX - g.gridCacheOffX))
-					dy := int(math.Round(g.cam.OffsetY - g.gridCacheOffY))
-					if abs(dx) > g.gridCachePad || abs(dy) > g.gridCachePad {
-						// Double up to a modest cap to convert rebuilds into reuses next frame.
-						if g.gridCachePad < 256 {
-							g.gridCachePad *= 2
-							if g.gridCachePad > 256 {
-								g.gridCachePad = 256
-							}
-						}
-					}
-				}
-				// Rebuild the full grid cache with an offscreen pad to sustain pans.
-				w := g.split.GridW(g.winW) + 2*g.gridCachePad
-				h := g.split.GridH(g.winH) + 2*g.gridCachePad
-				// Reuse the existing texture when its dimensions are unchanged (a
-				// zoom changes the scale, not the size). Clear()+retile avoids a
-				// fresh GPU allocation every frame — the atlas churn that stalls
-				// the single WASM thread and starves audio. Only a size change
-				// (window resize / adaptive pad growth) allocates.
-				if g.gridCache == nil || g.gridCacheW != w || g.gridCacheH != h {
-					releaseImage(g.gridCache)
-					g.gridCache = newTrackedImage("gridCache", w, h)
-					g.gridCacheW, g.gridCacheH = w, h
-				} else {
-					g.gridCache.Clear()
-				}
-				g.gridCacheScale = g.cam.Scale
-				g.gridCacheOffX = g.cam.OffsetX
-				g.gridCacheOffY = g.cam.OffsetY
-				g.gridCacheStepPx = stepPx
-				g.gridCacheSubSig = g.grid.subSig
-				// Tile the step tile into the cache, aligning the phase plus pad.
-				// Use modulo so startX/Y ∈ [-tileW, -1], guaranteeing the first tile
-				// covers cache pixel (0,0) regardless of how small tileW is vs the pad.
-				startX := (g.gridCachePad+phaseX)%tileW - tileW
-				startY := (g.gridCachePad+phaseY)%tileH - tileH
-				var op ebiten.DrawImageOptions
-				for y := startY; y < h; y += tileH {
-					for x := startX; x < w; x += tileW {
-						op.GeoM.Reset()
-						op.GeoM.Translate(float64(x), float64(y))
-						g.gridCache.DrawImage(g.gridTile, &op)
-						bumpGridTileBlit()
-					}
-				}
-				blitCache(dst, g.gridCache, -g.gridCachePad, -g.gridCachePad)
-				if g.logDrawNodes {
-					g.logger.Tracef("[draw/grid-cache] rebuild w=%d h=%d pad=%d phase=(%d,%d)", w, h, g.gridCachePad, phaseX, phaseY)
-				}
-			}
-		}
+	}
+	blitCache(dst, g.gridCache, -g.gridCachePad, -g.gridCachePad)
+	if g.logDrawNodes {
+		g.logger.Tracef("[draw/grid-cache] rebuild w=%d h=%d pad=%d phase=(%d,%d)", w, h, g.gridCachePad, phaseX, phaseY)
 	}
 }
 
@@ -543,6 +575,33 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 	g.lastNodeHLReset()
 	nodeStyle := NodeUI
 
+	// Group-membership rings: hoist the group index snapshot and the open
+	// GroupMenu's member set ONCE per frame (not per-node) — Member() is a
+	// map hit so it's fine inside the node loop, but recomputing the open
+	// menu's member set per node would be an O(n·groupSize) scan every frame.
+	// g.groupMenuMembersScratch is a reused scratch map (cleared, not
+	// reallocated) to keep this per-frame-alloc-neutral.
+	gi := g.groupIndexSnapshot()
+	menuMembers := g.groupMenuMembersScratch
+	if menuMembers == nil {
+		menuMembers = make(map[model.NodeID]bool)
+	} else {
+		for k := range menuMembers {
+			delete(menuMembers, k)
+		}
+	}
+	if g.groupMenu != nil && g.groupMenu.IsOpen() {
+		if grp, ok := g.graph.Group(g.groupMenu.GroupID()); ok {
+			for _, m := range grp.NodeIDs {
+				menuMembers[m] = true
+			}
+		}
+	}
+	g.groupMenuMembersScratch = menuMembers
+	// Per-node ascending-GroupID membership list, for the up-to-3-concentric-
+	// rings rendering below (game_group_badges.go's rebuildGroupMembershipScratch).
+	membership := g.rebuildGroupMembershipScratch()
+
 	// Static node layer cache: during playback, most nodes stay in their
 	// default (non-highlighted) state. Cache all base-state nodes into a
 	// layer and only overdraw highlighted/selected nodes per frame,
@@ -668,7 +727,9 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 			}
 			isSelected := g.sel == n && g.pendingStartRow < 0
 			isNeighbor := g.pendingStartRow < 0 && g.selNeighbors != nil && g.selNeighbors[n]
-			if aLevel <= 0 && !isSelected && !isNeighbor {
+			isGroupMember := gi.Member(n.ID)
+			isMenuGroupMember := menuMembers[n.ID]
+			if aLevel <= 0 && !isSelected && !isNeighbor && !isGroupMember && !isMenuGroupMember {
 				continue
 			}
 			rWorld := g.nodeRadiiCache[nodeIdx]
@@ -782,6 +843,24 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				DrawLineCam(dst, x2, y1, x2, y2, &idm, hl, float64(genGeomHighlightBorderThickness))
 				DrawLineCam(dst, x2, y2, x1, y2, &idm, hl, float64(genGeomHighlightBorderThickness))
 				DrawLineCam(dst, x1, y2, x1, y1, &idm, hl, float64(genGeomHighlightBorderThickness))
+			}
+			// Group-membership rings: up to groupRingMaxCount concentric
+			// rings (ascending GroupID), one per group this node belongs
+			// to, each colored by that group's own color (groupColor) and
+			// grown one extra radius step outward per ring so they nest
+			// without overlapping. The currently OPEN GroupMenu's group
+			// draws strong; every other membership draws faint
+			// (groupRingColor).
+			if isGroupMember || isMenuGroupMember {
+				gids := membership[n.ID]
+				count := len(gids)
+				if count > groupRingMaxCount {
+					count = groupRingMaxCount
+				}
+				for ri := 0; ri < count; ri++ {
+					grow := groupRingBaseGrow + ri*groupRingStepGrow
+					g.drawNodeGroupRing(dst, sx1, sy1, sx2, sy2, g.groupRingColor(gids[ri]), grow)
+				}
 			}
 		}
 	} else {
@@ -1013,6 +1092,19 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				DrawLineCam(dst, x2, y2, x1, y2, &id, hl, float64(genGeomHighlightBorderThickness))
 				DrawLineCam(dst, x1, y2, x1, y1, &id, hl, float64(genGeomHighlightBorderThickness))
 			}
+			// Group-membership rings (fallback debug-mode path — mirrors the
+			// node-layer path's multi-ring rendering above).
+			if isGrp, isMenuGrp := gi.Member(n.ID), menuMembers[n.ID]; isGrp || isMenuGrp {
+				gids := membership[n.ID]
+				count := len(gids)
+				if count > groupRingMaxCount {
+					count = groupRingMaxCount
+				}
+				for ri := 0; ri < count; ri++ {
+					grow := groupRingBaseGrow + ri*groupRingStepGrow
+					g.drawNodeGroupRing(dst, sx1, sy1, sx2, sy2, g.groupRingColor(gids[ri]), grow)
+				}
+			}
 		}
 		// Node-state overlays for the fallback path (RENDER_SAFE / NO_SPRITE_NODES /
 		// logDrawNodes). Drawn after node bodies so Muted/Silent overlay correctly,
@@ -1087,8 +1179,11 @@ func (g *Game) drawGridCoordBadge(dst *ebiten.Image) {
 			// (the badge renders on top of the popup since it draws after it).
 			showBadge = (g.sel == g.coordBadgeNode) && !g.sidebar.IsOpen()
 		} else {
-			// Desktop: show for 180 frames (~3s at 60 TPS)
-			showBadge = (g.frame-g.coordBadgeFrame < 180)
+			// Desktop: persist while this node stays selected and its pop-up
+			// menu (the node sidebar) is open. No auto-hide timer — the badge
+			// only goes away when the user selects a different node (which
+			// re-arms the badge for the new node) or closes the menu.
+			showBadge = (g.sel == g.coordBadgeNode) && g.sidebar.IsOpen()
 		}
 		if !showBadge {
 			g.coordBadgeNode = nil

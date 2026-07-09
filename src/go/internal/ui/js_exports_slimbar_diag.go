@@ -11,7 +11,7 @@ import "syscall/js"
 // log exactly which path (windowed sub-image blit vs legacy shift-and-fill)
 // produced it. See drum_render_diag.go.
 func (g *Game) initJSSlimBarDiag() {
-	js.Global().Set("slimBarDiag", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("slimBarDiag", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.Null()
 		}

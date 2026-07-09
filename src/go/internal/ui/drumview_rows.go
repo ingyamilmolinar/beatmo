@@ -116,7 +116,7 @@ func (dv *DrumView) AddRow() {
 	// Pure sequential by row index: row N takes the Nth color of the canonical
 	// instrument series (wrapping). Independent of the instrument id.
 	rowColor := seriesColorAt(idx)
-	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: rowColor, Origin: model.InvalidNodeID, Node: nil, Volume: 1, EQGainsDB: make([]float64, len(eqBandDefs))})
+	dv.Rows = append(dv.Rows, &DrumRow{Name: name, Instrument: inst, Steps: make([]bool, dv.Length), CellTypes: make([]model.NodeType, dv.Length), Color: rowColor, Origin: model.InvalidNodeID, Node: nil, Volume: 0.5, EQGainsDB: make([]float64, len(eqBandDefs))})
 	dv.logger.Debugf("[drumview] row added index=%d instrument=%s name=%s", idx, inst, name)
 	emitRowAdded(idx, inst, name)
 	dv.added = append(dv.added, idx)
@@ -233,7 +233,7 @@ func (dv *DrumView) toggleMute(idx int) {
 	}
 	dv.markRowControlsDirty()
 	emitRowMute(idx, r.Muted)
-	dv.autoSelectSoleAudibleChannel()
+	dv.reconcileChannelWithAudibleSet()
 }
 
 func (dv *DrumView) toggleSolo(idx int) {
@@ -270,25 +270,37 @@ func (dv *DrumView) toggleSolo(idx int) {
 	}
 	dv.markRowControlsDirty()
 	emitRowSolo(idx, r.Solo)
-	dv.autoSelectSoleAudibleChannel()
+	dv.reconcileChannelWithAudibleSet()
 }
 
-// autoSelectSoleAudibleChannel switches the audio-panel channel dropdown to the
-// only audible instrument when a solo/mute toggle leaves exactly one row audible.
-// A row is audible iff !Muted && (!anySolo || Solo) -- the same predicate the
-// timeline uses to dim rows. Both QoL triggers reduce to this single state:
-// soloing one instrument, or muting all but one, each leave exactly one audible
-// row.
+// reconcileChannelWithAudibleSet keeps the audio-panel channel dropdown in
+// step with what is actually audible after a solo/mute toggle. A row is audible
+// iff !Muted && (!anySolo || Solo) -- the same predicate the timeline uses to
+// dim rows.
 //
-// It only fires toward a sole-audible instrument and never reverts: when two or
-// more rows are audible the current selection is left untouched. It is a no-op
-// for single-row projects (nothing to disambiguate) and when the sole-audible
-// row has no instrument id. Routes through selectAudioChannel so every tab
-// follows the dropdown.
-func (dv *DrumView) autoSelectSoleAudibleChannel() {
+//   - More than one distinct INSTRUMENT audible -> no single focus exists, so
+//     revert the selector to Master (only when it currently points at an
+//     instrument; a redundant re-select of Master is skipped). Counting by
+//     distinct instrument (audibleInstrumentIDs) means several audible rows of
+//     the SAME instrument still count as one focus and do not force Master.
+//   - Otherwise, exactly one audible ROW (solo one, or mute all-but-one) ->
+//     focus that instrument so its EQ/Synth/Sampler are directly editable.
+//
+// It is a no-op for single-row projects (nothing to disambiguate) and when the
+// sole-audible row has no instrument id. Routes through selectAudioChannel so
+// every tab follows the dropdown.
+func (dv *DrumView) reconcileChannelWithAudibleSet() {
 	if len(dv.Rows) < 2 {
 		return
 	}
+	// Revert to Master when more than one distinct instrument is audible.
+	if len(audibleInstrumentIDs(dv.Rows)) > 1 {
+		if ch := dv.activeEQChannel(); ch != "" && ch != "main" {
+			dv.selectAudioChannel("main")
+		}
+		return
+	}
+	// Otherwise focus the sole audible row's instrument, if there is exactly one.
 	anySolo := anySoloActive(dv.Rows)
 	count := 0
 	var sole *DrumRow
@@ -298,10 +310,9 @@ func (dv *DrumView) autoSelectSoleAudibleChannel() {
 			sole = r
 		}
 	}
-	if count != 1 || sole == nil || sole.Instrument == "" {
-		return
+	if count == 1 && sole != nil && sole.Instrument != "" {
+		dv.selectAudioChannel(sole.Instrument)
 	}
-	dv.selectAudioChannel(sole.Instrument)
 }
 
 // ConsumeDeletedRows returns and clears the recently deleted rows info.

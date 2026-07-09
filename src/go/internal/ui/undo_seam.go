@@ -2,6 +2,12 @@ package ui
 
 import "github.com/ingyamilmolinar/beatmo/internal/i18n"
 
+// undoCaptureHook, when non-nil, is invoked at the top of every undoCapture that
+// actually serializes the document. It exists so perf-regression tests can count
+// full-document serializations (exportBytes) without a wall-clock threshold. It
+// is nil in production (a single pointer comparison per capture).
+var undoCaptureHook func()
+
 // undoCapture returns a deterministic byte snapshot of the whole document via
 // the goldens-tested export serializer. It is panic-safe: the undo tap runs
 // synchronously inside emit helpers (e.g. SetLength → emitLengthChange →
@@ -12,6 +18,19 @@ import "github.com/ingyamilmolinar/beatmo/internal/i18n"
 func (g *Game) undoCapture() (snapshot []byte) {
 	if g.drum == nil {
 		return nil
+	}
+	// During Import, every node/edge/row mutation fires the undo tap. Capturing
+	// a full-document snapshot per mutation is O(N^2) serialization (7s+ on a
+	// large template, a multi-second freeze on single-threaded WASM mobile), and
+	// it is pure waste: Import clears undo history at the end (OnExternalLoad).
+	// Skip the snapshot; commitNow treats a nil capture as "no snapshot" and does
+	// not touch the committed baseline. The final post-import baseline is captured
+	// by the deferred OnExternalLoad, which runs after g.importing is cleared.
+	if g.importing {
+		return nil
+	}
+	if undoCaptureHook != nil {
+		undoCaptureHook()
 	}
 	defer func() {
 		if r := recover(); r != nil {

@@ -58,6 +58,11 @@ func (dv *DrumView) KeyboardClaimed() bool {
 	if dv.audioTree != nil && dv.audioTree.OwnsKeyboard() {
 		return true
 	}
+	// Portal-hosted keyboard claimants (rename field, instrument-menu search)
+	// now live in the single global overlay subtree, so consult it too.
+	if dv.overlayTree != nil && dv.overlayTree.OwnsKeyboard() {
+		return true
+	}
 	if dv.valueEditorActive() {
 		return true
 	}

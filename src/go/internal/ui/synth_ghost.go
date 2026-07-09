@@ -49,7 +49,7 @@ func (dv *DrumView) captureSynthGhost(kIdx int, instID string) {
 	if dv == nil || instID == "" {
 		return
 	}
-	merged := audio.MergeRecipeDefaults(audio.RecipeForInstrument(instID), audio.GetInstrumentParams(instID))
+	merged := audio.MergedInstrumentParamsRO(instID)
 	snap := make(map[string]float64, len(merged))
 	for k, v := range merged {
 		snap[k] = v

@@ -22,6 +22,9 @@ func stubGameForHighlightDuration(bpm int) *Game {
 		graph:            model.NewGraph(logger),
 		playFn:           func(string, float64, ...float64) {},
 	}
+	// playbackSlate methods dereference this back-reference; struct literals
+	// that bypass New() must set it explicitly (mirrors New()).
+	g.playbackSlate.g = g
 	g.drum = &DrumView{
 		Rows:   []*DrumRow{{}},
 		Graph:  g.graph,

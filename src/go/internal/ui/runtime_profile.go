@@ -35,6 +35,49 @@ import "time"
 // then, the Runtime() accessor exists so new code can already document
 // intent ("I'm reading runtime behavior, not design").
 
+// timingStageBounds is the per-stage tolerance envelope for the timing-parity
+// gate (see parityTimingCheck, added by a later task). All values are in
+// seconds; a bound of 0 disables that statistic for the stage.
+// timingStageBounds holds one stage's tolerances. WarnOnly demotes the whole
+// stage to log-only: a breach still emits a WARN dump but never panics, even
+// when the global gate is fatal. Bridge (Stage B) and EmitDrift (Stage D) are
+// WarnOnly on every platform because they measure internal scheduling proxies
+// (enqueue→dispatch queue-wait behind the per-beat synth render; device-clock
+// emission jitter) that the audio lookahead cushion absorbs — Stage C
+// (overdue) is the authoritative "audio is actually late" signal and stays
+// fatal. See the 2026-07 timing-gate calibration investigation: bridge
+// legitimately runs ~13-20ms (per-beat newRecipeAwareVoice render on the
+// dispatch goroutine) while overdue stays ~0, so a fatal bridge/emit bound
+// panics normal desktop playback on latency that never reaches the speakers.
+type timingStageBounds struct {
+	MeanMax, P99Max, StdDevMax, AbsMax float64
+	WarnOnly                           bool
+}
+
+// timingBounds is the full set of timing-gate tolerances for one platform
+// (desktop or browser). Desktop values are tight and enforced by default;
+// browser values are looser and log-only by default (WASM scheduling jitter
+// from the JS event loop + Go→JS bridge crossing means the same envelope
+// would false-positive constantly).
+type timingBounds struct {
+	Enabled      bool
+	FatalDefault bool
+	WatchDefault parityWatchMode
+	MinSamples   int // don't gate a stage until its window has this many samples
+	SeqFire      timingStageBounds
+	Bridge       timingStageBounds
+	Overdue      timingStageBounds // Stage C; MeanMax=AvgLag, P99Max=LagP99, AbsMax=MaxLag; StdDevMax unused (0)
+	EmitDrift    timingStageBounds
+	// OverdueEmitFatalSec cross-checks Stage C against Stage D: an overdue
+	// breach (a scheduling-LEAD metric: dispatched with `when` in the past) is
+	// only FATAL when the ACTUAL sample emission also drifted at least this far
+	// late (Stage D emit.absMax). A transient scheduling blip that still emitted
+	// on-time (e.g. a UI action briefly stalling the audioLoop) is audibly fine,
+	// so it downgrades to a WARN instead of panicking. 0 disables the cross-check
+	// (overdue stays fatal on its own). See parityTimingCheck.
+	OverdueEmitFatalSec float64
+}
+
 // RuntimeFlags exposes the feature/behavior toggle subset of the active
 // profile. Use this in new code instead of Profile() when the field
 // you're reading controls behavior, not appearance.
@@ -121,6 +164,11 @@ type RuntimeProfile struct {
 	ParityFatalDefault bool
 	ParityWatchDefault parityWatchMode
 
+	// Timing-parity gate tolerances. See parityTimingCheck. All values in
+	// seconds; a bound of 0 disables that statistic. Desktop values are tight
+	// (dev/test enforcement); browser values looser + log-only by default.
+	Timing timingBounds
+
 	// Identity. Snapshotted at profile construction from runtime.GOOS == "js".
 	IsBrowser bool
 
@@ -171,6 +219,18 @@ type RuntimeProfile struct {
 	// default 0 (off): the desktop Go runtime has a real GC scheduler
 	// thread and does not need cooperative help.
 	ForceGCInterval time.Duration
+
+	// VoiceCacheBudgetBytes is the hard ceiling on retained rendered-voice
+	// buffers in audio's globalVoiceCache (LRU eviction beyond it). Bounds RAM
+	// so predictive neighborhood warming can mint many keys without OOM/hoarding.
+	// Wired to audio.SetVoiceCacheBudgetBytes at startup.
+	VoiceCacheBudgetBytes int64
+
+	// PredictiveWarmTicks is the ±N radius (in each control's resolution) of the
+	// predictive-neighborhood warm around the current value, so an immediate
+	// one-tick edit lands on a warm cache. 1 = warm the immediate neighbors;
+	// 0 disables neighborhood warming (exact values only).
+	PredictiveWarmTicks int
 }
 
 var activeRuntimeProfile *RuntimeProfile
@@ -229,6 +289,26 @@ func browserRuntimeProfile() *RuntimeProfile {
 		AudioPanelHeightMultiplier:         3,
 		AudioPanelHeightScreenFrac:         0.60,
 		ForceGCInterval:                    30 * time.Second, // counters single-threaded WASM GC starvation (see field doc)
+		VoiceCacheBudgetBytes:              24 << 20,         // 24 MB: tighter on browser (single 2 GB WASM heap ceiling)
+		PredictiveWarmTicks:                1,
+		// Timing-gate tolerances; see plan Task 1.2. Looser than desktop and
+		// log-only by default: JS event-loop scheduling + Go→JS bridge
+		// crossing add jitter native desktop doesn't have. Starting values
+		// pending bench tuning (bench-results/).
+		Timing: timingBounds{
+			Enabled:      true,
+			FatalDefault: false, // log-only on browser unless PARITY_TIMING_FATAL arms it
+			WatchDefault: parityWatchLog,
+			MinSamples:   128,
+			// SeqFire WarnOnly for the same reason as desktop: internal
+			// scheduling proxy; Stage C owns audible lateness.
+			SeqFire:   timingStageBounds{MeanMax: 0.006, P99Max: 0.020, StdDevMax: 0.008, AbsMax: 0.060, WarnOnly: true},
+			Bridge:    timingStageBounds{MeanMax: 0.006, P99Max: 0.020, StdDevMax: 0.008, AbsMax: 0.060, WarnOnly: true},
+			Overdue:   timingStageBounds{MeanMax: 0.002, P99Max: 0.012, StdDevMax: 0, AbsMax: 0.040},
+			EmitDrift: timingStageBounds{MeanMax: 0.008, P99Max: 0.025, StdDevMax: 0.010, AbsMax: 0.080, WarnOnly: true},
+			// Browser is log-only anyway; keep the cross-check off (0).
+			OverdueEmitFatalSec: 0,
+		},
 	}
 }
 
@@ -244,27 +324,82 @@ func desktopRuntimeProfile() *RuntimeProfile {
 		SimpleDrawAutoDisableFramesDefault: 0,
 		ScreenEdgesDefault:                 false,
 		TimelineInfoThrottleMS:             0,
-		AudioLookaheadSec:                  0.02,
-		MinDispatchLeadSec:                 0,   // no Go→JS bridge on desktop; audio.Now() is the engine clock, so no dispatch-time floor is needed
-		AudioBatchMax:                      256, // desktop default
-		SequencerTickMS:                    1,   // dedicated 1ms goroutine
-		ParityScanMinPeriod:                1,
-		AdaptivePanPad:                     false,
-		FastPanDetect:                      false,
-		SkipCursorHover:                    false,
-		PredictorBackoffOnSlowDraw:         false,
-		ForceInfoLog:                       false,
-		DefaultPerfFastPath:                false,
-		EnableTouchSmallScreen:             false,
-		YieldInDrawHelpers:                 false,
-		ParityFatalDefault:                 true,
-		ParityWatchDefault:                 parityWatchOff,
-		IsBrowser:                          false,
-		PredictorWindowCap:                 4096,
-		RibbonBeatsPerPixel:                0.25, // desktop: 4 px/beat — major (16), medium (4), minor (1) all readable
-		RibbonPlayheadFrac:                 0.70,
-		AudioPanelHeightMultiplier:         3,
-		AudioPanelHeightScreenFrac:         0.60,
-		ForceGCInterval:                    0, // off: desktop GC has its own scheduler thread
+		// 60ms cushion, unified with the browser value (same bench basis:
+		// audio_lookahead_resweep_2026-06.md showed overdue=0/smallLead=0 at
+		// 0.06). The prior desktop 0.02 base (max 0.05 with the adaptive +0.03)
+		// sat BELOW real desktop scheduling jitter: 2026-07-13 fatal-gate bench
+		// dumps at 200/240/300 BPM recorded single 34-55ms overdue transients
+		// (sequencer goroutine wakeup delay under full-core load) with
+		// confirmed 44-62ms-late emissions — each one a real audible glitch the
+		// 20ms base could not absorb. 120 BPM was already clean at 0.02; 0.06
+		// absorbs the measured transient envelope at every benched tempo.
+		AudioLookaheadSec:          0.06,
+		MinDispatchLeadSec:         0,   // no Go→JS bridge on desktop; audio.Now() is the engine clock, so no dispatch-time floor is needed
+		AudioBatchMax:              256, // desktop default
+		SequencerTickMS:            1,   // dedicated 1ms goroutine
+		ParityScanMinPeriod:        1,
+		AdaptivePanPad:             false,
+		FastPanDetect:              false,
+		SkipCursorHover:            false,
+		PredictorBackoffOnSlowDraw: false,
+		ForceInfoLog:               false,
+		DefaultPerfFastPath:        false,
+		EnableTouchSmallScreen:     false,
+		YieldInDrawHelpers:         false,
+		ParityFatalDefault:         true,
+		ParityWatchDefault:         parityWatchOff,
+		IsBrowser:                  false,
+		PredictorWindowCap:         4096,
+		RibbonBeatsPerPixel:        0.25, // desktop: 4 px/beat — major (16), medium (4), minor (1) all readable
+		RibbonPlayheadFrac:         0.70,
+		AudioPanelHeightMultiplier: 3,
+		AudioPanelHeightScreenFrac: 0.60,
+		ForceGCInterval:            0,        // off: desktop GC has its own scheduler thread
+		VoiceCacheBudgetBytes:      48 << 20, // 48 MB retained-voice ceiling (see field doc)
+		PredictiveWarmTicks:        1,
+		// Timing-gate tolerances; see plan Task 1.2. Tight + enforced: no
+		// Go→JS bridge, dedicated 1ms sequencer tick. Starting values pending
+		// bench tuning (bench-results/).
+		Timing: timingBounds{
+			Enabled:      true,
+			FatalDefault: true,
+			WatchDefault: parityWatchPanic,
+			MinSamples:   64,
+			// Stage A: scheduler tick is 1ms desktop; fire-late should be tiny.
+			// WarnOnly: Stage A measures an internal scheduling proxy. Per-beat
+			// ideal baseNow (game_sequencer_schedule.go) means fire-lateness does
+			// NOT propagate into audio lateness — it only reduces Stage C lead —
+			// and a 300 BPM bench (2026-07-13) showed its p99 tripping on a single
+			// ~19ms Go-scheduler wakeup delay (execution trace: selectnbsend on
+			// hlCh readies the UI receiver and the sequencer goroutine waits for a
+			// P under draw-spike contention) while Stage C stayed at zero. Stage C
+			// (+ emit corroboration) is the authoritative fatal gate.
+			SeqFire: timingStageBounds{MeanMax: 0.003, P99Max: 0.010, StdDevMax: 0.004, AbsMax: 0.030, WarnOnly: true},
+			// Stage B: enqAt→dispatch queue-wait. The historical ~13-20ms average
+			// was the per-trigger oto ctx.Resume() serializing dispatch behind the
+			// ALSA writer's blocking snd_pcm_writei (fixed 2026-07-13; see
+			// engine_play.go). Post-fix steady state is ~1-3ms; spikes surface in
+			// the WARN dump. WarnOnly: a health signal, not a fatal gate — the
+			// lookahead cushion absorbs queue-wait (Stage C catches real lateness).
+			Bridge: timingStageBounds{MeanMax: 0.002, P99Max: 0.008, StdDevMax: 0.003, AbsMax: 0.030, WarnOnly: true},
+			// Stage C: overdue (lag) — the authoritative audible-lateness gate,
+			// fatal. Any sustained overdue is bad; dropout at AbsMax.
+			Overdue: timingStageBounds{MeanMax: 0.0005, P99Max: 0.006, StdDevMax: 0, AbsMax: 0.020},
+			// Stage D: realized emission vs the scheduler-intended 'when'.
+			// Desktop wall-vs-device-clock skew is a diagnostic proxy, not an
+			// audible defect on its own → WarnOnly (Stage C catches real lateness).
+			EmitDrift: timingStageBounds{MeanMax: 0.003, P99Max: 0.010, StdDevMax: 0.004, AbsMax: 0.040, WarnOnly: true},
+			// Cross-check: an overdue breach panics only if the actual emission
+			// also drifted at least this late (real audible lateness). A
+			// transient scheduling-lead blip that emitted on-time -> WARN, not
+			// crash. MUST be >= EmitDrift.AbsMax: emission drift below that
+			// bound is calibrated as "not an audible defect on its own"
+			// (device-period quantization puts the NATURAL healthy emission
+			// tail at ~25ms — a 300 BPM bench showed emit.p99=25.5ms in an
+			// otherwise clean window), so a smaller threshold turns device
+			// noise into false corroboration. The confirmed-real crash this
+			// gate exists for measured emit.absMax=106ms.
+			OverdueEmitFatalSec: 0.040,
+		},
 	}
 }

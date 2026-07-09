@@ -310,14 +310,16 @@ func newSpectrumControls(z int, onFreeze func() bool, onResetHold func()) *spect
 	c.z = z
 	c.freezeBtn = newFreezePill(onFreeze)
 
-	c.freqScaleBtn = NewButton("log", InstButtonStyle, nil)
+	// Uppercase to match every other analyzer pill code (AG / FIT / K20 /
+	// CLR / RST) — mixed-case pills read as a different control class.
+	c.freqScaleBtn = NewButton("LOG", InstButtonStyle, nil)
 	c.freqScaleBtn.TextColor = colTextSecondary
 	c.freqScaleBtn.OnClick = func() {
 		c.freqScaleLog = !c.freqScaleLog
 		if c.freqScaleLog {
-			c.freqScaleBtn.Text = "log"
+			c.freqScaleBtn.Text = "LOG"
 		} else {
-			c.freqScaleBtn.Text = "lin"
+			c.freqScaleBtn.Text = "LIN"
 		}
 	}
 
@@ -334,7 +336,10 @@ func newSpectrumControls(z int, onFreeze func() bool, onResetHold func()) *spect
 	c.preBtn.TextColor = colTextSecondary
 	c.preBtn.OnClick = func() { c.preOverlay = !c.preOverlay }
 
-	c.resetHoldBtn = NewButton("R", InstButtonStyle, onResetHold)
+	// "RST" (not a bare "R"): single-letter chrome labels are reserved for
+	// data labels (the wave panel's L/R channel tags); action pills carry
+	// 2–3 letter codes per the DESIGN.md permitted-text table.
+	c.resetHoldBtn = NewButton("RST", InstButtonStyle, onResetHold)
 	c.resetHoldBtn.TextColor = colTextSecondary
 	return c
 }

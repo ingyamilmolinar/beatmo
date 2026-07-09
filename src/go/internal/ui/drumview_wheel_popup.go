@@ -54,9 +54,11 @@ func (dv *DrumView) SynthWheelPopupRect() image.Rectangle {
 }
 
 // closeSynthKnobWheelPopup closes the mobile scroll-wheel for synth knobs.
+// Navigating away persists the pending edit (Accept commits + closes; no-op if
+// already closed).
 func (dv *DrumView) closeSynthKnobWheelPopup() {
 	if dv.synthWheelPopup != nil {
-		dv.synthWheelPopup.Close()
+		dv.synthWheelPopup.Accept()
 	}
 	dv.closeSynthWheelPortal()
 }

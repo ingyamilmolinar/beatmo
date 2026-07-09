@@ -82,6 +82,11 @@ type ParamValueEditor struct {
 	active    bool
 	errorAnim float64
 	mobileID  string
+	// openedByTouch records whether the gesture that opened this editor was a
+	// touch/pen (→ a native <input> overlay will be created on touchend) vs a
+	// mouse (→ no native input; use the keyboard path). Captured at OpenValue so
+	// it is stable for the whole edit session.
+	openedByTouch bool
 }
 
 // NewParamValueEditor constructs the shared editor.
@@ -121,6 +126,7 @@ func (e *ParamValueEditor) OpenValue(o ValueOpen) {
 	e.spec = o.Spec
 	e.setValue = o.Set
 	e.mobileID = o.MobileInputID
+	e.openedByTouch = lastPointerWasTouch()
 	// TextInputStyle has only color.Color (interface) fields; an all-nil
 	// style is the unset sentinel meaning "fall back to BPMBoxStyle". We
 	// test the fields directly rather than comparing against a hand-coded
@@ -192,9 +198,17 @@ func (e *ParamValueEditor) Update() {
 		}
 		return
 	}
-	if e.mobileID != "" && Profile().IsMobile() {
-		// On mobile the native <input> overlay owns the editor lifecycle. Poll its
-		// result (set by the input's Enter / Escape / blur) and commit/cancel
+	if e.mobileID != "" && Profile().IsMobile() && e.openedByTouch {
+		// The native <input> overlay owns the editor lifecycle ONLY when this
+		// editor was opened by a TOUCH gesture — the overlay is created inside a
+		// `touchend` handler (index.html), so it exists iff the opening gesture was
+		// a touch. Gate on e.openedByTouch, NOT device capability: a touch-capable
+		// laptop / DevTools device-mode driven with a MOUSE in mobile LAYOUT fires
+		// no touchend, so the native input never appears — there we must fall
+		// through to the keyboard path below or the editor sits inert ("click, see
+		// cursor, no key works"). platformSupportsTouch()/maxTouchPoints was the
+		// wrong signal for exactly this case.
+		// Poll its result (set by the input's Enter / Escape / blur) and commit/cancel
 		// accordingly; an outside tap blurs the native input, which sets a
 		// committed result here, so "tap outside to dismiss" still works.
 		//

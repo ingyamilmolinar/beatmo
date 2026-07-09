@@ -35,7 +35,19 @@ type ParamDef struct {
 	// A zero Step serializes identically to v1 (no "step" key), so existing
 	// recipe goldens are unaffected.
 	Step float64 `json:"step,omitempty"`
+	// Tier (v3, additive + omitempty) is the P4 exposure priority in the Synth
+	// tab: "" (TierEssential) = always shown; "advanced" (TierAdvanced) =
+	// collapsed under the owning stage's "Advanced" expander so a beginner sees
+	// only the 3-5 character knobs per stage. A zero Tier serializes identically
+	// to v1/v2 (no "tier" key), so existing recipe goldens are unaffected.
+	Tier string `json:"tier,omitempty"`
 }
+
+// ParamDef.Tier values (P4 tiered-knob exposure).
+const (
+	TierEssential = ""         // always shown (default)
+	TierAdvanced  = "advanced" // collapsed under the stage's Advanced expander
+)
 
 // RecipeParams is the IPC-shaped parameter payload. Keys are ParamDef.Name.
 type RecipeParams map[string]float64
@@ -158,12 +170,18 @@ type instrumentParamsManager struct {
 	mu       sync.RWMutex
 	params   map[string]RecipeParams // instrumentID → params
 	bindings map[string]string       // instrumentID → recipeID
+	// revs is the per-instrument params revision (see InstrumentParamsRev in
+	// merged_params_cache.go). Bumped under mu by every mutation that changes
+	// the instrument's merged-params output: param set/replace/reset and
+	// recipe re-bind.
+	revs map[string]uint64
 }
 
 func newInstrumentParamsManager() *instrumentParamsManager {
 	return &instrumentParamsManager{
 		params:   make(map[string]RecipeParams),
 		bindings: make(map[string]string),
+		revs:     make(map[string]uint64),
 	}
 }
 
@@ -230,11 +248,23 @@ func SetInstrumentParam(instrumentID, name string, value float64) {
 		}
 	}
 	cur[name] = stored
+	m.revs[instrumentID]++
 	snapshot := cloneRecipeParams(cur)
 	recipeID := m.bindings[instrumentID]
 	m.mu.Unlock()
 
-	voiceCacheInvalidate(instrumentID)
+	// NOTE: a single live param edit (the knob-drag hot path) does NOT
+	// blanket-invalidate the voice cache. The cache key carries the FULL
+	// paramsHash (hashRecipeParams over the merged set), so the new value maps
+	// to a DIFFERENT key — dispatch renders the new sound under it, and the
+	// old-value entry is simply not read. Keeping old-value entries (bounded by
+	// the voice cache's LRU byte budget) is what lets the predictive
+	// neighborhood warm survive a drag: the neighbor rendered for value V+step
+	// is still there when the drag reaches it, so it's a cache HIT instead of a
+	// ~24ms cold render on the audio dispatch goroutine. Blanket-clearing here
+	// was the root of the 93%-miss knob-drag storm. Bulk/reset paths
+	// (SetInstrumentParams, ResetInstrumentParams) still clear — they are
+	// infrequent and want a clean slate.
 	hooks.PublishKind(hooks.EventInstrumentParamChanged, hooks.InstrumentParamPayload{
 		Channel: instrumentID,
 		Recipe:  recipeID,
@@ -280,6 +310,7 @@ func SetInstrumentParams(instrumentID string, p RecipeParams) {
 	} else {
 		m.params[instrumentID] = sanitized
 	}
+	m.revs[instrumentID]++
 	snapshot := cloneRecipeParams(m.params[instrumentID])
 	m.mu.Unlock()
 
@@ -317,6 +348,7 @@ func ResetInstrumentParams(instrumentID string) {
 	_, hadEntry := m.params[instrumentID]
 	if hadEntry {
 		delete(m.params, instrumentID)
+		m.revs[instrumentID]++
 	}
 	m.mu.Unlock()
 	if !hadEntry {
@@ -349,6 +381,7 @@ func BindInstrumentToRecipe(instrumentID, recipeID string) {
 	} else {
 		m.bindings[instrumentID] = recipeID
 	}
+	m.revs[instrumentID]++
 	m.mu.Unlock()
 	platformInstrumentRecipeChanged(instrumentID, recipeID, recipeExemplarInstrument(recipeID))
 }
@@ -407,7 +440,7 @@ type builtinRecipeDescriptor struct {
 // list to all 20 drum + 5 FM recipes (25 total). The shared 8 generic
 // ParamDefs apply to every entry via GenericSynthParamDefs(); FM-specific
 // extras (per-operator + mod-matrix knobs) land in v2.
-var builtinRecipeDescriptors = []builtinRecipeDescriptor{
+var builtinRecipeDescriptors = append([]builtinRecipeDescriptor{
 	// Phase 1 drums.
 	{ID: "drum-snare", Display: "Snare", Category: "drum"},
 	{ID: "drum-kick", Display: "Kick", Category: "drum"},
@@ -438,58 +471,13 @@ var builtinRecipeDescriptors = []builtinRecipeDescriptor{
 	// Unified modular synth voice — exposes the ENTIRE pipeline (osc/FM/ADSR/
 	// filter/post) via ModularSynthParamDefs instead of the wired generic set.
 	{ID: "synth-modular", Display: "Modular", Category: modularRecipeCategory},
-	// Second shipped modular preset: same schema, pad defaults via Seed.
-	{ID: "synth-modular-pad", Display: "Modular Pad", Category: modularRecipeCategory, Seed: modularPadSeed},
-	// Bowed strings family — LFO→pitch vibrato showcase (Phase-1 seeds).
-	{ID: "synth-modular-violin", Display: "Violin", Category: modularRecipeCategory, Seed: violinSeed},
-	{ID: "synth-modular-violin-ensemble", Display: "Violin Ensemble", Category: modularRecipeCategory, Seed: violinEnsembleSeed},
-	{ID: "synth-modular-cello", Display: "Cello", Category: modularRecipeCategory, Seed: celloSeed},
-	{ID: "synth-modular-cello-warm", Display: "Cello Warm", Category: modularRecipeCategory, Seed: celloWarmSeed},
-	{ID: "synth-modular-organ-church", Display: "Church Organ", Category: modularRecipeCategory, Seed: organChurchSeed},
-	{ID: "synth-modular-scifi-lead", Display: "Sci-Fi Lead", Category: modularRecipeCategory, Seed: sciFiLeadSeed},
-	// Plucked strings — Karplus-Strong (Task 2).
-	{ID: "synth-modular-guitar-nylon", Display: "Guitar Nylon", Category: modularRecipeCategory, Seed: guitarNylonSeed},
-	{ID: "synth-modular-guitar-nylon-bright", Display: "Guitar Nylon Bright", Category: modularRecipeCategory, Seed: guitarNylonBrightSeed},
-	{ID: "synth-modular-guitar-steel", Display: "Guitar Steel", Category: modularRecipeCategory, Seed: guitarSteelSeed},
-	{ID: "synth-modular-guitar-steel-warm", Display: "Guitar Steel Warm", Category: modularRecipeCategory, Seed: guitarSteelWarmSeed},
-	{ID: "synth-modular-guitar-electric", Display: "Guitar Electric", Category: modularRecipeCategory, Seed: guitarElectricSeed},
-	{ID: "synth-modular-harp", Display: "Harp", Category: modularRecipeCategory, Seed: harpSeed},
-	{ID: "synth-modular-guitar-electric-neck", Display: "Guitar Electric Neck", Category: modularRecipeCategory, Seed: guitarElectricNeckSeed},
-	// Keys — additive piano (Task 3).
-	{ID: "synth-modular-piano-grand", Display: "Piano Grand", Category: modularRecipeCategory, Seed: pianoGrandSeed},
-	{ID: "synth-modular-piano-felt", Display: "Piano Felt", Category: modularRecipeCategory, Seed: pianoFeltSeed},
-	// Woodwind family (Task 4).
-	{ID: "synth-modular-flute", Display: "Flute", Category: modularRecipeCategory, Seed: fluteSeed},
-	{ID: "synth-modular-flute-breathy", Display: "Flute Breathy", Category: modularRecipeCategory, Seed: fluteBreathySeed},
-	{ID: "synth-modular-oboe", Display: "Oboe", Category: modularRecipeCategory, Seed: oboeSeed},
-	{ID: "synth-modular-oboe-full", Display: "Oboe Full", Category: modularRecipeCategory, Seed: oboeFullSeed},
-	// Brass family (Task 5).
-	{ID: "synth-modular-trumpet", Display: "Trumpet", Category: modularRecipeCategory, Seed: trumpetSeed},
-	{ID: "synth-modular-trumpet-mellow", Display: "Trumpet Mellow", Category: modularRecipeCategory, Seed: trumpetMellowSeed},
-	{ID: "synth-modular-french-horn", Display: "French Horn", Category: modularRecipeCategory, Seed: frenchHornSeed},
-	{ID: "synth-modular-french-horn-loud", Display: "French Horn Loud", Category: modularRecipeCategory, Seed: frenchHornLoudSeed},
-	// Bass guitar — tuned plucked electric bass (renamed from synth-bass).
-	{ID: "synth-modular-bass-guitar", Display: "Bass Guitar", Category: modularRecipeCategory, Seed: bassGuitarSeed},
-	// Synth bass family — acid / reese / FM / 808.
-	{ID: "synth-modular-bass-acid", Display: "Acid Bass", Category: modularRecipeCategory, Seed: bassAcidSeed},
-	{ID: "synth-modular-bass-reese", Display: "Reese Bass", Category: modularRecipeCategory, Seed: bassReeseSeed},
-	{ID: "synth-modular-bass-fm", Display: "FM Bass DX", Category: modularRecipeCategory, Seed: bassFMSeed},
-	{ID: "synth-modular-bass-808", Display: "808 Bass", Category: modularRecipeCategory, Seed: bass808Seed},
-	// Modal conga (Task 7).
-	{ID: "synth-modular-conga", Display: "Conga", Category: modularRecipeCategory, Seed: congaSeed},
-	{ID: "synth-modular-conga-open", Display: "Conga Open", Category: modularRecipeCategory, Seed: congaOpenSeed},
-	{ID: "synth-modular-conga-tumba", Display: "Conga Tumba", Category: modularRecipeCategory, Seed: congaTumbaSeed},
-	// Masterpiece template set — three new instruments.
-	{ID: "synth-modular-organ", Display: "Organ", Category: modularRecipeCategory, Seed: organSeed},
-	{ID: "synth-modular-sax", Display: "Saxophone", Category: modularRecipeCategory, Seed: saxSeed},
-	// Configurable KICK stage — the modular gen-bank kick voice (source==5)
-	// surfaced as a first-class instrument, tuned to a deep, dark DnB sub-kick.
-	{ID: "synth-modular-kick-dnb", Display: "DnB Kick", Category: modularRecipeCategory, Seed: dnbKickSeed},
-	{ID: "synth-modular-kick-electro", Display: "Electro Kick", Category: modularRecipeCategory, Seed: electroKickSeed},
-	{ID: "synth-modular-kick-808", Display: "808 Kick", Category: modularRecipeCategory, Seed: kick808Seed},
-	{ID: "synth-modular-kick-acoustic", Display: "Acoustic Kick", Category: modularRecipeCategory, Seed: acousticKickSeed},
-	{ID: "synth-modular-kick-punchy", Display: "Punchy Kick", Category: modularRecipeCategory, Seed: punchyKickSeed},
-}
+	// Second shipped modular preset (synth-modular-pad); the bowed strings,
+	// plucked strings, keys, woodwind, brass, and bass families; the modal
+	// conga family; and the masterpiece template set (organ/sax) are all
+	// CONFIG-FIRST: derived from the single declarative table in
+	// modular_instruments.go and appended below, alongside the
+	// configurable-KICK-stage recipes.
+}, modularTableDescriptors()...)
 
 // builtinInstrumentRecipeBindings maps every shipped instrument id (base
 // + variant) to its SynthRecipe id, so SetInstrumentParam edits flow
@@ -497,104 +485,64 @@ var builtinRecipeDescriptors = []builtinRecipeDescriptor{
 // underlying renderer of their base sound (e.g. "snare-1" uses
 // renderSnareRimshot, so its recipe is drum-snare-rimshot, not drum-snare),
 // keeping the recipe binding aligned with the audio that actually plays.
-var builtinInstrumentRecipeBindings = map[string]string{
-	// Core 6 drums.
-	"snare":   "drum-snare",
-	"kick":    "drum-kick",
-	"hihat":   "drum-hihat",
-	"clap":    "drum-clap",
-	"tom":     "drum-tom",
-	"cowbell": "drum-cowbell",
-	// New distinct drum instruments.
-	"rimshot":   "drum-snare-rimshot",
-	"sidestick": "drum-snare-sidestick",
-	"kick-deep": "drum-kick-deep",
-	"shaker":    "drum-shaker",
-	"ride":      "drum-ride",
-	"crash":     "drum-crash",
-	"sub-bass":  "drum-sub-bass",
-	// Variant set 1 (electronic/tight) — bound to the actual base renderer used.
-	"snare-1":    "drum-snare-rimshot",
-	"kick-1":     "drum-kick-punchy",
-	"hihat-1":    "drum-open-hihat",
-	"tom-1":      "drum-tom-high",
-	"clap-1":     "drum-clap",
-	"cowbell-1":  "drum-cowbell",
-	"sub-bass-1": "drum-sub-bass",
-	// Variant set 2 (lo-fi/dark).
-	"snare-2":   "drum-snare",
-	"kick-2":    "drum-kick-lofi",
-	"hihat-2":   "drum-hihat",
-	"tom-2":     "drum-tom-low",
-	"clap-2":    "drum-clap",
-	"cowbell-2": "drum-cowbell",
-	// Variant set 3 (ghost / pedal / tight).
-	"snare-ghost": "drum-snare",
-	"kick-tight":  "drum-kick-tight",
-	"hihat-pedal": "drum-hihat",
-	"clap-tight":  "drum-clap",
-	// FM base + variants share the same recipe (only DefaultFX differs).
-	"fm-bass":     "fm-bass",
-	"fm-bell":     "fm-bell",
-	"fm-lead":     "fm-lead",
-	"fm-epiano":   "fm-epiano",
-	"fm-pluck":    "fm-pluck",
-	"fm-bass-1":   "fm-bass",
-	"fm-bell-1":   "fm-bell",
-	"fm-lead-1":   "fm-lead",
-	"fm-epiano-1": "fm-epiano",
-	"fm-pluck-1":  "fm-pluck",
-	// Unified modular synth voice.
-	"modular":     "synth-modular",
-	"modular-pad": "synth-modular-pad",
-	// Bowed strings family.
-	"violin":          "synth-modular-violin",
-	"violin-ensemble": "synth-modular-violin-ensemble",
-	"cello":           "synth-modular-cello",
-	"cello-warm":      "synth-modular-cello-warm",
-	"organ-church":    "synth-modular-organ-church",
-	"scifi-lead":      "synth-modular-scifi-lead",
-	// Plucked strings — guitars (Task 2).
-	"guitar-nylon":         "synth-modular-guitar-nylon",
-	"guitar-nylon-bright":  "synth-modular-guitar-nylon-bright",
-	"guitar-steel":         "synth-modular-guitar-steel",
-	"guitar-steel-warm":    "synth-modular-guitar-steel-warm",
-	"guitar-electric":      "synth-modular-guitar-electric",
-	"harp":                 "synth-modular-harp",
-	"guitar-electric-neck": "synth-modular-guitar-electric-neck",
-	// Keys — piano (Task 3).
-	"piano-grand": "synth-modular-piano-grand",
-	"piano-felt":  "synth-modular-piano-felt",
-	// Woodwind (Task 4).
-	"flute":         "synth-modular-flute",
-	"flute-breathy": "synth-modular-flute-breathy",
-	"oboe":          "synth-modular-oboe",
-	"oboe-full":     "synth-modular-oboe-full",
-	// Brass (Task 5).
-	"trumpet":          "synth-modular-trumpet",
-	"trumpet-mellow":   "synth-modular-trumpet-mellow",
-	"french-horn":      "synth-modular-french-horn",
-	"french-horn-loud": "synth-modular-french-horn-loud",
-	// Bass guitar (renamed from synth-bass) + synth bass family.
-	"bass-guitar": "synth-modular-bass-guitar",
-	"bass-acid":   "synth-modular-bass-acid",
-	"bass-reese":  "synth-modular-bass-reese",
-	"bass-fm":     "synth-modular-bass-fm",
-	"bass-808":    "synth-modular-bass-808",
-	// Modal conga (Task 7).
-	"conga":       "synth-modular-conga",
-	"conga-open":  "synth-modular-conga-open",
-	"conga-tumba": "synth-modular-conga-tumba",
-	// Masterpiece template set — three new instruments.
-	"organ": "synth-modular-organ",
-	"sax":   "synth-modular-sax",
-	// Configurable KICK stage instruments.
-	"dnb-kick":      "synth-modular-kick-dnb",
-	"kick-electro":  "synth-modular-kick-electro",
-	"kick-808":      "synth-modular-kick-808",
-	"kick-acoustic": "synth-modular-kick-acoustic",
-	"kick-punchy":   "synth-modular-kick-punchy",
-}
+var builtinInstrumentRecipeBindings = func() map[string]string {
+	m := map[string]string{
+		// Core 6 drums.
+		"snare":   "drum-snare",
+		"kick":    "drum-kick",
+		"hihat":   "drum-hihat",
+		"clap":    "drum-clap",
+		"tom":     "drum-tom",
+		"cowbell": "drum-cowbell",
+		// New distinct drum instruments.
+		"rimshot":   "drum-snare-rimshot",
+		"sidestick": "drum-snare-sidestick",
+		"kick-deep": "drum-kick-deep",
+		"shaker":    "drum-shaker",
+		"ride":      "drum-ride",
+		"crash":     "drum-crash",
+		"sub-bass":  "drum-sub-bass",
+		// Variant set 1 (electronic/tight) — bound to the actual base renderer used.
+		"snare-1":    "drum-snare-rimshot",
+		"kick-1":     "drum-kick-punchy",
+		"hihat-1":    "drum-open-hihat",
+		"tom-1":      "drum-tom-high",
+		"clap-1":     "drum-clap",
+		"cowbell-1":  "drum-cowbell",
+		"sub-bass-1": "drum-sub-bass",
+		// Variant set 2 (lo-fi/dark).
+		"snare-2":   "drum-snare",
+		"kick-2":    "drum-kick-lofi",
+		"hihat-2":   "drum-hihat",
+		"tom-2":     "drum-tom-low",
+		"clap-2":    "drum-clap",
+		"cowbell-2": "drum-cowbell",
+		// Variant set 3 (ghost / pedal / tight).
+		"snare-ghost": "drum-snare",
+		"kick-tight":  "drum-kick-tight",
+		"hihat-pedal": "drum-hihat",
+		"clap-tight":  "drum-clap",
+		// FM base + variants share the same recipe (only DefaultFX differs).
+		"fm-bass":     "fm-bass",
+		"fm-bell":     "fm-bell",
+		"fm-lead":     "fm-lead",
+		"fm-epiano":   "fm-epiano",
+		"fm-pluck":    "fm-pluck",
+		"fm-bass-1":   "fm-bass",
+		"fm-bell-1":   "fm-bell",
+		"fm-lead-1":   "fm-lead",
+		"fm-epiano-1": "fm-epiano",
+		"fm-pluck-1":  "fm-pluck",
+		// Unified modular synth voice.
+		"modular": "synth-modular",
+	}
+	// The configurable-KICK-stage bindings are CONFIG-FIRST: merged in from the
+	// single declarative table in modular_instruments.go.
+	for k, v := range modularTableBindings() {
+		m[k] = v
+	}
+	return m
+}()
 
 // factoryRecipeForInstrument returns the shipped SynthRecipe id for a built-in
 // instrument id, straight from builtinInstrumentRecipeBindings. Unlike

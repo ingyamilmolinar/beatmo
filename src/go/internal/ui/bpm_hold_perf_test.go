@@ -27,7 +27,7 @@ func TestBPMHoldUpdateLatency(t *testing.T) {
 			close(block)
 		}
 	})
-	prevSetBPM := audio.SetBPMFunc
+	prevSetBPM := audio.BPMFuncForTest()
 	audio.SetBPMFuncForTest(func(int) { <-block })
 	defer func() { audio.SetBPMFuncForTest(prevSetBPM) }()
 

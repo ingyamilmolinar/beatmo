@@ -394,11 +394,11 @@ func TestSubdiv_SetPropsRebuildWhileOpen(t *testing.T) {
 	}
 }
 
-// TestSubdivRowAdvancesPressAnimAfterRefactor verifies that after routing
-// drawSubdivRow through drawMenuRow, successive Draw calls advance the button's
-// press animation (drawMenuRow calls btn.Draw → AdvancePressAnim). Before the
-// refactor the old flat path never called btn.Draw, so pressDepth never moved.
-func TestSubdivRowAdvancesPressAnimAfterRefactor(t *testing.T) {
+// TestSubdivRowButtonsPersistAcrossFrames verifies the subdiv rows keep the
+// SAME *Button instances across Draw calls so input state stays coherent.
+// Menu rows are flat (no keycap press animation — see
+// TestDrawMenuRowIsFlatNoKeycap), so only pointer persistence is asserted.
+func TestSubdivRowButtonsPersistAcrossFrames(t *testing.T) {
 	comp := NewSubdivMenuComponent()
 	comp.SetScreenBounds(image.Rect(0, 0, 200, 400))
 	comp.SetProps(SubdivMenuProps{
@@ -414,18 +414,10 @@ func TestSubdivRowAdvancesPressAnimAfterRefactor(t *testing.T) {
 		t.Fatal("no subdiv buttons built")
 	}
 	b := comp.buttons[0]
-	b.pressTarget = 1
-	start := b.pressDepth
 	for i := 0; i < 5; i++ {
 		comp.Draw(dst)
 	}
-	// Persistence: the same *Button must survive across frames (animation state
-	// lives on it). A separate assertion from pressDepth so a failing run
-	// distinguishes "button recreated" from "animation didn't advance".
 	if comp.buttons[0] != b {
-		t.Fatal("subdiv button was recreated across frames; press-animation state would be lost")
-	}
-	if b.pressDepth <= start {
-		t.Fatalf("subdiv row did not animate after drawMenuRow refactor: %v <= %v", b.pressDepth, start)
+		t.Fatal("subdiv button was recreated across frames; input state would be lost")
 	}
 }

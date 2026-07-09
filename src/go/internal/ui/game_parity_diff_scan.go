@@ -479,7 +479,7 @@ func (g *Game) parityScan(reason string) {
 					// Avoid racey false-positives: if the sequencer just
 					// recorded the decision but hasn't yet logged the audio
 					// event into parityAudio, allow a small grace window.
-					if time.Since(dec.RecordedAt) < 120*time.Millisecond {
+					if parityRecordNow().Sub(dec.RecordedAt) < 120*time.Millisecond {
 						continue
 					}
 					g.parityReport(mismatchEntry{
@@ -503,46 +503,7 @@ func (g *Game) parityScan(reason string) {
 			if abs < audioFloor {
 				continue
 			}
-			if inWindow {
-				if dec, ok2 := decRow[abs]; ok2 {
-					if !dec.Missing && !rowMuted && !soloGated {
-						// Use dec.Visible (view truth) for seq_vs_view comparison,
-						// not dec.Audible (audio truth). Mute gates make nodes
-						// inaudible but still visible in the UI.
-						//
-						// The `abs == seqNextIdxs[row]-1` clause is the
-						// just-scheduled-beat grace: that beat's slate will be
-						// rendered on the next refresh, so a visible-decision /
-						// not-yet-slated disagreement there is a one-frame
-						// pipeline lag, not a desync. This grace now holds in
-						// EVERY mode (including fatal) — previously a leading
-						// `fatalNow ||` bypassed it exactly in the panic mode,
-						// crashing on the benign lag.
-						if !dec.Visible || slate || row < 0 || row >= len(g.seqNextIdxs) || abs != g.seqNextIdxs[row]-1 {
-							if dec.Visible != slate {
-								g.parityReport(mismatchEntry{
-									Row:       row,
-									Abs:       abs,
-									Kind:      "seq_vs_view",
-									NodeType:  dec.NodeType,
-									Scheduled: dec.Visible,
-									Slate:     slate,
-									Expected:  dec.Visible,
-									Actual:    slate,
-									Source:    reason,
-									Offset:    rowViewOffset,
-									Length:    rowViewLength,
-									InWindow:  true,
-									RowMuted:  rowMuted,
-									AnySolo:   anySolo,
-									Missing:   dec.Missing,
-									Detail:    slateDetail,
-								})
-							}
-						}
-					}
-				}
-			}
+			g.parityCheckSeqVsView(row, abs, decRow, slate, inWindow, rowMuted, soloGated, anySolo, reason, slateDetail, rowViewOffset, rowViewLength)
 			if hasAudio && !audioExpected {
 				g.parityReport(mismatchEntry{
 					Row:      row,
@@ -574,78 +535,7 @@ func (g *Game) parityScan(reason string) {
 					When:     ev.When,
 				})
 			}
-			if hasAudio && inWindow {
-				skip := false
-				if !g.rowIsAudible(row) {
-					skip = true
-				}
-				// Beats the UI playhead has already advanced past are not
-				// highlight-parity violations — applySequencerHighlight (and
-				// the syncUIToTime catch-up / seek paths) set
-				// nextBeatIdxs[row] = abs+1 when they process beat abs, and
-				// the highlight then expires by design (highlightedBeats
-				// entries carry a frame deadline). Comparing a recorded audio
-				// event against a naturally-expired highlight is a false
-				// positive; this can happen even at abs == audioFloor (the
-				// "current" beat per the global wall-clock clamp) when the
-				// beat outlasts the highlight window. A genuine violation —
-				// audio fired but the UI never highlighted the beat — leaves
-				// nextBeatIdxs[row] <= abs and is still reported below.
-				if !skip && row < len(g.nextBeatIdxs) && g.nextBeatIdxs[row] > abs {
-					skip = true
-				}
-				// Freshly-recorded audio events get a grace window before the
-				// highlight is required: the sequencer goroutine records the
-				// event and emits the matching highlight to hlCh, but the UI
-				// only applies it on the next Update drain. A scan landing in
-				// that gap is a pipeline-latency artifact, not a violation —
-				// mirrors the audio_missing RecordedAt grace above. The
-				// When-now > 0.5 future skip below does not cover this:
-				// tight-lead scheduling (fast-forward drives, small lookahead)
-				// records When ≈ now.
-				if !skip && time.Since(ev.RecordedAt) < 120*time.Millisecond {
-					skip = true
-				}
-				now := audio.Now()
-				if !skip && ev.When > 0 {
-					if now > 0 && ev.When-now > 0.5 {
-						// Scheduled sufficiently in the future; allow highlight to be applied closer to playback.
-						skip = true
-					}
-					if now == 0 {
-						// Audio clock not initialized yet; defer highlight parity until it is.
-						skip = true
-					}
-				}
-				// A highlight the sequencer dropped (hlCh full under load) is
-				// never painted by the UI, so "audio fired but no highlight" is
-				// an expected cosmetic loss, not an audio/UI desync. Exempt it.
-				if !skip && g.highlightWasDropped(row, abs) {
-					skip = true
-				}
-				if !skip {
-					key := makeBeatKey(row, abs)
-					g.highlightMu.RLock()
-					hlUntil, okHL := g.highlightedBeats[key]
-					g.highlightMu.RUnlock()
-					on := okHL && hlUntil > g.frame
-					if !on {
-						g.parityReport(mismatchEntry{
-							Row:      row,
-							Abs:      abs,
-							Kind:     "highlight_vs_audio",
-							Expected: true,
-							Actual:   false,
-							NodeType: typ,
-							Source:   reason,
-							Offset:   rowViewOffset,
-							Length:   rowViewLength,
-							InWindow: true,
-							When:     ev.When,
-						})
-					}
-				}
-			}
+			g.parityCheckHighlightVsAudio(row, abs, typ, ev, hasAudio, inWindow, reason, rowViewOffset, rowViewLength)
 			if hasAudio {
 				if dec, ok2 := decRow[abs]; !ok2 || !dec.Audible {
 					g.parityReport(mismatchEntry{
@@ -691,4 +581,128 @@ func (g *Game) parityPruneAroundPlayhead() {
 		audioStart = 0
 	}
 	g.parityPrune(audioStart)
+}
+
+// parityCheckSeqVsView reports a seq_vs_view mismatch when the sequencer's
+// view-truth decision for (row, abs) disagrees with the rendered slate. It is
+// the extracted body of the innermost in-window check in parityScan; the
+// guard-clause early returns are the exact negation of the original nested
+// conditions, so behaviour is unchanged.
+func (g *Game) parityCheckSeqVsView(row, abs int, decRow map[int]paritySeqDecision, slate, inWindow, rowMuted, soloGated, anySolo bool, reason, slateDetail string, rowViewOffset, rowViewLength int) {
+	if !inWindow {
+		return
+	}
+	dec, ok := decRow[abs]
+	if !ok {
+		return
+	}
+	// Use dec.Visible (view truth) for seq_vs_view comparison, not dec.Audible
+	// (audio truth). Mute gates make nodes inaudible but still visible in the UI.
+	if dec.Missing || rowMuted || soloGated {
+		return
+	}
+	// The `abs == seqNextIdxs[row]-1` clause is the just-scheduled-beat grace:
+	// that beat's slate will be rendered on the next refresh, so a
+	// visible-decision / not-yet-slated disagreement there is a one-frame
+	// pipeline lag, not a desync. This grace holds in EVERY mode (including
+	// fatal) — previously a leading `fatalNow ||` bypassed it exactly in the
+	// panic mode, crashing on the benign lag.
+	if dec.Visible && !slate && row >= 0 && row < len(g.seqNextIdxs) && abs == g.seqNextIdxs[row]-1 {
+		return
+	}
+	if dec.Visible == slate {
+		return
+	}
+	g.parityReport(mismatchEntry{
+		Row:       row,
+		Abs:       abs,
+		Kind:      "seq_vs_view",
+		NodeType:  dec.NodeType,
+		Scheduled: dec.Visible,
+		Slate:     slate,
+		Expected:  dec.Visible,
+		Actual:    slate,
+		Source:    reason,
+		Offset:    rowViewOffset,
+		Length:    rowViewLength,
+		InWindow:  true,
+		RowMuted:  rowMuted,
+		AnySolo:   anySolo,
+		Missing:   dec.Missing,
+		Detail:    slateDetail,
+	})
+}
+
+// parityCheckHighlightVsAudio reports a highlight_vs_audio mismatch when a
+// recorded audio event at (row, abs) has no live UI highlight. It is the
+// extracted body of the `hasAudio && inWindow` highlight block in parityScan;
+// each skip condition becomes a guard-clause early return, preserving the
+// original control flow exactly.
+func (g *Game) parityCheckHighlightVsAudio(row, abs int, typ model.NodeType, ev parityAudioEvent, hasAudio, inWindow bool, reason string, rowViewOffset, rowViewLength int) {
+	if !hasAudio || !inWindow {
+		return
+	}
+	if !g.rowIsAudible(row) {
+		return
+	}
+	// Beats the UI playhead has already advanced past are not highlight-parity
+	// violations — applySequencerHighlight (and the syncUIToTime catch-up / seek
+	// paths) set nextBeatIdxs[row] = abs+1 when they process beat abs, and the
+	// highlight then expires by design (highlightedBeats entries carry a frame
+	// deadline). Comparing a recorded audio event against a naturally-expired
+	// highlight is a false positive; this can happen even at abs == audioFloor
+	// (the "current" beat per the global wall-clock clamp) when the beat
+	// outlasts the highlight window. A genuine violation — audio fired but the
+	// UI never highlighted the beat — leaves nextBeatIdxs[row] <= abs.
+	if row < len(g.nextBeatIdxs) && g.nextBeatIdxs[row] > abs {
+		return
+	}
+	// Freshly-recorded audio events get a grace window before the highlight is
+	// required: the sequencer goroutine records the event and emits the matching
+	// highlight to hlCh, but the UI only applies it on the next Update drain. A
+	// scan landing in that gap is a pipeline-latency artifact, not a violation —
+	// mirrors the audio_missing RecordedAt grace. The When-now > 0.5 future skip
+	// below does not cover this: tight-lead scheduling (fast-forward drives,
+	// small lookahead) records When ≈ now.
+	if parityRecordNow().Sub(ev.RecordedAt) < 120*time.Millisecond {
+		return
+	}
+	now := audio.Now()
+	if ev.When > 0 {
+		// Scheduled sufficiently in the future; allow the highlight to be
+		// applied closer to playback.
+		if now > 0 && ev.When-now > 0.5 {
+			return
+		}
+		// Audio clock not initialized yet; defer highlight parity until it is.
+		if now == 0 {
+			return
+		}
+	}
+	// A highlight the sequencer dropped (hlCh full under load) is never painted
+	// by the UI, so "audio fired but no highlight" is an expected cosmetic loss,
+	// not an audio/UI desync. Exempt it.
+	if g.highlightWasDropped(row, abs) {
+		return
+	}
+	key := makeBeatKey(row, abs)
+	g.highlightMu.RLock()
+	hlUntil, okHL := g.highlightedBeats[key]
+	g.highlightMu.RUnlock()
+	if okHL && hlUntil > g.frame {
+		return
+	}
+	g.parityReport(mismatchEntry{
+		Row:      row,
+		Abs:      abs,
+		Kind:     "highlight_vs_audio",
+		Expected: true,
+		Actual:   false,
+		NodeType: typ,
+		Source:   reason,
+		Offset:   rowViewOffset,
+		Length:   rowViewLength,
+		InWindow: true,
+		When:     ev.When,
+	})
 }

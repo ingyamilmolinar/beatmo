@@ -422,6 +422,53 @@ func TestSustainedDragAfter500ms(t *testing.T) {
 	}
 }
 
+// TestLongPressNotFiredOnSlowDragAtTapBoundary is a regression guard for the
+// mobile "single-finger drag doesn't pan the camera" bug (touch_gestures.browser.test.js
+// Test 1, flaky under parallel-job CPU load). A single-finger drag over/near a node
+// on a throttled game loop can have the finger sitting exactly tapMaxMovePx from its
+// start at the instant the 500 ms long-press timer elapses. The instantaneous dx/dy
+// check alone (dx <= tapMaxMovePx) is satisfied at that boundary, so a spurious
+// long-press used to fire, open the quick-action popup, flip panOK false, and freeze
+// the pan for the rest of the gesture. The movedBeyondTap latch (set at >= tapMaxMovePx,
+// checked in Update BEFORE gesture detection) disqualifies the touch from long-press
+// once it has moved. Expect a drag, never a long-press.
+func TestLongPressNotFiredOnSlowDragAtTapBoundary(t *testing.T) {
+	ts := NewTouchState()
+	mock := newMockTouchState()
+
+	restore := SetTouchForTest(mock.TouchIDs, mock.TouchPosition)
+	defer restore()
+
+	// Touch down; StartX/StartY = (100,100).
+	mock.addTouch(1, 100, 100)
+	ts.Update()
+
+	// Simulate a slow drag that has been in contact past the long-press threshold.
+	if pt := ts.GetTouch(1); pt != nil {
+		pt.StartTime = time.Now().Add(-time.Duration(longPressThresholdMS+100) * time.Millisecond)
+	}
+
+	// Finger now sits EXACTLY tapMaxMovePx from the start — the worst-case boundary
+	// where the old instantaneous dx <= tapMaxMovePx check still passes.
+	mock.moveTouch(1, 100+tapMaxMovePx, 100)
+	gesture := ts.Update()
+
+	if gesture != nil && gesture.Kind == GestureLongPress {
+		t.Fatalf("slow drag at the tap boundary fired a long-press (would freeze camera pan); "+
+			"expected a drag. dx=%d, tapMaxMovePx=%d", tapMaxMovePx, tapMaxMovePx)
+	}
+	if gesture == nil || gesture.Kind != GestureSingleFingerDrag {
+		t.Fatalf("expected GestureSingleFingerDrag, got %v", gesture)
+	}
+
+	// The disqualification is sticky: even if a later frame reads the finger back
+	// within tapMaxMovePx of the start, no long-press may fire.
+	mock.moveTouch(1, 100+tapMaxMovePx-2, 100)
+	if g2 := ts.Update(); g2 != nil && g2.Kind == GestureLongPress {
+		t.Fatalf("long-press fired after finger returned within tap threshold; movedBeyondTap must latch")
+	}
+}
+
 // TestLongPressFiredResetOnTouchEnd verifies that the longPressFired flag
 // is properly reset when the touch ends, allowing the next touch to fire
 // long-press again.

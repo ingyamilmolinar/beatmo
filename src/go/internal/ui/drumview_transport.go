@@ -389,6 +389,14 @@ func (dv *DrumView) SetInstrument(id string) {
 	// Also invalidate the row controls cache so the label button text is redrawn.
 	dv.markRowControlsDirty()
 	dv.bgDirty = true
+	// Pre-warm the newly-selected instrument's voice cache so the first notes
+	// after the switch hit a warm cache instead of a cold per-pitch render
+	// during playback (the browser "click + laggy" on instrument switch). Only
+	// on an actual change, and off the hot path (browser: render worker;
+	// desktop: cheap inline render). See audio.WarmInstrument.
+	if oldID != id && id != "" {
+		audio.WarmInstrument(id, audio.DefaultWarmPitches)
+	}
 	dv.onRowInstrumentChanged(dv.selRow, oldID, id)
 }
 

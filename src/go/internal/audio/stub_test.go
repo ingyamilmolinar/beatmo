@@ -347,9 +347,9 @@ func TestSilenceProcessorBlockBuf(t *testing.T) {
 
 func TestStubSetBPMFunc(t *testing.T) {
 	var recorded int
-	origFunc := SetBPMFunc
-	SetBPMFunc = func(bpm int) { recorded = bpm }
-	t.Cleanup(func() { SetBPMFunc = origFunc })
+	origFunc := BPMFuncForTest()
+	SetBPMFuncForTest(func(bpm int) { recorded = bpm })
+	t.Cleanup(func() { SetBPMFuncForTest(origFunc) })
 
 	SetBPM(140)
 	if recorded != 140 {

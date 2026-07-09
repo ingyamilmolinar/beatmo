@@ -90,6 +90,17 @@ func (g *Game) bumpParityGen(reason string, opts structuralMutationOptions) {
 		opts.Grace = parityMutationGraceDefault
 	}
 	g.parityGen.Add(1)
+	// C1 fix (part b): clear any session-monotonic timing-gate peak
+	// (seqFireMax/maxLag/bridgeMax/emitAbsMax) latched by an edit-induced
+	// scheduling stall — pre-edit, or slipping through during the edit
+	// before the grace-window observation guards apply. Without this the
+	// gen bump + grace window below only suppress the CHECK, not the
+	// latched statistic, and evalTimingStage's absMax dropout check (fires
+	// regardless of MinSamples) can panic the first parityTimingCheck after
+	// grace expires even though the edit itself was benign. Every
+	// structural mutation routes through this method, so every edit clears
+	// the peaks. See schedule_metrics.go's ResetPeaks doc and design §3.4.
+	g.schedMetrics.ResetPeaks()
 	if opts.Grace > 0 {
 		deadline := time.Now().Add(opts.Grace).UnixNano()
 		// Extend, never shrink — back-to-back mutations should leave the

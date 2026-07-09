@@ -160,6 +160,20 @@
         if (e.key === 'Enter') {
           charBuf.push('\n');
           e.preventDefault();
+        } else if (e.key === 'Backspace') {
+          // Buffer Backspace from the KEYDOWN event, not `beforeinput`.
+          // `beforeinput(deleteContentBackward)` does NOT fire on an EMPTY proxy
+          // input in WebKit/Safari — the proxy value is kept empty (the app draws
+          // its own text), so hardware-keyboard Backspace was silently dropped on
+          // Safari ("click, see cursor, backspace does nothing"). keydown fires
+          // for Backspace on every engine and is buffered here, so even a very
+          // short press is never missed (Ebiten's per-frame isKeyPressed would).
+          // preventDefault stops the browser's own delete + the beforeinput it
+          // would trigger, so we don't double-count. Mobile soft keyboards that
+          // report Backspace as key='Unidentified' still fall through to the
+          // beforeinput handler above.
+          charBuf.push('\b');
+          e.preventDefault();
         } else if (e.key === 'Escape') {
           // The hidden proxy holds keyboard focus, so the canvas/ebiten never
           // sees this Esc. Forward it to the universal Esc handler (cancel +
@@ -501,6 +515,24 @@
       } else {
         attachMobileInputListeners();
       }
+    })();
+  </script>
+  <script>
+    // Pointer-type tracker: records whether the MOST RECENT pointer interaction
+    // was a touch/pen or a mouse. This is the correct discriminator for "should a
+    // text field use the native <input> overlay (created on touchend) or the
+    // buffered soft-keyboard proxy?" — NOT navigator.maxTouchPoints (device
+    // CAPABILITY). A touch-capable laptop / DevTools device-mode used with a MOUSE
+    // reports maxTouchPoints>0 yet fires no touchend, so the native <input> is
+    // never created and the editor was left inert ("mobile layout: click, see
+    // cursor, no key works"). pointerdown carries pointerType on every engine.
+    (function() {
+      let lastType = 'mouse';
+      const rec = function(e) { if (e && e.pointerType) lastType = e.pointerType; };
+      window.addEventListener('pointerdown', rec, { capture: true, passive: true });
+      // Fallback for the (rare) path that delivers touch without pointer events.
+      window.addEventListener('touchstart', function() { lastType = 'touch'; }, { capture: true, passive: true });
+      window._lastPointerWasTouch = function() { return lastType === 'touch' || lastType === 'pen'; };
     })();
   </script>
   <script>

@@ -136,6 +136,35 @@ jobs:
           path: coverage/go.out
           retention-days: 30
 
+  test-go-race:
+    name: Test Go (race)
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: src/go/go.sum
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential pkg-config libasound2-dev libgl1-mesa-dev \
+            xorg-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxi-dev libxxf86vm-dev
+      - name: Build C library
+        run: make build/libdrums.a
+      # Race detector over the concurrency-relevant packages (the engine run
+      # loop + scheduler, async pools, hooks bus, recording lifecycle, analyzer
+      # SPSC ring, event sinks/loggers, scope-export service). Excludes giant
+      # suites and single-threaded numeric optimizers — see the test-race
+      # target in the Makefile for the exclusion rationale. -race is native
+      # only, so this does not cover the js/wasm build.
+      - name: Run Go tests with -race
+        run: make test-race
+
   test-browser-matrix:
     name: Prepare browser test matrix
     needs: [build]

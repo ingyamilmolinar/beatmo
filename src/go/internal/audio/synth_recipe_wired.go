@@ -119,11 +119,17 @@ var recipeExtraParams = map[string][]ParamDef{
 
 	// Snare family: semantic union (tone2/noise-tune/decays/mixes/attack);
 	// each variant exposes only the stages it synthesizes. NaN = omitted.
+	// FAT-BOTTOM snare — tuned to 579499__yenus__fat-snare-bottom-ramon (a low,
+	// body-heavy, tonal snare with a long wire ring; measured bodyFund≈194 Hz,
+	// tone/noise≈0.55, fast body thump ~44 ms + long buzz ~144 ms, centroid~4 kHz).
+	// vs the old generic snare (too high/noisy/bright with the decays inverted):
+	// lower fundamental + tone2, MORE tone + LESS noise, a FASTER body decay + a
+	// SLOWER (longer) buzz/tail, and a darker noise tune.
 	"drum-snare": snareFamilyParamDefs(snareFamilySpec{
 		wave:        0,
-		fundamental: 200, tone2: 330, tune: 1,
-		toneDecay: 28, noiseDecay: 12, tailDecay: 18,
-		toneMix: 0.40, noiseMix: 1.1, wireMix: 0.9, attack: 0.3, attackMax: 3,
+		fundamental: 186, tone2: 280, tune: 0.55,
+		toneDecay: 46, noiseDecay: 7, tailDecay: 10,
+		toneMix: 1.12, noiseMix: 0.56, wireMix: 0.8, attack: 0.5, attackMax: 3,
 	}),
 	"drum-snare-rimshot": snareFamilyParamDefs(snareFamilySpec{
 		wave:        0,

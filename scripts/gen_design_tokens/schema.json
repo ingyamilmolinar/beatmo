@@ -180,6 +180,22 @@
         "additionalProperties": false
       }
     },
+    "densities": {
+      "description": "Per-density dimensional fields. Orthogonal to profileOverrides — density carries control-sizing decisions (finger-vs-mouse) decoupled from screen-class (viewport-narrow-vs-wide). Selected at runtime via Profile().Density(); defaults to Comfortable on desktop and Spacious on mobile. Each density block must set every field declared in any sibling density.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "minProperties": 1,
+        "patternProperties": {
+          "^[a-z][a-zA-Z0-9]*$": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "instrumentSwatches": {
       "description": "Curated suggestion palette for the per-row instrument color picker. Beatmo-only extension (not part of the canonical Stitch schema). Each entry is a {name, hex} pair; users can still pick arbitrary hex via the color wheel.",
       "type": "array",
@@ -193,6 +209,12 @@
           "hex":  { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$" }
         }
       }
+    },
+    "instrumentSequence": {
+      "description": "Canonical ordered instrument color series. Each entry is the NAME of a swatch in instrumentSwatches:. Row N of any demo circuit or genre template takes instrumentSequence[N % len]. Beatmo-only extension.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
     },
     "instrumentDefaults": {
       "description": "Per-built-in-instrument default color. Consumed by the chrome runtime: rows referencing one of these IDs inherit the hex as their cell tint, edge tint, and rack swatch.",

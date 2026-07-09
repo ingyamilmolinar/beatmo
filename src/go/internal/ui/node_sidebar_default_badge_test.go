@@ -37,7 +37,7 @@ func TestSectionBadgeShowsDefaultValues(t *testing.T) {
 		section string
 		want    string
 	}{
-		{"vol", "100%"},
+		{"vol", "0 dB"},
 		{"pit", "+0"},
 		{"dur", "1.00x"},
 		{"logic", "None"},
@@ -80,7 +80,7 @@ func TestSectionBadgeNonDefaultValuesUnchanged(t *testing.T) {
 		section string
 		want    string
 	}{
-		{"vol", "75%"},
+		{"vol", "-2 dB"}, // 20*log10(0.75) = -2.50 -> -2
 		{"pit", "+3"},
 		{"dur", "1.50x"},
 		{"logic", "P 50%"},

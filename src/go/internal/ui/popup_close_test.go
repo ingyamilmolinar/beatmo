@@ -366,7 +366,7 @@ func TestEQChannelDropdownEscClose(t *testing.T) {
 	// Open via portal path so tree's ESC handler can close it.
 	dv.eqPanelZone.stickyBar.ChannelBtn().OnClick()
 
-	if !dv.audioTree.Portal().Has("eq-channel-dropdown") {
+	if !dv.portal().Has("eq-channel-dropdown") {
 		t.Fatalf("eq-channel-dropdown portal not open")
 	}
 
@@ -382,7 +382,7 @@ func TestEQChannelDropdownEscClose(t *testing.T) {
 
 	dv.Update()
 
-	if dv.audioTree.Portal().Has("eq-channel-dropdown") {
+	if dv.portal().Has("eq-channel-dropdown") {
 		t.Fatalf("EQ channel dropdown portal still open after ESC")
 	}
 }

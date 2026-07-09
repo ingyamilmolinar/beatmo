@@ -47,9 +47,11 @@ func TestActiveInstrumentHasSynth(t *testing.T) {
 // for a synth instrument.
 func TestSynthTabPillDisabledForWavInstrument(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 3)
-	dv.eqPanelZone.SetActiveChannel("main")
 	idx := synthTabIndexForTest(t)
 
+	// Select the concrete instrument (not Master, which independently disables
+	// the pill) so this test isolates the WAV-vs-synth gating.
+	dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 	if pill := dv.eqPanelZone.stickyBar.TabBtn(idx); pill == nil || pill.Disabled {
 		t.Fatalf("synth pill should be enabled for a synth instrument")
@@ -59,6 +61,7 @@ func TestSynthTabPillDisabledForWavInstrument(t *testing.T) {
 	audio.BindInstrumentToRecipe("wav-sample-y", "")
 	t.Cleanup(func() { audio.ResetInstrumentParams("wav-sample-y") })
 
+	dv.eqPanelZone.SetActiveChannel("wav-sample-y")
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 	if pill := dv.eqPanelZone.stickyBar.TabBtn(idx); pill == nil || !pill.Disabled {
 		t.Fatalf("synth pill should be disabled for a WAV instrument")

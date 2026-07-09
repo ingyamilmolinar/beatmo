@@ -11,6 +11,6 @@ func PlayBatch(reqs []BatchParam) {
 		if r.HasWhen {
 			when = r.When
 		}
-		PlayParamsAt(r.ID, r.Vol, r.Pitch, r.Dur, when)
+		PlayParamsAt(r.ID, r.Vol, r.Pitch, r.Dur, when, r.Row, r.Abs)
 	}
 }

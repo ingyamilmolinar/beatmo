@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-func (g *Game) updateBeatInfos() {
+func (s *playbackSlate) updateBeatInfos() {
+	g := s.g
 	start := time.Now()
 	defer func() { g.logger.Debugf("[update_beat_infos] total=%v", time.Since(start)) }()
 
@@ -465,23 +465,40 @@ func (g *Game) updateBeatInfos() {
 				g.seqNextIdxs[row] = next
 			}
 		}
-		// Drop in-flight audio from the old paths (audioGen) AND advance the
-		// parity generation (+grace) so the scan's parityGen filter excludes any
-		// decision/audio recorded under the old paths. Skip the path-dirty /
-		// freeze-marker / buffer-clear side effects — updateBeatInfos owns
-		// paths-dirty itself, and the explicit wipe below is the hygiene step.
-		g.audioGen.Add(1)
+		// Drop in-flight audio from the old paths for the CHANGED rows only, via
+		// their per-row structural generation. Bumping the single GLOBAL audioGen
+		// here (as this used to) dropped already-scheduled beats on rows whose
+		// path did not change — those rows are not rewound/rescheduled, so the
+		// dropped beat never plays, producing an audible gap when placing/moving a
+		// node. A changed row's stale beats are still dropped (rowGen mismatch) and
+		// rescheduled by the seqNextIdxs rewind above. Transport Stop/Pause/seek
+		// keep using the global audioGen to drop everything.
+		//
+		// Also advance the parity generation (+grace) so the scan's parityGen
+		// filter excludes any decision/audio recorded under the old paths. Skip the
+		// path-dirty / freeze-marker / buffer-clear side effects — updateBeatInfos
+		// owns paths-dirty itself, and the explicit wipe below is the hygiene step.
+		for row, changed := range g.rowsPathChanged {
+			if changed {
+				g.bumpRowStructGen(row)
+			}
+		}
 		g.bumpParityGen("paths-changed", structuralMutationOptions{
 			SkipPathsDirty:     true,
 			SkipPathChangeMark: true,
 			SkipBufferClear:    true,
 		})
-		for row, changed := range g.rowsPathChanged {
-			if !changed || row < 0 || row >= len(g.drum.Rows) {
-				continue
-			}
-			audio.Stop(g.drum.Rows[row].Instrument)
-		}
+		// NOTE: we deliberately do NOT call audio.Stop(instrument) for the
+		// changed rows here. In-flight *scheduled* audio from the old paths is
+		// already dropped by the per-row structural generation bump above
+		// (bumpRowStructGen → audioLoop rowGen gate) and re-enqueued by the
+		// seqNextIdxs rewind. Calling audio.Stop additionally tears down the
+		// instrument's *already-ringing* voices (antiPop decay tails), which is
+		// wrong: the only audible effect of editing a node must be that that
+		// node's own future trigger changes — every voice already sounding keeps
+		// ringing. Transport Stop/Pause/seek still cut everything via the global
+		// audioGen path; a live graph edit must not. Pinned by
+		// node_edit_audio_preservation_test.go.
 		g.parityMu.Lock()
 		g.parityAudio = nil
 		g.parityAudioMaxIdx = nil
@@ -555,4 +572,14 @@ func (g *Game) updateBeatInfos() {
 		g.refreshDrumRow()
 		g.logger.Debugf("[update_beat_infos] refreshDrumRow elapsed=%v", time.Since(refreshStart))
 	}
+	// Warm upcoming melody voices off the audioLoop dispatch goroutine so the
+	// sequencer's PlayBatch hits a warm cache instead of cold-rendering inline
+	// (the overdue-panic root cause). Enumeration is cheap; render is offloaded.
+	if g.voicePrewarmer != nil {
+		g.voicePrewarmer.warmFromBeatInfos()
+	}
+}
+
+func (g *Game) updateBeatInfos() {
+	g.playbackSlate.updateBeatInfos()
 }

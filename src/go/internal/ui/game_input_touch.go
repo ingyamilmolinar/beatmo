@@ -138,6 +138,15 @@ func (g *Game) handleTapInGrid(x, y int) {
 		}
 	}
 
+	// Group badge hit: opens that group's menu instead of resolving to a
+	// node/empty-space tap. Checked at the top of the node/empty resolution
+	// so a tap on a floating badge never selects/adds a node beneath it.
+	if gid, ok := g.groupBadgeAt(x, y); ok {
+		g.sidebar.Close()
+		g.openGroupMenuForBadge(gid, x, y)
+		return
+	}
+
 	// Check if tapping on existing node
 	if n := g.nodeAtScreen(x, y); n != nil {
 		// Select node and open menu

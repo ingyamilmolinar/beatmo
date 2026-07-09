@@ -64,9 +64,9 @@ func TestMixerMultiVoiceSameInstrumentWithEQ(t *testing.T) {
 	const voiceSamples = 4096
 
 	// Schedule 3 overlapping kick voices all starting at sample 0.
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0)
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0)
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0)
+	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 
 	out := readMixerSamples(m, voiceSamples*2)
 
@@ -112,9 +112,9 @@ func TestMixerMultiInstrumentWithEQ(t *testing.T) {
 	}
 	const voiceSamples = 4096
 
-	m.Schedule("kick", newSineVoice(200, sampleRate, voiceSamples), 0)
-	m.Schedule("snare", newSineVoice(2000, sampleRate, voiceSamples), 0)
-	m.Schedule("hihat", newSineVoice(8000, sampleRate, voiceSamples), 0)
+	m.Schedule("kick", newSineVoice(200, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule("snare", newSineVoice(2000, sampleRate, voiceSamples), 0, -1, -1)
+	m.Schedule("hihat", newSineVoice(8000, sampleRate, voiceSamples), 0, -1, -1)
 
 	out := readMixerSamples(m, voiceSamples*2)
 
@@ -153,7 +153,7 @@ func TestMixerOutputCaptureMatchesWorkBuf(t *testing.T) {
 	const voiceSamples = 4096
 
 	StartOutputCapture()
-	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0)
+	m.Schedule("kick", newSineVoice(440, sampleRate, voiceSamples), 0, -1, -1)
 
 	// Read enough to consume the voice.
 	readMixerSamples(m, voiceSamples*2)

@@ -61,6 +61,33 @@ const measure = async (ms) => {
   await page.waitForTimeout(ms);
   return page.evaluate(() => (window.__frames ? Math.sqrt(window.__rmsAccum / window.__frames) : 0));
 };
+// A re-voice re-render runs on the synth WORKER thread. Under parallel CI load a
+// fresh render can outlast a single measure window, and while it is pending
+// processAudioEvent DROPS the hit (degraded, not dead — the whole point of this
+// test), so a fixed window can read EXACT ZERO even though the instrument DOES
+// recover a beat later. Poll short windows until audio returns (or the budget
+// runs out) so we assert "does it come back", not "did it come back within
+// exactly 1.5 s under contention". A genuine permanent-silence regression still
+// fails — it just takes the full budget to do so.
+//
+// `extra` (optional) is an additional predicate that must ALSO hold before we
+// return early. The forced-throw phase passes `() => fallbackLogs.length > 0`:
+// the native-fallback render (and its loud error log) runs async on the worker,
+// and audio can momentarily read above floor from the DECAYING TAIL of
+// pre-revoice hits BEFORE that fallback path logs — so exiting on audio alone
+// races the log and reads fallbackLogs=0. Gating the early return on the log
+// being present as well couples the exit to the fallback actually running. A
+// real regression still fails: no audio → `post > floor` fails; no fallback →
+// full budget elapses and the `fallbackLogs.length === 0` check fires.
+const measureUntil = async (floor, budgetMs, win = 500, extra = null) => {
+  let best = 0;
+  for (let waited = 0; waited < budgetMs; waited += win) {
+    const r = await measure(win);
+    if (r > best) best = r;
+    if (r > floor && (!extra || extra())) return r;
+  }
+  return best;
+};
 const RMS_MIN = 1e-4;
 
 try {
@@ -94,14 +121,14 @@ try {
   const base = await measure(1000);
   console.log(`[TEST] baseline (Native, soloed) rms=${base.toFixed(5)}`);
   if (!(base > RMS_MIN)) fail(`no audio at baseline rms=${base}`);
+  const floor = Math.max(RMS_MIN, base * 0.05);
 
   // ARM the forced re-voice render throw, THEN change the generator off Native.
   // Without the fallback this would permanently silence the instrument.
   await page.evaluate(() => { window.__forceRevoiceRenderThrow = true; });
   await page.evaluate((id) => setInstrumentParam(id, "gen_type", 2), inst); // Saw → re-voice
 
-  const post = await measure(2000);
-  const floor = Math.max(RMS_MIN, base * 0.05);
+  const post = await measureUntil(floor, 8000, 500, () => fallbackLogs.length > 0);
   console.log(`[TEST] after re-voice WITH forced render throw: rms=${post.toFixed(5)} floor=${floor.toFixed(5)} fallbackLogs=${fallbackLogs.length}`);
 
   if (!(post > floor)) {
@@ -114,7 +141,7 @@ try {
   // Disarm and confirm a clean re-voice still works (no permanent damage).
   await page.evaluate(() => { window.__forceRevoiceRenderThrow = false; });
   await page.evaluate((id) => setInstrumentParam(id, "gen_type", 6), inst); // Noise White
-  const recovered = await measure(1500);
+  const recovered = await measureUntil(floor, 8000);
   console.log(`[TEST] after disarming, clean re-voice rms=${recovered.toFixed(5)}`);
   if (!(recovered > floor)) fail(`instrument did not recover after disarming the forced throw (rms=${recovered.toFixed(6)})`);
 

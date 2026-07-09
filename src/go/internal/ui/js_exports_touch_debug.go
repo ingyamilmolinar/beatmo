@@ -7,17 +7,17 @@ import "syscall/js"
 func (g *Game) initJSTouchDebug() {
 	// setTouchDebug(enabled) -> nil
 	// Enables or disables touch event logging for debugging.
-	js.Global().Set("setTouchDebug", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setTouchDebug", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		SetTouchDebugEnabled(args[0].Bool())
+		SetTouchDebugEnabled(args.Bool(0))
 		return nil
 	}))
 
 	// touchDebugState() -> {count, touches: [{id, x, y}], lastGesture, lastPos, dpr, enabled}
 	// Returns the current touch debug state snapshot.
-	js.Global().Set("touchDebugState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("touchDebugState", jsFn(func(args jsArgs) any {
 		snap := GetTouchDebugSnapshot()
 		obj := js.Global().Get("Object").New()
 		obj.Set("count", snap.TouchCount)
@@ -48,7 +48,7 @@ func (g *Game) initJSTouchDebug() {
 
 	// touchEventLog() -> [{timestamp, kind, touchId, x, y}]
 	// Returns the last 50 touch events for debugging.
-	js.Global().Set("touchEventLog", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("touchEventLog", jsFn(func(args jsArgs) any {
 		events := GetTouchEventLog()
 		arr := js.Global().Get("Array").New(len(events))
 		for i, e := range events {
@@ -65,20 +65,20 @@ func (g *Game) initJSTouchDebug() {
 
 	// clearTouchEventLog() -> nil
 	// Clears the touch event log.
-	js.Global().Set("clearTouchEventLog", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("clearTouchEventLog", jsFn(func(args jsArgs) any {
 		ClearTouchEventLog()
 		return nil
 	}))
 
 	// getDevicePixelRatio() -> number
 	// Returns the current device pixel ratio.
-	js.Global().Set("getDevicePixelRatio", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getDevicePixelRatio", jsFn(func(args jsArgs) any {
 		return js.ValueOf(getDevicePixelRatio())
 	}))
 
 	// getTouchScreenSize() -> {width, height}
 	// Returns the current screen size used for touch calculations.
-	js.Global().Set("getTouchScreenSize", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getTouchScreenSize", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		obj.Set("width", touchScreenWidth)
 		// touchScreenHeight is not tracked separately, use 0
@@ -88,7 +88,7 @@ func (g *Game) initJSTouchDebug() {
 
 	// isSmallScreenMode() -> bool
 	// Returns whether the UI is using touch-friendly sizing.
-	js.Global().Set("isSmallScreenMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("isSmallScreenMode", jsFn(func(args jsArgs) any {
 		return js.ValueOf(Profile().IsMobile())
 	}))
 

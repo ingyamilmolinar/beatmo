@@ -37,6 +37,7 @@ const (
 	SubjectOverflowMenu   Subject = "overflow_menu"
 	SubjectInstrumentMenu Subject = "instrument_menu"
 	SubjectSynthWheel     Subject = "synth_wheel"
+	SubjectGroupMenu      Subject = "group_menu"
 )
 
 // AllSubjects returns every named subject in declaration order. Used by
@@ -62,6 +63,7 @@ func AllSubjects() []Subject {
 		SubjectOverflowMenu,
 		SubjectInstrumentMenu,
 		SubjectSynthWheel,
+		SubjectGroupMenu,
 	}
 }
 
@@ -179,6 +181,11 @@ func (g *Game) SubjectRect(s Subject) (image.Rectangle, bool) {
 			return image.Rectangle{}, false
 		}
 		return clamp(dv.SynthWheelPopupRect())
+	case SubjectGroupMenu:
+		if g.groupMenu == nil || !g.groupMenu.IsOpen() {
+			return image.Rectangle{}, false
+		}
+		return clamp(g.groupMenu.InputBounds())
 	}
 	return image.Rectangle{}, false
 }

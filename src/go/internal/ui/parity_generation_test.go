@@ -71,7 +71,7 @@ func TestParityGenStampedOnRecord(t *testing.T) {
 	wantGen := g.parityGen.Load()
 
 	g.recordSeqDecision(0, 100, true, model.NodeTypeRegular, false)
-	g.recordParityAudio(0, 100, 0.5, "kick", 1, 0, 1, g.audioGen.Load())
+	g.recordParityAudio(0, 100, 0.5, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 
 	g.parityMu.Lock()
 	dec := g.paritySeqDecisions[0][100]

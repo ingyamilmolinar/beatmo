@@ -41,11 +41,11 @@ func synthWidgetRectsJS(g *Game) interface{} {
 
 func (g *Game) initJSEqWidgets() {
 	// setEQView(mode) – "wave" or "eq" to switch bottom panel visualization.
-	js.Global().Set("setEQView", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) == 0 {
+	js.Global().Set("setEQView", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() == 0 {
 			return nil
 		}
-		mode := strings.ToLower(args[0].String())
+		mode := strings.ToLower(args.Str(0))
 		g.drum.eqWaveformMode = mode != "eq"
 		if g.drum.eqPanelZone != nil {
 			if mode != "eq" {
@@ -59,14 +59,14 @@ func (g *Game) initJSEqWidgets() {
 
 	// setEQTab(name) – switch the EQ panel's tab by name. Accepts "eq",
 	// "wave", "spectrum", "meters", "scope", "synth". Used for browser-test automation.
-	js.Global().Set("setEQTab", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.eqPanelZone == nil || len(args) == 0 {
+	js.Global().Set("setEQTab", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.eqPanelZone == nil || args.Len() == 0 {
 			return nil
 		}
 		// Accept both the legacy slugs (meters/scope) and the canonical UI slugs
 		// (levels/chain) so agent tests can switch by the user-facing tab name.
 		// "sampler" is now switchable too.
-		switch strings.ToLower(args[0].String()) {
+		switch strings.ToLower(args.Str(0)) {
 		case "eq":
 			g.drum.eqPanelZone.SetActiveTab(TabEQ)
 		case "wave":
@@ -92,11 +92,11 @@ func (g *Game) initJSEqWidgets() {
 	// success; false if rejected (e.g. while playing, or n is not a valid
 	// divisor step). Keeps the subdiv button label + timeline units in sync so
 	// screenshots and the timeline match, exactly like the menu item would.
-	js.Global().Set("setSubdivisions", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("setSubdivisions", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return false
 		}
-		n := args[0].Int()
+		n := args.Int(0)
 		if err := g.SetSubdivisions(n); err != nil {
 			return false
 		}
@@ -114,11 +114,11 @@ func (g *Game) initJSEqWidgets() {
 	// dv.setViewMode, which also syncs the audio sub-tab and the segment
 	// highlight. On desktop a non-"pads" slug shows the corresponding audio tab;
 	// "pads" is the default Rows view. Returns true when the slug is recognized.
-	js.Global().Set("setViewMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) == 0 {
+	js.Global().Set("setViewMode", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() == 0 {
 			return false
 		}
-		if m, ok := viewModeFromSlug(strings.ToLower(args[0].String())); ok {
+		if m, ok := viewModeFromSlug(strings.ToLower(args.Str(0))); ok {
 			g.drum.setViewMode(m)
 			return true
 		}
@@ -130,13 +130,13 @@ func (g *Game) initJSEqWidgets() {
 	// canvas-relative. Chip-strip redesign: only the SELECTED stage's knobs
 	// have non-empty rects — call selectSynthSection(label) first to open
 	// the stage that owns the knob you want to drive.
-	js.Global().Set("synthKnobRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthKnobRects", jsFn(func(args jsArgs) any {
 		return synthWidgetRectsJS(g)
 	}))
 
 	// synthChipRects() – the pipeline chip strip model: one {name, x, y, w,
 	// h, enabled, selected} per stage chip, in audio-pipeline order.
-	js.Global().Set("synthChipRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthChipRects", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.Global().Get("Array").New()
 		}
@@ -160,18 +160,18 @@ func (g *Game) initJSEqWidgets() {
 	// pane by chip label ("OSC", "ENVELOPE", …). Returns true when the
 	// stage exists for the active instrument. Browser tests use this before
 	// locating a knob via synthKnobRects.
-	js.Global().Set("selectSynthSection", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) == 0 {
+	js.Global().Set("selectSynthSection", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() == 0 {
 			return false
 		}
-		return g.drum.SelectSynthSectionByLabel(args[0].String())
+		return g.drum.SelectSynthSectionByLabel(args.Str(0))
 	}))
 
 	// synthFooterButtonRects() – returns the Save / Save As / Reset
 	// footer button rects keyed by sentinel tag, so a browser test can
 	// dispatch a click at the visible centre of each. Empty fields
 	// indicate the button is hidden (e.g. very narrow panel).
-	js.Global().Set("synthFooterButtonRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthFooterButtonRects", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil {
 			return obj
@@ -207,7 +207,7 @@ func (g *Game) initJSEqWidgets() {
 	// otherwise an object {value, rect, okRect, cancelRect}. The
 	// browser test reads this to know whether the dialog is visible
 	// and to click OK / Cancel without depending on internal layout.
-	js.Global().Set("synthSaveAsDialogState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthSaveAsDialogState", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.Null()
 		}
@@ -234,21 +234,21 @@ func (g *Game) initJSEqWidgets() {
 	// synthSaveAsDialogSetValue(s) – injects a typed name without
 	// driving the soft-keyboard plumbing. Browser tests use this so
 	// the test stays decoupled from input-method specifics.
-	js.Global().Set("synthSaveAsDialogSetValue", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("synthSaveAsDialogSetValue", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
 		dlg := g.drum.SynthSaveAsDialog()
 		if dlg == nil {
 			return nil
 		}
-		dlg.SetValue(args[0].String())
+		dlg.SetValue(args.Str(0))
 		return nil
 	}))
 
 	// synthSaveAsDialogConfirm() – synthesises an OK press through the
 	// same DrumView entry point the OK button fires.
-	js.Global().Set("synthSaveAsDialogConfirm", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthSaveAsDialogConfirm", jsFn(func(args jsArgs) any {
 		if g.drum != nil {
 			g.drum.ConfirmSaveAsDialog()
 		}
@@ -256,7 +256,7 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// synthSaveAsDialogCancel() – synthesises a Cancel press.
-	js.Global().Set("synthSaveAsDialogCancel", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("synthSaveAsDialogCancel", jsFn(func(args jsArgs) any {
 		if g.drum != nil {
 			g.drum.CancelSaveAsDialog()
 		}
@@ -265,7 +265,7 @@ func (g *Game) initJSEqWidgets() {
 
 	// enableScopeExport() – starts the WASM flight recorder. Matches the
 	// desktop SCOPE_EXPORT=1 behaviour so browser tests can opt in at runtime.
-	js.Global().Set("enableScopeExport", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("enableScopeExport", jsFn(func(args jsArgs) any {
 		audio.EnableScopeExport()
 		return nil
 	}))
@@ -273,7 +273,7 @@ func (g *Game) initJSEqWidgets() {
 	// downloadScopeExport() – flushes the in-memory JSONL buffer and triggers
 	// a file download via the existing downloadJSON helper. Returns the byte
 	// length of the dumped buffer (0 if export wasn't enabled or buffer empty).
-	js.Global().Set("downloadScopeExport", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("downloadScopeExport", jsFn(func(args jsArgs) any {
 		svc := audio.ExportService()
 		if svc == nil {
 			return 0
@@ -291,7 +291,7 @@ func (g *Game) initJSEqWidgets() {
 
 	// scopeExportBufferLen() – returns the current JSONL buffer byte count
 	// without draining it. Lets browser tests detect snapshot activity.
-	js.Global().Set("scopeExportBufferLen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("scopeExportBufferLen", jsFn(func(args jsArgs) any {
 		svc := audio.ExportService()
 		if svc == nil {
 			return 0
@@ -302,14 +302,14 @@ func (g *Game) initJSEqWidgets() {
 	// forceScopeExportSnapshot() – immediately polls analyzers, pushes samples,
 	// and buffers one snapshot, bypassing the 2-second timer. Browser tests use
 	// this to avoid racing against the background goroutine's 100ms poll cycle.
-	js.Global().Set("forceScopeExportSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("forceScopeExportSnapshot", jsFn(func(args jsArgs) any {
 		return audio.ForceScopeExportSnapshot()
 	}))
 
 	// probeAnalyzerState() – returns a small diagnostic object describing what
 	// the current EQ-panel AnalyzerState callback produces. Used by browser
 	// tests to verify the WASM synthesis path without pixel sampling.
-	js.Global().Set("probeAnalyzerState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("probeAnalyzerState", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.callbacks.AnalyzerState == nil {
 			obj.Set("available", false)
@@ -333,7 +333,7 @@ func (g *Game) initJSEqWidgets() {
 	// setScopeTaps(stageA, stageB) – set TapA/TapB stage selection by name for
 	// browser tests. Names: "synth","antipop","insertfx","eq","sends","master".
 	// Pass "" (or omit) to clear a tap (stage = -1).
-	js.Global().Set("setScopeTaps", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("setScopeTaps", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.chainZone == nil {
 			return false
 		}
@@ -356,11 +356,11 @@ func (g *Game) initJSEqWidgets() {
 			}
 		}
 		sz := g.drum.eqPanelZone.chainZone
-		if len(args) > 0 {
-			sz.SetTapA(nameToStage(args[0].String()))
+		if args.Len() > 0 {
+			sz.SetTapA(nameToStage(args.Str(0)))
 		}
-		if len(args) > 1 {
-			sz.SetTapB(nameToStage(args[1].String()))
+		if args.Len() > 1 {
+			sz.SetTapB(nameToStage(args.Str(1)))
 		}
 		g.drum.bgDirty = true
 		return true
@@ -372,13 +372,13 @@ func (g *Game) initJSEqWidgets() {
 	// Drives the same code path the in-UI channel-cycle button takes,
 	// including the chain-zone instrumentID update and analyser service
 	// switch so probeScopeState reflects the new channel.
-	js.Global().Set("setEQChannel", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("setEQChannel", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return false
 		}
 		id := ""
-		if len(args) > 0 {
-			id = args[0].String()
+		if args.Len() > 0 {
+			id = args.Str(0)
 		}
 		// Route through the single channel-select chokepoint so every tab
 		// follows the dropdown: EQ/zone channel, analyzer detail channel
@@ -390,7 +390,7 @@ func (g *Game) initJSEqWidgets() {
 
 	// probeScopeState() – returns a small diagnostic object describing what
 	// the current ScopeState callback produces.
-	js.Global().Set("probeScopeState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("probeScopeState", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.eqPanelZone == nil || g.drum.eqPanelZone.chainZone == nil {
 			obj.Set("available", false)
@@ -416,7 +416,7 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// eqBandsSnapshot() -> { names: [], values: [] } from the last draw.
-	js.Global().Set("eqBandsSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("eqBandsSnapshot", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		eqCenterLabels := [10]string{"31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"}
 		names := js.Global().Get("Array").New(len(eqBandDefs))
@@ -437,7 +437,7 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// eqControlsSnapshot() -> { gainsDB: [] } for current slider gains.
-	js.Global().Set("eqControlsSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("eqControlsSnapshot", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || len(g.drum.eqBandGainsDB()) == 0 {
 			obj.Set("gainsDB", js.Global().Get("Array").New(0))
@@ -452,7 +452,7 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// widgetLayoutSnapshot() -> { layout, rack, timeline, wave, addButton, splitterY }
-	js.Global().Set("widgetLayoutSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("widgetLayoutSnapshot", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(nil)
 		}
@@ -506,43 +506,43 @@ func (g *Game) initJSEqWidgets() {
 		}
 		return g.drum.eqPanelZone.chainZone
 	}
-	js.Global().Set("spectrumSlope", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("spectrumSlope", jsFn(func(args jsArgs) any {
 		if sc := spectrumControlsOf(); sc != nil {
 			return js.ValueOf(sc.SlopeDBPerOct())
 		}
 		return js.ValueOf(nil)
 	}))
-	js.Global().Set("preOverlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("preOverlay", jsFn(func(args jsArgs) any {
 		if sc := spectrumControlsOf(); sc != nil {
 			return js.ValueOf(sc.PreOverlay())
 		}
 		return js.ValueOf(nil)
 	}))
-	js.Global().Set("k20View", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("k20View", jsFn(func(args jsArgs) any {
 		if lc := levelsControlsOf(); lc != nil {
 			return js.ValueOf(lc.K20View())
 		}
 		return js.ValueOf(nil)
 	}))
-	js.Global().Set("freqScaleLog", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("freqScaleLog", jsFn(func(args jsArgs) any {
 		if sc := spectrumControlsOf(); sc != nil {
 			return js.ValueOf(sc.FreqScaleLog())
 		}
 		return js.ValueOf(nil)
 	}))
-	js.Global().Set("chainDisplayMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("chainDisplayMode", jsFn(func(args jsArgs) any {
 		if cz := chainZoneOf(); cz != nil {
 			return js.ValueOf(cz.DisplayMode())
 		}
 		return js.ValueOf(nil)
 	}))
-	js.Global().Set("autoGain", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("autoGain", jsFn(func(args jsArgs) any {
 		if cz := chainZoneOf(); cz != nil {
 			return js.ValueOf(cz.AutoGain())
 		}
 		return js.ValueOf(nil)
 	}))
-	js.Global().Set("scopeFrozen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("scopeFrozen", jsFn(func(args jsArgs) any {
 		if cz := chainZoneOf(); cz != nil {
 			return js.ValueOf(cz.Frozen())
 		}
@@ -551,7 +551,7 @@ func (g *Game) initJSEqWidgets() {
 
 	// fullLayoutSnapshot() -> comprehensive layout geometry for visual parity tests.
 	// Returns all UI component positions in a single call to minimize round-trips.
-	js.Global().Set("fullLayoutSnapshot", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("fullLayoutSnapshot", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.split == nil {
 			return js.ValueOf(nil)
 		}
@@ -875,13 +875,13 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// nudgeWidgetSplit(axis, idx, deltaPx) – resize column/row boundary.
-	js.Global().Set("nudgeWidgetSplit", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.widgets == nil || len(args) < 3 {
+	js.Global().Set("nudgeWidgetSplit", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.widgets == nil || args.Len() < 3 {
 			return nil
 		}
-		axis := args[0].String()
-		idx := args[1].Int()
-		delta := args[2].Int()
+		axis := args.Str(0)
+		idx := args.Int(1)
+		delta := args.Int(2)
 		g.drum.widgets.ResizeAxis(axis, idx, delta)
 		g.drum.refreshWidgetLayout()
 		g.drum.recalcButtons()
@@ -892,13 +892,13 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// moveWidget(id, col, row)
-	js.Global().Set("moveWidget", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.widgets == nil || len(args) < 3 {
+	js.Global().Set("moveWidget", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.widgets == nil || args.Len() < 3 {
 			return nil
 		}
-		id := WidgetKind(strings.ToLower(args[0].String()))
-		col := args[1].Int()
-		row := args[2].Int()
+		id := WidgetKind(strings.ToLower(args.Str(0)))
+		col := args.Int(1)
+		row := args.Int(2)
 		g.drum.widgets.MoveWidget(id, col, row)
 		g.drum.refreshWidgetLayout()
 		g.drum.recalcButtons()
@@ -909,14 +909,14 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// toggleWidget(id, visible)
-	js.Global().Set("toggleWidget", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.widgets == nil || len(args) == 0 {
+	js.Global().Set("toggleWidget", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.widgets == nil || args.Len() == 0 {
 			return nil
 		}
-		id := WidgetKind(strings.ToLower(args[0].String()))
+		id := WidgetKind(strings.ToLower(args.Str(0)))
 		visible := true
-		if len(args) > 1 {
-			visible = args[1].Bool()
+		if args.Len() > 1 {
+			visible = args.Bool(1)
 		}
 		g.drum.widgets.ToggleWidget(id, visible)
 		g.drum.refreshWidgetLayout()
@@ -928,13 +928,13 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// eqFreqResponse(numPoints?) -> [{freq, gainDB}, ...] for the active channel's EQ.
-	js.Global().Set("eqFreqResponse", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("eqFreqResponse", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.Global().Get("Array").New(0)
 		}
 		numPoints := 128
-		if len(args) > 0 && args[0].Type() == js.TypeNumber {
-			numPoints = args[0].Int()
+		if args.Len() > 0 && args.At(0).Type() == js.TypeNumber {
+			numPoints = args.Int(0)
 			if numPoints < 2 {
 				numPoints = 2
 			}
@@ -969,12 +969,12 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// setEQHPF(enabled, cutoffHz) – sets HPF state for the active EQ channel.
-	js.Global().Set("setEQHPF", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 2 {
+	js.Global().Set("setEQHPF", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 2 {
 			return nil
 		}
-		enabled := args[0].Bool()
-		cutoffHz := args[1].Float()
+		enabled := args.Bool(0)
+		cutoffHz := args.Float(1)
 		if cutoffHz < 20 {
 			cutoffHz = 20
 		}
@@ -989,12 +989,12 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// setEQLPF(enabled, cutoffHz) – sets LPF state for the active EQ channel.
-	js.Global().Set("setEQLPF", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 2 {
+	js.Global().Set("setEQLPF", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 2 {
 			return nil
 		}
-		enabled := args[0].Bool()
-		cutoffHz := args[1].Float()
+		enabled := args.Bool(0)
+		cutoffHz := args.Float(1)
 		if cutoffHz < 1000 {
 			cutoffHz = 1000
 		}
@@ -1009,13 +1009,13 @@ func (g *Game) initJSEqWidgets() {
 	}))
 
 	// addCustomWidget(title) – inserts a placeholder widget in the first free cell.
-	js.Global().Set("addCustomWidget", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("addCustomWidget", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.widgets == nil {
 			return nil
 		}
 		title := "Custom"
-		if len(args) > 0 && args[0].Truthy() {
-			title = args[0].String()
+		if args.Len() > 0 && args.At(0).Truthy() {
+			title = args.Str(0)
 		}
 		id := WidgetKind(fmt.Sprintf("custom-%d", len(g.drum.widgets.placements)+1))
 		g.drum.widgets.AddWidget(WidgetPlacement{ID: id, Title: title, Col: 0, Row: 2, ColSpan: 1, RowSpan: 1, MinW: 160, MinH: g.drum.rowHeight() * 2, Editable: true})

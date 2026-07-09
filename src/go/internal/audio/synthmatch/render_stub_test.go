@@ -23,7 +23,14 @@ func differs(a, b []float64) bool {
 func TestRenderStub_RespondsToMultipleParams(t *testing.T) {
 	audio.Reset()
 	audio.ResetInstruments()
-	base, err := RenderInstrument("sax", 0, 44100, 0.5)
+	// Render long enough for the ADSR to leave the attack phase. sax's default
+	// amp_attack is 0.5 s, so a 0.5 s note is ENTIRELY attack (env = t/attack)
+	// and amp_sustain / amp_decay never take effect — the renderer would look
+	// "blind" to sustain purely because the note ends before the decay stage.
+	// A 2 s note reaches the decay stage (whose target level is amp_sustain),
+	// so every tunable param below produces an observable change.
+	const dur = 2.0
+	base, err := RenderInstrument("sax", 0, 44100, dur)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +46,7 @@ func TestRenderStub_RespondsToMultipleParams(t *testing.T) {
 		case "lfo_depth":
 			val = 0.18
 		}
-		mod, err := RenderWithParams("sax", 0, 44100, 0.5, map[string]float64{key: val})
+		mod, err := RenderWithParams("sax", 0, 44100, dur, map[string]float64{key: val})
 		if err != nil {
 			t.Fatal(err)
 		}

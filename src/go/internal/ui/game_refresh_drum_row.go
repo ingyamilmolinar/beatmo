@@ -7,9 +7,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/timeline"
 )
 
-func (g *Game) refreshDrumRow() {
+func (s *playbackSlate) refreshDrumRow() {
+	g := s.g
 	refreshStart := time.Now()
-	defer func() { g.logger.Tracef("[REFRESH] total=%v rows=%d", time.Since(refreshStart), len(g.drum.Rows)) }()
+	defer func() { g.logger.Tracef("[refresh] total=%v rows=%d", time.Since(refreshStart), len(g.drum.Rows)) }()
 
 	if len(g.drum.Rows) == 0 {
 		g.drumBeatInfos = nil
@@ -247,7 +248,26 @@ func (g *Game) refreshDrumRow() {
 					if rowIdx < len(g.pathChangeBeatByRow) {
 						pathChangeBeat = g.pathChangeBeatByRow[rowIdx]
 					}
-					for j := upTo + 1; j <= target; j++ {
+					// Bound the back-fill to the predictor's retained window.
+					// Indices below windowStart are already immutable past AND
+					// evicted from the predictor (predictAt returns a meaningless
+					// "not computed" false there); indices at/above the horizon
+					// have no prediction yet — so freezing either is pointless.
+					// Without this bound, resume (which resets frozenUpToByRow to
+					// -1) re-froze the ENTIRE elapsed history [0, playhead] in one
+					// UI frame, per row: O(session-length) work that stalled the
+					// app for seconds before audio restarted after a long pause.
+					// Mirrors the window guard in syncUIToTime (game_sync_ui.go).
+					lo := upTo + 1
+					predWinEnd := target + 1
+					if g.engine != nil && g.engine.Predictor != nil {
+						if ws := g.engine.Predictor.WindowStart(); ws > lo {
+							lo = ws
+						}
+						predWinEnd = g.engine.Predictor.Horizon()
+					}
+					for j := lo; j <= target && j < predWinEnd; j++ {
+						g.freezeBackfillIters++
 						if pathChangeBeat >= 0 && j < pathChangeBeat {
 							// Preserve pre-change history; avoid rewriting commits that predate
 							// the last path mutation to keep earlier playback immutable.
@@ -341,7 +361,7 @@ func (g *Game) refreshDrumRow() {
 				if traceRow || !timelineTrace {
 					g.logger.Debugf("[timeline] mismatches=%d row=%d abs=%v", len(mismatches), rowIdx, indices)
 				} else {
-					g.logger.Tracef("[TIMELINE] mismatches=%d row=%d abs=%v", len(mismatches), rowIdx, indices)
+					g.logger.Tracef("[timeline] mismatches=%d row=%d abs=%v", len(mismatches), rowIdx, indices)
 				}
 			}
 		}
@@ -362,7 +382,7 @@ func (g *Game) refreshDrumRow() {
 				}
 			}
 			imm := g.lastImmutableCommit(rowIdx)
-			g.logger.Tracef("[TIMELINE/REFRESH] row=%d offset=%d freeze=%d pastMaskCount=%d lastImmutable=%d", rowIdx, windowStart, freezeLimit, pastCount, imm)
+			g.logger.Tracef("[timeline/refresh] row=%d offset=%d freeze=%d pastMaskCount=%d lastImmutable=%d", rowIdx, windowStart, freezeLimit, pastCount, imm)
 		}
 
 		// Cache invalidation: mark row dirty only when render-relevant inputs change.
@@ -407,9 +427,12 @@ func (g *Game) refreshDrumRow() {
 		g.drum.lengthChanging = false
 	}
 	g.renderReady = true
-	g.logger.Tracef("[GAME/REFRESH] refreshDrumRow offset=%d", g.drum.Offset)
+	g.logger.Tracef("[game/refresh] refreshDrumRow offset=%d", g.drum.Offset)
 	g.parityScan("refresh")
+	g.parityTimingCheck()
 }
+
+func (g *Game) refreshDrumRow() { g.playbackSlate.refreshDrumRow() }
 
 type rowWindowConfig struct {
 	freezeLimit     int

@@ -193,3 +193,23 @@ func TestMobileSynthTab_KnobRendersAtIdealSize(t *testing.T) {
 		t.Fatalf("knob diameter %d < ideal %d (still shrinking)", k.Rect().Dx(), d.SynthKnobIdeal)
 	}
 }
+
+// TestMobileSynthSectionGridMultiColumn pins the mobile Synth stage-card knob
+// grid to ControlGrid's width-adaptive column count capped at 4 (was a hard
+// single column), matching the Sampler tab, so stage cards use the panel's
+// width instead of one knob per row.
+func TestMobileSynthSectionGridMultiColumn(t *testing.T) {
+	g := newMobileSynthTabGameForTestSize(t, 390, 844)
+	dv := g.drum
+	sec := dv.synthSelectedSection()
+	if sec == nil || len(sec.knobIdxs) < 2 {
+		t.Skip("no open section with >=2 knobs on mobile")
+	}
+	grid := dv.sectionGrid(sec.id)
+	if grid == nil {
+		t.Fatal("selected synth section has no grid")
+	}
+	if c := grid.Cols(); c < 2 || c > 4 {
+		t.Errorf("mobile synth section grid Cols()=%d, want 2..4 (adaptive, capped at 4)", c)
+	}
+}

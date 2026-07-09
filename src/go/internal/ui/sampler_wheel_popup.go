@@ -13,7 +13,8 @@ import (
 // openSynthKnobWheelPopup; the sampler differs only in that its ParamDef is
 // synthesized from samplerKnobScale (it has no per-knob binding array) and every
 // sampler knob is continuous (Discrete=false).
-func (dv *DrumView) openSamplerKnobWheelPopup(idx int) {
+func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
+	dv := p.dv
 	if idx < 0 || idx >= samplerKnobCount || idx >= len(dv.sampler.knobs) {
 		return
 	}
@@ -52,7 +53,8 @@ func (dv *DrumView) openSamplerKnobWheelPopup(idx int) {
 // SamplerWheelPopupRect returns the screen-space bounding rectangle of the
 // mobile sampler-knob scroll-wheel popup, or an empty rectangle when the popup
 // is nil or not open. Parity with SynthWheelPopupRect (screenshot cropping).
-func (dv *DrumView) SamplerWheelPopupRect() image.Rectangle {
+func (p *samplerPanel) SamplerWheelPopupRect() image.Rectangle {
+	dv := p.dv
 	if dv.samplerWheelPopup == nil || !dv.samplerWheelPopup.IsOpen() {
 		return image.Rectangle{}
 	}
@@ -64,7 +66,8 @@ func (dv *DrumView) SamplerWheelPopupRect() image.Rectangle {
 // spans the cell width so a long localized caption fits; the value caption is
 // drawn separately BELOW the dial band (so captionH=0 here). Mirrors the synth
 // tab's mobileKnobButtonRect via the shared knobValuePillRect.
-func (dv *DrumView) samplerMobileKnobButtonRect(idx int) image.Rectangle {
+func (p *samplerPanel) samplerMobileKnobButtonRect(idx int) image.Rectangle {
+	dv := p.dv
 	s := &dv.sampler
 	if idx < 0 || idx >= len(s.knobs) || s.knobs[idx] == nil {
 		return image.Rectangle{}
@@ -78,13 +81,33 @@ func (dv *DrumView) samplerMobileKnobButtonRect(idx int) image.Rectangle {
 		cell = dialR
 	}
 	band := image.Rect(cell.Min.X, dialR.Min.Y, cell.Max.X, dialR.Max.Y)
-	return knobValuePillRect(band, samplerKnobCaption(idx, s), 0)
+	// Size to the VALUE label — that's what the pill renders (the name
+	// lives in the caption band below).
+	return knobValuePillRect(band, samplerKnobValueText(idx, s), 0)
 }
 
 // closeSamplerKnobWheelPopup closes the mobile scroll-wheel for sampler knobs.
-func (dv *DrumView) closeSamplerKnobWheelPopup() {
+// Navigating away persists the pending edit (Accept commits + closes; no-op if
+// already closed).
+func (p *samplerPanel) closeSamplerKnobWheelPopup() {
+	dv := p.dv
 	if dv.samplerWheelPopup != nil {
-		dv.samplerWheelPopup.Close()
+		dv.samplerWheelPopup.Accept()
 	}
 	dv.closeSamplerWheelPortal()
 }
+
+// ── *DrumView forwarding shims (Rung A relocation onto *samplerPanel) ──────
+
+func (dv *DrumView) openSamplerKnobWheelPopup(idx int) { dv.sp().openSamplerKnobWheelPopup(idx) }
+
+// SamplerWheelPopupRect returns the screen-space bounding rectangle of the
+// mobile sampler-knob scroll-wheel popup. Exported forwarding shim onto the
+// relocated *samplerPanel method.
+func (dv *DrumView) SamplerWheelPopupRect() image.Rectangle { return dv.sp().SamplerWheelPopupRect() }
+
+func (dv *DrumView) samplerMobileKnobButtonRect(idx int) image.Rectangle {
+	return dv.sp().samplerMobileKnobButtonRect(idx)
+}
+
+func (dv *DrumView) closeSamplerKnobWheelPopup() { dv.sp().closeSamplerKnobWheelPopup() }

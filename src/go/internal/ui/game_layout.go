@@ -72,24 +72,17 @@ func (g *Game) Layout(w, h int) (int, int) {
 		}
 	}
 	// Auto-size drum pane to fit timeline + rows (+ add-row), avoiding wasted space.
+	// (desktopDrumPaneWant below computes the desktop share.)
 	if g.drum != nil && !g.split.userSet && (!runningUnderGoTest() || forceAutoSize) {
 		if Profile().IsMobile() {
 			// Mobile: always stacked — adaptive split (grid ≥50%, drum capped at 50%)
 			y := adaptiveMobilePortraitSplitY(h, g)
 			g.split.Y = y
 		} else {
-			// Desktop: content-based auto-sizing. Use the stable eqPanelHeight
-			// constant instead of g.drum.eqH to prevent a feedback loop where
-			// WidgetBoard rounding mutates eqH, causing Layout to compute a
-			// different split.Y each frame (1-2px jitter).
-			want := desktopHeaderH + (len(g.drum.Rows)+1)*g.drum.rowHeight() + eqPanelHeight
+			// Desktop: content-based auto-sizing (see desktopDrumPaneWant).
+			want := desktopDrumPaneWant(h, len(g.drum.Rows), g.drum.rowHeight())
 			minY := 120
 			maxY := h - 120
-			// Cap the drum panel (header + rows + EQ) at 50% of window height
-			// so it doesn't dominate the screen when many instruments are present.
-			if maxDrum := h / 2; want > maxDrum {
-				want = maxDrum
-			}
 			y := h - want
 			if y < minY {
 				y = minY
@@ -283,4 +276,21 @@ func snapDrumHToWholeRows(drumH, headerH, barH, rh, maxDrum int) int {
 		return up
 	}
 	return drumH - rem
+}
+
+// desktopDrumPaneWant returns the content-based drum-pane height for a
+// desktop window of height h: transport header + all rows (+ the add-row
+// band) + the audio panel. Uses the stable eqPanelHeight constant instead
+// of dv.eqH to prevent a feedback loop where WidgetBoard rounding mutates
+// eqH, causing Layout to compute a different split.Y each frame (1-2px
+// jitter). Capped at 60% of the window: the rows are the product's core
+// surface, so a multi-row circuit gets the space it asks for — the old 50%
+// cap booted the 6-row startup demo with a single visible row (D1,
+// 2026-07-04 design pass) — while the grid pane always keeps >= 40%.
+func desktopDrumPaneWant(h, nRows, rowH int) int {
+	want := desktopHeaderH + (nRows+1)*rowH + eqPanelHeight
+	if maxDrum := h * 3 / 5; want > maxDrum {
+		want = maxDrum
+	}
+	return want
 }

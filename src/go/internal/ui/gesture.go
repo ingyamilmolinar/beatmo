@@ -88,7 +88,7 @@ func (ts *TouchState) detectGesture(endedTouches []*TouchPoint, now time.Time) *
 		dx := abs(pt.X - pt.StartX)
 		dy := abs(pt.Y - pt.StartY)
 
-		if duration >= longPressThresholdMS && dx <= tapMaxMovePx && dy <= tapMaxMovePx {
+		if duration >= longPressThresholdMS && dx <= tapMaxMovePx && dy <= tapMaxMovePx && !pt.movedBeyondTap {
 			// Only fire long-press once per touch sequence
 			if !ts.longPressFired {
 				ts.longPressFired = true

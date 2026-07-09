@@ -109,7 +109,10 @@ try {
     typeof synthSaveAsDialogSetValue === "function" &&
     typeof synthSaveAsDialogConfirm === "function" &&
     typeof synthSaveAsDialogCancel === "function" &&
-    typeof getInstrumentParams === "function"
+    typeof getInstrumentParams === "function" &&
+    typeof fullLayoutSnapshot === "function" &&
+    typeof totalRows === "function" &&
+    typeof rowInstrument === "function"
   );
 
   // Switch to Synth tab + force layout so footer rects are populated.
@@ -134,17 +137,29 @@ try {
     const regs = (typeof synthRecipeCatalog === "function") ? synthRecipeCatalog() : {};
     return Object.keys(regs);
   });
-  // Find any shipped instrument whose recipe is bound (kick-1, snare, …)
-  // by probing recipeForInstrument over the seed ids the demo carries.
+  // The footer Save/Reset buttons operate on the synth tab's ACTIVE instrument
+  // (Go: DrumView.synthTabActiveInstrument = EQ ActiveChannel, else the first
+  // non-empty drum row). We MUST target that exact instrument — Reset clears the
+  // ACTIVE instrument's overlay, so editing any other id leaves the overlay
+  // uncleared and the assertion fails. Mirror the Go resolver instead of
+  // guessing from a hardcoded id list (which picked kick-1 while the real active
+  // row was dnb-kick, so Reset never cleared our edit).
   const activeInst = await page.evaluate(() => {
-    for (const id of ["kick-1", "snare", "hihat", "clap", "cowbell", "fm-epiano-1"]) {
-      const r = (typeof recipeForInstrument === "function") ? recipeForInstrument(id) : "";
-      if (r) return id;
+    let ch = "";
+    try {
+      const snap = (typeof fullLayoutSnapshot === "function") ? fullLayoutSnapshot() : null;
+      ch = (snap && snap.state && snap.state.channel) || "";
+    } catch (_) {}
+    if (ch && ch !== "main") return ch;
+    const n = (typeof totalRows === "function") ? totalRows() : 0;
+    for (let i = 0; i < n; i++) {
+      const id = (typeof rowInstrument === "function") ? rowInstrument(i) : "";
+      if (id) return id;
     }
     return "";
   });
   if (!activeInst) {
-    throw new Error("no startup-demo instrument bound to a recipe — can't drive the synth tab");
+    throw new Error("no active synth instrument — can't drive the synth tab");
   }
   console.log("[TEST] active synth instrument:", activeInst);
   // Use a generic param name that every shipped recipe carries.

@@ -6,6 +6,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// portal returns the SINGLE global OverlayPortal, owned by the top-of-z
+// overlay subtree. Every popup — whether opened by DrumView directly
+// (drumview_portal_open.go) or by a zone via SetPortal — routes here, so all
+// overlays composite and hit-test above every base zone in every subtree. This
+// is the one place that answers "where do popups live?".
+func (dv *DrumView) portal() *OverlayPortal {
+	if dv == nil || dv.overlayTree == nil {
+		return nil
+	}
+	return dv.overlayTree.Portal()
+}
+
 // dvOverlayPortal wraps a DrumView-owned overlay (ContextMenu, FXPanel,
 // Overflow, Naming) as a PortalOverlay. Each instance delegates to existing
 // DrumView methods via function fields.

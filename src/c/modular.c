@@ -7,6 +7,7 @@
 #include "fmsynth.h"
 #include "noise.h"
 #include "synth_post.h" /* apply_post_params + post_config + synth_params (POST stage) */
+#include "synth_dsp_primitives.h" /* sp_* composable DSP primitives */
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -30,7 +31,9 @@ static float       modular_sine_buf[WT_DEFAULT_LENGTH + 1];
 static float       modular_saw_buf[WT_DEFAULT_LENGTH + 1];
 static float       modular_square_buf[WT_DEFAULT_LENGTH + 1];
 static float       modular_triangle_buf[WT_DEFAULT_LENGTH + 1];
+static float       modular_glottal_buf[WT_DEFAULT_LENGTH + 1];
 static wavetable_t modular_sine_wt, modular_saw_wt, modular_square_wt, modular_triangle_wt;
+static wavetable_t modular_glottal_wt;
 static int         modular_tables_ready = 0;
 
 static void ensure_modular_tables(void) {
@@ -39,6 +42,7 @@ static void ensure_modular_tables(void) {
     wt_generate_saw(&modular_saw_wt, modular_saw_buf, WT_DEFAULT_LENGTH, MODULAR_WT_HARMONICS);
     wt_generate_square(&modular_square_wt, modular_square_buf, WT_DEFAULT_LENGTH, MODULAR_WT_HARMONICS);
     wt_generate_triangle(&modular_triangle_wt, modular_triangle_buf, WT_DEFAULT_LENGTH, MODULAR_WT_HARMONICS);
+    wt_generate_glottal(&modular_glottal_wt, modular_glottal_buf, WT_DEFAULT_LENGTH, MODULAR_WT_HARMONICS);
     modular_tables_ready = 1;
 }
 
@@ -47,6 +51,7 @@ static const wavetable_t *modular_table_for(int osc_type) {
     case 1: return &modular_saw_wt;
     case 2: return &modular_square_wt;
     case 3: return &modular_triangle_wt;
+    case 12: return &modular_glottal_wt;
     default: return &modular_sine_wt;
     }
 }
@@ -133,12 +138,12 @@ static void build_fm_preset(const modular_params *p, double base_freq,
  * make — this is what actually sounds like a bowed string vs. an electronic tone.
  * Bow position/pressure/brightness are sensible hardcoded defaults for now. */
 static void render_bowed_string(float *out, int sampleRate, int samples,
-                                double freq, unsigned int noise_seed) {
+                                double freq, double bow_pos, double slope,
+                                double bowVel, double loss, unsigned int noise_seed) {
     enum { DMAX = 4096 };
     float neck[DMAX], bridge[DMAX];
     double L = (double)sampleRate / freq - 2.0; /* round-trip delay; -2 = loss-filter phase */
-    if (L < 4.0) L = 4.0;
-    const double bow_pos = 0.13;                 /* bow ~1/8 from the bridge (STK betaRatio) */
+    if (L < 4.0) L = 4.0;                        /* bow_pos: ~1/8 from the bridge (STK betaRatio) */
     int bridgeLen = (int)(L * bow_pos + 0.5);
     int neckLen   = (int)(L - (double)bridgeLen + 0.5);
     if (bridgeLen < 1) bridgeLen = 1;
@@ -148,17 +153,24 @@ static void render_bowed_string(float *out, int sampleRate, int samples,
     for (int k = 0; k < DMAX; k++) { neck[k] = 0.0f; bridge[k] = 0.0f; }
     int ni = 0, bi = 0;
 
-    const double slope  = 3.0;    /* bow-table friction slope (higher = more bow pressure) */
+    /* slope (bow pressure), bowVel (bow speed), loss (brightness) are now config
+     * params. offset + refl stay literals (numerical loop stability, not voice). */
     const double offset = 0.001;
-    const double bowVel = 0.25;   /* constant bow speed; the amp ADSR shapes the final output */
-    const double loss   = 0.55;   /* bridge one-pole-LP loss → brightness/decay (loop stability) */
     const double refl   = 0.99;   /* slight per-round-trip energy loss for stability */
     double lp = 0.0;
     noise_gen ng; noise_init(&ng, noise_seed);
     int attack = sampleRate / 40; /* ~25 ms bow ramp-in (no hard onset click) */
     if (attack < 1) attack = 1;
 
-    for (int i = 0; i < samples; i++) {
+    /* PRE-WARM: a self-oscillating bowed string takes ~0.5-1 s to build its
+     * Helmholtz limit cycle from silence — without this the RENDERED note swells
+     * over ~1 s then the raw buildup reads as a slow attack + fake decay (the amp
+     * ADSR can't shape a tone that isn't there yet). Run the loop SILENTLY for
+     * `warm` samples so out[0] starts at the established full-amplitude tone (same
+     * trick as render_sax). The amp ADSR then shapes the audible onset. */
+    int warm = sampleRate / 2; if (warm < 1) warm = 1; /* ~0.5 s */
+    int totalN = warm + samples;
+    for (int i = 0; i < totalN; i++) {
         double neckOut   = neck[ni];
         double bridgeOut = bridge[bi];
         lp = (1.0 - loss) * bridgeOut + loss * lp;        /* loss LP (high-freq damping) */
@@ -178,7 +190,7 @@ static void render_bowed_string(float *out, int sampleRate, int samples,
         bi = (bi + 1) % bridgeLen;
         double y = bridgeOut * 4.0;                       /* string velocity at the bridge */
         if (!(y > -8.0 && y < 8.0)) y = 0.0;              /* guard against blow-up/NaN */
-        out[i] = (float)y;
+        if (i >= warm) out[i - warm] = (float)y;
     }
 }
 
@@ -213,7 +225,7 @@ static void render_brass(float *out, int sampleRate, int samples, double freq,
     double a2 = lip_radius * lip_radius;
     double a1 = -2.0 * lip_radius * cos(2.0 * M_PI * freq / (double)sampleRate);
     double ly1 = 0.0, ly2 = 0.0;
-    double dcx1 = 0.0, dcy1 = 0.0;
+    sp_dcblock dc = {0.0, 0.0};
     int attack = sampleRate / 200; if (attack < 1) attack = 1; /* ~5 ms */
     for (int i = 0; i < samples; i++) {
         double env = (i < attack) ? (double)i / (double)attack : 1.0;
@@ -225,9 +237,9 @@ static void render_brass(float *out, int sampleRate, int samples, double freq,
         ly2 = ly1; ly1 = y;
         dp = y * y; if (dp > 1.0) dp = 1.0;             /* displacement → area (nonlinear) */
         double in = dp * mouth + (1.0 - dp) * bore;     /* scattering junction */
-        double dy = in - dcx1 + 0.99 * dcy1; dcx1 = in; dcy1 = dy; in = dy; /* DC block */
+        double dy = sp_dcblock_tick(&dc, in, 0.99); in = dy; /* DC block */
         double tout = pm_frac_read(tube, LEN, wi, delay);
-        tube[wi] = (float)in; wi++; if (wi >= LEN) wi = 0;
+        sp_delay_write(tube, LEN, &wi, in);
         lastOut = tout;
         if (!(tout > -8.0 && tout < 8.0)) tout = 0.0;
         out[i] = (float)tout;
@@ -257,7 +269,7 @@ static void render_reed(float *out, int sampleRate, int samples, double freq,
     for (int k = 0; k < LEN; k++) bore[k] = 0.0f;
     int wi = 0;
     double lastOut = 0.0, lossPrevX = 0.0;
-    double dcx1 = 0.0, dcy1 = 0.0;
+    sp_dcblock dc = {0.0, 0.0};
     noise_gen ng; noise_init(&ng, noise_seed);
     int attack = sampleRate / 100; if (attack < 1) attack = 1; /* ~10 ms */
     for (int i = 0; i < samples; i++) {
@@ -274,11 +286,11 @@ static void render_reed(float *out, int sampleRate, int samples, double freq,
         if (r < -1.0) r = -1.0;
         double in = breath + pdiff * r;                  /* scatter back into the bore */
         double tout = pm_frac_read(bore, LEN, wi, delay);
-        bore[wi] = (float)in; wi++; if (wi >= LEN) wi = 0; /* breath DC stays in the loop = the drive */
+        sp_delay_write(bore, LEN, &wi, in); /* breath DC stays in the loop = the drive */
         lastOut = tout;
         /* DC-block the OUTPUT only (not the loop — the breath pressure is a DC
          * term that DRIVES the bore; blocking it in-loop kills self-oscillation). */
-        double dy = tout - dcx1 + 0.995 * dcy1; dcx1 = tout; dcy1 = dy;
+        double dy = sp_dcblock_tick(&dc, tout, 0.995);
         double y = dy * 0.3;
         if (!(y > -8.0 && y < 8.0)) y = 0.0;
         out[i] = (float)y;
@@ -311,7 +323,7 @@ static void render_flute(float *out, int sampleRate, int samples, double freq,
     double boreLast = 0.0;
     double b0 = (pole > 0.0) ? (1.0 - pole) : (1.0 + pole); /* one-pole, DC gain 1 */
     double fpY = 0.0;
-    double dcx1 = 0.0, dcy1 = 0.0;
+    sp_dcblock dc = {0.0, 0.0};
     const double jetRefl = 0.5, endRefl = 0.5;
     noise_gen ng; noise_init(&ng, noise_seed);
     int attack = sampleRate / 200; if (attack < 1) attack = 1; /* ~5 ms */
@@ -323,14 +335,14 @@ static void render_flute(float *out, int sampleRate, int samples, double freq,
         double temp = -fpY;                       /* inverting bore reflection */
         double pd = bp - jetRefl * temp;
         double jout = pm_frac_read(jet, JLEN, jwi, jetLen); /* jet delay */
-        jet[jwi] = (float)pd; jwi++; if (jwi >= JLEN) jwi = 0;
+        sp_delay_write(jet, JLEN, &jwi, pd);
         double jt = jout * (jout * jout - 1.0);   /* cubic jet nonlinearity x³−x */
         if (jt > 1.0) jt = 1.0;
         if (jt < -1.0) jt = -1.0;
-        double dy = jt - dcx1 + 0.99 * dcy1; dcx1 = jt; dcy1 = dy; /* DC block */
+        double dy = sp_dcblock_tick(&dc, jt, 0.99); /* DC block */
         double in = dy + endRefl * temp;
         double tout = pm_frac_read(bore, LEN, bwi, boreLen); /* bore delay */
-        bore[bwi] = (float)in; bwi++; if (bwi >= LEN) bwi = 0;
+        sp_delay_write(bore, LEN, &bwi, in);
         boreLast = tout;
         double y = 0.3 * tout;
         if (!(y > -8.0 && y < 8.0)) y = 0.0;
@@ -371,7 +383,7 @@ static void render_sax(float *out, int sampleRate, int samples, double freq,
     }
     int w0 = 0, w1 = 0;
     double ozx1 = 0.0;          /* one-zero loss filter previous input */
-    double dcx1 = 0.0, dcy1 = 0.0;
+    sp_dcblock dc = {0.0, 0.0};
     double vibPhase = 0.0, vibInc = 2.0 * M_PI * 5.2 / (double)sampleRate;
     int attack = sampleRate / 100; if (attack < 1) attack = 1; /* ~10 ms breath ramp */
     /* PRE-WARM: a self-oscillating reed takes ~0.2 s to build its limit cycle from
@@ -396,12 +408,275 @@ static void render_sax(float *out, int sampleRate, int samples, double freq,
         double r = reed_offset + reed_slope * pd; /* reed table (positive slope for sax) */
         if (r > 1.0) r = 1.0;
         if (r < -1.0) r = -1.0;
-        d1[w1] = (float)temp; w1++; if (w1 >= LEN) w1 = 0;
-        d0[w0] = (float)(breath - pd * r - temp); w0++; if (w0 >= LEN) w0 = 0;
-        double dy = o - dcx1 + 0.995 * dcy1; dcx1 = o; dcy1 = dy; /* DC block on OUTPUT */
+        sp_delay_write(d1, LEN, &w1, temp);
+        sp_delay_write(d0, LEN, &w0, breath - pd * r - temp);
+        double dy = sp_dcblock_tick(&dc, o, 0.995); /* DC block on OUTPUT */
         double y = dy * 0.4;
         if (!(y > -8.0 && y < 8.0)) y = 0.0;
         if (i >= warm) out[i - warm] = (float)y; /* output only AFTER the limit cycle is established */
+    }
+}
+
+/* ── Source-stage primitives (Phase-15 decomposition). Each renders the OSC
+ * stage's buffer for one branch of the osc_type dispatch. Bodies are verbatim
+ * transplants from the render_modular_p ladder — byte-identity is gated by
+ * TestSynthGoldenByteIdentity. ── */
+static void modular_source_noise(float *out, int samples, int osc_type,
+                                 unsigned int noise_seed) {
+    noise_gen ng;
+    noise_init(&ng, noise_seed);
+    if (osc_type == 6) {
+        for (int i = 0; i < samples; i++) out[i] = noise_pink_tick(&ng);
+    } else {
+        for (int i = 0; i < samples; i++) out[i] = noise_white_tick(&ng);
+    }
+}
+
+static void modular_source_fm(float *out, int sampleRate, int samples,
+                              const modular_params *p, double freq,
+                              int fm_on, int pe_on, float pe_amt, float pe_decay) {
+    fm_preset preset;
+    build_fm_preset(p, freq, &preset);
+    if (!fm_on) {
+        /* FM disabled → carrier-only: drop all modulation routing (incl.
+         * op1 self-feedback) so only the base carrier sounds. */
+        memset(preset.mod_matrix, 0, sizeof(preset.mod_matrix));
+    }
+    if (pe_on) {
+        /* PITCH ENV on the FM core: the fm_preset already carries the
+         * exponential semitone sweep (pitch_env_amount / pitch_env_decay,
+         * fm_render lines ~127-129); build_fm_preset zeroes them, so the
+         * stage just fills them in. Stage off ⇒ fields stay 0 ⇒ the exact
+         * pre-Phase-8C preset. */
+        preset.pitch_env_amount = pe_amt;
+        preset.pitch_env_decay  = pe_decay;
+    }
+    fm_render(&preset, out, sampleRate, samples);
+    /* fm_render applies its own steady envelope + softsat; we still shape
+     * with the voice amp ADSR below. */
+}
+
+static void modular_source_physical(float *out, int sampleRate, int samples,
+                                    const modular_params *p, int osc_type,
+                                    double freq, unsigned int noise_seed) {
+    if (osc_type == 7) {
+        /* Bowed-string digital waveguide (physical model) — see render_bowed_string. */
+        render_bowed_string(out, sampleRate, samples, freq,
+                            kp_get(p->osc_bow_pos, 0.13),
+                            kp_get(p->osc_bow_slope, 3.0),
+                            kp_get(p->osc_bow_vel, 0.25),
+                            kp_get(p->osc_bow_loss, 0.55),
+                            noise_seed);
+    } else if (osc_type == 8) {
+        /* Brass lip-reed waveguide. NOTE: not yet a clean self-oscillator — the
+         * lip BiQuad + squared nonlinearity tends to chaos rather than a locked
+         * tone, so no instrument ships on it yet (trumpet stays subtractive). The
+         * output is GUARDED finite/bounded (see test TestWaveguideOscTypesAreFinite
+         * + the y-guard below) so it's safe; the low lip_gain is the documented
+         * starting point for future stabilisation. See reference_instrument_synth_tuning. */
+        render_brass(out, sampleRate, samples, freq, 0.85, 0.997, 0.012, 0.5);
+    } else if (osc_type == 9) {
+        /* Reed-woodwind waveguide (single-delay, inverting bell → CLARINET timbre:
+         * odd harmonics only). NOTE: this is NOT a correct oboe (a conical double
+         * reed needs even+odd). The oboe is synthesized ADDITIVELY instead (stable
+         * pitch + exact harmonic profile) — routing it through the conical sax
+         * model gave even+odd but the limit cycle wanders 20–140 cents at the
+         * oboe's short bore. Kept for clarinet-family use. */
+        render_reed(out, sampleRate, samples, freq, -0.95, 0.7, -0.3, 0.8, 0.5, noise_seed);
+    } else if (osc_type == 10) {
+        /* Air-jet (flute) waveguide. Hardcoded breathy-flute defaults; higher
+         * drive + lower loss so it sustains oscillation at the prescaled bore. */
+        render_flute(out, sampleRate, samples, freq, 0.4, 0.2, 0.7, 1.0, noise_seed);
+    } else if (osc_type == 11) {
+        /* Saxofony reed-cone waveguide. Hardcoded BARITONE-SAX defaults: off-centre
+         * blow position (all harmonics), positive reed slope, hard breath + low
+         * offset for the dense honking low tone, bright loss filter. */
+        render_sax(out, sampleRate, samples, freq,
+                   kp_get(p->osc_sax_blow, 0.15),
+                   kp_get(p->osc_sax_reed_off, 0.58),
+                   kp_get(p->osc_sax_reed_slope, 0.28),
+                   kp_get(p->osc_sax_reflect, -0.94),
+                   kp_get(p->osc_sax_breath, 0.85),
+                   kp_get(p->osc_sax_loss, 0.7),
+                   noise_seed);
+    }
+}
+
+static void modular_source_wt_modulated(float *out, int sampleRate, int samples,
+                                        int osc_type, double freq,
+                                        int pe_active, float pe_amt, float pe_decay,
+                                        int vib_on, float lfo_depth, float lfo_rate,
+                                        float lfo_delay) {
+    /* Wavetable OSC with per-sample frequency modulation: pitch-env
+     * (exp semitone sweep) and/or LFO vibrato (sinusoidal semitone wobble),
+     * summed in semitones then applied as a 2^(st/12) multiplier. When
+     * vib_on is false this is bit-identical to the legacy pitch-env branch;
+     * when both are off control never reaches here (the plain branch below
+     * runs), preserving byte-identity for every pre-change instrument. */
+    ensure_modular_tables();
+    wt_osc_t osc;
+    wt_osc_init(&osc, modular_table_for(osc_type), freq, sampleRate);
+    for (int i = 0; i < samples; i++) {
+        double t = (double)i / (double)sampleRate;
+        double semis = 0.0;
+        if (pe_active) semis += (double)pe_amt * exp(-t / (double)pe_decay);
+        if (vib_on) {
+            double ramp = (lfo_delay > 0.0f) ? fmin(t / (double)lfo_delay, 1.0) : 1.0;
+            semis += (double)lfo_depth * ramp
+                              * sin(2.0 * M_PI * (double)lfo_rate * t);
+        }
+        double mult = pow(2.0, semis / 12.0);
+        wt_osc_set_freq(&osc, freq * mult, sampleRate);
+        out[i] = wt_osc_tick(&osc);
+    }
+}
+
+static void modular_source_unison(float *out, int sampleRate, int samples,
+                                  const modular_params *p, int have,
+                                  int osc_type, double freq,
+                                  int unison_nv, float unison_detune, float unison_mix,
+                                  float unison_drift_rate, float unison_drift_depth,
+                                  unsigned int noise_seed) {
+    /* Phase-15 ENSEMBLE humanization params (scatter + per-voice vibrato). */
+    float ens_scatter = mp_get(p, 0.0f, p->ens_scatter,  have);
+    float ens_vr      = mp_get(p, 0.0f, p->ens_vib_rate,  have);
+    float ens_vd      = mp_get(p, 0.0f, p->ens_vib_depth, have);
+    float ens_hum     = mp_get(p, 0.0f, p->ens_humanize,  have);
+    /* Phase-16 ensemble cycle jitter: per-voice fast pitch roughness. Identity
+     * 0 = no jitter (exact bypass of everything jitter-related below). */
+    float ens_jitter  = mp_get(p, 0.0f, p->ens_jitter,    have);
+    int   ens_vib_on  = (ens_vr > 0.0f && ens_vd > 0.0f);
+    /* Phase-8E unison: N detuned wt_osc copies with decorrelated phases.
+     * Center voice (i=0) runs at exact pitch; side voices (i=1..nv-1) are
+     * detuned symmetrically ±detune_cents/2 with phase offset i*π/nv for
+     * decorrelation. Sum all voices and normalize by 1/sqrt(nv) for RMS
+     * stability. unison_mix blends from center-only (0) to ensemble (1). */
+    ensure_modular_tables();
+    const wavetable_t *wt = modular_table_for(osc_type);
+    wt_osc_t osc;
+    wt_osc_init(&osc, wt, freq, sampleRate);
+    /* side-voice oscillators (max 6 side voices for nv up to 7). */
+    wt_osc_t side[6];
+    double side_freq[6];
+    int ns = unison_nv - 1; /* number of side voices */
+    for (int v = 0; v < ns; v++) {
+        /* Spread ns side voices evenly across [-1, +1].
+         * For ns==1 (voices==2) the old code gave spread=0 (no detuning).
+         * Fix: use max(ns-1,1) so one side voice lands at -detune, not center. */
+        double spread = -1.0 + 2.0 * (double)v / (double)(ns > 1 ? ns - 1 : 1);
+        double cents_v = (double)unison_detune * spread;
+        side_freq[v] = freq * pow(2.0, cents_v / 1200.0);
+        wt_osc_init(&side[v], wt, side_freq[v], sampleRate);
+        /* Phase offset for decorrelation: i*π/nv mapped to [0,1). */
+        wt_osc_set_phase(&side[v], (double)(v + 1) / (double)unison_nv);
+    }
+    double norm = 1.0 / sqrt((double)unison_nv);
+    double mix_blend = (double)unison_mix;
+    int drift_on = (unison_drift_rate > 0.0f && unison_drift_depth > 0.0f);
+    /* Per-voice drift LFO parameters (rate/phase only used when drift_on).
+     * drift_base_cents mirrors the static detune spread computed above for
+     * side_freq[v]; it is read whenever mod_on runs the per-sample set_freq
+     * path (drift_on, ens_scatter, or ens_vib_on), so it must be populated
+     * unconditionally — NOT gated behind drift_on like the rate/phase are. */
+    double drift_rate_v[6] = {0}, drift_phase_v[6] = {0}, drift_base_cents[6] = {0};
+    for (int v = 0; v < ns; v++) {
+        double spread = -1.0 + 2.0 * (double)v / (double)(ns > 1 ? ns - 1 : 1);
+        drift_base_cents[v] = (double)unison_detune * spread;
+    }
+    if (drift_on) {
+        for (int v = 0; v < ns; v++) {
+            /* Each voice gets a slightly different rate for decorrelation. */
+            drift_rate_v[v]  = (double)unison_drift_rate * (1.0 + 0.13 * (double)v);
+            drift_phase_v[v] = 2.0 * M_PI * (double)(v + 1) / (double)unison_nv;
+        }
+    }
+    /* Deterministic per-voice randoms: LCG seeded by (noise_seed, voice).
+     * lcg_norm ∈ [-1,1], lcg_unit ∈ [0,1). Never rand()/time — byte-identity
+     * and xplat parity depend on renders being pure functions of the seed. */
+    double scat_cents[7] = {0}, vib_rate_v[7] = {0}, vib_phase_v[7] = {0};
+    if (ens_scatter > 0.0f || ens_vib_on) {
+        for (int v = 0; v < unison_nv; v++) {
+            unsigned int r = (noise_seed + 1u) * 2654435761u + (unsigned int)(v + 1) * 40503u;
+            r = r * 1664525u + 1013904223u;
+            double n1 = ((double)(r >> 8) / (double)(1u << 24)) * 2.0 - 1.0;
+            r = r * 1664525u + 1013904223u;
+            double n2 = ((double)(r >> 8) / (double)(1u << 24)) * 2.0 - 1.0;
+            r = r * 1664525u + 1013904223u;
+            double u3 = (double)(r >> 8) / (double)(1u << 24);
+            /* Center voice keeps exact pitch center: scatter applies to sides only. */
+            scat_cents[v] = (v == 0) ? 0.0 : (double)ens_scatter * n1;
+            /* humanize spreads rate ±15% and randomizes phase; at 0 all voices
+             * share rate ens_vr and phase 0 (one synchronized singer). */
+            vib_rate_v[v]  = (double)ens_vr * (1.0 + 0.15 * (double)ens_hum * n2);
+            vib_phase_v[v] = 2.0 * M_PI * (double)ens_hum * u3;
+        }
+    }
+    /* Phase-16 cycle jitter: per-voice fast pitch roughness, INCLUDING the
+     * center voice. jit_onepole[0] = center, jit_onepole[v+1] = side v — same
+     * indexing convention as scat_cents/vib_rate_v/vib_phase_v above. A
+     * deterministic per-voice LCG stream (seeded off noise_seed) advances once
+     * every 16 samples and is smoothed by a one-pole (coef 0.008 ≈ 60 Hz
+     * bandwidth at 48k) into jit_onepole; ens_jitter==0 never touches these
+     * arrays, so they stay exactly 0.0 for the whole render. */
+    double jit_onepole[7] = {0};
+    unsigned int jit_r[7] = {0};
+    if (ens_jitter > 0.0f) {
+        for (int v = 0; v < unison_nv; v++) {
+            jit_r[v] = (noise_seed + 7u) * 2654435761u + (unsigned int)(v + 1) * 48271u;
+        }
+    }
+    int mod_on = drift_on || ens_scatter > 0.0f || ens_vib_on || ens_jitter > 0.0f;
+    for (int i = 0; i < samples; i++) {
+        if (mod_on) {
+            double t = (double)i / (double)sampleRate;
+            if (ens_jitter > 0.0f && (i & 15) == 0) {
+                for (int v = 0; v < unison_nv; v++) {
+                    jit_r[v] = jit_r[v] * 1664525u + 1013904223u;
+                    double jn = ((double)(jit_r[v] >> 8) / (double)(1u << 24)) * 2.0 - 1.0;
+                    sp_onepole_tick(&jit_onepole[v], 0.008, jn);
+                }
+            }
+            for (int v = 0; v < ns; v++) {
+                double drift_cents = drift_on
+                    ? (double)unison_drift_depth
+                        * sin(2.0 * M_PI * drift_rate_v[v] * t + drift_phase_v[v])
+                    : 0.0;
+                double cents = drift_base_cents[v]                          /* static spread (existing) */
+                             + drift_cents                                   /* existing drift term */
+                             + scat_cents[v + 1]                             /* Phase-15 scatter */
+                             + (ens_vib_on ? (double)ens_vd
+                                   * sin(2.0 * M_PI * vib_rate_v[v + 1] * t + vib_phase_v[v + 1]) : 0.0);
+                if (ens_jitter > 0.0f) {
+                    cents += jit_onepole[v + 1] * (double)ens_jitter * 35.0;
+                }
+                wt_osc_set_freq(&side[v], freq * pow(2.0, cents / 1200.0), sampleRate);
+            }
+            if (ens_vib_on || ens_jitter > 0.0f) {
+                double c0 = 0.0;
+                if (ens_vib_on) {
+                    c0 = (double)ens_vd * sin(2.0 * M_PI * vib_rate_v[0] * t + vib_phase_v[0]);
+                }
+                if (ens_jitter > 0.0f) {
+                    c0 += jit_onepole[0] * (double)ens_jitter * 35.0;
+                }
+                wt_osc_set_freq(&osc, freq * pow(2.0, c0 / 1200.0), sampleRate);
+            }
+        }
+        double center = (double)wt_osc_tick(&osc);
+        double ensemble = center;
+        for (int v = 0; v < ns; v++) ensemble += (double)wt_osc_tick(&side[v]);
+        ensemble *= norm;
+        out[i] = (float)((1.0 - mix_blend) * center + mix_blend * ensemble);
+    }
+}
+
+static void modular_source_plain(float *out, int sampleRate, int samples,
+                                 int osc_type, double freq) {
+    ensure_modular_tables();
+    wt_osc_t osc;
+    wt_osc_init(&osc, modular_table_for(osc_type), freq, sampleRate);
+    for (int i = 0; i < samples; i++) {
+        out[i] = wt_osc_tick(&osc);
     }
 }
 
@@ -460,6 +735,21 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
     float body_mix       = mp_get(p, 0.0f, p->body_mix, have);
     float bow_dynamics   = mp_get(p, 0.0f, p->bow_dynamics, have);
 
+    /* Phase-15 formant stage. enabled/mix gate everything; vowel/voice_type/
+     * morph_to read raw (0 = a valid enum value); shift falls back to 1.0. */
+    int   formant_on   = mp_get(p, 0.0f, p->formant_enabled, have) >= 0.5f;
+    float formant_vowel = p->formant_vowel;
+    int   formant_vt   = (int)lrintf(p->formant_voice_type);
+    float formant_mix  = mp_get(p, 0.0f, p->formant_mix,   have);
+    float formant_shift = mp_get(p, 1.0f, p->formant_shift, have);
+    float formant_breath = mp_get(p, 0.0f, p->formant_breath, have);
+    float formant_sing = mp_get(p, 0.0f, p->formant_sing,  have);
+    float formant_mrate = mp_get(p, 0.0f, p->formant_morph_rate, have);
+    float formant_mto  = p->formant_morph_to;
+    /* Phase-16: dry-blend scaler. Fallback 1.0 = identity (full dry blend,
+     * byte-identical to the pre-Phase-16 formant stage). */
+    float formant_dry  = mp_get(p, 1.0f, p->formant_dry, have);
+
     /* Phase-8E unison: identity default 1 (single osc = no change). */
     int   unison_nv     = (int)lrintf(mp_get(p, 1.0f, p->unison_voices, have));
     float unison_detune = mp_get(p, 0.0f, p->unison_detune, have);
@@ -502,154 +792,27 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
         /* Generator disabled by the user → silence (out[] is already zeroed).
          * The generator is the sound source, so "bypass" means no source. */
     } else if (osc_type == 5 || osc_type == 6) {
-        noise_gen ng;
-        noise_init(&ng, noise_seed);
-        if (osc_type == 6) {
-            for (int i = 0; i < samples; i++) out[i] = noise_pink_tick(&ng);
-        } else {
-            for (int i = 0; i < samples; i++) out[i] = noise_white_tick(&ng);
-        }
+        modular_source_noise(out, samples, osc_type, noise_seed);
         osc_wrote = 1;
     } else if (osc_type == 4) {
-        fm_preset preset;
-        build_fm_preset(p, freq, &preset);
-        if (!fm_on) {
-            /* FM disabled → carrier-only: drop all modulation routing (incl.
-             * op1 self-feedback) so only the base carrier sounds. */
-            memset(preset.mod_matrix, 0, sizeof(preset.mod_matrix));
-        }
-        if (pe_on) {
-            /* PITCH ENV on the FM core: the fm_preset already carries the
-             * exponential semitone sweep (pitch_env_amount / pitch_env_decay,
-             * fm_render lines ~127-129); build_fm_preset zeroes them, so the
-             * stage just fills them in. Stage off ⇒ fields stay 0 ⇒ the exact
-             * pre-Phase-8C preset. */
-            preset.pitch_env_amount = pe_amt;
-            preset.pitch_env_decay  = pe_decay;
-        }
-        fm_render(&preset, out, sampleRate, samples);
-        /* fm_render applies its own steady envelope + softsat; we still shape
-         * with the voice amp ADSR below. */
+        modular_source_fm(out, sampleRate, samples, p, freq, fm_on, pe_on, pe_amt, pe_decay);
         osc_wrote = 1;
-    } else if (osc_type == 7) {
-        /* Bowed-string digital waveguide (physical model) — see render_bowed_string. */
-        render_bowed_string(out, sampleRate, samples, freq, noise_seed);
-        osc_wrote = 1;
-    } else if (osc_type == 8) {
-        /* Brass lip-reed waveguide. NOTE: not yet a clean self-oscillator — the
-         * lip BiQuad + squared nonlinearity tends to chaos rather than a locked
-         * tone, so no instrument ships on it yet (trumpet stays subtractive). The
-         * output is GUARDED finite/bounded (see test TestWaveguideOscTypesAreFinite
-         * + the y-guard below) so it's safe; the low lip_gain is the documented
-         * starting point for future stabilisation. See reference_instrument_synth_tuning. */
-        render_brass(out, sampleRate, samples, freq, 0.85, 0.997, 0.012, 0.5);
-        osc_wrote = 1;
-    } else if (osc_type == 9) {
-        /* Reed-woodwind waveguide. Hardcoded OBOE defaults (double reed: non-
-         * inverting bell → all harmonics; reed stiffness + blow + loss filter
-         * tuned to oscillate AND give the bright, nasal, reedy oboe spectrum). */
-        render_reed(out, sampleRate, samples, freq, -0.95, 0.7, -0.3, 0.8, 0.5, noise_seed);
-        osc_wrote = 1;
-    } else if (osc_type == 10) {
-        /* Air-jet (flute) waveguide. Hardcoded breathy-flute defaults; higher
-         * drive + lower loss so it sustains oscillation at the prescaled bore. */
-        render_flute(out, sampleRate, samples, freq, 0.4, 0.2, 0.7, 1.0, noise_seed);
-        osc_wrote = 1;
-    } else if (osc_type == 11) {
-        /* Saxofony reed-cone waveguide. Hardcoded BARITONE-SAX defaults: off-centre
-         * blow position (all harmonics), positive reed slope, hard breath + low
-         * offset for the dense honking low tone, bright loss filter. */
-        render_sax(out, sampleRate, samples, freq, 0.15, 0.58, 0.28, -0.94, 0.85, 0.7, noise_seed);
+    } else if (osc_type == 7 || osc_type == 8 || osc_type == 9 || osc_type == 10 || osc_type == 11) {
+        modular_source_physical(out, sampleRate, samples, p, osc_type, freq, noise_seed);
         osc_wrote = 1;
     } else if ((pe_on && pe_amt != 0.0f && pe_decay > 0.0f) || vib_on) {
-        /* Wavetable OSC with per-sample frequency modulation: pitch-env
-         * (exp semitone sweep) and/or LFO vibrato (sinusoidal semitone wobble),
-         * summed in semitones then applied as a 2^(st/12) multiplier. When
-         * vib_on is false this is bit-identical to the legacy pitch-env branch;
-         * when both are off control never reaches here (the plain branch below
-         * runs), preserving byte-identity for every pre-change instrument. */
-        ensure_modular_tables();
-        wt_osc_t osc;
-        wt_osc_init(&osc, modular_table_for(osc_type), freq, sampleRate);
         int pe_active = pe_on && pe_amt != 0.0f && pe_decay > 0.0f;
-        for (int i = 0; i < samples; i++) {
-            double t = (double)i / (double)sampleRate;
-            double semis = 0.0;
-            if (pe_active) semis += (double)pe_amt * exp(-t / (double)pe_decay);
-            if (vib_on) {
-                double ramp = (lfo_delay > 0.0f) ? fmin(t / (double)lfo_delay, 1.0) : 1.0;
-                semis += (double)lfo_depth * ramp
-                                  * sin(2.0 * M_PI * (double)lfo_rate * t);
-            }
-            double mult = pow(2.0, semis / 12.0);
-            wt_osc_set_freq(&osc, freq * mult, sampleRate);
-            out[i] = wt_osc_tick(&osc);
-        }
+        modular_source_wt_modulated(out, sampleRate, samples, osc_type, freq,
+                                    pe_active, pe_amt, pe_decay,
+                                    vib_on, lfo_depth, lfo_rate, lfo_delay);
         osc_wrote = 1;
     } else if (unison_nv >= 2) {
-        /* Phase-8E unison: N detuned wt_osc copies with decorrelated phases.
-         * Center voice (i=0) runs at exact pitch; side voices (i=1..nv-1) are
-         * detuned symmetrically ±detune_cents/2 with phase offset i*π/nv for
-         * decorrelation. Sum all voices and normalize by 1/sqrt(nv) for RMS
-         * stability. unison_mix blends from center-only (0) to ensemble (1). */
-        ensure_modular_tables();
-        const wavetable_t *wt = modular_table_for(osc_type);
-        wt_osc_t osc;
-        wt_osc_init(&osc, wt, freq, sampleRate);
-        /* side-voice oscillators (max 6 side voices for nv up to 7). */
-        wt_osc_t side[6];
-        double side_freq[6];
-        int ns = unison_nv - 1; /* number of side voices */
-        for (int v = 0; v < ns; v++) {
-            /* Spread ns side voices evenly across [-1, +1].
-             * For ns==1 (voices==2) the old code gave spread=0 (no detuning).
-             * Fix: use max(ns-1,1) so one side voice lands at -detune, not center. */
-            double spread = -1.0 + 2.0 * (double)v / (double)(ns > 1 ? ns - 1 : 1);
-            double cents_v = (double)unison_detune * spread;
-            side_freq[v] = freq * pow(2.0, cents_v / 1200.0);
-            wt_osc_init(&side[v], wt, side_freq[v], sampleRate);
-            /* Phase offset for decorrelation: i*π/nv mapped to [0,1). */
-            wt_osc_set_phase(&side[v], (double)(v + 1) / (double)unison_nv);
-        }
-        double norm = 1.0 / sqrt((double)unison_nv);
-        double mix_blend = (double)unison_mix;
-        int drift_on = (unison_drift_rate > 0.0f && unison_drift_depth > 0.0f);
-        /* Per-voice drift LFO parameters (only used when drift_on). */
-        double drift_rate_v[6], drift_phase_v[6], drift_base_cents[6];
-        if (drift_on) {
-            for (int v = 0; v < ns; v++) {
-                /* Each voice gets a slightly different rate for decorrelation. */
-                drift_rate_v[v]  = (double)unison_drift_rate * (1.0 + 0.13 * (double)v);
-                drift_phase_v[v] = 2.0 * M_PI * (double)(v + 1) / (double)unison_nv;
-                /* Remember the static base detune so we can add drift on top. */
-                double spread = -1.0 + 2.0 * (double)v / (double)(ns > 1 ? ns - 1 : 1);
-                drift_base_cents[v] = (double)unison_detune * spread;
-            }
-        }
-        for (int i = 0; i < samples; i++) {
-            if (drift_on) {
-                double t = (double)i / (double)sampleRate;
-                for (int v = 0; v < ns; v++) {
-                    double drift_cents = (double)unison_drift_depth
-                        * sin(2.0 * M_PI * drift_rate_v[v] * t + drift_phase_v[v]);
-                    double total_cents = drift_base_cents[v] + drift_cents;
-                    wt_osc_set_freq(&side[v], freq * pow(2.0, total_cents / 1200.0), sampleRate);
-                }
-            }
-            double center = (double)wt_osc_tick(&osc);
-            double ensemble = center;
-            for (int v = 0; v < ns; v++) ensemble += (double)wt_osc_tick(&side[v]);
-            ensemble *= norm;
-            out[i] = (float)((1.0 - mix_blend) * center + mix_blend * ensemble);
-        }
+        modular_source_unison(out, sampleRate, samples, p, have, osc_type, freq,
+                              unison_nv, unison_detune, unison_mix,
+                              unison_drift_rate, unison_drift_depth, noise_seed);
         osc_wrote = 1;
     } else {
-        ensure_modular_tables();
-        wt_osc_t osc;
-        wt_osc_init(&osc, modular_table_for(osc_type), freq, sampleRate);
-        for (int i = 0; i < samples; i++) {
-            out[i] = wt_osc_tick(&osc);
-        }
+        modular_source_plain(out, sampleRate, samples, osc_type, freq);
         osc_wrote = 1;
     }
 
@@ -658,6 +821,16 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
      * no active slot ⇒ exact no-op (byte-identity invariant). Runs even when
      * osc_enabled == 0 (slots are independent of the legacy osc gate). ── */
     modular_gen_bank_render(out, sampleRate, samples, p, freq, noise_seed, osc_wrote);
+
+    /* ── Phase-15 breath: white noise mixed into the source PRE-envelope so the
+     * ADSR shapes it and the filter + formant bank color it. Whisper = osc off
+     * + breath 1. Gated on the formant stage (it is that card's knob). ── */
+    if (formant_on && formant_breath > 0.0f) {
+        noise_gen bng;
+        noise_init(&bng, noise_seed ^ 0x9E3779B9u);
+        for (int i = 0; i < samples; i++)
+            out[i] += noise_white_tick(&bng) * formant_breath * 0.5f;
+    }
 
     /* ── Phase-8C LFO stage: post-mix amp wobble. Multiplies the FULL mix
      * (legacy osc + gen-bank family voices), so it is a real stage on every
@@ -781,6 +954,15 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
     }
     /* filter disabled → passthrough. */
 
+    /* ── Phase-15 FORMANT stage (vowel bank) — before the body resonator so
+     * FORMANT (mouth) and RESONATOR (instrument body) compose in that order. */
+    if (formant_on) {
+        modular_formant_process(out, sampleRate, samples, formant_vt,
+                                formant_vowel, formant_mix, formant_shift,
+                                formant_sing, formant_mrate, formant_mto,
+                                formant_dry);
+    }
+
     /* ── Body-resonator bank ── (organic string/violin body)
      * out = dry + Σ_k (bandpass_k(out) · g_k) · body_mix. The narrow band-passes
      * are an instrument body's signature modes; vibrato sweeping the harmonics
@@ -898,12 +1080,12 @@ EXPORT void render_modular_p(float *out, int sampleRate, int samples,
                 rng = rng * 1664525u + 1013904223u;
                 target = ((double)(rng >> 8) / (double)(1u << 24)) * 2.0 - 1.0;
             }
-            m += 0.0004 * (target - m); /* ~55 ms ramp → smooth, gentle bow wander */
+            sp_onepole_tick(&m, 0.0004, target); /* ~55 ms ramp → smooth, gentle bow wander */
             double amp = 1.0 + (double)bow_dynamics * m; /* loudness swing */
             if (amp < 0.0) amp = 0.0;
             double a = 0.70 + 0.42 * (double)bow_dynamics * m; /* brightness: LP coeff tracks m (wider swing) */
             if (a < 0.05) a = 0.05; else if (a > 0.995) a = 0.995;
-            lp += a * ((double)out[i] - lp);
+            sp_onepole_tick(&lp, a, (double)out[i]);
             out[i] = (float)(lp * amp);
         }
     }

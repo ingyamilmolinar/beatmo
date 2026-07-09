@@ -225,6 +225,72 @@ func applyUserStageParamsToModular(mp *ModularParams, recipeID string, merged Re
 	if v, ok := get("burst4_amp"); ok {
 		mp.Burst4Amp = v
 	}
+	// ── Phase-15 FORMANT stage (vowel bank + singer's formant + breath) and
+	// RESONATOR body bank + bow-dynamics stage. Mirrors ModularPushParams'
+	// generic get()-based fill (modular_c.go) and applyUserStageParamsToPush's
+	// modularStageParamNames-driven loop — the WASM push already carried these
+	// (formant_*/ens_* were added there in an earlier task); this closes the
+	// native-binding side of the same gap. ──
+	if v, ok := get("body_model"); ok {
+		mp.BodyModel = v
+	}
+	if v, ok := get("body_mix"); ok {
+		mp.BodyMix = v
+	}
+	if v, ok := get("bow_dynamics"); ok {
+		mp.BowDynamics = v
+	}
+	if v, ok := get("formant_enabled"); ok {
+		mp.FormantEnabled = v
+	}
+	if v, ok := get("formant_vowel"); ok {
+		mp.FormantVowel = v
+	}
+	if v, ok := get("formant_voice_type"); ok {
+		mp.FormantVoiceType = v
+	}
+	if v, ok := get("formant_mix"); ok {
+		mp.FormantMix = v
+	}
+	if v, ok := get("formant_shift"); ok {
+		mp.FormantShift = v
+	}
+	if v, ok := get("formant_breath"); ok {
+		mp.FormantBreath = v
+	}
+	if v, ok := get("formant_sing"); ok {
+		mp.FormantSing = v
+	}
+	if v, ok := get("formant_morph_rate"); ok {
+		mp.FormantMorphRate = v
+	}
+	if v, ok := get("formant_morph_to"); ok {
+		mp.FormantMorphTo = v
+	}
+	// ── Phase-15 ENSEMBLE humanization (scatter + per-voice vibrato). No
+	// enable toggle — the numerics are the whole stage; identity/default values
+	// are a no-op in the C engine. ──
+	if v, ok := get("ens_scatter"); ok {
+		mp.EnsScatter = v
+	}
+	if v, ok := get("ens_vib_rate"); ok {
+		mp.EnsVibRate = v
+	}
+	if v, ok := get("ens_vib_depth"); ok {
+		mp.EnsVibDepth = v
+	}
+	if v, ok := get("ens_humanize"); ok {
+		mp.EnsHumanize = v
+	}
+	// ── Phase-16 voice-realism (ensemble cycle jitter + formant dry blend).
+	// Same rationale as the Phase-15 block above: closes the native-binding
+	// side of the gap so the desktop path matches the WASM push. ──
+	if v, ok := get("ens_jitter"); ok {
+		mp.EnsJitter = v
+	}
+	if v, ok := get("formant_dry"); ok {
+		mp.FormantDry = v
+	}
 }
 
 // elidedValOrNaN returns the elided value for name if present (i.e. non-default,

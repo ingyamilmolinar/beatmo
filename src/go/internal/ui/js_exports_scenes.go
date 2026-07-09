@@ -12,108 +12,108 @@ import (
 // synchronously while drum.Update holds the per-frame lock.
 func (g *Game) initJSScenes() {
 	// ─── menus ──────────────────────────────────────────────────
-	js.Global().Set("openContextMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		row := jsArgInt(args, 0, 0)
+	js.Global().Set("openContextMenu", jsFn(func(args jsArgs) any {
+		row := args.IntOr(0, 0)
 		g.QueueAction(func(g *Game) { g.drum.OpenContextMenu(row) })
 		return nil
 	}))
-	js.Global().Set("closeContextMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeContextMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseContextMenu() })
 		return nil
 	}))
-	js.Global().Set("openOverflowMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("openOverflowMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.OpenOverflowMenu() })
 		return nil
 	}))
-	js.Global().Set("closeOverflowMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeOverflowMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseOverflowMenu() })
 		return nil
 	}))
-	js.Global().Set("openColorMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		row := jsArgInt(args, 0, 0)
+	js.Global().Set("openColorMenu", jsFn(func(args jsArgs) any {
+		row := args.IntOr(0, 0)
 		g.QueueAction(func(g *Game) { g.drum.OpenColorMenu(row) })
 		return nil
 	}))
-	js.Global().Set("closeColorMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeColorMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseColorMenu() })
 		return nil
 	}))
-	js.Global().Set("openInstrumentMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		row := jsArgInt(args, 0, 0)
+	js.Global().Set("openInstrumentMenu", jsFn(func(args jsArgs) any {
+		row := args.IntOr(0, 0)
 		g.QueueAction(func(g *Game) { g.drum.OpenInstrumentMenu(row) })
 		return nil
 	}))
-	js.Global().Set("closeInstrumentMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeInstrumentMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseInstrumentMenu() })
 		return nil
 	}))
-	js.Global().Set("openSubdivMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("openSubdivMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.OpenSubdivMenu() })
 		return nil
 	}))
-	js.Global().Set("closeSubdivMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeSubdivMenu", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseSubdivMenu() })
 		return nil
 	}))
 
 	// ─── FX panel ──────────────────────────────────────────────
-	js.Global().Set("openFXPanel", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		row := jsArgInt(args, 0, 0)
+	js.Global().Set("openFXPanel", jsFn(func(args jsArgs) any {
+		row := args.IntOr(0, 0)
 		g.QueueAction(func(g *Game) { g.drum.OpenFXPanel(row) })
 		return nil
 	}))
-	js.Global().Set("closeFXPanel", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeFXPanel", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseFXPanel() })
 		return nil
 	}))
 
 	// ─── volume popups ─────────────────────────────────────────
-	js.Global().Set("openMasterVolumePopup", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("openMasterVolumePopup", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.OpenMasterVolumePopup() })
 		return nil
 	}))
-	js.Global().Set("openVolumePopup", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		row := jsArgInt(args, 0, 0)
+	js.Global().Set("openVolumePopup", jsFn(func(args jsArgs) any {
+		row := args.IntOr(0, 0)
 		g.QueueAction(func(g *Game) { g.drum.OpenVolumePopup(row) })
 		return nil
 	}))
-	js.Global().Set("closeVolumePopup", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeVolumePopup", jsFn(func(args jsArgs) any {
 		g.QueueAction(func(g *Game) { g.drum.CloseVolumePopup() })
 		return nil
 	}))
 
 	// ─── audio setters ─────────────────────────────────────────
-	js.Global().Set("setMasterVolume", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		v := jsArgFloat(args, 0, 1)
+	js.Global().Set("setMasterVolume", jsFn(func(args jsArgs) any {
+		v := args.FloatOr(0, 1)
 		g.QueueAction(func(g *Game) { g.SetMasterVolume(v) })
 		return nil
 	}))
-	js.Global().Set("setEQBandGain", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		channel := jsArgString(args, 0, "main")
-		band := jsArgInt(args, 1, 0)
-		gainDB := jsArgFloat(args, 2, 0)
+	js.Global().Set("setEQBandGain", jsFn(func(args jsArgs) any {
+		channel := args.StrOr(0, "main")
+		band := args.IntOr(1, 0)
+		gainDB := args.FloatOr(2, 0)
 		g.QueueAction(func(g *Game) { g.SetEQBandGain(channel, band, gainDB) })
 		return nil
 	}))
 
 	// ─── scene catalog ─────────────────────────────────────────
-	js.Global().Set("runScene", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		name := jsArgString(args, 0, "")
+	js.Global().Set("runScene", jsFn(func(args jsArgs) any {
+		name := args.StrOr(0, "")
 		if name == "" {
 			return js.ValueOf(false)
 		}
 		g.QueueAction(func(g *Game) { _ = RunScene(g, name) })
 		return js.ValueOf(true)
 	}))
-	js.Global().Set("runSceneMobile", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		name := jsArgString(args, 0, "")
+	js.Global().Set("runSceneMobile", jsFn(func(args jsArgs) any {
+		name := args.StrOr(0, "")
 		if name == "" {
 			return js.ValueOf(false)
 		}
 		g.QueueAction(func(g *Game) { _ = RunSceneMobile(g, name) })
 		return js.ValueOf(true)
 	}))
-	js.Global().Set("listScenes", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("listScenes", jsFn(func(args jsArgs) any {
 		scenes := ListScenes()
 		arr := js.Global().Get("Array").New(len(scenes))
 		for i, s := range scenes {
@@ -137,8 +137,8 @@ func (g *Game) initJSScenes() {
 	// the full framebuffer. Browser screenshot harness reads this after
 	// runScene + forceDraw have settled and forwards the rect to
 	// page.screenshot({clip}).
-	js.Global().Set("subjectRectJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		name := jsArgString(args, 0, "")
+	js.Global().Set("subjectRectJS", jsFn(func(args jsArgs) any {
+		name := args.StrOr(0, "")
 		obj := js.Global().Get("Object").New()
 		s, ok := SubjectByName(name)
 		if !ok {
@@ -157,7 +157,7 @@ func (g *Game) initJSScenes() {
 
 	// listSubjects() returns every named subject (excludes the
 	// empty/full-screen one). Used by the bridge-smoke test catalogue.
-	js.Global().Set("listSubjects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("listSubjects", jsFn(func(args jsArgs) any {
 		subs := AllSubjects()
 		arr := js.Global().Get("Array").New(len(subs))
 		for i, s := range subs {

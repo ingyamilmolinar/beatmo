@@ -469,6 +469,89 @@ func undoActionCases() []undoCase {
 				g.drum.recordUndoStep(hooks.EventSampleEditChanged)
 			},
 		},
+		{
+			// Mirrors game_marquee.go's handleMarquee release path:
+			// graph.CreateGroup followed by emitGroupCreated (which calls
+			// recordUndo synchronously — no enqueueUI/Update needed).
+			name: "group-created",
+			kind: hooks.EventGroupCreated,
+			setup: func(t *testing.T, g *Game) {
+				g.tryAddNode(20, 20, model.NodeTypeRegular)
+				g.tryAddNode(21, 20, model.NodeTypeRegular)
+			},
+			mutate: func(t *testing.T, g *Game) {
+				a := g.nodeAt(20, 20)
+				b := g.nodeAt(21, 20)
+				gid, err := g.graph.CreateGroup("", []model.NodeID{a.ID, b.ID})
+				if err != nil {
+					t.Fatalf("CreateGroup: %v", err)
+				}
+				grp, _ := g.graph.Group(gid)
+				emitGroupCreated(gid, grp.Name, grp.NodeIDs)
+			},
+		},
+		{
+			// Mirrors game_group_menu.go's writeRule (graph.SetGroupRules +
+			// emitGroupChanged), exercised directly (not via the deferred
+			// enqueueUI-wrapped GroupMenu method) so the mutation is visible
+			// to undoCapture() immediately.
+			name: "group-rule-changed",
+			kind: hooks.EventGroupChanged,
+			setup: func(t *testing.T, g *Game) {
+				a := g.tryAddNode(22, 20, model.NodeTypeRegular)
+				b := g.tryAddNode(23, 20, model.NodeTypeRegular)
+				if _, err := g.graph.CreateGroup("rule-group", []model.NodeID{a.ID, b.ID}); err != nil {
+					t.Fatalf("CreateGroup: %v", err)
+				}
+			},
+			mutate: func(t *testing.T, g *Game) {
+				groups := g.graph.AllGroups()
+				var gid model.GroupID
+				for _, gr := range groups {
+					if gr.Name == "rule-group" {
+						gid = gr.ID
+					}
+				}
+				if gid == 0 {
+					t.Fatal("rule-group not found")
+				}
+				if err := g.graph.SetGroupRules(gid, []model.GroupRule{
+					{Param: model.GroupParamPitch, Delta: 2, EveryN: 1},
+				}); err != nil {
+					t.Fatalf("SetGroupRules: %v", err)
+				}
+				emitGroupChanged(gid)
+			},
+		},
+		{
+			// Mirrors game_group_menu.go's deleteGroup (graph.DeleteGroup +
+			// emitGroupDeleted).
+			name: "group-deleted",
+			kind: hooks.EventGroupDeleted,
+			setup: func(t *testing.T, g *Game) {
+				a := g.tryAddNode(24, 20, model.NodeTypeRegular)
+				b := g.tryAddNode(25, 20, model.NodeTypeRegular)
+				if _, err := g.graph.CreateGroup("doomed-group", []model.NodeID{a.ID, b.ID}); err != nil {
+					t.Fatalf("CreateGroup: %v", err)
+				}
+			},
+			mutate: func(t *testing.T, g *Game) {
+				groups := g.graph.AllGroups()
+				var gid model.GroupID
+				for _, gr := range groups {
+					if gr.Name == "doomed-group" {
+						gid = gr.ID
+					}
+				}
+				if gid == 0 {
+					t.Fatal("doomed-group not found")
+				}
+				if err := g.graph.DeleteGroup(gid); err != nil {
+					t.Fatalf("DeleteGroup: %v", err)
+				}
+				emitGroupDeleted(gid)
+			},
+		},
 	}
 }
 

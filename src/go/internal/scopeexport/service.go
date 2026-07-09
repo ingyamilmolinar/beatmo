@@ -169,10 +169,17 @@ func (s *Service) PushSamples(stage scope.Stage, id string, samples []float64) {
 	rb.push(samples)
 }
 
-// Run blocks until Stop is called, writing JSONL snapshots at the
-// configured interval.
-func (s *Service) Run() {
+// Start launches the capture loop on a background goroutine. wg.Add is
+// performed synchronously here — before the goroutine is scheduled — so a
+// subsequent Stop()'s wg.Wait() cannot race the Add (the classic WaitGroup
+// misuse that arises when Add lives inside the spawned goroutine).
+func (s *Service) Start() {
 	s.wg.Add(1)
+	go s.run()
+}
+
+// run writes JSONL snapshots at the configured interval until Stop is called.
+func (s *Service) run() {
 	defer s.wg.Done()
 
 	w, err := openWriter(s.cfg.OutputPath)

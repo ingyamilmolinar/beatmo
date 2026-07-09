@@ -22,7 +22,7 @@ import (
 //  3. Call SaveRecording to write session.json
 //  4. Publish hooks.EventRecordStop with the finalized RecordRecordPayload
 func finalizeRecording(session *recordingSession, result *RecordingResult, logger func(string, ...any)) {
-	defer finalizePending.Done()
+	defer finalizeDone()
 
 	// Workers have already been drained synchronously in StopRecording —
 	// we just need to flush and close the WAV writers (the slow part on
@@ -58,9 +58,7 @@ func finalizeRecording(session *recordingSession, result *RecordingResult, logge
 // rare), it falls back to running synchronously to preserve correctness
 // over latency.
 func queueFinalize(session *recordingSession, result *RecordingResult) {
-	finalizeMu.Lock()
-	finalizePending.Add(1)
-	finalizeMu.Unlock()
+	finalizeBegin()
 
 	loggerFn := func(format string, args ...any) {
 		log.Printf(format, args...)

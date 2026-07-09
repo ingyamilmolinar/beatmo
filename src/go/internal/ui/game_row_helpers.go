@@ -4,7 +4,8 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
-func (g *Game) rowIndexForNode(id model.NodeID) int {
+func (s *playbackSlate) rowIndexForNode(id model.NodeID) int {
+	g := s.g
 	if g.nodeRows != nil {
 		if r, ok := g.nodeRows[id]; ok {
 			return r
@@ -20,7 +21,8 @@ func (g *Game) rowIndexForNode(id model.NodeID) int {
 	return -1
 }
 
-func (g *Game) resetLogicStateForRow(row int) {
+func (s *playbackSlate) resetLogicStateForRow(row int) {
+	g := s.g
 	if row < 0 {
 		return
 	}
@@ -46,7 +48,8 @@ func (g *Game) resetLogicStateForRow(row int) {
 	}
 }
 
-func (g *Game) clampRowFreeze(row int, limit int) {
+func (s *playbackSlate) clampRowFreeze(row int, limit int) {
+	g := s.g
 	if row < 0 {
 		return
 	}
@@ -76,7 +79,8 @@ func (g *Game) clampRowFreeze(row int, limit int) {
 // invalidateReconciledRow resets row r's reconciliation watermark so the next
 // refresh's reconcileFrozen scan starts from futureReleaseStart. Out-of-range
 // row values are silently ignored.
-func (g *Game) invalidateReconciledRow(row int) {
+func (s *playbackSlate) invalidateReconciledRow(row int) {
+	g := s.g
 	if row < 0 || row >= len(g.reconciledUpToByRow) {
 		return
 	}
@@ -86,8 +90,19 @@ func (g *Game) invalidateReconciledRow(row int) {
 // invalidateReconciledAll resets every row's reconciliation watermark. Used
 // when an event affects all rows globally (predictor SetPaths, Stop reset,
 // row count grow).
-func (g *Game) invalidateReconciledAll() {
+func (s *playbackSlate) invalidateReconciledAll() {
+	g := s.g
 	for i := range g.reconciledUpToByRow {
 		g.reconciledUpToByRow[i] = -1
 	}
 }
+
+func (g *Game) rowIndexForNode(id model.NodeID) int { return g.playbackSlate.rowIndexForNode(id) }
+
+func (g *Game) resetLogicStateForRow(row int) { g.playbackSlate.resetLogicStateForRow(row) }
+
+func (g *Game) clampRowFreeze(row int, limit int) { g.playbackSlate.clampRowFreeze(row, limit) }
+
+func (g *Game) invalidateReconciledRow(row int) { g.playbackSlate.invalidateReconciledRow(row) }
+
+func (g *Game) invalidateReconciledAll() { g.playbackSlate.invalidateReconciledAll() }

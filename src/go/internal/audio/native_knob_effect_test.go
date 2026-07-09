@@ -211,16 +211,16 @@ func TestTomFamilyKnobContract(t *testing.T) {
 var snareFamilyKnobs = map[string][]familyKnobCase{
 	"drum-snare": {
 		{name: "snare_wave", def: 0, off: 2},
-		{name: "fundamental", def: 200, off: 320},      // fBody1
-		{name: "snare_tone2_freq", def: 330, off: 520}, // fBody2
-		{name: "snare_noise_tune", def: 1.0, off: 1.8}, // ×(350/1800/3200/4500)
-		{name: "snare_tone_decay", def: 28, off: 70},
-		{name: "snare_noise_decay", def: 12, off: 40},
-		{name: "snare_tail_decay", def: 18, off: 60},
-		{name: "snare_tone_mix", def: 0.40, off: 1.0},
-		{name: "snare_noise_mix", def: 1.1, off: 0.3},
-		{name: "snare_wire_mix", def: 0.9, off: 0.2},
-		{name: "snare_attack", def: 0.3, off: 1.5},
+		{name: "fundamental", def: 186, off: 320},      // fBody1
+		{name: "snare_tone2_freq", def: 280, off: 520}, // fBody2
+		{name: "snare_noise_tune", def: 0.55, off: 1.8}, // ×(350/1800/3200/4500)
+		{name: "snare_tone_decay", def: 46, off: 120},
+		{name: "snare_noise_decay", def: 7, off: 40},
+		{name: "snare_tail_decay", def: 10, off: 60},
+		{name: "snare_tone_mix", def: 1.12, off: 0.40},
+		{name: "snare_noise_mix", def: 0.56, off: 1.1},
+		{name: "snare_wire_mix", def: 0.8, off: 0.2},
+		{name: "snare_attack", def: 0.5, off: 1.5},
 	},
 	"drum-snare-rimshot": {
 		{name: "snare_wave", def: 0, off: 1},

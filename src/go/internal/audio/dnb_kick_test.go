@@ -110,7 +110,7 @@ func TestDnbKickPlaybackPathRendersKick(t *testing.T) {
 	for hz := 30.0; hz <= 400; hz += 2 {
 		grid = append(grid, hz)
 	}
-	for _, id := range []string{"dnb-kick", "kick-electro", "kick-808", "kick-acoustic", "kick-punchy"} {
+	for _, id := range []string{"dnb-kick", "kick-electro", "kick-808", "kick-acoustic", "kick-punchy", "zgump-kick", "raw-kick"} {
 		buf, sr := RenderInstrumentOneShotRaw(id)
 		if len(buf) == 0 {
 			t.Fatalf("%s playback produced no samples", id)

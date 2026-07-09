@@ -45,6 +45,11 @@ void wt_generate_square(wavetable_t *wt, float *buf, int length, int harmonics);
 /* Generate a band-limited triangle wave. */
 void wt_generate_triangle(wavetable_t *wt, float *buf, int length, int harmonics);
 
+/* Band-limited glottal-pulse approximation: all harmonics at 1/n^2 amplitude
+ * (−12 dB/oct — the Rosenberg glottal source slope; saw's 1/n is −6 dB/oct).
+ * The classic vocal source for formant synthesis. */
+void wt_generate_glottal(wavetable_t *wt, float *buf, int length, int harmonics);
+
 /* ── Oscillator functions ────────────────────────────────────── */
 
 /* Initialize oscillator for a given frequency and sample rate. */
@@ -77,7 +82,15 @@ static inline float wt_osc_tick(wt_osc_t *osc) {
               + osc->wt->table[idx + 1] * frac;
     osc->phase += osc->phase_inc;
     int len = osc->wt->length;
-    if (osc->phase >= (double)len) osc->phase -= (double)len;
+    /* Phase-15 (glottal osc + extreme pitch-env): a single conditional
+     * subtract only wraps one table-length overshoot. Per-sample frequency
+     * modulation (pitch-env/vibrato) can push phase_inc past `len` (freq
+     * exceeding sampleRate), which left phase permanently out of range and
+     * table[idx] indexing out of bounds — a real SIGSEGV, not just aliasing.
+     * A while-loop wrap is byte-identical for every realistic (sub-Nyquist)
+     * frequency, where a single subtract already sufficed. */
+    while (osc->phase >= (double)len) osc->phase -= (double)len;
+    while (osc->phase < 0.0) osc->phase += (double)len;
     return val;
 }
 

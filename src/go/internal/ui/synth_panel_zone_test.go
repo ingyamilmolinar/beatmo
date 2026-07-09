@@ -221,16 +221,19 @@ func TestSynthTab_HitAreasFlowFromEQPanelWhenActive(t *testing.T) {
 
 func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 	// Phase 8B unified Synth tab (+ Phase-8C modulator stages + the Phase-8E
-	// filter-envelope / unison additions): every synth instrument shows the
-	// standardized
-	// VOICE · OSC · FM · PITCH · LFO · BURST · ENVELOPE · FILTER · FILTER ENV · POST
+	// filter-envelope / unison additions + the Phase-15 voice/choir stages,
+	// Task 8): every synth instrument shows the standardized
+	// VOICE · OSC · ENSEMBLE · FM · PITCH · LFO · BURST · ENVELOPE · FILTER ·
+	// FILTER ENV · FORMANT · RESONATOR · POST
 	// sequence. For drum-snare:
 	//   VOICE     = the 11 snare family/voice knobs (generator + fundamental + the
 	//               tone/noise/tail decays + mixes + attack — the knobs that ARE
 	//               the snare sound),
-	//   OSC       = the 3 standardized oscillator knobs (osc_type/detune/octave)
-	//               PLUS the 5 unison/ensemble knobs (Voices/Detune/Mix + 2 drift)
-	//               which stack the oscillator → 8,
+	//   OSC       = the 3 standardized oscillator knobs (osc_type/detune/octave),
+	//   ENSEMBLE  = the 5 unison/ensemble knobs (Voices/Detune/Mix + 2 drift)
+	//               which stack the oscillator, PLUS the 4 Phase-15 humanization
+	//               knobs (Scatter/Vibrato Rate/Vibrato Depth/Humanize) PLUS the
+	//               Phase-16 Roughness (ens_jitter) knob → 10,
 	//   FM        = the 13 standardized FM operator knobs,
 	//   PITCH     = the 2 pitch-env knobs (pitchenv_amt/decay),
 	//   LFO       = the 4 LFO knobs (lfo_rate/depth/target/delay),
@@ -238,19 +241,25 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 	//   ENV       = decay (generic) + the 5 amp ADSR knobs = 6,
 	//   FILTER    = the 3 standardized static-filter knobs,
 	//   FILTER ENV= the 3 filter-envelope knobs (filtenv_amt/decay/attack),
+	//   FORMANT   = the 9 formant knobs (Vowel/Voice Type/Mix/Head Size/Breath/
+	//               Shine/Morph Speed/Morph To + the Phase-16 Dry Blend
+	//               (formant_dry) knob — formant_enabled is the pill),
+	//   RESONATOR = the 3 body-resonator knobs (Body Model/Body Mix/Bow Dynamics),
 	//   POST      = pitch + tone + drive (generic post) + gain = 4.
-	// Each stage section also carries its enable pill; VOICE carries none.
+	// Each stage section also carries its enable pill; VOICE/ENSEMBLE/RESONATOR
+	// carry none.
 	g := newSynthTabGame(t)
 	g.drum.eqPanelZone.SetActiveTab(TabSynth)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
 	sections := g.drum.SynthTabSections()
-	if len(sections) != 10 {
-		t.Fatalf("got %d sections, want 10 (VOICE/OSC/FM/PITCH/LFO/BURST/ENVELOPE/FILTER/FILTER ENV/POST)", len(sections))
+	if len(sections) != 13 {
+		t.Fatalf("got %d sections, want 13 (VOICE/OSC/ENSEMBLE/FM/PITCH/LFO/BURST/ENVELOPE/FILTER/FILTER ENV/FORMANT/RESONATOR/POST)", len(sections))
 	}
 	wantBySection := map[synthSectionID]int{
 		synthSectionVoice:     11,
-		synthSectionOsc:       8,
+		synthSectionOsc:       3,
+		synthSectionEnsemble:  10,
 		synthSectionFM:        13,
 		synthSectionPitch:     2,
 		synthSectionLFO:       4,
@@ -258,11 +267,14 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 		synthSectionEnvelope:  6,
 		synthSectionFilter:    3,
 		synthSectionFilterEnv: 3,
+		synthSectionFormant:   9,
+		synthSectionResonator: 3,
 		synthSectionPost:      4,
 	}
 	wantEnable := map[synthSectionID]string{
 		synthSectionVoice:     "",
 		synthSectionOsc:       "osc_enabled",
+		synthSectionEnsemble:  "",
 		synthSectionFM:        "fm_enabled",
 		synthSectionPitch:     "pitchenv_enabled",
 		synthSectionLFO:       "lfo_enabled",
@@ -270,6 +282,8 @@ func TestSynthTab_SectionCardsLayoutPerRecipe(t *testing.T) {
 		synthSectionEnvelope:  "env_enabled",
 		synthSectionFilter:    "filter_enabled",
 		synthSectionFilterEnv: "filtenv_enabled",
+		synthSectionFormant:   "formant_enabled",
+		synthSectionResonator: "",
 		synthSectionPost:      "post_enabled",
 	}
 	for _, s := range sections {

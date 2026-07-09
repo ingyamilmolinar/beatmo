@@ -62,7 +62,10 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 		py = gridH - panelH
 	}
 
-	g.longPressPopupRect = image.Rect(px, py, px+panelW, py+panelH)
+	// Keep the popup clear of the settings gear's protected top-right zone.
+	rect := avoidReservedRect(image.Rect(px, py, px+panelW, py+panelH), g.gridHelpReservedRect(), gridW, gridH)
+	g.longPressPopupRect = rect
+	px, py = rect.Min.X, rect.Min.Y
 	// Buttons inside the panel, with padding.
 	bx := px + pad
 	by := py + pad
@@ -153,6 +156,13 @@ func (g *Game) longPressPopupAccent() color.Color {
 	return colAccent
 }
 
+// longPressDeleteTextColor is the Delete keycap's label tint: the filled
+// destructive (neon) body takes a dark label per the DESIGN.md dark-on-neon
+// contrast rule and the `button-destructive.textColor` component token. A
+// near-white label on the saturated ember fill read as a glossy highlight
+// and broke the filled-control pattern.
+func longPressDeleteTextColor() color.Color { return genColorBackground }
+
 func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	if !g.longPressPopup {
 		return
@@ -185,10 +195,11 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	cty := connCap.Min.Y + (connCap.Dy()-StyledTextHeight(RoleBody))/2
 	DrawTextStyled(dst, i18n.T(i18n.KeyCapConnect), ctx, cty, RoleBody, connTxtCol)
 
-	// Delete button — raised keycap, destructive rust color, primary text (no accent on hover).
+	// Delete button — raised keycap, destructive rust color, dark-on-neon
+	// label (no accent on hover).
 	delHover := g.longPressPopupHover == "delete"
 	delCap := drawKeycapPanelButton(dst, g.longPressPopupDel, colDeleteFill, colDeleteBorder, delHover)
 	dtx := delCap.Min.X + (delCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyMenuDelete), RoleBody))/2
 	dty := delCap.Min.Y + (delCap.Dy()-StyledTextHeight(RoleBody))/2
-	DrawTextStyled(dst, i18n.T(i18n.KeyMenuDelete), dtx, dty, RoleBody, colTextPrimary)
+	DrawTextStyled(dst, i18n.T(i18n.KeyMenuDelete), dtx, dty, RoleBody, longPressDeleteTextColor())
 }

@@ -130,3 +130,52 @@ func TestScoreToShowcase_MultiPartVoiceOrder(t *testing.T) {
 		t.Fatalf("row2 should be part1 voice1 pitch=3, got %+v", sh.Rows[2])
 	}
 }
+
+func TestScoreToShowcaseMulti_PerPartInstruments(t *testing.T) {
+	sc := musicxml.Score{Divisions: 2, TempoBPM: 90, Parts: []musicxml.Part{
+		{ID: "P1", Notes: []musicxml.Note{
+			{Semitone: 12, OnsetDiv: 0, DurationDiv: 2, Voice: 1},
+			{Semitone: 14, OnsetDiv: 2, DurationDiv: 2, Voice: 1},
+		}},
+		{ID: "P2", Notes: []musicxml.Note{
+			{Semitone: -12, OnsetDiv: 0, DurationDiv: 4, Voice: 1},
+			{Semitone: -10, OnsetDiv: 0, DurationDiv: 4, Voice: 5},
+		}},
+	}}
+	sh := scoreToShowcaseMulti(sc, "duo", 16, []InstSpec{
+		{ID: "violin", Name: "Violin", Volume: 0.7, Pan: -0.3, ReverbSend: 0.4},
+		{ID: "cello", Name: "Cello", Volume: 0.75, Pan: 0.3},
+	})
+	if sh.Stem != "duo" || sh.BPM != 90 {
+		t.Fatalf("stem/bpm %+v", sh)
+	}
+	// P1 voice1 → row0 (violin); P2 voices 1,5 → rows 1,2 (both cello).
+	if len(sh.Rows) != 3 || len(sh.Insts) != 3 {
+		t.Fatalf("want 3 rows/insts, got %d/%d", len(sh.Rows), len(sh.Insts))
+	}
+	if sh.Insts[0].ID != "violin" || sh.Insts[1].ID != "cello" || sh.Insts[2].ID != "cello" {
+		t.Fatalf("inst mapping %+v", sh.Insts)
+	}
+	if sh.Insts[0].Pan != -0.3 || sh.Insts[0].ReverbSend != 0.4 {
+		t.Fatalf("InstSpec fields not propagated: %+v", sh.Insts[0])
+	}
+	if sh.Rows[0].Inst != "violin" || sh.Rows[1].Inst != "cello" {
+		t.Fatalf("row inst wiring %+v", sh.Rows)
+	}
+	if sh.Rows[0].Hits[1].Step != 4 || sh.Rows[0].Hits[1].Pitch != 14 {
+		t.Fatalf("violin hits %+v", sh.Rows[0].Hits)
+	}
+	if sh.Rows[1].Hits[0].Pitch != -12 || sh.Rows[2].Hits[0].Pitch != -10 {
+		t.Fatalf("cello voice split %+v %+v", sh.Rows[1].Hits, sh.Rows[2].Hits)
+	}
+}
+
+func TestScoreToShowcaseMulti_PartCountMismatchPanics(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("want panic on len(partInsts) != len(sc.Parts)")
+		}
+	}()
+	sc := musicxml.Score{Divisions: 1, Parts: []musicxml.Part{{}, {}}}
+	scoreToShowcaseMulti(sc, "x", 16, []InstSpec{{ID: "violin"}})
+}

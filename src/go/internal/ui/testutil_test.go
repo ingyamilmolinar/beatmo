@@ -458,6 +458,12 @@ func assertDefaultParityState(t *testing.T) {
 		parityWatchDefault = parityWatchLog
 		parityFatalEnabled.Store(false)
 	}
+	// Timing gate stays dormant under go test regardless of GOOS/profile (see
+	// init() in game_parity_timing.go) — belt-and-suspenders reset so a leak
+	// from any dedicated timing test (e.g. a forgotten enableParityTimingForTest
+	// cleanup) can't poison unrelated tests that follow it.
+	parityTimingWatchDefault = parityWatchOff
+	parityTimingFatalEnabled.Store(false)
 	if enableDefaultStart != true {
 		t.Fatalf("enableDefaultStart=%v want true (default)", enableDefaultStart)
 	}

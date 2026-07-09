@@ -9,13 +9,17 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// TestMobileRowNamesDoNotTruncate verifies that typical drum-kit row
-// names render without ellipsis at the iPhone-portrait viewport
-// (390×844). Before the rowControlWeights rebalance from [3,2,2,2,2]
-// → [5,2,2,2,2] and the RowControlBtnSize shrink 36 → 32, names like
-// "Hi-Hat", "Cowbell", "FM Snare" all truncated to "Hi-...", "Co...",
-// "Fm-...". This regression-guard test ensures the label cell stays
-// wide enough to fit them.
+// TestMobileRowNamesDoNotTruncate verifies that typical (short) drum-kit row
+// names render without ellipsis at the iPhone-portrait viewport (390×844).
+//
+// Reality of the mobile layout: the row rack lives in a ~192px left column
+// (rows-left / timeline-right), so the label cell is ~44px — wide enough for
+// the typical short kit names ("Snare", "Hi-Hat", "Clap", "Cowbell",
+// "Kick-1", "Rimshot") but NOT for long two-word / 8+-char names like
+// "FM Snare" or "Sidestick". Those long names live behind the tap-to-open
+// label sheet on mobile and are expected to abbreviate in the narrow column;
+// this guard only pins the short, common case so a future regression that
+// shrinks the label below the short-name width fails loudly.
 //
 // Truncation is applied by clipTextToWidth at button-draw time
 // (uigrid.go:162 and uigrid.go:256). Replicating that call here is
@@ -32,10 +36,10 @@ func TestMobileRowNamesDoNotTruncate(t *testing.T) {
 
 	dv := g.drum
 
-	// Names representative of the default Beatmo kit and a few longer
-	// edge cases. All should fit at 390px viewport once weights are
-	// rebalanced.
-	names := []string{"Kick-1", "Snare", "Hi-Hat", "Clap", "Cowbell", "FM Snare"}
+	// Short names representative of the default Beatmo kit. All fit the ~44px
+	// mobile label cell verbatim. (Longer names such as "FM Snare"/"Sidestick"
+	// genuinely cannot fit the 192px mobile half-column and abbreviate there.)
+	names := []string{"Kick-1", "Snare", "Hi-Hat", "Clap", "Cowbell", "Rimshot"}
 
 	if len(dv.rowLabels()) == 0 {
 		t.Fatal("no row labels available after default game start")

@@ -224,10 +224,12 @@ func intAbs(a int) int {
 	return a
 }
 
-// TestDesktopDrumPanelCappedAt50Percent verifies that on desktop, the drum
-// panel (including header + rows + EQ) never exceeds 50% of the window height,
-// even when many instrument rows would push it past that limit.
-func TestDesktopDrumPanelCappedAt50Percent(t *testing.T) {
+// TestDesktopDrumPanelCappedAt60Percent verifies that on desktop, the drum
+// panel (including header + rows + EQ) never exceeds 60% of the window height
+// (the desktopDrumPaneWant cap — raised from 50% so the 6-row startup demo
+// boots with all rows visible; the grid pane always keeps >= 40%), even when
+// many instrument rows would push it past that limit.
+func TestDesktopDrumPanelCappedAt60Percent(t *testing.T) {
 	assertDefaultParityState(t)
 
 	forceAutoSize = true
@@ -250,9 +252,9 @@ func TestDesktopDrumPanelCappedAt50Percent(t *testing.T) {
 	g.Layout(winW, winH)
 
 	drumH := winH - g.split.Y
-	maxAllowed := winH / 2 // 50%
+	maxAllowed := winH * 3 / 5 // 60%, mirrors desktopDrumPaneWant
 	if drumH > maxAllowed {
-		t.Fatalf("desktop drum panel height %d exceeds 50%% cap (%d) with %d rows; split.Y=%d",
+		t.Fatalf("desktop drum panel height %d exceeds 60%% cap (%d) with %d rows; split.Y=%d",
 			drumH, maxAllowed, len(g.drum.Rows), g.split.Y)
 	}
 }

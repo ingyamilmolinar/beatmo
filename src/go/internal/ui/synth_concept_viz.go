@@ -1,22 +1,25 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"math"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// synth_concept_viz.go — the concept-renderer registry.
+// synth_concept_viz.go — the concept renderers.
 //
-// Each synth param GROUP maps to one renderer that draws an abstract picture
-// of "what this knob does": the OSC group shows the seed wave, FILTER shows the
-// magnitude response, ENV shows the ADSR, FM shows harmonic bars, the motion
-// stages (pitch / lfo / burst) show a modulation curve, and POST shows the
-// waveshaper transfer. All renderers are PURE MATH (no audio render), so they
-// update live while a knob is dragged.
+// Each renderer draws an abstract picture of "what this knob does": the OSC
+// group shows the seed wave, FILTER shows the magnitude response, ENV shows the
+// ADSR, FM shows harmonic bars, the motion stages (pitch / lfo / burst) show a
+// modulation curve, and POST shows the waveshaper transfer. Most are PURE MATH
+// (no audio render), so they update live while a knob is dragged. The live
+// group→renderer routing table is synthFocusRenderers (synth_focus_graph.go);
+// this file holds the renderer implementations it dispatches to.
 //
 // instID resolves live params via audio.MergeRecipeDefaults. ghost is the
 // pre-drag param snapshot (nil = no ghost): renderers that support it draw a
@@ -26,40 +29,6 @@ import (
 // the ParamDef of the specific knob the picture sits under (group renderers
 // ignore it; the per-knob value-bar uses it to read that knob's own value).
 type conceptRenderer func(dst *ebiten.Image, rect image.Rectangle, instID string, def audio.ParamDef, ghost map[string]float64)
-
-// conceptRenderers maps every param GROUP that the recipe registry actually uses
-// to its concept renderer. It is the SINGLE source of truth; the discipline test
-// TestEveryRecipeGroupHasExplicitConceptRenderer enumerates every live
-// ParamDef.Group and asserts each appears here, so a recipe that introduces a new
-// group can't silently inherit the wrong picture via the fallback below.
-//
-// The grab-bag groups (core / generic / voice) hold heterogeneous knobs
-// (volume, pan, tune, …) with no single coherent shape, so they draw a per-knob
-// value bar rather than a misleading oscillator wave.
-var conceptRenderers = map[string]conceptRenderer{
-	// Timbre knobs render the ACTUAL resulting wave (conceptKnobWave) so the
-	// picture literally shows "this is the signal, and this is how the knob
-	// bends it". Time-domain stages (envelope, modulation) keep their dedicated
-	// time-curve pictures — those ARE their wave (amplitude / pitch over time).
-	"osc":      conceptKnobWave,
-	"filter":   conceptKnobWave,
-	"env":      conceptEnvelope,
-	"fm":       conceptKnobWave,
-	"post":     conceptKnobWave,
-	"pitch":    conceptMotion,
-	"pitchenv": conceptMotion,
-	"lfo":      conceptMotion,
-	"burst":    conceptMotion,
-	// Filter ENVELOPE sweeps the cutoff over time — a time-domain motion picture,
-	// like pitchenv. Unison stacks detuned oscillator copies — a timbre/waveform
-	// thickening, so it shows the resulting wave.
-	"filtenv":  conceptMotion,
-	"unison":   conceptKnobWave,
-	"core":     conceptKnobWave,
-	"generic":  conceptKnobWave,
-	"voice":    conceptKnobWave,
-	"":         conceptKnobWave,
-}
 
 // conceptStageEnableParam returns the *_enabled param that must be ON for a
 // group's effect to show in the rendered wave, so a knob's picture demonstrates
@@ -75,6 +44,14 @@ func conceptStageEnableParam(group string) (string, bool) {
 		return "fm_enabled", true
 	case "post":
 		return "drive_enabled", true
+	case "env":
+		return "env_enabled", true
+	case "lfo":
+		return "lfo_enabled", true
+	case "burst":
+		return "burst_enabled", true
+	case "pitchenv":
+		return "pitchenv_enabled", true
 	}
 	return "", false
 }
@@ -142,22 +119,12 @@ func sameWave(a, b []float64) bool {
 	return true
 }
 
-// conceptRendererForGroup is TOTAL: every group resolves to a non-nil renderer.
-// Known groups come from conceptRenderers; any unexpected group falls back to the
-// honest per-knob value bar (NOT the oscillator wave, which would mislead for a
-// non-oscillator knob). The discipline test keeps the fallback from silently
-// absorbing a real new group.
-func conceptRendererForGroup(group string) conceptRenderer {
-	if r, ok := conceptRenderers[group]; ok {
-		return r
-	}
-	return conceptValueBar
-}
-
 // conceptMergedParams resolves the instrument's effective params (shipped
-// defaults ⊕ user edits). Never nil.
+// defaults ⊕ user edits). Never nil. READ-ONLY: the map is the shared
+// rev-gated cache entry (concept renderers run per frame while the Synth tab
+// is open); callers must not mutate it.
 func conceptMergedParams(instID string) audio.RecipeParams {
-	return audio.MergeRecipeDefaults(audio.RecipeForInstrument(instID), audio.GetInstrumentParams(instID))
+	return audio.MergedInstrumentParamsRO(instID)
 }
 
 // conceptBgFill paints the standard scope-bg wash used by every concept plot,
@@ -197,14 +164,25 @@ func conceptDrawFilledCurve(dst *ebiten.Image, rect image.Rectangle, samples []f
 		return
 	}
 	w := rect.Dx()
+	if w < 2 {
+		return
+	}
+	// valueAt linearly interpolates between neighboring samples for a
+	// fractional column position, instead of nearest-sample stepping — this
+	// is what removes the stair-step look on steep curves.
+	valueAt := func(px int) float64 {
+		f := float64(px) * float64(n-1) / float64(w-1)
+		i0 := int(f)
+		if i0 >= n-1 {
+			return samples[n-1]
+		}
+		frac := f - float64(i0)
+		return samples[i0] + frac*(samples[i0+1]-samples[i0])
+	}
+	prevY := yAt(valueAt(0))
 	for px := 0; px < w; px++ {
 		x := rect.Min.X + px
-		// Map column to a sample index.
-		idx := px * (n - 1) / (w - 1)
-		if idx >= n {
-			idx = n - 1
-		}
-		y := yAt(samples[idx])
+		y := yAt(valueAt(px))
 		// Soft fill from the curve to the baseline.
 		if fillCol != nil {
 			yTop, yBot := y, fillBaseline
@@ -215,17 +193,25 @@ func conceptDrawFilledCurve(dst *ebiten.Image, rect image.Rectangle, samples []f
 				drawRect(dst, image.Rect(x, yTop, x+1, yBot), fillCol, true)
 			}
 		}
-		// 2px-tall stroke at the curve.
+		// Stroke at the curve, bridged to the previous column's y so steep
+		// segments paint a connected line instead of leaving vertical gaps.
 		if strokeCol != nil {
-			sy := y
-			if sy < rect.Min.Y {
-				sy = rect.Min.Y
+			y0, y1 := y, prevY
+			if y0 > y1 {
+				y0, y1 = y1, y0
 			}
-			if sy+conceptStrokeThickness > rect.Max.Y {
-				sy = rect.Max.Y - conceptStrokeThickness
+			y1 += conceptStrokeThickness
+			if y0 < rect.Min.Y {
+				y0 = rect.Min.Y
 			}
-			drawRect(dst, image.Rect(x, sy, x+1, sy+conceptStrokeThickness), strokeCol, true)
+			if y1 > rect.Max.Y {
+				y1 = rect.Max.Y
+			}
+			if y1 > y0 {
+				drawRect(dst, image.Rect(x, y0, x+1, y1), strokeCol, true)
+			}
 		}
+		prevY = y
 	}
 }
 
@@ -256,19 +242,26 @@ func conceptOsc(dst *ebiten.Image, r image.Rectangle, instID string, _ audio.Par
 func conceptEnvelope(dst *ebiten.Image, r image.Rectangle, instID string, _ audio.ParamDef, ghost map[string]float64) {
 	drawSynthADSRPlot(dst, r, instID, 1.0)
 	// Ghost overlay: faint "before" ADSR when the pre-drag env params differ.
-	ga, gd, gs, grel, ok := adsrParamsFromMap(ghost)
-	if !ok {
-		return
+	if ga, gd, gs, grel, ok := adsrParamsFromMap(ghost); ok {
+		la, ld, ls, lrel, lok := synthADSRParamsFor(instID)
+		if !lok || ga != la || gd != ld || gs != ls || grel != lrel {
+			w := r.Dx()
+			yTop := r.Min.Y + 2
+			yBot := r.Max.Y - 2
+			yAt := func(v float64) int { return yBot - int(float64(yBot-yTop)*v) }
+			conceptDrawFilledCurve(dst, r, adsrGhostSamples(ga, gd, gs, grel, w), yAt, yBot, nil, colConceptGhost)
+		}
 	}
-	la, ld, ls, lrel, lok := synthADSRParamsFor(instID)
-	if lok && ga == la && gd == ld && gs == ls && grel == lrel {
-		return
+
+	// Kid-level story cues: "starts" near the attack, "fades" near the release.
+	if conceptCuesFit(r) {
+		captionScale := FontSizeCaption / FontSizeBody
+		captionH := int(float64(TextHeight()) * captionScale)
+		ty := r.Max.Y - captionH - 2
+		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapStarts), r.Min.X+SpaceSM, ty, TokenTextSecondary(), captionScale)
+		fadesX := r.Min.X + int(float64(r.Dx())*0.65)
+		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapFades), fadesX, ty, TokenTextSecondary(), captionScale)
 	}
-	w := r.Dx()
-	yTop := r.Min.Y + 2
-	yBot := r.Max.Y - 2
-	yAt := func(v float64) int { return yBot - int(float64(yBot-yTop)*v) }
-	conceptDrawFilledCurve(dst, r, adsrGhostSamples(ga, gd, gs, grel, w), yAt, yBot, nil, colConceptGhost)
 }
 
 // oscParamsFromMap reads the oscillator-shape params from a snapshot map (ok is
@@ -340,6 +333,60 @@ func adsrGhostSamples(a, d, s, rel float64, w int) []float64 {
 
 // conceptValueBar is implemented in the value-bar section below (Round 2). It is
 // the renderer for the heterogeneous core / generic / voice groups.
+
+// ── kid-level story cues ─────────────────────────────────────────────────────
+//
+// A thin layer of "read it, don't decode it" cues on top of the concept
+// pictures: a marker on the filter curve at the actual cutoff, dull/bright
+// words at the curve's ends, envelope starts/fades words, and time rulers on
+// the motion pictures (LFO/burst/pitch-env/FM-envelope). All cues are gated by
+// conceptCuesFit so short legacy bands stay bare curves — only the big focus
+// graph is roomy enough to host words without crowding the shape itself.
+
+// conceptCueMinW/H gate the in-graph words + markers: the big focus graph gets
+// them; short legacy bands stay bare curves.
+const (
+	conceptCueMinW = 160
+	conceptCueMinH = 48
+)
+
+func conceptCuesFit(rect image.Rectangle) bool {
+	return rect.Dx() >= conceptCueMinW && rect.Dy() >= conceptCueMinH
+}
+
+// conceptFilterCutoffX maps a cutoff frequency to its x pixel on the filter
+// response's log-Hz axis (20..22000, matching conceptFilter's constants).
+func conceptFilterCutoffX(rect image.Rectangle, cutoffHz float64) int {
+	const minHz, maxHz = 20.0, 22000.0
+	if cutoffHz < minHz {
+		cutoffHz = minHz
+	}
+	if cutoffHz > maxHz {
+		cutoffHz = maxHz
+	}
+	frac := (math.Log10(cutoffHz) - math.Log10(minHz)) / (math.Log10(maxHz) - math.Log10(minHz))
+	return rect.Min.X + int(math.Round(frac*float64(rect.Dx()-1)))
+}
+
+// drawConceptTimeRuler paints a minimal time axis: baseline ticks at quarter
+// intervals plus "0" and endLabel — words a kid can read, no dense numerics.
+// endLabel is a raw unit string (e.g. "1s", "0.25s") — NOT translated, since
+// the unit is the same in every locale.
+func drawConceptTimeRuler(dst *ebiten.Image, rect image.Rectangle, endLabel string) {
+	if rect.Dx() < 120 || rect.Dy() < 40 {
+		return
+	}
+	baseY := rect.Max.Y - 1
+	for i := 0; i <= 4; i++ {
+		x := rect.Min.X + i*(rect.Dx()-1)/4
+		drawRect(dst, image.Rect(x, baseY-2, x+1, baseY), colConceptGhost, true)
+	}
+	captionScale := FontSizeCaption / FontSizeBody
+	captionH := int(float64(TextHeight()) * captionScale)
+	DrawTextColorAtScale(dst, "0", rect.Min.X+1, baseY-captionH-3, TokenTextSecondary(), captionScale)
+	endW := int(float64(TextWidth(endLabel)) * captionScale)
+	DrawTextColorAtScale(dst, endLabel, rect.Max.X-endW-1, baseY-captionH-3, TokenTextSecondary(), captionScale)
+}
 
 // conceptFilter draws the filter magnitude response as a FILLED area down to
 // the band baseline plus a 2px stroke, so the curve reads clearly in a short
@@ -414,6 +461,29 @@ func conceptFilter(dst *ebiten.Image, rect image.Rectangle, instID string, _ aud
 			if gresp := audio.ModularFilterResponse(gft, gc, gq, 48000, 96, 20, 22000); len(gresp) > 0 {
 				conceptDrawFilledCurve(dst, rect, resample(gresp), yAt, rect.Max.Y-1, nil, colConceptGhost)
 			}
+		}
+	}
+
+	// Kid-level story cues: a marker at the actual cutoff frequency, plus
+	// dull/bright words at the curve's ends (swapped for a high-pass filter,
+	// where LOW frequencies are cut — the "dull" end moves to the right).
+	if conceptCuesFit(rect) {
+		if ft, cutoff, _, ok := synthFilterParamsFor(instID); ok {
+			cx := conceptFilterCutoffX(rect, cutoff)
+			markerR := image.Rect(cx-4, rect.Min.Y+2, cx+4, rect.Min.Y+10)
+			DrawIcon(dst, IconChevronDown, markerR, colAccent)
+
+			dullWord := i18n.T(i18n.KeyGlossDull)
+			brightWord := i18n.T(i18n.KeyGlossBright)
+			if ft == 1 { // high-pass: low end is cut, so it reads "dull" on the right
+				dullWord, brightWord = brightWord, dullWord
+			}
+			captionScale := FontSizeCaption / FontSizeBody
+			captionH := int(float64(TextHeight()) * captionScale)
+			ty := rect.Max.Y - captionH - 2
+			DrawTextColorAtScale(dst, dullWord, rect.Min.X+SpaceSM, ty, TokenTextSecondary(), captionScale)
+			brightW := int(float64(TextWidth(brightWord)) * captionScale)
+			DrawTextColorAtScale(dst, brightWord, rect.Max.X-brightW-SpaceSM, ty, TokenTextSecondary(), captionScale)
 		}
 	}
 }
@@ -504,7 +574,7 @@ func conceptFM(dst *ebiten.Image, rect image.Rectangle, instID string, def audio
 	// first so the waveform reads on top.
 	conceptFMDepthUnderlay(dst, rect, conceptMergedParams(instID))
 
-	const cycles, pts = 3, 64
+	const cycles, pts = 3, 256
 	midY := (rect.Min.Y + rect.Max.Y) / 2
 	half := float64(rect.Dy()-2) / 2
 	yAt := func(v float64) int {
@@ -816,6 +886,225 @@ func burstAmpFor(offName string) string {
 	return ""
 }
 
+// ── conceptBurst — the burst stage's own story: a timeline of hit spikes ────
+
+// burstHitIndexForKnob maps a burstN_* knob to its hit number (1-4); 0 means
+// "no single hit" (burst_sharp shapes all hits; non-burst names).
+func burstHitIndexForKnob(name string) int {
+	if strings.HasPrefix(name, "burst") && len(name) > 5 && name[5] >= '1' && name[5] <= '4' {
+		return int(name[5] - '0')
+	}
+	return 0
+}
+
+// conceptBurst draws one spike per burst hit on a 0..0.25s timeline:
+// x = when (burstN_off), height = how loud (burstN_amp, sharpness-boosted),
+// width = how clicky (burst_sharp). SILENT hits (amp<=0) draw a dim
+// placeholder spike at 15% height so even a muted hit's timing knob shows
+// where the hit would land. The selected knob's hit is highlighted.
+func conceptBurst(dst *ebiten.Image, rect image.Rectangle, instID string, def audio.ParamDef, ghost map[string]float64) {
+	if rect.Dx() < 8 || rect.Dy() < 6 {
+		return
+	}
+	conceptBgFill(dst, rect)
+	merged := conceptMergedParams(instID)
+	selected := burstHitIndexForKnob(def.Name)
+
+	const maxOff = 0.25
+	sharp := merged["burst_sharp"]
+	if sharp <= 0 {
+		sharp = 40
+	}
+	sf := (sharp - 1.0) / (200.0 - 1.0)
+	if sf < 0 {
+		sf = 0
+	} else if sf > 1 {
+		sf = 1
+	}
+	tickW := 3 - int(math.Round(sf*2))
+	if tickW < 1 {
+		tickW = 1
+	}
+	usableH := rect.Dy() - 2
+	if usableH < 1 {
+		usableH = 1
+	}
+	baseY := rect.Max.Y - 1
+
+	xFor := func(off float64) int {
+		frac := off / maxOff
+		if frac < 0 {
+			frac = 0
+		} else if frac > 1 {
+			frac = 1
+		}
+		return rect.Min.X + int(math.Round(frac*float64(rect.Dx()-1-tickW)))
+	}
+	spike := func(x, h int, col interface {
+		RGBA() (r, g, b, a uint32)
+	}) {
+		if h < 1 {
+			h = 1
+		}
+		drawRect(dst, image.Rect(x, baseY-h, x+tickW, baseY), col, true)
+	}
+
+	for hit := 1; hit <= 4; hit++ {
+		offName := fmt.Sprintf("burst%d_off", hit)
+		ampName := fmt.Sprintf("burst%d_amp", hit)
+		amp := merged[ampName]
+		x := xFor(merged[offName])
+
+		// Ghost spike for the selected hit when the pre-drag off/amp differ.
+		if ghost != nil && (selected == hit || selected == 0) {
+			gOff, gAmp := ghost[offName], ghost[ampName]
+			if gOff != merged[offName] || gAmp != amp {
+				gh := int(math.Round(math.Max(gAmp, 0.15) * (0.6 + 0.4*sf) * float64(usableH)))
+				spike(xFor(gOff), gh, colConceptGhost)
+			}
+		}
+
+		if amp <= 0 {
+			// Dim placeholder: the hit is silent, but its TIMING still shows.
+			spike(x, int(math.Round(0.15*float64(usableH))), colConceptGhost)
+			continue
+		}
+		if amp > 1 {
+			amp = 1
+		}
+		hFrac := amp * (0.6 + 0.4*sf)
+		if hFrac > 1 {
+			hFrac = 1
+		}
+		col := WithAlpha(colAccent, AlphaMedium)
+		if selected == hit || selected == 0 {
+			col = WithAlpha(colAccent, AlphaStrong)
+		}
+		spike(x, int(math.Round(hFrac*float64(usableH))), col)
+	}
+	drawRect(dst, image.Rect(rect.Min.X, baseY, rect.Max.X, baseY+1), WithAlpha(genColorBorder, AlphaSubtle), true)
+	drawConceptTimeRuler(dst, rect, "0.25s")
+}
+
+// ── conceptLFO — the LFO's own story: wobble with onset ──────────────────────
+
+// lfoCurveFromParams samples the LFO wobble over a 1.0s window, INCLUDING the
+// vibrato onset: silent until lfo_delay seconds, then a 0.25s ramp to full
+// depth. Pure math, live during drag.
+func lfoCurveFromParams(merged map[string]float64, n int) []float64 {
+	if n < 2 {
+		n = 2
+	}
+	rate := merged["lfo_rate"]
+	depth := merged["lfo_depth"]
+	delay := merged["lfo_delay"]
+	// Display depth: several recipes ship a near-zero lfo_depth seed by default
+	// (e.g. synth-modular-sax seeds 0.002 — see instrument_seeds.go — to render
+	// ~2¢ of real vibrato), which at concept-viz scale rounds to a dead flat
+	// pixel row regardless of lfo_rate/lfo_delay — the picture would teach
+	// nothing about what those knobs DO. Per this file's established convention
+	// (conceptKnobWave/conceptFM force their stage on; drawBurstMarkers ignores
+	// burst_enabled), affine-map the real depth onto [0.35, 1] so the wobble
+	// stays teachable at depth 0 while EVERY depth position still visibly
+	// changes the picture (a hard floor would create a dead zone in 0..0.35
+	// where dragging the depth knob paints an identical wobble). The Task-10
+	// bypass scrim / stage-off hint carries honesty about the true level.
+	if depth < 0 {
+		depth = 0
+	} else if depth > 1 {
+		depth = 1
+	}
+	dispDepth := 0.35 + 0.65*depth
+	const windowSec = 1.0
+	out := make([]float64, n)
+	for i := 0; i < n; i++ {
+		ts := float64(i) / float64(n-1) * windowSec
+		amp := 1.0
+		if delay > 0 {
+			switch {
+			case ts < delay:
+				amp = 0
+			case ts < delay+0.25:
+				amp = (ts - delay) / 0.25
+			}
+		}
+		out[i] = dispDepth * amp * math.Sin(2*math.Pi*rate*ts)
+	}
+	return out
+}
+
+// lfoParamsDiffer reports whether the ghost snapshot's LFO inputs differ.
+func lfoParamsDiffer(ghost, live map[string]float64) bool {
+	if ghost == nil {
+		return false
+	}
+	for _, k := range []string{"lfo_rate", "lfo_depth", "lfo_delay"} {
+		if ghost[k] != live[k] {
+			return true
+		}
+	}
+	return false
+}
+
+// conceptLFO draws the pure LFO wobble (rate/depth/onset-delay) — no pitch-env
+// or burst mixed in, so the picture tells only the LFO's story.
+func conceptLFO(dst *ebiten.Image, rect image.Rectangle, instID string, _ audio.ParamDef, ghost map[string]float64) {
+	if rect.Dx() < 8 || rect.Dy() < 6 {
+		return
+	}
+	conceptBgFill(dst, rect)
+	n := rect.Dx()
+	merged := conceptMergedParams(instID)
+	midYf := float64(rect.Min.Y+rect.Max.Y) / 2
+	half := float64(rect.Dy()-2) / 2
+	yAt := func(v float64) int {
+		if v > 1 {
+			v = 1
+		} else if v < -1 {
+			v = -1
+		}
+		return int(math.Round(midYf - v*half))
+	}
+	mid := int(math.Round(midYf))
+	if lfoParamsDiffer(ghost, merged) {
+		conceptDrawFilledCurve(dst, rect, lfoCurveFromParams(ghost, n), yAt, mid, nil, colConceptGhost)
+	}
+	conceptDrawFilledCurve(dst, rect, lfoCurveFromParams(merged, n), yAt, mid,
+		WithAlpha(colAccent, AlphaSubtle), WithAlpha(colAccent, AlphaStrong))
+	drawConceptTimeRuler(dst, rect, "1s")
+}
+
+// conceptPitchEnvSweep draws the pitch envelope's own story: a bipolar
+// pitch-vs-time sweep (reuses the FM pitch-env sample math over the modular
+// pitchenv_amt / pitchenv_decay params).
+func conceptPitchEnvSweep(dst *ebiten.Image, rect image.Rectangle, instID string, _ audio.ParamDef, ghost map[string]float64) {
+	if rect.Dx() < 8 || rect.Dy() < 6 {
+		return
+	}
+	conceptBgFill(dst, rect)
+	merged := conceptMergedParams(instID)
+	n := rect.Dx()
+	const windowSec, maxAmt = 0.4, 24.0
+	midYf := float64(rect.Min.Y+rect.Max.Y) / 2
+	half := float64(rect.Dy()-2) / 2
+	yAt := func(v float64) int {
+		if v > 1 {
+			v = 1
+		} else if v < -1 {
+			v = -1
+		}
+		return int(math.Round(midYf - v*half))
+	}
+	mid := int(math.Round(midYf))
+	amt, dec := merged["pitchenv_amt"], merged["pitchenv_decay"]
+	if ghost != nil && (ghost["pitchenv_amt"] != amt || ghost["pitchenv_decay"] != dec) {
+		conceptDrawFilledCurve(dst, rect, fmPitchEnvSamples(ghost["pitchenv_amt"], ghost["pitchenv_decay"], maxAmt, windowSec, n), yAt, mid, nil, colConceptGhost)
+	}
+	conceptDrawFilledCurve(dst, rect, fmPitchEnvSamples(amt, dec, maxAmt, windowSec, n), yAt, mid,
+		WithAlpha(colAccent, AlphaSubtle), WithAlpha(colAccent, AlphaStrong))
+	drawConceptTimeRuler(dst, rect, "0.4s")
+}
+
 // ── conceptPost — waveshaper transfer (drive + gain), with ghost ───────────
 
 // postCurveSamples returns n samples of tanh(drive*x)*gain over x in [-1, 1].
@@ -891,6 +1180,62 @@ func conceptPost(dst *ebiten.Image, rect image.Rectangle, instID string, _ audio
 	// Live curve on top: soft fill to the centerline + 2px stroke.
 	conceptDrawFilledCurve(dst, rect, postCurveSamples(drive, gain, n), yAt, midBaseline,
 		colConceptFill, colConceptStroke)
+}
+
+// ── conceptPostWave — before/after OUTPUT WAVE for the POST stage ────────────
+//
+// Replaces the abstract tanh transfer-function diagonal in the focus graph: a
+// kid sees the wave itself get squashed/edgier, with the faint ghost showing
+// the wave when THIS knob sits at its neutral value.
+
+// postNeutralRef is the "knob doing nothing" reference value for a POST knob.
+func postNeutralRef(def audio.ParamDef) float64 {
+	switch def.Name {
+	case "gain":
+		return 1
+	case "tune":
+		return 0
+	}
+	return def.Min
+}
+
+func conceptPostWave(dst *ebiten.Image, rect image.Rectangle, instID string, def audio.ParamDef, _ map[string]float64) {
+	if rect.Dx() < 8 || rect.Dy() < 6 {
+		return
+	}
+	conceptBgFill(dst, rect)
+	const cycles, pts = 3, 256
+
+	midY := (rect.Min.Y + rect.Max.Y) / 2
+	half := float64(rect.Dy()-2) / 2
+	yAt := func(v float64) int {
+		if v > 1 {
+			v = 1
+		} else if v < -1 {
+			v = -1
+		}
+		return int(math.Round(float64(midY) - v*half))
+	}
+
+	solid := map[string]float64{}
+	neutral := map[string]float64{def.Name: postNeutralRef(def)}
+	if en, ok := conceptStageEnableParam("post"); ok {
+		solid[en] = 1
+		neutral[en] = 1
+	}
+	cw := audio.RenderInstrumentPreviewWave(instID, solid, cycles, pts)
+	gw := audio.RenderInstrumentPreviewWave(instID, neutral, cycles, pts)
+	zoomLen := len(autoZoomWindow(cw, cycles))
+	if zoomLen > 0 && zoomLen <= len(cw) {
+		cw = cw[:zoomLen]
+	}
+	if zoomLen > 0 && zoomLen <= len(gw) {
+		gw = gw[:zoomLen]
+	}
+	if len(gw) > 0 && !sameWave(gw, cw) {
+		conceptDrawFilledCurve(dst, rect, gw, yAt, midY, nil, colConceptGhost)
+	}
+	conceptDrawFilledCurve(dst, rect, cw, yAt, midY, colConceptFill, colConceptStroke)
 }
 
 // ── conceptValueBar — per-knob value meter for grab-bag groups ──────────────
@@ -1097,6 +1442,7 @@ func conceptFMEnvelope(dst *ebiten.Image, rect image.Rectangle, instID string, d
 		}
 		conceptDrawFilledCurve(dst, rect, fmPitchEnvSamples(amt, dec, maxAmt, windowSec, n), yAt, mid,
 			WithAlpha(colAccent, AlphaSubtle), WithAlpha(colAccent, AlphaStrong))
+		drawConceptTimeRuler(dst, rect, "0.4s")
 		return
 	}
 
@@ -1119,4 +1465,5 @@ func conceptFMEnvelope(dst *ebiten.Image, rect image.Rectangle, instID string, d
 		}
 	}
 	conceptDrawFilledCurve(dst, rect, fmDecaySamples(tau, windowSec, n), yAt, baseY, colConceptFill, colConceptStroke)
+	drawConceptTimeRuler(dst, rect, "1s")
 }

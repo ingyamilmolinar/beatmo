@@ -233,6 +233,13 @@ func (g *Game) handleGlobalShortcuts() {
 		return
 	}
 
+	// Enter accepts (persists) the topmost portal overlay that opts in — the
+	// precision wheel popups — mirroring Esc→cancel. Runs before the keyboard-
+	// ownership gate so a wheel popup (which claims no keyboard) still gets Enter.
+	if g.handleEnter() {
+		return
+	}
+
 	// A surface that accepts typed/caret keys owns the keyboard this frame, so
 	// the grid yields entirely (arrows reach the caret, not the camera). This is
 	// the single keyboard-ownership predicate — every text-input surface declares
@@ -275,7 +282,7 @@ func (g *Game) toggleSettingsOverlay() {
 	if g.drum == nil || g.drum.tree == nil {
 		return
 	}
-	p := g.drum.tree.Portal()
+	p := g.drum.portal()
 	if p == nil {
 		return
 	}
@@ -292,7 +299,7 @@ func (dv *DrumView) openSettingsOverlay() {
 	if dv.tree == nil {
 		return
 	}
-	p := dv.tree.Portal()
+	p := dv.portal()
 	if p == nil || p.Has(settingsOverlayID) {
 		return
 	}
@@ -324,6 +331,14 @@ type portalEscapeHandler interface {
 	HandleEscape() bool
 }
 
+// portalEnterHandler lets the topmost portal overlay accept (persist) on the
+// Enter key, mirroring portalEscapeHandler's cancel-on-Esc. Currently the
+// precision wheel popups opt in (Enter persists the edit). Return true to
+// consume the key.
+type portalEnterHandler interface {
+	HandleEnter() bool
+}
+
 // handleEscape is the SINGLE authority for the Esc key. It walks a precedence
 // ladder and performs exactly ONE cancel action, then returns true. With
 // nothing pending, the final rung requests Stop. This consolidates what used to
@@ -340,19 +355,11 @@ func (g *Game) handleEscape() bool {
 	// 1+2. Open portal overlay (help, instrument menu, rename, dialogs). Give
 	// the topmost overlay first dibs on Esc so a text-bearing component can
 	// clear/cancel its own field (e.g. clear a search) before we close it.
-	if g.drum.tree != nil && g.drum.tree.Portal() != nil && g.drum.tree.Portal().IsOpen() {
-		if h, ok := g.drum.tree.Portal().TopOverlay().(portalEscapeHandler); ok && h.HandleEscape() {
+	if g.drum.portal().IsOpen() {
+		if h, ok := g.drum.portal().TopOverlay().(portalEscapeHandler); ok && h.HandleEscape() {
 			return true // consumed; leave the portal open
 		}
-		g.drum.tree.Portal().CloseTop()
-		return true
-	}
-	// Audio-panel subtree portal (channel dropdown, synth-overflow-sheet).
-	if g.drum.audioTree != nil && g.drum.audioTree.Portal() != nil && g.drum.audioTree.Portal().IsOpen() {
-		if h, ok := g.drum.audioTree.Portal().TopOverlay().(portalEscapeHandler); ok && h.HandleEscape() {
-			return true // consumed; leave the portal open
-		}
-		g.drum.audioTree.Portal().CloseTop()
+		g.drum.portal().CloseTop()
 		return true
 	}
 
@@ -370,6 +377,18 @@ func (g *Game) handleEscape() bool {
 	// not focused zones, so without this they'd fall through to the Stop rung.
 	// Cancel + close (discarding the typed name) and consume the Esc.
 	if g.drum != nil && g.drum.CancelActiveTextDialog() {
+		return true
+	}
+
+	// 2c. GroupMenu (marquee-created group popup). Placed before the sidebar
+	// rung: the menu is z-above the sidebar (210 vs 200), so Esc should close
+	// the topmost surface first. The two are not expected to be open
+	// simultaneously by design, but this ordering is defensive if they ever
+	// are. Close() already discards a still-provisional group silently (no
+	// emit/undo step) via discardProvisional — same zero-trace contract as
+	// the close button and click-outside paths.
+	if g.groupMenu != nil && g.groupMenu.IsOpen() {
+		g.groupMenu.Close()
 		return true
 	}
 
@@ -442,4 +461,22 @@ func (g *Game) handleEscape() bool {
 	// 11. Fallback: nothing pending → Stop playback.
 	g.drum.TriggerStop()
 	return true
+}
+
+// handleEnter is the Enter-key authority for the topmost portal overlay that
+// opts in via portalEnterHandler (the precision wheel popups: Enter persists the
+// edit and closes). Edge-triggered so a held Enter fires once. Returns true when
+// it consumed the key. Unlike Esc there is no universal fallback — Enter only
+// acts when a wheel popup is the top overlay.
+func (g *Game) handleEnter() bool {
+	if !isKeyJustPressed(ebiten.KeyEnter) {
+		return false
+	}
+	if g.drum == nil || !g.drum.portal().IsOpen() {
+		return false
+	}
+	if h, ok := g.drum.portal().TopOverlay().(portalEnterHandler); ok {
+		return h.HandleEnter()
+	}
+	return false
 }

@@ -100,7 +100,7 @@ func TestSettingsLanguageButtonRealClickDispatch(t *testing.T) {
 	g.toggleSettingsOverlay()
 	advanceFrames(g, 2)
 
-	ov, ok := g.drum.tree.Portal().TopOverlay().(*SettingsOverlay)
+	ov, ok := g.drum.portal().TopOverlay().(*SettingsOverlay)
 	if !ok || ov == nil {
 		t.Fatal("settings overlay is not the top portal overlay after toggle")
 	}
@@ -144,11 +144,11 @@ func TestSettingsOverlayIsModal(t *testing.T) {
 
 	// A press well outside the panel must not fall through to grid input
 	// (modal filter restricts the HitIndex to the overlay's own areas).
-	ov, ok := g.drum.tree.Portal().TopOverlay().(*SettingsOverlay)
+	ov, ok := g.drum.portal().TopOverlay().(*SettingsOverlay)
 	if !ok || ov == nil {
 		t.Fatal("settings overlay is not the top portal overlay")
 	}
-	if !g.drum.tree.Portal().HasBlocking() {
+	if !g.drum.portal().HasBlocking() {
 		t.Fatal("settings portal entry is not blocking (Modal/Scrim both false)")
 	}
 }
@@ -168,7 +168,7 @@ func TestSettingsOverlayClosesViaCloseButtonDispatch(t *testing.T) {
 	g.toggleSettingsOverlay()
 	advanceFrames(g, 2)
 
-	ov, ok := g.drum.tree.Portal().TopOverlay().(*SettingsOverlay)
+	ov, ok := g.drum.portal().TopOverlay().(*SettingsOverlay)
 	if !ok || ov == nil {
 		t.Fatal("settings overlay is not the top portal overlay after toggle")
 	}
@@ -180,7 +180,7 @@ func TestSettingsOverlayClosesViaCloseButtonDispatch(t *testing.T) {
 	holdTap(cx, cy, 4)
 	advanceFrames(g, 2)
 
-	if g.drum.tree.Portal().Has(settingsOverlayID) {
+	if g.drum.portal().Has(settingsOverlayID) {
 		t.Fatalf("clicking the close button at (%d,%d) in rect %v did not close the settings overlay", cx, cy, cr)
 	}
 }

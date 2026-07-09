@@ -17,11 +17,48 @@ func TestMenuScroll_OffsetAndWheel(t *testing.T) {
 	if got := m.OffsetPx(); got != 0 {
 		t.Fatalf("OffsetPx()=%d; want 0 at top", got)
 	}
-	if !m.HandleWheel(-2) { // wheel down 2 items
-		t.Fatalf("HandleWheel returned false; expected offset change")
+	// Clicky: one wheel notch moves exactly ONE item regardless of magnitude —
+	// a fast trackpad flick / hi-res wheel (|steps|=2) must not fly two rows.
+	if !m.HandleWheel(-2) {
+		t.Fatalf("HandleWheel returned false; expected a one-item offset change")
 	}
-	if got := m.OffsetPx(); got != 2*20 {
-		t.Fatalf("OffsetPx()=%d; want %d after scrolling 2 items", got, 2*20)
+	if got := m.OffsetPx(); got != 1*20 {
+		t.Fatalf("OffsetPx()=%d; want %d (exactly one item per notch, magnitude ignored)", got, 1*20)
+	}
+}
+
+// TestMenuScroll_WheelIsClicky pins the menu wheel to the SAME clicky cadence as
+// the row rack / control grids: one item per notch (magnitude ignored) plus a
+// cooldown lock so a held wheel / fast flick can't fly through the list. The
+// cooldown only releases after controlGridScrollCooldownFrames TickStep() calls.
+func TestMenuScroll_WheelIsClicky(t *testing.T) {
+	m := NewMenuScroll(DropdownScrollbarStyle, 20)
+	m.Configure(image.Rect(0, 0, 100, 100), 50, 5)
+
+	// First notch: one item, even with a big magnitude.
+	if !m.HandleWheel(-3) || m.OffsetPx() != 20 {
+		t.Fatalf("first notch: OffsetPx()=%d, want 20 (one item)", m.OffsetPx())
+	}
+	// Immediately again within the cooldown: no movement.
+	if m.HandleWheel(-3) {
+		t.Fatalf("second notch within cooldown moved; want locked (OffsetPx=%d)", m.OffsetPx())
+	}
+	if m.OffsetPx() != 20 {
+		t.Fatalf("OffsetPx()=%d after locked notch; want still 20", m.OffsetPx())
+	}
+	// Advance the cooldown clock, then it releases exactly one more item.
+	for i := 0; i < controlGridScrollCooldownFrames; i++ {
+		m.TickStep()
+	}
+	if !m.HandleWheel(-3) || m.OffsetPx() != 40 {
+		t.Fatalf("after cooldown: OffsetPx()=%d, want 40 (one more item)", m.OffsetPx())
+	}
+	// Zero-magnitude notch is a no-op.
+	for i := 0; i < controlGridScrollCooldownFrames; i++ {
+		m.TickStep()
+	}
+	if m.HandleWheel(0) {
+		t.Fatalf("HandleWheel(0) moved; want no-op")
 	}
 }
 

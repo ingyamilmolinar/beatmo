@@ -38,8 +38,21 @@ func (m *MenuScroll) OffsetPx() int { return m.sb.VS.First * m.sb.ItemHeight }
 // HasScroll reports whether the content overflows the viewport.
 func (m *MenuScroll) HasScroll() bool { return m.sb.HasScroll() }
 
-// HandleWheel applies a wheel event; returns true when the offset changed.
-func (m *MenuScroll) HandleWheel(steps int) bool { return m.sb.HandleWheel(steps) }
+// HandleWheel applies a wheel event as a single clicky step: exactly ONE item
+// per notch (magnitude ignored), then a cooldown lock so a fast trackpad flick
+// or hi-res-wheel burst can't fly through the list. This is the SAME cadence as
+// the row rack and control grids (controlGridScrollCooldownFrames) — every
+// scrollable menu scrolls identically. TickStep must be called once per frame
+// while the menu exists to advance the cooldown clock. Returns true when the
+// offset changed.
+func (m *MenuScroll) HandleWheel(steps int) bool {
+	return m.sb.WheelStep(steps, controlGridScrollCooldownFrames)
+}
+
+// TickStep advances the wheel cooldown clock by one frame. Call once per frame
+// while the menu exists (see DrumView.tickMenuScrollCooldowns) so HandleWheel's
+// clicky pacing releases after the cooldown rather than locking forever.
+func (m *MenuScroll) TickStep() { m.sb.TickStep() }
 
 // Draw renders the scrollbar (no-op when content fits).
 func (m *MenuScroll) Draw(dst *ebiten.Image) { m.sb.Draw(dst) }

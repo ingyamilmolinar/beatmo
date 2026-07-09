@@ -652,8 +652,8 @@ func (dv *DrumView) buildFXPanel() {
 // refreshFXPortalHitAreas immediately updates the portal's hit areas for the
 // FX panel after a buildFXPanel() call changes geometry mid-frame.
 func (dv *DrumView) refreshFXPortalHitAreas() {
-	if dv.tree != nil && dv.tree.Portal().Has("fx-panel") {
-		dv.tree.Portal().RefreshEntry("fx-panel")
+	if dv.tree != nil && dv.portal().Has("fx-panel") {
+		dv.portal().RefreshEntry("fx-panel")
 	}
 }
 

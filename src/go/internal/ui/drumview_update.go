@@ -8,10 +8,39 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
+// tickMenuScrollCooldowns advances the wheel-step cooldown clock for every
+// scrollable menu once per frame. This is what makes MenuScroll.HandleWheel (and
+// the raw-ScrollBehavior context / EQ-channel dropdowns) clicky rather than
+// permanently locked after the first notch — the single chokepoint mirroring the
+// row rack's z.rowScroll.TickStep(). Ticking a closed menu is a cheap no-op.
+func (dv *DrumView) tickMenuScrollCooldowns() {
+	if dv.overflowMenuScroll != nil {
+		dv.overflowMenuScroll.TickStep()
+	}
+	if dv.contextMenuScroll != nil {
+		dv.contextMenuScroll.TickStep()
+	}
+	if dv.subdivMenuComp != nil && dv.subdivMenuComp.menuScroll != nil {
+		dv.subdivMenuComp.menuScroll.TickStep()
+	}
+	if dv.instMenuComp != nil && dv.instMenuComp.menuScroll != nil {
+		dv.instMenuComp.menuScroll.TickStep()
+	}
+	if dv.eqPanelZone != nil && dv.eqPanelZone.channelScroll != nil {
+		dv.eqPanelZone.channelScroll.TickStep()
+	}
+}
+
 func (dv *DrumView) Update() {
 	if len(dv.Rows) == 0 {
 		return
 	}
+
+	// Advance the per-frame wheel cooldown clock for every scrollable menu so
+	// their clicky one-item-per-notch pacing releases after the cooldown (see
+	// MenuScroll.HandleWheel). Cheap no-op when no cooldown is pending; safe to
+	// tick while a menu is closed.
+	dv.tickMenuScrollCooldowns()
 
 	// Synth-tab Save As dialog poll. Runs ahead of the tree so the
 	// TextInput can claim Enter/Escape before the tree's portal-close
@@ -74,6 +103,8 @@ func (dv *DrumView) Update() {
 				dv.rowRackZone.SetRowOffset(dv.rowOffset)
 			}
 		}
+
+		dv.syncNativeGestures() // single native-gesture projection site
 	}
 
 	// Handle pending JSON import
@@ -185,8 +216,7 @@ func (dv *DrumView) Update() {
 	// ─── POPUP INPUT GUARD ───
 	// All popup/overlay input is now dispatched through the portal/tree system.
 	// Block remaining handlers when any portal overlay is open.
-	if (dv.tree != nil && dv.tree.Portal().IsOpen()) ||
-		(dv.audioTree != nil && dv.audioTree.Portal().IsOpen()) {
+	if dv.portal().IsOpen() {
 		// Ensure touch scroll is cleaned up even when the portal blocks
 		// further processing. Without this, TouchActive() stays true if a
 		// portal opened while a touch scroll was active, causing

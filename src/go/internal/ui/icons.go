@@ -47,6 +47,7 @@ const (
 	IconSettings     IconID = "settings"
 	IconTrash        IconID = "trash"
 	IconCircle       IconID = "circle"
+	IconTemplate     IconID = "template"
 
 	IconTriggerMarker IconID = "trigger-marker"
 	IconHeadroom      IconID = "headroom"
@@ -130,6 +131,8 @@ func drawIconByID(dst *ebiten.Image, id IconID, r image.Rectangle, col color.Col
 		drawTrashIcon(dst, r, col)
 	case IconCircle:
 		drawCircleIcon(dst, r, col)
+	case IconTemplate:
+		drawTemplateIcon(dst, r, col)
 	case IconTriggerMarker:
 		drawTriggerMarkerIcon(dst, r, col)
 	case IconHeadroom:

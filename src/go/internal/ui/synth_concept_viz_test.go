@@ -5,6 +5,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"maps"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -53,11 +54,12 @@ func nonBgInkArea(rects []drawnRect) int {
 }
 
 // TestConceptRendererForGroup_TotalCoverage — every param group resolves to a
-// non-nil concept renderer (the registry is total).
+// non-nil renderer via the live routing table (the resolver is total; unknown
+// groups fall back to the level wave).
 func TestConceptRendererForGroup_TotalCoverage(t *testing.T) {
-	groups := []string{"osc", "filter", "filtenv", "env", "fm", "post", "pitch", "lfo", "burst", "unison", "core", "generic", "voice", ""}
+	groups := []string{"osc", "filter", "filtenv", "env", "fm", "post", "pitch", "lfo", "burst", "unison", "kick", "core", "generic", "voice", ""}
 	for _, g := range groups {
-		if conceptRendererForGroup(g) == nil {
+		if synthFocusRendererForGroup(g) == nil {
 			t.Errorf("group %q has no concept renderer", g)
 		}
 	}
@@ -65,10 +67,12 @@ func TestConceptRendererForGroup_TotalCoverage(t *testing.T) {
 
 // TestEveryRecipeGroupHasExplicitConceptRenderer — the real discipline guard:
 // every param GROUP that ANY registered recipe actually uses must have an
-// EXPLICIT entry in conceptRenderers. The old switch had a `default: conceptOsc`
-// that silently painted the oscillator wave under unrelated knobs (the 44 "core"
-// + 9 "generic" params), so a new group would inherit a misleading picture with
-// no test failure. This enumerates the live groups so that can't happen again.
+// EXPLICIT entry in the live routing table synthFocusRenderers. The old switch
+// had a `default: conceptOsc` that silently painted the oscillator wave under
+// unrelated knobs (the 44 "core" + 9 "generic" params), so a new group would
+// inherit a misleading picture with no test failure. This enumerates the live
+// groups so that can't happen again (the retired conceptRenderers table it once
+// guarded is deleted; synthFocusRenderers is now the single source of truth).
 func TestEveryRecipeGroupHasExplicitConceptRenderer(t *testing.T) {
 	live := map[string]string{} // group -> example "recipe.param"
 	for recipeID, reg := range audio.RecipeRegistrations() {
@@ -91,9 +95,9 @@ func TestEveryRecipeGroupHasExplicitConceptRenderer(t *testing.T) {
 		t.Fatal("no registered recipe params found — registry empty?")
 	}
 	for group, example := range live {
-		if _, ok := conceptRenderers[group]; !ok {
-			t.Errorf("param group %q (e.g. %s) has no EXPLICIT entry in conceptRenderers — "+
-				"it would silently fall back to the value bar. Add an intended renderer.",
+		if _, ok := synthFocusRenderers[group]; !ok {
+			t.Errorf("param group %q (e.g. %s) has no EXPLICIT entry in synthFocusRenderers — "+
+				"it would silently fall back to the level wave. Add an intended renderer.",
 				group, example)
 		}
 	}
@@ -232,7 +236,10 @@ func TestConceptOsc_GhostAddsInk(t *testing.T) {
 	dst := ebiten.NewImage(120, 60)
 	r := conceptVizRect()
 	no := countNonBgRects(collectFilledRects(t, func() { conceptOsc(dst, r, inst, audio.ParamDef{}, nil) }))
-	ghost := conceptMergedParams(inst)
+	// conceptMergedParams returns the shared rev-gated cache map (READ-ONLY);
+	// ghost-building must clone it before mutating, exactly like the production
+	// ghost path (captureSynthGhost).
+	ghost := maps.Clone(conceptMergedParams(inst))
 	ghost["osc_type"] = 2 // square — a clearly different shape
 	with := countNonBgRects(collectFilledRects(t, func() { conceptOsc(dst, r, inst, audio.ParamDef{}, ghost) }))
 	if with <= no {
@@ -249,7 +256,10 @@ func TestConceptEnvelope_GhostAddsInk(t *testing.T) {
 	dst := ebiten.NewImage(120, 60)
 	r := conceptVizRect()
 	no := countNonBgRects(collectFilledRects(t, func() { conceptEnvelope(dst, r, inst, audio.ParamDef{}, nil) }))
-	ghost := conceptMergedParams(inst)
+	// conceptMergedParams returns the shared rev-gated cache map (READ-ONLY);
+	// ghost-building must clone it before mutating, exactly like the production
+	// ghost path (captureSynthGhost).
+	ghost := maps.Clone(conceptMergedParams(inst))
 	ghost["amp_decay"] = 1.8
 	ghost["amp_sustain"] = 0.1
 	with := countNonBgRects(collectFilledRects(t, func() { conceptEnvelope(dst, r, inst, audio.ParamDef{}, ghost) }))
@@ -267,7 +277,10 @@ func TestConceptFilter_GhostAddsInk(t *testing.T) {
 	dst := ebiten.NewImage(120, 60)
 	r := conceptVizRect()
 	no := countNonBgRects(collectFilledRects(t, func() { conceptFilter(dst, r, inst, audio.ParamDef{}, nil) }))
-	ghost := conceptMergedParams(inst)
+	// conceptMergedParams returns the shared rev-gated cache map (READ-ONLY);
+	// ghost-building must clone it before mutating, exactly like the production
+	// ghost path (captureSynthGhost).
+	ghost := maps.Clone(conceptMergedParams(inst))
 	ghost["filter_cutoff"] = 400
 	with := countNonBgRects(collectFilledRects(t, func() { conceptFilter(dst, r, inst, audio.ParamDef{}, ghost) }))
 	if with <= no {
@@ -306,7 +319,10 @@ func TestConceptMotion_GhostAddsInk(t *testing.T) {
 	dst := ebiten.NewImage(120, 60)
 	r := conceptVizRect()
 	no := countNonBgRects(collectFilledRects(t, func() { conceptMotion(dst, r, inst, audio.ParamDef{}, nil) }))
-	ghost := conceptMergedParams(inst)
+	// conceptMergedParams returns the shared rev-gated cache map (READ-ONLY);
+	// ghost-building must clone it before mutating, exactly like the production
+	// ghost path (captureSynthGhost).
+	ghost := maps.Clone(conceptMergedParams(inst))
 	ghost["lfo_rate"] = 24
 	with := countNonBgRects(collectFilledRects(t, func() { conceptMotion(dst, r, inst, audio.ParamDef{}, ghost) }))
 	if with <= no {
@@ -338,5 +354,45 @@ func TestConceptPost_GhostAddsInk(t *testing.T) {
 
 	if withGhostInk <= noGhostInk {
 		t.Errorf("conceptPost ghost did not add ink: noGhost=%d withGhost=%d", noGhostInk, withGhostInk)
+	}
+}
+
+// TestConceptDrawFilledCurve_BridgesSteepColumns — a steep two-point ramp
+// across a wide rect must paint a CONNECTED stroke: with nearest-sample
+// stepping + unbridged 2px strokes, a tall rect leaves vertical gaps between
+// columns. This asserts adjacent columns' stroke spans overlap or touch.
+func TestConceptDrawFilledCurve_BridgesSteepColumns(t *testing.T) {
+	rect := image.Rect(0, 0, 40, 120)
+	img := ebiten.NewImage(rect.Dx(), rect.Dy())
+	samples := []float64{-1, 1} // one maximally steep segment
+	yAt := func(v float64) int { return 60 - int(v*58) }
+	conceptDrawFilledCurve(img, rect, samples, yAt, 60, nil, colConceptStroke)
+
+	spanFor := func(x int) (top, bot int, ok bool) {
+		top, bot = -1, -1
+		for y := 0; y < rect.Dy(); y++ {
+			_, _, _, a := img.At(x, y).RGBA()
+			if a > 0 {
+				if top < 0 {
+					top = y
+				}
+				bot = y
+			}
+		}
+		return top, bot, top >= 0
+	}
+	prevTop, prevBot, ok := spanFor(0)
+	if !ok {
+		t.Fatal("no stroke in column 0")
+	}
+	for x := 1; x < rect.Dx(); x++ {
+		top, bot, ok := spanFor(x)
+		if !ok {
+			t.Fatalf("no stroke in column %d", x)
+		}
+		if top > prevBot+1 || bot < prevTop-1 {
+			t.Fatalf("stroke gap between columns %d and %d: [%d,%d] vs [%d,%d]", x-1, x, prevTop, prevBot, top, bot)
+		}
+		prevTop, prevBot = top, bot
 	}
 }

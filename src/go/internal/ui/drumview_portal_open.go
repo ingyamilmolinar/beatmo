@@ -16,7 +16,7 @@ func (dv *DrumView) openSubdivMenuPortal() {
 	// Feed the clamp region so the menu card positions via AnchorPopupRect and
 	// never runs off-screen (SubdivMenuProps carries no bounds field).
 	dv.subdivMenuComp.SetScreenBounds(dv.Bounds)
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      "subdiv-menu",
 		Overlay: &compPortalOverlay{comp: dv.subdivMenuComp, tag: "subdiv-menu"},
 		Modal:   false,
@@ -31,7 +31,7 @@ func (dv *DrumView) openSubdivMenuPortal() {
 // closeSubdivMenuPortal closes the subdiv menu portal entry.
 func (dv *DrumView) closeSubdivMenuPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("subdiv-menu")
+		dv.portal().Close("subdiv-menu")
 	}
 }
 
@@ -44,7 +44,7 @@ func (dv *DrumView) openInstMenuPortal() {
 	if dv.instMenuRow >= 0 && dv.instMenuRow < len(dv.rowLabels()) {
 		anchor = dv.rowLabels()[dv.instMenuRow].Rect()
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID: "inst-menu",
 		Overlay: &compPortalOverlay{
 			comp: dv.instMenuComp,
@@ -74,7 +74,7 @@ func (dv *DrumView) openInstMenuPortal() {
 // closeInstMenuPortal closes the instrument menu portal entry.
 func (dv *DrumView) closeInstMenuPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("inst-menu")
+		dv.portal().Close("inst-menu")
 	}
 }
 
@@ -91,7 +91,7 @@ func (dv *DrumView) openColorWheelPortal() {
 	if anchor.Empty() && dv.colorMenuRow >= 0 && dv.colorMenuRow < len(dv.rowLabels()) {
 		anchor = dv.rowLabels()[dv.colorMenuRow].Rect()
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      "color-wheel",
 		Overlay: &compPortalOverlay{comp: dv.colorWheelComp, tag: "color-wheel"},
 		Modal:   false,
@@ -109,7 +109,7 @@ func (dv *DrumView) openColorWheelPortal() {
 // closeColorWheelPortal closes the color wheel portal entry.
 func (dv *DrumView) closeColorWheelPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("color-wheel")
+		dv.portal().Close("color-wheel")
 	}
 }
 
@@ -122,7 +122,7 @@ func (dv *DrumView) openRenamePortal() {
 	if dv.renameRow >= 0 && dv.renameRow < len(dv.rowLabels()) {
 		anchor = dv.rowLabels()[dv.renameRow].Rect()
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID: "rename",
 		Overlay: &compPortalOverlay{
 			comp: dv.renameComp,
@@ -141,7 +141,7 @@ func (dv *DrumView) openRenamePortal() {
 // closeRenamePortal closes the rename portal entry.
 func (dv *DrumView) closeRenamePortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("rename")
+		dv.portal().Close("rename")
 	}
 }
 
@@ -153,7 +153,7 @@ func (dv *DrumView) openOverflowMenuPortal() {
 	// Ensure the shared scroll component exists/refreshed for the current page so
 	// callers (and tests) see a configured MenuScroll the moment the menu opens.
 	dv.configureOverflowScroll()
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID: "overflow-menu",
 		Overlay: &dvOverlayPortal{
 			id:       "overflow-menu",
@@ -185,7 +185,6 @@ func (dv *DrumView) openOverflowMenuPortal() {
 			if dv.overflowMenuScroll != nil {
 				dv.overflowMenuScroll.DeferredTap().Cancel()
 			}
-			filePickerClearRects()
 		},
 	})
 }
@@ -193,7 +192,7 @@ func (dv *DrumView) openOverflowMenuPortal() {
 // closeOverflowMenuPortal closes the overflow menu portal entry.
 func (dv *DrumView) closeOverflowMenuPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("overflow-menu")
+		dv.portal().Close("overflow-menu")
 	}
 }
 
@@ -202,7 +201,7 @@ func (dv *DrumView) openContextMenuPortal() {
 	if dv.tree == nil {
 		return
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID: "context-menu",
 		Overlay: &dvOverlayPortal{
 			id:       "context-menu",
@@ -223,9 +222,12 @@ func (dv *DrumView) openContextMenuPortal() {
 				return InputIgnored
 			},
 			wheelFn: func(x, y, steps int) InputResult {
+				// Clicky: one item per notch + cooldown, matching every other
+				// menu (see MenuScroll.HandleWheel / tickMenuScrollCooldowns).
 				if dv.contextMenuScroll != nil && dv.contextMenuScroll.HasScroll() {
-					dv.contextMenuScroll.HandleWheel(steps)
-					dv.rebuildContextMenuButtons()
+					if dv.contextMenuScroll.WheelStep(steps, controlGridScrollCooldownFrames) {
+						dv.rebuildContextMenuButtons()
+					}
 				}
 				return InputConsumed
 			},
@@ -247,7 +249,7 @@ func (dv *DrumView) openContextMenuPortal() {
 // closeContextMenuPortal closes the context menu portal entry.
 func (dv *DrumView) closeContextMenuPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("context-menu")
+		dv.portal().Close("context-menu")
 	}
 }
 
@@ -256,7 +258,7 @@ func (dv *DrumView) openFXPanelPortal() {
 	if dv.tree == nil {
 		return
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID: "fx-panel",
 		Overlay: &dvOverlayPortal{
 			id:       "fx-panel",
@@ -328,7 +330,7 @@ func (dv *DrumView) openFXPanelPortal() {
 // closeFXPanelPortal closes the FX panel portal entry.
 func (dv *DrumView) closeFXPanelPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("fx-panel")
+		dv.portal().Close("fx-panel")
 	}
 }
 
@@ -337,7 +339,7 @@ func (dv *DrumView) openVolPopupPortal() {
 	if dv.tree == nil || dv.volPopup == nil {
 		return
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      "volume-popup",
 		Overlay: &sliderPopupPortalOverlay{popup: dv.volPopup, tag: "volume-popup"},
 		Modal:   true,
@@ -351,7 +353,7 @@ func (dv *DrumView) openVolPopupPortal() {
 // closeVolPopupPortal closes the row volume popup portal entry.
 func (dv *DrumView) closeVolPopupPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("volume-popup")
+		dv.portal().Close("volume-popup")
 	}
 }
 
@@ -360,13 +362,18 @@ func (dv *DrumView) openSynthWheelPortal() {
 	if dv.tree == nil || dv.synthWheelPopup == nil {
 		return
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      "synth-wheel-popup",
 		Overlay: &mobileWheelPopupPortalOverlay{popup: dv.synthWheelPopup, tag: "synth-wheel-popup"},
 		Modal:   true,
 		Scrim:   true, // synth wheel popup — backdrop dims so modality is visible
 		OnClose: func() {
-			dv.synthWheelPopup.Close()
+			// Persist-on-dismiss chokepoint: every dismissal funnels through
+			// OnClose (tap-outside via tree CloseTop, CloseAllPopups drain,
+			// programmatic close). Accept commits a pending edit; it no-ops when
+			// the popup is already closed — Esc's Cancel runs first, so revert
+			// is preserved, and Enter/anchor/center-box Accept first too.
+			dv.synthWheelPopup.Accept()
 		},
 	})
 }
@@ -374,30 +381,59 @@ func (dv *DrumView) openSynthWheelPortal() {
 // closeSynthWheelPortal closes the synth wheel popup portal entry.
 func (dv *DrumView) closeSynthWheelPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("synth-wheel-popup")
+		dv.portal().Close("synth-wheel-popup")
 	}
 }
 
 // openSamplerWheelPortal opens the mobile sampler-knob wheel popup through the portal.
-func (dv *DrumView) openSamplerWheelPortal() {
+func (p *samplerPanel) openSamplerWheelPortal() {
+	dv := p.dv
 	if dv.tree == nil || dv.samplerWheelPopup == nil {
 		return
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      "sampler-wheel-popup",
 		Overlay: &mobileWheelPopupPortalOverlay{popup: dv.samplerWheelPopup, tag: "sampler-wheel-popup"},
 		Modal:   true,
 		Scrim:   true, // sampler wheel popup — backdrop dims so modality is visible
 		OnClose: func() {
-			dv.samplerWheelPopup.Close()
+			// Persist-on-dismiss chokepoint (see synth wheel OnClose). Accept
+			// commits a pending edit; no-ops when already closed.
+			dv.samplerWheelPopup.Accept()
 		},
 	})
 }
 
 // closeSamplerWheelPortal closes the sampler wheel popup portal entry.
-func (dv *DrumView) closeSamplerWheelPortal() {
+func (p *samplerPanel) closeSamplerWheelPortal() {
+	dv := p.dv
 	if dv.tree != nil {
-		dv.tree.Portal().Close("sampler-wheel-popup")
+		dv.portal().Close("sampler-wheel-popup")
+	}
+}
+
+// openEQWheelPortal opens the EQ precision wheel popup through the portal.
+func (dv *DrumView) openEQWheelPortal() {
+	if dv.tree == nil || dv.eqWheelPopup == nil {
+		return
+	}
+	dv.portal().Open(PortalEntry{
+		ID:      "eq-wheel-popup",
+		Overlay: &mobileWheelPopupPortalOverlay{popup: dv.eqWheelPopup, tag: "eq-wheel-popup"},
+		Modal:   true,
+		Scrim:   true, // EQ wheel popup — backdrop dims so modality is visible
+		OnClose: func() {
+			// Persist-on-dismiss chokepoint (see synth wheel OnClose). Accept
+			// commits a pending edit; no-ops when already closed.
+			dv.eqWheelPopup.Accept()
+		},
+	})
+}
+
+// closeEQWheelPortal closes the EQ wheel popup portal entry.
+func (dv *DrumView) closeEQWheelPortal() {
+	if dv.tree != nil {
+		dv.portal().Close("eq-wheel-popup")
 	}
 }
 
@@ -406,7 +442,7 @@ func (dv *DrumView) openMasterVolPopupPortal() {
 	if dv.tree == nil || dv.masterVolPopup == nil {
 		return
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      "master-volume-popup",
 		Overlay: &sliderPopupPortalOverlay{popup: dv.masterVolPopup, tag: "master-vol-popup"},
 		Modal:   true,
@@ -420,7 +456,7 @@ func (dv *DrumView) openMasterVolPopupPortal() {
 // closeMasterVolPopupPortal closes the master volume popup portal entry.
 func (dv *DrumView) closeMasterVolPopupPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("master-volume-popup")
+		dv.portal().Close("master-volume-popup")
 	}
 }
 
@@ -429,7 +465,7 @@ func (dv *DrumView) openNamingPortal() {
 	if dv.tree == nil {
 		return
 	}
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID: "naming",
 		Overlay: &dvOverlayPortal{
 			id:       "naming",
@@ -544,6 +580,12 @@ func (dv *DrumView) openNamingPortal() {
 // closeNamingPortal closes the naming portal entry.
 func (dv *DrumView) closeNamingPortal() {
 	if dv.tree != nil {
-		dv.tree.Portal().Close("naming")
+		dv.portal().Close("naming")
 	}
 }
+
+// ── *DrumView forwarding shims (Rung A relocation onto *samplerPanel) ──────
+
+func (dv *DrumView) openSamplerWheelPortal() { dv.sp().openSamplerWheelPortal() }
+
+func (dv *DrumView) closeSamplerWheelPortal() { dv.sp().closeSamplerWheelPortal() }

@@ -52,9 +52,11 @@ func TestWaveEdgeAmplitude(t *testing.T) {
 	}
 }
 
+// "AG" (not "AUTO") — the auto-gain concept carries ONE label across every
+// tab (Chain's AG pill, Wave's pill + badge). 2026-07-04 label unification.
 func TestWaveGainBadgeText(t *testing.T) {
-	if got := waveGainBadgeText(4.2, true); got != "AUTO x4.2" {
-		t.Fatalf("auto badge = %q, want %q", got, "AUTO x4.2")
+	if got := waveGainBadgeText(4.2, true); got != "AG x4.2" {
+		t.Fatalf("auto badge = %q, want %q", got, "AG x4.2")
 	}
 	if got := waveGainBadgeText(2.0, false); got != "x2.0" {
 		t.Fatalf("manual badge = %q, want %q", got, "x2.0")

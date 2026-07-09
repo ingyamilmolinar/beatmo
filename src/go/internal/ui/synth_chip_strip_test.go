@@ -353,6 +353,8 @@ func TestSynthChips_MobileWrapAllStagesVisible(t *testing.T) {
 	// detail pane is therefore no longer full-content-width; assert instead that
 	// it owns a substantial left slice (>= ~45% of content) and that the two
 	// columns together span the content width with the knob column on the left.
+	// (Re-confirmed 2026-07-04: a stacked bottom band was prototyped and
+	// reverted — see the layoutSynthSections comment.)
 	detail := dv.instEditorDetailR
 	focus := dv.synthMobileFocusRect()
 	content := dv.eqPanelZone.ContentRect()

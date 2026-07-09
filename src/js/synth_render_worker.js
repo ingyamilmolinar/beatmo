@@ -17,11 +17,17 @@
  * Float32Array; this worker is a dumb renderer.
  *
  * Protocol (main → worker):
- *   { type:'render', reqId, renderFn, sr, frames, allocCount, params:Float32Array|null }
+ *   { type:'render', reqId, renderFn, sr, frames, allocCount,
+ *     params:Float32Array|null, postAmp:number|null }
  * Reply (worker → main):
  *   { type:'rendered', reqId, data:Float32Array(frames) }   (data.buffer transferred)
  *   { type:'error',    reqId, err:string }
  *   { type:'ready' }                                          (after module init)
+ *
+ * postAmp (P4): when finite, the worker also peak-normalizes then amp-scales
+ * the buffer before transfer, keeping those O(frames) passes off the main
+ * thread. The loops mirror audio.js's sync-fallback post-processing EXACTLY
+ * (same float32 op order) so both paths stay bit-identical.
  */
 
 let modulePromise = null;
@@ -70,6 +76,18 @@ self.onmessage = async (ev) => {
     const heap = m.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + n);
     const data = new Float32Array(n);
     data.set(heap);
+    if (typeof msg.postAmp === "number" && Number.isFinite(msg.postAmp)) {
+      let peak = 0;
+      for (let i = 0; i < data.length; i++) {
+        const a = Math.abs(data[i]);
+        if (a > peak) peak = a;
+      }
+      if (peak > 0) {
+        const inv = 1 / peak;
+        for (let i = 0; i < data.length; i++) data[i] *= inv;
+      }
+      for (let i = 0; i < data.length; i++) data[i] *= msg.postAmp;
+    }
     postMessage({ type: "rendered", reqId, data }, [data.buffer]);
   } catch (e) {
     postMessage({ type: "error", reqId, err: String(e && e.message ? e.message : e) });

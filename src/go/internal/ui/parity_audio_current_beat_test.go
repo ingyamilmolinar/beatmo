@@ -41,7 +41,7 @@ func TestParityDetectsAudioMismatchOnCurrentBeat(t *testing.T) {
 
 	abs := 4
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
-	g.recordParityAudio(0, abs, 1.0, "kick", 1, 0, 1, g.audioGen.Load()) // future time; skip highlight parity in tests
+	g.recordParityAudio(0, abs, 1.0, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load()) // future time; skip highlight parity in tests
 	g.parityScan("test-current-audio")
 
 	foundAudioVsView := false

@@ -146,12 +146,15 @@ func menuRowLabelX(rowRect image.Rectangle) int {
 	return rowRect.Min.X + SpaceMD + menuRowIconSize() + SpaceSM
 }
 
-// MenuRowSpec describes the variable content of one list-menu row. The styling
-// and animation (keycap chrome via btn.Draw, press-depth travel, hover glow,
-// accent background/stripe) are fixed and identical for every menu; only these
-// fields vary. Behavior (open/close/toggle) lives in the caller's onClick, not
-// here. Shared by the instrument menu, row context menu, subdivision selector,
-// and template/overflow menu so styling + animation are byte-identical.
+// MenuRowSpec describes the variable content of one list-menu row. The
+// styling (flat row on the single panel surface; hover = accent tint,
+// active = accent tint + stripe) is fixed and identical for every menu;
+// only these fields vary. Behavior (open/close/toggle) lives in the
+// caller's onClick, not here. Shared by the instrument menu, row context
+// menu, subdivision selector, and template/overflow menu so styling is
+// byte-identical. Rows are deliberately NOT keycaps — the keycap is the
+// signature of buttons; menus are minimalist-flat per DESIGN.md
+// ("no per-row keycap pad/bevel"; 2026-07-04 design pass).
 type MenuRowSpec struct {
 	Accent      color.Color   // hover/active tint + active stripe; nil → colAccent
 	State       menuItemState // rest / hover / active (caller's selection model)
@@ -163,13 +166,16 @@ type MenuRowSpec struct {
 	LabelColor  color.Color   // nil → colTextPrimary
 	LabelRole   TextRole      // zero → RoleBody
 	CenterLabel bool          // true → center label in the row (subdiv); else left-align
+	TrailLabel  string        // optional right-aligned muted caption (e.g. an instrument's category)
 }
 
-// drawMenuRow renders one list-menu row with the unified styling + animation:
-// background accent → keycap chrome (btn.Draw with blanked text, which also
-// advances AdvancePressAnim) → optional leading swatch or icon → fuzzy-match
-// highlights → label. Swatch wins the leading slot over an icon when both set
-// (mirrors the instrument menu, which has a swatch and no icon).
+// drawMenuRow renders one list-menu row with the unified flat styling:
+// per-state background accent (rest = nothing, hover = tint, active =
+// stripe + tint) → optional leading swatch or icon → fuzzy-match
+// highlights → label. Swatch wins the leading slot over an icon when both
+// set (mirrors the instrument menu, which has a swatch and no icon). The
+// btn carries geometry, text and input state only — rows never paint the
+// keycap chrome (flat-menu invariant; guard: TestDrawMenuRowIsFlatNoKeycap).
 func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 	r := btn.Rect()
 	if r.Empty() {
@@ -179,19 +185,6 @@ func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 	if accent == nil {
 		accent = colAccent
 	}
-	// 1. Keycap chrome + press/hover animation FIRST. drawKeycapShell paints an
-	// opaque rounded fill over the full row, so the per-state accent background
-	// must come AFTER it — otherwise the keycap covers the stripe/tint and the
-	// accent is invisible (the node dropdown's node-color indicator vanished this
-	// way; menus with a swatch/accent-label masked it). Blank the text; the label
-	// is drawn below (centered/iconned variants need custom placement).
-	saved := btn.Text
-	btn.Text = ""
-	btn.Draw(dst)
-	btn.Text = saved
-
-	// 2. Per-state background OVER the keycap (rest = nothing, hover = tint,
-	// active = stripe+tint) so active/hover accents are actually visible.
 	drawMenuItemBackgroundAccent(dst, r, spec.State, accent)
 
 	role := spec.LabelRole
@@ -230,11 +223,36 @@ func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 		labelX = r.Min.X + (r.Dx()-tw)/2
 	}
 
-	// 5. Fuzzy-match highlights behind the label, then the label itself.
+	// 5. Fuzzy-match highlights behind the label, then the label itself. The
+	// label is rendered with the styled role font, so the highlight cells must
+	// be measured with the same styled metric or they drift off the glyphs.
 	if len(spec.Highlights) > 0 {
-		drawButtonHighlights(dst, spec.Label, spec.Highlights, labelX, ty, 1.0)
+		drawTextHighlights(dst, spec.Label, spec.Highlights, labelX, ty, 1.0, th,
+			func(s string) int { return StyledTextWidth(s, role) })
 	}
 	DrawTextStyled(dst, spec.Label, labelX, ty, role, labelCol)
+
+	// 6. Optional trailing caption, right-aligned and muted (e.g. the category
+	// an instrument lives in, on global-search result rows).
+	if spec.TrailLabel != "" {
+		tw := StyledTextWidth(spec.TrailLabel, RoleCaption)
+		tx := r.Max.X - SpaceMD - tw
+		tth := StyledTextHeight(RoleCaption)
+		tty := r.Min.Y + (r.Dy()-tth)/2
+		DrawTextStyled(dst, spec.TrailLabel, tx, tty, RoleCaption, colTextSecondary)
+	}
+}
+
+// drawSheetDragHandle paints the standard bottom-sheet drag-handle pill
+// (36×4, top-center, 8px inset). ONE helper so every mobile sheet — row
+// context menu, File/overflow menu, instrument picker — carries identical
+// chrome; the File sheet used to be the odd one out with no handle.
+func drawSheetDragHandle(dst *ebiten.Image, sheetRect image.Rectangle) {
+	const handleW, handleH = 36, 4
+	hx := sheetRect.Min.X + sheetRect.Dx()/2 - handleW/2
+	hy := sheetRect.Min.Y + 8
+	drawRoundedRect(dst, image.Rect(hx, hy, hx+handleW, hy+handleH),
+		WithAlpha(genColorBorder, genAlphaScrollbarThumb), handleH/2, true)
 }
 
 // drawMenuChevron draws the icon-system chevron (down=expanded, right=collapsed)

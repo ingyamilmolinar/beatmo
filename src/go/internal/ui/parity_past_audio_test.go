@@ -34,7 +34,7 @@ func TestParityIgnoresPastAudioEvents(t *testing.T) {
 	}
 
 	// Record an old audio event at abs=0 with no corresponding highlight.
-	g.recordParityAudio(0, 0, 0.25, g.drum.Rows[0].Instrument, 1, 0, 1, g.audioGen.Load())
+	g.recordParityAudio(0, 0, 0.25, g.drum.Rows[0].Instrument, 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 	g.resetHighlights()
 
 	// Should not panic when scanning parity; past events are ignored.

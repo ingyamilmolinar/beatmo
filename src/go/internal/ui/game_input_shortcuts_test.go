@@ -216,14 +216,14 @@ func TestEscFallbackStopsPlayback(t *testing.T) {
 
 func TestEscClosesPortalNotStop(t *testing.T) {
 	g := newTestGameForUndo(t)
-	g.drum.tree.Portal().Open(PortalEntry{ID: "test-menu", Overlay: NewTooltipOverlay("x")})
-	if !g.drum.tree.Portal().IsOpen() {
+	g.drum.portal().Open(PortalEntry{ID: "test-menu", Overlay: NewTooltipOverlay("x")})
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("setup: portal should be open")
 	}
 	restore := stubKeys(nil, map[ebiten.Key]bool{ebiten.KeyEscape: true})
 	defer restore()
 	g.handleGlobalShortcuts()
-	if g.drum.tree.Portal().IsOpen() {
+	if g.drum.portal().IsOpen() {
 		t.Fatal("Esc should close the open portal")
 	}
 	if g.drum.StopPressed() {
@@ -292,14 +292,14 @@ func TestSlashTogglesHelpOverlay(t *testing.T) {
 	restore := stubKeys(nil, map[ebiten.Key]bool{ebiten.KeySlash: true})
 	g.handleGlobalShortcuts()
 	restore()
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("'?' should open the shortcuts overlay")
 	}
 
 	restore = stubKeys(nil, map[ebiten.Key]bool{ebiten.KeySlash: true})
 	g.handleGlobalShortcuts()
 	restore()
-	if g.drum.tree.Portal().IsOpen() {
+	if g.drum.portal().IsOpen() {
 		t.Fatal("'?' again should close the shortcuts overlay")
 	}
 }
@@ -375,7 +375,7 @@ func TestEscClearsInstrumentSearchThenCloses(t *testing.T) {
 	if m.state.searchText != "" {
 		t.Fatalf("first Esc should clear search, got %q", m.state.searchText)
 	}
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("menu should stay open after clearing search")
 	}
 
@@ -383,7 +383,7 @@ func TestEscClearsInstrumentSearchThenCloses(t *testing.T) {
 	restore = stubKeys(nil, map[ebiten.Key]bool{ebiten.KeyEscape: true})
 	g.handleGlobalShortcuts()
 	restore()
-	if g.drum.tree.Portal().IsOpen() {
+	if g.drum.portal().IsOpen() {
 		t.Fatal("second Esc should close the menu")
 	}
 }
@@ -398,7 +398,7 @@ func TestEscCancelsRename(t *testing.T) {
 	rc.SetProps(RenameProps{InitialText: "kick", MaxLen: 32, OnCancel: func() { cancelled = true }})
 	rc.Open()
 	g.drum.openRenamePortal()
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("setup: rename portal should be open")
 	}
 
@@ -409,7 +409,7 @@ func TestEscCancelsRename(t *testing.T) {
 	if !cancelled {
 		t.Fatal("Esc should run the rename OnCancel")
 	}
-	if g.drum.tree.Portal().IsOpen() {
+	if g.drum.portal().IsOpen() {
 		t.Fatal("Esc should close the rename portal")
 	}
 }
@@ -417,11 +417,11 @@ func TestEscCancelsRename(t *testing.T) {
 func TestToggleSettingsOverlayDirect(t *testing.T) {
 	g := newTestGameForUndo(t)
 	g.toggleSettingsOverlay()
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("toggleSettingsOverlay should open the portal")
 	}
 	g.toggleSettingsOverlay()
-	if g.drum.tree.Portal().IsOpen() {
+	if g.drum.portal().IsOpen() {
 		t.Fatal("toggleSettingsOverlay should close the portal")
 	}
 }
@@ -432,7 +432,7 @@ func TestSlashIgnoredWhileTextInputFocused(t *testing.T) {
 	restore := stubKeys(nil, map[ebiten.Key]bool{ebiten.KeySlash: true})
 	defer restore()
 	g.handleGlobalShortcuts()
-	if g.drum.tree.Portal().IsOpen() {
+	if g.drum.portal().IsOpen() {
 		t.Fatal("'/' must NOT open help while a text input owns the keyboard (it should type into the field)")
 	}
 }
@@ -498,13 +498,13 @@ func TestGridHelpButtonTogglesOverlay(t *testing.T) {
 	if g.gridHelpBtn.HandleInputResult(cx, cy, true) != InputConsumed {
 		t.Fatal("pressing the grid help button should consume the input")
 	}
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatal("pressing the grid help button should open the shortcuts overlay")
 	}
 	// Release, then press again → closes it.
 	g.gridHelpBtn.HandleInputResult(cx, cy, false)
 	g.gridHelpBtn.HandleInputResult(cx, cy, true)
-	if g.drum.tree.Portal().IsOpen() {
+	if g.drum.portal().IsOpen() {
 		t.Fatal("pressing again should close the shortcuts overlay")
 	}
 }

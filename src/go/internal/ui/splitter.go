@@ -70,7 +70,12 @@ func (s *Splitter) GridH(winH int) int {
 }
 
 func NewSplitter(totalH int) *Splitter {
-	return &Splitter{Y: totalH / 2, ratio: 0.5, horizontal: true}
+	s := &Splitter{Y: totalH / 2, ratio: 0.5, horizontal: true}
+	// Main splitter pill hangs above the line so it never occludes the
+	// transport-bar chrome directly below (beat readout). See
+	// SplitterHandle.PillAnchorAbove.
+	s.handle.PillAnchorAbove = true
+	return s
 }
 
 // UpdateResize adjusts the divider position based on window resize.

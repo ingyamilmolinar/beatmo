@@ -61,8 +61,14 @@ func SpecForInstrument(instID string) (TunableSpec, bool) {
 var subtractiveReedParams = []Param{
 	{Key: "filter_cutoff", Min: 200, Max: 8000, Step: 100},
 	{Key: "filter_resonance", Min: 0.5, Max: 3.0, Step: 0.1},
-	{Key: "amp_attack", Min: 0.001, Max: 0.1, Step: 0.005},
-	{Key: "amp_decay", Min: 0.02, Max: 1.0, Step: 0.02},
+	// The search box must contain every family member's own recipe defaults,
+	// otherwise the start point (and any candidate) is clamped to a different
+	// envelope than a self-rendered reference and can never match it — a
+	// residual the optimizer then "pays down" by mis-tuning other params
+	// (e.g. filter_cutoff drifts to compensate). sax's defaults are attack
+	// 0.5 s / decay 2.5 s (the slowest reed envelope), so cap above those.
+	{Key: "amp_attack", Min: 0.001, Max: 0.6, Step: 0.005},
+	{Key: "amp_decay", Min: 0.02, Max: 3.0, Step: 0.02},
 	{Key: "amp_sustain", Min: 0, Max: 1, Step: 0.05},
 	{Key: "amp_release", Min: 0.02, Max: 0.5, Step: 0.02},
 	{Key: "filtenv_amt", Min: 0, Max: 6, Step: 0.2},

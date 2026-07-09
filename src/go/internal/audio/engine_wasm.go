@@ -36,6 +36,26 @@ func Register(id string, inst Instrument) {
 	InstrumentChannel(id)
 }
 
+// Unregister removes a runtime-registered instrument id from the playable set
+// (the inverse of Register). No-op if absent.
+func Unregister(id string) {
+	instrumentsMu.Lock()
+	found := false
+	out := instruments[:0]
+	for _, existing := range instruments {
+		if existing == id {
+			found = true
+			continue
+		}
+		out = append(out, existing)
+	}
+	instruments = out
+	instrumentsMu.Unlock()
+	if found {
+		bumpInstrumentsVersion()
+	}
+}
+
 func Play(id string, when ...float64) {
 	fn := js.Global().Get("playSound")
 	if !fn.Truthy() {
@@ -183,6 +203,23 @@ func Instruments() []string {
 	instrumentsMu.RUnlock()
 	return ids
 }
+
+// EmitReport identifies a voice's first-emitted block. Exported so the UI
+// package can drain into a []audio.EmitReport. WASM has no Go-owned mixer
+// loop (playback happens in WebAudio/JS), so this type exists only to keep
+// the signature uniform across build tags; browser Stage-D emission comes
+// from JS in Phase 4, not this ring.
+type EmitReport struct {
+	Row, Abs int
+	DevPos   int64
+}
+
+// DeviceClockSnapshot is unavailable on WASM: there is no Go-owned mixer
+// device clock (WebAudio owns timing). Always reports unavailable.
+func DeviceClockSnapshot() (int64, float64, bool) { return 0, 0, false }
+
+// DrainEmitReports is unavailable on WASM: no Go-owned emission ring. Always empty.
+func DrainEmitReports(dst []EmitReport) int { return 0 }
 
 // AnalyzerService returns nil on WASM (analyzer runs via JS AudioWorklet, not Go).
 func AnalyzerService() *analyzer.Service { return nil }

@@ -8,5 +8,5 @@ func SetBPMFuncForTest(fn func(int)) {
 	if fn == nil {
 		fn = func(int) {}
 	}
-	SetBPMFunc = fn
+	bpmFunc.Store(&fn)
 }

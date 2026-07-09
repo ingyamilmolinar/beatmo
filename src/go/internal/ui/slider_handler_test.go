@@ -385,7 +385,7 @@ func TestPortalSliderNotBlockedByDeadZone(t *testing.T) {
 	dv.volPopup.Open(iconRect, dv.Bounds, dv.headerH)
 	dv.openVolPopupPortal()
 
-	if !dv.tree.Portal().Has("volume-popup") {
+	if !dv.portal().Has("volume-popup") {
 		t.Fatal("volume-popup portal should be open")
 	}
 
@@ -414,9 +414,9 @@ func TestPortalSliderNotBlockedByDeadZone(t *testing.T) {
 	dv.Update()
 	r()
 
-	// The tree should have dispatched the press to the portal overlay
+	// The overlay tree should have dispatched the press to the portal overlay
 	// even though the dead zone is active.
-	if !dv.tree.InputHandled() {
-		t.Fatal("tree should have dispatched press to portal slider (portal bypasses drag block)")
+	if !dv.overlayTree.InputHandled() {
+		t.Fatal("overlay tree should have dispatched press to portal slider (portal bypasses drag block)")
 	}
 }

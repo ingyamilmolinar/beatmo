@@ -35,25 +35,18 @@ func TestMobileColorPickerIsolatesInput(t *testing.T) {
 	withDefaultAudio(t)
 	withSmallScreen(t, true)
 
-	testMobileInputTriggerRegistered = map[string]bool{}
-	testMobileInputTriggerRect = map[string]image.Rectangle{}
-	testMobileInputRect = map[string]image.Rectangle{}
-	t.Cleanup(func() {
-		testMobileInputTriggerRegistered = nil
-		testMobileInputTriggerRect = nil
-		testMobileInputRect = nil
-	})
-
 	logger := gamelog.New(testLogOutput(), gamelog.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 700), nil, logger)
 
 	// Open the context menu, then tap "Color" — this is the exact path the user
 	// follows (overflow ⋯ → Color). It closes the context menu and opens the
-	// swatch picker.
+	// swatch picker. dv.Update() (not recalcButtons alone) drives the full frame
+	// — recalcButtons, rootTree.Update (z-order gating), and syncNativeGestures
+	// (nativeInputCandidates → dv.lastNativeRects) — matching the real loop.
 	dv.OpenContextMenu(0)
-	dv.recalcButtons()
+	dv.Update()
 	fireContextMenuItemByIcon(t, dv, 0, "color")
-	dv.recalcButtons()
+	dv.Update()
 
 	if !dv.IsColorMenuOpen() {
 		t.Fatal("color picker should be open after tapping Color")
@@ -75,15 +68,16 @@ func TestMobileColorPickerIsolatesInput(t *testing.T) {
 
 	// No native-input trigger may overlap the open picker — otherwise the JS
 	// touchend handler would open a hidden text input behind the swatches.
-	for id, r := range testMobileInputTriggerRect {
-		if r.Overlaps(pickerRect) {
-			t.Errorf("native-input trigger %q rect %v overlaps open color picker %v — input not isolated", id, r, pickerRect)
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel != NativeTextInput {
+			continue
 		}
-	}
-	// In particular the rename trigger from the dismissed context menu must be gone.
-	for id := range testMobileInputTriggerRegistered {
-		if strings.HasPrefix(id, "rename-") {
-			t.Errorf("stale rename trigger %q still registered while color picker is open", id)
+		if r.Rect.Overlaps(pickerRect) {
+			t.Errorf("native-input trigger %q rect %v overlaps open color picker %v — input not isolated", r.Intent.ID, r.Rect, pickerRect)
+		}
+		// In particular the rename trigger from the dismissed context menu must be gone.
+		if strings.HasPrefix(r.Intent.ID, "rename-") {
+			t.Errorf("stale rename trigger %q still armed while color picker is open", r.Intent.ID)
 		}
 	}
 }

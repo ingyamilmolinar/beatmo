@@ -15,6 +15,12 @@ type Hit struct {
 	Pitch float64
 	Vol   float64 // 0 => omit (use instrument default)
 	Dur   float64 // 0 => omit
+	// Groove shifts this hit off the grid: "delay" (behind the beat) or
+	// "rush" (ahead of it), by GroovePct (0..1) of the groove window.
+	// Empty = straight. Matches node JSON groove_kind/groove_pct
+	// (importer: internal/ui/import.go).
+	Groove    string
+	GroovePct float64
 }
 type RowSpec struct {
 	Inst string // instrument id
@@ -53,6 +59,11 @@ var seededModularInstruments = map[string]bool{
 	"flute": true, "flute-breathy": true, "oboe": true, "oboe-full": true,
 	"trumpet": true, "trumpet-mellow": true, "french-horn": true, "french-horn-loud": true,
 	"conga": true, "conga-open": true, "conga-tumba": true,
+	// Remaining modularInstrumentDefs rows (audio/modular_instruments.go) — same
+	// renderModular identity-tone hazard as the rest of the table.
+	"modular-pad": true, "organ-church": true, "scifi-lead": true, "harp": true,
+	"ensemble-lead": true, "ensemble-lead-dark": true, "voice-soprano": true,
+	"ghost-bass": true, "viola-pad": true, "voice-whisper": true, "modular": true,
 }
 
 type Showcase struct {
@@ -72,6 +83,9 @@ type node struct {
 	Pitch    float64 `json:"pitch,omitempty"`
 	Volume   float64 `json:"volume,omitempty"`
 	Duration float64 `json:"duration,omitempty"`
+
+	GrooveKind string  `json:"groove_kind,omitempty"`
+	GroovePct  float64 `json:"groove_pct,omitempty"`
 }
 type inst struct {
 	Name        string             `json:"name"`
@@ -149,6 +163,16 @@ func build(s Showcase) ([]byte, error) {
 				n.Pitch = h.Pitch
 				n.Volume = h.Vol
 				n.Duration = h.Dur
+				if h.Groove != "" {
+					if h.Groove != "delay" && h.Groove != "rush" {
+						return nil, fmt.Errorf("showcase %q row %d (inst %q) step %d: unknown groove kind %q (want delay|rush)", s.Stem, ri, row.Inst, st, h.Groove)
+					}
+					if h.GroovePct < 0 || h.GroovePct > 1 {
+						return nil, fmt.Errorf("showcase %q row %d (inst %q) step %d: groove_pct %v out of range 0..1", s.Stem, ri, row.Inst, st, h.GroovePct)
+					}
+					n.GrooveKind = h.Groove
+					n.GroovePct = h.GroovePct
+				}
 			}
 			rowNodes = append(rowNodes, n)
 		}

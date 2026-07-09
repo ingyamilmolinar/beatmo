@@ -253,6 +253,16 @@ func (t *DrumViewTree) HitIndexRef() *HitIndex {
 	return t.hitIndex
 }
 
+// topOwnerAt returns the ownerID of this subtree's topmost hit area at (x, y),
+// or "" if none. Mirrors what OnPress dispatch would pick first.
+func (t *DrumViewTree) topOwnerAt(x, y int) string {
+	hits := t.hitIndex.At(x, y)
+	if len(hits) == 0 {
+		return ""
+	}
+	return hits[0].ownerID
+}
+
 // HasZoneForTest reports whether a zone with the given ID is REGISTERED as a
 // Zone (not merely a decorative layer) in this subtree. Read-only; used by the
 // audio-panel ↔ drum-view isolation discipline tests to assert that each
@@ -611,6 +621,14 @@ func (t *DrumViewTree) handleInput() {
 			if t.portal.IsOpen() {
 				t.portal.CloseTop()
 				t.suppress = true
+				// The click-away dismissal CONSUMES this press: mark the
+				// frame handled so a composing RootTree reports this subtree
+				// busy and WITHHOLDS the press from lower subtrees. Without
+				// this, when the overlay subtree dismisses a popup the same
+				// press also reaches a base zone beneath (e.g. the FX button
+				// re-opening the panel it just closed). Regression:
+				// TestFXPanelOpenClose / TestFXPanelToggleViaButton.
+				t.inputHandled = true
 			}
 			return
 		}
@@ -632,9 +650,13 @@ func (t *DrumViewTree) handleInput() {
 
 			// When the hit is a non-portal area (z < ZOverlayMin) and
 			// a portal overlay is open, close the portal (click-outside).
+			// The dismissal consumes the press (see the len==0 branch above)
+			// so lower subtrees are withheld and the click does not also act
+			// on the base zone beneath.
 			if hit.ZIndex < ZOverlayMin && t.portal.IsOpen() {
 				t.portal.CloseTop()
 				t.suppress = true
+				t.inputHandled = true
 				return
 			}
 
@@ -680,14 +702,22 @@ func (t *DrumViewTree) handleInput() {
 		return
 	}
 
-	// Handle wheel events — dispatched unconditionally to hit areas.
-	{
+	// Handle wheel events — dispatched to hit areas, but ONLY when this subtree
+	// is allowed to act on new input this frame. A WITHHELD subtree (a composing
+	// RootTree gave the frame's input to a sibling) must not even READ the wheel:
+	// wheel() consumes the frame's delta, so a withheld subtree reading it first
+	// would drain the value before the owning subtree (dispatched later in the
+	// RootTree's ascending-z loop) sees it — starving a portal's scroll. Gating
+	// the read on allowNewPress keeps input isolation total. Regression:
+	// TestInstMenuScrollDoesNotAffectRowOffset and the instrument-menu /
+	// category scroll tests.
+	if t.allowNewPress {
 		wx, wy := wheel()
 		steps := int(wy)
 		if wx != 0 && steps == 0 {
 			steps = int(wx)
 		}
-		if t.allowNewPress && steps != 0 {
+		if steps != 0 {
 			hits := t.hitIndex.At(mx, my)
 			for _, h := range hits {
 				if h.Handler == nil {

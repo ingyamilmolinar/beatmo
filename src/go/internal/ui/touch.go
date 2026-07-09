@@ -16,6 +16,17 @@ type TouchPoint struct {
 	StartTime time.Time // time when touch began
 	PrevX     int       // previous frame position
 	PrevY     int       // previous frame position
+
+	// movedBeyondTap latches true once the touch has ever moved farther than
+	// tapMaxMovePx from its start. A drag disqualifies the touch from ever being
+	// (re)classified as a long-press — otherwise a SLOW single-finger drag (finger
+	// still within tapMaxMovePx of start when the 500 ms long-press timer elapses,
+	// which happens whenever the game loop is throttled/starved on mobile) fires a
+	// spurious long-press mid-pan. That opens the quick-action popup, flips panOK
+	// false, and freezes camera panning for the rest of the gesture. The instantaneous
+	// dx/dy check alone is not enough because at the instant the timer crosses 500 ms
+	// the finger can still read <=tapMaxMovePx away; latching makes it order-independent.
+	movedBeyondTap bool
 }
 
 // TouchState tracks all active touches and gesture state.
@@ -351,6 +362,14 @@ func (ts *TouchState) Update() *GestureEvent {
 			}
 			pt.PrevX, pt.PrevY = pt.X, pt.Y
 			pt.X, pt.Y = x, y
+			// Latch once the finger has moved at least the tap threshold so a drag
+			// can never later be (mis)read as a long-press (see movedBeyondTap). Uses
+			// >= (not >) so a finger sitting exactly at the tap boundary when the 500 ms
+			// timer elapses — the worst case for a throttled loop that samples the drag
+			// coarsely — is still disqualified.
+			if abs(x-pt.StartX) >= tapMaxMovePx || abs(y-pt.StartY) >= tapMaxMovePx {
+				pt.movedBeyondTap = true
+			}
 		} else {
 			// New touch - reset long-press one-shot for new gesture sequence
 			logTouchEvent(TouchEventStart, id, x, y)

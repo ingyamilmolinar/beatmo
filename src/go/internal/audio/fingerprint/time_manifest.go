@@ -27,12 +27,12 @@ type CompareWindow struct {
 // TimeManifest describes one interpretation's time structure. Every field is
 // optional: present → authoritative for that span; absent → auto-detected.
 type TimeManifest struct {
-	Ref            string         `json:"ref,omitempty"`
-	Template       string         `json:"template,omitempty"`
-	Transpose      int            `json:"transpose_semitones,omitempty"`
-	BPM            float64        `json:"bpm,omitempty"`
-	CompareWindow  *CompareWindow `json:"compare_window,omitempty"`
-	Sections       []Span         `json:"sections,omitempty"`
+	Ref            string          `json:"ref,omitempty"`
+	Template       string          `json:"template,omitempty"`
+	Transpose      int             `json:"transpose_semitones,omitempty"`
+	BPM            float64         `json:"bpm,omitempty"`
+	CompareWindow  *CompareWindow  `json:"compare_window,omitempty"`
+	Sections       []Span          `json:"sections,omitempty"`
 	TuningPassages []TuningPassage `json:"tuning_passages,omitempty"`
 }
 

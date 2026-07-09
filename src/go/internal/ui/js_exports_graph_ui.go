@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"image/color"
 	"math"
 	"strconv"
@@ -16,13 +17,13 @@ import (
 
 func (g *Game) initJSGraphUI() {
 	// Graph mutation helpers for e2e tests
-	js.Global().Set("addNode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("addNode", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return js.ValueOf(-1)
 		}
-		i := args[0].Int()
-		j := args[1].Int()
-		t := args[2].String()
+		i := args.Int(0)
+		j := args.Int(1)
+		t := args.Str(2)
 		nt := model.NodeTypeRegular
 		switch t {
 		case "invisible":
@@ -36,14 +37,14 @@ func (g *Game) initJSGraphUI() {
 		return js.ValueOf(int(n.ID))
 	}))
 
-	js.Global().Set("addEdgeGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 4 {
+	js.Global().Set("addEdgeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
 			return nil
 		}
-		i1 := args[0].Int()
-		j1 := args[1].Int()
-		i2 := args[2].Int()
-		j2 := args[3].Int()
+		i1 := args.Int(0)
+		j1 := args.Int(1)
+		i2 := args.Int(2)
+		j2 := args.Int(3)
 		a := g.nodeAt(i1, j1)
 		b := g.nodeAt(i2, j2)
 		if a != nil && b != nil {
@@ -52,14 +53,14 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	js.Global().Set("deleteEdgeGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 4 {
+	js.Global().Set("deleteEdgeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
 			return nil
 		}
-		i1 := args[0].Int()
-		j1 := args[1].Int()
-		i2 := args[2].Int()
-		j2 := args[3].Int()
+		i1 := args.Int(0)
+		j1 := args.Int(1)
+		i2 := args.Int(2)
+		j2 := args.Int(3)
 		a := g.nodeAt(i1, j1)
 		b := g.nodeAt(i2, j2)
 		if a != nil && b != nil {
@@ -68,12 +69,12 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	js.Global().Set("deleteNodeGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("deleteNodeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n != nil {
 			g.deleteNode(n)
@@ -81,19 +82,19 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	js.Global().Set("updateBeatInfos", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("updateBeatInfos", jsFn(func(args jsArgs) any {
 		g.updateBeatInfos()
 		return nil
 	}))
 
 	// setOrigin(row, i, j) – set a drum row origin to the node at grid (i,j).
-	js.Global().Set("setOrigin", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 || g.drum == nil {
+	js.Global().Set("setOrigin", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 || g.drum == nil {
 			return nil
 		}
-		row := args[0].Int()
-		i := args[1].Int()
-		j := args[2].Int()
+		row := args.Int(0)
+		i := args.Int(1)
+		j := args.Int(2)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
@@ -113,20 +114,20 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// setNodeLogicGrid(i,j, kind, n, p)
-	js.Global().Set("setNodeLogicGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("setNodeLogicGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
-		kind := args[2].String()
+		i := args.Int(0)
+		j := args.Int(1)
+		kind := args.Str(2)
 		n := 0
-		if len(args) > 3 {
-			n = args[3].Int()
+		if args.Len() > 3 {
+			n = args.Int(3)
 		}
 		p := 0.0
-		if len(args) > 4 {
-			p = args[4].Float()
+		if args.Len() > 4 {
+			p = args.Float(4)
 		}
 		node := g.nodeAt(i, j)
 		if node == nil {
@@ -147,12 +148,84 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
+	// createNodeGroup(id1, id2, ...) -> groupId (int), or -1 on failure (e.g.
+	// no args, or an id not present in the graph). Test/debug helper mirroring
+	// the marquee-select "group these nodes" flow.
+	js.Global().Set("createNodeGroup", jsFn(func(args jsArgs) any {
+		ids := make([]model.NodeID, 0, args.Len())
+		for k := 0; k < args.Len(); k++ {
+			ids = append(ids, model.NodeID(args.Int(k)))
+		}
+		gid, err := g.graph.CreateGroup("", ids)
+		if err != nil {
+			return -1
+		}
+		grp, _ := g.graph.Group(gid)
+		emitGroupCreated(gid, grp.Name, grp.NodeIDs)
+		return int(gid)
+	}))
+
+	// setGroupRule(groupId, param, delta, everyN) -> bool. Replaces the
+	// group's rule set with a single rule; param is one of
+	// "pitch"/"volume"/"duration". Returns false on an unknown group or an
+	// invalid rule (bad param, everyN < 1, ...). AnchorIdx PRESERVES the
+	// group's existing rule anchor for this same param when one already
+	// exists (an in-place edit continues the ramp — task-rule-continuity
+	// Part 2, mirrors GroupMenu.writeRules), else stamps a fresh anchor at
+	// the current playhead (ruleAnchorIdxNow — 0 when not playing) so a
+	// brand-new rule's step count starts from this write, not the timeline
+	// origin; the JS-facing signature is unchanged.
+	js.Global().Set("setGroupRule", jsFn(func(args jsArgs) any {
+		gid := model.GroupID(args.Int(0))
+		param := model.GroupParam(args.Str(1))
+		anchor := g.ruleAnchorIdxNow()
+		if grp, ok := g.graph.Group(gid); ok {
+			for _, r := range grp.Rules {
+				if r.Param == param {
+					anchor = r.AnchorIdx
+					break
+				}
+			}
+		}
+		rule := model.GroupRule{
+			Param:     param,
+			Delta:     args.Float(2),
+			EveryN:    args.Int(3),
+			AnchorIdx: anchor,
+		}
+		if err := g.graph.SetGroupRules(gid, []model.GroupRule{rule}); err != nil {
+			return false
+		}
+		emitGroupChanged(gid)
+		return true
+	}))
+
+	// deleteGroup(groupId) -> bool. Returns false if the group doesn't exist.
+	js.Global().Set("deleteGroup", jsFn(func(args jsArgs) any {
+		gid := model.GroupID(args.Int(0))
+		if err := g.graph.DeleteGroup(gid); err != nil {
+			return false
+		}
+		emitGroupDeleted(gid)
+		return true
+	}))
+
+	// dumpGroups() -> JSON string of every NodeGroup (AllGroups()). Read-only
+	// debug/test seam; never emits a hook.
+	js.Global().Set("dumpGroups", jsFn(func(args jsArgs) any {
+		b, err := json.Marshal(g.graph.AllGroups())
+		if err != nil {
+			return "[]"
+		}
+		return string(b)
+	}))
+
 	// nodeMenuRect(id) -> {x,y,w,h} for sidebar control id; "panel" for full panel.
-	js.Global().Set("nodeMenuRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("nodeMenuRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		id := args[0].String()
+		id := args.Str(0)
 		g.sidebar.layout()
 		r, ok := g.sidebar.rects[id]
 		if !ok {
@@ -162,14 +235,14 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// triggerOnce(i,j,pitch,dur) – test helper to schedule one audio + highlight for a grid node.
-	js.Global().Set("triggerOnce", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 4 {
+	js.Global().Set("triggerOnce", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
 			return js.ValueOf(false)
 		}
-		i := args[0].Int()
-		j := args[1].Int()
-		pitch := args[2].Float()
-		dur := args[3].Float()
+		i := args.Int(0)
+		j := args.Int(1)
+		pitch := args.Float(2)
+		dur := args.Float(3)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return js.ValueOf(false)
@@ -185,12 +258,12 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// nodeParams(i,j) -> {volume, pitch, duration, logicKind, logicN, logicP, type}
-	js.Global().Set("nodeParams", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("nodeParams", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return nil
@@ -211,14 +284,14 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// nodeMenuAction(id) -> applies the same action as clicking a popup button
-	js.Global().Set("nodeMenuAction", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("nodeMenuAction", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
 		if g.sidebar.Node() == nil {
 			return nil
 		}
-		id := args[0].String()
+		id := args.Str(0)
 		node := g.sidebar.Node()
 		mn, ok := g.graph.GetNodeByID(node.ID)
 		if !ok {
@@ -227,20 +300,11 @@ func (g *Game) initJSGraphUI() {
 		switch id {
 		case "vol-":
 			p := mn.Params
-			if p.Volume == 0 {
-				p.Volume = 1
-			}
-			p.Volume -= 0.1
-			if p.Volume < 0 {
-				p.Volume = 0
-			}
+			p.Volume = stepNodeVolume(p.Volume, false)
 			g.graph.SetNodeParams(node.ID, p)
 		case "vol+":
 			p := mn.Params
-			if p.Volume == 0 {
-				p.Volume = 1
-			}
-			p.Volume += 0.1
+			p.Volume = stepNodeVolume(p.Volume, true)
 			g.graph.SetNodeParams(node.ID, p)
 		case "pit-":
 			p := mn.Params
@@ -324,13 +388,13 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// nodeActionAt(i,j,id) -> applies an action to the node at grid coords
-	js.Global().Set("nodeActionAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 3 {
+	js.Global().Set("nodeActionAt", jsFn(func(args jsArgs) any {
+		if args.Len() < 3 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
-		id := args[2].String()
+		i := args.Int(0)
+		j := args.Int(1)
+		id := args.Str(2)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return nil
@@ -342,20 +406,11 @@ func (g *Game) initJSGraphUI() {
 		switch id {
 		case "vol-":
 			p := mn.Params
-			if p.Volume == 0 {
-				p.Volume = 1
-			}
-			p.Volume -= 0.1
-			if p.Volume < 0 {
-				p.Volume = 0
-			}
+			p.Volume = stepNodeVolume(p.Volume, false)
 			g.graph.SetNodeParams(n.ID, p)
 		case "vol+":
 			p := mn.Params
-			if p.Volume == 0 {
-				p.Volume = 1
-			}
-			p.Volume += 0.1
+			p.Volume = stepNodeVolume(p.Volume, true)
 			g.graph.SetNodeParams(n.ID, p)
 		case "pit-":
 			p := mn.Params
@@ -440,7 +495,7 @@ func (g *Game) initJSGraphUI() {
 
 	// ensureDefaultPath builds a minimal single-edge path if the graph is empty
 	// so browser tests can start playback without interacting with the editor.
-	js.Global().Set("ensureDefaultPath", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("ensureDefaultPath", jsFn(func(args jsArgs) any {
 		if len(g.nodes) == 0 {
 			g.pendingStartRow = 0
 			n0 := g.tryAddNode(0, 0, model.NodeTypeRegular)
@@ -460,7 +515,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// Export the current state as a JSON string.
-	js.Global().Set("exportJSON", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("exportJSON", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf("")
 		}
@@ -471,11 +526,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// Import a JSON string to rebuild the state.
-	js.Global().Set("importJSON", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("importJSON", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		txt := args[0].String()
+		txt := args.Str(0)
 		// Surface the error to JS instead of silently discarding it: a failed
 		// import that returns nothing reads as "nothing happened" with no clue.
 		// Returns "" on success, the error string otherwise.
@@ -488,11 +543,11 @@ func (g *Game) initJSGraphUI() {
 	// sliderRect(row) -> {x, y, w, h}
 	// Exposes the on-screen rectangle for a drum row's volume slider so
 	// browser tests can simulate pointer interaction precisely.
-	js.Global().Set("sliderRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("sliderRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		if row < 0 || row >= len(g.drum.rowVolSliders()) {
 			return nil
 		}
@@ -500,7 +555,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// timelineRect() -> {x,y,w,h}
-	js.Global().Set("timelineRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("timelineRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
@@ -508,7 +563,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// bpmBoxRect() -> {x,y,w,h}
-	js.Global().Set("bpmBoxRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("bpmBoxRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.bpmBox() == nil {
 			return nil
 		}
@@ -516,7 +571,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// splitY() -> int
-	js.Global().Set("splitY", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("splitY", jsFn(func(args jsArgs) any {
 		if g.split == nil {
 			return js.ValueOf(0)
 		}
@@ -524,7 +579,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// splitX() -> int
-	js.Global().Set("splitX", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("splitX", jsFn(func(args jsArgs) any {
 		if g.split == nil {
 			return js.ValueOf(0)
 		}
@@ -532,7 +587,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// layoutHorizontal() -> bool (true=stacked, false=side-by-side)
-	js.Global().Set("layoutHorizontal", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("layoutHorizontal", jsFn(func(args jsArgs) any {
 		if g.split == nil {
 			return js.ValueOf(true)
 		}
@@ -540,11 +595,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// setSplitY(y)
-	js.Global().Set("setSplitY", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.split == nil || len(args) < 1 {
+	js.Global().Set("setSplitY", jsFn(func(args jsArgs) any {
+		if g.split == nil || args.Len() < 1 {
 			return nil
 		}
-		y := args[0].Int()
+		y := args.Int(0)
 		g.split.Y = y
 		g.split.userSet = true
 		// Clamp to match UpdateResize bounds
@@ -567,7 +622,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// drumBounds() -> {x,y,w,h}
-	js.Global().Set("drumBounds", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("drumBounds", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
@@ -575,14 +630,14 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// scrollBarRect() / scrollThumbRect() -> {x,y,w,h}
-	js.Global().Set("scrollBarRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("scrollBarRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
 		return rectToJS(g.drum.scrollBarRect())
 	}))
 
-	js.Global().Set("scrollThumbRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("scrollThumbRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
@@ -590,7 +645,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowOffset() -> int (vertical scroll)
-	js.Global().Set("rowOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("rowOffset", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -598,11 +653,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// setRowOffset(n)
-	js.Global().Set("setRowOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("setRowOffset", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		off := args[0].Int()
+		off := args.Int(0)
 		if off < 0 {
 			off = 0
 		}
@@ -621,29 +676,29 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// addDrumRow(); totalRows() -> int
-	js.Global().Set("addDrumRow", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("addDrumRow", jsFn(func(args jsArgs) any {
 		if g.drum != nil {
 			g.drum.AddRow()
 		}
 		return nil
 	}))
 
-	js.Global().Set("totalRows", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("totalRows", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
 		return js.ValueOf(len(g.drum.Rows))
 	}))
 
-	js.Global().Set("setRowInstrument", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 2 {
+	js.Global().Set("setRowInstrument", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 2 {
 			return nil
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
-		id := args[1].String()
+		id := args.Str(1)
 		prev := g.drum.selRow
 		g.drum.selRow = row
 		g.drum.SetInstrument(id)
@@ -651,13 +706,13 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	js.Global().Set("setRowStep", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 3 {
+	js.Global().Set("setRowStep", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 3 {
 			return nil
 		}
-		row := args[0].Int()
-		idx := args[1].Int()
-		val := args[2].Bool()
+		row := args.Int(0)
+		idx := args.Int(1)
+		val := args.Bool(2)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
@@ -671,22 +726,22 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowLabelRect(row), rowEditBtnRect(row), rowColorBtnRect(row) -> {x,y,w,h}
-	js.Global().Set("rowLabelRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowLabelRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.rowLabels()) {
 			return nil
 		}
 		return rectToJS(g.drum.rowLabels()[i].Rect())
 	}))
 
-	js.Global().Set("rowEditBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowEditBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.rowEditBtns()) {
 			return nil
 		}
@@ -694,22 +749,22 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowLabelText(row) -> string
-	js.Global().Set("rowLabelText", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowLabelText", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf("")
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.rowLabels()) {
 			return js.ValueOf("")
 		}
 		return js.ValueOf(g.drum.rowLabels()[i].Text)
 	}))
 
-	js.Global().Set("rowColorBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowColorBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.rowColorBtns()) {
 			return nil
 		}
@@ -717,22 +772,22 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowMuteBtnRect(row), rowSoloBtnRect(row)
-	js.Global().Set("rowMuteBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowMuteBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.rowMuteBtns()) {
 			return nil
 		}
 		return rectToJS(g.drum.rowMuteBtns()[i].Rect())
 	}))
 
-	js.Global().Set("rowSoloBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowSoloBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.rowSoloBtns()) {
 			return nil
 		}
@@ -740,22 +795,22 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowMuted(row) / rowSoloed(row)
-	js.Global().Set("rowMuted", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowMuted", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.Rows) {
 			return js.ValueOf(false)
 		}
 		return js.ValueOf(g.drum.Rows[i].Muted)
 	}))
 
-	js.Global().Set("rowSoloed", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowSoloed", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.Rows) {
 			return js.ValueOf(false)
 		}
@@ -763,11 +818,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// toggleMute(row), toggleSolo(row)
-	js.Global().Set("toggleMute", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("toggleMute", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.Rows) {
 			return nil
 		}
@@ -775,11 +830,11 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
-	js.Global().Set("toggleSolo", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("toggleSolo", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.Rows) {
 			return nil
 		}
@@ -788,11 +843,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowInstrument(row) -> string
-	js.Global().Set("rowInstrument", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowInstrument", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf("")
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.Rows) {
 			return js.ValueOf("")
 		}
@@ -800,7 +855,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instOptions() -> []string
-	js.Global().Set("instOptions", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instOptions", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil {
 			return arr
@@ -812,11 +867,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// openInstMenu(row)
-	js.Global().Set("openInstMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("openInstMenu", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.Rows) {
 			return nil
 		}
@@ -825,7 +880,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuItemRects() -> [{id,x,y,w,h}]
-	js.Global().Set("instMenuItemRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuItemRects", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return arr
@@ -851,7 +906,7 @@ func (g *Game) initJSGraphUI() {
 	// (after a .wav is picked, before the new sampler instrument is named/created).
 	// Read-only; lets the real-device upload test assert the OS file pick advanced
 	// the real upload→naming flow.
-	js.Global().Set("isNamingOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("isNamingOpen", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
@@ -862,7 +917,7 @@ func (g *Game) initJSGraphUI() {
 	// null when the menu is closed / not in instruments mode. Read-only; used by
 	// the mobile sanity test to tap the search field and assert the native
 	// keyboard opens.
-	js.Global().Set("instMenuSearchRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuSearchRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.Null()
 		}
@@ -873,12 +928,31 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(r)
 	}))
 
+	// instMenuSearchState() -> {text, cursor, focused} of the instrument-menu
+	// search box, or null when the menu is closed / the box doesn't exist.
+	// Read-only debug seam for the real-keyboard caret-editing browser test
+	// (the caret position is otherwise unobservable from JS).
+	js.Global().Set("instMenuSearchState", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
+			return js.Null()
+		}
+		box := g.drum.instMenuComp.SearchBox()
+		if box == nil {
+			return js.Null()
+		}
+		obj := js.Global().Get("Object").New()
+		obj.Set("text", box.Value())
+		obj.Set("cursor", box.CursorForTest())
+		obj.Set("focused", box.Focused())
+		return obj
+	}))
+
 	// rowColor(row) -> hex string like #RRGGBBAA
-	js.Global().Set("rowColor", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowColor", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf("")
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.Rows) {
 			return js.ValueOf("")
 		}
@@ -891,7 +965,7 @@ func (g *Game) initJSGraphUI() {
 	// Returns the swatch-grid picker panel rect (the free hue wheel was
 	// replaced by a palette-restricted swatch grid; the component keeps the
 	// legacy "Wheel" naming so this export stays stable for browser tests).
-	js.Global().Set("colorWheelRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("colorWheelRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.colorWheelComp == nil {
 			return nil
 		}
@@ -899,13 +973,13 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// pickColorAtWheel(row, fx, fy) – opens wheel if needed and picks color at fractional coords (0..1)
-	js.Global().Set("pickColorAtWheel", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 3 {
+	js.Global().Set("pickColorAtWheel", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 3 {
 			return nil
 		}
-		row := args[0].Int()
-		fx := args[1].Float()
-		fy := args[2].Float()
+		row := args.Int(0)
+		fx := args.Float(1)
+		fy := args.Float(2)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
@@ -984,7 +1058,7 @@ func (g *Game) initJSGraphUI() {
 	// TestJSExportCatalogueDrift keeps the catalogue honest.
 
 	// subdivBtnRect() -> {x,y,w,h}
-	js.Global().Set("subdivBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("subdivBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.subdivBtn() == nil {
 			return nil
 		}
@@ -992,7 +1066,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// subdivMenuItemRects() -> [{val,x,y,w,h}]
-	js.Global().Set("subdivMenuItemRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("subdivMenuItemRects", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil {
 			return arr
@@ -1013,11 +1087,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// applySubdivValue(val int) – simulate selecting a subdivision menu item.
-	js.Global().Set("applySubdivValue", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("applySubdivValue", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		target := args[0].Int()
+		target := args.Int(0)
 		for _, btn := range g.drum.subdivMenuBtns {
 			v, _ := strconv.Atoi(btn.Text)
 			if v == target {
@@ -1031,7 +1105,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// timelineUnitsPerBeat() -> int
-	js.Global().Set("timelineUnitsPerBeat", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("timelineUnitsPerBeat", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -1039,7 +1113,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// uploadBtnRect() -> {x,y,w,h}
-	js.Global().Set("uploadBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("uploadBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.uploadBtn() == nil {
 			return nil
 		}
@@ -1047,7 +1121,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// isUploading() -> bool
-	js.Global().Set("isUploading", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("isUploading", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
@@ -1055,18 +1129,18 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// renameBoxRect() -> {x,y,w,h} when active; commitRename(name)
-	js.Global().Set("renameBoxRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("renameBoxRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() {
 			return nil
 		}
 		return rectToJS(g.drum.renameComp.Bounds())
 	}))
 
-	js.Global().Set("commitRename", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() || len(args) < 1 {
+	js.Global().Set("commitRename", jsFn(func(args jsArgs) any {
+		if g.drum == nil || g.drum.renameComp == nil || !g.drum.renameComp.IsOpen() || args.Len() < 1 {
 			return nil
 		}
-		name := args[0].String()
+		name := args.Str(0)
 		name = strings.TrimSpace(name)
 		if name != "" && g.drum.renameRow >= 0 && g.drum.renameRow < len(g.drum.Rows) {
 			g.drum.renameInstrumentTo(g.drum.renameRow, name)
@@ -1076,11 +1150,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// openRenameBox(row) — opens the rename component through the portal.
-	js.Global().Set("openRenameBox", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("openRenameBox", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		i := args[0].Int()
+		i := args.Int(0)
 		if i < 0 || i >= len(g.drum.rowLabels()) {
 			return nil
 		}
@@ -1112,7 +1186,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// getBPM() -> int
-	js.Global().Set("getBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getBPM", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -1120,7 +1194,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// getEngineBPM() -> int
-	js.Global().Set("getEngineBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getEngineBPM", jsFn(func(args jsArgs) any {
 		if g.engine == nil {
 			return js.ValueOf(0)
 		}
@@ -1128,12 +1202,12 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// getAppliedBPM() -> int
-	js.Global().Set("getAppliedBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getAppliedBPM", jsFn(func(args jsArgs) any {
 		return js.ValueOf(g.AppliedBPM())
 	}))
 
 	// drumOffset() -> int
-	js.Global().Set("drumOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("drumOffset", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -1141,7 +1215,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// drumLength() -> int
-	js.Global().Set("drumLength", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("drumLength", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -1149,29 +1223,29 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowVolume(row) -> float
-	js.Global().Set("rowVolume", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("rowVolume", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0.0)
 		}
-		if len(args) < 1 {
+		if args.Len() < 1 {
 			return js.ValueOf(0.0)
 		}
-		r := args[0].Int()
+		r := args.Int(0)
 		if r < 0 || r >= len(g.drum.Rows) {
 			return js.ValueOf(0.0)
 		}
 		return js.ValueOf(g.drum.Rows[r].Volume)
 	}))
 
-	js.Global().Set("mainVolume", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("mainVolume", jsFn(func(args jsArgs) any {
 		return js.ValueOf(audio.MainVolume())
 	}))
 
-	js.Global().Set("setMainVolume", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setMainVolume", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		v := args[0].Float()
+		v := args.Float(0)
 		if v < 0 {
 			v = 0
 		}
@@ -1186,15 +1260,15 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// setRowVolume(row, value)
-	js.Global().Set("setRowVolume", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("setRowVolume", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
-		if len(args) < 2 {
+		if args.Len() < 2 {
 			return nil
 		}
-		r := args[0].Int()
-		v := args[1].Float()
+		r := args.Int(0)
+		v := args.Float(1)
 		if v < 0 {
 			v = 0
 		}
@@ -1212,7 +1286,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// timelineBeats() -> int
-	js.Global().Set("timelineBeats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("timelineBeats", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -1220,14 +1294,14 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// setTimelineBeats(n)
-	js.Global().Set("setTimelineBeats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("setTimelineBeats", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
-		if len(args) < 1 {
+		if args.Len() < 1 {
 			return nil
 		}
-		n := args[0].Int()
+		n := args.Int(0)
 		if n < g.drum.Length {
 			n = g.drum.Length
 		}
@@ -1236,14 +1310,14 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// setDrumLength(n)
-	js.Global().Set("setDrumLength", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("setDrumLength", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
-		if len(args) < 1 {
+		if args.Len() < 1 {
 			return nil
 		}
-		n := args[0].Int()
+		n := args.Int(0)
 		if n < 1 {
 			n = 1
 		}
@@ -1254,14 +1328,14 @@ func (g *Game) initJSGraphUI() {
 	// clickTimelineAt(frac) simulates a click on the timeline at a fractional
 	// position [0,1], updating the drum offset using the same centering logic
 	// as the UI.
-	js.Global().Set("clickTimelineAt", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("clickTimelineAt", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
-		if len(args) < 1 {
+		if args.Len() < 1 {
 			return nil
 		}
-		f := args[0].Float()
+		f := args.Float(0)
 		if f < 0 {
 			f = 0
 		}
@@ -1292,12 +1366,12 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// nodeInfo(i,j) -> {i, j, instrument, row, color} or null
-	js.Global().Set("nodeInfo", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("nodeInfo", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return nil
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return nil
@@ -1323,14 +1397,14 @@ func (g *Game) initJSGraphUI() {
 
 	// moveNodeGrid(fromI, fromJ, toI, toJ) -> bool
 	// Direct move without confirmation (for programmatic/test use).
-	js.Global().Set("moveNodeGrid", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 4 {
+	js.Global().Set("moveNodeGrid", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
 			return js.ValueOf(false)
 		}
-		fi := args[0].Int()
-		fj := args[1].Int()
-		ti := args[2].Int()
-		tj := args[3].Int()
+		fi := args.Int(0)
+		fj := args.Int(1)
+		ti := args.Int(2)
+		tj := args.Int(3)
 		n := g.nodeAt(fi, fj)
 		if n == nil {
 			return js.ValueOf(false)
@@ -1343,17 +1417,17 @@ func (g *Game) initJSGraphUI() {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	// totalNodes() -> int
-	js.Global().Set("totalNodes", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("totalNodes", jsFn(func(args jsArgs) any {
 		return js.ValueOf(len(g.nodes))
 	}))
 
 	// nodeMenuOpen() -> bool
-	js.Global().Set("nodeMenuOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("nodeMenuOpen", jsFn(func(args jsArgs) any {
 		return js.ValueOf(g.sidebar.IsOpen())
 	}))
 
 	// nodeMenuNodeId() -> int (-1 if none)
-	js.Global().Set("nodeMenuNodeId", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("nodeMenuNodeId", jsFn(func(args jsArgs) any {
 		if g.sidebar.Node() == nil {
 			return js.ValueOf(-1)
 		}
@@ -1361,7 +1435,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// selectedNodeId() -> int (-1 if none)
-	js.Global().Set("selectedNodeId", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("selectedNodeId", jsFn(func(args jsArgs) any {
 		if g.sel == nil {
 			return js.ValueOf(-1)
 		}
@@ -1369,7 +1443,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// playBtnRect() -> {x,y,w,h}
-	js.Global().Set("playBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("playBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.playBtn() == nil {
 			return nil
 		}
@@ -1378,7 +1452,7 @@ func (g *Game) initJSGraphUI() {
 
 	// recBtnRect() -> {x,y,w,h} of the transport Record button (or null). Lets
 	// the real-device test tap Record with real touch to start/stop recording.
-	js.Global().Set("recBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("recBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.recordBtn() == nil {
 			return nil
 		}
@@ -1386,7 +1460,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// stopBtnRect() -> {x,y,w,h}
-	js.Global().Set("stopBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("stopBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.stopBtn() == nil {
 			return nil
 		}
@@ -1394,7 +1468,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// bpmIncBtnRect() -> {x,y,w,h}
-	js.Global().Set("bpmIncBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("bpmIncBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.bpmIncBtn() == nil {
 			return nil
 		}
@@ -1402,7 +1476,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// bpmDecBtnRect() -> {x,y,w,h}
-	js.Global().Set("bpmDecBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("bpmDecBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.bpmDecBtn() == nil {
 			return nil
 		}
@@ -1410,7 +1484,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// lenIncBtnRect() -> {x,y,w,h}
-	js.Global().Set("lenIncBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("lenIncBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.lenIncBtn == nil {
 			return nil
 		}
@@ -1418,7 +1492,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// lenDecBtnRect() -> {x,y,w,h}
-	js.Global().Set("lenDecBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("lenDecBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.lenDecBtn == nil {
 			return nil
 		}
@@ -1426,7 +1500,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// addRowBtnRect() -> {x,y,w,h}
-	js.Global().Set("addRowBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("addRowBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.addRowBtn() == nil {
 			return nil
 		}
@@ -1434,7 +1508,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// importBtnRect() -> {x,y,w,h}
-	js.Global().Set("importBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("importBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.importBtn() == nil {
 			return nil
 		}
@@ -1442,7 +1516,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// exportBtnRect() -> {x,y,w,h}
-	js.Global().Set("exportBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("exportBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.exportBtn() == nil {
 			return nil
 		}
@@ -1450,7 +1524,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuOpen() -> bool
-	js.Global().Set("instMenuOpenState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuOpenState", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
@@ -1460,7 +1534,7 @@ func (g *Game) initJSGraphUI() {
 	// instMenuBreadcrumbPath() -> [string] (visible-segment labels;
 	// empty when closed). Tests can assert on len(path) >= 2 to know
 	// they're at the instruments level, etc.
-	js.Global().Set("instMenuBreadcrumbPath", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuBreadcrumbPath", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {
 			return arr
@@ -1475,7 +1549,7 @@ func (g *Game) initJSGraphUI() {
 	// legacy instMenuScrollOffset / instMenuScrollBarRect / instMenuScrollThumbRect
 	// trio under the new pagination model. Phase 7 retires the old
 	// names; for now both coexist in the bridge.
-	js.Global().Set("instMenuPageState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuPageState", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {
 			obj.Set("page", 1)
@@ -1492,27 +1566,27 @@ func (g *Game) initJSGraphUI() {
 	// instrumentIsFavorite(id) -> boolean. Reads the Favorites() global
 	// store. Used by the localStorage round-trip browser test to assert
 	// star persistence across reloads without going through the menu UI.
-	js.Global().Set("instrumentIsFavorite", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("instrumentIsFavorite", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		return js.ValueOf(Favorites().Get(args[0].String()))
+		return js.ValueOf(Favorites().Get(args.Str(0)))
 	}))
 
 	// instrumentSetFavorite(id, fav) -> bool. Programmatic setter that
 	// writes to the Favorites() global store. The persisted backend
 	// flushes to localStorage; subsequent page loads see the value.
-	js.Global().Set("instrumentSetFavorite", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("instrumentSetFavorite", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		Favorites().Set(args[0].String(), args[1].Bool())
+		Favorites().Set(args.Str(0), args.Bool(1))
 		return js.ValueOf(true)
 	}))
 
 	// instrumentFavoriteKeys() -> [string]. Returns the sorted list of
 	// favorited instrument ids — convenient for snapshot assertions.
-	js.Global().Set("instrumentFavoriteKeys", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instrumentFavoriteKeys", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		for _, k := range Favorites().Keys() {
 			arr.Call("push", js.ValueOf(k))
@@ -1525,7 +1599,7 @@ func (g *Game) initJSGraphUI() {
 	// sort). Used by the JS-side bridge tests to assert tier ordering at
 	// the bridge boundary; the Go side already pins tier order via
 	// TestInstMenu_FavoritesPinnedInInstrumentsMode and friends.
-	js.Global().Set("instMenuRenderedOrder", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuRenderedOrder", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {
 			return arr
@@ -1541,7 +1615,7 @@ func (g *Game) initJSGraphUI() {
 	// "Favorites" category at the top of the category list — clicking it
 	// flips this flag to true. Useful for bridge tests to confirm the
 	// click event reached the expected handler.
-	js.Global().Set("instMenuFavoritesViewActive", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuFavoritesViewActive", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil {
 			return js.ValueOf(false)
 		}
@@ -1555,7 +1629,7 @@ func (g *Game) initJSGraphUI() {
 	// list will be empty for any project authored before the follow-up
 	// PR adds the per-row "pin to project" affordance. The export pairs
 	// with setProjectPinsListForTest below for xplat parity round-trips.
-	js.Global().Set("projectPinsList", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("projectPinsList", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil {
 			return arr
@@ -1571,11 +1645,11 @@ func (g *Game) initJSGraphUI() {
 	// wholesale. Empty array clears it. Returns true on success. Useful
 	// for xplat parity browser tests that need to seed pins before
 	// exporting JSON.
-	js.Global().Set("setProjectPinsListForTest", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("setProjectPinsListForTest", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		arr := args[0]
+		arr := args.At(0)
 		if arr.Type() != js.TypeObject {
 			return js.ValueOf(false)
 		}
@@ -1589,7 +1663,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuBackBtnRect() -> {x,y,w,h} | null
-	js.Global().Set("instMenuBackBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuBackBtnRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return nil
 		}
@@ -1601,7 +1675,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuCategoryRects() -> [{name,x,y,w,h}]
-	js.Global().Set("instMenuCategoryRects", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuCategoryRects", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return arr
@@ -1620,7 +1694,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuClickBack() - programmatically trigger back button OnClick
-	js.Global().Set("instMenuClickBack", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuClickBack", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.ValueOf(false)
 		}
@@ -1633,11 +1707,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuSelectCategory(idx) - programmatically click a category button
-	js.Global().Set("instMenuSelectCategory", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("instMenuSelectCategory", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		idx := args[0].Int()
+		idx := args.Int(0)
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.ValueOf(false)
 		}
@@ -1652,11 +1726,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuSelectItem(idx) - programmatically click an instrument button
-	js.Global().Set("instMenuSelectItem", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("instMenuSelectItem", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		idx := args[0].Int()
+		idx := args.Int(0)
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.ValueOf(false)
 		}
@@ -1671,7 +1745,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// closeInstMenu() - explicitly close the instrument menu
-	js.Global().Set("closeInstMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeInstMenu", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return nil
 		}
@@ -1683,7 +1757,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// colorMenuOpen() -> bool
-	js.Global().Set("colorMenuOpenState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("colorMenuOpenState", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
@@ -1691,23 +1765,23 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// isPlaying() -> bool
-	js.Global().Set("isPlaying", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("isPlaying", jsFn(func(args jsArgs) any {
 		return js.ValueOf(g.Playing())
 	}))
 
 	// closeNodeMenu() - explicitly close the node sidebar
-	js.Global().Set("closeNodeMenu", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeNodeMenu", jsFn(func(args jsArgs) any {
 		g.sidebar.Close()
 		return nil
 	}))
 
 	// openNodeSidebar(i, j) - open sidebar for node at grid position
-	js.Global().Set("openNodeSidebar", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 2 {
+	js.Global().Set("openNodeSidebar", jsFn(func(args jsArgs) any {
+		if args.Len() < 2 {
 			return js.ValueOf(false)
 		}
-		i := args[0].Int()
-		j := args[1].Int()
+		i := args.Int(0)
+		j := args.Int(1)
 		n := g.nodeAt(i, j)
 		if n == nil {
 			return js.ValueOf(false)
@@ -1722,7 +1796,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// closeAllPopups() - close all open popups (node menu, instrument, color, subdiv, etc.)
-	js.Global().Set("closeAllPopups", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("closeAllPopups", jsFn(func(args jsArgs) any {
 		g.closeAllPopups()
 		return nil
 	}))
@@ -1732,7 +1806,7 @@ func (g *Game) initJSGraphUI() {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	// sidebarScrollOffset() -> int (VS.First)
-	js.Global().Set("sidebarScrollOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarScrollOffset", jsFn(func(args jsArgs) any {
 		if !g.sidebar.IsOpen() {
 			return js.ValueOf(0)
 		}
@@ -1741,7 +1815,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// sidebarHasScroll() -> bool
-	js.Global().Set("sidebarHasScroll", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarHasScroll", jsFn(func(args jsArgs) any {
 		if !g.sidebar.IsOpen() {
 			return js.ValueOf(false)
 		}
@@ -1750,27 +1824,27 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// sidebarExpandAllSections() - expand all collapsible sections
-	js.Global().Set("sidebarExpandAllSections", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarExpandAllSections", jsFn(func(args jsArgs) any {
 		g.sidebar.ExpandAllSections()
 		g.sidebar.layout()
 		return nil
 	}))
 
 	// sidebarSectionOpen(name) -> bool — query whether a section is open
-	js.Global().Set("sidebarSectionOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || !g.sidebar.IsOpen() {
+	js.Global().Set("sidebarSectionOpen", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || !g.sidebar.IsOpen() {
 			return js.ValueOf(false)
 		}
-		return js.ValueOf(g.sidebar.sectionOpen[args[0].String()])
+		return js.ValueOf(g.sidebar.sectionOpen[args.Str(0)])
 	}))
 
 	// sidebarSectionRect(name) -> {x,y,w,h} or null — get section header rect
-	js.Global().Set("sidebarSectionRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 || !g.sidebar.IsOpen() {
+	js.Global().Set("sidebarSectionRect", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 || !g.sidebar.IsOpen() {
 			return nil
 		}
 		g.sidebar.layout()
-		r, ok := g.sidebar.rects["sec-"+args[0].String()]
+		r, ok := g.sidebar.rects["sec-"+args.Str(0)]
 		if !ok || r.Empty() {
 			return nil
 		}
@@ -1778,7 +1852,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// sidebarScrollBarRect() -> {x,y,w,h} or null
-	js.Global().Set("sidebarScrollBarRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarScrollBarRect", jsFn(func(args jsArgs) any {
 		if !g.sidebar.IsOpen() || !g.sidebar.scroll.HasScroll() {
 			return nil
 		}
@@ -1787,7 +1861,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// sidebarScrollThumbRect() -> {x,y,w,h} or null
-	js.Global().Set("sidebarScrollThumbRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarScrollThumbRect", jsFn(func(args jsArgs) any {
 		if !g.sidebar.IsOpen() || !g.sidebar.scroll.HasScroll() {
 			return nil
 		}
@@ -1796,7 +1870,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// sidebarContentHeight() -> int
-	js.Global().Set("sidebarContentHeight", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarContentHeight", jsFn(func(args jsArgs) any {
 		if !g.sidebar.IsOpen() {
 			return js.ValueOf(0)
 		}
@@ -1805,7 +1879,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// sidebarPanelRect() -> {x,y,w,h} or null
-	js.Global().Set("sidebarPanelRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarPanelRect", jsFn(func(args jsArgs) any {
 		if !g.sidebar.IsOpen() {
 			return nil
 		}
@@ -1818,7 +1892,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// sidebarDebugState() -> {scrollOffset, hasScroll, contentH, panelH, viewportH, ...}
-	js.Global().Set("sidebarDebugState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("sidebarDebugState", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		obj.Set("open", g.sidebar.IsOpen())
 		if !g.sidebar.IsOpen() {
@@ -1840,7 +1914,7 @@ func (g *Game) initJSGraphUI() {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	// instMenuScrollOffset() -> int
-	js.Global().Set("instMenuScrollOffset", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuScrollOffset", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.ValueOf(0)
 		}
@@ -1849,7 +1923,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuHasScroll() -> bool
-	js.Global().Set("instMenuHasScroll", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuHasScroll", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return js.ValueOf(false)
 		}
@@ -1858,7 +1932,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuScrollBarRect() -> {x,y,w,h} or null
-	js.Global().Set("instMenuScrollBarRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuScrollBarRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return nil
 		}
@@ -1869,7 +1943,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuScrollThumbRect() -> {x,y,w,h} or null
-	js.Global().Set("instMenuScrollThumbRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuScrollThumbRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.instMenuComp == nil || !g.drum.instMenuComp.IsOpen() {
 			return nil
 		}
@@ -1880,7 +1954,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// instMenuDebugState() -> {scrollOffset, hasScroll, totalItems, visibleItems, ...}
-	js.Global().Set("instMenuDebugState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("instMenuDebugState", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.instMenuComp == nil {
 			obj.Set("open", false)
@@ -1907,11 +1981,11 @@ func (g *Game) initJSGraphUI() {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	// openContextMenuJS(row) — programmatically open context menu for a drum row
-	js.Global().Set("openContextMenuJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("openContextMenuJS", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
@@ -1920,7 +1994,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// contextMenuOpen() -> bool
-	js.Global().Set("contextMenuOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("contextMenuOpen", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
@@ -1928,7 +2002,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// contextMenuItems() -> [{label, divider}]
-	js.Global().Set("contextMenuItems", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("contextMenuItems", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil || !g.drum.ContextMenuOpen() {
 			return arr
@@ -1944,11 +2018,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// contextMenuClick(label) — click a context menu item by label
-	js.Global().Set("contextMenuClick", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || !g.drum.ContextMenuOpen() || len(args) < 1 {
+	js.Global().Set("contextMenuClick", jsFn(func(args jsArgs) any {
+		if g.drum == nil || !g.drum.ContextMenuOpen() || args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		label := args[0].String()
+		label := args.Str(0)
 		for _, btn := range g.drum.ContextMenuBtns() {
 			if btn.Text == label && btn.OnClick != nil {
 				btn.OnClick()
@@ -1959,7 +2033,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// contextMenuRect() -> {x,y,w,h} or null
-	js.Global().Set("contextMenuRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("contextMenuRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || !g.drum.ContextMenuOpen() {
 			return nil
 		}
@@ -1967,7 +2041,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// contextMenuRow() -> int (-1 if not open)
-	js.Global().Set("contextMenuRow", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("contextMenuRow", jsFn(func(args jsArgs) any {
 		if g.drum == nil || !g.drum.ContextMenuOpen() {
 			return js.ValueOf(-1)
 		}
@@ -1979,7 +2053,7 @@ func (g *Game) initJSGraphUI() {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	// fxPanelOpen() -> bool
-	js.Global().Set("fxPanelOpen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("fxPanelOpen", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(false)
 		}
@@ -1987,7 +2061,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// fxPanelRow() -> int (-1 if not open)
-	js.Global().Set("fxPanelRow", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("fxPanelRow", jsFn(func(args jsArgs) any {
 		if g.drum == nil || !g.drum.IsFXPanelOpen() {
 			return js.ValueOf(-1)
 		}
@@ -1995,7 +2069,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// fxPanelRect() -> {x,y,w,h} or null
-	js.Global().Set("fxPanelRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("fxPanelRect", jsFn(func(args jsArgs) any {
 		if g.drum == nil || !g.drum.IsFXPanelOpen() {
 			return nil
 		}
@@ -2003,11 +2077,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// rowFXBtnRect(row) -> {x,y,w,h} or null
-	js.Global().Set("rowFXBtnRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("rowFXBtnRect", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		btns := g.drum.rowFXBtns()
 		if row < 0 || row >= len(btns) || btns[row] == nil {
 			return nil
@@ -2016,11 +2090,11 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// openFXPanelJS(row) — programmatically open FX panel
-	js.Global().Set("openFXPanelJS", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if g.drum == nil || len(args) < 1 {
+	js.Global().Set("openFXPanelJS", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
 			return nil
 		}
-		row := args[0].Int()
+		row := args.Int(0)
 		if row < 0 || row >= len(g.drum.Rows) {
 			return nil
 		}
@@ -2029,19 +2103,19 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// portalTopID() -> string
-	js.Global().Set("portalTopID", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("portalTopID", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.tree == nil {
 			return js.ValueOf("")
 		}
-		return js.ValueOf(g.drum.tree.Portal().TopID())
+		return js.ValueOf(g.drum.portal().TopID())
 	}))
 
 	// portalStackLen() -> int
-	js.Global().Set("portalStackLen", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("portalStackLen", jsFn(func(args jsArgs) any {
 		if g.drum == nil || g.drum.tree == nil {
 			return js.ValueOf(0)
 		}
-		return js.ValueOf(g.drum.tree.Portal().StackLen())
+		return js.ValueOf(g.drum.portal().StackLen())
 	}))
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -2049,12 +2123,12 @@ func (g *Game) initJSGraphUI() {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	// kbProxyFocused() -> bool
-	js.Global().Set("kbProxyFocused", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("kbProxyFocused", jsFn(func(args jsArgs) any {
 		return js.ValueOf(softKeyboardActive())
 	}))
 
 	// kbProxyInputMode() -> string
-	js.Global().Set("kbProxyInputMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("kbProxyInputMode", jsFn(func(args jsArgs) any {
 		doc := js.Global().Get("document")
 		el := doc.Call("getElementById", "beatmo-kb-proxy")
 		if !el.Truthy() {
@@ -2064,7 +2138,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// longPressDeleteRect() -> {x,y,w,h} or null if popup not open
-	js.Global().Set("longPressDeleteRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("longPressDeleteRect", jsFn(func(args jsArgs) any {
 		if !g.longPressPopup {
 			return nil
 		}
@@ -2072,7 +2146,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// totalVisibleRows() -> int
-	js.Global().Set("totalVisibleRows", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("totalVisibleRows", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(0)
 		}
@@ -2084,32 +2158,32 @@ func (g *Game) initJSGraphUI() {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	// getFastPath() -> bool - returns current fastPath status
-	js.Global().Set("getFastPath", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getFastPath", jsFn(func(args jsArgs) any {
 		return js.ValueOf(g.perfMode.FastPathEnabled())
 	}))
 
 	// setFastPath(enabled) - toggle fastPath for testing
-	js.Global().Set("setFastPath", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setFastPath", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		enabled := args[0].Bool()
+		enabled := args.Bool(0)
 		g.perfMode.SetFastPath(enabled)
 		return nil
 	}))
 
 	// getLeftPrev() -> bool - returns g.leftPrev state
-	js.Global().Set("getLeftPrev", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getLeftPrev", jsFn(func(args jsArgs) any {
 		return js.ValueOf(g.leftPrev)
 	}))
 
 	// getPendingClick() -> bool - returns g.pendingClick state
-	js.Global().Set("getPendingClick", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getPendingClick", jsFn(func(args jsArgs) any {
 		return js.ValueOf(g.pendingClick)
 	}))
 
 	// getClickNode() -> int - returns g.clickNode ID (-1 if nil)
-	js.Global().Set("getClickNode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getClickNode", jsFn(func(args jsArgs) any {
 		if g.clickNode == nil {
 			return js.ValueOf(-1)
 		}
@@ -2117,7 +2191,7 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// debugGridInputState() -> object with all input state fields
-	js.Global().Set("debugGridInputState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("debugGridInputState", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		obj.Set("fastPath", g.perfMode.FastPathEnabled())
 		obj.Set("leftPrev", g.leftPrev)
@@ -2159,15 +2233,15 @@ func (g *Game) initJSGraphUI() {
 	}))
 
 	// mobileInputActive(id) -> bool — check if a mobile native input is active
-	js.Global().Set("mobileInputActive", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("mobileInputActive", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return js.ValueOf(false)
 		}
-		return js.ValueOf(mobileInputActive(args[0].String()))
+		return js.ValueOf(mobileInputActive(args.Str(0)))
 	}))
 
 	// mobileInputAnyActive() -> bool
-	js.Global().Set("mobileInputAnyActive", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("mobileInputAnyActive", jsFn(func(args jsArgs) any {
 		return js.ValueOf(mobileInputAnyActive())
 	}))
 }

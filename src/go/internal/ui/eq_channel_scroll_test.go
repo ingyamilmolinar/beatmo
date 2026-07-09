@@ -73,6 +73,13 @@ func TestEQChannelMenuWheelScroll(t *testing.T) {
 			initialFirst, newFirst)
 	}
 
+	// The menu wheel is clicky (one item per notch + cooldown), matching every
+	// other menu. Advance the cooldown before the opposite-direction notch —
+	// otherwise it is (correctly) locked out within the same cooldown window.
+	for i := 0; i < controlGridScrollCooldownFrames; i++ {
+		dv.tickMenuScrollCooldowns()
+	}
+
 	// Scroll back up.
 	restore = SetInputForTest(
 		func() (int, int) { return mx, my },

@@ -8,18 +8,18 @@ import (
 
 // TestInstMenuMobileSearchRegistersNativeInput reproduces the reported bug:
 // on mobile, the instrument-menu search bar never opens the native keyboard.
-// The native keyboard is wired by registering the search field's rect with the
-// mobile native-input bridge (mobileInputRegister("inst-search", ...) in
-// drumview_layout.go). That registration is gated on dv.instSearchRect being
-// non-empty — but dv.instSearchRect is never populated from the menu component,
-// so it stays the zero rect and the field is never registered (no keyboard).
+// The native keyboard is wired by arming the search field's rect on the
+// NativeTextInput channel (dv.nativeInputCandidates, synced by
+// dv.syncNativeGestures, formerly a direct mobileInputRegister("inst-search",
+// ...) call in drumview_layout.go). That registration is gated on
+// dv.instSearchRect being non-empty — but dv.instSearchRect is never populated
+// from the menu component, so it stays the zero rect and the field is never
+// registered (no keyboard).
 func TestInstMenuMobileSearchRegistersNativeInput(t *testing.T) {
 	forceSmallScreenForTest = true
 	t.Cleanup(func() { forceSmallScreenForTest = false })
 	resetTouchOverride()
 	t.Cleanup(resetTouchOverride)
-	testMobileInputRegistered = map[string]bool{}
-	t.Cleanup(func() { testMobileInputRegistered = nil })
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -51,10 +51,16 @@ func TestInstMenuMobileSearchRegistersNativeInput(t *testing.T) {
 		_ = g.Update()
 	}
 
-	if !testMobileInputRegistered["inst-search"] {
+	found := false
+	for _, r := range dv.lastNativeRects {
+		if r.Intent.Channel == NativeTextInput && r.Intent.ID == instSearchMobileInputID {
+			found = true
+		}
+	}
+	if !found {
 		t.Fatalf("SEARCH NATIVE-KEYBOARD BUG: instrument-menu search field was not "+
-			"registered with the mobile native-input bridge, so tapping it cannot open "+
-			"the native keyboard (dv.instSearchRect=%v empty=%v)",
-			dv.instSearchRect, dv.instSearchRect.Empty())
+			"armed on the native-input channel, so tapping it cannot open "+
+			"the native keyboard (dv.instSearchRect=%v empty=%v, lastNativeRects=%+v)",
+			dv.instSearchRect, dv.instSearchRect.Empty(), dv.lastNativeRects)
 	}
 }

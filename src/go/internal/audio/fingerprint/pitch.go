@@ -198,6 +198,16 @@ func DetectF0(w wave.Wave) float64 {
 		}
 	}
 
+	// Odd-harmonic subharmonic evidence: a rich reed/brass spectrum with a
+	// weak fundamental (e.g. baritone sax — H2 ~7 dB ABOVE H1, full 12+
+	// harmonic series) makes the 6-harmonic coverage count TIE between f0 and
+	// 2f0, and the k1Mag tiebreak then picks the louder 2nd harmonic — an
+	// octave-up error. The half-frequency candidate's ODD multiples (1, 3,
+	// 5 × f0/2) cannot be explained by the doubled candidate; when the half
+	// frequency itself is present AND another odd multiple is above the noise
+	// floor, the lower octave is the true fundamental.
+	bestCandidate = halveOnOddHarmonicEvidence(mag, binHz, bestCandidate, noiseFloor)
+
 	// Snap to nearest strong spectral peak within ±3% for refinement.
 	//
 	// When the estimate comes from a per-frame median (haveFrameMedian), the
@@ -209,6 +219,53 @@ func DetectF0(w wave.Wave) float64 {
 		return bestCandidate
 	}
 	return snapToSpectralPeak(mag, binHz, bestCandidate, 0.03)
+}
+
+// halveOnOddHarmonicEvidence returns f0/3 or f0/2 when the spectrum contains
+// real energy at that sub-frequency AND the sub-grid's "new" harmonics (the
+// teeth the detected f0's comb cannot account for) carry energy COMPARABLE to
+// the accounted-for teeth. Requirements:
+//
+//   - The sub-frequency itself (the true weak fundamental) must be present, so
+//     genuinely missing-fundamental signals keep the detected f0.
+//   - newE/oldE > 0.5: the unexplained teeth must carry at least half the
+//     energy of the explained ones. A true weak-fundamental reed series (bari
+//     sax: H1 ~7 dB below H2, H3 ≈ H2) measures ~0.75 here; a sub-octave
+//     LAYER (the cello's bowed waveguide + sub gen slot at D2: half-grid teeth
+//     at 36-83% but odd-dominated-DOWN) measures ~0.38 and must NOT drop the
+//     octave — the note is still D2.
+//
+// The f/3 case covers equal-H2/H3 reed spectra where YIN locks onto the H3
+// period and the k1Mag tiebreak keeps it.
+func halveOnOddHarmonicEvidence(mag []float64, binHz, f0, noiseFloor float64) float64 {
+	for _, div := range []int{3, 2} {
+		sub := f0 / float64(div)
+		if sub < 50 {
+			continue
+		}
+		if k1Magnitude(mag, binHz, sub) <= noiseFloor {
+			continue
+		}
+		// Only the first 6 sub-grid teeth vote: the low harmonics carry the
+		// perceptual fundamental decision (bari sax scores ~0.69 there vs the
+		// cello sub-layer's ~0.34), while a bowed waveguide's period-doubling
+		// components at high k would pollute a wider window (12 teeth read
+		// ~0.73 for BOTH cases — no separation).
+		var newE, oldE float64
+		nyq := binHz * float64(len(mag))
+		for k := 1; k <= 6 && sub*float64(k) < nyq; k++ {
+			m := k1Magnitude(mag, binHz, sub*float64(k))
+			if k%div == 0 {
+				oldE += m * m
+			} else {
+				newE += m * m
+			}
+		}
+		if oldE > 0 && newE/oldE > 0.5 {
+			return sub
+		}
+	}
+	return f0
 }
 
 // yinF0ForFrame runs the YIN CMNDF algorithm on a single audio frame and

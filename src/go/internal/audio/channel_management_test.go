@@ -95,14 +95,18 @@ func TestResetInstrumentChannels(t *testing.T) {
 	_ = InstrumentChannel("reset-b")
 	chanMgr.ensureChannel("reset-a").SetVolume(0.3)
 
+	// Set a sentinel master volume so the preservation check is independent of
+	// the fresh-session master default (0.5, see channelManager.reset).
+	chanMgr.main.SetVolume(0.7)
+
 	resetInstrumentChannels([]string{"reset-c"})
 
-	// Main should be preserved.
+	// Main should be preserved (resetInstruments must not recreate/reset it).
 	if chanMgr.main == nil {
 		t.Fatal("main channel is nil after reset")
 	}
-	if chanMgr.main.Volume() != 1.0 {
-		t.Errorf("main volume = %f after reset, want 1.0", chanMgr.main.Volume())
+	if chanMgr.main.Volume() != 0.7 {
+		t.Errorf("main volume = %f after reset, want 0.7 (preserved)", chanMgr.main.Volume())
 	}
 
 	// Old instrument channels should be gone.

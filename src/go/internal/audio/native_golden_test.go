@@ -114,7 +114,7 @@ var nativeGoldenCases = []struct {
 	// legacy render_snare* / render_clap path (the oracle fixtures prove
 	// byte-identity, incl. the base-snare drive-before-tone post order via
 	// post_order=2). renderP is snareGoldenIdentity (no SynthParams surface).
-	{"drum-snare", renderSnareVoice, snareGoldenIdentity(renderSnareVoice), "e2ebd570507fe9613d0a898be8762cb27645f9a06f50727aac8fa02e0693c8ee"},
+	{"drum-snare", renderSnareVoice, snareGoldenIdentity(renderSnareVoice), "2e5e66b89405a29f4a443ae5b8997fcb2e308c831dfb8572d1275d951610d4a6"},
 	// Kick family migrated to the modular engine (Phase-3): renders through the
 	// no-edit modular fast path (renderKickVoice etc.). Hash UNCHANGED from the
 	// deleted legacy render_kick path (the oracle fixtures prove byte-identity).

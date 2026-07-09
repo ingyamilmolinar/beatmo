@@ -2,7 +2,30 @@ package audio
 
 import (
 	"fmt"
+	"sync"
 )
+
+var (
+	modularSchemaIdentityOnce sync.Once
+	modularSchemaIdentityMemo map[string]float64
+)
+
+// sharedModularParamSchemaIdentity returns a process-wide, build-once, READ-ONLY
+// modular param-default map for hot-path fallback lookups. The schema is derived
+// entirely from static field tables, so it is constant after init. Callers MUST
+// NOT mutate the returned map. Memoizing this removed ~90% of the per-render
+// allocations: recipeParamsToModular rebuilt the full identity map
+// (fmt.Sprintf per gen-slot × many slots) on EVERY recipe.Render, which showed
+// up as ModularParamSchemaIdentity/ModularSynthParamDefs/BuildBuiltinRecipeDocs
+// dominating the alloc profile (see synth_render_cost_bench_test.go). The public
+// ModularParamSchemaIdentity() still returns a fresh map for the setup/mutating
+// callers (modularPadVoiceParams, bakedModularRender).
+func sharedModularParamSchemaIdentity() map[string]float64 {
+	modularSchemaIdentityOnce.Do(func() {
+		modularSchemaIdentityMemo = ModularParamSchemaIdentity()
+	})
+	return modularSchemaIdentityMemo
+}
 
 // SynthParamSchema is the canonical ordered list of names in the C
 // synth_params struct. The order MUST match the field declaration order in
@@ -326,6 +349,86 @@ var modularGlobalsPhase10 = []struct {
 	{"kick_enabled", 0},
 }
 
+// modularGenSlotFieldsPhase11KickMode are the Phase-11 modal-kick per-slot
+// fields (source==5, variant 6): the coupled two-mode drumhead knobs
+// (mode_detune/gain/decay). APPEND-ONLY at the VERY tail of the modular schema —
+// AFTER the Phase-10 kick_enabled global — matching the C struct's last fields,
+// so every prior flat index stays frozen. Identities are 0 (read only when a
+// slot's source is 5 AND variant is 6); the kick voice's kp_get(field,
+// variant-6 literal) supplies the default at NaN/absent, so every other kick
+// variant stays byte-identical.
+var modularGenSlotFieldsPhase11KickMode = []struct {
+	Name     string
+	Identity float64
+}{
+	{"kick_mode_detune", 0}, {"kick_mode_gain", 0}, {"kick_mode_decay", 0},
+}
+
+// modularGenSlotFieldsPhase12KickReverb is the Phase-12 kick-reverb per-slot
+// field (source==5, variant 7): the baked feedback-comb room-tail amount.
+// APPEND-ONLY at the VERY tail — AFTER the Phase-11 modal columns. Identity 0
+// (dry; read only at source==5 variant 7).
+var modularGenSlotFieldsPhase12KickReverb = []struct {
+	Name     string
+	Identity float64
+}{
+	{"kick_reverb", 0},
+}
+
+// modularGlobalsPhase13Sax is the Phase-13 physical-model OSC params (osc_type
+// 11 = render_sax). These were hardcoded args in the dispatch; now config-driven
+// so the sax is defined purely by config. The Identity IS the shipped default
+// (the config, not a C literal, is the source of truth) — at that value the
+// render is byte-identical to the old hardcoded call. APPEND-ONLY at the VERY
+// tail (after the Phase-12 kick-reverb column) — matching the C struct's last
+// fields.
+var modularGlobalsPhase13Sax = []struct {
+	Name     string
+	Identity float64
+}{
+	{"osc_sax_blow", 0.15}, {"osc_sax_reed_off", 0.58}, {"osc_sax_reed_slope", 0.28},
+	{"osc_sax_reflect", -0.94}, {"osc_sax_breath", 0.85}, {"osc_sax_loss", 0.7},
+}
+
+// modularGlobalsPhase14Bow is the Phase-14 bowed-string physical-model musical
+// params (osc_type 7 = render_bowed_string, violin/cello). Identity = the
+// shipped literal so the render is byte-identical at default. APPEND-ONLY at the
+// VERY tail (after Phase-13 sax) — mirroring the C struct's last fields.
+var modularGlobalsPhase14Bow = []struct {
+	Name     string
+	Identity float64
+}{
+	{"osc_bow_pos", 0.13}, {"osc_bow_slope", 3.0}, {"osc_bow_vel", 0.25}, {"osc_bow_loss", 0.55},
+}
+
+// modularGlobalsPhase15Voice is the Phase-15 voice/choir block: the FORMANT
+// vowel-bank stage + the ENSEMBLE humanization knobs. APPEND-ONLY at the VERY
+// tail (after Phase-14 bow) — matching the C struct's last fields. Identities
+// are 0 (stage off / no humanization = byte-identical) except formant_shift,
+// whose identity 1.0 matches the C mp_get(1.0) no-shift fallback.
+var modularGlobalsPhase15Voice = []struct {
+	Name     string
+	Identity float64
+}{
+	{"formant_enabled", 0}, {"formant_vowel", 0}, {"formant_voice_type", 0},
+	{"formant_mix", 0}, {"formant_shift", 1.0}, {"formant_breath", 0},
+	{"formant_sing", 0}, {"formant_morph_rate", 0}, {"formant_morph_to", 0},
+	{"ens_scatter", 0}, {"ens_vib_rate", 0}, {"ens_vib_depth", 0}, {"ens_humanize", 0},
+}
+
+// modularGlobalsPhase16VoiceRealism is the Phase-16 voice-realism block:
+// ens_jitter (per-voice fast pitch roughness on the ENSEMBLE/unison stage) +
+// formant_dry (the FORMANT stage's dry-blend scaler). APPEND-ONLY at the VERY
+// tail (after Phase-15 voice/choir) — matching the C struct's last fields.
+// ens_jitter identity 0 (no jitter = byte-identical unison path);
+// formant_dry identity 1.0 (matches the C mp_get(1.0) full-dry fallback).
+var modularGlobalsPhase16VoiceRealism = []struct {
+	Name     string
+	Identity float64
+}{
+	{"ens_jitter", 0}, {"formant_dry", 1.0},
+}
+
 var modularParamSchema = func() []string {
 	s := []string{
 		"osc_type", "osc_detune", "osc_octave",
@@ -413,6 +516,40 @@ var modularParamSchema = func() []string {
 	// Phase-10 KICK-stage enable global appends at the VERY END (after the
 	// Phase-9 kick-extra columns) — matching the C struct's last field.
 	for _, g := range modularGlobalsPhase10 {
+		s = append(s, g.Name)
+	}
+	// Phase-11 modal-kick per-slot columns append at the VERY END (after the
+	// Phase-10 kick_enabled global) — matching the C struct's last fields.
+	for _, f := range modularGenSlotFieldsPhase11KickMode {
+		for k := 1; k <= modularGenSlots; k++ {
+			s = append(s, fmt.Sprintf("gen%d_%s", k, f.Name))
+		}
+	}
+	// Phase-12 kick-reverb per-slot column appends at the VERY END (after the
+	// Phase-11 modal columns) — matching the C struct's last field.
+	for _, f := range modularGenSlotFieldsPhase12KickReverb {
+		for k := 1; k <= modularGenSlots; k++ {
+			s = append(s, fmt.Sprintf("gen%d_%s", k, f.Name))
+		}
+	}
+	// Phase-13 physical-model OSC globals append at the VERY END (after the
+	// Phase-12 kick-reverb column) — matching the C struct's last fields.
+	for _, g := range modularGlobalsPhase13Sax {
+		s = append(s, g.Name)
+	}
+	// Phase-14 bowed-string physical-model globals append at the VERY END (after
+	// Phase-13 sax) — matching the C struct's last fields.
+	for _, g := range modularGlobalsPhase14Bow {
+		s = append(s, g.Name)
+	}
+	// Phase-15 voice/choir globals append at the VERY END (after Phase-14 bow) —
+	// matching the C struct's last fields.
+	for _, g := range modularGlobalsPhase15Voice {
+		s = append(s, g.Name)
+	}
+	// Phase-16 voice-realism globals append at the VERY END (after Phase-15
+	// voice/choir) — matching the C struct's last fields.
+	for _, g := range modularGlobalsPhase16VoiceRealism {
 		s = append(s, g.Name)
 	}
 	return s
@@ -579,6 +716,39 @@ func ModularParamSchemaIdentity() map[string]float64 {
 	}
 	// Phase-10 KICK-stage enable (new tail; identity 0 = off).
 	for _, g := range modularGlobalsPhase10 {
+		out[g.Name] = g.Identity
+	}
+	// Phase-11 modal-kick per-slot columns (new tail; identity 0, read only at
+	// source==5 variant 6; the C kp_get supplies the variant-6 literal at NaN).
+	for _, f := range modularGenSlotFieldsPhase11KickMode {
+		for k := 1; k <= modularGenSlots; k++ {
+			out[fmt.Sprintf("gen%d_%s", k, f.Name)] = f.Identity
+		}
+	}
+	// Phase-12 kick-reverb per-slot column (new tail; identity 0 = dry, read only
+	// at source==5 variant 7).
+	for _, f := range modularGenSlotFieldsPhase12KickReverb {
+		for k := 1; k <= modularGenSlots; k++ {
+			out[fmt.Sprintf("gen%d_%s", k, f.Name)] = f.Identity
+		}
+	}
+	// Phase-13 physical-model OSC globals (new tail; identity = the shipped
+	// default, so the render is byte-identical at that value).
+	for _, g := range modularGlobalsPhase13Sax {
+		out[g.Name] = g.Identity
+	}
+	// Phase-14 bowed-string physical-model globals (new tail; identity = literal).
+	for _, g := range modularGlobalsPhase14Bow {
+		out[g.Name] = g.Identity
+	}
+	// Phase-15 voice/choir globals (new tail; identity 0 = stage off /
+	// no humanization, formant_shift identity 1.0 = no shift).
+	for _, g := range modularGlobalsPhase15Voice {
+		out[g.Name] = g.Identity
+	}
+	// Phase-16 voice-realism globals (new tail; ens_jitter identity 0 = no
+	// jitter, formant_dry identity 1.0 = full dry blend / no change).
+	for _, g := range modularGlobalsPhase16VoiceRealism {
 		out[g.Name] = g.Identity
 	}
 	return out

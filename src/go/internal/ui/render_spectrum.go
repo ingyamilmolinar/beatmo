@@ -259,9 +259,17 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 		labels = isoLabels
 	}
 
-	// Empty state: draw border only.
+	// Idle state: baseline rule + quiet hint instead of a dead panel (the
+	// bare-outline empty state read as broken chrome — 2026-07-04 critique).
 	if ch == nil || !ch.Active || len(ch.FFTBins) == 0 {
 		drawRect(dst, rect, colButtonBorder, false)
+		baseY := rect.Max.Y - SpaceLG
+		drawRect(dst, image.Rect(rect.Min.X+SpaceSM, baseY, rect.Max.X-SpaceSM, baseY+1),
+			WithAlpha(genColorBorder, genAlphaBorderPanel), true)
+		hint := i18n.T(i18n.KeyAnalyzerIdle)
+		hx := rect.Min.X + (rect.Dx()-StyledTextWidth(hint, RoleCaption))/2
+		hy := rect.Min.Y + (rect.Dy()-StyledTextHeight(RoleCaption))/2
+		DrawTextStyled(dst, hint, hx, hy, RoleCaption, colTextSecondary)
 		return
 	}
 

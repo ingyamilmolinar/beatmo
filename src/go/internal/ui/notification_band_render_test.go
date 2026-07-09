@@ -43,7 +43,7 @@ func TestNotifArea_HitAreaOpensHistory(t *testing.T) {
 		t.Fatal("'timeline-notif' hit area has no handler")
 	}
 	found.Handler.OnPress(dv.notifRect.Min.X+1, dv.notifRect.Min.Y+1)
-	if !dv.tree.Portal().Has("notif-history") {
+	if !dv.portal().Has("notif-history") {
 		t.Fatal("pressing the notification area did not open the notif-history popup")
 	}
 }

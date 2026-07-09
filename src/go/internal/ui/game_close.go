@@ -32,6 +32,9 @@ func (g *Game) Close() {
 	if g.audioScheduler != nil {
 		_ = g.audioScheduler.Close()
 	}
+	if g.voicePrewarmer != nil {
+		g.voicePrewarmer.release()
+	}
 	if g.engine != nil {
 		g.engine.Close()
 	}

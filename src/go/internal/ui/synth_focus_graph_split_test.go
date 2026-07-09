@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"image"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -36,5 +37,34 @@ func TestDrawSynthTab_RendersFocusGraphInLowerBand(t *testing.T) {
 	}
 	if ink == 0 {
 		t.Fatalf("no ink painted inside the focus band — focus graph not wired into drawSynthTab")
+	}
+}
+
+func TestSplitSynthRightPane3_SharesAndOrder(t *testing.T) {
+	r := image.Rect(0, 0, 280, 400)
+	full, up, focus := splitSynthRightPane3(r)
+	if full.Empty() || up.Empty() || focus.Empty() {
+		t.Fatalf("tall pane must host all three cards: %v %v %v", full, up, focus)
+	}
+	if !(full.Max.Y < up.Min.Y && up.Max.Y < focus.Min.Y) {
+		t.Fatalf("cards must stack full/up/focus: %v %v %v", full, up, focus)
+	}
+	if !(focus.Dy() > full.Dy() && full.Dy() > up.Dy()) {
+		t.Fatalf("share order must be focus > full > up: %d %d %d", full.Dy(), up.Dy(), focus.Dy())
+	}
+	if focus.Max.Y != r.Max.Y || full.Min.Y != r.Min.Y {
+		t.Fatalf("cards must tile the pane")
+	}
+}
+
+func TestSplitSynthRightPane3_UpCloseCollapsesFirst(t *testing.T) {
+	minBand := Profile().DensityValues().SynthRightCardMinH
+	r := image.Rect(0, 0, 280, 3*minBand-1)
+	full, up, focus := splitSynthRightPane3(r)
+	if !up.Empty() {
+		t.Fatalf("short pane must collapse Up-close first, got %v", up)
+	}
+	if full.Empty() || focus.Empty() {
+		t.Fatalf("two-card fallback must keep full-note + focus: %v %v", full, focus)
 	}
 }

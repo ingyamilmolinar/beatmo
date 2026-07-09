@@ -1,0 +1,91 @@
+{
+  "module": "example.com/fixture",
+  "config": {
+    "goos": "linux",
+    "tags": ""
+  },
+  "packages": [
+    {
+      "path": "example.com/fixture/bar",
+      "loc": 4,
+      "files": 1,
+      "funcs": [
+        {
+          "name": "Run",
+          "loc": 4,
+          "nesting": 0,
+          "cyclo": 1,
+          "callDepth": 2
+        }
+      ],
+      "imports": [
+        "example.com/fixture/foo"
+      ]
+    },
+    {
+      "path": "example.com/fixture/foo",
+      "loc": 14,
+      "files": 2,
+      "types": [
+        {
+          "name": "Thing",
+          "kind": "struct",
+          "loc": 1,
+          "methods": [
+            {
+              "name": "Deep",
+              "recv": "Thing",
+              "loc": 1,
+              "nesting": 0,
+              "cyclo": 1,
+              "callDepth": 2
+            },
+            {
+              "name": "Extra",
+              "recv": "Thing",
+              "loc": 1,
+              "nesting": 0,
+              "cyclo": 1,
+              "callDepth": 1
+            },
+            {
+              "name": "Process",
+              "recv": "Thing",
+              "loc": 1,
+              "nesting": 0,
+              "cyclo": 1,
+              "callDepth": 1
+            }
+          ]
+        }
+      ],
+      "funcs": [
+        {
+          "name": "Helper",
+          "loc": 10,
+          "nesting": 3,
+          "cyclo": 4,
+          "callDepth": 1
+        }
+      ],
+      "memberEdges": [
+        {
+          "from": "Thing",
+          "to": "Helper",
+          "calls": 1
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "example.com/fixture/bar",
+      "to": "example.com/fixture/foo",
+      "calls": 2,
+      "methods": [
+        "(foo.Thing).Process",
+        "foo.Helper"
+      ]
+    }
+  ]
+}

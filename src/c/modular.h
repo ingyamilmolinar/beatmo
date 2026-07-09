@@ -441,6 +441,69 @@ typedef struct {
      * it to 1, and a render with no kick slot (gen_source!=5) never reads it, so
      * pre-Phase-10 renders stay byte-identical. ── */
     float kick_enabled; /* >=0.5 runs the source==5 kick voice; <0.5 silences it */
+
+    /* ── Phase-11 (modal kick, variant 6): the coupled two-mode drumhead knobs.
+     * Only the source==5 kick voice's variant-6 branch reads them; NaN-driven via
+     * kp_get(field, literal) so an unset value reproduces the variant-6 default and
+     * every other variant (and every non-kick render) stays byte-identical.
+     * APPEND-ONLY at the VERY tail (after kick_enabled). ──
+     *   mode_detune: resonant mode = f0·(1-detune) — sets the beat/split Δf.
+     *   mode_gain:   resonant mode level (its ring-up is the tail bloom).
+     *   mode_decay:  resonant mode decay /s (LOWER than env0 → it rings longer). */
+    float gen_kick_mode_detune[12];
+    float gen_kick_mode_gain[12];
+    float gen_kick_mode_decay[12];
+
+    /* ── Phase-12 (kick reverb): a baked feedback-comb reverb/echo TAIL for the
+     * source==5 kick voice (used by the acoustic modal variant to emulate a
+     * recorded kick's room/reverb). 0 = dry (every non-acoustic kick). NaN-driven
+     * via kp_get. APPEND-ONLY at the VERY tail. ── */
+    float gen_kick_reverb[12];
+    /* ── Phase-13 physical-model OSC params (osc_type 7-11). The render_* args
+     * that were hardcoded in the render_modular_p dispatch, now config-driven so
+     * every instrument is defined purely by config. Read via kp_get(field,
+     * <legacy literal>): at the schema-identity default the field equals the
+     * literal, so the render stays byte-identical. SAX (osc_type 11) first.
+     * APPEND-ONLY at the VERY tail. ── */
+    float osc_sax_blow;       /* render_sax position       (default 0.15) */
+    float osc_sax_reed_off;   /* render_sax reed_offset    (default 0.58) */
+    float osc_sax_reed_slope; /* render_sax reed_slope     (default 0.28) */
+    float osc_sax_reflect;    /* render_sax reflect        (default -0.94) */
+    float osc_sax_breath;     /* render_sax breath_target  (default 0.85) */
+    float osc_sax_loss;       /* render_sax loss_b0        (default 0.70) */
+    /* ── Phase-14 bowed-string physical model (osc_type 7 = render_bowed_string,
+     * violin/cello). The musical character constants, now config. The stability
+     * constants (offset 0.001, refl 0.99) stay C literals — they are numerical
+     * loop-stability, not instrument voice. APPEND-ONLY at the VERY tail. ── */
+    float osc_bow_pos;   /* render_bowed_string bow_pos (default 0.13) */
+    float osc_bow_slope; /* friction slope / bow pressure (default 3.0) */
+    float osc_bow_vel;   /* bow speed                     (default 0.25) */
+    float osc_bow_loss;  /* bridge LP loss = brightness   (default 0.55) */
+    /* ── Phase-15 VOICE/CHOIR (formant vowel bank + ensemble humanization).
+     * APPEND-ONLY at the VERY tail. formant_enabled 0 (identity) = the stage
+     * never runs; all ens_* 0 (identity) = the unison path is byte-identical.
+     * formant_vowel/voice_type/morph_to are read directly (0 is a valid enum
+     * value: vowel "a" / soprano); formant_shift is mp_get(1.0) so the
+     * zero-struct reads as no shift. ── */
+    float formant_enabled;    /* >=0.5 runs the formant stage (default 0) */
+    float formant_vowel;      /* 0..4 continuous: a → e → i → o → u */
+    float formant_voice_type; /* 0 soprano / 1 alto / 2 tenor / 3 bass */
+    float formant_mix;        /* 0..1 wet blend (0 = exact bypass) */
+    float formant_shift;      /* 0.5..2 formant-frequency scale (vocal-tract size) */
+    float formant_breath;     /* 0..1 white-noise mix injected PRE-ADSR (whisper=1) */
+    float formant_sing;       /* 0..1 singer's-formant boost (~2.4-3.1 kHz by voice) */
+    float formant_morph_rate; /* Hz, 0..8: vowel-morph LFO toward morph_to (0 = static) */
+    float formant_morph_to;   /* 0..4 morph target vowel */
+    float ens_scatter;        /* cents, 0..20: per-voice constant pitch offset */
+    float ens_vib_rate;       /* Hz, 0..8: per-voice vibrato LFO rate */
+    float ens_vib_depth;      /* cents, 0..100: per-voice vibrato depth */
+    float ens_humanize;       /* 0..1: randomizes per-voice vibrato phase/rate */
+    /* ── Phase-16 VOICE-REALISM (ensemble cycle jitter + formant dry blend).
+     * APPEND-ONLY at the VERY tail. ens_jitter 0 (identity) = no per-voice fast
+     * pitch jitter (byte-identical unison path); formant_dry 1.0 (mp_get
+     * fallback) = full dry signal passthrough (byte-identical formant stage). */
+    float ens_jitter;    /* 0..1: per-voice fast pitch jitter, cents amp = *35 */
+    float formant_dry;   /* 0..1: scales the FORMANT stage's dry blend amount */
 } modular_params;
 
 /* Render the modular voice with built-in defaults (sine, percussive env). */

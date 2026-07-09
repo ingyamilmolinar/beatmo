@@ -2,10 +2,68 @@ package ui
 
 import (
 	"image"
+	"math"
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
+
+// TestStepLadderIncludesUnitaryResolution guards that the resolution strip can
+// ALWAYS be set to a human "unitary" resolution — a power-of-ten step such as 1%
+// or 0.1% (…0.1, 1, 10…). The bug: for a percentage control the ladder was
+// {0.05, 0.5, 2, 10}%, jumping 0.5% → 2% and skipping the natural 1% tick.
+func TestStepLadderIncludesUnitaryResolution(t *testing.T) {
+	cases := []struct {
+		def  audio.ParamDef
+		want float64 // the "1%" step, in the param's real units
+	}{
+		// Dimensionless 0..1 (shown as a percentage): 1% == 0.01 real units.
+		{audio.ParamDef{Name: "amount", Min: 0, Max: 1}, 0.01},
+		// A 0..100 percent control: 1% == 1.
+		{audio.ParamDef{Name: "mix", Min: 0, Max: 100, Unit: "%"}, 1},
+		// The real transient attack/sustain params (0..200 %): 1% == 1.
+		{audio.ParamDef{Name: "attack", Min: 0, Max: 200, Unit: "%"}, 1},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.def.Name, func(t *testing.T) {
+			ladder := stepLadder(tc.def)
+			for _, s := range ladder {
+				if math.Abs(s-tc.want) <= tc.want*1e-9 {
+					return // unitary rung present
+				}
+			}
+			t.Fatalf("ladder %v does not include the unitary resolution %v", ladder, tc.want)
+		})
+	}
+}
+
+// TestStepLadderRungsAreConsecutiveNiceSteps guards that the ticks make sense for
+// humans: every adjacent pair is a CONSECUTIVE step in the 1/2/5×10^k sequence,
+// so the ratio is exactly 2 (1→2, 5→10) or 2.5 (2→5). A larger ratio means a
+// human-meaningful rung (like the unitary 1×10^k) was skipped.
+func TestStepLadderRungsAreConsecutiveNiceSteps(t *testing.T) {
+	defs := []audio.ParamDef{
+		{Name: "amount", Min: 0, Max: 1},
+		{Name: "mix", Min: 0, Max: 100, Unit: "%"},
+		{Name: "attack", Min: 0, Max: 200, Unit: "%"},
+		{Name: "cutoff", Min: 20, Max: 20000, Unit: "Hz"},
+		{Name: "decay", Min: 0, Max: 4},
+	}
+	for _, def := range defs {
+		def := def
+		t.Run(def.Name, func(t *testing.T) {
+			ladder := stepLadder(def)
+			for i := 1; i < len(ladder); i++ {
+				ratio := ladder[i] / ladder[i-1]
+				if math.Abs(ratio-2) > 1e-6 && math.Abs(ratio-2.5) > 1e-6 {
+					t.Fatalf("non-consecutive rungs %v -> %v (ratio %v) skips a nice-step; ladder %v",
+						ladder[i-1], ladder[i], ratio, ladder)
+				}
+			}
+		})
+	}
+}
 
 func TestNiceStepRounds(t *testing.T) {
 	// niceStep rounds x UP to the nearest value in the 1/2/5 × 10^k sequence.
@@ -68,9 +126,14 @@ func TestStepLadderDegenerateRange(t *testing.T) {
 	}
 }
 
+// Unit-carrying steps render with a "±" prefix so the badge/wheel chip
+// reads as a STEP SIZE, not a second value readout ("50 Hz" under a knob
+// showing "8.00 kHz" read as another value — 2026-07-04 critique D-item).
+// Unit-less steps keep the "x" multiplier prefix, which already signals
+// "not a value".
 func TestFormatStepValue(t *testing.T) {
-	if got := formatStepValue(audio.ParamDef{Unit: "Hz"}, 100); got != "100 Hz" {
-		t.Fatalf("got %q want \"100 Hz\"", got)
+	if got := formatStepValue(audio.ParamDef{Unit: "Hz"}, 100); got != "±100 Hz" {
+		t.Fatalf("got %q want \"±100 Hz\"", got)
 	}
 	if got := formatStepValue(audio.ParamDef{Unit: ""}, 0.1); got != "x0.1" {
 		t.Fatalf("got %q want \"x0.1\"", got)

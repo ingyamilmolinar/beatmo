@@ -8,8 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// drawMenuRow must render every spec variant without panicking and must
-// advance the button's press animation (it draws the keycap via btn.Draw).
+// drawMenuRow must render every spec variant without panicking.
 func TestDrawMenuRowVariants(t *testing.T) {
 	dst := ebiten.NewImage(120, 40)
 	mk := func() *Button {
@@ -36,46 +35,56 @@ func TestDrawMenuRowVariants(t *testing.T) {
 	}
 }
 
-// drawMenuRow must tick the press animation: a button drawn while its press
-// target is engaged advances pressDepth toward 1 across successive draws.
-func TestDrawMenuRowAdvancesPressAnim(t *testing.T) {
-	dst := ebiten.NewImage(120, 40)
-	b := NewButton("Kick", DropdownStyle, nil)
-	b.SetRect(image.Rect(0, 0, 120, 28))
-	b.pressTarget = 1 // simulate a held press
-	start := b.pressDepth
-	for i := 0; i < 5; i++ {
-		drawMenuRow(dst, b, MenuRowSpec{State: menuItemHover, Label: "Kick"})
+// Menus are minimalist-flat (DESIGN.md components note): rows sit directly on
+// the single panel surface — no per-row keycap pad, socket, or bevel. The
+// keycap is the signature of BUTTONS; list rows carry state via the flat
+// accent tint + stripe only. drawMenuRow must therefore never invoke the
+// keycap cap-face painter (drawRoundedButton) for any state.
+// (2026-07-04 design pass: reverts the keycap chrome the 2026-06-28 row
+// unification added, keeping the unified renderer itself.)
+func TestDrawMenuRowIsFlatNoKeycap(t *testing.T) {
+	origRRB := drawRoundedButton
+	defer func() { drawRoundedButton = origRRB }()
+
+	var keycaps int
+	drawRoundedButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, radius int, pressed bool) {
+		keycaps++
+		origRRB(dst, r, fill, border, radius, pressed)
 	}
-	if b.pressDepth <= start {
-		t.Fatalf("drawMenuRow did not advance press animation: depth %v <= start %v", b.pressDepth, start)
+
+	dst := ebiten.NewImage(120, 40)
+	for _, state := range []menuItemState{menuItemRest, menuItemHover, menuItemActive} {
+		b := NewButton("opt", DropdownStyle, nil)
+		b.SetRect(image.Rect(0, 0, 120, 28))
+		drawMenuRow(dst, b, MenuRowSpec{State: state, Label: "opt"})
+	}
+	if keycaps != 0 {
+		t.Fatalf("drawMenuRow painted %d keycap cap-faces; flat menu rows must paint none", keycaps)
 	}
 }
 
-// TestDrawMenuRowAccentDrawnOverKeycap is a z-order regression guard: the
-// per-state accent (active stripe/tint) MUST be painted AFTER the keycap shell,
-// or the opaque keycap (drawKeycapShell → drawRoundedButton over the full row)
-// covers it and the accent becomes invisible. This is exactly the bug that hid
-// the node dropdown's node-color indicator (menus with a swatch/accent-label
-// masked it). We intercept drawRoundedButton (keycap) and drawRect (accent
-// stripe) and assert the accent stripe is recorded after the first keycap draw.
-func TestDrawMenuRowAccentDrawnOverKeycap(t *testing.T) {
+// The active row still carries the accent indicator: a full-opacity accent
+// stripe plus the tinted fill (this is the flat replacement for the old
+// keycap+accent stack — and the reason the keycap removal can't regress the
+// node dropdown's node-color indicator).
+func TestDrawMenuRowActiveDrawsStripeAndTint(t *testing.T) {
 	accent := color.RGBA{1, 2, 3, 255} // distinctive; won't collide with chrome colors
 	b := NewButton("opt", DropdownStyle, nil)
 	b.SetRect(image.Rect(0, 0, 120, 28))
 
-	origRRB := drawRoundedButton
 	origRect := drawRect
-	defer func() { drawRoundedButton = origRRB; drawRect = origRect }()
+	defer func() { drawRect = origRect }()
 
-	var seq []string
-	drawRoundedButton = func(dst *ebiten.Image, r image.Rectangle, fill, border color.Color, radius int, pressed bool) {
-		seq = append(seq, "keycap")
-		origRRB(dst, r, fill, border, radius, pressed)
-	}
+	var stripe, tint bool
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		if filled && color.RGBAModel.Convert(c).(color.RGBA) == accent {
-			seq = append(seq, "accent")
+		if filled {
+			rgba := color.RGBAModel.Convert(c).(color.RGBA)
+			if rgba == accent && r.Dx() == accentStripeW() && r.Dy() == 28 {
+				stripe = true
+			}
+			if rgba.A < 255 && rgba.A > 0 && r.Dx() == 120 && r.Dy() == 28 {
+				tint = true
+			}
 		}
 		origRect(dst, r, c, filled)
 	}
@@ -83,22 +92,39 @@ func TestDrawMenuRowAccentDrawnOverKeycap(t *testing.T) {
 	dst := ebiten.NewImage(120, 40)
 	drawMenuRow(dst, b, MenuRowSpec{Accent: accent, State: menuItemActive, Label: "opt"})
 
-	firstKeycap, accentIdx := -1, -1
-	for i, e := range seq {
-		if e == "keycap" && firstKeycap == -1 {
-			firstKeycap = i
+	if !stripe {
+		t.Fatal("active row drew no accent stripe")
+	}
+	if !tint {
+		t.Fatal("active row drew no tinted fill")
+	}
+}
+
+// Hover/press feedback on a flat row is the accent tint over the full row.
+func TestDrawMenuRowHoverDrawsTint(t *testing.T) {
+	accent := color.RGBA{4, 5, 6, 255}
+	b := NewButton("opt", DropdownStyle, nil)
+	b.SetRect(image.Rect(0, 0, 120, 28))
+
+	origRect := drawRect
+	defer func() { drawRect = origRect }()
+
+	var tint bool
+	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
+		// A translucent full-row fill is the hover tint (alpha-composited
+		// from the accent; premultiplication scrambles the RGB so only the
+		// translucency + geometry are asserted).
+		rgba := color.RGBAModel.Convert(c).(color.RGBA)
+		if filled && rgba.A > 0 && rgba.A < 255 && r.Dx() == 120 && r.Dy() == 28 {
+			tint = true
 		}
-		if e == "accent" {
-			accentIdx = i
-		}
+		origRect(dst, r, c, filled)
 	}
-	if firstKeycap == -1 {
-		t.Fatal("no keycap (drawRoundedButton) call recorded; cannot verify draw order")
-	}
-	if accentIdx == -1 {
-		t.Fatal("active accent stripe was never drawn")
-	}
-	if accentIdx < firstKeycap {
-		t.Fatalf("accent stripe drawn BEFORE keycap (idx %d < %d) — the opaque keycap will cover the accent", accentIdx, firstKeycap)
+
+	dst := ebiten.NewImage(120, 40)
+	drawMenuRow(dst, b, MenuRowSpec{Accent: accent, State: menuItemHover, Label: "opt"})
+
+	if !tint {
+		t.Fatal("hovered row drew no accent tint")
 	}
 }

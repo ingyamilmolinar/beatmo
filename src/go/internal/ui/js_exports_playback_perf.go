@@ -10,23 +10,23 @@ import (
 )
 
 func (g *Game) initJSPlaybackPerf() {
-	js.Global().Set("startPlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("startPlay", jsFn(func(args jsArgs) any {
 		js.Global().Get("console").Call("log", "[WASM] startPlay() called")
 		g.drum.playPressed = true
 		return nil
 	}))
-	js.Global().Set("stopPlay", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("stopPlay", jsFn(func(args jsArgs) any {
 		g.drum.stopPressed = true
 		return nil
 	}))
 
 	// __navSegRect(i) – DIAGNOSTIC: bottom-nav segmented-control segment rect.
-	js.Global().Set("__navSegRect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("__navSegRect", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
-		if g.drum == nil || g.drum.viewSwitchSegmented == nil || len(args) == 0 {
+		if g.drum == nil || g.drum.viewSwitchSegmented == nil || args.Len() == 0 {
 			return js.Null()
 		}
-		r := g.drum.viewSwitchSegmented.SegmentRect(args[0].Int())
+		r := g.drum.viewSwitchSegmented.SegmentRect(args.Int(0))
 		obj.Set("x", r.Min.X)
 		obj.Set("y", r.Min.Y)
 		obj.Set("w", r.Dx())
@@ -34,14 +34,14 @@ func (g *Game) initJSPlaybackPerf() {
 		return obj
 	}))
 	// __viewMode() – DIAGNOSTIC: current mobile view mode (int).
-	js.Global().Set("__viewMode", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("__viewMode", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(-1)
 		}
 		return js.ValueOf(int(g.drum.currentViewMode))
 	}))
 	// __samplerHitAreas() – DIAGNOSTIC: sampler-tab hit-area rects+tags.
-	js.Global().Set("__samplerHitAreas", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("__samplerHitAreas", jsFn(func(args jsArgs) any {
 		arr := js.Global().Get("Array").New()
 		if g.drum == nil {
 			return arr
@@ -58,7 +58,7 @@ func (g *Game) initJSPlaybackPerf() {
 		return arr
 	}))
 	// __treeCapturing() – DIAGNOSTIC: {capturing, tag} of the tree's drag capture.
-	js.Global().Set("__treeCapturing", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("__treeCapturing", jsFn(func(args jsArgs) any {
 		o := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.tree == nil {
 			return o
@@ -73,7 +73,7 @@ func (g *Game) initJSPlaybackPerf() {
 	// When playing, drives scheduling from the caller's thread so highlights
 	// stay current even if the sequencer goroutine's timer is delayed under
 	// CPU contention (e.g. parallel test runs).
-	js.Global().Set("syncHighlights", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("syncHighlights", jsFn(func(args jsArgs) any {
 		if g.Playing() {
 			g.seqScheduleTime()
 		}
@@ -87,7 +87,7 @@ func (g *Game) initJSPlaybackPerf() {
 	// are queued onto the macro-task queue and run independently of the
 	// WASM Go runtime's cooperative scheduler, so this is the only drive
 	// that can fire sub-frame in WASM. No-op when not playing.
-	js.Global().Set("tickSequencer", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("tickSequencer", jsFn(func(args jsArgs) any {
 		if g.Playing() {
 			g.seqScheduleTime()
 		}
@@ -95,11 +95,11 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 
 	// setSimpleDraw(bool) – reduce rendering complexity for perf (web).
-	js.Global().Set("setSimpleDraw", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setSimpleDraw", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		mode := args[0].Bool()
+		mode := args.Bool(0)
 		if mode {
 			if g.drum != nil {
 				g.simpleDrawSavedFollow = g.drum.FollowPlayback()
@@ -118,20 +118,20 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 
 	// setPerfFastPath(bool) – enable lower-overhead Update/refresh for perf harnesses.
-	js.Global().Set("setPerfFastPath", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setPerfFastPath", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		g.SetPerfFastPath(args[0].Bool())
+		g.SetPerfFastPath(args.Bool(0))
 		return nil
 	}))
 
 	// setAudioLookahead(sec float64) – scheduling lookahead for WebAudio.
-	js.Global().Set("setAudioLookahead", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setAudioLookahead", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		g.audioLookaheadSec = args[0].Float()
+		g.audioLookaheadSec = args.Float(0)
 		if g.audioLookaheadSec < 0 {
 			g.audioLookaheadSec = 0
 		}
@@ -142,7 +142,7 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 
 	// gridCacheInfo() -> { tileReady: bool, cacheReady: bool, simpleDraw: bool }
-	js.Global().Set("gridCacheInfo", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("gridCacheInfo", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		obj.Set("tileReady", g.gridTile != nil)
 		obj.Set("cacheReady", g.gridCache != nil && g.gridCacheW > 0)
@@ -153,7 +153,7 @@ func (g *Game) initJSPlaybackPerf() {
 	// dumpHeapProbe() returns a CSV string of the heap-growth probe ring
 	// (one row per ~1-second sample for the past minute). Empty when the
 	// probe is disabled (set BEATMO_HEAP_PROBE=1 to enable).
-	js.Global().Set("dumpHeapProbe", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("dumpHeapProbe", jsFn(func(args jsArgs) any {
 		return HeapProbeSnapshot()
 	}))
 
@@ -161,7 +161,7 @@ func (g *Game) initJSPlaybackPerf() {
 	// debugging Phase 0a of the audio-panel redesign. Stays callable
 	// after the redesign lands; helps validate the bar-fills-between-
 	// hits invariant by exposing the latch fields the renderer reads.
-	js.Global().Set("dumpLevelsLatch", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("dumpLevelsLatch", jsFn(func(args jsArgs) any {
 		obj := js.Global().Get("Object").New()
 		if g.drum == nil || g.drum.eqPanelZone == nil {
 			obj.Set("ready", false)
@@ -181,7 +181,7 @@ func (g *Game) initJSPlaybackPerf() {
 	// forceDraw() – render one frame into an offscreen image to build caches.
 	// Also reads current window.innerWidth/innerHeight and calls Layout() so
 	// that a preceding setViewportSize (Playwright) is reflected immediately.
-	js.Global().Set("forceDraw", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("forceDraw", jsFn(func(args jsArgs) any {
 		win := js.Global().Get("window")
 		if !win.IsUndefined() {
 			iw := win.Get("innerWidth").Int()
@@ -210,7 +210,7 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 
 	// rowsLayerState() -> diagnostic info about the drum rows layer caches.
-	js.Global().Set("rowsLayerState", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("rowsLayerState", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
 			return js.ValueOf(nil)
 		}
@@ -221,11 +221,11 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 
 	// setBPM(n) sets the DrumView BPM directly for perf tests.
-	js.Global().Set("setBPM", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 1 {
+	js.Global().Set("setBPM", jsFn(func(args jsArgs) any {
+		if args.Len() < 1 {
 			return nil
 		}
-		b := args[0].Int()
+		b := args.Int(0)
 		if b < 1 {
 			b = 1
 		}
@@ -234,7 +234,7 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 
 	// perfStats() -> object with recent perf metrics.
-	js.Global().Set("perfStats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("perfStats", jsFn(func(args jsArgs) any {
 		s := g.PerfSnapshot()
 		obj := js.Global().Get("Object").New()
 		obj.Set("frames", int(s.Frames))
@@ -282,7 +282,7 @@ func (g *Game) initJSPlaybackPerf() {
 		obj.Set("threeStage", threeStageLatencyJSObject(s.SchedMetrics))
 		return obj
 	}))
-	js.Global().Set("resetPerfStats", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("resetPerfStats", jsFn(func(args jsArgs) any {
 		g.perf.reset()
 		return nil
 	}))
@@ -290,11 +290,11 @@ func (g *Game) initJSPlaybackPerf() {
 	// all three stages of the real → scheduler → audio pipeline. This is
 	// orthogonal to the JS-side audio.js scheduleMetrics (which only sees
 	// Stage C). Returns null before any data is observed (count==0).
-	js.Global().Set("getThreeStageLatency", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("getThreeStageLatency", jsFn(func(args jsArgs) any {
 		s := g.PerfSnapshot()
 		return threeStageLatencyJSObject(s.SchedMetrics)
 	}))
-	js.Global().Set("resetThreeStageLatency", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("resetThreeStageLatency", jsFn(func(args jsArgs) any {
 		g.schedMetrics.Reset()
 		return nil
 	}))
@@ -303,12 +303,12 @@ func (g *Game) initJSPlaybackPerf() {
 	// Used by the agent test infrastructure to reliably process button clicks
 	// in headless Chromium where requestAnimationFrame fires infrequently.
 	// Without arguments, runs Update() with mouse unpressed at (0, 0).
-	js.Global().Set("forceGameTick", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+	js.Global().Set("forceGameTick", jsFn(func(args jsArgs) any {
 		mx, my := 0, 0
 		mouseLeft := false
-		if len(args) >= 2 && !args[0].IsUndefined() {
-			mx = args[0].Int()
-			my = args[1].Int()
+		if args.Len() >= 2 && !args.At(0).IsUndefined() {
+			mx = args.Int(0)
+			my = args.Int(1)
 			mouseLeft = true
 		}
 		oldCur := cursorPosition
@@ -331,15 +331,15 @@ func (g *Game) initJSPlaybackPerf() {
 	// otherwise don't register in headless (rAF-throttled) because no equivalent
 	// forced-tick exists. Used by the agent's drag tool to move EQ band handles,
 	// synth knobs, and sliders deterministically.
-	js.Global().Set("forceDrag", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) < 4 {
+	js.Global().Set("forceDrag", jsFn(func(args jsArgs) any {
+		if args.Len() < 4 {
 			return nil
 		}
-		x0, y0 := args[0].Int(), args[1].Int()
-		x1, y1 := args[2].Int(), args[3].Int()
+		x0, y0 := args.Int(0), args.Int(1)
+		x1, y1 := args.Int(2), args.Int(3)
 		steps := 8
-		if len(args) >= 5 && !args[4].IsUndefined() {
-			steps = args[4].Int()
+		if args.Len() >= 5 && !args.At(4).IsUndefined() {
+			steps = args.Int(4)
 		}
 		if steps < 1 {
 			steps = 1

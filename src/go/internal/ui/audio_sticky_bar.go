@@ -53,6 +53,9 @@ type AudioStickyBar struct {
 	// once at construction) so SetSynthDisabled — called every frame — never
 	// re-allocates via AllPanelTabs(). -1 when there is no Synth tab.
 	synthTabIdx int
+	// samplerTabIdx mirrors synthTabIdx for the Sampler pill, so
+	// SetSamplerDisabled is likewise allocation-free. -1 when absent.
+	samplerTabIdx int
 }
 
 // NewAudioStickyBar builds the tab-switcher row. parentZIndex is the owning
@@ -61,7 +64,7 @@ type AudioStickyBar struct {
 // picked; the bar itself does not own the active-tab state — the parent passes
 // the active tab to Draw so the bar can render the correct active pill.
 func NewAudioStickyBar(parentZIndex int, onChannel func(), onTab func(PanelTab)) *AudioStickyBar {
-	b := &AudioStickyBar{parentZIndex: parentZIndex, synthTabIdx: -1}
+	b := &AudioStickyBar{parentZIndex: parentZIndex, synthTabIdx: -1, samplerTabIdx: -1}
 	b.channelBtn = NewButton(i18n.T(i18n.KeyMaster), InstButtonStyle, onChannel)
 	tabs := AllPanelTabs()
 	b.tabBtns = make([]*Button, len(tabs))
@@ -69,6 +72,9 @@ func NewAudioStickyBar(parentZIndex int, onChannel func(), onTab func(PanelTab))
 		t := tab // capture
 		if t == TabSynth {
 			b.synthTabIdx = i
+		}
+		if t == TabSampler {
+			b.samplerTabIdx = i
 		}
 		b.tabBtns[i] = NewButton(PanelTabLabelForProfile(t), InstButtonStyle, func() {
 			if onTab != nil {
@@ -258,10 +264,16 @@ func (b *AudioStickyBar) Draw(dst *ebiten.Image, activeTab PanelTab) {
 	// (Most call sites already call SetActiveTab before Layout; this
 	// catches direct-Draw callers.)
 	b.activeTab = activeTab
-	drawPillTabAt(dst, b.channelBtn, true)
-	// Chevron-down glyph at the right edge of the channel pill so it
-	// reads as a dropdown selector instead of a passive label. Phase 1.
+	// Channel SELECTOR pill: neutral cap + accent-tinted border + accent
+	// chevron — the button-dropdown affordance ("this opens a list"), NOT
+	// the latched-amber tab treatment. The pill is identity, not state:
+	// rendering it lit-amber made every screen read as having two active
+	// tabs and diluted the "this is on" signal (D2, 2026-07-04 design
+	// pass; mobile Chain showed five gold actives at once).
+	drawPillTabAt(dst, b.channelBtn, false)
 	if r := b.channelBtn.Rect(); !r.Empty() {
+		capR := keycapCapRect(r, b.channelBtn.pressTravelPx(), false)
+		drawRoundedRect(dst, capR, WithAlpha(colAccent, genAlphaAccentTint), RadiusMD/2, false)
 		const caretW = 8
 		caretR := image.Rect(r.Max.X-caretW-3, r.Min.Y+(r.Dy()-caretW)/2, r.Max.X-3, r.Min.Y+(r.Dy()-caretW)/2+caretW)
 		DrawIcon(dst, IconChevronDown, caretR, colTextAccent)
@@ -304,10 +316,26 @@ func (b *AudioStickyBar) SetSynthDisabled(disabled bool) {
 	}
 }
 
+// SetSamplerDisabled greys/disables the Sampler tab pill (or re-enables it).
+// Mirrors SetSynthDisabled: the parent zone calls it every frame so the pill
+// tracks the active channel — the Sampler tab is meaningless on the master
+// bus (there is no single instrument sample to chop). The Disabled flag lives
+// on the pill Button, so the shared buttonHitAdapter swallows clicks on it.
+func (b *AudioStickyBar) SetSamplerDisabled(disabled bool) {
+	if pill := b.samplerTabPill(); pill != nil {
+		pill.Disabled = disabled
+	}
+}
+
 // synthTabPill returns the tab pill that corresponds to TabSynth, or nil.
 // Uses the cached index so it never allocates on the per-frame path.
 func (b *AudioStickyBar) synthTabPill() *Button {
 	return b.TabBtn(b.synthTabIdx)
+}
+
+// samplerTabPill returns the tab pill that corresponds to TabSampler, or nil.
+func (b *AudioStickyBar) samplerTabPill() *Button {
+	return b.TabBtn(b.samplerTabIdx)
 }
 
 // HitAreas returns the cached chrome hit areas. Call Layout first.

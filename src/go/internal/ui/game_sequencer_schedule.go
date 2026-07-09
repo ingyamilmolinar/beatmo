@@ -10,7 +10,8 @@ import (
 
 // seqScheduleTime schedules audio for all rows based on wall-clock time,
 // independent of UI rendering, at subdivision resolution.
-func (g *Game) seqScheduleTime() {
+func (s *playbackSlate) seqScheduleTime() {
+	g := s.g
 	if g == nil {
 		return
 	}
@@ -78,6 +79,14 @@ func (g *Game) seqScheduleTime() {
 			g.seqNextIdxs[row] = next
 		}
 		g.prevBPM = bpm
+		// A live BPM change re-anchors seqNextIdxs from nextBeatIdxs, which
+		// can produce the same catch-up-burst shape as a structural edit
+		// (C1 fix). The normal UI BPM path (DrumView.SetBPM ->
+		// onStructuralMutation("bpm-change") -> bumpParityGen) already
+		// resets peaks at input time; this is a second line of defense for
+		// the async bpmLoop applied-BPM re-anchor detected here, which can
+		// lag behind that first grace window and fire independently of it.
+		g.schedMetrics.ResetPeaks()
 	}
 	if bpm <= 0 {
 		return
@@ -198,7 +207,16 @@ func (g *Game) seqScheduleTime() {
 			// moment expressed in dtSec terms is
 			//   beatDtSec = (idx/div - baseBeats) * 60 / bpm
 			// dtSec is the current elapsed-since-playStart; subtract.
-			if g.Playing() {
+			// Grace-filter the observation itself, not just the downstream
+			// check: a live circuit/rule edit or BPM re-anchor can stall
+			// scheduling and produce a catch-up burst here whose lateness has
+			// nothing to do with steady-state audio health. Without this guard
+			// the burst latches into schedMetrics' session-monotonic
+			// seqFireMax and can panic the NEXT parityTimingCheck after grace
+			// expires (design §3.4: "universal suppression across all
+			// stages" — this observation sat outside that spine before the
+			// fix).
+			if g.Playing() && !g.parityInGrace() {
 				beatDtSec := (float64(idx)/float64(div) - baseBeats) * 60.0 / float64(bpm)
 				if late := dtSec - beatDtSec; late >= 0 {
 					g.schedMetrics.ObserveSeqFireLate(late)
@@ -335,7 +353,7 @@ func (g *Game) seqScheduleTime() {
 						// what was dispatched, and mark the decision enqueued to keep the
 						// Audible⟹Enqueued invariant honest on this path too.
 						g.markSeqAudioEnqueued(row, idx)
-						g.recordParityAudio(row, idx, audio.Now(), inst, vol, pitch, dur, g.audioGen.Load())
+						g.recordParityAudio(row, idx, audio.Now(), inst, vol, pitch, dur, g.audioGen.Load(), g.parityGen.Load())
 					} else {
 						// Ideal audio time for this beat: anchored to
 						// audioStart + beat's position on the timeline.
@@ -389,3 +407,5 @@ func (g *Game) seqScheduleTime() {
 		}
 	}
 }
+
+func (g *Game) seqScheduleTime() { g.playbackSlate.seqScheduleTime() }

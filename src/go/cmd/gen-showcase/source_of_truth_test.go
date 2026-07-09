@@ -52,23 +52,23 @@ type musicTruth struct {
 // templates are documented here too, so the test guards them against regression.
 var musicTruths = []musicTruth{
 	// ── Public-domain classical (fixed keys; tempo often interpretive) ──
-	{stem: "bach-toccata", scale: pcSet(0, 1, 3, 4, 5, 7, 8, 10), note: "D minor (nat+harmonic), BWV 565"},
-	{stem: "bach-prelude-c", scale: pcSet(0, 2, 3, 5, 7, 8, 10), note: "C major, BWV 846"},
-	{stem: "bach-flute-allemande", scale: pcSet(0, 2, 3, 5, 7, 8, 10, 11), note: "A minor (nat+harmonic), BWV 1013"},
-	{stem: "bach-cello-prelude", scale: pcSet(0, 2, 3, 5, 7, 9, 10), note: "G major, BWV 1007"},
-	{stem: "felt-prelude", scale: pcSet(0, 2, 3, 5, 7, 8, 10), note: "C major, BWV 846 (felt)"},
-	{stem: "vivaldi-spring", scale: pcSet(0, 2, 4, 6, 7, 9, 11), note: "E major, RV 269"},
-	{stem: "mozart-k545", scale: pcSet(0, 2, 3, 5, 7, 8, 10), note: "C major, K545"},
+	{stem: "bach-toccata", scale: pcSet(0, 1, 2, 3, 4, 5, 7, 8, 9, 10), note: "D minor incl. melodic B-nat + ornamental F# (real KernScores encoding, mm.1-12)"},
+	{stem: "bach-prelude-c", scale: pcSet(0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11), note: "C major + Bach's own chromatics in mm.9-16 (F#dim7, Ab...; music21 corpus bwv846)"},
+	{stem: "bach-flute-allemande", scale: pcSet(0, 1, 2, 3, 5, 7, 8, 9, 10, 11), note: "A minor + chromatic neighbors (real BWV 1013 encoding, mm.1-8)"},
+	{stem: "bach-cello-prelude", scale: pcSet(0, 2, 3, 4, 5, 7, 9, 10), note: "G major + the sourced C# (BWV 1007 mm.7-8 dominant-of-D bars)"},
+	{stem: "felt-prelude", scale: pcSet(0, 2, 3, 5, 7, 8, 9, 10), note: "C major + the D7/F# of BWV 846 mm.5-8 (real score, felt piano)"},
+	{stem: "vivaldi-spring", scale: pcSet(0, 1, 2, 4, 6, 7, 9, 11), note: "E major + A# chromatic neighbor (real RV 269 kern, mm.1-13)"},
+	{stem: "mozart-k545", scale: pcSet(0, 2, 3, 4, 5, 7, 8, 9, 10), note: "C major + the sourced chromatic turn C#/F# (craigsapp K545 mm.1-12)"},
 	{stem: "pachelbel-violin", scale: pcSet(0, 2, 4, 5, 7, 9, 10), note: "D major, Canon"},
-	{stem: "marcello-oboe", scale: pcSet(0, 1, 3, 4, 5, 7, 8, 10), note: "D minor (nat+harmonic) — B-natural is out of key"},
+	{stem: "marcello-oboe", scale: pcSet(0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11), note: "D minor incl. melodic B/E-nat + ornaments (IMSLP engraving shifted G minor→D minor)"},
 	{stem: "handel-water-horn", scale: pcSet(0, 2, 4, 5, 7, 9, 10), note: "D major, HWV 349"},
-	{stem: "cielito-trumpet", bpm: 150, bpmTol: 18, scale: pcSet(0, 2, 4, 5, 7, 9, 10), note: "D major (canonical mariachi-trumpet key); lively mariachi waltz (trimmed from 165)"},
+	{stem: "cielito-trumpet", bpm: 160, bpmTol: 10, scale: pcSet(0, 2, 4, 5, 7, 9, 10), note: "D major, 160 BPM (bitmidi 24204 is natively in D at 160 — validates the +2 transposition)"},
 
 	// ── Jazz / blues ──
-	{stem: "jobim-ipanema", scale: pcSet(0, 1, 2, 3, 5, 7, 8, 10), note: "F major (+B from G7)"},
+	{stem: "jobim-ipanema", note: "F major head, but the full AABA bridge modulates (Gbmaj7/B7/F#m7/D7/Eb7) — key check skipped; the A-section melody stays pinned by TestIpanemaSaxDiatonicToFMajor"},
 	{stem: "miles-so-what", note: "bimodal D dorian / Eb dorian — key check skipped"},
-	{stem: "bbking-thrill-is-gone", bpm: 90, bpmTol: 4, scale: pcSet(0, 1, 2, 4, 5, 7, 8, 9, 10), note: "B minor blues (~88-90 BPM, not 98)"},
-	{stem: "sax-blues", scale: pcSet(0, 3, 5, 6, 7, 10), note: "A minor blues scale"},
+	{stem: "bbking-thrill-is-gone", bpm: 88, bpmTol: 4, scale: pcSet(0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11), note: "B minor blues, 88 BPM exact (bitmidi 102720); D# from the sourced D5-D#5-E5 climb, G# from the sourced G#-A#-B bass turnaround"},
+	{stem: "sax-blues", scale: pcSet(0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11), note: "A blues head over a chromatic walking bass (F7/E7 bars + approach tones, per the cited walking-bass rules)"},
 
 	// ── Funk / soul / disco ──
 	{stem: "wonder-superstition", scale: pcSet(1, 2, 4, 6, 8, 9, 11), note: "Eb minor"},
@@ -79,18 +79,18 @@ var musicTruths = []musicTruth{
 
 	// ── Rock / pop / electronic ──
 	{stem: "eagles-hotel-california", scale: pcSet(0, 1, 2, 4, 5, 7, 9, 10, 11), note: "B minor (+F#7/E chromatics)"},
-	{stem: "toto-africa", scale: pcSet(0, 1, 2, 4, 6, 7, 9, 11), note: "B major +A (bVII) — see TestAfricaChorusHasFlatSeven"},
-	{stem: "blackbox-ride-on-time", bpm: 120, bpmTol: 5, scale: pcSet(0, 2, 3, 5, 7, 8, 10), note: "A minor (Black Box — Ride On Time, real MIDI bitmidi 88846)"},
-	{stem: "gaynor-survive", bpm: 117, bpmTol: 6, scale: pcSet(0, 2, 3, 5, 7, 8, 10, 11), note: "A minor (I Will Survive cycle-of-4ths, +G# from E7)"},
+	{stem: "toto-africa", scale: pcSet(0, 1, 2, 4, 5, 6, 7, 9, 11), note: "A major overall; verse leans B major, chorus F#m-D-A-E adds D natural (bitmidi 105027) — see TestAfricaChorusHasFlatSeven"},
+	{stem: "blackbox-ride-on-time", bpm: 120, bpmTol: 5, scale: pcSet(0, 2, 3, 5, 7, 8, 10, 11), note: "A minor + G# leading tone (the sourced rising vocal run ends F5-G#5-A5; bitmidi 88846)"},
+	{stem: "gaynor-survive", bpm: 117, bpmTol: 6, scale: pcSet(0, 2, 3, 5, 6, 7, 8, 9, 10, 11), note: "A minor (I Will Survive cycle-of-4ths) + G#/F# from the E7 bars and the sourced D#→E chromatic bass walk (bitmidi 59419)"},
 
 	// ── Latin + etudes (groove conventions; in-key) ──
 	{stem: "puente-oye-como-va", scale: pcSet(0, 2, 3, 5, 7, 9, 10), note: "A dorian (Oye Como Va, Am7-D9 vamp; real MIDI bitmidi 91454)"},
 	{stem: "salsa-vivir", bpm: 105, bpmTol: 8, scale: pcSet(1, 3, 5, 6, 8, 10, 11), note: "C minor (Vivir Mi Vida montuno Cm-Ab-Eb-Bb)"},
-	{stem: "bachata-obsesion", bpm: 134, bpmTol: 8, scale: pcSet(0, 2, 4, 6, 7, 9, 11), note: "C# minor (Obsesión, C#m-G#m requinto loop)"},
+	{stem: "bachata-obsesion", bpm: 134, bpmTol: 8, scale: pcSet(0, 2, 3, 4, 6, 7, 9, 11), note: "C# minor (bitmidi 8503; verse vamp A-C#m, chorus ends V=G# major whose B# = class 3)"},
 	{stem: "conga-tumbao", note: "percussion only — key check skipped"},
 	{stem: "steel-folk", scale: pcSet(0, 2, 3, 5, 7, 9, 10), note: "G major (pentatonic-based)"},
 	{stem: "electric-riff", scale: pcSet(0, 2, 3, 5, 7, 9, 10), note: "E minor pentatonic-based"},
-	{stem: "bass-groove", scale: pcSet(0, 2, 3, 5, 7, 8, 10), note: "A minor"},
+	{stem: "bass-groove", scale: pcSet(0, 2, 3, 5, 6, 7, 8, 10, 11), note: "A minor + the chromatic G#/Eb approach tones (slap-etude walk-ups, cited pedagogy)"},
 
 	// ── MusicXML-sourced ──
 	{stem: "asturias", scale: pcSet(0, 2, 3, 5, 7, 9, 10), note: "E minor (Albéniz)"},

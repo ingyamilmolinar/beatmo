@@ -13,21 +13,21 @@ type BandEdge struct {
 // is driven from here; library code contains no magic numbers. JSON tags allow a
 // partial override file merged over DefaultAnalysisConfig via LoadAnalysisConfig.
 type AnalysisConfig struct {
-	HopSec           float64    `json:"hop_sec,omitempty"`            // timeline frame hop
-	FrameSec         float64    `json:"frame_sec,omitempty"`         // per-frame analysis length
-	FFTSize          int        `json:"fft_size,omitempty"`          // whole-segment FFT size
-	FrameFFTSize     int        `json:"frame_fft_size,omitempty"`    // per-frame FFT size
-	Bands            []BandEdge `json:"bands,omitempty"`             // energy bands (generic N)
-	TempoMinBPM      float64    `json:"tempo_min_bpm,omitempty"`
-	TempoMaxBPM      float64    `json:"tempo_max_bpm,omitempty"`
-	TempoOctaveFold  bool       `json:"tempo_octave_fold,omitempty"` // ×2/÷2 equivalence
-	OnsetSensitivity float64    `json:"onset_sensitivity,omitempty"` // flux threshold multiplier
+	HopSec           float64     `json:"hop_sec,omitempty"`        // timeline frame hop
+	FrameSec         float64     `json:"frame_sec,omitempty"`      // per-frame analysis length
+	FFTSize          int         `json:"fft_size,omitempty"`       // whole-segment FFT size
+	FrameFFTSize     int         `json:"frame_fft_size,omitempty"` // per-frame FFT size
+	Bands            []BandEdge  `json:"bands,omitempty"`          // energy bands (generic N)
+	TempoMinBPM      float64     `json:"tempo_min_bpm,omitempty"`
+	TempoMaxBPM      float64     `json:"tempo_max_bpm,omitempty"`
+	TempoOctaveFold  bool        `json:"tempo_octave_fold,omitempty"` // ×2/÷2 equivalence
+	OnsetSensitivity float64     `json:"onset_sensitivity,omitempty"` // flux threshold multiplier
 	KeyProfileMajor  [12]float64 `json:"key_profile_major,omitempty"`
 	KeyProfileMinor  [12]float64 `json:"key_profile_minor,omitempty"`
-	NoveltyKernel    int        `json:"novelty_kernel,omitempty"`    // section kernel (frames)
-	NoveltyThresh    float64    `json:"novelty_thresh,omitempty"`
-	NMFIters         int        `json:"nmf_iters,omitempty"`
-	Seed             int64      `json:"seed,omitempty"`              // fixed RNG seed
+	NoveltyKernel    int         `json:"novelty_kernel,omitempty"` // section kernel (frames)
+	NoveltyThresh    float64     `json:"novelty_thresh,omitempty"`
+	NMFIters         int         `json:"nmf_iters,omitempty"`
+	Seed             int64       `json:"seed,omitempty"` // fixed RNG seed
 	// Compare (Plan 3) — weights per correctness axis and verdict thresholds.
 	CompareWeights struct {
 		Tempo, Rhythm, Key, Mix float64

@@ -77,14 +77,14 @@ func TestTreeOwnsKeyboard_RenamePortal(t *testing.T) {
 	rc.SetProps(RenameProps{InitialText: "kick", MaxLen: 32, AnchorRect: image.Rect(0, 0, 120, 24)})
 	rc.Open()
 	g.drum.openRenamePortal()
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Skip("rename portal did not open")
 	}
 	if !rc.IsOpen() {
 		t.Skip("rename component did not open (no anchor rect in this environment)")
 	}
-	if !g.drum.tree.OwnsKeyboard() {
-		t.Fatal("tree must own the keyboard while a rename portal is open")
+	if !g.drum.overlayTree.OwnsKeyboard() {
+		t.Fatal("overlay tree must own the keyboard while a rename portal is open")
 	}
 }
 

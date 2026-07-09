@@ -122,6 +122,15 @@ func (g *Game) initMediaSessionExports() {
 			g.syncUIToTime()
 		}
 
+		// Session-relative group-rule ramps: this path bypasses the
+		// playPressed → handlePlaybackTransition chokepoint, so mirror its
+		// `!prevPaused` re-anchor here. ResumeKindResume == continuing a
+		// paused session (ramps preserved); any other kind is a fresh or
+		// seek start and must re-anchor so saved rules ramp from this
+		// session's origin. No emits/undo — runtime ramp state only.
+		if resumeKind != gamestate.ResumeKindResume {
+			g.graph.ReanchorAllGroupRules(g.playheadAbsSubdiv())
+		}
 		g.engine.Start()
 		g.drum.SetPlaying(true)
 		notifyMediaSessionState()

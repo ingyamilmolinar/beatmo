@@ -108,6 +108,20 @@ var formatters = map[hooks.Kind]formatter{
 		return fmt.Sprintf("edge deleted (%d,%d) → (%d,%d)", e.FromI, e.FromJ, e.ToI, e.ToJ)
 	},
 
+	// ── Node groups ─────────────────────────────────────────────────────
+	hooks.EventGroupCreated: func(p any) string {
+		g, _ := p.(hooks.GroupPayload)
+		return fmt.Sprintf("group %d %q created (%d nodes)", g.ID, g.Name, len(g.Nodes))
+	},
+	hooks.EventGroupChanged: func(p any) string {
+		g, _ := p.(hooks.GroupPayload)
+		return fmt.Sprintf("group %d updated", g.ID)
+	},
+	hooks.EventGroupDeleted: func(p any) string {
+		g, _ := p.(hooks.GroupPayload)
+		return fmt.Sprintf("group %d deleted", g.ID)
+	},
+
 	// ── Drum rows ───────────────────────────────────────────────────────
 	hooks.EventRowAdded: func(p any) string {
 		r, _ := p.(hooks.RowChangePayload)

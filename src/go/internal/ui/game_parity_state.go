@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -80,12 +81,49 @@ func (g *Game) clearParityStateForGenBump() {
 // and the UI thread on a live system. Fast-path Go tests serialize all state
 // synchronously and rely on strict immediate parity, so grace is bypassed
 // under `go test`. Tests that explicitly want to verify grace behavior can
-// inspect g.parityGraceUntilNS directly.
+// opt in via SetParityGraceForceForTest and inspect g.parityGraceUntilNS
+// directly.
+//
+// parityGraceForceForTest, when true, makes parityInGrace honor the real
+// parityGraceUntilNS deadline even under `go test`. Default false preserves
+// the historical test bypass (most tests want grace OFF for determinism).
+var parityGraceForceForTest atomic.Bool
+
+// SetParityGraceForceForTest opts a test into real grace-window behavior.
+func SetParityGraceForceForTest(on bool) (restore func()) {
+	prev := parityGraceForceForTest.Load()
+	parityGraceForceForTest.Store(on)
+	return func() { parityGraceForceForTest.Store(prev) }
+}
+
+// parityRecordNow is the wall clock consulted by the RecordedAt "freshly
+// recorded" grace in parityScan (the audio_missing and highlight_vs_audio
+// checks). It is a package var so tests can pin it: a raw time.Since on a
+// just-stamped RecordedAt is racy against real elapsed time — a scan landing
+// more than 120ms after the event is stamped (a GC pause, a CPU-saturated CI
+// running other packages in parallel) flips a genuinely fresh event to
+// "expired" and fires a spurious mismatch. Unlike parityGraceUntilNS this
+// window is NOT bypassed under `go test`, so a fresh-grace test must pin the
+// clock to stay deterministic. Production leaves it as time.Now.
+var parityRecordNow = time.Now
+
+// SetParityRecordNowForTest pins the RecordedAt-grace wall clock so a test can
+// deterministically place an event inside (or outside) the 120ms freshness
+// window regardless of how long the surrounding setup takes. Returns a restore
+// func. Safe for these fast-path tests: parityScan is called synchronously on
+// the test goroutine (its only production caller is refreshDrumRow on the UI
+// thread), so there is no concurrent reader to race the assignment.
+func SetParityRecordNowForTest(now func() time.Time) (restore func()) {
+	prev := parityRecordNow
+	parityRecordNow = now
+	return func() { parityRecordNow = prev }
+}
+
 func (g *Game) parityInGrace() bool {
 	if g == nil {
 		return false
 	}
-	if runningUnderGoTest() {
+	if runningUnderGoTest() && !parityGraceForceForTest.Load() {
 		return false
 	}
 	until := g.parityGraceUntilNS.Load()
@@ -116,7 +154,12 @@ func (g *Game) endImportDialog() {
 	g.importDialog = false
 }
 
-func (g *Game) recordParityAudio(row, abs int, when float64, inst string, vol, pitch, dur float64, gen uint64) {
+// recordParityAudio logs a parity audio event. parityGen is the parity
+// generation captured when the sound was SCHEDULED (not now): audio may be
+// recorded after a structural mutation advanced g.parityGen, and stamping the
+// current generation would desync it from its (older-generation) seq decision.
+// See soundReq.parityGen for the full rationale.
+func (g *Game) recordParityAudio(row, abs int, when float64, inst string, vol, pitch, dur float64, gen uint64, parityGen uint64) {
 	if g == nil {
 		return
 	}
@@ -150,7 +193,7 @@ func (g *Game) recordParityAudio(row, abs int, when float64, inst string, vol, p
 		Pitch:      pitch,
 		Dur:        dur,
 		Gen:        gen,
-		ParityGen:  g.parityGen.Load(),
+		ParityGen:  parityGen,
 		RecordedAt: time.Now(),
 	})
 	const parityAudioMax = 1024
@@ -337,6 +380,20 @@ func (g *Game) emitParityFatal(e mismatchEntry) {
 		}
 		return
 	}
+	msg := g.buildParityFatalDump(e)
+	if g.logger != nil {
+		g.logger.Errorf(msg)
+	}
+	if os.Getenv("PARITY_DUMP_STDERR") == "1" {
+		fmt.Fprint(os.Stderr, msg)
+	}
+	panic("scheduler/drumview parity mismatch")
+}
+
+// buildParityFatalDump builds the full debug-context string emitted by
+// emitParityFatal. Extracted so tests can assert on the dump contents
+// without triggering the panic.
+func (g *Game) buildParityFatalDump(e mismatchEntry) string {
 	builder := &strings.Builder{}
 	builder.WriteString("[PARITY] scheduler vs DrumView mismatch\n")
 	fmt.Fprintf(builder, " row=%d abs=%d source=%s kind=%s scheduled=%v slate=%v expected=%v actual=%v nodeType=%v missingInst=%v rowMuted=%v anySolo=%v when=%.6f detail=%s\n",
@@ -382,14 +439,7 @@ func (g *Game) emitParityFatal(e mismatchEntry) {
 		g.highlightMu.RUnlock()
 		fmt.Fprintf(builder, " highlight key=%d present=%v until=%d frame=%d\n", key, hl, until, g.frame)
 	}
-	msg := builder.String()
-	if g.logger != nil {
-		g.logger.Errorf(msg)
-	}
-	if os.Getenv("PARITY_DUMP_STDERR") == "1" {
-		fmt.Fprint(os.Stderr, msg)
-	}
-	panic("scheduler/drumview parity mismatch")
+	return builder.String()
 }
 
 func (g *Game) parityScanSettings() (every, stride int) {

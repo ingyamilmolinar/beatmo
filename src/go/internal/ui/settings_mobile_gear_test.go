@@ -45,7 +45,7 @@ func TestMobileSettingsGearReplacesOverflowEntry(t *testing.T) {
 	if !g.inputDispatcher.Dispatch(cx, cy, true) {
 		t.Fatal("inputDispatcher did not consume the press at the mobile gear rect")
 	}
-	if p := g.drum.tree.Portal(); p == nil || !p.Has(settingsOverlayID) {
+	if p := g.drum.portal(); p == nil || !p.Has(settingsOverlayID) {
 		t.Fatal("mobile gear press did not open the settings overlay")
 	}
 }
@@ -159,7 +159,7 @@ func TestMobileSettingsGearTapOpensOverlayViaUpdate(t *testing.T) {
 	mock.removeTouch(1)
 	advanceFrames(g, 3) // gesture detection + dispatch
 
-	p := g.drum.tree.Portal()
+	p := g.drum.portal()
 	if p == nil || !p.Has(settingsOverlayID) {
 		t.Fatalf("tapping the mobile settings gear at (%d,%d) did not open the settings overlay", cx, cy)
 	}
@@ -207,7 +207,7 @@ func TestMobileSettingsGearMouseClickOpensOverlayViaUpdate(t *testing.T) {
 
 	g.Update()
 
-	if !g.drum.tree.Portal().IsOpen() {
+	if !g.drum.portal().IsOpen() {
 		t.Fatalf("mouse-clicking the mobile settings gear at (%d,%d) did not open the settings overlay", cx, cy)
 	}
 }
@@ -252,7 +252,7 @@ func TestSettingsGearIsPartOfInputDispatcher(t *testing.T) {
 			if !consumed {
 				t.Fatal("inputDispatcher did not consume the press at the gear rect — gear is not registered as a z-ordered InputHandler")
 			}
-			if !g.drum.tree.Portal().Has(settingsOverlayID) {
+			if !g.drum.portal().Has(settingsOverlayID) {
 				t.Fatal("dispatching a press at the gear did not open the settings overlay")
 			}
 		})

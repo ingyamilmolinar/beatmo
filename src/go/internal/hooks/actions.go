@@ -76,6 +76,10 @@ var ActionRegistry = []ActionMeta{
 	{EventEdgeAdded, "add edge", "edge", ScopeDocument, ""},
 	{EventEdgeDeleted, "delete edge", "edge", ScopeDocument, ""},
 
+	{EventGroupCreated, "create group", "group", ScopeDocument, ""},
+	{EventGroupChanged, "edit group", "group", ScopeDocument, ""},
+	{EventGroupDeleted, "delete group", "group", ScopeDocument, ""},
+
 	{EventRowAdded, "add row", "row", ScopeDocument, ""},
 	{EventRowDeleted, "delete row", "row", ScopeDocument, ""},
 	{EventRowInstrumentChange, "change instrument", "row", ScopeDocument, ""},

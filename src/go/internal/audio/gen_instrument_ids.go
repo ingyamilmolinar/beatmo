@@ -40,6 +40,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// The config-first modular instruments (kick family, …) are not literals in
+	// engine_instruments.go — they're rows in modular_instruments.go's table,
+	// added to the engine map via modularTableVoices. Extract their IDs too so
+	// BuiltinInstrumentIDs stays complete. Appended after the literals, matching
+	// the modularTableVoices(instruments) call order in ResetInstruments.
+	tableIDs, err := extractTableIDs("modular_instruments.go")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error extracting modular-instrument table IDs: %v\n", err)
+		os.Exit(1)
+	}
+	ids = append(ids, tableIDs...)
+
 	// Validate: no duplicates.
 	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -70,6 +82,45 @@ func main() {
 	}
 
 	fmt.Printf("generated instrument_ids_gen.go with %d instruments (validated against %d startup demo IDs)\n", len(ids), len(demoIDs))
+}
+
+// tableIDRe matches a `{ID: "instrument-id",` row inside modularInstrumentDefs.
+var tableIDRe = regexp.MustCompile(`^\s*\{ID:\s*"([a-z][a-z0-9-]*)"`)
+
+// extractTableIDs reads modular_instruments.go and returns the instrument IDs
+// from the `modularInstrumentDefs = []ModularInstrumentDef{...}` table, in
+// declaration order. This is the config-first source for those instruments.
+func extractTableIDs(filename string) ([]string, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	var ids []string
+	inTable := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inTable {
+			if strings.Contains(trimmed, "modularInstrumentDefs = []ModularInstrumentDef{") {
+				inTable = true
+			}
+			continue
+		}
+		if trimmed == "}" {
+			break
+		}
+		if m := tableIDRe.FindStringSubmatch(line); m != nil {
+			id := m[1]
+			if !idRe.MatchString(id) {
+				return nil, fmt.Errorf("invalid instrument ID %q", id)
+			}
+			ids = append(ids, id)
+		}
+	}
+	if !inTable {
+		return nil, fmt.Errorf("could not find `modularInstrumentDefs = []ModularInstrumentDef{` in %s", filename)
+	}
+	return ids, nil
 }
 
 // extractMapKeys reads engine_instruments.go and returns the instrument IDs

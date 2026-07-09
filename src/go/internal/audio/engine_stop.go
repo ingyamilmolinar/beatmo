@@ -309,6 +309,99 @@ func (m *mixer) Read(p []byte) (int, error) {
 // cause of desktop audio distortion.
 //
 // Caller must hold m.mu.
+// processTestTone renders a pure 440 Hz sine (TEST_TONE=1), bypassing all synth
+// and processing. Extracted verbatim from processBlock's early-return diagnostic
+// path so the hot 3-phase kernel isn't cluttered by a mode that never runs in
+// production; behaviour is unchanged. Assumes m.workBuf is already allocated
+// (processBlock's lazy-init runs before the guard that calls this).
+func (m *mixer) processTestTone(offset, blockLen int, p []byte) {
+	sr := float64(sampleRate)
+	freq := 440.0
+	amp := 0.2 // -14dB to avoid clipping
+	for i := 0; i < blockLen; i++ {
+		m.workBuf[i] = amp * math.Sin(2*math.Pi*freq*testTonePhase/sr)
+		testTonePhase++
+		if testTonePhase >= sr {
+			testTonePhase -= sr
+		}
+	}
+	// Skip to int16 conversion (no headroom needed for test tone)
+	for i := 0; i < blockLen; i++ {
+		sum := m.workBuf[i]
+		if sum > 1 {
+			sum = 1
+		} else if sum < -1 {
+			sum = -1
+		}
+		v := int16(math.Round(sum * 32767))
+		outIdx := (offset + i) * 2
+		p[outIdx] = byte(v)
+		p[outIdx+1] = byte(v >> 8)
+	}
+	m.pos += blockLen
+	updateDeviceClock(int64(m.pos))
+}
+
+// processRawVoice outputs voice[0]'s raw samples with no mixing/EQ/headroom
+// (TEST_RAW_VOICE=1), to isolate voice-buffer distortion. Extracted verbatim
+// from processBlock's early-return diagnostic path; behaviour is unchanged.
+// Caller guarantees len(m.voices) > 0.
+func (m *mixer) processRawVoice(offset, blockLen int, p []byte) {
+	vs := m.voices[0]
+	startPos := m.pos + offset
+	if startPos >= vs.start {
+		for i := 0; i < blockLen; i++ {
+			val, done := vs.v.Sample()
+			if done {
+				// Voice finished, output silence for rest
+				for j := i; j < blockLen; j++ {
+					outIdx := (offset + j) * 2
+					p[outIdx] = 0
+					p[outIdx+1] = 0
+				}
+				// Remove voice
+				m.voices = m.voices[1:]
+				break
+			}
+			// Scale by 0.2 to match TEST_TONE amplitude (or full amp/no scale)
+			var sum float64
+			if rawVoiceNoScale {
+				// Direct value, no multiplication at all
+				sum = val
+			} else {
+				scale := 0.2
+				if rawVoiceFullAmp {
+					scale = 1.0
+				}
+				sum = val * scale
+			}
+
+			// Debug: log sample values periodically
+			if debugMixer && i == 0 && debugMixerCount%100 == 0 {
+				log.Printf("[RAW_VOICE] val=%.6f sum=%.6f noscale=%v", val, sum, rawVoiceNoScale)
+			}
+			if sum > 1 {
+				sum = 1
+			} else if sum < -1 {
+				sum = -1
+			}
+			v := int16(math.Round(sum * 32767))
+			outIdx := (offset + i) * 2
+			p[outIdx] = byte(v)
+			p[outIdx+1] = byte(v >> 8)
+		}
+	} else {
+		// Voice hasn't started yet, output silence
+		for i := 0; i < blockLen; i++ {
+			outIdx := (offset + i) * 2
+			p[outIdx] = 0
+			p[outIdx+1] = 0
+		}
+	}
+	m.pos += blockLen
+	updateDeviceClock(int64(m.pos))
+}
+
 func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	// Lazily initialize work buffers (needed for tests that create mixer{} directly).
 	// Each buffer is checked individually so older test fixtures that pre-allocate
@@ -332,90 +425,16 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		m.instSlots = make(map[string]int)
 	}
 
-	// TEST_TONE mode: output pure 440Hz sine wave, bypassing all synth
+	// TEST_TONE mode: output pure 440Hz sine wave, bypassing all synth.
 	if testToneMode {
-		sr := float64(sampleRate)
-		freq := 440.0
-		amp := 0.2 // -14dB to avoid clipping
-		for i := 0; i < blockLen; i++ {
-			m.workBuf[i] = amp * math.Sin(2*math.Pi*freq*testTonePhase/sr)
-			testTonePhase++
-			if testTonePhase >= sr {
-				testTonePhase -= sr
-			}
-		}
-		// Skip to int16 conversion (no headroom needed for test tone)
-		for i := 0; i < blockLen; i++ {
-			sum := m.workBuf[i]
-			if sum > 1 {
-				sum = 1
-			} else if sum < -1 {
-				sum = -1
-			}
-			v := int16(math.Round(sum * 32767))
-			outIdx := (offset + i) * 2
-			p[outIdx] = byte(v)
-			p[outIdx+1] = byte(v >> 8)
-		}
-		m.pos += blockLen
+		m.processTestTone(offset, blockLen, p)
 		return
 	}
 
-	// TEST_RAW_VOICE mode: output raw voice samples with no processing
-	// This tests if the voice buffer itself is causing distortion
+	// TEST_RAW_VOICE mode: output raw voice samples with no processing —
+	// isolates whether the voice buffer itself causes distortion.
 	if rawVoiceMode && len(m.voices) > 0 {
-		vs := m.voices[0]
-		startPos := m.pos + offset
-		if startPos >= vs.start {
-			for i := 0; i < blockLen; i++ {
-				val, done := vs.v.Sample()
-				if done {
-					// Voice finished, output silence for rest
-					for j := i; j < blockLen; j++ {
-						outIdx := (offset + j) * 2
-						p[outIdx] = 0
-						p[outIdx+1] = 0
-					}
-					// Remove voice
-					m.voices = m.voices[1:]
-					break
-				}
-				// Scale by 0.2 to match TEST_TONE amplitude (or full amp/no scale)
-				var sum float64
-				if rawVoiceNoScale {
-					// Direct value, no multiplication at all
-					sum = val
-				} else {
-					scale := 0.2
-					if rawVoiceFullAmp {
-						scale = 1.0
-					}
-					sum = val * scale
-				}
-
-				// Debug: log sample values periodically
-				if debugMixer && i == 0 && debugMixerCount%100 == 0 {
-					log.Printf("[RAW_VOICE] val=%.6f sum=%.6f noscale=%v", val, sum, rawVoiceNoScale)
-				}
-				if sum > 1 {
-					sum = 1
-				} else if sum < -1 {
-					sum = -1
-				}
-				v := int16(math.Round(sum * 32767))
-				outIdx := (offset + i) * 2
-				p[outIdx] = byte(v)
-				p[outIdx+1] = byte(v >> 8)
-			}
-		} else {
-			// Voice hasn't started yet, output silence
-			for i := 0; i < blockLen; i++ {
-				outIdx := (offset + i) * 2
-				p[outIdx] = 0
-				p[outIdx+1] = 0
-			}
-		}
-		m.pos += blockLen
+		m.processRawVoice(offset, blockLen, p)
 		return
 	}
 
@@ -443,6 +462,11 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 		if startPos < vs.start {
 			i++
 			continue
+		}
+
+		if !vs.emitted && vs.row >= 0 {
+			publishEmitReport(vs.row, vs.abs, int64(startPos))
+			vs.emitted = true
 		}
 
 		done := m.renderVoiceIntoInstBuf(vs, blockLen)
@@ -646,6 +670,7 @@ func (m *mixer) processBlock(offset, blockLen int, p []byte) {
 	}
 
 	m.pos += blockLen
+	updateDeviceClock(int64(m.pos))
 }
 
 // debugVoiceCount tracks voice sample logging frequency

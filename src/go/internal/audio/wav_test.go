@@ -90,7 +90,7 @@ func TestRegisterWAVPlaysSample(t *testing.T) {
 		postEQBuf: make([]float64, blockSize),
 		instSlots: make(map[string]int),
 	}
-	m.Schedule("testwav", inst.NewVoice(120, sampleRate), 0)
+	m.Schedule("testwav", inst.NewVoice(120, sampleRate), 0, -1, -1)
 	buf := make([]byte, sampleRate/100*2)
 	m.Read(buf)
 	nonZero := false

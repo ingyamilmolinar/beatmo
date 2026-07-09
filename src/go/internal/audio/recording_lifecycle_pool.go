@@ -37,17 +37,40 @@ func lifecyclePool() *async.Pool {
 	return recordingLifecyclePool
 }
 
-// pendingFinalize tracks an outstanding async finalize so callers
-// (tests, CLI bench) can wait deterministically for the recording to
-// be fully flushed (desktop) or the encoder Worker Blob to be handed
+// finalizePending tracks the number of outstanding async finalizes so
+// callers (tests, CLI bench) can wait deterministically for the recording
+// to be fully flushed (desktop) or the encoder Worker Blob to be handed
 // off + EventRecordStop published (WASM) before reading anything.
 //
-// Used internally by WaitRecordingFinalized and on both platforms by
-// the goroutine that runs finalize on the lifecycle pool.
+// It is a mutex-guarded counter + Cond rather than a sync.WaitGroup: a
+// WaitGroup's Add(0→1) is a data race when it runs concurrently with a
+// Wait(), which is exactly what happens when one goroutine starts a new
+// finalize (queueFinalize → Add) while another is already inside
+// WaitRecordingFinalized (Wait). All access below is under finalizeMu.
 var (
 	finalizeMu      sync.Mutex
-	finalizePending sync.WaitGroup
+	finalizeCond    = sync.NewCond(&finalizeMu)
+	finalizePending int
 )
+
+// finalizeBegin records that an async finalize is now in flight. Called
+// before the finalize job is submitted to the lifecycle pool.
+func finalizeBegin() {
+	finalizeMu.Lock()
+	finalizePending++
+	finalizeMu.Unlock()
+}
+
+// finalizeDone records that an in-flight finalize has completed and wakes
+// any WaitRecordingFinalized waiters. Called from the finalize job.
+func finalizeDone() {
+	finalizeMu.Lock()
+	if finalizePending > 0 {
+		finalizePending--
+	}
+	finalizeCond.Broadcast()
+	finalizeMu.Unlock()
+}
 
 // WaitRecordingFinalized blocks until any in-flight async finalize has
 // completed, or until ctx is cancelled. Use from tests / CLI bench /
@@ -58,7 +81,11 @@ var (
 func WaitRecordingFinalized(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
-		finalizePending.Wait()
+		finalizeMu.Lock()
+		for finalizePending > 0 {
+			finalizeCond.Wait()
+		}
+		finalizeMu.Unlock()
 		close(done)
 	}()
 	select {

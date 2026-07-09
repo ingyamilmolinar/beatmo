@@ -13,7 +13,7 @@ const notifHistoryMaxRows = 12
 
 // IsNotifHistoryOpen reports whether the notification-history popup is open.
 func (dv *DrumView) IsNotifHistoryOpen() bool {
-	return dv.tree != nil && dv.tree.Portal().Has("notif-history")
+	return dv.tree != nil && dv.portal().Has("notif-history")
 }
 
 // openNotifHistoryPortal opens the static menu-like notification-history popup
@@ -24,11 +24,11 @@ func (dv *DrumView) openNotifHistoryPortal() {
 		return
 	}
 	if dv.IsNotifHistoryOpen() {
-		dv.tree.Portal().Close("notif-history")
+		dv.portal().Close("notif-history")
 		return
 	}
 	dv.computeNotifHistoryRect()
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID: "notif-history",
 		Overlay: &dvOverlayPortal{
 			id:       "notif-history",

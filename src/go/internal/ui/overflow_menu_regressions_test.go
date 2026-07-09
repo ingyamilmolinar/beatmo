@@ -50,13 +50,13 @@ func newDrumViewForOverflowTest(t *testing.T, bounds image.Rectangle) *DrumView 
 }
 
 // TestOverflowFilePickerRectsMatchUploadImportButtons verifies that
-// registerFilePickerRects() registers the "upload" and "import" native
+// filePickerCandidates() produces the "upload" and "import" native
 // file-picker rects at the actual Upload and Import button positions in the
-// overflow popup. Previously the function used hardcoded indices 0 and 1,
-// which were correct when the overflow menu had only 3 items
-// (Upload/Import/Export). After adding Track/Len+/Len-/EQ before them,
-// Upload moved to index 4 and Import to index 5 — but registerFilePickerRects
-// still used index 0 and 1, pointing to the wrong buttons.
+// overflow popup. Previously the deleted registerFilePickerRects() function
+// used hardcoded indices 0 and 1, which were correct when the overflow menu
+// had only 3 items (Upload/Import/Export). After adding Track/Len+/Len-/EQ
+// before them, Upload moved to index 4 and Import to index 5 — but the old
+// function still used index 0 and 1, pointing to the wrong buttons.
 //
 // Expected: upload rect Y == popupRect.Min.Y + 4*rowH (Upload is item 4)
 // Actual before fix: upload rect Y == popupRect.Min.Y + 0*rowH (Track position)
@@ -70,15 +70,16 @@ func TestOverflowFilePickerRectsMatchUploadImportButtons(t *testing.T) {
 	const W, H = 390, 300
 	dv := newDrumViewForOverflowTest(t, image.Rect(0, 0, W, H))
 
-	// Open the overflow menu so overflowPopupRect() returns a valid rect.
+	// Open the overflow menu (File page) so overflowPopupRect() returns a
+	// valid rect and filePickerCandidates() is unblocked.
 	dv.SetOverflowMenuOpen(true)
+	dv.overflowPage = 0
 
-	// Capture file picker rects registered by registerFilePickerRects().
-	var captured []capturedFilePickerRect
-	testCapturedFilePickerRects = &captured
-	t.Cleanup(func() { testCapturedFilePickerRects = nil })
-
-	dv.registerFilePickerRects()
+	// filePickerCandidates() is the producer that replaced
+	// registerFilePickerRects(); it returns the pre-gating rects directly
+	// instead of side-effecting a JS registry, so we inspect its return
+	// value rather than a captured-call global.
+	captured := dv.filePickerCandidates()
 
 	if len(captured) < 2 {
 		t.Fatalf("expected ≥2 file picker rects (upload + import), got %d", len(captured))
@@ -87,7 +88,7 @@ func TestOverflowFilePickerRectsMatchUploadImportButtons(t *testing.T) {
 	// Find upload and import by ID.
 	idxByID := map[string]int{}
 	for i, c := range captured {
-		idxByID[c.ID] = i
+		idxByID[c.Intent.ID] = i
 	}
 	uploadIdx, hasUpload := idxByID["upload"]
 	importIdx, hasImport := idxByID["import"]
@@ -98,14 +99,14 @@ func TestOverflowFilePickerRectsMatchUploadImportButtons(t *testing.T) {
 		t.Fatal("no file picker rect registered with id='import'")
 	}
 
-	uploadRect := captured[uploadIdx]
-	importRect := captured[importIdx]
+	uploadRect := captured[uploadIdx].Rect
+	importRect := captured[importIdx].Rect
 
 	// Both rects must be non-empty.
-	if uploadRect.W <= 0 || uploadRect.H <= 0 {
+	if uploadRect.Dx() <= 0 || uploadRect.Dy() <= 0 {
 		t.Fatalf("upload rect has non-positive size: %+v", uploadRect)
 	}
-	if importRect.W <= 0 || importRect.H <= 0 {
+	if importRect.Dx() <= 0 || importRect.Dy() <= 0 {
 		t.Fatalf("import rect has non-positive size: %+v", importRect)
 	}
 
@@ -138,17 +139,17 @@ func TestOverflowFilePickerRectsMatchUploadImportButtons(t *testing.T) {
 	expectedImportBandY := popupRect.Min.Y + importItemIdx*rowH
 
 	// upload rect must be inside the Upload item band
-	if uploadRect.Y < expectedUploadBandY || uploadRect.Y >= expectedUploadBandY+rowH {
+	if uploadRect.Min.Y < expectedUploadBandY || uploadRect.Min.Y >= expectedUploadBandY+rowH {
 		t.Errorf("upload file picker rect Y=%d is not in Upload item band [%d, %d) (item index %d)\n"+
-			"  This means registerFilePickerRects uses wrong item index (likely hardcoded 0 instead of %d)",
-			uploadRect.Y, expectedUploadBandY, expectedUploadBandY+rowH, uploadItemIdx, uploadItemIdx)
+			"  This means filePickerCandidates uses wrong item index (likely hardcoded 0 instead of %d)",
+			uploadRect.Min.Y, expectedUploadBandY, expectedUploadBandY+rowH, uploadItemIdx, uploadItemIdx)
 	}
 
 	// import rect must be inside the Import item band
-	if importRect.Y < expectedImportBandY || importRect.Y >= expectedImportBandY+rowH {
+	if importRect.Min.Y < expectedImportBandY || importRect.Min.Y >= expectedImportBandY+rowH {
 		t.Errorf("import file picker rect Y=%d is not in Import item band [%d, %d) (item index %d)\n"+
-			"  This means registerFilePickerRects uses wrong item index (likely hardcoded 1 instead of %d)",
-			importRect.Y, expectedImportBandY, expectedImportBandY+rowH, importItemIdx, importItemIdx)
+			"  This means filePickerCandidates uses wrong item index (likely hardcoded 1 instead of %d)",
+			importRect.Min.Y, expectedImportBandY, expectedImportBandY+rowH, importItemIdx, importItemIdx)
 	}
 }
 

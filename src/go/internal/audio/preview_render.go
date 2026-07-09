@@ -21,7 +21,8 @@ const previewSampleRate = 48000.0
 // osc_type, OR a bespoke "Generator" enum (custom name like kick_wave /
 // snare_wave / fm_wave, group core, Sine/Saw/Square/Triangle). 0 (sine) when the
 // recipe has no shape selector. Index convention matches previewOscShape.
-func previewGeneratorType(recipeID string, p RecipeParams) int {
+// lookup resolves a param by name (value, present).
+func previewGeneratorType(recipeID string, lookup func(string) (float64, bool)) int {
 	// Scan VISIBLE params for the wave-shape selector. Bespoke recipes carry a
 	// HIDDEN osc_type (default sine) from the Phase-8A migration that must be
 	// skipped, or it would mask the real visible generator (kick_wave, fm_wave…).
@@ -32,22 +33,60 @@ func previewGeneratorType(recipeID string, p RecipeParams) int {
 			}
 			if d.Name == "osc_type" || d.Label == "Generator" ||
 				(len(d.Enum) >= 2 && d.Enum[0] == "Sine" && d.Enum[1] == "Saw") {
-				if v, ok := p[d.Name]; ok {
+				if v, ok := lookup(d.Name); ok {
 					return int(v + 0.5)
 				}
 			}
 		}
 	}
-	if v, ok := p["osc_type"]; ok {
+	if v, ok := lookup("osc_type"); ok {
 		return int(v + 0.5)
 	}
 	return 0
+}
+
+// previewParamLookup builds the (get, has, lookup) accessors the preview
+// renderers read params through: `override` (when non-nil) wins over the
+// CACHED read-only merged map. Avoids re-merging the ~1030-entry schema —
+// the preview renderers run per frame while the Synth tab is open, and the
+// per-call MergeRecipeDefaults clone was the bulk of the frame's garbage
+// (see merged_params_cache.go).
+func previewParamLookup(instrumentID string, override map[string]float64) (get func(string, float64) float64, has func(string) bool, lookup func(string) (float64, bool)) {
+	base := MergedInstrumentParamsRO(instrumentID)
+	lookup = func(name string) (float64, bool) {
+		if override != nil {
+			if v, ok := override[name]; ok {
+				return v, true
+			}
+		}
+		v, ok := base[name]
+		return v, ok
+	}
+	get = func(name string, def float64) float64 {
+		if v, ok := lookup(name); ok {
+			return v
+		}
+		return def
+	}
+	has = func(name string) bool {
+		_, ok := lookup(name)
+		return ok
+	}
+	return get, has, lookup
 }
 
 // RenderInstrumentPreview returns float64 mono samples for one note of the
 // instrument's resolved recipe params. durationMs is clamped so the call stays
 // cheap. Safe to call from a worker goroutine (reads param maps only).
 func RenderInstrumentPreview(instrumentID string, durationMs int) []float64 {
+	return RenderInstrumentPreviewWithOverrides(instrumentID, nil, durationMs)
+}
+
+// RenderInstrumentPreviewWithOverrides is RenderInstrumentPreview with an
+// explicit override map layered over the instrument's merged params (override
+// wins). Lets read-only callers (focus-graph ghosts, pipeline thumbnails)
+// render "what if" notes without mutating instrument state.
+func RenderInstrumentPreviewWithOverrides(instrumentID string, override map[string]float64, durationMs int) []float64 {
 	if durationMs <= 0 {
 		durationMs = 200
 	}
@@ -58,19 +97,11 @@ func RenderInstrumentPreview(instrumentID string, durationMs int) []float64 {
 	if recipeID == "" {
 		return nil
 	}
-	p := MergeRecipeDefaults(recipeID, GetInstrumentParams(instrumentID))
-
-	get := func(name string, def float64) float64 {
-		if v, ok := p[name]; ok {
-			return v
-		}
-		return def
-	}
-	has := func(name string) bool { _, ok := p[name]; return ok }
+	get, has, lookup := previewParamLookup(instrumentID, override)
 	// A stage gated by a *_enabled param is active when that param is >= 0.5.
 	// When the param is absent (bespoke recipes), the stage is treated as on.
 	stageOn := func(name string) bool {
-		v, ok := p[name]
+		v, ok := lookup(name)
 		if !ok {
 			return true
 		}
@@ -103,7 +134,7 @@ func RenderInstrumentPreview(instrumentID string, durationMs int) []float64 {
 	baseHz *= math.Pow(2, get("osc_detune", 0)/1200.0)
 	baseHz *= math.Pow(2, get("pitch", 0)/12.0)
 
-	oscType := previewGeneratorType(recipeID, p)
+	oscType := previewGeneratorType(recipeID, lookup)
 
 	// Multi-operator FM: active when fm is enabled (or, for bespoke recipes
 	// without the toggle, when any operator has depth / the algorithm is additive).
@@ -228,27 +259,10 @@ func RenderInstrumentPreviewWave(instrumentID string, override map[string]float6
 	if recipeID == "" {
 		return nil
 	}
-	p := MergeRecipeDefaults(recipeID, GetInstrumentParams(instrumentID))
-	if len(override) > 0 {
-		merged := make(RecipeParams, len(p)+len(override))
-		for k, v := range p {
-			merged[k] = v
-		}
-		for k, v := range override {
-			merged[k] = v
-		}
-		p = merged
-	}
-
-	get := func(name string, def float64) float64 {
-		if v, ok := p[name]; ok {
-			return v
-		}
-		return def
-	}
-	has := func(name string) bool { _, ok := p[name]; return ok }
+	get, _, lookup := previewParamLookup(instrumentID, override)
+	has := func(name string) bool { _, ok := lookup(name); return ok }
 	stageOn := func(name string) bool {
-		v, ok := p[name]
+		v, ok := lookup(name)
 		if !ok {
 			return true
 		}
@@ -259,7 +273,7 @@ func RenderInstrumentPreviewWave(instrumentID string, override map[string]float6
 	if baseHz <= 0 {
 		baseHz = 220
 	}
-	oscType := previewGeneratorType(recipeID, p)
+	oscType := previewGeneratorType(recipeID, lookup)
 
 	fmState := previewFMStateFrom(get)
 	fmActive := (has("fm_enabled") && stageOn("fm_enabled")) || (!has("fm_enabled") && fmState.active())

@@ -22,12 +22,16 @@ type EQCallbacks struct {
 	// drag release or dB text-input commit). DrumView uses it to emit the
 	// EQ-band event + record one undo step (the live audio update stays
 	// per-frame via OnGainChange).
-	OnEQBandCommit   func()
-	OnMuteToggle     func(band int)
-	OnChannelChange  func(channelID string)
-	OnToggleHPF      func()
-	OnToggleLPF      func()
-	OnApplyEQ        func()
+	OnEQBandCommit  func()
+	OnMuteToggle    func(band int)
+	OnChannelChange func(channelID string)
+	OnToggleHPF     func()
+	OnToggleLPF     func()
+	OnApplyEQ       func()
+	// OnOpenValueWheel opens the mobile-style precision wheel popup for a band's
+	// dB gain (desktop + mobile). Wired by DrumView; when nil the dB cell falls
+	// back to the inline numeric editor.
+	OnOpenValueWheel func(band int)
 	AnalyzerSnapshot func(ch string) audio.AnalyzerSnapshot
 	ActiveRows       func() []*DrumRow
 
@@ -334,6 +338,13 @@ func (z *EQPanelZone) initButtons() {
 		}
 	}
 	onTab := func(tab PanelTab) {
+		// The Synth / Sampler editors need a single-instrument context; refuse
+		// to switch into them while the master bus is selected (the pill is
+		// also greyed via SetSynthDisabled/SetSamplerDisabled, but this guards
+		// the raw callback path too).
+		if instrumentTabRequiresInstrument(tab) && z.masterChannelSelected() {
+			return
+		}
 		z.tabState.SetActiveTab(tab)
 		// Phase 0 audio-panel dispatcher: every transition into a tab
 		// that reads the master analyzer (Wave / Spectrum / Levels /
@@ -556,6 +567,10 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			}
 		} else if z.callbacks.DrawWaveform != nil {
 			z.callbacks.DrawWaveform(screen)
+		} else {
+			// No analyzer state and no legacy fallback: still render the
+			// idle axis chrome so the panel never reads as dead.
+			drawAnalyzerWaveform(screen, cr, nil, nil, nil, 1.0, false, false)
 		}
 	case TabSpectrum:
 		cr := z.bodyRect()
@@ -643,7 +658,11 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 			drawLevelsMultiChannel(screen, z.bodyRect(), state, z.levelsLatches, visibleIDs)
 			z.snapshotLevelsIconRow(state, visibleIDs)
 		} else {
-			drawLevelsDetail(screen, z.bodyRect(), nil, nil)
+			// Idle (no analyzer ticks yet — native desktop before the first
+			// play): synthesize a silent state from the live row set so the
+			// tab renders its full strip chrome at -inf, matching the
+			// browser build, instead of a dead border-only rect.
+			drawLevelsMultiChannel(screen, z.bodyRect(), z.idleLevelsState(), z.levelsLatches, nil)
 		}
 	case TabScope:
 		if z.chainZone != nil {
@@ -692,9 +711,10 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 
 	// Sticky bar drawn last so chrome is never occluded by band overlays.
 	if z.stickyBar != nil {
-		// Refresh the Synth-pill disabled state every frame so it tracks the
-		// active instrument even when no relayout happened this frame.
+		// Refresh the Synth/Sampler-pill disabled state every frame so they
+		// track the active channel/instrument even when no relayout happened.
 		z.stickyBar.SetSynthDisabled(z.synthTabDisabled())
+		z.stickyBar.SetSamplerDisabled(z.samplerTabDisabled())
 		z.stickyBar.Draw(screen, activeTab)
 	}
 	// Phase 5: legend popover sits above everything else when the
@@ -953,6 +973,75 @@ func (z *EQPanelZone) SetActiveChannel(id string) {
 	}
 }
 
+// idleLevelsState synthesizes a silent analyzer state from the live row set
+// for the Levels tab's idle rendering (no analyzer service ticks yet).
+// Peaks/RMS are -Inf — the value the real analyzer computes for silence
+// (20*log10(0)) — never the zero value, which would render full-scale
+// meters at 0 dB.
+func (z *EQPanelZone) idleLevelsState() *analyzer.State {
+	neg := math.Inf(-1)
+	st := &analyzer.State{
+		Master: analyzer.ChannelMetrics{ID: "main", PeakDB: neg, RMSDB: neg, TruePeakDB: neg, HeadroomDB: math.Inf(1)},
+	}
+	if z.callbacks.ActiveRows != nil {
+		for _, r := range z.callbacks.ActiveRows() {
+			if r == nil || r.Instrument == "" {
+				continue
+			}
+			st.Instruments = append(st.Instruments, analyzer.InstrumentMetrics{
+				ID:     r.Instrument,
+				Name:   r.Name,
+				PeakDB: neg,
+				RMSDB:  neg,
+			})
+		}
+	}
+	return st
+}
+
+// refreshChannelPillLabel derives the channel pill's label from the live
+// tab + channel + row state each frame, so the pill can never disagree with
+// what the panel content is editing. Two truths it enforces:
+//   - Synth/Sampler under a "main" channel resolve to the first instrument
+//     row (the synthTabActiveInstrument fallback), so the pill shows that
+//     row — never "Master" above per-instrument content.
+//   - Instrument channels display the row NAME (dropdown parity); the
+//     SetActiveChannel path used to leak raw ids ("dnb-kick") into the pill.
+func (z *EQPanelZone) refreshChannelPillLabel() {
+	if z.stickyBar == nil || z.stickyBar.ChannelBtn() == nil {
+		return
+	}
+	id := z.activeChannel
+	if z.tabState != nil {
+		if t := z.tabState.ActiveTab(); (t == TabSynth || t == TabSampler) && (id == "" || id == "main") {
+			// Mirror synthTabActiveInstrument's fallback: first row with an
+			// instrument id.
+			if z.callbacks.ActiveRows != nil {
+				for _, r := range z.callbacks.ActiveRows() {
+					if r != nil && r.Instrument != "" {
+						id = r.Instrument
+						break
+					}
+				}
+			}
+		}
+	}
+	if id == "" || id == "main" {
+		z.stickyBar.ChannelBtn().Text = i18n.T(i18n.KeyMaster)
+		return
+	}
+	label := id
+	if z.callbacks.ActiveRows != nil {
+		for _, r := range z.callbacks.ActiveRows() {
+			if r != nil && r.Instrument == id && r.Name != "" {
+				label = r.Name
+				break
+			}
+		}
+	}
+	z.stickyBar.ChannelBtn().Text = label
+}
+
 // ChannelDropdownOpen returns whether the channel dropdown is open.
 func (z *EQPanelZone) ChannelDropdownOpen() bool {
 	return z.channelOpen
@@ -972,11 +1061,47 @@ func (z *EQPanelZone) OpenChannelDropdown() {
 
 // --- Layout helpers ---
 
-// synthTabDisabled reports whether the Synth tab selector should be greyed out
-// (active instrument is a WAV sample). Defaults to false when no callback is
-// wired (e.g. test-only zones).
+// instrumentTabRequiresInstrument reports whether a tab edits a single
+// instrument's recipe (Synth) or sample (Sampler) and is therefore
+// meaningless on the master bus, which has no single-instrument context.
+func instrumentTabRequiresInstrument(tab PanelTab) bool {
+	return tab == TabSynth || tab == TabSampler
+}
+
+// masterChannelSelected reports whether the audio panel's active channel is
+// the master bus ("main"). The Synth and Sampler tabs are blocked in this
+// state — you edit an instrument's recipe or chop its sample, neither of
+// which applies to the master mix (the inverse rule that hides Master from
+// the channel dropdown while on those tabs lives in buildChannelDropdown).
+func (z *EQPanelZone) masterChannelSelected() bool {
+	return z.ActiveChannel() == audioPanelMasterChannelID
+}
+
+// synthTabDisabled reports whether the Synth tab selector should be greyed out:
+// the active channel is the master bus, or the active instrument is a WAV
+// sample (no synth). Defaults to false when no callback is wired (e.g.
+// test-only zones). Never true while the Synth tab is ACTIVE: the gate stops
+// the user ENTERING under Master, but a programmatic open resolves the
+// Rows[0] fallback and must render its own pill as the active tab, not as a
+// blocked grey pill above live per-instrument content.
 func (z *EQPanelZone) synthTabDisabled() bool {
+	if z.tabState != nil && z.tabState.ActiveTab() == TabSynth {
+		return false
+	}
+	if z.masterChannelSelected() {
+		return true
+	}
 	return z.callbacks.SynthTabDisabled != nil && z.callbacks.SynthTabDisabled()
+}
+
+// samplerTabDisabled reports whether the Sampler tab selector should be greyed
+// out — only when the master bus is selected, and never while the Sampler tab
+// itself is active (same rationale as synthTabDisabled).
+func (z *EQPanelZone) samplerTabDisabled() bool {
+	if z.tabState != nil && z.tabState.ActiveTab() == TabSampler {
+		return false
+	}
+	return z.masterChannelSelected()
 }
 
 func (z *EQPanelZone) layoutButtons() {
@@ -993,6 +1118,11 @@ func (z *EQPanelZone) layoutButtons() {
 		// the Spectrum-only pills (slope / Pre / Reset Hold).
 		z.stickyBar.SetActiveTab(z.tabState.ActiveTab())
 		z.stickyBar.SetSynthDisabled(z.synthTabDisabled())
+		z.stickyBar.SetSamplerDisabled(z.samplerTabDisabled())
+		// Pill label derives from live state every frame — see
+		// refreshChannelPillLabel (the pill must never contradict the
+		// panel content, and it sizes the bar's left cluster in Layout).
+		z.refreshChannelPillLabel()
 		z.stickyBar.Layout(image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+stickyBarHeight()))
 	}
 
@@ -1172,6 +1302,25 @@ func (z *EQPanelZone) openEQDBEditor(band int) {
 	})
 }
 
+// applyBandGainLive writes a band's dB gain to the source of truth (clamped to
+// [-12,+12]) and fires the LIVE callbacks (OnGainChange + OnApplyEQ). It does
+// NOT fire OnEQBandCommit — the commit (emit + undo) is a release-only event,
+// mirroring the curve-drag path. Used by the wheel popup's per-detent OnChange.
+func (z *EQPanelZone) applyBandGainLive(band int, v float64) {
+	if band < 0 || band >= len(z.bandGainsDB) {
+		return
+	}
+	v = clampF64(v, eqDBMin, eqDBMax)
+	z.bandGainsDB[band] = v
+	z.curveDirty = true
+	if z.callbacks.OnGainChange != nil {
+		z.callbacks.OnGainChange(band, v)
+	}
+	if z.callbacks.OnApplyEQ != nil {
+		z.callbacks.OnApplyEQ()
+	}
+}
+
 // eqDBOpenAdapter opens the shared dB editor for a band on press.
 type eqDBOpenAdapter struct {
 	z    *EQPanelZone
@@ -1179,6 +1328,10 @@ type eqDBOpenAdapter struct {
 }
 
 func (a *eqDBOpenAdapter) OnPress(x, y int) InputResult {
+	if a.z.callbacks.OnOpenValueWheel != nil {
+		a.z.callbacks.OnOpenValueWheel(a.band)
+		return InputConsumed
+	}
 	a.z.openEQDBEditor(a.band)
 	return InputConsumed
 }
@@ -1567,20 +1720,26 @@ func (h *curveHandleHitAdapter) OnPress(x, y int) InputResult {
 	}
 
 	// Hit-test band handles (position from the shared eqBandHandlePos so the
-	// hit target matches exactly where the handle is drawn).
-	for i := range eqBandDefs {
-		hx, hy := z.eqBandHandlePos(i)
-		gain := 0.0
-		if i < len(z.bandGainsDB) {
-			gain = z.bandGainsDB[i]
-		}
-		dx := x - hx
-		dy := y - hy
-		if dx*dx+dy*dy <= hitRadius*hitRadius {
-			z.curveDragBand = i
-			z.curveSelectBand(i)
-			z.setDragLabel(fmt.Sprintf("%+.1f dB", gain), hx, hy)
-			return InputCaptured
+	// hit target matches exactly where the handle is drawn). Desktop only:
+	// on mobile the 26px hit radius overlaps the ~39px band pitch, so this
+	// first-match loop grabbed the LOWER-indexed band even when the press
+	// was nearer its neighbor — the nearest-band column grab below owns
+	// band selection on touch instead.
+	if !Profile().IsMobile() {
+		for i := range eqBandDefs {
+			hx, hy := z.eqBandHandlePos(i)
+			gain := 0.0
+			if i < len(z.bandGainsDB) {
+				gain = z.bandGainsDB[i]
+			}
+			dx := x - hx
+			dy := y - hy
+			if dx*dx+dy*dy <= hitRadius*hitRadius {
+				z.curveDragBand = i
+				z.curveSelectBand(i)
+				z.setDragLabel(fmt.Sprintf("%+.1f dB", gain), hx, hy)
+				return InputCaptured
+			}
 		}
 	}
 
@@ -2081,7 +2240,9 @@ func (h *scrollableDropdownHandler) OnRelease(x, y int) {
 func (h *scrollableDropdownHandler) OnWheel(x, y, steps int) InputResult {
 	o := h.overlay
 	scroll := o.zone.channelScroll
-	if scroll.HandleWheel(steps) {
+	// Clicky: one item per notch + cooldown, matching every other menu (see
+	// MenuScroll.HandleWheel / DrumView.tickMenuScrollCooldowns).
+	if scroll.WheelStep(steps, controlGridScrollCooldownFrames) {
 		o.rebuildVisibleButtons()
 		o.updatePortalHitAreas()
 		return InputConsumed

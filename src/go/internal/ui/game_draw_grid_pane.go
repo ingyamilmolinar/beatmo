@@ -290,6 +290,25 @@ func (g *Game) drawNodeSelectionHalo(dst *ebiten.Image, sx1, sy1, sx2, sy2 float
 	drawRect(dst, image.Rect(inX1, inY0, outX1, inY1), halo, true)
 }
 
+// drawNodeGroupRing draws a square outline ring around a node's screen-space
+// rect, grown outward past the node body by ringGrow px — one radius step
+// larger than the selection ring (see drawNodeSelectionHalo's inner box)
+// so a node that is both selected and a group member shows both rings
+// without overlap. ringGrow also lets multiple concurrent group-membership
+// rings nest concentrically (see groupRingBaseGrow/groupRingStepGrow,
+// game_group_badges.go) — the Nth ring on a multi-group node passes a larger
+// ringGrow than the (N-1)th. Reuses the exact DrawLineCam primitive the
+// selection ring uses; only the color and offset differ.
+func (g *Game) drawNodeGroupRing(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64, ringCol color.Color, ringGrow int) {
+	x1, y1 := sx1-float64(ringGrow), sy1-float64(ringGrow)
+	x2, y2 := sx2+float64(ringGrow), sy2+float64(ringGrow)
+	var idm ebiten.GeoM
+	DrawLineCam(dst, x1, y1, x2, y1, &idm, ringCol, float64(genGeomHighlightBorderThickness))
+	DrawLineCam(dst, x2, y1, x2, y2, &idm, ringCol, float64(genGeomHighlightBorderThickness))
+	DrawLineCam(dst, x2, y2, x1, y2, &idm, ringCol, float64(genGeomHighlightBorderThickness))
+	DrawLineCam(dst, x1, y2, x1, y1, &idm, ringCol, float64(genGeomHighlightBorderThickness))
+}
+
 // computeNodeGraphSig returns a hash of node positions, types, start flags,
 // and row colors. Used to invalidate the static node layer cache.
 func (g *Game) computeNodeGraphSig() uint64 {

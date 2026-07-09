@@ -57,12 +57,13 @@ func waveEdgeAmplitude(gain float64) float64 {
 	return 1.0 / gain
 }
 
-// waveGainBadgeText formats the corner Y-scale badge. "AUTO x4.2" when auto is
-// engaged, "x2.0" when manually zoomed. The "x" is a plain letter (not the
-// forbidden multiplication glyph).
+// waveGainBadgeText formats the corner Y-scale badge. "AG x4.2" when auto-
+// gain is engaged, "x2.0" when manually zoomed. "AG" is the one label for
+// the auto-gain concept everywhere (Chain pill, Wave pill + badge); the "x"
+// is a plain letter (not the forbidden multiplication glyph).
 func waveGainBadgeText(gain float64, autoOn bool) string {
 	if autoOn {
-		return fmt.Sprintf("AUTO x%.1f", gain)
+		return fmt.Sprintf("AG x%.1f", gain)
 	}
 	return fmt.Sprintf("x%.1f", gain)
 }

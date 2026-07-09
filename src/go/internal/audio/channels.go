@@ -539,6 +539,7 @@ func (cm *channelManager) reset() {
 	cm.channels = make(map[string]*Channel)
 	cm.instruments = make(map[string]*Channel)
 	cm.main = newChannel(mainChannelID, nil)
+	cm.main.SetVolume(0.5) // fresh-session master default (see loudness-normalization plan)
 	cm.channels[mainChannelID] = cm.main
 }
 

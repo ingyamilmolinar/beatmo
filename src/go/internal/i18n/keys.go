@@ -100,103 +100,189 @@ const (
 	KeyLegendSampler  Key = "legend.sampler"
 
 	// PlainEnglish knob/label glosses (kid-readable subtitles)
-	KeyGlossVoice       Key = "gloss.voice"
-	KeyGlossOsc         Key = "gloss.osc"
-	KeyGlossPitch       Key = "gloss.pitch"
-	KeyGlossWaveform    Key = "gloss.waveform"
-	KeyGlossGenerator   Key = "gloss.generator"
-	KeyGlossTune        Key = "gloss.tune"
-	KeyGlossGlide       Key = "gloss.glide"
-	KeyGlossBend        Key = "gloss.bend"
-	KeyGlossDetune      Key = "gloss.detune"
-	KeyGlossEnvelope    Key = "gloss.envelope"
-	KeyGlossAttack      Key = "gloss.attack"
-	KeyGlossDecay       Key = "gloss.decay"
-	KeyGlossSustain     Key = "gloss.sustain"
-	KeyGlossRelease     Key = "gloss.release"
-	KeyGlossTone        Key = "gloss.tone"
-	KeyGlossCutoff      Key = "gloss.cutoff"
-	KeyGlossFilter      Key = "gloss.filter"
-	KeyGlossReso        Key = "gloss.reso"
-	KeyGlossResonance   Key = "gloss.resonance"
-	KeyGlossBody        Key = "gloss.body"
-	KeyGlossBasePitch   Key = "gloss.base_pitch"
-	KeyGlossPitchSweep  Key = "gloss.pitch_sweep"
-	KeyGlossSweepTime   Key = "gloss.sweep_time"
-	KeyGlossOpRatio     Key = "gloss.op_ratio"
-	KeyGlossOpFMDepth   Key = "gloss.op_fm_depth"
-	KeyGlossOpDecay     Key = "gloss.op_decay"
-	KeyGlossFundamental Key = "gloss.fundamental"
-	KeyGlossSweepSpeed  Key = "gloss.sweep_speed"
-	KeyGlossBoomDecay   Key = "gloss.boom_decay"
-	KeyGlossBodyDecay   Key = "gloss.body_decay"
-	KeyGloss2ndHarmonic Key = "gloss.2nd_harmonic"
-	KeyGloss3rdHarmonic Key = "gloss.3rd_harmonic"
-	KeyGloss4thHarmonic Key = "gloss.4th_harmonic"
-	KeyGlossClick       Key = "gloss.click"
-	KeyGlossThud        Key = "gloss.thud"
-	KeyGlossRingDecay   Key = "gloss.ring_decay"
-	KeyGlossOvertone1   Key = "gloss.overtone1"
-	KeyGlossOvertone2   Key = "gloss.overtone2"
-	KeyGlossStick       Key = "gloss.stick"
-	KeyGlossRoom        Key = "gloss.room"
-	KeyGlossTone2       Key = "gloss.tone2"
-	KeyGlossNoiseTune   Key = "gloss.noise_tune"
-	KeyGlossToneDecay   Key = "gloss.tone_decay"
-	KeyGlossNoiseDecay  Key = "gloss.noise_decay"
-	KeyGlossTailDecay   Key = "gloss.tail_decay"
-	KeyGlossToneLevel   Key = "gloss.tone_level"
-	KeyGlossNoiseLevel  Key = "gloss.noise_level"
-	KeyGlossWires       Key = "gloss.wires"
-	KeyGlossSnap        Key = "gloss.snap"
-	KeyGlossMetalTune   Key = "gloss.metal_tune"
-	KeyGlossAttackDecay Key = "gloss.attack_decay"
-	KeyGlossMetalLevel  Key = "gloss.metal_level"
-	KeyGlossSizzleLevel Key = "gloss.sizzle_level"
-	KeyGlossSizzleDecay Key = "gloss.sizzle_decay"
-	KeyGlossPluck       Key = "gloss.pluck"
-	KeyGlossPick        Key = "gloss.pick"
-	KeyGlossFade        Key = "gloss.fade"
-	KeyGlossOvertone    Key = "gloss.overtone"
-	KeyGlossPitchPunch  Key = "gloss.pitch_punch"
-	KeyGlossPunch       Key = "gloss.punch"
-	KeyGlossDrive       Key = "gloss.drive"
-	KeyGlossGain        Key = "gloss.gain"
-	KeyGlossSaturation  Key = "gloss.saturation"
-	KeyGlossSat         Key = "gloss.sat"
-	KeyGlossDistortion  Key = "gloss.distortion"
-	KeyGlossSlope       Key = "gloss.slope"
-	KeyGlossSlopes      Key = "gloss.slopes"
-	KeyGlossPre         Key = "gloss.pre"
-	KeyGlossPost        Key = "gloss.post"
-	KeyGlossPeak        Key = "gloss.peak"
-	KeyGlossRMS         Key = "gloss.rms"
-	KeyGlossClip        Key = "gloss.clip"
-	KeyGlossClips       Key = "gloss.clips"
-	KeyGlossHeadroom    Key = "gloss.headroom"
-	KeyGlossLUFS        Key = "gloss.lufs"
-	KeyGlossK20         Key = "gloss.k20"
-	KeyGlossOverlay     Key = "gloss.overlay"
-	KeyGlossSplit       Key = "gloss.split"
-	KeyGlossDiff        Key = "gloss.diff"
-	KeyGlossOvr         Key = "gloss.ovr"
-	KeyGlossSpl         Key = "gloss.spl"
-	KeyGlossDif         Key = "gloss.dif"
-	KeyGlossAG          Key = "gloss.ag"
-	KeyGlossAutoGain    Key = "gloss.auto_gain"
-	KeyGlossOut         Key = "gloss.out"
-	KeyGlossDelay       Key = "gloss.delay"
-	KeyGlossReverb      Key = "gloss.reverb"
-	KeyGlossSend        Key = "gloss.send"
-	KeyGlossPlay        Key = "gloss.play"
-	KeyGlossStop        Key = "gloss.stop"
-	KeyGlossPause       Key = "gloss.pause"
+	KeyGlossVoice         Key = "gloss.voice"
+	KeyGlossOsc           Key = "gloss.osc"
+	KeyGlossPitch         Key = "gloss.pitch"
+	KeyGlossWaveform      Key = "gloss.waveform"
+	KeyGlossGenerator     Key = "gloss.generator"
+	KeyGlossTune          Key = "gloss.tune"
+	KeyGlossGlide         Key = "gloss.glide"
+	KeyGlossBend          Key = "gloss.bend"
+	KeyGlossDetune        Key = "gloss.detune"
+	KeyGlossEnvelope      Key = "gloss.envelope"
+	KeyGlossAttack        Key = "gloss.attack"
+	KeyGlossDecay         Key = "gloss.decay"
+	KeyGlossSustain       Key = "gloss.sustain"
+	KeyGlossRelease       Key = "gloss.release"
+	KeyGlossTone          Key = "gloss.tone"
+	KeyGlossCutoff        Key = "gloss.cutoff"
+	KeyGlossFilter        Key = "gloss.filter"
+	KeyGlossReso          Key = "gloss.reso"
+	KeyGlossResonance     Key = "gloss.resonance"
+	KeyGlossBody          Key = "gloss.body"
+	KeyGlossBasePitch     Key = "gloss.base_pitch"
+	KeyGlossPitchSweep    Key = "gloss.pitch_sweep"
+	KeyGlossSweepTime     Key = "gloss.sweep_time"
+	KeyGlossOpRatio       Key = "gloss.op_ratio"
+	KeyGlossOpFMDepth     Key = "gloss.op_fm_depth"
+	KeyGlossOpDecay       Key = "gloss.op_decay"
+	KeyGlossFundamental   Key = "gloss.fundamental"
+	KeyGlossSweepSpeed    Key = "gloss.sweep_speed"
+	KeyGlossBoomDecay     Key = "gloss.boom_decay"
+	KeyGlossBodyDecay     Key = "gloss.body_decay"
+	KeyGloss2ndHarmonic   Key = "gloss.2nd_harmonic"
+	KeyGloss3rdHarmonic   Key = "gloss.3rd_harmonic"
+	KeyGloss4thHarmonic   Key = "gloss.4th_harmonic"
+	KeyGlossClick         Key = "gloss.click"
+	KeyGlossThud          Key = "gloss.thud"
+	KeyGlossRingDecay     Key = "gloss.ring_decay"
+	KeyGlossOvertone1     Key = "gloss.overtone1"
+	KeyGlossOvertone2     Key = "gloss.overtone2"
+	KeyGlossStick         Key = "gloss.stick"
+	KeyGlossRoom          Key = "gloss.room"
+	KeyGlossTone2         Key = "gloss.tone2"
+	KeyGlossNoiseTune     Key = "gloss.noise_tune"
+	KeyGlossToneDecay     Key = "gloss.tone_decay"
+	KeyGlossNoiseDecay    Key = "gloss.noise_decay"
+	KeyGlossTailDecay     Key = "gloss.tail_decay"
+	KeyGlossToneLevel     Key = "gloss.tone_level"
+	KeyGlossNoiseLevel    Key = "gloss.noise_level"
+	KeyGlossWires         Key = "gloss.wires"
+	KeyGlossSnap          Key = "gloss.snap"
+	KeyGlossMetalTune     Key = "gloss.metal_tune"
+	KeyGlossAttackDecay   Key = "gloss.attack_decay"
+	KeyGlossMetalLevel    Key = "gloss.metal_level"
+	KeyGlossSizzleLevel   Key = "gloss.sizzle_level"
+	KeyGlossSizzleDecay   Key = "gloss.sizzle_decay"
+	KeyGlossPluck         Key = "gloss.pluck"
+	KeyGlossPick          Key = "gloss.pick"
+	KeyGlossFade          Key = "gloss.fade"
+	KeyGlossOvertone      Key = "gloss.overtone"
+	KeyGlossPitchPunch    Key = "gloss.pitch_punch"
+	KeyGlossPunch         Key = "gloss.punch"
+	KeyGlossDrive         Key = "gloss.drive"
+	KeyGlossGain          Key = "gloss.gain"
+	KeyGlossSaturation    Key = "gloss.saturation"
+	KeyGlossSat           Key = "gloss.sat"
+	KeyGlossDistortion    Key = "gloss.distortion"
+	KeyGlossSlope         Key = "gloss.slope"
+	KeyGlossSlopes        Key = "gloss.slopes"
+	KeyGlossPre           Key = "gloss.pre"
+	KeyGlossPost          Key = "gloss.post"
+	KeyGlossPeak          Key = "gloss.peak"
+	KeyGlossRMS           Key = "gloss.rms"
+	KeyGlossClip          Key = "gloss.clip"
+	KeyGlossClips         Key = "gloss.clips"
+	KeyGlossHeadroom      Key = "gloss.headroom"
+	KeyGlossLUFS          Key = "gloss.lufs"
+	KeyGlossK20           Key = "gloss.k20"
+	KeyGlossOverlay       Key = "gloss.overlay"
+	KeyGlossSplit         Key = "gloss.split"
+	KeyGlossDiff          Key = "gloss.diff"
+	KeyGlossOvr           Key = "gloss.ovr"
+	KeyGlossSpl           Key = "gloss.spl"
+	KeyGlossDif           Key = "gloss.dif"
+	KeyGlossAG            Key = "gloss.ag"
+	KeyGlossAutoGain      Key = "gloss.auto_gain"
+	KeyGlossOut           Key = "gloss.out"
+	KeyGlossDelay         Key = "gloss.delay"
+	KeyGlossReverb        Key = "gloss.reverb"
+	KeyGlossSend          Key = "gloss.send"
+	KeyGlossPlay          Key = "gloss.play"
+	KeyGlossStop          Key = "gloss.stop"
+	KeyGlossPause         Key = "gloss.pause"
+	KeySynthAdvanced      Key = "synth.advanced"
+	KeyGlossSaxBlow       Key = "gloss.sax_blow"
+	KeyGlossSaxReed       Key = "gloss.sax_reed"
+	KeyGlossSaxReedStiff  Key = "gloss.sax_reed_stiff"
+	KeyGlossSaxBell       Key = "gloss.sax_bell"
+	KeyGlossSaxBreath     Key = "gloss.sax_breath"
+	KeyGlossSaxBright     Key = "gloss.sax_bright"
+	KeyGlossBowPos        Key = "gloss.bow_pos"
+	KeyGlossBowPress      Key = "gloss.bow_press"
+	KeyGlossBowSpeed      Key = "gloss.bow_speed"
+	KeyGlossBowBright     Key = "gloss.bow_bright"
+	KeyGlossOscillator    Key = "gloss.oscillator"
+	KeyGlossOctave        Key = "gloss.octave"
+	KeyGlossAlgorithm     Key = "gloss.algorithm"
+	KeyGlossOp1Ratio      Key = "gloss.op1_ratio"
+	KeyGlossOp2Ratio      Key = "gloss.op2_ratio"
+	KeyGlossOp3Ratio      Key = "gloss.op3_ratio"
+	KeyGlossOp4Ratio      Key = "gloss.op4_ratio"
+	KeyGlossOp1Depth      Key = "gloss.op1_depth"
+	KeyGlossOp2Depth      Key = "gloss.op2_depth"
+	KeyGlossOp3Depth      Key = "gloss.op3_depth"
+	KeyGlossOp4Depth      Key = "gloss.op4_depth"
+	KeyGlossOp1Level      Key = "gloss.op1_level"
+	KeyGlossOp2Level      Key = "gloss.op2_level"
+	KeyGlossOp3Level      Key = "gloss.op3_level"
+	KeyGlossOp4Level      Key = "gloss.op4_level"
+	KeyGlossCurve         Key = "gloss.curve"
+	KeyGlossFilterEnv     Key = "gloss.filter_env"
+	KeyGlossEnvAmount     Key = "gloss.env_amount"
+	KeyGlossEnvRise       Key = "gloss.env_rise"
+	KeyGlossEnvDecay      Key = "gloss.env_decay"
+	KeyGlossLfo           Key = "gloss.lfo"
+	KeyGlossRate          Key = "gloss.rate"
+	KeyGlossDepth         Key = "gloss.depth"
+	KeyGlossLfoTarget     Key = "gloss.lfo_target"
+	KeyGlossVibratoDelay  Key = "gloss.vibrato_delay"
+	KeyGlossPitchEnv      Key = "gloss.pitch_env"
+	KeyGlossSweep         Key = "gloss.sweep"
+	KeyGlossBurst         Key = "gloss.burst"
+	KeyGlossSharpness     Key = "gloss.sharpness"
+	KeyGlossHit1Time      Key = "gloss.hit1_time"
+	KeyGlossHit2Time      Key = "gloss.hit2_time"
+	KeyGlossHit3Time      Key = "gloss.hit3_time"
+	KeyGlossHit4Time      Key = "gloss.hit4_time"
+	KeyGlossHit1Level     Key = "gloss.hit1_level"
+	KeyGlossHit2Level     Key = "gloss.hit2_level"
+	KeyGlossHit3Level     Key = "gloss.hit3_level"
+	KeyGlossHit4Level     Key = "gloss.hit4_level"
+	KeyGlossVoices        Key = "gloss.voices"
+	KeyGlossMix           Key = "gloss.mix"
+	KeyGlossVoiceDrift    Key = "gloss.voice_drift"
+	KeyGlossDriftDepth    Key = "gloss.drift_depth"
+	KeyGlossKick          Key = "gloss.kick"
+	KeyGlossVariant       Key = "gloss.variant"
+	KeyGlossHarmonicDecay Key = "gloss.harmonic_decay"
+	KeyGlossDropSpeed     Key = "gloss.drop_speed"
+	KeyGlossPitchDrop     Key = "gloss.pitch_drop"
+	KeyGlossModeSplit     Key = "gloss.mode_split"
+	KeyGlossModeBody      Key = "gloss.mode_body"
+	KeyGlossModeRing      Key = "gloss.mode_ring"
+	KeyGlossTail          Key = "gloss.tail"
+	KeyGlossFm            Key = "gloss.fm"
+	KeyGlossEnv           Key = "gloss.env"
+	KeyGlossDull          Key = "gloss.dull"
+	KeyGlossBright        Key = "gloss.bright"
+	// Phase-15 voice/choir knob glosses (Task 8): FORMANT + ENSEMBLE + RESONATOR.
+	KeyGlossFormant      Key = "gloss.formant"
+	KeyGlossVowel        Key = "gloss.vowel"
+	KeyGlossVoiceType    Key = "gloss.voice_type"
+	KeyGlossBreath       Key = "gloss.breath"
+	KeyGlossShine        Key = "gloss.shine"
+	KeyGlossHeadSize     Key = "gloss.head_size"
+	KeyGlossMorphSpeed   Key = "gloss.morph_speed"
+	KeyGlossMorphTo      Key = "gloss.morph_to"
+	KeyGlossScatter      Key = "gloss.scatter"
+	KeyGlossVibratoRate  Key = "gloss.vibrato_rate"
+	KeyGlossVibratoDepth Key = "gloss.vibrato_depth"
+	KeyGlossHumanize     Key = "gloss.humanize"
+	KeyGlossBodyModel    Key = "gloss.body_model"
+	KeyGlossBodyMix      Key = "gloss.body_mix"
+	KeyGlossBowDynamics  Key = "gloss.bow_dynamics"
+	// Phase-16 voice-realism knob glosses: ens_jitter (Roughness) + formant_dry
+	// (Dry Blend).
+	KeyGlossRoughness Key = "gloss.roughness"
+	KeyGlossDryBlend  Key = "gloss.dry_blend"
 
 	// Caption labels (drawn each frame near controls / overlays)
 	KeyCapMove         Key = "cap.move"
 	KeyCapMoveNode     Key = "cap.move_node"
 	KeyCapConnect      Key = "cap.connect"
 	KeyCapYourSound    Key = "cap.your_sound"
+	KeyCapUpClose      Key = "cap.up_close"
 	KeyCapVol          Key = "cap.vol"
 	KeyCapPitch        Key = "cap.pitch"
 	KeyCapPct          Key = "cap.pct"
@@ -207,6 +293,10 @@ const (
 	KeyCapFrozen       Key = "cap.frozen"
 	KeyCapBypassed     Key = "cap.bypassed"
 	KeyCapSamplerTitle Key = "cap.sampler_title"
+	KeyCapStageOff     Key = "cap.stage_off"
+	KeyCapStarts       Key = "cap.starts"
+	KeyCapFades        Key = "cap.fades"
+	KeyCapBeforeAfter  Key = "cap.before_after"
 
 	// Final i18n cleanup pass — remaining user-facing chrome words.
 	KeyMaster          Key = "mix.master"
@@ -216,6 +306,7 @@ const (
 	KeyNoRowSelected   Key = "synth.no_row"
 	KeyAuto            Key = "btn.auto"
 	KeyPre             Key = "btn.pre"
+	KeyAnalyzerIdle    Key = "analyzer.idle_hint"
 
 	// Node sidebar (click-a-node menu) — titles, section headers, logic/groove
 	// dropdown labels, and collapsed short/summary labels.
@@ -307,36 +398,51 @@ const (
 	KeyActionToggleEQFilter    Key = "action.toggle_eq_filter"
 	KeyActionRenameInstrument  Key = "action.rename_instrument"
 	KeyActionEditSample        Key = "action.edit_sample"
+	KeyActionCreateGroup       Key = "action.create_group"
+	KeyActionEditGroup         Key = "action.edit_group"
+	KeyActionDeleteGroup       Key = "action.delete_group"
 
 	// Synth-tab pipeline stage chip labels (VOICE · OSC · FM · PITCH · LFO ·
 	// BURST · ENVELOPE · FILTER · POST, plus the TONE stage). These are the
 	// localized DISPLAY labels; the canonical English label backing hit-area
 	// tags + the selectSynthSection JS lookup stays in internal/ui.
-	KeySynthStageVoice    Key = "synth.stage.voice"
-	KeySynthStageOsc      Key = "synth.stage.osc"
-	KeySynthStageFM       Key = "synth.stage.fm"
-	KeySynthStagePitch    Key = "synth.stage.pitch"
-	KeySynthStageLFO      Key = "synth.stage.lfo"
-	KeySynthStageBurst    Key = "synth.stage.burst"
-	KeySynthStageEnvelope Key = "synth.stage.envelope"
+	KeySynthStageVoice     Key = "synth.stage.voice"
+	KeySynthStageOsc       Key = "synth.stage.osc"
+	KeySynthStageFM        Key = "synth.stage.fm"
+	KeySynthStagePitch     Key = "synth.stage.pitch"
+	KeySynthStageLFO       Key = "synth.stage.lfo"
+	KeySynthStageBurst     Key = "synth.stage.burst"
+	KeySynthStageEnvelope  Key = "synth.stage.envelope"
 	KeySynthStageFilter    Key = "synth.stage.filter"
 	KeySynthStageFilterEnv Key = "synth.stage.filterenv"
 	KeySynthStagePost      Key = "synth.stage.post"
 	KeySynthStageTone      Key = "synth.stage.tone"
+	// Phase-15 voice/choir stages (Task 8).
+	KeySynthStageEnsemble  Key = "synth.stage.ensemble"
+	KeySynthStageFormant   Key = "synth.stage.formant"
+	KeySynthStageResonator Key = "synth.stage.resonator"
+	// Designed short chip labels for the stages whose full names overflow a
+	// narrow pipeline chip — a fitted fallback, never a mid-word ellipsis.
+	KeySynthStageEnvelopeShort  Key = "synth.stage.envelope.short"
+	KeySynthStageFilterEnvShort Key = "synth.stage.filterenv.short"
 
 	// Synth-tab stage subtitles — the kid-friendly "what makes this sound"
 	// descriptions rendered under each stage's jargon title.
-	KeySynthStageVoiceSub    Key = "synth.stage.voice.sub"
-	KeySynthStageOscSub      Key = "synth.stage.osc.sub"
-	KeySynthStageFMSub       Key = "synth.stage.fm.sub"
-	KeySynthStagePitchSub    Key = "synth.stage.pitch.sub"
-	KeySynthStageLFOSub      Key = "synth.stage.lfo.sub"
-	KeySynthStageBurstSub    Key = "synth.stage.burst.sub"
-	KeySynthStageEnvelopeSub Key = "synth.stage.envelope.sub"
+	KeySynthStageVoiceSub     Key = "synth.stage.voice.sub"
+	KeySynthStageOscSub       Key = "synth.stage.osc.sub"
+	KeySynthStageFMSub        Key = "synth.stage.fm.sub"
+	KeySynthStagePitchSub     Key = "synth.stage.pitch.sub"
+	KeySynthStageLFOSub       Key = "synth.stage.lfo.sub"
+	KeySynthStageBurstSub     Key = "synth.stage.burst.sub"
+	KeySynthStageEnvelopeSub  Key = "synth.stage.envelope.sub"
 	KeySynthStageFilterSub    Key = "synth.stage.filter.sub"
 	KeySynthStageFilterEnvSub Key = "synth.stage.filterenv.sub"
 	KeySynthStagePostSub      Key = "synth.stage.post.sub"
-	KeySynthStageToneSub     Key = "synth.stage.tone.sub"
+	KeySynthStageToneSub      Key = "synth.stage.tone.sub"
+	// Phase-15 voice/choir stage subtitles (Task 8).
+	KeySynthStageEnsembleSub  Key = "synth.stage.ensemble.sub"
+	KeySynthStageFormantSub   Key = "synth.stage.formant.sub"
+	KeySynthStageResonatorSub Key = "synth.stage.resonator.sub"
 
 	// Synth-tab KNOB labels — the curated knob captions (one key per distinct
 	// caption value; several param ids share a key, e.g. every "Wave" knob). The
@@ -460,6 +566,29 @@ const (
 	KeyLevelsTipClips        Key = "levels.tip.clips"
 	KeyLevelsTipLoudest      Key = "levels.tip.loudest"
 	KeyLevelsTipLoudestNone  Key = "levels.tip.loudest_none"
+
+	// GroupMenu (anchored panel editing a node group) — title, rule section
+	// label, and the three rule-editable params.
+	KeyGroupMenuTitle Key = "group.menu.title"
+	KeyGroupMembers   Key = "group.menu.members"
+	KeyGroupRule      Key = "group.menu.rule"
+	KeyGroupRuleOn    Key = "group.menu.rule.on"
+	KeyGroupRuleOff   Key = "group.menu.rule.off"
+	KeyGroupEveryN    Key = "group.menu.everyn"
+	// KeyGroupEveryNShort is a compact form of KeyGroupEveryN ("Every %d")
+	// for the combined delta/everyN half-row pill, which is too narrow for
+	// the full "Every %d rounds" sentence (see the Every-N row layout fix in
+	// game_group_menu.go).
+	KeyGroupEveryNShort   Key = "group.menu.everyn_short"
+	KeyGroupDelete        Key = "group.menu.delete"
+	KeyGroupSave          Key = "group.menu.save"
+	KeyGroupParamPitch    Key = "group.menu.param.pitch"
+	KeyGroupParamVolume   Key = "group.menu.param.volume"
+	KeyGroupParamDuration Key = "group.menu.param.duration"
+	// KeyGroupAddTo labels the node-sidebar row that opens a dropdown of
+	// groups the selected node is NOT yet a member of (see
+	// game_node_sidebar.go's "grpadd" row / groupAddDropdownOpen).
+	KeyGroupAddTo Key = "group.menu.add_to"
 )
 
 // AllKeys lists every declared Key. The completeness test asserts this set is
@@ -505,11 +634,21 @@ func AllKeys() []Key {
 		KeyGlossAG, KeyGlossAutoGain,
 		KeyGlossOut, KeyGlossDelay, KeyGlossReverb, KeyGlossSend,
 		KeyGlossPlay, KeyGlossStop, KeyGlossPause,
-		KeyCapMove, KeyCapMoveNode, KeyCapConnect, KeyCapYourSound,
+		KeySynthAdvanced,
+		KeyGlossSaxBlow, KeyGlossSaxReed, KeyGlossSaxReedStiff, KeyGlossSaxBell, KeyGlossSaxBreath, KeyGlossSaxBright, KeyGlossBowPos, KeyGlossBowPress, KeyGlossBowSpeed, KeyGlossBowBright,
+		KeyGlossOscillator, KeyGlossOctave, KeyGlossAlgorithm, KeyGlossOp1Ratio, KeyGlossOp2Ratio, KeyGlossOp3Ratio, KeyGlossOp4Ratio, KeyGlossOp1Depth, KeyGlossOp2Depth, KeyGlossOp3Depth, KeyGlossOp4Depth, KeyGlossOp1Level, KeyGlossOp2Level, KeyGlossOp3Level, KeyGlossOp4Level, KeyGlossCurve, KeyGlossFilterEnv, KeyGlossEnvAmount, KeyGlossEnvRise, KeyGlossEnvDecay, KeyGlossLfo, KeyGlossRate, KeyGlossDepth, KeyGlossLfoTarget, KeyGlossVibratoDelay, KeyGlossPitchEnv, KeyGlossSweep, KeyGlossBurst, KeyGlossSharpness, KeyGlossHit1Time, KeyGlossHit2Time, KeyGlossHit3Time, KeyGlossHit4Time, KeyGlossHit1Level, KeyGlossHit2Level, KeyGlossHit3Level, KeyGlossHit4Level, KeyGlossVoices, KeyGlossMix, KeyGlossVoiceDrift, KeyGlossDriftDepth, KeyGlossKick, KeyGlossVariant, KeyGlossHarmonicDecay, KeyGlossDropSpeed, KeyGlossPitchDrop, KeyGlossModeSplit, KeyGlossModeBody, KeyGlossModeRing, KeyGlossTail, KeyGlossFm, KeyGlossEnv,
+		KeyGlossDull, KeyGlossBright,
+		KeyGlossFormant,
+		KeyGlossVowel, KeyGlossVoiceType, KeyGlossBreath, KeyGlossShine, KeyGlossHeadSize,
+		KeyGlossMorphSpeed, KeyGlossMorphTo, KeyGlossScatter, KeyGlossVibratoRate,
+		KeyGlossVibratoDepth, KeyGlossHumanize, KeyGlossBodyModel, KeyGlossBodyMix, KeyGlossBowDynamics,
+		KeyGlossRoughness, KeyGlossDryBlend,
+		KeyCapMove, KeyCapMoveNode, KeyCapConnect, KeyCapYourSound, KeyCapUpClose,
 		KeyCapVol, KeyCapPitch, KeyCapPct, KeyCapDur, KeyCapSearch,
 		KeyCapHeadroom, KeyCapLoudest, KeyCapFrozen, KeyCapBypassed, KeyCapSamplerTitle,
+		KeyCapStageOff, KeyCapStarts, KeyCapFades, KeyCapBeforeAfter,
 		KeyMaster, KeyNoNotifications, KeyNodeLogic, KeyNodeGroove,
-		KeyNoRowSelected, KeyAuto, KeyPre,
+		KeyNoRowSelected, KeyAuto, KeyPre, KeyAnalyzerIdle,
 		KeyNodeTitle, KeyNodeSecVolume, KeyNodeSecDuration, KeyNodeSecLogic,
 		KeyNodeSecGroove, KeyNodeSecAudible, KeyNodeSecMove,
 		KeyLogicNone, KeyLogicEveryN, KeyLogicSkipN, KeyLogicProbability,
@@ -534,12 +673,16 @@ func AllKeys() []Key {
 		KeyActionRemoveEffect, KeyActionAdjustEffect, KeyActionSetRowVolume, KeyActionReorderEffect,
 		KeyActionToggleEffect, KeyActionEditSynth, KeyActionResetSynth, KeyActionRecolorRow,
 		KeyActionToggleEQFilter, KeyActionRenameInstrument, KeyActionEditSample,
+		KeyActionCreateGroup, KeyActionEditGroup, KeyActionDeleteGroup,
 		KeySynthStageVoice, KeySynthStageOsc, KeySynthStageFM, KeySynthStagePitch,
 		KeySynthStageLFO, KeySynthStageBurst, KeySynthStageEnvelope, KeySynthStageFilter,
 		KeySynthStageFilterEnv, KeySynthStagePost, KeySynthStageTone,
+		KeySynthStageEnsemble, KeySynthStageFormant, KeySynthStageResonator,
+		KeySynthStageEnvelopeShort, KeySynthStageFilterEnvShort,
 		KeySynthStageVoiceSub, KeySynthStageOscSub, KeySynthStageFMSub, KeySynthStagePitchSub,
 		KeySynthStageLFOSub, KeySynthStageBurstSub, KeySynthStageEnvelopeSub, KeySynthStageFilterSub,
 		KeySynthStageFilterEnvSub, KeySynthStagePostSub, KeySynthStageToneSub,
+		KeySynthStageEnsembleSub, KeySynthStageFormantSub, KeySynthStageResonatorSub,
 		KeySynthKnobTune, KeySynthKnobDecayMult, KeySynthKnobTone, KeySynthKnobDrive,
 		KeySynthKnobBody, KeySynthKnobBright, KeySynthKnobGain, KeySynthKnobWave,
 		KeySynthKnobDetune, KeySynthKnobOctave, KeySynthKnobAttack, KeySynthKnobDecay,
@@ -563,5 +706,9 @@ func AllKeys() []Key {
 		KeyUnitCents, KeySamplerMetaFmt,
 		KeyLevelsTipHeadroom, KeyLevelsTipHeadroomClip, KeyLevelsTipClips,
 		KeyLevelsTipLoudest, KeyLevelsTipLoudestNone,
+		KeyGroupMenuTitle, KeyGroupMembers, KeyGroupRule,
+		KeyGroupRuleOn, KeyGroupRuleOff, KeyGroupEveryN, KeyGroupEveryNShort, KeyGroupDelete, KeyGroupSave,
+		KeyGroupParamPitch, KeyGroupParamVolume, KeyGroupParamDuration,
+		KeyGroupAddTo,
 	}
 }

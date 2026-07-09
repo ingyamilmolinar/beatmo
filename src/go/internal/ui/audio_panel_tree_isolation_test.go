@@ -302,9 +302,21 @@ func TestAudioPanelIsOwnSubtree(t *testing.T) {
 	if dv.tree.HitIndexRef() == dv.audioTree.HitIndexRef() {
 		t.Fatal("subtrees share one HitIndex — isolation is structurally impossible")
 	}
-	// Distinct portals (separate overlay stacks / modal scopes).
+	// Popups live in a THIRD, top-of-z overlay subtree that is distinct from
+	// both base subtrees. Base subtrees keep their own (now popup-free) portals
+	// for structural isolation; every menu/picker/panel opens in the overlay
+	// portal so it composites and hit-tests above ALL base zones.
+	if dv.overlayTree == nil {
+		t.Fatal("overlay subtree must exist to own the global portal")
+	}
+	if dv.overlayTree == dv.tree || dv.overlayTree == dv.audioTree {
+		t.Fatal("overlay subtree must be distinct from both base subtrees")
+	}
+	if dv.portal() != dv.overlayTree.Portal() {
+		t.Fatal("dv.portal() must resolve to the overlay subtree's portal")
+	}
 	if dv.tree.Portal() == dv.audioTree.Portal() {
-		t.Fatal("subtrees share one OverlayPortal")
+		t.Fatal("base subtrees share one OverlayPortal")
 	}
 	// eq-panel ONLY in audioTree; row-rack ONLY in dv.tree.
 	if !dv.audioTree.HasZoneForTest("eq-panel") {
@@ -1155,15 +1167,18 @@ func TestAudioSubtreeDoesNotPaintAbovePanel(t *testing.T) {
 	}
 }
 
-// TestEQChannelDropdownInAudioSubtree proves the EQ channel dropdown is owned by
-// the AUDIO subtree's portal + HitIndex, not the drum-view subtree's. It opens
-// the dropdown through the production OnClick path and asserts: (1) the entry
-// lives in dv.audioTree.Portal() and NOT dv.tree.Portal(); (2) the dropdown's
-// hit areas are visible to dv.audioTree.HitIndexRef() and absent from
-// dv.tree.HitIndexRef(). The click-changes-channel behavior is fully covered by
-// TestEQChannelDropdownOpensAndSelects / TestEQChannelDropdownViaGameUpdate in
-// eq_per_instrument_test.go, so here we lock subtree OWNERSHIP only.
-func TestEQChannelDropdownInAudioSubtree(t *testing.T) {
+// TestEQChannelDropdownInOverlaySubtree proves the EQ channel dropdown is owned
+// by the top-of-z OVERLAY subtree's portal + HitIndex — NOT by either base
+// subtree (drum-view or audio). Every popup opens in the single global overlay
+// portal so it composites and hit-tests above ALL base zones in ALL subtrees
+// (the FX-panel-over-EQ isolation guarantee). It opens the dropdown through the
+// production OnClick path and asserts: (1) the entry lives in dv.portal() (the
+// overlay portal) and NOT in either base subtree's portal; (2) the dropdown's
+// hit areas are visible to dv.overlayTree.HitIndexRef() and absent from BOTH
+// base subtree HitIndexes. The click-changes-channel behavior is fully covered
+// by TestEQChannelDropdownOpensAndSelects / TestEQChannelDropdownViaGameUpdate
+// in eq_per_instrument_test.go, so here we lock subtree OWNERSHIP only.
+func TestEQChannelDropdownInOverlaySubtree(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -1182,17 +1197,21 @@ func TestEQChannelDropdownInAudioSubtree(t *testing.T) {
 	z.stickyBar.ChannelBtn().OnClick()
 	dv.Update()
 
-	// Ownership: the dropdown portal entry must live in the AUDIO subtree.
-	if !dv.audioTree.Portal().Has("eq-channel-dropdown") {
-		t.Fatal("eq-channel-dropdown must be registered in the AUDIO subtree's portal")
+	// Ownership: the dropdown portal entry must live in the OVERLAY subtree,
+	// and in NEITHER base subtree.
+	if !dv.portal().Has("eq-channel-dropdown") {
+		t.Fatal("eq-channel-dropdown must be registered in the global overlay portal")
+	}
+	if dv.audioTree.Portal().Has("eq-channel-dropdown") {
+		t.Fatal("eq-channel-dropdown must NOT be registered in the AUDIO base subtree's portal")
 	}
 	if dv.tree.Portal().Has("eq-channel-dropdown") {
-		t.Fatal("eq-channel-dropdown must NOT be registered in the drum-view subtree's portal")
+		t.Fatal("eq-channel-dropdown must NOT be registered in the drum-view base subtree's portal")
 	}
 
 	// HitIndex ownership: find a point inside the dropdown menu rect and assert
-	// the audio subtree's HitIndex has the dropdown hit there while the drum-view
-	// subtree's HitIndex does not.
+	// the OVERLAY subtree's HitIndex has the dropdown hit there while NEITHER
+	// base subtree's HitIndex does.
 	menu := z.channelScroll.VS.View
 	if menu.Empty() {
 		t.Fatal("channel dropdown menu rect empty")
@@ -1200,19 +1219,24 @@ func TestEQChannelDropdownInAudioSubtree(t *testing.T) {
 	mx := menu.Min.X + menu.Dx()/2
 	my := menu.Min.Y + menu.Dy()/2
 
-	audioHasDropdown := false
-	for _, h := range dv.audioTree.HitIndexRef().At(mx, my) {
+	overlayHasDropdown := false
+	for _, h := range dv.overlayTree.HitIndexRef().At(mx, my) {
 		if h.Tag == "eq-channel-dropdown" {
-			audioHasDropdown = true
+			overlayHasDropdown = true
 			break
 		}
 	}
-	if !audioHasDropdown {
-		t.Errorf("eq-channel-dropdown hit area not present in the audio subtree's HitIndex at (%d,%d)", mx, my)
+	if !overlayHasDropdown {
+		t.Errorf("eq-channel-dropdown hit area not present in the overlay subtree's HitIndex at (%d,%d)", mx, my)
+	}
+	for _, h := range dv.audioTree.HitIndexRef().At(mx, my) {
+		if h.Tag == "eq-channel-dropdown" {
+			t.Errorf("eq-channel-dropdown hit area leaked into the audio base subtree's HitIndex at (%d,%d)", mx, my)
+		}
 	}
 	for _, h := range dv.tree.HitIndexRef().At(mx, my) {
 		if h.Tag == "eq-channel-dropdown" {
-			t.Errorf("eq-channel-dropdown hit area leaked into the drum-view subtree's HitIndex at (%d,%d)", mx, my)
+			t.Errorf("eq-channel-dropdown hit area leaked into the drum-view base subtree's HitIndex at (%d,%d)", mx, my)
 		}
 	}
 

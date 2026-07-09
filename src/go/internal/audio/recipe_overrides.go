@@ -309,6 +309,9 @@ func updateRecipeDefaults(recipeID string, overrides map[string]float64) bool {
 			changed = true
 		}
 	}
+	if changed {
+		bumpRecipeDefaultsRev()
+	}
 	return changed
 }
 
@@ -356,6 +359,11 @@ func (p baseRecipeProvider) Render(buf []float32, sampleRate, samples, variant i
 // implies divergence. The comparison is still done value-by-value with an
 // epsilon so a future caller that writes back the default doesn't get a
 // false-positive dirty state.
+//
+// Allocation-light: the Synth tab calls this every frame for the Save-button
+// dirty indicator, so the defaults are scanned directly under the registry
+// read lock instead of materialising a fresh RecipeDefaultParams map. Only
+// the (small) overlay copy allocates.
 func InstrumentParamsDiffer(instID, recipeID string) bool {
 	if instID == "" || recipeID == "" {
 		return false
@@ -364,15 +372,25 @@ func InstrumentParamsDiffer(instID, recipeID string) bool {
 	if len(overlay) == 0 {
 		return false
 	}
-	defaults := RecipeDefaultParams(recipeID)
-	for name, v := range overlay {
-		ref, ok := defaults[name]
-		if !ok {
-			return true
+	recipeRegMu.RLock()
+	defer recipeRegMu.RUnlock()
+	reg, ok := recipeRegMap[recipeID]
+	if !ok {
+		// Unknown recipe: every overlay key is "not in defaults" → differs.
+		return true
+	}
+	matched := 0
+	for i := range reg.Params {
+		v, present := overlay[reg.Params[i].Name]
+		if !present {
+			continue
 		}
-		if math.Abs(v-ref) > 1e-6 {
+		matched++
+		if math.Abs(v-reg.Params[i].Default) > 1e-6 {
 			return true
 		}
 	}
-	return false
+	// Overlay keys that don't exist in the recipe's defaults count as a
+	// divergence (same semantics as the old map lookup miss).
+	return matched != len(overlay)
 }

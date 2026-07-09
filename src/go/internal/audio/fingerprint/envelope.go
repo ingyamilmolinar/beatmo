@@ -33,16 +33,16 @@ const envHop = 256
 // two frames. This is a simple, fully deterministic rule.
 //
 // HNR (Harmonic-to-Noise Ratio) via real cepstrum on the sustain window:
-//   1. Compute magnitude spectrum M[] of the sustain window.
-//   2. Log-magnitude: LM[k] = log(M[k] + eps).
-//   3. Inverse-DFT (IDFT) of LM[] → real cepstrum C[].
-//      We use the IDFT of the symmetric magnitude spectrum (symmetric extension),
-//      computed here as a cosine transform of the one-sided log-magnitude:
-//      C[n] = (1/M) * Σ_{k=0}^{M-1} lm[k] * cos(π·k·n/(M-1)), M = N/2+1.
-//   4. Find the peak quefrency q* in the pitch-relevant band [1/2000 .. 1/50 sec].
-//   5. HNR = 10*log10(C[q*]² / residualEnergy) where residualEnergy is the mean
-//      squared cepstrum excluding the pitch-quefrency band.
-//      Guarded: if residual == 0 or peak energy <= residual, returns 0.
+//  1. Compute magnitude spectrum M[] of the sustain window.
+//  2. Log-magnitude: LM[k] = log(M[k] + eps).
+//  3. Inverse-DFT (IDFT) of LM[] → real cepstrum C[].
+//     We use the IDFT of the symmetric magnitude spectrum (symmetric extension),
+//     computed here as a cosine transform of the one-sided log-magnitude:
+//     C[n] = (1/M) * Σ_{k=0}^{M-1} lm[k] * cos(π·k·n/(M-1)), M = N/2+1.
+//  4. Find the peak quefrency q* in the pitch-relevant band [1/2000 .. 1/50 sec].
+//  5. HNR = 10*log10(C[q*]² / residualEnergy) where residualEnergy is the mean
+//     squared cepstrum excluding the pitch-quefrency band.
+//     Guarded: if residual == 0 or peak energy <= residual, returns 0.
 func computeEnvelope(w wave.Wave, fp *Fingerprint) {
 	sr := w.SampleRate
 	if sr <= 0 {
@@ -171,20 +171,20 @@ func computeEnvelope(w wave.Wave, fp *Fingerprint) {
 // sustain window's magnitude spectrum.
 //
 // Formula:
-//   1. Extract sustain window (skip SustainSkipSec, take up to SustainLenSec).
-//   2. mag[] = MagnitudeSpectrum(seg, 4096, WindowHann) — N/2+1 bins.
-//   3. lm[k] = log(mag[k] + eps) for k = 0..N/2.
-//   4. Real cepstrum C[n] = (1/M) * Σ_{k=0}^{M-1} lm[k] * cos(π·k·n/(M-1))
-//      where M = N/2+1 (the one-sided length); this cosine transform of the
-//      one-sided log-magnitude is the real cepstrum used here
-//      taken as real part. We compute it via a direct DCT-like sum for correctness.
-//   5. Pitch quefrency band: q in [sr/2000 .. sr/50] samples (period band).
-//      qLo = ceil(sr/2000 / secPerSample) = ceil(sr/(2000)) quefrency bins.
-//      But env is at full resolution: quefrency bin n corresponds to period n/sr.
-//      So: qLo = floor(sr/2000), qHi = floor(sr/50).
-//   6. peakQ = argmax C[n]² for n in [qLo, qHi].
-//   7. residualEnergy = mean(C[n]² for n NOT in [qLo-margin, qHi+margin]).
-//   8. HNR = 10*log10(C[peakQ]² / residualEnergy).  Guarded against zeros.
+//  1. Extract sustain window (skip SustainSkipSec, take up to SustainLenSec).
+//  2. mag[] = MagnitudeSpectrum(seg, 4096, WindowHann) — N/2+1 bins.
+//  3. lm[k] = log(mag[k] + eps) for k = 0..N/2.
+//  4. Real cepstrum C[n] = (1/M) * Σ_{k=0}^{M-1} lm[k] * cos(π·k·n/(M-1))
+//     where M = N/2+1 (the one-sided length); this cosine transform of the
+//     one-sided log-magnitude is the real cepstrum used here
+//     taken as real part. We compute it via a direct DCT-like sum for correctness.
+//  5. Pitch quefrency band: q in [sr/2000 .. sr/50] samples (period band).
+//     qLo = ceil(sr/2000 / secPerSample) = ceil(sr/(2000)) quefrency bins.
+//     But env is at full resolution: quefrency bin n corresponds to period n/sr.
+//     So: qLo = floor(sr/2000), qHi = floor(sr/50).
+//  6. peakQ = argmax C[n]² for n in [qLo, qHi].
+//  7. residualEnergy = mean(C[n]² for n NOT in [qLo-margin, qHi+margin]).
+//  8. HNR = 10*log10(C[peakQ]² / residualEnergy).  Guarded against zeros.
 func computeHNR(w wave.Wave, sr int) float64 {
 	seg := sustainWindow(w)
 	if len(seg.Samples) < 4 {

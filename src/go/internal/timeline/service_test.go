@@ -365,17 +365,27 @@ func TestReplaceCommitDemotesPlaybackEvenIfRingMissing(t *testing.T) {
 
 	s.RecordCommitKind(0, 1, true, model.NodeTypeRegular, CommitKindPlayback, windowLen, capacity)
 	// Simulate the commit ring no longer retaining the entry while the immutable
-	// sidecar still has it (e.g., due to a resize/trim in an earlier buggy build).
+	// sidecar still has it (ring resize/trim, or a commit seeded far ahead of the
+	// ring base that gapped out of the ring on append).
 	s.rows[0].commits.clear()
 
 	if ok := s.ReplaceCommit(0, 1, true, model.NodeTypeRegular, CommitKindReleased); !ok {
 		t.Fatalf("expected demotion to succeed via sidecar path")
 	}
-	if _, _, _, ok := s.CommittedKind(0, 1); ok {
-		t.Fatalf("expected no commit after demotion when ring is empty")
-	}
+	// Demotion moves the entry out of the live sidecar...
 	if got := s.LastImmutableAbs(0); got != -1 {
-		t.Fatalf("expected sidecar cleared after demotion got %d", got)
+		t.Fatalf("expected live sidecar cleared after demotion got %d", got)
+	}
+	// ...but the played fact is immutable, so it must survive in the cold archive.
+	// Dropping it outright (the prior behavior) violated the immutability contract
+	// and lost genuine playback history during long sessions — see the long-session
+	// canary and TestReplaceCommitDemoteArchivesNoRingImmutable.
+	val, typ, kind, ok := s.CommittedKind(0, 1)
+	if !ok {
+		t.Fatalf("expected demoted playback to remain resolvable via archive")
+	}
+	if kind != CommitKindPlayback || !val || typ != model.NodeTypeRegular {
+		t.Fatalf("archive lost provenance: val=%v typ=%v kind=%v", val, typ, kind)
 	}
 }
 

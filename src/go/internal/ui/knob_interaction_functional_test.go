@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"image"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -166,37 +165,27 @@ func TestSynthBadgeRectsNeverOverlapOtherKnobs(t *testing.T) {
 // input path for readout taps: mouse→SetInputForTest→g.Update()→HitIndex→
 // synthKnobHitAdapter.OnPress→openSynthParamEditor. Replaces the isolation-test
 // (direct handleSynthTabInput call) that never exercised the real tree dispatch.
-func TestSynthReadoutTapOpensEditorViaTreeDispatch(t *testing.T) {
+// TestSynthKnobCaptionIsDisplayOnly pins the simplified knob title: the value
+// caption is a SIMPLE display label, so tapping it must NOT open the numeric
+// text-input editor (values change via the dial). Was
+// TestSynthReadoutTapOpensEditorViaTreeDispatch before the caption was made
+// display-only.
+func TestSynthKnobCaptionIsDisplayOnly(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
 	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
 	g.Update()
 
-	img := newTrackedImage("test.readouttree", 1280, 720)
+	img := newTrackedImage("test.captiontext", 1280, 720)
 	defer releaseImage(img)
 	g.Draw(img)
 
 	rr := g.drum.synthKnobReadoutRect(idx)
 	if rr.Empty() {
-		t.Fatalf("readout rect not populated after draw")
+		t.Fatalf("caption rect not populated after draw")
 	}
-
-	// Find a tap point inside the readout rect but outside any badge rect.
-	// The readout spans the full cell width; badges are narrow centered pills.
-	// We walk the left edge rightward until we find a badge-free x.
 	tx, ty := rr.Min.X+2, rr.Min.Y+rr.Dy()/2
-	badge := g.drum.instEditorStepBadges[idx]
-	if badge != nil && !badge.Rect().Empty() && image.Pt(tx, ty).In(badge.Rect()) {
-		// Left edge is inside the badge; try right edge.
-		tx = rr.Max.X - 2
-		if image.Pt(tx, ty).In(badge.Rect()) {
-			t.Fatalf("both left and right edges of readout rect (%v) are inside badge rect (%v) — geometry overlap: badge fully covers readout", rr, badge.Rect())
-		}
-	}
-
-	// Invalidate so the next Update's layoutPass re-publishes HitAreas,
-	// picking up the readout rect that was just populated by Draw.
 	g.drum.eqPanelZone.Invalidate()
 
 	mouseX, mouseY := tx, ty
@@ -212,19 +201,12 @@ func TestSynthReadoutTapOpensEditorViaTreeDispatch(t *testing.T) {
 	defer restore()
 
 	pressed = true
-	g.Update() // layout re-publishes readout HitArea; tree dispatches press to OnPress
+	g.Update()
 	pressed = false
 	g.Update()
 
-	if g.drum.paramEditor == nil || !g.drum.paramEditor.Active() {
-		t.Fatalf("readout tap via tree dispatch did not open the editor (tap=(%d,%d) readout=%v)", tx, ty, rr)
-	}
-	// Commit a value and confirm it reaches audio.
-	g.drum.paramEditor.ti.SetText("5000")
-	g.drum.paramEditor.commit()
-	got := audio.GetInstrumentParams("ut-chip-modular")["filter_cutoff"]
-	if got < 4999 || got > 5001 {
-		t.Fatalf("param after edit=%v want ~5000", got)
+	if g.drum.paramEditor != nil && g.drum.paramEditor.Active() {
+		t.Fatalf("tapping the knob caption opened a text-input editor — the title must be display-only text (tap=(%d,%d) caption=%v)", tx, ty, rr)
 	}
 }
 
@@ -553,8 +535,82 @@ func TestSynthBadgeNeverOverlapsCaption(t *testing.T) {
 // sections, pressing the DIAL (above the caption/badge row) and asserting a
 // rightward drag increases the value and a leftward drag decreases it — never
 // opening the numeric editor or cycling the resolution badge.
+// expandAllSynthAdvancedForTest reveals every stage's Advanced-tier knobs (P4
+// tiering collapses them by default) so tests can reach every knob.
+func expandAllSynthAdvancedForTest(g *Game) {
+	if g.drum.synthAdvExpanded == nil {
+		g.drum.synthAdvExpanded = map[synthSectionID]bool{}
+	}
+	for _, id := range unifiedSynthSectionOrder {
+		g.drum.synthAdvExpanded[id] = true
+	}
+	g.drum.eqPanelZone.Invalidate()
+}
+
+// TestP4_AdvancedExpanderRevealsKnobs is the P4 tiering guard: an Advanced-tier
+// knob (osc_detune) is hidden by default and its stage shows an Advanced
+// expander bar; revealing it gives the knob a rect.
+func TestP4_AdvancedExpanderRevealsKnobs(t *testing.T) {
+	g := newModularSynthTabGame(t)
+	expandSynthPanelForTest(t, g)
+	idx := synthIdxByParam(t, g, "osc_detune")
+	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
+	g.Update()
+	img := newTrackedImage("test.adv", 1280, 720)
+	defer releaseImage(img)
+	g.Draw(img)
+
+	// Collapsed by default: the Advanced knob has no rect.
+	if r := g.drum.SynthTabKnobs()[idx].Rect(); !r.Empty() {
+		t.Errorf("osc_detune (Advanced) should be hidden by default, got rect %v", r)
+	}
+	// The stage has advanced knobs, so its expander bar must be present.
+	if g.drum.synthAdvExpanderRect.Empty() {
+		t.Fatal("OSC stage has advanced knobs but no expander bar was laid out")
+	}
+	// Clicking the expander bar toggles the stage's advanced-reveal state (the
+	// on-screen appearance of the revealed knobs is covered by the crop_synth_*
+	// screenshot scenes; here we pin the input→state wiring).
+	sel := g.drum.synthSelectedSection()
+	if sel == nil {
+		t.Fatal("no selected synth section")
+	}
+	before := g.drum.synthAdvExpanded[sel.id]
+	bar := g.drum.synthAdvExpanderRect
+	g.drum.handleSynthTabInput(bar.Min.X+bar.Dx()/2, bar.Min.Y+bar.Dy()/2, true, "modular")
+	if g.drum.synthAdvExpanded[sel.id] == before {
+		t.Error("clicking the Advanced expander bar did not toggle the stage's reveal state")
+	}
+}
+
+// TestP4_PhysicalModelParamsContextual pins the contextual exposure: the
+// physical-model OSC knobs appear only when their oscillator is selected — bow
+// knobs on the Bowed String (osc_type 7), reed knobs on the Sax (osc_type 11).
+func TestP4_PhysicalModelParamsContextual(t *testing.T) {
+	cases := []struct {
+		name    string
+		oscType float64
+		hidden  bool
+	}{
+		{"osc_bow_pos", 7, false},   // Bowed String → bow knob shown
+		{"osc_bow_pos", 0, true},    // Sine → bow knob hidden
+		{"osc_bow_slope", 11, true}, // Sax osc → bow knob hidden
+		{"osc_sax_blow", 11, false}, // Sax → reed knob shown
+		{"osc_sax_blow", 7, true},   // Bowed → reed knob hidden
+		{"osc_sax_blow", 0, true},   // Sine → reed knob hidden
+		{"filter_cutoff", 0, false}, // ordinary param → never gated by this rule
+	}
+	for _, c := range cases {
+		if got := synthOscModelParamHidden(audio.ParamDef{Name: c.name}, c.oscType); got != c.hidden {
+			t.Errorf("synthOscModelParamHidden(%q, oscType=%v) = %v, want %v", c.name, c.oscType, got, c.hidden)
+		}
+	}
+}
+
 func TestSynthKnobHorizontalDragChangesValueViaTreeDispatch(t *testing.T) {
-	for _, name := range []string{"osc_detune", "fm_op1_ratio", "amp_attack", "filter_cutoff", "filter_resonance"} {
+	// Essential (always-visible) knobs across OSC/FM/ENV/FILTER/POST. Advanced-tier
+	// knobs (e.g. osc_detune) are covered by TestP4_AdvancedExpanderRevealsKnobs.
+	for _, name := range []string{"gain", "fm_op1_ratio", "amp_attack", "filter_cutoff", "filter_resonance"} {
 		t.Run(name, func(t *testing.T) {
 			g := newModularSynthTabGame(t)
 			expandSynthPanelForTest(t, g)

@@ -41,6 +41,24 @@ EXPORT void wt_generate_saw(wavetable_t *wt, float *buf, int length, int harmoni
     buf[length] = buf[0];
 }
 
+EXPORT void wt_generate_glottal(wavetable_t *wt, float *buf, int length, int harmonics) {
+    wt->table  = buf;
+    wt->length = length;
+    memset(buf, 0, (size_t)(length + 1) * sizeof(float));
+
+    /* Same alternating-sign Fourier series as saw, but per-harmonic amplitude
+     * is 1/n^2 (Rosenberg glottal slope) instead of saw's 1/n. */
+    for (int h = 1; h <= harmonics; h++) {
+        double sign = (h % 2 == 0) ? -1.0 : 1.0;
+        double amp  = sign * 2.0 / (M_PI * (double)h * (double)h);
+        double inc  = TWO_PI * (double)h / (double)length;
+        for (int i = 0; i < length; i++) {
+            buf[i] += (float)(amp * sin(inc * (double)i));
+        }
+    }
+    buf[length] = buf[0];
+}
+
 EXPORT void wt_generate_square(wavetable_t *wt, float *buf, int length, int harmonics) {
     wt->table  = buf;
     wt->length = length;
@@ -117,7 +135,12 @@ EXPORT void wt_osc_process(wt_osc_t *osc, float *out, int samples) {
         float frac = (float)(phase - (double)idx);
         out[i] = table[idx] * (1.0f - frac) + table[idx + 1] * frac;
         phase += inc;
-        if (phase >= dlen) phase -= dlen;
+        /* See wt_osc_tick's comment (wavetable.h): a single conditional
+         * subtract only wraps one table-length overshoot; wrap fully so an
+         * extreme phase_inc (freq > sampleRate) can't push `phase` (and thus
+         * the next tick's `idx`) out of the table bounds. */
+        while (phase >= dlen) phase -= dlen;
+        while (phase < 0.0) phase += dlen;
     }
     osc->phase = phase;
 }

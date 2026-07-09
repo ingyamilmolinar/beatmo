@@ -46,7 +46,7 @@ func TestParityHighlightSkippedWhenAudioClockUnknown(t *testing.T) {
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
 	// Audio scheduled in the future; tests with a real audio clock should also skip.
 	when := audio.Now() + 1.0
-	g.recordParityAudio(0, abs, when, "kick", 1, 0, 1, g.audioGen.Load())
+	g.recordParityAudio(0, abs, when, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 
 	g.parityScan("test-future-audio")
 
@@ -90,7 +90,7 @@ func TestParityHighlightRequiredWhenAudioNow(t *testing.T) {
 
 	g.recordSeqDecision(0, abs, true, model.NodeTypeRegular, false)
 	// Audio is "now" (when=0) so highlight should exist; we leave highlight map empty to trigger mismatch.
-	g.recordParityAudio(0, abs, 0, "kick", 1, 0, 1, g.audioGen.Load())
+	g.recordParityAudio(0, abs, 0, "kick", 1, 0, 1, g.audioGen.Load(), g.parityGen.Load())
 	// Age the event past the in-flight grace window: a freshly-recorded event
 	// is allowed one Update drain for its highlight to land (see the
 	// RecordedAt grace in parityScan); the genuine violation this sentinel

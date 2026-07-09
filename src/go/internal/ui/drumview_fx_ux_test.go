@@ -1257,14 +1257,14 @@ func TestPortalOverlayDoesNotBlockTransportButtons(t *testing.T) {
 	}
 
 	// Open a dummy portal entry (simulates any portal overlay being open).
-	dv.tree.Portal().Open(PortalEntry{
+	dv.portal().Open(PortalEntry{
 		ID:      "test-dummy",
 		Overlay: &dummyPortalOverlay{},
 		Modal:   false,
 	})
-	t.Cleanup(func() { dv.tree.Portal().Close("test-dummy") })
+	t.Cleanup(func() { dv.portal().Close("test-dummy") })
 
-	if !dv.tree.Portal().IsOpen() {
+	if !dv.portal().IsOpen() {
 		t.Fatal("portal should be open")
 	}
 

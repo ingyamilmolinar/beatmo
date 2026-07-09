@@ -17,11 +17,14 @@ const (
 	GZCanvas         = 20
 	GZPulses         = 30
 	GZCoordBadge     = 40
+	GZGroupBadges    = 41
 	GZMoveMode       = 42
 	GZConnectMode    = 44
+	GZMarquee        = 46
 	GZLongPress      = 50
 	GZMoveConfirm    = 52
 	GZSidebar        = 60
+	GZGroupMenu      = 62
 	GZCursorLabel    = 70
 	GZGridHelpButton = 80
 )

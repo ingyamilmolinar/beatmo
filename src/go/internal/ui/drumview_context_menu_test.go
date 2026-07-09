@@ -1123,9 +1123,14 @@ func TestKebabTapDoesNotRegisterRenameTrigger(t *testing.T) {
 	}}
 	dv.Length = 8
 
-	// Enable trigger registration tracking.
-	testMobileInputTriggerRegistered = make(map[string]bool)
-	t.Cleanup(func() { testMobileInputTriggerRegistered = nil })
+	renameArmed := func() bool {
+		for _, r := range dv.lastNativeRects {
+			if r.Intent.Channel == NativeTextInput && r.Intent.ID == "rename-0" {
+				return true
+			}
+		}
+		return false
+	}
 
 	// Warm-up frame for layout init.
 	warmUp := SetInputForTest(
@@ -1139,14 +1144,14 @@ func TestKebabTapDoesNotRegisterRenameTrigger(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	// Context menu closed: rename trigger must NOT be registered.
+	// Context menu closed: rename trigger must NOT be armed.
 	if !dv.IsContextMenuOpen() {
 		// good — context menu is closed
 	} else {
 		t.Fatal("context menu should not be open initially")
 	}
-	if testMobileInputTriggerRegistered["rename-0"] {
-		t.Fatal("rename-0 trigger should NOT be registered when context menu is closed")
+	if renameArmed() {
+		t.Fatal("rename-0 trigger should NOT be armed when context menu is closed")
 	}
 
 	// Open context menu for row 0.
@@ -1155,23 +1160,23 @@ func TestKebabTapDoesNotRegisterRenameTrigger(t *testing.T) {
 		t.Fatal("context menu should be open")
 	}
 
-	// Re-run recalcButtons so mobile input rects are re-registered.
-	// (Mobile input registration lives in recalcButtons, not calcLayout.)
-	dv.recalcButtons()
+	// Drive a full Update so nativeInputCandidates → syncNativeGestures
+	// re-project the native-input rects (recalcButtons alone no longer
+	// registers them — that now happens in dv.Update's tree-owned sync).
+	dv.Update()
 
-	// Now the rename trigger SHOULD be registered (on the Rename menu button).
-	if !testMobileInputTriggerRegistered["rename-0"] {
-		t.Fatal("rename-0 trigger should be registered when context menu is open")
+	// Now the rename trigger SHOULD be armed (on the Rename menu button).
+	if !renameArmed() {
+		t.Fatal("rename-0 trigger should be armed when context menu is open")
 	}
 
-	// Close context menu and re-run recalcButtons.
+	// Close context menu and re-run Update.
 	dv.closeContextMenuPortal()
-	testMobileInputTriggerRegistered = make(map[string]bool) // reset
-	dv.recalcButtons()
+	dv.Update()
 
 	// Trigger should be gone again.
-	if testMobileInputTriggerRegistered["rename-0"] {
-		t.Fatal("rename-0 trigger should NOT be registered after context menu closes")
+	if renameArmed() {
+		t.Fatal("rename-0 trigger should NOT be armed after context menu closes")
 	}
 }
 

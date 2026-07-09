@@ -261,238 +261,32 @@ func ResetInstruments() {
 			Render: renderModular,
 			Beats:  1.0,
 		},
-		// Second shipped modular preset — soft dark pad. The no-edit Render
-		// bakes the pad defaults (modularPadSeed) so the cheap dispatch path
-		// matches the synth-modular-pad recipe; user edits flow through the
-		// recipe path (nativeModularRecipe on synth-modular-pad).
-		"modular-pad": CVariantInstrument{
-			Name:   "modular-pad",
-			Render: renderModularPad,
-			Beats:  1.0,
-		},
-		// Bowed strings family — LFO→pitch vibrato showcase (Phase-1 seeds).
-		// The no-edit Render uses renderModular (identity defaults); user edits
-		// and the recipe path apply the seed via nativeModularRecipe.
-		"violin": CVariantInstrument{
-			Name:   "violin",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"violin-ensemble": CVariantInstrument{
-			Name:   "violin-ensemble",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"cello": CVariantInstrument{
-			Name:   "cello",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"cello-warm": CVariantInstrument{
-			Name:   "cello-warm",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"organ-church": CVariantInstrument{
-			Name:   "organ-church",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"scifi-lead": CVariantInstrument{
-			Name:   "scifi-lead",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-
-		// Plucked strings — Karplus-Strong (Task 2, Beats: 1.5).
-		"guitar-nylon": CVariantInstrument{
-			Name:   "guitar-nylon",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"guitar-nylon-bright": CVariantInstrument{
-			Name:   "guitar-nylon-bright",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"guitar-steel": CVariantInstrument{
-			Name:   "guitar-steel",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"guitar-steel-warm": CVariantInstrument{
-			Name:   "guitar-steel-warm",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"guitar-electric": CVariantInstrument{
-			Name:   "guitar-electric",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"harp": CVariantInstrument{
-			Name:   "harp",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"guitar-electric-neck": CVariantInstrument{
-			Name:   "guitar-electric-neck",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-
-		// Keys — additive piano (Task 3, Beats: 2.0).
-		"piano-grand": CVariantInstrument{
-			Name:   "piano-grand",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"piano-felt": CVariantInstrument{
-			Name:   "piano-felt",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-
-		// Woodwind (Task 4, Beats: 2.0).
-		"flute": CVariantInstrument{
-			Name:   "flute",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"flute-breathy": CVariantInstrument{
-			Name:   "flute-breathy",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"oboe": CVariantInstrument{
-			Name:   "oboe",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"oboe-full": CVariantInstrument{
-			Name:   "oboe-full",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-
-		// Brass (Task 5, Beats: 2.0).
-		"trumpet": CVariantInstrument{
-			Name:   "trumpet",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"trumpet-mellow": CVariantInstrument{
-			Name:   "trumpet-mellow",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"french-horn": CVariantInstrument{
-			Name:   "french-horn",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		"french-horn-loud": CVariantInstrument{
-			Name:   "french-horn-loud",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-
-		// Bass guitar — tuned plucked electric bass (modular, Beats: 1.5).
-		"bass-guitar": CVariantInstrument{
-			Name:   "bass-guitar",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-
-		// Synth bass variants (modular, Beats: 1.5).
-		"bass-acid": CVariantInstrument{
-			Name:   "bass-acid",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"bass-reese": CVariantInstrument{
-			Name:   "bass-reese",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"bass-fm": CVariantInstrument{
-			Name:   "bass-fm",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-		"bass-808": CVariantInstrument{
-			Name:   "bass-808",
-			Render: renderModular,
-			Beats:  1.5,
-		},
-
-		// Modal conga (Task 7, Beats: 0.5 — short percussion).
-		"conga": CVariantInstrument{
-			Name:   "conga",
-			Render: renderModular,
-			Beats:  0.5,
-		},
-		"conga-open": CVariantInstrument{
-			Name:   "conga-open",
-			Render: renderModular,
-			Beats:  0.5,
-		},
-		"conga-tumba": CVariantInstrument{
-			Name:   "conga-tumba",
-			Render: renderModular,
-			Beats:  0.5,
-		},
-
-		// Masterpiece template set — three new instruments (all renderModular).
-		// Organ — additive drawbars (Bach, house pads, techno chords, reggae bubble, salsa).
-		"organ": CVariantInstrument{
-			Name:   "organ",
-			Render: renderModular,
-			Beats:  2.0,
-		},
-		// Saxophone — subtractive reed (jazz: So What; bossa: Girl from Ipanema).
-		"sax": CVariantInstrument{
-			Name:   "sax",
-			Render: renderModular,
-			Beats:  2.0,
-		},
+		// Second shipped modular preset — soft dark pad (modular-pad); the bowed
+		// strings, plucked strings, keys, woodwind, brass, and bass families;
+		// the modal conga family; and the masterpiece template set (organ/sax)
+		// are CONFIG-FIRST: added below from the declarative table in
+		// modular_instruments.go (modularTableVoices), not hand-written here.
+		// Saxophone — hybrid additive + formant-filtered saw (jazz: So What;
+		// bossa: Girl from Ipanema). Seed BAKED so the no-edit one-shot path
+		// (Sampler preview/capture via RenderInstrumentOneShotRaw) plays the
+		// tuned sax — bare renderModular played the UNSEEDED modular voice
+		// there ("a simple tone"); node playback was unaffected because
+		// melodics always take the pitched recipe path. The blanket bake pass
+		// (this table's config-first migration) fixed the same bug for every
+		// other seeded modular instrument (see TestSaxNoEditFastPathMatchesRecipe
+		// for the contract).
 		// ── Configurable KICK stage family (gen-bank kick voice, source==5). Each
 		// is a SEEDED modular preset; bakedModularRender bakes the seed so the
 		// no-edit playback dispatch plays the tuned kick, not the bare ~218 Hz
 		// modular voice. Beats sets the buffer length (the kick's global fade is
 		// buffer-normalized). ──
-		// dnb-kick — deep, organic DnB sub-kick (pure sub + long pitch glide + bloom).
-		"dnb-kick": CVariantInstrument{
-			Name:   "dnb-kick",
-			Render: bakedModularRender(dnbKickSeed),
-			Beats:  1.0,
-		},
-		// kick-electro — hard electronic/EDM kick: clicky, punchy, harmonic, tight.
-		"kick-electro": CVariantInstrument{
-			Name:   "kick-electro",
-			Render: bakedModularRender(electroKickSeed),
-			Beats:  0.5,
-		},
-		// kick-808 — long boomy 808 sub: deep pitch-drop sub with a long ringing tail.
-		"kick-808": CVariantInstrument{
-			Name:   "kick-808",
-			Render: bakedModularRender(kick808Seed),
-			Beats:  1.5,
-		},
-		// kick-acoustic — natural tight acoustic kick: beater click + woody body.
-		"kick-acoustic": CVariantInstrument{
-			Name:   "kick-acoustic",
-			Render: bakedModularRender(acousticKickSeed),
-			Beats:  0.5,
-		},
-		// kick-punchy — punchy/raw/brutal kick on the LAYERED kick DSP (variant 5):
-		// the grit + distortion + crest punch are all in the voice, no DefaultFX.
-		"kick-punchy": CVariantInstrument{
-			Name:   "kick-punchy",
-			Render: bakedModularRender(punchyKickSeed),
-			Beats:  0.5,
-		},
+		// The configurable-KICK-stage family (dnb/electro/808/acoustic/punchy/
+		// zgump/raw) is CONFIG-FIRST: its voices are added below from the single
+		// declarative table in modular_instruments.go (modularTableVoices), not
+		// hand-written here. Each is a Seed over the source==5 kick voice, baked via
+		// bakedModularRender so the no-edit playback dispatch plays the tuned kick.
 	}
+	modularTableVoices(instruments)
 	instOrder = append([]string(nil), BuiltinInstrumentIDs...)
 	// Snapshot the as-shipped instrument set so a factory Reset can restore a
 	// single instrument's built-in render after the Sampler's Save overwrote it

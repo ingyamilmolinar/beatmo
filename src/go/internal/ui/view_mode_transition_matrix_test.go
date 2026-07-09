@@ -131,6 +131,14 @@ func TestViewModeTransitionMatrix(t *testing.T) {
 				}
 
 				tapSegment := func(seg int) {
+					// Synth/Sampler segments require a single-instrument context
+					// (Master blocks them); select the first row's instrument so
+					// the segment is enabled and the tap can switch views.
+					if seg == bottomNavSynthIndex() || seg == segmentIndexForViewMode(viewModeSampler) {
+						if len(dv.Rows) > 0 {
+							dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+						}
+					}
 					r := dv.viewSwitchSegmented.SegmentRect(seg)
 					if r.Empty() {
 						t.Fatalf("segment %d rect empty — bottom-nav not laid out", seg)
@@ -222,6 +230,14 @@ func TestSamplerSaveAsDialog_ClosedOnTabSwitch(t *testing.T) {
 	tap := makeFullGameTap(g, w, h)
 
 	tapSegment := func(seg int) {
+		// Synth/Sampler segments require a single-instrument context (Master
+		// blocks them); select the first row's instrument so the segment is
+		// enabled and the tap switches views.
+		if seg == bottomNavSynthIndex() || seg == segmentIndexForViewMode(viewModeSampler) {
+			if len(dv.Rows) > 0 {
+				dv.eqPanelZone.SetActiveChannel(dv.Rows[0].Instrument)
+			}
+		}
 		r := dv.viewSwitchSegmented.SegmentRect(seg)
 		tap((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 	}
@@ -310,7 +326,7 @@ func TestViewModeTransition_TransientOverlayTornDown(t *testing.T) {
 				// self-persisting (isOpenFn = Has("naming"), ShouldClose=false),
 				// so it cannot self-heal and mask the bug.
 				dv.openNamingPortal()
-				if !dv.tree.Portal().HasModal() {
+				if !dv.portal().HasModal() {
 					t.Fatal("precondition: modal naming portal did not open")
 				}
 
@@ -322,12 +338,12 @@ func TestViewModeTransition_TransientOverlayTornDown(t *testing.T) {
 				}
 
 				// The departing tab's overlay must NOT survive the switch.
-				if dv.tree.Portal().IsOpen() {
+				if dv.portal().IsOpen() {
 					t.Fatalf("%s->%s: a transient overlay (top=%q) survived the tab switch — it swallows input on the %s view. "+
 						"setViewMode must tear down ALL popups/portals on every transition, not only when entering an audio tab.",
-						from.name, to.name, dv.tree.Portal().TopID(), to.name)
+						from.name, to.name, dv.portal().TopID(), to.name)
 				}
-				if dv.tree.Portal().HasModal() {
+				if dv.portal().HasModal() {
 					t.Fatalf("%s->%s: a modal overlay survived the switch — it blocks ALL input on the %s view", from.name, to.name, to.name)
 				}
 
@@ -385,7 +401,7 @@ func TestSamplerToPads_PortalSurvives_StrandsInput(t *testing.T) {
 	if dv.saveAsDialog == nil {
 		t.Fatal("precondition: Save-As dialog did not open")
 	}
-	if !dv.tree.Portal().HasModal() {
+	if !dv.portal().HasModal() {
 		t.Fatal("precondition: modal naming portal did not open")
 	}
 
@@ -394,10 +410,10 @@ func TestSamplerToPads_PortalSurvives_StrandsInput(t *testing.T) {
 	advanceFrames(g, 2)
 
 	// Everything transient from the Sampler tab must be torn down.
-	if dv.tree.Portal().IsOpen() {
-		t.Fatalf("Sampler->Pads: portal (top=%q) survived — it blocks input on the Pads view", dv.tree.Portal().TopID())
+	if dv.portal().IsOpen() {
+		t.Fatalf("Sampler->Pads: portal (top=%q) survived — it blocks input on the Pads view", dv.portal().TopID())
 	}
-	if dv.tree.Portal().HasModal() {
+	if dv.portal().HasModal() {
 		t.Fatal("Sampler->Pads: modal portal survived — ALL input on the Pads view is blocked (the reported bug)")
 	}
 	if dv.saveAsDialog != nil {
