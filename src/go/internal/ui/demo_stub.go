@@ -86,9 +86,11 @@ func (g *Game) RunDemo() {}
 
 // RunBenchmark stores benchmark configuration. Functional under tests so the
 // benchmark lifecycle can be exercised via direct Update() calls.
-func (g *Game) RunBenchmark(bpm int, dur time.Duration) {
+func (g *Game) RunBenchmark(bpm int, dur time.Duration, storm benchStormScenario, stormInst string) {
 	g.benchBPM = bpm
 	g.benchDuration = dur
+	g.benchStorm = storm
+	g.benchStormInst = stormInst
 }
 
 // RunRecordBenchmark is the test-build stub matching demo.go's signature.

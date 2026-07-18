@@ -133,14 +133,17 @@ func TestGroupMenuFitsWithinGridPane(t *testing.T) {
 	}
 }
 
+// TestGroupMenuRuleEditing pins the independent Enabled/Disabled status bit
+// (task-enabled-status brief, Part C): stepRuleDelta/stepRuleEveryN write
+// Rules but NEVER flip RulesEnabled — the group stays Disabled purely from
+// configuring deltas. setRuleEnabled(false)/(true) toggle ONLY the flag,
+// never touching the configured Rules (superseding the old "Off clears
+// rules" behavior this test used to pin).
 func TestGroupMenuRuleEditing(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, _ := g.graph.CreateGroup("", []model.NodeID{aID, bID})
 	g.groupMenu.OpenAt(gid, 100, 100)
 
-	// stepRuleDelta implicitly enables (no need for a preceding
-	// setRuleEnabled(true) — the new API's "On" is only meaningful once a
-	// delta is nonzero; see writeRules' doc comment).
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, +1)
 	g.groupMenu.stepRuleEveryN(+1) // 1 -> 2
 	advanceFrames(g, 2)
@@ -155,11 +158,28 @@ func TestGroupMenuRuleEditing(t *testing.T) {
 	if grp.Rules[0].EveryN != 2 {
 		t.Fatalf("EveryN = %d, want 2", grp.Rules[0].EveryN)
 	}
+	if grp.RulesEnabled {
+		t.Fatalf("delta/everyN edits must NOT enable the group, got RulesEnabled=true")
+	}
+
+	g.groupMenu.setRuleEnabled(true)
+	advanceFrames(g, 2)
+	grp, _ = g.graph.Group(gid)
+	if !grp.RulesEnabled {
+		t.Fatalf("setRuleEnabled(true) must flip the flag")
+	}
+	if len(grp.Rules) != 1 {
+		t.Fatalf("enabling must not touch the configured rules, got %+v", grp.Rules)
+	}
+
 	g.groupMenu.setRuleEnabled(false)
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
-	if len(grp.Rules) != 0 {
-		t.Fatalf("rule off must clear rules, got %+v", grp.Rules)
+	if grp.RulesEnabled {
+		t.Fatalf("setRuleEnabled(false) must clear the flag")
+	}
+	if len(grp.Rules) != 1 {
+		t.Fatalf("disabling must NOT clear the configured rules, got %+v", grp.Rules)
 	}
 }
 
@@ -281,7 +301,25 @@ func TestProvisionalGroupEmptiedByNodeDeleteNoDoubleDelete(t *testing.T) {
 	// right) edge — big enough to clear marqueeMinDragPx, but never
 	// extending toward node b.
 	ax1, ay1, ax2, ay2 := g.nodeScreenRect(g.nodesByID[aID])
-	shiftDrag(g, int(ax1)-10, int(ay1)-10, int(ax2), int(ay2))
+	// The press point must be genuinely EMPTY per production's own arming
+	// predicates: outside every node sprite, outside any badge, AND outside
+	// the guide-snap radius (guideTargetAt) — a shift+press inside the snap
+	// annulus arms a link drag, not a marquee. Walk up-left from node a's
+	// corner until production agrees the point is empty, so this test stays
+	// correct however the snap radius is tuned.
+	px, py := int(ax1)-10, int(ay1)-10
+	for off := 10; ; off += 10 {
+		px, py = int(ax1)-off, int(ay1)-off
+		if px < 1 || py < 1 {
+			t.Fatalf("setup: no empty press point up-left of node a within the pane")
+		}
+		if g.nodeAtScreen(px, py) == nil && g.guideTargetAt(px, py).Kind != GuideNode {
+			if _, onBadge := g.groupBadgeAt(px, py); !onBadge {
+				break
+			}
+		}
+	}
+	shiftDrag(g, px, py, int(ax2), int(ay2))
 
 	groups := g.graph.AllGroups()
 	if len(groups) != 1 || len(groups[0].NodeIDs) != 1 {
@@ -664,6 +702,14 @@ func TestGroupMenuRuleToggleLabelUsesI18nKeys(t *testing.T) {
 	if grp, _ := g.graph.Group(gid); len(grp.Rules) != 1 {
 		t.Fatalf("setup: want 1 rule after rdpit+, got %+v", grp.Rules)
 	}
+	// task-enabled-status brief Part C: a delta alone must NOT flip the
+	// label — it stays Disabled until the ruleonoff toggle is clicked.
+	if got, want := ruleToggleLabel(t, g), i18n.T(i18n.KeyGroupRuleOff); got != want {
+		t.Fatalf("label (delta configured, not enabled) = %q, want %q (KeyGroupRuleOff)", got, want)
+	}
+
+	clickMenuControl(t, g, "ruleonoff")
+	advanceFrames(g, 2)
 	if got, want := ruleToggleLabel(t, g), i18n.T(i18n.KeyGroupRuleOn); got != want {
 		t.Fatalf("label (rule enabled) = %q, want %q (KeyGroupRuleOn)", got, want)
 	}
@@ -682,9 +728,12 @@ func TestGroupMenuRuleToggleLabelSyncsOnReopen(t *testing.T) {
 	}
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
+	// task-enabled-status brief Part C: the delta alone never enables — the
+	// toggle is the only path that flips RulesEnabled.
+	g.groupMenu.setRuleEnabled(true)
 	advanceFrames(g, 2)
-	if grp, _ := g.graph.Group(gid); len(grp.Rules) != 1 {
-		t.Fatalf("setup: want 1 rule, got %+v", grp.Rules)
+	if grp, _ := g.graph.Group(gid); len(grp.Rules) != 1 || !grp.RulesEnabled {
+		t.Fatalf("setup: want 1 enabled rule, got %+v", grp)
 	}
 	// task-save-always (Part 1): a committed group's edits are only a live
 	// preview until Save commits them — Close() without Save now silently
@@ -734,6 +783,8 @@ func TestGroupMenuRuleToggleLabelSyncsOnUndo(t *testing.T) {
 	gid := createCommittedGroup(t, g, "", []model.NodeID{aID, bID})
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
+	// task-enabled-status brief Part C: the delta alone never enables.
+	g.groupMenu.setRuleEnabled(true)
 	advanceFrames(g, 2)
 	// task-save-always (Part 1): the edit is only a live preview until Save
 	// commits it as the single undo step this test then undoes — without
@@ -744,8 +795,8 @@ func TestGroupMenuRuleToggleLabelSyncsOnUndo(t *testing.T) {
 	advanceFrames(g, 2)
 	drawGroupMenuFrame(g) // refresh the label against the just-enabled rule
 	grp, _ := g.graph.Group(gid)
-	if len(grp.Rules) != 1 {
-		t.Fatalf("setup: want 1 rule, got %+v", grp.Rules)
+	if len(grp.Rules) != 1 || !grp.RulesEnabled {
+		t.Fatalf("setup: want 1 enabled rule, got %+v", grp)
 	}
 	if got, want := ruleToggleLabel(t, g), i18n.T(i18n.KeyGroupRuleOn); got != want {
 		t.Fatalf("setup: label = %q, want %q before undo", got, want)

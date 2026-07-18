@@ -24,7 +24,8 @@ func renderInstrumentOneShotOpts(id string, ignoreEdit bool) ([]float32, int) {
 	if b <= 0 {
 		b = 120
 	}
-	v, ok := tryRecipeVoiceOpts(id, b, sr, ignoreEdit)
+	// Sampler tab capture — UI goroutine, not audioLoop dispatch.
+	v, ok := tryRecipeVoiceOptsOrigin(id, b, sr, ignoreEdit, originPrewarm)
 	if !ok {
 		v = legacyNewVoice(id, b, sr)
 	}

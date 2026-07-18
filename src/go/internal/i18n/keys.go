@@ -280,6 +280,7 @@ const (
 	// Caption labels (drawn each frame near controls / overlays)
 	KeyCapMove         Key = "cap.move"
 	KeyCapMoveNode     Key = "cap.move_node"
+	KeyCapCopy         Key = "cap.copy"
 	KeyCapConnect      Key = "cap.connect"
 	KeyCapYourSound    Key = "cap.your_sound"
 	KeyCapUpClose      Key = "cap.up_close"
@@ -297,6 +298,16 @@ const (
 	KeyCapStarts       Key = "cap.starts"
 	KeyCapFades        Key = "cap.fades"
 	KeyCapBeforeAfter  Key = "cap.before_after"
+	// KeyCapBreak labels the destructive "Break" button in the break-circuit
+	// confirmation dialog (grid_move_break_confirm.go).
+	KeyCapBreak Key = "cap.break"
+
+	// Menu empty states (shared list-menu anatomy — see DESIGN.md "Menu anatomy")
+	KeyMenuNoMatches       Key = "menu.no_matches"
+	KeyMenuNoMatchesHint   Key = "menu.no_matches_hint"
+	KeyMenuNoFavorites     Key = "menu.no_favorites"
+	KeyMenuNoFavoritesHint Key = "menu.no_favorites_hint"
+	KeyFXEmptyHint         Key = "fx.empty_hint"
 
 	// Final i18n cleanup pass — remaining user-facing chrome words.
 	KeyMaster          Key = "mix.master"
@@ -375,6 +386,8 @@ const (
 	KeyActionChangeSubdivision Key = "action.change_subdivision"
 	KeyActionAddNode           Key = "action.add_node"
 	KeyActionDeleteNode        Key = "action.delete_node"
+	KeyActionPasteNode         Key = "action.paste_node"
+	KeyActionReplaceNode       Key = "action.replace_node"
 	KeyActionMoveNode          Key = "action.move_node"
 	KeyActionChangeNodeType    Key = "action.change_node_type"
 	KeyActionEditNode          Key = "action.edit_node"
@@ -589,6 +602,34 @@ const (
 	// groups the selected node is NOT yet a member of (see
 	// game_node_sidebar.go's "grpadd" row / groupAddDropdownOpen).
 	KeyGroupAddTo Key = "group.menu.add_to"
+	// KeyGroupCreateNew labels the node-sidebar's always-present "grpnew" row
+	// (task-sidebar-create brief): turns the selected node into a brand-new
+	// PROVISIONAL single-member group and opens its GroupMenu (see
+	// NodeSidebar.createNewGroup).
+	KeyGroupCreateNew Key = "group.menu.create_new"
+	// KeyGroupRemoveFrom labels the node-sidebar row that opens a dropdown of
+	// groups the selected node IS currently a member of (see
+	// game_node_sidebar.go's "grpremove" row / groupRemoveDropdownOpen).
+	// Picking one removes that membership (task-remove-selector brief).
+	KeyGroupRemoveFrom Key = "group.menu.remove_from"
+
+	// KeyBannerPasting is the copy-mode grid banner shown while a copied node
+	// is armed and awaiting placement (see grid_pane_draw.go's
+	// drawGridMoveMode, GridModeCopy case).
+	KeyBannerPasting Key = "banner.pasting"
+	// KeyBannerMoving / KeyBannerConnectFrom are the move / connect armed-mode
+	// grid banners; both take the subject's (i,j) grid coordinate as two %d
+	// verbs. KeyBannerEscHint is the desktop-only suffix appended to every
+	// armed-mode banner when Profile().ShowEscHint (note its leading space).
+	// All render through gridModeBannerText (grid_mode_banner.go).
+	KeyBannerMoving      Key = "banner.moving"
+	KeyBannerConnectFrom Key = "banner.connect_from"
+	KeyBannerEscHint     Key = "banner.esc_hint"
+
+	// KeyBreakCircuitTitle titles the "Break the circuit?" confirmation
+	// dialog shown when an armed move would disconnect the circuit
+	// unhealably (grid_move_break_confirm.go).
+	KeyBreakCircuitTitle Key = "confirm.break_circuit"
 )
 
 // AllKeys lists every declared Key. The completeness test asserts this set is
@@ -643,10 +684,12 @@ func AllKeys() []Key {
 		KeyGlossMorphSpeed, KeyGlossMorphTo, KeyGlossScatter, KeyGlossVibratoRate,
 		KeyGlossVibratoDepth, KeyGlossHumanize, KeyGlossBodyModel, KeyGlossBodyMix, KeyGlossBowDynamics,
 		KeyGlossRoughness, KeyGlossDryBlend,
-		KeyCapMove, KeyCapMoveNode, KeyCapConnect, KeyCapYourSound, KeyCapUpClose,
+		KeyCapMove, KeyCapMoveNode, KeyCapCopy, KeyCapConnect, KeyCapYourSound, KeyCapUpClose,
 		KeyCapVol, KeyCapPitch, KeyCapPct, KeyCapDur, KeyCapSearch,
 		KeyCapHeadroom, KeyCapLoudest, KeyCapFrozen, KeyCapBypassed, KeyCapSamplerTitle,
-		KeyCapStageOff, KeyCapStarts, KeyCapFades, KeyCapBeforeAfter,
+		KeyCapStageOff, KeyCapStarts, KeyCapFades, KeyCapBeforeAfter, KeyCapBreak,
+		KeyMenuNoMatches, KeyMenuNoMatchesHint, KeyMenuNoFavorites, KeyMenuNoFavoritesHint,
+		KeyFXEmptyHint,
 		KeyMaster, KeyNoNotifications, KeyNodeLogic, KeyNodeGroove,
 		KeyNoRowSelected, KeyAuto, KeyPre, KeyAnalyzerIdle,
 		KeyNodeTitle, KeyNodeSecVolume, KeyNodeSecDuration, KeyNodeSecLogic,
@@ -667,6 +710,7 @@ func AllKeys() []Key {
 		KeyParamPan, KeyParamDelaySend, KeyParamReverbSend,
 		KeyNotifImportedNamed, KeyNotifInvalidBPMDetail,
 		KeyActionChangeBPM, KeyActionChangeSubdivision, KeyActionAddNode, KeyActionDeleteNode,
+		KeyActionPasteNode, KeyActionReplaceNode,
 		KeyActionMoveNode, KeyActionChangeNodeType, KeyActionEditNode, KeyActionSetStartNode,
 		KeyActionAddEdge, KeyActionDeleteEdge, KeyActionAddRow, KeyActionDeleteRow,
 		KeyActionChangeInstrument, KeyActionSetMasterVolume, KeyActionAdjustEQ, KeyActionAddEffect,
@@ -709,6 +753,8 @@ func AllKeys() []Key {
 		KeyGroupMenuTitle, KeyGroupMembers, KeyGroupRule,
 		KeyGroupRuleOn, KeyGroupRuleOff, KeyGroupEveryN, KeyGroupEveryNShort, KeyGroupDelete, KeyGroupSave,
 		KeyGroupParamPitch, KeyGroupParamVolume, KeyGroupParamDuration,
-		KeyGroupAddTo,
+		KeyGroupAddTo, KeyGroupCreateNew, KeyGroupRemoveFrom,
+		KeyBannerPasting, KeyBannerMoving, KeyBannerConnectFrom, KeyBannerEscHint,
+		KeyBreakCircuitTitle,
 	}
 }

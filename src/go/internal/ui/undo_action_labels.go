@@ -13,6 +13,8 @@ var undoActionLabelKeys = map[string]i18n.Key{
 	"change subdivision": i18n.KeyActionChangeSubdivision,
 	"add node":           i18n.KeyActionAddNode,
 	"delete node":        i18n.KeyActionDeleteNode,
+	"paste node":         i18n.KeyActionPasteNode,
+	"replace node":       i18n.KeyActionReplaceNode,
 	"move node":          i18n.KeyActionMoveNode,
 	"change node type":   i18n.KeyActionChangeNodeType,
 	"edit node":          i18n.KeyActionEditNode,

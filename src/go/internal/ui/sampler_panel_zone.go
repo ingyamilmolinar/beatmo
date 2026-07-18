@@ -457,9 +457,8 @@ func (p *samplerPanel) samplerControlMinH(dv2 densityValues) int {
 // the metadata strip. The remaining knobs scroll, so the floor only has to
 // guarantee the first dial renders at its full size.
 func samplerControlMinHeight(dv2 densityValues) int {
-	labelBandH := TextHeight() + SpaceXS            // group-label band above the dial
-	captionCellH := SpaceXS + dv2.SynthKnobCaptionH // caption band below the dial
-	cellH := labelBandH + dv2.SynthKnobIdeal + captionCellH
+	labelBandH := TextHeight() + SpaceXS // group-label band above the card
+	cellH := labelBandH + dv2.ParamCardH // one ParamCard slot per control
 	// +SpaceSM slack so the budget lands comfortably above the ideal after the
 	// waveform 40% cap and split rounding take their cut. Two button rows so
 	// every edit + action button stays visible (mirrors the Synth tab).
@@ -512,18 +511,6 @@ func (p *samplerPanel) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityV
 		return
 	}
 	labelH := TextHeight()
-	captionH := dv2.SynthKnobCaptionH
-	badgeH := Profile().DensityValues().KnobStepBadgeH
-	// Two cell heights below the dial:
-	//   captionCellH — caption line only (gap + caption, NO trailing pad — it is
-	//                  the last element in the tight two-row cell, so the saved
-	//                  pad goes to a bigger dial)
-	//   fullCellH    — caption + step-badge pill (the roomy 1-row layout)
-	// The badge is reserved only when there is room; on the tight two-row mobile
-	// layout it is dropped (the badge draw guard auto-hides it) so the full-font
-	// captions fit — readable captions outrank the advanced step-badge affordance.
-	captionCellH := SpaceXS + captionH
-	fullCellH := captionCellH + SpaceXS + badgeH
 	btnH := dv2.SynthHeaderButtonH
 	metaH := TextHeight()
 
@@ -551,57 +538,47 @@ func (p *samplerPanel) layoutSamplerControls(ctrlR image.Rectangle, dv2 densityV
 		return
 	}
 
-	// LANGUAGE-INVARIANT knob grid. The row count depends ONLY on screen class
-	// (never on caption length), so the dial diameter is identical in every
-	// language. The desktop control column is wide enough for five full-font
-	// captions in one row; the narrower mobile column wraps to two rows (3 + 2,
-	// dropping the step-badge band) so the longest caption ("Ganancia +0 dB")
-	// fits at full font. Captions centre in the full cell, decoupled from the
-	// dial, so a longer Spanish caption widens nothing and shrinks no dial.
+	// LANGUAGE-INVARIANT knob grid. Every knob is now a ParamCard (name + value +
+	// gauge) on ALL platforms — the same universal control the Synth tab uses.
+	// Desktop lays all five cards in one side-by-side row; each cell reserves a
+	// group-label band above the card. The card is a fixed ParamCardH tall and
+	// its width depends only on the cell width + density tokens (never on caption
+	// length), so it is identical in every language.
 	gridTop := ctrlR.Min.Y
-	gridBottom := toggleY0 - SpaceXS
 
-	// Desktop: all five knobs in one side-by-side row (the wide control column
+	// Desktop: all five cards in one side-by-side row (the wide control column
 	// has room). No scrolling. (mobile is handled above and returns.)
-	perRow, rows, cellH := samplerKnobCount, 1, fullCellH
-	rowOverhead := labelH + SpaceXS + cellH
-
-	// Dial diameter = the chosen grid's vertical budget (capped at the density
-	// ideal and the cell width). It is NEVER clamped up past the budget — that
-	// would overflow the control column. Instead the panel floor
-	// (samplerControlMinHeight / mobileAudioPanelMinContentH) reserves enough
-	// height that the budget lands at or above the density minimum, so the dial
-	// is usable on every real panel. The size depends only on the rect + density
-	// (never on caption length), so it is identical in every language.
-	vb := (gridBottom - gridTop) - (rows-1)*SpaceSM - rows*rowOverhead
-	knobD := vb / rows
-	cellW := ctrlR.Dx() / perRow
-	if knobD > dv2.SynthKnobIdeal {
-		knobD = dv2.SynthKnobIdeal
+	cellW := ctrlR.Dx() / samplerKnobCount
+	cardH := dv2.ParamCardH
+	// Cards may stretch a bit in the wide column, but never fill the whole cell
+	// (min(cellW-SpaceSM, ParamCardW*3/2)); floored at ParamCardW/2 so a narrow
+	// column never collapses the card to an unusable sliver.
+	cardW := cellW - SpaceSM
+	if maxW := dv2.ParamCardW * 3 / 2; cardW > maxW {
+		cardW = maxW
 	}
-	if knobD > cellW {
-		knobD = cellW
+	if minW := dv2.ParamCardW / 2; cardW < minW {
+		cardW = minW
 	}
-	if knobD < 1 {
-		knobD = 1 // degenerate (panel far too small); never zero/negative
+	// Hard cap: the card never overhangs its own cell into a neighbour, even
+	// when the min-width floor exceeds a degenerate-narrow column.
+	if cardW > cellW && cellW > 0 {
+		cardW = cellW
 	}
-
-	rowStride := rowOverhead + knobD + SpaceSM
+	cardTop := gridTop + labelH + SpaceXS
+	cellBottom := cardTop + cardH
 	for i, k := range s.knobs {
 		if k == nil {
 			continue
 		}
-		col := i % perRow
-		row := i / perRow
-		cellX0 := ctrlR.Min.X + col*cellW
-		cellTop := gridTop + row*rowStride
-		dialTop := cellTop + labelH + SpaceXS
-		dialX0 := cellX0 + (cellW-knobD)/2
-		// Knob rect = the dial square (+ caption/badge band) so Knob.geom sizes
-		// the dial to knobD. The wider CELL is tracked separately so the caption,
-		// group label, and step badge centre in the full cell, not the dial.
-		k.SetRect(image.Rect(dialX0, dialTop, dialX0+knobD, dialTop+knobD+cellH))
-		s.knobCells[i] = image.Rect(cellX0, cellTop, cellX0+cellW, dialTop+knobD+cellH)
+		cellX0 := ctrlR.Min.X + i*cellW
+		cardX0 := cellX0 + (cellW-cardW)/2
+		// Knob rect = the card rect (label band excluded). The wider CELL is
+		// tracked separately so the group label centres in the full cell.
+		k.SetRect(image.Rect(cardX0, cardTop, cardX0+cardW, cardTop+cardH))
+		s.knobCells[i] = image.Rect(cellX0, gridTop, cellX0+cellW, cellBottom)
+		// Capturing() is always false now (the card no longer drives an in-place
+		// drag), so this value sync always runs; kept unconditional for clarity.
 		if !k.Capturing() {
 			k.Value = s.knobValue(i)
 		}
@@ -632,9 +609,8 @@ func (p *samplerPanel) layoutSamplerKnobsScrolling(gridR image.Rectangle, dv2 de
 	grid := s.ensureKnobGrid()
 	s.knobGridRect = gridR
 
-	labelBandH := TextHeight() + SpaceXS            // group-label band above the dial
-	captionCellH := SpaceXS + dv2.SynthKnobCaptionH // caption band below the dial
-	cellH := labelBandH + dv2.SynthKnobIdeal + captionCellH
+	labelBandH := TextHeight() + SpaceXS // group-label band above the card
+	cellH := labelBandH + dv2.ParamCardH + SpaceXS
 	if cellH > gridR.Dy() && gridR.Dy() > 0 {
 		cellH = gridR.Dy() // degrade gracefully on a tiny panel (one shrunk row)
 	}
@@ -642,7 +618,7 @@ func (p *samplerPanel) layoutSamplerKnobsScrolling(gridR image.Rectangle, dv2 de
 		cellH = 1
 	}
 	grid.SetMaxCols(4)
-	grid.Layout(gridR, samplerKnobCount, dv2.SynthKnobIdeal, cellH, SpaceSM, SpaceXS)
+	grid.Layout(gridR, samplerKnobCount, dv2.ParamCardW, cellH, SpaceSM, SpaceXS)
 
 	for i, k := range s.knobs {
 		if k == nil {
@@ -654,23 +630,13 @@ func (p *samplerPanel) layoutSamplerKnobsScrolling(gridR image.Rectangle, dv2 de
 			s.knobCells[i] = image.Rectangle{}
 			continue
 		}
-		// Dial below the label band, centred in the cell, capped to the ideal and
-		// what the slot can hold (label band + dial + caption must fit).
-		d := dv2.SynthKnobIdeal
-		if maxH := slot.Dy() - labelBandH - captionCellH; d > maxH {
-			d = maxH
+		// Card fills the slot width, sitting below the group-label band. Fixed
+		// ParamCardH tall (clamped to what the slot can hold on a tiny panel).
+		cardH := dv2.ParamCardH
+		if maxH := slot.Dy() - labelBandH; cardH > maxH && maxH > 1 {
+			cardH = maxH
 		}
-		if d > slot.Dx() {
-			d = slot.Dx()
-		}
-		if d < 1 {
-			d = 1
-		}
-		dialX0 := slot.Min.X + (slot.Dx()-d)/2
-		dialTop := slot.Min.Y + labelBandH
-		// Knob rect = dial square + caption band (drawSamplerKnobs reads r.Dx() as
-		// the dial diameter and places the caption at r.Min.Y + r.Dx() + SpaceXS).
-		k.SetRect(image.Rect(dialX0, dialTop, dialX0+d, dialTop+d+captionCellH))
+		k.SetRect(image.Rect(slot.Min.X, slot.Min.Y+labelBandH, slot.Max.X, slot.Min.Y+labelBandH+cardH))
 		s.knobCells[i] = slot
 		if !k.Capturing() {
 			k.Value = s.knobValue(i)
@@ -755,6 +721,27 @@ func (p *samplerPanel) samplerHandleRect(frac float64) image.Rectangle {
 	}
 	const half = 5
 	return image.Rect(x-half, w.Min.Y, x+half, w.Max.Y)
+}
+
+// updateSamplerHandleHover refreshes which Start/End trim handle the desktop
+// cursor is over (samplerState.hoverHandle: -1 none, 0 start, 1 end), so the
+// hovered handle can bloom in its own color — the same desktop-only hover
+// language as the EQ handles and grid nodes. Idle on mobile (no pointer hover)
+// and when no buffer is loaded. Uses the SAME samplerHandleRect the handle is
+// drawn and hit-tested with, so the hover target matches the grab target.
+func (p *samplerPanel) updateSamplerHandleHover() {
+	s := &p.dv.sampler
+	s.hoverHandle = -1
+	if Profile().IsMobile() || !s.hasBuffer() || s.waveformRect.Empty() {
+		return
+	}
+	mx, my := cursorPosition()
+	pt := image.Pt(mx, my)
+	if pt.In(p.samplerHandleRect(s.startFrac)) {
+		s.hoverHandle = 0
+	} else if pt.In(p.samplerHandleRect(s.endFrac)) {
+		s.hoverHandle = 1
+	}
 }
 
 // samplerButton describes one header/control button (label + click action +
@@ -928,23 +915,21 @@ func (p *samplerPanel) drawSamplerPlaceholder(dst *ebiten.Image, card image.Rect
 	s := &dv.sampler
 	avail := card.Dx() - 2*SpaceMD
 	msg := "Pick an instrument from the dropdown"
-	if TextWidth(msg) > avail {
+	if StyledTextWidth(msg, RoleBody) > avail {
 		msg = "Capture or load a sample"
 	}
-	if TextWidth(msg) > avail {
+	if StyledTextWidth(msg, RoleBody) > avail {
 		msg = "No sample"
 	}
-	y := card.Min.Y + (card.Dy()-TextHeight())/2
+	bodyH := StyledTextHeight(RoleBody)
+	y := card.Min.Y + (card.Dy()-bodyH)/2
 	if s.status != "" {
-		y -= (TextHeight() + SpaceXS) / 2
+		y -= (bodyH + SpaceXS) / 2
 	}
-	DrawTextColorAt(dst, msg, card.Min.X+(card.Dx()-TextWidth(msg))/2, y, colTextSecondary)
+	DrawTextStyled(dst, msg, card.Min.X+(card.Dx()-StyledTextWidth(msg, RoleBody))/2, y, RoleBody, colTextSecondary)
 	if s.status != "" {
-		st := s.status
-		for TextWidth(st) > avail && len(st) > 4 {
-			st = st[:len(st)-4] + "…"
-		}
-		DrawTextColorAt(dst, st, card.Min.X+(card.Dx()-TextWidth(st))/2, y+TextHeight()+SpaceXS, colError)
+		st := truncCaptionStyled(s.status, avail, RoleCaption)
+		DrawTextStyled(dst, st, card.Min.X+(card.Dx()-StyledTextWidth(st, RoleCaption))/2, y+bodyH+SpaceXS, RoleCaption, colError)
 	}
 }
 
@@ -960,7 +945,7 @@ func (p *samplerPanel) drawSamplerMeta(dst *ebiten.Image, r image.Rectangle) {
 	s := &dv.sampler
 	sr := s.rawSampleRate
 	txt := samplerMetaText(s.trimSeconds(), s.lengthSeconds(), float64(sr)/1000)
-	DrawTextColorAt(dst, txt, r.Min.X, r.Min.Y+(r.Dy()-TextHeight())/2, WithAlpha(TokenTextSecondary(), AlphaMedium))
+	DrawTextStyled(dst, txt, r.Min.X, r.Min.Y+(r.Dy()-StyledTextHeight(RoleCaption))/2, RoleCaption, WithAlpha(TokenTextSecondary(), AlphaMedium))
 }
 
 // drawSamplerKnobs draws each laid-out knob with its group label (above the
@@ -995,65 +980,28 @@ func (p *samplerPanel) drawSamplerKnobs(dst *ebiten.Image) {
 		// gloss is appended on the same row at caption scale only when it
 		// fits, so it never clips into the neighbouring cluster.
 		if g := samplerGroupLabel(i); g != "" {
-			labelY := r.Min.Y - SpaceXS - TextHeight()
+			labelY := r.Min.Y - SpaceXS - StyledTextHeight(RoleCaption)
 			if labelY < cell.Min.Y {
 				labelY = cell.Min.Y
 			}
-			DrawTextColorAt(dst, g, cell.Min.X, labelY, TokenTextSecondary())
+			DrawTextStyled(dst, g, cell.Min.X, labelY, RoleCaption, TokenTextSecondary())
 			gloss := samplerKnobPlainEnglish(i)
-			captionScale := FontSizeCaption / FontSizeBody
-			glossX := cell.Min.X + TextWidth(g) + SpaceSM
-			glossW := int(float64(TextWidth(gloss)) * captionScale)
+			glossX := cell.Min.X + StyledTextWidth(g, RoleCaption) + SpaceSM
+			glossW := StyledTextWidth(gloss, RoleMicro)
 			// Skip the gloss if it would clip past the cell's right edge.
 			if gloss != "" && glossX+glossW <= cell.Max.X {
-				DrawTextColorAtScale(dst, gloss, glossX, labelY+2, WithAlpha(TokenTextSecondary(), AlphaMedium), captionScale)
+				DrawTextStyled(dst, gloss, glossX, labelY+2, RoleMicro, WithAlpha(TokenTextSecondary(), AlphaMedium))
 			}
 		}
-		// Mobile: render the tap-to-open value-pill button (VALUE only — the
-		// caption band below carries the param NAME, so nothing renders
-		// twice); desktop keeps the rotary dial with the full name+value
-		// caption. Mirrors the Synth tab.
-		mobile := Profile().IsMobile()
-		if mobile {
-			drawKnobValuePillRect(dst, dv.samplerMobileKnobButtonRect(i), samplerKnobValueText(i, s))
-		} else {
-			k.Draw(dst)
-		}
-		cap := samplerKnobCaption(i, s)
-		if mobile {
-			cap = samplerKnobNameText(i, s)
-		}
-		// Caption sits just below the dial. The dial is a knobD square at the
-		// top of the knob rect, so its bottom = r.Min.Y + r.Dx() (== knobD).
-		dialD := r.Dx()
-		captionY := r.Min.Y + dialD + SpaceXS
-		// Full font, centred in the CELL width — fits because the layout widened
-		// the cell (and/or wrapped to two rows) until the caption fits.
-		capX := cell.Min.X + (cell.Dx()-TextWidth(cap))/2
-		if capX < cell.Min.X {
-			capX = cell.Min.X
-		}
-		DrawTextColorAt(dst, cap, capX, captionY, colTextSecondary)
-
-		// Record the caption line as the tappable readout rect (full cell width).
-		readoutR := image.Rect(cell.Min.X, captionY, cell.Max.X, captionY+TextHeight())
-		s.readoutRects[i] = readoutR
-
-		// Step badge pill: a narrow pill below the caption, centered in the
-		// knob cell and clamped so it never extends outside the cell.
-		if i < len(s.knobStepBadges) {
-			if badge := s.knobStepBadges[i]; badge != nil {
-				bw, bh := Profile().DensityValues().KnobStepBadgeW, Profile().DensityValues().KnobStepBadgeH
-				bx := cell.Min.X + (cell.Dx()-bw)/2
-				by := captionY + TextHeight() + SpaceXS
-				// Only draw if the badge fits within the knob cell below.
-				if by >= r.Min.Y && by+bh <= r.Max.Y {
-					badge.SetRect(image.Rect(bx, by, bx+bw, by+bh))
-					badge.Draw(dst)
-				}
-				// If it doesn't fit, rect stays empty (cleared above).
-			}
-		}
+		// The knob renders as a single ParamCard (name + value + range gauge) on
+		// ALL platforms — the same universal control the Synth tab uses. A tap
+		// anywhere on it opens the value-wheel popup; on desktop the mouse wheel
+		// nudges the value in place. The old mobile value-pill + desktop rotary
+		// dial + separate caption + step-badge stack are retired; the card's
+		// gauge carries what the step badge used to show.
+		drawParamCard(dst, r, samplerKnobNameText(i, s), samplerKnobValueText(i, s),
+			paramCardGaugeFor(k, dv.samplerKnobDef(i)), paramCardState{})
+		s.readoutRects[i] = image.Rectangle{}
 	}
 }
 
@@ -1083,9 +1031,10 @@ func (p *samplerPanel) drawSamplerWaveform(dst *ebiten.Image) {
 	if x1 < w.Max.X {
 		drawRect(dst, image.Rect(x1, w.Min.Y, w.Max.X, w.Max.Y), shade, true)
 	}
-	// Handles.
-	drawRect(dst, dv.samplerHandleRect(s.startFrac), colAccent, true)
-	drawRect(dst, dv.samplerHandleRect(s.endFrac), colAccent, true)
+	// Handles — the hovered one blooms in its OWN color (drawNodeBloom), the
+	// same own-color hover language as the EQ handles and grid nodes.
+	p.drawSamplerHandle(dst, dv.samplerHandleRect(s.startFrac), s.hoverHandle == 0)
+	p.drawSamplerHandle(dst, dv.samplerHandleRect(s.endFrac), s.hoverHandle == 1)
 
 	// Playheads: one bright vertical line per in-flight trigger, sweeping the
 	// kept region as the audio progresses. Drawn last so they sit above the
@@ -1100,6 +1049,21 @@ func (p *samplerPanel) drawSamplerWaveform(dst *ebiten.Image) {
 	for _, ph := range dv.samplerActivePlayheads() {
 		x0 := ph.x - half
 		drawRect(dst, image.Rect(x0, w.Min.Y, x0+stroke, w.Max.Y), ph.col, true)
+	}
+}
+
+// drawSamplerHandle paints one Start/End trim handle. When hovered it adds an
+// own-color highlight that CONFORMS to the handle's actual rect via the shared,
+// shape-agnostic drawRectHoverGlow — so a tall thin trim line highlights as a
+// tall thin line, never a centred node blob. (drawNodeBloom assumes a square
+// node and bulged in the middle of the vertical line.)
+func (p *samplerPanel) drawSamplerHandle(dst *ebiten.Image, r image.Rectangle, hovered bool) {
+	if r.Empty() {
+		return
+	}
+	drawRect(dst, r, colAccent, true)
+	if hovered {
+		drawRectHoverGlow(dst, r, colAccentBright, 1.0)
 	}
 }
 
@@ -1188,45 +1152,13 @@ func (p *samplerPanel) samplerKnobReadoutRect(idx int) image.Rectangle {
 	return dv.sampler.readoutRects[idx]
 }
 
-// cycleSamplerKnobStep advances the step badge for sampler knob idx and
-// syncs the knob's StepMul, persisting the choice. Analogous to
-// cycleKnobStep for the synth tab but operates on s.knobStepBadges.
-func (p *samplerPanel) cycleSamplerKnobStep(idx int) {
-	dv := p.dv
-	s := &dv.sampler
-	if idx < 0 || idx >= len(s.knobStepBadges) {
-		return
-	}
-	badge := s.knobStepBadges[idx]
-	if badge == nil {
-		return
-	}
-	badge.Cycle()
-	if idx < len(s.knobs) && s.knobs[idx] != nil {
-		s.knobs[idx].StepMul = badge.Step()
-	}
-	dv.persistKnobStep(badge)
-}
-
-// stepSamplerKnobResolution shifts sampler knob idx's step-badge rung by
-// `steps` (mouse-wheel delta; positive = scroll up = finer), syncing StepMul
-// and persisting. Returns true if the rung moved. Used by the wheel handler
-// when the cursor is over the resolution badge.
-func (p *samplerPanel) stepSamplerKnobResolution(idx, steps int) bool {
-	dv := p.dv
-	s := &dv.sampler
-	if idx < 0 || idx >= len(s.knobStepBadges) {
-		return false
-	}
-	badge := s.knobStepBadges[idx]
-	if badge == nil || !badge.WheelResolution(steps) {
-		return false
-	}
-	if idx < len(s.knobs) && s.knobs[idx] != nil {
-		s.knobs[idx].StepMul = badge.Step()
-	}
-	dv.persistKnobStep(badge)
-	return true
+// samplerKnobDef synthesizes the audio.ParamDef for sampler knob idx from its
+// KnobScale — the single source of truth shared by the value-wheel popup, the
+// numeric editor, and the ParamCard gauge. The sampler has no per-knob binding
+// array (every knob is continuous), so the Def is derived, not stored.
+func (dv *DrumView) samplerKnobDef(idx int) audio.ParamDef {
+	sc := samplerKnobScale(idx)
+	return audio.ParamDef{Name: samplerStepPrefName(idx), Min: sc.Min, Max: sc.Max, Unit: sc.Unit}
 }
 
 // openSamplerParamEditor opens the shared numeric editor anchored over the
@@ -1242,7 +1174,7 @@ func (p *samplerPanel) openSamplerParamEditor(idx int) {
 		dv.paramEditor = NewParamValueEditor()
 	}
 	sc := samplerKnobScale(idx)
-	def := audio.ParamDef{Name: samplerStepPrefName(idx), Min: sc.Min, Max: sc.Max, Unit: sc.Unit}
+	def := dv.samplerKnobDef(idx)
 	anchor := dv.samplerKnobReadoutRect(idx)
 	span := sc.Max - sc.Min
 	if span <= 0 {
@@ -1269,6 +1201,12 @@ func (p *samplerPanel) openSamplerParamEditor(idx int) {
 // EQPanelZone.Update to request a re-layout so the caption refreshes.
 func (p *samplerPanel) samplerTabUpdate() bool {
 	dv := p.dv
+	// Refresh which trim handle the cursor is hovering (desktop only) so the
+	// hovered handle blooms in its own color, next to the wheel-nudge tick.
+	p.updateSamplerHandleHover()
+	// Advance the debounced desktop wheel-nudge commit once per frame while the
+	// Sampler tab is active (mirrors synthWheelNudge.tick in SynthTabUpdate).
+	dv.samplerWheelNudge.tick()
 	// Tick the mobile knob-scroll cooldown clock (see ControlGrid.WheelStep/Tick).
 	if dv.sampler.knobGrid != nil {
 		dv.sampler.knobGrid.Tick()
@@ -1468,6 +1406,9 @@ func (p *samplerPanel) samplerTabHitAreas() []HitArea {
 		if k == nil || k.Rect().Empty() {
 			continue
 		}
+		// The whole card is one tap target: a press anywhere opens the value-wheel
+		// popup (OnPress), a desktop wheel notch nudges the value (OnWheel). The
+		// old separate readout / step-badge hit areas are retired with the pill.
 		out = append(out, HitArea{
 			Rect:     k.Rect(),
 			ZIndex:   z,
@@ -1476,34 +1417,6 @@ func (p *samplerPanel) samplerTabHitAreas() []HitArea {
 			Touch:    true,
 			ClipRect: clipFor(k.Rect()),
 		})
-		// Readout (caption) hit area — sits below the dial, outside k.Rect().
-		// OnPress checks for readout/badge before starting a drag, so tapping
-		// here opens the numeric editor rather than capturing a knob drag.
-		if rr := dv.samplerKnobReadoutRect(i); !rr.Empty() {
-			out = append(out, HitArea{
-				Rect:     rr,
-				ZIndex:   z,
-				Handler:  &samplerKnobHitAdapter{dv: dv, idx: i},
-				Tag:      fmt.Sprintf("sampler-readout-%d", i),
-				Touch:    true,
-				ClipRect: clipFor(rr),
-			})
-		}
-		// Badge hit area — sits below the caption, outside k.Rect().
-		// OnPress handles the cycle; this HitArea makes the badge reachable
-		// via the real tree dispatch path.
-		if i < len(s.knobStepBadges) {
-			if b := s.knobStepBadges[i]; b != nil && !b.Rect().Empty() {
-				out = append(out, HitArea{
-					Rect:     b.Rect(),
-					ZIndex:   z + 1, // above readout so badge wins over readout on overlap
-					Handler:  &samplerKnobHitAdapter{dv: dv, idx: i},
-					Tag:      fmt.Sprintf("sampler-badge-%d", i),
-					Touch:    true,
-					ClipRect: clipFor(b.Rect()),
-				})
-			}
-		}
 	}
 
 	// Trim handles (only when a buffer is loaded).
@@ -1555,9 +1468,8 @@ func (p *samplerPanel) samplerTabHitAreas() []HitArea {
 // ── Input adapters ───────────────────────────────────────────────────────────
 
 type samplerKnobHitAdapter struct {
-	dv     *DrumView
-	idx    int
-	active bool
+	dv  *DrumView
+	idx int
 }
 
 func (h *samplerKnobHitAdapter) knob() *Knob {
@@ -1567,123 +1479,57 @@ func (h *samplerKnobHitAdapter) knob() *Knob {
 	return h.dv.sampler.knobs[h.idx]
 }
 
+// glowRect implements glowTarget: hovering a sampler param card lifts it through
+// the shared tree hover overlay like every other clickable. The whole card is
+// the hover target (a tap anywhere on it opens the value-wheel popup).
+func (h *samplerKnobHitAdapter) glowRect(_, _ int, hitRect image.Rectangle) image.Rectangle {
+	return hitRect
+}
+
+// OnPress opens the value-wheel popup on EVERY platform (the old desktop rotary
+// drag + step-badge tap + readout-editor tap are retired; resolution + numeric
+// entry now live in the popup). Flush any pending wheel-nudge commit first so
+// the popup snapshots the committed value. Mirrors synthKnobHitAdapter.OnPress.
 func (h *samplerKnobHitAdapter) OnPress(x, y int) InputResult {
-	// Numeric editor open: swallow the tap so a knob drag doesn't start
-	// beneath the open editor.
+	// Numeric editor open: swallow the tap so nothing starts beneath it.
 	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
 		return InputConsumed
 	}
-	// Mobile: a tap on the knob cell opens the vertical scroll-wheel popup,
-	// which owns value + resolution + numeric entry. Desktop keeps the in-place
-	// rotary drag (the code below). Mirrors synthKnobHitAdapter.OnPress.
-	if Profile().IsMobile() {
-		h.dv.openSamplerKnobWheelPopup(h.idx)
-		return InputConsumed
-	}
-	// Step-badge pill: a tap cycles the resolution step instead of dragging.
-	if h.idx < len(h.dv.sampler.knobStepBadges) {
-		if b := h.dv.sampler.knobStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
-			h.dv.cycleSamplerKnobStep(h.idx)
-			return InputConsumed
-		}
-	}
-	// Value readout (caption line): a tap opens the numeric editor.
-	if rr := h.dv.samplerKnobReadoutRect(h.idx); !rr.Empty() && image.Pt(x, y).In(rr) {
-		h.dv.openSamplerParamEditor(h.idx)
-		return InputConsumed
-	}
-	k := h.knob()
-	if k == nil {
-		return InputIgnored
-	}
-	if k.HandleInputResult(x, y, true) != InputIgnored {
-		h.active = true
-		h.dv.applySamplerKnob(h.idx)
-		return InputCaptured
-	}
-	return InputIgnored
+	// openSamplerKnobWheelPopup flushes any pending wheel-nudge commit before
+	// snapshotting the popup's initial value (same contract as the synth opener).
+	h.dv.openSamplerKnobWheelPopup(h.idx)
+	return InputConsumed
 }
 
-func (h *samplerKnobHitAdapter) OnDrag(x, y int) {
-	if !h.active {
-		return
-	}
-	k := h.knob()
-	if k == nil {
-		h.active = false
-		return
-	}
-	k.HandleInputResult(x, y, true)
-	h.dv.applySamplerKnob(h.idx)
-}
+// OnDrag / OnRelease are no-ops: the card no longer drives an in-place drag; the
+// press opened the value-wheel popup, which owns the drag interaction.
+func (h *samplerKnobHitAdapter) OnDrag(x, y int)    {}
+func (h *samplerKnobHitAdapter) OnRelease(x, y int) {}
 
-func (h *samplerKnobHitAdapter) OnRelease(x, y int) {
-	if !h.active {
-		return
-	}
-	if k := h.knob(); k != nil {
-		k.HandleInputResult(x, y, false)
-		h.dv.applySamplerKnob(h.idx)
-	}
-	h.active = false
-	// One undo step per gesture, committed here on release (the per-frame drag
-	// only staged the value).
-	h.dv.commitSamplerEdit()
-}
-
+// OnWheel nudges the value by one StepMul (endless) per notch, holding Shift for
+// one-rung-finer. The whole spin collapses into ONE debounced undo step (see
+// wheelNudger). Mirrors the Synth tab's card wheel with sampler plumbing.
 func (h *samplerKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
-	k := h.knob()
-	if k == nil {
-		return InputIgnored
-	}
-	// Scrolling while hovering the step-RESOLUTION badge shifts its rung
-	// (scroll up = finer, down = coarser). The knob itself is left untouched.
-	s := &h.dv.sampler
-	if h.idx >= 0 && h.idx < len(s.knobStepBadges) {
-		if b := s.knobStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
-			h.dv.stepSamplerKnobResolution(h.idx, steps)
-			return InputConsumed
-		}
-	}
-	// Anywhere else (the knob dial): ORIGINAL behavior — wheel turns the knob.
-	res := k.HandleWheel(x, y, steps)
-	if res == InputConsumed {
-		h.dv.applySamplerKnob(h.idx)
-	}
-	return res
-}
-
-// OnWheel2D handles a two-finger trackpad drag with the raw axes. Over the
-// step-resolution badge the scroll shifts the rung. Over the knob body a
-// LEFT/RIGHT (horizontal-dominant) scroll changes the value — mirroring a
-// left/right mouse drag. An UP/DOWN scroll is reserved for overflow rows; the
-// sampler has none, so vertical scroll is a no-op (it never nudges the value).
-func (h *samplerKnobHitAdapter) OnWheel2D(x, y, dx, dy int) InputResult {
-	k := h.knob()
-	if k == nil {
-		return InputIgnored
-	}
-	s := &h.dv.sampler
-	if h.idx >= 0 && h.idx < len(s.knobStepBadges) {
-		if b := s.knobStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
-			steps := dy
-			if steps == 0 {
-				steps = dx
-			}
-			h.dv.stepSamplerKnobResolution(h.idx, steps)
-			return InputConsumed
-		}
-	}
-	if wheelAxisHorizontal(dx, dy) {
-		// Debounced + magnitude-insensitive (slow, human-paced); per-step amount
-		// is StepMul (the user's chosen resolution).
-		if k.StepValueByWheel(dx) {
-			h.dv.applySamplerKnob(h.idx)
-		}
+	// Numeric editor open: swallow the notch so a wheel spin can't mutate the
+	// param (and arm a second commit) beneath the inline editor — mirrors OnPress.
+	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
 		return InputConsumed
 	}
-	// Vertical: no overflow rows to scroll on the sampler — consume as a no-op
-	// so it neither turns the knob nor surprises with a page scroll.
+	k := h.knob()
+	if k == nil || steps == 0 {
+		return InputIgnored
+	}
+	fine := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
+	var badge *KnobStepBadge
+	if h.idx >= 0 && h.idx < len(h.dv.sampler.knobStepBadges) {
+		badge = h.dv.sampler.knobStepBadges[h.idx]
+	}
+	if !nudgeKnobByWheel(k, badge, steps, fine) {
+		return InputIgnored
+	}
+	h.dv.applySamplerKnob(h.idx)
+	dv := h.dv
+	dv.samplerWheelNudge.bump(func() { dv.commitSamplerEdit() })
 	return InputConsumed
 }
 
@@ -1854,12 +1700,6 @@ func (dv *DrumView) applySamplerKnob(idx int) { dv.sp().applySamplerKnob(idx) }
 
 func (dv *DrumView) samplerKnobReadoutRect(idx int) image.Rectangle {
 	return dv.sp().samplerKnobReadoutRect(idx)
-}
-
-func (dv *DrumView) cycleSamplerKnobStep(idx int) { dv.sp().cycleSamplerKnobStep(idx) }
-
-func (dv *DrumView) stepSamplerKnobResolution(idx, steps int) bool {
-	return dv.sp().stepSamplerKnobResolution(idx, steps)
 }
 
 func (dv *DrumView) openSamplerParamEditor(idx int) { dv.sp().openSamplerParamEditor(idx) }

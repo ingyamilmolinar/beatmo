@@ -29,6 +29,14 @@ type InstrumentOption struct {
 	Color color.Color
 }
 
+// menuCatMeta is the per-category-row display metadata rendered by
+// drawCategoryRow: the trailing instrument count and whether the row is the
+// virtual Favorites entry (gold filled-star leading icon).
+type menuCatMeta struct {
+	favRow bool
+	count  int
+}
+
 // InstrumentMenuProps contains the external state passed to the instrument menu component.
 type InstrumentMenuProps struct {
 	// AnchorRect is the label button that opens the menu (used for positioning).
@@ -130,8 +138,8 @@ type InstrumentMenuState struct {
 	// highlights as active. Seeded from props.CurrentInstrument at Open and
 	// updated on every in-menu selection so the active stripe follows the user
 	// while the menu stays open (audition). Empty falls back to the prop.
-	selectedID   string
-	lastAdded    string
+	selectedID    string
+	lastAdded     string
 	cameFromCats  bool
 	searchText    string
 	filteredInsts []string
@@ -158,6 +166,10 @@ type InstrumentMenuComponent struct {
 	menuScroll   *MenuScroll     // shared scroll component (owns the ScrollBehavior)
 	scroll       *ScrollBehavior // == menuScroll.ScrollBehavior(); kept for the existing call sites
 	categoryBtns []*Button
+	// categoryMeta is parallel to categoryBtns (categories mode only): the
+	// per-row trailing count + the virtual-Favorites marker consumed by
+	// drawCategoryRow. Global-search category rows carry zero-value meta.
+	categoryMeta []menuCatMeta
 	instBtns     []*Button
 	searchBox    *TextInput
 	backBtn      *Button
@@ -370,12 +382,40 @@ func (m *InstrumentMenuComponent) HandleEscape() bool {
 	if strings.TrimSpace(m.state.searchText) == "" {
 		return false
 	}
+	m.clearSearch()
+	return true
+}
+
+// HoverAt implements portalHoverer: refreshes every row/button hovered flag
+// from the plain cursor position once per frame, so menu rows show their
+// hover tint on desktop (portal input handlers only run on press edges).
+func (m *InstrumentMenuComponent) HoverAt(mx, my int) {
+	for _, b := range m.instBtns {
+		b.UpdateHover(mx, my)
+	}
+	for _, b := range m.categoryBtns {
+		b.UpdateHover(mx, my)
+	}
+	m.backBtn.UpdateHover(mx, my)
+	m.closeBtn.UpdateHover(mx, my)
+}
+
+// clearSearch wipes the query and refreshes the filtered list — shared by
+// Esc and the search field's trailing clear-× button.
+func (m *InstrumentMenuComponent) clearSearch() {
 	m.state.searchText = ""
 	if m.searchBox != nil {
 		m.searchBox.SetText("")
 	}
 	m.rebuildMenu() // reuse the existing rebuild so the filtered list refreshes
-	return true
+}
+
+// searchClearHit reports whether pt lands on the search field's clear-×
+// (only live while a query is present and the drawn adornments are active).
+func (m *InstrumentMenuComponent) searchClearHit(pt image.Point) bool {
+	return m.searchBox != nil && m.searchBox.Value() != "" &&
+		menuSearchAdornmentsActive(m.searchBox) &&
+		pt.In(menuSearchClearRect(m.searchBox))
 }
 
 // InstBtns returns the current instrument buttons (for test access and legacy sync).
@@ -432,6 +472,7 @@ func (m *InstrumentMenuComponent) ScrollState() (first, visible, total int) {
 func (m *InstrumentMenuComponent) rebuildMenu() {
 	m.ensureScroll()
 	m.categoryBtns = m.categoryBtns[:0]
+	m.categoryMeta = m.categoryMeta[:0]
 	m.instBtns = m.instBtns[:0]
 	m.instIDs = m.instIDs[:0]
 	m.instTrails = m.instTrails[:0]
@@ -531,14 +572,24 @@ func (m *InstrumentMenuComponent) pinSource() PinSource {
 // and state already match — calling SetText then would reset the caret to
 // the end, teleporting it away from a mid-text edit.
 func (m *InstrumentMenuComponent) ensureSearchBoxSynced() {
-	if m.searchBox == nil {
-		m.searchBox = NewTextInput(image.Rectangle{}, BPMBoxStyle)
-		m.searchBox.MaxLen = 40
+	m.searchBox = ensureMenuSearchBox(m.searchBox, m.searchRect)
+	// On desktop WASM the search box read the keyboard straight off the ebiten
+	// canvas, whose per-frame level check (isKeyPressed / keyRepeat) silently
+	// drops an Arrow/Backspace pressed+released between two slow frames — the
+	// caret would appear to skip a keystroke under software-WebGL / GPU-stall
+	// load. Route focus through the hidden soft-keyboard proxy instead (same as
+	// the BPM and rename boxes): the proxy's JS keydown handler buffers every key
+	// synchronously, independent of the render loop, so nothing is dropped. Mobile
+	// keeps its own native-input overlay (instSearchMobileInputID via
+	// native_gesture.go), which is already lossless, so gate this to non-mobile.
+	// softKeyboardShow/Hide are no-ops off js (stub build) and on non-WASM desktop.
+	if m.searchBox.OnFocusGained == nil && !Profile().IsMobile() {
+		m.searchBox.OnFocusGained = func() { softKeyboardShow("text") }
+		m.searchBox.OnFocusLost = func() { softKeyboardHide() }
 	}
 	if m.searchBox.Value() != m.state.searchText {
 		m.searchBox.SetText(m.state.searchText)
 	}
-	m.searchBox.Rect = insetRect(m.searchRect, SpaceSM)
 }
 
 // globalQueryActive reports whether the categories view currently shows
@@ -560,6 +611,11 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 	// FavoritesStore is wired, then the caller-supplied categories.
 	categories := m.props.Categories
 	favPrefix := m.favoritesCategoryEnabled()
+	// Instruments-per-category counts feed the trailing count captions.
+	catCounts := make(map[string]int, len(categories))
+	for _, opt := range m.props.Instruments {
+		catCounts[opt.Category]++
+	}
 	catCount := len(categories)
 	if favPrefix {
 		catCount++
@@ -660,9 +716,6 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 		if favPrefix && absIdx == 0 {
 			favCount := len(m.favoritesIDs())
 			label := i18n.T(i18n.KeyMenuFavorites)
-			if favCount > 0 {
-				label = label + " (" + pageChipLabel(favCount) + ")"
-			}
 			btn := NewButton(label, DropdownStyle, func() {
 				m.state.favoritesView = true
 				m.state.activeCat = ""
@@ -677,6 +730,7 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 			}
 			btn.SetRect(insetRect(r, SpaceXS))
 			m.categoryBtns = append(m.categoryBtns, btn)
+			m.categoryMeta = append(m.categoryMeta, menuCatMeta{favRow: true, count: favCount})
 			continue
 		}
 
@@ -704,6 +758,7 @@ func (m *InstrumentMenuComponent) buildCategoriesMode(base, vertBounds image.Rec
 		}
 		btn.SetRect(insetRect(r, SpaceXS))
 		m.categoryBtns = append(m.categoryBtns, btn)
+		m.categoryMeta = append(m.categoryMeta, menuCatMeta{count: catCounts[btnCat]})
 	}
 
 	m.buildCloseBtn()
@@ -1060,9 +1115,9 @@ func (m *InstrumentMenuComponent) buildInstrumentsMode(base, vertBounds image.Re
 		emptyView := image.Rect(base.Min.X, listStartY, base.Max.X, listStartY+rowH)
 		m.scroll.VS.View = emptyView
 		m.fullRect = image.Rect(base.Min.X, startY, base.Max.X, startY+extraTop+rowH)
-		emptyText := "No matches"
+		emptyText := i18n.T(i18n.KeyMenuNoMatches)
 		if m.state.favoritesView && strings.TrimSpace(m.state.searchText) == "" {
-			emptyText = "No favorites yet — tap the star on any instrument"
+			emptyText = i18n.T(i18n.KeyMenuNoFavorites) + " — " + i18n.T(i18n.KeyMenuNoFavoritesHint)
 		}
 		if showBack {
 			bcH := m.style.BreadcrumbStripH
@@ -1296,6 +1351,11 @@ func (m *InstrumentMenuComponent) fireTapAt(x, y int) {
 		m.closeBtn.OnClick()
 		return
 	}
+	// Search clear-× (drawn adornment; inactive while the native <input> overlays).
+	if m.searchClearHit(pt) {
+		m.clearSearch()
+		return
+	}
 	if m.state.mode == InstMenuModeInstruments && m.backBtn != nil {
 		if pt.In(m.backBtn.Rect()) && m.backBtn.OnClick != nil {
 			m.backBtn.OnClick()
@@ -1477,7 +1537,11 @@ func (m *InstrumentMenuComponent) HandleInput(x, y int, pressed bool) InputResul
 	// Consume clicks within the search rect to prevent click-through.
 	// Keyboard/char input is handled by Update() every frame. The search row
 	// exists in BOTH modes now (instruments filter + categories global search).
+	// A press on the trailing clear-× wipes the query instead.
 	if m.searchBox != nil && !m.searchRect.Empty() && pt.In(m.searchRect) {
+		if pressed && m.searchClearHit(pt) {
+			m.clearSearch()
+		}
 		return InputConsumed
 	}
 
@@ -1819,8 +1883,8 @@ func (m *InstrumentMenuComponent) Draw(dst *ebiten.Image) {
 				m.drawGlobalCatRow(dst, btn)
 			}
 		} else {
-			for _, btn := range m.categoryBtns {
-				m.drawCategoryRow(dst, btn)
+			for i, btn := range m.categoryBtns {
+				m.drawCategoryRow(dst, btn, i)
 			}
 		}
 		m.drawScrollbar(dst)
@@ -1994,9 +2058,10 @@ func (m *InstrumentMenuComponent) popBreadcrumbTo(d int) {
 }
 
 // instMenuSwatchSz is the side length (in px) of the colored instrument
-// swatch drawn to the left of each instrument label. Matches the row-rack
-// accent-dot convention (small, clearly visible, not overwhelming).
-const instMenuSwatchSz = 8
+// swatch drawn to the left of each instrument label (spacing.swatch-md —
+// the list-row step of the swatch scale; color IS the instrument's
+// identity, so the chip must read at a glance).
+const instMenuSwatchSz = SwatchSizeMD
 
 // drawInstRow renders one instrument-list row through drawMenuRow: background
 // accent tinted to the instrument's own color, keycap chrome, a colored swatch,
@@ -2012,6 +2077,17 @@ func (m *InstrumentMenuComponent) drawInstRow(dst *ebiten.Image, btn *Button, id
 // each matched instrument lives in.
 func (m *InstrumentMenuComponent) drawInstRowTrail(dst *ebiten.Image, btn *Button, id, trail string) {
 	if btn.Rect().Empty() {
+		return
+	}
+	// Empty-state placeholder (no id, no action): a centered muted line per
+	// the DESIGN.md Menu-anatomy empty-state pattern, not a fake list row.
+	if id == "" && btn.OnClick == nil {
+		drawMenuRow(dst, btn, MenuRowSpec{
+			State:       menuItemRest,
+			Label:       btn.Text,
+			LabelColor:  colTextSecondary,
+			CenterLabel: true,
+		})
 		return
 	}
 	// LIVE selection (ActiveInstrumentID) → exactly one row reads active; the
@@ -2054,9 +2130,11 @@ func (m *InstrumentMenuComponent) drawGlobalCatRow(dst *ebiten.Image, btn *Butto
 }
 
 // drawCategoryRow renders one category row through drawMenuRow: background
-// accent, keycap chrome, and the label at SpaceMD — identical to the previous
-// hand-rolled body, unified with every other overlay menu via drawMenuRow.
-func (m *InstrumentMenuComponent) drawCategoryRow(dst *ebiten.Image, btn *Button) {
+// accent, the label at SpaceMD, a trailing instrument-count caption, and a
+// drill-in chevron so categories read as folders. The virtual Favorites row
+// leads with a gold filled star. idx indexes m.categoryMeta (parallel to
+// m.categoryBtns).
+func (m *InstrumentMenuComponent) drawCategoryRow(dst *ebiten.Image, btn *Button, idx int) {
 	if btn.Rect().Empty() {
 		return
 	}
@@ -2067,11 +2145,37 @@ func (m *InstrumentMenuComponent) drawCategoryRow(dst *ebiten.Image, btn *Button
 	} else if btn.hovered || btn.pressed {
 		state = menuItemHover
 	}
-	drawMenuRow(dst, btn, MenuRowSpec{
-		Accent: m.menuAccent(),
-		State:  state,
-		Label:  btn.Text,
-	})
+	spec := MenuRowSpec{
+		Accent:      m.menuAccent(),
+		State:       state,
+		Label:       btn.Text,
+		TrailIconID: IconChevronRight,
+	}
+	if idx >= 0 && idx < len(m.categoryMeta) {
+		meta := m.categoryMeta[idx]
+		if meta.count > 0 {
+			spec.TrailLabel = compactCountLabel(meta.count)
+		}
+		if meta.favRow {
+			spec.IconID = IconStarFilled
+			spec.IconTint = colAccent
+		}
+	}
+	drawMenuRow(dst, btn, spec)
+}
+
+// compactCountLabel renders a list-size caption that stays glanceable for
+// sample-bank-sized categories: exact below 1000, "7.9k" above.
+func compactCountLabel(n int) string {
+	if n < 1000 {
+		return pageChipLabel(n)
+	}
+	whole := n / 1000
+	tenth := (n % 1000) / 100
+	if tenth == 0 {
+		return pageChipLabel(whole) + "k"
+	}
+	return pageChipLabel(whole) + "." + pageChipLabel(tenth) + "k"
 }
 
 // drawFavoriteStars renders the per-row star icons. Empty star (outline)
@@ -2161,13 +2265,7 @@ func (m *InstrumentMenuComponent) drawBottomSheetHandle(dst *ebiten.Image) {
 // box is empty and unfocused. Hint placement uses StyledTextHeight(RoleBody)
 // for vertical centering.
 func (m *InstrumentMenuComponent) drawSearchRow(dst *ebiten.Image) {
-	m.searchBox.Draw(dst)
-	if m.state.searchText == "" && !m.searchBox.Focused() {
-		r := m.searchBox.Rect
-		th := StyledTextHeight(RoleBody)
-		ty := r.Min.Y + (r.Dy()-th)/2
-		DrawTextStyled(dst, i18n.T(i18n.KeyCapSearch), r.Min.X+SpaceXS, ty, RoleBody, colTextSecondary)
-	}
+	drawMenuSearchBox(dst, m.searchBox)
 }
 
 // Capturing returns whether the component is capturing input.

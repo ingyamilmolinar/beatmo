@@ -277,9 +277,29 @@ func TestMarqueeCancelledWhenReleasedOverGroupMenu(t *testing.T) {
 	}
 
 	bounds := g.groupMenu.InputBounds()
-	startX, startY := 700, 50 // empty grid space, outside the panel
-	if image.Pt(startX, startY).In(bounds) {
-		t.Fatalf("setup: start point must be outside the panel, bounds=%v", bounds)
+	// task-placement-v2's placeGroupMenu (grid_reserved_zone.go) picks
+	// whichever of {right, left, below, above}-of-anchor is first cleared of
+	// the group's members — which direction wins depends on exactly where
+	// the member bbox sits relative to the anchor, so (unlike the pre-v2
+	// avoidRect chain, which always escaped in a fixed direction relative to
+	// the obstacle) this fixture's chosen panel position isn't safely
+	// predictable as "away from x=0" anymore. Derive a point far along the
+	// gridW axis instead — panel width is capped at groupMenuW (300) and the
+	// anchor (120,80) is well inside the pane, so no candidate's clamped rect
+	// can reach the far right edge — and verify it dynamically against the
+	// panel bounds, the settings-gear button, and the member bbox rather than
+	// assuming a fixed escape direction.
+	gridW, gridH := g.split.GridW(g.winW), g.split.GridH(g.winH)
+	gear := g.gridHelpButtonRect()
+	memberBBox, _ := g.groupMemberScreenBBox([]model.NodeID{aID, bID})
+	safeOutside := func(p image.Point) bool {
+		return !p.In(bounds) && !p.In(gear) && !p.In(memberBBox) &&
+			p.X >= 0 && p.X < gridW && p.Y >= 0 && p.Y < gridH
+	}
+
+	startX, startY := gridW-10, 50 // empty grid space, outside the panel
+	if !safeOutside(image.Pt(startX, startY)) {
+		t.Fatalf("setup: start point (%d,%d) must be outside the panel/gear/members, bounds=%v gear=%v members=%v", startX, startY, bounds, gear, memberBBox)
 	}
 	insideX, insideY := (bounds.Min.X+bounds.Max.X)/2, (bounds.Min.Y+bounds.Max.Y)/2
 
@@ -298,9 +318,9 @@ func TestMarqueeCancelledWhenReleasedOverGroupMenu(t *testing.T) {
 	// A subsequent plain click on empty grid space (clearly outside the
 	// panel) must behave normally — add a node, not replay the stale
 	// marquee rect into a second (phantom) group.
-	clickX, clickY := 700, 200
-	if image.Pt(clickX, clickY).In(bounds) {
-		t.Fatalf("setup: post-cancel click point must be outside the panel, bounds=%v", bounds)
+	clickX, clickY := gridW-10, 200
+	if !safeOutside(image.Pt(clickX, clickY)) {
+		t.Fatalf("setup: post-cancel click point (%d,%d) must be outside the panel/gear/members, bounds=%v gear=%v members=%v", clickX, clickY, bounds, gear, memberBBox)
 	}
 	gridClick(g, clickX, clickY)
 	if n := len(g.graph.AllGroups()); n != 1 {
@@ -630,8 +650,23 @@ func TestSecondMarqueeDiscardsPriorProvisionalGroup(t *testing.T) {
 	nc := g.tryAddNode(-20, -20, model.NodeTypeRegular)
 	undoBefore := len(g.undoManager.undo)
 	cx1, cy1, cx2, cy2 := g.nodeScreenRect(nc)
-	p1 := image.Pt(int(cx1)-5, int(cy1)-5)
-	p2 := image.Pt(int(cx2)+5, int(cy2)+5)
+
+	// The margin off c's sprite rect must clear c's GUIDE SNAP annulus, not
+	// merely the sprite rect. game_input_editor.go's Shift+press edge ranks a
+	// guide-snapped node (guideTargetAt == GuideNode, grid_guide.go) ABOVE
+	// the marquee — deliberately, so shift+dragging "from" a node draws the
+	// connect arrow rather than arming a marquee — and that snap is measured
+	// from the node's CENTER against guideSnapRadius (20px), NOT against its
+	// sprite rect. At this fixture's zoom c's rect is only ~3px across, so
+	// the fixed ±5px margin an earlier revision used put the press ~10px from
+	// c's center: deep inside the 20px radius, so the press armed a link-drag
+	// from c and the second marquee never happened at all (group A survived
+	// as the sole group). Derive the margin from the radius so a future
+	// token/zoom change can't silently re-break it, and assert the resolved
+	// target below rather than trusting the arithmetic.
+	snapPx := int(g.guideSnapRadiusWorld()*g.cam.Scale) + 2
+	p1 := image.Pt(int(cx1)-snapPx, int(cy1)-snapPx)
+	p2 := image.Pt(int(cx2)+snapPx, int(cy2)+snapPx)
 
 	// The first marquee's (still-open, uncommitted) menu panel is anchored
 	// near its own release point and, per game_update.go's dispatcher-first
@@ -650,6 +685,16 @@ func TestSecondMarqueeDiscardsPriorProvisionalGroup(t *testing.T) {
 	// otherwise the press resolves to a badge click, not a marquee arm.
 	if _, ok := g.groupBadgeAt(p1.X, p1.Y); ok {
 		t.Fatalf("setup: press point %v must not land on group A's badge", p1)
+	}
+	// ...and must clear every node's guide snap annulus (see the snapPx
+	// comment above) — the third and last interceptor game_input_editor.go
+	// ranks above the marquee on the Shift+press edge. Asserting the resolved
+	// target here fails at the real cause ("the press armed a link-drag")
+	// instead of surfacing three assertions later as the far more confusing
+	// "the surviving group is the orphaned first one".
+	if gt := g.guideTargetAt(p1.X, p1.Y); gt.Kind == GuideNode {
+		t.Fatalf("setup: press point %v must fall outside every node's guide snap radius (%.1fpx screen); it snapped to node %d and would arm a link-drag, not a marquee",
+			p1, g.guideSnapRadiusWorld()*g.cam.Scale, gt.Node.ID)
 	}
 
 	shiftDrag(g, p1.X, p1.Y, p2.X, p2.Y)

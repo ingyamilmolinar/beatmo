@@ -206,6 +206,9 @@ func (dv *DrumView) softKeyboardCandidates() []NativeRectCandidate {
 	if dv.IsInstMenuOpen() && dv.instSearchBox != nil {
 		add("inst-menu", instSearchMobileInputID, "text", dv.instSearchRect)
 	}
+	if dv.IsOverflowMenuOpen() && dv.overflowPage == 1 && dv.templateSearchBox != nil {
+		add("overflow-menu", templateSearchMobileInputID, "text", dv.templateSearchRect)
+	}
 	if dv.IsNamingOpen() && dv.nameBox != nil {
 		add("naming", "wav-name", "text", dv.nameBox.Rect)
 	}
@@ -244,6 +247,10 @@ func (dv *DrumView) nativeInputCandidates() []NativeRectCandidate {
 	if dv.IsInstMenuOpen() && dv.instSearchBox != nil && !dv.instSearchRect.Empty() {
 		out = append(out, NativeRectCandidate{Owner: "inst-menu", Rect: dv.instSearchRect,
 			Intent: NativeIntent{Channel: NativeTextInput, ID: instSearchMobileInputID, Text: dv.instSearchBox.Text, MaxLen: 40, InputMode: "text"}})
+	}
+	if dv.IsOverflowMenuOpen() && dv.overflowPage == 1 && dv.templateSearchBox != nil && !dv.templateSearchRect.Empty() {
+		out = append(out, NativeRectCandidate{Owner: "overflow-menu", Rect: dv.templateSearchRect,
+			Intent: NativeIntent{Channel: NativeTextInput, ID: templateSearchMobileInputID, Text: dv.templateSearchBox.Text, MaxLen: 40, InputMode: "text"}})
 	}
 	if dv.IsNamingOpen() && dv.nameBox != nil && !dv.nameBox.Rect.Empty() {
 		out = append(out, NativeRectCandidate{Owner: "naming", Rect: dv.nameBox.Rect,

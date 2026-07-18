@@ -15,7 +15,18 @@ import (
 // and the voice dispatcher applies it to the freshly-rendered recipe buffer
 // at trigger time (tryRecipeVoice → ApplySampleEditToBuffer). Synth knob
 // edits, recipe Saves, and descriptor changes all funnel through the same
-// next-trigger model: mutate → voiceCacheInvalidate → next hit re-renders.
+// next-trigger model: mutate → the binding's KEY ROTATES → the next trigger
+// renders the new sound under the new key.
+//
+// Note the mechanism: rotation, NOT invalidation. hashSampleEdit(e) is XORed
+// into the voice-cache key (synth_recipe_dispatch.go:138/:192/:264), so a new
+// descriptor already maps to a different key and the stale entry simply goes
+// unread. SetSampleEdit/ClearSampleEdit therefore do NOT call
+// voiceCacheInvalidate — doing so dropped EVERY pitch's entry and made each
+// following note cold-render ~24ms+ on the audioLoop dispatch goroutine
+// (measured: 30-44 dispatch renders per sampler edit, worst render 310ms
+// against an 11.6ms realtime budget; removing it took that to 0). Same storm,
+// same fix as SetInstrumentParam — see the NOTE at synth_recipe.go:256-267.
 //
 // This file is build-tag-free so the registry exists identically on native,
 // WASM, and -tags test builds (the same contract as sample_edit.go).
@@ -43,10 +54,11 @@ func SwapPlatformSampleEditChangedForTest(fn func(id string, e SampleEdit)) func
 	return prev
 }
 
-// SetSampleEdit stores the non-destructive edit descriptor for an instrument,
-// invalidates its cached voices (next trigger re-renders through the edit),
-// and pushes the descriptor to the platform bridge. Storing the identity
-// edit is equivalent to ClearSampleEdit.
+// SetSampleEdit stores the non-destructive edit descriptor for an instrument
+// (the edit hash rotates the voice-cache key so the next trigger naturally
+// re-renders through it — see the NOTE below) and pushes the descriptor to
+// the platform bridge. Storing the identity edit is equivalent to
+// ClearSampleEdit.
 func SetSampleEdit(instID string, e SampleEdit) {
 	if e.isIdentity() {
 		ClearSampleEdit(instID)
@@ -62,7 +74,15 @@ func SetSampleEdit(instID string, e SampleEdit) {
 	sampleEdits[instID] = e
 	sampleEditsMu.Unlock()
 
-	voiceCacheInvalidate(instID)
+	// NOTE: no voiceCacheInvalidate here — deliberately. hashSampleEdit(e) is
+	// already XORed into the voice-cache key (synth_recipe_dispatch.go:138,
+	// :192, :264), so a new edit maps to a DIFFERENT key: dispatch renders the
+	// new sound there and the old-value entry is simply not read. Blanket-
+	// clearing dropped EVERY pitch's entry, making each following note a cold
+	// ~24ms render on the audio dispatch goroutine — the same 93%-miss storm
+	// SetInstrumentParam was fixed to avoid (synth_recipe.go:256-267).
+	// WAV/user-sample instruments do not rely on the cache here: they are
+	// re-derived below through RegisterSamplePCM, which is not cache-keyed.
 	reapplyUserSampleEdit(instID, e)
 	hooks.PublishKind(hooks.EventSampleEditChanged, hooks.SamplePayload{SampleID: instID})
 	platformSampleEditChanged(instID, e)
@@ -108,7 +128,15 @@ func ClearSampleEdit(instID string) {
 	if !had {
 		return
 	}
-	voiceCacheInvalidate(instID)
+	// NOTE: no voiceCacheInvalidate here — deliberately. hashSampleEdit(e) is
+	// already XORed into the voice-cache key (synth_recipe_dispatch.go:138,
+	// :192, :264), so a new edit maps to a DIFFERENT key: dispatch renders the
+	// new sound there and the old-value entry is simply not read. Blanket-
+	// clearing dropped EVERY pitch's entry, making each following note a cold
+	// ~24ms render on the audio dispatch goroutine — the same 93%-miss storm
+	// SetInstrumentParam was fixed to avoid (synth_recipe.go:256-267).
+	// WAV/user-sample instruments do not rely on the cache here: they are
+	// re-derived below through RegisterSamplePCM, which is not cache-keyed.
 	// Restore a user sample's pristine playback (identity bake) so clearing the
 	// edit reverts the chop in real time, mirroring SetSampleEdit. No-op for synths.
 	reapplyUserSampleEdit(instID, SampleEdit{StartFrac: 0, EndFrac: 1})

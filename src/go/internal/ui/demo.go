@@ -265,9 +265,13 @@ func (g *Game) RunDemo() {
 
 // RunBenchmark configures the game to auto-play the demo circuit at the given
 // BPM for the specified duration, then exit cleanly via ebiten.Termination.
-func (g *Game) RunBenchmark(bpm int, dur time.Duration) {
+// storm/stormInst are an opt-in synth param-mutation storm (benchStormOff +
+// "" leaves the existing bench behavior unchanged).
+func (g *Game) RunBenchmark(bpm int, dur time.Duration, storm benchStormScenario, stormInst string) {
 	g.benchBPM = bpm
 	g.benchDuration = dur
+	g.benchStorm = storm
+	g.benchStormInst = stormInst
 	g.demoScheduled = true
 }
 

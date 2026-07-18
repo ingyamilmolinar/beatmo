@@ -272,6 +272,11 @@ func SetInstrumentParam(instrumentID, name string, value float64) {
 		Value:   stored,
 	})
 	platformInstrumentParamsChanged(instrumentID, snapshot)
+	// Render the binding this edit just created, off-thread, so the next
+	// trigger is a cache HIT instead of a ~24ms cold render on the audio
+	// dispatch goroutine. Passes the SNAPSHOT (not the live map) so a faster
+	// edit landing behind us cannot make us warm the wrong binding.
+	notifyInstrumentBindingChanged(instrumentID, snapshot)
 	recordParamDispatch(time.Since(start))
 }
 
@@ -316,6 +321,11 @@ func SetInstrumentParams(instrumentID string, p RecipeParams) {
 
 	voiceCacheInvalidate(instrumentID)
 	platformInstrumentParamsChanged(instrumentID, snapshot)
+	// Render the binding this edit just created, off-thread, so the next
+	// trigger is a cache HIT instead of a ~24ms cold render on the audio
+	// dispatch goroutine. Passes the SNAPSHOT (not the live map) so a faster
+	// edit landing behind us cannot make us warm the wrong binding.
+	notifyInstrumentBindingChanged(instrumentID, snapshot)
 }
 
 // InstrumentParamsMgrLenForTest returns the number of instrument ids the
@@ -356,6 +366,11 @@ func ResetInstrumentParams(instrumentID string) {
 	}
 	voiceCacheInvalidate(instrumentID)
 	platformInstrumentParamsChanged(instrumentID, RecipeParams{})
+	// Render the binding this edit just created, off-thread, so the next
+	// trigger is a cache HIT instead of a ~24ms cold render on the audio
+	// dispatch goroutine. Passes the SNAPSHOT (not the live map) so a faster
+	// edit landing behind us cannot make us warm the wrong binding.
+	notifyInstrumentBindingChanged(instrumentID, RecipeParams{})
 }
 
 // BindInstrumentToRecipe records which SynthRecipe id an instrument resolves

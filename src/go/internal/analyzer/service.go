@@ -55,6 +55,16 @@ type Service struct {
 	// Monotonic trigger index for capture ordering.
 	triggerIdx atomic.Int64
 
+	// lastCapture holds the most recent capture for carry-forward across ticks.
+	// Stored atomically (was a Run-loop local) so Reset can clear it from the UI
+	// goroutine when a circuit loads.
+	lastCapture atomic.Pointer[CaptureBuffer]
+
+	// clearGen is bumped by Reset to tell the Run loop to drain the ring buffers
+	// and reset observer ballistics on its next tick, so a freshly loaded,
+	// stopped circuit reads flat instead of replaying the previous circuit.
+	clearGen atomic.Int64
+
 	// Lifecycle.
 	stopCh chan struct{}
 	wg     sync.WaitGroup
@@ -196,21 +206,51 @@ func (s *Service) Run() {
 	masterFFT := wave.NewFFTObserver(s.cfg.FFTSize)
 	envelope := wave.NewEnvelopeObserver(5, 50) // 5ms attack, 50ms release
 
-	// Track last capture for carry-forward.
-	var lastCapture *CaptureBuffer
+	// Track the clear generation so a Reset (bumped clearGen) drains rings and
+	// resets observer state exactly once, on the consumer goroutine.
+	var seenClearGen int64
 
 	for {
 		select {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			st := s.processTick(masterBuf, instBuf, peakRMS, masterFFT, envelope, lastCapture)
-			if st.Capture != nil {
-				lastCapture = st.Capture
+			if g := s.clearGen.Load(); g != seenClearGen {
+				seenClearGen = g
+				// Drain any leftover pre-load samples (consumer-side, safe).
+				s.masterRing.Reset()
+				s.mu.Lock()
+				for i := range s.slots {
+					if s.slots[i].ring != nil {
+						s.slots[i].ring.Reset()
+					}
+				}
+				s.mu.Unlock()
+				// Reset observer ballistics/hold state so the next tick seeds
+				// fresh instead of decaying from the previous circuit.
+				peakRMS = wave.NewPeakRMSObserver()
+				masterFFT = wave.NewFFTObserver(s.cfg.FFTSize)
+				envelope = wave.NewEnvelopeObserver(5, 50)
 			}
+			st := s.processTick(masterBuf, instBuf, peakRMS, masterFFT, envelope)
 			s.state.Store(st)
 		}
 	}
+}
+
+// Reset flushes the analyzer so the audio-panel tabs read flat until the new
+// circuit is played. It drops any queued/carried-forward capture and publishes
+// an empty state immediately (so readers see flat data the moment a circuit
+// load completes), then signals the Run loop to drain the ring buffers and
+// reset observer state on its next tick. Safe to call from the UI goroutine.
+func (s *Service) Reset() {
+	s.pending.Store(nil)
+	s.lastCapture.Store(nil)
+	s.clearGen.Add(1)
+	s.state.Store(&State{
+		Master:    ChannelMetrics{ID: "master", Name: "Master"},
+		Timestamp: time.Now().UnixNano(),
+	})
 }
 
 // Stop signals the service to stop and waits for it to finish.
@@ -225,7 +265,6 @@ func (s *Service) processTick(
 	peakRMS wave.Observer,
 	masterFFT wave.Observer,
 	envelope wave.Observer,
-	lastCapture *CaptureBuffer,
 ) *State {
 	now := time.Now().UnixNano()
 	sr := s.cfg.SampleRate
@@ -323,7 +362,7 @@ func (s *Service) processTick(
 					ID:         sl.id,
 					Name:       sl.name,
 					PeakDB:     im.PeakDB,
-					RMSDB:     im.RMSDB,
+					RMSDB:      im.RMSDB,
 					TruePeakDB: im.PeakDB,
 					HeadroomDB: headroom,
 					ClipCount:  im.ClipCount,
@@ -367,11 +406,14 @@ func (s *Service) processTick(
 			},
 			TriggerIdx: s.triggerIdx.Load(),
 		}
+		// Remember for carry-forward across subsequent (quiet) ticks. Reset
+		// clears this so a circuit load can't replay the previous capture.
+		s.lastCapture.Store(capture)
 	}
 
-	// If frozen or no new trigger, carry forward last capture.
-	if capture == nil && lastCapture != nil {
-		capture = lastCapture
+	// If frozen or no new trigger, carry forward the last capture.
+	if capture == nil {
+		capture = s.lastCapture.Load()
 	}
 
 	var clipsLastWindow int

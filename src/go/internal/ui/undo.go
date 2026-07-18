@@ -181,6 +181,20 @@ func (m *UndoManager) OnExternalLoad() {
 	m.committed = m.capture()
 }
 
+// RecordExternalLoad records a document swap (template / file load) as a SINGLE
+// undo step instead of clearing history, so one Undo restores the pre-load
+// circuit. The pre-load document is still the committed baseline at call time
+// (in-import mutations are suppressed by the g.importing capture guard), so
+// commitNow pushes it as the step and adopts the post-load document as the new
+// baseline. No-op while restoring — an undo-driven re-import must not push a
+// bogus step or perturb the stacks (mirrors OnExternalLoad's guard).
+func (m *UndoManager) RecordExternalLoad(label string) {
+	if m.restoring {
+		return
+	}
+	m.commitNow(label)
+}
+
 // undoObserver is the process-wide sink for committed-mutation taps. One Game
 // per process, so a package global is safe (mirrors input.go's var pattern).
 var undoObserver interface {

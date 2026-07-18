@@ -37,10 +37,19 @@ const (
 	EventNodeDeleted       Kind = "node.deleted"
 	EventNodeMoved         Kind = "node.moved"
 	EventNodeTypeChanged   Kind = "node.type"
+	EventNodeCopied        Kind = "node.copied"
+	EventNodeCut           Kind = "node.cut"
+	EventNodePasted        Kind = "node.pasted"
 	EventNodeParamsChanged Kind = "node.params"
 	EventStartNodeChanged  Kind = "node.start"
 	EventEdgeAdded         Kind = "edge.added"
 	EventEdgeDeleted       Kind = "edge.deleted"
+
+	// Armed grid interaction modes (quick-action popup: move/copy/connect).
+	// Interaction-scoped: arming/canceling mutates nothing; the committed
+	// operation emits its own domain event (node.moved / node.pasted / edge.added).
+	EventGridModeArmed    Kind = "mode.armed"
+	EventGridModeCanceled Kind = "mode.canceled"
 
 	// Node groups (marquee multi-select). All three are document-scope,
 	// undoable, non-verbose.
@@ -195,8 +204,10 @@ var KindAll = []Kind{
 	EventBPMChange, EventSubdivChange, EventLengthChange,
 	EventImport, EventExport,
 	EventNodeAdded, EventNodeDeleted, EventNodeMoved, EventNodeTypeChanged,
+	EventNodeCopied, EventNodeCut, EventNodePasted,
 	EventNodeParamsChanged, EventStartNodeChanged,
 	EventEdgeAdded, EventEdgeDeleted,
+	EventGridModeArmed, EventGridModeCanceled,
 	EventGroupCreated, EventGroupChanged, EventGroupDeleted,
 	EventRowAdded, EventRowDeleted, EventRowInstrumentChange, EventRowMute, EventRowSolo,
 	EventMasterVolumeChange, EventEQBandChange,
@@ -242,7 +253,9 @@ var KindAll = []Kind{
 // + ui.view (mobile view-mode switch) = 66.
 // + group.created + group.changed + group.deleted (marquee multi-select
 // node groups) = 69.
-const NumNonVerbose = 69
+// + node.copied + node.cut + node.pasted (clipboard copy/cut/paste) = 72.
+// + mode.armed + mode.canceled (grid quick-action modes) = 74.
+const NumNonVerbose = 74
 
 // IsVerbose reports whether k is one of the high-frequency Verbose*
 // kinds that the default sink filters out.
@@ -385,9 +398,11 @@ type RowChangePayload struct {
 	Pan           float64 `json:"pan,omitempty"`
 }
 
-// SeekPayload describes a transport seek to a particular beat.
+// SeekPayload describes a transport seek to a particular position.
 type SeekPayload struct {
-	Beats int `json:"beats"`
+	Beats  int    `json:"beats"`  // destination whole-beat (Steps/div)
+	Steps  int    `json:"steps"`  // destination absolute subdivision index
+	Origin string `json:"origin"` // emitter: ribbon|transport|counter|keyboard|js|undo
 }
 
 // SubdivPayload describes a subdivisions change.
@@ -586,6 +601,16 @@ type UITapPayload struct {
 // "color-wheel", "settings"). Reason is set on close only.
 type PopupPayload struct {
 	ID     string `json:"id"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// GridModePayload describes an armed grid-mode transition (move/copy/connect)
+// on the subject node.
+type GridModePayload struct {
+	Mode   string `json:"mode"`
+	ID     int    `json:"id"`
+	I      int    `json:"i"`
+	J      int    `json:"j"`
 	Reason string `json:"reason,omitempty"`
 }
 

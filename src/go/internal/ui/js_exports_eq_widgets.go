@@ -156,6 +156,24 @@ func (g *Game) initJSEqWidgets() {
 		return out
 	}))
 
+	// synthEnablePillRect() – the detail-header enable pill rect {x,y,w,h}
+	// for the currently selected pipeline stage. Empty (all zero) when no
+	// stage is selected or the pill is non-interactive. Browser benches
+	// click its centre to toggle a stage via real input (the chip itself
+	// only selects; the pill toggles).
+	js.Global().Set("synthEnablePillRect", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		var r image.Rectangle
+		if g.drum != nil {
+			r = g.drum.synthDetailEnablePillRect()
+		}
+		obj.Set("x", r.Min.X)
+		obj.Set("y", r.Min.Y)
+		obj.Set("w", r.Dx())
+		obj.Set("h", r.Dy())
+		return obj
+	}))
+
 	// selectSynthSection(label) – open a stage in the Synth tab's detail
 	// pane by chip label ("OSC", "ENVELOPE", …). Returns true when the
 	// stage exists for the active instrument. Browser tests use this before

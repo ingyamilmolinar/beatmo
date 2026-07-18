@@ -21,14 +21,20 @@ func filterState() *analyzer.State {
 	}
 }
 
-// collectDrawnTexts runs fn while intercepting DrawTextColorAtScale and
-// returns the set of strings that were drawn.
+// collectDrawnTexts runs fn while intercepting BOTH text-draw paths (the
+// styled role API the meters now render through, plus the legacy scaled
+// path) and returns the set of strings that were drawn.
 func collectDrawnTexts(t *testing.T, fn func()) map[string]bool {
 	t.Helper()
 	out := map[string]bool{}
-	orig := drawTextColorAtScaleHook
+	origLegacy := drawTextColorAtScaleHook
+	origStyled := drawTextStyledHook
 	drawTextColorAtScaleHook = func(s string) { out[s] = true }
-	defer func() { drawTextColorAtScaleHook = orig }()
+	drawTextStyledHook = func(s string) { out[s] = true }
+	defer func() {
+		drawTextColorAtScaleHook = origLegacy
+		drawTextStyledHook = origStyled
+	}()
 	fn()
 	return out
 }

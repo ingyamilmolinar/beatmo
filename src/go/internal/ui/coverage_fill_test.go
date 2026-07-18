@@ -277,7 +277,10 @@ func TestEmitEdgeAddedDeleted(t *testing.T) {
 }
 
 func TestEmitTransportEvents(t *testing.T) {
-	if e := awaitEvent(t, hooks.EventSeek, func() { emitSeek(42) }); e.Payload.(hooks.SeekPayload).Beats != 42 {
+	if e := awaitEvent(t, hooks.EventSeek, func() { emitSeek(42, 336, seekOriginUndo) }); func() bool {
+		p := e.Payload.(hooks.SeekPayload)
+		return p.Beats != 42 || p.Steps != 336 || p.Origin != seekOriginUndo
+	}() {
 		t.Errorf("seek")
 	}
 	if e := awaitEvent(t, hooks.EventSubdivChange, func() { emitSubdivChange(16) }); e.Payload.(hooks.SubdivPayload).Subdiv != 16 {

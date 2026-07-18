@@ -127,6 +127,16 @@ if (!audioMetrics) { throw new Error('audio schedule metrics unavailable');
 if (audioMetrics.count <= 0) { throw new Error('no audio events observed during e2e playback');
 }
 
+// Single greppable line for the GC-tuning sweep (printed BEFORE the threshold
+// assertions below so a config that trips a limit still yields its numbers).
+console.log('[GC_SWEEP_JSON] ' + JSON.stringify({
+  gcCycles: stats.gcCycles, gcForced: stats.gcForced,
+  gcPauseP50MS: stats.gcPauseP50MS, gcPauseP99MS: stats.gcPauseP99MS, gcPauseMaxMS: stats.gcPauseMaxMS,
+  gcHeapHighKB: stats.gcHeapHighKB, fpsAvg: stats.fpsAvg, drawMaxMS: stats.drawMaxMS,
+  audioCount: audioMetrics.count, overdue: audioMetrics.overdue,
+  smallLeadCount: audioMetrics.smallLeadCount, minLead: audioMetrics.minLead, lagP99: audioMetrics.lagP99,
+}));
+
 // Startup demo uses a heavier circuit — relax audio timing thresholds.
 const overdueLimit = useStartupDemo
   ? Number(process.env.PERF_E2E_OVERDUE_MAX ?? "5")

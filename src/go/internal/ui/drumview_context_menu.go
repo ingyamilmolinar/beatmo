@@ -3,12 +3,18 @@ package ui
 import (
 	"image"
 	"image/color"
+	"strconv"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/ingyamilmolinar/beatmo/internal/assets"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
+
+// templateSearchMobileInputID is the mobile native-input bridge id for the
+// template-menu (overflow page 1) search field. Parallels instSearchMobileInputID.
+const templateSearchMobileInputID = "template-search"
 
 // contextMenuAccent returns the accent color for the open per-row context menu:
 // the row's instrument color so the menu chrome (header underline + active item
@@ -590,6 +596,20 @@ func (dv *DrumView) handleOverflowMenuInput(mx, my int, left bool) bool {
 	dv.configureOverflowScroll()
 	popupRect := dv.overflowPopupRect()
 	btns := dv.overflowPopupBtns(popupRect)
+
+	// Pinned search box: a press on the clear-× wipes the query; any other
+	// press inside the band focuses the box (not a row tap).
+	if left && dv.overflowPage == 1 && dv.templateSearchBox != nil &&
+		!dv.templateSearchRect.Empty() && image.Pt(mx, my).In(dv.templateSearchRect) {
+		if dv.templateSearchQuery != "" && menuSearchAdornmentsActive(dv.templateSearchBox) &&
+			image.Pt(mx, my).In(menuSearchClearRect(dv.templateSearchBox)) {
+			dv.setTemplateSearchQuery("")
+			return true
+		}
+		dv.templateSearchBox.SetFocus(true)
+		return true
+	}
+
 	closeBtn := btns[len(btns)-1]
 
 	return dv.overflowMenuScroll.HandleInput(MenuScrollInput{
@@ -773,6 +793,101 @@ func (dv *DrumView) overflowPopupRect() image.Rectangle {
 	return image.Rect(x, y, x+w, y+h)
 }
 
+// templateSearchResults returns MenuSearcher output for the current template
+// query, recomputed only when the query changes. Empty query → all templates in
+// templateOrder, unhighlighted. Memoized because overflowItems is called several
+// times per frame from draw, input, and scroll config.
+func (dv *DrumView) templateSearchResults() []MenuSearchResult {
+	q := strings.TrimSpace(dv.templateSearchQuery)
+	if dv.templateSearchCacheValid && dv.templateSearchCacheQuery == q {
+		return dv.templateSearchCache
+	}
+	tps := assets.Templates()
+	items := make([]MenuSearchItem, 0, len(tps))
+	for _, tp := range tps {
+		items = append(items, MenuSearchItem{Key: tp.Genre, Label: tp.Display})
+	}
+	var searcher MenuSearcher
+	dv.templateSearchCache = searcher.Search(q, items)
+	dv.templateSearchCacheQuery = q
+	dv.templateSearchCacheValid = true
+	return dv.templateSearchCache
+}
+
+// invalidateTemplateSearch drops the memoized filter cache after a query change.
+func (dv *DrumView) invalidateTemplateSearch() { dv.templateSearchCacheValid = false }
+
+// setTemplateSearchQuery sets the query programmatically (Back/select reset,
+// mobile native input) and pushes it into the box. NOT used on the typing path,
+// where the box already holds the text (see updateTemplateSearch) — calling
+// SetText there would teleport the caret to the end.
+func (dv *DrumView) setTemplateSearchQuery(q string) {
+	if dv.templateSearchQuery == q {
+		return
+	}
+	dv.templateSearchQuery = q
+	dv.invalidateTemplateSearch()
+	if dv.templateSearchBox != nil {
+		dv.templateSearchBox.SetText(q)
+	}
+}
+
+// updateTemplateSearch polls the pinned template search box each frame while the
+// template page is open, syncing typed text into the query and refreshing the
+// filtered results. Mirrors the instrument menu's per-frame search poll.
+func (dv *DrumView) updateTemplateSearch() {
+	if !dv.IsOverflowMenuOpen() || dv.overflowPage != 1 {
+		return
+	}
+	dv.overflowPopupBtns(dv.overflowPopupRect()) // ensures box + rect exist
+	if dv.templateSearchBox == nil {
+		return
+	}
+	// Mobile: value comes from the native <input> overlay, not the ebiten kbd.
+	if Profile().IsMobile() {
+		if v, ok := mobileInputGetValue(templateSearchMobileInputID); ok && v != dv.templateSearchQuery {
+			dv.setTemplateSearchQuery(v)
+		}
+	}
+	dv.templateSearchBox.Update()
+	if nv := dv.templateSearchBox.Value(); nv != dv.templateSearchQuery {
+		dv.templateSearchQuery = nv
+		dv.invalidateTemplateSearch()
+		emitSearchChanged("template-menu", nv)
+	}
+}
+
+// handleTemplateSearchEscape clears a non-empty template query (keeping the menu
+// open) and returns true. Returns false when the query is empty so the universal
+// Esc handler closes the menu. Mirrors InstrumentMenuComponent.HandleEscape.
+func (dv *DrumView) handleTemplateSearchEscape() bool {
+	if dv.overflowPage != 1 || strings.TrimSpace(dv.templateSearchQuery) == "" {
+		return false
+	}
+	dv.setTemplateSearchQuery("")
+	return true
+}
+
+// overflowPinnedCount returns the number of leading pinned rows — a contiguous
+// run of header/search items at the top of the current page's item list. These
+// render at a fixed Y (chrome band); every item after them scrolls.
+//
+// Only the LEADING header/search run is pinned. Header items may also appear
+// mid-list (template group headers): those scroll with the rows — both
+// overflowPopupBtns and drawOverflowMenu advance one row per item and skip
+// the button mapping for headers, so the two stay aligned.
+func overflowPinnedCount(items []overflowItem) int {
+	n := 0
+	for _, it := range items {
+		if it.header || it.search {
+			n++
+			continue
+		}
+		break
+	}
+	return n
+}
+
 // overflowItem defines a menu entry for the overflow popup.
 //
 // iconID, when non-empty, is rendered as a small leading icon by
@@ -781,11 +896,14 @@ func (dv *DrumView) overflowPopupRect() image.Rectangle {
 // entries such as the track/free follow toggle. Plain action entries
 // (Upload, Import, Export) leave both fields zero-valued.
 type overflowItem struct {
-	label   string
-	iconID  IconID
-	active  bool
-	header  bool // true → renders as a non-clickable subgroup header
-	onClick func()
+	label      string
+	iconID     IconID
+	active     bool   // row renders menuItemActive (stripe + tint) — e.g. the currently-loaded template
+	header     bool   // true → non-clickable header; pinned title when leading, scrolling group header mid-list
+	search     bool   // true → renders the pinned fuzzy-search box (no button)
+	highlights []int  // fuzzy-match highlight rune indices for this row's label
+	trail      string // optional right-aligned muted caption (e.g. "120 BPM")
+	onClick    func()
 }
 
 // overflowItems returns the full list of overflow menu entries.
@@ -796,16 +914,43 @@ func (dv *DrumView) overflowItems() []overflowItem {
 	if dv.overflowPage == 1 {
 		items := []overflowItem{
 			{label: i18n.T(i18n.KeyMenuTemplates), header: true},
+			{search: true},
 			{label: i18n.T(i18n.KeyMenuBack), iconID: IconChevronLeft, onClick: func() {
+				dv.setTemplateSearchQuery("")
 				dv.overflowPage = 0
 			}},
 		}
+		byGenre := make(map[string]assets.Template, len(assets.Templates()))
 		for _, tp := range assets.Templates() {
-			tp := tp
+			byGenre[tp.Genre] = tp
+		}
+		// Group headers render only while the list shows the full canonical
+		// order; an active search flattens the results (score-sorted).
+		grouped := strings.TrimSpace(dv.templateSearchQuery) == ""
+		lastGroup := ""
+		for _, r := range dv.templateSearchResults() {
+			tp, ok := byGenre[r.Key]
+			if !ok {
+				continue
+			}
+			if grouped && tp.Group != "" && tp.Group != lastGroup {
+				items = append(items, overflowItem{label: tp.Group, header: true})
+				lastGroup = tp.Group
+			}
+			hl := r.Highlights
+			trail := ""
+			if tp.BPM > 0 {
+				trail = strconv.Itoa(tp.BPM) + " BPM"
+			}
 			items = append(items, overflowItem{
-				label:  tp.Display,
-				iconID: IconTemplate,
+				label:      tp.Display,
+				iconID:     IconTemplate,
+				highlights: hl,
+				trail:      trail,
+				active:     tp.Genre == dv.templateLoadedStem,
 				onClick: func() {
+					dv.templateLoadedStem = tp.Genre
+					dv.setTemplateSearchQuery("")
 					dv.overflowPage = 0
 					dv.closeOverflowMenu()
 					if dv.onImport != nil {
@@ -863,14 +1008,16 @@ func (dv *DrumView) overflowItems() []overflowItem {
 // current page. Called on open and on page switch (item set changes). Button
 // objects persist between rebuilds so their press-animation state survives
 // across frames; only their rects are refreshed per frame (see overflowPopupBtns).
-// Note: onClick closures are captured per-rebuild; the tp := tp shadowing in
-// overflowItems() ensures each template closure binds its own template value.
+// Note: onClick closures are captured per-rebuild; in overflowItems() each
+// template closure binds a per-iteration `tp` (declared fresh via
+// `tp, ok := byGenre[r.Key]` inside the loop body), so every closure captures
+// its own template value.
 func (dv *DrumView) rebuildOverflowBtns() {
 	items := dv.overflowItems()
 	itemStyle := ButtonVisual(DropdownStyle)
 	btns := make([]*Button, 0, len(items)+1)
 	for _, item := range items {
-		if item.header {
+		if item.header || item.search {
 			continue // headers are not buttons; rects are advanced in the accessor
 		}
 		btn := NewButton(item.label, itemStyle, item.onClick)
@@ -899,27 +1046,51 @@ func (dv *DrumView) overflowPopupBtns(popupRect image.Rectangle) []*Button {
 	// (covers first call and File↔Templates page switches with differing counts).
 	want := 0
 	for _, item := range items {
-		if !item.header {
+		if !item.header && !item.search {
 			want++
 		}
 	}
 	if len(dv.overflowBtns) != want+1 || dv.overflowBtnsPage != dv.overflowPage { // +1 for the close button; also rebuild on page change
 		dv.rebuildOverflowBtns()
 	}
-	// Refresh rects for the current scroll offset.
-	curY := popupRect.Min.Y - dv.overflowMenuScroll.OffsetPx()
+	// Refresh rects for the current scroll offset. Pinned rows (header/search)
+	// sit at a fixed Y at the top of the popup; every item after them scrolls
+	// beneath the pinned band by the current scroll offset.
+	pinned := overflowPinnedCount(items)
+	bandH := pinned * rowH
+	pinnedY := popupRect.Min.Y
+	scrollY := popupRect.Min.Y + bandH - dv.overflowMenuScroll.OffsetPx()
 	btnIdx := 0
+	seen := 0
 	for _, item := range items {
-		if item.header {
-			curY += rowH
+		if seen < pinned {
+			r := image.Rect(popupRect.Min.X, pinnedY, popupRect.Max.X, pinnedY+rowH)
+			pinnedY += rowH
+			seen++
+			if item.search {
+				dv.templateSearchRect = r
+				freshBox := dv.templateSearchBox == nil
+				dv.templateSearchBox = ensureMenuSearchBox(dv.templateSearchBox, r)
+				// Only seed a freshly-created box from the query. On every other
+				// call this resync would stomp a same-frame typed/injected edit
+				// before updateTemplateSearch's poll gets to read it (the box is
+				// the live source of truth for typing; setTemplateSearchQuery
+				// already pushes query -> box on programmatic changes).
+				if freshBox && dv.templateSearchBox.Value() != dv.templateSearchQuery {
+					dv.templateSearchBox.SetText(dv.templateSearchQuery)
+				}
+			}
 			continue
 		}
-		r := image.Rect(popupRect.Min.X, curY, popupRect.Max.X, curY+rowH)
+		r := image.Rect(popupRect.Min.X, scrollY, popupRect.Max.X, scrollY+rowH)
+		scrollY += rowH
+		if item.header {
+			continue // mid-list group header: occupies a row, owns no button
+		}
 		if btnIdx < len(dv.overflowBtns)-1 {
 			dv.overflowBtns[btnIdx].SetRect(insetRect(r, SpaceXS))
 		}
 		btnIdx++
-		curY += rowH
 	}
 	// Close button rect (last element).
 	if len(dv.overflowBtns) > 0 {
@@ -950,25 +1121,52 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 	} else {
 		drawPanel(dst, popupRect)
 	}
-	// Clip scrolling rows to the popup so offset content can't paint outside.
-	clip := dst.SubImage(popupRect).(*ebiten.Image)
-	// Build buttons (headers excluded) then close button.
-	btns := dv.overflowPopupBtns(popupRect)
-	// Draw header rows and action-button rows by iterating items in order,
-	// tracking which button corresponds to each non-header item.
 	items := dv.overflowItems()
 	rowH := touchMinTargetPx
-	curY := popupRect.Min.Y - dv.overflowMenuScroll.OffsetPx()
-	btnIdx := 0                  // index into btns (excluding the trailing close button)
-	nActionBtns := len(btns) - 1 // last button is always the close button
-	for _, item := range items {
-		rowR := image.Rect(popupRect.Min.X, curY, popupRect.Max.X, curY+rowH)
-		curY += rowH
+	pinned := overflowPinnedCount(items)
+	bandH := pinned * rowH
+	// Refresh button rects + templateSearchRect/box for this frame.
+	btns := dv.overflowPopupBtns(popupRect)
+
+	// Scrolling rows are clipped to the region below the pinned band.
+	scrollRegion := popupRect
+	scrollRegion.Min.Y += bandH
+	if scrollRegion.Min.Y > scrollRegion.Max.Y {
+		scrollRegion.Min.Y = scrollRegion.Max.Y
+	}
+	clip := dst.SubImage(scrollRegion).(*ebiten.Image)
+
+	// 1. Pinned band (fixed Y, unclipped chrome).
+	pinnedY := popupRect.Min.Y
+	for i := 0; i < pinned && i < len(items); i++ {
+		item := items[i]
+		rowR := image.Rect(popupRect.Min.X, pinnedY, popupRect.Max.X, pinnedY+rowH)
+		pinnedY += rowH
 		if item.header {
-			// Unified menu title (shared drawMenuTitle) — no instrument swatch
-			// for this global menu. Inset to align with the menu's title gutter.
 			titleRect := image.Rect(rowR.Min.X+SpaceMD, rowR.Min.Y, rowR.Max.X-SpaceMD, rowR.Max.Y)
-			drawMenuTitle(clip, titleRect, item.label, nil)
+			drawMenuTitle(dst, titleRect, item.label, nil)
+			continue
+		}
+		if item.search {
+			// Global menu → the neutral chrome accent, never another
+			// surface's instrument color (DESIGN.md Menu-anatomy title rule).
+			drawMenuHeaderBandAccent(dst, rowR, colAccent)
+			drawMenuSearchBox(dst, dv.templateSearchBox)
+		}
+	}
+
+	// 2. Scrolling rows (Back + group headers + templates). Row Y advances
+	// per item exactly like overflowPopupBtns so headers (which own no
+	// button) stay aligned with the buttons around them.
+	scrollY := popupRect.Min.Y + bandH - dv.overflowMenuScroll.OffsetPx()
+	btnIdx := 0
+	nActionBtns := len(btns) - 1
+	for i := pinned; i < len(items); i++ {
+		item := items[i]
+		rowR := image.Rect(popupRect.Min.X, scrollY, popupRect.Max.X, scrollY+rowH)
+		scrollY += rowH
+		if item.header {
+			drawMenuGroupHeader(clip, rowR, item.label)
 			continue
 		}
 		if btnIdx >= nActionBtns {
@@ -976,9 +1174,11 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 		}
 		btn := btns[btnIdx]
 		btnIdx++
-
 		state := menuItemRest
-		if btn.hovered || btn.pressed {
+		if item.active {
+			// The currently-loaded template reads as the list's selection.
+			state = menuItemActive
+		} else if btn.hovered || btn.pressed {
 			state = menuItemHover
 		}
 		var iconTint color.Color = colMenuIcon
@@ -986,14 +1186,17 @@ func (dv *DrumView) drawOverflowMenu(dst *ebiten.Image) {
 			iconTint = colFollowActive
 		}
 		drawMenuRow(clip, btn, MenuRowSpec{
-			Accent:   dv.contextMenuAccent(),
-			State:    state,
-			IconID:   item.iconID,
-			IconTint: iconTint,
-			Label:    btn.Text,
+			Accent:     colAccent,
+			State:      state,
+			IconID:     item.iconID,
+			IconTint:   iconTint,
+			Highlights: item.highlights,
+			Label:      btn.Text,
+			TrailLabel: item.trail,
 		})
 	}
-	// Close button + scrollbar draw on the unclipped dst (pinned chrome).
+
+	// Close button + scrollbar (pinned chrome, unclipped).
 	if len(btns) > 0 {
 		btns[len(btns)-1].Draw(dst)
 	}
@@ -1018,14 +1221,21 @@ func (dv *DrumView) configureOverflowScroll() {
 	items := dv.overflowItems()
 	rowH := touchMinTargetPx
 	popupRect := dv.overflowPopupRect()
-	visible := popupRect.Dy() / rowH
-	if visible > len(items) {
-		visible = len(items)
+	bandH := overflowPinnedCount(items) * rowH
+	scrollRegion := popupRect
+	scrollRegion.Min.Y += bandH
+	if scrollRegion.Min.Y > scrollRegion.Max.Y {
+		scrollRegion.Min.Y = scrollRegion.Max.Y
+	}
+	scrollCount := len(items) - overflowPinnedCount(items)
+	visible := scrollRegion.Dy() / rowH
+	if visible > scrollCount {
+		visible = scrollCount
 	}
 	if visible < 1 {
 		visible = 1
 	}
-	dv.overflowMenuScroll.Configure(popupRect, len(items), visible)
+	dv.overflowMenuScroll.Configure(scrollRegion, scrollCount, visible)
 }
 
 // OverflowMenuScrollForTest exposes the overflow menu's MenuScroll for tests.
@@ -1036,6 +1246,10 @@ func (dv *DrumView) OverflowMenuScrollForTest() *MenuScroll { return dv.overflow
 func (dv *DrumView) closeOverflowMenu() {
 	dv.overflowPage = 0
 	dv.overflowBtns = nil // force rebuild on next open so stale animation state is cleared
+	dv.setTemplateSearchQuery("")
+	if dv.templateSearchBox != nil {
+		dv.templateSearchBox.SetFocus(false)
+	}
 	if dv.overflowMenuScroll != nil {
 		dv.overflowMenuScroll.DeferredTap().Cancel()
 	}

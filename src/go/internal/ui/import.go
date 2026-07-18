@@ -23,10 +23,12 @@ const (
 )
 
 type importFile struct {
-	Version           int                `json:"version"`
-	Subdiv            int                `json:"subdiv"`
-	BPM               int                `json:"bpm"`
-	MasterVolume      float64            `json:"master_volume,omitempty"`
+	Version int `json:"version"`
+	Subdiv  int `json:"subdiv"`
+	BPM     int `json:"bpm"`
+	// Pointer so an explicit 0 (muted master) is distinguishable from an
+	// absent field (legacy files, which import at the historical 1.0).
+	MasterVolume      *float64           `json:"master_volume,omitempty"`
 	Instruments       []exportInstrument `json:"instruments"`
 	Nodes             []exportNode       `json:"nodes"`
 	EQ                *exportEQ          `json:"eq,omitempty"`
@@ -83,12 +85,23 @@ func (g *Game) Import(data []byte) (retErr error) {
 		}
 	}()
 
-	// Drop undo history on a real project load — you cannot undo across a
-	// document swap. Deferred so it runs after all in-import mutations (which
-	// fire hooks that would otherwise push undo steps). No-op while an
-	// undo-restore is re-importing (guarded by the manager's restoring flag).
+	// Undo handling for a document swap. A user-initiated load (template row /
+	// file picker, flagged via g.importAsUndoStep) records the pre-load document
+	// as ONE undo step so a mistap can't silently destroy the current circuit;
+	// every other load (demo/startup/JS) drops history — you cannot undo across
+	// those swaps. Deferred so it runs after all in-import mutations (which fire
+	// hooks that would otherwise push undo steps); the pre-load document is still
+	// the committed baseline because g.importing suppresses in-import captures.
+	// Both paths no-op while an undo-restore is re-importing (manager's restoring
+	// flag). The flag is consumed here so a later direct Import defaults to clear.
+	undoable := g.importAsUndoStep
+	g.importAsUndoStep = false
 	if g.undoManager != nil {
-		defer g.undoManager.OnExternalLoad()
+		if undoable {
+			defer g.undoManager.RecordExternalLoad("load template")
+		} else {
+			defer g.undoManager.OnExternalLoad()
+		}
 	}
 
 	// Stop sequencer during import to prevent seqMu contention. The background
@@ -110,9 +123,9 @@ func (g *Game) Import(data []byte) (retErr error) {
 	// This provides an additional safety net against lock contention.
 	g.seqPathSnap.Store(nil)
 
-	g.dismissLongPressPopup()
-	g.cancelConnectMode()
-	g.cancelMoveMode()
+	g.dismissLongPressPopup("cancel")
+	g.modes.Cancel("import")
+	g.moveSkipRelease = false
 	g.marquee = marqueeDrag{}
 	if g.groupMenu != nil {
 		g.groupMenu.Close()
@@ -486,6 +499,19 @@ func (g *Game) Import(data []byte) (retErr error) {
 			}
 			_ = g.graph.SetGroupRules(gid, kept)
 		}
+		// RulesEnabled (task-enabled-status brief, Part C): the explicit flag
+		// wins when the file carries it (a non-nil pointer — every document
+		// this build exports always sets one, see exportGroup's doc comment).
+		// A nil pointer means the key was genuinely absent — a legacy file
+		// written before this field existed — so it falls back to the
+		// backward-compat rule: such a file's rules were active by their mere
+		// existence, so RulesEnabled = len(rules) > 0 keeps old files behaving
+		// exactly as they did before this task.
+		enabled := len(rules) > 0
+		if eg.RulesEnabled != nil {
+			enabled = *eg.RulesEnabled
+		}
+		_ = g.graph.SetGroupRulesEnabled(gid, enabled)
 	}
 	g.refreshGroupIndex()
 	// Instruments -> rows
@@ -690,13 +716,19 @@ func (g *Game) Import(data []byte) (retErr error) {
 		g.drum.SetBPM(f.BPM)
 	}
 	// Restore master volume. Default to 1.0 for legacy files that omit it.
-	if f.MasterVolume > 0 {
-		mv := clampF64(f.MasterVolume, 0, 1)
+	if f.MasterVolume != nil {
+		// Explicit value — including 0 (muted): the old float64 field
+		// dropped 0 via omitempty on export and blasted the re-import at
+		// 1.0. See export.go exportFile.MasterVolume.
+		mv := clampF64(*f.MasterVolume, 0, 1)
 		audio.SetMainVolume(mv)
 		if g.drum.mainVolSlider() != nil {
 			g.drum.mainVolSlider().Value = mv
 		}
 	} else {
+		// Legacy file without the field: those were exported when 1.0 was
+		// the implicit default — restore that, not the newer 0.5
+		// fresh-session headroom default.
 		audio.SetMainVolume(1)
 		if g.drum.mainVolSlider() != nil {
 			g.drum.mainVolSlider().Value = 1
@@ -724,6 +756,15 @@ func (g *Game) Import(data []byte) (retErr error) {
 	g.perfMode.ForceRefresh()
 	if g.drum != nil {
 		g.drum.markAllRowsDirty()
+		// Import is replace-not-merge, so reset the audio-panel channel
+		// selector back to Master. A per-instrument selection carried over from
+		// the previous circuit would otherwise leave every audio tab (Wave,
+		// Spectrum, Chain, …) pointed at a channel the new circuit may not even
+		// contain. selectAudioChannel is the cross-tab chokepoint: it re-syncs
+		// the EQ mirror, the analyzer detail channel, and the scope instrument.
+		// Unconditional on purpose — the pre-existing EQ re-syncs above only
+		// fire when the already-selected channel still matches.
+		g.drum.selectAudioChannel(audioPanelMasterChannelID)
 		// Re-wire per-instrument analyzers for the freshly imported rows.
 		// On WASM each instrument's AnalyserNode is enabled on demand;
 		// a template that ships no per-instrument EQ (so applyRowEQ never
@@ -733,6 +774,30 @@ func (g *Game) Import(data []byte) (retErr error) {
 		// audio_panel_dispatcher.go (AnalyzerInstrumentTapsForTab).
 		if g.drum.eqPanelZone != nil {
 			g.drum.eqPanelZone.reapplyAnalyzerTaps()
+		}
+		// Flush stale analyzer data so the audio-panel tabs (Wave, Spectrum,
+		// Levels, Chain) read flat until the newly loaded circuit is played.
+		// When playback is stopped no fresh samples flow, and the per-channel
+		// Analyzer instances are REUSED across imports (wireChannelAnalyzer) —
+		// so without this they keep returning the previous circuit's retained
+		// waveform/spectrum/peak. Run after reapplyAnalyzerTaps so every wired
+		// analyzer (including ones just re-enabled for the current tab) is
+		// zeroed. See internal/audio/analyzer.go ResetAllChannelAnalyzers.
+		audio.ResetAllChannelAnalyzers()
+		// Desktop reads Wave/Spectrum/Levels from the analyzer service, which
+		// carries the last capture forward across ticks; flush it too (nil
+		// under -tags test / WASM, where the snapshot path above covers it).
+		if svc := audio.AnalyzerService(); svc != nil {
+			svc.Reset()
+		}
+		// Clear the Levels-tab peak/clip latches and the rolling clip window so
+		// held meters + "!" clip markers from the previous circuit disappear.
+		audio.ResetClipsWindow()
+		if g.drum.eqPanelZone != nil {
+			g.drum.eqPanelZone.levelsLatch.Reset()
+			if g.drum.eqPanelZone.levelsLatches != nil {
+				g.drum.eqPanelZone.levelsLatches.Reset()
+			}
 		}
 	}
 	// The graph was rebuilt wholesale above; drop any transient UI that still

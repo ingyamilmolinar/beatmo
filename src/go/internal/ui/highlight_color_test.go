@@ -53,9 +53,14 @@ func TestNodeHighlightUsesRowColor(t *testing.T) {
 	}
 }
 
-// TestGridPaneSilentNodeUsesGreyHighlight verifies that a silent node in the
-// grid pane uses colMuteHighlight (grey) for the glow/border, not the row color.
-func TestGridPaneSilentNodeUsesGreyHighlight(t *testing.T) {
+// TestGridPaneSilentNodeUsesOwnColorHighlight verifies that a silent node in
+// the grid pane highlights in its OWN (row) color rather than the grey
+// colMuteHighlight — every grid-node highlight matches the color the node is
+// drawn in, never a flat white/grey. The silenced state stays legible from the
+// node's hollow SHAPE (drawNodeStateOverlay), which is independent of the
+// highlight color. (Was TestGridPaneSilentNodeUsesGreyHighlight, which pinned
+// the old grey-highlight rule.)
+func TestGridPaneSilentNodeUsesOwnColorHighlight(t *testing.T) {
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
 	assertDefaultParityState(t)
@@ -91,20 +96,19 @@ func TestGridPaneSilentNodeUsesGreyHighlight(t *testing.T) {
 	if rPx < 1 {
 		rPx = 1
 	}
-	// Silent node should use colMuteHighlight as the border color, not the row color.
-	muteHL := colMuteHighlight
-	br, bg, bb, ba := rgba8(muteHL)
-	// The fill comes from the row color (base instrument color).
+	// Silent node should now highlight with its OWN row color for both fill and
+	// border — not the grey colMuteHighlight.
 	fr, fg, fb, fa := rgba8(rowColor)
-	key := spriteKey{rpx: rPx, fr: fr, fg: fg, fb: fb, fa: fa, br: br, bg: bg, bb: bb, ba: ba}
-	if g.nodeSpriteCache[key] == nil {
-		// Check if it used row color instead (the bug).
-		rbr, rbg, rbb, rba := rgba8(rowColor)
-		rowKey := spriteKey{rpx: rPx, fr: fr, fg: fg, fb: fb, fa: fa, br: rbr, bg: rbg, bb: rbb, ba: rba}
-		if g.nodeSpriteCache[rowKey] != nil {
-			t.Fatalf("silent node used row color for border — should use colMuteHighlight")
+	rbr, rbg, rbb, rba := rgba8(rowColor)
+	rowKey := spriteKey{rpx: rPx, fr: fr, fg: fg, fb: fb, fa: fa, br: rbr, bg: rbg, bb: rbb, ba: rba}
+	if g.nodeSpriteCache[rowKey] == nil {
+		// Regression back to the old grey-highlight rule?
+		mbr, mbg, mbb, mba := rgba8(colMuteHighlight)
+		greyKey := spriteKey{rpx: rPx, fr: fr, fg: fg, fb: fb, fa: fa, br: mbr, bg: mbg, bb: mbb, ba: mba}
+		if g.nodeSpriteCache[greyKey] != nil {
+			t.Fatalf("silent node used grey colMuteHighlight border — should use its own row color")
 		}
-		t.Fatalf("expected highlight sprite with colMuteHighlight border; key=%+v cache_len=%d", key, len(g.nodeSpriteCache))
+		t.Fatalf("expected highlight sprite with row-color border; key=%+v cache_len=%d", rowKey, len(g.nodeSpriteCache))
 	}
 }
 

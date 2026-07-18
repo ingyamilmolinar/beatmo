@@ -42,11 +42,11 @@ func selectStageProdHeight(t *testing.T, g *Game, instID string, id synthSection
 func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 	g := setupModularSynthGame(t)
 	want := map[synthSectionID]string{
-		synthSectionOsc:      "osc_enabled",
-		synthSectionFM:       "fm_enabled",
-		synthSectionPitch:    "pitchenv_enabled",
-		synthSectionLFO:      "lfo_enabled",
-		synthSectionBurst:    "burst_enabled",
+		synthSectionOsc:       "osc_enabled",
+		synthSectionFM:        "fm_enabled",
+		synthSectionPitch:     "pitchenv_enabled",
+		synthSectionLFO:       "lfo_enabled",
+		synthSectionBurst:     "burst_enabled",
 		synthSectionEnvelope:  "env_enabled",
 		synthSectionFilter:    "filter_enabled",
 		synthSectionFilterEnv: "filtenv_enabled",
@@ -91,11 +91,11 @@ func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 	g2 := newSynthTabGame(t)
 	layoutSynthTab(t, g2)
 	drumWant := map[synthSectionID]string{
-		synthSectionOsc:      "osc_enabled",
-		synthSectionFM:       "fm_enabled",
-		synthSectionPitch:    "pitchenv_enabled",
-		synthSectionLFO:      "lfo_enabled",
-		synthSectionBurst:    "burst_enabled",
+		synthSectionOsc:       "osc_enabled",
+		synthSectionFM:        "fm_enabled",
+		synthSectionPitch:     "pitchenv_enabled",
+		synthSectionLFO:       "lfo_enabled",
+		synthSectionBurst:     "burst_enabled",
 		synthSectionEnvelope:  "env_enabled",
 		synthSectionFilter:    "filter_enabled",
 		synthSectionFilterEnv: "filtenv_enabled",
@@ -140,36 +140,40 @@ func TestSynthTab_NoiseSeedNotAGridKnob(t *testing.T) {
 	}
 }
 
-// TestSynthTab_EnablePillTogglesStage — tapping the OSC enable pill flips
-// osc_enabled to 0 (bypassed) and back to 1 (enabled), through the same
-// SetInstrumentParam plumbing a knob uses. Defaults must start enabled so the
-// sound is unchanged until the user toggles.
+// TestSynthTab_EnablePillTogglesStage — tapping a SHAPER stage's enable pill
+// (FILTER) flips filter_enabled to 0 (bypassed) and back to 1 (enabled),
+// through the same SetInstrumentParam plumbing a knob uses. Defaults must start
+// enabled so the sound is unchanged until the user toggles.
+//
+// (OSC is the modular voice's SOLE sound source, so its pill is greyed and
+// non-interactive — that contract lives in synth_essential_stage_test.go. A
+// shaper like FILTER stands in here for the ordinary toggle path.)
 func TestSynthTab_EnablePillTogglesStage(t *testing.T) {
 	g := setupModularSynthGame(t)
 	// Silence the audition so the test makes no sound.
 	restore := SwapSynthAuditionFnForTest(func(string) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
 
-	if !synthStageEnabled("modular", "osc_enabled") {
-		t.Fatal("osc stage should start enabled (default 1)")
+	if !synthStageEnabled("modular", "filter_enabled") {
+		t.Fatal("filter stage should start enabled (default 1)")
 	}
-	// Select the OSC stage at production height so its detail-header pill is
+	// Select the FILTER stage at production height so its detail-header pill is
 	// laid out, then read it from the detail pane (the per-card pill is gone).
-	selectStageProdHeight(t, g, "modular", synthSectionOsc)
+	selectStageProdHeight(t, g, "modular", synthSectionFilter)
 	pill := g.drum.synthDetailEnablePillRect()
 	if pill.Empty() {
-		t.Fatal("osc enable pill rect is empty")
+		t.Fatal("filter enable pill rect is empty")
 	}
 	cx, cy := (pill.Min.X+pill.Max.X)/2, (pill.Min.Y+pill.Max.Y)/2
 
 	if !g.drum.handleSynthTabInput(cx, cy, true, "modular") {
-		t.Fatal("tap on osc pill was not handled")
+		t.Fatal("tap on filter pill was not handled")
 	}
-	if synthStageEnabled("modular", "osc_enabled") {
-		t.Errorf("osc stage still enabled after first tap (want bypassed)")
+	if synthStageEnabled("modular", "filter_enabled") {
+		t.Errorf("filter stage still enabled after first tap (want bypassed)")
 	}
-	if g.drum.handleSynthTabInput(cx, cy, true, "modular"); synthStageEnabled("modular", "osc_enabled") == false {
-		t.Errorf("osc stage still bypassed after second tap (want re-enabled)")
+	if g.drum.handleSynthTabInput(cx, cy, true, "modular"); synthStageEnabled("modular", "filter_enabled") == false {
+		t.Errorf("filter stage still bypassed after second tap (want re-enabled)")
 	}
 }
 
@@ -180,12 +184,15 @@ func TestSynthTab_EnablePillTogglesStage(t *testing.T) {
 // exactly its own synth-toggle-<param> and no other.
 func TestSynthTab_EnablePillHasHitArea(t *testing.T) {
 	g := setupModularSynthGame(t)
+	// Interactive shaper/modulator stages publish their own synth-toggle hit
+	// area when selected. OSC is deliberately absent: it is the modular voice's
+	// sole sound source, so it is greyed / non-interactive and publishes NONE —
+	// asserted explicitly after the loop.
 	stages := map[synthSectionID]string{
-		synthSectionOsc:      "synth-toggle-osc_enabled",
-		synthSectionFM:       "synth-toggle-fm_enabled",
-		synthSectionPitch:    "synth-toggle-pitchenv_enabled",
-		synthSectionLFO:      "synth-toggle-lfo_enabled",
-		synthSectionBurst:    "synth-toggle-burst_enabled",
+		synthSectionFM:        "synth-toggle-fm_enabled",
+		synthSectionPitch:     "synth-toggle-pitchenv_enabled",
+		synthSectionLFO:       "synth-toggle-lfo_enabled",
+		synthSectionBurst:     "synth-toggle-burst_enabled",
 		synthSectionEnvelope:  "synth-toggle-env_enabled",
 		synthSectionFilter:    "synth-toggle-filter_enabled",
 		synthSectionFilterEnv: "synth-toggle-filtenv_enabled",
@@ -211,6 +218,15 @@ func TestSynthTab_EnablePillHasHitArea(t *testing.T) {
 			if seen[otherTag] {
 				t.Errorf("unselected stage published pill hit area %q while %q is selected", otherTag, sectionLabel(id))
 			}
+		}
+	}
+
+	// The essential OSC stage, when selected, is non-interactive and publishes
+	// NO synth-toggle hit area.
+	selectStageProdHeight(t, g, "modular", synthSectionOsc)
+	for _, a := range g.drum.synthTabHitAreas() {
+		if a.Tag == "synth-toggle-osc_enabled" {
+			t.Error("essential OSC stage must not publish a synth-toggle hit area")
 		}
 	}
 }

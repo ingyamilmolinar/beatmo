@@ -13,7 +13,7 @@ import (
 
 type timelineTestCallbackLog struct {
 	offsetChanges []int
-	scrubChanges  []int
+	scrubChanges  []int // steps passed to OnSeekToStep (ribbon press/release commits)
 }
 
 func newTestTimelineZone() (*TimelineZone, *timelineTestCallbackLog) {
@@ -36,8 +36,8 @@ func newTestTimelineZone() (*TimelineZone, *timelineTestCallbackLog) {
 		OnOffsetChange: func(newOffset int) {
 			log.offsetChanges = append(log.offsetChanges, newOffset)
 		},
-		OnScrubPosition: func(newOffset int) {
-			log.scrubChanges = append(log.scrubChanges, newOffset)
+		OnSeekToStep: func(step int, origin string) {
+			log.scrubChanges = append(log.scrubChanges, step)
 		},
 	}
 	z := NewTimelineZone(cb)
@@ -212,7 +212,7 @@ func TestTimelineZoneScrubCapture(t *testing.T) {
 	}
 
 	if len(log.scrubChanges) == 0 {
-		t.Error("expected OnScrubPosition callback after scrub press")
+		t.Error("expected OnSeekToStep callback after scrub press")
 	}
 
 	// Drag along the timeline bar.
@@ -555,7 +555,7 @@ func TestTimelineZone_ScrubPosition(t *testing.T) {
 		t.Error("expected scrubbing after press")
 	}
 	if len(log.scrubChanges) == 0 {
-		t.Error("expected OnScrubPosition to fire")
+		t.Error("expected OnSeekToStep to fire")
 	}
 
 	scrubArea.Handler.OnRelease(scrubX, scrubY)

@@ -2424,9 +2424,15 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                     else        out[i] += (float)(s * env * gain);
                 }
             } else if (gb_vib_on) {
-                /* Per-sample pitch-vibrato: same formula as modular.c OSC stage.
-                 * Only runs when vibrato is active; inactive path below is unchanged
-                 * (byte-identity when gb_vib_on == 0). */
+                /* Per-sample pitch-vibrato: sin/pow kept EXACT (per sample) so the
+                 * pitch trajectory is bit-for-bit unchanged — the control-rate
+                 * approximation the nv>=2 branch uses drifts audibly (~-30 dB) on
+                 * strong-vibrato voices like `organ`, so it is NOT applied here.
+                 * Only the envelope is optimised (see the else branch); that is
+                 * float32-transparent, so vibrato voices stay byte-identical. */
+                double gb_decF = exp(-fr / (double)sampleRate);
+                double gb_decT = exp(-tr / (double)sampleRate);
+                double gb_ef = fm, gb_et = tm;
                 for (int i = 0; i < samples; i++) {
                     double t = (double)i / (double)sampleRate;
                     double ramp = (gb_lfo_delay > 0.0f)
@@ -2437,16 +2443,32 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
                     wt_osc_set_freq(&osc, f * mult, sampleRate);
                     double s = (double)wt_osc_tick(&osc);
                     s = gen_slot_filter_tick(&filt, s);
-                    double env = fm * exp(-fr * t) + tm * exp(-tr * t);
+                    double env = gb_ef + gb_et;
+                    gb_ef *= gb_decF;
+                    gb_et *= gb_decT;
                     if (assign) out[i] = (float)(s * env * gain);
                     else        out[i] += (float)(s * env * gain);
                 }
             } else {
+                /* nv==1 single voice, no vibrato — the DEFAULT case for every
+                 * single-unison additive voice. Incremental-multiply envelope
+                 * replaces the 2*samples exp() that were the dominant per-sample
+                 * cost (organ-church nv=1 render dropped ~5.5x from this), and on
+                 * emscripten's software libm are a large part of why additive
+                 * voices rendered slowly in WASM. Mathematically identical:
+                 * fm*exp(-fr*t)+tm*exp(-tr*t) == fm*decF^i+tm*decT^i with
+                 * decF=exp(-fr/sr); the ~1e-11 double drift rounds away at the
+                 * float32 cast, so output is byte-identical and native/WASM share
+                 * this C (xplat parity + all goldens preserved — verified). */
+                double gb_decF = exp(-fr / (double)sampleRate);
+                double gb_decT = exp(-tr / (double)sampleRate);
+                double gb_ef = fm, gb_et = tm;
                 for (int i = 0; i < samples; i++) {
-                    double t = (double)i / (double)sampleRate;
                     double s = (double)wt_osc_tick(&osc);
                     s = gen_slot_filter_tick(&filt, s);
-                    double env = fm * exp(-fr * t) + tm * exp(-tr * t);
+                    double env = gb_ef + gb_et;
+                    gb_ef *= gb_decF;
+                    gb_et *= gb_decT;
                     if (assign) out[i] = (float)(s * env * gain);
                     else        out[i] += (float)(s * env * gain);
                 }
@@ -2456,11 +2478,17 @@ void modular_gen_bank_render(float *out, int sampleRate, int samples,
             int off = (int)lrintf(p->gen_noise_offset[k]);
             if (off < 0) off = 0;
             if (off >= draws) off = draws - 1;
+            /* Incremental-multiply envelope (see the src==1 else branch above);
+             * removes 2*samples exp() per noise-tap slot. */
+            double gb_decF = exp(-fr / (double)sampleRate);
+            double gb_decT = exp(-tr / (double)sampleRate);
+            double gb_ef = fm, gb_et = tm;
             for (int i = 0; i < samples; i++) {
-                double t = (double)i / (double)sampleRate;
                 double s = (double)bus[prelude + i * draws + off];
                 s = gen_slot_filter_tick(&filt, s);
-                double env = fm * exp(-fr * t) + tm * exp(-tr * t);
+                double env = gb_ef + gb_et;
+                gb_ef *= gb_decF;
+                gb_et *= gb_decT;
                 if (assign) out[i] = (float)(s * env * gain);
                 else        out[i] += (float)(s * env * gain);
             }

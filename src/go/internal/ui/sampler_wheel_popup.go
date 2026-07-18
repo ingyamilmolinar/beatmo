@@ -3,8 +3,6 @@ package ui
 
 import (
 	"image"
-
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // openSamplerKnobWheelPopup opens the mobile scroll-wheel for sampler knob idx,
@@ -22,10 +20,12 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 	if k == nil {
 		return
 	}
+	// Flush any pending desktop wheel-nudge commit so the popup snapshots the
+	// committed value (mirrors openSynthKnobWheelPopup).
+	dv.samplerWheelNudge.flush()
 	dv.CloseAllPopups()
 
-	sc := samplerKnobScale(idx)
-	def := audio.ParamDef{Name: samplerStepPrefName(idx), Min: sc.Min, Max: sc.Max, Unit: sc.Unit}
+	def := dv.samplerKnobDef(idx)
 	var badge *KnobStepBadge
 	if idx < len(dv.sampler.knobStepBadges) {
 		badge = dv.sampler.knobStepBadges[idx]
@@ -37,7 +37,10 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 		Badge:    badge,
 		Def:      def,
 		Discrete: false, // every sampler knob is continuous (endless + step badge)
-		Title:    func() string { return samplerKnobPlainEnglish(idx) },
+		// Title is the param NAME ("Start", "Pitch"); the PlainEnglish gloss moves
+		// to the title band's Gloss slot (Task 7 popup v2).
+		Title:    func() string { return samplerKnobNameText(idx, &dv.sampler) },
+		Gloss:    func() string { return samplerKnobPlainEnglish(idx) },
 		OnChange: func() { dv.applySamplerKnob(idx) },
 		// One undo step per gesture, committed on release — the same site the
 		// rotary path commits at (samplerKnobHitAdapter.OnRelease).
@@ -61,31 +64,6 @@ func (p *samplerPanel) SamplerWheelPopupRect() image.Rectangle {
 	return dv.samplerWheelPopup.Rect()
 }
 
-// samplerMobileKnobButtonRect computes the compact pop-up button rect for
-// sampler knob idx on mobile. The button sits in the dial's vertical band but
-// spans the cell width so a long localized caption fits; the value caption is
-// drawn separately BELOW the dial band (so captionH=0 here). Mirrors the synth
-// tab's mobileKnobButtonRect via the shared knobValuePillRect.
-func (p *samplerPanel) samplerMobileKnobButtonRect(idx int) image.Rectangle {
-	dv := p.dv
-	s := &dv.sampler
-	if idx < 0 || idx >= len(s.knobs) || s.knobs[idx] == nil {
-		return image.Rectangle{}
-	}
-	dialR := s.knobs[idx].Rect()
-	if dialR.Empty() {
-		return image.Rectangle{}
-	}
-	cell := s.knobCells[idx]
-	if cell.Empty() {
-		cell = dialR
-	}
-	band := image.Rect(cell.Min.X, dialR.Min.Y, cell.Max.X, dialR.Max.Y)
-	// Size to the VALUE label — that's what the pill renders (the name
-	// lives in the caption band below).
-	return knobValuePillRect(band, samplerKnobValueText(idx, s), 0)
-}
-
 // closeSamplerKnobWheelPopup closes the mobile scroll-wheel for sampler knobs.
 // Navigating away persists the pending edit (Accept commits + closes; no-op if
 // already closed).
@@ -105,9 +83,5 @@ func (dv *DrumView) openSamplerKnobWheelPopup(idx int) { dv.sp().openSamplerKnob
 // mobile sampler-knob scroll-wheel popup. Exported forwarding shim onto the
 // relocated *samplerPanel method.
 func (dv *DrumView) SamplerWheelPopupRect() image.Rectangle { return dv.sp().SamplerWheelPopupRect() }
-
-func (dv *DrumView) samplerMobileKnobButtonRect(idx int) image.Rectangle {
-	return dv.sp().samplerMobileKnobButtonRect(idx)
-}
 
 func (dv *DrumView) closeSamplerKnobWheelPopup() { dv.sp().closeSamplerKnobWheelPopup() }

@@ -31,6 +31,24 @@ var drawPlayIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	iconFillPath(dst, c, [][2]float32{{8, 5}, {19, 12}, {8, 19}}, col)
 }
 
+var drawFastForwardIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconFillPath(dst, c, [][2]float32{{4, 6}, {12, 12}, {4, 18}}, col)
+	iconFillPath(dst, c, [][2]float32{{12, 6}, {20, 12}, {12, 18}}, col)
+}
+
+var drawRewindIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconFillPath(dst, c, [][2]float32{{20, 6}, {12, 12}, {20, 18}}, col)
+	iconFillPath(dst, c, [][2]float32{{12, 6}, {4, 12}, {12, 18}}, col)
+}
+
 var drawPauseIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
@@ -216,42 +234,44 @@ var drawStarFilledIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Co
 
 // ── Track / state (2) ──────────────────────────────────────────────────
 
-// Padlock, closed = "tracking" (timeline follows the playhead). A balanced
-// Lucide-style lock: a rounded body centred on the 24-grid, a slim shackle
-// narrower than the body, and a keyhole for polish.
+// Padlock, closed = "tracking" (timeline follows the playhead). A slim,
+// minimal Lucide-style lock: a narrow rounded body centred on the 24-grid, a
+// tall semicircular shackle seating into it, and a small keyhole. Kept thinner
+// than a squat 14×10 body so it reads as tasteful next to the kebab-menu icons.
 var drawTrackIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
 	}
 	c := newIconCanvas(r)
-	// Lock body (centred: x 5..19, y 10..20).
-	iconStrokeOpenRoundedRect(dst, c, 5, 10, 14, 10, 2, "", col)
-	// Closed shackle: both legs seat into the body top.
-	iconStrokeLine(dst, c, 8.5, 10, 8.5, 7, col)
-	iconStrokeArc(dst, c, 12, 7, 3.5, float32(math.Pi), 2*float32(math.Pi), col)
-	iconStrokeLine(dst, c, 15.5, 10, 15.5, 7, col)
-	// Keyhole.
-	iconFillCircle(dst, c, 12, 14, 1.1, col)
-	iconStrokeLine(dst, c, 12, 14.8, 12, 16.6, col)
+	// Slim lock body (x 7.5..16.5 = 9 wide, y 11..20 = 9 tall).
+	iconStrokeOpenRoundedRect(dst, c, 7.5, 11, 9, 9, 2.4, "", col)
+	// Closed shackle: a clean semicircular arch, narrower than the body, whose
+	// legs seat into the body top.
+	iconStrokeLine(dst, c, 9.5, 11, 9.5, 8, col)
+	iconStrokeArc(dst, c, 12, 8, 2.5, float32(math.Pi), 2*float32(math.Pi), col)
+	iconStrokeLine(dst, c, 14.5, 11, 14.5, 8, col)
+	// Minimal keyhole: a small dot with a short slot.
+	iconFillCircle(dst, c, 12, 14.7, 0.95, col)
+	iconStrokeLine(dst, c, 12, 15.4, 12, 16.7, col)
 }
 
 // Padlock, open = "free" (timeline scrolls independently of the playhead).
-// Same body + keyhole as the closed lock; the shackle's free leg lifts away
-// (Lucide-unlock silhouette) instead of seating into the body.
+// Same slim body + keyhole as the closed lock; the shackle's free leg lifts
+// away (Lucide-unlock silhouette) instead of seating into the body.
 var drawTrackOffIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
 	if r.Empty() {
 		return
 	}
 	c := newIconCanvas(r)
 	// Lock body — identical to the closed state.
-	iconStrokeOpenRoundedRect(dst, c, 5, 10, 14, 10, 2, "", col)
+	iconStrokeOpenRoundedRect(dst, c, 7.5, 11, 9, 9, 2.4, "", col)
 	// Open shackle: left leg seats in; the arch lifts and its free end floats
 	// above the body on the right (no descending right leg).
-	iconStrokeLine(dst, c, 8.5, 10, 8.5, 7, col)
-	iconStrokeArc(dst, c, 12, 7, 3.5, float32(math.Pi), 1.78*float32(math.Pi), col)
+	iconStrokeLine(dst, c, 9.5, 11, 9.5, 8, col)
+	iconStrokeArc(dst, c, 12, 8, 2.5, float32(math.Pi), 1.72*float32(math.Pi), col)
 	// Keyhole.
-	iconFillCircle(dst, c, 12, 14, 1.1, col)
-	iconStrokeLine(dst, c, 12, 14.8, 12, 16.6, col)
+	iconFillCircle(dst, c, 12, 14.7, 0.95, col)
+	iconStrokeLine(dst, c, 12, 15.4, 12, 16.7, col)
 }
 
 // ── Upload / I/O (3) ──────────────────────────────────────────────────
@@ -507,6 +527,18 @@ var drawLoudestIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color
 	iconFillRoundedRect(dst, c, 10, 12, 3, 8, 0.5, col)
 	iconFillRoundedRect(dst, c, 15, 7, 3, 13, 0.5, col)
 	iconStrokeLine(dst, c, 3, 5, 20, 5, col)
+}
+
+// drawSearchIcon renders a magnifier: a circle lens in the upper-left of the
+// live area with a handle stroking toward the lower-right corner. The leading
+// affordance of every menu search field (see DESIGN.md "Menu anatomy").
+var drawSearchIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeCircle(dst, c, 10.5, 10.5, 6, col)
+	iconStrokeLine(dst, c, 15.2, 15.2, 20, 20, col)
 }
 
 // drawTemplateIcon renders a template/preset card: a rounded-rect chassis

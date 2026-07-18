@@ -72,6 +72,39 @@ func (s *Service) TrimAfterMutable(row, maxAbs int) {
 	}
 }
 
+// RewindTo repositions row `row` for a backward seek to absolute subdivision
+// `abs`: immutable Playback/Import commits with key >= abs are moved into the
+// cold archive tier (retained, NOT deleted — see the full-history-retention
+// rule), the mutable/ring tier is cut at abs-1, and everything below abs is
+// left untouched. After a rewind the caller lowers the freeze watermark so the
+// rewound region renders from the predictor, not the archive.
+func (s *Service) RewindTo(row, abs int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if row < 0 || row >= len(s.rows) {
+		return
+	}
+	// Move post-abs immutables to the archive, then drop them from the sidecar.
+	if rowMap := s.immutables[row]; rowMap != nil {
+		var arch *rowArchive
+		for k, ce := range rowMap {
+			if k < abs {
+				continue
+			}
+			if ce.kind == CommitKindPlayback || ce.kind == CommitKindImport {
+				if arch == nil {
+					arch = s.ensureArchiveLocked(row)
+				}
+				arch.append(k, ce.val, ce.typ, ce.kind, s.archiveMaxEntries)
+			}
+			delete(rowMap, k)
+		}
+	}
+	// Hard-cut the ring at abs-1 (drops any ring entries >= abs, mutable or not;
+	// immutables were just archived, so no live copy is lost).
+	s.rows[row].commits.trimAfter(abs - 1)
+}
+
 // ReplaceCommit overwrites an existing commit at abs (if present). This is
 // used to reconcile seeded/gap commits with the live predictor without
 // truncating history. Returns false if abs is outside the retained range.

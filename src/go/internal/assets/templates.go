@@ -26,27 +26,54 @@ type Template struct {
 	Genre   string
 	Display string
 	BPM     int
+	Group   string // menu group label (from templateGroups) — drives the section headers
 	Bytes   []byte
 }
 
-// templateOrder is the canonical menu order, by file stem (templates/<stem>.json).
-// It is the ONLY hand-maintained template metadata; Display and BPM are derived
-// from the embedded JSON so they cannot drift from what actually ships.
-var templateOrder = []string{
-	// Classical (Baroque → Classical era).
-	"bach-toccata", "vivaldi-spring", "mozart-k545", "bach-prelude-c", "bach-flute-allemande", "asturias",
-	"bach-cello-prelude", "pachelbel-violin", "marcello-oboe", "cielito-trumpet", "handel-water-horn",
-	"felt-prelude", "sax-blues", "steel-folk", "electric-riff", "clav-funk", "bass-groove", "conga-tumbao",
-	// Bossa · Jazz · Blues.
-	"jobim-ipanema", "miles-so-what", "bbking-thrill-is-gone",
-	// Funk · Disco.
-	"wonder-superstition", "chic-good-times",
-	// Rock · Reggae · Pop.
-	"eagles-hotel-california", "marley-exodus", "toto-africa",
-	// Hip-Hop · House · Techno.
-	"dre-g-thang", "blackbox-ride-on-time", "gaynor-survive",
-	// Salsa · Bachata.
-	"puente-oye-como-va", "salsa-vivir", "bachata-obsesion",
+// templateGroups is the canonical menu grouping AND order, by file stem
+// (templates/<stem>.json). It is the ONLY hand-maintained template metadata;
+// Display and BPM are derived from the embedded JSON so they cannot drift
+// from what actually ships. The group labels render as section headers in
+// the template menu (empty search query only).
+var templateGroups = []struct {
+	Label string
+	Stems []string
+}{
+	{"Classical", []string{
+		"bach-toccata", "vivaldi-spring", "mozart-k545", "bach-prelude-c", "bach-flute-allemande", "asturias",
+		"bach-cello-prelude", "pachelbel-violin", "marcello-oboe", "cielito-trumpet", "handel-water-horn",
+		"felt-prelude",
+	}},
+	{"Riffs · Grooves", []string{
+		"sax-blues", "steel-folk", "electric-riff", "clav-funk", "bass-groove", "conga-tumbao",
+	}},
+	{"Bossa · Jazz · Blues", []string{
+		"jobim-ipanema", "miles-so-what", "bbking-thrill-is-gone",
+	}},
+	{"Funk · Disco", []string{
+		"wonder-superstition", "chic-good-times",
+	}},
+	{"Rock · Reggae · Pop", []string{
+		"eagles-hotel-california", "marley-exodus", "toto-africa",
+	}},
+	{"Hip-Hop · House · Techno", []string{
+		"dre-g-thang", "blackbox-ride-on-time", "gaynor-survive",
+	}},
+	{"Salsa · Bachata", []string{
+		"puente-oye-como-va", "salsa-vivir", "bachata-obsesion",
+	}},
+}
+
+// templateOrder is the flattened templateGroups sequence — retained because
+// menu order, tests, and the search index all key off the flat series.
+var templateOrder = flattenTemplateGroups()
+
+func flattenTemplateGroups() []string {
+	var out []string
+	for _, g := range templateGroups {
+		out = append(out, g.Stems...)
+	}
+	return out
 }
 
 // Templates returns the built-in genre circuits in menu order. The embedded
@@ -69,23 +96,26 @@ var (
 
 func buildTemplates() []Template {
 	out := make([]Template, 0, len(templateOrder))
-	for _, genre := range templateOrder {
-		b, err := templateFS.ReadFile("templates/" + genre + ".json")
-		if err != nil {
-			panic("assets: missing embedded template " + genre + ".json: " + err.Error())
+	for _, g := range templateGroups {
+		for _, genre := range g.Stems {
+			b, err := templateFS.ReadFile("templates/" + genre + ".json")
+			if err != nil {
+				panic("assets: missing embedded template " + genre + ".json: " + err.Error())
+			}
+			var meta struct {
+				BPM int `json:"bpm"`
+			}
+			if err := json.Unmarshal(b, &meta); err != nil {
+				panic("assets: malformed template " + genre + ".json: " + err.Error())
+			}
+			out = append(out, Template{
+				Genre:   genre,
+				Display: displayName(genre),
+				BPM:     meta.BPM,
+				Group:   g.Label,
+				Bytes:   b,
+			})
 		}
-		var meta struct {
-			BPM int `json:"bpm"`
-		}
-		if err := json.Unmarshal(b, &meta); err != nil {
-			panic("assets: malformed template " + genre + ".json: " + err.Error())
-		}
-		out = append(out, Template{
-			Genre:   genre,
-			Display: displayName(genre),
-			BPM:     meta.BPM,
-			Bytes:   b,
-		})
 	}
 	return out
 }

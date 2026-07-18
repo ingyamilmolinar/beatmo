@@ -70,23 +70,84 @@ func clickSidebarControl(t *testing.T, g *Game, id string) {
 	gridClick(g, cx, cy)
 }
 
-// ─── 1. Remove from group (real click) ──────────────────────────────────────
+// ─── 1. Remove from group (real click, via the grpremove selector) ─────────
 
-// TestSidebarRemoveFromGroup_Click: node in 2 groups; a real click on
-// grpdel:<gid1> removes membership from group1 only (group2 untouched),
-// emits EventGroupChanged (one undo step), and the chip row for group1 is
-// gone the next frame while ring membership (Member) stays true (still in
-// group2).
-func TestSidebarRemoveFromGroup_Click(t *testing.T) {
+// clickRemoveOption opens the "Remove from group" dropdown (a real click on
+// "grpremove") and then real-clicks its "grpremoveopt:<gid>" row, mirroring
+// the two-step add-dropdown click pattern used throughout this file
+// (TestSidebarAddToGroup_Click). Fails the test if the dropdown didn't open.
+func clickRemoveOption(t *testing.T, g *Game, gid model.GroupID) {
+	t.Helper()
+	clickSidebarControl(t, g, "grpremove")
+	advanceFrames(g, 1)
+	if !g.sidebar.groupRemoveDropdownOpen {
+		t.Fatalf("precondition: groupRemoveDropdownOpen should be true after clicking grpremove")
+	}
+	clickSidebarControl(t, g, fmt.Sprintf("grpremoveopt:%d", gid))
+}
+
+// TestRemoveSelectorListsOnlyMemberships: node in 2 of 3 groups → the
+// grpremove dropdown's rows are exactly those 2 memberships, by name; the
+// non-member group is absent.
+func TestRemoveSelectorListsOnlyMemberships(t *testing.T) {
 	g, aID, bID := buildGroupSidebarFixture(t)
 	gid1 := createCommittedGroup(t, g, "G1", []model.NodeID{aID, bID})
 	gid2 := createCommittedGroup(t, g, "G2", []model.NodeID{aID})
-	g.sidebar.Open(g.nodesByID[aID])
-	g.sidebar.sectionOpen["grp"] = true
+	gid3 := createCommittedGroup(t, g, "G3", []model.NodeID{bID})
+	openSidebarGrpExpanded(t, g, aID)
+
+	clickSidebarControl(t, g, "grpremove")
 	advanceFrames(g, 1)
+	g.sidebar.layout()
+
+	got := map[model.GroupID]bool{}
+	for id := range g.sidebar.rects {
+		var gid model.GroupID
+		if _, err := fmt.Sscanf(id, "grpremoveopt:%d", &gid); err == nil {
+			got[gid] = true
+		}
+	}
+	want := map[model.GroupID]bool{gid1: true, gid2: true}
+	if len(got) != len(want) {
+		t.Fatalf("dropdown rows = %v, want exactly %v", got, want)
+	}
+	for gid := range want {
+		if !got[gid] {
+			t.Fatalf("dropdown missing row for gid=%d, got %v", gid, got)
+		}
+	}
+	if got[gid3] {
+		t.Fatalf("dropdown must not list gid3=%d (node is not a member)", gid3)
+	}
+	for _, gid := range []model.GroupID{gid1, gid2} {
+		id := fmt.Sprintf("grpremoveopt:%d", gid)
+		btn, ok := g.sidebar.btns[id]
+		if !ok || btn == nil {
+			t.Fatalf("missing button for %s", id)
+		}
+		grp, ok := g.graph.Group(gid)
+		if !ok {
+			t.Fatalf("group %d vanished", gid)
+		}
+		if btn.Text != grp.Name {
+			t.Fatalf("%s label = %q, want %q", id, btn.Text, grp.Name)
+		}
+	}
+}
+
+// TestRemoveSelectorRemovesMembership: node in 2 groups; a real click through
+// the grpremove dropdown on gid1's row removes membership from group1 only
+// (group2 untouched), emits EventGroupChanged (one undo step), closes the
+// dropdown, and the chip row for group1 is gone the next frame while ring
+// membership (Member) stays true (still in group2).
+func TestRemoveSelectorRemovesMembership(t *testing.T) {
+	g, aID, bID := buildGroupSidebarFixture(t)
+	gid1 := createCommittedGroup(t, g, "G1", []model.NodeID{aID, bID})
+	gid2 := createCommittedGroup(t, g, "G2", []model.NodeID{aID})
+	openSidebarGrpExpanded(t, g, aID)
 
 	undoBefore := len(g.undoManager.undo)
-	clickSidebarControl(t, g, fmt.Sprintf("grpdel:%d", gid1))
+	clickRemoveOption(t, g, gid1)
 	advanceFrames(g, 2)
 
 	grpIDs := g.graph.GroupsForNode(aID)
@@ -107,8 +168,14 @@ func TestSidebarRemoveFromGroup_Click(t *testing.T) {
 	if got := len(g.undoManager.undo) - undoBefore; got != 1 {
 		t.Fatalf("expected exactly 1 undo step, got %d", got)
 	}
+	if lbl := g.undoManager.UndoLabel(); lbl != "edit group" {
+		t.Fatalf("undo label = %q, want %q", lbl, "edit group")
+	}
 	if !g.groupIndexSnapshot().Member(aID) {
 		t.Fatalf("groupIndexSnapshot().Member(aID) should still be true (still in gid2)")
+	}
+	if g.sidebar.groupRemoveDropdownOpen {
+		t.Fatalf("dropdown must close after selecting a group")
 	}
 	g.sidebar.layout()
 	if r, ok := g.sidebar.rects[fmt.Sprintf("grpchip:%d", gid1)]; ok && !r.Empty() {
@@ -118,18 +185,17 @@ func TestSidebarRemoveFromGroup_Click(t *testing.T) {
 
 // ─── 2. Remove last member auto-deletes the group ───────────────────────────
 
-// TestSidebarRemoveLastMemberAutoDeletes_Click: a single-member group's
-// remove button removes the group entirely (model auto-delete-on-empty),
-// costs exactly one undo step, and undo restores the group with the node.
-func TestSidebarRemoveLastMemberAutoDeletes_Click(t *testing.T) {
+// TestRemoveSelectorAutoDeleteOnEmpty: a sole-member group picked via the
+// grpremove dropdown is removed entirely (model auto-delete-on-empty),
+// costs exactly one undo step labeled "delete group", and undo restores the
+// group with the node.
+func TestRemoveSelectorAutoDeleteOnEmpty(t *testing.T) {
 	g, aID, _ := buildGroupSidebarFixture(t)
 	gid := createCommittedGroup(t, g, "Solo", []model.NodeID{aID})
-	g.sidebar.Open(g.nodesByID[aID])
-	g.sidebar.sectionOpen["grp"] = true
-	advanceFrames(g, 1)
+	openSidebarGrpExpanded(t, g, aID)
 
 	undoBefore := len(g.undoManager.undo)
-	clickSidebarControl(t, g, fmt.Sprintf("grpdel:%d", gid))
+	clickRemoveOption(t, g, gid)
 	advanceFrames(g, 2)
 
 	for _, grp := range g.graph.AllGroups() {
@@ -140,11 +206,54 @@ func TestSidebarRemoveLastMemberAutoDeletes_Click(t *testing.T) {
 	if got := len(g.undoManager.undo) - undoBefore; got != 1 {
 		t.Fatalf("expected exactly 1 undo step, got %d", got)
 	}
+	if lbl := g.undoManager.UndoLabel(); lbl != "delete group" {
+		t.Fatalf("undo label = %q, want %q", lbl, "delete group")
+	}
 
 	g.undoManager.Undo()
 
 	if len(g.graph.GroupsForNode(aID)) != 1 {
 		t.Fatalf("undo must restore node %d's membership, got groups=%v", aID, g.graph.GroupsForNode(aID))
+	}
+}
+
+// TestRemoveSelectorHiddenWhenNoMemberships: a node with zero group
+// memberships must not lay out a "grpremove" row.
+func TestRemoveSelectorHiddenWhenNoMemberships(t *testing.T) {
+	g, aID, bID := buildGroupSidebarFixture(t)
+	createCommittedGroup(t, g, "G1", []model.NodeID{bID})
+	openSidebarGrpExpanded(t, g, aID)
+	g.sidebar.layout()
+	if r, ok := g.sidebar.rects["grpremove"]; ok && !r.Empty() {
+		t.Fatalf("grpremove row must be absent with zero memberships, got rect=%v", r)
+	}
+}
+
+// TestChipsAreOpenOnlyFullWidth: membership chips no longer pair with a
+// grpdel remove button (removed entirely per the task-remove-selector
+// brief — the "grpremove" dropdown owns removal now); a chip click must
+// still open the GroupMenu.
+func TestChipsAreOpenOnlyFullWidth(t *testing.T) {
+	g, aID, bID := buildGroupSidebarFixture(t)
+	gid := createCommittedGroup(t, g, "G1", []model.NodeID{aID, bID})
+	openSidebarGrpExpanded(t, g, aID)
+	g.sidebar.layout()
+
+	for id := range g.sidebar.rects {
+		if strings.HasPrefix(id, "grpdel:") {
+			t.Fatalf("grpdel machinery must be fully removed, found rect id=%s", id)
+		}
+	}
+	for id := range g.sidebar.btns {
+		if strings.HasPrefix(id, "grpdel:") {
+			t.Fatalf("grpdel machinery must be fully removed, found button id=%s", id)
+		}
+	}
+
+	clickSidebarControl(t, g, fmt.Sprintf("grpchip:%d", gid))
+	advanceFrames(g, 1)
+	if !g.groupMenu.IsOpen() || g.groupMenu.GroupID() != gid {
+		t.Fatalf("chip click must open the GroupMenu for gid=%d, open=%v menuGid=%d", gid, g.groupMenu.IsOpen(), g.groupMenu.GroupID())
 	}
 }
 
@@ -198,9 +307,11 @@ func TestSidebarAddToGroup_Click(t *testing.T) {
 
 // ─── 4. Add dropdown lists only non-member groups ───────────────────────────
 
-// TestSidebarAddDropdownListsOnlyNonMemberGroups: node belongs to 1 of 3
-// groups; opening the add dropdown lists exactly the other 2, by name.
-func TestSidebarAddDropdownListsOnlyNonMemberGroups(t *testing.T) {
+// TestAddSelectorListsOnlyNonMembers (task-remove-selector brief test 6 —
+// pinning the add dropdown's existing non-member-only behavior, unchanged by
+// this task): node belongs to 1 of 3 groups; opening the add dropdown lists
+// exactly the other 2, by name.
+func TestAddSelectorListsOnlyNonMembers(t *testing.T) {
 	g, aID, bID := buildGroupSidebarFixture(t)
 	gid1 := createCommittedGroup(t, g, "G1", []model.NodeID{aID})
 	gid2 := createCommittedGroup(t, g, "G2", []model.NodeID{bID})
@@ -256,13 +367,30 @@ func TestSidebarAddDropdownListsOnlyNonMemberGroups(t *testing.T) {
 // groups at all (no section), >=1 group + non-member node (section with
 // grpadd, no chips), and a member node (chips + remove buttons).
 func TestSidebarGrpSectionVisibility(t *testing.T) {
-	t.Run("no_groups_no_section", func(t *testing.T) {
+	// no_groups_shows_create_only: PORTED from the pre-task-sidebar-create
+	// pin (formerly "no_groups_no_section", which asserted sec-grp was
+	// ABSENT with zero groups). The section is now always visible (see
+	// game_node_sidebar.go's layout()) so a zero-group project still gets
+	// "sec-grp" + the "grpnew" row — just with no chips and no "grpadd" row,
+	// since there is nothing to add to yet.
+	t.Run("no_groups_shows_create_only", func(t *testing.T) {
 		g, aID, _ := buildGroupSidebarFixture(t)
 		g.sidebar.Open(g.nodesByID[aID])
 		g.sidebar.sectionOpen["grp"] = true
 		g.sidebar.layout()
-		if r, ok := g.sidebar.rects["sec-grp"]; ok && !r.Empty() {
-			t.Fatalf("sec-grp must be absent when no groups exist, got rect=%v", r)
+		if r, ok := g.sidebar.rects["sec-grp"]; !ok || r.Empty() {
+			t.Fatalf("sec-grp must be present even with zero groups")
+		}
+		if r, ok := g.sidebar.rects["grpnew"]; !ok || r.Empty() {
+			t.Fatalf("grpnew row must be present with zero groups")
+		}
+		if r, ok := g.sidebar.rects["grpadd"]; ok && !r.Empty() {
+			t.Fatalf("grpadd row must be absent with zero groups, got rect=%v", r)
+		}
+		for id := range g.sidebar.rects {
+			if strings.HasPrefix(id, "grpchip:") {
+				t.Fatalf("zero groups must produce no chip rows, found %s", id)
+			}
 		}
 	})
 
@@ -294,8 +422,8 @@ func TestSidebarGrpSectionVisibility(t *testing.T) {
 		if r, ok := g.sidebar.rects[fmt.Sprintf("grpchip:%d", gid)]; !ok || r.Empty() {
 			t.Fatalf("chip row must be present for a member node")
 		}
-		if r, ok := g.sidebar.rects[fmt.Sprintf("grpdel:%d", gid)]; !ok || r.Empty() {
-			t.Fatalf("remove button must be present for a member node")
+		if r, ok := g.sidebar.rects["grpremove"]; !ok || r.Empty() {
+			t.Fatalf("grpremove row must be present for a member node")
 		}
 	})
 }
@@ -313,6 +441,9 @@ func TestSidebarAddRemoveDuringPlayback(t *testing.T) {
 		{Param: model.GroupParamPitch, Delta: 2, EveryN: 1},
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
 
 	loopStart := g.loopStartByRow[0]
@@ -356,7 +487,7 @@ func TestSidebarAddRemoveDuringPlayback(t *testing.T) {
 		t.Fatalf("node a's pitch at round 2 after joining the rule group = %v, want 4", pAfterAdd)
 	}
 
-	clickSidebarControl(t, g, fmt.Sprintf("grpdel:%d", gid))
+	clickRemoveOption(t, g, gid)
 	advanceFrames(g, 3)
 
 	_, pAfterRemove, _ := g.evalNodeParamsOnly(0, idxRound2, infoAt(idxRound2))
@@ -370,22 +501,21 @@ func TestSidebarAddRemoveDuringPlayback(t *testing.T) {
 
 // ─── 7. Undo/redo round trip ─────────────────────────────────────────────────
 
-// TestSidebarRemoveUndoRedoRoundTrip: remove (real click) drops the
-// membership; undo restores it; redo removes it again. Uses len() on
-// GroupsForNode rather than exact GroupIDs since undo/redo restores via a
-// full document reimport, which may reassign IDs (harmlessly, deterministically).
-func TestSidebarRemoveUndoRedoRoundTrip(t *testing.T) {
+// TestRemoveSelectorUndoRedoRoundTrip: removing via the grpremove dropdown
+// (real click) drops the membership; undo restores it; redo removes it
+// again. Uses len() on GroupsForNode rather than exact GroupIDs since
+// undo/redo restores via a full document reimport, which may reassign IDs
+// (harmlessly, deterministically).
+func TestRemoveSelectorUndoRedoRoundTrip(t *testing.T) {
 	g, aID, bID := buildGroupSidebarFixture(t)
 	gid := createCommittedGroup(t, g, "G1", []model.NodeID{aID, bID})
-	g.sidebar.Open(g.nodesByID[aID])
-	g.sidebar.sectionOpen["grp"] = true
-	advanceFrames(g, 1)
+	openSidebarGrpExpanded(t, g, aID)
 
 	if len(g.graph.GroupsForNode(aID)) != 1 {
 		t.Fatalf("precondition: node must start a member of exactly 1 group")
 	}
 
-	clickSidebarControl(t, g, fmt.Sprintf("grpdel:%d", gid))
+	clickRemoveOption(t, g, gid)
 	advanceFrames(g, 2)
 	if len(g.graph.GroupsForNode(aID)) != 0 {
 		t.Fatalf("after remove: node must belong to 0 groups, got %v", g.graph.GroupsForNode(aID))
@@ -400,6 +530,67 @@ func TestSidebarRemoveUndoRedoRoundTrip(t *testing.T) {
 	if len(g.graph.GroupsForNode(aID)) != 0 {
 		t.Fatalf("after redo: node must belong to 0 groups again, got %v", g.graph.GroupsForNode(aID))
 	}
+}
+
+// ─── 9. Four dropdowns are mutually exclusive ────────────────────────────────
+
+// TestFourDropdownsMutuallyExclusive: the node sidebar hosts four
+// independent dropdowns (logic, groove, grpadd, grpremove). Opening any one
+// of them (via a real click) must close the other three — in every
+// direction, not just the ones previously guarded (a past review finding:
+// the grpadd toggle didn't close the others, only they closed it).
+func TestFourDropdownsMutuallyExclusive(t *testing.T) {
+	g, aID, bID := buildGroupSidebarFixture(t)
+	createCommittedGroup(t, g, "Member", []model.NodeID{aID})
+	createCommittedGroup(t, g, "Candidate", []model.NodeID{bID})
+	g.sidebar.Open(g.nodesByID[aID])
+	// Only expand the three sections under test (not ExpandAllSections,
+	// which stacks vol/pit/dur/aud/move too and overflows the sidebar's
+	// unscrolled viewport at this fixture's window size).
+	g.sidebar.sectionOpen["logic"] = true
+	g.sidebar.sectionOpen["groove"] = true
+	g.sidebar.sectionOpen["grp"] = true
+	advanceFrames(g, 1)
+
+	assertOnlyOpen := func(t *testing.T, want string) {
+		t.Helper()
+		states := map[string]bool{
+			"logic":     g.sidebar.logicDropdownOpen,
+			"groove":    g.sidebar.grooveDropdownOpen,
+			"grpadd":    g.sidebar.groupAddDropdownOpen,
+			"grpremove": g.sidebar.groupRemoveDropdownOpen,
+		}
+		if !states[want] {
+			t.Fatalf("expected %s dropdown open, states=%v", want, states)
+		}
+		for name, open := range states {
+			if name != want && open {
+				t.Fatalf("expected only %s open, but %s is also open, states=%v", want, name, states)
+			}
+		}
+	}
+
+	clickSidebarControl(t, g, "logic")
+	advanceFrames(g, 1)
+	assertOnlyOpen(t, "logic")
+
+	clickSidebarControl(t, g, "grv")
+	advanceFrames(g, 1)
+	assertOnlyOpen(t, "groove")
+
+	clickSidebarControl(t, g, "grpadd")
+	advanceFrames(g, 1)
+	assertOnlyOpen(t, "grpadd")
+
+	clickSidebarControl(t, g, "grpremove")
+	advanceFrames(g, 1)
+	assertOnlyOpen(t, "grpremove")
+
+	// One more round, starting from grpremove open, to confirm the other
+	// three each independently close it too.
+	clickSidebarControl(t, g, "logic")
+	advanceFrames(g, 1)
+	assertOnlyOpen(t, "logic")
 }
 
 // ─── 8. Negative cases ───────────────────────────────────────────────────────

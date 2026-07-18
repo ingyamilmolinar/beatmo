@@ -174,14 +174,19 @@ func (g *ControlGrid) Scroll() *ScrollBehavior { return g.scroll }
 
 // controlGridDragStepPx is the pointer travel (px) required to advance one row
 // during a drag, and controlGridScrollCooldownFrames is the frames between two
-// wheel/step scrolls. Both are deliberately large and FIXED — independent of
-// the (often tiny) scrollbar track — so every gesture lands one clean,
-// human-paced row at a time instead of flying through the list. Shared with the
-// row rack so both scrollbars feel identical. (At 60 fps, 14 frames ≈ one row
-// per quarter-second while the wheel is held; a single notch moves immediately.)
+// wheel/step scrolls. Both are FIXED — independent of the (often tiny) scrollbar
+// track — so every gesture lands one clean row at a time instead of flying
+// through the list. Shared with the row rack and every list menu so all
+// scrollbars feel identical (see menu_scroll.go). The cooldown stays clicky (one
+// item per notch, one discrete step at a time) but is short enough that a held /
+// repeatedly-flicked wheel ticks briskly rather than crawling. 2 frames is the
+// floor that still reads as discrete clicks — 1 frame moves every frame and blurs
+// into a continuous glide. (At 60 fps, 2 frames ≈ 30 rows per second while the
+// wheel is spun; a single notch still moves immediately.) Guarded by
+// TestAllMenuScrolls_ClickyCadenceIsFast.
 const (
-	controlGridDragStepPx          = 44
-	controlGridScrollCooldownFrames = 14
+	controlGridDragStepPx           = 44
+	controlGridScrollCooldownFrames = 2
 )
 
 // BeginDrag / BeginContentDrag / DragTo / EndDrag / WheelStep / Tick are thin

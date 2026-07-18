@@ -423,7 +423,7 @@ var (
 	// Without this hold, the dispatcher's release branch reads (0,0) from
 	// the underlying Ebiten cursor on the same frame globalTouchState removes
 	// the ended touch, and any OnRelease handler that uses the coords
-	// (notably Knob.updateFromDrag) snaps to an extreme.
+	// (e.g. a Slider mid-drag) snaps to an extreme.
 	lastSingleTouchX    int
 	lastSingleTouchY    int
 	lastSingleTouchHeld bool // true when the next frame should publish the held lift coords

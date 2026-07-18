@@ -90,34 +90,19 @@ func TestSynthTab_KnobDragEndToEndChangesAudioParam(t *testing.T) {
 	// Capture initial value (decay default = 1.0; rescaled 0..1 = 0.25).
 	initialValue := knob.Value
 
-	// Press the knob.
-	if result := pressHit.Handler.OnPress(cx, cy); result == InputIgnored {
-		t.Fatalf("synth-knob HitArea ignored the press at center (%d,%d) of rect %v", cx, cy, rect)
-	}
-	if !knob.Capturing() {
-		t.Fatal("knob not capturing after press — drag will be a no-op")
-	}
-
-	// Drag RIGHT — for an endless knob each pixel accumulates real units
-	// incrementally rather than mapping absolute position to 0..1. We drive
-	// enough pixels to produce a measurable positive delta and assert
-	// direction-of-change rather than a specific magnitude, so the test
-	// stays correct across StepMul changes (Task 10: endless is the model).
-	const dragPx = 80 // 80 px at knobEndlessPxPerNotch=8 → 10 notches
-	const steps = 8
-	for s := 1; s <= steps; s++ {
-		pressHit.Handler.OnDrag(cx+dragPx*s/steps, cy)
+	// Task-5: value edits are the desktop wheel nudge over the card. Several
+	// up-notches raise the value and propagate it to the audio engine.
+	knob.Value = 0.1 // seed low so the up-notches always increase
+	initialValue = knob.Value
+	for s := 0; s < 8; s++ {
+		if pressHit.Handler.OnWheel(cx, cy, 1) == InputIgnored {
+			t.Fatalf("wheel over synth-knob HitArea ignored at center (%d,%d) of rect %v", cx, cy, rect)
+		}
 	}
 	if knob.Value <= initialValue {
-		t.Errorf("after right drag: knob.Value=%v did not increase from initial %v", knob.Value, initialValue)
+		t.Errorf("after wheel up: knob.Value=%v did not increase from initial %v", knob.Value, initialValue)
 	}
 	afterDrag := knob.Value
-
-	// Release.
-	pressHit.Handler.OnRelease(cx+dragPx, cy)
-	if knob.Capturing() {
-		t.Error("knob still capturing after release")
-	}
 
 	// Verify audio engine received the value change.
 	got := audio.GetInstrumentParams("snare")
@@ -227,24 +212,18 @@ func TestSynthTab_ReleaseFollowingDragPropagatesFinalValue(t *testing.T) {
 
 	def := bindings[idx].def
 	paramName := def.Name
-	beforeNorm := k.Value         // normalized [0,1] start value of the chosen knob
-	quarter := k.dragPixels() / 4 // right drag → ~0.25 normalized delta
-	hit.Handler.OnPress(cx, cy)
-	hit.Handler.OnDrag(cx+quarter, cy)
-	hit.Handler.OnRelease(cx+quarter, cy)
+	k.Value = 0.1 // seed low so wheel up-notches always increase
+	before := def.Min + k.Value*(def.Max-def.Min)
+	// Task-5: value edits are the desktop wheel nudge; each notch propagates to
+	// audio via the platform callback.
+	for s := 0; s < 8; s++ {
+		hit.Handler.OnWheel(cx, cy, 1)
+	}
 
 	got := audio.GetInstrumentParams("snare")
 	val, ok := got[paramName]
-	// A right drag of ~dragPixels()/4 lifts the normalized value by ~0.25
-	// (clamped at 1.0), so the propagated ACTUAL value is min + want*(max-min).
-	wantNorm := beforeNorm + 0.25
-	if wantNorm > 1 {
-		wantNorm = 1
-	}
-	wantApprox := def.Min + wantNorm*(def.Max-def.Min)
-	band := 0.15 * (def.Max - def.Min)
-	if !ok || val < wantApprox-band || val > wantApprox+band {
-		t.Errorf("after press+drag+release: %s=%v ok=%v, want ~%.3f", paramName, val, ok, wantApprox)
+	if !ok || val <= before {
+		t.Errorf("after wheel nudge: %s=%v ok=%v, want > %.3f", paramName, val, ok, before)
 	}
 	if fired < 1 {
 		t.Errorf("expected at least 1 SetInstrumentParam call, got %d", fired)

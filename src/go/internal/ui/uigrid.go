@@ -33,17 +33,24 @@ func insetRect(r image.Rectangle, pad int) image.Rectangle {
 // It preserves whole runes and appends "..." when truncating. Uses proper font
 // metrics when available, falling back to debug font character width.
 func clipTextToWidth(text string, maxW int) string {
+	return clipTextToWidthMeasure(text, maxW, TextWidth)
+}
+
+// clipTextToWidthMeasure is clipTextToWidth with a caller-supplied width
+// metric, for text drawn through the styled text-role API (measure with
+// StyledTextWidth for the matching role so the clip lands on the real glyphs).
+func clipTextToWidthMeasure(text string, maxW int, measure func(string) int) string {
 	if maxW <= 0 {
 		return ""
 	}
-	if TextWidth(text) <= maxW {
+	if measure(text) <= maxW {
 		return text
 	}
 	ellipsis := "..."
 	rs := []rune(text)
 	for keepRunes := len(rs) - 1; keepRunes >= 0; keepRunes-- {
 		candidate := string(rs[:keepRunes]) + ellipsis
-		if TextWidth(candidate) <= maxW {
+		if measure(candidate) <= maxW {
 			return candidate
 		}
 	}
@@ -106,7 +113,17 @@ type Button struct {
 	ConsumeOnPress bool
 	// TextScale scales the button label text when > 0. A value of 1.5 renders
 	// the debug font at 150%. Zero or negative uses the default 1× scale.
+	// Ignored when TextRole is set.
 	TextScale float64
+	// textRole/hasTextRole select the styled text-role path (embedded Inter —
+	// crisp at its true pixel size) for the label instead of the legacy
+	// bitmap TextSprite + GeoM upscale path, which pixelates at any scale
+	// ≠ 1. Set via SetTextRole (RoleBody is the enum zero, so a "set" flag is
+	// required — same pattern as SpecID/hasSpecID). New text-bearing chrome
+	// buttons should call SetTextRole(RoleBody); icon-only buttons don't
+	// need it.
+	textRole    TextRole
+	hasTextRole bool
 	// Optional icon to draw inside the button. When set, the icon is drawn
 	// using simple vector primitives so it renders under the default Ebiten
 	// debug font (which lacks many Unicode glyphs). Supported values:
@@ -238,7 +255,9 @@ func (b *Button) Draw(dst *ebiten.Image) {
 	// Skip text rendering when an icon is set — the icon is the visual
 	// representation and the debug font can't render Unicode icon glyphs
 	// (they appear as small white rectangles).
-	if b.Icon == "" {
+	if b.Icon == "" && b.hasTextRole {
+		b.drawStyledLabel(dst, cap)
+	} else if b.Icon == "" {
 		scale := b.TextScale
 		if scale <= 0 {
 			scale = 1.0
@@ -358,12 +377,71 @@ func drawTextHighlights(dst *ebiten.Image, text string, highlights []int, baseX,
 	}
 }
 
+// UpdateHover refreshes the button's hover flag from the plain cursor
+// position. For buttons hosted in portal overlays, whose input handlers only
+// run on press/drag/release edges — plain mouse-over never reaches
+// HandleInputResult there, so hover feedback needs this per-frame seam
+// (portalHoverer). Desktop only (the caller guards).
+func (b *Button) UpdateHover(mx, my int) {
+	if b == nil {
+		return
+	}
+	b.hovered = !b.Disabled && image.Pt(mx, my).In(b.Rect())
+}
+
+// SetTextRole routes the button's label through the styled text-role API
+// (see textRole/hasTextRole). RoleBody is the enum zero, hence a setter with
+// a "set" flag rather than a bare field.
+func (b *Button) SetTextRole(role TextRole) {
+	b.textRole = role
+	b.hasTextRole = true
+}
+
+// StyledTextRole reports the styled label role and whether one is set.
+func (b *Button) StyledTextRole() (TextRole, bool) { return b.textRole, b.hasTextRole }
+
+// drawStyledLabel renders the button label via the styled text-role API —
+// the smooth (embedded-Inter) sibling of the legacy sprite path, selected by
+// setting Button.TextRole. Centering, clipping, fuzzy highlights, and the
+// disabled/latched text colors match the legacy path's behavior.
+func (b *Button) drawStyledLabel(dst *ebiten.Image, cap image.Rectangle) {
+	role := b.textRole
+	measure := func(s string) int { return StyledTextWidth(s, role) }
+	clipped := clipTextToWidthMeasure(b.displayText(), cap.Dx()-2*SpaceXS, measure)
+	w := measure(clipped)
+	h := StyledTextHeight(role)
+	x := cap.Min.X + (cap.Dx()-w)/2
+	y := cap.Min.Y + (cap.Dy()-h)/2
+	if len(b.Highlights) > 0 {
+		drawTextHighlights(dst, clipped, b.Highlights, x, y, 1.0, h, measure)
+	}
+	textCol := b.TextColor
+	if b.Disabled {
+		textCol = colTextDisabled
+	} else if b.toggled && textCol == nil {
+		textCol = genColorBackground
+	}
+	if textCol == nil {
+		textCol = colTextPrimary
+	}
+	DrawTextStyled(dst, clipped, x, y, role, textCol)
+}
+
 // textRect returns the rectangle occupied by the button's text when drawn,
 // clamped to the button bounds. Matches Draw(): clips text to button width
-// and applies TextScale.
+// and applies TextScale (or the styled-role metrics when TextRole is set).
 //
 //nolint:unused // used by test files with test build tag
 func (b *Button) textRect() image.Rectangle {
+	if b.hasTextRole {
+		measure := func(s string) int { return StyledTextWidth(s, b.textRole) }
+		clipped := clipTextToWidthMeasure(b.displayText(), b.r.Dx()-2*SpaceXS, measure)
+		w := measure(clipped)
+		h := StyledTextHeight(b.textRole)
+		x := b.r.Min.X + (b.r.Dx()-w)/2
+		y := b.r.Min.Y + (b.r.Dy()-h)/2
+		return image.Rect(x, y, x+w, y+h).Intersect(b.r)
+	}
 	scale := b.TextScale
 	if scale <= 0 {
 		scale = 1.0

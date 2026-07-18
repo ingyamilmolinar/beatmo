@@ -105,6 +105,15 @@ func (dv *DrumView) OnLocaleChanged() {
 	if dv.rowRackZone != nil {
 		dv.rowRackZone.Invalidate()
 	}
+	// The Synth tab's TraceSprite caches (focus-graph caption + chip labels)
+	// bake localized text but key on geometry/params, not locale — a language
+	// flip alone leaves them stale until an edit/selection/tab-switch. Release
+	// them here (the whole-DrumView locale chokepoint) so they re-render in the
+	// new locale on the next Draw. ParamCards self-heal (localized name is in
+	// their key). Field, not synp(): don't force-create a panel on locale flip.
+	if dv.synthPanel != nil {
+		dv.synthPanel.sprites.releaseAll()
+	}
 	// The mobile bottom-nav SegmentedControl copies its labels at construction,
 	// so it must be explicitly relabeled in the new locale (zone Invalidate does
 	// not reach it).

@@ -185,12 +185,37 @@ func conceptFocusLevelWave(dst *ebiten.Image, rect image.Rectangle, instID strin
 // the knob + its plain-English purpose. Dispatches by the knob's group through
 // synthFocusRendererForGroup. Renders nothing (beyond chrome) when no section /
 // knob resolves.
-func (dv *DrumView) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle, instID string) {
-	if rect.Dx() < 32 || rect.Dy() < 24 {
+//
+// Routed through the synth sprite cache (Task 2, synth_sprite_cache.go): the
+// key folds in the params hash AND the selected knob index (the concept curve
+// is per-selected-param, so a knob-selection change alone must re-render even
+// when no param value moved). A steady frame — same instrument, same params,
+// same selection — blits the cached texture instead of re-walking the concept
+// renderer's pixel loop.
+func (p *synthPanel) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle, instID string) {
+	dv := p.dv
+	key := struct {
+		hash string
+		sel  int
+	}{p.synthParamsHash(instID), dv.synthSelectedKnobIdx(instID, dv.synthSelectedSection())}
+	p.sprites.focus.Draw(dst, rect, key, func(img *ebiten.Image, r image.Rectangle) {
+		p.drawSynthFocusGraphContent(img, r, instID)
+	})
+}
+
+// drawSynthFocusGraphContent is the former drawSynthFocusGraph body, drawing
+// entirely relative to r (never the outer rect the sprite wrapper was called
+// with) so it renders byte-identically whether invoked directly (the
+// RENDER_SAFE pixel-test bypass) or into the sprite's origin-relative
+// offscreen texture.
+func (p *synthPanel) drawSynthFocusGraphContent(dst *ebiten.Image, r image.Rectangle, instID string) {
+	dv := p.dv
+
+	if r.Dx() < 32 || r.Dy() < 24 {
 		return
 	}
-	drawRoundedRect(dst, rect, TokenSurface1(), RadiusSM, true)
-	drawRoundedRect(dst, rect, TokenBorderSubtle(), RadiusSM, false)
+	drawRoundedRect(dst, r, TokenSurface1(), RadiusSM, true)
+	drawRoundedRect(dst, r, TokenBorderSubtle(), RadiusSM, false)
 
 	sec := dv.synthSelectedSection()
 	if sec == nil {
@@ -203,8 +228,7 @@ func (dv *DrumView) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle,
 	def := dv.instEditorBindings[kIdx].def
 
 	pad := SpaceSM
-	captionScale := FontSizeCaption / FontSizeBody
-	captionH := int(float64(TextHeight()) * captionScale)
+	captionH := StyledTextHeight(RoleMicro)
 
 	label := def.Label
 	if label == "" {
@@ -214,22 +238,22 @@ func (dv *DrumView) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle,
 	if purpose := synthKnobPurpose(def); purpose != "" {
 		caption = label + " — " + purpose
 	}
-	capY := rect.Min.Y + pad/2
-	DrawTextColorAtScale(dst, caption, rect.Min.X+pad, capY, colConceptStroke, captionScale)
+	capY := r.Min.Y + pad/2
+	DrawTextStyled(dst, caption, r.Min.X+pad, capY, RoleMicro, colConceptStroke)
 
 	// Before/after legend: only when a ghost (pre-drag) snapshot exists for this
 	// knob, and only when the caption row has room for both — otherwise the
 	// legend would crowd or overlap the caption text.
 	if dv.synthConceptGhost(kIdx) != nil {
 		legend := i18n.T(i18n.KeyCapBeforeAfter)
-		capW := int(float64(TextWidth(caption)) * captionScale)
-		legendW := int(float64(TextWidth(legend)) * captionScale)
-		if capW+legendW+pad*2 <= rect.Dx() {
-			DrawTextColorAtScale(dst, legend, rect.Max.X-pad-legendW, capY, TokenTextSecondary(), captionScale)
+		capW := StyledTextWidth(caption, RoleMicro)
+		legendW := StyledTextWidth(legend, RoleMicro)
+		if capW+legendW+pad*2 <= r.Dx() {
+			DrawTextStyled(dst, legend, r.Max.X-pad-legendW, capY, RoleMicro, TokenTextSecondary())
 		}
 	}
 
-	graphR := image.Rect(rect.Min.X+pad, rect.Min.Y+pad+captionH, rect.Max.X-pad, rect.Max.Y-pad)
+	graphR := image.Rect(r.Min.X+pad, r.Min.Y+pad+captionH, r.Max.X-pad, r.Max.Y-pad)
 	if graphR.Dx() < 8 || graphR.Dy() < 10 {
 		return
 	}
@@ -238,9 +262,15 @@ func (dv *DrumView) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle,
 	// stage is off the sound doesn't change — dim the graph and say so.
 	if en, ok := conceptStageEnableParam(def.Group); ok && !synthStageEnabled(instID, en) {
 		drawRect(dst, graphR, WithAlpha(TokenSurface1(), AlphaStrong), true)
-		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapStageOff),
-			graphR.Min.X+SpaceSM, graphR.Max.Y-captionH-2, TokenTextSecondary(), captionScale)
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapStageOff),
+			graphR.Min.X+SpaceSM, graphR.Max.Y-captionH-2, RoleMicro, TokenTextSecondary())
 	}
+}
+
+// --- DrumView forwarding shim ---
+
+func (dv *DrumView) drawSynthFocusGraph(dst *ebiten.Image, rect image.Rectangle, instID string) {
+	dv.synp().drawSynthFocusGraph(dst, rect, instID)
 }
 
 // isSynthPitchKnob reports whether a knob changes PITCH rather than timbre. The

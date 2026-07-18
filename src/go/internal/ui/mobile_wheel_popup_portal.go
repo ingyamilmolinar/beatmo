@@ -42,6 +42,11 @@ func (o *mobileWheelPopupPortalOverlay) HitAreas() []HitArea {
 func (o *mobileWheelPopupPortalOverlay) Draw(screen *ebiten.Image) { o.popup.Draw(screen) }
 func (o *mobileWheelPopupPortalOverlay) ShouldClose() bool         { return !o.popup.IsOpen() }
 
+// HoverAt implements portalHoverer: forwards the plain cursor position so the
+// ladder rung / center grip hover tint shows on desktop (portal input
+// handlers only run on press edges — see OverlayPortal.Update).
+func (o *mobileWheelPopupPortalOverlay) HoverAt(mx, my int) { o.popup.HoverAt(mx, my) }
+
 // HandleEscape (portalEscapeHandler) cancels the edit — reverting the value to
 // the snapshot taken at Open — then returns false so handleEscape's universal
 // CloseTop still removes the portal entry (and fires OnClose). Esc discards.

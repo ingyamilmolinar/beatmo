@@ -13,7 +13,7 @@ import (
 // node. It's triggered by a long-press gesture on all platforms.
 func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	// Guard: skip if already in a modal mode.
-	if g.moveMode || g.connectMode || g.longPressPopup {
+	if g.modes.Active() != GridModeNone || g.longPressPopup {
 		return
 	}
 	// Close any open node sidebar first.
@@ -31,7 +31,13 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	btnH := Profile().DensityValues().PopupBtnH
 	gap := SpaceSM
 	pad := SpaceMD
-	panelW := 3*btnW + 2*gap + 2*pad
+	gridW := g.split.GridW(g.winW)
+	// Four keycaps must fit narrow mobile panes: shrink from the ideal 80px
+	// down to whatever the grid pane allows.
+	if maxBtnW := (gridW - 2*pad - 3*gap) / 4; maxBtnW < btnW {
+		btnW = maxBtnW
+	}
+	panelW := 4*btnW + 3*gap + 2*pad
 	panelH := btnH + 2*pad
 
 	// Position: centered above the node by default.
@@ -47,7 +53,6 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	}
 
 	// Clamp within grid pane bounds.
-	gridW := g.split.GridW(g.winW)
 	gridH := g.split.GridH(g.winH)
 	if px < 0 {
 		px = 0
@@ -70,8 +75,11 @@ func (g *Game) showLongPressPopup(node *uiNode, touchX, touchY int) {
 	bx := px + pad
 	by := py + pad
 	g.longPressPopupMove = image.Rect(bx, by, bx+btnW, by+btnH)
-	g.longPressPopupConn = image.Rect(bx+btnW+gap, by, bx+2*btnW+gap, by+btnH)
-	g.longPressPopupDel = image.Rect(bx+2*(btnW+gap), by, bx+3*btnW+2*gap, by+btnH)
+	g.longPressPopupCopy = image.Rect(bx+(btnW+gap), by, bx+2*btnW+gap, by+btnH)
+	g.longPressPopupConn = image.Rect(bx+2*(btnW+gap), by, bx+3*btnW+2*gap, by+btnH)
+	g.longPressPopupDel = image.Rect(bx+3*(btnW+gap), by, bx+4*btnW+3*gap, by+btnH)
+
+	emitPopupOpened(longPressPopupID)
 }
 
 // updateLongPressPopup handles per-frame input while the popup is visible.
@@ -84,6 +92,8 @@ func (g *Game) updateLongPressPopup(mx, my int, left bool) {
 	pt := image.Pt(mx, my)
 	if pt.In(g.longPressPopupMove) {
 		g.longPressPopupHover = "move"
+	} else if pt.In(g.longPressPopupCopy) {
+		g.longPressPopupHover = "copy"
 	} else if pt.In(g.longPressPopupConn) {
 		g.longPressPopupHover = "connect"
 	} else if pt.In(g.longPressPopupDel) {
@@ -105,30 +115,51 @@ func (g *Game) updateLongPressPopup(mx, my int, left bool) {
 		switch g.longPressPopupLastHover {
 		case "move":
 			node := g.longPressPopupNode
-			g.dismissLongPressPopup()
-			g.moveMode = true
-			g.movingNode = node
+			emitUITap(i18n.T(i18n.KeyCapMove), "")
+			g.dismissLongPressPopup("action")
+			g.modes.Enter(GridModeMove, node)
 			g.moveSkipRelease = true
+		case "copy":
+			node := g.longPressPopupNode
+			emitUITap(i18n.T(i18n.KeyCapCopy), "")
+			g.dismissLongPressPopup("action")
+			if g.snapshotNodeToClipboard(node) {
+				emitNodeCopied(node.ID, node.I, node.J, g.clipboard.typ)
+				g.modes.Enter(GridModeCopy, node)
+			}
 		case "connect":
 			node := g.longPressPopupNode
-			g.dismissLongPressPopup()
+			emitUITap(i18n.T(i18n.KeyCapConnect), "")
+			g.dismissLongPressPopup("action")
 			g.enterConnectMode(node)
 		case "delete":
 			node := g.longPressPopupNode
-			g.dismissLongPressPopup()
+			emitUITap(i18n.T(i18n.KeyMenuDelete), "")
+			g.dismissLongPressPopup("action")
 			g.deleteNode(node)
 		default:
-			g.dismissLongPressPopup()
+			g.dismissLongPressPopup("dismiss")
 		}
 	}
 }
 
-// dismissLongPressPopup clears all popup state.
-func (g *Game) dismissLongPressPopup() {
+// longPressPopupID is the popup-lifecycle telemetry surface id for the node
+// long-press quick-action popup (see hooks.PopupPayload).
+const longPressPopupID = "node-longpress"
+
+// dismissLongPressPopup clears all popup state, emitting popup.closed with
+// reason (only when the popup was actually open — repeated/no-op dismiss
+// calls, e.g. from closeAllPopups when nothing is showing, must not double-emit).
+func (g *Game) dismissLongPressPopup(reason string) {
+	if !g.longPressPopup {
+		return
+	}
+	emitPopupClosed(longPressPopupID, reason)
 	g.longPressPopup = false
 	g.longPressPopupNode = nil
 	g.longPressPopupRect = image.Rectangle{}
 	g.longPressPopupMove = image.Rectangle{}
+	g.longPressPopupCopy = image.Rectangle{}
 	g.longPressPopupConn = image.Rectangle{}
 	g.longPressPopupDel = image.Rectangle{}
 	g.longPressPopupHover = ""
@@ -183,6 +214,17 @@ func (g *Game) drawLongPressPopup(dst *ebiten.Image) {
 	mtx := moveCap.Min.X + (moveCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapMove), RoleBody))/2
 	mty := moveCap.Min.Y + (moveCap.Dy()-StyledTextHeight(RoleBody))/2
 	DrawTextStyled(dst, i18n.T(i18n.KeyCapMove), mtx, mty, RoleBody, moveTxtCol)
+
+	// Copy button — raised keycap, neutral color, instrument-accent text on hover.
+	copyHover := g.longPressPopupHover == "copy"
+	copyCap := drawKeycapPanelButton(dst, g.longPressPopupCopy, colDropdown, colTransportBorder, copyHover)
+	copyTxtCol := color.Color(genColorPopupTextSecondary)
+	if copyHover {
+		copyTxtCol = accent // instrument-color text when hovered
+	}
+	cpx := copyCap.Min.X + (copyCap.Dx()-StyledTextWidth(i18n.T(i18n.KeyCapCopy), RoleBody))/2
+	cpy := copyCap.Min.Y + (copyCap.Dy()-StyledTextHeight(RoleBody))/2
+	DrawTextStyled(dst, i18n.T(i18n.KeyCapCopy), cpx, cpy, RoleBody, copyTxtCol)
 
 	// Connect button — raised keycap, neutral color, instrument-accent text on hover.
 	connHover := g.longPressPopupHover == "connect"

@@ -137,10 +137,24 @@ console.log("PASS timing_traces:", best.length, "traces (best snapshot while Go 
 // Go drain is pulling + resetting this ring on every dispatch. Prove the
 // drain+reset cycle doesn't permanently wedge recording: explicitly reset,
 // confirm the ring is empty, replay, and confirm traces resume flowing.
-await page.evaluate(() => { window.resetTimingTraces(); });
-const clearedLen = await page.evaluate(() => window.getTimingTraces().length);
-if (clearedLen !== 0) {
-  throw new Error("resetTimingTraces() did not clear the ring: len=" + clearedLen);
+//
+// Reset and read must share ONE evaluate — traces keep landing after
+// stopPlay() resolves, so two round-trips race. stopPlay() is not
+// synchronous: it sets the one-frame `stopPressed` pulse
+// (js_exports_playback_perf.go) that the next Game.Update() consumes, and
+// audio.js's flushAudioQueue keeps draining already-queued events past that,
+// each BufferSource.start(when) pushing a trace. In the gap between two
+// round-trips that tail lands and the read sees a non-empty ring (~21 traces
+// on a box running 4 browser jobs). One evaluate body runs to completion
+// without yielding, so nothing can push mid-check — which makes the assertion
+// stronger, not weaker: it holds even while recording is concurrently active.
+const { before, after } = await page.evaluate(() => {
+  const before = window.getTimingTraces().length;
+  window.resetTimingTraces();
+  return { before, after: window.getTimingTraces().length };
+});
+if (after !== 0) {
+  throw new Error("resetTimingTraces() did not clear the ring: len=" + after + " (was " + before + " before reset)");
 }
 
 await page.evaluate(() => {
@@ -169,4 +183,4 @@ if (fatalErrors.length > 0) {
   throw new Error("WASM panic/crash detected during Stage-D drain: " + fatalErrors.join(" | "));
 }
 
-console.log("PASS timing_traces armed drain: reset+replay observed", bestAfterReplay, "traces; drain ran without throwing");
+console.log("PASS timing_traces armed drain: reset cleared", before, "traces; reset+replay observed", bestAfterReplay, "traces; drain ran without throwing");

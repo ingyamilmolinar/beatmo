@@ -26,10 +26,7 @@ func (g *Game) syncUIToTime() {
 		if runningUnderGoTest() {
 			return
 		}
-		g.state.SetPlayStart(time.Now())
-		if n := audio.Now(); n > 0 {
-			g.state.SetAudioStart(n)
-		}
+		g.state.StartClock(time.Now(), audio.Now())
 	}
 	// Absolute position in subdivisions (float) from wall-clock timeline.
 	bpm := g.AppliedBPM()
@@ -39,16 +36,10 @@ func (g *Game) syncUIToTime() {
 	if bpm <= 0 {
 		return
 	}
-	var dtSec float64
-	audioStart := g.state.AudioStart()
-	if n := audio.Now(); n > 0 && audioStart > 0 {
-		dtSec = n - audioStart
-	} else if playStart := g.state.PlayStart(); !playStart.IsZero() {
-		dtSec = time.Since(playStart).Seconds()
-	} else {
+	absBeats, ok := g.state.PosBeats(time.Now(), audio.Now(), bpm)
+	if !ok {
 		return
 	}
-	absBeats := g.state.BeatBase() + dtSec*float64(bpm)/60.0
 	absDivF := absBeats * float64(div)
 	target := int(math.Floor(absDivF))
 	// Clamp negative just in case.

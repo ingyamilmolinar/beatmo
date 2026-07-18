@@ -157,8 +157,7 @@ func TestWheelResolutionStripCapturesUnderHandler(t *testing.T) {
 	}
 
 	h := &mobileWheelHitHandler{popup: w}
-	rx := w.resRect.Min.X + 2
-	y0 := w.resRect.Min.Y + w.resRect.Dy()/2
+	rx, y0 := resStripDragStart(t, w)
 
 	// Press on the resolution strip — must return InputCaptured so the tree
 	// routes subsequent OnDrag calls to this handler.
@@ -198,4 +197,34 @@ func TestWheelPortalOverlayHitAreasAndClose(t *testing.T) {
 	if !o.ShouldClose() {
 		t.Fatal("ShouldClose must be true after Close")
 	}
+}
+
+// resStripDragStart returns a press point inside the resolution strip that is
+// guaranteed OUTSIDE every rung pill, so a press there starts the legacy
+// rung-drag capture instead of a tap-jump. Computed from rungRects (the single
+// source of truth for pill geometry) rather than a hardcoded 1-2px gutter
+// offset, so an inset change can never silently convert these drag tests into
+// rung taps.
+func resStripDragStart(t *testing.T, w *MobileWheelPopup) (int, int) {
+	t.Helper()
+	if w.resRect.Empty() {
+		t.Fatal("resolution strip not laid out")
+	}
+	rungs := w.rungRects()
+	cy := w.resRect.Min.Y + w.resRect.Dy()/2
+	for x := w.resRect.Min.X; x < w.resRect.Max.X; x++ {
+		p := image.Pt(x, cy)
+		hit := false
+		for _, rr := range rungs {
+			if p.In(rr) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			return x, cy
+		}
+	}
+	t.Fatal("no gutter point found in the resolution strip (rung pills cover every column?)")
+	return 0, 0
 }

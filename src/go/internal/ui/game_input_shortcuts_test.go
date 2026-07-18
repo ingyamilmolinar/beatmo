@@ -233,11 +233,11 @@ func TestEscClosesPortalNotStop(t *testing.T) {
 
 func TestEscCancelsConnectModeNotStop(t *testing.T) {
 	g := newTestGameForUndo(t)
-	g.connectMode = true
+	g.modes.Enter(GridModeConnect, g.start)
 	restore := stubKeys(nil, map[ebiten.Key]bool{ebiten.KeyEscape: true})
 	defer restore()
 	g.handleGlobalShortcuts()
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("Esc should cancel connect mode")
 	}
 	if g.drum.StopPressed() {
@@ -247,11 +247,11 @@ func TestEscCancelsConnectModeNotStop(t *testing.T) {
 
 func TestEscCancelsMoveModeNotStop(t *testing.T) {
 	g := newTestGameForUndo(t)
-	g.moveMode = true
+	g.modes.Enter(GridModeMove, g.start)
 	restore := stubKeys(nil, map[ebiten.Key]bool{ebiten.KeyEscape: true})
 	defer restore()
 	g.handleGlobalShortcuts()
-	if g.moveMode {
+	if g.modes.Is(GridModeMove) {
 		t.Fatal("Esc should cancel move mode")
 	}
 	if g.drum.StopPressed() {

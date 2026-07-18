@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"math"
 	"time"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -92,17 +91,14 @@ func (s *playbackSlate) seqScheduleTime() {
 		return
 	}
 	// Compute target absolute subdivision index since playStart.
-	var dtSec float64
-	audioStart := g.state.AudioStart()
-	if n := audio.Now(); n > 0 && audioStart > 0 {
-		dtSec = n - audioStart
-	} else if playStart := g.state.PlayStart(); !playStart.IsZero() {
-		dtSec = time.Since(playStart).Seconds()
-	} else {
+	// Single clock snapshot for this tick — used for both target and lateness.
+	now := time.Now()
+	audioNow := audio.Now()
+	dtSec, ok := g.state.DtSince(now, audioNow)
+	if !ok {
 		return
 	}
-	baseBeats := g.state.BeatBase()
-	target := int(math.Floor((baseBeats + dtSec*float64(bpm)/60.0) * float64(div)))
+	target, _ := g.state.TargetStep(now, audioNow, bpm, div)
 	// Ensure counters align to row count. Row add/delete operations can change
 	// g.drum.Rows length while the background sequencer is running; never reset
 	// counters back to zero in that case or we'll "rewind" scheduling and trip
@@ -217,7 +213,7 @@ func (s *playbackSlate) seqScheduleTime() {
 			// stages" — this observation sat outside that spine before the
 			// fix).
 			if g.Playing() && !g.parityInGrace() {
-				beatDtSec := (float64(idx)/float64(div) - baseBeats) * 60.0 / float64(bpm)
+				beatDtSec := g.state.DtOfStep(idx, div, bpm)
 				if late := dtSec - beatDtSec; late >= 0 {
 					g.schedMetrics.ObserveSeqFireLate(late)
 				}
@@ -356,10 +352,10 @@ func (s *playbackSlate) seqScheduleTime() {
 						g.recordParityAudio(row, idx, audio.Now(), inst, vol, pitch, dur, g.audioGen.Load(), g.parityGen.Load())
 					} else {
 						// Ideal audio time for this beat: anchored to
-						// audioStart + beat's position on the timeline.
-						// Falls back to audio.Now() if no audioStart is
-						// available (very early playback, edge case).
-						beatIdealAudio := audioStart + (float64(idx)/float64(div)-baseBeats)*60.0/float64(bpm)
+						// audioStart + beat's position on the timeline (via the
+						// clock authority). Falls back to audio.Now() if no
+						// audioStart is available (very early playback, edge case).
+						beatIdealAudio := g.state.AudioTimeOfStep(idx, div, bpm)
 						if !(beatIdealAudio > 0) {
 							if baseNow < 0 {
 								baseNow = audio.Now()

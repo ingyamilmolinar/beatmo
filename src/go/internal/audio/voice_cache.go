@@ -270,6 +270,68 @@ func init() {
 	voiceCacheInvalidate = globalVoiceCache.ClearInstrument
 }
 
+// ClearVoiceCacheForTest drops every cached voice. Exported for benchmarks that
+// must start from an identical cold cache: the cache is process-global, so
+// without this a scenario's numbers depend on whatever ran before it (measured:
+// the same baseline scenario reported 2 / 60 / 51 triggers across runs, and a
+// fully-warm run reported ZERO renders).
+func ClearVoiceCacheForTest() { globalVoiceCache.Clear() }
+
+// getAnyForInstrumentPitch returns any cached buffer for (instrumentID, pitch)
+// under ANY paramsHash, preferring the most-recently-used. This is the
+// best-available fallback source: when the exact binding is not rendered yet,
+// an older-params render of the SAME note at the SAME pitch is far closer to
+// correct than either blocking (a late beat) or silence (a dropped beat).
+func (vc *voiceCache) getAnyForInstrumentPitch(id string, pitch float64) ([]float32, bool) {
+	rounded := roundPitchForCache(pitch)
+	vc.mu.RLock()
+	defer vc.mu.RUnlock()
+	var best *roundRobinEntry
+	var bestNS int64
+	for k, e := range vc.entries {
+		if k.instrumentID != id || k.pitch != rounded || len(e.variants) == 0 {
+			continue
+		}
+		if ln := e.lastNS.Load(); best == nil || ln > bestNS {
+			best, bestNS = e, ln
+		}
+	}
+	if best == nil {
+		return nil, false
+	}
+	idx := best.counter.Add(1) % uint64(len(best.variants))
+	return best.variants[idx], true
+}
+
+// getAnyForInstrument returns any cached buffer for instrumentID regardless of
+// pitch or paramsHash — the last-resort fallback when even the target pitch has
+// never been rendered (a genuinely new pitch appearing for the first time, so
+// getAnyForInstrumentPitch also misses). Playing an existing render at the
+// wrong pitch ON TIME is judged better than a synchronous ~24ms CGo render on
+// the audioLoop dispatch goroutine (invariant I3): the caller's async submit
+// still targets the correct pitch, so the mismatch self-corrects on the very
+// next trigger. Only reached once per (instrument, never-seen-pitch) — every
+// subsequent trigger at that pitch hits getAnyForInstrumentPitch instead.
+func (vc *voiceCache) getAnyForInstrument(id string) ([]float32, bool) {
+	vc.mu.RLock()
+	defer vc.mu.RUnlock()
+	var best *roundRobinEntry
+	var bestNS int64
+	for k, e := range vc.entries {
+		if k.instrumentID != id || len(e.variants) == 0 {
+			continue
+		}
+		if ln := e.lastNS.Load(); best == nil || ln > bestNS {
+			best, bestNS = e, ln
+		}
+	}
+	if best == nil {
+		return nil, false
+	}
+	idx := best.counter.Add(1) % uint64(len(best.variants))
+	return best.variants[idx], true
+}
+
 // VoiceCacheStatsForTest returns the live entry count and approximate retained
 // bytes across all variants in the native voice cache. Soak tests use this to
 // detect runaway key churn (SetInstrumentParam invalidates one instrument id

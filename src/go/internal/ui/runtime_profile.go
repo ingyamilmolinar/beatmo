@@ -207,17 +207,26 @@ type RuntimeProfile struct {
 
 	// ForceGCInterval triggers runtime.GC() at most once per interval in
 	// heapProbeTick (wall-clock based, NOT frame-count based — under
-	// sustained load the browser frame rate drops to ~7-13 fps so a
-	// frame-count interval would fire too rarely; the 2026-05-17 soak
-	// reached only frame=310 after 36 s wall-clock). Browser default
-	// 30s: single-threaded WASM Go GC starves under sustained audio +
-	// parameter-dispatch load — the 75 s synth-tab soak grew HeapAlloc
-	// 26.7 MB → 493 MB with gcCount=0 across 300 s. Forcing GC at the
-	// heap-probe yield point reclaims the cycle every interval;
-	// HeapAlloc oscillates around the live-data baseline (~50 MB)
-	// instead of growing linearly to the 2 GB WASM ceiling. Desktop
-	// default 0 (off): the desktop Go runtime has a real GC scheduler
-	// thread and does not need cooperative help.
+	// sustained load the browser frame rate drops so a frame-count interval
+	// would fire too rarely).
+	//
+	// HISTORY: the original 30s value was chosen to counter an apparent
+	// "single-threaded WASM GC starvation" — a 75s soak grew HeapAlloc
+	// 26.7 MB → 493 MB with gcCount=0. That was NOT starvation: automatic GC
+	// had been switched OFF process-wide by a latent bug in async.Snapshot
+	// (debug.SetGCPercent(-2) clamps to -1 = disable), fixed 2026-07-16. The
+	// forced runtime.GC() masked the bug because an explicit collection runs
+	// even when the pacer is disabled.
+	//
+	// With automatic GC restored, the heap self-bounds at ~35-43 MB on WASM
+	// (bench-results/gc_tuning_2026-07.md: 90s soak, forced GC fully off →
+	// heapHigh 42 MB, pauseMax 0.23 ms, overdue 0). Forced GC is therefore no
+	// longer load-bearing; it is now a working-set optimization. Browser
+	// default 10s (measured winner): trims heapHigh to ~33 MB with evenly
+	// spaced sub-2ms collections and overdue 0 — worthwhile on WASM where
+	// linear memory only grows. Desktop default 0 (off): the desktop runtime
+	// has a concurrent background collector (STW sub-ms), so cooperative help
+	// buys nothing.
 	ForceGCInterval time.Duration
 
 	// VoiceCacheBudgetBytes is the hard ceiling on retained rendered-voice
@@ -288,7 +297,7 @@ func browserRuntimeProfile() *RuntimeProfile {
 		RibbonPlayheadFrac:                 0.70,
 		AudioPanelHeightMultiplier:         3,
 		AudioPanelHeightScreenFrac:         0.60,
-		ForceGCInterval:                    30 * time.Second, // counters single-threaded WASM GC starvation (see field doc)
+		ForceGCInterval:                    10 * time.Second, // working-set trim (33 vs 43 MB), sub-2ms pauses, overdue 0 — see field doc + bench-results/gc_tuning_2026-07.md
 		VoiceCacheBudgetBytes:              24 << 20,         // 24 MB: tighter on browser (single 2 GB WASM heap ceiling)
 		PredictiveWarmTicks:                1,
 		// Timing-gate tolerances; see plan Task 1.2. Looser than desktop and

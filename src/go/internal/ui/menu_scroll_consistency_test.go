@@ -145,6 +145,57 @@ func TestAllMenuScrolls_ClickyCadenceIdentical(t *testing.T) {
 	}
 }
 
+// TestAllMenuScrolls_ClickyCadenceIsFast proves the clicky wheel cadence is fast
+// enough that spinning the wheel scrolls a long list briskly. It complements
+// TestAllMenuScrolls_ClickyCadenceIdentical — which pins one-item-per-notch plus a
+// shared cooldown — by pinning the SPEED of that cooldown: over one second of
+// continuous wheel input (60 frames at 60 fps) every scrollable menu must advance
+// at least wantMin items. The old 14-frame cadence (~one item per quarter-second)
+// only reached 5 — "scrolling down takes forever"; a brisk-but-still-clicky cadence
+// clears wantMin with margin. Every menu drives its real production wheel path.
+func TestAllMenuScrolls_ClickyCadenceIsFast(t *testing.T) {
+	const frameBudget = 60 // one second at 60 fps
+	const wantMin = 25     // brisk cadence: 14 frames reaches 5, 6 frames 10, 3 frames 20
+
+	menuCase := func() (func() bool, func(), func() int) {
+		m := NewMenuScroll(DropdownScrollbarStyle, 20)
+		m.Configure(image.Rect(0, 0, 100, 100), 200, 5) // long list, never clamps in 60 frames
+		return func() bool { return m.HandleWheel(-3) },
+			m.TickStep,
+			func() int { return m.ScrollBehavior().VS.First }
+	}
+	sbCase := func() (func() bool, func(), func() int) {
+		sb := configScrollBehavior(20, 200, 5)
+		return func() bool { return sb.WheelStep(-3, controlGridScrollCooldownFrames) },
+			sb.TickStep,
+			func() int { return sb.VS.First }
+	}
+
+	cases := map[string]func() (func() bool, func(), func() int){
+		"overflow-template": menuCase, // MenuScroll.HandleWheel
+		"subdivision":       menuCase, // MenuScroll.HandleWheel
+		"instrument":        menuCase, // MenuScroll.HandleWheel
+		"context":           sbCase,   // ScrollBehavior.WheelStep
+		"eq-dropdown":       sbCase,   // ScrollBehavior.WheelStep
+	}
+
+	for name, mk := range cases {
+		t.Run(name, func(t *testing.T) {
+			notch, tick, first := mk()
+			// The user keeps the wheel spinning: one notch offered every frame,
+			// one cooldown tick per frame (the shared per-frame chokepoint).
+			for f := 0; f < frameBudget; f++ {
+				notch()
+				tick()
+			}
+			if got := first(); got < wantMin {
+				t.Fatalf("%s: %d frames of continuous wheel advanced only %d items, want >= %d "+
+					"(clicky cadence too slow — scrolling takes forever)", name, frameBudget, got, wantMin)
+			}
+		})
+	}
+}
+
 // TestMenuWheelDisciplineNoFastPath guards the "every menu scrolls the same
 // clicky way" guarantee against regression. The two raw-ScrollBehavior menus
 // (context menu, EQ-channel dropdown) must drive the wheel via WheelStep (clicky

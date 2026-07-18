@@ -175,6 +175,13 @@ func (g *Game) initJSGraphUI() {
 	// the current playhead (ruleAnchorIdxNow — 0 when not playing) so a
 	// brand-new rule's step count starts from this write, not the timeline
 	// origin; the JS-facing signature is unchanged.
+	//
+	// Also flips RulesEnabled true (task-enabled-status brief, Part C): this
+	// is the ONE call-site deliberately kept as a convenience — unlike the
+	// GroupMenu UI (where a delta stepper and the on/off toggle are
+	// deliberately independent so a user can compose several rules before
+	// committing), a scripted/JS caller writing a rule almost always wants it
+	// to apply immediately; there is no separate JS export for the toggle.
 	js.Global().Set("setGroupRule", jsFn(func(args jsArgs) any {
 		gid := model.GroupID(args.Int(0))
 		param := model.GroupParam(args.Str(1))
@@ -196,6 +203,7 @@ func (g *Game) initJSGraphUI() {
 		if err := g.graph.SetGroupRules(gid, []model.GroupRule{rule}); err != nil {
 			return false
 		}
+		_ = g.graph.SetGroupRulesEnabled(gid, true)
 		emitGroupChanged(gid)
 		return true
 	}))
@@ -1365,6 +1373,23 @@ func (g *Game) initJSGraphUI() {
 		return nil
 	}))
 
+	// seekSteps(steps) queues an absolute seek to subdivision `steps`. The
+	// request is drained on the next Update() under seqMu — do NOT call
+	// g.SeekSteps directly here, this callback is not inside the locked
+	// region.
+	js.Global().Set("seekSteps", jsFn(func(args jsArgs) any {
+		if g.drum == nil || args.Len() < 1 {
+			return nil
+		}
+		g.drum.RequestSeekSteps(args.Int(0), seekOriginJS)
+		return nil
+	}))
+
+	// playheadStep() -> current absolute playhead subdivision.
+	js.Global().Set("playheadStep", jsFn(func(args jsArgs) any {
+		return g.playheadAbsSubdiv()
+	}))
+
 	// nodeInfo(i,j) -> {i, j, instrument, row, color} or null
 	js.Global().Set("nodeInfo", jsFn(func(args jsArgs) any {
 		if args.Len() < 2 {
@@ -2145,6 +2170,32 @@ func (g *Game) initJSGraphUI() {
 		return rectToJS(g.longPressPopupDel)
 	}))
 
+	// longPressMoveRect() / longPressCopyRect() -> {x,y,w,h} or null
+	js.Global().Set("longPressMoveRect", jsFn(func(args jsArgs) any {
+		if !g.longPressPopup {
+			return nil
+		}
+		return rectToJS(g.longPressPopupMove)
+	}))
+	js.Global().Set("longPressCopyRect", jsFn(func(args jsArgs) any {
+		if !g.longPressPopup {
+			return nil
+		}
+		return rectToJS(g.longPressPopupCopy)
+	}))
+
+	// gridModeState() -> {mode:"none|move|copy|connect", subjectId:int}
+	js.Global().Set("gridModeState", jsFn(func(args jsArgs) any {
+		obj := js.Global().Get("Object").New()
+		obj.Set("mode", g.modes.Active().String())
+		if n := g.modes.Subject(); n != nil {
+			obj.Set("subjectId", int(n.ID))
+		} else {
+			obj.Set("subjectId", -1)
+		}
+		return obj
+	}))
+
 	// totalVisibleRows() -> int
 	js.Global().Set("totalVisibleRows", jsFn(func(args jsArgs) any {
 		if g.drum == nil {
@@ -2225,8 +2276,9 @@ func (g *Game) initJSGraphUI() {
 			obj.Set("drumAnyDropdownOpen", g.drum.anyDropdownOpen())
 		}
 		obj.Set("splitDragging", g.split.dragging)
-		obj.Set("connectMode", g.connectMode)
-		obj.Set("moveMode", g.moveMode)
+		obj.Set("connectMode", g.modes.Is(GridModeConnect))
+		obj.Set("moveMode", g.modes.Is(GridModeMove))
+		obj.Set("copyMode", g.modes.Is(GridModeCopy))
 		obj.Set("longPressPopup", g.longPressPopup)
 		obj.Set("suppressClicks", suppressClicksUntilRelease)
 		return obj

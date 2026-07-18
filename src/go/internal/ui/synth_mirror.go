@@ -336,7 +336,7 @@ func (m *synthMirror) closeForTest() {
 // the per-frame gate is now O(1) instead of merging + sorting + formatting
 // the ~1030-param modular schema every frame (the Synth-tab GC-churn hang;
 // see synth_live_param_edit_alloc_test.go).
-func (dv *DrumView) synthParamsHash(instID string) string {
+func (p *synthPanel) synthParamsHash(instID string) string {
 	return audio.RecipeForInstrument(instID) + ":" +
 		strconv.FormatUint(audio.InstrumentParamsRev(instID), 10) + ":" +
 		strconv.FormatUint(audio.RecipeDefaultsRev(), 10)
@@ -344,7 +344,9 @@ func (dv *DrumView) synthParamsHash(instID string) string {
 
 // requestSynthMirror schedules a debounced, cached, off-thread re-render of the
 // real note for instID into the right-pane mirror. Lazily creates the mirror.
-func (dv *DrumView) requestSynthMirror(instID string) {
+func (p *synthPanel) requestSynthMirror(instID string) {
+	dv := p.dv
+
 	if dv == nil || instID == "" {
 		return
 	}
@@ -360,7 +362,9 @@ func (dv *DrumView) requestSynthMirror(instID string) {
 // render has completed). Used by the synthMirrorPCMLen JS debug export so a
 // browser test can verify the WASM↔audio mirror path produced a non-empty
 // render without inspecting DSP internals.
-func (dv *DrumView) synthMirrorPCMLen() int {
+func (p *synthPanel) synthMirrorPCMLen() int {
+	dv := p.dv
+
 	if dv == nil || dv.synthMirror == nil {
 		return 0
 	}
@@ -374,7 +378,9 @@ func (dv *DrumView) synthMirrorPCMLen() int {
 // (the fingerprint differs) — not merely that it produced bytes (length, which a
 // frozen render would also pass). Samples are rounded to 1e-6 before hashing so
 // the digest is robust to negligible float jitter.
-func (dv *DrumView) synthMirrorPCMChecksum() int {
+func (p *synthPanel) synthMirrorPCMChecksum() int {
+	dv := p.dv
+
 	if dv == nil || dv.synthMirror == nil {
 		return 0
 	}
@@ -397,7 +403,9 @@ func (dv *DrumView) synthMirrorPCMChecksum() int {
 // renderSynthMirrorNow fills the mirror synchronously (bypassing the pool) so a
 // deterministic PCM exists at screenshot-capture time. Used by scene Setup,
 // which runs in the production binary with no test seam.
-func (dv *DrumView) renderSynthMirrorNow(instID string) {
+func (p *synthPanel) renderSynthMirrorNow(instID string) {
+	dv := p.dv
+
 	if dv == nil || instID == "" {
 		return
 	}
@@ -418,7 +426,9 @@ func (dv *DrumView) renderSynthMirrorNow(instID string) {
 // render runs on the shared preview pool instead of blocking the UI goroutine
 // every drag frame. Stale-while-revalidate: the previous trace (plus a ghost of
 // the value before the change) keeps drawing until the new render lands.
-func (dv *DrumView) updateSynthFullNoteLive(instID string) {
+func (p *synthPanel) updateSynthFullNoteLive(instID string) {
+	dv := p.dv
+
 	if dv == nil || instID == "" {
 		return
 	}
@@ -434,7 +444,9 @@ func (dv *DrumView) updateSynthFullNoteLive(instID string) {
 // — called every frame from drawSynthTab. It is hash-gated, so a frame where no
 // knob moved costs only a hash compare; a knob drag re-renders the short wave
 // window each frame so the trace follows the gesture live.
-func (dv *DrumView) updateSynthMirrorLive(instID string) {
+func (p *synthPanel) updateSynthMirrorLive(instID string) {
+	dv := p.dv
+
 	if dv == nil || instID == "" {
 		return
 	}
@@ -444,4 +456,34 @@ func (dv *DrumView) updateSynthMirrorLive(instID string) {
 	dv.synthMirror.renderLive(instID, dv.synthParamsHash(instID), func(i string) []float64 {
 		return audio.RenderInstrumentPreviewWave(i, nil, synthMirrorWaveCycles, synthMirrorWavePts)
 	})
+}
+
+// --- DrumView forwarding shims ---
+
+func (dv *DrumView) synthParamsHash(instID string) string {
+	return dv.synp().synthParamsHash(instID)
+}
+
+func (dv *DrumView) requestSynthMirror(instID string) {
+	dv.synp().requestSynthMirror(instID)
+}
+
+func (dv *DrumView) synthMirrorPCMLen() int {
+	return dv.synp().synthMirrorPCMLen()
+}
+
+func (dv *DrumView) synthMirrorPCMChecksum() int {
+	return dv.synp().synthMirrorPCMChecksum()
+}
+
+func (dv *DrumView) renderSynthMirrorNow(instID string) {
+	dv.synp().renderSynthMirrorNow(instID)
+}
+
+func (dv *DrumView) updateSynthFullNoteLive(instID string) {
+	dv.synp().updateSynthFullNoteLive(instID)
+}
+
+func (dv *DrumView) updateSynthMirrorLive(instID string) {
+	dv.synp().updateSynthMirrorLive(instID)
 }

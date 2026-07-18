@@ -116,7 +116,22 @@ func TestSampleEditDispatch_DescriptorChangeMissesCache(t *testing.T) {
 	}
 }
 
-func TestSampleEditDispatch_SetInvalidatesCachedVoices(t *testing.T) {
+// A sample-edit must ROTATE the binding, not blanket-drop the instrument's other
+// cached voices. hashSampleEdit is already XORed into the voice-cache key
+// (synth_recipe_dispatch.go:138/:192/:264), so a new edit maps to a DIFFERENT key:
+// dispatch renders the new sound there and the stale entry simply goes unread.
+//
+// This test used to assert the OPPOSITE (that SetSampleEdit invalidates). That
+// blanket clear dropped every pitch's entry, so each following note cold-rendered
+// ~24ms+ ON the audioLoop dispatch goroutine — measured at 30-44 dispatch renders
+// per sampler edit, ~8x a synth-knob drag. It is the same storm SetInstrumentParam
+// was fixed to avoid; see the NOTE at synth_recipe.go:256-267 and its retargeted
+// test TestSetInstrumentParam_DoesNotBlanketInvalidate.
+//
+// The BEHAVIOUR this file used to conflate with that mechanism — "an edit actually
+// takes effect on the next render" — is covered by
+// TestSampleEditDispatch_DescriptorChangeMissesCache above. Keep both.
+func TestSampleEditDispatch_SetDoesNotBlanketInvalidate(t *testing.T) {
 	resetSampleEditsForTest(t)
 	t.Cleanup(func() {
 		ClearSampleEdit("snare")
@@ -127,12 +142,15 @@ func TestSampleEditDispatch_SetInvalidatesCachedVoices(t *testing.T) {
 	renderDispatchBuffer(t, "snare")
 	before, _ := VoiceCacheStatsForTest()
 	if before == 0 {
-		t.Fatal("expected at least one cached entry after a recipe render")
+		t.Fatal("expected at least one cached entry after a recipe render — " +
+			"without this the assertion below is vacuous")
 	}
 	SetSampleEdit("snare", SampleEdit{StartFrac: 0, EndFrac: 0.5})
 	after, _ := VoiceCacheStatsForTest()
-	if after >= before {
-		t.Fatalf("SetSampleEdit must invalidate the instrument's cached voices: entries %d → %d", before, after)
+	if after < before {
+		t.Fatalf("SetSampleEdit blanket-dropped cached voices (entries %d → %d). "+
+			"The edit hash already rotates the key; dropping entries makes every "+
+			"following note cold-render on the audio dispatch goroutine.", before, after)
 	}
 }
 

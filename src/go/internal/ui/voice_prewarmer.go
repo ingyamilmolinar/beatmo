@@ -42,6 +42,10 @@ type voicePrewarmer struct {
 	// pool; tests inject a recorder to observe decisions without rendering.
 	warmFn func(id string, pitch float64)
 
+	// warmParamsFn warms an EXPLICIT binding. Production submits
+	// audio.PrewarmVoiceParams to the pool; tests inject a recorder.
+	warmParamsFn func(id string, pitch float64, params audio.RecipeParams)
+
 	// isMelodic reports whether an instrument renders at-pitch (so pitch
 	// neighbors need separate renders). Injectable for tests. ticks is the ±N
 	// pitch-neighborhood radius (0 disables).
@@ -96,9 +100,24 @@ func newVoicePrewarmer(g *Game) *voicePrewarmer {
 		// degrades to today's inline render — never worse, never blocks.
 		_ = p.pool.Submit(func(context.Context) { audio.PrewarmVoice(id, pitch) })
 	}
+	p.warmParamsFn = func(id string, pitch float64, params audio.RecipeParams) {
+		// Non-blocking: on backpressure the warm is dropped and dispatch
+		// degrades to the best-available fallback — never worse, never blocks.
+		_ = p.pool.Submit(func(context.Context) { audio.PrewarmVoiceParams(id, pitch, params) })
+	}
+	// Hand exact renders to the prewarm pool and arm invariant I3: from here
+	// on, the audioLoop dispatch goroutine must never call recipe.Render.
+	audio.SetAsyncRenderSubmit(func(id string, pitch float64, params audio.RecipeParams) {
+		_ = p.pool.Submit(func(context.Context) { audio.PrewarmVoiceParams(id, pitch, params) })
+	})
+	audio.SetDispatchMustNotRender(true)
 	// Proactively re-warm on cache invalidation (synth param edit / reset), so
 	// the new-params voice renders before the next beat instead of inline.
 	audio.VoiceCacheInvalidateObserver = func(id string) { p.reWarmInstrument(id) }
+	// Warm the new binding whenever a param edit rotates an instrument's key.
+	audio.InstrumentBindingChangedObserver = func(id string, params audio.RecipeParams) {
+		p.warmBinding(id, params)
+	}
 	return p
 }
 
@@ -210,6 +229,25 @@ func (p *voicePrewarmer) reWarmInstrument(id string) {
 	}
 }
 
+// warmBinding renders the binding implied by params at every pitch id is
+// currently enumerated to play, off-thread, so the next trigger is a cache HIT
+// rather than a ~24ms cold render on the audio dispatch goroutine.
+//
+// Reads only the prewarmer's own recorded pitch enumeration, so it is safe to
+// call from the edit goroutine (which is the UI goroutine, possibly under
+// seqMu) without touching Game state.
+func (p *voicePrewarmer) warmBinding(id string, params audio.RecipeParams) {
+	if id == "" || p.warmParamsFn == nil {
+		return
+	}
+	p.mu.Lock()
+	pitches := append([]float64(nil), p.pitchesByInst[id]...)
+	p.mu.Unlock()
+	for _, pitch := range pitches {
+		p.warmParamsFn(id, pitch, params)
+	}
+}
+
 // release frees the registry budget for the prewarm pool (closes a private
 // fallback pool, which is not registry-owned) and unhooks the invalidation
 // observer.
@@ -218,6 +256,9 @@ func (p *voicePrewarmer) release() {
 		return
 	}
 	audio.VoiceCacheInvalidateObserver = nil
+	audio.InstrumentBindingChangedObserver = nil
+	audio.SetDispatchMustNotRender(false)
+	audio.SetAsyncRenderSubmit(nil)
 	if p.private {
 		p.pool.Close()
 		return

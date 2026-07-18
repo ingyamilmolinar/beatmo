@@ -5,12 +5,20 @@ import "image"
 // synthMobileFocusRect is the right column beside the knob grid (empty on
 // desktop) reserved on mobile for "Your sound" + the focus graph (on desktop the
 // side preview pane carries them instead).
-func (dv *DrumView) synthMobileFocusRect() image.Rectangle { return dv.instEditorMobileFocusRect }
+func (p *synthPanel) synthMobileFocusRect() image.Rectangle {
+	dv := p.dv
+
+	return dv.instEditorMobileFocusRect
+}
 
 // synthSectionsRectForTest returns the post-shrink knob-grid rect that
 // layoutSynthSections actually consumes — i.e. after the desktop preview pane
 // and/or mobile focus band have been carved out. Test-only introspection.
-func (dv *DrumView) synthSectionsRectForTest() image.Rectangle { return dv.instEditorSectionsRect }
+func (p *synthPanel) synthSectionsRectForTest() image.Rectangle {
+	dv := p.dv
+
+	return dv.instEditorSectionsRect
+}
 
 // synth_selected_knob.go — which knob the focus graph explains.
 //
@@ -23,7 +31,9 @@ func (dv *DrumView) synthSectionsRectForTest() image.Rectangle { return dv.instE
 // synthSelectedKnobIdx returns the knob index the focus graph should explain for
 // instID within the open section: the stored selection when it belongs to this
 // section, else the section's first (main) knob.
-func (dv *DrumView) synthSelectedKnobIdx(instID string, sec *synthSection) int {
+func (p *synthPanel) synthSelectedKnobIdx(instID string, sec *synthSection) int {
+	dv := p.dv
+
 	if sec == nil || len(sec.knobIdxs) == 0 {
 		return -1
 	}
@@ -40,7 +50,9 @@ func (dv *DrumView) synthSelectedKnobIdx(instID string, sec *synthSection) int {
 }
 
 // setSynthSelectedKnob records the focus-graph selection for instID.
-func (dv *DrumView) setSynthSelectedKnob(instID string, kIdx int) {
+func (p *synthPanel) setSynthSelectedKnob(instID string, kIdx int) {
+	dv := p.dv
+
 	if instID == "" {
 		return
 	}
@@ -48,4 +60,22 @@ func (dv *DrumView) setSynthSelectedKnob(instID string, kIdx int) {
 		dv.instEditorSelectedKnob = map[string]int{}
 	}
 	dv.instEditorSelectedKnob[instID] = kIdx
+}
+
+// --- DrumView forwarding shims ---
+
+func (dv *DrumView) synthMobileFocusRect() image.Rectangle {
+	return dv.synp().synthMobileFocusRect()
+}
+
+func (dv *DrumView) synthSectionsRectForTest() image.Rectangle {
+	return dv.synp().synthSectionsRectForTest()
+}
+
+func (dv *DrumView) synthSelectedKnobIdx(instID string, sec *synthSection) int {
+	return dv.synp().synthSelectedKnobIdx(instID, sec)
+}
+
+func (dv *DrumView) setSynthSelectedKnob(instID string, kIdx int) {
+	dv.synp().setSynthSelectedKnob(instID, kIdx)
 }

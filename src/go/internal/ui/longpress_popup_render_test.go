@@ -115,6 +115,7 @@ func TestLongPressPopupButtonsRounded(t *testing.T) {
 		rect image.Rectangle
 	}{
 		{"move", g.longPressPopupMove},
+		{"copy", g.longPressPopupCopy},
 		{"connect", g.longPressPopupConn},
 		{"delete", g.longPressPopupDel},
 	} {
@@ -179,6 +180,7 @@ func TestLongPressPopupButtonColors(t *testing.T) {
 		wantColor color.RGBA
 	}{
 		{"move", g.longPressPopupMove, expectDropdown},
+		{"copy", g.longPressPopupCopy, expectDropdown},
 		{"connect", g.longPressPopupConn, expectDropdown},
 		{"delete", g.longPressPopupDel, expectDelete},
 	} {

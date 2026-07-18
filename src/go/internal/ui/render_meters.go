@@ -290,11 +290,10 @@ func drawLevelsBar(dst *ebiten.Image, rect image.Rectangle, db float64, label st
 	// Background.
 	drawRect(dst, image.Rect(rect.Min.X, rect.Min.Y+1, rect.Max.X, rect.Max.Y-1), meterBg, true)
 
-	// Side label (caption font).
-	captionScale := FontSizeCaption / FontSizeBody
-	lh := int(float64(TextHeight()) * captionScale)
+	// Side label (caption role — styled Inter, never the scaled bitmap font).
+	lh := StyledTextHeight(RoleCaption)
 	labelY := rect.Min.Y + (rect.Dy()-lh)/2
-	DrawTextColorAtScale(dst, label, labelX, labelY, colTextSecondary, captionScale)
+	DrawTextStyled(dst, label, labelX, labelY, RoleCaption, colTextSecondary)
 
 	// Level fill.
 	frac := dbToFrac(db)
@@ -329,15 +328,14 @@ func drawLevelsPeakHoldMarker(dst *ebiten.Image, peakBar image.Rectangle, peakHo
 // drawLevelsScale renders a thin tick row across the bar area at the
 // standard meter dB references: 0, -6, -12, -24, -48.
 func drawLevelsScale(dst *ebiten.Image, rect image.Rectangle) {
-	captionScale := FontSizeCaption / FontSizeBody
 	tickCol := WithAlpha(genColorBorder, AlphaPanelBorder)
 	for _, db := range []float64{-48, -24, -12, -6, 0} {
 		frac := dbToFrac(db)
 		x := rect.Min.X + int(frac*float64(rect.Dx()))
 		drawRect(dst, image.Rect(x, rect.Min.Y+rect.Dy()/2, x+1, rect.Max.Y), tickCol, true)
 		label := fmt.Sprintf("%.0f", db)
-		lw := int(float64(TextWidth(label)) * captionScale)
-		DrawTextColorAtScale(dst, label, x-lw/2, rect.Min.Y, colTextSecondary, captionScale)
+		lw := StyledTextWidth(label, RoleMicro)
+		DrawTextStyled(dst, label, x-lw/2, rect.Min.Y, RoleMicro, colTextSecondary)
 	}
 }
 
@@ -346,8 +344,7 @@ func drawLevelsScale(dst *ebiten.Image, rect image.Rectangle) {
 // the Clips number is rendered in error color; otherwise it follows the
 // instantaneous ClipCount.
 func drawLevelsReadout(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, latch *LevelsLatch) {
-	captionScale := FontSizeCaption / FontSizeBody
-	lh := int(float64(TextHeight()) * captionScale)
+	lh := StyledTextHeight(RoleMicro)
 	y := rect.Min.Y + (rect.Dy()-lh)/2
 
 	// Phase 0a: footer reads the held peak / RMS so the numeric
@@ -383,13 +380,14 @@ func drawLevelsReadout(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Cha
 		clipsCol = colError
 	}
 
-	// Shrink the whole line to fit the strip width — the localized prefix
-	// (e.g. "Pico … · RMS … · Margen … · Recortes ") is longer than English,
-	// so a fixed scale would clip/overflow.
-	drawScale := fitScaleToWidth(TextWidth(prefix)+TextWidth(clipsText), captionScale, rect.Dx()-8)
-	DrawTextColorAtScale(dst, prefix, rect.Min.X+4, y, colTextSecondary, drawScale)
-	prefixW := int(float64(TextWidth(prefix)) * drawScale)
-	DrawTextColorAtScale(dst, clipsText, rect.Min.X+4+prefixW, y, clipsCol, drawScale)
+	// Clip the localized prefix to whatever width the clip count leaves —
+	// roles render at a fixed size, so long locales truncate with an
+	// ellipsis instead of shrinking into pixelated micro-text.
+	microW := func(s string) int { return StyledTextWidth(s, RoleMicro) }
+	maxPrefixW := rect.Dx() - 8 - microW(clipsText)
+	prefix = clipTextToWidthMeasure(prefix, maxPrefixW, microW)
+	DrawTextStyled(dst, prefix, rect.Min.X+4, y, RoleMicro, colTextSecondary)
+	DrawTextStyled(dst, clipsText, rect.Min.X+4+microW(prefix), y, RoleMicro, clipsCol)
 }
 
 // fitScaleToWidth returns base, or a smaller scale so that text of width
@@ -613,22 +611,20 @@ const levelsReadoutFullMinW = 68
 // Clamped to [floor, the density's LevelsReadoutWFull budget] so it never
 // grows beyond today's reserved width.
 func levelsReadoutFullW() int {
-	capScale := FontSizeCaption / FontSizeBody
-	headlineScale := FontSizeHeading / FontSizeBody
 	w := 0
 	cands := []struct {
-		s  string
-		sc float64
+		s    string
+		role TextRole
 	}{
-		{i18n.T(i18n.KeyCapHeadroom), capScale},
-		{i18n.T(i18n.KeyLevelsClips) + " (10s)", capScale},
-		{"LUFS-S", capScale},
-		{i18n.T(i18n.KeyCapLoudest), capScale},
-		{"+99 dB", headlineScale}, // widest big number
-		{"CLIP!", headlineScale},
+		{i18n.T(i18n.KeyCapHeadroom), RoleCaption},
+		{i18n.T(i18n.KeyLevelsClips) + " (10s)", RoleCaption},
+		{"LUFS-S", RoleCaption},
+		{i18n.T(i18n.KeyCapLoudest), RoleCaption},
+		{"+99 dB", RolePanelTitle}, // widest big number
+		{"CLIP!", RolePanelTitle},
 	}
 	for _, c := range cands {
-		if tw := int(float64(TextWidth(c.s)) * c.sc); tw > w {
+		if tw := StyledTextWidth(c.s, c.role); tw > w {
 			w = tw
 		}
 	}
@@ -753,7 +749,6 @@ func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state 
 	if agg.ClipsTotal > 0 {
 		clipsCol = colError
 	}
-	captionScale := FontSizeCaption / FontSizeBody
 	hdrR, clpR, louR := levelsAggregateIconRects(rect)
 
 	// Icon size: square, vertically centered in the row, leaving the
@@ -774,19 +769,19 @@ func drawLevelsAggregatesIconRow(dst *ebiten.Image, rect image.Rectangle, state 
 	// HEADROOM
 	iconR, textX := iconBox(hdrR)
 	DrawIcon(dst, IconHeadroom, iconR, colTextSecondary)
-	DrawTextColorAtScale(dst, agg.HeadroomTxt, textX, hdrR.Min.Y, headroomCol, captionScale)
+	DrawTextStyled(dst, agg.HeadroomTxt, textX, hdrR.Min.Y, RoleCaption, headroomCol)
 
 	// CLIPS
 	iconR, textX = iconBox(clpR)
 	DrawIcon(dst, IconClipCount, iconR, clipsCol)
-	DrawTextColorAtScale(dst, agg.ClipsTxt, textX, clpR.Min.Y, clipsCol, captionScale)
+	DrawTextStyled(dst, agg.ClipsTxt, textX, clpR.Min.Y, RoleCaption, clipsCol)
 
 	// LOUDEST — initials only (e.g. "K" for kick).
 	if agg.LoudestName != "" {
 		iconR, textX = iconBox(louR)
 		DrawIcon(dst, IconLoudest, iconR, colTextSecondary)
 		initial := string([]rune(agg.LoudestName)[0])
-		DrawTextColorAtScale(dst, initial, textX, louR.Min.Y, colTextPrimary, captionScale)
+		DrawTextStyled(dst, initial, textX, louR.Min.Y, RoleCaption, colTextPrimary)
 	}
 }
 
@@ -870,20 +865,25 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 	if rect.Dx() < 6 || rect.Dy() < 32 {
 		return
 	}
-	captionScale := FontSizeCaption / FontSizeBody
-	const headerH = 12
-	const footerH = 18
+	// Header hosts the caption-role channel name; footer hosts two
+	// micro-role lines (peak readout + optional clip count). Both bands
+	// derive from the real styled line heights so the bars always start
+	// below the text instead of assuming the old bitmap metrics.
+	microH := StyledTextHeight(RoleMicro)
+	headerH := StyledTextHeight(RoleCaption) + 2
+	footerH := microH*2 + 2
 
 	// Header label centered — truncated to the strip width so a long
 	// instrument name (e.g. "fm-epiano-1") never bleeds into the
 	// neighboring strip's label.
-	label = truncateName(label, rect.Dx()-2, captionScale)
-	lw := int(float64(TextWidth(label)) * captionScale)
+	capW := func(s string) int { return StyledTextWidth(s, RoleCaption) }
+	label = clipTextToWidthMeasure(label, rect.Dx()-2, capW)
+	lw := capW(label)
 	lx := rect.Min.X + (rect.Dx()-lw)/2
 	if lx < rect.Min.X+1 {
 		lx = rect.Min.X + 1
 	}
-	DrawTextColorAtScale(dst, label, lx, rect.Min.Y+1, colTextPrimary, captionScale)
+	DrawTextStyled(dst, label, lx, rect.Min.Y+1, RoleCaption, colTextPrimary)
 
 	// Clip LED above bars (right side of header band).
 	if latch != nil && latch.Latched() {
@@ -943,14 +943,14 @@ func drawLevelsChannelStrip(dst *ebiten.Image, rect image.Rectangle, label strin
 		readPeak = latch.PeakHoldDB
 	}
 	peakTxt := formatMeterDB(readPeak)
-	pw := int(float64(TextWidth(peakTxt)) * captionScale)
+	pw := StyledTextWidth(peakTxt, RoleMicro)
 	px := rect.Min.X + (rect.Dx()-pw)/2
-	DrawTextColorAtScale(dst, peakTxt, px, footerY, colTextSecondary, captionScale)
+	DrawTextStyled(dst, peakTxt, px, footerY, RoleMicro, colTextSecondary)
 	if clipCount > 0 || (latch != nil && latch.Latched()) {
 		clipTxt := fmt.Sprintf("!%d", clipCount)
-		cw := int(float64(TextWidth(clipTxt)) * captionScale)
+		cw := StyledTextWidth(clipTxt, RoleMicro)
 		cx := rect.Min.X + (rect.Dx()-cw)/2
-		DrawTextColorAtScale(dst, clipTxt, cx, footerY+8, colError, captionScale)
+		DrawTextStyled(dst, clipTxt, cx, footerY+microH, RoleMicro, colError)
 	}
 }
 
@@ -1034,8 +1034,8 @@ const (
 // levelsAggRow describes one text row in the Levels aggregate column:
 // its top y position and the text scale it renders at.
 type levelsAggRow struct {
-	Y     int
-	Scale float64
+	Y    int
+	Role TextRole
 }
 
 // levelsAggRowGap is the consistent vertical gap between consecutive
@@ -1044,37 +1044,31 @@ const levelsAggRowGap = 4
 
 // levelsAggregateColumnRows lays out the aggregate column as a
 // sequential flow: each row's y is a running cursor advanced by the
-// actual rendered text height (textH × the row's scale) plus a
-// consistent gap. Rows that would extend past rect.Max.Y are omitted —
-// the column truncates rather than overlapping. (The pre-fix layout
-// positioned rows with hardcoded absolute offsets from the CLIPS row,
-// which made the LUFS-S value row and the LOUDEST label physically
-// collide.) Pure function so the layout is unit-testable without an
-// Ebiten surface.
-func levelsAggregateColumnRows(rect image.Rectangle, textH int) []levelsAggRow {
-	captionScale := FontSizeCaption / FontSizeBody
-	// Type-scale-derived multipliers (relative to body text). The headline
-	// (big Headroom number) is the Heading step; body rows are the Body step.
-	bodyScale := FontSizeBody / FontSizeBody        // 1.0 — Body step, expressed via the type scale
-	headlineScale := FontSizeHeading / FontSizeBody // ≈1.43 — Heading step (was a raw 2.0)
-	scales := [aggRowCount]float64{
-		aggRowHeadroomLabel: captionScale,
-		aggRowHeadroomValue: headlineScale,
-		aggRowClipsLabel:    captionScale,
-		aggRowClipsValue:    bodyScale,
-		aggRowLUFSLabel:     captionScale,
-		aggRowLUFSValue:     bodyScale,
-		aggRowLoudestLabel:  captionScale,
-		aggRowLoudestValue:  bodyScale,
+// row's styled line height plus a consistent gap. Rows that would
+// extend past rect.Max.Y are omitted — the column truncates rather
+// than overlapping. Row typography is role-driven (caption labels,
+// body values, panel-title for the big Headroom number) so every line
+// renders through the smooth styled path. Pure function so the layout
+// is unit-testable without an Ebiten surface.
+func levelsAggregateColumnRows(rect image.Rectangle) []levelsAggRow {
+	roles := [aggRowCount]TextRole{
+		aggRowHeadroomLabel: RoleCaption,
+		aggRowHeadroomValue: RolePanelTitle,
+		aggRowClipsLabel:    RoleCaption,
+		aggRowClipsValue:    RoleBody,
+		aggRowLUFSLabel:     RoleCaption,
+		aggRowLUFSValue:     RoleBody,
+		aggRowLoudestLabel:  RoleCaption,
+		aggRowLoudestValue:  RoleBody,
 	}
 	rows := make([]levelsAggRow, 0, aggRowCount)
 	y := rect.Min.Y
-	for _, s := range scales {
-		h := int(math.Ceil(float64(textH) * s))
+	for _, role := range roles {
+		h := StyledTextHeight(role)
 		if y+h > rect.Max.Y {
 			break
 		}
-		rows = append(rows, levelsAggRow{Y: y, Scale: s})
+		rows = append(rows, levelsAggRow{Y: y, Role: role})
 		y += h + levelsAggRowGap
 	}
 	return rows
@@ -1091,7 +1085,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	if rect.Dx() < 60 || rect.Dy() < 60 {
 		return
 	}
-	rows := levelsAggregateColumnRows(rect, TextHeight())
+	rows := levelsAggregateColumnRows(rect)
 	rowAt := func(i int) (levelsAggRow, bool) {
 		if i < len(rows) {
 			return rows[i], true
@@ -1117,7 +1111,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 
 	// "Headroom" label.
 	if r, ok := rowAt(aggRowHeadroomLabel); ok {
-		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapHeadroom), rect.Min.X, r.Y, colTextSecondary, r.Scale)
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapHeadroom), rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
 	// Big number — render "CLIP!" when peak has exceeded 0 dBFS so
 	// the kid-friendly answer ("you're too loud right now") replaces
@@ -1133,7 +1127,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		bigNum = fmt.Sprintf("%.0f dB", headroom)
 	}
 	if r, ok := rowAt(aggRowHeadroomValue); ok {
-		DrawTextColorAtScale(dst, bigNum, rect.Min.X, r.Y, headroomCol, r.Scale)
+		DrawTextStyled(dst, bigNum, rect.Min.X, r.Y, r.Role, headroomCol)
 	}
 
 	// Rolling 10-second clip count — Phase 2 audio-panel redesign:
@@ -1158,7 +1152,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		clipsLabel = i18n.T(i18n.KeyLevelsClips)
 	}
 	if r, ok := rowAt(aggRowClipsLabel); ok {
-		DrawTextColorAtScale(dst, clipsLabel, rect.Min.X, r.Y, colTextSecondary, r.Scale)
+		DrawTextStyled(dst, clipsLabel, rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
 	clipsTxt := fmt.Sprintf("%d", clipsDisplay)
 	clipsCol := colTextPrimary
@@ -1166,7 +1160,7 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		clipsCol = colError
 	}
 	if r, ok := rowAt(aggRowClipsValue); ok {
-		DrawTextColorAtScale(dst, clipsTxt, rect.Min.X, r.Y, clipsCol, r.Scale)
+		DrawTextStyled(dst, clipsTxt, rect.Min.X, r.Y, r.Role, clipsCol)
 	}
 
 	// LUFS-S row — Phase 2: K-weighted short-term loudness from the
@@ -1175,14 +1169,14 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 	// each other. Skipped (rendered as "—") when the integrator is
 	// silent.
 	if r, ok := rowAt(aggRowLUFSLabel); ok {
-		DrawTextColorAtScale(dst, "LUFS-S", rect.Min.X, r.Y, colTextSecondary, r.Scale)
+		DrawTextStyled(dst, "LUFS-S", rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
 	lufsTxt := "—"
 	if state.Master.LUFSShortTermDB > -120 {
 		lufsTxt = fmt.Sprintf("%.1f", state.Master.LUFSShortTermDB)
 	}
 	if r, ok := rowAt(aggRowLUFSValue); ok {
-		DrawTextColorAtScale(dst, lufsTxt, rect.Min.X, r.Y, colTextPrimary, r.Scale)
+		DrawTextStyled(dst, lufsTxt, rect.Min.X, r.Y, r.Role, colTextPrimary)
 	}
 
 	// Loudest channel (by peak).
@@ -1207,13 +1201,14 @@ func drawLevelsAggregates(dst *ebiten.Image, rect image.Rectangle, state *analyz
 		return
 	}
 	if r, ok := rowAt(aggRowLoudestLabel); ok {
-		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapLoudest), rect.Min.X, r.Y, colTextSecondary, r.Scale)
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapLoudest), rect.Min.X, r.Y, r.Role, colTextSecondary)
 	}
 	if r, ok := rowAt(aggRowLoudestValue); ok {
 		// "kick-1 · -3 dB" — name plus its peak in dB. The pre-fix
 		// "kick-1 (-3)" suffix was cryptic (an unlabeled number).
 		loudTxt := fmt.Sprintf("%s · %s dB", loudestName, formatMeterDB(loudestPeak))
-		loudTxt = truncateName(loudTxt, rect.Dx(), r.Scale)
-		DrawTextColorAtScale(dst, loudTxt, rect.Min.X, r.Y, colTextPrimary, r.Scale)
+		loudTxt = clipTextToWidthMeasure(loudTxt, rect.Dx(),
+			func(s string) int { return StyledTextWidth(s, r.Role) })
+		DrawTextStyled(dst, loudTxt, rect.Min.X, r.Y, r.Role, colTextPrimary)
 	}
 }

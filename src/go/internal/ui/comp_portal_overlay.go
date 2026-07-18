@@ -34,6 +34,14 @@ func (o *compPortalOverlay) Update() {
 	}
 }
 
+// HoverAt implements portalHoverer: forwards the plain cursor position to the
+// wrapped component when it supports per-frame hover refresh.
+func (o *compPortalOverlay) HoverAt(mx, my int) {
+	if h, ok := o.comp.(portalHoverer); ok {
+		h.HoverAt(mx, my)
+	}
+}
+
 func (o *compPortalOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	// Components compute their own bounds via SetProps; nothing to do here.
 }

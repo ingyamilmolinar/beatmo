@@ -8,18 +8,36 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/hooks"
 )
 
-func (g *Game) Seek(beats int) {
-	if beats < 0 {
-		beats = 0
+const (
+	seekOriginRibbon    = "ribbon"
+	seekOriginTransport = "transport"
+	seekOriginCounter   = "counter"
+	seekOriginKeyboard  = "keyboard"
+	seekOriginJS        = "js"
+	seekOriginUndo      = "undo"
+)
+
+// SeekSteps repositions the playhead to absolute subdivision `steps`. It is
+// the single engine chokepoint for all user navigation (ribbon, FF/RW,
+// counter, keyboard, JS) and for undo restore. Must be called with seqMu held.
+func (g *Game) SeekSteps(steps int, origin string) {
+	if steps < 0 {
+		steps = 0
 	}
-	emitSeek(beats)
+	div := g.grid.MaxDiv()
+	if div <= 0 {
+		div = 1
+	}
+	if maxSteps := g.drum.timelineBeats * div; maxSteps > 0 && steps > maxSteps {
+		steps = maxSteps
+	}
+	emitSeek(steps/div, steps, origin)
 	g.resetHighlights()
 	g.activePulses = nil
 	g.activePulse = nil
-	// Convert beat count to internal subdivision steps
-	steps := beats * g.grid.MaxDiv()
-	trim := steps - 1
+
 	rows := len(g.drum.Rows)
+	trim := steps - 1
 	if rows > 0 {
 		if len(g.frozenUpToByRow) != rows {
 			old := g.frozenUpToByRow
@@ -33,12 +51,12 @@ func (g *Game) Seek(beats int) {
 		if newLimit < -1 {
 			newLimit = -1
 		}
-		for i := 0; i < rows; i++ {
-			if g.frozenUpToByRow[i] > newLimit {
-				g.frozenUpToByRow[i] = newLimit
-			}
-		}
 		for row := 0; row < rows; row++ {
+			// Archive superseded history and lower the freeze watermark.
+			g.timelineRewindTo(row, steps)
+			if g.frozenUpToByRow[row] > newLimit {
+				g.frozenUpToByRow[row] = newLimit
+			}
 			maxKeep := g.frozenUpToByRow[row]
 			if maxKeep < newLimit {
 				maxKeep = newLimit
@@ -46,6 +64,24 @@ func (g *Game) Seek(beats int) {
 			g.timelineTrimAfterMutable(row, maxKeep)
 		}
 	}
+
+	// Rewind the predictor window to the seek target and re-simulate forward.
+	if g.engine != nil && g.engine.Predictor != nil {
+		// RebaseAt re-walks [0, steps) per row to rebuild the position-dependent
+		// context maps — O(steps) and the dominant seek cost (see
+		// bench-results/seek_navigation_bench.md). It is only REQUIRED for a
+		// backward seek below the evicted window (steps < WindowStart), where the
+		// buffers were dropped and must be reconstructed. For a forward or
+		// in-window seek the buffers [WindowStart, WindowEnd) are already valid
+		// and Ensure(steps+1) — which extends from WindowEnd using context that
+		// is already correct at the frontier — suffices. Gating removes the
+		// O(steps) re-walk from forward seeks.
+		if steps < g.engine.Predictor.WindowStart() {
+			g.engine.Predictor.RebaseAt(steps)
+		}
+		g.engine.Predictor.Ensure(steps + 1)
+	}
+
 	if g.Playing() {
 		for row := range g.drum.Rows {
 			g.spawnPulseFromRow(row, steps)
@@ -55,38 +91,61 @@ func (g *Game) Seek(beats int) {
 			g.nextBeatIdxs[i] = steps
 		}
 	}
-	g.applySeekState(steps, g.Playing())
+	g.applySeekState(steps)
 	g.resetOriginSequences()
 	g.muteUntilByRow = make([]int, len(g.drum.Rows))
 	// Reset sequencer counters to stay aligned with updated paths.
 	g.seqNextIdxs = make([]int, len(g.drum.Rows))
+
+	// Tracking lock: when the drum-view lock (FollowPlayback) is on, a seek/jump
+	// while STOPPED recenters the view on the new position so it follows the
+	// playback pointer. This is edge-triggered by the pointer change (not a
+	// per-frame lock), so manual panning between seeks stays free. During
+	// playback the per-frame updateDrumTracking already follows the playhead.
+	// TrackBeat self-gates on FollowPlayback(), so this no-ops when the lock is
+	// off.
+	if !g.Playing() {
+		g.drum.TrackBeat(steps)
+	}
 }
 
-func (g *Game) applySeekState(steps int, anchorClocks bool) {
+// drainSeekRequest applies any queued DrumView seek request. It is called from
+// Game.Update AFTER the drum.Update seqMu window has been released, so it
+// acquires seqMu itself: SeekSteps mutates seqNextIdxs / timeline / predictor
+// state shared with the background sequencer goroutine (which guards those with
+// seqMu.TryLock in seqScheduleTime). Holding seqMu here excludes that tick for
+// the duration of the seek. SeekSteps does not take seqMu, so there is no
+// re-entrant deadlock; within it timeline.mu and predictor.mu are each taken
+// and released independently (never nested with each other), with seqMu as the
+// outer lock — the same shape the sequencer uses, so no ordering conflict.
+func (g *Game) drainSeekRequest() {
+	steps, deltaBeats, isDelta, origin, ok := g.drum.TakeSeekRequest()
+	if !ok {
+		return
+	}
+	g.seqMu.Lock()
+	defer g.seqMu.Unlock()
+	if isDelta {
+		div := max1(g.grid.MaxDiv())
+		cur := g.playheadAbsSubdiv()
+		snapped := int(math.Round(float64(cur)/float64(div))) * div // snap to whole beat first
+		steps = snapped + deltaBeats*div
+	}
+	g.SeekSteps(steps, origin)
+}
+
+// Seek repositions by whole beats — the undo-restore entry point.
+func (g *Game) Seek(beats int) {
+	if beats < 0 {
+		beats = 0
+	}
+	g.SeekSteps(beats*g.grid.MaxDiv(), seekOriginUndo)
+}
+
+func (g *Game) applySeekState(steps int) {
 	g.elapsedBeats = steps
 	div := max1(g.grid.MaxDiv())
-	if div <= 0 {
-		div = 1
-	}
-	beat := float64(steps) / float64(div)
-	g.state.SetBeatBase(beat)
-	g.state.SetLastBeat(beat)
-	g.state.SetLastDisplayBeat(beat)
-	g.state.SetLastProg(0)
-	g.state.SetLastStep(steps)
-	if g.Paused() || !g.Playing() {
-		g.state.SetPausedBeats(steps)
-	}
-	if anchorClocks {
-		now := time.Now()
-		g.state.SetPlayStart(now)
-		if n := audio.Now(); n > 0 {
-			g.state.SetAudioStart(n)
-		} else {
-			g.state.SetAudioStart(0)
-		}
-		g.state.ClearJustResumed()
-	}
+	g.state.SeekTo(steps, div, time.Now(), audio.Now())
 }
 
 func (g *Game) setPrimaryStep(step int) {
@@ -95,7 +154,7 @@ func (g *Game) setPrimaryStep(step int) {
 		g.state.SetLastStep(step)
 		return
 	}
-	g.applySeekState(step, false)
+	g.applySeekState(step)
 }
 
 func (g *Game) updateDrumTracking() {
@@ -114,7 +173,7 @@ func (g *Game) updateDrumTracking() {
 		return
 	}
 	if g.Paused() {
-		g.applySeekState(g.state.PausedBeats(), false)
+		g.applySeekState(g.state.PausedBeats())
 	}
 }
 

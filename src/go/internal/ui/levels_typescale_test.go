@@ -7,18 +7,21 @@ import (
 	"testing"
 )
 
-// The aggregate column's "headline" row (the big Headroom number) must use a
-// scale derived from the type scale, not a raw 2.0 multiplier. After the fix
-// it should equal FontSizeHeading/FontSizeBody and be smaller than the old 2.0.
+// The aggregate column's "headline" row (the big Headroom number) must use
+// the panel-title typography role — the styled type-scale step above body —
+// not an ad-hoc scale multiplier. Its rendered height must sit strictly
+// above the body-value rows so the visual hierarchy is real.
 func TestLevelsAggregate_HeadlineUsesTypeScale(t *testing.T) {
 	rect := image.Rect(0, 0, 200, 400)
-	rows := levelsAggregateColumnRows(rect, 14)
-	want := FontSizeHeading / FontSizeBody
-	got := rows[aggRowHeadroomValue].Scale
-	if got != want {
-		t.Fatalf("headline scale: got %v, want FontSizeHeading/FontSizeBody=%v", got, want)
+	rows := levelsAggregateColumnRows(rect)
+	if got := rows[aggRowHeadroomValue].Role; got != RolePanelTitle {
+		t.Fatalf("headline role: got %v, want RolePanelTitle", got)
 	}
-	if got >= 2.0 {
-		t.Fatalf("headline scale should be < 2.0 after compaction; got %v", got)
+	if got := rows[aggRowClipsValue].Role; got != RoleBody {
+		t.Fatalf("body value role: got %v, want RoleBody", got)
+	}
+	if StyledTextHeight(RolePanelTitle) <= StyledTextHeight(RoleBody) {
+		t.Fatalf("headline height (%d) must exceed body height (%d)",
+			StyledTextHeight(RolePanelTitle), StyledTextHeight(RoleBody))
 	}
 }

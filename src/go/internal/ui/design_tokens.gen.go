@@ -180,6 +180,8 @@ const (
 	genSpacingIconSm   = 16 // spacing.icon-sm
 	genSpacingIconMd   = 20 // spacing.icon-md
 	genSpacingIconLg   = 24 // spacing.icon-lg
+	genSpacingSwatchSm = 10 // spacing.swatch-sm
+	genSpacingSwatchMd = 12 // spacing.swatch-md
 )
 
 // ── Rounded (corner radii) ────────────────────────────────────────────────

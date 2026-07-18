@@ -259,6 +259,16 @@ func (g *Game) initJSPlaybackPerf() {
 		obj.Set("heapSysKB", int(s.HeapSysKB))
 		obj.Set("heapObjects", int(s.HeapObjects))
 		obj.Set("goroutines", s.Goroutines)
+		// GC metrics over the window since the last resetPerfStats() (see
+		// gc_metrics.go). On single-threaded WASM every GC is a pause on the
+		// audio-servicing thread, so these are the mechanism behind FPS dips.
+		obj.Set("gcPauses", int(s.GCPauses))
+		obj.Set("gcCycles", int(s.GCCycles))
+		obj.Set("gcForced", int(s.GCForced))
+		obj.Set("gcPauseP50MS", s.GCPauseP50MS)
+		obj.Set("gcPauseP99MS", s.GCPauseP99MS)
+		obj.Set("gcPauseMaxMS", s.GCPauseMaxMS)
+		obj.Set("gcHeapHighKB", int(s.GCHeapHighKB))
 		// Extra UI metrics for perf analysis (web only usage):
 		if g.drum != nil {
 			obj.Set("rowsLayerBytes", g.drum.rowsLayerBytes)
@@ -284,6 +294,7 @@ func (g *Game) initJSPlaybackPerf() {
 	}))
 	js.Global().Set("resetPerfStats", jsFn(func(args jsArgs) any {
 		g.perf.reset()
+		g.gcMetrics.reset()
 		return nil
 	}))
 	// getThreeStageLatency() — returns Go-side schedule metrics covering

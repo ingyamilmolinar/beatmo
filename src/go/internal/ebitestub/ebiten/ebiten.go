@@ -31,7 +31,7 @@ func NewImageFromImage(img image.Image) *Image {
 }
 
 func (i *Image) DrawImage(src *Image, opts *DrawImageOptions) {
-	if i == nil || src == nil {
+	if i == nil || src == nil || len(i.pix) == 0 {
 		return
 	}
 	if opts == nil {
@@ -52,6 +52,29 @@ func (i *Image) DrawImage(src *Image, opts *DrawImageOptions) {
 	}
 	tx := int(opts.GeoM.translateX)
 	ty := int(opts.GeoM.translateY)
+	// Unscaled multi-pixel blit (TraceSprite cached-surface draws): copy
+	// per-pixel so pixel-identity tests see real content. Scaled draws keep
+	// the legacy first-pixel fill (the 1x1 stretched drawRectBlit pattern).
+	if scaleX == 1 && scaleY == 1 && len(src.pix) == src.w*src.h && src.w > 1 {
+		for y := 0; y < src.h; y++ {
+			dstY := ty + y
+			if dstY < 0 || dstY >= i.h {
+				continue
+			}
+			for x := 0; x < src.w; x++ {
+				dstX := tx + x
+				if dstX < 0 || dstX >= i.w {
+					continue
+				}
+				c := src.pix[y*src.w+x]
+				if c.A == 0 {
+					continue // preserve dst where the source is transparent
+				}
+				i.pix[dstY*i.w+dstX] = c
+			}
+		}
+		return
+	}
 	// Copy the first pixel of src (common case for 1x1 cached pixels).
 	var c color.RGBA
 	if len(src.pix) > 0 {
@@ -102,13 +125,23 @@ func (i *Image) Deallocate() {
 }
 
 func (i *Image) Bounds() image.Rectangle { return image.Rect(0, 0, i.w, i.h) }
+
+// SubImage mirrors real ebiten's cost structure: a ~100-byte view header,
+// NOT a rect-sized pixel buffer. The stub has never shared pixels between a
+// sub-image and its parent (draws into the sub-image were always discarded),
+// so returning an empty-pix image preserves semantics while keeping
+// byte-budget tests honest — the old rect-sized allocation charged callers
+// ~270 KB per row-window SubImage that real ebiten allocates ~100 B for,
+// drowning real regressions in stub noise. Writers no-op on empty pix.
 func (i *Image) SubImage(r image.Rectangle) image.Image {
-	return &Image{w: r.Dx(), h: r.Dy(), pix: make([]color.RGBA, r.Dx()*r.Dy())}
+	return &Image{w: r.Dx(), h: r.Dy()}
 }
 func (i *Image) Size() (int, int)        { return i.w, i.h }
 func (i *Image) ColorModel() color.Model { return color.RGBAModel }
 func (i *Image) At(x, y int) color.Color {
-	if x < 0 || y < 0 || x >= i.w || y >= i.h {
+	// pix == nil after Deallocate: reads stay safe (ebiten lazily
+	// reallocates on next use; the stub reports transparent).
+	if i == nil || i.pix == nil || x < 0 || y < 0 || x >= i.w || y >= i.h {
 		return color.RGBA{}
 	}
 	return i.pix[y*i.w+x]
@@ -213,6 +246,12 @@ const (
 	KeyMinus
 	KeyNumpadAdd
 	KeyNumpadSubtract
+	KeyC
+	KeyX
+	KeyV
+	KeyR
+	KeyPeriod
+	KeyComma
 )
 
 // Window and run stubs
@@ -233,7 +272,7 @@ func RunGame(g Game) error        { return nil }
 type CursorShapeType int
 
 const (
-	CursorShapeDefault    CursorShapeType = iota
+	CursorShapeDefault CursorShapeType = iota
 	CursorShapeText
 	CursorShapeCrosshair
 	CursorShapePointer

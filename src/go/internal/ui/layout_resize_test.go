@@ -27,7 +27,11 @@ func TestWaveDividerHoverAndResize(t *testing.T) {
 		t.Fatalf("expected at least 3 row boundaries, got %d", len(rowPos))
 	}
 	yBoundary := rowPos[2] // start of wave row
-	restore := SetInputForTest(
+	// setTestInput (t.Cleanup), not `defer restore()` — see TestColumnDividerHover
+	// below: this test installs further mocks via setTestInput, and mixing the
+	// two restore styles leaves the FIRST mock installed for the rest of the
+	// package (defers run before t.Cleanup, so the cleanups reinstall it).
+	setTestInput(t,
 		func() (int, int) { return dv.Bounds.Max.X / 2, yBoundary },
 		func(ebiten.MouseButton) bool { return false },
 		func(ebiten.Key) bool { return false },
@@ -35,7 +39,6 @@ func TestWaveDividerHoverAndResize(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
-	defer restore()
 
 	dv.handleLayoutResize()
 	if dv.layoutHoverAxis != "row" || dv.layoutHoverIdx != 1 {
@@ -93,7 +96,17 @@ func TestColumnDividerHover(t *testing.T) {
 	logger := game_log.New(nil, game_log.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), nil, logger)
 	x := dv.widgets.colPos[1] // between rack and timeline
-	restore := SetInputForTest(
+	// Installed via setTestInput (t.Cleanup), NOT `defer restore()`. This test
+	// installs three input mocks in sequence, and mixing the two restore
+	// styles leaks: defers run BEFORE t.Cleanup, so a deferred restore puts
+	// the real functions back FIRST and the later cleanups then walk back up
+	// the stack, reinstalling this very mock permanently. It reported
+	// (colPos[1], Bounds.Min.Y+10) = (512,10) — outside the node sidebar's
+	// panel — which silently re-aimed the cursor for every later test in the
+	// package and broke three sidebar tests on stale layout rects, but only
+	// under the real Ebiten build. Keep every install in this test on
+	// t.Cleanup so the restores unwind in LIFO order.
+	setTestInput(t,
 		func() (int, int) { return x, dv.Bounds.Min.Y + 10 },
 		func(ebiten.MouseButton) bool { return false },
 		func(ebiten.Key) bool { return false },
@@ -101,7 +114,6 @@ func TestColumnDividerHover(t *testing.T) {
 		func() (float64, float64) { return 0, 0 },
 		func() (int, int) { return 0, 0 },
 	)
-	defer restore()
 	dv.handleLayoutResize()
 	if dv.layoutHoverAxis != "col" || dv.layoutHoverIdx != 0 {
 		t.Fatalf("column hover not detected: axis=%s idx=%d", dv.layoutHoverAxis, dv.layoutHoverIdx)

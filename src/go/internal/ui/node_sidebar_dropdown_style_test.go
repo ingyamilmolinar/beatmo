@@ -94,7 +94,7 @@ func TestNodeDropdownItemDrawsNodeAccentStripe(t *testing.T) {
 	}
 
 	dst := ebiten.NewImage(64, 256)
-	g.sidebar.drawDropdownItem(dst, selID, true)
+	g.sidebar.drawDropdownItem(dst, selID, true, g.sidebar.nodeAccent())
 
 	if !found {
 		t.Errorf("drawDropdownItem(%q, selected) drew no node-accent stripe (want a filled %v rect inside %v)", selID, want, r)

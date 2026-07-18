@@ -225,7 +225,12 @@ func conceptOsc(dst *ebiten.Image, r image.Rectangle, instID string, _ audio.Par
 		return
 	}
 	lt, lfr, lfd := synthOscParamsFor(instID)
-	if gt == lt && gfr == lfr && gfd == lfd {
+	// The physical-model params are part of the shape too, so a bow knob's drag
+	// gets a before/after just like a shape change does — without this the ghost
+	// silently no-ops for exactly the knobs whose effect is subtlest.
+	gm := oscModelFromMap(ghost)
+	lm := audio.OscModelParamsFor(instID)
+	if gt == lt && gfr == lfr && gfd == lfd && gm == lm {
 		return
 	}
 	w := r.Dx()
@@ -234,9 +239,34 @@ func conceptOsc(dst *ebiten.Image, r image.Rectangle, instID string, _ audio.Par
 	yAt := func(v float64) int { return int(midY - v*amp) }
 	samples := make([]float64, w)
 	for c := range samples {
-		samples[c] = synthOscSample(gt, float64(c)/float64(w), gfr, gfd)
+		samples[c] = synthOscSampleModel(gt, float64(c)/float64(w), gfr, gfd, gm)
 	}
 	conceptDrawFilledCurve(dst, r, samples, yAt, int(midY), nil, colConceptGhost)
+}
+
+// oscModelFromMap reads the physical-model osc params from a pre-drag snapshot,
+// falling back to the engine defaults for any the snapshot doesn't carry (same
+// fallback audio.OscModelParamsFor applies to the live side, so an unchanged
+// param compares equal and doesn't spuriously trigger a ghost).
+func oscModelFromMap(m map[string]float64) audio.OscModelParams {
+	out := audio.DefaultOscModelParams()
+	if m == nil {
+		return out
+	}
+	for _, f := range []struct {
+		name string
+		dst  *float64
+	}{
+		{"osc_bow_pos", &out.BowPos},
+		{"osc_bow_slope", &out.BowSlope},
+		{"osc_bow_vel", &out.BowVel},
+		{"osc_bow_loss", &out.BowLoss},
+	} {
+		if v, ok := m[f.name]; ok {
+			*f.dst = v
+		}
+	}
+	return out
 }
 
 func conceptEnvelope(dst *ebiten.Image, r image.Rectangle, instID string, _ audio.ParamDef, ghost map[string]float64) {
@@ -255,12 +285,11 @@ func conceptEnvelope(dst *ebiten.Image, r image.Rectangle, instID string, _ audi
 
 	// Kid-level story cues: "starts" near the attack, "fades" near the release.
 	if conceptCuesFit(r) {
-		captionScale := FontSizeCaption / FontSizeBody
-		captionH := int(float64(TextHeight()) * captionScale)
+		captionH := StyledTextHeight(RoleMicro)
 		ty := r.Max.Y - captionH - 2
-		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapStarts), r.Min.X+SpaceSM, ty, TokenTextSecondary(), captionScale)
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapStarts), r.Min.X+SpaceSM, ty, RoleMicro, TokenTextSecondary())
 		fadesX := r.Min.X + int(float64(r.Dx())*0.65)
-		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapFades), fadesX, ty, TokenTextSecondary(), captionScale)
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapFades), fadesX, ty, RoleMicro, TokenTextSecondary())
 	}
 }
 
@@ -381,11 +410,10 @@ func drawConceptTimeRuler(dst *ebiten.Image, rect image.Rectangle, endLabel stri
 		x := rect.Min.X + i*(rect.Dx()-1)/4
 		drawRect(dst, image.Rect(x, baseY-2, x+1, baseY), colConceptGhost, true)
 	}
-	captionScale := FontSizeCaption / FontSizeBody
-	captionH := int(float64(TextHeight()) * captionScale)
-	DrawTextColorAtScale(dst, "0", rect.Min.X+1, baseY-captionH-3, TokenTextSecondary(), captionScale)
-	endW := int(float64(TextWidth(endLabel)) * captionScale)
-	DrawTextColorAtScale(dst, endLabel, rect.Max.X-endW-1, baseY-captionH-3, TokenTextSecondary(), captionScale)
+	captionH := StyledTextHeight(RoleMicro)
+	DrawTextStyled(dst, "0", rect.Min.X+1, baseY-captionH-3, RoleMicro, TokenTextSecondary())
+	endW := StyledTextWidth(endLabel, RoleMicro)
+	DrawTextStyled(dst, endLabel, rect.Max.X-endW-1, baseY-captionH-3, RoleMicro, TokenTextSecondary())
 }
 
 // conceptFilter draws the filter magnitude response as a FILLED area down to
@@ -478,12 +506,11 @@ func conceptFilter(dst *ebiten.Image, rect image.Rectangle, instID string, _ aud
 			if ft == 1 { // high-pass: low end is cut, so it reads "dull" on the right
 				dullWord, brightWord = brightWord, dullWord
 			}
-			captionScale := FontSizeCaption / FontSizeBody
-			captionH := int(float64(TextHeight()) * captionScale)
+			captionH := StyledTextHeight(RoleMicro)
 			ty := rect.Max.Y - captionH - 2
-			DrawTextColorAtScale(dst, dullWord, rect.Min.X+SpaceSM, ty, TokenTextSecondary(), captionScale)
-			brightW := int(float64(TextWidth(brightWord)) * captionScale)
-			DrawTextColorAtScale(dst, brightWord, rect.Max.X-brightW-SpaceSM, ty, TokenTextSecondary(), captionScale)
+			DrawTextStyled(dst, dullWord, rect.Min.X+SpaceSM, ty, RoleMicro, TokenTextSecondary())
+			brightW := StyledTextWidth(brightWord, RoleMicro)
+			DrawTextStyled(dst, brightWord, rect.Max.X-brightW-SpaceSM, ty, RoleMicro, TokenTextSecondary())
 		}
 	}
 }

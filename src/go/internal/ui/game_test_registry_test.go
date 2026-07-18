@@ -68,6 +68,14 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	closeTestGames()
 	if code == 0 {
+		// Input-mock hygiene, checked like goroutine hygiene below: a test
+		// that swaps out an input function variable and never puts it back
+		// re-aims the cursor for every later test in the package, and the
+		// failure surfaces far from the culprit. See inputGlobalsLeakMsg.
+		if msg := inputGlobalsLeakMsg(); msg != "" {
+			fmt.Fprintln(os.Stderr, msg)
+			os.Exit(1)
+		}
 		if err := goleak.Find(
 			baseline,
 			goleak.IgnoreTopFunction("github.com/hajimehoshi/ebiten/v2/internal/ui.(*UserInterface).runSingleThread"),

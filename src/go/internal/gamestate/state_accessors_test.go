@@ -105,11 +105,11 @@ func TestSnapshotReflectsAllSetters(t *testing.T) {
 	s.SetAppliedBPM(160)
 	s.SetPlayingForTest(true)
 	s.SetPausedForTest(true) // unusual, but the snapshot must still reflect it
-	s.SetBeatBase(3.5)
+	s.SetBeatBaseForTest(3.5)
 	s.SetLastBeat(7.0)
 	s.SetLastDisplayBeat(7.5)
 	s.SetLastStep(42)
-	s.SetPausedBeats(8)
+	s.SetPausedBeatsForTest(8)
 	s.SetSeekFreezeFrames(3)
 
 	snap := s.Snapshot()
@@ -147,7 +147,7 @@ func TestPlayStartTimePropagation(t *testing.T) {
 	if got := s.PlayStart(); !got.Equal(now) {
 		t.Errorf("PlayStart=%v want %v", got, now)
 	}
-	s.SetAudioStart(1.25)
+	s.SetAudioStartForTest(1.25)
 	if got := s.AudioStart(); got != 1.25 {
 		t.Errorf("AudioStart=%v want 1.25", got)
 	}

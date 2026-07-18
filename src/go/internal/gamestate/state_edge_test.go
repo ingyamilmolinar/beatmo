@@ -11,7 +11,7 @@ func TestAnchorForBPMChangeWallClockFallback(t *testing.T) {
 	startTime := time.Now().Add(-2 * time.Second)
 	s.SetPlaying(true)
 	s.SetPlayStart(startTime)
-	s.SetAudioStart(0) // no audio clock
+	s.SetAudioStartForTest(0) // no audio clock
 
 	now := time.Now()
 	s.AnchorForBPMChange(100, now, 0)
@@ -193,7 +193,7 @@ func TestFreshResumeResetsBeats(t *testing.T) {
 	s.Resume(time.Now(), 1.0)
 	s.SetLastBeat(5.5)
 	s.SetLastStep(44)
-	s.SetBeatBase(5.5)
+	s.SetBeatBaseForTest(5.5)
 	s.Stop()
 
 	// Fresh resume after stop

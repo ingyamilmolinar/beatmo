@@ -110,16 +110,10 @@ func (g *Game) displayBeat() float64 {
 	if bpm <= 0 {
 		return lastDisplay
 	}
-	audioStart := g.state.AudioStart()
-	var dtSec float64
-	if n := audio.Now(); n > 0 && audioStart > 0 {
-		dtSec = n - audioStart
-	} else if !g.state.PlayStart().IsZero() {
-		dtSec = time.Since(g.state.PlayStart()).Seconds()
-	} else {
+	v, ok := g.state.PosBeats(time.Now(), audio.Now(), bpm)
+	if !ok {
 		return lastDisplay
 	}
-	v := g.state.BeatBase() + dtSec*float64(bpm)/60.0
 	if v < lastDisplay {
 		v = lastDisplay
 	}

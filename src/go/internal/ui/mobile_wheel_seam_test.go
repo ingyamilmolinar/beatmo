@@ -112,37 +112,6 @@ func TestMobileTapKnobOpensWheel_DesktopStillDrags(t *testing.T) {
 	}
 }
 
-// TestDesktopTapKnobStartsDrag verifies the desktop path is unchanged: OnPress
-// must return InputCaptured and must NOT open the wheel popup.
-func TestDesktopTapKnobStartsDrag(t *testing.T) {
-	// withSmallScreen(t, false) keeps desktop profile and satisfies the
-	// precondition check (forceSmallScreen==false → prev==false, ok).
-	withSmallScreen(t, false)
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-
-	const instID = "ut-chip-modular"
-	idx := synthIdxByParam(t, g, "filter_cutoff")
-	selectSectionForKnobIdx(t, g, instID, idx)
-	audio.BindInstrumentToRecipe(instID, "synth-modular")
-
-	dv := g.drum
-	k := dv.instEditorKnobs[idx]
-	kr := k.Rect()
-	if kr.Empty() {
-		t.Fatal("filter_cutoff knob has empty rect on desktop; check expandSynthPanelForTest layout")
-	}
-
-	h := &synthKnobHitAdapter{dv: dv, idx: idx, instID: instID}
-	res := h.OnPress(kr.Min.X+kr.Dx()/2, kr.Min.Y+kr.Dy()/2)
-	if res != InputCaptured {
-		t.Fatalf("desktop knob tap should start a drag (InputCaptured), got %v", res)
-	}
-	if dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen() {
-		t.Fatal("desktop knob tap must NOT open the wheel popup")
-	}
-}
-
 // TestMobileWheelEndToEndDragChangesAudioValue opens the mobile scroll-wheel
 // for a continuous knob (filter_cutoff), drags down by 20 notches, then asserts
 // the knob's value has increased. The assertion validates the full path:
@@ -208,5 +177,32 @@ func TestMobileWheelCenterTapOpensNumericEditor(t *testing.T) {
 
 	if dv.paramEditor == nil || !dv.paramEditor.Active() {
 		t.Fatal("tapping the center value should open the numeric editor")
+	}
+}
+
+// TestDesktopTapKnobOpensWheel verifies the Task-5 universal tap-to-popup: on
+// desktop OnPress now returns InputConsumed and OPENS the wheel popup (the old
+// in-place rotary drag was retired), mirroring mobile.
+func TestDesktopTapKnobOpensWheel(t *testing.T) {
+	withSmallScreen(t, false)
+	g := newModularSynthTabGame(t)
+	expandSynthPanelForTest(t, g)
+	const instID = "ut-chip-modular"
+	idx := synthIdxByParam(t, g, "filter_cutoff")
+	selectSectionForKnobIdx(t, g, instID, idx)
+	audio.BindInstrumentToRecipe(instID, "synth-modular")
+	dv := g.drum
+	k := dv.instEditorKnobs[idx]
+	kr := k.Rect()
+	if kr.Empty() {
+		t.Fatal("filter_cutoff knob has empty rect on desktop")
+	}
+	h := &synthKnobHitAdapter{dv: dv, idx: idx, instID: instID}
+	res := h.OnPress(kr.Min.X+kr.Dx()/2, kr.Min.Y+kr.Dy()/2)
+	if res != InputConsumed {
+		t.Fatalf("desktop knob tap should be consumed to open the wheel, got %v", res)
+	}
+	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
+		t.Fatal("desktop knob tap must open the wheel popup (universal tap-to-popup)")
 	}
 }

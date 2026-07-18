@@ -56,7 +56,8 @@ func renderOnePass(notes []SongRenderNote, bpm, sampleRate, totalSamples int, ke
 		if keep != "" && n.InstID != keep {
 			continue
 		}
-		v := newRecipeAwareVoicePitched(n.InstID, bpm, sampleRate, n.Pitch)
+		// Offline song render — not the audioLoop dispatch goroutine.
+		v := newRecipeAwareVoicePitchedOrigin(n.InstID, bpm, sampleRate, n.Pitch, originPrewarm)
 		if v == nil {
 			continue
 		}

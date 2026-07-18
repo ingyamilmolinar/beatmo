@@ -32,8 +32,11 @@ func consumeSoftKeyboardEsc() bool { return atomic.SwapInt32(&softKeyboardEscPen
 // a field is active), so the canvas/ebiten never sees them and isKeyPressed
 // stays false — caret navigation was dead on WASM. The JS proxy keydown handler
 // forwards them via these signals; the focused TextInput.Update consumes them.
-// Flag (not counter) semantics give one caret move per frame while held, which
-// matches the desktop keyRepeat first-press cadence.
+// Counter (not flag) semantics: each discrete proxy keydown increments the
+// pending count, and TextInput drains the whole count per frame. A flag would
+// coalesce multiple distinct presses that arrive between two slow Update frames
+// (software-WebGL / GPU-stall load) into a single caret move — dropping presses.
+// This mirrors the charBuf accumulation used for typed characters.
 var (
 	softKeyboardArrowLeftPending  int32
 	softKeyboardArrowRightPending int32
@@ -41,16 +44,16 @@ var (
 
 // SignalSoftKeyboardArrowLeft / SignalSoftKeyboardArrowRight mark a caret-move
 // key from the soft-keyboard proxy. Safe to call from the JS callback goroutine.
-func SignalSoftKeyboardArrowLeft()  { atomic.StoreInt32(&softKeyboardArrowLeftPending, 1) }
-func SignalSoftKeyboardArrowRight() { atomic.StoreInt32(&softKeyboardArrowRightPending, 1) }
+func SignalSoftKeyboardArrowLeft()  { atomic.AddInt32(&softKeyboardArrowLeftPending, 1) }
+func SignalSoftKeyboardArrowRight() { atomic.AddInt32(&softKeyboardArrowRightPending, 1) }
 
-// consumeSoftKeyboardArrowLeft / Right return true once per pending proxy arrow,
-// clearing the flag.
-func consumeSoftKeyboardArrowLeft() bool {
-	return atomic.SwapInt32(&softKeyboardArrowLeftPending, 0) == 1
+// consumeSoftKeyboardArrowLeft / Right return the number of pending proxy arrow
+// presses since the last frame, clearing the counter.
+func consumeSoftKeyboardArrowLeft() int {
+	return int(atomic.SwapInt32(&softKeyboardArrowLeftPending, 0))
 }
-func consumeSoftKeyboardArrowRight() bool {
-	return atomic.SwapInt32(&softKeyboardArrowRightPending, 0) == 1
+func consumeSoftKeyboardArrowRight() int {
+	return int(atomic.SwapInt32(&softKeyboardArrowRightPending, 0))
 }
 
 // panStep is the per-frame pan distance (screen px) for arrow-key panning.
@@ -107,9 +110,8 @@ func (dv *DrumView) cancelActiveValueEditor() bool {
 	return false
 }
 
-// undoShortcut handles Ctrl/Cmd+Z (undo), Shift+Ctrl/Cmd+Z and Ctrl/Cmd+Y
-// (redo). Ungated node: works even while a text field is focused. Mirrors the
-// pre-Phase-3 handleUndoRedoKeys body.
+// undoShortcut handles Ctrl/Cmd+Z (undo), Shift+Ctrl/Cmd+Z, Ctrl/Cmd+Y and
+// Ctrl/Cmd+R (redo). Ungated node: works even while a text field is focused.
 func (g *Game) undoShortcut() bool {
 	if g.undoManager == nil {
 		return false
@@ -129,6 +131,10 @@ func (g *Game) undoShortcut() bool {
 		return true
 	}
 	if isKeyJustPressed(ebiten.KeyY) {
+		g.performRedo()
+		return true
+	}
+	if isKeyJustPressed(ebiten.KeyR) && !shift {
 		g.performRedo()
 		return true
 	}
@@ -195,6 +201,34 @@ func (g *Game) transportShortcut() bool {
 	}
 	if isKeyJustPressed(ebiten.KeyMinus) || isKeyJustPressed(ebiten.KeyNumpadSubtract) {
 		g.drum.SetBPM(g.drum.BPM() - 1)
+		acted = true
+	}
+	return acted
+}
+
+// seekShortcut handles playhead navigation keys: "." = +1 beat, "," = -1 beat
+// (Shift = ±4), Home = seek to 0. Uses isKeyJustPressed so a tap = one beat
+// (auto-repeat, when the OS provides it, still fires JustPressed edges).
+func (g *Game) seekShortcut() bool {
+	if g.drum == nil {
+		return false
+	}
+	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
+	step := 1
+	if shift {
+		step = 4
+	}
+	acted := false
+	if isKeyJustPressed(ebiten.KeyPeriod) {
+		g.drum.RequestSeekDeltaBeats(step, seekOriginKeyboard)
+		acted = true
+	}
+	if isKeyJustPressed(ebiten.KeyComma) {
+		g.drum.RequestSeekDeltaBeats(-step, seekOriginKeyboard)
+		acted = true
+	}
+	if isKeyJustPressed(ebiten.KeyHome) {
+		g.drum.RequestSeekSteps(0, seekOriginKeyboard)
 		acted = true
 	}
 	return acted
@@ -373,6 +407,18 @@ func (g *Game) handleEscape() bool {
 		return true
 	}
 
+	// Paste-overwrite confirmation cancel (no text input; its own rung).
+	if g.pasteConfirmActive() {
+		g.CancelPasteOverwrite()
+		return true
+	}
+
+	// Break-circuit confirmation cancel (its own rung; move mode stays armed).
+	if g.breakConfirmActive() {
+		g.CancelBreakCircuit()
+		return true
+	}
+
 	// 2b. Inline text-input dialogs (Synth/Sampler "Save As") — not portals and
 	// not focused zones, so without this they'd fall through to the Stop rung.
 	// Cancel + close (discarding the typed name) and consume the Esc.
@@ -417,25 +463,20 @@ func (g *Game) handleEscape() bool {
 		return true
 	}
 
-	// 5. Connect mode.
-	if g.connectMode {
-		g.cancelConnectMode()
+	// 5. Any armed grid mode (move/copy/connect).
+	if g.modes.Active() != GridModeNone {
+		g.modes.Cancel("esc")
+		g.moveSkipRelease = false
 		return true
 	}
 
-	// 6. Move mode.
-	if g.moveMode {
-		g.cancelMoveMode()
-		return true
-	}
-
-	// 7. In-progress link drag.
+	// 6. In-progress link drag.
 	if g.linkDrag.active {
 		g.linkDrag = dragLink{}
 		return true
 	}
 
-	// 8. In-flight tree capture (a drag handler holds capture).
+	// 7. In-flight tree capture (a drag handler holds capture).
 	if (g.drum.tree != nil && g.drum.tree.Capturing()) ||
 		(g.drum.audioTree != nil && g.drum.audioTree.Capturing()) {
 		if g.drum.rootTree != nil {
@@ -444,13 +485,13 @@ func (g *Game) handleEscape() bool {
 		return true
 	}
 
-	// 9. Active touch gesture (pinch/pan in flight).
+	// 8. Active touch gesture (pinch/pan in flight).
 	if globalTouchState.ActiveTouchCount() > 0 {
 		globalTouchState.Reset()
 		return true
 	}
 
-	// 10. Pending editor click state.
+	// 9. Pending editor click state.
 	if g.pendingClick || g.camDragged || g.pendingStartRow >= 0 {
 		g.pendingClick = false
 		g.camDragged = false
@@ -458,7 +499,7 @@ func (g *Game) handleEscape() bool {
 		return true
 	}
 
-	// 11. Fallback: nothing pending → Stop playback.
+	// 10. Fallback: nothing pending → Stop playback.
 	g.drum.TriggerStop()
 	return true
 }

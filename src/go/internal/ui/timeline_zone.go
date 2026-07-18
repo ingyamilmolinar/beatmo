@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"math"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -52,8 +53,9 @@ type TimelineCallbacks struct {
 
 	// Action callbacks
 	OnOffsetChange   func(newOffset int)
-	OnScrubPosition  func(newOffset int)
-	OnRowsLayerDirty func() // signal that the rows layer composite needs rebuild
+	OnSeekToStep     func(step int, origin string) // ribbon seek commit
+	PlayheadStep     func() int                     // current absolute subdivision
+	OnRowsLayerDirty func()                          // signal that the rows layer composite needs rebuild
 	SetTimelineBeats func(int)
 
 	// Row scroll forwarding (vertical scroll over grid)
@@ -74,6 +76,11 @@ type TimelineZone struct {
 	callbacks  TimelineCallbacks
 	portal     *OverlayPortal
 
+	// posEditor is the shared numeric editor popped over the beat counter on
+	// tap; carries an absolute step value, text grammar "beat" or
+	// "beat.subdiv". See timeline_position_spec.go / openPositionEditor.
+	posEditor *ParamValueEditor
+
 	// Computed sub-rects (set during Layout)
 	stepsRect       image.Rectangle // grid area for drag scrolling
 	timelineBarRect image.Rectangle // progress bar for scrub
@@ -84,7 +91,9 @@ type TimelineZone struct {
 	startOffset int
 
 	// Scrub state (timeline bar seek)
-	scrubbing bool
+	scrubbing      bool
+	scrubGhostBeat int // beat under the pointer during a scrub drag
+	scrubPressBeat int // beat committed on press (so a tap re-seeks at most once)
 
 	// Timeline bar height (set by DrumView before Layout)
 	timelineBarH int
@@ -212,7 +221,12 @@ func (z *TimelineZone) Layout(rect image.Rectangle) {
 }
 
 func (z *TimelineZone) Update() {
-	// No per-frame state to update; drag/scrub are handled via hit handlers.
+	// Drag/scrub are handled via hit handlers; the shared position editor is
+	// the only per-frame state this zone drives directly (mirrors
+	// TransportZone's paramEditor.Update()).
+	if z.posEditor != nil && z.posEditor.Active() {
+		z.posEditor.Update()
+	}
 }
 
 // SetDrawParams sets per-frame draw data before Draw() is called.
@@ -270,6 +284,11 @@ func (z *TimelineZone) Draw(screen *ebiten.Image) {
 
 		// --- Mute/Solo dimming ---
 		z.drawMuteSoloDimming(screen)
+	}
+
+	// --- Position editor (tap-to-seek popup over the beat counter) ---
+	if z.posEditor != nil && z.posEditor.Active() {
+		z.posEditor.Draw(screen)
 	}
 }
 
@@ -459,6 +478,45 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 	drawRect(dst, coreRect, colAccentBright, true)
 
 	drawRect(dst, barRect, colButtonBorder, false)
+
+	// Ghost preview of the pending seek position while dragging the ribbon.
+	if z.scrubbing {
+		z.drawScrubGhost(dst)
+	}
+}
+
+// drawScrubGhost renders the pending seek position (a vertical line + beat
+// chip) while the user drags the ribbon. The ghost tracks z.scrubGhostBeat,
+// which OnDrag updates without dispatching a seek — the seek only commits
+// on OnPress (immediate) and OnRelease (if the beat changed).
+func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image) {
+	bar := z.timelineBarRect
+	if bar.Empty() {
+		return
+	}
+	beats := 1
+	if z.callbacks.TimelineBeats != nil {
+		if b := z.callbacks.TimelineBeats(); b > 0 {
+			beats = b
+		}
+	}
+	div := 1
+	if z.callbacks.TimelineUnitsPerBeat != nil {
+		if d := z.callbacks.TimelineUnitsPerBeat(); d > 0 {
+			div = d
+		}
+	}
+	ghostBeat := z.scrubGhostBeat / div
+	frac := float64(ghostBeat) / float64(beats)
+	gx := bar.Min.X + int(math.Round(frac*float64(bar.Dx())))
+	if gx < bar.Min.X {
+		gx = bar.Min.X
+	} else if gx >= bar.Max.X {
+		gx = bar.Max.X - 1
+	}
+	drawRect(dst, image.Rect(gx, bar.Min.Y, gx+1, bar.Max.Y), colAccentBright, true)
+	// Beat chip near the top of the bar.
+	DrawTextAt(dst, strconv.Itoa(ghostBeat), gx+3, bar.Min.Y+2)
 }
 
 // drawRibbonTicks paints hierarchical beat ticks for the visible window
@@ -1194,7 +1252,7 @@ func (z *TimelineZone) rebuildHitAreas() {
 			z.hitAreas = append(z.hitAreas, HitArea{
 				Rect:     bc,
 				ZIndex:   zBtn,
-				Handler:  &beatCounterHitAdapter{},
+				Handler:  &beatCounterHitAdapter{zone: z},
 				Tag:      "timeline-beat-counter",
 				ClipRect: z.rect,
 			})
@@ -1219,14 +1277,64 @@ func (z *TimelineZone) rebuildHitAreas() {
 
 // beatCounterHitAdapter absorbs presses on the beat-counter chip so a
 // band-mate's touch-expanded hit area can never steal a tap meant for the
-// counter. The counter is display-only, so the press is consumed (no-op).
-type beatCounterHitAdapter struct{}
+// counter, and opens the tap-to-seek position editor. The catch-all-and-
+// consume contract is unchanged (see beat_counter_input_isolation_test.go);
+// only the action behind the press changed from no-op to "open editor".
+type beatCounterHitAdapter struct{ zone *TimelineZone }
 
-func (h *beatCounterHitAdapter) OnPress(x, y int) InputResult { return InputConsumed }
-func (h *beatCounterHitAdapter) OnDrag(x, y int)              {}
-func (h *beatCounterHitAdapter) OnRelease(x, y int)           {}
+func (h *beatCounterHitAdapter) OnPress(x, y int) InputResult {
+	if h.zone != nil {
+		h.zone.openPositionEditor()
+	}
+	return InputConsumed
+}
+func (h *beatCounterHitAdapter) OnDrag(x, y int)    {}
+func (h *beatCounterHitAdapter) OnRelease(x, y int) {}
 func (h *beatCounterHitAdapter) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
+}
+
+// openPositionEditor pops the numeric beat.subdiv position editor over the
+// beat counter, pre-filled with the current playhead step. Commit seeks via
+// OnSeekToStep with seekOriginCounter (mirrors TransportZone.openBPMEditor).
+func (z *TimelineZone) openPositionEditor() {
+	if z.posEditor == nil {
+		z.posEditor = NewParamValueEditor()
+	}
+	div := 1
+	if z.callbacks.TimelineUnitsPerBeat != nil {
+		if d := z.callbacks.TimelineUnitsPerBeat(); d > 0 {
+			div = d
+		}
+	}
+	beats := 0
+	if z.callbacks.TimelineBeats != nil {
+		beats = z.callbacks.TimelineBeats()
+	}
+	maxSteps := beats * div
+	anchor := z.rect
+	if z.callbacks.BeatCounterRect != nil {
+		if bc := z.callbacks.BeatCounterRect(); !bc.Empty() {
+			anchor = bc
+		}
+	}
+	z.posEditor.OpenValue(ValueOpen{
+		Spec:          positionValueSpec(div, maxSteps),
+		Anchor:        anchor,
+		Clamp:         z.rect,
+		MobileInputID: "position",
+		Get: func() float64 {
+			if z.callbacks.PlayheadStep != nil {
+				return float64(z.callbacks.PlayheadStep())
+			}
+			return 0
+		},
+		Set: func(v float64) {
+			if z.callbacks.OnSeekToStep != nil {
+				z.callbacks.OnSeekToStep(int(v), seekOriginCounter)
+			}
+		},
+	})
 }
 
 // notifClickAdapter opens the notification-history popup on press.
@@ -1358,8 +1466,46 @@ func (h *gridDragHitAdapter) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
 }
 
-// --- Timeline scrub hit handler ---
+// ribbonStepAt maps pointer X on the timeline bar to the nearest whole-beat
+// absolute subdivision step.
+func (z *TimelineZone) ribbonStepAt(x int) int {
+	bar := z.timelineBarRect
+	if bar.Dx() <= 0 {
+		return 0
+	}
+	if x < bar.Min.X {
+		x = bar.Min.X
+	} else if x >= bar.Max.X {
+		x = bar.Max.X - 1
+	}
+	frac := float64(x-bar.Min.X) / float64(bar.Dx())
+	beats := 0
+	if z.callbacks.TimelineBeats != nil {
+		beats = z.callbacks.TimelineBeats()
+	}
+	beat := int(math.Round(frac * float64(beats)))
+	if beat < 0 {
+		beat = 0
+	} else if beat > beats {
+		beat = beats
+	}
+	div := 1
+	if z.callbacks.TimelineUnitsPerBeat != nil {
+		if d := z.callbacks.TimelineUnitsPerBeat(); d > 0 {
+			div = d
+		}
+	}
+	return beat * div
+}
 
+// --- Timeline scrub hit handler ---
+//
+// Task 10: the ribbon is a click-to-SEEK surface, not a view-offset scrub
+// surface. Press commits an immediate seek to the nearest beat under the
+// pointer; drag only updates a ghost preview (z.scrubGhostBeat) with no
+// seek dispatched; release re-seeks only if the gesture ended on a
+// different beat than the press committed — so a tap emits exactly one
+// EventSeek and a drag emits at most two (press + release).
 type timelineScrubHitAdapter struct {
 	zone *TimelineZone
 }
@@ -1373,12 +1519,17 @@ func (h *timelineScrubHitAdapter) OnPress(x, y int) InputResult {
 	// Engagement cue for the enlarged mobile scrub hit area (Task 3.1):
 	// fires after the multi-touch gate so suppressed presses don't buzz.
 	hapticEmit(8)
-	h.scrubTo(x)
+	z.scrubGhostBeat = z.ribbonStepAt(x)
+	z.scrubPressBeat = z.scrubGhostBeat // remember where the gesture started
+	if z.callbacks.OnSeekToStep != nil {
+		z.callbacks.OnSeekToStep(z.scrubGhostBeat, seekOriginRibbon) // seek on press
+	}
 	return InputCaptured
 }
 
 func (h *timelineScrubHitAdapter) OnDrag(x, y int) {
-	if !h.zone.scrubbing {
+	z := h.zone
+	if !z.scrubbing {
 		return
 	}
 	// Self-policing: the tree's drag dispatch routes every move to the
@@ -1388,58 +1539,29 @@ func (h *timelineScrubHitAdapter) OnDrag(x, y int) {
 	// pointer leaves the bar's vertical lane (with the same skirt
 	// HitArea.Touch + ClipRect uses on the press path). Prevents the
 	// "drag into the audio panel still scrubs the timeline" leak.
-	skirt := h.zone.timelineBarRect.Inset(-4)
+	skirt := z.timelineBarRect.Inset(-4)
 	if y < skirt.Min.Y || y >= skirt.Max.Y {
-		h.zone.scrubbing = false
+		z.scrubbing = false
 		return
 	}
-	h.scrubTo(x)
+	z.scrubGhostBeat = z.ribbonStepAt(x) // ghost only — no seek during drag
 }
 
 func (h *timelineScrubHitAdapter) OnRelease(x, y int) {
-	h.zone.scrubbing = false
+	z := h.zone
+	if z.scrubbing && z.callbacks.OnSeekToStep != nil {
+		final := z.ribbonStepAt(x)
+		// Re-seek on release ONLY if the gesture moved to a different beat
+		// than the press already committed. A pure tap (final == press
+		// beat) emits ONE EventSeek; a drag emits at most two (press start
+		// + release end).
+		if final != z.scrubPressBeat {
+			z.callbacks.OnSeekToStep(final, seekOriginRibbon)
+		}
+	}
+	z.scrubbing = false
 }
 
 func (h *timelineScrubHitAdapter) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
-}
-
-func (h *timelineScrubHitAdapter) scrubTo(x int) {
-	z := h.zone
-	barRect := z.timelineBarRect
-
-	pos := x
-	if pos < barRect.Min.X {
-		pos = barRect.Min.X
-	}
-	if pos > barRect.Max.X {
-		pos = barRect.Max.X
-	}
-	frac := float64(pos-barRect.Min.X) / float64(barRect.Dx())
-
-	unitsPerBeat := z.callbacks.TimelineUnitsPerBeat()
-	if unitsPerBeat < 1 {
-		unitsPerBeat = 1
-	}
-	length := z.callbacks.Length()
-	timelineBeats := z.callbacks.TimelineBeats()
-
-	lengthBeats := float64(length) / float64(unitsPerBeat)
-	maxOffBeats := float64(timelineBeats) - lengthBeats
-	if maxOffBeats < 0 {
-		maxOffBeats = 0
-	}
-	desiredBeats := frac * maxOffBeats
-	desiredSteps := int(math.Round(desiredBeats * float64(unitsPerBeat)))
-	maxOffSteps := int(math.Round(maxOffBeats * float64(unitsPerBeat)))
-	if desiredSteps < 0 {
-		desiredSteps = 0
-	}
-	if desiredSteps > maxOffSteps {
-		desiredSteps = maxOffSteps
-	}
-
-	if z.callbacks.OnScrubPosition != nil {
-		z.callbacks.OnScrubPosition(desiredSteps)
-	}
 }

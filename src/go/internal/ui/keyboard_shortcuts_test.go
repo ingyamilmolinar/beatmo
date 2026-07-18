@@ -6,7 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// The router must register exactly the four expected nodes with the expected
+// The router must register exactly the six expected nodes with the expected
 // gating, in descending z for the gated tier.
 func TestShortcutRouter_NodesRegistered(t *testing.T) {
 	g := newTestGameForUndo(t)
@@ -14,20 +14,23 @@ func TestShortcutRouter_NodesRegistered(t *testing.T) {
 		t.Fatal("Game must construct a keyboardShortcutRouter")
 	}
 	names := g.keyboardRouter.nodeNames()
-	want := map[string]bool{"undo": true, "grid": true, "transport": true, "audiopanel": true}
+	want := map[string]bool{"undo": true, "clipboard": true, "grid": true, "transport": true, "seek": true, "audiopanel": true}
 	if len(names) != len(want) {
-		t.Fatalf("router nodes = %v, want the 4 keys of %v", names, want)
+		t.Fatalf("router nodes = %v, want the 6 keys of %v", names, want)
 	}
 	for _, n := range names {
 		if !want[n] {
 			t.Fatalf("unexpected node %q (have %v)", n, names)
 		}
 	}
-	// Undo is the only UNGATED node (works while a text field is focused).
+	// Undo and clipboard are the only UNGATED nodes (work while a text field is focused).
 	if !g.keyboardRouter.isUngated("undo") {
 		t.Fatal("undo node must be ungated")
 	}
-	for _, n := range []string{"grid", "transport", "audiopanel"} {
+	if !g.keyboardRouter.isUngated("clipboard") {
+		t.Fatal("clipboard node must be ungated")
+	}
+	for _, n := range []string{"grid", "transport", "seek", "audiopanel"} {
 		if g.keyboardRouter.isUngated(n) {
 			t.Fatalf("%q must be gated", n)
 		}
@@ -50,10 +53,11 @@ func TestShortcutKeysAreDisjointAndComplete(t *testing.T) {
 	}
 	// COMPLETE: every shortcut key handled before Phase 3 is still owned.
 	want := []ebiten.Key{
-		ebiten.KeyZ, ebiten.KeyY, // undo/redo
+		ebiten.KeyZ, ebiten.KeyY, ebiten.KeyR, // undo/redo
+		ebiten.KeyC, ebiten.KeyX, ebiten.KeyV, // clipboard copy/cut/paste
 		ebiten.KeySpace,                                                                   // play/pause
 		ebiten.KeyArrowLeft, ebiten.KeyArrowRight, ebiten.KeyArrowUp, ebiten.KeyArrowDown, // pan
-		ebiten.KeyBracketLeft, ebiten.KeyBracketRight, ebiten.Key0,                      // zoom/reset
+		ebiten.KeyBracketLeft, ebiten.KeyBracketRight, ebiten.Key0, // zoom/reset
 		ebiten.KeyEqual, ebiten.KeyNumpadAdd, ebiten.KeyMinus, ebiten.KeyNumpadSubtract, // BPM±
 		ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7, // tabs
 		ebiten.KeySlash, // help

@@ -142,6 +142,34 @@ func (a *Analyzer) Snapshot() AnalyzerSnapshot {
 	}
 }
 
+// Reset zeros the retained waveform/spectrum/RMS/peak so the next Snapshot reads
+// flat until fresh audio flows. Analyzer instances are reused across circuit
+// loads (see wireChannelAnalyzer), and compute() only overwrites these when the
+// window fills — so a stopped analyzer keeps returning the previous circuit's
+// frame forever. Called on circuit load so the audio-panel tabs read flat until
+// the new circuit is played. Safe to call when the audio thread is idle (import
+// stops playback before rebuilding the graph).
+func (a *Analyzer) Reset() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	for i := range a.window {
+		a.window[i] = 0
+	}
+	for i := range a.spectrum {
+		a.spectrum[i] = 0
+	}
+	for i := range a.specSnap {
+		a.specSnap[i] = 0
+	}
+	a.mu.Unlock()
+	a.write.Store(0)
+	a.filled.Store(false)
+	a.rmsBits.Store(0)
+	a.peakBits.Store(0)
+}
+
 // SetEnabled controls whether compute() runs. When disabled, audio still passes
 // through but FFT/RMS/peak analysis is skipped, saving ~4.65% CPU.
 func (a *Analyzer) SetEnabled(on bool) { a.enabled.Store(on) }
@@ -248,11 +276,15 @@ var analyzerRegistry = struct {
 	m map[string]*Analyzer
 }{m: map[string]*Analyzer{}}
 
-// EnableChannelAnalyzer inserts an analyzer into a channel's processor chain
-// and returns the analyzer instance for polling.
+// EnableChannelAnalyzer wires an analyzer into a channel's processor chain and
+// returns the analyzer instance for polling.
+//
+// IDEMPOTENT: callers re-issue this on every channel focus (setEQActiveChannel)
+// and every audio-panel tab transition (EnsureAnalyzersForTab), so it must reuse
+// the analyzer already wired at the same window instead of appending another.
+// See analyzer_wiring.go for why stacking here is an audio-thread bug.
 func EnableChannelAnalyzer(id string, window int) *Analyzer {
-	an := NewAnalyzer(window)
-	AddChannelProcessor(id, an)
+	an := wireChannelAnalyzer(id, window)
 	analyzerRegistry.Lock()
 	analyzerRegistry.m[id] = an
 	analyzerRegistry.Unlock()
@@ -344,6 +376,24 @@ func resetAnalyzers() {
 	preEQAnalyzerRegistry.Lock()
 	preEQAnalyzerRegistry.m = map[string]*Analyzer{}
 	preEQAnalyzerRegistry.Unlock()
+}
+
+// ResetAllChannelAnalyzers zeros the retained frame of every wired channel and
+// pre-EQ analyzer without unregistering them (unlike resetAnalyzers, which drops
+// the registry references but leaves the reused instances holding stale data).
+// Called on circuit load so a stopped, freshly loaded circuit shows no stale
+// waveform/spectrum/level data on the audio-panel tabs.
+func ResetAllChannelAnalyzers() {
+	analyzerRegistry.RLock()
+	for _, an := range analyzerRegistry.m {
+		an.Reset()
+	}
+	analyzerRegistry.RUnlock()
+	preEQAnalyzerRegistry.RLock()
+	for _, an := range preEQAnalyzerRegistry.m {
+		an.Reset()
+	}
+	preEQAnalyzerRegistry.RUnlock()
 }
 
 // AnalyzerBridgeStats returns zero counters on desktop; the JS↔Go bridge

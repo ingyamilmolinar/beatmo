@@ -77,6 +77,15 @@ func undoActionCases() []undoCase {
 			mutate: func(t *testing.T, g *Game) { g.deleteNode(g.nodeAt(4, 6)) },
 		},
 		{
+			name: "paste-node",
+			kind: hooks.EventNodePasted,
+			setup: func(t *testing.T, g *Game) {
+				g.tryAddNode(9, 9, model.NodeTypeRegular) // source, auto-selected
+				g.copySelectedNode()
+			},
+			mutate: func(t *testing.T, g *Game) { g.pasteNodeFrom(11, 11, g.clipboard) },
+		},
+		{
 			name: "move-node-atomic",
 			kind: hooks.EventNodeMoved,
 			setup: func(t *testing.T, g *Game) {

@@ -91,6 +91,29 @@ func drawFXTogglePillCol(dst *ebiten.Image, r image.Rectangle, enabled bool, onC
 	drawRoundedRect(dst, thumbR, thumbCol, thumbRadius, true)
 }
 
+// drawFXTogglePillDisabled draws the enable pill in a MUTED, non-interactive
+// palette — used by the Synth tab for a stage that is the instrument's SOLE
+// sound source (a generator like OSC on a pure-oscillator voice). Such a stage
+// must stay ON, so the thumb sits in the ON position, but both track and thumb
+// use dimmed tokens so the pill reads "locked on", not a live toggle the user
+// can flip to silence the whole instrument. See audio.StageDisableSilences.
+func drawFXTogglePillDisabled(dst *ebiten.Image, r image.Rectangle) {
+	trackW, trackH := FXToggleTrackW(), FXToggleTrackH()
+	thumbD := FXToggleThumbD()
+
+	cx := r.Min.X + (r.Dx()-trackW)/2
+	cy := r.Min.Y + (r.Dy()-trackH)/2
+	trackR := image.Rect(cx, cy, cx+trackW, cy+trackH)
+	// Dimmed ON track — the muted tint is the "locked" signal.
+	drawRoundedRect(dst, trackR, WithAlpha(colPlayGreen, AlphaSubtle), trackH/2, true)
+
+	// Thumb in the ON (right) position, greyed to read non-interactive.
+	thumbY := cy + (trackH-thumbD)/2
+	thumbX := cx + trackW - thumbD - (trackH-thumbD)/2
+	thumbR := image.Rect(thumbX, thumbY, thumbX+thumbD, thumbY+thumbD)
+	drawRoundedRect(dst, thumbR, TokenTextDisabled(), thumbD/2, true)
+}
+
 // isFXToggleBtn returns whether a button is an FX panel toggle, and its state.
 func isFXToggleBtn(btn *Button) (isToggle bool, enabled bool) {
 	if btn == nil {
@@ -252,6 +275,30 @@ func (dv *DrumView) fxShowParams(slotIdx int, enabled bool) bool {
 }
 
 // buildFXPanel computes the layout and creates buttons/sliders for the FX panel.
+// fxMetrics bundles the FX-panel row geometry shared by buildFXPanel and
+// drawFXPanel. One source of truth: build computes hit rects and draw paints
+// rows from the SAME values, so the two can never drift.
+type fxMetrics struct {
+	lineH   int // effect header row height
+	headerH int // panel title band height
+	paramH  int // one param-slider row height
+	footerH int // "+ Add Effect" footer height
+}
+
+// fxPanelMetrics returns the platform row geometry (mobile rows meet the
+// 44-px touch minimum; desktop rows are mouse-dense).
+func fxPanelMetrics() fxMetrics {
+	if Profile().IsMobile() {
+		return fxMetrics{
+			lineH:   touchMinTargetPx,
+			headerH: touchMinTargetPx,
+			paramH:  touchMinTargetPx - 4,
+			footerH: touchMinTargetPx,
+		}
+	}
+	return fxMetrics{lineH: 28, headerH: 32, paramH: 26, footerH: 32}
+}
+
 func (dv *DrumView) buildFXPanel() {
 	row := dv.fxPanelRow
 	if row < 0 || row >= len(dv.Rows) {
@@ -273,24 +320,19 @@ func (dv *DrumView) buildFXPanel() {
 	instID := r.Instrument
 	effects := audio.GetInsertEffects(instID)
 
-	// Panel dimensions — scaled up on mobile for touch targets.
-	var panelW, lineH, headerH, paramH, footerH int
+	// Panel dimensions — scaled up on mobile for touch targets. Row geometry
+	// comes from the shared fxPanelMetrics so build and draw can never drift.
+	m := fxPanelMetrics()
+	lineH, headerH, paramH, footerH := m.lineH, m.headerH, m.paramH, m.footerH
+	var panelW int
 	mobile := Profile().IsMobile()
 	if mobile {
 		panelW = dv.Bounds.Dx() - 32 // near full-width with 16px margin each side
 		if panelW < 250 {
 			panelW = 250
 		}
-		lineH = touchMinTargetPx      // 44px
-		headerH = touchMinTargetPx    // 44px
-		paramH = touchMinTargetPx - 4 // 40px
-		footerH = touchMinTargetPx    // 44px
 	} else {
 		panelW = 340
-		lineH = 28
-		headerH = 32
-		paramH = 26
-		footerH = 32
 	}
 
 	// Compute dynamic slider left offset based on longest visible param label.
@@ -302,7 +344,7 @@ func (dv *DrumView) buildFXPanel() {
 				if defs, ok := cat[e.Type]; ok {
 					for _, def := range defs {
 						val := e.Params[def.Name]
-						label := fxParamLabel(def.Name, val, def.Unit)
+						label := fxParamLabel(def, val)
 						if w := TextWidth(label); w > maxLabelW {
 							maxLabelW = w
 						}
@@ -340,6 +382,9 @@ func (dv *DrumView) buildFXPanel() {
 	if dv.fxAddMenuOpen {
 		contentH += len(effectTypeOrder())*lineH + lineH // 6 type buttons + cancel
 	} else {
+		if len(effects) == 0 {
+			contentH += lineH // empty-state hint row above the Add button
+		}
 		contentH += footerH
 	}
 	if contentH < 80 {
@@ -482,7 +527,9 @@ func (dv *DrumView) buildFXPanel() {
 				up := NewButton("", InstButtonStyle, nil)
 				up.Icon = string(IconChevronUp)
 				up.IconColor = colTextSecondary
-				upX := x + w - 3*(btnW+btnGap) - rightInset + btnGap
+				// Reorder chevrons sit a SpaceMD gutter left of the destructive
+				// remove ×, so a mis-aimed reorder click can't delete the effect.
+				upX := x + w - 3*(btnW+btnGap) - rightInset + btnGap - SpaceMD
 				up.SetRect(image.Rect(upX, y+2, upX+btnW, y+lineH-2))
 				up.OnClick = func() {
 					audio.MoveInsertEffect(instID, si, si-1)
@@ -500,7 +547,7 @@ func (dv *DrumView) buildFXPanel() {
 				down := NewButton("", InstButtonStyle, nil)
 				down.Icon = string(IconChevronDown)
 				down.IconColor = colTextSecondary
-				downX := x + w - 2*(btnW+btnGap) - rightInset + btnGap
+				downX := x + w - 2*(btnW+btnGap) - rightInset + btnGap - SpaceMD
 				down.SetRect(image.Rect(downX, y+2, downX+btnW, y+lineH-2))
 				down.OnClick = func() {
 					audio.MoveInsertEffect(instID, si, si+1)
@@ -524,6 +571,7 @@ func (dv *DrumView) buildFXPanel() {
 			remove.OnClick = func() {
 				audio.RemoveInsertEffect(instID, si)
 				emitInsertEffectRemoved(instID, si)
+				dv.recordUndoStep(hooks.EventInsertEffectRemoved)
 				dv.syncFXToRow(row)
 				dv.buildFXPanel()
 				dv.refreshFXPortalHitAreas()
@@ -598,6 +646,7 @@ func (dv *DrumView) buildFXPanel() {
 				btn.OnClick = func() {
 					slot := audio.AddInsertEffect(instID, etCopy, nil)
 					emitInsertEffectAdded(instID, slot, string(etCopy))
+					dv.recordUndoStep(hooks.EventInsertEffectAdded)
 					dv.syncFXToRow(row)
 					dv.fxAddMenuOpen = false
 					dv.buildFXPanel()
@@ -611,7 +660,10 @@ func (dv *DrumView) buildFXPanel() {
 		cBot := y + lineH
 		cInView := cBot > dv.fxViewportRect.Min.Y && cTop < dv.fxViewportRect.Max.Y
 		if cInView {
-			cancelBtn := NewButton(i18n.T(i18n.KeyCancel), DisabledButtonStyle, nil)
+			// A clickable dismiss must not wear the disabled costume — normal
+			// neutral chrome with a muted label reads as "back out", not "inert".
+			cancelBtn := NewButton(i18n.T(i18n.KeyCancel), InstButtonStyle, nil)
+			cancelBtn.TextColor = colTextSecondary
 			cancelBtn.SetRect(image.Rect(x+4, y+2, x+w-4, y+lineH-2))
 			cancelBtn.OnClick = func() {
 				dv.fxAddMenuOpen = false
@@ -621,6 +673,9 @@ func (dv *DrumView) buildFXPanel() {
 			dv.fxPanelBtns = append(dv.fxPanelBtns, cancelBtn)
 		}
 	} else {
+		if len(effects) == 0 {
+			y += lineH // empty-state hint row (drawn by drawFXPanel)
+		}
 		aTop := y
 		aBot := y + footerH
 		aInView := aBot > dv.fxViewportRect.Min.Y && aTop < dv.fxViewportRect.Max.Y
@@ -647,6 +702,19 @@ func (dv *DrumView) buildFXPanel() {
 	closeB.ConsumeOnPress = true
 	dv.fxPanelCloseButton = closeB
 	dv.fxPanelBtns = append(dv.fxPanelBtns, closeB)
+}
+
+// drawFXPanelHeader paints the pinned title band: the unified menu title
+// (leading instrument swatch + section-header role, per DESIGN.md "Menu
+// anatomy") over the header fill, rune-safe-clipped clear of the close ×.
+func (dv *DrumView) drawFXPanelHeader(dst *ebiten.Image, headerR image.Rectangle, row int) {
+	drawRoundedRect(dst, headerR, genColorSliderTrackFill, popupCornerRadius(), true)
+	titleR := image.Rect(headerR.Min.X+SpaceMD, headerR.Min.Y, headerR.Max.X, headerR.Max.Y)
+	maxW := closeButtonRect(dv.fxPanelRect, SpaceXS).Min.X - SpaceMD - titleR.Min.X
+	maxW -= menuTitleSwatchSz + SpaceSM // the leading swatch's share of the band
+	label := clipTextToWidthMeasure(fmt.Sprintf("FX: %s", dv.Rows[row].Name), maxW,
+		func(s string) int { return StyledTextWidth(s, menuTitleRole) })
+	drawMenuTitle(dst, titleR, label, dv.Rows[row].Color)
 }
 
 // refreshFXPortalHitAreas immediately updates the portal's hit areas for the
@@ -683,28 +751,15 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 	drawScrim(dst)
 	drawPanel(dst, r)
 
-	// Platform-aware sizes for draw consistency with buildFXPanel.
-	var lineH, headerH, paramH int
+	// Shared row geometry — the same fxPanelMetrics buildFXPanel used, so the
+	// drawn rows always land on the built hit rects.
+	fm := fxPanelMetrics()
+	lineH, headerH, paramH := fm.lineH, fm.headerH, fm.paramH
 	mobile := Profile().IsMobile()
-	if mobile {
-		lineH = touchMinTargetPx
-		headerH = touchMinTargetPx
-		paramH = touchMinTargetPx - 4
-	} else {
-		lineH = 28
-		headerH = 32
-		paramH = 26
-	}
 
 	// Header (fixed, not scrolled)
 	headerR := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+headerH)
-	drawRoundedRect(dst, headerR, genColorSliderTrackFill, popupCornerRadius(), true)
-	title := fmt.Sprintf("FX: %s", dv.Rows[row].Name)
-	if len(title) > 30 {
-		title = title[:30]
-	}
-	textY := headerR.Min.Y + (headerH-12)/2
-	DrawTextAt(dst, title, headerR.Min.X+8, textY)
+	dv.drawFXPanelHeader(dst, headerR, row)
 
 	// Draw effect names (scrollable content)
 	effects := audio.GetInsertEffects(dv.Rows[row].Instrument)
@@ -720,6 +775,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		cardRight -= ScrollbarStyleForPlatform().Width + SpaceXS
 	}
 
+	fxAccent := dv.fxPanelAccent()
 	for slotIdx, e := range effects {
 		rowTop := y
 		rowBot := y + lineH
@@ -728,21 +784,34 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 		// Whether this effect's params are shown inline (expanded) or summarized.
 		paramsShown := dv.fxShowParams(slotIdx, e.Enabled)
 
-		if inView {
-			// Bounded card behind the header row groups the per-effect controls
-			// (toggle · name · reorder · remove) so they read as one unit
-			// instead of stretching the full panel width.
-			cardR := image.Rect(r.Min.X+4, y+1, cardRight, y+lineH-1)
-			if cardR.Dx() > 0 {
-				drawRoundedRect(dst, cardR, colSurface2, RadiusSM, true)
+		// One card per effect spanning the header row AND its inline param
+		// rows (the DESIGN.md fx-card recipe), so each effect reads as a unit
+		// instead of blurring into its neighbours. A disabled card recedes one
+		// surface level; an enabled card carries an instrument-tinted header
+		// band (identity, never chrome accent).
+		cardH := lineH
+		if paramsShown {
+			if defs, ok := audio.InsertEffectCatalog()[e.Type]; ok {
+				cardH += len(defs) * paramH
 			}
+		}
+		cardR := image.Rect(r.Min.X+4, rowTop+1, cardRight, rowTop+cardH-2)
+		if cardR.Dx() > 0 && cardR.Max.Y > dv.fxViewportRect.Min.Y && cardR.Min.Y < dv.fxViewportRect.Max.Y {
+			fill := colSurface2
+			if !e.Enabled {
+				fill = colSurface1
+			}
+			drawRoundedRect(dst, cardR, fill, RadiusSM, true)
+			if e.Enabled {
+				bandR := image.Rect(cardR.Min.X, cardR.Min.Y, cardR.Max.X, rowTop+lineH-1)
+				drawRoundedRect(dst, bandR, WithAlphaFromColor(fxAccent, AlphaFaint), RadiusSM, true)
+			}
+		}
 
+		if inView {
 			name := effectTypeName(e.Type)
 			if name == "" {
 				name = string(e.Type)
-			}
-			if !e.Enabled {
-				name = "(" + name + ")"
 			}
 			// Name offset accounts for wider pill toggle (36px desktop, 44px mobile).
 			nameX := r.Min.X + 40
@@ -752,7 +821,14 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 					nameX = r.Min.X + 88 // room for expand button
 				}
 			}
-			DrawTextAt(dst, name, nameX, y+(lineH-12)/2)
+			// A disabled effect keeps its plain name but drops to the muted
+			// text color — the dimmed card carries the "off" state, not
+			// parentheses.
+			nameCol := colTextPrimary
+			if !e.Enabled {
+				nameCol = colTextSecondary
+			}
+			DrawTextColorAt(dst, name, nameX, y+(lineH-12)/2, nameCol)
 
 			// Collapsed info scent: when params are not shown inline, render a
 			// one-line summary ("Drive 8.2 · Warmth 0.6") in on-surface-muted at
@@ -781,7 +857,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 
 					if slInView {
 						val := e.Params[def.Name]
-						label := fxParamLabel(def.Name, val, def.Unit)
+						label := fxParamLabel(def, val)
 						maxLabelW := dv.fxSliderLeft - 8
 						if mobile {
 							maxLabelW = 92
@@ -793,6 +869,17 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 				}
 			}
 		}
+	}
+
+	// Empty-state hint (DESIGN.md Menu-anatomy empty-state pattern): a
+	// centered muted line above the Add button so a fresh panel explains
+	// itself instead of showing a lone footer.
+	if len(effects) == 0 && !dv.fxAddMenuOpen {
+		hint := i18n.T(i18n.KeyFXEmptyHint)
+		hint = clipTextToWidth(hint, r.Dx()-2*SpaceMD)
+		hw := TextWidth(hint)
+		hx := r.Min.X + (r.Dx()-hw)/2
+		DrawTextColorAt(dst, hint, hx, y+(lineH-12)/2, colTextSecondary)
 	}
 
 	// Draw buttons (skip those outside viewport, except the close button which
@@ -832,8 +919,7 @@ func (dv *DrumView) drawFXPanel(dst *ebiten.Image) {
 	}
 
 	// Draw header on top of scrolled content to cover any overflow
-	drawRoundedRect(dst, headerR, genColorSliderTrackFill, popupCornerRadius(), true)
-	DrawTextAt(dst, title, headerR.Min.X+8, textY)
+	dv.drawFXPanelHeader(dst, headerR, row)
 	// Redraw close button on top of header
 	if closeBtn := dv.fxPanelCloseBtn(); closeBtn != nil {
 		closeBtn.Draw(dst)
@@ -1043,23 +1129,11 @@ func (dv *DrumView) fireFXPanelTapAt(x, y int) {
 	}
 }
 
-// fxParamLabel formats a parameter label with compact number display.
-func fxParamLabel(name string, val float64, unit string) string {
-	var valStr string
-	switch {
-	case val >= 1000:
-		valStr = fmt.Sprintf("%.0f", val)
-	case val >= 10:
-		valStr = fmt.Sprintf("%.1f", val)
-	case val == float64(int(val)):
-		valStr = fmt.Sprintf("%.0f", val)
-	default:
-		valStr = fmt.Sprintf("%.2f", val)
-	}
-	if unit != "" && unit[0] != '%' {
-		return fmt.Sprintf("%s: %s %s", capitalize(name), valStr, unit)
-	}
-	return fmt.Sprintf("%s: %s%s", capitalize(name), valStr, unit)
+// fxParamLabel formats a parameter label with param-derived number display. It
+// shares fxFormatParam with the collapsed-row summary so the SAME value never
+// renders with two different precisions across expand/collapse.
+func fxParamLabel(def audio.EffectParamDef, val float64) string {
+	return fmt.Sprintf("%s: %s", capitalize(def.Name), fxFormatParam(def, val))
 }
 
 func capitalize(s string) string {
@@ -1091,22 +1165,54 @@ func fxParamSummary(e audio.EffectSlot) string {
 		}
 		b.WriteString(capitalize(def.Name))
 		b.WriteByte(' ')
-		b.WriteString(fxFormatVal(val))
+		b.WriteString(fxFormatParam(def, val))
 	}
 	return b.String()
 }
 
-// fxFormatVal renders a parameter value compactly (matches fxParamLabel's
-// number formatting but without the name/unit).
-func fxFormatVal(val float64) string {
-	switch {
-	case val >= 1000:
-		return fmt.Sprintf("%.0f", val)
-	case val >= 10:
-		return fmt.Sprintf("%.1f", val)
-	case val == float64(int(val)):
-		return fmt.Sprintf("%.0f", val)
+// fxFormatParam renders a parameter value + unit — the ONE number formatter for
+// both the expanded param label and the collapsed-row summary. Precision and
+// unit are a property of the parameter DEFINITION (its declared range and
+// unit), never of the instantaneous value: this keeps the fractional-digit
+// count constant while a slider is dragged (no reflow) and lets frequencies
+// roll up to kHz. See DESIGN.md § Value formatting.
+func fxFormatParam(def audio.EffectParamDef, val float64) string {
+	switch def.Unit {
+	case "Hz":
+		// Audio-frequency params (cutoff/tone/freq, Max >= 1000) read in
+		// integer Hz and roll up to kHz above 1000. Low-frequency params
+		// (LFO rate, Max < 1000) keep a decimal so sub-Hz motion is visible.
+		if def.Max >= 1000 {
+			if val >= 1000 {
+				return fmt.Sprintf("%.1f kHz", val/1000)
+			}
+			return fmt.Sprintf("%.0f Hz", val)
+		}
+		return fmt.Sprintf("%.*f Hz", fxDecimalsForSpan(def.Max-def.Min), val)
+	case "ms":
+		return fmt.Sprintf("%.0f ms", val)
+	case "dB":
+		return fmt.Sprintf("%.1f dB", val)
+	case "st":
+		return fmt.Sprintf("%.0f st", val)
+	case "%":
+		return fmt.Sprintf("%.0f%%", val)
 	default:
-		return fmt.Sprintf("%.1f", val)
+		return fmt.Sprintf("%.*f", fxDecimalsForSpan(def.Max-def.Min), val)
+	}
+}
+
+// fxDecimalsForSpan chooses a fixed fractional-digit count from a parameter's
+// value span. Sub-unit ranges (mix/feedback, 0..1) need two decimals to be
+// legible; mid ranges (drive/ratio/q) one; wide ranges none. The choice is a
+// function of the range alone, so it is constant for a given parameter.
+func fxDecimalsForSpan(span float64) int {
+	switch {
+	case span <= 1:
+		return 2
+	case span <= 30:
+		return 1
+	default:
+		return 0
 	}
 }

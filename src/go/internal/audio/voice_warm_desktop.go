@@ -14,7 +14,7 @@ func warmInstrumentPlatform(id string, pitches []int) {
 	// Only pitch-aware (melodic) recipes keep a per-pitch cache; everything else
 	// (drums, single-key FM) shares one bare key, so warm just the base pitch.
 	if !pitchAwareRecipe(RecipeForInstrument(id)) {
-		tryRecipeVoicePitched(id, b, sr, 0)
+		tryRecipeVoicePitchedOrigin(id, b, sr, 0, originPrewarm)
 		return
 	}
 	seen := make(map[int]bool, len(pitches))
@@ -23,7 +23,7 @@ func warmInstrumentPlatform(id string, pitches []int) {
 			continue
 		}
 		seen[p] = true
-		tryRecipeVoicePitched(id, b, sr, float64(p))
+		tryRecipeVoicePitchedOrigin(id, b, sr, float64(p), originPrewarm)
 	}
 }
 

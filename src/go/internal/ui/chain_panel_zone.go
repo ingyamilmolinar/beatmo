@@ -626,10 +626,6 @@ func (z *ChainPanelZone) SetPortal(p *OverlayPortal) { z.portal = p }
 // --- Header drawing ---
 
 func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
-	// Density-aware: the zoom readout grows on mobile (Spacious) instead of
-	// the old hardcoded FontSizeCaption/FontSizeBody.
-	captionScale := chainLabelScale()
-
 	// Draw vertical stage thumbnails on the left, with A/B badges. No arrows
 	// between rows — the column itself is the visual chain.
 	stages := scope.AllStages()
@@ -677,7 +673,7 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 	if z.yGain != 1.0 {
 		zoomText += fmt.Sprintf(" Y:%.3gx", z.yGain)
 	}
-	zoomW := int(float64(TextWidth(zoomText)) * captionScale)
+	zoomW := StyledTextWidth(zoomText, RoleMicro)
 	// Anchor the zoom readout left of the leftmost chrome-row control. On
 	// desktop that's the OVR pill; on mobile the mode pills moved to their own
 	// row, so anchor to FIT (the leftmost remaining chrome control).
@@ -686,8 +682,8 @@ func (z *ChainPanelZone) drawHeader(dst *ebiten.Image) {
 		chromeLeft = z.fitBtn.Rect().Min.X
 	}
 	zoomX := chromeLeft - zoomW - 6
-	zoomY := z.rect.Min.Y + 4 + (18-int(float64(TextHeight())*captionScale))/2
-	DrawTextColorAtScale(dst, zoomText, zoomX, zoomY, colTextSecondary, captionScale)
+	zoomY := z.rect.Min.Y + 4 + (18-StyledTextHeight(RoleMicro))/2
+	DrawTextStyled(dst, zoomText, zoomX, zoomY, RoleMicro, colTextSecondary)
 
 	// Mode selector — three pills. Desktop: separated, in the chrome row.
 	// Mobile: a contiguous segmented control on its own row (rects set in
@@ -743,7 +739,6 @@ func (z *ChainPanelZone) drawStagePill(dst *ebiten.Image, btn *Button, active bo
 	}
 	z.drawPillChrome(dst, r, active)
 
-	captionScale := chainPillScale()
 	glyphCol := pillGlyphColor(active, false)
 	// Inner label rect: inset 2px each side, then drop badgeReserve from the
 	// right edge so the centered label never runs under the badge.
@@ -751,36 +746,35 @@ func (z *ChainPanelZone) drawStagePill(dst *ebiten.Image, btn *Button, active bo
 	if labelR.Dx() <= 0 {
 		return
 	}
-	text := chainElideLabel(btn.Text, labelR.Dx(), captionScale)
-	tw := int(float64(TextWidth(text)) * captionScale)
-	th := int(float64(TextHeight()) * captionScale)
+	text := chainElideLabel(btn.Text, labelR.Dx())
+	tw := StyledTextWidth(text, RoleCaption)
+	th := StyledTextHeight(RoleCaption)
 	tx := labelR.Min.X + (labelR.Dx()-tw)/2
 	if tx < labelR.Min.X {
 		tx = labelR.Min.X
 	}
 	ty := r.Min.Y + (r.Dy()-th)/2
-	DrawTextColorAtScale(dst, text, tx, ty, glyphCol, captionScale)
+	DrawTextStyled(dst, text, tx, ty, RoleCaption, glyphCol)
 }
 
-// chainElideLabel truncates `text` with a trailing "…" so its scaled width
-// fits within maxW px. Returns the full text untouched when it already fits;
-// returns "…" (or "") when nothing fits.
-func chainElideLabel(text string, maxW int, scale float64) string {
+// chainElideLabel truncates `text` with a trailing "…" so its caption-role
+// width fits within maxW px. Returns the full text untouched when it already
+// fits; returns "…" (or "") when nothing fits.
+func chainElideLabel(text string, maxW int) string {
 	if maxW <= 0 {
 		return ""
 	}
-	if int(float64(TextWidth(text))*scale) <= maxW {
+	if StyledTextWidth(text, RoleCaption) <= maxW {
 		return text
 	}
 	const ell = "…"
-	ellW := int(float64(TextWidth(ell)) * scale)
-	if ellW > maxW {
+	if StyledTextWidth(ell, RoleCaption) > maxW {
 		return ""
 	}
 	runes := []rune(text)
 	for n := len(runes) - 1; n >= 1; n-- {
 		cand := string(runes[:n]) + ell
-		if int(float64(TextWidth(cand))*scale) <= maxW {
+		if StyledTextWidth(cand, RoleCaption) <= maxW {
 			return cand
 		}
 	}
@@ -836,9 +830,8 @@ const chainBadgeInset = 2
 // given label at the current density. Shared by drawBadge (the renderer) and
 // the stage-label centering reservation (bug #1) so the two stay in lockstep.
 func chainBadgeSize(label string) (w, h int) {
-	badgeScale := chainBadgeScale()
-	tw := int(float64(TextWidth(label)) * badgeScale)
-	th := int(float64(TextHeight()) * badgeScale)
+	tw := StyledTextWidth(label, RoleCaption)
+	th := StyledTextHeight(RoleCaption)
 	const padX, padY = 3, 1
 	return tw + 2*padX, th + 2*padY
 }
@@ -851,13 +844,12 @@ func chainBadgeSize(label string) (w, h int) {
 // 2px azure selection stroke of an active pill (bug #2) instead of on it.
 func (z *ChainPanelZone) drawBadge(dst *ebiten.Image, btn *Button, label string, col color.Color) {
 	r := btn.Rect()
-	badgeScale := chainBadgeScale()
 	badgeW, badgeH := chainBadgeSize(label)
 	const padX, padY = 3, 1
 	bx := r.Max.X - badgeW - chainBadgeInset
 	by := r.Min.Y + chainBadgeInset
 	drawRect(dst, image.Rect(bx, by, bx+badgeW, by+badgeH), col, true)
-	DrawTextColorAtScale(dst, label, bx+padX, by+padY, colTextPrimary, badgeScale)
+	DrawTextStyled(dst, label, bx+padX, by+padY, RoleCaption, colTextPrimary)
 }
 
 // --- Layout ---

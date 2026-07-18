@@ -27,7 +27,11 @@ func BuildGroupIndex(groups map[GroupID]*NodeGroup) *GroupIndex {
 		grp := groups[id]
 		for _, n := range grp.NodeIDs {
 			idx.memberByNode[n] = true
-			if len(grp.Rules) > 0 {
+			// RulesEnabled is the independent status gate (task-enabled-status
+			// brief, Part C): a group's Rules only feed the per-node rule index
+			// when the group is enabled — membership/ring rendering (Member)
+			// is untouched by the flag, only rule application is gated.
+			if grp.RulesEnabled && len(grp.Rules) > 0 {
 				idx.rulesByNode[n] = append(idx.rulesByNode[n], grp.Rules...)
 			}
 		}

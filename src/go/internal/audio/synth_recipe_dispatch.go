@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -22,6 +23,66 @@ var debugSynthDispatch = os.Getenv("BEATMO_SYNTH_DISPATCH_DEBUG") != ""
 // mismatch or a cold dispatch render is directly observable. Temporary
 // diagnostic for the overdue-panic investigation.
 var prewarmDebug = os.Getenv("BEATMO_PREWARM_DEBUG") != ""
+
+// dispatchMustNotRender arms invariant I3: when true, a cache miss on the
+// dispatch path must NOT call recipe.Render (a ~24ms CGo call that would delay
+// every following beat). Instead it serves the best available buffer ON TIME
+// and hands the exact render off-thread. Armed by the UI once the prewarmer
+// exists; left false in tests and tools that render synchronously on purpose.
+var dispatchMustNotRender atomic.Bool
+
+// asyncRenderSubmit hands an exact (id, pitch, params) render to an off-thread
+// pool. Set by internal/ui to the prewarm pool; nil-cleared at teardown. It is
+// an atomic.Pointer because it is READ on the audio dispatch goroutine while the
+// UI goroutine may Store(nil) during Game.Close() BEFORE the audioLoop is joined
+// (see game_close.go's own "closing audio.* before receivers exit would race"
+// note). A plain func var here is a data race that -race misses because no test
+// drives a concurrent audioLoop through the fallback during Close().
+var asyncRenderSubmit atomic.Pointer[func(id string, pitch float64, params RecipeParams)]
+
+// SetDispatchMustNotRender arms/disarms invariant I3 (see dispatchMustNotRender).
+func SetDispatchMustNotRender(on bool) { dispatchMustNotRender.Store(on) }
+
+// SetAsyncRenderSubmit installs (or, with nil, clears) the off-thread render
+// hand-off (see asyncRenderSubmit).
+func SetAsyncRenderSubmit(f func(id string, pitch float64, params RecipeParams)) {
+	if f == nil {
+		asyncRenderSubmit.Store(nil)
+		return
+	}
+	asyncRenderSubmit.Store(&f)
+}
+
+// serveBestAvailable implements the miss policy for a non-blocking dispatch:
+// play the closest already-rendered buffer at the correct time, count it, and
+// submit the exact render off-thread so the NEXT trigger is correct. Returns
+// (nil,false) when NOTHING is cached for this instrument at all — the caller
+// then falls through to a normal (dispatch-goroutine) render, because a LATE
+// first note beats a SILENT one (user decision). That fall-through is bounded
+// to an instrument's very first trigger: edit-induced misses hit tier 1/2.
+//
+// Two tiers, each strictly better than a synchronous ~24ms CGo render:
+//  1. Same (instrument, pitch) under any params — the common case; a param
+//     edit rotated the binding.
+//  2. Same instrument at ANY pitch — a brand-new note appearing faster than
+//     the prewarmer's horizon. An audibly wrong note ON TIME.
+//
+// The async submit always targets the exact correct (id, pitch), so a tier-2
+// mismatch self-corrects on the very next trigger of this note.
+func serveBestAvailable(id string, pitch float64) (Voice, bool) {
+	buf, ok := globalVoiceCache.getAnyForInstrumentPitch(id, pitch)
+	if !ok {
+		buf, ok = globalVoiceCache.getAnyForInstrument(id)
+	}
+	if !ok {
+		return nil, false // nothing cached at all — caller renders (late > silent)
+	}
+	recordStalePlay()
+	if p := asyncRenderSubmit.Load(); p != nil {
+		(*p)(id, pitch, GetInstrumentParams(id))
+	}
+	return &cVoice{buf: buf}, true
+}
 
 // newRecipeAwareVoice is the Phase-2.6 dispatcher that decides whether to
 // render via the SynthRecipe (when the user has edited per-instrument
@@ -40,8 +101,23 @@ var prewarmDebug = os.Getenv("BEATMO_PREWARM_DEBUG") != ""
 //
 // Fallback to the legacy path happens whenever any precondition is missing
 // (no user params, no binding, no recipe, no instrument).
+//
+// WARNING: this bare wrapper attributes its render to originDispatch. It is
+// correct ONLY for callers that actually run on the audioLoop dispatch
+// goroutine (playParamsIdentity / PlayBatch). Any NEW caller that is not on
+// that goroutine (a UI audition, a background warm, an offline render, …)
+// MUST call newRecipeAwareVoiceOrigin explicitly with the right renderOrigin
+// — using this wrapper would silently inflate DispatchRenders and false-
+// positive the DispatchRenders==0 gate (invariant I3).
 func newRecipeAwareVoice(id string, bpm, sampleRate int) Voice {
-	if v, ok := tryRecipeVoice(id, bpm, sampleRate); ok {
+	return newRecipeAwareVoiceOrigin(id, bpm, sampleRate, originDispatch)
+}
+
+// newRecipeAwareVoiceOrigin is newRecipeAwareVoice with explicit render
+// attribution. The key computation is IDENTICAL regardless of origin — origin
+// affects only the metric, never the cache key.
+func newRecipeAwareVoiceOrigin(id string, bpm, sampleRate int, origin renderOrigin) Voice {
+	if v, ok := tryRecipeVoiceOptsOrigin(id, bpm, sampleRate, false, origin); ok {
 		if debugSynthDispatch {
 			log.Printf("[SYNTH-DISPATCH] recipe path id=%q recipe=%q paramsHash=%x", id, RecipeForInstrument(id), hashRecipeParams(GetInstrumentParams(id)))
 		}
@@ -71,24 +147,44 @@ func roundPitchForCache(pitch float64) float64 {
 // pitch into the render so the voice is produced at the target frequency
 // instead of at the base pitch (A3=220 Hz) and later resampled. For all
 // other instruments it falls through to newRecipeAwareVoice with no change.
+//
+// WARNING: bare wrapper — attributes originDispatch. See the WARNING on
+// newRecipeAwareVoice; a non-dispatch caller must use
+// newRecipeAwareVoicePitchedOrigin explicitly.
 func newRecipeAwareVoicePitched(id string, bpm, sampleRate int, pitch float64) Voice {
+	return newRecipeAwareVoicePitchedOrigin(id, bpm, sampleRate, pitch, originDispatch)
+}
+
+// newRecipeAwareVoicePitchedOrigin is newRecipeAwareVoicePitched with explicit
+// render attribution.
+func newRecipeAwareVoicePitchedOrigin(id string, bpm, sampleRate int, pitch float64, origin renderOrigin) Voice {
 	recipeID := RecipeForInstrument(id)
 	if pitchAwareRecipe(recipeID) {
-		if v, ok := tryRecipeVoicePitched(id, bpm, sampleRate, pitch); ok {
+		if v, ok := tryRecipeVoicePitchedOrigin(id, bpm, sampleRate, pitch, origin); ok {
 			if debugSynthDispatch {
 				log.Printf("[SYNTH-DISPATCH] melodic at-pitch path id=%q recipe=%q pitch=%.2f", id, recipeID, pitch)
 			}
 			return v
 		}
 	}
-	return newRecipeAwareVoice(id, bpm, sampleRate)
+	return newRecipeAwareVoiceOrigin(id, bpm, sampleRate, origin)
 }
 
 // tryRecipeVoicePitched renders a melodic recipe at the given node pitch (in
 // semitones), sets "pitch" in the merged params before Render, and uses a
 // cache key that includes the rounded pitch. Returns (nil, false) if any
 // precondition fails (unknown id, no recipe, etc.).
+//
+// WARNING: bare wrapper — attributes originDispatch. See the WARNING on
+// newRecipeAwareVoice; a non-dispatch caller must use
+// tryRecipeVoicePitchedOrigin explicitly.
 func tryRecipeVoicePitched(id string, bpm, sampleRate int, pitch float64) (Voice, bool) {
+	return tryRecipeVoicePitchedOrigin(id, bpm, sampleRate, pitch, originDispatch)
+}
+
+// tryRecipeVoicePitchedOrigin is tryRecipeVoicePitched with explicit render
+// attribution.
+func tryRecipeVoicePitchedOrigin(id string, bpm, sampleRate int, pitch float64, origin renderOrigin) (Voice, bool) {
 	recipeID := RecipeForInstrument(id)
 	if recipeID == "" {
 		return nil, false
@@ -147,22 +243,39 @@ func tryRecipeVoicePitched(id string, bpm, sampleRate int, pitch float64) (Voice
 			recordVoiceCacheHit()
 			return &cVoice{buf: buf}, true
 		}
+		if origin == originDispatch && dispatchMustNotRender.Load() {
+			if v, ok := serveBestAvailable(id, pitch); ok {
+				return v, true
+			}
+			// Nothing cached at all — fall through to the render below. A late
+			// first note beats a silent one (user decision). Bounded to an
+			// instrument's first-ever trigger.
+		}
 		// Render and store under the folded key (cache miss — timed).
 		buf := make([]float32, samples)
 		renderStart := time.Now()
 		recipe.Render(buf, sampleRate, samples, 0, merged)
 		normalizeAndScale(buf, baseInstrumentID(id))
-		recordVoiceRender(time.Since(renderStart))
+		recordVoiceRender(time.Since(renderStart), origin)
 		buf = ApplySampleEditToBuffer(buf, sampleRate, edit)
 		globalVoiceCache.Put(foldedKey, buf)
 		return &cVoice{buf: buf}, true
+	}
+
+	if origin == originDispatch && dispatchMustNotRender.Load() {
+		if v, ok := serveBestAvailable(id, pitch); ok {
+			return v, true
+		}
+		// Nothing cached at all — fall through to the render below. A late
+		// first note beats a silent one (user decision). Bounded to an
+		// instrument's first-ever trigger.
 	}
 
 	buf := make([]float32, samples)
 	renderStart := time.Now()
 	recipe.Render(buf, sampleRate, samples, 0, merged)
 	normalizeAndScale(buf, baseInstrumentID(id))
-	recordVoiceRender(time.Since(renderStart))
+	recordVoiceRender(time.Since(renderStart), origin)
 	globalVoiceCache.Put(key, buf)
 	return &cVoice{buf: buf}, true
 }
@@ -200,6 +313,78 @@ func pitchedVoiceKey(id string, bpm, sampleRate int, pitch float64) (voiceCacheK
 	}, true
 }
 
+// pitchedVoiceKeyForParams is pitchedVoiceKey with the params supplied by the
+// caller instead of read from the manager. The ONLY difference is the params
+// source — every other term (merge, pitch override, hash, edit fold, rounding)
+// is computed identically, so a key produced here is byte-identical to the key
+// dispatch reads for the same param state. Keep these two functions adjacent
+// and edit them together; drift here silently defeats prewarming
+// (TestPrewarmVoiceParamsKeyMatchesDispatch guards it).
+func pitchedVoiceKeyForParams(id string, bpm, sampleRate int, pitch float64, params RecipeParams) (voiceCacheKey, bool) {
+	recipeID := RecipeForInstrument(id)
+	if recipeID == "" {
+		return voiceCacheKey{}, false
+	}
+	if NewRecipe(recipeID) == nil {
+		return voiceCacheKey{}, false
+	}
+	samples, bpmKey := instrumentDurationSamples(id, bpm, sampleRate)
+	if samples <= 0 {
+		return voiceCacheKey{}, false
+	}
+	merged := MergeRecipeDefaults(recipeID, params)
+	merged["pitch"] = pitch
+	ph := hashRecipeParams(merged)
+	if edit, hasEdit := SampleEditFor(id); hasEdit {
+		ph ^= hashSampleEdit(edit)
+	}
+	return voiceCacheKey{
+		instrumentID: id,
+		bpm:          bpmKey,
+		sampleRate:   sampleRate,
+		paramsHash:   ph,
+		pitch:        roundPitchForCache(pitch),
+	}, true
+}
+
+// renderPitchedIntoCacheForParams renders (id, pitch) under the binding implied
+// by params and stores it in globalVoiceCache. No-op when already cached.
+// Returns false when id has no renderable pitch-aware recipe.
+func renderPitchedIntoCacheForParams(id string, bpm, sampleRate int, pitch float64, params RecipeParams, origin renderOrigin) bool {
+	recipeID := RecipeForInstrument(id)
+	if !pitchAwareRecipe(recipeID) {
+		return false
+	}
+	recipe := NewRecipe(recipeID)
+	if recipe == nil {
+		return false
+	}
+	key, ok := pitchedVoiceKeyForParams(id, bpm, sampleRate, pitch, params)
+	if !ok {
+		return false
+	}
+	if globalVoiceCache.Has(key) {
+		return true // already warm — cheap no-op
+	}
+	samples, _ := instrumentDurationSamples(id, bpm, sampleRate)
+	if samples <= 0 {
+		return false
+	}
+	merged := MergeRecipeDefaults(recipeID, params)
+	merged["pitch"] = pitch
+
+	buf := make([]float32, samples)
+	renderStart := time.Now()
+	recipe.Render(buf, sampleRate, samples, 0, merged)
+	normalizeAndScale(buf, baseInstrumentID(id))
+	recordVoiceRender(time.Since(renderStart), origin)
+	if edit, hasEdit := SampleEditFor(id); hasEdit {
+		buf = ApplySampleEditToBuffer(buf, sampleRate, edit)
+	}
+	globalVoiceCache.Put(key, buf)
+	return true
+}
+
 // VoiceCached reports whether the pitch-aware voice for (id, pitch) is already
 // present in globalVoiceCache under the key the dispatch path will read. The UI
 // voice-prewarmer uses it to decide whether a pitch still needs warming.
@@ -219,13 +404,23 @@ func VoiceCached(id string, pitch float64) bool {
 // (nil, false). Split out from newRecipeAwareVoice so the legacy path
 // stays a single function call deep in the common (no-user-params) case.
 func tryRecipeVoice(id string, bpm, sampleRate int) (Voice, bool) {
-	return tryRecipeVoiceOpts(id, bpm, sampleRate, false)
+	return tryRecipeVoiceOptsOrigin(id, bpm, sampleRate, false, originDispatch)
 }
 
 // tryRecipeVoiceOpts is tryRecipeVoice with an ignoreEdit escape hatch used
 // by RenderInstrumentOneShotRaw: the Sampler editor needs the UN-edited
 // source render so it can overlay the saved trim/pitch itself.
+//
+// WARNING: bare wrapper — attributes originDispatch. See the WARNING on
+// newRecipeAwareVoice; a non-dispatch caller must use
+// tryRecipeVoiceOptsOrigin explicitly.
 func tryRecipeVoiceOpts(id string, bpm, sampleRate int, ignoreEdit bool) (Voice, bool) {
+	return tryRecipeVoiceOptsOrigin(id, bpm, sampleRate, ignoreEdit, originDispatch)
+}
+
+// tryRecipeVoiceOptsOrigin is tryRecipeVoiceOpts with explicit render
+// attribution.
+func tryRecipeVoiceOptsOrigin(id string, bpm, sampleRate int, ignoreEdit bool, origin renderOrigin) (Voice, bool) {
 	params := GetInstrumentParams(id)
 	recipeID := RecipeForInstrument(id)
 	if recipeID == "" {
@@ -280,7 +475,7 @@ func tryRecipeVoiceOpts(id string, bpm, sampleRate int, ignoreEdit bool) (Voice,
 	renderStart := time.Now()
 	recipe.Render(buf, sampleRate, samples, 0, merged)
 	normalizeAndScale(buf, baseInstrumentID(id))
-	recordVoiceRender(time.Since(renderStart))
+	recordVoiceRender(time.Since(renderStart), origin)
 	if hasEdit {
 		// Non-destructive Sampler edit: same transform as the Sampler tab's
 		// bake (BakeSample), applied to the fresh recipe render. BakeSample

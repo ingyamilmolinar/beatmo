@@ -86,9 +86,8 @@ func drawSynthFullNote(dst *ebiten.Image, rect image.Rectangle, mirror *synthMir
 	drawRoundedRect(dst, rect, TokenBorderSubtle(), RadiusSM, false)
 
 	pad := SpaceSM
-	captionScale := FontSizeCaption / FontSizeBody
-	captionH := int(float64(TextHeight()) * captionScale)
-	DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapYourSound), rect.Min.X+pad, rect.Min.Y+pad/2, TokenTextSecondary(), captionScale)
+	captionH := StyledTextHeight(RoleMicro)
+	DrawTextStyled(dst, i18n.T(i18n.KeyCapYourSound), rect.Min.X+pad, rect.Min.Y+pad/2, RoleMicro, TokenTextSecondary())
 
 	traceRect := image.Rect(rect.Min.X+pad, rect.Min.Y+pad+captionH, rect.Max.X-pad, rect.Max.Y-pad)
 	if traceRect.Dx() < 8 || traceRect.Dy() < 6 {
@@ -130,6 +129,37 @@ func drawSynthFullNote(dst *ebiten.Image, rect image.Rectangle, mirror *synthMir
 		drawCols(pcm, mirrorTraceGain(pcm), colWaveTrace, colSynthOscFill)
 	}
 	drawRect(dst, image.Rect(traceRect.Min.X, midY, traceRect.Max.X, midY+1), WithAlpha(genColorBorder, AlphaSubtle), true)
+}
+
+// drawSynthFullNote (method) routes the full-note "Your sound" card through
+// the synth sprite cache (Task 2, synth_sprite_cache.go). instID is used ONLY
+// to compute the cache key — the render itself still reads pcm/ghost straight
+// off mirror, unchanged (drawSynthFullNote, the free function above, is the
+// verbatim render callback).
+//
+// Key includes whether a ghost trace is currently present: the full-note
+// render is fed by updateSynthFullNoteLive, which is a debounced OFF-THREAD
+// (stale-while-revalidate) render — the params hash can change on the same
+// frame the async job is only just submitted, before its result lands. The
+// ghost flips synchronously at request time, so folding it into the key
+// forces a re-render at that same moment rather than blitting a texture that
+// still shows the pre-edit pcm. The remaining staleness window (between
+// request and the async render actually landing) is closed by
+// synthTabUpdate's Invalidate() call when synthMirror.consumeReady() fires —
+// see synth_panel_zone.go.
+func (p *synthPanel) drawSynthFullNote(dst *ebiten.Image, rect image.Rectangle, instID string, mirror *synthMirror) {
+	hasGhost := false
+	if mirror != nil {
+		_, ghost := mirror.snapshotFullRef()
+		hasGhost = len(ghost) > 1
+	}
+	key := struct {
+		hash  string
+		ghost bool
+	}{p.synthParamsHash(instID), hasGhost}
+	p.sprites.fullNote.Draw(dst, rect, key, func(img *ebiten.Image, r image.Rectangle) {
+		drawSynthFullNote(img, r, mirror)
+	})
 }
 
 // clampSignedUnit clamps v to [-1, 1].

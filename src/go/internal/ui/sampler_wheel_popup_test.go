@@ -9,11 +9,13 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// These tests pin the mobile-only behavior: a tap on a sampler knob opens the
-// shared MobileWheelPopup (the same control the Synth tab uses), while desktop
-// keeps the in-place rotary drag. Desktop must NOT open the popup.
+// These tests pin the universal behavior: a tap on a sampler knob CARD opens the
+// shared MobileWheelPopup (the same control the Synth tab uses) on EVERY platform
+// — desktop and mobile alike (the old desktop in-place rotary drag is retired).
 
 // newMobileSamplerWheelGame builds a Game with the Sampler tab active under a
 // forced MOBILE profile, captures row-0's instrument as a synth-source buffer
@@ -31,6 +33,11 @@ func newMobileSamplerWheelGame(t *testing.T) (*Game, string) {
 	restore := SetDensityForTest(DensitySpacious)
 	t.Cleanup(restore)
 	instID := g.drum.Rows[0].Instrument
+	// A test here may Accept a wheel edit, committing a sample-edit descriptor to
+	// the internal/audio package-global store. Clear it on cleanup so a later
+	// test capturing the same instrument (e.g. undo_sampler_test) sees a clean
+	// baseline — the store is process-wide, not per-Game.
+	t.Cleanup(func() { audio.ClearSampleEdit(instID) })
 	g.drum.sampler.captureFromSynth(instID)
 	if !g.drum.sampler.hasBuffer() || g.drum.sampler.captureID == "" {
 		t.Skipf("could not capture a sampler buffer for %q", instID)
@@ -39,15 +46,14 @@ func newMobileSamplerWheelGame(t *testing.T) (*Game, string) {
 	return g, instID
 }
 
-// TestSamplerMobileKnobRendersButtonNotDial pins the VISUAL contract: on mobile
-// every visible sampler knob renders the tap-to-open value-pill BUTTON (a
-// non-empty rect inside the knob cell), not the rotary dial. This guards the
-// reported regression where the sampler tab still showed dials on mobile.
-func TestSamplerMobileKnobRendersButtonNotDial(t *testing.T) {
+// TestSamplerMobileKnobCardWithinCell pins the VISUAL contract: on mobile every
+// visible sampler knob renders as a ParamCard whose rect sits inside the knob
+// cell (below the group-label band), so it never bleeds into a neighbouring row.
+func TestSamplerMobileKnobCardWithinCell(t *testing.T) {
 	g, instID := newMobileSamplerWheelGame(t)
 	dv := g.drum
-	// A real draw populates the dial rects the button geometry is derived from.
-	img := newTrackedImage("test.samplermobilebutton", 390, 720)
+	// A real draw populates the card rects.
+	img := newTrackedImage("test.samplermobilecard", 390, 720)
 	defer releaseImage(img)
 	g.Draw(img)
 
@@ -57,19 +63,13 @@ func TestSamplerMobileKnobRendersButtonNotDial(t *testing.T) {
 			continue
 		}
 		visible++
-		br := dv.samplerMobileKnobButtonRect(i)
-		if br.Empty() {
-			t.Errorf("knob %d: mobile button rect empty (still a dial?)", i)
-			continue
-		}
-		// The button must sit within the knob cell so it never bleeds into a
-		// neighbouring row.
+		card := k.Rect()
 		cell := dv.sampler.knobCells[i]
 		if cell.Empty() {
-			cell = k.Rect()
+			cell = card
 		}
-		if !br.In(cell) {
-			t.Errorf("knob %d: button %v escapes its cell %v", i, br, cell)
+		if !card.In(cell) {
+			t.Errorf("knob %d: card %v escapes its cell %v", i, card, cell)
 		}
 	}
 	if visible == 0 {
@@ -104,19 +104,19 @@ func TestSamplerKnobPressOpensWheelOnMobile(t *testing.T) {
 	}
 }
 
-// TestSamplerKnobPressDesktopNoPopup guards that desktop is untouched: a knob
-// press starts the in-place rotary drag (InputCaptured) and never opens the
-// popup. This pins the IsMobile() gate.
-func TestSamplerKnobPressDesktopNoPopup(t *testing.T) {
+// TestSamplerKnobPressOpensWheelOnDesktop pins the universal contract: a desktop
+// card press now OPENS the wheel popup (was: in-place rotary drag) and consumes
+// the press. Inverts the retired "desktop must NOT open the popup" gate.
+func TestSamplerKnobPressOpensWheelOnDesktop(t *testing.T) {
 	g := samplerLayoutGame(t) // desktop 1280x720, comfortable density
 	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
 	g.drum.sampler.captureFromSynth("kick")
-	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 180), "kick")
+	g.drum.buildSamplerTab(image.Rect(0, 0, 1280, 260), "kick")
 
 	img := newTrackedImage("test.samplerwheeldesktop", 1280, 720)
 	defer releaseImage(img)
-	g.Draw(img) // populate knob dial rects
+	g.Draw(img) // populate card rects
 
 	dv := g.drum
 	idx := samplerKnobGain
@@ -125,17 +125,16 @@ func TestSamplerKnobPressDesktopNoPopup(t *testing.T) {
 		t.Fatalf("desktop sampler knob %d rect empty after draw", idx)
 	}
 	r := k.Rect()
-	// Press the DIAL square (top knobD×knobD), where the rotary drag begins.
-	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dx()/2
+	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2
 
 	h := &samplerKnobHitAdapter{dv: dv, idx: idx}
 	res := h.OnPress(cx, cy)
 
-	if dv.samplerWheelPopup != nil && dv.samplerWheelPopup.IsOpen() {
-		t.Fatal("desktop knob press must NOT open the wheel popup")
+	if res != InputConsumed {
+		t.Fatalf("desktop card press must return InputConsumed (got %v) so the tap opens the popup", res)
 	}
-	if res != InputCaptured {
-		t.Fatalf("desktop knob press must capture the rotary drag (got %v)", res)
+	if dv.samplerWheelPopup == nil || !dv.samplerWheelPopup.IsOpen() {
+		t.Fatal("desktop card press must open the wheel popup")
 	}
 }
 

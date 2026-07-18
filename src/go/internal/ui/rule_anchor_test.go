@@ -95,6 +95,12 @@ func TestRulePitchStepsPerRoundFromStart(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
 	}
+	// task-enabled-status brief Part C: RulesEnabled is independent of Rules
+	// and defaults false — this test exercises rule APPLICATION, so it must
+	// explicitly enable.
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
+	}
 
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
@@ -155,12 +161,15 @@ func TestRuleEnabledMidPlaybackAnchorsAtZero(t *testing.T) {
 	// on why this must be a watermark, not a count).
 	beforeMax := maxIdx(collectParityPitches(g))
 
-	// Enable the rule mid-playback via the MENU path (stepRuleDelta — the
-	// anchor-stamping path under test — writeRules under the hood), not the
-	// raw model API. One rdpit+ step composes exactly "pitch +1 every 1
-	// round" (scratch EveryN defaults to 1).
+	// Configure + enable the rule mid-playback via the MENU path
+	// (stepRuleDelta writes the rule via writeRules — the anchor-stamping
+	// path under test; setRuleEnabled flips the independent RulesEnabled bit,
+	// task-enabled-status brief Part C — deltas alone never apply). One
+	// rdpit+ step composes exactly "pitch +1 every 1 round" (scratch EveryN
+	// defaults to 1).
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
+	g.groupMenu.setRuleEnabled(true)
 	advanceFrames(g, 1)
 	advancePlaybackByAbs(g, 3*loopLen)
 	g.SetPlaying(false)
@@ -200,11 +209,18 @@ func TestRuleEnabledMidPlaybackAnchorsAtZero(t *testing.T) {
 	}
 }
 
-// TestRuleToggleOffOnReanchors is brief Part C #3: a rule active from the
-// start (anchor 0) accumulates for 5 rounds; toggling Off then On mid-play
-// must re-anchor at the re-enable moment — the next round's pitch is 0, then
-// +1 — NOT continuing from +5/+6.
-func TestRuleToggleOffOnReanchors(t *testing.T) {
+// TestRuleToggleOffOnGatesWithoutReanchor is the task-enabled-status brief
+// Part C port of the old "Off/On re-anchors" test: under the new INDEPENDENT
+// RulesEnabled status bit, toggling Off/On (setRuleEnabled) is a pure gate —
+// it NEVER touches Rules or AnchorIdx (that's writeRules' job, only invoked
+// by delta/EveryN edits). A rule active from the start (anchor 0) accumulates
+// for 5 rounds; disabling it makes pitch read flat identity (0) for as long
+// as it stays disabled (BuildGroupIndex skips the group's rules entirely);
+// re-enabling resumes the ramp at whatever the ORIGINAL anchor's formula
+// produces for the CURRENT round — a "jump" reflecting the rounds that
+// elapsed while disabled, not a reset back near 0 (that reset behavior
+// belonged to the old "Off clears rules" design, removed by this task).
+func TestRuleToggleOffOnGatesWithoutReanchor(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -220,6 +236,9 @@ func TestRuleToggleOffOnReanchors(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
 	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
+	}
 
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
@@ -229,47 +248,131 @@ func TestRuleToggleOffOnReanchors(t *testing.T) {
 	setPlayStartForAbs(g, 0)
 	_ = g.Update()
 	advancePlaybackByAbs(g, 5*loopLen)
-	beforeMax := maxIdx(collectParityPitches(g))
+	preDisableMax := maxIdx(collectParityPitches(g))
 
-	// Toggle Off then On via the menu path (the paths that must re-anchor).
+	// Disable via the menu path — a pure gate, no rule/anchor mutation.
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.setRuleEnabled(false)
 	advanceFrames(g, 1)
+	if grp, ok := g.graph.Group(gid); !ok || len(grp.Rules) != 1 || grp.Rules[0].AnchorIdx != 0 {
+		t.Fatalf("disabling must not touch Rules/AnchorIdx, got %+v ok=%v", grp, ok)
+	}
+
+	advancePlaybackByAbs(g, 3*loopLen)
+	disabledPitches := collectParityPitches(g)
+	for i, p := range disabledPitches {
+		if i > preDisableMax && p != 0 {
+			t.Fatalf("while disabled, pitch must read flat identity 0, got idx=%d pitch=%v", i, p)
+		}
+	}
+	preReenableMax := maxIdx(disabledPitches)
+
+	// Re-enable — still a pure gate.
 	g.groupMenu.setRuleEnabled(true)
 	advanceFrames(g, 1)
+	if grp, ok := g.graph.Group(gid); !ok || len(grp.Rules) != 1 || grp.Rules[0].AnchorIdx != 0 {
+		t.Fatalf("re-enabling must not touch Rules/AnchorIdx either, got %+v ok=%v", grp, ok)
+	}
+
 	advancePlaybackByAbs(g, 3*loopLen)
 	g.SetPlaying(false)
 
 	pitches := collectParityPitches(g)
 	var post []int
 	for _, i := range sortedIdxs(pitches) {
-		if i > beforeMax {
+		if i > preReenableMax {
 			post = append(post, i)
 		}
 	}
-	if len(post) < 3 {
-		t.Fatalf("not enough post-reenable triggers captured: %v (beforeMax=%d)", post, beforeMax)
+	if len(post) == 0 {
+		t.Fatalf("no post-reenable triggers captured (preReenableMax=%d)", preReenableMax)
 	}
-	// The pre-fix bug continued accumulating from the ORIGINAL (pre-toggle)
-	// anchor: 5 rounds of pitch had already accrued before the Off/On toggle,
-	// so re-enabling continued from ~+5/+6 instead of resetting. The fix
-	// re-anchors on every write (including a plain re-enable), so the first
-	// post-reenable ROUND's pitch must be small, and subsequent rounds step by
-	// exactly Delta=1. roundPitchesInOrder collapses the fixture's
-	// 2-triggers-per-round shape into one pitch per round.
-	byRound := roundPitchesInOrder(post, pitches, loopStart, loopLen)
-	if len(byRound) < 3 {
-		t.Fatalf("not enough distinct post-reenable rounds: %v", byRound)
-	}
-	first := byRound[0]
-	if first >= 3 {
-		t.Fatalf("first post-reenable round pitch=%v, want < 3 (Off->On must re-anchor at the re-enable moment, not continue the pre-fix ~5/6 pattern)", first)
-	}
-	for k := 1; k < 3; k++ {
-		want := first + float64(k)
-		if byRound[k] != want {
-			t.Fatalf("post-reenable round #%d pitch=%v, want %v (must step by exactly Delta=1 per round from the re-anchor): %v", k, byRound[k], want, byRound)
+	// The anchor never moved off 0, so GroupEffect's formula (steps == round,
+	// since AnchorIdx==0 and EveryN==1) applies at every captured post-
+	// reenable index — including ones with round >= 8, well past the pre-fix
+	// design's "reset near 0" expectation.
+	for _, i := range post {
+		round := model.GroupRound(i, loopStart, loopLen)
+		want := float64(round)
+		if got := pitches[i]; got != want {
+			t.Fatalf("idx=%d round=%d pitch=%v, want %v (re-enable must resume the original anchor's formula, not reset)", i, round, got, want)
 		}
+	}
+}
+
+// TestDisabledRulesAreInert is task-enabled-status brief test C4: a committed
+// group with configured deltas but RulesEnabled false must produce FLAT
+// (identity) pitch throughout playback — the rule is inert purely because
+// BuildGroupIndex skips a disabled group's Rules (core/model/group_effect.go)
+// — and enabling it via SetGroupRulesEnabled mid-session must make the ramp
+// resume immediately (the session's existing AnchorIdx applies — "session
+// anchor rules apply", matching how a live toggle behaves elsewhere in this
+// suite, e.g. TestRuleToggleOffOnGatesWithoutReanchor).
+func TestDisabledRulesAreInert(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(800, 600)
+
+	a, b := buildEdge(g)
+	gid, err := g.graph.CreateGroup("", []model.NodeID{a.ID, b.ID})
+	if err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	if err := g.graph.SetGroupRules(gid, []model.GroupRule{
+		{Param: model.GroupParamPitch, Delta: 1, EveryN: 1},
+	}); err != nil {
+		t.Fatalf("SetGroupRules: %v", err)
+	}
+	// Deliberately left Disabled (the model default) — pins that configuring
+	// deltas alone never makes them audible.
+	if grp, ok := g.graph.Group(gid); !ok || grp.RulesEnabled {
+		t.Fatalf("setup: group must start Disabled, got %+v ok=%v", grp, ok)
+	}
+
+	loopStart := g.loopStartByRow[0]
+	loopLen := len(g.beatInfosByRow[0]) - loopStart
+
+	g.playFn = func(id string, vol float64, when ...float64) {}
+	g.SetPlaying(true)
+	setPlayStartForAbs(g, 0)
+	_ = g.Update()
+	advancePlaybackByAbs(g, 5*loopLen)
+
+	flatPitches := collectParityPitches(g)
+	if len(flatPitches) == 0 {
+		t.Fatalf("no parity audio captured while disabled")
+	}
+	for i, p := range flatPitches {
+		if p != 0 {
+			t.Fatalf("disabled group must produce flat pitch, got idx=%d pitch=%v", i, p)
+		}
+	}
+	preEnableMax := maxIdx(flatPitches)
+
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
+	}
+	advanceFrames(g, 1)
+	advancePlaybackByAbs(g, 3*loopLen)
+	g.SetPlaying(false)
+
+	pitches := collectParityPitches(g)
+	sawRamp := false
+	for i, p := range pitches {
+		if i > preEnableMax {
+			round := model.GroupRound(i, loopStart, loopLen)
+			want := float64(round) // AnchorIdx==0, EveryN==1: steps == round
+			if p != want {
+				t.Fatalf("post-enable idx=%d round=%d pitch=%v, want %v (session anchor rule must resume)", i, round, p, want)
+			}
+			if p != 0 {
+				sawRamp = true
+			}
+		}
+	}
+	if !sawRamp {
+		t.Fatalf("expected at least one nonzero post-enable pitch (ramp must resume), got all zero: %v", pitches)
 	}
 }
 
@@ -351,6 +454,9 @@ func TestRuleDeltaEditMidPlaybackContinuesRamp(t *testing.T) {
 		{Param: model.GroupParamPitch, Delta: initialDelta, EveryN: 1},
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
 
 	loopStart := g.loopStartByRow[0]
@@ -439,6 +545,9 @@ func TestRuleEveryNEditMidPlaybackKeepsCycleCount(t *testing.T) {
 		{Param: model.GroupParamPitch, Delta: delta, EveryN: 1},
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
 
 	loopStart := g.loopStartByRow[0]
@@ -530,6 +639,9 @@ func TestRuleNewParamMidPlaybackAnchorsFresh(t *testing.T) {
 		t.Fatalf("SetGroupRules: %v", err)
 	}
 
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
+	}
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart
 
@@ -652,11 +764,14 @@ func TestSavedRulesApplyOnReplayAfterStop(t *testing.T) {
 	setPlayStartForAbs(g, 5)
 	_ = g.Update()
 
-	// Enable the rule ~round 5 in via the menu path (Save/commit flow —
-	// stepRuleDelta -> writeRules), anchoring it well after abs 0.
+	// Configure + enable the rule ~round 5 in via the menu path (Save/commit
+	// flow — stepRuleDelta -> writeRules anchors the rule well after abs 0;
+	// setRuleEnabled flips the independent RulesEnabled bit — task-enabled-
+	// status brief Part C, deltas alone never apply).
 	advancePlaybackByAbs(g, 5*loopLen)
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
+	g.groupMenu.setRuleEnabled(true)
 	advanceFrames(g, 1)
 
 	grp, ok := g.graph.Group(gid)
@@ -766,10 +881,13 @@ func TestRuleSavedWhileStoppedStillRampsOnPlay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
-	// Enable the rule via the menu path WHILE STOPPED (matches the brief's
-	// "rules written while STOPPED (anchor 0) replay fine" control case).
+	// Configure + enable the rule via the menu path WHILE STOPPED (matches
+	// the brief's "rules written while STOPPED (anchor 0) replay fine"
+	// control case; setRuleEnabled flips the independent RulesEnabled bit —
+	// task-enabled-status brief Part C, deltas alone never apply).
 	g.groupMenu.OpenAt(gid, 100, 100)
 	g.groupMenu.stepRuleDelta(model.GroupParamPitch, 1)
+	g.groupMenu.setRuleEnabled(true)
 	advanceFrames(g, 1)
 	grp, ok := g.graph.Group(gid)
 	if !ok || len(grp.Rules) != 1 || grp.Rules[0].AnchorIdx != 0 {
@@ -830,6 +948,9 @@ func TestMidPlayEditContinuityStillHolds(t *testing.T) {
 		{Param: model.GroupParamPitch, Delta: initialDelta, EveryN: 1},
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
 
 	loopStart := g.loopStartByRow[0]
@@ -903,6 +1024,9 @@ func TestSeekPlayStartsRampAtSeek(t *testing.T) {
 		{Param: model.GroupParamPitch, Delta: 1, EveryN: 1},
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
 
 	loopStart := g.loopStartByRow[0]

@@ -644,12 +644,18 @@ func TestExportIncludesMasterVolume(t *testing.T) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("json: %v", err)
 	}
-	if f.MasterVolume != 0.65 {
-		t.Errorf("MasterVolume: got %f want 0.65", f.MasterVolume)
+	if f.MasterVolume == nil || *f.MasterVolume != 0.65 {
+		t.Errorf("MasterVolume: got %v want 0.65", f.MasterVolume)
 	}
 }
 
-func TestExportOmitsMasterVolumeWhenDefault(t *testing.T) {
+// TestExportAlwaysWritesMasterVolume retargets the old
+// TestExportOmitsMasterVolumeWhenDefault: export used to omit master_volume
+// at 1.0 ("the default"), but fresh sessions now start at 0.5 headroom, so
+// omitting any value bakes a stale default into the file — the funk-hop
+// investigation (2026-07-14) traced audible master hard-clipping to a file
+// that round-tripped back at 1.0. New contract: files are self-describing.
+func TestExportAlwaysWritesMasterVolume(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
@@ -668,8 +674,42 @@ func TestExportOmitsMasterVolumeWhenDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
-	if contains(string(data), `"master_volume"`) {
-		t.Error("expected master_volume omitted from JSON when default (1.0)")
+	if !contains(string(data), `"master_volume"`) {
+		t.Error("expected master_volume ALWAYS present in exported JSON (files must be self-describing)")
+	}
+}
+
+// TestMasterVolumeZeroRoundTrips pins the omitempty bug: a muted master
+// (0) was dropped from the JSON by float64+omitempty and re-imported at the
+// legacy 1.0 default — a silent project came back at FULL volume. The field
+// is now a pointer so 0 survives.
+func TestMasterVolumeZeroRoundTrips(t *testing.T) {
+	assertDefaultParityState(t)
+	logger := game_log.New(nil, game_log.LevelError)
+	g := New(logger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(640, 480)
+
+	ui := g.tryAddNode(0, 0, model.NodeTypeRegular)
+	g.drum.Rows[0].Origin = ui.ID
+	g.drum.Rows[0].Node = ui
+
+	prevVol := audio.MainVolume()
+	audio.SetMainVolume(0)
+	t.Cleanup(func() { audio.SetMainVolume(prevVol) })
+
+	data, err := g.drum.exportBytes()
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	g2 := New(testLogger)
+	t.Cleanup(g2.CloseForTest)
+	g2.Layout(640, 480)
+	if err := g2.Import(data); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if got := audio.MainVolume(); got != 0 {
+		t.Errorf("muted master round-trip: got %f want 0 (came back at full volume)", got)
 	}
 }
 
@@ -678,11 +718,12 @@ func TestImportAppliesMasterVolume(t *testing.T) {
 	prevVol := audio.MainVolume()
 	t.Cleanup(func() { audio.SetMainVolume(prevVol) })
 
+	mv := 0.4
 	file := exportFile{
 		Version:      1,
 		Subdiv:       32,
 		BPM:          120,
-		MasterVolume: 0.4,
+		MasterVolume: &mv,
 		Instruments: []exportInstrument{{
 			Name: "Kick", ID: "kick", Kind: "builtin", Volume: 1, Origin: 1, Color: "#FFFFFFFF",
 		}},

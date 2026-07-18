@@ -41,6 +41,9 @@ func TestGroupRulePitchAppliesByRound(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
 	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
+	}
 
 	loopStart := g.loopStartByRow[0]
 	loopLen := len(g.beatInfosByRow[0]) - loopStart

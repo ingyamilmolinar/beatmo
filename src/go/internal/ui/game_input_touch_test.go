@@ -45,7 +45,7 @@ func TestHandleTapInGrid_ConnectMode(t *testing.T) {
 
 	// Enter connect mode from node A.
 	g.enterConnectMode(a)
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("expected connectMode=true")
 	}
 
@@ -53,7 +53,7 @@ func TestHandleTapInGrid_ConnectMode(t *testing.T) {
 	bx, by := nodeScreenCenter(g, b)
 	g.handleTapInGrid(bx, by)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("expected connectMode=false after successful connect")
 	}
 	// Verify edge was created.
@@ -84,7 +84,7 @@ func TestHandleTapInGrid_ConnectMode_TapEmpty(t *testing.T) {
 	emptyX, emptyY := screenPosForGridIJ(g, 100, 100)
 	g.handleTapInGrid(emptyX, emptyY)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("expected connectMode cancelled after tap on empty space")
 	}
 }
@@ -101,18 +101,18 @@ func TestHandleTapInGrid_MoveMode_EmptyTarget(t *testing.T) {
 	n := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.updateBeatInfos()
 
-	g.moveMode = true
-	g.movingNode = n
+	g.modes.Enter(GridModeMove, n)
 
-	// Tap on empty grid position — no edges means loss=0, direct move.
+	// Move placement is edge-only: a tap on a free cell (not on an existing
+	// edge) cancels the mode instead of placing the node there.
 	tx, ty := screenPosForGridIJ(g, 32, 0)
 	g.handleTapInGrid(tx, ty)
 
-	if g.moveMode {
-		t.Fatal("expected moveMode=false after move")
+	if g.modes.Is(GridModeMove) {
+		t.Fatal("expected moveMode=false after cancel")
 	}
-	if n.I != 32 || n.J != 0 {
-		t.Fatalf("node at (%d,%d), want (32,0)", n.I, n.J)
+	if n.I != 0 || n.J != 0 {
+		t.Fatalf("node at (%d,%d), want (0,0) — free-cell tap must cancel, not move", n.I, n.J)
 	}
 }
 
@@ -127,14 +127,13 @@ func TestHandleTapInGrid_MoveMode_OccupiedTarget(t *testing.T) {
 	b := g.tryAddNode(32, 0, model.NodeTypeRegular)
 	g.updateBeatInfos()
 
-	g.moveMode = true
-	g.movingNode = a
+	g.modes.Enter(GridModeMove, a)
 
 	// Tap on position occupied by node b — should cancel.
 	bx, by := screenPosForGridIJ(g, 32, 0)
 	g.handleTapInGrid(bx, by)
 
-	if g.moveMode {
+	if g.modes.Is(GridModeMove) {
 		t.Fatal("expected moveMode cancelled after occupied target")
 	}
 	// Node a should NOT have moved.
@@ -144,106 +143,11 @@ func TestHandleTapInGrid_MoveMode_OccupiedTarget(t *testing.T) {
 	_ = b // keep b referenced
 }
 
-func TestHandleTapInGrid_MoveMode_EdgeLoss_Confirm(t *testing.T) {
-	assertDefaultParityState(t)
-	withDefaultStart(t, false)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	// Create A-B edge (perpendicular). Moving A to a non-perpendicular
-	// position relative to B causes edge loss > 0.
-	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	b := g.tryAddNode(32, 0, model.NodeTypeRegular)
-	g.addEdge(a, b)
-	g.updateBeatInfos()
-
-	g.moveMode = true
-	g.movingNode = a
-
-	// Move to (16,16) — neither I=16 matches B.I=32 nor J=16 matches B.J=0,
-	// so loss = 1.
-	tx, ty := screenPosForGridIJ(g, 16, 16)
-	g.handleTapInGrid(tx, ty)
-
-	if !g.moveConfirm {
-		t.Fatal("expected moveConfirm=true due to edge loss")
-	}
-	if g.moveEdgeLoss != 1 {
-		t.Fatalf("moveEdgeLoss=%d, want 1", g.moveEdgeLoss)
-	}
-}
-
-func TestHandleTapInGrid_MoveMode_ConfirmDialog(t *testing.T) {
-	assertDefaultParityState(t)
-	withDefaultStart(t, false)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.updateBeatInfos()
-
-	// Manually set up the confirm dialog state.
-	g.moveMode = true
-	g.movingNode = a
-	g.moveConfirm = true
-	g.moveConfirmI = 32
-	g.moveConfirmJ = 32
-	g.moveEdgeLoss = 1
-
-	// Compute the cancel button rect (same math as the source).
-	dw, dh := 280, 60
-	dx := (g.split.GridW(g.winW) - dw) / 2
-	dy := (g.split.GridH(g.winH) - dh) / 2
-	cancelRect_x := dx + 160 + (dx+240-dx-160)/2 // center of cancel button
-	cancelRect_y := dy + 30 + (dy+50-dy-30)/2
-
-	// Tap cancel button.
-	g.handleTapInGrid(cancelRect_x, cancelRect_y)
-
-	if g.moveMode {
-		t.Fatal("expected moveMode=false after cancel")
-	}
-	if a.I != 0 || a.J != 0 {
-		t.Fatalf("node at (%d,%d), want (0,0) — cancel should not move", a.I, a.J)
-	}
-}
-
-func TestHandleTapInGrid_MoveMode_ConfirmDialog_Confirm(t *testing.T) {
-	assertDefaultParityState(t)
-	withDefaultStart(t, false)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
-	g.updateBeatInfos()
-
-	// Manually set up confirm dialog.
-	g.moveMode = true
-	g.movingNode = a
-	g.moveConfirm = true
-	g.moveConfirmI = 32
-	g.moveConfirmJ = 0
-	g.moveEdgeLoss = 1
-
-	// Compute confirm button center.
-	dw, dh := 280, 60
-	dx := (g.split.GridW(g.winW) - dw) / 2
-	dy := (g.split.GridH(g.winH) - dh) / 2
-	confirmX := dx + 40 + (120-40)/2
-	confirmY := dy + 30 + (50-30)/2
-
-	g.handleTapInGrid(confirmX, confirmY)
-
-	if g.moveMode {
-		t.Fatal("expected moveMode=false after confirm")
-	}
-	if a.I != 32 || a.J != 0 {
-		t.Fatalf("node at (%d,%d), want (32,0) — confirm should move", a.I, a.J)
-	}
-}
+// The edge-loss confirmation dialog (moveConfirm / moveEdgeLoss) was retired
+// in favor of edge-only placement with immediate commit: a moved node with
+// its own edges silently drops the ones that go non-orthogonal at the
+// destination, with no confirmation step. That coverage now lives in
+// TestMoveMode_MoveWithOwnEdgesDropsNonOrthogonalSilently (grid_mode_flow_test.go).
 
 // --- Test: origin selection -------------------------------------------------
 
@@ -726,7 +630,12 @@ func TestMobileGridPanAfterPortalClose(t *testing.T) {
 	initialNodes := len(g.nodes)
 	initialOffX := g.cam.OffsetX
 
-	gridCenterX := 180
+	// Offset well clear of the default start node's screen position (the
+	// camera centers on it, so the untouched "grid center" sits exactly on
+	// top of the node) — otherwise the grid-guide aiming gesture (see
+	// grid_guide.go's updateGuideAim) arms on press and the drag aims/places
+	// a node instead of panning, which is this test's actual subject.
+	gridCenterX := 260
 	gridCenterY := g.split.Y / 2
 	if gridCenterY < 10 {
 		gridCenterY = 10
@@ -803,7 +712,12 @@ func TestMobileGridPanAfterDrumTouch(t *testing.T) {
 	initialNodes := len(g.nodes)
 	initialOffX := g.cam.OffsetX
 
-	gridCenterX := 180
+	// Offset well clear of the default start node's screen position (the
+	// camera centers on it, so the untouched "grid center" sits exactly on
+	// top of the node) — otherwise the grid-guide aiming gesture (see
+	// grid_guide.go's updateGuideAim) arms on press and the drag aims/places
+	// a node instead of panning, which is this test's actual subject.
+	gridCenterX := 260
 	gridCenterY := g.split.Y / 2
 	if gridCenterY < 10 {
 		gridCenterY = 10

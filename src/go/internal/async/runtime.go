@@ -106,12 +106,29 @@ func Snapshot() RuntimeSnapshot {
 	return RuntimeSnapshot{
 		NumCPU:               runtime.NumCPU(),
 		GOMAXPROCS:           runtime.GOMAXPROCS(0),
-		GCPercent:            debug.SetGCPercent(-2), // -2 returns current without changing
-		MemoryLimit:          debug.SetMemoryLimit(-1),
-		BlockProfileRate:     0, // runtime does not expose a getter
+		GCPercent:            readGCPercent(),
+		MemoryLimit:          debug.SetMemoryLimit(-1), // negative genuinely reads-without-setting for SetMemoryLimit
+		BlockProfileRate:     0,                        // runtime does not expose a getter
 		MutexProfileFraction: runtime.SetMutexProfileFraction(-1),
 		NumGoroutine:         runtime.NumGoroutine(),
 	}
+}
+
+// readGCPercent returns the current GOGC without leaving it changed.
+//
+// IMPORTANT: unlike SetMemoryLimit / SetMutexProfileFraction, a NEGATIVE
+// argument to debug.SetGCPercent does NOT read-without-setting — the runtime
+// clamps any negative value to -1, which DISABLES garbage collection. The old
+// `debug.SetGCPercent(-2)` "read" therefore turned automatic GC OFF for the
+// whole process the first time Snapshot() ran (at the startup config log), so
+// the pacer never triggered again and HeapAlloc climbed unbounded (measured:
+// heap 25 MB → 382 MB with zero GC cycles over 30 s of playback; the WASM
+// ForceGCInterval crutch was masking this by forcing collections explicitly).
+// Round-trip through the setter to read the value and immediately restore it.
+func readGCPercent() int {
+	prev := debug.SetGCPercent(-1) // disables GC, returns the previous value
+	debug.SetGCPercent(prev)       // restore it — net no-op (re-enables if it was on)
+	return prev
 }
 
 func envInt(key string, def int) int {

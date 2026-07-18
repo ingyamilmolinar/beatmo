@@ -82,11 +82,12 @@ func TestLongPressPopupConnectHoverTintsToInstrument(t *testing.T) {
 	}
 }
 
-// TestNodeSidebarButtonBordersUseInstrumentColor verifies that the node
-// sidebar's interactive buttons (the ± steppers and the logic selector) carry
-// borders in the node's instrument color, not the fixed light-blue stepper
-// border / white secondary border.
-func TestNodeSidebarButtonBordersUseInstrumentColor(t *testing.T) {
+// TestNodeSidebarButtonFacesStayNeutral pins the 2026-07-16 redesign: the
+// sidebar's interactive buttons (± steppers, logic selector) keep the plain
+// DropdownStyle keycap face — the node's identity lives in the header band,
+// title swatch, and dropdown accent stripes, never on button fills (the old
+// tintBtnAccent 40% face tint made the panel read as color-filled blocks).
+func TestNodeSidebarButtonFacesStayNeutral(t *testing.T) {
 	assertDefaultParityState(t)
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)
@@ -105,20 +106,16 @@ func TestNodeSidebarButtonBordersUseInstrumentColor(t *testing.T) {
 	g.sidebar.sectionOpen["logic"] = true
 	g.sidebar.layout()
 
-	// Node buttons now carry the instrument color as a TINT on the keycap FACE
-	// (the 3D-keycap accent — like the latched-amber state — instead of a flat
-	// bright outline) so they read as the same 3D keycaps as the menus while
-	// still being node-colored. Draw so tintBtnAccent runs, then assert the
-	// blended fill on a stepper and the logic selector.
+	// Draw a frame, then assert the faces are the untinted DropdownStyle
+	// fill on a stepper and the logic selector.
 	g.sidebar.Draw(ebiten.NewImage(640, 1000))
 
-	ddFill := color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA)
-	wantFill := blendColor(ddFill, want, sidebarBtnAccentTint)
+	wantFill := color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA)
 
 	if vb := g.sidebar.btns["vol+"]; vb != nil {
 		if bs, ok := vb.Style.(ButtonStyle); ok {
 			if got := color.RGBAModel.Convert(bs.Fill).(color.RGBA); got != wantFill {
-				t.Errorf("vol+ stepper face = %v, want node-tinted %v", got, wantFill)
+				t.Errorf("vol+ stepper face = %v, want neutral DropdownStyle fill %v", got, wantFill)
 			}
 		} else {
 			t.Errorf("vol+ button style is %T, want ButtonStyle", vb.Style)
@@ -130,7 +127,7 @@ func TestNodeSidebarButtonBordersUseInstrumentColor(t *testing.T) {
 	if lb := g.sidebar.btns["logic"]; lb != nil {
 		if bs, ok := lb.Style.(ButtonStyle); ok {
 			if got := color.RGBAModel.Convert(bs.Fill).(color.RGBA); got != wantFill {
-				t.Errorf("logic selector face = %v, want node-tinted %v", got, wantFill)
+				t.Errorf("logic selector face = %v, want neutral DropdownStyle fill %v", got, wantFill)
 			}
 		} else {
 			t.Errorf("logic button style is %T, want ButtonStyle", lb.Style)

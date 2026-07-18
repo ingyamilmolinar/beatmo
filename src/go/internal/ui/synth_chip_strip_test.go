@@ -280,7 +280,9 @@ func TestSynthDetailPane_EnablePillForSelectedStage(t *testing.T) {
 		t.Errorf("enable pill %v must sit inside the detail pane %v", pill, dv.instEditorDetailR)
 	}
 
-	// VOICE never carries an enable pill. drum-snare's first section is VOICE.
+	// VOICE is mandatory (the voice IS the instrument): when it carries family
+	// knobs it shows a LOCKED, non-interactive enable pill (drum-snare's first
+	// section is VOICE, populated with snare_* knobs). An empty VOICE is pruned.
 	g2 := newSynthTabGame(t)
 	layoutSynthTab(t, g2)
 	g2.Layout(1280, 720)
@@ -288,16 +290,12 @@ func TestSynthDetailPane_EnablePillForSelectedStage(t *testing.T) {
 	dv2 := g2.drum
 	dv2.setSelectedSynthSection("snare", synthSectionVoice)
 	layoutSynthTab(t, g2)
-	if hasVoice := func() bool {
-		for _, s := range dv2.SynthTabSections() {
-			if s.id == synthSectionVoice {
-				return true
-			}
+	if sec, ok := synthSectionByID(dv2, synthSectionVoice); ok {
+		if dv2.synthDetailEnablePillRect().Empty() {
+			t.Errorf("populated VOICE must show its (locked) enable pill")
 		}
-		return false
-	}(); hasVoice {
-		if !dv2.synthDetailEnablePillRect().Empty() {
-			t.Errorf("VOICE detail header must not show an enable pill")
+		if st := dv2.synthStageEnableState("snare", &sec); st.interactive {
+			t.Errorf("mandatory VOICE pill must be non-interactive (locked)")
 		}
 	}
 }
@@ -486,44 +484,6 @@ func TestSynthChips_HandleInput_GhostChipTapDoesNotEnable(t *testing.T) {
 	}
 	if !chipByID(t, dv, synthSectionFilter).selected {
 		t.Errorf("ghost chip tap via handleSynthTabInput must still select the stage")
-	}
-}
-
-// TestSynthChips_TapIgnoredWhileKnobCapturing — chip taps during a captured
-// knob drag must not change the selection (a selection swap would zero the
-// dragged knob's rect mid-gesture).
-func TestSynthChips_TapIgnoredWhileKnobCapturing(t *testing.T) {
-	g := newSynthTabGame(t)
-	layoutSynthTab(t, g)
-	dv := g.drum
-
-	var sel *synthSection
-	for i := range dv.instEditorSections {
-		if chipByID(t, dv, dv.instEditorSections[i].id).selected {
-			sel = &dv.instEditorSections[i]
-		}
-	}
-	if sel == nil || len(sel.knobIdxs) == 0 {
-		t.Fatalf("no selected knobbed section")
-	}
-	k := dv.instEditorKnobs[sel.knobIdxs[0]]
-	if k.Rect().Empty() {
-		t.Fatalf("selected stage's first knob has no rect")
-	}
-	kc := k.Rect().Min.Add(k.Rect().Max).Div(2)
-	k.HandleInputResult(kc.X, kc.Y, true) // press = capture
-	if !k.Capturing() {
-		t.Fatalf("knob did not capture the press")
-	}
-	t.Cleanup(func() { k.HandleInputResult(kc.X, kc.Y, false) })
-
-	target := synthSectionEnvelope
-	ha := findChipHitArea(t, dv, target)
-	cx, cy := (ha.Rect.Min.X+ha.Rect.Max.X)/2, (ha.Rect.Min.Y+ha.Rect.Max.Y)/2
-	ha.Handler.OnPress(cx, cy)
-	layoutSynthTab(t, g)
-	if chipByID(t, dv, target).selected {
-		t.Errorf("chip tap during a captured knob drag must be ignored")
 	}
 }
 

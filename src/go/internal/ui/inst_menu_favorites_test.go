@@ -110,9 +110,9 @@ func instMenuTestProps(instruments []InstrumentOption, categories []string) Inst
 
 // TestInstMenu_FavoritesVirtualCategoryAppearsFirst pins that the menu
 // renders "Favorites" as the very first category row whenever a Favorites
-// store is wired, and that the row carries a count badge when the store is
-// non-empty. The badge format is "Favorites (N)" so a glance tells the user
-// how many ★s they've collected.
+// store is wired, and that the row carries its ★ count as a trailing
+// caption (categoryMeta) so a glance tells the user how many ★s they've
+// collected — the count is display metadata, not part of the label.
 func TestInstMenu_FavoritesVirtualCategoryAppearsFirst(t *testing.T) {
 	store := NewInMemoryFavoritesStore("kick", "snare")
 	props := instMenuTestProps(
@@ -136,9 +136,11 @@ func TestInstMenu_FavoritesVirtualCategoryAppearsFirst(t *testing.T) {
 	if len(btns) == 0 {
 		t.Fatalf("no category buttons rendered")
 	}
-	want := "Favorites (2)"
-	if btns[0].Text != want {
-		t.Errorf("first category row Text = %q, want %q", btns[0].Text, want)
+	if btns[0].Text != "Favorites" {
+		t.Errorf("first category row Text = %q, want %q", btns[0].Text, "Favorites")
+	}
+	if len(comp.categoryMeta) == 0 || !comp.categoryMeta[0].favRow || comp.categoryMeta[0].count != 2 {
+		t.Errorf("first category row meta = %+v, want favRow=true count=2", comp.categoryMeta)
 	}
 }
 
@@ -230,9 +232,9 @@ func TestInstMenu_FavoritesPinnedInInstrumentsMode(t *testing.T) {
 func TestInstMenu_FavoritesPinnedWithSearchQuery(t *testing.T) {
 	store := NewInMemoryFavoritesStore("kick-fav") // kick-fav is ★ but a weak match for "snare"
 	insts := []InstrumentOption{
-		{ID: "snare-tight", Label: "Snare Tight", Category: "Drums"},   // strong match
-		{ID: "kick-fav", Label: "Kick Fav", Category: "Drums"},         // ★, no match for snare
-		{ID: "snare-loose", Label: "Snare Loose", Category: "Drums"},   // strong match
+		{ID: "snare-tight", Label: "Snare Tight", Category: "Drums"}, // strong match
+		{ID: "kick-fav", Label: "Kick Fav", Category: "Drums"},       // ★, no match for snare
+		{ID: "snare-loose", Label: "Snare Loose", Category: "Drums"}, // strong match
 	}
 	props := instMenuTestProps(insts, []string{"Drums"})
 	props.Favorites = store

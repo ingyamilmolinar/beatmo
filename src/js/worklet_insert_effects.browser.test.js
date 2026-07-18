@@ -262,6 +262,20 @@ try {
 
       console.log(`  Samples: ${result.sampleCount}, Active: ${result.activeCount}, RMS: ${result.rms.toFixed(6)}, Peak: ${result.peak.toFixed(6)}`);
 
+      // Noise gate: the played kick sits below the gate threshold, so a WORKING
+      // gate REMOVES it — near-silence is the pass condition, not a failure.
+      // (A gate can only pass a signal unchanged or attenuate it; the generic
+      // "must modify AND have active samples" logic below can't express that.
+      // Deterministic gating correctness lives in insert_effects_webaudio.browser.test.js.)
+      if (config.type === "gate") {
+        const attenuated = result.peak < baseline.peak * 0.25;
+        console.log(`  gate: wet peak ${result.peak.toFixed(6)} vs baseline peak ${baseline.peak.toFixed(6)} (want < 25%)`);
+        if (attenuated) { testPassed = true; break; }
+        console.log("  WARNING: gate did not attenuate sub-threshold signal, retrying...");
+        if (attempt < MAX_RETRIES) { await page.waitForTimeout(1000); continue; }
+        break;
+      }
+
       if (result.activeCount === 0 || result.rms < 0.0001) {
         console.log("  WARNING: no active samples, retrying...");
         if (attempt < MAX_RETRIES) {

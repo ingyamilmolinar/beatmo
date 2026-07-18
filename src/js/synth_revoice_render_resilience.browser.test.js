@@ -11,7 +11,10 @@
  *
  * This test forces the failure mode via window.__forceRevoiceRenderThrow and
  * asserts the soloed instrument stays AUDIBLE (native fallback) after the
- * generator change, and that the loud error surfaced.
+ * generator change, and that the loud error surfaced. It then disarms the
+ * throw and asserts a clean re-voice still renders audibly — that one is
+ * checked at the RENDER level rather than acoustically; see the comment on
+ * the disarm phase for why live RMS is unmeasurable there under parallel load.
  *
  * Run: GO=/abs/path/.tools/go/bin/go node src/js/synth_revoice_render_resilience.browser.test.js
  */
@@ -93,6 +96,7 @@ const RMS_MIN = 1e-4;
 try {
   await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
   await page.waitForFunction(() => typeof startPlay === "function" && typeof setInstrumentParam === "function" && typeof totalRows === "function", { timeout: 30000 });
+  await page.waitForFunction(() => typeof window.__testCaptureSynthRender === "function", { timeout: 30000 });
   await page.waitForFunction(() => window.audioReady !== undefined, { timeout: 30000 });
   await page.evaluate(() => { forceDraw?.(); });
   await page.waitForFunction(() => totalRows() >= 2, { timeout: 15000 });
@@ -139,13 +143,45 @@ try {
   }
 
   // Disarm and confirm a clean re-voice still works (no permanent damage).
+  //
+  // This phase asserts on the RENDER, not on live RMS, and deliberately so.
+  // Live RMS cannot measure anything by this point in the run: under
+  // `make test-real`'s 4-way parallel browser load the WASM game loop is
+  // starved hard enough that the sequencer stops emitting (CI shows
+  // seqFire.max≈350ms against a 4ms tick, plus a PARITY emitdrift breach), and
+  // the mix reads EXACT 0.000000 for 10+ seconds with playing=true and the tap
+  // still receiving frames. That silence is NOT this test's regression: a
+  // control run that changes NO params at all measures 22 of 24 windows below
+  // this same floor. So an acoustic threshold that survived the contention
+  // would have to accept 0 — i.e. have no teeth at all.
+  //
+  // __testCaptureSynthRender renders on demand and inspects the resulting
+  // buffer, which proves "the forced throw left no permanent damage" exactly
+  // and with no dependency on real-time scheduling. It is the same helper the
+  // other synth-audibility suites assert with (synth_generator_audible,
+  // modular_synth_audible, synth_param_extremes, …).
+  //
+  // Playback is stopped BEFORE the capture so ensureRenderedSample is allowed
+  // its synchronous main-thread fallback — during playback it refuses to block
+  // and throws "render deferred", which a loaded render worker could otherwise
+  // trigger. isPlaybackActive() lags the last scheduled note by ~0.5s, hence
+  // the settle wait.
   await page.evaluate(() => { window.__forceRevoiceRenderThrow = false; });
   await page.evaluate((id) => setInstrumentParam(id, "gen_type", 6), inst); // Noise White
-  const recovered = await measureUntil(floor, 8000);
-  console.log(`[TEST] after disarming, clean re-voice rms=${recovered.toFixed(5)}`);
-  if (!(recovered > floor)) fail(`instrument did not recover after disarming the forced throw (rms=${recovered.toFixed(6)})`);
-
   await page.evaluate(() => stopPlay());
+  await page.waitForTimeout(800);
+  const fallbacksBefore = fallbackLogs.length;
+  const rec = await page.evaluate((id) => window.__testCaptureSynthRender(id), inst);
+  console.log(`[TEST] after disarming, clean re-voice render peak=${rec ? rec.peak.toFixed(5) : "null"} rms=${rec ? rec.rms.toFixed(5) : "null"}`);
+  if (!rec || !(rec.peak > 0)) {
+    fail(`instrument did not recover after disarming the forced throw — the clean re-voice render is ${rec ? `SILENT (peak=${rec.peak})` : "unavailable"}`);
+  }
+  // The re-voice must now go through the parameterized renderer on its own.
+  // Still hitting the native fallback would mean the render is broken
+  // independently of the (now disarmed) forced throw.
+  if (fallbackLogs.length > fallbacksBefore) {
+    fail("a DISARMED re-voice still fell back to the native renderer — the parameterized render is broken on its own");
+  }
 } catch (e) {
   fail("exception: " + (e && e.message ? e.message : String(e)));
 } finally {

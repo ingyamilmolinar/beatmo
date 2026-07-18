@@ -5,7 +5,7 @@ import path from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { resolveGoBinary, assertSimpleDrawMode, shouldSkipWasmBuild, flushCoverage, isCoverageEnabled } from "./browser_test_helpers.js";
-import { cdpTap, cdpLongPress as _cdpLongPress, cdpPinch, cdpTwoFingerPan, cdpDrag, cdpLongPressAndSlide as _cdpLongPressAndSlide, canvasToPageCoords } from "./touch_cdp_helpers.js";
+import { cdpTap, cdpPinch, cdpTwoFingerPan, cdpDrag, canvasToPageCoords } from "./touch_cdp_helpers.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const jsDir = __dirname;
@@ -239,6 +239,157 @@ if (nodeInfo && nodeInfo.x + nodeInfo.w / 2 < gridBound) {
     `Node menu not opened after long-press delete (menuOpen=${menuOpen})`);
 } else {
   console.log("  Skipped (no node found at 0,0)");
+}
+
+// Test 6: long-press a node, slide to MOVE, release; tap an edge point → node moves
+console.log("Test 6: long-press slide-to-Move relocates node onto edge point");
+{
+  // Fresh mini-circuit away from the default path: endpoints A(6,2)–B(6,6)
+  // with a vertical edge (interior cells (6,3)..(6,5)); mover M at (8,3).
+  // Camera is already parked at scale=2.0 / offset=(100,100) from Test 5
+  // (verified empirically to keep these grid coords on-canvas on iPhone 12).
+  await page.evaluate(() => {
+    addNode(6, 2, 'regular'); addNode(6, 6, 'regular');
+    addEdgeGrid(6, 2, 6, 6);
+    addNode(8, 3, 'regular');
+  });
+  await page.waitForTimeout(150);
+  const mRect = await page.evaluate(() => nodeRect(8, 3));
+  const aRect = await page.evaluate(() => nodeRect(6, 2));
+  const bRect = await page.evaluate(() => nodeRect(6, 6));
+  assert(mRect && aRect && bRect, `test nodes visible (m=${JSON.stringify(mRect)})`);
+  const moverId = await page.evaluate(() => nodeIdAt(8, 3));
+
+  if (mRect && aRect && bRect) {
+    // 1) Long-press the mover to open the popup (canvas coords → page coords).
+    const mC = await canvasToPageCoords(page, mRect.x + mRect.w / 2, mRect.y + mRect.h / 2);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: mC.x, y: mC.y, id: 1 }],
+    });
+    // Poll for the popup's Move rect instead of a fixed wait (CPU contention).
+    let moveRect = null;
+    for (let i = 0; i < 30 && !moveRect; i++) {
+      await page.waitForTimeout(100);
+      moveRect = await page.evaluate(() =>
+        typeof longPressMoveRect === 'function' ? longPressMoveRect() : null);
+    }
+    assert(moveRect, `long-press popup opened with Move rect (${JSON.stringify(moveRect)})`);
+
+    if (moveRect) {
+      // 2) Slide the same touch onto Move and release → arms move mode.
+      const mv = await canvasToPageCoords(page, moveRect.x + moveRect.w / 2, moveRect.y + moveRect.h / 2);
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove', touchPoints: [{ x: mv.x, y: mv.y, id: 1 }],
+      });
+      await page.waitForTimeout(150);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp.detach();
+      await page.waitForTimeout(300);
+      const armed = await page.evaluate(() => gridModeState());
+      assert(armed.mode === 'move' && armed.subjectId === moverId,
+        `move mode armed on mover (${JSON.stringify(armed)})`);
+
+      // 3) Tap the edge midpoint cell (6,4): screen midpoint of A and B centers.
+      const tgt = await canvasToPageCoords(page,
+        (aRect.x + aRect.w / 2 + bRect.x + bRect.w / 2) / 2,
+        (aRect.y + aRect.h / 2 + bRect.y + bRect.h / 2) / 2);
+      await cdpTap(page, tgt.x, tgt.y);
+      await page.waitForTimeout(400);
+      const moved = await page.evaluate(() => ({
+        atOld: nodeIdAt(8, 3), atNew: nodeIdAt(6, 4), mode: gridModeState().mode,
+      }));
+      assert(moved.atOld === -1 && moved.atNew === moverId,
+        `node relocated (8,3)→(6,4) (${JSON.stringify(moved)})`);
+      assert(moved.mode === 'none', `move mode committed (mode=${moved.mode})`);
+    } else {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp.detach();
+    }
+  }
+  await page.waitForTimeout(200);
+}
+
+// Test 7: armed move mode + tap on empty cell cancels (node stays)
+console.log("Test 7: move-mode tap on empty cell cancels");
+{
+  await page.evaluate(() => { addNode(12, 3, 'regular'); });
+  await page.waitForTimeout(150);
+  const nRect = await page.evaluate(() => nodeRect(12, 3));
+  assert(nRect, `cancel-test node visible (${JSON.stringify(nRect)})`);
+  if (nRect) {
+    const nC = await canvasToPageCoords(page, nRect.x + nRect.w / 2, nRect.y + nRect.h / 2);
+    const cdp2 = await page.context().newCDPSession(page);
+    await cdp2.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: nC.x, y: nC.y, id: 1 }] });
+    let mr = null;
+    for (let i = 0; i < 30 && !mr; i++) {
+      await page.waitForTimeout(100);
+      mr = await page.evaluate(() => typeof longPressMoveRect === 'function' ? longPressMoveRect() : null);
+    }
+    if (assert(mr, "popup opened for cancel test")) {
+      const mv = await canvasToPageCoords(page, mr.x + mr.w / 2, mr.y + mr.h / 2);
+      await cdp2.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: mv.x, y: mv.y, id: 1 }] });
+      await page.waitForTimeout(150);
+      await cdp2.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp2.detach();
+      await page.waitForTimeout(300);
+      // Tap a nearby empty cell (no edge there, still on-canvas): mode must
+      // cancel, node must stay. +80/+60 (rather than the larger offsets a
+      // desktop viewport could afford) keeps the target inside the 390×664
+      // iPhone-12 canvas measured for this camera position.
+      const empty = await canvasToPageCoords(page, nRect.x + nRect.w / 2 + 80, nRect.y + nRect.h / 2 + 60);
+      await cdpTap(page, empty.x, empty.y);
+      await page.waitForTimeout(400);
+      const after = await page.evaluate(() => ({ still: nodeIdAt(12, 3), mode: gridModeState().mode }));
+      assert(after.still !== -1, `node stayed at (12,3) after invalid drop (${JSON.stringify(after)})`);
+      assert(after.mode === 'none', `mode canceled (mode=${after.mode})`);
+    } else {
+      await cdp2.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp2.detach();
+    }
+  }
+  await page.waitForTimeout(200);
+}
+
+// Test 8: long-press slide-to-Copy, tap free cell pastes a copy
+console.log("Test 8: long-press slide-to-Copy pastes at tapped cell");
+{
+  const before = await page.evaluate(() => totalNodes());
+  const srcRect = await page.evaluate(() => nodeRect(6, 2)); // endpoint A from Test 6
+  assert(srcRect, `copy source visible (${JSON.stringify(srcRect)})`);
+  if (srcRect) {
+    const sC = await canvasToPageCoords(page, srcRect.x + srcRect.w / 2, srcRect.y + srcRect.h / 2);
+    const cdp3 = await page.context().newCDPSession(page);
+    await cdp3.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: sC.x, y: sC.y, id: 1 }] });
+    let cr = null;
+    for (let i = 0; i < 30 && !cr; i++) {
+      await page.waitForTimeout(100);
+      cr = await page.evaluate(() =>
+        typeof longPressCopyRect === 'function' ? longPressCopyRect() : null);
+    }
+    if (assert(cr, "popup opened with Copy rect")) {
+      const cv = await canvasToPageCoords(page, cr.x + cr.w / 2, cr.y + cr.h / 2);
+      await cdp3.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cv.x, y: cv.y, id: 1 }] });
+      await page.waitForTimeout(150);
+      await cdp3.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp3.detach();
+      await page.waitForTimeout(300);
+      const armed = await page.evaluate(() => gridModeState());
+      assert(armed.mode === 'copy', `copy mode armed (${JSON.stringify(armed)})`);
+      // Paste on a free cell left of the source (still on-canvas).
+      const paste = await canvasToPageCoords(page, srcRect.x + srcRect.w / 2 - 80, srcRect.y + srcRect.h / 2);
+      await cdpTap(page, paste.x, paste.y);
+      await page.waitForTimeout(400);
+      const afterCount = await page.evaluate(() => totalNodes());
+      assert(afterCount === before + 1, `paste added one node (${before} → ${afterCount})`);
+      assert((await page.evaluate(() => gridModeState())).mode === 'none', 'copy mode committed');
+    } else {
+      await cdp3.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await cdp3.detach();
+    }
+  }
+  await page.waitForTimeout(200);
 }
 
 if (isCoverageEnabled()) await flushCoverage(page, new URL("../../coverage/browser-raw", import.meta.url).pathname, "touch_gestures");

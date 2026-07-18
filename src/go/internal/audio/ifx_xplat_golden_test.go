@@ -6,9 +6,10 @@ package audio
 //
 // The same C source is compiled twice: natively into build/libdrums.a (this
 // package's cgo wrappers — the desktop audio path) and via Emscripten into
-// src/js/drums.single.js (the browser AudioWorklet path,
-// src/js/insert_fx_worklet.js). Until this test there was NO check that the
-// two builds produce the same audio for the same effect + params — per-effect
+// src/js/drums.single.js (exercised in the browser by
+// src/js/xplat_insert_fx_parity.browser.test.js). Until this test there was NO
+// check that the two builds produce the same audio for the same effect +
+// params — per-effect
 // functional tests existed on both sides, but a drift (param-mapping bug,
 // compiler flag change, libm divergence) would ship silently.
 //

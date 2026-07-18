@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"fmt"
-	"image"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
@@ -12,8 +9,7 @@ import (
 // enterConnectMode activates connect mode: the next grid tap will create
 // a directed edge from the given node to the tapped target.
 func (g *Game) enterConnectMode(node *uiNode) {
-	g.connectMode = true
-	g.connectFromNode = node
+	g.modes.Enter(GridModeConnect, node)
 	// Visually select the source node.
 	if g.sel != nil {
 		g.sel.Selected = false
@@ -25,14 +21,15 @@ func (g *Game) enterConnectMode(node *uiNode) {
 
 // handleConnectModeTap processes a grid tap while connect mode is active.
 func (g *Game) handleConnectModeTap(x, y int) {
+	from := g.modes.Subject()
 	target := g.nodeAtScreen(x, y)
 	if target == nil {
 		// Tap on empty grid cancels connect mode.
-		g.cancelConnectMode()
+		g.modes.Cancel("invalid-target")
 		return
 	}
 	// Ignore self-tap.
-	if target.ID == g.connectFromNode.ID {
+	if target.ID == from.ID {
 		return
 	}
 	// Reject invisible nodes.
@@ -43,7 +40,6 @@ func (g *Game) handleConnectModeTap(x, y int) {
 		return
 	}
 	// Check perpendicularity: must share I or J coordinate.
-	from := g.connectFromNode
 	if from.I != target.I && from.J != target.J {
 		if g.drum != nil {
 			g.drum.notifyErrorKey(i18n.KeyNotifOnlyPerpendicular)
@@ -52,35 +48,21 @@ func (g *Game) handleConnectModeTap(x, y int) {
 	}
 	// Create edge (addEdge handles duplicate check internally).
 	g.addEdge(from, target)
-	g.cancelConnectMode()
-}
-
-// cancelConnectMode clears connect mode state.
-func (g *Game) cancelConnectMode() {
-	g.connectMode = false
-	g.connectFromNode = nil
+	g.modes.Commit()
 }
 
 // drawConnectMode renders the connect mode visual feedback: a banner at the
 // top of the grid pane and a cyan outline around the source node.
 func (g *Game) drawConnectMode(dst *ebiten.Image) {
-	if !g.connectMode || g.connectFromNode == nil {
+	if !g.modes.Is(GridModeConnect) {
 		return
 	}
-	// Banner at top of grid pane.
-	bannerText := fmt.Sprintf("Connect from (%d,%d) — tap target node", g.connectFromNode.I, g.connectFromNode.J)
-	bannerW := TextWidth(bannerText) + 16
-	bannerX := (g.split.GridW(g.winW) - bannerW) / 2
-	if bannerX < 0 {
-		bannerX = 0
-	}
-	bannerRect := image.Rect(bannerX, 2, bannerX+bannerW, 22)
-	drawRoundedRect(dst, bannerRect, colPanelBG, popupCornerRadius(), true)
-	drawRoundedRect(dst, bannerRect, colPanelBorder, popupCornerRadius(), false)
-	DrawTextAt(dst, bannerText, bannerX+8, 5)
+	from := g.modes.Subject()
+	// Banner at top of grid pane (shared armed-mode banner chrome).
+	g.drawGridModeBanner(dst, gridModeBannerText(GridModeConnect, from, Profile().ShowEscHint))
 
 	// Cyan outline around source node.
-	sx1, sy1, sx2, sy2 := g.nodeScreenRect(g.connectFromNode)
+	sx1, sy1, sx2, sy2 := g.nodeScreenRect(from)
 	hlCol := WithAlpha(TokenAccent(), 255)
 	var id ebiten.GeoM
 	DrawLineCam(dst, sx1-1, sy1-1, sx2+1, sy1-1, &id, hlCol, 2)

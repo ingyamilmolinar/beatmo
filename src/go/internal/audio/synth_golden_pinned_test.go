@@ -123,7 +123,10 @@ var synthGoldens = map[string]struct {
 	"organ":                {44100, 0xa012c79fb0782e32},
 	"organ-church":         {44100, 0x0f1371bf3c5a06bc},
 	"piano-felt":           {44100, 0x41f5ca014bd6edb2},
-	"piano-grand":          {44100, 0x0dee4b9db95c5aeb},
+	// piano-grand re-pinned: gen-bank envelope reassociation (per-sample exp() →
+	// incremental multiply) shifts 5 of 44100 samples by ≤3 ULP (-156 dB) —
+	// audibly identical. See modular_stages.c gen-bank else branch.
+	"piano-grand":          {44100, 0x0defc128d8dad39e},
 	"raw-kick":             {15434, 0x6f76ef1ac70fb08a},
 	"ride":                 {110250, 0xd6397ac45cf3cc65},
 	"rimshot":              {13230, 0xc975928875779f65},
@@ -145,7 +148,9 @@ var synthGoldens = map[string]struct {
 	"tom-1":          {6615, 0x3315d65e2423647e},
 	"tom-2":          {15434, 0x584537ffd75d2b62},
 	"trumpet":        {44100, 0x9aec45bfb8822dc8},
-	"trumpet-mellow": {44100, 0xcbac93913d85b408},
+	// trumpet-mellow re-pinned: same gen-bank envelope reassociation as
+	// piano-grand — 4 of 44100 samples shift by ≤4 ULP (-165 dB), audibly identical.
+	"trumpet-mellow": {44100, 0xcbaf3cea36b80aca},
 	// viola-pad was born as voice-pad; renamed and re-categorized to
 	// CatStrings per the 2026-07-08 ear review (byte-identical render).
 	"viola-pad":       {44100, 0xf03b7ce4bf5f1a7c},

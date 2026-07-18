@@ -23,6 +23,9 @@ const (
 	ComponentBottomSheet
 	ComponentContextMenuItem
 	ComponentContextMenuItemDestructive
+	ComponentMenuSearchField
+	ComponentMenuGroupHeader
+	ComponentFxCard
 	ComponentButtonRecordIdle
 	ComponentButtonRecordActive
 	ComponentButtonPlayActive
@@ -184,6 +187,33 @@ var componentSpecs = [componentCount]ComponentSpec{
 	ComponentContextMenuItemDestructive: {
 		ID:   ComponentContextMenuItemDestructive,
 		Fill: color.RGBA{31, 20, 56, 255},
+	},
+	ComponentMenuSearchField: {
+		ID:       ComponentMenuSearchField,
+		Category: CategoryInput,
+		Fill:     color.RGBA{40, 26, 64, 255},
+		Border: BorderRef{
+			BaseColor: color.RGBA{255, 255, 255, 255},
+			Alpha:     genAlphaBorderDefault,
+		},
+		Radius:       8,
+		IconColor:    color.RGBA{201, 184, 214, 255},
+		HasIconColor: true,
+	},
+	ComponentMenuGroupHeader: {
+		ID:       ComponentMenuGroupHeader,
+		Category: CategoryDecoration,
+		Fill:     color.RGBA{31, 20, 56, 255},
+	},
+	ComponentFxCard: {
+		ID:       ComponentFxCard,
+		Category: CategoryContainer,
+		Fill:     color.RGBA{40, 26, 64, 255},
+		Border: BorderRef{
+			BaseColor: color.RGBA{255, 255, 255, 255},
+			Alpha:     genAlphaBorderThin,
+		},
+		Radius: 8,
 	},
 	ComponentButtonRecordIdle: {
 		ID:     ComponentButtonRecordIdle,

@@ -50,11 +50,14 @@ func newDisabledFilterSnareGame(t *testing.T) *Game {
 	return g
 }
 
-// TestSynthTab_DisabledStageKnobsRemainInteractive drags a knob on the
-// BYPASSED filter stage and asserts (a) the drag still writes the param,
-// (b) the value survives re-enabling the stage, and (c) the enable pill stays
-// laid out (visible) while the stage is off.
-func TestSynthTab_DisabledStageKnobsRemainInteractive(t *testing.T) {
+// TestSynthTab_DisabledStagePillStaysVisible asserts the enable pill of a
+// BYPASSED, selected stage stays laid out (visible) so re-enabling is obvious.
+// The old sibling that pre-tweaked a bypassed stage's knob via an in-place
+// rotary drag was retired with the ParamCard + value-wheel-popup redesign
+// (value edits now flow through the popup, not a dial drag); the
+// value-survives-re-enable contract is covered by the merge/import round-trip
+// tests in internal/audio.
+func TestSynthTab_DisabledStagePillStaysVisible(t *testing.T) {
 	g := newDisabledFilterSnareGame(t)
 	restore := SwapSynthAuditionFnForTest(func(string) {})
 	t.Cleanup(func() { SwapSynthAuditionFnForTest(restore) })
@@ -62,58 +65,10 @@ func TestSynthTab_DisabledStageKnobsRemainInteractive(t *testing.T) {
 	if synthStageEnabled("snare", "filter_enabled") {
 		t.Fatal("precondition: filter stage should be bypassed")
 	}
-	// (c) the pill survives the bypass — it must stay tappable to re-enable.
+	// The pill survives the bypass — it must stay tappable to re-enable.
 	// FILTER is the selected stage, so its pill lives in the detail header.
 	if g.drum.synthDetailEnablePillRect().Empty() {
 		t.Fatal("FILTER enable pill rect is empty while the stage is bypassed (pill must stay visible)")
-	}
-
-	// Find the filter_cutoff knob.
-	bindings := g.drum.SynthTabBindings()
-	knobs := g.drum.SynthTabKnobs()
-	idx := -1
-	for i, b := range bindings {
-		if b.def.Name == "filter_cutoff" {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		t.Fatal("no filter_cutoff knob in bindings")
-	}
-	knob := knobs[idx]
-	rect := knob.Rect()
-	if rect.Empty() {
-		t.Fatalf("filter_cutoff knob has empty rect (scrolled out / layout broken)")
-	}
-	cx, cy := (rect.Min.X+rect.Max.X)/2, (rect.Min.Y+rect.Max.Y)/2
-	before := knob.Value
-
-	// (a) press + drag on the DIMMED knob via the same input path a live knob
-	// uses. The scrim is visual only — no hit-area suppression.
-	if !g.drum.handleSynthTabInput(cx, cy, true, "snare") {
-		t.Fatal("press on a dimmed (bypassed-stage) knob was not handled")
-	}
-	half := knob.dragPixels() / 2
-	const steps = 6
-	for s := 1; s <= steps; s++ {
-		g.drum.handleSynthTabInput(cx+half*s/steps, cy, true, "snare")
-	}
-	g.drum.handleSynthTabInput(cx+half, cy, false, "snare") // release
-	if knob.Value <= before {
-		t.Fatalf("dimmed knob did not move: value %v -> %v", before, knob.Value)
-	}
-	got, ok := audio.GetInstrumentParams("snare")["filter_cutoff"]
-	if !ok {
-		t.Fatal("filter_cutoff was not written while the stage was bypassed (pre-tweak must persist)")
-	}
-
-	// (b) re-enable the stage: the pre-tweaked value must survive and be the
-	// effective merged value.
-	audio.SetInstrumentParam("snare", "filter_enabled", 1)
-	merged := audio.MergeRecipeDefaults("drum-snare", audio.GetInstrumentParams("snare"))
-	if merged["filter_cutoff"] != got {
-		t.Fatalf("pre-tweaked filter_cutoff lost on re-enable: merged %v, want %v", merged["filter_cutoff"], got)
 	}
 }
 

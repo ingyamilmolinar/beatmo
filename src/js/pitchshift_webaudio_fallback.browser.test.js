@@ -5,7 +5,7 @@
 // (src/js/audio.js). This is the authoritative signal path in the browser —
 // the Go/C insert-effect DSP is NOT what you hear for insert FX in WASM
 // (updateInsertEffects marshals the slots to JS and the WebAudio graph renders
-// them; the AudioWorklet path `chain.workletInsertNode` is never wired up).
+// them).
 //
 // BUG UNDER TEST: the 'pitchshift' case in createInsertEffectSubgraph is a
 // hard-coded unity-gain passthrough (audio.js ~2357-2362), so the "Pitch

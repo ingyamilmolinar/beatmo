@@ -18,7 +18,7 @@ func TestTransportSnapshotTracksState(t *testing.T) {
 	g.SetPlaying(true)
 	g.state.SetAppliedBPM(150)
 	g.state.SetLastStep(32)
-	g.state.SetPausedBeats(16)
+	g.state.SetPausedBeatsForTest(16)
 	g.state.SetSeekFreezeFrames(3)
 
 	snap = g.transportSnapshot()

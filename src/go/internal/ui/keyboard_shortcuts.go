@@ -45,6 +45,7 @@ func (f shortcutFunc) HandleShortcut() bool { return f() }
 const (
 	ZShortcutGrid       = 10
 	ZShortcutTransport  = 20
+	ZShortcutSeek       = 25 // above transport (20), below audio panel (30)
 	ZShortcutAudioPanel = 30
 	ZShortcutUndo       = 100 // ungated tier; z only orders within the tier
 )
@@ -123,11 +124,12 @@ func (r *keyboardShortcutRouter) isUngated(name string) bool {
 	return false
 }
 
-// newKeyboardShortcutRouter builds the router with the four standing nodes,
+// newKeyboardShortcutRouter builds the router with the standing nodes,
 // each delegating to a Game method that owns its keys.
 func newKeyboardShortcutRouter(g *Game) *keyboardShortcutRouter {
 	r := &keyboardShortcutRouter{}
-	r.add("undo", ZShortcutUndo, false /*ungated*/, []ebiten.Key{ebiten.KeyZ, ebiten.KeyY}, shortcutFunc(g.undoShortcut))
+	r.add("undo", ZShortcutUndo, false /*ungated*/, []ebiten.Key{ebiten.KeyZ, ebiten.KeyY, ebiten.KeyR}, shortcutFunc(g.undoShortcut))
+	r.add("clipboard", ZShortcutUndo, false /*ungated*/, []ebiten.Key{ebiten.KeyC, ebiten.KeyX, ebiten.KeyV}, shortcutFunc(g.clipboardShortcut))
 	r.add("grid", ZShortcutGrid, true /*gated*/, []ebiten.Key{
 		ebiten.KeyArrowLeft, ebiten.KeyArrowRight, ebiten.KeyArrowUp, ebiten.KeyArrowDown,
 		ebiten.KeyBracketLeft, ebiten.KeyBracketRight, ebiten.Key0,
@@ -135,6 +137,9 @@ func newKeyboardShortcutRouter(g *Game) *keyboardShortcutRouter {
 	r.add("transport", ZShortcutTransport, true, []ebiten.Key{
 		ebiten.KeySpace, ebiten.KeyEqual, ebiten.KeyNumpadAdd, ebiten.KeyMinus, ebiten.KeyNumpadSubtract,
 	}, shortcutFunc(g.transportShortcut))
+	r.add("seek", ZShortcutSeek, true, []ebiten.Key{
+		ebiten.KeyPeriod, ebiten.KeyComma, ebiten.KeyHome,
+	}, shortcutFunc(g.seekShortcut))
 	r.add("audiopanel", ZShortcutAudioPanel, true, []ebiten.Key{
 		ebiten.Key1, ebiten.Key2, ebiten.Key3, ebiten.Key4, ebiten.Key5, ebiten.Key6, ebiten.Key7,
 		ebiten.KeySlash,

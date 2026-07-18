@@ -28,9 +28,9 @@ import (
 // must sit strictly below the sidebar and the popups so GridTree.Draw
 // composites them on top of the badge.
 func TestCoordBadgeBelowSidebarZ(t *testing.T) {
-	if !(GZCoordBadge < GZLongPress && GZCoordBadge < GZMoveConfirm && GZCoordBadge < GZSidebar) {
-		t.Fatalf("badge z=%d must be below popup z values long=%d moveConfirm=%d sidebar=%d",
-			GZCoordBadge, GZLongPress, GZMoveConfirm, GZSidebar)
+	if !(GZCoordBadge < GZLongPress && GZCoordBadge < GZSidebar) {
+		t.Fatalf("badge z=%d must be below popup z values long=%d sidebar=%d",
+			GZCoordBadge, GZLongPress, GZSidebar)
 	}
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
@@ -54,14 +54,14 @@ func TestCoordBadgeBelowSidebarZ(t *testing.T) {
 	if bi >= si {
 		t.Errorf("badge draws at or after sidebar (would overpaint): badge@%d sidebar@%d", bi, si)
 	}
-	// Also pin the long-press + move-confirm popups, which sit between the
-	// badge and the sidebar in z and must likewise composite over the badge.
-	lp, mc := idx("grid-longpress"), idx("grid-move-confirm")
-	if lp < 0 || mc < 0 {
-		t.Fatalf("missing popup layers: longpress idx=%d moveConfirm idx=%d", lp, mc)
+	// Also pin the long-press popup, which sits between the badge and the
+	// sidebar in z and must likewise composite over the badge.
+	lp := idx("grid-longpress")
+	if lp < 0 {
+		t.Fatalf("missing popup layer: longpress idx=%d", lp)
 	}
-	if bi >= lp || bi >= mc {
-		t.Errorf("badge draws at or after a popup (would overpaint): badge@%d longpress@%d moveConfirm@%d", bi, lp, mc)
+	if bi >= lp {
+		t.Errorf("badge draws at or after a popup (would overpaint): badge@%d longpress@%d", bi, lp)
 	}
 }
 

@@ -217,24 +217,27 @@ func TestSamplerLoadedStateEnablesActions(t *testing.T) {
 	}
 }
 
-func TestSamplerKnobDiameterFromDensity(t *testing.T) {
+func TestSamplerKnobCardSizeFromDensity(t *testing.T) {
 	g := samplerLayoutGame(t)
 	g.drum.sampler.captureFromSynth("kick")
 	bigR := image.Rect(0, 0, 1280, 320) // ample room so density, not space, governs
 
+	// The card HEIGHT is the density-driven ParamCardH token; its width clamps to
+	// the (narrow) control-column cell, so height is the language-invariant proof
+	// that sizing follows density.
 	measure := func(d Density) int {
 		restore := SetDensityForTest(d)
 		defer restore()
 		g.drum.buildSamplerTab(bigR, "kick")
-		return g.drum.sampler.knobs[samplerKnobStart].Rect().Dx()
+		return g.drum.sampler.knobs[samplerKnobStart].Rect().Dy()
 	}
 	compact := measure(DensityCompact)
 	spacious := measure(DensitySpacious)
 	if compact <= 0 || spacious <= 0 {
-		t.Fatalf("knob diameters not set (compact=%d spacious=%d)", compact, spacious)
+		t.Fatalf("card heights not set (compact=%d spacious=%d)", compact, spacious)
 	}
 	if compact >= spacious {
-		t.Errorf("knob diameter not density-driven: compact=%d should be < spacious=%d", compact, spacious)
+		t.Errorf("card height not density-driven: compact=%d should be < spacious=%d", compact, spacious)
 	}
 }
 

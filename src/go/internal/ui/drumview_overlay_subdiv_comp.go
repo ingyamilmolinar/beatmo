@@ -213,6 +213,15 @@ func (s *SubdivMenuComponent) rebuildButtons() {
 }
 
 // HandleInput processes mouse input for the subdiv menu.
+// HoverAt implements portalHoverer: refreshes row hovered flags from the
+// plain cursor position each frame so the hover tint shows on desktop
+// (portal input handlers only run on press edges).
+func (s *SubdivMenuComponent) HoverAt(mx, my int) {
+	for _, b := range s.buttons {
+		b.UpdateHover(mx, my)
+	}
+}
+
 func (s *SubdivMenuComponent) HandleInput(x, y int, pressed bool) InputResult {
 	if !s.state.open {
 		return InputIgnored

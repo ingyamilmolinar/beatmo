@@ -71,6 +71,15 @@ func (c *snapshotCache) getOrFetch(id string, ttl time.Duration, fetch func() An
 	return snap
 }
 
+// clear drops every cached snapshot entry so the next getOrFetch re-pulls fresh
+// data from the JS bridge instead of returning a stale within-TTL frame. Used on
+// circuit load.
+func (c *snapshotCache) clear() {
+	c.mu.Lock()
+	c.entries = make(map[string]*snapshotCacheEntry)
+	c.mu.Unlock()
+}
+
 // snapshotByteBufPool recycles []byte scratch buffers used as the
 // destination for js.CopyBytesToGo. The bytes are reinterpreted as
 // []float32 (the JS side hands us a Uint8Array view over a Float32Array

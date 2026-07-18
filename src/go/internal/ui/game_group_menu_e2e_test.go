@@ -47,11 +47,11 @@ func findRule(rules []model.GroupRule, param model.GroupParam) *model.GroupRule 
 }
 
 // TestGroupMenuE2E_RuleOnOffClickTogglesRule drives the "ruleonoff" button
-// through real clicks. A plain ruleonoff click with no configured delta is a
-// no-op (writeRules' "On = write current deltas, all-zero writes nothing"
-// contract — task-rule-anchor Part B), so this first configures a pitch
-// delta via rdpit+, then verifies ruleonoff disables (Rules 1->0) and
-// re-enables (Rules 0->1, restoring the configured rule from scratch).
+// through real clicks (task-enabled-status brief, Part C): it toggles the
+// group's INDEPENDENT RulesEnabled status bit, never touching the configured
+// Rules — a pitch delta is configured via rdpit+ first (deltas alone must
+// NOT enable, per Part C), then ruleonoff flips the flag on/off while the
+// rule itself stays put throughout.
 func TestGroupMenuE2E_RuleOnOffClickTogglesRule(t *testing.T) {
 	g, aID, bID := buildGroupLoopCircuit(t)
 	gid, err := g.graph.CreateGroup("", []model.NodeID{aID, bID})
@@ -65,21 +65,30 @@ func TestGroupMenuE2E_RuleOnOffClickTogglesRule(t *testing.T) {
 	advanceFrames(g, 2)
 	grp, _ := g.graph.Group(gid)
 	if len(grp.Rules) != 1 {
-		t.Fatalf("rdpit+ click must enable rule, got %+v", grp.Rules)
+		t.Fatalf("rdpit+ click must write the rule, got %+v", grp.Rules)
+	}
+	if grp.RulesEnabled {
+		t.Fatalf("rdpit+ click must NOT enable the group, got RulesEnabled=true")
 	}
 
 	clickMenuControl(t, g, "ruleonoff")
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
-	if len(grp.Rules) != 0 {
-		t.Fatalf("ruleonoff click must disable rule, got %+v", grp.Rules)
+	if !grp.RulesEnabled {
+		t.Fatalf("ruleonoff click must enable the group")
+	}
+	if len(grp.Rules) != 1 {
+		t.Fatalf("ruleonoff click must not touch the configured rule, got %+v", grp.Rules)
 	}
 
 	clickMenuControl(t, g, "ruleonoff")
 	advanceFrames(g, 2)
 	grp, _ = g.graph.Group(gid)
+	if grp.RulesEnabled {
+		t.Fatalf("second ruleonoff click must disable the group")
+	}
 	if len(grp.Rules) != 1 || grp.Rules[0].Param != model.GroupParamPitch {
-		t.Fatalf("second ruleonoff click must re-enable the configured rule, got %+v", grp.Rules)
+		t.Fatalf("second ruleonoff click must still not touch the configured rule, got %+v", grp.Rules)
 	}
 }
 
@@ -336,14 +345,19 @@ func TestGroupMenuE2E_PlaybackRuleEditPreservesTriggerParity(t *testing.T) {
 	t.Cleanup(func() { stopPlaybackForTest(g) })
 	advanceFrames(g, 5)
 
-	clickMenuControl(t, g, "rdpit+") // enable rule (pitch, delta 1, everyN 1)
+	clickMenuControl(t, g, "rdpit+") // configure rule (pitch, delta 1, everyN 1)
 	advanceFrames(g, 2)
 	clickMenuControl(t, g, "rdpit+") // delta 1 -> 2
+	advanceFrames(g, 3)
+	clickMenuControl(t, g, "ruleonoff") // deltas alone never enable — flip it on
 	advanceFrames(g, 3)
 
 	grp, ok := g.graph.Group(gid)
 	if !ok || len(grp.Rules) != 1 || grp.Rules[0].Param != model.GroupParamPitch || !almostEqual(grp.Rules[0].Delta, 2) {
 		t.Fatalf("want pitch rule delta=2 after two rdpit+ clicks, got %+v ok=%v", grp, ok)
+	}
+	if !grp.RulesEnabled {
+		t.Fatalf("want RulesEnabled=true after the ruleonoff click, got %+v", grp)
 	}
 
 	// Trigger parity must be UNCHANGED by the rule.
@@ -394,6 +408,9 @@ func TestGroupMenuE2E_PlaybackMembershipRemovalRevertsBaseParams(t *testing.T) {
 		{Param: model.GroupParamPitch, Delta: 2, EveryN: 1},
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
 	g.refreshDrumRow()
 
@@ -454,6 +471,9 @@ func TestGroupMenuE2E_PlaybackDeleteClickRevertsAllMembersToBase(t *testing.T) {
 		{Param: model.GroupParamPitch, Delta: 2, EveryN: 1},
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
 	}
 	g.groupMenu.OpenAt(gid, 100, 100)
 	advanceFrames(g, 2)

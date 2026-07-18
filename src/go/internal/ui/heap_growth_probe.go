@@ -123,6 +123,13 @@ func (g *Game) heapProbeTick() {
 			}
 		}
 	}
+	// Sample GC pause histogram + heap high-water for the perf snapshot.
+	// Non-STW (runtime/metrics) and throttled so it stays off the hot path;
+	// the first call lazily captures the window baseline. Runs always (not
+	// gated on the debug probe) so perfStats()/bench output always carry GC.
+	if g != nil && g.frame%15 == 0 {
+		g.gcMetrics.sample()
+	}
 	// Always run the 30 s rollup if it's enabled, even when the per-second
 	// probe is off. Cheap: one ReadMemStats every 1 800 frames.
 	if heapWatchEnabled && g != nil && g.frame > 0 && g.frame%heapWatchTickFrames == 0 {

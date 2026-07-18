@@ -58,6 +58,33 @@ func (dv *DrumView) OpenSubdivMenu() {
 	}
 }
 
+// OpenJumpMenu opens the FF/RW jump-size (×N) dropdown, mirroring
+// OpenSubdivMenu: it seeds the menu component's props (beat-count options +
+// OnSelect that updates the jump size and the pill label), opens the
+// component, and shows it through the portal anchored on the ×N pill. This is
+// the single entry point used by both the pill's OnJumpSizeClick handler and
+// the screenshot scene, so the open logic lives in one place.
+func (dv *DrumView) OpenJumpMenu() {
+	dv.CloseAllPopups()
+	if dv.jumpMenuComp == nil {
+		return
+	}
+	dv.jumpMenuComp.SetProps(SubdivMenuProps{
+		AnchorRect: dv.transportZone.JumpBtnRect(),
+		Current:    dv.jumpBeats,
+		Options:    []int{1, 2, 4, 8, 16},
+		RowHeight:  dv.rowHeight(),
+		OnSelect: func(value int) {
+			dv.jumpBeats = value
+			dv.transportZone.SetJumpBeats(value)
+			dv.closeJumpMenuPortal()
+		},
+		OnClose: func() {},
+	})
+	dv.jumpMenuComp.Open()
+	dv.openJumpMenuPortal()
+}
+
 // CloseSubdivMenu closes the subdivision/logic-kind menu.
 func (dv *DrumView) CloseSubdivMenu() { dv.closeSubdivMenuPortal() }
 

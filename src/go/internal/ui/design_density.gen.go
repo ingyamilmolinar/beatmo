@@ -48,6 +48,7 @@ type densityValues struct {
 	FxToggleTrackH         int // densities.fxToggleTrackH
 	FxToggleTrackW         int // densities.fxToggleTrackW
 	GrabZone               int // densities.grabZone
+	GuideSnapRadius        int // densities.guideSnapRadius
 	HeaderMaxH             int // densities.headerMaxH
 	HeaderMinH             int // densities.headerMinH
 	KnobStepBadgeH         int // densities.knobStepBadgeH
@@ -63,6 +64,9 @@ type densityValues struct {
 	MobileWheelW           int // densities.mobileWheelW
 	NodeMaxPx              int // densities.nodeMaxPx
 	NodeMinPx              int // densities.nodeMinPx
+	ParamCardGaugeH        int // densities.paramCardGaugeH
+	ParamCardH             int // densities.paramCardH
+	ParamCardW             int // densities.paramCardW
 	PopupBtnH              int // densities.popupBtnH
 	PopupBtnW              int // densities.popupBtnW
 	PopupGap               int // densities.popupGap
@@ -141,6 +145,7 @@ var (
 		FxToggleTrackH:         18,
 		FxToggleTrackW:         32,
 		GrabZone:               5,
+		GuideSnapRadius:        20,
 		HeaderMaxH:             40,
 		HeaderMinH:             40,
 		KnobStepBadgeH:         18,
@@ -151,11 +156,14 @@ var (
 		MinTarget:              0,
 		MobileWheelH:           300,
 		MobileWheelPillH:       38,
-		MobileWheelResStripW:   40,
+		MobileWheelResStripW:   72,
 		MobileWheelTickGap:     34,
-		MobileWheelW:           220,
+		MobileWheelW:           252,
 		NodeMaxPx:              16,
 		NodeMinPx:              8,
+		ParamCardGaugeH:        4,
+		ParamCardH:             56,
+		ParamCardW:             148,
 		PopupBtnH:              16,
 		PopupBtnW:              18,
 		PopupGap:               4,
@@ -232,6 +240,7 @@ var (
 		FxToggleTrackH:         14,
 		FxToggleTrackW:         28,
 		GrabZone:               4,
+		GuideSnapRadius:        16,
 		HeaderMaxH:             36,
 		HeaderMinH:             36,
 		KnobStepBadgeH:         16,
@@ -242,11 +251,14 @@ var (
 		MinTarget:              0,
 		MobileWheelH:           260,
 		MobileWheelPillH:       34,
-		MobileWheelResStripW:   36,
+		MobileWheelResStripW:   64,
 		MobileWheelTickGap:     30,
-		MobileWheelW:           200,
+		MobileWheelW:           228,
 		NodeMaxPx:              14,
 		NodeMinPx:              6,
+		ParamCardGaugeH:        3,
+		ParamCardH:             48,
+		ParamCardW:             128,
 		PopupBtnH:              14,
 		PopupBtnW:              16,
 		PopupGap:               3,
@@ -323,6 +335,7 @@ var (
 		FxToggleTrackH:         22,
 		FxToggleTrackW:         40,
 		GrabZone:               16,
+		GuideSnapRadius:        28,
 		HeaderMaxH:             56,
 		HeaderMinH:             56,
 		KnobStepBadgeH:         22,
@@ -333,11 +346,14 @@ var (
 		MinTarget:              44,
 		MobileWheelH:           340,
 		MobileWheelPillH:       44,
-		MobileWheelResStripW:   44,
+		MobileWheelResStripW:   80,
 		MobileWheelTickGap:     38,
-		MobileWheelW:           240,
+		MobileWheelW:           276,
 		NodeMaxPx:              20,
 		NodeMinPx:              12,
+		ParamCardGaugeH:        5,
+		ParamCardH:             64,
+		ParamCardW:             168,
 		PopupBtnH:              36,
 		PopupBtnW:              44,
 		PopupGap:               6,

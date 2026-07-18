@@ -64,10 +64,10 @@ func drawAudioPanelLegend(dst *ebiten.Image, chipR image.Rectangle, panelMaxX in
 		padY    = 6
 		lineGap = 2
 	)
-	// Wrap the text to lines that fit sheetW - 2*padX, at body scale.
+	// Wrap the text to lines that fit sheetW - 2*padX, at caption role.
 	maxTextW := sheetW - 2*padX
 	lines := wrapTextToWidth(text, maxTextW)
-	lineH := TextHeight() + lineGap
+	lineH := StyledTextHeight(RoleCaption) + lineGap
 	sheetH := padY*2 + lineH*len(lines)
 
 	// Position: below the chip, right-aligned to it when possible so
@@ -92,7 +92,7 @@ func drawAudioPanelLegend(dst *ebiten.Image, chipR image.Rectangle, panelMaxX in
 	drawRoundedRect(dst, sheet, TokenAccent(), RadiusXS, false)
 	ty := y0 + padY
 	for _, ln := range lines {
-		DrawTextColorAt(dst, ln, x0+padX, ty, TokenTextPrimary())
+		DrawTextStyled(dst, ln, x0+padX, ty, RoleCaption, TokenTextPrimary())
 		ty += lineH
 	}
 	return sheet
@@ -119,7 +119,7 @@ func wrapTextToWidth(s string, maxPixelW int) []string {
 		} else {
 			candidate = cur + " " + w
 		}
-		if TextWidth(candidate) <= maxPixelW {
+		if StyledTextWidth(candidate, RoleCaption) <= maxPixelW {
 			cur = candidate
 			continue
 		}

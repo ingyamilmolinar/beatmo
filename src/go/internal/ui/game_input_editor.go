@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"image"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
@@ -51,29 +49,18 @@ func (g *Game) handleEditor() {
 		return
 	}
 
-	// Move mode: handle placement (ESC cancel now lives in handleEscape).
-	if g.moveMode && g.movingNode != nil {
-		x, y := cursorPosition()
-		if g.moveConfirm {
-			// Confirmation dialog: check for clicks on confirm/cancel buttons
-			if left && !g.leftPrev {
-				dw, dh := 280, 60
-				dx := (g.split.GridW(g.winW) - dw) / 2
-				dy := (g.split.GridH(g.winH) - dh) / 2
-				confirmRect := image.Rect(dx+40, dy+30, dx+120, dy+50)
-				cancelRect := image.Rect(dx+160, dy+30, dx+240, dy+50)
-				pt := image.Pt(x, y)
-				if pt.In(confirmRect) {
-					g.moveNode(g.movingNode, g.moveConfirmI, g.moveConfirmJ)
-					g.cancelMoveMode()
-				} else if pt.In(cancelRect) {
-					g.cancelMoveMode()
-				}
-			}
+	// Armed grid mode: mouse release in the grid places/cancels via the same
+	// shared handler the touch path uses.
+	if g.modes.Active() != GridModeNone {
+		// While the break-circuit dialog is open the portal owns input;
+		// grid releases must not place/cancel behind it.
+		if g.breakConfirmActive() {
 			g.leftPrev = left
 			return
 		}
-		// Skip the mouse release that corresponds to the MOVE button press
+		x, y := cursorPosition()
+		// Skip the mouse release that corresponds to the popup/sidebar button
+		// press that armed the mode.
 		if g.moveSkipRelease {
 			if !left {
 				g.moveSkipRelease = false
@@ -81,27 +68,8 @@ func (g *Game) handleEditor() {
 			g.leftPrev = left
 			return
 		}
-		// Click release in grid places the node
 		if !left && g.leftPrev && g.split.InGridPane(x, y) && y >= gridTopOffset() {
-			wx := (float64(x) - g.cam.OffsetX) / g.cam.Scale
-			wy := (float64(y-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
-			_, _, ni, nj := g.grid.Snap(wx, wy)
-			// Check if destination is occupied by another node
-			if existing := g.nodeAt(ni, nj); existing != nil && existing.ID != g.movingNode.ID {
-				g.cancelMoveMode()
-				g.leftPrev = left
-				return
-			}
-			loss := g.moveNodeEdgeLoss(g.movingNode, ni, nj)
-			if loss > 0 {
-				g.moveConfirm = true
-				g.moveConfirmI = ni
-				g.moveConfirmJ = nj
-				g.moveEdgeLoss = loss
-			} else {
-				g.moveNode(g.movingNode, ni, nj)
-				g.cancelMoveMode()
-			}
+			g.handleArmedModeTap(x, y)
 		}
 		g.leftPrev = left
 		return
@@ -112,8 +80,11 @@ func (g *Game) handleEditor() {
 
 	// Guard: a popup was closed recently (e.g., by handleTapInGrid processing
 	// a gesture tap on the previous frame). The press/release state from the
-	// same touch is stale — don't create nodes or set pendingClick.
-	if g.sidebar.ClosedGuard() > 0 {
+	// same touch is stale — don't create nodes or set pendingClick. Shift
+	// gestures bypass the guard: the sidebar deliberately closes itself on a
+	// shift+press and yields that SAME press to the link-drag/marquee block
+	// below, which never creates nodes (see NodeSidebar.HandleInput).
+	if g.sidebar.ClosedGuard() > 0 && !shift {
 		g.pendingClick = false
 		g.leftPrev = left
 		return
@@ -170,6 +141,15 @@ func (g *Game) handleEditor() {
 				g.openGroupMenuForBadge(gid, x, y)
 				g.leftPrev = left
 				return
+			} else if gt := g.guideTargetAt(x, y); gt.Kind == GuideNode {
+				// Guide-snapped node: the crosshair is visibly locked onto a
+				// node (the press sits inside the snap radius but outside the
+				// small sprite rect — the norm when zoomed out on a large
+				// circuit). The connect gesture must honor the same snap a
+				// plain click does, or shift+click "on" a node arms the
+				// marquee instead of the helper arrow. Ranked below the badge
+				// so badge presses keep winning.
+				g.linkDrag = dragLink{from: gt.Node, active: true}
 			} else {
 				// Marquee claims Shift+press on EMPTY space.
 				g.handleMarquee(left, x, y)
@@ -177,7 +157,15 @@ func (g *Game) handleEditor() {
 				return
 			}
 		} else if g.linkDrag.active && !left {
-			if n2 := g.nodeAtScreen(x, y); n2 != nil && n2 != g.linkDrag.from {
+			n2 := g.nodeAtScreen(x, y)
+			if n2 == nil {
+				// Release inside a node's snap annulus connects to it — the
+				// same guide snap the press honors.
+				if gt := g.guideTargetAt(x, y); gt.Kind == GuideNode {
+					n2 = gt.Node
+				}
+			}
+			if n2 != nil && n2 != g.linkDrag.from {
 				tFrom := g.graph.Nodes[g.linkDrag.from.ID].Type
 				tTo := g.graph.Nodes[n2.ID].Type
 				if tFrom != model.NodeTypeInvisible && tTo != model.NodeTypeInvisible {
@@ -190,7 +178,14 @@ func (g *Game) handleEditor() {
 			}
 			g.linkDrag = dragLink{}
 		} else if g.linkDrag.active && left {
-			g.linkDrag.toX, g.linkDrag.toY = gx, gy
+			// Arrow tip locks onto a guide-snapped destination node so the
+			// user sees which node the release will connect to; otherwise it
+			// follows the grid-snapped cursor as before.
+			if gt := g.guideTargetAt(x, y); gt.Kind == GuideNode {
+				g.linkDrag.toX, g.linkDrag.toY = gt.Node.X, gt.Node.Y
+			} else {
+				g.linkDrag.toX, g.linkDrag.toY = gx, gy
+			}
 		} else if g.marquee.active {
 			// Marquee drag continuing, or its release frame.
 			g.handleMarquee(left, x, y)
@@ -213,6 +208,8 @@ func (g *Game) handleEditor() {
 		g.clickNode = g.nodeAtScreen(x, y)
 		g.pendingClick = true
 		g.camDragged = false
+		g.holdFrames = 0
+		g.holdStartX, g.holdStartY = x, y
 		g.logger.Tracef("[input/mouse] down screen=(%d,%d) grid=(%d,%d)", x, y, i, j)
 		// Handle origin selection immediately when a row requested it and a visible
 		// node is pressed.
@@ -255,6 +252,24 @@ func (g *Game) handleEditor() {
 			}
 		}
 	}
+
+	// Desktop mouse-hold on a node → quick-action popup (touch reaches the
+	// same popup via GestureLongPress; gate on !touchOverrideActive so the
+	// two detectors never double-fire on one touch).
+	if left && g.leftPrev && g.pendingClick && g.clickNode != nil && !touchOverrideActive {
+		if g.camDragged || abs(x-g.holdStartX) > tapMaxMovePx || abs(y-g.holdStartY) > tapMaxMovePx {
+			g.holdFrames = -1 // moved: hold is dead for this press
+		} else if g.holdFrames >= 0 {
+			g.holdFrames++
+			if g.holdFrames >= mouseHoldPopupFrames {
+				g.holdFrames = -1
+				g.pendingClick = false // the hold consumed this press: no click on release
+				g.showLongPressPopup(g.clickNode, x, y)
+				g.leftPrev = left
+				return
+			}
+		}
+	}
 	if !left && g.leftPrev {
 		// Node menu button clicks are handled on press; fall through on release.
 		if g.pendingClick && !g.camDragged {
@@ -267,20 +282,19 @@ func (g *Game) handleEditor() {
 				g.sidebar.Close()
 				g.openGroupMenuForBadge(gid, x, y)
 			} else if n := g.clickNode; n != nil {
-				if g.sel != nil {
-					g.sel.Selected = false
-				}
-				g.sel = n
-				n.Selected = true
-				g.sidebar.Open(n)
+				g.selectNodeOpenSidebar(n)
 				g.groupMenu.Close()
-				g.computeSelNeighbors()
-				g.coordBadgeNode = n
-				g.coordBadgeFrame = g.frame
+			} else if gt := g.guideTargetAt(x, y); gt.Kind == GuideNode {
+				// Guide snapped to an existing node: select it (same as a
+				// direct node click) instead of creating a neighbor.
+				g.selectNodeOpenSidebar(gt.Node)
+				g.groupMenu.Close()
 			} else {
-				// Empty intersection → add/select regular node and close menu
-				g.logger.Tracef("[input/node] add/select grid=(%d,%d)", g.clickI, g.clickJ)
-				n := g.tryAddNode(g.clickI, g.clickJ, model.NodeTypeRegular)
+				// Empty intersection → add/select at the guide's commit cell
+				// (edge-fraction cell or free cell); stitchEdgesAt splits any
+				// edge passing through it.
+				g.logger.Tracef("[input/node] add/select grid=(%d,%d)", gt.I, gt.J)
+				n := g.tryAddNode(gt.I, gt.J, model.NodeTypeRegular)
 				if g.sel != n {
 					if g.sel != nil {
 						g.logger.Tracef("[input/node] deselect grid=(%d,%d)", g.sel.I, g.sel.J)

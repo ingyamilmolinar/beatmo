@@ -70,6 +70,16 @@ func (g *Game) menuHit(x, y int) bool {
 	return g.sidebar.Hit(x, y) || g.groupMenu.Hit(x, y) || image.Pt(x, y).In(g.gridHelpButtonRect())
 }
 
+// cursorLabelOccluded reports whether (x,y) sits over a surface that renders
+// or handles input above the grid (sidebar, group menu, settings gear, drum
+// overlays, long-press popup, modal overlays). The cursor coordinate label is
+// an unclipped z=70 layer — above the sidebar and group menu — so it must
+// gate itself on this or it paints over them.
+func (g *Game) cursorLabelOccluded(x, y int) bool {
+	return g.menuHit(x, y) || g.blocksAt(x, y) || g.longPressPopup ||
+		g.modalOverlayActive()
+}
+
 // modalOverlayActive reports whether a blocking (modal/scrim) overlay — such as
 // the mobile synth-knob wheel popup or a volume popup — is open in the drum
 // view's input trees. The out-of-tree Game-level gesture/camera handlers consult

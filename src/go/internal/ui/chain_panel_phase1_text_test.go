@@ -11,13 +11,15 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
 )
 
-// TestChainPhase1_BadgeGrowsWithDensity — the A/B badge pill is sized to
-// the density-aware badge text (chainBadgeScale). So the painted badge box
-// (a drawRect we can intercept) must be wider at Spacious than at Compact.
-// This is the rendering-level proof that Chain text actually enlarges on
-// mobile, not just that the token grows.
-func TestChainPhase1_BadgeGrowsWithDensity(t *testing.T) {
-	badgeW := func(d Density) int {
+// TestChainBadgeSizedToStyledCaption — the A/B badge pill is sized to the
+// styled caption-role text metrics (chainBadgeSize → StyledTextWidth/Height
+// at RoleCaption), replacing the old density-scaled bitmap text which
+// pixelated at every factor ≠ 1. The painted badge box (a drawRect we can
+// intercept) must therefore match chainBadgeSize at EVERY density: styled
+// roles render at a fixed true pixel size, so the badge is density-invariant
+// by design (2026-07-16 audio-tab typography migration).
+func TestChainBadgeSizedToStyledCaption(t *testing.T) {
+	badgeBox := func(d Density) (w, h int) {
 		restore := SetDensityForTest(d)
 		defer restore()
 		cb := ChainCallbacks{ScopeState: func() *scope.State { return nil }}
@@ -28,25 +30,27 @@ func TestChainPhase1_BadgeGrowsWithDensity(t *testing.T) {
 		rects := collectFilledRects(t, func() { z.Draw(dst) })
 
 		want := color.RGBAModel.Convert(colScopeA).(color.RGBA)
-		maxW := 0
 		for _, r := range rects {
 			// The A badge fills colScopeA and lives at the top of the stage
 			// column. State is nil so no trace/legend draws this color.
 			if r.Color == want && r.Rect.Min.X < chainStageColW+48 && r.Rect.Min.Y < 56 {
-				if r.Rect.Dx() > maxW {
-					maxW = r.Rect.Dx()
+				if r.Rect.Dx() > w {
+					w, h = r.Rect.Dx(), r.Rect.Dy()
 				}
 			}
 		}
-		return maxW
+		return w, h
 	}
 
-	compact := badgeW(DensityCompact)
-	spacious := badgeW(DensitySpacious)
-	if compact == 0 || spacious == 0 {
-		t.Fatalf("A badge box not found: compact=%d spacious=%d", compact, spacious)
-	}
-	if spacious <= compact {
-		t.Errorf("A badge should widen with density (bigger text): compact=%d spacious=%d", compact, spacious)
+	wantW, wantH := chainBadgeSize("A")
+	for _, d := range []Density{DensityCompact, DensitySpacious} {
+		gotW, gotH := badgeBox(d)
+		if gotW == 0 {
+			t.Fatalf("A badge box not found at density %v", d)
+		}
+		if gotW != wantW || gotH != wantH {
+			t.Errorf("density %v: badge box %dx%d, want styled-caption size %dx%d",
+				d, gotW, gotH, wantW, wantH)
+		}
 	}
 }

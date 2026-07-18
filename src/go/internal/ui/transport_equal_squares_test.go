@@ -19,9 +19,17 @@ func transportSquareRects(z *TransportZone, includeUndoRedo bool) []struct {
 		name string
 		r    image.Rectangle
 	}{
+		// rw/ff added: task 9 FF/RW transport buttons flank play/stop in the
+		// desktop square run and must share the same square side length.
+		{"rw", z.rwBtn.Rect()},
 		{"play", z.playBtn.Rect()},
 		{"stop", z.stopBtn.Rect()},
+		{"ff", z.ffBtn.Rect()},
 		{"record", z.recordBtn.Rect()},
+		// jump added: configurable N-beat jump ×N pill sits right after record
+		// in the desktop square run (see layoutDesktop) and must share the
+		// same square side length as every other transport control.
+		{"jump", z.jumpBtn.Rect()},
 		{"subdiv", z.subdivBtn.Rect()},
 		{"vol", z.mainVolIconRect},
 		{"overflow", z.overflowBtn.Rect()},
@@ -92,8 +100,15 @@ func orderedTransportControls(z *TransportZone) []struct {
 		name string
 		r    image.Rectangle
 	}{
+		// rw/ff/jump added: task 9 FF/RW transport buttons + the jump-size ×N
+		// pill run RW|Play|Stop|FF|×N|Record on desktop (the ×N selector sits
+		// BEFORE Record — see layoutDesktop) — include them so adjacent-gap
+		// measurement doesn't span across an unlisted button.
+		{"rw", z.rwBtn.Rect()},
 		{"play", z.playBtn.Rect()},
 		{"stop", z.stopBtn.Rect()},
+		{"ff", z.ffBtn.Rect()},
+		{"jump", z.jumpBtn.Rect()},
 		{"record", z.recordBtn.Rect()},
 		{"bpmBox", z.bpmBox.Rect},
 		{"bpmStep", z.bpmIncBtn.Rect()},

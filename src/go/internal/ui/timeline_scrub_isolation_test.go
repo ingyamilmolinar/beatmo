@@ -173,7 +173,7 @@ func newTimelineZoneTestHarness(t *testing.T) *timelineZoneTestHarness {
 		Length:               func() int { return 64 },
 		Offset:               func() int { return 0 },
 		OnOffsetChange:       func(int) {},
-		OnScrubPosition:      func(int) {},
+		OnSeekToStep:         func(int, string) {},
 	}
 	z := NewTimelineZone(cb)
 	z.rect = image.Rect(0, 0, 400, 200)

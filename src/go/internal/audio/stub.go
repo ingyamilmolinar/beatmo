@@ -318,6 +318,21 @@ func (a *Analyzer) ProcessBlockBuf(in, out []float32, samples int) {
 
 func (a *Analyzer) Snapshot() AnalyzerSnapshot { return a.snapshot() }
 
+// Reset zeros the retained waveform/RMS/peak so the next snapshot reads flat
+// (stub mirror of the native Analyzer.Reset). See the native docstring.
+func (a *Analyzer) Reset() {
+	if a == nil {
+		return
+	}
+	for i := range a.window {
+		a.window[i] = 0
+	}
+	a.write = 0
+	a.filled = false
+	a.rms = 0
+	a.peak = 0
+}
+
 // SetEnabled controls whether compute() runs (stub).
 func (a *Analyzer) SetEnabled(on bool) { a.enabled = on }
 
@@ -709,12 +724,16 @@ func SynthAnalyzerEnableCount(id string) int {
 	return synthAnalyzerEnableCnt[id]
 }
 
+// EnableChannelAnalyzer mirrors the real build's idempotent wiring (see
+// analyzer_wiring.go): re-issuing it for an already-wired channel reuses the
+// existing analyzer instead of stacking another onto the chain. The enable
+// COUNTER still increments on every call — tests assert on how many times the
+// UI asked, which is independent of how many analyzers end up wired.
 func EnableChannelAnalyzer(id string, window int) *Analyzer {
 	analyserEnableMu.Lock()
 	channelAnalyzerEnableCnt[id]++
 	analyserEnableMu.Unlock()
-	an := NewAnalyzer(window)
-	AddChannelProcessor(id, an)
+	an := wireChannelAnalyzer(id, window)
 	analyzerRegistryStub[id] = an
 	return an
 }
@@ -783,6 +802,17 @@ func SetAnalyzerEnabled(id string, on bool) {
 func resetAnalyzers() {
 	analyzerRegistryStub = map[string]*Analyzer{}
 	preEQAnalyzerRegistryStub = map[string]*Analyzer{}
+}
+
+// ResetAllChannelAnalyzers zeros the retained frame of every wired channel and
+// pre-EQ analyzer without unregistering them (stub mirror of the native fn).
+func ResetAllChannelAnalyzers() {
+	for _, an := range analyzerRegistryStub {
+		an.Reset()
+	}
+	for _, an := range preEQAnalyzerRegistryStub {
+		an.Reset()
+	}
 }
 
 // nearestPow2 rounds v to the nearest power-of-two (preferring the larger on ties).

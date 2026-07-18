@@ -241,3 +241,20 @@ func SendBusAnalyzerSnapshot() AnalyzerSnapshot {
 func SetAnalyzerEnabled(id string, on bool) {}
 
 func resetAnalyzers() {}
+
+// Reset is a no-op on WASM — the analyzer buffers live in JS AnalyserNodes, not
+// in the Go struct. See ResetAllChannelAnalyzers for the WASM clear path.
+func (a *Analyzer) Reset() {}
+
+// ResetAllChannelAnalyzers drops the cached snapshot frames so the next fetch
+// re-pulls fresh data from JS, and asks the JS bridge to zero its AnalyserNode
+// taps if it exposes a resetAllAnalyzers hook (guarded — older audio.js without
+// the hook is a no-op). Called on circuit load so stopped tabs read flat.
+func ResetAllChannelAnalyzers() {
+	channelSnapCache.clear()
+	preEQSnapCache.clear()
+	synthSnapCache.clear()
+	if fn := js.Global().Get("resetAllAnalyzers"); fn.Truthy() {
+		fn.Invoke()
+	}
+}

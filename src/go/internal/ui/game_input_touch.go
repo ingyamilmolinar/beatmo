@@ -6,6 +6,50 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
+// handleArmedModeTap resolves a grid tap while a grid mode is armed. Returns
+// true when the tap was consumed (whether it committed or canceled the mode).
+// Move placement is edge-only: the tapped cell must lie on an existing edge
+// segment (GuideEdge); anything else cancels the mode and the node stays put.
+func (g *Game) handleArmedModeTap(x, y int) bool {
+	switch g.modes.Active() {
+	case GridModeMove:
+		gt := g.guideTargetAt(x, y)
+		n := g.modes.Subject()
+		if gt.Kind != GuideEdge {
+			g.modes.Cancel("invalid-target")
+			return true
+		}
+		if g.moveHealPlan(n).class == healUnhealable {
+			// Breaking move: confirm before committing. Mode stays armed;
+			// the portal owns the decision (Break → commit, Cancel → retry).
+			g.beginBreakConfirm(n, gt.I, gt.J)
+			return true
+		}
+		if g.moveNode(n, gt.I, gt.J) {
+			g.modes.Commit()
+		} else {
+			g.modes.Cancel("move-failed")
+		}
+		return true
+	case GridModeCopy:
+		gt := g.guideTargetAt(x, y)
+		if existing := g.nodeAt(gt.I, gt.J); existing != nil {
+			// Existing paste semantics: occupied cell → overwrite confirm
+			// (portal). The confirm takes over; the armed mode's job is done.
+			g.beginPasteConfirm(gt.I, gt.J)
+			g.modes.Commit()
+			return true
+		}
+		g.pasteNodeFrom(gt.I, gt.J, g.clipboard)
+		g.modes.Commit()
+		return true
+	case GridModeConnect:
+		g.handleConnectModeTap(x, y)
+		return true
+	}
+	return false
+}
+
 // handleTapInGrid handles a tap gesture in the grid area.
 // This provides direct tap-to-click handling without relying on the mouse state machine.
 func (g *Game) handleTapInGrid(x, y int) {
@@ -31,47 +75,8 @@ func (g *Game) handleTapInGrid(x, y int) {
 		return
 	}
 
-	// Connect mode: tap selects target node for edge creation.
-	if g.connectMode && g.connectFromNode != nil {
-		g.handleConnectModeTap(x, y)
-		return
-	}
-
-	// Move mode: tap places node at destination
-	if g.moveMode && g.movingNode != nil {
-		if g.moveConfirm {
-			// Confirmation dialog: check tap on confirm/cancel buttons
-			dw, dh := 280, 60
-			dx := (g.split.GridW(g.winW) - dw) / 2
-			dy := (g.split.GridH(g.winH) - dh) / 2
-			confirmRect := image.Rect(dx+40, dy+30, dx+120, dy+50)
-			cancelRect := image.Rect(dx+160, dy+30, dx+240, dy+50)
-			pt := image.Pt(x, y)
-			if pt.In(confirmRect) {
-				g.moveNode(g.movingNode, g.moveConfirmI, g.moveConfirmJ)
-				g.cancelMoveMode()
-			} else if pt.In(cancelRect) {
-				g.cancelMoveMode()
-			}
-			return
-		}
-		wx := (float64(x) - g.cam.OffsetX) / g.cam.Scale
-		wy := (float64(y-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
-		_, _, ni, nj := g.grid.Snap(wx, wy)
-		if existing := g.nodeAt(ni, nj); existing != nil && existing.ID != g.movingNode.ID {
-			g.cancelMoveMode()
-			return
-		}
-		loss := g.moveNodeEdgeLoss(g.movingNode, ni, nj)
-		if loss > 0 {
-			g.moveConfirm = true
-			g.moveConfirmI = ni
-			g.moveConfirmJ = nj
-			g.moveEdgeLoss = loss
-		} else {
-			g.moveNode(g.movingNode, ni, nj)
-			g.cancelMoveMode()
-		}
+	// Armed grid mode (move/copy/connect): the tap is the placement/target.
+	if g.handleArmedModeTap(x, y) {
 		return
 	}
 
@@ -162,21 +167,9 @@ func (g *Game) handleTapInGrid(x, y int) {
 		return
 	}
 
-	// Tap on empty space creates node
-	wx := (float64(x) - g.cam.OffsetX) / g.cam.Scale
-	wy := (float64(y-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
-	_, _, i, j := g.grid.Snap(wx, wy)
-	n := g.tryAddNode(i, j, model.NodeTypeRegular)
-	if n != nil {
-		if g.sel != nil && g.sel != n {
-			g.sel.Selected = false
-		}
-		g.sel = n
-		n.Selected = true
-		g.computeSelNeighbors()
-	}
-	// Don't open sidebar for new nodes (consistent with mouse behavior)
-	g.sidebar.Close()
+	// Tap on empty space: resolve through the grid guide (nearest node/edge
+	// cell within the snap radius; free cell otherwise).
+	g.commitGuideTarget(x, y)
 }
 
 // handleTouchLongPress handles a long press gesture, equivalent to right-click.

@@ -28,10 +28,10 @@ func TestEnterConnectMode(t *testing.T) {
 	// Enter connect mode from node B.
 	g.enterConnectMode(nodeB)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be true")
 	}
-	if g.connectFromNode != nodeB {
+	if g.modes.Subject() != nodeB {
 		t.Fatal("connectFromNode should be nodeB")
 	}
 	if g.sel != nodeB {
@@ -60,10 +60,10 @@ func TestEnterConnectModeNoPriorSelection(t *testing.T) {
 
 	g.enterConnectMode(node)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be true")
 	}
-	if g.connectFromNode != node {
+	if g.modes.Subject() != node {
 		t.Fatal("connectFromNode should be set")
 	}
 	if !node.Selected {
@@ -86,10 +86,10 @@ func TestHandleConnectModeTapEmptyGrid(t *testing.T) {
 	// Tap far from any node.
 	g.handleConnectModeTap(600, 400)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled after tapping empty space")
 	}
-	if g.connectFromNode != nil {
+	if g.modes.Subject() != nil {
 		t.Fatal("connectFromNode should be nil after cancel")
 	}
 }
@@ -113,10 +113,10 @@ func TestHandleConnectModeTapSelfTap(t *testing.T) {
 	cy := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(cx, cy)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should still be active after self-tap")
 	}
-	if g.connectFromNode != node {
+	if g.modes.Subject() != node {
 		t.Fatal("connectFromNode should still be the source node")
 	}
 	if len(g.edges) != edgesBefore {
@@ -148,7 +148,7 @@ func TestHandleConnectModeTapInvisibleNodePosition(t *testing.T) {
 	cy := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(cx, cy)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled (invisible node is not a valid target)")
 	}
 	if len(g.edges) != edgesBefore {
@@ -176,7 +176,7 @@ func TestHandleConnectModeTapNonPerpendicular(t *testing.T) {
 	cy := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(cx, cy)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should still be active after non-perpendicular tap")
 	}
 	if len(g.edges) != edgesBefore {
@@ -210,10 +210,10 @@ func TestHandleConnectModeTapSuccessfulConnect(t *testing.T) {
 	cy := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(cx, cy)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled after successful edge")
 	}
-	if g.connectFromNode != nil {
+	if g.modes.Subject() != nil {
 		t.Fatal("connectFromNode should be nil after cancel")
 	}
 	if len(g.edges) != edgesBefore+1 {
@@ -221,7 +221,8 @@ func TestHandleConnectModeTapSuccessfulConnect(t *testing.T) {
 	}
 }
 
-// TestCancelConnectMode verifies that cancelConnectMode resets all state.
+// TestCancelConnectMode verifies that g.modes.Cancel resets all connect-mode
+// state (formerly cancelConnectMode, folded into gridModeManager).
 func TestCancelConnectMode(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -231,16 +232,16 @@ func TestCancelConnectMode(t *testing.T) {
 
 	node := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.enterConnectMode(node)
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("precondition: connectMode should be true")
 	}
 
-	g.cancelConnectMode()
+	g.modes.Cancel("test")
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be false after cancel")
 	}
-	if g.connectFromNode != nil {
+	if g.modes.Subject() != nil {
 		t.Fatal("connectFromNode should be nil after cancel")
 	}
 }
@@ -255,29 +256,18 @@ func TestDrawConnectModeNotActive(t *testing.T) {
 	g.Layout(640, 480)
 
 	dst := ebiten.NewImage(640, 480)
-	// connectMode is false by default.
+	// connect mode is inactive by default (g.modes.Active() == GridModeNone).
 	assertNotPanics(t, func() {
 		g.drawConnectMode(dst)
 	})
 }
 
-// TestDrawConnectModeNilFromNode verifies that drawConnectMode returns early
-// when connectMode is true but connectFromNode is nil.
-func TestDrawConnectModeNilFromNode(t *testing.T) {
-	assertDefaultParityState(t)
-	withDefaultStart(t, false)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-
-	g.connectMode = true
-	g.connectFromNode = nil
-
-	dst := ebiten.NewImage(640, 480)
-	assertNotPanics(t, func() {
-		g.drawConnectMode(dst)
-	})
-}
+// Note: the old TestDrawConnectModeNilFromNode (kind==Connect with a nil
+// subject) tested a state the gridModeManager no longer allows to exist:
+// Enter(kind, subject) is a no-op unless subject != nil, so "armed but no
+// source node" is now structurally unreachable, and drawConnectMode's guard
+// (see brief) intentionally dropped the defensive nil check. Removed rather
+// than kept as a synthetic-state test.
 
 // TestDrawConnectModeActive verifies that drawConnectMode runs without error
 // when connect mode is active with a valid source node.

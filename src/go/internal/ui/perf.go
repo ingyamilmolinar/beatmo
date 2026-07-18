@@ -38,6 +38,17 @@ type PerfStats struct {
 	HeapObjects uint64 // live heap objects
 	Goroutines  int    // number of live goroutines
 
+	// GC metrics over the sample window (see gc_metrics.go). Populated by
+	// PerfSnapshot from Game.gcMetrics — independent of the 2 s PERF_LOG reset
+	// so they span the whole run, not just the last window.
+	GCPauses     int64   // STW pauses in the window
+	GCCycles     int64   // GC cycles in the window
+	GCForced     int64   // forced runtime.GC() calls (ForceGCInterval) in the window
+	GCPauseP50MS float64 // approx median STW pause (ms)
+	GCPauseP99MS float64 // approx p99 STW pause (ms)
+	GCPauseMaxMS float64 // approx max STW pause (ms)
+	GCHeapHighKB uint64  // peak live heap during the window (KB)
+
 	// Recording pipeline counters. Zero when not recording.
 	RecordingActive       bool  // pipeline is attached to the audio thread
 	RecordingDrops        int64 // capture blocks dropped due to backpressure

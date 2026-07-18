@@ -49,7 +49,7 @@ func ribbonZoneForTest(t *testing.T, elapsedBeats float64) (*TimelineZone, image
 		Frame:                func() int64 { return 0 },
 		BeatLength:           func() int { return patternLength },
 		OnOffsetChange:       func(int) {},
-		OnScrubPosition:      func(int) {},
+		OnSeekToStep:         func(int, string) {},
 		SetTimelineBeats:     func(n int) { totalBeats = n },
 	}
 	z := NewTimelineZone(cb)

@@ -39,11 +39,23 @@ type GroupRule struct {
 // NodeGroup is a persistent set of nodes sharing batch edits and rules.
 // A node may belong to several groups; rule effects stack (pitch deltas sum,
 // volume/duration multipliers multiply).
+//
+// RulesEnabled is an INDEPENDENT status bit, decoupled from whether Rules is
+// non-empty (task-enabled-status brief, Part C): a group can carry configured
+// delta rules while RulesEnabled is false (edited but not yet turned on), or
+// have RulesEnabled true with an empty Rules slice (a no-op — HasRules is
+// still false either way). BuildGroupIndex is the single gate: it only folds
+// a group's Rules into the per-node rule index when RulesEnabled is true —
+// Member() (ring rendering) is unaffected by the flag. Defaults false (the
+// zero value), so every freshly created group — including a marquee
+// provisional one — starts Disabled until explicitly enabled and saved.
+// Mutated only via SetGroupRulesEnabled; SetGroupRules never touches it.
 type NodeGroup struct {
-	ID      GroupID
-	Name    string
-	NodeIDs []NodeID
-	Rules   []GroupRule
+	ID           GroupID
+	Name         string
+	NodeIDs      []NodeID
+	Rules        []GroupRule
+	RulesEnabled bool
 }
 
 var (
@@ -266,6 +278,23 @@ func (g *Graph) SetGroupRules(id GroupID, rules []GroupRule) error {
 
 func (g *Graph) ClearGroupRules(id GroupID) error { return g.SetGroupRules(id, nil) }
 
+// SetGroupRulesEnabled sets the group's independent RulesEnabled status bit
+// (task-enabled-status brief, Part C) — it NEVER touches Rules. Firing the
+// group-changed hook here is what makes toggling live: onGroupsChanged
+// rebuilds the GroupIndex (BuildGroupIndex re-reads RulesEnabled) and, while
+// playing, drops in-flight audio so the very next re-predicted trigger
+// reflects the new gate — enabling a group with nonzero deltas is
+// immediately audible, disabling silences the ramp back to identity.
+func (g *Graph) SetGroupRulesEnabled(id GroupID, on bool) error {
+	grp, ok := g.Groups[id]
+	if !ok {
+		return ErrGroupNotFound
+	}
+	grp.RulesEnabled = on
+	g.fireGroupChanged(id)
+	return nil
+}
+
 // ReanchorAllGroupRules re-anchors EVERY rule of EVERY rule-bearing group to
 // anchor (clamped to >= 0), firing fireGroupChanged exactly ONCE PER GROUP
 // touched (not once per rule), and returns the count of groups touched.
@@ -313,10 +342,11 @@ func (g *Graph) Group(id GroupID) (NodeGroup, bool) {
 
 func copyGroup(grp *NodeGroup) NodeGroup {
 	return NodeGroup{
-		ID:      grp.ID,
-		Name:    grp.Name,
-		NodeIDs: append([]NodeID(nil), grp.NodeIDs...),
-		Rules:   append([]GroupRule(nil), grp.Rules...),
+		ID:           grp.ID,
+		Name:         grp.Name,
+		NodeIDs:      append([]NodeID(nil), grp.NodeIDs...),
+		Rules:        append([]GroupRule(nil), grp.Rules...),
+		RulesEnabled: grp.RulesEnabled,
 	}
 }
 

@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -78,15 +79,28 @@ func TestUndoEQFilterAndMuteControls(t *testing.T) {
 	}
 }
 
-// firstStageEnableParam returns a "*_enabled" stage-toggle param for the recipe
-// whose shipped default is non-zero (so toggling it OFF produces an exported
-// synth_params delta). ok=false means the recipe has no such param.
-func firstStageEnableParam(recipe string) (string, bool) {
+// firstStageEnableParam returns a "*_enabled" stage-toggle param for instID's
+// recipe whose shipped default is non-zero (so toggling it OFF produces an
+// exported synth_params delta) AND that is actually toggleable — a sole-source
+// generator stage (e.g. OSC on a pure-oscillator voice) is greyed out and
+// non-interactive, so toggleSynthStage no-ops on it (see StageDisableSilences).
+// Iterates in deterministic (sorted) order so the choice is stable across runs.
+// ok=false means the recipe has no toggleable stage param.
+func firstStageEnableParam(instID, recipe string) (string, bool) {
 	shipped := audio.RecipeShippedDefaults(recipe)
-	for name, def := range shipped {
-		if strings.HasSuffix(name, "_enabled") && def != 0 {
-			return name, true
+	names := make([]string, 0, len(shipped))
+	for name := range shipped {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !strings.HasSuffix(name, "_enabled") || shipped[name] == 0 {
+			continue
 		}
+		if audio.StageDisableSilences(instID, name) {
+			continue // sole-source generator: non-interactive, cannot be toggled
+		}
+		return name, true
 	}
 	return "", false
 }
@@ -100,7 +114,7 @@ func TestUndoSynthStageToggle(t *testing.T) {
 	expandSynthPanelForTest(t, g)
 	instID := g.drum.Rows[0].Instrument
 	recipe := audio.RecipeForInstrument(instID)
-	param, ok := firstStageEnableParam(recipe)
+	param, ok := firstStageEnableParam(instID, recipe)
 	if !ok {
 		t.Skipf("recipe %q has no stage-enable param", recipe)
 	}
@@ -167,75 +181,65 @@ func TestUndoSynthNumericEntry(t *testing.T) {
 	assertOneUndoStepRoundTrip(t, g, "synth-numeric-entry", before, depth0)
 }
 
-// TestSynthKnobDragRecordsExactlyOneUndoStep is the flagship "one event per
-// drag" proof: it drives a full press→drag(multi-frame)→release knob gesture
-// through the REAL production input path (SetInputForTest → g.Update →
-// HitIndex → synthKnobHitAdapter) and asserts the entire gesture collapses into
-// EXACTLY ONE undo step, committed on release — never one-per-frame.
-func TestSynthKnobDragRecordsExactlyOneUndoStep(t *testing.T) {
+// TestSynthKnobWheelRecordsExactlyOneUndoStep proves the Task-5 wheel nudge
+// collapses a whole spin into EXACTLY ONE undo step, committed once the debounce
+// elapses, through the real production input path.
+func TestSynthKnobWheelRecordsExactlyOneUndoStep(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
 	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
 	g.Update()
-
-	img := newTrackedImage("test.knobdrag", 1280, 720)
+	img := newTrackedImage("test.knobwheel", 1280, 720)
 	defer releaseImage(img)
-	g.Draw(img) // populate knob rect
-
+	g.Draw(img)
 	k := g.drum.SynthTabKnobs()[idx]
 	r := k.Rect()
 	if r.Empty() {
 		t.Fatalf("knob %d rect empty after draw", idx)
 	}
 	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2
-
-	g.drum.eqPanelZone.Invalidate()
-
-	mouseX, mouseY := cx, cy
-	pressed := false
-	restore := SetInputForTest(
-		func() (int, int) { return mouseX, mouseY },
-		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 1280, 720 },
-	)
-	defer restore()
-
-	// Establish the undo baseline at the moment of press.
 	g.undoManager.OnExternalLoad()
 	before := g.undoCapture()
 	depth0 := len(g.undoManager.undo)
-
-	pressed = true
-	g.Update() // OnPress
-
-	// Drag across several frames — each frame mutates live audio but must NOT
-	// record an undo step. The synth knob axis-locks to VALUE mode only on a
-	// horizontal-dominant drag (vertical is a section scroll), so move in +x.
+	wheelActive := true
+	restore := SetInputForTest(
+		func() (int, int) { return cx, cy },
+		func(b ebiten.MouseButton) bool { return false },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) {
+			if wheelActive {
+				return 0, 1
+			}
+			return 0, 0
+		},
+		func() (int, int) { return 1280, 720 },
+	)
+	defer restore()
 	for f := 1; f <= 5; f++ {
-		mouseX = cx + f*10 // move right = turn the knob up
+		g.drum.eqPanelZone.Invalidate()
+		wheelActive = true
+		g.Update()
+		wheelActive = false
 		g.Update()
 		if steps := len(g.undoManager.undo) - depth0; steps != 0 {
-			t.Fatalf("undo step recorded mid-drag at frame %d (got %d, want 0 until release)", f, steps)
+			t.Fatalf("undo step recorded mid-spin at notch %d (got %d, want 0 until debounce)", f, steps)
 		}
 	}
-
-	pressed = false
-	g.Update() // OnRelease → single commit
-
+	for i := 0; i < wheelNudgeCommitFrames+4; i++ {
+		g.Update()
+	}
 	after := g.undoCapture()
 	if string(after) == string(before) {
-		t.Fatal("knob drag did not change the exported document")
+		t.Fatal("wheel spin did not change the exported document")
 	}
 	if steps := len(g.undoManager.undo) - depth0; steps != 1 {
-		t.Fatalf("knob drag recorded %d undo steps, want exactly 1 (one event per gesture)", steps)
+		t.Fatalf("wheel spin recorded %d undo steps, want exactly 1", steps)
 	}
 	g.undoManager.Undo()
 	if got := g.undoCapture(); string(got) != string(before) {
-		t.Fatal("knob drag: Undo not byte-identical to pre-drag document")
+		t.Fatal("wheel spin: Undo not byte-identical to pre-spin document")
 	}
 	_ = hooks.EventInstrumentParamsCommitted
 }

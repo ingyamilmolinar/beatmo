@@ -36,7 +36,7 @@ func TestGroupRoundMath(t *testing.T) {
 
 func TestGroupEffectSingleRule(t *testing.T) {
 	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 4})
-	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}})
+	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
 	for _, c := range []struct {
 		round int
 		want  float64
@@ -58,7 +58,7 @@ func TestGroupEffectSingleRule(t *testing.T) {
 func TestGroupEffectVolumeDurationRamp(t *testing.T) {
 	rv := mustRule(t, GroupRule{Param: GroupParamVolume, Delta: -0.25, EveryN: 1})
 	rd := mustRule(t, GroupRule{Param: GroupParamDuration, Delta: 0.5, EveryN: 2})
-	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{3}, Rules: []GroupRule{rv, rd}})
+	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{3}, Rules: []GroupRule{rv, rd}, RulesEnabled: true})
 	pd, vm, dm := GroupEffect(idx, 3, 2, 0, 1)
 	if pd != 0 {
 		t.Errorf("pitch: got %v", pd)
@@ -82,8 +82,8 @@ func TestGroupEffectStacking(t *testing.T) {
 	rv1 := mustRule(t, GroupRule{Param: GroupParamVolume, Delta: -0.1, EveryN: 1})
 	rv2 := mustRule(t, GroupRule{Param: GroupParamVolume, Delta: -0.1, EveryN: 1})
 	idx := idxFor(
-		&NodeGroup{ID: 1, NodeIDs: []NodeID{5}, Rules: []GroupRule{r1, rv1}},
-		&NodeGroup{ID: 2, NodeIDs: []NodeID{5}, Rules: []GroupRule{r2, rv2}},
+		&NodeGroup{ID: 1, NodeIDs: []NodeID{5}, Rules: []GroupRule{r1, rv1}, RulesEnabled: true},
+		&NodeGroup{ID: 2, NodeIDs: []NodeID{5}, Rules: []GroupRule{r2, rv2}, RulesEnabled: true},
 	)
 	pd, vm, _ := GroupEffect(idx, 5, 4, 0, 1)
 	if pd != 8 { // 1*4 + 2*2 — pitch deltas SUM across groups
@@ -99,8 +99,8 @@ func TestGroupEffectDurationStacksAcrossGroups(t *testing.T) {
 	rd1 := mustRule(t, GroupRule{Param: GroupParamDuration, Delta: 0.5, EveryN: 1})
 	rd2 := mustRule(t, GroupRule{Param: GroupParamDuration, Delta: 0.5, EveryN: 1})
 	idx := idxFor(
-		&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{rd1}},
-		&NodeGroup{ID: 2, NodeIDs: []NodeID{7}, Rules: []GroupRule{rd2}},
+		&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{rd1}, RulesEnabled: true},
+		&NodeGroup{ID: 2, NodeIDs: []NodeID{7}, Rules: []GroupRule{rd2}, RulesEnabled: true},
 	)
 	_, _, durMul := GroupEffect(idx, 7, 1, 0, 1)
 	want := 1.5 * 1.5 // (1 + 0.5*1) * (1 + 0.5*1)
@@ -114,7 +114,7 @@ func TestGroupEffectIdentityAtRoundZeroWithCustomClamp(t *testing.T) {
 	rp := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 4, Min: 5, Max: 24})
 	// Volume rule with custom clamp Min:2, Max:4
 	rv := mustRule(t, GroupRule{Param: GroupParamVolume, Delta: 0.1, EveryN: 1, Min: 2, Max: 4})
-	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{8}, Rules: []GroupRule{rp, rv}})
+	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{8}, Rules: []GroupRule{rp, rv}, RulesEnabled: true})
 
 	// At round 0, identity should hold: (0, 1, 1) regardless of clamp values
 	pd, vm, dm := GroupEffect(idx, 8, 0, 0, 1)
@@ -136,7 +136,7 @@ func TestGroupEffectIdentityAtRoundZeroWithCustomClamp(t *testing.T) {
 // not from the timeline origin.
 func TestGroupEffectAnchoredMidTimeline(t *testing.T) {
 	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 1, EveryN: 1, AnchorIdx: 10})
-	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}})
+	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
 	for _, c := range []struct {
 		absIdx int
 		want   float64
@@ -158,7 +158,7 @@ func TestGroupEffectAnchoredMidTimeline(t *testing.T) {
 // the round difference to 0 rather than going negative.
 func TestGroupEffectAnchorBeyondAbsIdxIsIdentity(t *testing.T) {
 	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 1, EveryN: 1, AnchorIdx: 10})
-	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}})
+	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
 	for _, absIdx := range []int{0, 1, 5, 9, 10} {
 		pd, vm, dm := GroupEffect(idx, 7, absIdx, 0, 1)
 		if pd != 0 || vm != 1 || dm != 1 {
@@ -171,7 +171,7 @@ func TestGroupEffectAnchorBeyondAbsIdxIsIdentity(t *testing.T) {
 // from the anchor before dividing by EveryN, not the absolute round.
 func TestGroupEffectAnchorEveryNInterplay(t *testing.T) {
 	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 1, EveryN: 3, AnchorIdx: 10})
-	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}})
+	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
 	for _, c := range []struct {
 		absIdx int
 		want   float64
@@ -195,8 +195,8 @@ func TestGroupEffectStackingDifferentAnchors(t *testing.T) {
 	r1 := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 1, EveryN: 1, AnchorIdx: 0})
 	r2 := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 1, AnchorIdx: 8})
 	idx := idxFor(
-		&NodeGroup{ID: 1, NodeIDs: []NodeID{5}, Rules: []GroupRule{r1}},
-		&NodeGroup{ID: 2, NodeIDs: []NodeID{5}, Rules: []GroupRule{r2}},
+		&NodeGroup{ID: 1, NodeIDs: []NodeID{5}, Rules: []GroupRule{r1}, RulesEnabled: true},
+		&NodeGroup{ID: 2, NodeIDs: []NodeID{5}, Rules: []GroupRule{r2}, RulesEnabled: true},
 	)
 	// At absIdx=10: r1 (anchor 0) has 10 steps -> +10; r2 (anchor 8) has 2
 	// steps -> +4. Sum = 14.
@@ -218,7 +218,7 @@ func TestGroupEffectStackingDifferentAnchors(t *testing.T) {
 // steps = GroupRound(absIdx,...) / EveryN.
 func TestGroupEffectAnchorZeroIsBackwardCompatible(t *testing.T) {
 	r := GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 4, Min: -24, Max: 24} // AnchorIdx left at zero value
-	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}})
+	idx := idxFor(&NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true})
 	for _, c := range []struct {
 		round int
 		want  float64
@@ -233,8 +233,8 @@ func TestGroupEffectAnchorZeroIsBackwardCompatible(t *testing.T) {
 func TestBuildGroupIndexDeterministic(t *testing.T) {
 	r1 := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 1, EveryN: 1})
 	r2 := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 1})
-	g1 := &NodeGroup{ID: 1, NodeIDs: []NodeID{5}, Rules: []GroupRule{r1}}
-	g2 := &NodeGroup{ID: 2, NodeIDs: []NodeID{5}, Rules: []GroupRule{r2}}
+	g1 := &NodeGroup{ID: 1, NodeIDs: []NodeID{5}, Rules: []GroupRule{r1}, RulesEnabled: true}
+	g2 := &NodeGroup{ID: 2, NodeIDs: []NodeID{5}, Rules: []GroupRule{r2}, RulesEnabled: true}
 	for i := 0; i < 20; i++ {
 		idx := idxFor(g1, g2)
 		pd, _, _ := GroupEffect(idx, 5, 1, 0, 1)
@@ -253,5 +253,37 @@ func TestBuildGroupIndexDeterministic(t *testing.T) {
 	idx := idxFor(g3)
 	if !idx.Member(9) || idx.HasRules(9) {
 		t.Fatalf("no-rule group: Member/HasRules wrong")
+	}
+}
+
+// TestBuildGroupIndexSkipsDisabledGroupRules is the task-enabled-status brief
+// Part C model-level pin: a group with configured Rules but RulesEnabled
+// false must contribute NO rule effect (HasRules false, GroupEffect
+// identity) even though it still counts for Member() (ring rendering is
+// unaffected by the flag — only rule application is gated).
+func TestBuildGroupIndexSkipsDisabledGroupRules(t *testing.T) {
+	r := mustRule(t, GroupRule{Param: GroupParamPitch, Delta: 2, EveryN: 1})
+	disabled := &NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: false}
+	idx := idxFor(disabled)
+	if !idx.Member(7) {
+		t.Fatalf("disabled group must still count for Member()")
+	}
+	if idx.HasRules(7) {
+		t.Fatalf("disabled group's rules must not surface via HasRules")
+	}
+	pd, vm, dm := GroupEffect(idx, 7, 5, 0, 1)
+	if pd != 0 || vm != 1 || dm != 1 {
+		t.Fatalf("disabled group's rule must be inert, got (%v,%v,%v)", pd, vm, dm)
+	}
+
+	// Enabling flips it live without touching Rules.
+	enabled := &NodeGroup{ID: 1, NodeIDs: []NodeID{7}, Rules: []GroupRule{r}, RulesEnabled: true}
+	idx2 := idxFor(enabled)
+	if !idx2.HasRules(7) {
+		t.Fatalf("enabled group's rules must surface via HasRules")
+	}
+	pd2, _, _ := GroupEffect(idx2, 7, 5, 0, 1)
+	if pd2 != 10 { // delta 2 * round 5
+		t.Fatalf("enabled group pitch = %v, want 10", pd2)
 	}
 }

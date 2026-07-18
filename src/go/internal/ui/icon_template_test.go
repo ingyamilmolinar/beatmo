@@ -45,7 +45,7 @@ func TestLoadTemplateUsesTemplateIcon(t *testing.T) {
 
 	dv.overflowPage = 1
 	for _, it := range dv.overflowItems() {
-		if it.header || it.iconID == IconChevronLeft {
+		if it.header || it.search || it.iconID == IconChevronLeft {
 			continue
 		}
 		if it.iconID != IconTemplate {

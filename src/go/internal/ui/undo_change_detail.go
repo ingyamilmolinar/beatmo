@@ -64,9 +64,18 @@ func describeUndoChange(before, after []byte) (changeDetail, bool) {
 	if b.Subdiv != a.Subdiv {
 		return changeDetail{"Subdivision", strconv.Itoa(b.Subdiv), strconv.Itoa(a.Subdiv)}, true
 	}
-	if b.MasterVolume != a.MasterVolume {
+	// MasterVolume is *float64 (nil = legacy absent field = the historical
+	// 1.0 default) — compare effective values, not pointer identities.
+	bmv, amv := 1.0, 1.0
+	if b.MasterVolume != nil {
+		bmv = *b.MasterVolume
+	}
+	if a.MasterVolume != nil {
+		amv = *a.MasterVolume
+	}
+	if bmv != amv {
 		f := keyFacet(keyVolumeLabel(), func(v float64) string { return volPctStr(orDefaultOne(v)) })
-		return f.detail(b.MasterVolume, a.MasterVolume), true
+		return f.detail(bmv, amv), true
 	}
 	bn := make(map[int]exportNode, len(b.Nodes))
 	for _, n := range b.Nodes {

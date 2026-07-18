@@ -172,11 +172,19 @@ func TestTimelineScrub_OnPressFiresHaptic(t *testing.T) {
 }
 
 // TestTimelineSwipeScrub_DragDispatchesPositions exercises the full
-// press → drag → release pipeline through the timelineScrubHitAdapter
-// and asserts OnScrubPosition is called monotonically as the touch
-// drags from start to end of the timeline. Pin for Tasks 3.1–3.3:
-// any future change to scrub hit area, gate, or haptic must not
-// break the underlying scrub-position dispatch contract.
+// press → drag → release pipeline through the timelineScrubHitAdapter.
+//
+// Task 10 redesigned the ribbon from a view-offset scrub (re-seeking on
+// every drag frame) into a click-to-seek surface: press commits an
+// immediate seek to the nearest beat, drag ONLY updates the ghost preview
+// (z.scrubGhostBeat, no dispatch), and release commits a second seek only
+// if the final beat differs from the press beat. This test (previously
+// asserting the old offset-scrub callback fired monotonically as the
+// touch dragged) now asserts: (1) OnSeekToStep fires exactly once on
+// press and at most once more on release — never per intermediate drag
+// frame; (2) the ghost beat itself still tracks the drag monotonically,
+// preserving the original "drag advances position" guarantee at the
+// preview layer.
 func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 	setupMobileTest(t, true)
 	logger := log.New(testLogOutput(), log.LevelInfo)
@@ -189,14 +197,14 @@ func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 		t.Fatalf("timelineZone nil")
 	}
 
-	// Wrap the existing OnScrubPosition callback so we can capture each
+	// Wrap the existing OnSeekToStep callback so we can capture each
 	// dispatched step value while preserving production behavior.
-	var positions []int
-	prev := z.callbacks.OnScrubPosition
-	z.callbacks.OnScrubPosition = func(steps int) {
-		positions = append(positions, steps)
+	var seeks []int
+	prev := z.callbacks.OnSeekToStep
+	z.callbacks.OnSeekToStep = func(step int, origin string) {
+		seeks = append(seeks, step)
 		if prev != nil {
-			prev(steps)
+			prev(step, origin)
 		}
 	}
 
@@ -211,17 +219,34 @@ func TestTimelineSwipeScrub_DragDispatchesPositions(t *testing.T) {
 
 	adapter := &timelineScrubHitAdapter{zone: z}
 	adapter.OnPress(startX, y)
+	ghostAfterPress := z.scrubGhostBeat
+
 	adapter.OnDrag((startX+endX)/2, y)
+	ghostAfterMidDrag := z.scrubGhostBeat
+
 	adapter.OnDrag(endX, y)
+	ghostAfterEndDrag := z.scrubGhostBeat
+
 	adapter.OnRelease(endX, y)
 
-	if len(positions) < 3 {
-		t.Fatalf("expected ≥3 OnScrubPosition calls (press + 2 drags), got %d: %v", len(positions), positions)
+	// Exactly one seek on press, at most one more on release (final !=
+	// press beat here since the gesture travels the full bar width) —
+	// NEVER one per intermediate drag frame.
+	if len(seeks) != 2 {
+		t.Fatalf("expected exactly 2 OnSeekToStep calls (press + release), got %d: %v", len(seeks), seeks)
 	}
-	// First call (press) and last call (final drag) should differ:
-	// scrub at left edge → 0, scrub at right edge → max.
-	if positions[0] >= positions[len(positions)-1] {
-		t.Fatalf("expected drag to advance position monotonically; saw %v", positions)
+	if seeks[0] >= seeks[len(seeks)-1] {
+		t.Fatalf("expected press seek < release seek (left edge -> right edge); saw %v", seeks)
+	}
+
+	// The ghost preview must still advance monotonically across the drag
+	// — that's the "drag advances position" contract, now living at the
+	// preview layer instead of the dispatch layer.
+	if ghostAfterMidDrag <= ghostAfterPress {
+		t.Fatalf("expected ghost to advance past press position at mid-drag; press=%d mid=%d", ghostAfterPress, ghostAfterMidDrag)
+	}
+	if ghostAfterEndDrag <= ghostAfterMidDrag {
+		t.Fatalf("expected ghost to advance past mid-drag at end-drag; mid=%d end=%d", ghostAfterMidDrag, ghostAfterEndDrag)
 	}
 	if z.scrubbing {
 		t.Fatalf("expected scrubbing=false after OnRelease, got true")
