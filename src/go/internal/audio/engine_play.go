@@ -32,7 +32,11 @@ func Play(id string, when ...float64) {
 			delay = int(d * float64(sampleRate))
 		}
 	}
-	v := newRecipeAwareVoice(id, bpm, sampleRate)
+	// Synth/Sampler audition — the UI goroutine, not the audioLoop dispatch
+	// goroutine. Must attribute originPrewarm, not the bare wrapper's default
+	// originDispatch, or a knob-release audition would falsely trip the
+	// DispatchRenders==0 gate.
+	v := newRecipeAwareVoiceOrigin(id, bpm, sampleRate, originPrewarm)
 	if v == nil {
 		return
 	}
@@ -61,7 +65,8 @@ func PlayVol(id string, vol float64, when ...float64) {
 			delay = int(d * float64(sampleRate))
 		}
 	}
-	inner := newRecipeAwareVoice(id, bpm, sampleRate)
+	// Synth/Sampler audition — UI goroutine; see the comment in Play above.
+	inner := newRecipeAwareVoiceOrigin(id, bpm, sampleRate, originPrewarm)
 	if inner == nil {
 		return
 	}

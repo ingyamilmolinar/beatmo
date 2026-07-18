@@ -13,22 +13,20 @@ import (
 // number + padding), not a magic px value.
 func wantReadoutContentW(t *testing.T) int {
 	t.Helper()
-	capScale := FontSizeCaption / FontSizeBody
-	headlineScale := FontSizeHeading / FontSizeBody
 	w := 0
 	type cand struct {
-		s  string
-		sc float64
+		s    string
+		role TextRole
 	}
 	for _, c := range []cand{
-		{i18n.T(i18n.KeyCapHeadroom), capScale},
-		{i18n.T(i18n.KeyLevelsClips) + " (10s)", capScale},
-		{"LUFS-S", capScale},
-		{i18n.T(i18n.KeyCapLoudest), capScale},
-		{"+99 dB", headlineScale},
-		{"CLIP!", headlineScale},
+		{i18n.T(i18n.KeyCapHeadroom), RoleCaption},
+		{i18n.T(i18n.KeyLevelsClips) + " (10s)", RoleCaption},
+		{"LUFS-S", RoleCaption},
+		{i18n.T(i18n.KeyCapLoudest), RoleCaption},
+		{"+99 dB", RolePanelTitle},
+		{"CLIP!", RolePanelTitle},
 	} {
-		if tw := int(float64(TextWidth(c.s)) * c.sc); tw > w {
+		if tw := StyledTextWidth(c.s, c.role); tw > w {
 			w = tw
 		}
 	}

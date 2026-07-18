@@ -60,8 +60,9 @@ func (g *Game) Update() error {
 					rowCachePatch = g.drum.rowCachePatch
 					rowsRepaints = g.drum.rowsRepaints
 				}
-				g.logger.Debugf("[perf] ui: fps=%.1f upd_avg=%.3fms upd_max=%.3fms refresh=%.3fms draw_grid=%.3fms draw_drum=%.3fms rows_repaint=%d row_cache(full=%d shift=%d patch=%d) a_enq=%d a_deq=%d qlat_avg=%.3fms qlat_max=%.3fms acall_avg=%.3fms acall_max=%.3fms par_avg=%.3fms par_max=%.3fms par_n=%d live_images=%d images_alloc=%d images_by_tag=[%s]",
-					s.FPSAvg, s.UpdateAvgMS, s.UpdateMaxMS, g.lastRefreshMS, g.lastDrawGridMS, g.lastDrawDrumMS, rowsRepaints, rowCacheFull, rowCacheShift, rowCachePatch, s.AudioEnq, s.AudioDeq, s.AudioQLatAvg, s.AudioQLatMax, s.AudioCallAvg, s.AudioCallMax, parAvg, parMax, parCount, g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot())
+				gc := g.gcMetrics.snapshot()
+				g.logger.Debugf("[perf] ui: fps=%.1f upd_avg=%.3fms upd_max=%.3fms refresh=%.3fms draw_grid=%.3fms draw_drum=%.3fms rows_repaint=%d row_cache(full=%d shift=%d patch=%d) a_enq=%d a_deq=%d qlat_avg=%.3fms qlat_max=%.3fms acall_avg=%.3fms acall_max=%.3fms par_avg=%.3fms par_max=%.3fms par_n=%d gc(cyc=%d forced=%d pauseMax=%.3fms heapHigh=%dKB) live_images=%d images_alloc=%d images_by_tag=[%s]",
+					s.FPSAvg, s.UpdateAvgMS, s.UpdateMaxMS, g.lastRefreshMS, g.lastDrawGridMS, g.lastDrawDrumMS, rowsRepaints, rowCacheFull, rowCacheShift, rowCachePatch, s.AudioEnq, s.AudioDeq, s.AudioQLatAvg, s.AudioQLatMax, s.AudioCallAvg, s.AudioCallMax, parAvg, parMax, parCount, gc.Cycles, gc.Forced, gc.PauseMaxMS, gc.HeapHighKB, g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot())
 				g.perf.reset()
 				g.resetParityPerf()
 				g.perf.nextLog = now.Add(2 * time.Second)
@@ -94,11 +95,22 @@ func (g *Game) Update() error {
 			g.benchStarted = true
 			g.benchStart = time.Now()
 			g.perf.reset()
+			g.gcMetrics.reset()
 			g.schedMetrics.Reset()
 			ResetImageMetrics()
 			g.logger.Infof("[bench] Started: bpm=%d duration=%s", g.benchBPM, g.benchDuration)
 			if g.benchRecord {
 				g.startBenchRecording()
+			}
+		} else if g.benchStarted && time.Since(g.benchStart) < g.benchDuration {
+			// Mid-measure-window tick: drive the opt-in synth param-mutation
+			// storm (off by default — leaves existing bench output unchanged).
+			if g.benchStorm != benchStormOff && g.benchStormInst != "" {
+				for _, m := range benchStormMutationsForTick(g.benchStorm, g.benchStormTick) {
+					audio.SetInstrumentParam(g.benchStormInst, m.Param, m.Value)
+					g.benchStormPushes++
+				}
+				g.benchStormTick++
 			}
 		} else if g.benchStarted && time.Since(g.benchStart) >= g.benchDuration {
 			// Duration elapsed → log stats, stop, exit cleanly
@@ -113,15 +125,24 @@ func (g *Game) Update() error {
 				sm.Count, sm.Overdue,
 				benchFmtMS(sm.MinLead), benchFmtMS(sm.LagP90), benchFmtMS(sm.LagP99),
 				s.HeapAllocKB, s.Goroutines)
+			g.logger.Infof("[bench] GC: cycles=%d forced=%d pauses=%d pauseP50=%.3fms pauseP99=%.3fms pauseMax=%.3fms heapHigh=%dKB",
+				s.GCCycles, s.GCForced, s.GCPauses,
+				s.GCPauseP50MS, s.GCPauseP99MS, s.GCPauseMaxMS, s.GCHeapHighKB)
 			rl := audio.GetRenderLatencyMetrics()
-			g.logger.Infof("[bench] RenderLatency: cacheHits=%d cacheMisses=%d renderAvg=%.2fms renderMax=%.2fms",
-				rl.CacheHits, rl.CacheMisses, float64(rl.RenderAvgNS)/1e6, float64(rl.RenderMaxNS)/1e6)
+			g.logger.Infof("[bench] RenderLatency: cacheHits=%d cacheMisses=%d dispatchRenders=%d prewarmRenders=%d renderAvg=%.2fms renderMax=%.2fms",
+				rl.CacheHits, rl.CacheMisses, rl.DispatchRenders, rl.PrewarmRenders,
+				float64(rl.RenderAvgNS)/1e6, float64(rl.RenderMaxNS)/1e6)
 			pAvg, pMax, pCount := g.parityScanStats()
 			g.logger.Infof("[bench] Parity: scans=%d avg=%.3fms max=%.3fms", pCount, pAvg, pMax)
 			// Machine-readable JSON line for scripts/bench-desktop.sh.
 			// Uses benchJsonMS() to emit "null" for NaN values (valid JSON).
 			jm := benchJsonMS
-			g.logger.Debugf("[bench_json] {\"bpm\":%d,\"frames\":%d,\"fps\":%.2f,\"updateAvgMS\":%.3f,\"updateMaxMS\":%.3f,\"drawAvgMS\":%.3f,\"drawMaxMS\":%.3f,\"audioEnq\":%d,\"audioDeq\":%d,\"audioQLatAvgMS\":%.3f,\"audioQLatMaxMS\":%.3f,\"audioCallAvgMS\":%.3f,\"audioCallMaxMS\":%.3f,\"schedCount\":%d,\"schedOverdue\":%d,\"schedMinLeadMS\":%s,\"schedMaxLeadMS\":%s,\"schedAvgLeadMS\":%s,\"schedAvgLagMS\":%s,\"schedMaxLagMS\":%s,\"schedLagP90MS\":%s,\"schedLagP99MS\":%s,\"schedSmallLeadCount\":%d,\"heapAllocKB\":%d,\"heapSysKB\":%d,\"heapObjects\":%d,\"goroutines\":%d,\"parityScans\":%d,\"parityAvgMS\":%.3f,\"parityMaxMS\":%.3f,\"liveImages\":%d,\"imagesAllocatedTotal\":%d,\"imagesByTag\":\"%s\"}",
+			// Emit the machine-readable line to stdout (NOT the logger): the
+			// logger runs at -log INFO during benches and this tag is pinned to
+			// DEBUG by the log-level contract (forbidden_at_info_test), so a
+			// logger call would be silently suppressed. bench-desktop.sh greps
+			// stdout for "[bench_json] " — see scripts/bench-desktop.sh.
+			fmt.Printf("[bench_json] {\"bpm\":%d,\"frames\":%d,\"fps\":%.2f,\"updateAvgMS\":%.3f,\"updateMaxMS\":%.3f,\"drawAvgMS\":%.3f,\"drawMaxMS\":%.3f,\"audioEnq\":%d,\"audioDeq\":%d,\"audioQLatAvgMS\":%.3f,\"audioQLatMaxMS\":%.3f,\"audioCallAvgMS\":%.3f,\"audioCallMaxMS\":%.3f,\"schedCount\":%d,\"schedOverdue\":%d,\"schedMinLeadMS\":%s,\"schedMaxLeadMS\":%s,\"schedAvgLeadMS\":%s,\"schedAvgLagMS\":%s,\"schedMaxLagMS\":%s,\"schedLagP90MS\":%s,\"schedLagP99MS\":%s,\"schedSmallLeadCount\":%d,\"heapAllocKB\":%d,\"heapSysKB\":%d,\"heapObjects\":%d,\"goroutines\":%d,\"gcCycles\":%d,\"gcForced\":%d,\"gcPauses\":%d,\"gcPauseP50MS\":%.3f,\"gcPauseP99MS\":%.3f,\"gcPauseMaxMS\":%.3f,\"gcHeapHighKB\":%d,\"parityScans\":%d,\"parityAvgMS\":%.3f,\"parityMaxMS\":%.3f,\"liveImages\":%d,\"imagesAllocatedTotal\":%d,\"imagesByTag\":\"%s\",\"renderCacheHits\":%d,\"renderCacheMisses\":%d,\"renderDispatchRenders\":%d,\"renderPrewarmRenders\":%d,\"renderAvgMS\":%.3f,\"renderMaxMS\":%.3f,\"stormScenario\":%q,\"stormPushes\":%d}\n",
 				g.benchBPM, s.Frames, s.FPSAvg,
 				s.UpdateAvgMS, s.UpdateMaxMS,
 				s.DrawAvgMS, s.DrawMaxMS,
@@ -134,8 +155,13 @@ func (g *Game) Update() error {
 				jm(sm.MaxLag), jm(sm.LagP90), jm(sm.LagP99),
 				sm.SmallLeadCount,
 				s.HeapAllocKB, s.HeapSysKB, s.HeapObjects, s.Goroutines,
+				s.GCCycles, s.GCForced, s.GCPauses,
+				s.GCPauseP50MS, s.GCPauseP99MS, s.GCPauseMaxMS, s.GCHeapHighKB,
 				pCount, pAvg, pMax,
-				g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot())
+				g.snapshotLiveImages(), MetricImagesAllocatedTotal(), imagesByTagSnapshot(),
+				rl.CacheHits, rl.CacheMisses, rl.DispatchRenders, rl.PrewarmRenders,
+				float64(rl.RenderAvgNS)/1e6, float64(rl.RenderMaxNS)/1e6,
+				benchStormName(g.benchStorm), g.benchStormPushes)
 			g.SetPlaying(false)
 			g.engine.Stop()
 			if g.benchRecord {
@@ -290,6 +316,10 @@ eventsDone:
 	g.handleUndoRedoKeys()
 	g.handleGlobalShortcuts()
 
+	// Mobile aiming gesture: a touch starting near a node/edge aims the grid
+	// guide instead of panning; release commits. Must run before panOK below.
+	g.updateGuideAim(mx, my, left)
+
 	// Handle gestures that are NOT mappable to mouse (multi-touch + grid tap/long-press).
 	// Single-finger drag is now handled by the override → cam.HandleMouse / DrumView.Update.
 	if gesture != nil && !blockLandscapeInput {
@@ -330,6 +360,8 @@ eventsDone:
 			g.drum.EndTwoFingerPan()
 		}
 	}
+
+	g.modes.Tick()
 
 	// Long-press popup intercept: when visible, it exclusively handles input
 	// so no other dispatch runs.
@@ -409,15 +441,18 @@ eventsDone:
 		}
 	}
 
-	if fastPath {
-		g.hover = nil
+	// Grid-node hover is a desktop-pointer affordance (the same "everything
+	// clickable hovers" doctrine as the button-hover glow, which keys off
+	// Profile().IsMobile()). Compute it whenever the input class is a mouse —
+	// NOT gated on the perf fast-path. Keying it off fastPath (the WASM/browser
+	// default) silently disabled node hover in the browser even for desktop
+	// mice. Touch/mobile has no persistent pointer, so it never latches a hover.
+	if !Profile().IsMobile() && my >= gridTopOffset() && !g.blocksAt(mx, my) {
+		g.hover = g.nodeAtScreen(mx, my)
 	} else {
-		if my >= gridTopOffset() && !g.blocksAt(mx, my) {
-			g.hover = g.nodeAtScreen(mx, my)
-		} else {
-			g.hover = nil
-		}
+		g.hover = nil
 	}
+	g.advanceNodeHoverGlow()
 
 	// Propagate the (possibly just-dragged) splitter position to the drum pane
 	// *after* the dispatcher has moved the divider this frame. The grid pane
@@ -601,6 +636,14 @@ eventsDone:
 	// Camera panning always runs - essential for grid interaction on all platforms.
 	// Not guarded by fastPath since it's just mouse delta math (not expensive).
 	shift := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
+	// NOTE: g.guideAim.active is deliberately NOT in this gate. The mobile
+	// aiming gesture is now visual-only (it shows the crosshair/coordinate label
+	// while the finger is stationary over a circuit element, for a precise tap);
+	// it no longer suppresses panning or places a node on a moved release. A drag
+	// anywhere — including over nodes/edges — pans, gated solely by the camera's
+	// tap-slop deadzone. Only a stationary tap creates a node. Blocking pan on
+	// guideAim.active here would double the slop over circuit content (aim slop +
+	// camera slop) and make panning feel dead near nodes.
 	panOK := !g.linkDrag.active && !g.marquee.active && !g.split.dragging && !shift && !pt(mx, my, g.drum.Bounds) && !g.drum.Capturing() && !g.menuHit(mx, my) && !g.longPressPopup && !g.modalOverlayActive() && !blockLandscapeInput
 
 	// Diagnostic: log why panOK is false for grid touches on mobile.
@@ -775,11 +818,7 @@ eventsDone:
 					g.activePulse = g.activePulses[0]
 				}
 				div := max1(g.grid.MaxDiv())
-				beat := float64(g.elapsedBeats) / float64(div)
-				g.state.SetBeatBase(beat)
-				g.state.SetLastDisplayBeat(beat)
-				g.state.SetLastBeat(beat)
-				g.state.SetLastStep(g.elapsedBeats)
+				g.state.SetPosition(g.elapsedBeats, div)
 				if len(g.seqNextIdxs) != len(g.drum.Rows) {
 					g.seqNextIdxs = make([]int, len(g.drum.Rows))
 				}
@@ -804,7 +843,6 @@ eventsDone:
 					g.seqNextIdxs[row] = t
 				}
 				g.state.SetSeekFreezeFrames(0)
-				g.state.SetPausedBeats(g.elapsedBeats)
 				g.lastFrame = time.Now()
 				g.frozenUpToByRow = make([]int, len(g.drum.Rows))
 				for i := range g.frozenUpToByRow {
@@ -816,8 +854,8 @@ eventsDone:
 			}
 		} else {
 			g.logger.Warnf("[game] Play pressed but no start node; ignoring")
-			g.state.SetPlayingForTest(false)
-			g.state.SetPausedForTest(false)
+			g.state.SetPlaying(false)
+			g.state.SetPaused(false)
 		}
 	}
 	if g.drum.StopPressed() {
@@ -869,6 +907,7 @@ eventsDone:
 		g.parityWatch = parityWatchDefault
 		parityFatalEnabled.Store(true)
 	}
+	g.drainSeekRequest()
 	// Handle record toggle
 	if g.drum.RecordPressed() {
 		if audio.IsRecording() {
@@ -923,22 +962,22 @@ eventsDone:
 		g.logger.Debugf("[game] BPM change requested: %d -> %d", prevUI, newBPM)
 		prev := prevUI
 		if prev > 0 {
-			// Compute elapsed seconds on the current timeline.
-			var dtSec float64
+			now := time.Now()
 			audioNow := audio.Now()
-			if audioNow > 0 && g.state.AudioStart() > 0 {
-				dtSec = audioNow - g.state.AudioStart()
-			} else if !g.state.PlayStart().IsZero() {
-				dtSec = time.Since(g.state.PlayStart()).Seconds()
+			// If Playing() was toggled without ever anchoring a clock (e.g. a
+			// caller that sets playing state directly instead of going
+			// through the Play button), start the clock now so
+			// AnchorForBPMChange has a valid anchor: its DtSince guard
+			// otherwise no-ops (dt unknown), which would leave PlayStart
+			// zero forever and stall syncUIToTime's per-frame progress on
+			// every subsequent Update(). This mirrors the prior inline
+			// formula's implicit dt=0 fallback + unconditional PlayStart
+			// reset for the "no clock yet" case.
+			if g.state.PlayStart().IsZero() && g.state.AudioStart() <= 0 {
+				g.state.StartClock(now, audioNow)
 			}
-			// Absolute beat position at this instant using the previous BPM.
-			beatsNow := g.state.BeatBase() + dtSec*float64(prev)/60.0
 			// Re-anchor base to preserve continuity and reset the clock.
-			g.state.SetBeatBase(beatsNow)
-			g.state.SetPlayStart(time.Now())
-			if audioNow > 0 {
-				g.state.SetAudioStart(audioNow)
-			}
+			g.state.AnchorForBPMChange(prev, now, audioNow)
 			// Align sequencer counters with current next-beat indices to avoid
 			// any catch-up burst the next time scheduling runs.
 			if len(g.seqNextIdxs) != len(g.drum.Rows) {

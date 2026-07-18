@@ -135,6 +135,10 @@ func RenderInstrumentPreviewWithOverrides(instrumentID string, override map[stri
 	baseHz *= math.Pow(2, get("pitch", 0)/12.0)
 
 	oscType := previewGeneratorType(recipeID, lookup)
+	// Read the physical-model params ONCE (not per sample): they only bite when
+	// their oscillator is the selected one, but reading them here keeps the
+	// preview honest for the bowed-string voices.
+	oscModel := OscModelParamsFor(instrumentID)
 
 	// Multi-operator FM: active when fm is enabled (or, for bespoke recipes
 	// without the toggle, when any operator has depth / the algorithm is additive).
@@ -196,9 +200,9 @@ func RenderInstrumentPreviewWithOverrides(instrumentID string, override map[stri
 
 		var s float64
 		if fmActive && fmState.active() {
-			s = previewFMSample(fmState, oscType, ph)
+			s = previewFMSample(fmState, oscType, ph, oscModel)
 		} else {
-			s = previewOscShape(oscType, ph)
+			s = previewOscShapeModel(oscType, ph, oscModel)
 		}
 
 		if envActive {
@@ -274,6 +278,10 @@ func RenderInstrumentPreviewWave(instrumentID string, override map[string]float6
 		baseHz = 220
 	}
 	oscType := previewGeneratorType(recipeID, lookup)
+	// Read the physical-model params ONCE (not per sample): they only bite when
+	// their oscillator is the selected one, but reading them here keeps the
+	// preview honest for the bowed-string voices.
+	oscModel := OscModelParamsFor(instrumentID)
 
 	fmState := previewFMStateFrom(get)
 	fmActive := (has("fm_enabled") && stageOn("fm_enabled")) || (!has("fm_enabled") && fmState.active())
@@ -320,9 +328,9 @@ func RenderInstrumentPreviewWave(instrumentID string, override map[string]float6
 		ph := float64(i) / float64(pointsPerCycle)
 		var s float64
 		if fmActive && fmState.active() {
-			s = previewFMSample(fmState, oscType, ph)
+			s = previewFMSample(fmState, oscType, ph, oscModel)
 		} else {
-			s = previewOscShape(oscType, ph)
+			s = previewOscShapeModel(oscType, ph, oscModel)
 		}
 		if filtActive {
 			svfLow += svfF * svfBand
@@ -364,9 +372,73 @@ func RenderInstrumentPreviewWave(instrumentID string, override map[string]float6
 	return out
 }
 
-// previewOscShape returns one sample of oscillator type at phase ph (cycles).
-// 0=sine 1=saw 2=square 3=triangle 5/6=noise (4/FM handled by the caller).
+// OscModelParams carries the PHYSICAL-MODEL oscillator parameters that shape the
+// waveguide approximations in previewOscShapeModel. They are declared on every
+// modular recipe but are waveguide-internal to one oscillator each, so they only
+// affect the picture when that oscillator is the one selected.
+type OscModelParams struct {
+	BowPos   float64 // bow position along the string (bridge delay / round trip)
+	BowSlope float64 // stick-slip friction slope = bow pressure
+	BowVel   float64 // bow speed
+	BowLoss  float64 // bridge low-pass damping (higher = darker)
+}
+
+// DefaultOscModelParams mirrors the engine's own fallbacks — the kp_get defaults
+// at the render_bowed_string call site in src/c/modular.c — so a recipe that
+// doesn't carry a param previews exactly what the engine would play.
+func DefaultOscModelParams() OscModelParams {
+	return OscModelParams{BowPos: 0.13, BowSlope: 3.0, BowVel: 0.25, BowLoss: 0.55}
+}
+
+// OscModelParamsFor reads instID's physical-model params, falling back to the
+// engine defaults for any the recipe doesn't declare.
+func OscModelParamsFor(instID string) OscModelParams {
+	m := DefaultOscModelParams()
+	if instID == "" {
+		return m
+	}
+	merged := MergedInstrumentParamsRO(instID)
+	for _, f := range []struct {
+		name string
+		dst  *float64
+	}{
+		{"osc_bow_pos", &m.BowPos},
+		{"osc_bow_slope", &m.BowSlope},
+		{"osc_bow_vel", &m.BowVel},
+		{"osc_bow_loss", &m.BowLoss},
+	} {
+		if v, ok := merged[f.name]; ok {
+			*f.dst = v
+		}
+	}
+	return m
+}
+
+// PreviewOscShape exposes the oscillator shape table to the UI's Synth-tab OSC
+// plot, so the plot and the "Your sound" preview wave draw the SAME shape for a
+// given osc_type from ONE table. The UI previously carried its own copy that had
+// drifted to cover only osc_type 0..6, silently drawing a sine for every
+// physical-model oscillator (Bowed String/Brass/Reed/Flute/Sax) and for Voice.
+// Uses the engine's default model params; PreviewOscShapeModel takes an
+// instrument's real ones. Callers handle osc_type 4 (FM) themselves — see
+// previewOscShape.
+func PreviewOscShape(oscType int, ph float64) float64 { return previewOscShape(oscType, ph) }
+
+// PreviewOscShapeModel is PreviewOscShape honoring an instrument's physical-model
+// params (OscModelParamsFor), so the bowed-string knobs reshape the picture.
+func PreviewOscShapeModel(oscType int, ph float64, m OscModelParams) float64 {
+	return previewOscShapeModel(oscType, ph, m)
+}
+
+// previewOscShape returns one sample of oscillator type at phase ph (cycles)
+// using the engine's default physical-model params.
 func previewOscShape(oscType int, ph float64) float64 {
+	return previewOscShapeModel(oscType, ph, DefaultOscModelParams())
+}
+
+// previewOscShapeModel returns one sample of oscillator type at phase ph (cycles).
+// 0=sine 1=saw 2=square 3=triangle 5/6=noise (4/FM handled by the caller).
+func previewOscShapeModel(oscType int, ph float64, m OscModelParams) float64 {
 	frac := ph - math.Floor(ph) // [0,1)
 	switch oscType {
 	case 1:
@@ -393,9 +465,43 @@ func previewOscShape(oscType int, ph float64) float64 {
 		}
 		return v
 	case 7:
-		// Bowed string (waveguide): the bridge waveform is a sawtooth (Helmholtz
-		// stick-slip motion) with a slightly rounded corner.
-		return 0.9*(2*frac-1) + 0.1*math.Sin(2*math.Pi*frac)
+		// Bowed string — the Helmholtz motion the engine's waveguide settles into.
+		//
+		// render_bowed_string (src/c/modular.c) is a two-delay waveguide: the bow
+		// sits at the junction, the bridge delay is bow_pos of the round trip and
+		// the neck delay is the rest, a one-pole bridge low-pass (bow_loss) damps
+		// every pass, and a stick-slip friction curve (bow_slope) couples the bow
+		// at speed bow_vel. A per-sample waveguide has no closed form, so this
+		// draws the STEADY shape that geometry converges to — Helmholtz motion —
+		// parameterised by the same four knobs:
+		//
+		//   bow_pos   → the ramp's ASYMMETRY. The string sticks to the bow for
+		//               (1-pos) of the cycle then slips back over the remaining
+		//               pos: 0.5 is a symmetric triangle, pos→0 a sawtooth.
+		//   bow_slope → bow PRESSURE. A steeper friction curve makes the
+		//               stick-slip transition more abrupt, hardening the corners.
+		//   bow_loss  → bridge DAMPING. The low-pass strips harmonics, relaxing
+		//               the shape toward its bare fundamental.
+		//   bow_vel   → bow SPEED: how hard the string is driven → amplitude.
+		//
+		// This is an approximation sized for a glanceable preview — the same
+		// licence previewFMSample takes with the C operator matrix — not a
+		// waveguide. What it must get right is the DIRECTION of every knob.
+		beta := clampf(m.BowPos, 0.02, 0.45)
+		var v float64
+		if frac < 1-beta {
+			v = frac / (1 - beta) // stick: the slow ramp up
+		} else {
+			v = (1 - frac) / beta // slip: the fast flyback
+		}
+		s := 2*v - 1
+		// Pressure hardens the corners: exponent <1 squares the shape up.
+		p := 1.0 / (0.4 + 0.2*clampf(m.BowSlope, 1, 6))
+		s = math.Copysign(math.Pow(math.Abs(s), p), s)
+		// Damping relaxes toward the fundamental, peak-aligned with the ramp.
+		round := 0.85 * clampf((m.BowLoss-0.2)/0.7, 0, 1)
+		s = (1-round)*s + round*math.Cos(2*math.Pi*(frac-(1-beta)))
+		return s * clampf(0.35+1.1*m.BowVel, 0.2, 1)
 	case 8:
 		// Brass (lip-reed): a bright, harmonically dense pulse.
 		return math.Sin(2*math.Pi*frac) + 0.45*math.Sin(4*math.Pi*frac) + 0.2*math.Sin(6*math.Pi*frac)
@@ -413,10 +519,32 @@ func previewOscShape(oscType int, ph float64) float64 {
 		// blended with its harmonics (even + odd) so it reads distinct from the
 		// odd-only reed and the saw.
 		return 0.6*(2*frac-1) + 0.25*math.Sin(2*math.Pi*frac) + 0.15*math.Sin(4*math.Pi*frac)
+	case 12:
+		// Voice (glottal pulse): the same alternating-sign Fourier series as the
+		// saw, but with the Rosenberg 1/n² per-harmonic slope (−12 dB/oct) instead
+		// of the saw's 1/n (−6 dB/oct) — mirrors wt_generate_glottal in
+		// src/c/wavetable.c, which is what the engine actually plays. The steeper
+		// slope converges fast, so a short partial sum is already visually faithful
+		// (the engine's 48 harmonics contribute <0.1% past the 8th).
+		var s float64
+		for h := 1; h <= previewGlottalHarmonics; h++ {
+			sign := 1.0
+			if h%2 == 0 {
+				sign = -1.0
+			}
+			hf := float64(h)
+			s += sign * 2 / (math.Pi * hf * hf) * math.Sin(2*math.Pi*hf*frac)
+		}
+		return s
 	default:
 		return math.Sin(2 * math.Pi * frac)
 	}
 }
+
+// previewGlottalHarmonics is the partial-sum length for the previewed glottal
+// pulse. The engine (MODULAR_WT_HARMONICS) uses 48, but at the 1/n² slope the
+// tail is visually irrelevant while a short sum keeps the per-frame preview cheap.
+const previewGlottalHarmonics = 8
 
 // previewFMState holds the per-operator FM parameters and the routing topology
 // for the multi-operator preview FM model.
@@ -454,9 +582,9 @@ func fmLevelScale(level float64) float64 {
 // phase-summation form: a modulator at ratio r and index d adds
 // d·sin(2π·r·ph)/(2π) to the modulated operator's phase. Op1 (index 0) is the
 // carrier; ops 2..4 (indices 1..3) are the modulators.
-func previewFMSample(fm previewFMState, oscType int, ph float64) float64 {
+func previewFMSample(fm previewFMState, oscType int, ph float64, m OscModelParams) float64 {
 	op := func(i int, phaseMod float64) float64 {
-		return previewOscShape(oscType, fm.ratios[i]*ph+phaseMod)
+		return previewOscShapeModel(oscType, fm.ratios[i]*ph+phaseMod, m)
 	}
 	// pm returns the phase contribution of operator i oscillating at its own
 	// ratio, scaled by depth × its level multiplier.

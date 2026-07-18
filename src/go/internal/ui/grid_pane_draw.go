@@ -9,7 +9,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
-	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // grid_pane_draw.go holds the focused sub-methods that (*Game).drawGridPane
@@ -601,6 +600,10 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 	// Per-node ascending-GroupID membership list, for the up-to-3-concentric-
 	// rings rendering below (game_group_badges.go's rebuildGroupMembershipScratch).
 	membership := g.rebuildGroupMembershipScratch()
+	// Part-B external highlight target (hovered badge OR the open menu's
+	// group) — hoisted ONCE per frame, not per node (game_group_badges.go's
+	// groupExternalHighlightGid).
+	highlightGid, hasHighlight := g.groupExternalHighlightGid()
 
 	// Static node layer cache: during playback, most nodes stay in their
 	// default (non-highlighted) state. Cache all base-state nodes into a
@@ -696,19 +699,15 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 			if !ok || nodeInfo.Type == model.NodeTypeInvisible {
 				continue
 			}
-			isMute := nodeInfo.Type == model.NodeTypeMute
-			isSilent := nodeInfo.Type == model.NodeTypeSilent
 			rowIdx, rowOK := g.nodeRows[n.ID]
 			if !rowOK || rowIdx < 0 || rowIdx >= len(g.drum.Rows) {
 				rowOK = false
 				rowIdx = -1
 			}
-			var highlightCol color.Color = colHighlight
-			if isMute || isSilent {
-				highlightCol = colMuteHighlight
-			} else if rowOK {
-				highlightCol = g.drum.Rows[rowIdx].Color
-			}
+			// Highlight/hover/fire in the node's OWN color (row instrument color,
+			// or the node border color for structural/mute/silent nodes) — never
+			// a flat white, so every halo matches the node it highlights.
+			highlightCol := g.nodeOwnHighlightColor(rowIdx, rowOK)
 			aLevel := 0.0
 			if g.pendingStartRow < 0 && g.quietFrames == 0 {
 				if a := g.nodeAnimGet(n.ID); a > 0 {
@@ -729,7 +728,14 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 			isNeighbor := g.pendingStartRow < 0 && g.selNeighbors != nil && g.selNeighbors[n]
 			isGroupMember := gi.Member(n.ID)
 			isMenuGroupMember := menuMembers[n.ID]
-			if aLevel <= 0 && !isSelected && !isNeighbor && !isGroupMember && !isMenuGroupMember {
+			// Cursor-over halo (desktop): the eased hover fade renders a
+			// quiet bloom in the node's own color — the same hover language
+			// as every button lift, at data-canvas intensity.
+			hoverGlow := 0.0
+			if g.hoverGlowNode == n && g.pendingStartRow < 0 {
+				hoverGlow = g.hoverGlowP
+			}
+			if aLevel <= 0 && hoverGlow <= 0 && !isSelected && !isNeighbor && !isGroupMember && !isMenuGroupMember {
 				continue
 			}
 			rWorld := g.nodeRadiiCache[nodeIdx]
@@ -739,6 +745,18 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 			sx1, sy1, sx2, sy2 := g.nodeScreenRect(n)
 			if sx2 < 0 || sx1 >= float64(gridW) || sy2 < 0 || sy1 >= float64(gridH) {
 				continue
+			}
+			if hoverGlow > 0 && aLevel <= 0 && !RuntimeProf().DisableNodeGlow {
+				// Hover cue in the node's OWN color via the shared, shape-agnostic
+				// drawRectHoverGlow — the SAME primitive the EQ handles and sampler
+				// trim lines use, conforming to the node's actual rect. (The tuned
+				// neon FIRING bloom below keeps drawNodeBloom, intentionally.)
+				if rPx := int(math.Round((sx2 - sx1) * 0.5)); rPx >= 1 {
+					icx := int(math.Round((sx1 + sx2) * 0.5))
+					icy := int(math.Round((sy1 + sy2) * 0.5))
+					nodeRect := image.Rect(icx-rPx, icy-rPx, icx+rPx, icy+rPx)
+					drawRectHoverGlow(screen, nodeRect, highlightCol, hoverGlow)
+				}
 			}
 			if aLevel > 0 {
 				rPx := int(math.Round((sx2 - sx1) * 0.5))
@@ -861,6 +879,10 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 					grow := groupRingBaseGrow + ri*groupRingStepGrow
 					g.drawNodeGroupRing(dst, sx1, sy1, sx2, sy2, g.groupRingColor(gids[ri]), grow)
 				}
+				if hasHighlight && groupIDsContain(gids, highlightGid) {
+					outerGrow := groupRingBaseGrow + count*groupRingStepGrow
+					g.drawNodeExternalHighlightRing(dst, sx1, sy1, sx2, sy2, highlightGid, outerGrow)
+				}
 			}
 		}
 	} else {
@@ -871,20 +893,14 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 				continue
 			}
 
-			isMute := nodeInfo.Type == model.NodeTypeMute
-			isSilent := nodeInfo.Type == model.NodeTypeSilent
 			rowIdx, rowOK := g.nodeRows[n.ID]
 			if !rowOK || rowIdx < 0 || rowIdx >= len(g.drum.Rows) {
 				rowOK = false
 				rowIdx = -1
 			}
 
-			var highlightCol color.Color = colHighlight
-			if isMute || isSilent {
-				highlightCol = colMuteHighlight
-			} else if rowOK {
-				highlightCol = g.drum.Rows[rowIdx].Color
-			}
+			// Own-color highlight (see nodeOwnHighlightColor) — never flat white.
+			highlightCol := g.nodeOwnHighlightColor(rowIdx, rowOK)
 
 			// Cull nodes outside visible rect (include radius pad)
 			rWorld := g.nodeRadiiCache[nodeIdx]
@@ -1104,6 +1120,10 @@ func (g *Game) drawGridNodes(dst *ebiten.Image) {
 					grow := groupRingBaseGrow + ri*groupRingStepGrow
 					g.drawNodeGroupRing(dst, sx1, sy1, sx2, sy2, g.groupRingColor(gids[ri]), grow)
 				}
+				if hasHighlight && groupIDsContain(gids, highlightGid) {
+					outerGrow := groupRingBaseGrow + count*groupRingStepGrow
+					g.drawNodeExternalHighlightRing(dst, sx1, sy1, sx2, sy2, highlightGid, outerGrow)
+				}
 			}
 		}
 		// Node-state overlays for the fallback path (RENDER_SAFE / NO_SPRITE_NODES /
@@ -1204,74 +1224,69 @@ func (g *Game) drawGridCoordBadge(dst *ebiten.Image) {
 	}
 }
 
-// drawGridMoveMode draws the move-mode banner, the moving-node outline, and the
-// ghost placement indicator. Verbatim cut of the move-mode block (~1082–1121).
+// drawGridMoveMode draws the move-mode banner, the moving-node outline, and
+// the ghost placement indicator; it also draws copy mode's banner and ghost
+// (no outline/blink — copy mode's subject node is not going anywhere).
+// Verbatim cut of the move-mode block (~1082–1121), extended for copy mode
+// in Task 7.
 func (g *Game) drawGridMoveMode(dst *ebiten.Image) {
 	ctx := &g.gridDrawCtx
 	unitPx := ctx.unitPx
 
-	// Move mode visual feedback
-	if g.moveMode && g.movingNode != nil {
-		// Banner at top of grid pane
-		bannerText := fmt.Sprintf("MOVING NODE (%d,%d) — CLICK TO PLACE", g.movingNode.I, g.movingNode.J)
-		if Profile().ShowEscHint {
-			bannerText += " (ESC TO CANCEL)"
-		}
-		bannerW := TextWidth(bannerText) + 16
-		bannerX := (g.split.GridW(g.winW) - bannerW) / 2
-		if bannerX < 0 {
-			bannerX = 0
-		}
-		bannerRect := image.Rect(bannerX, 2, bannerX+bannerW, 22)
-		drawRoundedRect(dst, bannerRect, colPanelBG, popupCornerRadius(), true)
-		drawRoundedRect(dst, bannerRect, colPanelBorder, popupCornerRadius(), false)
-		DrawTextAt(dst, bannerText, bannerX+8, 5)
+	switch {
+	case g.modes.Is(GridModeMove):
+		movingNode := g.modes.Subject()
+		g.drawGridModeBanner(dst, gridModeBannerText(GridModeMove, movingNode, Profile().ShowEscHint))
 
-		// Highlight moving node with pulsing yellow outline
-		mx1, my1, mx2, my2 := g.nodeScreenRect(g.movingNode)
+		// Pulsing outline + blinking body on the subject node: the blink
+		// (Update-ticked, gridModeBlinkHalfPeriod) signals "this node is
+		// about to move" while every other behavior stays live.
+		n := g.modes.Subject()
+		mx1, my1, mx2, my2 := g.nodeScreenRect(n)
 		hlCol := WithAlpha(genColorVizGlow, 255)
 		var idm ebiten.GeoM
 		DrawLineCam(dst, mx1-1, my1-1, mx2+1, my1-1, &idm, hlCol, 2)
 		DrawLineCam(dst, mx2+1, my1-1, mx2+1, my2+1, &idm, hlCol, 2)
 		DrawLineCam(dst, mx2+1, my2+1, mx1-1, my2+1, &idm, hlCol, 2)
 		DrawLineCam(dst, mx1-1, my2+1, mx1-1, my1-1, &idm, hlCol, 2)
+		if g.modes.blinkOn() {
+			blinkRect := image.Rect(int(mx1), int(my1), int(mx2), int(my2))
+			drawRect(dst, blinkRect, WithAlpha(genColorVizGlow, genAlphaMedium), true)
+		}
+	case g.modes.Is(GridModeCopy):
+		g.drawGridModeBanner(dst, gridModeBannerText(GridModeCopy, g.modes.Subject(), Profile().ShowEscHint))
+	default:
+		return
+	}
 
-		// Ghost indicator at cursor position (snapped to grid)
-		cmx, cmy := cursorPosition()
-		if g.split.InGridPane(cmx, cmy) && cmy >= gridTopOffset() {
-			gwx := (float64(cmx) - g.cam.OffsetX) / g.cam.Scale
-			gwy := (float64(cmy-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
-			_, _, gi, gj := g.grid.Snap(gwx, gwy)
-			gsx := g.cam.OffsetX + unitPx*float64(gi)
-			gsy := g.cam.OffsetY + unitPx*float64(gj) + float64(gridTopOffset())
-			gr := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
-			ghostRect := image.Rect(int(gsx-gr), int(gsy-gr), int(gsx+gr), int(gsy+gr))
+	// Ghost indicator at cursor position (snapped to grid), shared by both
+	// modes. Move validity = interior point on an existing edge; copy
+	// validity = a free cell. Valid = filled glow ghost; invalid = faint
+	// outline only, signalling release-here-cancels (move) / no-op (copy is
+	// always a legal target, but the occupied case routes to the overwrite
+	// confirm instead of this ghost's "invalid" visual).
+	cmx, cmy := cursorPosition()
+	if g.split.InGridPane(cmx, cmy) && cmy >= gridTopOffset() {
+		gt := g.guideTargetCached(cmx, cmy)
+		gi, gj := gt.I, gt.J
+		gsx := g.cam.OffsetX + unitPx*float64(gi)
+		gsy := g.cam.OffsetY + unitPx*float64(gj) + float64(gridTopOffset())
+		gr := g.grid.NodeRadius(g.cam.Scale) * g.cam.Scale
+		ghostRect := image.Rect(int(gsx-gr), int(gsy-gr), int(gsx+gr), int(gsy+gr))
+
+		valid := false
+		switch g.modes.Active() {
+		case GridModeMove:
+			valid = gt.Kind == GuideEdge
+		case GridModeCopy:
+			valid = g.nodeAt(gi, gj) == nil
+		}
+		if valid {
 			drawRect(dst, ghostRect, WithAlpha(genColorVizGlow, genAlphaAccentOverlay), true)
 			drawRect(dst, ghostRect, WithAlpha(genColorVizGlow, genAlphaStrong), false)
+		} else {
+			drawRect(dst, ghostRect, WithAlpha(genColorVizGlow, genAlphaSubtle), false)
 		}
-	}
-}
-
-// drawGridMoveConfirm draws the move-confirmation dialog. Verbatim cut of the
-// move-confirm block (~1123–1140).
-func (g *Game) drawGridMoveConfirm(dst *ebiten.Image) {
-	// Move confirmation dialog
-	if g.moveConfirm {
-		dw, dh := 280, 60
-		dx := (g.split.GridW(g.winW) - dw) / 2
-		dy := (g.split.GridH(g.winH) - dh) / 2
-		dialogRect := image.Rect(dx, dy, dx+dw, dy+dh)
-		drawPanel(dst, dialogRect)
-		msgText := fmt.Sprintf("Moving will remove %d edge(s). Continue?", g.moveEdgeLoss)
-		DrawTextAt(dst, msgText, dx+10, dy+8)
-		// Confirm and cancel buttons
-		radius := popupCornerRadius()
-		confirmRect := image.Rect(dx+40, dy+30, dx+120, dy+50)
-		cancelRect := image.Rect(dx+160, dy+30, dx+240, dy+50)
-		drawRoundedRect(dst, confirmRect, WithAlpha(genColorVizConfirmGreen, 255), radius, true)
-		DrawTextAt(dst, i18n.T(i18n.KeyCapMove), confirmRect.Min.X+12, confirmRect.Min.Y+4)
-		drawRoundedRect(dst, cancelRect, WithAlpha(genColorVizCancelRed, 255), radius, true)
-		DrawTextAt(dst, i18n.T(i18n.KeyCancel), cancelRect.Min.X+8, cancelRect.Min.Y+4)
 	}
 }
 
@@ -1279,20 +1294,26 @@ func (g *Game) drawGridMoveConfirm(dst *ebiten.Image) {
 // the cursor-label block (~1148–1169). The original drew to the UNCLIPPED screen;
 // the dispatcher passes `screen` as this method's dst to preserve that.
 func (g *Game) drawGridCursorLabel(dst *ebiten.Image) {
-	ctx := &g.gridDrawCtx
-	unitPx := ctx.unitPx
-	offX := ctx.offX
-	offY := ctx.offY
-
 	// cursor coordinate label (hidden on mobile)
 	mx, my := cursorPosition()
-	if Profile().ShowCursorLabel && g.split.InGridPane(mx, my) {
-		camScale := unitPx / g.grid.Unit()
-		wx := (float64(mx) - offX) / camScale
-		wy := (float64(my) - offY - float64(gridTopOffset())) / camScale
-		_, _, ix, iy := g.grid.Snap(wx, wy)
-		bx, nx, dx := g.grid.BeatSubdivision(ix)
-		by, ny, dy := g.grid.BeatSubdivision(iy)
+	if (Profile().ShowCursorLabel || g.guideAim.active) && g.split.InGridPane(mx, my) && !g.cursorLabelOccluded(mx, my) {
+		var ti, tj int
+		showFraction := false
+		var t GuideTarget
+		if g.linkDrag.active || g.marquee.active {
+			// A connect/marquee gesture owns the pointer: show the classic
+			// raw-snap readout (matching the helper arrow's tip), never the
+			// guide's node/fraction snapping.
+			wx := (float64(mx) - g.cam.OffsetX) / g.cam.Scale
+			wy := (float64(my-gridTopOffset()) - g.cam.OffsetY) / g.cam.Scale
+			_, _, ti, tj = g.grid.Snap(wx, wy)
+		} else {
+			t = g.guideTargetCached(mx, my)
+			ti, tj = t.I, t.J
+			showFraction = t.Kind == GuideEdge
+		}
+		bx, nx, dx := g.grid.BeatSubdivision(ti)
+		by, ny, dy := g.grid.BeatSubdivision(tj)
 		xs := "0"
 		ys := "0"
 		if nx != 0 {
@@ -1302,7 +1323,18 @@ func (g *Game) drawGridCursorLabel(dst *ebiten.Image) {
 			ys = fmt.Sprintf("%d/%d", ny, dy)
 		}
 		g.cursorLabel = fmt.Sprintf("(%d:%s, %d:%s)", bx, xs, by, ys)
-		DrawTextAt(dst, g.cursorLabel, mx+8, my+16)
+		if showFraction {
+			// Fraction of the span between the edge's two endpoint nodes.
+			g.cursorLabel += fmt.Sprintf(" %d/%d", t.Num, t.Den)
+		}
+		ly := my + 16
+		if guideAimTouchActive() {
+			ly = my - 28 // above the finger so the hand doesn't cover it
+			if ly < gridTopOffset()+2 {
+				ly = gridTopOffset() + 2
+			}
+		}
+		DrawTextAt(dst, g.cursorLabel, mx+8, ly)
 	} else {
 		g.cursorLabel = ""
 	}

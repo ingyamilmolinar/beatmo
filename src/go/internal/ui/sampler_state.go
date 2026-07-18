@@ -97,6 +97,12 @@ type samplerState struct {
 
 	dragHandle int // -1 none, 0 start handle, 1 end handle
 
+	// hoverHandle is the trim handle the desktop cursor is over (-1 none, 0
+	// start, 1 end), refreshed each frame by updateSamplerHandleHover. Drives
+	// the own-color hover highlight (the same language as EQ handles / grid
+	// nodes). Stays -1 on mobile (no pointer hover).
+	hoverHandle int
+
 	// status is a transient one-line message shown in the waveform card —
 	// e.g. when a synth capture returned no audio (the silent-no-op fix).
 	// Empty means "no message".
@@ -231,6 +237,7 @@ func (s *samplerState) reset() {
 	s.fadeOn = false
 	s.reverse = false
 	s.dragHandle = -1
+	s.hoverHandle = -1
 }
 
 func clampUnit(v float64) float64 {

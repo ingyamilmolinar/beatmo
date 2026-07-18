@@ -147,15 +147,15 @@ func TestSynthKnobPurpose_Gloss(t *testing.T) {
 	}
 }
 
-// TestSynthSectionGridCapsColumnsDesktop — the synth section grid is capped to
-// 2 columns on desktop so each knob cell is wide enough for its purpose line +
-// concept picture, even when the pane is wide enough to fit more.
-func TestSynthSectionGridCapsColumnsDesktop(t *testing.T) {
+// TestSynthSectionGridFlowsColumnsDesktop — Task 3 removed the desktop 2-column
+// cap: card-sized cells now flow as many columns as the pane width fits (up to
+// synthMaxGridCols), so a knob-rich stage uses more than two columns on a wide
+// desktop pane.
+func TestSynthSectionGridFlowsColumnsDesktop(t *testing.T) {
 	g := setupModularSynthGame(t)
 	expandSynthPanelForTest(t, g)
 
-	// Pick a section with more than two knobs so an uncapped grid WOULD use >2
-	// columns on a wide pane — proving the cap is what holds it to 2.
+	// Pick a section with more than two knobs so the wide pane can fit >2 cards.
 	var secID synthSectionID = -1
 	for _, s := range g.drum.SynthTabSections() {
 		if len(s.knobIdxs) > 2 {
@@ -164,13 +164,13 @@ func TestSynthSectionGridCapsColumnsDesktop(t *testing.T) {
 		}
 	}
 	if secID < 0 {
-		t.Skip("no modular section with >2 knobs to exercise the column cap")
+		t.Skip("no modular section with >2 knobs to exercise the column flow")
 	}
 	g.drum.setSelectedSynthSection("modular", secID)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 
-	if cols := g.drum.sectionGrid(secID).Cols(); cols > 2 {
-		t.Errorf("desktop synth section %v laid out %d columns, want <= 2 (fewer-per-row cap)", secID, cols)
+	if cols := g.drum.sectionGrid(secID).Cols(); cols <= 2 {
+		t.Errorf("desktop synth section %v laid out %d columns, want > 2 (card cells flow, no cap)", secID, cols)
 	}
 }
 

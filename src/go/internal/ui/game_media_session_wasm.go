@@ -80,11 +80,7 @@ func (g *Game) initMediaSessionExports() {
 				g.activePulse = g.activePulses[0]
 			}
 			div := max1(g.grid.MaxDiv())
-			beat := float64(g.elapsedBeats) / float64(div)
-			g.state.SetBeatBase(beat)
-			g.state.SetLastDisplayBeat(beat)
-			g.state.SetLastBeat(beat)
-			g.state.SetLastStep(g.elapsedBeats)
+			g.state.SetPosition(g.elapsedBeats, div)
 
 			// Align sequencer indices.
 			if len(g.seqNextIdxs) != len(g.drum.Rows) {
@@ -111,7 +107,6 @@ func (g *Game) initMediaSessionExports() {
 				g.seqNextIdxs[row] = t
 			}
 			g.state.SetSeekFreezeFrames(0)
-			g.state.SetPausedBeats(g.elapsedBeats)
 			g.lastFrame = time.Now()
 			g.frozenUpToByRow = make([]int, len(g.drum.Rows))
 			for i := range g.frozenUpToByRow {

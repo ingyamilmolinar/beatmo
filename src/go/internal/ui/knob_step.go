@@ -5,7 +5,6 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
@@ -79,8 +78,8 @@ func stepLadder(def audio.ParamDef) []float64 {
 	if span <= 0 {
 		return []float64{1}
 	}
-	fine := niceStep(span / 2000)  // ~2000 notches across the range (fine)
-	coarse := niceStep(span / 16)  // ~16 notches across the range (coarse)
+	fine := niceStep(span / 2000) // ~2000 notches across the range (fine)
+	coarse := niceStep(span / 16) // ~16 notches across the range (coarse)
 	if coarse < fine {
 		coarse = fine
 	}
@@ -141,16 +140,7 @@ type KnobStepBadge struct {
 	ladder []float64
 	idx    int
 	r      image.Rectangle
-	// wheelAccum counts signed wheel notches toward the next rung change so the
-	// mouse wheel feels deliberate and clicky (one rung per
-	// knobBadgeWheelNotchesPerRung notches) instead of flying through the
-	// short ladder on a single scroll gesture. See WheelResolution.
-	wheelAccum int
 }
-
-// knobBadgeWheelNotchesPerRung is how many mouse-wheel notches advance the
-// resolution badge by ONE rung. >1 makes the wheel less sensitive / clicky.
-const knobBadgeWheelNotchesPerRung = 3
 
 // NewKnobStepBadge creates a badge for the given param, starting at the
 // default rung for that param's range.
@@ -170,13 +160,28 @@ func (b *KnobStepBadge) Step() float64 {
 // LadderLen returns the number of rungs.
 func (b *KnobStepBadge) LadderLen() int { return len(b.ladder) }
 
-// Cycle advances to the next rung (wrapping around).
-func (b *KnobStepBadge) Cycle() {
+// SetIndex jumps directly to ladder rung i (clamped). Returns true if moved.
+func (b *KnobStepBadge) SetIndex(i int) bool {
 	if len(b.ladder) == 0 {
-		return
+		return false
 	}
-	b.idx = (b.idx + 1) % len(b.ladder)
+	if i < 0 {
+		i = 0
+	} else if i >= len(b.ladder) {
+		i = len(b.ladder) - 1
+	}
+	if i == b.idx {
+		return false
+	}
+	b.idx = i
+	return true
 }
+
+// Index returns the current ladder rung index.
+func (b *KnobStepBadge) Index() int { return b.idx }
+
+// Rungs returns the ladder steps (fine→coarse). Read-only use.
+func (b *KnobStepBadge) Rungs() []float64 { return b.ladder }
 
 // AdjustResolution shifts the rung by delta where a POSITIVE delta means finer
 // resolution (a smaller step). The ladder is ordered fine→coarse (index 0 is
@@ -197,33 +202,6 @@ func (b *KnobStepBadge) AdjustResolution(delta int) bool {
 	}
 	b.idx = newIdx
 	return true
-}
-
-// WheelResolution feeds a raw mouse-wheel event toward a rung change. Each
-// event counts as a SINGLE notch regardless of its magnitude (so a fast/high-
-// resolution wheel can't jump several rungs at once), and a rung only moves
-// once knobBadgeWheelNotchesPerRung notches have accumulated in one direction —
-// giving a deliberate, clicky feel like the discrete knobs. Positive rawSteps
-// = scroll up = finer. Returns true if the rung actually moved.
-func (b *KnobStepBadge) WheelResolution(rawSteps int) bool {
-	if rawSteps == 0 {
-		return false
-	}
-	dir := 1
-	if rawSteps < 0 {
-		dir = -1
-	}
-	// A reversal discards leftover travel so the new direction responds at once
-	// rather than first cancelling the old accumulation.
-	if b.wheelAccum != 0 && (b.wheelAccum > 0) != (dir > 0) {
-		b.wheelAccum = 0
-	}
-	b.wheelAccum += dir
-	if b.wheelAccum > -knobBadgeWheelNotchesPerRung && b.wheelAccum < knobBadgeWheelNotchesPerRung {
-		return false
-	}
-	b.wheelAccum = 0
-	return b.AdjustResolution(dir)
 }
 
 // Label is the on-pill text for the current step.
@@ -251,18 +229,4 @@ func (b *KnobStepBadge) SetStep(v float64) {
 		}
 	}
 	b.idx = best
-}
-
-// Draw renders the pill with the current step label.
-func (b *KnobStepBadge) Draw(dst *ebiten.Image) {
-	if b.r.Empty() {
-		return
-	}
-	drawRoundedRect(dst, b.r, TokenSurface2(), RadiusXS, true)
-	drawRoundedRect(dst, b.r, TokenBorderSubtle(), RadiusXS, false)
-	lbl := b.Label()
-	tw := TextWidth(lbl)
-	tx := b.r.Min.X + (b.r.Dx()-tw)/2
-	ty := b.r.Min.Y + (b.r.Dy()-TextHeight())/2
-	DrawTextColorAt(dst, lbl, tx, ty, TokenTextSecondary())
 }

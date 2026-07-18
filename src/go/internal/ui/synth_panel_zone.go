@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -56,8 +57,9 @@ const (
 	// knobs that ARE the sound (kick_*, snare_*, cym_*, bass_*, the FM voice's
 	// fm_* family operators on fm-* recipes, the <family>_wave generator
 	// picker, and fundamental). The modular voice has no family knobs, so its
-	// VOICE section is empty and omitted. No enable pill — the voice is the
-	// instrument.
+	// VOICE section is empty and PRUNED (nothing for the user to do there). When
+	// VOICE is populated it carries a mandatory, greyed, locked-ON pill — the
+	// voice is the instrument and can't be disabled (synthStageEnableState).
 	synthSectionVoice
 	// Phase-8C modulator stages (the spec-§1 gap closure): PITCH ENV reuses
 	// synthSectionPitch (same label/gloss); LFO and BURST get their own IDs.
@@ -77,10 +79,11 @@ const (
 	// the legacy drum-kick recipes keep their kick_* knobs in VOICE (group "core").
 	synthSectionKick
 	// Phase-15 voice/choir stages (Task 8). ENSEMBLE hosts the unison knobs
-	// (moved out of OSC) + the humanized-vibrato knobs; no enable pill (voices==1
-	// is its off state). FORMANT is the vowel bank (formant_enabled pill).
-	// RESONATOR surfaces the body-resonator bank (body_model "Off" is its off
-	// state, no enable pill).
+	// (moved out of OSC) + the humanized-vibrato knobs; its off-state is a VALUE
+	// (voices==1) not a *_enabled param, so its pill is value-gated
+	// (synthStageEnableState drives unison_voices). FORMANT is the vowel bank
+	// (formant_enabled pill). RESONATOR surfaces the body-resonator bank; its
+	// pill is likewise value-gated on body_model ("Off"==0).
 	synthSectionEnsemble
 	synthSectionFormant
 	synthSectionResonator
@@ -272,21 +275,21 @@ func sectionShortLabelKey(id synthSectionID) i18n.Key {
 }
 
 // sectionLabelChipFitted returns the chip label fitted to availPx (measured
-// with the body TextWidth metric the chip draws with): the full localized
+// with the styled RoleCaption metric the chip draws with): the full localized
 // label when it fits, else the stage's designed short label, else ellipsis
 // truncation as the last resort. Mid-word ellipses ("ENVELOP…") read worse
 // than a designed abbreviation on the wrapped mobile chip strip.
 func sectionLabelChipFitted(id synthSectionID, availPx int) string {
 	full := sectionLabelLocalized(id)
-	if TextWidth(full) <= availPx {
+	if StyledTextWidth(full, RoleCaption) <= availPx {
 		return full
 	}
 	if k := sectionShortLabelKey(id); k != "" {
-		if s := i18n.T(k); TextWidth(s) <= availPx {
+		if s := i18n.T(k); StyledTextWidth(s, RoleCaption) <= availPx {
 			return s
 		}
 	}
-	return truncCaption(full, availPx)
+	return truncCaptionStyled(full, availPx, RoleCaption)
 }
 
 // sectionLabelLocalized is the DISPLAY label for a stage chip/title, resolved
@@ -556,10 +559,39 @@ func isSynthEnableParam(name string) bool {
 	return strings.HasSuffix(name, "_enabled")
 }
 
-// synthParamIsGridKnob reports whether a ParamDef is shown as a knob in the
-// section grid. Engine-internal (hidden) params and the per-stage enable
-// toggles are excluded — the toggles render as section pills, and hidden
-// params (noise_seed) have no UI at all.
+// synthParamHiddenInContext is the SINGLE source of truth for "this param has no
+// UI on this recipe, in its current state". It is the exact predicate the knob
+// grid builds against (see the layout switch in layoutInstEditor), factored out
+// so callers that need to ask "would the user ever see this?" — the focus-graph
+// sweep, section tallies — cannot drift from what the grid actually renders.
+//
+// Three independent reasons a param has no UI:
+//   - Group == SynthHiddenGroup: engine-internal (noise_seed) — no UI at all.
+//   - synthKickParamHidden: the shared kick-voice knobs on a non-kick recipe.
+//   - synthOscModelParamHidden: the physical-model OSC knobs (osc_sax_*/osc_bow_*)
+//     unless their oscillator is the one selected. These are declared on EVERY
+//     modular recipe but are waveguide-internal to one oscillator each, so on a
+//     piano/kick/organ they are inert and correctly have no knob.
+func synthParamHiddenInContext(def audio.ParamDef, kickActive bool, oscType float64) bool {
+	return def.Group == audio.SynthHiddenGroup ||
+		synthKickParamHidden(kickActive, def) ||
+		synthOscModelParamHidden(def, oscType)
+}
+
+// synthParamIsGridKnobIn reports whether a ParamDef is SELECTABLE as a knob in
+// the section grid of a recipe with the given context (kick stage active?
+// current oscillator?). This is the contextual form of synthParamIsGridKnob and
+// the one any per-recipe assertion must use: a param that is hidden in context
+// has no knob to select and therefore no focus graph to be right or wrong about.
+func synthParamIsGridKnobIn(def audio.ParamDef, kickActive bool, oscType float64) bool {
+	return !synthParamHiddenInContext(def, kickActive, oscType) && !isSynthEnableParam(def.Name)
+}
+
+// synthParamIsGridKnob is the CONTEXT-FREE form: it answers "can this param ever
+// be a knob?" using only the def, and is correct for callers reasoning about a
+// param's kind rather than its visibility on one recipe (e.g. the family-section
+// routing tests). It deliberately ignores the contextual gates — use
+// synthParamIsGridKnobIn when the answer must match what a given recipe shows.
 func synthParamIsGridKnob(def audio.ParamDef) bool {
 	return def.Group != audio.SynthHiddenGroup && !isSynthEnableParam(def.Name)
 }
@@ -580,6 +612,20 @@ func synthStageEnabled(instID, paramName string) bool {
 	return v >= 0.5
 }
 
+// synthStageEssential reports whether the stage gated by enableParam is instID's
+// SOLE sound source — disabling it would silence the instrument entirely (e.g.
+// the OSC stage on a pure-oscillator voice like FM Bass). The enable pill for
+// such a stage is drawn greyed and made non-interactive so a user can't turn
+// off the one thing that produces the sound. Every shaper stage returns false.
+// The classification lives in audio (StageDisableSilences) where the generator
+// model belongs; this thin wrapper resolves the instrument id consistently.
+func (p *synthPanel) synthStageEssential(instID, enableParam string) bool {
+	if enableParam == "" {
+		return false
+	}
+	return audio.StageDisableSilences(p.dv.resolveSynthInstrument(instID), enableParam)
+}
+
 // toggleSynthStage flips a modular per-stage bypass toggle. Routes through
 // the same SetInstrumentParam plumbing as a knob drag (coalesced, persisted,
 // voice-cache invalidated) — the change is config-only and the NEXT trigger
@@ -587,9 +633,18 @@ func synthStageEnabled(instID, paramName string) bool {
 // an immediate full-gain one-shot layered over the sequencer's scheduled
 // voices was heard as a crackle/sharp transient during playback. The
 // explicit Preview button is the only audition path.
-func (dv *DrumView) toggleSynthStage(instID, paramName string) {
+func (p *synthPanel) toggleSynthStage(instID, paramName string) {
+	dv := p.dv
+
 	instID = dv.resolveSynthInstrument(instID)
 	if instID == "" || paramName == "" {
+		return
+	}
+	// A sole-source generator stage (e.g. OSC on a pure-oscillator voice) can
+	// never be bypassed — its pill is greyed/non-interactive. Backstop guard so
+	// NO input path (direct tap, tree hit area, scene, JS export) can silence the
+	// instrument by toggling off the one stage that IS its sound.
+	if audio.StageDisableSilences(instID, paramName) {
 		return
 	}
 	next := 0.0
@@ -599,6 +654,142 @@ func (dv *DrumView) toggleSynthStage(instID, paramName string) {
 	audio.SetInstrumentParam(instID, paramName, next)
 	dv.requestSynthMirror(instID) // toggling a stage changes the sound
 	dv.commitInstrumentParams(instID)
+}
+
+// synthEnableKind classifies a stage's enable pill.
+type synthEnableKind int
+
+const (
+	// enableNone — the stage carries no pill (should not occur for a shown
+	// stage after the unification; kept as a safe default).
+	enableNone synthEnableKind = iota
+	// enableBool — a real `*_enabled` boolean toggle (filter_enabled, …).
+	// Interactive unless it gates a sole sound source (then greyed/locked).
+	enableBool
+	// enableGate — a value-gated stage whose "off" is a param VALUE, not a
+	// boolean: ENSEMBLE (unison_voices=1) and RESONATOR (body_model=Off). The
+	// toggle drives that value; always interactive.
+	enableGate
+	// enableLocked — a mandatory stage that is always on and can't be
+	// disabled: VOICE (the voice IS the instrument). Greyed, non-interactive.
+	enableLocked
+)
+
+// synthEnableState is the resolved enable-pill model for one section — the
+// single source of truth the pill rect / draw / input / hit-area all consult,
+// replacing the scattered `enableParam != ""` checks. `param`/`onVal`/`offVal`
+// describe how a tap mutates state (bool: 1/0; gate: active-default/identity);
+// locked and none stages write nothing.
+type synthEnableState struct {
+	kind        synthEnableKind
+	enabled     bool
+	interactive bool
+	param       string
+	onVal       float64
+	offVal      float64
+}
+
+// synthSectionHasPill reports whether a section shows an enable pill at all —
+// structural (no per-instrument state needed). A boolean `*_enabled` stage, the
+// value-gated ENSEMBLE/RESONATOR, and the mandatory VOICE all show one. (An
+// empty VOICE is pruned before layout, so a VOICE that reaches here has knobs.)
+func synthSectionHasPill(id synthSectionID, enableParam string) bool {
+	return enableParam != "" ||
+		id == synthSectionVoice ||
+		id == synthSectionEnsemble ||
+		id == synthSectionResonator
+}
+
+// synthStageEnableState resolves the enable pill for sec on instID.
+func (p *synthPanel) synthStageEnableState(instID string, sec *synthSection) synthEnableState {
+	if sec == nil {
+		return synthEnableState{}
+	}
+	switch {
+	case sec.id == synthSectionVoice:
+		// The voice is the instrument — mandatory, always on, never disable-able.
+		return synthEnableState{kind: enableLocked, enabled: true, interactive: false}
+	case sec.enableParam != "":
+		essential := p.synthStageEssential(instID, sec.enableParam)
+		return synthEnableState{
+			kind:        enableBool,
+			enabled:     synthStageEnabled(instID, sec.enableParam),
+			interactive: !essential, // a sole sound source stays locked on
+			param:       sec.enableParam,
+			onVal:       1,
+			offVal:      0,
+		}
+	case sec.id == synthSectionEnsemble:
+		// unison_voices: 1 == off; >=2 == on. Active default from the shipped
+		// recipe (if it ships an ensemble) else 3.
+		return p.synthGateEnableState(instID, "unison_voices", 2, 1, 3)
+	case sec.id == synthSectionResonator:
+		// body_model: 0 (Off) == off; >=1 == on. Active default from the shipped
+		// recipe (if it ships a body) else 1.
+		return p.synthGateEnableState(instID, "body_model", 1, 0, 1)
+	}
+	return synthEnableState{kind: enableNone}
+}
+
+// synthGateEnableState builds a value-gated enable state: the stage reads as ON
+// when its gate param is >= threshold; a tap writes offVal (identity) or the ON
+// value — the recipe's shipped default when that is itself active, otherwise
+// onFallback.
+func (p *synthPanel) synthGateEnableState(instID, param string, threshold, offVal, onFallback float64) synthEnableState {
+	resolved := p.dv.resolveSynthInstrument(instID)
+	cur := audio.MergedInstrumentParamsRO(resolved)[param]
+	onVal := onFallback
+	if sd, ok := audio.RecipeShippedDefaults(audio.RecipeForInstrument(resolved))[param]; ok && sd >= threshold {
+		onVal = sd
+	}
+	return synthEnableState{
+		kind:        enableGate,
+		enabled:     cur >= threshold,
+		interactive: true,
+		param:       param,
+		onVal:       onVal,
+		offVal:      offVal,
+	}
+}
+
+// applySynthStageToggle flips sec's enable state for instID — the single write
+// path behind the detail-header pill (direct tap AND tree hit-area). Boolean
+// stages flip 0/1; value-gated stages move between their identity and active
+// values. Locked / non-interactive stages are a no-op, and a sole-source
+// generator is refused even if reached (defence in depth).
+func (p *synthPanel) applySynthStageToggle(instID string, sec *synthSection) {
+	dv := p.dv
+	st := p.synthStageEnableState(instID, sec)
+	if !st.interactive || st.param == "" {
+		return
+	}
+	resolved := dv.resolveSynthInstrument(instID)
+	if resolved == "" {
+		return
+	}
+	if st.kind == enableBool && audio.StageDisableSilences(resolved, st.param) {
+		return // never silence the sole sound source
+	}
+	next := st.offVal
+	if !st.enabled {
+		next = st.onVal
+	}
+	audio.SetInstrumentParam(resolved, st.param, next)
+	dv.requestSynthMirror(resolved)
+	dv.commitInstrumentParams(resolved)
+}
+
+// applySynthStageToggleByID resolves the live section for id and toggles it.
+// The tree hit-adapter carries the id (sections are rebuilt each layout, so a
+// pointer would dangle).
+func (p *synthPanel) applySynthStageToggleByID(instID string, id synthSectionID) {
+	dv := p.dv
+	for i := range dv.instEditorSections {
+		if dv.instEditorSections[i].id == id {
+			p.applySynthStageToggle(instID, &dv.instEditorSections[i])
+			return
+		}
+	}
 }
 
 // synthSection is one card in the section row. Empty knobIdxs means the
@@ -635,7 +826,9 @@ type synthChip struct {
 // falling back to the first knobbed section, then the first section. The
 // default is a pure function of the section model (never written back), so
 // layout stays deterministic for fingerprint tests.
-func (dv *DrumView) selectedSynthSection(instID string, sections []synthSection) synthSectionID {
+func (p *synthPanel) selectedSynthSection(instID string, sections []synthSection) synthSectionID {
+	dv := p.dv
+
 	if id, ok := dv.instEditorSelectedSection[instID]; ok {
 		for i := range sections {
 			if sections[i].id == id {
@@ -670,7 +863,9 @@ func (dv *DrumView) selectedSynthSection(instID string, sections []synthSection)
 // RESOLVED instrument id — buildSynthTab reads the map with the resolved id,
 // while hit-area adapters carry synthTabActiveInstrument()'s raw value, so
 // normalize here to keep every caller consistent.
-func (dv *DrumView) setSelectedSynthSection(instID string, id synthSectionID) {
+func (p *synthPanel) setSelectedSynthSection(instID string, id synthSectionID) {
+	dv := p.dv
+
 	instID = dv.resolveSynthInstrument(instID)
 	if instID == "" {
 		return
@@ -684,7 +879,9 @@ func (dv *DrumView) setSelectedSynthSection(instID string, id synthSectionID) {
 // synthSelectedSection returns the section currently expanded in the detail
 // pane (the one whose chip is selected), or nil when the synth tab has no
 // sections laid out.
-func (dv *DrumView) synthSelectedSection() *synthSection {
+func (p *synthPanel) synthSelectedSection() *synthSection {
+	dv := p.dv
+
 	for _, c := range dv.instEditorChips {
 		if !c.selected {
 			continue
@@ -700,13 +897,16 @@ func (dv *DrumView) synthSelectedSection() *synthSection {
 
 // synthDetailEnablePillRect returns the rect of the enable toggle pill in the
 // detail-pane header for the selected stage. Empty when the selected stage
-// carries no enable toggle (VOICE) or the pane is too small. Replaces the
-// per-card sectionEnablePillRect placement that used to collide with titles
-// and knobs on narrow cards.
-func (dv *DrumView) synthDetailEnablePillRect() image.Rectangle {
+// carries no pill (synthSectionHasPill) or the pane is too small. Every shown
+// stage has a pill now — boolean (*_enabled), value-gated (ENSEMBLE/RESONATOR),
+// or the mandatory locked VOICE. Replaces the per-card sectionEnablePillRect
+// placement that used to collide with titles and knobs on narrow cards.
+func (p *synthPanel) synthDetailEnablePillRect() image.Rectangle {
+	dv := p.dv
+
 	sel := dv.synthSelectedSection()
 	detail := dv.instEditorDetailR
-	if sel == nil || sel.enableParam == "" || detail.Empty() {
+	if sel == nil || !synthSectionHasPill(sel.id, sel.enableParam) || detail.Empty() {
 		return image.Rectangle{}
 	}
 	pillW := FXToggleTrackW() + 2*SpaceXS
@@ -853,7 +1053,9 @@ func (dv *DrumView) samplerViewDisabled() bool {
 // knob and nothing happens." Layout is called every frame by the
 // drumview tree, so any per-frame allocation here is a correctness bug,
 // not just a perf concern.
-func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
+func (p *synthPanel) buildSynthTab(contentR image.Rectangle, instID string) {
+	dv := p.dv
+
 	dv.instEditorBtns = dv.instEditorBtns[:0]
 	dv.instEditorSections = dv.instEditorSections[:0]
 	dv.instEditorHeader = synthHeaderLayout{}
@@ -911,29 +1113,25 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	// so a fresh MergeRecipeDefaults here was a per-frame ~115 KB allocation.
 	genMerged := audio.MergedInstrumentParamsRO(resolved)
 	deferred := false
-	// Defer any schema CHANGE while a knob drag is in flight. A schema swap
-	// mid-gesture (historically the gen_type Native→waveform re-voice; today
-	// a recipe rebind from any source) rebuilds the binding slice while the
-	// drag is captured BY INDEX — the tree routes continued OnDrag to the
-	// captured handler without re-testing hit areas, so the captured index
-	// would bind a DIFFERENT param and the in-flight drag would scramble it
-	// (in WASM that silently drove foreign params like gain/osc_enabled,
-	// silencing the voice until reload). Hold the current knob set until the
-	// gesture releases; the next Layout swaps cleanly. The adapter also
-	// self-defends by latching the captured param name — see
-	// synth_knob_adapter_index_safe_test.go.
-	capturingNow := dv.anySynthKnobCapturing()
-	if capturingNow && !bindingsMatchSchema(dv.instEditorBindings, schema) {
+	// Defer any schema CHANGE while the value-wheel popup is open. The popup
+	// caches the knob pointer and edits it BY INDEX (see
+	// openSynthKnobWheelPopup): a schema swap mid-edit rebuilds the binding
+	// slice, so the popup's index would bind a DIFFERENT param and the
+	// in-flight edit would scramble it (in WASM that silently drove foreign
+	// params like gain/osc_enabled, silencing the voice until reload). Hold the
+	// current knob set until the popup closes; the next Layout swaps cleanly.
+	popupEditing := dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen()
+	if popupEditing && !bindingsMatchSchema(dv.instEditorBindings, schema) {
 		schema = schemaFromBindings(dv.instEditorBindings)
 		deferred = true
 	}
 	if synthDragDebug {
-		dv.sdbgBuildTab(fmt.Sprintf("inst=%s deferred=%v capturing=%v prevBindings=%d schemaLen=%d",
-			resolved, deferred, capturingNow, len(dv.instEditorBindings), len(schema)))
+		dv.sdbgBuildTab(fmt.Sprintf("inst=%s deferred=%v popupEditing=%v prevBindings=%d schemaLen=%d",
+			resolved, deferred, popupEditing, len(dv.instEditorBindings), len(schema)))
 	}
 
-	p := Profile()
-	mobile := p.IsMobile()
+	pp := Profile()
+	mobile := pp.IsMobile()
 	headerH := Profile().SynthHeaderH
 	if mobile {
 		// Mobile lays the header out as two rows: a caption row on top and a
@@ -1012,7 +1210,7 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	}
 	reuseExisting := bindingsMatchSchema(dv.instEditorBindings, schema)
 	if synthDragDebug && !reuseExisting {
-		dv.sdbg("[synthdrag] buildSynthTab REBUILDING knob slice (reuseExisting=false) — captured drag state will be LOST if a drag is in flight; capturing=%v", dv.anySynthKnobCapturing())
+		dv.sdbg("[synthdrag] buildSynthTab REBUILDING knob slice (reuseExisting=false) — live edit state will be LOST; popupEditing=%v", dv.synthWheelPopup != nil && dv.synthWheelPopup.IsOpen())
 	}
 	if !reuseExisting {
 		dv.instEditorKnobs = dv.instEditorKnobs[:0]
@@ -1025,7 +1223,7 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	for i, def := range schema {
 		sec := sectionForParamDefIn(recipeID, def)
 		switch {
-		case def.Group == audio.SynthHiddenGroup || synthKickParamHidden(kickActive, def) || synthOscModelParamHidden(def, oscType):
+		case synthParamHiddenInContext(def, kickActive, oscType):
 			// Engine-internal (noise_seed) — no UI; the shared kick params on a
 			// non-kick recipe; and the physical-model OSC knobs unless their
 			// oscillator is selected. Still allocate a widget slot below so
@@ -1116,6 +1314,21 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 		dv.instEditorSliders = append(dv.instEditorSliders, NewSlider(initial))
 	}
 
+	// Prune stages with nothing for the user to do: no visible knobs AND no
+	// enable pill. The empty modular VOICE is the case — its physical-model
+	// knobs (osc_sax_*/osc_bow_*) route here but are hidden for the current
+	// osc_type, so the candidate order kept VOICE while the knob-build left it
+	// empty. A populated VOICE (family voices, drums) survives and gets its
+	// locked pill; ENSEMBLE/RESONATOR always carry knobs so they never prune.
+	kept := sections[:0]
+	for _, s := range sections {
+		if len(s.knobIdxs) == 0 && s.enableParam == "" {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	sections = kept
+
 	dv.instEditorSectionsRect = sectionsRect
 	dv.layoutSynthSections(sectionsRect, sections, mobile, resolved)
 	dv.instEditorSections = sections
@@ -1132,22 +1345,6 @@ func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
 	dv.instEditorScrollPx = 0
 }
 
-// bindingsMatchSchema reports whether the existing bindings line up with
-// the new schema by length + param name. Used by buildSynthTab to decide
-// whether to reuse existing knob/slider instances (preserving drag state)
-// or rebuild the slice from scratch (when the active recipe changed).
-// anySynthKnobCapturing reports whether a synth-tab knob drag is currently in
-// flight. Used to defer schema swaps so a captured-by-index drag handler is not
-// re-bound to a different param mid-gesture (see buildSynthTab).
-func (dv *DrumView) anySynthKnobCapturing() bool {
-	for _, k := range dv.instEditorKnobs {
-		if k != nil && k.Capturing() {
-			return true
-		}
-	}
-	return false
-}
-
 // schemaFromBindings reconstructs the ParamDef schema currently bound to the
 // synth-tab knobs so a deferred Layout can keep the exact knob set live for the
 // duration of an in-flight drag.
@@ -1159,6 +1356,10 @@ func schemaFromBindings(bindings []instParamBinding) []audio.ParamDef {
 	return out
 }
 
+// bindingsMatchSchema reports whether the existing bindings line up with
+// the new schema by length + param name. Used by buildSynthTab to decide
+// whether to reuse existing knob/slider instances (preserving live state)
+// or rebuild the slice from scratch (when the active recipe changed).
 func bindingsMatchSchema(bindings []instParamBinding, schema []audio.ParamDef) bool {
 	if len(bindings) != len(schema) {
 		return false
@@ -1177,7 +1378,9 @@ func bindingsMatchSchema(bindings []instParamBinding, schema []audio.ParamDef) b
 // caption. The footer band is gone — sections own the full vertical
 // space below the header, giving knobs back the breathing room they
 // had before the Save buttons were added.
-func (dv *DrumView) layoutSynthHeader(contentR image.Rectangle, headerH int, instID, recipeID string, mobile bool) {
+func (p *synthPanel) layoutSynthHeader(contentR image.Rectangle, headerH int, instID, recipeID string, mobile bool) {
+	dv := p.dv
+
 	r := image.Rect(contentR.Min.X, contentR.Min.Y, contentR.Max.X, contentR.Min.Y+headerH)
 	dv2 := Profile().DensityValues()
 	inset := SpaceMD
@@ -1285,7 +1488,9 @@ func (dv *DrumView) layoutSynthHeader(contentR image.Rectangle, headerH int, ins
 // inside the header strip. Save's spec toggles Primary↔Secondary by
 // dirty state so the visual signal stays honest. Empty rects (very
 // narrow panels) just skip the corresponding button entirely.
-func (dv *DrumView) buildSynthHeaderButtons(resolved string) {
+func (p *synthPanel) buildSynthHeaderButtons(resolved string) {
+	dv := p.dv
+
 	h := dv.instEditorHeader
 	if !h.previewRect.Empty() {
 		previewBtn := NewSpecButton(synthPreviewButtonTag, ComponentButtonSecondary, func() {
@@ -1334,7 +1539,9 @@ func (dv *DrumView) buildSynthHeaderButtons(resolved string) {
 // drawn nor hit-tested, while the knob INSTANCES (and binding indices)
 // survive untouched, preserving in-flight drag state exactly like the
 // scrolled-off-window path always has.
-func (dv *DrumView) layoutSynthSections(rowR image.Rectangle, sections []synthSection, mobile bool, instID string) {
+func (p *synthPanel) layoutSynthSections(rowR image.Rectangle, sections []synthSection, mobile bool, instID string) {
+	dv := p.dv
+
 	dv.instEditorChips = dv.instEditorChips[:0]
 	dv.instEditorDetailR = image.Rectangle{}
 	inset := SpaceMD
@@ -1531,7 +1738,9 @@ func (dv *DrumView) layoutSynthSections(rowR image.Rectangle, sections []synthSe
 
 // appendSynthChip records one chip in the strip model (reused slice — no
 // per-frame allocation once capacity is established).
-func (dv *DrumView) appendSynthChip(s synthSection, r image.Rectangle, instID string, selID synthSectionID) {
+func (p *synthPanel) appendSynthChip(s synthSection, r image.Rectangle, instID string, selID synthSectionID) {
+	dv := p.dv
+
 	enabled := true
 	if s.enableParam != "" {
 		enabled = synthStageEnabled(instID, s.enableParam)
@@ -1587,7 +1796,9 @@ func synthChipIdealWidth(id synthSectionID, minW int) int {
 // sectionGrid returns the persistent ControlGrid for a section id, creating it
 // on first use. Keyed by id (not slice position) so the scroll position
 // survives a recipe switch that reorders the sections.
-func (dv *DrumView) sectionGrid(id synthSectionID) *ControlGrid {
+func (p *synthPanel) sectionGrid(id synthSectionID) *ControlGrid {
+	dv := p.dv
+
 	if dv.instEditorSectionGrids == nil {
 		dv.instEditorSectionGrids = map[synthSectionID]*ControlGrid{}
 	}
@@ -1604,7 +1815,13 @@ func (dv *DrumView) sectionGrid(id synthSectionID) *ControlGrid {
 // editor (paramEditor) so blur-to-commit works in production (mirrors
 // TransportZone.Update pumping the BPM box every frame). Returns true when
 // the layout should be re-derived (e.g. editor opened/closed).
-func (dv *DrumView) synthTabUpdate() bool {
+func (p *synthPanel) synthTabUpdate() bool {
+	dv := p.dv
+
+	// Advance the desktop wheel-nudge debounce; a spin that has paused for
+	// wheelNudgeCommitFrames commits its single undo step here.
+	dv.synthWheelNudge.tick()
+
 	for _, g := range dv.instEditorSectionGrids {
 		if g != nil {
 			g.Tick()
@@ -1622,6 +1839,14 @@ func (dv *DrumView) synthTabUpdate() bool {
 	// Stage 4: a completed async mirror render flips ready; consume it (one-shot)
 	// and request a redraw so the freshly rendered note is shown promptly.
 	if dv.synthMirror != nil && dv.synthMirror.consumeReady() {
+		// The full-note card's render key (synth_full_note.go) can be
+		// unchanged across this event — updateSynthFullNoteLive's async job
+		// completing doesn't bump the params hash, only the ghost flag flips
+		// (once, at request time, not at completion). Force both trace
+		// sprites to re-render next Draw so a freshly-landed async render (or
+		// the steady-wave slot) is never blitted stale from cache.
+		p.sprites.fullNote.Invalidate()
+		p.sprites.mirror.Invalidate()
 		return true
 	}
 	return false
@@ -1639,14 +1864,22 @@ func (dv *DrumView) synthTabUpdate() bool {
 // synthKnobCellHeight is the per-knob grid cell height: dial + caption + gap.
 // The old per-knob concept-viz band is gone (the focus graph explains the
 // selected knob in the right pane), so the cell no longer reserves SynthConceptVizH.
+// synthMaxGridCols caps how many card columns the synth detail grid flows. It is
+// deliberately generous (the ParamCard ideal width self-limits the real column
+// count on narrow panes); the cap only prevents pathological wide-pane blow-ups
+// and gives the two-pass divider layout a stable upper bound for its cols probe.
+const synthMaxGridCols = 12
+
 func synthKnobCellHeight() int {
-	d := Profile().DensityValues()
-	return d.SynthKnobIdeal + d.SynthKnobCaptionH + SpaceXS
+	// Card-cell layout (Task 3): each grid cell is a full ParamCard slot.
+	return Profile().DensityValues().ParamCardH
 }
 
 // synthSectionTierSplit partitions a stage's knob indices into Essential (always
 // shown) and Advanced (collapsed under the stage's expander) by ParamDef.Tier.
-func (dv *DrumView) synthSectionTierSplit(knobIdxs []int) (essential, advanced []int) {
+func (p *synthPanel) synthSectionTierSplit(knobIdxs []int) (essential, advanced []int) {
+	dv := p.dv
+
 	for _, kIdx := range knobIdxs {
 		if kIdx >= 0 && kIdx < len(dv.instEditorBindings) &&
 			dv.instEditorBindings[kIdx].def.Tier == audio.TierAdvanced {
@@ -1658,33 +1891,9 @@ func (dv *DrumView) synthSectionTierSplit(knobIdxs []int) (essential, advanced [
 	return essential, advanced
 }
 
-// synthAdvExpanderH is the height of a stage's "Advanced" expander bar.
-func synthAdvExpanderH() int { return TextHeight() + 2*SpaceXS }
+func (p *synthPanel) placeKnobsInSection(s synthSection, mobile bool) {
+	dv := p.dv
 
-// drawSynthAdvExpander renders the selected stage's Advanced-knob expander bar.
-// An empty synthAdvExpanderRect (stage has no advanced knobs, or no room) draws
-// nothing. Collapsed shows a right chevron ("open to reveal fine-tuning knobs");
-// expanded shows a down chevron.
-func (dv *DrumView) drawSynthAdvExpander(dst *ebiten.Image, id synthSectionID) {
-	r := dv.synthAdvExpanderRect
-	if r.Empty() {
-		return
-	}
-	drawRoundedRect(dst, r, WithAlpha(TokenSurface2(), AlphaMedium), RadiusXS, false)
-	icon := IconChevronRight
-	if dv.synthAdvExpanded[id] {
-		icon = IconChevronDown
-	}
-	iconSz := TextHeight()
-	iy := r.Min.Y + (r.Dy()-iconSz)/2
-	iconR := image.Rect(r.Min.X+SpaceSM, iy, r.Min.X+SpaceSM+iconSz, iy+iconSz)
-	DrawIcon(dst, icon, iconR, TokenTextSecondary())
-	tx := iconR.Max.X + SpaceXS
-	ty := r.Min.Y + (r.Dy()-TextHeight())/2
-	DrawTextColorAtScale(dst, i18n.T(i18n.KeySynthAdvanced), tx, ty, TokenTextSecondary(), 1.0)
-}
-
-func (dv *DrumView) placeKnobsInSection(s synthSection, mobile bool) {
 	grid := dv.sectionGrid(s.id)
 	// Collapsed stage (empty section rect) or no knobs: clear every knob
 	// rect explicitly. Beware image.Rect's coordinate normalization — deriving
@@ -1744,93 +1953,97 @@ func (dv *DrumView) placeKnobsInSection(s synthSection, mobile bool) {
 	if cellH < 1 {
 		cellH = 1
 	}
-	// Desktop: cap at 2 columns so each cell has room for its purpose line +
-	// mini-visual. Mobile: width-adaptive up to 4 columns (the pill buttons
-	// self-clamp to narrower cells), so stage cards use the panel width
-	// instead of one knob per row. Overflow scrolls — the intended
+	// Card cells flow as many columns as fit the pane at the ParamCard ideal
+	// width (both platforms). Mobile self-limits because the pane is narrower,
+	// not because of an explicit column cap. Overflow scrolls — the intended
 	// "show a few, scroll for more" behaviour.
-	maxCols := 2
-	if mobile {
-		maxCols = 4
-	}
-	grid.SetMaxCols(maxCols)
+	grid.SetMaxCols(synthMaxGridCols)
 
-	// P4 tiering: show the stage's Essential (character) knobs always; keep its
-	// Advanced (fine-tuning) knobs collapsed under a bottom expander bar until the
-	// user opens them. Collapsed advanced knobs get empty rects (skipped by the
-	// draw loop + input, exactly like scrolled-out knobs).
+	// P4 tiering: the stage's Essential (character) knobs always come first; its
+	// Advanced (fine-tuning) knobs are laid out below an always-visible in-grid
+	// divider row. The divider is a full phantom row (knob idx -1) so essentials
+	// round up to a full row, the divider band spans its own row, and advanced
+	// knobs start fresh below it. No expander, no hidden state — advanced knobs
+	// may only scroll out of the window like any other cell.
 	essential, advanced := dv.synthSectionTierSplit(s.knobIdxs)
-	expanded := dv.synthAdvExpanded[s.id]
+	dv.synthAdvDividerRect = image.Rectangle{}
+	dv.synthAdvDividerCount = len(advanced)
 	visible := essential
-	if expanded {
-		visible = append(append(make([]int, 0, len(essential)+len(advanced)), essential...), advanced...)
-	} else {
-		for _, kIdx := range advanced {
-			if kIdx >= 0 && kIdx < len(dv.instEditorKnobs) {
-				dv.instEditorKnobs[kIdx].SetRect(image.Rectangle{})
-				dv.instEditorSliders[kIdx].SetRect(image.Rectangle{})
+	dividerStart, dividerEnd := -1, -1
+	if len(advanced) > 0 {
+		// Two-pass: the first Layout discovers the column count for this width,
+		// then the padded list (essentials rounded up to a full row + one
+		// phantom divider row + advanced) is laid out for real. Probe with a
+		// count of at least synthMaxGridCols so the grid's `cols > count` clamp
+		// can't report fewer columns than the real (padded) list will use — that
+		// mismatch would place the divider phantoms on the essentials' row. Save
+		// and restore the scroll offset around the probe: the probe's smaller row
+		// count would otherwise clamp the scroll window DOWN, and the real Layout
+		// preserves whatever offset it finds — scrolling the advanced tier out of
+		// view.
+		savedFirst := grid.Scroll().VS.First
+		probeCount := len(essential) + len(advanced)
+		if probeCount < synthMaxGridCols {
+			probeCount = synthMaxGridCols
+		}
+		grid.Layout(innerR, probeCount, dv2.ParamCardW, cellH, hGap, vGap)
+		cols := grid.Cols()
+		if cols < 1 {
+			cols = 1
+		}
+		grid.Scroll().VS.First = savedFirst
+		padded := append([]int{}, essential...)
+		for len(padded)%cols != 0 {
+			padded = append(padded, -1)
+		}
+		dividerStart = len(padded)
+		for i := 0; i < cols; i++ { // one full phantom row = the divider band
+			padded = append(padded, -1)
+		}
+		dividerEnd = len(padded)
+		visible = append(padded, advanced...)
+	}
+	grid.Layout(innerR, len(visible), dv2.ParamCardW, cellH, hGap, vGap)
+	if dividerStart >= 0 {
+		var dr image.Rectangle
+		for i := dividerStart; i < dividerEnd; i++ {
+			if c, vis := grid.CellRect(i); vis {
+				dr = dr.Union(c)
 			}
 		}
-	}
-	// Reserve a bottom strip for the Advanced expander bar (only when the stage
-	// actually has advanced knobs and there is room for both knobs and the bar).
-	knobR := innerR
-	dv.synthAdvExpanderRect = image.Rectangle{}
-	if len(advanced) > 0 {
-		barH := synthAdvExpanderH()
-		if innerR.Dy() > barH+cellH/2 {
-			knobR = image.Rect(innerR.Min.X, innerR.Min.Y, innerR.Max.X, innerR.Max.Y-barH-SpaceXS)
-			dv.synthAdvExpanderRect = image.Rect(innerR.Min.X, innerR.Max.Y-barH, innerR.Max.X, innerR.Max.Y)
-		}
-	}
-	grid.Layout(knobR, len(visible), dv2.SynthKnobIdeal, cellH, hGap, vGap)
-	// On open, scroll the first revealed advanced knob into view so the reveal is
-	// visible on the short synth pane (consumed once).
-	if expanded && dv.synthAdvScrollPending && len(advanced) > 0 {
-		grid.ScrollToIndex(len(essential))
-		dv.synthAdvScrollPending = false
+		dv.synthAdvDividerRect = dr
 	}
 
 	for i, kIdx := range visible {
+		if kIdx < 0 {
+			continue // phantom (padding / divider) cell — no widget
+		}
 		slot, vis := grid.CellRect(i)
 		if !vis {
 			dv.instEditorKnobs[kIdx].SetRect(image.Rectangle{})
 			dv.instEditorSliders[kIdx].SetRect(image.Rectangle{})
 			continue
 		}
-		// Largest knob that fits the cell, clamped to the density bounds. The fit
-		// reserves the caption row AND the concept-viz band below it, so the dial
-		// yields room for its mini-picture — but never below SynthKnobMin (a
-		// usability/touch invariant, guarded by TestSynthSection_*MinDiameter).
-		// The synth panel is sized tall enough (see PanelTabState.PanelHeightAt)
-		// that a full row of dial + caption + band fits without clamping.
-		d := slot.Dx()
-		if maxH := slot.Dy() - dv2.SynthKnobCaptionH; d > maxH {
-			d = maxH
-		}
-		if d > dv2.SynthKnobIdeal {
-			d = dv2.SynthKnobIdeal
-		}
-		if d < dv2.SynthKnobMin {
-			d = dv2.SynthKnobMin
-		}
-		x0 := slot.Min.X + (slot.Dx()-d)/2
-		rect := image.Rect(x0, slot.Min.Y, x0+d, slot.Min.Y+d+dv2.SynthKnobCaptionH)
-		dv.instEditorKnobs[kIdx].SetRect(rect)
-		dv.instEditorSliders[kIdx].SetRect(rect)
+		// The card fills the whole grid cell. Task 4 swaps the dial DRAW for the
+		// ParamCard renderer against this same rect; the slider mirrors the knob
+		// rect so legacy hit-tests + JS export rects keep landing on the widget.
+		dv.instEditorKnobs[kIdx].SetRect(slot)
+		dv.instEditorSliders[kIdx].SetRect(slot)
 	}
 }
 
 // drawSynthTab renders the prebuilt section model. Called by EQPanelZone.Draw
 // when activeTab == TabSynth.
-func (dv *DrumView) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, instID string) {
+func (p *synthPanel) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, instID string) {
+	dv := p.dv
+
 	if contentR.Empty() {
 		return
 	}
 	resolved := dv.resolveSynthInstrument(instID)
 	if resolved == "" {
 		// No active row — draw a hint and return.
-		DrawTextColorAt(dst, i18n.T(i18n.KeyNoRowSelected), contentR.Min.X+SpaceMD, contentR.Min.Y+SpaceMD, TokenTextSecondary())
+		DrawTextStyled(dst, i18n.T(i18n.KeyNoRowSelected), contentR.Min.X+SpaceMD, contentR.Min.Y+SpaceMD, RoleBody, TokenTextSecondary())
 		return
 	}
 
@@ -1867,10 +2080,10 @@ func (dv *DrumView) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, in
 		dv.updateSynthFullNoteLive(resolved)
 		fullR, upR, focusR := splitSynthRightPane3(r)
 		if !fullR.Empty() {
-			drawSynthFullNote(dst, fullR, dv.synthMirror)
+			p.drawSynthFullNote(dst, fullR, resolved, dv.synthMirror)
 		}
 		if !upR.Empty() {
-			drawSynthMirror(dst, upR, dv.synthMirror)
+			p.drawSynthMirror(dst, upR, resolved, dv.synthMirror)
 		}
 		dv.drawSynthFocusGraph(dst, focusR, resolved)
 	}
@@ -1883,10 +2096,10 @@ func (dv *DrumView) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, in
 		dv.updateSynthFullNoteLive(resolved)
 		fullR, upR, focusR := splitSynthRightPane3(mb)
 		if !fullR.Empty() {
-			drawSynthFullNote(dst, fullR, dv.synthMirror)
+			p.drawSynthFullNote(dst, fullR, resolved, dv.synthMirror)
 		}
 		if !upR.Empty() {
-			drawSynthMirror(dst, upR, dv.synthMirror)
+			p.drawSynthMirror(dst, upR, resolved, dv.synthMirror)
 		}
 		dv.drawSynthFocusGraph(dst, focusR, resolved)
 	}
@@ -1898,7 +2111,9 @@ func (dv *DrumView) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, in
 // value out of the active bindings and converts it to a multiplier
 // (1.0 = no change, 0.25 = quarter, 4.0 = quadruple). Returns 1.0
 // when no decay binding is present so the ADSR plot stays meaningful.
-func (dv *DrumView) synthDecayValueForPreview() float64 {
+func (p *synthPanel) synthDecayValueForPreview() float64 {
+	dv := p.dv
+
 	for i, b := range dv.instEditorBindings {
 		if b.def.Name != "decay" || i >= len(dv.instEditorKnobs) {
 			continue
@@ -1924,7 +2139,10 @@ func (dv *DrumView) synthDecayValueForPreview() float64 {
 // preview pane: Delay send, Reverb send, Channel volume — each as a
 // labelled mini-meter so the user can see whether their knob changes
 // reach the master.
-func (dv *DrumView) drawSynthOutRow(dst *ebiten.Image, paneR image.Rectangle, instID string) {
+func (p *synthPanel) drawSynthOutRow(dst *ebiten.Image, paneR image.Rectangle, instID string) {
+	dv := p.dv
+	_ = dv
+
 	const rowH = 20
 	if paneR.Dy() < 80 {
 		return
@@ -1932,8 +2150,7 @@ func (dv *DrumView) drawSynthOutRow(dst *ebiten.Image, paneR image.Rectangle, in
 	rowR := image.Rect(paneR.Min.X+SpaceSM, paneR.Max.Y-rowH-SpaceSM, paneR.Max.X-SpaceSM, paneR.Max.Y-SpaceSM)
 	drawRect(dst, rowR, WithAlpha(genColorVizScopeBg, AlphaOverlay), true)
 
-	captionScale := FontSizeCaption / FontSizeBody
-	captionH := int(float64(TextHeight()) * captionScale)
+	captionH := StyledTextHeight(RoleMicro)
 	colW := rowR.Dx() / 3
 	for i, item := range []struct {
 		label string
@@ -1945,7 +2162,7 @@ func (dv *DrumView) drawSynthOutRow(dst *ebiten.Image, paneR image.Rectangle, in
 	} {
 		cellR := image.Rect(rowR.Min.X+i*colW, rowR.Min.Y, rowR.Min.X+(i+1)*colW, rowR.Max.Y)
 		// Label.
-		DrawTextColorAtScale(dst, item.label, cellR.Min.X+2, cellR.Min.Y+1, TokenTextSecondary(), captionScale)
+		DrawTextStyled(dst, item.label, cellR.Min.X+2, cellR.Min.Y+1, RoleMicro, TokenTextSecondary())
 		// Mini bar: width proportional to value (clamped 0..1).
 		barTopY := cellR.Min.Y + captionH + 2
 		barR := image.Rect(cellR.Min.X+2, barTopY, cellR.Max.X-2, cellR.Max.Y-2)
@@ -1966,7 +2183,9 @@ func (dv *DrumView) drawSynthOutRow(dst *ebiten.Image, paneR image.Rectangle, in
 // drawSynthHeader renders the instrument/recipe caption and the cached
 // waveform thumbnail. No retrigger or vol pill — the row rack owns the
 // per-row volume slider and the transport bar owns Play.
-func (dv *DrumView) drawSynthHeader(dst *ebiten.Image) {
+func (p *synthPanel) drawSynthHeader(dst *ebiten.Image) {
+	dv := p.dv
+
 	h := dv.instEditorHeader
 	if h.rect.Empty() {
 		return
@@ -2127,39 +2346,141 @@ func expDecay(x float64) float64 {
 // drawSynthSectionCard renders one section card. Empty sections collapse
 // to a placeholder showing the section name + dash, so the layout grid
 // stays visually consistent across recipes with very different wired sets.
+// chipStripBounds returns the union of every non-empty
+// dv.instEditorChips[i].rect — the strip's TraceSprite cache rect. Zero value
+// (Empty()==true) when no chips are laid out yet (pre-Layout frame) or every
+// chip collapsed to an empty rect (drawSynthChipStrip returns early on that).
+func (p *synthPanel) chipStripBounds() image.Rectangle {
+	dv := p.dv
+
+	var strip image.Rectangle
+	first := true
+	for _, c := range dv.instEditorChips {
+		if c.rect.Empty() {
+			continue
+		}
+		if first {
+			strip = c.rect
+			first = false
+			continue
+		}
+		strip = strip.Union(c.rect)
+	}
+	return strip
+}
+
+// chipEnableHash folds every chip's (id, enabled, selected) triple into one
+// value — the chip-strip cache key component covering "what state is each
+// pill in" (fill/border/label-color/state-dot/disabled-watermark-line all
+// derive from these two bools per chip). Hand-rolled FNV-ish mix instead of
+// fmt/hash-fnv: this runs every Draw call (steady frames too, to detect a
+// key change), so it must stay allocation-free.
+func (p *synthPanel) chipEnableHash() uint64 {
+	dv := p.dv
+
+	const offset64 uint64 = 14695981039346656037
+	const prime64 uint64 = 1099511628211
+	h := offset64
+	for _, c := range dv.instEditorChips {
+		h ^= uint64(c.id)
+		h *= prime64
+		if c.enabled {
+			h ^= 1
+		}
+		h *= prime64
+		if c.selected {
+			h ^= 2
+		}
+		h *= prime64
+	}
+	return h
+}
+
 // drawSynthChipStrip paints the pipeline chip strip: one compact chip per
 // stage in audio order, connected by a wire so the strip reads as the signal
 // path. Selected chip = accent border + tinted fill; disabled stage = dimmed
 // ghost chip with a power-ring affordance (IconCircle outline). Connectors
 // are drawn geometry — the forbidden-glyph rule bans `→`/`▶` text.
-func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
-	captionScale := FontSizeCaption / FontSizeBody
+//
+// TraceSprite-cached (Task 4 of the render-caching plan): the chip rects
+// come from Layout (dv.instEditorChips[i].rect), NOT from this draw, so
+// hit-testing is unaffected by caching the pixels. The strip's own bounding
+// rect (chipStripBounds) is the sprite rect passed to TraceSprite.Draw.
+// Unlike the focus/mirror/full-note adopters (whose content functions only
+// ever consult the rect THEY were called with), the chip strip's absolute
+// positions live in dv.instEditorChips[i].rect — fixed by Layout,
+// independent of whatever rect this draw is asked to fill. TraceSprite.Draw
+// hands the render callback (img, r) where r is image.Rect(0,0,w,h) in the
+// cached branch but the ORIGINAL `strip` rect (unchanged) in the RENDER_SAFE
+// bypass branch (see trace_sprite.go). origin = strip.Min - r.Min is
+// therefore strip.Min when cached (shifting the absolute chip rects down to
+// the (0,0)-anchored offscreen texture) and the zero point under
+// RENDER_SAFE (r.Min == strip.Min already, so chips draw at their true
+// absolute position on the real dst — required, since other UI layers drawn
+// before/after this one are NOT shifted).
+func (p *synthPanel) drawSynthChipStrip(dst *ebiten.Image) {
+	dv := p.dv
+
+	strip := p.chipStripBounds()
+	if strip.Empty() {
+		return
+	}
+	sel := synthSectionID(-1)
+	if s := p.synthSelectedSection(); s != nil {
+		sel = s.id
+	}
+	key := struct {
+		sel    synthSectionID
+		enable uint64
+		thumb  int
+		w, h   int
+	}{sel, p.chipEnableHash(), dv.lazyStageThumbs().contentVersion(), strip.Dx(), strip.Dy()}
+	p.sprites.chip.Draw(dst, strip, key, func(img *ebiten.Image, r image.Rectangle) {
+		p.drawSynthChipStripContent(img, strip.Min.Sub(r.Min))
+	})
+}
+
+// drawSynthChipStripContent is the pixel body of drawSynthChipStrip,
+// factored out so it can be handed to TraceSprite.Draw's render callback.
+// origin is subtracted from EVERY absolute chip/connector/watermark/label
+// coordinate before it's drawn, so the same code paints correctly whether
+// dst is the real screen (origin == image.Point{}, RENDER_SAFE bypass) or a
+// strip-sized offscreen texture anchored at (0,0) (origin == strip.Min, the
+// cached path). Comparisons that decide layout (gap width, same-row check)
+// use the UNTRANSLATED chip rects — subtracting a constant from both sides
+// of a comparison never changes its outcome, and reusing the original rects
+// there keeps this diff-minimal against the pre-cache version.
+func (p *synthPanel) drawSynthChipStripContent(dst *ebiten.Image, origin image.Point) {
+	dv := p.dv
+
 	for i, c := range dv.instEditorChips {
 		if c.rect.Empty() {
 			continue
 		}
+		cr := c.rect.Sub(origin)
 		// Connector: an accent chevron centred in the inter-chip gap so the
 		// strip reads as a directed signal path. When the gap is too tight for
 		// a legible arrow (wrapped mobile rows) fall back to the old thin wire.
 		// Drawn BEFORE the chip body so the pill always sits on top.
 		if i > 0 {
-			p := dv.instEditorchipPrev(i)
-			if !p.rect.Empty() && p.rect.Min.Y == c.rect.Min.Y && p.rect.Max.X < c.rect.Min.X {
-				cy := (c.rect.Min.Y + c.rect.Max.Y) / 2
-				gapW := c.rect.Min.X - p.rect.Max.X
+			prevChip := dv.instEditorchipPrev(i)
+			if !prevChip.rect.Empty() && prevChip.rect.Min.Y == c.rect.Min.Y && prevChip.rect.Max.X < c.rect.Min.X {
+				pr := prevChip.rect.Sub(origin)
+				cy := (cr.Min.Y + cr.Max.Y) / 2
+				gapW := cr.Min.X - pr.Max.X
 				if gapW >= 4 {
 					side := gapW
 					if side > 10 {
 						side = 10
 					}
-					gapCx := (p.rect.Max.X + c.rect.Min.X) / 2
+					gapCx := (pr.Max.X + cr.Min.X) / 2
 					arrowR := image.Rect(
 						gapCx-side/2, cy-side/2,
 						gapCx-side/2+side, cy-side/2+side,
 					)
 					DrawIcon(dst, IconChevronRight, arrowR, WithAlpha(colAccent, AlphaMedium))
 				} else {
-					wire := image.Rect(p.rect.Max.X, cy, c.rect.Min.X, cy+1)
+					wire := image.Rect(pr.Max.X, cy, cr.Min.X, cy+1)
 					drawRect(dst, wire, WithAlpha(genColorBorder, AlphaFaint), true)
 				}
 			}
@@ -2193,8 +2514,8 @@ func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
 				border = WithAlpha(colAccent, AlphaMedium)
 			}
 		}
-		drawRoundedRect(dst, c.rect, fill, RadiusXS, true)
-		drawRoundedRect(dst, c.rect, border, RadiusXS, false)
+		drawRoundedRect(dst, cr, fill, RadiusXS, true)
+		drawRoundedRect(dst, cr, border, RadiusXS, false)
 		// Waveform watermark: the stage's cumulative preview drawn as a subtle
 		// min/max column band confined to the BOTTOM band of the chip, so it
 		// never crosses the vertically-centred label (a full-height/centred
@@ -2202,9 +2523,9 @@ func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
 		// get a flat 1px line at the band's centre instead (no signal to show).
 		// Painted AFTER the pill, BEFORE the label/state dot, so the label
 		// stays dominant. Zero layout impact — a watermark inside the chip rect.
-		bandH := c.rect.Dy() * 2 / 5
+		bandH := cr.Dy() * 2 / 5
 		if bandH >= 4 {
-			bandR := image.Rect(c.rect.Min.X+SpaceSM, c.rect.Max.Y-2-bandH, c.rect.Max.X-SpaceSM, c.rect.Max.Y-2)
+			bandR := image.Rect(cr.Min.X+SpaceSM, cr.Max.Y-2-bandH, cr.Max.X-SpaceSM, cr.Max.Y-2)
 			if bandR.Dx() > 1 && bandR.Dy() > 1 {
 				bandMidY := (bandR.Min.Y + bandR.Max.Y) / 2
 				if !c.enabled {
@@ -2240,10 +2561,10 @@ func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
 		// surface-text when off.
 		if c.enableParam != "" {
 			const dotD = 7
-			cy := (c.rect.Min.Y + c.rect.Max.Y) / 2
+			cy := (cr.Min.Y + cr.Max.Y) / 2
 			dotR := image.Rect(
-				c.rect.Max.X-SpaceSM-dotD, cy-dotD/2,
-				c.rect.Max.X-SpaceSM, cy-dotD/2+dotD,
+				cr.Max.X-SpaceSM-dotD, cy-dotD/2,
+				cr.Max.X-SpaceSM, cy-dotD/2+dotD,
 			)
 			if c.enabled {
 				DrawIcon(dst, IconCircle, dotR, colAccent)
@@ -2252,20 +2573,22 @@ func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
 			}
 		}
 		// Label, truncated to the room left of the state affordance.
-		availPx := c.rect.Dx() - 2*SpaceSM - synthChipStateW
+		availPx := cr.Dx() - 2*SpaceSM - synthChipStateW
 		if availPx <= 0 {
 			continue
 		}
-		label := sectionLabelChipFitted(c.id, int(float64(availPx)/captionScale))
-		labelH := int(float64(TextHeight()) * captionScale)
-		ly := c.rect.Min.Y + (c.rect.Dy()-labelH)/2
-		DrawTextColorAtScale(dst, label, c.rect.Min.X+SpaceSM, ly, labelCol, captionScale)
+		label := sectionLabelChipFitted(c.id, availPx)
+		labelH := StyledTextHeight(RoleCaption)
+		ly := cr.Min.Y + (cr.Dy()-labelH)/2
+		DrawTextStyled(dst, label, cr.Min.X+SpaceSM, ly, RoleCaption, labelCol)
 	}
 }
 
 // instEditorchipPrev returns the chip immediately before index i, used by the
 // chip-strip connector. Small helper so the connector logic reads clearly.
-func (dv *DrumView) instEditorchipPrev(i int) synthChip {
+func (p *synthPanel) instEditorchipPrev(i int) synthChip {
+	dv := p.dv
+
 	return dv.instEditorChips[i-1]
 }
 
@@ -2275,7 +2598,9 @@ func (dv *DrumView) instEditorchipPrev(i int) synthChip {
 // selected stage is toggled off — the pill stays bright so re-enabling is
 // obvious; knobs remain interactive (tweaking a bypassed stage is allowed,
 // it just has no effect until re-enabled).
-func (dv *DrumView) drawSynthDetailPane(dst *ebiten.Image, instID string) {
+func (p *synthPanel) drawSynthDetailPane(dst *ebiten.Image, instID string) {
+	dv := p.dv
+
 	detail := dv.instEditorDetailR
 	sel := dv.synthSelectedSection()
 	if detail.Empty() || sel == nil {
@@ -2285,10 +2610,10 @@ func (dv *DrumView) drawSynthDetailPane(dst *ebiten.Image, instID string) {
 	drawRoundedRect(dst, detail, TokenBorderSubtle(), RadiusSM, false)
 
 	headerH := dv.instEditorDetailHeaderH
-	stageEnabled := true
-	if sel.enableParam != "" {
-		stageEnabled = synthStageEnabled(instID, sel.enableParam)
-	}
+	enState := dv.synthStageEnableState(instID, sel)
+	// A pilled stage that is currently OFF dims its title + tags "BYPASSED".
+	// Locked (VOICE, sole-source OSC) and un-pilled stages read as on.
+	stageEnabled := enState.kind == enableNone || enState.enabled
 
 	tx := detail.Min.X + synthSectionPaddingX
 	ty := detail.Min.Y + SpaceXS
@@ -2302,26 +2627,29 @@ func (dv *DrumView) drawSynthDetailPane(dst *ebiten.Image, instID string) {
 	title := sectionLabelLocalized(sel.id)
 	DrawTextStyled(dst, title, tx, ty, RoleBody, titleCol)
 	if !stageEnabled {
-		captionScale := FontSizeCaption / FontSizeBody
-		tagX := tx + TextWidth(title) + SpaceSM
-		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapBypassed), tagX, ty+2, TokenTextDisabled(), captionScale)
+		tagX := tx + StyledTextWidth(title, RoleBody) + SpaceSM
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapBypassed), tagX, ty+2, RoleMicro, TokenTextDisabled())
 	}
 	if sub := sectionSubtitle(sel.id); sub != "" {
-		captionScale := FontSizeCaption / FontSizeBody
-		subY := ty + TextHeight() + 1
-		if subY+int(float64(TextHeight())*captionScale) <= detail.Min.Y+headerH {
+		subY := ty + StyledTextHeight(RoleBody) + 1
+		if subY+StyledTextHeight(RoleCaption) <= detail.Min.Y+headerH {
 			availW := detail.Dx() - 2*synthSectionPaddingX - FXToggleTrackW() - 2*SpaceXS
-			sub = truncCaption(sub, int(float64(availW)/captionScale))
+			sub = truncCaptionStyled(sub, availW, RoleCaption)
 			subCol := WithAlpha(TokenTextSecondary(), AlphaMedium)
 			if !stageEnabled {
 				subCol = WithAlpha(TokenTextDisabled(), AlphaMedium)
 			}
-			DrawTextColorAtScale(dst, sub, tx, subY, subCol, captionScale)
+			DrawTextStyled(dst, sub, tx, subY, RoleCaption, subCol)
 		}
 	}
-	if sel.enableParam != "" {
+	if synthSectionHasPill(sel.id, sel.enableParam) {
 		if pillR := dv.synthDetailEnablePillRect(); !pillR.Empty() {
-			drawFXTogglePill(dst, pillR, stageEnabled)
+			if enState.interactive {
+				drawFXTogglePill(dst, pillR, enState.enabled)
+			} else {
+				// Mandatory / sole-source stage — locked on, greyed.
+				drawFXTogglePillDisabled(dst, pillR)
+			}
 		}
 	}
 
@@ -2346,151 +2674,76 @@ func (dv *DrumView) drawSynthDetailPane(dst *ebiten.Image, instID string) {
 		dv.instEditorReadoutRects[i] = image.Rectangle{}
 	}
 
-	grid := dv.sectionGrid(sel.id)
-	for j, kIdx := range sel.knobIdxs {
+	// Every visible knob renders as a single ParamCard on ALL platforms: name,
+	// value (enum/resolution-aware), and a range gauge in one keycap-style
+	// control. Replaces the old dial/pill + separate caption + gloss + step
+	// badge stack — the card's rim carries the selection ring (paramCardState.
+	// Selected) and its gauge carries what the step badge used to show.
+	p.sprites.beginCardFrame()
+	for _, kIdx := range sel.knobIdxs {
 		if kIdx < 0 || kIdx >= len(dv.instEditorKnobs) {
 			continue
 		}
 		k := dv.instEditorKnobs[kIdx]
-		if k.Rect().Empty() {
+		r := k.Rect()
+		if r.Empty() {
 			continue // scrolled out of the detail pane's visible window
 		}
-		if Profile().IsMobile() {
-			dv.drawKnobValuePill(dst, kIdx)
-		} else {
-			k.Draw(dst)
-		}
-		if dv.synthSelectedKnobIdx(instID, sel) == kIdx {
-			selR := k.Rect()
-			if Profile().IsMobile() {
-				// Hug the compact inline button, not the whole (empty) cell.
-				if br := dv.mobileKnobButtonRect(kIdx); !br.Empty() {
-					selR = br.Inset(-SpaceXS)
-				}
-			}
-			drawRoundedRect(dst, selR, colConceptStroke, RadiusSM, false)
-		}
 		b := dv.instEditorBindings[kIdx]
-		actual := b.def.Min + k.Value*(b.def.Max-b.def.Min)
-		caption := synthKnobCaption(b.def, actual)
-		if Profile().IsMobile() {
-			// The value pill above carries the value; the caption band
-			// carries the NAME so nothing renders twice.
-			caption = synthKnobMobileCaption(b.def)
+		st := paramCardState{
+			Selected: dv.synthSelectedKnobIdx(instID, sel) == kIdx,
+			Dim:      !stageEnabled,
 		}
-		captionR := k.Rect()
-		slot, slotVis := grid.CellRect(j)
-		if slotVis {
-			captionR = image.Rect(slot.Min.X, captionR.Min.Y, slot.Max.X, captionR.Max.Y)
-		}
-		captionY := captionR.Min.Y + (k.Rect().Dy() - Profile().DensityValues().SynthKnobCaptionH) + SpaceXS
-
-		// Resolve the step badge (continuous knobs only) and decide its layout
-		// BEFORE drawing the caption, so the two never overlap. Preferred: a
-		// pill BELOW the caption text (needs vertical room in the cell). When
-		// the cell is too short, fall back to an INLINE pill at the right end
-		// of the caption row and give the caption the remaining left width.
-		var badge *KnobStepBadge
-		if kIdx < len(dv.instEditorStepBadges) && slotVis {
-			badge = dv.instEditorStepBadges[kIdx]
-		}
-		bw, bh := Profile().DensityValues().KnobStepBadgeW, Profile().DensityValues().KnobStepBadgeH
-		badgeBelow := badge != nil && captionY+TextHeight()+SpaceXS+bh <= slot.Max.Y
-		inlineBadge := badge != nil && !badgeBelow
-
-		// Caption area: full cell width, minus the inline pill's column.
-		capArea := captionR
-		if inlineBadge {
-			capArea.Max.X = captionR.Max.X - bw - SpaceXS
-			if capArea.Max.X < capArea.Min.X {
-				capArea.Max.X = capArea.Min.X
-			}
-		}
-		// Plain-English purpose gloss ("bright or dull") shares the caption ROW,
-		// right-aligned and dim, when the (now wide, fewer-per-row) cell can fit it
-		// beside the value caption. Reserving the right slice here shrinks capArea
-		// so the value caption + readout hit rect never overlap the gloss.
-		glossScale := FontSizeCaption / FontSizeBody
-		gloss := synthKnobPurpose(b.def)
-		glossArea := image.Rectangle{}
-		if gloss != "" {
-			glossW := int(float64(TextWidth(gloss))*glossScale) + SpaceSM
-			minCapW := TextWidth(synthKnobCaptionValueOnly(b.def, actual)) + SpaceXS*2
-			if capArea.Dx()-glossW >= minCapW {
-				glossArea = image.Rect(capArea.Max.X-glossW, captionY, capArea.Max.X, captionY+TextHeight())
-				capArea.Max.X -= glossW
-			}
-		}
-		availW := capArea.Dx() - SpaceXS*2
-		if availW < 1 {
-			availW = 1
-		}
-		if TextWidth(caption) > availW {
-			caption = synthKnobCaptionValueOnly(b.def, actual)
-		}
-		caption = truncCaption(caption, availW)
-		// Centre the caption within its area.
-		cx := capArea.Min.X + (capArea.Dx()-TextWidth(caption))/2
-		if cx < capArea.Min.X+2 {
-			cx = capArea.Min.X + 2
-		}
-		DrawTextColorAt(dst, caption, cx, captionY, TokenTextSecondary())
-		// Record the caption area as the tappable readout (stale rects cleared
-		// above, so off-screen knobs keep an empty rect). In inline-badge mode
-		// this excludes the pill's column so the two hit areas never overlap.
-		if slotVis {
-			readoutR := image.Rect(capArea.Min.X, captionY, capArea.Max.X, captionY+TextHeight())
-			dv.setKnobReadoutRect(kIdx, readoutR)
-		}
-		// Purpose gloss on the caption row (right slice reserved above).
-		if !glossArea.Empty() {
-			gx := glossArea.Max.X - int(float64(TextWidth(gloss))*glossScale) - 2
-			if gx < glossArea.Min.X {
-				gx = glossArea.Min.X
-			}
-			glossCol := WithAlpha(TokenTextSecondary(), AlphaMedium)
-			if !stageEnabled {
-				glossCol = WithAlpha(TokenTextDisabled(), AlphaMedium)
-			}
-			DrawTextColorAtScale(dst, gloss, gx, captionY, glossCol, glossScale)
-		}
-		// Draw the step badge in its resolved position. Either way the rect
-		// stays inside the cell slot so it can never reach into a neighbouring
-		// cell and steal that knob's taps.
-		if badge != nil {
-			var br image.Rectangle
-			if badgeBelow {
-				by := captionY + TextHeight() + SpaceXS
-				bx := captionR.Min.X + (captionR.Dx()-bw)/2
-				br = image.Rect(bx, by, bx+bw, by+bh)
-			} else {
-				bx := captionR.Max.X - bw
-				by := captionY + (TextHeight()-bh)/2
-				if by < slot.Min.Y {
-					by = slot.Min.Y
-				}
-				if by+bh > slot.Max.Y {
-					by = slot.Max.Y - bh
-				}
-				br = image.Rect(bx, by, bx+bw, by+bh)
-			}
-			if !br.Empty() && br.In(slot) {
-				badge.SetRect(br)
-				badge.Draw(dst)
-			}
-		}
-
+		name := synthParamDisplayName(b.def.Name)
+		value := knobPillLabel(k, b.def)
+		gauge := paramCardGaugeFor(k, b.def)
+		key := struct {
+			name, value string
+			gauge       paramCardGauge
+			st          paramCardState
+		}{name, value, gauge, st}
+		p.sprites.card(b.def.Name).Draw(dst, r, key, func(img *ebiten.Image, rr image.Rectangle) {
+			drawParamCard(img, rr, name, value, gauge, st)
+		})
 	}
+	p.sprites.endCardFrame()
 	// Scrollbar when the stage's knobs overflow the pane.
 	dv.sectionGrid(sel.id).Draw(dst)
-	// P4: the stage's Advanced-knob expander bar (only if the stage has any).
-	dv.drawSynthAdvExpander(dst, sel.id)
+	p.drawSynthAdvDivider(dst)
 	if sel.enableParam != "" && !stageEnabled {
 		scrim := image.Rect(detail.Min.X+1, detail.Min.Y+headerH, detail.Max.X-1, detail.Max.Y-1)
 		if !scrim.Empty() {
 			drawRoundedRect(dst, scrim, WithAlpha(TokenSurface1(), AlphaStrong), RadiusXS, true)
 		}
 	}
+}
+
+// drawSynthAdvDivider renders the always-visible "— ADVANCED · N —" tier
+// divider row (non-interactive). Empty rect (stage has no advanced params,
+// or the row is scrolled out) draws nothing.
+func (p *synthPanel) drawSynthAdvDivider(dst *ebiten.Image) {
+	dv := p.dv
+	r := dv.synthAdvDividerRect
+	if r.Empty() {
+		return
+	}
+	lbl := i18n.T(i18n.KeySynthAdvanced)
+	if dv.synthAdvDividerCount > 0 {
+		lbl += " · " + strconv.Itoa(dv.synthAdvDividerCount)
+	}
+	lw := StyledTextWidth(lbl, RoleMicro)
+	lh := StyledTextHeight(RoleMicro)
+	cx := r.Min.X + (r.Dx()-lw)/2
+	cy := r.Min.Y + (r.Dy()-lh)/2
+	hairY := r.Min.Y + r.Dy()/2
+	hairCol := WithAlphaFromColor(TokenBorderSubtle(), AlphaMedium)
+	if leftEnd := cx - SpaceSM; leftEnd > r.Min.X {
+		drawRect(dst, image.Rect(r.Min.X, hairY, leftEnd, hairY+1), hairCol, true)
+	}
+	if rightStart := cx + lw + SpaceSM; rightStart < r.Max.X {
+		drawRect(dst, image.Rect(rightStart, hairY, r.Max.X, hairY+1), hairCol, true)
+	}
+	DrawTextStyled(dst, lbl, cx, cy, RoleMicro, TokenTextSecondary())
 }
 
 // No-synth banner copy. Package-level so tests can assert the exact text
@@ -2521,29 +2774,14 @@ func drawSynthNoSynthBanner(dst *ebiten.Image, contentR image.Rectangle) {
 	cx := cardR.Min.X + cardR.Dx()/2
 	availW := cardR.Dx() - 2*SpaceMD
 
-	// fitScale shrinks a text scale down so the string fits availW; it never
-	// scales up past the requested max. Floored so the text stays legible.
-	fitScale := func(s string, max float64) float64 {
-		w := TextWidth(s)
-		if w <= 0 {
-			return max
-		}
-		scale := max
-		if fit := float64(availW) / float64(w); fit < scale {
-			scale = fit
-		}
-		if scale < 0.6 {
-			scale = 0.6
-		}
-		return scale
-	}
-
-	// Headline scaled up (capped at width); subtitle stays at body size but
-	// shrinks to fit a narrow (mobile) panel so the hint is never dropped.
-	headlineScale := fitScale(synthNoSynthHeadline, 1.6)
-	subtitleScale := fitScale(synthNoSynthSubtitle, 1.0)
-	headlineH := int(float64(TextHeight()) * headlineScale)
-	subtitleH := int(float64(TextHeight()) * subtitleScale)
+	// Headline at panel-title role, subtitle at caption — both rune-safe
+	// clipped to a narrow (mobile) panel so the hint is never dropped.
+	headline := clipTextToWidthMeasure(synthNoSynthHeadline, availW,
+		func(s string) int { return StyledTextWidth(s, RolePanelTitle) })
+	subtitle := clipTextToWidthMeasure(synthNoSynthSubtitle, availW,
+		func(s string) int { return StyledTextWidth(s, RoleCaption) })
+	headlineH := StyledTextHeight(RolePanelTitle)
+	subtitleH := StyledTextHeight(RoleCaption)
 
 	// Vertically centre the headline + subtitle block.
 	blockH := headlineH + SpaceSM + subtitleH
@@ -2552,12 +2790,12 @@ func drawSynthNoSynthBanner(dst *ebiten.Image, contentR image.Rectangle) {
 		top = cardR.Min.Y + SpaceSM
 	}
 
-	headlineW := int(float64(TextWidth(synthNoSynthHeadline)) * headlineScale)
-	DrawTextColorAtScale(dst, synthNoSynthHeadline, cx-headlineW/2, top, TokenTextPrimary(), headlineScale)
+	headlineW := StyledTextWidth(headline, RolePanelTitle)
+	DrawTextStyled(dst, headline, cx-headlineW/2, top, RolePanelTitle, TokenTextPrimary())
 
-	subW := int(float64(TextWidth(synthNoSynthSubtitle)) * subtitleScale)
+	subW := StyledTextWidth(subtitle, RoleCaption)
 	subY := top + headlineH + SpaceSM
-	DrawTextColorAtScale(dst, synthNoSynthSubtitle, cx-subW/2, subY, TokenTextSecondary(), subtitleScale)
+	DrawTextStyled(dst, subtitle, cx-subW/2, subY, RoleCaption, TokenTextSecondary())
 }
 
 // drawSynthFooter renders the Reset / Save / Save-As buttons via the
@@ -2566,7 +2804,9 @@ func drawSynthNoSynthBanner(dst *ebiten.Image, contentR image.Rectangle) {
 // and visual consistency with the rest of the app come for free. Sentinel
 // tags in btn.Text get translated to human labels at draw time so the
 // `\x00synth-*` markers never leak to the user.
-func (dv *DrumView) drawSynthFooter(dst *ebiten.Image) {
+func (p *synthPanel) drawSynthFooter(dst *ebiten.Image) {
+	dv := p.dv
+
 	for _, btn := range dv.instEditorBtns {
 		if btn == nil {
 			continue
@@ -2680,41 +2920,6 @@ func synthKnobMobileCaption(def audio.ParamDef) string {
 	return synthParamDisplayName(def.Name)
 }
 
-// knobPillButtonH is the height of the compact inline pop-up button. It is much
-// smaller than the knob cell — the whole cell stays tappable, so the visual
-// control can be a small 3D button that pops up the scroll-wheel on tap.
-const knobPillButtonH = 34
-
-// mobileKnobButtonRect computes the compact inline button rect for knob idx,
-// centered in the control area above the caption. Shared by the button draw and
-// the selection-highlight stroke so the highlight hugs the button, not the cell.
-func (dv *DrumView) mobileKnobButtonRect(idx int) image.Rectangle {
-	if idx < 0 || idx >= len(dv.instEditorKnobs) || idx >= len(dv.instEditorBindings) {
-		return image.Rectangle{}
-	}
-	cell := dv.instEditorKnobs[idx].Rect()
-	def := dv.instEditorBindings[idx].def
-	label := knobPillLabel(dv.instEditorKnobs[idx], def)
-	return knobValuePillRect(cell, label, Profile().DensityValues().SynthKnobCaptionH)
-}
-
-// drawKnobValuePill draws the inline mobile affordance: a small, raised, ribbed
-// 3D button (analog vibe, matching the pitch-wheel grip) centered in the knob
-// cell, showing the current value with a "pops up" up-caret. Tapping anywhere in
-// the (larger) cell opens the vertical scroll-wheel. Token accessors only.
-func (dv *DrumView) drawKnobValuePill(dst *ebiten.Image, idx int) {
-	if idx < 0 || idx >= len(dv.instEditorKnobs) || idx >= len(dv.instEditorBindings) {
-		return
-	}
-	k := dv.instEditorKnobs[idx]
-	if k.Rect().Empty() {
-		return
-	}
-	def := dv.instEditorBindings[idx].def
-	label := knobPillLabel(k, def) // enum-aware; resolution-aware precision
-	drawKnobValuePillRect(dst, dv.mobileKnobButtonRect(idx), label)
-}
-
 // scaleFromParamDef builds the Knob's KnobScale and behavior flags from a
 // ParamDef. Enum or Step>0 => discrete (clicky); otherwise endless.
 func scaleFromParamDef(def audio.ParamDef) (sc KnobScale, discrete, endless bool) {
@@ -2750,94 +2955,27 @@ func (dv *DrumView) persistKnobStep(b *KnobStepBadge) {
 	_ = sink.SaveKnobStep(b.ParamName(), b.Step())
 }
 
-// cycleKnobStep advances the step badge for knob idx and syncs the knob's
-// StepMul, persisting the choice. Shared by the production hit adapter.
-func (dv *DrumView) cycleKnobStep(idx int) {
-	if idx < 0 || idx >= len(dv.instEditorStepBadges) {
-		return
-	}
-	badge := dv.instEditorStepBadges[idx]
-	if badge == nil {
-		return
-	}
-	badge.Cycle()
-	if idx < len(dv.instEditorKnobs) {
-		dv.instEditorKnobs[idx].StepMul = badge.Step()
-	}
-	dv.persistKnobStep(badge)
-}
-
-// stepSynthKnobResolution shifts knob idx's step-badge rung by `steps` (the
-// mouse-wheel delta; positive = scroll up = finer), syncing the knob's StepMul
-// and persisting the choice. Returns true if the rung moved. Used by the wheel
-// handler when the cursor is over the resolution badge.
-func (dv *DrumView) stepSynthKnobResolution(idx, steps int) bool {
-	if idx < 0 || idx >= len(dv.instEditorStepBadges) {
-		return false
-	}
-	badge := dv.instEditorStepBadges[idx]
-	if badge == nil || !badge.WheelResolution(steps) {
-		return false
-	}
-	if idx < len(dv.instEditorKnobs) {
-		dv.instEditorKnobs[idx].StepMul = badge.Step()
-	}
-	dv.persistKnobStep(badge)
-	return true
-}
-
 // handleSynthTabInput dispatches a single mouse/touch event into the
 // synth tab. Returns true when the event was consumed. Called by
 // EQPanelZone.handleInput when activeTab == TabSynth.
-func (dv *DrumView) handleSynthTabInput(x, y int, pressed bool, instID string) bool {
+func (p *synthPanel) handleSynthTabInput(x, y int, pressed bool, instID string) bool {
+	dv := p.dv
+
 	instID = dv.resolveSynthInstrument(instID)
-	// Active knob drag has priority.
-	if dv.instEditorDragging {
-		if dv.instEditorDragIdx < 0 || dv.instEditorDragIdx >= len(dv.instEditorKnobs) {
-			dv.instEditorDragging = false
-			return false
-		}
-		k := dv.instEditorKnobs[dv.instEditorDragIdx]
-		result := k.HandleInputResult(x, y, pressed)
-		if result == InputCaptured {
-			dv.syncSliderFromKnob(dv.instEditorDragIdx)
-			dv.propagateSynthSliderValue(dv.instEditorDragIdx, instID)
-			return true
-		}
-		if result == InputConsumed {
-			dv.syncSliderFromKnob(dv.instEditorDragIdx)
-			dv.propagateSynthSliderValue(dv.instEditorDragIdx, instID)
-			dv.instEditorDragging = false
-			return true
-		}
-		dv.instEditorDragging = false
-	}
 	if !pressed {
 		return false
 	}
-	// P4: the Advanced-knob expander bar toggles the selected stage's advanced
-	// knobs (they don't overlap the knobs, but hit-test first to keep intent clear).
-	if !dv.synthAdvExpanderRect.Empty() && image.Pt(x, y).In(dv.synthAdvExpanderRect) {
-		dv.toggleSynthAdvanced()
-		return true
-	}
-	// Knob hit-test.
-	for i, k := range dv.instEditorKnobs {
-		if image.Pt(x, y).In(k.Rect()) {
-			k.HandleInputResult(x, y, pressed)
-			dv.instEditorDragging = true
-			dv.instEditorDragIdx = i
-			dv.syncSliderFromKnob(i)
-			dv.propagateSynthSliderValue(i, instID)
-			return true
-		}
-	}
+	// NOTE: this is a legacy DIRECT input path retained for tests + JS bridge
+	// fallbacks; the production synth-tab value interaction is the tree-routed
+	// ParamCard tap (synthKnobHitAdapter.OnPress → value-wheel popup). There is
+	// no in-place rotary drag here anymore — the knob is a headless model.
+	//
 	// Selected stage's enable pill (detail-pane header). Hit-test before the
 	// chips/footer so a header tap toggles the stage rather than falling
 	// through.
-	if sel := dv.synthSelectedSection(); sel != nil && sel.enableParam != "" {
+	if sel := dv.synthSelectedSection(); sel != nil && dv.synthStageEnableState(instID, sel).interactive {
 		if pillR := dv.synthDetailEnablePillRect(); !pillR.Empty() && image.Pt(x, y).In(pillR) {
-			dv.toggleSynthStage(instID, sel.enableParam)
+			dv.applySynthStageToggleByID(instID, sel.id)
 			return true
 		}
 	}
@@ -2845,17 +2983,15 @@ func (dv *DrumView) handleSynthTabInput(x, y int, pressed bool, instID string) b
 	// it never enables/disables it. Enabling a ghost (disabled) stage is an
 	// explicit action via the detail-pane pill, so the user can look at a
 	// disabled stage's knobs without turning it on.
-	if !dv.anySynthKnobCapturing() {
-		for _, c := range dv.instEditorChips {
-			if c.rect.Empty() || !image.Pt(x, y).In(c.rect) {
-				continue
-			}
-			dv.setSelectedSynthSection(instID, c.id)
-			if dv.eqPanelZone != nil {
-				dv.eqPanelZone.Invalidate()
-			}
-			return true
+	for _, c := range dv.instEditorChips {
+		if c.rect.Empty() || !image.Pt(x, y).In(c.rect) {
+			continue
 		}
+		dv.setSelectedSynthSection(instID, c.id)
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.Invalidate()
+		}
+		return true
 	}
 	// Footer buttons (Reset / Save / Save-As).
 	for _, btn := range dv.instEditorBtns {
@@ -2883,7 +3019,9 @@ func (dv *DrumView) handleSynthTabInput(x, y int, pressed bool, instID string) b
 // syncSliderFromKnob copies the Knob's value into the paired Slider so the
 // existing propagate/coalesce path (which reads Slider.Value) continues to
 // observe the live drag value.
-func (dv *DrumView) syncSliderFromKnob(idx int) {
+func (p *synthPanel) syncSliderFromKnob(idx int) {
+	dv := p.dv
+
 	if idx < 0 || idx >= len(dv.instEditorKnobs) || idx >= len(dv.instEditorSliders) {
 		return
 	}
@@ -2895,7 +3033,9 @@ func (dv *DrumView) syncSliderFromKnob(idx int) {
 // synthKnobReadoutRect returns the caption hit-rect for the given knob index.
 // Returns the zero rectangle when the index is out of range or the rect has
 // not been populated yet (no Draw pass has occurred).
-func (dv *DrumView) synthKnobReadoutRect(idx int) image.Rectangle {
+func (p *synthPanel) synthKnobReadoutRect(idx int) image.Rectangle {
+	dv := p.dv
+
 	if idx < 0 || idx >= len(dv.instEditorReadoutRects) {
 		return image.Rectangle{}
 	}
@@ -2905,7 +3045,9 @@ func (dv *DrumView) synthKnobReadoutRect(idx int) image.Rectangle {
 // setKnobReadoutRect stores the caption hit-rect for the given knob index,
 // growing the slice as needed. Mirrors setKnobStepBadgeRect semantics from
 // Task 11.
-func (dv *DrumView) setKnobReadoutRect(idx int, r image.Rectangle) {
+func (p *synthPanel) setKnobReadoutRect(idx int, r image.Rectangle) {
+	dv := p.dv
+
 	for len(dv.instEditorReadoutRects) <= idx {
 		dv.instEditorReadoutRects = append(dv.instEditorReadoutRects, image.Rectangle{})
 	}
@@ -2916,7 +3058,9 @@ func (dv *DrumView) setKnobReadoutRect(idx int, r image.Rectangle) {
 // caption (readout) of knob at idx. The editor's setValue callback writes
 // back through the knob + propagate path so every existing audio write stays
 // consistent.
-func (dv *DrumView) openSynthParamEditor(idx int, instID string) {
+func (p *synthPanel) openSynthParamEditor(idx int, instID string) {
+	dv := p.dv
+
 	if idx < 0 || idx >= len(dv.instEditorBindings) || idx >= len(dv.instEditorKnobs) {
 		return
 	}
@@ -2954,7 +3098,9 @@ func (dv *DrumView) openSynthParamEditor(idx int, instID string) {
 // Coalescing matches the pre-redesign behaviour: stationary drag bursts
 // don't flood the JS bridge — see
 // instrument_params_playback_stability.browser.test.js.
-func (dv *DrumView) propagateSynthSliderValue(idx int, instID string) {
+func (p *synthPanel) propagateSynthSliderValue(idx int, instID string) {
+	dv := p.dv
+
 	if idx < 0 || idx >= len(dv.instEditorSliders) || idx >= len(dv.instEditorBindings) {
 		return
 	}
@@ -3035,7 +3181,9 @@ func SwapSynthAuditionFnForTest(fn func(string)) func(string) {
 // overlay params are already in the audio manager (knob drags write through
 // SetInstrumentParam), so a plain trigger via synthAuditionFn renders the
 // current tone — letting the user preview before deciding to Save.
-func (dv *DrumView) previewActiveSynth() {
+func (p *synthPanel) previewActiveSynth() {
+	dv := p.dv
+
 	dv.auditionInstrumentAfterDrag(dv.synthTabActiveInstrument())
 }
 
@@ -3045,7 +3193,10 @@ func (dv *DrumView) previewActiveSynth() {
 // route here (see synthAuditionFn). instID is the already-resolved
 // instrument id; the empty string is a no-op so callers don't have to gate
 // on resolveSynthInstrument returning a value.
-func (dv *DrumView) auditionInstrumentAfterDrag(instID string) {
+func (p *synthPanel) auditionInstrumentAfterDrag(instID string) {
+	dv := p.dv
+	_ = dv
+
 	if instID == "" {
 		return
 	}
@@ -3055,7 +3206,9 @@ func (dv *DrumView) auditionInstrumentAfterDrag(instID string) {
 // resolveSynthInstrument resolves the editor's target row instrument id.
 // Mirrors synthTabActiveInstrument but accepts a forced id (used by the
 // callback bridge from EQPanelZone).
-func (dv *DrumView) resolveSynthInstrument(instID string) string {
+func (p *synthPanel) resolveSynthInstrument(instID string) string {
+	dv := p.dv
+
 	if instID != "" {
 		return instID
 	}
@@ -3066,7 +3219,9 @@ func (dv *DrumView) resolveSynthInstrument(instID string) string {
 // synth tab editing right now?" Mirrors the channel-resolution logic in
 // other audio tabs: prefer the EQ panel's active channel, fall back to
 // the first audible/non-empty row.
-func (dv *DrumView) synthTabActiveInstrument() string {
+func (p *synthPanel) synthTabActiveInstrument() string {
+	dv := p.dv
+
 	if dv.eqPanelZone != nil {
 		ch := dv.eqPanelZone.ActiveChannel()
 		if ch != "" && ch != "main" {
@@ -3085,7 +3240,9 @@ func (dv *DrumView) synthTabActiveInstrument() string {
 // button, and Save As dialog control. Z-index sits one tier above the
 // EQ panel chrome; the footer + dialog get further bumps so they win on
 // any geometric overlap with knobs.
-func (dv *DrumView) synthTabHitAreas() []HitArea {
+func (p *synthPanel) synthTabHitAreas() []HitArea {
+	dv := p.dv
+
 	instID := dv.synthTabActiveInstrument()
 	// Knobs sit two tiers above the EQ-panel chrome so the per-section scroll
 	// catch-all (one tier above the chrome, below the knobs) lets a press that
@@ -3139,13 +3296,11 @@ func (dv *DrumView) synthTabHitAreas() []HitArea {
 			Tag:     "synth-scroll-" + fmt.Sprint(int(s.id)),
 		})
 	}
-	// Touch-min floor: expand the knob's hit ClipRect so the touchable area
-	// is at least TouchMinTarget on each axis even when the knob's visual
-	// rect is smaller (Compact-density knobs can be ≤ 28 px wide). Centring
-	// the expanded rect on the visual rect keeps the press point honest —
-	// the press latches against k.HandleInputResult, which still requires
-	// the press to be inside the visual k.Rect for capture; the wider clip
-	// only forgives near-miss taps that would otherwise fall through.
+	// Touch-min floor: expand the ParamCard's hit ClipRect so the touchable
+	// area is at least TouchMinTarget on each axis even when the card's visual
+	// rect is smaller (Compact-density cards can be ≤ 28 px wide). Centring the
+	// expanded rect on the visual rect keeps the press point honest; the wider
+	// clip only forgives near-miss taps that would otherwise fall through.
 	touchMin := TouchMinTarget()
 	clipFor := func(r image.Rectangle) image.Rectangle {
 		clip := r.Inset(-8)
@@ -3231,29 +3386,19 @@ func (dv *DrumView) synthTabHitAreas() []HitArea {
 	}
 	// The selected stage's enable pill, in the detail-pane header. z+1 so
 	// it wins over the pane's scroll catch-all.
-	if sel := dv.synthSelectedSection(); sel != nil && sel.enableParam != "" {
-		if pillR := dv.synthDetailEnablePillRect(); !pillR.Empty() {
-			out = append(out, HitArea{
-				Rect:     pillR,
-				ZIndex:   z + 1,
-				Handler:  &synthToggleHitAdapter{dv: dv, param: sel.enableParam, instID: instID},
-				Tag:      "synth-toggle-" + sel.enableParam,
-				Touch:    true,
-				ClipRect: clipFor(pillR),
-			})
+	if sel := dv.synthSelectedSection(); sel != nil {
+		if st := dv.synthStageEnableState(instID, sel); st.interactive {
+			if pillR := dv.synthDetailEnablePillRect(); !pillR.Empty() {
+				out = append(out, HitArea{
+					Rect:     pillR,
+					ZIndex:   z + 1,
+					Handler:  &synthToggleHitAdapter{dv: dv, sec: sel.id, instID: instID},
+					Tag:      "synth-toggle-" + st.param,
+					Touch:    true,
+					ClipRect: clipFor(pillR),
+				})
+			}
 		}
-	}
-	// P4: the Advanced-knob expander bar (real tree-dispatch hit area). z+1 so it
-	// wins over the pane's scroll catch-all.
-	if !dv.synthAdvExpanderRect.Empty() {
-		out = append(out, HitArea{
-			Rect:     dv.synthAdvExpanderRect,
-			ZIndex:   z + 1,
-			Handler:  &synthAdvExpanderHitAdapter{dv: dv},
-			Tag:      "synth-adv-expander",
-			Touch:    true,
-			ClipRect: clipFor(dv.synthAdvExpanderRect),
-		})
 	}
 	// Save As dialog hit areas. Z = z+2 so the dialog floats above the
 	// footer buttons.
@@ -3329,13 +3474,13 @@ func (dv *DrumView) synthTabHitAreas() []HitArea {
 // Layout so it never caches a stale pointer.
 type synthToggleHitAdapter struct {
 	dv     *DrumView
-	param  string
+	sec    synthSectionID
 	instID string
 }
 
 func (h *synthToggleHitAdapter) OnPress(x, y int) InputResult {
 	if h.dv != nil {
-		h.dv.toggleSynthStage(h.instID, h.param)
+		h.dv.applySynthStageToggleByID(h.instID, h.sec)
 	}
 	return InputCaptured
 }
@@ -3343,40 +3488,6 @@ func (h *synthToggleHitAdapter) OnPress(x, y int) InputResult {
 func (h *synthToggleHitAdapter) OnDrag(x, y int)                     {}
 func (h *synthToggleHitAdapter) OnRelease(x, y int)                  {}
 func (h *synthToggleHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
-
-// toggleSynthAdvanced flips the selected stage's Advanced-knob reveal and forces
-// a re-layout so the revealed/hidden knobs get/lose their rects. Shared by the
-// real tree-dispatch adapter and the legacy handleSynthTabInput path.
-func (dv *DrumView) toggleSynthAdvanced() {
-	sel := dv.synthSelectedSection()
-	if sel == nil {
-		return
-	}
-	if dv.synthAdvExpanded == nil {
-		dv.synthAdvExpanded = map[synthSectionID]bool{}
-	}
-	dv.synthAdvExpanded[sel.id] = !dv.synthAdvExpanded[sel.id]
-	// Opening: ask the next layout to scroll the newly-revealed advanced knobs
-	// into view (the short pane would otherwise leave them below the fold).
-	dv.synthAdvScrollPending = dv.synthAdvExpanded[sel.id]
-	if dv.eqPanelZone != nil {
-		dv.eqPanelZone.Invalidate()
-	}
-}
-
-// synthAdvExpanderHitAdapter routes a tap on the "Advanced" expander bar (real
-// tree dispatch) to toggleSynthAdvanced.
-type synthAdvExpanderHitAdapter struct{ dv *DrumView }
-
-func (h *synthAdvExpanderHitAdapter) OnPress(x, y int) InputResult {
-	if h.dv != nil {
-		h.dv.toggleSynthAdvanced()
-	}
-	return InputCaptured
-}
-func (h *synthAdvExpanderHitAdapter) OnDrag(x, y int)                     {}
-func (h *synthAdvExpanderHitAdapter) OnRelease(x, y int)                  {}
-func (h *synthAdvExpanderHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
 // synthChipHitAdapter is the one-shot press handler for a pipeline chip: a
 // tap only OPENS (selects) the stage so the next Layout expands it into the
@@ -3390,16 +3501,22 @@ type synthChipHitAdapter struct {
 	instID string
 }
 
+// glowRect implements glowTarget: hovering a pipeline chip lifts it through
+// the shared tree hover overlay like every other clickable. The selected
+// chip is suppressed — its lit active state is the signal there, mirroring
+// latched buttons.
+func (h *synthChipHitAdapter) glowRect(_, _ int, hitRect image.Rectangle) image.Rectangle {
+	if h.dv != nil {
+		if sel := h.dv.synthSelectedSection(); sel != nil && sel.id == h.id {
+			return image.Rectangle{}
+		}
+	}
+	return hitRect
+}
+
 func (h *synthChipHitAdapter) OnPress(x, y int) InputResult {
 	if h.dv == nil {
 		return InputIgnored
-	}
-	// Ignore chip taps while a knob drag is captured: a selection swap would
-	// zero the dragged knob's rect mid-gesture (same philosophy as
-	// buildSynthTab's mid-drag schema-swap deferral). Consume so the tap
-	// doesn't fall through to a lower-z surface either.
-	if h.dv.anySynthKnobCapturing() {
-		return InputConsumed
 	}
 	h.dv.setSelectedSynthSection(h.instID, h.id)
 	if h.dv.eqPanelZone != nil {
@@ -3412,88 +3529,21 @@ func (h *synthChipHitAdapter) OnDrag(x, y int)                     {}
 func (h *synthChipHitAdapter) OnRelease(x, y int)                  {}
 func (h *synthChipHitAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
-// synthKnobHitAdapter wraps a per-knob hit area with the synth-tab
-// propagate callback. The adapter does NOT cache the *Knob pointer —
-// buildSynthTab can rebuild instEditorKnobs mid-drag (analyzer state
-// changes, channel switches, …), which would leave a cached pointer
-// dangling against a now-orphan widget. Looking up by index every call
-// stays correct across re-layouts. The captured pressY / pressVal stay
-// inside the live Knob, so a re-layout preserves drag state because the
-// new knob slot inherits the same Value from audio.MergeRecipeDefaults.
-//
-// The fresh-instance lookup also fixes a long-standing knob-drag bug:
-// before, the captured *Knob would receive HandleInputResult calls that
-// updated its own Value, but the visible widget (instEditorKnobs[idx])
-// was a different object whose Value never changed — making the drag
-// look unresponsive.
-// Knob drag gesture modes. A press on a knob captures, then the first
-// significant motion locks the axis: horizontal → adjust the knob (knobs are
-// horizontal-only); vertical → hand the gesture to the knob's section scroll so
-// up/down over a knob scrolls the list instead of fighting it.
-const (
-	knobDragUndecided = iota
-	knobDragKnob
-	knobDragScroll
-)
-
-// knobDragDirLockPx is how far the pointer must move from the press point before
-// the knob/scroll axis is decided. Small so the lock feels immediate; vertical
-// only wins when it strictly dominates, biasing ambiguous moves toward the knob.
-const knobDragDirLockPx = 6
-
+// synthKnobHitAdapter is the per-card hit handler: a tap/click opens the
+// value-wheel popup (all platforms) and the mouse wheel nudges the value in
+// place. The adapter does NOT cache the *Knob pointer — buildSynthTab can
+// rebuild instEditorKnobs at any time (analyzer state changes, channel
+// switches, …), which would leave a cached pointer dangling against a
+// now-orphan widget. Looking up by index every call stays correct across
+// re-layouts; each wheel notch reads instEditorKnobs[idx] and
+// instEditorBindings[idx] fresh and mutually consistent. (The old rotary
+// drag path — and the capture-by-index hazards it carried — was removed in
+// the ParamCard conversion; the popup is now the only by-index editing
+// surface, guarded by synthWheelPopup.IsOpen() at the schema-swap deferral.)
 type synthKnobHitAdapter struct {
 	dv     *DrumView
 	idx    int
 	instID string
-	active bool
-	mode   int
-	pressX int
-	pressY int
-	// capturedParam is the binding param name at the instant the drag was
-	// captured. The tree routes continued OnDrag to this captured-by-index
-	// handler without re-testing hit areas, so if buildSynthTab ever rebuilt
-	// the binding slice mid-gesture (e.g. a bespoke→modular schema swap when
-	// the generator knob crosses Native→waveform) the index would point at a
-	// DIFFERENT param and the drag would scramble it — silencing the re-voiced
-	// voice when the foreign param is a gain/enable. buildSynthTab's deferral
-	// (see anySynthKnobCapturing) prevents that swap; this name latch is the
-	// defense-in-depth backstop: propagateIfStable refuses to drive a param
-	// whose name drifted from capturedParam. Unit guard:
-	// TestSynthKnobAdapter_PropagateIsIndexSafe.
-	capturedParam string
-}
-
-// propagateIfStable pushes the captured knob's value to audio ONLY while the
-// binding at this index still names the param the drag captured. If the synth
-// schema rebuilt under an in-flight capture-by-index drag, the index now binds
-// a foreign param; writing it would scramble (and possibly silence) the voice,
-// so this no-ops instead. This is the second, independent layer behind the
-// buildSynthTab schema-swap deferral — either alone prevents the bug.
-func (h *synthKnobHitAdapter) propagateIfStable() {
-	if h.dv == nil {
-		return
-	}
-	nameNow := ""
-	if h.idx >= 0 && h.idx < len(h.dv.instEditorBindings) {
-		nameNow = h.dv.instEditorBindings[h.idx].def.Name
-	}
-	if h.capturedParam != "" {
-		if h.idx < 0 || h.idx >= len(h.dv.instEditorBindings) || nameNow != h.capturedParam {
-			h.dv.sdbg("[synthdrag] propagate BLOCKED idx=%d captured=%q now=%q — binding drifted under a captured-by-index drag (would have scrambled a foreign param)", h.idx, h.capturedParam, nameNow)
-			return
-		}
-	}
-	h.dv.syncSliderFromKnob(h.idx)
-	h.dv.propagateSynthSliderValue(h.idx, h.instID)
-}
-
-// captureParamName latches the param name bound at this index at drag start so
-// propagateIfStable can detect a mid-gesture binding drift.
-func (h *synthKnobHitAdapter) captureParamName() {
-	h.capturedParam = ""
-	if h.dv != nil && h.idx >= 0 && h.idx < len(h.dv.instEditorBindings) {
-		h.capturedParam = h.dv.instEditorBindings[h.idx].def.Name
-	}
 }
 
 func (h *synthKnobHitAdapter) currentKnob() *Knob {
@@ -3503,23 +3553,11 @@ func (h *synthKnobHitAdapter) currentKnob() *Knob {
 	return h.dv.instEditorKnobs[h.idx]
 }
 
-// sectionGridForKnob returns the scrollable ControlGrid of the section that
-// owns this knob, or nil when the section does not scroll.
-func (h *synthKnobHitAdapter) sectionGridForKnob() *ControlGrid {
-	if h.dv == nil {
-		return nil
-	}
-	for _, s := range h.dv.instEditorSections {
-		for _, idx := range s.knobIdxs {
-			if idx == h.idx {
-				if g := h.dv.sectionGrid(s.id); g != nil && g.HasScroll() {
-					return g
-				}
-				return nil
-			}
-		}
-	}
-	return nil
+// glowRect implements glowTarget: hovering a param card lifts it through the
+// shared tree hover overlay like every other clickable. The whole card is the
+// hover target (a tap anywhere on it opens the value-wheel popup).
+func (h *synthKnobHitAdapter) glowRect(_, _ int, hitRect image.Rectangle) image.Rectangle {
+	return hitRect
 }
 
 func (h *synthKnobHitAdapter) invalidatePanel() {
@@ -3529,211 +3567,58 @@ func (h *synthKnobHitAdapter) invalidatePanel() {
 }
 
 func (h *synthKnobHitAdapter) OnPress(x, y int) InputResult {
-	// Numeric editor open: swallow the tap so a knob drag doesn't start beneath it.
+	// Numeric editor open: swallow the tap so nothing starts beneath it.
 	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
 		return InputConsumed
 	}
-	// Mobile: a tap on the knob cell opens the vertical scroll-wheel popup,
-	// which owns value + resolution + numeric entry. Desktop keeps the
-	// in-place rotary drag (the code below).
-	if Profile().IsMobile() {
-		h.dv.openSynthKnobWheelPopup(h.idx, h.instID)
-		return InputConsumed
-	}
-	// Step-badge pill (lives inside the knob's hit rect, in the caption band):
-	// a tap cycles the resolution instead of dragging.
-	if h.idx < len(h.dv.instEditorStepBadges) {
-		if b := h.dv.instEditorStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
-			h.dv.cycleKnobStep(h.idx)
-			return InputConsumed
-		}
-	}
-	// The value caption is now a SIMPLE display label (not a text input): a tap on
-	// it no longer opens the numeric editor. Values change via the dial (drag) —
-	// or the mobile wheel popup. (Removed the readout→openSynthParamEditor path.)
-	k := h.currentKnob()
-	if k == nil {
-		return InputIgnored
-	}
-	result := k.HandleInputResult(x, y, true)
-	if result != InputIgnored {
-		h.active = true
-		h.dv.setSynthSelectedKnob(h.instID, h.idx)
-		h.mode = knobDragUndecided
-		h.pressX, h.pressY = x, y
-		h.captureParamName()
-		// Stage 5: snapshot the pre-drag params for the concept-overlay ghost.
-		h.dv.captureSynthGhost(h.idx, h.instID)
-		h.dv.sdbg("[synthdrag] OnPress idx=%d capturedParam=%q inst=%s", h.idx, h.capturedParam, h.instID)
-		h.propagateIfStable()
-		return InputCaptured
-	}
-	return InputIgnored
+	// Universal tap-to-popup (all platforms): a tap anywhere on the card selects
+	// the knob (focus graph) and opens the value-wheel popup, which owns value +
+	// resolution + numeric entry. (The old desktop in-place rotary drag +
+	// step-badge tap are retired; resolution moves to the popup ladder.) The
+	// opener flushes any pending wheel-nudge commit before snapshotting the
+	// popup's initial value, so no flush is needed here.
+	h.dv.setSynthSelectedKnob(h.instID, h.idx)
+	h.dv.openSynthKnobWheelPopup(h.idx, h.instID)
+	return InputConsumed
 }
 
-func (h *synthKnobHitAdapter) OnDrag(x, y int) {
-	if !h.active {
-		return
-	}
-	if h.mode == knobDragUndecided {
-		dx := x - h.pressX
-		if dx < 0 {
-			dx = -dx
-		}
-		dy := y - h.pressY
-		if dy < 0 {
-			dy = -dy
-		}
-		if dx < knobDragDirLockPx && dy < knobDragDirLockPx {
-			return // wait for a clear direction before committing the axis
-		}
-		if dx > dy {
-			// Horizontal strictly dominates → adjust the knob. Anything else
-			// (vertical-dominant OR ties) is treated as a scroll, so a drag
-			// that is exclusively or mostly up/down never turns the knob.
-			h.mode = knobDragKnob
-			h.dv.sdbg("[synthdrag] OnDrag axis-lock=KNOB idx=%d dx=%d dy=%d capturedParam=%q", h.idx, dx, dy, h.capturedParam)
-		} else {
-			// Vertical / diagonal: this drag is a scroll. Cancel the knob's
-			// drag latch (its value is still the untouched press value) and
-			// hand the gesture to the section's stepped scroll, anchored at
-			// the press.
-			h.mode = knobDragScroll
-			h.dv.sdbg("[synthdrag] OnDrag axis-lock=SCROLL idx=%d dx=%d dy=%d (knob latch cancelled — param will NOT change)", h.idx, dx, dy)
-			if k := h.currentKnob(); k != nil {
-				k.HandleInputResult(x, y, false)
-			}
-			if g := h.sectionGridForKnob(); g != nil {
-				// A drag that starts on a knob and turns vertical is a content
-				// grab — scroll naturally (content follows the finger).
-				g.BeginContentDrag(h.pressY)
-			}
-		}
-	}
-	switch h.mode {
-	case knobDragScroll:
-		if g := h.sectionGridForKnob(); g != nil && g.DragTo(y) {
-			h.invalidatePanel()
-		}
-	case knobDragKnob:
-		k := h.currentKnob()
-		if k == nil {
-			h.active = false
-			return
-		}
-		k.HandleInputResult(x, y, true)
-		h.propagateIfStable()
-	}
-}
+// OnDrag / OnRelease are no-ops: the card no longer drives an in-place drag; the
+// press opened the value-wheel popup, which owns the drag interaction.
+func (h *synthKnobHitAdapter) OnDrag(x, y int)    {}
+func (h *synthKnobHitAdapter) OnRelease(x, y int) {}
 
-func (h *synthKnobHitAdapter) OnRelease(x, y int) {
-	if !h.active {
-		return
-	}
-	if h.mode == knobDragScroll {
-		if g := h.sectionGridForKnob(); g != nil {
-			g.EndDrag()
-		}
-		h.active = false
-		h.mode = knobDragUndecided
-		return
-	}
-	k := h.currentKnob()
-	if k != nil {
-		k.HandleInputResult(x, y, false)
-		h.propagateIfStable()
-		// One undo step per gesture, committed here on release (the per-frame
-		// drag mutated live audio but recorded nothing).
-		h.dv.commitInstrumentParams(h.instID)
-		// Stage 4: re-render the real note for the right-pane mirror (debounced +
-		// cached by params hash, off the UI goroutine). Identical params coalesce.
-		h.dv.requestSynthMirror(h.instID)
-		// Stage 5: begin the concept-overlay ghost fade for this knob.
-		h.dv.fadeSynthGhost(h.idx)
-	}
-	h.active = false
-	h.mode = knobDragUndecided
-	h.dv.sdbg("[synthdrag] OnRelease idx=%d capturedParam=%q inst=%s (config-only; next trigger renders the new params)", h.idx, h.capturedParam, h.instID)
-	h.capturedParam = ""
-}
-
+// OnWheel nudges the value by one StepMul (endless) / one detent (discrete) per
+// notch, holding Shift for one-rung-finer. The whole spin collapses into ONE
+// debounced undo step (see wheelNudger). Section scrolling stays on grid
+// whitespace (synthSectionScrollAdapter), so the knob's wheel is value-only.
 func (h *synthKnobHitAdapter) OnWheel(x, y, steps int) InputResult {
-	// Scrolling while hovering the step-RESOLUTION badge shifts its rung
-	// (scroll up = finer, scroll down = coarser). This is the ONLY wheel
-	// behavior added — the knob itself is left untouched.
-	if h.idx >= 0 && h.idx < len(h.dv.instEditorStepBadges) {
-		if b := h.dv.instEditorStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
-			if h.dv.stepSynthKnobResolution(h.idx, steps) {
-				h.invalidatePanel()
-			}
-			return InputConsumed
-		}
-	}
-	// Anywhere else (the knob dial): ORIGINAL behavior — the wheel is a
-	// vertical gesture that scrolls the knob's section, never turns the knob.
-	g := h.sectionGridForKnob()
-	if g == nil {
-		return InputIgnored
-	}
-	if g.WheelStep(steps) {
-		h.invalidatePanel()
-	}
-	return InputConsumed
-}
-
-// OnWheel2D handles a two-finger trackpad drag with the raw axes. Over the
-// step-resolution badge the scroll shifts the rung. Over the knob body a
-// LEFT/RIGHT (horizontal-dominant) scroll changes the value — mirroring a
-// left/right mouse drag — while an UP/DOWN scroll scrolls the section's
-// overflow rows and never turns the knob.
-func (h *synthKnobHitAdapter) OnWheel2D(x, y, dx, dy int) InputResult {
-	// Resolution badge: either axis shifts the rung (prefer the vertical
-	// component, matching the hover-the-label gesture).
-	if h.idx >= 0 && h.idx < len(h.dv.instEditorStepBadges) {
-		if b := h.dv.instEditorStepBadges[h.idx]; b != nil && !b.Rect().Empty() && image.Pt(x, y).In(b.Rect()) {
-			steps := dy
-			if steps == 0 {
-				steps = dx
-			}
-			if h.dv.stepSynthKnobResolution(h.idx, steps) {
-				h.invalidatePanel()
-			}
-			return InputConsumed
-		}
-	}
-	// Horizontal-dominant: turn the knob (value), like a left/right mouse drag.
-	// Debounced + magnitude-insensitive so it moves slowly; the per-step amount
-	// is StepMul (the user's chosen resolution).
-	if wheelAxisHorizontal(dx, dy) {
-		if k := h.currentKnob(); k != nil && k.StepValueByWheel(dx) {
-			h.dv.syncSliderFromKnob(h.idx)
-			h.dv.propagateSynthSliderValue(h.idx, h.instID)
-		}
+	// Numeric editor open: swallow the notch so a wheel spin can't mutate the
+	// param (and arm a second commit) beneath the inline editor — mirrors OnPress.
+	if h.dv.paramEditor != nil && h.dv.paramEditor.Active() {
 		return InputConsumed
 	}
-	// Vertical (or no horizontal component): scroll the overflow rows.
-	g := h.sectionGridForKnob()
-	if g == nil {
+	k := h.currentKnob()
+	if k == nil || steps == 0 {
 		return InputIgnored
 	}
-	if g.WheelStep(dy) {
-		h.invalidatePanel()
+	var badge *KnobStepBadge
+	if h.idx >= 0 && h.idx < len(h.dv.instEditorStepBadges) {
+		badge = h.dv.instEditorStepBadges[h.idx]
 	}
+	fine := isKeyPressed(ebiten.KeyShiftLeft) || isKeyPressed(ebiten.KeyShiftRight)
+	if !nudgeKnobByWheel(k, badge, steps, fine) {
+		return InputIgnored
+	}
+	h.dv.setSynthSelectedKnob(h.instID, h.idx)
+	h.dv.syncSliderFromKnob(h.idx)
+	h.dv.propagateSynthSliderValue(h.idx, h.instID)
+	instID := h.instID
+	dv := h.dv
+	dv.synthWheelNudge.bump(func() {
+		dv.commitInstrumentParams(instID)
+		dv.requestSynthMirror(instID)
+	})
 	return InputConsumed
-}
-
-// wheelAxisHorizontal reports whether a two-axis wheel delta is horizontal-
-// dominant (|dx| > |dy|). Ties go to vertical (false), matching the knob-drag
-// axis lock, so a knob value only changes on a clearly sideways gesture.
-func wheelAxisHorizontal(dx, dy int) bool {
-	ax, ay := dx, dy
-	if ax < 0 {
-		ax = -ax
-	}
-	if ay < 0 {
-		ay = -ay
-	}
-	return ax > ay
 }
 
 // synthSectionScrollAdapter routes scroll input for one overflowing section
@@ -3861,30 +3746,50 @@ func (h *synthSaveAsDialogFrameAdapter) OnWheel(x, y, steps int) InputResult {
 // ---- Test accessors ----------------------------------------------------
 
 // SynthTabSliders exposes the slider value-store for tests.
-func (dv *DrumView) SynthTabSliders() []*Slider { return dv.instEditorSliders }
+func (p *synthPanel) SynthTabSliders() []*Slider {
+	dv := p.dv
+	return dv.instEditorSliders
+}
 
 // SynthTabKnobs exposes the visible Knob widgets for tests.
-func (dv *DrumView) SynthTabKnobs() []*Knob { return dv.instEditorKnobs }
+func (p *synthPanel) SynthTabKnobs() []*Knob {
+	dv := p.dv
+	return dv.instEditorKnobs
+}
 
 // SynthTabBindings exposes the widget→param map for tests.
-func (dv *DrumView) SynthTabBindings() []instParamBinding { return dv.instEditorBindings }
+func (p *synthPanel) SynthTabBindings() []instParamBinding {
+	dv := p.dv
+	return dv.instEditorBindings
+}
 
 // SynthTabButtons exposes the editor buttons (currently just reset).
-func (dv *DrumView) SynthTabButtons() []*Button { return dv.instEditorBtns }
+func (p *synthPanel) SynthTabButtons() []*Button {
+	dv := p.dv
+	return dv.instEditorBtns
+}
 
 // SynthTabSections exposes the section card layout for tests.
-func (dv *DrumView) SynthTabSections() []synthSection { return dv.instEditorSections }
+func (p *synthPanel) SynthTabSections() []synthSection {
+	dv := p.dv
+	return dv.instEditorSections
+}
 
 // SynthTabChips returns the pipeline chip strip model (tests, scenes, JS
 // bridge). One entry per stage, in audio-pipeline order.
-func (dv *DrumView) SynthTabChips() []synthChip { return dv.instEditorChips }
+func (p *synthPanel) SynthTabChips() []synthChip {
+	dv := p.dv
+	return dv.instEditorChips
+}
 
 // SelectSynthSectionByLabel opens the stage whose chip label matches
 // (case-insensitive, e.g. "OSC", "ENVELOPE"). Routes through the same
 // selection path as a chip tap (minus the ghost-enable side effect) so the
 // JS bridge and scene catalog drive exactly what a user click drives.
 // Returns false when no chip carries the label.
-func (dv *DrumView) SelectSynthSectionByLabel(label string) bool {
+func (p *synthPanel) SelectSynthSectionByLabel(label string) bool {
+	dv := p.dv
+
 	instID := dv.synthTabActiveInstrument()
 	if instID == "" {
 		return false
@@ -3904,7 +3809,9 @@ func (dv *DrumView) SelectSynthSectionByLabel(label string) bool {
 // SynthSectionGrid exposes a section's adaptive control grid for tests
 // (column count, scroll state, visible window). Returns nil if the section has
 // not been laid out yet.
-func (dv *DrumView) SynthSectionGrid(id synthSectionID) *ControlGrid {
+func (p *synthPanel) SynthSectionGrid(id synthSectionID) *ControlGrid {
+	dv := p.dv
+
 	if dv.instEditorSectionGrids == nil {
 		return nil
 	}
@@ -3914,24 +3821,39 @@ func (dv *DrumView) SynthSectionGrid(id synthSectionID) *ControlGrid {
 // SynthTabNoSynth reports whether the synth tab is showing its
 // "instrument does not use the synth" banner (active row plays a WAV
 // sample with no synth recipe). Exposed for tests.
-func (dv *DrumView) SynthTabNoSynth() bool { return dv.instEditorNoSynth }
+func (p *synthPanel) SynthTabNoSynth() bool {
+	dv := p.dv
+	return dv.instEditorNoSynth
+}
 
 // SynthTabBannerRect exposes the no-synth banner geometry for tests.
-func (dv *DrumView) SynthTabBannerRect() image.Rectangle { return dv.instEditorBannerRect }
+func (p *synthPanel) SynthTabBannerRect() image.Rectangle {
+	dv := p.dv
+	return dv.instEditorBannerRect
+}
 
 // SynthTabHeaderButtons exposes the header retrigger / vol buttons so
 // shared-widget discipline tests can walk them.
-func (dv *DrumView) SynthTabHeaderButtons() []*Button { return dv.instEditorHeaderBtns }
+func (p *synthPanel) SynthTabHeaderButtons() []*Button {
+	dv := p.dv
+	return dv.instEditorHeaderBtns
+}
 
 // SynthSaveAsDialog returns the active Save As name dialog, or nil when
 // none is open.
-func (dv *DrumView) SynthSaveAsDialog() *synthSaveAsDialog { return dv.saveAsDialog }
+func (p *synthPanel) SynthSaveAsDialog() *synthSaveAsDialog {
+	dv := p.dv
+	return dv.saveAsDialog
+}
 
 // synthSaveDirty reports whether the active instrument has unsaved param
 // changes relative to its bound recipe. Drives the Save button's spec
 // switch (Primary when dirty, Secondary when clean) and the dialog's
 // suggested default name.
-func (dv *DrumView) synthSaveDirty(instID string) bool {
+func (p *synthPanel) synthSaveDirty(instID string) bool {
+	dv := p.dv
+	_ = dv
+
 	if instID == "" {
 		return false
 	}
@@ -3943,7 +3865,10 @@ func (dv *DrumView) synthSaveDirty(instID string) bool {
 }
 
 // SynthTabHeader exposes the header layout state for tests.
-func (dv *DrumView) SynthTabHeader() synthHeaderLayout { return dv.instEditorHeader }
+func (p *synthPanel) SynthTabHeader() synthHeaderLayout {
+	dv := p.dv
+	return dv.instEditorHeader
+}
 
 // SectionID returns the section's enum id (test-only accessor).
 func (s synthSection) SectionID() synthSectionID { return s.id }
@@ -3969,3 +3894,203 @@ func (s synthSection) KnobIdxs() []int { return s.knobIdxs }
 // EnsureNoTrailingNewline is a tiny helper kept around so a fmt+strings
 // import set is not silently dropped when the file is edited above.
 func ensureSynthImports() string { return strings.ToUpper("") }
+
+func (dv *DrumView) toggleSynthStage(instID, paramName string) {
+	dv.synp().toggleSynthStage(instID, paramName)
+}
+
+func (dv *DrumView) selectedSynthSection(instID string, sections []synthSection) synthSectionID {
+	return dv.synp().selectedSynthSection(instID, sections)
+}
+
+func (dv *DrumView) setSelectedSynthSection(instID string, id synthSectionID) {
+	dv.synp().setSelectedSynthSection(instID, id)
+}
+
+func (dv *DrumView) synthSelectedSection() *synthSection {
+	return dv.synp().synthSelectedSection()
+}
+
+func (dv *DrumView) synthStageEssential(instID, enableParam string) bool {
+	return dv.synp().synthStageEssential(instID, enableParam)
+}
+
+func (dv *DrumView) synthDetailEnablePillRect() image.Rectangle {
+	return dv.synp().synthDetailEnablePillRect()
+}
+
+func (dv *DrumView) synthStageEnableState(instID string, sec *synthSection) synthEnableState {
+	return dv.synp().synthStageEnableState(instID, sec)
+}
+
+func (dv *DrumView) applySynthStageToggleByID(instID string, id synthSectionID) {
+	dv.synp().applySynthStageToggleByID(instID, id)
+}
+
+func (dv *DrumView) buildSynthTab(contentR image.Rectangle, instID string) {
+	dv.synp().buildSynthTab(contentR, instID)
+}
+
+func (dv *DrumView) layoutSynthHeader(contentR image.Rectangle, headerH int, instID, recipeID string, mobile bool) {
+	dv.synp().layoutSynthHeader(contentR, headerH, instID, recipeID, mobile)
+}
+
+func (dv *DrumView) buildSynthHeaderButtons(resolved string) {
+	dv.synp().buildSynthHeaderButtons(resolved)
+}
+
+func (dv *DrumView) layoutSynthSections(rowR image.Rectangle, sections []synthSection, mobile bool, instID string) {
+	dv.synp().layoutSynthSections(rowR, sections, mobile, instID)
+}
+
+func (dv *DrumView) appendSynthChip(s synthSection, r image.Rectangle, instID string, selID synthSectionID) {
+	dv.synp().appendSynthChip(s, r, instID, selID)
+}
+
+func (dv *DrumView) sectionGrid(id synthSectionID) *ControlGrid {
+	return dv.synp().sectionGrid(id)
+}
+
+func (dv *DrumView) synthTabUpdate() bool {
+	return dv.synp().synthTabUpdate()
+}
+
+func (dv *DrumView) synthSectionTierSplit(knobIdxs []int) (essential, advanced []int) {
+	return dv.synp().synthSectionTierSplit(knobIdxs)
+}
+
+func (dv *DrumView) placeKnobsInSection(s synthSection, mobile bool) {
+	dv.synp().placeKnobsInSection(s, mobile)
+}
+
+func (dv *DrumView) drawSynthTab(dst *ebiten.Image, contentR image.Rectangle, instID string) {
+	dv.synp().drawSynthTab(dst, contentR, instID)
+}
+
+func (dv *DrumView) synthDecayValueForPreview() float64 {
+	return dv.synp().synthDecayValueForPreview()
+}
+
+func (dv *DrumView) drawSynthOutRow(dst *ebiten.Image, paneR image.Rectangle, instID string) {
+	dv.synp().drawSynthOutRow(dst, paneR, instID)
+}
+
+func (dv *DrumView) drawSynthHeader(dst *ebiten.Image) {
+	dv.synp().drawSynthHeader(dst)
+}
+
+func (dv *DrumView) drawSynthChipStrip(dst *ebiten.Image) {
+	dv.synp().drawSynthChipStrip(dst)
+}
+
+func (dv *DrumView) instEditorchipPrev(i int) synthChip {
+	return dv.synp().instEditorchipPrev(i)
+}
+
+func (dv *DrumView) drawSynthDetailPane(dst *ebiten.Image, instID string) {
+	dv.synp().drawSynthDetailPane(dst, instID)
+}
+
+func (dv *DrumView) drawSynthFooter(dst *ebiten.Image) {
+	dv.synp().drawSynthFooter(dst)
+}
+
+func (dv *DrumView) handleSynthTabInput(x, y int, pressed bool, instID string) bool {
+	return dv.synp().handleSynthTabInput(x, y, pressed, instID)
+}
+
+func (dv *DrumView) syncSliderFromKnob(idx int) {
+	dv.synp().syncSliderFromKnob(idx)
+}
+
+func (dv *DrumView) synthKnobReadoutRect(idx int) image.Rectangle {
+	return dv.synp().synthKnobReadoutRect(idx)
+}
+
+func (dv *DrumView) setKnobReadoutRect(idx int, r image.Rectangle) {
+	dv.synp().setKnobReadoutRect(idx, r)
+}
+
+func (dv *DrumView) openSynthParamEditor(idx int, instID string) {
+	dv.synp().openSynthParamEditor(idx, instID)
+}
+
+func (dv *DrumView) propagateSynthSliderValue(idx int, instID string) {
+	dv.synp().propagateSynthSliderValue(idx, instID)
+}
+
+func (dv *DrumView) previewActiveSynth() {
+	dv.synp().previewActiveSynth()
+}
+
+func (dv *DrumView) auditionInstrumentAfterDrag(instID string) {
+	dv.synp().auditionInstrumentAfterDrag(instID)
+}
+
+func (dv *DrumView) resolveSynthInstrument(instID string) string {
+	return dv.synp().resolveSynthInstrument(instID)
+}
+
+func (dv *DrumView) synthTabActiveInstrument() string {
+	return dv.synp().synthTabActiveInstrument()
+}
+
+func (dv *DrumView) synthTabHitAreas() []HitArea {
+	return dv.synp().synthTabHitAreas()
+}
+
+func (dv *DrumView) SynthTabSliders() []*Slider {
+	return dv.synp().SynthTabSliders()
+}
+
+func (dv *DrumView) SynthTabKnobs() []*Knob {
+	return dv.synp().SynthTabKnobs()
+}
+
+func (dv *DrumView) SynthTabBindings() []instParamBinding {
+	return dv.synp().SynthTabBindings()
+}
+
+func (dv *DrumView) SynthTabButtons() []*Button {
+	return dv.synp().SynthTabButtons()
+}
+
+func (dv *DrumView) SynthTabSections() []synthSection {
+	return dv.synp().SynthTabSections()
+}
+
+func (dv *DrumView) SynthTabChips() []synthChip {
+	return dv.synp().SynthTabChips()
+}
+
+func (dv *DrumView) SelectSynthSectionByLabel(label string) bool {
+	return dv.synp().SelectSynthSectionByLabel(label)
+}
+
+func (dv *DrumView) SynthSectionGrid(id synthSectionID) *ControlGrid {
+	return dv.synp().SynthSectionGrid(id)
+}
+
+func (dv *DrumView) SynthTabNoSynth() bool {
+	return dv.synp().SynthTabNoSynth()
+}
+
+func (dv *DrumView) SynthTabBannerRect() image.Rectangle {
+	return dv.synp().SynthTabBannerRect()
+}
+
+func (dv *DrumView) SynthTabHeaderButtons() []*Button {
+	return dv.synp().SynthTabHeaderButtons()
+}
+
+func (dv *DrumView) SynthSaveAsDialog() *synthSaveAsDialog {
+	return dv.synp().SynthSaveAsDialog()
+}
+
+func (dv *DrumView) synthSaveDirty(instID string) bool {
+	return dv.synp().synthSaveDirty(instID)
+}
+
+func (dv *DrumView) SynthTabHeader() synthHeaderLayout {
+	return dv.synp().SynthTabHeader()
+}

@@ -35,6 +35,36 @@ func (dv *DrumView) closeSubdivMenuPortal() {
 	}
 }
 
+// openJumpMenuPortal opens the FF/RW jump-size (×N) menu component through
+// the portal. Mirrors openSubdivMenuPortal — jumpMenuComp is a second
+// SubdivMenuComponent instance (generic int-options dropdown) reused for
+// beat-count options instead of subdivisions.
+func (dv *DrumView) openJumpMenuPortal() {
+	if dv.tree == nil || dv.jumpMenuComp == nil {
+		return
+	}
+	// Feed the clamp region so the menu card positions via AnchorPopupRect and
+	// never runs off-screen (SubdivMenuProps carries no bounds field).
+	dv.jumpMenuComp.SetScreenBounds(dv.Bounds)
+	dv.portal().Open(PortalEntry{
+		ID:      "jump-menu",
+		Overlay: &compPortalOverlay{comp: dv.jumpMenuComp, tag: "jump-menu"},
+		Modal:   false,
+		Scrim:   true, // menu/picker — backdrop dims so modality is visible
+		Anchor:  dv.transportZone.JumpBtnRect(),
+		OnClose: func() {
+			dv.jumpMenuComp.Close()
+		},
+	})
+}
+
+// closeJumpMenuPortal closes the jump-size menu portal entry.
+func (dv *DrumView) closeJumpMenuPortal() {
+	if dv.tree != nil {
+		dv.portal().Close("jump-menu")
+	}
+}
+
 // openInstMenuPortal opens the instrument menu component through the portal.
 func (dv *DrumView) openInstMenuPortal() {
 	if dv.tree == nil || dv.instMenuComp == nil {
@@ -159,6 +189,11 @@ func (dv *DrumView) openOverflowMenuPortal() {
 			id:       "overflow-menu",
 			isOpenFn: func() bool { return dv.IsOverflowMenuOpen() },
 			rectFn:   func() image.Rectangle { return dv.overflowPopupRect() },
+			hoverFn: func(mx, my int) {
+				for _, b := range dv.overflowBtns {
+					b.UpdateHover(mx, my)
+				}
+			},
 			inputFn: func(x, y int, pressed bool) InputResult {
 				if dv.handleOverflowMenuInput(x, y, pressed) {
 					if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.TapActive() {
@@ -174,7 +209,14 @@ func (dv *DrumView) openOverflowMenuPortal() {
 				}
 				return InputConsumed
 			},
-			drawFn: func(dst *ebiten.Image) { dv.drawOverflowMenu(dst) },
+			drawFn:   func(dst *ebiten.Image) { dv.drawOverflowMenu(dst) },
+			updateFn: func() { dv.updateTemplateSearch() },
+			escapeFn: func() bool { return dv.handleTemplateSearchEscape() },
+			// While the menu is open its subtree (overlayTree) owns the
+			// keyboard, so the sibling GridTree's arrow-pan/zoom shortcuts
+			// yield — the template search caret gets the arrows, not the
+			// camera. Mirrors InstrumentMenuComponent.ClaimsKeyboard.
+			claimsKeyboardFn: func() bool { return dv.IsOverflowMenuOpen() },
 		},
 		Modal: false,
 		Scrim: true, // overflow menu — backdrop dims so modality is visible
@@ -184,6 +226,11 @@ func (dv *DrumView) openOverflowMenuPortal() {
 			// which would recursively call portal.Close).
 			if dv.overflowMenuScroll != nil {
 				dv.overflowMenuScroll.DeferredTap().Cancel()
+			}
+			dv.overflowPage = 0
+			dv.setTemplateSearchQuery("")
+			if dv.templateSearchBox != nil {
+				dv.templateSearchBox.SetFocus(false)
 			}
 		},
 	})
@@ -207,6 +254,12 @@ func (dv *DrumView) openContextMenuPortal() {
 			id:       "context-menu",
 			isOpenFn: func() bool { return dv.IsContextMenuOpen() },
 			rectFn:   func() image.Rectangle { return dv.contextMenuRect },
+			hoverFn: func(mx, my int) {
+				for _, b := range dv.contextMenuBtns {
+					b.UpdateHover(mx, my)
+				}
+				dv.contextMenuCloseButton.UpdateHover(mx, my)
+			},
 			inputFn: func(x, y int, pressed bool) InputResult {
 				if dv.handleContextMenuInput(x, y, pressed) {
 					if dv.contextMenuDeferredTap.Active() {
@@ -265,6 +318,11 @@ func (dv *DrumView) openFXPanelPortal() {
 			isOpenFn: func() bool { return dv.IsFXPanelOpen() },
 			rectFn: func() image.Rectangle {
 				return dv.fxPanelRect
+			},
+			hoverFn: func(mx, my int) {
+				for _, b := range dv.fxPanelBtns {
+					b.UpdateHover(mx, my)
+				}
 			},
 			inputFn: func(x, y int, pressed bool) InputResult {
 				if dv.handleFXPanelInput(x, y, pressed) {
@@ -358,7 +416,9 @@ func (dv *DrumView) closeVolPopupPortal() {
 }
 
 // openSynthWheelPortal opens the mobile synth-knob wheel popup through the portal.
-func (dv *DrumView) openSynthWheelPortal() {
+func (p *synthPanel) openSynthWheelPortal() {
+	dv := p.dv
+
 	if dv.tree == nil || dv.synthWheelPopup == nil {
 		return
 	}
@@ -379,7 +439,9 @@ func (dv *DrumView) openSynthWheelPortal() {
 }
 
 // closeSynthWheelPortal closes the synth wheel popup portal entry.
-func (dv *DrumView) closeSynthWheelPortal() {
+func (p *synthPanel) closeSynthWheelPortal() {
+	dv := p.dv
+
 	if dv.tree != nil {
 		dv.portal().Close("synth-wheel-popup")
 	}
@@ -471,6 +533,9 @@ func (dv *DrumView) openNamingPortal() {
 			id:       "naming",
 			isOpenFn: func() bool { return dv.IsNamingOpen() },
 			rectFn:   func() image.Rectangle { return dv.Bounds },
+			hoverFn: func(mx, my int) {
+				dv.saveBtn.UpdateHover(mx, my)
+			},
 			inputFn: func(x, y int, pressed bool) InputResult {
 				if dv.saveBtn != nil && dv.saveBtn.HandleInputResult(x, y, pressed) != InputIgnored {
 					dv.saveAnim = 1
@@ -589,3 +654,9 @@ func (dv *DrumView) closeNamingPortal() {
 func (dv *DrumView) openSamplerWheelPortal() { dv.sp().openSamplerWheelPortal() }
 
 func (dv *DrumView) closeSamplerWheelPortal() { dv.sp().closeSamplerWheelPortal() }
+
+// ── *DrumView forwarding shims (Batch B relocation onto *synthPanel) ───────
+
+func (dv *DrumView) openSynthWheelPortal() { dv.synp().openSynthWheelPortal() }
+
+func (dv *DrumView) closeSynthWheelPortal() { dv.synp().closeSynthWheelPortal() }

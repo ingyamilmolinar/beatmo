@@ -107,19 +107,40 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 		}
 		if isMouseButtonPressed(ebiten.MouseButtonLeft) {
 			x, y := cursorPosition()
-			if last, ok := prevMousePos(); ok {
-				if x != last.x || y != last.y {
-					c.OffsetX += float64(x - last.x)
-					c.OffsetY += float64(y - last.y)
+			switch {
+			case !camDrag.active:
+				// Press edge: anchor here, but pan nothing yet. Movement under
+				// the tap slop (tapMaxMovePx) is treated as a stationary tap so
+				// a click/tap that jitters a few pixels neither pans the grid
+				// nor suppresses node creation (handleEditor gates node-add on
+				// !camDragged; the touch path gates it on movedBeyondTap). Pan
+				// commits only once the pointer crosses the same slop that
+				// classifies a touch tap-vs-drag — one threshold for the whole
+				// gesture model.
+				camDrag = dragTracker{active: true, startX: x, startY: y, lastX: x, lastY: y}
+			case camDrag.committed:
+				if x != camDrag.lastX || y != camDrag.lastY {
+					c.OffsetX += float64(x - camDrag.lastX)
+					c.OffsetY += float64(y - camDrag.lastY)
 					dragging = true
 				}
+				camDrag.lastX, camDrag.lastY = x, y
+			case abs(x-camDrag.startX) >= tapMaxMovePx || abs(y-camDrag.startY) >= tapMaxMovePx:
+				// Crossed the slop deadzone. Commit and pan by the full travel
+				// from the press anchor (not just this frame's delta) so no
+				// motion is lost when an entire drag lands in one frame — a fast
+				// flick, or a single-step programmatic move in a test.
+				c.OffsetX += float64(x - camDrag.startX)
+				c.OffsetY += float64(y - camDrag.startY)
+				dragging = true
+				camDrag.committed = true
+				camDrag.lastX, camDrag.lastY = x, y
 			}
-			markMousePos(x, y)
 		} else {
-			clearMousePos()
+			camDrag = dragTracker{}
 		}
 	} else {
-		clearMousePos()
+		camDrag = dragTracker{}
 	}
 	c.Snap()
 	return dragging
@@ -127,15 +148,19 @@ func (c *Camera) HandleMouse(allowPan bool) bool {
 
 /* ─── internal helpers ─── */
 
-type mousePos struct{ x, y int }
-
-var lastMouse *mousePos
-
-func prevMousePos() (mousePos, bool) {
-	if lastMouse == nil {
-		return mousePos{}, false
-	}
-	return *lastMouse, true
+// dragTracker is the per-gesture pan state for a single held pointer/touch.
+// It replaces the old raw prev-position delta so the camera can apply a slop
+// deadzone: a gesture pans only after the pointer travels at least tapMaxMovePx
+// from where the button went down. Package-level (one active pointer at a time);
+// reset when the button releases so a stale anchor never leaks into the next
+// gesture.
+type dragTracker struct {
+	active    bool // button is currently held
+	committed bool // travelled past the slop → panning
+	startX    int  // press anchor
+	startY    int
+	lastX     int // last position while committed (frame-delta base)
+	lastY     int
 }
-func markMousePos(x, y int) { p := mousePos{x, y}; lastMouse = &p }
-func clearMousePos()        { lastMouse = nil }
+
+var camDrag dragTracker

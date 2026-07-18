@@ -117,14 +117,15 @@ func TestChainTextScalesGrowWithDensity(t *testing.T) {
 		{"ChainPillScale", compact.ChainPillScale, comfortable.ChainPillScale, spacious.ChainPillScale},
 		{"ChainBadgeScale", compact.ChainBadgeScale, comfortable.ChainBadgeScale, spacious.ChainBadgeScale},
 	}
+	// NOTE (2026-07-16 typography migration): Chain text now renders through
+	// the styled text-role API (RoleMicro/RoleCaption, fixed true-pixel
+	// sizes) — these permille tokens no longer drive any text draw. The pins
+	// below only keep the AUTHORED token values monotonic while they remain
+	// in DESIGN.md; delete them together with the densities entries.
 	for _, sc := range scales {
 		if !(sc.c <= sc.m && sc.m <= sc.s) {
 			t.Errorf("%s not monotonic across density: compact=%d comfortable=%d spacious=%d",
 				sc.name, sc.c, sc.m, sc.s)
-		}
-		// Spacious must beat the old hardcoded ~714 permille so mobile text is bigger.
-		if sc.s <= 714 {
-			t.Errorf("%s spacious=%d must exceed the old hardcoded 714 permille", sc.name, sc.s)
 		}
 	}
 
@@ -143,15 +144,5 @@ func TestChainTextScalesGrowWithDensity(t *testing.T) {
 			t.Errorf("%s not monotonic across density: compact=%d comfortable=%d spacious=%d",
 				mg.name, mg.c, mg.m, mg.s)
 		}
-	}
-}
-
-// TestChainScaleHelperConvertsPermille — chainScale divides permille by 1000.
-func TestChainScaleHelperConvertsPermille(t *testing.T) {
-	if got := chainScale(850); got != 0.85 {
-		t.Errorf("chainScale(850)=%v, want 0.85", got)
-	}
-	if got := chainScale(1100); got != 1.1 {
-		t.Errorf("chainScale(1100)=%v, want 1.1", got)
 	}
 }

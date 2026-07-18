@@ -137,9 +137,8 @@ func drawSynthMirror(dst *ebiten.Image, rect image.Rectangle, mirror *synthMirro
 	drawRoundedRect(dst, rect, TokenBorderSubtle(), RadiusSM, false)
 
 	pad := SpaceSM
-	captionScale := FontSizeCaption / FontSizeBody
-	captionH := int(float64(TextHeight()) * captionScale)
-	DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapUpClose), rect.Min.X+pad, rect.Min.Y+pad/2, TokenTextSecondary(), captionScale)
+	captionH := StyledTextHeight(RoleMicro)
+	DrawTextStyled(dst, i18n.T(i18n.KeyCapUpClose), rect.Min.X+pad, rect.Min.Y+pad/2, RoleMicro, TokenTextSecondary())
 
 	traceRect := image.Rect(rect.Min.X+pad, rect.Min.Y+pad+captionH, rect.Max.X-pad, rect.Max.Y-pad)
 	if traceRect.Dx() < 8 || traceRect.Dy() < 6 {
@@ -177,6 +176,19 @@ func drawSynthMirror(dst *ebiten.Image, rect image.Rectangle, mirror *synthMirro
 	}
 	// Centre line.
 	drawRect(dst, image.Rect(traceRect.Min.X, midY, traceRect.Max.X, midY+1), WithAlpha(genColorBorder, AlphaSubtle), true)
+}
+
+// drawSynthMirror (method) routes the "Up close" steady-wave mirror through
+// the synth sprite cache (Task 2, synth_sprite_cache.go), keyed by the
+// instrument's params hash alone. Safe unlike the full-note card's async
+// path: updateSynthMirrorLive re-renders the steady-wave slot SYNCHRONOUSLY
+// (renderLive) every frame before this draws, so by the time the hash changes
+// the new PCM is already sitting in mirror — no staleness window to close.
+func (p *synthPanel) drawSynthMirror(dst *ebiten.Image, rect image.Rectangle, instID string, mirror *synthMirror) {
+	key := struct{ hash string }{p.synthParamsHash(instID)}
+	p.sprites.mirror.Draw(dst, rect, key, func(img *ebiten.Image, r image.Rectangle) {
+		drawSynthMirror(img, r, mirror)
+	})
 }
 
 // synth_preview_layer.go — right-half preview pane for the Synth tab.
@@ -238,8 +250,7 @@ func drawSynthPreviewPane(dst *ebiten.Image, rect image.Rectangle, instID string
 	drawRoundedRect(dst, rect, TokenBorderSubtle(), RadiusSM, false)
 
 	pad := SpaceSM
-	captionScale := FontSizeCaption / FontSizeBody
-	captionH := int(float64(TextHeight()) * captionScale)
+	captionH := StyledTextHeight(RoleMicro)
 
 	// Reserve the bottom OUT strip (Delay/Reverb/Vol mini-meters) so the plots
 	// never bleed into it. drawSynthOutRow renders it when paneR.Dy() >= 80;
@@ -280,7 +291,7 @@ func drawSynthPreviewPane(dst *ebiten.Image, rect image.Rectangle, instID string
 	y := rect.Min.Y + pad
 
 	drawPlot := func(label string, draw func(r image.Rectangle), enableParam string) {
-		DrawTextColorAtScale(dst, label, left, y, TokenTextSecondary(), captionScale)
+		DrawTextStyled(dst, label, left, y, RoleMicro, TokenTextSecondary())
 		// The graph band sits BELOW the label row and is bounded by graphH, so
 		// each curve (which is computed relative to its rect) is clipped to its
 		// own band — it can never paint on the label or bleed into the OUT
@@ -309,12 +320,12 @@ func dimPlotIfBypassed(dst *ebiten.Image, rect image.Rectangle, instID, paramNam
 	drawRect(dst, rect, WithAlpha(TokenSurface1(), AlphaStrong), true)
 }
 
-// drawSynthOscPlot paints a 1-cycle preview of the carrier wave. The
-// current implementation samples a sine wave at 256 points — most
-// builtin recipes use sine-family wavetables, and a real wavetable
-// preview path would require exposing the recipe's selected shape
-// through audio.SynthParams. The sine baseline is still a useful
-// "this is the seed shape your knobs are reshaping" cue.
+// drawSynthOscPlot paints a 1-cycle preview of the carrier wave, sampled at 256
+// points from the SAME shape table the engine-side preview uses
+// (audio.PreviewOscShapeModel) — so every oscillator the user can pick, including
+// the physical models and Voice, plots as itself rather than as a sine seed.
+// The instrument's physical-model params are honored, so the bowed-string knobs
+// reshape the plot.
 func drawSynthOscPlot(dst *ebiten.Image, rect image.Rectangle, instID string) {
 	if rect.Dx() < 8 || rect.Dy() < 6 {
 		return
@@ -327,16 +338,18 @@ func drawSynthOscPlot(dst *ebiten.Image, rect image.Rectangle, instID string) {
 	}
 	// Read the instrument's selected oscillator shape (modular voice) so the
 	// preview reflects the chosen generator; non-modular recipes fall back to
-	// the sine seed shape (oscType 0).
+	// the sine seed shape (oscType 0). The physical-model params ride along so a
+	// bowed-string voice plots ITS bow settings.
 	oscType, fmRatio, fmDepth := synthOscParamsFor(instID)
+	model := audio.OscModelParamsFor(instID)
 	midY := rect.Min.Y + rect.Dy()/2
 	halfH := float64(rect.Dy()) / 2.0
 	col := WithAlpha(colWaveTrace, AlphaStrong)
 	for c := 0; c < width-1; c++ {
 		t0 := float64(c) / float64(width)
 		t1 := float64(c+1) / float64(width)
-		y0 := midY - int(synthOscSample(oscType, t0, fmRatio, fmDepth)*(halfH*0.85))
-		y1 := midY - int(synthOscSample(oscType, t1, fmRatio, fmDepth)*(halfH*0.85))
+		y0 := midY - int(synthOscSampleModel(oscType, t0, fmRatio, fmDepth, model)*(halfH*0.85))
+		y1 := midY - int(synthOscSampleModel(oscType, t1, fmRatio, fmDepth, model)*(halfH*0.85))
 		if y0 > y1 {
 			y0, y1 = y1, y0
 		}
@@ -358,41 +371,31 @@ func drawSynthOscPlot(dst *ebiten.Image, rect image.Rectangle, instID string) {
 }
 
 // synthOscSample returns one sample of the previewed waveform at phase t∈[0,1)
-// for the given oscillator type (0=sine 1=saw 2=square 3=triangle 4=FM). The
-// FM case approximates a 2-operator phase-modulated carrier using the supplied
-// modulator ratio + depth. Output is in [-1,1].
+// for the given oscillator type, matching osc_type's enum (0=sine 1=saw
+// 2=square 3=triangle 4=FM 5/6=noise 7..11=physical models 12=Voice).
+// Output is in [-1,1].
+//
+// Every shape EXCEPT FM comes from audio.PreviewOscShape — the same table the
+// engine-side preview wave uses — so the OSC plot and the "Your sound" wave can
+// never disagree about what an oscillator looks like. This function previously
+// carried its own copy of the table that covered only 0..6, so every
+// physical-model oscillator and Voice silently plotted as a sine.
+//
+// FM (4) stays here: audio.PreviewOscShape leaves FM to its caller (the engine
+// preview applies the full 4-operator matrix), and this plot's lighter 2-op
+// phase-modulation approximation is driven by the fmRatio/fmDepth passed in.
 func synthOscSample(oscType int, t, fmRatio, fmDepth float64) float64 {
-	switch oscType {
-	case 1: // saw
-		return 2*t - 1
-	case 2: // square
-		if t < 0.5 {
-			return 1
-		}
-		return -1
-	case 3: // triangle
-		return 1 - 4*math.Abs(t-0.5)
-	case 4: // FM (2-op phase modulation)
+	return synthOscSampleModel(oscType, t, fmRatio, fmDepth, audio.DefaultOscModelParams())
+}
+
+// synthOscSampleModel is synthOscSample honoring an instrument's physical-model
+// params, so the bowed-string knobs (Bow Position/Pressure/Speed/Brightness)
+// reshape the plotted wave instead of leaving it static.
+func synthOscSampleModel(oscType int, t, fmRatio, fmDepth float64, m audio.OscModelParams) float64 {
+	if oscType == 4 { // FM (2-op phase modulation)
 		return math.Sin(2*math.Pi*t + fmDepth*math.Sin(2*math.Pi*fmRatio*t))
-	case 5, 6: // noise (white / pink) — visual scribble only
-		// Deterministic per-phase hash so the preview shows a jagged noise
-		// trace (consecutive phases decorrelate). Pink (6) is drawn a touch
-		// quieter to hint at its softer high end.
-		n := uint32(t*4096.0)*2654435761 + 0x9E3779B9
-		n ^= n >> 15
-		v := float64(int32(n)) / float64(int32(1)<<30) // ~[-2,2)
-		if v > 1 {
-			v = 1
-		} else if v < -1 {
-			v = -1
-		}
-		if oscType == 6 {
-			v *= 0.6
-		}
-		return v
-	default: // sine
-		return math.Sin(2 * math.Pi * t)
 	}
+	return audio.PreviewOscShapeModel(oscType, t, m)
 }
 
 // synthOscParamsFor resolves the oscillator preview params for an instrument.

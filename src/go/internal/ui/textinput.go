@@ -36,6 +36,7 @@ type TextInput struct {
 	OnFocusLost   func() // called when focus is lost
 	InputMode     string // "numeric", "text", etc. — passed to soft keyboard
 	prevFocused   bool   // tracks focus transitions
+	prevMouseDown bool   // tracks left-button press edges (re-focus on re-click)
 	// MobileInputID, when set, causes Draw() to skip rendering when the
 	// corresponding mobile native input is active (the native HTML <input>
 	// is visible instead).
@@ -45,6 +46,12 @@ type TextInput struct {
 	// empty (the default) for domain editors that emit their own event
 	// (instrument rename, BPM entry, search query).
 	LogField string
+	// PadLeft / PadRight reserve horizontal room inside the field for
+	// inline adornments (a leading search icon, a trailing clear button)
+	// without shrinking the field's visible background. Text, cursor, and
+	// the visible-text window all shift/shrink by these amounts.
+	PadLeft  int
+	PadRight int
 }
 
 // NewTextInput constructs a text input with the given rectangle and style.
@@ -114,12 +121,20 @@ func (t *TextInput) Update() bool {
 	}
 	mx, my := cursorPosition()
 	consumed := false
+	// Press edge: this frame the button went down (level → edge). Used to
+	// re-assert focus side effects (re-focus the soft-keyboard proxy) when the
+	// user re-clicks an ALREADY-focused box — see the focus-transition block.
+	mouseDownNow := isMouseButtonPressed(ebiten.MouseButtonLeft) && !skipClick
+	pressEdge := mouseDownNow && !t.prevMouseDown
+	t.prevMouseDown = mouseDownNow
+	clickedInside := false
 	if isMouseButtonPressed(ebiten.MouseButtonLeft) && !skipClick {
 		if image.Pt(mx, my).In(t.Rect) {
+			clickedInside = pressEdge
 			t.focused = true
 			t.anim = 1
 			_, start := t.visibleText()
-			rel := mx - (t.Rect.Min.X + 4)
+			rel := mx - (t.Rect.Min.X + 4 + t.PadLeft)
 			// Walk runes from start, accumulating TextWidth, to find
 			// which character position the click falls on.
 			rs := []rune(t.Text)
@@ -151,6 +166,18 @@ func (t *TextInput) Update() bool {
 		if t.OnFocusGained != nil {
 			t.OnFocusGained()
 		}
+	} else if t.focused && clickedInside {
+		// Re-click on an already-focused box: the physical canvas click blurs the
+		// hidden soft-keyboard proxy (browser focus moves to the canvas), and with
+		// no focus transition OnFocusGained wouldn't otherwise re-fire — the box
+		// would silently drop to the lossy ebiten keyboard path (dropped Arrow /
+		// Backspace pressed+released between two slow frames). Re-assert focus so
+		// the proxy recaptures the keyboard. Gated to the press EDGE because
+		// OnFocusGained (softKeyboardShow) clears the proxy's char buffer; firing
+		// it every held frame would wipe pending keystrokes.
+		if t.OnFocusGained != nil {
+			t.OnFocusGained()
+		}
 	} else if !t.focused && t.prevFocused {
 		emitTextCommitted(t.LogField, t.Value())
 		if t.OnFocusLost != nil {
@@ -171,6 +198,32 @@ func (t *TextInput) Update() bool {
 	t.blink++
 	if t.blink > 60 {
 		t.blink = 0
+	}
+
+	// Caret navigation is applied BEFORE the character/backspace drain below.
+	// When a slow frame batches several key events together, a "move caret then
+	// edit" gesture (ArrowLeft… then type; ArrowRight… then Backspace) must land
+	// in the right order — editing at the freshly-moved caret, not the stale one.
+	// The keyRepeat path covers native (the canvas receives the keydown); the
+	// consumeSoftKeyboardArrow* path covers WASM, where the hidden proxy holds
+	// keyboard focus and forwards Arrow keys out-of-band. Those return a COUNT
+	// (not a flag) so several presses coalesced into one frame each move the caret
+	// instead of collapsing to one. keyRepeat is evaluated every frame regardless
+	// (it tracks per-key repeat state).
+	leftMoves := consumeSoftKeyboardArrowLeft()
+	if t.keyRepeat(ebiten.KeyLeft) {
+		leftMoves++
+	}
+	for i := 0; i < leftMoves && t.cursor > 0; i++ {
+		t.cursor--
+	}
+	rightMoves := consumeSoftKeyboardArrowRight()
+	if t.keyRepeat(ebiten.KeyRight) {
+		rightMoves++
+	}
+	runeCount := utf8.RuneCountInString(t.Text)
+	for i := 0; i < rightMoves && t.cursor < runeCount; i++ {
+		t.cursor++
 	}
 
 	// Gather input characters: prefer soft keyboard when active (mobile),
@@ -243,20 +296,6 @@ func (t *TextInput) Update() bool {
 			t.cursor--
 		}
 	}
-	// Left/Right move the caret. The keyRepeat path covers desktop (and any
-	// platform where the canvas receives the keydown); consumeSoftKeyboardArrow*
-	// covers WASM, where the hidden soft-keyboard proxy holds keyboard focus and
-	// the canvas never sees the arrow keydown (the proxy forwards it out-of-band).
-	if t.keyRepeat(ebiten.KeyLeft) || consumeSoftKeyboardArrowLeft() {
-		if t.cursor > 0 {
-			t.cursor--
-		}
-	}
-	if t.keyRepeat(ebiten.KeyRight) || consumeSoftKeyboardArrowRight() {
-		if t.cursor < utf8.RuneCountInString(t.Text) {
-			t.cursor++
-		}
-	}
 	return consumed
 }
 
@@ -300,7 +339,7 @@ func byteIndex(s string, i int) int {
 // visibleText returns substring that fits in the box and the index of the first rune shown.
 func (t *TextInput) visibleText() (string, int) {
 	pad := 4
-	maxW := t.Rect.Dx() - pad*2
+	maxW := t.Rect.Dx() - pad*2 - t.PadLeft - t.PadRight
 	total := utf8.RuneCountInString(t.Text)
 	rs := []rune(t.Text)
 
@@ -351,14 +390,14 @@ func (t *TextInput) Draw(dst *ebiten.Image) {
 	txt, start := t.visibleText()
 	th := TextHeight()
 	ty := t.Rect.Min.Y + (t.Rect.Dy()-th)/2
-	DrawTextAt(dst, txt, t.Rect.Min.X+4, ty)
+	DrawTextAt(dst, txt, t.Rect.Min.X+4+t.PadLeft, ty)
 	if t.focused && t.blink < 30 {
 		// Cursor x from the width of text before cursor position.
 		rs := []rune(t.Text)
 		bi := byteIndex(t.Text, start)
 		ci := byteIndex(t.Text, min(t.cursor, len(rs)))
 		prefix := t.Text[bi:ci]
-		cx := t.Rect.Min.X + 4 + TextWidth(prefix)
+		cx := t.Rect.Min.X + 4 + t.PadLeft + TextWidth(prefix)
 		cy := ty
 		col := t.Style.Cursor
 		if col == nil {

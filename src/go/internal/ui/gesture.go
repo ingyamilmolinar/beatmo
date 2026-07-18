@@ -14,6 +14,11 @@ const (
 	panMinCenterMove     = 5   // min center movement for two-finger pan
 )
 
+// mouseHoldPopupFrames is the desktop mouse equivalent of the touch
+// long-press threshold, in Update ticks (60 TPS): click-and-hold a node this
+// long without moving opens the quick-action popup.
+const mouseHoldPopupFrames = longPressThresholdMS * 60 / 1000
+
 // GestureKind identifies the type of detected gesture.
 type GestureKind int
 
@@ -66,7 +71,16 @@ func (ts *TouchState) detectGesture(endedTouches []*TouchPoint, now time.Time) *
 			dx := abs(pt.X - pt.StartX)
 			dy := abs(pt.Y - pt.StartY)
 
-			if duration <= tapMaxDurationMS && dx <= tapMaxMovePx && dy <= tapMaxMovePx {
+			// A gesture that ever crossed the tap slop is a drag (pan) for the
+			// rest of its life, never a tap — even if the finger wanders back to
+			// within tapMaxMovePx of the start before lifting. The net start→end
+			// displacement (dx/dy) alone is not enough: a pan that returns near
+			// its origin would otherwise be misread as a tap and create a
+			// spurious node at the lift point. movedBeyondTap is the same latch
+			// that disqualifies a moved gesture from long-press (mirrors the
+			// !pt.movedBeyondTap guard below), so tap/long-press/drag all agree
+			// on one threshold.
+			if duration <= tapMaxDurationMS && dx <= tapMaxMovePx && dy <= tapMaxMovePx && !pt.movedBeyondTap {
 				return &GestureEvent{
 					Kind: GestureTap,
 					X:    pt.X,

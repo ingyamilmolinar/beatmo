@@ -172,6 +172,7 @@ async function runScenario(cfg) {
     }
 
     let notes = 0, pi = 0, sp = 0;
+    let paramPushes = 0;
     const gaps = [];
     let last = performance.now();
     const sampler = setInterval(() => { const n = performance.now(); gaps.push(n - last); last = n; }, 8);
@@ -192,6 +193,49 @@ async function runScenario(cfg) {
       spamTimer = setInterval(() => {
         sp = (sp + 1) % 7;
         window.updateSampleEdit(id, JSON.stringify({ GainDB: -3 + sp }));
+      }, SPAM_INTERVAL_MS);
+    } else if (cfg.spam === "toggle") {
+      // Cyclic enable/disable of one stage — 2 alternating param hashes.
+      spamTimer = setInterval(() => {
+        sp = (sp + 1) % 2;
+        setInstrumentParam(id, cfg.toggleParam || "filter_enabled", sp);
+        paramPushes++;
+      }, SPAM_INTERVAL_MS);
+    } else if (cfg.spam === "toggle-multi") {
+      // Rotate on/off across several stages → many distinct hashes.
+      const stages = ["filter_enabled", "lfo_enabled", "filtenv_enabled"];
+      let k = 0;
+      spamTimer = setInterval(() => {
+        const st = stages[k % stages.length];
+        setInstrumentParam(id, st, (k >> 1) & 1 ? 0 : 1); // vary value too
+        k++;
+        paramPushes++;
+      }, SPAM_INTERVAL_MS);
+    } else if (cfg.spam === "ctrl-sweep") {
+      // Monotone sweep of a control on an ENABLED stage (worst for LRU key).
+      let v = 0;
+      spamTimer = setInterval(() => {
+        v = (v + 0.03) % 1.0;
+        setInstrumentParam(id, cfg.ctrlParam || "filter_cutoff", v);
+        paramPushes++;
+      }, SPAM_INTERVAL_MS);
+    } else if (cfg.spam === "ctrl-cyclic") {
+      // Triangle sweep — values revisit, so the cache warms.
+      let v = 0, dir = 1;
+      spamTimer = setInterval(() => {
+        v += dir * 0.05; if (v >= 1) { v = 1; dir = -1; } else if (v <= 0) { v = 0; dir = 1; }
+        setInstrumentParam(id, cfg.ctrlParam || "lfo_rate", v);
+        paramPushes++;
+      }, SPAM_INTERVAL_MS);
+    } else if (cfg.spam === "combined") {
+      // Toggle a stage AND sweep its control together (the realistic storm).
+      let v = 0, t = 0, cyc = 0;
+      spamTimer = setInterval(() => {
+        t = (t + 1) % 8;
+        if (t === 0) { setInstrumentParam(id, "filter_enabled", cyc & 1 ? 0 : 1); cyc++; }
+        v = (v + 0.04) % 1.0;
+        setInstrumentParam(id, "filter_cutoff", v);
+        paramPushes += (t === 0 ? 2 : 1);
       }, SPAM_INTERVAL_MS);
     }
 
@@ -221,6 +265,7 @@ async function runScenario(cfg) {
       neighborPlays: rl.neighborPlays,
       maxGapMs: gaps.length ? gaps[gaps.length - 1] : 0,
       p90GapMs: q(0.90),
+      paramPushes,
       audio: {
         count: am.count, overdue: am.overdue, smallLead: am.smallLeadCount,
         minLead: am.minLead, avgLead: am.avgLead,
@@ -243,6 +288,11 @@ const SCENARIOS = [
   // render past the scheduling lead, so deferred notes land LATE (the
   // user-reported real-world lag) instead of early.
   { name: "synth-storm-4x", id: "cello", pitched: true, spam: "synth", prewarm: true, cpuThrottle: 4 },
+  { name: "stage-toggle-storm", id: "cello", pitched: true, spam: "toggle", prewarm: true, toggleParam: "filter_enabled" },
+  { name: "stage-toggle-multi", id: "cello", pitched: true, spam: "toggle-multi", prewarm: true },
+  { name: "enabled-ctrl-sweep", id: "cello", pitched: true, spam: "ctrl-sweep", prewarm: true, ctrlParam: "filter_cutoff" },
+  { name: "enabled-ctrl-cyclic", id: "cello", pitched: true, spam: "ctrl-cyclic", prewarm: true, ctrlParam: "lfo_rate" },
+  { name: "combined-toggle+ctrl", id: "cello", pitched: true, spam: "combined", prewarm: true },
 ];
 
 const cdp = await page.context().newCDPSession(page);
@@ -266,7 +316,7 @@ for (const [name, r] of Object.entries(results)) {
     `[TEST] ${name.padEnd(15)} ${String(r.notes).padStart(5)} ${String(r.renders).padStart(7)} ${String(r.deferredPlays).padStart(5)} ${String(r.stalePlays).padStart(5)} ${String(r.neighborPlays).padStart(3)}  ` +
     `${fmt(r.deferMsAvg)}/${fmt(r.deferMsMin)}/${fmt(r.deferMsMax)} (${fmt(r.deferAbsMsP90)})`.padEnd(31) +
     `${fmt(r.renderMsAvg)}/${fmt(r.renderMsP90)}/${fmt(r.renderMsMax)}`.padEnd(23) +
-    `${String(r.workerQueuePeak).padStart(5)} ${fmt(r.maxGapMs)}ms`
+    `${String(r.workerQueuePeak).padStart(5)} ${fmt(r.maxGapMs)}ms  pushes=${r.paramPushes ?? 0}`
   );
 }
 
@@ -306,6 +356,15 @@ if (STRICT) {
 }
 if (pageErrors.length > 0) {
   failures.push(`page emitted ${pageErrors.length} error(s): ${pageErrors.join(" | ")}`);
+}
+
+// New synth-storm scenarios must actually spam params and keep renders
+// off-thread (the project_synth_param_rerender_storm invariant).
+for (const name of ["stage-toggle-storm", "stage-toggle-multi", "enabled-ctrl-sweep", "enabled-ctrl-cyclic", "combined-toggle+ctrl"]) {
+  const r = results[name];
+  if (!r) { failures.push(`${name}: scenario missing from results`); continue; }
+  if ((r.paramPushes || 0) <= 0) failures.push(`${name}: expected paramPushes>0, got ${r.paramPushes}`);
+  if ((r.mainThreadRenders || 0) > 0) failures.push(`${name}: ${r.mainThreadRenders} render(s) on the main thread (must stay off-thread)`);
 }
 
 if (isCoverageEnabled()) {

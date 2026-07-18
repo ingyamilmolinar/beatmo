@@ -102,6 +102,14 @@ func (r *RingBuffer) Read(dst []float64) int {
 	return int(n)
 }
 
+// Reset discards all currently-unread samples by advancing the read pointer to
+// the write pointer. Must be called from the consumer side (the goroutine that
+// calls Read); it is a no-op-safe single store of rPos. Used on circuit load so
+// leftover pre-load samples don't produce one last non-flat analysis tick.
+func (r *RingBuffer) Reset() {
+	r.rPos.Store(r.wPos.Load())
+}
+
 // Available returns the number of unread samples currently in the buffer.
 func (r *RingBuffer) Available() int {
 	rPos := r.rPos.Load()

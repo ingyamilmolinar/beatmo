@@ -364,8 +364,10 @@ async function runUserActions(page, label) {
   }
   } catch (e) {
     // A throw in a Phase-2 scenario becomes a recorded fail, NOT a lost result —
-    // the accumulated pass/fail counts above are still returned.
-    fail(`${label}: Phase-2 scenario threw: ${e.message}`);
+    // the accumulated pass/fail counts above are still returned. `fail` is the
+    // counter, not a reporter: record through ok(false, …) so the throw shows up
+    // as a normal FAIL line instead of a TypeError that kills the whole run.
+    ok(false, `${label}: Phase-2 scenario threw: ${e.message}`);
   }
 
   return { pass, fail, skip };

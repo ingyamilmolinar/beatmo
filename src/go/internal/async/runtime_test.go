@@ -2,6 +2,7 @@ package async
 
 import (
 	"runtime"
+	"runtime/debug"
 	"testing"
 )
 
@@ -60,10 +61,10 @@ func TestSnapshotReportsRuntimeState(t *testing.T) {
 // that still returns Snapshot().
 //
 // We intentionally avoid asserting against settable knobs (GCPercent,
-// GOMAXPROCS) because:
-//   - mutating them would affect every other test in the package, and
-//   - Snapshot()'s GCPercent read uses a side-effecting helper
-//     (debug.SetGCPercent(-2)) that does not behave as a pure getter.
+// GOMAXPROCS) because mutating them would affect every other test in the
+// package. (Snapshot()'s GCPercent read is now non-destructive — it round-
+// trips through the setter and restores the previous value; see
+// TestSnapshotDoesNotDisableGC for the regression guard.)
 //
 // IMPORTANT: this test must remain the only caller of ConfigureRuntime
 // in the package — sync.Once is process-wide.
@@ -85,5 +86,20 @@ func TestConfigureRuntimeIsIdempotent(t *testing.T) {
 	if second.GOMAXPROCS != first.GOMAXPROCS {
 		t.Errorf("GOMAXPROCS changed on second call (sync.Once should have skipped apply): first=%d second=%d",
 			first.GOMAXPROCS, second.GOMAXPROCS)
+	}
+}
+
+// TestSnapshotDoesNotDisableGC is a regression guard for the bug where
+// Snapshot() read GCPercent via debug.SetGCPercent(-2). The runtime clamps any
+// negative argument to -1, which DISABLES garbage collection — so every
+// Snapshot() (e.g. the startup config log) silently turned automatic GC off
+// process-wide, letting the heap climb unbounded (measured 25 MB → 382 MB with
+// zero GC cycles over 30 s of playback). Snapshot() must leave GC untouched.
+func TestSnapshotDoesNotDisableGC(t *testing.T) {
+	prev := debug.SetGCPercent(100) // put GC into a known-enabled state
+	t.Cleanup(func() { debug.SetGCPercent(prev) })
+	_ = Snapshot()
+	if got := readGCPercent(); got != 100 {
+		t.Fatalf("Snapshot() left GCPercent=%d (want 100) — it must not disable or alter GC", got)
 	}
 }

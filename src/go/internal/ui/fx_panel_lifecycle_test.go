@@ -350,33 +350,27 @@ func TestSyncFXToRow(t *testing.T) {
 // --- 6. fxParamLabel formatting ---
 
 func TestFXParamLabel(t *testing.T) {
+	// fxParamLabel composes "Capitalized Name: <fxFormatParam>". The value
+	// rendering itself (precision/units) is pinned by TestFXFormatParam* — here
+	// we only assert the name + colon + value composition with the param def.
 	cases := []struct {
-		name     string
+		def      audio.EffectParamDef
 		val      float64
-		unit     string
 		expected string
 	}{
-		// val >= 1000 -> "%.0f" (non-empty units get a space prefix)
-		{"cutoff", 2000, "Hz", "Cutoff: 2000 Hz"},
-		{"freq", 10000, "Hz", "Freq: 10000 Hz"},
-		// val >= 10 -> "%.1f"
-		{"drive", 15.5, "", "Drive: 15.5"},
-		{"drive", 10.0, "", "Drive: 10.0"},
-		// val == int(val) -> "%.0f"
-		{"mix", 1, "", "Mix: 1"},
-		{"mix", 0, "", "Mix: 0"},
-		// default -> "%.2f"
-		{"mix", 0.75, "", "Mix: 0.75"},
-		{"mix", 0.123, "", "Mix: 0.12"},
-		{"rate", 5.5, "Hz", "Rate: 5.50 Hz"},
+		{audio.EffectParamDef{Name: "cutoff", Min: 20, Max: 20000, Unit: "Hz"}, 2000, "Cutoff: 2.0 kHz"},
+		{audio.EffectParamDef{Name: "drive", Min: 1, Max: 20, Unit: ""}, 15.5, "Drive: 15.5"},
+		{audio.EffectParamDef{Name: "mix", Min: 0, Max: 1, Unit: ""}, 1, "Mix: 1.00"},
+		{audio.EffectParamDef{Name: "mix", Min: 0, Max: 1, Unit: ""}, 0.75, "Mix: 0.75"},
+		{audio.EffectParamDef{Name: "rate", Min: 0.1, Max: 10, Unit: "Hz"}, 5.5, "Rate: 5.5 Hz"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.expected, func(t *testing.T) {
-			got := fxParamLabel(tc.name, tc.val, tc.unit)
+			got := fxParamLabel(tc.def, tc.val)
 			if got != tc.expected {
-				t.Errorf("fxParamLabel(%q, %v, %q) = %q, want %q",
-					tc.name, tc.val, tc.unit, got, tc.expected)
+				t.Errorf("fxParamLabel(%+v, %v) = %q, want %q",
+					tc.def, tc.val, got, tc.expected)
 			}
 		})
 	}

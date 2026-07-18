@@ -140,6 +140,46 @@ func drawNodeBloom(dst *ebiten.Image, cx, cy, rPx int, nodeColor color.Color, in
 	}
 }
 
+// drawRectHoverGlow paints an own-color hover highlight that CONFORMS to the
+// component rect r for ANY aspect ratio — a tall thin line, a wide pill, or a
+// square. It assumes NO shape: every stroke derives from r itself, so the
+// highlight follows the component's real bounds instead of a centred blob (the
+// failure mode of drawNodeBloom on a non-square control). Composed of:
+//
+//   - a few concentric 1px outlines expanding outward from r with alpha falloff
+//     (an edge-hugging glow that traces r at every step),
+//   - a soft own-color fill over r's interior (covers the component body), and
+//   - a crisp own-color outline hugging r's edge.
+//
+// This is the shared hover-highlight primitive for every OWN-COLOR glow — grid
+// nodes, EQ band/HP/LP handles, sampler trim lines — so they all behave
+// identically for any shape. (drawNodeBloom is kept only for the tuned neon
+// FIRING bloom.) p (0..1) scales the whole effect.
+func drawRectHoverGlow(dst *ebiten.Image, r image.Rectangle, col color.Color, p float64) {
+	if dst == nil || col == nil || r.Empty() || p <= 0 {
+		return
+	}
+	if p > 1 {
+		p = 1
+	}
+	// Outward glow — concentric 1px outlines expanding from r, brightest at the
+	// edge and fading with distance. Each traces r's actual shape.
+	const spread = 4
+	for i := spread; i >= 1; i-- {
+		frac := float64(spread-i+1) / float64(spread+1) // nearer the edge → brighter
+		if a := scaleAlpha(AlphaStrong, p*frac); a > 0 {
+			drawRect(dst, r.Inset(-i), WithAlphaFromColor(col, a), false)
+		}
+	}
+	// Soft interior fill (covers the body) + crisp edge ring.
+	if a := scaleAlpha(90, p); a > 0 {
+		drawRect(dst, r, WithAlphaFromColor(col, a), true)
+	}
+	if a := scaleAlpha(235, p); a > 0 {
+		drawRect(dst, r, WithAlphaFromColor(col, a), false)
+	}
+}
+
 // scaleAlpha multiplies an alpha bucket value by t (0..1), clamped.
 func scaleAlpha(a uint8, t float64) uint8 {
 	if t <= 0 {
@@ -231,7 +271,7 @@ func (s ButtonStyle) Draw(dst *ebiten.Image, r image.Rectangle, pressed, hovered
 	}
 	renderLegacy(dst, r, s.Fill, s.Border,
 		InteractionDelta{FillDelta: 12, BorderDelta: 20}, // hover
-		InteractionDelta{},                                 // focus (unused by buttons)
+		InteractionDelta{}, // focus (unused by buttons)
 		ComponentState{Pressed: pressed, Hovered: hovered})
 }
 
@@ -314,8 +354,8 @@ func (s TextInputStyle) DrawAnimated(dst *ebiten.Image, r image.Rectangle, focus
 	inset := int(anim * float64(minDim) * 0.1)
 	animRect := image.Rect(r.Min.X+inset, r.Min.Y+inset, r.Max.X-inset, r.Max.Y-inset)
 	renderLegacy(dst, animRect, s.Fill, s.Border,
-		InteractionDelta{},                                 // hover (unused by inputs)
-		InteractionDelta{FillDelta: 30, BorderDelta: 80},   // focus
+		InteractionDelta{}, // hover (unused by inputs)
+		InteractionDelta{FillDelta: 30, BorderDelta: 80}, // focus
 		ComponentState{Focused: focused})
 }
 

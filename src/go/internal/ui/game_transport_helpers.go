@@ -54,7 +54,7 @@ func (g *Game) SetPausedForTest(v bool) { g.state.SetPausedForTest(v) }
 
 func (g *Game) SetAppliedBPMForTest(bpm int) { g.state.SetAppliedBPM(bpm) }
 
-func (g *Game) SetBeatBaseForTest(v float64) { g.state.SetBeatBase(v) }
+func (g *Game) SetBeatBaseForTest(v float64) { g.state.SetBeatBaseForTest(v) }
 
 func (g *Game) SetLastBeatForTest(v float64) { g.state.SetLastBeat(v) }
 
@@ -62,9 +62,9 @@ func (g *Game) SetLastDisplayBeatForTest(v float64) { g.state.SetLastDisplayBeat
 
 func (g *Game) SetPlayStartForTest(t time.Time) { g.state.SetPlayStart(t) }
 
-func (g *Game) SetAudioStartForTest(v float64) { g.state.SetAudioStart(v) }
+func (g *Game) SetAudioStartForTest(v float64) { g.state.SetAudioStartForTest(v) }
 
-func (g *Game) SetPausedBeatsForTest(v int) { g.state.SetPausedBeats(v) }
+func (g *Game) SetPausedBeatsForTest(v int) { g.state.SetPausedBeatsForTest(v) }
 
 func (g *Game) SetSeekFreezeFrames(v int) { g.state.SetSeekFreezeFrames(v) }
 

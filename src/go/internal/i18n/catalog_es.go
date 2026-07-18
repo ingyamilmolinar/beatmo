@@ -266,6 +266,7 @@ var es = map[Key]string{
 
 	KeyCapMove:         "Mover",
 	KeyCapMoveNode:     "Mover nodo",
+	KeyCapCopy:         "Copiar",
 	KeyCapConnect:      "Conectar",
 	KeyCapYourSound:    "Tu sonido",
 	KeyCapUpClose:      "De cerca",
@@ -283,6 +284,13 @@ var es = map[Key]string{
 	KeyCapStarts:       "empieza",
 	KeyCapFades:        "se apaga",
 	KeyCapBeforeAfter:  "antes / después",
+	KeyCapBreak:        "Romper",
+
+	KeyMenuNoMatches:       "Sin resultados",
+	KeyMenuNoMatchesHint:   "Prueba una búsqueda más corta",
+	KeyMenuNoFavorites:     "Aún no hay favoritos",
+	KeyMenuNoFavoritesHint: "Toca la estrella de un instrumento",
+	KeyFXEmptyHint:         "Aún no hay efectos — dale forma al sonido aquí abajo",
 
 	KeyMaster:          "Master",
 	KeyNoNotifications: "Aún no hay notificaciones",
@@ -348,6 +356,8 @@ var es = map[Key]string{
 	KeyActionChangeSubdivision: "cambiar subdivisión",
 	KeyActionAddNode:           "añadir nodo",
 	KeyActionDeleteNode:        "eliminar nodo",
+	KeyActionPasteNode:         "pegar nodo",
+	KeyActionReplaceNode:       "reemplazar nodo",
 	KeyActionMoveNode:          "mover nodo",
 	KeyActionChangeNodeType:    "cambiar tipo de nodo",
 	KeyActionEditNode:          "editar nodo",
@@ -534,4 +544,12 @@ var es = map[Key]string{
 	KeyGroupParamVolume:   "Volumen",
 	KeyGroupParamDuration: "Duración",
 	KeyGroupAddTo:         "Añadir al grupo",
+	KeyGroupCreateNew:     "Crear grupo nuevo",
+	KeyGroupRemoveFrom:    "Quitar del grupo",
+	KeyBannerPasting:      "Pegando nodo — toca para colocar",
+	KeyBannerMoving:       "Moviendo nodo (%d,%d) — toca un punto en una arista",
+	KeyBannerConnectFrom:  "Conectar desde (%d,%d) — toca un nodo de destino",
+	KeyBannerEscHint:      " (Esc para cancelar)",
+
+	KeyBreakCircuitTitle: "¿Romper el circuito?",
 }

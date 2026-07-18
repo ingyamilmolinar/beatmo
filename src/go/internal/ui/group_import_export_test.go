@@ -98,11 +98,134 @@ func TestLegacyFileWithoutGroupsImportsClean(t *testing.T) {
 	}
 }
 
+// TestEnabledFlagRoundTripsExportImport is task-enabled-status brief test C5
+// (part 1): an ENABLED group with configured rules survives export ->
+// Import byte-faithfully, and a DISABLED group with configured rules ALSO
+// round-trips as disabled (the flag is explicit in every export this build
+// writes — see exportGroup's doc comment — so it is never confused with the
+// legacy "rules present -> assume enabled" backward-compat default).
+func TestEnabledFlagRoundTripsExportImport(t *testing.T) {
+	g, aID, bID := buildGroupLoopCircuit(t)
+	gidOn, _ := g.graph.CreateGroup("on", []model.NodeID{aID, bID})
+	if err := g.graph.SetGroupRules(gidOn, []model.GroupRule{
+		{Param: model.GroupParamPitch, Delta: 2, EveryN: 4},
+	}); err != nil {
+		t.Fatalf("SetGroupRules(on): %v", err)
+	}
+	if err := g.graph.SetGroupRulesEnabled(gidOn, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled(on): %v", err)
+	}
+
+	c := g.tryAddNode(0, 5, model.NodeTypeRegular)
+	gidOff, _ := g.graph.CreateGroup("off", []model.NodeID{c.ID})
+	if err := g.graph.SetGroupRules(gidOff, []model.GroupRule{
+		{Param: model.GroupParamVolume, Delta: -0.1, EveryN: 2},
+	}); err != nil {
+		t.Fatalf("SetGroupRules(off): %v", err)
+	}
+	// gidOff deliberately left Disabled (the model default) — pins that a
+	// disabled group with configured rules is NOT silently flipped to
+	// enabled by the round trip.
+
+	data, err := g.drum.exportBytes()
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	g2 := New(testLogger)
+	t.Cleanup(g2.CloseForTest)
+	g2.Layout(800, 600)
+	if err := g2.Import(data); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	groups := g2.graph.AllGroups()
+	if len(groups) != 2 {
+		t.Fatalf("want 2 imported groups, got %d: %+v", len(groups), groups)
+	}
+	var on, off model.NodeGroup
+	for _, grp := range groups {
+		switch grp.Name {
+		case "on":
+			on = grp
+		case "off":
+			off = grp
+		}
+	}
+	if !on.RulesEnabled {
+		t.Fatalf("enabled group must import as RulesEnabled=true, got %+v", on)
+	}
+	if off.RulesEnabled {
+		t.Fatalf("disabled group with configured rules must import as RulesEnabled=false, got %+v", off)
+	}
+
+	data2, err := g2.drum.exportBytes()
+	if err != nil {
+		t.Fatalf("re-Export: %v", err)
+	}
+	if string(data) != string(data2) {
+		t.Fatalf("export -> Import -> export is not byte-faithful:\nfirst:  %s\nsecond: %s", data, data2)
+	}
+}
+
+// TestLegacyGroupWithRulesImportsEnabled is task-enabled-status brief test C5
+// (part 2, backward compat): a legacy file with rules but NO rules_enabled
+// key at all must import as RulesEnabled=true — such a file's rules were
+// active by their mere existence under the pre-Part-C design, so importing
+// it must keep behaving exactly as it did before this task.
+func TestLegacyGroupWithRulesImportsEnabled(t *testing.T) {
+	g, aID, bID := buildGroupLoopCircuit(t)
+	gid, _ := g.graph.CreateGroup("legacy", []model.NodeID{aID, bID})
+	if err := g.graph.SetGroupRules(gid, []model.GroupRule{
+		{Param: model.GroupParamPitch, Delta: 3, EveryN: 1},
+	}); err != nil {
+		t.Fatalf("SetGroupRules: %v", err)
+	}
+	data, err := g.drum.exportBytes()
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	groupsAny, ok := doc["groups"].([]any)
+	if !ok || len(groupsAny) != 1 {
+		t.Fatalf("setup: want 1 group in doc, got %+v", doc["groups"])
+	}
+	groupObj, ok := groupsAny[0].(map[string]any)
+	if !ok {
+		t.Fatalf("setup: group entry not an object: %+v", groupsAny[0])
+	}
+	delete(groupObj, "rules_enabled") // simulate a pre-Part-C file
+	if _, present := groupObj["rules"]; !present {
+		t.Fatalf("setup: legacy doc must still carry rules: %+v", groupObj)
+	}
+	legacy, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal legacy doc: %v", err)
+	}
+
+	g2 := New(testLogger)
+	t.Cleanup(g2.CloseForTest)
+	g2.Layout(800, 600)
+	if err := g2.Import(legacy); err != nil {
+		t.Fatalf("Import legacy: %v", err)
+	}
+	groups := g2.graph.AllGroups()
+	if len(groups) != 1 {
+		t.Fatalf("want 1 imported group, got %d: %+v", len(groups), groups)
+	}
+	if !groups[0].RulesEnabled {
+		t.Fatalf("legacy file with rules but no rules_enabled key must import as RulesEnabled=true, got %+v", groups[0])
+	}
+}
+
 // TestImportCancelsActiveMarquee is the final-review follow-up: Import must
 // cancel a stranded marquee drag (mirroring dismissLongPressPopup /
-// cancelConnectMode / cancelMoveMode / groupMenu.Close(), all of which
-// already clear transient gesture state before an import mutates the graph
-// out from under it).
+// g.modes.Cancel / groupMenu.Close(), all of which already clear transient
+// gesture state before an import mutates the graph out from under it).
 func TestImportCancelsActiveMarquee(t *testing.T) {
 	g, _, _ := buildGroupLoopCircuit(t)
 	data, _ := g.drum.exportBytes()

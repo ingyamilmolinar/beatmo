@@ -28,6 +28,20 @@ type Registry struct {
 // would exceed the registry's total worker budget.
 var ErrBudgetExhausted = errors.New("async: registry budget exhausted")
 
+// minDefaultBudget is the floor for the default budget (see NewRegistry).
+// It MUST cover the whole standing-pool footprint documented in CLAUDE.md:
+//
+//	hooks.fanout 2 + eventlogger.format 1 + eventstream.persist 1 +
+//	audio.timers 1 + audio.prewarm 2 + synth.preview 1 +
+//	recording.lifecycle 1 + ui.dialog 1 + userprefs.persist 1 = 11
+//
+// A floor below that saves nothing — every caller with a private-pool
+// fallback allocates the same workers anyway, just outside the budget —
+// while breaking the two callers that have no fallback: ui.dialog (WAV
+// upload silently fails) and recording.lifecycle (MustGet panics the app).
+// registry_footprint_test.go pins this constant to that table.
+const minDefaultBudget = 11
+
 // NewRegistry creates a registry with an explicit budget. parent is the
 // root context inherited by every pool created here.
 func NewRegistry(parent context.Context, budget int) *Registry {
@@ -37,11 +51,10 @@ func NewRegistry(parent context.Context, budget int) *Registry {
 	if budget <= 0 {
 		// Default leaves headroom for Ebitengine's 3 locked OS threads
 		// (main/GLFW, render, game-thread) and oto's audio thread, but
-		// also enforces a floor of 6 so the standard subsystem footprint
-		// (recording.lifecycle, eventstream.persist, hooks.fanout=2,
-		// audio.timers, ui.dialog) fits on small/test machines without
-		// every caller having to fall back to private pools.
-		budget = max(6, runtime.NumCPU()-4)
+		// also enforces a floor so the standard subsystem footprint fits
+		// on small/test machines without every caller having to fall back
+		// to private pools.
+		budget = max(minDefaultBudget, runtime.NumCPU()-4)
 	}
 	return &Registry{
 		pools:  make(map[string]*Pool),

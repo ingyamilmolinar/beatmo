@@ -91,6 +91,18 @@ var formatters = map[hooks.Kind]formatter{
 		t, _ := p.(hooks.NodeTypePayload)
 		return fmt.Sprintf("node id=%d type %s → %s", t.ID, t.OldType, t.NewType)
 	},
+	hooks.EventNodeCopied: func(p any) string {
+		n, _ := p.(hooks.NodeEdit)
+		return fmt.Sprintf("node copied id=%d at (%d,%d)", n.ID, n.I, n.J)
+	},
+	hooks.EventNodeCut: func(p any) string {
+		n, _ := p.(hooks.NodeEdit)
+		return fmt.Sprintf("node cut id=%d at (%d,%d)", n.ID, n.I, n.J)
+	},
+	hooks.EventNodePasted: func(p any) string {
+		n, _ := p.(hooks.NodeEdit)
+		return fmt.Sprintf("node pasted id=%d at (%d,%d)", n.ID, n.I, n.J)
+	},
 	hooks.EventNodeParamsChanged: func(p any) string {
 		t, _ := p.(hooks.NodeParamsPayload)
 		return fmt.Sprintf("node id=%d params updated", t.ID)
@@ -106,6 +118,18 @@ var formatters = map[hooks.Kind]formatter{
 	hooks.EventEdgeDeleted: func(p any) string {
 		e, _ := p.(hooks.EdgeEdit)
 		return fmt.Sprintf("edge deleted (%d,%d) → (%d,%d)", e.FromI, e.FromJ, e.ToI, e.ToJ)
+	},
+
+	hooks.EventGridModeArmed: func(p any) string {
+		m, _ := p.(hooks.GridModePayload)
+		return fmt.Sprintf("%s mode armed on node id=%d at (%d,%d)", m.Mode, m.ID, m.I, m.J)
+	},
+	hooks.EventGridModeCanceled: func(p any) string {
+		m, _ := p.(hooks.GridModePayload)
+		if m.Reason != "" {
+			return fmt.Sprintf("%s mode canceled (%s)", m.Mode, m.Reason)
+		}
+		return fmt.Sprintf("%s mode canceled", m.Mode)
 	},
 
 	// ── Node groups ─────────────────────────────────────────────────────

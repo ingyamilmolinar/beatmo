@@ -13,22 +13,6 @@ func newDiscreteKnob(enum []string) *Knob {
 	return k
 }
 
-func TestDiscreteKnobSnapsToDetents(t *testing.T) {
-	enum := []string{"Sine", "Saw", "Square", "Triangle"} // 4 detents
-	k := newDiscreteKnob(enum)
-	k.HandleInputResult(2, 50, true) // press
-	for x := 2; x <= 98; x += 3 {
-		k.HandleInputResult(x, 50, true)
-		if !nearAnyDetent(k.Value, 4) {
-			t.Fatalf("x=%d value=%v not on a detent", x, k.Value)
-		}
-	}
-	k.HandleInputResult(98, 50, false) // release
-	if !nearAnyDetent(k.Value, 4) {
-		t.Fatalf("final value=%v not on a detent", k.Value)
-	}
-}
-
 func TestDiscreteKnobDetentCount(t *testing.T) {
 	k := NewKnob(0)
 	k.Scale = KnobScale{Min: -2, Max: 2, Step: 1} // 5 detents

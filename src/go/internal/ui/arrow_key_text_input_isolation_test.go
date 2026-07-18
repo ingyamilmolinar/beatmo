@@ -119,3 +119,74 @@ func TestArrowKeysYieldToNamingBox(t *testing.T) {
 		t.Fatalf("ArrowRight must NOT pan the grid while the WAV-naming box is focused (OffsetX=%v)", g.cam.OffsetX)
 	}
 }
+
+// openTemplateMenuSearchFocused opens the overflow menu on the template page
+// (page 1), lays it out so the pinned search box is created, and focuses it.
+func openTemplateMenuSearchFocused(t *testing.T, g *Game) {
+	t.Helper()
+	dv := g.drum
+	dv.overflowPage = 1
+	dv.OpenOverflowMenu()
+	dv.overflowPopupBtns(dv.overflowPopupRect()) // creates templateSearchBox + rect
+	if dv.templateSearchBox == nil {
+		t.Fatal("setup: template search box not created on overflow page 1")
+	}
+	dv.templateSearchBox.SetText("bach")
+	dv.templateSearchBox.SetFocus(true)
+}
+
+// Arrows must not pan the grid while the template-menu search box (overflow
+// page 1) is open + focused — the caret must move, the camera must not.
+// Regression: the overflow menu overlay (dvOverlayPortal) did not implement
+// KeyboardClaimant, so the grid keyboard gate never yielded to it and Left/Right
+// panned the grid under the open menu (a sibling-tree menu leaking into the grid).
+func TestArrowKeysYieldToTemplateMenuSearch(t *testing.T) {
+	g := newTestGameForUndo(t)
+	openTemplateMenuSearchFocused(t, g)
+	g.cam.OffsetX = 0
+
+	restore := stubKeys(map[ebiten.Key]bool{ebiten.KeyArrowLeft: true}, nil)
+	defer restore()
+	g.handleGlobalShortcuts()
+
+	if g.cam.OffsetX != 0 {
+		t.Fatalf("ArrowLeft must NOT pan the grid while the template-menu search box is open (OffsetX=%v); keys must reach the search caret", g.cam.OffsetX)
+	}
+}
+
+// TestArrowKeysYieldToTemplateMenuSearchRight is the Right-arrow mirror.
+func TestArrowKeysYieldToTemplateMenuSearchRight(t *testing.T) {
+	g := newTestGameForUndo(t)
+	openTemplateMenuSearchFocused(t, g)
+	g.cam.OffsetX = 0
+
+	restore := stubKeys(map[ebiten.Key]bool{ebiten.KeyArrowRight: true}, nil)
+	defer restore()
+	g.handleGlobalShortcuts()
+
+	if g.cam.OffsetX != 0 {
+		t.Fatalf("ArrowRight must NOT pan the grid while the template-menu search box is open (OffsetX=%v)", g.cam.OffsetX)
+	}
+}
+
+// TestOverflowMenuClaimsKeyboardWhileOpen pins the per-tree isolation invariant
+// at the contract level: while the overflow (template) menu is open, its subtree
+// (overlayTree) owns the keyboard so DrumView.KeyboardClaimed() is true and the
+// sibling GridTree's keyboard shortcuts yield entirely. Mirrors the instrument
+// menu's claim-while-open semantics (InstrumentMenuComponent.ClaimsKeyboard).
+func TestOverflowMenuClaimsKeyboardWhileOpen(t *testing.T) {
+	g := newTestGameForUndo(t)
+	dv := g.drum
+	if dv.KeyboardClaimed() {
+		t.Fatal("precondition: keyboard must be unclaimed with no popup open")
+	}
+	dv.overflowPage = 1
+	dv.OpenOverflowMenu()
+	if !dv.KeyboardClaimed() {
+		t.Fatal("overflow menu open: KeyboardClaimed() must be true so the grid keyboard shortcuts yield to the menu")
+	}
+	dv.closeOverflowMenu()
+	if dv.KeyboardClaimed() {
+		t.Fatal("overflow menu closed: keyboard ownership must be released back to the grid")
+	}
+}

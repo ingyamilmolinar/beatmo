@@ -200,9 +200,11 @@ func TestSidebarViewportClipping(t *testing.T) {
 	}
 
 	// Find the last section that exists and verify it IS in viewport.
-	// On desktop, "sec-move" is last; on mobile, "sec-aud" is last.
+	// "sec-grp" (task-sidebar-create: always laid out, last in layout()) is
+	// now the true bottom section on every platform; "sec-move"/"sec-aud"/
+	// "sec-groove" are the prior (still-correct) desktop/mobile fallbacks.
 	lastSection := ""
-	for _, sec := range []string{"sec-move", "sec-aud", "sec-groove"} {
+	for _, sec := range []string{"sec-grp", "sec-move", "sec-aud", "sec-groove"} {
 		if r, ok := g.sidebar.rects[sec]; ok && !r.Empty() {
 			lastSection = sec
 			break

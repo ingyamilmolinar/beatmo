@@ -12,8 +12,11 @@ import (
 // handler that invoked the helper.
 //
 // If a helper is itself wrapped by another helper, the outer helper must
-// either inline the captureSource(1) call OR bump skip explicitly. Today
-// no helper wraps another, so skip=1 is universally correct.
+// either inline the captureSource(1) call OR bump skip explicitly. Every
+// helper here is called directly from the user-action site (skip=1) EXCEPT
+// emitGridModeArmed/emitGridModeCanceled, which are called from
+// gridModeManager.Enter/Cancel and therefore use skip=2 to attribute the
+// event to the manager's caller.
 
 // emitNodeAdded publishes EventNodeAdded with the node's grid coordinates
 // and type. Called from tryAddNode after the graph mutation succeeds.
@@ -57,6 +60,32 @@ func emitNodeTypeChanged(id model.NodeID, oldT, newT model.NodeType) {
 		NewType: nodeTypeName(newT),
 	}, hooks.CaptureSource(1))
 	recordUndo(hooks.EventNodeTypeChanged)
+}
+
+// emitNodeCopied publishes EventNodeCopied. Interaction-scoped (not undoable):
+// copy does not mutate the document, so it records no undo step.
+func emitNodeCopied(id model.NodeID, i, j int, t model.NodeType) {
+	hooks.PublishWithSource(hooks.EventNodeCopied, hooks.NodeEdit{
+		ID: int(id), I: i, J: j, Type: nodeTypeName(t),
+	}, hooks.CaptureSource(1))
+}
+
+// emitNodeCut publishes EventNodeCut (narrative only). The undoable mutation is
+// the subsequent node delete, which records its own undo step, so cut records
+// none here.
+func emitNodeCut(id model.NodeID, i, j int, t model.NodeType) {
+	hooks.PublishWithSource(hooks.EventNodeCut, hooks.NodeEdit{
+		ID: int(id), I: i, J: j, Type: nodeTypeName(t),
+	}, hooks.CaptureSource(1))
+}
+
+// emitNodePasted publishes EventNodePasted and records an undo step (paste is a
+// document mutation).
+func emitNodePasted(id model.NodeID, i, j int, t model.NodeType) {
+	hooks.PublishWithSource(hooks.EventNodePasted, hooks.NodeEdit{
+		ID: int(id), I: i, J: j, Type: nodeTypeName(t),
+	}, hooks.CaptureSource(1))
+	recordUndo(hooks.EventNodePasted)
 }
 
 // emitNodeParamsChanged publishes EventNodeParamsChanged with the full
@@ -128,9 +157,9 @@ func emitEdgeDeleted(fromID, toID model.NodeID, fromI, fromJ, toI, toJ int) {
 	recordUndo(hooks.EventEdgeDeleted)
 }
 
-// emitSeek publishes EventSeek with the destination beat index.
-func emitSeek(beats int) {
-	hooks.PublishWithSource(hooks.EventSeek, hooks.SeekPayload{Beats: beats}, hooks.CaptureSource(1))
+// emitSeek publishes EventSeek with the destination position and its origin.
+func emitSeek(beats, steps int, origin string) {
+	hooks.PublishWithSource(hooks.EventSeek, hooks.SeekPayload{Beats: beats, Steps: steps, Origin: origin}, hooks.CaptureSource(1))
 }
 
 // emitSubdivChange publishes EventSubdivChange.
@@ -368,6 +397,22 @@ func emitUndo(label string) {
 }
 func emitRedo(label string) {
 	hooks.PublishWithSource(hooks.EventRedo, hooks.UndoPayload{Label: label}, hooks.CaptureSource(1))
+}
+
+// emitGridModeArmed / emitGridModeCanceled publish the armed grid-mode
+// lifecycle. Called ONLY from gridModeManager.Enter/Cancel — skip=2 attributes
+// the event to the manager's caller (the user-action site: popup activation,
+// sidebar button, tap handler).
+func emitGridModeArmed(mode string, id model.NodeID, i, j int) {
+	hooks.PublishWithSource(hooks.EventGridModeArmed, hooks.GridModePayload{
+		Mode: mode, ID: int(id), I: i, J: j,
+	}, hooks.CaptureSource(2))
+}
+
+func emitGridModeCanceled(mode string, id model.NodeID, i, j int, reason string) {
+	hooks.PublishWithSource(hooks.EventGridModeCanceled, hooks.GridModePayload{
+		Mode: mode, ID: int(id), I: i, J: j, Reason: reason,
+	}, hooks.CaptureSource(2))
 }
 
 // nodeTypeName converts a model.NodeType to its lowercase string label

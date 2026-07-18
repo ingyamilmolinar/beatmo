@@ -65,14 +65,15 @@ func TestSamplerKnobSizeLanguageInvariantMobile(t *testing.T) {
 	}
 }
 
-// Knobs must stay usable (>= the density's minimum dial) in every language on
-// every screen — never the tiny fallback the old caption-driven layout produced.
+// Cards must stay usable (>= half a ParamCardW wide) in every language on every
+// screen — never the tiny fallback the old caption-driven layout produced. The
+// card contract replaces the old dial-diameter floor (SynthKnobMin).
 func TestSamplerKnobUsableSizeAllLanguages(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
-	min := Profile().DensityValues().SynthKnobMin
+	min := Profile().DensityValues().ParamCardW / 2
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {
 		if d := samplerGainDiaDesktop(t, loc); d < min {
-			t.Errorf("desktop %s Gain dial %d < usable min %d", loc, d, min)
+			t.Errorf("desktop %s Gain card width %d < usable min %d (ParamCardW/2)", loc, d, min)
 		}
 	}
 }
@@ -85,11 +86,12 @@ func TestSamplerKnobUsableSizeMobileAllLanguages(t *testing.T) {
 		if !g.drum.sampler.hasBuffer() {
 			t.Skip("no sampler buffer captured")
 		}
-		min := Profile().DensityValues().SynthKnobMin
+		min := Profile().DensityValues().ParamCardW / 2
+		wantH := Profile().DensityValues().ParamCardH
 		// On mobile the knobs scroll, so only some are laid out — but EVERY
-		// VISIBLE dial must be usable (>= min), never the tiny caption-driven
-		// fallback the old layout produced. Off-window knobs (empty rect) are
-		// reachable by scrolling and intentionally not laid out.
+		// VISIBLE card must be usable: at least half a ParamCardW wide and exactly
+		// ParamCardH tall. Off-window knobs (empty rect) are reachable by scrolling
+		// and intentionally not laid out.
 		visible := 0
 		for i, k := range g.drum.sampler.knobs {
 			if k == nil || k.Rect().Empty() {
@@ -97,7 +99,10 @@ func TestSamplerKnobUsableSizeMobileAllLanguages(t *testing.T) {
 			}
 			visible++
 			if d := k.Rect().Dx(); d < min {
-				t.Errorf("mobile %s knob[%d] dial %d < usable min %d", loc, i, d, min)
+				t.Errorf("mobile %s knob[%d] card width %d < usable min %d", loc, i, d, min)
+			}
+			if h := k.Rect().Dy(); h != wantH {
+				t.Errorf("mobile %s knob[%d] card height %d != ParamCardH %d", loc, i, h, wantH)
 			}
 		}
 		if visible == 0 {

@@ -308,6 +308,12 @@ type DrumView struct {
 	renameComp     *RenameComponent
 	colorWheelComp *ColorWheelComponent
 	instMenuComp   *InstrumentMenuComponent
+	// jumpMenuComp is a second SubdivMenuComponent instance (generic
+	// int-options dropdown) reused for the FF/RW jump-size ("×N") picker.
+	jumpMenuComp *SubdivMenuComponent
+	// jumpBeats is the current FF/RW jump size in whole beats. Configurable
+	// via the ×N pill's dropdown ({1,2,4,8,16}); default 4.
+	jumpBeats int
 
 	// widget layout (bottom pane is divided into movable widgets)
 	widgets         *WidgetBoard
@@ -407,7 +413,9 @@ type DrumView struct {
 	instEditorStepBadges []*KnobStepBadge   // index-aligned with instEditorKnobs; nil for discrete params
 	instEditorBindings   []instParamBinding // maps widget index → ParamDef
 	synthWheelPopup      *MobileWheelPopup  // mobile vertical scroll-wheel for synth knobs
+	synthWheelNudge      wheelNudger        // desktop scroll-wheel value nudge -> debounced single-undo commit
 	samplerWheelPopup    *MobileWheelPopup  // mobile vertical scroll-wheel for sampler knobs
+	samplerWheelNudge    wheelNudger        // desktop scroll-wheel value nudge -> debounced single-undo commit
 	eqWheelPopup         *MobileWheelPopup  // desktop+mobile precision wheel for EQ band dB
 	eqWheelStepBadge     *KnobStepBadge     // shared step-resolution ladder for all EQ dB bands
 	eqWheelStepRestored  bool               // true once eqWheelStepBadge's persisted rung has been restored (lazy, on first popup open)
@@ -438,8 +446,6 @@ type DrumView struct {
 	instEditorHeader      synthHeaderLayout  // header strip rects
 	instEditorHeaderBtns  []*Button          // header retrigger + vol buttons (shared *Button chrome)
 	saveAsDialog          *synthSaveAsDialog // active Save-As name dialog (nil = closed)
-	instEditorDragging    bool
-	instEditorDragIdx     int
 	instEditorScrollPx    int
 	instEditorScrollMax   int
 	instEditorScrollTS    TouchScroller
@@ -464,18 +470,16 @@ type DrumView struct {
 	instEditorDetailR       image.Rectangle   // detail pane rect (selected stage's knobs)
 	instEditorDetailHeaderH int               // effective detail header height (token, shrunk on short panels)
 	instEditorReadoutRects  []image.Rectangle // index-aligned with instEditorKnobs; readout tap hit rects
-	// P4 tiering: per-stage Advanced-expander state. A stage shows its Essential
-	// (character) knobs always; its Advanced (fine-tuning) knobs stay collapsed
-	// until the user opens the expander. synthAdvExpanderRect is the bar for the
-	// currently-open stage (draw + hit-test); rebuilt each Layout.
-	synthAdvExpanded     map[synthSectionID]bool
-	synthAdvExpanderRect image.Rectangle
-	// synthAdvScrollPending: set when the user OPENS an Advanced expander so the
-	// next layout auto-scrolls to the first revealed knob (the synth pane is
-	// short, so otherwise the newly-shown knobs sit below the fold and the reveal
-	// looks like nothing happened).
-	synthAdvScrollPending bool
-	paramEditor           *ParamValueEditor // shared numeric entry box for synth knob readout taps
+	// P4 tiering: a stage's Essential (character) knobs always come first; its
+	// Advanced (fine-tuning) knobs are laid out below an always-visible in-grid
+	// divider row (phantom cells). synthAdvDividerRect is the band spanned by the
+	// phantom divider row for the currently-selected stage (empty when the stage
+	// has no advanced knobs); synthAdvDividerCount is that stage's advanced-knob
+	// count. Both are rebuilt each Layout. Advanced knobs are never structurally
+	// hidden — they may only scroll out of the window like any other cell.
+	synthAdvDividerRect  image.Rectangle
+	synthAdvDividerCount int
+	paramEditor          *ParamValueEditor // shared numeric entry box for synth knob readout taps
 
 	// synthMirror caches the live final-output re-render for the Synth tab's
 	// right-pane mirror (Stage 4). Lazily created on first requestSynthMirror.
@@ -493,7 +497,10 @@ type DrumView struct {
 	// sampler holds the Sampler tab's working buffer + edit params + widgets.
 	// The sampler methods live on samplerPanel (see sampler_panel.go); these
 	// fields stay here (accessed via the panel's dv back-ref) in Rung A.
-	samplerPanel   *samplerPanel
+	samplerPanel *samplerPanel
+	// The synth methods live on synthPanel (see synth_panel.go); synth state
+	// fields stay here, accessed via the panel's dv back-ref.
+	synthPanel     *synthPanel
 	sampler        samplerState
 	samplerButtons []samplerButton // header + control-row buttons, rebuilt each Layout
 
@@ -633,6 +640,19 @@ type DrumView struct {
 	// chosen so reopening always starts at the File page.
 	overflowPage int
 
+	// Template-menu (overflow page 1) fuzzy search. Mirrors the instrument
+	// menu's search field; templateSearchCache memoizes MenuSearcher output so
+	// overflowItems (called several times per frame) never re-fuzzes per frame.
+	templateSearchBox        *TextInput
+	templateSearchRect       image.Rectangle
+	templateSearchQuery      string
+	templateSearchCache      []MenuSearchResult
+	templateSearchCacheQuery string
+	templateSearchCacheValid bool
+	// templateLoadedStem remembers the last template loaded this session (by
+	// file stem) so the menu can mark it menuItemActive on reopen.
+	templateLoadedStem string
+
 	// Mobile beat counter rect (inside transport row, 7th column on mobile)
 	beatCounterRect image.Rectangle
 
@@ -716,6 +736,10 @@ type DrumView struct {
 	secPerBeat    float64
 	playPressed   bool
 	stopPressed   bool
+	// pendingSeek is a one-shot navigation intent queued by any UI entry
+	// point (ribbon, FF/RW, counter, keyboard) and drained once per frame by
+	// Game.Update's drainSeekRequest (game_seek.go), under seqMu.
+	pendingSeek *seekRequest
 	Length        int  // Length of the drum view, independent of graph
 	lenIncPressed bool // State for length increase button
 	lenDecPressed bool // State for length decrease button

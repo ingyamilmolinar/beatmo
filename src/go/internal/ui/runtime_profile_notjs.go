@@ -5,6 +5,7 @@ package ui
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 // newRuntimeProfile returns the desktop profile, with optional environment
@@ -52,6 +53,12 @@ func applyEnvProfileOverride(p *RuntimeProfile) {
 	}
 	if v, ok := envBool("BEATMO_PREDICTOR_BACKOFF"); ok {
 		p.PredictorBackoffOnSlowDraw = v
+	}
+	// BEATMO_FORCE_GC_INTERVAL_MS in milliseconds; 0 disables the cooperative
+	// forced GC. Desktop default is 0 (off); the GC-tuning sweep uses this to
+	// probe whether forced GC helps desktop too.
+	if v, ok := envInt("BEATMO_FORCE_GC_INTERVAL_MS"); ok {
+		p.ForceGCInterval = time.Duration(v) * time.Millisecond
 	}
 }
 

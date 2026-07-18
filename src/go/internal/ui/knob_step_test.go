@@ -149,22 +149,21 @@ func TestTrimFloat(t *testing.T) {
 	}
 }
 
-func TestKnobStepBadgeCyclesAndReports(t *testing.T) {
+func TestKnobStepBadgeReportsStepAndLabel(t *testing.T) {
 	def := audio.ParamDef{Name: "filter_cutoff", Min: 20, Max: 20000, Unit: "Hz"}
 	b := NewKnobStepBadge(def)
-	first := b.Step()
-	if first <= 0 {
+	if first := b.Step(); first <= 0 {
 		t.Fatalf("step not positive: %v", first)
-	}
-	n := b.LadderLen()
-	for i := 0; i < n; i++ {
-		b.Cycle()
-	}
-	if b.Step() != first {
-		t.Fatalf("cycling %d times must return to start; got %v want %v", n, b.Step(), first)
 	}
 	if b.Label() == "" {
 		t.Fatalf("label empty")
+	}
+	// SetIndex jumps to any rung and Step() reports it.
+	if b.LadderLen() >= 2 {
+		b.SetIndex(b.LadderLen() - 1)
+		if b.Index() != b.LadderLen()-1 {
+			t.Fatalf("SetIndex did not move to last rung: idx=%d", b.Index())
+		}
 	}
 }
 
@@ -196,46 +195,15 @@ func TestKnobStepBadgeAdjustResolution(t *testing.T) {
 	}
 }
 
-func TestKnobStepBadgeWheelResolutionIsClicky(t *testing.T) {
-	def := audio.ParamDef{Name: "filter_cutoff", Min: 20, Max: 20000, Unit: "Hz"}
-	b := NewKnobStepBadge(def)
-	start := b.Step()
-	// Fewer than the per-rung threshold of notches: no rung change yet.
-	for i := 0; i < knobBadgeWheelNotchesPerRung-1; i++ {
-		if b.WheelResolution(-1) {
-			t.Fatalf("rung moved before notch threshold (notch %d)", i+1)
-		}
-	}
-	if b.Step() != start {
-		t.Fatalf("step changed before threshold: %v -> %v", start, b.Step())
-	}
-	// Crossing the threshold advances exactly one rung (coarser).
-	if !b.WheelResolution(-1) {
-		t.Fatalf("rung should move once the notch threshold is crossed")
-	}
-	if b.Step() <= start {
-		t.Fatalf("expected one coarser rung: %v -> %v", start, b.Step())
-	}
-	// A single large-magnitude event counts as ONE notch, never a multi-rung jump.
-	b2 := NewKnobStepBadge(def)
-	s2 := b2.Step()
-	if b2.WheelResolution(-50) {
-		t.Fatalf("a single high-magnitude wheel event must not jump a rung")
-	}
-	if b2.Step() != s2 {
-		t.Fatalf("single big event changed the step: %v -> %v", s2, b2.Step())
-	}
-}
-
 func TestKnobStepBadgeSetStepSnapsToNearestRung(t *testing.T) {
 	def := audio.ParamDef{Name: "x", Min: 0, Max: 1000, Unit: ""}
 	b := NewKnobStepBadge(def)
 	coarsest := b.Step()
-	for i := 0; i < b.LadderLen(); i++ { // advance to the coarsest rung to capture it
+	for i := 0; i < b.LadderLen(); i++ { // walk every rung to capture the coarsest
+		b.SetIndex(i)
 		if b.Step() > coarsest {
 			coarsest = b.Step()
 		}
-		b.Cycle()
 	}
 	b.SetStep(coarsest * 1.01) // slightly above coarsest must snap to coarsest
 	if b.Step() != coarsest {

@@ -85,14 +85,14 @@ func chainAxisLabels(windowMs float64, numLabels int) []WaveAxisLabel {
 //     poking left of the border.
 //   - (4d) a tick is skipped when the previously-kept label's right edge + a
 //     small gap would overlap this label's left edge (narrow/mobile widths).
-func chainPlaceAxisLabels(labels []WaveAxisLabel, waveRect image.Rectangle, w int, labelScale float64) []int {
+func chainPlaceAxisLabels(labels []WaveAxisLabel, waveRect image.Rectangle, w int) []int {
 	const gap = 4
 	xs := make([]int, len(labels))
 	last := len(labels) - 1
 	prevRight := waveRect.Min.X - gap - 1 // allow the first label flush-left
 	lastKept := -1                        // index of the most recently placed label
 	for i, lbl := range labels {
-		tw := int(float64(TextWidth(lbl.Text)) * labelScale)
+		tw := StyledTextWidth(lbl.Text, RoleMicro)
 		center := waveRect.Min.X + int(lbl.Frac*float64(w))
 		x := center - tw/2
 		switch i {
@@ -171,25 +171,21 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 		return
 	}
 
-	// Density-aware text scales replace the old hardcoded
-	// FontSizeCaption/FontSizeBody (~0.71) so Chain text grows on mobile
-	// (Spacious). labelScale = axis/amplitude/FROZEN; readoutScale = the
-	// Pk/RMS legend (slightly smaller so the denser readout still fits).
-	labelScale := chainLabelScale()
-	readoutScale := chainReadoutScale()
-	lh := int(float64(TextHeight()) * labelScale)
-	readoutLh := int(float64(TextHeight()) * readoutScale)
+	// All Chain text renders through the styled text-role API (smooth
+	// embedded Inter at its true pixel size): micro for the dense
+	// axis/amplitude/legend labels, caption for the FROZEN status.
+	lh := StyledTextHeight(RoleMicro)
 	w := waveRect.Dx()
 
 	// --- Time axis labels (bottom margin) ---
 	ly := legendStrip.Max.Y + 2 // below the legend strip, in the bottom margin
 	labels := chainAxisLabels(windowMs, 6)
-	xs := chainPlaceAxisLabels(labels, waveRect, w, labelScale)
+	xs := chainPlaceAxisLabels(labels, waveRect, w)
 	for i, lbl := range labels {
 		if xs[i] < 0 {
 			continue // decimated to avoid overprinting the previous label
 		}
-		DrawTextColorAtScale(dst, lbl.Text, xs[i], ly, colTextSecondary, labelScale)
+		DrawTextStyled(dst, lbl.Text, xs[i], ly, RoleMicro, colTextSecondary)
 	}
 
 	switch {
@@ -200,10 +196,10 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 		botRect := image.Rect(waveRect.Min.X, sepY+1, waveRect.Max.X, waveRect.Max.Y)
 
 		if showA {
-			drawScopeHalf(dst, rect, topRect, &state.TapA, colScopeA, windowMs, labelScale, lh, yGain)
+			drawScopeHalf(dst, rect, topRect, &state.TapA, colScopeA, windowMs, yGain)
 		}
 		if showB {
-			drawScopeHalf(dst, rect, botRect, &state.TapB, colScopeB, windowMs, labelScale, lh, yGain)
+			drawScopeHalf(dst, rect, botRect, &state.TapB, colScopeB, windowMs, yGain)
 		}
 
 		// Separator line.
@@ -213,11 +209,11 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 
 	case displayMode == chainDiff && state != nil && state.TapA.Active && state.TapB.Active && showA && showB:
 		// --- Difference mode: render A-B (requires both traces visible) ---
-		drawScopeDiff(dst, rect, waveRect, state, windowMs, labelScale, lh, readoutScale, readoutLh, yGain)
+		drawScopeDiff(dst, rect, waveRect, state, windowMs, lh, yGain)
 
 	default:
 		// --- Overlay mode ---
-		drawChainOverlay(dst, rect, waveRect, state, windowMs, labelScale, lh, yGain, showA, showB)
+		drawChainOverlay(dst, rect, waveRect, state, windowMs, lh, yGain, showA, showB)
 	}
 
 	// Phase 3 audio-panel redesign: trigger marker at 10 % of the
@@ -226,14 +222,14 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 	drawChainTriggerMarker(dst, waveRect)
 
 	// Legend in its reserved strip below the waveform (never over it).
-	drawChainLegend(dst, legendStrip, state, displayMode, showA, showB, readoutScale, readoutLh)
+	drawChainLegend(dst, legendStrip, state, displayMode, showA, showB)
 
 	// --- Frozen indicator ---
 	if frozen {
 		frozenText := "FROZEN"
-		ftw := int(float64(TextWidth(frozenText)) * labelScale)
+		ftw := StyledTextWidth(frozenText, RoleCaption)
 		cx := waveRect.Min.X + (waveRect.Dx()-ftw)/2
-		DrawTextColorAtScale(dst, frozenText, cx, waveRect.Min.Y+2, colAccentBright, labelScale)
+		DrawTextStyled(dst, frozenText, cx, waveRect.Min.Y+2, RoleCaption, colAccentBright)
 		// Azure (accent @ AlphaMedium) border to indicate frozen state — no
 		// red, per "three reds, three roles" (bug #6).
 		drawRect(dst, image.Rect(waveRect.Min.X, waveRect.Min.Y, waveRect.Max.X, waveRect.Min.Y+1), colScopeFrozenBorder, true)
@@ -246,7 +242,7 @@ func drawChainTraces(dst *ebiten.Image, rect image.Rectangle, state *scope.State
 // drawChainOverlay renders both traces overlaid on the same waveRect. The
 // Pk/RMS legend now lives in a reserved strip (drawChainLegend); this only
 // paints the grid, trigger marker, amplitude labels, and traces.
-func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, labelScale float64, lh int, yGain float64, showA, showB bool) {
+func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, lh int, yGain float64, showA, showB bool) {
 	midY := waveRect.Min.Y + waveRect.Dy()/2
 	w := waveRect.Dx()
 	h := waveRect.Dy()
@@ -265,7 +261,7 @@ func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, sta
 		topLabel = fmt.Sprintf("+%.2g", edge)
 		botLabel = fmt.Sprintf("-%.2g", edge)
 	}
-	drawChainAmplitudeLabels(dst, fullRect, waveRect, midY, lh, labelScale, topLabel, botLabel)
+	drawChainAmplitudeLabels(dst, fullRect, waveRect, midY, lh, topLabel, botLabel)
 
 	// --- Draw traces ---
 	if state == nil {
@@ -288,14 +284,14 @@ func drawChainOverlay(dst *ebiten.Image, fullRect, waveRect image.Rectangle, sta
 // drawChainAmplitudeLabels right-aligns the +1/0/-1 amplitude labels inside
 // the left gutter (fullRect.Min.X .. waveRect.Min.X) so the enlarged
 // density text never butts against the waveform or the stage column.
-func drawChainAmplitudeLabels(dst *ebiten.Image, fullRect, waveRect image.Rectangle, midY, lh int, labelScale float64, topLabel, botLabel string) {
+func drawChainAmplitudeLabels(dst *ebiten.Image, fullRect, waveRect image.Rectangle, midY, lh int, topLabel, botLabel string) {
 	rightAlign := func(label string, y int) {
-		tw := int(float64(TextWidth(label)) * labelScale)
+		tw := StyledTextWidth(label, RoleMicro)
 		x := waveRect.Min.X - tw - 2
 		if x < fullRect.Min.X {
 			x = fullRect.Min.X
 		}
-		DrawTextColorAtScale(dst, label, x, y, colTextPrimary, labelScale)
+		DrawTextStyled(dst, label, x, y, RoleMicro, colTextPrimary)
 	}
 	rightAlign(topLabel, waveRect.Min.Y+2)
 	rightAlign("0", midY-lh/2)
@@ -303,7 +299,8 @@ func drawChainAmplitudeLabels(dst *ebiten.Image, fullRect, waveRect image.Rectan
 }
 
 // drawScopeHalf renders a single tap's waveform in a half-height area (split mode).
-func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *scope.TapData, col color.Color, windowMs, labelScale float64, lh int, yGain float64) {
+func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *scope.TapData, col color.Color, windowMs, yGain float64) {
+	lh := StyledTextHeight(RoleMicro)
 	midY := halfRect.Min.Y + halfRect.Dy()/2
 	w := halfRect.Dx()
 	h := halfRect.Dy()
@@ -322,9 +319,9 @@ func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *s
 		topLabel = fmt.Sprintf("+%.2g", edge)
 		botLabel = fmt.Sprintf("-%.2g", edge)
 	}
-	DrawTextColorAtScale(dst, topLabel, fullRect.Min.X+2, halfRect.Min.Y+1, colTextPrimary, labelScale)
-	DrawTextColorAtScale(dst, "0", fullRect.Min.X+4, midY-lh/2, colTextPrimary, labelScale)
-	DrawTextColorAtScale(dst, botLabel, fullRect.Min.X+2, halfRect.Max.Y-lh-1, colTextPrimary, labelScale)
+	DrawTextStyled(dst, topLabel, fullRect.Min.X+2, halfRect.Min.Y+1, RoleMicro, colTextPrimary)
+	DrawTextStyled(dst, "0", fullRect.Min.X+4, midY-lh/2, RoleMicro, colTextPrimary)
+	DrawTextStyled(dst, botLabel, fullRect.Min.X+2, halfRect.Max.Y-lh-1, RoleMicro, colTextPrimary)
 
 	// Waveform trace with the synthwave "outrun" fill. Use the canonical
 	// per-lane fill color (matched to col) so the two-band gradient fade
@@ -348,7 +345,7 @@ func drawScopeHalf(dst *ebiten.Image, fullRect, halfRect image.Rectangle, tap *s
 
 // drawScopeDiff renders the A-B difference waveform. The legend is drawn
 // separately in the reserved strip (drawChainLegend).
-func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, labelScale float64, lh int, readoutScale float64, readoutLh int, yGain float64) {
+func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state *scope.State, windowMs float64, lh int, yGain float64) {
 	midY := waveRect.Min.Y + waveRect.Dy()/2
 	w := waveRect.Dx()
 	h := waveRect.Dy()
@@ -366,7 +363,7 @@ func drawScopeDiff(dst *ebiten.Image, fullRect, waveRect image.Rectangle, state 
 		topLabel = fmt.Sprintf("+%.2g", edge)
 		botLabel = fmt.Sprintf("-%.2g", edge)
 	}
-	drawChainAmplitudeLabels(dst, fullRect, waveRect, midY, lh, labelScale, topLabel, botLabel)
+	drawChainAmplitudeLabels(dst, fullRect, waveRect, midY, lh, topLabel, botLabel)
 
 	// Compute difference waveform.
 	diff := chainDiffSamples(state.TapA.Samples, state.TapB.Samples)
@@ -423,11 +420,11 @@ func chainLegendHalves(strip image.Rectangle, displayMode chainDisplayMode) (seg
 // waveform — never over it. Overlay/split: A in the left half, B in the right
 // half, each prefixed by a color swatch; a hidden trace is dimmed. Diff: one
 // A-B readout spanning the strip.
-func drawChainLegend(dst *ebiten.Image, strip image.Rectangle, state *scope.State, displayMode chainDisplayMode, showA, showB bool, readoutScale float64, readoutLh int) {
+func drawChainLegend(dst *ebiten.Image, strip image.Rectangle, state *scope.State, displayMode chainDisplayMode, showA, showB bool) {
 	if state == nil || strip.Dx() <= 0 || strip.Dy() <= 0 {
 		return
 	}
-	textY := strip.Min.Y + (strip.Dy()-readoutLh)/2
+	textY := strip.Min.Y + (strip.Dy()-StyledTextHeight(RoleMicro))/2
 	const swatchW, swatchH = 8, 3
 
 	drawSeg := func(seg image.Rectangle, swatch color.Color, text string, dimCol color.Color, dimmed bool) {
@@ -441,14 +438,14 @@ func drawChainLegend(dst *ebiten.Image, strip image.Rectangle, state *scope.Stat
 		if dimmed {
 			col = dimCol
 		}
-		DrawTextColorAtScale(dst, text, sx+swatchW+4, textY, col, readoutScale)
+		DrawTextStyled(dst, text, sx+swatchW+4, textY, RoleMicro, col)
 	}
 
 	// fit picks a full or compact readout depending on the segment width so
 	// the larger density text doesn't overrun into the neighbour segment.
 	fit := func(seg image.Rectangle, full, compact string) string {
 		avail := seg.Dx() - swatchW - 8
-		if int(float64(TextWidth(full))*readoutScale) <= avail {
+		if StyledTextWidth(full, RoleMicro) <= avail {
 			return full
 		}
 		return compact

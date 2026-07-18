@@ -83,6 +83,21 @@ func (g *Game) nodeRadius(n *uiNode) float64 {
 	return rScr / scale
 }
 
+// selectNodeOpenSidebar makes n the selected node and opens its sidebar —
+// the shared release-time behavior of clicking a node directly or releasing
+// on a guide target snapped to one.
+func (g *Game) selectNodeOpenSidebar(n *uiNode) {
+	if g.sel != nil {
+		g.sel.Selected = false
+	}
+	g.sel = n
+	n.Selected = true
+	g.sidebar.Open(n)
+	g.computeSelNeighbors()
+	g.coordBadgeNode = n
+	g.coordBadgeFrame = g.frame
+}
+
 // computeSelNeighbors refreshes the neighbor set for the currently selected node.
 func (g *Game) computeSelNeighbors() {
 	g.selNeighbors = map[*uiNode]bool{}

@@ -28,13 +28,28 @@ var (
 
 func lifecyclePool() *async.Pool {
 	recordingLifecyclePoolOnce.Do(func() {
-		recordingLifecyclePool = async.DefaultRegistry().MustGet("recording.lifecycle", async.Options{
-			MaxConcurrent: 1,
-			QueueSize:     8,
-			Name:          "recording.lifecycle",
-		})
+		recordingLifecyclePool = newLifecyclePool(async.DefaultRegistry())
 	})
 	return recordingLifecyclePool
+}
+
+// newLifecyclePool acquires the lifecycle pool from r, falling back to a
+// private pool when r's budget is exhausted.
+//
+// The fallback is mandatory, not defensive padding: this runs lazily off
+// StartRecording — a user tapping Record — not at process startup, so
+// MustGet's "panic at boot is acceptable" contract does not apply here. A
+// panic on a full budget takes down the whole app (on js/wasm the Go runtime
+// exits and every later export throws "Go program has already exited").
+// Mirrors hooks.fanout / audio.timers / synth.preview / eventlogger.format.
+func newLifecyclePool(r *async.Registry) *async.Pool {
+	opts := async.Options{MaxConcurrent: 1, QueueSize: 8, Name: "recording.lifecycle"}
+	pool, err := r.Get("recording.lifecycle", opts)
+	if err != nil {
+		opts.Name = "recording.lifecycle.fallback"
+		return async.NewPool(context.Background(), opts)
+	}
+	return pool
 }
 
 // finalizePending tracks the number of outstanding async finalizes so

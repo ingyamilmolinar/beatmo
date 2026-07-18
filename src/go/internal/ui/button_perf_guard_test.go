@@ -3,8 +3,6 @@ package ui
 import (
 	"image"
 	"testing"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // A button at rest or steadily-on must do ZERO per-frame state work and
@@ -47,26 +45,5 @@ func TestButtonAnimationAllocFree(t *testing.T) {
 	})
 	if allocs != 0 {
 		t.Fatalf("AdvancePressAnim allocates %v/run, want 0", allocs)
-	}
-}
-
-// The knob's static cap is cached per diameter; changing only the VALUE must
-// not re-rasterize (cache must not grow frame-to-frame).
-func TestKnurledCapDrawDoesNotReallocPerFrame(t *testing.T) {
-	knurledCapCache = map[int]*ebiten.Image{}
-	k := NewKnob(0.5)
-	k.SetRect(image.Rect(0, 0, 48, 48))
-	dst := ebiten.NewImage(48, 48)
-	k.Draw(dst) // warm the cap cache
-	n := len(knurledCapCache)
-	if n == 0 {
-		t.Fatalf("knob cap cache did not warm on first Draw")
-	}
-	for i := 0; i < 30; i++ {
-		k.Value = float64(i) / 30 // value changes every frame
-		k.Draw(dst)
-	}
-	if len(knurledCapCache) != n {
-		t.Fatalf("knob cap cache grew from %d to %d across frames (per-frame re-rasterization)", n, len(knurledCapCache))
 	}
 }

@@ -48,6 +48,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 		importCh:             make(chan importResult, 1),
 		timelineUnitsPerBeat: 1,
 		timelineBeats:        8,
+		jumpBeats:            4, // default FF/RW jump size in whole beats
 		selRow:               0,
 		deleteConfirmRow:     -1,
 		renameRow:            -1,
@@ -64,6 +65,7 @@ func NewDrumView(b image.Rectangle, g *model.Graph, logger *game_log.Logger) *Dr
 	// can't reference dv). Any test that builds *DrumView without this ctor must
 	// set dv.samplerPanel similarly before invoking a sampler method.
 	dv.samplerPanel = &samplerPanel{dv: dv}
+	dv.synthPanel = &synthPanel{dv: dv}
 	dv.initNotifPersistence()
 	dv.initVolumeAndWheelPopups()
 	dv.initOverlayComponents()
@@ -209,6 +211,7 @@ func (dv *DrumView) initVolumeAndWheelPopups() {
 func (dv *DrumView) initOverlayComponents() {
 	// Initialize overlay components (Phase 5)
 	dv.subdivMenuComp = NewSubdivMenuComponent()
+	dv.jumpMenuComp = NewSubdivMenuComponent()
 	dv.renameComp = NewRenameComponent()
 	dv.colorWheelComp = NewColorWheelComponent()
 	dv.instMenuComp = NewInstrumentMenuComponent()
@@ -431,6 +434,20 @@ func (dv *DrumView) initEQPanelZone() {
 			dv.eqPanelZone.frozenAnalyzer = BuildAnalyzerStateFromSnapshots(dv.activeEQChannel(), dv.Rows, audio.SampleRate())
 			return dv.eqPanelZone.frozenAnalyzer != nil
 		},
+		OnLeaveSynthTab: func() {
+			// Task-5 review fix: a wheel spin that hasn't paused long enough
+			// to self-commit (wheelNudgeCommitFrames ticks only while
+			// SynthTabUpdate runs, i.e. TabSynth active) must not be dropped
+			// by a tab switch. flush() is idempotent/no-op when nothing is
+			// pending. See PanelTabState.onLeave / EQCallbacks.OnLeaveSynthTab.
+			dv.synthWheelNudge.flush()
+		},
+		OnLeaveSamplerTab: func() {
+			// Mirror OnLeaveSynthTab: flush any pending sampler wheel-nudge
+			// commit so a tab switch mid-spin lands its single undo step +
+			// sample-edit commit. Idempotent/no-op when nothing is pending.
+			dv.samplerWheelNudge.flush()
+		},
 		OnTabChange: func(tab PanelTab) {
 			// Scope tab auto-expands the panel; trigger layout recalc.
 			dv.bgDirty = true
@@ -489,6 +506,7 @@ func (dv *DrumView) initEQPanelZone() {
 		DrawSynthTab: func(dst *ebiten.Image, r image.Rectangle) {
 			dv.drawSynthTab(dst, r, dv.synthTabActiveInstrument())
 		},
+		ReleaseSynthSprites: func() { dv.synp().sprites.releaseAll() },
 		SynthTabHitAreas: func() []HitArea {
 			return dv.synthTabHitAreas()
 		},
@@ -654,6 +672,8 @@ func (dv *DrumView) initTransportZone() {
 		OnStop: func() {
 			dv.logger.Debugf("[drumview] stop button pressed")
 		},
+		OnRewind:      func() { dv.RequestSeekDeltaBeats(-dv.jumpBeats, seekOriginTransport) },
+		OnFastForward: func() { dv.RequestSeekDeltaBeats(dv.jumpBeats, seekOriginTransport) },
 		OnBPMChange: func(bpm int) {
 			dv.bpm = bpm
 			dv.secPerBeat = 60.0 / float64(bpm)
@@ -763,6 +783,15 @@ func (dv *DrumView) initTransportZone() {
 			if dv.IsSubdivMenuOpen() {
 				dv.buildSubdivMenu()
 			}
+		},
+		OnJumpSizeClick: func() {
+			// Toggle: close if already open (mirrors OnSubdivClick).
+			if dv.jumpMenuComp != nil && dv.jumpMenuComp.IsOpen() {
+				dv.jumpMenuComp.Close()
+				dv.closeJumpMenuPortal()
+				return
+			}
+			dv.OpenJumpMenu()
 		},
 		OnOverflowOpen: func() {
 			if dv.IsOverflowMenuOpen() {
@@ -989,12 +1018,14 @@ func (dv *DrumView) initTimelineZone() {
 				dv.logger.Tracef("[drumview/drag] offset=%d", dv.Offset)
 			}
 		},
-		OnScrubPosition: func(newOffset int) {
-			if newOffset != dv.Offset {
-				dv.Offset = newOffset
-				dv.offsetChanged = true
-				dv.logger.Tracef("[drumview/scrub] offset=%d len=%d total=%d", dv.Offset, dv.Length, dv.timelineBeats)
+		OnSeekToStep: func(step int, origin string) {
+			dv.RequestSeekSteps(step, origin)
+		},
+		PlayheadStep: func() int {
+			if dv.game != nil {
+				return dv.game.playheadAbsSubdiv()
 			}
+			return 0
 		},
 		OnRowsLayerDirty: func() {
 			dv.rowsLayerDirty = true

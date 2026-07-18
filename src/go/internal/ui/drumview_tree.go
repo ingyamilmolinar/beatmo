@@ -596,6 +596,23 @@ func (t *DrumViewTree) handleInput() {
 		return
 	}
 
+	// A WITHHELD subtree still latches the press cycle, so a press denied at its
+	// edge stays denied until release. The RootTree withholds a press from lower
+	// subtrees while an upper one is busy, but "busy" is recomputed every frame:
+	// a one-shot InputConsumed is cleared by the next Tick, and a popup that
+	// closed on the press edge leaves an empty portal behind. A real click holds
+	// the button down for many frames, so without this latch the NEXT held frame
+	// finds nothing busy above, sees pressed && !wasPressed, and dispatches the
+	// SAME, never-released pointer as a fresh press edge. That is the FX panel
+	// close bug: its "X" (overlay subtree portal, z>=300) sits directly over the
+	// next row's FX button (drum-view subtree row rack, z=120), so the press
+	// closed the panel and the following held frame re-opened it for that row.
+	// One press belongs to ONE subtree for its whole lifetime.
+	// Regression: TestFXPanelCloseButtonDoesNotReopenPanelForRowBeneath.
+	if !t.allowNewPress && pressed && !t.wasPressed {
+		t.wasPressed = true
+	}
+
 	// Handle new press. Gated by allowNewPress so a composing RootTree can
 	// withhold fresh presses from this subtree (the in-flight capture and
 	// release branches above are intentionally NOT gated, so an ongoing

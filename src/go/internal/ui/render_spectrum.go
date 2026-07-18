@@ -187,9 +187,10 @@ const (
 // bottom of the spectrum panel (legacy 14px floor).
 const spectrumFreqLabelMinH = 14
 
-// captionTextH returns the pixel height of one caption-scale text row.
+// captionTextH returns the pixel height of one axis-label text row (the
+// styled micro role — smooth Inter, true 10px).
 func captionTextH() int {
-	return int(float64(TextHeight()) * (FontSizeCaption / FontSizeBody))
+	return StyledTextHeight(RoleMicro)
 }
 
 // spectrumLabelRows splits a spectrum panel rect into three vertically
@@ -247,6 +248,24 @@ func drawAnalyzerSpectrum(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 // (dB grid, frequency labels, bracket strip, note anchors, peak hold) is
 // identical between modes, scaled to the active band table.
 func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, peaks *SpectrumPeakState, scale freqScaleMode) {
+	drawAnalyzerSpectrumImpl(dst, rect, ch, peaks, scale, nil)
+}
+
+// spectrumCurveKey is the TraceSprite version key for the cached FFT curve
+// underlay: the ChannelMetrics POINTER is the per-tick freshness signal (the
+// wave/chain cache precedent), plus every display input the trace depends on.
+type spectrumCurveKey struct {
+	ch    *analyzer.ChannelMetrics
+	scale freqScaleMode
+	slope float64
+	w, h  int
+}
+
+// drawAnalyzerSpectrumImpl is drawAnalyzerSpectrumWithScale plus an optional
+// TraceSprite for the high-resolution curve underlay. Bars and peak-hold
+// ballistics always render live (their decay animates per frame); only the
+// per-column FFT trace — whose data changes per analyzer tick — is cached.
+func drawAnalyzerSpectrumImpl(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.ChannelMetrics, peaks *SpectrumPeakState, scale freqScaleMode, curveSprite *TraceSprite) {
 	// Resolve band table + labels for the chosen scale.
 	var bands [10][2]float64
 	var labels [10]string
@@ -307,7 +326,6 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 	}
 
 	// Draw dB reference lines and labels.
-	captionScale := FontSizeCaption / FontSizeBody
 	dbRefs := []float64{0, -12, -24, -36, -48, -60}
 	// Inset the reference lines from the panel edges so they never read
 	// as a border artifact, and skip any line pinned at the top of the
@@ -350,12 +368,12 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 		// Label on left margin (SpaceXS inset so it never sits flush at
 		// x=0; clamped so the topmost label stays inside the panel).
 		label := fmt.Sprintf("%.0f", db)
-		lh := int(float64(TextHeight()) * captionScale)
+		lh := StyledTextHeight(RoleMicro)
 		ly := y - lh/2
 		if ly < rect.Min.Y {
 			ly = rect.Min.Y
 		}
-		DrawTextColorAtScale(dst, label, rect.Min.X+SpaceXS, ly, colTextSecondary, captionScale)
+		DrawTextStyled(dst, label, rect.Min.X+SpaceXS, ly, RoleMicro, colTextSecondary)
 	}
 
 	// High-resolution FFT curve underlay. Maps every FFT bin to its
@@ -365,7 +383,20 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 	// musician-friendly aggregation stays the primary read while the
 	// underlying detail tells the user where exactly the energy lives
 	// — kicks at 60 Hz vs 90 Hz, snare body vs zing, etc.
-	drawSpectrumCurve(dst, barRect, ch, scale)
+	//
+	// Cached when a sprite is provided: the trace re-renders per analyzer
+	// tick (fresh ch pointer) instead of every frame.
+	if curveSprite != nil && ch != nil {
+		curveSprite.tag = "spectrumCurveSprite"
+		curveSprite.Draw(dst, barRect,
+			spectrumCurveKey{ch: ch, scale: scale, slope: spectrumSlopeDBPerOct,
+				w: barRect.Dx(), h: barRect.Dy()},
+			func(img *ebiten.Image, r image.Rectangle) {
+				drawSpectrumCurve(img, r, ch, scale)
+			})
+	} else {
+		drawSpectrumCurve(dst, barRect, ch, scale)
+	}
 
 	// Draw bars.
 	numBands := len(bands)
@@ -477,9 +508,9 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 	for b := 0; b < numBands; b++ {
 		x0 := barRect.Min.X + b*(barWidth+1)
 		label := labels[b]
-		lw := int(float64(TextWidth(label)) * captionScale)
+		lw := StyledTextWidth(label, RoleMicro)
 		lx := x0 + (barWidth-lw)/2
-		DrawTextColorAtScale(dst, label, lx, freqLabelY, colTextSecondary, captionScale)
+		DrawTextStyled(dst, label, lx, freqLabelY, RoleMicro, colTextSecondary)
 	}
 
 	// Draw Bass/Mids/Treble bracket strip in its own row above the Hz
@@ -512,10 +543,10 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 			drawRect(dst, image.Rect(groupX0, bracketY, groupX0+1, bracketY+2), bracketCol, true)
 			drawRect(dst, image.Rect(groupX1-1, bracketY, groupX1, bracketY+2), bracketCol, true)
 			// Centered group label, inside the bracket row.
-			lw := int(float64(TextWidth(gLabel)) * captionScale)
+			lw := StyledTextWidth(gLabel, RoleMicro)
 			lx := groupX0 + (groupX1-groupX0-lw)/2
 			ly := bracketY + 3
-			DrawTextColorAtScale(dst, gLabel, lx, ly, colTextSecondary, captionScale)
+			DrawTextStyled(dst, gLabel, lx, ly, RoleMicro, colTextSecondary)
 		}
 
 		// Note-name overlay: tiny C3/C4/C5/C6/C7 markers along the top of the
@@ -533,9 +564,9 @@ func drawAnalyzerSpectrumWithScale(dst *ebiten.Image, rect image.Rectangle, ch *
 			// Short vertical tick down from top of bar area (4 px).
 			drawRect(dst, image.Rect(bandX, barRect.Min.Y, bandX+1, barRect.Min.Y+4), noteCol, true)
 			// Label centered on the tick.
-			lw := int(float64(TextWidth(n.label)) * captionScale)
+			lw := StyledTextWidth(n.label, RoleMicro)
 			lx := bandX - lw/2
-			DrawTextColorAtScale(dst, n.label, lx, noteLabelY, colTextSecondary, captionScale)
+			DrawTextStyled(dst, n.label, lx, noteLabelY, RoleMicro, colTextSecondary)
 		}
 	}
 }
@@ -868,9 +899,8 @@ func drawSpectrumCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 	for i := 1; i < len(parts); i++ {
 		label += " · " + parts[i]
 	}
-	captionScale := FontSizeCaption / FontSizeBody
-	tw := int(float64(TextWidth(label)) * captionScale)
-	th := int(float64(TextHeight()) * captionScale)
+	tw := StyledTextWidth(label, RoleCaption)
+	th := StyledTextHeight(RoleCaption)
 	lx := cursorX + 4
 	if lx+tw+4 > barRect.Max.X-SpaceXS {
 		lx = cursorX - tw - 4
@@ -881,7 +911,7 @@ func drawSpectrumCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 	ly := barRect.Min.Y + SpaceXS
 	bg := image.Rect(lx-2, ly-1, lx+tw+2, ly+th+2)
 	drawRect(dst, bg, WithAlpha(colSurface2, AlphaStrong), true)
-	DrawTextColorAtScale(dst, label, lx, ly, colTextSecondary, captionScale)
+	DrawTextStyled(dst, label, lx, ly, RoleCaption, colTextSecondary)
 }
 
 // formatHzShort renders a frequency in compact form: 250 Hz, 1.2 kHz.

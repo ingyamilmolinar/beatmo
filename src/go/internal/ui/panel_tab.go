@@ -110,6 +110,16 @@ func PanelTabSlug(tab PanelTab) string {
 type PanelTabState struct {
 	activeTab PanelTab
 	expanded  bool
+	// onLeave, when set, fires synchronously with the tab being left whenever
+	// SetActiveTab actually changes the active tab (no-op when the incoming
+	// tab equals the current one). This is the single low-level chokepoint
+	// EVERY tab transition passes through — the sticky-bar onTab closure,
+	// EQPanelZone.SetActiveTab, and setViewMode's direct
+	// `eqPanelZone.tabState.SetActiveTab` call for the mobile view-mode
+	// switch all end up here — so it's the narrowest correct place to flush
+	// state that must not survive a tab change (see NewEQPanelZone, which
+	// wires this to flush dv.synthWheelNudge on leaving TabSynth).
+	onLeave func(prev PanelTab)
 }
 
 // NewPanelTabState creates a PanelTabState with default values:
@@ -121,8 +131,20 @@ func NewPanelTabState() *PanelTabState {
 // ActiveTab returns the currently selected tab.
 func (p *PanelTabState) ActiveTab() PanelTab { return p.activeTab }
 
-// SetActiveTab switches to the given tab.
-func (p *PanelTabState) SetActiveTab(tab PanelTab) { p.activeTab = tab }
+// SetOnLeave installs the callback invoked with the outgoing tab whenever
+// SetActiveTab changes the active tab. Intended to be called once, right
+// after construction.
+func (p *PanelTabState) SetOnLeave(fn func(prev PanelTab)) { p.onLeave = fn }
+
+// SetActiveTab switches to the given tab, invoking the onLeave hook (if any)
+// with the previously-active tab when this is an actual transition.
+func (p *PanelTabState) SetActiveTab(tab PanelTab) {
+	prev := p.activeTab
+	p.activeTab = tab
+	if prev != tab && p.onLeave != nil {
+		p.onLeave(prev)
+	}
+}
 
 // Expanded returns true when the panel is in its expanded (2x) state.
 func (p *PanelTabState) Expanded() bool { return p.expanded }

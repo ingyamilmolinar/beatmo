@@ -169,6 +169,9 @@ const CATALOGUE = {
     // order; selectSynthSection opens a stage by chip label (next frame).
     { name: "synthChipRects", args: [], returns: "any" },
     { name: "selectSynthSection", args: ["OSC"], returns: "any" },
+    // Detail-header enable-pill rect for the selected stage; Harness B clicks
+    // its centre to toggle a pipeline stage via real input.
+    { name: "synthEnablePillRect", args: [], returns: "any" },
     // Synth footer + Save As dialog (added in the synth-footer fix; see
     // src/js/synth_panel_footer.browser.test.js for the end-to-end flow).
     { name: "synthFooterButtonRects", args: [], returns: "any" },
@@ -229,6 +232,7 @@ const CATALOGUE = {
     { name: "getFastPath", args: [], returns: "boolean" },
     { name: "getLeftPrev", args: [], returns: "any" },
     { name: "getPendingClick", args: [], returns: "any" },
+    { name: "gridModeState", args: [], returns: { kind: "object", keys: ["mode", "subjectId"] } },
     { name: "importBtnRect", args: [], returns: "any" },
     { name: "importJSON", skipCall: true }, // mutates; round-trip tests live in Go
     { name: "instMenuBackBtnRect", args: [], returns: "any" },
@@ -263,7 +267,9 @@ const CATALOGUE = {
     { name: "layoutHorizontal", args: [], returns: "boolean" },
     { name: "lenDecBtnRect", args: [], returns: "any" },
     { name: "lenIncBtnRect", args: [], returns: "any" },
-    { name: "longPressDeleteRect", args: [], returns: "any" },
+    { name: "longPressCopyRect", args: [], returns: "nullable" }, // null when popup closed
+    { name: "longPressDeleteRect", args: [], returns: "nullable" }, // null when popup closed
+    { name: "longPressMoveRect", args: [], returns: "nullable" }, // null when popup closed
     { name: "mainVolume", args: [], returns: "number" },
     { name: "mobileInputActive", args: [], returns: "any" },
     { name: "mobileInputAnyActive", args: [], returns: "boolean" },
@@ -284,6 +290,7 @@ const CATALOGUE = {
     { name: "openSubdivMenu", skipCall: true },
     { name: "pickColorAtWheel", skipCall: true },
     { name: "playBtnRect", args: [], returns: "any" },
+    { name: "playheadStep", args: [], returns: "any" },
     { name: "recBtnRect", args: [], returns: "any" },
     { name: "portalStackLen", args: [], returns: "number" },
     { name: "portalTopID", args: [], returns: "any" },
@@ -303,6 +310,7 @@ const CATALOGUE = {
     { name: "rowVolume", args: [0], returns: "number" },
     { name: "scrollBarRect", args: [], returns: "any" },
     { name: "scrollThumbRect", args: [], returns: "any" },
+    { name: "seekSteps", args: [0] },
     { name: "selectedNodeId", args: [], returns: "any" },
     { name: "setDrumLength", skipCall: true },
     { name: "setFastPath", skipCall: true },
@@ -759,6 +767,20 @@ if (missingFromCatalogue.length > 0) {
     console.error(`[bridge-smoke] fullLayoutSnapshot field check FAILED:`, snapCheck.errs);
   } else {
     console.log("[bridge-smoke] fullLayoutSnapshot enriched fields OK (state/tabs/bottomNav + setEQTab/setViewMode plumbing)");
+  }
+}
+
+// ─── gridModeState idle-shape check (node quick-action gesture flow) ──────
+// No long-press popup is open at this point in the harness, so gridModeState
+// must report the idle sentinel: mode "none" and no armed subject.
+{
+  const idle = await page.evaluate(() => gridModeState());
+  if (!idle || idle.mode !== "none") {
+    const msg = `gridModeState() at idle expected mode "none", got ${JSON.stringify(idle)}`;
+    failures.push({ group: "gridModeState-idle", name: "gridModeState", error: msg });
+    console.error(`[bridge-smoke] ${msg}`);
+  } else {
+    console.log(`[bridge-smoke] gridModeState() idle OK (${JSON.stringify(idle)})`);
   }
 }
 

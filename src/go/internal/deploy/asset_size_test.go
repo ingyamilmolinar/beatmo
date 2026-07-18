@@ -47,20 +47,31 @@ const (
 	// DSP + expanded instrument/recipe tables); 26,459,907 B (25.23 MiB) as of
 	// 2026-07-11 (canonical `make wasm` build of the overhaul HEAD -- the 07-09
 	// number was measured from a pre-final build and under-recorded the shipped
-	// size by ~0.35 MiB). An unstripped build still far exceeds this, so the gate
-	// continues to enforce -s -w.
-	defaultWasmRawMaxBytes = 26738688 // 25.50 MiB (~0.27 MiB headroom over the 25.23 MiB canonical build)
+	// size by ~0.35 MiB); 27,700,709 B (26.42 MiB) as of 2026-07-13 (toolchain
+	// migration Go 1.23.1 -> 1.26.5 + ebiten v2.8.8 -> v2.9.9 / oto v3.4.0 /
+	// x/image v0.31.0: +1.19 MiB raw of compiler codegen + dep growth, traded
+	// for Green Tea GC default, ~30% cheaper cgo calls, and finer-grained wasm
+	// heap management); 28,874,089 B (27.54 MiB) as of 2026-07-17 (synth/engine
+	// UI + instruments overhaul + node-groups feature: +1.12 MiB raw of the
+	// expanded synth stage/instrument tables + node-group graph code). An
+	// unstripped build still far exceeds this, so the gate continues to enforce
+	// -s -w.
+	defaultWasmRawMaxBytes = 29360128 // 28.00 MiB (~0.46 MiB headroom over the 27.54 MiB overhaul build; branch add-core-node-types is still growing it)
 
 	// main.wasm gzip(BestCompression) size -- the bytes a user on a
 	// gzip-serving CDN actually downloads; the number that drives load time.
 	// Stripped: 5,235,898 B (4.99 MiB) 2026-07-06; 5,496,177 B (5.24 MiB)
-	// 2026-07-09 (synth-pipeline overhaul).
-	defaultWasmGzipMaxBytes = 5609242 // 5.35 MiB
+	// 2026-07-09 (synth-pipeline overhaul); 5.63 MiB 2026-07-13 (Go 1.26.5 +
+	// ebiten 2.9.9 migration); 6,103,213 B (5.82 MiB) 2026-07-17 (synth/engine +
+	// node-groups overhaul).
+	defaultWasmGzipMaxBytes = 6291456 // 6.00 MiB (~0.18 MiB headroom over 5.82 MiB)
 
 	// Sum of gzip(BestCompression) sizes of every shipped asset (wasm + JS +
 	// html) -- the total a cold visitor transfers. Stripped total: 5,503,664 B
-	// (5.25 MiB) 2026-07-06; 5,779,343 B (5.51 MiB) 2026-07-09.
-	defaultAssetsGzipMaxBytes = 5898240 // 5.63 MiB
+	// (5.25 MiB) 2026-07-06; 5,779,343 B (5.51 MiB) 2026-07-09; 5.90 MiB
+	// 2026-07-13 (toolchain migration); 6,385,540 B (6.09 MiB) 2026-07-17
+	// (synth/engine + node-groups overhaul).
+	defaultAssetsGzipMaxBytes = 6553600 // 6.25 MiB (~0.16 MiB headroom over 6.09 MiB)
 )
 
 func envBytes(t *testing.T, name string, def int64) int64 {

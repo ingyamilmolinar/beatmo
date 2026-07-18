@@ -158,6 +158,8 @@ func TestDesignMDDrift(t *testing.T) {
 		"icon-sm":   IconSizeSM,
 		"icon-md":   IconSizeMD,
 		"icon-lg":   IconSizeLG,
+		"swatch-sm": SwatchSizeSM,
+		"swatch-md": SwatchSizeMD,
 	}
 	for key, want := range wantSpacing {
 		raw, ok := gotSpacing[key]

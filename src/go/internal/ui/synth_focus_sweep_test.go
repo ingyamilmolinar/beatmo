@@ -30,9 +30,10 @@ func bindFocusSweepInst(t *testing.T, recipeID string) string {
 // knob is actually responsive (so a stale exemption can't hide a regression),
 // per the repo's no-silent-caps rule.
 //
-// SCOPE: per-stage enable toggles (*_enabled) and engine-internal hidden params
-// are NOT keys here — they are filtered out before the sweep loop by
-// synthParamIsGridKnob (they render as section pills / have no UI, never as a
+// SCOPE: per-stage enable toggles (*_enabled), engine-internal hidden params and
+// params gated out by the recipe's own context are NOT keys here — they are
+// filtered out before the sweep loop by synthParamIsGridKnobIn (they render as
+// section pills / have no UI / have no knob on that recipe at all, never as a
 // selectable knob the focus graph explains).
 //
 // ROUTING (synthFocusRendererForKnob, synth_focus_graph.go): each swept knob
@@ -75,16 +76,31 @@ func bindFocusSweepInst(t *testing.T, recipeID string) string {
 // Each of the two by-name exemptions FAILS in every recipe it appears in, so a
 // name-level exemption loses no passing assertion.
 //
-// Known pre-existing baseline (NOT exempted here): every "group osc"
-// physical-model knob (osc_sax_*/osc_bow_*/osc_type) on recipes carrying a
-// physical-model oscillator (e.g. synth-modular-oboe-full,
-// synth-modular-piano-felt) currently fails this gate — conceptOsc's
-// cycle-normalized timbre curve does not yet depict those knobs' effect. That
-// gap is owned by a concurrent, in-flight physical-model work stream and is
-// deliberately left UNEXEMPTED: adding exemptions now would flip to
-// "EXEMPT but now RESPONSIVE" the moment that work lands and silently mask
-// the very knobs it's fixing. The failure count fluctuates as that work
-// progresses (observed in the 140..497 range) — do not chase it here.
+// The osc-group physical-model knobs (osc_type / osc_sax_* / osc_bow_*) used to
+// fail this gate in bulk and were written off as a "pre-existing baseline". They
+// were not a baseline; they were three real bugs, now fixed and each pinned by
+// its own regression test:
+//
+//  1. osc_type failed on EVERY recipe because previewOscShape had no case for
+//     value 12 ("Voice"), so Min(0)=Sine and Max(12)=Voice both fell through to
+//     the default sine — the Synth tab drew one picture for two oscillators.
+//     Fixed in preview_render.go; pinned by
+//     TestPreviewOscShape_EveryEnumValueDistinctFromSine (internal/audio).
+//  2. The OSC plot carried a SECOND, drifted copy of the shape table covering
+//     only osc_type 0..6, so every physical model AND Voice plotted as a sine.
+//     synthOscSample now delegates to audio.PreviewOscShape (one table); pinned
+//     by TestSynthOscSample_PhysicalModelsAndVoiceAreNotSine.
+//  3. osc_sax_*/osc_bow_* were swept on all 51 modular recipes even though the
+//     Synth tab only ever shows them when their oscillator is selected
+//     (synthOscModelParamHidden): the sweep's selectability predicate had
+//     drifted from the grid's. Both now go through synthParamIsGridKnobIn, so
+//     the sweep asks exactly what the UI answers. The bow knobs remain swept on
+//     the recipes that DO select the Bowed String oscillator (violin, cello) and
+//     are depicted there; pinned by
+//     TestPreviewOscShape_BowKnobsReshapeBowedString, which also asserts they
+//     stay INERT on every other oscillator (a moving picture there would lie).
+//
+// No osc-group exemption was added: nothing in that group needed one.
 var focusSweepExemptByName = map[string]string{
 	// ── fm group. Most FM knobs are PROVEN responsive: ratio/depth/level/algorithm
 	//    drive conceptFM (the FM output waveform), and the time-domain knobs
@@ -116,11 +132,17 @@ var focusSweepExemptPair = map[string]string{
 }
 
 // TestFocusGraph_RespondsToEveryKnob is the OBJECTIVE GATE over the Synth-tab
-// focus graph: for every SELECTABLE GRID KNOB (synthParamIsGridKnob — excludes
-// hidden params and per-stage enable toggles) of every registered recipe, the
-// per-knob focus renderer (synthFocusRendererForKnob — pitch knobs → pitch wave,
-// else by group) must paint a DIFFERENT picture at the knob's Min vs its Max,
-// proving the focus graph reflects the knob.
+// focus graph: for every SELECTABLE GRID KNOB (synthParamIsGridKnobIn — excludes
+// hidden params, per-stage enable toggles, and params the recipe's own context
+// gates out) of every registered recipe, the per-knob focus renderer
+// (synthFocusRendererForKnob — pitch knobs → pitch wave, else by group) must
+// paint a DIFFERENT picture at the knob's Min vs its Max, proving the focus
+// graph reflects the knob.
+//
+// "Selectable" is deliberately the SAME question the Synth tab's knob grid
+// answers, asked through the same predicate: a knob the user cannot select on a
+// recipe has no focus graph there to be right or wrong about, and asserting one
+// only invents failures (or, worse, invites a fake exemption).
 //
 // The gate is BIDIRECTIONAL:
 //   - a non-exempt selectable knob that is UNRESPONSIVE fails (the core gate);
@@ -140,11 +162,20 @@ func TestFocusGraph_RespondsToEveryKnob(t *testing.T) {
 			continue
 		}
 		inst := bindFocusSweepInst(t, recipeID)
+		// The sweep must ask the SAME selectability question the Synth tab
+		// answers when it builds the knob grid, or it asserts a focus graph for
+		// knobs the user can never select on this recipe. Both the grid and this
+		// loop go through synthParamIsGridKnobIn (synth_panel_zone.go).
+		kickActive := schemaUsesKickStage(reg.Params)
+		oscType := audio.MergedInstrumentParamsRO(inst)["osc_type"]
 		for _, d := range reg.Params {
 			// Only SELECTABLE grid knobs are explained by the focus graph.
-			// Hidden params and per-stage enable toggles render as pills, not
-			// knobs, so the focus graph never depicts them — skip outright.
-			if !synthParamIsGridKnob(d) || d.Max <= d.Min {
+			// Hidden params, per-stage enable toggles (they render as pills, not
+			// knobs) and params gated out by this recipe's context — the kick
+			// knobs on a non-kick recipe, the physical-model OSC knobs whose
+			// oscillator isn't selected — have no knob, so the focus graph never
+			// depicts them. Skip outright.
+			if !synthParamIsGridKnobIn(d, kickActive, oscType) || d.Max <= d.Min {
 				continue
 			}
 			pairKey := recipeID + "\x00" + d.Name

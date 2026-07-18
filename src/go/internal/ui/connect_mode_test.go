@@ -23,7 +23,7 @@ func TestConnectModeBasicEdge(t *testing.T) {
 	edgesBefore := len(g.edges)
 
 	g.enterConnectMode(a)
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be true")
 	}
 
@@ -33,7 +33,7 @@ func TestConnectModeBasicEdge(t *testing.T) {
 	by := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(bx, by)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled after successful edge")
 	}
 	if len(g.edges) != edgesBefore+1 {
@@ -60,7 +60,7 @@ func TestConnectModeVerticalEdge(t *testing.T) {
 	by := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(bx, by)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled after successful edge")
 	}
 	if len(g.edges) != edgesBefore+1 {
@@ -87,7 +87,7 @@ func TestConnectModeNonPerpendicularError(t *testing.T) {
 	by := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(bx, by)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should still be active after non-perpendicular tap")
 	}
 	if len(g.edges) != edgesBefore {
@@ -118,7 +118,7 @@ func TestConnectModeEmptyTapCancels(t *testing.T) {
 	// Tap on empty space (far from any node).
 	g.handleConnectModeTap(600, 300)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled after empty tap")
 	}
 }
@@ -142,7 +142,7 @@ func TestConnectModeEscCancels(t *testing.T) {
 
 	g.handleEscape()
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled after ESC")
 	}
 }
@@ -167,7 +167,7 @@ func TestConnectModeEdgeDuplicate(t *testing.T) {
 	by := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(bx, by)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled")
 	}
 	if len(g.edges) != edgesBefore {
@@ -206,7 +206,7 @@ func TestConnectModePlaybackSafe(t *testing.T) {
 	cy := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(cx, cy)
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cancelled after edge")
 	}
 	advanceFrames(g, 10)
@@ -227,7 +227,7 @@ func TestConnectModeClearsOnImport(t *testing.T) {
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.enterConnectMode(a)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be active")
 	}
 
@@ -238,7 +238,7 @@ func TestConnectModeClearsOnImport(t *testing.T) {
 		t.Fatalf("import error: %v", err)
 	}
 
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be cleared after import")
 	}
 }
@@ -261,7 +261,7 @@ func TestConnectModeSelfConnectionIgnored(t *testing.T) {
 	ay := int((sy1 + sy2) * 0.5)
 	g.handleConnectModeTap(ax, ay)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should still be active after self-tap")
 	}
 	if len(g.edges) != edgesBefore {

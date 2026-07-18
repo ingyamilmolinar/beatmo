@@ -50,10 +50,24 @@ func TestSynthChipStrip_ThumbsRecoverFromEmptyChipEnsure(t *testing.T) {
 }
 
 // TestSynthChipStrip_WatermarksRespondToParams renders the chip strip through
-// the fingerprint harness, flips osc_type sine->saw (which reshapes every
-// stage thumbnail), and asserts the painted picture changed — proving the
-// per-chip waveform watermarks follow the live synth params once the
-// (debounced, off-thread in production) render job lands.
+// the fingerprint harness, flips osc_type across three distinct generators
+// (which reshapes every stage thumbnail), and asserts the painted picture
+// changed — proving the per-chip waveform watermarks follow the live synth
+// params once the (debounced, off-thread in production) render job lands.
+//
+// Both measured renders below MUST be genuine cache MISSES (the chip strip's
+// TraceSprite actually re-running drawSynthChipStripContent), not merely two
+// calls that happen to land on different cache keys. The chip-strip cache
+// key folds in dv.lazyStageThumbs().contentVersion(), which only bumps when
+// synthStageThumbs.ensure() sees the params hash change and a drained job
+// commits new waves. So each osc_type flip below is chosen to differ from
+// the *previous* value — never from an assumed default — guaranteeing the
+// hash (and therefore contentVersion, and therefore the cache key) changes
+// every single time, which forces drainForTest's landed thumb to actually be
+// painted. fingerprintFocus folds collectFilledRects' rect count into the
+// hash, so a cache HIT (drawRect never invoked) always yields exactly 0 —
+// asserting both fingerprints are nonzero is an explicit, mechanical proof
+// that neither measurement was a HIT masquerading as "changed".
 func TestSynthChipStrip_WatermarksRespondToParams(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	layoutSynthTab(t, g)
@@ -68,13 +82,27 @@ func TestSynthChipStrip_WatermarksRespondToParams(t *testing.T) {
 		th.drainForTest()
 		return fingerprintFocus(t, func(img *ebiten.Image) { dv.drawSynthChipStrip(img) })
 	}
-	// Warm-up render: first draw primes lazy caption-fit/font caches, so the
-	// baseline fingerprint is stable and the assertion isolates the watermark.
+	// Warm-up render: th starts with hash=="" (freshly preseeded), so this
+	// first ensure() is unconditionally a new job regardless of the
+	// instrument's current params — guaranteed real render that also primes
+	// lazy caption-fit/font caches so the two measurements below aren't
+	// skewed by first-draw cache population.
+	audio.SetInstrumentParam(inst, "osc_type", 1) // Saw (warm-up baseline)
 	_ = render()
-	a := render()
-	audio.SetInstrumentParam(inst, "osc_type", 1) // sine -> saw: every thumb changes
-	b := render()
-	if a == b {
-		t.Fatalf("chip watermarks did not follow a param change (fingerprint=%d)", a)
+
+	audio.SetInstrumentParam(inst, "osc_type", 0) // A: Sine — differs from the warm-up hash
+	fa := render()
+	if fa == 0 {
+		t.Fatalf("render A drew nothing (cache hit?) fingerprint=%d", fa)
+	}
+
+	audio.SetInstrumentParam(inst, "osc_type", 2) // B: Square — differs from A's hash
+	fb := render()
+	if fb == 0 {
+		t.Fatalf("render B drew nothing (cache hit?) fingerprint=%d", fb)
+	}
+
+	if fa == fb {
+		t.Fatalf("chip watermarks did not follow a param change (fingerprint=%d)", fa)
 	}
 }

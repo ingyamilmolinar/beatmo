@@ -57,6 +57,7 @@ func (dv *DrumView) openEQKnobWheelPopup(band int) {
 		Def:      def,
 		Discrete: false,
 		Title:    func() string { return eqBandLabel(band) },
+		Gloss:    func() string { return PlainEnglish("Gain") },
 		OnChange: func() {
 			db := eqDBMin + k.Value*eqDBSpan
 			z.applyBandGainLive(band, db)

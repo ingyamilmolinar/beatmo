@@ -98,6 +98,16 @@ func TestGeneratorRejectsSchemaViolations(t *testing.T) {
 			tmpTokens := filepath.Join(tmpDir, "tokens.gen.go")
 			tmpComps := filepath.Join(tmpDir, "components.gen.go")
 			tmpProfile := filepath.Join(tmpDir, "profile.gen.go")
+			// EVERY output must be redirected, including the two this test
+			// never inspects. Each -out* flag defaults to a real tracked
+			// generated file, and this test deliberately feeds the generator
+			// a malformed DESIGN.md — on its reject path it left the
+			// default-path outputs DELETED, so this passing test used to wipe
+			// internal/ui/design_density.gen.go and
+			// internal/templates/instrument_sequence.gen.go out of the
+			// working tree and break the next build.
+			tmpDensity := filepath.Join(tmpDir, "density.gen.go")
+			tmpSequence := filepath.Join(tmpDir, "sequence.gen.go")
 			schemaPath := filepath.Join(repoRoot, "scripts", "gen_design_tokens", "schema.json")
 
 			goBin := filepath.Join(repoRoot, ".tools", "go", "bin", "go")
@@ -110,6 +120,8 @@ func TestGeneratorRejectsSchemaViolations(t *testing.T) {
 				"-out", tmpTokens,
 				"-out-components", tmpComps,
 				"-out-profile", tmpProfile,
+				"-out-density", tmpDensity,
+				"-out-sequence", tmpSequence,
 			)
 			cmd.Dir = filepath.Join(repoRoot, "src", "go")
 			out, err := cmd.CombinedOutput()

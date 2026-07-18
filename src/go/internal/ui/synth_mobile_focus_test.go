@@ -136,6 +136,15 @@ func TestMobileSynthTab_KnobColumnHasUsableHeight(t *testing.T) {
 // on a typical mobile panel, after selecting a knob, drawSynthTab must paint ink
 // INSIDE the mobile focus band — proving the focus graph actually renders on
 // mobile (not just that a rect was reserved).
+//
+// Reads the FINAL composited pixels rather than intercepting drawRect: the
+// focus graph is routed through the synth sprite cache (Task 2,
+// synth_sprite_cache.go), whose content render draws into an origin-relative
+// offscreen texture (drawRect calls land near (0,0) in sprite-local
+// coordinates) and is blitted into dst via dst.DrawImage — not drawRect — so a
+// drawRect interceptor no longer observes ink at the band's absolute screen
+// position even though the blit lands it there. Pixel probing checks what
+// actually ends up on screen regardless of the caching mechanism underneath.
 func TestMobileSynthTab_FocusGraphRespondsToKnobSelect(t *testing.T) {
 	g := newMobileSynthTabGameForTest(t)
 	dv := g.drum
@@ -156,28 +165,35 @@ func TestMobileSynthTab_FocusGraphRespondsToKnobSelect(t *testing.T) {
 	dv.setSynthSelectedKnob(inst, sec.knobIdxs[0])
 
 	contentR := dv.eqPanelZone.ContentRect()
-	rects := collectFilledRects(t, func() {
-		dv.drawSynthTab(ebiten.NewImage(g.winW, g.winH), contentR, inst)
-	})
+	img := ebiten.NewImage(g.winW, g.winH)
+	dv.drawSynthTab(img, contentR, inst)
+
 	// Re-read the band: drawSynthTab calls buildSynthTab (via layout) but in this
 	// path the band was already laid out; read after draw to be safe.
 	band = dv.synthMobileFocusRect()
-	ink := 0
-	for _, r := range rects {
-		if r.Rect.Overlaps(band) {
-			ink++
+	ink := false
+	for y := band.Min.Y; y < band.Max.Y && !ink; y++ {
+		for x := band.Min.X; x < band.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a > 0 {
+				ink = true
+				break
+			}
 		}
 	}
-	if ink == 0 {
+	if !ink {
 		t.Fatalf("no ink painted inside the mobile focus band %v — focus graph not rendering on mobile", band)
 	}
 }
 
-// TestMobileSynthTab_KnobRendersAtIdealSize proves Task 1's content floor gives
-// the synth knob column enough height for a FULL-size dial at a tall mobile
-// viewport. k.Rect().Dx() is the dial diameter (placeKnobsInSection sets the
-// rect width to the clamped diameter d; height adds the caption row).
-func TestMobileSynthTab_KnobRendersAtIdealSize(t *testing.T) {
+// TestMobileSynthTab_CardRendersAtIdealSize proves the mobile audio-panel
+// content floor reserves enough height for a full ParamCard slot at a tall
+// mobile viewport. Post rotary-deletion each synth knob renders as one
+// ParamCard whose cell height is exactly ParamCardH (synthKnobCellHeight); the
+// panel floor (mobileAudioPanelMinContentH) budgets one ParamCardH per cell, so
+// the first card must lay out at exactly that height rather than being clamped
+// short. Replaces TestMobileSynthTab_KnobRendersAtIdealSize (the old dial-
+// diameter assertion) — there is no rotary dial anymore.
+func TestMobileSynthTab_CardRendersAtIdealSize(t *testing.T) {
 	g := newMobileSynthTabGameForTestSize(t, 390, 844)
 	dv := g.drum
 	d := Profile().DensityValues()
@@ -187,10 +203,10 @@ func TestMobileSynthTab_KnobRendersAtIdealSize(t *testing.T) {
 	}
 	k := dv.instEditorKnobs[sec.knobIdxs[0]]
 	if k.Rect().Empty() {
-		t.Fatalf("first knob not laid out")
+		t.Fatalf("first ParamCard not laid out")
 	}
-	if k.Rect().Dx() < d.SynthKnobIdeal {
-		t.Fatalf("knob diameter %d < ideal %d (still shrinking)", k.Rect().Dx(), d.SynthKnobIdeal)
+	if got := k.Rect().Dy(); got != d.ParamCardH {
+		t.Fatalf("ParamCard height %d != ParamCardH %d (panel floor should reserve exactly one card slot)", got, d.ParamCardH)
 	}
 }
 

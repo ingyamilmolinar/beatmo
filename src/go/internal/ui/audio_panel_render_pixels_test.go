@@ -372,6 +372,16 @@ func TestEQTabStripesRenderWithoutAnalyzerData(t *testing.T) {
 	g.drum.eqTestSnapshot = &empty
 	t.Cleanup(func() { g.drum.eqTestSnapshot = nil })
 
+	// The stripes render through the eqBackdropSprite cache in sprite-LOCAL
+	// coordinates; this test's assertion filters by ABSOLUTE subject rect.
+	// Use the RENDER_SAFE bypass (the pixel-test contract, trace_sprite.go)
+	// so every primitive reaches the interceptor at screen coordinates —
+	// the guarded regression (empty-spectrum early-return dropping the
+	// backdrop) would still zero the stripe count on this path.
+	oldSafe := envRenderSafe
+	envRenderSafe = true
+	t.Cleanup(func() { envRenderSafe = oldSafe })
+
 	screen := ebiten.NewImage(1280, 720)
 	rects := collectFilledRects(t, func() { g.Draw(screen) })
 

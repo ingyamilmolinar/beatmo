@@ -29,10 +29,21 @@ import (
 type synthStageThumbs struct {
 	mu      sync.Mutex
 	hash    string
-	wantN   int    // chip count of the newest request (async-completion gate)
+	wantN   int // chip count of the newest request (async-completion gate)
 	waves   [][]float64
 	pending func()      // the render job, swapped to nil by takePending
 	pool    *async.Pool // shared with synthMirror; nil => drainForTest-only
+	// version is a monotonic counter bumped every time t.waves is actually
+	// REPLACED (ensureNow, or a landed async job's commit in ensure) — as
+	// opposed to hash, which flips at REQUEST time (see ensure's doc
+	// comment: "only flips once, at request time, not at completion" — the
+	// same staleness shape the full-note/mirror trace sprites hit, see
+	// synthTabUpdate's consumeReady+Invalidate belt-and-suspenders). The
+	// chip-strip TraceSprite key (Task 4, drawSynthChipStrip) folds
+	// contentVersion() instead of hash so a landed-but-request-hash-
+	// unchanged render forces a re-render instead of caching the
+	// pre-landing watermark forever.
+	version int
 }
 
 // synthStageDownstreamOverride builds an override map that disables every
@@ -41,7 +52,9 @@ type synthStageThumbs struct {
 // stage but none of the stages after it. Chips at or before chipIdx (i.e.
 // upstream stages and the stage itself) are left untouched. Returns a fresh
 // map on every call — callers (renderers) must never share or mutate it.
-func (dv *DrumView) synthStageDownstreamOverride(chipIdx int) map[string]float64 {
+func (p *synthPanel) synthStageDownstreamOverride(chipIdx int) map[string]float64 {
+	dv := p.dv
+
 	ov := make(map[string]float64)
 	if dv == nil {
 		return ov
@@ -93,6 +106,7 @@ func (t *synthStageThumbs) ensure(dv *DrumView, instID, hash string) {
 		// ensure (new hash or chip count) supersedes this render.
 		if t.hash == hash && t.wantN == n {
 			t.waves = waves
+			t.version++
 		}
 		t.mu.Unlock()
 	}
@@ -125,7 +139,20 @@ func (t *synthStageThumbs) ensureNow(dv *DrumView, instID, hash string) {
 	t.wantN = n
 	t.waves = waves
 	t.pending = nil
+	t.version++
 	t.mu.Unlock()
+}
+
+// contentVersion returns the monotonic counter bumped every time t.waves is
+// actually replaced (see the `version` field doc comment). Nil-safe (a
+// not-yet-created thumbs cache reports 0, matching "no thumbnails yet").
+func (t *synthStageThumbs) contentVersion() int {
+	if t == nil {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.version
 }
 
 // takePending atomically swaps the pending job to nil and runs it (if any),
@@ -192,7 +219,9 @@ func (t *synthStageThumbs) waveFor(i int) []float64 {
 // lazyStageThumbs creates dv.stageThumbs on first use, sharing synthMirror's
 // 1-worker preview pool (same *async.Pool — no new registry name, so the
 // mirror's existing closeForTest/Release discipline covers it).
-func (dv *DrumView) lazyStageThumbs() *synthStageThumbs {
+func (p *synthPanel) lazyStageThumbs() *synthStageThumbs {
+	dv := p.dv
+
 	if dv.stageThumbs == nil {
 		if dv.synthMirror == nil {
 			dv.synthMirror = newSynthMirror()
@@ -205,7 +234,9 @@ func (dv *DrumView) lazyStageThumbs() *synthStageThumbs {
 // ensureStageThumbs lazily creates dv.stageThumbs and schedules a hash-gated
 // off-thread re-render for instID. Task 15's drawSynthTab calls this before
 // drawSynthChipStrip; on idle/drag frames it costs one string compare.
-func (dv *DrumView) ensureStageThumbs(instID string) {
+func (p *synthPanel) ensureStageThumbs(instID string) {
+	dv := p.dv
+
 	if dv == nil || instID == "" {
 		return
 	}
@@ -215,9 +246,29 @@ func (dv *DrumView) ensureStageThumbs(instID string) {
 // ensureStageThumbsNow renders the stage thumbnails synchronously (bypassing
 // the pool) so scene Setup produces deterministic watermarks at capture time.
 // Sibling of renderSynthMirrorNow — call them together in scene setups.
-func (dv *DrumView) ensureStageThumbsNow(instID string) {
+func (p *synthPanel) ensureStageThumbsNow(instID string) {
+	dv := p.dv
+
 	if dv == nil || instID == "" {
 		return
 	}
 	dv.lazyStageThumbs().ensureNow(dv, instID, dv.synthParamsHash(instID))
+}
+
+// --- DrumView forwarding shims ---
+
+func (dv *DrumView) synthStageDownstreamOverride(chipIdx int) map[string]float64 {
+	return dv.synp().synthStageDownstreamOverride(chipIdx)
+}
+
+func (dv *DrumView) lazyStageThumbs() *synthStageThumbs {
+	return dv.synp().lazyStageThumbs()
+}
+
+func (dv *DrumView) ensureStageThumbs(instID string) {
+	dv.synp().ensureStageThumbs(instID)
+}
+
+func (dv *DrumView) ensureStageThumbsNow(instID string) {
+	dv.synp().ensureStageThumbsNow(instID)
 }

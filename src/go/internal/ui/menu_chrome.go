@@ -3,6 +3,7 @@ package ui
 import (
 	"image"
 	"image/color"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -72,6 +73,22 @@ func drawMenuItemBackgroundAccent(dst *ebiten.Image, r image.Rectangle, state me
 	}
 }
 
+// drawMenuGroupHeader paints one non-interactive scrolling section row of a
+// long list menu — the DESIGN.md "menu-group-header" component: a hairline
+// separator at the top of the row and the uppercase caption label in muted
+// text, flat on the panel surface (no container box). Group headers occupy a
+// full row but never a button.
+func drawMenuGroupHeader(dst *ebiten.Image, r image.Rectangle, label string) {
+	if r.Empty() {
+		return
+	}
+	line := image.Rect(r.Min.X+SpaceSM, r.Min.Y+1, r.Max.X-SpaceSM, r.Min.Y+2)
+	drawRect(dst, line, WithAlpha(genColorBorder, AlphaSubtle), true)
+	th := StyledTextHeight(RoleCaption)
+	ty := r.Min.Y + (r.Dy()-th)/2
+	DrawTextStyled(dst, strings.ToUpper(label), r.Min.X+SpaceMD, ty, RoleCaption, colTextSecondary)
+}
+
 // drawMenuSeparator draws a 1px hairline across the vertical center of r — the
 // minimalist group divider that replaces the old group-container boxes.
 func drawMenuSeparator(dst *ebiten.Image, r image.Rectangle) {
@@ -90,8 +107,8 @@ func drawMenuSeparator(dst *ebiten.Image, r image.Rectangle) {
 const menuTitleRole = RoleSectionHeader
 
 // menuTitleSwatchSz is the instrument swatch (rounded square) shown at the left
-// of an instrument-scoped menu title.
-const menuTitleSwatchSz = 10
+// of an instrument-scoped menu title (spacing.swatch-sm).
+const menuTitleSwatchSz = SwatchSizeSM
 
 // menuTitleSwatchRect returns the vertically-centered leading swatch rect for a
 // menu title header.
@@ -166,7 +183,9 @@ type MenuRowSpec struct {
 	LabelColor  color.Color   // nil → colTextPrimary
 	LabelRole   TextRole      // zero → RoleBody
 	CenterLabel bool          // true → center label in the row (subdiv); else left-align
-	TrailLabel  string        // optional right-aligned muted caption (e.g. an instrument's category)
+	TrailLabel  string        // optional right-aligned muted caption (e.g. an instrument's category, a count, "♩ BPM")
+	TrailIconID IconID        // optional trailing icon at the far right (e.g. drill-in chevron); "" → none
+	TrailTint   color.Color   // trailing icon tint; nil → colMenuIcon
 }
 
 // drawMenuRow renders one list-menu row with the unified flat styling:
@@ -232,14 +251,24 @@ func drawMenuRow(dst *ebiten.Image, btn *Button, spec MenuRowSpec) {
 	}
 	DrawTextStyled(dst, spec.Label, labelX, ty, role, labelCol)
 
-	// 6. Optional trailing caption, right-aligned and muted (e.g. the category
-	// an instrument lives in, on global-search result rows).
+	// 6. Trailing slots, right to left: an optional drill-in icon at the far
+	// right, then an optional muted caption (category, count, BPM) beside it.
+	rx := r.Max.X - SpaceMD
+	if spec.TrailIconID != "" {
+		s := IconSizeSM
+		iy := r.Min.Y + (r.Dy()-s)/2
+		tint := spec.TrailTint
+		if tint == nil {
+			tint = colMenuIcon
+		}
+		DrawIcon(dst, spec.TrailIconID, image.Rect(rx-s, iy, rx, iy+s), tint)
+		rx -= s + SpaceSM
+	}
 	if spec.TrailLabel != "" {
 		tw := StyledTextWidth(spec.TrailLabel, RoleCaption)
-		tx := r.Max.X - SpaceMD - tw
 		tth := StyledTextHeight(RoleCaption)
 		tty := r.Min.Y + (r.Dy()-tth)/2
-		DrawTextStyled(dst, spec.TrailLabel, tx, tty, RoleCaption, colTextSecondary)
+		DrawTextStyled(dst, spec.TrailLabel, rx-tw, tty, RoleCaption, colTextSecondary)
 	}
 }
 

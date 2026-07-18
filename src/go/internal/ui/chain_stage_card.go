@@ -96,10 +96,9 @@ func drawChainFXBadgeCount(dst *ebiten.Image, btnRect image.Rectangle, count int
 	if btnRect.Empty() || count <= 0 {
 		return
 	}
-	captionScale := chainBadgeScale()
 	label := fmt.Sprintf("+%d", count)
-	tw := int(float64(TextWidth(label)) * captionScale)
-	th := int(float64(TextHeight()) * captionScale)
+	tw := StyledTextWidth(label, RoleCaption)
+	th := StyledTextHeight(RoleCaption)
 	pad := 2
 	badgeW := tw + 2*pad
 	badgeH := th + pad
@@ -107,7 +106,7 @@ func drawChainFXBadgeCount(dst *ebiten.Image, btnRect image.Rectangle, count int
 	by := btnRect.Min.Y + 1
 	bgR := image.Rect(bx, by, bx+badgeW, by+badgeH)
 	drawRect(dst, bgR, WithAlpha(colVizMids, AlphaStrong), true)
-	DrawTextColorAtScale(dst, label, bx+pad, by+pad/2, colTextPrimary, captionScale)
+	DrawTextStyled(dst, label, bx+pad, by+pad/2, RoleCaption, colTextPrimary)
 }
 
 // chainInsertFXCountForActiveRow returns the count of enabled insert

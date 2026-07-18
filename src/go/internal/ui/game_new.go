@@ -88,6 +88,11 @@ func New(logger *game_log.Logger) *Game {
 	g.loopCountByRow = []int{}
 	g.lastStepsOffset = -1
 	g.lastCellTypesOffset = -1
+	// g.frame only increments while Playing() (see game_update.go), so it can
+	// stay at its zero value for many paused draws; seed the memo frame to -1
+	// (never equal to g.frame) so the very first guideTargetCached call always
+	// misses instead of matching a coincidental zero/zero.
+	g.guideMemoFrame = -1
 	// Parity diagnostics state lives in the embedded parityTracker; set as
 	// statements because promoted (embedded) fields can't be keyed in a
 	// composite literal.
@@ -102,6 +107,8 @@ func New(logger *game_log.Logger) *Game {
 	g.timingTraces = make(map[int64]timingTrace)
 	g.emissionReportBuf = make([]audio.EmitReport, 128)
 	g.sidebar = NewNodeSidebar(g)
+	g.modes.Register(sidebarModeObserver{g: g})
+	g.modes.Register(breakConfirmModeObserver{g: g})
 	g.groupMenu = NewGroupMenu(g)
 	g.perfMode.SetFastPath(defaultPerfFastPath)
 	if runningUnderGoTest() {
@@ -165,6 +172,10 @@ func New(logger *game_log.Logger) *Game {
 	g.drum.onImport = func(data []byte, source string) error {
 		g.pendingImportData = data
 		g.pendingImportSource = source
+		// User-initiated load (template row / file picker): make it undoable so
+		// a mistap can't silently destroy the current circuit. Demo/startup/JS
+		// loads call g.Import directly and keep the clear-history behavior.
+		g.importAsUndoStep = true
 		return nil // actual result will be notified via pendingImportCB
 	}
 	g.drum.onImportDialogStart = g.startImportDialog

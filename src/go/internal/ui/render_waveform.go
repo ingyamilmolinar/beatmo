@@ -49,9 +49,9 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	// never clipped by the panel's bottom edge.
 	waveRect := image.Rect(rect.Min.X+Profile().DensityValues().AudioLabelMarginW, rect.Min.Y, rect.Max.X, rect.Max.Y-waveTimeAxisHeight())
 
-	// Label scale.
-	captionScale := FontSizeCaption / FontSizeBody
-	lh := int(float64(TextHeight()) * captionScale)
+	// Axis labels render at the styled micro role (smooth Inter, true 10px)
+	// — never the scaled bitmap font.
+	lh := StyledTextHeight(RoleMicro)
 
 	if gain <= 0 {
 		gain = 1.0
@@ -62,9 +62,9 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 	// panel's left edge so they never render flush at x=0).
 	// Edge labels reflect the TRUE amplitude the panel edges represent at the
 	// current Y-gain (adaptive auto-scale): top/bottom = +/- 1/gain, center 0.
-	DrawTextColorAtScale(dst, fmt.Sprintf("+%.2g", edge), rect.Min.X+SpaceXS, waveRect.Min.Y+2, colTextSecondary, captionScale)
-	DrawTextColorAtScale(dst, "0", rect.Min.X+SpaceXS, waveRect.Min.Y+waveRect.Dy()/2-lh/2, colTextSecondary, captionScale)
-	DrawTextColorAtScale(dst, fmt.Sprintf("-%.2g", edge), rect.Min.X+SpaceXS, waveRect.Max.Y-lh-2, colTextSecondary, captionScale)
+	DrawTextStyled(dst, fmt.Sprintf("+%.2g", edge), rect.Min.X+SpaceXS, waveRect.Min.Y+2, RoleMicro, colTextSecondary)
+	DrawTextStyled(dst, "0", rect.Min.X+SpaceXS, waveRect.Min.Y+waveRect.Dy()/2-lh/2, RoleMicro, colTextSecondary)
+	DrawTextStyled(dst, fmt.Sprintf("-%.2g", edge), rect.Min.X+SpaceXS, waveRect.Max.Y-lh-2, RoleMicro, colTextSecondary)
 
 	// Draw midline at vertical center.
 	midY := waveRect.Min.Y + waveRect.Dy()/2
@@ -126,8 +126,8 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 		drawWaveTrace(dst, ch.WaveformR, botRect, botMid, width, colWaveTrace, gain, colWaveTraceFill)
 		// Small L / R labels along the left margin so the split reads
 		// clearly without relying on context.
-		DrawTextColorAtScale(dst, "L", rect.Min.X+2, topRect.Min.Y+2, colTextSecondary, captionScale)
-		DrawTextColorAtScale(dst, "R", rect.Min.X+2, botRect.Min.Y+2, colTextSecondary, captionScale)
+		DrawTextStyled(dst, "L", rect.Min.X+2, topRect.Min.Y+2, RoleCaption, colTextSecondary)
+		DrawTextStyled(dst, "R", rect.Min.X+2, botRect.Min.Y+2, RoleCaption, colTextSecondary)
 		overdrawWaveClips(dst, ch.WaveformL, topRect, width, meterClip)
 		overdrawWaveClips(dst, ch.WaveformR, botRect, width, meterClip)
 	} else {
@@ -141,18 +141,18 @@ func drawAnalyzerWaveform(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.
 
 	// Time-axis: tick marks + ms labels along the reserved bottom strip.
 	axisRect := image.Rect(waveRect.Min.X, waveRect.Max.Y, waveRect.Max.X, waveRect.Max.Y+waveTimeAxisHeight())
-	drawWaveTimeAxis(dst, axisRect, waveWindowMs(len(wave), audio.SampleRate()), captionScale)
+	drawWaveTimeAxis(dst, axisRect, waveWindowMs(len(wave), audio.SampleRate()))
 
 	// Top-right status slot: FROZEN takes priority (global freeze reachable
 	// from other tabs); otherwise show the live Y-scale badge so the user
 	// always knows the current vertical scale.
 	if frozen || tabFrozen {
-		frozenW := int(float64(TextWidth(i18n.T(i18n.KeyCapFrozen))) * captionScale)
-		DrawTextColorAtScale(dst, i18n.T(i18n.KeyCapFrozen), waveRect.Max.X-frozenW-4, waveRect.Min.Y+2, colAccentBright, captionScale)
+		frozenW := StyledTextWidth(i18n.T(i18n.KeyCapFrozen), RoleCaption)
+		DrawTextStyled(dst, i18n.T(i18n.KeyCapFrozen), waveRect.Max.X-frozenW-4, waveRect.Min.Y+2, RoleCaption, colAccentBright)
 	} else {
 		badge := waveGainBadgeText(gain, autoOn)
-		bw := int(float64(TextWidth(badge)) * captionScale)
-		DrawTextColorAtScale(dst, badge, waveRect.Max.X-bw-4, waveRect.Min.Y+2, colTextSecondary, captionScale)
+		bw := StyledTextWidth(badge, RoleCaption)
+		DrawTextStyled(dst, badge, waveRect.Max.X-bw-4, waveRect.Min.Y+2, RoleCaption, colTextSecondary)
 	}
 }
 
@@ -199,22 +199,21 @@ func overdrawWaveClips(dst *ebiten.Image, wave []float64, rect image.Rectangle, 
 }
 
 // waveTimeAxisHeight is the reserved bottom strip (in px) for the Wave tab's
-// ms-axis tick marks + labels: one caption text row plus padding, so label
+// ms-axis tick marks + labels: one micro text row plus padding, so label
 // baselines are never clipped by the panel's bottom edge.
 func waveTimeAxisHeight() int {
-	captionScale := FontSizeCaption / FontSizeBody
-	return int(float64(TextHeight())*captionScale) + SpaceSM
+	return StyledTextHeight(RoleMicro) + SpaceSM
 }
 
 // drawWaveTimeAxis paints tick marks + ms labels across the bottom
 // strip of the wave panel. Mirrors the Chain tab's bottom-axis style
 // so time correlation reads identically across both signal surfaces.
-func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs float64, captionScale float64) {
+func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs float64) {
 	if axisRect.Empty() || windowMs <= 0 {
 		return
 	}
 	w := axisRect.Dx()
-	lh := int(float64(TextHeight()) * captionScale)
+	lh := StyledTextHeight(RoleMicro)
 	for _, lbl := range waveAxisLabels(windowMs) {
 		x := axisRect.Min.X + int(lbl.Frac*float64(w))
 		if x >= axisRect.Max.X {
@@ -227,7 +226,7 @@ func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs floa
 		// Label sits ABOVE the tick, fully inside the strip, so its baseline
 		// is never clipped by the panel's bottom edge (the original bug).
 		// Anchor first label to the left edge; centre the rest under their tick.
-		lw := int(float64(TextWidth(lbl.Text)) * captionScale)
+		lw := StyledTextWidth(lbl.Text, RoleMicro)
 		lx := x - lw/2
 		if lbl.Frac == 0 {
 			lx = axisRect.Min.X
@@ -242,7 +241,7 @@ func drawWaveTimeAxis(dst *ebiten.Image, axisRect image.Rectangle, windowMs floa
 		if ly < axisRect.Min.Y {
 			ly = axisRect.Min.Y
 		}
-		DrawTextColorAtScale(dst, lbl.Text, lx, ly, colTextSecondary, captionScale)
+		DrawTextStyled(dst, lbl.Text, lx, ly, RoleMicro, colTextSecondary)
 	}
 }
 
@@ -385,9 +384,8 @@ func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 	msInWindow := float64(idx) * 1000.0 / float64(sr)
 
 	label := fmt.Sprintf("%.2f · %.1f ms", amp, msInWindow)
-	captionScale := FontSizeCaption / FontSizeBody
-	tw := int(float64(TextWidth(label)) * captionScale)
-	th := int(float64(TextHeight()) * captionScale)
+	tw := StyledTextWidth(label, RoleMicro)
+	th := StyledTextHeight(RoleMicro)
 	lx := cursorX + 4
 	if lx+tw+4 > waveRect.Max.X {
 		lx = cursorX - tw - 4
@@ -398,5 +396,5 @@ func drawWaveformCursor(dst *ebiten.Image, rect image.Rectangle, ch *analyzer.Ch
 	ly := waveRect.Min.Y + 2
 	bg := image.Rect(lx-2, ly-1, lx+tw+2, ly+th+2)
 	drawRect(dst, bg, WithAlpha(colSurface2, AlphaStrong), true)
-	DrawTextColorAtScale(dst, label, lx, ly, colTextSecondary, captionScale)
+	DrawTextStyled(dst, label, lx, ly, RoleMicro, colTextSecondary)
 }

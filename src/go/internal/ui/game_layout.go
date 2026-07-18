@@ -195,12 +195,12 @@ func mobileAudioPanelMinContentH() int {
 	//   SpaceSM                 — gap between chip strip and detail pane
 	//   SynthDetailHeaderH      — detail-pane header (title + enable pill)
 	//   2*synthSectionPaddingY  — innerR top+bottom padding inside the detail pane
-	//   knobCell                — dial + caption + step-badge gap (synthKnobCellHeight)
+	//   knobCell                — one ParamCard slot (synthKnobCellHeight == ParamCardH)
 	// The mobile audio panel reserves a sticky tab-switcher bar at its top
 	// (stickyBarHeight); the synth content (contentRect) is everything below it.
 	// The split budgets this whole value as the panel height, so include the bar.
 	chipStrip := 2 * d.SynthChipStripH
-	knobCell := d.SynthKnobIdeal + d.SynthKnobCaptionH + SpaceXS
+	knobCell := d.ParamCardH
 	synthContent := Profile().SynthHeaderH + 2*SpaceSM + chipStrip + SpaceSM +
 		d.SynthDetailHeaderH + 2*synthSectionPaddingY + knobCell
 	// The Sampler tab can be the tallest: on mobile it wraps its knobs to two

@@ -39,11 +39,30 @@ func TestGridCachePadAreaCoveredAtMinZoom(t *testing.T) {
 		t.Fatal("gridCache was not built")
 	}
 
-	got := color.RGBAModel.Convert(g.gridCache.At(0, 0)).(color.RGBA)
-	if got == (color.RGBA{}) {
-		t.Fatalf("gridCache.At(0,0) is zero (untiled pad gap); expected non-zero grid-line pixel. "+
+	if !gridColumnCovered(g.gridCache, 0, g.gridTile.Bounds().Dx()) {
+		t.Fatalf("gridCache column 0 has no tiled pixels (untiled pad gap). "+
 			"tileW=6, old startX=58 left x=0..57 blank. gridCachePad=%d", g.gridCachePad)
 	}
+}
+
+// gridColumnCovered reports whether any pixel in cache column x within one
+// vertical tile period is non-zero. The stub's DrawImage performs faithful
+// per-pixel copies for unscaled blits (trace-sprite work, 2026-07-14), so a
+// TILED column carries the tile's lattice-line pixels somewhere within each
+// period, while a column left untiled by the old startX bug is fully
+// transparent. The previous probes read one fixed pixel and relied on the
+// stub's former first-pixel smear filling entire tile rects — an artifact,
+// not real rendering.
+func gridColumnCovered(cache *ebiten.Image, x, tilePeriod int) bool {
+	if tilePeriod < 1 {
+		tilePeriod = 1
+	}
+	for y := 0; y < tilePeriod; y++ {
+		if color.RGBAModel.Convert(cache.At(x, y)).(color.RGBA) != (color.RGBA{}) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestGridCacheGapZoneAbsentAtMinZoom verifies that the entire old gap zone
@@ -76,9 +95,8 @@ func TestGridCacheGapZoneAbsentAtMinZoom(t *testing.T) {
 	gapEnd := g.gridCachePad - tileW - 1 // = 64 - 6 - 1 = 57
 
 	for x := 0; x <= gapEnd; x++ {
-		got := color.RGBAModel.Convert(g.gridCache.At(x, 0)).(color.RGBA)
-		if got == (color.RGBA{}) {
-			t.Fatalf("gridCache.At(%d,0) is zero (untiled gap); expected non-zero. "+
+		if !gridColumnCovered(g.gridCache, x, tileW) {
+			t.Fatalf("gridCache column %d has no tiled pixels (untiled gap). "+
 				"tileW=%d gridCachePad=%d gapEnd=%d", x, tileW, g.gridCachePad, gapEnd)
 		}
 	}
@@ -110,10 +128,9 @@ func TestGridCacheGapZoneAbsentAtDefaultZoom(t *testing.T) {
 	}
 
 	// tileW=60, gridCachePad=64, phaseX=50 → old startX=54 → gap x=0..53
-	checkX := 53 // last pixel in old gap zone
-	got := color.RGBAModel.Convert(g.gridCache.At(checkX, 0)).(color.RGBA)
-	if got == (color.RGBA{}) {
-		t.Fatalf("gridCache.At(%d,0) is zero (untiled pad gap); expected non-zero. "+
+	checkX := 53 // last column in old gap zone
+	if !gridColumnCovered(g.gridCache, checkX, g.gridTile.Bounds().Dx()) {
+		t.Fatalf("gridCache column %d has no tiled pixels (untiled pad gap). "+
 			"tileW=60 phaseX=50 old startX=54 left x=0..53 blank. gridCachePad=%d",
 			checkX, g.gridCachePad)
 	}

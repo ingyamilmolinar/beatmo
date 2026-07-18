@@ -18,32 +18,6 @@ func realOf(k *Knob) float64 {
 	return k.Scale.Min + k.Value*(k.Scale.Max-k.Scale.Min)
 }
 
-func TestEndlessKnobAccumulatesInRealUnits(t *testing.T) {
-	k := newEndlessKnob()
-	k.HandleInputResult(50, 50, true) // press at x=50, real=20
-	k.HandleInputResult(58, 50, true) // +8px = 1 notch = +100Hz
-	if got := realOf(k); got < 119.999 || got > 120.001 {
-		t.Fatalf("after +1 notch real=%v want ~120", got)
-	}
-	k.HandleInputResult(138, 50, true) // +80px = 10 notches = +1000Hz
-	if got := realOf(k); got < 1119.99 || got > 1120.01 {
-		t.Fatalf("after +11 notches real=%v want ~1120", got)
-	}
-}
-
-func TestEndlessKnobClampsThenReversesImmediately(t *testing.T) {
-	k := newEndlessKnob()
-	k.HandleInputResult(50, 50, true)
-	k.HandleInputResult(-5000, 50, true) // far left => clamp at Min
-	if realOf(k) > 20.0001 {
-		t.Fatalf("expected clamp at Min, got %v", realOf(k))
-	}
-	k.HandleInputResult(-4992, 50, true) // +8px => +100Hz, no dead zone
-	if got := realOf(k); got < 119.99 || got > 120.01 {
-		t.Fatalf("reverse-off-clamp real=%v want ~120", got)
-	}
-}
-
 func TestEndlessKnobWheelStepsByStepMul(t *testing.T) {
 	k := newEndlessKnob()
 	if r := k.HandleWheel(50, 50, 1); r != InputConsumed {

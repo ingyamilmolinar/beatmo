@@ -5,7 +5,7 @@ package ui
 import (
 	"testing"
 
-	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // setupSamplerForUndo captures a synth-source buffer on row-0's instrument (a
@@ -15,6 +15,14 @@ import (
 func setupSamplerForUndo(t *testing.T, g *Game) string {
 	t.Helper()
 	instID := g.drum.Rows[0].Instrument
+	// Hermetic setup: sampleEdits is a package-global in internal/audio, so a
+	// prior test that Accepted a sampler-wheel edit (e.g. the WheelPopup Accept
+	// test) can leave a stale descriptor on this instrument — which the exported
+	// undo baseline reads even though the freshly-captured UI state is clean,
+	// desyncing doc↔UI and breaking the "undo reverts to a clean baseline" check.
+	// Clear it here (and on cleanup) so the undo tests are order-independent.
+	audio.ClearSampleEdit(instID)
+	t.Cleanup(func() { audio.ClearSampleEdit(instID) })
 	g.drum.sampler.captureFromSynth(instID)
 	if !g.drum.sampler.hasBuffer() || g.drum.sampler.captureID == "" {
 		t.Skipf("could not capture a sampler buffer for %q", instID)
@@ -32,9 +40,11 @@ func clickSamplerButton(t *testing.T, g *Game, tag string) {
 	btn.OnClick()
 }
 
-// samplerKnobRelease drives a knob to a new value and fires the production
-// release handler (samplerKnobHitAdapter.OnRelease), which is where a gesture's
-// single undo step must be committed.
+// samplerKnobRelease drives a knob to a new value and commits its single undo
+// step the way the ParamCard control does: a value change (applySamplerKnob)
+// followed by the debounced wheel-nudge commit (bump → flush = exactly one
+// commit). This mirrors samplerKnobHitAdapter.OnWheel's commit path now that the
+// card no longer drives an in-place rotary drag (OnRelease is a no-op).
 func samplerKnobRelease(t *testing.T, g *Game, idx int, value float64) {
 	t.Helper()
 	ks := g.drum.sampler.knobs
@@ -42,8 +52,10 @@ func samplerKnobRelease(t *testing.T, g *Game, idx int, value float64) {
 		t.Fatalf("sampler knob %d not built", idx)
 	}
 	ks[idx].Value = value
-	h := &samplerKnobHitAdapter{dv: g.drum, idx: idx, active: true}
-	h.OnRelease(0, 0)
+	dv := g.drum
+	dv.applySamplerKnob(idx)
+	dv.samplerWheelNudge.bump(func() { dv.commitSamplerEdit() })
+	dv.samplerWheelNudge.flush()
 }
 
 // samplerTrimHandleDrag drives the start trim handle through the production
@@ -75,75 +87,61 @@ func samplerNumericEntry(t *testing.T, g *Game) {
 	dv.paramEditor.commit()
 }
 
-// TestSamplerKnobDragViaTreeIsUndoable is the end-to-end functional proof: it
-// drives a real gain-knob drag through the PRODUCTION input path (SetInputForTest
-// → g.Update → HitIndex → samplerKnobHitAdapter press/drag/release), then undoes
-// it — asserting the gesture changed the document, recorded exactly one step,
-// and that Undo reverted BOTH the document and the sampler UI state.
-func TestSamplerKnobDragViaTreeIsUndoable(t *testing.T) {
-	g := newSamplerTabGame(t)
+// TestSamplerKnobWheelViaTreeIsUndoable is the end-to-end functional proof: it
+// drives a real desktop wheel nudge over the gain CARD through the PRODUCTION
+// input path (SetInputForTest → g.Update → HitIndex → samplerKnobHitAdapter.
+// OnWheel), lets the debounce elapse, then undoes it — asserting the gesture
+// changed the document, recorded exactly one step, and that Undo reverted BOTH
+// the document and the sampler UI state. Replaces the retired rotary-drag test.
+func TestSamplerKnobWheelViaTreeIsUndoable(t *testing.T) {
+	g := samplerLayoutGame(t) // 1280x720 to match the dispatchWheelAt window
 	setupSamplerForUndo(t, g)
 	g.Update()
 
-	img := newTrackedImage("test.samplerknobdrag", 1280, 720)
+	img := newTrackedImage("test.samplerknobwheel", 1280, 720)
 	defer releaseImage(img)
-	g.Draw(img) // populate knob rects
+	g.Draw(img) // populate card rects
 
 	idx := samplerKnobGain
 	k := g.drum.sampler.knobs[idx]
 	r := k.Rect()
 	if r.Empty() {
-		t.Fatal("sampler gain knob rect empty after draw")
+		t.Fatal("sampler gain card rect empty after draw")
 	}
-	// Press on the DIAL (top knobD×knobD square), not the cell center — the cell
-	// rect also spans the caption/readout band, where a press opens the numeric
-	// editor instead of starting a drag.
-	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dx()/2
-	g.drum.eqPanelZone.Invalidate()
-
-	mouseX, mouseY := cx, cy
-	pressed := false
-	restore := SetInputForTest(
-		func() (int, int) { return mouseX, mouseY },
-		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 1280, 720 },
-	)
-	defer restore()
 
 	g.undoManager.OnExternalLoad()
 	before := g.undoCapture()
 	depth0 := len(g.undoManager.undo)
+	// Baseline gain — compared against, not hardcoded to 0, so the test is robust
+	// to a prior test having saved a sample-edit on this instrument (global
+	// audio store); the invariant under test is "undo reverts to baseline".
+	gainBefore := g.drum.sampler.gainDB
 
-	pressed = true
-	g.Update() // OnPress
-	for f := 1; f <= 5; f++ {
-		mouseX = cx + f*12 // horizontal drag turns the knob
+	// A desktop wheel notch over the card nudges the value; the whole spin
+	// collapses into ONE debounced undo step (run the debounce down below).
+	dispatchWheelAt(t, g, r.Min.X+4, r.Min.Y+4, +1)
+	if g.drum.sampler.gainDB == gainBefore {
+		t.Fatal("real sampler card wheel did not change samplerState.gainDB")
+	}
+	for f := 0; f < 60; f++ { // run the debounce down → single trailing commit
 		g.Update()
 	}
-	pressed = false
-	g.Update() // OnRelease → commit
 
-	if g.drum.sampler.gainDB == 0 {
-		t.Fatal("real knob drag did not change samplerState.gainDB")
-	}
 	after := g.undoCapture()
 	if string(after) == string(before) {
-		t.Fatal("real sampler knob drag did not change the exported document")
+		t.Fatal("real sampler card wheel did not change the exported document")
 	}
 	if steps := len(g.undoManager.undo) - depth0; steps != 1 {
-		t.Fatalf("real sampler knob drag recorded %d undo steps, want exactly 1", steps)
+		t.Fatalf("real sampler card wheel recorded %d undo steps, want exactly 1", steps)
 	}
 
 	g.undoManager.Undo()
 	layoutSamplerTab(t, g)
 	if got := g.undoCapture(); string(got) != string(before) {
-		t.Fatal("Undo did not restore the pre-drag document")
+		t.Fatal("Undo did not restore the pre-wheel document")
 	}
-	if g.drum.sampler.gainDB != 0 {
-		t.Fatalf("after undo the sampler knob did not revert: gainDB=%.3f want 0", g.drum.sampler.gainDB)
+	if g.drum.sampler.gainDB != gainBefore {
+		t.Fatalf("after undo the sampler knob did not revert: gainDB=%.3f want %.3f", g.drum.sampler.gainDB, gainBefore)
 	}
 }
 

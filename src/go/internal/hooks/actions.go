@@ -71,10 +71,16 @@ var ActionRegistry = []ActionMeta{
 	{EventNodeDeleted, "delete node", "node", ScopeDocument, ""},
 	{EventNodeMoved, "move node", "node", ScopeDocument, ""},
 	{EventNodeTypeChanged, "change node type", "node", ScopeDocument, ""},
+	{EventNodeCopied, "copy node", "node", ScopeInteraction, ""},
+	{EventNodeCut, "cut node", "node", ScopeInteraction, ""},
+	{EventNodePasted, "paste node", "node", ScopeDocument, ""},
 	{EventNodeParamsChanged, "edit node", "node", ScopeDocument, ""},
 	{EventStartNodeChanged, "set start node", "node", ScopeDocument, ""},
 	{EventEdgeAdded, "add edge", "edge", ScopeDocument, ""},
 	{EventEdgeDeleted, "delete edge", "edge", ScopeDocument, ""},
+
+	{EventGridModeArmed, "arm grid mode", "node", ScopeInteraction, ""},
+	{EventGridModeCanceled, "cancel grid mode", "node", ScopeInteraction, ""},
 
 	{EventGroupCreated, "create group", "group", ScopeDocument, ""},
 	{EventGroupChanged, "edit group", "group", ScopeDocument, ""},

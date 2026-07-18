@@ -35,6 +35,12 @@ func TestDesignTokensFreshness(t *testing.T) {
 	tmpComponents := filepath.Join(tmpDir, "design_components.gen.go")
 	tmpProfile := filepath.Join(tmpDir, "design_profile.gen.go")
 	tmpDensity := filepath.Join(tmpDir, "design_density.gen.go")
+	// Redirected but not compared: -out-sequence targets the templates
+	// package, which this UI-token freshness check does not own. It must
+	// still be redirected — the flag defaults to the real tracked
+	// internal/templates/instrument_sequence.gen.go, so leaving it off makes
+	// this test rewrite a checked-in file on every run.
+	tmpSequence := filepath.Join(tmpDir, "instrument_sequence.gen.go")
 
 	goBin := goExecutable()
 	cmd := exec.Command(goBin, "run", "./cmd/gen_design_tokens",
@@ -42,7 +48,8 @@ func TestDesignTokensFreshness(t *testing.T) {
 		"-out", tmpTokens,
 		"-out-components", tmpComponents,
 		"-out-profile", tmpProfile,
-		"-out-density", tmpDensity)
+		"-out-density", tmpDensity,
+		"-out-sequence", tmpSequence)
 	cmd.Dir = srcDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -35,6 +35,9 @@ func TestLongPressPopupShowsOnNode(t *testing.T) {
 	if g.longPressPopupMove.Empty() {
 		t.Fatal("expected move button rect to be non-empty")
 	}
+	if g.longPressPopupCopy.Empty() {
+		t.Fatal("expected copy button rect to be non-empty")
+	}
 	if g.longPressPopupConn.Empty() {
 		t.Fatal("expected connect button rect to be non-empty")
 	}
@@ -73,10 +76,10 @@ func TestLongPressPopupDismissOnRelease(t *testing.T) {
 	if g.longPressPopup {
 		t.Fatal("popup should be dismissed on release outside buttons")
 	}
-	if g.moveMode {
+	if g.modes.Is(GridModeMove) {
 		t.Fatal("moveMode should not be active")
 	}
-	if g.connectMode {
+	if g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should not be active")
 	}
 }
@@ -114,10 +117,10 @@ func TestLongPressPopupMoveAction(t *testing.T) {
 	if g.longPressPopup {
 		t.Fatal("popup should be dismissed after action")
 	}
-	if !g.moveMode {
+	if !g.modes.Is(GridModeMove) {
 		t.Fatal("moveMode should be true")
 	}
-	if g.movingNode != n {
+	if g.modes.Subject() != n {
 		t.Fatal("movingNode should be the long-pressed node")
 	}
 }
@@ -153,10 +156,10 @@ func TestLongPressPopupConnectAction(t *testing.T) {
 	if g.longPressPopup {
 		t.Fatal("popup should be dismissed after action")
 	}
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("connectMode should be true")
 	}
-	if g.connectFromNode != n {
+	if g.modes.Subject() != n {
 		t.Fatal("connectFromNode should be the long-pressed node")
 	}
 }
@@ -237,6 +240,9 @@ func TestLongPressPopupShowsOnDesktop(t *testing.T) {
 	}
 	if g.longPressPopupMove.Empty() {
 		t.Fatal("expected move button rect to be non-empty")
+	}
+	if g.longPressPopupCopy.Empty() {
+		t.Fatal("expected copy button rect to be non-empty")
 	}
 	if g.longPressPopupConn.Empty() {
 		t.Fatal("expected connect button rect to be non-empty")
@@ -399,10 +405,10 @@ func TestLongPressPopupReleaseActivatesButton(t *testing.T) {
 	if g.longPressPopup {
 		t.Fatal("popup should be dismissed")
 	}
-	if !g.moveMode {
+	if !g.modes.Is(GridModeMove) {
 		t.Fatal("moveMode should be true despite stale release coordinates")
 	}
-	if g.movingNode != n {
+	if g.modes.Subject() != n {
 		t.Fatal("movingNode should be the long-pressed node")
 	}
 }

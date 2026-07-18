@@ -107,6 +107,12 @@ var sceneCatalog = []Scene{
 			g.SetForceMobileProfile(true)
 			g.drum.OpenSubdivMenu()
 		}},
+	{Name: "transport_jump_menu_open", Description: "FF/RW jump-size (×N) dropdown open", SettleFrames: 120,
+		Setup: func(g *Game) {
+			if g.drum != nil {
+				g.drum.OpenJumpMenu()
+			}
+		}},
 
 	// ─── FX panel ─────────────────────────────────────────────────
 	{Name: "fx_panel_open_empty", Description: "FX panel with no effects", Mobile: true, SettleFrames: 120,
@@ -193,6 +199,13 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) { g.SetForceMobileProfile(true); g.drum.OpenOverflowMenu() }},
 	{Name: "overflow_menu_open", Description: "desktop overflow menu (Upload/Import/Export)", SettleFrames: 120,
 		Setup: func(g *Game) { g.drum.OpenOverflowMenu() }},
+	{Name: "template_menu_open", Description: "overflow menu template page (genre circuit templates + search)", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) { g.drum.overflowPage = 1; g.drum.OpenOverflowMenu() },
+		MobileSetup: func(g *Game) {
+			g.SetForceMobileProfile(true)
+			g.drum.overflowPage = 1
+			g.drum.OpenOverflowMenu()
+		}},
 	{Name: "mobile_view_audio", Description: "mobile audio view (EQ/Wave) mode", Mobile: true,
 		Setup: func(g *Game) {
 			g.SetForceMobileProfile(true)
@@ -592,6 +605,47 @@ var sceneCatalog = []Scene{
 			g.SetPlaying(true)
 		}},
 
+	// ─── armed grid modes (helper banner + blink/ghost + dialog) ──
+	// SettleFrames 60 keeps the move-mode blink in an ON half-period
+	// (phase 60 → index 4, even) so the subject highlight is captured.
+	{Name: "mode_move_banner", Description: "move mode armed — helper banner, blinking subject, chain A→N→B", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			a := g.tryAddNode(2, 2, model.NodeTypeRegular)
+			n := g.tryAddNode(2, 4, model.NodeTypeRegular)
+			b := g.tryAddNode(2, 6, model.NodeTypeRegular)
+			if a != nil && n != nil && b != nil {
+				g.addEdge(a, n)
+				g.addEdge(n, b)
+				g.modes.Enter(GridModeMove, n)
+			}
+		}},
+	{Name: "mode_copy_banner", Description: "copy mode armed — pasting helper banner", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			n := g.tryAddNode(2, 2, model.NodeTypeRegular)
+			if n != nil && g.snapshotNodeToClipboard(n) {
+				g.modes.Enter(GridModeCopy, n)
+			}
+		}},
+	{Name: "mode_break_confirm", Description: "break-circuit confirmation dialog over a square circuit corner", Mobile: true, SettleFrames: 60,
+		Setup: func(g *Game) {
+			a := g.tryAddNode(2, 2, model.NodeTypeRegular)
+			n := g.tryAddNode(2, 6, model.NodeTypeRegular)
+			b := g.tryAddNode(6, 6, model.NodeTypeRegular)
+			c := g.tryAddNode(6, 2, model.NodeTypeRegular)
+			x := g.tryAddNode(10, 2, model.NodeTypeRegular)
+			y := g.tryAddNode(10, 8, model.NodeTypeRegular)
+			if a == nil || n == nil || b == nil || c == nil || x == nil || y == nil {
+				return
+			}
+			g.addEdge(a, n)
+			g.addEdge(n, b)
+			g.addEdge(b, c)
+			g.addEdge(c, a)
+			g.addEdge(x, y)
+			g.modes.Enter(GridModeMove, n)
+			g.beginBreakConfirm(n, 10, 5)
+		}},
+
 	// ─── subject-cropped variants (Phase 5) ──────────────────────
 	// Each crop_* scene declares a Subject so the screenshot harness
 	// emits a PNG cropped to that surface's bounds. Setup is reused
@@ -664,9 +718,9 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabStageSceneSetup("dnb-kick", synthSectionVoice),
 		MobileSetup: mobileSynthTabSetup("dnb-kick")},
-	{Name: "crop_synth_tab_kick_voice_expanded", Description: "Synth tab cropped — dnb-kick VOICE stage with the Advanced expander OPEN (fine-tuning kick knobs revealed, P4 tiering)",
+	{Name: "crop_synth_advanced_divider", Description: "Synth tab cropped — dnb-kick VOICE stage showing the always-visible Advanced divider row (essentials above, fine-tuning knobs below, P4 tiering)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabStageExpandedSceneSetup("dnb-kick", synthSectionVoice),
+		Setup:       synthTabStageDividerSceneSetup("dnb-kick", synthSectionVoice),
 		MobileSetup: mobileSynthTabSetup("dnb-kick")},
 	{Name: "crop_synth_tab_violin_osc", Description: "Synth tab cropped — violin OSC stage with Advanced open: the bowed-string physical-model knobs (Bow Position/Pressure/Speed/Brightness) appear contextually because the Bowed String oscillator is selected (P4 contextual exposure)",
 		Subject:     SubjectSynthPanel,
@@ -1085,21 +1139,43 @@ func synthTabStageSceneSetup(instrument string, section synthSectionID) func(*Ga
 	}
 }
 
-// synthTabStageExpandedSceneSetup opens a stage AND reveals its Advanced knobs,
-// so a screenshot shows the expanded (fine-tuning) tier.
+// synthTabStageExpandedSceneSetup opens a stage. Advanced (fine-tuning) knobs
+// are now always laid out below an in-grid divider row — there is no expander to
+// open — so this is just the stage-selection setup (kept as a distinct name for
+// the scenes that specifically showcase the Advanced tier, e.g. violin OSC).
 func synthTabStageExpandedSceneSetup(instrument string, section synthSectionID) func(*Game) {
+	return synthTabStageSceneSetup(instrument, section)
+}
+
+// synthTabStageDividerSceneSetup opens a stage and scrolls its card grid so the
+// "— ADVANCED · N —" divider row (and the first advanced cards below it) are in
+// view — a screenshot of the divider scene must actually show the divider, not
+// just the essential row above the fold.
+func synthTabStageDividerSceneSetup(instrument string, section synthSectionID) func(*Game) {
 	base := synthTabStageSceneSetup(instrument, section)
 	return func(g *Game) {
 		base(g)
-		if g.drum != nil {
-			if g.drum.synthAdvExpanded == nil {
-				g.drum.synthAdvExpanded = map[synthSectionID]bool{}
-			}
-			g.drum.synthAdvExpanded[section] = true
-			g.drum.synthAdvScrollPending = true // auto-scroll the reveal into view
-			if g.drum.eqPanelZone != nil {
-				g.drum.eqPanelZone.Invalidate()
-			}
+		dv := g.drum
+		if dv == nil {
+			return
+		}
+		sel := dv.synthSelectedSection()
+		if sel == nil {
+			return
+		}
+		ess, adv := dv.synthSectionTierSplit(sel.knobIdxs)
+		if len(adv) == 0 {
+			return
+		}
+		grid := dv.sectionGrid(sel.id)
+		cols := grid.Cols()
+		if cols < 1 {
+			cols = 1
+		}
+		dividerStart := ((len(ess) + cols - 1) / cols) * cols
+		grid.ScrollToIndex(dividerStart)
+		if dv.eqPanelZone != nil {
+			dv.eqPanelZone.Invalidate()
 		}
 	}
 }
@@ -1583,6 +1659,11 @@ func sceneGroupMenuSetup(g *Game) {
 	g.addEdge(a, b)
 	g.addEdge(b, c)
 	g.updateBeatInfos()
+	// A committed group elsewhere gives the provisional menu one merge-chip
+	// candidate, so the capture shows the "Add to group" section too.
+	if d := g.tryAddNode(8, 6, model.NodeTypeRegular); d != nil {
+		_, _ = g.graph.CreateGroup("Drums", []model.NodeID{d.ID})
+	}
 	gid, err := g.graph.CreateGroup("", []model.NodeID{a.ID, b.ID, c.ID})
 	if err != nil {
 		return
@@ -1621,12 +1702,12 @@ func sceneGroupBadgesSetup(g *Game) {
 }
 
 // sceneNodeSidebarGroupsSetup builds a→b→c with node b in two committed
-// groups ("Drums" {a,b}, "Melody" {b,c}) — 2 membership rows, each with a
-// chip + remove button — plus a third group ("Extra" {a} only) so b also
-// has exactly one add-candidate and the "Add to group" row shows. The
-// dropdown itself is left closed (portal/dropdown overlay screenshots are
-// flaky per CLAUDE.md); the closed grpadd row is enough for visual
-// verification.
+// groups ("Drums" {a,b}, "Melody" {b,c}) — 2 full-width open-only chip
+// rows — plus a third group ("Extra" {a} only) so b also has exactly one
+// add-candidate and the "Add to group" row shows, alongside the "Remove
+// from group" row (b has >=1 membership). Both dropdowns are left closed
+// (portal/dropdown overlay screenshots are flaky per CLAUDE.md); the closed
+// grpadd/grpremove rows are enough for visual verification.
 func sceneNodeSidebarGroupsSetup(g *Game) {
 	a := g.tryAddNode(2, 1, model.NodeTypeRegular)
 	b := g.tryAddNode(3, 1, model.NodeTypeRegular)

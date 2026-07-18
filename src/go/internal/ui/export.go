@@ -19,10 +19,17 @@ import (
 
 // Export schema
 type exportFile struct {
-	Version      int                `json:"version"`
-	Subdiv       int                `json:"subdiv,omitempty"`
-	BPM          int                `json:"bpm"`
-	MasterVolume float64            `json:"master_volume,omitempty"` // 0-1, omitted when default (1.0)
+	Version int `json:"version"`
+	Subdiv  int `json:"subdiv,omitempty"`
+	BPM     int `json:"bpm"`
+	// MasterVolume is a POINTER so a genuine 0 (silence) survives the
+	// round-trip: with a plain float64+omitempty, master=0 was dropped on
+	// export and restored as the legacy 1.0 default on import — a muted
+	// project came back at FULL volume. nil = field absent (legacy files,
+	// which imported at 1.0 long before the fresh-session default moved to
+	// 0.5 — that fallback must stay for their sake). Export now always
+	// writes the current value so new files are self-describing.
+	MasterVolume *float64           `json:"master_volume,omitempty"` // 0-1; nil = legacy file (imports as 1.0)
 	Instruments  []exportInstrument `json:"instruments"`
 	Nodes        []exportNode       `json:"nodes"`
 	EQ           *exportEQ          `json:"eq,omitempty"`
@@ -154,11 +161,24 @@ type exportGroupRule struct {
 }
 
 // exportGroup mirrors model.NodeGroup for JSON persistence.
+//
+// RulesEnabled is a *bool (task-enabled-status brief, Part C), not a plain
+// bool: a plain bool + omitempty can't distinguish "key absent" (a legacy
+// file written before this field existed) from "explicitly false" (a
+// disabled group with configured deltas, saved by this task's new
+// semantics) after JSON decode — both would leave the Go field at its zero
+// value. importFile.go's backward-compat rule (RulesEnabled = len(rules)>0
+// when the key was never present) depends on that distinction. Export always
+// sets a non-nil pointer, so every document this build writes carries the
+// flag explicitly (omitempty on a pointer only omits a nil pointer, never
+// based on the pointed-to value) — only genuinely pre-existing files decode
+// with a nil pointer.
 type exportGroup struct {
-	ID      int               `json:"id"`
-	Name    string            `json:"name,omitempty"`
-	NodeIDs []int             `json:"node_ids"`
-	Rules   []exportGroupRule `json:"rules,omitempty"`
+	ID           int               `json:"id"`
+	Name         string            `json:"name,omitempty"`
+	NodeIDs      []int             `json:"node_ids"`
+	Rules        []exportGroupRule `json:"rules,omitempty"`
+	RulesEnabled *bool             `json:"rules_enabled,omitempty"`
 }
 
 type exportNode struct {
@@ -457,7 +477,8 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	}
 	groups := make([]exportGroup, 0)
 	for _, grp := range g.AllGroups() {
-		eg := exportGroup{ID: int(grp.ID), Name: grp.Name}
+		enabled := grp.RulesEnabled
+		eg := exportGroup{ID: int(grp.ID), Name: grp.Name, RulesEnabled: &enabled}
 		for _, n := range grp.NodeIDs {
 			if exportedID[int(n)] {
 				eg.NodeIDs = append(eg.NodeIDs, int(n))
@@ -610,11 +631,14 @@ func (dv *DrumView) exportBytes() ([]byte, error) {
 	if pins := dv.exportPinnedInstrumentIDs(); len(pins) > 0 {
 		file.PinnedInstruments = pins
 	}
-	// Export master volume when not at default (1.0).
+	// Export the master volume unconditionally. The old `omit when 1.0`
+	// guard treated 1.0 as "the default", but fresh sessions now start at
+	// 0.5 (loudness-normalization headroom, channels.go) — omitting any
+	// value bakes a stale default into the file, and the funk-hop
+	// investigation (2026-07-14) traced audible master hard-clipping to a
+	// file that round-tripped back at 1.0.
 	mv := audio.MainVolume()
-	if mv != 1 {
-		file.MasterVolume = mv
-	}
+	file.MasterVolume = &mv
 	// Export master EQ if any band has non-zero gain, is muted, or filters enabled.
 	masterHasNonZeroGain := false
 	for _, g := range dv.eqBandGainsDB() {

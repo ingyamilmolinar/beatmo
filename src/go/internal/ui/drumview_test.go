@@ -528,6 +528,13 @@ func TestTimelineBeatMarkersDecimate(t *testing.T) {
 	}
 }
 
+// TestTimelineScrubSeek was "ribbon drag rewrites view-offset via the old
+// scrub callback"; Task 10 replaced that with click-to-seek. A
+// press+release at the same point (no drag) now queues exactly one
+// absolute seek request via OnSeekToStep, snapped to the nearest whole
+// beat under the pointer, and Offset itself is untouched (Offset is only
+// rewritten later by Game.drainSeekRequest, which this bare-DrumView
+// harness has no Game to run).
 func TestTimelineScrubSeek(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
@@ -551,12 +558,35 @@ func TestTimelineScrubSeek(t *testing.T) {
 	dv.Update()
 	restore()
 
-	want := (dv.timelineBeats - dv.Length) / 2
-	if dv.Offset != want {
-		t.Fatalf("offset=%d want %d", dv.Offset, want)
+	// Mirror ribbonStepAt's formula: frac of the bar -> nearest whole beat
+	// -> subdivision steps.
+	unitsPerBeat := max1(dv.timelineUnitsPerBeat)
+	frac := float64(dv.timelineRect.Dx()/2) / float64(dv.timelineRect.Dx())
+	wantBeat := int(math.Round(frac * float64(dv.timelineBeats)))
+	wantSteps := wantBeat * unitsPerBeat
+
+	steps, _, isDelta, origin, ok := dv.TakeSeekRequest()
+	if !ok {
+		t.Fatal("expected a queued seek request after ribbon press+release")
+	}
+	if isDelta {
+		t.Fatal("expected an absolute seek request, not a delta")
+	}
+	if origin != seekOriginRibbon {
+		t.Fatalf("origin=%q want %q", origin, seekOriginRibbon)
+	}
+	if steps != wantSteps {
+		t.Fatalf("seek steps=%d want %d (beat=%d, unitsPerBeat=%d)", steps, wantSteps, wantBeat, unitsPerBeat)
+	}
+	if dv.Offset != 0 {
+		t.Fatalf("ribbon seek must not mutate Offset directly (Game.drainSeekRequest applies it); got Offset=%d", dv.Offset)
 	}
 }
 
+// TestTimelineScrubLongTimeline was "ribbon drag at the far edge clamps
+// view-offset to the pattern-aware max"; Task 10's ribbonStepAt clamps to
+// the full [0, TimelineBeats] range instead (no pattern-length awareness —
+// the ribbon can seek anywhere in session history/future).
 func TestTimelineScrubLongTimeline(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
@@ -580,14 +610,24 @@ func TestTimelineScrubLongTimeline(t *testing.T) {
 	dv.Update()
 	restore()
 
-	// The scrub logic uses math.Round; mirror it here.
+	// Mirror ribbonStepAt's formula — it uses math.Round; mirror it here.
 	unitsPerBeat := max1(dv.timelineUnitsPerBeat)
-	lengthBeats := float64(dv.Length) / float64(unitsPerBeat)
-	maxOffBeats := float64(dv.timelineBeats) - lengthBeats
 	frac := float64(dv.timelineRect.Dx()-1) / float64(dv.timelineRect.Dx())
-	want := int(math.Round(frac * maxOffBeats * float64(unitsPerBeat)))
-	if dv.Offset != want {
-		t.Fatalf("offset=%d want %d", dv.Offset, want)
+	wantBeat := int(math.Round(frac * float64(dv.timelineBeats)))
+	wantSteps := wantBeat * unitsPerBeat
+
+	steps, _, isDelta, origin, ok := dv.TakeSeekRequest()
+	if !ok {
+		t.Fatal("expected a queued seek request after ribbon press+release")
+	}
+	if isDelta {
+		t.Fatal("expected an absolute seek request, not a delta")
+	}
+	if origin != seekOriginRibbon {
+		t.Fatalf("origin=%q want %q", origin, seekOriginRibbon)
+	}
+	if steps != wantSteps {
+		t.Fatalf("seek steps=%d want %d (beat=%d, unitsPerBeat=%d)", steps, wantSteps, wantBeat, unitsPerBeat)
 	}
 	if dv.timelineBeats != 10000 {
 		t.Fatalf("timelineBeats changed: %d", dv.timelineBeats)

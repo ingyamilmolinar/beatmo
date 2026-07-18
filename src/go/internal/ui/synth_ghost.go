@@ -32,7 +32,9 @@ type synthGhostState struct {
 }
 
 // ensureSynthGhostState lazily initialises the per-DrumView ghost store.
-func (dv *DrumView) ensureSynthGhostState() *synthGhostState {
+func (p *synthPanel) ensureSynthGhostState() *synthGhostState {
+	dv := p.dv
+
 	if dv.synthGhost == nil {
 		dv.synthGhost = &synthGhostState{byKnob: make(map[int]*synthGhostEntry)}
 	}
@@ -45,7 +47,9 @@ func (dv *DrumView) ensureSynthGhostState() *synthGhostState {
 // captureSynthGhost snapshots the instrument's effective params for knob kIdx,
 // resetting that knob's fade to full. The map is COPIED so later live-param
 // edits don't mutate the captured ghost.
-func (dv *DrumView) captureSynthGhost(kIdx int, instID string) {
+func (p *synthPanel) captureSynthGhost(kIdx int, instID string) {
+	dv := p.dv
+
 	if dv == nil || instID == "" {
 		return
 	}
@@ -60,7 +64,9 @@ func (dv *DrumView) captureSynthGhost(kIdx int, instID string) {
 
 // synthConceptGhost returns the captured pre-drag snapshot for knob kIdx while
 // it is still active (captured and not yet faded out), else nil.
-func (dv *DrumView) synthConceptGhost(kIdx int) map[string]float64 {
+func (p *synthPanel) synthConceptGhost(kIdx int) map[string]float64 {
+	dv := p.dv
+
 	if dv == nil || dv.synthGhost == nil {
 		return nil
 	}
@@ -73,7 +79,9 @@ func (dv *DrumView) synthConceptGhost(kIdx int) map[string]float64 {
 
 // fadeSynthGhost begins the fade-out for knob kIdx (called on drag release).
 // The entry stays visible until advanceSynthGhost ticks its countdown to zero.
-func (dv *DrumView) fadeSynthGhost(kIdx int) {
+func (p *synthPanel) fadeSynthGhost(kIdx int) {
+	dv := p.dv
+
 	if dv == nil || dv.synthGhost == nil {
 		return
 	}
@@ -85,7 +93,9 @@ func (dv *DrumView) fadeSynthGhost(kIdx int) {
 // advanceSynthGhost ticks every released ghost's fade down by one frame and
 // clears entries whose fade reaches zero. Held ghosts (drag in progress) do not
 // fade. Cheap no-op when no ghosts are active.
-func (dv *DrumView) advanceSynthGhost() {
+func (p *synthPanel) advanceSynthGhost() {
+	dv := p.dv
+
 	if dv == nil || dv.synthGhost == nil || len(dv.synthGhost.byKnob) == 0 {
 		return
 	}
@@ -102,4 +112,26 @@ func (dv *DrumView) advanceSynthGhost() {
 			delete(dv.synthGhost.byKnob, k)
 		}
 	}
+}
+
+// --- DrumView forwarding shims ---
+
+func (dv *DrumView) ensureSynthGhostState() *synthGhostState {
+	return dv.synp().ensureSynthGhostState()
+}
+
+func (dv *DrumView) captureSynthGhost(kIdx int, instID string) {
+	dv.synp().captureSynthGhost(kIdx, instID)
+}
+
+func (dv *DrumView) synthConceptGhost(kIdx int) map[string]float64 {
+	return dv.synp().synthConceptGhost(kIdx)
+}
+
+func (dv *DrumView) fadeSynthGhost(kIdx int) {
+	dv.synp().fadeSynthGhost(kIdx)
+}
+
+func (dv *DrumView) advanceSynthGhost() {
+	dv.synp().advanceSynthGhost()
 }

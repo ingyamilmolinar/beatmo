@@ -116,6 +116,45 @@ func TestTapRejectedWithMovement(t *testing.T) {
 	}
 }
 
+// TestTapRejectedAfterMoveAndReturn is the regression guard for the mobile
+// "a pan sometimes creates a node" bug. A finger that drags well past the tap
+// slop and then wanders BACK to within tapMaxMovePx of its start point used to
+// be (mis)classified as a GestureTap on release — because the tap check only
+// looked at the net start→end displacement, ignoring that the gesture had
+// already committed to a drag. handleTapInGrid then created a spurious node at
+// the lift point even though the user was panning. The fix routes the tap
+// decision through the same movedBeyondTap latch that already disqualifies a
+// moved gesture from long-press: once a touch crosses the slop it is a drag for
+// the rest of its life, never a tap.
+func TestTapRejectedAfterMoveAndReturn(t *testing.T) {
+	ts := NewTouchState()
+	mock := newMockTouchState()
+
+	restore := SetTouchForTest(mock.TouchIDs, mock.TouchPosition)
+	defer restore()
+
+	// Touch down at (100,100).
+	mock.addTouch(1, 100, 100)
+	ts.Update()
+
+	// Drag well beyond the tap slop (a real pan) — latches movedBeyondTap.
+	mock.moveTouch(1, 100+tapMaxMovePx*4, 100)
+	ts.Update()
+
+	// Wander back to within the tap slop of the start point before lifting.
+	mock.moveTouch(1, 100+2, 100+1)
+	ts.Update()
+
+	// Touch up near the origin.
+	mock.removeTouch(1)
+	gesture := ts.Update()
+
+	if gesture != nil && gesture.Kind == GestureTap {
+		t.Fatalf("a drag that returned within the tap slop must NOT be a tap "+
+			"(it would create a spurious node while panning); got %v", gesture.Kind)
+	}
+}
+
 func TestLongPressDetection(t *testing.T) {
 	ts := NewTouchState()
 	mock := newMockTouchState()

@@ -23,8 +23,7 @@ func TestWheelResolutionDragChangesStepMul(t *testing.T) {
 	w := NewMobileWheelPopup()
 	w.Open(b, image.Rect(0, 0, 10, 10), image.Rect(0, 0, 400, 800), 0)
 
-	rx := w.resRect.Min.X + 2
-	y0 := w.resRect.Min.Y + w.resRect.Dy()/2
+	rx, y0 := resStripDragStart(t, w)
 	gap := Profile().DensityValues().MobileWheelTickGap
 	w.HandleInput(rx, y0, true)
 	w.HandleInput(rx, y0-gap*3, true) // drag up = finer, several rungs
@@ -128,8 +127,7 @@ func TestWheelResolutionDragAndWheelAgree(t *testing.T) {
 
 	// Drag DOWN on the resolution strip -> coarser (bigger step).
 	wD, bD := newPopup()
-	rx := wD.resRect.Min.X + 2
-	y0 := wD.resRect.Min.Y + wD.resRect.Dy()/2
+	rx, y0 := resStripDragStart(t, wD)
 	startD := bD.Step()
 	wD.HandleInput(rx, y0, true)
 	wD.HandleInput(rx, y0+gap*4, true) // drag DOWN

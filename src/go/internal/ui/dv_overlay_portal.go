@@ -28,7 +28,21 @@ type dvOverlayPortal struct {
 	inputFn  func(x, y int, pressed bool) InputResult
 	wheelFn  func(x, y, steps int) InputResult
 	drawFn   func(*ebiten.Image)
-	updateFn func() // optional per-frame update (momentum, animation)
+	updateFn func()           // optional per-frame update (momentum, animation)
+	hoverFn  func(mx, my int) // optional per-frame plain-hover refresh (portalHoverer)
+	escapeFn func() bool      // optional Esc handler; true → keep portal open
+	// claimsKeyboardFn, when set and true, marks this overlay as owning the
+	// keyboard (KeyboardClaimant) so the grid's keyboard shortcuts yield while
+	// it is open — required for any overlay hosting a focused text input (e.g.
+	// the overflow menu's template search box). See keyboard_focus.go.
+	claimsKeyboardFn func() bool
+}
+
+// ClaimsKeyboard implements KeyboardClaimant: reports whether this overlay owns
+// keyboard input while open, so DrumView.KeyboardClaimed() gates the grid's
+// keyboard shortcuts off (arrows reach the caret, not the camera).
+func (o *dvOverlayPortal) ClaimsKeyboard() bool {
+	return o.claimsKeyboardFn != nil && o.claimsKeyboardFn()
 }
 
 // Update implements PortalUpdater for per-frame momentum/animation updates.
@@ -36,6 +50,23 @@ func (o *dvOverlayPortal) Update() {
 	if o.updateFn != nil {
 		o.updateFn()
 	}
+}
+
+// HoverAt implements portalHoverer: forwards the plain cursor position so the
+// wrapped overlay can refresh its buttons' hovered flags each frame.
+func (o *dvOverlayPortal) HoverAt(mx, my int) {
+	if o.hoverFn != nil {
+		o.hoverFn(mx, my)
+	}
+}
+
+// HandleEscape implements portalEscapeHandler: lets the wrapped overlay clear
+// its own field (e.g. a search query) before the universal handler closes it.
+func (o *dvOverlayPortal) HandleEscape() bool {
+	if o.escapeFn != nil {
+		return o.escapeFn()
+	}
+	return false
 }
 
 func (o *dvOverlayPortal) Layout(anchor, screenBounds image.Rectangle) {

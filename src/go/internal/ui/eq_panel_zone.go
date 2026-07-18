@@ -71,6 +71,24 @@ type EQCallbacks struct {
 	// the Scope auto-expand path was retired (every tab defaults to tall).
 	OnTabChange func(tab PanelTab)
 
+	// OnLeaveSynthTab fires when the active tab transitions AWAY from
+	// TabSynth to any other tab, wired via PanelTabState.SetOnLeave in
+	// NewEQPanelZone. DrumView uses it to flush the debounced desktop
+	// wheel-nudge commit (dv.synthWheelNudge) — the debounce only self-ticks
+	// while SynthTabUpdate runs (TabSynth active, see EQPanelZone.Update), so
+	// switching tabs within the ~600ms pause window would otherwise silently
+	// drop a pending undo step + params-committed event.
+	OnLeaveSynthTab func()
+
+	// OnLeaveSamplerTab fires when the active tab transitions AWAY from
+	// TabSampler to any other tab, wired via PanelTabState.SetOnLeave in
+	// NewEQPanelZone. DrumView uses it to flush the debounced desktop
+	// wheel-nudge commit (dv.samplerWheelNudge) — same contract as
+	// OnLeaveSynthTab: the debounce only self-ticks while SamplerTabUpdate runs
+	// (TabSampler active), so switching tabs within the ~600ms pause window would
+	// otherwise silently drop a pending undo step + sample-edit commit.
+	OnLeaveSamplerTab func()
+
 	// BeatGridFrac returns fractional X positions in [0,1) where vertical
 	// beat markers should be drawn on the Wave tab. Nil disables the overlay
 	// (the wave still renders cleanly). Wired to DrumView.beatGridFractions
@@ -90,6 +108,12 @@ type EQCallbacks struct {
 	// DrawSynthTab is called from Draw() when activeTab == TabSynth and
 	// is expected to render whatever DrumView's buildSynthTab produced.
 	DrawSynthTab func(dst *ebiten.Image, contentR image.Rectangle)
+
+	// ReleaseSynthSprites releases the Synth tab's TraceSprite render caches
+	// (synth_sprite_cache.go) immediately on tab-hide, mirroring the EQ tab's
+	// own curveSprite/eqBackdropSprite/eqLabelsSprite release below. Called
+	// from releaseHiddenTabSprites when the newly-active tab isn't TabSynth.
+	ReleaseSynthSprites func()
 
 	// SynthTabHitAreas returns the slider + button hit areas DrumView
 	// built during OnSynthTabLayout. EQPanelZone.HitAreas() appends them
@@ -158,8 +182,34 @@ type EQPanelZone struct {
 	// EQ curve state
 	curveDragBand   int
 	curveDragFilter string
-	curveDirty      bool
-	curveCache      []audio.FreqResponsePoint
+
+	// EQ handle hover state (desktop only). Records which draggable handle the
+	// pointer is currently over so it can bloom with the shared triggered-node
+	// highlight (colHighlight / drawNodeBloom). curveHoverBand is the band
+	// index or -1; curveHoverFilter is "hpf"/"lpf"/"". Both stay idle on mobile
+	// (no pointer hover). Refreshed each frame by updateEQHandleHover().
+	curveHoverBand   int
+	curveHoverFilter string
+	curveDirty       bool
+	curveCache       []audio.FreqResponsePoint
+	// curveSprite caches the rendered curve content (fill/stroke/guides/0dB
+	// dashes) — previously ~2 DrawImage per plot column per frame (measured
+	// 13.8% of process CPU); one blit per frame now. Handles and drag labels
+	// stay live. See trace_sprite.go.
+	curveSprite TraceSprite
+	// curveRev increments on every rebuildCurveCache so the sprite key
+	// tracks actual curve-data changes (band edits, HPF/LPF, sample rate).
+	curveRev int
+	// eqBackdropSprite caches the EQ tab's static band chrome (alternating
+	// stripes, muted-band tints, separators); eqLabelsSprite caches the
+	// freq/dB label rows that must paint ON TOP of the live bars. The bars
+	// themselves stay live — their smoothed decay animates per frame.
+	eqBackdropSprite TraceSprite
+	eqLabelsSprite   TraceSprite
+	// spectrumCurveSprite caches the Spectrum tab's high-resolution FFT
+	// curve underlay (per-column trace, per-tick data); bars + peak-hold
+	// ballistics stay live. See drawAnalyzerSpectrumImpl.
+	spectrumCurveSprite TraceSprite
 
 	// Real-time dB label during curve handle drag
 	curveDragDBText string // e.g., "+6.0 dB" or "" when not dragging
@@ -306,15 +356,24 @@ func (z *EQPanelZone) DrawCallsForTest() int { return z.drawCalls }
 // NewEQPanelZone creates a new EQPanelZone with the provided callbacks.
 func NewEQPanelZone(cb EQCallbacks) *EQPanelZone {
 	z := &EQPanelZone{
-		needLayout:    true,
-		callbacks:     cb,
-		tabState:      NewPanelTabState(),
-		curveDragBand: -1,
-		activeChannel: "main",
-		bandGainsDB:   make([]float64, len(eqBandDefs)),
-		bandMuted:     make([]bool, len(eqBandDefs)),
-		eqBandVals:    make([]float64, len(eqBandDefs)),
+		needLayout:     true,
+		callbacks:      cb,
+		tabState:       NewPanelTabState(),
+		curveDragBand:  -1,
+		curveHoverBand: -1,
+		activeChannel:  "main",
+		bandGainsDB:    make([]float64, len(eqBandDefs)),
+		bandMuted:      make([]bool, len(eqBandDefs)),
+		eqBandVals:     make([]float64, len(eqBandDefs)),
 	}
+	z.tabState.SetOnLeave(func(prev PanelTab) {
+		if prev == TabSynth && z.callbacks.OnLeaveSynthTab != nil {
+			z.callbacks.OnLeaveSynthTab()
+		}
+		if prev == TabSampler && z.callbacks.OnLeaveSamplerTab != nil {
+			z.callbacks.OnLeaveSamplerTab()
+		}
+	})
 	z.initButtons()
 	z.channelScroll = newScrollBehavior()
 	// Phase 0 audio-panel dispatcher: ensure the initial tab's analyzer
@@ -353,6 +412,7 @@ func (z *EQPanelZone) initButtons() {
 		// every transition is cheap. See audio_panel_dispatcher.go for
 		// the full rule.
 		EnsureAnalyzersForTab(tab, z.activeChannel, z.analyzerInstrumentIDs()...)
+		z.releaseHiddenTabSprites(tab)
 		emitAudioPanelStateChanged("tab:" + PanelTabSlug(tab))
 		if z.callbacks.OnTabChange != nil {
 			z.callbacks.OnTabChange(tab)
@@ -483,8 +543,31 @@ func (z *EQPanelZone) SetActiveTab(tab PanelTab) {
 	// switches (scene catalog, tests, SetActiveEQTab JS export) get the
 	// same dispatcher behaviour as a user click on a sticky-bar pill.
 	EnsureAnalyzersForTab(tab, z.activeChannel, z.analyzerInstrumentIDs()...)
+	z.releaseHiddenTabSprites(tab)
 	if z.callbacks.OnTabChange != nil {
 		z.callbacks.OnTabChange(tab)
+	}
+}
+
+// releaseHiddenTabSprites releases the trace sprites owned by tabs other than
+// the newly-active one, returning their GPU textures immediately (ebiten
+// Deallocate) instead of holding ~2 MB per hidden surface until a Go GC
+// finalizer cycle — the game can run 20+ s between GCs, and on WASM atlas
+// residency is the OOM driver. Called on every tab transition from BOTH
+// switch paths (the sticky-bar onTab closure and SetActiveTab), mirroring
+// the EnsureAnalyzersForTab dispatcher rule. Sprites re-allocate lazily on
+// the next Draw of their tab.
+func (z *EQPanelZone) releaseHiddenTabSprites(active PanelTab) {
+	if active != TabEQ {
+		z.curveSprite.Release()
+		z.eqBackdropSprite.Release()
+		z.eqLabelsSprite.Release()
+	}
+	if active != TabSpectrum {
+		z.spectrumCurveSprite.Release()
+	}
+	if active != TabSynth && z.callbacks.ReleaseSynthSprites != nil {
+		z.callbacks.ReleaseSynthSprites()
 	}
 }
 
@@ -492,6 +575,10 @@ func (z *EQPanelZone) Update() {
 	// Refresh cursor readout state first — desktop reads hover, mobile is
 	// driven by the scrub hit-area but still wants the tab-changed gate.
 	z.updateAudioPanelCursor()
+
+	// Refresh which EQ handle the pointer is hovering so it can bloom with the
+	// shared triggered-node highlight (desktop only; idle on mobile / off-tab).
+	z.updateEQHandleHover()
 
 	// Synth-tab section scroll momentum (touch fling decay). Invalidate so the
 	// next Layout re-derives the knob rects for the scrolled window.
@@ -511,6 +598,27 @@ func (z *EQPanelZone) Update() {
 	if z.paramEditor != nil {
 		z.paramEditor.Update()
 	}
+}
+
+// updateEQHandleHover refreshes the desktop hover state for the EQ draggable
+// handles so the hovered one can bloom with the shared triggered-node
+// highlight. Idle on any tab but EQ and on mobile (touch has no pointer hover).
+// Filter handles take priority over band handles, mirroring OnPress, and share
+// the same hit geometry so the highlighted handle is exactly the grabbable one.
+func (z *EQPanelZone) updateEQHandleHover() {
+	if z.tabState.ActiveTab() != TabEQ || Profile().IsMobile() || z.rect.Empty() {
+		z.curveHoverBand = -1
+		z.curveHoverFilter = ""
+		return
+	}
+	mx, my := cursorPosition()
+	if f := z.filterHandleAtPoint(mx, my); f != "" {
+		z.curveHoverFilter = f
+		z.curveHoverBand = -1
+		return
+	}
+	z.curveHoverFilter = ""
+	z.curveHoverBand = z.bandHandleAtPoint(mx, my)
 }
 
 func (z *EQPanelZone) HitAreas() []HitArea {
@@ -580,7 +688,7 @@ func (z *EQPanelZone) Draw(screen *ebiten.Image) {
 		}
 		if state := z.getAnalyzerStateForTab(activeTab); state != nil {
 			ch, _ := z.resolveChannel(state)
-			drawAnalyzerSpectrumWithScale(screen, cr, ch, &z.spectrumPeaks, scale)
+			drawAnalyzerSpectrumImpl(screen, cr, ch, &z.spectrumPeaks, scale, &z.spectrumCurveSprite)
 			// Phase 1 Pre|Post overlay: when the sticky-bar pill is
 			// active, fetch the pre-EQ snapshot for the active channel
 			// and paint a thin "pre" trace beneath the post-EQ bars.
@@ -1673,6 +1781,65 @@ type curveHandleHitAdapter struct {
 	zone *EQPanelZone
 }
 
+// filterHandleAtPoint reports which filter handle (HPF/LPF) the point (x, y)
+// falls on, or "" for none. Filter handles take priority over band handles.
+// Shares the press-time hit geometry so hover and grab target the same pixels.
+func (z *EQPanelZone) filterHandleAtPoint(x, y int) string {
+	r := z.rect
+	if r.Empty() {
+		return ""
+	}
+	hitRadius := Profile().EQHandleRadius
+	if z.callbacks.HPFEnabled != nil && z.callbacks.HPFEnabled() {
+		hpfHz := 20.0
+		if z.callbacks.HPFCutoffHz != nil {
+			hpfHz = z.callbacks.HPFCutoffHz()
+		}
+		hx := freqToX(hpfHz, r)
+		hy := z.curveYAtX(hx)
+		dx := x - hx
+		dy := y - hy
+		if dx*dx+dy*dy <= hitRadius*hitRadius {
+			return "hpf"
+		}
+	}
+	if z.callbacks.LPFEnabled != nil && z.callbacks.LPFEnabled() {
+		lpfHz := 20000.0
+		if z.callbacks.LPFCutoffHz != nil {
+			lpfHz = z.callbacks.LPFCutoffHz()
+		}
+		lx := freqToX(lpfHz, r)
+		ly := z.curveYAtX(lx)
+		dx := x - lx
+		dy := y - ly
+		if dx*dx+dy*dy <= hitRadius*hitRadius {
+			return "lpf"
+		}
+	}
+	return ""
+}
+
+// bandHandleAtPoint reports which band handle the point (x, y) falls on, or -1
+// for none. Desktop precise-circle grab only — returns -1 on mobile, where the
+// forgiving nearest-column grab (see OnPress) owns band selection instead. The
+// centre comes from the shared eqBandHandlePos so the target matches exactly
+// where the handle is drawn.
+func (z *EQPanelZone) bandHandleAtPoint(x, y int) int {
+	if Profile().IsMobile() {
+		return -1
+	}
+	hitRadius := Profile().EQHandleRadius
+	for i := range eqBandDefs {
+		hx, hy := z.eqBandHandlePos(i)
+		dx := x - hx
+		dy := y - hy
+		if dx*dx+dy*dy <= hitRadius*hitRadius {
+			return i
+		}
+	}
+	return -1
+}
+
 func (h *curveHandleHitAdapter) OnPress(x, y int) InputResult {
 	z := h.zone
 	r := z.rect
@@ -1685,62 +1852,26 @@ func (h *curveHandleHitAdapter) OnPress(x, y int) InputResult {
 		return InputIgnored
 	}
 
-	hitRadius := Profile().EQHandleRadius
-
-	// Hit-test HPF handle first (filter handles take priority).
-	if z.callbacks.HPFEnabled != nil && z.callbacks.HPFEnabled() {
-		hpfHz := 20.0
-		if z.callbacks.HPFCutoffHz != nil {
-			hpfHz = z.callbacks.HPFCutoffHz()
-		}
-		hx := freqToX(hpfHz, r)
-		hy := z.curveYAtX(hx)
-		dx := x - hx
-		dy := y - hy
-		if dx*dx+dy*dy <= hitRadius*hitRadius {
-			z.curveDragFilter = "hpf"
-			return InputCaptured
-		}
+	// Hit-test filter handles first (HPF/LPF take priority over band handles).
+	if f := z.filterHandleAtPoint(x, y); f != "" {
+		z.curveDragFilter = f
+		return InputCaptured
 	}
 
-	// Hit-test LPF handle.
-	if z.callbacks.LPFEnabled != nil && z.callbacks.LPFEnabled() {
-		lpfHz := 20000.0
-		if z.callbacks.LPFCutoffHz != nil {
-			lpfHz = z.callbacks.LPFCutoffHz()
+	// Hit-test band handles. Desktop only: on mobile the 26px hit radius
+	// overlaps the ~39px band pitch, so a precise circle grab picked the
+	// LOWER-indexed band even when the press was nearer its neighbor — the
+	// nearest-band column grab below owns band selection on touch instead.
+	if i := z.bandHandleAtPoint(x, y); i >= 0 {
+		hx, hy := z.eqBandHandlePos(i)
+		gain := 0.0
+		if i < len(z.bandGainsDB) {
+			gain = z.bandGainsDB[i]
 		}
-		lx := freqToX(lpfHz, r)
-		ly := z.curveYAtX(lx)
-		dx := x - lx
-		dy := y - ly
-		if dx*dx+dy*dy <= hitRadius*hitRadius {
-			z.curveDragFilter = "lpf"
-			return InputCaptured
-		}
-	}
-
-	// Hit-test band handles (position from the shared eqBandHandlePos so the
-	// hit target matches exactly where the handle is drawn). Desktop only:
-	// on mobile the 26px hit radius overlaps the ~39px band pitch, so this
-	// first-match loop grabbed the LOWER-indexed band even when the press
-	// was nearer its neighbor — the nearest-band column grab below owns
-	// band selection on touch instead.
-	if !Profile().IsMobile() {
-		for i := range eqBandDefs {
-			hx, hy := z.eqBandHandlePos(i)
-			gain := 0.0
-			if i < len(z.bandGainsDB) {
-				gain = z.bandGainsDB[i]
-			}
-			dx := x - hx
-			dy := y - hy
-			if dx*dx+dy*dy <= hitRadius*hitRadius {
-				z.curveDragBand = i
-				z.curveSelectBand(i)
-				z.setDragLabel(fmt.Sprintf("%+.1f dB", gain), hx, hy)
-				return InputCaptured
-			}
-		}
+		z.curveDragBand = i
+		z.curveSelectBand(i)
+		z.setDragLabel(fmt.Sprintf("%+.1f dB", gain), hx, hy)
+		return InputCaptured
 	}
 
 	// Mobile: forgiving column grab. A finger can't reliably land on a
@@ -2345,6 +2476,19 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 	dbInputY := r.Max.Y - dbInputH - 1
 	muteBtnY := dbInputY - muteBtnH - 1
 
+	mutedH, gainsH := z.eqBandStateHashes()
+	density := Profile().Density()
+
+	// Layer 1 — cached backdrop: alternating band stripes, muted-band tints
+	// and separators. Re-renders only on size/density/mute changes.
+	z.eqBackdropSprite.tag = "eqBackdropSprite"
+	z.eqBackdropSprite.Draw(dst, r,
+		eqBackdropKey{w: r.Dx(), h: r.Dy(), density: density, muted: mutedH},
+		z.renderEQBackdropContent)
+
+	// Layer 2 — LIVE bars: the smoothed decay animates per frame, so these
+	// ~10 translucent rects stay on the direct path. Mute-button rect/style
+	// upkeep also stays here — it is layout for hit testing, not pixels.
 	for i, v := range z.eqBandVals {
 		if v < 0 {
 			continue
@@ -2362,17 +2506,8 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 		if y0 < barR.Min.Y {
 			y0 = barR.Min.Y
 		}
-
-		bg := fadeColor(colEQBg, 0.2)
-		if i%2 == 1 {
-			bg = fadeColor(colGridLine, 0.3)
-		}
 		isMuted := i < len(z.bandMuted) && z.bandMuted[i]
-		drawRect(dst, image.Rect(x0, barR.Min.Y, x1, barR.Max.Y), bg, true)
-
-		if isMuted {
-			drawRect(dst, image.Rect(x0, barR.Min.Y, x1, barR.Max.Y), fadeColor(colEQBg, 0.5), true)
-		} else {
+		if !isMuted {
 			base := colEQBar
 			if v > 0.8 {
 				base = colEQBarPeak
@@ -2385,17 +2520,6 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 				drawRect(dst, image.Rect(x0, y0-2, x1, y0-1), WithAlpha(base, AlphaMedium), true)
 			}
 		}
-
-		if i > 0 {
-			drawRect(dst, image.Rect(x0, barR.Min.Y, x0+1, barR.Max.Y), colGridLine, true)
-		}
-
-		// Row 1: Frequency band label — stacked above the level, centred and
-		// scaled to fit its own column so it never overlaps the level number
-		// below it or the neighbouring band's label.
-		freqR, _ := z.eqBandLabelRects(i)
-		z.drawEQCellText(dst, eqCenterLabels[i], freqR, colTextSecondary)
-
 		// Mute button: still participates in hit testing but not drawn
 		// visually. Its muted state is indicated by the band column tint.
 		if i < len(z.eqMuteBtns) && z.eqMuteBtns[i] != nil {
@@ -2409,9 +2533,103 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 			}
 			// Skip btn.Draw — the "M" row is removed per 7C cleanup.
 		}
+	}
+
+	// Layer 3 — cached labels: freq + dB readouts paint OVER the live bars,
+	// preserving the original per-band loop's z-order (labels after bars).
+	z.eqLabelsSprite.tag = "eqLabelsSprite"
+	z.eqLabelsSprite.Draw(dst, r,
+		eqLabelsKey{w: r.Dx(), h: r.Dy(), density: density, muted: mutedH,
+			gains: gainsH, dbRowH: dbInputH, mobile: Profile().IsMobile()},
+		z.renderEQLabelsContent)
+}
+
+// eqBackdropKey / eqLabelsKey are the TraceSprite version keys for the EQ
+// tab's cached chrome layers. Everything those pixels depend on is folded in.
+type eqBackdropKey struct {
+	w, h    int
+	density Density
+	muted   uint64
+}
+
+type eqLabelsKey struct {
+	w, h    int
+	density Density
+	muted   uint64
+	gains   uint64
+	dbRowH  int
+	mobile  bool
+}
+
+// eqBandStateHashes folds the per-band muted flags and gain values into two
+// comparable uint64s (FNV-1a) for sprite keys.
+func (z *EQPanelZone) eqBandStateHashes() (muted, gains uint64) {
+	const prime = 1099511628211
+	muted, gains = 14695981039346656037, 14695981039346656037
+	for i := range eqBandDefs {
+		var m uint64
+		if i < len(z.bandMuted) && z.bandMuted[i] {
+			m = 1
+		}
+		muted = (muted ^ m) * prime
+		var g float64
+		if i < len(z.bandGainsDB) {
+			g = z.bandGainsDB[i]
+		}
+		gains = (gains ^ math.Float64bits(g)) * prime
+	}
+	return
+}
+
+// renderEQBackdropContent draws the band stripes, muted tints and separators.
+// The layout rects here are ABSOLUTE (z.rect-anchored Layout products), so
+// everything is translated by the delta between the rect the sprite hands us
+// and z.rect: zero under the RENDER_SAFE bypass, -z.rect.Min when cached.
+func (z *EQPanelZone) renderEQBackdropContent(img *ebiten.Image, rr image.Rectangle) {
+	delta := rr.Min.Sub(z.rect.Min)
+	r := z.rect
+	barR := z.eqLiveBarsRect()
+	if barR.Empty() {
+		return
+	}
+	bandW := r.Dx() / len(eqBandDefs)
+	if bandW < 1 {
+		bandW = 1
+	}
+	for i := range eqBandDefs {
+		x0 := r.Min.X + i*bandW
+		x1 := x0 + bandW
+		if i == len(eqBandDefs)-1 {
+			x1 = r.Max.X
+		}
+		bg := fadeColor(colEQBg, 0.2)
+		if i%2 == 1 {
+			bg = fadeColor(colGridLine, 0.3)
+		}
+		drawRect(img, image.Rect(x0, barR.Min.Y, x1, barR.Max.Y).Add(delta), bg, true)
+		if i < len(z.bandMuted) && z.bandMuted[i] {
+			drawRect(img, image.Rect(x0, barR.Min.Y, x1, barR.Max.Y).Add(delta), fadeColor(colEQBg, 0.5), true)
+		}
+		if i > 0 {
+			drawRect(img, image.Rect(x0, barR.Min.Y, x0+1, barR.Max.Y).Add(delta), colGridLine, true)
+		}
+	}
+}
+
+// renderEQLabelsContent draws the per-band frequency labels and dB readouts.
+// Same absolute-rect translation contract as renderEQBackdropContent.
+func (z *EQPanelZone) renderEQLabelsContent(img *ebiten.Image, rr image.Rectangle) {
+	delta := rr.Min.Sub(z.rect.Min)
+	for i := range eqBandDefs {
+		// Row 1: Frequency band label — stacked above the level, centred and
+		// scaled to fit its own column so it never overlaps the level number
+		// below it or the neighbouring band's label.
+		freqR, _ := z.eqBandLabelRects(i)
+		z.drawEQCellText(img, eqCenterLabels[i], freqR.Add(delta), colTextSecondary)
 
 		// Row 2: level (dB) value — stacked under the frequency label, colour-
 		// coded (cyan boost / gray cut), centred + scaled to fit the column.
+		isMuted := i < len(z.bandMuted) && z.bandMuted[i]
 		if !z.dbReadoutRects[i].Empty() {
 			var labelCol color.Color
 			if isMuted {
@@ -2430,36 +2648,31 @@ func (z *EQPanelZone) drawSpectrumBars(dst *ebiten.Image) {
 					labelCol = colTextSecondary // gray for cut or zero
 				}
 			}
-			z.drawEQCellText(dst, formatDB(z.bandGainsDB[i]), z.dbReadoutRects[i], labelCol)
+			z.drawEQCellText(img, formatDB(z.bandGainsDB[i]), z.dbReadoutRects[i].Add(delta), labelCol)
 		}
 	}
 }
 
-// drawEQCellText draws txt centred within cell, scaling the text down (to a
-// legible floor) when it is wider than the cell so a per-band label never
-// spills into the neighbouring column.
+// drawEQCellText draws txt centred within cell at RoleCaption, dropping to
+// RoleMicro when the label is wider than the cell so a per-band label never
+// spills into the neighbouring column (replaces the old dynamic bitmap
+// downscale, which pixelated at every non-1.0 factor).
 func (z *EQPanelZone) drawEQCellText(dst *ebiten.Image, txt string, cell image.Rectangle, col color.Color) {
 	if cell.Empty() || txt == "" {
 		return
 	}
-	tw := TextWidth(txt)
-	th := TextHeight()
-	scale := 1.0
-	if avail := cell.Dx() - 2; tw > avail && tw > 0 {
-		scale = float64(avail) / float64(tw)
-		if scale < 0.6 {
-			scale = 0.6
-		}
+	avail := cell.Dx() - 2
+	role := RoleCaption
+	if StyledTextWidth(txt, role) > avail {
+		role = RoleMicro
+		txt = clipTextToWidthMeasure(txt, avail,
+			func(s string) int { return StyledTextWidth(s, RoleMicro) })
 	}
-	dw := int(float64(tw) * scale)
-	dh := int(float64(th) * scale)
+	dw := StyledTextWidth(txt, role)
+	dh := StyledTextHeight(role)
 	tx := cell.Min.X + (cell.Dx()-dw)/2
 	ty := cell.Min.Y + (cell.Dy()-dh)/2
-	if scale >= 1.0 {
-		DrawTextColorAt(dst, txt, tx, ty, col)
-	} else {
-		DrawTextColorAtScale(dst, txt, tx, ty, col, scale)
-	}
+	DrawTextStyled(dst, txt, tx, ty, role, col)
 }
 
 // getAnalyzerState returns the latest analyzer.State via the callback, or nil.
@@ -2628,70 +2841,15 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 		return
 	}
 
-	// The curve, its fill and the dB rulers terminate at a small inset from
-	// the plot edges (first/last band column ± SpaceXS) instead of running
-	// flush into the panel border, which visually amputated the stroke at
-	// x=0 / x=panel-width.
-	curveMinX, curveMaxX := z.eqCurveSpanX(r)
-
-	// 0 dB reference line (dashed).
-	zeroY := gainDBToY(0, r)
-	for dx := curveMinX; dx < curveMaxX; dx += 6 {
-		end := dx + 3
-		if end > curveMaxX {
-			end = curveMaxX
-		}
-		drawRect(dst, image.Rect(dx, zeroY, end, zeroY+1), colEQZeroLine, true)
-	}
-
-	// ±6 dB guide rulers — solid 1-px lines a step fainter than the dashed
-	// 0 dB reference, with tiny end labels so the plot carries a dB scale.
-	guideCol := WithAlpha(genColorEqZeroLine, AlphaSubtle)
-	guideLabelCol := WithAlpha(colTextSecondary, AlphaStrong)
-	for _, gdb := range [...]float64{eqGuideDB, -eqGuideDB} {
-		gy := gainDBToY(gdb, r)
-		if gy <= r.Min.Y || gy >= r.Max.Y-1 {
-			continue
-		}
-		drawRect(dst, image.Rect(curveMinX, gy, curveMaxX, gy+1), guideCol, true)
-		lbl := "+6"
-		if gdb < 0 {
-			lbl = "-6"
-		}
-		ly := gy - int(float64(TextHeight())*eqGuideLabelScale) - 1
-		if ly < r.Min.Y {
-			ly = gy + 2
-		}
-		DrawTextColorAtScale(dst, lbl, curveMinX+2, ly, guideLabelCol, eqGuideLabelScale)
-	}
-
-	// Curve.
-	prevX := -1
-	for _, p := range z.curveCache {
-		px := freqToX(p.FreqHz, r)
-		py := gainDBToY(p.GainDB, r)
-		if py < r.Min.Y {
-			py = r.Min.Y
-		}
-		if py > r.Max.Y-1 {
-			py = r.Max.Y - 1
-		}
-		if prevX >= 0 && px > prevX && px >= curveMinX && px <= curveMaxX {
-			fillY0, fillY1 := py, zeroY
-			if fillY0 > fillY1 {
-				fillY0, fillY1 = fillY1, fillY0
-			}
-			if fillY1-fillY0 > 1 {
-				drawRect(dst, image.Rect(px, fillY0, px+1, fillY1), colEQCurveFill, true)
-			}
-			lineY0, lineY1 := py, py+2
-			if lineY1 > r.Max.Y {
-				lineY1 = r.Max.Y
-			}
-			drawRect(dst, image.Rect(px, lineY0, px+1, lineY1), colEQCurve, true)
-		}
-		prevX = px
-	}
+	// Static curve content renders through the sprite cache: re-rendered only
+	// when the curve data (curveRev), plot size, or density changes — at most
+	// ~30 Hz during a handle drag — and blitted as ONE DrawImage per frame
+	// otherwise. Handles, filter markers, and the drag label are LIVE (they
+	// track the cursor at full frame rate) and draw on top below.
+	key := eqCurveKey{rev: z.curveRev, w: r.Dx(), h: r.Dy(), density: Profile().Density()}
+	z.curveSprite.minInterval = traceSpriteDragInterval
+	z.curveSprite.tag = "eqCurveSprite"
+	z.curveSprite.Draw(dst, r, key, z.renderEQCurveContent)
 
 	// Band handles with glow effect and border ring. Position comes from the
 	// shared eqBandHandlePos so the handle is drawn exactly where it's hit-
@@ -2702,6 +2860,12 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 		hr := eqHandleRadius
 		col := colEQHandle
 		isDragging := z.curveDragBand == i
+		// Hover highlight in the handle's OWN color via the shared, shape-agnostic
+		// drawRectHoverGlow — the same primitive the grid nodes and sampler trim
+		// lines use, conforming to the handle's rect.
+		if z.curveHoverBand == i {
+			drawRectHoverGlow(dst, image.Rect(hx-eqHandleRadius, hy-eqHandleRadius, hx+eqHandleRadius, hy+eqHandleRadius), colEQHandle, 1.0)
+		}
 		// On mobile the stepper edits the selected band — emphasise its handle
 		// so the user can see which band the −/+ buttons control.
 		if isDragging || (mobileSel && i == z.eqSelectedBand) {
@@ -2740,6 +2904,9 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 			col = colEQFilterHandleActive
 			hr = eqHandleRadius + 3
 		}
+		if z.curveHoverFilter == "hpf" {
+			drawRectHoverGlow(dst, image.Rect(hx-hr, hy-hr, hx+hr, hy+hr), colEQFilterHandle, 1.0)
+		}
 		drawRect(dst, image.Rect(hx, hy, hx+1, r.Max.Y), colEQFilterLine, true)
 		drawRect(dst, image.Rect(hx-hr, hy-hr, hx+hr, hy+hr), col, true)
 		drawRect(dst, image.Rect(hx-hr, hy-hr, hx+hr, hy+hr), colEQFilterHandle, false)
@@ -2759,6 +2926,9 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 			col = colEQFilterHandleActive
 			lr = eqHandleRadius + 3
 		}
+		if z.curveHoverFilter == "lpf" {
+			drawRectHoverGlow(dst, image.Rect(lx-lr, ly-lr, lx+lr, ly+lr), colEQFilterHandle, 1.0)
+		}
 		drawRect(dst, image.Rect(lx, ly, lx+1, r.Max.Y), colEQFilterLine, true)
 		drawRect(dst, image.Rect(lx-lr, ly-lr, lx+lr, ly+lr), col, true)
 		drawRect(dst, image.Rect(lx-lr, ly-lr, lx+lr, ly+lr), colEQFilterHandle, false)
@@ -2767,8 +2937,8 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 	// Draw real-time dB/Hz label during curve handle drag.
 	if z.curveDragDBText != "" {
 		lbl := z.curveDragDBText
-		tw := TextWidth(lbl)
-		th := 12 // approximate text height
+		tw := StyledTextWidth(lbl, RoleCaption)
+		th := StyledTextHeight(RoleCaption)
 		lx := z.curveDragLabelX - tw/2
 		ly := z.curveDragLabelY - th/2
 		// Clamp horizontally within the rect.
@@ -2780,7 +2950,7 @@ func (z *EQPanelZone) drawEQCurve(dst *ebiten.Image) {
 		}
 		bgR := image.Rect(lx-3, ly-2, lx+tw+3, ly+th+2)
 		drawRect(dst, bgR, WithAlpha(genColorEqReadoutBg, genAlphaSidebarChip), true)
-		DrawTextColorAt(dst, lbl, lx, ly, genColorBorder)
+		DrawTextStyled(dst, lbl, lx, ly, RoleCaption, genColorBorder)
 	}
 }
 
@@ -2817,10 +2987,93 @@ func (z *EQPanelZone) curveYAtX(px int) int {
 // rebuildCurveCache recomputes the EQ frequency response cache from the
 // current band gains/mutes and clears the dirty flag. Single source of
 // truth for both Draw and SampleCurve.
+// eqCurveKey is the TraceSprite version key for the cached EQ curve content.
+// Everything the cached pixels depend on is folded in: the curve data
+// revision, the plot size, and the density profile (label metrics). The
+// guide labels ("+6"/"-6") are not localized, so language is not a key input.
+type eqCurveKey struct {
+	rev     int
+	w, h    int
+	density Density
+}
+
+// renderEQCurveContent draws the static curve content — 0 dB dashed
+// reference, ±6 dB guide rulers with labels, and the curve fill + stroke —
+// into r on img. Coordinates are r-relative: TraceSprite passes an
+// origin-anchored rect when cached and the real plot rect under the
+// RENDER_SAFE bypass; every helper here already takes r as its frame.
+func (z *EQPanelZone) renderEQCurveContent(img *ebiten.Image, r image.Rectangle) {
+	// The curve, its fill and the dB rulers terminate at a small inset from
+	// the plot edges (first/last band column ± SpaceXS) instead of running
+	// flush into the panel border, which visually amputated the stroke at
+	// x=0 / x=panel-width.
+	curveMinX, curveMaxX := z.eqCurveSpanX(r)
+
+	// 0 dB reference line (dashed).
+	zeroY := gainDBToY(0, r)
+	for dx := curveMinX; dx < curveMaxX; dx += 6 {
+		end := dx + 3
+		if end > curveMaxX {
+			end = curveMaxX
+		}
+		drawRect(img, image.Rect(dx, zeroY, end, zeroY+1), colEQZeroLine, true)
+	}
+
+	// ±6 dB guide rulers — solid 1-px lines a step fainter than the dashed
+	// 0 dB reference, with tiny end labels so the plot carries a dB scale.
+	guideCol := WithAlpha(genColorEqZeroLine, AlphaSubtle)
+	guideLabelCol := WithAlpha(colTextSecondary, AlphaStrong)
+	for _, gdb := range [...]float64{eqGuideDB, -eqGuideDB} {
+		gy := gainDBToY(gdb, r)
+		if gy <= r.Min.Y || gy >= r.Max.Y-1 {
+			continue
+		}
+		drawRect(img, image.Rect(curveMinX, gy, curveMaxX, gy+1), guideCol, true)
+		lbl := "+6"
+		if gdb < 0 {
+			lbl = "-6"
+		}
+		ly := gy - StyledTextHeight(RoleMicro) - 1
+		if ly < r.Min.Y {
+			ly = gy + 2
+		}
+		DrawTextStyled(img, lbl, curveMinX+2, ly, RoleMicro, guideLabelCol)
+	}
+
+	// Curve.
+	prevX := -1
+	for _, p := range z.curveCache {
+		px := freqToX(p.FreqHz, r)
+		py := gainDBToY(p.GainDB, r)
+		if py < r.Min.Y {
+			py = r.Min.Y
+		}
+		if py > r.Max.Y-1 {
+			py = r.Max.Y - 1
+		}
+		if prevX >= 0 && px > prevX && px >= curveMinX && px <= curveMaxX {
+			fillY0, fillY1 := py, zeroY
+			if fillY0 > fillY1 {
+				fillY0, fillY1 = fillY1, fillY0
+			}
+			if fillY1-fillY0 > 1 {
+				drawRect(img, image.Rect(px, fillY0, px+1, fillY1), colEQCurveFill, true)
+			}
+			lineY0, lineY1 := py, py+2
+			if lineY1 > r.Max.Y {
+				lineY1 = r.Max.Y
+			}
+			drawRect(img, image.Rect(px, lineY0, px+1, lineY1), colEQCurve, true)
+		}
+		prevX = px
+	}
+}
+
 func (z *EQPanelZone) rebuildCurveCache() {
 	bands := z.buildCurrentBands()
 	z.curveCache = audio.ComputeFreqResponse(audio.SampleRate(), bands, eqCurvePoints, 20, 20000)
 	z.curveDirty = false
+	z.curveRev++
 }
 
 // SetBandGainDB updates the gain (in dB) for a single EQ band and marks

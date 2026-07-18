@@ -5,10 +5,11 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strings"
 
-	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
 // Draw renders the mobile wheel popup as a textured analogue thumbwheel: a title
@@ -31,17 +32,56 @@ func (w *MobileWheelPopup) Draw(dst *ebiten.Image) {
 	w.drawResStrip(dst)  // resolution stepper (continuous params only)
 }
 
+// wheelTitleGlossSep joins the param name and its PlainEnglish gloss in the
+// title band ("Cutoff — bright or dull").
+const wheelTitleGlossSep = " — "
+
 // drawTitle centers the param name in the reserved title band with a hairline
-// divider beneath it.
+// divider beneath it. When the binding supplies a Gloss, it is appended on the
+// same band ("Title — Gloss", the gloss dim), truncated to fit; if the gloss
+// truncates away entirely the bare title is drawn (never a dangling "—").
 func (w *MobileWheelPopup) drawTitle(dst *ebiten.Image) {
 	title := w.binding.Title()
 	if title == "" {
 		return
 	}
 	tr := w.titleRect
-	tx := tr.Min.X + (tr.Dx()-StyledTextWidth(title, RolePanelTitle))/2
 	ty := tr.Min.Y + (tr.Dy()-StyledTextHeight(RolePanelTitle))/2
-	DrawTextStyled(dst, title, tx, ty, RolePanelTitle, colTextSecondary)
+	maxW := tr.Dx() - 2*SpaceSM
+
+	// Try "Title — Gloss" on the same band; split the fitted string so the gloss
+	// can be drawn dim. Fall back to the bare title when the gloss won't fit.
+	gloss := ""
+	if w.binding.Gloss != nil {
+		gloss = w.binding.Gloss()
+	}
+	if gloss != "" {
+		trunc := truncCaptionStyled(title+wheelTitleGlossSep+gloss, maxW, RolePanelTitle)
+		if idx := strings.Index(trunc, wheelTitleGlossSep); idx >= 0 {
+			tail := trunc[idx+len(wheelTitleGlossSep):]
+			if strings.TrimSpace(strings.TrimRight(tail, "…")) != "" {
+				head := trunc[:idx]
+				totalW := StyledTextWidth(trunc, RolePanelTitle)
+				headW := StyledTextWidth(head, RolePanelTitle)
+				tx := tr.Min.X + (tr.Dx()-totalW)/2
+				DrawTextStyled(dst, head, tx, ty, RolePanelTitle, colTextSecondary)
+				DrawTextStyled(dst, trunc[idx:], tx+headW, ty, RolePanelTitle,
+					WithAlphaFromColor(colTextSecondary, AlphaMedium))
+				w.drawTitleDivider(dst)
+				return
+			}
+		}
+	}
+
+	bare := truncCaptionStyled(title, maxW, RolePanelTitle)
+	tx := tr.Min.X + (tr.Dx()-StyledTextWidth(bare, RolePanelTitle))/2
+	DrawTextStyled(dst, bare, tx, ty, RolePanelTitle, colTextSecondary)
+	w.drawTitleDivider(dst)
+}
+
+// drawTitleDivider draws the hairline divider beneath the title band.
+func (w *MobileWheelPopup) drawTitleDivider(dst *ebiten.Image) {
+	tr := w.titleRect
 	divY := tr.Max.Y - 1
 	drawRect(dst, image.Rect(tr.Min.X, divY, tr.Max.X, divY+1),
 		WithAlphaFromColor(TokenBorderSubtle(), AlphaSubtle), true)
@@ -255,8 +295,8 @@ func (w *MobileWheelPopup) drawSlotRails(dst *ebiten.Image) {
 		drawRect(dst, image.Rect(edgeX-1, vr.Min.Y, edgeX, vr.Max.Y),
 			WithAlphaFromColor(accent, AlphaFaint), true)
 	}
-	rail(vr.Min.X, vr.Min.X+wheelRailW, vr.Min.X+wheelRailW)       // left rail, edge on its right
-	rail(vr.Max.X-wheelRailW, vr.Max.X, vr.Max.X-wheelRailW-1)     // right rail, edge on its left
+	rail(vr.Min.X, vr.Min.X+wheelRailW, vr.Min.X+wheelRailW)   // left rail, edge on its right
+	rail(vr.Max.X-wheelRailW, vr.Max.X, vr.Max.X-wheelRailW-1) // right rail, edge on its left
 }
 
 // wheelGripCache holds the static, neutral thumb-grip texture (dome + rubber
@@ -279,7 +319,7 @@ func wheelGripSprite(wpx, hpx int) *ebiten.Image {
 		return spr
 	}
 	spr := ebiten.NewImage(wpx, hpx)
-	top := adjustColor(TokenSurface3(), 24) // lit upper face
+	top := adjustColor(TokenSurface3(), 24)  // lit upper face
 	bot := adjustColor(TokenSurface1(), -14) // shadowed lower face
 	fillVerticalGradient(spr, image.Rect(0, 0, wpx, hpx), top, bot, 14)
 	// Rubber ribs: a dark groove with a lit ridge just below it (light from above),
@@ -315,6 +355,11 @@ func (w *MobileWheelPopup) drawThumbGrip(dst *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(r.Min.X+1), float64(r.Min.Y+1))
 	dst.DrawImage(spr, op)
+	// Hover brighten: cursor-over feedback for the tap-to-numeric-editor grip
+	// (portal input handlers only fire on press edges — see HoverAt).
+	if w.hoverCenter {
+		drawRoundedRect(dst, r, WithAlpha(colTextPrimary, AlphaFaint), rad, true)
+	}
 	// Rounded rim: a 1px accent border ties it to the rail glow.
 	drawRoundedRect(dst, r, WithAlphaFromColor(accent, AlphaMedium), rad, false)
 
@@ -335,8 +380,12 @@ func (w *MobileWheelPopup) drawThumbGrip(dst *ebiten.Image) {
 	DrawTextStyled(dst, val, vx, vy, RoleSectionHeader, colTextPrimary)
 }
 
-// drawResStrip renders the resolution control as a vertical stepper: a rounded
-// rail with up/down chevrons framing the current step label.
+// drawResStrip renders the resolution control as a visible rung LADDER: every
+// stepLadder rung is a tappable pill stacked vertically, finest at the TOP
+// (matching "scroll up = finer"), the active rung highlighted with the accent.
+// Tapping a pill jumps straight to it; scrolling/dragging still steps rung-by-
+// rung. rungRects() is the single source of truth for the pill geometry so the
+// hit-test and the draw stay in lockstep.
 func (w *MobileWheelPopup) drawResStrip(dst *ebiten.Image) {
 	if w.resRect.Empty() || w.binding.Badge == nil {
 		return
@@ -344,23 +393,31 @@ func (w *MobileWheelPopup) drawResStrip(dst *ebiten.Image) {
 	r := w.resRect
 	drawRoundedRect(dst, r, TokenSurface2(), RadiusMD, true)
 	drawRoundedRect(dst, r, WithAlphaFromColor(TokenBorderSubtle(), AlphaMedium), RadiusMD, false)
-
-	chW := r.Dx() - SpaceSM*2
-	if chW > 18 {
-		chW = 18
+	b := w.binding.Badge
+	accent := w.resolveAccent()
+	for i, rr := range w.rungRects() {
+		lbl := formatStepValue(w.binding.Def, b.Rungs()[i])
+		active := i == b.Index()
+		switch {
+		case active:
+			drawRoundedRect(dst, rr, WithAlphaFromColor(accent, AlphaMedium), RadiusXS, true)
+			drawRoundedRect(dst, rr, accent, RadiusXS, false)
+		case i == w.hoverRung:
+			// Brighten (not the accent fill — that's reserved for the active
+			// rung) so a hovered-but-inactive pill reads as interactive.
+			drawRoundedRect(dst, rr, WithAlpha(TokenSurface3(), AlphaStrong), RadiusXS, true)
+		default:
+			drawRoundedRect(dst, rr, WithAlpha(TokenSurface3(), AlphaMedium), RadiusXS, true)
+		}
+		col := TokenTextSecondary()
+		if active {
+			col = colTextPrimary
+		}
+		disp := truncCaptionStyled(lbl, rr.Dx()-4, RoleMicro)
+		lw := StyledTextWidth(disp, RoleMicro)
+		lh := StyledTextHeight(RoleMicro)
+		DrawTextStyled(dst, disp, rr.Min.X+(rr.Dx()-lw)/2, rr.Min.Y+(rr.Dy()-lh)/2, RoleMicro, col)
 	}
-	cx := r.Min.X + (r.Dx()-chW)/2
-	up := image.Rect(cx, r.Min.Y+SpaceXS, cx+chW, r.Min.Y+SpaceXS+chW)
-	DrawIcon(dst, IconChevronUp, up, colTextSecondary)
-	dn := image.Rect(cx, r.Max.Y-SpaceXS-chW, cx+chW, r.Max.Y-SpaceXS)
-	DrawIcon(dst, IconChevronDown, dn, colTextSecondary)
-
-	lbl := w.binding.Badge.Label()
-	lw := StyledTextWidth(lbl, RoleCaption)
-	lh := StyledTextHeight(RoleCaption)
-	lx := r.Min.X + (r.Dx()-lw)/2
-	ly := r.Min.Y + (r.Dy()-lh)/2
-	DrawTextStyled(dst, lbl, lx, ly, RoleCaption, colTextAccent)
 }
 
 func (w *MobileWheelPopup) tickGap() int {

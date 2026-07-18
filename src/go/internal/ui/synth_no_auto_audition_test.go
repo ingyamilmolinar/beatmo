@@ -77,69 +77,6 @@ func firstVisibleSynthKnob(t *testing.T, g *Game) (int, *Knob, *HitArea) {
 	return idx, knobs[idx], hit
 }
 
-// TestSynthKnobDragRelease_DoesNotAutoAudition drives the production
-// hit-area path (synthKnobHitAdapter): press inside a knob, drag right,
-// release. The param must reach the audio config (next-trigger model) and
-// the release must NOT fire an audition.
-func TestSynthKnobDragRelease_DoesNotAutoAudition(t *testing.T) {
-	g := newSnareSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-
-	var auditions []string
-	prev := SwapSynthAuditionFnForTest(func(id string) { auditions = append(auditions, id) })
-	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
-
-	idx, knob, hit := firstVisibleSynthKnob(t, g)
-	bindings := g.drum.SynthTabBindings()
-	paramName := bindings[idx].def.Name
-	r := knob.Rect()
-	cx := (r.Min.X + r.Max.X) / 2
-	cy := (r.Min.Y + r.Max.Y) / 2
-	quarter := knob.dragPixels() / 4
-
-	hit.Handler.OnPress(cx, cy)
-	hit.Handler.OnDrag(cx+quarter, cy)
-	hit.Handler.OnRelease(cx+quarter, cy)
-
-	// The config change itself must still land (next-trigger model).
-	if _, ok := audio.GetInstrumentParams("snare")[paramName]; !ok {
-		t.Fatalf("param %q was not propagated to the audio config on release", paramName)
-	}
-	// But the release must not auto-play the instrument.
-	if len(auditions) != 0 {
-		t.Errorf("knob release auto-auditioned %v; want no automatic playback (config-only, next trigger picks it up)", auditions)
-	}
-}
-
-// TestSynthTabLegacyInput_ReleaseDoesNotAutoAudition drives the legacy
-// direct input path (handleSynthTabInput, used by EQPanelZone.handleInput):
-// press inside a knob, then release. Same contract: config-only, no
-// automatic audition.
-func TestSynthTabLegacyInput_ReleaseDoesNotAutoAudition(t *testing.T) {
-	g := newSnareSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-
-	var auditions int
-	prev := SwapSynthAuditionFnForTest(func(string) { auditions++ })
-	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
-
-	_, knob, _ := firstVisibleSynthKnob(t, g)
-	r := knob.Rect()
-	cx := (r.Min.X + r.Max.X) / 2
-	cy := (r.Min.Y + r.Max.Y) / 2
-
-	dv := g.drum
-	if !dv.handleSynthTabInput(cx, cy, true, "snare") {
-		t.Fatal("press inside knob rect was not consumed")
-	}
-	dv.handleSynthTabInput(cx+5, cy, true, "snare")  // drag
-	dv.handleSynthTabInput(cx+5, cy, false, "snare") // release
-
-	if auditions != 0 {
-		t.Errorf("legacy-path knob release auto-auditioned %d time(s); want 0", auditions)
-	}
-}
-
 // TestSynthStageTogglePill_DoesNotAutoAudition flips a modular per-stage
 // bypass pill. The toggle must mutate the param (next trigger renders with
 // the stage bypassed/enabled) but must not auto-play the instrument.
@@ -199,5 +136,31 @@ func TestSetInstrumentParam_NeverTriggersPlayback(t *testing.T) {
 	audio.SetInstrumentParam(instID, "decay", 2.5)
 	if got := audio.LastTriggerAt(instID); !got.IsZero() {
 		t.Errorf("SetInstrumentParam triggered playback: LastTriggerAt = %v, want zero (no voice scheduled)", got)
+	}
+}
+
+// TestSynthKnobWheelNudge_DoesNotAutoAudition drives the Task-5 desktop wheel
+// nudge (synthKnobHitAdapter.OnWheel): a notch over the card must propagate the
+// param (next-trigger model) and NOT fire an audition.
+func TestSynthKnobWheelNudge_DoesNotAutoAudition(t *testing.T) {
+	g := newSnareSynthTabGame(t)
+	expandSynthPanelForTest(t, g)
+	var auditions []string
+	prev := SwapSynthAuditionFnForTest(func(id string) { auditions = append(auditions, id) })
+	t.Cleanup(func() { SwapSynthAuditionFnForTest(prev) })
+	idx, knob, hit := firstVisibleSynthKnob(t, g)
+	paramName := g.drum.SynthTabBindings()[idx].def.Name
+	r := knob.Rect()
+	cx := (r.Min.X + r.Max.X) / 2
+	cy := (r.Min.Y + r.Max.Y) / 2
+	knob.Value = 0.25 // low value so +1 notch always increases (discrete or endless)
+	if res := hit.Handler.OnWheel(cx, cy, 1); res != InputConsumed {
+		t.Fatalf("wheel over knob card should be consumed (nudge), got %v", res)
+	}
+	if _, ok := audio.GetInstrumentParams("snare")[paramName]; !ok {
+		t.Fatalf("param %q was not propagated to the audio config on wheel nudge", paramName)
+	}
+	if len(auditions) != 0 {
+		t.Errorf("knob wheel nudge auto-auditioned %v; want none", auditions)
 	}
 }

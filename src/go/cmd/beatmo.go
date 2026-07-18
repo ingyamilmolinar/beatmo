@@ -39,6 +39,8 @@ func main() {
 	benchBPM := flag.Int("bench-bpm", 0, "benchmark mode: play demo at this BPM (0 = disabled)")
 	benchSecs := flag.Float64("bench-secs", 10, "benchmark mode: duration in seconds")
 	benchProf := flag.String("bench-prof", "", "benchmark mode: write CPU profile to this path")
+	benchStorm := flag.String("bench-synth-storm", "", "synth param-mutation storm during bench: off|toggle|ctrl|combined")
+	benchStormInst := flag.String("bench-synth-storm-inst", "cello", "instrument id the synth storm mutates")
 	recordBench := flag.Float64("record-bench", 0, "play demo + record audio for this many seconds, write profiles to bench-results/, then exit (0 = disabled)")
 	recordBenchBPM := flag.Int("record-bench-bpm", 120, "BPM to use during -record-bench")
 	hooksConfig := flag.String("hooks-config", "", "path to a JSON hooks config to load at startup")
@@ -282,7 +284,7 @@ func main() {
 	case *recordBench > 0:
 		g.RunRecordBenchmark(*recordBenchBPM, time.Duration(*recordBench*float64(time.Second)), recordBenchDir)
 	case *benchBPM > 0:
-		g.RunBenchmark(*benchBPM, time.Duration(*benchSecs*float64(time.Second)))
+		g.RunBenchmark(*benchBPM, time.Duration(*benchSecs*float64(time.Second)), ui.ParseBenchStormScenario(*benchStorm), *benchStormInst)
 	case *demo:
 		g.RunDemo()
 	}

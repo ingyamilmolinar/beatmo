@@ -96,9 +96,19 @@ type Game struct {
 	hlDropped    map[int]int64
 	highlightMu  sync.RWMutex
 	selNeighbors map[*uiNode]bool
+	clipboard    nodeClipboard     // single-node copy/cut buffer (node_clipboard.go)
+	pastePending pastePendingState // in-flight paste-overwrite confirmation (node_clipboard.go)
+	breakPending breakPendingState // in-flight break-circuit confirmation (grid_move_break_confirm.go)
 	hover        *uiNode
-	cursorLabel  string
-	nodeAnimMu   sync.RWMutex
+	// hoverGlowNode/hoverGlowP ease the grid-node hover halo (shared
+	// button-hover-fade spring — see advanceNodeHoverGlow). hoverGlowNode is
+	// the node the halo currently renders on (kept while fading out after
+	// the cursor leaves); compared by identity only, never dereferenced
+	// outside the live g.nodes loop.
+	hoverGlowNode *uiNode
+	hoverGlowP    float64
+	cursorLabel   string
+	nodeAnimMu    sync.RWMutex
 
 	// divider visuals (for tests)
 	dividerHover bool
@@ -106,7 +116,7 @@ type Game struct {
 
 	/* editor state — node-editor + pointer/touch gesture interaction, grouped
 	   into the embedded inputGestureState (see game_input_gesture_state.go).
-	   Anonymous so g.sel / g.moveMode / g.longPressPopup / … keep resolving via
+	   Anonymous so g.sel / g.modes / g.longPressPopup / … keep resolving via
 	   field promotion. */
 	inputGestureState
 
@@ -135,10 +145,20 @@ type Game struct {
 	benchDuration time.Duration
 	benchStarted  bool
 	benchStart    time.Time
+	// Synth param-mutation storm: opt-in, off by default. Drives
+	// audio.SetInstrumentParam churn against benchStormInst during the bench
+	// measure window; benchStormPushes is counted into [bench_json].
+	benchStorm       benchStormScenario
+	benchStormInst   string
+	benchStormTick   int
+	benchStormPushes int
 	// Record-bench mode: when true, also start recording when the bench
 	// playback begins and stop+save on shutdown. Output goes to benchOutDir.
 	benchRecord bool
 	benchOutDir string // directory for recordings + perf snapshots
+	// gcMetrics accumulates GC pause/cycle/heap stats over a window that is
+	// independent of perfCounters' 2 s PERF_LOG reset (see gc_metrics.go).
+	gcMetrics gcMetrics
 	// Screenshot mode: capture screen after N draws and exit
 	screenshotPath         string
 	screenshotDraws        int
@@ -190,6 +210,12 @@ type Game struct {
 	// queued import, drained alongside pendingImportData to name the success
 	// notification ("Loaded <source> …"). "" ⇒ generic "Imported" toast.
 	pendingImportSource string
+	// importAsUndoStep marks the queued import as a user-initiated load that
+	// should be undoable: Import records the pre-load document as one undo step
+	// instead of clearing history. Set by the drum.onImport callback (template /
+	// file load); left false for demo/startup/JS loads and undo-restore
+	// re-imports, which keep the clear-history behavior. Consumed once per Import.
+	importAsUndoStep bool
 
 	// pendingActions are deferred UI mutations queued by external callers
 	// (e.g. JS exports invoked via page.evaluate between frames). Game.Update

@@ -1,6 +1,7 @@
 package gamestate
 
 import (
+	"math"
 	"sync/atomic"
 	"time"
 )
@@ -119,13 +120,124 @@ func (s *State) AnchorForBPMChange(prevBPM int, now time.Time, audioNow float64)
 	if !s.playing.Load() || prevBPM <= 0 {
 		return
 	}
-	var dtSec float64
-	if audioNow > 0 && s.audioStart > 0 {
-		dtSec = audioNow - s.audioStart
-	} else if !s.playStart.IsZero() {
-		dtSec = now.Sub(s.playStart).Seconds()
+	dtSec, ok := s.DtSince(now, audioNow)
+	if !ok {
+		return
 	}
 	s.beatBase += dtSec * float64(prevBPM) / 60.0
+	s.playStart = now
+	if audioNow > 0 {
+		s.audioStart = audioNow
+	}
+}
+
+// DtSince returns elapsed seconds since the play anchor, preferring the audio
+// clock and falling back to wall clock. ok=false means no anchor is available
+// (the caller decides its own fallback). This is the SINGLE place the
+// audio-vs-wall clock selection lives.
+func (s *State) DtSince(now time.Time, audioNow float64) (dtSec float64, ok bool) {
+	if audioNow > 0 && s.audioStart > 0 {
+		return audioNow - s.audioStart, true
+	}
+	if !s.playStart.IsZero() {
+		return now.Sub(s.playStart).Seconds(), true
+	}
+	return 0, false
+}
+
+// PosBeats is the ONE transport-position formula: beatBase + elapsed*bpm/60.
+// ok mirrors DtSince; when !ok it returns beatBase (no progress). Callers apply
+// their own floor/round and monotonic clamping.
+func (s *State) PosBeats(now time.Time, audioNow float64, bpm int) (beats float64, ok bool) {
+	dt, ok := s.DtSince(now, audioNow)
+	if !ok {
+		return s.beatBase, false
+	}
+	return s.beatBase + dt*float64(bpm)/60.0, true
+}
+
+// PosStep is the canonical absolute-subdivision position (round).
+func (s *State) PosStep(now time.Time, audioNow float64, bpm, div int) (int, bool) {
+	if div <= 0 {
+		div = 1
+	}
+	b, ok := s.PosBeats(now, audioNow, bpm)
+	return int(math.Round(b * float64(div))), ok
+}
+
+// TargetStep is the scheduler's catch-up target (floor).
+func (s *State) TargetStep(now time.Time, audioNow float64, bpm, div int) (int, bool) {
+	if div <= 0 {
+		div = 1
+	}
+	b, ok := s.PosBeats(now, audioNow, bpm)
+	return int(math.Floor(b * float64(div))), ok
+}
+
+// DtOfStep is the inverse of PosBeats: elapsed seconds at which the playhead
+// reaches subdivision idx, relative to the play anchor.
+func (s *State) DtOfStep(idx, div, bpm int) float64 {
+	if div <= 0 {
+		div = 1
+	}
+	if bpm <= 0 {
+		return 0
+	}
+	return (float64(idx)/float64(div) - s.beatBase) * 60.0 / float64(bpm)
+}
+
+// AudioTimeOfStep is DtOfStep expressed on the audio clock — the ideal audio
+// time to schedule subdivision idx.
+func (s *State) AudioTimeOfStep(idx, div, bpm int) float64 {
+	return s.audioStart + s.DtOfStep(idx, div, bpm)
+}
+
+// SeekTo relocates the playhead to absolute subdivision `steps`. When playing,
+// it re-anchors the clocks so PosBeats continues smoothly from steps; when
+// stopped/paused it records the paused position. This is the single mutation
+// that moves the transport position.
+func (s *State) SeekTo(steps, div int, now time.Time, audioNow float64) {
+	if div <= 0 {
+		div = 1
+	}
+	beat := float64(steps) / float64(div)
+	s.beatBase = beat
+	s.lastBeat = beat
+	s.lastDisplayBeat = beat
+	s.lastProg = 0
+	s.lastStep = steps
+	if s.playing.Load() {
+		s.playStart = now
+		if audioNow > 0 {
+			s.audioStart = audioNow
+		} else {
+			s.audioStart = 0
+		}
+		s.justResumed.Store(false)
+	} else {
+		s.pausedBeats = steps
+	}
+}
+
+// SetPosition places the playhead at absolute subdivision `steps`: it sets the
+// beat base, its last* display mirrors, and the paused/resume bookmark, without
+// touching the wall/audio clocks (callers that also (re)anchor the clock do so
+// separately). Used by the resume-from-offset and media-session resume paths.
+func (s *State) SetPosition(steps, div int) {
+	if div <= 0 {
+		div = 1
+	}
+	beat := float64(steps) / float64(div)
+	s.beatBase = beat
+	s.lastBeat = beat
+	s.lastDisplayBeat = beat
+	s.lastStep = steps
+	s.pausedBeats = steps
+}
+
+// StartClock anchors the wall/audio clock for playback started programmatically
+// (not via the Play button), leaving the position fields untouched.
+func (s *State) StartClock(now time.Time, audioNow float64) {
 	s.playStart = now
 	if audioNow > 0 {
 		s.audioStart = audioNow
@@ -159,8 +271,9 @@ func (s *State) SetPausedForTest(v bool) { s.SetPaused(v) }
 // BeatBase returns the base beat offset used for time calculations.
 func (s *State) BeatBase() float64 { return s.beatBase }
 
-// SetBeatBase forces a new beat base (mainly for tests).
-func (s *State) SetBeatBase(v float64) { s.beatBase = v }
+// SetBeatBaseForTest forces a new beat base (tests only — production code must
+// go through SeekTo / the Resume/Pause/Stop transitions).
+func (s *State) SetBeatBaseForTest(v float64) { s.beatBase = v }
 
 // LastBeat returns the last quantized beat value.
 func (s *State) LastBeat() float64 { return s.lastBeat }
@@ -189,8 +302,8 @@ func (s *State) SetPlayStart(t time.Time) { s.playStart = t }
 // AudioStart returns the audio clock start position.
 func (s *State) AudioStart() float64 { return s.audioStart }
 
-// SetAudioStart updates the audio clock start position.
-func (s *State) SetAudioStart(v float64) { s.audioStart = v }
+// SetAudioStartForTest forces the audio clock anchor (tests only).
+func (s *State) SetAudioStartForTest(v float64) { s.audioStart = v }
 
 // JustPaused reports whether Pause was triggered this frame.
 func (s *State) JustPaused() bool { return s.justPaused.Load() }
@@ -207,8 +320,8 @@ func (s *State) ClearJustResumed() { s.justResumed.Store(false) }
 // PausedBeats returns the subdivision index where playback paused.
 func (s *State) PausedBeats() int { return s.pausedBeats }
 
-// SetPausedBeats updates the stored pause index.
-func (s *State) SetPausedBeats(v int) { s.pausedBeats = v }
+// SetPausedBeatsForTest forces the stored pause index (tests only).
+func (s *State) SetPausedBeatsForTest(v int) { s.pausedBeats = v }
 
 // SeekFreezeFrames returns the remaining seek freeze frames.
 func (s *State) SeekFreezeFrames() int { return s.seekFreezeFrames }

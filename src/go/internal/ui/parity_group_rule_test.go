@@ -43,6 +43,9 @@ func TestParityGroupRuleNeverAltersTriggerParity(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SetGroupRules: %v", err)
 	}
+	if err := g.graph.SetGroupRulesEnabled(gid, true); err != nil {
+		t.Fatalf("SetGroupRulesEnabled: %v", err)
+	}
 	g.refreshDrumRow()
 
 	// Trigger parity must be UNCHANGED by the rule: same rendered Steps, same

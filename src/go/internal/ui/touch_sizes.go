@@ -108,6 +108,11 @@ const (
 	SpaceXL      = genSpacingXl
 	SpaceXXL     = genSpacingXxl
 	SpaceCluster = genSpacingCluster // inter-cluster gap on the transport bar
+
+	// Instrument-identity swatch scale: SM = menu-title swatch, MD = list-row
+	// swatch (see DESIGN.md "Menu anatomy").
+	SwatchSizeSM = genSpacingSwatchSm
+	SwatchSizeMD = genSpacingSwatchMd
 )
 
 // Standard button heights (px)

@@ -128,6 +128,7 @@ const (
 	RoleCaption                       // 12px Inter Regular  — sub-labels ("Vol", "Pct")
 	RoleSectionHeader                 // 16px Inter SemiBold — section labels
 	RolePanelTitle                    // 21px Inter SemiBold — panel/menu titles
+	RoleMicro                         // 10px Inter Regular  — dense data-canvas labels (axis ticks, meter scales)
 )
 
 func (r TextRole) size() float64 {
@@ -138,12 +139,14 @@ func (r TextRole) size() float64 {
 		return 16
 	case RoleCaption:
 		return 12
+	case RoleMicro:
+		return 10
 	default:
 		return 14
 	}
 }
 
-func (r TextRole) bold() bool { return r != RoleCaption }
+func (r TextRole) bold() bool { return r != RoleCaption && r != RoleMicro }
 
 // styledLineHeightFallback is the build-agnostic line-height estimate used
 // under -tags test (no TTF available). Monotonic in size so the role
@@ -215,6 +218,9 @@ func StyledTextSprite(s string, role TextRole) *ebiten.Image {
 // DrawTextStyled draws s at (x,y) in the given role, tinted with col. The
 // sprite is rendered at true px size — blit 1:1, no GeoM scaling.
 func DrawTextStyled(dst *ebiten.Image, s string, x, y int, role TextRole, col color.Color) {
+	if drawTextStyledHook != nil {
+		drawTextStyledHook(s)
+	}
 	spr := StyledTextSprite(s, role)
 	var op ebiten.DrawImageOptions
 	op.GeoM.Translate(float64(x), float64(y))
@@ -262,6 +268,12 @@ func DrawTextAtScale(dst *ebiten.Image, s string, x, y int, scale float64) {
 // drawTextColorAtScaleHook, when non-nil, is invoked with each string passed
 // to DrawTextColorAtScale. Test-only observation seam (zero cost when nil).
 var drawTextColorAtScaleHook func(string)
+
+// drawTextStyledHook, when non-nil, is invoked with each string passed to
+// DrawTextStyled — the styled-path sibling of drawTextColorAtScaleHook, so
+// tests that observe rendered strings keep working as call sites migrate
+// off the legacy scaled-bitmap path. Test-only seam (zero cost when nil).
+var drawTextStyledHook func(string)
 
 // DrawTextColorAtScale draws cached text at (x,y) scaled and tinted with col.
 // Combines GeoM.Scale for size and ColorScale for tint in a single blit.

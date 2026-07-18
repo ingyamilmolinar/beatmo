@@ -3,7 +3,7 @@ package ui
 import (
 	"fmt"
 	"image"
-	"image/color"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
@@ -51,6 +51,20 @@ type GroupMenu struct {
 	// Close() when the menu closes on a dirty committed group without ever
 	// pressing Save — see restoreIfDirty.
 	savedRules []model.GroupRule
+	// savedEnabled is the snapshot of the group's RulesEnabled status bit
+	// (task-enabled-status brief, Part C) taken at the same openAt time as
+	// savedRules, and compared against the live group's RulesEnabled by
+	// dirty() alongside the Rules comparison — toggling the status is a
+	// pending edit exactly like a delta edit, dirtying the always-present
+	// Save button and reverting silently on close-without-save
+	// (restoreIfDirty). Reset to the just-committed value on every
+	// successful save() (mirrors savedRules).
+	savedEnabled bool
+	// memberRectsScratch is a reused backing slice for the group's
+	// per-member screen rects, rebuilt (truncated, not reallocated) every
+	// layoutAt via groupMemberScreenRects — feeds placeGroupMenu's per-member
+	// overlap test (task-placement-v2).
+	memberRectsScratch []image.Rectangle
 	// provisional marks a group that was just marquee-created and not yet
 	// committed via Save. While true: rule edits made through this menu
 	// mutate the model (so rings/rules work live) but do NOT emit
@@ -114,6 +128,7 @@ func (m *GroupMenu) openAt(id model.GroupID, x, y int, provisional bool) {
 	m.ruleDeltaVol, m.ruleDeltaPit, m.ruleDeltaDur = 0, 0, 0
 	m.ruleEveryN = 1
 	m.savedRules = nil
+	m.savedEnabled = false
 	if grp, ok := m.game.graph.Group(id); ok {
 		for _, r := range grp.Rules {
 			switch r.Param {
@@ -131,6 +146,7 @@ func (m *GroupMenu) openAt(id model.GroupID, x, y int, provisional bool) {
 		// returns one), so assigning it directly is safe — no aliasing with
 		// the live *NodeGroup's slice.
 		m.savedRules = grp.Rules
+		m.savedEnabled = grp.RulesEnabled
 	}
 	m.anchorX, m.anchorY = x, y
 	m.layoutAt(x, y)
@@ -163,18 +179,19 @@ func (m *GroupMenu) discardProvisional() {
 	m.provisional = false
 }
 
-// restoreIfDirty silently reverts the model to the savedRules snapshot taken
-// at open time, when the group is committed (non-provisional) and has
-// pending (unsaved) rule edits — the "cancel" half of the transactional
-// lifecycle (task-save-always Part 1): closing without Save must leave zero
-// trace, mirroring discardProvisional's zero-trace contract for the
-// provisional case. No emit, no undo step — SetGroupRules/ClearGroupRules
-// still fire the model's group-changed hook (index refresh + parity-gen bump
-// via onGroupsChanged), which is desired, but that is NOT the same as the ui
-// emit helpers (emitGroupChanged), which are never called here. Restores
-// WITH the snapshotted AnchorIdx values (savedRules is exactly what
-// model.Graph.Group returned at open time), so cancel doesn't perturb ramp
-// state either.
+// restoreIfDirty silently reverts the model to the savedRules/savedEnabled
+// snapshot taken at open time, when the group is committed (non-provisional)
+// and has pending (unsaved) edits — the "cancel" half of the transactional
+// lifecycle (task-save-always Part 1, extended by task-enabled-status Part C
+// to also cover the independent RulesEnabled status bit): closing without
+// Save must leave zero trace, mirroring discardProvisional's zero-trace
+// contract for the provisional case. No emit, no undo step —
+// SetGroupRules/ClearGroupRules/SetGroupRulesEnabled still fire the model's
+// group-changed hook (index refresh + parity-gen bump via onGroupsChanged),
+// which is desired, but that is NOT the same as the ui emit helpers
+// (emitGroupChanged), which are never called here. Restores WITH the
+// snapshotted AnchorIdx values (savedRules is exactly what model.Graph.Group
+// returned at open time), so cancel doesn't perturb ramp state either.
 func (m *GroupMenu) restoreIfDirty() {
 	if !m.dirty() {
 		return
@@ -185,9 +202,10 @@ func (m *GroupMenu) restoreIfDirty() {
 	}
 	if len(m.savedRules) == 0 {
 		_ = m.game.graph.ClearGroupRules(id)
-		return
+	} else {
+		_ = m.game.graph.SetGroupRules(id, m.savedRules)
 	}
-	_ = m.game.graph.SetGroupRules(id, m.savedRules)
+	_ = m.game.graph.SetGroupRulesEnabled(id, m.savedEnabled)
 }
 
 // Close closes the menu. Provisional (never-saved) groups are silently
@@ -263,8 +281,15 @@ func (m *GroupMenu) HandleInput(x, y int, pressed bool) InputResult {
 
 	order := []string{
 		"save", "close",
-		"ruleonoff", "n-", "n+", "rdpit-", "rdpit+", "rdvol-", "rdvol+", "rddur-", "rddur+", "delete",
+		"ruleonoff", "n-", "n+", "rdpit-", "rdpit+", "rdvol-", "rdvol+", "rddur-", "rddur+",
 	}
+	// Merge chips (task-merge-chips brief): dynamic ids, one per candidate
+	// group — appended before "delete" so the click order mirrors the visual
+	// stacking order (rule rows, then merge chips, then delete).
+	for _, cand := range m.mergeChipCandidates() {
+		order = append(order, fmt.Sprintf("mergechip:%d", cand.ID))
+	}
+	order = append(order, "delete")
 	for _, id := range order {
 		btn, ok := m.btns[id]
 		if !ok {
@@ -371,10 +396,11 @@ func rulesEqual(a, b []model.GroupRule) bool {
 
 // dirty reports whether the menu has pending (unsaved) edits: always true
 // while provisional (the creation itself is pending), else whether the live
-// group's Rules have diverged from the savedRules snapshot taken at open
-// time. This is what the always-present Save button's Disabled state
-// reflects (see ensureButtons) and what Close() uses to decide whether a
-// committed group needs its rules silently restored (see restoreIfDirty).
+// group's Rules OR its independent RulesEnabled status bit (task-enabled-
+// status brief, Part C) have diverged from the snapshot taken at open time.
+// This is what the always-present Save button's Disabled state reflects (see
+// ensureButtons) and what Close() uses to decide whether a committed group
+// needs its rules/status silently restored (see restoreIfDirty).
 func (m *GroupMenu) dirty() bool {
 	if m.provisional {
 		return true
@@ -383,14 +409,17 @@ func (m *GroupMenu) dirty() bool {
 	if !ok {
 		return false
 	}
-	return !rulesEqual(grp.Rules, m.savedRules)
+	return !rulesEqual(grp.Rules, m.savedRules) || grp.RulesEnabled != m.savedEnabled
 }
 
-// rulesEnabled reports whether the live group currently has any rules (the
-// "On" state the ruleonoff button reflects).
+// rulesEnabled reports the live group's independent RulesEnabled status bit
+// (task-enabled-status brief, Part C) — the "Enabled"/"Disabled" state the
+// ruleonoff button reflects. Deliberately NOT len(grp.Rules)>0: a group can
+// carry configured deltas while Disabled (deltas alone never imply enabled —
+// see setRuleEnabled/stepRuleDelta).
 func (m *GroupMenu) rulesEnabled() bool {
 	grp, ok := m.group()
-	return ok && len(grp.Rules) > 0
+	return ok && grp.RulesEnabled
 }
 
 // sharedEveryN returns the EveryN every live rule shares, or the menu's
@@ -405,18 +434,19 @@ func (m *GroupMenu) sharedEveryN() int {
 // writeRules composes up to 3 GroupRules — one per param (fixed order
 // pitch/volume/duration, for deterministic export byte-stability) whose
 // scratch delta is nonzero — sharing m.ruleEveryN. All-zero deltas write
-// nothing, clearing the group's rules instead (shows Off — see the type doc
-// comment's "On = write current deltas" contract).
+// nothing, clearing the group's Rules slice instead (an all-zero scratch
+// means every delta was reset to 0 — writeRules NEVER touches RulesEnabled;
+// see setRuleEnabled for the independent status toggle, task-enabled-status
+// brief Part C).
 //
 // AnchorIdx is PRESERVED per-param when the group already has a live rule for
 // that param (an in-place delta/EveryN edit continues the existing ramp —
 // task-rule-continuity Part 2): a mid-playback tweak must not reset the
 // accumulated step count back to 0. Only a param that is GAINING a rule for
-// the first time (the group currently has none for it — including the
-// Off->On case, where the group has no rules at all) gets a fresh anchor via
-// ruleAnchorIdxNow, so its own ramp starts from the moment it was written.
-// See GroupEffect's doc comment for the step-accumulation formula this anchor
-// feeds.
+// the first time (the group currently has no rule for that param) gets a
+// fresh anchor via ruleAnchorIdxNow, so its own ramp starts from the moment
+// it was written. See GroupEffect's doc comment for the step-accumulation
+// formula this anchor feeds.
 //
 // Emission (task-save-always Part 1): rule edits ALWAYS mutate the model
 // live (so rings/rules preview correctly, audible immediately — the anchored/
@@ -460,25 +490,29 @@ func (m *GroupMenu) writeRules() {
 	})
 }
 
-// setRuleEnabled: Off clears the group's rules outright (regardless of
-// scratch deltas). On writes whatever the current scratch deltas compose to
-// — an all-zero scratch (never edited) stays Off, per the type doc comment.
-// Never emits (see writeRules' doc comment) — only save() emits.
+// setRuleEnabled toggles the group's INDEPENDENT RulesEnabled status bit
+// (task-enabled-status brief, Part C) via the model's SetGroupRulesEnabled —
+// it never touches Rules. Live preview: enabling with nonzero deltas already
+// configured is immediately audible (SetGroupRulesEnabled fires the group-
+// changed hook, which rebuilds the GroupIndex and, while playing, drops
+// in-flight audio so the very next re-predicted trigger reflects the new
+// gate); disabling silences the ramp back to identity without discarding the
+// configured deltas. Never emits directly (see writeRules' doc comment) —
+// only save() emits, and only when the flag (or the rules) actually changed
+// relative to the openAt snapshot.
 func (m *GroupMenu) setRuleEnabled(on bool) {
-	if !on {
-		g := m.game
-		id := m.groupID
-		g.enqueueUI(func() {
-			_ = g.graph.ClearGroupRules(id)
-		})
-		return
-	}
-	m.writeRules()
+	g := m.game
+	id := m.groupID
+	g.enqueueUI(func() {
+		_ = g.graph.SetGroupRulesEnabled(id, on)
+	})
 }
 
 // stepRuleDelta nudges one param's scratch delta (pitch steps by 1.0
-// semitone; volume/duration step by 0.05) and writes — implicitly enabling
-// if the group was Off (matches the pre-redesign single-rule behavior).
+// semitone; volume/duration step by 0.05) and writes the rule. Deliberately
+// does NOT touch RulesEnabled (task-enabled-status brief, Part C: delta
+// edits must never implicitly enable a group) — the toggle is the only path
+// that flips the status bit; see setRuleEnabled.
 func (m *GroupMenu) stepRuleDelta(param model.GroupParam, dir int) {
 	step := 1.0
 	if param != model.GroupParamPitch {
@@ -501,9 +535,10 @@ func (m *GroupMenu) stepRuleEveryN(dir int) {
 // emits the single emitGroupCreated undo step for the whole creation
 // (membership + any rule edits already applied to the model while
 // provisional) and clears provisional; an already-committed group with
-// pending edits (dirty()) emits a single emitGroupChanged step. Either way
-// the savedRules snapshot is reset to the group's now-current Rules and the
-// menu STAYS OPEN — the always-present Save button greys out (see
+// pending edits (dirty() — Rules OR RulesEnabled changed, task-enabled-status
+// brief Part C) emits a single emitGroupChanged step. Either way the
+// savedRules/savedEnabled snapshot is reset to the group's now-current state
+// and the menu STAYS OPEN — the always-present Save button greys out (see
 // ensureButtons) once there's nothing left to commit. wasProvisional is
 // captured before the enqueued closure runs so dirty()'s provisional branch
 // (always-true) reflects the PRE-save state when deciding whether to emit.
@@ -519,10 +554,11 @@ func (m *GroupMenu) save() {
 		if wasProvisional {
 			emitGroupCreated(id, grp.Name, grp.NodeIDs)
 			m.provisional = false
-		} else if !rulesEqual(grp.Rules, m.savedRules) {
+		} else if !rulesEqual(grp.Rules, m.savedRules) || grp.RulesEnabled != m.savedEnabled {
 			emitGroupChanged(id)
 		}
 		m.savedRules = grp.Rules
+		m.savedEnabled = grp.RulesEnabled
 	})
 }
 
@@ -544,6 +580,118 @@ func (m *GroupMenu) deleteGroup() {
 			emitGroupDeleted(id)
 		}
 		m.Close()
+	})
+}
+
+// ─── Merge chips ("Add to group") ──────────────────────────────────────────
+
+// mergeChipCandidateCap caps the number of "Add to group" merge chips shown
+// in the provisional popup (task-merge-chips brief: more groups than this is
+// beyond v1 — no scrolling in this popup, just the lowest `mergeChipCandidateCap`
+// group ids).
+const mergeChipCandidateCap = 4
+
+// mergeChipCols is the number of chips laid out side-by-side per row (see
+// layoutAt's merge-chip section).
+const mergeChipCols = 2
+
+// mergeChipCandidates returns, in ascending GroupID order and capped at
+// mergeChipCandidateCap, every OTHER existing group that does NOT already
+// contain every member of the provisional group's current selection (the
+// provisional group's own NodeIDs ARE the marquee selection — that's what
+// "provisional" means: a real group already created holding those members,
+// not yet committed). A group that already contains the whole selection is
+// skipped — merging into it would be a no-op (nothing left to add). Returns
+// nil unless the menu is currently provisional: chips only ever appear on the
+// provisional popup (task-merge-chips brief §Design).
+func (m *GroupMenu) mergeChipCandidates() []model.NodeGroup {
+	if !m.provisional {
+		return nil
+	}
+	grp, ok := m.game.graph.Group(m.groupID)
+	if !ok {
+		return nil
+	}
+	selected := make(map[model.NodeID]bool, len(grp.NodeIDs))
+	for _, id := range grp.NodeIDs {
+		selected[id] = true
+	}
+	var out []model.NodeGroup
+	for _, other := range m.game.graph.AllGroups() { // AllGroups is ascending-GroupID sorted.
+		if other.ID == m.groupID {
+			continue
+		}
+		otherSet := make(map[model.NodeID]bool, len(other.NodeIDs))
+		for _, id := range other.NodeIDs {
+			otherSet[id] = true
+		}
+		hasAll := true
+		for id := range selected {
+			if !otherSet[id] {
+				hasAll = false
+				break
+			}
+		}
+		if hasAll {
+			continue // no-op merge: gid already contains every selected member.
+		}
+		out = append(out, other)
+		if len(out) >= mergeChipCandidateCap {
+			break
+		}
+	}
+	return out
+}
+
+// mergeInto implements the "Add to group" merge chip tap (task-merge-chips
+// brief §Merge semantics): dissolves the provisional group silently through
+// the existing discardProvisional funnel, adds every member of the
+// just-dissolved selection to gid (AddNodeToGroup is idempotent for members
+// gid already has — see TestMergeChipOverlappingSelection), wraps the whole
+// membership change in ONE undo step (beginUndoGroup/endUndoGroup around a
+// single emitGroupChanged call after the loop, mirroring the sidebar's
+// addToGroup), and reopens gid's menu non-provisional (OpenAt) so the merge
+// result — gid's color + strong member highlight — is immediately visible.
+//
+// Runs inside one enqueued closure (the mk-wired onClick pattern used by
+// save/deleteGroup/setRuleEnabled) so the member set is captured BEFORE the
+// provisional group is discarded: reading grp.NodeIDs after discardProvisional
+// would see nothing (the group is gone). discardProvisional deleting the
+// still-open provisional group synchronously triggers the model's
+// group-changed hook, which (Game.onGroupsChanged) closes this same menu
+// re-entrantly — see discardProvisional's and Close's doc comments for why
+// that re-entrant Close is a no-op past the point of deleting the group and
+// does not double-discard. The subsequent OpenAt call re-opens fresh,
+// non-provisional, on gid.
+func (m *GroupMenu) mergeInto(gid model.GroupID) {
+	g := m.game
+	provisionalID := m.groupID
+	anchorX, anchorY := m.anchorX, m.anchorY
+	g.enqueueUI(func() {
+		grp, ok := g.graph.Group(provisionalID)
+		if !ok {
+			return
+		}
+		members := append([]model.NodeID(nil), grp.NodeIDs...)
+		m.discardProvisional()
+		beginUndoGroup("merge into group")
+		added := false
+		for _, id := range members {
+			if err := g.graph.AddNodeToGroup(gid, id); err != nil {
+				g.logger.Debugf("[groupmenu] mergeInto AddNodeToGroup(%d, %d): %v", gid, id, err)
+			} else {
+				added = true
+			}
+		}
+		// Emit only when the merge actually mutated the target — the
+		// sidebar's addToGroup convention. A target deleted between chip
+		// layout and this closure running (every add ErrGroupNotFound) must
+		// not publish a "group updated" event for a nonexistent group.
+		if added {
+			emitGroupChanged(gid)
+		}
+		endUndoGroup()
+		m.OpenAt(gid, anchorX, anchorY)
 	})
 }
 
@@ -572,12 +720,19 @@ const groupMenuHalfRows = 1
 // legible/tappable). If a window is so small even the floors overflow, keeps
 // shrinking evenly below the floors as a last resort: the panel must NEVER
 // overflow the grid pane, like the node sidebar.
-func computeGroupMenuRowSizing(maxH int) (rowH, gap int) {
+//
+// extraHalfRows/extraFullRows let a caller fold in the "Add to group" merge
+// chip section's rows (task-merge-chips brief: 1 half-row label + ceil(n/2)
+// full chip rows, present only while provisional with >=1 candidate) so the
+// fit-shrinking loop accounts for the taller panel instead of computing a
+// sizing that only the base rows would fit in. Pass 0, 0 for the base layout
+// (no merge section).
+func computeGroupMenuRowSizing(maxH int, extraHalfRows, extraFullRows int) (rowH, gap int) {
 	rowH, gap = sidebarBtnH, sidebarGap
 	contentH := func(rh, gp int) int {
 		halfH := rh / 2
 		return sidebarPad*2 + sidebarHeaderH + gp +
-			groupMenuHalfRows*(halfH+gp) + groupMenuFullRows*(rh+gp)
+			(groupMenuHalfRows+extraHalfRows)*(halfH+gp) + (groupMenuFullRows+extraFullRows)*(rh+gp)
 	}
 	for contentH(rowH, gap) > maxH && (rowH > 24 || gap > 3) {
 		switch {
@@ -620,33 +775,47 @@ func (m *GroupMenu) layoutAt(x, y int) {
 		w = 0
 	}
 
-	rowH, gap := computeGroupMenuRowSizing(gridH)
+	// Merge-chip candidates (task-merge-chips brief): computed BEFORE row
+	// sizing so the "Add to group" section's extra rows (1 half-row label +
+	// ceil(n/mergeChipCols) chip rows) are folded into the fit-shrinking pass
+	// below, exactly like the base rows always have been. Empty (nil) unless
+	// the menu is provisional with >=1 addable candidate.
+	mergeCandidates := m.mergeChipCandidates()
+	extraHalfRows, extraChipRows := 0, 0
+	if n := len(mergeCandidates); n > 0 {
+		extraHalfRows = 1
+		extraChipRows = (n + mergeChipCols - 1) / mergeChipCols
+	}
+
+	rowH, gap := computeGroupMenuRowSizing(gridH, extraHalfRows, extraChipRows)
 	halfH := rowH / 2
 
 	// Rows, top to bottom: header (title + live member count merged into one
 	// line — see headerLine), a half-row "Rule" label, the combined rule
-	// on/off+everyN row, the three per-param delta rows, delete.
+	// on/off+everyN row, the three per-param delta rows, an optional "Add to
+	// group" section (half-row label + chip rows, provisional only), delete.
 	h := sidebarPad*2 + sidebarHeaderH + gap +
-		groupMenuHalfRows*(halfH+gap) + groupMenuFullRows*(rowH+gap)
+		(groupMenuHalfRows+extraHalfRows)*(halfH+gap) + (groupMenuFullRows+extraChipRows)*(rowH+gap)
 
-	ox, oy := x, y
-	if ox+w > gridW {
-		ox = gridW - w
+	// Single label-proximal placement pass (task-placement-v2; see
+	// placeGroupMenu's doc comment for the full rationale) — replaces the old
+	// pane-clamp + avoidRect(member bbox) + avoidReservedRect(gear) chain,
+	// which could (a) fall back to an already-overlapping panel when the
+	// member bbox was too wide/tall for any of avoidRect's four fixed
+	// obstacle-relative candidates to fit, and (b) have its trailing gear
+	// re-application push an avoidRect-cleared panel straight back onto a
+	// member. placeGroupMenu tests candidates adjacent to the ANCHOR (not the
+	// obstacle) and re-checks per-member overlap AFTER the gear adjustment,
+	// closing both gaps. Members can move/scroll (camera pan) while the menu
+	// is open; layoutAt re-runs every frame, so the panel keeps tracking
+	// them, matching the old behavior.
+	reserved := g.gridHelpReservedRect()
+	members := []image.Rectangle(nil)
+	if grp, ok := g.graph.Group(m.groupID); ok {
+		m.memberRectsScratch = g.groupMemberScreenRects(grp.NodeIDs, m.memberRectsScratch)
+		members = m.memberRectsScratch
 	}
-	if ox < 0 {
-		ox = 0
-	}
-	if oy+h > gridH {
-		oy = gridH - h
-	}
-	if oy < 0 {
-		oy = 0
-	}
-
-	panel := image.Rect(ox, oy, ox+w, oy+h)
-	// Keep the panel clear of the settings gear's protected top-right zone —
-	// the child rects below derive from panel, so they follow.
-	panel = avoidReservedRect(panel, g.gridHelpReservedRect(), gridW, gridH)
+	panel := placeGroupMenu(image.Pt(x, y), image.Pt(w, h), members, reserved, gridW, gridH)
 	m.panel = panel
 	m.rects["panel"] = panel
 
@@ -661,7 +830,7 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	// control, since there's now always something to represent (either the
 	// pending creation, or a greyed-out "nothing to commit" state).
 	label := i18n.T(i18n.KeyGroupSave)
-	textW := int(float64(TextWidth(label)) * sidebarLabelScale())
+	textW := StyledTextWidth(label, RoleBody)
 	saveW := textW + 4*SpaceXS
 	if minW := closeSize * 2; saveW < minW {
 		saveW = minW
@@ -731,14 +900,39 @@ func (m *GroupMenu) layoutAt(x, y int) {
 	stepRow("rdvol")
 	stepRow("rddur")
 
+	// "Add to group" merge-chip section (task-merge-chips brief): one label
+	// half-row + ceil(n/mergeChipCols) chip rows, mergeChipCols chips per row
+	// (the last row may hold fewer, in which case its lone chip spans the
+	// full row width). Rects are keyed "mergechip:<gid>" — see
+	// mergeChipCandidates for the candidate list and mergeInto for the tap
+	// handler wired in ensureButtons.
+	if len(mergeCandidates) > 0 {
+		halfRowRect("mergelabel")
+		for i := 0; i < len(mergeCandidates); i += mergeChipCols {
+			end := i + mergeChipCols
+			if end > len(mergeCandidates) {
+				end = len(mergeCandidates)
+			}
+			row := rowRect(fmt.Sprintf("mergerow%d", i/mergeChipCols))
+			chips := mergeCandidates[i:end]
+			if len(chips) == 1 {
+				m.rects[fmt.Sprintf("mergechip:%d", chips[0].ID)] = row
+				continue
+			}
+			chipHalfW := (row.Dx() - gap) / 2
+			m.rects[fmt.Sprintf("mergechip:%d", chips[0].ID)] = image.Rect(row.Min.X, row.Min.Y, row.Min.X+chipHalfW, row.Max.Y)
+			m.rects[fmt.Sprintf("mergechip:%d", chips[1].ID)] = image.Rect(row.Min.X+chipHalfW+gap, row.Min.Y, row.Max.X, row.Max.Y)
+		}
+	}
+
 	rowRect("delete")
 
-	m.ensureButtons()
+	m.ensureButtons(mergeCandidates)
 }
 
 // ─── Button wiring ─────────────────────────────────────────────────────────
 
-func (m *GroupMenu) ensureButtons() {
+func (m *GroupMenu) ensureButtons(mergeCandidates []model.NodeGroup) {
 	if _, ok := m.group(); !ok {
 		return
 	}
@@ -759,7 +953,9 @@ func (m *GroupMenu) ensureButtons() {
 		b := m.btns[id]
 		b.SetRect(r)
 		b.ConsumeOnPress = true
-		b.TextScale = sidebarLabelScale()
+		// Smooth styled label (embedded Inter) — never the legacy bitmap
+		// upscale path, which pixelated every GroupMenu button caption.
+		b.SetTextRole(RoleBody)
 		b.Icon = icon
 		if icon != "" {
 			b.Text = ""
@@ -777,8 +973,11 @@ func (m *GroupMenu) ensureButtons() {
 		// Always present (task-save-always Part 1); greyed out via
 		// Button.Disabled when there are no pending edits to commit — see
 		// dirty()'s doc comment. Button.Draw/HandleInputResult already know
-		// how to render/ignore a Disabled button (uigrid.go).
+		// how to render/ignore a Disabled button (uigrid.go). The face stays
+		// a neutral keycap; the gold accent LABEL marks it as the panel's
+		// primary action when armed (disabled draws colTextDisabled).
 		b.Disabled = !m.dirty()
+		b.TextColor = colAccent
 	}
 
 	ruleToggleLabel := i18n.T(i18n.KeyGroupRuleOff)
@@ -786,6 +985,11 @@ func (m *GroupMenu) ensureButtons() {
 		ruleToggleLabel = i18n.T(i18n.KeyGroupRuleOn)
 	}
 	mk("ruleonoff", ruleToggleLabel, "", func() { m.setRuleEnabled(!ruleOn) })
+	if b := m.btns["ruleonoff"]; b != nil {
+		// An enabled rule reads as the standard latched amber keycap — the
+		// same "this is on" state every toggle in the app uses.
+		b.SetToggled(ruleOn)
+	}
 
 	mk("n-", "", "minus", func() { m.stepRuleEveryN(-1) })
 	mk("n+", "", "plus", func() { m.stepRuleEveryN(1) })
@@ -797,10 +1001,62 @@ func (m *GroupMenu) ensureButtons() {
 	mk("rddur-", "", "minus", func() { m.stepRuleDelta(model.GroupParamDuration, -1) })
 	mk("rddur+", "", "plus", func() { m.stepRuleDelta(model.GroupParamDuration, 1) })
 
+	// "Add to group" merge chips (task-merge-chips brief): one keycap per
+	// candidate group, id "mergechip:<gid>", label = the group's own Name (or
+	// the generic i18n title for unnamed groups, mirroring the sidebar's
+	// grpchip fallback). Tinted with the candidate's OWN groupColor in Draw
+	// (tintMergeChipAccent), same as the sidebar's grpchip styling.
+	candSet := make(map[model.GroupID]bool, len(mergeCandidates))
+	for _, cand := range mergeCandidates {
+		cand := cand
+		candSet[cand.ID] = true
+		label := cand.Name
+		if label == "" {
+			label = i18n.T(i18n.KeyGroupMenuTitle)
+		}
+		mk(fmt.Sprintf("mergechip:%d", cand.ID), label, "", func() { m.mergeInto(cand.ID) })
+	}
+	// Prune stale merge-chip buttons: a candidate that scrolled out of the
+	// cap, got merged away, or stopped qualifying (e.g. now contains every
+	// selected member) no longer has a rect (mk's own empty-rect check
+	// deletes it) — but also delete straight out of m.btns so a dropped
+	// candidate's button/closure (capturing a stale gid) never lingers.
+	for id := range m.btns {
+		if !strings.HasPrefix(id, "mergechip:") {
+			continue
+		}
+		var gid model.GroupID
+		if _, err := fmt.Sscanf(id, "mergechip:%d", &gid); err != nil || !candSet[gid] {
+			delete(m.btns, id)
+		}
+	}
+
 	mk("delete", i18n.T(i18n.KeyGroupDelete), "", func() { m.deleteGroup() })
 	if b := m.btns["delete"]; b != nil {
 		b.TextColor = colError
 	}
+}
+
+// drawMergeChip renders one "Add to group" candidate as a flat menu row:
+// the candidate group's identity lives in the leading swatch + hover tint
+// (never a color-filled face), matching the sidebar's membership chips and
+// the shared list-menu row language.
+func (m *GroupMenu) drawMergeChip(dst *ebiten.Image, id string, gid model.GroupID) {
+	b := m.btns[id]
+	if b == nil {
+		return
+	}
+	state := menuItemRest
+	if b.hovered || b.pressed {
+		state = menuItemHover
+	}
+	acc := m.game.groupColor(gid)
+	drawMenuRow(dst, b, MenuRowSpec{
+		Accent: acc,
+		State:  state,
+		Swatch: acc,
+		Label:  b.Text,
+	})
 }
 
 // ─── Draw ──────────────────────────────────────────────────────────────────
@@ -818,23 +1074,22 @@ func (m *GroupMenu) Draw(dst *ebiten.Image) {
 	panel := m.panel
 	drawPanelShadow(dst, panel, 6)
 	drawRoundedRect(dst, panel, colPanelBG, RadiusLG, true)
-	drawRoundedRect(dst, panel, WithAlpha(genColorSidebarSectionBg, genAlphaSidebarSection), RadiusLG, false)
-	// The group's own color (groupColor) layered on as a border accent — the
-	// same "node pop-up picks up node colors" language the sidebar uses
-	// (tintBtnAccent), applied here to the panel chrome instead of a node.
-	drawRoundedRect(dst, panel, WithAlpha(m.game.groupColor(m.groupID), AlphaStrong), RadiusLG, false)
+	// Standard neutral panel hairline — the group's identity moves to the
+	// title swatch + header underline (the shared identity-menu treatment),
+	// off the panel ring, so the chrome stays calm.
+	drawRoundedRect(dst, panel, colPanelBorder, RadiusLG, false)
 
-	// Title: the group's own name (or the i18n fallback — see titleText, spec
-	// §4) merged with the live member count into one header line (the old
-	// standalone "members" row was folded in here — task-groupsave
-	// layout-fit fix). Truncated to fit beside the close/save buttons.
+	// Title: unified menu title (leading group-color swatch + section-header
+	// role — DESIGN.md "Menu anatomy") over the group's own name + live
+	// member count, truncated to fit beside the Save/close buttons. The
+	// accent hairline under the header band uses the group color, mirroring
+	// the node sidebar's instrument underline.
 	if r, ok := m.rects["title"]; ok {
-		title := m.headerLine(grp)
-		ty := r.Min.Y + (sidebarHeaderH-StyledTextHeight(RoleSectionHeader))/2
-		DrawTextStyled(dst, title, r.Min.X, ty, RoleSectionHeader, colTextPrimary)
+		band := image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+sidebarHeaderH)
+		drawMenuHeaderBandAccent(dst, band, m.game.groupColor(m.groupID))
+		drawMenuTitle(dst, band, m.headerLine(grp), m.game.groupColor(m.groupID))
 	}
 	m.drawBtn(dst, "close")
-	m.tintSaveBtnAccent()
 	m.drawBtn(dst, "save")
 
 	// Rule section — "Rule" is a half-row inline label above the combined
@@ -858,6 +1113,20 @@ func (m *GroupMenu) Draw(dst *ebiten.Image) {
 	m.drawStepRow(dst, "rdpit", i18n.T(i18n.KeyGroupParamPitch), fmt.Sprintf("%+.2f", pit.Delta))
 	m.drawStepRow(dst, "rdvol", i18n.T(i18n.KeyGroupParamVolume), fmt.Sprintf("%+.2f", vol.Delta))
 	m.drawStepRow(dst, "rddur", i18n.T(i18n.KeyGroupParamDuration), fmt.Sprintf("%+.2f", dur.Delta))
+
+	// "Add to group" merge chips (task-merge-chips brief) — provisional only,
+	// only when at least one addable candidate exists (see
+	// mergeChipCandidates). Reuses KeyGroupAddTo, the same label the
+	// sidebar's "Add to group" row already carries.
+	if cands := m.mergeChipCandidates(); len(cands) > 0 {
+		if r, ok := m.rects["mergelabel"]; ok {
+			ty := r.Min.Y + (r.Dy()-StyledTextHeight(RoleCaption))/2
+			DrawTextStyled(dst, i18n.T(i18n.KeyGroupAddTo), r.Min.X, ty, RoleCaption, colTextSecondary)
+		}
+		for _, cand := range cands {
+			m.drawMergeChip(dst, fmt.Sprintf("mergechip:%d", cand.ID), cand.ID)
+		}
+	}
 
 	m.drawBtn(dst, "delete")
 }
@@ -904,11 +1173,13 @@ func (m *GroupMenu) headerLine(grp model.NodeGroup) string {
 	} else if r, ok := m.rects["close"]; ok {
 		rightEdge = r.Min.X
 	}
-	avail := rightEdge - headerR.Min.X - sidebarGap
+	// The leading title swatch (drawMenuTitle) takes its share of the band.
+	avail := rightEdge - headerR.Min.X - sidebarGap - (menuTitleSwatchSz + SpaceSM)
 	if avail <= 0 {
 		return full
 	}
-	return truncateName(full, avail, sidebarLabelScale())
+	return clipTextToWidthMeasure(full, avail,
+		func(s string) int { return StyledTextWidth(s, RoleSectionHeader) })
 }
 
 // drawStepRow draws a batch/rule stepper row's left-side label (when non-
@@ -931,22 +1202,4 @@ func (m *GroupMenu) drawBtn(dst *ebiten.Image, id string) {
 		return
 	}
 	b.Draw(dst)
-}
-
-// tintSaveBtnAccent gives the Save button's keycap FACE the group's own
-// color (groupColor) as a tint, mirroring NodeSidebar.tintBtnAccent (same
-// blend-from-DropdownStyle-base, same sidebarBtnAccentTint strength) so the
-// GroupMenu's one commit action reads as owned by this group the same way
-// the sidebar's controls read as owned by their node's instrument.
-func (m *GroupMenu) tintSaveBtnAccent() {
-	b := m.btns["save"]
-	if b == nil {
-		return
-	}
-	if bs, ok := b.Style.(ButtonStyle); ok {
-		base := color.RGBAModel.Convert(DropdownStyle.Fill).(color.RGBA)
-		acc := m.game.groupColor(m.groupID)
-		bs.Fill = blendColor(base, acc, sidebarBtnAccentTint)
-		b.Style = bs
-	}
 }

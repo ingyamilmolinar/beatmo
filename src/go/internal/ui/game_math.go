@@ -18,5 +18,13 @@ func abs(i int) int {
 func (g *Game) PerfSnapshot() PerfStats {
 	s := g.perf.snapshot()
 	s.SchedMetrics = g.schedMetrics.Snapshot()
+	gc := g.gcMetrics.snapshot()
+	s.GCPauses = gc.Pauses
+	s.GCCycles = gc.Cycles
+	s.GCForced = gc.Forced
+	s.GCPauseP50MS = gc.PauseP50MS
+	s.GCPauseP99MS = gc.PauseP99MS
+	s.GCPauseMaxMS = gc.PauseMaxMS
+	s.GCHeapHighKB = gc.HeapHighKB
 	return s
 }

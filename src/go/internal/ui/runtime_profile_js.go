@@ -2,7 +2,10 @@
 
 package ui
 
-import "syscall/js"
+import (
+	"syscall/js"
+	"time"
+)
 
 // newRuntimeProfile selects the browser profile under any -tags combination
 // (including -tags test). This closes the build-tag hole that defaults_js.go
@@ -61,5 +64,11 @@ func applyJSProfileOverride(p *RuntimeProfile, ov js.Value) {
 	}
 	if v := ov.Get("predictorBackoffOnSlowDraw"); v.Type() == js.TypeBoolean {
 		p.PredictorBackoffOnSlowDraw = v.Bool()
+	}
+	// forceGCIntervalMS in milliseconds; 0 disables the cooperative forced GC.
+	// Used by the GC-tuning sweep to flip the ForceGCInterval knob without
+	// rebuilding the WASM per config.
+	if v := ov.Get("forceGCIntervalMS"); v.Type() == js.TypeNumber {
+		p.ForceGCInterval = time.Duration(v.Int()) * time.Millisecond
 	}
 }

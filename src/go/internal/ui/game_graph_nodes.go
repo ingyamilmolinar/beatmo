@@ -350,26 +350,13 @@ func (g *Game) pruneDanglingNodeRefs() {
 			g.sidebar.Close()
 		}
 	}
-}
-
-// moveNodeEdgeLoss previews how many edges would be lost if the node moved
-// to (newI, newJ). An edge is kept only if it remains orthogonal (shares I or J)
-// with the other endpoint at the new position.
-func (g *Game) moveNodeEdgeLoss(n *uiNode, newI, newJ int) int {
-	loss := 0
-	for _, e := range g.edges {
-		if e.A.ID != n.ID && e.B.ID != n.ID {
-			continue
-		}
-		other := e.B
-		if e.B.ID == n.ID {
-			other = e.A
-		}
-		if other.I != newI && other.J != newJ {
-			loss++
+	if subject := g.modes.Subject(); subject != nil {
+		if _, ok := g.nodesByID[subject.ID]; !ok {
+			g.CancelBreakCircuit()
+			g.modes.Cancel("subject-deleted")
+			g.moveSkipRelease = false
 		}
 	}
-	return loss
 }
 
 // moveNode moves a node to a new grid position, preserving its NodeID.
@@ -380,25 +367,22 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 		return false
 	}
 
-	// One atomic undo step: the edge teardown, the move, and the edge re-add all
+	// One atomic undo step: the edge teardown, the move, and the heal/splice all
 	// collapse into a single "move node" step.
 	beginUndoGroup("move node")
 	defer endUndoGroup()
 
-	// Collect edges touching this node (preserve direction)
-	type edgeRef struct {
-		from, to *uiNode
-	}
+	// Extraction: classify BEFORE touching edges, then remove ALL of n's
+	// edges — the chain closes behind the node (heal below); n reconnects
+	// only via the destination splice.
+	plan := g.moveHealPlan(n)
+	type edgeRef struct{ from, to *uiNode }
 	var touching []edgeRef
 	for _, e := range g.edges {
-		if e.A.ID == n.ID {
-			touching = append(touching, edgeRef{e.A, e.B})
-		} else if e.B.ID == n.ID {
+		if e.A.ID == n.ID || e.B.ID == n.ID {
 			touching = append(touching, edgeRef{e.A, e.B})
 		}
 	}
-
-	// Remove all touching edges
 	for _, er := range touching {
 		g.deleteEdgeNoRefresh(er.from, er.to)
 	}
@@ -414,12 +398,26 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 	n.X = float64(newI) * unit
 	n.Y = float64(newJ) * unit
 
-	// Re-add edges that remain orthogonal at the new position
-	for _, er := range touching {
-		from, to := er.from, er.to
-		if from.I == to.I || from.J == to.J {
-			g.addEdgeNoRefresh(from, to)
+	// Heal: close the chain behind a pass-through node, direction preserved,
+	// splitting the healed edge through any node on its span (which includes
+	// n itself when the destination lies on the healed span — that re-splice
+	// is exactly the move-along-own-chain case). AFTER the coords update so
+	// n's OLD cell no longer splits the heal.
+	if plan.class == healPassThrough {
+		if g.addEdgeNoRefresh(plan.from, plan.to) {
+			for _, m := range g.nodesOnSpan(plan.from, plan.to) {
+				g.stitchEdgesAt(m)
+			}
 		}
+	}
+
+	// Splice into any edge passing through the destination cell — same
+	// semantics as add/paste (tryAddNode/pasteNodeFrom → stitchEdgesAt):
+	// edge A–B through the new cell becomes A–n + n–B, so a node dropped
+	// onto an edge joins the traversal path there. Own edges (terminating
+	// at n) are never split. Inside the same "move node" undo group.
+	if !g.importing {
+		g.stitchEdgesAt(n)
 	}
 
 	g.notifyPredictorNode(n.ID)
@@ -433,15 +431,4 @@ func (g *Game) moveNode(n *uiNode, newI, newJ int) bool {
 
 	emitNodeMoved(n.ID, newI, newJ)
 	return true
-}
-
-// cancelMoveMode clears all move mode state.
-func (g *Game) cancelMoveMode() {
-	g.moveMode = false
-	g.movingNode = nil
-	g.moveConfirm = false
-	g.moveConfirmI = 0
-	g.moveConfirmJ = 0
-	g.moveEdgeLoss = 0
-	g.moveSkipRelease = false
 }

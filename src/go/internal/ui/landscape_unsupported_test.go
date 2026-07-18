@@ -146,19 +146,19 @@ func TestLandscapeUnsupported_RotationRoundTripRestores(t *testing.T) {
 func TestLandscapeUnsupported_GridTapSuppressed(t *testing.T) {
 	setupMobileTest(t, true) // also disables default-start
 	g := newLandscapeTestGame(t)
-	g.Layout(800, 400)       // mobile landscape
+	g.Layout(800, 400) // mobile landscape
 
 	a := g.tryAddNode(0, 0, model.NodeTypeRegular)
 	g.updateBeatInfos()
 	g.enterConnectMode(a)
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("precondition: connect mode should be active")
 	}
 
 	emptyX, emptyY := screenPosForGridIJ(g, 100, 100)
 	g.handleTapInGrid(emptyX, emptyY)
 
-	if !g.connectMode {
+	if !g.modes.Is(GridModeConnect) {
 		t.Fatal("in mobile landscape, grid tap must be suppressed (connect mode should remain active)")
 	}
 }

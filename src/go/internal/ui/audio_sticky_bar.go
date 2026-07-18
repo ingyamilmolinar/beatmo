@@ -124,7 +124,7 @@ func (b *AudioStickyBar) Layout(rect image.Rectangle) {
 	y := rect.Min.Y + 4
 
 	// Channel pill (left).
-	chW := TextWidth(b.channelBtn.Text) + d.AudioPillPadX
+	chW := StyledTextWidth(b.channelBtn.Text, RoleCaption) + d.AudioPillPadX
 	if chW < d.AudioChannelMinW {
 		chW = d.AudioChannelMinW
 	}
@@ -177,7 +177,7 @@ func (b *AudioStickyBar) Layout(rect image.Rectangle) {
 		naturalW := make([]int, n)
 		naturalTotal := 0
 		for i := 0; i < n; i++ {
-			tw := TextWidth(b.tabBtns[i].Text) + d.AudioPillPadX
+			tw := StyledTextWidth(b.tabBtns[i].Text, RoleCaption) + d.AudioPillPadX
 			if tw < d.AudioTabMinW {
 				tw = d.AudioTabMinW
 			}
@@ -468,9 +468,9 @@ func drawPillTabAt(dst *ebiten.Image, btn *Button, active bool) {
 	if btn.TextColor != nil {
 		textCol = btn.TextColor
 	}
-	tw := TextWidth(btn.Text)
-	th := TextHeight()
+	tw := StyledTextWidth(btn.Text, RoleCaption)
+	th := StyledTextHeight(RoleCaption)
 	tx := capR.Min.X + (capR.Dx()-tw)/2
 	ty := capR.Min.Y + (capR.Dy()-th)/2
-	DrawTextColorAt(dst, btn.Text, tx, ty, textCol)
+	DrawTextStyled(dst, btn.Text, tx, ty, RoleCaption, textCol)
 }

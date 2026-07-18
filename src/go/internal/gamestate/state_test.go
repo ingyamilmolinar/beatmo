@@ -78,7 +78,7 @@ func TestStopResetsState(t *testing.T) {
 	state.Resume(time.Now(), 5)
 	state.SetSeekFreezeFrames(4)
 	state.SetLastBeat(3.5)
-	state.SetPausedBeats(12)
+	state.SetPausedBeatsForTest(12)
 	state.Stop()
 
 	if state.Playing() || state.Paused() {
@@ -152,7 +152,7 @@ func TestResumeFreshSetsJustResumed(t *testing.T) {
 
 func TestAnchorForBPMChangeNoOpWhenStopped(t *testing.T) {
 	state := New(120)
-	state.SetBeatBase(4)
+	state.SetBeatBaseForTest(4)
 	state.AnchorForBPMChange(120, time.Unix(0, 0), 0)
 	if got := state.BeatBase(); got != 4 {
 		t.Fatalf("expected beat base unchanged while stopped, got %f", got)

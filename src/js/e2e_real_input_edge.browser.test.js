@@ -107,6 +107,76 @@ try {
   const e30 = succs3?.some(s => s.i === nodes[0][0] && s.j === nodes[0][1]);
   console.log(`  Edge 3->0: ${e30 ? "intact" : "removed"}`);
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Step 6: Connect FROM A SELECTED NODE — the user's real flow.
+  // Click a node first (this opens the node sidebar, a full-height panel
+  // over the LEFT strip of the grid), then shift+drag from that same node
+  // to another node. Deliberately does NOT call closeNodeMenu (the
+  // workaround baked into shiftDragEdge that hides this scenario): the
+  // connect gesture itself must win over the open sidebar.
+  // ─────────────────────────────────────────────────────────────────────
+  console.log("real_input_edge_drag: Connect from a selected node (sidebar open)...");
+  const src = [50, -12], dst = [54, -12];
+  await page.evaluate((ns) => {
+    for (const [i, j] of ns) addNode?.(i, j, "regular");
+    forceDraw?.();
+  }, [src, dst]);
+  await page.waitForTimeout(200);
+
+  // Pan so the SOURCE node sits inside the sidebar's panel strip (x<200):
+  // in a large circuit that's where clicked nodes routinely are.
+  const srcRect = await page.evaluate(([i, j]) => nodeRect?.(i, j), src);
+  if (!srcRect) throw new Error("source node has no screen rect");
+  await page.evaluate(([r]) => {
+    const s = splitY?.();
+    panBy?.(120 - (r.x + r.w / 2), (40 + s) / 2 - (r.y + r.h / 2));
+    forceDraw?.();
+  }, [srcRect]);
+  await page.waitForTimeout(200);
+
+  const at = async ([i, j]) => {
+    const r = await page.evaluate(([gi, gj]) => nodeRect?.(gi, gj), [i, j]);
+    if (!r) throw new Error(`node (${i},${j}) has no screen rect`);
+    return { x: Math.floor(r.x + r.w / 2), y: Math.floor(r.y + r.h / 2) };
+  };
+
+  // Step 6a: plain REAL click selects the source node and opens its sidebar.
+  const srcPt = await at(src);
+  await page.mouse.click(srcPt.x, srcPt.y);
+  await page.waitForTimeout(250);
+
+  // Step 6b: shift+press the SAME node, drag to the destination, release —
+  // all real gestures, nothing closed programmatically.
+  const dstPt = await at(dst);
+  await page.mouse.move(srcPt.x, srcPt.y);
+  await page.waitForTimeout(50);
+  await page.keyboard.down("Shift");
+  await page.waitForTimeout(50);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  const steps = 10;
+  for (let k = 1; k <= steps; k++) {
+    const t = k / steps;
+    await page.mouse.move(
+      Math.floor(srcPt.x + (dstPt.x - srcPt.x) * t),
+      Math.floor(srcPt.y + (dstPt.y - srcPt.y) * t),
+    );
+    await page.waitForTimeout(20);
+  }
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await page.waitForTimeout(250);
+
+  const succsSrc = await page.evaluate(([i, j]) => nodeSuccessorsGrid?.(i, j), src);
+  const connected = succsSrc?.some((s) => s.i === dst[0] && s.j === dst[1]);
+  if (!connected) {
+    throw new Error(
+      "shift-drag from a SELECTED node (sidebar open) failed to create the edge — the sidebar consumed the connect gesture",
+    );
+  }
+  console.log("  Edge created from selected node with sidebar open");
+
   console.log("real_input_edge_drag: PASS - Edge creation, deletion, and cleanup via real input");
 } catch (error) {
   console.error("real_input_edge_drag: FAIL -", error.message);

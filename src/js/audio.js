@@ -2066,57 +2066,11 @@ function createMultibandProcessor(c, bands) {
 
 // ─── INSERT EFFECTS ───
 
-// AudioWorklet-based insert effects: uses Emscripten-compiled C effects
-// for exact parity with desktop and full bitcrusher support on WASM.
-let workletReady = false;
-let _workletInitPromise = null;
-
-// Read-only observable for the sanity probe (sanity_audio_probe.js).
-if (typeof window !== 'undefined') {
-  try { Object.defineProperty(window, '__beatmoWorkletReady', { get: () => workletReady }); } catch (_) {}
-}
-
-// Try to register the AudioWorklet processor. Called once after AudioContext creation.
-async function _initInsertFXWorklet() {
-  if (workletReady || !hasCtx()) return false;
-  try {
-    // Resolve worklet URL relative to audio.js location.
-    const workletURL = new URL('./insert_fx_worklet.js', import.meta.url).href;
-    await ctx.audioWorklet.addModule(workletURL);
-    workletReady = true;
-    dbg('insert.worklet.ready');
-    return true;
-  } catch (err) {
-    dbg('insert.worklet.fallback', { err: String(err) });
-    return false;
-  }
-}
-
-// Create an AudioWorkletNode for insert effects on a channel.
-function _createWorkletInsertNode(c, slots) {
-  if (!workletReady) return null;
-  try {
-    const node = new AudioWorkletNode(c, 'insert-fx-processor', {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [1],
-    });
-
-    // Send module initialization (the worklet needs access to the WASM functions).
-    // Since we can't share the module directly, we send the compiled slots config
-    // and the worklet uses its own module loading.
-    // For now, we configure the effect chain and it processes natively.
-    if (mod) {
-      // The worklet loads its own WASM module. Send configuration only.
-      node.port.postMessage({ type: 'configure', slots });
-    }
-
-    return node;
-  } catch (err) {
-    dbg('insert.worklet.create.error', { err: String(err) });
-    return null;
-  }
-}
+// Insert effects are rendered by the WebAudio node graph built in
+// createInsertEffectSubgraph() below. (An earlier design ran the C DSP in an
+// AudioWorklet for exact desktop parity, but each per-channel worklet needs its
+// own WASM instance — a cost the project deliberately avoided; see the
+// buildSchroederReverbCore comment — so that path was removed as dead code.)
 
 // buildSchroederReverbCore builds a Freeverb/Schroeder reverb out of native
 // WebAudio nodes — 4 damped-feedback comb filters + 2 allpass stages — matching
@@ -2616,7 +2570,6 @@ export function createInsertEffectSubgraph(c, slot) {
 function disconnectInsertEffects(chain) {
   if (!chain.insertFX) return;
   for (const fx of chain.insertFX) {
-    if (fx.isWorklet) continue; // Worklet node is kept alive, just reconfigured.
     try { fx.input.disconnect(); } catch (_) {}
     try { fx.output.disconnect(); } catch (_) {}
     if (fx.nodes) {
@@ -2631,10 +2584,8 @@ function disconnectInsertEffects(chain) {
 
 // updateInsertEffects rebuilds the insert effect WebAudio subgraph for
 // an instrument channel. Called from Go via platformInsertEffectsChanged.
-// slotsJSON is a JSON-encoded array of EffectSlot objects.
-//
-// Uses AudioWorklet (C effects) when available, with fallback to WebAudio
-// node graph (JS re-implementations) for browsers that don't support worklets.
+// slotsJSON is a JSON-encoded array of EffectSlot objects. Each enabled slot
+// becomes a WebAudio subgraph via createInsertEffectSubgraph.
 function updateInsertEffects(id, slotsJSON) {
   if (!hasCtx()) {
     // Queue the operation for when the AudioContext is created. Without this,
@@ -2656,36 +2607,16 @@ function updateInsertEffects(id, slotsJSON) {
   }
   if (!Array.isArray(slots)) slots = [];
 
-  // Tear down old insert effects (both worklet and WebAudio nodes).
+  // Tear down old insert effect nodes.
   disconnectInsertEffects(chain);
 
-  // If worklet node exists for this channel, update it with new config.
-  if (chain.workletInsertNode) {
-    const enabledSlots = slots.filter(s => s.enabled);
-    if (enabledSlots.length > 0) {
-      chain.workletInsertNode.port.postMessage({ type: 'configure', slots: enabledSlots });
-      // Wrap worklet node as a single "insert FX" entry for rewireChannel.
-      chain.insertFX = [{
-        input: chain.workletInsertNode,
-        output: chain.workletInsertNode,
-        nodes: [],
-        isWorklet: true,
-      }];
-    } else {
-      // No enabled effects — disconnect worklet.
-      try { chain.workletInsertNode.disconnect(); } catch (_) {}
-      chain.workletInsertNode = null;
-      chain.insertFX = [];
-    }
-  } else {
-    // Fallback: build WebAudio node graph subgraphs.
-    const c = ctx;
-    chain.insertFX = [];
-    for (const slot of slots) {
-      if (!slot.enabled) continue;
-      const sg = createInsertEffectSubgraph(c, slot);
-      if (sg) chain.insertFX.push(sg);
-    }
+  // Build a WebAudio subgraph per enabled effect.
+  const c = ctx;
+  chain.insertFX = [];
+  for (const slot of slots) {
+    if (!slot.enabled) continue;
+    const sg = createInsertEffectSubgraph(c, slot);
+    if (sg) chain.insertFX.push(sg);
   }
 
   // Rewire the channel to include insert effects.

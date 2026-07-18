@@ -120,6 +120,11 @@ func (g *Game) drawGridPane(screen *ebiten.Image) {
 	ctx.edgeThick = edgeThick
 	ctx.arrow = arrow
 
+	// Invalidate the guide-target memo for this draw pass: g.frame only
+	// advances during playback, so it cannot serve as the memo key while
+	// stopped (stale guide after an edit with a still cursor).
+	g.guideMemoFrame = -1
+
 	if g.logDrawNodes {
 		// Debug-only: run the background now (ctx is fully populated above) to
 		// fill ctx.phase*/tile* for the FRAME trace. In production the tree's
@@ -262,6 +267,19 @@ func (g *Game) drawNodeStateOverlay(dst *ebiten.Image, sx1, sy1, sx2, sy2 float6
 	}
 }
 
+// nodeOwnHighlightColor returns the color a node highlights/hovers/fires in:
+// its OWN displayed color. Row-instrument nodes use their row color; every
+// other node (structural / mute / silent, which has no row) uses the node
+// border color — the node's visible ring — since the node fill is a dark,
+// near-background purple that would not read as a halo. This keeps every
+// highlight the same color as the thing it highlights, never a flat white.
+func (g *Game) nodeOwnHighlightColor(rowIdx int, rowOK bool) color.Color {
+	if rowOK && rowIdx >= 0 && rowIdx < len(g.drum.Rows) {
+		return g.drum.Rows[rowIdx].Color
+	}
+	return genColorNodeBorder
+}
+
 // drawNodeSelectionHalo paints a soft glow around the selected node's selection
 // ring, reusing the EQ-handle halo language (WithAlpha(primary, AlphaSubtle)).
 // The crisp 2px selection ring itself is drawn separately by the caller in
@@ -307,6 +325,58 @@ func (g *Game) drawNodeGroupRing(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64, 
 	DrawLineCam(dst, x2, y1, x2, y2, &idm, ringCol, float64(genGeomHighlightBorderThickness))
 	DrawLineCam(dst, x2, y2, x1, y2, &idm, ringCol, float64(genGeomHighlightBorderThickness))
 	DrawLineCam(dst, x1, y2, x1, y1, &idm, ringCol, float64(genGeomHighlightBorderThickness))
+}
+
+// groupExternalRingStep1 / groupExternalRingStep2 are the outward px steps
+// (past the outermost drawn membership ring) for the Part-B external
+// highlight (task-enabled-status brief): a stronger 2px stroke immediately
+// outside the ring stack, plus a softer 1px stroke one more step further out
+// (glow feel). Additive to the existing faint/strong ring behavior.
+const (
+	groupExternalRingStep1 = 3
+	groupExternalRingStep2 = 6
+)
+
+// drawNodeExternalHighlightRing draws the Part-B external highlight for a
+// node whose group is currently hovered (via its badge) or has its GroupMenu
+// open: two extra square rings OUTSIDE whatever concentric membership rings
+// drawNodeGroupRing already drew — outermostGrow is the grow value of the
+// last (or would-be) membership ring, so this always sits strictly further
+// out. First ring: 2px stroke at AlphaStrong; second ring
+// (groupExternalRingStep2 further out): 1px stroke at AlphaMedium.
+func (g *Game) drawNodeExternalHighlightRing(dst *ebiten.Image, sx1, sy1, sx2, sy2 float64, gid model.GroupID, outermostGrow int) {
+	col := g.groupColor(gid)
+	var idm ebiten.GeoM
+
+	grow1 := outermostGrow + groupExternalRingStep1
+	x1, y1 := sx1-float64(grow1), sy1-float64(grow1)
+	x2, y2 := sx2+float64(grow1), sy2+float64(grow1)
+	strong := WithAlpha(col, AlphaStrong)
+	DrawLineCam(dst, x1, y1, x2, y1, &idm, strong, 2)
+	DrawLineCam(dst, x2, y1, x2, y2, &idm, strong, 2)
+	DrawLineCam(dst, x2, y2, x1, y2, &idm, strong, 2)
+	DrawLineCam(dst, x1, y2, x1, y1, &idm, strong, 2)
+
+	grow2 := outermostGrow + groupExternalRingStep2
+	x1b, y1b := sx1-float64(grow2), sy1-float64(grow2)
+	x2b, y2b := sx2+float64(grow2), sy2+float64(grow2)
+	medium := WithAlpha(col, AlphaMedium)
+	DrawLineCam(dst, x1b, y1b, x2b, y1b, &idm, medium, 1)
+	DrawLineCam(dst, x2b, y1b, x2b, y2b, &idm, medium, 1)
+	DrawLineCam(dst, x2b, y2b, x1b, y2b, &idm, medium, 1)
+	DrawLineCam(dst, x1b, y2b, x1b, y1b, &idm, medium, 1)
+}
+
+// groupIDsContain reports whether gid is present in ids — used to test
+// membership of the current frame's external-highlight target group against
+// a node's (already up-to-groupRingMaxCount-capped) membership list.
+func groupIDsContain(ids []model.GroupID, gid model.GroupID) bool {
+	for _, id := range ids {
+		if id == gid {
+			return true
+		}
+	}
+	return false
 }
 
 // computeNodeGraphSig returns a hash of node positions, types, start flags,

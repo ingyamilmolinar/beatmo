@@ -123,6 +123,41 @@ func (g *Game) groupMemberScreenBBox(ids []model.NodeID) (bbox image.Rectangle, 
 	return bbox, ok
 }
 
+// groupMemberScreenRects returns the screen-space rect for every VISIBLE
+// member of ids (mirroring groupMemberScreenBBox's node-resolution and
+// Floor/Ceil conversion), each clipped to the grid-pane viewport
+// [0,gridW]×[0,gridH]. A member with NO onscreen portion at all is omitted;
+// a member that's only PARTIALLY offscreen keeps its visible sliver rather
+// than being dropped or left unclipped — task-placement-v2's placeGroupMenu
+// tests overlap against these per-member rects (not the coarse union bbox
+// groupMemberScreenBBox returns), so an over-wide unclipped rect for a
+// partly-offscreen member would needlessly starve every placement candidate
+// of room it doesn't actually occupy onscreen.
+//
+// scratch is a reused, caller-owned backing slice (truncated via [:0], not
+// reallocated) — mirrors the groupMenuMembersScratch/groupMembershipScratch
+// per-frame-alloc-neutral pattern used elsewhere in this file. Pass nil on
+// first use; store the returned slice back into the scratch field.
+func (g *Game) groupMemberScreenRects(ids []model.NodeID, scratch []image.Rectangle) []image.Rectangle {
+	gridW, gridH := g.split.GridW(g.winW), g.split.GridH(g.winH)
+	viewport := image.Rect(0, 0, gridW, gridH)
+	out := scratch[:0]
+	for _, id := range ids {
+		n := g.nodesByID[id]
+		if n == nil {
+			continue
+		}
+		x1, y1, x2, y2 := g.nodeScreenRect(n)
+		r := image.Rect(int(math.Floor(x1)), int(math.Floor(y1)), int(math.Ceil(x2)), int(math.Ceil(y2)))
+		r = r.Intersect(viewport)
+		if r.Empty() {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // groupBadgeRects computes, deterministically (ascending GroupID — the order
 // g.graph.AllGroups() already returns), the screen-space rect for every
 // group's floating badge: anchored a few px outward from the top-right
@@ -192,6 +227,41 @@ func (g *Game) groupBadgeAt(x, y int) (model.GroupID, bool) {
 	return 0, false
 }
 
+// hoveredGroupBadge returns the GroupID whose badge rect contains the current
+// cursor position (task-enabled-status brief, Part B) — desktop hover only.
+// Touch has no hover state: tapping a badge opens its menu via
+// openGroupMenuForBadge, which already strengthens the member rings (see
+// groupRingColor), so touch is covered by that click path instead.
+func (g *Game) hoveredGroupBadge() (model.GroupID, bool) {
+	x, y := cursorPosition()
+	return g.groupBadgeAt(x, y)
+}
+
+// groupExternalHighlightGid resolves the GroupID (if any) whose members get
+// the Part-B external highlight ring this frame: the OPEN GroupMenu's group
+// takes priority — mirroring groupRingColor's existing "open menu draws
+// strong" precedent — falling back to the hovered badge's group. Callers
+// (drawGridNodes) hoist this ONCE per frame, not per node.
+func (g *Game) groupExternalHighlightGid() (model.GroupID, bool) {
+	if g.groupMenu != nil && g.groupMenu.IsOpen() {
+		return g.groupMenu.GroupID(), true
+	}
+	return g.hoveredGroupBadge()
+}
+
+// groupBadgeFillColor resolves a badge's fill color: the group's own color at
+// AlphaStrong while its badge is hovered (Part B's "brighten one alpha
+// bucket" affordance), else the baseline AlphaMedium. Shared by
+// drawGridGroupBadges so the draw pass and any test/inspection code can't
+// diverge on which bucket a hovered badge uses.
+func (g *Game) groupBadgeFillColor(gid model.GroupID) color.NRGBA {
+	gc := g.groupColor(gid)
+	if hovered, ok := g.hoveredGroupBadge(); ok && hovered == gid {
+		return WithAlpha(gc, AlphaStrong)
+	}
+	return WithAlpha(gc, AlphaMedium)
+}
+
 // openGroupMenuForBadge opens gid's menu in response to a badge click,
 // preserving an already-open PROVISIONAL menu's provisional-ness when gid is
 // that SAME group (OpenAtProvisional) — otherwise a badge click landing, by
@@ -222,7 +292,7 @@ func (g *Game) drawGridGroupBadges(dst *ebiten.Image) {
 			continue
 		}
 		gc := g.groupColor(b.gid)
-		drawRoundedRect(dst, b.rect, WithAlpha(gc, AlphaMedium), RadiusSM, true)
+		drawRoundedRect(dst, b.rect, g.groupBadgeFillColor(b.gid), RadiusSM, true)
 		drawRoundedRect(dst, b.rect, WithAlpha(gc, AlphaStrong), RadiusSM, false)
 		ty := b.rect.Min.Y + (b.rect.Dy()-StyledTextHeight(RoleCaption))/2
 		DrawTextStyled(dst, grp.Name, b.rect.Min.X+groupBadgePadX, ty, RoleCaption, colTextPrimary)

@@ -998,7 +998,7 @@ func TestFXParamLabelsNotTruncated(t *testing.T) {
 	maxAvail := dv.fxSliderLeft - 16 // 8px left pad + 8px gap
 	for _, def := range defs {
 		val := effects[0].Params[def.Name]
-		label := fxParamLabel(def.Name, val, def.Unit)
+		label := fxParamLabel(def, val)
 		tw := TextWidth(label)
 		if tw > maxAvail {
 			t.Errorf("label %q (%dpx) exceeds available space (%dpx)",

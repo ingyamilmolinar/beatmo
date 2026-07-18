@@ -220,6 +220,19 @@ func (p *OverlayPortal) Update() {
 			u.Update()
 		}
 	}
+	// Plain-hover propagation (desktop): portal overlays receive input only
+	// on press/drag/release edges, and the tree's hover-glow overlay skips
+	// portal z — so cursor-over feedback inside popups needs this per-frame
+	// seam. Each overlay refreshes its own buttons' hovered flags; the
+	// buttons' styles then render the standard hover delta.
+	if !Profile().IsMobile() {
+		mx, my := cursorPosition()
+		for _, e := range p.stack {
+			if hv, ok := e.Overlay.(portalHoverer); ok {
+				hv.HoverAt(mx, my)
+			}
+		}
+	}
 	// Refresh hit areas for all overlays. Components may change their
 	// InputBounds after processing input (e.g., category navigation),
 	// and stale hit areas cause subsequent clicks to miss.
@@ -231,6 +244,11 @@ func (p *OverlayPortal) Update() {
 		p.hitIndex.UpdatePortal(e.ID, areas)
 	}
 }
+
+// portalHoverer lets a portal overlay receive the plain cursor position once
+// per frame for hover feedback — no press semantics, no capture. Desktop
+// only; OverlayPortal.Update dispatches it.
+type portalHoverer interface{ HoverAt(mx, my int) }
 
 // CleanupClosed removes overlays whose ShouldClose() returns true.
 // Called after input processing so that components which close themselves

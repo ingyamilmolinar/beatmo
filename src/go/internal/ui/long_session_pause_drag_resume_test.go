@@ -24,9 +24,10 @@ import (
 // state changes that the existing scroll-back test doesn't exercise together:
 //
 //   1. Pause goes through handlePlaybackTransition (engine.Stop, state.Pause).
-//   2. While paused, drum.Offset is rewritten by the timeline-zone scrub
-//      callback (see drumview_ctor.go's OnScrubPosition / OnOffsetChange).
-//      refreshDrumRow runs at the dragged offset.
+//   2. While paused, drum.Offset is rewritten by a view-offset drag
+//      (see drumview_ctor.go's OnOffsetChange — grid drag / two-finger
+//      pan; the ribbon itself now seeks instead of scrubbing Offset,
+//      see OnSeekToStep). refreshDrumRow runs at the dragged offset.
 //   3. Resume goes through handlePlaybackTransition again (engine.Start,
 //      state.Resume). On the very next frame DrumView.TrackBeat may snap
 //      Offset back to follow the playhead, and refreshDrumRow must paint a
@@ -149,9 +150,11 @@ func runPauseDragResumeRepro(t *testing.T, dragDelta int, followPlayback bool) {
 	g.drum.SetFollow(followPlayback)
 	advanceFrames(g, 4)
 
-	// 2) Simulate a timeline ribbon scrub — this is exactly what the
-	//    OnScrubPosition / OnOffsetChange callbacks do in drumview_ctor.go
-	//    (dv.Offset = newOffset; dv.offsetChanged = true).
+	// 2) Simulate a view-offset drag (grid drag / two-finger pan) — this is
+	//    exactly what the OnOffsetChange callback does in drumview_ctor.go
+	//    (dv.Offset = newOffset; dv.offsetChanged = true). Post-Task-10 the
+	//    ribbon itself no longer scrubs Offset this way — it seeks via
+	//    OnSeekToStep — so this repro now targets the grid-drag path.
 	dragged := naturalOffset + dragDelta
 	if dragged < 0 {
 		dragged = 0

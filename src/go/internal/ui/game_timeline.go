@@ -46,6 +46,15 @@ func (s *playbackSlate) timelineTrimAfterMutable(row, maxAbs int) {
 	g.timelineService().TrimAfterMutable(row, maxAbs)
 }
 
+// timelineRewindTo archives post-abs immutable commits for row and cuts the
+// mutable/ring tier at abs-1 (Service.RewindTo), for a backward seek.
+func (s *playbackSlate) timelineRewindTo(row, abs int) {
+	if s.g == nil {
+		return
+	}
+	s.g.timelineService().RewindTo(row, abs)
+}
+
 func (s *playbackSlate) timelineClearRow(row int) {
 	g := s.g
 	g.timelineService().ClearRow(row)
@@ -151,6 +160,16 @@ func (g *Game) timelineTrimAfter(row, maxAbs int) { g.playbackSlate.timelineTrim
 
 func (g *Game) timelineTrimAfterMutable(row, maxAbs int) {
 	g.playbackSlate.timelineTrimAfterMutable(row, maxAbs)
+}
+
+// timelineRewindTo is the Game-side chokepoint for rewinding a row's timeline
+// on a backward seek: it archives post-abs immutable commits and cuts the
+// mutable tier via Service.RewindTo, then lowers the freeze watermark so the
+// rewound region renders from the predictor (live re-simulation), not the
+// archived past.
+func (g *Game) timelineRewindTo(row, abs int) {
+	g.playbackSlate.timelineRewindTo(row, abs)
+	g.clampRowFreeze(row, abs-1)
 }
 
 func (g *Game) timelineClearRow(row int) { g.playbackSlate.timelineClearRow(row) }

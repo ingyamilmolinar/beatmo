@@ -70,58 +70,6 @@ func TestSynthDiscreteKnobIsClicky(t *testing.T) {
 	}
 }
 
-// TestSynthStepBadgeTapCyclesStepViaTreeDispatch verifies the FULL production
-// input path for badge taps: mouse→SetInputForTest→g.Update()→HitIndex→
-// synthKnobHitAdapter.OnPress→cycleKnobStep. Replaces the isolation-test
-// (direct handleSynthTabInput call) that never exercised the real tree dispatch.
-func TestSynthStepBadgeTapCyclesStepViaTreeDispatch(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-	idx := synthIdxByParam(t, g, "filter_cutoff")
-	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-	g.Update() // flush hit-index
-
-	img := newTrackedImage("test.badgetree", 1280, 720)
-	defer releaseImage(img)
-	g.Draw(img) // populate badge rects from a real draw
-
-	badge := g.drum.instEditorStepBadges[idx]
-	if badge == nil || badge.Rect().Empty() {
-		t.Fatalf("badge rect not populated after draw (knob rect=%v)", g.drum.SynthTabKnobs()[idx].Rect())
-	}
-	before := badge.Step()
-	r := badge.Rect()
-	bx, by := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2
-
-	// Invalidate so the next Update's layoutPass re-publishes HitAreas,
-	// picking up the badge rect that was just populated by Draw.
-	g.drum.eqPanelZone.Invalidate()
-
-	mouseX, mouseY := bx, by
-	pressed := false
-	restore := SetInputForTest(
-		func() (int, int) { return mouseX, mouseY },
-		func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return 1280, 720 },
-	)
-	defer restore()
-
-	pressed = true
-	g.Update() // layout re-publishes badge HitArea; tree dispatches press to OnPress
-	pressed = false
-	g.Update()
-
-	if badge.Step() == before {
-		t.Fatalf("badge step did not cycle via real tree dispatch (still %v)", before)
-	}
-	if g.drum.SynthTabKnobs()[idx].StepMul != badge.Step() {
-		t.Fatalf("knob StepMul (%v) not synced to badge step (%v) after tap", g.drum.SynthTabKnobs()[idx].StepMul, badge.Step())
-	}
-}
-
 // TestSynthBadgeRectsNeverOverlapOtherKnobs asserts that after a draw pass for
 // any section, no badge's rect overlaps a DIFFERENT knob's rect. This is the
 // layout-agnostic guard for BUG 1 (cross-row tap stealing): if the badge is
@@ -181,11 +129,21 @@ func TestSynthKnobCaptionIsDisplayOnly(t *testing.T) {
 	defer releaseImage(img)
 	g.Draw(img)
 
+	// The ParamCard grid draws NAME + VALUE + gauge as one control surface —
+	// there is no longer a separate caption/readout sub-rect (that used to
+	// be populated by the deleted per-knob caption draw). Assert it stays
+	// empty under the new contract.
 	rr := g.drum.synthKnobReadoutRect(idx)
-	if rr.Empty() {
-		t.Fatalf("caption rect not populated after draw")
+	if !rr.Empty() {
+		t.Fatalf("readout rect should stay empty under the ParamCard contract (no separate caption sub-rect); got %v", rr)
 	}
-	tx, ty := rr.Min.X+2, rr.Min.Y+rr.Dy()/2
+	r := g.drum.SynthTabKnobs()[idx].Rect()
+	if r.Empty() {
+		t.Fatalf("knob %d has no rect after draw", idx)
+	}
+	// Tap the lower band of the card — where the old caption/readout used to
+	// live — and confirm it still does not open the numeric text editor.
+	tx, ty := r.Min.X+r.Dx()/2, r.Max.Y-4
 	g.drum.eqPanelZone.Invalidate()
 
 	mouseX, mouseY := tx, ty
@@ -374,91 +332,6 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 	}
 }
 
-// TestSynthBadgeCycleDoesNotAudition cycles the step badge for filter_cutoff
-// and asserts no audition fires. The badge step change is the non-vacuous
-// proof (the badge is the only mutable state).
-func TestSynthBadgeCycleDoesNotAudition(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-
-	prev := SwapSynthAuditionFnForTest(func(string) { t.Fatalf("badge cycle must NOT audition") })
-	defer SwapSynthAuditionFnForTest(prev)
-
-	idx := synthIdxByParam(t, g, "filter_cutoff")
-	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-
-	badges := g.drum.instEditorStepBadges
-	if idx >= len(badges) || badges[idx] == nil {
-		t.Fatalf("filter_cutoff has no step badge (len=%d)", len(badges))
-	}
-	before := badges[idx].Step()
-
-	g.drum.cycleKnobStep(idx)
-
-	after := badges[idx].Step()
-	if after == before {
-		t.Fatalf("badge step did not cycle (still %v)", before)
-	}
-}
-
-// TestSynthBadgeWheelChangesResolutionViaTreeDispatch verifies that scrolling
-// the mouse wheel while hovering the step-RESOLUTION badge shifts the rung
-// (scroll down = coarser), WITHOUT turning the knob — driven through the real
-// tree dispatch, not a direct handler call.
-func TestSynthBadgeWheelChangesResolutionViaTreeDispatch(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-	idx := synthIdxByParam(t, g, "filter_cutoff")
-	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-	g.Update()
-	img := newTrackedImage("test.synthbadgewheel", 1280, 720)
-	defer releaseImage(img)
-	g.Draw(img)
-
-	badge := g.drum.instEditorStepBadges[idx]
-	if badge == nil || badge.Rect().Empty() {
-		t.Fatalf("badge rect not populated")
-	}
-	knob := g.drum.SynthTabKnobs()[idx]
-	valBefore := knob.Value
-	stepBefore := badge.Step()
-
-	r := badge.Rect()
-	mouseX, mouseY := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/2
-	wy := 0.0
-	restore := SetInputForTest(
-		func() (int, int) { return mouseX, mouseY },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, wy },
-		func() (int, int) { return 1280, 720 },
-	)
-	defer restore()
-
-	// The wheel is debounced/clicky: a single notch must NOT move the rung.
-	wy = -1 // scroll down = coarser = larger step
-	g.Update()
-	if badge.Step() != stepBefore {
-		t.Fatalf("a single wheel notch must not change resolution: %v -> %v", stepBefore, badge.Step())
-	}
-	// Crossing the per-rung notch threshold advances exactly one rung.
-	for i := 1; i < knobBadgeWheelNotchesPerRung; i++ {
-		g.Update()
-	}
-	wy = 0
-
-	if badge.Step() <= stepBefore {
-		t.Fatalf("scroll down over badge should coarsen the step: before=%v after=%v", stepBefore, badge.Step())
-	}
-	if knob.StepMul != badge.Step() {
-		t.Fatalf("knob StepMul not synced to badge after wheel: StepMul=%v step=%v", knob.StepMul, badge.Step())
-	}
-	if knob.Value != valBefore {
-		t.Fatalf("wheel over the badge must NOT turn the knob: value %v -> %v", valBefore, knob.Value)
-	}
-}
-
 // TestSynthKnobDialWheelDoesNotChangeResolution confirms the knob itself is
 // left alone: scrolling over the DIAL (not the badge) does not move the
 // resolution rung.
@@ -498,36 +371,6 @@ func TestSynthKnobDialWheelDoesNotChangeResolution(t *testing.T) {
 	}
 }
 
-// TestSynthBadgeNeverOverlapsCaption guards the fix for the "resolution label
-// overlaps the knob text" bug: across several sections (incl. short detail
-// panes that force the inline-badge fallback), no visible step badge may
-// overlap its own caption/readout rect.
-func TestSynthBadgeNeverOverlapsCaption(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-	img := newTrackedImage("test.synthbadgeoverlap", 1280, 720)
-	defer releaseImage(img)
-	drawn := 0
-	for _, sec := range []synthSectionID{synthSectionFM, synthSectionOsc, synthSectionEnvelope, synthSectionFilter} {
-		g.drum.setSelectedSynthSection("ut-chip-modular", sec)
-		expandSynthPanelForTest(t, g)
-		g.Draw(img)
-		for i, b := range g.drum.instEditorStepBadges {
-			if b == nil || b.Rect().Empty() {
-				continue
-			}
-			drawn++
-			rr := g.drum.synthKnobReadoutRect(i)
-			if !rr.Empty() && b.Rect().Overlaps(rr) {
-				t.Fatalf("section %v knob %d: badge %v overlaps caption %v", sec, i, b.Rect(), rr)
-			}
-		}
-	}
-	if drawn == 0 {
-		t.Fatalf("no step badges were drawn — the test is vacuous")
-	}
-}
-
 // TestSynthKnobHorizontalDragChangesValueViaTreeDispatch is the regression
 // guard for "left/right drag on a knob stopped working". It drives the FULL
 // production input path (SetInputForTest → g.Update → HitIndex →
@@ -535,22 +378,13 @@ func TestSynthBadgeNeverOverlapsCaption(t *testing.T) {
 // sections, pressing the DIAL (above the caption/badge row) and asserting a
 // rightward drag increases the value and a leftward drag decreases it — never
 // opening the numeric editor or cycling the resolution badge.
-// expandAllSynthAdvancedForTest reveals every stage's Advanced-tier knobs (P4
-// tiering collapses them by default) so tests can reach every knob.
-func expandAllSynthAdvancedForTest(g *Game) {
-	if g.drum.synthAdvExpanded == nil {
-		g.drum.synthAdvExpanded = map[synthSectionID]bool{}
-	}
-	for _, id := range unifiedSynthSectionOrder {
-		g.drum.synthAdvExpanded[id] = true
-	}
-	g.drum.eqPanelZone.Invalidate()
-}
-
-// TestP4_AdvancedExpanderRevealsKnobs is the P4 tiering guard: an Advanced-tier
-// knob (osc_detune) is hidden by default and its stage shows an Advanced
-// expander bar; revealing it gives the knob a rect.
-func TestP4_AdvancedExpanderRevealsKnobs(t *testing.T) {
+// TestP4_AdvancedDividerOrdersKnobs is the P4 tiering guard for the always-visible
+// in-grid divider: an Advanced-tier knob's stage owns a divider band laid out
+// AFTER its Essential rows, and its Advanced knobs are always placed (never
+// structurally hidden). There is no expander / hidden state anymore. The detail
+// pane is short, so the tiers are verified by scroll progression rather than by
+// simultaneous on-screen visibility.
+func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "osc_detune")
@@ -560,26 +394,49 @@ func TestP4_AdvancedExpanderRevealsKnobs(t *testing.T) {
 	defer releaseImage(img)
 	g.Draw(img)
 
-	// Collapsed by default: the Advanced knob has no rect.
-	if r := g.drum.SynthTabKnobs()[idx].Rect(); !r.Empty() {
-		t.Errorf("osc_detune (Advanced) should be hidden by default, got rect %v", r)
-	}
-	// The stage has advanced knobs, so its expander bar must be present.
-	if g.drum.synthAdvExpanderRect.Empty() {
-		t.Fatal("OSC stage has advanced knobs but no expander bar was laid out")
-	}
-	// Clicking the expander bar toggles the stage's advanced-reveal state (the
-	// on-screen appearance of the revealed knobs is covered by the crop_synth_*
-	// screenshot scenes; here we pin the input→state wiring).
 	sel := g.drum.synthSelectedSection()
 	if sel == nil {
 		t.Fatal("no selected synth section")
 	}
-	before := g.drum.synthAdvExpanded[sel.id]
-	bar := g.drum.synthAdvExpanderRect
-	g.drum.handleSynthTabInput(bar.Min.X+bar.Dx()/2, bar.Min.Y+bar.Dy()/2, true, "modular")
-	if g.drum.synthAdvExpanded[sel.id] == before {
-		t.Error("clicking the Advanced expander bar did not toggle the stage's reveal state")
+	ess, adv := g.drum.synthSectionTierSplit(sel.knobIdxs)
+	if len(adv) == 0 {
+		t.Fatal("OSC stage should own osc_detune as an Advanced knob")
+	}
+	if g.drum.synthAdvDividerCount != len(adv) {
+		t.Fatalf("synthAdvDividerCount = %d, want %d", g.drum.synthAdvDividerCount, len(adv))
+	}
+	// selectSectionForKnobIdx scrolled to the Advanced knob; scroll back to the
+	// top so we can confirm the essentials occupy the first row(s).
+	grid := g.drum.sectionGrid(sel.id)
+	cols := grid.Cols()
+	if cols < 1 {
+		t.Fatal("grid has no columns")
+	}
+	grid.ScrollToIndex(0)
+	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	knobs := g.drum.SynthTabKnobs()
+	essVisible := 0
+	for _, i := range ess {
+		if !knobs[i].Rect().Empty() {
+			essVisible++
+		}
+	}
+	if essVisible == 0 {
+		t.Fatal("no essential knob visible at the top of the OSC stage")
+	}
+	// Scroll to the divider row: the stage lays out a full-width divider band.
+	dividerStartIdx := ((len(ess) + cols - 1) / cols) * cols
+	grid.ScrollToIndex(dividerStartIdx)
+	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	if g.drum.synthAdvDividerRect.Empty() {
+		t.Fatal("OSC stage has advanced knobs but no divider band was laid out once scrolled into view")
+	}
+	// Scroll to the end: osc_detune (Advanced) acquires a rect — it is placed,
+	// not hidden.
+	grid.ScrollToIndex(dividerStartIdx + cols + len(adv))
+	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
+	if g.drum.SynthTabKnobs()[idx].Rect().Empty() {
+		t.Error("osc_detune (Advanced) never acquired a rect even after scrolling to it")
 	}
 }
 
@@ -607,84 +464,6 @@ func TestP4_PhysicalModelParamsContextual(t *testing.T) {
 	}
 }
 
-func TestSynthKnobHorizontalDragChangesValueViaTreeDispatch(t *testing.T) {
-	// Essential (always-visible) knobs across OSC/FM/ENV/FILTER/POST. Advanced-tier
-	// knobs (e.g. osc_detune) are covered by TestP4_AdvancedExpanderRevealsKnobs.
-	for _, name := range []string{"gain", "fm_op1_ratio", "amp_attack", "filter_cutoff", "filter_resonance"} {
-		t.Run(name, func(t *testing.T) {
-			g := newModularSynthTabGame(t)
-			expandSynthPanelForTest(t, g)
-			idx := synthIdxByParam(t, g, name)
-			selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-			g.Update()
-			img := newTrackedImage("test.hdrag", 1280, 720)
-			defer releaseImage(img)
-			g.Draw(img)
-
-			k := g.drum.SynthTabKnobs()[idx]
-			r := k.Rect()
-			if r.Empty() {
-				t.Fatalf("%s knob rect empty", name)
-			}
-			// Press the dial: horizontally centred, vertically in the dial
-			// circle (above the caption band that hosts the readout + badge).
-			capH := Profile().DensityValues().SynthKnobCaptionH
-			cx := r.Min.X + r.Dx()/2
-			cy := r.Min.Y + (r.Dy()-capH)/2
-
-			mx, my := cx, cy
-			pressed := false
-			restore := SetInputForTest(
-				func() (int, int) { return mx, my },
-				func(b ebiten.MouseButton) bool { return pressed && b == ebiten.MouseButtonLeft },
-				func(k ebiten.Key) bool { return false },
-				func() []rune { return nil },
-				func() (float64, float64) { return 0, 0 },
-				func() (int, int) { return 1280, 720 },
-			)
-			defer restore()
-			g.drum.eqPanelZone.Invalidate()
-
-			// Rightward drag → value must INCREASE.
-			start := k.Value
-			pressed = true
-			g.Update()
-			if !k.Capturing() {
-				t.Fatalf("%s: dial press did not start a knob drag (capturing=false) — left/right drag is broken", name)
-			}
-			for s := 1; s <= 5; s++ {
-				mx = cx + s*16
-				g.Update()
-			}
-			pressed = false
-			g.Update()
-			afterRight := k.Value
-			if afterRight <= start {
-				t.Fatalf("%s: rightward drag did not increase value (%.4f -> %.4f)", name, start, afterRight)
-			}
-			if g.drum.paramEditor != nil && g.drum.paramEditor.Active() {
-				t.Fatalf("%s: dial drag wrongly opened the numeric editor", name)
-			}
-
-			// Leftward drag → value must DECREASE.
-			mx, my = cx, cy
-			g.drum.eqPanelZone.Invalidate()
-			beforeLeft := k.Value
-			pressed = true
-			g.Update()
-			for s := 1; s <= 5; s++ {
-				mx = cx - s*16
-				g.Update()
-			}
-			pressed = false
-			g.Update()
-			if k.Value >= beforeLeft {
-				t.Fatalf("%s: leftward drag did not decrease value (%.4f -> %.4f)", name, beforeLeft, k.Value)
-			}
-		})
-	}
-}
-
 // wheelOverPoint dispatches one two-axis wheel event (dx,dy) at (mx,my) through
 // the real tree, mirroring a two-finger trackpad drag.
 func wheelOverPoint(t *testing.T, g *Game, mx, my, dx, dy int) {
@@ -708,139 +487,4 @@ func wheelOverPoint(t *testing.T, g *Game, mx, my, dx, dy int) {
 	g.Update() // one frame with the wheel delta
 	active = false
 	g.Update() // settle (no wheel)
-}
-
-// TestSynthKnobHorizontalWheelChangesValue: a two-finger LEFT/RIGHT scroll over
-// a knob changes its value (mirroring left/right mouse drag); an UP/DOWN scroll
-// does NOT change the value (it is reserved for scrolling overflow rows).
-func TestSynthKnobHorizontalWheelChangesValue(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-	idx := synthIdxByParam(t, g, "filter_cutoff")
-	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-	g.Update()
-	img := newTrackedImage("test.hwheel", 1280, 720)
-	defer releaseImage(img)
-	g.Draw(img)
-	g.drum.eqPanelZone.Invalidate()
-
-	k := g.drum.SynthTabKnobs()[idx]
-	r := k.Rect()
-	capH := Profile().DensityValues().SynthKnobCaptionH
-	cx := r.Min.X + r.Dx()/2
-	cy := r.Min.Y + (r.Dy()-capH)/2
-
-	before := k.Value
-	// Debounced/clicky: a single horizontal notch must NOT move the value.
-	wheelOverPoint(t, g, cx, cy, 3, 0) // horizontal (two-finger left/right)
-	if k.Value != before {
-		t.Fatalf("a single horizontal wheel notch must not move the value (debounced): %.4f -> %.4f", before, k.Value)
-	}
-	// Crossing the notch threshold advances the value by one step.
-	for i := 1; i < knobValueWheelNotchesPerStep; i++ {
-		wheelOverPoint(t, g, cx, cy, 3, 0)
-	}
-	if k.Value == before {
-		t.Fatalf("horizontal wheel did not change value after %d notches (%.4f)", knobValueWheelNotchesPerStep, before)
-	}
-
-	// Vertical wheel must NOT change the value (reserved for row scrolling).
-	mid := k.Value
-	wheelOverPoint(t, g, cx, cy, 0, 3)
-	if k.Value != mid {
-		t.Fatalf("vertical wheel over knob changed the value (%.4f -> %.4f) — up/down must be reserved for overflow-row scroll", mid, k.Value)
-	}
-}
-
-// TestSynthVerticalWheelScrollsOverflowRows: in an overflowing section a
-// two-finger UP/DOWN scroll over a knob moves between rows (the set of visible
-// knobs changes) without altering any knob's value.
-func TestSynthVerticalWheelScrollsOverflowRows(t *testing.T) {
-	g := newModularSynthTabGame(t)
-	expandSynthPanelForTest(t, g)
-	idx := synthIdxByParam(t, g, "fm_op1_ratio")
-	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-	g.Layout(420, 720) // narrow → FM wraps to multiple rows and overflows
-	g.Update()
-	img := newTrackedImage("test.vscroll", 420, 720)
-	defer releaseImage(img)
-	g.Draw(img)
-
-	visible := func() map[int]int {
-		out := map[int]int{}
-		for _, s := range g.drum.instEditorSections {
-			if s.id != synthSectionFM {
-				continue
-			}
-			for _, ki := range s.knobIdxs {
-				if r := g.drum.instEditorKnobs[ki].Rect(); !r.Empty() {
-					out[ki] = r.Min.Y
-				}
-			}
-		}
-		return out
-	}
-	before := visible()
-	if len(before) == 0 {
-		t.Fatalf("no visible FM knobs to scroll")
-	}
-	// Snapshot all FM values to prove the scroll never changes a value.
-	vals := map[int]float64{}
-	for _, s := range g.drum.instEditorSections {
-		if s.id == synthSectionFM {
-			for _, ki := range s.knobIdxs {
-				vals[ki] = g.drum.instEditorKnobs[ki].Value
-			}
-		}
-	}
-
-	// Vertical wheel down over a visible knob.
-	var anyIdx int
-	for ki := range before {
-		anyIdx = ki
-		break
-	}
-	r := g.drum.instEditorKnobs[anyIdx].Rect()
-	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+r.Dy()/3
-	g.drum.eqPanelZone.Invalidate()
-	active := true
-	restore := SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(b ebiten.MouseButton) bool { return false },
-		func(k ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) {
-			if active {
-				return 0, -3
-			}
-			return 0, 0
-		},
-		func() (int, int) { return 420, 720 },
-	)
-	defer restore()
-	g.Update()
-	active = false
-	g.Update()
-	g.Draw(img)
-
-	after := visible()
-	scrolled := len(after) != len(before)
-	for ki, yy := range before {
-		if ay, ok := after[ki]; !ok || ay != yy {
-			scrolled = true
-		}
-	}
-	if !scrolled {
-		t.Fatalf("vertical wheel over a knob did not scroll the overflow rows (visible set unchanged: %v)", before)
-	}
-	// No value may change from a scroll.
-	for _, s := range g.drum.instEditorSections {
-		if s.id == synthSectionFM {
-			for _, ki := range s.knobIdxs {
-				if g.drum.instEditorKnobs[ki].Value != vals[ki] {
-					t.Fatalf("knob %d value changed during vertical-wheel scroll (%.4f -> %.4f)", ki, vals[ki], g.drum.instEditorKnobs[ki].Value)
-				}
-			}
-		}
-	}
 }

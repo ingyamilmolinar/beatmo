@@ -266,6 +266,7 @@ var en = map[Key]string{
 
 	KeyCapMove:         "Move",
 	KeyCapMoveNode:     "Move Node",
+	KeyCapCopy:         "Copy",
 	KeyCapConnect:      "Connect",
 	KeyCapYourSound:    "Your sound",
 	KeyCapUpClose:      "Up close",
@@ -283,6 +284,13 @@ var en = map[Key]string{
 	KeyCapStarts:       "starts",
 	KeyCapFades:        "fades",
 	KeyCapBeforeAfter:  "before / after",
+	KeyCapBreak:        "Break",
+
+	KeyMenuNoMatches:       "No matches",
+	KeyMenuNoMatchesHint:   "Try a shorter search",
+	KeyMenuNoFavorites:     "No favorites yet",
+	KeyMenuNoFavoritesHint: "Tap the star on any instrument",
+	KeyFXEmptyHint:         "No effects yet — shape this sound below",
 
 	KeyMaster:          "Master",
 	KeyNoNotifications: "No notifications yet",
@@ -348,6 +356,8 @@ var en = map[Key]string{
 	KeyActionChangeSubdivision: "change subdivision",
 	KeyActionAddNode:           "add node",
 	KeyActionDeleteNode:        "delete node",
+	KeyActionPasteNode:         "paste node",
+	KeyActionReplaceNode:       "replace node",
 	KeyActionMoveNode:          "move node",
 	KeyActionChangeNodeType:    "change node type",
 	KeyActionEditNode:          "edit node",
@@ -524,4 +534,12 @@ var en = map[Key]string{
 	KeyGroupParamVolume:   "Volume",
 	KeyGroupParamDuration: "Duration",
 	KeyGroupAddTo:         "Add to group",
+	KeyGroupCreateNew:     "Create new group",
+	KeyGroupRemoveFrom:    "Remove from group",
+	KeyBannerPasting:      "Pasting node — tap to place",
+	KeyBannerMoving:       "Moving node (%d,%d) — tap a point on an edge",
+	KeyBannerConnectFrom:  "Connect from (%d,%d) — tap a target node",
+	KeyBannerEscHint:      " (Esc to cancel)",
+
+	KeyBreakCircuitTitle: "Break the circuit?",
 }

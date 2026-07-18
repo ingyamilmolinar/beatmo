@@ -165,6 +165,11 @@ for (const bpm of BPM_LEVELS) {
     liveImages: stats?.liveImages ?? 0,
     imagesAllocatedTotal: stats?.imagesAllocatedTotal ?? 0,
     imagesByTag: stats?.imagesByTag ?? "",
+    gcCycles: stats?.gcCycles ?? 0,
+    gcForced: stats?.gcForced ?? 0,
+    gcPauseP99MS: stats?.gcPauseP99MS ?? 0,
+    gcPauseMaxMS: stats?.gcPauseMaxMS ?? 0,
+    gcHeapHighKB: stats?.gcHeapHighKB ?? 0,
   });
   console.log(`  imagesByTag: ${stats?.imagesByTag ?? "(none)"}`);
 
@@ -201,27 +206,29 @@ for (const r of results) {
 }
 console.log("╚══════╩═══════╩═════════╩═════════╩═════════╩═════════╩═══════╩═════════╩═════════╩═════════╩═══════╝");
 
-// Timing assertions (tightened for sequential execution with exclusive CPU)
+// GC summary (single-threaded WASM: every collection is a STW pause).
+console.log("\n╔══════════════════════════════════════════════════════════════╗");
+console.log("║  BROWSER GC (whole-run window per BPM)                        ║");
+console.log("╠══════╦════════╦════════╦══════════╦══════════╦══════════════╣");
+console.log("║ BPM  ║ Cycles ║ Forced ║ Pause99  ║ PauseMax ║ HeapHigh(MB) ║");
+console.log("╠══════╬════════╬════════╬══════════╬══════════╬══════════════╣");
 for (const r of results) {
-  hardAssert(r.overdue === 0, `BPM=${r.bpm}: ${r.overdue} overdue events`);
-  hardAssert(r.lagP90 == null || r.lagP90 <= 0.010,
-    `BPM=${r.bpm}: lagP90 ${fmtMs(r.lagP90)} > 10ms`);
-  hardAssert(r.lagP99 == null || r.lagP99 <= 0.020,
-    `BPM=${r.bpm}: lagP99 ${fmtMs(r.lagP99)} > 20ms`);
+  const line = [
+    String(r.bpm).padStart(4),
+    String(r.gcCycles ?? 0).padStart(6),
+    String(r.gcForced ?? 0).padStart(6),
+    (r.gcPauseP99MS ?? 0).toFixed(3).padStart(6) + "ms",
+    (r.gcPauseMaxMS ?? 0).toFixed(3).padStart(6) + "ms",
+    ((r.gcHeapHighKB ?? 0) / 1024).toFixed(1).padStart(12),
+  ];
+  console.log(`║ ${line.join(" ║ ")} ║`);
 }
-
-// FPS floor and update time ceiling (BPM-scaled)
-for (const r of results) {
-  const fpsFloor = r.bpm <= 200 ? 20 : (r.bpm <= 240 ? 18 : 12);
-  hardAssert(r.fpsAvg >= fpsFloor,
-    `BPM=${r.bpm}: fpsAvg ${r.fpsAvg.toFixed(1)} below floor ${fpsFloor}`);
-  const updateMax = r.bpm <= 200 ? 2.5 : 3.0;
-  hardAssert(r.updateAvgMS <= updateMax,
-    `BPM=${r.bpm}: updateAvgMS ${r.updateAvgMS.toFixed(3)}ms exceeded ${updateMax}ms`);
-}
+console.log("╚══════╩════════╩════════╩══════════╩══════════╩══════════════╝");
 
 // ---------------------------------------------------------------------------
-// Save machine-readable JSON (matches desktop bench-results/desktop.json schema)
+// Save machine-readable JSON (matches desktop bench-results/desktop.json
+// schema). Written BEFORE the threshold assertions below so a tripped gate
+// still leaves browser.json on disk — a benchmark must record its data.
 // ---------------------------------------------------------------------------
 const jsonResults = results.map(r => ({
   bpm: r.bpm,
@@ -243,12 +250,45 @@ const jsonResults = results.map(r => ({
   liveImages: r.liveImages ?? 0,
   imagesAllocatedTotal: r.imagesAllocatedTotal ?? 0,
   imagesByTag: r.imagesByTag ?? "",
+  gcCycles: r.gcCycles ?? 0,
+  gcForced: r.gcForced ?? 0,
+  gcPauseP99MS: r.gcPauseP99MS ?? 0,
+  gcPauseMaxMS: r.gcPauseMaxMS ?? 0,
+  gcHeapHighKB: r.gcHeapHighKB ?? 0,
 }));
 
 const resultsDir = path.resolve(jsDir, "../../bench-results");
 fs.mkdirSync(resultsDir, { recursive: true });
 fs.writeFileSync(path.join(resultsDir, "browser.json"), JSON.stringify(jsonResults, null, 2) + "\n");
 console.log(`\nResults saved to bench-results/browser.json`);
+
+// ---------------------------------------------------------------------------
+// Threshold assertions (run AFTER the JSON save so a tripped gate still leaves
+// browser.json on disk). Audio-smoothness gates (overdue/lag) are the hard floor.
+// ---------------------------------------------------------------------------
+for (const r of results) {
+  hardAssert(r.overdue === 0, `BPM=${r.bpm}: ${r.overdue} overdue events`);
+  hardAssert(r.lagP90 == null || r.lagP90 <= 0.010,
+    `BPM=${r.bpm}: lagP90 ${fmtMs(r.lagP90)} > 10ms`);
+  hardAssert(r.lagP99 == null || r.lagP99 <= 0.020,
+    `BPM=${r.bpm}: lagP99 ${fmtMs(r.lagP99)} > 20ms`);
+}
+
+// FPS floor and update-time ceiling (BPM-scaled).
+for (const r of results) {
+  const fpsFloor = r.bpm <= 200 ? 20 : (r.bpm <= 240 ? 18 : 12);
+  hardAssert(r.fpsAvg >= fpsFloor,
+    `BPM=${r.bpm}: fpsAvg ${r.fpsAvg.toFixed(1)} below floor ${fpsFloor}`);
+  // updateAvg ceiling raised from 2.5/3.0 after the 2026-07-16 GC-disable fix
+  // (async.Snapshot no longer turns GC off). With automatic GC restored,
+  // single-threaded WASM does its GC mark-assist work inside Update(), so the
+  // honest updateAvg is ~3.8-4.7ms — the old ~1.4ms was an artifact of GC being
+  // accidentally disabled. Audio stays clean (overdue=0, gated above) and FPS is
+  // well above floor; this ceiling still catches a true >2x regression.
+  const updateMax = r.bpm <= 200 ? 6.0 : 7.0;
+  hardAssert(r.updateAvgMS <= updateMax,
+    `BPM=${r.bpm}: updateAvgMS ${r.updateAvgMS.toFixed(3)}ms exceeded ${updateMax}ms`);
+}
 
 // ---------------------------------------------------------------------------
 // Cleanup

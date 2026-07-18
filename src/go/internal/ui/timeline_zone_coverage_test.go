@@ -172,7 +172,7 @@ func TestGridDragHitAdapter_OnWheel_NotConsumed(t *testing.T) {
 func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 	scrubCalled := false
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnScrubPosition = func(int) { scrubCalled = true }
+	z.callbacks.OnSeekToStep = func(int, string) { scrubCalled = true }
 	z.Layout(image.Rect(0, 0, 400, 300))
 
 	adapter := &timelineScrubHitAdapter{zone: z}
@@ -185,31 +185,43 @@ func TestTimelineScrubHitAdapter_OnPress(t *testing.T) {
 		t.Error("expected IsScrubbing() true after OnPress")
 	}
 	if !scrubCalled {
-		t.Error("expected OnScrubPosition callback on press")
+		t.Error("expected OnSeekToStep callback on press")
 	}
 }
 
+// TestTimelineScrubHitAdapter_OnDrag: Task 10 redesign — a drag no longer
+// re-seeks per frame (that was the old view-offset scrub behavior, which
+// fired the seek callback on every drag frame). Drag only updates the
+// ghost preview (z.scrubGhostBeat); OnSeekToStep is NOT called again
+// until OnRelease commits the final position. This test now asserts the
+// inverse of the old expectation, plus the ghost tracking the pointer.
 func TestTimelineScrubHitAdapter_OnDrag(t *testing.T) {
 	scrubCount := 0
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnScrubPosition = func(int) { scrubCount++ }
+	z.callbacks.OnSeekToStep = func(int, string) { scrubCount++ }
+	z.callbacks.TimelineBeats = func() int { return 16 }
+	z.callbacks.TimelineUnitsPerBeat = func() int { return 4 }
 	z.Layout(image.Rect(0, 0, 400, 300))
 
 	adapter := &timelineScrubHitAdapter{zone: z}
 	adapter.OnPress(200, 5)
-	initialCount := scrubCount
+	countAfterPress := scrubCount
+	ghostAfterPress := z.scrubGhostBeat
 
 	adapter.OnDrag(250, 5)
 
-	if scrubCount <= initialCount {
-		t.Error("expected OnScrubPosition callback on drag")
+	if scrubCount != countAfterPress {
+		t.Errorf("expected OnSeekToStep NOT to fire again on drag (ghost-only preview), count went %d -> %d", countAfterPress, scrubCount)
+	}
+	if z.scrubGhostBeat == ghostAfterPress {
+		t.Error("expected scrubGhostBeat to update on drag to a new pointer position")
 	}
 }
 
 func TestTimelineScrubHitAdapter_OnDrag_NotScrubbing(t *testing.T) {
 	scrubCalled := false
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnScrubPosition = func(int) { scrubCalled = true }
+	z.callbacks.OnSeekToStep = func(int, string) { scrubCalled = true }
 	z.Layout(image.Rect(0, 0, 400, 300))
 
 	adapter := &timelineScrubHitAdapter{zone: z}
@@ -217,7 +229,7 @@ func TestTimelineScrubHitAdapter_OnDrag_NotScrubbing(t *testing.T) {
 	adapter.OnDrag(250, 5)
 
 	if scrubCalled {
-		t.Error("OnScrubPosition should not fire when not scrubbing")
+		t.Error("OnSeekToStep should not fire when not scrubbing")
 	}
 }
 
@@ -998,12 +1010,20 @@ func TestTimelineZone_SetTimelineBarHeight(t *testing.T) {
 	}
 }
 
-// --- Scrub position clamping ---
-
-func TestTimelineScrubHitAdapter_ScrubTo_Clamp(t *testing.T) {
+// --- Ribbon seek clamping ---
+//
+// Task 10 replaced the offset-scrub adapter (which clamped to
+// [0, timelineBeats-lengthBeats] so the pattern's editable window never
+// scrolled past the end) with ribbonStepAt, a click-to-seek mapping that
+// clamps to the full [0, TimelineBeats] range — the ribbon can seek
+// anywhere in session history/future, not just within "room for the
+// pattern window". Was TestTimelineScrubHitAdapter_ScrubTo_Clamp,
+// asserting the old scrubTo's pattern-aware max-offset clamp; now asserts
+// OnPress (via ribbonStepAt) clamps to [0, TimelineBeats*unitsPerBeat].
+func TestTimelineScrubHitAdapter_OnPress_ClampsToTimelineRange(t *testing.T) {
 	var scrubbed int
 	z, _ := newTestTimelineZone()
-	z.callbacks.OnScrubPosition = func(n int) { scrubbed = n }
+	z.callbacks.OnSeekToStep = func(n int, origin string) { scrubbed = n }
 	z.callbacks.TimelineBeats = func() int { return 16 }
 	z.callbacks.Length = func() int { return 8 }
 	z.callbacks.TimelineUnitsPerBeat = func() int { return 4 }
@@ -1011,20 +1031,19 @@ func TestTimelineScrubHitAdapter_ScrubTo_Clamp(t *testing.T) {
 
 	adapter := &timelineScrubHitAdapter{zone: z}
 
-	// Scrub to far left — should clamp to 0.
+	// Press far left of the bar — should clamp to beat 0 (step 0).
 	adapter.OnPress(-100, 5)
-	if scrubbed < 0 {
-		t.Errorf("scrub position should not be negative, got %d", scrubbed)
+	if scrubbed != 0 {
+		t.Errorf("expected clamp to step 0 for far-left press, got %d", scrubbed)
 	}
 
-	// Scrub to far right — should clamp to max.
+	// Press far right of the bar — should clamp to the last whole beat
+	// (16 beats * 4 units/beat = step 64), NOT the old length-aware max.
 	z.scrubbing = false
 	adapter.OnPress(9999, 5)
-	// Should not exceed maxOffSteps.
-	maxBeats := 16 - 8/4 // 16 - 2 = 14 beats max offset
-	maxSteps := maxBeats * 4
-	if scrubbed > maxSteps {
-		t.Errorf("scrub position %d exceeds max %d", scrubbed, maxSteps)
+	const maxSteps = 16 * 4
+	if scrubbed != maxSteps {
+		t.Errorf("expected clamp to step %d for far-right press, got %d", maxSteps, scrubbed)
 	}
 }
 
