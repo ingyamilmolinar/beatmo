@@ -4,19 +4,51 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// The armed-mode helper banners are localized, parameterized, and
-// Esc-hint-gated through one pure helper shared with the draw path.
+// The armed-mode helper banners are localized, parameterized through the
+// active gridModeManager state, and driven by one pure method
+// (g.gridModeBannerText) shared with the draw path (g.drawGridModeBanner).
+// Task 9 (see .superpowers/sdd/task-9-brief.md): replaces the three bespoke
+// DrawTextAt banners (move / copy / connect) with this single chokepoint.
+func TestGridModeBanner_TextIsStyledAndLocalized(t *testing.T) {
+	g := newTestGameForUndo(t)
+	n := g.tryAddNode(3, 1, model.NodeTypeRegular)
+	g.updateBeatInfos()
+
+	// No banner when idle.
+	if got := g.gridModeBannerText(); got != "" {
+		t.Fatalf("idle banner = %q, want empty", got)
+	}
+
+	g.modes.Enter(GridModeMove, n)
+	got := g.gridModeBannerText()
+	if got == "" || got == "MOVING NODE (3,1) — TAP A POINT ON AN EDGE" {
+		t.Fatalf("move banner should be localized title-case, got %q", got)
+	}
+	if !strings.Contains(got, "(3,1)") && !strings.Contains(got, "(3, 1)") {
+		t.Errorf("move banner missing subject coords: %q", got)
+	}
+}
+
+// TestGridModeBannerText covers every armed mode across both locales: the
+// localized text is non-empty, fully formatted (no stray %d / %! verbs),
+// embeds the subject's coordinates (move/connect), never shouts in ALL-CAPS,
+// genuinely differs between EN/ES, and is empty when idle.
 func TestGridModeBannerText(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
-	n := &uiNode{I: 2, J: 4}
+	g := newTestGameForUndo(t)
+	n := g.tryAddNode(2, 4, model.NodeTypeRegular)
+	g.updateBeatInfos()
 
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {
 		i18n.SetLocale(loc)
 		for _, kind := range []GridModeKind{GridModeMove, GridModeCopy, GridModeConnect} {
-			got := gridModeBannerText(kind, n, false)
+			g.modes.Enter(kind, n)
+			got := g.gridModeBannerText()
+			g.modes.Cancel("test-reset")
 			if got == "" {
 				t.Fatalf("[%v] %v banner empty", loc, kind)
 			}
@@ -27,14 +59,11 @@ func TestGridModeBannerText(t *testing.T) {
 			if kind != GridModeCopy && !strings.Contains(got, "(2,4)") {
 				t.Fatalf("[%v] %v banner missing subject coords: %q", loc, kind, got)
 			}
-			// Esc hint appends the localized suffix exactly once.
-			hinted := gridModeBannerText(kind, n, true)
-			if hinted != got+i18n.T(i18n.KeyBannerEscHint) {
-				t.Fatalf("[%v] %v hinted banner = %q, want %q + esc hint", loc, kind, hinted, got)
-			}
 		}
 		// No shouting caps: the legacy ALL-CAPS wording is retired.
-		move := gridModeBannerText(GridModeMove, n, false)
+		g.modes.Enter(GridModeMove, n)
+		move := g.gridModeBannerText()
+		g.modes.Cancel("test-reset")
 		if strings.Contains(move, "MOVING NODE") {
 			t.Fatalf("[%v] move banner still ALL-CAPS: %q", loc, move)
 		}
@@ -42,16 +71,22 @@ func TestGridModeBannerText(t *testing.T) {
 
 	// EN and ES actually differ (real translations, not copies).
 	i18n.SetLocale(i18n.LocaleEN)
-	en := gridModeBannerText(GridModeMove, n, false)
+	g.modes.Enter(GridModeMove, n)
+	en := g.gridModeBannerText()
+	g.modes.Cancel("test-reset")
+
 	i18n.SetLocale(i18n.LocaleES)
-	es := gridModeBannerText(GridModeMove, n, false)
+	g.modes.Enter(GridModeMove, n)
+	es := g.gridModeBannerText()
+	g.modes.Cancel("test-reset")
+
 	if en == es {
 		t.Fatalf("EN and ES move banners identical: %q", en)
 	}
 
-	// GridModeNone renders nothing.
+	// GridModeNone (idle) renders nothing.
 	i18n.SetLocale(i18n.LocaleEN)
-	if got := gridModeBannerText(GridModeNone, n, true); got != "" {
+	if got := g.gridModeBannerText(); got != "" {
 		t.Fatalf("none-mode banner = %q, want empty", got)
 	}
 }

@@ -37,21 +37,14 @@ func TestNodeMenuCloseButton(t *testing.T) {
 		t.Fatalf("expected icon='close', got %q", btn.Icon)
 	}
 
-	// Click the close button
+	// Click the close button through the real grid-dispatcher press+release path.
+	// The node-anchored sidebar registers on the dispatcher on the first frame
+	// after opening, so gridClick's two-frame press (register then dispatch) is
+	// required — a single press frame never captures the gesture.
 	cx := (r.Min.X + r.Max.X) / 2
 	cy := (r.Min.Y + r.Max.Y) / 2
-	restore := SetInputForTest(
-		func() (int, int) { return cx, cy },
-		func(ebiten.MouseButton) bool { return true },
-		func(ebiten.Key) bool { return false },
-		func() []rune { return nil },
-		func() (float64, float64) { return 0, 0 },
-		func() (int, int) { return g.winW, g.winH },
-	)
-	defer restore()
-
-	g.handleEditor()
-	g.Update()
+	gridClick(g, cx, cy)
+	advanceFrames(g, 1)
 
 	if g.sidebar.IsOpen() {
 		t.Fatalf("node menu still open after clicking close button")
@@ -202,11 +195,11 @@ func TestColorWheelCloseButton(t *testing.T) {
 }
 
 // TestContextMenuCloseButton verifies the close button appended to context menu.
-// The close × is bottom-sheet (mobile) only — on desktop the menu dismisses
-// via click-outside + Esc, so this test drives the mobile profile.
+// The close × is DESKTOP only — on mobile the bottom sheet dismisses via
+// tap-away, so this test drives the desktop profile.
 func TestContextMenuCloseButton(t *testing.T) {
 	assertDefaultParityState(t)
-	withSmallScreen(t, true)
+	withSmallScreen(t, false)
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
 
@@ -266,7 +259,7 @@ func TestContextMenuEscClose(t *testing.T) {
 }
 
 // TestOverflowMenuCloseButton verifies the close button in the overflow popup.
-func TestOverflowMenuCloseButton(t *testing.T) {
+func TestOverflowMenuHasNoCloseButton(t *testing.T) {
 	assertDefaultParityState(t)
 	dv := NewDrumView(image.Rect(0, 0, 400, 800), nil, game_log.New(nil, game_log.LevelError))
 	dv.calcLayout()
@@ -285,21 +278,18 @@ func TestOverflowMenuCloseButton(t *testing.T) {
 	if len(btns) == 0 {
 		t.Fatalf("no overflow buttons")
 	}
-	closeBtn := btns[len(btns)-1]
-	if closeBtn.Icon != "close" {
-		t.Fatalf("last button is not close button, icon=%q", closeBtn.Icon)
-	}
-
-	r := closeBtn.Rect()
-	cx := (r.Min.X + r.Max.X) / 2
-	cy := (r.Min.Y + r.Max.Y) / 2
-	suppressClicksUntilRelease = false
-	closeBtn.HandleInputResult(cx, cy, true)
-
-	if dv.OverflowMenuOpen() {
-		t.Fatalf("overflow menu still open after clicking close button")
+	// No button in the set is a close (×) button — the File menu closes via the
+	// folder toggle, Esc, or click-outside, not an in-panel ×.
+	for _, b := range btns {
+		if b != nil && b.Icon == "close" {
+			t.Fatalf("overflow menu must have no × button; found one with icon=%q", b.Icon)
+		}
 	}
 }
+
+// (TestOverflowMenuCloseButtonNotSwallowedByNavBand was removed: the overflow
+// menu no longer embeds a NAVIGATION band — the navigation menu is a separate
+// portal component (navMenuComp), so there is no band-swallow surface.)
 
 // TestOverflowMenuEscClose verifies ESC closes the overflow menu.
 func TestOverflowMenuEscClose(t *testing.T) {

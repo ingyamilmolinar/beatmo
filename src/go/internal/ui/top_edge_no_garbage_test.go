@@ -111,8 +111,8 @@ func TestTransportBottomNoBleed(t *testing.T) {
 
 	// Bleeds we want to catch — saturated row colors that would never
 	// legitimately appear in the transport surface.
-	const badRedThreshold = 100   // R channel above this AND
-	const badRedDominance = 30    // R - G > this AND R - B > this
+	const badRedThreshold = 100 // R channel above this AND
+	const badRedDominance = 30  // R - G > this AND R - B > this
 	bottomBand := image.Rect(transportRect.Min.X, transportRect.Max.Y-2, transportRect.Max.X, transportRect.Max.Y)
 	for y := bottomBand.Min.Y; y < bottomBand.Max.Y; y++ {
 		for x := bottomBand.Min.X; x < bottomBand.Max.X; x++ {

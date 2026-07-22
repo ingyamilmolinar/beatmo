@@ -40,9 +40,14 @@ func (g *Game) registerGridTree() {
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-group-badges", z: GZGroupBadges, clip: true, vis: func() bool { return len(g.graph.Groups) > 0 }, draw: g.drawGridGroupBadges})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-move-mode", z: GZMoveMode, clip: true, vis: func() bool { return g.modes.Is(GridModeMove) || g.modes.Is(GridModeCopy) }, draw: g.drawGridMoveMode})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-connect-mode", z: GZConnectMode, clip: true, draw: g.drawConnectMode})
+	g.gridTree.RegisterLayer(gridLayer{id: "grid-mode-banner", z: GZModeBanner, clip: true, draw: g.drawGridModeBanner})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-marquee", z: GZMarquee, clip: true, vis: func() bool { return g.marquee.active }, draw: g.drawGridMarquee})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-longpress", z: GZLongPress, clip: true, vis: func() bool { return g.longPressPopup }, draw: g.drawLongPressPopup})
-	g.gridTree.RegisterLayer(gridLayer{id: "grid-sidebar", z: GZSidebar, clip: false, vis: func() bool { return g.sidebar.IsOpen() }, draw: func(dst *ebiten.Image) { g.sidebar.Draw(dst) }})
+	// Node sidebar: a grid-pane surface. clip:true so its node-anchored card is
+	// CLIPPED TO THE GRID PANE and can never render into the bottom drum-view
+	// panel (a separate component tree). Its layout() also clamps position to the
+	// grid pane; the clip is the structural belt-and-suspenders guarantee.
+	g.gridTree.RegisterLayer(gridLayer{id: "grid-sidebar", z: GZSidebar, clip: true, vis: func() bool { return g.sidebar.IsOpen() }, draw: func(dst *ebiten.Image) { g.sidebar.Draw(dst) }})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-group-menu", z: GZGroupMenu, clip: false, vis: func() bool { return g.groupMenu.IsOpen() }, draw: func(dst *ebiten.Image) { g.groupMenu.Draw(dst) }})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-cursor-label", z: GZCursorLabel, clip: false, draw: g.drawGridCursorLabel})
 	g.gridTree.RegisterLayer(gridLayer{id: "grid-help-button", z: GZGridHelpButton, clip: true, draw: g.drawGridHelpButton})

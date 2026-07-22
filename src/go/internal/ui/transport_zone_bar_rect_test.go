@@ -31,7 +31,7 @@ func TestTransportZone_SetBarRectDoesNotMutateHitAreas(t *testing.T) {
 	z.hitAreas = append(z.hitAreas,
 		HitArea{Tag: "transport-vol-icon"},
 		HitArea{Tag: "transport-view-switch"},
-		HitArea{Tag: "transport-overflow"},
+		HitArea{Tag: "transport-subdiv"},
 		HitArea{Tag: "transport-other"},
 	)
 	z.SetBarRect(bar)

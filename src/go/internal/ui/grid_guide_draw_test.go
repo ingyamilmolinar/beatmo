@@ -116,9 +116,17 @@ func TestCursorLabelHiddenOverHigherZSurfaces(t *testing.T) {
 		t.Fatalf("control: label must show over bare grid")
 	}
 
-	// 1. Over the open node sidebar (full-height left panel).
+	// 1. Over the open node sidebar — now a compact card anchored beside the
+	// tapped node (rendered through the global OverlayPortal) rather than a
+	// full-height left panel, so the probe point must be derived from the
+	// card's actual rect instead of a hardcoded corner.
 	g.selectNodeOpenSidebar(a)
-	sx, sy := 50, gridTopOffset()+60
+	g.sidebar.layout()
+	panel, ok := g.sidebar.rects["panel"]
+	if !ok || panel.Empty() {
+		t.Fatalf("setup: sidebar panel rect missing")
+	}
+	sx, sy := (panel.Min.X+panel.Max.X)/2, (panel.Min.Y+panel.Max.Y)/2
 	if !g.sidebar.IsOpen() || !g.sidebar.Hit(sx, sy) {
 		t.Fatalf("setup: probe point must be inside the open sidebar panel")
 	}

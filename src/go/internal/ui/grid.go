@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 
@@ -194,6 +195,45 @@ func (g *Grid) BeatSubdivision(idx int) (beat, num, den int) {
 	}
 	d := utils.GCD(rem, div)
 	return beat, rem / d, div / d
+}
+
+// BeatAxisLabel formats a signed grid-axis subdivision index as a "beat:fraction"
+// coordinate for the cursor readout. The sign is carried on the whole coordinate
+// (magnitude convention): a point 2.5 beats left of the origin reads "-2:1/2",
+// NOT floor's "-3:1/2". A point exactly on a beat drops the fraction ("-2", not
+// "-2:0"). The fraction is reduced (BeatSubdivision), so a half-beat reads "1/2".
+func (g *Grid) BeatAxisLabel(idx int) string {
+	sign := ""
+	if idx < 0 {
+		sign = "-"
+		idx = -idx
+	}
+	beat, num, den := g.BeatSubdivision(idx)
+	if num == 0 {
+		return fmt.Sprintf("%s%d", sign, beat)
+	}
+	return fmt.Sprintf("%s%d:%d/%d", sign, beat, num, den)
+}
+
+// BeatSlot converts an absolute subdivision index into a 1-based beat number and
+// how far into that beat the index sits, as the raw (unreduced) fraction
+// num/den with den = MaxDiv. num is the count of subdivisions past the start of
+// the beat, so a node exactly on the beat has num == 0 and a node halfway
+// through has num == den/2. Examples (div=8): idx 0 -> Beat 1, 0/8; idx 4 (the
+// midpoint between two beat-aligned nodes) -> Beat 1, 4/8; idx 8 -> Beat 2, 0/8;
+// idx 19 -> Beat 3, 3/8. This is the user-facing "beat and subdivision" form for
+// a node's position in its circuit. Negative idx and div<=0 clamp to beat 1.
+func (g *Grid) BeatSlot(idx int) (beat, num, den int) {
+	den = g.MaxDiv()
+	if den <= 0 {
+		return 1, 0, 1
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	beat = idx/den + 1
+	num = idx % den
+	return beat, num, den
 }
 
 // StepPixels converts a camera scale to an integer pixel spacing between grid

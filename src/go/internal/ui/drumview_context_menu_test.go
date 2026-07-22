@@ -597,9 +597,9 @@ func TestContextMenuMobileOmitsEffects(t *testing.T) {
 	}
 }
 
-// TestOverflowMenuCloseButtonDoesNotFireUpload verifies that tapping the
-// close button in the overflow menu closes it rather than firing "Upload".
-func TestOverflowMenuCloseButtonDoesNotFireUpload(t *testing.T) {
+// TestOverflowMenuHasNoCloseButtonMobile verifies the mobile File menu carries
+// no close (×) button (it closes via the folder toggle / Esc / click-outside).
+func TestOverflowMenuHasNoCloseButtonMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	withSmallScreen(t, true)
 
@@ -625,54 +625,25 @@ func TestOverflowMenuCloseButtonDoesNotFireUpload(t *testing.T) {
 	dv.Update()
 	warmUp()
 
-	// The overflow button needs a non-empty rect for the popup to appear.
-	if dv.overflowBtn() == nil {
-		t.Fatal("overflow button is nil")
-	}
-	if dv.overflowBtn().Rect().Empty() {
-		// Give it a rect manually for testing.
-		dv.overflowBtn().SetRect(image.Rect(W-60, 0, W, 44))
-	}
-
-	// Open the overflow menu.
+	// Open the overflow menu (file mode by default; anchored via the folder
+	// button / drum-pane fallback).
 	dv.openOverflowMenuPortal()
 	popupRect := dv.overflowPopupRect()
 	if popupRect.Empty() {
 		t.Fatal("overflow popup rect is empty")
 	}
 
-	// Get popup buttons and find the close button (last).
+	// The File menu has NO close (×) button anymore — none of its buttons carries
+	// the close icon (it closes via the folder toggle, Esc, or click-outside).
 	popupBtns := dv.overflowPopupBtns(popupRect)
 	if len(popupBtns) == 0 {
 		t.Fatal("no overflow popup buttons")
 	}
-	closeBtn := popupBtns[len(popupBtns)-1]
-	closeRect := closeBtn.Rect()
-	if closeRect.Empty() {
-		t.Fatal("close button rect is empty")
+	for _, b := range popupBtns {
+		if b != nil && b.Icon == "close" {
+			t.Fatalf("File menu must have no × button; found one with icon=%q", b.Icon)
+		}
 	}
-
-	// Track whether Upload was called.
-	uploadCalled := false
-	origUpload := dv.uploadBtn()
-	dv.transportZone.uploadBtn = NewButton("Upload", DropdownStyle, func() { uploadCalled = true })
-
-	// Fire tap at close button center.
-	cx := closeRect.Min.X + closeRect.Dx()/2
-	cy := closeRect.Min.Y + closeRect.Dy()/2
-	dv.fireOverflowMenuTapAt(cx, cy)
-
-	// Overflow menu should be closed.
-	if dv.IsOverflowMenuOpen() {
-		t.Fatal("overflow menu should be closed after tapping close button")
-	}
-	// Upload should NOT have been called.
-	if uploadCalled {
-		t.Fatal("Upload should NOT fire when tapping the close button")
-	}
-
-	// Restore.
-	dv.transportZone.uploadBtn = origUpload
 }
 
 // TestColorPickerCloseUnblocksButtons verifies that closing the color picker

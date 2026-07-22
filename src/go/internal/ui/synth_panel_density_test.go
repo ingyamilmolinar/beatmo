@@ -25,7 +25,7 @@ func TestSynthSectionsFitAtAllDensities(t *testing.T) {
 	for _, d := range densities {
 		restore := SetDensityForTest(d)
 		dv := densityValuesFor(d)
-		hardFloor := dv.SynthKnobMin + dv.SynthKnobCaptionH + SpaceSM
+		hardFloor := dv.SynthControlMin + dv.SynthControlCaptionH + SpaceSM
 		idealH := dv.SynthSectionMinH
 		for _, h := range contentHeights {
 			fitPerSection := h / numSections
@@ -63,7 +63,7 @@ func TestSynthSpaciousFitsOn360TallPanel(t *testing.T) {
 	const headerH = 52
 	contentH := 360 - headerH // 308 — the failing case
 	fitPerSection := contentH / numSections
-	hardFloor := dv.SynthKnobMin + dv.SynthKnobCaptionH + SpaceSM
+	hardFloor := dv.SynthControlMin + dv.SynthControlCaptionH + SpaceSM
 	var perSectionH int
 	if fitPerSection >= dv.SynthSectionMinH {
 		perSectionH = dv.SynthSectionMinH

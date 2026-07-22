@@ -142,7 +142,7 @@ func TestSamplerResetDisabledWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestSamplerResetMobileInActionRow(t *testing.T) {
+func TestSamplerResetMobileRelocatedToStickyBar(t *testing.T) {
 	g := samplerLayoutGame(t)
 	withSmallScreen(t, true)
 	restore := SetDensityForTest(DensitySpacious)
@@ -150,18 +150,17 @@ func TestSamplerResetMobileInActionRow(t *testing.T) {
 	g.drum.sampler.captureFromSynth("kick")
 	g.drum.buildSamplerTab(image.Rect(0, 0, 390, 270), "kick")
 
-	b := g.drum.samplerButtonByTag("sampler-reset")
-	if b == nil {
-		t.Fatal("missing button \"sampler-reset\"")
+	// Approach B: on mobile the Preview/Save/Save As/Reset actions relocate to
+	// the sticky bar, so the in-panel Reset (and Save/Save As) rects are empty —
+	// only the Rev/Norm/Fade transforms row stays in-panel.
+	for _, tag := range []string{"sampler-reset", "sampler-save", "sampler-save-as", "sampler-preview"} {
+		if b := g.drum.samplerButtonByTag(tag); b != nil && !b.Rect().Empty() {
+			t.Errorf("%s still laid out in-panel on mobile (should be on the sticky bar)", tag)
+		}
 	}
-	// On mobile the header clears action buttons; Reset must still be laid out
-	// (in the action row below the knobs) and below the header band.
-	if b.Rect().Empty() {
-		t.Fatalf("Reset has no rect on mobile; should live in the action row")
-	}
-	save := g.drum.samplerButtonByTag("sampler-save")
-	if save != nil && !save.Rect().Empty() && b.Rect().Min.Y < save.Rect().Min.Y {
-		t.Errorf("Reset should sit in the same action row as Save on mobile (reset y=%d, save y=%d)", b.Rect().Min.Y, save.Rect().Min.Y)
+	// The transforms row is still present in-panel.
+	if b := g.drum.samplerButtonByTag("sampler-reverse"); b == nil || b.Rect().Empty() {
+		t.Errorf("Rev toggle must stay in the in-panel transforms row on mobile")
 	}
 }
 

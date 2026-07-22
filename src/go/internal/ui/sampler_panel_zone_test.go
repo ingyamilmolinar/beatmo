@@ -143,4 +143,3 @@ func TestSamplerHandleDragSetsTrim(t *testing.T) {
 		t.Errorf("end handle drag → endFrac=%.2f, want ~0.75", dv.sampler.endFrac)
 	}
 }
-

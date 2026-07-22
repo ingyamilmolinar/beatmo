@@ -55,6 +55,22 @@ var (
 // current platform (mobile or desktop).
 func ScrollbarStyleForPlatform() ScrollbarStyle { return Profile().ScrollbarStyle }
 
+// controlGridScrollbarWidth is the gutter reserved for the Synth/Sampler
+// control-grid scrollbars. It is deliberately wider than the 6px app default so
+// the bar is an easy WHEEL + DRAG target: on desktop a wheel over a control
+// nudges that control's value, so rows are scrolled from the scrollbar itself,
+// and a wheel notch anywhere on this widened bar advances the list one row.
+const controlGridScrollbarWidth = 16
+
+// controlGridScrollbarStyle is ScrollbarStyleForPlatform widened to
+// controlGridScrollbarWidth. The mobile thumb keeps its 44px touch height; only
+// the track/gutter thickness grows so the ControlGrid reserves a grabbable lane.
+func controlGridScrollbarStyle() ScrollbarStyle {
+	s := ScrollbarStyleForPlatform()
+	s.Width = controlGridScrollbarWidth
+	return s
+}
+
 // dropdownScrollbarStyle returns the scrollbar style for popup/menu scrollers
 // (instrument menu, EQ-channel dropdown, context/overflow/subdivision menus).
 // On mobile it narrows to mobileScrollbarWidth so every mobile scrollbar shares

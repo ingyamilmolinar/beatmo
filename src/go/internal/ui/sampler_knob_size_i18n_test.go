@@ -67,7 +67,7 @@ func TestSamplerKnobSizeLanguageInvariantMobile(t *testing.T) {
 
 // Cards must stay usable (>= half a ParamCardW wide) in every language on every
 // screen — never the tiny fallback the old caption-driven layout produced. The
-// card contract replaces the old dial-diameter floor (SynthKnobMin).
+// card contract replaces the old dial-diameter floor (SynthControlMin).
 func TestSamplerKnobUsableSizeAllLanguages(t *testing.T) {
 	defer i18n.SetLocale(i18n.LocaleEN)
 	min := Profile().DensityValues().ParamCardW / 2

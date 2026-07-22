@@ -120,6 +120,13 @@ type EQCallbacks struct {
 	// when TabSynth is active.
 	SynthTabHitAreas func() []HitArea
 
+	// TrailingActionsForTab returns the per-tab action buttons hosted on the
+	// sticky bar on mobile ([Preview][Save][⋯] for Synth/Sampler), or nil for
+	// tabs/states with no trailing actions. Called every Layout (mobile only)
+	// before the sticky bar lays out, mirroring SetActiveTab. Wired to the
+	// synth/sampler panels' MobileActionButtons in drumview_ctor.go.
+	TrailingActionsForTab func(tab PanelTab) []*Button
+
 	// SynthTabUpdate advances per-frame synth-tab state (section scroll
 	// momentum). Called from Update() when TabSynth is active; returns true
 	// when a scroll position changed so the zone re-lays-out next frame.
@@ -1227,6 +1234,14 @@ func (z *EQPanelZone) layoutButtons() {
 		z.stickyBar.SetActiveTab(z.tabState.ActiveTab())
 		z.stickyBar.SetSynthDisabled(z.synthTabDisabled())
 		z.stickyBar.SetSamplerDisabled(z.samplerTabDisabled())
+		// Mobile Approach B: hand the bar the active tab's [Preview][Save][⋯]
+		// cluster (Synth/Sampler) so it hosts them in its right region. nil on
+		// desktop (the right cluster is the tab strip) and on non-editor tabs.
+		var trailing []*Button
+		if Profile().IsMobile() && z.callbacks.TrailingActionsForTab != nil {
+			trailing = z.callbacks.TrailingActionsForTab(z.tabState.ActiveTab())
+		}
+		z.stickyBar.SetTrailingActions(trailing)
 		// Pill label derives from live state every frame — see
 		// refreshChannelPillLabel (the pill must never contradict the
 		// panel content, and it sizes the bar's left cluster in Layout).
@@ -2371,9 +2386,9 @@ func (h *scrollableDropdownHandler) OnRelease(x, y int) {
 func (h *scrollableDropdownHandler) OnWheel(x, y, steps int) InputResult {
 	o := h.overlay
 	scroll := o.zone.channelScroll
-	// Clicky: one item per notch + cooldown, matching every other menu (see
-	// MenuScroll.HandleWheel / DrumView.tickMenuScrollCooldowns).
-	if scroll.WheelStep(steps, controlGridScrollCooldownFrames) {
+	// Smooth: continuous, magnitude-respecting wheel with no cooldown lock — the
+	// shared instrument-menu cadence every list menu uses.
+	if scroll.HandleWheel(steps) {
 		o.rebuildVisibleButtons()
 		o.updatePortalHitAreas()
 		return InputConsumed
@@ -3282,6 +3297,7 @@ func (z *EQPanelZone) ShowLevelsAggregateTooltip(slot string) bool {
 		Owner:   z,
 		Overlay: NewTooltipOverlay(text),
 		Modal:   false,
+		Passive: true, // display-only hint; never owns input / closes on outside press
 		Anchor:  anchor,
 	})
 	return true

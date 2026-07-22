@@ -29,18 +29,16 @@ func init() {
 		SetNotificationHistoryStore(NewPersistedNotificationHistory(ns))
 	}
 
-	// Phase 3: apply user-saved recipe overrides + register user recipes
-	// from localStorage. The parity gate is flipped on here (production
-	// bootstrap only) so test binaries leave shipped defaults intact.
-	// The store satisfies audio.UserRecipeSource via the RecipeStore
-	// subset; nil-source / decode failures inside Apply are non-fatal.
-	if rs, ok := prefsStore.(userprefs.RecipeStore); ok {
-		audio.SetUseUserRecipeOverrides(true)
-		_ = audio.ApplyUserRecipeOverrides(rs)
-		// Phase 4: Synth-tab Save / Save-As writes back through the
-		// same store. RecipeStore satisfies ui.RecipeSaveSink.
-		SetRecipeSink(rs)
-	}
+	// Instrument data (user recipes + per-recipe overrides) lives in its OWN
+	// decoupled store — its own localStorage key, separate from beatmo.prefs —
+	// so instruments can be shared/imported without touching favorites/UI state.
+	// The parity gate is flipped on here (production bootstrap only) so test
+	// binaries leave shipped defaults intact. InstrumentStore satisfies both
+	// audio.UserRecipeSource (load) and ui.RecipeSaveSink (save).
+	instStore := userprefs.NewInstrumentStore(userprefs.Options{})
+	audio.SetUseUserRecipeOverrides(true)
+	_ = audio.ApplyUserRecipeOverrides(instStore)
+	SetRecipeSink(instStore)
 
 	// Sampler tab: cross-session user-sample persistence (IndexedDB on
 	// browser). Mirrors the recipe wiring above. ApplySavedSamples re-registers

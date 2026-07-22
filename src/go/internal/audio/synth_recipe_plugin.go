@@ -136,6 +136,11 @@ func RegisterPluginRecipeFromDoc(doc RecipeDoc, provider SynthRecipeProvider) er
 	if category == "" {
 		category = "plugin"
 	}
+	// Track the builtin base this user/plugin recipe delegates to, so the
+	// instrument exporter can reconstruct a portable base+seed for sharing
+	// (BuildInstrumentRecipeDoc). Builtins never pass through here, so they
+	// resolve to themselves as their own base.
+	recordRecipeBase(doc.ID, doc.BaseRecipe)
 	return RegisterPluginRecipe(PluginRecipeOptions{
 		ID:          doc.ID,
 		DisplayName: display,

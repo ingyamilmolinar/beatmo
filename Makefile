@@ -123,7 +123,7 @@ sync-audio: audio-config
 
 # ─── Synth Matching / Fingerprinting ─────────────────────────────────────────
 
-.PHONY: synth-match synth-fingerprint fetch-synth-refs song-timeline song-render song-compare
+.PHONY: synth-match synth-fingerprint fetch-synth-refs fetch-song-refs song-timeline song-render song-compare
 
 synth-match: ## Tune a synth toward a reference WAV (INST=, REF=, [BUDGET=], [RESTARTS=], [DRY_RUN=1])
 	cd src/go && ../../.tools/go/bin/go run ./cmd/synth-match -inst $(INST) -ref $(REF) \
@@ -132,8 +132,11 @@ synth-match: ## Tune a synth toward a reference WAV (INST=, REF=, [BUDGET=], [RE
 synth-fingerprint: ## Print the analysis fingerprint of a WAV (FILE=)
 	cd src/go && ../../.tools/go/bin/go run ./cmd/synth-analyze ref -file $(FILE)
 
-fetch-synth-refs: ## Download + convert the reference instrument WAVs (Task 15)
+fetch-synth-refs: ## Download + convert the public-domain instrument reference WAVs (never committed; used by CI + local ref tests via BEATMO_WAV_REFS)
 	bash scripts/fetch_synth_refs.sh
+
+fetch-song-refs: ## Download the CC0 song reference WAVs (local only — full songs, too heavy for CI)
+	bash scripts/fetch_song_refs.sh
 
 song-timeline: ## Second-by-second analysis of a WAV (FILE=, [HOP=], [CONFIG=], [OUT=])
 	cd src/go && ../../.tools/go/bin/go run ./cmd/song-match timeline -file $(FILE) \
@@ -341,6 +344,19 @@ bench: $(C_LIB)
 bench-desktop: $(C_LIB)
 	GO=$(GO) BPM_LEVELS="$(or $(BPM_LEVELS),120 200 240 300)" DURATION=$(or $(DURATION),15) ./scripts/bench-desktop.sh
 
+# Desktop synth param-mutation storm bench + pprof (toggle|ctrl|combined).
+# Override: STORM=toggle BPM=120 DURATION=10 make bench-synth-storm
+bench-synth-storm: $(C_LIB)
+	GO=$(GO) BENCH_SYNTH_STORM=$(or $(STORM),combined) STORM_BPM=$(or $(BPM),200) DURATION=$(or $(DURATION),15) ./scripts/bench-desktop.sh
+
+# Go microbenchmarks for the timeline-navigation seek path (forward/backward
+# seeks + timeline edits during playback). Results assessed in
+# bench-results/seek_navigation_bench.md. Override BENCHTIME/COUNT.
+bench-seek:
+	cd src/go && ../../.tools/go/bin/go test -tags test -modfile=go.test.mod -run '^$$' \
+		-bench 'BenchmarkSeek|BenchmarkTimelineEdit' -benchmem \
+		-benchtime=$(or $(BENCHTIME),1s) -count=$(or $(COUNT),2) ./internal/ui/
+
 # Self-contained browser benchmark: same 4 BPM levels, startup demo circuit.
 # Produces bench-results/browser.json + ASCII table.
 bench-browser: wasm
@@ -399,8 +415,20 @@ run-cam-logs: $(C_LIB)
 	cd src/go; CGO_ENABLED=1 $(GO) build -o /tmp/beatmo ./cmd && DEBUG_DRAW_NODES=1 DEBUG_GEOM=1 /tmp/beatmo -log DEBUG $(RUN_ARGS)
 
 test: $(C_LIB)
-	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 900s ./...
-	cd src/go; $(LOG_ENV) $(GO) test -timeout 10s ./internal/audio
+# -timeout is PER package binary. internal/ui is the pacing package: it runs
+# ~734s in ISOLATION (measured 2026-07-17), dominated by the testing.Short()-
+# gated soak/leak canaries (TestSoakHeapBounded_* ~185s, TestLongSessionMeters
+# TabHeapBounded ~66s, ...) that are //go:build test-only, so `make test` is
+# their sole runner and executes them full-length. Under `./...` those canaries
+# race sibling package binaries (internal/audio, internal/timeline) for CPU, and
+# the ~25% contention overhead pushed the effective wall clock past the old 900s
+# watchdog (the synth/engine/node-groups overhaul grew the package from ~609s to
+# ~734s). Bumped 900s->1500s for headroom. This has been raised as the suite grew
+# (1->10->20->60->300->600->900->1500); the pace is cumulative test work, not a hang.
+	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 1500s ./...
+# Untagged = real C DSP (no stubs), so this suite runs ~270s across ~880 tests.
+# The budget is whole-package, not per-test.
+	cd src/go; $(LOG_ENV) $(GO) test -timeout 900s ./internal/audio
 
 # Run the concurrency-relevant Go packages under the race detector (-race is
 # native-only; it cannot instrument the js/wasm build, so this is the desktop
@@ -446,8 +474,11 @@ test-browser-matrix:
 tests: test
 
 test-debug: $(C_LIB)
-	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 300s ./...
-	cd src/go; $(LOG_ENV) $(GO) test -timeout 10s ./internal/audio
+# Same -tags test ./... runner as `make test`; internal/ui alone needs ~734s in
+# isolation (see the note on the `test` target), so the old 300s cap could never
+# have covered it. Match the `test` budget.
+	cd src/go; $(LOG_ENV) $(GO) test -tags test -modfile=go.test.mod -timeout 1500s ./...
+	cd src/go; $(LOG_ENV) $(GO) test -timeout 900s ./internal/audio
 	$(MAKE) test-browser
 
 # Run all Go tests with real Ebiten (requires X11/xvfb) + all browser tests.

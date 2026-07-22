@@ -68,7 +68,7 @@ func layoutForTest(dv *DrumView) {
 	}
 	// dv.Update() runs recalcButtons + calcLayout + tree.Update (Layout phase
 	// publishes hit areas). Run it twice: the first frame populates
-	// instEditorKnobs via buildSynthTab; the second lets the tree pick up the
+	// instEditorControls via buildSynthTab; the second lets the tree pick up the
 	// freshly-sized hit areas (mirrors the soak helper's double Update).
 	dv.eqPanelZone.Layout(dv.eqPanelZone.PanelRect())
 	dv.Update()
@@ -81,11 +81,11 @@ func (dv *DrumView) layoutForTest() { layoutForTest(dv) }
 // loop (dv.Update → dv.tree.Update → wheel dispatch).
 func (dv *DrumView) updateForTest() { dv.Update() }
 
-// firstNonScrollableSynthKnobRect returns the on-screen rect of the first knob
+// firstNonScrollableSynthControlRect returns the on-screen rect of the first knob
 // belonging to a synth section that is NOT scrollable (sectionGrid == nil or
-// !HasScroll()). Over such a knob, synthKnobHitAdapter.OnWheel returns
+// !HasScroll()). Over such a knob, synthControlHitAdapter.OnWheel returns
 // InputIgnored — the precondition for the row-scroll leak.
-func firstNonScrollableSynthKnobRect(t *testing.T, dv *DrumView) image.Rectangle {
+func firstNonScrollableSynthControlRect(t *testing.T, dv *DrumView) image.Rectangle {
 	t.Helper()
 	if dv == nil {
 		return image.Rectangle{}
@@ -116,10 +116,10 @@ func firstNonScrollableSynthKnobRect(t *testing.T, dv *DrumView) image.Rectangle
 				continue
 			}
 			for _, idx := range s.knobIdxs {
-				if idx < 0 || idx >= len(dv.instEditorKnobs) {
+				if idx < 0 || idx >= len(dv.instEditorControls) {
 					continue
 				}
-				k := dv.instEditorKnobs[idx]
+				k := dv.instEditorControls[idx]
 				if k == nil {
 					continue
 				}
@@ -150,17 +150,17 @@ func injectWheelAt(t *testing.T, dv *DrumView, x, y int, dx, dy float64) {
 	restore()
 }
 
-// TestWheelOverSynthKnobDoesNotScrollRows reproduces the bug where a
+// TestWheelOverSynthControlDoesNotScrollRows reproduces the bug where a
 // two-finger trackpad drag (wheel events) over a synth knob whose section
 // is NOT scrollable leaked through the shared HitIndex to the row-rack
 // scroll handler, scrolling the unrelated drum rows. Drives the real
 // DrumView input loop.
-func TestWheelOverSynthKnobDoesNotScrollRows(t *testing.T) {
+func TestWheelOverSynthControlDoesNotScrollRows(t *testing.T) {
 	dv := newTestDrumViewWithRows(t, 12) // enough rows that rowOffset CAN change
 	activateSynthTab(t, dv)              // desktop: panel visible, Synth tab active
 	dv.layoutForTest()                   // full layout so knob rects exist
 
-	knob := firstNonScrollableSynthKnobRect(t, dv)
+	knob := firstNonScrollableSynthControlRect(t, dv)
 	if knob.Empty() {
 		t.Fatal("no synth knob rect available; check activateSynthTab/layout")
 	}
@@ -392,7 +392,7 @@ func TestPressInPanelNeverHitsRowRack(t *testing.T) {
 	if !pt.In(panel) {
 		t.Fatalf("chosen point (%d,%d) not inside panel %v", px, py, panel)
 	}
-	for _, k := range dv.instEditorKnobs {
+	for _, k := range dv.instEditorControls {
 		if k != nil && pt.In(k.Rect()) {
 			t.Fatalf("chosen 'whitespace' point (%d,%d) is inside a knob — pick another", px, py)
 		}
@@ -454,7 +454,7 @@ func TestCardTapPopupBlocksRowRackPresses(t *testing.T) {
 	activateSynthTab(t, dv)
 	dv.layoutForTest()
 
-	knob := firstNonScrollableSynthKnobRect(t, dv)
+	knob := firstNonScrollableSynthControlRect(t, dv)
 	if knob.Empty() {
 		t.Fatal("no synth knob rect available")
 	}
@@ -941,7 +941,7 @@ func TestTimelineScrubFreezesPanelPresses(t *testing.T) {
 	if !ok {
 		t.Skip("no timeline-scrub hit area in this layout; cannot exercise a drum-view capture")
 	}
-	knob := firstNonScrollableSynthKnobRect(t, dv)
+	knob := firstNonScrollableSynthControlRect(t, dv)
 	if knob.Empty() {
 		t.Fatal("no synth knob rect available")
 	}
@@ -983,7 +983,7 @@ func TestTimelineScrubFreezesPanelPresses(t *testing.T) {
 	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
 		t.Error("after release, a fresh tap on a synth card must open the value popup (dispatch did not resume)")
 	}
-	dv.closeSynthKnobWheelPopup()
+	dv.closeSynthControlWheelPopup()
 }
 
 // TestDrumViewModalBlocksPanel is the symmetric counterpart of
@@ -998,7 +998,7 @@ func TestDrumViewModalBlocksPanel(t *testing.T) {
 	activateSynthTab(t, dv)
 	dv.layoutForTest()
 
-	knob := firstNonScrollableSynthKnobRect(t, dv)
+	knob := firstNonScrollableSynthControlRect(t, dv)
 	if knob.Empty() {
 		t.Fatal("no synth knob rect available")
 	}
@@ -1045,7 +1045,7 @@ func TestDrumViewModalBlocksPanel(t *testing.T) {
 	if dv.synthWheelPopup == nil || !dv.synthWheelPopup.IsOpen() {
 		t.Error("after closing the drum-view modal, a synth card tap must open the value popup (dispatch did not resume)")
 	}
-	dv.closeSynthKnobWheelPopup()
+	dv.closeSynthControlWheelPopup()
 }
 
 // TestDrumViewModalDrawsAbovePanel is the symmetric counterpart of

@@ -1,13 +1,14 @@
 /**
  * Timeline Seek Real Input Test
  *
- * Task 10 turned the timeline ribbon into a PLAYHEAD SEEK surface: a press
- * on the ribbon snaps to the nearest whole beat under the pointer and
- * commits an immediate seek (see `ribbonStepAt` / `timelineScrubHitAdapter`
- * in `timeline_zone.go`). It is NOT a view-offset scrubber anymore, so this
- * test asserts `playheadStep()` (the absolute predictor/playhead
- * subdivision) moves to a whole-beat boundary on click, rather than
- * `drumOffset()` (which was the old view-scroll behavior and is exercised
+ * The timeline ribbon is a PLAYHEAD SEEK surface, but it is DRAG-ONLY: a
+ * pure tap (press+release on the same beat) commits nothing — only a drag
+ * that ends on a DIFFERENT whole beat than where it started emits a seek
+ * (see `ribbonStepAt` / `timelineScrubHitAdapter` in `timeline_zone.go`,
+ * shipped by the menu-hosted timeline-navigation UX). It is NOT a
+ * view-offset scrubber, so this test asserts `playheadStep()` (the absolute
+ * predictor/playhead subdivision) moves to a whole-beat boundary after a
+ * drag, rather than `drumOffset()` (the old view-scroll behavior, exercised
  * separately by grid-drag / two-finger-pan touch tests).
  *
  * Uses the FULL WASM build (main.wasm) with Playwright's native mouse methods.
@@ -15,7 +16,7 @@
 
 import {
   setupFullWasm,
-  clickAndHold,
+  dragMouse,
   assertValidRect,
 } from "./real_input_test_helpers.js";
 import { flushCoverage, isCoverageEnabled } from "./coverage_helpers.js";
@@ -44,8 +45,11 @@ try {
   console.log("timeline_seek_real: Timeline rect:", timelineRect);
 
   // ─────────────────────────────────────────────────────────────────────
-  // Test 2: Expand timeline and click ~40% across the ribbon; assert the
-  // playhead SEEKS to a whole-beat boundary (not a drumOffset view-scroll).
+  // Test 2: Expand timeline and DRAG from the start of the ribbon to ~40%
+  // across; assert the playhead SEEKS to a whole-beat boundary (not a
+  // drumOffset view-scroll). The ribbon is drag-only, so a plain tap would
+  // not commit anything — the gesture must end on a different beat than it
+  // started to emit a seek.
   // ─────────────────────────────────────────────────────────────────────
   console.log("timeline_seek_real: Expanding timeline...");
 
@@ -66,23 +70,26 @@ try {
   console.log("timeline_seek_real: Playhead step before:", playheadBefore);
 
   const centerY = timelineRect.y + timelineRect.h / 2;
-
-  // Click ~40% across the timeline ribbon.
-  console.log("timeline_seek_real: Clicking ~40% across timeline...");
+  const startX = timelineRect.x + 10;
   const fortyPercentX = timelineRect.x + timelineRect.w * 0.4;
-  await clickAndHold(page, fortyPercentX, centerY, 50);
+
+  // Drag from the start of the ribbon to ~40% across it. The gesture ends on
+  // a different beat than it started, so the ribbon commits one seek on
+  // release, snapping the playhead to the nearest whole beat under ~40%.
+  console.log("timeline_seek_real: Dragging from start to ~40% across timeline...");
+  await dragMouse(page, startX, centerY, fortyPercentX, centerY);
   await page.waitForTimeout(150);
 
   const playheadAfterForty = await page.evaluate(() => playheadStep?.());
-  console.log("timeline_seek_real: Playhead step after 40% click:", playheadAfterForty);
+  console.log("timeline_seek_real: Playhead step after 40% drag:", playheadAfterForty);
 
   if (playheadAfterForty === playheadBefore) {
     throw new Error(
-      `Expected playheadStep() to change after clicking the ribbon: before=${playheadBefore} after=${playheadAfterForty}`
+      `Expected playheadStep() to change after dragging the ribbon: before=${playheadBefore} after=${playheadAfterForty}`
     );
   }
   if (!playheadAfterForty) {
-    throw new Error(`Expected playheadStep() to be non-zero after a ~40% click, got ${playheadAfterForty}`);
+    throw new Error(`Expected playheadStep() to be non-zero after a ~40% drag, got ${playheadAfterForty}`);
   }
   if (playheadAfterForty % unitsPerBeat !== 0) {
     throw new Error(
@@ -90,15 +97,14 @@ try {
     );
   }
 
-  // Click near the start of the ribbon: still a whole-beat seek, just to a
-  // different (likely lower) beat.
-  console.log("timeline_seek_real: Clicking start of timeline...");
-  const startX = timelineRect.x + 10;
-  await clickAndHold(page, startX, centerY, 50);
+  // Drag back from ~40% to near the start of the ribbon: still a whole-beat
+  // seek, just to a different (lower) beat.
+  console.log("timeline_seek_real: Dragging back to start of timeline...");
+  await dragMouse(page, fortyPercentX, centerY, startX, centerY);
   await page.waitForTimeout(150);
 
   const playheadAfterStart = await page.evaluate(() => playheadStep?.());
-  console.log("timeline_seek_real: Playhead step after start click:", playheadAfterStart);
+  console.log("timeline_seek_real: Playhead step after start drag:", playheadAfterStart);
 
   if (playheadAfterStart % unitsPerBeat !== 0) {
     throw new Error(
@@ -113,7 +119,7 @@ try {
   // NOTE: view-offset scrolling (drumOffset()) is no longer driven by the
   // ribbon — it's exercised by grid-drag / two-finger-pan in the touch
   // suite (see touch_gestures.browser.test.js, touch_pinch_no_node.browser.test.js).
-  console.log("timeline_seek_real: PASS - Timeline ribbon click seeks the playhead to a whole-beat boundary");
+  console.log("timeline_seek_real: PASS - Timeline ribbon drag seeks the playhead to a whole-beat boundary");
 } catch (error) {
   console.error("timeline_seek_real: FAIL -", error.message);
   process.exitCode = 1;

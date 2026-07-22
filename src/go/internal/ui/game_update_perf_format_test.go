@@ -18,8 +18,8 @@ func TestBenchFmtMSRoundsToTwoDecimals(t *testing.T) {
 		want string
 	}{
 		{0, "0.00"},
-		{0.001, "1.00"},        // 1 ms
-		{0.012345, "12.35"},     // round half up
+		{0.001, "1.00"},     // 1 ms
+		{0.012345, "12.35"}, // round half up
 		{0.99995, "999.95"},
 		{1, "1000.00"},
 		{-0.0005, "-0.50"},

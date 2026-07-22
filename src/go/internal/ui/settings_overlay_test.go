@@ -80,3 +80,30 @@ func TestSettingsOverlayDrawDoesNotPanic(t *testing.T) {
 	// Draw must run cleanly under -tags test (stub backend).
 	o.Draw(nil) // Draw guards a nil screen and returns early.
 }
+
+// TestSettingsOverlayShortcutsScroll pins that when the panel is height-clamped
+// (a short pane), the desktop shortcuts list becomes scrollable and the shared
+// smooth wheel path advances it — instead of silently truncating rows past the
+// bottom edge with no way to reach them.
+func TestSettingsOverlayShortcutsScroll(t *testing.T) {
+	o := NewSettingsOverlay(func(i18n.Locale) {})
+	// A short pane forces the ~350px panel to clamp so the 8-row shortcuts list
+	// cannot fit — the list must scroll.
+	screen := image.Rect(0, 0, 1200, 240)
+	o.Layout(screen, screen)
+
+	if o.scroll == nil || !o.scroll.HasScroll() {
+		t.Fatalf("shortcuts list should scroll when the panel is height-clamped")
+	}
+	before := o.scroll.OffsetPx()
+
+	area, ok := findHitAreaByTag(o.HitAreas(), "settings-panel")
+	if !ok {
+		t.Fatal("no settings-panel hit area")
+	}
+	// A wheel-down over the panel moves the list (smooth, magnitude-respecting).
+	area.Handler.OnWheel(o.rect.Min.X+10, o.rect.Min.Y+10, -3)
+	if o.scroll.OffsetPx() == before {
+		t.Fatalf("wheel did not scroll the shortcuts list (offset stayed %d)", before)
+	}
+}

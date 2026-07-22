@@ -13,6 +13,7 @@ import "image/color"
 func TokenSurface1() color.RGBA { return colSurface1 }
 func TokenSurface2() color.RGBA { return colSurface2 }
 func TokenSurface3() color.RGBA { return colSurface3 }
+
 // TokenPanelBG carries an intentional non-255 alpha (panel-near-opaque,
 // 250) so callers can composite the panel surface against the scrim.
 func TokenPanelBG() color.NRGBA { return colPanelBG }

@@ -11,7 +11,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// param_edit_playback_bench_test.go — measures what a live synth-knob / sampler
+// param_edit_playback_bench_test.go — measures what a live synth-control / sampler
 // edit costs the AUDIO DISPATCH GOROUTINE during real playback.
 //
 // Scenario (field report): play the startup demo, drag a synth knob or change a
@@ -71,7 +71,7 @@ func TestParamEditPlaybackCostTable(t *testing.T) {
 	scenarios := []paramEditScenario{
 		{name: "baseline", churn: nil},
 		{
-			name: "synth-knob-storm",
+			name: "synth-control-storm",
 			churn: func(t *testing.T, g *Game, id string, step int) {
 				// Sweep a real param, new value every step → rotates the key.
 				v := float64(step%100) / 100.0

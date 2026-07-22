@@ -19,7 +19,7 @@ import (
 // the seed (or C DSP) → rebuild → run again → confirm the synth moved toward the
 // reference. Run: go test -run TestWindGap -v ./cmd/synth-match/
 func TestWindGap(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	audio.Reset()
 	audio.ResetInstruments()
 

@@ -20,14 +20,14 @@ import (
 // Config is the JSON schema for -ui-state. Pointers (*int, *bool) are
 // nullable: a missing field leaves the corresponding game state alone.
 type Config struct {
-	Profile         string  `json:"profile,omitempty"`           // "desktop" | "mobile"
-	ForceAutoSize   *bool   `json:"force_auto_size,omitempty"`
-	DefaultStart    *bool   `json:"default_start,omitempty"`
+	Profile       string `json:"profile,omitempty"` // "desktop" | "mobile"
+	ForceAutoSize *bool  `json:"force_auto_size,omitempty"`
+	DefaultStart  *bool  `json:"default_start,omitempty"`
 
-	Camera *CameraConfig   `json:"camera,omitempty"`
+	Camera   *CameraConfig   `json:"camera,omitempty"`
 	Splitter *SplitterConfig `json:"splitter,omitempty"`
-	Sidebar *SidebarConfig  `json:"sidebar,omitempty"`
-	View    *ViewConfig     `json:"view,omitempty"`
+	Sidebar  *SidebarConfig  `json:"sidebar,omitempty"`
+	View     *ViewConfig     `json:"view,omitempty"`
 }
 
 type CameraConfig struct {
@@ -46,8 +46,8 @@ type SidebarConfig struct {
 }
 
 type ViewConfig struct {
-	Mode               string `json:"mode,omitempty"` // "rows" | "audio"
-	MobileEQCollapsed  *bool  `json:"mobile_eq_collapsed,omitempty"`
+	Mode              string `json:"mode,omitempty"` // "rows" | "audio"
+	MobileEQCollapsed *bool  `json:"mobile_eq_collapsed,omitempty"`
 }
 
 // applier captures every Game setter Apply touches. Decoupling the

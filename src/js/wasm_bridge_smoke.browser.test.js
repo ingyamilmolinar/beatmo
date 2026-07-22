@@ -161,10 +161,10 @@ const CATALOGUE = {
     { name: "autoGain", args: [], returns: "any" },
     { name: "scopeFrozen", args: [], returns: "any" },
     // Synth-tab redesign exports (per hey-please-review-the-vectorized-rocket.md).
-    // synthKnobRects returns one entry per wired knob, but collapsed (non-
-    // selected) stages have zero-size rects (w=0,h=0) — only the selected
-    // stage's knobs are drag-targetable in the chip-strip layout.
-    { name: "synthKnobRects", args: [], returns: "any" },
+    // synthControlRects returns one entry per wired control, but collapsed
+    // (non-selected) stages have zero-size rects (w=0,h=0) — only the selected
+    // stage's controls are drag-targetable in the chip-strip layout.
+    { name: "synthControlRects", args: [], returns: "any" },
     // Pipeline chip strip: synthChipRects lists one chip per stage in pipeline
     // order; selectSynthSection opens a stage by chip label (next frame).
     { name: "synthChipRects", args: [], returns: "any" },
@@ -222,6 +222,7 @@ const CATALOGUE = {
     { name: "ensureDefaultPath", args: [], returns: "any" },
     { name: "exportBtnRect", args: [], returns: "any" },
     { name: "exportJSON", args: [], returns: "string" },
+    { name: "fileMenuBtnRect", args: [], returns: "any" },
     { name: "fxPanelOpen", args: [], returns: "boolean" },
     { name: "fxPanelRect", args: [], returns: "any" },
     { name: "fxPanelRow", args: [], returns: "number" },
@@ -267,6 +268,8 @@ const CATALOGUE = {
     { name: "layoutHorizontal", args: [], returns: "boolean" },
     { name: "lenDecBtnRect", args: [], returns: "any" },
     { name: "lenIncBtnRect", args: [], returns: "any" },
+    { name: "logsSearchRect", args: [], returns: "nullable" }, // null when logs panel closed
+    { name: "logsSearchState", args: [], returns: "nullable" }, // null when logs panel closed
     { name: "longPressCopyRect", args: [], returns: "nullable" }, // null when popup closed
     { name: "longPressDeleteRect", args: [], returns: "nullable" }, // null when popup closed
     { name: "longPressMoveRect", args: [], returns: "nullable" }, // null when popup closed
@@ -285,6 +288,7 @@ const CATALOGUE = {
     { name: "openContextMenuJS", skipCall: true },
     { name: "openFXPanelJS", skipCall: true },
     { name: "openInstMenu", skipCall: true },
+    { name: "openLogsPanel", skipCall: true }, // opens the logs panel (visible side effect)
     { name: "openNodeSidebar", skipCall: true },
     { name: "openRenameBox", skipCall: true },
     { name: "openSubdivMenu", skipCall: true },
@@ -295,6 +299,7 @@ const CATALOGUE = {
     { name: "portalStackLen", args: [], returns: "number" },
     { name: "portalTopID", args: [], returns: "any" },
     { name: "renameBoxRect", args: [], returns: "any" },
+    { name: "renameBoxState", args: [], returns: "nullable" }, // null when rename portal closed
     { name: "rowColor", args: [0], returns: "any" },
     { name: "rowColorBtnRect", args: [0], returns: "any" },
     { name: "rowEditBtnRect", args: [0], returns: "any" },

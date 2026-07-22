@@ -51,16 +51,15 @@ func (g *Game) handleConnectModeTap(x, y int) {
 	g.modes.Commit()
 }
 
-// drawConnectMode renders the connect mode visual feedback: a banner at the
-// top of the grid pane and a cyan outline around the source node.
+// drawConnectMode renders the connect mode visual feedback: a cyan outline
+// around the source node. The armed-mode banner is drawn once for all three
+// modes (move/copy/connect) by drawGridModeBanner (Task 9) — this function no
+// longer draws a banner of its own.
 func (g *Game) drawConnectMode(dst *ebiten.Image) {
 	if !g.modes.Is(GridModeConnect) {
 		return
 	}
 	from := g.modes.Subject()
-	// Banner at top of grid pane (shared armed-mode banner chrome).
-	g.drawGridModeBanner(dst, gridModeBannerText(GridModeConnect, from, Profile().ShowEscHint))
-
 	// Cyan outline around source node.
 	sx1, sy1, sx2, sy2 := g.nodeScreenRect(from)
 	hlCol := WithAlpha(TokenAccent(), 255)

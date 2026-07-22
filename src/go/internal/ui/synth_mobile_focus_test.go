@@ -66,7 +66,7 @@ func newMobileSynthTabGameForTestSize(t *testing.T, w, h int) *Game {
 	return g
 }
 
-func TestMobileSynthTab_WavesRightOfKnobs(t *testing.T) {
+func TestMobileSynthTab_WavesRightOfControls(t *testing.T) {
 	g := newMobileSynthTabGameForTest(t)
 	dv := g.drum
 	inst := dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
@@ -89,11 +89,11 @@ func TestMobileSynthTab_WavesRightOfKnobs(t *testing.T) {
 	}
 }
 
-// TestMobileSynthTab_KnobColumnHasUsableHeight guards Task 1's payoff: putting
+// TestMobileSynthTab_ControlColumnHasUsableHeight guards Task 1's payoff: putting
 // the waves in the RIGHT column gives the knob grid the full panel body height.
 // The knob column body (detail rect minus its header) must fit at least one good
 // knob row, and the first knob's dial must be at least the density minimum.
-func TestMobileSynthTab_KnobColumnHasUsableHeight(t *testing.T) {
+func TestMobileSynthTab_ControlColumnHasUsableHeight(t *testing.T) {
 	g := newMobileSynthTabGameForTest(t)
 	dv := g.drum
 	inst := dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
@@ -101,7 +101,7 @@ func TestMobileSynthTab_KnobColumnHasUsableHeight(t *testing.T) {
 		t.Skip("no synth instrument")
 	}
 	d := Profile().DensityValues()
-	rowUnit := d.SynthKnobMin + d.SynthKnobCaptionH
+	rowUnit := d.SynthControlMin + d.SynthControlCaptionH
 	body := dv.instEditorDetailR.Dy() - dv.instEditorDetailHeaderH
 	// At the realistic 390x720 mobile viewport the knob column must fit at least
 	// one full knob row (the Task-1 goal: knobs are no longer cramped to a sliver).
@@ -116,7 +116,7 @@ func TestMobileSynthTab_KnobColumnHasUsableHeight(t *testing.T) {
 	dvTall := gTall.drum
 	if dvTall.resolveSynthInstrument(dvTall.synthTabActiveInstrument()) != "" {
 		dTall := Profile().DensityValues()
-		rowUnitTall := dTall.SynthKnobMin + dTall.SynthKnobCaptionH
+		rowUnitTall := dTall.SynthControlMin + dTall.SynthControlCaptionH
 		bodyTall := dvTall.instEditorDetailR.Dy() - dvTall.instEditorDetailHeaderH
 		if bodyTall < 2*rowUnitTall {
 			t.Fatalf("tall knob column body height %d < 2 knob rows (%d) — knobs still cramped at 390x896", bodyTall, 2*rowUnitTall)
@@ -126,13 +126,13 @@ func TestMobileSynthTab_KnobColumnHasUsableHeight(t *testing.T) {
 	if sec == nil || len(sec.knobIdxs) == 0 {
 		t.Skip("no section knobs")
 	}
-	k := dv.instEditorKnobs[sec.knobIdxs[0]]
-	if k.Rect().Empty() || k.Rect().Dx() < d.SynthKnobMin {
-		t.Fatalf("first knob rect %v too small (min dia %d)", k.Rect(), d.SynthKnobMin)
+	k := dv.instEditorControls[sec.knobIdxs[0]]
+	if k.Rect().Empty() || k.Rect().Dx() < d.SynthControlMin {
+		t.Fatalf("first knob rect %v too small (min dia %d)", k.Rect(), d.SynthControlMin)
 	}
 }
 
-// TestMobileSynthTab_FocusGraphRespondsToKnobSelect drives the real draw path:
+// TestMobileSynthTab_FocusGraphRespondsToControlSelect drives the real draw path:
 // on a typical mobile panel, after selecting a knob, drawSynthTab must paint ink
 // INSIDE the mobile focus band — proving the focus graph actually renders on
 // mobile (not just that a rect was reserved).
@@ -145,7 +145,7 @@ func TestMobileSynthTab_KnobColumnHasUsableHeight(t *testing.T) {
 // drawRect interceptor no longer observes ink at the band's absolute screen
 // position even though the blit lands it there. Pixel probing checks what
 // actually ends up on screen regardless of the caching mechanism underneath.
-func TestMobileSynthTab_FocusGraphRespondsToKnobSelect(t *testing.T) {
+func TestMobileSynthTab_FocusGraphRespondsToControlSelect(t *testing.T) {
 	g := newMobileSynthTabGameForTest(t)
 	dv := g.drum
 	inst := dv.resolveSynthInstrument(dv.synthTabActiveInstrument())
@@ -162,7 +162,7 @@ func TestMobileSynthTab_FocusGraphRespondsToKnobSelect(t *testing.T) {
 	if sec == nil || len(sec.knobIdxs) == 0 {
 		t.Skip("no open section with knobs on mobile")
 	}
-	dv.setSynthSelectedKnob(inst, sec.knobIdxs[0])
+	dv.setSynthSelectedControl(inst, sec.knobIdxs[0])
 
 	contentR := dv.eqPanelZone.ContentRect()
 	img := ebiten.NewImage(g.winW, g.winH)
@@ -188,10 +188,10 @@ func TestMobileSynthTab_FocusGraphRespondsToKnobSelect(t *testing.T) {
 // TestMobileSynthTab_CardRendersAtIdealSize proves the mobile audio-panel
 // content floor reserves enough height for a full ParamCard slot at a tall
 // mobile viewport. Post rotary-deletion each synth knob renders as one
-// ParamCard whose cell height is exactly ParamCardH (synthKnobCellHeight); the
+// ParamCard whose cell height is exactly ParamCardH (synthControlCellHeight); the
 // panel floor (mobileAudioPanelMinContentH) budgets one ParamCardH per cell, so
 // the first card must lay out at exactly that height rather than being clamped
-// short. Replaces TestMobileSynthTab_KnobRendersAtIdealSize (the old dial-
+// short. Replaces TestMobileSynthTab_ControlRendersAtIdealSize (the old dial-
 // diameter assertion) — there is no rotary dial anymore.
 func TestMobileSynthTab_CardRendersAtIdealSize(t *testing.T) {
 	g := newMobileSynthTabGameForTestSize(t, 390, 844)
@@ -201,7 +201,7 @@ func TestMobileSynthTab_CardRendersAtIdealSize(t *testing.T) {
 	if sec == nil || len(sec.knobIdxs) == 0 {
 		t.Skip("no section knobs")
 	}
-	k := dv.instEditorKnobs[sec.knobIdxs[0]]
+	k := dv.instEditorControls[sec.knobIdxs[0]]
 	if k.Rect().Empty() {
 		t.Fatalf("first ParamCard not laid out")
 	}

@@ -23,7 +23,13 @@ type PortalEntry struct {
 	// Scrim dims the whole screen beneath this overlay (colScrim). Menus,
 	// pickers and popups set it so modality is visible; docked tool panels
 	// (FX panel) leave it off because the user interacts around them.
-	Scrim   bool
+	Scrim bool
+	// Passive marks an overlay that never owns input: it is a display-only hint
+	// (tooltips) that must NOT close on an outside press or make the out-of-tree
+	// grid/camera handlers stand down. Every INTERACTIVE overlay (menus, popups,
+	// dropdowns, the docked FX panel) leaves this false so an outside tap closes
+	// it and is consumed rather than leaking to the surface below. See OwnsInput.
+	Passive bool
 	Anchor  image.Rectangle
 	OnClose func() // called when the portal removes this entry
 }
@@ -170,6 +176,24 @@ func (p *OverlayPortal) HasBlocking() bool {
 	}
 	for _, e := range p.stack {
 		if e.Modal || e.Scrim {
+			return true
+		}
+	}
+	return false
+}
+
+// OwnsInput reports whether any open overlay is INTERACTIVE (not Passive) and so
+// currently owns pointer input. It is the single source of truth for "an overlay
+// is up, so an outside press must close it rather than act on the surface below"
+// — a superset of HasBlocking that also covers non-blocking interactive overlays
+// (the docked FX panel, the EQ channel dropdown). Passive tooltips are excluded.
+// Nil-safe.
+func (p *OverlayPortal) OwnsInput() bool {
+	if p == nil {
+		return false
+	}
+	for _, e := range p.stack {
+		if !e.Passive {
 			return true
 		}
 	}

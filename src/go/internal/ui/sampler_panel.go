@@ -13,6 +13,14 @@ package ui
 // existing sampler tests continue to drive the panel through DrumView unchanged.
 type samplerPanel struct {
 	dv *DrumView // back-reference (replaced by a SamplerHost interface in Rung B)
+
+	// Persistent mobile action buttons hosted on the sticky bar (Approach B):
+	// [Preview][Save][⋯]. Mirror the Synth tab's mobile cluster. The tag-based
+	// samplerButtons (Rev/Norm/Fade etc.) stay in-panel; these are separate so
+	// the two owners never fight over the same button's rect.
+	mobilePreviewBtn  *Button
+	mobileSaveBtn     *Button
+	mobileOverflowBtn *Button
 }
 
 // sp returns the DrumView's sampler panel, lazily creating it if absent. The

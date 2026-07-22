@@ -66,7 +66,7 @@ func reportKick(tag string, buf []float32, sr int) {
 // change at which time". Run: go test -run TestKickSegmentReport -v ./internal/audio/
 func TestKickSegmentReport(t *testing.T) {
 	const sr = 44100
-	ref := decodeRefAt(t, "../../../../36010__sandyrb__dnb-kick-003.wav", sr)
+	ref := decodeRefAt(t, wavRefOrSkip(t, "36010__sandyrb__dnb-kick-003.wav"), sr)
 	buf, _ := RenderInstrumentOneShotRaw("kick-acoustic")
 	syn := peakNorm(f32toF64(buf))
 
@@ -148,7 +148,7 @@ func TestKick808Tune(t *testing.T) {
 
 func TestKickAcousticTune(t *testing.T) {
 	const sr = 44100
-	ref := decodeRefAt(t, "../../../../36010__sandyrb__dnb-kick-003.wav", sr)
+	ref := decodeRefAt(t, wavRefOrSkip(t, "36010__sandyrb__dnb-kick-003.wav"), sr)
 	samples := len(ref)
 	refFP := fingerprint.KickAnalyze(wave.Wave{Samples: ref, SampleRate: sr})
 	analyzeKick(ref, sr).print("REF sandyrb-dnb (acoustic target)")

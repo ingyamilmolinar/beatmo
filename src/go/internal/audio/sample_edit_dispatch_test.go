@@ -124,7 +124,7 @@ func TestSampleEditDispatch_DescriptorChangeMissesCache(t *testing.T) {
 // This test used to assert the OPPOSITE (that SetSampleEdit invalidates). That
 // blanket clear dropped every pitch's entry, so each following note cold-rendered
 // ~24ms+ ON the audioLoop dispatch goroutine — measured at 30-44 dispatch renders
-// per sampler edit, ~8x a synth-knob drag. It is the same storm SetInstrumentParam
+// per sampler edit, ~8x a synth-control drag. It is the same storm SetInstrumentParam
 // was fixed to avoid; see the NOTE at synth_recipe.go:256-267 and its retargeted
 // test TestSetInstrumentParam_DoesNotBlanketInvalidate.
 //

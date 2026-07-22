@@ -34,13 +34,11 @@ func setupMobileSamplerTab(t *testing.T, w, h int) *Game {
 	return g
 }
 
-// TestSamplerMobileActionsAlwaysVisibleNoTruncation — to match the Synth
-// tab, the Sampler tab's mobile button rows must show EVERY button as a
-// directly-tappable, untruncated control: the Rev/Norm/Fade toggles AND the
-// Preview/Save/Save As/Reset actions. Previously all seven were crammed into
-// one clamped row, truncating the tail (Save / Save As / Reset). Verified in
-// every supported language.
-func TestSamplerMobileActionsAlwaysVisibleNoTruncation(t *testing.T) {
+// TestSamplerMobileTogglesInPanelActionsOnStickyBar — on mobile the Sampler tab
+// keeps ONLY the Rev/Norm/Fade transforms row in-panel; the Preview/Save/Save
+// As/Reset actions relocate to the sticky bar (Approach B), so the in-panel
+// action buttons have empty rects. Verified in every supported language.
+func TestSamplerMobileTogglesInPanelActionsOnStickyBar(t *testing.T) {
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {
 		t.Run(string(loc), func(t *testing.T) {
 			i18n.SetLocale(loc)
@@ -49,25 +47,63 @@ func TestSamplerMobileActionsAlwaysVisibleNoTruncation(t *testing.T) {
 			g := setupMobileSamplerTab(t, 360, 760)
 			dv := g.drum
 
-			tags := []string{
-				"sampler-reverse", "sampler-normalize", "sampler-fade",
-				"sampler-preview", "sampler-save", "sampler-save-as", "sampler-reset",
-			}
-			for _, tag := range tags {
+			// Transforms row stays in-panel: visible + untruncated.
+			for _, tag := range []string{"sampler-reverse", "sampler-normalize", "sampler-fade"} {
 				b := dv.samplerButtonByTag(tag)
 				if b == nil {
 					t.Errorf("%s: button missing", tag)
 					continue
 				}
-				r := b.Rect()
-				if r.Empty() {
-					t.Errorf("%s: empty rect (not visible)", tag)
+				if b.Rect().Empty() {
+					t.Errorf("%s: empty rect (transforms row must stay in-panel)", tag)
 					continue
 				}
-				if r.Dx() < TextWidth(b.Text) {
-					t.Errorf("%s: width %d < label %q width %d (truncated)", tag, r.Dx(), b.Text, TextWidth(b.Text))
+				if b.Rect().Dx() < TextWidth(b.Text) {
+					t.Errorf("%s: width %d < label %q width %d (truncated)", tag, b.Rect().Dx(), b.Text, TextWidth(b.Text))
 				}
 			}
+
+			// Action buttons relocated off-panel: their in-panel rects are empty.
+			for _, tag := range []string{"sampler-preview", "sampler-save", "sampler-save-as", "sampler-reset"} {
+				if b := dv.samplerButtonByTag(tag); b != nil && !b.Rect().Empty() {
+					t.Errorf("%s: still laid out in-panel on mobile (should be on the sticky bar)", tag)
+				}
+			}
+
+			// The sticky-bar cluster is [Preview][Save][⋯].
+			actions := dv.samplerPanelMobileActions()
+			if len(actions) != 3 {
+				t.Fatalf("want 3 sticky-bar actions, got %d", len(actions))
+			}
+			if actions[2].Icon != string(IconOverflow) {
+				t.Errorf("third action must be the ⋯ overflow, got icon %q", actions[2].Icon)
+			}
 		})
+	}
+}
+
+// TestSamplerMobileOverflowMenuHasSaveAsReset — the Sampler ⋯ overflow opens the
+// shared menu with Save As… and a destructive Reset.
+func TestSamplerMobileOverflowMenuHasSaveAsReset(t *testing.T) {
+	g := setupMobileSamplerTab(t, 360, 760)
+	actions := g.drum.samplerPanelMobileActions()
+	if len(actions) != 3 || actions[2].OnClick == nil {
+		t.Fatalf("overflow button missing its OnClick")
+	}
+	actions[2].OnClick()
+
+	m := g.drum.actionMenu
+	if m == nil || !m.IsOpen() {
+		t.Fatal("overflow tap did not open the action menu")
+	}
+	items := m.Buttons()
+	if len(items) != 2 {
+		t.Fatalf("want 2 menu items (Save As / Reset), got %d", len(items))
+	}
+	if items[0].Text != i18n.T(i18n.KeySaveAs) || items[1].Text != i18n.T(i18n.KeyReset) {
+		t.Errorf("items = [%q,%q], want [Save As, Reset]", items[0].Text, items[1].Text)
+	}
+	if items[1].TextColor != colError {
+		t.Errorf("Reset item must use the destructive/error color")
 	}
 }

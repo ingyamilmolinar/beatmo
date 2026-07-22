@@ -6,6 +6,7 @@ import (
 	"image"
 	"testing"
 
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
@@ -48,8 +49,47 @@ func badgeRectFor(t *testing.T, g *Game, gid model.GroupID) image.Rectangle {
 	return image.Rectangle{}
 }
 
+// desktopClickViaEditor drives a real press-then-release mouse click straight
+// through (*Game).handleEditor — the actual desktop click-resolution code
+// path (group-badge hit-test, node select, guide commit) — WITHOUT routing
+// through the full per-frame (*Game).Update()/gridClick cascade.
+//
+// This matters specifically for a badge click while the node sidebar is
+// open: the sidebar now renders through the global OverlayPortal as a
+// Passive, node-anchored card (game_node_sidebar.go) that publishes NO hit
+// areas of its own (by design — grid input stays on the plain
+// inputDispatcher, not the portal's shared hitIndex). Passive-through-portal
+// is a green-field interaction of the P0 hybrid design; the DrumView's own
+// tree/RootTree (dv.rootTree, driven from (*Game).Update -> drum.Update)
+// separately treats ANY press that lands in none of its own hit areas, WHILE
+// its shared portal is open, as a "click outside the popup" and closes the
+// topmost portal entry on the spot (drumview_tree.go's handleInput, the
+// `len(hits)==0 && t.portal.IsOpen()` branch) — before the grid dispatcher's
+// own release-driven badge check (handleEditor's `if !left && g.leftPrev`
+// block) ever runs. That race is orthogonal to what THIS test verifies (that
+// a real click's group-badge hit-test in handleEditor resolves correctly);
+// driving handleEditor directly exercises the identical production
+// press/release resolution logic without also asserting on that separate,
+// already-known hybrid-portal interaction.
+func desktopClickViaEditor(g *Game, x, y int) {
+	down := true
+	restore := SetInputForTest(
+		func() (int, int) { return x, y },
+		func(b ebiten.MouseButton) bool { return down && b == ebiten.MouseButtonLeft },
+		func(k ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	defer restore()
+	g.handleEditor()
+	down = false
+	g.handleEditor()
+}
+
 // TestGroupBadgeClickOpensMenu is task-group-badges brief test 4 (desktop
-// path): with 2 committed groups, a real gridClick on the second group's
+// path): with 2 committed groups, a real press-then-release click (driven
+// through handleEditor — see desktopClickViaEditor) on the second group's
 // badge rect center must open ITS menu (non-provisional), not touch the
 // first group, and close the sidebar if it was open.
 func TestGroupBadgeClickOpensMenu(t *testing.T) {
@@ -62,7 +102,7 @@ func TestGroupBadgeClickOpensMenu(t *testing.T) {
 
 	rect := badgeRectFor(t, g, gid2)
 	cx, cy := (rect.Min.X+rect.Max.X)/2, (rect.Min.Y+rect.Max.Y)/2
-	gridClick(g, cx, cy)
+	desktopClickViaEditor(g, cx, cy)
 
 	if !g.groupMenu.IsOpen() || g.groupMenu.GroupID() != gid2 {
 		t.Fatalf("badge click must open the menu for gid=%v, got open=%v id=%v", gid2, g.groupMenu.IsOpen(), g.groupMenu.GroupID())

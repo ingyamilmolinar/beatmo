@@ -170,7 +170,9 @@ func TestOverflowMenuTapInjectionWithOpenMenu(t *testing.T) {
 		t.Skip("overflow popup rect empty")
 	}
 
-	// Get a position inside the popup.
+	// A position inside the popup, on a header/row that routes through the
+	// shared MenuScroll deferred-tap mechanism this test exercises. (The
+	// overflow menu is file-only now; the nav menu is a separate portal.)
 	px := popupRect.Min.X + popupRect.Dx()/2
 	py := popupRect.Min.Y + 5
 

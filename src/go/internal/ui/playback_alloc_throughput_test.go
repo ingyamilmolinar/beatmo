@@ -171,7 +171,7 @@ func dumpAllocBreakdown(t *testing.T, totalAlloc uint64, imageAllocs int64, fram
 		t.Logf("  %-44s  %6d  (%.3f/frame)", pairs[i].tag, pairs[i].count, perFrame)
 	}
 	if len(pairs) == 0 {
-		t.Logf("  (no tracked image allocations — leak is not in tracked allocators; "+
+		t.Logf("  (no tracked image allocations — leak is not in tracked allocators; " +
 			"check untagged ebiten.NewImage callsites or non-image allocators)")
 	}
 	t.Logf("=== end alloc breakdown ===")

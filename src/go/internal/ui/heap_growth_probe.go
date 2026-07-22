@@ -35,9 +35,9 @@ var heapWatchEnabled = heapProbeEnabled ||
 const heapProbeRingSize = 60 // ~1 minute of 1-second samples
 
 type heapProbeSample struct {
-	frame      int64
-	heapAlloc  uint64
-	totalAlloc uint64
+	frame       int64
+	heapAlloc   uint64
+	totalAlloc  uint64
 	imagesByTag string
 }
 
@@ -57,13 +57,13 @@ var heapProbe = &heapProbeState{
 // rollup WARN. Independent of heapProbeState so the two can be gated
 // separately and one's reset doesn't perturb the other.
 type heapWatchState struct {
-	mu             sync.Mutex
-	windowFrame    int64  // frame at which the window started
-	windowHeap     uint64 // HeapAlloc at window start
-	windowTotal    uint64 // TotalAlloc at window start
-	windowBridge   uint64 // analyzer bridge calls at window start
-	windowReads    uint64 // analyzer bridge element reads at window start
-	lastEmitFrame  int64
+	mu            sync.Mutex
+	windowFrame   int64  // frame at which the window started
+	windowHeap    uint64 // HeapAlloc at window start
+	windowTotal   uint64 // TotalAlloc at window start
+	windowBridge  uint64 // analyzer bridge calls at window start
+	windowReads   uint64 // analyzer bridge element reads at window start
+	lastEmitFrame int64
 }
 
 var heapWatch = &heapWatchState{}

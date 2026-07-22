@@ -9,12 +9,12 @@ import (
 
 // TestMobileTransportPillRectsArePopulated asserts the structural
 // preconditions for the cluster pills on mobile:
-// - the transport-cluster pill rect (play+stop+record) is non-empty
-//   and contains all three of those button rects;
-// - the BPM pill rect contains the BPM input box and both ± buttons;
-// - the subdivision button rect (which gets its own surface-2 pill via
-//   drawSubdivPillOffset) is non-empty and lives in the right portion of
-//   the transport row.
+//   - the transport-cluster pill rect (play+stop+record) is non-empty
+//     and contains all three of those button rects;
+//   - the BPM pill rect contains the BPM input box and both ± buttons;
+//   - the subdivision button rect (which gets its own surface-2 pill via
+//     drawSubdivPillOffset) is non-empty and lives in the right portion of
+//     the transport row.
 //
 // Pixel-level verification of the surface-2 fill color is left to the
 // regenerated mobile screenshot baseline; ebitenstub does not support
@@ -80,8 +80,5 @@ func TestMobileTransportPillRectsArePopulated(t *testing.T) {
 	}
 	if z.viewSwitchBtn != nil && !z.viewSwitchBtn.Rect().Empty() {
 		t.Errorf("viewSwitchBtn rect should be empty on mobile (segmented replaces it); got %v", z.viewSwitchBtn.Rect())
-	}
-	if z.overflowBtn != nil && z.overflowBtn.Rect().Empty() {
-		t.Errorf("overflowBtn rect should be non-empty after zone.Layout on mobile (Theme 4 places it in top toolbar)")
 	}
 }

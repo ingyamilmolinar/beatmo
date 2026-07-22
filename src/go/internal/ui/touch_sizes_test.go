@@ -192,12 +192,6 @@ func TestMobileTransportButtons_AtTouchMin(t *testing.T) {
 			}
 			return tz.viewSwitchBtn.Rect()
 		}},
-		{"overflowBtn", func() image.Rectangle {
-			if tz.overflowBtn == nil {
-				return image.Rectangle{}
-			}
-			return tz.overflowBtn.Rect()
-		}},
 		{"mainVolIcon", func() image.Rectangle { return tz.mainVolIconRect }},
 		{"bpmIncBtn", func() image.Rectangle { return tz.bpmIncBtn.Rect() }},
 		{"bpmDecBtn", func() image.Rectangle { return tz.bpmDecBtn.Rect() }},

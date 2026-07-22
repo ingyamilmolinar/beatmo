@@ -8,39 +8,14 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// tickMenuScrollCooldowns advances the wheel-step cooldown clock for every
-// scrollable menu once per frame. This is what makes MenuScroll.HandleWheel (and
-// the raw-ScrollBehavior context / EQ-channel dropdowns) clicky rather than
-// permanently locked after the first notch — the single chokepoint mirroring the
-// row rack's z.rowScroll.TickStep(). Ticking a closed menu is a cheap no-op.
-func (dv *DrumView) tickMenuScrollCooldowns() {
-	if dv.overflowMenuScroll != nil {
-		dv.overflowMenuScroll.TickStep()
-	}
-	if dv.contextMenuScroll != nil {
-		dv.contextMenuScroll.TickStep()
-	}
-	if dv.subdivMenuComp != nil && dv.subdivMenuComp.menuScroll != nil {
-		dv.subdivMenuComp.menuScroll.TickStep()
-	}
-	if dv.instMenuComp != nil && dv.instMenuComp.menuScroll != nil {
-		dv.instMenuComp.menuScroll.TickStep()
-	}
-	if dv.eqPanelZone != nil && dv.eqPanelZone.channelScroll != nil {
-		dv.eqPanelZone.channelScroll.TickStep()
-	}
-}
-
 func (dv *DrumView) Update() {
+	// Advance the shared mobile tap-debounce clock once per frame, before the
+	// early-out so the window keeps ticking even with no rows.
+	dv.tapGate.advance()
+
 	if len(dv.Rows) == 0 {
 		return
 	}
-
-	// Advance the per-frame wheel cooldown clock for every scrollable menu so
-	// their clicky one-item-per-notch pacing releases after the cooldown (see
-	// MenuScroll.HandleWheel). Cheap no-op when no cooldown is pending; safe to
-	// tick while a menu is closed.
-	dv.tickMenuScrollCooldowns()
 
 	// Synth-tab Save As dialog poll. Runs ahead of the tree so the
 	// TextInput can claim Enter/Escape before the tree's portal-close
@@ -145,6 +120,10 @@ func (dv *DrumView) Update() {
 		}
 	}
 
+	// Portable single-instrument import (*.beatmo-inst.json), applied on the UI
+	// goroutine.
+	dv.drainInstrumentImport()
+
 	if dv.uploading {
 		select {
 		case res := <-dv.uploadCh:
@@ -212,6 +191,11 @@ func (dv *DrumView) Update() {
 	// Read wheel delta once at start of frame. The tree dispatches wheel
 	// events to portal overlays; this value is used by the row scroll fallback.
 	wheelSteps := wheelScrollSteps()
+
+	// The NAVIGATION panel's go-to-beat/go-to-time editor is now owned by the
+	// nav-menu portal component and ticked via that portal's per-frame update
+	// hook (compPortalOverlay.updateFn → navMenuComp.Update), so no
+	// DrumView-level tick is needed here.
 
 	// ─── POPUP INPUT GUARD ───
 	// All popup/overlay input is now dispatched through the portal/tree system.

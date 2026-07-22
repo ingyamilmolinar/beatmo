@@ -162,12 +162,12 @@ func TestSynthChipAdapterIsGlowTarget(t *testing.T) {
 	}
 }
 
-// TestSynthKnobCardAdapterIsGlowTarget pins that a Synth-tab param card
+// TestSynthControlCardAdapterIsGlowTarget pins that a Synth-tab param card
 // participates in the tree hover overlay: the whole card is the hover target
 // (a tap anywhere on it opens the value-wheel popup), so glowRect must
 // return the hit rect unchanged.
-func TestSynthKnobCardAdapterIsGlowTarget(t *testing.T) {
-	var gt glowTarget = &synthKnobHitAdapter{}
+func TestSynthControlCardAdapterIsGlowTarget(t *testing.T) {
+	var gt glowTarget = &synthControlHitAdapter{}
 	r := image.Rect(5, 5, 80, 50)
 	if got := gt.glowRect(0, 0, r); got != r {
 		t.Errorf("synth card glowRect = %v, want hit rect %v", got, r)
@@ -175,7 +175,7 @@ func TestSynthKnobCardAdapterIsGlowTarget(t *testing.T) {
 }
 
 // TestSamplerKnobCardAdapterIsGlowTarget mirrors
-// TestSynthKnobCardAdapterIsGlowTarget for the Sampler-tab param cards.
+// TestSynthControlCardAdapterIsGlowTarget for the Sampler-tab param cards.
 func TestSamplerKnobCardAdapterIsGlowTarget(t *testing.T) {
 	var gt glowTarget = &samplerKnobHitAdapter{}
 	r := image.Rect(5, 5, 80, 50)

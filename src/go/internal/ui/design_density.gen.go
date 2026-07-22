@@ -91,13 +91,13 @@ type densityValues struct {
 	SynthChipMinW          int // densities.synthChipMinW
 	SynthChipStripH        int // densities.synthChipStripH
 	SynthConceptVizH       int // densities.synthConceptVizH
+	SynthControlCaptionH   int // densities.synthControlCaptionH
+	SynthControlIdeal      int // densities.synthControlIdeal
+	SynthControlMin        int // densities.synthControlMin
 	SynthDetailHeaderH     int // densities.synthDetailHeaderH
 	SynthFocusGraphH       int // densities.synthFocusGraphH
 	SynthHeaderButtonH     int // densities.synthHeaderButtonH
 	SynthHeaderThumbW      int // densities.synthHeaderThumbW
-	SynthKnobCaptionH      int // densities.synthKnobCaptionH
-	SynthKnobIdeal         int // densities.synthKnobIdeal
-	SynthKnobMin           int // densities.synthKnobMin
 	SynthPreviewMinW       int // densities.synthPreviewMinW
 	SynthPreviewTargetW    int // densities.synthPreviewTargetW
 	SynthRightCardMinH     int // densities.synthRightCardMinH
@@ -188,13 +188,13 @@ var (
 		SynthChipMinW:          64,
 		SynthChipStripH:        34,
 		SynthConceptVizH:       50,
+		SynthControlCaptionH:   18,
+		SynthControlIdeal:      72,
+		SynthControlMin:        28,
 		SynthDetailHeaderH:     34,
 		SynthFocusGraphH:       120,
 		SynthHeaderButtonH:     28,
 		SynthHeaderThumbW:      120,
-		SynthKnobCaptionH:      18,
-		SynthKnobIdeal:         72,
-		SynthKnobMin:           28,
 		SynthPreviewMinW:       160,
 		SynthPreviewTargetW:    280,
 		SynthRightCardMinH:     40,
@@ -283,13 +283,13 @@ var (
 		SynthChipMinW:          56,
 		SynthChipStripH:        28,
 		SynthConceptVizH:       38,
+		SynthControlCaptionH:   14,
+		SynthControlIdeal:      56,
+		SynthControlMin:        24,
 		SynthDetailHeaderH:     28,
 		SynthFocusGraphH:       96,
 		SynthHeaderButtonH:     24,
 		SynthHeaderThumbW:      96,
-		SynthKnobCaptionH:      14,
-		SynthKnobIdeal:         56,
-		SynthKnobMin:           24,
 		SynthPreviewMinW:       140,
 		SynthPreviewTargetW:    240,
 		SynthRightCardMinH:     34,
@@ -378,13 +378,13 @@ var (
 		SynthChipMinW:          72,
 		SynthChipStripH:        40,
 		SynthConceptVizH:       58,
+		SynthControlCaptionH:   22,
+		SynthControlIdeal:      88,
+		SynthControlMin:        40,
 		SynthDetailHeaderH:     44,
 		SynthFocusGraphH:       140,
 		SynthHeaderButtonH:     44,
 		SynthHeaderThumbW:      80,
-		SynthKnobCaptionH:      22,
-		SynthKnobIdeal:         88,
-		SynthKnobMin:           40,
 		SynthPreviewMinW:       180,
 		SynthPreviewTargetW:    320,
 		SynthRightCardMinH:     44,

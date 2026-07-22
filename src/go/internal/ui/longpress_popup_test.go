@@ -9,6 +9,37 @@ import (
 	"github.com/ingyamilmolinar/beatmo/core/model"
 )
 
+// TestLongPressPopup_OutsidePressDismisses verifies the click-outside
+// pop-up contract: a fresh press (down-edge) landing outside the panel
+// dismisses the popup, matching every other pop-up in the app. The
+// slide-release gesture (hold-then-release on/off a button) is a distinct
+// path exercised by the other tests in this file and must remain unaffected.
+func TestLongPressPopup_OutsidePressDismisses(t *testing.T) {
+	g := newTestGameForUndo(t)
+	n := g.tryAddNode(3, 1, model.NodeTypeRegular)
+	g.updateBeatInfos()
+	sx1, sy1, _, _ := g.nodeScreenRect(n)
+	g.showLongPressPopup(n, int(sx1), int(sy1))
+	if !g.longPressPopup {
+		t.Fatal("popup should be open")
+	}
+
+	// A fresh press that lands OUTSIDE the panel dismisses it (click-outside).
+	outX, outY := g.longPressPopupRect.Min.X-40, g.longPressPopupRect.Min.Y-40
+	if outX < 0 {
+		outX = g.longPressPopupRect.Max.X + 40
+	}
+	if outY < 0 {
+		outY = g.longPressPopupRect.Max.Y + 40
+	}
+	g.leftPrev = false
+	g.updateLongPressPopup(outX, outY, true) // press-down outside
+
+	if g.longPressPopup {
+		t.Fatal("press outside the panel must dismiss the popup")
+	}
+}
+
 // TestLongPressPopupShowsOnNode verifies that a long-press on a node on a
 // small screen opens the quick-action popup with non-empty button rects.
 func TestLongPressPopupShowsOnNode(t *testing.T) {
@@ -344,6 +375,14 @@ func TestLongPressPopupNoCameraPan(t *testing.T) {
 	if !g.longPressPopup {
 		t.Fatal("popup should be open")
 	}
+	// In real usage the popup opens while the finger/button that triggered the
+	// long-press is still held down, so g.leftPrev is already true by the time
+	// the drag loop below starts. handleTouchLongPress is called directly here
+	// (bypassing Update()), so mirror that held-gesture invariant explicitly —
+	// otherwise the drag loop's first frame would look like a brand-new press
+	// (down-edge) and the outside-press dismiss (see updateLongPressPopup)
+	// would close the popup before the drag-vs-camera-pan assertion runs.
+	g.leftPrev = true
 
 	origOffX := g.cam.OffsetX
 	origOffY := g.cam.OffsetY

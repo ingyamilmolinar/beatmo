@@ -22,189 +22,111 @@ func configScrollBehavior(itemH, total, visible int) *ScrollBehavior {
 	return sb
 }
 
-// TestTickMenuScrollCooldowns_ReleasesEveryMenu proves the single per-frame
-// chokepoint (DrumView.tickMenuScrollCooldowns, called from DrumView.Update)
-// advances the wheel cooldown for EVERY scrollable menu — so all of them are
-// clicky the same way rather than one being permanently locked after its first
-// notch. Each menu's scroll is put into a cooldown, then released only after
-// controlGridScrollCooldownFrames ticks through the shared chokepoint.
-func TestTickMenuScrollCooldowns_ReleasesEveryMenu(t *testing.T) {
-	assertDefaultParityState(t)
-	g := New(testLogger)
-	t.Cleanup(g.CloseForTest)
-	g.Layout(640, 480)
-	dv := g.drum
-
-	// Populate every menu-scroll field with a scrollable list, exactly the two
-	// shapes production uses: MenuScroll (overflow/subdiv/instrument) and raw
-	// ScrollBehavior (context/EQ-dropdown). The comps are created by the ctor.
-	dv.overflowMenuScroll = NewMenuScroll(DropdownScrollbarStyle, 20)
-	dv.overflowMenuScroll.Configure(image.Rect(0, 0, 100, 100), 50, 5)
-	dv.contextMenuScroll = configScrollBehavior(20, 50, 5)
-	if dv.subdivMenuComp == nil {
-		t.Fatal("subdivMenuComp nil (expected ctor-created)")
+// flingAndSettle simulates a fast upward finger fling on a ScrollBehavior and
+// then runs momentum to rest. Returns the offset at finger-release, the offset
+// at rest, and how many frames of inertia elapsed. Content scrolls DOWN (First
+// grows) as the finger moves up.
+func flingAndSettle(sb *ScrollBehavior) (release, rest, frames int) {
+	sb.HandleTouchBegin(50, 90)
+	sb.HandleTouchMove(50, 60) // commits the vertical direction past the dead zone
+	sb.HandleTouchMove(50, 20) // builds velocity
+	release = sb.VS.First
+	sb.HandleTouchEnd()
+	for i := 0; i < 600 && sb.HasMomentum(); i++ {
+		sb.UpdateMomentum()
+		frames++
 	}
-	dv.subdivMenuComp.menuScroll = NewMenuScroll(DropdownScrollbarStyle, 20)
-	dv.subdivMenuComp.menuScroll.Configure(image.Rect(0, 0, 100, 100), 50, 5)
-	if dv.instMenuComp == nil {
-		t.Fatal("instMenuComp nil (expected ctor-created)")
-	}
-	dv.instMenuComp.menuScroll = NewMenuScroll(DropdownScrollbarStyle, 20)
-	dv.instMenuComp.menuScroll.Configure(image.Rect(0, 0, 100, 100), 50, 5)
-	if dv.eqPanelZone == nil {
-		t.Fatal("eqPanelZone nil (expected ctor-created)")
-	}
-	dv.eqPanelZone.channelScroll = configScrollBehavior(20, 50, 5)
-
-	// firstNotch drives one production-style wheel notch for each menu.
-	menuNotch := func(ms *MenuScroll) bool { return ms.HandleWheel(-3) }
-	sbNotch := func(sb *ScrollBehavior) bool { return sb.WheelStep(-3, controlGridScrollCooldownFrames) }
-
-	// Put every menu into a cooldown with its first notch (must move one item).
-	if !menuNotch(dv.overflowMenuScroll) || !sbNotch(dv.contextMenuScroll) ||
-		!menuNotch(dv.subdivMenuComp.menuScroll) || !menuNotch(dv.instMenuComp.menuScroll) ||
-		!sbNotch(dv.eqPanelZone.channelScroll) {
-		t.Fatal("first notch failed to move one of the menus")
-	}
-	// While in cooldown, a second notch is locked out for all of them.
-	if menuNotch(dv.overflowMenuScroll) || sbNotch(dv.contextMenuScroll) ||
-		menuNotch(dv.subdivMenuComp.menuScroll) || menuNotch(dv.instMenuComp.menuScroll) ||
-		sbNotch(dv.eqPanelZone.channelScroll) {
-		t.Fatal("a menu accepted a second notch during cooldown (not clicky)")
-	}
-	// Advance frames through the REAL chokepoint.
-	for i := 0; i < controlGridScrollCooldownFrames; i++ {
-		dv.tickMenuScrollCooldowns()
-	}
-	// Now every menu accepts exactly one more notch — the chokepoint released all.
-	for _, ok := range []bool{
-		menuNotch(dv.overflowMenuScroll), sbNotch(dv.contextMenuScroll),
-		menuNotch(dv.subdivMenuComp.menuScroll), menuNotch(dv.instMenuComp.menuScroll),
-		sbNotch(dv.eqPanelZone.channelScroll),
-	} {
-		if !ok {
-			t.Fatal("tickMenuScrollCooldowns did not release a menu's cooldown — it is not ticked by the shared chokepoint")
-		}
-	}
+	rest = sb.VS.First
+	return release, rest, frames
 }
 
-// TestAllMenuScrolls_ClickyCadenceIdentical proves every scrollable menu scrolls
-// with the EXACT same clicky cadence: one item per notch regardless of wheel
-// magnitude, then locked until controlGridScrollCooldownFrames frames elapse.
-// Each case mirrors the menu's real production wheel call and its scroll type.
-func TestAllMenuScrolls_ClickyCadenceIdentical(t *testing.T) {
-	newMenu := func() *MenuScroll {
+// TestAllMenuScrolls_SmoothCadenceIdentical proves every scrollable list menu
+// scrolls with the EXACT same smooth cadence — the instrument-menu feel — via the
+// shared engine: the wheel RESPECTS magnitude (a 3-step notch moves three items
+// in one event) and has NO per-notch cooldown lock (an immediately-following
+// notch moves again on the same frame). Each case drives the menu's real
+// production wheel call and its scroll type. (The row rack and synth control
+// grids deliberately keep the clicky WheelStep path — they are not list menus.)
+func TestAllMenuScrolls_SmoothCadenceIdentical(t *testing.T) {
+	menuCase := func() (func() bool, func() int) {
 		m := NewMenuScroll(DropdownScrollbarStyle, 20)
 		m.Configure(image.Rect(0, 0, 100, 100), 50, 5)
-		return m
-	}
-	menuCase := func() (func() bool, func(), func() int) {
-		m := newMenu()
 		return func() bool { return m.HandleWheel(-3) },
-			m.TickStep,
 			func() int { return m.ScrollBehavior().VS.First }
 	}
-	sbCase := func() (func() bool, func(), func() int) {
+	sbCase := func() (func() bool, func() int) {
 		sb := configScrollBehavior(20, 50, 5)
-		return func() bool { return sb.WheelStep(-3, controlGridScrollCooldownFrames) },
-			sb.TickStep,
+		return func() bool { return sb.HandleWheel(-3) },
 			func() int { return sb.VS.First }
 	}
 
-	cases := map[string]func() (func() bool, func(), func() int){
+	cases := map[string]func() (func() bool, func() int){
 		"overflow-template": menuCase, // MenuScroll.HandleWheel
 		"subdivision":       menuCase, // MenuScroll.HandleWheel
 		"instrument":        menuCase, // MenuScroll.HandleWheel
-		"context":           sbCase,   // ScrollBehavior.WheelStep
-		"eq-dropdown":       sbCase,   // ScrollBehavior.WheelStep
+		"context":           sbCase,   // ScrollBehavior.HandleWheel
+		"eq-dropdown":       sbCase,   // ScrollBehavior.HandleWheel
 	}
 
 	for name, mk := range cases {
 		t.Run(name, func(t *testing.T) {
-			notch, tick, first := mk()
-			// One big-magnitude notch → exactly one item.
-			if !notch() || first() != 1 {
-				t.Fatalf("%s: first notch moved to %d, want 1 (one item per notch)", name, first())
+			notch, first := mk()
+			// Magnitude respected: a three-step notch moves three items at once.
+			if !notch() || first() != 3 {
+				t.Fatalf("%s: first notch moved to %d, want 3 (magnitude respected)", name, first())
 			}
-			// Locked during cooldown.
-			if notch() || first() != 1 {
-				t.Fatalf("%s: accepted a notch during cooldown (First=%d) — not clicky", name, first())
-			}
-			// Release after exactly controlGridScrollCooldownFrames ticks.
-			for i := 0; i < controlGridScrollCooldownFrames-1; i++ {
-				tick()
-			}
-			if notch() || first() != 1 {
-				t.Fatalf("%s: released one tick too early (First=%d)", name, first())
-			}
-			tick() // the final tick that clears the cooldown
-			if !notch() || first() != 2 {
-				t.Fatalf("%s: did not release after %d ticks (First=%d)", name, controlGridScrollCooldownFrames, first())
+			// No cooldown lock: an immediately-following notch moves again.
+			if !notch() || first() != 6 {
+				t.Fatalf("%s: second notch moved to %d, want 6 (no cooldown lock)", name, first())
 			}
 		})
 	}
 }
 
-// TestAllMenuScrolls_ClickyCadenceIsFast proves the clicky wheel cadence is fast
-// enough that spinning the wheel scrolls a long list briskly. It complements
-// TestAllMenuScrolls_ClickyCadenceIdentical — which pins one-item-per-notch plus a
-// shared cooldown — by pinning the SPEED of that cooldown: over one second of
-// continuous wheel input (60 frames at 60 fps) every scrollable menu must advance
-// at least wantMin items. The old 14-frame cadence (~one item per quarter-second)
-// only reached 5 — "scrolling down takes forever"; a brisk-but-still-clicky cadence
-// clears wantMin with margin. Every menu drives its real production wheel path.
-func TestAllMenuScrolls_ClickyCadenceIsFast(t *testing.T) {
-	const frameBudget = 60 // one second at 60 fps
-	const wantMin = 25     // brisk cadence: 14 frames reaches 5, 6 frames 10, 3 frames 20
-
-	menuCase := func() (func() bool, func(), func() int) {
+// TestAllMenuScrolls_MomentumIdentical proves every scrollable list menu carries
+// touch-fling inertia the same way: a fast flick keeps scrolling after the finger
+// lifts (momentum advances the offset past its position at release, then decays to
+// rest). Each case uses the menu's real scroll type.
+func TestAllMenuScrolls_MomentumIdentical(t *testing.T) {
+	menuSB := func() *ScrollBehavior {
 		m := NewMenuScroll(DropdownScrollbarStyle, 20)
-		m.Configure(image.Rect(0, 0, 100, 100), 200, 5) // long list, never clamps in 60 frames
-		return func() bool { return m.HandleWheel(-3) },
-			m.TickStep,
-			func() int { return m.ScrollBehavior().VS.First }
+		m.Configure(image.Rect(0, 0, 100, 100), 200, 5)
+		return m.ScrollBehavior()
 	}
-	sbCase := func() (func() bool, func(), func() int) {
-		sb := configScrollBehavior(20, 200, 5)
-		return func() bool { return sb.WheelStep(-3, controlGridScrollCooldownFrames) },
-			sb.TickStep,
-			func() int { return sb.VS.First }
-	}
+	rawSB := func() *ScrollBehavior { return configScrollBehavior(20, 200, 5) }
 
-	cases := map[string]func() (func() bool, func(), func() int){
-		"overflow-template": menuCase, // MenuScroll.HandleWheel
-		"subdivision":       menuCase, // MenuScroll.HandleWheel
-		"instrument":        menuCase, // MenuScroll.HandleWheel
-		"context":           sbCase,   // ScrollBehavior.WheelStep
-		"eq-dropdown":       sbCase,   // ScrollBehavior.WheelStep
+	cases := map[string]func() *ScrollBehavior{
+		"overflow-template": menuSB,
+		"subdivision":       menuSB,
+		"instrument":        menuSB,
+		"context":           rawSB,
+		"eq-dropdown":       rawSB,
 	}
 
 	for name, mk := range cases {
 		t.Run(name, func(t *testing.T) {
-			notch, tick, first := mk()
-			// The user keeps the wheel spinning: one notch offered every frame,
-			// one cooldown tick per frame (the shared per-frame chokepoint).
-			for f := 0; f < frameBudget; f++ {
-				notch()
-				tick()
+			release, rest, frames := flingAndSettle(mk())
+			if frames == 0 {
+				t.Fatalf("%s: no momentum frames — a fling produced no inertia", name)
 			}
-			if got := first(); got < wantMin {
-				t.Fatalf("%s: %d frames of continuous wheel advanced only %d items, want >= %d "+
-					"(clicky cadence too slow — scrolling takes forever)", name, frameBudget, got, wantMin)
+			if rest <= release {
+				t.Fatalf("%s: momentum did not carry past release (release=%d rest=%d)", name, release, rest)
 			}
 		})
 	}
 }
 
-// TestMenuWheelDisciplineNoFastPath guards the "every menu scrolls the same
-// clicky way" guarantee against regression. The two raw-ScrollBehavior menus
-// (context menu, EQ-channel dropdown) must drive the wheel via WheelStep (clicky
-// + cooldown), NOT the magnitude-scaled ScrollBehavior.HandleWheel that let a
-// trackpad flick fly through the list. MenuScroll-based menus are safe because
-// MenuScroll.HandleWheel itself delegates to WheelStep (asserted below).
-func TestMenuWheelDisciplineNoFastPath(t *testing.T) {
+// TestMenuWheelDisciplineNoClickyPath guards the "every list menu scrolls the same
+// smooth way" guarantee against regression. The two raw-ScrollBehavior list menus
+// (context menu, EQ-channel dropdown) must drive the wheel via the smooth,
+// magnitude-respecting ScrollBehavior.HandleWheel — NOT the clicky WheelStep that
+// threw away wheel magnitude and cooldown-locked the list. The row rack and synth
+// control grids keep WheelStep by design, so the ban is scoped to the two
+// list-menu scroll fields. MenuScroll-based menus are covered by asserting
+// MenuScroll.HandleWheel delegates to the smooth sb.HandleWheel.
+func TestMenuWheelDisciplineNoClickyPath(t *testing.T) {
 	files, _ := filepath.Glob("*.go")
-	banned := regexp.MustCompile(`\b(contextMenuScroll|channelScroll)\.HandleWheel\(`)
+	banned := regexp.MustCompile(`\b(contextMenuScroll|channelScroll)\.WheelStep\(`)
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
 			continue
@@ -214,14 +136,14 @@ func TestMenuWheelDisciplineNoFastPath(t *testing.T) {
 			t.Fatal(err)
 		}
 		if loc := banned.FindIndex(b); loc != nil {
-			t.Errorf("%s: a raw-ScrollBehavior menu uses the fast magnitude HandleWheel (offset %d) — "+
-				"menus must scroll clicky via WheelStep(steps, controlGridScrollCooldownFrames)", f, loc[0])
+			t.Errorf("%s: a raw-ScrollBehavior list menu uses the clicky WheelStep (offset %d) — "+
+				"list menus must scroll smooth via ScrollBehavior.HandleWheel(steps)", f, loc[0])
 		}
 	}
 
-	// MenuScroll.HandleWheel must delegate to WheelStep so overflow/subdiv/inst
-	// stay clicky. If someone reverts it to sb.HandleWheel, those menus silently
-	// go fast again.
+	// MenuScroll.HandleWheel must delegate to the smooth sb.HandleWheel so
+	// overflow/subdiv/inst/logs stay smooth. If someone reverts it to WheelStep,
+	// those menus silently go clicky again.
 	src, err := os.ReadFile("menu_scroll.go")
 	if err != nil {
 		t.Fatal(err)
@@ -236,7 +158,7 @@ func TestMenuWheelDisciplineNoFastPath(t *testing.T) {
 		t.Fatal("could not bound MenuScroll.HandleWheel body")
 	}
 	fn := body[i : i+end]
-	if !strings.Contains(fn, "WheelStep(") || strings.Contains(fn, "sb.HandleWheel(") {
-		t.Errorf("MenuScroll.HandleWheel must delegate to sb.WheelStep (clicky), not sb.HandleWheel (fast). Body:\n%s", fn)
+	if !strings.Contains(fn, "sb.HandleWheel(") || strings.Contains(fn, "WheelStep(") {
+		t.Errorf("MenuScroll.HandleWheel must delegate to sb.HandleWheel (smooth), not sb.WheelStep (clicky). Body:\n%s", fn)
 	}
 }

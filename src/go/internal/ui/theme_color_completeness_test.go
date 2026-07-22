@@ -21,13 +21,13 @@ import (
 // color must be claimed somewhere, ratchet-style.
 //
 // Adding a new color to theme.go: pick one.
-//   1. Token-backed (preferred) — add the YAML entry to DESIGN.md and the
-//      mapping to design_md_drift_test.go's wantColors / rgbOnly. Then
-//      add the name to tokenBackedColorNames below.
-//   2. Untokenized (escape hatch) — add the name to untokenizedAllowlist
-//      with a one-line justification. Use this only when the value is a
-//      runtime-derived alpha composite, a platform-specific variant, or
-//      otherwise has no place in a Stitch-modeled component.
+//  1. Token-backed (preferred) — add the YAML entry to DESIGN.md and the
+//     mapping to design_md_drift_test.go's wantColors / rgbOnly. Then
+//     add the name to tokenBackedColorNames below.
+//  2. Untokenized (escape hatch) — add the name to untokenizedAllowlist
+//     with a one-line justification. Use this only when the value is a
+//     runtime-derived alpha composite, a platform-specific variant, or
+//     otherwise has no place in a Stitch-modeled component.
 func TestThemeColorsTokenized(t *testing.T) {
 	uiDir := findUIDir(t)
 	themePath := filepath.Join(uiDir, "theme.go")
@@ -118,16 +118,16 @@ func TestThemeColorsTokenized(t *testing.T) {
 // isColorLiteral reports whether expr declares a *new* color value. After
 // Phase 1 of the design-system refactor, color constants in theme.go come
 // in three shapes that introduce a color; all count:
-//   1. A `color.RGBA{...}` / `color.NRGBA{...}` composite literal — the
-//      original form, preserved for runtime alpha composites whose
-//      generated form would lose information.
-//   2. A bare identifier whose name starts with `genColor` — the Phase 1
-//      alias form, where a hand-named constant points directly at a
-//      generated token (e.g. `colAccent = genColorPrimary`).
-//   3. A call to one of the alpha-rebind helpers — `WithAlpha(c, a)`,
-//      `WithAlphaNRGBA(c, a)`, `WithAlphaFromColor(c, a)`. Phase B/C of
-//      the refactor migrated many `color.NRGBA{R, G, B, A}` literals to
-//      these helpers so the alpha picker is centralised in theme_tokens.go.
+//  1. A `color.RGBA{...}` / `color.NRGBA{...}` composite literal — the
+//     original form, preserved for runtime alpha composites whose
+//     generated form would lose information.
+//  2. A bare identifier whose name starts with `genColor` — the Phase 1
+//     alias form, where a hand-named constant points directly at a
+//     generated token (e.g. `colAccent = genColorPrimary`).
+//  3. A call to one of the alpha-rebind helpers — `WithAlpha(c, a)`,
+//     `WithAlphaNRGBA(c, a)`, `WithAlphaFromColor(c, a)`. Phase B/C of
+//     the refactor migrated many `color.NRGBA{R, G, B, A}` literals to
+//     these helpers so the alpha picker is centralised in theme_tokens.go.
 //
 // Bare-`col*` aliases (e.g. `colBPMBox = colSurface2`) are intentionally
 // NOT detected: they don't introduce a new color, they retag an existing
@@ -228,16 +228,16 @@ var untokenizedAllowlist = map[string]string{
 	// by isColorLiteral. They MUST NOT be added back to this allowlist.
 
 	// Accent / state aliases and runtime-alpha composites
-	"colAccentSubtle":  "primary at 20/255 alpha for fills — migrate to WithAlpha(TokenAccent(), AlphaFaint)",
-	"colPlayButton":    "desktop play-button fill — slightly richer green than success token; pinned for visual continuity",
-	"colStopButton":    "desktop stop-button fill — slightly richer red than error token; pinned for visual continuity",
-	"colDropdownEdge":  "accent at 50/255 alpha for dropdown borders — runtime alpha composite",
-	"colError":         "alias of colStopRed for error-text role — collapse",
+	"colAccentSubtle": "primary at 20/255 alpha for fills — migrate to WithAlpha(TokenAccent(), AlphaFaint)",
+	"colPlayButton":   "desktop play-button fill — slightly richer green than success token; pinned for visual continuity",
+	"colStopButton":   "desktop stop-button fill — slightly richer red than error token; pinned for visual continuity",
+	"colDropdownEdge": "accent at 50/255 alpha for dropdown borders — runtime alpha composite",
+	"colError":        "alias of colStopRed for error-text role — collapse",
 
 	// Splitter chrome — one sunset-gold handle color shared by desktop + mobile
 	// (the splitter-handle token). No DESIGN.md component slot.
-	"colSplitterHandle":        "splitter handle — sunset-gold touch affordance, shared desktop+mobile",
-	"colSplitterHandleHover":   "splitter handle hover — runtime brightening",
+	"colSplitterHandle":      "splitter handle — sunset-gold touch affordance, shared desktop+mobile",
+	"colSplitterHandleHover": "splitter handle hover — runtime brightening",
 
 	// Panel/scrim runtime alphas
 	"colPanelBorder": "panel border = border base at panel-border alpha (20/255)",
@@ -269,7 +269,6 @@ var untokenizedAllowlist = map[string]string{
 	"colEQFilterHandle":       "EQ filter handle — teal accent variant",
 	"colEQFilterHandleActive": "EQ filter handle active — brighter variant",
 	"colEQFilterLine":         "EQ filter band line — handle color at 60/255",
-
 
 	// Transport pill group
 	"colTransportDivider":     "transport divider — border base at 20/255",

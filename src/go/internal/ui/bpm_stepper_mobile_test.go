@@ -114,4 +114,3 @@ func TestBPMStepperMobile_IncrementsBPM(t *testing.T) {
 		t.Fatalf("expected bpm to increment after Inc click: before=%d after=%d", before, tz.bpm)
 	}
 }
-

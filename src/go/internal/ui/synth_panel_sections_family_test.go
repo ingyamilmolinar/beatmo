@@ -9,7 +9,7 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-// TestSynthSections_EveryGridKnobLandsInVisibleSection is the family-knob
+// TestSynthSections_EveryGridControlLandsInVisibleSection is the family-knob
 // visibility discipline for the native-deprecation migration: every grid-knob
 // ParamDef of every registered recipe must map (via sectionForParam) to a
 // section that is present in synthSectionOrderForSchema's order for that
@@ -20,14 +20,14 @@ import (
 // Introduced with the FM family knobs (fm_op*_ratio/_depth/_decay route to the
 // FM section, which the legacy bespoke 4-card order lacked); kept general so
 // every future family (kick/tom/snare/cymbal/bass) is covered automatically.
-// TestSynthSections_WaveKnobGetsVoiceCard locks the generator-type knob's
+// TestSynthSections_WaveControlGetsVoiceCard locks the generator-type knob's
 // placement under the Phase-8B unified layout: every recipe with a <family>_wave
 // knob presents it in the leading VOICE card — the per-instrument "what makes
 // this sound" section — labeled "Generator". The standardized OSC stage (the
 // modular oscillator) is a SEPARATE, enable-able stage that sits after VOICE;
 // the family generator picker is the instrument's own voice, so it belongs in
 // VOICE, which always leads the unified order.
-func TestSynthSections_WaveKnobGetsVoiceCard(t *testing.T) {
+func TestSynthSections_WaveControlGetsVoiceCard(t *testing.T) {
 	for id, reg := range audio.RecipeRegistrations() {
 		var waveDef *audio.ParamDef
 		for _, d := range reg.Params {
@@ -63,7 +63,7 @@ func TestSynthSections_WaveKnobGetsVoiceCard(t *testing.T) {
 	}
 }
 
-func TestSynthSections_EveryGridKnobLandsInVisibleSection(t *testing.T) {
+func TestSynthSections_EveryGridControlLandsInVisibleSection(t *testing.T) {
 	for id, reg := range audio.RecipeRegistrations() {
 		order := synthSectionOrderForSchema(reg.Params)
 		visible := map[synthSectionID]bool{}
@@ -72,7 +72,7 @@ func TestSynthSections_EveryGridKnobLandsInVisibleSection(t *testing.T) {
 		}
 		kickActive := schemaUsesKickStage(reg.Params)
 		for _, def := range reg.Params {
-			if !synthParamIsGridKnob(def) || synthKickParamHidden(kickActive, def) {
+			if !synthParamIsGridControl(def) || synthKickParamHidden(kickActive, def) {
 				continue
 			}
 			sec := sectionForParamDefIn(id, def)

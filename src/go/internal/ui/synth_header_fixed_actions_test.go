@@ -40,11 +40,12 @@ func setupMobileSynthTab(t *testing.T, w, h int) *Game {
 	return g
 }
 
-// TestSynthHeaderActionsAlwaysVisibleNoOverflow — the four synth header
-// actions (Preview / Save / Save As / Reset) must ALWAYS be laid out as
-// visible buttons on mobile, never collapsed behind an overflow (⋯)
-// chevron, and never truncated — in every supported language.
-func TestSynthHeaderActionsAlwaysVisibleNoOverflow(t *testing.T) {
+// TestSynthMobileActionsOnStickyBar — on mobile the Synth tab has NO in-panel
+// banner/action row: identity lives in the channel pill and the actions relocate
+// to the sticky bar as a [Preview][Save][⋯] cluster (Approach B). The overflow
+// (⋯) button carries the IconOverflow kebab; the in-panel SynthTabButtons no
+// longer contains the header actions.
+func TestSynthMobileActionsOnStickyBar(t *testing.T) {
 	for _, loc := range []i18n.Locale{i18n.LocaleEN, i18n.LocaleES} {
 		t.Run(string(loc), func(t *testing.T) {
 			i18n.SetLocale(loc)
@@ -52,36 +53,74 @@ func TestSynthHeaderActionsAlwaysVisibleNoOverflow(t *testing.T) {
 
 			g := setupMobileSynthTab(t, 360, 760)
 
-			want := map[string]bool{
-				synthPreviewButtonTag: false,
-				synthSaveButtonTag:    false,
-				synthSaveAsButtonTag:  false,
-				synthResetButtonTag:   false,
+			actions := g.drum.synthPanelMobileActions()
+			if len(actions) != 3 {
+				t.Fatalf("want 3 sticky-bar actions [Preview][Save][⋯], got %d", len(actions))
 			}
+			if actions[0].Text == "" || actions[1].Text == "" {
+				t.Errorf("Preview/Save buttons must carry a label; got %q / %q", actions[0].Text, actions[1].Text)
+			}
+			overflow := actions[2]
+			if overflow.Icon != string(IconOverflow) {
+				t.Errorf("third action must be the ⋯ overflow (IconOverflow), got icon %q text %q", overflow.Icon, overflow.Text)
+			}
+			// The sticky bar laid them out — every action has a real rect.
+			for i, b := range actions {
+				if b.Rect().Empty() {
+					t.Errorf("sticky-bar action %d has an empty rect (not laid out)", i)
+				}
+			}
+
+			// The old in-panel header actions are gone on mobile.
 			for _, b := range g.drum.SynthTabButtons() {
 				if b == nil {
 					continue
 				}
-				if b.Icon == string(IconOverflow) {
-					t.Fatalf("found an overflow (⋯) button on the synth header — the cascade must be gone")
-				}
-				if _, ok := want[b.Text]; ok {
-					if b.Rect().Empty() {
-						t.Errorf("action %q has an empty rect (not visible)", synthHeaderButtonLabel(b.Text))
-						continue
-					}
-					want[b.Text] = true
-					if label := synthHeaderButtonLabel(b.Text); TextWidth(label) > b.Rect().Dx() {
-						t.Errorf("action %q label width %d exceeds button width %d (truncated)",
-							label, TextWidth(label), b.Rect().Dx())
-					}
-				}
-			}
-			for tag, seen := range want {
-				if !seen {
-					t.Errorf("action %q is not laid out as a visible button on the mobile synth header", tag)
+				switch b.Text {
+				case synthActionLabel("preview"), synthActionLabel("save"),
+					synthActionLabel("save-as"), synthActionLabel("reset"):
+					t.Errorf("action %q still laid out in the in-panel synth header on mobile", b.Text)
 				}
 			}
 		})
+	}
+}
+
+// TestSynthMobileOverflowMenuHasSaveAsReset — tapping the ⋯ overflow opens the
+// shared action menu with Save As…, the portable Export/Import instrument
+// actions, and a destructive Reset (see instrumentActionMenuItems in
+// action_menu_open.go).
+func TestSynthMobileOverflowMenuHasSaveAsReset(t *testing.T) {
+	g := setupMobileSynthTab(t, 360, 760)
+	actions := g.drum.synthPanelMobileActions()
+	if len(actions) != 3 || actions[2].OnClick == nil {
+		t.Fatalf("overflow button missing its OnClick")
+	}
+	actions[2].OnClick() // open the menu
+
+	m := g.drum.actionMenu
+	if m == nil || !m.IsOpen() {
+		t.Fatal("overflow tap did not open the action menu")
+	}
+	items := m.Buttons()
+	// Save As · Export · Import · Reset (destructive), in that order.
+	wantLabels := []string{
+		i18n.T(i18n.KeySaveAs),
+		i18n.T(i18n.KeyMenuExport),
+		i18n.T(i18n.KeyMenuImport),
+		i18n.T(i18n.KeyReset),
+	}
+	if len(items) != len(wantLabels) {
+		t.Fatalf("want %d menu items (Save As / Export / Import / Reset), got %d",
+			len(wantLabels), len(items))
+	}
+	for i, want := range wantLabels {
+		if items[i].Text != want {
+			t.Errorf("item %d = %q, want %q", i, items[i].Text, want)
+		}
+	}
+	// Reset is the destructive action and must use the error color.
+	if items[len(items)-1].TextColor != colError {
+		t.Errorf("Reset item must use the destructive/error color")
 	}
 }

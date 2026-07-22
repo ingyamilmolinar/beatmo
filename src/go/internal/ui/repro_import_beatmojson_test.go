@@ -13,7 +13,9 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 )
 
-const reproBeatmoJSONPath = "/home/ymolinar/Repos/beatmo/beatmo.json"
+// Repo-relative so the throwaway repro is portable; skips when the local
+// beatmo.json export isn't present (it is not committed).
+const reproBeatmoJSONPath = "../../../../beatmo.json"
 
 func TestReproImportBeatmoJSON(t *testing.T) {
 	assertDefaultParityState(t)
@@ -24,7 +26,7 @@ func TestReproImportBeatmoJSON(t *testing.T) {
 
 	data, err := os.ReadFile(reproBeatmoJSONPath)
 	if err != nil {
-		t.Fatalf("read %s: %v", reproBeatmoJSONPath, err)
+		t.Skipf("repro file %s not present: %v", reproBeatmoJSONPath, err)
 	}
 	t.Logf("read %d bytes from %s", len(data), reproBeatmoJSONPath)
 

@@ -17,17 +17,15 @@ func synthHeaderForTest(t *testing.T, contentR image.Rectangle, inst, recipe str
 	return dv.instEditorHeader
 }
 
-// TestSynthHeaderCaptionFitsRect — the mobile caption-overflow bug: the
-// "inst — recipe" caption must be truncated to its captionRect so it never
-// runs under the Save/Save As/Reset buttons.
+// TestSynthHeaderCaptionFitsRect — the caption-overflow guard (desktop only; the
+// mobile header is gone — identity lives in the channel pill). The "inst —
+// recipe" caption must be truncated to its captionRect so it never runs under
+// the Save/Save As/Reset buttons.
 func TestSynthHeaderCaptionFitsRect(t *testing.T) {
-	forceSmallScreenForTest = true
-	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
-	UpdateProfile()
-	restore := SetDensityForTest(DensitySpacious)
+	restore := SetDensityForTest(DensityComfortable)
 	defer restore()
 
-	h := synthHeaderForTest(t, image.Rect(0, 0, 390, 200), "kick-1", "drum-kick-punchy-extra-long", true)
+	h := synthHeaderForTest(t, image.Rect(0, 0, 600, 200), "kick-1", "drum-kick-punchy-extra-long", false)
 	if h.captionRect.Dx() <= 0 {
 		t.Fatal("captionRect has no width")
 	}
@@ -57,29 +55,10 @@ func TestSynthHeaderButtonHeightFromDensity(t *testing.T) {
 	}
 }
 
-// TestSynthHeaderButtonsTouchMinMobile — at Spacious density (mobile) every
-// laid-out header button must meet the 44-px touch-min. The old hardcoded
-// 36-px mobile height violated this.
-func TestSynthHeaderButtonsTouchMinMobile(t *testing.T) {
-	forceSmallScreenForTest = true
-	t.Cleanup(func() { forceSmallScreenForTest = false; UpdateProfile() })
-	UpdateProfile()
-	restore := SetDensityForTest(DensitySpacious)
-	defer restore()
-
-	// Wide panel so no button collapses into the overflow chevron.
-	h := synthHeaderForTest(t, image.Rect(0, 0, 900, 200), "kick-1", "drum-kick", true)
-	minTarget := Profile().MinTarget
-	for name, r := range map[string]image.Rectangle{"save": h.saveRect, "saveAs": h.saveAsRect, "reset": h.resetRect} {
-		if r.Empty() {
-			t.Errorf("%s button empty on a wide mobile header (should fit)", name)
-			continue
-		}
-		if r.Dy() < minTarget {
-			t.Errorf("%s button height %d < touch-min %d", name, r.Dy(), minTarget)
-		}
-	}
-}
+// Mobile header touch-min is no longer a concern: on mobile the header actions
+// are gone (relocated to the sticky bar). The sticky-bar cluster's touch-min is
+// guarded by TestStickyBarTrailingActionsMobileTouchMin
+// (audio_sticky_bar_trailing_test.go).
 
 // TestSynthHeaderButtonsFitLabels — header buttons must be wide enough for
 // their labels (label-derived width, not fixed 64/72/84).

@@ -59,6 +59,7 @@ type ColorWheelComponent struct {
 	gridRect  image.Rectangle // body region (label gutter + cells)
 	cellsRect image.Rectangle // cell region (gridRect minus the left label gutter)
 	titleRect image.Rectangle // header region (title + close button)
+	hintRect  image.Rectangle // shade-direction caption band above the cells (empty if suppressed)
 	cellW     int             // cell width (for gap-tolerant hit mapping)
 	cellH     int             // cell height
 }
@@ -74,8 +75,41 @@ const (
 	colorSwatchPad     = 12 // panel inner padding
 	colorSwatchHeader  = 32 // header band (title + close)
 	colorSwatchCellMin = 40 // desktop minimum cell edge
-	colorRampLabelW    = 56 // left gutter width for family-name labels
+	colorRampLabelPad  = 12 // gap between the family label and the first swatch
+	colorRampLabelMin  = 32 // floor for the left gutter (guards a degenerate palette)
+	colorShadeHintH    = 15 // height of the "Light … Deep" shade-direction caption band
 )
+
+// colorShadeHintLeft / colorShadeHintRight are the end captions of the
+// shade-direction hint drawn above the swatch columns (columns run light→deep,
+// left→right). Words, not arrow glyphs (→ is a forbidden glyph in internal/ui).
+const (
+	colorShadeHintLeft  = "Light"
+	colorShadeHintRight = "Deep"
+)
+
+// labelGutterW returns the width of the left family-name gutter, sized to the
+// widest short family label at RoleCaption plus a fixed pad. Deriving the gutter
+// from the measured labels (instead of a fixed constant) guarantees every label
+// fits fully and never collides with the first swatch column, while keeping the
+// gutter as narrow as the names allow. Guard: TestColorPickerFamilyLabelsFitGutter.
+func (c *ColorWheelComponent) labelGutterW() int {
+	sw := c.swatches()
+	maxW := 0
+	for row := 0; row < colorSwatchRows; row++ {
+		first := row * colorSwatchCols
+		if first >= len(sw) {
+			break
+		}
+		if w := StyledTextWidth(colorFamilyDisplayLabel(sw[first].Name), RoleCaption); w > maxW {
+			maxW = w
+		}
+	}
+	if g := maxW + colorRampLabelPad; g > colorRampLabelMin {
+		return g
+	}
+	return colorRampLabelMin
+}
 
 // NewColorWheelComponent creates a new swatch-grid color picker component.
 func NewColorWheelComponent() *ColorWheelComponent {
@@ -158,15 +192,20 @@ func (c *ColorWheelComponent) rebuildWheel() {
 			availW = 360
 		}
 	}
-	// Solve cell edge from the available width. The left label gutter is fixed,
-	// so cells only consume the remainder:
-	// availW = 2*pad + labelW + cols*cell + (cols-1)*gap.
-	cellFromW := (availW - 2*colorSwatchPad - colorRampLabelW - (colorSwatchCols-1)*colorSwatchGap) / colorSwatchCols
+	// Left label gutter, sized to the widest family label (see labelGutterW).
+	gutter := c.labelGutterW()
+
+	// Solve cell edge from the available width. The left label gutter is fixed
+	// per-open, so cells only consume the remainder:
+	// availW = 2*pad + gutter + cols*cell + (cols-1)*gap.
+	cellFromW := (availW - 2*colorSwatchPad - gutter - (colorSwatchCols-1)*colorSwatchGap) / colorSwatchCols
 	cell := max(cellMin, cellFromW)
 
-	panelW := 2*colorSwatchPad + colorRampLabelW + colorSwatchCols*cell + (colorSwatchCols-1)*colorSwatchGap
+	panelW := 2*colorSwatchPad + gutter + colorSwatchCols*cell + (colorSwatchCols-1)*colorSwatchGap
 	gridH := colorSwatchRows*cell + (colorSwatchRows-1)*colorSwatchGap
-	panelH := colorSwatchHeader + colorSwatchPad + gridH + colorSwatchPad
+	// Reserve a slim band above the columns for the "Light … Deep" shade hint so
+	// the swatches keep their full size on a roomy panel.
+	panelH := colorSwatchHeader + colorSwatchPad + colorShadeHintH + gridH + colorSwatchPad
 
 	// Clamp the panel size to the container so it always fits fully inside
 	// Bounds (the rack), which keeps it inside the DrumView. The grid-cell
@@ -247,7 +286,7 @@ func (c *ColorWheelComponent) rebuildWheel() {
 	// Cell region = grid body minus the left label gutter. Cells are laid out
 	// and hit-tested over this rect (NOT gridRect) so the label gutter is never
 	// a hit area. rebuildWheel and pickColorAt MUST agree on cellsRect.
-	labelW := colorRampLabelW
+	labelW := gutter
 	if maxLabel := c.gridRect.Dx() / 2; labelW > maxLabel {
 		labelW = maxLabel
 	}
@@ -260,6 +299,21 @@ func (c *ColorWheelComponent) rebuildWheel() {
 		c.gridRect.Max.X,
 		c.gridRect.Max.Y,
 	)
+
+	// Carve the shade-direction hint band off the TOP of the cell region (over
+	// the columns only, so it never collides with the gutter labels). Suppressed
+	// when the panel is clamped so short that reserving it would starve the cells
+	// — tiny racks keep every swatch clickable, matching the header/pad guards.
+	c.hintRect = image.Rectangle{}
+	if c.cellsRect.Dy()-colorShadeHintH >= colorSwatchRows*20 {
+		c.hintRect = image.Rect(
+			c.cellsRect.Min.X,
+			c.cellsRect.Min.Y,
+			c.cellsRect.Max.X,
+			c.cellsRect.Min.Y+colorShadeHintH,
+		)
+		c.cellsRect.Min.Y += colorShadeHintH
+	}
 
 	// Final cell dimensions derived from the laid-out cell region so cells
 	// always fit inside cellsRect (handles any residual clamping).
@@ -288,14 +342,13 @@ func (c *ColorWheelComponent) rebuildWheel() {
 		c.cells = append(c.cells, swatchCell{rect: cellRect, col: s.RGBA})
 	}
 
-	// Close button inside the header (top-right) — sized via the shared
-	// closeButtonRect helper so it is consistent with every other pop-up.
-	cr := closeButtonRect(c.titleRect, SpaceXS)
-	c.closeBtn = NewButton("", PopupButtonStyle, func() { c.Close() })
-	c.closeBtn.Icon = "close"
-	c.closeBtn.IconColor = closeIconColor()
-	c.closeBtn.SetRect(cr)
-	c.closeBtn.ConsumeOnPress = true
+	// Close button inside the header (top-right) — desktop only, via the shared
+	// newPopupCloseButton helper (nil on mobile, where tap-away closes). Every
+	// draw/hit site already guards `if c.closeBtn != nil`.
+	c.closeBtn = newPopupCloseButton(func() { c.Close() })
+	if c.closeBtn != nil {
+		c.closeBtn.SetRect(closeButtonRect(c.titleRect, SpaceXS))
+	}
 }
 
 // pickColorAt returns the palette color for the point (x, y). A direct cell
@@ -393,16 +446,22 @@ func (c *ColorWheelComponent) HandleInput(x, y int, pressed bool) InputResult {
 	return InputIgnored
 }
 
+// stripShadeSuffix removes a trailing "-NNN" shade suffix from a swatch name,
+// yielding the hue-family key: "hot-pink-300" → "hot-pink".
+func stripShadeSuffix(name string) string {
+	if i := strings.LastIndex(name, "-"); i >= 0 {
+		if suffix := name[i+1:]; suffix != "" && isAllDigits(suffix) {
+			return name[:i]
+		}
+	}
+	return name
+}
+
 // familyLabelFromSwatchName derives a human-readable hue-family label from a
 // ramp swatch name by stripping the trailing "-NNN" shade suffix and
 // Title-Casing the hyphen-separated words: "hot-pink-300" → "Hot Pink".
 func familyLabelFromSwatchName(name string) string {
-	// Strip the trailing shade suffix ("-NNN") if the last segment is numeric.
-	if i := strings.LastIndex(name, "-"); i >= 0 {
-		if suffix := name[i+1:]; suffix != "" && isAllDigits(suffix) {
-			name = name[:i]
-		}
-	}
+	name = stripShadeSuffix(name)
 	words := strings.Split(name, "-")
 	for i, w := range words {
 		if w == "" {
@@ -415,6 +474,66 @@ func familyLabelFromSwatchName(name string) string {
 	return strings.Join(words, " ")
 }
 
+// colorFamilyShortLabels maps each hue-family key (the swatch name minus its
+// "-NNN" shade suffix) to a short, plain color name for the picker's left
+// gutter. Short names keep the gutter narrow — so it never wastes horizontal
+// space that belongs to the swatches — while staying instantly recognizable
+// (and kid-readable). Families absent here fall back to the Title-Cased derived
+// label (familyLabelFromSwatchName). Keep every value <= 6 runes; the fit is
+// guarded by TestColorPickerFamilyLabels{FitGutter,AreShort}.
+var colorFamilyShortLabels = map[string]string{
+	"sunset-gold":   "Gold",
+	"tangerine":     "Orange",
+	"hot-pink":      "Pink",
+	"orchid":        "Purple",
+	"electric-blue": "Blue",
+	"cyan":          "Cyan",
+	"mint":          "Mint",
+}
+
+// colorFamilyDisplayLabel returns the short label drawn in the left gutter for a
+// hue family, falling back to the Title-Cased derived name for any family not in
+// colorFamilyShortLabels.
+func colorFamilyDisplayLabel(swatchName string) string {
+	if short, ok := colorFamilyShortLabels[stripShadeSuffix(swatchName)]; ok {
+		return short
+	}
+	return familyLabelFromSwatchName(swatchName)
+}
+
+// canonicalSwatchNames maps each palette swatch (family + shade) to a canonical
+// human color name — the closest well-known name for that hue+shade. Surfaced in
+// the header readout so the user sees "Rose", not "#FF2D9E". Keyed by the full
+// swatch name; keep in sync with the palette (genInstrumentSwatches). Guard:
+// TestCanonicalColorNameForEverySwatch.
+var canonicalSwatchNames = map[string]string{
+	// Sunset Gold ramp (light → deep).
+	"sunset-gold-100": "Pale Gold", "sunset-gold-200": "Gold", "sunset-gold-300": "Amber", "sunset-gold-400": "Marigold", "sunset-gold-500": "Ochre",
+	// Tangerine ramp.
+	"tangerine-100": "Peach", "tangerine-200": "Apricot", "tangerine-300": "Tangerine", "tangerine-400": "Orange", "tangerine-500": "Burnt Orange",
+	// Hot Pink ramp.
+	"hot-pink-100": "Pink", "hot-pink-200": "Hot Pink", "hot-pink-300": "Rose", "hot-pink-400": "Magenta", "hot-pink-500": "Fuchsia",
+	// Orchid ramp.
+	"orchid-100": "Lavender", "orchid-200": "Orchid", "orchid-300": "Violet", "orchid-400": "Purple", "orchid-500": "Indigo",
+	// Electric Blue ramp.
+	"electric-blue-100": "Sky Blue", "electric-blue-200": "Cornflower", "electric-blue-300": "Azure", "electric-blue-400": "Royal Blue", "electric-blue-500": "Navy",
+	// Cyan ramp.
+	"cyan-100": "Ice", "cyan-200": "Aqua", "cyan-300": "Cyan", "cyan-400": "Teal", "cyan-500": "Deep Teal",
+	// Mint ramp.
+	"mint-100": "Mint", "mint-200": "Spring Green", "mint-300": "Emerald", "mint-400": "Green", "mint-500": "Forest Green",
+}
+
+// canonicalColorName returns a canonical, human color name for a specific swatch
+// (family + shade), e.g. "hot-pink-300" → "Rose". This is the name surfaced in
+// the header readout when that color is applied — a plain human name, never a
+// hex code. Swatches absent from the table fall back to the short family label.
+func canonicalColorName(swatchName string) string {
+	if n, ok := canonicalSwatchNames[swatchName]; ok {
+		return n
+	}
+	return colorFamilyDisplayLabel(swatchName)
+}
+
 func isAllDigits(s string) bool {
 	for _, r := range s {
 		if r < '0' || r > '9' {
@@ -422,6 +541,21 @@ func isAllDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+// selectedSwatchName returns the canonical name and color of the palette swatch
+// matching the row's currently-applied color, plus ok=false when the current
+// color is off-palette (or unset). Drives the header readout.
+func (c *ColorWheelComponent) selectedSwatchName() (string, color.Color, bool) {
+	if c.props.CurrentColor == nil {
+		return "", nil, false
+	}
+	for _, s := range c.swatches() {
+		if colorsEqualRGB(c.props.CurrentColor, s.RGBA) {
+			return canonicalColorName(s.Name), s.RGBA, true
+		}
+	}
+	return "", nil, false
 }
 
 // colorsEqualRGB reports whether two colors match on RGB (ignoring alpha).
@@ -443,11 +577,28 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 		return
 	}
 
-	// Panel chrome + unified menu title (shared drawMenuTitle, no swatch).
+	// Panel chrome + unified menu title. When the row's current color is on the
+	// palette, the header reads it back as a canonical name ("Rose") with a chip
+	// of that color — never a hex code; otherwise it shows the plain "Color" title.
 	drawPanel(dst, r)
 	drawMenuHeaderBand(dst, c.titleRect)
 	titleRect := image.Rect(c.titleRect.Min.X+colorSwatchPad, c.titleRect.Min.Y, c.titleRect.Max.X, c.titleRect.Max.Y)
-	drawMenuTitle(dst, titleRect, i18n.T(i18n.KeyMenuColor), nil)
+	title := i18n.T(i18n.KeyMenuColor)
+	var titleChip color.Color
+	if name, col, ok := c.selectedSwatchName(); ok {
+		title, titleChip = name, col
+	}
+	drawMenuTitle(dst, titleRect, title, titleChip)
+
+	// Shade-direction hint above the columns: "Light" at the light end (left),
+	// "Deep" at the deep end (right). Skipped when the band was suppressed.
+	if !c.hintRect.Empty() {
+		hh := StyledTextHeight(RoleMicro)
+		hy := c.hintRect.Min.Y + (c.hintRect.Dy()-hh)/2
+		DrawTextStyled(dst, colorShadeHintLeft, c.hintRect.Min.X, hy, RoleMicro, colTextSecondary)
+		rw := StyledTextWidth(colorShadeHintRight, RoleMicro)
+		DrawTextStyled(dst, colorShadeHintRight, c.hintRect.Max.X-rw, hy, RoleMicro, colTextSecondary)
+	}
 
 	// Family-name labels in the left gutter, vertically centered on each row.
 	sw := c.swatches()
@@ -457,7 +608,7 @@ func (c *ColorWheelComponent) Draw(dst *ebiten.Image) {
 		if first >= len(c.cells) || first >= len(sw) {
 			break
 		}
-		label := familyLabelFromSwatchName(sw[first].Name)
+		label := colorFamilyDisplayLabel(sw[first].Name)
 		cellRect := c.cells[first].rect
 		ly := cellRect.Min.Y + (cellRect.Dy()-lh)/2
 		DrawTextStyled(dst, label, c.gridRect.Min.X, ly, RoleCaption, colTextSecondary)
@@ -500,6 +651,32 @@ func (c *ColorWheelComponent) InputBounds() image.Rectangle {
 // WheelRect returns the current picker panel rectangle (for testing/debugging).
 func (c *ColorWheelComponent) WheelRect() image.Rectangle {
 	return c.bounds
+}
+
+// ShadeHintRect returns the shade-direction caption band rect (empty when the
+// panel is too short to host it). Test accessor.
+func (c *ColorWheelComponent) ShadeHintRect() image.Rectangle { return c.hintRect }
+
+// LabelGutterWidth returns the pixel width of the left family-name gutter (the
+// span between the grid body's left edge and the first swatch column). Test
+// accessor mirroring the geometry Draw uses to place labels.
+func (c *ColorWheelComponent) LabelGutterWidth() int {
+	return c.cellsRect.Min.X - c.gridRect.Min.X
+}
+
+// FamilyDisplayLabels returns the short family label drawn in the left gutter
+// for each visible ramp row (top→bottom). Test accessor.
+func (c *ColorWheelComponent) FamilyDisplayLabels() []string {
+	sw := c.swatches()
+	var out []string
+	for row := 0; row < colorSwatchRows; row++ {
+		first := row * colorSwatchCols
+		if first >= len(sw) {
+			break
+		}
+		out = append(out, colorFamilyDisplayLabel(sw[first].Name))
+	}
+	return out
 }
 
 // SwatchCells returns the laid-out swatch cell rects + colors (for testing).

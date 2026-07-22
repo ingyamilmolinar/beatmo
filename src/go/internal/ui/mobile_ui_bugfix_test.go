@@ -69,11 +69,8 @@ func TestMobileTransportButtonUniformWidth(t *testing.T) {
 	// uniform-width check becomes a 1-button no-op; skip it to avoid a false
 	// reference-width of 0 when the legacy button rect is empty.
 	//
-	// Instead, verify the overflow button has a non-empty rect on mobile
-	// (regression guard for the placement staying in the bottom bar).
-	if dv.overflowBtn() != nil && dv.overflowBtn().Rect().Empty() {
-		t.Errorf("overflowBtn rect empty on mobile — should be in bottom action bar")
-	}
+	// (The overflow/kebab button was removed — file options now open from the
+	// grid folder button.)
 
 	// BPM ± buttons render at full row height (matching play) on the
 	// mobile horizontal stepper. Regression guard for B1: prior layout

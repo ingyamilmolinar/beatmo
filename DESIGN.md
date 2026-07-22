@@ -272,12 +272,6 @@ colors:
   viz-pill-fill:   "#1C1230"
   viz-pill-border: "#8A7A9C"
 
-  # Tap-to-confirm buttons in the long-press popup — desaturated mint/rust
-  # pair, deliberately darker than the play/stop button colors so the
-  # in-canvas confirm doesn't compete with the transport bar.
-  viz-confirm-green: "#3FD67A"
-  viz-cancel-red:    "#E84A1F"
-
   # Splitter (divider line between top/bottom panes) — three desktop
   # shades plus a mobile hairline at panel-border alpha. The shadow/
   # highlight pair gives the divider a subtle 3D edge on desktop.
@@ -553,6 +547,7 @@ densities:
   compact:
     rowHeight:             32
     grabZone:               4
+    guideSnapRadius:       16
     minTarget:              0
     transportBtnSize:      28
     rowControlBtnSize:     24
@@ -585,9 +580,9 @@ densities:
     fxToggleTrackH:        14
     fxToggleThumbD:        12
     timelineBarH:          10
-    synthKnobMin:          24
-    synthKnobIdeal:        56
-    synthKnobCaptionH:     14
+    synthControlMin:          24
+    synthControlIdeal:        56
+    synthControlCaptionH:     14
     synthConceptVizH:      38
     synthFocusGraphH:      96
     synthRightCardMinH:    34
@@ -635,14 +630,18 @@ densities:
     spectrumBracketH:       8
     knobStepBadgeW:        38
     knobStepBadgeH:        16
-    mobileWheelW:         200
+    paramCardW:           128
+    paramCardH:            48
+    paramCardGaugeH:        3
+    mobileWheelW:         228
     mobileWheelH:         260
     mobileWheelTickGap:    30
-    mobileWheelResStripW:  36
+    mobileWheelResStripW:  64
     mobileWheelPillH:      34
   comfortable:
     rowHeight:             36
     grabZone:               5
+    guideSnapRadius:       20
     minTarget:              0
     transportBtnSize:      32
     rowControlBtnSize:     28
@@ -675,9 +674,9 @@ densities:
     fxToggleTrackH:        18
     fxToggleThumbD:        14
     timelineBarH:          12
-    synthKnobMin:          28
-    synthKnobIdeal:        72
-    synthKnobCaptionH:     18
+    synthControlMin:          28
+    synthControlIdeal:        72
+    synthControlCaptionH:     18
     synthConceptVizH:      50
     synthFocusGraphH:     120
     synthRightCardMinH:    40
@@ -725,14 +724,18 @@ densities:
     spectrumBracketH:      12
     knobStepBadgeW:        44
     knobStepBadgeH:        18
-    mobileWheelW:         220
+    paramCardW:           148
+    paramCardH:            56
+    paramCardGaugeH:        4
+    mobileWheelW:         252
     mobileWheelH:         300
     mobileWheelTickGap:    34
-    mobileWheelResStripW:  40
+    mobileWheelResStripW:  72
     mobileWheelPillH:      38
   spacious:
     rowHeight:             44
     grabZone:              16
+    guideSnapRadius:       28
     minTarget:             44
     transportBtnSize:      44
     rowControlBtnSize:     36
@@ -765,9 +768,9 @@ densities:
     fxToggleTrackH:        22
     fxToggleThumbD:        18
     timelineBarH:          14
-    synthKnobMin:          40
-    synthKnobIdeal:        88
-    synthKnobCaptionH:     22
+    synthControlMin:          40
+    synthControlIdeal:        88
+    synthControlCaptionH:     22
     synthConceptVizH:      58
     synthFocusGraphH:     140
     synthRightCardMinH:    44
@@ -815,10 +818,13 @@ densities:
     spectrumBracketH:      16
     knobStepBadgeW:        52
     knobStepBadgeH:        22
-    mobileWheelW:         240
+    paramCardW:           168
+    paramCardH:            64
+    paramCardGaugeH:        5
+    mobileWheelW:         276
     mobileWheelH:         340
     mobileWheelTickGap:    38
-    mobileWheelResStripW:  44
+    mobileWheelResStripW:  80
     mobileWheelPillH:      44
 typography:
   # Chrome text renders through the embedded Inter faces (Inter-SemiBold for
@@ -851,6 +857,11 @@ typography:
     fontSize: 12px
     fontWeight: 400
     lineHeight: 1.4
+  micro:
+    fontFamily: Inter
+    fontSize: 10px
+    fontWeight: 400
+    lineHeight: 1.2
   tooltip:
     fontFamily: Inter
     fontSize: 12px
@@ -871,6 +882,11 @@ spacing:
   icon-sm: 16px
   icon-md: 20px
   icon-lg: 24px
+  # Instrument-identity swatch scale (menu titles vs list rows). One pair
+  # replaces the historical 8/10px split so every "this color IS the
+  # instrument" chip reads at a legible size — see "Menu anatomy" prose.
+  swatch-sm: 10px
+  swatch-md: 12px
 rounded:
   xxs: 4px
   xs: 6px
@@ -1250,6 +1266,46 @@ components:
   context-menu-item-destructive:
     backgroundColor: "{colors.surface-overlay}"
     textColor: "{colors.error}"
+
+  # Menu search field — the shared list-menu search affordance (instrument
+  # picker + template page; one widget, byte-identical across menus). A
+  # leading IconSearch magnifier in on-surface-muted, query text at body,
+  # and a trailing clear-× (IconClose, on-surface-muted → on-surface on
+  # hover) rendered only while a query is non-empty. Focus keeps the
+  # hot-pink focus ring (see input-field-focused). See "Menu anatomy".
+  menu-search-field:
+    category: input
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.on-surface}"
+    iconColor: "{colors.on-surface-muted}"
+    border:
+      color: "{colors.border}"
+      alpha: border-default
+    rounded: "{rounded.sm}"
+
+  # Menu group header — non-interactive section row inside a long list
+  # menu (template genres; any future grouped list). Uppercase caption in
+  # muted text directly on the single panel surface (flat-menu doctrine —
+  # no container box); a hairline separator above carries the break.
+  menu-group-header:
+    category: decoration
+    backgroundColor: "{colors.surface-overlay}"
+    textColor: "{colors.on-surface-muted}"
+    typography: "{typography.caption}"
+
+  # FX effect card — one insert effect inside the per-row FX panel. The
+  # card body sits one surface level above the panel; the header band is
+  # tinted at draw time with the owning instrument's color at alpha.faint
+  # (instrument identity, never chrome accent). Disabled cards dim their
+  # content with a surface-level scrim at draw time.
+  fx-card:
+    category: container
+    backgroundColor: "{colors.surface-2}"
+    textColor: "{colors.on-surface}"
+    border:
+      color: "{colors.border}"
+      alpha: border-thin
+    rounded: "{rounded.sm}"
 
   # Record button (icon-only; semantic state colors)
   button-record-idle:
@@ -1790,13 +1846,29 @@ app collapses if any of them slips.
      - the **instrument picker** (owner = `CurrentInstrument`; each instrument
        *row* additionally shows its own per-id color, and the filled favorite
        star uses that instrument's color);
-     - the **node pop-up** — desktop sidebar (header band, section stripes,
-       expanded chevron/label, ± steppers) and mobile long-press (Move/Connect
-       hover) — owned by the node's row via `nodeRows` (*Delete* stays red).
+     - the **node pop-up** — desktop sidebar (header band underline, title
+       swatch, dropdown-item accent stripes + hover tints) and mobile
+       long-press (quick-action bar: Move/Copy/Connect/Delete, each an
+       icon+label keycap via `drawPopupActionCap` — `IconMove`/`IconCopy`/
+       `IconConnect`, hover tint on Move/Copy/Connect) — owned by the
+       node's row via `nodeRows` (*Delete* stays red);
+     - the **group menu + Groups section** — owned by the group's own color
+       via the same slots (header underline, title swatch, membership-chip
+       swatch + hover tint, grid rings/badges).
 
    Destructive **Delete / Remove** buttons keep the semantic red safety signal
    even inside instrument-colored menus; the instrument color drives
    highlights/accents, never the destructive role.
+
+   **Identity never fills a button face.** In every identity menu the
+   owning color appears only in the highlight slots named above — header
+   underline, title/row swatches, active stripes, hover tints, focus rings.
+   Button keycaps stay the neutral chrome recipe (`DropdownStyle` /
+   `button-secondary`); a face-filled colored button is reserved for the
+   semantic roles (destructive red, latched amber, per-row M/S/FX shading)
+   and is otherwise a bug. (2026-07-16: the node sidebar's 40% face tint
+   and the group menu's color-filled Save/chips were removed under this
+   rule.)
 
    No *chrome* surface uses the instrument color set. The chrome accents
    (sunset-gold + hot-pink focus ring), visualization tokens (viz golds / lime /
@@ -1893,20 +1965,68 @@ Six typography roles, each a token. The four chrome roles below map 1:1 to the
 `RoleCaption`); read them via `DrawTextStyled(dst, s, x, y, role, col)` and size
 layout with `StyledTextWidth` / `StyledTextHeight`:
 
-- **`panel-title`** (21 px, Inter SemiBold) — Inspector / FX large panel header.
-- **`section-header`** (16 px, Inter SemiBold) — Collapsible section labels **and
-  every menu title** (row context menu, node pop-up, overflow "File", color
-  picker). All menu titles share this one role + a leading instrument swatch
-  (rounded square, `menuTitleSwatchSz`) when scoped to an instrument — so title
-  font, size, color, and iconography are identical across menus. See the
-  "Menus are minimalist-flat" note under `components`.
+- **`panel-title`** (21 px, Inter SemiBold) — the **title** of a panel or card:
+  the Inspector / FX large panel header, and the three top-right grid-button
+  **cards** (Settings, Logs, File), which all render their title through the
+  shared `drawCardTitleIn` helper (left inset `cardContentPadX`) so the three
+  titles are pixel-identical in font, size, weight, colour, and placement.
+- **`section-header`** (16 px, Inter SemiBold) — a **subtitle / section label**:
+  labels that group controls inside a card ("Language", "Keyboard shortcuts"),
+  collapsible section labels, **and inline dropdown-menu titles** (row context
+  menu, color picker, node pop-up) via `drawMenuTitle` — which adds a leading
+  instrument swatch (rounded square, `menuTitleSwatchSz`) when scoped to an
+  instrument. Inline menu titles sit one step below a card title; the
+  grid-button **cards** use `panel-title` for their title. Never size a card's
+  section label equal to its own title — keep the Title > Section ladder. See
+  the "Menus are minimalist-flat" note under `components`.
 - **`body`** (14 px, Inter SemiBold) — Default labels, menu items, values.
 - **`button-label`** (16 px, Inter SemiBold) — Row controls, transport labels.
 - **`caption`** (12 px, Inter Regular) — Sub-labels, percentages, BPM number.
+- **`micro`** (10 px, Inter Regular, `RoleMicro`) — dense data-canvas labels
+  only: axis ticks, meter scales, cursor readouts, badge captions inside the
+  Wave/Spectrum/Levels/Chain/Synth canvases. Never for interactive chrome —
+  a control's label is `body`/`caption` minimum.
 - **`tooltip`** (12 px, Inter Regular) — Cursor labels, coordinates (desktop).
+
+**Text hierarchy — one strict ladder per surface.** Every card / panel reads
+top-down as **Title → Subtitle → Paragraph → Controls**, mapped to roles so the
+size steps are unambiguous and identical across surfaces:
+
+| Level | Role | Size / weight | Used for |
+|---|---|---|---|
+| **Title** | `panel-title` | 21 px SemiBold | Card / panel name — Settings, Logs, File, Inspector (via `drawCardTitleIn`) |
+| **Subtitle / section** | `section-header` | 16 px SemiBold | Section labels inside a card ("Language", "Keyboard shortcuts"); inline dropdown-menu titles |
+| **Paragraph / body** | `body` | 14 px SemiBold | Primary text — menu-item labels, values, the *term* of a term/definition row |
+| **Caption** | `caption` | 12 px Regular | Secondary text — the *definition* gloss, sub-labels, percentages, BPM |
+| **Button** | `button-label` | 16 px SemiBold | Text-bearing buttons (`Button.SetTextRole`) |
+
+Rules: (1) a surface never skips or reorders the ladder; (2) a section label is
+never the same size as its own card title; (3) new card text uses
+`DrawTextStyled` with the role — never the legacy `DrawTextColorAt` /
+`DrawTextAtScale` bitmap path, which renders a *different font at a different
+size* (exactly how the Logs title drifted smaller than Settings/File before the
+2026-07-22 card-consistency pass). The three grid-button cards (Settings / Logs
+/ File) share one title treatment (`drawCardTitleIn`) and one content inset
+(`cardContentPadX`) so they are interchangeable at a glance.
+
+**Audio-tab canvases use roles, not scale factors.** The legacy
+`DrawTextColorAtScale(..., captionScale/headlineScale/chain*Scale)` calls
+rasterized the bitmap debug font and scaled it — pixelated at every factor
+≠ 1. Data-canvas text maps as: scaled-down captions → `micro` (dense
+axis/tick labels) or `caption` (labels with room); body-size readouts →
+`body`; the big aggregate numbers (Levels HEADROOM) → `panel-title`.
+(2026-07-16 audio-tab typography migration.)
 
 Prefer the role API (`DrawTextStyled` + `StyledText{Width,Height}`) over the
 legacy `DrawTextAtScale` GeoM-upscale path for any new chrome text.
+
+**Buttons:** a text-bearing `Button` must call `Button.SetTextRole` (normally
+`RoleBody`) so its caption renders through the same styled path. The legacy
+default (`TextSprite` + `GeoM.Scale` via `TextScale`) rasterizes the bitmap
+debug font and **pixelates at any scale ≠ 1** — it survives only for
+untouched legacy call sites and is never correct for new chrome. (2026-07-16:
+the group menu's Save/rule/delete/chip captions moved onto `TextRole` after
+shipping upscaled-bitmap text next to smooth panel labels.)
 
 ## Layout
 
@@ -2020,7 +2140,26 @@ flat (no hover lift); it gets generous rounding instead.
    (`keycapHoverLiftAlpha`) over the hovered clickable control (buttons,
    text inputs like the BPM box, the volume icon/slider, and similar) that
    **eases in** when the cursor enters and **fades out** on leave, so the
-   lift glides rather than popping. NOT a rim, specular catch, or bloom —
+   lift glides rather than popping.
+
+   **Everything clickable hovers (2026-07-16).** The lift is not optional
+   chrome: any surface a click can activate — buttons, expandable section
+   headers, action rows, drill-in chips, pipeline stage chips, grid nodes —
+   must show a hover cue on desktop. Three sanctioned mechanisms, all
+   driven by the SAME `button-hover-fade` spring so the glide is identical
+   everywhere; do not hand-roll a fourth:
+   - **Tree-registered controls**: the `HitIndex`-driven overlay
+     (`hover_glow_overlay.go`) — implement `glowTarget` on the control's
+     hit adapter and the overlay lifts it for free.
+   - **Dispatcher-routed / hand-drawn surfaces** (node sidebar headers +
+     action rows, expand tab, …): the shared `hoverFade` animator
+     (`hover_fade.go`) + `drawButtonHoverGlow` at the surface's draw site.
+     `Button`s on a per-frame `HandleInputResult` cadence already hover via
+     their style's `interaction.hover` delta; flat menu rows hover via
+     `menuItemHover`.
+   - **Grid nodes** (data canvas): the firing bloom (`drawNodeBloom`) at
+     `nodeHoverGlowIntensity` (0.35) of trigger strength, eased by the same
+     spring — hover and trigger share one visual language. NOT a rim, specular catch, or bloom —
    just a quiet "this is reachable" brighten. It is a single per-frame
    **overlay** (`hover_glow_overlay.go`, drawn by `DrumViewTree.Draw` on
    top of all zones, beneath portals): each frame it asks the live
@@ -2268,6 +2407,15 @@ explicitly at button construction — never rely on the default. The
 corners (`rounded.xl`), drag handle pill at top, title row with
 `IconClose` top-right.
 
+**Menu placement — adjacent to trigger.** A popup menu opens adjacent to the
+control that triggered it, dropping below the trigger (flipping above when there
+is no room below), so the menu's visual origin is unambiguous. This applies to
+floating dropdown / context menus on both platforms. The mobile full-width
+bottom sheet remains the form for large modal menus, but even then it is invoked
+from — and reads as originating from — its trigger control. (Examples: the file
+menu drops from the grid folder button; the navigation menu drops from the
+beat/time counter.)
+
 **Context menu** — `{components.context-menu-item}`.
 
 - **Desktop:** floating panel, ~180 px wide, items stacked vertically.
@@ -2278,6 +2426,47 @@ corners (`rounded.xl`), drag handle pill at top, title row with
 - Destructive item: `{components.context-menu-item-destructive}` —
   `destructive` bg, `error` text, `IconTrash` leading icon.
 - Group separator: 1 px `border` (subtle alpha).
+
+**Confirm dialog** — `{components.confirm-dialog}` (`confirm_dialog.go`).
+Shared modal confirmation: `surface-overlay` panel via `drawPanel`,
+`section-header` title via `drawMenuTitle`, two keycap `*Button`s (Cancel =
+secondary, Confirm = destructive/primary), close-X = cancel. Closes on
+Confirm/Cancel/close-X/Esc/Enter and on click-outside (tree `CloseTop`).
+Consumers: paste-overwrite, break-circuit.
+
+**Menu anatomy (list menus: instrument picker, template page, and any
+future searchable list).** Every list menu is composed from the same five
+slots, top to bottom — deviating from this anatomy requires updating this
+document first:
+
+1. **Title band** — `drawMenuTitle` (section-header role) + a leading
+   instrument swatch (`spacing.swatch-sm`) when the menu is
+   instrument-scoped. This includes the FX panel: "FX · <row name>" carries
+   the row's swatch. The accent hairline under the band uses the menu's
+   owning accent (instrument color for identity menus, `primary` for global
+   menus — a global menu must never borrow another surface's accent).
+2. **Search field** — `{components.menu-search-field}`, one shared widget
+   (`menu_search_field.go`): leading `IconSearch` magnifier
+   (`on-surface-muted`), query text, trailing clear-× (`IconClose`) only
+   while a query is non-empty. Esc clears a non-empty query first, then
+   closes the menu. Search results always show fuzzy-match highlight cells.
+3. **Group headers** — `{components.menu-group-header}`: uppercase caption
+   rows that scroll with the list (template genres, category groupings).
+   Hidden while a search query is active — results render flat,
+   score-sorted.
+4. **Rows** — `drawMenuRow` / `MenuRowSpec`, flat on the panel surface.
+   Leading slot: instrument swatch (`spacing.swatch-md`) when the row IS an
+   instrument, else a semantic icon. Trailing slots: a muted caption
+   (`TrailLabel` — the row's one secondary fact: category, `♩ BPM`, param
+   digest) and/or a drill-in chevron for rows that open a deeper list.
+   States: rest = flat, hover = accent tint, active (current selection /
+   currently-loaded item) = accent tint + left stripe. Every list that has
+   a notion of "current" must render it. Rows one level BELOW a trigger row
+   (an open dropdown's options, a selector's candidates) indent their left
+   edge by `spacing.lg` so nesting reads as a submenu, not flat siblings.
+5. **Empty state** — centered `body` line + muted `caption` hint (both
+   i18n'd), vertically centered in the list viewport. Never a bare
+   corner string.
 
 **EQ panel tabs.** Both the left filter tabs (`Master` / `HP` / `LP`) and
 the right view tabs (`EQ` / `Wave` / `Spectrum` / `Meters` / `Scope`) must
@@ -2299,6 +2488,34 @@ expects the in-panel affordance).
 menus. Do not use raw text `>` / `v` / `▶` / `▼` for collapsibles.
 
 ## Do's and Don'ts
+
+### Value formatting
+
+Numeric readouts (effect params, knob values, any "Label: 12.3 unit") must
+format by the **parameter definition**, never by the instantaneous value. A
+format chosen from the current magnitude makes the fractional-digit count
+change as the value crosses a threshold, so the label visibly reflows while
+the user drags — and the same parameter renders two ways (`Mix: 1` at rest,
+`Mix: 0.30` when nudged).
+
+- **Do** derive precision from the parameter's declared range and unit, once,
+  so the digit count is constant across the whole `[Min, Max]` sweep. Sub-unit
+  ranges (0–1 mixes, feedback) get two decimals (`0.30`, `1.00`); mid ranges
+  (drive, ratio, Q) one; wide ranges none. The FX panel implements this in
+  `fxFormatParam(def, val)` / `fxDecimalsForSpan` (`drumview_fx_panel.go`);
+  reuse that shape for new numeric controls.
+- **Do** render units at human scale: frequencies `≥ 1000 Hz` roll up to
+  `kHz` (`4000 Hz` → `4.0 kHz`); integer-domain units (`ms`, `st`, `%`) carry
+  no fractional digits (`250 ms`, never `250.0 ms`).
+- **Do** render a discrete/enum parameter by its **name**, never its index
+  (`Low-pass`, not `Mode: 0`).
+- **Don't** branch the format on the value (`if val >= 1000 …`). That is the
+  bug this rule exists to prevent.
+
+Guard: `TestFXFormatParamPrecisionIsStablePerParam` (`internal/ui`) sweeps
+every effect-catalog parameter and asserts the fractional-digit count never
+changes across its range. Extend it when a new numeric control ships its own
+formatter.
 
 ### Tokens, not literals
 
@@ -2386,6 +2603,9 @@ Before adding any new button, panel, icon, or menu item:
       difference under "Mobile vs. Desktop".
 - [ ] Does the new color (if any) map to an existing token? If not, add a
       token to the YAML front matter first.
+- [ ] Does every clickable state of the new element show the shared hover
+      lift on desktop? (See "Hover lift" — glowTarget for tree controls,
+      `hoverFade` + `drawButtonHoverGlow` for hand-drawn surfaces.)
 - [ ] Add at least one scene in `scene_catalog.go` (see "Scene Coverage")
       covering the new state.
 - [ ] Run `make screenshots-all` (and `MOBILE=1` if mobile-affecting) and
@@ -2428,7 +2648,7 @@ names.
 
 ## Icon Map
 
-The icon set has **30 glyphs** defined in `icons.go`. Every icon has
+The icon set is defined in `icons.go` (one `IconID` per glyph). Every icon has
 **exactly one** semantic role. Use `DrawIcon(dst, id, r, col)` or set
 `Button.Icon = string(IconID)`.
 
@@ -2461,6 +2681,18 @@ The delete-confirm state stays as text `"!!"` because it is a stateful
 warning glyph, distinct in role from the resting close-icon — see the
 permitted-text-glyph table.
 
+### Node quick-actions
+
+The node long-press popup's quick-action bar (`game_longpress_popup.go`,
+`drawPopupActionCap`) renders icon+label keycaps — never icon-only or
+text-only.
+
+| Icon | `IconID` | Usage |
+|---|---|---|
+| Four-way arrows | `IconMove` | Node quick-action: Move |
+| Duplicate squares | `IconCopy` | Node quick-action: Copy |
+| Link | `IconConnect` | Node quick-action: Connect |
+
 ### Navigation / control
 
 | Icon | `IconID` | Usage |
@@ -2471,7 +2703,8 @@ permitted-text-glyph table.
 | Chevron up | `IconChevronUp` | Increment, reorder up — **never `^` or `▲`** |
 | Chevron down | `IconChevronDown` | Decrement, expand-when-collapsed (mobile FX row), reorder down — **never `v` or `▼`** |
 | Chevron right | `IconChevronRight` | Collapsed-section indicator (mobile FX row) — **never `>` or `▶`** |
-| × diagonals | `IconClose` | Close any panel/popup, remove an effect slot — **never `X`, `✕`, or `×`** |
+| × diagonals | `IconClose` | Close any panel/popup, remove an effect slot, clear a search query — **never `X`, `✕`, or `×`** |
+| Magnifier | `IconSearch` | Leading affordance of every menu search field — **never a text hint alone** |
 
 ### File operations
 

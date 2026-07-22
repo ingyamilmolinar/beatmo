@@ -126,8 +126,6 @@ var (
 	genColorVizDebugNode             = color.RGBA{255, 92, 42, 255}   // colors.viz-debug-node = #FF5C2A
 	genColorVizPillFill              = color.RGBA{28, 18, 48, 255}    // colors.viz-pill-fill = #1C1230
 	genColorVizPillBorder            = color.RGBA{138, 122, 156, 255} // colors.viz-pill-border = #8A7A9C
-	genColorVizConfirmGreen          = color.RGBA{63, 214, 122, 255}  // colors.viz-confirm-green = #3FD67A
-	genColorVizCancelRed             = color.RGBA{232, 74, 31, 255}   // colors.viz-cancel-red = #E84A1F
 	genColorDividerBase              = color.RGBA{253, 242, 255, 255} // colors.divider-base = #FDF2FF
 	genColorDividerShadow            = color.RGBA{0, 0, 0, 255}       // colors.divider-shadow = #000000
 	genColorDividerHighlight         = color.RGBA{56, 35, 84, 255}    // colors.divider-highlight = #382354

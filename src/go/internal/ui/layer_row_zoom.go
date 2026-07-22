@@ -13,8 +13,8 @@ type RowZoomChipsLayer struct {
 
 func newRowZoomChipsLayer(dv *DrumView) *RowZoomChipsLayer { return &RowZoomChipsLayer{dv: dv} }
 
-func (l *RowZoomChipsLayer) ID() string    { return "row-zoom-chips" }
-func (l *RowZoomChipsLayer) ZIndex() int   { return ZRowZoomChips }
+func (l *RowZoomChipsLayer) ID() string  { return "row-zoom-chips" }
+func (l *RowZoomChipsLayer) ZIndex() int { return ZRowZoomChips }
 func (l *RowZoomChipsLayer) Visible() bool {
 	dv := l.dv
 	inc := dv.rowZoomIncBtn != nil && !dv.rowZoomIncBtn.Rect().Empty()

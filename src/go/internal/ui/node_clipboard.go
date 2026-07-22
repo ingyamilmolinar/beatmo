@@ -6,6 +6,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/ingyamilmolinar/beatmo/core/model"
+	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
 // nodeClipboard is an in-memory, single-node clipboard: a deep, independent
@@ -197,7 +198,7 @@ func (g *Game) ConfirmPasteOverwrite() {
 	}
 	i, j, snap := g.pastePending.i, g.pastePending.j, g.pastePending.snap
 	g.pastePending = pastePendingState{}
-	g.closePasteConfirmPortal()
+	g.closePasteConfirmPortalIfNeeded()
 
 	beginUndoGroup("replace node")
 	defer endUndoGroup()
@@ -213,72 +214,62 @@ func (g *Game) CancelPasteOverwrite() {
 		return
 	}
 	g.pastePending = pastePendingState{}
+	g.closePasteConfirmPortalIfNeeded()
+}
+
+// closePasteConfirmPortalIfNeeded removes the paste-confirm portal entry
+// UNLESS the dialog already flagged itself closed via its own confirm()/
+// cancel() (ShouldClose()==true). That flag is set BEFORE onConfirm/onCancel
+// runs, so when Confirm/CancelPasteOverwrite is reached AS the dialog's own
+// callback (button click, Esc, outside-click) the universal machinery is
+// already removing the entry this same frame — an explicit Close(id) here
+// would pop it a SECOND time. That double-pop is exactly the "close only
+// paste-confirm, not the underlying portal" regression this guards against:
+// handleEscape's rung calls ConfirmDialog.HandleEscape() (→ cancel(), closed
+// flagged) and, since HandleEscape returns false, unconditionally falls
+// through to portal().CloseTop() to remove the (should-still-be-topmost)
+// entry itself — if we had already popped it here, that fallback CloseTop()
+// would wrongly close whatever portal sits beneath (see
+// grid_move_break_confirm.go's escapeFn history for the original bug this
+// mirrors). A caller reaching Confirm/Cancel WITHOUT going through the
+// dialog — tests driving it directly, or a future no-portal fallback — still
+// needs the explicit close, since nothing else will ever remove the entry.
+func (g *Game) closePasteConfirmPortalIfNeeded() {
+	alreadyClosing := g.pasteConfirmDlg != nil && g.pasteConfirmDlg.ShouldClose()
+	g.pasteConfirmDlg = nil
+	if alreadyClosing {
+		return
+	}
 	g.closePasteConfirmPortal()
 }
 
-// pasteConfirmRect centers the confirmation dialog over the grid content pane.
-func (g *Game) pasteConfirmRect() image.Rectangle {
+// gridPaneScreenRect returns the on-screen rect of the grid content pane
+// (below the transport/top chrome, inside the splitter's grid region). Shared
+// by every grid-pane-centered confirmation dialog (paste-overwrite here,
+// break-circuit in grid_move_break_confirm.go) so they center consistently.
+func (g *Game) gridPaneScreenRect() image.Rectangle {
 	grid := g.split.GridRect(g.winW, g.winH)
 	top := gridTopOffset()
-	cx := (grid.Min.X + grid.Max.X) / 2
-	cy := top + (grid.Max.Y-top)/2
-	w, h := 320, 140
-	return image.Rect(cx-w/2, cy-h/2, cx+w/2, cy+h/2)
+	return image.Rect(grid.Min.X, top, grid.Max.X, grid.Max.Y)
 }
 
-func (g *Game) pasteConfirmOverwriteBtnRect() image.Rectangle {
-	r := g.pasteConfirmRect()
-	btnW, btnH := 120, 32
-	return image.Rect(r.Max.X-SpaceMD-btnW, r.Max.Y-SpaceMD-btnH, r.Max.X-SpaceMD, r.Max.Y-SpaceMD)
-}
-
-func (g *Game) pasteConfirmCancelBtnRect() image.Rectangle {
-	r := g.pasteConfirmRect()
-	btnW, btnH := 120, 32
-	return image.Rect(r.Min.X+SpaceMD, r.Max.Y-SpaceMD-btnH, r.Min.X+SpaceMD+btnW, r.Max.Y-SpaceMD)
-}
-
-// openPasteConfirmPortal shows the modal confirmation. The pending state is the
-// source of truth; if no portal is available (headless tests) the confirmation
-// logic still works via Confirm/Cancel.
+// openPasteConfirmPortal shows the modal confirmation via the shared
+// ConfirmDialog. The pending state is the source of truth; if no portal is
+// available (headless tests) the confirmation logic still works via
+// Confirm/Cancel.
 func (g *Game) openPasteConfirmPortal() {
 	if g.drum == nil || g.drum.portal() == nil {
 		return
 	}
-	g.drum.portal().Open(PortalEntry{
-		ID:    pasteConfirmPortalID,
-		Modal: true,
-		Scrim: true,
-		Overlay: &dvOverlayPortal{
-			id:       pasteConfirmPortalID,
-			isOpenFn: func() bool { return g.pastePending.active },
-			rectFn:   func() image.Rectangle { return g.pasteConfirmRect() },
-			drawFn:   func(dst *ebiten.Image) { g.drawPasteConfirm(dst) },
-			inputFn: func(x, y int, pressed bool) InputResult {
-				if !pressed {
-					return InputConsumed
-				}
-				pt := image.Pt(x, y)
-				if pt.In(g.pasteConfirmOverwriteBtnRect()) {
-					g.ConfirmPasteOverwrite()
-					return InputConsumed
-				}
-				if pt.In(g.pasteConfirmCancelBtnRect()) {
-					g.CancelPasteOverwrite()
-					return InputConsumed
-				}
-				return InputConsumed // swallow stray taps inside the modal
-			},
-			// Cleanup-only, matching the portalEscapeHandler contract (see
-			// handleTemplateSearchEscape): clear our own state and return false so
-			// handleEscape's CloseTop removes the (still-topmost) paste-confirm entry
-			// itself. Do NOT close the portal here — CancelPasteOverwrite's Close(id)
-			// would pop this entry from mid-stack and then handleEscape's fallback
-			// CloseTop would wrongly close whatever portal sits beneath us.
-			escapeFn: func() bool { g.pastePending = pastePendingState{}; return false },
-		},
-		OnClose: func() { g.pastePending = pastePendingState{} },
+	g.pasteConfirmDlg = newConfirmDialog(confirmConfig{
+		id:          pasteConfirmPortalID,
+		titleKey:    i18n.KeyConfirmReplaceNode,
+		confirmKey:  i18n.KeyCapOverwrite,
+		destructive: true,
+		onConfirm:   g.ConfirmPasteOverwrite,
+		onCancel:    g.CancelPasteOverwrite,
 	})
+	g.drum.portal().Open(g.pasteConfirmDlg.portalEntry(g.gridPaneScreenRect))
 }
 
 func (g *Game) closePasteConfirmPortal() {
@@ -286,24 +277,4 @@ func (g *Game) closePasteConfirmPortal() {
 		return
 	}
 	g.drum.portal().Close(pasteConfirmPortalID)
-}
-
-// drawPasteConfirm renders the "Replace node?" modal: panel + prompt + two
-// buttons. Button chrome mirrors drawSaveAsDialog's rounded-rect style.
-func (g *Game) drawPasteConfirm(dst *ebiten.Image) {
-	if !g.pastePending.active {
-		return
-	}
-	r := g.pasteConfirmRect()
-	drawRoundedRect(dst, r, TokenSurface2(), RadiusMD, true)
-	drawRoundedRect(dst, r, TokenBorderMedium(), RadiusMD, false)
-	DrawTextStyled(dst, "Replace node?", r.Min.X+SpaceMD, r.Min.Y+SpaceMD, RolePanelTitle, TokenTextPrimary())
-
-	ov := g.pasteConfirmOverwriteBtnRect()
-	drawRoundedRect(dst, ov, TokenSurface3(), RadiusSM, true)
-	DrawTextStyled(dst, "Overwrite", ov.Min.X+SpaceSM, ov.Min.Y+SpaceXS, RoleBody, TokenTextPrimary())
-
-	cn := g.pasteConfirmCancelBtnRect()
-	drawRoundedRect(dst, cn, TokenSurface3(), RadiusSM, true)
-	DrawTextStyled(dst, "Cancel", cn.Min.X+SpaceSM, cn.Min.Y+SpaceXS, RoleBody, TokenTextPrimary())
 }

@@ -123,9 +123,9 @@ func TestSynthTab_ModularSectionsHaveEnablePills(t *testing.T) {
 	}
 }
 
-// TestSynthTab_NoiseSeedNotAGridKnob — the engine-internal noise_seed param is
+// TestSynthTab_NoiseSeedNotAGridControl — the engine-internal noise_seed param is
 // present in the schema/ABI but must not appear as an editable knob.
-func TestSynthTab_NoiseSeedNotAGridKnob(t *testing.T) {
+func TestSynthTab_NoiseSeedNotAGridControl(t *testing.T) {
 	g := setupModularSynthGame(t)
 	for _, s := range g.drum.SynthTabSections() {
 		for _, idx := range s.KnobIdxs() {

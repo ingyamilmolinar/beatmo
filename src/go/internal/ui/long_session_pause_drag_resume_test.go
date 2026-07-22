@@ -23,15 +23,15 @@ import (
 // pause → drag → resume cycle in the user's report sequences three observable
 // state changes that the existing scroll-back test doesn't exercise together:
 //
-//   1. Pause goes through handlePlaybackTransition (engine.Stop, state.Pause).
-//   2. While paused, drum.Offset is rewritten by a view-offset drag
-//      (see drumview_ctor.go's OnOffsetChange — grid drag / two-finger
-//      pan; the ribbon itself now seeks instead of scrubbing Offset,
-//      see OnSeekToStep). refreshDrumRow runs at the dragged offset.
-//   3. Resume goes through handlePlaybackTransition again (engine.Start,
-//      state.Resume). On the very next frame DrumView.TrackBeat may snap
-//      Offset back to follow the playhead, and refreshDrumRow must paint a
-//      complete row window covering [Offset, Offset+Length).
+//  1. Pause goes through handlePlaybackTransition (engine.Stop, state.Pause).
+//  2. While paused, drum.Offset is rewritten by a view-offset drag
+//     (see drumview_ctor.go's OnOffsetChange — grid drag / two-finger
+//     pan; the ribbon itself now seeks instead of scrubbing Offset,
+//     see OnSeekToStep). refreshDrumRow runs at the dragged offset.
+//  3. Resume goes through handlePlaybackTransition again (engine.Start,
+//     state.Resume). On the very next frame DrumView.TrackBeat may snap
+//     Offset back to follow the playhead, and refreshDrumRow must paint a
+//     complete row window covering [Offset, Offset+Length).
 //
 // Invariant: for every abs i in [drum.Offset, drum.Offset+Length), Steps[i]
 // must equal predictor.VisibleAt(rowIdx, i) UNLESS the timeline holds an

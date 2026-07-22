@@ -56,6 +56,13 @@ type AudioStickyBar struct {
 	// samplerTabIdx mirrors synthTabIdx for the Sampler pill, so
 	// SetSamplerDisabled is likewise allocation-free. -1 when absent.
 	samplerTabIdx int
+	// trailingBtns are per-tab action buttons the parent hands the bar each
+	// frame (mobile only) — e.g. the Synth/Sampler [Preview][Save][⋯] cluster,
+	// which lives on the always-present chrome row instead of a separate
+	// in-panel action row. Owned/wired by the panels; the bar only lays them
+	// out (right cluster) and registers their hit areas. Empty on desktop,
+	// where the right cluster is the tab strip.
+	trailingBtns []*Button
 }
 
 // NewAudioStickyBar builds the tab-switcher row. parentZIndex is the owning
@@ -213,7 +220,52 @@ func (b *AudioStickyBar) Layout(rect image.Rectangle) {
 			rightEdge -= tw + tabGap
 		}
 	}
+
+	// Trailing per-tab action buttons (mobile only — the desktop right cluster
+	// is the tab strip). Cleared first so a stale rect never survives a
+	// desktop frame or a collapse, then packed right-to-left from the current
+	// rightEdge, hard-clamped left of the channel pill.
+	for i := range b.trailingBtns {
+		if b.trailingBtns[i] != nil {
+			b.trailingBtns[i].SetRect(image.Rectangle{})
+		}
+	}
+	if Profile().IsMobile() && len(b.trailingBtns) > 0 {
+		leftBound := b.channelBtn.Rect().Max.X + d.AudioPillGap
+		for i := len(b.trailingBtns) - 1; i >= 0; i-- {
+			btn := b.trailingBtns[i]
+			if btn == nil {
+				continue
+			}
+			var w int
+			if btn.Text == "" { // icon-only (e.g. the ⋯ overflow) — square cell
+				w = btnH
+			} else {
+				w = StyledTextWidth(btn.Text, RoleCaption) + d.AudioPillPadX
+				if w < d.AudioPillNarrowW {
+					w = d.AudioPillNarrowW
+				}
+			}
+			if rightEdge-w < leftBound {
+				// No room without crossing the channel pill — collapse this
+				// (and, being leftmost-first, the remaining) button.
+				btn.SetRect(image.Rectangle{})
+				continue
+			}
+			btn.SetRect(image.Rect(rightEdge-w, y, rightEdge, y+btnH))
+			rightEdge -= w + d.AudioPillGap
+		}
+	}
 	b.rebuildHitAreas()
+}
+
+// SetTrailingActions supplies the per-tab action buttons the bar lays into its
+// right cluster on mobile (Synth/Sampler [Preview][Save][⋯]). The parent calls
+// this before Layout, mirroring SetActiveTab; pass nil to clear. The buttons
+// keep their own OnClick behavior — the bar only positions them and publishes
+// their hit areas.
+func (b *AudioStickyBar) SetTrailingActions(btns []*Button) {
+	b.trailingBtns = btns
 }
 
 func (b *AudioStickyBar) rebuildHitAreas() {
@@ -254,6 +306,20 @@ func (b *AudioStickyBar) rebuildHitAreas() {
 		addBtn(tb, fmt.Sprintf("eq-tab-%d", i))
 	}
 	addBtn(b.legendBtn, "eq-legend-btn")
+	// Trailing per-tab action buttons: register with a touch-min expansion on
+	// mobile (same discipline as the channel pill) so the ~32px pills meet the
+	// 44px finger target without physically enlarging their visible rect.
+	for i, tb := range b.trailingBtns {
+		if tb == nil || tb.Rect().Empty() {
+			continue
+		}
+		ha := HitArea{Rect: tb.Rect(), ZIndex: z, Handler: &buttonHitAdapter{btn: tb}, Tag: fmt.Sprintf("eq-trailing-%d", i)}
+		if Profile().IsMobile() {
+			ha.Touch = true
+			ha.ClipRect = expandToTouchMin(tb.Rect())
+		}
+		b.hitAreas = append(b.hitAreas, ha)
+	}
 }
 
 // Draw renders the entire tab-switcher row. activeTab tells the bar which tab
@@ -291,6 +357,15 @@ func (b *AudioStickyBar) Draw(dst *ebiten.Image, activeTab PanelTab) {
 	}
 	if b.legendBtn != nil {
 		drawPillTabAt(dst, b.legendBtn, false)
+	}
+	// Trailing per-tab action buttons (mobile only — empty rects on desktop are
+	// skipped by their own Draw). Rendered via the buttons' own spec Draw so
+	// they match the app's action-button styling, not the tab-pill treatment.
+	for _, tb := range b.trailingBtns {
+		if tb == nil || tb.Rect().Empty() {
+			continue
+		}
+		tb.Draw(dst)
 	}
 }
 

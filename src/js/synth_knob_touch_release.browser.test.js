@@ -21,9 +21,9 @@
  * dispatcher + touch-override code paths.
  *
  * What this JS file actually asserts (and ONLY this):
- *   - the synth-tab exports (setEQTab, synthKnobRects, getInstrumentParams,
+ *   - the synth-tab exports (setEQTab, synthControlRects, getInstrumentParams,
  *     setInstrumentParam) are present and callable;
- *   - synthKnobRects() returns a non-empty knob set with finite [min,max];
+ *   - synthControlRects() returns a non-empty knob set with finite [min,max];
  *   - setInstrumentParam → getInstrumentParams is an EXACT round-trip for a
  *     value at ~30% of range (distinct from min, max, and the bipolar
  *     midpoint), across both a bipolar and a unipolar param — so a
@@ -33,7 +33,7 @@
  *
  * CHIP-STRIP REDESIGN: the Synth tab now renders one chip per pipeline stage
  * (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·POST) with exactly ONE stage
- * expanded. synthKnobRects() still returns one entry per wired knob with its
+ * expanded. synthControlRects() still returns one entry per wired knob with its
  * [min,max], but knobs of collapsed stages report ZERO-SIZE rects (w=0,h=0).
  * The round-trips below write via setInstrumentParam by param NAME (not by
  * rect), so they are layout-independent; we still call selectSynthSection so
@@ -94,7 +94,7 @@ await page.waitForFunction(
   () =>
     typeof ensureDefaultPath === "function" &&
     typeof setEQTab === "function" &&
-    typeof synthKnobRects === "function" &&
+    typeof synthControlRects === "function" &&
     typeof getInstrumentParams === "function" &&
     typeof setInstrumentParam === "function" &&
     typeof exportJSON === "function" &&
@@ -124,13 +124,13 @@ try {
     } catch (e) {
       out.setEQTabOK = false;
     }
-    out.synthKnobRects = typeof synthKnobRects === "function";
+    out.synthControlRects = typeof synthControlRects === "function";
     out.getInstrumentParams = typeof getInstrumentParams === "function";
     out.setInstrumentParam = typeof setInstrumentParam === "function";
     return out;
   });
   assert(probes.setEQTab && probes.setEQTabOK, "setEQTab('synth') callable");
-  assert(probes.synthKnobRects, "synthKnobRects export present");
+  assert(probes.synthControlRects, "synthControlRects export present");
   assert(probes.getInstrumentParams, "getInstrumentParams export present");
   assert(probes.setInstrumentParam, "setInstrumentParam export present");
 
@@ -141,11 +141,11 @@ try {
   await page.waitForTimeout(150);
   await page.evaluate(() => forceDraw());
 
-  // ── Plumbing 2: synthKnobRects returns the wired knob set with finite
+  // ── Plumbing 2: synthControlRects returns the wired knob set with finite
   //    ranges, so the e2e test's coord computations always have data. (Knobs
   //    of collapsed stages report zero-size rects; min/max are always present.)
-  const knobs = await page.evaluate(() => synthKnobRects());
-  assert(Array.isArray(knobs) && knobs.length > 0, `synthKnobRects returns ≥1 knob (got ${knobs.length})`);
+  const knobs = await page.evaluate(() => synthControlRects());
+  assert(Array.isArray(knobs) && knobs.length > 0, `synthControlRects returns ≥1 knob (got ${knobs.length})`);
   const allRanged = knobs.every(k =>
     typeof k.name === "string" && Number.isFinite(k.min) && Number.isFinite(k.max) && k.max > k.min
   );

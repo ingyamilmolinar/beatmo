@@ -38,21 +38,42 @@ func (m *MenuScroll) OffsetPx() int { return m.sb.VS.First * m.sb.ItemHeight }
 // HasScroll reports whether the content overflows the viewport.
 func (m *MenuScroll) HasScroll() bool { return m.sb.HasScroll() }
 
-// HandleWheel applies a wheel event as a single clicky step: exactly ONE item
-// per notch (magnitude ignored), then a cooldown lock so a fast trackpad flick
-// or hi-res-wheel burst can't fly through the list. This is the SAME cadence as
-// the row rack and control grids (controlGridScrollCooldownFrames) — every
-// scrollable menu scrolls identically. TickStep must be called once per frame
-// while the menu exists to advance the cooldown clock. Returns true when the
-// offset changed.
+// HandleWheel applies a wheel event with the smooth, continuous instrument-menu
+// cadence: it RESPECTS the wheel magnitude (a hi-res wheel / trackpad flick of
+// |steps|=n moves n rows in one event) and has NO per-notch cooldown lock, so
+// consecutive notches scroll on consecutive frames. This is the single shared
+// wheel path for every list/dropdown menu. (The row rack and synth control grids
+// deliberately keep the clicky WheelStep path — they are grids of controls where
+// one-item-per-notch stepping is desired.) Returns true when the offset changed.
 func (m *MenuScroll) HandleWheel(steps int) bool {
-	return m.sb.WheelStep(steps, controlGridScrollCooldownFrames)
+	return m.sb.HandleWheel(steps)
 }
 
-// TickStep advances the wheel cooldown clock by one frame. Call once per frame
-// while the menu exists (see DrumView.tickMenuScrollCooldowns) so HandleWheel's
-// clicky pacing releases after the cooldown rather than locking forever.
-func (m *MenuScroll) TickStep() { m.sb.TickStep() }
+// UpdateMomentum applies one frame of touch-fling momentum decay, carrying the
+// list after the finger lifts (the inertial part of the instrument-menu feel).
+// Call once per frame while the menu exists. Returns true when the offset changed.
+func (m *MenuScroll) UpdateMomentum() bool {
+	if !m.sb.HasMomentum() {
+		return false
+	}
+	return m.sb.UpdateMomentum()
+}
+
+// Tick is the single shared per-frame momentum driver for every list menu: it
+// advances one frame of touch-fling inertia and invokes rebuild (when non-nil
+// and the offset actually changed) so the menu re-lays-out its windowed rows.
+// Each menu calls this from its own per-frame update hook with its own rebuild
+// closure — the physics lives here, not copied into each menu. Returns true when
+// the offset changed this frame.
+func (m *MenuScroll) Tick(rebuild func()) bool {
+	if !m.UpdateMomentum() {
+		return false
+	}
+	if rebuild != nil {
+		rebuild()
+	}
+	return true
+}
 
 // Draw renders the scrollbar (no-op when content fits).
 func (m *MenuScroll) Draw(dst *ebiten.Image) { m.sb.Draw(dst) }

@@ -93,11 +93,15 @@ func TestSamplerKnobPressOpensWheelOnMobile(t *testing.T) {
 	h := &samplerKnobHitAdapter{dv: dv, idx: samplerKnobGain}
 	res := h.OnPress(0, 0)
 
-	if res != InputConsumed {
-		t.Fatalf("mobile knob press must return InputConsumed (got %v) so the tap opens the popup, not a rotary drag", res)
+	if res != InputCaptured {
+		t.Fatalf("mobile control press must CAPTURE the gesture (got %v) so a sweep can scroll instead of opening the popup", res)
 	}
+	if dv.samplerWheelPopup.IsOpen() {
+		t.Fatal("mobile control press must not open the popup on the down frame; it opens on release")
+	}
+	h.OnRelease(0, 0)
 	if !dv.samplerWheelPopup.IsOpen() {
-		t.Fatal("mobile knob press did not open the sampler wheel popup")
+		t.Fatal("mobile control tap did not open the sampler wheel popup on release")
 	}
 	if dv.tree == nil || !dv.portal().Has("sampler-wheel-popup") {
 		t.Fatal("sampler wheel popup did not open as a portal entry")
@@ -130,11 +134,15 @@ func TestSamplerKnobPressOpensWheelOnDesktop(t *testing.T) {
 	h := &samplerKnobHitAdapter{dv: dv, idx: idx}
 	res := h.OnPress(cx, cy)
 
-	if res != InputConsumed {
-		t.Fatalf("desktop card press must return InputConsumed (got %v) so the tap opens the popup", res)
+	if res != InputCaptured {
+		t.Fatalf("desktop card press must CAPTURE the gesture (got %v) so a drag can scroll; the popup opens on release", res)
 	}
+	if dv.samplerWheelPopup != nil && dv.samplerWheelPopup.IsOpen() {
+		t.Fatal("desktop card press must not open the popup on the down frame; it opens on release")
+	}
+	h.OnRelease(cx, cy)
 	if dv.samplerWheelPopup == nil || !dv.samplerWheelPopup.IsOpen() {
-		t.Fatal("desktop card press must open the wheel popup")
+		t.Fatal("desktop card tap must open the wheel popup on release")
 	}
 }
 

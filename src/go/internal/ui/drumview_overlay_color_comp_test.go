@@ -102,6 +102,106 @@ func TestColorRampGridLayout(t *testing.T) {
 	}
 }
 
+// TestColorPickerFamilyLabelsFitGutter is the regression guard for the
+// left-gutter text-overflow bug: every family label rendered in the left gutter
+// must fit fully inside the gutter width, so it never collides with / spills
+// over the first swatch column. Before the fix the gutter was a fixed 56 px
+// while "Sunset Gold" (~66 px) and "Electric Blue" (~78 px) overflowed into the
+// swatches, rendering as "Sunset Go…" / "Electric B…".
+func TestColorPickerFamilyLabelsFitGutter(t *testing.T) {
+	comp := NewColorWheelComponent()
+	comp.SetProps(stdColorProps())
+	comp.Open()
+
+	gutter := comp.LabelGutterWidth()
+	if gutter <= 0 {
+		t.Fatalf("label gutter width must be positive, got %d", gutter)
+	}
+
+	labels := comp.FamilyDisplayLabels()
+	if len(labels) == 0 {
+		t.Fatal("expected family display labels")
+	}
+	for _, label := range labels {
+		w := StyledTextWidth(label, RoleCaption)
+		if w > gutter {
+			t.Errorf("family label %q width %dpx overflows the %dpx left gutter — text collides with the swatches", label, w, gutter)
+		}
+	}
+}
+
+// TestColorPickerFamilyLabelsAreShort encodes the "names not super long"
+// requirement: no family label should be so long that it forces a wide gutter
+// wasting horizontal space that belongs to the swatches. Plain, short color
+// names ("Blue", "Gold", "Pink"…) keep the gutter tight.
+func TestColorPickerFamilyLabelsAreShort(t *testing.T) {
+	comp := NewColorWheelComponent()
+	comp.SetProps(stdColorProps())
+	comp.Open()
+
+	const maxLabelRunes = 6 // "Orange"/"Purple" are the longest we allow
+	for _, label := range comp.FamilyDisplayLabels() {
+		if n := len([]rune(label)); n > maxLabelRunes {
+			t.Errorf("family label %q is %d runes; keep color names <= %d runes so the gutter stays narrow", label, n, maxLabelRunes)
+		}
+	}
+}
+
+// TestCanonicalColorNameForEverySwatch verifies every palette swatch has a
+// canonical human color name (not hex), and that the 35 names are per-shade
+// specific rather than collapsing to the 7 family labels.
+func TestCanonicalColorNameForEverySwatch(t *testing.T) {
+	seen := map[string]bool{}
+	for _, s := range SuggestedInstrumentSwatches {
+		n := canonicalColorName(s.Name)
+		if len([]rune(n)) == 0 {
+			t.Errorf("swatch %q has an empty canonical name", s.Name)
+			continue
+		}
+		if n[0] == '#' {
+			t.Errorf("swatch %q canonical name %q looks like hex; want a human color name", s.Name, n)
+		}
+		seen[n] = true
+	}
+	// 7 families × 5 shades = 35 swatches; the names must distinguish shades,
+	// so we expect far more than the 7 family labels.
+	if len(seen) < 20 {
+		t.Errorf("only %d distinct canonical color names across %d swatches — names must be per-shade specific, not just the family label",
+			len(seen), len(SuggestedInstrumentSwatches))
+	}
+	// Drift guard: every current palette swatch must have an EXPLICIT table entry
+	// (not the family fallback). A new swatch added without a name trips this.
+	for _, s := range SuggestedInstrumentSwatches {
+		if _, ok := canonicalSwatchNames[s.Name]; !ok {
+			t.Errorf("palette swatch %q has no canonicalSwatchNames entry — add its human color name", s.Name)
+		}
+	}
+}
+
+// TestColorPickerShadeHintPresent verifies the "Light … Deep" shade-direction
+// caption band is laid out above the swatch columns on a roomy panel.
+func TestColorPickerShadeHintPresent(t *testing.T) {
+	comp := NewColorWheelComponent()
+	comp.SetProps(stdColorProps())
+	comp.Open()
+
+	hint := comp.ShadeHintRect()
+	if hint.Empty() {
+		t.Fatal("expected a non-empty shade-direction hint band on a roomy panel")
+	}
+	if !hint.In(comp.WheelRect()) {
+		t.Fatalf("hint band %v not inside panel %v", hint, comp.WheelRect())
+	}
+	// The band must sit ABOVE the first swatch row (it captions the columns).
+	cells := comp.SwatchCells()
+	if len(cells) == 0 {
+		t.Fatal("no swatch cells")
+	}
+	if hint.Max.Y > cells[0].Min.Y {
+		t.Errorf("hint band bottom %d overlaps first cell top %d — band must be above the swatches", hint.Max.Y, cells[0].Min.Y)
+	}
+}
+
 // TestColorPickerPanelIsUsableSize verifies the panel is a real, usable size —
 // not the ~52px square the broken hue wheel collapsed to on desktop.
 func TestColorPickerPanelIsUsableSize(t *testing.T) {

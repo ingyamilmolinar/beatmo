@@ -228,3 +228,64 @@ func TestPrimaryGridVisibleAfterSubdivChangeAtMinZoom(t *testing.T) {
 		t.Fatalf("beat grid lines hidden at min zoom; groups=%v", groups)
 	}
 }
+
+func TestBeatAxisLabel(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	var subs []Subdivision
+	for _, sub := range g.Subs {
+		if sub.Div <= 8 {
+			subs = append(subs, sub)
+		}
+	}
+	g.SetSubs(subs) // MaxDiv = 8, so half-beat = 4 subdivisions
+	// The user-reported sequence walking rightward through the negative axis at
+	// half-beat steps: -2:1/2, -2, -1:1/2, -1, then across the origin.
+	cases := []struct {
+		idx  int
+		want string
+	}{
+		{-20, "-2:1/2"}, // -2.5 beats (magnitude, NOT floor's "-3:1/2")
+		{-16, "-2"},     // exactly -2 beats (no ":0")
+		{-12, "-1:1/2"}, // -1.5 beats
+		{-8, "-1"},      // exactly -1 beat
+		{-4, "-0:1/2"},  // -0.5 beats — sign preserved even with zero whole beats
+		{0, "0"},        // origin
+		{4, "0:1/2"},    // +0.5 beats (positive unchanged)
+		{20, "2:1/2"},   // +2.5 beats
+	}
+	for _, c := range cases {
+		if got := g.BeatAxisLabel(c.idx); got != c.want {
+			t.Errorf("BeatAxisLabel(%d) = %q, want %q", c.idx, got, c.want)
+		}
+	}
+}
+
+func TestBeatSlot(t *testing.T) {
+	g := NewGrid(DefaultGridStep)
+	// Set up subdivisions to have MaxDiv=8 by filtering out Div>8
+	var subs []Subdivision
+	for _, sub := range g.Subs {
+		if sub.Div <= 8 {
+			subs = append(subs, sub)
+		}
+	}
+	g.SetSubs(subs)
+	cases := []struct {
+		idx, beat, num, den int
+	}{
+		{0, 1, 0, 8},  // exactly on beat 1
+		{3, 1, 3, 8},  // 3/8 into beat 1
+		{4, 1, 4, 8},  // midpoint of beat 1 (between two beat-aligned nodes)
+		{7, 1, 7, 8},  // last subdivision of beat 1
+		{8, 2, 0, 8},  // exactly on beat 2 (num resets to 0)
+		{19, 3, 3, 8}, // beat 3, 3/8 in
+		{-4, 1, 0, 8}, // negative clamps to start of beat 1
+	}
+	for _, c := range cases {
+		beat, num, den := g.BeatSlot(c.idx)
+		if beat != c.beat || num != c.num || den != c.den {
+			t.Errorf("BeatSlot(%d) = (%d,%d,%d), want (%d,%d,%d)",
+				c.idx, beat, num, den, c.beat, c.num, c.den)
+		}
+	}
+}

@@ -438,6 +438,9 @@ const (
 	// narrow pipeline chip — a fitted fallback, never a mid-word ellipsis.
 	KeySynthStageEnvelopeShort  Key = "synth.stage.envelope.short"
 	KeySynthStageFilterEnvShort Key = "synth.stage.filterenv.short"
+	KeySynthStageEnsembleShort  Key = "synth.stage.ensemble.short"
+	KeySynthStageFormantShort   Key = "synth.stage.formant.short"
+	KeySynthStageResonatorShort Key = "synth.stage.resonator.short"
 
 	// Synth-tab stage subtitles — the kid-friendly "what makes this sound"
 	// descriptions rendered under each stage's jargon title.
@@ -461,38 +464,38 @@ const (
 	// caption value; several param ids share a key, e.g. every "Wave" knob). The
 	// canonical English caption backing the editor round-trip + the param-id ABI
 	// stays in internal/ui; these are the localized DISPLAY labels only.
-	KeySynthKnobTune          Key = "synth.knob.tune"
-	KeySynthKnobDecayMult     Key = "synth.knob.decay-mult"
-	KeySynthKnobTone          Key = "synth.knob.tone"
-	KeySynthKnobDrive         Key = "synth.knob.drive"
-	KeySynthKnobBody          Key = "synth.knob.body"
-	KeySynthKnobBright        Key = "synth.knob.bright"
-	KeySynthKnobGain          Key = "synth.knob.gain"
-	KeySynthKnobWave          Key = "synth.knob.wave"
-	KeySynthKnobDetune        Key = "synth.knob.detune"
-	KeySynthKnobOctave        Key = "synth.knob.octave"
-	KeySynthKnobAttack        Key = "synth.knob.attack"
-	KeySynthKnobDecay         Key = "synth.knob.decay"
-	KeySynthKnobSustain       Key = "synth.knob.sustain"
-	KeySynthKnobRelease       Key = "synth.knob.release"
-	KeySynthKnobCurve         Key = "synth.knob.curve"
-	KeySynthKnobType          Key = "synth.knob.type"
-	KeySynthKnobCutoff        Key = "synth.knob.cutoff"
-	KeySynthKnobResonance     Key = "synth.knob.resonance"
-	KeySynthKnobAlgorithm     Key = "synth.knob.algorithm"
-	KeySynthKnobBaseFreq      Key = "synth.knob.base-freq"
-	KeySynthKnobPitchEnv      Key = "synth.knob.pitch-env"
-	KeySynthKnobPitchEnvDecay Key = "synth.knob.pitch-env-decay"
-	KeySynthKnobAmount        Key = "synth.knob.amount"
-	KeySynthKnobRate          Key = "synth.knob.rate"
-	KeySynthKnobDepth         Key = "synth.knob.depth"
-	KeySynthKnobSharpness     Key = "synth.knob.sharpness"
-	KeySynthKnobDraws         Key = "synth.knob.draws"
-	KeySynthKnobPrelude       Key = "synth.knob.prelude"
-	KeySynthKnobSeed          Key = "synth.knob.seed"
-	KeySynthKnobPitch         Key = "synth.knob.pitch"
-	KeySynthKnobClick         Key = "synth.knob.click"
-	KeySynthKnobNoise         Key = "synth.knob.noise"
+	KeySynthControlTune          Key = "synth.knob.tune"
+	KeySynthControlDecayMult     Key = "synth.knob.decay-mult"
+	KeySynthControlTone          Key = "synth.knob.tone"
+	KeySynthControlDrive         Key = "synth.knob.drive"
+	KeySynthControlBody          Key = "synth.knob.body"
+	KeySynthControlBright        Key = "synth.knob.bright"
+	KeySynthControlGain          Key = "synth.knob.gain"
+	KeySynthControlWave          Key = "synth.knob.wave"
+	KeySynthControlDetune        Key = "synth.knob.detune"
+	KeySynthControlOctave        Key = "synth.knob.octave"
+	KeySynthControlAttack        Key = "synth.knob.attack"
+	KeySynthControlDecay         Key = "synth.knob.decay"
+	KeySynthControlSustain       Key = "synth.knob.sustain"
+	KeySynthControlRelease       Key = "synth.knob.release"
+	KeySynthControlCurve         Key = "synth.knob.curve"
+	KeySynthControlType          Key = "synth.knob.type"
+	KeySynthControlCutoff        Key = "synth.knob.cutoff"
+	KeySynthControlResonance     Key = "synth.knob.resonance"
+	KeySynthControlAlgorithm     Key = "synth.knob.algorithm"
+	KeySynthControlBaseFreq      Key = "synth.knob.base-freq"
+	KeySynthControlPitchEnv      Key = "synth.knob.pitch-env"
+	KeySynthControlPitchEnvDecay Key = "synth.knob.pitch-env-decay"
+	KeySynthControlAmount        Key = "synth.knob.amount"
+	KeySynthControlRate          Key = "synth.knob.rate"
+	KeySynthControlDepth         Key = "synth.knob.depth"
+	KeySynthControlSharpness     Key = "synth.knob.sharpness"
+	KeySynthControlDraws         Key = "synth.knob.draws"
+	KeySynthControlPrelude       Key = "synth.knob.prelude"
+	KeySynthControlSeed          Key = "synth.knob.seed"
+	KeySynthControlPitch         Key = "synth.knob.pitch"
+	KeySynthControlClick         Key = "synth.knob.click"
+	KeySynthControlNoise         Key = "synth.knob.noise"
 
 	// Synth-tab knob NOUNS — back the composed FM-operator and burst-hit
 	// captions ("Op1 Ratio", "Hit 1 Level"). The universal "OpN"/"Hit N" prefix
@@ -619,17 +622,75 @@ const (
 	KeyBannerPasting Key = "banner.pasting"
 	// KeyBannerMoving / KeyBannerConnectFrom are the move / connect armed-mode
 	// grid banners; both take the subject's (i,j) grid coordinate as two %d
-	// verbs. KeyBannerEscHint is the desktop-only suffix appended to every
-	// armed-mode banner when Profile().ShowEscHint (note its leading space).
-	// All render through gridModeBannerText (grid_mode_banner.go).
+	// verbs. KeyBannerConnecting is an armed-mode banner for connecting to a
+	// target node; also takes (i,j) as two %d verbs. KeyBannerEscHint is the
+	// desktop-only suffix appended to every armed-mode banner when
+	// Profile().ShowEscHint (note its leading space). All render through
+	// gridModeBannerText (grid_mode_banner.go).
 	KeyBannerMoving      Key = "banner.moving"
 	KeyBannerConnectFrom Key = "banner.connect_from"
+	KeyBannerConnecting  Key = "banner.connecting"
 	KeyBannerEscHint     Key = "banner.esc_hint"
+	KeyEscToCancel       Key = "banner.esc_to_cancel"
+
+	// Confirm dialog titles
+	KeyConfirmReplaceNode Key = "confirm.replace_node"
+
+	// Instrument-import collision dialog (Replace vs Keep both).
+	KeyImportCollisionTitle Key = "import.collision.title"
+	KeyCapReplace           Key = "cap.replace"
+	KeyCapKeepBoth          Key = "cap.keep_both"
+
+	// Caption labels (drawn each frame near controls / overlays) — continued below
+
+	// KeyCapOverwrite is the caption shown when pasting over an occupied node.
+	KeyCapOverwrite Key = "cap.overwrite"
 
 	// KeyBreakCircuitTitle titles the "Break the circuit?" confirmation
 	// dialog shown when an armed move would disconnect the circuit
 	// unhealably (grid_move_break_confirm.go).
 	KeyBreakCircuitTitle Key = "confirm.break_circuit"
+
+	// Logs Navigation Panel (logs_component.go) — searchable/filterable/paginated
+	// view of the event stream + notifications, opened from the grid Logs icon.
+	KeyLogs              Key = "logs.title"
+	KeyLogsSearchName    Key = "logs.search_name"
+	KeyLogsTimeAt        Key = "logs.time_at"
+	KeyLogsTimeRange     Key = "logs.time_range"
+	KeyLogsFrom          Key = "logs.from"
+	KeyLogsTo            Key = "logs.to"
+	KeyLogsAllCategories Key = "logs.all_categories"
+	KeyLogsPage          Key = "logs.page" // "Page %d / %d"
+	KeyLogsGoToPage      Key = "logs.go_to_page"
+	KeyLogsClearHistory  Key = "logs.clear_history"
+	KeyNoLogs            Key = "logs.empty"
+
+	// Logs date/time picker (logs_datetime_picker.go).
+	KeyLogsPickTitle Key = "logs.pick_title"
+	KeyLogsSet       Key = "logs.set"
+	KeyLogsClear     Key = "logs.clear"
+	KeyLogsAnyTime   Key = "logs.any_time"
+
+	// Calendar month names (cal.month.N) + weekday abbreviations (cal.wd.*).
+	KeyMonth1     Key = "cal.month.1"
+	KeyMonth2     Key = "cal.month.2"
+	KeyMonth3     Key = "cal.month.3"
+	KeyMonth4     Key = "cal.month.4"
+	KeyMonth5     Key = "cal.month.5"
+	KeyMonth6     Key = "cal.month.6"
+	KeyMonth7     Key = "cal.month.7"
+	KeyMonth8     Key = "cal.month.8"
+	KeyMonth9     Key = "cal.month.9"
+	KeyMonth10    Key = "cal.month.10"
+	KeyMonth11    Key = "cal.month.11"
+	KeyMonth12    Key = "cal.month.12"
+	KeyWeekdaySun Key = "cal.wd.sun"
+	KeyWeekdayMon Key = "cal.wd.mon"
+	KeyWeekdayTue Key = "cal.wd.tue"
+	KeyWeekdayWed Key = "cal.wd.wed"
+	KeyWeekdayThu Key = "cal.wd.thu"
+	KeyWeekdayFri Key = "cal.wd.fri"
+	KeyWeekdaySat Key = "cal.wd.sat"
 )
 
 // AllKeys lists every declared Key. The completeness test asserts this set is
@@ -723,18 +784,19 @@ func AllKeys() []Key {
 		KeySynthStageFilterEnv, KeySynthStagePost, KeySynthStageTone,
 		KeySynthStageEnsemble, KeySynthStageFormant, KeySynthStageResonator,
 		KeySynthStageEnvelopeShort, KeySynthStageFilterEnvShort,
+		KeySynthStageEnsembleShort, KeySynthStageFormantShort, KeySynthStageResonatorShort,
 		KeySynthStageVoiceSub, KeySynthStageOscSub, KeySynthStageFMSub, KeySynthStagePitchSub,
 		KeySynthStageLFOSub, KeySynthStageBurstSub, KeySynthStageEnvelopeSub, KeySynthStageFilterSub,
 		KeySynthStageFilterEnvSub, KeySynthStagePostSub, KeySynthStageToneSub,
 		KeySynthStageEnsembleSub, KeySynthStageFormantSub, KeySynthStageResonatorSub,
-		KeySynthKnobTune, KeySynthKnobDecayMult, KeySynthKnobTone, KeySynthKnobDrive,
-		KeySynthKnobBody, KeySynthKnobBright, KeySynthKnobGain, KeySynthKnobWave,
-		KeySynthKnobDetune, KeySynthKnobOctave, KeySynthKnobAttack, KeySynthKnobDecay,
-		KeySynthKnobSustain, KeySynthKnobRelease, KeySynthKnobCurve, KeySynthKnobType,
-		KeySynthKnobCutoff, KeySynthKnobResonance, KeySynthKnobAlgorithm, KeySynthKnobBaseFreq,
-		KeySynthKnobPitchEnv, KeySynthKnobPitchEnvDecay, KeySynthKnobAmount, KeySynthKnobRate,
-		KeySynthKnobDepth, KeySynthKnobSharpness, KeySynthKnobDraws, KeySynthKnobPrelude,
-		KeySynthKnobSeed, KeySynthKnobPitch, KeySynthKnobClick, KeySynthKnobNoise,
+		KeySynthControlTune, KeySynthControlDecayMult, KeySynthControlTone, KeySynthControlDrive,
+		KeySynthControlBody, KeySynthControlBright, KeySynthControlGain, KeySynthControlWave,
+		KeySynthControlDetune, KeySynthControlOctave, KeySynthControlAttack, KeySynthControlDecay,
+		KeySynthControlSustain, KeySynthControlRelease, KeySynthControlCurve, KeySynthControlType,
+		KeySynthControlCutoff, KeySynthControlResonance, KeySynthControlAlgorithm, KeySynthControlBaseFreq,
+		KeySynthControlPitchEnv, KeySynthControlPitchEnvDecay, KeySynthControlAmount, KeySynthControlRate,
+		KeySynthControlDepth, KeySynthControlSharpness, KeySynthControlDraws, KeySynthControlPrelude,
+		KeySynthControlSeed, KeySynthControlPitch, KeySynthControlClick, KeySynthControlNoise,
 		KeySynthNounRatio, KeySynthNounLevel, KeySynthNounTime, KeySynthNounHit,
 		KeySynthEnumSine, KeySynthEnumSaw, KeySynthEnumSquare, KeySynthEnumTriangle,
 		KeySynthEnumNoiseWhite, KeySynthEnumNoisePink, KeySynthEnumParallel, KeySynthEnum3opChain,
@@ -754,7 +816,17 @@ func AllKeys() []Key {
 		KeyGroupRuleOn, KeyGroupRuleOff, KeyGroupEveryN, KeyGroupEveryNShort, KeyGroupDelete, KeyGroupSave,
 		KeyGroupParamPitch, KeyGroupParamVolume, KeyGroupParamDuration,
 		KeyGroupAddTo, KeyGroupCreateNew, KeyGroupRemoveFrom,
-		KeyBannerPasting, KeyBannerMoving, KeyBannerConnectFrom, KeyBannerEscHint,
+		KeyBannerPasting, KeyBannerMoving, KeyBannerConnectFrom, KeyBannerConnecting, KeyBannerEscHint, KeyEscToCancel,
+		KeyConfirmReplaceNode, KeyCapOverwrite,
+		KeyImportCollisionTitle, KeyCapReplace, KeyCapKeepBoth,
 		KeyBreakCircuitTitle,
+		KeyLogs, KeyLogsSearchName, KeyLogsTimeAt, KeyLogsTimeRange,
+		KeyLogsFrom, KeyLogsTo, KeyLogsAllCategories, KeyLogsPage,
+		KeyLogsGoToPage, KeyLogsClearHistory, KeyNoLogs,
+		KeyLogsPickTitle, KeyLogsSet, KeyLogsClear, KeyLogsAnyTime,
+		KeyMonth1, KeyMonth2, KeyMonth3, KeyMonth4, KeyMonth5, KeyMonth6,
+		KeyMonth7, KeyMonth8, KeyMonth9, KeyMonth10, KeyMonth11, KeyMonth12,
+		KeyWeekdaySun, KeyWeekdayMon, KeyWeekdayTue, KeyWeekdayWed,
+		KeyWeekdayThu, KeyWeekdayFri, KeyWeekdaySat,
 	}
 }

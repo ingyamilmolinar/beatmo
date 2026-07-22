@@ -116,11 +116,8 @@ func TestFXPanelCloseResetsState(t *testing.T) {
 	if dv.fxSliderDragging {
 		t.Error("fxSliderDragging should be false after close")
 	}
-	if dv.fxScrollOffsetPx != 0 {
-		t.Errorf("fxScrollOffsetPx should be 0 after close, got %d", dv.fxScrollOffsetPx)
-	}
-	if dv.fxScrollMaxPx != 0 {
-		t.Errorf("fxScrollMaxPx should be 0 after close, got %d", dv.fxScrollMaxPx)
+	if dv.fxScroll != nil {
+		t.Errorf("fxScroll should be nil after close, got %+v", dv.fxScroll)
 	}
 }
 
@@ -414,7 +411,7 @@ func TestFXPanelOpenCloseState(t *testing.T) {
 	}
 
 	// Capturing should be false in idle state (no drag, no deferred tap, no scroll).
-	capturing := dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	capturing := dv.fxPanelDeferredTap.Active() || (dv.fxScroll != nil && dv.fxScroll.ScrollBehavior().TouchActive()) || dv.fxSliderDragging
 	if capturing {
 		t.Error("capturing state should be false with no active interactions")
 	}
@@ -439,14 +436,14 @@ func TestFXPanelCapturingState(t *testing.T) {
 	dv.toggleFXPanel(0)
 
 	// Idle state: not capturing.
-	capturing := dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	capturing := dv.fxPanelDeferredTap.Active() || (dv.fxScroll != nil && dv.fxScroll.ScrollBehavior().TouchActive()) || dv.fxSliderDragging
 	if capturing {
 		t.Error("capturing should be false initially")
 	}
 
 	// Simulate slider dragging.
 	dv.fxSliderDragging = true
-	capturing = dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	capturing = dv.fxPanelDeferredTap.Active() || (dv.fxScroll != nil && dv.fxScroll.ScrollBehavior().TouchActive()) || dv.fxSliderDragging
 	if !capturing {
 		t.Error("capturing should be true during slider drag")
 	}
@@ -454,7 +451,7 @@ func TestFXPanelCapturingState(t *testing.T) {
 
 	// Simulate deferred tap active.
 	dv.fxPanelDeferredTap.active = true
-	capturing = dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging
+	capturing = dv.fxPanelDeferredTap.Active() || (dv.fxScroll != nil && dv.fxScroll.ScrollBehavior().TouchActive()) || dv.fxSliderDragging
 	if !capturing {
 		t.Error("capturing should be true during deferred tap")
 	}
@@ -681,8 +678,8 @@ func TestFXPanelWheelScroll(t *testing.T) {
 		t.Fatal("panel should be open")
 	}
 	// Scroll offset should start at 0.
-	if dv.fxScrollOffsetPx != 0 {
-		t.Errorf("fxScrollOffsetPx should be 0 initially, got %d", dv.fxScrollOffsetPx)
+	if dv.fxScrollOffset() != 0 {
+		t.Errorf("fx scroll offset should be 0 initially, got %d", dv.fxScrollOffset())
 	}
 }
 

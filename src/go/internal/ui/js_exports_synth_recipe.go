@@ -4,6 +4,7 @@ package ui
 
 import (
 	"encoding/json"
+	"math"
 	"syscall/js"
 
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
@@ -376,14 +377,28 @@ func (g *Game) initJSSynthRecipeManagement() {
 		if reg == nil {
 			return ""
 		}
-		// Reconstruct a RecipeDoc from the live registration so the
-		// exported bytes always reflect the current defaults (which
-		// may have drifted from the persisted override since startup).
+		// Reconstruct a RecipeDoc from the live registration WITH a resolvable
+		// base + seed so importUserRecipe can round-trip it (the prior version
+		// dropped BaseRecipe/ParamSeed, so the tone was unrecoverable on import).
+		base := audio.RecipeBaseOf(recipeID)
+		if base == "" {
+			base = recipeID // builtin — its own base
+		}
+		effective := audio.RecipeDefaultParams(recipeID)
+		baseShipped := audio.RecipeShippedDefaults(base)
+		seed := map[string]float64{}
+		for k, v := range effective {
+			if s, ok := baseShipped[k]; !ok || math.Abs(v-s) > 1e-9 {
+				seed[k] = v
+			}
+		}
 		doc := audio.RecipeDoc{
 			ID:          reg.ID,
 			DisplayName: reg.DisplayName,
 			Category:    reg.Category,
+			BaseRecipe:  base,
 			ParamDefs:   reg.Params,
+			ParamSeed:   seed,
 			Origin:      audio.OriginUser,
 		}
 		raw, err := json.Marshal(doc)

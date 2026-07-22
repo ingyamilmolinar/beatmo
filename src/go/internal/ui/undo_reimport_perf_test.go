@@ -12,7 +12,7 @@ import (
 // identical document — exactly what an undo/redo restore does — does NOT
 // re-render any instrument. Before the audio-layer no-op skip, every undo/redo
 // re-applied (and on WASM re-rendered) every instrument's params + recipe, so
-// undoing a single synth-knob change re-rendered the whole kit: the
+// undoing a single synth-control change re-rendered the whole kit: the
 // "applying actions is slow" lag.
 func TestReimportSameDocSkipsInstrumentRerender(t *testing.T) {
 	g := newTestGameForUndo(t)

@@ -13,12 +13,12 @@ import (
 )
 
 // synthWidgetRectsJS builds the {name, x, y, w, h} payload for the Synth
-// tab's wired knob widgets, used by synthKnobRects.
+// tab's wired knob widgets, used by synthControlRects.
 func synthWidgetRectsJS(g *Game) interface{} {
 	if g.drum == nil {
 		return js.Global().Get("Array").New()
 	}
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	bindings := g.drum.SynthTabBindings()
 	out := js.Global().Get("Array").New(len(knobs))
 	for i, k := range knobs {
@@ -125,12 +125,12 @@ func (g *Game) initJSEqWidgets() {
 		return false
 	}))
 
-	// synthKnobRects() – returns an array of {name, x, y, w, h} for each
+	// synthControlRects() – returns an array of {name, x, y, w, h} for each
 	// knob widget currently rendered in the Synth tab. Coordinates are
 	// canvas-relative. Chip-strip redesign: only the SELECTED stage's knobs
 	// have non-empty rects — call selectSynthSection(label) first to open
 	// the stage that owns the knob you want to drive.
-	js.Global().Set("synthKnobRects", jsFn(func(args jsArgs) any {
+	js.Global().Set("synthControlRects", jsFn(func(args jsArgs) any {
 		return synthWidgetRectsJS(g)
 	}))
 
@@ -177,7 +177,7 @@ func (g *Game) initJSEqWidgets() {
 	// selectSynthSection(label) – open a stage in the Synth tab's detail
 	// pane by chip label ("OSC", "ENVELOPE", …). Returns true when the
 	// stage exists for the active instrument. Browser tests use this before
-	// locating a knob via synthKnobRects.
+	// locating a knob via synthControlRects.
 	js.Global().Set("selectSynthSection", jsFn(func(args jsArgs) any {
 		if g.drum == nil || args.Len() == 0 {
 			return false
@@ -656,9 +656,6 @@ func (g *Game) initJSEqWidgets() {
 		}
 		if dv.exportBtn() != nil {
 			setBtn("export", dv.exportBtn().Rect())
-		}
-		if dv.overflowBtn() != nil {
-			setBtn("overflow", dv.overflowBtn().Rect())
 		}
 		if dv.viewSwitchBtn() != nil {
 			setBtn("viewSwitch", dv.viewSwitchBtn().Rect())

@@ -24,6 +24,9 @@ import (
 	gamelog "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
+// logSeq is a process-wide monotonic sequence for retained LogRecords.
+var logSeq atomic.Int64
+
 // Options configures a Logger.
 type Options struct {
 	// Verbose includes hooks.IsVerbose(k) kinds (camera pan/zoom, drag
@@ -199,13 +202,29 @@ func (l *Logger) writeEvent(e hooks.Event) {
 		return
 	}
 	l.written.Add(1)
+
+	// Compute tag + scope once: used both for the retained LogRecord and for
+	// the INFO bracket tag below.
+	tag := ""
+	scope := hooks.ScopeSession
+	if meta, ok := hooks.MetaFor(e.Kind); ok {
+		tag = meta.Tag
+		scope = meta.Scope
+	}
+	// Retain a searchable record for the UI logs panel (no-op sink by default).
+	History().Record(LogRecord{
+		Seq:   logSeq.Add(1),
+		At:    e.At,
+		Kind:  e.Kind,
+		Tag:   tag,
+		Scope: scope,
+		Msg:   msg,
+		IsErr: false,
+	})
+
 	srcSuffix := ""
 	if s := e.Source.String(); s != "" {
 		srcSuffix = "  src=" + s
-	}
-	tag := ""
-	if meta, ok := hooks.MetaFor(e.Kind); ok {
-		tag = meta.Tag
 	}
 	if tag == "" {
 		l.log.Infof("%s%s", msg, srcSuffix)

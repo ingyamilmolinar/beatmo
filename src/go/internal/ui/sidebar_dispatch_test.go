@@ -46,14 +46,22 @@ func openSidebarForDispatch(t *testing.T, cursorX, cursorY *int, leftPressed *bo
 // TestSidebarDispatchWheelScroll verifies that mouse wheel events over the
 // sidebar scroll its content through the full g.Update() dispatch path.
 func TestSidebarDispatchWheelScroll(t *testing.T) {
-	cursorX, cursorY := 100, 100
+	// Placeholder cursor; the sidebar's panel is now a compact card anchored
+	// beside its node (not a full-height panel docked at x=0), so the real
+	// coordinate is derived from g.sidebar.rects["panel"] below, once the
+	// sidebar is open and laid out.
+	cursorX, cursorY := 0, 0
 	leftPressed := false
 	wheelY := 0.0
 
 	g := openSidebarForDispatch(t, &cursorX, &cursorY, &leftPressed, &wheelY)
 
-	// Verify cursor is inside sidebar panel
+	// Point inside the sidebar's actual (node-anchored) panel content area.
 	panel := g.sidebar.rects["panel"]
+	if panel.Empty() {
+		t.Fatal("panel rect should be non-empty")
+	}
+	cursorX, cursorY = panel.Min.X+10, panel.Min.Y+10
 	if !image.Pt(cursorX, cursorY).In(panel) {
 		t.Fatalf("cursor (%d,%d) should be inside panel %v", cursorX, cursorY, panel)
 	}
@@ -183,11 +191,25 @@ func TestSidebarDispatchScrollDragCapture(t *testing.T) {
 // TestSidebarDispatchWheelBlocksZoom verifies that wheel events over the
 // sidebar do NOT cause camera zoom.
 func TestSidebarDispatchWheelBlocksZoom(t *testing.T) {
-	cursorX, cursorY := 100, 100
+	// Placeholder cursor; the sidebar's panel is now a compact card anchored
+	// beside its node (not a full-height panel docked at x=0), so the real
+	// coordinate is derived from g.sidebar.rects["panel"] below, once the
+	// sidebar is open and laid out.
+	cursorX, cursorY := 0, 0
 	leftPressed := false
 	wheelY := 0.0
 
 	g := openSidebarForDispatch(t, &cursorX, &cursorY, &leftPressed, &wheelY)
+
+	// Point inside the sidebar's actual (node-anchored) panel rect.
+	panel := g.sidebar.rects["panel"]
+	if panel.Empty() {
+		t.Fatal("panel rect should be non-empty")
+	}
+	cursorX, cursorY = panel.Min.X+10, panel.Min.Y+10
+	if !image.Pt(cursorX, cursorY).In(panel) {
+		t.Fatalf("cursor (%d,%d) should be inside panel %v", cursorX, cursorY, panel)
+	}
 
 	scaleBefore := g.cam.Scale
 
@@ -213,11 +235,14 @@ func TestSidebarDispatchTouchScroll(t *testing.T) {
 	g := openSidebarForDispatch(t, &cursorX, &cursorY, &leftPressed, &wheelY)
 
 	panel := g.sidebar.rects["panel"]
-	cx := panel.Dx() / 2
+	cx := panel.Min.X + panel.Dx()/2
 
 	// Use the content area (below header, inside panel).
-	// The panel bottom is panel.Max.Y; start near the bottom.
-	contentTop := sidebarPad + sidebarHeaderH + sidebarGap
+	// The panel bottom is panel.Max.Y; start near the bottom. contentTopY is
+	// the same position-independent helper NodeSidebar.HandleInput itself
+	// uses (derived from the laid-out "header" rect, which floats with the
+	// node-anchored panel), rather than a fixed offset from a (0,0) origin.
+	contentTop := g.sidebar.contentTopY()
 	startY := panel.Max.Y - 10
 	if startY <= contentTop {
 		t.Fatalf("panel too small to test touch scroll: panel=%v contentTop=%d", panel, contentTop)

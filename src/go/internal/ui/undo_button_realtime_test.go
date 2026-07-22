@@ -9,12 +9,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestSynthKnobUndoButtonReactsSameFrame proves the transport Undo button reacts
+// TestSynthControlUndoButtonReactsSameFrame proves the transport Undo button reacts
 // to a Synth-tab value edit in REAL TIME. Task-5 value edits are the desktop
 // wheel nudge; its single undo step commits when the debounce elapses (inside an
 // Update's synthTabUpdate). On the very frame the commit lands, that frame's Draw
 // must already render the button lit — not one or more frames later.
-func TestSynthKnobUndoButtonReactsSameFrame(t *testing.T) {
+func TestSynthControlUndoButtonReactsSameFrame(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
@@ -25,7 +25,7 @@ func TestSynthKnobUndoButtonReactsSameFrame(t *testing.T) {
 	defer releaseImage(img)
 	g.Draw(img)
 
-	k := g.drum.SynthTabKnobs()[idx]
+	k := g.drum.SynthTabControls()[idx]
 	r := k.Rect()
 	if r.Empty() {
 		t.Fatal("knob rect empty")

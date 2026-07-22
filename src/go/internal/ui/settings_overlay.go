@@ -7,8 +7,10 @@ import (
 	"github.com/ingyamilmolinar/beatmo/internal/i18n"
 )
 
-// settingsOverlayW is the panel width in px.
-const settingsOverlayW = 480
+// settingsOverlayW is the panel width in px. Sized to the content (two language
+// pills + the two-column shortcut list) with no dead right margin — the card
+// was 480 and left ~140px empty.
+const settingsOverlayW = 340
 
 // settingsPanelHandler is the full-panel catch-all: it consumes any press that
 // lands on the panel background (not on a pill or the close button) so a
@@ -17,12 +19,37 @@ const settingsOverlayW = 480
 // this catch-all, so they win the equal-z stable-sort tiebreak on overlap. The
 // overlay is opened modal, so presses outside the panel are filtered out by the
 // HitIndex before they ever reach a handler.
-type settingsPanelHandler struct{}
+//
+// It also owns the shortcuts-list scroll input: wheel + scrollbar-thumb drag go
+// through the shared MenuScroll (o.scroll), so the settings shortcuts scroll with
+// the same smooth wheel feel as every other list menu.
+type settingsPanelHandler struct{ o *SettingsOverlay }
 
-func (settingsPanelHandler) OnPress(x, y int) InputResult { return InputConsumed }
-func (settingsPanelHandler) OnDrag(x, y int)              {}
-func (settingsPanelHandler) OnRelease(x, y int)           {}
-func (settingsPanelHandler) OnWheel(x, y, steps int) InputResult { return InputConsumed }
+func (h settingsPanelHandler) OnPress(x, y int) InputResult {
+	if h.o != nil && h.o.scroll != nil && h.o.scroll.HandleScrollbarDrag(image.Pt(x, y), true, nil) {
+		return InputCaptured
+	}
+	return InputConsumed
+}
+
+func (h settingsPanelHandler) OnDrag(x, y int) {
+	if h.o != nil && h.o.scroll != nil {
+		h.o.scroll.HandleScrollbarDrag(image.Pt(x, y), true, nil)
+	}
+}
+
+func (h settingsPanelHandler) OnRelease(x, y int) {
+	if h.o != nil && h.o.scroll != nil {
+		h.o.scroll.HandleScrollbarDrag(image.Pt(x, y), false, nil)
+	}
+}
+
+func (h settingsPanelHandler) OnWheel(x, y, steps int) InputResult {
+	if h.o != nil && h.o.scroll != nil {
+		h.o.scroll.HandleWheel(steps)
+	}
+	return InputConsumed
+}
 
 // SettingsOverlay is the portal panel for language selection plus a localized
 // keyboard-shortcuts list. onPick is invoked when the user taps a language pill.
@@ -33,25 +60,49 @@ type SettingsOverlay struct {
 	enRect image.Rectangle
 	esRect image.Rectangle
 
-	// Real Buttons so the pills + close affordance get the shared keycap chrome
-	// and press/hover animation as every other control (DESIGN.md). The active
-	// language pill is rendered toggled (latched amber). Created once in the
-	// constructor; SetRect'd each Layout.
-	enBtn    *Button
-	esBtn    *Button
-	closeBtn *Button
+	// Real Buttons so the pills get the shared keycap chrome and press/hover
+	// animation as every other control (DESIGN.md). The active language pill is
+	// rendered toggled (latched amber). Created once; SetRect'd each Layout.
+	// There is NO close (×) button: the gear button toggles this overlay closed.
+	enBtn *Button
+	esBtn *Button
+
+	// place, when set, positions the panel (owner-injected so the overlay can
+	// anchor to a grid-pane button via the shared helper without importing Game).
+	// nil → the panel centers on screenBounds (mobile / no owner).
+	place func(w, h int) image.Rectangle
+
+	// scroll drives the desktop shortcuts list when the panel is height-clamped
+	// (short pane). The same shared MenuScroll engine every list menu uses, so
+	// the shortcuts scroll with the identical smooth wheel + thumb-drag feel. It
+	// no-ops (HasScroll()==false) whenever the whole list fits, which is the
+	// common case. shortcutsView is the row viewport (excludes the fixed header).
+	scroll        *MenuScroll
+	shortcutsView image.Rectangle
+
+	// langLabelY is the baseline of the "Language" section label, computed in
+	// Layout from the shared card padding + role heights so Draw places the
+	// label (and everything below it) in lock-step.
+	langLabelY int
 }
+
+// settingsShortcutRowH is the per-row stride of the shortcuts list (Draw and the
+// scroll viewport must agree).
+const settingsShortcutRowH = 26
 
 // NewSettingsOverlay creates a settings portal overlay; onPick fires on a pill tap.
 func NewSettingsOverlay(onPick func(i18n.Locale)) *SettingsOverlay {
 	o := &SettingsOverlay{onPick: onPick}
 	o.enBtn = NewButtonKey(i18n.KeyLangEnglish, ComponentButtonSecondary, func() { o.pick(i18n.LocaleEN) })
 	o.esBtn = NewButtonKey(i18n.KeyLangSpanish, ComponentButtonSecondary, func() { o.pick(i18n.LocaleES) })
-	o.closeBtn = NewSpecButton("", ComponentButtonSecondary, func() { o.Close() })
-	o.closeBtn.Icon = "close"
-	o.closeBtn.IconColor = closeIconColor()
+	o.scroll = NewMenuScroll(DropdownScrollbarStyle, settingsShortcutRowH)
 	return o
 }
+
+// SetPositioner injects an owner-supplied positioner: place(w,h) returns the
+// panel rect for a panel of the given size. When set, Layout uses it instead of
+// centering — this is how the desktop overlay anchors under the grid gear.
+func (o *SettingsOverlay) SetPositioner(place func(w, h int) image.Rectangle) { o.place = place }
 
 // Close marks the overlay for removal on the next portal sweep.
 func (o *SettingsOverlay) Close() { o.closed = true }
@@ -72,25 +123,58 @@ func (o *SettingsOverlay) Layout(anchor, screenBounds image.Rectangle) {
 	}
 	// Height: header + language row, plus the shortcuts section on desktop only
 	// (mobile drops it entirely, so the panel is correspondingly shorter).
+	rows := 0
 	h := 40 + 56 + 24
 	if o.shortcutsVisible() {
-		rows := len(localizedShortcutRows())
-		h += 26 * (rows + 1)
+		rows = len(localizedShortcutRows())
+		h += settingsShortcutRowH * (rows + 1)
 	}
-	cx := (b.Min.X + b.Max.X) / 2
-	cy := (b.Min.Y + b.Max.Y) / 2
-	o.rect = image.Rect(cx-w/2, cy-h/2, cx+w/2, cy-h/2+h)
-	// Two language pills laid out under the language label.
-	pillW, pillH := 150, 32
-	px := o.rect.Min.X + 24
-	py := o.rect.Min.Y + 40 + 24
+	// Clamp to the available vertical space (side/top margin) so a short pane
+	// never hides shortcut rows past the bottom edge with no way to reach them —
+	// the list scrolls instead of truncating.
+	if maxH := b.Dy() - 2*12; maxH > 0 && h > maxH {
+		h = maxH
+	}
+	if o.place != nil {
+		o.rect = o.place(w, h)
+	} else {
+		cx := (b.Min.X + b.Max.X) / 2
+		cy := (b.Min.Y + b.Max.Y) / 2
+		o.rect = image.Rect(cx-w/2, cy-h/2, cx+w/2, cy-h/2+h)
+	}
+	// Title band → "Language" section label → the two pills. Every offset
+	// derives from the shared card padding + text-role heights, so Draw stays
+	// in lock-step (it recomputes langLabelY the same way). One Title >
+	// Section > control ladder shared by all three cards.
+	titleH := StyledTextHeight(cardTitleRole)
+	labelH := StyledTextHeight(RoleSectionHeader)
+	o.langLabelY = o.rect.Min.Y + SpaceMD + titleH + SpaceSM
+	pillW, pillH := 138, 32
+	px := o.rect.Min.X + cardContentPadX
+	py := o.langLabelY + labelH + SpaceXS
 	o.enRect = image.Rect(px, py, px+pillW, py+pillH)
-	o.esRect = image.Rect(px+pillW+12, py, px+pillW+12+pillW, py+pillH)
+	o.esRect = image.Rect(px+pillW+SpaceMD, py, px+pillW+SpaceMD+pillW, py+pillH)
 	o.enBtn.SetRect(o.enRect)
 	o.esBtn.SetRect(o.esRect)
-	// Close button in the panel's top-right corner, sized via the shared helper
-	// so it matches every other pop-up.
-	o.closeBtn.SetRect(closeButtonRect(o.rect, SpaceXS))
+
+	// Configure the shortcuts scroll viewport: the region below the fixed
+	// "Shortcuts" header down to the panel's inner bottom. Draw offsets the rows
+	// by o.scroll.OffsetPx() and clips them here. No-ops when the list fits.
+	if o.shortcutsVisible() && o.scroll != nil {
+		listTop := o.esRect.Max.Y + 18 + 28 // header at +18, first row at +28 (see Draw)
+		listBot := o.rect.Max.Y - 8
+		o.shortcutsView = image.Rect(o.rect.Min.X+cardContentPadX, listTop, o.rect.Max.X-SpaceMD, listBot)
+		visRows := 0
+		if listBot > listTop {
+			visRows = (listBot - listTop) / settingsShortcutRowH
+		}
+		if visRows < 1 {
+			visRows = 1
+		}
+		o.scroll.Configure(o.shortcutsView, rows, visRows)
+	} else {
+		o.shortcutsView = image.Rectangle{}
+	}
 }
 
 // HitAreas publishes one hit area per interactive control (the two language
@@ -107,10 +191,8 @@ func (o *SettingsOverlay) HitAreas() []HitArea {
 			Handler: &buttonHitAdapter{btn: o.enBtn}},
 		{Rect: o.esBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-lang-es",
 			Handler: &buttonHitAdapter{btn: o.esBtn}},
-		{Rect: o.closeBtn.Rect(), ZIndex: ZOverlayMin, Tag: "settings-close",
-			Handler: &buttonHitAdapter{btn: o.closeBtn}},
 		{Rect: o.rect, ZIndex: ZOverlayMin, Tag: "settings-panel",
-			Handler: settingsPanelHandler{}},
+			Handler: settingsPanelHandler{o: o}},
 	}
 }
 
@@ -132,44 +214,57 @@ func (o *SettingsOverlay) LanguagePillRects() (en, es image.Rectangle) {
 	return o.enRect, o.esRect
 }
 
-// CloseButtonRect returns the close button's bounds. Valid after Layout.
-func (o *SettingsOverlay) CloseButtonRect() image.Rectangle { return o.closeBtn.Rect() }
-
 // Draw paints the modal scrim, the panel chrome, the language pills, the close
 // button, and the localized keyboard-shortcuts list (desktop only).
 func (o *SettingsOverlay) Draw(screen *ebiten.Image) {
 	if screen == nil || o.rect.Empty() {
 		return
 	}
-	b := screen.Bounds()
-	drawRect(screen, b, colScrim, true) // own scrim (modal feel)
-	drawRoundedRect(screen, o.rect, colSurface2, RadiusSM, true)
-	drawRoundedRect(screen, o.rect, colButtonBorder, RadiusSM, false)
-	x := o.rect.Min.X + 24
-	y := o.rect.Min.Y + 12
-	DrawTextStyled(screen, i18n.T(i18n.KeySettingsTitle), x, y, RolePanelTitle, colTextPrimary)
-	y += 36
-	DrawTextStyled(screen, i18n.T(i18n.KeySettingsLanguage), x, y, RoleCaption, colTextSecondary)
+	drawRect(screen, screen.Bounds(), colScrim, true) // full-screen scrim (modal feel)
+	// Shared panel chrome (shadow + surface-overlay fill + panel border +
+	// popupCornerRadius) — identical to File and Logs. Drawn on the UNCLIPPED
+	// screen so the drop shadow is not clipped away by the content SubImage.
+	drawPanel(screen, o.rect)
+	// Clip the panel CONTENT to o.rect (grid-pane-clamped) so a tall shortcuts
+	// list can never spill past the split into the drum-view panel below.
+	dst := screen.SubImage(o.rect).(*ebiten.Image)
+	x := o.rect.Min.X + cardContentPadX
+	// Card title (panel-title) via the shared helper — pixel-identical to the
+	// Logs and File card titles.
+	titleH := StyledTextHeight(cardTitleRole)
+	drawCardTitleIn(dst, image.Rect(x, o.rect.Min.Y+SpaceMD, o.rect.Max.X-cardContentPadX, o.rect.Min.Y+SpaceMD+titleH), i18n.T(i18n.KeySettingsTitle))
+	// "Language" section label — same role/size/colour as "Keyboard shortcuts"
+	// below, so the two peer sections read at one hierarchy level (subtitle).
+	DrawTextStyled(dst, i18n.T(i18n.KeySettingsLanguage), x, o.langLabelY, RoleSectionHeader, colTextPrimary)
 	// Language pills as real Buttons: the active locale renders toggled (latched)
 	// so it matches every other active control. Buttons handle their own keycap
 	// chrome + press/hover animation.
 	o.enBtn.SetToggled(i18n.ActiveLocale() == i18n.LocaleEN)
 	o.esBtn.SetToggled(i18n.ActiveLocale() == i18n.LocaleES)
-	o.enBtn.Draw(screen)
-	o.esBtn.Draw(screen)
-	// Close button (top-right).
-	o.closeBtn.Draw(screen)
+	o.enBtn.Draw(dst)
+	o.esBtn.Draw(dst)
 	// Shortcuts section — desktop only. Mobile hides it entirely (no physical
 	// keyboard), so there is no header and no desktop-only note.
 	if !o.shortcutsVisible() {
 		return
 	}
-	y = o.esRect.Max.Y + 18
-	DrawTextStyled(screen, i18n.T(i18n.KeySettingsShortcuts), x, y, RoleSectionHeader, colTextPrimary)
-	y += 28
-	for _, row := range localizedShortcutRows() {
-		DrawTextStyled(screen, row.keys, x, y, RoleCaption, colTextPrimary)
-		DrawTextStyled(screen, i18n.T(row.actionKey), x+120, y, RoleCaption, colTextSecondary)
-		y += 26
+	// Fixed "Shortcuts" header (never scrolls).
+	DrawTextStyled(dst, i18n.T(i18n.KeySettingsShortcuts), x, o.esRect.Max.Y+18, RoleSectionHeader, colTextPrimary)
+	// Rows scroll inside shortcutsView by o.scroll.OffsetPx(); the SubImage clip
+	// keeps a scrolled row from painting over the header or past the panel bottom,
+	// and o.scroll.Draw paints the scrollbar (a no-op when the list fits).
+	if !o.shortcutsView.Empty() {
+		rowsDst := dst.SubImage(o.shortcutsView).(*ebiten.Image)
+		ry := o.shortcutsView.Min.Y - o.scroll.OffsetPx()
+		// term/definition: the key is the primary body term (white), the action
+		// its caption gloss (muted) — vertically centred to the taller key row.
+		keyH := StyledTextHeight(RoleBody)
+		descDY := (keyH - StyledTextHeight(RoleCaption)) / 2
+		for _, row := range localizedShortcutRows() {
+			DrawTextStyled(rowsDst, row.keys, x, ry, RoleBody, colTextPrimary)
+			DrawTextStyled(rowsDst, i18n.T(row.actionKey), x+96, ry+descDY, RoleCaption, colTextSecondary)
+			ry += settingsShortcutRowH
+		}
+		o.scroll.Draw(dst)
 	}
 }

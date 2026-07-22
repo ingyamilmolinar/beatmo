@@ -119,17 +119,23 @@ func (g *Game) SeekSteps(steps int, origin string) {
 // and released independently (never nested with each other), with seqMu as the
 // outer lock — the same shape the sequencer uses, so no ordering conflict.
 func (g *Game) drainSeekRequest() {
-	steps, deltaBeats, isDelta, origin, ok := g.drum.TakeSeekRequest()
+	value, mode, origin, ok := g.drum.TakeSeekRequest()
 	if !ok {
 		return
 	}
 	g.seqMu.Lock()
 	defer g.seqMu.Unlock()
-	if isDelta {
-		div := max1(g.grid.MaxDiv())
+	div := max1(g.grid.MaxDiv())
+	var steps int
+	switch mode {
+	case seekReqDeltaBeats:
 		cur := g.playheadAbsSubdiv()
 		snapped := int(math.Round(float64(cur)/float64(div))) * div // snap to whole beat first
-		steps = snapped + deltaBeats*div
+		steps = snapped + value*div
+	case seekReqDeltaSteps:
+		steps = g.playheadAbsSubdiv() + value // no beat snap — subdivision granular
+	default: // seekReqAbs
+		steps = value
 	}
 	g.SeekSteps(steps, origin)
 }

@@ -15,17 +15,33 @@ type fakeApplier struct {
 	calls []string
 }
 
-func (f *fakeApplier) SetForceMobileProfile(v bool) { f.calls = append(f.calls, label("SetForceMobileProfile", v)) }
-func (f *fakeApplier) SetForceAutoSize(v bool)      { f.calls = append(f.calls, label("SetForceAutoSize", v)) }
-func (f *fakeApplier) SetDefaultStart(v bool)       { f.calls = append(f.calls, label("SetDefaultStart", v)) }
-func (f *fakeApplier) SetSplitterFrac(v float64)    { f.calls = append(f.calls, label("SetSplitterFrac", v)) }
-func (f *fakeApplier) SetCameraOffsetX(v float64)   { f.calls = append(f.calls, label("SetCameraOffsetX", v)) }
-func (f *fakeApplier) SetCameraOffsetY(v float64)   { f.calls = append(f.calls, label("SetCameraOffsetY", v)) }
-func (f *fakeApplier) SetCameraScale(v float64)     { f.calls = append(f.calls, label("SetCameraScale", v)) }
-func (f *fakeApplier) CenterCamera()                { f.calls = append(f.calls, "CenterCamera") }
-func (f *fakeApplier) SetViewMode(audio bool)       { f.calls = append(f.calls, label("SetViewMode", audio)) }
-func (f *fakeApplier) SetMobileEQCollapsed(v bool)  { f.calls = append(f.calls, label("SetMobileEQCollapsed", v)) }
-func (f *fakeApplier) OpenSidebarForNodeID(id int)  { f.calls = append(f.calls, label("OpenSidebarForNodeID", id)) }
+func (f *fakeApplier) SetForceMobileProfile(v bool) {
+	f.calls = append(f.calls, label("SetForceMobileProfile", v))
+}
+func (f *fakeApplier) SetForceAutoSize(v bool) {
+	f.calls = append(f.calls, label("SetForceAutoSize", v))
+}
+func (f *fakeApplier) SetDefaultStart(v bool) { f.calls = append(f.calls, label("SetDefaultStart", v)) }
+func (f *fakeApplier) SetSplitterFrac(v float64) {
+	f.calls = append(f.calls, label("SetSplitterFrac", v))
+}
+func (f *fakeApplier) SetCameraOffsetX(v float64) {
+	f.calls = append(f.calls, label("SetCameraOffsetX", v))
+}
+func (f *fakeApplier) SetCameraOffsetY(v float64) {
+	f.calls = append(f.calls, label("SetCameraOffsetY", v))
+}
+func (f *fakeApplier) SetCameraScale(v float64) {
+	f.calls = append(f.calls, label("SetCameraScale", v))
+}
+func (f *fakeApplier) CenterCamera()          { f.calls = append(f.calls, "CenterCamera") }
+func (f *fakeApplier) SetViewMode(audio bool) { f.calls = append(f.calls, label("SetViewMode", audio)) }
+func (f *fakeApplier) SetMobileEQCollapsed(v bool) {
+	f.calls = append(f.calls, label("SetMobileEQCollapsed", v))
+}
+func (f *fakeApplier) OpenSidebarForNodeID(id int) {
+	f.calls = append(f.calls, label("OpenSidebarForNodeID", id))
+}
 
 func label(name string, v any) string { return fmt.Sprintf("%s:%v", name, v) }
 
@@ -170,4 +186,3 @@ func TestApplyFileMalformed(t *testing.T) {
 		t.Fatalf("error = %q, want prefix 'parse ui-state'", err.Error())
 	}
 }
-

@@ -16,7 +16,7 @@ import (
 // conceptStageEnableParam), but the card must SAY when the stage is actually
 // bypassed rather than silently implying the sound changes. Selects the LFO
 // stage's Rate knob (via the crop_synth_focus_motion scene, the same
-// mechanism TestSynthFocusSceneSelectsIntendedKnob uses), pins lfo_depth so
+// mechanism TestSynthFocusSceneSelectsIntendedControl uses), pins lfo_depth so
 // the underlying curve is identical in both renders, and flips only
 // lfo_enabled — the fingerprint must differ (the scrim + OFF hint painted on
 // top), proving the honesty scrim is wired into drawSynthFocusGraph.

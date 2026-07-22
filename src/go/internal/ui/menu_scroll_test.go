@@ -17,49 +17,77 @@ func TestMenuScroll_OffsetAndWheel(t *testing.T) {
 	if got := m.OffsetPx(); got != 0 {
 		t.Fatalf("OffsetPx()=%d; want 0 at top", got)
 	}
-	// Clicky: one wheel notch moves exactly ONE item regardless of magnitude —
-	// a fast trackpad flick / hi-res wheel (|steps|=2) must not fly two rows.
+	// Smooth: the wheel RESPECTS magnitude — a hi-res wheel / trackpad flick of
+	// |steps|=2 moves two rows in a single event (the instrument-menu feel),
+	// unlike the old clicky one-item-per-notch cadence.
 	if !m.HandleWheel(-2) {
-		t.Fatalf("HandleWheel returned false; expected a one-item offset change")
+		t.Fatalf("HandleWheel returned false; expected a two-item offset change")
 	}
-	if got := m.OffsetPx(); got != 1*20 {
-		t.Fatalf("OffsetPx()=%d; want %d (exactly one item per notch, magnitude ignored)", got, 1*20)
+	if got := m.OffsetPx(); got != 2*20 {
+		t.Fatalf("OffsetPx()=%d; want %d (magnitude respected: two items)", got, 2*20)
 	}
 }
 
-// TestMenuScroll_WheelIsClicky pins the menu wheel to the SAME clicky cadence as
-// the row rack / control grids: one item per notch (magnitude ignored) plus a
-// cooldown lock so a held wheel / fast flick can't fly through the list. The
-// cooldown only releases after controlGridScrollCooldownFrames TickStep() calls.
-func TestMenuScroll_WheelIsClicky(t *testing.T) {
+// TestMenuScroll_WheelIsSmooth pins the menu wheel to the smooth, continuous
+// instrument-menu cadence: it respects wheel magnitude and has NO per-notch
+// cooldown lock, so consecutive notches scroll on consecutive frames with no
+// TickStep() gating between them. (The row rack and synth control grids keep the
+// clicky WheelStep path; list/dropdown menus do not.)
+func TestMenuScroll_WheelIsSmooth(t *testing.T) {
 	m := NewMenuScroll(DropdownScrollbarStyle, 20)
 	m.Configure(image.Rect(0, 0, 100, 100), 50, 5)
 
-	// First notch: one item, even with a big magnitude.
-	if !m.HandleWheel(-3) || m.OffsetPx() != 20 {
-		t.Fatalf("first notch: OffsetPx()=%d, want 20 (one item)", m.OffsetPx())
+	// Magnitude respected: a three-step notch moves three items at once.
+	if !m.HandleWheel(-3) || m.OffsetPx() != 3*20 {
+		t.Fatalf("first notch: OffsetPx()=%d, want 60 (three items, magnitude respected)", m.OffsetPx())
 	}
-	// Immediately again within the cooldown: no movement.
-	if m.HandleWheel(-3) {
-		t.Fatalf("second notch within cooldown moved; want locked (OffsetPx=%d)", m.OffsetPx())
-	}
-	if m.OffsetPx() != 20 {
-		t.Fatalf("OffsetPx()=%d after locked notch; want still 20", m.OffsetPx())
-	}
-	// Advance the cooldown clock, then it releases exactly one more item.
-	for i := 0; i < controlGridScrollCooldownFrames; i++ {
-		m.TickStep()
-	}
-	if !m.HandleWheel(-3) || m.OffsetPx() != 40 {
-		t.Fatalf("after cooldown: OffsetPx()=%d, want 40 (one more item)", m.OffsetPx())
+	// No cooldown lock: an immediately-following notch moves again, no TickStep.
+	if !m.HandleWheel(-2) || m.OffsetPx() != 5*20 {
+		t.Fatalf("second notch (no cooldown): OffsetPx()=%d, want 100", m.OffsetPx())
 	}
 	// Zero-magnitude notch is a no-op.
-	for i := 0; i < controlGridScrollCooldownFrames; i++ {
-		m.TickStep()
-	}
 	if m.HandleWheel(0) {
 		t.Fatalf("HandleWheel(0) moved; want no-op")
 	}
+}
+
+// TestMenuScroll_TickDrivesMomentumAndRebuilds pins the shared per-frame momentum
+// driver: at rest Tick is a no-op (no rebuild), and after a touch fling it carries
+// the list past the finger-release position, invoking the rebuild callback on each
+// frame the offset changes. A nil rebuild must be safe.
+func TestMenuScroll_TickDrivesMomentumAndRebuilds(t *testing.T) {
+	m := NewMenuScroll(DropdownScrollbarStyle, 20)
+	m.Configure(image.Rect(0, 0, 100, 100), 200, 5)
+	sb := m.ScrollBehavior()
+
+	rebuilds := 0
+	if m.Tick(func() { rebuilds++ }) || rebuilds != 0 {
+		t.Fatalf("Tick at rest moved/rebuilt (rebuilds=%d)", rebuilds)
+	}
+
+	// Fast upward fling → content scrolls down with inertia after release.
+	sb.HandleTouchBegin(50, 90)
+	sb.HandleTouchMove(50, 60) // commit vertical direction past the dead zone
+	sb.HandleTouchMove(50, 20) // build velocity
+	firstAtRelease := sb.VS.First
+	sb.HandleTouchEnd()
+
+	moved := false
+	for i := 0; i < 600 && sb.HasMomentum(); i++ {
+		if m.Tick(func() { rebuilds++ }) {
+			moved = true
+		}
+	}
+	if !moved {
+		t.Fatalf("Tick never advanced the offset during the fling")
+	}
+	if rebuilds == 0 {
+		t.Fatalf("Tick never invoked rebuild while momentum moved the offset")
+	}
+	if sb.VS.First <= firstAtRelease {
+		t.Fatalf("momentum did not carry past release (First=%d release=%d)", sb.VS.First, firstAtRelease)
+	}
+	m.Tick(nil) // nil rebuild must not panic
 }
 
 func TestMenuScroll_NoScrollWhenFits(t *testing.T) {

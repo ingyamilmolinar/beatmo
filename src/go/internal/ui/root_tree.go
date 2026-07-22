@@ -150,6 +150,21 @@ func (r *RootTree) HasBlockingPortal() bool {
 	return r.blockingPortalOwner() != nil
 }
 
+// HasInputOwningPortal reports whether ANY composed subtree currently has an
+// INTERACTIVE (non-passive) overlay open — blocking OR not. It is the gate the
+// out-of-tree Game handlers use so a press outside ANY interactive overlay (the
+// docked FX panel and EQ channel dropdown included, not only modal/scrim menus)
+// stands down and lets the overlay's click-outside close it. Passive tooltips
+// are excluded. Superset of HasBlockingPortal.
+func (r *RootTree) HasInputOwningPortal() bool {
+	for i := len(r.children) - 1; i >= 0; i-- {
+		if r.children[i].tree.PortalOwnsInput() {
+			return true
+		}
+	}
+	return false
+}
+
 // blockingPortalOwner returns the top-most (highest z) subtree that has a
 // BLOCKING overlay (modal or scrim-backed menu/picker/dropdown/popup) open in
 // its portal. A blocking overlay owns the next click cycle, so input is routed

@@ -1224,9 +1224,11 @@ func (g *Game) drawGridCoordBadge(dst *ebiten.Image) {
 	}
 }
 
-// drawGridMoveMode draws the move-mode banner, the moving-node outline, and
-// the ghost placement indicator; it also draws copy mode's banner and ghost
-// (no outline/blink — copy mode's subject node is not going anywhere).
+// drawGridMoveMode draws the move-mode subject outline/blink and the ghost
+// placement indicator shared with copy mode (no outline/blink for copy — its
+// subject node is not going anywhere). The armed-mode banner itself is drawn
+// once for all three modes (move/copy/connect) by drawGridModeBanner (Task 9)
+// — this function no longer draws a banner.
 // Verbatim cut of the move-mode block (~1082–1121), extended for copy mode
 // in Task 7.
 func (g *Game) drawGridMoveMode(dst *ebiten.Image) {
@@ -1235,9 +1237,6 @@ func (g *Game) drawGridMoveMode(dst *ebiten.Image) {
 
 	switch {
 	case g.modes.Is(GridModeMove):
-		movingNode := g.modes.Subject()
-		g.drawGridModeBanner(dst, gridModeBannerText(GridModeMove, movingNode, Profile().ShowEscHint))
-
 		// Pulsing outline + blinking body on the subject node: the blink
 		// (Update-ticked, gridModeBlinkHalfPeriod) signals "this node is
 		// about to move" while every other behavior stays live.
@@ -1254,7 +1253,8 @@ func (g *Game) drawGridMoveMode(dst *ebiten.Image) {
 			drawRect(dst, blinkRect, WithAlpha(genColorVizGlow, genAlphaMedium), true)
 		}
 	case g.modes.Is(GridModeCopy):
-		g.drawGridModeBanner(dst, gridModeBannerText(GridModeCopy, g.modes.Subject(), Profile().ShowEscHint))
+		// No outline/blink for copy mode — its subject node is not going
+		// anywhere. Falls through to the shared ghost indicator below.
 	default:
 		return
 	}
@@ -1312,17 +1312,7 @@ func (g *Game) drawGridCursorLabel(dst *ebiten.Image) {
 			ti, tj = t.I, t.J
 			showFraction = t.Kind == GuideEdge
 		}
-		bx, nx, dx := g.grid.BeatSubdivision(ti)
-		by, ny, dy := g.grid.BeatSubdivision(tj)
-		xs := "0"
-		ys := "0"
-		if nx != 0 {
-			xs = fmt.Sprintf("%d/%d", nx, dx)
-		}
-		if ny != 0 {
-			ys = fmt.Sprintf("%d/%d", ny, dy)
-		}
-		g.cursorLabel = fmt.Sprintf("(%d:%s, %d:%s)", bx, xs, by, ys)
+		g.cursorLabel = fmt.Sprintf("(%s, %s)", g.grid.BeatAxisLabel(ti), g.grid.BeatAxisLabel(tj))
 		if showFraction {
 			// Fraction of the span between the edge's two endpoint nodes.
 			g.cursorLabel += fmt.Sprintf(" %d/%d", t.Num, t.Den)
@@ -1348,4 +1338,47 @@ func (g *Game) drawGridHelpButton(dst *ebiten.Image) {
 	}
 	g.gridHelpBtn.SetRect(g.gridHelpButtonRect())
 	g.gridHelpBtn.Draw(dst)
+	if g.gridFileBtn != nil {
+		g.gridFileBtn.SetRect(g.gridFileButtonRect())
+		g.gridFileBtn.Draw(dst)
+	}
+	if g.gridLogsBtn != nil {
+		g.gridLogsBtn.SetRect(g.gridLogsButtonRect())
+		g.gridLogsBtn.Draw(dst)
+		g.drawLogsBadge(dst)
+	}
+	if g.drum != nil {
+		g.drum.logsToast.draw(dst, g.split.GridRect(g.winW, g.winH))
+	}
+}
+
+// drawLogsBadge paints a small unread-count bubble straddling the top-right of
+// the grid Logs button. The bubble turns red when any unread entry is an error;
+// opening the panel clears it (markSeen). Nothing is drawn when there is no
+// unread activity.
+func (g *Game) drawLogsBadge(dst *ebiten.Image) {
+	if g.drum == nil {
+		return
+	}
+	n, hasErr := g.drum.logsUnread()
+	if n <= 0 {
+		return
+	}
+	r := g.gridLogsButtonRect()
+	if r.Empty() {
+		return
+	}
+	label := "9+"
+	if n < 10 {
+		label = fmt.Sprintf("%d", n)
+	}
+	bw := TextWidth(label) + 2*SpaceXS
+	bh := TextHeight() + SpaceXS
+	br := image.Rect(r.Max.X-bw, r.Min.Y-bh/2, r.Max.X, r.Min.Y-bh/2+bh)
+	fill := colAccent
+	if hasErr {
+		fill = colError
+	}
+	drawRoundedRect(dst, br, fill, RadiusSM, true)
+	DrawTextColorAt(dst, label, br.Min.X+(br.Dx()-TextWidth(label))/2, br.Min.Y+(br.Dy()-TextHeight())/2, colTextPrimary)
 }

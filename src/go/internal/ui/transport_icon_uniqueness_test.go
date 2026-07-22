@@ -42,9 +42,6 @@ func TestMobileTransportIconsAreDistinct(t *testing.T) {
 		if z.viewSwitchBtn != nil {
 			add("view", z.viewSwitchBtn.Icon)
 		}
-		if z.overflowBtn != nil {
-			add("overflow", z.overflowBtn.Icon)
-		}
 		return got
 	}
 

@@ -15,7 +15,7 @@ import (
 // garbage per frame; on the single-threaded WASM heap that churn drove the
 // GC into 100 ms+ stalls whenever the tab was open, and worse during a live
 // knob drag ("editing the kick Punch knob during playback hangs the game").
-// Guarded by TestSynthTab_LiveKnobEditFrameByteBudget in internal/ui.
+// Guarded by TestSynthTab_LiveControlEditFrameByteBudget in internal/ui.
 //
 // The cache is invalidated by two monotonic revision counters instead of by
 // content comparison:

@@ -8,7 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// These tests pin the input-isolation contract for the mobile synth-knob
+// These tests pin the input-isolation contract for the mobile synth-control
 // wheel popup: while it is open (a modal + scrim portal), gestures and pointer
 // actions must act EXCLUSIVELY on the popup. They must never leak through the
 // scrim to background surfaces handled OUTSIDE the input tree in Game.Update —

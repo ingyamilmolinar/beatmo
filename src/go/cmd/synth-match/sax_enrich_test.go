@@ -18,13 +18,13 @@ import (
 // shipped default is dull (P2 0.21/P3 0.32/P5 0.12).
 // go test -run TestSaxEnrich -v ./cmd/synth-match/
 func TestSaxEnrich(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	audio.Reset()
 	audio.ResetInstruments()
 
 	pcm, sr, err := audio.DecodeWAVToPCM(root + "360251__mtg__sax-baritone-c3.wav")
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("reference WAV unavailable: %v", err)
 	}
 	seg := fingerprint.AutoSegment(wave.Wave{Samples: f32ToF64(pcm), SampleRate: sr}, fingerprint.SustainLenSec)
 	refFP := fingerprint.FromWave(seg, "ref")

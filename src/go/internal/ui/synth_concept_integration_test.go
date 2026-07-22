@@ -28,12 +28,12 @@ func synthSectionContaining(t *testing.T, g *Game, group string) (synthSectionID
 	return -1, -1
 }
 
-// TestSynthKnobCellReservesNoVizBand drives the real Synth-tab layout for the
+// TestSynthControlCellReservesNoVizBand drives the real Synth-tab layout for the
 // modular instrument and asserts each laid-out knob CELL no longer reserves a
 // concept-viz band below the knob+caption. Post-Task-8 the per-knob mini-picture
 // is gone (the right-pane focus graph explains the selected knob), so the cellH
 // formula drops SynthConceptVizH and the dial+caption fill the cell.
-func TestSynthKnobCellReservesNoVizBand(t *testing.T) {
+func TestSynthControlCellReservesNoVizBand(t *testing.T) {
 	g := setupModularSynthGame(t)
 	// Give the detail pane real vertical room so cells lay out (a degenerate
 	// panel would shrink cellH to nothing and the assertion would be vacuous).
@@ -64,7 +64,7 @@ func TestSynthKnobCellReservesNoVizBand(t *testing.T) {
 	if knobIdx < 0 {
 		t.Fatalf("section %v has no knobs", secID)
 	}
-	knobR := g.drum.instEditorKnobs[knobIdx].Rect()
+	knobR := g.drum.instEditorControls[knobIdx].Rect()
 	if knobR.Empty() {
 		t.Fatalf("first knob of section %v has empty rect", secID)
 	}
@@ -74,20 +74,20 @@ func TestSynthKnobCellReservesNoVizBand(t *testing.T) {
 			band, cell, knobR, SpaceXS)
 	}
 	// And the dial must not have been enlarged past its ideal diameter.
-	dialDia := knobR.Dy() - dv2.SynthKnobCaptionH
-	if dialDia > dv2.SynthKnobIdeal {
-		t.Errorf("dial diameter %d exceeds SynthKnobIdeal %d — cell growth wrongly enlarged the dial", dialDia, dv2.SynthKnobIdeal)
+	dialDia := knobR.Dy() - dv2.SynthControlCaptionH
+	if dialDia > dv2.SynthControlIdeal {
+		t.Errorf("dial diameter %d exceeds SynthControlIdeal %d — cell growth wrongly enlarged the dial", dialDia, dv2.SynthControlIdeal)
 	}
 }
 
-// TestSynthKnobDrawsNoConceptBand renders the synth detail pane and asserts
+// TestSynthControlDrawsNoConceptBand renders the synth detail pane and asserts
 // the per-knob concept picture is no longer drawn below the knob's caption.
 // Post-Task-8 the right-pane focus graph explains the selected knob, so the
 // in-cell mini-picture (and its reserved band) are gone. The concept RENDERERS
 // themselves still work (see TestEveryKnobHasConceptInk /
 // TestConceptKnobWave_RendersAndMorphs); they're just no longer wired into the
 // per-knob cell. Here we assert the cell reserves no band below the knob.
-func TestSynthKnobDrawsNoConceptBand(t *testing.T) {
+func TestSynthControlDrawsNoConceptBand(t *testing.T) {
 	g := setupModularSynthGame(t)
 	expandSynthPanelForTest(t, g)
 
@@ -110,7 +110,7 @@ func TestSynthKnobDrawsNoConceptBand(t *testing.T) {
 	if knobIdx < 0 {
 		t.Fatalf("section %v has no knobs", secID)
 	}
-	knobR := g.drum.instEditorKnobs[knobIdx].Rect()
+	knobR := g.drum.instEditorControls[knobIdx].Rect()
 
 	// No reserved viz band: the gap below the knob is at most the inter-row gap.
 	band := cell.Max.Y - knobR.Max.Y
@@ -129,20 +129,20 @@ func TestSynthKnobDrawsNoConceptBand(t *testing.T) {
 	}
 }
 
-// TestSynthKnobPurpose_Gloss — the per-knob purpose line resolves a kid-readable
+// TestSynthControlPurpose_Gloss — the per-knob purpose line resolves a kid-readable
 // gloss from the param Label (or Name), and is empty for unmapped labels.
-func TestSynthKnobPurpose_Gloss(t *testing.T) {
-	if got := synthKnobPurpose(audio.ParamDef{Label: "Cutoff"}); got != "bright or dull" {
+func TestSynthControlPurpose_Gloss(t *testing.T) {
+	if got := synthControlPurpose(audio.ParamDef{Label: "Cutoff"}); got != "bright or dull" {
 		t.Errorf("Cutoff gloss = %q, want %q", got, "bright or dull")
 	}
-	if got := synthKnobPurpose(audio.ParamDef{Label: "Resonance"}); got != "ringing edge" {
+	if got := synthControlPurpose(audio.ParamDef{Label: "Resonance"}); got != "ringing edge" {
 		t.Errorf("Resonance gloss = %q, want %q", got, "ringing edge")
 	}
 	// Falls back to Name when Label has no mapping.
-	if got := synthKnobPurpose(audio.ParamDef{Label: "Zzz Unmapped", Name: "drive"}); got != "softness vs edge" {
+	if got := synthControlPurpose(audio.ParamDef{Label: "Zzz Unmapped", Name: "drive"}); got != "softness vs edge" {
 		t.Errorf("Name fallback gloss = %q, want %q", got, "softness vs edge")
 	}
-	if got := synthKnobPurpose(audio.ParamDef{Label: "Zzz", Name: "qqq"}); got != "" {
+	if got := synthControlPurpose(audio.ParamDef{Label: "Zzz", Name: "qqq"}); got != "" {
 		t.Errorf("unmapped gloss = %q, want empty", got)
 	}
 }

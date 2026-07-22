@@ -58,7 +58,7 @@ func TestBeatCounterTapDoesNotTriggerNotification(t *testing.T) {
 				t.Logf("  [%d] tag=%q z=%d rect=%v", i, h.Tag, h.ZIndex, h.Rect)
 			}
 			top := hits[0]
-			for _, bad := range []string{"timeline-notif", "timeline-track"} {
+			for _, bad := range []string{"timeline-track"} {
 				if top.Tag == bad {
 					t.Fatalf("tap on beat counter at (%d,%d) resolves to %q (z=%d rect=%v) — a band-mate's "+
 						"touch-expanded hit area leaked over the counter. The beat counter needs its own "+
@@ -67,6 +67,31 @@ func TestBeatCounterTapDoesNotTriggerNotification(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestBeatCounterTapOpensNavigation asserts tapping the beat-counter chip opens
+// the navigation menu (dv.OpenNavigation), which is now its own first-class
+// portal component (navMenuComp).
+func TestBeatCounterTapOpensNavigation(t *testing.T) {
+	assertDefaultParityState(t)
+	g := New(testLogger)
+	t.Cleanup(g.CloseForTest)
+	g.Layout(1280, 720)
+	g.drum.recalcButtons()
+	g.Update()
+	g.Update()
+
+	bc := g.drum.beatCounterRect
+	if bc.Empty() {
+		t.Fatal("beatCounterRect is empty — cannot probe the counter")
+	}
+
+	adapter := &beatCounterHitAdapter{zone: g.drum.timelineZone}
+	adapter.OnPress(bc.Min.X+bc.Dx()/2, bc.Min.Y+bc.Dy()/2)
+
+	if !g.drum.IsNavMenuOpen() {
+		t.Fatal("beat-counter tap must open the navigation menu via OnOpenNavigation")
 	}
 }
 

@@ -16,11 +16,33 @@ const gridHelpReservedMargin = SpaceSM
 // this rect is directly comparable to every popup's grid-local geometry — no
 // coordinate translation is needed at the call sites.
 func (g *Game) gridHelpReservedRect() image.Rectangle {
-	r := g.gridHelpButtonRect()
-	if r.Empty() {
+	gear := g.gridHelpButtonRect()
+	if gear.Empty() {
 		return image.Rectangle{}
 	}
-	return r.Inset(-gridHelpReservedMargin)
+	zone := gear
+	if file := g.gridFileButtonRect(); !file.Empty() {
+		zone = zone.Union(file) // protect the folder button too
+	}
+	return zone.Inset(-gridHelpReservedMargin)
+}
+
+// gridTopButtonsReservedRect is the WHOLE top-right button cluster (gear + file +
+// logs), inflated by the reserved margin. A grid-pane popup's own controls (e.g.
+// its close button) must clear this whole cluster, or a higher-z grid button
+// under them swallows the click. gridHelpReservedRect covers only gear+file — it
+// is kept narrower for the group menu's tiny-window placement spec, so the
+// sidebar and the top-right button menus (Settings, Logs) use THIS instead.
+func (g *Game) gridTopButtonsReservedRect() image.Rectangle {
+	zone := g.gridHelpReservedRect() // gear+file, already inset
+	if logs := g.gridLogsButtonRect(); !logs.Empty() {
+		lz := logs.Inset(-gridHelpReservedMargin)
+		if zone.Empty() {
+			return lz
+		}
+		zone = zone.Union(lz)
+	}
+	return zone
 }
 
 // avoidReservedRect nudges panel out of reserved — a top-right-corner exclusion

@@ -56,6 +56,27 @@ func consumeSoftKeyboardArrowRight() int {
 	return int(atomic.SwapInt32(&softKeyboardArrowRightPending, 0))
 }
 
+// softKeyboardHomePending / softKeyboardEndPending bridge the WASM proxy's Home
+// and End keys to the focused TextInput, exactly like the arrow signals above:
+// the hidden proxy holds keyboard focus, so the canvas never sees Home/End and
+// caret jump-to-start / jump-to-end were dead on WASM. Counter semantics match
+// the arrows so nothing is dropped between slow frames (a single applied signal
+// is idempotent — the count only guards against total loss).
+var (
+	softKeyboardHomePending int32
+	softKeyboardEndPending  int32
+)
+
+// SignalSoftKeyboardHome / SignalSoftKeyboardEnd mark a caret-jump key from the
+// soft-keyboard proxy. Safe to call from the JS callback goroutine.
+func SignalSoftKeyboardHome() { atomic.AddInt32(&softKeyboardHomePending, 1) }
+func SignalSoftKeyboardEnd()  { atomic.AddInt32(&softKeyboardEndPending, 1) }
+
+// consumeSoftKeyboardHome / End return the number of pending proxy Home/End
+// presses since the last frame, clearing the counter.
+func consumeSoftKeyboardHome() int { return int(atomic.SwapInt32(&softKeyboardHomePending, 0)) }
+func consumeSoftKeyboardEnd() int  { return int(atomic.SwapInt32(&softKeyboardEndPending, 0)) }
+
 // panStep is the per-frame pan distance (screen px) for arrow-key panning.
 const panStep = 24.0
 
@@ -307,6 +328,157 @@ func (g *Game) gridHelpButtonRect() image.Rectangle {
 	return image.Rect(x1-sz, y0, x1, y0+sz)
 }
 
+// gridFileButtonRect is the screen-space rect of the folder button, one SpaceSM
+// gap to the LEFT of the settings gear in the grid pane's top-right corner.
+// Same size as the gear. Present on both platforms. Empty before the button (or
+// the gear) exists.
+func (g *Game) gridFileButtonRect() image.Rectangle {
+	if g.gridFileBtn == nil {
+		return image.Rectangle{}
+	}
+	gear := g.gridHelpButtonRect()
+	if gear.Empty() {
+		return image.Rectangle{}
+	}
+	w := gear.Dx()
+	x1 := gear.Min.X - SpaceSM
+	return image.Rect(x1-w, gear.Min.Y, x1, gear.Max.Y)
+}
+
+// openFileMenu opens the file-actions menu from the grid folder button.
+// overflowMenuID identifies the File (overflow) menu portal entry.
+const overflowMenuID = "overflow-menu"
+
+// gridButtonMenuIDs are the three top-right grid-button menus (Settings, Logs,
+// File). They are mutually exclusive: opening one closes any other that is open.
+var gridButtonMenuIDs = []string{settingsOverlayID, logsPanelID, overflowMenuID}
+
+// closeOtherGridButtonMenus closes every top-right button menu except keep, so at
+// most one is ever open at a time.
+func (g *Game) closeOtherGridButtonMenus(keep string) {
+	if g.drum == nil {
+		return
+	}
+	p := g.drum.portal()
+	if p == nil {
+		return
+	}
+	for _, id := range gridButtonMenuIDs {
+		if id != keep && p.Has(id) {
+			p.Close(id)
+		}
+	}
+}
+
+func (g *Game) openFileMenu() {
+	if g.drum == nil {
+		return
+	}
+	g.closeOtherGridButtonMenus(overflowMenuID)
+	g.drum.OpenFileMenu()
+}
+
+// gridButtonMenuFor pairs each top-right grid button with the portal menu it
+// toggles, so reconciliation and any future per-button logic share one table.
+func (g *Game) gridButtonMenuFor() []struct {
+	btn    *Button
+	menuID string
+} {
+	return []struct {
+		btn    *Button
+		menuID string
+	}{
+		{g.gridHelpBtn, settingsOverlayID},
+		{g.gridFileBtn, overflowMenuID},
+		{g.gridLogsBtn, logsPanelID},
+	}
+}
+
+// reconcileGridButtonToggles keeps each top-right grid button's visual in sync
+// with whether its menu is actually open, and heals a press whose release edge
+// was swallowed by the menu/scrim the button opened. The portal's Has(menuID)
+// is the single source of truth for these buttons' active look:
+//
+//   - toggled == menuOpen, every frame — so however a menu closes (re-tap,
+//     click-outside / scrim, Esc, or a triggered system action such as the file
+//     picker failing or being cancelled), the button drops back to rest on the
+//     next frame instead of staying stuck "pressed" with its menu gone.
+//   - while the pointer is UP, clear any latched press so the cap settles and
+//     `held` returns to 0. A button that opened a menu never received its
+//     release (the menu swallowed it), which both froze the cap down AND left
+//     held==1, so the next tap incremented held to 2 and was swallowed — the
+//     button went un-clickable. Gating on pointer-up guarantees no active hold
+//     is in flight, so this never double-fires OnClick and always leaves the
+//     button ready for a fresh click.
+//
+// pointerDown is this frame's unified left-mouse / primary-touch pressed state.
+func (g *Game) reconcileGridButtonToggles(pointerDown bool) {
+	if g.drum == nil {
+		return
+	}
+	p := g.drum.portal()
+	for _, e := range g.gridButtonMenuFor() {
+		if e.btn == nil {
+			continue
+		}
+		e.btn.SetToggled(p != nil && p.Has(e.menuID))
+		if !pointerDown {
+			e.btn.ReleaseStuckPress()
+		}
+	}
+}
+
+// toggleFileMenu opens the File (overflow) menu from the grid folder button, or
+// closes it if already open (toggle), mirroring the gear/logs buttons.
+func (g *Game) toggleFileMenu() {
+	if g.drum == nil {
+		return
+	}
+	p := g.drum.portal()
+	if p == nil {
+		return
+	}
+	if p.Has(overflowMenuID) {
+		p.Close(overflowMenuID)
+		return
+	}
+	g.openFileMenu()
+}
+
+// gridLogsButtonRect is the screen-space rect of the logs button, one SpaceSM
+// gap to the LEFT of the folder button in the grid pane's top-right corner. Same
+// size as the folder/gear. Present on both platforms. Empty before the button
+// (or the folder button) exists.
+func (g *Game) gridLogsButtonRect() image.Rectangle {
+	if g.gridLogsBtn == nil {
+		return image.Rectangle{}
+	}
+	file := g.gridFileButtonRect()
+	if file.Empty() {
+		return image.Rectangle{}
+	}
+	w := file.Dx()
+	x1 := file.Min.X - SpaceSM
+	return image.Rect(x1-w, file.Min.Y, x1, file.Max.Y)
+}
+
+// toggleLogsPanel opens the Logs Navigation Panel, or closes it if already open.
+func (g *Game) toggleLogsPanel() {
+	if g.drum == nil || g.drum.tree == nil {
+		return
+	}
+	p := g.drum.portal()
+	if p == nil {
+		return
+	}
+	if p.Has(logsPanelID) {
+		p.Close(logsPanelID)
+		return
+	}
+	g.closeOtherGridButtonMenus(logsPanelID)
+	g.drum.openLogsPanel()
+}
+
 // settingsOverlayID identifies the settings overlay portal entry.
 const settingsOverlayID = "settings"
 
@@ -324,6 +496,7 @@ func (g *Game) toggleSettingsOverlay() {
 		p.Close(settingsOverlayID)
 		return
 	}
+	g.closeOtherGridButtonMenus(settingsOverlayID)
 	g.drum.openSettingsOverlay()
 }
 
@@ -337,14 +510,27 @@ func (dv *DrumView) openSettingsOverlay() {
 	if p == nil || p.Has(settingsOverlayID) {
 		return
 	}
+	ov := NewSettingsOverlay(func(l i18n.Locale) {
+		old := i18n.ActiveLocale()
+		i18n.SetLocale(l)
+		persistLanguage(l)
+		emitLanguageChanged(old.String(), l.String())
+	})
+	// Desktop: drop the panel from the grid gear via the shared helper. Mobile
+	// (UseBottomSheet) keeps the centered form — a 480px panel anchored to a
+	// corner button is worse on a phone (see spec risk 3).
+	// Anchor to the grid-pane gear on EVERY screen size (grid-pane-clamped), so
+	// the panel never falls back to centering on the portal's screenBounds (=
+	// dv.Bounds, the drum pane) and appearing in the drum-view panel — the
+	// small-screen "menus in the drum view" bug.
+	if g := dv.game; g != nil {
+		ov.SetPositioner(func(w, h int) image.Rectangle {
+			return g.gridAnchoredPopupRect(g.gridHelpButtonRect(), w, h, GridAnchorOpts{})
+		})
+	}
 	p.Open(PortalEntry{
-		ID: settingsOverlayID,
-		Overlay: NewSettingsOverlay(func(l i18n.Locale) {
-			old := i18n.ActiveLocale()
-			i18n.SetLocale(l)
-			persistLanguage(l)
-			emitLanguageChanged(old.String(), l.String())
-		}),
+		ID:      settingsOverlayID,
+		Overlay: ov,
 		// Modal: the settings panel owns all input while open — presses outside
 		// it are filtered out by the HitIndex modal filter (so grid taps / camera
 		// pans never fire behind the panel) and PortalHasBlocking() suppresses the
@@ -407,16 +593,20 @@ func (g *Game) handleEscape() bool {
 		return true
 	}
 
-	// Paste-overwrite confirmation cancel (no text input; its own rung).
-	if g.pasteConfirmActive() {
-		g.CancelPasteOverwrite()
-		return true
-	}
-
-	// Break-circuit confirmation cancel (its own rung; move mode stays armed).
-	if g.breakConfirmActive() {
-		g.CancelBreakCircuit()
-		return true
+	// Headless / no-portal fallback: with a portal present, the topmost
+	// overlay's HandleEscape (ConfirmDialog) already ran above (rung 1+2). This
+	// covers the portal==nil path (tests) where beginPasteConfirm/beginBreakConfirm
+	// never opened an overlay to receive Esc, so pasteConfirmActive/
+	// breakConfirmActive would otherwise never get cancelled by this ladder.
+	if g.drum.portal() == nil {
+		if g.pasteConfirmActive() {
+			g.CancelPasteOverwrite()
+			return true
+		}
+		if g.breakConfirmActive() {
+			g.CancelBreakCircuit()
+			return true
+		}
 	}
 
 	// 2b. Inline text-input dialogs (Synth/Sampler "Save As") — not portals and

@@ -56,7 +56,7 @@ func TestSynthAdvancedDivider_EssentialsFirstAdvancedAlwaysPlaced(t *testing.T) 
 	maxEssBottom := 0
 	essVisible := 0
 	for _, i := range ess {
-		if r := dv.instEditorKnobs[i].Rect(); !r.Empty() {
+		if r := dv.instEditorControls[i].Rect(); !r.Empty() {
 			essVisible++
 			if r.Max.Y > maxEssBottom {
 				maxEssBottom = r.Max.Y
@@ -88,7 +88,7 @@ func TestSynthAdvancedDivider_EssentialsFirstAdvancedAlwaysPlaced(t *testing.T) 
 	layoutSynthTab(t, g)
 	anyAdvVisible := false
 	for _, i := range adv {
-		if !dv.instEditorKnobs[i].Rect().Empty() {
+		if !dv.instEditorControls[i].Rect().Empty() {
 			anyAdvVisible = true
 			break
 		}

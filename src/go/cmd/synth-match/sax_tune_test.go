@@ -19,13 +19,13 @@ import (
 // octave up; see DetectF0's odd-harmonic evidence fix). Prints one compact gap
 // row per config. Run: go test -run TestSaxTune -v ./cmd/synth-match/
 func TestSaxTune(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	audio.Reset()
 	audio.ResetInstruments()
 
 	pcm, sr, err := audio.DecodeWAVToPCM(root + "360251__mtg__sax-baritone-c3.wav")
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("reference WAV unavailable: %v", err)
 	}
 	refW := wave.Wave{Samples: f32ToF64(pcm), SampleRate: sr}
 

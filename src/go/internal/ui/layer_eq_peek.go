@@ -14,8 +14,8 @@ type EQPeekLayer struct {
 
 func newEQPeekLayer(dv *DrumView) *EQPeekLayer { return &EQPeekLayer{dv: dv} }
 
-func (l *EQPeekLayer) ID() string    { return "eq-peek" }
-func (l *EQPeekLayer) ZIndex() int   { return ZEQPeek }
+func (l *EQPeekLayer) ID() string  { return "eq-peek" }
+func (l *EQPeekLayer) ZIndex() int { return ZEQPeek }
 func (l *EQPeekLayer) Visible() bool {
 	return !l.dv.eqPeekRect.Empty() && l.dv.eqPanelZone != nil
 }

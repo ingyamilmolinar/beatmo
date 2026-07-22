@@ -7,7 +7,7 @@ import (
 
 func TestKeycapCapRect_RestPressedRaised(t *testing.T) {
 	r := image.Rect(10, 20, 60, 50) // 50x30
-	wall := genGeomKeycapWallDepth   // 4
+	wall := genGeomKeycapWallDepth  // 4
 	// Rest: cap occupies the top (height - wall), wall band below.
 	rest := keycapCapRect(r, 0, false)
 	if rest.Min != image.Pt(10, 20) {

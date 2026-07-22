@@ -36,12 +36,12 @@ func synthIdxByParam(t *testing.T, g *Game, name string) int {
 	return -1
 }
 
-func TestSynthContinuousKnobIsEndlessWithBadge(t *testing.T) {
+func TestSynthContinuousControlIsEndlessWithBadge(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
 	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-	k := g.drum.SynthTabKnobs()[idx]
+	k := g.drum.SynthTabControls()[idx]
 	if !k.Endless || k.Discrete {
 		t.Fatalf("filter_cutoff knob should be endless, not discrete (endless=%v discrete=%v)", k.Endless, k.Discrete)
 	}
@@ -54,12 +54,12 @@ func TestSynthContinuousKnobIsEndlessWithBadge(t *testing.T) {
 	}
 }
 
-func TestSynthDiscreteKnobIsClicky(t *testing.T) {
+func TestSynthDiscreteControlIsClicky(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "osc_type")
 	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
-	k := g.drum.SynthTabKnobs()[idx]
+	k := g.drum.SynthTabControls()[idx]
 	if !k.Discrete || k.Endless {
 		t.Fatalf("osc_type knob should be discrete clicky (discrete=%v endless=%v)", k.Discrete, k.Endless)
 	}
@@ -70,12 +70,12 @@ func TestSynthDiscreteKnobIsClicky(t *testing.T) {
 	}
 }
 
-// TestSynthBadgeRectsNeverOverlapOtherKnobs asserts that after a draw pass for
+// TestSynthBadgeRectsNeverOverlapOtherControls asserts that after a draw pass for
 // any section, no badge's rect overlaps a DIFFERENT knob's rect. This is the
 // layout-agnostic guard for BUG 1 (cross-row tap stealing): if the badge is
 // clamped within its own cell slot it cannot physically reach another knob's
 // rect.
-func TestSynthBadgeRectsNeverOverlapOtherKnobs(t *testing.T) {
+func TestSynthBadgeRectsNeverOverlapOtherControls(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	screen := ebiten.NewImage(1280, 720)
@@ -91,7 +91,7 @@ func TestSynthBadgeRectsNeverOverlapOtherKnobs(t *testing.T) {
 		g.drum.eqPanelZone.Draw(screen)
 
 		badges := g.drum.instEditorStepBadges
-		knobs := g.drum.SynthTabKnobs()
+		knobs := g.drum.SynthTabControls()
 		for bi, badge := range badges {
 			if badge == nil || badge.Rect().Empty() {
 				continue
@@ -111,14 +111,14 @@ func TestSynthBadgeRectsNeverOverlapOtherKnobs(t *testing.T) {
 
 // TestSynthReadoutTapOpensEditorViaTreeDispatch verifies the FULL production
 // input path for readout taps: mouse→SetInputForTest→g.Update()→HitIndex→
-// synthKnobHitAdapter.OnPress→openSynthParamEditor. Replaces the isolation-test
+// synthControlHitAdapter.OnPress→openSynthParamEditor. Replaces the isolation-test
 // (direct handleSynthTabInput call) that never exercised the real tree dispatch.
-// TestSynthKnobCaptionIsDisplayOnly pins the simplified knob title: the value
+// TestSynthControlCaptionIsDisplayOnly pins the simplified knob title: the value
 // caption is a SIMPLE display label, so tapping it must NOT open the numeric
 // text-input editor (values change via the dial). Was
 // TestSynthReadoutTapOpensEditorViaTreeDispatch before the caption was made
 // display-only.
-func TestSynthKnobCaptionIsDisplayOnly(t *testing.T) {
+func TestSynthControlCaptionIsDisplayOnly(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
@@ -133,11 +133,11 @@ func TestSynthKnobCaptionIsDisplayOnly(t *testing.T) {
 	// there is no longer a separate caption/readout sub-rect (that used to
 	// be populated by the deleted per-knob caption draw). Assert it stays
 	// empty under the new contract.
-	rr := g.drum.synthKnobReadoutRect(idx)
+	rr := g.drum.synthControlReadoutRect(idx)
 	if !rr.Empty() {
 		t.Fatalf("readout rect should stay empty under the ParamCard contract (no separate caption sub-rect); got %v", rr)
 	}
-	r := g.drum.SynthTabKnobs()[idx].Rect()
+	r := g.drum.SynthTabControls()[idx].Rect()
 	if r.Empty() {
 		t.Fatalf("knob %d has no rect after draw", idx)
 	}
@@ -168,10 +168,10 @@ func TestSynthKnobCaptionIsDisplayOnly(t *testing.T) {
 	}
 }
 
-// TestSynthEditorActiveBlocksKnobDrag verifies that when the numeric editor is
+// TestSynthEditorActiveBlocksControlDrag verifies that when the numeric editor is
 // open, OnPress on the knob adapter returns InputConsumed (swallowing the tap)
 // and the knob value remains unchanged.
-func TestSynthEditorActiveBlocksKnobDrag(t *testing.T) {
+func TestSynthEditorActiveBlocksControlDrag(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
@@ -187,10 +187,10 @@ func TestSynthEditorActiveBlocksKnobDrag(t *testing.T) {
 		t.Fatalf("editor not active after openSynthParamEditor")
 	}
 
-	k := g.drum.SynthTabKnobs()[idx]
+	k := g.drum.SynthTabControls()[idx]
 	before := k.Value
 
-	adapter := &synthKnobHitAdapter{dv: g.drum, idx: idx, instID: "ut-chip-modular"}
+	adapter := &synthControlHitAdapter{dv: g.drum, idx: idx, instID: "ut-chip-modular"}
 	r := k.Rect()
 	cx, cy := r.Min.X+r.Dx()/2, r.Min.Y+5
 	if res := adapter.OnPress(cx, cy); res != InputConsumed {
@@ -283,7 +283,7 @@ func TestSynthNumericCommitDoesNotAudition(t *testing.T) {
 }
 
 // TestSynthEndlessDragDoesNotAudition drives the production
-// synthKnobHitAdapter drag path (OnPress → OnDrag → OnRelease) and asserts
+// synthControlHitAdapter drag path (OnPress → OnDrag → OnRelease) and asserts
 // no audition fires. A 40-px horizontal drag is used so the direction-lock
 // resolves to knobDragKnob (dx=40 >> dy=0 > knobDragDirLockPx=6). The test
 // asserts the knob value CHANGED after the drag to prove the path was
@@ -299,7 +299,7 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 	selectSectionForKnobIdx(t, g, "ut-chip-modular", idx)
 	g.Update() // flush hit-index + layout
 
-	k := g.drum.SynthTabKnobs()[idx]
+	k := g.drum.SynthTabControls()[idx]
 	r := k.Rect()
 	if r.Empty() {
 		t.Fatalf("filter_cutoff knob has empty rect after layout")
@@ -311,7 +311,7 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 	// bottom. r.Min.Y+5 lands on the dial for typical knob heights (≥30px).
 	cy := r.Min.Y + 5
 
-	adapter := &synthKnobHitAdapter{dv: g.drum, idx: idx, instID: "ut-chip-modular"}
+	adapter := &synthControlHitAdapter{dv: g.drum, idx: idx, instID: "ut-chip-modular"}
 	res := adapter.OnPress(cx, cy)
 	if res == InputIgnored {
 		// The press didn't land on the dial — try the vertical midpoint.
@@ -332,10 +332,10 @@ func TestSynthEndlessDragDoesNotAudition(t *testing.T) {
 	}
 }
 
-// TestSynthKnobDialWheelDoesNotChangeResolution confirms the knob itself is
+// TestSynthControlDialWheelDoesNotChangeResolution confirms the knob itself is
 // left alone: scrolling over the DIAL (not the badge) does not move the
 // resolution rung.
-func TestSynthKnobDialWheelDoesNotChangeResolution(t *testing.T) {
+func TestSynthControlDialWheelDoesNotChangeResolution(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
@@ -347,7 +347,7 @@ func TestSynthKnobDialWheelDoesNotChangeResolution(t *testing.T) {
 
 	badge := g.drum.instEditorStepBadges[idx]
 	stepBefore := badge.Step()
-	knob := g.drum.SynthTabKnobs()[idx]
+	knob := g.drum.SynthTabControls()[idx]
 	r := knob.Rect()
 	// Hover the dial (top of the knob rect, above the caption/badge band).
 	mouseX, mouseY := r.Min.X+r.Dx()/2, r.Min.Y+3
@@ -371,10 +371,10 @@ func TestSynthKnobDialWheelDoesNotChangeResolution(t *testing.T) {
 	}
 }
 
-// TestSynthKnobHorizontalDragChangesValueViaTreeDispatch is the regression
+// TestSynthControlHorizontalDragChangesValueViaTreeDispatch is the regression
 // guard for "left/right drag on a knob stopped working". It drives the FULL
 // production input path (SetInputForTest → g.Update → HitIndex →
-// synthKnobHitAdapter.OnPress/OnDrag) for several continuous knobs across
+// synthControlHitAdapter.OnPress/OnDrag) for several continuous knobs across
 // sections, pressing the DIAL (above the caption/badge row) and asserting a
 // rightward drag increases the value and a leftward drag decreases it — never
 // opening the numeric editor or cycling the resolution badge.
@@ -414,7 +414,7 @@ func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	}
 	grid.ScrollToIndex(0)
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	essVisible := 0
 	for _, i := range ess {
 		if !knobs[i].Rect().Empty() {
@@ -435,7 +435,7 @@ func TestP4_AdvancedDividerOrdersKnobs(t *testing.T) {
 	// not hidden.
 	grid.ScrollToIndex(dividerStartIdx + cols + len(adv))
 	g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
-	if g.drum.SynthTabKnobs()[idx].Rect().Empty() {
+	if g.drum.SynthTabControls()[idx].Rect().Empty() {
 		t.Error("osc_detune (Advanced) never acquired a rect even after scrolling to it")
 	}
 }

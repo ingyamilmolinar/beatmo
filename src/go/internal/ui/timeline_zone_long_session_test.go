@@ -115,20 +115,15 @@ func TestTimelineRibbon_DoesNotClutterAtHighAbs(t *testing.T) {
 	}
 }
 
-// TestTimelineRibbon_PlayheadStaysAt70Percent asserts the cursor is rendered at
-// its correct horizontal position regardless of session length. Once the ribbon
-// window slides (winStart > 0) the cursor pins at frac (~70%) of the bar so it
-// never compresses toward the right edge as the session grows — the original
-// long-session symptom. While the window is still pinned at zero (early
-// session) the cursor must instead float at its TRUE position, otherwise it
-// would be drawn ahead of where playback actually is (and outside the
-// view-rect — the BPM-change desync this guards against). The float/pin
-// boundary is elapsedBeats == frac*barWidth/pxPerBeat, matching drawTimelineBar.
-func TestTimelineRibbon_PlayheadStaysAt70Percent(t *testing.T) {
-	const tolerancePx = 4
-	rp := RuntimeProf()
-	frac := rp.RibbonPlayheadFrac
-	pxPerBeat := 1.0 / rp.RibbonBeatsPerPixel
+// TestTimelineRibbon_CursorAtWholeSongFraction asserts the cursor is
+// rendered at its correct horizontal position regardless of session length.
+// Task 6 replaced the old fixed-beats-per-pixel sliding window (which pinned
+// the cursor at ~70% of the bar once the window started sliding) with a
+// whole-song span: the cursor sits at `elapsedBeats / TimelineBeats()` of
+// the bar width, full stop — no pin/float regime switch, since there is no
+// sliding window left to pin against.
+func TestTimelineRibbon_CursorAtWholeSongFraction(t *testing.T) {
+	const tolerancePx = 2
 	for _, elapsedBeats := range []float64{100, 1000, 8552, 20000} {
 		t.Run("", func(t *testing.T) {
 			z, barRect := ribbonZoneForTest(t, elapsedBeats)
@@ -160,20 +155,16 @@ func TestTimelineRibbon_PlayheadStaysAt70Percent(t *testing.T) {
 			}
 			cursorMid := (cursorRect.Min.X + cursorRect.Max.X) / 2
 
-			pinBoundaryBeats := frac * float64(barRect.Dx()) / pxPerBeat
+			totalBeats := z.callbacks.TimelineBeats()
+			frac := elapsedBeats / float64(max1(totalBeats))
 			expectedMid := barRect.Min.X + int(math.Round(frac*float64(barRect.Dx())))
-			if elapsedBeats < pinBoundaryBeats {
-				// Early session: window pinned at zero, cursor floats at the
-				// true beat position rather than the frac pin.
-				expectedMid = barRect.Min.X + int(math.Round(elapsedBeats*pxPerBeat))
-			}
 			diff := cursorMid - expectedMid
 			if diff < 0 {
 				diff = -diff
 			}
 			if diff > tolerancePx {
-				t.Fatalf("playhead misplaced: cursorMid=%d, expectedMid=%d (diff %d > %d) at elapsedBeats=%v (pinBoundary=%.1f)",
-					cursorMid, expectedMid, diff, tolerancePx, elapsedBeats, pinBoundaryBeats)
+				t.Fatalf("playhead misplaced: cursorMid=%d, expectedMid=%d (diff %d > %d) at elapsedBeats=%v (totalBeats=%d)",
+					cursorMid, expectedMid, diff, tolerancePx, elapsedBeats, totalBeats)
 			}
 		})
 	}

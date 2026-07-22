@@ -80,6 +80,37 @@ func CloseButton() *Button {
 	return b
 }
 
+// desktopCloseVisible is the SINGLE source of truth for the "does this pop-up
+// show an in-panel close (×) button?" decision. On mobile (UseBottomSheet) the
+// answer is always no — a bare tap-away / bottom-sheet dismiss keeps the mobile
+// UI clean, so every menu and pop-up drops its × there. Desktop keeps the × as
+// a discoverable dismiss affordance alongside Esc + click-outside.
+//
+// The three top-right *toggle* menus (File, Settings, Logs) are the exception on
+// BOTH platforms: their own grid button opens AND closes them, so they carry no
+// × anywhere — see settings_overlay.go / logs_component.go / the overflow menu.
+// They simply never call this or newPopupCloseButton.
+func desktopCloseVisible() bool { return !Profile().UseBottomSheet }
+
+// newPopupCloseButton builds the shared pop-up close (×) button wired to
+// onClose, or nil on mobile (see desktopCloseVisible). It centralizes the
+// canonical recipe every floating menu/pop-up used to hand-roll — IconClose
+// glyph, closeIconColor tint, PopupButtonStyle chrome, ConsumeOnPress so a
+// rapid double-tap can't cascade through the teardown. Position the returned
+// button with closeButtonRect(panelRect, pad); callers keep their existing
+// `if btn != nil` guards for layout/draw/hit, so the × simply vanishes on
+// mobile with no other branch.
+func newPopupCloseButton(onClose func()) *Button {
+	if !desktopCloseVisible() {
+		return nil
+	}
+	b := NewButton("", PopupButtonStyle, onClose)
+	b.Icon = string(IconClose)
+	b.IconColor = closeIconColor()
+	b.ConsumeOnPress = true
+	return b
+}
+
 // ── Panel spec ────────────────────────────────────────────────────────────
 
 // PanelSpec describes an overlay panel geometry. Use drawPanel(dst, r) for

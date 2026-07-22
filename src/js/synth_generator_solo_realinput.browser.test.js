@@ -1,14 +1,19 @@
 /**
  * EXACT production reproduction of the user's report (WASM, full game):
  *
- *   click Play → solo Snare → open Synth tab → DRAG the generator knob → audio dies.
+ *   click Play → solo Snare → open Synth tab → change the generator → audio dies.
  *
  * Unlike the earlier tests this uses the production index.html + main.wasm, taps
  * the real AudioContext destination, and drives REAL canvas input (solo button
- * click + a real mouse drag on the generator knob) — not the setInstrumentParam
- * export. It measures the master-output RMS in a window AFTER the drag and fails
- * if the audio goes silent. The snare is SOLOED, so if re-voicing silences the
- * snare, ALL audio dies — matching "the audio dies".
+ * click + a real mouse WHEEL over the generator control) — not the
+ * setInstrumentParam export. It measures the master-output RMS in a window AFTER
+ * the change and fails if the audio goes silent. The snare is SOLOED, so if
+ * re-voicing silences the snare, ALL audio dies — matching "the audio dies".
+ *
+ * POP-UP-CONTROLS MODEL: the synth control's horizontal rotary drag was removed —
+ * a tap now opens the value-wheel popup, and an in-place value change comes from
+ * the mouse wheel over the control (synthControlHitAdapter.OnWheel). This test
+ * drives that wheel; see the value-change block below.
  *
  * POST-NATIVE-DEPRECATION: the gen_type "Generator" selector was REMOVED
  * (MigrateGenType is an import-time shim only). The generator knob is now the
@@ -18,16 +23,16 @@
  *
  * CHIP-STRIP REDESIGN: the Synth tab now renders one compact chip per pipeline
  * stage (VOICE·OSC·FM·PITCH·LFO·BURST·ENVELOPE·FILTER·POST) with exactly ONE
- * stage expanded into a detail pane. synthKnobRects() still returns one entry
+ * stage expanded into a detail pane. synthControlRects() still returns one entry
  * per wired knob, but knobs of collapsed (non-selected) stages have ZERO-SIZE
- * rects (w=0,h=0) — only the selected stage's knobs are drag-targetable. The
+ * rects (w=0,h=0) — only the selected stage's knobs are interactable. The
  * `<family>_wave` knob (snare_wave) lives in the VOICE stage; osc_type lives in
  * the OSC stage. We call selectSynthSection() to open the owning stage, then
  * filter for the knob with a non-zero rect.
  */
 import { chromium } from "playwright";
 import {
-  buildMainWasm, createServer, dragMouse, clickUntilStateChanges,
+  buildMainWasm, createServer, clickUntilStateChanges,
   rectCenter, assertValidRect, waitForGameLoopRelease,
 } from "./real_input_test_helpers.js";
 
@@ -73,7 +78,7 @@ const RMS_MIN = 1e-4;
 
 try {
   await page.goto(`http://localhost:${port}/`, { waitUntil: "load" });
-  await page.waitForFunction(() => typeof startPlay === "function" && typeof rowSoloBtnRect === "function" && typeof synthKnobRects === "function", { timeout: 30000 });
+  await page.waitForFunction(() => typeof startPlay === "function" && typeof rowSoloBtnRect === "function" && typeof synthControlRects === "function", { timeout: 30000 });
   await page.waitForFunction(() => window.audioReady !== undefined, { timeout: 30000 });
   // Let the production demo circuit build (5 rows: kick, snare, hats, clap).
   await page.evaluate(() => { forceDraw?.(); });
@@ -141,10 +146,10 @@ try {
   await page.waitForTimeout(200);
   await waitForGameLoopRelease(page);
 
-  // Find the generator knob and DRAG it (Sine → another waveform). Only knobs
-  // with a non-zero rect belong to the selected (expanded) stage; collapsed
-  // stages report w=0/h=0 and are not drag-targetable.
-  let knobs = await page.evaluate(() => (typeof synthKnobRects === "function" ? synthKnobRects() : []));
+  // Find the generator knob so we can wheel it (Sine → another waveform). Only
+  // knobs with a non-zero rect belong to the selected (expanded) stage; collapsed
+  // stages report w=0/h=0 and are not interactable.
+  let knobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
   const laidOut = (k) => k && k.w > 0 && k.h > 0;
   let gen = knobs.find((k) => k.name === "snare_wave" && laidOut(k));
   if (!gen) {
@@ -152,7 +157,7 @@ try {
     await page.evaluate(() => { if (typeof selectSynthSection === "function") selectSynthSection("OSC"); });
     await page.waitForTimeout(200);
     await waitForGameLoopRelease(page);
-    knobs = await page.evaluate(() => (typeof synthKnobRects === "function" ? synthKnobRects() : []));
+    knobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
     gen = knobs.find((k) => k.name === "osc_type" && laidOut(k));
   }
   console.log("[TEST] synth knob names =", JSON.stringify(knobs.map((k) => k.name)));
@@ -161,35 +166,39 @@ try {
     const genName = gen.name;
     const cx = Math.round(gen.x + gen.w / 2), cy = Math.round(gen.y + gen.h / 2);
     const before = await page.evaluate((n) => (getInstrumentParams("snare") || {})[n] ?? 0, genName);
-    // Real drag to the RIGHT to raise the knob value off the Sine default. Synth
-    // knobs are HORIZONTAL-only (right = increase, see Knob.updateFromDrag / the
-    // synth knob-vs-scroll axis lock in synthKnobHitAdapter.OnDrag); a vertical
-    // drag is treated as a section SCROLL and never turns the knob. ~130 px ≥
-    // knobDragPixelsCoarse(120) sweeps the full enum range, crossing waveform
-    // boundaries MID-DRAG while the handler is still captured-by-index — the
-    // exact window a mid-drag schema rebind would fire in, which is what the
-    // historical bug (gen_type-era bespoke→modular swap) needed to be exercised.
-    await dragMouse(page, cx, cy, cx + 130, cy, { steps: 24 });
+    // POP-UP-CONTROLS MODEL: the horizontal rotary drag was removed. A TAP on a
+    // synth control now opens the value-wheel popup; a real value change in place
+    // comes from the mouse WHEEL over the control (synthControlHitAdapter.OnWheel
+    // → nudgeKnobByWheel). Scroll UP (negative deltaY) increases the discrete
+    // enum — 5 notches sweeps the full snare_wave range (Sine 0 → Triangle 3),
+    // crossing waveform boundaries one notch at a time. Each notch reads
+    // instEditorControls[idx]/instEditorBindings[idx] fresh (by-index), which is
+    // the exact window a schema rebind would fire in — the historical mid-drag
+    // gen_type-era bespoke→modular swap this test was written to exercise. This
+    // stays REAL canvas input (wheel events through the dispatcher), not the
+    // setInstrumentParam export.
+    await page.mouse.move(cx, cy);
+    for (let i = 0; i < 5; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(40); }
     await waitForGameLoopRelease(page);
     const after = await page.evaluate((n) => (getInstrumentParams("snare") || {})[n] ?? 0, genName);
-    console.log(`[TEST] ${genName} via real drag: ${before} -> ${after}`);
-    if (after === before) fail(`the generator drag did not change snare ${genName} (${before} -> ${after}) — knob not hit / not targeting snare.`);
+    console.log(`[TEST] ${genName} via real wheel: ${before} -> ${after}`);
+    if (after === before) fail(`the generator wheel did not change snare ${genName} (${before} -> ${after}) — control not hit / not targeting snare.`);
 
-    // ROOT-CAUSE GUARD: a generator-knob drag must change ONLY the generator
-    // param. The historical bug: crossing gen_type Native→waveform swapped the
-    // synth tab's bespoke schema to the 33-knob modular pipeline MID-DRAG; the
-    // drag is captured by index, so the captured handler then drove a foreign
-    // modular param (fm_op1_ratio, and in the worst case gain/osc_enabled/
-    // amp_decay, which silence the re-voiced voice until reload). Schema rebinds
-    // can still come from any source, so the guard stays. Go unit guards:
+    // ROOT-CAUSE GUARD: a generator change must touch ONLY the generator param.
+    // The historical bug: crossing gen_type Native→waveform swapped the synth
+    // tab's bespoke schema to the 33-knob modular pipeline mid-gesture; the
+    // handler (captured/indexed) then drove a foreign modular param (fm_op1_ratio,
+    // and in the worst case gain/osc_enabled/amp_decay, which silence the
+    // re-voiced voice until reload). Schema rebinds can still come from any
+    // source, so the guard stays. Go unit guards:
     // TestSynthKnobAdapter_PropagateIsIndexSafe /
     // TestSynthKnobAdapter_PropagateWritesStableParam
     // (synth_knob_adapter_index_safe_test.go).
     const params = await page.evaluate(() => getInstrumentParams("snare") || {});
     const foreign = Object.keys(params).filter((k) => k !== genName);
-    console.log(`[TEST] snare params after generator drag = ${JSON.stringify(params)}`);
+    console.log(`[TEST] snare params after generator change = ${JSON.stringify(params)}`);
     if (foreign.length) {
-      fail(`generator drag scrambled foreign param(s) [${foreign.join(", ")}] — a generator drag must change only ${genName} (mid-drag schema swap regression).`);
+      fail(`generator change scrambled foreign param(s) [${foreign.join(", ")}] — a generator change must touch only ${genName} (mid-gesture schema swap regression).`);
     }
 
     // THE REPRO: measure master output AFTER the generator change. Leave the

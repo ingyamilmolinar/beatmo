@@ -75,10 +75,10 @@ func TestSynthTab_ModularSectionsCoverPipeline(t *testing.T) {
 	}
 }
 
-// TestSynthTab_WaveKnobCaptionShowsLabel locks the family generator-type
+// TestSynthTab_WaveControlCaptionShowsLabel locks the family generator-type
 // selector rendering: every <family>_wave ParamDef is a discrete enum whose
 // knob caption shows the waveform name, not a raw number.
-func TestSynthTab_WaveKnobCaptionShowsLabel(t *testing.T) {
+func TestSynthTab_WaveControlCaptionShowsLabel(t *testing.T) {
 	for _, recipe := range []string{"drum-kick", "drum-hihat", "fm-bass"} {
 		var waveDef *audio.ParamDef
 		for _, d := range audio.WiredParamsForRecipe(recipe) {
@@ -92,7 +92,7 @@ func TestSynthTab_WaveKnobCaptionShowsLabel(t *testing.T) {
 			t.Fatalf("%s: no *_wave ParamDef", recipe)
 		}
 		for idx, label := range waveDef.Enum {
-			got := synthKnobCaption(*waveDef, float64(idx))
+			got := synthControlCaption(*waveDef, float64(idx))
 			if !strings.Contains(got, label) {
 				t.Errorf("%s %s caption @%d = %q, want it to contain %q", recipe, waveDef.Name, idx, got, label)
 			}
@@ -103,26 +103,26 @@ func TestSynthTab_WaveKnobCaptionShowsLabel(t *testing.T) {
 func TestSynthTab_EnumParamCaptionShowsLabel(t *testing.T) {
 	def := audio.ParamDef{Name: "osc_type", Min: 0, Max: 4, Enum: []string{"Sine", "Saw", "Square", "Triangle", "FM"}}
 	for idx, label := range def.Enum {
-		got := synthKnobCaption(def, float64(idx))
+		got := synthControlCaption(def, float64(idx))
 		if !strings.Contains(got, label) {
 			t.Errorf("osc_type caption @%d = %q, want it to contain %q", idx, got, label)
 		}
-		gotV := synthKnobCaptionValueOnly(def, float64(idx))
+		gotV := synthControlCaptionValueOnly(def, float64(idx))
 		if !strings.Contains(gotV, label) {
 			t.Errorf("osc_type value-only caption @%d = %q, want %q", idx, gotV, label)
 		}
 	}
 	// Out-of-range value clamps to a valid label (no panic / index error).
-	if got := synthKnobCaption(def, 9); !strings.Contains(got, "FM") {
+	if got := synthControlCaption(def, 9); !strings.Contains(got, "FM") {
 		t.Errorf("osc_type caption @9 = %q, want clamped to FM", got)
 	}
 }
 
-// TestSynthTab_ModularEnumKnobWritesSnappedIndex — driving the osc_type
+// TestSynthTab_ModularEnumControlWritesSnappedIndex — driving the osc_type
 // control (an Enum param rendered as a snapping knob) must write the nearest
 // integer selector index through audio.SetInstrumentParam, and that write must
 // reach the platform bridge (the WASM seam the browser renders through).
-func TestSynthTab_ModularEnumKnobWritesSnappedIndex(t *testing.T) {
+func TestSynthTab_ModularEnumControlWritesSnappedIndex(t *testing.T) {
 	g := setupModularSynthGame(t)
 	sliders := g.drum.SynthTabSliders()
 	bindings := g.drum.SynthTabBindings()

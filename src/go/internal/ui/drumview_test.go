@@ -369,130 +369,68 @@ func TestEQChannelBtnWidthFitsLongNames(t *testing.T) {
 	}
 }
 
-func TestTimelineViewRect(t *testing.T) {
-	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
-	dv.SetBeatLength(16)
-	dv.Offset = 4
-	dv.recalcButtons()
+// TestTimelineViewRect used to assert the ribbon drew a "view rect"
+// highlighting the editable pattern window (dv.Offset -> dv.Offset+dv.Length)
+// mapped into a sliding fixed-beats-per-pixel window. Task 6 removed that
+// affordance entirely: the ribbon is now a slim whole-song progress bar
+// decoupled from the drum-grid pattern window, with no view-rect concept.
+// See TestRibbonCursorIndependentOfGridOffset below for the new invariant
+// this test's removal leaves unguarded (cursor position must NOT depend on
+// dv.Offset), and ribbon_progress_test.go for the drag-only click contract.
 
-	var got image.Rectangle
-	orig := drawRect
-	drewBorder := false
-	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
-		if filled {
-			if clr, ok := c.(color.NRGBA); ok && clr == colTimelineView {
-				got = r
-			}
-		} else {
-			if clr, ok := c.(color.RGBA); ok && clr == colTimelineViewHi {
-				drewBorder = true
-			}
-		}
-	}
-	defer func() { drawRect = orig }()
+// TestTimelineRibbonScrollsWithPlayhead used to assert the view rect's X
+// position slides with dv.Offset under the old fixed-beats-per-pixel
+// sliding-window ribbon. Superseded by TestRibbonCursorIndependentOfGridOffset
+// (Task 6: the ribbon is now decoupled from the drum-grid pattern window, so
+// changing Offset must NOT move anything on the ribbon).
 
-	dv.Draw(ebiten.NewImage(800, 200), nil, 0, nil, 0)
-
-	// New scrolling-tape geometry: the view rect represents the
-	// editable pattern window (dv.Offset → dv.Offset+dv.Length, in
-	// subdivision units) mapped into the visible ribbon window using
-	// the configured RibbonBeatsPerPixel.
-	units := float64(max1(dv.timelineUnitsPerBeat))
-	winStart, _, pxPerBeat := ribbonWindowBeats(dv.timelineRect.Dx(), 0)
-	viewStartBeats := float64(dv.Offset) / units
-	viewEndBeats := viewStartBeats + float64(dv.Length)/units
-	wantX0 := dv.timelineRect.Min.X + int(mathRound((viewStartBeats-winStart)*pxPerBeat))
-	wantX1 := dv.timelineRect.Min.X + int(mathRound((viewEndBeats-winStart)*pxPerBeat))
-	if wantX0 < dv.timelineRect.Min.X {
-		wantX0 = dv.timelineRect.Min.X
-	}
-	if wantX1 > dv.timelineRect.Max.X {
-		wantX1 = dv.timelineRect.Max.X
-	}
-	if wantX1-wantX0 < 1 {
-		wantX1 = wantX0 + 1
-	}
-	want := image.Rect(wantX0, dv.timelineRect.Min.Y, wantX1, dv.timelineRect.Max.Y)
-	if got != want || !drewBorder {
-		t.Fatalf("view rect/border mismatch: rect=%v border=%t want %v", got, drewBorder, want)
-	}
-}
-
-// mathRound is a tiny helper to keep this test free of an extra math
-// import; mirrors math.Round for the modest values we deal with here.
-func mathRound(v float64) float64 {
-	if v >= 0 {
-		return float64(int(v + 0.5))
-	}
-	return float64(int(v - 0.5))
-}
-
-func TestTimelineLayout(t *testing.T) {
-	logger := game_log.New(io.Discard, game_log.LevelDebug)
-	graph := model.NewGraph(logger)
-	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
-	dv.recalcButtons()
-	textY := dv.Bounds.Min.Y + 5
-	if textY >= dv.timelineRect.Min.Y {
-		t.Fatalf("info text overlaps timeline bar")
-	}
-	rowStart := dv.Bounds.Min.Y + dv.headerH
-	if dv.timelineRect.Max.Y >= rowStart {
-		t.Fatalf("timeline bar overlaps drum rows")
-	}
-}
-
-// TestTimelineRibbonScrollsWithPlayhead replaces the legacy
-// "expands and shrinks" assertion. Under the new fixed-beats-per-pixel
-// scrolling tape the view rect's WIDTH stays constant (pattern length ×
-// pixels-per-beat); what changes between elapsed=0 and elapsed=20 is the
-// view rect's X POSITION on the bar — it slides left as the visible
-// window scrolls past the pattern. The old shrink-behavior was an
-// artifact of the unbounded compression bug fixed in the long-session
-// ribbon rewrite.
-func TestTimelineRibbonScrollsWithPlayhead(t *testing.T) {
+// TestRibbonCursorIndependentOfGridOffset asserts the whole-song progress
+// ribbon (Task 6) does not react to the drum-grid pattern window's Offset —
+// the two are explicitly decoupled, unlike the pre-Task-6 ribbon whose "view
+// rect" slid with Offset.
+func TestRibbonCursorIndependentOfGridOffset(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	graph := model.NewGraph(logger)
 	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
 	dv.recalcButtons()
 	img := ebiten.NewImage(800, 200)
 
-	var rect image.Rectangle
+	var cursorX0 int
 	orig := drawRect
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
-			if clr, ok := c.(color.NRGBA); ok && clr == colTimelineView {
-				rect = r
+			if clr, ok := c.(color.RGBA); ok && clr == colTimelineCursor {
+				cursorX0 = (r.Min.X + r.Max.X) / 2
 			}
 		}
+		orig(dst, r, c, filled)
 	}
 	defer func() { drawRect = orig }()
 
-	// Two draws at the same playhead (elapsed=0) but different pattern
-	// offsets. The view rect's width must stay constant (it represents
-	// a fixed pattern length × pxPerBeat), and its X position must
-	// shift to reflect the new offset inside the visible window.
+	// Draw at a NON-TRIVIAL mid-song playhead: under the old sliding-window
+	// ribbon the cursor position tracked the playhead relative to the grid
+	// Offset, so at beat 0 (cursor pinned to the left edge) this test would
+	// pass even against the old code. A mid-song elapsedBeats puts the cursor
+	// well off the left edge, so folding Offset back into the cursor math
+	// would move it — actually exercising the decoupling.
+	const elapsed = 20.0
+
 	dv.Offset = 0
-	dv.Draw(img, nil, 0, nil, 0)
-	baseWidth := rect.Dx()
-	baseX0 := rect.Min.X
+	dv.Draw(img, nil, 0, nil, elapsed)
+	base := cursorX0
 
-	rect = image.Rectangle{}
-	dv.Offset = 8 // one unit of subdivision shift
-	dv.Draw(img, nil, 0, nil, 0)
-	movedWidth := rect.Dx()
-	movedX0 := rect.Min.X
+	dv.Offset = 8
+	dv.Draw(img, nil, 0, nil, elapsed)
+	moved := cursorX0
 
-	if baseWidth == 0 || movedWidth == 0 {
-		t.Fatalf("view rect was not drawn in one of the cases (base=%d moved=%d)", baseWidth, movedWidth)
+	// Guard the guard: confirm the cursor really sat off the left edge, so a
+	// future change that pins it to 0 can't make this test vacuously pass.
+	barLeft := dv.timelineZone.timelineBarRect.Min.X
+	if base <= barLeft+8 {
+		t.Fatalf("cursor did not advance off the bar's left edge at elapsed=%.0f (base=%d, barLeft=%d) — test would be vacuous", elapsed, base, barLeft)
 	}
-	if baseWidth != movedWidth {
-		t.Fatalf("view width should be constant across pattern offset shift: base %d moved %d", baseWidth, movedWidth)
-	}
-	if movedX0 <= baseX0 {
-		t.Fatalf("view did not move right as Offset advanced: baseX0=%d movedX0=%d", baseX0, movedX0)
+	if base != moved {
+		t.Fatalf("ribbon cursor must be independent of the drum-grid Offset (decoupled per Task 6): base=%d moved=%d", base, moved)
 	}
 }
 
@@ -503,14 +441,11 @@ func TestTimelineBeatMarkersDecimate(t *testing.T) {
 	dv.recalcButtons()
 	dv.timelineBeats = 10000 // simulate long timeline
 
-	var view image.Rectangle
 	markers := 0
 	orig := drawRect
 	drawRect = func(dst *ebiten.Image, r image.Rectangle, c color.Color, filled bool) {
 		if filled {
-			if clr, ok := c.(color.NRGBA); ok && clr == colTimelineView {
-				view = r
-			} else if clr, ok := c.(color.RGBA); ok && clr == colTimelineBeat && r.Min.Y == dv.timelineRect.Min.Y && r.Max.Y == dv.timelineRect.Max.Y {
+			if clr, ok := c.(color.RGBA); ok && clr == colTimelineBeat && r.Min.Y == dv.timelineRect.Min.Y && r.Max.Y == dv.timelineRect.Max.Y {
 				markers++
 			}
 		}
@@ -520,21 +455,17 @@ func TestTimelineBeatMarkersDecimate(t *testing.T) {
 
 	dv.Draw(ebiten.NewImage(400, 200), nil, 0, nil, 0)
 
-	if view.Dx() < 1 {
-		t.Fatalf("view width = %d want >=1", view.Dx())
-	}
 	if markers > dv.timelineRect.Dx()+1 {
 		t.Fatalf("too many beat markers: %d > %d", markers, dv.timelineRect.Dx()+1)
 	}
 }
 
-// TestTimelineScrubSeek was "ribbon drag rewrites view-offset via the old
-// scrub callback"; Task 10 replaced that with click-to-seek. A
-// press+release at the same point (no drag) now queues exactly one
-// absolute seek request via OnSeekToStep, snapped to the nearest whole
-// beat under the pointer, and Offset itself is untouched (Offset is only
-// rewritten later by Game.drainSeekRequest, which this bare-DrumView
-// harness has no Game to run).
+// TestTimelineScrubSeek was "ribbon press+release at the same point queues an
+// absolute seek". Task 6 makes the ribbon drag-only: a pure tap must NOT
+// queue a seek, and only a press-then-drag-to-a-different-beat commits one
+// on release. See TestRibbonSingleClickDoesNotSeek / TestRibbonDragStillSeeks
+// in ribbon_progress_test.go for the direct-adapter version of this
+// contract; this variant drives the real input dispatch (dv.Update()).
 func TestTimelineScrubSeek(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
@@ -558,18 +489,51 @@ func TestTimelineScrubSeek(t *testing.T) {
 	dv.Update()
 	restore()
 
-	// Mirror ribbonStepAt's formula: frac of the bar -> nearest whole beat
-	// -> subdivision steps.
+	if _, _, _, ok := dv.TakeSeekRequest(); ok {
+		t.Fatal("a pure tap (press+release at the same point) must NOT queue a seek under the drag-only ribbon contract")
+	}
+}
+
+// TestTimelineScrubDrag drives a real press-then-move-then-release across the
+// ribbon via dv.Update() and asserts the resulting absolute seek snaps to the
+// nearest whole beat under the release point (Task 6: drag-only ribbon).
+func TestTimelineScrubDrag(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
+	dv.recalcButtons()
+	dv.timelineBeats = 100
+
+	pressX := dv.timelineRect.Min.X + 5
+	releaseX := dv.timelineRect.Min.X + dv.timelineRect.Dx()*3/5
+	my := dv.timelineRect.Min.Y + dv.timelineRect.Dy()/2
+	mx := pressX
+	pressed := true
+	restore := SetInputForTest(
+		func() (int, int) { return mx, my },
+		func(ebiten.MouseButton) bool { return pressed },
+		func(ebiten.Key) bool { return false },
+		func() []rune { return nil },
+		func() (float64, float64) { return 0, 0 },
+		func() (int, int) { return 0, 0 },
+	)
+	t.Cleanup(restore)
+	dv.Update() // press
+	mx = releaseX
+	dv.Update() // drag
+	pressed = false
+	dv.Update() // release
+	restore()
+
 	unitsPerBeat := max1(dv.timelineUnitsPerBeat)
-	frac := float64(dv.timelineRect.Dx()/2) / float64(dv.timelineRect.Dx())
+	frac := float64(releaseX-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
 	wantBeat := int(math.Round(frac * float64(dv.timelineBeats)))
 	wantSteps := wantBeat * unitsPerBeat
 
-	steps, _, isDelta, origin, ok := dv.TakeSeekRequest()
+	steps, mode, origin, ok := dv.TakeSeekRequest()
 	if !ok {
-		t.Fatal("expected a queued seek request after ribbon press+release")
+		t.Fatal("expected a queued seek request after a ribbon drag to a different beat")
 	}
-	if isDelta {
+	if mode != seekReqAbs {
 		t.Fatal("expected an absolute seek request, not a delta")
 	}
 	if origin != seekOriginRibbon {
@@ -583,18 +547,21 @@ func TestTimelineScrubSeek(t *testing.T) {
 	}
 }
 
-// TestTimelineScrubLongTimeline was "ribbon drag at the far edge clamps
-// view-offset to the pattern-aware max"; Task 10's ribbonStepAt clamps to
-// the full [0, TimelineBeats] range instead (no pattern-length awareness —
-// the ribbon can seek anywhere in session history/future).
+// TestTimelineScrubLongTimeline was "ribbon drag at the far edge clamps to
+// the full [0, TimelineBeats] range" driven by a press+release at the same
+// point; Task 6 requires an actual drag (different press/release X) to
+// commit a seek at all, so this now presses near the middle and drags to
+// the far edge before releasing.
 func TestTimelineScrubLongTimeline(t *testing.T) {
 	logger := game_log.New(io.Discard, game_log.LevelDebug)
 	dv := NewDrumView(image.Rect(0, 0, 400, 200), nil, logger)
 	dv.recalcButtons()
 	dv.timelineBeats = 10000
 
-	mx := dv.timelineRect.Max.X - 1
 	my := dv.timelineRect.Min.Y + dv.timelineRect.Dy()/2
+	pressX := dv.timelineRect.Min.X + dv.timelineRect.Dx()/2
+	releaseX := dv.timelineRect.Max.X - 1
+	mx := pressX
 	pressed := true
 	restore := SetInputForTest(
 		func() (int, int) { return mx, my },
@@ -605,22 +572,24 @@ func TestTimelineScrubLongTimeline(t *testing.T) {
 		func() (int, int) { return 0, 0 },
 	)
 	t.Cleanup(restore)
-	dv.Update()
+	dv.Update() // press
+	mx = releaseX
+	dv.Update() // drag
 	pressed = false
-	dv.Update()
+	dv.Update() // release
 	restore()
 
 	// Mirror ribbonStepAt's formula — it uses math.Round; mirror it here.
 	unitsPerBeat := max1(dv.timelineUnitsPerBeat)
-	frac := float64(dv.timelineRect.Dx()-1) / float64(dv.timelineRect.Dx())
+	frac := float64(releaseX-dv.timelineRect.Min.X) / float64(dv.timelineRect.Dx())
 	wantBeat := int(math.Round(frac * float64(dv.timelineBeats)))
 	wantSteps := wantBeat * unitsPerBeat
 
-	steps, _, isDelta, origin, ok := dv.TakeSeekRequest()
+	steps, mode, origin, ok := dv.TakeSeekRequest()
 	if !ok {
-		t.Fatal("expected a queued seek request after ribbon press+release")
+		t.Fatal("expected a queued seek request after a ribbon drag to the far edge")
 	}
-	if isDelta {
+	if mode != seekReqAbs {
 		t.Fatal("expected an absolute seek request, not a delta")
 	}
 	if origin != seekOriginRibbon {
@@ -631,6 +600,21 @@ func TestTimelineScrubLongTimeline(t *testing.T) {
 	}
 	if dv.timelineBeats != 10000 {
 		t.Fatalf("timelineBeats changed: %d", dv.timelineBeats)
+	}
+}
+
+func TestTimelineLayout(t *testing.T) {
+	logger := game_log.New(io.Discard, game_log.LevelDebug)
+	graph := model.NewGraph(logger)
+	dv := NewDrumView(image.Rect(0, 0, 800, 200), graph, logger)
+	dv.recalcButtons()
+	textY := dv.Bounds.Min.Y + 5
+	if textY >= dv.timelineRect.Min.Y {
+		t.Fatalf("info text overlaps timeline bar")
+	}
+	rowStart := dv.Bounds.Min.Y + dv.headerH
+	if dv.timelineRect.Max.Y >= rowStart {
+		t.Fatalf("timeline bar overlaps drum rows")
 	}
 }
 

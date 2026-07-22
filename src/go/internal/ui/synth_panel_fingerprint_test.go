@@ -69,7 +69,7 @@ func captureSynthFingerprint(g *Game) synthLayoutFingerprint {
 	for _, s := range g.drum.SynthTabSections() {
 		out.sectionRects = append(out.sectionRects, s.Rect())
 	}
-	for _, k := range g.drum.SynthTabKnobs() {
+	for _, k := range g.drum.SynthTabControls() {
 		out.knobRects = append(out.knobRects, k.Rect())
 	}
 	out.headerRect = g.drum.SynthTabHeader().rect

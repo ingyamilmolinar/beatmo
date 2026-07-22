@@ -102,9 +102,6 @@ func captureFingerprint(dv *DrumView) layoutFingerprint {
 		if dv.transportZone.viewSwitchBtn != nil {
 			fp.viewSwitchStyle = dv.transportZone.viewSwitchBtn.Style
 		}
-		if dv.transportZone.overflowBtn != nil {
-			fp.overflowStyle = dv.transportZone.overflowBtn.Style
-		}
 	}
 	if dv.rowRackZone != nil {
 		if labels := dv.rowRackZone.RowLabels(); len(labels) > 0 && labels[0] != nil {

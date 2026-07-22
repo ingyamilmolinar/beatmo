@@ -8,7 +8,7 @@ import (
 // openSamplerKnobWheelPopup opens the mobile scroll-wheel for sampler knob idx,
 // wired to the sampler's shared knob value-model. It closes any existing popups
 // first, then opens the wheel through the portal system. Mirrors the synth tab's
-// openSynthKnobWheelPopup; the sampler differs only in that its ParamDef is
+// openSynthControlWheelPopup; the sampler differs only in that its ParamDef is
 // synthesized from samplerKnobScale (it has no per-knob binding array) and every
 // sampler knob is continuous (Discrete=false).
 func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
@@ -21,7 +21,7 @@ func (p *samplerPanel) openSamplerKnobWheelPopup(idx int) {
 		return
 	}
 	// Flush any pending desktop wheel-nudge commit so the popup snapshots the
-	// committed value (mirrors openSynthKnobWheelPopup).
+	// committed value (mirrors openSynthControlWheelPopup).
 	dv.samplerWheelNudge.flush()
 	dv.CloseAllPopups()
 

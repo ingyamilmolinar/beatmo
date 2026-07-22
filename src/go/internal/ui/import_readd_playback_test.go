@@ -168,9 +168,20 @@ func TestImportPlaybackReaddKeepsPredictorParity(t *testing.T) {
 	g.pendingStartRow = -1
 	g.updateBeatInfos()
 
-	// Simulate playback far enough ahead to freeze history while keeping the
-	// target subdivision in the future (next beat).
-	g.elapsedBeats = targetAbs + g.grid.MaxDiv()*2
+	// Position the playhead just BEFORE the target subdivision so targetAbs is
+	// the next (still-future) beat and everything before it is frozen history.
+	// The immutable-past boundary is the visual playhead (elapsedBeats): every
+	// subdivision the playhead has passed is past and renders from committed
+	// history, not the live predictor (see rowPastExclusive). The prior version
+	// of this test set elapsedBeats far AHEAD of targetAbs while leaving next at
+	// targetAbs — an internally inconsistent state (the playhead claims to have
+	// long since passed targetAbs) that asserted a re-add could retroactively
+	// rewrite ancient past. That is the exact immutability violation this suite
+	// guards against, so it is corrected here to a consistent preview state.
+	g.elapsedBeats = targetAbs - 1
+	if g.elapsedBeats < 0 {
+		g.elapsedBeats = 0
+	}
 	if len(g.nextBeatIdxs) != len(g.drum.Rows) {
 		g.nextBeatIdxs = make([]int, len(g.drum.Rows))
 	}
@@ -185,7 +196,7 @@ func TestImportPlaybackReaddKeepsPredictorParity(t *testing.T) {
 			g.frozenUpToByRow[i] = -1
 		}
 	}
-	g.frozenUpToByRow[row] = targetAbs + g.grid.MaxDiv()
+	g.frozenUpToByRow[row] = targetAbs - 1
 
 	// Ensure the target cell is within the visible window.
 	g.drum.Offset = targetAbs - 1

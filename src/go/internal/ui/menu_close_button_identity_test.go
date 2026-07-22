@@ -18,7 +18,9 @@ import (
 func TestContextMenuCloseBtnFoundByIdentity(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultAudio(t)
-	withSmallScreen(t, true)
+	// Desktop: the close × exists only here (mobile dismisses via tap-away), so
+	// the identity-robustness check runs on the desktop profile.
+	withSmallScreen(t, false)
 
 	logger := gamelog.New(testLogOutput(), gamelog.LevelError)
 	dv := NewDrumView(image.Rect(0, 0, 400, 700), nil, logger)

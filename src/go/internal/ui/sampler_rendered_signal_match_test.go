@@ -34,7 +34,7 @@ func TestSamplerNormalizeRenderedSignalMatchesAudio(t *testing.T) {
 	s.reset()
 	s.normalize = true // the Normalize button latches this
 
-	baked, _ := s.bake()  // what you hear
+	baked, _ := s.bake()    // what you hear
 	wave := s.waveFloat64() // what you see
 	if len(wave) != len(baked) {
 		t.Fatalf("displayed len %d != baked len %d", len(wave), len(baked))
@@ -77,7 +77,7 @@ func TestSamplerReverseRenderedSignalMatchesAudioAfterRecapture(t *testing.T) {
 	forward := []float32{10, 20, 30, 40} // the fresh synth render (always forward)
 	s := &samplerState{raw: []float32{1, 2, 3, 4}, rawSampleRate: 48000}
 	s.reset()
-	s.reverseBuffer()                                       // Reverse button ON
+	s.reverseBuffer()                                         // Reverse button ON
 	s.recaptureRaw(append([]float32(nil), forward...), 48000) // live synth edit
 
 	if !s.reverse {

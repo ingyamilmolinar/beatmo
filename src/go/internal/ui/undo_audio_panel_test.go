@@ -181,10 +181,10 @@ func TestUndoSynthNumericEntry(t *testing.T) {
 	assertOneUndoStepRoundTrip(t, g, "synth-numeric-entry", before, depth0)
 }
 
-// TestSynthKnobWheelRecordsExactlyOneUndoStep proves the Task-5 wheel nudge
+// TestSynthControlWheelRecordsExactlyOneUndoStep proves the Task-5 wheel nudge
 // collapses a whole spin into EXACTLY ONE undo step, committed once the debounce
 // elapses, through the real production input path.
-func TestSynthKnobWheelRecordsExactlyOneUndoStep(t *testing.T) {
+func TestSynthControlWheelRecordsExactlyOneUndoStep(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	expandSynthPanelForTest(t, g)
 	idx := synthIdxByParam(t, g, "filter_cutoff")
@@ -193,7 +193,7 @@ func TestSynthKnobWheelRecordsExactlyOneUndoStep(t *testing.T) {
 	img := newTrackedImage("test.knobwheel", 1280, 720)
 	defer releaseImage(img)
 	g.Draw(img)
-	k := g.drum.SynthTabKnobs()[idx]
+	k := g.drum.SynthTabControls()[idx]
 	r := k.Rect()
 	if r.Empty() {
 		t.Fatalf("knob %d rect empty after draw", idx)

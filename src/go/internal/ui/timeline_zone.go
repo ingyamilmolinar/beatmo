@@ -46,17 +46,13 @@ type TimelineCallbacks struct {
 	BeatCounterRect func() image.Rectangle // beat counter display rect
 	RowsTopY        func() int             // Y coordinate where rows start (Bounds.Min.Y + headerH)
 
-	// Notification band area (right of the beat counter).
-	NotifRect    func() image.Rectangle                 // dedicated notification area rect
-	NotifLatest  func() (text string, isErr, show bool) // live entry to render (show=false → idle)
-	OnNotifClick func()                                 // open the history popup
-
 	// Action callbacks
 	OnOffsetChange   func(newOffset int)
 	OnSeekToStep     func(step int, origin string) // ribbon seek commit
-	PlayheadStep     func() int                     // current absolute subdivision
-	OnRowsLayerDirty func()                          // signal that the rows layer composite needs rebuild
+	PlayheadStep     func() int                    // current absolute subdivision
+	OnRowsLayerDirty func()                        // signal that the rows layer composite needs rebuild
 	SetTimelineBeats func(int)
+	OnOpenNavigation func() // beat-counter tap: open the navigation menu (dv.OpenNavigation)
 
 	// Row scroll forwarding (vertical scroll over grid)
 	OnRowScrollWheel func(steps int) bool
@@ -75,11 +71,6 @@ type TimelineZone struct {
 	needLayout bool
 	callbacks  TimelineCallbacks
 	portal     *OverlayPortal
-
-	// posEditor is the shared numeric editor popped over the beat counter on
-	// tap; carries an absolute step value, text grammar "beat" or
-	// "beat.subdiv". See timeline_position_spec.go / openPositionEditor.
-	posEditor *ParamValueEditor
 
 	// Computed sub-rects (set during Layout)
 	stepsRect       image.Rectangle // grid area for drag scrolling
@@ -171,9 +162,29 @@ func NewTimelineZone(cb TimelineCallbacks) *TimelineZone {
 // SetPortal sets the overlay portal reference (for consistency with other zones).
 func (z *TimelineZone) SetPortal(p *OverlayPortal) { z.portal = p }
 
-// SetTimelineBarHeight sets the height of the timeline progress bar.
+// timelineBarHMax caps the ribbon's height. Task 6 reshapes the ribbon into
+// a slim whole-song progress bar (it no longer carries the pattern-window
+// "view rect" affordance, so it doesn't need the extra height that used to
+// make that inner highlight legible). This is a clamp fallback, NOT a design
+// token change: DESIGN.md's `densities.timelineBarH` (10/12/14 px for
+// compact/comfortable/spacious, see design_density.gen.go) still drives the
+// unclamped value passed in here — changing that YAML + regenerating via
+// `make gen-design-tokens` is a 3-file ratcheted change (DESIGN.md ↔
+// theme.go ↔ design_md_drift_test.go's want-map) that's out of scope for
+// this task. Follow-up: fold this cap into the density token directly once
+// the ribbon's new visual weight has been eyeballed against real UI.
+const timelineBarHMax = 8
+
+// SetTimelineBarHeight sets the height of the timeline progress bar, clamped
+// to timelineBarHMax so the ribbon reads as a slim progress strip rather than
+// the taller bar the pattern-window view-rect used to need.
 // Must be called before Layout so the bar rect is computed correctly.
-func (z *TimelineZone) SetTimelineBarHeight(h int) { z.timelineBarH = h }
+func (z *TimelineZone) SetTimelineBarHeight(h int) {
+	if h > timelineBarHMax {
+		h = timelineBarHMax
+	}
+	z.timelineBarH = h
+}
 
 // SetTimelineBarRect provides the bar's screen-space rect explicitly so
 // Layout doesn't have to derive it from `rect.Min.Y`. Required when the
@@ -196,6 +207,9 @@ func (z *TimelineZone) Layout(rect image.Rectangle) {
 	barH := z.timelineBarH
 	if barH <= 0 {
 		barH = tlBarHeight()
+		if barH > timelineBarHMax {
+			barH = timelineBarHMax
+		}
 	}
 
 	if !z.explicitBarRect.Empty() {
@@ -221,12 +235,10 @@ func (z *TimelineZone) Layout(rect image.Rectangle) {
 }
 
 func (z *TimelineZone) Update() {
-	// Drag/scrub are handled via hit handlers; the shared position editor is
-	// the only per-frame state this zone drives directly (mirrors
-	// TransportZone's paramEditor.Update()).
-	if z.posEditor != nil && z.posEditor.Active() {
-		z.posEditor.Update()
-	}
+	// Drag/scrub are handled entirely via hit handlers (timelineScrubHitAdapter,
+	// gridDragHitAdapter); the zone has no other per-frame state to drive here.
+	// (Task 6 removed the beat-counter's inline position editor — tapping the
+	// counter now opens the navigation menu via OnOpenNavigation instead.)
 }
 
 // SetDrawParams sets per-frame draw data before Draw() is called.
@@ -251,7 +263,6 @@ func (z *TimelineZone) Draw(screen *ebiten.Image) {
 	// --- Beat/time counter ---
 	if !simpleDraw && !perfDrawLite {
 		z.drawBeatCounter(screen, elapsedBeats)
-		z.drawNotifArea(screen)
 	}
 
 	// --- Len +/- buttons ---
@@ -284,11 +295,6 @@ func (z *TimelineZone) Draw(screen *ebiten.Image) {
 
 		// --- Mute/Solo dimming ---
 		z.drawMuteSoloDimming(screen)
-	}
-
-	// --- Position editor (tap-to-seek popup over the beat counter) ---
-	if z.posEditor != nil && z.posEditor.Active() {
-		z.posEditor.Draw(screen)
 	}
 }
 
@@ -328,78 +334,39 @@ func (z *TimelineZone) computeTimelineBeats(elapsedBeats float64) {
 	}
 }
 
-// ribbonWindowBeats returns the fixed-beats-per-pixel visible window for
-// the ribbon at the given playhead position. The window slides so the
-// playhead sits at RibbonPlayheadFrac of the bar width; on overflow at the
-// start of the session it pins to zero. Width zero collapses to a no-op
-// caller, returning (0, 0, 0).
-func ribbonWindowBeats(barWidth int, elapsedBeats float64) (start, end float64, pxPerBeat float64) {
-	if barWidth <= 0 {
-		return 0, 0, 0
-	}
-	rp := RuntimeProf()
-	bpp := rp.RibbonBeatsPerPixel
-	if bpp <= 0 {
-		bpp = 0.25
-	}
-	frac := rp.RibbonPlayheadFrac
-	if frac <= 0 || frac >= 1 {
-		frac = 0.70
-	}
-	visibleBeats := float64(barWidth) * bpp
-	end = elapsedBeats + (1-frac)*visibleBeats
-	start = end - visibleBeats
-	if start < 0 {
-		// Pin to zero so early-session playback doesn't show negative beats.
-		start = 0
-		end = visibleBeats
-	}
-	return start, end, 1.0 / bpp
-}
-
-// drawTimelineBar renders the timeline progress bar: hierarchical tick
-// background (major every 16 beats, medium every 4, minor every 1) over a
-// fixed-beats-per-pixel scrolling window with the playhead pinned at
-// RibbonPlayheadFrac of the bar width. The view-rect highlights the
-// pattern's editable window; the cursor marks the playhead.
+// drawTimelineBar renders the timeline as a slim whole-song progress bar:
+// hierarchical tick background (major every 16 beats, medium every 4, minor
+// every 1) spans the full `[0, totalBeats]` range — decoupled from the
+// drum-grid pattern window (dv.Offset/dv.Length) — with the playback cursor
+// at `elapsedBeats / totalBeats` of the bar width. Task 6 removed the old
+// fixed-beats-per-pixel sliding window (`ribbonWindowBeats`) and the
+// pattern-window "view rect" highlight; the ribbon is now drag-only (see
+// timelineScrubHitAdapter) so there is no click-to-seek affordance to imply
+// visually beyond the cursor itself.
 func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, totalBeats int) {
 	barRect := z.timelineBarRect
 	if barRect.Empty() {
 		return
 	}
-	_ = totalBeats // kept for callback compatibility; visible window comes from elapsedBeats + bpp
-	unitsPerBeat := max1(z.callbacks.TimelineUnitsPerBeat())
-	offset := z.callbacks.Offset()
-	length := z.callbacks.Length()
-	units := float64(unitsPerBeat)
-	offsetBeats := float64(offset) / units
-	lengthBeats := float64(length) / units
+	beats := max1(totalBeats)
+	pxPerBeat := float64(barRect.Dx()) / float64(beats)
 
-	winStart, winEnd, pxPerBeat := ribbonWindowBeats(barRect.Dx(), elapsedBeats)
-
-	// Build or reuse the hierarchical-tick background cache. Cache key
-	// is (barRect.Dx, Dy, winStart, winEnd) — window slides every frame
-	// during playback, so a fresh cache rebuild here is the steady-state
-	// path. We still cache against accidental same-frame double-draws.
+	// Build or reuse the hierarchical-tick background cache. Cache key is
+	// (barRect.Dx, Dy, totalBeats) — the whole-song span only grows (see
+	// computeTimelineBeats' high-water mark), so this rebuilds far less
+	// often than the old per-frame sliding window did.
 	cacheKeyW := barRect.Dx()
 	cacheKeyH := barRect.Dy()
-	// Quantize winStart/winEnd to integer beat boundaries for the cache
-	// signature so we don't bust the cache on sub-beat playhead drift.
-	keyStart := int(math.Floor(winStart))
-	keyEnd := int(math.Ceil(winEnd))
-	// Split the cache invalidation into two paths: a dimension-change
-	// path that must allocate a fresh atlas image, and a content-change
-	// path that reuses the same image and only redraws pixels.
-	//
-	// During playback, keyStart advances every integer-beat boundary
-	// (twice a second at BPM 120). The old code allocated a fresh
-	// *ebiten.Image on every keyStart transition and dropped the
-	// previous one with no Deallocate(); on WASM the orphaned atlas
-	// slots accumulated in Ebiten's BSP packing tree until the heap
-	// exhausted (reported OOM at ~41 min playback, atlas depth >125).
-	// See: ebiten/v2/internal/packing/packing.go alloc() recursion.
+	// Split the cache invalidation into two paths: a dimension-change path
+	// that must allocate a fresh atlas image, and a content-change path
+	// that reuses the same image and only redraws pixels. See history: the
+	// old code allocated a fresh *ebiten.Image on every window-slide
+	// transition and dropped the previous one with no Deallocate(); on
+	// WASM the orphaned atlas slots accumulated in Ebiten's BSP packing
+	// tree until the heap exhausted (reported OOM at ~41 min playback,
+	// atlas depth >125). See: ebiten/v2/internal/packing/packing.go alloc().
 	dimChanged := z.TlCache == nil || z.TlCacheW != cacheKeyW || z.TlCacheH != cacheKeyH
-	contentChanged := dimChanged || z.TlCacheBeats != keyEnd-keyStart || z.TlCacheStep != keyStart
+	contentChanged := dimChanged || z.TlCacheBeats != beats
 	if dimChanged {
 		if z.TlCache != nil {
 			z.TlCache.Deallocate()
@@ -408,63 +375,30 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 		z.TlCacheW, z.TlCacheH = cacheKeyW, cacheKeyH
 	}
 	if contentChanged {
-		z.TlCacheBeats, z.TlCacheStep = keyEnd-keyStart, keyStart
+		z.TlCacheBeats, z.TlCacheStep = beats, 0
 		if !dimChanged {
 			z.TlCache.Clear()
 		}
 		drawRect(z.TlCache, image.Rect(0, 0, z.TlCacheW, z.TlCacheH), colTimelineTotal, true)
-		// Faint amber track fill so the bright view-rect reads as a window
-		// onto a recessed warm "sunset" track rather than floating in the
-		// near-black total-bg. Baked into the cache (alloc-free per frame).
+		// Faint amber track fill so the bar reads as a recessed warm
+		// "sunset" track rather than floating in the near-black total-bg.
+		// Baked into the cache (alloc-free per frame).
 		drawRect(z.TlCache, image.Rect(0, 0, z.TlCacheW, z.TlCacheH), WithAlpha(genColorTimelineView, AlphaFaint), true)
-		z.drawRibbonTicks(z.TlCache, winStart, pxPerBeat)
+		z.drawRibbonTicks(z.TlCache, 0, pxPerBeat)
 	}
 	var op ebiten.DrawImageOptions
 	op.GeoM.Translate(float64(barRect.Min.X), float64(barRect.Min.Y))
 	dst.DrawImage(z.TlCache, &op)
 
-	// View rect — the editable pattern window, expressed in beats and
-	// mapped into the visible window. Clamp to bar bounds; hide entirely
-	// when the pattern sits outside the visible range.
-	viewStartBeats := offsetBeats
-	viewEndBeats := offsetBeats + lengthBeats
-	if viewEndBeats >= winStart && viewStartBeats <= winEnd {
-		viewX0 := barRect.Min.X + int(math.Round((viewStartBeats-winStart)*pxPerBeat))
-		viewX1 := barRect.Min.X + int(math.Round((viewEndBeats-winStart)*pxPerBeat))
-		if viewX0 < barRect.Min.X {
-			viewX0 = barRect.Min.X
-		}
-		if viewX1 > barRect.Max.X {
-			viewX1 = barRect.Max.X
-		}
-		if viewX1-viewX0 < 1 {
-			viewX1 = viewX0 + 1
-		}
-		viewRect := image.Rect(viewX0, barRect.Min.Y, viewX1, barRect.Max.Y)
-		drawRect(dst, viewRect, colTimelineView, true)
-		drawRect(dst, viewRect, colTimelineViewHi, false)
-	}
-
-	// Playback cursor — pinned at RibbonPlayheadFrac of the bar width.
-	// Pre-fix this drifted with elapsed beats; the new geometry keeps it
-	// at a stable position so users always have a fixed reference point.
-	frac := RuntimeProf().RibbonPlayheadFrac
-	if frac <= 0 || frac >= 1 {
-		frac = 0.70
+	// Playback cursor — whole-song fraction of elapsed beats over the total
+	// song length, clamped to the bar bounds.
+	frac := elapsedBeats / float64(beats)
+	if frac < 0 {
+		frac = 0
+	} else if frac > 1 {
+		frac = 1
 	}
 	cursorX := barRect.Min.X + int(math.Round(frac*float64(barRect.Dx())))
-	// If the visible window starts at zero (early-session), the playhead
-	// floats at its true position inside the window instead of pinning. The
-	// float must continue until the true position reaches the pin column, i.e.
-	// until elapsedBeats*pxPerBeat == frac*barWidth (the same point where
-	// ribbonWindowBeats stops pinning winStart at zero). Using (1-frac) here
-	// pinned the cursor at frac*barWidth for the whole band between
-	// (1-frac)*visibleBeats and frac*visibleBeats while the window — and the
-	// view-rect — were still anchored at zero, stranding the playback line to
-	// the right of the active-drum-view window.
-	if winStart <= 0 && elapsedBeats < frac*float64(barRect.Dx())/pxPerBeat {
-		cursorX = barRect.Min.X + int(math.Round((elapsedBeats-winStart)*pxPerBeat))
-	}
 	cursorCol := colTimelineCursor
 	cursorThick := 1
 	if Profile().IsMobile() {
@@ -487,8 +421,8 @@ func (z *TimelineZone) drawTimelineBar(dst *ebiten.Image, elapsedBeats float64, 
 
 // drawScrubGhost renders the pending seek position (a vertical line + beat
 // chip) while the user drags the ribbon. The ghost tracks z.scrubGhostBeat,
-// which OnDrag updates without dispatching a seek — the seek only commits
-// on OnPress (immediate) and OnRelease (if the beat changed).
+// which OnDrag updates without dispatching a seek — the seek commits only
+// on OnRelease, and only if the drag moved to a different beat.
 func (z *TimelineZone) drawScrubGhost(dst *ebiten.Image) {
 	bar := z.timelineBarRect
 	if bar.Empty() {
@@ -588,29 +522,36 @@ func (z *TimelineZone) timelineInfoCached(elapsedBeats float64) string {
 	return z.LastInfoText
 }
 
-// beatCounterSlotWidth returns a stable left-anchored slot width for the beat
-// counter pill, sized to a generous upper-bound readout so the adjacent
-// notification area doesn't reflow as the live counter text changes width frame
-// to frame. Mobile uses the position-only upper bound ("Beat 888") to match the
-// compact mobile readout (see formatBeatReadout) — the desktop "Beat 888 ·
-// 88:88" bound would exceed the narrow mobile band and steal the whole band
-// from the notification area.
-func beatCounterSlotWidth() int {
-	if Profile().IsMobile() {
-		// Compact mobile form "N · M:SS" (see formatBeatReadout). A stable
-		// upper bound sized for 3-digit beats and m:ss keeps the notif slot's
-		// left edge from jittering as the readout digits change, while still
-		// leaving the dedicated notification area room in the ~90 px band.
-		return TextWidth("888 · 8:88") + 2*beatCounterPillPadX
-	}
-	return TextWidth("Beat 888 · 88:88") + 2*beatCounterPillPadX
+// beatCounterContentWidth is the pixel width the beat-counter keycap needs to
+// render `readout` without clipping: the leading target icon (square == text
+// cap height) + icon→text gap + the readout text + the cap's horizontal
+// padding on both sides. Single source of truth shared by drawBeatCounter (cap
+// sizing), beatCounterSlotWidth (upper bound), and drumview_layout.go (the live
+// slot width) so layout and render never disagree — the cause of the counter
+// crop was the layout omitting the icon+gap allowance this helper includes.
+func beatCounterContentWidth(readout string) int {
+	iconSz := TextHeight()
+	iconGap := beatCounterPillPadX
+	return iconSz + iconGap + TextWidth(readout) + 2*beatCounterPillPadX
 }
 
-// drawBeatCounter renders the beat/time counter above the timeline bar
-// inside a surface-1 chip (rounded.md) so the readout reads as a real
-// container rather than floating debug chrome (A6 in the screenshot
-// critique). Right-aligned within the allotted rect so it doesn't
-// collide with row affordances on the left.
+// beatCounterSlotWidth returns a stable left-anchored slot width ceiling for the
+// beat-counter keycap, sized to a generous upper-bound readout so the counter
+// doesn't reflow as the live text changes width frame to frame. Mobile uses the
+// compact position-only bound ("888 · 8:88") to match formatBeatReadout — the
+// desktop "Beat 888 · 88:88" bound would exceed the narrow mobile band.
+func beatCounterSlotWidth() int {
+	if Profile().IsMobile() {
+		return beatCounterContentWidth("888 · 8:88")
+	}
+	return beatCounterContentWidth("Beat 888 · 88:88")
+}
+
+// drawBeatCounter renders the beat/time counter above the timeline bar as a
+// raised keycap (colSurface2 fill, square corners) with a leading IconTarget,
+// so it reads as a pressable control — tapping it opens the navigation menu to
+// change beat/time. Left-anchored in the allotted rect, with a hover-brightened
+// border when the pointer is over it.
 func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) {
 	beatCounterRect := image.Rectangle{}
 	if z.callbacks.BeatCounterRect != nil {
@@ -620,83 +561,42 @@ func (z *TimelineZone) drawBeatCounter(dst *ebiten.Image, elapsedBeats float64) 
 		return
 	}
 	info := z.timelineInfoCached(elapsedBeats)
-	tw := TextWidth(info)
 	th := TextHeight()
-	// Chip background behind text.
-	pillPadX, pillPadY := beatCounterPillPadX, beatCounterPillPadY
-	pillW := tw + pillPadX*2
-	pillH := th + pillPadY*2
+	// Render as a matte keycap identical to every other Button (DESIGN.md
+	// "Keycap elevation") so it reads as a pressable control — tapping it opens
+	// the navigation menu to change beat/time. Uses the same secondary fill/
+	// border as the neighbouring track/lock keycap, plus a leading IconTarget
+	// affordance and the readout text on the cap face.
+	iconSz := th // square target icon, aligned to the text cap height
+	iconGap := beatCounterPillPadX
+	contentW := beatCounterContentWidth(info)
+	contentH := th + 2*beatCounterPillPadY + genGeomKeycapWallDepth
+	pillW := contentW
 	if pillW > beatCounterRect.Dx() {
 		pillW = beatCounterRect.Dx()
 	}
-	// Clamp pillH to the rect — defense in depth against an `infoH`
-	// regression that would otherwise let the pill bleed into the timeline
-	// bar (root cause of the startup-chrome bug). The layout guarantees
-	// `infoH >= TextHeight() + 2*pillPadY` so this is normally a no-op.
+	pillH := contentH
 	if pillH > beatCounterRect.Dy() {
 		pillH = beatCounterRect.Dy()
 	}
-	// Left-anchored: the counter now lives in a left slot next to the track
-	// chip, with the notification area to its right (notification redesign).
+	// Left-anchored: the counter lives in a left slot next to the track/lock
+	// keycap, with the notification area to its right.
 	pillX := beatCounterRect.Min.X
 	pillY := beatCounterRect.Min.Y + (beatCounterRect.Dy()-pillH)/2
 	pillR := image.Rect(pillX, pillY, pillX+pillW, pillY+pillH)
-	// Square corners (plain rect) — the rounded pill read as ugly chrome.
-	drawRect(dst, pillR, colSurface1, true)
-	drawRect(dst, pillR, colBorderSubtle, false)
-	infoY := pillY + pillPadY
-	DrawTextAt(dst, info, pillX+pillPadX, infoY)
-}
-
-// drawNotifArea renders the dedicated in-band notification area to the right of
-// the beat counter. The latest session notification is shown on a single line;
-// a message too wide for the area scrolls slowly leftward (marquee), clipped to
-// the area. Errors render in red, info in the primary text color. When no
-// session notification exists the area paints an empty recessed slot.
-func (z *TimelineZone) drawNotifArea(dst *ebiten.Image) {
-	if z.callbacks.NotifRect == nil {
-		return
-	}
-	r := z.callbacks.NotifRect()
-	if r.Empty() {
-		return
-	}
-	// Recessed slot background so the area reads as a dedicated container.
-	// Square corners (plain rect) to match the squared beat-counter chip.
-	drawRect(dst, r, colSurface1, true)
-	drawRect(dst, r, colBorderSubtle, false)
-
-	text, isErr, show := "", false, false
-	if z.callbacks.NotifLatest != nil {
-		text, isErr, show = z.callbacks.NotifLatest()
-	}
-	if !show || text == "" {
-		return
-	}
-	pad := beatCounterPillPadX
-	innerW := r.Dx() - 2*pad
-	if innerW <= 0 {
-		return
-	}
-	// Severity color: red for errors, primary for info.
-	accent := colTextPrimary
-	if isErr {
-		accent = colError
-	}
-	stripe := image.Rect(r.Min.X, r.Min.Y, r.Min.X+3, r.Max.Y)
-	drawRect(dst, stripe, accent, true)
-
-	tw := TextWidth(text)
-	frame := 0
-	if z.callbacks.Frame != nil {
-		frame = int(z.callbacks.Frame())
-	}
-	offX := notifMarqueeOffsetX(frame, tw, innerW, pad)
-	textY := r.Min.Y + (r.Dy()-TextHeight())/2
-	// Clip to the inner area so the scrolling text never paints outside the slot.
-	inner := image.Rect(r.Min.X+pad, r.Min.Y, r.Max.X-pad, r.Max.Y)
-	sub := dst.SubImage(inner).(*ebiten.Image)
-	DrawTextColorAt(sub, text, inner.Min.X+offX, textY, accent)
+	// Hover: read the live cursor so the keycap lifts (drawKeycapPanelButton
+	// brightens fill+border) when the pointer is over it. Press is momentary
+	// (the tap opens the menu immediately), so only hover is reflected.
+	cx, cy := cursorPosition()
+	hovered := image.Pt(cx, cy).In(pillR)
+	cap := drawKeycapPanelButton(dst, pillR, TransportMiscStyle.Fill, TransportMiscStyle.Border, hovered)
+	// Leading target icon, vertically centered on the cap face.
+	iconY := cap.Min.Y + (cap.Dy()-iconSz)/2
+	iconR := image.Rect(cap.Min.X+beatCounterPillPadX, iconY, cap.Min.X+beatCounterPillPadX+iconSz, iconY+iconSz)
+	DrawIcon(dst, IconTarget, iconR, colTextSecondary)
+	// Readout text after the icon, vertically centered on the cap face.
+	infoY := cap.Min.Y + (cap.Dy()-th)/2
+	DrawTextAt(dst, info, cap.Min.X+beatCounterPillPadX+iconSz+iconGap, infoY)
 }
 
 // rowsTopY returns the Y coordinate where rows start. Uses the RowsTopY
@@ -1258,33 +1158,20 @@ func (z *TimelineZone) rebuildHitAreas() {
 			})
 		}
 	}
-
-	// Notification area: click anywhere in the band's notif strip to open the
-	// history popup. Lives at the same z as the other band buttons.
-	if z.callbacks.NotifRect != nil {
-		if nr := z.callbacks.NotifRect(); !nr.Empty() {
-			z.hitAreas = append(z.hitAreas, HitArea{
-				Rect:     nr,
-				ZIndex:   zBtn,
-				Handler:  &notifClickAdapter{zone: z},
-				Tag:      "timeline-notif",
-				Touch:    true,
-				ClipRect: z.rect,
-			})
-		}
-	}
 }
 
 // beatCounterHitAdapter absorbs presses on the beat-counter chip so a
 // band-mate's touch-expanded hit area can never steal a tap meant for the
-// counter, and opens the tap-to-seek position editor. The catch-all-and-
-// consume contract is unchanged (see beat_counter_input_isolation_test.go);
-// only the action behind the press changed from no-op to "open editor".
+// counter, and opens the navigation menu (Task 6 repoint — the counter
+// previously opened an inline tap-to-seek position editor; that surface is
+// now reached via OnOpenNavigation → dv.OpenNavigation, matching the
+// transport bar's nav button). The catch-all-and-consume contract is
+// unchanged (see beat_counter_input_isolation_test.go).
 type beatCounterHitAdapter struct{ zone *TimelineZone }
 
 func (h *beatCounterHitAdapter) OnPress(x, y int) InputResult {
-	if h.zone != nil {
-		h.zone.openPositionEditor()
+	if h.zone != nil && h.zone.callbacks.OnOpenNavigation != nil {
+		h.zone.callbacks.OnOpenNavigation()
 	}
 	return InputConsumed
 }
@@ -1293,63 +1180,6 @@ func (h *beatCounterHitAdapter) OnRelease(x, y int) {}
 func (h *beatCounterHitAdapter) OnWheel(x, y, steps int) InputResult {
 	return InputIgnored
 }
-
-// openPositionEditor pops the numeric beat.subdiv position editor over the
-// beat counter, pre-filled with the current playhead step. Commit seeks via
-// OnSeekToStep with seekOriginCounter (mirrors TransportZone.openBPMEditor).
-func (z *TimelineZone) openPositionEditor() {
-	if z.posEditor == nil {
-		z.posEditor = NewParamValueEditor()
-	}
-	div := 1
-	if z.callbacks.TimelineUnitsPerBeat != nil {
-		if d := z.callbacks.TimelineUnitsPerBeat(); d > 0 {
-			div = d
-		}
-	}
-	beats := 0
-	if z.callbacks.TimelineBeats != nil {
-		beats = z.callbacks.TimelineBeats()
-	}
-	maxSteps := beats * div
-	anchor := z.rect
-	if z.callbacks.BeatCounterRect != nil {
-		if bc := z.callbacks.BeatCounterRect(); !bc.Empty() {
-			anchor = bc
-		}
-	}
-	z.posEditor.OpenValue(ValueOpen{
-		Spec:          positionValueSpec(div, maxSteps),
-		Anchor:        anchor,
-		Clamp:         z.rect,
-		MobileInputID: "position",
-		Get: func() float64 {
-			if z.callbacks.PlayheadStep != nil {
-				return float64(z.callbacks.PlayheadStep())
-			}
-			return 0
-		},
-		Set: func(v float64) {
-			if z.callbacks.OnSeekToStep != nil {
-				z.callbacks.OnSeekToStep(int(v), seekOriginCounter)
-			}
-		},
-	})
-}
-
-// notifClickAdapter opens the notification-history popup on press.
-type notifClickAdapter struct{ zone *TimelineZone }
-
-func (h *notifClickAdapter) OnPress(x, y int) InputResult {
-	if h.zone.callbacks.OnNotifClick != nil {
-		h.zone.callbacks.OnNotifClick()
-	}
-	return InputConsumed
-}
-
-func (h *notifClickAdapter) OnDrag(x, y int)                     {}
-func (h *notifClickAdapter) OnRelease(x, y int)                  {}
-func (h *notifClickAdapter) OnWheel(x, y, steps int) InputResult { return InputIgnored }
 
 // --- Grid drag hit handler ---
 
@@ -1500,12 +1330,12 @@ func (z *TimelineZone) ribbonStepAt(x int) int {
 
 // --- Timeline scrub hit handler ---
 //
-// Task 10: the ribbon is a click-to-SEEK surface, not a view-offset scrub
-// surface. Press commits an immediate seek to the nearest beat under the
-// pointer; drag only updates a ghost preview (z.scrubGhostBeat) with no
-// seek dispatched; release re-seeks only if the gesture ended on a
-// different beat than the press committed — so a tap emits exactly one
-// EventSeek and a drag emits at most two (press + release).
+// Task 6: the ribbon is drag-only, not a click-to-seek surface. Press only
+// arms scrubbing (records the press beat + ghost); drag updates the ghost
+// preview (z.scrubGhostBeat) with no seek dispatched; release commits a
+// seek ONLY if the gesture ended on a different beat than the press beat —
+// a pure tap (press+release at the same beat) commits nothing at all, and
+// a real drag emits exactly one EventSeek on release.
 type timelineScrubHitAdapter struct {
 	zone *TimelineZone
 }
@@ -1520,10 +1350,7 @@ func (h *timelineScrubHitAdapter) OnPress(x, y int) InputResult {
 	// fires after the multi-touch gate so suppressed presses don't buzz.
 	hapticEmit(8)
 	z.scrubGhostBeat = z.ribbonStepAt(x)
-	z.scrubPressBeat = z.scrubGhostBeat // remember where the gesture started
-	if z.callbacks.OnSeekToStep != nil {
-		z.callbacks.OnSeekToStep(z.scrubGhostBeat, seekOriginRibbon) // seek on press
-	}
+	z.scrubPressBeat = z.scrubGhostBeat // remember where the gesture started; no seek on press
 	return InputCaptured
 }
 
@@ -1551,10 +1378,10 @@ func (h *timelineScrubHitAdapter) OnRelease(x, y int) {
 	z := h.zone
 	if z.scrubbing && z.callbacks.OnSeekToStep != nil {
 		final := z.ribbonStepAt(x)
-		// Re-seek on release ONLY if the gesture moved to a different beat
-		// than the press already committed. A pure tap (final == press
-		// beat) emits ONE EventSeek; a drag emits at most two (press start
-		// + release end).
+		// Commit a seek on release ONLY if the drag moved to a different
+		// beat than where the gesture started. Press no longer seeks
+		// (drag-only ribbon), so a pure tap (final == press beat) emits NO
+		// seek; a drag emits exactly one EventSeek, on release.
 		if final != z.scrubPressBeat {
 			z.callbacks.OnSeekToStep(final, seekOriginRibbon)
 		}

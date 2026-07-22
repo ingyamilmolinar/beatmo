@@ -19,20 +19,15 @@ func transportSquareRects(z *TransportZone, includeUndoRedo bool) []struct {
 		name string
 		r    image.Rectangle
 	}{
-		// rw/ff added: task 9 FF/RW transport buttons flank play/stop in the
-		// desktop square run and must share the same square side length.
-		{"rw", z.rwBtn.Rect()},
+		// Task: transport declutter — RW/FF/×N removed, replaced by a single
+		// Navigate button (navBtn) that sits after subdiv in the desktop
+		// square run (see layoutDesktop) and must share the same square side
+		// length as every other transport control.
 		{"play", z.playBtn.Rect()},
 		{"stop", z.stopBtn.Rect()},
-		{"ff", z.ffBtn.Rect()},
 		{"record", z.recordBtn.Rect()},
-		// jump added: configurable N-beat jump ×N pill sits right after record
-		// in the desktop square run (see layoutDesktop) and must share the
-		// same square side length as every other transport control.
-		{"jump", z.jumpBtn.Rect()},
 		{"subdiv", z.subdivBtn.Rect()},
 		{"vol", z.mainVolIconRect},
-		{"overflow", z.overflowBtn.Rect()},
 	}
 	if includeUndoRedo {
 		out = append(out,
@@ -100,15 +95,12 @@ func orderedTransportControls(z *TransportZone) []struct {
 		name string
 		r    image.Rectangle
 	}{
-		// rw/ff/jump added: task 9 FF/RW transport buttons + the jump-size ×N
-		// pill run RW|Play|Stop|FF|×N|Record on desktop (the ×N selector sits
-		// BEFORE Record — see layoutDesktop) — include them so adjacent-gap
+		// Task: transport declutter — RW/FF/×N removed; the run is now
+		// Play|Stop|Record|BPM box|BPM ±|Subdiv|Nav|Vol|Undo|Redo|Overflow
+		// (see layoutDesktop) — include every control so adjacent-gap
 		// measurement doesn't span across an unlisted button.
-		{"rw", z.rwBtn.Rect()},
 		{"play", z.playBtn.Rect()},
 		{"stop", z.stopBtn.Rect()},
-		{"ff", z.ffBtn.Rect()},
-		{"jump", z.jumpBtn.Rect()},
 		{"record", z.recordBtn.Rect()},
 		{"bpmBox", z.bpmBox.Rect},
 		{"bpmStep", z.bpmIncBtn.Rect()},
@@ -116,7 +108,6 @@ func orderedTransportControls(z *TransportZone) []struct {
 		{"vol", z.mainVolIconRect},
 		{"undo", z.undoBtn.Rect()},
 		{"redo", z.redoBtn.Rect()},
-		{"overflow", z.overflowBtn.Rect()},
 	}
 }
 
@@ -202,10 +193,12 @@ func TestMobileTransportNoButtonSizedVoid(t *testing.T) {
 	z := g.drum.transportZone
 
 	// Every control that occupies a slot in the mobile transport row, by rect.
+	// The Nav (bullseye) and Overflow (kebab) buttons were removed — navigation
+	// opens from the beat counter, file options from the grid folder button.
 	rects := []image.Rectangle{
 		z.playBtn.Rect(), z.stopBtn.Rect(), z.recordBtn.Rect(),
 		z.bpmDecBtn.Rect(), z.bpmBox.Rect, z.bpmIncBtn.Rect(),
-		z.subdivBtn.Rect(), z.mainVolIconRect, z.overflowBtn.Rect(),
+		z.subdivBtn.Rect(), z.mainVolIconRect,
 	}
 	// Sort left-to-right by Min.X (simple insertion sort; tiny slice).
 	for i := 1; i < len(rects); i++ {

@@ -120,16 +120,17 @@ func TestUnSoloRevertsToMasterWhenMultipleAudible(t *testing.T) {
 	assertChannelStaysMaster(t, g)
 }
 
-// 5. No instrument is auto-selected while two or more remain audible; if one
-//    was previously selected the selector reverts to Master.
+//  5. No instrument is auto-selected while two or more remain audible; if one
+//     was previously selected the selector reverts to Master.
 func TestNoAutoSelectWhenMultipleAudible(t *testing.T) {
 	g := newAutoSelectGame(t, "kick", "snare", "hat")
 	g.drum.toggleMute(0) // two still audible
 	assertChannelStaysMaster(t, g)
 }
 
-//  5b. Un-muting back into a multi-audible state reverts a previously
-//      auto-selected instrument to Master.
+// 5b. Un-muting back into a multi-audible state reverts a previously
+//
+//	auto-selected instrument to Master.
 func TestUnMuteBackToMultipleRevertsToMaster(t *testing.T) {
 	g := newAutoSelectGame(t, "kick", "snare", "hat")
 	g.drum.toggleMute(0) // kick muted; snare+hat audible (2) -> stays Master
@@ -140,8 +141,9 @@ func TestUnMuteBackToMultipleRevertsToMaster(t *testing.T) {
 	assertChannelStaysMaster(t, g)
 }
 
-//  5c. A MANUAL channel selection also reverts to Master once a mute/solo
-//      change leaves more than one instrument audible.
+// 5c. A MANUAL channel selection also reverts to Master once a mute/solo
+//
+//	change leaves more than one instrument audible.
 func TestManualSelectionRevertsToMasterWhenMultipleAudible(t *testing.T) {
 	g := newAutoSelectGame(t, "kick", "snare", "hat")
 	g.drum.eqPanelZone.callbacks.OnChannelChange("kick") // manually focus kick

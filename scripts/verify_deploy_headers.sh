@@ -43,7 +43,6 @@ ASSET_FILES=(
   "audio.js"
   "wasm_exec.js"
   "drums.single.js"
-  "insert_fx_worklet.js"
   "recording_capture_worklet.js"
   "recording_encoder_worker.js"
 )

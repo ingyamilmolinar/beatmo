@@ -57,12 +57,8 @@ func TestTemplateMenu_ScrollsToReachLastItem(t *testing.T) {
 	// the original 7 genres, so a hard-coded count under-scrolls the longer list.
 	prevY := 1 << 30
 	for i := 0; i < scroll.ScrollBehavior().VS.Total+4; i++ {
-		// The menu wheel is clicky (one item per notch + cooldown), so advance
-		// the cooldown clock between notches the way real frames do before each
-		// wheel event — otherwise the second notch is locked out.
-		for j := 0; j < controlGridScrollCooldownFrames; j++ {
-			scroll.TickStep()
-		}
+		// The menu wheel is smooth (continuous, magnitude-respecting, no cooldown
+		// lock), so each notch moves the list with no cooldown clock to advance.
 		scroll.HandleWheel(-1) // scroll down one item
 		row, _ := lastTemplateBtn(dv)
 		if row.Min.Y == prevY {

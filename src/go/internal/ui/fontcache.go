@@ -104,8 +104,13 @@ func measureTextWidth(s string, size float64) int {
 	if face == nil {
 		return len([]rune(s)) * debugCharW
 	}
-	bounds := text.BoundString(face, s) //nolint:staticcheck // no drop-in replacement
-	return bounds.Dx()
+	// Use the glyph ADVANCE, not text.BoundString's INK bounding box. A space has
+	// no ink, so BoundString(" ").Dx()==0 and it drops leading/trailing-space
+	// advances entirely — which made a leading space invisible: the caret (placed
+	// at x+TextWidth(prefix)) never moved past it and the text never shifted, so
+	// typing a space at the start looked like "nothing happened". MeasureString
+	// sums per-glyph advances (the real layout width) and counts spaces.
+	return font.MeasureString(face, s).Ceil()
 }
 
 // measureTextHeight returns the line height for the given size.
@@ -130,12 +135,47 @@ func measureStyled(s string, size float64, bold bool) (int, int) {
 	if face == nil {
 		return len([]rune(s)) * debugCharW, styledLineHeightFallback(size)
 	}
-	w := text.BoundString(face, s).Dx() //nolint:staticcheck // no v2 drop-in
+	w := font.MeasureString(face, s).Ceil() // advance, not ink bounds (counts spaces)
 	m := face.Metrics()
 	return w, (m.Ascent + m.Descent).Ceil()
 }
 
-// renderTextSprite creates an image containing the text rendered with TrueType.
+// textSpriteLayout computes the SHARED text-sprite geometry: pixel width/height,
+// the horizontal pen origin, and the baseline row. This is the single source of
+// truth every text input, label and button depends on for absolute positioning.
+//
+// Height and baseline come from the FIXED font metrics (ascent/descent), NOT the
+// per-string ink bounds. That makes the text's vertical position ABSOLUTE and
+// content-independent: a baseline-resting glyph sits at the same row whether or
+// not the string also contains a taller uppercase/ascender glyph, so deleting a
+// leading capital can no longer shift the whole string up or down.
+//
+// The pen origin is x=0, so the layout START coincides with the sprite's left
+// edge — which is exactly the point DrawTextAt blits to screen (x,y). A caret
+// drawn at x+TextWidth(prefix) therefore lands precisely on the glyph boundary,
+// not 1px off. Width covers the layout advance (so a trailing space and the
+// end-of-string caret have room), widened to the ink's right edge for the rare
+// glyph that overhangs its advance.
+func textSpriteLayout(face font.Face, s string) (w, h, penX, baseline int) {
+	m := face.Metrics()
+	baseline = m.Ascent.Ceil()
+	h = (m.Ascent + m.Descent).Ceil() // == TextHeight(); the field-caret spans this
+	w = font.MeasureString(face, s).Ceil()
+	if b := text.BoundString(face, s); b.Max.X > w { //nolint:staticcheck // ink right-overhang only
+		w = b.Max.X
+	}
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	penX = 0
+	return
+}
+
+// renderTextSprite creates an image containing the text rendered with TrueType,
+// laid out via textSpriteLayout (fixed metric box + zero pen origin).
 func renderTextSprite(s string, size float64, bold bool) *ebiten.Image {
 	var face font.Face
 	if bold {
@@ -146,18 +186,9 @@ func renderTextSprite(s string, size float64, bold bool) *ebiten.Image {
 	if face == nil {
 		return nil // fallback to debug font
 	}
-	bounds := text.BoundString(face, s) //nolint:staticcheck // no drop-in replacement
-	iw := bounds.Dx() + 2
-	ih := bounds.Dy() + 2
-	if iw < 1 {
-		iw = 1
-	}
-	if ih < 1 {
-		ih = 1
-	}
-	img := ebiten.NewImage(iw, ih)
-	// Draw at position that accounts for the bounds offset.
-	text.Draw(img, s, face, -bounds.Min.X+1, -bounds.Min.Y+1, color.White)
+	w, h, penX, baseline := textSpriteLayout(face, s)
+	img := ebiten.NewImage(w, h)
+	text.Draw(img, s, face, penX, baseline, color.White)
 	return img
 }
 

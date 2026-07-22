@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/hajimehoshi/ebiten/v2"
+
 	"github.com/ingyamilmolinar/beatmo/core/model"
 	"github.com/ingyamilmolinar/beatmo/internal/audio"
 	"github.com/ingyamilmolinar/beatmo/internal/scope"
@@ -45,6 +47,139 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) { sceneSetBPM(g, 240) }},
 	{Name: "shortcuts_overlay", Description: "settings overlay open (grid gear button)",
 		Setup: func(g *Game) { g.toggleSettingsOverlay() }},
+
+	// ─── logs panel + date/time picker ────────────────────────────
+	{Name: "logs_panel", Description: "Logs panel open — buttons, level chips, At|Range toggle, scrollable rows",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			g.drum.notifyInfo("Loaded demo.json")
+			// Enough ERROR rows to overflow the page body and show the
+			// MenuScroll scrollbar (default filter is ERROR).
+			for i := 0; i < 30; i++ {
+				g.drum.notifyError(fmt.Sprintf("Import failed: bad JSON near token %d", i))
+			}
+			g.toggleLogsPanel()
+		}},
+	{Name: "logs_panel_cleared", Description: "Logs panel after Clear history — empty list, page 1/1",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			for i := 0; i < 40; i++ {
+				g.drum.notifyError(fmt.Sprintf("Import failed: bad JSON near token %d", i))
+			}
+			g.toggleLogsPanel()
+			if c := g.drum.logsComp; c != nil {
+				dst := ebiten.NewImage(1280, 720)
+				c.Draw(dst) // lays out the Clear button
+				// Click Clear through the real dispatch, then draw the empty state.
+				cx, cy := c.clearRect.Min.X+c.clearRect.Dx()/2, c.clearRect.Min.Y+c.clearRect.Dy()/2
+				c.HandleInput(cx, cy, true)
+				c.HandleInput(cx, cy, false)
+				c.Draw(dst)
+			}
+		}},
+	{Name: "logs_panel_search", Description: "Logs panel with an active search — results + pagination refresh in real time (snaps to page 1)",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			for i := 0; i < 40; i++ {
+				g.drum.notifyError(fmt.Sprintf("Import failed: bad JSON near token %d", i))
+			}
+			g.toggleLogsPanel()
+			if c := g.drum.logsComp; c != nil {
+				dst := ebiten.NewImage(1280, 720)
+				c.Draw(dst)
+				c.page = 2 // pretend the user had paged forward
+				// Typing a query must narrow the results AND refresh pagination
+				// back to page 1 in the same frame (real-time reapply).
+				c.searchBox.SetText("token 3")
+				c.Update()
+				c.Draw(dst)
+			}
+		}},
+	{Name: "logs_panel_leading_space", Description: "Logs search box with a LEADING SPACE (\" token\") — the space must be visible: text shifted right, caret after it",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			g.drum.notifyError("seed")
+			g.toggleLogsPanel()
+			if c := g.drum.logsComp; c != nil {
+				dst := ebiten.NewImage(1280, 720)
+				c.Draw(dst) // create + lay out the search box
+				c.searchBox.SetText(" token") // leading space
+				c.searchBox.FocusForTest(true)
+				c.searchBox.cursor = 1 // caret right after the leading space
+				c.Update()
+				c.Draw(dst)
+			}
+		}},
+	{Name: "logs_panel_search_caret", Description: "Logs panel search box focused with the caret mid-string — caret renders between characters (arrow/Home/End navigation)",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			for i := 0; i < 12; i++ {
+				g.drum.notifyError(fmt.Sprintf("Import failed: bad JSON near token %d", i))
+			}
+			g.toggleLogsPanel()
+			if c := g.drum.logsComp; c != nil {
+				dst := ebiten.NewImage(1280, 720)
+				c.Draw(dst) // creates + lays out the search box
+				c.searchBox.SetText("token")
+				c.searchBox.FocusForTest(true)
+				c.searchBox.cursor = 2 // caret between "to" and "ken"
+				c.Update()
+				c.Draw(dst)
+			}
+		}},
+	{Name: "logs_panel_scrolled", Description: "Logs panel wheel-scrolled mid-list — thumb moved off the top, rows offset",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			for i := 0; i < 40; i++ {
+				g.drum.notifyError(fmt.Sprintf("Import failed: bad JSON near token %d", i))
+			}
+			g.toggleLogsPanel()
+			if c := g.drum.logsComp; c != nil {
+				dst := ebiten.NewImage(1280, 720)
+				c.Draw(dst) // Configure the MenuScroll before wheeling
+				// Drive real wheel notches through the shared smooth wheel path
+				// (continuous, magnitude-respecting, no cooldown lock — the same
+				// path every list menu now uses), advancing the list mid-page.
+				for k := 0; k < 12; k++ {
+					c.HandleWheel(0, 0, -1)
+					c.Draw(dst)
+				}
+			}
+		}},
+	{Name: "logs_panel_page2", Description: "Logs panel after next-page — opens at the top of page 2 (scroll reset on page switch)",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			for i := 0; i < 80; i++ { // 2 pages over the fixed 50/page
+				g.drum.notifyError(fmt.Sprintf("Import failed: bad JSON near token %d", i))
+			}
+			g.toggleLogsPanel()
+			if c := g.drum.logsComp; c != nil {
+				dst := ebiten.NewImage(1280, 720)
+				c.Draw(dst) // Configure the scroll
+				// Scroll page 1 partway down, then advance a page: the scroll must
+				// snap back so page 2 opens at its first row.
+				c.scroll.ScrollBehavior().VS.First = 6
+				c.Draw(dst)
+				c.pageNext()
+				c.Draw(dst)
+			}
+		}},
+	{Name: "logs_error_badge", Description: "grid Logs icon showing an unread-error badge (panel closed)",
+		SettleFrames: 5,
+		Setup: func(g *Game) {
+			g.drum.notifyInfo("Loaded demo.json") // info does NOT badge
+			g.drum.notifyError("Import failed: bad JSON")
+		}},
+	{Name: "logs_datetime_picker", Description: "Logs date/time picker open (calendar + time)",
+		SettleFrames: 8,
+		Setup: func(g *Game) {
+			g.drum.notifyError("Import failed: bad JSON")
+			g.toggleLogsPanel()
+			if c := g.drum.logsComp; c != nil {
+				c.Draw(ebiten.NewImage(1280, 720)) // lay out field buttons
+				c.openPicker(pickAt)
+			}
+		}},
 
 	// ─── EQ tabs ──────────────────────────────────────────────────
 	// Mobile pass enters SetMobileEQMode so the panel is actually visible;
@@ -117,6 +252,25 @@ var sceneCatalog = []Scene{
 	// ─── FX panel ─────────────────────────────────────────────────
 	{Name: "fx_panel_open_empty", Description: "FX panel with no effects", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) { ensureRow(g, 0); g.drum.OpenFXPanel(0) }},
+	{Name: "fx_add_effect_menu", Description: "FX panel add-effect picker (effect-type list) open", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) {
+			ensureRow(g, 0)
+			audio.AddInsertEffect(g.drum.Rows[0].Instrument, audio.EffectDelay, nil)
+			g.drum.OpenFXPanel(0)
+			g.drum.fxAddMenuOpen = true
+			g.drum.buildFXPanel()
+			g.drum.refreshFXPortalHitAreas()
+		}},
+	{Name: "fx_add_effect_menu_search", Description: "FX add-effect picker with an active search query (flat, filtered)", Mobile: true, SettleFrames: 120,
+		Setup: func(g *Game) {
+			ensureRow(g, 0)
+			g.drum.OpenFXPanel(0)
+			g.drum.fxAddMenuOpen = true
+			g.drum.buildFXPanel()
+			g.drum.setFXAddSearchQuery("re")
+			g.drum.buildFXPanel()
+			g.drum.refreshFXPortalHitAreas()
+		}},
 	{Name: "fx_panel_with_3_effects", Description: "delay+reverb+distortion stacked", Mobile: true, SettleFrames: 150,
 		Setup: func(g *Game) {
 			ensureRow(g, 0)
@@ -124,6 +278,19 @@ var sceneCatalog = []Scene{
 			audio.AddInsertEffect(instID, audio.EffectDelay, nil)
 			audio.AddInsertEffect(instID, audio.EffectReverb, nil)
 			audio.AddInsertEffect(instID, audio.EffectDistortion, nil)
+			g.drum.OpenFXPanel(0)
+		}},
+
+	// Overflowing FX list — enough effects that the content exceeds the clamped
+	// panel, so the shared MenuScroll scrollbar (pixel mode) must render. Guards
+	// the FX-scroll migration onto the shared list-menu engine.
+	{Name: "fx_panel_scrollbar", Description: "FX list overflows so the shared scrollbar shows", SettleFrames: 150,
+		Setup: func(g *Game) {
+			ensureRow(g, 0)
+			instID := g.drum.Rows[0].Instrument
+			for i := 0; i < 8; i++ {
+				audio.AddInsertEffect(instID, audio.EffectDelay, nil)
+			}
 			g.drum.OpenFXPanel(0)
 		}},
 
@@ -155,6 +322,17 @@ var sceneCatalog = []Scene{
 				g.sidebar.Open(n)
 			}
 		}},
+	{Name: "node_sidebar_low_node", Description: "node sidebar opened on a node near the bottom of the grid pane — the card must stay within the grid pane and NOT overlap the bottom drum-view panel (regression: portal spill)",
+		Setup: func(g *Game) {
+			n := g.tryAddNode(3, 1, model.NodeTypeRegular)
+			g.updateBeatInfos()
+			// Pan so the tapped node sits near the bottom of the grid pane, where a
+			// window-clamped card would spill past the split into the drum panel.
+			g.cam.OffsetY = float64(g.split.GridH(g.winH)) - 80
+			if n != nil && g.sidebar != nil {
+				g.sidebar.Open(n)
+			}
+		}},
 	{Name: "group_menu_open", Description: "group menu open over three adjacent grouped nodes (provisional — Save visible, member rings)", Mobile: true,
 		Setup: sceneGroupMenuSetup},
 	{Name: "group_badges", Description: "two committed groups with distinct colors, both floating badges visible (non-overlapping), menu open for one showing tinted chrome + both ring colors", Mobile: true,
@@ -166,6 +344,24 @@ var sceneCatalog = []Scene{
 			if n != nil {
 				sx1, sy1, _, _ := g.nodeScreenRect(n)
 				g.showLongPressPopup(n, int(sx1), int(sy1))
+			}
+		}},
+	{Name: "paste_confirm_dialog", Description: "paste-overwrite confirmation modal", Mobile: true, SettleFrames: 90,
+		Setup: func(g *Game) {
+			n := g.tryAddNode(3, 1, model.NodeTypeRegular)
+			g.updateBeatInfos()
+			if n != nil {
+				g.snapshotNodeToClipboard(n)
+				g.beginPasteConfirm(3, 1)
+			}
+		}},
+	{Name: "break_circuit_confirm", Description: "break-the-circuit confirmation modal", Mobile: true, SettleFrames: 90,
+		Setup: func(g *Game) {
+			n := g.tryAddNode(3, 1, model.NodeTypeRegular)
+			g.updateBeatInfos()
+			if n != nil {
+				g.modes.Enter(GridModeMove, n)
+				g.beginBreakConfirm(n, 4, 1)
 			}
 		}},
 
@@ -197,8 +393,11 @@ var sceneCatalog = []Scene{
 		Setup: func(g *Game) { g.SetForceMobileProfile(true) }},
 	{Name: "mobile_overflow_open", Description: "overflow menu (Upload/Import/Export)", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) { g.SetForceMobileProfile(true); g.drum.OpenOverflowMenu() }},
-	{Name: "overflow_menu_open", Description: "desktop overflow menu (Upload/Import/Export)", SettleFrames: 120,
-		Setup: func(g *Game) { g.drum.OpenOverflowMenu() }},
+	{Name: "overflow_menu_open", Description: "desktop file menu (Upload/Import/Export) under the grid folder button", SettleFrames: 120,
+		Setup: func(g *Game) { g.openFileMenu() }},
+	{Name: "nav_menu_open", Description: "navigation menu under the beat/time counter", SettleFrames: 120,
+		Setup:       func(g *Game) { g.drum.OpenNavigation() },
+		MobileSetup: func(g *Game) { g.SetForceMobileProfile(true); g.drum.OpenNavigation() }},
 	{Name: "template_menu_open", Description: "overflow menu template page (genre circuit templates + search)", Mobile: true, SettleFrames: 120,
 		Setup: func(g *Game) { g.drum.overflowPage = 1; g.drum.OpenOverflowMenu() },
 		MobileSetup: func(g *Game) {
@@ -608,7 +807,7 @@ var sceneCatalog = []Scene{
 	// ─── armed grid modes (helper banner + blink/ghost + dialog) ──
 	// SettleFrames 60 keeps the move-mode blink in an ON half-period
 	// (phase 60 → index 4, even) so the subject highlight is captured.
-	{Name: "mode_move_banner", Description: "move mode armed — helper banner, blinking subject, chain A→N→B", Mobile: true, SettleFrames: 60,
+	{Name: "mode_move_banner", Description: "move mode armed — helper banner, blinking subject, chain A->N->B", Mobile: true, SettleFrames: 60,
 		Setup: func(g *Game) {
 			a := g.tryAddNode(2, 2, model.NodeTypeRegular)
 			n := g.tryAddNode(2, 4, model.NodeTypeRegular)
@@ -739,7 +938,7 @@ var sceneCatalog = []Scene{
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabSceneSetup("modular"),
 		MobileSetup: mobileSynthTabSetup("modular")},
-	{Name: "crop_synth_knob_viz", Description: "Synth tab — FILTER stage expanded: each knob shows its concept mini-visual (the abstract 'what this knob does' picture) in the band below its caption",
+	{Name: "crop_synth_control_viz", Description: "Synth tab — FILTER stage expanded: each knob shows its concept mini-visual (the abstract 'what this knob does' picture) in the band below its caption",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthTabStageSetup("modular", "FILTER", ""),
 		MobileSetup: mobileSynthTabStageSetup("modular", "FILTER", "")},
@@ -785,59 +984,59 @@ var sceneCatalog = []Scene{
 	// scene exercises the de-crammed "Your sound" pane.
 	{Name: "crop_synth_focus_filter", Description: "Synth tab focus graph: FILTER stage, Cutoff knob selected (frequency-domain picture)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "FILTER", "filter_cutoff"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "FILTER", "filter_cutoff")},
+		Setup:       synthTabFocusControlSetup("modular", "FILTER", "filter_cutoff"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "FILTER", "filter_cutoff")},
 	{Name: "crop_synth_focus_env", Description: "Synth tab focus graph: ENVELOPE stage, Attack knob selected (amp-envelope time-domain picture)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "ENVELOPE", "amp_attack"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "ENVELOPE", "amp_attack")},
+		Setup:       synthTabFocusControlSetup("modular", "ENVELOPE", "amp_attack"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "ENVELOPE", "amp_attack")},
 	{Name: "crop_synth_focus_post", Description: "Synth tab focus graph: POST stage, Drive knob selected (drive/saturation transfer curve)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "POST", "drive"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "POST", "drive")},
+		Setup:       synthTabFocusControlSetup("modular", "POST", "drive"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "POST", "drive")},
 	{Name: "crop_synth_focus_fm", Description: "Synth tab focus graph: FM stage, Op2 Depth knob selected (FM modulation-index picture)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "FM", "fm_op2_depth"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "FM", "fm_op2_depth")},
+		Setup:       synthTabFocusControlSetup("modular", "FM", "fm_op2_depth"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "FM", "fm_op2_depth")},
 	{Name: "crop_synth_focus_osc", Description: "Synth tab focus graph: OSC stage, Oscillator shape knob selected (single-cycle waveform shape picture via conceptOsc)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "OSC", "osc_type"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "OSC", "osc_type")},
+		Setup:       synthTabFocusControlSetup("modular", "OSC", "osc_type"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "OSC", "osc_type")},
 	{Name: "crop_synth_focus_pitch", Description: "Synth tab focus graph: OSC stage, Octave knob selected (real-pitch wave whose period tracks the knob, via conceptPitchWave)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "OSC", "osc_octave"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "OSC", "osc_octave")},
+		Setup:       synthTabFocusControlSetup("modular", "OSC", "osc_octave"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "OSC", "osc_octave")},
 	{Name: "crop_synth_focus_motion", Description: "Synth tab focus graph: LFO stage, Rate knob selected (modulation-over-time wiggle curve via conceptMotion)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "LFO", "lfo_rate"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "LFO", "lfo_rate")},
+		Setup:       synthTabFocusControlSetup("modular", "LFO", "lfo_rate"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "LFO", "lfo_rate")},
 	{Name: "crop_synth_focus_burst", Description: "Synth tab focus graph: BURST stage, Hit 1 Level knob selected (transient-burst modulation curve via conceptMotion)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "BURST", "burst1_amp"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "BURST", "burst1_amp")},
+		Setup:       synthTabFocusControlSetup("modular", "BURST", "burst1_amp"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "BURST", "burst1_amp")},
 	{Name: "crop_synth_focus_fm_decay", Description: "Synth tab focus graph: FM stage, Op 2 Decay knob selected (FM operator decay schematic via conceptFMEnvelope)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("fm-bass", "FM", "fm_op2_decay"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("fm-bass", "FM", "fm_op2_decay")},
+		Setup:       synthTabFocusControlSetup("fm-bass", "FM", "fm_op2_decay"),
+		MobileSetup: mobileSynthTabFocusControlSetup("fm-bass", "FM", "fm_op2_decay")},
 	{Name: "crop_synth_focus_fm_penv", Description: "Synth tab focus graph: FM stage, Pitch Sweep knob selected (FM pitch-env schematic via conceptFMEnvelope)",
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("fm-bass", "FM", "fm_pitch_env_amount"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("fm-bass", "FM", "fm_pitch_env_amount")},
+		Setup:       synthTabFocusControlSetup("fm-bass", "FM", "fm_pitch_env_amount"),
+		MobileSetup: mobileSynthTabFocusControlSetup("fm-bass", "FM", "fm_pitch_env_amount")},
 	{Name: "crop_synth_full_note", Description: "Synth tab focus graph: ENVELOPE stage, Decay knob selected — the full-note 'Your sound' DAW-clip envelope responds to the amp envelope",
 		Mobile:      true, // mobile pass verifies the stacked full-note + focus column
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobSetup("modular", "ENVELOPE", "amp_decay"),
-		MobileSetup: mobileSynthTabFocusKnobSetup("modular", "ENVELOPE", "amp_decay")},
+		Setup:       synthTabFocusControlSetup("modular", "ENVELOPE", "amp_decay"),
+		MobileSetup: mobileSynthTabFocusControlSetup("modular", "ENVELOPE", "amp_decay")},
 	{Name: "crop_synth_focus_burst_hit", Description: "Synth tab focus graph: BURST stage (enabled), Hit 2 Level knob selected (transient-spike timeline via conceptBurst)",
 		Mobile:      true,
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobParamSetup("modular", "BURST", "burst2_amp", "burst_enabled", 1),
-		MobileSetup: mobileSynthTabFocusKnobParamSetup("modular", "BURST", "burst2_amp", "burst_enabled", 1)},
+		Setup:       synthTabFocusControlParamSetup("modular", "BURST", "burst2_amp", "burst_enabled", 1),
+		MobileSetup: mobileSynthTabFocusControlParamSetup("modular", "BURST", "burst2_amp", "burst_enabled", 1)},
 	{Name: "crop_synth_focus_drive", Description: "Synth tab focus graph: POST stage, Drive knob at ~70% (before/after waveshaping via conceptPostWave)",
 		Mobile:      true,
 		Subject:     SubjectSynthPanel,
-		Setup:       synthTabFocusKnobParamSetup("modular", "POST", "drive", "drive", 0.7),
-		MobileSetup: mobileSynthTabFocusKnobParamSetup("modular", "POST", "drive", "drive", 0.7)},
+		Setup:       synthTabFocusControlParamSetup("modular", "POST", "drive", "drive", 0.7),
+		MobileSetup: mobileSynthTabFocusControlParamSetup("modular", "POST", "drive", "drive", 0.7)},
 	{Name: "crop_synth_mirror_clean", Description: "Synth tab de-crammed right-pane 'Your sound' MIRROR (modular voice, clean live final-output render)",
 		Subject:     SubjectSynthPanel,
 		Setup:       synthMirrorSceneSetup(),
@@ -1325,14 +1524,14 @@ func mobileSynthTabStageSetup(instrumentOverride, stageLabel, disableParam strin
 	}
 }
 
-// synthTabFocusKnobSetup opens stageLabel for instrument and selects the knob
+// synthTabFocusControlSetup opens stageLabel for instrument and selects the knob
 // named knobParam so the focus graph shows that knob's property-native domain.
 // Builds on synthTabStageSetup (which selects the stage + renders the mirror),
 // then walks the selected section's knobs to find the one whose ParamDef.Name
-// matches knobParam and records it via setSynthSelectedKnob. If the knob name
+// matches knobParam and records it via setSynthSelectedControl. If the knob name
 // isn't present in the stage, the focus graph falls back to the section's main
 // knob — still renders, but pick correct names so the intended domain shows.
-func synthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam string) func(*Game) {
+func synthTabFocusControlSetup(instrumentOverride, stageLabel, knobParam string) func(*Game) {
 	return func(g *Game) {
 		synthTabStageSetup(instrumentOverride, stageLabel, "")(g)
 		if g.drum == nil {
@@ -1349,7 +1548,7 @@ func synthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam string) fu
 		for _, kIdx := range sec.knobIdxs {
 			if kIdx >= 0 && kIdx < len(g.drum.instEditorBindings) &&
 				g.drum.instEditorBindings[kIdx].def.Name == knobParam {
-				g.drum.setSynthSelectedKnob(inst, kIdx)
+				g.drum.setSynthSelectedControl(inst, kIdx)
 				break
 			}
 		}
@@ -1358,23 +1557,23 @@ func synthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam string) fu
 	}
 }
 
-// mobileSynthTabFocusKnobSetup is the mobile counterpart of
-// synthTabFocusKnobSetup — exercises the mobile stacked focus band.
-func mobileSynthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam string) func(*Game) {
+// mobileSynthTabFocusControlSetup is the mobile counterpart of
+// synthTabFocusControlSetup — exercises the mobile stacked focus band.
+func mobileSynthTabFocusControlSetup(instrumentOverride, stageLabel, knobParam string) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
 		g.drum.SetMobileEQMode(true)
-		synthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam)(g)
+		synthTabFocusControlSetup(instrumentOverride, stageLabel, knobParam)(g)
 	}
 }
 
-// synthTabFocusKnobParamSetup builds on synthTabFocusKnobSetup and additionally
+// synthTabFocusControlParamSetup builds on synthTabFocusControlSetup and additionally
 // pins one live param (e.g. drive to 70% of its 0..1 range) before the final
 // mirror render so the focus graph and the "Your sound" pane reflect the driven
 // value, not the recipe default.
-func synthTabFocusKnobParamSetup(instrumentOverride, stageLabel, knobParam, setParam string, setVal float64) func(*Game) {
+func synthTabFocusControlParamSetup(instrumentOverride, stageLabel, knobParam, setParam string, setVal float64) func(*Game) {
 	return func(g *Game) {
-		synthTabFocusKnobSetup(instrumentOverride, stageLabel, knobParam)(g)
+		synthTabFocusControlSetup(instrumentOverride, stageLabel, knobParam)(g)
 		if g.drum == nil {
 			return
 		}
@@ -1388,13 +1587,13 @@ func synthTabFocusKnobParamSetup(instrumentOverride, stageLabel, knobParam, setP
 	}
 }
 
-// mobileSynthTabFocusKnobParamSetup is the mobile counterpart of
-// synthTabFocusKnobParamSetup.
-func mobileSynthTabFocusKnobParamSetup(instrumentOverride, stageLabel, knobParam, setParam string, setVal float64) func(*Game) {
+// mobileSynthTabFocusControlParamSetup is the mobile counterpart of
+// synthTabFocusControlParamSetup.
+func mobileSynthTabFocusControlParamSetup(instrumentOverride, stageLabel, knobParam, setParam string, setVal float64) func(*Game) {
 	return func(g *Game) {
 		g.SetForceMobileProfile(true)
 		g.drum.SetMobileEQMode(true)
-		synthTabFocusKnobParamSetup(instrumentOverride, stageLabel, knobParam, setParam, setVal)(g)
+		synthTabFocusControlParamSetup(instrumentOverride, stageLabel, knobParam, setParam, setVal)(g)
 	}
 }
 
@@ -1572,7 +1771,7 @@ func synthWheelSceneSetup() func(*Game) {
 			g.drum.audioTree.LayoutZoneNow("eq-panel")
 		}
 		// Open the wheel popup.
-		g.drum.openSynthKnobWheelPopup(idx, inst)
+		g.drum.openSynthControlWheelPopup(idx, inst)
 	}
 }
 

@@ -962,8 +962,8 @@ func TestMouseCoordinateLabel(t *testing.T) {
 
 	unit := g.grid.Unit()
 	div := g.grid.MaxDiv()
-	ix := 4*div + 6   // 4 beats + 3/16
-	iy := -5*div + 24 // -5 beats + 3/4
+	ix := 4*div + 6   // 4 beats + 3/16  -> "4:3/16"
+	iy := -5*div + 24 // -136 subdiv = -4.25 beats -> "-4:1/4" (magnitude convention)
 	wx := float64(ix) * unit
 	wy := float64(iy) * unit
 	mx := int(math.Round(wx*g.cam.Scale + g.cam.OffsetX))
@@ -982,7 +982,7 @@ func TestMouseCoordinateLabel(t *testing.T) {
 	g.drawGridPane(img)
 	restore()
 
-	want := "(4:3/16, -5:3/4)"
+	want := "(4:3/16, -4:1/4)"
 	if g.cursorLabel != want {
 		t.Fatalf("label = %q, want %q", g.cursorLabel, want)
 	}

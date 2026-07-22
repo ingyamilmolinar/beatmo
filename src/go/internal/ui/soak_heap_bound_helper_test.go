@@ -188,7 +188,7 @@ func runSoakHeapBound(
 		g.drum.eqPanelZone.SetActiveTab(TabSynth)
 		g.drum.eqPanelZone.Layout(g.drum.eqPanelZone.PanelRect())
 		// Drive one Update so the tree picks up the new hit areas and
-		// buildSynthTab populates instEditorKnobs; without this the very
+		// buildSynthTab populates instEditorControls; without this the very
 		// first Draw inside the loop sees zero knobs and the regression
 		// hides until the natural layout-dirty heuristic re-fires.
 		_ = g.Update()

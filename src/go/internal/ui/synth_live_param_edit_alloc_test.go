@@ -14,7 +14,7 @@ import (
 	game_log "github.com/ingyamilmolinar/beatmo/internal/log"
 )
 
-// Live synth-knob edit frame BYTE budget — the "editing the kick Punch knob
+// Live synth-control edit frame BYTE budget — the "editing the kick Punch knob
 // during playback hangs the game" regression (2026-07 user report, WASM).
 //
 // THE BUG: with the Synth tab open, every frame re-derives the instrument's
@@ -96,7 +96,7 @@ func measureFrameBytes(g *Game, screen *ebiten.Image, frames int, perFrame func(
 	return float64(after.TotalAlloc-before.TotalAlloc) / float64(frames)
 }
 
-func TestSynthTab_LiveKnobEditFrameByteBudget(t *testing.T) {
+func TestSynthTab_LiveControlEditFrameByteBudget(t *testing.T) {
 	assertDefaultParityState(t)
 	logger := game_log.New(nil, game_log.LevelError)
 	g := New(logger)
@@ -123,7 +123,7 @@ func TestSynthTab_LiveKnobEditFrameByteBudget(t *testing.T) {
 	// opens the owning stage and scrolls the knob into view.
 	idx := synthBindingIdxByName(t, g, "gen1_kick_attack")
 	selectSectionForKnobIdx(t, g, "dnb-kick", idx)
-	knobs := g.drum.SynthTabKnobs()
+	knobs := g.drum.SynthTabControls()
 	knob := knobs[idx]
 	rect := knob.Rect()
 	if rect.Empty() {
@@ -148,13 +148,13 @@ func TestSynthTab_LiveKnobEditFrameByteBudget(t *testing.T) {
 	var pressHit *HitArea
 	center := image.Pt((rect.Min.X+rect.Max.X)/2, (rect.Min.Y+rect.Max.Y)/2)
 	for i, h := range hits {
-		if h.Tag != "" && strings.HasPrefix(h.Tag, "synth-knob-") && center.In(h.Rect) {
+		if h.Tag != "" && strings.HasPrefix(h.Tag, "synth-control-") && center.In(h.Rect) {
 			pressHit = &hits[i]
 			break
 		}
 	}
 	if pressHit == nil {
-		t.Fatalf("no synth-knob HitArea covers the Punch knob center %v", center)
+		t.Fatalf("no synth-control HitArea covers the Punch knob center %v", center)
 	}
 	dragBytes := measureFrameBytes(g, screen, 60, func(i int) {
 		// Task-5: value edits are the desktop wheel nudge. Alternate direction so

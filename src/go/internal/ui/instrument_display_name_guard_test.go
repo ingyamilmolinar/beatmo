@@ -56,4 +56,3 @@ func TestInstrumentNameInlineTitleCaseGuard(t *testing.T) {
 			strings.Join(hits, "\n"))
 	}
 }
-

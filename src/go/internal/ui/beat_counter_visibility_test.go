@@ -68,22 +68,22 @@ func TestDesktopBeatCounterWithinBounds(t *testing.T) {
 }
 
 // TestDesktopSingleRowTransport verifies the desktop transport is a single-row
-// layout — play (leftmost) and overflow (rightmost) are in the same row. Upload
-// is no longer inline on desktop (it moved behind the overflow menu), so the
-// overflow button is the rightmost inline control used to prove the single row.
+// layout — play (leftmost) and redo (rightmost) are in the same row. (The
+// overflow/kebab and Navigate buttons were removed; redo is now the rightmost
+// inline control used to prove the single row.)
 func TestDesktopSingleRowTransport(t *testing.T) {
 	assertDefaultParityState(t)
 	graph := model.NewGraph(testLogger)
 	dv := NewDrumView(image.Rect(0, 0, 1280, 720), graph, testLogger)
 	dv.recalcButtons()
 	playR := dv.playBtn().Rect()
-	overflowR := dv.overflowBtn().Rect()
-	if playR.Empty() || overflowR.Empty() {
-		t.Fatalf("play or overflow button has empty rect: play=%v overflow=%v", playR, overflowR)
+	rightR := dv.transportZone.redoBtn.Rect()
+	if playR.Empty() || rightR.Empty() {
+		t.Fatalf("play or redo button has empty rect: play=%v redo=%v", playR, rightR)
 	}
-	// Overflow should be in the same row as play (overlapping Y ranges).
-	if overflowR.Min.Y >= playR.Max.Y || overflowR.Max.Y <= playR.Min.Y {
-		t.Fatalf("overflow %v should overlap Y range with play %v in single-row layout", overflowR, playR)
+	// Redo should be in the same row as play (overlapping Y ranges).
+	if rightR.Min.Y >= playR.Max.Y || rightR.Max.Y <= playR.Min.Y {
+		t.Fatalf("redo %v should overlap Y range with play %v in single-row layout", rightR, playR)
 	}
 }
 
@@ -238,10 +238,6 @@ func TestMobileTransportLayout(t *testing.T) {
 	if !overlap && !below {
 		t.Fatalf("mobile volIcon %v should overlap or sit below play %v", volR, playR)
 	}
-	// Overflow must also be reachable.
-	if dv.overflowBtn() != nil && dv.overflowBtn().Rect().Empty() {
-		t.Fatal("mobile overflow button rect empty")
-	}
 }
 
 // TestMobileTwoRowNoOverlap verifies that row 0 and row 1 controls do not
@@ -259,9 +255,6 @@ func TestMobileTwoRowNoOverlap(t *testing.T) {
 	var row1 []*Button
 	if dv.viewSwitchBtn() != nil {
 		row1 = append(row1, dv.viewSwitchBtn())
-	}
-	if dv.overflowBtn() != nil {
-		row1 = append(row1, dv.overflowBtn())
 	}
 
 	for _, b0 := range row0 {

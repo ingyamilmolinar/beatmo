@@ -29,11 +29,14 @@ func hasSheetHandlePill(t *testing.T, sheetRect image.Rectangle, fn func()) bool
 	return found
 }
 
-// Every mobile bottom sheet carries the same drag-handle pill. The File
-// (overflow) sheet was the odd one out — context menu and instrument picker
-// drew it, File didn't (bottom-sheet chrome inconsistency, 2026-07-04
-// critique D-item).
-func TestOverflowSheetHasDragHandleOnMobile(t *testing.T) {
+// The File (overflow) menu is NOT a bottom sheet: on every screen size it
+// anchors as a floating card in the grid pane, exactly like the node pop-up,
+// Settings, and Logs cards. Those cards carry no drag handle, so neither does
+// File — the handle read as a stray horizontal line at the top of the card
+// (2026-07-22 card-consistency pass). This asserts the handle is gone on
+// mobile; the context menu and instrument picker (true bottom sheets) keep
+// their handle via drawSheetDragHandle.
+func TestOverflowMenuHasNoDragHandleOnMobile(t *testing.T) {
 	assertDefaultParityState(t)
 	restore := SetForceSmallScreen(t, true)
 	defer restore()
@@ -46,7 +49,7 @@ func TestOverflowSheetHasDragHandleOnMobile(t *testing.T) {
 	dv.rebuildOverflowBtns()
 
 	dst := ebiten.NewImage(390, 844)
-	if !hasSheetHandlePill(t, dv.overflowPopupRect(), func() { dv.drawOverflowMenu(dst) }) {
-		t.Fatal("mobile File sheet drew no drag-handle pill — sheet chrome must match the context menu and instrument picker")
+	if hasSheetHandlePill(t, dv.overflowPopupRect(), func() { dv.drawOverflowMenu(dst) }) {
+		t.Fatal("mobile File card drew a drag-handle pill — it is a floating grid-pane card, not a bottom sheet; must match Settings/Logs (no handle)")
 	}
 }

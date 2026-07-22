@@ -25,8 +25,8 @@ type RackMaskLayer struct {
 
 func newRackMaskLayer(dv *DrumView) *RackMaskLayer { return &RackMaskLayer{dv: dv} }
 
-func (l *RackMaskLayer) ID() string    { return "rack-mask" }
-func (l *RackMaskLayer) ZIndex() int   { return ZRackMask }
+func (l *RackMaskLayer) ID() string  { return "rack-mask" }
+func (l *RackMaskLayer) ZIndex() int { return ZRackMask }
 func (l *RackMaskLayer) Visible() bool {
 	return !l.dv.MobileEQMode()
 }

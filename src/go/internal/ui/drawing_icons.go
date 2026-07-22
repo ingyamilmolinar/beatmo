@@ -555,3 +555,86 @@ var drawTemplateIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Colo
 	iconStrokeLine(dst, c, 7.5, 13, 16.5, 13, col)
 	iconFillCircle(dst, c, 9, 16.5, 1.2, col)
 }
+
+// drawFolderIcon renders a folder: a body rounded-rect with a raised left tab.
+// Distinct from IconTemplate (a card with content rules) so the file-menu
+// affordance carries its own glyph per the one-icon-one-role rule.
+var drawFolderIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	// Raised tab across the top-left third, sloping down into the body edge.
+	iconStrokeLine(dst, c, 3, 7, 9, 7, col)
+	iconStrokeLine(dst, c, 9, 7, 11, 9, col)
+	// Body.
+	iconStrokeOpenRoundedRect(dst, c, 3, 7, 18, 12, float32(IconCornerRadius), "", col)
+}
+
+// Calendar: a box with two top bindings + a header rule — the date-picker glyph.
+var drawCalendarIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeOpenRoundedRect(dst, c, 4, 5, 16, 15, float32(IconCornerRadius), "", col) // body
+	iconStrokeLine(dst, c, 4, 9, 20, 9, col)                                            // header rule
+	iconStrokeLine(dst, c, 8, 3, 8, 6, col)                                             // left binding
+	iconStrokeLine(dst, c, 16, 3, 16, 6, col)                                           // right binding
+}
+
+// Logs: a document (rounded rect) with three horizontal "text" lines — the
+// list-of-log-lines glyph for the grid-pane Logs button.
+var drawLogsIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	// Document body.
+	iconStrokeOpenRoundedRect(dst, c, 5, 3, 14, 18, float32(IconCornerRadius), "", col)
+	// Three text lines inside the body.
+	iconStrokeLine(dst, c, 8, 8, 16, 8, col)
+	iconStrokeLine(dst, c, 8, 12, 16, 12, col)
+	iconStrokeLine(dst, c, 8, 16, 13, 16, col)
+}
+
+// Move: a four-way arrow cross centered in the icon box — the universal
+// "move / reposition" glyph. Central plus stem with four arrowheads.
+var drawMoveIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	// Cross stems.
+	iconStrokeLine(dst, c, 12, 4, 12, 20, col)
+	iconStrokeLine(dst, c, 4, 12, 20, 12, col)
+	// Four arrowheads (up, down, left, right).
+	iconStrokePolyline(dst, c, [][2]float32{{9, 7}, {12, 4}, {15, 7}}, col)
+	iconStrokePolyline(dst, c, [][2]float32{{9, 17}, {12, 20}, {15, 17}}, col)
+	iconStrokePolyline(dst, c, [][2]float32{{7, 9}, {4, 12}, {7, 15}}, col)
+	iconStrokePolyline(dst, c, [][2]float32{{17, 9}, {20, 12}, {17, 15}}, col)
+}
+
+// Copy: two offset rounded squares (the "duplicate" glyph) — both stroked in
+// `col` only (no background-color fill), so the icon renders correctly on any
+// keycap surface. Back sheet upper-right, front sheet lower-left.
+var drawCopyIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeOpenRoundedRect(dst, c, 9, 4, 11, 11, 1.5, "", col) // back sheet
+	iconStrokeOpenRoundedRect(dst, c, 4, 9, 11, 11, 1.5, "", col) // front sheet
+}
+
+// Connect: two nodes joined by a link — two small circles at opposite
+// corners with a connecting bar, the "wire two nodes" glyph.
+var drawConnectIcon = func(dst *ebiten.Image, r image.Rectangle, col color.Color) {
+	if r.Empty() {
+		return
+	}
+	c := newIconCanvas(r)
+	iconStrokeCircle(dst, c, 6, 6, 3, col)
+	iconStrokeCircle(dst, c, 18, 18, 3, col)
+	iconStrokeLine(dst, c, 8.5, 8.5, 15.5, 15.5, col)
+}

@@ -61,6 +61,13 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Reference instrument WAVs are NEVER committed (copyright); they are
+      # fetched fresh from public-domain sources below. Tests that need them
+      # read this directory via internal/wavref and skip cleanly when it is
+      # empty (e.g. the fetch was skipped because upstream was unreachable), so
+      # CI stays green either way. Same dir + env var used locally.
+      BEATMO_WAV_REFS: ${{ github.workspace }}/src/go/internal/audio/testdata/refs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -76,6 +83,12 @@ jobs:
             libxi-dev libxxf86vm-dev xvfb
       - name: Build C library
         run: make build/libdrums.a
+      - name: Fetch public-domain reference WAVs
+        # Non-fatal: University of Iowa MIS samples are public-domain-equivalent
+        # and fetched fresh (never committed). If upstream is unreachable the
+        # ref-dependent tests (e.g. synthmatch refs_smoke) skip and CI stays
+        # green. Reuses the exact target/script used locally.
+        run: make fetch-synth-refs || echo "::warning::reference WAV fetch failed; ref-dependent tests will skip"
       - name: Run Go tests with coverage
         run: |
           mkdir -p coverage

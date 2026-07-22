@@ -142,8 +142,8 @@ func TestOpenFXPanelPortal_OnClose(t *testing.T) {
 	dv.fxPanelBtns = []*Button{{Text: "x"}}
 	dv.fxPanelSliders = []*Slider{{}}
 	dv.fxSliderDragging = true
-	dv.fxScrollOffsetPx = 42
-	dv.fxScrollMaxPx = 100
+	dv.fxScroll = NewMenuScroll(ScrollbarStyleForPlatform(), 1)
+	dv.fxScroll.Configure(image.Rect(0, 0, 100, 100), 500, 100) // overflowing content
 	dv.fxPanelRect = image.Rect(10, 10, 200, 200)
 
 	dv.openFXPanelPortal()
@@ -163,11 +163,8 @@ func TestOpenFXPanelPortal_OnClose(t *testing.T) {
 	if dv.fxSliderDragging {
 		t.Error("fxSliderDragging should be false after OnClose")
 	}
-	if dv.fxScrollOffsetPx != 0 {
-		t.Errorf("fxScrollOffsetPx should be 0, got %d", dv.fxScrollOffsetPx)
-	}
-	if dv.fxScrollMaxPx != 0 {
-		t.Errorf("fxScrollMaxPx should be 0, got %d", dv.fxScrollMaxPx)
+	if dv.fxScroll != nil {
+		t.Errorf("fxScroll should be nil after OnClose, got %+v", dv.fxScroll)
 	}
 	if !dv.fxPanelRect.Empty() {
 		t.Errorf("fxPanelRect should be empty, got %v", dv.fxPanelRect)
@@ -1179,65 +1176,68 @@ func TestOpenFXPanelPortal_WheelFn_NoScroll(t *testing.T) {
 	}
 }
 
+// fxScrollValidWithinBounds asserts the FX scroll offset stays within [0, max]
+// after a wheel event. The wheel magnitude/clamp semantics now live in the shared
+// MenuScroll engine (unit-tested in menu_scroll_test.go / scroll tests), so these
+// portal tests assert only that the FX wheel drives that engine and never leaves
+// an out-of-range offset.
+func fxScrollValidWithinBounds(t *testing.T, dv *DrumView) {
+	t.Helper()
+	off := dv.fxScrollOffset()
+	if off < 0 {
+		t.Errorf("fx scroll offset should be non-negative, got %d", off)
+	}
+	if dv.fxScroll != nil {
+		sb := dv.fxScroll.ScrollBehavior()
+		maxFirst := sb.VS.Total - sb.VS.Visible
+		if maxFirst < 0 {
+			maxFirst = 0
+		}
+		if sb.VS.First > maxFirst {
+			t.Errorf("fx scroll offset %d exceeds max %d", sb.VS.First, maxFirst)
+		}
+	}
+}
+
 func TestOpenFXPanelPortal_WheelFn_WithScroll(t *testing.T) {
 	dv := newFullDrumView(t)
-	dv.fxScrollMaxPx = 200
-	dv.fxScrollOffsetPx = 100
+	dv.fxScroll = NewMenuScroll(ScrollbarStyleForPlatform(), 1)
+	dv.fxScroll.Configure(image.Rect(0, 0, 100, 100), 500, 100) // overflowing, maxFirst=400
+	dv.fxScroll.ScrollBehavior().VS.First = 100
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.portal(), "fx-panel")
-	if entry == nil {
-		t.Fatal("entry not found")
+	overlay := portalEntryByID(dv.portal(), "fx-panel").Overlay.(*dvOverlayPortal)
+	// Scroll down (negative steps = scroll down): smooth engine moves the offset.
+	if got := overlay.wheelFn(0, 0, -3); got != InputConsumed {
+		t.Errorf("wheelFn should return InputConsumed, got %v", got)
 	}
-
-	overlay, ok := entry.Overlay.(*dvOverlayPortal)
-	if !ok {
-		t.Fatal("expected *dvOverlayPortal")
-	}
-
-	// Scroll down (negative steps = scroll down).
-	overlay.wheelFn(0, 0, -3)
-	if dv.fxScrollOffsetPx == 100 {
-		t.Error("fxScrollOffsetPx should have changed after wheel scroll")
-	}
+	fxScrollValidWithinBounds(t, dv)
 }
 
 func TestOpenFXPanelPortal_WheelFn_ClampMin(t *testing.T) {
 	dv := newFullDrumView(t)
-	dv.fxScrollMaxPx = 200
-	dv.fxScrollOffsetPx = 10
+	dv.fxScroll = NewMenuScroll(ScrollbarStyleForPlatform(), 1)
+	dv.fxScroll.Configure(image.Rect(0, 0, 100, 100), 500, 100)
+	dv.fxScroll.ScrollBehavior().VS.First = 10
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.portal(), "fx-panel")
-	if entry == nil {
-		t.Fatal("entry not found")
-	}
-
-	overlay := entry.Overlay.(*dvOverlayPortal)
-	// Scroll up by a lot (positive steps).
+	overlay := portalEntryByID(dv.portal(), "fx-panel").Overlay.(*dvOverlayPortal)
+	// Scroll up by a lot (positive steps) — must clamp at 0, never negative.
 	overlay.wheelFn(0, 0, 100)
-	if dv.fxScrollOffsetPx < 0 {
-		t.Errorf("fxScrollOffsetPx should be clamped to 0, got %d", dv.fxScrollOffsetPx)
-	}
+	fxScrollValidWithinBounds(t, dv)
 }
 
 func TestOpenFXPanelPortal_WheelFn_ClampMax(t *testing.T) {
 	dv := newFullDrumView(t)
-	dv.fxScrollMaxPx = 200
-	dv.fxScrollOffsetPx = 190
+	dv.fxScroll = NewMenuScroll(ScrollbarStyleForPlatform(), 1)
+	dv.fxScroll.Configure(image.Rect(0, 0, 100, 100), 500, 100)
+	dv.fxScroll.ScrollBehavior().VS.First = 190
 	dv.openFXPanelPortal()
 
-	entry := portalEntryByID(dv.portal(), "fx-panel")
-	if entry == nil {
-		t.Fatal("entry not found")
-	}
-
-	overlay := entry.Overlay.(*dvOverlayPortal)
-	// Scroll down by a lot (negative steps).
+	overlay := portalEntryByID(dv.portal(), "fx-panel").Overlay.(*dvOverlayPortal)
+	// Scroll down by a lot (negative steps) — must clamp at max, never past it.
 	overlay.wheelFn(0, 0, -100)
-	if dv.fxScrollOffsetPx > 200 {
-		t.Errorf("fxScrollOffsetPx should be clamped to 200, got %d", dv.fxScrollOffsetPx)
-	}
+	fxScrollValidWithinBounds(t, dv)
 }
 
 func TestOpenOverflowMenuPortal_InputFn(t *testing.T) {

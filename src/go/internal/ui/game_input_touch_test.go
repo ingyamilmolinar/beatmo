@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"image"
 	"math"
 	"testing"
 
@@ -244,6 +245,11 @@ func TestHandleTapInGrid_CreateNewNode(t *testing.T) {
 
 // --- Test: sidebar close on outside tap -------------------------------------
 
+// TestHandleTapInGrid_SidebarClose verifies that a tap outside the sidebar
+// closes it. The sidebar is a compact, node-anchored card drawn as a GridTree
+// layer (clamped to the grid pane, "grid-sidebar" at z=GZSidebar), not a
+// portal overlay, so handleTapInGrid's own tap-outside-closes-sidebar branch
+// is the live close mechanism — exercise it directly.
 func TestHandleTapInGrid_SidebarClose(t *testing.T) {
 	assertDefaultParityState(t)
 	withDefaultStart(t, false)
@@ -258,13 +264,23 @@ func TestHandleTapInGrid_SidebarClose(t *testing.T) {
 		t.Fatal("precondition: sidebar should be open")
 	}
 
-	// Tap far outside the sidebar (and far from any node).
-	farX, farY := screenPosForGridIJ(g, 100, 100)
-	// Ensure this position is outside the sidebar hit area.
-	if g.sidebar.Hit(farX, farY) {
-		// Move even further to avoid sidebar.
-		farX, farY = screenPosForGridIJ(g, 200, 200)
+	// Tap provably outside the sidebar's actual (node-anchored) panel rect,
+	// but still within the window.
+	panel := g.sidebar.rects["panel"]
+	if panel.Empty() {
+		t.Fatal("precondition: sidebar panel rect should be non-empty")
 	}
+	farX, farY := panel.Max.X+40, panel.Max.Y+40
+	if farX >= g.winW {
+		farX = g.winW - 1
+	}
+	if farY >= g.winH {
+		farY = g.winH - 1
+	}
+	if image.Pt(farX, farY).In(panel) {
+		t.Fatalf("test misconfigured: (%d,%d) should be outside panel %v", farX, farY, panel)
+	}
+
 	g.handleTapInGrid(farX, farY)
 
 	if g.sidebar.IsOpen() {

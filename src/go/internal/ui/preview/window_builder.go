@@ -64,6 +64,21 @@ func BuildRowWindow(cfg Config, beatInfoAt BeatInfoAtFunc, wantAt WantAtFunc, co
 	} else if cfg.FreezeLimit >= 0 {
 		pastBoundExclusive = cfg.FreezeLimit + 1
 	}
+	// Anchor the past boundary to the VISUAL playhead. Everything strictly left
+	// of the playhead (abs <= ElapsedBeats) is immutable past and must resolve
+	// from committed history / preserved prior state — never the live predictor.
+	// The per-row highlight index (NextIdx) can lag the playhead in production
+	// because highlights are delivered asynchronously via hlCh and the stale-info
+	// guard in applySequencerHighlight drops in-flight highlights the moment a
+	// circuit edit changes a row's beat path. When that happens NextIdx trails
+	// ElapsedBeats, and without this extension the cells in [NextIdx, ElapsedBeats]
+	// were treated as mutable future and re-rendered from the edited predictor —
+	// i.e. the already-played past visibly changed under the user. Gated on
+	// PreservePastSteps (== playing) so a stopped/paused window carrying a stale
+	// ElapsedBeats does not over-freeze the whole grid.
+	if cfg.PreservePastSteps && cfg.ElapsedBeats+1 > pastBoundExclusive {
+		pastBoundExclusive = cfg.ElapsedBeats + 1
+	}
 	// Preserve past steps only within a bounded range to avoid a future freeze
 	// masking re-added nodes. Mirrors the legacy guard in Game.buildRowWindow.
 	preserveLimit := -1

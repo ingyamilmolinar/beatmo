@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -87,6 +88,96 @@ func TestFXPanelOpenClose(t *testing.T) {
 	}
 }
 
+// TestFXAddMenu_TitleUsesMiddot verifies the add-menu header reads "FX · <row>"
+// (middot), matching the DESIGN.md menu anatomy, not the old "FX:" colon.
+func TestFXAddMenu_TitleUsesMiddot(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+
+	title := dv.fxAddMenuTitle()
+	if !strings.Contains(title, " · ") {
+		t.Fatalf("FX add-menu title should use middot separator, got %q", title)
+	}
+	if strings.Contains(title, "FX:") {
+		t.Fatalf("FX add-menu title should not use the old colon form, got %q", title)
+	}
+	if !strings.Contains(title, dv.Rows[dv.fxPanelRow].Name) {
+		t.Fatalf("FX add-menu title should contain the row name, got %q", title)
+	}
+}
+
+// TestFXAddMenu_RowsAreFlatMenuRows verifies the effect-picker rows are
+// tracked via the fxAddRowEffect/fxAddRowBtn parallel slices (one per
+// registered effect type, resolvable via dv.fxAddRowEffectFor for the
+// drawMenuRow routing) and span the full row width, left-aligned — not the
+// narrower centered rect the old InstButtonStyle keycap used.
+func TestFXAddMenu_RowsAreFlatMenuRows(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+
+	if len(dv.fxAddRowEffect) == 0 {
+		t.Fatal("fxAddRowEffect should be populated when the add-menu is open")
+	}
+	if len(dv.fxAddRowEffect) != len(dv.fxAddRowBtn) {
+		t.Fatalf("fxAddRowEffect (%d) and fxAddRowBtn (%d) must stay aligned", len(dv.fxAddRowEffect), len(dv.fxAddRowBtn))
+	}
+	for i, btn := range dv.fxAddRowBtn {
+		if btn == nil {
+			t.Fatalf("fxAddRowBtn[%d] is nil", i)
+		}
+		if et, ok := dv.fxAddRowEffectFor(btn); !ok || et != dv.fxAddRowEffect[i] {
+			t.Errorf("fxAddRowEffectFor(fxAddRowBtn[%d]) should resolve back to %v, got %v ok=%v", i, dv.fxAddRowEffect[i], et, ok)
+		}
+		// Left-aligned, spanning (close to) the full row width — the flat
+		// menu-row geometry, not a centered keycap.
+		r := btn.Rect()
+		if r.Dx() < dv.fxPanelRect.Dx()-4*SpaceXS {
+			t.Errorf("fxAddRowBtn[%d] rect width %d should span the full row width (panel width %d)", i, r.Dx(), dv.fxPanelRect.Dx())
+		}
+	}
+}
+
+// TestFXAddMenu_BackRowReplacesCancel verifies the add-menu's dismiss row is
+// a Back row (leading chevron-left, i18n "Back" label via a blank-Text
+// button) instead of the legacy "Cancel" keycap, and that clicking it closes
+// the picker back to the effect list.
+func TestFXAddMenu_BackRowReplacesCancel(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+
+	if dv.fxAddMenuBackBtn == nil {
+		t.Fatal("fxAddMenuBackBtn should be set when the add-menu is open")
+	}
+	if dv.fxAddMenuBackBtn.Text != "" {
+		t.Errorf("back button Text should be blank (drawMenuRow paints the label), got %q", dv.fxAddMenuBackBtn.Text)
+	}
+	for _, btn := range dv.fxPanelBtns {
+		if btn != nil && btn.Text == "Cancel" {
+			t.Error("legacy Cancel keycap button should no longer exist in the add-menu")
+		}
+	}
+
+	dv.fxAddMenuBackBtn.OnClick()
+	if dv.fxAddMenuOpen {
+		t.Error("clicking Back should close the add-menu")
+	}
+}
+
 // findFXPanelBtn searches fxPanelBtns for a button with the given text.
 func findFXPanelBtn(dv *DrumView, text string) *Button {
 	for _, btn := range dv.fxPanelBtns {
@@ -132,11 +223,12 @@ func TestFXPanelAddEffect(t *testing.T) {
 		t.Error("clicking '+ Add Effect' should not add an effect immediately")
 	}
 
-	// Now pick "Distortion" from the picker.
+	// Now pick "Distortion" from the picker (rows are flat drawMenuRow rows
+	// with blank Text — find by the effect type tracked in fxAddRowEffect).
 	var distBtn *Button
-	for _, btn := range dv.fxPanelBtns {
-		if btn.Text == "Distortion" {
-			distBtn = btn
+	for i, et := range dv.fxAddRowEffect {
+		if et == audio.EffectDistortion {
+			distBtn = dv.fxAddRowBtn[i]
 			break
 		}
 	}
@@ -204,19 +296,11 @@ func TestFXPanelPickerShowsAllTypes(t *testing.T) {
 	addBtn.OnClick()
 	suppressClicksUntilRelease = false // clear for test
 
-	// Verify effect type buttons are present (some may be off-screen with many types).
-	regs := audio.EffectRegistrations()
-	foundCount := 0
-	for _, btn := range dv.fxPanelBtns {
-		for _, reg := range regs {
-			if btn.Text == reg.DisplayName {
-				foundCount++
-				break
-			}
-		}
-	}
-	if foundCount == 0 {
-		t.Error("no effect type buttons found in picker")
+	// Verify effect type rows are present (rows are flat drawMenuRow rows with
+	// blank Text — tracked via fxAddRowEffect, some may be off-screen with
+	// many types).
+	if len(dv.fxAddRowEffect) == 0 {
+		t.Error("no effect type rows found in picker")
 	}
 }
 
@@ -707,8 +791,8 @@ func TestFXPanelScrollNeededMobile(t *testing.T) {
 	dv.fxExpandedSlots[2] = true
 	dv.buildFXPanel()
 
-	if dv.fxScrollMaxPx <= 0 {
-		t.Errorf("expected fxScrollMaxPx > 0 with 3 expanded effects on mobile, got %d", dv.fxScrollMaxPx)
+	if !dv.fxHasScroll() {
+		t.Errorf("expected FX content to overflow (scrollable) with 3 expanded effects on mobile")
 	}
 }
 
@@ -730,20 +814,24 @@ func TestFXPanelScrollOffsetClamps(t *testing.T) {
 	dv.fxExpandedSlots[2] = true
 	dv.buildFXPanel()
 
-	// Set scroll beyond max.
-	dv.fxScrollOffsetPx = dv.fxScrollMaxPx + 500
-	dv.buildFXPanel()
+	sb := dv.fxScroll.ScrollBehavior()
 
-	if dv.fxScrollOffsetPx > dv.fxScrollMaxPx {
-		t.Errorf("scroll offset %d exceeds max %d after rebuild", dv.fxScrollOffsetPx, dv.fxScrollMaxPx)
+	// Set scroll beyond max — the shared engine clamps on rebuild (Configure).
+	sb.VS.First = 1 << 20
+	dv.buildFXPanel()
+	maxFirst := sb.VS.Total - sb.VS.Visible
+	if maxFirst < 0 {
+		maxFirst = 0
+	}
+	if sb.VS.First > maxFirst {
+		t.Errorf("scroll offset %d exceeds max %d after rebuild", sb.VS.First, maxFirst)
 	}
 
 	// Set scroll negative.
-	dv.fxScrollOffsetPx = -100
+	sb.VS.First = -100
 	dv.buildFXPanel()
-
-	if dv.fxScrollOffsetPx < 0 {
-		t.Errorf("scroll offset %d should not be negative after rebuild", dv.fxScrollOffsetPx)
+	if dv.fxScrollOffset() < 0 {
+		t.Errorf("scroll offset %d should not be negative after rebuild", dv.fxScrollOffset())
 	}
 }
 
@@ -1533,4 +1621,236 @@ func TestFXPanelHeaderClickAfterAddEffect(t *testing.T) {
 	}
 
 	fxReleaseInput(t, dv)
+}
+
+// containsFold reports whether ss contains s, case-insensitively.
+func containsFold(ss []string, s string) bool {
+	for _, v := range ss {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// fxEffectNames maps a slice of effect types to their registry DisplayNames.
+func fxEffectNames(ets []audio.EffectType, regs map[audio.EffectType]*audio.EffectRegistration) []string {
+	out := make([]string, 0, len(ets))
+	for _, et := range ets {
+		if r, ok := regs[et]; ok {
+			out = append(out, r.DisplayName)
+		}
+	}
+	return out
+}
+
+// TestFXAddMenu_SearchFiltersEffects verifies typing narrows the effect list by
+// fuzzy match over DisplayName.
+func TestFXAddMenu_SearchFiltersEffects(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+
+	all := dv.fxAddVisibleEffects()
+	dv.setFXAddSearchQuery("rev")
+	got := dv.fxAddVisibleEffects()
+	if len(got) >= len(all) {
+		t.Fatalf("query should narrow list: all=%d got=%d", len(all), len(got))
+	}
+	if len(got) == 0 {
+		t.Fatalf("query 'rev' should still match Reverb")
+	}
+	names := fxEffectNames(got, audio.EffectRegistrations())
+	if !containsFold(names, "Reverb") {
+		t.Fatalf("query 'rev' should match Reverb; got %v", names)
+	}
+}
+
+// TestFXAddMenu_EmptyStateWhenNoMatch verifies a no-match query yields an empty
+// visible list (so the empty-state renders).
+func TestFXAddMenu_EmptyStateWhenNoMatch(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+	dv.setFXAddSearchQuery("zzzzzz")
+	if got := dv.fxAddVisibleEffects(); len(got) != 0 {
+		t.Fatalf("no-match query should yield 0 effects, got %d", len(got))
+	}
+	// Empty picker still keeps the Back row so the user can always escape.
+	if dv.fxAddMenuBackBtn == nil {
+		t.Fatal("fxAddMenuBackBtn should remain present when the filtered list is empty")
+	}
+}
+
+// TestFXAddMenu_AutoFocusOnOpen verifies opening the add-menu via the "+ Add
+// Effect" button auto-focuses the search box (improvement C).
+func TestFXAddMenu_AutoFocusOnOpen(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 || len(dv.rowFXBtns()) == 0 {
+		t.Skip("no rows or FX buttons")
+	}
+	dv.toggleFXPanel(0)
+	if !dv.IsFXPanelOpen() {
+		t.Fatal("FX panel did not open")
+	}
+	addBtn := findFXPanelBtn(dv, "+ Add Effect")
+	if addBtn == nil {
+		t.Fatal("'+ Add Effect' button not found")
+	}
+	addBtn.OnClick()
+	if dv.fxAddSearch == nil {
+		t.Fatal("fxAddSearch should be built when the add-menu opens")
+	}
+	if !dv.fxAddSearch.Focused() {
+		t.Error("fxAddSearch should be auto-focused when the add-menu opens")
+	}
+}
+
+// TestFXAddMenu_EscClearsQueryThenCloses verifies fxPanelHandleEscape clears a
+// non-empty query first, then closes the add-menu back to the effect list on
+// the next Esc — mirroring handleTemplateSearchEscape.
+func TestFXAddMenu_EscClearsQueryThenCloses(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+	dv.setFXAddSearchQuery("rev")
+
+	if !dv.fxPanelHandleEscape() {
+		t.Fatal("first Esc should be handled (clears query)")
+	}
+	if dv.fxAddSearchQuery != "" {
+		t.Errorf("first Esc should clear the query, got %q", dv.fxAddSearchQuery)
+	}
+	if !dv.fxAddMenuOpen {
+		t.Error("first Esc should keep the add-menu open (query-clear only)")
+	}
+
+	if !dv.fxPanelHandleEscape() {
+		t.Fatal("second Esc should be handled (closes add-menu)")
+	}
+	if dv.fxAddMenuOpen {
+		t.Error("second Esc should close the add-menu back to the effect list")
+	}
+}
+
+// TestFXAddMenu_GroupHeadersIdleOnly verifies category headers appear when
+// idle and are suppressed while searching (flat filtered list instead).
+func TestFXAddMenu_GroupHeadersIdleOnly(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+	if hs := dv.fxAddGroupHeaders(); len(hs) == 0 {
+		t.Fatalf("idle add-menu should show category group headers")
+	}
+	dv.setFXAddSearchQuery("re")
+	if hs := dv.fxAddGroupHeaders(); len(hs) != 0 {
+		t.Fatalf("searching add-menu must suppress group headers, got %v", hs)
+	}
+}
+
+// TestFXAddMenu_InstanceCountBadge verifies an already-present effect shows
+// a ×N trailing badge while idle, and shows the effect's category caption
+// while searching instead.
+func TestFXAddMenu_InstanceCountBadge(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+	instID := dv.Rows[0].Instrument
+	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
+	audio.AddInsertEffect(instID, audio.EffectDelay, nil)
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+	if got := dv.fxAddInstanceCount(audio.EffectDelay); got != 2 {
+		t.Fatalf("Delay instance count = %d, want 2", got)
+	}
+	trail := dv.fxAddRowTrail(audio.EffectDelay)
+	if trail != "×2" {
+		t.Fatalf("idle Delay trail = %q, want \"×2\"", trail)
+	}
+
+	dv.setFXAddSearchQuery("delay")
+	reg := audio.EffectRegistrations()[audio.EffectDelay]
+	wantCaption := fxCategoryDisplay[reg.Category]
+	if got := dv.fxAddRowTrail(audio.EffectDelay); got != wantCaption {
+		t.Fatalf("searching Delay trail = %q, want category caption %q", got, wantCaption)
+	}
+}
+
+// TestFXAddMenu_HeaderCountMatchesComputedCount is a regression guard for the
+// two independent computations of the idle add-menu's category-header set:
+// fxAddCategoryHeaderCount (sizes contentH/scroll height) and buildFXPanel's
+// inline category-transition block (populates dv.fxAddHeaderRows). They must
+// always agree — a drift here means the scroll height and the actually-drawn
+// headers disagree, producing clipped or misplaced rows. It also pins the
+// fixed category order + full coverage end-to-end via fxAddGroupHeaders,
+// deriving the expected labels from fxCategoryOrder + fxCategoryDisplay (the
+// source of truth) rather than hardcoding strings.
+func TestFXAddMenu_HeaderCountMatchesComputedCount(t *testing.T) {
+	dv := newTestDV(t)
+	if len(dv.Rows) == 0 {
+		t.Skip("no rows")
+	}
+
+	// Sanity: the default registry actually populates all four categories,
+	// otherwise the "all four must appear" assertion below would be
+	// vacuously true for missing categories.
+	regs := audio.EffectRegistrations()
+	seen := map[string]bool{}
+	for _, r := range regs {
+		if r != nil {
+			seen[r.Category] = true
+		}
+	}
+	for _, cat := range fxCategoryOrder {
+		if !seen[cat] {
+			t.Fatalf("default effect registry has no effects in category %q; test assumptions stale", cat)
+		}
+	}
+
+	dv.OpenFXPanel(0)
+	dv.fxAddMenuOpen = true
+	dv.buildFXPanel()
+
+	// The sync invariant: the two independent header-count computations
+	// must never drift.
+	gotHeaders := len(dv.fxAddHeaderRows)
+	wantHeaders := fxAddCategoryHeaderCount(dv.fxAddVisibleEffects())
+	if gotHeaders != wantHeaders {
+		t.Fatalf("len(dv.fxAddHeaderRows) = %d, fxAddCategoryHeaderCount(fxAddVisibleEffects()) = %d; the two header-set computations drifted",
+			gotHeaders, wantHeaders)
+	}
+
+	// End-to-end: fixed order + all four categories present, derived from
+	// the source-of-truth tables rather than hardcoded literals.
+	wantLabels := make([]string, len(fxCategoryOrder))
+	for i, cat := range fxCategoryOrder {
+		wantLabels[i] = fxCategoryDisplay[cat]
+	}
+	gotLabels := dv.fxAddGroupHeaders()
+	if len(gotLabels) != len(wantLabels) {
+		t.Fatalf("fxAddGroupHeaders() = %v, want %v (length mismatch)", gotLabels, wantLabels)
+	}
+	for i := range wantLabels {
+		if gotLabels[i] != wantLabels[i] {
+			t.Fatalf("fxAddGroupHeaders() = %v, want %v", gotLabels, wantLabels)
+		}
+	}
 }

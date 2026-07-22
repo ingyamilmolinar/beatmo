@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ingyamilmolinar/beatmo/internal/wave"
+	"github.com/ingyamilmolinar/beatmo/internal/wavref"
 )
 
 // --- synthetic signal generators with known ground truth ----------------------
@@ -357,9 +358,9 @@ func TestKickDistance_BodyReverbIdentity(t *testing.T) {
 // --- optional real-WAV sanity ------------------------------------------------
 
 func TestKickAnalyze_ZgumpWAV(t *testing.T) {
-	const path = "../../../../../83768__zgump__kick-pack-0708.wav"
-	if _, err := os.Stat(path); err != nil {
-		t.Skip("zgump reference WAV unavailable")
+	path, ok := wavref.Path("83768__zgump__kick-pack-0708.wav")
+	if !ok {
+		t.Skip("zgump reference WAV unavailable; set BEATMO_WAV_REFS")
 	}
 	w, ok := decodeWAVMono(path)
 	if !ok {
@@ -391,9 +392,9 @@ func TestKickAnalyze_ZgumpWAV(t *testing.T) {
 }
 
 func TestKickAnalyze_SandyrbWAV(t *testing.T) {
-	const path = "../../../../../36010__sandyrb__dnb-kick-003.wav"
-	if _, err := os.Stat(path); err != nil {
-		t.Skip("sandyrb reference WAV unavailable")
+	path, ok := wavref.Path("36010__sandyrb__dnb-kick-003.wav")
+	if !ok {
+		t.Skip("sandyrb reference WAV unavailable; set BEATMO_WAV_REFS")
 	}
 	w, ok := decodeWAVMono(path)
 	if !ok {

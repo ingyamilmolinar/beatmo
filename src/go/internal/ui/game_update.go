@@ -71,6 +71,10 @@ func (g *Game) Update() error {
 		// Timing-gate metrics window — always on, independent of PERF_LOG.
 		g.maybeResetSchedMetricsWindow(time.Now())
 	}()
+	// Tick the transient error toast (grid-pane alert) once per frame.
+	if g.drum != nil {
+		g.drum.logsToast.tick()
+	}
 	// Per-frame undo bracket: every recorded mutation produced by this frame's
 	// single user gesture (a click that adds + auto-stitches, a drag release,
 	// etc.) collapses into ONE atomic undo step. endGroup is a cheap no-op when
@@ -271,7 +275,32 @@ eventsDone:
 	// Inject a 2-frame tap for drum-area taps (where touch has already
 	// ended by the time the gesture fires, so the override won't see it).
 	// Skip if a multi-touch gesture just ended — the tap is spurious.
-	if gesture != nil && gesture.Kind == GestureTap && !g.split.InGridPane(gesture.X, gesture.Y) && g.drum != nil && !globalTouchState.RecentMultiTouch() {
+	//
+	// CRUCIAL: only inject when the real touch-DOWN was NOT already dispatched
+	// and consumed. The injection exists solely to replay a tap the mobile dead
+	// zone BLOCKED from dispatch during the hold (rows scroll area). Outside the
+	// dead zone (transport, EQ/synth panel, portal overlays) the single-touch
+	// override already published the hold-press, so the tree dispatched the
+	// touch-down live — replaying it a second time double-processes the gesture.
+	// That double-processing is the "opens then closes / opens another element"
+	// bug: a tap on a synth card opens its popup on the DOWN, then the injected
+	// replay re-fires on the same point; a tap OUTSIDE an open popup closes it on
+	// the DOWN (overlay click-outside), then the injected replay lands on the now-
+	// exposed element beneath and opens IT. suppressClicksUntilRelease is true
+	// exactly when the down was consumed (a handler returned InputConsumed, or the
+	// overlay's click-outside dismissed a popup) — so gating on it confines the
+	// injection to its original purpose (dead-zone replay, where nothing consumed
+	// the blocked down) and kills both leaks at the source.
+	// Regression: TestTapOutsidePopupDoesNotOpenElementBeneath,
+	// TestSynthCardTapViaRealPipelineStaysOpen, TestKebabTapOverlapScrollerActive,
+	// TestMobileTapDebounceDropsSameSpotDoubleTap.
+	//
+	// CAVEAT: the row-scroll dead zone ALSO sets suppress (it defers the click to
+	// distinguish tap from scroll) even though the down was NOT consumed — which is
+	// exactly the case injection exists for. So a dead-zone tap ALWAYS injects;
+	// everywhere else the tap injects only when the down was not consumed.
+	if gesture != nil && gesture.Kind == GestureTap && !g.split.InGridPane(gesture.X, gesture.Y) && g.drum != nil && !globalTouchState.RecentMultiTouch() &&
+		(g.drum.tapInScrollDeadZone(gesture.X, gesture.Y) || !suppressClicksUntilRelease) && g.drum.tapGate.accept(gesture.X, gesture.Y) {
 		injectTouchTap(gesture.X, gesture.Y)
 		// Reset the tree's wasPressed so it sees the injected tap as a
 		// fresh press. Without this, wasPressed carries over from the
@@ -394,6 +423,14 @@ eventsDone:
 			if g.gridHelpBtn != nil {
 				g.inputDispatcher.Register(gridHelpInputHandler{g: g})
 			}
+			if g.gridFileBtn != nil {
+				g.inputDispatcher.Register(gridFileInputHandler{g: g})
+			}
+			if g.gridLogsBtn != nil {
+				g.inputDispatcher.Register(gridLogsInputHandler{g: g})
+			}
+			// Node sidebar input flows through the grid dispatcher; it renders via the
+			// grid pane's GridTree (grid-sidebar layer, clipped to the grid pane).
 			if sidebarOpen {
 				g.inputDispatcher.Register(g.sidebar)
 			}
@@ -440,6 +477,14 @@ eventsDone:
 			g.leftPrev = left
 		}
 	}
+
+	// Keep the top-right grid buttons (settings / file / logs) honest: their
+	// active look tracks whether their menu is actually open, and any press whose
+	// release the menu swallowed is healed while the pointer is up. Runs every
+	// frame (independent of the dispatch branch above) so a menu closing for ANY
+	// reason — re-tap, click-outside, Esc, or a failed/cancelled system action
+	// like the file picker — resets the button instead of leaving it stuck.
+	g.reconcileGridButtonToggles(left)
 
 	// Grid-node hover is a desktop-pointer affordance (the same "everything
 	// clickable hovers" doctrine as the button-hover glow, which keys off

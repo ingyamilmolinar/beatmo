@@ -9,12 +9,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TestDrawSynthFocusGraph_DrawsSelectedKnobDomain — the focus graph paints the
+// TestDrawSynthFocusGraph_DrawsSelectedControlDomain — the focus graph paints the
 // property-native picture for the SELECTED knob: with the synth tab open on a
 // resolved instrument and a section selected, drawSynthFocusGraph must produce
 // ink INSIDE the inner graph region (i.e. beyond the outer chrome frame), so a
 // knob the user picked actually gets a graph drawn for it.
-func TestDrawSynthFocusGraph_DrawsSelectedKnobDomain(t *testing.T) {
+func TestDrawSynthFocusGraph_DrawsSelectedControlDomain(t *testing.T) {
 	g := newModularSynthTabGame(t)
 	layoutSynthTab(t, g)
 	dv := g.drum
@@ -27,7 +27,7 @@ func TestDrawSynthFocusGraph_DrawsSelectedKnobDomain(t *testing.T) {
 	if sec == nil || len(sec.knobIdxs) == 0 {
 		t.Skip("no open section with knobs")
 	}
-	dv.setSynthSelectedKnob(inst, sec.knobIdxs[0])
+	dv.setSynthSelectedControl(inst, sec.knobIdxs[0])
 
 	const w, h = 300, 130
 	rect := image.Rect(0, 0, w, h)

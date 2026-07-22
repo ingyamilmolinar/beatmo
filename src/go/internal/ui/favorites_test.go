@@ -114,11 +114,11 @@ func TestPinSource_Tier(t *testing.T) {
 		id   string
 		want int
 	}{
-		{"kick-808", 0},     // project only
-		{"shared-id", 0},    // both → project wins
-		{"snare-tight", 1},  // user star only
-		{"unrelated", 2},    // none
-		{"", 2},             // empty id → tier 2 (won't match anything)
+		{"kick-808", 0},    // project only
+		{"shared-id", 0},   // both → project wins
+		{"snare-tight", 1}, // user star only
+		{"unrelated", 2},   // none
+		{"", 2},            // empty id → tier 2 (won't match anything)
 	}
 	for _, tc := range cases {
 		if got := src.Tier(tc.id); got != tc.want {

@@ -18,7 +18,7 @@ func (dv *DrumView) openSubdivMenuPortal() {
 	dv.subdivMenuComp.SetScreenBounds(dv.Bounds)
 	dv.portal().Open(PortalEntry{
 		ID:      "subdiv-menu",
-		Overlay: &compPortalOverlay{comp: dv.subdivMenuComp, tag: "subdiv-menu"},
+		Overlay: &compPortalOverlay{comp: dv.subdivMenuComp, tag: "subdiv-menu", updateFn: dv.subdivMenuComp.Update},
 		Modal:   false,
 		Scrim:   true, // menu/picker — backdrop dims so modality is visible
 		Anchor:  dv.subdivBtn().Rect(),
@@ -35,10 +35,54 @@ func (dv *DrumView) closeSubdivMenuPortal() {
 	}
 }
 
+// navMenuPortalID identifies the navigation-menu portal entry.
+const navMenuPortalID = "nav-menu"
+
+// openNavMenuPortal opens the navigation menu as a first-class portal component
+// (compOverlayable), anchored under the beat counter per the DESIGN.md
+// menu-placement rule. The tree's compHitHandler delivers press/drag/RELEASE
+// natively (so momentary jog buttons pop back and the Beats/Subdiv latch
+// resets), the component owns its go-to editor (keyboard-claimed while active),
+// and click-outside/Esc/hover are all handled by the tree — identical to the
+// subdiv / instrument / colour menus.
+func (dv *DrumView) openNavMenuPortal() {
+	if dv.tree == nil || dv.navMenuComp == nil {
+		return
+	}
+	dv.navMenuComp.SetScreenBounds(dv.Bounds)
+	dv.navMenuComp.SetAnchor(dv.beatCounterRect)
+	dv.navMenuComp.Open()
+	dv.portal().Open(PortalEntry{
+		ID: navMenuPortalID,
+		Overlay: &compPortalOverlay{
+			comp:     dv.navMenuComp,
+			tag:      navMenuPortalID,
+			updateFn: dv.navMenuComp.Update, // tick the owned go-to editor
+		},
+		Modal:   false,
+		Scrim:   true, // menu — backdrop dims so modality is visible
+		Anchor:  dv.beatCounterRect,
+		OnClose: func() { dv.navMenuComp.Close() },
+	})
+}
+
+// closeNavMenuPortal closes the navigation-menu portal entry.
+func (dv *DrumView) closeNavMenuPortal() {
+	if dv.tree != nil {
+		dv.portal().Close(navMenuPortalID)
+	}
+}
+
+// IsNavMenuOpen reports whether the navigation menu portal is open.
+func (dv *DrumView) IsNavMenuOpen() bool {
+	return dv.navMenuComp != nil && dv.navMenuComp.IsOpen()
+}
+
 // openJumpMenuPortal opens the FF/RW jump-size (×N) menu component through
 // the portal. Mirrors openSubdivMenuPortal — jumpMenuComp is a second
 // SubdivMenuComponent instance (generic int-options dropdown) reused for
-// beat-count options instead of subdivisions.
+// beat-count options instead of subdivisions. It stacks over the navigation
+// menu (its ×N pill is the only opener — see OpenJumpMenu / NavigationPanel).
 func (dv *DrumView) openJumpMenuPortal() {
 	if dv.tree == nil || dv.jumpMenuComp == nil {
 		return
@@ -46,12 +90,16 @@ func (dv *DrumView) openJumpMenuPortal() {
 	// Feed the clamp region so the menu card positions via AnchorPopupRect and
 	// never runs off-screen (SubdivMenuProps carries no bounds field).
 	dv.jumpMenuComp.SetScreenBounds(dv.Bounds)
+	anchor := dv.jumpMenuComp.Props().AnchorRect
+	if anchor.Empty() && dv.navMenuComp != nil {
+		anchor = dv.navMenuComp.Bounds()
+	}
 	dv.portal().Open(PortalEntry{
 		ID:      "jump-menu",
 		Overlay: &compPortalOverlay{comp: dv.jumpMenuComp, tag: "jump-menu"},
 		Modal:   false,
 		Scrim:   true, // menu/picker — backdrop dims so modality is visible
-		Anchor:  dv.transportZone.JumpBtnRect(),
+		Anchor:  anchor,
 		OnClose: func() {
 			dv.jumpMenuComp.Close()
 		},
@@ -193,9 +241,21 @@ func (dv *DrumView) openOverflowMenuPortal() {
 				for _, b := range dv.overflowBtns {
 					b.UpdateHover(mx, my)
 				}
+				// NAVIGATION panel buttons (page 0 only) — mirrors overflowBtns
+				// so the embedded panel's prev/amount/next/unit/go-to buttons
+				// get the same hover-glow feedback as every other menu row.
+				if dv.overflowPage == 0 && dv.navPanel != nil {
+					for _, b := range dv.navPanel.Buttons() {
+						if b != nil {
+							b.UpdateHover(mx, my)
+						}
+					}
+				}
 			},
 			inputFn: func(x, y int, pressed bool) InputResult {
 				if dv.handleOverflowMenuInput(x, y, pressed) {
+					// Capture while the scroll component holds a deferred tap
+					// (tap-vs-scroll disambiguation); otherwise one-shot consume.
 					if dv.overflowMenuScroll != nil && dv.overflowMenuScroll.TapActive() {
 						return InputCaptured
 					}
@@ -209,8 +269,19 @@ func (dv *DrumView) openOverflowMenuPortal() {
 				}
 				return InputConsumed
 			},
-			drawFn:   func(dst *ebiten.Image) { dv.drawOverflowMenu(dst) },
-			updateFn: func() { dv.updateTemplateSearch() },
+			drawFn: func(dst *ebiten.Image) { dv.drawOverflowMenu(dst) },
+			updateFn: func() {
+				// Touch-fling momentum (the inertial half of the shared
+				// instrument-menu feel). rebuild is nil: overflowPopupBtns already
+				// refreshes every button's rect from the live offset each draw
+				// frame, so the advancing offset is picked up without rebuilding
+				// the button objects. Runs on every page (the search box, handled
+				// by updateTemplateSearch, only exists on page 1).
+				if dv.overflowMenuScroll != nil {
+					dv.overflowMenuScroll.Tick(nil)
+				}
+				dv.updateTemplateSearch()
+			},
 			escapeFn: func() bool { return dv.handleTemplateSearchEscape() },
 			// While the menu is open its subtree (overlayTree) owns the
 			// keyboard, so the sibling GridTree's arrow-pan/zoom shortcuts
@@ -275,10 +346,10 @@ func (dv *DrumView) openContextMenuPortal() {
 				return InputIgnored
 			},
 			wheelFn: func(x, y, steps int) InputResult {
-				// Clicky: one item per notch + cooldown, matching every other
-				// menu (see MenuScroll.HandleWheel / tickMenuScrollCooldowns).
+				// Smooth: continuous, magnitude-respecting wheel with no cooldown
+				// lock — the shared instrument-menu cadence every list menu uses.
 				if dv.contextMenuScroll != nil && dv.contextMenuScroll.HasScroll() {
-					if dv.contextMenuScroll.WheelStep(steps, controlGridScrollCooldownFrames) {
+					if dv.contextMenuScroll.HandleWheel(steps) {
 						dv.rebuildContextMenuButtons()
 					}
 				}
@@ -326,7 +397,7 @@ func (dv *DrumView) openFXPanelPortal() {
 			},
 			inputFn: func(x, y int, pressed bool) InputResult {
 				if dv.handleFXPanelInput(x, y, pressed) {
-					if dv.fxPanelDeferredTap.Active() || dv.fxScrollTS.Active() || dv.fxSliderDragging {
+					if dv.fxPanelDeferredTap.Active() || (dv.fxScroll != nil && dv.fxScroll.ScrollBehavior().TouchActive()) || dv.fxSliderDragging {
 						return InputCaptured
 					}
 					return InputConsumed
@@ -334,16 +405,13 @@ func (dv *DrumView) openFXPanelPortal() {
 				return InputIgnored
 			},
 			wheelFn: func(x, y, steps int) InputResult {
-				if dv.fxScrollMaxPx > 0 {
-					dv.fxScrollOffsetPx -= steps * 20
-					if dv.fxScrollOffsetPx < 0 {
-						dv.fxScrollOffsetPx = 0
+				// Smooth pixel-scroll through the shared engine (~20px/notch,
+				// magnitude-respecting, no cooldown), matching every list menu.
+				if dv.fxScroll != nil && dv.fxScroll.HasScroll() {
+					if dv.fxScroll.HandleWheel(steps * fxWheelStepPx) {
+						dv.buildFXPanel()
+						dv.refreshFXPortalHitAreas()
 					}
-					if dv.fxScrollOffsetPx > dv.fxScrollMaxPx {
-						dv.fxScrollOffsetPx = dv.fxScrollMaxPx
-					}
-					dv.buildFXPanel()
-					dv.refreshFXPortalHitAreas()
 				}
 				return InputConsumed
 			},
@@ -351,20 +419,19 @@ func (dv *DrumView) openFXPanelPortal() {
 			updateFn: func() {
 				// Scrim intentionally off: the FX panel is a docked tool panel
 				// the user interacts around (not a modal menu/picker).
-				if dv.fxScrollTS.HasMomentum() {
-					delta := dv.fxScrollTS.UpdateMomentum()
-					if delta != 0 {
-						dv.fxScrollOffsetPx -= int(delta)
-						if dv.fxScrollOffsetPx < 0 {
-							dv.fxScrollOffsetPx = 0
-						}
-						if dv.fxScrollOffsetPx > dv.fxScrollMaxPx {
-							dv.fxScrollOffsetPx = dv.fxScrollMaxPx
-						}
-						dv.buildFXPanel()
-						dv.refreshFXPortalHitAreas()
-					}
+				// Touch-fling momentum via the shared driver — same as every menu.
+				if dv.fxScroll != nil {
+					dv.fxScroll.Tick(func() { dv.buildFXPanel(); dv.refreshFXPortalHitAreas() })
 				}
+				dv.updateFXAddSearch()
+			},
+			escapeFn: func() bool { return dv.fxPanelHandleEscape() },
+			// While the add-menu search box is focused, the FX panel's subtree
+			// owns the keyboard so arrow keys/typing go to the search caret
+			// instead of the sibling GridTree's pan/zoom shortcuts. Mirrors
+			// the overflow menu's claimsKeyboardFn.
+			claimsKeyboardFn: func() bool {
+				return dv.fxAddMenuOpen && dv.fxAddSearch != nil && dv.fxAddSearch.Focused()
 			},
 		},
 		Modal: false,
@@ -377,9 +444,7 @@ func (dv *DrumView) openFXPanelPortal() {
 			dv.fxPanelSliders = nil
 			dv.fxSliderDragging = false
 			dv.fxPanelDeferredTap.Cancel()
-			dv.fxScrollOffsetPx = 0
-			dv.fxScrollTS.Reset()
-			dv.fxScrollMaxPx = 0
+			dv.fxScroll = nil
 			dv.fxPanelRect = image.Rectangle{}
 		},
 	})
@@ -415,7 +480,7 @@ func (dv *DrumView) closeVolPopupPortal() {
 	}
 }
 
-// openSynthWheelPortal opens the mobile synth-knob wheel popup through the portal.
+// openSynthWheelPortal opens the mobile synth-control wheel popup through the portal.
 func (p *synthPanel) openSynthWheelPortal() {
 	dv := p.dv
 

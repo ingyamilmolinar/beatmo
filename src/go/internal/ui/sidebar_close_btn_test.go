@@ -16,7 +16,9 @@ import (
 // content area below the header — so the close button never rendered.
 func TestSidebarCloseButtonVisible(t *testing.T) {
 	assertDefaultParityState(t)
-	withSmallScreen(t, true)
+	// The close × is desktop-only (mobile node card dismisses via tap-away), so
+	// this "close button renders" regression guard runs on the desktop profile.
+	withSmallScreen(t, false)
 
 	g := New(testLogger)
 	t.Cleanup(g.CloseForTest)

@@ -21,7 +21,7 @@ import (
 //
 //	go test -run TestTimbreAttribution -v ./cmd/synth-match/
 func TestTimbreAttribution(t *testing.T) {
-	const root = "/home/ymolinar/Repos/beatmo/"
+	root := wavRoot(t)
 	audio.Reset()
 	audio.ResetInstruments()
 

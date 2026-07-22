@@ -120,11 +120,8 @@ func TestTemplateMenu_HeaderAndSearchPinnedUnderScroll(t *testing.T) {
 	if !ok {
 		t.Fatal("no last template button")
 	}
-	// Scroll down a few notches (clicky wheel needs cooldown ticks between).
+	// Scroll down a few notches (smooth wheel: no cooldown between notches).
 	for i := 0; i < scroll.ScrollBehavior().VS.Total+4; i++ {
-		for j := 0; j < controlGridScrollCooldownFrames; j++ {
-			scroll.TickStep()
-		}
 		scroll.HandleWheel(-1)
 	}
 	dv.overflowPopupBtns(popup)

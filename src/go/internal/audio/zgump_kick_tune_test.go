@@ -48,7 +48,6 @@ func peakNorm(x []float64) []float64 {
 // Run: go test -run TestZgumpKickTune -v ./internal/audio/  (env WRITE_WAV=1 to
 // emit audition WAVs under ../../tmp/).
 
-const zgumpRefPath = "../../../../83768__zgump__kick-pack-0708.wav"
 
 func renderKickOverrides(over RecipeParams, sr, samples int) []float32 {
 	seed := kickSeedWith(RecipeParams{})
@@ -161,7 +160,7 @@ func (ks kickShape) print(label string) {
 }
 
 func decodeRefMono(t *testing.T, sr int) []float64 {
-	pcm, fsr, err := DecodeWAVToPCM(zgumpRefPath)
+	pcm, fsr, err := DecodeWAVToPCM(wavRefOrSkip(t, "83768__zgump__kick-pack-0708.wav"))
 	if err != nil {
 		t.Skipf("reference WAV unavailable: %v", err)
 	}

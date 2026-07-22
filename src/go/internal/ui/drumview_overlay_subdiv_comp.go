@@ -343,6 +343,16 @@ func (s *SubdivMenuComponent) HandleWheel(x, y, steps int) InputResult {
 	return InputConsumed
 }
 
+// Update drives one frame of touch-fling momentum so a flick keeps scrolling
+// after the finger lifts — the inertial half of the shared instrument-menu feel.
+// Called once per frame via the subdiv portal's updateFn.
+func (s *SubdivMenuComponent) Update() {
+	if !s.state.open || s.menuScroll == nil {
+		return
+	}
+	s.menuScroll.Tick(s.rebuildButtons)
+}
+
 // MenuScrollForTest exposes the scroll component for tests.
 func (s *SubdivMenuComponent) MenuScrollForTest() *MenuScroll { return s.menuScroll }
 

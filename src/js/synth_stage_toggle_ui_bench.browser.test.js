@@ -83,7 +83,7 @@ try {
     && typeof setEQTab === "function"
     && typeof selectSynthSection === "function"
     && typeof synthEnablePillRect === "function"
-    && typeof synthKnobRects === "function"
+    && typeof synthControlRects === "function"
     && typeof setRowInstrument === "function"
     && typeof setEQChannel === "function", { timeout: 30000 });
   await page.waitForFunction(() => window.audioReady !== undefined, { timeout: 30000 });
@@ -150,7 +150,7 @@ try {
       // out, the edited instrument / section selection didn't take, and the
       // toggles>0 / knobDrags>0 gates below would fail with no clue why.
       const diagPill = await page.evaluate(() => (typeof synthEnablePillRect === "function" ? synthEnablePillRect() : { x: 0, y: 0, w: 0, h: 0 }));
-      const diagKnobs = await page.evaluate(() => (typeof synthKnobRects === "function" ? synthKnobRects() : []));
+      const diagKnobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
       const diagChips = await page.evaluate(() => (typeof synthChipRects === "function" ? synthChipRects() : []));
       const pillEmpty = !diagPill || diagPill.w <= 0 || diagPill.h <= 0;
       const noCutoffKnob = !(diagKnobs || []).some((k) => k && k.w > 0 && k.h > 0 && /cutoff/i.test(k.name || ""));
@@ -159,7 +159,7 @@ try {
           "synth setup produced zero input targets — FILTER section not laid out for the edited instrument.\n"
           + `  selectSynthSection("FILTER") returned: ${JSON.stringify(selectResult)}\n`
           + `  synthChipRects() names: ${JSON.stringify((diagChips || []).map((c) => c && c.name))}\n`
-          + `  synthKnobRects() names: ${JSON.stringify((diagKnobs || []).map((k) => k && k.name))}\n`
+          + `  synthControlRects() names: ${JSON.stringify((diagKnobs || []).map((k) => k && k.name))}\n`
           + `  synthEnablePillRect(): ${JSON.stringify(diagPill)}`,
         );
       }
@@ -221,7 +221,7 @@ try {
         // never lingers open into the next tick and swallows later clicks
         // (that caused a hang/instability in an earlier iteration of this
         // bench).
-        const knobs = await page.evaluate(() => (typeof synthKnobRects === "function" ? synthKnobRects() : []));
+        const knobs = await page.evaluate(() => (typeof synthControlRects === "function" ? synthControlRects() : []));
         const knob = (knobs || []).find((k) => k && k.w > 0 && k.h > 0 && /cutoff/i.test(k.name || ""));
         if (knob) {
           const kcx = Math.round(knob.x + knob.w / 2), kcy = Math.round(knob.y + knob.h / 2);

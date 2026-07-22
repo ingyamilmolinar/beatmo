@@ -70,4 +70,3 @@ func BenchmarkButtonStyleDraw(b *testing.B) {
 		style.Draw(dst, r, false, false)
 	}
 }
-

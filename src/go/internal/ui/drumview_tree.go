@@ -94,6 +94,23 @@ type DrumViewTree struct {
 	// silently dropped. Regression: TestKebabTapOverlapScrollerActive.
 	wasInjecting bool
 
+	// prevPortalOpen / portalOpenedThisPress guard against a popup dismissing
+	// itself on the SAME gesture that opened it. A popup opens on the touch-DOWN
+	// frame (a base-subtree hit handler calls dv.portal().Open); on lift,
+	// injectTouchTap replays that gesture as a tap. Without a guard, the
+	// injection-edge clear below re-arms wasPressed and the replay is seen as a
+	// fresh press over the just-opened popup, firing the anchor tap-to-close /
+	// click-outside branch and closing it. portalOpenedThisPress records that
+	// THIS subtree's portal opened during the current, still-unreleased press so
+	// the injected replay of that opening gesture is NOT re-armed (it is absorbed
+	// by the still-latched press instead). Keyed on press-continuity, so it is
+	// robust to how long the finger is held; it engages ONLY when a portal opened
+	// during the press, preserving TestKebabTapOverlapScrollerActive. A genuine
+	// SECOND tap (a fresh press after release) is unaffected — the flag clears on
+	// release. Regression: TestSynthCardTapDoesNotSelfClosePopup.
+	prevPortalOpen        bool
+	portalOpenedThisPress bool
+
 	// inputHandled is set when the tree dispatched a press to a handler
 	// during the current frame.
 	inputHandled bool
@@ -554,8 +571,21 @@ func (t *DrumViewTree) handleInput() {
 	// below dispatches the tap to the control under it. Only when nothing is
 	// captured: an in-flight capture/drag owns the gesture and is completed by
 	// the branches below. Regression: TestKebabTapOverlapScrollerActive.
+	// Track whether this subtree's portal opened during the current press. The
+	// portal is opened from outside handleInput (a base-subtree hit handler on
+	// the touch-down frame), so we observe the rising edge here on the next held
+	// frame: pressed, our own press latched, portal now open, not open last
+	// frame. Cleared whenever the portal is closed.
+	portalOpen := t.portal.IsOpen()
+	if !portalOpen {
+		t.portalOpenedThisPress = false
+	} else if pressed && t.wasPressed && !t.prevPortalOpen {
+		t.portalOpenedThisPress = true
+	}
+	t.prevPortalOpen = portalOpen
+
 	injecting := isTouchTapInjecting()
-	if injecting && !t.wasInjecting && pressed && t.capturedHandler == nil {
+	if injecting && !t.wasInjecting && pressed && t.capturedHandler == nil && !t.portalOpenedThisPress {
 		t.wasPressed = false
 	}
 	t.wasInjecting = injecting
@@ -579,6 +609,7 @@ func (t *DrumViewTree) handleInput() {
 		}
 		t.suppress = false
 		t.wasPressed = false
+		t.portalOpenedThisPress = false
 		return
 	}
 
@@ -863,6 +894,17 @@ func (t *DrumViewTree) PortalHasBlocking() bool {
 		return false
 	}
 	return t.portal.HasBlocking()
+}
+
+// PortalOwnsInput reports whether this tree's portal has any INTERACTIVE (not
+// passive) overlay open — a superset of PortalHasBlocking that also covers
+// non-blocking interactive overlays (docked FX panel, EQ channel dropdown).
+// Passive tooltips do not count. See OverlayPortal.OwnsInput.
+func (t *DrumViewTree) PortalOwnsInput() bool {
+	if t.portal == nil {
+		return false
+	}
+	return t.portal.OwnsInput()
 }
 
 // InputHandled returns true if the tree dispatched to a handler this frame.
